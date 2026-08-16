@@ -43,7 +43,7 @@ const DEFAULT_STORED_BATTLE_SERVER_SETTINGS_OPTIONS: StoredBattleServerSettingsO
   maxTotalUnits: undefined,
 };
 
-export function buildStoredBattleServerSettingCommands(
+function buildStoredBattleServerSettingCommands(
   mode: BattleMode,
   options: StoredBattleServerSettingsOptions = DEFAULT_STORED_BATTLE_SERVER_SETTINGS_OPTIONS,
 ): Command[] {

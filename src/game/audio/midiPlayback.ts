@@ -3,6 +3,7 @@
 import { Midi } from '@tonejs/midi';
 import { AUDIO } from '../../audioConfig';
 import { LOOK_AHEAD } from './proceduralMusic';
+import { midiNoteToFrequency as midiToFreq } from './audioHelpers';
 
 export type {  MidiState, MidiEffectsChain } from '@/types/audio';
 import type { MidiNote, MidiState, MidiEffectsChain } from '@/types/audio';
@@ -128,10 +129,6 @@ export async function loadMidi(state: MidiState): Promise<void> {
   } catch (err) {
     console.error('[MusicPlayer] MIDI load error:', err);
   }
-}
-
-function midiToFreq(midi: number): number {
-  return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
 /** Schedule MIDI notes within the look-ahead window. */

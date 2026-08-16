@@ -175,7 +175,7 @@ const debugSpokeAxis = new THREE.Vector3(1, 0, 0);
  *  regardless of how the body moves or yaws, just like a real foot
  *  pinned against the ground. The trigger and target use its outer foot sphere
  *  minus its own attachment-ground chopping sphere. */
-export type LegContactState = 'planted' | 'stepping' | 'free';
+type LegContactState = 'planted' | 'stepping' | 'free';
 
 export type LegInstance = {
   config: ArachnidLegConfig;

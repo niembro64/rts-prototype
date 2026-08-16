@@ -2,7 +2,6 @@
 
 import type { Entity, ProjectileShot, Turret } from '../types';
 import { isProjectileShot, NO_ENTITY_ID } from '../types';
-import { isAttackEmitterConfig, isManualEmitterConfig } from '../emitterKinds';
 import { getTransformCosSin } from '../../math';
 import { getTurretWorldMount } from '../../math';
 import type { MountBodyOrientation } from '../../math/MountGeometry';
@@ -13,10 +12,11 @@ import {
   ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION,
   entitySlotRegistry,
 } from '../EntitySlotRegistry';
-import { getRuntimeTurretMount, getRuntimeTurretMountHeight } from '../turretMounts';
+import { getRuntimeTurretMount } from '../turretMounts';
 import { getUnitBlueprint } from '../blueprints';
 import { deterministicMath as DMath } from '../deterministicMath';
 import {
+  getBotArmConfig,
   resolveBotWeaponArmSocketPose,
   selectBotTorsoTurretIndex,
   shortestBotSocketAngleDelta,
@@ -91,23 +91,6 @@ export function isBallisticArcWeapon(weapon: Turret): boolean {
   );
 }
 
-export function hasManualFireShotWeapon(entity: Entity): boolean {
-  const turrets = entity.combat?.turrets;
-  if (turrets === undefined || turrets.length === 0) return false;
-  for (let i = 0; i < turrets.length; i++) {
-    const config = turrets[i].config;
-    if (
-      isManualEmitterConfig(config) &&
-      isAttackEmitterConfig(config) &&
-      !config.passive &&
-      config.shot !== null
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
 export function isWeaponAimedForFire(weapon: Turret): boolean {
   if (weapon.config.verticalLauncher) return true;
   const pitchTolerance = isBallisticArcWeapon(weapon)
@@ -135,16 +118,6 @@ export function isLiveHomingTarget(entity: Entity): boolean {
     projectile.hp > 0 &&
     isProjectileShot(projectile.config.shot)
   );
-}
-
-/** Step a non-negative cooldown timer toward zero by `dtMs`. Skips
- *  the work entirely when the timer is already at rest, and floors
- *  the result at 0 so the next tick's `if (cd > 0)` gate reads false
- *  instead of leaking a tiny negative deficit into the next cycle. */
-export function decrementCooldown(cd: number, dtMs: number): number {
-  if (cd <= 0) return 0;
-  const next = cd - dtMs;
-  return next < 0 ? 0 : next;
 }
 
 const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
@@ -282,7 +255,8 @@ function resolveAuthoritativeHostAttachmentLocal(
 
   if (attachment.kind === 'botArm') {
     const radius = sourceUnit.radius.other;
-    const arms = blueprint.unitLocomotion.config.arms;
+    const arms = getBotArmConfig(blueprint.unitLocomotion.config, attachment.arm);
+    if (arms === null) return null;
     const shoulderZ = radius * arms.shoulder.zUnitRadiusRatio;
     resolveBotWeaponArmSocketPose(
       arms,
@@ -577,7 +551,7 @@ export function updateWeaponWorldKinematics(
 }
 
 /** BAR-style QueryWeapon result for one authoritative emission lane. */
-export type WeaponEmissionSocketWorldPose = {
+type WeaponEmissionSocketWorldPose = {
   position: Vec3;
   velocity: Vec3;
   forward: Vec3;
@@ -881,18 +855,6 @@ export function updateAuthoritativeHostAttachmentKinematics(
       }
     }
   }
-}
-
-/** Per-turret mount height above the unit's ground footprint. Runtime
- *  turrets derive this from the unit blueprint's `turrets[i].mount.z`,
- *  so the server's targeting/firing path and the client renderer share
- *  the same authored 3D pivot. */
-export function getTurretMountHeight(unit: Entity, turretIndex: number): number {
-  const combat = unit.combat;
-  const turret = combat !== null ? combat.turrets[turretIndex] : undefined;
-  if (turret !== undefined) return getRuntimeTurretMountHeight(turret);
-  const sourceUnit = unit.unit;
-  return sourceUnit !== null ? sourceUnit.supportPointOffsetZ : 0;
 }
 
 export function getEntityPosition3d(entity: Entity, out: Vec3): Vec3 {

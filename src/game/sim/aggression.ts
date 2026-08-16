@@ -3,7 +3,7 @@ import type { WorldState } from './WorldState';
 
 /** BAR's default guard retaliation memory is roughly 40 simulation frames.
  * Keep this as gameplay policy instead of baking it into damage or targeting. */
-export const GUARD_RETALIATION_MEMORY_TICKS = 40;
+const GUARD_RETALIATION_MEMORY_TICKS = 40;
 
 type ResolvedAttacker = {
   rootHost: Entity;

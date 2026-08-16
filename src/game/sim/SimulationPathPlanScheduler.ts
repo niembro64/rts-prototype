@@ -43,7 +43,7 @@ type PlayerPathRequestLanes = {
 
 /** Serve callback: return true when a plan computation actually ran (the
  *  entry is charged against the budgets), false to skip a stale entry. */
-export type PathPlanServe = (entityId: EntityId, lane: number) => boolean;
+type PathPlanServe = (entityId: EntityId, lane: number) => boolean;
 
 export class SimulationPathPlanScheduler {
   private readonly lanes = new Map<PlayerId, PlayerPathRequestLanes>();

@@ -1,16 +1,15 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import type { TurretMesh } from './TurretMesh3D';
-import { getBarrelOrbitAngle } from '../math/BarrelGeometry';
 import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
   getOrCreate,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
+import { GeometryCache3D } from './GeometryCache3D';
 
 const REX_ARMOR_COLOR = COLORS.units.unitRex.armor.colorHex;
-const REX_APERTURE_COLOR = COLORS.units.unitRex.aperture.colorHex;
 const SEGMENT_UP = new THREE.Vector3(0, 1, 0);
 const SEGMENT_DIRECTION = new THREE.Vector3();
 
@@ -24,31 +23,19 @@ const SEGMENT_DIRECTION = new THREE.Vector3();
  */
 export class RexVisualKit3D {
   private readonly boxGeom = RexVisualKit3D.namedBoxGeom();
-  private readonly cylinderGeoms = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
-  private readonly sphereGeoms = new Map<PrimitiveGeometryTier, THREE.SphereGeometry>();
+  private readonly cylinderGeoms = new GeometryCache3D(
+    (tier: PrimitiveGeometryTier) => createPrimitiveCylinderGeometry('unitDetail', tier),
+  );
+  private readonly sphereGeoms = new GeometryCache3D(
+    (tier: PrimitiveGeometryTier) => createPrimitiveSphereGeometry('unitDetail', tier),
+  );
   private readonly frustumGeoms = new Map<string, THREE.CylinderGeometry>();
   private readonly armorMat = new THREE.MeshLambertMaterial({ color: REX_ARMOR_COLOR });
-  private readonly apertureMat = new THREE.MeshBasicMaterial({
-    color: REX_APERTURE_COLOR,
-    transparent: true,
-    opacity: COLORS.units.unitRex.aperture.opacity,
-    depthWrite: false,
-  });
 
   private static namedBoxGeom(): THREE.BoxGeometry {
     const geom = new THREE.BoxGeometry(1, 1, 1);
     geom.name = 'rexWeaponKitBox';
     return geom;
-  }
-
-  private cylinderGeom(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
-    return getOrCreate(this.cylinderGeoms, tier, () =>
-      createPrimitiveCylinderGeometry('unitDetail', tier));
-  }
-
-  private sphereGeom(tier: PrimitiveGeometryTier): THREE.SphereGeometry {
-    return getOrCreate(this.sphereGeoms, tier, () =>
-      createPrimitiveSphereGeometry('unitDetail', tier));
   }
 
   private frustumGeom(
@@ -87,7 +74,7 @@ export class RexVisualKit3D {
     radius: number,
     length: number,
   ): THREE.Mesh {
-    const mesh = new THREE.Mesh(this.cylinderGeom(tier), material);
+    const mesh = new THREE.Mesh(this.cylinderGeoms.get(tier), material);
     mesh.position.set(centerX, y, z);
     mesh.rotation.z = -Math.PI / 2;
     mesh.scale.set(radius, length, radius);
@@ -106,7 +93,7 @@ export class RexVisualKit3D {
     sy: number,
     sz: number,
   ): THREE.Mesh {
-    const mesh = new THREE.Mesh(this.sphereGeom(tier), material);
+    const mesh = new THREE.Mesh(this.sphereGeoms.get(tier), material);
     mesh.position.set(x, y, z);
     mesh.scale.set(sx, sy, sz);
     parent.add(mesh);
@@ -140,17 +127,6 @@ export class RexVisualKit3D {
 
   private hideGenericHead(tm: TurretMesh): void {
     if (tm.head !== undefined) tm.head.visible = false;
-    tm.teamCollar = undefined;
-  }
-
-  private clearGenericHardware(tm: TurretMesh): void {
-    // Keep the shared team-colour collar anchor. Rex replaces the generic
-    // head and tubes, not the stationary ornamented housing those tubes pass
-    // through. The collar is rendered outside this scenegraph by the shared
-    // trim pool and must survive the visual swap.
-    if (tm.head !== undefined) tm.head.visible = false;
-    for (const barrel of tm.barrels) barrel.removeFromParent();
-    tm.barrels.length = 0;
   }
 
   private decorateBeam(
@@ -163,10 +139,11 @@ export class RexVisualKit3D {
     if (pivot === undefined || tm.barrels.length === 0) return;
     const r = tm.headRadius ?? 26;
 
-    // The beam's existing cone remains the ordinary pilot light. Its broad
-    // base is QueryWeapon's origin; its tip remains the head's visual aperture
-    // so the fused snout terminates where the ray becomes externally visible.
+    // Retain and expose the standard beam pilot-light cone and team collar.
+    // Their broad base remains QueryWeapon's origin; the collar now reads as
+    // a proper emitter barrel fitted into the front of the animal-like head.
     const pilot = tm.barrels[0];
+    pilot.userData.rexBeamPilotBarrel = true;
     const aperturePosition = new THREE.Vector3(0, pilot.scale.y * 0.5, 0)
       .applyQuaternion(pilot.quaternion)
       .add(pilot.position);
@@ -197,7 +174,10 @@ export class RexVisualKit3D {
     head.userData.rexTyrannosaurHead = true;
     pivot.add(head);
     const headBackX = -r * 1.05;
-    const headFrontX = Math.max(r * 1.12, aperturePosition.x + r * 0.04);
+    // Stop the organic shell behind the standard barrel collar. The previous
+    // shell enclosed the complete pilot cone, hiding every visual cue that
+    // this head is the beam turret.
+    const headFrontX = r * 0.68;
     const headShell = this.addSphere(
       head, primaryMat, tier,
       (headBackX + headFrontX) * 0.5, r * 0.04, 0,
@@ -225,7 +205,7 @@ export class RexVisualKit3D {
     midsection.userData.rexUpperBodyMidsection = true;
     upperBody.add(midsection);
 
-    const belly = new THREE.Mesh(this.cylinderGeom(tier), primaryMat);
+    const belly = new THREE.Mesh(this.cylinderGeoms.get(tier), primaryMat);
     belly.position.set(unitRadius * 0.02, unitRadius * 1.94, 0);
     belly.scale.set(unitRadius * 0.43, unitRadius * 0.58, unitRadius * 0.43);
     midsection.add(belly);
@@ -237,194 +217,102 @@ export class RexVisualKit3D {
   private decorateGatling(
     tm: TurretMesh,
     primaryMat: THREE.Material,
-    barrelMat: THREE.Material,
     tier: PrimitiveGeometryTier,
   ): void {
     const pivot = tm.pitchGroup;
-    const spinner = tm.spinGroup;
-    if (pivot === undefined || spinner === undefined) return;
+    if (pivot === undefined || tm.spinGroup === undefined) return;
     const r = tm.headRadius ?? 20;
 
-    // The housing is the Rex's fist/forearm terminus. The tube cluster remains
-    // under the shared spin group, so barrel animation is still driven by the
-    // ordinary turret cadence rather than a Rex-only clock.
-    this.addBox(pivot, this.armorMat, r * 0.28, 0, 0, r * 1.2, r * 0.86, r * 1.02);
+    // Keep the standard five slender, spinning Gatling barrels. Rex only adds
+    // a heavy forearm breech around their base, preserving the same readable
+    // weapon silhouette used by ordinary Gatling hosts.
+    const housing = new THREE.Group();
+    housing.userData.rexGatlingBreech = true;
+    pivot.add(housing);
+    this.addBox(housing, this.armorMat, -r * 0.02, 0, 0, r * 0.76, r * 0.86, r * 1.02);
     if (tier === 'far') return;
-    this.addBox(pivot, primaryMat, -r * 0.24, 0, 0, r * 0.24, r * 1.02, r * 1.12);
-    this.addTube(pivot, primaryMat, tier, r * 0.72, 0, 0, r * 0.48, r * 0.2);
-
-    const orbit = Math.max(0, -spinner.position.y);
-    const muzzleX = tm.fixedMultiBarrelMuzzle?.x ?? r * 2.5;
-    const barrelStartX = r * 0.345;
-    const barrelLength = muzzleX - barrelStartX;
-    const tubeCount = tier === 'mid' ? 1 : 3;
-    for (let i = 0; i < tubeCount; i++) {
-      const angle = getBarrelOrbitAngle(i, tubeCount);
-      const y = Math.cos(angle) * orbit;
-      const z = Math.sin(angle) * orbit;
-      const tube = this.addTube(
-        spinner,
-        barrelMat,
-        tier,
-        barrelStartX + barrelLength * 0.5,
-        y,
-        z,
-        r * 0.12,
-        barrelLength,
-      );
-      tube.userData.rexMultiBarrelTube = i;
-      this.addBox(
-        spinner,
-        this.apertureMat,
-        muzzleX,
-        y,
-        z,
-        r * 0.08,
-        r * 0.3,
-        r * 0.3,
-      );
-    }
+    this.addBox(housing, primaryMat, -r * 0.34, 0, 0, r * 0.18, r * 1.02, r * 1.12);
+    this.addTube(housing, primaryMat, tier, r * 0.39, 0, 0, r * 0.46, r * 0.12);
   }
 
   private decorateFastRocketPod(
     tm: TurretMesh,
     primaryMat: THREE.Material,
-    barrelMat: THREE.Material,
     tier: PrimitiveGeometryTier,
   ): void {
     const pivot = tm.pitchGroup;
-    const spinner = tm.spinGroup;
-    if (pivot === undefined || spinner === undefined) return;
+    if (pivot === undefined || tm.spinGroup === undefined) return;
     const r = tm.headRadius ?? 13;
 
-    // A compact gimballed pod sits on the forward shoulder edge. Three tubes
-    // match the turret's three authored emission lanes and rotate as one rack.
-    this.addBox(pivot, this.armorMat, r * 0.34, 0, 0, r * 1.52, r * 1.55, r * 1.82);
+    // The shoulder weapon keeps turretRocketFast's three rotating tubes. A
+    // short rectangular launch yoke distinguishes it from
+    // both the circular arm Gatling and the three-tube vertical backpack rack.
+    const pod = new THREE.Group();
+    pod.userData.rexFastRocketPod = true;
+    pivot.add(pod);
+    this.addBox(pod, this.armorMat, r * 0.02, 0, 0, r * 0.7, r * 1.46, r * 1.72);
     if (tier === 'far') return;
-    this.addBox(pivot, primaryMat, -r * 0.4, 0, 0, r * 0.22, r * 1.7, r * 1.96);
-    const orbit = Math.max(0, -spinner.position.y);
-    const muzzleX = tm.fixedMultiBarrelMuzzle?.x ?? r * 2.1;
-    const barrelStartX = r * 0.16;
-    const barrelLength = muzzleX - barrelStartX;
-    const tubeCount = tier === 'mid' ? 1 : 3;
-    for (let i = 0; i < tubeCount; i++) {
-      const angle = getBarrelOrbitAngle(i, tubeCount);
-      const y = Math.cos(angle) * orbit;
-      const z = Math.sin(angle) * orbit;
-      const tube = this.addTube(
-        spinner,
-        barrelMat,
-        tier,
-        barrelStartX + barrelLength * 0.5,
-        y,
-        z,
-        r * 0.22,
-        barrelLength,
-      );
-      tube.userData.rexMultiBarrelTube = i;
-      this.addBox(
-        spinner,
-        this.apertureMat,
-        muzzleX,
-        y,
-        z,
-        r * 0.09,
-        r * 0.42,
-        r * 0.42,
-      );
-    }
+    this.addBox(pod, primaryMat, r * 0.3, r * 0.64, 0, r * 0.88, r * 0.12, r * 1.9);
+    this.addBox(pod, primaryMat, r * 0.3, -r * 0.64, 0, r * 0.88, r * 0.12, r * 1.9);
   }
 
   private decorateVerticalRocketPod(
     tm: TurretMesh,
     primaryMat: THREE.Material,
-    barrelMat: THREE.Material,
     tier: PrimitiveGeometryTier,
   ): void {
     const pivot = tm.pitchGroup;
-    const spinner = tm.spinGroup;
-    if (pivot === undefined || spinner === undefined) return;
+    if (pivot === undefined || tm.spinGroup === undefined) return;
     const r = tm.headRadius ?? 14;
 
-    // turretRocketSlow pins this pitch group to +90 degrees. Authored here in
-    // ordinary +X turret space, the whole rack therefore stands upright on
-    // the backpack without any bespoke launch-direction math.
-    this.addBox(pivot, this.armorMat, r * 0.22, 0, 0, r * 1.48, r * 1.68, r * 1.68);
+    // turretRocketSlow pins this pitch group to +90 degrees. Its standard
+    // three broad rocket tubes therefore stand upright while this compact
+    // launch deck braces their bases against the backpack.
+    const rack = new THREE.Group();
+    rack.userData.rexVerticalRocketRack = true;
+    pivot.add(rack);
+    this.addBox(rack, this.armorMat, -r * 0.04, 0, 0, r * 0.64, r * 1.64, r * 1.64);
     if (tier === 'far') return;
-    this.addBox(pivot, primaryMat, -r * 0.46, 0, 0, r * 0.2, r * 1.82, r * 1.82);
-    const orbit = Math.max(0, -spinner.position.y);
-    const muzzleX = tm.fixedMultiBarrelMuzzle?.x ?? r * 2;
-    const barrelStartX = r * 0.09;
-    const barrelLength = muzzleX - barrelStartX;
-    const tubeCount = tier === 'mid' ? 1 : 3;
-    for (let i = 0; i < tubeCount; i++) {
-      const angle = getBarrelOrbitAngle(i, tubeCount);
-      const y = Math.cos(angle) * orbit;
-      const z = Math.sin(angle) * orbit;
-      const tube = this.addTube(
-        spinner,
-        barrelMat,
-        tier,
-        barrelStartX + barrelLength * 0.5,
-        y,
-        z,
-        r * 0.22,
-        barrelLength,
-      );
-      tube.userData.rexMultiBarrelTube = i;
-      this.addBox(
-        spinner,
-        this.apertureMat,
-        muzzleX,
-        y,
-        z,
-        r * 0.09,
-        r * 0.42,
-        r * 0.42,
-      );
-    }
+    this.addBox(rack, primaryMat, -r * 0.35, 0, 0, r * 0.16, r * 1.84, r * 1.84);
   }
 
   decorateTurret(
     tm: TurretMesh,
     mountId: string,
     primaryMat: THREE.Material,
-    barrelMat: THREE.Material,
+    _barrelMat: THREE.Material,
     tier: PrimitiveGeometryTier,
   ): void {
     switch (mountId) {
       case 'beamMega':
-        // Keep the ordinary beam cone as the pilot-light/origin data carrier;
-        // the dinosaur head's forward aperture is authored around its tip.
+        // Keep the standard beam cone and collar visible as the head's barrel.
         this.hideGenericHead(tm);
         this.decorateBeam(tm, primaryMat, tier);
         break;
       case 'gatlingRight':
       case 'gatlingLeft':
-        this.clearGenericHardware(tm);
-        this.decorateGatling(tm, primaryMat, barrelMat, tier);
+        this.hideGenericHead(tm);
+        this.decorateGatling(tm, primaryMat, tier);
         break;
-      case 'missileFast':
-        this.clearGenericHardware(tm);
-        this.decorateFastRocketPod(tm, primaryMat, barrelMat, tier);
+      case 'antiAirRight':
+      case 'antiAirLeft':
+        this.hideGenericHead(tm);
+        this.decorateFastRocketPod(tm, primaryMat, tier);
         break;
       case 'siloRight':
       case 'siloLeft':
-        this.clearGenericHardware(tm);
-        this.decorateVerticalRocketPod(tm, primaryMat, barrelMat, tier);
+        this.hideGenericHead(tm);
+        this.decorateVerticalRocketPod(tm, primaryMat, tier);
         break;
     }
   }
 
   dispose(): void {
     this.boxGeom.dispose();
-    for (const geometry of this.cylinderGeoms.values()) geometry.dispose();
-    this.cylinderGeoms.clear();
-    for (const geometry of this.sphereGeoms.values()) geometry.dispose();
-    this.sphereGeoms.clear();
+    this.cylinderGeoms.dispose();
+    this.sphereGeoms.dispose();
     for (const geometry of this.frustumGeoms.values()) geometry.dispose();
     this.frustumGeoms.clear();
     this.armorMat.dispose();
-    this.apertureMat.dispose();
   }
 }

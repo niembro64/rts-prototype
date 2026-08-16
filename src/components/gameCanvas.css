@@ -1,0 +1,609 @@
+.game-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The bottom bars own the full-width row at the bottom of the shell.
+ * Above that row, the startup menu sidebar owns a strip on the right and
+ * the game receives the remaining width. The renderer's ResizeObserver
+ * picks up the narrower/shorter game container and resizes the canvas to
+ * match. */
+.game-wrapper.menu-sidebar-open {
+  --menu-sidebar-w: min(380px, calc(100vw - 40px));
+}
+
+.game-wrapper.menu-sidebar-open .game-area {
+  margin-right: var(--menu-sidebar-w);
+}
+
+.game-wrapper.menu-sidebar-open .top-controls-shell {
+  width: auto;
+  right: var(--menu-sidebar-w);
+}
+
+.game-area {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.game-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.background-battle-container {
+  /* Identical positioning rules in both contexts:
+   *   - default home: inside `.game-area` (position: relative) →
+   *     fills the full viewport behind the BUDGET ANNIHILATION
+   *     lobby screen (original pre-change behavior).
+   *   - re-parented home: inside `.preview-pane` (also
+   *     position: relative, sized 480x270) → fills that small
+   *     box, framing the demo as a mini-simulation preview.
+   *
+   * The lobby-preview composable does the DOM move; the element's own
+   * CSS doesn't need to change because both parents resolve `position:
+   * absolute; width/height: 100%` to the right thing. */
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.game-container canvas {
+  display: block;
+}
+
+.game-container.loading-active {
+  z-index: 3700;
+}
+
+.battle-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3600;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #05070a;
+  color: #edf3ff;
+  pointer-events: auto;
+}
+
+.player-client-off .game-container canvas,
+.player-client-off .background-battle-container canvas {
+  visibility: hidden;
+}
+
+.player-client-off-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #05070a;
+  color: #edf3ff;
+  pointer-events: auto;
+}
+
+.game-paused-banner {
+  position: absolute;
+  top: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 950;
+  padding: 10px 28px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 8px;
+  background: #05070a;
+  color: #ffd166;
+  font: 700 22px/1.2 monospace;
+  letter-spacing: 0.18em;
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.top-controls-shell {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  justify-content: center;
+  z-index: 3001;
+  width: 100%;
+  height: 0;
+  pointer-events: none;
+}
+
+.top-controls-shell :deep(.top-bar) {
+  pointer-events: auto;
+}
+
+.minimap-stack {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  display: block;
+  pointer-events: none;
+}
+
+.minimap-stack :deep(.minimap-container) {
+  pointer-events: auto;
+}
+
+.communication-panel {
+  position: absolute;
+  top: 62px;
+  left: 50%;
+  z-index: 1002;
+  width: auto;
+  max-width: min(420px, calc(100vw - 560px));
+  border: 1px solid #4f6074;
+  border-radius: 4px;
+  background: #080c12;
+  color: #edf3ff;
+  font: 11px/1.25 system-ui, sans-serif;
+  letter-spacing: 0;
+  pointer-events: auto;
+  transform: translateX(-50%);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.34);
+}
+
+.communication-panel.open {
+  width: min(420px, calc(100vw - 560px));
+  min-width: 360px;
+}
+
+.communication-panel.drawing {
+  border-color: #82d2ff;
+}
+
+.communication-toolbar {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  padding: 3px;
+}
+
+.communication-toolbar button,
+.communication-input-row button {
+  min-width: 0;
+  width: 38px;
+  height: 20px;
+  padding: 0 2px;
+  border: 1px solid #667184;
+  border-radius: 2px;
+  background: #191f2a;
+  color: #dce7fb;
+  font: 700 7px/1 system-ui, sans-serif;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.communication-toolbar button:hover,
+.communication-input-row button:hover {
+  border-color: #b4cdeb;
+  background: #263142;
+}
+
+.communication-toolbar button.active,
+.communication-toggle[aria-pressed="true"] {
+  border-color: #82d2ff;
+  color: #f8fcff;
+  background: #265270;
+}
+
+.communication-body {
+  border-top: 1px solid rgba(120, 140, 165, 0.28);
+  padding: 7px;
+}
+
+.communication-log {
+  display: grid;
+  gap: 3px;
+  max-height: 136px;
+  min-height: 24px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.communication-message {
+  display: grid;
+  grid-template-columns: 38px 72px minmax(0, 1fr);
+  gap: 6px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.communication-time {
+  color: #8998ad;
+  font-family: monospace;
+  font-size: 10px;
+}
+
+.communication-sender {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 800;
+}
+
+.communication-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #f5f8ff;
+}
+
+.communication-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.communication-input {
+  min-width: 0;
+  height: 24px;
+  box-sizing: border-box;
+  border: 1px solid #667184;
+  border-radius: 4px;
+  background: #04080e;
+  color: #edf3ff;
+  padding: 0 7px;
+  font: 11px/1 system-ui, sans-serif;
+  outline: none;
+}
+
+.communication-input:focus {
+  border-color: #82d2ff;
+}
+
+.communication-status {
+  margin-top: 7px;
+  color: #a9bdd6;
+  font: 700 10px/1.2 system-ui, sans-serif;
+}
+
+.map-details-panel {
+  position: absolute;
+  top: 0;
+  left: calc(var(--hud-minimap-max, 320px) + 16px);
+  z-index: 1001;
+  width: min(300px, calc(100vw - var(--hud-minimap-max, 320px) - 36px));
+  max-width: 300px;
+  border: 1px solid #4f6074;
+  border-radius: 6px;
+  background: #0a0e14;
+  color: #edf3ff;
+  font: 11px/1.25 system-ui, sans-serif;
+  letter-spacing: 0;
+  pointer-events: auto;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+}
+
+.map-details-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  padding: 0 8px 0 10px;
+  border-bottom: 1px solid rgba(120, 140, 165, 0.32);
+  font-weight: 700;
+}
+
+.map-details-close {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #667184;
+  border-radius: 4px;
+  background: #191f2a;
+  color: #dce7fb;
+  cursor: pointer;
+}
+
+.map-details-list {
+  display: grid;
+  grid-template-columns: minmax(88px, auto) 1fr;
+  gap: 6px 12px;
+  margin: 0;
+  padding: 10px;
+}
+
+.map-details-list dt {
+  color: #9fb1c9;
+  font-weight: 700;
+}
+
+.map-details-list dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #f5f8ff;
+  text-align: right;
+}
+
+.options-menu-panel {
+  position: absolute;
+  top: 0;
+  left: calc(var(--hud-minimap-max, 320px) + 332px);
+  z-index: 1001;
+  width: min(244px, calc(100vw - var(--hud-minimap-max, 320px) - 352px));
+  max-width: 244px;
+  border: 1px solid #4f6074;
+  border-radius: 6px;
+  background: #0a0e14;
+  color: #edf3ff;
+  font: 11px/1.25 system-ui, sans-serif;
+  letter-spacing: 0;
+  pointer-events: auto;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+}
+
+.options-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  padding: 0 8px 0 10px;
+  border-bottom: 1px solid rgba(120, 140, 165, 0.32);
+  font-weight: 700;
+}
+
+.options-menu-close {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #667184;
+  border-radius: 4px;
+  background: #191f2a;
+  color: #dce7fb;
+  cursor: pointer;
+}
+
+.options-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 10px;
+}
+
+.options-menu-grid button {
+  min-width: 0;
+  height: 28px;
+  padding: 0 5px;
+  border: 1px solid #667184;
+  border-radius: 4px;
+  background: #191f2a;
+  color: #dce7fb;
+  font: 700 10px/1 system-ui, sans-serif;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.options-menu-grid button:hover,
+.options-menu-close:hover {
+  border-color: #b4cdeb;
+  background: #263142;
+}
+
+.options-menu-grid button.active {
+  border-color: #82d2ff;
+  color: #f8fcff;
+  background: #265270;
+}
+
+@media (max-width: 760px) {
+  .minimap-stack {
+    display: block;
+  }
+
+  .communication-panel {
+    top: var(--hud-minimap-follow-top, 326px);
+    left: 0;
+    max-width: min(300px, 100vw);
+    transform: none;
+  }
+
+  .communication-panel.open {
+    width: min(300px, 100vw);
+    min-width: 0;
+  }
+
+  .map-details-panel {
+    top: var(--hud-minimap-follow-top, 326px);
+    left: 0;
+    width: min(300px, 100vw);
+  }
+
+  .options-menu-panel {
+    top: var(--hud-minimap-follow-top, 326px);
+    left: 0;
+    width: min(244px, 100vw);
+  }
+}
+
+.ui-chrome-restore {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 4200;
+  min-width: 38px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #5d6b82;
+  border-radius: 4px;
+  background: #11161e;
+  color: #e8f0ff;
+  font: 700 11px/1 system-ui, sans-serif;
+  letter-spacing: 0;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.ui-chrome-restore:hover {
+  border-color: #8da1c0;
+  background: #1c2430;
+}
+
+.ui-chrome-restore:active {
+  background: #090c12;
+}
+
+
+
+/* Bottom control bars */
+.bottom-controls-shell {
+  position: relative;
+  flex: 0 0 auto;
+  z-index: 3001;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-start;
+  width: 100%;
+  pointer-events: none;
+}
+
+.bottom-controls-shell.collapsed {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  background: transparent;
+}
+
+.bottom-controls {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+/* Horizontal tab that sits ON TOP of the bars near the left — the
+ * bottom-bars mirror of the right-edge sidebar handle, rotated 90° so
+ * the rounded edge faces up into the screen and the chevron points up
+ * (expand) / down (collapse). `bottom: 100%` parks its base at the top
+ * of the bars when expanded; when collapsed the bars are hidden so the
+ * shell has zero height and the tab falls to the screen's bottom edge —
+ * exactly how the sidebar handle rides out with its panel. */
+.bottom-controls-toggle {
+  position: absolute;
+  left: 12px;
+  bottom: 100%;
+  width: 72px;
+  height: 30px;
+  padding: 0;
+  background: #12121a;
+  border: 1px solid #444;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  color: #888;
+  cursor: pointer;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.bottom-controls-toggle:hover {
+  background: #232330;
+  border-color: #777;
+}
+
+.bottom-controls-toggle:active {
+  background: #0c0c12;
+  border-color: #666;
+}
+
+.toggle-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  display: block;
+}
+
+.lobby-controls-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3002;
+  width: min(860px, calc(100vw - 40px));
+  pointer-events: none;
+  transform: translateX(100%);
+  transition: transform 0.18s ease;
+}
+
+.lobby-controls-sidebar.open {
+  transform: translateX(0);
+}
+
+.lobby-controls-sidebar-toggle {
+  position: absolute;
+  top: 50%;
+  left: -30px;
+  width: 30px;
+  height: 72px;
+  padding: 0;
+  transform: translateY(-50%);
+  background: #12121a;
+  border: 1px solid #444;
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+  color: #888;
+  cursor: pointer;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.lobby-controls-sidebar-toggle:hover {
+  background: #232330;
+  border-color: #777;
+  color: #bbb;
+}
+
+.lobby-controls-sidebar-toggle:active {
+  background: #0c0c12;
+  border-color: #666;
+}
+
+.lobby-controls-sidebar-panel {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  overflow-y: auto;
+  background: #0a0c12;
+  border-left: 1px solid #444;
+  box-shadow: -16px 0 32px rgba(0, 0, 0, 0.36);
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.lobby-controls-sidebar:not(.open) .lobby-controls-sidebar-panel {
+  visibility: hidden;
+}

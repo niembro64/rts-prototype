@@ -93,12 +93,12 @@ const ENTITY_MAJOR_KEYS = [
 
 type EncodedNetworkSnapshot = Omit<SnapshotWirePayload, 'encodeMs'>;
 
-export type DecodeNetworkSnapshotOptions = {
+type DecodeNetworkSnapshotOptions = {
   packedProjectileDeltas?: 'dto' | 'metadata-only';
   packedEntityDeltas?: 'dto' | 'metadata-only';
 };
 
-export type SnapshotWireBreakdownEntry = {
+type SnapshotWireBreakdownEntry = {
   section: string;
   bytes: number;
   pct: number;

@@ -4,6 +4,7 @@ import type { PlayerId } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';
 import { sanitizeCommandForScheduledFrame } from '../server/commandSanitizer';
 import { authorizeGameServerGameplayCommand } from '../server/ServerCommandAuthorizer';
+import { isUint31, isUint32 } from '../integerValidation';
 
 type CommandArchitectureCategory =
   | 'gameplay-truth'
@@ -31,7 +32,7 @@ type LockstepCommandEnvelopeOptions = {
   readonly clientIssuedFrame?: number;
 };
 
-export type LockstepCommandRejectionReason =
+type LockstepCommandRejectionReason =
   | 'invalid-envelope'
   | 'sanitizer-rejected'
   | 'authorization-rejected';
@@ -338,10 +339,5 @@ function validateFrameInteger(value: number, label: string): number {
   return value;
 }
 
-function isFrameInteger(value: unknown): value is number {
-  return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 0x7FFF_FFFF;
-}
-
-function isPlayerId(value: unknown): value is PlayerId {
-  return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 0xFFFF_FFFF;
-}
+const isFrameInteger = isUint31;
+const isPlayerId = isUint32;

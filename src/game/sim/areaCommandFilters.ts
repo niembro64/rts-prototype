@@ -16,7 +16,7 @@ import type { AreaCommandFilterCategory } from './commands';
 import type { Entity } from './types';
 import type { VegetationProp } from './vegetation';
 
-export const AREA_COMMAND_FILTER_CATEGORIES: readonly AreaCommandFilterCategory[] =
+const AREA_COMMAND_FILTER_CATEGORIES: readonly AreaCommandFilterCategory[] =
   ['unit', 'building', 'wreck', 'vegetation'];
 
 export function isAreaCommandFilterCategory(value: unknown): value is AreaCommandFilterCategory {
@@ -26,7 +26,7 @@ export function isAreaCommandFilterCategory(value: unknown): value is AreaComman
 
 /** Broad filter bucket for an area-command target. Wreck entities are
  *  buildings with a wreck component, so the wreck check runs first. */
-export function areaCommandFilterCategoryOf(entity: Entity): AreaCommandFilterCategory {
+function areaCommandFilterCategoryOf(entity: Entity): AreaCommandFilterCategory {
   if (entity.wreck !== null) return 'wreck';
   if (entity.unit !== null) return 'unit';
   return 'building';
@@ -46,7 +46,7 @@ export function isEntityAreaCommandFilterCategory(
  *  featureDefId behaves identically because each wreck featureDef is
  *  derived from its source unitDef. Returns null for entities without
  *  any blueprint identity (they never match a blueprint filter). */
-export function areaCommandFilterBlueprintIdOf(entity: Entity): string | null {
+function areaCommandFilterBlueprintIdOf(entity: Entity): string | null {
   const wreck = entity.wreck;
   if (wreck !== null) {
     return wreck.source.kind === 'unit'
@@ -78,20 +78,6 @@ export function resolveAreaCommandTargetFilter(
     const blueprintId = areaCommandFilterBlueprintIdOf(hovered);
     return blueprintId !== null ? { filterBlueprintId: blueprintId } : {};
   }
-  return {};
-}
-
-/** Same as `resolveAreaCommandTargetFilter` for a hovered vegetation
- *  prop. BAR's Ctrl/Alt split maps cleanly: Ctrl keeps the whole
- *  feature category, Alt narrows to the hovered prop's own kind — the
- *  vegetation analogue of matching one featureDefId. */
-export function resolveVegetationAreaCommandTargetFilter(
-  hovered: VegetationProp,
-  ctrlHeld: boolean,
-  altHeld: boolean,
-): AreaCommandTargetFilter {
-  if (ctrlHeld) return { filterCategory: 'vegetation' };
-  if (altHeld) return { filterBlueprintId: hovered.kind };
   return {};
 }
 

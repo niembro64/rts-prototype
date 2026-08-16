@@ -8,14 +8,14 @@ import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import {
   BUILD_GRID_CELL_SIZE,
   getBuildingCenterFromGrid,
-  getRotatedGridFootprint,
+  getRotatedBuildingPlacementFootprint,
   snapBuildingToGrid,
 } from './buildGrid';
 import {
   findDepositContainingPoint,
   getMetalDepositGridCells,
-  getMetalDepositFootprintCoverage,
 } from './metalDeposits';
+import type { BuildingPlacementFootprint } from './types';
 import {
   evaluateBuildabilityFootprint,
   getTerrainBedHeight,
@@ -29,7 +29,7 @@ import {
   getBuildingRequiredSensorSourceMedium,
 } from './buildingPlacementPolicy';
 
-export type BuildPlacementCellReason =
+type BuildPlacementCellReason =
   | 'ok'
   | 'metal'
   | 'empty'
@@ -37,7 +37,7 @@ export type BuildPlacementCellReason =
   | 'occupied'
   | 'terrain';
 
-export type BuildPlacementFailureReason = BuildPlacementCellReason | 'noMetal';
+type BuildPlacementFailureReason = BuildPlacementCellReason | 'noMetal';
 
 export type BuildPlacementCellDiagnostic = {
   gx: number;
@@ -101,23 +101,78 @@ export function getOccupiedBuildingCells(buildings: Entity[]): ReadonlySet<strin
     if (!b.building) continue;
     const existingConfig = b.buildingBlueprintId ? getBuildingConfig(b.buildingBlueprintId) : undefined;
     const footprint = existingConfig
-      ? getRotatedGridFootprint(existingConfig.placementGridWidth, existingConfig.placementGridHeight, b.transform.rotation)
-      : getRotatedGridFootprint(
+      ? getRotatedBuildingPlacementFootprint(
+        existingConfig.placementFootprint,
+        b.transform.rotation,
+      )
+      : rectangularFootprint(
         Math.max(1, Math.ceil(b.building.width / BUILD_GRID_CELL_SIZE)),
         Math.max(1, Math.ceil(b.building.height / BUILD_GRID_CELL_SIZE)),
-        0,
       );
     const bw = footprint.gridWidth;
     const bh = footprint.gridHeight;
     const left = Math.floor((b.transform.x - (bw * BUILD_GRID_CELL_SIZE) / 2) / BUILD_GRID_CELL_SIZE + 1e-6);
     const top = Math.floor((b.transform.y - (bh * BUILD_GRID_CELL_SIZE) / 2) / BUILD_GRID_CELL_SIZE + 1e-6);
-    for (let dx = 0; dx < bw; dx++) {
-      for (let dy = 0; dy < bh; dy++) {
-        occupied.add(cellKey(left + dx, top + dy));
-      }
+    for (const cell of footprint.cells) {
+      occupied.add(cellKey(left + cell.dx, top + cell.dy));
     }
   }
   return occupied;
+}
+
+function rectangularFootprint(
+  gridWidth: number,
+  gridHeight: number,
+): BuildingPlacementFootprint {
+  const cells = [];
+  for (let dy = 0; dy < gridHeight; dy++) {
+    for (let dx = 0; dx < gridWidth; dx++) {
+      cells.push({ dx, dy, kind: 'structure' as const });
+    }
+  }
+  return { gridWidth, gridHeight, cells };
+}
+
+function evaluateFootprintMetalCoverage(
+  deposits: ReadonlyArray<MetalDeposit>,
+  gridX: number,
+  gridY: number,
+  footprint: BuildingPlacementFootprint,
+  wholeMapIsMetal: boolean,
+): {
+  fraction: number;
+  coveredCells: number;
+  totalCells: number;
+  primaryDepositId: number | null;
+} {
+  const hitCounts = new Map<number, number>();
+  let coveredCells = 0;
+  for (const cell of footprint.cells) {
+    if (wholeMapIsMetal) {
+      coveredCells++;
+      continue;
+    }
+    const x = (gridX + cell.dx + 0.5) * BUILD_GRID_CELL_SIZE;
+    const y = (gridY + cell.dy + 0.5) * BUILD_GRID_CELL_SIZE;
+    const deposit = findDepositContainingPoint(deposits, x, y);
+    if (deposit === null) continue;
+    coveredCells++;
+    hitCounts.set(deposit.id, (hitCounts.get(deposit.id) ?? 0) + 1);
+  }
+  let primaryDepositId: number | null = null;
+  let primaryCount = 0;
+  for (const [depositId, count] of hitCounts) {
+    if (count <= primaryCount) continue;
+    primaryCount = count;
+    primaryDepositId = depositId;
+  }
+  const totalCells = footprint.cells.length;
+  return {
+    fraction: totalCells > 0 ? coveredCells / totalCells : 0,
+    coveredCells,
+    totalCells,
+    primaryDepositId,
+  };
 }
 
 function getBuildingPlacementDiagnosticsAtGrid(
@@ -137,10 +192,11 @@ function getBuildingPlacementDiagnosticsAtGrid(
   // Validate and reserve the full placement footprint. It shares its
   // center with the physical rect (parity is loader-enforced), so the
   // candidate center below is also the building center.
-  const footprint = getRotatedGridFootprint(config.placementGridWidth, config.placementGridHeight, rotation);
+  const footprint = getRotatedBuildingPlacementFootprint(
+    config.placementFootprint,
+    rotation,
+  );
   const center = getBuildingCenterFromGrid(gridX, gridY, footprint.gridWidth, footprint.gridHeight);
-  const halfWidth = (footprint.gridWidth * BUILD_GRID_CELL_SIZE) / 2;
-  const halfHeight = (footprint.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
   const requiredSensorSourceMedium =
     getBuildingRequiredSensorSourceMedium(candidateType);
   const centerPlacementBaseZ = getBuildingPlacementBaseZ(
@@ -167,20 +223,8 @@ function getBuildingPlacementDiagnosticsAtGrid(
     : wholeMapIsMetal
       // Every sampled cell is ore, so synthesize full coverage rather than
       // walking a deposit list that no longer describes where the metal is.
-      ? {
-        fraction: 1,
-        coveredCells: footprint.gridWidth * footprint.gridHeight,
-        totalCells: footprint.gridWidth * footprint.gridHeight,
-        primaryDepositId: null,
-      }
-      : getMetalDepositFootprintCoverage(
-        metalDeposits,
-        center.x,
-        center.y,
-        halfWidth,
-        halfHeight,
-        BUILD_GRID_CELL_SIZE,
-      );
+      ? evaluateFootprintMetalCoverage(metalDeposits, gridX, gridY, footprint, true)
+      : evaluateFootprintMetalCoverage(metalDeposits, gridX, gridY, footprint, false);
   const mapCellsX = Math.ceil(mapWidth / BUILD_GRID_CELL_SIZE);
   const mapCellsY = Math.ceil(mapHeight / BUILD_GRID_CELL_SIZE);
   const cells: BuildPlacementCellDiagnostic[] = [];
@@ -196,31 +240,17 @@ function getBuildingPlacementDiagnosticsAtGrid(
     ? config.gridDepth * BUILD_GRID_CELL_SIZE * 0.5
     : 0;
 
-  // Walk the whole-footprint perimeter once. Per-cell loop below also
-  // walks each cell's perimeter ONCE and reads BOTH the buildable
-  // boolean AND the plateau level off a single helper (the previous
-  // code did separate isBuildableTerrainFootprint + getTerrainPlateauLevelAt
-  // calls per cell, which re-sampled the same mesh points twice).
+  // Each authored mask cell owns one terrain read. Empty bounding-box corners
+  // are intentionally ignored, so a circular or concave reservation can hug
+  // a shoreline/plateau without silently reverting to rectangle semantics.
   const useAuthoritativeBuildability =
     terrainBuildabilityGrid !== null &&
     terrainBuildabilityGrid.cellSize === BUILD_GRID_CELL_SIZE &&
     terrainBuildabilityGrid.mapWidth === mapWidth &&
     terrainBuildabilityGrid.mapHeight === mapHeight;
-  const footprintTerrainOk = ignoreTerrain || useAuthoritativeBuildability
-    ? true
-    : evaluateBuildabilityFootprint(
-      center.x,
-      center.y,
-      halfWidth,
-      halfHeight,
-      mapWidth,
-      mapHeight,
-    ).buildable;
-
-  for (let dy = 0; dy < footprint.gridHeight; dy++) {
-    for (let dx = 0; dx < footprint.gridWidth; dx++) {
-      const gx = gridX + dx;
-      const gy = gridY + dy;
+  for (const footprintCell of footprint.cells) {
+      const gx = gridX + footprintCell.dx;
+      const gy = gridY + footprintCell.dy;
       const x = gx * BUILD_GRID_CELL_SIZE + BUILD_GRID_CELL_SIZE / 2;
       const y = gy * BUILD_GRID_CELL_SIZE + BUILD_GRID_CELL_SIZE / 2;
       let reason: BuildPlacementCellReason = 'ok';
@@ -290,7 +320,6 @@ function getBuildingPlacementDiagnosticsAtGrid(
         failureReason ??= reason;
       }
       cells.push({ gx, gy, x, y, reason, blocking, terrainLevel, metalCovered, depositId });
-    }
   }
 
   let expectedTerrainLevel: number | null = null;
@@ -313,16 +342,6 @@ function getBuildingPlacementDiagnosticsAtGrid(
     }
   }
 
-  if (!footprintTerrainOk) {
-    for (const cell of cells) {
-      if (cell.blocking) continue;
-      cell.reason = 'terrain';
-      cell.blocking = true;
-      hasBlockingCell = true;
-    }
-    failureReason ??= 'terrain';
-  }
-
   // Diagnostic-only field for callers that want to know which deposit
   // cells are still uncovered by this candidate footprint. The build
   // ghost no longer reads it (deposit markers come from a persistent
@@ -334,14 +353,12 @@ function getBuildingPlacementDiagnosticsAtGrid(
   if (includeMetalDiagnostics) {
     metalDepositCells = [];
     const depositCells = getMetalDepositGridCells(metalDeposits);
-    const footprintEndX = gridX + footprint.gridWidth;
-    const footprintEndY = gridY + footprint.gridHeight;
+    const reservedCellKeys = new Set(
+      footprint.cells.map((cell) => cellKey(gridX + cell.dx, gridY + cell.dy)),
+    );
     for (let i = 0; i < depositCells.length; i++) {
       const cell = depositCells[i];
-      if (
-        cell.gx >= gridX && cell.gx < footprintEndX &&
-        cell.gy >= gridY && cell.gy < footprintEndY
-      ) continue;
+      if (reservedCellKeys.has(cellKey(cell.gx, cell.gy))) continue;
       metalDepositCells.push({
         gx: cell.gx,
         gy: cell.gy,
@@ -444,7 +461,7 @@ export function getBuildingPlacementDiagnostics(
   options: BuildPlacementDiagnosticsOptions = DEFAULT_BUILD_PLACEMENT_DIAGNOSTICS_OPTIONS,
 ): BuildPlacementDiagnostics {
   const config = getBuildingConfig(candidateType);
-  const footprint = getRotatedGridFootprint(config.placementGridWidth, config.placementGridHeight, rotation);
+  const footprint = getRotatedBuildingPlacementFootprint(config.placementFootprint, rotation);
   const snapped = snapBuildingToGrid(centerX, centerY, footprint.gridWidth, footprint.gridHeight);
   return getBuildingPlacementDiagnosticsAtGrid(
     candidateType,
@@ -467,6 +484,6 @@ export function getSnappedBuildPosition(
   rotation = 0,
 ): { x: number; y: number; gridX: number; gridY: number } {
   const config = getBuildingConfig(buildingBlueprintId);
-  const footprint = getRotatedGridFootprint(config.placementGridWidth, config.placementGridHeight, rotation);
+  const footprint = getRotatedBuildingPlacementFootprint(config.placementFootprint, rotation);
   return snapBuildingToGrid(worldX, worldY, footprint.gridWidth, footprint.gridHeight);
 }

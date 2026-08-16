@@ -95,7 +95,7 @@ function rungFromName(name: unknown, fallback: DetailRung): DetailRung {
 
 const detailConfig = ENTITY_DETAIL_CONFIG;
 
-export const ENTITY_DETAIL_ENABLED: boolean = detailConfig.enabled === true;
+const ENTITY_DETAIL_ENABLED: boolean = detailConfig.enabled === true;
 const REFERENCE_VIEWPORT_HEIGHT_PX = finitePositiveOr(
   detailConfig.referenceViewportHeightPx, 1080);
 export const GLYPH_SCREEN_RADIUS_PX = finitePositiveOr(detailConfig.screenRadiusPx?.glyph, 4);
@@ -126,7 +126,7 @@ export const DETAIL_RADIUS_FLOOR_PROJECTILE = finitePositiveOr(
   detailConfig.radiusFloor?.projectile, 11);
 export const DETAIL_RADIUS_FLOOR_BEAM = finitePositiveOr(
   detailConfig.radiusFloor?.beam, 11);
-export const DETAIL_RADIUS_FLOOR_EFFECT = finitePositiveOr(
+const DETAIL_RADIUS_FLOOR_EFFECT = finitePositiveOr(
   detailConfig.radiusFloor?.effectDefault, 12);
 
 const FEATURE_MIN_RUNG: Record<DetailFeature, DetailRung> = {
@@ -206,7 +206,7 @@ const EXPLOSION_SPAWN_SCALE = effectSpawnScaleConfig('explosion', 0.7, 0.35);
 
 /** World-radius → screen-radius scale at the reference viewport height:
  *  screenPx = radiusWorld * detailPxScale(fovYRad) / distance. */
-export function detailPxScale(fovYRad: number): number {
+function detailPxScale(fovYRad: number): number {
   const halfFov = Number.isFinite(fovYRad) && fovYRad > 0 && fovYRad < Math.PI
     ? fovYRad / 2
     : Math.PI / 8;
@@ -380,7 +380,7 @@ export function detailRungForMode(coverageRung: DetailRung): DetailRung {
  * in every mode (BAR behaviour), so pinning HIGH can never trade a readable
  * icon for a sub-pixel model. OFF pins GLYPH and is the end state.
  */
-export function detailRungWithGlyphFloor(
+function detailRungWithGlyphFloor(
   pinnedRung: DetailRung,
   coverageRung: DetailRung,
 ): DetailRung {

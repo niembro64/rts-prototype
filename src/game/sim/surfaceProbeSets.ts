@@ -1,27 +1,33 @@
 import type { SurfaceProbeSetId } from '@/types/unitLocomotionTypes';
 import rawSurfaceProbeConfig from './surfaceProbeConfig.json';
+import {
+  assertExactObjectKeys,
+  assertFiniteNumber,
+  assertPlainObject,
+  assertPositiveFiniteNumber,
+} from '../../configValidation';
 
-export const SURFACE_PROBE_SET_IDS = ['single', 'few', 'many'] as const;
-export const SURFACE_FOLLOWING_PROBE_AGGREGATION_MODES = ['average', 'max'] as const;
+const SURFACE_PROBE_SET_IDS = ['single', 'few', 'many'] as const;
+const SURFACE_FOLLOWING_PROBE_AGGREGATION_MODES = ['average', 'max'] as const;
 export type SurfaceFollowingProbeAggregationMode =
   (typeof SURFACE_FOLLOWING_PROBE_AGGREGATION_MODES)[number];
 
-export type SurfaceProbePoint = Readonly<{
+type SurfaceProbePoint = Readonly<{
   /** Integer lattice coordinate in units of the one shared probe spacing. */
   forward: number;
   lateral: number;
 }>;
 
-export type SurfaceProbeSpacing = Readonly<{
+type SurfaceProbeSpacing = Readonly<{
   /** One probe interval in simulation world units. */
   world: number;
 }>;
 
-export type SurfaceProbeSet = Readonly<{
+type SurfaceProbeSet = Readonly<{
   points: readonly SurfaceProbePoint[];
 }>;
 
-export type SurfaceFollowingDefaults = Readonly<{
+type SurfaceFollowingDefaults = Readonly<{
   /** Minimum distance passed to the inverse-distance lift response. */
   minimumDistanceWorld: number;
   /** How force proposals from a preset's named probe layout are combined. */
@@ -39,29 +45,16 @@ function assertExactKeys(
   value: Record<string, unknown>,
   expected: readonly string[],
 ): void {
-  const expectedKeys = new Set(expected);
-  for (const key of Object.keys(value)) {
-    if (!expectedKeys.has(key)) {
-      throw new Error(`Invalid surfaceProbeConfig.json: ${label}.${key}`);
-    }
-  }
-  for (const key of expected) {
-    if (!Object.prototype.hasOwnProperty.call(value, key)) {
-      throw new Error(`Invalid surfaceProbeConfig.json: missing ${label}.${key}`);
-    }
-  }
+  assertExactObjectKeys(
+    value,
+    expected,
+    (key) => `Invalid surfaceProbeConfig.json: ${label}.${key}`,
+    (key) => `Invalid surfaceProbeConfig.json: missing ${label}.${key}`,
+  );
 }
 
 function assertObject(label: string, value: unknown): asserts value is Record<string, unknown> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(`Invalid surfaceProbeConfig.json: expected ${label} object`);
-  }
-}
-
-function assertFinite(label: string, value: unknown): asserts value is number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(`Invalid surfaceProbeConfig.json: expected finite ${label}`);
-  }
+  assertPlainObject(value, `Invalid surfaceProbeConfig.json: expected ${label} object`);
 }
 
 function isSurfaceFollowingProbeAggregationMode(
@@ -80,22 +73,19 @@ function readSurfaceProbeConfig(): SurfaceProbeConfig {
     rawSurfaceProbeConfig.surfaceFollowingDefaults,
     ['minimumDistanceWorld', 'probeAggregation'],
   );
-  assertFinite(
-    'surfaceFollowingDefaults.minimumDistanceWorld',
+  assertPositiveFiniteNumber(
     rawSurfaceProbeConfig.surfaceFollowingDefaults.minimumDistanceWorld,
+    'surfaceProbeConfig.surfaceFollowingDefaults.minimumDistanceWorld',
   );
-  if (rawSurfaceProbeConfig.surfaceFollowingDefaults.minimumDistanceWorld <= 0) {
-    throw new Error('Invalid surfaceProbeConfig.json: surfaceFollowingDefaults.minimumDistanceWorld must be positive');
-  }
   if (!isSurfaceFollowingProbeAggregationMode(rawSurfaceProbeConfig.surfaceFollowingDefaults.probeAggregation)) {
     throw new Error('Invalid surfaceProbeConfig.json: invalid surfaceFollowingDefaults.probeAggregation');
   }
   assertObject('spacing', rawSurfaceProbeConfig.spacing);
   assertExactKeys('spacing', rawSurfaceProbeConfig.spacing, ['world']);
-  assertFinite('spacing.world', rawSurfaceProbeConfig.spacing.world);
-  if (rawSurfaceProbeConfig.spacing.world <= 0) {
-    throw new Error('Invalid surfaceProbeConfig.json: spacing.world must be positive');
-  }
+  assertPositiveFiniteNumber(
+    rawSurfaceProbeConfig.spacing.world,
+    'surfaceProbeConfig.spacing.world',
+  );
   assertObject('sets', rawSurfaceProbeConfig.sets);
   assertExactKeys('sets', rawSurfaceProbeConfig.sets, SURFACE_PROBE_SET_IDS);
 
@@ -111,8 +101,8 @@ function readSurfaceProbeConfig(): SurfaceProbeConfig {
       const label = `sets.${setId}.points[${index}]`;
       assertObject(label, point);
       assertExactKeys(label, point, ['forward', 'lateral']);
-      assertFinite(`${label}.forward`, point.forward);
-      assertFinite(`${label}.lateral`, point.lateral);
+      assertFiniteNumber(point.forward, `surfaceProbeConfig.${label}.forward`);
+      assertFiniteNumber(point.lateral, `surfaceProbeConfig.${label}.lateral`);
       return Object.freeze({
         forward: point.forward,
         lateral: point.lateral,
@@ -147,7 +137,7 @@ export function isSurfaceProbeSetId(value: unknown): value is SurfaceProbeSetId 
     (SURFACE_PROBE_SET_IDS as readonly string[]).includes(value);
 }
 
-export function getSurfaceProbeSet(setId: SurfaceProbeSetId): SurfaceProbeSet {
+function getSurfaceProbeSet(setId: SurfaceProbeSetId): SurfaceProbeSet {
   return SURFACE_PROBE_CONFIG.sets[setId];
 }
 

@@ -9,21 +9,25 @@ import {
   assertUnitLocomotionUnitFraction,
 } from './unitLocomotionValidation';
 import { isSurfaceProbeSetId } from './surfaceProbeSets';
+import {
+  assertExactObjectKeys,
+  assertPlainObject,
+} from '../../configValidation';
 
-export const UNIT_LOCOMOTION_MEDIUM_NAMES = ['ground', 'air', 'water'] as const;
-export type UnitLocomotionMediumName = (typeof UNIT_LOCOMOTION_MEDIUM_NAMES)[number];
-export type UnitLocomotionFluidMediumName = Exclude<UnitLocomotionMediumName, 'ground'>;
+const UNIT_LOCOMOTION_MEDIUM_NAMES = ['ground', 'air', 'water'] as const;
+type UnitLocomotionMediumName = (typeof UNIT_LOCOMOTION_MEDIUM_NAMES)[number];
+type UnitLocomotionFluidMediumName = Exclude<UnitLocomotionMediumName, 'ground'>;
 
 /** The JSON field is deliberately named `surfaceLiftResponse` to preserve the
  * authored contract. The zero-only values mean it has no runtime dynamics. */
 export const UNIT_LOCOMOTION_SURFACE_FOLLOWING_RESPONSE_FIELDS = ['randomizationAmount', 'ema'] as const;
 
-export type UnitLocomotionSurfaceFollowingResponse = {
+type UnitLocomotionSurfaceFollowingResponse = {
   randomizationAmount: number;
   ema: number;
 };
 
-export type UnitLocomotionPresetFluidPhysics = UnitLocomotionResistancePhysics & {
+type UnitLocomotionPresetFluidPhysics = UnitLocomotionResistancePhysics & {
   /** Kept explicit and fixed at zero: surface following is deterministic and
    * unfiltered. */
   surfaceLiftResponse: UnitLocomotionSurfaceFollowingResponse;
@@ -57,21 +61,16 @@ type UnitLocomotionConfig = {
 };
 
 function assertObject(label: string, value: unknown): asserts value is Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(`Invalid unitLocomotionConfig.json: missing ${label} object`);
-  }
+  assertPlainObject(value, `Invalid unitLocomotionConfig.json: missing ${label} object`);
 }
 
 function assertExactKeys(label: string, value: Record<string, unknown>, expected: readonly string[]): void {
-  const expectedSet = new Set(expected);
-  for (const key of Object.keys(value)) {
-    if (!expectedSet.has(key)) throw new Error(`Invalid unitLocomotionConfig.json: unexpected ${label}.${key}`);
-  }
-  for (const key of expected) {
-    if (!Object.prototype.hasOwnProperty.call(value, key)) {
-      throw new Error(`Invalid unitLocomotionConfig.json: missing ${label}.${key}`);
-    }
-  }
+  assertExactObjectKeys(
+    value,
+    expected,
+    (key) => `Invalid unitLocomotionConfig.json: unexpected ${label}.${key}`,
+    (key) => `Invalid unitLocomotionConfig.json: missing ${label}.${key}`,
+  );
 }
 
 function assertSurfaceFollowingResponse(label: string, value: unknown): void {

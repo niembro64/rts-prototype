@@ -62,6 +62,11 @@ import {
 } from '../sim/areaCommandFilters';
 import { entityHasBarAttackCommand } from '../sim/unitCommandCapabilities';
 import type { Input3DCommandModeControls } from './Input3DCommandModeControls';
+import {
+  getActiveCommandHotkeyPresetId,
+  isBarCommandHotkeyPreset,
+} from '../input/commandHotkeys';
+import type { BarAreaCommandExpansion } from '../sim/commands';
 
 const REPAIR_AREA_RADIUS = 220;
 const RECLAIM_AREA_RADIUS = 220;
@@ -87,6 +92,13 @@ type AreaDrag = {
    *  its Ctrl/Alt filter reference from the unit/feature at the command
    *  position, which is where our drag starts. Null = open ground. */
   anchorEntityId: EntityId | null;
+};
+
+type BarAreaExpansionContext = {
+  targetOrderOriginX: number;
+  targetOrderOriginY: number;
+  sourceIndexById: ReadonlyMap<EntityId, number> | null;
+  sourceCount: number;
 };
 
 type BuildPreviewTarget = {
@@ -472,6 +484,11 @@ export class Input3DModeClickController {
     // area center. Modifier state is read at release; the reference
     // entity was captured at the drag anchor.
     const targetFilter = this.resolveAreaDragTargetFilter(drag, releaseEvent);
+    const areaQueueMode = this.resolveAreaCommandQueueMode(drag, releaseEvent);
+    const selectedAreaUnits = this.config.getEntitySource().getSelectedUnits();
+    const areaExpansionContext = isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId())
+      ? this.resolveBarAreaExpansionContext(selectedAreaUnits, areaQueueMode.splitTargets)
+      : null;
     if (drag.kind === 'repairArea') {
       const builders = this.getSelectedBuilders();
       for (let i = 0; i < builders.length; i++) {
@@ -481,16 +498,21 @@ export class Input3DModeClickController {
           drag.start.y,
           radius,
           this.config.getTick(),
-          drag.queue,
+          areaQueueMode.queue,
           drag.start.z,
-          drag.queueFront,
-          drag.queueInsertIndex,
+          areaQueueMode.queueFront,
+          areaQueueMode.queueInsertIndex,
           targetFilter,
+          this.resolveBarAreaCommandExpansion(
+            areaExpansionContext,
+            builders[i],
+            areaQueueMode.splitTargets,
+          ),
         );
         if (cmd) this.config.commandQueue.enqueue(cmd);
       }
       this.config.applyCursor('repair');
-      if (!drag.queue) this.config.exitRepairAreaMode();
+      if (!areaQueueMode.queue) this.config.exitRepairAreaMode();
       return;
     }
     if (drag.kind === 'attackArea') {
@@ -500,14 +522,20 @@ export class Input3DModeClickController {
         drag.start.y,
         radius,
         this.config.getTick(),
-        drag.queue,
+        areaQueueMode.queue,
         drag.start.z,
-        drag.queueFront,
-        drag.queueInsertIndex,
+        areaQueueMode.queueFront,
+        areaQueueMode.queueInsertIndex,
+        areaQueueMode.splitTargets,
+        this.resolveBarAreaCommandExpansion(
+          areaExpansionContext,
+          selectedAreaUnits[0] ?? null,
+          false,
+        ),
       );
       if (cmd) this.config.commandQueue.enqueue(cmd);
       this.config.applyCursor('attack');
-      if (!drag.queue) this.config.exitAttackAreaMode();
+      if (!areaQueueMode.queue) this.config.exitAttackAreaMode();
       return;
     }
     if (drag.kind === 'resurrectArea') {
@@ -517,15 +545,20 @@ export class Input3DModeClickController {
         drag.start.y,
         radius,
         this.config.getTick(),
-        drag.queue,
+        areaQueueMode.queue,
         drag.start.z,
-        drag.queueFront,
-        drag.queueInsertIndex,
+        areaQueueMode.queueFront,
+        areaQueueMode.queueInsertIndex,
         targetFilter,
+        this.resolveBarAreaCommandExpansion(
+          areaExpansionContext,
+          this.config.getSelectedResurrectSource(),
+          areaQueueMode.splitTargets,
+        ),
       );
       if (cmd) this.config.commandQueue.enqueue(cmd);
       this.config.applyCursor('repair');
-      if (!drag.queue) this.exitActiveResurrectMode();
+      if (!areaQueueMode.queue) this.exitActiveResurrectMode();
       return;
     }
     if (drag.kind === 'loadTransportArea') {
@@ -536,14 +569,14 @@ export class Input3DModeClickController {
         drag.start.y,
         radius,
         this.config.getTick(),
-        drag.queue,
+        areaQueueMode.queue,
         drag.start.z,
-        drag.queueFront,
-        drag.queueInsertIndex,
+        areaQueueMode.queueFront,
+        areaQueueMode.queueInsertIndex,
       );
       if (cmd) this.config.commandQueue.enqueue(cmd);
       this.config.applyCursor(cmd ? 'guard' : 'blocked');
-      if (!drag.queue) this.config.exitLoadTransportMode();
+      if (!areaQueueMode.queue) this.config.exitLoadTransportMode();
       return;
     }
     if (drag.kind === 'unloadTransportArea') {
@@ -553,15 +586,15 @@ export class Input3DModeClickController {
         drag.start.x,
         drag.start.y,
         this.config.getTick(),
-        drag.queue,
+        areaQueueMode.queue,
         drag.start.z,
-        drag.queueFront,
-        drag.queueInsertIndex,
+        areaQueueMode.queueFront,
+        areaQueueMode.queueInsertIndex,
         radius >= UNLOAD_TRANSPORT_AREA_MIN_RADIUS ? radius : undefined,
       );
       if (cmd) this.config.commandQueue.enqueue(cmd);
       this.config.applyCursor(cmd ? 'move' : 'blocked');
-      if (!drag.queue) this.config.exitUnloadTransportMode();
+      if (!areaQueueMode.queue) this.config.exitUnloadTransportMode();
       return;
     }
     if (drag.kind === 'upgradeMexArea') {
@@ -578,12 +611,12 @@ export class Input3DModeClickController {
         targetY: drag.start.y,
         targetZ: drag.start.z,
         radius: Math.min(radius, METAL_EXTRACTOR_UPGRADE_AREA_MAX_RADIUS),
-        queue: drag.queue,
-        queueFront: drag.queueFront,
-        queueInsertIndex: drag.queueInsertIndex,
+        queue: areaQueueMode.queue,
+        queueFront: areaQueueMode.queueFront,
+        queueInsertIndex: areaQueueMode.queueInsertIndex,
       });
       this.config.applyCursor('build');
-      if (!drag.queue) this.config.exitMexUpgradeMode();
+      if (!areaQueueMode.queue) this.config.exitMexUpgradeMode();
       return;
     }
     const builders = this.getSelectedBuilders();
@@ -594,16 +627,21 @@ export class Input3DModeClickController {
         drag.start.y,
         radius,
         this.config.getTick(),
-        drag.queue,
+        areaQueueMode.queue,
         drag.start.z,
-        drag.queueFront,
-        drag.queueInsertIndex,
+        areaQueueMode.queueFront,
+        areaQueueMode.queueInsertIndex,
         targetFilter,
+        this.resolveBarAreaCommandExpansion(
+          areaExpansionContext,
+          builders[i],
+          areaQueueMode.splitTargets,
+        ),
       );
       if (cmd) this.config.commandQueue.enqueue(cmd);
     }
     this.config.applyCursor('reclaim');
-    if (!drag.queue) this.config.exitReclaimMode();
+    if (!areaQueueMode.queue) this.config.exitReclaimMode();
   }
 
   /** BAR cmd_area_commands_filter parity. Ctrl at release keeps only
@@ -611,10 +649,8 @@ export class Input3DModeClickController {
    *  the area" / same-tech wrecks — our blueprints have no tech levels,
    *  so all wrecks); Alt keeps only targets with its exact blueprint
    *  (BAR: same unitDefId / featureDefId). No anchor entity or no
-   *  modifier = unfiltered. Note: when the drag also queues (Shift held
-   *  at press), Ctrl doubles as the queue-front modifier — both
-   *  meanings apply, mirroring how BAR stacks its area filters on top
-   *  of whatever queue options the command carries. */
+   *  modifier = unfiltered. Meta is deliberately not a Ctrl alias: BAR
+   *  reserves it for front/split target distribution. */
   private resolveAreaDragTargetFilter(
     drag: AreaDrag,
     releaseEvent: MouseEvent,
@@ -625,12 +661,86 @@ export class Input3DModeClickController {
     const modifiers = effectiveQueueModifierEvent(releaseEvent);
     const filter = resolveAreaCommandTargetFilter(
       hovered,
-      modifiers.ctrlKey || modifiers.metaKey,
+      modifiers.ctrlKey,
       modifiers.altKey,
     );
     return filter.filterCategory !== undefined || filter.filterBlueprintId !== undefined
       ? filter
       : undefined;
+  }
+
+  private resolveAreaCommandQueueMode(
+    drag: AreaDrag,
+    releaseEvent: MouseEvent,
+  ): QueueCommandMode & { splitTargets: boolean } {
+    if (!isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId())) {
+      return { ...drag, splitTargets: false };
+    }
+    const modifiers = effectiveQueueModifierEvent(releaseEvent);
+    if (modifiers.metaKey) {
+      return {
+        queue: true,
+        queueFront: !modifiers.shiftKey,
+        splitTargets: modifiers.shiftKey,
+      };
+    }
+    return {
+      queue: drag.queue,
+      queueFront: drag.queueFront,
+      queueInsertIndex: drag.queueInsertIndex,
+      splitTargets: false,
+    };
+  }
+
+  private resolveBarAreaExpansionContext(
+    selectedUnits: readonly Entity[],
+    includeSourceIndices: boolean,
+  ): BarAreaExpansionContext {
+    let targetOrderOriginX = 0;
+    let targetOrderOriginY = 0;
+    const sourceIndexById = includeSourceIndices ? new Map<EntityId, number>() : null;
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const selectedUnit = selectedUnits[i];
+      targetOrderOriginX += selectedUnit.transform.x;
+      targetOrderOriginY += selectedUnit.transform.y;
+      sourceIndexById?.set(selectedUnit.id, i);
+    }
+    if (selectedUnits.length > 0) {
+      targetOrderOriginX /= selectedUnits.length;
+      targetOrderOriginY /= selectedUnits.length;
+    }
+    return {
+      targetOrderOriginX,
+      targetOrderOriginY,
+      sourceIndexById,
+      sourceCount: selectedUnits.length,
+    };
+  }
+
+  private resolveBarAreaCommandExpansion(
+    context: BarAreaExpansionContext | null,
+    commandSource: Entity | null,
+    splitTargets: boolean,
+  ): BarAreaCommandExpansion | undefined {
+    if (context === null) return undefined;
+    const targetOrderOriginX = context.sourceCount > 0 || commandSource === null
+      ? context.targetOrderOriginX
+      : commandSource.transform.x;
+    const targetOrderOriginY = context.sourceCount > 0 || commandSource === null
+      ? context.targetOrderOriginY
+      : commandSource.transform.y;
+    if (!splitTargets || commandSource === null || context.sourceCount === 0) {
+      return { targetOrderOriginX, targetOrderOriginY };
+    }
+    const sourceIndex = context.sourceIndexById?.get(commandSource.id);
+    return sourceIndex === undefined
+      ? { targetOrderOriginX, targetOrderOriginY }
+      : {
+          targetOrderOriginX,
+          targetOrderOriginY,
+          targetSplitIndex: sourceIndex,
+          targetSplitCount: context.sourceCount,
+        };
   }
 
   private commitBuildMexAreaDrag(drag: AreaDrag, radius: number): void {

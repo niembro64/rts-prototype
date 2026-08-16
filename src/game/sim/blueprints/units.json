@@ -1340,24 +1340,24 @@
           "barrel": {
             "type": "simpleMultiBarrel",
             "barrelCount": 3,
-            "barrelLength": 1.1,
-            "orbitRadius": 0.38,
+            "barrelLength": 1.2,
+            "orbitRadius": 0.45,
             "spin": {
-              "idle": 0,
-              "max": 0,
-              "accel": 0,
-              "decel": 0
+              "idle": 2,
+              "max": 12,
+              "accel": 26,
+              "decel": 10
             }
           }
         },
         "sensorTurretBlueprintId": "turretSensorUnitRex",
         "mount": {
-          "x": 0.02,
-          "y": -1.02,
-          "z": 2.88
+          "x": 0.48,
+          "y": -1.17,
+          "z": 2.9
         },
         "requiredEngagedForFightStop": false,
-        "mountId": "missileFast",
+        "mountId": "antiAirRight",
         "controlMode": "autonomous",
         "articulation": {
           "yaw": {
@@ -1377,10 +1377,64 @@
           "claimPriority": 40
         },
         "hostAttachment": {
-          "kind": "botPiece",
-          "piece": "rightShoulder",
+          "kind": "botArm",
+          "arm": "rightUpperArm",
           "socketOffset": {
-            "x": 0,
+            "x": 0.02,
+            "y": 0,
+            "z": 0
+          }
+        }
+      },
+      {
+        "turretBlueprintId": "turretRocketFast",
+        "presentation": {
+          "headRadius": 13,
+          "headOnly": false,
+          "barrel": {
+            "type": "simpleMultiBarrel",
+            "barrelCount": 3,
+            "barrelLength": 1.2,
+            "orbitRadius": 0.45,
+            "spin": {
+              "idle": 2,
+              "max": 12,
+              "accel": 26,
+              "decel": 10
+            }
+          }
+        },
+        "sensorTurretBlueprintId": "turretSensorUnitRex",
+        "mount": {
+          "x": 0.48,
+          "y": 1.17,
+          "z": 2.9
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "antiAirLeft",
+        "controlMode": "autonomous",
+        "articulation": {
+          "yaw": {
+            "continuous": false,
+            "minAngle": -0.7,
+            "maxAngle": 0.7
+          },
+          "pitch": {
+            "minAngle": -0.2,
+            "maxAngle": 1.1
+          },
+          "restYaw": 0,
+          "restPitch": 0.12,
+          "restoreDelayMs": 1800,
+          "hostAssist": "requestYaw",
+          "claimGroup": "botUpperBody",
+          "claimPriority": 40
+        },
+        "hostAttachment": {
+          "kind": "botArm",
+          "arm": "leftUpperArm",
+          "socketOffset": {
+            "x": 0.02,
             "y": 0,
             "z": 0
           }
@@ -1635,6 +1689,27 @@
           "restSwingDeg": 8,
           "walkSwingDeg": 14,
           "outwardDeg": 10
+        },
+        "upperArms": {
+          "shoulder": {
+            "xUnitRadiusRatio": -0.08,
+            "yUnitRadiusRatio": 1,
+            "zUnitRadiusRatio": 2.88
+          },
+          "radius": 29,
+          "segments": {
+            "upper": {
+              "lengthUnitRadiusRatio": 0.42
+            },
+            "lower": {
+              "lengthUnitRadiusRatio": 0.52
+            }
+          },
+          "handRadiusRatio": 0.76,
+          "restSwingDeg": 24,
+          "walkSwingDeg": 8,
+          "outwardDeg": 24,
+          "elbowBendDirection": "downward"
         }
       },
       "environmentalHazards": {

@@ -13,7 +13,7 @@ export { normalizePlayerIds } from './teamRoster';
 // square-map corner rather than on a flat side.
 const FIRST_ALLY_TEAM_ANGLE = -Math.PI / 2 + Math.PI / 4;
 
-export function getLayoutAllyTeamCount(allyTeamCount: number): number {
+function getLayoutAllyTeamCount(allyTeamCount: number): number {
   return Math.max(1, Math.floor(allyTeamCount));
 }
 
@@ -75,7 +75,7 @@ export function getSeatBuildArcAngle(
  * allowed to occupy — so commanders never drift into the divider ridge
  * between sides.
  */
-export function getSeatAngleOffsetWithinAllyTeam(
+function getSeatAngleOffsetWithinAllyTeam(
   seatIndex: number,
   seatCount: number,
   allyTeamCount: number,

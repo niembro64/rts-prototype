@@ -17,6 +17,7 @@ import type {
 import type { SolarRig } from './SolarCollectorMesh3D';
 import type { HostOrnamentProfile } from './TeamOrnament3D';
 import type { EntityDeathBlast3D } from './EntityDeathDisassembly3D';
+import type { BuildingOperationalRig } from './BuildingOperationalRig3D';
 
 /** One wireframe per debug-volume category the host actually carries.
  *  Keys mirror the unified VOLUMES bar group (`VolumeType`) exactly —
@@ -155,6 +156,7 @@ export type EntityMesh = {
   solarRig?: SolarRig;
   radarRig?: RadarRig;
   converterRig?: ResourceConverterRig;
+  buildingOperationalRig?: BuildingOperationalRig;
   /** Per-building render height (solar is shorter than the default). */
   buildingHeight?: number;
   /** True when the building primary mesh owns its material and should
@@ -165,6 +167,8 @@ export type EntityMesh = {
   buildingBodyless?: boolean;
   solarOpenAmount?: number;
   solarPetalPoseAmount?: number;
+  buildingOperationalAmount?: number;
+  buildingOperationalMotionTime?: number;
   buildingCachedOwnerId?: PlayerId;
   buildingCachedProgress?: number;
   buildingCachedSelected?: boolean;
@@ -186,6 +190,8 @@ export type EntityMesh = {
   buildingRenderFrameKey?: string;
   buildingRenderBlueprintId?: string | null;
   buildingRenderTurretCount?: number;
+  /** Native plan-view yaw supplied by BuildingShape3D. */
+  buildingAuthoredYaw?: number;
   buildingRenderDetailBand?: number;
   /** True while the detail rung has this building's animators + gatling
    *  spin frozen (live gate, no rebuild). */

@@ -1,5 +1,9 @@
 import type { NetworkServerSnapshot } from './NetworkTypes';
 import { ReusableNetworkSnapshotCloner } from './snapshotClone';
+import {
+  readBooleanEnvFlag as envFlag,
+  readBooleanQueryFlag,
+} from '../runtimeFlags';
 
 type SnapshotImpairmentConfig = {
   enabled: boolean;
@@ -173,7 +177,7 @@ function readSnapshotImpairmentConfig(): SnapshotImpairmentConfig {
   );
   const enabled =
     envFlag('VITE_BA_DP03_SNAPSHOT_IMPAIRMENT') ||
-    queryFlag(QUERY_ENABLE_KEYS) ||
+    readBooleanQueryFlag(...QUERY_ENABLE_KEYS) ||
     delayMs > 0 ||
     jitterMs > 0 ||
     dropEvery > 0;
@@ -183,25 +187,6 @@ function readSnapshotImpairmentConfig(): SnapshotImpairmentConfig {
     jitterMs,
     dropEvery,
   };
-}
-
-function envFlag(name: string): boolean {
-  const value = import.meta.env[name];
-  if (typeof value !== 'string') return false;
-  return value === '1' || value.toLowerCase() === 'true' || value.toLowerCase() === 'yes';
-}
-
-function queryFlag(names: readonly string[]): boolean {
-  if (typeof window === 'undefined') return false;
-  const params = new URLSearchParams(window.location.search);
-  for (let i = 0; i < names.length; i++) {
-    const value = params.get(names[i]);
-    if (value === null) continue;
-    if (value === '' || value === '1') return true;
-    const normalized = value.toLowerCase();
-    if (normalized === 'true' || normalized === 'yes' || normalized === 'on') return true;
-  }
-  return false;
 }
 
 function envNumber(name: string): number | null {

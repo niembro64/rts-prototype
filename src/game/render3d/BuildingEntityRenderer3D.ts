@@ -35,6 +35,7 @@ import { collectBuildingTeamOrnaments } from './BuildingTeamOrnament3D';
 import type { RenderFrameState3D } from './RenderFrameState3D';
 import { BuildingAnimationController3D } from './BuildingAnimationController3D';
 import { applySolarCollectorPetalPose } from './SolarCollectorMesh3D';
+import { applyBuildingOperationalPose } from './BuildingOperationalRig3D';
 import type { ResourcePylonFlowController3D } from './ResourcePylonFlowController3D';
 import type { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
 import {
@@ -262,6 +263,14 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
   const solarOpenAmount = entity.building?.activeState?.open === false ? 0 : 1;
   const solarPetalPoseApplied = shapeType === 'buildingSolar' &&
     applySolarCollectorPetalPose(visibleDetails, solarOpenAmount);
+  const buildingOperationalAmount = solarOpenAmount;
+  const buildingOperationalMotionTime = entity.id * 0.071;
+  applyBuildingOperationalPose(
+    shape.operationalRig,
+    chassis,
+    buildingOperationalAmount,
+    buildingOperationalMotionTime,
+  );
 
   const buildingTurretMeshes: TurretMesh[] = [];
   const buildingTurrets = entity.combat?.turrets;
@@ -340,9 +349,11 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     converterRig: visualFeatureVisibleAtDetail('building', 'typeDetails', detailLevel, 0.38)
       ? shape.converterRig
       : undefined,
+    buildingOperationalRig: shape.operationalRig,
     buildingRenderFrameKey: geometryKey,
     buildingRenderBlueprintId: entity.buildingBlueprintId,
     buildingRenderTurretCount: buildingTurrets?.length ?? 0,
+    buildingAuthoredYaw: shape.authoredYaw,
     buildingHasPerFrameTurretWork:
       entityHasPerFrameBuildingTurretWork(entity) &&
       featureVisibleAtDetail('barrelSecondary', detailLevel),
@@ -351,6 +362,8 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     buildingBodyless: shape.bodyless === true,
     solarOpenAmount,
     solarPetalPoseAmount: solarPetalPoseApplied ? solarOpenAmount : undefined,
+    buildingOperationalAmount,
+    buildingOperationalMotionTime,
   };
 }
 
@@ -1676,13 +1689,14 @@ export class BuildingEntityRenderer3D {
     input[base] = x;
     input[base + 1] = y;
     input[base + 2] = baseY;
-    input[base + 3] = rotation;
+    const authoredYaw = mesh.buildingAuthoredYaw ?? 0;
+    input[base + 3] = rotation - authoredYaw;
     input[base + 4] = width;
     input[base + 5] = height;
     input[base + 6] = depth;
     input[base + 7] = bodyless ? 1 : 0;
     this.buildingPoseMeshes[index] = mesh;
-    this.buildingPoseRotations[index] = -rotation;
+    this.buildingPoseRotations[index] = -rotation + authoredYaw;
   }
 
   private ensureTurretAimInputCapacity(count: number): void {

@@ -1,10 +1,12 @@
 import * as THREE from 'three';
-import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
+import {
+  BUILD_GRID_CELL_SIZE,
+  getRotatedBuildingPlacementFootprint,
+} from '../sim/buildGrid';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import {
-  getMetalDepositFootprintCoverage,
-  type MetalDepositFootprintCell,
+  findDepositContainingPoint,
 } from '../sim/metalDeposits';
 import type { Entity, EntityId } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
@@ -14,7 +16,6 @@ import type { ResourcePylonRig } from './ResourcePylonMesh3D';
 
 export class BuildingResourcePylonSources3D {
   private readonly extractorDepositSourceCache = new IndexedEntityIdMap<THREE.Vector3>();
-  private readonly extractorCoverageCells: MetalDepositFootprintCell[] = [];
   private readonly pylonSourceWorld = new THREE.Vector3();
   private readonly pylonSourceDirection = new THREE.Vector3();
 
@@ -29,7 +30,6 @@ export class BuildingResourcePylonSources3D {
 
   clear(): void {
     this.extractorDepositSourceCache.clear();
-    this.extractorCoverageCells.length = 0;
   }
 
   writeGroundBelowPylonSourceWorld(
@@ -94,26 +94,27 @@ export class BuildingResourcePylonSources3D {
     const cached = this.extractorDepositSourceCache.get(entity.id);
     if (cached) return cached;
     const cfg = getBuildingConfig(entity.buildingBlueprintId);
-    const halfWidth = (cfg.gridWidth * BUILD_GRID_CELL_SIZE) / 2;
-    const halfHeight = (cfg.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
-    const cells = this.extractorCoverageCells;
-    getMetalDepositFootprintCoverage(
-      this.metalDeposits,
-      entity.transform.x,
-      entity.transform.y,
-      halfWidth,
-      halfHeight,
-      BUILD_GRID_CELL_SIZE,
-      cells,
+    const footprint = getRotatedBuildingPlacementFootprint(
+      cfg.placementFootprint,
+      entity.transform.rotation,
+    );
+    const gridX = Math.floor(
+      (entity.transform.x - footprint.gridWidth * BUILD_GRID_CELL_SIZE * 0.5) /
+      BUILD_GRID_CELL_SIZE + 1e-6,
+    );
+    const gridY = Math.floor(
+      (entity.transform.y - footprint.gridHeight * BUILD_GRID_CELL_SIZE * 0.5) /
+      BUILD_GRID_CELL_SIZE + 1e-6,
     );
     let x = 0;
     let y = 0;
     let count = 0;
-    for (let i = 0; i < cells.length; i++) {
-      const cell = cells[i];
-      if (!cell.covered) continue;
-      x += cell.x;
-      y += cell.y;
+    for (const cell of footprint.cells) {
+      const cellX = (gridX + cell.dx + 0.5) * BUILD_GRID_CELL_SIZE;
+      const cellY = (gridY + cell.dy + 0.5) * BUILD_GRID_CELL_SIZE;
+      if (findDepositContainingPoint(this.metalDeposits, cellX, cellY) === null) continue;
+      x += cellX;
+      y += cellY;
       count++;
     }
     if (count === 0) return null;

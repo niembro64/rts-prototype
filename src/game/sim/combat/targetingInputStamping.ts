@@ -142,7 +142,7 @@ function getHostLockOnMasks(entity: Entity): LockOnMasks {
   return EMPTY_LOCK_ON_MASKS;
 }
 
-export type CombatTargetingStateViews = {
+type CombatTargetingStateViews = {
   buffer: ArrayBuffer;
   length: number;
   entityCapacity: number;

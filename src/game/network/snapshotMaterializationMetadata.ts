@@ -63,7 +63,7 @@ export type SnapshotMaterializationStageDurations = Partial<
   Record<SnapshotMaterializationStage, number>
 >;
 
-export type SnapshotEntityRowComposition = {
+type SnapshotEntityRowComposition = {
   entityDtoRows: number;
   entityTypedRows: number;
   entityTypedPlaceholderRows: number;
@@ -172,7 +172,7 @@ export function copySnapshotMaterializationStageDurations(
   return out;
 }
 
-export function addSnapshotMaterializationStage(
+function addSnapshotMaterializationStage(
   stages: SnapshotMaterializationStageDurations,
   stage: SnapshotMaterializationStage,
   ms: number,

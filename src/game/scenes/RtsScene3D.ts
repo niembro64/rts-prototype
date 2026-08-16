@@ -1604,6 +1604,10 @@ export class RtsScene3D {
     });
   }
 
+  public resetLongtaskTelemetry(): void {
+    this.frameTelemetry.resetLongtaskWindow();
+  }
+
   public getRenderTpsStats(): { avgRate: number; worstRate: number } {
     return this.frameTelemetry.getRenderTpsStats();
   }

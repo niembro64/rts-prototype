@@ -1,6 +1,11 @@
 import type { EntityId } from './types';
 import { magnitude } from '../math';
 import { entitySlotRegistry } from './EntitySlotRegistry';
+import {
+  growTypedArray,
+  growTypedArrays,
+  nextGeometricCapacity,
+} from '../memory/typedArrayGrowth';
 
 import type { ForceContribution } from '@/types/ui';
 import type { KnockbackInfo } from '@/types/damage';
@@ -322,32 +327,26 @@ export class ForceAccumulator {
 
   private ensureSlotCacheCapacity(slot: number): void {
     if (slot < this.activeSlotMarks.length) return;
-    let capacity = this.activeSlotMarks.length;
-    while (capacity <= slot) capacity *= 2;
-    const marks = new Uint32Array(capacity);
-    marks.set(this.activeSlotMarks);
-    this.activeSlotMarks = marks;
-    const fx = new Float64Array(capacity);
-    fx.set(this.slotFinalFx);
-    this.slotFinalFx = fx;
-    const fy = new Float64Array(capacity);
-    fy.set(this.slotFinalFy);
-    this.slotFinalFy = fy;
-    const fz = new Float64Array(capacity);
-    fz.set(this.slotFinalFz);
-    this.slotFinalFz = fz;
-    const entityIds = new Int32Array(capacity);
-    entityIds.set(this.slotEntityId);
-    this.slotEntityId = entityIds;
+    const capacity = nextGeometricCapacity(this.activeSlotMarks.length, slot + 1);
+    [
+      this.activeSlotMarks,
+      this.slotFinalFx,
+      this.slotFinalFy,
+      this.slotFinalFz,
+      this.slotEntityId,
+    ] = growTypedArrays([
+      this.activeSlotMarks,
+      this.slotFinalFx,
+      this.slotFinalFy,
+      this.slotFinalFz,
+      this.slotEntityId,
+    ] as const, capacity);
   }
 
   private ensureActiveSlotListCapacity(required: number): void {
     if (required <= this.activeSlots.length) return;
-    let capacity = this.activeSlots.length;
-    while (capacity < required) capacity *= 2;
-    const next = new Uint32Array(capacity);
-    next.set(this.activeSlots);
-    this.activeSlots = next;
+    const capacity = nextGeometricCapacity(this.activeSlots.length, required);
+    this.activeSlots = growTypedArray(this.activeSlots, capacity);
   }
 
   /**

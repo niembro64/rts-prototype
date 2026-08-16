@@ -54,7 +54,7 @@ export function mapPresetLabelCanvasHeight(lineCount: number): number {
   return height;
 }
 
-export type MapPresetLabelPlacement = {
+type MapPresetLabelPlacement = {
   readonly worldWidth: number;
   readonly worldHeight: number;
   readonly centerX: number;

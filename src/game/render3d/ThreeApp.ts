@@ -12,7 +12,10 @@ import {
 import { OrbitCamera } from './OrbitCamera';
 import { GpuTimerQuery } from '../scenes/helpers/GpuTimerQuery';
 import { installSunLighting } from './SunLighting';
-import { registerLightingTargets } from './RenderLighting3D';
+import {
+  registerLightingTargets,
+  unregisterLightingTargets,
+} from './RenderLighting3D';
 import { configureSpriteTexture } from './threeUtils';
 import { registerBackdropTarget } from './presetBackdrops';
 import { ParallaxBackdropRenderer3D } from './ParallaxBackdropRenderer3D';
@@ -53,7 +56,7 @@ import { WATER_SURFACE_OUTPUT_LINEAR_RGB } from './WaterColor3D';
 const RENDER_DISABLED_UPDATE_INTERVAL_MS = 200;
 const DYNAMIC_PIXEL_RATIO_FLOOR = 0.75;
 
-export type ThreeAppFrameComplete = {
+type ThreeAppFrameComplete = {
   /** CPU wall-clock time spent submitting the WebGL draw for this frame. */
   readonly rendererRenderMs: number;
 };
@@ -73,7 +76,7 @@ const CAMERA_NEAR_PLANE = 50;
 /** Exported so world-extent renderers (water/terrain horizon skirts) can
  *  guarantee they finish inside the clip range instead of visibly ending
  *  mid-skirt at extreme zoom-out. */
-export const CAMERA_FAR_PLANE = 100000;
+const CAMERA_FAR_PLANE = 100000;
 
 function makeSkyGradientTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
@@ -532,6 +535,7 @@ export class ThreeApp {
     this._unregisterMapPresetLabelTarget = null;
     this._mapPresetLabel?.destroy();
     this._mapPresetLabel = null;
+    unregisterLightingTargets(this.scene, this.renderer);
     this.scene.environment = null;
     this.scene.background = null;
     this._environmentTexture?.dispose();

@@ -8,6 +8,7 @@
 // files; they live here now so there is a single source of truth.
 
 import { drawWrappedCanvasItem } from './repeatingCanvasTexture';
+import { linearToSrgbByte } from '../math/ColorMath';
 
 export function cssRgb(hex: number): string {
   const r = (hex >> 16) & 0xff;
@@ -26,14 +27,6 @@ function decodeSrgbByte(value: number): number {
 const SRGB_BYTE_TO_LINEAR = new Float64Array(256);
 for (let i = 0; i < SRGB_BYTE_TO_LINEAR.length; i++) {
   SRGB_BYTE_TO_LINEAR[i] = decodeSrgbByte(i);
-}
-
-function linearToSrgbByte(value: number): number {
-  const channel = Math.max(0, Math.min(1, value));
-  const srgb = channel <= 0.0031308
-    ? channel * 12.92
-    : 1.055 * Math.pow(channel, 1 / 2.4) - 0.055;
-  return Math.round(srgb * 255);
 }
 
 /**
@@ -173,6 +166,43 @@ export function sampleLogDistributedSize(
 ): number {
   const t = Math.pow(rng(), exponent);
   return Math.exp(Math.log(min) + t * (Math.log(max) - Math.log(min)));
+}
+
+/** Shared hard-edged shape mix for rock and foliage detail textures. */
+export function sampleAngularDetailShape(
+  rng: () => number,
+  size: number,
+  giantThreshold: number,
+  largeThreshold: number,
+  mediumThreshold: number,
+): Pick<CommonShapeItem, 'shapeKind' | 'shapeParam'> {
+  const shapeRoll = rng();
+  let shapeKind: CommonShapeItem['shapeKind'];
+  if (size > giantThreshold) {
+    shapeKind = shapeRoll < 0.65 ? 'hex' : 'tri';
+  } else if (size > largeThreshold) {
+    shapeKind = shapeRoll < 0.55 ? 'hex'
+      : shapeRoll < 0.90 ? 'tri'
+      : 'box';
+  } else if (size > mediumThreshold) {
+    shapeKind = shapeRoll < 0.40 ? 'hex'
+      : shapeRoll < 0.75 ? 'tri'
+      : 'box';
+  } else {
+    shapeKind = shapeRoll < 0.40 ? 'box'
+      : shapeRoll < 0.72 ? 'tri'
+      : 'hex';
+  }
+
+  let shapeParam = 0;
+  if (shapeKind === 'box') {
+    shapeParam = rng() < 0.75
+      ? randIn(rng, 0.04, 0.14)
+      : randIn(rng, 0.30, 0.65);
+  } else if (shapeKind === 'tri') {
+    shapeParam = randIn(rng, 0.30, 0.55);
+  }
+  return { shapeKind, shapeParam };
 }
 
 function drawCommonShapeItem(ctx: CanvasRenderingContext2D, item: CommonShapeItem): void {

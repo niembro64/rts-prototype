@@ -2,7 +2,7 @@ import type { ShotBlueprintId } from './types/blueprintIds';
 import type { SmokeTrailSpec } from './types/shotTypes';
 import rawSmokeConfig from './smokeConfig.json';
 
-export const SMOKE_USE_IDS = [
+const SMOKE_USE_IDS = [
   'shotRocketLight',
   'shotMissileFast',
   'shotMissileLong',
@@ -23,7 +23,7 @@ export type AirframeSmokeUseId = Extract<SmokeUseId, 'locomotionEaglePlane' | 'l
 
 export type SmokeCapPolicy = 'evictOldest' | 'skipWhenFull';
 
-export type SmokeProfile = {
+type SmokeProfile = {
   maxPoolSize: number;
   capPolicy: SmokeCapPolicy;
   emitFramesSkip: number;

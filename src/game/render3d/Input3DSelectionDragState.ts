@@ -32,12 +32,15 @@ export class Input3DSelectionDragState {
 
   begin(clientX: number, clientY: number): void {
     this.active = true;
-    this.start = { x: clientX, y: clientY };
-    this.end = { x: clientX, y: clientY };
+    this.start.x = clientX;
+    this.start.y = clientY;
+    this.end.x = clientX;
+    this.end.y = clientY;
   }
 
   update(clientX: number, clientY: number, thresholdPx: number, canvasRect: DOMRect): void {
-    this.end = { x: clientX, y: clientY };
+    this.end.x = clientX;
+    this.end.y = clientY;
     if (this.distanceFromStart(clientX, clientY) >= thresholdPx) {
       this.show(canvasRect);
     }

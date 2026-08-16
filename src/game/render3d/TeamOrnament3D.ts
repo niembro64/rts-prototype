@@ -210,6 +210,38 @@ export const REFERENCE_ORNAMENT_PROFILE: HostOrnamentProfile = {
   section: 1,
 };
 
+type HostOrnamentBodyPart = {
+  readonly x: number;
+  readonly z: number;
+  readonly scaleX: number;
+  readonly scaleZ: number;
+};
+
+/** Measure the shared ornament fit box from immutable chassis parts. */
+export function measureHostOrnamentBounds(
+  parts: readonly HostOrnamentBodyPart[],
+  topY: number,
+): { minX: number; maxX: number; halfWidth: number; topY: number } {
+  let minX = 0;
+  let maxX = 0;
+  let halfWidth = 0;
+  for (const part of parts) {
+    minX = Math.min(minX, part.x - part.scaleX);
+    maxX = Math.max(maxX, part.x + part.scaleX);
+    halfWidth = Math.max(halfWidth, Math.abs(part.z) + part.scaleZ);
+  }
+  if (maxX - minX < 1e-3) {
+    minX = -1;
+    maxX = 1;
+  }
+  return {
+    minX,
+    maxX,
+    halfWidth: halfWidth < 1e-3 ? 1 : halfWidth,
+    topY: topY > 1e-3 ? topY : 1,
+  };
+}
+
 /**
  * Fit the kit to a host whose body occupies the given extents.
  *

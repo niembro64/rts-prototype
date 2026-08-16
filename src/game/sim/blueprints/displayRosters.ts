@@ -5,7 +5,7 @@ import { getAllBuildings } from '../buildConfigs';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
 import { UNIT_BLUEPRINTS } from './units';
 
-export type UnitRosterDisplay = {
+type UnitRosterDisplay = {
   unitBlueprintId: string;
   label: string;
   shortName: string;

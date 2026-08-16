@@ -8,7 +8,7 @@ export type BotArmId = Extract<
   { kind: 'botArm' }
 >['arm'];
 
-export type BotHostTurretAttachmentSource = {
+type BotHostTurretAttachmentSource = {
   mountIndex: number;
   config: {
     hostAttachment: UnitTurretHostAttachment | null;
@@ -32,7 +32,7 @@ export type BotArmSocketPose = {
   aimZ: number;
 };
 
-export type BotSocketTrig = {
+type BotSocketTrig = {
   sin(value: number): number;
   cos(value: number): number;
   hypot(...values: readonly number[]): number;
@@ -40,6 +40,7 @@ export type BotSocketTrig = {
 
 const DEG_TO_RAD = Math.PI / 180;
 const WEAPON_SHOULDER_REST_RAD = 24 * DEG_TO_RAD;
+const DOWNWARD_ELBOW_FOREARM_REST_RAD = 48 * DEG_TO_RAD;
 // Mechanical safety envelope for the shared arm solver. Individual weapon
 // stations author tighter stops; the wider QueryWork arm range lets a builder
 // service steep terrain immediately beside its feet without rotating through
@@ -85,8 +86,20 @@ export function selectBotTorsoTurretIndex(
   return selected >= 0 ? selected : fallback;
 }
 
-export function botArmSide(arm: BotArmId): -1 | 1 {
-  return arm === 'rightArm' ? -1 : 1;
+function botArmSide(arm: BotArmId): -1 | 1 {
+  return arm === 'rightArm' || arm === 'rightUpperArm' ? -1 : 1;
+}
+
+/** Select the authored pair behind an arm socket. A missing optional upper
+ * pair is not silently replaced by the primary arms: that would make an
+ * invalid attachment appear at an unrelated hand. */
+export function getBotArmConfig(
+  config: { arms: BotArms; upperArms?: BotArms },
+  arm: BotArmId,
+): BotArms | null {
+  return arm === 'leftUpperArm' || arm === 'rightUpperArm'
+    ? config.upperArms ?? null
+    : config.arms;
 }
 
 /**
@@ -119,16 +132,20 @@ export function resolveBotWeaponArmSocketPose(
     Math.min(WEAPON_MAX_PITCH_RAD, turretPitch),
   );
   const shoulderPitch = WEAPON_SHOULDER_REST_RAD + clampedPitch * 0.55;
-  // The forearm is the physical emitter axis. Keep the upper arm's authored
-  // outward elbow for a readable silhouette, but solve the forearm exactly to
-  // the station's yaw/pitch so the visible hand, QueryWeapon/QueryWork axis,
-  // and gameplay shot direction cannot disagree.
-  const forearmPitch = Math.PI / 2 + clampedPitch;
+  // An ordinary weapon forearm helps point along the station's yaw/pitch. A
+  // downward-bending upper pair instead preserves its antenna silhouette and
+  // only follows pitch lightly; the turret remains independently articulated
+  // at the authoritative hand socket.
+  const downwardElbow = arms.elbowBendDirection === 'downward';
+  const forearmPitch = downwardElbow
+    ? DOWNWARD_ELBOW_FOREARM_REST_RAD + clampedPitch * 0.25
+    : Math.PI / 2 + clampedPitch;
 
   const upperPlanar = trig.cos(outward) * upperLength;
   const elbowForward = trig.sin(shoulderPitch) * upperPlanar;
   const elbowLateral = side * trig.sin(outward) * upperLength;
-  const elbowUp = -trig.cos(shoulderPitch) * upperPlanar;
+  const elbowUp = (downwardElbow ? 1 : -1) *
+    trig.cos(shoulderPitch) * upperPlanar;
   const forearmPlanar = forearmLength;
   const handForward = elbowForward + trig.sin(forearmPitch) * forearmPlanar;
   const handLateral = elbowLateral;

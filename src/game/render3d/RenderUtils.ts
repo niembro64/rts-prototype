@@ -35,12 +35,6 @@ export function makeSphere(
   return mesh;
 }
 
-export function clamp01(value: number): number {
-  if (value <= 0) return 0;
-  if (value >= 1) return 1;
-  return value;
-}
-
 /**
  * THE locomotion surface material, and the only definition of it.
  *

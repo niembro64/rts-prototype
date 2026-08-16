@@ -1,3 +1,9 @@
+import { BAR_NEAREST_QUEUE_INSERT_INDEX } from '@/types/commands';
+import {
+  getActiveCommandHotkeyPresetId,
+  isBarCommandHotkeyPreset,
+} from './commandHotkeys';
+
 type QueueModifierEvent = {
   shiftKey: boolean;
   altKey: boolean;
@@ -12,7 +18,7 @@ export type QueueCommandMode = {
   queueInsertIndex?: number;
 };
 
-export type FactoryProductionClickMode = {
+type FactoryProductionClickMode = {
   repeat: boolean;
   count: number;
   front: boolean;
@@ -125,6 +131,20 @@ export function queueModeFromEvent(
 ): QueueCommandMode {
   const modifiers = effectiveQueueModifierEvent(event);
   const spaceFront = spaceQueueFrontHeld();
+  if (isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId())) {
+    const queue = modifiers.shiftKey || spaceFront;
+    // cmd_commandinsert.lua: Space without Shift inserts at position zero;
+    // Space+Shift chooses a position between spatial queue entries. Ctrl,
+    // Alt, and Meta retain their command-specific meanings and are not
+    // generic front/index aliases under BAR presets.
+    return {
+      queue,
+      queueFront: spaceFront && !modifiers.shiftKey,
+      queueInsertIndex: spaceFront && modifiers.shiftKey
+        ? selectedQueueInsertIndex ?? BAR_NEAREST_QUEUE_INSERT_INDEX
+        : undefined,
+    };
+  }
   const queue = modifiers.shiftKey || spaceFront;
   const queueFront = queue && (modifiers.ctrlKey || modifiers.metaKey || spaceFront);
   const requestedInsertIndex = selectedQueueInsertIndex ?? (modifiers.altKey ? 1 : undefined);
@@ -141,6 +161,15 @@ export function queueModeFromEventIgnoringControlModifiers(
 ): QueueCommandMode {
   const modifiers = effectiveQueueModifierEvent(event);
   const spaceFront = spaceQueueFrontHeld();
+  if (isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId())) {
+    return {
+      queue: modifiers.shiftKey || spaceFront,
+      queueFront: spaceFront && !modifiers.shiftKey,
+      queueInsertIndex: spaceFront && modifiers.shiftKey
+        ? selectedQueueInsertIndex ?? BAR_NEAREST_QUEUE_INSERT_INDEX
+        : undefined,
+    };
+  }
   const queue = modifiers.shiftKey || spaceFront;
   const queueFront = queue && spaceFront;
   const requestedInsertIndex = selectedQueueInsertIndex ?? (modifiers.altKey ? 1 : undefined);

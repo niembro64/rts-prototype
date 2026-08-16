@@ -1,5 +1,6 @@
 import type {
   AdjustGameSpeedCommand,
+  AttackAreaCommand,
   Command,
   CaptureCommand,
   ChangeFactoryUnitQuotaCommand,
@@ -34,6 +35,7 @@ import type {
   UnloadTransportCommand,
   WaitCommand,
 } from '../sim/commands';
+import { BAR_NEAREST_QUEUE_INSERT_INDEX } from '../sim/commands';
 import { WorldState } from '../sim/WorldState';
 import {
   SHIELD_REFLECTION_MODES,
@@ -309,6 +311,34 @@ export function runCommandSanitizerContractTest(): void {
     'wire-decoded null queue metadata must normalize as omitted for queued move commands',
   );
 
+  const nearestQueueMove = sanitizeRequired<MoveCommand>(world, {
+    type: 'move',
+    tick: 6,
+    entityIds: [7],
+    targetX: 12,
+    targetY: 13,
+    waypointType: 'move',
+    queue: true,
+    queueInsertIndex: BAR_NEAREST_QUEUE_INSERT_INDEX,
+  });
+  assertContract(
+    nearestQueueMove.queueInsertIndex === BAR_NEAREST_QUEUE_INSERT_INDEX,
+    'the reserved BAR nearest-spatial insertion strategy must survive sanitization',
+  );
+  assertContract(
+    sanitizeCommand({
+      type: 'move',
+      tick: 6,
+      entityIds: [7],
+      targetX: 12,
+      targetY: 13,
+      waypointType: 'move',
+      queue: true,
+      queueInsertIndex: BAR_NEAREST_QUEUE_INSERT_INDEX - 1,
+    }, world) === null,
+    'queue insertion values below the reserved BAR strategy must be rejected',
+  );
+
   const replaceMove = sanitizeRequired<MoveCommand>(world, {
     type: 'move',
     tick: 7,
@@ -442,13 +472,21 @@ export function runCommandSanitizerContractTest(): void {
     radius: 999999,
     queue: true,
     queueInsertIndex: 4,
+    targetOrderOriginX: 11,
+    targetOrderOriginY: 22,
+    targetSplitIndex: 0,
+    targetSplitCount: 2,
   });
   assertContract(
       resurrectArea.tick === 9001 &&
       resurrectArea.targetZ === world.getGroundZ(24.5, 32.25) &&
       resurrectArea.radius === 500 &&
-      resurrectArea.queueInsertIndex === 4,
-    'resurrect-area command must normalize terrain z, radius, and queue insertion',
+      resurrectArea.queueInsertIndex === 4 &&
+      resurrectArea.targetOrderOriginX === 11 &&
+      resurrectArea.targetOrderOriginY === 22 &&
+      resurrectArea.targetSplitIndex === 0 &&
+      resurrectArea.targetSplitCount === 2,
+    'resurrect-area command must normalize terrain/queue fields and preserve BAR target expansion',
   );
   assertContract(
     resurrectArea.filterCategory === undefined &&
@@ -473,6 +511,50 @@ export function runCommandSanitizerContractTest(): void {
     filteredRepairArea.filterCategory === 'unit' &&
       filteredRepairArea.filterBlueprintId === 'unitJackal',
     'repair-area command must preserve valid area target filter fields',
+  );
+
+  const splitAttackArea = sanitizeRequired<AttackAreaCommand>(world, {
+    type: 'attackArea',
+    tick: 7,
+    entityIds: [7, 8],
+    targetX: 24.5,
+    targetY: 32.25,
+    radius: 100,
+    queue: true,
+    splitTargets: true,
+    targetOrderOriginX: 44,
+    targetOrderOriginY: 55,
+  });
+  assertContract(
+    splitAttackArea.splitTargets === true &&
+      splitAttackArea.targetOrderOriginX === 44 &&
+      splitAttackArea.targetOrderOriginY === 55,
+    'attack-area command must preserve BAR split and centroid-order metadata',
+  );
+
+  assertContract(
+    sanitizeCommand({
+      type: 'repairArea',
+      tick: 7,
+      commanderId: 7,
+      targetX: 24.5,
+      targetY: 32.25,
+      radius: 100,
+      queue: false,
+      targetOrderOriginX: 44,
+    } as Command, world) === null &&
+      sanitizeCommand({
+        type: 'repairArea',
+        tick: 7,
+        commanderId: 7,
+        targetX: 24.5,
+        targetY: 32.25,
+        radius: 100,
+        queue: false,
+        targetSplitIndex: 2,
+        targetSplitCount: 2,
+      } as Command, world) === null,
+    'partial centroid metadata and out-of-range split indices must be rejected',
   );
 
   const invalidFilterCategory = sanitizeCommand({

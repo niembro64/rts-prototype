@@ -2,6 +2,7 @@ import type { NetworkServerSnapshotMeta } from '../network/NetworkTypes';
 import type { SnapshotRate, TickRate } from '../../types/server';
 import type { ShieldReflectionMode } from '../../types/shotTypes';
 import type { UnitGroundNormalEmaMode } from '../../shellConfig';
+import { formatBrowserClockTime } from '../browserLocale';
 
 type ServerSnapshotMetaInput = {
   tickAvg: number;
@@ -39,13 +40,6 @@ export class ServerSnapshotMetaBuilder {
   private lastServerTimeEpochSec = -1;
   private allowedUnitsSource: ReadonlySet<string> | undefined;
   private allowedUnitsCache: string[] | undefined;
-  private readonly timeFormatter = new Intl.DateTimeFormat('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-    timeZoneName: 'short',
-  });
 
   build(input: ServerSnapshotMetaInput): NetworkServerSnapshotMeta {
     const tickBudgetMs = 1000 / input.tickRateHz;
@@ -95,7 +89,7 @@ export class ServerSnapshotMetaBuilder {
     const epochSec = Math.floor(nowMs / 1000);
     if (epochSec !== this.lastServerTimeEpochSec) {
       this.lastServerTimeEpochSec = epochSec;
-      this.lastServerTime = this.timeFormatter.format(new Date(nowMs));
+      this.lastServerTime = formatBrowserClockTime(undefined, new Date(nowMs)) ?? '';
     }
     return this.lastServerTime;
   }

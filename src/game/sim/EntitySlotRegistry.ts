@@ -32,13 +32,13 @@ import {
   type SimWasm,
 } from '../sim-wasm/init';
 
-export const ENTITY_SLOT_FLAG_ALIVE = 1 << 0;
-export const ENTITY_SLOT_FLAG_ACTIVE = 1 << 1;
+const ENTITY_SLOT_FLAG_ALIVE = 1 << 0;
+const ENTITY_SLOT_FLAG_ACTIVE = 1 << 1;
 export const ENTITY_SLOT_FLAG_HAS_BODY = 1 << 2;
 export const ENTITY_SLOT_FLAG_HAS_UNIT = 1 << 3;
 export const ENTITY_SLOT_FLAG_HAS_BUILDING = 1 << 4;
-export const ENTITY_SLOT_FLAG_HAS_PROJECTILE = 1 << 5;
-export const ENTITY_SLOT_FLAG_HAS_COMBAT = 1 << 6;
+const ENTITY_SLOT_FLAG_HAS_PROJECTILE = 1 << 5;
+const ENTITY_SLOT_FLAG_HAS_COMBAT = 1 << 6;
 
 export const ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE = 1 << 0;
 export const ENTITY_SLOT_BUILD_FLAG_COMPLETE = 1 << 1;

@@ -384,7 +384,7 @@ export type DroneFan = {
  *  own dimensions — rather than the flat `rearFan*`-prefixed scalars it used
  *  to take, so the one rig that mounts it speaks the same {x, y, z} every
  *  other locomotion piece does. */
-export type RearPropulsionFanConfig = {
+type RearPropulsionFanConfig = {
   offset: { xUnitRadiusRatio: number; yUnitRadiusRatio: number; zUnitRadiusRatio: number };
   radius: number;
   ringTubeRadius: number;

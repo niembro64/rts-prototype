@@ -39,18 +39,27 @@ import type {
 import {
   entityMatchesScreenRectSelectionOptions,
   findClosestSelectableEntityToPoint,
+  resolveBarDefaultPointerAction,
   SelectionChangeTracker,
   CommanderModeController,
-  CONTROL_GROUP_COUNT,
   InputControlGroups,
   InputSelectedCommands,
   getSelectedClientTransports,
   resolveScreenRectSelectionModifiers,
-  type AutoGroupRuleSnapshot,
+  isBarSameTypeSelectionDoubleClick,
   type ControlGroupSlotSnapshot,
   type ScreenRectSelectionOptions,
   selectBoxHeldModifierForKeyCode,
 } from '../input/helpers';
+import {
+  AUTO_GROUP_PRESET_COUNT,
+  DEFAULT_AUTO_GROUP_PRESET_INDEX,
+  createEmptyAutoGroupPresetBank,
+  loadAutoGroupPresets,
+  saveAutoGroupPresets,
+  type AutoGroupPresetBank,
+} from '../input/autoGroupPresets';
+import { isTextEntryTarget } from '../input/textEntryTarget';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 import { getCommandCursorStyle, type CommandCursorKind } from '../input/CommandCursors';
 import {
@@ -73,6 +82,7 @@ import {
   getActiveSelectedBuilder,
   getActiveSelectedBuilderAllowedBuildBlueprintIds,
   getBarVisibleSelectedBuilderTypeInfos,
+  getBuilderConstructionRate,
 } from '../sim/hostCapabilities';
 import {
   getFactoryAllowedUnitBlueprintIds,
@@ -130,16 +140,8 @@ import {
   isBarGridCommandHotkeyPreset,
 } from '../input/commandHotkeys';
 const SELECTABLE_GROUND_MIN_UNIT_RADIUS = 8;
-const SAME_TYPE_DOUBLE_CLICK_MS = 450;
-const SAME_TYPE_DOUBLE_CLICK_MAX_DIST_PX = 8;
 const BAR_STANDARD_TRAJECTORY_MODE_CYCLE: readonly CombatTrajectoryMode[] = ['high', 'low'];
 const BAR_SMART_TRAJECTORY_MODE_CYCLE: readonly CombatTrajectoryMode[] = ['auto', 'low', 'high'];
-
-function isTextEntryTarget(target: EventTarget | null): boolean {
-  const element = target as HTMLElement | null;
-  const tag = element?.tagName;
-  return tag === 'INPUT' || tag === 'TEXTAREA' || Boolean(element?.isContentEditable);
-}
 
 function entityHasBallisticCombat(entity: Entity): boolean {
   const combat = entity.combat;
@@ -181,14 +183,6 @@ type SelectionClickTapState = {
   clientX: number;
   clientY: number;
 };
-
-const AUTO_GROUP_PRESET_STORAGE_KEY = 'budget-annihilation.autoControlGroups.v1';
-const AUTO_GROUP_PRESET_BANK_STORAGE_KEY = 'budget-annihilation.autoControlGroupPresets.v2';
-const BAR_AUTO_GROUP_PRESET_COUNT = CONTROL_GROUP_COUNT;
-const BAR_DEFAULT_AUTO_GROUP_PRESET_INDEX = 1;
-
-type AutoGroupPresetSlots = (AutoGroupRuleSnapshot | null)[];
-type AutoGroupPresetBank = AutoGroupPresetSlots[];
 
 export class Input3DManager {
   private canvas: HTMLCanvasElement;
@@ -265,7 +259,7 @@ export class Input3DManager {
   // don't accidentally inherit 'fight'/'patrol' from a prior group.
   private selectionChangeTracker = new SelectionChangeTracker();
   private controlGroups: InputControlGroups;
-  private autoGroupPresetIndex = BAR_DEFAULT_AUTO_GROUP_PRESET_INDEX;
+  private autoGroupPresetIndex = DEFAULT_AUTO_GROUP_PRESET_INDEX;
   private autoGroupPresets: AutoGroupPresetBank = createEmptyAutoGroupPresetBank();
   private previousSelectionIds: EntityId[] = [];
   private loopSelectionIds: EntityId[] = [];
@@ -608,8 +602,8 @@ export class Input3DManager {
     this.onKeyUp = (e) => this.handleKeyUp(e);
     this.onWindowBlur = () => {
       this.clearHeldSelectBoxModifiers();
-      this.setFactoryPresetOverlayVisible(false);
       clearQueueModifierState();
+      this.keyboard.cancelPendingInput();
     };
 
     setSpaceQueueFrontEligibilityProvider(this.spaceQueueFrontEligibility);
@@ -779,7 +773,7 @@ export class Input3DManager {
   }
 
   private refreshControlGroupsForActivePlayer(): void {
-    const autoGroupsChanged = this.controlGroups.refreshAutoGroups();
+    const autoGroupsChanged = this.controlGroups.refreshAutoGroups(true);
     if (!autoGroupsChanged) this.emitControlGroupSnapshots();
   }
 
@@ -1767,7 +1761,7 @@ export class Input3DManager {
   }
 
   loadAutoGroupPreset(index: number): void {
-    if (index < 0 || index >= BAR_AUTO_GROUP_PRESET_COUNT) return;
+    if (index < 0 || index >= AUTO_GROUP_PRESET_COUNT) return;
     this.autoGroupPresets[this.autoGroupPresetIndex] = this.controlGroups.getAutoGroupPresetSnapshot();
     this.autoGroupPresetIndex = index;
     this.controlGroups.loadAutoGroupPreset(this.autoGroupPresets[index] ?? []);
@@ -2508,28 +2502,6 @@ export class Input3DManager {
     }
   }
 
-  /** True iff a selected builder would repair/assist this friendly target:
-   *  an in-progress building, a damaged unit, or a producing factory. */
-  private isAssistableByBuilders(entity: Entity): boolean {
-    if (entity.building !== null && isBuildInProgress(entity.buildable)) return true;
-    if (entity.unit !== null && entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp) return true;
-    const factory = entity.factory;
-    if (factory !== null && factory.isProducing && factory.currentShellId !== null) return true;
-    return false;
-  }
-
-  /** True iff the selection contains a unit that can actually attack. Combat
-   *  turret rows are weapon/shield stations; construction belongs to the
-   *  host-owned work-station channel and never enters this collection. */
-  private selectionHasAttacker(): boolean {
-    const units = this.entitySource.getSelectedUnits();
-    for (let i = 0; i < units.length; i++) {
-      const turrets = units[i].combat?.turrets;
-      if (turrets !== undefined && turrets.length > 0) return true;
-    }
-    return false;
-  }
-
   private isSelectableHoverTarget(entity: Entity | null): boolean {
     if (!entity) return false;
     if (entity.unit) return entity.unit.hp > 0;
@@ -2552,37 +2524,66 @@ export class Input3DManager {
     const hovered = hoveredEntityId !== null
       ? this.entitySource.getEntity(hoveredEntityId) ?? null
       : null;
-    const haveUnits = this.entitySource.getSelectedUnits().length > 0;
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    const selectedBuildings = this.entitySource.getSelectedBuildings();
+    const selectedFactories = selectedBuildings.filter((entity) => entity.factory !== null);
+    const selectedAttackHosts = selectedUnits.concat(selectedBuildings);
+    const hasWaypointSource = selectedUnits.length > 0 || selectedFactories.length > 0;
+    const hasAttacker = selectedAttackHosts.some(entityHasBarAttackCommand);
+    const hasBuilder = selectedUnits.some(
+      (entity) => entity.builder !== null && getBuilderConstructionRate(entity) > 0,
+    );
 
-    // Smart cursor: reflect the right-click default command on the hovered
-    // body, matching the leader rule the command path uses, so the cursor
-    // always previews what a click will do.
-    if (hovered?.ownership && haveUnits) {
-      const alive =
-        (hovered.unit !== null && hovered.unit.hp > 0) ||
-        (hovered.building !== null && hovered.building.hp > 0);
-      if (alive) {
-        if (hovered.ownership.playerId !== this.context.activePlayerId) {
-          // Enemy: attack if the selection can, else reclaim it (builders).
-          if (this.selectionHasAttacker()) return 'attack';
-          if (this.hasSelectedBuilder() && isReclaimableTarget(hovered)) return 'reclaim';
-        } else {
-          // Friendly: builders show repair/assist; everyone else guards.
-          if (this.hasSelectedBuilder() && this.isAssistableByBuilders(hovered)) return 'repair';
-          return 'guard';
-        }
-      }
+    let relationship: 'none' | 'friendly' | 'enemy' = 'none';
+    let targetRepairable = false;
+    let targetGuardRepairOverride = false;
+    let targetReclaimable = false;
+    let targetIsSoleSelection = false;
+    let hasGuardSource = false;
+    if (hovered?.ownership) {
+      const targetPlayerId = hovered.ownership.playerId;
+      const allied = this.entitySource.arePlayersAllied !== undefined
+        ? this.entitySource.arePlayersAllied(this.context.activePlayerId, targetPlayerId)
+        : targetPlayerId === this.context.activePlayerId;
+      relationship = allied ? 'friendly' : 'enemy';
+      const hpState = hovered.unit ?? hovered.building;
+      targetRepairable =
+        (hovered.building !== null && isBuildInProgress(hovered.buildable)) ||
+        (hpState !== null && hpState.hp > 0 && hpState.hp < hpState.maxHp);
+      targetGuardRepairOverride = !isBuildInProgress(hovered.buildable) &&
+        (hovered.factory !== null ||
+          (hovered.unit !== null && hovered.builder !== null));
+      targetReclaimable = isReclaimableTarget(hovered);
+      targetIsSoleSelection =
+        selectedUnits.length + selectedBuildings.length === 1 &&
+        selectedAttackHosts[0]?.id === hovered.id &&
+        hovered.factory === null;
+      hasGuardSource =
+        selectedUnits.some((entity) => entity.id !== hovered.id) ||
+        selectedFactories.some((entity) =>
+          entity.id !== hovered.id || entityHasBarFactoryGuardCommand(entity));
     }
 
-    const selectableHoveredId = this.hoverState.hoveredSelectableEntityId;
-    const selectableHovered = selectableHoveredId !== null
-      ? this.entitySource.getEntity(selectableHoveredId) ?? null
-      : null;
-    if (this.isSelectableByActivePlayer(selectableHovered)) return 'select';
-    if (haveUnits) return this.waypointCursorKind();
-    // Factory rally previews the command cursor (move/fight/patrol) like units.
-    if (this.rightDrag.hasSelectedFactories()) return this.waypointCursorKind();
-    return 'game';
+    const action = resolveBarDefaultPointerAction({
+      relationship,
+      hasWaypointSource,
+      hasAttacker,
+      hasBuilder,
+      hasGuardSource,
+      targetRepairable,
+      targetGuardRepairOverride,
+      targetReclaimable,
+      targetIsSoleSelection,
+    });
+    switch (action) {
+      case 'attack': return 'attack';
+      case 'guard': return 'guard';
+      case 'repair': return 'repair';
+      case 'reclaim': return 'reclaim';
+      case 'waypoint': return this.waypointCursorKind();
+      case 'none':
+      default: return 'game';
+    }
   }
 
   private refreshCursor(): void {
@@ -2724,12 +2725,12 @@ export class Input3DManager {
 
   private isSameTypeDoubleClick(entity: Entity, e: MouseEvent): boolean {
     const typeKey = this.selectionClickTypeKey(entity);
-    const previous = this.lastSelectionClick;
-    if (typeKey === null || previous === null || previous.typeKey !== typeKey) return false;
-    const elapsedMs = e.timeStamp - previous.timeMs;
-    if (elapsedMs < 0 || elapsedMs > SAME_TYPE_DOUBLE_CLICK_MS) return false;
-    return Math.hypot(e.clientX - previous.clientX, e.clientY - previous.clientY)
-      <= SAME_TYPE_DOUBLE_CLICK_MAX_DIST_PX;
+    return typeKey !== null && isBarSameTypeSelectionDoubleClick(this.lastSelectionClick, {
+      typeKey,
+      timeMs: e.timeStamp,
+      clientX: e.clientX,
+      clientY: e.clientY,
+    });
   }
 
   private recordSelectionClick(entity: Entity, e: MouseEvent): void {
@@ -3107,6 +3108,9 @@ export class Input3DManager {
 
   destroy(): void {
     clearSpaceQueueFrontEligibilityProvider(this.spaceQueueFrontEligibility);
+    this.clearHeldSelectBoxModifiers();
+    clearQueueModifierState();
+    this.keyboard.cancelPendingInput();
     this.canvas.removeEventListener('mousedown', this.onMouseDown);
     window.removeEventListener('mousemove', this.onMouseMove);
     window.removeEventListener('mouseup', this.onMouseUp);
@@ -3145,74 +3149,5 @@ export class Input3DManager {
     this.onTowerTargetModeChange = undefined;
     this.onTowerTargetNoGroundModeChange = undefined;
     this.selectionDrag.destroy();
-  }
-}
-
-function createEmptyAutoGroupPresetSlots(): AutoGroupPresetSlots {
-  const slots = new Array<AutoGroupRuleSnapshot | null>(CONTROL_GROUP_COUNT);
-  for (let i = 0; i < slots.length; i++) slots[i] = null;
-  return slots;
-}
-
-function createEmptyAutoGroupPresetBank(): AutoGroupPresetBank {
-  const presets = new Array<AutoGroupPresetSlots>(BAR_AUTO_GROUP_PRESET_COUNT);
-  for (let i = 0; i < presets.length; i++) presets[i] = createEmptyAutoGroupPresetSlots();
-  return presets;
-}
-
-function sanitizeAutoGroupPresetSlots(value: unknown): AutoGroupPresetSlots {
-  const slots = createEmptyAutoGroupPresetSlots();
-  if (!Array.isArray(value)) return slots;
-  const count = Math.min(value.length, CONTROL_GROUP_COUNT);
-  for (let i = 0; i < count; i++) {
-    const entry = value[i];
-    if (entry === null) continue;
-    if (typeof entry !== 'object') continue;
-    const candidate = entry as Partial<AutoGroupRuleSnapshot>;
-    const unitBlueprintIds = Array.isArray(candidate.unitBlueprintIds)
-      ? candidate.unitBlueprintIds.filter((id): id is string => typeof id === 'string')
-      : [];
-    const buildingBlueprintIds = Array.isArray(candidate.buildingBlueprintIds)
-      ? candidate.buildingBlueprintIds.filter((id): id is string => typeof id === 'string')
-      : [];
-    if (unitBlueprintIds.length === 0 && buildingBlueprintIds.length === 0) continue;
-    slots[i] = { unitBlueprintIds, buildingBlueprintIds };
-  }
-  return slots;
-}
-
-function loadAutoGroupPresets(): { presets: AutoGroupPresetBank; activeIndex: number } {
-  const presets = createEmptyAutoGroupPresetBank();
-  if (typeof window === 'undefined') return { presets, activeIndex: BAR_DEFAULT_AUTO_GROUP_PRESET_INDEX };
-  try {
-    const raw = window.localStorage.getItem(AUTO_GROUP_PRESET_BANK_STORAGE_KEY);
-    if (raw !== null) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        const count = Math.min(parsed.length, BAR_AUTO_GROUP_PRESET_COUNT);
-        for (let i = 0; i < count; i++) presets[i] = sanitizeAutoGroupPresetSlots(parsed[i]);
-        return { presets, activeIndex: BAR_DEFAULT_AUTO_GROUP_PRESET_INDEX };
-      }
-    }
-  } catch {
-    // Fall through to v1 migration.
-  }
-  try {
-    const raw = window.localStorage.getItem(AUTO_GROUP_PRESET_STORAGE_KEY);
-    if (raw === null) return { presets, activeIndex: BAR_DEFAULT_AUTO_GROUP_PRESET_INDEX };
-    const parsed = JSON.parse(raw);
-    presets[BAR_DEFAULT_AUTO_GROUP_PRESET_INDEX] = sanitizeAutoGroupPresetSlots(parsed);
-    return { presets, activeIndex: BAR_DEFAULT_AUTO_GROUP_PRESET_INDEX };
-  } catch {
-    return { presets, activeIndex: BAR_DEFAULT_AUTO_GROUP_PRESET_INDEX };
-  }
-}
-
-function saveAutoGroupPresets(presets: readonly (readonly (AutoGroupRuleSnapshot | null)[])[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(AUTO_GROUP_PRESET_BANK_STORAGE_KEY, JSON.stringify(presets));
-  } catch {
-    // localStorage may be unavailable or over quota; auto-groups still work in-memory.
   }
 }

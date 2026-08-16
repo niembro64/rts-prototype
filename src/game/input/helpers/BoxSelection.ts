@@ -4,6 +4,7 @@
 // projection is abstracted as a ProjectToScreen callback.
 
 import type { Entity, EntityId, PlayerId } from '../../sim/types';
+import { entityHasBarAttackCommand } from '../../sim/unitCommandCapabilities';
 import type { SelectionEntitySource } from './SelectionHelper';
 
 export type ScreenRect = {
@@ -53,6 +54,29 @@ export type ResolvedScreenRectSelectionModifiers = {
   readonly options: ScreenRectSelectionOptions;
 };
 
+export type BarSelectionClickTap = {
+  readonly typeKey: string;
+  readonly timeMs: number;
+  readonly clientX: number;
+  readonly clientY: number;
+};
+
+/** Recoil's default DoubleClickTime is 200 ms; BAR's Ignore Self selection
+ * widget accepts a 12-pixel Manhattan movement between the two taps. */
+export const BAR_SELECTION_DOUBLE_CLICK_MS = 200;
+export const BAR_SELECTION_DOUBLE_CLICK_MAX_MANHATTAN_PX = 12;
+
+export function isBarSameTypeSelectionDoubleClick(
+  previous: BarSelectionClickTap | null,
+  current: BarSelectionClickTap,
+): boolean {
+  if (previous === null || previous.typeKey !== current.typeKey) return false;
+  const elapsedMs = current.timeMs - previous.timeMs;
+  if (elapsedMs < 0 || elapsedMs > BAR_SELECTION_DOUBLE_CLICK_MS) return false;
+  return Math.abs(current.clientX - previous.clientX) + Math.abs(current.clientY - previous.clientY)
+    <= BAR_SELECTION_DOUBLE_CLICK_MAX_MANHATTAN_PX;
+}
+
 export function selectBoxHeldModifierForKeyCode(code: string): SelectBoxHeldModifier | null {
   if (code === 'KeyZ') return 'sameType';
   if (code === 'Space') return 'idle';
@@ -67,10 +91,16 @@ export function resolveScreenRectSelectionModifiers(
     additive: Boolean(state.shiftKey) && !subtractive,
     subtractive,
     options: {
-      includeBuildingsWithUnits: Boolean(state.shiftKey),
-      mobileOnly: Boolean(state.altKey),
-      idleOnly: Boolean(state.selectBoxIdleHeld),
-      sameTypeOnly: Boolean(state.selectBoxSameTypeHeld),
+      // BAR's Ctrl deselect operates on the raw in-box set. Do not let the
+      // ordinary unit-over-building preference hide a building that should
+      // be removed from the drag-start selection.
+      includeBuildingsWithUnits: Boolean(state.shiftKey) || subtractive,
+      // SmartSelect's deselect branch consumes its raw mouseSelection before
+      // idle/same/mobile preference filters run. Modifier chords therefore
+      // cannot accidentally protect an in-box entity from Ctrl removal.
+      mobileOnly: !subtractive && Boolean(state.altKey),
+      idleOnly: !subtractive && Boolean(state.selectBoxIdleHeld),
+      sameTypeOnly: !subtractive && Boolean(state.selectBoxSameTypeHeld),
       previousSelection: state.previousSelection,
     },
   };
@@ -102,7 +132,18 @@ function canIncludeUnit(
   options: ScreenRectSelectionOptions,
 ): boolean {
   if (options.idleOnly && !isIdleUnit(entity)) return false;
+  if (options.mobileOnly) {
+    // selectbox_mobile is named after mobility, but Smart Select implements
+    // it as its combatFilter: an armed non-builder (plus BAR's explicitly
+    // authored combat exceptions, represented locally by the BAR Attack
+    // capability). Constructors and unarmed transports are not included.
+    if (entity.builder !== null || !entityHasBarAttackCommand(entity)) return false;
+  }
   if (!options.sameTypeOnly) return true;
+  if (
+    sameTypeFilters.unitBlueprintIds.size === 0 &&
+    sameTypeFilters.buildingBlueprintIds.size === 0
+  ) return true;
   const unitBlueprintId = entity.unit?.unitBlueprintId;
   return unitBlueprintId !== undefined && sameTypeFilters.unitBlueprintIds.has(unitBlueprintId);
 }
@@ -114,6 +155,10 @@ function canIncludeBuilding(
 ): boolean {
   if (options.mobileOnly || options.idleOnly) return false;
   if (!options.sameTypeOnly) return true;
+  if (
+    sameTypeFilters.unitBlueprintIds.size === 0 &&
+    sameTypeFilters.buildingBlueprintIds.size === 0
+  ) return true;
   const buildingBlueprintId = entity.buildingBlueprintId;
   return buildingBlueprintId != null && sameTypeFilters.buildingBlueprintIds.has(buildingBlueprintId);
 }
@@ -123,10 +168,6 @@ export function entityMatchesScreenRectSelectionOptions(
   options: ScreenRectSelectionOptions = {},
 ): boolean {
   const sameTypeFilters = buildSameTypeFilters(options.previousSelection);
-  const sameTypeHasAnyFilter =
-    sameTypeFilters.unitBlueprintIds.size > 0 ||
-    sameTypeFilters.buildingBlueprintIds.size > 0;
-  if (options.sameTypeOnly && !sameTypeHasAnyFilter) return false;
   if (entity.unit) return canIncludeUnit(entity, sameTypeFilters, options);
   if (entity.building) return canIncludeBuilding(entity, sameTypeFilters, options);
   return false;
@@ -144,12 +185,9 @@ export function selectEntitiesInScreenRect(
   options: ScreenRectSelectionOptions = {},
 ): EntityId[] {
   const unitIds: EntityId[] = [];
+  const preferredUnitIds: EntityId[] = [];
   const buildingIds: EntityId[] = [];
   const sameTypeFilters = buildSameTypeFilters(options.previousSelection);
-  const sameTypeHasAnyFilter =
-    sameTypeFilters.unitBlueprintIds.size > 0 ||
-    sameTypeFilters.buildingBlueprintIds.size > 0;
-  if (options.sameTypeOnly && !sameTypeHasAnyFilter) return [];
 
   // Reuse one out object to avoid per-entity allocations on a hot path.
   const out = { x: 0, y: 0, behind: false };
@@ -165,9 +203,17 @@ export function selectEntitiesInScreenRect(
   for (const u of source.getUnits()) {
     if (u.ownership?.playerId !== playerId) continue;
     if (!canIncludeUnit(u, sameTypeFilters, options)) continue;
-    if (isInsideRect(u)) unitIds.push(u.id);
+    if (!isInsideRect(u)) continue;
+    unitIds.push(u.id);
+    // Ordinary BAR Smart Select treats constructors/resurrectors as a lower
+    // preference when combat/mobile units share a box. Shift/selectbox_any
+    // bypasses this; Alt already applied the stricter combat filter above.
+    if (u.builder === null) preferredUnitIds.push(u.id);
   }
-  if (unitIds.length > 0 && !options.includeBuildingsWithUnits) return unitIds;
+  if (unitIds.length > 0 && !options.includeBuildingsWithUnits) {
+    if (!options.mobileOnly && preferredUnitIds.length > 0) return preferredUnitIds;
+    return unitIds;
+  }
 
   for (const b of source.getBuildings()) {
     if (b.ownership?.playerId !== playerId) continue;

@@ -59,7 +59,7 @@ export type BaseTrimBandId =
  * a band, so a part smaller than the reference was forced up to one whole
  * wrap and wore the entire band at up to 4.4x the sheet's density.
  */
-export type FineTrimBandId =
+type FineTrimBandId =
   | 'armorPlateFine'
   | 'noseFacetFine'
   | 'hydraulicStrutFine'
@@ -221,7 +221,7 @@ export const GRAIN_BAND: TrimBandId = 'substanceGrain';
  *   bands hold their placed axis at one wrap and let the structure scale with
  *   the part, which is what a bigger turret having a bigger slot means.
  */
-export type BandTileAxes = { u: boolean; v: boolean };
+type BandTileAxes = { u: boolean; v: boolean };
 
 const BASE_BAND_TILE_AXES: Record<BaseTrimBandId, BandTileAxes> = {
   // Projected, never charted; listed for completeness.
@@ -314,7 +314,7 @@ export const BAND_WRAPS_V: ReadonlySet<TrimBandId> = new Set<TrimBandId>(
  * across, leg segments ~36-42 long with ~5 radius, hip/knee spheres 5.5/7.5.
  * A sphere of radius R has circumference 2*pi*R around and pi*R pole to pole.
  */
-export type BandSurface = {
+type BandSurface = {
   /** Circumference or arc length the band wraps, in world units. */
   uExtent: number;
   /** Extent along the other axis, in world units. */
@@ -395,7 +395,7 @@ const BASE_BAND_SURFACE: Record<BaseTrimBandId, BandSurface> = {
  * smaller rectangle holding fewer features, not the same rectangle shrunk —
  * shrinking it would be the density bug wearing a different hat.
  */
-export const CHART_FINE_TIER_SCALE = 0.25;
+const CHART_FINE_TIER_SCALE = 0.25;
 
 /**
  * The smallest a fine tier's feature may be drawn, in world units.
@@ -412,7 +412,7 @@ export const CHART_FINE_TIER_SCALE = 0.25;
  * finer than this — a tyre's lugs — are held to their own size instead, since
  * demanding a fine tier be coarser than its coarse tier is nonsense.
  */
-export const MIN_FINE_FEATURE_WORLD_UNITS = 4.2;
+const MIN_FINE_FEATURE_WORLD_UNITS = 4.2;
 
 /**
  * How far off true density the coarse tier may be before the fine one takes
@@ -445,7 +445,7 @@ const FINE_TIER_SCALE: Record<FineTrimBandId, number> = Object.fromEntries(
 
 /** A band's size as a multiple of its family's reference part: 1 for the tier
  *  the reference host wears, about a quarter for the small one. */
-export function bandTierScale(band: TrimBandId): number {
+function bandTierScale(band: TrimBandId): number {
   return FINE_TIER_SCALE[band as FineTrimBandId] ?? 1;
 }
 
@@ -482,7 +482,7 @@ export const BAND_SURFACE: Record<TrimBandId, BandSurface> = withFineTiers(
  * the geometry's UV remap and the generator that paints the zone — if the two
  * disagreed, a face would sample the wall or vice versa.
  */
-export type CapZone = {
+type CapZone = {
   wallVEnd: number;
   capCenterV: number;
   capRimV: number;
@@ -525,7 +525,7 @@ export const BAND_CAP_ZONES: Partial<Record<TrimBandId, CapZone>> = {
 };
 
 /** A band's pixel rectangle in the sheet, gutters included. */
-export type BandRectPx = {
+type BandRectPx = {
   x: number;
   y: number;
   width: number;

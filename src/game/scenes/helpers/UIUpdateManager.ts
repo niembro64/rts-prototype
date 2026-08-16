@@ -1258,7 +1258,7 @@ export type UnitStatsWeaponInfo = {
   dps: number | null;
 };
 
-export type UnitStatsFactoryInfo = {
+type UnitStatsFactoryInfo = {
   currentUnitLabel: string | null;
   progress: number;
   queueLength: number;

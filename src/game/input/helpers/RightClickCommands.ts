@@ -18,6 +18,7 @@ import type {
   GuardCommand,
   MoveCommand,
   WaypointTarget,
+  BarAreaTargetOrder,
 } from '../../sim/commands';
 import { findAttackTargetAt, isAttackableEnemyTarget } from './AttackTargetHelper';
 import type { AttackEntitySource } from './AttackTargetHelper';
@@ -164,6 +165,8 @@ export function buildAttackAreaCommand(
   worldZ?: number,
   queueFront = false,
   queueInsertIndex?: number,
+  splitTargets = false,
+  targetOrder?: BarAreaTargetOrder,
 ): AttackAreaCommand | null {
   if (selectedUnits.length === 0) return null;
   return {
@@ -177,6 +180,9 @@ export function buildAttackAreaCommand(
     queue,
     queueFront,
     queueInsertIndex,
+    splitTargets: splitTargets ? true : undefined,
+    targetOrderOriginX: targetOrder?.targetOrderOriginX,
+    targetOrderOriginY: targetOrder?.targetOrderOriginY,
   };
 }
 

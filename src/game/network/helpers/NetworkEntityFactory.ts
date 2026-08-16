@@ -84,6 +84,7 @@ import {
   unitMoveStateFromWireCode,
 } from '../unitCombatStateWireCodes';
 import { createRuntimeBuilder } from '../../sim/runtimeWorkStations';
+import { createFactoryComponent } from '../../sim/factoryComponent';
 
 type NetworkFactorySnapshot = NonNullable<
   NonNullable<NetworkServerSnapshotEntity['unit']>['factory']
@@ -638,30 +639,16 @@ function createUnitFromNetwork(
       const carrierSpawnEnabled = u?.carrierSpawnEnabled !== false;
       entity.factory = u?.factory !== null && u?.factory !== undefined
         ? createRuntimeFactoryFromNetwork(u.factory, carrierSpawnEnabled, 'maneuver', 'fly')
-        : {
+        : createFactoryComponent({
             selectedUnitBlueprintId: producedUnitBlueprintId,
-            lowPriority: false,
             carrierSpawnEnabled,
-            moveState: 'maneuver',
-            airIdleState: 'fly',
             repeatProduction: true,
-            paused: false,
-            productionQueue: [],
-            productionQuotas: {},
-            productionQuotaCounts: {},
-            resumeRepeatUnitBlueprintId: null,
-            currentShellId: null,
-            currentBuildProgress: 0,
-            defaultWaypoints: null,
             rallyX: x,
             rallyY: y,
             rallyZ: null,
             rallyType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
-            guardTargetId: null,
             isProducing: carrierSpawnEnabled,
-            energyRateFraction: 0,
-            metalRateFraction: 0,
-          };
+          });
     }
   }
   entity.transport = createTransportComponentForUnitBlueprint(unitBlueprintId);
@@ -876,30 +863,16 @@ function createUnitFromTypedFullWireRow(
       const carrierSpawnEnabled = values[base + 64] !== 0
         ? values[base + 65] !== 0
         : true;
-      entity.factory = {
+      entity.factory = createFactoryComponent({
         selectedUnitBlueprintId: producedUnitBlueprintId,
-        lowPriority: false,
         carrierSpawnEnabled,
-        moveState: 'maneuver',
-        airIdleState: 'fly',
         repeatProduction: true,
-        paused: false,
-        productionQueue: [],
-        productionQuotas: {},
-        productionQuotaCounts: {},
-        resumeRepeatUnitBlueprintId: null,
-        currentShellId: null,
-        currentBuildProgress: 0,
-        defaultWaypoints: null,
         rallyX: entity.transform.x,
         rallyY: entity.transform.y,
         rallyZ: null,
         rallyType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
-        guardTargetId: null,
         isProducing: carrierSpawnEnabled,
-        energyRateFraction: 0,
-        metalRateFraction: 0,
-      };
+      });
     }
   }
   entity.transport = createTransportComponentForUnitBlueprint(unitBlueprintId);

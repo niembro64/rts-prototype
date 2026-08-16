@@ -97,7 +97,7 @@ type CreateRealBattleServerOptions = {
   onLoadingProgress?: (progress: number, phase?: string) => void | Promise<void>;
 };
 
-export type RealBattleBackendDiagnostics = {
+type RealBattleBackendDiagnostics = {
   networkRole: NetworkRole | null;
   lockstepSupport?: LockstepSupportBoundaries;
   lockstepInputDelayTicks?: number;
@@ -326,7 +326,7 @@ function createRealBattleMatchContext({
 
 /** Re-read a canonical initialization's index-aligned side list as the
  *  seat -> side map the builder and the sim both take. */
-export function allyTeamByPlayerIdFromInitialization(
+function allyTeamByPlayerIdFromInitialization(
   initialization: { playerIds: readonly PlayerId[]; allyTeamIds?: readonly number[] },
 ): Record<number, number> | undefined {
   const sides = initialization.allyTeamIds;

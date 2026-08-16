@@ -134,8 +134,8 @@
     "shotLocomotionPresetId": "constantSpeedRocketLight",
     "maxLifespanMs": 30000,
     "turning": {
-      "turnRate": 0.5,
-      "guidanceDelayMs": 5000,
+      "turnRate": 1,
+      "guidanceDelayMs": 3000,
       "guidanceRampMs": 700
     },
     "shotBlueprintId": "shotRocketLight",
@@ -180,7 +180,7 @@
     "shotLocomotionPresetId": "constantSpeedMissileFast",
     "maxLifespanMs": 500,
     "turning": {
-      "turnRate": 1.2,
+      "turnRate": 2,
       "guidanceDelayMs": 0,
       "guidanceRampMs": 0
     },
@@ -226,7 +226,7 @@
     "shotLocomotionPresetId": "constantSpeedMissileLong",
     "maxLifespanMs": 6000,
     "turning": {
-      "turnRate": 0.3,
+      "turnRate": 1,
       "guidanceDelayMs": 0,
       "guidanceRampMs": 0
     },

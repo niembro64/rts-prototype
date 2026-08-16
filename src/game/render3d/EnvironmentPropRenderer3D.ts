@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { loadThreeAsset } from './threeAssetLoader';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
@@ -75,7 +76,7 @@ const ENVIRONMENT_BATCH_SCALE = new THREE.Vector3();
 const ENVIRONMENT_BATCH_QUATERNION = new THREE.Quaternion();
 const ENVIRONMENT_BATCH_UP = new THREE.Vector3(0, 1, 0);
 
-export type EnvironmentLodFlatColorRole = 'wood' | 'foliage';
+type EnvironmentLodFlatColorRole = 'wood' | 'foliage';
 
 type EnvironmentGrassLodTier = 'mid' | 'far';
 
@@ -86,6 +87,62 @@ type EnvironmentGrassBladeTriangle = {
 };
 
 const ENVIRONMENT_TREE_MEDIUM_VERTEX_REMOVAL_RATIO = 0.35;
+const ENVIRONMENT_FOLIAGE_LIGHT_FLOOR = 1.0;
+const LAMBERT_OUTGOING_LIGHT =
+  'vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;';
+
+/**
+ * The source foliage combines open leaf shells with intentionally steep and
+ * downward-facing facets. Rendering only front faces makes the open shells
+ * show dark terrain through sharp triangular holes. Stock Lambert lighting
+ * then lets the remaining away-facing facets fall back to the very small scene
+ * ambient term while their neighbours receive the full sun. After fog shades
+ * the already-dark leaf albedo, both failures read as solid black pieces cut
+ * into an otherwise green crown.
+ *
+ * Keep Lambert's directional modelling, but give foliage a diffuse floor based
+ * on its post-texture color. Using `diffuseColor` here is important: an
+ * emissive material would bypass fog-of-war and make trees glow in unseen
+ * terrain. WorldShade3D applies the prop-wide fog veil after this lighting
+ * result, so the floor remains fogged normally while face orientation alone
+ * can no longer crush a leaf polygon to black.
+ */
+export function patchEnvironmentFoliageLighting(
+  material: THREE.MeshLambertMaterial,
+): void {
+  if (material.userData.environmentFoliageLighting === true) return;
+  material.userData.environmentFoliageLighting = true;
+  // Fog-of-war is ground knowledge about the prop as a whole. Sampling it at
+  // every canopy fragment lets one coverage edge cut a low-poly crown into
+  // black and green faces. WorldShade3D reads this flag and uses the mesh /
+  // instance origin as one stable coverage anchor for the complete leaf mesh.
+  material.userData.worldShadeAtObjectOrigin = true;
+  // Shade the completed Lambert result. Applying the near-black fog color to
+  // diffuseColor before lighting makes the ambient term darken it a second
+  // time, which is how an entire properly anchored crown still became black.
+  material.userData.worldShadeAfterLighting = true;
+  // Leaf cards and the undersides of open low-poly crowns are intentional
+  // visible surfaces, not enclosed solid geometry.
+  material.side = THREE.DoubleSide;
+  const previousCompile = material.onBeforeCompile;
+  const previousCacheKey = material.customProgramCacheKey.bind(material);
+  material.onBeforeCompile = (shader, renderer) => {
+    previousCompile.call(material, shader, renderer);
+    shader.fragmentShader = shader.fragmentShader.replace(
+      LAMBERT_OUTGOING_LIGHT,
+      [
+        'vec3 environmentFoliageDiffuse = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse;',
+        'vec3 outgoingLight = max(',
+        '  environmentFoliageDiffuse,',
+        `  diffuseColor.rgb * ${ENVIRONMENT_FOLIAGE_LIGHT_FLOOR.toFixed(2)}`,
+        ') + totalEmissiveRadiance;',
+      ].join('\n'),
+    );
+  };
+  material.customProgramCacheKey = () =>
+    `${previousCacheKey()}|environment-foliage-light-floor-v1`;
+  material.needsUpdate = true;
+}
 
 /** Medium/Low environment geometry deliberately drops texture maps, but its
  *  base hues must remain identical to the canonical textured High assets. */
@@ -598,7 +655,7 @@ export class EnvironmentPropRenderer3D {
       const materials = await this.loadMtl(spec.materialPath);
       loader.setMaterials(materials);
     }
-    return loadObj(loader, publicAssetUrl(spec.path));
+    return loadThreeAsset(loader, publicAssetUrl(spec.path));
   }
 
   private async loadFbx(url: string): Promise<THREE.Group> {
@@ -610,7 +667,7 @@ export class EnvironmentPropRenderer3D {
     let promise = this.mtlCache.get(path);
     if (!promise) {
       const loader = new MTLLoader();
-      promise = loadMtl(loader, publicAssetUrl(path)).then((materials) => {
+      promise = loadThreeAsset(loader, publicAssetUrl(path)).then((materials) => {
         materials.preload();
         return materials;
       });
@@ -834,6 +891,8 @@ export class EnvironmentPropRenderer3D {
       return this.sharedMaterial(
         'randomEnvironment.forestSpruce2.grass-leaves',
         FOREST_SPRUCE2_LEAF_COLOR,
+        undefined,
+        true,
       );
     }
     const isWood = isWoodVegetationMaterial(spec, sourceName);
@@ -848,6 +907,7 @@ export class EnvironmentPropRenderer3D {
       'randomEnvironment.forestSpruce2.tree-leaves',
       FOREST_SPRUCE2_LEAF_COLOR,
       getTreeLeafTexture(),
+      true,
     );
   }
 
@@ -855,6 +915,7 @@ export class EnvironmentPropRenderer3D {
     key: string,
     color: number,
     map?: THREE.Texture,
+    foliageLighting = false,
   ): THREE.MeshLambertMaterial {
     let material = this.materialCache.get(key);
     if (!material) {
@@ -867,6 +928,7 @@ export class EnvironmentPropRenderer3D {
         flatShading: true,
       });
       material.name = key;
+      if (foliageLighting) patchEnvironmentFoliageLighting(material);
       this.materialCache.set(key, material);
     }
     return material;
@@ -880,6 +942,7 @@ export class EnvironmentPropRenderer3D {
       spec.key,
       spec.color,
       spec.map ?? undefined,
+      role === 'foliage',
     );
   }
 
@@ -1363,21 +1426,6 @@ function logVegetationPropCounts(
       '): ' +
       (parts.length > 0 ? parts.join(', ') : 'none'),
   );
-}
-
-function loadMtl(
-  loader: MTLLoader,
-  url: string,
-): Promise<MTLLoader.MaterialCreator> {
-  return new Promise((resolve, reject) => {
-    loader.load(url, resolve, undefined, reject);
-  });
-}
-
-function loadObj(loader: OBJLoader, url: string): Promise<THREE.Group> {
-  return new Promise((resolve, reject) => {
-    loader.load(url, resolve, undefined, reject);
-  });
 }
 
 function loadFbx(loader: FBXLoader, url: string): Promise<THREE.Group> {

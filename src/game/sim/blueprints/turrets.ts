@@ -170,7 +170,7 @@ export const TURRET_BLUEPRINTS = buildTurretBlueprints();
 /** Stable wire/catalog ids retained for old recordings and inclusion masks.
  * They are not runtime capabilities: production and nanoframe creation live
  * on the host, and construction uses the host's workEmitter. */
-export const LEGACY_UNMOUNTED_TURRET_BLUEPRINT_IDS = Object.freeze([
+const LEGACY_UNMOUNTED_TURRET_BLUEPRINT_IDS = Object.freeze([
   'turretSpawnBuildingsAndTowers',
   'turretSpawnUnits',
   'turretResourcePylonConstructionMetal',

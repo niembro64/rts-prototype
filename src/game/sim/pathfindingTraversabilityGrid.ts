@@ -18,7 +18,7 @@ import { getAuthoritativeTerrainTileMap } from './terrain/terrainState';
  * build square. WAYPOINT is intentional destination validity; MOVE is the
  * broader physical traversal/recovery domain.
  */
-export type UnitPathTraversabilityGrid = Readonly<{
+type UnitPathTraversabilityGrid = Readonly<{
   unitBlueprintId: string;
   mapWidth: number;
   mapHeight: number;

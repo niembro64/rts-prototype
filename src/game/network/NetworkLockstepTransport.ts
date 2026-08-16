@@ -349,7 +349,7 @@ export class NetworkLockstepTransport {
         return this.acceptCommandFrameBatch(message);
       case 'lockstepAck':
         this.latestAckByPlayer.set(fromPlayerId, message);
-        this.pruneAcknowledgedState();
+        this.pruneOutboundCommandFrames();
         return true;
       default:
         return true;
@@ -410,13 +410,6 @@ export class NetworkLockstepTransport {
   }
 
   private pruneOutboundCommandFrames(): void {
-    const minAckedFrame = this.minAckedFrameAcrossConnectedPeers();
-    if (minAckedFrame === null) return;
-    this.pruneOutboundCommandFramesBefore(minAckedFrame);
-    this.pruneAcknowledgedDedupState(minAckedFrame);
-  }
-
-  private pruneAcknowledgedState(): void {
     const minAckedFrame = this.minAckedFrameAcrossConnectedPeers();
     if (minAckedFrame === null) return;
     this.pruneOutboundCommandFramesBefore(minAckedFrame);

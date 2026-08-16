@@ -3,14 +3,14 @@ import { getUnitBlueprint } from './blueprints';
 import type { Entity, StructureBlueprintId } from './types';
 import type { ConstructionCapability } from '../../types/constructionTypes';
 
-export type UnitHostCapabilities = {
+type UnitHostCapabilities = {
   construction: ConstructionCapability | null;
   /** Shared build-power ceiling owned by the host, not a mounted emitter. */
   constructionRate: number;
   allowedBuildBlueprintIds: readonly StructureBlueprintId[];
 };
 
-export type SelectedBuilderTypeInfo = {
+type SelectedBuilderTypeInfo = {
   unitBlueprintId: string;
   count: number;
   firstEntity: Entity;
@@ -46,7 +46,7 @@ function compileUnitHostCapabilities(unitBlueprint: UnitBlueprint): UnitHostCapa
   });
 }
 
-export function getUnitHostCapabilities(unitBlueprint: UnitBlueprint): UnitHostCapabilities {
+function getUnitHostCapabilities(unitBlueprint: UnitBlueprint): UnitHostCapabilities {
   let capabilities = CAPABILITIES_BY_UNIT_BLUEPRINT.get(unitBlueprint.unitBlueprintId);
   if (capabilities === undefined) {
     capabilities = compileUnitHostCapabilities(unitBlueprint);
@@ -55,20 +55,20 @@ export function getUnitHostCapabilities(unitBlueprint: UnitBlueprint): UnitHostC
   return capabilities;
 }
 
-export function getEntityHostCapabilities(
+function getEntityHostCapabilities(
   entity: Entity | null | undefined,
 ): UnitHostCapabilities | null {
   if (entity?.unit === null || entity?.unit === undefined) return null;
   return getUnitHostCapabilities(getUnitBlueprint(entity.unit.unitBlueprintId));
 }
 
-export function entityCanConstruct(entity: Entity | null | undefined): boolean {
+function entityCanConstruct(entity: Entity | null | undefined): boolean {
   if (entity?.builder === null || entity?.builder === undefined) return false;
   const capability = getEntityHostCapabilities(entity);
   return capability !== null && capability.constructionRate > 0;
 }
 
-export function entityCanSpawnStructure(
+function entityCanSpawnStructure(
   entity: Entity | null | undefined,
   buildingBlueprintId: StructureBlueprintId | string | null | undefined,
 ): boolean {
@@ -91,7 +91,7 @@ export function getBuilderConstructionRate(entity: Entity): number {
   return getEntityHostCapabilities(entity)?.constructionRate ?? 0;
 }
 
-export function getBuilderAllowedBuildBlueprintIds(
+function getBuilderAllowedBuildBlueprintIds(
   entity: Entity | null | undefined,
 ): readonly StructureBlueprintId[] {
   if (entity?.builder === null || entity?.builder === undefined) return EMPTY_STRUCTURE_IDS;

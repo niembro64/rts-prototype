@@ -5,17 +5,23 @@ import { cloneUnitSupportSurface } from './unitSupportSurface';
 import {
   BUILDING_BLUEPRINT_IDS,
 } from '../../types/blueprintIds';
+import { parseBuildingPlacementFootprint } from './buildGrid';
 
 function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): BuildingConfig {
   const bp = BUILDING_BLUEPRINTS[buildingBlueprintId];
+  const placementFootprint = parseBuildingPlacementFootprint(
+    bp.footprintMask,
+    `building blueprint ${buildingBlueprintId}`,
+  );
   return {
     buildingBlueprintId: bp.buildingBlueprintId,
     name: bp.name,
     gridWidth: bp.gridWidth,
     gridHeight: bp.gridHeight,
     gridDepth: bp.gridDepth,
-    placementGridWidth: bp.placementGridWidth ?? bp.gridWidth,
-    placementGridHeight: bp.placementGridHeight ?? bp.gridHeight,
+    placementGridWidth: placementFootprint.gridWidth,
+    placementGridHeight: placementFootprint.gridHeight,
+    placementFootprint,
     hp: bp.hp,
     cost: {
       energy: bp.cost.energy * COST_MULTIPLIER,

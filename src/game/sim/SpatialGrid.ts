@@ -11,6 +11,11 @@ import {
 } from '../sim-wasm/init';
 import { entitySlotRegistry } from './EntitySlotRegistry';
 import { projectileTypeToCode } from '../../types/network';
+import {
+  assignUnitBuildingSlotRangeResult,
+  type UnitBuildingSlotRangeResult,
+} from './spatialQueryResults';
+import { growTypedArrays, nextGeometricCapacity } from '../memory/typedArrayGrowth';
 
 // Phase 7: the SpatialGrid lives in WASM linear memory. This file is
 // now a thin JS-side wrapper that:
@@ -76,14 +81,7 @@ class SpatialGrid {
     slots: new Uint32Array(0),
     count: 0,
   };
-  private readonly _unitBuildingSlotRangeResult: {
-    slots: Uint32Array;
-    total: number;
-    unitStart: number;
-    unitCount: number;
-    buildingStart: number;
-    buildingCount: number;
-  } = {
+  private readonly _unitBuildingSlotRangeResult: UnitBuildingSlotRangeResult = {
     slots: new Uint32Array(0),
     total: 0,
     unitStart: 2,
@@ -139,72 +137,42 @@ class SpatialGrid {
 
   private ensureProjectileBatchCapacity(required: number): void {
     if (required <= this._projectileBatchCapacity) return;
-    let cap = Math.max(32, this._projectileBatchCapacity);
-    while (cap < required) cap *= 2;
-
-    const slots = new Uint32Array(cap);
-    slots.set(this._projectileBatchSlots);
-    this._projectileBatchSlots = slots;
-
-    const xs = new Float64Array(cap);
-    xs.set(this._projectileBatchX);
-    this._projectileBatchX = xs;
-
-    const ys = new Float64Array(cap);
-    ys.set(this._projectileBatchY);
-    this._projectileBatchY = ys;
-
-    const zs = new Float64Array(cap);
-    zs.set(this._projectileBatchZ);
-    this._projectileBatchZ = zs;
-
-    const vxs = new Float64Array(cap);
-    vxs.set(this._projectileBatchVx);
-    this._projectileBatchVx = vxs;
-
-    const vys = new Float64Array(cap);
-    vys.set(this._projectileBatchVy);
-    this._projectileBatchVy = vys;
-
-    const vzs = new Float64Array(cap);
-    vzs.set(this._projectileBatchVz);
-    this._projectileBatchVz = vzs;
-
-    const hps = new Float64Array(cap);
-    hps.set(this._projectileBatchHp);
-    this._projectileBatchHp = hps;
-
-    const maxHps = new Float64Array(cap);
-    maxHps.set(this._projectileBatchMaxHp);
-    this._projectileBatchMaxHp = maxHps;
-
-    const stateFlags = new Uint32Array(cap);
-    stateFlags.set(this._projectileBatchFlags);
-    this._projectileBatchFlags = stateFlags;
-
-    const ownerU32 = new Uint32Array(cap);
-    ownerU32.set(this._projectileBatchOwnerPlayerU32);
-    this._projectileBatchOwnerPlayerU32 = ownerU32;
-
-    const typeCodes = new Uint32Array(cap);
-    typeCodes.set(this._projectileBatchTypeCodes);
-    this._projectileBatchTypeCodes = typeCodes;
-
-    const owners = new Uint8Array(cap);
-    owners.set(this._projectileBatchOwnerPlayers);
-    this._projectileBatchOwnerPlayers = owners;
-
-    const flags = new Uint8Array(cap);
-    flags.set(this._projectileBatchTypeFlags);
-    this._projectileBatchTypeFlags = flags;
-
-    const radiusCollision = new Float64Array(cap);
-    radiusCollision.set(this._projectileBatchRadiusCollision);
-    this._projectileBatchRadiusCollision = radiusCollision;
-
-    const radiusHitbox = new Float64Array(cap);
-    radiusHitbox.set(this._projectileBatchRadiusHitbox);
-    this._projectileBatchRadiusHitbox = radiusHitbox;
+    const cap = nextGeometricCapacity(this._projectileBatchCapacity, required, 32);
+    [
+      this._projectileBatchSlots,
+      this._projectileBatchX,
+      this._projectileBatchY,
+      this._projectileBatchZ,
+      this._projectileBatchVx,
+      this._projectileBatchVy,
+      this._projectileBatchVz,
+      this._projectileBatchHp,
+      this._projectileBatchMaxHp,
+      this._projectileBatchFlags,
+      this._projectileBatchOwnerPlayerU32,
+      this._projectileBatchTypeCodes,
+      this._projectileBatchOwnerPlayers,
+      this._projectileBatchTypeFlags,
+      this._projectileBatchRadiusCollision,
+      this._projectileBatchRadiusHitbox,
+    ] = growTypedArrays([
+      this._projectileBatchSlots,
+      this._projectileBatchX,
+      this._projectileBatchY,
+      this._projectileBatchZ,
+      this._projectileBatchVx,
+      this._projectileBatchVy,
+      this._projectileBatchVz,
+      this._projectileBatchHp,
+      this._projectileBatchMaxHp,
+      this._projectileBatchFlags,
+      this._projectileBatchOwnerPlayerU32,
+      this._projectileBatchTypeCodes,
+      this._projectileBatchOwnerPlayers,
+      this._projectileBatchTypeFlags,
+      this._projectileBatchRadiusCollision,
+      this._projectileBatchRadiusHitbox,
+    ] as const, cap);
 
     this._projectileBatchCapacity = cap;
   }
@@ -459,26 +427,10 @@ class SpatialGrid {
 
   queryUnitBuildingSlotRangesInRadius(
     x: number, y: number, z: number, radius: number,
-  ): {
-    slots: Uint32Array;
-    total: number;
-    unitStart: number;
-    unitCount: number;
-    buildingStart: number;
-    buildingCount: number;
-  } {
+  ): UnitBuildingSlotRangeResult {
     const total = this.api().queryUnitsAndBuildingsInRadius(x, y, z, radius);
     const slots = this.scratch(total);
-    const unitCount = slots[0];
-    const buildingCount = slots[1];
-    const result = this._unitBuildingSlotRangeResult;
-    result.slots = slots;
-    result.total = total;
-    result.unitStart = 2;
-    result.unitCount = unitCount;
-    result.buildingStart = 2 + unitCount;
-    result.buildingCount = buildingCount;
-    return result;
+    return assignUnitBuildingSlotRangeResult(slots, total, this._unitBuildingSlotRangeResult);
   }
 
   queryUnitBuildingSlotArraysInRadius(
@@ -507,26 +459,10 @@ class SpatialGrid {
     x1: number, y1: number, z1: number,
     x2: number, y2: number, z2: number,
     lineWidth: number,
-  ): {
-    slots: Uint32Array;
-    total: number;
-    unitStart: number;
-    unitCount: number;
-    buildingStart: number;
-    buildingCount: number;
-  } {
+  ): UnitBuildingSlotRangeResult {
     const total = this.api().queryEntitiesAlongLine(x1, y1, z1, x2, y2, z2, lineWidth);
     const slots = this.scratch(total);
-    const unitCount = slots[0];
-    const buildingCount = slots[1];
-    const result = this._unitBuildingSlotRangeResult;
-    result.slots = slots;
-    result.total = total;
-    result.unitStart = 2;
-    result.unitCount = unitCount;
-    result.buildingStart = 2 + unitCount;
-    result.buildingCount = buildingCount;
-    return result;
+    return assignUnitBuildingSlotRangeResult(slots, total, this._unitBuildingSlotRangeResult);
   }
 
   queryUnitsAndBuildingsInRect2D(

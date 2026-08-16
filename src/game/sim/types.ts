@@ -6,6 +6,8 @@
 // All type definitions are now centralized in @/types/sim.
 // This file re-exports them for backward compatibility and holds runtime constants.
 
+import { linearToSrgbByte } from '../math/ColorMath';
+
 export type {
   HysteresisRange,
   
@@ -92,6 +94,8 @@ export type {
   EntityHold,
   EntityHoldKind,
   BuildingConfig,
+  BuildingPlacementFootprint,
+  BuildingPlacementFootprintCell,
   UnitBuildConfig,
   FactoryDefaultWaypoint,
   
@@ -242,15 +246,6 @@ function oklchToLinearRgb(L: number, C: number, hueDeg: number): { r: number; g:
     g: -1.2684380046 * lms_l + 2.6097574011 * lms_m - 0.3413193965 * lms_s,
     b: -0.0041960863 * lms_l - 0.7034186147 * lms_m + 1.7076147010 * lms_s,
   };
-}
-
-/** Linear-light sRGB component → gamma-encoded sRGB byte (0..255). */
-function linearToSrgbByte(c: number): number {
-  const clipped = c <= 0 ? 0 : c >= 1 ? 1 : c;
-  const gamma = clipped <= 0.0031308
-    ? clipped * 12.92
-    : 1.055 * Math.pow(clipped, 1 / 2.4) - 0.055;
-  return Math.max(0, Math.min(255, Math.round(gamma * 255)));
 }
 
 /** Convert OKLCH (L ∈ [0, 1], C ≥ 0, hueDeg ∈ [0, 360)) to a 0xRRGGBB

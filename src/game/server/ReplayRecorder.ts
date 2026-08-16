@@ -3,7 +3,7 @@ import type { PlayerId } from '../sim/types';
 import type { CommandAuthority } from './commandAuthority';
 import type { GameServerConfig } from '@/types/game';
 
-export type BudgetReplayCommandEntry = {
+type BudgetReplayCommandEntry = {
   receivedAtTick: number;
   receivedAtMs: number;
   authority: CommandAuthority;

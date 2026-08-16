@@ -719,11 +719,11 @@ export function getMapSize(
 
 /** Background battle unit-generation distributions authored in
  * `backgroundBattleConfig.json`. */
-export const BACKGROUND_UNIT_SPAWN_DISTRIBUTIONS = [
+const BACKGROUND_UNIT_SPAWN_DISTRIBUTIONS = [
   'flat-distribution',
   'inverse-cost',
 ] as const;
-export type BackgroundUnitSpawnDistribution =
+type BackgroundUnitSpawnDistribution =
   (typeof BACKGROUND_UNIT_SPAWN_DISTRIBUTIONS)[number];
 
 function readBackgroundUnitSpawnDistribution(): BackgroundUnitSpawnDistribution {
@@ -805,11 +805,6 @@ export const CAMERA_SMOOTH_TAU_SECONDS = cameraConfigJson.smoothingTauSeconds as
  * applies to active-camera position, rotation, and FOV. */
 export const CAMERA_BAR_SPRING_HALF_LIFE_SECONDS =
   cameraConfigJson.barSpringHalfLifeSeconds as Readonly<Record<CameraSmoothMode, number>>;
-
-/** Maximum zoom level (zoomed in). When camera constraints use
- *  zoomInLimit='zoom-max', this becomes the closest orbit distance via
- *  baseDistance / ZOOM_MAX. */
-export const ZOOM_MAX = cameraConfigJson.zoom.max;
 
 /** BAR's game-level Spring-camera closest focus distance. */
 export const ZOOM_MIN_ORBIT_DISTANCE = cameraConfigJson.zoom.minOrbitDistance;

@@ -170,10 +170,6 @@ export function setSurfaceChartEnabled(enabled: boolean): void {
   SHARED_UNIFORMS.uChartEnabled.value = enabled ? 1 : 0;
 }
 
-export function isSurfaceChartEnabled(): boolean {
-  return SHARED_UNIFORMS.uChartEnabled.value === 1;
-}
-
 const VERTEX_DECL = [
   'attribute vec4 aChart;',
   // FLAT. vChart carries a band CODE and two repeat counts — per-primitive
@@ -456,7 +452,7 @@ const FRAGMENT_BUMP = [
   '#endif',
 ].join('\n');
 
-export type SurfaceChartMaterialOptions = {
+type SurfaceChartMaterialOptions = {
   /** Lit materials get the height-derived bump. Unlit ones have no `normal` in
    *  the fragment stage and take the albedo layers only. */
   bump: boolean;
@@ -645,22 +641,6 @@ function countChartWrite(chart: SurfaceChartId): void {
   w.__surfaceChartStats = chartWriteCounts;
 }
 
-/** Wire a CONSTANT `aChart` onto a geometry — every vertex carries the same
- *  label.
- *
- *  Use this where the chart is a property of the geometry rather than of the
- *  instance: the team-trim pools are one geometry per ornament profile, so
- *  every instance in a pool is unavoidably the same surface. It also has to be
- *  written for pools that are NOT charted but share a patched material, or the
- *  attribute is undefined for those draws and the shader reads garbage. */
-export function attachConstantSurfaceChart(
-  geometry: THREE.BufferGeometry,
-  chart: SurfaceChartId,
-  hostScale = 1,
-): void {
-  attachSurfaceChartByVertex(geometry, () => chart, hostScale);
-}
-
 /**
  * Label a geometry's vertices INDIVIDUALLY.
  *
@@ -676,7 +656,7 @@ export function attachConstantSurfaceChart(
  * (boxes), so a triangle's three vertices always agree and the varying never
  * interpolates between two different bands.
  */
-export function attachSurfaceChartByVertex(
+function attachSurfaceChartByVertex(
   geometry: THREE.BufferGeometry,
   pick: (vertexIndex: number) => SurfaceChartId,
   hostScale = 1,
@@ -708,7 +688,7 @@ export function attachSurfaceChartByVertex(
 // An ownership change rebuilds the unit mesh (owner id is part of the render
 // key), so the swap is re-applied and cannot be stranded on a stale material.
 const chartedGeometries = new Map<string, THREE.BufferGeometry>();
-const chartedMaterials = new Map<THREE.Material, THREE.Material>();
+const chartedMaterials = new WeakMap<THREE.Material, THREE.Material>();
 
 export function applyChartToMesh(
   mesh: THREE.Mesh,
@@ -748,6 +728,19 @@ export function applyVertexChartsToMesh(
     material = source.clone();
     patchSurfaceChartMaterial(material, { bump: true });
     chartedMaterials.set(source, material);
+    const release = (): void => {
+      source.removeEventListener('dispose', disposeClone);
+      material!.removeEventListener('dispose', release);
+      chartedMaterials.delete(source);
+    };
+    const disposeClone = (): void => {
+      release();
+      material!.dispose();
+    };
+    // Scene palettes own `source`; tie the cached clone to that same lifetime
+    // so battle restarts cannot retain either material or its GPU program.
+    source.addEventListener('dispose', disposeClone);
+    material.addEventListener('dispose', release);
   }
   mesh.material = material;
 }

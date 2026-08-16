@@ -2,7 +2,12 @@ import type { WorldState } from './WorldState';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { Entity, EntityId, PlayerId, BuildingBlueprintId } from './types';
 import { getBuildingConfig } from './buildConfigs';
-import { BuildingGrid, BUILD_GRID_CELL_SIZE, getRotatedGridFootprint } from './buildGrid';
+import {
+  BuildingGrid,
+  BUILD_GRID_CELL_SIZE,
+  getRotatedBuildingPlacementFootprint,
+  getRotatedGridFootprint,
+} from './buildGrid';
 import { computeFactoryWaypoint } from './spawn';
 import { getBuildingPlacementDiagnosticsForGrid } from './buildPlacementValidation';
 import {
@@ -24,8 +29,9 @@ import {
 } from './metalExtractorUpgrade';
 import {
   getBuildingPlacementBaseZ,
-  getHighestBuildFootprintGroundZ,
+  getHighestBuildFootprintCellsGroundZ,
 } from './buildingPlacementPolicy';
+import { createFactoryComponent } from './factoryComponent';
 
 type StartBuildingOptions = {
   skipBuilderAuthorization: boolean;
@@ -84,9 +90,8 @@ export class ConstructionSystem {
     const producesNanoframe = true;
     const config = getBuildingConfig(buildingBlueprintId);
     const footprint = getRotatedGridFootprint(config.gridWidth, config.gridHeight, rotation);
-    const placementFootprint = getRotatedGridFootprint(
-      config.placementGridWidth,
-      config.placementGridHeight,
+    const placementFootprint = getRotatedBuildingPlacementFootprint(
+      config.placementFootprint,
       rotation,
     );
 
@@ -144,11 +149,10 @@ export class ConstructionSystem {
     );
     entity.transform.z = baseZ + physicalSize.depth / 2;
     if (config.placementType === 'hover') {
-      const baselineZ = getHighestBuildFootprintGroundZ(
+      const baselineZ = getHighestBuildFootprintCellsGroundZ(
         gridX,
         gridY,
-        placementFootprint.gridWidth,
-        placementFootprint.gridHeight,
+        placementFootprint,
         (x, y) => world.getGroundZ(x, y),
       );
       entity.transform.z = baselineZ + physicalSize.depth / 2;
@@ -195,21 +199,10 @@ export class ConstructionSystem {
         world.mapHeight,
         REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
       );
-      entity.factory = {
-        selectedUnitBlueprintId: null,
+      entity.factory = createFactoryComponent({
         lowPriority: true,
-        carrierSpawnEnabled: true,
         moveState: 'holdPosition',
         airIdleState: 'land',
-        repeatProduction: false,
-        paused: false,
-        productionQueue: [],
-        productionQuotas: {},
-        productionQuotaCounts: {},
-        resumeRepeatUnitBlueprintId: null,
-        currentShellId: null,
-        currentBuildProgress: 0,
-        defaultWaypoints: null,
         rallyX: wp.x,
         rallyY: wp.y,
         rallyZ: null,
@@ -217,31 +210,25 @@ export class ConstructionSystem {
         // BAR cmd_factory_guard_pref.lua enables Factory Guard by default
         // on factories that can produce constructors.
         guardTargetId: entity.id,
-        isProducing: false,
-        energyRateFraction: 0,
-        metalRateFraction: 0,
-      };
+      });
     }
 
-    // Register the placement footprint. Only the centered physical rect
-    // blocks movement; any clearance ring beyond it (wind turbine blade
-    // sweep) reserves construction cells without becoming a wall. A hovering
+    // Register the exact authored placement mask. Structure cells block
+    // movement; clearance cells (solar panels / wind blade sweep) reserve
+    // construction without becoming walls. A hovering
     // building (the fabricator torus) reserves its footprint but does NOT block
     // movement, so units path/walk freely underneath as if it weren't there.
     const isHovering = config.hovering;
     const pathTopZ = config.supportSurface.kind === 'boxTop'
       ? config.supportSurface.topZ
       : config.gridDepth * BUILD_GRID_CELL_SIZE;
-    this.buildingGrid.place(
+    this.buildingGrid.placeFootprint(
       gridX,
       gridY,
-      placementFootprint.gridWidth,
-      placementFootprint.gridHeight,
+      placementFootprint,
       entity.id,
       playerId,
       !isHovering,
-      footprint.gridWidth,
-      footprint.gridHeight,
       pathTopZ,
     );
 
@@ -275,13 +262,21 @@ export class ConstructionSystem {
     const rotation = target.transform.rotation;
     const t1Footprint = getRotatedGridFootprint(t1Config.gridWidth, t1Config.gridHeight, rotation);
     const t2Footprint = getRotatedGridFootprint(t2Config.gridWidth, t2Config.gridHeight, rotation);
-    const t1Placement = getRotatedGridFootprint(t1Config.placementGridWidth, t1Config.placementGridHeight, rotation);
-    const t2Placement = getRotatedGridFootprint(t2Config.placementGridWidth, t2Config.placementGridHeight, rotation);
+    const t1Placement = getRotatedBuildingPlacementFootprint(t1Config.placementFootprint, rotation);
+    const t2Placement = getRotatedBuildingPlacementFootprint(t2Config.placementFootprint, rotation);
     if (
       t1Footprint.gridWidth !== t2Footprint.gridWidth ||
       t1Footprint.gridHeight !== t2Footprint.gridHeight ||
       t1Placement.gridWidth !== t2Placement.gridWidth ||
-      t1Placement.gridHeight !== t2Placement.gridHeight
+      t1Placement.gridHeight !== t2Placement.gridHeight ||
+      t1Placement.cells.length !== t2Placement.cells.length ||
+      t1Placement.cells.some((cell, index) => {
+        const other = t2Placement.cells[index];
+        return other === undefined ||
+          cell.dx !== other.dx ||
+          cell.dy !== other.dy ||
+          cell.kind !== other.kind;
+      })
     ) {
       return null;
     }
@@ -328,9 +323,8 @@ export class ConstructionSystem {
     const config = getBuildingConfig(entity.buildingBlueprintId);
     // Placement-rect origin — the same grid coordinate space
     // startBuilding receives and reserves.
-    const footprint = getRotatedGridFootprint(
-      config.placementGridWidth,
-      config.placementGridHeight,
+    const footprint = getRotatedBuildingPlacementFootprint(
+      config.placementFootprint,
       entity.transform.rotation,
     );
     const halfW = (footprint.gridWidth * BUILD_GRID_CELL_SIZE) / 2;

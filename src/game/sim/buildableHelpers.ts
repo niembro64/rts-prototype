@@ -160,7 +160,7 @@ export function isBuildFullyPaid(b: Buildable): boolean {
 }
 
 /** Remaining cost on a single resource (clamped at 0). */
-export function getRemainingResource(b: Buildable, kind: ResourceKind): number {
+function getRemainingResource(b: Buildable, kind: ResourceKind): number {
   const activePiece = getActiveBuildPiece(b);
   if (activePiece !== null) {
     return Math.max(0, activePiece.required[kind] - activePiece.paid[kind]);

@@ -41,7 +41,10 @@ import {
 import { TURRET_BLUEPRINTS } from './turrets';
 import { UNIT_BLUEPRINTS } from './units';
 import { isBuildableUnitBlueprintId } from './unitRoster';
-import { BUILD_GRID_CELL_SIZE } from '../buildGrid';
+import {
+  BUILD_GRID_CELL_SIZE,
+  parseBuildingPlacementFootprint,
+} from '../buildGrid';
 import {
   normalizeEntityBaseLedgerFromAliases,
 } from './entityBaseLedger';
@@ -54,14 +57,10 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   gridWidth: number;
   gridHeight: number;
   gridDepth: number;
-  /** Build-grid cells reserved for placement when larger than the
-   *  physical footprint (`null` = same as gridWidth/gridHeight). The
-   *  clearance ring blocks construction but not movement or physics —
-   *  the wind turbine reserves 6x6 so nothing builds under its blades
-   *  while its body stays 2x2. Must be >= the physical dim and share
-   *  its parity so both rects center on the same point. */
-  placementGridWidth: number | null;
-  placementGridHeight: number | null;
+  /** Top-to-bottom build-grid mask. `#` marks structure/reservation cells,
+   *  `+` construction-only overhang clearance, and `.` unused bounding-box
+   *  space. The mask dimensions own placement snapping and reservation. */
+  footprintMask: string[];
   base: EntityBaseLedger;
   hp: number;
   /** Authored construction cost. BUILDING_CONFIGS applies COST_MULTIPLIER.
@@ -142,8 +141,7 @@ const BUILDING_EXPLICIT_FIELDS = [
   'constructionRate',
   'conversionRate',
   'allowedUnitBlueprintIds',
-  'placementGridWidth',
-  'placementGridHeight',
+  'footprintMask',
   'supportSurface',
   'placementType',
   'hoveringType',
@@ -401,22 +399,62 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   if (!Number.isFinite(blueprint.gridDepth) || blueprint.gridDepth <= 0) {
     throw new Error(`Invalid building blueprint ${id}: gridDepth must be positive`);
   }
-  for (const [placementField, physical] of [
-    ['placementGridWidth', blueprint.gridWidth],
-    ['placementGridHeight', blueprint.gridHeight],
+  const placementFootprint = parseBuildingPlacementFootprint(
+    blueprint.footprintMask,
+    `building blueprint ${id}`,
+  );
+  for (const [placement, physical, field] of [
+    [placementFootprint.gridWidth, blueprint.gridWidth, 'width'],
+    [placementFootprint.gridHeight, blueprint.gridHeight, 'height'],
   ] as const) {
-    const placement = blueprint[placementField];
-    if (placement === null) continue;
-    if (!Number.isFinite(placement) || placement < physical) {
+    if (placement < physical) {
       throw new Error(
-        `Invalid building blueprint ${id}: ${placementField} must be >= the physical footprint dim`,
+        `Invalid building blueprint ${id}: footprintMask ${field} must be >= the physical grid ${field}`,
       );
     }
     if ((placement - physical) % 2 !== 0) {
       throw new Error(
-        `Invalid building blueprint ${id}: ${placementField} must share parity with the physical footprint dim so both rects center on the same point`,
+        `Invalid building blueprint ${id}: footprintMask ${field} must share parity with the physical grid ${field}`,
       );
     }
+  }
+  const physicalInsetX = (placementFootprint.gridWidth - blueprint.gridWidth) / 2;
+  const physicalInsetY = (placementFootprint.gridHeight - blueprint.gridHeight) / 2;
+  let structureCellCount = 0;
+  for (const cell of placementFootprint.cells) {
+    if (cell.kind !== 'structure') continue;
+    structureCellCount++;
+    if (
+      cell.dx < physicalInsetX ||
+      cell.dx >= physicalInsetX + blueprint.gridWidth ||
+      cell.dy < physicalInsetY ||
+      cell.dy >= physicalInsetY + blueprint.gridHeight
+    ) {
+      throw new Error(
+        `Invalid building blueprint ${id}: structure footprint cell ${cell.dx},${cell.dy} lies outside the centered physical grid`,
+      );
+    }
+  }
+  if (structureCellCount === 0) {
+    throw new Error(`Invalid building blueprint ${id}: footprintMask needs at least one # cell`);
+  }
+  const disconnected = new Set(
+    placementFootprint.cells.map((cell) => `${cell.dx},${cell.dy}`),
+  );
+  const pending = [placementFootprint.cells[0]];
+  disconnected.delete(`${pending[0].dx},${pending[0].dy}`);
+  while (pending.length > 0) {
+    const cell = pending.pop()!;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const key = `${cell.dx + dx},${cell.dy + dy}`;
+      if (!disconnected.delete(key)) continue;
+      pending.push({ dx: cell.dx + dx, dy: cell.dy + dy, kind: 'structure' });
+    }
+  }
+  if (disconnected.size > 0) {
+    throw new Error(
+      `Invalid building blueprint ${id}: footprintMask must be one four-connected reservation`,
+    );
   }
   if (!Number.isFinite(blueprint.visualHeight) || blueprint.visualHeight <= 0) {
     throw new Error(`Invalid building blueprint ${id}: visualHeight must be positive`);

@@ -60,6 +60,7 @@ import {
   markDirtySlot,
   uploadDirtySlotSpan as uploadDirtySpan,
   writeInstancedMatrix as writeMatrixAt,
+  type DirtySlotSpan,
 } from './instancedBufferUpdate';
 import { LEG_ATTACHMENT_RADIUS_MULTIPLIER } from './LocomotionRigShared3D';
 import type { CrawlerMesh } from './CrawlerRig3D';
@@ -87,6 +88,19 @@ const LEG_RENDER_ORDER = TRANSPARENT_RENDER_ORDER_3D.entityParts;
  *  shrinks back toward the live count. */
 const DEFRAG_MIN_FREE = 32;
 const DEFRAG_MIN_FREE_FRAC = 0.25;
+
+function writeFadeSlot(
+  attribute: THREE.InstancedBufferAttribute,
+  dirty: DirtySlotSpan,
+  slot: number,
+  fade: number,
+): void {
+  if (slot < 0) return;
+  const values = attribute.array as Float32Array;
+  if (values[slot] === fade) return;
+  values[slot] = fade;
+  markDirtySlot(dirty, slot);
+}
 
 /** Callback invoked when defrag relocates a live slot: receives the
  *  new slot index, lets the owner update its stored reference. */
@@ -579,11 +593,7 @@ class CylinderPool {
   }
 
   fade(slot: number, fade: number): void {
-    if (slot < 0) return;
-    const arr = this.fadeBuf.array as Float32Array;
-    if (arr[slot] === fade) return;
-    arr[slot] = fade;
-    markDirtySlot(this.fadeDirty, slot);
+    writeFadeSlot(this.fadeBuf, this.fadeDirty, slot, fade);
   }
 
   captureDeathPart(slot: number): EntityDeathRenderablePart3D | null {
@@ -832,11 +842,7 @@ class InstancedLegPartPool {
   }
 
   fade(slot: number, fade: number): void {
-    if (slot < 0) return;
-    const arr = this.fadeBuf.array as Float32Array;
-    if (arr[slot] === fade) return;
-    arr[slot] = fade;
-    markDirtySlot(this.fadeDirty, slot);
+    writeFadeSlot(this.fadeBuf, this.fadeDirty, slot, fade);
   }
 
   captureDeathPart(slot: number): EntityDeathRenderablePart3D | null {

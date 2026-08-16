@@ -7,12 +7,13 @@ import {
   buildAttackCommandForTarget,
   buildFormationPreservingMoveTargets,
   buildFactoryGuardCommands,
+  buildFactorySelfGuardCommands,
   buildFactoryRallyCommands,
   buildGuardCommandForTarget,
   buildLinePathMoveCommand,
   buildReclaimCommandForTarget,
   buildReclaimCommandForTargetId,
-  buildRepairOrGuardCommandAt,
+  buildRepairOrGuardCommandForTarget,
   LinePathAccumulator,
   shouldCollapseLinePathToSingleMove,
 } from '../input/helpers';
@@ -22,11 +23,16 @@ import {
   type QueueCommandMode,
 } from '../input/queueModifiers';
 import { isAttackableEnemyTarget } from '../input/helpers/AttackTargetHelper';
+import { findRepairTargetAt } from '../input/helpers/RepairTargetHelper';
 import { isReclaimableTarget } from '../sim/reclaim';
 import { getBuilderConstructionRate } from '../sim/hostCapabilities';
 import { entityHasBarAttackCommand } from '../sim/unitCommandCapabilities';
 import type { CommandCursorKind } from '../input/CommandCursors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
+import {
+  getActiveCommandHotkeyPresetId,
+  isBarCommandHotkeyPreset,
+} from '../input/commandHotkeys';
 
 import { getTerrainBedHeight, isWaterAt } from '../sim/Terrain';
 import type { Input3DPicker } from './Input3DPicker';
@@ -183,13 +189,53 @@ export class Input3DRightDragController {
       }
     }
 
-    // Right-click on a friendly body in 3D issues GUARD — BAR's smart
-    // default command over an ally. What the guard then does (defend the
-    // target, repair/heal it, or assist what it is building) is resolved
-    // per the guarder's own capabilities in the guard behavior. Self-guard
-    // is excluded by buildGuardCommandForTarget (drops the target itself).
-    // In a mixed unit+factory selection, the same click also becomes a Guard
-    // order in each factory's produced-unit command queue.
+    // A directly-hit allied body uses the same Recoil/BAR default as a
+    // ground-point hit: Repair unfinished/damaged targets with every capable
+    // builder, except BAR rewrites a completed damaged constructor or factory
+    // to Guard.
+    // Resolve this before generic Guard or the precise 3D hit would silently
+    // issue a different command than the cursor advertises.
+    if (!preserveFormationMove) {
+      const assistCmds = this.buildRepairOrGuardCommandsForTarget(
+        source,
+        entityHit,
+        selectedUnits,
+        tick,
+        queueMode.queue,
+        queueMode.queueFront,
+        queueMode.queueInsertIndex,
+      );
+      if (assistCmds.length > 0) {
+        const first = assistCmds[0];
+        this.config.applyCursor(first.type === 'guard' ? 'guard' : 'repair');
+        for (const command of assistCmds) this.config.commandQueue.enqueue(command);
+        if (first.type === 'guard') {
+          const factorySelfGuardCmds = buildFactorySelfGuardCommands(
+            this.getSelectedFactories(),
+            entityHit,
+            tick,
+          );
+          const factoryGuardCmds = buildFactoryGuardCommands(
+            this.getSelectedFactories(),
+            entityHit,
+            activePlayerId,
+            tick,
+            source.arePlayersAllied,
+            queueMode.queue,
+            queueMode.queueFront,
+            queueMode.queueInsertIndex,
+          );
+          for (const command of factorySelfGuardCmds) this.config.commandQueue.enqueue(command);
+          for (const command of factoryGuardCmds) this.config.commandQueue.enqueue(command);
+        }
+        return;
+      }
+    }
+
+    // A completed, healthy allied body defaults to Guard. Self-guard is
+    // excluded by buildGuardCommandForTarget; that falls through to Move,
+    // matching BAR's enabled Ignore Self widget for non-factories. In a mixed
+    // unit+factory selection the factory output queue receives the same Guard.
     if (!preserveFormationMove) {
       const unitGuardCmd = buildGuardCommandForTarget(
         entityHit,
@@ -211,7 +257,12 @@ export class Input3DRightDragController {
         queueMode.queueFront,
         queueMode.queueInsertIndex,
       );
-      if (unitGuardCmd !== null || factoryGuardCmds.length > 0) {
+      const factorySelfGuardCmds = buildFactorySelfGuardCommands(
+        this.getSelectedFactories(),
+        entityHit,
+        tick,
+      );
+      if (unitGuardCmd !== null || factoryGuardCmds.length > 0 || factorySelfGuardCmds.length > 0) {
         debugLog(
           GAME_DIAGNOSTICS.commandPlans,
           '[click] guard-mesh: hit target #%d, %d unit(s), %d factory(s)',
@@ -219,6 +270,7 @@ export class Input3DRightDragController {
         );
         this.config.applyCursor('guard');
         if (unitGuardCmd !== null) this.config.commandQueue.enqueue(unitGuardCmd);
+        for (const command of factorySelfGuardCmds) this.config.commandQueue.enqueue(command);
         for (const command of factoryGuardCmds) this.config.commandQueue.enqueue(command);
         return;
       }
@@ -388,18 +440,23 @@ export class Input3DRightDragController {
           for (let i = 0; i < repairCmds.length; i++) {
             this.config.commandQueue.enqueue(repairCmds[i]);
           }
-          const target = source.getEntity(repairCmd.targetId);
-          const factoryGuardCmds = buildFactoryGuardCommands(
-            this.getSelectedFactories(),
-            target,
-            this.config.getActivePlayerId(),
-            tick,
-            source.arePlayersAllied,
-            queueMode.queue,
-            queueMode.queueFront,
-            queueMode.queueInsertIndex,
-          );
-          for (const command of factoryGuardCmds) this.config.commandQueue.enqueue(command);
+          if (repairCmd.type === 'guard') {
+            const target = source.getEntity(repairCmd.targetId);
+            const factories = this.getSelectedFactories();
+            const factorySelfGuardCmds = buildFactorySelfGuardCommands(factories, target, tick);
+            const factoryGuardCmds = buildFactoryGuardCommands(
+              factories,
+              target,
+              this.config.getActivePlayerId(),
+              tick,
+              source.arePlayersAllied,
+              queueMode.queue,
+              queueMode.queueFront,
+              queueMode.queueInsertIndex,
+            );
+            for (const command of factorySelfGuardCmds) this.config.commandQueue.enqueue(command);
+            for (const command of factoryGuardCmds) this.config.commandQueue.enqueue(command);
+          }
           this.resetLineDrag();
           this.config.refreshCursor();
           return;
@@ -476,18 +533,23 @@ export class Input3DRightDragController {
         for (let i = 0; i < repairCmds.length; i++) {
           this.config.commandQueue.enqueue(repairCmds[i]);
         }
-        const target = source.getEntity(repairCmds[0].targetId);
-        const factoryGuardCmds = buildFactoryGuardCommands(
-          this.getSelectedFactories(),
-          target,
-          this.config.getActivePlayerId(),
-          tick,
-          source.arePlayersAllied,
-          queueMode.queue,
-          queueMode.queueFront,
-          queueMode.queueInsertIndex,
-        );
-        for (const command of factoryGuardCmds) this.config.commandQueue.enqueue(command);
+        if (repairCmds[0].type === 'guard') {
+          const target = source.getEntity(repairCmds[0].targetId);
+          const factories = this.getSelectedFactories();
+          const factorySelfGuardCmds = buildFactorySelfGuardCommands(factories, target, tick);
+          const factoryGuardCmds = buildFactoryGuardCommands(
+            factories,
+            target,
+            this.config.getActivePlayerId(),
+            tick,
+            source.arePlayersAllied,
+            queueMode.queue,
+            queueMode.queueFront,
+            queueMode.queueInsertIndex,
+          );
+          for (const command of factorySelfGuardCmds) this.config.commandQueue.enqueue(command);
+          for (const command of factoryGuardCmds) this.config.commandQueue.enqueue(command);
+        }
         return;
       }
     }
@@ -560,6 +622,33 @@ export class Input3DRightDragController {
     queueFront: boolean,
     queueInsertIndex?: number,
   ): Array<RepairCommand | GuardCommand> {
+    const target = findRepairTargetAt(
+      source,
+      x,
+      y,
+      this.config.getActivePlayerId(),
+    );
+    return this.buildRepairOrGuardCommandsForTarget(
+      source,
+      target,
+      selectedUnits,
+      tick,
+      queue,
+      queueFront,
+      queueInsertIndex,
+    );
+  }
+
+  private buildRepairOrGuardCommandsForTarget(
+    source: RightDragEntitySource,
+    target: Entity | null | undefined,
+    selectedUnits: readonly Entity[],
+    tick: number,
+    queue: boolean,
+    queueFront: boolean,
+    queueInsertIndex?: number,
+  ): Array<RepairCommand | GuardCommand> {
+    if (target === null || target === undefined) return [];
     const builders: Entity[] = [];
     for (let i = 0; i < selectedUnits.length; i++) {
       const unit = selectedUnits[i];
@@ -569,32 +658,30 @@ export class Input3DRightDragController {
     }
     if (builders.length === 0) return [];
 
-    const first = buildRepairOrGuardCommandAt(
-      source,
-      x,
-      y,
+    const first = buildRepairOrGuardCommandForTarget(
+      target,
       builders[0],
       selectedUnits,
       tick,
       queue,
       queueFront,
       queueInsertIndex,
+      source.arePlayersAllied,
     );
     if (first === null) return [];
     if (first.type === 'guard') return [first];
 
     const commands: Array<RepairCommand | GuardCommand> = [first];
     for (let i = 1; i < builders.length; i++) {
-      const command = buildRepairOrGuardCommandAt(
-        source,
-        x,
-        y,
+      const command = buildRepairOrGuardCommandForTarget(
+        target,
         builders[i],
         selectedUnits,
         tick,
         queue,
         queueFront,
         queueInsertIndex,
+        source.arePlayersAllied,
       );
       if (command?.type === 'repair') commands.push(command);
     }
@@ -634,6 +721,14 @@ export class Input3DRightDragController {
   }
 
   private resolveReleaseQueueMode(e: MouseEvent): QueueCommandMode {
+    if (
+      e.metaKey &&
+      isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId())
+    ) {
+      // cmd_customformations2.lua packs every per-unit formation order as a
+      // position-zero CMD.INSERT while Meta is held.
+      return { queue: true, queueFront: true };
+    }
     const releaseQueueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
     return queueModeForDragRelease(this.dragStartQueueMode, releaseQueueMode);
   }

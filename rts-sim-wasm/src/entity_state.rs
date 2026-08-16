@@ -6,11 +6,8 @@ use crate::*;
 use wasm_bindgen::prelude::*;
 
 pub(crate) const ENTITY_STATE_KIND_NONE: u8 = 0;
-#[allow(dead_code)]
 pub(crate) const ENTITY_STATE_KIND_BUILDING: u8 = 1;
-#[allow(dead_code)]
 pub(crate) const ENTITY_STATE_KIND_UNIT: u8 = 2;
-#[allow(dead_code)]
 pub(crate) const ENTITY_STATE_KIND_TOWER: u8 = 3;
 pub(crate) const ENTITY_STATE_KIND_SHOT: u8 = 4;
 

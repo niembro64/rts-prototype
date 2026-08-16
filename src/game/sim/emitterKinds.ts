@@ -23,11 +23,3 @@ export function isAttackEmitter(emitter: Turret): boolean {
 export function isManualEmitterConfig(config: TurretConfig): boolean {
   return config.controlMode === 'manual';
 }
-
-export function isAutomatedAttackEmitterConfig(config: TurretConfig): boolean {
-  return isAttackEmitterConfig(config) && !isManualEmitterConfig(config);
-}
-
-export function isTargetableEmitter(emitter: Turret): boolean {
-  return emitter.id >= 0 && isAttackEmitter(emitter);
-}

@@ -36,10 +36,3 @@ export function getRuntimeTurretMount(
 
   throw new Error('Runtime turret is missing a finite blueprint-derived 3D mount');
 }
-
-export function getRuntimeTurretMountHeight(
-  turret: RuntimeTurretMountSource,
-): number {
-  if (Number.isFinite(turret.mount.z)) return turret.mount.z;
-  throw new Error('Runtime turret is missing a finite blueprint-derived mount height');
-}

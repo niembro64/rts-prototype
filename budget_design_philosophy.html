@@ -984,8 +984,8 @@
         near-immutable base: sampled per cell from the authoritative mesh, rebuilt only when the
         terrain version moves. Grounded building footprints are a cheap dynamic obstacle layer on
         top: the construction system already authors per-cell movement semantics at placement
-        (<code>blocksMovement = !isHovering</code>, with a building&rsquo;s non-physical clearance
-        ring &mdash; a wind turbine&rsquo;s blade sweep &mdash; reserving placement but never
+        (structure cells block when the host is grounded, while authored non-physical clearance
+        cells &mdash; such as a wind turbine&rsquo;s blade sweep &mdash; reserve placement but never
         blocking movement), and the pathfinder syncs exactly that cell set whenever the
         BuildingGrid version moves. Building churn re-runs only the O(n) blocked/clearance/
         connected-component sweeps, never terrain sampling. The build grid and the path grid share
@@ -1002,7 +1002,7 @@
       </p>
       <p>
         The construction grid still answers a different question &mdash; whether a building may
-        reserve a placement square &mdash; and hovering buildings still answer it while
+        reserve its authored placement-cell mask &mdash; and hovering buildings still answer it while
         contributing nothing to locomotion: units plan and drive across the terrain beneath them.
       </p>
       <ul class="rule-list">
@@ -3101,6 +3101,28 @@
         composes its sensor profile onto its attacking turret. Capability checks decide which
         commands and systems apply.
         A building never changes family because a turret is added or removed from its design.
+      </p>
+      <h3>Build footprints are authored cell masks, not bounding rectangles</h3>
+      <p>
+        Every building blueprint owns one top-to-bottom <code>footprintMask</code> on the shared
+        20-world-unit build grid. A structure cell is both reserved and, for a grounded building,
+        submitted to the locomotion obstacle layer. A clearance cell reserves construction space
+        without inventing collision or path obstruction. Empty cells inside the mask&rsquo;s bounding
+        box are genuinely empty: placement, map bounds, terrain/plateau checks, resource coverage,
+        build ghosts, queued build planning, demo placement, construction occupancy, and pathfinder
+        sync must all iterate the same authored cells. The bounding width and height exist only for
+        centered snapping and quarter-turn rotation; treating them as a filled rectangle is a bug.
+      </p>
+      <p>
+        Footprint silhouette follows visible plan-view silhouette. The hovering Fabricator reserves
+        a filled 14-by-14 pixel circle around its annular body. Extractors and radial defenses use
+        chamfered or round masks; the converter uses its diagonal hex-like mask. The two shield
+        research labs use distinct 12-by-12 campus masks and polygonal foundations, making them
+        nearly Fabricator-scale without hiding a square visual base underneath either one. The
+        solar collector has a 5-by-5 physical footprint, is natively yawed 45 degrees, and reserves
+        a 7-by-7 diamond: twenty-one structural cells plus four construction-only tip cells beneath
+        the fully opened panels.
+        The wind turbine follows the same rule for its circular blade-sweep clearance.
       </p>
       <h3>Placement types: ground, water-surface, hover</h3>
       <p>

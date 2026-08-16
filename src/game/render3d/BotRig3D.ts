@@ -1,5 +1,5 @@
-// BotRig3D — the biped. Two legs, two arms, and nothing borrowed from the
-// arachnid leg rig.
+// BotRig3D — the biped. Two legs, one required arm pair, an optional upper
+// pair, and nothing borrowed from the arachnid leg rig.
 //
 // WHY NOT `crawler`. The crawler rig solves a spider: each limb owns an independent
 // reach shell and chooses a world-space foothold. A bot mech instead owns
@@ -77,7 +77,7 @@ export type BotArmHostAttachment = Extract<
 export type BotArmId = BotArmHostAttachment['arm'];
 
 /** Local yaw/pitch a held turret takes from the arm carrying it. */
-export type BotArmTurretAim = { yaw: number; pitch: number };
+type BotArmTurretAim = { yaw: number; pitch: number };
 
 /** One rigid part drawn between two points in the leg's own plane. Boxes, not
  *  cylinders: a commander's limbs are plate and actuator housing, and a box
@@ -95,7 +95,7 @@ type Strut = {
   depth: number;
 };
 
-export type BotLeg = {
+type BotLeg = {
   /** -1 right, +1 left in the bot frame's lateral axis. */
   side: number;
   /** Hip socket, chassis-local. */
@@ -117,16 +117,22 @@ export type BotLeg = {
   footLocalZ: number;
 };
 
-export type BotArm = {
+type BotArm = {
   id: BotArmId;
   side: number;
   role: BotArmRole;
+  /** Pair-local blueprint geometry. Upper arms may deliberately use different
+   * proportions and an opposite elbow direction from the primary pair. */
+  config: BotArms;
   shoulderX: number;
   shoulderY: number;
   shoulderZ: number;
   upperLength: number;
   forearmLength: number;
   outwardRad: number;
+  elbowVerticalSign: -1 | 1;
+  swingRad: number;
+  restRad: number;
   actionBlend: number;
   /** Host-selected echo of an attached turret's current pitch. The turret
    *  still pitches itself; this only makes the carrier arm help the motion. */
@@ -189,8 +195,6 @@ export type BotMesh = {
   turretLockActive: boolean;
   legs: BotLeg[];
   arms: BotArm[];
-  /** Blueprint arm geometry shared with the authoritative socket resolver. */
-  armConfig: BotArms;
   /** Ground distance used to advance the shared biped gait. */
   contact: RollingContactState;
   /** Shared normalized right-leg phase; the left leg always adds exactly .5. */
@@ -211,8 +215,6 @@ export type BotMesh = {
   /** Nominal hip height above the sole, from standHeightRatio. Blueprint
    * validation keeps this equal to the hip socket's flat-ground height. */
   standHipY: number;
-  armSwingRad: number;
-  armRestRad: number;
   /** Ground plane in the lifted rig's local frame. */
   groundLocalY: number;
   unitRadius: number;
@@ -276,7 +278,6 @@ const _weaponArmSocketPose: BotArmSocketPose = {
   aimY: 0,
   aimZ: 0,
 };
-
 
 function material(ownerId: PlayerId | undefined): THREE.MeshLambertMaterial {
   return getLocomotionMatByCache(segmentMaterials, SEGMENT_COLOR, ownerId);
@@ -440,9 +441,10 @@ function armRole(variant: BotVariant, side: number): BotArmRole {
   return 'free';
 }
 
-function botArmId(side: number): BotArmId {
+function botArmId(side: number, upper: boolean): BotArmId {
   // The bot frame is right-handed: +X forward and +Y/Three +Z left.
   // The negative-lateral limb is therefore the host's right arm.
+  if (upper) return side < 0 ? 'rightUpperArm' : 'leftUpperArm';
   return side < 0 ? 'rightArm' : 'leftArm';
 }
 
@@ -758,6 +760,7 @@ export function buildBotRig(
   _maxPropulsiveForce: number,
   cfgLegs: BotLegs,
   cfgArms: BotArms,
+  cfgUpperArms: BotArms | undefined,
   chassisLiftY: number,
   ownerId: PlayerId | undefined,
   geometryTier: PrimitiveGeometryTier = 'close',
@@ -837,87 +840,98 @@ export function buildBotRig(
     legs.push(leg);
   }
 
-  const upperLength = unitRadius * cfgArms.segments.upper.lengthUnitRadiusRatio;
-  const forearmLength = unitRadius * cfgArms.segments.lower.lengthUnitRadiusRatio;
-  const armWidth = cfgArms.radius;
   const arms: BotArm[] = [];
-  for (const side of [-1, 1] as const) {
-    const attachment = new THREE.Group();
-    group.add(attachment);
-    const role = armRole(variant, side);
-    if (role === 'construction') {
-      addCommanderConstructionTool(
-        attachment,
-        unitRadius,
-        ownerId,
-        geometryTier,
-      );
-    }
-    const wrist = makeBlock(
-      group,
-      armWidth * cfgArms.handRadiusRatio,
-      armWidth * cfgArms.handRadiusRatio * 0.8,
-      armWidth * cfgArms.handRadiusRatio,
-      ownerId,
-    );
-    // A visible fist underneath an arm cannon doubles the hand volume and
-    // hides its muzzle. The held weapon is the hand on this side.
-    wrist.visible = role !== 'weapon';
-    const shoulderX = unitRadius * cfgArms.shoulder.xUnitRadiusRatio;
-    const shoulderY = unitRadius * cfgArms.shoulder.zUnitRadiusRatio - chassisLiftY;
-    const shoulderZ = side * unitRadius * cfgArms.shoulder.yUnitRadiusRatio;
-    const shoulderJoint = makeBlock(
-      group,
-      armWidth * 1.12,
-      armWidth * 1.08,
-      armWidth * 1.18,
-      ownerId,
-    );
-    shoulderJoint.position.set(shoulderX, shoulderY, shoulderZ);
-    shoulderJoint.userData.botShoulderJoint = true;
-    arms.push({
-      id: botArmId(side),
-      side,
-      role,
-      shoulderX,
-      shoulderY,
-      shoulderZ,
-      upperLength,
-      forearmLength,
-      outwardRad: THREE.MathUtils.degToRad(cfgArms.outwardDeg),
-      actionBlend: 0,
-      turretAimActive: false,
-      turretAimActiveLastFrame: false,
-      turretAimPitch: 0,
-      turretAimYaw: 0,
-      shoulderJoint,
-      upper: makeStrut(
-        group, armWidth, armWidth * 0.9, ownerId,
-        variant === 'commander' && geometryTier === 'close' ? side : 0,
-        geometryTier !== 'far',
-        false,
-      ),
-      forearm: makeStrut(
-        group, armWidth * 0.86, armWidth * 0.78, ownerId,
-        variant === 'commander' && geometryTier === 'close' ? side : 0,
-        geometryTier !== 'far',
-      ),
-      elbow: makeBotHingeCylinder(
+  const armPairs = [
+    { config: cfgArms, upper: false },
+    ...(cfgUpperArms === undefined ? [] : [{ config: cfgUpperArms, upper: true }]),
+  ];
+  for (const pair of armPairs) {
+    const armWidth = pair.config.radius;
+    const upperLength = unitRadius * pair.config.segments.upper.lengthUnitRadiusRatio;
+    const forearmLength = unitRadius * pair.config.segments.lower.lengthUnitRadiusRatio;
+    for (const side of [-1, 1] as const) {
+      const attachment = new THREE.Group();
+      group.add(attachment);
+      const role = pair.upper ? 'weapon' : armRole(variant, side);
+      if (role === 'construction') {
+        addCommanderConstructionTool(
+          attachment,
+          unitRadius,
+          ownerId,
+          geometryTier,
+        );
+      }
+      const wrist = makeBlock(
         group,
-        armWidth * 0.92,
-        armWidth * 0.86,
+        armWidth * pair.config.handRadiusRatio,
+        armWidth * pair.config.handRadiusRatio * 0.8,
+        armWidth * pair.config.handRadiusRatio,
         ownerId,
-        geometryTier,
-      ),
-      wrist,
-      attachment,
-      handX: 0,
-      handY: 0,
-      handZ: 0,
-      aimX: 1,
-      aimY: 0,
-      aimZ: 0,
-    });
+      );
+      // A visible fist underneath an arm cannon doubles the hand volume and
+      // hides its muzzle. The held weapon is the hand on this side.
+      wrist.visible = role !== 'weapon';
+      const shoulderX = unitRadius * pair.config.shoulder.xUnitRadiusRatio;
+      const shoulderY = unitRadius * pair.config.shoulder.zUnitRadiusRatio - chassisLiftY;
+      const shoulderZ = side * unitRadius * pair.config.shoulder.yUnitRadiusRatio;
+      const shoulderJoint = makeBlock(
+        group,
+        armWidth * 1.12,
+        armWidth * 1.08,
+        armWidth * 1.18,
+        ownerId,
+      );
+      shoulderJoint.position.set(shoulderX, shoulderY, shoulderZ);
+      shoulderJoint.userData.botShoulderJoint = true;
+      shoulderJoint.userData.botUpperArmShoulderJoint = pair.upper;
+      arms.push({
+        id: botArmId(side, pair.upper),
+        side,
+        role,
+        config: pair.config,
+        shoulderX,
+        shoulderY,
+        shoulderZ,
+        upperLength,
+        forearmLength,
+        outwardRad: THREE.MathUtils.degToRad(pair.config.outwardDeg),
+        elbowVerticalSign: pair.config.elbowBendDirection === 'downward' ? 1 : -1,
+        swingRad: THREE.MathUtils.degToRad(pair.config.walkSwingDeg),
+        restRad: THREE.MathUtils.degToRad(pair.config.restSwingDeg),
+        actionBlend: 0,
+        turretAimActive: false,
+        turretAimActiveLastFrame: false,
+        turretAimPitch: 0,
+        turretAimYaw: 0,
+        shoulderJoint,
+        upper: makeStrut(
+          group, armWidth, armWidth * 0.9, ownerId,
+          variant === 'commander' && geometryTier === 'close' ? side : 0,
+          geometryTier !== 'far',
+          false,
+        ),
+        forearm: makeStrut(
+          group, armWidth * 0.86, armWidth * 0.78, ownerId,
+          variant === 'commander' && geometryTier === 'close' ? side : 0,
+          geometryTier !== 'far',
+        ),
+        elbow: makeBotHingeCylinder(
+          group,
+          armWidth * 0.92,
+          armWidth * 0.86,
+          ownerId,
+          geometryTier,
+        ),
+        wrist,
+        attachment,
+        handX: 0,
+        handY: 0,
+        handZ: 0,
+        aimX: 1,
+        aimY: 0,
+        aimZ: 0,
+      });
+    }
   }
 
   return {
@@ -932,7 +946,6 @@ export function buildBotRig(
     turretLockActive: false,
     legs,
     arms,
-    armConfig: cfgArms,
     contact: rollingContact(0, 0),
     gaitPhase: 0,
     gaitDirection: 1,
@@ -943,8 +956,6 @@ export function buildBotRig(
     stanceForward: unitRadius * cfgLegs.stanceForwardUnitRadiusRatio,
     stanceOutward: unitRadius * cfgLegs.stanceOutwardUnitRadiusRatio,
     standHipY: legLength * cfgLegs.standHeightRatio,
-    armSwingRad: THREE.MathUtils.degToRad(cfgArms.walkSwingDeg),
-    armRestRad: THREE.MathUtils.degToRad(cfgArms.restSwingDeg),
     groundLocalY: -chassisLiftY,
     unitRadius,
     geometryKey: '',
@@ -958,7 +969,8 @@ function poseArm(
 ): void {
   const upperPlanar = Math.cos(arm.outwardRad) * arm.upperLength;
   const elbowX = arm.shoulderX + Math.sin(shoulderPitch) * upperPlanar;
-  const elbowY = arm.shoulderY - Math.cos(shoulderPitch) * upperPlanar;
+  const elbowY = arm.shoulderY +
+    arm.elbowVerticalSign * Math.cos(shoulderPitch) * upperPlanar;
   const elbowZ = arm.shoulderZ + arm.side * Math.sin(arm.outwardRad) * arm.upperLength;
   const forearmOutward = arm.outwardRad * 0.72;
   const forearmPlanar = Math.cos(forearmOutward) * arm.forearmLength;
@@ -1146,7 +1158,7 @@ function poseArms(
       : null;
     if (workStation !== null && workStation.targetEntityId !== NO_ENTITY_ID) {
       resolveBotWeaponArmSocketPose(
-        mesh.armConfig,
+        arm.config,
         mesh.unitRadius,
         arm.id,
         arm.shoulderY,
@@ -1169,7 +1181,7 @@ function poseArms(
     }
     if (arm.turretAimActive) {
       resolveBotWeaponArmSocketPose(
-        mesh.armConfig,
+        arm.config,
         mesh.unitRadius,
         arm.id,
         arm.shoulderY,
@@ -1208,11 +1220,11 @@ function poseArms(
 
     // Same-side free/construction arms oppose the leg and keep the forearm
     // deeply folded. Weapon arms returned above and never enter this gait path.
-    const walkShoulder = mesh.armRestRad + armWave * mesh.armSwingRad;
+    const walkShoulder = arm.restRad + armWave * arm.swingRad;
     const restForearmBend = ELBOW_BEND_RAD;
     const walkForearm = walkShoulder * ELBOW_FOLLOW
       + restForearmBend
-      - armWave * mesh.armSwingRad * 0.32;
+      - armWave * arm.swingRad * 0.32;
     const turretPitchAssist = THREE.MathUtils.clamp(
       arm.turretAimPitch,
       THREE.MathUtils.degToRad(-45),
@@ -1347,11 +1359,4 @@ export function poseBotRigAtPreviewCycle(
   mesh.hips.rotation.y = -mesh.upperBodyYaw;
   poseCoupledBotGait(mesh, phase, gait);
   poseArms(mesh, undefined, 0);
-}
-
-export function disposeBotRigGeometry(): void {
-  unitBox.dispose();
-  for (const mat of segmentMaterials.values()) mat.dispose();
-  segmentMaterials.clear();
-  botAccentGlowMaterial.dispose();
 }

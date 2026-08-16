@@ -1,4 +1,12 @@
 import rawFogConfig from './fogConfig.json';
+import {
+  assertBoolean,
+  assertFiniteNumberInRange,
+  assertNonNegativeFiniteNumber as assertNonNegative,
+  assertPositiveFiniteNumber as assertPositive,
+  assertPositiveInteger,
+  assertSixDigitCssHex as assertCssHex,
+} from './configValidation';
 
 type FogPresentationConfig = {
   enabledByDefault: boolean;
@@ -42,43 +50,28 @@ assertNonNegative(
   'fogConfig.presentation.coverage.edgeSoftnessWorld',
 );
 assertCssHex(presentation.shade.colorHex, 'fogConfig.presentation.shade.colorHex');
-assertPercent(presentation.shade.unseenDarknessPercent, 'fogConfig.presentation.shade.unseenDarknessPercent');
-assertPercent(presentation.shade.radarDarknessPercent, 'fogConfig.presentation.shade.radarDarknessPercent');
-assertPercent(presentation.shade.unseenColorLossPercent, 'fogConfig.presentation.shade.unseenColorLossPercent');
-assertPercent(presentation.shade.radarColorLossPercent, 'fogConfig.presentation.shade.radarColorLossPercent');
+assertFiniteNumberInRange(
+  presentation.shade.unseenDarknessPercent,
+  'fogConfig.presentation.shade.unseenDarknessPercent',
+  0,
+  100,
+);
+assertFiniteNumberInRange(
+  presentation.shade.radarDarknessPercent,
+  'fogConfig.presentation.shade.radarDarknessPercent',
+  0,
+  100,
+);
+assertFiniteNumberInRange(
+  presentation.shade.unseenColorLossPercent,
+  'fogConfig.presentation.shade.unseenColorLossPercent',
+  0,
+  100,
+);
+assertFiniteNumberInRange(
+  presentation.shade.radarColorLossPercent,
+  'fogConfig.presentation.shade.radarColorLossPercent',
+  0,
+  100,
+);
 export const FOG_CONFIG = FOG_CONFIG_RAW;
-
-function assertBoolean(value: unknown, fieldName: string): asserts value is boolean {
-  if (typeof value !== 'boolean') throw new Error(`${fieldName} must be a boolean`);
-}
-
-function assertPositive(value: unknown, fieldName: string): asserts value is number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-    throw new Error(`${fieldName} must be a positive finite number`);
-  }
-}
-
-function assertPositiveInteger(value: unknown, fieldName: string): asserts value is number {
-  assertPositive(value, fieldName);
-  if (!Number.isInteger(value)) {
-    throw new Error(`${fieldName} must be a positive integer`);
-  }
-}
-
-function assertNonNegative(value: unknown, fieldName: string): asserts value is number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-    throw new Error(`${fieldName} must be a non-negative finite number`);
-  }
-}
-
-function assertPercent(value: unknown, fieldName: string): asserts value is number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 100) {
-    throw new Error(`${fieldName} must be a finite number from 0 through 100`);
-  }
-}
-
-function assertCssHex(value: unknown, fieldName: string): asserts value is string {
-  if (typeof value !== 'string' || !/^#[0-9a-f]{6}$/i.test(value)) {
-    throw new Error(`${fieldName} must be a six-digit CSS hex color`);
-  }
-}

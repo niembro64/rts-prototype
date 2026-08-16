@@ -674,6 +674,7 @@ function assertAreaSlabMatchesPacked(
 function classifyAreaTurretDamageRows(
   source: AreaDamageSource,
   count: number,
+  currentTick: number,
 ): void {
   if (count === 0) return;
   const sim = getSimWasm();
@@ -684,6 +685,7 @@ function classifyAreaTurretDamageRows(
     count,
     _areaTurretDamageSlots.subarray(0, count),
     _areaTurretDamageTurretIndices.subarray(0, count),
+    currentTick,
     source.center.x,
     source.center.y,
     source.center.z,
@@ -713,7 +715,10 @@ function assertAreaTurretSlabMatchesPacked(count: number): void {
   }
 }
 
-function classifyDeathExplosionDamageRows(source: AreaDamageSource): number {
+function classifyDeathExplosionDamageRows(
+  source: AreaDamageSource,
+  currentTick: number,
+): number {
   const sim = getSimWasm();
   if (sim === undefined) {
     throw new Error('Death-explosion candidate classification requires initialized sim-wasm');
@@ -728,6 +733,7 @@ function classifyDeathExplosionDamageRows(source: AreaDamageSource): number {
       source.center.z,
       source.radius,
       source.radius + 100,
+      currentTick,
       _deathExplosionDamageCapacity,
       _deathExplosionDamageSlots,
       _deathExplosionDamageTargetKind,
@@ -923,6 +929,7 @@ function classifySegmentDamageRowsPackedRange(
 
 function classifySegmentDamageRowsViaSlab(
   count: number,
+  currentTick: number,
   startX: number,
   startY: number,
   startZ: number,
@@ -941,6 +948,7 @@ function classifySegmentDamageRowsViaSlab(
     count,
     _segmentDamageSlots.subarray(0, count),
     _segmentDamageTurretIndices.subarray(0, count),
+    currentTick,
     startX,
     startY,
     startZ,
@@ -1029,6 +1037,7 @@ function assertSegmentSlabMatchesPacked(
 function classifySegmentDamageRowsMixed(
   slabRowCount: number,
   totalRowCount: number,
+  currentTick: number,
   startX: number,
   startY: number,
   startZ: number,
@@ -1040,6 +1049,7 @@ function classifySegmentDamageRowsMixed(
 ): void {
   classifySegmentDamageRowsViaSlab(
     slabRowCount,
+    currentTick,
     startX,
     startY,
     startZ,
@@ -1822,6 +1832,7 @@ export class DamageSystem {
     classifySegmentDamageRowsMixed(
       slabRowCount,
       segmentRowCount,
+      this.world.getTick(),
       source.prev.x, source.prev.y, source.prev.z,
       source.current.x, source.current.y, source.current.z,
       sphereInflation,
@@ -2134,7 +2145,7 @@ export class DamageSystem {
         }
       }
     }
-    classifyAreaTurretDamageRows(source, areaTurretRowCount);
+    classifyAreaTurretDamageRows(source, areaTurretRowCount, this.world.getTick());
     for (let row = 0; row < areaRowCount; row++) {
       const rowFlags = _areaDamageOutFlags[row];
       if ((rowFlags & DAMAGE_AREA_FLAG_SLICE_PASS) === 0) continue;
@@ -2388,7 +2399,7 @@ export class DamageSystem {
 
   applyDeathExplosionDamage(source: AreaDamageSource): DamageResult {
     const result = resetResult();
-    const rowCount = classifyDeathExplosionDamageRows(source);
+    const rowCount = classifyDeathExplosionDamageRows(source, this.world.getTick());
 
     // Unit/body rows and unit turret-fallback rows. Rust owns the
     // broadphase + slab geometry; TS resolves compact slots to live

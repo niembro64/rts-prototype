@@ -16,12 +16,16 @@ import {
 import {
   assertUnitLocomotionNonNegativeFinite,
 } from './unitLocomotionValidation';
+import {
+  assertExactObjectKeys,
+  assertPlainObject,
+} from '../../configValidation';
 
 const UNIT_LOCOMOTION_TYPES = [
   'rover', 'tank', 'amphibious-tank', 'crawler', 'bot', 'amphibian', 'drone', 'plane', 'submarine', 'aerosub',
 ] as const satisfies readonly UnitLocomotionType[];
 
-export type UnitLocomotionTraversalCapabilities = Readonly<{
+type UnitLocomotionTraversalCapabilities = Readonly<{
   waypoint: UnitLocomotion['navigation']['waypoint'];
   move: UnitLocomotion['navigation']['move'];
 }>;
@@ -64,21 +68,14 @@ function assertAuthoredPhysicsKeys(
   authored: AuthoredGroundPhysics | AuthoredAirFluidPhysics | AuthoredWaterFluidPhysics,
   expectedFields: readonly string[],
 ): void {
-  if (!authored || typeof authored !== 'object') {
-    throw new Error(`Invalid unit locomotion ${presetId}.physics.${medium}: missing object`);
-  }
-  for (const key of Object.keys(authored)) {
-    if (!expectedFields.includes(key)) {
-      throw new Error(
-        `Invalid unit locomotion ${presetId}.physics.${medium}.${key}`,
-      );
-    }
-  }
-  for (const field of expectedFields) {
-    if (!Object.prototype.hasOwnProperty.call(authored, field)) {
-      throw new Error(`Invalid unit locomotion ${presetId}.physics.${medium}: missing ${field}`);
-    }
-  }
+  const label = `${presetId}.physics.${medium}`;
+  assertPlainObject(authored, `Invalid unit locomotion ${label}: missing object`);
+  assertExactObjectKeys(
+    authored,
+    expectedFields,
+    (key) => `Invalid unit locomotion ${label}.${key}`,
+    (key) => `Invalid unit locomotion ${label}: missing ${key}`,
+  );
 }
 
 function assertLiftFields(
@@ -87,16 +84,13 @@ function assertLiftFields(
   lift: Record<string, unknown>,
   expectedFields: readonly string[],
 ): void {
-  for (const field of Object.keys(lift)) {
-    if (!expectedFields.includes(field)) {
-      throw new Error(`Invalid unit locomotion ${presetId}.physics.${medium}.lift.${field}`);
-    }
-  }
-  for (const field of expectedFields) {
-    if (!Object.prototype.hasOwnProperty.call(lift, field)) {
-      throw new Error(`Invalid unit locomotion ${presetId}.physics.${medium}.lift: missing ${field}`);
-    }
-  }
+  const label = `${presetId}.physics.${medium}.lift`;
+  assertExactObjectKeys(
+    lift,
+    expectedFields,
+    (key) => `Invalid unit locomotion ${label}.${key}`,
+    (key) => `Invalid unit locomotion ${label}: missing ${key}`,
+  );
 }
 
 function createRuntimeAirFluidPhysics(
@@ -239,21 +233,12 @@ function cloneGroundPhysics(physics: UnitLocomotionGroundPhysics): UnitLocomotio
   return { ...physics };
 }
 
-function cloneAirFluidPhysics(
-  physics: UnitLocomotionAirFluidPhysics,
-): UnitLocomotionAirFluidPhysics {
+function cloneFluidPhysics<Physics extends
+  UnitLocomotionAirFluidPhysics | UnitLocomotionWaterFluidPhysics>(
+  physics: Physics,
+): Physics {
   return {
-    maxPropulsiveForce: physics.maxPropulsiveForce,
-    resistance: { ...physics.resistance },
-    lift: { ...physics.lift },
-  };
-}
-
-function cloneWaterFluidPhysics(
-  physics: UnitLocomotionWaterFluidPhysics,
-): UnitLocomotionWaterFluidPhysics {
-  return {
-    maxPropulsiveForce: physics.maxPropulsiveForce,
+    ...physics,
     resistance: { ...physics.resistance },
     lift: { ...physics.lift },
   };
@@ -267,8 +252,8 @@ export function cloneUnitLocomotion(
     physicsPresetId: locomotion.physicsPresetId,
     physics: {
       ground: cloneGroundPhysics(locomotion.physics.ground),
-      air: cloneAirFluidPhysics(locomotion.physics.air),
-      water: cloneWaterFluidPhysics(locomotion.physics.water),
+      air: cloneFluidPhysics(locomotion.physics.air),
+      water: cloneFluidPhysics(locomotion.physics.water),
     },
     environmentalHazards: { ...locomotion.environmentalHazards },
     actuator: { ...locomotion.actuator },

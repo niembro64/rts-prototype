@@ -30,6 +30,7 @@ import {
   installDetailTextureDevDownloadHelper,
   makeSeededRng,
   randIn,
+  sampleAngularDetailShape,
   sampleLogDistributedSize,
 } from './detailTextureHelpers';
 
@@ -108,44 +109,7 @@ function generateItems(rng: () => number): CommonShapeItem[] {
       500 * TEXTURE_SCALE,
     );
 
-    let shapeKind: CommonShapeItem['shapeKind'];
-    const shapeRoll = rng();
-    if (size > 200) {
-      // Giant slabs: hexagonal rock plates dominate, with chunky wedges mixed in.
-      shapeKind = shapeRoll < 0.65 ? 'hex' : 'tri';
-    } else if (size > 80) {
-      // Big chunks: still hex-led, plus jagged wedges and the occasional
-      // rectangular slab.
-      shapeKind = shapeRoll < 0.55 ? 'hex'
-        : shapeRoll < 0.90 ? 'tri'
-        : 'box';
-    } else if (size > 30) {
-      shapeKind = shapeRoll < 0.40 ? 'hex'
-        : shapeRoll < 0.75 ? 'tri'
-        : 'box';
-    } else {
-      // Small debris: cracks (thin boxes), hex shards, tri chips.
-      shapeKind = shapeRoll < 0.40 ? 'box'
-        : shapeRoll < 0.72 ? 'tri'
-        : 'hex';
-    }
-
-    let shapeParam: number;
-    switch (shapeKind) {
-      case 'box':
-        // Mostly thin cracks; occasionally wider rectangular slab chunks so
-        // the angular variety extends to "blocky rock" shapes too.
-        shapeParam = rng() < 0.75
-          ? randIn(rng, 0.04, 0.14)
-          : randIn(rng, 0.30, 0.65);
-        break;
-      case 'tri':
-        // Squat jagged triangles, not pointed leaves.
-        shapeParam = randIn(rng, 0.30, 0.55);
-        break;
-      default:
-        shapeParam = 0;
-    }
+    const { shapeKind, shapeParam } = sampleAngularDetailShape(rng, size, 200, 80, 30);
 
     const shade = ROCK_SHADE_PALETTE[Math.floor(rng() * ROCK_SHADE_PALETTE.length)];
 

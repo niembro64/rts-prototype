@@ -35,15 +35,15 @@
 // Zero-intensity sprays (idle commanders) skip entirely.
 
 import * as THREE from 'three';
-import { createInstancedColorAlphaParticleMaterial } from './instancedColorAlphaParticleMaterial';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import { getPlayerPrimaryColor } from '../sim/types';
 import { hexToRgb01 } from './colorUtils';
 import { disposeMesh } from './threeUtils';
 import { uploadColorAlphaMatrixPrefix } from './instancedBufferUpdate';
 import {
-  createInstancedColorAlphaPool,
+  createInstancedColorAlphaPoolSet,
   PRIMITIVE_GEOMETRY_TIERS,
+  type InstancedColorAlphaGeometryPool,
 } from './instancedParticlePool3D';
 import { RESOURCE_CONFIG } from '@/resourceConfig';
 import {
@@ -83,14 +83,7 @@ const [HEAL_R, HEAL_G, HEAL_B] = RESOURCE_CONFIG.spray.healRgb01;
  *  one global alpha here since the visual difference is tiny. */
 const PARTICLE_ALPHA = RESOURCE_CONFIG.spray.particleAlpha;
 
-type SprayParticlePool = {
-  geom: THREE.BufferGeometry;
-  mesh: THREE.InstancedMesh;
-  alphaArr: Float32Array;
-  colorArr: Float32Array;
-  alphaAttr: THREE.InstancedBufferAttribute;
-  colorAttr: THREE.InstancedBufferAttribute;
-};
+type SprayParticlePool = InstancedColorAlphaGeometryPool;
 
 export class SprayRenderer3D {
   private root: THREE.Group;
@@ -157,23 +150,15 @@ export class SprayRenderer3D {
   private readonly _visibleCounts: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
 
   constructor(parentWorld: THREE.Group) {
-    this.root = new THREE.Group();
-    parentWorld.add(this.root);
-
-    this.mat = createInstancedColorAlphaParticleMaterial();
-
-    this.pools = {
-      close: this.createPool('close'),
-      mid: this.createPool('mid'),
-      far: this.createPool('far'),
-    };
-  }
-
-  private createPool(_tier: PrimitiveGeometryTier): SprayParticlePool {
-    // Spray balls are tetrahedra at every tier — at their size the
-    // silhouette reads identically and the fill cost drops to 4 triangles.
-    const geom = getSharedPrimitiveTetrahedronGeometry(1).clone();
-    return { geom, ...createInstancedColorAlphaPool(this.root, geom, MAX_PARTICLES, this.mat, 5) };
+    const poolSet = createInstancedColorAlphaPoolSet(
+      parentWorld,
+      MAX_PARTICLES,
+      5,
+      () => getSharedPrimitiveTetrahedronGeometry(1).clone(),
+    );
+    this.root = poolSet.root;
+    this.mat = poolSet.material;
+    this.pools = poolSet.pools;
   }
 
   /** Per-frame update. `dtMs` advances the wobble phase so frame rate

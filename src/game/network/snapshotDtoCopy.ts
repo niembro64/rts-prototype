@@ -293,7 +293,7 @@ export function createTurretDto(): NetworkServerSnapshotTurret {
   };
 }
 
-export function copyTurretInto(
+function copyTurretInto(
   src: NetworkServerSnapshotTurret,
   dst: NetworkServerSnapshotTurret,
 ): NetworkServerSnapshotTurret {

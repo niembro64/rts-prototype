@@ -34,7 +34,7 @@ import {
 import { getBuildingVisualTopZ } from './buildingAnchors';
 import { getUnitGroundZ } from './unitGeometry';
 
-export type VolumeShape = 'sphere' | 'box' | 'cylinder' | 'annulus';
+type VolumeShape = 'sphere' | 'box' | 'cylinder' | 'annulus';
 
 /** One volume in sim coordinates. `halfX`/`halfY` carry the radius for
  *  round shapes so every consumer can read a bounding half-extent
@@ -122,14 +122,14 @@ function writeAnnulus(
  *  bodies are round and small, so they can afford the generous factor;
  *  buildings are large and often flat, and the same factor there is what
  *  made them answer clicks from a body-length away. */
-export const UNIT_SELECTION_VOLUME_SCALE = 1.18;
-export const BUILDING_SELECTION_VOLUME_SCALE = 1.05;
+const UNIT_SELECTION_VOLUME_SCALE = 1.18;
+const BUILDING_SELECTION_VOLUME_SCALE = 1.05;
 /** Floor (world units) so tiny units — and units drawn only as LOD
  *  proxy points at distance — stay easy to click at any zoom. */
-export const MIN_UNIT_SELECTION_RADIUS = 12;
+const MIN_UNIT_SELECTION_RADIUS = 12;
 /** Floor on each building half-extent so a razor-thin slab (a landing
  *  pad, a low wall) still has something to click. */
-export const MIN_BUILDING_SELECTION_HALF_EXTENT = 8;
+const MIN_BUILDING_SELECTION_HALF_EXTENT = 8;
 
 function isHoveringFabricator(entity: Entity): boolean {
   return entity.building?.hoveringType === 'fabricator';

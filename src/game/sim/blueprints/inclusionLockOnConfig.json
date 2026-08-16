@@ -620,8 +620,18 @@
     "turretAntiAir": {
       "targets": {
         "enemy": {
-          "buildings": "all",
-          "units": "all",
+          "units": {
+            "only": [
+              "unitBee",
+              "unitConstructionDrone",
+              "unitDragonfly",
+              "unitEagle",
+              "unitDuck",
+              "unitAlbatros",
+              "unitQueenBee",
+              "unitQueenTick"
+            ]
+          },
           "shots": {
             "only": [
               "shotRocketLight",

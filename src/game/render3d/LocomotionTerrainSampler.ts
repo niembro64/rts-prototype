@@ -129,20 +129,6 @@ type LocomotionGroundContactSample = {
   penetration: number;
 };
 
-export function getLocomotionSurfaceNormal(
-  entity: Entity,
-  mapWidth: number,
-  mapHeight: number,
-): LocomotionSurfaceNormal {
-  return entity.unit?.surfaceNormal ?? getSurfaceNormal(
-    entity.transform.x,
-    entity.transform.y,
-    mapWidth,
-    mapHeight,
-    LAND_CELL_SIZE,
-  );
-}
-
 export function getLocomotionSurfaceHeight(
   x: number,
   z: number,

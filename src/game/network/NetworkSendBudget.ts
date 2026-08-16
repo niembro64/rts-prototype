@@ -1,5 +1,6 @@
 import type { DataConnection } from 'peerjs';
 import { isNetworkLockstepMessage, type NetworkMessage } from './NetworkTypes';
+import { monotonicNowMs } from '../time';
 
 const NONCRITICAL_COALESCE_BYTES = 512 * 1024;
 const NONCRITICAL_FLUSH_BYTES = 256 * 1024;
@@ -17,7 +18,7 @@ type NetworkSendMessageClass =
   | 'lockstep'
   | 'control';
 
-export type NetworkSendBudgetClassTelemetry = {
+type NetworkSendBudgetClassTelemetry = {
   messageClass: NetworkSendMessageClass;
   sent: number;
   coalesced: number;
@@ -75,10 +76,6 @@ function createStats(): NetworkSendStats {
     lastBufferedAmount: 0,
     maxBufferedAmount: 0,
   };
-}
-
-function nowMs(): number {
-  return typeof performance !== 'undefined' ? performance.now() : Date.now();
 }
 
 function bufferedAmount(conn: DataConnection): number {
@@ -272,7 +269,7 @@ export class NetworkSendBudget {
   }
 
   private takeCommandRateSlot(conn: DataConnection): boolean {
-    const timestamp = nowMs();
+    const timestamp = monotonicNowMs();
     let window = this.commandWindows.get(conn);
     if (window === undefined || timestamp - window.startedAtMs >= 1000) {
       window = { startedAtMs: timestamp, count: 0 };

@@ -1026,22 +1026,7 @@ function drawLiveryChevron(
  * drawn at course STARTS, so the last course's bottom edge meets the next
  * tile's top seam and there is exactly one seam there rather than two.
  */
-function drawSubstanceGrain(
-  layer: Layer, rect: BandRect, rng: () => number, band: TrimBandId,
-): void {
-  const { columns, courses } = bandFeatureCounts(band);
-  const courseHeight = rect.height / courses;
-  for (let c = 0; c < courses; c++) {
-    const y = rect.y + c * courseHeight;
-    panelCourse(layer, rect, y, courseHeight, columns, rng, { vents: c === 1 });
-    seamRow(layer, rect, y, 4);
-  }
-  // One conduit run, at the same proportion of the tile the hull band puts its
-  // own at. Constant across u, so on a projected surface it reads as pipework
-  // rather than as a stripe pattern.
-  pipeRun(layer, rect, rect.y + courseHeight * (courses - 0.32), 9, columns, 0.10);
-}
-
+const drawSubstanceGrain = drawArmorPlate;
 
 // ── Locomotion ───────────────────────────────────────────────────────────
 //
@@ -1529,12 +1514,6 @@ export function getTrimSheetTexture(): THREE.CanvasTexture {
  *  contract test can inspect pixels without leaving a live texture behind. */
 export function buildTrimSheetCanvasForTest(): HTMLCanvasElement {
   return buildTrimSheetCanvas();
-}
-
-export function disposeTrimSheetTexture(): void {
-  cachedTexture?.dispose();
-  cachedTexture = null;
-  cachedCanvas = null;
 }
 
 installDetailTextureDevDownloadHelper(

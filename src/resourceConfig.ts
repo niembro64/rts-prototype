@@ -169,10 +169,6 @@ export const EXTRACTOR_ROTOR_SPIN_REFLECTS_ACTUAL_PRODUCTION =
 export const EXTRACTOR_ROTOR_POTENTIAL_RAD_PER_SEC =
   RESOURCE_CONFIG.metalExtractor.rotorPotentialRadPerSec;
 
-/** Spray-cone half-angle (radians) for construction emitters — the tight
- *  cone a builder/factory tip aims at its build site. */
-export const PYLON_CONSTRUCTION_CONE_HALF_ANGLE_RAD = RESOURCE_CONFIG.cone.constructionHalfAngleRad;
-
 /** Spray-cone half-angle (radians), keyed by economy building blueprint id. */
 const PYLON_ECONOMY_CONE_HALF_ANGLE_RAD_BY_BUILDING =
   RESOURCE_CONFIG.cone.economyHalfAngleRad;

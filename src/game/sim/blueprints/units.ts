@@ -513,6 +513,9 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   } else if (bp.unitLocomotion.type === 'bot') {
     validateBotLegs(bp.unitBlueprintId, bp.unitLocomotion.config.legs);
     validateBotArms(bp.unitBlueprintId, bp.unitLocomotion.config.arms);
+    if (bp.unitLocomotion.config.upperArms !== undefined) {
+      validateBotArms(bp.unitBlueprintId, bp.unitLocomotion.config.upperArms);
+    }
     const upperBodyActuator = bp.unitLocomotion.config.upperBodyActuator;
     if (
       !Number.isFinite(upperBodyActuator.maxSpeed) || upperBodyActuator.maxSpeed <= 0 ||
@@ -567,6 +570,18 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
       );
     }
     if (turret.hostAttachment?.kind === 'botArm') {
+      const upperArm = turret.hostAttachment.arm === 'leftUpperArm' ||
+        turret.hostAttachment.arm === 'rightUpperArm';
+      if (
+        upperArm &&
+        bp.unitLocomotion.type === 'bot' &&
+        bp.unitLocomotion.config.upperArms === undefined
+      ) {
+        throw new Error(
+          `Invalid bot arm socket for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: ` +
+          `${turret.hostAttachment.arm} requires an authored upperArms pair`,
+        );
+      }
       const offset = turret.hostAttachment.socketOffset;
       if (
         !Number.isFinite(offset.x) ||

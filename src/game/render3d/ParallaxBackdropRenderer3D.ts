@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { assertPositiveFiniteNumber } from '../../configValidation';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { PRESET_BACKDROP_RENDER_CONFIG } from '@/config';
 import {
@@ -20,7 +21,7 @@ type AuthoredLayerConfig = {
   readonly blurRadiusPixels: number;
 };
 
-export type ResolvedBackdropLayerConfig = {
+type ResolvedBackdropLayerConfig = {
   readonly id: PresetBackdropLayerId;
   readonly distanceWorldUnits: number;
   readonly textureWidth: number;
@@ -90,9 +91,7 @@ void main() {
 `;
 
 function assertFinitePositive(value: number, field: string): void {
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new Error(`worldRenderConfig.presetBackdrop.${field} must be finite and positive`);
-  }
+  assertPositiveFiniteNumber(value, `worldRenderConfig.presetBackdrop.${field}`);
 }
 
 /** Resolve and validate the shared generator/renderer layer contract.

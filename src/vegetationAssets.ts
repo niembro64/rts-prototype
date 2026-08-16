@@ -16,13 +16,13 @@
 
 import { VEGETATION_KIND_IDS, type VegetationKindId } from './vegetationConfig';
 
-export type VegetationAssetFormat = 'obj' | 'fbx';
+type VegetationAssetFormat = 'obj' | 'fbx';
 
 /** Material treatment applied to a loaded model. Seaweed intentionally
  *  uses the same `modular` treatment as grass: placement and proportions
  *  distinguish the simulation kinds, while both remain one coherent
  *  blade-vegetation family in the renderer. */
-export type VegetationPalette =
+type VegetationPalette =
   | 'modular'
   | 'lowTree'
   | 'forestTree';
@@ -53,7 +53,7 @@ const FOLIAGE_OBJ_ROOT = ASSET_ROOT + '/low-poly-foliage-pack-001/OBJ Files';
 const MODULAR_MTL = MODULAR_ROOT + '/Materials_Modular_Terrain.mtl';
 
 /** Applied after each asset's own scale. */
-export const VEGETATION_ASSET_GLOBAL_SCALE = 2.2;
+const VEGETATION_ASSET_GLOBAL_SCALE = 2.2;
 /** Seaweed keeps one uniform 70% size multiplier across every frond so
  *  presentation and its simulation selection/reclaim volume stay aligned. */
 export const SEAWEED_ASSET_SCALE = 0.07;
@@ -230,13 +230,6 @@ export function getVegetationAssetOptions(
   kind: VegetationKindId,
 ): readonly VegetationAssetSpec[] {
   return OPTIONS_BY_KIND.get(kind) ?? [];
-}
-
-export function getVegetationAssetSpec(
-  kind: VegetationKindId,
-  assetSlot: number,
-): VegetationAssetSpec | undefined {
-  return getVegetationAssetOptions(kind)[assetSlot];
 }
 
 /** Resolved world-size multiplier for one asset, before per-prop jitter

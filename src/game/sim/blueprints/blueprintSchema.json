@@ -2038,7 +2038,9 @@
         "arm": {
           "enum": [
             "leftArm",
-            "rightArm"
+            "rightArm",
+            "leftUpperArm",
+            "rightUpperArm"
           ]
         },
         "socketOffset": {
@@ -2573,6 +2575,13 @@
           "type": "number",
           "minimum": 5,
           "description": "Constant outward roll of the arm away from the torso, degrees."
+        },
+        "elbowBendDirection": {
+          "enum": [
+            "normal",
+            "downward"
+          ],
+          "description": "Vertical two-link silhouette at the elbow. Downward makes the upper segment rise from the shoulder and the forearm turn back down; omitted pairs retain the ordinary hanging arm."
         }
       },
       "additionalProperties": false
@@ -2658,6 +2667,10 @@
         },
         "arms": {
           "$ref": "#/$defs/BotArms"
+        },
+        "upperArms": {
+          "$ref": "#/$defs/BotArms",
+          "description": "Optional second weapon-arm pair. Turrets attach through leftUpperArm/rightUpperArm sockets and remain ordinary articulated bot-host stations."
         },
         "upperBodyActuator": {
           "$ref": "#/$defs/TurretAngularActuatorAxis"

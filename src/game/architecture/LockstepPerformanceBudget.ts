@@ -15,7 +15,7 @@ export const LOCKSTEP_PERFORMANCE_BUDGET: LockstepPerformanceBudget = {
   fixedSimulationHz: ARCHITECTURE_CONFIG.lockstep.fixedStepHz,
 };
 
-export type LockstepSnapshotPerformanceLaneTelemetry = {
+type LockstepSnapshotPerformanceLaneTelemetry = {
   readonly snapshotMsAvg: number;
   readonly snapshotMsHi: number;
   readonly snapshotsEmitted: number;

@@ -8,6 +8,8 @@ import {
 import type { Command } from '../sim/commands';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { CommanderModeController } from '../input/helpers';
+import { setActiveCommandHotkeyPresetId } from '../input/commandHotkeys';
+import { clearQueueModifierState } from '../input/queueModifiers';
 import { Input3DBuildPlacementState } from './Input3DBuildPlacementState';
 import { Input3DModeClickController } from './Input3DModeClickController';
 
@@ -37,7 +39,7 @@ type BuildCommitHarness = {
   ): void;
   commitAreaDrag(
     drag: {
-      kind: 'repairArea' | 'reclaimArea';
+      kind: 'repairArea' | 'reclaimArea' | 'attackArea';
       button: 0;
       start: { x: number; y: number; z: number };
       current: { x: number; y: number; z: number };
@@ -45,6 +47,8 @@ type BuildCommitHarness = {
       startClientY: number;
       queue: boolean;
       queueFront: boolean;
+      queueInsertIndex?: number;
+      anchorEntityId?: number | null;
     },
     releaseEvent: MouseEvent,
   ): void;
@@ -327,6 +331,84 @@ export function runInput3DModeClickControllerContractTest(): void {
     'BAR Reclaim area must fan out to every selected builder with the active builder first',
   );
 
+  setActiveCommandHotkeyPresetId('bar-grid');
+  clearQueueModifierState();
+  leader.transform.x = 10;
+  helper.transform.x = 30;
+  multiCommands.length = 0;
+  multiController.commitAreaDrag(
+    { ...builderAreaDrag, queue: false, anchorEntityId: leader.id },
+    mouseEvent({ shiftKey: true, metaKey: true }),
+  );
+  const splitLeaderCommand = multiCommands[0];
+  const splitHelperCommand = multiCommands[1];
+  assertContract(
+    splitLeaderCommand?.type === 'repairArea' &&
+      splitHelperCommand?.type === 'repairArea' &&
+      splitLeaderCommand.queue === true && !splitLeaderCommand.queueFront &&
+      splitHelperCommand.queue === true && !splitHelperCommand.queueFront &&
+      splitLeaderCommand.targetOrderOriginX === 20 &&
+      splitHelperCommand.targetOrderOriginX === 20 &&
+      splitLeaderCommand.targetSplitIndex === 0 &&
+      splitHelperCommand.targetSplitIndex === 1 &&
+      splitLeaderCommand.targetSplitCount === 2 &&
+      splitHelperCommand.targetSplitCount === 2,
+    'BAR Meta+Shift area commands must append deterministic per-source target slices around the selection centroid',
+  );
+
+  multiCommands.length = 0;
+  multiController.commitAreaDrag(
+    { ...builderAreaDrag, queue: false, anchorEntityId: leader.id },
+    mouseEvent({ metaKey: true }),
+  );
+  const metaFrontCommand = multiCommands[0];
+  assertContract(
+    metaFrontCommand?.type === 'repairArea' &&
+      metaFrontCommand.queue === true && metaFrontCommand.queueFront === true &&
+      metaFrontCommand.filterCategory === undefined &&
+      metaFrontCommand.filterBlueprintId === undefined &&
+      metaFrontCommand.targetOrderOriginX === 20,
+    'BAR Meta area commands must front-insert centroid-ordered targets without acting as a Ctrl filter alias',
+  );
+
+  multiCommands.length = 0;
+  multiController.commitAreaDrag(
+    { ...builderAreaDrag, queue: false, anchorEntityId: leader.id },
+    mouseEvent({ ctrlKey: true }),
+  );
+  const ctrlFilterCommand = multiCommands[0];
+  assertContract(
+    ctrlFilterCommand?.type === 'repairArea' &&
+      ctrlFilterCommand.filterCategory === 'unit' &&
+      ctrlFilterCommand.filterBlueprintId === undefined,
+    'BAR Ctrl area commands must retain broad-category filtering independently of Meta queue behavior',
+  );
+
+  const attackUnitA = makeUnit(401, 1);
+  const attackUnitB = makeUnit(402, 1);
+  attackUnitA.transform.x = 12;
+  attackUnitB.transform.x = 28;
+  const splitAttackCommands: Command[] = [];
+  const splitAttackController = makeController(
+    new CommanderModeController(),
+    [attackUnitA, attackUnitB],
+    splitAttackCommands,
+    [],
+    { held: false },
+  ) as unknown as BuildCommitHarness;
+  splitAttackController.commitAreaDrag(
+    { ...builderAreaDrag, kind: 'attackArea', queue: false },
+    mouseEvent({ shiftKey: true, metaKey: true }),
+  );
+  const splitAttackCommand = splitAttackCommands[0];
+  assertContract(
+    splitAttackCommand?.type === 'attackArea' &&
+      splitAttackCommand.queue === true && !splitAttackCommand.queueFront &&
+      splitAttackCommand.splitTargets === true &&
+      splitAttackCommand.targetOrderOriginX === 20,
+    'BAR Meta+Shift area attack must carry split distribution plus selection-centroid ordering',
+  );
+
   const mixedMode = new CommanderModeController();
   const commander = makeCommanderBuilder(501, 'unitCommander');
   const drone = makeCommanderBuilder(502, 'unitConstructionDrone');
@@ -383,7 +465,7 @@ export function runInput3DModeClickControllerContractTest(): void {
   };
   placementState.setMapBounds(buildMapWidth, buildMapHeight, 1, []);
   const reverseGrid = placementState.planBuildGridPlacements(
-    'buildingSolar',
+    'buildingResourceConverter',
     240,
     240,
     60,
@@ -397,7 +479,7 @@ export function runInput3DModeClickControllerContractTest(): void {
     'reverse grid build drag must emit the first row from the drag start toward the drag end',
   );
   const reverseBorder = placementState.planBuildBorderPlacements(
-    'buildingSolar',
+    'buildingResourceConverter',
     240,
     240,
     60,

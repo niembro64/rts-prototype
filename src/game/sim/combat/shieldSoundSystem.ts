@@ -2,8 +2,8 @@
 // Mirrors laserSoundSystem.ts pattern: emits shieldStart/shieldStop lifecycle events
 
 import type { Entity } from '../types';
-import { NO_ENTITY_ID, type EntityId } from '../types';
 import type { SimEvent } from './types';
+import { resolveTurretSoundEntityId } from './turretSoundId';
 
 // Reusable arrays for shield sound events (avoids per-frame allocation)
 const _shieldSimEvents: SimEvent[] = [];
@@ -11,13 +11,6 @@ const _shieldStopOwner: SimEvent[] = [];
 const SHIELD_SOUND_REFRESH_TICKS = 60;
 const activeShieldSoundIds = new Set<number>();
 let shieldSoundRefreshTick = 0;
-
-function turretSoundEntityId(entity: Entity, weaponIndex: number): EntityId {
-  const turret = entity.combat?.turrets[weaponIndex];
-  return turret !== undefined && turret.id !== NO_ENTITY_ID
-    ? turret.id
-    : entity.id * 100 + weaponIndex;
-}
 
 // Emit shieldStop events for all shield weapons on a dying entity.
 // Must be called before the entity is removed from the world.
@@ -31,7 +24,7 @@ export function emitShieldStopsForEntity(entity: Entity): SimEvent[] {
     const shot = config.shot;
     if (shot === null || shot.type !== 'shield' || shot.barrier === undefined) continue;
 
-    const soundEntityId = turretSoundEntityId(entity, i);
+    const soundEntityId = resolveTurretSoundEntityId(entity, i);
     if (!activeShieldSoundIds.delete(soundEntityId)) continue;
     _shieldStopOwner.push({
       type: 'shieldStop',
@@ -62,7 +55,7 @@ export function updateShieldSounds(units: Entity[]): SimEvent[] {
       const shot = config.shot;
       if (shot === null || shot.type !== 'shield' || shot.barrier === undefined) continue;
 
-      const soundEntityId = turretSoundEntityId(unit, i);
+      const soundEntityId = resolveTurretSoundEntityId(unit, i);
       const progress = weapon.shield !== null ? weapon.shield.transition : 0;
       const wasActive = activeShieldSoundIds.has(soundEntityId);
 

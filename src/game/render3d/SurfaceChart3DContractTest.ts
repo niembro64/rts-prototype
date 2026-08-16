@@ -14,7 +14,10 @@ import {
   patchInstancedFadeMaterial,
 } from './EntityFade3D';
 import type { EntityId } from '../sim/types';
-import { patchSurfaceChartMaterial } from './SurfaceChartMaterial3D';
+import {
+  applyChartToMesh,
+  patchSurfaceChartMaterial,
+} from './SurfaceChartMaterial3D';
 import {
   BAND_COARSE_TIER,
   BAND_FINE_TIER,
@@ -1096,11 +1099,29 @@ function checkLifecycleFadeContinuity(): void {
   fade.destroyAll();
 }
 
+function checkChartedMaterialLifetime(): void {
+  const geometry = new THREE.BoxGeometry(1, 1, 1);
+  const source = new THREE.MeshLambertMaterial();
+  const mesh = new THREE.Mesh(geometry, source);
+  applyChartToMesh(mesh, 'sensorDome', 'contractLifetime');
+  const charted = mesh.material as THREE.Material;
+  assertContract(charted !== source, 'per-mesh charting must install its cached material clone');
+  let cloneDisposed = false;
+  charted.addEventListener('dispose', () => { cloneDisposed = true; });
+  source.dispose();
+  assertContract(
+    cloneDisposed,
+    'disposing a scene-owned source material must dispose its cached chart clone',
+  );
+  geometry.dispose();
+}
+
 export function runSurfaceChart3DContractTest(): void {
   checkCatalog();
   checkShaderInterfaceContract();
   checkTexturedFadeComposition();
   checkLifecycleFadeContinuity();
+  checkChartedMaterialLifetime();
   checkLiverySeparation();
   checkProgramCacheKeys();
   checkFeatureScale();

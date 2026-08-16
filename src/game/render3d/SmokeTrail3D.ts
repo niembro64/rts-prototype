@@ -50,7 +50,7 @@ import {
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 import { disposeMesh } from './threeUtils';
-import { clamp01 } from './RenderUtils';
+import { clamp01 } from '../math';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import {
   detailLevelForViewPosition,

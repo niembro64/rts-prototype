@@ -98,7 +98,7 @@ type BeamConfigFile = {
 type BeamEmissionLodResolver = (entity: Entity) => boolean;
 type BeamDetailRungResolver = (entity: Entity) => DetailRung;
 
-export type BeamSegmentPoseScratch3D = {
+type BeamSegmentPoseScratch3D = {
   a: THREE.Vector3;
   b: THREE.Vector3;
   mid: THREE.Vector3;

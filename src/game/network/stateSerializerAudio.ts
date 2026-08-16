@@ -40,6 +40,7 @@ import {
   EVENT_HAS_SOURCE_TYPE,
   EVENT_HAS_VICTIM_PLAYER_ID,
   EVENT_HAS_WATER_SPLASH_CONTEXT,
+  internStringSlot,
 } from './audioEventWireFormat';
 import { getDeathContextWireFlags } from './audioEventWireHelpers';
 import { createSimEventDto } from './simEventDto';
@@ -128,15 +129,6 @@ function resetAudioEventWireSource(source: AudioEventWireSource): void {
   source.strings.length = 0;
 }
 
-function getStringSlot(strings: string[], slots: Map<string, number>, value: string): number {
-  const existing = slots.get(value);
-  if (existing !== undefined) return existing;
-  const next = strings.length;
-  strings.push(value);
-  slots.set(value, next);
-  return next;
-}
-
 function getAudioVisibilityDecision(
   source: SimEvent,
   visibility: SnapshotVisibility | undefined,
@@ -194,7 +186,7 @@ function appendDeathContextWireRow(
   values[base + 11] = context.collisionRadius !== undefined ? qPos(context.collisionRadius) : 0;
   values[base + 12] = context.baseZ !== undefined ? qPos(context.baseZ) : 0;
   values[base + 13] = context.unitBlueprintId !== undefined
-    ? getStringSlot(wire.strings, stringSlots, context.unitBlueprintId)
+    ? internStringSlot(wire.strings, stringSlots, context.unitBlueprintId)
     : 0;
   values[base + 14] = context.rotation !== undefined ? qRot(context.rotation) : 0;
   const turretPoses = context.turretPoses;
@@ -283,9 +275,9 @@ function appendAudioEventWireRow(
   values[base + 10] = shieldImpact !== null ? qNormal(shieldImpact.normal.z) : 0;
   values[base + 11] = shieldImpact !== null ? shieldImpact.playerId : 0;
   values[base + 12] = sourceTypeCode ?? 0;
-  values[base + 13] = getStringSlot(wire.strings, stringSlots, source.turretBlueprintId);
+  values[base + 13] = internStringSlot(wire.strings, stringSlots, source.turretBlueprintId);
   values[base + 14] = sourceKey !== null
-    ? getStringSlot(wire.strings, stringSlots, sourceKey)
+    ? internStringSlot(wire.strings, stringSlots, sourceKey)
     : 0;
   values[base + 15] = flags;
   values[base + 16] = waterSplash !== null ? qVel(waterSplash.velocity.x) : 0;

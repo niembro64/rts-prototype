@@ -185,7 +185,7 @@ export const METAL_DEPOSIT_CONFIG = {
   rings: rawConfig.rings as DepositRing[],
 };
 
-export type MetalDepositResourceCell = {
+type MetalDepositResourceCell = {
   gx: number;
   gy: number;
   x: number;

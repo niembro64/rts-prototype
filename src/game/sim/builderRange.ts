@@ -1,4 +1,4 @@
-import { getSimWasm } from '../sim-wasm/init';
+import { requireSimWasm } from '../sim-wasm/init';
 import type { Entity } from './types';
 
 const BUILD_TARGET_KIND_POINT = 0;
@@ -7,14 +7,6 @@ const BUILD_TARGET_KIND_UNIT = 2;
 
 function getBuildRange(entity: Entity): number {
   return entity.builder !== null ? entity.builder.buildRange : 0;
-}
-
-function requireSimWasm(context: string) {
-  const sim = getSimWasm();
-  if (sim === undefined) {
-    throw new Error(`${context}: sim-wasm is not initialized`);
-  }
-  return sim;
 }
 
 function getBuildTargetHorizontalDistance(builder: Entity, target: Entity): number {

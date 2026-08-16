@@ -20,7 +20,7 @@
 
 import type { PlayerId } from './types';
 
-export type AllyTeamId = number;
+type AllyTeamId = number;
 
 /** Who is on which side, resolved once at game start. */
 export type TeamRoster = {

@@ -15,13 +15,14 @@ import {
   codeToUnitBlueprintId,
   unitBlueprintIdToCode,
 } from '../../types/network';
-import { isFiniteNumber } from '../math';
+import { finiteOr, isFiniteNumber } from '../math';
 import { getUnitLocomotion } from '../sim/blueprints';
 import {
   unitBlueprintBarDefaultFireState,
   unitBlueprintBarDefaultMoveState,
 } from '../sim/unitCommandCapabilities';
 import { refreshUnitActionHash } from '../sim/unitActions';
+import { copyBuildStateInto } from './copyBuildState';
 import {
   dequantizeEntityPosition as deqEntityPos,
   dequantizeNormal as deqNormal,
@@ -135,7 +136,7 @@ function decodeNetworkUnitAction(action: NetworkServerSnapshotAction): UnitActio
   };
 }
 
-export type DecodedNetworkUnitActions = {
+type DecodedNetworkUnitActions = {
   /** Durable authored waypoints — a pure mirror of the sim action queue,
    *  with no pathfinder intermediates mixed in (queue indices, order
    *  counts, and insert positions therefore line up with the host). */
@@ -318,10 +319,6 @@ export function applyNetworkUnitCommandState(
   } else if (isFull) {
     unit.cloaked = false;
   }
-}
-
-function finiteOr(value: unknown, fallback: number): number {
-  return isFiniteNumber(value) ? value : fallback;
 }
 
 export function readNetworkUnitRadius(
@@ -581,17 +578,6 @@ function createNetworkUnitBuildState(): NonNullable<NetworkUnitSnapshot['build']
   };
 }
 
-function copyNetworkUnitBuildState(
-  src: NonNullable<NetworkUnitSnapshot['build']>,
-  dst: NonNullable<NetworkUnitSnapshot['build']>,
-): NonNullable<NetworkUnitSnapshot['build']> {
-  dst.complete = src.complete;
-  dst.interrupted = src.interrupted === true;
-  dst.paid.energy = src.paid.energy;
-  dst.paid.metal = src.paid.metal;
-  return dst;
-}
-
 export function copyNetworkUnitSnapshotInto(
   src: NetworkUnitSnapshot,
   dst: NetworkUnitSnapshot,
@@ -666,7 +652,7 @@ export function copyNetworkUnitSnapshotInto(
         targetWorldPitch: src.workStation.targetWorldPitch,
       };
   dst.build = src.build
-    ? copyNetworkUnitBuildState(src.build, dst.build ?? createNetworkUnitBuildState())
+    ? copyBuildStateInto(src.build, dst.build ?? createNetworkUnitBuildState())
     : null;
 
   if (src.actions != null) {

@@ -12,13 +12,6 @@ export function normalizePresentationSnapshotRate(rate: SnapshotRate): number {
   return isPresentationSnapshotRate(rate) ? rate : PRESENTATION_SNAPSHOT_RATE_DEFAULT;
 }
 
-export function presentationSnapshotRateHz(
-  rate: SnapshotRate,
-  uncappedFallback = ARCHITECTURE_CONFIG.lockstep.fixedStepHz,
-): number {
-  return rate === 'none' ? uncappedFallback : normalizePresentationSnapshotRate(rate);
-}
-
 export function presentationSnapshotRateIntervalMs(rate: SnapshotRate): number {
   const normalized = normalizePresentationSnapshotRate(rate);
   return 1000 / normalized;

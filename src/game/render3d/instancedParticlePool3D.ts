@@ -5,6 +5,7 @@
 // stay at each call site; this owns only the invariant wiring.
 
 import * as THREE from 'three';
+import { createInstancedColorAlphaParticleMaterial } from './instancedColorAlphaParticleMaterial';
 import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 
 /** The three geometry-density tiers in fixed order. Hot per-frame loops
@@ -18,6 +19,16 @@ export type InstancedColorAlphaPool = {
   colorArr: Float32Array;
   alphaAttr: THREE.InstancedBufferAttribute;
   colorAttr: THREE.InstancedBufferAttribute;
+};
+
+export type InstancedColorAlphaGeometryPool = InstancedColorAlphaPool & {
+  geom: THREE.BufferGeometry;
+};
+
+export type InstancedColorAlphaPoolSet = {
+  root: THREE.Group;
+  material: THREE.ShaderMaterial;
+  pools: Record<PrimitiveGeometryTier, InstancedColorAlphaGeometryPool>;
 };
 
 /** Build one instanced particle pool: per-instance aAlpha / aColor
@@ -47,4 +58,34 @@ export function createInstancedColorAlphaPool(
   mesh.renderOrder = renderOrder;
   parent.add(mesh);
   return { mesh, alphaArr, colorArr, alphaAttr, colorAttr };
+}
+
+/** Build the invariant root, material, and three geometry-tier pools shared by
+ * particle renderers. The geometry factory keeps each renderer's primitive
+ * choice local while centralizing ownership and pool wiring. */
+export function createInstancedColorAlphaPoolSet(
+  parent: THREE.Object3D,
+  capacity: number,
+  renderOrder: number,
+  createGeometry: (tier: PrimitiveGeometryTier) => THREE.BufferGeometry,
+): InstancedColorAlphaPoolSet {
+  const root = new THREE.Group();
+  parent.add(root);
+  const material = createInstancedColorAlphaParticleMaterial();
+  const createPool = (tier: PrimitiveGeometryTier): InstancedColorAlphaGeometryPool => {
+    const geom = createGeometry(tier);
+    return {
+      geom,
+      ...createInstancedColorAlphaPool(root, geom, capacity, material, renderOrder),
+    };
+  };
+  return {
+    root,
+    material,
+    pools: {
+      close: createPool('close'),
+      mid: createPool('mid'),
+      far: createPool('far'),
+    },
+  };
 }

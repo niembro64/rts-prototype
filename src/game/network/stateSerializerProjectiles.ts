@@ -875,7 +875,7 @@ export function forEachProjectileWireSourceSpawn(
   return forEachProjectileWireSourceSpawnFromSource(source, scratch, visitor);
 }
 
-export function forEachProjectileWireSourceSpawnFromSource(
+function forEachProjectileWireSourceSpawnFromSource(
   source: ProjectileSnapshotWireSource | undefined,
   scratch: NetworkServerSnapshotProjectileSpawn,
   visitor: (spawn: NetworkServerSnapshotProjectileSpawn) => void,
@@ -897,7 +897,7 @@ export function forEachProjectileWireSourceDespawn(
   return forEachProjectileWireSourceDespawnFromSource(source, visitor);
 }
 
-export function forEachProjectileWireSourceDespawnFromSource(
+function forEachProjectileWireSourceDespawnFromSource(
   source: ProjectileSnapshotWireSource | undefined,
   visitor: (id: number) => void,
 ): boolean {
@@ -910,7 +910,7 @@ export function forEachProjectileWireSourceDespawnFromSource(
   return true;
 }
 
-export type ProjectileWireSourceMotionUpdateVisitor = (
+type ProjectileWireSourceMotionUpdateVisitor = (
   id: number,
   qposX: number,
   qposY: number,
@@ -930,7 +930,7 @@ export function forEachProjectileWireSourceMotionUpdate(
   return forEachProjectileWireSourceMotionUpdateFromSource(source, visitor);
 }
 
-export function forEachProjectileWireSourceMotionUpdateFromSource(
+function forEachProjectileWireSourceMotionUpdateFromSource(
   source: ProjectileSnapshotWireSource | undefined,
   visitor: ProjectileWireSourceMotionUpdateVisitor,
 ): boolean {
@@ -1038,7 +1038,7 @@ export function forEachProjectileWireSourceBeamUpdate(
   return true;
 }
 
-export type ProjectileWireSourceBeamUpdateFieldsVisitor = (
+type ProjectileWireSourceBeamUpdateFieldsVisitor = (
   id: number,
   obstructionT: number | null,
   endpointDamageable: boolean | null,

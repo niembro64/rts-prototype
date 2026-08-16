@@ -17,7 +17,10 @@ import {
   resetControlGroupRecallTap,
   type ControlGroupRecallTapState,
 } from './Input3DKeyboardController';
-import { setActiveCommandHotkeyPresetId } from '../input/commandHotkeys';
+import {
+  BAR_KEY_CHAIN_TIMEOUT_MS,
+  setActiveCommandHotkeyPresetId,
+} from '../input/commandHotkeys';
 import {
   barLegacyBuildKeyForStructureBlueprintId,
   getBarLegacyBuildMenuStructureBlueprintIdsForKey,
@@ -1052,6 +1055,58 @@ function runBarNumpadCameraDispatcherContract(): void {
   );
 }
 
+function runPendingStateTapCancellationContract(): void {
+  setActiveCommandHotkeyPresetId('bar-grid');
+  let repeatDispatchCount = 0;
+  const pending = { callback: null as (() => void) | null };
+  let pendingTimerCleared = false;
+  const timerId = 73;
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
+  globalThis.setTimeout = ((handler: TimerHandler) => {
+    if (typeof handler === 'function') pending.callback = () => handler();
+    return timerId;
+  }) as typeof globalThis.setTimeout;
+  globalThis.clearTimeout = ((id: number | undefined) => {
+    if (id === timerId) pendingTimerCleared = true;
+  }) as typeof globalThis.clearTimeout;
+
+  try {
+    const controller = new Input3DKeyboardController(new Proxy({
+      moveCameraByKeyboard: () => {},
+      hasSelectedUnits: () => true,
+      hasSelectedFactory: () => false,
+      hasSelectedMoveStateControl: () => false,
+      hasSelectedTrajectoryControl: () => false,
+      hasSelectedBuildingActiveControl: () => false,
+      setRepeatQueueEnabled: () => {
+        repeatDispatchCount++;
+      },
+    }, {
+      get(target, prop: string | symbol) {
+        if (prop in target) return target[prop as keyof typeof target];
+        return () => false;
+      },
+    }) as never);
+
+    controller.handleKeyDown(makeKeyboardEvent({ code: 'KeyT', key: 't' }));
+    assertContract(
+      pending.callback !== null && repeatDispatchCount === 0,
+      'a single BAR state tap must remain pending during the key-chain window',
+    );
+    controller.cancelPendingInput();
+    const callbackAfterCancel = pending.callback;
+    if (callbackAfterCancel !== null) callbackAfterCancel();
+    assertContract(
+      pendingTimerCleared && repeatDispatchCount === 0,
+      'cancelPendingInput must clear the retained timer and make a stale callback inert',
+    );
+  } finally {
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+  }
+}
+
 export function runInput3DKeyboardControllerContractTest(): void {
   const restoreSsrCommandHotkeyStorage = installSsrCommandHotkeyStorage();
   runBarFactoryPresetDispatcherContract();
@@ -1066,8 +1121,14 @@ export function runInput3DKeyboardControllerContractTest(): void {
   runBarSelfDestructDispatcherContract();
   runCloakDispatcherContract();
   runBarNumpadCameraDispatcherContract();
+  runPendingStateTapCancellationContract();
 
   const state = makeState();
+
+  assertContract(
+    BAR_KEY_CHAIN_TIMEOUT_MS === 333 && CONTROL_GROUP_FOCUS_DOUBLE_TAP_MS === 333,
+    'BAR key chains and control-group focus taps must use Recoil KeyChainTimeout=333',
+  );
 
   assertContract(
     !recordControlGroupRecallTap(state, 1, 1000),

@@ -28,7 +28,7 @@ import { getEmissionBlueprintId, isProjectileShot, isRayConfig, isShieldConfig }
 import type { StructureBlueprintId, UnitBlueprintId } from '@/types/blueprintIds';
 import type { LoadingEntityBlueprintId, LoadingPreviewKind } from './loadingUnitPreviewScene';
 
-export type LoadingUnitInfoNode = {
+type LoadingUnitInfoNode = {
   label: string;
   value?: string;
   detail?: string;
@@ -52,6 +52,32 @@ type Firepower = {
   sustainedDps: number;
 };
 
+type LoadingCombatStats = {
+  damagingTurretCount: number;
+  firepower: Firepower;
+  longestRange: number;
+};
+
+function summarizeLoadingCombat(turrets: readonly Turret[]): LoadingCombatStats {
+  let damagingTurretCount = 0;
+  let alphaDamage = 0;
+  let sustainedDps = 0;
+  let longestRange = 0;
+  for (let i = 0; i < turrets.length; i++) {
+    const turret = turrets[i];
+    if (turret.config.shot && isAttackEmitter(turret)) damagingTurretCount += 1;
+    const next = computeTurretFirepower(turret.config);
+    alphaDamage += next.alphaDamage;
+    sustainedDps += next.sustainedDps;
+    longestRange = Math.max(longestRange, turret.ranges.fire.max.acquire);
+  }
+  return {
+    damagingTurretCount,
+    firepower: { alphaDamage, sustainedDps },
+    longestRange,
+  };
+}
+
 export function buildLoadingEntityInfo(
   kind: LoadingPreviewKind,
   blueprintId: LoadingEntityBlueprintId,
@@ -65,20 +91,7 @@ function buildUnitInfo(unitBlueprintId: UnitBlueprintId): LoadingUnitInfo {
   const blueprint = getUnitBlueprint(unitBlueprintId);
   const locomotion = getUnitLocomotion(unitBlueprintId);
   const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.other);
-  const damagingTurrets = turrets.filter((turret) => turret.config.shot && isAttackEmitter(turret));
-  const firepower = turrets.reduce<Firepower>(
-    (acc, turret) => {
-      const next = computeTurretFirepower(turret.config);
-      acc.alphaDamage += next.alphaDamage;
-      acc.sustainedDps += next.sustainedDps;
-      return acc;
-    },
-    { alphaDamage: 0, sustainedDps: 0 },
-  );
-  const longestRange = turrets.reduce(
-    (best, turret) => Math.max(best, turret.ranges.fire.max.acquire),
-    0,
-  );
+  const { damagingTurretCount, firepower, longestRange } = summarizeLoadingCombat(turrets);
   const buildCost = {
     energy: blueprint.cost.energy * COST_MULTIPLIER,
     metal: blueprint.cost.metal * COST_MULTIPLIER,
@@ -86,7 +99,7 @@ function buildUnitInfo(unitBlueprintId: UnitBlueprintId): LoadingUnitInfo {
 
   return {
     summary: [
-      stat('Role', summarizeUnitRole(blueprint, damagingTurrets.length)),
+      stat('Role', summarizeUnitRole(blueprint, damagingTurretCount)),
       stat('Cost', `${fmt(buildCost.energy)}E / ${fmt(buildCost.metal)}M`),
       stat('HP', fmt(blueprint.hp)),
       stat('Firepower', firepower.sustainedDps > 0 ? `${fmt(firepower.sustainedDps, 1)} DPS` : 'non-damaging'),
@@ -98,7 +111,7 @@ function buildUnitInfo(unitBlueprintId: UnitBlueprintId): LoadingUnitInfo {
       buildMovementSection(blueprint),
     ],
     rightSections: [
-      buildCombatSummarySection(turrets, firepower, longestRange),
+      buildCombatSummarySection(turrets, damagingTurretCount, firepower, longestRange),
       buildTurretsSection(turrets),
       buildSystemsSection(blueprint),
     ],
@@ -108,20 +121,7 @@ function buildUnitInfo(unitBlueprintId: UnitBlueprintId): LoadingUnitInfo {
 function buildBuildingInfo(buildingBlueprintId: StructureBlueprintId): LoadingUnitInfo {
   const blueprint = getBuildingBlueprint(buildingBlueprintId);
   const turrets = createBuildingRuntimeTurrets(buildingBlueprintId);
-  const damagingTurrets = turrets.filter((turret) => turret.config.shot && isAttackEmitter(turret));
-  const firepower = turrets.reduce<Firepower>(
-    (acc, turret) => {
-      const next = computeTurretFirepower(turret.config);
-      acc.alphaDamage += next.alphaDamage;
-      acc.sustainedDps += next.sustainedDps;
-      return acc;
-    },
-    { alphaDamage: 0, sustainedDps: 0 },
-  );
-  const longestRange = turrets.reduce(
-    (best, turret) => Math.max(best, turret.ranges.fire.max.acquire),
-    0,
-  );
+  const { damagingTurretCount, firepower, longestRange } = summarizeLoadingCombat(turrets);
   const buildCost = {
     energy: blueprint.cost.energy * COST_MULTIPLIER,
     metal: blueprint.cost.metal * COST_MULTIPLIER,
@@ -150,7 +150,7 @@ function buildBuildingInfo(buildingBlueprintId: StructureBlueprintId): LoadingUn
   };
 
   const summary: LoadingUnitInfoNode[] = [
-    stat('Role', summarizeBuildingRole(blueprint, damagingTurrets.length)),
+    stat('Role', summarizeBuildingRole(blueprint, damagingTurretCount)),
     stat('Cost', `${fmt(buildCost.energy)}E / ${fmt(buildCost.metal)}M`),
     stat('HP', fmt(blueprint.hp)),
     stat('Output', describeBuildingOutput(blueprint, firepower)),
@@ -162,7 +162,7 @@ function buildBuildingInfo(buildingBlueprintId: StructureBlueprintId): LoadingUn
     summary,
     leftSections: functionItems.length > 0 ? [identitySection, functionSection] : [identitySection],
     rightSections: [
-      buildCombatSummarySection(turrets, firepower, longestRange),
+      buildCombatSummarySection(turrets, damagingTurretCount, firepower, longestRange),
       buildTurretsSection(turrets),
     ],
   };
@@ -271,16 +271,16 @@ function describeRouteMedia(blueprint: UnitBlueprint): string {
 
 function buildCombatSummarySection(
   turrets: readonly Turret[],
+  damagingTurretCount: number,
   firepower: Firepower,
   longestRange: number,
 ): LoadingUnitInfoSection {
-  const damagingTurrets = turrets.filter((turret) => turret.config.shot && isAttackEmitter(turret));
-  const utilityEmitters = turrets.length - damagingTurrets.length;
+  const utilityEmitters = turrets.length - damagingTurretCount;
   return {
     id: 'combat-summary',
     title: 'Combat',
     items: [
-      stat('Turrets', `${turrets.length} total / ${damagingTurrets.length} weapon${plural(damagingTurrets.length)}`),
+      stat('Turrets', `${turrets.length} total / ${damagingTurretCount} weapon${plural(damagingTurretCount)}`),
       stat('Utility emitters', utilityEmitters > 0 ? fmt(utilityEmitters) : 'none'),
       stat('Alpha strike', firepower.alphaDamage > 0 ? fmt(firepower.alphaDamage, 1) : 'none'),
       stat('Sustained damage', firepower.sustainedDps > 0 ? `${fmt(firepower.sustainedDps, 1)} DPS` : 'none'),

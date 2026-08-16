@@ -206,6 +206,10 @@ export class RtsScene3DFrameTelemetry {
     };
   }
 
+  resetLongtaskWindow(): void {
+    this.longtaskTracker.reset();
+  }
+
   destroy(): void {
     this.longtaskTracker.destroy();
   }

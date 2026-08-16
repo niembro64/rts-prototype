@@ -32,7 +32,7 @@ import type {
 import type { RenderMode } from '../types/graphics';
 import type { CommandHotkeyPresetId } from '../game/input/commandHotkeys';
 
-export type ControlBarStyle = Record<string, string>;
+type ControlBarStyle = Record<string, string>;
 
 export type GameCanvasBattleControlBarModel = {
   readonly isReadonly: boolean;

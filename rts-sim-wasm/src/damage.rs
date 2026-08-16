@@ -259,6 +259,26 @@ pub fn damage_segment_hits_batch(
     processed
 }
 
+#[inline]
+fn damage_turret_mount(
+    pool: &CombatTargetingPool,
+    slot: usize,
+    turret_idx: usize,
+    current_tick: i32,
+) -> (f64, f64, f64) {
+    let idx = combat_targeting_turret_global_idx(slot as u32, turret_idx as u32);
+    if idx < pool.turret_world_pos_tick.len()
+        && pool.turret_world_pos_tick[idx] == current_tick
+    {
+        return (
+            pool.turret_mount_x[idx],
+            pool.turret_mount_y[idx],
+            pool.turret_mount_z[idx],
+        );
+    }
+    combat_targeting_resolve_turret_mount_from_slab(pool, slot, turret_idx)
+}
+
 /// C1 damage migration - slab-driven line/swept candidate classifier.
 ///
 /// Drop-in companion to `damage_segment_hits_batch` that reads each candidate's
@@ -279,6 +299,7 @@ pub fn damage_segment_candidates_batch(
     count: u32,
     candidate_slots: &[u32],
     turret_idx: &[i32],
+    current_tick: i32,
     start_x: f64,
     start_y: f64,
     start_z: f64,
@@ -335,8 +356,12 @@ pub fn damage_segment_candidates_batch(
                 if gidx >= pool.turret_mount_x.len() {
                     None
                 } else {
-                    let (tx, ty, tz) =
-                        combat_targeting_resolve_turret_mount_from_slab(pool, slot, ti as usize);
+                    let (tx, ty, tz) = damage_turret_mount(
+                        pool,
+                        slot,
+                        ti as usize,
+                        current_tick,
+                    );
                     let radius = (pool.turret_radius_hitbox[gidx] + sphere_inflation).max(0.0);
                     if !(tx.is_finite() && ty.is_finite() && tz.is_finite() && radius.is_finite()) {
                         None
@@ -1023,6 +1048,7 @@ pub fn damage_area_turret_candidates_batch(
     count: u32,
     candidate_slots: &[u32],
     turret_idx: &[i32],
+    current_tick: i32,
     center_x: f64,
     center_y: f64,
     center_z: f64,
@@ -1064,7 +1090,7 @@ pub fn damage_area_turret_candidates_batch(
         if gidx >= pool.turret_mount_x.len() {
             continue;
         }
-        let (tx, ty, tz) = combat_targeting_resolve_turret_mount_from_slab(pool, slot, ti as usize);
+        let (tx, ty, tz) = damage_turret_mount(pool, slot, ti as usize, current_tick);
         let tr = pool.turret_radius_hitbox[gidx].max(0.0);
         if !(tx.is_finite() && ty.is_finite() && tz.is_finite() && tr.is_finite()) {
             processed += 1;
@@ -1183,6 +1209,7 @@ pub(crate) fn damage_death_explosion_turret_overlaps(
     pool: &CombatTargetingPool,
     slot: usize,
     turret_idx: usize,
+    current_tick: i32,
     center_x: f64,
     center_y: f64,
     center_z: f64,
@@ -1204,7 +1231,7 @@ pub(crate) fn damage_death_explosion_turret_overlaps(
         return false;
     }
 
-    let (tx, ty, tz) = combat_targeting_resolve_turret_mount_from_slab(pool, slot, turret_idx);
+    let (tx, ty, tz) = damage_turret_mount(pool, slot, turret_idx, current_tick);
     let tr = pool.turret_radius_hitbox[gidx].max(0.0);
     if !(tx.is_finite() && ty.is_finite() && tz.is_finite() && tr.is_finite()) {
         return false;
@@ -1221,6 +1248,7 @@ pub(crate) fn damage_death_explosion_turret_overlaps(
 pub(crate) fn damage_death_explosion_count_slot_rows(
     pool: &CombatTargetingPool,
     slot: usize,
+    current_tick: i32,
     center_x: f64,
     center_y: f64,
     center_z: f64,
@@ -1257,7 +1285,7 @@ pub(crate) fn damage_death_explosion_count_slot_rows(
     let mut rows = 0_usize;
     for turret_idx in 0..turret_count {
         if damage_death_explosion_turret_overlaps(
-            pool, slot, turret_idx, center_x, center_y, center_z, radius,
+            pool, slot, turret_idx, current_tick, center_x, center_y, center_z, radius,
         ) {
             rows += 1;
         }
@@ -1269,6 +1297,7 @@ pub(crate) fn damage_death_explosion_count_slot_rows(
 pub(crate) fn damage_death_explosion_write_slot_rows(
     pool: &CombatTargetingPool,
     slot_u32: u32,
+    current_tick: i32,
     center_x: f64,
     center_y: f64,
     center_z: f64,
@@ -1332,7 +1361,7 @@ pub(crate) fn damage_death_explosion_write_slot_rows(
     .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
     for turret_idx in 0..turret_count {
         if !damage_death_explosion_turret_overlaps(
-            pool, slot, turret_idx, center_x, center_y, center_z, radius,
+            pool, slot, turret_idx, current_tick, center_x, center_y, center_z, radius,
         ) {
             continue;
         }
@@ -1365,6 +1394,7 @@ pub fn damage_death_explosion_candidates_batch(
     center_z: f64,
     radius: f64,
     query_radius: f64,
+    current_tick: i32,
     max_rows: u32,
     out_slots: &mut [u32],
     out_target_kind: &mut [u8],
@@ -1455,6 +1485,7 @@ pub fn damage_death_explosion_candidates_batch(
         needed += damage_death_explosion_count_slot_rows(
             pool,
             slot as usize,
+            current_tick,
             center_x,
             center_y,
             center_z,
@@ -1471,6 +1502,7 @@ pub fn damage_death_explosion_candidates_batch(
         damage_death_explosion_write_slot_rows(
             pool,
             slot,
+            current_tick,
             center_x,
             center_y,
             center_z,

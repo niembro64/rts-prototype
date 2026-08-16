@@ -2,10 +2,17 @@
   "buildingSolar": {
     "buildingBlueprintId": "buildingSolar",
     "name": "Solar",
-    "gridWidth": 3,
-    "gridHeight": 3,
-    "placementGridWidth": null,
-    "placementGridHeight": null,
+    "gridWidth": 5,
+    "gridHeight": 5,
+    "footprintMask": [
+      "...+...",
+      "..###..",
+      ".#####.",
+      "+#####+",
+      ".#####.",
+      "..###..",
+      "...+..."
+    ],
     "gridDepth": 1,
     "hp": 220,
     "cost": {
@@ -23,8 +30,8 @@
     "supportSurface": {
       "kind": "boxTop",
       "topZ": 20,
-      "width": 60,
-      "height": 60
+      "width": 100,
+      "height": 100
     },
     "placementType": "ground",
     "hoveringType": null,
@@ -68,9 +75,9 @@
         "damage": 150
       },
       "radius": {
-        "other": 42.426,
-        "hitbox": 42.426,
-        "collision": 42.426
+        "other": 70.711,
+        "hitbox": 70.711,
+        "collision": 70.711
       },
       "signature": {
         "radarStealth": false,
@@ -83,8 +90,14 @@
     "name": "Wind",
     "gridWidth": 2,
     "gridHeight": 2,
-    "placementGridWidth": 6,
-    "placementGridHeight": 6,
+    "footprintMask": [
+      ".++++.",
+      "++++++",
+      "++##++",
+      "++##++",
+      "++++++",
+      ".++++."
+    ],
     "gridDepth": 5,
     "hp": 120,
     "cost": {
@@ -162,8 +175,13 @@
     "name": "Extractor",
     "gridWidth": 5,
     "gridHeight": 5,
-    "placementGridWidth": null,
-    "placementGridHeight": null,
+    "footprintMask": [
+      ".###.",
+      "#####",
+      "#####",
+      "#####",
+      ".###."
+    ],
     "gridDepth": 2,
     "hp": 320,
     "cost": {
@@ -241,8 +259,13 @@
     "name": "Advanced Extractor",
     "gridWidth": 5,
     "gridHeight": 5,
-    "placementGridWidth": null,
-    "placementGridHeight": null,
+    "footprintMask": [
+      ".###.",
+      "#####",
+      "#####",
+      "#####",
+      ".###."
+    ],
     "gridDepth": 2,
     "hp": 900,
     "cost": {
@@ -318,10 +341,13 @@
   "buildingRadar": {
     "buildingBlueprintId": "buildingRadar",
     "name": "Radar",
-    "gridWidth": 2,
-    "gridHeight": 2,
-    "placementGridWidth": null,
-    "placementGridHeight": null,
+    "gridWidth": 3,
+    "gridHeight": 3,
+    "footprintMask": [
+      ".#.",
+      "###",
+      ".#."
+    ],
     "gridDepth": 7,
     "hp": 450,
     "cost": {
@@ -339,8 +365,8 @@
     "supportSurface": {
       "kind": "boxTop",
       "topZ": 140,
-      "width": 40,
-      "height": 40
+      "width": 60,
+      "height": 60
     },
     "placementType": "ground",
     "hoveringType": null,
@@ -373,9 +399,9 @@
         "damage": 180
       },
       "radius": {
-        "other": 28.284,
-        "hitbox": 28.284,
-        "collision": 28.284
+        "other": 42.426,
+        "hitbox": 42.426,
+        "collision": 42.426
       },
       "signature": {
         "radarStealth": false,
@@ -388,8 +414,11 @@
     "name": "Converter",
     "gridWidth": 3,
     "gridHeight": 3,
-    "placementGridWidth": null,
-    "placementGridHeight": null,
+    "footprintMask": [
+      "##.",
+      "###",
+      ".##"
+    ],
     "gridDepth": 3,
     "hp": 300,
     "cost": {
@@ -454,10 +483,13 @@
   "buildingSonar": {
     "buildingBlueprintId": "buildingSonar",
     "name": "Sonar",
-    "gridWidth": 2,
-    "gridHeight": 2,
-    "placementGridWidth": null,
-    "placementGridHeight": null,
+    "gridWidth": 3,
+    "gridHeight": 3,
+    "footprintMask": [
+      ".#.",
+      "###",
+      ".#."
+    ],
     "gridDepth": 7,
     "hp": 450,
     "cost": {
@@ -506,9 +538,9 @@
         "damage": 180
       },
       "radius": {
-        "other": 28.284,
-        "hitbox": 28.284,
-        "collision": 28.284
+        "other": 42.426,
+        "hitbox": 42.426,
+        "collision": 42.426
       },
       "signature": {
         "radarStealth": false,
@@ -521,8 +553,22 @@
     "name": "Fabricator",
     "gridWidth": 12,
     "gridHeight": 12,
-    "placementGridWidth": 14,
-    "placementGridHeight": 14,
+    "footprintMask": [
+      "....++++++....",
+      "...########...",
+      "..##########..",
+      ".############.",
+      "+############+",
+      "+############+",
+      "+############+",
+      "+############+",
+      "+############+",
+      "+############+",
+      ".############.",
+      "..##########..",
+      "...########...",
+      "....++++++...."
+    ],
     "gridDepth": 3,
     "hp": 1200,
     "cost": {
@@ -631,8 +677,11 @@
     "name": "Beam Tower",
     "gridWidth": 3,
     "gridHeight": 3,
-    "placementGridWidth": null,
-    "placementGridHeight": null,
+    "footprintMask": [
+      ".#.",
+      "###",
+      ".#."
+    ],
     "gridDepth": 5,
     "hp": 4200,
     "cost": {
@@ -707,8 +756,12 @@
     "name": "Cannon Tower",
     "gridWidth": 4,
     "gridHeight": 4,
-    "placementGridWidth": null,
-    "placementGridHeight": null,
+    "footprintMask": [
+      ".##.",
+      "####",
+      "####",
+      ".##."
+    ],
     "gridDepth": 3,
     "hp": 3600,
     "cost": {
@@ -781,10 +834,13 @@
   "towerAntiAir": {
     "buildingBlueprintId": "towerAntiAir",
     "name": "Anti-Air Tower",
-    "gridWidth": 2,
-    "gridHeight": 2,
-    "placementGridWidth": null,
-    "placementGridHeight": null,
+    "gridWidth": 3,
+    "gridHeight": 3,
+    "footprintMask": [
+      ".#.",
+      "###",
+      ".#."
+    ],
     "gridDepth": 4,
     "hp": 2800,
     "cost": {
@@ -802,8 +858,8 @@
     "supportSurface": {
       "kind": "boxTop",
       "topZ": 80,
-      "width": 40,
-      "height": 40
+      "width": 60,
+      "height": 60
     },
     "placementType": "ground",
     "hoveringType": null,
@@ -852,9 +908,9 @@
         "damage": 1200
       },
       "radius": {
-        "other": 28.284,
-        "hitbox": 28.284,
-        "collision": 28.284
+        "other": 42.426,
+        "hitbox": 42.426,
+        "collision": 42.426
       },
       "signature": {
         "radarStealth": false,
@@ -865,10 +921,13 @@
   "towerTorpedo": {
     "buildingBlueprintId": "towerTorpedo",
     "name": "Torpedo Tower",
-    "gridWidth": 2,
-    "gridHeight": 2,
-    "placementGridWidth": null,
-    "placementGridHeight": null,
+    "gridWidth": 3,
+    "gridHeight": 3,
+    "footprintMask": [
+      ".#.",
+      "###",
+      ".#."
+    ],
     "gridDepth": 3,
     "hp": 1800,
     "cost": {
@@ -928,9 +987,9 @@
         "damage": 850
       },
       "radius": {
-        "other": 28.284,
-        "hitbox": 28.284,
-        "collision": 28.284
+        "other": 42.426,
+        "hitbox": 42.426,
+        "collision": 42.426
       },
       "signature": {
         "radarStealth": false,
@@ -940,11 +999,23 @@
   },
   "buildingShieldTargetingTech": {
     "buildingBlueprintId": "buildingShieldTargetingTech",
-    "name": "Shield-Aware Targeting Tech",
-    "gridWidth": 3,
-    "gridHeight": 3,
-    "placementGridWidth": null,
-    "placementGridHeight": null,
+    "name": "Shield Targeting Research Lab",
+    "gridWidth": 12,
+    "gridHeight": 12,
+    "footprintMask": [
+      "...######...",
+      "..########..",
+      ".##########.",
+      "############",
+      "############",
+      "#####..#####",
+      "#####..#####",
+      "############",
+      "############",
+      ".##########.",
+      "..########..",
+      "...######..."
+    ],
     "gridDepth": 6,
     "hp": 700,
     "cost": {
@@ -960,10 +1031,7 @@
     "visualHeight": 150,
     "anchorProfile": "constantVisualTop",
     "supportSurface": {
-      "kind": "boxTop",
-      "topZ": 40,
-      "width": 40,
-      "height": 40
+      "kind": "none"
     },
     "placementType": "ground",
     "hoveringType": null,
@@ -996,9 +1064,9 @@
         "damage": 250
       },
       "radius": {
-        "other": 42.426,
-        "hitbox": 42.426,
-        "collision": 42.426
+        "other": 152.735,
+        "hitbox": 152.735,
+        "collision": 152.735
       },
       "signature": {
         "radarStealth": false,
@@ -1008,11 +1076,23 @@
   },
   "buildingShieldTech": {
     "buildingBlueprintId": "buildingShieldTech",
-    "name": "Shield Tech",
-    "gridWidth": 3,
-    "gridHeight": 3,
-    "placementGridWidth": null,
-    "placementGridHeight": null,
+    "name": "Shield Research Lab",
+    "gridWidth": 12,
+    "gridHeight": 12,
+    "footprintMask": [
+      "..########..",
+      ".##########.",
+      "############",
+      "############",
+      "############",
+      "############",
+      ".##########.",
+      ".##########.",
+      "..########..",
+      "...######...",
+      "....####....",
+      ".....##....."
+    ],
     "gridDepth": 5,
     "hp": 800,
     "cost": {
@@ -1028,10 +1108,7 @@
     "visualHeight": 120,
     "anchorProfile": "constantVisualTop",
     "supportSurface": {
-      "kind": "boxTop",
-      "topZ": 36,
-      "width": 44,
-      "height": 44
+      "kind": "none"
     },
     "placementType": "ground",
     "hoveringType": null,
@@ -1064,9 +1141,9 @@
         "damage": 250
       },
       "radius": {
-        "other": 42.426,
-        "hitbox": 42.426,
-        "collision": 42.426
+        "other": 152.735,
+        "hitbox": 152.735,
+        "collision": 152.735
       },
       "signature": {
         "radarStealth": false,

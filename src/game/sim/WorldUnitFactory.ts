@@ -31,6 +31,7 @@ import {
   unitBlueprintBarDefaultMoveState,
 } from './unitCommandCapabilities';
 import { createRuntimeBuilder } from './runtimeWorkStations';
+import { createFactoryComponent } from './factoryComponent';
 
 export type CreateUnitFromBlueprintOptions = {
   allocateSubEntityIds?: boolean;
@@ -184,32 +185,17 @@ export function createUnitFromBlueprintEntity(
   // build their bees/ticks this way; no spawn turret participates.
   const producedUnitBlueprintId = bp.factoryProducedUnitBlueprintId ?? null;
   if (producedUnitBlueprintId !== null) {
-    entity.factory = {
+    entity.factory = createFactoryComponent({
       selectedUnitBlueprintId: producedUnitBlueprintId,
-      lowPriority: false,
-      carrierSpawnEnabled: true,
-      moveState: 'maneuver',
-      airIdleState: 'fly',
       repeatProduction: true,
-      paused: false,
-      productionQueue: [],
-      productionQuotas: {},
-      productionQuotaCounts: {},
-      resumeRepeatUnitBlueprintId: null,
-      currentShellId: null,
-      currentBuildProgress: 0,
-      defaultWaypoints: null,
       rallyX: x,
       rallyY: y,
       rallyZ: null,
       rallyType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
-      guardTargetId: null,
       // Queens continuously build their one authored child by default. The
       // normal factory controls can still disable Repeat or stop production.
       isProducing: true,
-      energyRateFraction: 0,
-      metalRateFraction: 0,
-    };
+    });
   }
 
   if (bp.dgun) {

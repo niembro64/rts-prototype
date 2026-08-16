@@ -1,18 +1,16 @@
 import type { EntityBaseLedger, EntityRadiusConfig } from './types';
 import type { ResourceCost } from '../../../types/economyTypes';
-
-
+import {
+  assertNonNegativeFiniteNumber,
+  assertPositiveFiniteNumber,
+} from '../../../configValidation';
 
 function assertFiniteNonNegative(label: string, field: string, value: number): void {
-  if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`Invalid ${label}: ${field} must be finite and non-negative`);
-  }
+  assertNonNegativeFiniteNumber(value, `Invalid ${label}: ${field}`);
 }
 
 function assertFinitePositive(label: string, field: string, value: number): void {
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new Error(`Invalid ${label}: ${field} must be finite and positive`);
-  }
+  assertPositiveFiniteNumber(value, `Invalid ${label}: ${field}`);
 }
 
 function assertValidResourceCost(label: string, cost: ResourceCost): void {
@@ -94,4 +92,3 @@ export function normalizeEntityBaseLedgerFromAliases(
   }
   return normalized;
 }
-

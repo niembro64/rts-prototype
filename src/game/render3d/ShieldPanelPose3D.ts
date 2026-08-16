@@ -20,11 +20,14 @@ import {
   writePositionQuaternion,
 } from './typedArrayRenderUtils';
 import { writeTurretAimInput } from './turretAimInput';
+import {
+  createTurretAimBuffers,
+  ensureTurretAimBufferCapacity,
+} from './turretAimCapacity';
 
 export class ShieldPanelPose3D {
   private readonly aimBatch = new UnitTurretAimBatch3D();
-  private aimInput = new Float32Array(TURRET_AIM_INPUT_STRIDE * 256);
-  private aimParentPose = new Float32Array(7 * 256);
+  private readonly aimBuffers = createTurretAimBuffers(256);
   private aimCount = 0;
   private readonly aimEntities: Entity[] = [];
   private readonly aimMirrors: ShieldPanelMesh[] = [];
@@ -109,7 +112,7 @@ export class ShieldPanelPose3D {
     if (count <= 0) return;
 
     const input = this.aimBatch.begin(count);
-    input.set(this.aimInput.subarray(0, count * TURRET_AIM_INPUT_STRIDE));
+    input.set(this.aimBuffers.aimInput.subarray(0, count * TURRET_AIM_INPUT_STRIDE));
     const output = this.aimBatch.compute(count);
     const outputStride = this.aimBatch.outputStride;
 
@@ -126,15 +129,15 @@ export class ShieldPanelPose3D {
 
       const poseBase = i * 7;
       this.parentPositionScratch.set(
-        this.aimParentPose[poseBase],
-        this.aimParentPose[poseBase + 1],
-        this.aimParentPose[poseBase + 2],
+        this.aimBuffers.parentPose[poseBase],
+        this.aimBuffers.parentPose[poseBase + 1],
+        this.aimBuffers.parentPose[poseBase + 2],
       );
       this.parentQuaternionScratch.set(
-        this.aimParentPose[poseBase + 3],
-        this.aimParentPose[poseBase + 4],
-        this.aimParentPose[poseBase + 5],
-        this.aimParentPose[poseBase + 6],
+        this.aimBuffers.parentPose[poseBase + 3],
+        this.aimBuffers.parentPose[poseBase + 4],
+        this.aimBuffers.parentPose[poseBase + 5],
+        this.aimBuffers.parentPose[poseBase + 6],
       );
 
       this.enqueuePanels(
@@ -218,10 +221,10 @@ export class ShieldPanelPose3D {
   ): void {
     const index = this.aimCount;
     this.aimCount++;
-    this.ensureAimCapacity(this.aimCount);
+    ensureTurretAimBufferCapacity(this.aimBuffers, this.aimCount);
 
     const base = index * TURRET_AIM_INPUT_STRIDE;
-    const input = this.aimInput;
+    const input = this.aimBuffers.aimInput;
     writeTurretAimInput(
       input,
       base,
@@ -233,7 +236,7 @@ export class ShieldPanelPose3D {
 
     const poseBase = index * 7;
     writePositionQuaternion(
-      this.aimParentPose,
+      this.aimBuffers.parentPose,
       poseBase,
       parentPosition,
       parentQuaternion,
@@ -249,14 +252,4 @@ export class ShieldPanelPose3D {
     this.input = growFloat32Array(this.input, needed);
   }
 
-  private ensureAimCapacity(count: number): void {
-    const needed = count * TURRET_AIM_INPUT_STRIDE;
-    if (this.aimInput.length < needed) {
-      this.aimInput = growFloat32Array(this.aimInput, needed);
-    }
-
-    const poseNeeded = count * 7;
-    if (this.aimParentPose.length >= poseNeeded) return;
-    this.aimParentPose = growFloat32Array(this.aimParentPose, poseNeeded);
-  }
 }

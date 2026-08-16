@@ -226,7 +226,7 @@ function freezeStaticLocalTransform(mesh: THREE.Mesh): void {
  *  per-frame floor clamp can rewrite local Y without touching any
  *  child. `lift` / `beltPhase` / `beltVelocity` are the four visual
  *  state channels for the side. */
-export type TreadSide = {
+type TreadSide = {
   /** -1 for the left rail, +1 for the right rail. */
   side: -1 | 1;
   /** Lateral offset from chassis center, from this belt's authored mount. */
@@ -489,8 +489,6 @@ export function updateTank(
   // end cap and the slab's vertical half-extent), so the floor clamp
   // wants the side center to be at least `treadRadius` above terrain.
   const halfStraight = mesh.treadStraightLength / 2;
-  const sampleLocalXs: readonly number[] = [-halfStraight, 0, halfStraight];
-
   for (let s = 0; s < mesh.sides.length; s++) {
     const sideEntry = mesh.sides[s];
 
@@ -498,8 +496,8 @@ export function updateTank(
     // Walk the 3 sample points, take the max world-lift required by
     // any of them. EMA-converge `lift` toward that target every frame.
     let maxRequiredLocalLift = 0;
-    for (let p = 0; p < sampleLocalXs.length; p++) {
-      const localX = sampleLocalXs[p];
+    for (let p = 0; p < 3; p++) {
+      const localX = p === 0 ? -halfStraight : p === 1 ? 0 : halfStraight;
       transformChassisToWorld(
         localX, 0, sideEntry.lateralOffset,
         pose, _treadWorld,

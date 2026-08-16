@@ -2,6 +2,7 @@ import type * as THREE from 'three';
 import type { ResourcePylonRig } from './ResourcePylonMesh3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { applySolarCollectorPetalPose } from './SolarCollectorMesh3D';
+import { applyBuildingOperationalPose } from './BuildingOperationalRig3D';
 
 type Vec3State = readonly [number, number, number];
 type TransformState = Readonly<{
@@ -25,6 +26,8 @@ type PylonState = Readonly<{
 export type EntityLodVisualState3D = Readonly<{
   visualBankRoll?: number;
   solarOpenAmount?: number;
+  buildingOperationalAmount?: number;
+  buildingOperationalMotionTime?: number;
   pylonStates: PylonState[];
   buildingDetailTransforms: TransformState[][];
 }>;
@@ -115,6 +118,8 @@ export function captureEntityLodVisualState3D(mesh: EntityMesh): EntityLodVisual
   return {
     visualBankRoll: mesh.visualBankRoll,
     solarOpenAmount: mesh.solarOpenAmount,
+    buildingOperationalAmount: mesh.buildingOperationalAmount,
+    buildingOperationalMotionTime: mesh.buildingOperationalMotionTime,
     pylonStates: pylons(mesh).map(capturePylonState),
     buildingDetailTransforms: mesh.buildingDetails?.map((detail) =>
       captureSubtree(detail.mesh)) ?? [],
@@ -129,6 +134,8 @@ export function applyEntityLodVisualState3D(
   mesh.visualBankRoll = state.visualBankRoll;
   mesh.solarOpenAmount = state.solarOpenAmount;
   mesh.solarPetalPoseAmount = undefined;
+  mesh.buildingOperationalAmount = state.buildingOperationalAmount;
+  mesh.buildingOperationalMotionTime = state.buildingOperationalMotionTime;
 
   const nextPylons = pylons(mesh);
   for (let i = 0; i < nextPylons.length; i++) {
@@ -148,5 +155,13 @@ export function applyEntityLodVisualState3D(
     ) {
       mesh.solarPetalPoseAmount = mesh.solarOpenAmount;
     }
+  }
+  if (mesh.buildingOperationalAmount !== undefined) {
+    applyBuildingOperationalPose(
+      mesh.buildingOperationalRig,
+      mesh.chassis,
+      mesh.buildingOperationalAmount,
+      mesh.buildingOperationalMotionTime ?? 0,
+    );
   }
 }

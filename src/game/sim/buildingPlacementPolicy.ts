@@ -1,5 +1,6 @@
 import type { BuildingBlueprintId, BuildingPlacementType } from './types';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
+import type { BuildingPlacementFootprint } from './types';
 import type { SensorMedium } from './sensorConfig';
 import { WATER_LEVEL } from './Terrain';
 
@@ -79,6 +80,33 @@ export function getHighestBuildFootprintGroundZ(
         ),
       );
     }
+  }
+  return Number.isFinite(highest) ? highest : 0;
+}
+
+/** Mask-aware variant used by authored building reservations. Shared vertices
+ *  may be sampled more than once; placement is cold-path and exact agreement
+ *  with the visible/build-grid silhouette matters more than deduplication. */
+export function getHighestBuildFootprintCellsGroundZ(
+  gridX: number,
+  gridY: number,
+  footprint: BuildingPlacementFootprint,
+  getGroundZ: (x: number, y: number) => number,
+): number {
+  let highest = -Infinity;
+  for (const cell of footprint.cells) {
+    const left = (gridX + cell.dx) * BUILD_GRID_CELL_SIZE;
+    const top = (gridY + cell.dy) * BUILD_GRID_CELL_SIZE;
+    const right = left + BUILD_GRID_CELL_SIZE;
+    const bottom = top + BUILD_GRID_CELL_SIZE;
+    highest = Math.max(
+      highest,
+      getGroundZ(left, top),
+      getGroundZ(right, top),
+      getGroundZ(left, bottom),
+      getGroundZ(right, bottom),
+      getGroundZ(left + BUILD_GRID_CELL_SIZE * 0.5, top + BUILD_GRID_CELL_SIZE * 0.5),
+    );
   }
   return Number.isFinite(highest) ? highest : 0;
 }

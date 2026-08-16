@@ -1,8 +1,8 @@
 import type { EconomyState, EntityId, PlayerId } from './types';
-import { getSimWasm } from '../sim-wasm/init';
+import { requireSimWasm } from '../sim-wasm/init';
 
 export type ResourceKind = 'energy' | 'metal';
-export type ResourceMovementDirection = 'inbound' | 'outbound';
+type ResourceMovementDirection = 'inbound' | 'outbound';
 export type ResourceMovementReason =
   | 'baseIncome'
   | 'production'
@@ -45,14 +45,6 @@ function getStockpile(economy: EconomyState, resource: ResourceKind): { curr: nu
 }
 
 const _stockpileOut = new Float64Array(2);
-
-function requireSimWasm(context: string) {
-  const sim = getSimWasm();
-  if (sim === undefined) {
-    throw new Error(`${context}: sim-wasm is not initialized`);
-  }
-  return sim;
-}
 
 class ResourceMovementSystem {
   beginTick(sink: ResourceMovementSink): void {

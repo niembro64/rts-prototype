@@ -5,6 +5,7 @@ import type { RenderViewState3D } from './RenderFrameState3D';
 import { createPrimitiveTetrahedronGeometry } from './PrimitiveGeometryQuality3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 import { getExposureBrightnessUniform } from './RenderLighting3D';
+import { finiteOrZero } from '../math';
 
 type WindState = NonNullable<NetworkServerSnapshotMeta['wind']>;
 
@@ -350,10 +351,6 @@ export class WindParticleField3D {
     this.rngState = x >>> 0;
     return this.rngState / 0x100000000;
   }
-}
-
-function finiteOrZero(value: number): number {
-  return Number.isFinite(value) ? value : 0;
 }
 
 /** Wrap `value` into [0, span). The GLSL-side mod() keeps the sum of a

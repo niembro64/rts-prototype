@@ -94,7 +94,7 @@ export function entityDeathBlastFromContext3D(
  * so blades, barrels, hull plates, building ornaments, and authored details
  * can all fly separately and keep their real surface charts during the fade.
  */
-export function captureEntityMeshDeathParts3D(
+function captureEntityMeshDeathParts3D(
   mesh: EntityMesh,
 ): EntityDeathRenderablePart3D[] {
   mesh.group.updateWorldMatrix(true, true);

@@ -84,30 +84,6 @@ export function dropTurretLockMidTick(unit: Entity, weaponIndex: number): void {
   clearTurretFsmOnSlab(unit, weaponIndex);
 }
 
-/** Slab read of the per-entity active-turret mask. Sim hot paths
- *  (turretSystem) use this to gate the per-turret rotation loop on the
- *  Rust-computed mask. Returns 0 when the sim is unavailable or the
- *  entity has no spatial slot — both cases mean "no work to do this
- *  tick", which is the correct gate for the rotation loop. */
-export function readActiveTurretMaskForUnit(unit: Entity): number {
-  const sim = getSimWasm();
-  if (sim === undefined) return 0;
-  const slot = spatialGrid.getEntitySlot(unit);
-  if (slot < 0) return 0;
-  return getCombatTargetingStateViews(sim).activeTurretMask[slot];
-}
-
-/** Slab read of the per-entity firing-turret mask. Used by
- *  projectileSystem to gate the fire pass on the Rust-computed mask.
- *  Same fallback shape as `readActiveTurretMaskForUnit`. */
-export function readFiringTurretMaskForUnit(unit: Entity): number {
-  const sim = getSimWasm();
-  if (sim === undefined) return 0;
-  const slot = spatialGrid.getEntitySlot(unit);
-  if (slot < 0) return 0;
-  return getCombatTargetingStateViews(sim).firingTurretMask[slot];
-}
-
 /** Resolve a (unit, weaponIndex) pair to a flat per-turret slab
  *  index, or -1 if the slot is missing or the slab isn't stamped.
  *  Internal to the cooldown helpers below — projectileSystem and

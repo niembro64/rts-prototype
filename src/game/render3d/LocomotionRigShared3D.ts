@@ -326,7 +326,7 @@ export function transformChassisRootToWorld(
  *
  *  upX/upY/upZ MUST be a unit vector (the caller computes it once
  *  per unit per frame via the surface-normal sampler). */
-export type LegIkSolution = {
+type LegIkSolution = {
   /** Knee, at exactly `upperLen` from the hip. */
   x: number; y: number; z: number;
   /** Foot, at exactly `lowerLen` from the knee. */

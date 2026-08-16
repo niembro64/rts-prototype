@@ -15,7 +15,7 @@ export type EntityHoldSpec = {
   inheritHolderVelocity: boolean;
 };
 
-export type EntityHoldPose = {
+type EntityHoldPose = {
   x: number;
   y: number;
   z: number;

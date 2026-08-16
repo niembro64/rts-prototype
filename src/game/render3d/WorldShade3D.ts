@@ -10,6 +10,7 @@ import { ENTITY_SHADOW_RENDER_CONFIG } from '../../config';
 import { SUN_DIRECTION_SIM } from './SunLighting';
 import type { EntityShadowRenderPacket3D } from './EntityShadowRenderPacket3D';
 import { WATER_LEVEL } from '../sim/Terrain';
+import { clamp01 } from '../math';
 
 export type WorldShadeSettings3D = {
   enabled: boolean;
@@ -39,11 +40,6 @@ const SUN_AXIS_Y = SUN_DIRECTION_SIM.y / sunHorizontalLength;
 // front-facing under the material's normal back-face culling.
 const CROSS_SUN_AXIS_X = SUN_AXIS_Y;
 const CROSS_SUN_AXIS_Y = -SUN_AXIS_X;
-
-function clamp01(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(1, value));
-}
 
 export const WORLD_SHADE_FRAGMENT_PARS = `
 uniform sampler2D uWorldShadeMap;
@@ -87,6 +83,7 @@ float worldShadeField(float composited) {
 export function worldShadeFragment(
   worldPosition: string,
   receiveEntityShadows: boolean,
+  shadeTarget = 'diffuseColor.rgb',
 ): string {
   return `
 if (${worldPosition}.x >= 0.0 && ${worldPosition}.z >= 0.0 &&
@@ -141,19 +138,19 @@ if (${worldPosition}.x >= 0.0 && ${worldPosition}.z >= 0.0 &&
   // about that ground — so it veils whatever the lighting produced. Ordering
   // them that way makes a shadow survive fog at proportional strength and
   // removes the discontinuity at the fog line entirely.
-  diffuseColor.rgb = mix(
-    diffuseColor.rgb,
+  ${shadeTarget} = mix(
+    ${shadeTarget},
     uWorldShadeColor,
     clamp(entityShadowDarkness, 0.0, 1.0)
   );
-  float shadeLuma = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
-  diffuseColor.rgb = mix(
-    diffuseColor.rgb,
+  float shadeLuma = dot(${shadeTarget}, vec3(0.299, 0.587, 0.114));
+  ${shadeTarget} = mix(
+    ${shadeTarget},
     vec3(shadeLuma),
     clamp(fogDesaturation, 0.0, 1.0)
   );
-  diffuseColor.rgb = mix(
-    diffuseColor.rgb,
+  ${shadeTarget} = mix(
+    ${shadeTarget},
     uWorldShadeColor,
     clamp(fogDarkness, 0.0, 1.0)
   );
@@ -399,6 +396,18 @@ void main() {
 
     const previousCompile = material.onBeforeCompile;
     const previousCacheKey = material.customProgramCacheKey.bind(material);
+    const shadeAtObjectOrigin = material.userData.worldShadeAtObjectOrigin === true;
+    const shadeAfterLighting = material.userData.worldShadeAfterLighting === true;
+    const worldPositionAssignment = shadeAtObjectOrigin
+      ? [
+          '#include <begin_vertex>',
+          '#ifdef USE_INSTANCING',
+          'vWorldShadeWorldPos = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;',
+          '#else',
+          'vWorldShadeWorldPos = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;',
+          '#endif',
+        ].join('\n')
+      : '#include <begin_vertex>\nvWorldShadeWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;';
     material.onBeforeCompile = (shader, renderer) => {
       previousCompile.call(material, shader, renderer);
       this.assignUniforms(shader);
@@ -409,20 +418,24 @@ void main() {
         )
         .replace(
           '#include <begin_vertex>',
-          '#include <begin_vertex>\nvWorldShadeWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;',
+          worldPositionAssignment,
         );
-      shader.fragmentShader = shader.fragmentShader
-        .replace(
-          '#include <common>',
-          `varying vec3 vWorldShadeWorldPos;\n${WORLD_SHADE_FRAGMENT_PARS}\n#include <common>`,
-        )
-        .replace(
-          '#include <color_fragment>',
-          `#include <color_fragment>\n${worldShadeFragment('vWorldShadeWorldPos', false)}`,
-        );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <common>',
+        `varying vec3 vWorldShadeWorldPos;\n${WORLD_SHADE_FRAGMENT_PARS}\n#include <common>`,
+      );
+      shader.fragmentShader = shadeAfterLighting
+        ? shader.fragmentShader.replace(
+            '#include <opaque_fragment>',
+            `${worldShadeFragment('vWorldShadeWorldPos', false, 'outgoingLight')}\n#include <opaque_fragment>`,
+          )
+        : shader.fragmentShader.replace(
+            '#include <color_fragment>',
+            `#include <color_fragment>\n${worldShadeFragment('vWorldShadeWorldPos', false)}`,
+          );
     };
     material.customProgramCacheKey = () =>
-      `${previousCacheKey()}|world-shade-v3`;
+      `${previousCacheKey()}|world-shade-v5:${shadeAtObjectOrigin ? 'object' : 'surface'}:${shadeAfterLighting ? 'lit' : 'albedo'}`;
     material.needsUpdate = true;
   }
 

@@ -15,11 +15,11 @@
 import * as THREE from 'three';
 import type { PylonTubeFlow, PylonTubeFreeLeg, SprayTarget } from '@/types/ui';
 import { disposeMesh } from './threeUtils';
-import { createInstancedColorAlphaParticleMaterial } from './instancedColorAlphaParticleMaterial';
 import { uploadColorAlphaMatrixPrefix } from './instancedBufferUpdate';
 import {
-  createInstancedColorAlphaPool,
+  createInstancedColorAlphaPoolSet,
   PRIMITIVE_GEOMETRY_TIERS,
+  type InstancedColorAlphaGeometryPool,
 } from './instancedParticlePool3D';
 import { RESOURCE_CONFIG } from '@/resourceConfig';
 import {
@@ -68,14 +68,7 @@ type PendingTubeBirths = {
   intensitySum: number;
 };
 
-type TubeBeadPool = {
-  geom: THREE.BufferGeometry;
-  mesh: THREE.InstancedMesh;
-  alphaArr: Float32Array;
-  colorArr: Float32Array;
-  alphaAttr: THREE.InstancedBufferAttribute;
-  colorAttr: THREE.InstancedBufferAttribute;
-};
+type TubeBeadPool = InstancedColorAlphaGeometryPool;
 
 export class PylonTubeFlowRenderer {
   private root: THREE.Group;
@@ -97,23 +90,15 @@ export class PylonTubeFlowRenderer {
   private handoffSprayPool: SprayTarget[] = [];
 
   constructor(parentWorld: THREE.Group) {
-    this.root = new THREE.Group();
-    parentWorld.add(this.root);
-
-    this.mat = createInstancedColorAlphaParticleMaterial();
-
-    this.pools = {
-      close: this.createPool('close'),
-      mid: this.createPool('mid'),
-      far: this.createPool('far'),
-    };
-  }
-
-  private createPool(_tier: PrimitiveGeometryTier): TubeBeadPool {
-    // Tube beads are tetrahedra at every tier — at bead size the
-    // silhouette reads identically and the fill cost drops to 4 triangles.
-    const geom = getSharedPrimitiveTetrahedronGeometry(1).clone();
-    return { geom, ...createInstancedColorAlphaPool(this.root, geom, MAX_BEADS, this.mat, 6) };
+    const poolSet = createInstancedColorAlphaPoolSet(
+      parentWorld,
+      MAX_BEADS,
+      6,
+      () => getSharedPrimitiveTetrahedronGeometry(1).clone(),
+    );
+    this.root = poolSet.root;
+    this.mat = poolSet.material;
+    this.pools = poolSet.pools;
   }
 
   /** Called by SprayRenderer3D when an inbound free-leg particle reaches

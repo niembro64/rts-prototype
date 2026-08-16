@@ -48,38 +48,6 @@ function readArrivalRadius(): number {
   return value;
 }
 
-function readSoftClearanceCells(): number {
-  const value = requireFinite('softClearanceCells', config.softClearanceCells);
-  if (value < 0 || Math.floor(value) !== value) {
-    throw new Error(
-      `Invalid pathfinding tuning softClearanceCells: expected non-negative integer, got ${value}`,
-    );
-  }
-  return value;
-}
-
-function readSoftClearancePenaltyPerCell(): number {
-  const value = requireFinite(
-    'softClearancePenaltyPerCell',
-    config.softClearancePenaltyPerCell,
-  );
-  if (value < 0) {
-    throw new Error(
-      `Invalid pathfinding tuning softClearancePenaltyPerCell: expected non-negative number, got ${value}`,
-    );
-  }
-  return value;
-}
-
-function readAllowDiagonalNeighbors(): boolean {
-  if (typeof config.allowDiagonalNeighbors !== 'boolean') {
-    throw new Error(
-      `Invalid pathfinding tuning allowDiagonalNeighbors: expected boolean, got ${String(config.allowDiagonalNeighbors)}`,
-    );
-  }
-  return config.allowDiagonalNeighbors;
-}
-
 function requirePositiveInteger(label: string, value: number): number {
   requireFinite(label, value);
   if (value < 1 || Math.floor(value) !== value) {
@@ -110,16 +78,6 @@ function requireNonNegativeNumber(label: string, value: number): number {
   return value;
 }
 
-function requireAtLeastOne(label: string, value: number): number {
-  requireFinite(label, value);
-  if (value < 1) {
-    throw new Error(
-      `Invalid pathfinding tuning ${label}: expected number >= 1, got ${value}`,
-    );
-  }
-  return value;
-}
-
 function requireUnitIntervalRatio(label: string, value: number): number {
   requireFinite(label, value);
   if (value < 0 || value > 1) {
@@ -142,9 +100,6 @@ export const PATHFINDING_INTERMEDIATE_CORRIDOR_WU = requireNonNegativeNumber(
   'intermediateCorridorWu',
   config.intermediateCorridorWu,
 );
-export const PATHFINDING_ALLOW_DIAGONAL_NEIGHBORS = readAllowDiagonalNeighbors();
-export const PATHFINDING_SOFT_CLEARANCE_CELLS = readSoftClearanceCells();
-export const PATHFINDING_SOFT_CLEARANCE_PENALTY_PER_CELL = readSoftClearancePenaltyPerCell();
 export const PATHFINDING_FORCE_SAFETY_RATIO = readForceSafetyRatio();
 
 // ── Plan scheduler (per-tick A* budget + request queue) ─────────────
@@ -193,18 +148,6 @@ export const PATHFINDING_PARTIAL_PLAN_RETRY_TICKS = requireNonNegativeInteger(
 export const PATHFINDING_DIRECT_PLAN_MAX_DISTANCE_WU = requireNonNegativeNumber(
   'directPlanMaxDistanceWu',
   config.directPlanMaxDistanceWu,
-);
-/** A physically legal straight route may bypass graph search when its
- * movement-time cost is within this multiple of the geometric lower bound. */
-export const PATHFINDING_DIRECT_PATH_MAX_COST_RATIO = requireAtLeastOne(
-  'directPathMaxCostRatio',
-  config.directPathMaxCostRatio,
-);
-/** Minimum octile distance, in 20-wu navigation cells, before the WASM
- * planner tries its sparse hierarchical graph ahead of full-grid A*. */
-export const PATHFINDING_HIERARCHICAL_MIN_DISTANCE_CELLS = requireNonNegativeInteger(
-  'hierarchicalMinDistanceCells',
-  config.hierarchicalMinDistanceCells,
 );
 /** Fine navigation cells per side of one level-1 hierarchy cluster. */
 export const PATHFINDING_HIERARCHICAL_CLUSTER_SIZE_CELLS = requirePositiveInteger(

@@ -12,7 +12,7 @@ import type { WorldState } from './WorldState';
  *  list fund whichever site was authored last while the builder is still
  *  walking to the first one — and fund nothing at all once that site
  *  completes or sits out of range. */
-export function getActiveBuildTargetId(entity: Entity): EntityId {
+function getActiveBuildTargetId(entity: Entity): EntityId {
   const unit = entity.unit;
   if (unit === null || unit.actions.length === 0) return NO_ENTITY_ID;
   const action = unit.actions[0];

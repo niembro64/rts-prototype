@@ -24,7 +24,7 @@ export type CanonicalServerStateHash = {
   readonly entityHashes?: readonly CanonicalEntityStateHash[];
 };
 
-export type CanonicalEntityStateHash = {
+type CanonicalEntityStateHash = {
   readonly id: number;
   readonly type: string;
   readonly hash: string;

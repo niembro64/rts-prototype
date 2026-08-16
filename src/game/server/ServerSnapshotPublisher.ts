@@ -24,6 +24,7 @@ import { serializeMinimapSnapshotEntities } from '../network/stateSerializerMini
 import { serializeProjectileSnapshot } from '../network/stateSerializerProjectiles';
 import { serializeResourceMovements } from '../network/stateSerializerResourceMovements';
 import { IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
+import { appendUnique } from '../collections';
 import {
   getEntitySnapshotPoolStats,
   registerEntitySnapshotWireSource,
@@ -1026,22 +1027,18 @@ export class ServerSnapshotPublisher {
     removedIds.length = 0;
     removedIdSet.clear();
 
-    const pushRemoved = (id: EntityId): void => {
-      if (removedIdSet.has(id)) return;
-      removedIdSet.add(id);
-      removedIds.push(id);
-    };
-
     for (let i = 0; i < removedEntities.length; i++) {
       const record = removedEntities[i];
       const wasPreviouslyVisible = previousVisibleEntityIds.has(record.id);
-      if (wasPreviouslyVisible || visibility.shouldSendRemoval(record)) pushRemoved(record.id);
+      if (wasPreviouslyVisible || visibility.shouldSendRemoval(record)) {
+        appendUnique(removedIds, removedIdSet, record.id);
+      }
       previousVisibleEntityIds.delete(record.id);
     }
 
     for (const id of previousVisibleEntityIds) {
       if (!currentVisibleEntityIds.has(id)) {
-        pushRemoved(id);
+        appendUnique(removedIds, removedIdSet, id);
         previousVisibleEntityIds.delete(id);
       }
     }

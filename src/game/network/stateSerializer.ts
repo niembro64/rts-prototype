@@ -36,6 +36,10 @@ import {
   addSnapshotMaterializationStageFromStart,
   type SnapshotMaterializationStageDurations,
 } from './snapshotMaterializationMetadata';
+import {
+  acceptsSerializedEntity,
+  isSerializableSnapshotEntity,
+} from './snapshotEntityVisibility';
 
 const _entityBuf: NetworkServerSnapshotEntity[] = [];
 const _removedIdsBuf: number[] = [];
@@ -121,15 +125,6 @@ export type SerializerSprayOverride = {
 export type SerializerMinimapOverride = {
   value: NetworkServerSnapshotMinimapEntity[] | undefined;
 };
-
-function isSerializableSnapshotEntity(entity: Entity): boolean {
-  return entity.type === 'unit' || entity.type === 'building';
-}
-
-function acceptsSerializedEntity(entity: Entity, visibility: SnapshotVisibility): boolean {
-  return isSerializableSnapshotEntity(entity) &&
-    (!visibility.isFiltered || visibility.isEntityVisible(entity));
-}
 
 function appendRemovedEntityIds(
   world: WorldState,

@@ -11,6 +11,8 @@ import {
 import {
   buildRepairCommandForTarget,
   buildRepairOrGuardCommandAt,
+  buildRepairOrGuardCommandForTarget,
+  buildFactorySelfGuardCommands,
 } from './CommanderCommands';
 
 function assertContract(condition: boolean, message: string): asserts condition {
@@ -399,6 +401,71 @@ export function runRightClickCommandsContractTest(): void {
       tankAssist.type === 'repair' &&
       tankAssist.targetId === damagedTank.id,
     'right-click assist on a damaged friendly non-constructor must stay a repair order',
+  );
+  const exactTankAssist = buildRepairOrGuardCommandForTarget(
+    damagedTank, commander, [commander], 5, false,
+  );
+  assertContract(
+    exactTankAssist?.type === 'repair' && exactTankAssist.targetId === damagedTank.id,
+    'a precise 3D body hit must use the same Repair default as a ground-point hit',
+  );
+  const alliedConstructor = combatant(53, 2, 40, 120, 10);
+  alliedConstructor.unit!.unitBlueprintId = 'unitCommander';
+  alliedConstructor.builder = {
+    buildRange: 500,
+    lowPriority: false,
+    currentBuildTarget: NO_ENTITY_ID,
+    workStation: null,
+  };
+  const alliedConstructorAssist = buildRepairOrGuardCommandForTarget(
+    alliedConstructor,
+    commander,
+    [commander],
+    5,
+    false,
+    false,
+    undefined,
+    (a, b) => a === b || (a === 1 && b === 2) || (a === 2 && b === 1),
+  );
+  assertContract(
+    alliedConstructorAssist?.type === 'guard' &&
+      alliedConstructorAssist.targetId === alliedConstructor.id,
+    'the damaged-constructor Guard rewrite must preserve allied-team targets',
+  );
+  const damagedFactory: Entity = {
+    ...buildingShell,
+    id: 54,
+    buildingBlueprintId: 'towerFabricator',
+    building: { ...buildingShell.building!, hp: 40 },
+    buildable: {
+      isComplete: true,
+      isInterrupted: false,
+    } as Entity['buildable'],
+    factory: {} as Entity['factory'],
+  };
+  const factoryAssist = buildRepairOrGuardCommandForTarget(
+    damagedFactory,
+    commander,
+    [commander],
+    5,
+    false,
+  );
+  assertContract(
+    factoryAssist?.type === 'guard' &&
+      factoryAssist.targetId === damagedFactory.id,
+    'BAR must Guard a completed damaged factory instead of issuing Repair',
+  );
+  const selfFactoryGuard = buildFactorySelfGuardCommands(
+    [damagedFactory],
+    damagedFactory,
+    5,
+  );
+  assertContract(
+    selfFactoryGuard.length === 1 &&
+      selfFactoryGuard[0].type === 'setFactoryGuard' &&
+      selfFactoryGuard[0].factoryId === damagedFactory.id &&
+      selfFactoryGuard[0].targetId === damagedFactory.id,
+    'BAR factory self-target must enable Factory Guard instead of falling through to rally',
   );
 }
 

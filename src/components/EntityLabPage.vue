@@ -8,12 +8,12 @@ import {
   buildEntityLabSoundActions,
   dedupeSounds,
   ENTITY_LAB_KINDS,
-  getEntityLabSelectionName,
   soundEntryDetail,
   uniqueSoundLabel,
   type EntityLabSoundAction,
   type UniqueSound,
 } from './entityAudioDiagnostics';
+import { getLoadingEntityName } from './loadingEntitySelection';
 import { buildLoadingEntityInfo } from './loadingUnitInfo';
 import LoadingInfoColumn from './LoadingInfoColumn.vue';
 import {
@@ -48,6 +48,7 @@ const LOD_TIERS = ['close', 'mid', 'far'] as const;
 const activeLoopActionId = ref<string | null>(null);
 
 let previewRuntime: LoadingUnitPreviewRuntime | null = null;
+let previewGeneration = 0;
 let activeContinuousId: number | null = null;
 let nextContinuousId = 9000;
 
@@ -75,7 +76,7 @@ const deathSounds = dedupeSounds(AUDIO.event.death as Record<string, SoundEntry>
 
 const entitySelections = computed(() => buildEntityLabSelections(selectedKind.value));
 const selectedEntityName = computed(() => (
-  getEntityLabSelectionName(selectedKind.value, selectedEntityId.value)
+  getLoadingEntityName(selectedKind.value, selectedEntityId.value)
 ));
 const selectedEntityInfo = computed(() => (
   buildLoadingEntityInfo(selectedKind.value, selectedEntityId.value)
@@ -124,12 +125,14 @@ function readPreviewControls(): Partial<LoadingUnitPreviewControls> {
 }
 
 async function remountPreview(): Promise<void> {
-  destroyPreview();
+  const generation = ++previewGeneration;
+  releasePreviewRuntime();
   previewReady.value = false;
   await nextTick();
+  if (generation !== previewGeneration) return;
   const host = previewHost.value;
   if (host === null) return;
-  previewRuntime = mountLoadingUnitPreview(
+  const runtime = mountLoadingUnitPreview(
     host,
     selectedKind.value,
     selectedEntityId.value,
@@ -138,13 +141,23 @@ async function remountPreview(): Promise<void> {
       controls: readPreviewControls(),
       geometryTier: geometryTier.value,
       onReady: () => {
-        previewReady.value = true;
+        if (generation === previewGeneration) previewReady.value = true;
       },
     },
   );
+  if (generation !== previewGeneration) {
+    runtime.destroy();
+    return;
+  }
+  previewRuntime = runtime;
 }
 
 function destroyPreview(): void {
+  previewGeneration++;
+  releasePreviewRuntime();
+}
+
+function releasePreviewRuntime(): void {
   if (previewRuntime === null) return;
   previewRuntime.destroy();
   previewRuntime = null;

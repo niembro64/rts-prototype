@@ -3,18 +3,14 @@ import type {
   SensorMediumRadiusMatrix,
   SensorMediumTargetRadii,
 } from '../../types/blueprints';
+import { assertNonNegativeFiniteNumber } from '../../configValidation';
 
 export type SensorMedium = 'aboveWater' | 'underwater';
 
-export const SENSOR_MEDIA: readonly SensorMedium[] = [
+const SENSOR_MEDIA: readonly SensorMedium[] = [
   'aboveWater',
   'underwater',
 ];
-
-export const ZERO_SENSOR_TARGET_RADII: Readonly<SensorMediumTargetRadii> = {
-  aboveWater: 0,
-  underwater: 0,
-};
 
 function cloneTargetRadii(radii: SensorMediumTargetRadii): SensorMediumTargetRadii {
   return {
@@ -43,9 +39,7 @@ export function cloneSensorCapabilityConfig(
 }
 
 function assertFiniteNonNegativeRadius(context: string, value: number): void {
-  if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`${context} must be a finite non-negative number`);
-  }
+  assertNonNegativeFiniteNumber(value, context);
 }
 
 export function validateSensorCapabilityConfig(

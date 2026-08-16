@@ -1,6 +1,8 @@
 // Procedural music generation — scale/progression constants, beat scheduling,
 // and four voices (bass, pad, arpeggio, melody).
 
+import { midiNoteToFrequency as midiToFreq } from './audioHelpers';
+
 // A minor pentatonic scale MIDI notes by octave
 // A=57, C=60, D=62, E=64, G=67 (octave 3)
 const SCALE = [0, 3, 5, 7, 10]; // semitone offsets from root A
@@ -26,10 +28,6 @@ const BAR_DURATION = BEAT_DURATION * 4;    // ~2.18s
 
 export const SCHEDULER_INTERVAL = 25;      // ms
 export const LOOK_AHEAD = 0.1;             // seconds
-
-function midiToFreq(midi: number): number {
-  return 440 * Math.pow(2, (midi - 69) / 12);
-}
 
 function getChordRoot(bar: number): number {
   return PROGRESSION[bar % PROGRESSION.length];

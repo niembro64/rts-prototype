@@ -1,7 +1,7 @@
 import type { FootprintBounds } from '../ViewportFootprint';
 
-export const CLIENT_RENDER_SPATIAL_CELL_SIZE = 512;
-export const CLIENT_RENDER_SPATIAL_KEY_OFFSET = 1 << 20;
+const CLIENT_RENDER_SPATIAL_CELL_SIZE = 512;
+const CLIENT_RENDER_SPATIAL_KEY_OFFSET = 1 << 20;
 const CLIENT_RENDER_SPATIAL_KEY_STRIDE =
   CLIENT_RENDER_SPATIAL_KEY_OFFSET * 2 + 1;
 
@@ -9,7 +9,7 @@ export function clientRenderCellCoord(value: number): number {
   return Math.floor(value / CLIENT_RENDER_SPATIAL_CELL_SIZE);
 }
 
-export type ClientRenderCellBounds = {
+type ClientRenderCellBounds = {
   minCellX: number;
   maxCellX: number;
   minCellY: number;

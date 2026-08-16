@@ -3,7 +3,6 @@ import type {
   EntitySignature,
   SensorCapabilityConfig,
   SensorMediumRadiusMatrix,
-  SensorMediumTargetRadii,
 } from '../../types/blueprints';
 import type {
   BuildingBlueprintId,
@@ -18,7 +17,6 @@ import { resolveWeaponWorldMount } from './combat/combatUtils';
 import { WATER_LEVEL } from './Terrain';
 import {
   hasAnySensorRadius,
-  ZERO_SENSOR_TARGET_RADII,
   type SensorMedium,
 } from './sensorConfig';
 
@@ -29,14 +27,7 @@ export function getSensorMediumAtZ(z: number): SensorMedium {
   return z <= WATER_LEVEL ? 'underwater' : 'aboveWater';
 }
 
-const _primaryMediumPosition: Vec3 = { x: 0, y: 0, z: 0 };
-
-export function getEntitySensorMedium(entity: Entity): SensorMedium {
-  return getEntityPrimaryTurretSensorSource(entity, _primaryMediumPosition)?.sourceMedium ??
-    getSensorMediumAtZ(entity.transform.z);
-}
-
-export type SensorOperationalChannels = Readonly<{
+type SensorOperationalChannels = Readonly<{
   fullSight: boolean;
   contactSight: boolean;
   detector: boolean;
@@ -89,7 +80,7 @@ function resolveTurretSensorPosition(
   return resolveWeaponWorldMount(entity, turret, turretIndex, cos, sin, undefined, out);
 }
 
-export type TurretSensorSource = {
+type TurretSensorSource = {
   mount: Turret | SensorMountCapability;
   turretIndex: number;
   position: Vec3;
@@ -202,18 +193,6 @@ function getBuildingAuthoredSensors(
   return sensors;
 }
 
-export function getBuildingAuthoredFullSightRadius(
-  buildingBlueprintId: BuildingBlueprintId | null,
-  sourceMedium: SensorMedium,
-  targetMedium: SensorMedium,
-): number {
-  let max = 0;
-  for (const sensors of getBuildingAuthoredSensors(buildingBlueprintId)) {
-    max = Math.max(max, targetRadius(sensors.fullSight, sourceMedium, targetMedium));
-  }
-  return max;
-}
-
 export function getBuildingAuthoredContactSightRadius(
   buildingBlueprintId: BuildingBlueprintId | null,
   sourceMedium: SensorMedium,
@@ -271,23 +250,6 @@ export function canEntityProvideFullVision(
     getEntityFullVisionRadius(entity, 'underwater') > 0;
 }
 
-export function canEntityProvideContactVision(
-  entity: Entity,
-  targetMedium?: SensorMedium,
-): boolean {
-  if (targetMedium !== undefined) return getEntityContactVisionRadius(entity, targetMedium) > 0;
-  return getEntityContactVisionRadius(entity, 'aboveWater') > 0 ||
-    getEntityContactVisionRadius(entity, 'underwater') > 0;
-}
-
-export function canEntityProvideRadarVision(entity: Entity): boolean {
-  return getEntityRadarRadius(entity) > 0;
-}
-
-export function canEntityProvideSonarVision(entity: Entity): boolean {
-  return getEntitySonarRadius(entity) > 0;
-}
-
 export function getEntityFullVisionRadius(
   entity: Entity,
   targetMedium: SensorMedium,
@@ -295,7 +257,7 @@ export function getEntityFullVisionRadius(
   return getMaximumEntityTurretRadius(entity, 'fullSight', targetMedium);
 }
 
-export function getEntityContactVisionRadius(
+function getEntityContactVisionRadius(
   entity: Entity,
   targetMedium: SensorMedium,
 ): number {
@@ -335,40 +297,6 @@ const DEFAULT_ENTITY_SIGNATURE: EntitySignature = {
   radarStealth: false,
   sonarStealth: false,
 };
-
-export function canEntityProvideCloakDetection(entity: Entity): boolean {
-  return getEntityCloakDetectionRadius(entity) > 0;
-}
-
-export function getEntityCloakDetectionRadius(entity: Entity): number {
-  let max = 0;
-  forEachEntityTurretSensorSource(entity, (source) => {
-    if (!source.operational.detector) return;
-    max = Math.max(max, source.sensors.detectorRadius);
-  });
-  return max;
-}
-
-export function getEntityCloakDetectionTargetRadii(
-  entity: Entity,
-): SensorMediumTargetRadii {
-  const radii = { ...ZERO_SENSOR_TARGET_RADII };
-  forEachEntityTurretSensorSource(entity, (source) => {
-    if (!source.operational.detector || !source.operational.fullSight) return;
-    const detector = source.sensors.detectorRadius;
-    if (detector <= 0) return;
-    const fullSight = source.sensors.fullSight[source.sourceMedium];
-    radii.aboveWater = Math.max(
-      radii.aboveWater,
-      Math.min(detector, fullSight.aboveWater),
-    );
-    radii.underwater = Math.max(
-      radii.underwater,
-      Math.min(detector, fullSight.underwater),
-    );
-  });
-  return radii;
-}
 
 export function isEntityCloaked(entity: Entity): boolean {
   return entity.unit?.cloaked === true;

@@ -25,6 +25,7 @@ export class SimulationIdleBuilderAutoRepair {
   private readonly activeRepairs: Map<EntityId, ActiveRepair> = new Map();
   private readonly activeReclaimers: Map<EntityId, EntityId> = new Map();
   private readonly reclaimBlacklist: Map<EntityId, number> = new Map();
+  private readonly seenReclaimerIds = new Set<EntityId>();
 
   constructor(world: WorldState) {
     this.world = world;
@@ -45,6 +46,7 @@ export class SimulationIdleBuilderAutoRepair {
     this.activeRepairs.clear();
     this.activeReclaimers.clear();
     this.reclaimBlacklist.clear();
+    this.seenReclaimerIds.clear();
   }
 
   private pruneReclaimBlacklist(tick: number): void {
@@ -54,7 +56,8 @@ export class SimulationIdleBuilderAutoRepair {
   }
 
   private refreshActiveReclaimers(tick: number): void {
-    const seenReclaimers = new Set<EntityId>();
+    const seenReclaimers = this.seenReclaimerIds;
+    seenReclaimers.clear();
     const units = this.world.getUnits();
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
@@ -69,7 +72,7 @@ export class SimulationIdleBuilderAutoRepair {
       this.reclaimBlacklist.set(action.targetId, Infinity);
     }
 
-    for (const reclaimerId of Array.from(this.activeReclaimers.keys())) {
+    for (const reclaimerId of this.activeReclaimers.keys()) {
       if (!seenReclaimers.has(reclaimerId)) {
         this.stopTrackingReclaimer(reclaimerId, tick);
       }
@@ -93,7 +96,7 @@ export class SimulationIdleBuilderAutoRepair {
   }
 
   private monitorActiveRepairs(): void {
-    for (const [builderId, info] of Array.from(this.activeRepairs)) {
+    for (const [builderId, info] of this.activeRepairs) {
       const builder = this.world.getEntity(builderId);
       if (!this.isEligibleMobileBuilder(builder)) {
         this.activeRepairs.delete(builderId);

@@ -3,8 +3,9 @@ import type {
   EntityDeathPartDelta3D,
   EntityDeathRenderablePart3D,
 } from './EntityDeathDisassembly3D';
+import { finiteOrZero } from '../math';
 
-export type VanishingUnitVelocity3D = Readonly<{
+type VanishingUnitVelocity3D = Readonly<{
   x: number;
   y: number;
   z: number;
@@ -66,8 +67,4 @@ export class VanishingUnitMotion3D {
   forget(mesh: EntityMesh): void {
     this.states.delete(mesh);
   }
-}
-
-function finiteOrZero(value: number): number {
-  return Number.isFinite(value) ? value : 0;
 }

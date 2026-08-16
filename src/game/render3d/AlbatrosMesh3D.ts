@@ -25,11 +25,6 @@ const rawIcosahedronVertices = [
 ];
 for (let i = 0; i < rawIcosahedronVertices.length; i++) rawIcosahedronVertices[i].normalize();
 
-// Kept for the old hover-fan builder, even though the albatros unit now uses
-// aerosub locomotion.
-export const ALBATROS_ICOSAHEDRON_VERTEX_DIRECTIONS: readonly THREE.Vector3[] =
-  rawIcosahedronVertices;
-
 const bodyGeomByTier = new Map<PrimitiveGeometryTier, THREE.SphereGeometry>();
 const detailSphereGeomByTier = new Map<PrimitiveGeometryTier, THREE.SphereGeometry>();
 const neckGeomByTier = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();

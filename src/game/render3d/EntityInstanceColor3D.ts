@@ -12,7 +12,7 @@ export function entityBodyColorHexForPlayer(pid: number | undefined): number {
   return pid !== undefined ? getPlayerColors(pid).primary : COLORS.units.neutral.colorHex;
 }
 
-export function entityBodyColorHex(entity: Entity): number {
+function entityBodyColorHex(entity: Entity): number {
   return entityBodyColorHexForPlayer(entity.ownership?.playerId);
 }
 
@@ -31,16 +31,8 @@ export function entityTeamColorHexForPlayer(pid: number | undefined): number {
   return pid !== undefined ? getPlayerColors(pid).colorTeamNormal : COLORS.units.neutral.colorHex;
 }
 
-export function entityTeamDarkColorHexForPlayer(pid: number | undefined): number {
-  return pid !== undefined ? getPlayerColors(pid).colorTeamDark : COLORS.units.neutral.colorHex;
-}
-
 export function entityTeamColorHex(entity: Entity): number {
   return entityTeamColorHexForPlayer(entity.ownership?.playerId);
-}
-
-export function entityPlayerDarkColorHexForPlayer(pid: number | undefined): number {
-  return pid !== undefined ? getPlayerColors(pid).colorPlayerDark : COLORS.units.neutral.colorHex;
 }
 
 export function entityHeadOnlyTurretHeadColorHex(
@@ -91,11 +83,10 @@ export function entityShieldSphereTurretHeadColorHexForRange(
   return blendHexTowardWhite(primary, towardWhite);
 }
 
-
 /** Lerp an RGB hex toward white by `t` in [0,1]. t=0 returns the input
  *  unchanged; t=1 returns pure white. Pure integer math, no allocation
  *  — safe to call per-frame from instance writers. */
-export function blendHexTowardWhite(hex: number, t: number): number {
+function blendHexTowardWhite(hex: number, t: number): number {
   const r = (hex >> 16) & 0xff;
   const g = (hex >> 8) & 0xff;
   const b = hex & 0xff;

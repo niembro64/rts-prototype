@@ -13,13 +13,13 @@ import {
 export const LOCKSTEP_FIXED_STEP_HZ = ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
 export const LOCKSTEP_FIXED_DT_MS = 1000 / LOCKSTEP_FIXED_STEP_HZ;
 
-export type LockstepFrameSchedulerStatus =
+type LockstepFrameSchedulerStatus =
   | 'running'
   | 'stalled'
   | 'protocol-paused'
   | 'desynced';
 
-export type LockstepTabThrottlingPolicy =
+type LockstepTabThrottlingPolicy =
   'stall-on-missing-frames-catch-up-ready-frames';
 
 export type LockstepCompleteCommandFrame = {
@@ -28,7 +28,7 @@ export type LockstepCompleteCommandFrame = {
   readonly commands: readonly LockstepCommandEnvelope[];
 };
 
-export type LockstepFrameAdvanceEvent = {
+type LockstepFrameAdvanceEvent = {
   readonly frame: number;
   readonly frameSequence: number;
   readonly dtMs: number;
@@ -36,7 +36,7 @@ export type LockstepFrameAdvanceEvent = {
   readonly nextFrame: number;
 };
 
-export type LockstepChecksumEvent = {
+type LockstepChecksumEvent = {
   readonly frame: number;
   readonly stateHash: CanonicalServerStateHash;
 };

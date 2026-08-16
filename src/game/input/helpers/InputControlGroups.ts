@@ -8,6 +8,7 @@ type ControlGroupEntitySource = {
   getSelectedUnits: () => Entity[];
   getSelectedBuildings: () => Entity[];
   getEntity: (id: EntityId) => Entity | undefined;
+  getEntitySetVersion?: () => number;
 };
 
 type SelectionEnqueue = (entityIds: EntityId[], additive: boolean) => void;
@@ -36,6 +37,10 @@ function createEmptyAutoGroupRules(): (AutoGroupRule | null)[] {
   return rules;
 }
 
+function createEmptyEntityIdSets(): Set<EntityId>[] {
+  return Array.from({ length: CONTROL_GROUP_COUNT }, () => new Set<EntityId>());
+}
+
 export function controlGroupIndexForKey(e: Pick<KeyboardEvent, 'code' | 'key'>): number {
   if (/^Numpad[0-9]$/.test(e.code)) return -1;
   const codeMatch = /^Digit([0-9])$/.exec(e.code);
@@ -49,8 +54,16 @@ export class InputControlGroups {
   private readonly enqueueSelection: SelectionEnqueue;
   private readonly groups: EntityId[][] = createEmptyControlGroups();
   private readonly autoGroupRules: (AutoGroupRule | null)[] = createEmptyAutoGroupRules();
+  /** Membership last assigned by an auto-group operation. Manual group
+   *  changes remove ids from these sets but deliberately leave the type rule
+   *  intact, matching BAR's separate unitDef->group preset map. */
+  private readonly autoOwnedEntityIds: Set<EntityId>[] = createEmptyEntityIdSets();
+  /** Auto Group reacts to newly created units; it does not poll and steal a
+   *  live unit back after a manual group change. */
+  private readonly knownEntityIds = new Set<EntityId>();
   private readonly scratchEntityIds = new Set<EntityId>();
   private readonly scratchEntityIds2 = new Set<EntityId>();
+  private lastRefreshedEntitySetVersion: number | null = null;
   onChange?: (groups: readonly ControlGroupSlotSnapshot[]) => void;
 
   constructor(
@@ -65,14 +78,16 @@ export class InputControlGroups {
 
   setSource(source: ControlGroupEntitySource): void {
     this.source = source;
+    this.lastRefreshedEntitySetVersion = null;
   }
 
   storeSlot(index: number): void {
     if (index < 0 || index >= CONTROL_GROUP_COUNT) return;
     const ids = this.getSelectedGroupEntityIds();
     if (ids.length === 0) return;
-    this.autoGroupRules[index] = null;
+    this.removeEntityIdsFromAllGroups(ids);
     this.groups[index] = ids;
+    this.autoOwnedEntityIds[index].clear();
     this.emitChange();
   }
 
@@ -80,8 +95,7 @@ export class InputControlGroups {
     if (index < 0 || index >= CONTROL_GROUP_COUNT) return;
     const selectedIds = this.getSelectedGroupEntityIds();
     if (selectedIds.length === 0) return;
-    const hadAutoRule = this.autoGroupRules[index] !== null;
-    this.autoGroupRules[index] = null;
+    this.removeEntityIdsFromAllGroups(selectedIds);
 
     const group = this.groups[index];
     const originalLength = group.length;
@@ -95,22 +109,19 @@ export class InputControlGroups {
       group.push(id);
     }
     seen.clear();
-    if (group.length === originalLength) {
-      if (hadAutoRule) this.emitChange();
-      return;
-    }
+    if (group.length === originalLength) return;
     this.emitChange();
   }
 
   unsetSelectedFromGroups(): void {
     const selectedIds = this.getSelectedGroupEntityIds();
     if (selectedIds.length === 0) return;
-    const removedAutoRuleTypes = this.removeSelectedTypesFromAutoGroupRules();
     const selectedSet = this.scratchEntityIds;
     fillEntityIdSet(selectedSet, selectedIds);
-    let changed = removedAutoRuleTypes;
+    let changed = false;
     for (let i = 0; i < this.groups.length; i++) {
       if (compactEntityIdsExcludingSet(this.groups[i], selectedSet)) changed = true;
+      for (const id of selectedSet) this.autoOwnedEntityIds[i].delete(id);
     }
     selectedSet.clear();
     if (changed) this.emitChange();
@@ -118,36 +129,67 @@ export class InputControlGroups {
 
   setAutoGroupSlot(index: number): void {
     if (index < 0 || index >= CONTROL_GROUP_COUNT) return;
-    const rule = this.buildAutoGroupRuleFromSelection();
-    if (rule === null) return;
-    this.autoGroupRules[index] = rule;
-    this.groups[index] = this.collectAutoGroupEntityIds(rule);
+    const selectedRule = this.buildAutoGroupRuleFromSelection();
+    if (selectedRule === null) return;
+
+    // BAR stores one unitDef->group entry. Reassign the selected types from
+    // every previous rule, while retaining unrelated types already mapped to
+    // the destination group.
+    this.removeRuleTypesFromEverySlot(selectedRule);
+    const targetRule = this.autoGroupRules[index] ?? {
+      unitBlueprintIds: new Set<string>(),
+      buildingBlueprintIds: new Set<string>(),
+    };
+    for (const id of selectedRule.unitBlueprintIds) targetRule.unitBlueprintIds.add(id);
+    for (const id of selectedRule.buildingBlueprintIds) targetRule.buildingBlueprintIds.add(id);
+    this.autoGroupRules[index] = targetRule;
+
+    const matchingIds = this.collectEntityIdsMatchingRule(selectedRule);
+    this.removeEntityIdsFromAllGroups(matchingIds);
+    this.appendUniqueEntityIds(index, matchingIds);
+    for (let i = 0; i < matchingIds.length; i++) this.autoOwnedEntityIds[index].add(matchingIds[i]);
+    this.markAllLiveEntitiesKnown();
     this.emitChange();
+    if (matchingIds.length > 0) this.enqueueSelection(matchingIds, true);
   }
 
   removeSelectedFromAutoGroups(): void {
-    const selectedIds = this.getSelectedGroupEntityIds();
-    if (selectedIds.length === 0) return;
-    const selectedSet = this.scratchEntityIds;
-    fillEntityIdSet(selectedSet, selectedIds);
-    let changed = this.removeSelectedTypesFromAutoGroupRules();
+    const selectedRule = this.buildAutoGroupRuleFromSelection();
+    if (selectedRule === null) return;
+    const matchingIds = this.collectEntityIdsMatchingRule(selectedRule);
+    const matchingSet = this.scratchEntityIds;
+    fillEntityIdSet(matchingSet, matchingIds);
+    let changed = this.removeRuleTypesFromEverySlot(selectedRule);
     for (let i = 0; i < this.groups.length; i++) {
-      if (this.autoGroupRules[i] === null) continue;
-      if (compactEntityIdsExcludingSet(this.groups[i], selectedSet)) changed = true;
+      if (compactEntityIdsExcludingSet(this.groups[i], matchingSet)) changed = true;
+      for (const id of matchingSet) this.autoOwnedEntityIds[i].delete(id);
     }
-    selectedSet.clear();
+    matchingSet.clear();
     if (changed) this.emitChange();
   }
 
   loadAutoGroupPreset(rules: readonly (AutoGroupRuleSnapshot | null)[]): void {
     let changed = false;
+    // Remove membership still owned by the old preset, but preserve entities
+    // the player manually moved elsewhere.
     for (let i = 0; i < CONTROL_GROUP_COUNT; i++) {
-      const rule = hydrateAutoGroupRule(rules[i] ?? null);
+      if (compactEntityIdsExcludingSet(this.groups[i], this.autoOwnedEntityIds[i])) changed = true;
+      this.autoOwnedEntityIds[i].clear();
+    }
+    const claimedUnitBlueprintIds = new Set<string>();
+    const claimedBuildingBlueprintIds = new Set<string>();
+    for (let i = 0; i < CONTROL_GROUP_COUNT; i++) {
+      const rule = hydrateUniqueAutoGroupRule(
+        rules[i] ?? null,
+        claimedUnitBlueprintIds,
+        claimedBuildingBlueprintIds,
+      );
       if (autoGroupRulesEqual(this.autoGroupRules[i], rule)) continue;
       this.autoGroupRules[i] = rule;
-      this.groups[i] = rule === null ? [] : this.collectAutoGroupEntityIds(rule);
       changed = true;
     }
+    if (this.addUngroupedLiveAutoMatches()) changed = true;
+    this.markAllLiveEntitiesKnown();
     if (changed) this.emitChange();
   }
 
@@ -170,16 +212,35 @@ export class InputControlGroups {
     return snapshots;
   }
 
-  refreshAutoGroups(): boolean {
-    let changed = false;
-    for (let i = 0; i < CONTROL_GROUP_COUNT; i++) {
-      const rule = this.autoGroupRules[i];
-      if (rule === null) continue;
-      const entityIds = this.collectAutoGroupEntityIds(rule);
-      if (arraysEqual(this.groups[i], entityIds)) continue;
-      this.groups[i] = entityIds;
-      changed = true;
+  refreshAutoGroups(force = false): boolean {
+    const entitySetVersion = this.source.getEntitySetVersion?.();
+    if (
+      !force &&
+      entitySetVersion !== undefined &&
+      this.lastRefreshedEntitySetVersion === entitySetVersion
+    ) return false;
+    this.lastRefreshedEntitySetVersion = entitySetVersion ?? null;
+    const liveIds = this.scratchEntityIds2;
+    liveIds.clear();
+    const units = this.source.getUnits();
+    for (let i = 0; i < units.length; i++) {
+      if (this.isSelectable(units[i])) liveIds.add(units[i].id);
     }
+    const buildings = this.source.getBuildings();
+    for (let i = 0; i < buildings.length; i++) {
+      if (this.isSelectable(buildings[i])) liveIds.add(buildings[i].id);
+    }
+    let changed = this.pruneDeadGroupMemberships(liveIds);
+    for (const id of this.knownEntityIds) {
+      if (!liveIds.has(id)) this.knownEntityIds.delete(id);
+    }
+    for (let i = 0; i < units.length; i++) {
+      if (this.addNewEntityToAutoGroup(units[i])) changed = true;
+    }
+    for (let i = 0; i < buildings.length; i++) {
+      if (this.addNewEntityToAutoGroup(buildings[i])) changed = true;
+    }
+    liveIds.clear();
     if (changed) this.emitChange();
     return changed;
   }
@@ -189,7 +250,7 @@ export class InputControlGroups {
     const entityIds = this.getLiveSlotEntityIds(index);
     if (entityIds.length === 0) {
       if (this.groups[index].length === 0) return false;
-      this.groups[index] = [];
+      this.clearSlotMembership(index);
       this.emitChange();
       return true;
     }
@@ -204,7 +265,7 @@ export class InputControlGroups {
     const groupIds = this.getLiveSlotEntityIds(index);
     if (groupIds.length === 0) {
       if (this.groups[index].length > 0) {
-        this.groups[index] = [];
+        this.clearSlotMembership(index);
         this.emitChange();
         return true;
       }
@@ -265,11 +326,6 @@ export class InputControlGroups {
     }
     const selectedBuildings = this.source.getSelectedBuildings();
     for (let i = 0; i < selectedBuildings.length; i++) {
-      const factoryUnitBlueprintId = selectedBuildings[i].factory?.selectedUnitBlueprintId;
-      if (factoryUnitBlueprintId) {
-        rule.unitBlueprintIds.add(factoryUnitBlueprintId);
-        continue;
-      }
       const buildingBlueprintId = selectedBuildings[i].buildingBlueprintId;
       if (buildingBlueprintId) rule.buildingBlueprintIds.add(buildingBlueprintId);
     }
@@ -278,9 +334,7 @@ export class InputControlGroups {
       : null;
   }
 
-  private removeSelectedTypesFromAutoGroupRules(): boolean {
-    const selectedRule = this.buildAutoGroupRuleFromSelection();
-    if (selectedRule === null) return false;
+  private removeRuleTypesFromEverySlot(selectedRule: AutoGroupRule): boolean {
     let changed = false;
     for (let i = 0; i < this.autoGroupRules.length; i++) {
       const rule = this.autoGroupRules[i];
@@ -293,15 +347,12 @@ export class InputControlGroups {
       }
       if (rule.unitBlueprintIds.size === 0 && rule.buildingBlueprintIds.size === 0) {
         this.autoGroupRules[i] = null;
-        this.groups[i] = [];
-      } else {
-        this.groups[i] = this.collectAutoGroupEntityIds(rule);
       }
     }
     return changed;
   }
 
-  private collectAutoGroupEntityIds(rule: AutoGroupRule): EntityId[] {
+  private collectEntityIdsMatchingRule(rule: AutoGroupRule): EntityId[] {
     const entityIds: EntityId[] = [];
     const units = this.source.getUnits();
     for (let i = 0; i < units.length; i++) {
@@ -318,6 +369,117 @@ export class InputControlGroups {
       if (this.isSelectable(entity)) entityIds.push(entity.id);
     }
     return entityIds;
+  }
+
+  private removeEntityIdsFromAllGroups(entityIds: readonly EntityId[]): boolean {
+    if (entityIds.length === 0) return false;
+    const ids = this.scratchEntityIds;
+    fillEntityIdSet(ids, entityIds);
+    let changed = false;
+    for (let i = 0; i < CONTROL_GROUP_COUNT; i++) {
+      if (compactEntityIdsExcludingSet(this.groups[i], ids)) changed = true;
+      for (const id of ids) this.autoOwnedEntityIds[i].delete(id);
+    }
+    ids.clear();
+    return changed;
+  }
+
+  private appendUniqueEntityIds(index: number, entityIds: readonly EntityId[]): void {
+    const group = this.groups[index];
+    const seen = this.scratchEntityIds;
+    fillEntityIdSet(seen, group);
+    for (let i = 0; i < entityIds.length; i++) {
+      const id = entityIds[i];
+      if (seen.has(id)) continue;
+      seen.add(id);
+      group.push(id);
+    }
+    seen.clear();
+  }
+
+  private entityHasGroup(entityId: EntityId): boolean {
+    for (let i = 0; i < CONTROL_GROUP_COUNT; i++) {
+      if (this.groups[i].includes(entityId)) return true;
+    }
+    return false;
+  }
+
+  private autoGroupIndexForEntity(entity: Entity): number {
+    const unitBlueprintId = entity.unit?.unitBlueprintId;
+    const buildingBlueprintId = entity.buildingBlueprintId;
+    for (let i = 0; i < CONTROL_GROUP_COUNT; i++) {
+      const rule = this.autoGroupRules[i];
+      if (rule === null) continue;
+      if (unitBlueprintId !== undefined && rule.unitBlueprintIds.has(unitBlueprintId)) return i;
+      if (typeof buildingBlueprintId === 'string' && rule.buildingBlueprintIds.has(buildingBlueprintId)) return i;
+    }
+    return -1;
+  }
+
+  private addNewEntityToAutoGroup(entity: Entity): boolean {
+    if (!this.isSelectable(entity) || this.knownEntityIds.has(entity.id)) return false;
+    this.knownEntityIds.add(entity.id);
+    const targetIndex = this.autoGroupIndexForEntity(entity);
+    if (targetIndex < 0 || this.entityHasGroup(entity.id)) return false;
+    this.groups[targetIndex].push(entity.id);
+    this.autoOwnedEntityIds[targetIndex].add(entity.id);
+    return true;
+  }
+
+  private addUngroupedLiveAutoMatches(): boolean {
+    let changed = false;
+    const groupedIds = this.scratchEntityIds;
+    groupedIds.clear();
+    for (let i = 0; i < CONTROL_GROUP_COUNT; i++) {
+      const ids = this.groups[i];
+      for (let j = 0; j < ids.length; j++) groupedIds.add(ids[j]);
+    }
+    const units = this.source.getUnits();
+    for (let i = 0; i < units.length; i++) {
+      const entity = units[i];
+      if (!this.isSelectable(entity) || groupedIds.has(entity.id)) continue;
+      const targetIndex = this.autoGroupIndexForEntity(entity);
+      if (targetIndex < 0) continue;
+      this.groups[targetIndex].push(entity.id);
+      this.autoOwnedEntityIds[targetIndex].add(entity.id);
+      groupedIds.add(entity.id);
+      changed = true;
+    }
+    const buildings = this.source.getBuildings();
+    for (let i = 0; i < buildings.length; i++) {
+      const entity = buildings[i];
+      if (!this.isSelectable(entity) || groupedIds.has(entity.id)) continue;
+      const targetIndex = this.autoGroupIndexForEntity(entity);
+      if (targetIndex < 0) continue;
+      this.groups[targetIndex].push(entity.id);
+      this.autoOwnedEntityIds[targetIndex].add(entity.id);
+      groupedIds.add(entity.id);
+      changed = true;
+    }
+    groupedIds.clear();
+    return changed;
+  }
+
+  private markAllLiveEntitiesKnown(): void {
+    const units = this.source.getUnits();
+    for (let i = 0; i < units.length; i++) {
+      if (this.isSelectable(units[i])) this.knownEntityIds.add(units[i].id);
+    }
+    const buildings = this.source.getBuildings();
+    for (let i = 0; i < buildings.length; i++) {
+      if (this.isSelectable(buildings[i])) this.knownEntityIds.add(buildings[i].id);
+    }
+  }
+
+  private pruneDeadGroupMemberships(liveIds: ReadonlySet<EntityId>): boolean {
+    let changed = false;
+    for (let i = 0; i < CONTROL_GROUP_COUNT; i++) {
+      if (compactEntityIdsIncludingSet(this.groups[i], liveIds)) changed = true;
+      for (const id of this.autoOwnedEntityIds[i]) {
+        if (!liveIds.has(id)) this.autoOwnedEntityIds[i].delete(id);
+      }
+    }
+    return changed;
   }
 
   getLiveSlotEntityIds(index: number): EntityId[] {
@@ -351,7 +513,18 @@ export class InputControlGroups {
   private pruneSlotToLiveIds(index: number, entityIds: EntityId[]): void {
     if (arraysEqual(this.groups[index], entityIds)) return;
     this.groups[index] = copyEntityIds(entityIds);
+    const liveIds = this.scratchEntityIds;
+    fillEntityIdSet(liveIds, entityIds);
+    for (const id of this.autoOwnedEntityIds[index]) {
+      if (!liveIds.has(id)) this.autoOwnedEntityIds[index].delete(id);
+    }
+    liveIds.clear();
     this.emitChange();
+  }
+
+  private clearSlotMembership(index: number): void {
+    this.groups[index] = [];
+    this.autoOwnedEntityIds[index].clear();
   }
 
   private emitChange(): void {
@@ -380,6 +553,26 @@ function hydrateAutoGroupRule(snapshot: AutoGroupRuleSnapshot | null): AutoGroup
     unitBlueprintIds: new Set(unitBlueprintIds),
     buildingBlueprintIds: new Set(buildingBlueprintIds),
   };
+}
+
+function hydrateUniqueAutoGroupRule(
+  snapshot: AutoGroupRuleSnapshot | null,
+  claimedUnitBlueprintIds: Set<string>,
+  claimedBuildingBlueprintIds: Set<string>,
+): AutoGroupRule | null {
+  const rule = hydrateAutoGroupRule(snapshot);
+  if (rule === null) return null;
+  for (const id of rule.unitBlueprintIds) {
+    if (claimedUnitBlueprintIds.has(id)) rule.unitBlueprintIds.delete(id);
+    else claimedUnitBlueprintIds.add(id);
+  }
+  for (const id of rule.buildingBlueprintIds) {
+    if (claimedBuildingBlueprintIds.has(id)) rule.buildingBlueprintIds.delete(id);
+    else claimedBuildingBlueprintIds.add(id);
+  }
+  return rule.unitBlueprintIds.size > 0 || rule.buildingBlueprintIds.size > 0
+    ? rule
+    : null;
 }
 
 function snapshotAutoGroupRule(rule: AutoGroupRule | null): AutoGroupRuleSnapshot | null {
@@ -420,6 +613,19 @@ function compactEntityIdsExcludingSet(entityIds: EntityId[], excluded: ReadonlyS
   for (let readIndex = 0; readIndex < entityIds.length; readIndex++) {
     const id = entityIds[readIndex];
     if (excluded.has(id)) continue;
+    if (writeIndex !== readIndex) entityIds[writeIndex] = id;
+    writeIndex++;
+  }
+  if (writeIndex === entityIds.length) return false;
+  entityIds.length = writeIndex;
+  return true;
+}
+
+function compactEntityIdsIncludingSet(entityIds: EntityId[], included: ReadonlySet<EntityId>): boolean {
+  let writeIndex = 0;
+  for (let readIndex = 0; readIndex < entityIds.length; readIndex++) {
+    const id = entityIds[readIndex];
+    if (!included.has(id)) continue;
     if (writeIndex !== readIndex) entityIds[writeIndex] = id;
     writeIndex++;
   }

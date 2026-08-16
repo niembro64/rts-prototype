@@ -36,7 +36,7 @@ type BuildabilityMeta = [
   version: number,
 ];
 
-export type LegacyPackedTerrainTileMapWire = {
+type LegacyPackedTerrainTileMapWire = {
   v: typeof LEGACY_PACKED_TERRAIN_V2_VERSION;
   m: [
     mapWidth: number,
@@ -59,7 +59,7 @@ export type LegacyPackedTerrainTileMapWire = {
   ci: Uint8Array;
 };
 
-export type LegacyPackedTerrainTileMapWireV3 = {
+type LegacyPackedTerrainTileMapWireV3 = {
   v: typeof LEGACY_PACKED_TERRAIN_V3_VERSION;
   m: TerrainMeta;
   vc: Uint8Array;
@@ -69,7 +69,7 @@ export type LegacyPackedTerrainTileMapWireV3 = {
   ci: Uint8Array;
 };
 
-export type LegacyPackedTerrainTileMapWireV4 = {
+type LegacyPackedTerrainTileMapWireV4 = {
   v: typeof LEGACY_PACKED_TERRAIN_V4_VERSION;
   m: TerrainMeta;
   vc: Uint8Array;
@@ -77,7 +77,7 @@ export type LegacyPackedTerrainTileMapWireV4 = {
   ti: Uint8Array;
 };
 
-export type PackedTerrainTileMapWireV5 = {
+type PackedTerrainTileMapWireV5 = {
   v: typeof PACKED_TERRAIN_VERSION;
   m: TerrainMeta;
   vc: Uint8Array;

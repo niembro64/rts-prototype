@@ -9,7 +9,7 @@ let initializedSim: ReturnType<typeof getSimWasm> | null = null;
  * Registered by the owning Simulation; the pathfinder cache pulls from it
  * whenever the installed occupancy version differs. Hovering structures must
  * never be reported — they have no pathfinding surface. */
-export type PathfinderBuildingOccupancySource = {
+type PathfinderBuildingOccupancySource = {
   getVersion(): number;
   forEachBlockedCell(visit: (gx: number, gy: number) => void): void;
 };

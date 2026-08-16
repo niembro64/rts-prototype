@@ -17,31 +17,37 @@
 import type { WorldState } from './WorldState';
 import type { Entity } from './types';
 import { getBuildingConfig } from './buildConfigs';
-import { BUILD_GRID_CELL_SIZE } from './buildGrid';
+import {
+  BUILD_GRID_CELL_SIZE,
+  getRotatedBuildingPlacementFootprint,
+} from './buildGrid';
 import { METAL_DEPOSIT_CONFIG } from '../../metalDepositConfig';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import {
-  getMetalDepositCoveredCellCount,
-  getMetalDepositsOverlappingBuildingFootprint,
+  findDepositContainingPoint,
 } from './metalDeposits';
+import type { BuildingPlacementFootprint } from './types';
 
-/** Resolve an extractor's grid-aligned footprint AABB from its world
+/** Resolve an extractor's grid-aligned authored mask from its world
  *  transform + the extractor building config. The construction system
  *  snaps build positions to cell-aligned tops, so the integer grid
  *  index is `floor((center − halfSize) / cellSize + ε)`. */
 function getExtractorFootprintGrid(entity: Entity): {
   gridX: number;
   gridY: number;
-  gridW: number;
-  gridH: number;
+  footprint: BuildingPlacementFootprint;
 } | null {
   if (!isMetalExtractorBlueprintId(entity.buildingBlueprintId) || !entity.building) return null;
   const cfg = getBuildingConfig(entity.buildingBlueprintId);
-  const halfW = (cfg.gridWidth * BUILD_GRID_CELL_SIZE) / 2;
-  const halfH = (cfg.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
+  const footprint = getRotatedBuildingPlacementFootprint(
+    cfg.placementFootprint,
+    entity.transform.rotation,
+  );
+  const halfW = (footprint.gridWidth * BUILD_GRID_CELL_SIZE) / 2;
+  const halfH = (footprint.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
   const gridX = Math.floor((entity.transform.x - halfW) / BUILD_GRID_CELL_SIZE + 1e-6);
   const gridY = Math.floor((entity.transform.y - halfH) / BUILD_GRID_CELL_SIZE + 1e-6);
-  return { gridX, gridY, gridW: cfg.gridWidth, gridH: cfg.gridHeight };
+  return { gridX, gridY, footprint };
 }
 
 function baseProduction(extractor: Entity): number {
@@ -75,32 +81,23 @@ function syncExtractorRateFromCoveredCells(world: WorldState, extractor: Entity)
   if (world.terrainSurfaceMode === 'metal') {
     extractor.coveredDepositIds = [];
     extractor.metalExtractionRate =
-      footprint.gridW * footprint.gridH * perMetalCellProduction(extractor);
+      footprint.footprint.cells.length * perMetalCellProduction(extractor);
     return;
   }
 
-  const touchedDepositIds: number[] = [];
+  const touchedDepositIds = new Set<number>();
   let coveredCellCount = 0;
-  const candidates = getMetalDepositsOverlappingBuildingFootprint(
-    world.metalDeposits,
-    footprint.gridX,
-    footprint.gridY,
-    footprint.gridW,
-    footprint.gridH,
-  );
-  for (const deposit of candidates) {
-    const coveredCells = getMetalDepositCoveredCellCount(
-      deposit,
-      footprint.gridX,
-      footprint.gridY,
-      footprint.gridW,
-      footprint.gridH,
+  for (const cell of footprint.footprint.cells) {
+    const deposit = findDepositContainingPoint(
+      world.metalDeposits,
+      (footprint.gridX + cell.dx + 0.5) * BUILD_GRID_CELL_SIZE,
+      (footprint.gridY + cell.dy + 0.5) * BUILD_GRID_CELL_SIZE,
     );
-    if (coveredCells <= 0) continue;
-    touchedDepositIds.push(deposit.id);
-    coveredCellCount += coveredCells;
+    if (deposit === null) continue;
+    touchedDepositIds.add(deposit.id);
+    coveredCellCount++;
   }
-  extractor.coveredDepositIds = touchedDepositIds;
+  extractor.coveredDepositIds = Array.from(touchedDepositIds);
   extractor.metalExtractionRate = coveredCellCount * perMetalCellProduction(extractor);
 }
 

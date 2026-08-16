@@ -4,9 +4,9 @@ import type { TurretMesh } from './TurretMesh3D';
 import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
-  getOrCreate,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
+import { GeometryCache3D } from './GeometryCache3D';
 
 const COMMANDER_LENS_COLOR = COLORS.units.unitCommander.lens.colorHex;
 
@@ -18,8 +18,12 @@ export class CommanderVisualKit3D {
     geom.name = 'commanderKitBox';
     return geom;
   }
-  private readonly cylinderGeoms = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
-  private readonly domeGeoms = new Map<PrimitiveGeometryTier, THREE.SphereGeometry>();
+  private readonly cylinderGeoms = new GeometryCache3D(
+    (tier: PrimitiveGeometryTier) => createPrimitiveCylinderGeometry('unitDetail', tier),
+  );
+  private readonly domeGeoms = new GeometryCache3D(
+    (tier: PrimitiveGeometryTier) => createPrimitiveSphereGeometry('unitDetail', tier),
+  );
   private readonly lensMat = new THREE.MeshBasicMaterial({
     color: COMMANDER_LENS_COLOR,
     transparent: true,
@@ -29,16 +33,6 @@ export class CommanderVisualKit3D {
   private readonly darkArmorMat = new THREE.MeshLambertMaterial({
     color: COLORS.units.locomotion.leg.segment.colorHex,
   });
-
-  private cylinderGeom(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
-    return getOrCreate(this.cylinderGeoms, tier, () =>
-      createPrimitiveCylinderGeometry('unitDetail', tier));
-  }
-
-  private domeGeom(tier: PrimitiveGeometryTier): THREE.SphereGeometry {
-    return getOrCreate(this.domeGeoms, tier, () =>
-      createPrimitiveSphereGeometry('unitDetail', tier));
-  }
 
   buildKit(primaryMat: THREE.Material, geometryTier: PrimitiveGeometryTier): THREE.Group {
     const kit = new THREE.Group();
@@ -59,7 +53,7 @@ export class CommanderVisualKit3D {
       x: number, y: number, z: number,
       radiusX: number, height: number, radiusZ: number,
     ): void => {
-      const mesh = new THREE.Mesh(this.cylinderGeom(geometryTier), material);
+      const mesh = new THREE.Mesh(this.cylinderGeoms.get(geometryTier), material);
       mesh.position.set(x, y, z);
       mesh.scale.set(radiusX, height, radiusZ);
       kit.add(mesh);
@@ -69,7 +63,7 @@ export class CommanderVisualKit3D {
       x: number, y: number, z: number,
       sx: number, sy: number, sz: number,
     ): void => {
-      const mesh = new THREE.Mesh(this.domeGeom(geometryTier), material);
+      const mesh = new THREE.Mesh(this.domeGeoms.get(geometryTier), material);
       mesh.position.set(x, y, z);
       mesh.scale.set(sx, sy, sz);
       kit.add(mesh);
@@ -167,7 +161,7 @@ export class CommanderVisualKit3D {
       housing.scale.set(headRadius * 1.25, headRadius * 0.62, headRadius * 0.76);
       tm.pitchGroup.add(housing);
       if (geometryTier !== 'far') {
-        const muzzle = new THREE.Mesh(this.cylinderGeom(geometryTier), primaryMat);
+        const muzzle = new THREE.Mesh(this.cylinderGeoms.get(geometryTier), primaryMat);
         muzzle.position.set(headRadius * 1.2, 0, 0);
         muzzle.rotation.z = -Math.PI / 2;
         muzzle.scale.set(headRadius * 0.42, headRadius * 0.26, headRadius * 0.42);
@@ -178,24 +172,24 @@ export class CommanderVisualKit3D {
       aperture.scale.set(headRadius * 0.05, headRadius * 0.26, headRadius * 0.29);
       tm.pitchGroup.add(aperture);
     } else {
-      const barrel = new THREE.Mesh(this.cylinderGeom(geometryTier), this.darkArmorMat);
+      const barrel = new THREE.Mesh(this.cylinderGeoms.get(geometryTier), this.darkArmorMat);
       barrel.position.set(headRadius * 0.68, 0, 0);
       barrel.rotation.z = -Math.PI / 2;
       barrel.scale.set(headRadius * 0.5, headRadius * 1.05, headRadius * 0.5);
       tm.pitchGroup.add(barrel);
       if (geometryTier !== 'far') {
-        const armorRing = new THREE.Mesh(this.cylinderGeom(geometryTier), primaryMat);
+        const armorRing = new THREE.Mesh(this.cylinderGeoms.get(geometryTier), primaryMat);
         armorRing.position.set(headRadius * 0.25, 0, 0);
         armorRing.rotation.z = -Math.PI / 2;
         armorRing.scale.set(headRadius * 0.63, headRadius * 0.22, headRadius * 0.63);
         tm.pitchGroup.add(armorRing);
       }
-      const muzzleRing = new THREE.Mesh(this.cylinderGeom(geometryTier), primaryMat);
+      const muzzleRing = new THREE.Mesh(this.cylinderGeoms.get(geometryTier), primaryMat);
       muzzleRing.position.set(headRadius * 1.23, 0, 0);
       muzzleRing.rotation.z = -Math.PI / 2;
       muzzleRing.scale.set(headRadius * 0.6, headRadius * 0.18, headRadius * 0.6);
       tm.pitchGroup.add(muzzleRing);
-      const aperture = new THREE.Mesh(this.cylinderGeom(geometryTier), this.lensMat);
+      const aperture = new THREE.Mesh(this.cylinderGeoms.get(geometryTier), this.lensMat);
       aperture.position.set(headRadius * 1.34, 0, 0);
       aperture.rotation.z = -Math.PI / 2;
       aperture.scale.set(headRadius * 0.41, headRadius * 0.05, headRadius * 0.41);
@@ -238,10 +232,8 @@ export class CommanderVisualKit3D {
 
   dispose(): void {
     this.boxGeom.dispose();
-    for (const geometry of this.cylinderGeoms.values()) geometry.dispose();
-    for (const geometry of this.domeGeoms.values()) geometry.dispose();
-    this.cylinderGeoms.clear();
-    this.domeGeoms.clear();
+    this.cylinderGeoms.dispose();
+    this.domeGeoms.dispose();
     this.lensMat.dispose();
     this.darkArmorMat.dispose();
   }

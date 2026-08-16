@@ -319,7 +319,7 @@ function presetMatchesCurrent(
   );
 }
 
-export type BattleMapPresentation = {
+type BattleMapPresentation = {
   /** Exact stock match, or null when any map/gameplay setting is custom. */
   readonly presetName: string | null;
   /** Only exact stock matches receive the preset's special panorama. */
@@ -363,7 +363,7 @@ export function resolveBattleMapPresentation(
   };
 }
 
-export function findMatchingPresetName(c: BattlePresetSnapshot): string | null {
+function findMatchingPresetName(c: BattlePresetSnapshot): string | null {
   for (const p of BATTLE_PRESETS) {
     if (presetMatchesCurrent(p, c)) return p.name;
   }

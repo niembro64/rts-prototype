@@ -45,7 +45,7 @@ import {
 
 type Vec2 = { x: number; y: number };
 
-export type PathResolution = 'complete' | 'snapped' | 'partial' | 'unreachable';
+type PathResolution = 'complete' | 'snapped' | 'partial' | 'unreachable';
 
 export type ExpandedPathPlan = {
   points: UnitPathPoint[];

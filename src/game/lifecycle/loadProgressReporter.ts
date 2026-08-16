@@ -8,12 +8,12 @@
 
 import { clamp01 } from '../math';
 
-export type LoadProgressCallback = (
+type LoadProgressCallback = (
   progress: number,
   phase: string | undefined,
 ) => void | Promise<void>;
 
-export type LoadProgressReporter = (
+type LoadProgressReporter = (
   progress: number,
   phase?: string,
 ) => Promise<void>;

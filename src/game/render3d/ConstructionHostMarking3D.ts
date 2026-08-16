@@ -7,9 +7,9 @@ import {
 } from '@/constructionVisualConfig';
 import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 
-export type HazardColor = 'yellow' | 'black';
-export type HazardUvPoint = readonly [u: number, v: number];
-export type LinearHazardStripePolygon = Readonly<{
+type HazardColor = 'yellow' | 'black';
+type HazardUvPoint = readonly [u: number, v: number];
+type LinearHazardStripePolygon = Readonly<{
   color: HazardColor;
   points: readonly HazardUvPoint[];
 }>;
@@ -332,16 +332,18 @@ function appendBasisBox(
   height: number,
   depth: number,
 ): void {
-  const mapPoint = (u: number, v: number, w: number): readonly [number, number, number] => {
-    const point = center.clone()
-      .addScaledVector(axisU, u)
-      .addScaledVector(axisV, v)
-      .addScaledVector(axisW, w);
-    return [point.x, point.y, point.z];
-  };
   const halfWidth = width * 0.5;
   const halfHeight = height * 0.5;
   const halfDepth = depth * 0.5;
+  const mapPoint = (u: number, v: number, w: number) => mapBasisPoint(
+    center,
+    axisU,
+    axisV,
+    axisW,
+    u,
+    v,
+    w,
+  );
   const backBottomLeft = mapPoint(-halfWidth, -halfHeight, -halfDepth);
   const backBottomRight = mapPoint(halfWidth, -halfHeight, -halfDepth);
   const backTopRight = mapPoint(halfWidth, halfHeight, -halfDepth);
@@ -365,6 +367,22 @@ function appendBasisBox(
   quad(frontBottomRight, backBottomRight, backTopRight, frontTopRight);
   quad(backTopLeft, frontTopLeft, frontTopRight, backTopRight);
   quad(backBottomRight, frontBottomRight, frontBottomLeft, backBottomLeft);
+}
+
+function mapBasisPoint(
+  center: THREE.Vector3,
+  axisU: THREE.Vector3,
+  axisV: THREE.Vector3,
+  axisW: THREE.Vector3,
+  u: number,
+  v: number,
+  w: number,
+): readonly [number, number, number] {
+  const point = center.clone()
+    .addScaledVector(axisU, u)
+    .addScaledVector(axisV, v)
+    .addScaledVector(axisW, w);
+  return [point.x, point.y, point.z];
 }
 
 function appendChamferedBasisBox(
@@ -391,18 +409,24 @@ function appendChamferedBasisBox(
     [-halfWidth, halfHeight - cornerChamfer],
     [-halfWidth, -halfHeight + cornerChamfer],
   ];
-  const mapPoint = (
-    [u, v]: HazardUvPoint,
-    w: number,
-  ): readonly [number, number, number] => {
-    const point = center.clone()
-      .addScaledVector(axisU, u)
-      .addScaledVector(axisV, v)
-      .addScaledVector(axisW, w);
-    return [point.x, point.y, point.z];
-  };
-  const front = outline.map((point) => mapPoint(point, halfDepth));
-  const back = outline.map((point) => mapPoint(point, -halfDepth));
+  const front = outline.map(([u, v]) => mapBasisPoint(
+    center,
+    axisU,
+    axisV,
+    axisW,
+    u,
+    v,
+    halfDepth,
+  ));
+  const back = outline.map(([u, v]) => mapBasisPoint(
+    center,
+    axisU,
+    axisV,
+    axisW,
+    u,
+    v,
+    -halfDepth,
+  ));
   for (let index = 1; index + 1 < outline.length; index++) {
     triangle(positions, front[0], front[index], front[index + 1]);
     triangle(positions, back[0], back[index + 1], back[index]);

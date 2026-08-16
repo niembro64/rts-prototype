@@ -1,7 +1,5 @@
 import type { EntityId } from '../sim/types';
-import type { PlayerId } from '../sim/types';
-import type { SelectionEntitySource } from '@/types/input';
-import { findClosestSelectableEntityToPoint } from '../input/helpers';
+import { monotonicNowMs } from '../time';
 
 const DEFAULT_HOVER_RAYCAST_INTERVAL_MS = 50;
 
@@ -42,7 +40,7 @@ export class Input3DHoverState {
     clientY: number,
     resolveTargets: ResolveHoverTargets,
   ): void {
-    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const now = monotonicNowMs();
     if (now - this.lastRaycastMs < this.raycastIntervalMs) return;
     this.lastRaycastMs = now;
     this.lastClientX = clientX;
@@ -51,30 +49,4 @@ export class Input3DHoverState {
     this.hoveredEntityId = targets.hovered;
     this.hoveredSelectableEntityId = targets.selectable;
   }
-}
-
-export function resolveInput3DHoverTargets(
-  entitySource: SelectionEntitySource,
-  activePlayerId: PlayerId,
-  worldX: number,
-  worldY: number,
-  minUnitRadius: number,
-): Input3DHoverTargets {
-  const options = { minUnitRadius };
-  const hovered = findClosestSelectableEntityToPoint(
-    entitySource,
-    worldX,
-    worldY,
-    options,
-  )?.id ?? null;
-  const selectable = findClosestSelectableEntityToPoint(
-    entitySource,
-    worldX,
-    worldY,
-    {
-      ...options,
-      playerId: activePlayerId,
-    },
-  )?.id ?? null;
-  return { hovered, selectable };
 }

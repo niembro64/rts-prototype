@@ -288,9 +288,11 @@ export function runAuthoritativeTurretSocketContractTest(): void {
   assertContract(rexTurrets !== undefined, 'Rex exposes runtime turrets');
   const primaryIndex = rexTurrets.findIndex((turret) => turret.mountId === 'beamMega');
   const gatlingIndex = rexTurrets.findIndex((turret) => turret.mountId === 'gatlingRight');
-  const fastRocketIndex = rexTurrets.findIndex((turret) => turret.mountId === 'missileFast');
+  const rightAntiAirIndex = rexTurrets.findIndex((turret) => turret.mountId === 'antiAirRight');
+  const leftAntiAirIndex = rexTurrets.findIndex((turret) => turret.mountId === 'antiAirLeft');
   assertContract(
-    primaryIndex >= 0 && gatlingIndex >= 0 && fastRocketIndex >= 0,
+    primaryIndex >= 0 && gatlingIndex >= 0 &&
+      rightAntiAirIndex >= 0 && leftAntiAirIndex >= 0,
     'Rex socket fixtures exist',
   );
   const gatling = rexTurrets[gatlingIndex];
@@ -298,6 +300,12 @@ export function runAuthoritativeTurretSocketContractTest(): void {
     gatling.emissionSockets.length === 5,
     'Rex gatling materializes one QueryWeapon socket per logical lane',
   );
+  assertContract(
+    rexTurrets[rightAntiAirIndex].emissionSockets.length === 3 &&
+      rexTurrets[leftAntiAirIndex].emissionSockets.length === 3,
+    'both Rex fast-rocket launchers materialize all three QueryWeapon lanes',
+  );
+  const rightFastRocket = rexTurrets[rightAntiAirIndex];
   rexTurrets[primaryIndex].aimTargetYaw = 0.35;
   rexTurrets[primaryIndex].rotation = 0.35;
   rexTurrets[primaryIndex].state = 'engaged';
@@ -350,8 +358,7 @@ export function runAuthoritativeTurretSocketContractTest(): void {
     'gatling QueryWeapon sockets remain centered while the barrel cluster rotates below them',
   );
 
-  const fastRocket = rexTurrets[fastRocketIndex];
-  const headPivotBefore = { ...fastRocket.worldPos };
+  const upperHandPivotBefore = { ...rightFastRocket.worldPos };
   rexWorld.incrementTick();
   rexTurrets[primaryIndex].aimTargetYaw = -0.45;
   rexTurrets[primaryIndex].rotation = -0.45;
@@ -376,11 +383,11 @@ export function runAuthoritativeTurretSocketContractTest(): void {
   );
   assertContract(
     DMath.hypot(
-      fastRocket.worldPos.x - headPivotBefore.x,
-      fastRocket.worldPos.y - headPivotBefore.y,
-      fastRocket.worldPos.z - headPivotBefore.z,
+      rightFastRocket.worldPos.x - upperHandPivotBefore.x,
+      rightFastRocket.worldPos.y - upperHandPivotBefore.y,
+      rightFastRocket.worldPos.z - upperHandPivotBefore.z,
     ) > 1e-4,
-    'Rex head/shoulder launcher AimFrom pivot follows the inertial upper body',
+    'Rex upper-hand fast-rocket AimFrom pivot follows its articulated arm and inertial upper body',
   );
   assertContract(
     Math.abs(rexTurrets[primaryIndex].hostPieceYaw - torsoYawBeforeTurn) <
@@ -389,9 +396,9 @@ export function runAuthoritativeTurretSocketContractTest(): void {
   );
   assertContract(
     DMath.hypot(
-      fastRocket.worldVelocity.x,
-      fastRocket.worldVelocity.y,
-      fastRocket.worldVelocity.z,
+      rightFastRocket.worldVelocity.x,
+      rightFastRocket.worldVelocity.y,
+      rightFastRocket.worldVelocity.z,
     ) > 0,
     'moving upper-body sockets publish launch-inheritance velocity',
   );

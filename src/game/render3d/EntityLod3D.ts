@@ -32,7 +32,7 @@ export const ENTITY_LOD_PROXY_GLYPH_TRIANGLE = 2;
 export const ENTITY_LOD_PROXY_GLYPH_SQUARE = 3;
 export const ENTITY_LOD_PROXY_GLYPH_CROSS = 4;
 
-export type EntityLodProxyGlyph3D =
+type EntityLodProxyGlyph3D =
   | typeof ENTITY_LOD_PROXY_GLYPH_CIRCLE
   | typeof ENTITY_LOD_PROXY_GLYPH_DIAMOND
   | typeof ENTITY_LOD_PROXY_GLYPH_TRIANGLE
@@ -136,7 +136,7 @@ export function entityLodProxyRadius3D(entity: Entity): number {
  * and beams use authored floors because their visual salience (trails,
  * beam length) far exceeds their tiny body radius.
  */
-export function entityDetailRadius3D(entity: Entity): number {
+function entityDetailRadius3D(entity: Entity): number {
   const unit = entity.unit;
   if (unit !== null) {
     return firstFinitePositiveRadius(
@@ -199,20 +199,6 @@ function detailLevelForMode(coverageLevel: number): number {
   return pinnedRungForLodMode() === null
     ? coverageLevel
     : detailLevelForRung(detailRungForMode(detailRungForLevel(coverageLevel)));
-}
-
-/**
- * Screen-coverage metric for callers without a render-loop cache. It is used
- * only to choose a rung; rendered output is always HIGH, MED, LOW, or glyph.
- * No hysteresis — use {@link EntityLodState3D.entityDetailRungForView}
- * for anything that triggers rebuilds.
- */
-export function entityDetailLevel3D(camera: THREE.Camera, entity: Entity): number {
-  return detailLevelForMode(detailLevelForRadiusDistance(
-    entityDetailRadius3D(entity),
-    Math.sqrt(entityCameraDistanceSq3D(camera, entity)),
-    cameraFovYRad(camera),
-  ));
 }
 
 /**

@@ -16,7 +16,7 @@ type MapOvalPoint = {
   readonly y: number;
 };
 
-export type MapOvalSample = {
+type MapOvalSample = {
   readonly ox: number;
   readonly oy: number;
   readonly distance: number;

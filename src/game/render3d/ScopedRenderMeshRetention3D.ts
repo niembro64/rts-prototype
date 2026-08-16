@@ -1,5 +1,6 @@
 import type { EntityId } from '../sim/types';
 import { IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
+import { monotonicNowMs } from '../time';
 
 type ScopedMeshChurnBucket = {
   hiddenEvents: number;
@@ -38,10 +39,6 @@ function createBucket(): ScopedMeshChurnBucket {
     rebuildPerSec: 0,
     lastSampleMs: 0,
   };
-}
-
-function nowMs(): number {
-  return typeof performance !== 'undefined' ? performance.now() : Date.now();
 }
 
 function sampleBucket(bucket: ScopedMeshChurnBucket, sampleMs: number): void {
@@ -109,7 +106,7 @@ export class ScopedRenderMeshRetention3D {
     this.buildingChurn.rebuildEvents++;
   }
 
-  getTelemetry(sampleMs: number = nowMs()): ScopedRenderMeshRetentionTelemetry {
+  getTelemetry(sampleMs: number = monotonicNowMs()): ScopedRenderMeshRetentionTelemetry {
     sampleBucket(this.unitChurn, sampleMs);
     sampleBucket(this.buildingChurn, sampleMs);
     return {

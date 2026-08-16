@@ -1,5 +1,6 @@
 import type {
   AreaCommandFilterCategory,
+  BarAreaTargetOrder,
   AttackAreaCommand,
   AttackCommand,
   AttackGroundCommand,
@@ -49,6 +50,7 @@ import type {
   WaitCommand,
   WaypointTarget,
 } from '../sim/commands';
+import { BAR_NEAREST_QUEUE_INSERT_INDEX } from '../sim/commands';
 import {
   ATTACK_AREA_MAX_RADIUS,
   METAL_EXTRACTOR_UPGRADE_AREA_MAX_RADIUS,
@@ -58,6 +60,7 @@ import {
 import type { WorldState } from '../sim/WorldState';
 import type { BuildingBlueprintId, CombatFireState, EntityId, WaypointType } from '../sim/types';
 import { STRUCTURE_CONFIGS } from '../sim/buildConfigs';
+import { isUint32 as isEntityId } from '../integerValidation';
 import { isBuildableUnitBlueprintId } from '../sim/blueprints/unitRoster';
 import { isAreaCommandFilterCategory } from '../sim/areaCommandFilters';
 import { isBuildingBlueprintId, isUnitBlueprintId } from '../../types/blueprintIds';
@@ -273,10 +276,6 @@ function sanitizeScheduledFrame(value: unknown): number | null {
   return value as number;
 }
 
-function isEntityId(value: unknown): value is EntityId {
-  return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 0xFFFF_FFFF;
-}
-
 function sanitizeEntityIdArray(value: unknown): EntityId[] | null {
   if (!Array.isArray(value) || value.length === 0) return null;
   const ids: EntityId[] = [];
@@ -364,7 +363,7 @@ function sanitizeQueueInsertIndex(queue: boolean, queueFront: boolean, queueInse
   if (queueInsertIndex === undefined || queueInsertIndex === null || !queue || queueFront) return undefined;
   return typeof queueInsertIndex === 'number' &&
     Number.isInteger(queueInsertIndex) &&
-    queueInsertIndex >= 0 &&
+    queueInsertIndex >= BAR_NEAREST_QUEUE_INSERT_INDEX &&
     queueInsertIndex <= 255
     ? queueInsertIndex
     : null;
@@ -466,6 +465,10 @@ function sanitizeCommanderAreaCommandFields(
   queueInsertIndex: number | undefined;
   filterCategory: AreaCommandFilterCategory | undefined;
   filterBlueprintId: string | undefined;
+  targetOrderOriginX: number | undefined;
+  targetOrderOriginY: number | undefined;
+  targetSplitIndex: number | undefined;
+  targetSplitCount: number | undefined;
 } | null {
   const point = sanitizeTerrainGroundPoint(world, command.targetX, command.targetY, command.targetZ);
   if (!isEntityId(command.commanderId) || point === null || typeof command.queue !== 'boolean') return null;
@@ -473,6 +476,19 @@ function sanitizeCommanderAreaCommandFields(
   if (queued === null) return null;
   const filter = sanitizeAreaCommandFilterFields(command.filterCategory, command.filterBlueprintId);
   if (filter === null) return null;
+  const targetOrder = sanitizeBarAreaTargetOrder(command, world);
+  if (targetOrder === null) return null;
+  const hasSplit = command.targetSplitIndex !== undefined || command.targetSplitCount !== undefined;
+  if (
+    hasSplit &&
+    (
+      !Number.isInteger(command.targetSplitIndex) ||
+      !Number.isInteger(command.targetSplitCount) ||
+      (command.targetSplitIndex ?? -1) < 0 ||
+      (command.targetSplitCount ?? 0) <= 0 ||
+      (command.targetSplitIndex ?? 0) >= (command.targetSplitCount ?? 0)
+    )
+  ) return null;
   const radius = sanitizeAreaCommandRadius(command.radius, maxRadius);
   return {
     tick,
@@ -486,6 +502,25 @@ function sanitizeCommanderAreaCommandFields(
     queueInsertIndex: queued.queueInsertIndex,
     filterCategory: filter.filterCategory,
     filterBlueprintId: filter.filterBlueprintId,
+    ...targetOrder,
+    targetSplitIndex: hasSplit ? command.targetSplitIndex : undefined,
+    targetSplitCount: hasSplit ? command.targetSplitCount : undefined,
+  };
+}
+
+function sanitizeBarAreaTargetOrder(command: BarAreaTargetOrder, world: WorldState): Required<BarAreaTargetOrder> | {
+  targetOrderOriginX: undefined;
+  targetOrderOriginY: undefined;
+} | null {
+  const hasOrderOrigin = command.targetOrderOriginX !== undefined || command.targetOrderOriginY !== undefined;
+  if (!hasOrderOrigin) {
+    return { targetOrderOriginX: undefined, targetOrderOriginY: undefined };
+  }
+  const point = sanitizeGroundPoint(world, command.targetOrderOriginX, command.targetOrderOriginY);
+  if (point === null) return null;
+  return {
+    targetOrderOriginX: point.x,
+    targetOrderOriginY: point.y,
   };
 }
 
@@ -750,13 +785,28 @@ function sanitizeSetTowerTargetCommand(
       };
 }
 
-function sanitizeAttackCommand(command: AttackCommand, tick: number): AttackCommand | null {
+function sanitizeEntityTargetQueuedCommand<T extends AttackCommand | GuardCommand>(
+  command: T,
+  tick: number,
+): T | null {
   const entityIds = sanitizeEntityIdArray(command.entityIds);
   if (entityIds === null || !isEntityId(command.targetId) || typeof command.queue !== 'boolean') return null;
   const queued = sanitizeQueuedCommandFields(command.queue, command.queueFront, command.queueInsertIndex);
   return queued === null
     ? null
-    : { ...command, tick, entityIds, targetId: command.targetId, queue: command.queue, queueFront: queued.queueFront, queueInsertIndex: queued.queueInsertIndex };
+    : {
+        ...command,
+        tick,
+        entityIds,
+        targetId: command.targetId,
+        queue: command.queue,
+        queueFront: queued.queueFront,
+        queueInsertIndex: queued.queueInsertIndex,
+      };
+}
+
+function sanitizeAttackCommand(command: AttackCommand, tick: number): AttackCommand | null {
+  return sanitizeEntityTargetQueuedCommand(command, tick);
 }
 
 function sanitizeAttackGroundCommand(
@@ -812,7 +862,10 @@ function sanitizeAttackAreaCommand(
   if (entityIds === null || point === null || typeof command.queue !== 'boolean') return null;
   const queued = sanitizeQueuedCommandFields(command.queue, command.queueFront, command.queueInsertIndex);
   if (queued === null) return null;
+  const targetOrder = sanitizeBarAreaTargetOrder(command, world);
+  if (targetOrder === null) return null;
   const radius = sanitizeAreaCommandRadius(command.radius, ATTACK_AREA_MAX_RADIUS);
+  if (command.splitTargets !== undefined && typeof command.splitTargets !== 'boolean') return null;
   return {
     type: 'attackArea',
     tick,
@@ -824,16 +877,13 @@ function sanitizeAttackAreaCommand(
     queue: command.queue,
     queueFront: queued.queueFront,
     queueInsertIndex: queued.queueInsertIndex,
+    splitTargets: command.splitTargets === true ? true : undefined,
+    ...targetOrder,
   };
 }
 
 function sanitizeGuardCommand(command: GuardCommand, tick: number): GuardCommand | null {
-  const entityIds = sanitizeEntityIdArray(command.entityIds);
-  if (entityIds === null || !isEntityId(command.targetId) || typeof command.queue !== 'boolean') return null;
-  const queued = sanitizeQueuedCommandFields(command.queue, command.queueFront, command.queueInsertIndex);
-  return queued === null
-    ? null
-    : { ...command, tick, entityIds, targetId: command.targetId, queue: command.queue, queueFront: queued.queueFront, queueInsertIndex: queued.queueInsertIndex };
+  return sanitizeEntityTargetQueuedCommand(command, tick);
 }
 
 function sanitizeStartBuildCommand(command: StartBuildCommand, tick: number): StartBuildCommand | null {

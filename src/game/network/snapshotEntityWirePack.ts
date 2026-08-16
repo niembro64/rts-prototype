@@ -634,10 +634,10 @@ const WAYPOINT_FLAG_POS_Z = 1 << 0;
 // compact building delta slab. V16 appends factory paused state to the
 // detail-row factory sub-object. V17 appends factory move state. V18 appends
 // factory air-idle LAND_AT state.
-export type PackedEntityRow = unknown[];
-export type PackedMovementUnitBytes = Uint8Array;
-export type PackedUnitTurretBytes = Uint8Array;
-export type PackedBuildingDeltaBytes = Uint8Array;
+type PackedEntityRow = unknown[];
+type PackedMovementUnitBytes = Uint8Array;
+type PackedUnitTurretBytes = Uint8Array;
+type PackedBuildingDeltaBytes = Uint8Array;
 
 export type PackedEntitySnapshotWire = {
   v: number;

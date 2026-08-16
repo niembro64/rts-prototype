@@ -2,7 +2,7 @@ import type { Entity, PlayerId } from '../../sim/types';
 import { magnitude } from '../../math';
 import type { PointTargetEntitySource } from '@/types/input';
 
-export type PointTargetRelationship = 'friendly' | 'enemy';
+type PointTargetRelationship = 'friendly' | 'enemy';
 
 export function isLivingPointTargetForPlayer(
   entity: Entity | null | undefined,

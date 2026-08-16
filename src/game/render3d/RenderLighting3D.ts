@@ -149,6 +149,19 @@ export function registerLightingTargets(
   apply();
 }
 
+/** Release the current world targets without letting an older app teardown
+ * clear a newer app's registration. */
+export function unregisterLightingTargets(
+  targetScene: THREE.Scene,
+  targetRenderer: THREE.WebGLRenderer,
+): void {
+  if (scene !== targetScene || renderer !== targetRenderer) return;
+  scene = null;
+  renderer = null;
+  ambientLight = null;
+  directionalLight = null;
+}
+
 /** Called by installSunLighting each time it builds the scene's two lights. */
 export function registerSunLights(
   ambient: THREE.AmbientLight,
@@ -194,25 +207,5 @@ if (import.meta.env.DEV && typeof globalThis !== 'undefined') {
   (globalThis as unknown as Record<string, unknown>).__renderLighting = {
     getScene: () => scene,
     getRenderer: () => renderer,
-  };
-}
-
-/** Resolved values, for diagnostics and contract tests. */
-export function getRenderLightingState(): {
-  ambientIntensity: number;
-  directionalIntensity: number;
-  environmentIntensity: number;
-  backgroundIntensity: number;
-  backdropBrightness: number;
-  toneMappingExposure: number;
-} {
-  return {
-    ambientIntensity: SUN_RENDER_CONFIG.ambientIntensity * scales.ambient,
-    directionalIntensity:
-      SUN_RENDER_CONFIG.directionalIntensity * scales.directional,
-    environmentIntensity: scales.environment,
-    backgroundIntensity: scales.background,
-    backdropBrightness: scales.background * scales.exposure,
-    toneMappingExposure: scales.exposure,
   };
 }

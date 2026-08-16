@@ -1,7 +1,7 @@
 import type { UnitLocomotion } from './types';
 import { computeLocomotionClimbProfile } from './pathfindingMobility';
 
-export type PathCostProfile = Readonly<{
+type PathCostProfile = Readonly<{
   flatDriveAccel: number | null;
   safeDriveAccel: number;
   flatWaterContactAccel: number | null;
@@ -17,7 +17,7 @@ export type PathTerrainFilter = Readonly<{
   cost: PathCostProfile;
 }>;
 
-export type PathfinderTraversalInput = Readonly<{
+type PathfinderTraversalInput = Readonly<{
   minGroundNormalZ: number;
   waterSurfaceSupported: boolean;
   supportPointOffsetZ: number;

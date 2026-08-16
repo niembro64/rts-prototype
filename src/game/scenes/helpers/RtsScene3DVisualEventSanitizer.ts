@@ -3,16 +3,13 @@ import { isUnitBlueprintId } from '@/types/blueprintIds';
 import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
 import { getUnitSupportPointOffsetZ, getUnitGroundZ } from '../../sim/unitGeometry';
 import { getPlayerPrimaryColor, type Entity } from '../../sim/types';
+import { finiteOr } from '../../math';
 
 export const WATER_SURFACE_NORMAL_SIM = { x: 0, y: 0, z: 1 } as const;
 
 type SimDeathContext3D = NonNullable<NetworkServerSnapshotSimEvent['deathContext']>;
 
 let warnedNonFiniteVisualEvent = false;
-
-export function finiteOr(value: number, fallback: number): number {
-  return Number.isFinite(value) ? value : fallback;
-}
 
 export function finiteAtLeast(value: number | undefined, min: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;

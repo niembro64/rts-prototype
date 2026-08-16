@@ -10,7 +10,7 @@ export type FactoryProductionPresetSnapshot = {
   productionQueue: string[];
 };
 
-export type FactoryProductionPresetReplay = {
+type FactoryProductionPresetReplay = {
   selectedUnitBlueprintId: string;
   repeatProduction: boolean;
   productionQueue: string[];

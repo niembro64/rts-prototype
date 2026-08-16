@@ -5,6 +5,7 @@ import {
 } from '@/playerNamesConfig';
 import type { PlayerId } from '../sim/types';
 import { FIRST_ALLY_TEAM_ID } from '../sim/teamRoster';
+import { formatBrowserClockTime, getBrowserTimezone } from '../browserLocale';
 import type {
   LobbyPlayer,
   LobbyPlayerInfoPayload,
@@ -162,7 +163,7 @@ export class NetworkLobbyRoster {
       ipAddress: self !== undefined ? self.ipAddress : undefined,
       location: self !== undefined ? self.location : undefined,
       timezone: timezone || undefined,
-      localTime: formatLocalTime(timezone),
+      localTime: timezone ? formatBrowserClockTime(timezone) : undefined,
     };
   }
 
@@ -171,11 +172,14 @@ export class NetworkLobbyRoster {
     location: string | undefined,
     timezone: string | undefined,
   ): LobbyPlayerInfoPayload {
+    const resolvedTimezone = timezone || getBrowserTimezone();
     return {
       ipAddress,
       location,
       timezone,
-      localTime: formatLocalTime(timezone || getBrowserTimezone()),
+      localTime: resolvedTimezone
+        ? formatBrowserClockTime(resolvedTimezone)
+        : undefined,
       name: getInitialLocalUsername(),
     };
   }
@@ -252,29 +256,5 @@ export class NetworkLobbyRoster {
       out[player.playerId] = player.allyTeamId;
     }
     return out;
-  }
-}
-
-function getBrowserTimezone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-  } catch {
-    return '';
-  }
-}
-
-function formatLocalTime(timezone: string | undefined): string | undefined {
-  if (!timezone) return undefined;
-  try {
-    return new Intl.DateTimeFormat('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-      timeZone: timezone,
-      timeZoneName: 'short',
-    }).format(new Date());
-  } catch {
-    return undefined;
   }
 }

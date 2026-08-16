@@ -167,6 +167,9 @@ export class GroundLineBatch3D {
     this.ends = ends;
     this.colors = colors;
     this.widths = widths;
+    // Release the GPU buffers owned by the attributes about to be replaced.
+    // The geometry object remains valid and uploads the new attributes below.
+    this.geometry.dispose();
     this.rebindInstanceAttributes();
   }
 

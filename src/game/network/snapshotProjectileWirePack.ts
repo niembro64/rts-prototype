@@ -82,7 +82,7 @@ export type PackedProjectileSnapshotWire = {
   b: Uint8Array | undefined;
 };
 
-export type PackedProjectileUnpackOptions = {
+type PackedProjectileUnpackOptions = {
   materializeDespawns?: boolean;
   materializeMotionUpdates?: boolean;
   materializeBeamUpdates?: boolean;
@@ -716,7 +716,7 @@ function unpackProjectileMotionUpdatesIntoWireSource(
   return outIndex > 0;
 }
 
-export type PackedProjectileMotionUpdateVisitor = (
+type PackedProjectileMotionUpdateVisitor = (
   id: number,
   qposX: number,
   qposY: number,

@@ -866,30 +866,6 @@ export function getSharedPrimitiveCylinderGeometry(
   )) as THREE.CylinderGeometry;
 }
 
-export function getSharedPrimitiveConeGeometry(
-  role: PrimitiveGeometryRole,
-  tier: PrimitiveGeometryTier = 'close',
-  radius = 1,
-  height = 1,
-  heightSegments = 1,
-  openEnded = false,
-): THREE.ConeGeometry {
-  const key = keyOf(['cone', role, tier, radius, height, heightSegments, openEnded ? 1 : 0]);
-  return getOrCreate(sharedGeometry, key, () =>
-    createPrimitiveConeGeometry(role, tier, radius, height, heightSegments, openEnded),
-  ) as THREE.ConeGeometry;
-}
-
-export function getSharedPrimitiveCircleGeometry(
-  role: PrimitiveGeometryRole,
-  tier: PrimitiveGeometryTier = 'close',
-  radius = 1,
-): THREE.CircleGeometry {
-  const key = keyOf(['circle', role, tier, radius]);
-  return getOrCreate(sharedGeometry, key, () =>
-    createPrimitiveCircleGeometry(role, tier, radius)) as THREE.CircleGeometry;
-}
-
 export function getSharedPrimitiveRingGeometry(
   role: PrimitiveGeometryRole,
   tier: PrimitiveGeometryTier = 'close',
@@ -899,15 +875,4 @@ export function getSharedPrimitiveRingGeometry(
   const key = keyOf(['ring', role, tier, innerRadius, outerRadius]);
   return getOrCreate(sharedGeometry, key, () =>
     createPrimitiveRingGeometry(role, tier, innerRadius, outerRadius)) as THREE.RingGeometry;
-}
-
-export function getSharedPrimitiveTorusGeometry(
-  role: PrimitiveGeometryRole,
-  tier: PrimitiveGeometryTier = 'close',
-  radius = 1,
-  tube = 0.1,
-): THREE.TorusGeometry {
-  const key = keyOf(['torus', role, tier, radius, tube]);
-  return getOrCreate(sharedGeometry, key, () =>
-    createPrimitiveTorusGeometry(role, tier, radius, tube)) as THREE.TorusGeometry;
 }

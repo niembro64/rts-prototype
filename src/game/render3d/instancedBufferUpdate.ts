@@ -19,7 +19,7 @@ export function clearDirtySlotSpan(span: DirtySlotSpan): void {
   span.maxSlot = -1;
 }
 
-export function hasDirtySlotSpan(span: DirtySlotSpan): boolean {
+function hasDirtySlotSpan(span: DirtySlotSpan): boolean {
   return span.maxSlot >= span.minSlot;
 }
 

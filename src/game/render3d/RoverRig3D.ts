@@ -94,7 +94,7 @@ const wheelMats = new Map<number, THREE.MeshLambertMaterial>();
  *
  *  Position EMAs toward the floor clamp every frame; angular velocity
  *  EMAs toward the body-motion-derived spin rate every frame. */
-export type WheelMount = {
+type WheelMount = {
   localX: number;
   localZ: number;
   wheelR: number;

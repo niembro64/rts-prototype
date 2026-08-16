@@ -46,7 +46,7 @@ export class VegetationVolumeOverlay3D {
   private readonly queryScratch = new Uint32Array(MAX_DRAWN_PROPS * 4);
   /** Reused per prop; the shared writer owns the cylinder's dimensions. */
   private readonly propVolume = createEntityVolume();
-  private geometry: THREE.BufferGeometry | null = null;
+  private geometry: THREE.BufferGeometry;
   private built = false;
   private lastCameraX = NaN;
   private lastCameraY = NaN;
@@ -60,7 +60,8 @@ export class VegetationVolumeOverlay3D {
       depthWrite: false,
       depthTest: false,
     });
-    this.mesh = new THREE.LineSegments(new THREE.BufferGeometry(), this.material);
+    this.geometry = new THREE.BufferGeometry();
+    this.mesh = new THREE.LineSegments(this.geometry, this.material);
     this.mesh.name = 'VegetationVolumeOverlay3D';
     this.mesh.renderOrder = RENDER_ORDER;
     this.mesh.frustumCulled = false;
@@ -107,17 +108,16 @@ export class VegetationVolumeOverlay3D {
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    this.mesh.geometry = geometry;
-    this.geometry?.dispose();
+    const previousGeometry = this.geometry;
     this.geometry = geometry;
+    this.mesh.geometry = geometry;
+    previousGeometry.dispose();
     this.mesh.visible = positions.length > 0;
   }
 
   dispose(): void {
     this.parent.remove(this.mesh);
-    this.geometry?.dispose();
-    this.geometry = null;
-    this.mesh.geometry.dispose();
+    this.geometry.dispose();
     this.material.dispose();
   }
 }

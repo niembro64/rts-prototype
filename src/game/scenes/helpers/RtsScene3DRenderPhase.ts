@@ -131,7 +131,7 @@ type RtsScene3DRenderPhaseResult = {
   renderMs: number;
 };
 
-export type RtsScene3DRenderPhaseTimings = {
+type RtsScene3DRenderPhaseTimings = {
   scopeMs: number;
   projectileQueryMs: number;
   entityPacketMs: number;
@@ -740,8 +740,8 @@ export class RtsScene3DRenderPhase {
     timings.totalMs = renderEnd - renderStart;
     timings.unitRows = entityLists.unitRows.count;
     timings.buildingRows = entityLists.buildingRows.count;
-    timings.unitLodProxyRows = this.countUnitLodProxyRows(entityLists.unitRows);
-    timings.buildingLodProxyRows = this.countBuildingLodProxyRows(entityLists.buildingRows);
+    timings.unitLodProxyRows = this.countLodProxyRows(entityLists.unitRows);
+    timings.buildingLodProxyRows = this.countLodProxyRows(entityLists.buildingRows);
     timings.projectileRows = projectileLists.traveling.length;
     timings.lineProjectileRows = lineProjectiles.length;
     return {
@@ -767,15 +767,7 @@ export class RtsScene3DRenderPhase {
     return basis;
   }
 
-  private countUnitLodProxyRows(rows: UnitRenderPacket3D): number {
-    let count = 0;
-    for (let row = 0; row < rows.count; row++) {
-      if (rows.lodProxyAt(row)) count++;
-    }
-    return count;
-  }
-
-  private countBuildingLodProxyRows(rows: BuildingRenderPacket3D): number {
+  private countLodProxyRows(rows: UnitRenderPacket3D | BuildingRenderPacket3D): number {
     let count = 0;
     for (let row = 0; row < rows.count; row++) {
       if (rows.lodProxyAt(row)) count++;

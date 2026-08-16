@@ -1,7 +1,7 @@
 import type { BuildingBlueprintId, CombatFireState, CombatTrajectoryMode, Entity, UnitMoveState } from './types';
 import { isAttackEmitterConfig } from './emitterKinds';
 
-export type BarTrajectoryCommandKind = 'standardHighLow' | 'smartAutoLowHigh';
+type BarTrajectoryCommandKind = 'standardHighLow' | 'smartAutoLowHigh';
 
 const BAR_GROUND_AREA_ATTACK_UNIT_BLUEPRINT_IDS = new Set<string>([
   // BAR ARM parity: current ground analogue with customParams.canareaattack is armart.
@@ -223,7 +223,7 @@ export function unitBlueprintIsBarAirTarget(unitBlueprintId: string): boolean {
   return BAR_AIR_TARGET_UNIT_BLUEPRINT_IDS.has(unitBlueprintId);
 }
 
-export function entityIsBarAirTarget(entity: Entity | null | undefined): boolean {
+function entityIsBarAirTarget(entity: Entity | null | undefined): boolean {
   const unitBlueprintId = entity?.unit?.unitBlueprintId;
   return unitBlueprintId !== undefined && unitBlueprintIsBarAirTarget(unitBlueprintId);
 }
@@ -238,7 +238,7 @@ export function entityCanBarAttackTarget(source: Entity, target: Entity | null |
   return !unitBlueprintHasBarBomberNoAirTargetRule(unitBlueprintId) || !entityIsBarAirTarget(target);
 }
 
-export function buildingBlueprintHasBarFactoryMoveStateCommand(
+function buildingBlueprintHasBarFactoryMoveStateCommand(
   buildingBlueprintId: BuildingBlueprintId | null | undefined,
 ): boolean {
   return buildingBlueprintId !== null &&
@@ -280,11 +280,11 @@ export function buildingBlueprintHasBarTrajectoryCommand(
   return false;
 }
 
-export function unitBlueprintBarTrajectoryCommandKind(unitBlueprintId: string): BarTrajectoryCommandKind | null {
+function unitBlueprintBarTrajectoryCommandKind(unitBlueprintId: string): BarTrajectoryCommandKind | null {
   return unitBlueprintHasBarTrajectoryCommand(unitBlueprintId) ? 'standardHighLow' : null;
 }
 
-export function buildingBlueprintBarTrajectoryCommandKind(
+function buildingBlueprintBarTrajectoryCommandKind(
   buildingBlueprintId: BuildingBlueprintId | null | undefined,
 ): BarTrajectoryCommandKind | null {
   return buildingBlueprintHasBarTrajectoryCommand(buildingBlueprintId) ? 'smartAutoLowHigh' : null;
@@ -295,7 +295,7 @@ export function unitBlueprintBarTrajectoryDefaultMode(unitBlueprintId: string): 
   return unitBlueprintHasBarTrajectoryCommand(unitBlueprintId) ? 'high' : null;
 }
 
-export function buildingBlueprintBarTrajectoryDefaultMode(
+function buildingBlueprintBarTrajectoryDefaultMode(
   buildingBlueprintId: BuildingBlueprintId | null | undefined,
 ): CombatTrajectoryMode | null {
   return buildingBlueprintHasBarTrajectoryCommand(buildingBlueprintId) ? 'auto' : null;

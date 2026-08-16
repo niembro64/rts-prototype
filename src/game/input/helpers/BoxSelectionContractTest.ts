@@ -2,6 +2,7 @@ import type { Entity, EntityId, PlayerId, UnitAction } from '../../sim/types';
 import type { SelectionEntitySource } from './SelectionHelper';
 import {
   entityMatchesScreenRectSelectionOptions,
+  isBarSameTypeSelectionDoubleClick,
   resolveScreenRectSelectionModifiers,
   selectEntitiesInScreenRect,
   selectBoxHeldModifierForKeyCode,
@@ -36,6 +37,8 @@ function unit(
     transform: { x, y, z: 0, rotation: 0, rotCos: null, rotSin: null },
     ownership: { playerId: LOCAL_PLAYER },
     unit: { unitBlueprintId, actions, hp: 100, maxHp: 100 } as Entity['unit'],
+    builder: null,
+    combat: null,
     building: null,
     buildingBlueprintId: null,
   } as Entity;
@@ -80,8 +83,21 @@ function selectIds(
 
 export function runBoxSelectionContractTest(): void {
   const tank = unit(1, 5, 5, 'tank');
+  tank.combat = {
+    turrets: [{
+      config: {
+        kind: 'attack',
+        passive: false,
+        shot: { type: 'projectile' },
+        targeting: { engagement: { range: 100 } },
+      },
+    }],
+  } as unknown as Entity['combat'];
   const scout = unit(2, 6, 5, 'scout');
   const busyBuilder = unit(3, 7, 5, 'builder', [{} as UnitAction]);
+  busyBuilder.builder = {} as Entity['builder'];
+  const idleBuilder = unit(4, 7.5, 5, 'builder');
+  idleBuilder.builder = {} as Entity['builder'];
   const lab = building(10, 8, 5, 'vehicleLab');
 
   assertContract(
@@ -95,6 +111,18 @@ export function runBoxSelectionContractTest(): void {
   assertContract(
     selectIds(source([], [lab]), { mobileOnly: true }).length === 0,
     'Alt/selectbox_mobile must reject buildings',
+  );
+  assertContract(
+    selectIds(source([tank, scout, idleBuilder], []), { mobileOnly: true }).join(',') === '1',
+    'Alt/selectbox_mobile must keep armed non-builders rather than every mobile unit',
+  );
+  assertContract(
+    selectIds(source([tank, idleBuilder], [])).join(',') === '1',
+    'ordinary BAR smart selection must prefer non-builders in a mixed box',
+  );
+  assertContract(
+    selectIds(source([idleBuilder], [])).join(',') === '4',
+    'ordinary BAR smart selection must fall back when every boxed unit is a builder',
   );
   assertContract(
     selectIds(source([tank, busyBuilder], []), { idleOnly: true }).join(',') === '1',
@@ -119,16 +147,53 @@ export function runBoxSelectionContractTest(): void {
     mergedModifiers.subtractive &&
       !mergedModifiers.additive &&
       mergedModifiers.options.includeBuildingsWithUnits === true &&
-      mergedModifiers.options.mobileOnly === true &&
-      mergedModifiers.options.sameTypeOnly === true,
-    'BAR selectbox_same must compose with Shift/selectbox_any, Ctrl/deselect, and Alt/mobile modifiers',
+      mergedModifiers.options.mobileOnly === false &&
+      mergedModifiers.options.sameTypeOnly === false,
+    'BAR Ctrl/selectbox_deselect must use raw candidates even when Shift, Alt, or Z are also held',
   );
   assertContract(
-    selectIds(source([tank], []), { sameTypeOnly: true }).length === 0,
-    'Z/selectbox_same without a current type filter must select nothing',
+    selectIds(source([tank], []), { sameTypeOnly: true }).join(',') === '1',
+    'Z/selectbox_same without a current type filter must leave ordinary selection unfiltered',
+  );
+  const subtractiveModifiers = resolveScreenRectSelectionModifiers({ ctrlKey: true });
+  assertContract(
+    subtractiveModifiers.options.includeBuildingsWithUnits === true,
+    'Ctrl/selectbox_deselect must expose the raw unit-and-building box contents',
   );
   assertContract(
     !entityMatchesScreenRectSelectionOptions(lab, { mobileOnly: true }),
     'exact-click selection predicate must share the mobile-only building filter',
+  );
+
+  const firstTankTap = { typeKey: 'unit:tank', timeMs: 1000, clientX: 20, clientY: 30 };
+  assertContract(
+    isBarSameTypeSelectionDoubleClick(firstTankTap, {
+      typeKey: 'unit:tank',
+      timeMs: 1200,
+      clientX: 27,
+      clientY: 35,
+    }),
+    'same-type double click must accept BAR/Recoil 200 ms and 12-Manhattan-pixel boundaries',
+  );
+  assertContract(
+    !isBarSameTypeSelectionDoubleClick(firstTankTap, {
+      typeKey: 'unit:tank',
+      timeMs: 1201,
+      clientX: 20,
+      clientY: 30,
+    }) &&
+      !isBarSameTypeSelectionDoubleClick(firstTankTap, {
+        typeKey: 'unit:tank',
+        timeMs: 1200,
+        clientX: 28,
+        clientY: 35,
+      }) &&
+      !isBarSameTypeSelectionDoubleClick(firstTankTap, {
+        typeKey: 'unit:scout',
+        timeMs: 1200,
+        clientX: 20,
+        clientY: 30,
+      }),
+    'same-type double click must reject late, distant, and different-type second taps',
   );
 }

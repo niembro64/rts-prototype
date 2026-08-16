@@ -34,6 +34,7 @@ import {
   BuildingResourcePylonAnimator3D,
 } from './BuildingResourcePylonAnimator3D';
 import { windRotorAngularSpeed } from './WindKinematics3D';
+import { applyBuildingOperationalPose } from './BuildingOperationalRig3D';
 
 // Open/close pose transitions are discrete local state changes, not snapshot
 // rotation fields. One fixed progress duration makes closing the exact reverse
@@ -75,6 +76,10 @@ export class BuildingAnimationController3D {
   private radarBuildingIndexById = new IndexedEntityIdMap<number>();
   private activeRadarBuildings: AnimatedBuildingEntry[] = [];
   private activeRadarBuildingIndexById = new IndexedEntityIdMap<number>();
+  private operationalBuildings: AnimatedBuildingEntry[] = [];
+  private operationalBuildingIndexById = new IndexedEntityIdMap<number>();
+  private activeOperationalBuildings: AnimatedBuildingEntry[] = [];
+  private activeOperationalBuildingIndexById = new IndexedEntityIdMap<number>();
   private windFanYaw: number | null = null;
   private windFanPitch: number | null = null;
   private windVisualSpeed: number | null = null;
@@ -142,6 +147,15 @@ export class BuildingAnimationController3D {
       const entry = addAnimatedBuildingEntry(this.radarBuildings, this.radarBuildingIndexById, entity, mesh);
       this.updateRadarAnimationQueue(entry);
     }
+    if (mesh.buildingOperationalRig) {
+      const entry = addAnimatedBuildingEntry(
+        this.operationalBuildings,
+        this.operationalBuildingIndexById,
+        entity,
+        mesh,
+      );
+      this.updateOperationalAnimationQueue(entry);
+    }
   }
 
   sync(entity: Entity, mesh: EntityMesh): void {
@@ -161,6 +175,15 @@ export class BuildingAnimationController3D {
       const entry = addAnimatedBuildingEntry(this.radarBuildings, this.radarBuildingIndexById, entity, mesh);
       this.updateRadarAnimationQueue(entry);
     }
+    if (mesh.buildingOperationalRig) {
+      const entry = addAnimatedBuildingEntry(
+        this.operationalBuildings,
+        this.operationalBuildingIndexById,
+        entity,
+        mesh,
+      );
+      this.updateOperationalAnimationQueue(entry);
+    }
   }
 
   /** Detach the current mesh while retaining per-entity animation phase. */
@@ -174,6 +197,12 @@ export class BuildingAnimationController3D {
     this.resourcePylonAnimator.unregister(id);
     removeAnimatedBuildingEntry(this.radarBuildings, this.radarBuildingIndexById, id);
     removeAnimatedBuildingEntry(this.activeRadarBuildings, this.activeRadarBuildingIndexById, id);
+    removeAnimatedBuildingEntry(this.operationalBuildings, this.operationalBuildingIndexById, id);
+    removeAnimatedBuildingEntry(
+      this.activeOperationalBuildings,
+      this.activeOperationalBuildingIndexById,
+      id,
+    );
   }
 
   /** Full teardown: detach the mesh and forget all entity animation state. */
@@ -206,6 +235,7 @@ export class BuildingAnimationController3D {
 
     this.updateActiveWindAnimations();
     this.updateActiveExtractorAnimations(spinDt);
+    this.updateActiveOperationalAnimations(spinDt);
     this.resourcePylonAnimator.updateActive(spinDt);
 
     this.updateActiveRadarAnimations(spinDt);
@@ -221,6 +251,11 @@ export class BuildingAnimationController3D {
     this.resourcePylonAnimator.destroy();
     clearAnimatedBuildingEntries(this.radarBuildings, this.radarBuildingIndexById);
     clearAnimatedBuildingEntries(this.activeRadarBuildings, this.activeRadarBuildingIndexById);
+    clearAnimatedBuildingEntries(this.operationalBuildings, this.operationalBuildingIndexById);
+    clearAnimatedBuildingEntries(
+      this.activeOperationalBuildings,
+      this.activeOperationalBuildingIndexById,
+    );
     this.extractorRotorPhases.clear();
     this.extractorRotorSpeeds.clear();
     this.extractorCloseAmounts.clear();
@@ -517,6 +552,60 @@ export class BuildingAnimationController3D {
     rig.head.rotation.y = headPhase;
     rig.sweep.rotation.y = sweepPhase;
     return this.radarAnimationNeedsFrame(entry);
+  }
+
+  private updateOperationalAnimationQueue(entry: AnimatedBuildingEntry): void {
+    updateAnimatedBuildingQueue(
+      this.activeOperationalBuildings,
+      this.activeOperationalBuildingIndexById,
+      entry,
+      this.operationalAnimationNeedsFrame(entry),
+    );
+  }
+
+  private updateActiveOperationalAnimations(deltaSec: number): void {
+    for (let i = 0; i < this.activeOperationalBuildings.length;) {
+      const entry = this.activeOperationalBuildings[i];
+      if (this.updateOperationalAnimationEntry(entry, deltaSec)) {
+        i++;
+      } else {
+        removeAnimatedBuildingEntry(
+          this.activeOperationalBuildings,
+          this.activeOperationalBuildingIndexById,
+          entry.id,
+        );
+      }
+    }
+  }
+
+  private operationalAnimationNeedsFrame(entry: AnimatedBuildingEntry): boolean {
+    const rig = entry.mesh.buildingOperationalRig;
+    if (rig === undefined) return false;
+    const target = entry.entity.building?.activeState?.open === false ? 0 : 1;
+    const current = entry.mesh.buildingOperationalAmount ?? target;
+    return Math.abs(target - current) >= BUILDING_RIG_IDLE_EPSILON ||
+      (target > 0 && rig.hasContinuousMotion);
+  }
+
+  private updateOperationalAnimationEntry(
+    entry: AnimatedBuildingEntry,
+    deltaSec: number,
+  ): boolean {
+    const { entity, mesh } = entry;
+    const rig = mesh.buildingOperationalRig;
+    if (rig === undefined) return false;
+    const target = entity.building?.activeState?.open === false ? 0 : 1;
+    const current = mesh.buildingOperationalAmount ?? target;
+    const safeDeltaSec = Number.isFinite(deltaSec) ? Math.max(0, deltaSec) : 0;
+    const alpha = halfLifeBlend(safeDeltaSec, rig.transitionHalfLifeSec);
+    let next = lerp(current, target, alpha);
+    if (Math.abs(target - next) < 0.002) next = target;
+    const motionTime = (mesh.buildingOperationalMotionTime ?? entity.id * 0.071) +
+      safeDeltaSec * next;
+    applyBuildingOperationalPose(rig, mesh.chassis, next, motionTime);
+    mesh.buildingOperationalAmount = next;
+    mesh.buildingOperationalMotionTime = motionTime;
+    return this.operationalAnimationNeedsFrame(entry);
   }
 
   private updateSolarCollectorAnimation(

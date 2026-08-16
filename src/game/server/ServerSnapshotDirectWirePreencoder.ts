@@ -21,6 +21,11 @@ import type {
   SerializerSprayOverride,
 } from '../network/stateSerializer';
 import {
+  acceptsSerializedEntity,
+  isSerializableSnapshotEntity,
+} from '../network/snapshotEntityVisibility';
+import { appendUnique } from '../collections';
+import {
   encodeNetworkSnapshotWithRustFallback,
   isRustSnapshotWireEnabled,
 } from '../network/snapshotRustWireEncoder';
@@ -128,21 +133,6 @@ const _directGameState: NonNullable<NetworkServerSnapshot['gameState']> = {
   phase: 'battle',
   winnerId: undefined,
 };
-
-function acceptsSerializedEntity(
-  entity: Entity,
-  visibility: SnapshotVisibility,
-): boolean {
-  return isSerializedEntityKind(entity) &&
-    (!visibility.isFiltered || visibility.isEntityVisible(entity));
-}
-
-function isSerializedEntityKind(entity: Entity): boolean {
-  return (
-    entity.type === 'unit' ||
-    entity.type === 'building'
-  );
-}
 
 export class ServerSnapshotDirectWirePreencoder {
   private readonly entityPlaceholders: NetworkServerSnapshot['entities'] = [];
@@ -539,7 +529,7 @@ export class ServerSnapshotDirectWirePreencoder {
           visibleEntityIds[i],
           visibleEntitySlots !== undefined ? visibleEntitySlots[i] : -1,
         );
-        if (!entity || !isSerializedEntityKind(entity)) continue;
+        if (!entity || !isSerializableSnapshotEntity(entity)) continue;
         if (!this.writeEntityRow(entityCount, entity, undefined, input.world, input.visibility)) continue;
         this.fullVisibleEntityIds.push(entity.id);
         entityCount++;
@@ -623,7 +613,7 @@ export class ServerSnapshotDirectWirePreencoder {
           id,
           currentVisibleEntitySlots !== undefined ? currentVisibleEntitySlots[i] : -1,
         );
-        if (!entity || !isSerializedEntityKind(entity)) continue;
+        if (!entity || !isSerializableSnapshotEntity(entity)) continue;
         if (!this.writeEntityRow(entityCount, entity, undefined, input.world, input.visibility)) continue;
         emittedIds.add(id);
         entityCount++;
@@ -633,7 +623,7 @@ export class ServerSnapshotDirectWirePreencoder {
         if (input.previousVisibleEntityIds.has(id)) continue;
         this.visibleBaselineAddedIds.push(id);
         const entity = input.world.getEntity(id);
-        if (!entity || !isSerializedEntityKind(entity)) continue;
+        if (!entity || !isSerializableSnapshotEntity(entity)) continue;
         if (!this.writeEntityRow(entityCount, entity, undefined, input.world, input.visibility)) continue;
         emittedIds.add(id);
         entityCount++;
@@ -654,7 +644,7 @@ export class ServerSnapshotDirectWirePreencoder {
         continue;
       }
       const entity = resolveEntityFromSlotOrWorld(input.world, id, slot);
-      if (!entity || !isSerializedEntityKind(entity)) continue;
+      if (!entity || !isSerializableSnapshotEntity(entity)) continue;
       if (!this.writeEntityRow(
         entityCount,
         entity,
@@ -677,23 +667,17 @@ export class ServerSnapshotDirectWirePreencoder {
     removedIds.length = 0;
     removedIdSet.clear();
 
-    const pushRemoved = (id: EntityId): void => {
-      if (removedIdSet.has(id)) return;
-      removedIdSet.add(id);
-      removedIds.push(id);
-    };
-
     for (let i = 0; i < input.removedEntities.length; i++) {
       const record = input.removedEntities[i];
       if (!input.visibility.isFiltered || input.visibility.shouldSendRemoval(record)) {
-        pushRemoved(record.id);
+        appendUnique(removedIds, removedIdSet, record.id);
       }
     }
 
     if (input.currentVisibleEntityIds !== undefined) {
       for (const id of input.previousVisibleEntityIds) {
         if (!input.currentVisibleEntityIds.has(id)) {
-          pushRemoved(id);
+          appendUnique(removedIds, removedIdSet, id);
           this.visibleBaselineRemovedIds.push(id);
         }
       }

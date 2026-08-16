@@ -73,6 +73,8 @@ import {
 } from '../sim-wasm/init';
 import type { BuildingSupportSurface, EntityId, UnitSupportSurface } from '../sim/types';
 import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
+import { growTypedArrayGeometrically } from '../memory/typedArrayGrowth';
+import { reuseTypedArrayPrefixView } from '../memory/typedArrayView';
 
 type SurfaceNormal = { nx: number; ny: number; nz: number };
 export type SupportSurfaceContact = WorldSupportSurface;
@@ -113,6 +115,21 @@ let _integrateSleepTransitions: Uint32Array = new Uint32Array(0);
 let _integrateStepSyncBodySlots: Uint32Array = new Uint32Array(0);
 let _finalStepSyncBodySlots: Uint32Array = new Uint32Array(0);
 let _collectAwakeEntityIds: Int32Array = new Int32Array(0);
+let _collectAwakeEntityIdsView: Int32Array = _collectAwakeEntityIds;
+
+function collectAwakeEntityIdsView(count: number): Int32Array {
+  _collectAwakeEntityIds = growTypedArrayGeometrically(
+    _collectAwakeEntityIds,
+    count,
+    32,
+  );
+  _collectAwakeEntityIdsView = reuseTypedArrayPrefixView(
+    _collectAwakeEntityIdsView,
+    _collectAwakeEntityIds,
+    count,
+  );
+  return _collectAwakeEntityIdsView;
+}
 const _physicsStepStats: Uint32Array = new Uint32Array(3);
 const STILL_AIR = { x: 0, y: 0, z: 0 };
 
@@ -437,6 +454,7 @@ export class PhysicsEngine3D {
   private staticSupportBodyCount = 0;
   private dynamicSupportBodyCount = 0;
   private dynamicBodySlots: Uint32Array = new Uint32Array(0);
+  private dynamicBodySlotsView: Uint32Array = this.dynamicBodySlots;
   private dynamicBodySlotsDirty = true;
   // Slot-id → Body3D lookup. Indexed by the pool slot, so the
   // sleep-/wake-transition outputs from pool kernels (which carry
@@ -784,11 +802,8 @@ export class PhysicsEngine3D {
     const slots = this.getDynamicBodySlotsView();
     const count = slots.length;
     if (count === 0) return;
-    if (_collectAwakeEntityIds.length < count) {
-      _collectAwakeEntityIds = new Int32Array(count);
-    }
     const sim = getSimWasm()!;
-    const idsView = _collectAwakeEntityIds.subarray(0, count);
+    const idsView = collectAwakeEntityIdsView(count);
     const entityCount = measureWasmBoundary('physics.poolCollectAwakeEntityIds', () =>
       sim.poolCollectAwakeEntityIds(slots, idsView)
     );
@@ -806,11 +821,8 @@ export class PhysicsEngine3D {
     const count = slots.length;
     if (count === 0) return 0;
     if (out.length < count) return -count;
-    if (_collectAwakeEntityIds.length < count) {
-      _collectAwakeEntityIds = new Int32Array(count);
-    }
     const sim = getSimWasm()!;
-    const idsView = _collectAwakeEntityIds.subarray(0, count);
+    const idsView = collectAwakeEntityIdsView(count);
     const entityCount = measureWasmBoundary('physics.poolCollectAwakeEntityIds', () =>
       sim.poolCollectAwakeEntityIds(slots, idsView)
     );
@@ -825,7 +837,11 @@ export class PhysicsEngine3D {
   private getDynamicBodySlotsView(): Uint32Array {
     const count = this.dynamicBodies.length;
     if (this.dynamicBodySlots.length < count) {
-      this.dynamicBodySlots = new Uint32Array(count);
+      this.dynamicBodySlots = growTypedArrayGeometrically(
+        this.dynamicBodySlots,
+        count,
+        32,
+      );
       this.dynamicBodySlotsDirty = true;
     }
     if (this.dynamicBodySlotsDirty) {
@@ -834,7 +850,12 @@ export class PhysicsEngine3D {
       }
       this.dynamicBodySlotsDirty = false;
     }
-    return this.dynamicBodySlots.subarray(0, count);
+    this.dynamicBodySlotsView = reuseTypedArrayPrefixView(
+      this.dynamicBodySlotsView,
+      this.dynamicBodySlots,
+      count,
+    );
+    return this.dynamicBodySlotsView;
   }
 
   hasUpwardSurfaceContact(body: Body3D): boolean {

@@ -35,16 +35,20 @@ export class UnitBarrelSpinState3D {
   // neighbors. Outer key = entity id, inner key = turretIndex.
   private readonly spins = new IndexedEntityIdMap<Map<number, BarrelSpinState>>();
   private lastSpinMs = performance.now();
+  private readonly frameState: BarrelSpinFrameState = {
+    spinDtSec: 0,
+    currentDtMs: 0,
+    timeMs: this.lastSpinMs,
+  };
 
   beginFrame(): BarrelSpinFrameState {
     const timeMs = performance.now();
     const spinDtSec = Math.min((timeMs - this.lastSpinMs) / 1000, 0.1);
     this.lastSpinMs = timeMs;
-    return {
-      spinDtSec,
-      currentDtMs: spinDtSec * 1000,
-      timeMs,
-    };
+    this.frameState.spinDtSec = spinDtSec;
+    this.frameState.currentDtMs = spinDtSec * 1000;
+    this.frameState.timeMs = timeMs;
+    return this.frameState;
   }
 
   advance(entity: Entity, dtSec: number): void {

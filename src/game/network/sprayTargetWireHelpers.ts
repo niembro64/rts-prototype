@@ -1,6 +1,6 @@
 type NullableWireValue = unknown | null | undefined;
 
-export type SprayTargetWireFlagSource = {
+type SprayTargetWireFlagSource = {
   type: string;
   inverse?: NullableWireValue;
   source: { z?: NullableWireValue };

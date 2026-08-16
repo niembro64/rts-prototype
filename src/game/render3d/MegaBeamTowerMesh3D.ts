@@ -108,8 +108,8 @@ const antiAirTowerProfile: DefenseTowerMeshProfile = {
   baseHeight: 9,
   baseRadiusFactor: 0.62,
   lowerBandRadiusFactor: 0.5,
-  strutCount: 4,
-  strutAngleOffset: Math.PI / 4,
+  strutCount: 6,
+  strutAngleOffset: Math.PI / 6,
   strutBottomRadiusFactor: 0.43,
   strutTopRadiusFactor: 0.24,
   strutBottomY: 10,
@@ -185,7 +185,7 @@ function buildDefenseTowerMesh(
   const foot = profile.foot;
   const details: BuildingShape['details'] = [];
 
-  // Stepped hex foundation flange — slightly wider, low and squat.
+  // Stepped radial foundation flange — slightly wider, low and squat.
   // Reads as "this thing is bolted into the ground, not floating".
   const baseHeight = profile.baseHeight;
   const base = makeCylinder(
@@ -195,7 +195,6 @@ function buildDefenseTowerMesh(
     0,
     baseHeight / 2,
     0,
-    hexCylinderGeom,
   );
   details.push(detail(base, 'min', undefined, 'static'));
 
@@ -206,7 +205,6 @@ function buildDefenseTowerMesh(
     0,
     baseHeight + 1.5,
     0,
-    hexCylinderGeom,
   );
   details.push(detail(lowerBand, 'min', undefined, 'static'));
 
@@ -239,7 +237,7 @@ function buildDefenseTowerMesh(
     details.push(detail(strut, 'min', undefined, 'static'));
   }
 
-  // Turret socket — a compact hex collar at the top of the taper. The
+  // Turret socket — a compact radial collar at the top of the taper. The
   // actual rotating turret mesh is mounted on this centerline by
   // Render3DEntities.
   const neck = makeCylinder(
@@ -249,7 +247,6 @@ function buildDefenseTowerMesh(
     0,
     h - profile.neckHeight / 2,
     0,
-    hexCylinderGeom,
   );
   details.push(detail(neck, 'min', undefined, 'static'));
 
@@ -260,7 +257,6 @@ function buildDefenseTowerMesh(
     0,
     profile.socketY,
     0,
-    hexCylinderGeom,
   );
   details.push(detail(socket, 'min', undefined, 'static'));
 
@@ -277,8 +273,8 @@ function addDefenseTowerTeamOrnament(
 ): void {
   const foot = profile.foot;
   if (variant === 'beam') {
-    // The beam tower's identity converges at the emitter: a tight crown and
-    // three small conductor tabs immediately below the firing assembly.
+    // The beam tower's identity converges at one clean radial emitter crown.
+    // Keeping the crown continuous avoids blocky tabs around the slim mast.
     details.push(teamOrnamentDetail(
       makeCylinder(
         primaryMat,
@@ -287,65 +283,43 @@ function addDefenseTowerTeamOrnament(
         0,
         profile.height - profile.neckHeight - 1.6,
         0,
-        hexCylinderGeom,
       ),
       'beamEmitterCrown',
     ));
-    for (let i = 0; i < 3; i++) {
-      const angle = Math.PI / 2 + (i / 3) * Math.PI * 2;
-      const tab = makeBox(
-        primaryMat,
-        4.2,
-        6.5,
-        2.2,
-        Math.cos(angle) * foot * 0.3,
-        profile.height - profile.neckHeight - 4.5,
-        Math.sin(angle) * foot * 0.3,
-      );
-      tab.rotation.y = -angle;
-      details.push(teamOrnamentDetail(tab, 'beamEmitterCrown'));
-    }
     return;
   }
 
   if (variant === 'cannon') {
-    // Broad lateral yoke cheeks visually carry the heavy cannon socket.
-    const cheekX = foot * 0.34;
-    for (const sign of [-1, 1]) {
-      details.push(teamOrnamentDetail(
-        makeBox(
-          primaryMat,
-          foot * 0.18,
-          5.5,
-          foot * 0.48,
-          sign * cheekX,
-          profile.height - 3.5,
-          0,
-        ),
-        'cannonYoke',
-      ));
-    }
+    // A broad circular yoke carries the heavy cannon without extending the
+    // square foundation silhouette that the old pair of box cheeks created.
+    details.push(teamOrnamentDetail(
+      makeCylinder(
+        primaryMat,
+        foot * 0.43,
+        4.5,
+        0,
+        profile.height - 3.5,
+        0,
+      ),
+      'cannonYoke',
+    ));
     return;
   }
 
   if (variant === 'antiAir') {
-    // Four narrow braces climb from the pedestal toward the fast launcher,
-    // giving the lighter AA tower a vertical team-colour rhythm.
-    const braceRadius = foot * 0.39;
-    for (let i = 0; i < 4; i++) {
-      const angle = Math.PI / 4 + (i / 4) * Math.PI * 2;
-      const brace = makeBox(
+    // A low radial collar keeps team colour at the launcher pedestal without
+    // the square footprint produced by four rectangular corner braces.
+    details.push(teamOrnamentDetail(
+      makeCylinder(
         primaryMat,
-        3,
-        profile.height * 0.42,
-        4.2,
-        Math.cos(angle) * braceRadius,
-        profile.baseHeight + profile.height * 0.21,
-        Math.sin(angle) * braceRadius,
-      );
-      brace.rotation.y = -angle;
-      details.push(teamOrnamentDetail(brace, 'antiAirPedestalBrace'));
-    }
+        foot * 0.48,
+        3.2,
+        0,
+        profile.baseHeight + 3.2,
+        0,
+      ),
+      'antiAirPedestalBrace',
+    ));
     return;
   }
 

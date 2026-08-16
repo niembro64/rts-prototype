@@ -7,6 +7,12 @@ import type {
   ShotLocomotionTransitionOutcome,
 } from '@/types/shotTypes';
 import rawShotLocomotionConfig from './shotLocomotionConfig.json';
+import {
+  assertBoolean,
+  assertExactObjectKeys,
+  assertNonNegativeFiniteNumber,
+  assertPlainObject,
+} from '../../configValidation';
 
 const MOTION_MODELS: readonly ShotLocomotionMotionModel[] = [
   'ballistic',
@@ -29,9 +35,7 @@ type ShotLocomotionConfig = {
 type ShotLocomotionPresetMediumPhysics = Omit<ShotLocomotionMediumPhysics, 'turnRate'>;
 
 function assertObject(label: string, value: unknown): asserts value is Record<string, unknown> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(`Invalid shotLocomotionConfig.json: expected ${label} object`);
-  }
+  assertPlainObject(value, `Invalid shotLocomotionConfig.json: expected ${label} object`);
 }
 
 function assertExactKeys(
@@ -39,29 +43,12 @@ function assertExactKeys(
   value: Record<string, unknown>,
   expected: readonly string[],
 ): void {
-  const expectedSet = new Set(expected);
-  for (const key of Object.keys(value)) {
-    if (!expectedSet.has(key)) {
-      throw new Error(`Invalid shotLocomotionConfig.json: unexpected ${label}.${key}`);
-    }
-  }
-  for (const key of expected) {
-    if (!Object.prototype.hasOwnProperty.call(value, key)) {
-      throw new Error(`Invalid shotLocomotionConfig.json: missing ${label}.${key}`);
-    }
-  }
-}
-
-function assertBoolean(label: string, value: unknown): asserts value is boolean {
-  if (typeof value !== 'boolean') {
-    throw new Error(`Invalid shot locomotion ${label}: expected boolean`);
-  }
-}
-
-function assertNonNegativeFinite(label: string, value: unknown): asserts value is number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-    throw new Error(`Invalid shot locomotion ${label}: expected finite >= 0, got ${String(value)}`);
-  }
+  assertExactObjectKeys(
+    value,
+    expected,
+    (key) => `Invalid shotLocomotionConfig.json: unexpected ${label}.${key}`,
+    (key) => `Invalid shotLocomotionConfig.json: missing ${label}.${key}`,
+  );
 }
 
 function assertMedium(
@@ -77,12 +64,18 @@ function assertMedium(
     'guidanceThrust',
     'velocityFrictionPer60HzFrame',
   ]);
-  assertBoolean(`${label}.operational`, value.operational);
-  assertNonNegativeFinite(`${label}.propulsionForce`, value.propulsionForce);
-  assertNonNegativeFinite(`${label}.guidanceThrust`, value.guidanceThrust);
-  assertNonNegativeFinite(
-    `${label}.velocityFrictionPer60HzFrame`,
+  assertBoolean(value.operational, `shot locomotion ${label}.operational`);
+  assertNonNegativeFiniteNumber(
+    value.propulsionForce,
+    `shot locomotion ${label}.propulsionForce`,
+  );
+  assertNonNegativeFiniteNumber(
+    value.guidanceThrust,
+    `shot locomotion ${label}.guidanceThrust`,
+  );
+  assertNonNegativeFiniteNumber(
     value.velocityFrictionPer60HzFrame,
+    `shot locomotion ${label}.velocityFrictionPer60HzFrame`,
   );
   if ((value.velocityFrictionPer60HzFrame as number) >= 1) {
     throw new Error(
@@ -113,7 +106,10 @@ function validatePreset(presetId: string, value: unknown): ShotLocomotion {
   if (!MOTION_MODELS.includes(value.motionModel as ShotLocomotionMotionModel)) {
     throw new Error(`Invalid shot locomotion ${label}.motionModel: ${String(value.motionModel)}`);
   }
-  assertNonNegativeFinite(`${label}.gravityForceMultiplier`, value.gravityForceMultiplier);
+  assertNonNegativeFiniteNumber(
+    value.gravityForceMultiplier,
+    `shot locomotion ${label}.gravityForceMultiplier`,
+  );
 
   assertObject(`${label}.media`, value.media);
   assertExactKeys(`${label}.media`, value.media, ['air', 'water', 'ground']);
@@ -226,7 +222,7 @@ function readShotLocomotionConfig(): Record<string, ShotLocomotion> {
   return presets;
 }
 
-export function cloneShotLocomotion(locomotion: ShotLocomotion): ShotLocomotion {
+function cloneShotLocomotion(locomotion: ShotLocomotion): ShotLocomotion {
   return {
     ...locomotion,
     media: {
@@ -296,10 +292,6 @@ export function getShotLocomotionMaxTurnRate(locomotion: ShotLocomotion): number
     locomotion.media.air.operational ? locomotion.media.air.turnRate : 0,
     locomotion.media.water.operational ? locomotion.media.water.turnRate : 0,
   );
-}
-
-export function getShotLocomotionMaxLifespan(locomotion: ShotLocomotion): number {
-  return locomotion.maxLifespanMs === null ? Infinity : locomotion.maxLifespanMs;
 }
 
 /** Conservative straight-line reach envelope used to cap authored turret

@@ -12,7 +12,7 @@ export type PathfindingDebugGrid = {
   readonly waterClearance: Uint16Array;
 };
 
-export type PathfindingDebugGridInput = Readonly<{
+type PathfindingDebugGridInput = Readonly<{
   cellsX: number;
   cellsY: number;
   terrainWater: Uint8Array;

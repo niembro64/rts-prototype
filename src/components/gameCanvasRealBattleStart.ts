@@ -1,4 +1,4 @@
-import { nextTick, type Ref } from 'vue';
+import type { Ref } from 'vue';
 import type { GameScene } from '../game/createGame';
 import type { NetworkManager, NetworkRole } from '../game/network/NetworkManager';
 import type { GameConnection } from '../game/server/GameConnection';
@@ -11,15 +11,7 @@ import type { GameCanvasForegroundGame } from './gameCanvasForegroundGame';
 import type { GameCanvasForegroundSceneBinding } from './gameCanvasForegroundSceneBinding';
 import type { RealBattleBackendRuntime } from './gameCanvasRealBattleStartup';
 import type { GameCanvasRealBattleLifecycle } from './gameCanvasRealBattleLifecycle';
-
-async function waitForLoadingOverlayPaint(): Promise<void> {
-  await nextTick();
-  await new Promise<void>((resolve) => {
-    requestAnimationFrame(() => {
-      window.setTimeout(resolve, 0);
-    });
-  });
-}
+import { waitForLoadingOverlayPaint } from './loadingOverlayPaint';
 
 export type StartRealBattleWithPlayersOptions = {
   containerRef: Ref<HTMLDivElement | null>;

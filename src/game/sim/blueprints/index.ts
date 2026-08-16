@@ -1048,7 +1048,7 @@ function isPlayerAttackTurretBlueprint(turretBlueprintId: string): boolean {
  * intent to a weapon. Additional weapons may also consume that intent,
  * independently acquire, wait for manual fire, or slave to a sibling.
  */
-export function validateSingleHostAttackMountContract(
+function validateSingleHostAttackMountContract(
   hostLabel: string,
   hostId: string,
   mounts: ReadonlyArray<{

@@ -884,6 +884,7 @@ pub struct BotArms {
     pub restSwingDeg: f64,
     pub walkSwingDeg: f64,
     pub outwardDeg: f64,
+    pub elbowBendDirection: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -904,6 +905,7 @@ pub struct BotLegs {
 pub struct BotConfig {
     pub legs: BotLegs,
     pub arms: BotArms,
+    pub upperArms: Option<BotArms>,
     pub upperBodyActuator: TurretAngularActuatorAxis,
     pub upperBodyRestoreDelayMs: f64,
 }

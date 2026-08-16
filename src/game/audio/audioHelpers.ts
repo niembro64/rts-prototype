@@ -3,6 +3,11 @@
 export type { AudioToolkit } from '@/types/audio';
 import type { AudioToolkit } from '@/types/audio';
 
+/** Convert a MIDI note number to frequency in hertz (A4 = note 69 = 440 Hz). */
+export function midiNoteToFrequency(midi: number): number {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
 // Play an oscillator tone with frequency sweep and gain decay
 export function playTone(
   tk: AudioToolkit,

@@ -1,4 +1,3 @@
-import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Force-field panel cache builder — single source of truth for the
 // per-unit `entity.unit.shieldPanels` array. Called once at entity
 // creation by both the authoritative sim (WorldState.createUnitFromBlueprint)
@@ -52,41 +51,6 @@ export function getShieldFrameGeometry(panelHalfSide: number): MirrorFrameGeomet
   const frameSegmentLength = side / 3;
   const frameZ = panelHalfSide + supportRadius;
   return { side, supportDiameter, supportRadius, frameSegmentLength, frameZ };
-}
-
-/** Compute the rigid mirror arm's panel CENTER in world coords by
- *  extending an arm of length `armLength` from `(pivotX, pivotY,
- *  pivotZ)` along the 3D direction
- *
- *      a(α, β) = (cos α · cos β,  sin α · cos β,  sin β)
- *
- *  where α = shieldPanelYaw and β = shieldPanelPitch.
- *
- *  SINGLE SOURCE OF TRUTH for the rigid-arm extend formula — shared
- *  by the aim solver, the panel hit test (collision), and the retained
- *  death pieces (so dead Lorises break in the same spot the live
- *  panel was). The PIVOT itself is computed differently per call site
- *  (live aim/hit-test use a chassis-tilt-aware mount from
- *  resolveWeaponWorldMount; upright fallback/death breakup use the body-mid-Z
- *  anchor) so the pivot stays at the call site, but the arm extension
- *  lives here.
- *
- *  `out` is mutated and returned to keep this allocation-free in the
- *  per-tick aim-solver loop. */
-export function getShieldPanelCenter(
-  pivotX: number, pivotY: number, pivotZ: number,
-  armLength: number,
-  shieldPanelYaw: number, shieldPanelPitch: number,
-  out: { x: number; y: number; z: number },
-): { x: number; y: number; z: number } {
-  const cosYaw = DMath.cos(shieldPanelYaw);
-  const sinYaw = DMath.sin(shieldPanelYaw);
-  const cosPitch = DMath.cos(shieldPanelPitch);
-  const sinPitch = DMath.sin(shieldPanelPitch);
-  out.x = pivotX + cosYaw * cosPitch * armLength;
-  out.y = pivotY + sinYaw * cosPitch * armLength;
-  out.z = pivotZ + sinPitch * armLength;
-  return out;
 }
 
 /** Mutates `panelsOut` (push), returns the bound radius the caller

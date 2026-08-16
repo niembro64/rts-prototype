@@ -16,6 +16,7 @@ import {
   makeCylinder,
 } from './BuildingMeshPrimitives3D';
 import { markBuildingTeamOrnament } from './BuildingTeamOrnament3D';
+import { signedPolygonAreaXZ } from '../math/polygonArea';
 
 const extractorPyramidGeom = createHexFrustumGeometry();
 const EXTRACTOR_FACE_COUNT = 6;
@@ -382,7 +383,7 @@ function createExtractorSidePanelGeometry(
   }
 
   const sourceOrder = [0, 1, 2, 3];
-  const outerOrder = polygonSignedArea(localCorners) > 0
+  const outerOrder = signedPolygonAreaXZ(localCorners) > 0
     ? [...sourceOrder].reverse()
     : sourceOrder;
   const innerOrder = new Array<number>(outerOrder.length);
@@ -404,16 +405,6 @@ function createExtractorSidePanelGeometry(
   geom.computeVertexNormals();
   geom.computeBoundingSphere();
   return geom;
-}
-
-function polygonSignedArea(points: ReadonlyArray<{ x: number; z: number }>): number {
-  let area = 0;
-  for (let i = 0; i < points.length; i++) {
-    const a = points[i];
-    const b = points[(i + 1) % points.length];
-    area += a.x * b.z - b.x * a.z;
-  }
-  return area * 0.5;
 }
 
 function addQuadIndices(

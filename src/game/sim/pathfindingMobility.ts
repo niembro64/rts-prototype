@@ -123,10 +123,3 @@ export function computeLocomotionClimbProfile(
   climbProfileCache.set(cacheKey, profile);
   return profile;
 }
-
-export function minGroundMoveNormalZForLocomotion(
-  locomotion: UnitLocomotion,
-  mass: number,
-): number | null {
-  return computeLocomotionClimbProfile(locomotion, mass).minGroundNormalZ;
-}

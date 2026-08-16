@@ -3,6 +3,7 @@ import type { BattleMode } from './battleBarConfig';
 import { persist, readPersisted } from './persistence';
 import { UNIT_GROUND_NORMAL_EMA_MODE_DEFAULT, type UnitGroundNormalEmaMode } from './shellConfig';
 import serverBarConfig from './serverBarConfig.json';
+import { buildNamespacedStorageKeys } from './storageKeys';
 
 // Host-applied simulation settings that still travel through server commands.
 // The ground-normal EMA control is rendered in the BATTLE bar; fixed-step
@@ -45,11 +46,11 @@ const storageKeySuffixes =
   serverBarConfig.storageKeySuffixes as Record<ServerStorageKeyName, string>;
 
 function buildStorageKeys(mode: ServerMode): ServerStorageKeys {
-  const keys = {} as ServerStorageKeys;
-  for (const name of SERVER_STORAGE_KEY_NAMES) {
-    keys[name] = `${mode}-server-${storageKeySuffixes[name]}`;
-  }
-  return keys;
+  return buildNamespacedStorageKeys(
+    SERVER_STORAGE_KEY_NAMES,
+    storageKeySuffixes,
+    `${mode}-server`,
+  );
 }
 
 const SERVER_STORAGE_KEYS: Record<ServerMode, ServerStorageKeys> = {

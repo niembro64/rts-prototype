@@ -12,6 +12,7 @@ import { entityTeamColorHex } from './EntityInstanceColor3D';
 import {
   DEFAULT_TEAM_ORNAMENT_FIT,
   hostOrnamentProfile,
+  measureHostOrnamentBounds,
   type HostOrnamentProfile,
 } from './TeamOrnament3D';
 import { getUnitBlueprint } from '../sim/blueprints';
@@ -41,33 +42,16 @@ function ornamentProfileFor(
 ): HostOrnamentProfile {
   const cached = mesh.teamTrimProfile;
   if (cached !== undefined) return cached;
-  let minX = 0;
-  let maxX = 0;
-  let halfWidth = 0;
-  for (const part of bodyEntry.parts) {
-    minX = Math.min(minX, part.x - part.scaleX);
-    maxX = Math.max(maxX, part.x + part.scaleX);
-    halfWidth = Math.max(halfWidth, Math.abs(part.z) + part.scaleZ);
-  }
-  // A bodyless host (shield emitters, turret-hosted visuals) still has to read
-  // as somebody's: fall back to the unit sphere the renderer would draw.
-  if (maxX - minX < 1e-3) {
-    minX = -1;
-    maxX = 1;
-  }
-  if (halfWidth < 1e-3) halfWidth = 1;
   // The BOUNDS are measured; the FIT is authored. Where the rails start, stop
   // and how high they ride over each end is a fact about how this hull is
   // meant to be dressed, and no measurement of a bounding box recovers it.
   const blueprintId = entity.unit?.unitBlueprintId;
-  const profile = hostOrnamentProfile({
-    minX,
-    maxX,
-    halfWidth,
-    topY: bodyEntry.topY > 1e-3 ? bodyEntry.topY : 1,
-  }, blueprintId === undefined
-    ? DEFAULT_TEAM_ORNAMENT_FIT
-    : getUnitBlueprint(blueprintId).teamOrnament);
+  const profile = hostOrnamentProfile(
+    measureHostOrnamentBounds(bodyEntry.parts, bodyEntry.topY),
+    blueprintId === undefined
+      ? DEFAULT_TEAM_ORNAMENT_FIT
+      : getUnitBlueprint(blueprintId).teamOrnament,
+  );
   mesh.teamTrimProfile = profile;
   return profile;
 }

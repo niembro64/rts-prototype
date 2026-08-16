@@ -19,7 +19,7 @@ import { EmaMsTracker } from './EmaMsTracker';
 import { EmaTracker } from './EmaTracker';
 import { SnapshotBuffer } from './SnapshotBuffer';
 
-export type RtsScene3DSnapshotEventScheduler = {
+type RtsScene3DSnapshotEventScheduler = {
   recordSnapshot(now: number): number;
   schedule(
     events: NetworkServerSnapshotSimEvent[],
@@ -42,19 +42,19 @@ type RtsScene3DSnapshotIntakeResult = {
   gameOverWinnerId: PlayerId | null;
 };
 
-export type RtsScene3DSnapshotTrafficKind = 'rich' | 'entity-delta' | 'projectile-delta';
+type RtsScene3DSnapshotTrafficKind = 'rich' | 'entity-delta' | 'projectile-delta';
 
-export type RtsScene3DSnapshotRateLaneStats = {
+type RtsScene3DSnapshotRateLaneStats = {
   avgRate: number;
   worstRate: number;
 };
 
-export type RtsScene3DSnapshotByteLaneStats = {
+type RtsScene3DSnapshotByteLaneStats = {
   avgBytes: number;
   hiBytes: number;
 };
 
-export type RtsScene3DSnapshotApplyLaneStats = {
+type RtsScene3DSnapshotApplyLaneStats = {
   avgMs: number;
   hiMs: number;
 };

@@ -21,7 +21,7 @@ function finiteRadius(radius: number): number {
 }
 
 /** True while any part of the projectile's spherical HIT volume overlaps ARM. */
-export function projectileOverlapsArmingVolume(
+function projectileOverlapsArmingVolume(
   volume: EntityVolume,
   x: number,
   y: number,

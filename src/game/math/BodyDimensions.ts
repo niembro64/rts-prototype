@@ -40,7 +40,6 @@ export function getUnitBodyShapeKey(bodyShape: UnitBodyShape | null): string {
   return key;
 }
 
-
 /** Chassis-local Y of the visible body's vertical center. Unit body
  *  shapes are built from terrain-up: bottoms at local Y=0 and tops at
  *  getBodyTopY, so the center is the midpoint of that authored volume. */
@@ -51,11 +50,6 @@ function getBodyCenterLocalY(
   if (bodyShape === null) return 0;
   return getBodyTopY(bodyShape, unitRadius) * 0.5;
 }
-
-
-
-
-
 
 /** World-space lift applied to the visible body/chassis above the unit's
  *  ground footprint. This is derived from supportPointOffsetZ so the
@@ -166,7 +160,7 @@ function bodyPartTopFrac(part: UnitBodyShapePart): number {
   return (part.centerYFrac ?? part.radiusFrac) + part.radiusFrac;
 }
 
-export type CylinderSegmentPose = {
+type CylinderSegmentPose = {
   /** Mid-height of the rod, in unit-radius-1 space. */
   centerYFrac: number;
   /** Tilt about the lateral axis; positive lifts the forward (+X) end. */
@@ -225,53 +219,4 @@ export function getCylinderSegmentPose(part: {
     startYFrac: centerYFrac + rise,
     endYFrac: centerYFrac - rise,
   };
-}
-
-
-
-
-
-/** World-space Y for the mid-height of whichever body segment sits
- *  closest to the given forward offset (forwardX is in WORLD units,
- *  same space as `unit.transform.x`). Used to place leg hips at the
- *  vertical midpoint of the segment they attach to: a leg in front of
- *  a composite spider body hooks into the small prosoma, a leg far
- *  behind hooks into the tall abdomen, and simple-bodied units just
- *  hook into their single segment. */
-export function getSegmentMidYAt(
-  bodyShape: UnitBodyShape,
-  unitRadius: number,
-  forwardX: number,
-): number {
-  const spec = bodyShape;
-  if (spec.kind === 'polygon') {
-    return spec.heightFrac * unitRadius / 2;
-  }
-  if (spec.kind === 'rect' || spec.kind === 'rhombus') {
-    return spec.heightFrac * unitRadius / 2;
-  }
-  if (spec.kind === 'circle') {
-    return circleCenterYFrac(spec) * unitRadius;
-  }
-  if (spec.kind === 'oval') {
-    return spec.yFrac * unitRadius;
-  }
-  // Composite: find the segment whose center is nearest the leg's
-  // forward-X (in unit-local coords, so divide by unitRadius to get
-  // back into the same unit-radius-1 space the spec parts live in).
-  const targetUL = forwardX / unitRadius;
-  let best: UnitBodyShapePart = spec.parts[0];
-  let bestDist = Math.abs(targetUL - best.offsetForward);
-  for (const p of spec.parts) {
-    const d = Math.abs(targetUL - p.offsetForward);
-    if (d < bestDist) {
-      best = p;
-      bestDist = d;
-    }
-  }
-  if (best.kind === 'circle') return circleCenterYFrac(best) * unitRadius;
-  if (best.kind === 'box') return (best.centerYFrac ?? best.heightFrac * 0.5) * unitRadius;
-  if (best.kind === 'cylinder') return getCylinderSegmentPose(best).centerYFrac * unitRadius;
-  if (best.kind === 'cone') return (best.centerYFrac ?? best.radiusFrac) * unitRadius;
-  return (best.centerYFrac ?? best.yFrac) * unitRadius;
 }

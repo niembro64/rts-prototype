@@ -32,11 +32,10 @@ import {
 } from './worldSurfaceState';
 import {
   getVegetationAssetOptions,
-  getVegetationAssetSpec,
   vegetationAssetScale,
   type VegetationAssetSpec,
 } from '@/vegetationAssets';
-import { getSimWasm } from '../sim-wasm/init';
+import { getSimWasm, requireSimWasm } from '../sim-wasm/init';
 import type { EntityId } from './types';
 
 /** BAR's `featureID + Game.maxUnits` convention. Entity ids are
@@ -67,7 +66,7 @@ export type VegetationProp = {
   energyTotal: number;
 };
 
-export type VegetationReclaimTick = {
+type VegetationReclaimTick = {
   energy: number;
   metal: number;
   hpRemoved: number;
@@ -87,14 +86,6 @@ const _propStateOut = new Float64Array(VEGETATION_PROP_STATE_STRIDE);
 const _reclaimTickOut = new Float64Array(VEGETATION_RECLAIM_TICK_STRIDE);
 const _raycastOut = new Float64Array(2);
 
-function requireSimWasm(context: string) {
-  const sim = getSimWasm();
-  if (sim === undefined) {
-    throw new Error(`${context}: sim-wasm is not initialized`);
-  }
-  return sim;
-}
-
 export function isVegetationTargetId(
   targetId: number | null | undefined,
 ): targetId is EntityId {
@@ -109,15 +100,8 @@ export function vegetationTargetIdForIndex(index: number): EntityId {
   return VEGETATION_TARGET_ID_BASE + index;
 }
 
-export function vegetationIndexFromTargetId(targetId: number): number {
+function vegetationIndexFromTargetId(targetId: number): number {
   return targetId - VEGETATION_TARGET_ID_BASE;
-}
-
-/** Bitmask over kind ordinals for the Rust query filters. 0 = all kinds. */
-export function vegetationKindMask(kinds: readonly VegetationKindId[]): number {
-  let mask = 0;
-  for (const kind of kinds) mask |= 1 << VEGETATION_KIND_IDS.indexOf(kind);
-  return mask;
 }
 
 /** Mirror of the Rust prop store's immutable layout. One browser runs
@@ -284,23 +268,6 @@ export function isVegetationAlive(index: number): boolean {
   return _propStateOut[0] !== 0;
 }
 
-/** Remaining reclaim fraction: 1 = untouched, 0 = consumed. Returns 0
- *  for an unknown or consumed prop. */
-export function getVegetationReclaimFraction(index: number): number {
-  const sim = getSimWasm();
-  if (sim === undefined) return 0;
-  if (sim.vegetationPropState(index, _propStateOut) === 0) return 0;
-  return _propStateOut[5];
-}
-
-/** Energy still recoverable from the prop. */
-export function getVegetationEnergyLeft(index: number): number {
-  const sim = getSimWasm();
-  if (sim === undefined) return 0;
-  if (sim.vegetationPropState(index, _propStateOut) === 0) return 0;
-  return _propStateOut[3];
-}
-
 /**
  * One builder-tick of BAR gradual reclaim against a prop. `buildPower`
  * is the builder's construction rate; consuming a prop therefore takes
@@ -444,11 +411,4 @@ function packVegetationConfigRows(): {
     assetRows[base + 3] = vegetationAssetScale(spec);
   }
   return { kindRows, assetRows, assetSpecs };
-}
-
-/** Convenience for UI/debug: the asset spec behind a generated prop. */
-export function getVegetationPropAsset(
-  prop: VegetationProp,
-): VegetationAssetSpec | undefined {
-  return getVegetationAssetSpec(prop.kind, prop.assetSlot);
 }

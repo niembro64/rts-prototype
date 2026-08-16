@@ -39,13 +39,6 @@ pub(crate) struct MessagePackWriter {
 }
 
 impl MessagePackWriter {
-    #[allow(dead_code)]
-    pub(crate) fn new() -> Self {
-        Self {
-            buf: Vec::with_capacity(64),
-        }
-    }
-
     pub(crate) fn with_capacity(cap: usize) -> Self {
         Self {
             buf: Vec::with_capacity(cap),
@@ -148,12 +141,6 @@ impl MessagePackWriter {
         self.buf.extend_from_slice(&v.to_be_bytes());
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn write_f32(&mut self, v: f32) {
-        self.buf.push(0xCA);
-        self.buf.extend_from_slice(&v.to_be_bytes());
-    }
-
     pub(crate) fn write_str(&mut self, s: &str) {
         let bytes = s.as_bytes();
         let len = bytes.len();
@@ -196,7 +183,6 @@ impl MessagePackWriter {
         }
     }
 
-    #[allow(dead_code)]
     pub(crate) fn write_bin(&mut self, bytes: &[u8]) {
         let len = bytes.len();
         if len <= 0xFF {

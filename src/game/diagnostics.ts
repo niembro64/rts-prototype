@@ -1,21 +1,7 @@
-function envFlag(name: string): boolean {
-  const value = import.meta.env[name];
-  if (typeof value !== 'string') return false;
-  return value === '1' || value.toLowerCase() === 'true' || value.toLowerCase() === 'yes';
-}
-
-function queryFlag(...names: string[]): boolean {
-  if (typeof window === 'undefined') return false;
-  const params = new URLSearchParams(window.location.search);
-  for (const name of names) {
-    const value = params.get(name);
-    if (value === null) continue;
-    if (value === '' || value === '1') return true;
-    const normalized = value.toLowerCase();
-    if (normalized === 'true' || normalized === 'yes' || normalized === 'on') return true;
-  }
-  return false;
-}
+import {
+  readBooleanEnvFlag as envFlag,
+  readBooleanQueryFlag as queryFlag,
+} from './runtimeFlags';
 
 export const GAME_DIAGNOSTICS = {
   pathValidation: envFlag('VITE_BA_VALIDATE_PATHS'),

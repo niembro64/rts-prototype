@@ -43,14 +43,12 @@ export class LongtaskTracker {
           this.windowCount++;
         }
       });
-      // Use the singular `type` form (not `entryTypes`) because the
-      // `buffered` flag is only valid alongside the singular form per
-      // the PerformanceObserver spec — Chrome logs a warning when
-      // `entryTypes` is paired with `buffered`. Since we only watch
-      // a single entry kind here, the singular call is the right
-      // shape.
-      this.observer.observe({ type: 'longtask', buffered: true });
       this.windowStartMs = performance.now();
+      // Historical buffered entries predate `windowStartMs`; mixing them into
+      // this new window can report more than the physical 1000 blocked ms/s
+      // and poison benchmark diagnosis. Observe only work that begins while
+      // this tracker owns the measurement window.
+      this.observer.observe({ type: 'longtask' });
     } catch {
       this.observer = null;
     }
@@ -99,6 +97,18 @@ export class LongtaskTracker {
   /** Longtask events per second. */
   getCountPerSec(): number {
     return this.emaCountPerSec;
+  }
+
+  /** Start a fresh observation/rate window, excluding queued prior work. */
+  reset(): void {
+    if (!this.observer) return;
+    this.observer.takeRecords();
+    this.windowBlockedMs = 0;
+    this.windowCount = 0;
+    this.emaBlockedMsPerSec = 0;
+    this.emaCountPerSec = 0;
+    this.initialized = false;
+    this.windowStartMs = performance.now();
   }
 
   destroy(): void {

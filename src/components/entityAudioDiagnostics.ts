@@ -1,6 +1,5 @@
 import { AUDIO, type SoundEntry } from '@/audioConfig';
 import {
-  getBuildingBlueprint,
   getRayBlueprint,
   getShotBlueprint,
   getTurretBlueprint,
@@ -17,6 +16,7 @@ import {
 import type { LoadingEntityBlueprintId, LoadingPreviewKind } from './loadingUnitPreviewScene';
 import type { Turret } from '@/game/sim/types';
 import { getEmissionBlueprintId, isRayConfig, isShieldConfig } from '@/game/sim/types';
+import { getLoadingEntityName } from './loadingEntitySelection';
 
 type EntityLabSelection = {
   kind: LoadingPreviewKind;
@@ -24,7 +24,7 @@ type EntityLabSelection = {
   name: string;
 };
 
-export type EntityLabSoundActionKind = 'fire' | 'hit' | 'death' | 'beam-loop' | 'shield-loop';
+type EntityLabSoundActionKind = 'fire' | 'hit' | 'death' | 'beam-loop' | 'shield-loop';
 
 export type EntityLabSoundAction = {
   id: string;
@@ -52,19 +52,8 @@ export function buildEntityLabSelections(kind: LoadingPreviewKind): EntityLabSel
   return ids.map((id) => ({
     kind,
     id,
-    name: kind === 'unit'
-      ? getUnitBlueprint(id as UnitBlueprintId).name
-      : getBuildingBlueprint(id as StructureBlueprintId).name,
+    name: getLoadingEntityName(kind, id),
   }));
-}
-
-export function getEntityLabSelectionName(
-  kind: LoadingPreviewKind,
-  id: LoadingEntityBlueprintId,
-): string {
-  return kind === 'unit'
-    ? getUnitBlueprint(id as UnitBlueprintId).name
-    : getBuildingBlueprint(id as StructureBlueprintId).name;
 }
 
 export function buildEntityLabSoundActions(

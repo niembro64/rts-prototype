@@ -37,7 +37,7 @@ import rawConfig from './vegetationConfig.json';
 /** Placement medium for a vegetation kind. `land` props sit on dry
  *  ground above the waterline; `waterline` props root in the shoreline
  *  elevation slice derived from the main flat, waterline, and seabed. */
-export type VegetationMedium = 'land' | 'waterline';
+type VegetationMedium = 'land' | 'waterline';
 
 /** Wire/array order. The Rust kernel, the renderer, and every packed
  *  row below index kinds by this ordinal, so the order is a contract —
@@ -45,7 +45,7 @@ export type VegetationMedium = 'land' | 'waterline';
 export const VEGETATION_KIND_IDS = ['tree', 'grass', 'seaweed'] as const;
 export type VegetationKindId = (typeof VEGETATION_KIND_IDS)[number];
 
-export type VegetationReclaimConfig = {
+type VegetationReclaimConfig = {
   /** Total energy the prop yields when fully reclaimed. */
   energy: number;
   /** Total metal the prop yields. BAR trees are pure energy (0). */
@@ -59,7 +59,7 @@ export type VegetationReclaimConfig = {
   hp: number;
 };
 
-export type VegetationKindConfig = {
+type VegetationKindConfig = {
   /** Prop count at the default map area; other map sizes scale from
    *  this by area, clamped to [areaScaleMin, areaScaleMax]. */
   targetCount: number;
@@ -88,7 +88,7 @@ export type VegetationKindConfig = {
   reclaim: VegetationReclaimConfig;
 };
 
-export type VegetationPlacementConfig = {
+type VegetationPlacementConfig = {
   seed: number;
   defaultMapWidth: number;
   defaultMapHeight: number;
@@ -119,38 +119,6 @@ export function vegetationKindIdFromIndex(index: number): VegetationKindId {
     throw new Error(`Vegetation kind index ${index} is outside the authored kind list`);
   }
   return kind;
-}
-
-export function vegetationKindIndex(kind: VegetationKindId): number {
-  return VEGETATION_KIND_IDS.indexOf(kind);
-}
-
-/** BAR reclaimTime semantics: a builder of `constructionRate` build
- *  power consumes the prop in this many seconds. */
-export function vegetationReclaimSecondsForRate(
-  kind: VegetationKindId,
-  constructionRate: number,
-): number {
-  if (!Number.isFinite(constructionRate) || constructionRate <= 0) return Infinity;
-  return getVegetationKindConfig(kind).reclaim.reclaimTime / constructionRate;
-}
-
-/** Prop count for a map, scaled from the authored default-map count by
- *  area. Mirrors the Rust kernel's own scaling so TS-side previews and
- *  buffer sizing agree with the generated list. */
-export function vegetationTargetCountForMap(
-  kind: VegetationKindId,
-  mapWidth: number,
-  mapHeight: number,
-): number {
-  const placement = VEGETATION_PLACEMENT_CONFIG;
-  const defaultArea = placement.defaultMapWidth * placement.defaultMapHeight;
-  const rawScale = defaultArea > 0 ? (mapWidth * mapHeight) / defaultArea : 1;
-  const scale = Math.min(
-    placement.areaScaleMax,
-    Math.max(placement.areaScaleMin, rawScale),
-  );
-  return Math.round(getVegetationKindConfig(kind).targetCount * scale);
 }
 
 function validVegetationConfig(): void {

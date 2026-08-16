@@ -107,6 +107,7 @@ import {
   getDeathContextWireFlags,
 } from './audioEventWireHelpers';
 import { getSprayTargetWireFlags } from './sprayTargetWireHelpers';
+import { isFiniteNumber } from '../math';
 
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 
@@ -161,10 +162,6 @@ function hasValue<T>(value: T | undefined): value is T {
 
 function isUint(value: unknown, max: number): value is number {
   return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= max;
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
 }
 
 function minimapTypeToSnapshotTag(type: NetworkServerSnapshotMinimapEntity['type']): number {

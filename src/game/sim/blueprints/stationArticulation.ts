@@ -1,8 +1,9 @@
 import type { TurretStationArticulation } from '../../../types/blueprints';
 import type { WorkEmitterSpec } from '../../../types/constructionTypes';
+import { assertFiniteNumber } from '../../../configValidation';
 
 function assertFinite(label: string, value: number): void {
-  if (!Number.isFinite(value)) throw new Error(`Invalid ${label}: expected a finite number`);
+  assertFiniteNumber(value, `Invalid ${label}`);
 }
 
 /** Validate the physical station envelope at the JSON loader boundary. */

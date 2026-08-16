@@ -26,10 +26,13 @@ export function pickRandomLoadingEntity(): LoadingUnitPreviewSelection {
     .filter((pool) => pool.ids.length > 0);
   const pool = pools[Math.floor(Math.random() * pools.length)] ?? pools[0];
   const id = pool.ids[Math.floor(Math.random() * pool.ids.length)] ?? pool.ids[0];
-  return { kind: pool.kind, id, name: loadingEntityName(pool.kind, id) };
+  return { kind: pool.kind, id, name: getLoadingEntityName(pool.kind, id) };
 }
 
-function loadingEntityName(kind: LoadingPreviewKind, id: LoadingEntityBlueprintId): string {
+export function getLoadingEntityName(
+  kind: LoadingPreviewKind,
+  id: LoadingEntityBlueprintId,
+): string {
   return kind === 'unit'
     ? getUnitBlueprint(id as UnitBlueprintId).name
     : getBuildingBlueprint(id as StructureBlueprintId).name;

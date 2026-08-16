@@ -88,6 +88,7 @@ import {
   createHostOrnamentGeometry,
   createTurretCollarGeometry,
   hostOrnamentProfile,
+  measureHostOrnamentBounds,
   type TeamOrnamentFit,
   ornamentProfileKey,
 } from '@/game/render3d/TeamOrnament3D';
@@ -738,25 +739,10 @@ function previewOrnamentGeometry(
   bodyEntry: BodyGeomEntry,
   fit: TeamOrnamentFit,
 ): THREE.BufferGeometry {
-  let minX = 0;
-  let maxX = 0;
-  let halfWidth = 0;
-  for (const part of bodyEntry.parts) {
-    minX = Math.min(minX, part.x - part.scaleX);
-    maxX = Math.max(maxX, part.x + part.scaleX);
-    halfWidth = Math.max(halfWidth, Math.abs(part.z) + part.scaleZ);
-  }
-  if (maxX - minX < 1e-3) {
-    minX = -1;
-    maxX = 1;
-  }
-  if (halfWidth < 1e-3) halfWidth = 1;
-  const profile = hostOrnamentProfile({
-    minX,
-    maxX,
-    halfWidth,
-    topY: bodyEntry.topY > 1e-3 ? bodyEntry.topY : 1,
-  }, fit);
+  const profile = hostOrnamentProfile(
+    measureHostOrnamentBounds(bodyEntry.parts, bodyEntry.topY),
+    fit,
+  );
   const key = ornamentProfileKey(profile);
   let geometry = previewOrnamentGeoms.get(key);
   if (geometry === undefined) {
@@ -947,7 +933,7 @@ function buildPreviewLocomotion(
       const mesh = buildBotRig(
         liftGroup, radius, blueprint.mass,
         locomotion.physics.ground.maxPropulsiveForce,
-        locomotion.config.legs, locomotion.config.arms,
+        locomotion.config.legs, locomotion.config.arms, locomotion.config.upperArms,
         chassisLift, HOST_PLAYER_ID, geometryTier, blueprint.unitBlueprintId,
       );
       poseBotRigAtRest(mesh);

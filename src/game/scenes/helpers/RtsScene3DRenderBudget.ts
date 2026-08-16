@@ -1,15 +1,16 @@
 import type { GraphicsConfig } from '@/types/graphics';
+import { clamp01 } from '../../math';
 
-export type RtsScene3DRenderBudgetTier = 'normal' | 'busy' | 'heavy' | 'extreme';
+type RtsScene3DRenderBudgetTier = 'normal' | 'busy' | 'heavy' | 'extreme';
 
-export type RtsScene3DRenderBudgetState = {
+type RtsScene3DRenderBudgetState = {
   readonly graphicsConfig: GraphicsConfig;
   readonly tier: RtsScene3DRenderBudgetTier;
   readonly tierIndex: number;
   readonly unitCount: number;
 };
 
-export type RtsScene3DRenderBudgetTelemetry = {
+type RtsScene3DRenderBudgetTelemetry = {
   readonly tier: RtsScene3DRenderBudgetTier;
   readonly tierIndex: number;
   readonly unitCount: number;
@@ -67,13 +68,6 @@ const RECOVERY_SAMPLE_COUNT = 90;
 
 function finiteNonNegative(value: number, fallback: number): number {
   return Number.isFinite(value) && value >= 0 ? value : fallback;
-}
-
-function clamp01(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  if (value <= 0) return 0;
-  if (value >= 1) return 1;
-  return value;
 }
 
 function tierIndexForUnitCount(unitCount: number): number {

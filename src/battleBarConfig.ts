@@ -205,7 +205,11 @@ void (battleBarConfig.realDefault as string);
 // Legacy `rts-*` keys are migrated lazily into `demo-battle-*` (the
 // original "battle" namespace) by the load helpers below.
 const sk = battleBarConfig.storageKeys;
-const CURRENT_DEMO_CONTENT_REVISION = 'tech-buildings-v2';
+// v3 deliberately replays the tech-building roster repair. Some profiles
+// reached v2 with an already-persisted BUILDINGS list that still predated the
+// two tech structures, so the revision short-circuit preserved two empty demo
+// slots forever even though fresh profiles spawned both buildings correctly.
+const CURRENT_DEMO_CONTENT_REVISION = 'tech-buildings-v3';
 const STORAGE_DEMO_UNITS = sk.demoUnits;
 const STORAGE_DEMO_CONTENT_REVISION = sk.demoContentRevision;
 const STORAGE_DEMO_BUILDINGS = sk.demoBuildings;
@@ -386,6 +390,10 @@ export function loadStoredDemoUnits(): string[] | null {
 }
 
 export function saveDemoUnits(units: string[]): void {
+  // A save must never stamp the current content revision before its roster
+  // migrations have run; doing so can strand a sibling persisted roster on
+  // an older blueprint set while making it look current.
+  ensureBattleMigrations();
   persistJson(STORAGE_DEMO_UNITS, sanitizeDemoUnitIds(units) ?? []);
   persist(STORAGE_DEMO_CONTENT_REVISION, CURRENT_DEMO_CONTENT_REVISION);
 }
@@ -415,6 +423,7 @@ export function loadStoredDemoBuildings(): string[] | null {
 }
 
 export function saveDemoBuildings(buildings: string[]): void {
+  ensureBattleMigrations();
   persistJson(STORAGE_DEMO_BUILDINGS, sanitizeDemoBuildingIds(buildings) ?? []);
 }
 
@@ -675,11 +684,11 @@ export function normalizeTerrainDetail(value: number): number {
   return normalizeNumberOption(value, BATTLE_CONFIG.terrainDetail);
 }
 
-export function normalizeTerrainTextureSmoothing(value: number): number {
+function normalizeTerrainTextureSmoothing(value: number): number {
   return normalizeNumberOption(value, BATTLE_CONFIG.terrainTextureSmoothing);
 }
 
-export function normalizeTerrainLightSmoothing(value: number): number {
+function normalizeTerrainLightSmoothing(value: number): number {
   return normalizeNumberOption(value, BATTLE_CONFIG.terrainLightSmoothing);
 }
 
@@ -925,7 +934,7 @@ export function saveTerrainDetail(value: number, mode: BattleMode): void {
   );
 }
 
-export function loadStoredTerrainTextureSmoothing(mode: BattleMode): number {
+function loadStoredTerrainTextureSmoothing(mode: BattleMode): number {
   return loadModeNumberOption(
     mode,
     STORAGE_REAL_TERRAIN_TEXTURE_SMOOTHING,
@@ -934,7 +943,7 @@ export function loadStoredTerrainTextureSmoothing(mode: BattleMode): number {
   );
 }
 
-export function saveTerrainTextureSmoothing(value: number, mode: BattleMode): void {
+function saveTerrainTextureSmoothing(value: number, mode: BattleMode): void {
   persist(
     mode === 'real'
       ? STORAGE_REAL_TERRAIN_TEXTURE_SMOOTHING
@@ -943,7 +952,7 @@ export function saveTerrainTextureSmoothing(value: number, mode: BattleMode): vo
   );
 }
 
-export function loadStoredTerrainLightSmoothing(mode: BattleMode): number {
+function loadStoredTerrainLightSmoothing(mode: BattleMode): number {
   return loadModeNumberOption(
     mode,
     STORAGE_REAL_TERRAIN_LIGHT_SMOOTHING,
@@ -952,7 +961,7 @@ export function loadStoredTerrainLightSmoothing(mode: BattleMode): number {
   );
 }
 
-export function saveTerrainLightSmoothing(value: number, mode: BattleMode): void {
+function saveTerrainLightSmoothing(value: number, mode: BattleMode): void {
   persist(
     mode === 'real'
       ? STORAGE_REAL_TERRAIN_LIGHT_SMOOTHING
@@ -961,7 +970,7 @@ export function saveTerrainLightSmoothing(value: number, mode: BattleMode): void
   );
 }
 
-export function loadStoredTerrainTextureSmoothAcrossWallBoundary(
+function loadStoredTerrainTextureSmoothAcrossWallBoundary(
   mode: BattleMode,
 ): boolean {
   return loadModeBool(
@@ -972,7 +981,7 @@ export function loadStoredTerrainTextureSmoothAcrossWallBoundary(
   );
 }
 
-export function saveTerrainTextureSmoothAcrossWallBoundary(
+function saveTerrainTextureSmoothAcrossWallBoundary(
   enabled: boolean,
   mode: BattleMode,
 ): void {
@@ -984,7 +993,7 @@ export function saveTerrainTextureSmoothAcrossWallBoundary(
   );
 }
 
-export function loadStoredTerrainLightSmoothAcrossWallBoundary(
+function loadStoredTerrainLightSmoothAcrossWallBoundary(
   mode: BattleMode,
 ): boolean {
   return loadModeBool(
@@ -995,7 +1004,7 @@ export function loadStoredTerrainLightSmoothAcrossWallBoundary(
   );
 }
 
-export function saveTerrainLightSmoothAcrossWallBoundary(
+function saveTerrainLightSmoothAcrossWallBoundary(
   enabled: boolean,
   mode: BattleMode,
 ): void {
@@ -1007,7 +1016,7 @@ export function saveTerrainLightSmoothAcrossWallBoundary(
   );
 }
 
-export function loadStoredTerrainSplitWallBoundaryVertices(
+function loadStoredTerrainSplitWallBoundaryVertices(
   mode: BattleMode,
 ): boolean {
   return loadModeBool(
@@ -1018,7 +1027,7 @@ export function loadStoredTerrainSplitWallBoundaryVertices(
   );
 }
 
-export function saveTerrainSplitWallBoundaryVertices(
+function saveTerrainSplitWallBoundaryVertices(
   enabled: boolean,
   mode: BattleMode,
 ): void {

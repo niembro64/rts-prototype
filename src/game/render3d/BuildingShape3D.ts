@@ -46,6 +46,7 @@ import {
   disposeBuildingMeshPrimitives,
   detail,
   getActiveBuildingGeometryTier,
+  getBuildingCylinderGeometry,
   hexCylinderGeom,
   invisibleMat,
   makeBox,
@@ -82,6 +83,11 @@ import {
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 import { markBuildingTeamOrnament } from './BuildingTeamOrnament3D';
+import type { BuildingOperationalRig } from './BuildingOperationalRig3D';
+import {
+  createBuildingOperationalPosePart,
+  createBuildingOperationalRig,
+} from './BuildingOperationalRig3D';
 
 export type { WindTurbineRig } from './WindTurbineMesh3D';
 export type { ExtractorRig } from './MetalExtractorMesh3D';
@@ -126,16 +132,21 @@ export type BuildingShape = {
   /** The building's render height so the caller can position the
    *  primary body correctly on the ground plane. */
   height: number;
+  /** Native plan-view yaw applied to the complete rendered assembly after
+   *  simulation rotation. Use this when body, details, mounts, and animated
+   *  pieces must all share one authored orientation. */
+  authoredYaw?: number;
   windRig?: WindTurbineRig;
   extractorRig?: ExtractorRig;
   solarRig?: SolarRig;
   radarRig?: RadarRig;
   converterRig?: ResourceConverterRig;
+  operationalRig?: BuildingOperationalRig;
 };
 
 export type RadarRig = {
-  head: THREE.Mesh;
-  sweep: THREE.Mesh;
+  head: THREE.Object3D;
+  sweep: THREE.Object3D;
 };
 
 export type ResourceConverterRig = {
@@ -180,6 +191,40 @@ const radarSweepMat = new THREE.MeshBasicMaterial({
   opacity: 0.28,
   depthWrite: false,
 });
+
+type SensorRodAxis = 'x' | 'z';
+
+/** Round structural/sweep element aligned along a sensor rig's local axis. */
+function makeSensorRod(
+  material: THREE.Material,
+  radius: number,
+  length: number,
+  axis: SensorRodAxis,
+  x = 0,
+  y = 0,
+  z = 0,
+  geometry?: THREE.BufferGeometry,
+): THREE.Mesh {
+  const rod = makeCylinder(material, radius, length, x, y, z, geometry);
+  if (axis === 'x') rod.rotation.z = Math.PI / 2;
+  else rod.rotation.x = Math.PI / 2;
+  return rod;
+}
+
+/** Thin orbital sensor surface. Ring geometry keeps the silhouette circular
+ * without the hidden inner/outer walls of a torus. */
+function makeSensorHalo(
+  geometryTier: PrimitiveGeometryTier,
+  radiusX: number,
+  radiusZ: number,
+  y = 0,
+): THREE.Mesh {
+  const halo = new THREE.Mesh(getRadarRingGeometry(geometryTier), radarSweepMat);
+  halo.rotation.x = Math.PI / 2;
+  halo.position.y = y;
+  halo.scale.set(radiusX, radiusZ, 1);
+  return halo;
+}
 
 /** Build a type-specific building mesh set. `width` and `depth` are the
  *  building's footprint in world units (from `entity.building.width/height`);
@@ -267,44 +312,62 @@ function buildRadarMesh(
   const baseRadius = Math.max(30, minDim * 0.16);
   const baseH = Math.max(8, minDim * 0.08);
   details.push(detail(
-    makeCylinder(radarDarkMat, baseRadius, baseH, 0, baseH / 2, 0, hexCylinderGeom),
+    makeCylinder(radarDarkMat, baseRadius, baseH, 0, baseH / 2, 0),
     'min',
   ));
-  details.push(detail(
-    makeCylinder(radarFrameMat, baseRadius * 0.72, 4, 0, height * 0.38, 0, hexCylinderGeom),
-    'low',
-  ));
-  details.push(detail(
-    makeCylinder(radarFrameMat, baseRadius * 0.42, 5, 0, height * 0.78, 0, hexCylinderGeom),
-    'low',
-  ));
+  const lowerCollar = makeCylinder(
+    radarFrameMat,
+    baseRadius * 0.72,
+    4,
+    0,
+    height * 0.38,
+    0,
+  );
+  details.push(detail(lowerCollar, 'low'));
+  const upperCollar = makeCylinder(
+    radarFrameMat,
+    baseRadius * 0.42,
+    5,
+    0,
+    height * 0.78,
+    0,
+  );
+  details.push(detail(upperCollar, 'low'));
+  const dishCollar = makeCylinder(
+    primaryMat,
+    baseRadius * 0.52,
+    Math.max(3, minDim * 0.018),
+    0,
+    height * 0.73,
+    0,
+  );
   details.push(teamOrnamentDetail(
-    makeCylinder(
-      primaryMat,
-      baseRadius * 0.52,
-      Math.max(3, minDim * 0.018),
-      0,
-      height * 0.73,
-      0,
-      hexCylinderGeom,
-    ),
+    dishCollar,
     'radarDishRim',
   ));
 
-  const sweep = new THREE.Mesh(boxGeom, invisibleMat);
-  sweep.position.set(0, height * 0.52, 0);
+  const sweepMount = new THREE.Mesh(boxGeom, invisibleMat);
+  sweepMount.position.set(0, height * 0.52, 0);
+  const sweep = new THREE.Group();
+  sweepMount.add(sweep);
   const sweepRadius = Math.max(24, minDim * 0.08);
-  const sweepRing = new THREE.Mesh(getRadarRingGeometry(geometryTier), radarSweepMat);
-  sweepRing.rotation.x = Math.PI / 2;
-  sweepRing.scale.set(sweepRadius, sweepRadius, 4);
-  sweep.add(sweepRing);
-  sweep.add(makeBox(radarSweepMat, sweepRadius * 1.35, 0.8, 1.4, 0, 0, 0));
-  sweep.add(makeBox(radarFrameMat, 1.8, 2.2, sweepRadius * 0.8, 0, 0, 0));
+  sweep.add(makeSensorHalo(geometryTier, sweepRadius, sweepRadius));
+  const innerHalo = makeSensorHalo(
+    geometryTier === 'close' ? 'close' : 'far',
+    sweepRadius * 0.58,
+    sweepRadius * 0.58,
+    1.2,
+  );
+  innerHalo.rotation.z = 0.32;
+  sweep.add(innerHalo);
+  sweep.add(makeSensorRod(radarSweepMat, 0.72, sweepRadius * 1.35, 'x'));
 
-  const head = new THREE.Mesh(boxGeom, invisibleMat);
-  head.position.set(0, height * 0.9, 0);
+  const headMount = new THREE.Mesh(boxGeom, invisibleMat);
+  headMount.position.set(0, height * 0.9, 0);
+  const head = new THREE.Group();
+  headMount.add(head);
   head.add(makeSphere(radarDarkMat, Math.max(5.5, minDim * 0.025), 0, 0, 0));
-  head.add(makeCylinder(radarFrameMat, Math.max(5, minDim * 0.022), 8, 0, -6, 0, hexCylinderGeom));
+  head.add(makeCylinder(radarFrameMat, Math.max(5, minDim * 0.022), 8, 0, -6, 0));
 
   const dishPivot = new THREE.Mesh(boxGeom, invisibleMat);
   dishPivot.rotation.x = -0.42;
@@ -324,17 +387,55 @@ function buildRadarMesh(
   dishPivot.add(rim);
 
   const feedZ = Math.max(14, dishRadiusX * 0.36);
-  dishPivot.add(makeBox(radarFrameMat, dishRadiusX * 0.08, dishRadiusX * 0.08, feedZ, 0, 0, feedZ * 0.5));
+  dishPivot.add(makeSensorRod(
+    radarFrameMat,
+    dishRadiusX * 0.045,
+    feedZ,
+    'z',
+    0,
+    0,
+    feedZ * 0.5,
+    getBuildingCylinderGeometry('far'),
+  ));
   dishPivot.add(makeSphere(radarDarkMat, Math.max(2.8, minDim * 0.028), 0, 0, feedZ));
   head.add(dishPivot);
 
-  details.push(detail(sweep, 'low', undefined, 'radarRig'));
-  details.push(detail(head, 'low', undefined, 'radarRig'));
+  details.push(detail(sweepMount, 'low', undefined, 'radarRig'));
+  details.push(detail(headMount, 'low', undefined, 'radarRig'));
+  const operationalRig = createBuildingOperationalRig([
+    createBuildingOperationalPosePart(lowerCollar, {
+      closedPosition: new THREE.Vector3(0, height * 0.31, 0),
+      closedScale: lowerCollar.scale.clone().multiply(new THREE.Vector3(0.82, 0.72, 0.82)),
+    }),
+    createBuildingOperationalPosePart(upperCollar, {
+      closedPosition: new THREE.Vector3(0, height * 0.57, 0),
+      closedScale: upperCollar.scale.clone().multiply(new THREE.Vector3(0.76, 0.68, 0.76)),
+    }),
+    createBuildingOperationalPosePart(dishCollar, {
+      closedPosition: new THREE.Vector3(0, height * 0.54, 0),
+      closedScale: dishCollar.scale.clone().multiply(new THREE.Vector3(0.78, 0.72, 0.78)),
+    }),
+    createBuildingOperationalPosePart(sweepMount, {
+      closedPosition: new THREE.Vector3(0, height * 0.35, 0),
+      closedScale: new THREE.Vector3(0.5, 0.5, 0.5),
+    }),
+    createBuildingOperationalPosePart(headMount, {
+      closedPosition: new THREE.Vector3(0, height * 0.66, 0),
+      closedScale: new THREE.Vector3(0.78, 0.78, 0.78),
+    }),
+    createBuildingOperationalPosePart(dishPivot, {
+      closedQuaternion: new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(-1.22, 0, 0),
+      ),
+      closedScale: new THREE.Vector3(0.8, 0.8, 0.8),
+    }),
+  ], { chassisClosedScaleY: 0.82 });
   return {
     primary,
     height,
     details,
     radarRig: { head, sweep },
+    operationalRig,
   };
 }
 
@@ -361,7 +462,6 @@ function buildSonarMesh(
       0,
       waterlineY + 5,
       0,
-      hexCylinderGeom,
     ),
     'min',
   ));
@@ -373,7 +473,6 @@ function buildSonarMesh(
       0,
       waterlineY + height * 0.14,
       0,
-      hexCylinderGeom,
     ),
     'low',
   ));
@@ -385,7 +484,6 @@ function buildSonarMesh(
       0,
       waterlineY + Math.max(5.5, minDim * 0.055),
       0,
-      hexCylinderGeom,
     ),
     'sonarBuoyCollar',
   ));
@@ -400,16 +498,25 @@ function buildSonarMesh(
     'low',
   ));
 
-  const sweep = new THREE.Mesh(boxGeom, invisibleMat);
-  sweep.position.set(0, waterlineY - height * 0.16, 0);
+  const sweepMount = new THREE.Mesh(boxGeom, invisibleMat);
+  sweepMount.position.set(0, waterlineY - height * 0.16, 0);
+  const sweep = new THREE.Group();
+  sweepMount.add(sweep);
   const sweepRadius = Math.max(20, minDim * 0.48);
-  const sweepRing = new THREE.Mesh(getRadarRingGeometry(geometryTier), radarSweepMat);
-  sweepRing.rotation.x = Math.PI / 2;
-  sweepRing.scale.set(sweepRadius, sweepRadius, 3);
-  sweep.add(sweepRing);
+  sweep.add(makeSensorHalo(geometryTier, sweepRadius, sweepRadius));
+  const innerPing = makeSensorHalo(
+    geometryTier === 'close' ? 'close' : 'far',
+    sweepRadius * 0.56,
+    sweepRadius * 0.56,
+    -2.2,
+  );
+  innerPing.rotation.z = -0.28;
+  sweep.add(innerPing);
 
-  const head = new THREE.Mesh(boxGeom, invisibleMat);
-  head.position.set(0, waterlineY - height * 0.28, 0);
+  const headMount = new THREE.Mesh(boxGeom, invisibleMat);
+  headMount.position.set(0, waterlineY - height * 0.28, 0);
+  const head = new THREE.Group();
+  headMount.add(head);
   head.add(makeSphere(radarDarkMat, Math.max(5.5, minDim * 0.14), 0, 0, 0));
 
   const dishPivot = new THREE.Mesh(boxGeom, invisibleMat);
@@ -429,25 +536,40 @@ function buildSonarMesh(
   rim.scale.set(dishRadiusX, dishRadiusY, 3);
   dishPivot.add(rim);
   const feedZ = Math.max(10, dishRadiusX * 0.36);
-  dishPivot.add(makeBox(
+  dishPivot.add(makeSensorRod(
     radarFrameMat,
-    dishRadiusX * 0.08,
-    dishRadiusX * 0.08,
+    dishRadiusX * 0.045,
     feedZ,
+    'z',
     0,
     0,
     feedZ * 0.5,
+    getBuildingCylinderGeometry('far'),
   ));
   dishPivot.add(makeSphere(radarDarkMat, Math.max(2.5, minDim * 0.06), 0, 0, feedZ));
   head.add(dishPivot);
 
-  details.push(detail(sweep, 'low', undefined, 'radarRig'));
-  details.push(detail(head, 'low', undefined, 'radarRig'));
+  details.push(detail(sweepMount, 'low', undefined, 'radarRig'));
+  details.push(detail(headMount, 'low', undefined, 'radarRig'));
+  const operationalRig = createBuildingOperationalRig([
+    createBuildingOperationalPosePart(sweepMount, {
+      closedPosition: new THREE.Vector3(0, waterlineY - height * 0.04, 0),
+      closedScale: new THREE.Vector3(0.48, 0.48, 0.48),
+    }),
+    createBuildingOperationalPosePart(headMount, {
+      closedPosition: new THREE.Vector3(0, waterlineY - height * 0.08, 0),
+      closedScale: new THREE.Vector3(0.72, 0.72, 0.72),
+    }),
+    createBuildingOperationalPosePart(dishPivot, {
+      closedScale: new THREE.Vector3(0.7, 0.7, 0.7),
+    }),
+  ], { chassisClosedScaleY: 0.86 });
   return {
     primary,
     height,
     details,
     radarRig: { head, sweep },
+    operationalRig,
   };
 }
 
@@ -552,6 +674,33 @@ function buildResourceConverterMesh(
     'low',
   ));
 
+  // The converter's active heart floats above the service deck and turns as
+  // resource beads cross through it. In the fortified pose it drops behind
+  // the bridge and the two rings nest tightly around the core.
+  const conversionCore = new THREE.Mesh(boxGeom, invisibleMat);
+  conversionCore.position.set(0, serviceY + serviceH * 0.92, 0);
+  const coreRadius = Math.max(5, minDim * 0.085);
+  conversionCore.add(makeSphere(converterDarkMat, coreRadius, 0, 0, 0));
+  const coreGlow = makeSphere(converterStatusMat, coreRadius * 0.58, 0, 0, 0);
+  conversionCore.add(coreGlow);
+  const conversionRing = makeSensorHalo(
+    getActiveBuildingGeometryTier(),
+    coreRadius * 1.65,
+    coreRadius * 1.65,
+    Math.max(1.4, coreRadius * 0.18),
+  );
+  conversionRing.rotation.x = 0.42;
+  conversionCore.add(conversionRing);
+  const crossRing = makeSensorHalo(
+    getActiveBuildingGeometryTier() === 'close' ? 'close' : 'far',
+    coreRadius * 1.18,
+    coreRadius * 1.18,
+    Math.max(1.2, coreRadius * 0.14),
+  );
+  crossRing.rotation.z = Math.PI * 0.5;
+  conversionCore.add(crossRing);
+  details.push(detail(conversionCore, 'low'));
+
   const heatSinkW = Math.max(4, minDim * 0.07);
   const heatSinkH = Math.max(10, minDim * 0.18);
   const heatSinkD = Math.max(18, minDim * 0.34);
@@ -644,6 +793,63 @@ function buildResourceConverterMesh(
   for (const mesh of energyPylon.staticMeshes) details.push(detail(mesh, 'low'));
   for (const mesh of metalPylon.staticMeshes) details.push(detail(mesh, 'low'));
 
+  const pylonOperationalParts = [energyPylon, metalPylon].flatMap((pylon) =>
+    pylon.staticMeshes.map((mesh, index) => createBuildingOperationalPosePart(mesh, {
+      closedPosition: new THREE.Vector3(
+        mesh.position.x,
+        pylonBaseY + (mesh.position.y - pylonBaseY) * 0.38,
+        mesh.position.z,
+      ),
+      closedScale: index < 2
+        ? new THREE.Vector3(mesh.scale.x, mesh.scale.y * 0.38, mesh.scale.z)
+        : mesh.scale.clone().multiplyScalar(0.72),
+    })),
+  );
+  const operationalRig = createBuildingOperationalRig([
+    createBuildingOperationalPosePart(conversionCore, {
+      closedPosition: new THREE.Vector3(0, serviceY + serviceH * 0.38, 0),
+      closedScale: new THREE.Vector3(0.68, 0.68, 0.68),
+    }),
+    createBuildingOperationalPosePart(conversionRing, {
+      closedScale: conversionRing.scale.clone().multiplyScalar(0.46),
+      motion: {
+        spinAxis: new THREE.Vector3(0, 1, 0),
+        spinRadPerSec: 1.35,
+      },
+    }),
+    createBuildingOperationalPosePart(crossRing, {
+      closedScale: crossRing.scale.clone().multiplyScalar(0.42),
+      motion: {
+        spinAxis: new THREE.Vector3(0, 1, 0),
+        spinRadPerSec: -1.7,
+        phaseOffset: 0.55,
+      },
+    }),
+    createBuildingOperationalPosePart(coreGlow, {
+      closedScale: coreGlow.scale.clone().multiplyScalar(0.64),
+      motion: {
+        bobAmplitude: Math.max(0.5, minDim * 0.008),
+        bobHz: 0.72,
+        pulseAmplitude: 0.1,
+        pulseHz: 0.92,
+      },
+    }),
+    ...pylonOperationalParts,
+  ], {
+    chassisClosedScaleY: 0.8,
+    applyLinkedPose: (amount) => {
+      const pylonHeightAmount = THREE.MathUtils.lerp(0.38, 1, amount);
+      for (const pylon of [energyPylon.rig, metalPylon.rig]) {
+        pylon.rootLocal.copy(pylon.rootBaseLocal);
+        pylon.topLocal.lerpVectors(
+          pylon.rootBaseLocal,
+          pylon.topBaseLocal,
+          pylonHeightAmount,
+        );
+      }
+    },
+  });
+
   return {
     primary,
     details,
@@ -652,6 +858,7 @@ function buildResourceConverterMesh(
       energyPylon: energyPylon.rig,
       metalPylon: metalPylon.rig,
     },
+    operationalRig,
   };
 }
 

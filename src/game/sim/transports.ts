@@ -72,7 +72,7 @@ export function canLoadTransport(transport: Entity | null | undefined, target: E
     transportComponent.loadedUnits.length < transportComponent.capacity;
 }
 
-export function isTransportLoadInRange(transport: Entity, target: Entity): boolean {
+function isTransportLoadInRange(transport: Entity, target: Entity): boolean {
   const transportRadius = transport.unit?.radius.collision ?? 0;
   const targetRadius = target.unit?.radius.collision ?? 0;
   const targetPoint = getEntityTargetPoint(target);

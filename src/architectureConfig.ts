@@ -1,9 +1,9 @@
 import rawArchitectureConfig from './architecture.json';
 import type { SnapshotConfig } from './types/config';
 
-export type LockstepDesyncPolicy = 'pause';
+type LockstepDesyncPolicy = 'pause';
 
-export type LockstepPresentationSnapshotConfig = SnapshotConfig;
+type LockstepPresentationSnapshotConfig = SnapshotConfig;
 
 export type LockstepArchitectureConfig = {
   readonly fixedStepHz: number;

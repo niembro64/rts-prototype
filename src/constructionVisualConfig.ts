@@ -9,13 +9,13 @@ import { COLORS, readRgbTuple } from './colorsConfig';
 
 export type ConstructionHostMarkingAxis = 'up' | 'forward' | 'lateral';
 
-export type ConstructionHostMarkingCenter = Readonly<{
+type ConstructionHostMarkingCenter = Readonly<{
   forward: number;
   up: number;
   lateral: number;
 }>;
 
-export type ConstructionHostSleeveMarking = Readonly<{
+type ConstructionHostSleeveMarking = Readonly<{
   kind: 'sleeve';
   center: ConstructionHostMarkingCenter;
   axis: ConstructionHostMarkingAxis;
@@ -24,7 +24,7 @@ export type ConstructionHostSleeveMarking = Readonly<{
   stripeCount: number;
 }>;
 
-export type ConstructionHostPanelMarking = Readonly<{
+type ConstructionHostPanelMarking = Readonly<{
   kind: 'panel';
   center: ConstructionHostMarkingCenter;
   axis: ConstructionHostMarkingAxis;
@@ -34,13 +34,13 @@ export type ConstructionHostPanelMarking = Readonly<{
   mirrored: boolean;
 }>;
 
-export type ConstructionHostRingBoxLod = Readonly<{
+type ConstructionHostRingBoxLod = Readonly<{
   chamferedHousing: boolean;
   topLatch: boolean;
   cornerFasteners: boolean;
 }>;
 
-export type ConstructionHostRingBoxesMarking = Readonly<{
+type ConstructionHostRingBoxesMarking = Readonly<{
   kind: 'ringBoxes';
   center: ConstructionHostMarkingCenter;
   axis: ConstructionHostMarkingAxis;

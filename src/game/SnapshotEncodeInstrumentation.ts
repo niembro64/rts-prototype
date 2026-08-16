@@ -12,6 +12,7 @@ import type {
   SnapshotWireMaterializationKind,
 } from './network/SnapshotWirePayload';
 import type { SnapshotRate } from '../types/server';
+import { monotonicNowMs as nowMs } from './time';
 
 const REPORT_INTERVAL_MS = 10_000;
 
@@ -108,12 +109,6 @@ declare global {
   interface Window {
     __BA_DP02_SNAPSHOT_WIRE__?: SnapshotEncodeInstrumentationDebugApi;
   }
-}
-
-function nowMs(): number {
-  return typeof performance !== 'undefined' && typeof performance.now === 'function'
-    ? performance.now()
-    : Date.now();
 }
 
 function rateKey(rate: SnapshotRate | undefined): string {

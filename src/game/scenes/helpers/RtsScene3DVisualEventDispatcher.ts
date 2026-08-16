@@ -7,11 +7,11 @@ import type { ShieldImpactRenderer3D } from '../../render3d/ShieldImpactRenderer
 import type { WaterSplash3D } from '../../render3d/WaterSplash3D';
 import { explosionSpawnScaleForDetail } from '../../render3d/EntityDetailLevel3D';
 import { entityDeathBlastFromContext3D } from '../../render3d/EntityDeathDisassembly3D';
+import { finiteOr } from '../../math';
 import { playSimEventAudio3D } from './RtsScene3DSimEventAudio';
 import {
   WATER_SURFACE_NORMAL_SIM,
   finiteAtLeast,
-  finiteOr,
   hasFiniteEventPosition,
   maxFiniteNonNegativeOr,
   resolveDeathContext3D,

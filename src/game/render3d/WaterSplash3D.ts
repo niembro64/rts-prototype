@@ -31,6 +31,7 @@ import { disposeMesh } from './threeUtils';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
 import { applyExposureToRawShader } from './RenderLighting3D';
+import { finiteOr, finiteOrZero } from '../math';
 
 const FS = `
 uniform vec3 uColor;
@@ -378,14 +379,6 @@ export class WaterSplash3D {
     }
     this.mat.dispose();
   }
-}
-
-function finiteOr(value: number, fallback: number): number {
-  return Number.isFinite(value) ? value : fallback;
-}
-
-function finiteOrZero(value: number): number {
-  return finiteOr(value, 0);
 }
 
 /** Pick a phi angle biased toward the incoming horizontal direction. */

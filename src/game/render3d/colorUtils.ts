@@ -30,7 +30,7 @@ export function locomotionPieceColorHex(baseHex: number, ownerId: PlayerId | und
   return locomotionPieceColorFromPrimary(baseHex, getPlayerColors(ownerId).primary);
 }
 
-export function locomotionPieceColorFromPrimary(baseHex: number, primaryHex: number): number {
+function locomotionPieceColorFromPrimary(baseHex: number, primaryHex: number): number {
   return blendHexColors(baseHex, primaryHex, LOCOMOTION_TEAM_COLOR_FRACTION);
 }
 

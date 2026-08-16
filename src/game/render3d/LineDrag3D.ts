@@ -25,6 +25,7 @@ import type { OverlayLineSystem } from './OverlayLineSystem';
 import type { GroundLineBatch3D } from './GroundLineBatch3D';
 import { hexToRgb01 } from './colorUtils';
 import { createPrimitiveRingGeometry, createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
+import { growTypedArrayGeometrically } from '../memory/typedArrayGrowth';
 
 // Lift values chosen so the preview reads above terrain overlays at
 // terrain overlays. Keep these tied to the persistent waypoint lift so
@@ -127,7 +128,7 @@ export class LineDrag3D {
     this.lineBatch.begin();
     if (pts.length >= 2) {
       if (this.linePoints.length < pts.length * 3) {
-        this.linePoints = new Float32Array(pts.length * 3);
+        this.linePoints = growTypedArrayGeometrically(this.linePoints, pts.length * 3, 96);
       }
       const lp = this.linePoints;
       for (let i = 0; i < pts.length; i++) {

@@ -14,6 +14,8 @@ export {
   lerpAngle,
   getTransformCosSin,
   isFiniteNumber,
+  finiteOr,
+  finiteOrZero,
   shouldRunOnStride,
 } from './MathHelpers';
 
@@ -51,3 +53,5 @@ export {
 } from './Ballistics';
 
 export { getTurretWorldMount } from './MountGeometry';
+
+export { linearToSrgbByte } from './ColorMath';

@@ -282,7 +282,7 @@ export function createEntitySnapshotWireSource(rowCapacity = 0): EntitySnapshotW
   };
 }
 
-export function ensureEntitySnapshotWireSourceCapacity(
+function ensureEntitySnapshotWireSourceCapacity(
   source: EntitySnapshotWireSource,
   rowCount: number,
 ): void {
@@ -795,7 +795,7 @@ function canReferenceSnapshotEntityId(
   return id === undefined || visibility === undefined || visibility.canReferenceEntityId(world, id);
 }
 
-export function factoryPrivateSnapshotRequiresDto(
+function factoryPrivateSnapshotRequiresDto(
   entity: Entity,
   changedFields: number | undefined,
   visibility: SnapshotVisibility | undefined = undefined,
@@ -811,7 +811,7 @@ export function factoryPrivateSnapshotRequiresDto(
   return false;
 }
 
-export function unitBuilderPrivateSnapshotRequiresDto(
+function unitBuilderPrivateSnapshotRequiresDto(
   entity: Entity,
   changedFields: number | undefined,
   visibility: SnapshotVisibility | undefined = undefined,
@@ -823,7 +823,7 @@ export function unitBuilderPrivateSnapshotRequiresDto(
   return false;
 }
 
-export function unitFactoryPrivateSnapshotRequiresDto(
+function unitFactoryPrivateSnapshotRequiresDto(
   entity: Entity,
   changedFields: number | undefined,
   visibility: SnapshotVisibility | undefined = undefined,

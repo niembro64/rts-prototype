@@ -60,7 +60,6 @@ export let TERRAIN_FINE_TRIANGLE_SUBDIV = Math.max(
 export const TERRAIN_TRIANGLE_MAX_SURFACE_ERROR =
   terrainConfig.mesh.collapse.maxSurfaceError;
 
-
 /** Maximum source-surface normal divergence allowed inside a collapsed
  *  triangle. This catches curved terrain whose sampled points happen to stay
  *  within the positional error tolerance. */
@@ -314,7 +313,7 @@ export const TERRAIN_RIDGE_CONFIG = {
  *      near-vertical).
  *    - floorClamp clamps at its position; a final safety clamp always
  *      runs at the end of the pipeline regardless. */
-export type TerrainPipelineStep =
+type TerrainPipelineStep =
   | 'naturalField'
   | 'mapBoundary'
   | 'gradientEstimate'
@@ -331,7 +330,7 @@ const TERRAIN_PIPELINE_STEPS: readonly TerrainPipelineStep[] = [
   'floorClamp',
 ];
 
-export type TerrainPipelineEntry = {
+type TerrainPipelineEntry = {
   readonly step: TerrainPipelineStep;
   readonly active: boolean;
 };
@@ -379,9 +378,3 @@ export const TERRAIN_PIPELINE_STEP_CODES: Readonly<
   metalDepositPads: 4,
   floorClamp: 5,
 };
-
-/** True when `step` is present and active in the authored pipeline. */
-export function isTerrainPipelineStepActive(step: TerrainPipelineStep): boolean {
-  const entry = TERRAIN_PIPELINE.find((candidate) => candidate.step === step);
-  return entry !== undefined && entry.active;
-}

@@ -39,7 +39,9 @@ export function clamp(value: number, min: number, max: number): number {
  * Clamp a value to [0, 1] range
  */
 export function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, value));
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  if (value >= 1) return 1;
+  return value;
 }
 
 /**
@@ -107,6 +109,16 @@ export function getTransformCosSin(t: { rotation: number; rotCos: number | null;
  *  any shape and presence-checks alone aren't enough. */
 export function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+/** Return a finite number or a caller-provided fallback. */
+export function finiteOr(value: unknown, fallback: number): number {
+  return isFiniteNumber(value) ? value : fallback;
+}
+
+/** Return a finite number or zero. */
+export function finiteOrZero(value: unknown): number {
+  return finiteOr(value, 0);
 }
 
 /** Stride-cadence predicate: returns true when this `tick` is the

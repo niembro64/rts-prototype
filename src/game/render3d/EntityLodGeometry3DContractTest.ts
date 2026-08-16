@@ -108,6 +108,7 @@ import {
   captureEntityLodVisualState3D,
 } from './EntityLodVisualState3D';
 import { applySolarCollectorPetalPose } from './SolarCollectorMesh3D';
+import { applyBuildingOperationalPose } from './BuildingOperationalRig3D';
 import {
   SEAWEED_ASSET_SCALE,
   getVegetationAssetOptions,
@@ -122,12 +123,14 @@ import {
   environmentLodFlatMaterialSpec,
   environmentPropVisibleAtDetailRung,
   environmentPropUsesGrassPresentation,
+  patchEnvironmentFoliageLighting,
 } from './EnvironmentPropRenderer3D';
 import {
   buildConstructionHazardSleeve,
   buildConstructionHostMarking,
   buildLinearHazardStripePolygons,
 } from './ConstructionHostMarking3D';
+import { VegetationVolumeOverlay3D } from './VegetationVolumeOverlay3D';
 
 const TIERS = ['close', 'mid', 'far'] as const satisfies readonly PrimitiveGeometryTier[];
 const DETAIL_LEVELS = [
@@ -230,10 +233,11 @@ const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
   unitQueenTick: { close: 2290, mid: 780, far: 340 },
   unitTransport: { close: 2150, mid: 1050, far: 410 },
   unitCommander: { close: 4200, mid: 1900, far: 700 },
-  // Rex's unified skull/neck and upper-body cylindrical midsection are included
-  // here. Measured after tail/facial-detail removal at 1708/908/490; each
-  // ceiling retains roughly 5-6% regression headroom.
-  unitRex: { close: 1800, mid: 960, far: 520 },
+  // Rex's unified skull/neck, cylindrical midsection, four articulated arms,
+  // two hand-carried fast-rocket racks, two Gatlings, and two backpack rocket
+  // racks are included here. Measured at 2140/1380/810; each
+  // ceiling retains roughly 5% regression headroom.
+  unitRex: { close: 2240, mid: 1440, far: 850 },
 };
 
 const INTENTIONAL_ZERO_TURRETS = new Set<string>(['turretDisruptor']);
@@ -695,13 +699,14 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
           const rig = buildBotRig(
             root, radius, blueprint.mass,
             locomotion.physics.ground.maxPropulsiveForce,
-            locomotion.config.legs, locomotion.config.arms,
+            locomotion.config.legs, locomotion.config.arms, locomotion.config.upperArms,
             0, undefined, tier,
           );
           poseBotRigAtRest(rig);
           assertContract(
-            rig.legs.length === 2 && rig.arms.length === 2,
-            `${unitId}/${tier} stand is a biped: two legs and two arms`,
+            rig.legs.length === 2 &&
+              rig.arms.length === (locomotion.config.upperArms === undefined ? 2 : 4),
+            `${unitId}/${tier} stand has two legs and its authored arm pairs`,
           );
           assertContract(
             rig.legs.every((leg) => Math.abs(leg.hipZ) > 1e-6)
@@ -1198,36 +1203,22 @@ function runTurretContracts(material: THREE.Material): Map<string, TierCounts> {
         );
         builds[i].count = objectTriangleCount(builds[i].mesh.root);
         const fixedMuzzle = builds[i].mesh.fixedMultiBarrelMuzzle;
-        const spinner = builds[i].mesh.spinGroup;
         if (fixedMuzzle !== undefined) {
           assertContract(
             builds[i].mesh.teamCollar !== undefined,
-            `${mountKey} custom Rex barrels retain their shared team-coloured collar`,
+            `${mountKey} standard barrels retain their shared team-coloured collar`,
           );
-        }
-        const topCustomTube = spinner?.children.find(
-          (child) => child.userData.rexMultiBarrelTube === 0,
-        );
-        if (
-          fixedMuzzle !== undefined &&
-          spinner !== undefined &&
-          topCustomTube instanceof THREE.Mesh
-        ) {
-          const customTip = new THREE.Vector3(0, topCustomTube.scale.y * 0.5, 0)
-            .applyQuaternion(topCustomTube.quaternion)
-            .add(topCustomTube.position)
-            .add(spinner.position);
-          assertRelativeNear(`${mountKey} custom top tube/muzzle x`, customTip.x, fixedMuzzle.x);
-          assertRelativeNear(`${mountKey} custom top tube/muzzle y`, customTip.y, fixedMuzzle.y);
-          assertRelativeNear(`${mountKey} custom top tube/muzzle z`, customTip.z, fixedMuzzle.z);
         }
       }
       if (mount.mountId === 'beamMega') {
         assertContract(
           builds.every((build) => (
-            build.mesh.barrelUsesCone === true && build.mesh.barrels.length === 1
+            build.mesh.barrelUsesCone === true &&
+              build.mesh.barrels.length === 1 &&
+              build.mesh.barrels[0].userData.rexBeamPilotBarrel === true &&
+              build.mesh.teamCollar !== undefined
           )),
-          `${mountKey} retains the ordinary beam cone as its pilot light`,
+          `${mountKey} exposes the ordinary beam cone and collar as a visible head barrel`,
         );
         for (const build of builds) {
           const pitch = build.mesh.pitchGroup;
@@ -1246,6 +1237,11 @@ function runTurretContracts(material: THREE.Material): Map<string, TierCounts> {
             visibleHeadSolids.length === 1 &&
               visibleHeadSolids[0].userData.rexUnifiedCanidHead === true,
             `${mountKey} head is one unified canid shell with no separate bill or facial pieces`,
+          );
+          assertContract(
+            visibleHeadSolids[0].position.x + visibleHeadSolids[0].scale.x <
+              (build.mesh.teamCollar?.frontX ?? 0),
+            `${mountKey} beam barrel projects visibly beyond the unified head shell`,
           );
           const aperture = head.children.find(
             (child) => child.userData.rexBeamAperture === true,
@@ -1268,10 +1264,35 @@ function runTurretContracts(material: THREE.Material): Map<string, TierCounts> {
             `${mountKey} head/aperture z`, aperture.position.z, expectedAperture.z,
           );
         }
-      } else {
+      } else if (mount.mountId === 'gatlingRight' || mount.mountId === 'gatlingLeft') {
         assertContract(
-          builds.every((build) => build.mesh.barrels.length === 0),
-          `${mountKey} replaces generic vehicle barrels with integrated Rex hardware`,
+          builds.every((build) => (
+            build.mesh.barrels.length === 5 &&
+              build.mesh.pitchGroup?.children.some(
+                (child) => child.userData.rexGatlingBreech === true,
+              )
+          )),
+          `${mountKey} uses the standard five-barrel Gatling cluster in a Rex forearm breech`,
+        );
+      } else if (mount.mountId === 'antiAirRight' || mount.mountId === 'antiAirLeft') {
+        assertContract(
+          builds.every((build) => (
+            build.mesh.barrels.length === 3 &&
+              build.mesh.pitchGroup?.children.some(
+                (child) => child.userData.rexFastRocketPod === true,
+              )
+          )),
+          `${mountKey} uses the standard three-barrel fast-rocket cluster in a shoulder pod`,
+        );
+      } else if (mount.mountId === 'siloRight' || mount.mountId === 'siloLeft') {
+        assertContract(
+          builds.every((build) => (
+            build.mesh.barrels.length === 3 &&
+              build.mesh.pitchGroup?.children.some(
+                (child) => child.userData.rexVerticalRocketRack === true,
+              )
+          )),
+          `${mountKey} uses the standard three-barrel rocket cluster in a vertical rack`,
         );
       }
     }
@@ -1490,7 +1511,14 @@ function seedPylonVisualState(
 
 /** A geometry-tier rebuild must be a presentation swap, never an animation reset. */
 function runVisualStateTransferContracts(material: THREE.Material): void {
-  for (const structureId of ['buildingWind', 'buildingRadar', 'buildingSonar'] as const) {
+  for (const structureId of [
+    'buildingWind',
+    'buildingRadar',
+    'buildingSonar',
+    'buildingResourceConverter',
+    'buildingShieldTargetingTech',
+    'buildingShieldTech',
+  ] as const) {
     const blueprint = getBuildingBlueprint(structureId);
     const width = blueprint.gridWidth * BUILD_GRID_CELL_SIZE;
     const depth = blueprint.gridHeight * BUILD_GRID_CELL_SIZE;
@@ -1500,17 +1528,35 @@ function runVisualStateTransferContracts(material: THREE.Material): void {
     const low = buildBuildingShape(
       blueprint.renderProfile, width, depth, material, structureId, 'far',
     );
+    const sourceChassis = new THREE.Group();
+    const targetChassis = new THREE.Group();
+    const operationalAmount = high.operationalRig === undefined ? undefined : 0.43;
+    const operationalTime = high.operationalRig === undefined ? undefined : 2.7;
+    applyBuildingOperationalPose(
+      high.operationalRig,
+      sourceChassis,
+      operationalAmount ?? 1,
+      operationalTime ?? 0,
+    );
     const source = visualStateMesh({
+      chassis: sourceChassis,
       buildingDetails: high.details,
       windRig: high.windRig,
       radarRig: high.radarRig,
+      converterRig: high.converterRig,
+      buildingOperationalRig: high.operationalRig,
+      buildingOperationalAmount: operationalAmount,
+      buildingOperationalMotionTime: operationalTime,
       visualBankRoll: 0.29,
       solarOpenAmount: 0.71,
     });
     const target = visualStateMesh({
+      chassis: targetChassis,
       buildingDetails: low.details,
       windRig: low.windRig,
       radarRig: low.radarRig,
+      converterRig: low.converterRig,
+      buildingOperationalRig: low.operationalRig,
     });
     if (source.windRig) {
       source.windRig.root.rotation.y = 0.73;
@@ -1527,6 +1573,11 @@ function runVisualStateTransferContracts(material: THREE.Material): void {
       `${structureId} animation state survives High-to-Low rebuild`,
       captureEntityLodVisualState3D(target),
       state,
+    );
+    assertSame(
+      `${structureId} deploy/hunker chassis pose survives High-to-Low rebuild`,
+      transformTuple(targetChassis),
+      transformTuple(sourceChassis),
     );
   }
 
@@ -1811,6 +1862,30 @@ function runReferenceGeometryCountContracts(): void {
 }
 
 function runEnvironmentLodMaterialContracts(): void {
+  const overlayParent = new THREE.Group();
+  const vegetationOverlay = new VegetationVolumeOverlay3D(overlayParent);
+  const overlayMesh = overlayParent.children[0] as THREE.LineSegments;
+  const placeholderGeometry = overlayMesh.geometry;
+  let placeholderDisposals = 0;
+  placeholderGeometry.addEventListener('dispose', () => placeholderDisposals++);
+  (
+    vegetationOverlay as unknown as {
+      rebuild(cameraX: number, cameraY: number): void;
+    }
+  ).rebuild(0, 0);
+  assertContract(
+    placeholderDisposals === 1 && overlayMesh.geometry !== placeholderGeometry,
+    'vegetation overlay disposes its constructor geometry exactly once when rebuilt',
+  );
+  const activeGeometry = overlayMesh.geometry;
+  let activeDisposals = 0;
+  activeGeometry.addEventListener('dispose', () => activeDisposals++);
+  vegetationOverlay.dispose();
+  assertContract(
+    activeDisposals === 1 && overlayParent.children.length === 0,
+    'vegetation overlay disposes its active geometry exactly once on teardown',
+  );
+
   assertContract(
     !environmentPropVisibleAtDetailRung(DETAIL_RUNG_GLYPH) &&
       environmentPropVisibleAtDetailRung(DETAIL_RUNG_FAR),
@@ -1870,6 +1945,29 @@ function runEnvironmentLodMaterialContracts(): void {
     wood.key !== foliage.key,
     'Medium/Low wood and foliage cache as separate flat materials',
   );
+  const foliageMaterial = new THREE.MeshLambertMaterial();
+  patchEnvironmentFoliageLighting(foliageMaterial);
+  patchEnvironmentFoliageLighting(foliageMaterial);
+  const foliageShader = {
+    uniforms: {},
+    vertexShader: '',
+    fragmentShader:
+      'vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;',
+  } as Parameters<typeof foliageMaterial.onBeforeCompile>[0];
+  foliageMaterial.onBeforeCompile(
+    foliageShader,
+    {} as THREE.WebGLRenderer,
+  );
+  assertContract(
+    foliageMaterial.side === THREE.DoubleSide &&
+      foliageMaterial.userData.worldShadeAtObjectOrigin === true &&
+      foliageMaterial.userData.worldShadeAfterLighting === true &&
+      foliageShader.fragmentShader.includes('environmentFoliageDiffuse') &&
+      foliageShader.fragmentShader.includes('diffuseColor.rgb * 1.00') &&
+      foliageShader.fragmentShader.match(/vec3 environmentFoliageDiffuse =/g)?.length === 1,
+    'foliage renders both sides, shades from one prop anchor, and receives one Lambert floor',
+  );
+  foliageMaterial.dispose();
 
   const lowTreeCrown = createEnvironmentLowTreeCrownGeometry(12, 18, 9);
   const lowTreeCrownPositions = lowTreeCrown.getAttribute('position');

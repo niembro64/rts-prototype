@@ -30,12 +30,12 @@ const MINIMAP_ENTITY_FLAG_RADAR_ONLY = 0x01;
  *  line rather than on the ground. */
 const MINIMAP_ENTITY_FLAG_CONTACT_UNDERWATER = 0x02;
 
-export type PackedMinimapEntitiesWireV1 = {
+type PackedMinimapEntitiesWireV1 = {
   v: typeof PACKED_MINIMAP_ENTITIES_V1_VERSION;
   r: number[];
 };
 
-export type PackedMinimapEntitiesWireV2 = {
+type PackedMinimapEntitiesWireV2 = {
   v: typeof PACKED_MINIMAP_ENTITIES_VERSION;
   b: Uint8Array;
 };

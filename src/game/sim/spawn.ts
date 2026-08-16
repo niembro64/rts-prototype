@@ -46,6 +46,14 @@ type GridOffset = {
   dy: number;
 };
 
+function compareGridOffsetsByDistance(a: GridOffset, b: GridOffset): number {
+  const aDist = a.dx * a.dx + a.dy * a.dy;
+  const bDist = b.dx * b.dx + b.dy * b.dy;
+  if (aDist !== bDist) return aDist - bDist;
+  if (a.dy !== b.dy) return a.dy - b.dy;
+  return a.dx - b.dx;
+}
+
 function buildPlacementSearchOffsets(radius: number): readonly GridOffset[] {
   const offsets: GridOffset[] = [];
   const safeRadius = Math.max(0, Math.floor(radius));
@@ -54,13 +62,7 @@ function buildPlacementSearchOffsets(radius: number): readonly GridOffset[] {
       offsets.push({ dx, dy });
     }
   }
-  offsets.sort((a, b) => {
-    const aDist = a.dx * a.dx + a.dy * a.dy;
-    const bDist = b.dx * b.dx + b.dy * b.dy;
-    if (aDist !== bDist) return aDist - bDist;
-    if (a.dy !== b.dy) return a.dy - b.dy;
-    return a.dx - b.dx;
-  });
+  offsets.sort(compareGridOffsetsByDistance);
   return offsets;
 }
 
@@ -83,13 +85,7 @@ function buildStridedPlacementSearchOffsets(
       offsets.push({ dx: axis[x], dy: axis[y] });
     }
   }
-  offsets.sort((a, b) => {
-    const aDist = a.dx * a.dx + a.dy * a.dy;
-    const bDist = b.dx * b.dx + b.dy * b.dy;
-    if (aDist !== bDist) return aDist - bDist;
-    if (a.dy !== b.dy) return a.dy - b.dy;
-    return a.dx - b.dx;
-  });
+  offsets.sort(compareGridOffsetsByDistance);
   return offsets;
 }
 

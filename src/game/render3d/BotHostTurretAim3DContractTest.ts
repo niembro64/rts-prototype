@@ -57,6 +57,7 @@ function buildBot(unitBlueprintId: 'unitHuman' | 'unitCommander' | 'unitRex') {
     blueprint.unitLocomotion.physics.ground.maxPropulsiveForce,
     blueprint.unitLocomotion.config.legs,
     blueprint.unitLocomotion.config.arms,
+    blueprint.unitLocomotion.config.upperArms,
     getChassisLift(blueprint, blueprint.radius.other),
     undefined,
     'far',
@@ -838,19 +839,31 @@ function assertRendererUsesAuthoritativeWaistServo(): void {
   );
 }
 
-function assertRexRocketMountLayout(): void {
+function assertRexShoulderAndBackpackWeaponLayout(): void {
   const blueprint = getUnitBlueprint('unitRex');
   const byMountId = new Map(blueprint.turrets.map((turret) => [turret.mountId, turret]));
-  const fast = byMountId.get('missileFast');
+  const rightFastRocket = byMountId.get('antiAirRight');
+  const leftFastRocket = byMountId.get('antiAirLeft');
   const rightSilo = byMountId.get('siloRight');
   const leftSilo = byMountId.get('siloLeft');
-  assertContract(fast !== undefined, 'Rex has its fast shoulder rocket mount');
+  assertContract(
+    rightFastRocket !== undefined && leftFastRocket !== undefined,
+    'Rex has fast-rocket launchers on both upper arms',
+  );
   assertContract(rightSilo !== undefined && leftSilo !== undefined, 'Rex has two backpack silos');
 
   assertContract(
-    fast.mount.y < -0.95 && fast.mount.z > 2.8,
-    'Rex fast rockets sit outside and above the right shoulder armor',
+    rightFastRocket.turretBlueprintId === 'turretRocketFast' &&
+      leftFastRocket.turretBlueprintId === 'turretRocketFast',
+    'Rex upper-arm launchers use the fast-rocket weapon blueprint',
   );
+  assertContract(
+    rightFastRocket.mount.y < 0 && leftFastRocket.mount.y > 0,
+    'Rex fast-rocket fallback mounts remain on their respective sides',
+  );
+  assertNear(rightFastRocket.mount.x, leftFastRocket.mount.x, 'Rex fast-rocket mounts share a fore-aft plane');
+  assertNear(rightFastRocket.mount.y, -leftFastRocket.mount.y, 'Rex fast-rocket mounts mirror laterally');
+  assertNear(rightFastRocket.mount.z, leftFastRocket.mount.z, 'Rex fast-rocket mounts share a launch deck');
   assertContract(
     rightSilo.mount.x < -0.63 && leftSilo.mount.x < -0.63,
     'Rex vertical rockets sit behind the backpack shell',
@@ -860,9 +873,33 @@ function assertRexRocketMountLayout(): void {
   assertNear(rightSilo.mount.z, leftSilo.mount.z, 'Rex backpack silos share a launch deck');
 
   assertContract(
-    fast.hostAttachment?.kind === 'botPiece' &&
-      fast.hostAttachment.piece === 'rightShoulder',
-    'Rex fast rocket launcher rides the moving right shoulder',
+    rightFastRocket.hostAttachment?.kind === 'botArm' &&
+      rightFastRocket.hostAttachment.arm === 'rightUpperArm' &&
+      leftFastRocket.hostAttachment?.kind === 'botArm' &&
+      leftFastRocket.hostAttachment.arm === 'leftUpperArm',
+    'Rex fast-rocket launchers ride their respective moving upper hands',
+  );
+  assertContract(
+    blueprint.unitLocomotion.type === 'bot' &&
+      blueprint.unitLocomotion.config.upperArms?.elbowBendDirection === 'downward' &&
+      blueprint.unitLocomotion.config.upperArms.shoulder.zUnitRadiusRatio >
+        blueprint.unitLocomotion.config.arms.shoulder.zUnitRadiusRatio &&
+      blueprint.unitLocomotion.config.upperArms.shoulder.yUnitRadiusRatio >
+        blueprint.unitLocomotion.config.arms.shoulder.yUnitRadiusRatio,
+    'Rex authors its optional arm pair above and outside the primary shoulders',
+  );
+  const rexRig = buildBot('unitRex').mesh;
+  const primaryArm = rexRig.arms.find((arm) => arm.id === 'rightArm');
+  const upperArm = rexRig.arms.find((arm) => arm.id === 'rightUpperArm');
+  assertContract(
+    rexRig.arms.length === 4 && primaryArm !== undefined && upperArm !== undefined,
+    'Rex builds both primary and optional upper arm pairs',
+  );
+  assertContract(
+    primaryArm.elbow.position.y < primaryArm.shoulderY &&
+      upperArm.elbow.position.y > upperArm.shoulderY &&
+      upperArm.handY < upperArm.elbow.position.y,
+    'Rex upper arms rise to the elbow and then bend downward like antennae',
   );
   assertContract(
     rightSilo.hostAttachment?.kind === 'botPiece' &&
@@ -1029,7 +1066,7 @@ export function runBotHostTurretAim3DContractTest(): void {
   assertBotFootAnimationKeys();
   assertBotTorsoResolutionIsHostInvariant();
   assertRendererUsesAuthoritativeWaistServo();
-  assertRexRocketMountLayout();
+  assertRexShoulderAndBackpackWeaponLayout();
   assertRexWeaponArmsDampRapidAimCorrections();
   const human = buildBot('unitHuman');
   assertBotHipsCenteredUnderTorso(human.mesh, 'Human');

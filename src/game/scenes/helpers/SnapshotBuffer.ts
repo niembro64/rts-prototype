@@ -183,6 +183,36 @@ export class SnapshotBuffer {
   private readonly removedEntityIdSet = new Set<number>();
   private readonly directProjectileSpawnScratch = createSpawnDto();
   private readonly directProjectileBeamUpdateScratch = createBeamDto();
+  private readonly pushBufferedSpawnCallback = (
+    spawn: NetworkServerSnapshotProjectileSpawn,
+  ): void => this.pushBufferedSpawn(spawn);
+  private readonly pushBufferedDespawnIdCallback = (
+    id: number,
+  ): void => this.pushBufferedDespawnId(id);
+  private readonly pushBufferedMotionFieldsCallback = (
+    id: number,
+    qposX: number,
+    qposY: number,
+    qposZ: number,
+    qvelX: number,
+    qvelY: number,
+    qvelZ: number,
+    qrotation: number,
+    qangularVelocity: number,
+  ): void => this.pushBufferedMotionFields(
+    id,
+    qposX,
+    qposY,
+    qposZ,
+    qvelX,
+    qvelY,
+    qvelZ,
+    qrotation,
+    qangularVelocity,
+  );
+  private readonly pushBufferedBeamUpdateCallback = (
+    update: NetworkServerSnapshotBeamUpdate,
+  ): void => this.pushBufferedBeamUpdate(update);
 
   private pushBufferedSpawn(spawn: NetworkServerSnapshotProjectileSpawn): void {
     let index = this.bufferedSpawns.length;
@@ -255,6 +285,17 @@ export class SnapshotBuffer {
     out.angularVelocity = qangularVelocity;
   }
 
+  private pushBufferedBeamUpdate(update: NetworkServerSnapshotBeamUpdate): void {
+    let out = this.bufferedBeamUpdates.get(update.id);
+    if (!out) {
+      out = this.beamStagePool[this.beamStagePoolIndex] ?? createBeamDto();
+      this.beamStagePool[this.beamStagePoolIndex] = out;
+      this.beamStagePoolIndex++;
+      this.bufferedBeamUpdates.set(update.id, out);
+    }
+    copyBeamInto(update, out);
+  }
+
   private pushBufferedProjectileWireSourceRows(
     projectiles: NonNullable<NetworkServerSnapshot['projectiles']>,
   ): boolean {
@@ -262,49 +303,20 @@ export class SnapshotBuffer {
     forEachProjectileWireSourceSpawn(
       projectiles,
       this.directProjectileSpawnScratch,
-      (spawn) => this.pushBufferedSpawn(spawn),
+      this.pushBufferedSpawnCallback,
     );
     forEachProjectileWireSourceDespawn(
       projectiles,
-      (id) => this.pushBufferedDespawnId(id),
+      this.pushBufferedDespawnIdCallback,
     );
     forEachProjectileWireSourceMotionUpdate(
       projectiles,
-      (
-        id,
-        qposX,
-        qposY,
-        qposZ,
-        qvelX,
-        qvelY,
-        qvelZ,
-        qrotation,
-        qangularVelocity,
-      ) => this.pushBufferedMotionFields(
-        id,
-        qposX,
-        qposY,
-        qposZ,
-        qvelX,
-        qvelY,
-        qvelZ,
-        qrotation,
-        qangularVelocity,
-      ),
+      this.pushBufferedMotionFieldsCallback,
     );
     forEachProjectileWireSourceBeamUpdate(
       projectiles,
       this.directProjectileBeamUpdateScratch,
-      (update) => {
-        let out = this.bufferedBeamUpdates.get(update.id);
-        if (!out) {
-          out = this.beamStagePool[this.beamStagePoolIndex] ?? createBeamDto();
-          this.beamStagePool[this.beamStagePoolIndex] = out;
-          this.beamStagePoolIndex++;
-          this.bufferedBeamUpdates.set(update.id, out);
-        }
-        copyBeamInto(update, out);
-      },
+      this.pushBufferedBeamUpdateCallback,
     );
     return true;
   }
@@ -1188,7 +1200,7 @@ export class SnapshotBuffer {
       } else if (packedProjectiles !== undefined) {
         forEachPackedProjectileDespawn(
           packedProjectiles,
-          (id) => this.pushBufferedDespawnId(id),
+          this.pushBufferedDespawnIdCallback,
         );
       }
       if (state.audioEvents) {
@@ -1214,40 +1226,12 @@ export class SnapshotBuffer {
       } else if (packedProjectiles !== undefined) {
         forEachPackedProjectileMotionUpdate(
           packedProjectiles,
-          (
-            id,
-            qposX,
-            qposY,
-            qposZ,
-            qvelX,
-            qvelY,
-            qvelZ,
-            qrotation,
-            qangularVelocity,
-          ) => this.pushBufferedMotionFields(
-            id,
-            qposX,
-            qposY,
-            qposZ,
-            qvelX,
-            qvelY,
-            qvelZ,
-            qrotation,
-            qangularVelocity,
-          ),
+          this.pushBufferedMotionFieldsCallback,
         );
       }
       if (!consumedDirectProjectileRows && proj !== undefined && proj.beamUpdates !== undefined) {
         for (let i = 0; i < proj.beamUpdates.length; i++) {
-          const bu = proj.beamUpdates[i];
-          let out = this.bufferedBeamUpdates.get(bu.id);
-          if (!out) {
-            out = this.beamStagePool[this.beamStagePoolIndex] ?? createBeamDto();
-            this.beamStagePool[this.beamStagePoolIndex] = out;
-            this.beamStagePoolIndex++;
-            this.bufferedBeamUpdates.set(bu.id, out);
-          }
-          copyBeamInto(bu, out);
+          this.pushBufferedBeamUpdate(proj.beamUpdates[i]);
         }
       }
       if (

@@ -35,6 +35,41 @@ const EXPECTED_KIND: Record<StructureBlueprintId, BuildingTeamOrnamentKind> = {
 };
 
 const TIERS: readonly PrimitiveGeometryTier[] = ['close', 'mid', 'far'];
+const ROUND_PROFILE_STRUCTURES = new Set<StructureBlueprintId>([
+  'towerBeamMega',
+  'towerCannon',
+  'towerAntiAir',
+  'buildingRadar',
+  'buildingSonar',
+]);
+
+function isVisibleSolid(mesh: THREE.Mesh): boolean {
+  const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  return materials.some((material) => (
+    material.visible && (!material.transparent || material.opacity > 0)
+  ));
+}
+
+function assertRoundedProfile(
+  root: THREE.Object3D,
+  buildingBlueprintId: StructureBlueprintId,
+  tier: PrimitiveGeometryTier,
+): void {
+  root.traverse((object) => {
+    if (!(object instanceof THREE.Mesh) || !isVisibleSolid(object)) return;
+    assertContract(
+      object.geometry.name !== 'buildingBox',
+      `${buildingBlueprintId}/${tier} must not expose visible cubic segments`,
+    );
+    const parameters = (object.geometry as THREE.CylinderGeometry).parameters as
+      | { radialSegments?: number }
+      | undefined;
+    assertContract(
+      parameters?.radialSegments !== 4,
+      `${buildingBlueprintId}/${tier} must not expose four-sided cylindrical foundations`,
+    );
+  });
+}
 
 export function runBuildingTeamOrnament3DContractTest(): void {
   assertContract(
@@ -69,6 +104,16 @@ export function runBuildingTeamOrnament3DContractTest(): void {
           `${buildingBlueprintId}/${tier} must use only its authored ornament kind `
             + `${EXPECTED_KIND[buildingBlueprintId]} (got ${[...kinds].join(', ')})`,
         );
+        if (ROUND_PROFILE_STRUCTURES.has(buildingBlueprintId)) {
+          assertRoundedProfile(root, buildingBlueprintId, tier);
+        }
+        if (buildingBlueprintId === 'buildingSolar') {
+          assertContract(
+            shape.details.filter((entry) => entry.role === 'solarPanel').length === 4,
+            `buildingSolar/${tier} must retain one photovoltaic face per petal `
+              + 'without duplicate surface overlays',
+          );
+        }
       }
     }
   } finally {

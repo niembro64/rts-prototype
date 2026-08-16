@@ -787,7 +787,13 @@ async function runFullStack(
     applyCameraDistance();
     await waitMs(options.warmupSeconds * 1000);
     applyCameraDistance();
+    const drainedSnapshotMaterialization: SnapshotMaterializationMetadata[] = [];
     const measurementStartScene = game.getScene();
+    measurementStartScene?.resetLongtaskTelemetry();
+    measurementStartScene?.drainSnapshotMaterializationMetadata(
+      drainedSnapshotMaterialization,
+    );
+    drainedSnapshotMaterialization.length = 0;
     const snapshotReceivedCounterStart =
       measurementStartScene?.getReceivedSnapshotCounters() ?? EMPTY_SNAPSHOT_TRAFFIC_COUNTERS;
     const snapshotAppliedCounterStart =
@@ -834,7 +840,6 @@ async function runFullStack(
     const longtaskMsPerSec: number[] = [];
     const snapshotBytes: number[] = [];
     const snapshotMaterializationSamples = createSnapshotMaterializationAccumulator();
-    const drainedSnapshotMaterialization: SnapshotMaterializationMetadata[] = [];
     let runtimeProfile = 'unknown';
     let gpuTimerSupported = false;
     let activePixelRatio = 1;

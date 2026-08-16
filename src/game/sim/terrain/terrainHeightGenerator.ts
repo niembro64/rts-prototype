@@ -10,7 +10,7 @@
 // renderer's boundary-fade edge shading, so per-call batches are
 // boot/rebuild-time work, not per-frame hot paths.
 
-import { getSimWasm } from '../../sim-wasm/init';
+import { requireSimWasm } from '../../sim-wasm/init';
 import { getMetalDepositFlatZones } from './terrainFlatZones';
 import {
   packTerrainFlatZoneRowsForWasm,
@@ -44,16 +44,6 @@ function packedTerrainInputs(): { config: Float64Array; zones: Float64Array } {
   return { config: cachedConfigRows, zones: cachedZoneRows };
 }
 
-function requireSimWasm() {
-  const sim = getSimWasm();
-  if (sim === undefined) {
-    throw new Error(
-      'terrainHeightGenerator requires sim-wasm to be initialized — the terrain pipeline lives in Rust',
-    );
-  }
-  return sim;
-}
-
 // Growable scratch so batch calls never allocate at steady state.
 let heightInputScratch = new Float64Array(0);
 let heightOutputScratch = new Float64Array(0);
@@ -83,7 +73,7 @@ export function sampleGeneratedTerrainHeights(
     for (let i = 0; i < count; i++) out[i] = Number.NaN;
     return;
   }
-  const sim = requireSimWasm();
+  const sim = requireSimWasm('terrainHeightGenerator');
   const inputs = packedTerrainInputs();
   if (heightInputScratch.length < count * 3) {
     heightInputScratch = new Float64Array(count * 3);
@@ -165,7 +155,7 @@ export function getTerrainMapBoundaryFade(
   ) {
     return Number.NaN;
   }
-  const sim = requireSimWasm();
+  const sim = requireSimWasm('terrainHeightGenerator');
   const inputs = packedTerrainInputs();
   singlePointScratch[0] = x;
   singlePointScratch[1] = y;

@@ -1,8 +1,9 @@
 import type { Entity } from './types';
 import { getBuildingCombatCenterZ } from './buildingAnchors';
 import { WATER_LEVEL } from './Terrain';
+import { clamp01 } from '../math';
 
-export type EntityMediumOccupancy = {
+type EntityMediumOccupancy = {
   aboveWater: number;
   underwater: number;
 };
@@ -11,11 +12,6 @@ const _mediumOccupancy: EntityMediumOccupancy = {
   aboveWater: 1,
   underwater: 0,
 };
-
-function clamp01(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(1, value));
-}
 
 /** Exact submerged volume fraction for a sphere cut by the water plane. */
 export function getSphericalUnderwaterFraction(

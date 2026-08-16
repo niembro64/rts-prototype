@@ -23,7 +23,7 @@
 import * as THREE from 'three';
 import { applyExposureToRawShader } from './RenderLighting3D';
 
-export type ScreenSpaceLineMaterialOptions = {
+type ScreenSpaceLineMaterialOptions = {
   /** Initial viewport size in device pixels (kept in sync via setResolution). */
   resolution?: THREE.Vector2;
   /** Soft anti-aliased edge as a fraction of half-width (0 = hard, ~0.15 = soft). */

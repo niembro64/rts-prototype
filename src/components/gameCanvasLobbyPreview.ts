@@ -82,17 +82,7 @@ export function useGameCanvasLobbyPreview({
     if (!gameStarted.value) restartPreviewBattle();
   });
 
-  watch(lobbyPlayerCount, () => {
-    if (
-      currentBattleMode.value === 'real' &&
-      !gameStarted.value &&
-      inGameLobby.value
-    ) {
-      restartPreviewBattle();
-    }
-  });
-
-  watch(localPlayerId, () => {
+  watch([lobbyPlayerCount, localPlayerId], () => {
     if (
       currentBattleMode.value === 'real' &&
       !gameStarted.value &&

@@ -4,6 +4,7 @@ import type { BackgroundBattleState } from '../game/lobby/LobbyManager';
 import { networkManager } from '../game/network/NetworkManager';
 import type { GameServer } from '../game/server/GameServer';
 import { formatDuration } from './uiUtils';
+import { formatBrowserClockTime, getBrowserTimezone } from '../game/browserLocale';
 
 type ReadableRef<T> = { readonly value: T };
 
@@ -19,14 +20,6 @@ type PresenceOptions = {
   getBackgroundBattle: () => BackgroundBattleState | null;
   getCurrentServer: () => GameServer | null;
 };
-
-function readLocalTimezone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-  } catch {
-    return '';
-  }
-}
 
 function deriveLocationFromTimezone(timezone: string): string {
   try {
@@ -49,7 +42,7 @@ export function useGameCanvasPresence({
 }: PresenceOptions) {
   const localIpAddress = ref<string>('N/A');
   const localLocation = ref<string>('');
-  const localTimezone = ref<string>(readLocalTimezone());
+  const localTimezone = ref<string>(getBrowserTimezone());
   const clientTime = ref<string>('');
   const battleElapsed = ref('00:00:00');
   let clientTimeInterval: ReturnType<typeof setInterval> | null = null;
@@ -76,16 +69,11 @@ export function useGameCanvasPresence({
   }
 
   function updateClientTime(): void {
-    clientTime.value = new Intl.DateTimeFormat('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-      timeZoneName: 'short',
-    }).format(new Date());
+    const nowMs = Date.now();
+    clientTime.value = formatBrowserClockTime(undefined, new Date(nowMs)) ?? '';
     const battleStartTime = getBattleStartTime();
     battleElapsed.value = battleStartTime > 0
-      ? formatDuration(Date.now() - battleStartTime)
+      ? formatDuration(nowMs - battleStartTime)
       : '00:00:00';
   }
 

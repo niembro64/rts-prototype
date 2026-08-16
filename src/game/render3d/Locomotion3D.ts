@@ -473,7 +473,7 @@ export function buildLocomotion(
         // limb by the chassis lift (eleven world units on Human).
         airborneUnitGroup, unitRadius, bp.mass,
         loc.physics.ground.maxPropulsiveForce,
-        loc.config.legs, loc.config.arms,
+        loc.config.legs, loc.config.arms, loc.config.upperArms,
         getChassisLift(bp, unitRadius), ownerId, geometryTier,
         bp.unitBlueprintId,
       );

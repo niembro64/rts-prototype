@@ -2,17 +2,12 @@ import type { EmissionMediumTrajectoryMatrix } from '@/types/blueprintSchema.gen
 
 export type EmissionMedium = keyof EmissionMediumTrajectoryMatrix;
 
-export const EMISSION_MEDIA = ['aboveWater', 'underwater'] as const satisfies readonly EmissionMedium[];
+const EMISSION_MEDIA = ['aboveWater', 'underwater'] as const satisfies readonly EmissionMedium[];
 
 export const EMISSION_ROUTE_ABOVE_TO_ABOVE = 1 << 0;
 export const EMISSION_ROUTE_ABOVE_TO_UNDERWATER = 1 << 1;
 export const EMISSION_ROUTE_UNDERWATER_TO_ABOVE = 1 << 2;
 export const EMISSION_ROUTE_UNDERWATER_TO_UNDERWATER = 1 << 3;
-export const EMISSION_ROUTE_ALL =
-  EMISSION_ROUTE_ABOVE_TO_ABOVE |
-  EMISSION_ROUTE_ABOVE_TO_UNDERWATER |
-  EMISSION_ROUTE_UNDERWATER_TO_ABOVE |
-  EMISSION_ROUTE_UNDERWATER_TO_UNDERWATER;
 
 function assertExactMediumKeys(
   label: string,

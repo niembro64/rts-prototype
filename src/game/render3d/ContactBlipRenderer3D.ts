@@ -23,6 +23,7 @@ import { WATER_LEVEL } from '../sim/terrain/terrainConfig';
 import type { MinimapEntity } from '@/types/ui';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
+import { disposeMesh } from './threeUtils';
 
 const STYLE = COLORS.effects.contactBlip;
 
@@ -70,9 +71,7 @@ export class ContactBlipRenderer3D {
     if (needed <= this.capacity) return;
     let next = this.capacity;
     while (next < needed) next *= 2;
-    this.parent.remove(this.mesh);
-    this.mesh.geometry.dispose();
-    (this.mesh.material as THREE.Material).dispose();
+    disposeMesh(this.mesh);
     this.capacity = next;
     this.mesh = this.createMesh(next);
     this.parent.add(this.mesh);
@@ -136,8 +135,6 @@ export class ContactBlipRenderer3D {
   }
 
   dispose(): void {
-    this.parent.remove(this.mesh);
-    this.mesh.geometry.dispose();
-    (this.mesh.material as THREE.Material).dispose();
+    disposeMesh(this.mesh);
   }
 }

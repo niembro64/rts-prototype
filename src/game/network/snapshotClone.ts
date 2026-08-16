@@ -13,6 +13,7 @@ import type {
   NetworkServerSnapshotMotionUpdate,
 } from './NetworkTypes';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
+import { copyBuildStateInto } from './copyBuildState';
 import {
   copyBeamInto,
   copyMinimapEntityInto,
@@ -169,7 +170,6 @@ function clearEntitySnapshotWireSource(source: EntitySnapshotWireSource): void {
 
 type ReusableEntityBuilding = NonNullable<NetworkServerSnapshotEntity['building']>;
 type ReusableFactory = NonNullable<ReusableEntityBuilding['factory']>;
-type ReusableBuildState = NonNullable<ReusableEntityBuilding['build']>;
 
 type ReusableNetworkSnapshotClonerRetainedCounts = {
   entities: number;
@@ -186,17 +186,6 @@ type ReusableNetworkSnapshotClonerRetainedCounts = {
   hasTerrain: boolean;
   hasBuildability: boolean;
 };
-
-function copyBuildStateInto(
-  src: ReusableBuildState,
-  dst: ReusableBuildState,
-): ReusableBuildState {
-  dst.complete = src.complete;
-  dst.interrupted = src.interrupted === true;
-  dst.paid.energy = src.paid.energy;
-  dst.paid.metal = src.paid.metal;
-  return dst;
-}
 
 function createReusableBuilding(): ReusableEntityBuilding {
   return {

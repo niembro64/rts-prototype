@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { monotonicNowMs } from '../time';
 import {
   anyRangeToggleActive,
   anyVolumeToggleActive,
@@ -191,9 +192,10 @@ export class SelectionOverlayRenderer3D {
   /** Scratch volumes reused by the per-entity overlay writers. */
   private readonly scratchVolume = createEntityVolume();
   private selectedCount = 0;
-  private rangeStateKey = '';
+  private rangeStateMask = -1;
   private rangeStateVersion = 0;
-  private unitOverlayStateKey = '';
+  private unitOverlayStateMask = -1;
+  private unitOverlaySelectedCount = -1;
   private unitOverlayStateVersion = 0;
 
   private readonly radiusMatSelection = new THREE.LineBasicMaterial({
@@ -270,30 +272,30 @@ export class SelectionOverlayRenderer3D {
         this.supportDiagnosticNextLogAtMs.delete(entityId);
       }
     }
-    const nextRangeStateKey = [
-      this.showTrackAcquire,
-      this.showTrackRelease,
-      this.showEngageAcquire,
-      this.showEngageRelease,
-      this.showEngageMinAcquire,
-      this.showEngageMinRelease,
-      this.showBuild,
-      this.showReclaimTargets,
-    ].join('|');
-    if (nextRangeStateKey !== this.rangeStateKey) {
-      this.rangeStateKey = nextRangeStateKey;
+    const nextRangeStateMask =
+      (this.showTrackAcquire ? 1 << 0 : 0) |
+      (this.showTrackRelease ? 1 << 1 : 0) |
+      (this.showEngageAcquire ? 1 << 2 : 0) |
+      (this.showEngageRelease ? 1 << 3 : 0) |
+      (this.showEngageMinAcquire ? 1 << 4 : 0) |
+      (this.showEngageMinRelease ? 1 << 5 : 0) |
+      (this.showBuild ? 1 << 6 : 0) |
+      (this.showReclaimTargets ? 1 << 7 : 0);
+    if (nextRangeStateMask !== this.rangeStateMask) {
+      this.rangeStateMask = nextRangeStateMask;
       this.rangeStateVersion++;
     }
-    const nextUnitOverlayStateKey = [
-      nextRangeStateKey,
-      this.showSelectionVolume,
-      this.showHitVolume,
-      this.showCollisionVolume,
-      this.showArmingVolume,
-      this.selectedCount,
-    ].join('|');
-    if (nextUnitOverlayStateKey !== this.unitOverlayStateKey) {
-      this.unitOverlayStateKey = nextUnitOverlayStateKey;
+    const nextUnitOverlayStateMask = nextRangeStateMask |
+      (this.showSelectionVolume ? 1 << 8 : 0) |
+      (this.showHitVolume ? 1 << 9 : 0) |
+      (this.showCollisionVolume ? 1 << 10 : 0) |
+      (this.showArmingVolume ? 1 << 11 : 0);
+    if (
+      nextUnitOverlayStateMask !== this.unitOverlayStateMask ||
+      this.selectedCount !== this.unitOverlaySelectedCount
+    ) {
+      this.unitOverlayStateMask = nextUnitOverlayStateMask;
+      this.unitOverlaySelectedCount = this.selectedCount;
       this.unitOverlayStateVersion++;
     }
   }
@@ -788,7 +790,7 @@ export class SelectionOverlayRenderer3D {
     const unit = entity.unit;
     if (unit === null || entity.selectable?.selected !== true) return;
 
-    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const now = monotonicNowMs();
     const nextLogAt = this.supportDiagnosticNextLogAtMs.get(entity.id) ?? 0;
     if (now < nextLogAt) return;
     this.supportDiagnosticNextLogAtMs.set(

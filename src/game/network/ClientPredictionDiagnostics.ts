@@ -1,5 +1,6 @@
 import { GAME_DIAGNOSTICS } from '../diagnostics';
 import {
+  addRunningStat,
   createRunningStats,
   formatRunningAverage,
   formatRunningMax,
@@ -80,13 +81,6 @@ function addAggregateStat(
   if (max > stats.max) stats.max = max;
 }
 
-function addSingleStat(stats: RunningStats, value: number): void {
-  if (!Number.isFinite(value)) return;
-  stats.count++;
-  stats.total += value;
-  if (value > stats.max) stats.max = value;
-}
-
 class ClientPredictionDiagnostics {
   readonly enabled = GAME_DIAGNOSTICS.clientPredictionDiagnostics;
 
@@ -107,7 +101,7 @@ class ClientPredictionDiagnostics {
   }): void {
     if (!this.enabled) return;
     this.frames++;
-    addSingleStat(this.stats.predictionMs, sample.predictionMs);
+    addRunningStat(this.stats.predictionMs, sample.predictionMs);
     addAggregateStat(
       this.stats.targetAgeMs,
       sample.targetAge.activeTargets,

@@ -25,6 +25,7 @@ import {
 } from './resourceMovement';
 import { getSimWasm } from '../sim-wasm/init';
 import type { WorldState } from './WorldState';
+import { growTypedArrays, nextGeometricCapacity } from '../memory/typedArrayGrowth';
 
 // Economy constants (using values from config.ts + blueprints)
 const ECONOMY_CONSTANTS = {
@@ -616,72 +617,52 @@ class EconomyManager {
 
   private ensureConverterCapacity(count: number): void {
     if (count <= this.converterPlayerIds.length) return;
-    let nextCapacity = this.converterPlayerIds.length;
-    while (nextCapacity < count) nextCapacity *= 2;
-
-    const nextPlayerIds = new Uint32Array(nextCapacity);
-    nextPlayerIds.set(this.converterPlayerIds);
-    this.converterPlayerIds = nextPlayerIds;
-
-    const nextEntityIds = new Float64Array(nextCapacity);
-    nextEntityIds.set(this.converterEntityIds);
-    this.converterEntityIds = nextEntityIds;
-
-    const nextRates = new Float64Array(nextCapacity);
-    nextRates.set(this.converterRates);
-    this.converterRates = nextRates;
-
-    const nextConsumedOut = new Float64Array(nextCapacity);
-    nextConsumedOut.set(this.converterConsumedOut);
-    this.converterConsumedOut = nextConsumedOut;
-
-    const nextOutputOut = new Float64Array(nextCapacity);
-    nextOutputOut.set(this.converterOutputOut);
-    this.converterOutputOut = nextOutputOut;
-
-    const nextConsumedResourceOut = new Uint32Array(nextCapacity);
-    nextConsumedResourceOut.set(this.converterConsumedResourceOut);
-    this.converterConsumedResourceOut = nextConsumedResourceOut;
-
-    const nextOutputResourceOut = new Uint32Array(nextCapacity);
-    nextOutputResourceOut.set(this.converterOutputResourceOut);
-    this.converterOutputResourceOut = nextOutputResourceOut;
+    const nextCapacity = nextGeometricCapacity(this.converterPlayerIds.length, count);
+    [
+      this.converterPlayerIds,
+      this.converterEntityIds,
+      this.converterRates,
+      this.converterConsumedOut,
+      this.converterOutputOut,
+      this.converterConsumedResourceOut,
+      this.converterOutputResourceOut,
+    ] = growTypedArrays([
+      this.converterPlayerIds,
+      this.converterEntityIds,
+      this.converterRates,
+      this.converterConsumedOut,
+      this.converterOutputOut,
+      this.converterConsumedResourceOut,
+      this.converterOutputResourceOut,
+    ] as const, nextCapacity);
   }
 
   private ensureIncomeCapacity(count: number): void {
     if (count <= this.incomePlayerIds.length) return;
-    let nextCapacity = this.incomePlayerIds.length;
-    while (nextCapacity < count) nextCapacity *= 2;
-
-    const nextPlayerIds = new Uint32Array(nextCapacity);
-    nextPlayerIds.set(this.incomePlayerIds);
-    this.incomePlayerIds = nextPlayerIds;
-
-    const nextResourceCodes = new Uint32Array(nextCapacity);
-    nextResourceCodes.set(this.incomeResourceCodes);
-    this.incomeResourceCodes = nextResourceCodes;
-
-    const nextRates = new Float64Array(nextCapacity);
-    nextRates.set(this.incomeRates);
-    this.incomeRates = nextRates;
-
-    const nextEntityIds = new Float64Array(nextCapacity);
-    nextEntityIds.set(this.incomeSourceEntityIds);
-    this.incomeSourceEntityIds = nextEntityIds;
-
-    const nextReasonCodes = new Uint32Array(nextCapacity);
-    nextReasonCodes.set(this.incomeReasonCodes);
-    this.incomeReasonCodes = nextReasonCodes;
-
-    const nextAccepted = new Float64Array(nextCapacity);
-    nextAccepted.set(this.incomeAccepted);
-    this.incomeAccepted = nextAccepted;
+    const nextCapacity = nextGeometricCapacity(this.incomePlayerIds.length, count);
+    [
+      this.incomePlayerIds,
+      this.incomeResourceCodes,
+      this.incomeRates,
+      this.incomeSourceEntityIds,
+      this.incomeReasonCodes,
+      this.incomeAccepted,
+    ] = growTypedArrays([
+      this.incomePlayerIds,
+      this.incomeResourceCodes,
+      this.incomeRates,
+      this.incomeSourceEntityIds,
+      this.incomeReasonCodes,
+      this.incomeAccepted,
+    ] as const, nextCapacity);
   }
 
   private ensureIncomePlayerCapacity(playerId: number): void {
     if (playerId < this.incomeEnergyCurrByPlayer.length) return;
-    let nextCapacity = this.incomeEnergyCurrByPlayer.length;
-    while (nextCapacity <= playerId) nextCapacity *= 2;
+    const nextCapacity = nextGeometricCapacity(
+      this.incomeEnergyCurrByPlayer.length,
+      playerId + 1,
+    );
     this.incomeEnergyCurrByPlayer = new Float64Array(nextCapacity);
     this.incomeEnergyMaxByPlayer = new Float64Array(nextCapacity);
     this.incomeMetalCurrByPlayer = new Float64Array(nextCapacity);
@@ -690,8 +671,10 @@ class EconomyManager {
 
   private ensureConverterPlayerCapacity(playerId: number): void {
     if (playerId < this.converterRatesByPlayer.length) return;
-    let nextCapacity = this.converterRatesByPlayer.length;
-    while (nextCapacity <= playerId) nextCapacity *= 2;
+    const nextCapacity = nextGeometricCapacity(
+      this.converterRatesByPlayer.length,
+      playerId + 1,
+    );
     this.converterRatesByPlayer = new Float64Array(nextCapacity);
     this.converterEnergyCurrByPlayer = new Float64Array(nextCapacity);
     this.converterEnergyMaxByPlayer = new Float64Array(nextCapacity);

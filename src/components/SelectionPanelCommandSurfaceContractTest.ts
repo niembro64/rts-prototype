@@ -1,4 +1,7 @@
-import selectionPanelSource from './SelectionPanel.vue?raw';
+import selectionPanelComponentSource from './SelectionPanel.vue?raw';
+import selectionPanelBaseStyles from './selectionPanelBase.css?raw';
+import selectionPanelBuildMenuStyles from './selectionPanelBuildMenu.css?raw';
+import selectionPanelStateSource from './selectionPanelState.ts?raw';
 import { COLORS, WAYPOINT_COLOR_CSS } from '../colorsConfig';
 import { resolveCommandHotkey } from '../game/input/commandHotkeys';
 import { factoryProductionClickModeFromEvent } from '../game/input/queueModifiers';
@@ -7,6 +10,13 @@ import hostCapabilitiesSource from '../game/sim/hostCapabilities.ts?raw';
 import buildMenuLayoutSource from '../game/input/buildMenuLayout.ts?raw';
 import input3DManagerSource from '../game/render3d/Input3DManager.ts?raw';
 import uiUpdateManagerSource from '../game/scenes/helpers/UIUpdateManager.ts?raw';
+
+const selectionPanelSource = [
+  selectionPanelComponentSource,
+  selectionPanelBaseStyles,
+  selectionPanelBuildMenuStyles,
+  selectionPanelStateSource,
+].join('\n');
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -186,7 +196,7 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
     'BAR target order button browser titles must use interface.json Set Target/Clear Target labels while preserving prototype title casing',
   );
   assertContract(
-    /function builderPriorityLabel\(lowPriority: boolean\): string \{\s*return isBarHotkeyPreset\.value\s*\?\s*lowPriority \? 'Low Priority' : 'High Priority'\s*:\s*lowPriority \? 'Low Prio' : 'High Prio';\s*\}/.test(selectionPanelSource),
+    /function builderPriorityLabel\(lowPriority: boolean\): string \{\s*return isBarHotkeyPreset\(\)\s*\?\s*lowPriority \? 'Low Priority' : 'High Priority'\s*:\s*lowPriority \? 'Low Prio' : 'High Prio';\s*\}/.test(selectionPanelSource),
     'BAR builder priority state button must use gui_ordermenu.lua translated Low Priority/High Priority text from unit_builder_priority.lua params',
   );
   assertContract(
@@ -678,7 +688,7 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
   );
   assertContract(
     /const showFactoryGuardButton = computed\(\(\) =>\s*isBarHotkeyPreset\.value && props\.selection\.hasFactoryGuardControl,\s*\);/.test(selectionPanelSource) &&
-    /function factoryGuardStateLabel\(active: boolean\): string \{\s*return isBarHotkeyPreset\.value \? 'Factory Guard' : active \? 'Factory guard on' : 'Factory guard off';\s*\}/.test(selectionPanelSource) &&
+    /function factoryGuardStateLabel\(active: boolean\): string \{\s*return isBarHotkeyPreset\(\) \? 'Factory Guard' : active \? 'Factory guard on' : 'Factory guard off';\s*\}/.test(selectionPanelSource) &&
       /:title="actionTitle\(factoryGuardStateLabel\(selection\.factoryGuardTargetId === selection\.factoryId\), 'command\.factoryGuard'\)"/.test(selectionPanelSource) &&
       /<span class="btn-label">\{\{ barOrderLabel\('Factory Guard', 'Guard'\) \}\}<\/span>/.test(selectionPanelSource),
     'BAR Factory Guard state button must be BAR-preset gated and use interface.json factoryguard label and factoryguard_tooltip text rather than prototype on/off wording',

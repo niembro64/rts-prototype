@@ -488,7 +488,7 @@ export type UnitTurretMountZResolver = {
 
 export type BotArmTurretHostAttachment = {
   kind: 'botArm';
-  arm: 'leftArm' | 'rightArm';
+  arm: 'leftArm' | 'rightArm' | 'leftUpperArm' | 'rightUpperArm';
   socketOffset: MountOffset;
 };
 
@@ -626,6 +626,7 @@ export type BotArms = {
   restSwingDeg: number;
   walkSwingDeg: number;
   outwardDeg: number;
+  elbowBendDirection?: 'normal' | 'downward';
 };
 
 export type BotLegs = {
@@ -644,6 +645,7 @@ export type BotLegs = {
 export type BotConfig = {
   legs: BotLegs;
   arms: BotArms;
+  upperArms?: BotArms;
   upperBodyActuator: TurretAngularActuatorAxis;
   upperBodyRestoreDelayMs: number;
 };

@@ -1,9 +1,10 @@
-import { nextTick, type Ref } from 'vue';
+import type { Ref } from 'vue';
 import type { BackgroundBattleState } from '../game/lobby/LobbyManager';
 import type { GameScene } from '../game/createGame';
 import type { PlayerId } from '../game/sim/types';
 import type { BattleMode } from '../battleBarConfig';
 import { waitForSceneAndBind } from './gameSceneBindings';
+import { waitForLoadingOverlayPaint } from './loadingOverlayPaint';
 
 type LobbyManagerModule = typeof import('../game/lobby/LobbyManager');
 let lobbyManagerModule: LobbyManagerModule | null = null;
@@ -16,15 +17,6 @@ function loadLobbyManager(): Promise<LobbyManagerModule> {
     return module;
   });
   return lobbyManagerModulePromise;
-}
-
-async function waitForLoadingOverlayPaint(): Promise<void> {
-  await nextTick();
-  await new Promise<void>((resolve) => {
-    requestAnimationFrame(() => {
-      window.setTimeout(resolve, 0);
-    });
-  });
 }
 
 type BackgroundBattleOptions = {

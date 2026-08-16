@@ -9,6 +9,14 @@ import type {
 } from './worldSurfaceMode';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 
+/**
+ * Wire-level queue-insertion strategy used by BAR's Space+Shift
+ * `cmd_commandinsert` behavior. Normal non-negative values remain explicit
+ * queue indices; this reserved value asks the simulation to choose the
+ * shortest spatial insertion independently for each commanded unit.
+ */
+export const BAR_NEAREST_QUEUE_INSERT_INDEX = -1;
+
 type CommandType =
   | 'select'
   | 'move'
@@ -382,9 +390,22 @@ export type AreaCommandFilterCategory = 'unit' | 'building' | 'wreck' | 'vegetat
  *  - Alt (BAR: "targets all units that share the same unitDefId"):
  *    `filterBlueprintId` keeps only targets with the hovered target's
  *    exact blueprint (wrecks match on their source blueprint). */
-type AreaCommandFilterFields = {
+export type BarAreaTargetOrder = {
+  targetOrderOriginX?: number;
+  targetOrderOriginY?: number;
+};
+
+export type BarAreaCommandExpansion = BarAreaTargetOrder & {
+  targetSplitIndex?: number;
+  targetSplitCount?: number;
+};
+
+type AreaCommandFilterFields = BarAreaCommandExpansion & {
   filterCategory?: AreaCommandFilterCategory;
   filterBlueprintId?: string;
+  /** BAR expands area targets in centroid order. Meta+Shift then assigns a
+   *  deterministic slice to each compatible source and re-sorts that slice
+   *  from the source itself. */
 };
 
 export type RepairAreaCommand = BaseCommand & AreaCommandFilterFields & {
@@ -525,7 +546,7 @@ export type ManualLaunchCommand = BaseCommand & {
   targetZ?: number;
 };
 
-export type AttackAreaCommand = BaseCommand & {
+export type AttackAreaCommand = BaseCommand & BarAreaTargetOrder & {
   type: 'attackArea';
   entityIds: EntityId[];
   targetX: number;
@@ -535,6 +556,7 @@ export type AttackAreaCommand = BaseCommand & {
   queue: boolean;
   queueFront?: boolean;
   queueInsertIndex?: number;
+  splitTargets?: boolean;
 };
 
 export type GuardCommand = BaseCommand & {

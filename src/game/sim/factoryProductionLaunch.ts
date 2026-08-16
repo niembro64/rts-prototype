@@ -15,7 +15,7 @@ const PRODUCTION_LAUNCH_SEARCH_ITERATIONS = 14;
 const PRODUCTION_LAUNCH_MIN_DISTANCE = 24;
 const PRODUCTION_LAUNCH_FALLBACK_UP_FRACTION = 0.42;
 
-export type FactoryProductionLaunchPlan = {
+type FactoryProductionLaunchPlan = {
   yaw: number;
   velocityX: number;
   velocityY: number;
@@ -142,7 +142,7 @@ function canReachAtDistance(
   return solveLaunchToCurrentTarget(heldUnit, projectileSpeed) !== null;
 }
 
-export function resolveFactoryProductionLaunchPlan(
+function resolveFactoryProductionLaunchPlan(
   world: WorldState,
   factory: Entity,
   heldUnit: Entity,

@@ -4,6 +4,7 @@ import { getBuildingConfig } from './buildConfigs';
 import { isEntityActive } from './buildableHelpers';
 import { economyManager } from './economy';
 import { getSimWasm } from '../sim-wasm/init';
+import { growTypedArrays, nextGeometricCapacity } from '../memory/typedArrayGrowth';
 
 export type WindState = {
   x: number;
@@ -98,22 +99,16 @@ export class WindPowerTracker {
 
   private ensureProducerCapacity(count: number): void {
     if (count <= this.producerPlayerIds.length) return;
-    let nextCapacity = this.producerPlayerIds.length;
-    while (nextCapacity < count) nextCapacity *= 2;
-
-    const nextPlayerIds = new Uint32Array(nextCapacity);
-    nextPlayerIds.set(this.producerPlayerIds);
-    this.producerPlayerIds = nextPlayerIds;
-
-    const nextRates = new Float64Array(nextCapacity);
-    nextRates.set(this.producerRates);
-    this.producerRates = nextRates;
+    const nextCapacity = nextGeometricCapacity(this.producerPlayerIds.length, count);
+    [this.producerPlayerIds, this.producerRates] = growTypedArrays([
+      this.producerPlayerIds,
+      this.producerRates,
+    ] as const, nextCapacity);
   }
 
   private ensurePlayerRateCapacity(playerId: number): void {
     if (playerId < this.ratesByPlayer.length) return;
-    let nextCapacity = this.ratesByPlayer.length;
-    while (nextCapacity <= playerId) nextCapacity *= 2;
+    const nextCapacity = nextGeometricCapacity(this.ratesByPlayer.length, playerId + 1);
     this.ratesByPlayer = new Float64Array(nextCapacity);
   }
 

@@ -11,7 +11,7 @@
  * caption (presetMapLabel); both used to hand-roll this same Set + apply
  * + dedupe dance.
  */
-export type RenderBroadcastChannel<T> = {
+type RenderBroadcastChannel<T> = {
   /** Apply the current value now, and on every later change. The
    *  returned function must be called from the reader's destroy(). */
   register(apply: (value: T) => void): () => void;

@@ -10,7 +10,7 @@ type PlayerClientRenderInstance = {
   getScene?: () => { setClientRenderEnabled(enabled: boolean): void } | null | undefined;
 };
 
-export type GameCanvasPresentationPhase =
+type GameCanvasPresentationPhase =
   | 'background-loading'
   | 'background-interactive'
   | 'lobby-preview-loading'
@@ -19,7 +19,7 @@ export type GameCanvasPresentationPhase =
   | 'real-battle-interactive'
   | 'client-paused';
 
-export type GameCanvasPresentationInputs = {
+type GameCanvasPresentationInputs = {
   currentBattleMode: BattleMode;
   gameStarted: boolean;
   lobbyFullscreenVisible: boolean;
@@ -27,7 +27,7 @@ export type GameCanvasPresentationInputs = {
   playerClientEnabled: boolean;
 };
 
-export type GameCanvasChromeVisibilityInputs = {
+type GameCanvasChromeVisibilityInputs = {
   phase: GameCanvasPresentationPhase;
   uiChromeVisible: boolean;
   isMobile: boolean;
@@ -35,7 +35,7 @@ export type GameCanvasChromeVisibilityInputs = {
   lobbyFullscreenVisible: boolean;
 };
 
-export type GameCanvasChromeVisibility = {
+type GameCanvasChromeVisibility = {
   topBar: boolean;
   bottomBars: boolean;
   gameplayHud: boolean;

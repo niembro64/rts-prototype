@@ -243,23 +243,6 @@ pub(crate) fn spatial_remove_building_from_cell(
 }
 
 #[inline]
-#[allow(dead_code)]
-pub(crate) fn spatial_dist_sq3(x1: f64, y1: f64, z1: f64, x2: f64, y2: f64, z2: f64) -> f64 {
-    let dx = x1 - x2;
-    let dy = y1 - y2;
-    let dz = z1 - z2;
-    dx * dx + dy * dy + dz * dz
-}
-
-#[inline]
-#[allow(dead_code)]
-pub(crate) fn spatial_dist_sq2(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
-    let dx = x1 - x2;
-    let dy = y1 - y2;
-    dx * dx + dy * dy
-}
-
-#[inline]
 pub(crate) fn spatial_dist_sq_to_aabb3(
     bx: f64,
     by: f64,

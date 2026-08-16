@@ -2,10 +2,10 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId } from '../types';
-import { NO_ENTITY_ID } from '../types';
 import { beamIndex } from '../BeamIndex';
 import type { SimEvent } from './types';
 import { getBeamWeaponsTargeting } from './targetIndex';
+import { resolveTurretSoundEntityId } from './turretSoundId';
 
 // Reusable array for laser sound events (avoids per-frame allocation)
 const _laserSimEvents: SimEvent[] = [];
@@ -14,13 +14,6 @@ const _laserStopTarget: SimEvent[] = [];
 const LASER_SOUND_REFRESH_TICKS = 60;
 const activeLaserSoundIds = new Set<number>();
 let laserSoundRefreshTick = 0;
-
-function turretSoundEntityId(entity: Entity, weaponIndex: number): EntityId {
-  const turret = entity.combat?.turrets[weaponIndex];
-  return turret !== undefined && turret.id !== NO_ENTITY_ID
-    ? turret.id
-    : entity.id * 100 + weaponIndex;
-}
 
 // Emit laserStop events for all beam weapons on a dying entity (the beam owner).
 // Must be called before the entity is removed from the world.
@@ -33,7 +26,7 @@ export function emitLaserStopsForEntity(entity: Entity): SimEvent[] {
     const config = turrets[i].config;
     const shot = config.shot;
     if (shot !== null && shot.type === 'beam') {
-      const soundEntityId = turretSoundEntityId(entity, i);
+      const soundEntityId = resolveTurretSoundEntityId(entity, i);
       if (!activeLaserSoundIds.delete(soundEntityId)) continue;
       _laserStopOwner.push({
         type: 'laserStop',
@@ -63,7 +56,7 @@ export function emitLaserStopsForTarget(world: WorldState, targetId: EntityId): 
     if (!weapon) continue;
     if (beamIndex.hasActiveBeam(unit.id, weaponIndex)) continue;
     const config = weapon.config;
-    const soundEntityId = turretSoundEntityId(unit, weaponIndex);
+    const soundEntityId = resolveTurretSoundEntityId(unit, weaponIndex);
     if (!activeLaserSoundIds.delete(soundEntityId)) continue;
     _laserStopTarget.push({
       type: 'laserStop',
@@ -104,7 +97,7 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
       if (!isBeamWeapon) continue;
 
       // Use unique entity ID based on unit ID and weapon index
-      const soundEntityId = turretSoundEntityId(unit, i);
+      const soundEntityId = resolveTurretSoundEntityId(unit, i);
       const wasActive = activeLaserSoundIds.has(soundEntityId);
 
       // Dead units always get laserStop

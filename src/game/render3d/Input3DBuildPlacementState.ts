@@ -1,11 +1,18 @@
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
-import type { BuildingBlueprintId, Entity } from '../sim/types';
+import type {
+  BuildingBlueprintId,
+  BuildingPlacementFootprint,
+  Entity,
+} from '../sim/types';
 import {
   generateMetalDeposits,
   type MetalDeposit,
 } from '../../metalDepositConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
-import { BUILD_GRID_CELL_SIZE, getRotatedGridFootprint } from '../sim/buildGrid';
+import {
+  BUILD_GRID_CELL_SIZE,
+  getRotatedBuildingPlacementFootprint,
+} from '../sim/buildGrid';
 import { normalizeAngle } from '../math';
 import {
   getBuildingPlacementDiagnostics,
@@ -37,7 +44,7 @@ type PlannedBuildPlacementContext = {
   terrainBuildabilityGrid: TerrainBuildabilityGrid | null;
   plannedOccupiedCells: Set<string>;
   planned: Set<string>;
-  footprint: { gridWidth: number; gridHeight: number };
+  footprint: BuildingPlacementFootprint;
   placements: BuildAreaPlacementPlan[];
 };
 
@@ -342,9 +349,8 @@ export class Input3DBuildPlacementState {
       terrainBuildabilityGrid,
       plannedOccupiedCells: new Set(this.occupiedCells),
       planned: new Set<string>(),
-      footprint: getRotatedGridFootprint(
-        config.placementGridWidth,
-        config.placementGridHeight,
+      footprint: getRotatedBuildingPlacementFootprint(
+        config.placementFootprint,
         this.buildFacingRotation,
       ),
       placements: [],
@@ -388,10 +394,10 @@ export class Input3DBuildPlacementState {
       x: diagnostics.x,
       y: diagnostics.y,
     });
-    for (let y = 0; y < context.footprint.gridHeight; y++) {
-      for (let x = 0; x < context.footprint.gridWidth; x++) {
-        context.plannedOccupiedCells.add(cellKey(diagnostics.gridX + x, diagnostics.gridY + y));
-      }
+    for (const cell of context.footprint.cells) {
+      context.plannedOccupiedCells.add(
+        cellKey(diagnostics.gridX + cell.dx, diagnostics.gridY + cell.dy),
+      );
     }
   }
 

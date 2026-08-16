@@ -26,6 +26,7 @@ import {
   makeSeededRng,
   matchCanvasLinearMeanToColor,
   randIn,
+  sampleAngularDetailShape,
   sampleLogDistributedSize,
 } from './detailTextureHelpers';
 
@@ -120,37 +121,7 @@ function generateItems(rng: () => number): CommonShapeItem[] {
   for (let i = 0; i < ITEM_COUNT; i++) {
     const size = sampleLogDistributedSize(rng, 2, 125);
 
-    let shapeKind: CommonShapeItem['shapeKind'];
-    const shapeRoll = rng();
-    if (size > 50) {
-      shapeKind = shapeRoll < 0.65 ? 'hex' : 'tri';
-    } else if (size > 20) {
-      shapeKind = shapeRoll < 0.55 ? 'hex'
-        : shapeRoll < 0.90 ? 'tri'
-        : 'box';
-    } else if (size > 8) {
-      shapeKind = shapeRoll < 0.40 ? 'hex'
-        : shapeRoll < 0.75 ? 'tri'
-        : 'box';
-    } else {
-      shapeKind = shapeRoll < 0.40 ? 'box'
-        : shapeRoll < 0.72 ? 'tri'
-        : 'hex';
-    }
-
-    let shapeParam: number;
-    switch (shapeKind) {
-      case 'box':
-        shapeParam = rng() < 0.75
-          ? randIn(rng, 0.04, 0.14)
-          : randIn(rng, 0.30, 0.65);
-        break;
-      case 'tri':
-        shapeParam = randIn(rng, 0.30, 0.55);
-        break;
-      default:
-        shapeParam = 0;
-    }
+    const { shapeKind, shapeParam } = sampleAngularDetailShape(rng, size, 50, 20, 8);
 
     const shade = LEAF_SHADE_PALETTE[Math.floor(rng() * LEAF_SHADE_PALETTE.length)];
 

@@ -2,6 +2,7 @@ import { ARCHITECTURE_CONFIG } from '@/architectureConfig';
 import { entitySlotRegistry, ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY, ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION } from '../sim/EntitySlotRegistry';
 import type { Entity } from '../sim/types';
 import { getSimWasm } from '../sim-wasm/init';
+import { reuseTypedArrayView } from '../memory/typedArrayView';
 
 const FIXED_STEP_MS = 1000 / ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
 
@@ -62,10 +63,12 @@ export class ClientLockstepPresentation {
 
     const presentation = wasm.presentation;
     presentation.scratchEnsure(count);
-    this.slotInput = new Uint32Array(
+    this.slotInput = reuseTypedArrayView(
+      this.slotInput,
       wasm.memory.buffer,
       presentation.slotInputScratchPtr(),
       count,
+      Uint32Array,
     );
     for (let i = 0; i < count; i++) {
       this.slotInput[i] = entitySlotRegistry.getSlot(entities[i].id);
@@ -82,15 +85,19 @@ export class ClientLockstepPresentation {
     const poseStride = presentation.poseOutputStride;
     const turretStride = presentation.turretOutputStride;
     const maxTurrets = presentation.maxTurretsPerEntity;
-    this.poseOutput = new Float32Array(
+    this.poseOutput = reuseTypedArrayView(
+      this.poseOutput,
       wasm.memory.buffer,
       presentation.poseOutputScratchPtr(),
       count * poseStride,
+      Float32Array,
     );
-    this.turretOutput = new Float32Array(
+    this.turretOutput = reuseTypedArrayView(
+      this.turretOutput,
       wasm.memory.buffer,
       presentation.turretOutputScratchPtr(),
       count * maxTurrets * turretStride,
+      Float32Array,
     );
 
     let writeCount = 0;

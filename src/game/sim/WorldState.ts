@@ -96,7 +96,7 @@ export type RemovedSnapshotEntity = {
 /** Realized builder contribution for this tick. This transient presentation
  *  ledger is deliberately separate from resource movements: repair is free,
  *  and construction particles communicate work rather than payment lanes. */
-export type WorkMovement = {
+type WorkMovement = {
   sourceEntityId: EntityId;
   targetEntityId: EntityId;
   operation: 'construct' | 'repair' | 'reclaim';
@@ -108,7 +108,7 @@ export type WorkMovement = {
   targetPoint: WorkMovementPoint | null;
 };
 
-export type WorkMovementPoint = {
+type WorkMovementPoint = {
   x: number;
   y: number;
   z: number;

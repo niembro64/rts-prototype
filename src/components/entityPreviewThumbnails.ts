@@ -5,8 +5,9 @@ import type {
 import {
   acquireAuxiliaryRendererContext,
 } from '@/game/render3d/RendererContextBudget';
+import { monotonicNowMs } from '@/game/time';
 
-export type EntityPreviewImageUse = 'grid' | 'panel' | 'loading';
+type EntityPreviewImageUse = 'grid' | 'panel' | 'loading';
 
 type EntityPreviewImageSpec = {
   size: number;
@@ -73,6 +74,7 @@ function scheduleDeferredThumbnailRetry(
 ): void {
   const key = thumbnailKey(imageUse, kind, blueprintId);
   if (
+    listeners.size === 0 ||
     cachedThumbnails.has(key) ||
     pendingThumbnails.has(key) ||
     failedThumbnails.has(key) ||
@@ -84,6 +86,7 @@ function scheduleDeferredThumbnailRetry(
   const timer = setTimeout(() => {
     deferredRetryTimers.delete(key);
     if (
+      listeners.size === 0 ||
       cachedThumbnails.has(key) ||
       pendingThumbnails.has(key) ||
       failedThumbnails.has(key)
@@ -118,6 +121,10 @@ export function subscribeEntityThumbnailCache(listener: () => void): () => void 
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
+    if (listeners.size === 0) {
+      for (const timer of deferredRetryTimers.values()) clearTimeout(timer);
+      deferredRetryTimers.clear();
+    }
   };
 }
 
@@ -217,7 +224,7 @@ async function renderEntityThumbnail(
       height: spec.size,
       dpr: spec.dpr,
     });
-    scene.render(typeof performance !== 'undefined' ? performance.now() : Date.now());
+    scene.render(monotonicNowMs());
 
     return {
       status: 'ready',

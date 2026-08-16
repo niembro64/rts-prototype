@@ -36,8 +36,8 @@ export function isFriendlyGuardTarget(
  *                 production (speed up the shell it is building).
  *   - `heal`    — a damaged, completed guarded unit/building/tower to repair.
  *  Returns null when there is nothing to service (guard just follows/defends). */
-export type GuardServiceKind = 'build' | 'factory' | 'heal';
-export type GuardService = { target: Entity; kind: GuardServiceKind };
+type GuardServiceKind = 'build' | 'factory' | 'heal';
+type GuardService = { target: Entity; kind: GuardServiceKind };
 
 /** Max guard-chain depth walked when resolving what a guard should service —
  *  a backstop against pathological chains (cycles are also rejected by id). */

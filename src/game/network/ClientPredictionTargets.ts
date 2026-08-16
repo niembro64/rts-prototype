@@ -4,7 +4,7 @@ import { clearBeamPointDto, createBeamPointDto } from './snapshotDtoCopy';
 // Lightweight copy of snapshot state used for compatibility materialization,
 // correction diagnostics, and variable-length beam presentation. Owns its data
 // instead of retaining references to pooled serializer objects.
-export type ServerTargetTurret = {
+type ServerTargetTurret = {
   rotation: number;
   angularVelocity: number;
   pitch: number;
@@ -261,7 +261,7 @@ export function ensureBeamPoint(arr: BeamPoint[], i: number): BeamPoint {
   return point;
 }
 
-export function copyBeamPointState(dst: BeamPoint, src: BeamPoint): void {
+function copyBeamPointState(dst: BeamPoint, src: BeamPoint): void {
   dst.x = src.x; dst.y = src.y; dst.z = src.z;
   dst.vx = src.vx; dst.vy = src.vy; dst.vz = src.vz;
   dst.reflectorEntityId = src.reflectorEntityId;

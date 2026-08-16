@@ -5,7 +5,9 @@
  *  for a run and attaches `report()` to its JSON output. Disabled
  *  instances cost one boolean check per record site. */
 
-export type LabeledDurationRow = {
+export { monotonicNowMs as instrumentationNowMs } from '../time';
+
+type LabeledDurationRow = {
   readonly label: string;
   readonly calls: number;
   readonly totalMs: number;
@@ -27,12 +29,6 @@ type MutableBucket = {
   totalMs: number;
   maxMs: number;
 };
-
-export function instrumentationNowMs(): number {
-  return typeof performance !== 'undefined' && typeof performance.now === 'function'
-    ? performance.now()
-    : Date.now();
-}
 
 export class LabeledDurationInstrumentation {
   private active = false;

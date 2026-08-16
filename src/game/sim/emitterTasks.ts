@@ -1,12 +1,11 @@
 import type {
-  Entity,
   EntityId,
   Turret,
   TurretEntityTaskOperation,
   TurretPointTask,
 } from './types';
 
-export function emitterSupportsEntityOperation(
+function emitterSupportsEntityOperation(
   emitter: Turret,
   operation: TurretEntityTaskOperation,
 ): boolean {
@@ -58,17 +57,4 @@ export function clearEmitterTask(emitter: Turret): boolean {
   emitter.task = null;
   emitter.target = null;
   return true;
-}
-
-export function clearHostEmitterTasks(
-  host: Entity,
-  predicate: (emitter: Turret) => boolean = () => true,
-): boolean {
-  const turrets = host.combat?.turrets;
-  if (turrets === undefined) return false;
-  let changed = false;
-  for (let i = 0; i < turrets.length; i++) {
-    if (predicate(turrets[i]) && clearEmitterTask(turrets[i])) changed = true;
-  }
-  return changed;
 }

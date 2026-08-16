@@ -1,7 +1,6 @@
 import type { ProjectileShot } from './types';
 import type { ShotLocomotionMediumPhysics } from '@/types/shotTypes';
 import { dragCoefficientFromVelocityFrictionPer60HzFrame } from './motionFriction';
-import { deterministicMath } from './deterministicMath';
 
 const MIN_PROPULSION_SPEED = 1e-6;
 let cachedAirFrictionPer60HzFrame = Number.NaN;
@@ -33,10 +32,6 @@ export function getProjectileMediumDragCoefficient(
   cachedMass = mass;
   cachedAirDragCoefficient = dragCoefficientFromVelocityFrictionPer60HzFrame(friction, mass);
   return cachedAirDragCoefficient;
-}
-
-export function getProjectileAirDragCoefficient(shot: ProjectileShot): number {
-  return getProjectileMediumDragCoefficient(shot, shot.shotLocomotion.media.air);
 }
 
 export function getProjectilePropulsionAcceleration(
@@ -119,23 +114,4 @@ export function getProjectileHomingEngagementScale(
   // delayed guidance hands off to full turning authority.
   const t = elapsedMs / rampMs;
   return t * t * t * (t * (t * 6 - 15) + 10);
-}
-
-export function addProjectileForwardPropulsionAcceleration(
-  shot: ProjectileShot,
-  medium: ShotLocomotionMediumPhysics,
-  velocityX: number,
-  velocityY: number,
-  velocityZ: number,
-  out: { x: number; y: number; z: number },
-): boolean {
-  const accel = getProjectilePropulsionAcceleration(shot, medium);
-  if (accel <= 0) return false;
-  const speed = deterministicMath.hypot(velocityX, velocityY, velocityZ);
-  if (!Number.isFinite(speed) || speed <= MIN_PROPULSION_SPEED) return false;
-  const scale = accel / speed;
-  out.x += velocityX * scale;
-  out.y += velocityY * scale;
-  out.z += velocityZ * scale;
-  return true;
 }

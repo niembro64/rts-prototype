@@ -81,14 +81,6 @@ function installMeshIntoSim(map: TerrainTileMap): void {
   );
 }
 
-export function getMountainRippleAmplitude(): number {
-  return mountainRippleAmplitude;
-}
-
-export function getMountainSeparatorAmplitude(): number {
-  return mountainSeparatorAmplitude;
-}
-
 /** Currently-installed signed PERIMETER amplitude. The terrain height
  *  generator reads this to blend the outer ring toward its value. */
 export function getTerrainPerimeterMagnitude(): number {

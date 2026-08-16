@@ -1,4 +1,9 @@
-import type { EntityId, PlayerId } from './types';
+import type {
+  BuildingPlacementFootprint,
+  BuildingPlacementFootprintCell,
+  EntityId,
+  PlayerId,
+} from './types';
 import { magnitude } from '../math';
 
 // Fine building footprint grid. This intentionally subdivides the
@@ -33,10 +38,98 @@ type BuildingGridFootprint = {
   gridHeight: number;
 };
 
+const FOOTPRINT_STRUCTURE_CELL = '#';
+const FOOTPRINT_CLEARANCE_CELL = '+';
+const FOOTPRINT_EMPTY_CELL = '.';
+
+/** Parse the compact blueprint mask used by every building. Rows are authored
+ *  top-to-bottom. `#` is structure + reservation, `+` is construction-only
+ *  clearance, and `.` is genuinely unused space inside the bounding box. */
+export function parseBuildingPlacementFootprint(
+  rows: readonly string[],
+  label: string,
+): BuildingPlacementFootprint {
+  if (rows.length === 0 || rows[0].length === 0) {
+    throw new Error(`Invalid ${label}: footprintMask must contain at least one non-empty row`);
+  }
+  const gridWidth = rows[0].length;
+  const cells: BuildingPlacementFootprintCell[] = [];
+  for (let dy = 0; dy < rows.length; dy++) {
+    const row = rows[dy];
+    if (row.length !== gridWidth) {
+      throw new Error(
+        `Invalid ${label}: footprintMask row ${dy} has width ${row.length}; expected ${gridWidth}`,
+      );
+    }
+    for (let dx = 0; dx < gridWidth; dx++) {
+      const value = row[dx];
+      if (value === FOOTPRINT_EMPTY_CELL) continue;
+      if (value !== FOOTPRINT_STRUCTURE_CELL && value !== FOOTPRINT_CLEARANCE_CELL) {
+        throw new Error(
+          `Invalid ${label}: footprintMask row ${dy}, column ${dx} uses "${value}"; expected #, +, or .`,
+        );
+      }
+      cells.push({
+        dx,
+        dy,
+        kind: value === FOOTPRINT_STRUCTURE_CELL ? 'structure' : 'clearance',
+      });
+    }
+  }
+  if (cells.length === 0) {
+    throw new Error(`Invalid ${label}: footprintMask must reserve at least one cell`);
+  }
+  return {
+    gridWidth,
+    gridHeight: rows.length,
+    cells,
+  };
+}
+
+function getGridQuarterTurns(rotation: number): number {
+  if (!Number.isFinite(rotation)) return 0;
+  return ((Math.round(rotation / (Math.PI / 2)) % 4) + 4) % 4;
+}
+
+/** Rotate an authored cell mask in exact build-grid quarter turns. */
+export function getRotatedBuildingPlacementFootprint(
+  footprint: BuildingPlacementFootprint,
+  rotation = 0,
+): BuildingPlacementFootprint {
+  const quarterTurns = getGridQuarterTurns(rotation);
+  if (quarterTurns === 0) return footprint;
+  const rotatedWidth = quarterTurns % 2 === 1
+    ? footprint.gridHeight
+    : footprint.gridWidth;
+  const rotatedHeight = quarterTurns % 2 === 1
+    ? footprint.gridWidth
+    : footprint.gridHeight;
+  const cells = new Array<BuildingPlacementFootprintCell>(footprint.cells.length);
+  for (let i = 0; i < footprint.cells.length; i++) {
+    const cell = footprint.cells[i];
+    let dx: number;
+    let dy: number;
+    switch (quarterTurns) {
+      case 1:
+        dx = footprint.gridHeight - 1 - cell.dy;
+        dy = cell.dx;
+        break;
+      case 2:
+        dx = footprint.gridWidth - 1 - cell.dx;
+        dy = footprint.gridHeight - 1 - cell.dy;
+        break;
+      default:
+        dx = cell.dy;
+        dy = footprint.gridWidth - 1 - cell.dx;
+        break;
+    }
+    cells[i] = { dx, dy, kind: cell.kind };
+  }
+  return { gridWidth: rotatedWidth, gridHeight: rotatedHeight, cells };
+}
+
 export function isOddQuarterTurnGridRotation(rotation: number): boolean {
-  if (!Number.isFinite(rotation)) return false;
-  const quarterTurns = Math.round(rotation / (Math.PI / 2));
-  return Math.abs(quarterTurns % 2) === 1;
+  return getGridQuarterTurns(rotation) % 2 === 1;
 }
 
 export function getRotatedGridFootprint(
@@ -166,6 +259,21 @@ export class BuildingGrid {
     return true;
   }
 
+  canPlaceFootprint(
+    gx: number,
+    gy: number,
+    footprint: BuildingPlacementFootprint,
+  ): boolean {
+    for (let i = 0; i < footprint.cells.length; i++) {
+      const cell = footprint.cells[i];
+      const cellX = gx + cell.dx;
+      const cellY = gy + cell.dy;
+      if (!this.isInBounds(cellX, cellY)) return false;
+      if (this.cells.get(this.getCellKey(cellX, cellY))?.occupied === true) return false;
+    }
+    return true;
+  }
+
   // Check if we can place at world coordinates
   canPlaceAtWorld(worldX: number, worldY: number, gridWidth: number, gridHeight: number): boolean {
     const snapped = this.snapToGrid(worldX, worldY, gridWidth, gridHeight);
@@ -173,10 +281,8 @@ export class BuildingGrid {
     return this.canPlace(gx, gy, gridWidth, gridHeight);
   }
 
-  // Place a building (mark cells as occupied). When the physical
-  // footprint is smaller than the placement footprint, the centered
-  // clearance ring outside the physical rect still occupies placement
-  // but never contributes a pathfinding surface, body, or wall.
+  // Legacy rectangular placement helper retained for low-level grid tests.
+  // Blueprint buildings use placeFootprint below.
   place(
     gx: number,
     gy: number,
@@ -207,6 +313,31 @@ export class BuildingGrid {
           pathTopZ: physical && blocksMovement ? pathTopZ : undefined,
         });
       }
+    }
+    this._version++;
+  }
+
+  /** Place exactly the authored mask. Empty bounding-box corners stay free,
+   *  and clearance cells reserve builds without entering the path layer. */
+  placeFootprint(
+    gx: number,
+    gy: number,
+    footprint: BuildingPlacementFootprint,
+    entityId: EntityId,
+    playerId: PlayerId,
+    blocksMovement: boolean = true,
+    pathTopZ: number = BUILD_GRID_CELL_SIZE,
+  ): void {
+    for (let i = 0; i < footprint.cells.length; i++) {
+      const cell = footprint.cells[i];
+      const movementCell = cell.kind === 'structure' && blocksMovement;
+      this.cells.set(this.getCellKey(gx + cell.dx, gy + cell.dy), {
+        occupied: true,
+        entityId,
+        playerId,
+        blocksMovement: movementCell,
+        pathTopZ: movementCell ? pathTopZ : undefined,
+      });
     }
     this._version++;
   }

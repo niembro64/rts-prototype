@@ -42,9 +42,9 @@ function buildShieldedBuildingBlueprintIds(): ReadonlySet<BuildingBlueprintId> {
   return ids;
 }
 
-export const SHIELDED_UNIT_BLUEPRINT_IDS: ReadonlySet<string> =
+const SHIELDED_UNIT_BLUEPRINT_IDS: ReadonlySet<string> =
   buildShieldedUnitBlueprintIds();
-export const SHIELDED_BUILDING_BLUEPRINT_IDS: ReadonlySet<string> =
+const SHIELDED_BUILDING_BLUEPRINT_IDS: ReadonlySet<string> =
   buildShieldedBuildingBlueprintIds();
 
 export function unitBlueprintHasShield(unitBlueprintId: string): boolean {

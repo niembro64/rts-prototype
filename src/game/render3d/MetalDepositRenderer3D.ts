@@ -29,6 +29,7 @@ import {
   type MetalDepositVisualCluster,
 } from './MetalDepositVisualClusters';
 import { isMetalTerrainSurface } from '../sim/worldSurfaceState';
+import { signedPolygonAreaXZ } from '../math/polygonArea';
 import {
   METAL_SURFACE_MATERIAL,
   METAL_SURFACE_RESPONSE_GLSL,
@@ -450,7 +451,7 @@ function makeDepositCellBoundary(source: DepositShapeSource): DepositOutlinePoin
   let best: DepositOutlinePoint[] | null = null;
   let bestArea = 0;
   for (const loop of loops) {
-    const area = signedLoopArea(loop);
+    const area = signedPolygonAreaXZ(loop);
     if (area > bestArea) {
       best = loop;
       bestArea = area;
@@ -460,14 +461,14 @@ function makeDepositCellBoundary(source: DepositShapeSource): DepositOutlinePoin
 
   let fallback: DepositOutlinePoint[] | null = null;
   for (const loop of loops) {
-    const area = Math.abs(signedLoopArea(loop));
+    const area = Math.abs(signedPolygonAreaXZ(loop));
     if (area > bestArea) {
       fallback = loop;
       bestArea = area;
     }
   }
   if (fallback !== null && fallback.length >= 3) {
-    if (signedLoopArea(fallback) < 0) fallback.reverse();
+    if (signedPolygonAreaXZ(fallback) < 0) fallback.reverse();
     return fallback;
   }
   return makeFallbackDepositBoundary(source);
@@ -565,7 +566,7 @@ function offsetDepositLoop(
   margin: number,
 ): DepositOutlinePoint[] {
   if (margin <= 0 || points.length < 3) return copyDepositLoop(points);
-  const winding = signedLoopArea(points) >= 0 ? 1 : -1;
+  const winding = signedPolygonAreaXZ(points) >= 0 ? 1 : -1;
   const out: DepositOutlinePoint[] = [];
   for (let i = 0; i < points.length; i++) {
     const prev = points[(i - 1 + points.length) % points.length];
@@ -647,14 +648,4 @@ function outwardDepositNormal(
   return winding >= 0
     ? { x: edge.z, z: -edge.x }
     : { x: -edge.z, z: edge.x };
-}
-
-function signedLoopArea(points: readonly DepositOutlinePoint[]): number {
-  let area = 0;
-  for (let i = 0; i < points.length; i++) {
-    const a = points[i];
-    const b = points[(i + 1) % points.length];
-    area += a.x * b.z - b.x * a.z;
-  }
-  return area * 0.5;
 }

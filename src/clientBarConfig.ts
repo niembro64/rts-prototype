@@ -30,6 +30,7 @@ import { persist, persistJson, readPersisted } from './persistence';
 import rawPlayerClientGraphicsConfig from './playerClientGraphicsConfig.json';
 import clientBarConfig from './clientBarConfig.json';
 import { isBuildableUnitBlueprintId } from './game/sim/blueprints/unitRoster';
+import { buildNamespacedStorageKeys } from './storageKeys';
 
 export type { CameraSmoothMode, CameraFollowMode } from './types/client';
 export type {
@@ -40,7 +41,7 @@ export type {
   WaterBoundaryMode,
 } from './types/client';
 export type ClientMode = 'demo' | 'real';
-export type FogShadePresentationSettings = {
+type FogShadePresentationSettings = {
   unseenDarkness: number;
   radarDarkness: number;
   unseenDesaturation: number;
@@ -132,7 +133,7 @@ export const ENTITY_HUD_TYPES: EntityHudType[] =
 export const ENTITY_HUD_ELEMENTS: EntityHudElement[] =
   clientBarConfig.entityHudElements as EntityHudElement[];
 
-export function isEntityHudElementSupported(
+function isEntityHudElementSupported(
   type: EntityHudType,
   element: EntityHudElement,
 ): boolean {
@@ -523,11 +524,11 @@ const storageKeySuffixes =
   clientBarConfig.storageKeySuffixes as Record<ClientStorageKeyName, string>;
 
 function buildStorageKeys(mode: ClientMode): ClientStorageKeys {
-  const keys = {} as ClientStorageKeys;
-  for (const name of CLIENT_STORAGE_KEY_NAMES) {
-    keys[name] = `${mode}-client-${storageKeySuffixes[name]}`;
-  }
-  return keys;
+  return buildNamespacedStorageKeys(
+    CLIENT_STORAGE_KEY_NAMES,
+    storageKeySuffixes,
+    `${mode}-client`,
+  );
 }
 
 const CLIENT_STORAGE_KEYS: Record<ClientMode, ClientStorageKeys> = {
@@ -1328,15 +1329,6 @@ export function getFogShade(): boolean {
 export function setFogShade(enabled: boolean): void {
   currentFogShade = enabled;
   persist(activeStorageKeys().fogShade, String(enabled));
-}
-
-export function getFogShadePresentationSettings(): FogShadePresentationSettings {
-  return writeFogShadePresentationSettings({
-    unseenDarkness: 0,
-    radarDarkness: 0,
-    unseenDesaturation: 0,
-    radarDesaturation: 0,
-  });
 }
 
 /** Allocation-free variant for per-frame readers: fills and returns `out`. */

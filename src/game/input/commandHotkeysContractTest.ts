@@ -2,12 +2,15 @@ import {
   COMMAND_HOTKEY_DISPLAY_LABELS,
   COMMAND_HOTKEY_IDS,
   COMMAND_HOTKEY_PRESET_IDS,
+  BAR_KEY_CHAIN_TIMEOUT_MS,
+  CommandHotkeySequenceResolver,
   barMapDrawCommandForTapCount,
   barMapDrawHotkeySignature,
   commandHotkeyLabel,
   getCommandHotkeyPreset,
   getCommandHotkeyConflicts,
   resolveCommandHotkey,
+  setActiveCommandHotkeyPresetId,
 } from './commandHotkeys';
 import {
   clearQueueModifierState,
@@ -18,6 +21,7 @@ import {
   setQueueModifierKeyState,
   setSpaceQueueFrontEligibilityProvider,
 } from './queueModifiers';
+import { BAR_NEAREST_QUEUE_INSERT_INDEX } from '@/types/commands';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -247,6 +251,33 @@ export function runCommandHotkeysContractTest(): void {
       }`,
     );
   }
+  assertContract(
+    BAR_KEY_CHAIN_TIMEOUT_MS === 333,
+    'BAR command key chains must use luaintro/springconfig.lua KeyChainTimeout=333',
+  );
+  const sequenceResolver = new CommandHotkeySequenceResolver();
+  assertContract(
+    sequenceResolver.resolve(keyEvent('q', 'KeyQ'), 'bar-legacy', 1000).pending,
+    'the first BAR legacy map-draw tap must begin the double-tap key chain',
+  );
+  const exactBoundarySequence = sequenceResolver.resolve(
+    keyEvent('q', 'KeyQ'),
+    'bar-legacy',
+    1000 + BAR_KEY_CHAIN_TIMEOUT_MS,
+  );
+  assertContract(
+    exactBoundarySequence.commandId === 'ui.mapLabel' && !exactBoundarySequence.pending,
+    'the second BAR key-chain tap must actualize at the exact 333 ms boundary',
+  );
+  assertContract(
+    sequenceResolver.resolve(keyEvent('q', 'KeyQ'), 'bar-legacy', 2000).pending &&
+      sequenceResolver.resolve(
+        keyEvent('q', 'KeyQ'),
+        'bar-legacy',
+        2000 + BAR_KEY_CHAIN_TIMEOUT_MS + 1,
+      ).pending,
+    'an expired BAR key-chain tap must begin a new sequence instead of actualizing the old one',
+  );
 
   assertContract(
     resolveCommandHotkey(keyEvent('l', 'KeyL'), 'bar-grid') === 'command.fireToggle',
@@ -1604,6 +1635,7 @@ export function runCommandHotkeysContractTest(): void {
       `${presetId} modified Pause must still match because BAR binds Any+pause`,
     );
   }
+  setActiveCommandHotkeyPresetId('bar-grid');
   assertContract(
     queueModeFromEvent(keyEvent('w', 'KeyW')).queue === false,
     'plain command event must replace the active order',
@@ -1614,25 +1646,25 @@ export function runCommandHotkeysContractTest(): void {
   );
   const frontQueue = queueModeFromEvent(keyEvent('w', 'KeyW', { ctrlKey: true, shiftKey: true }));
   assertContract(
-    frontQueue.queue === true && frontQueue.queueFront === true && frontQueue.queueInsertIndex === undefined,
-    'ctrl/cmd+shift command event must insert after the active order',
+    frontQueue.queue === true && frontQueue.queueFront === false && frontQueue.queueInsertIndex === undefined,
+    'BAR Ctrl+Shift must append while preserving Ctrl for the command-specific action',
   );
   const indexedQueue = queueModeFromEvent(keyEvent('w', 'KeyW', { altKey: true, shiftKey: true }));
   assertContract(
-    indexedQueue.queue === true && indexedQueue.queueFront === false && indexedQueue.queueInsertIndex === 1,
-    'alt+shift command event must insert at the first queued order slot',
+    indexedQueue.queue === true && indexedQueue.queueFront === false && indexedQueue.queueInsertIndex === undefined,
+    'BAR Alt+Shift must append while preserving Alt for the command-specific action',
   );
   const pickedQueue = queueModeFromEvent(keyEvent('w', 'KeyW', { shiftKey: true }), 3);
   assertContract(
-    pickedQueue.queue === true && pickedQueue.queueFront === false && pickedQueue.queueInsertIndex === 3,
-    'shift command event must use the selected queue insertion slot',
+    pickedQueue.queue === true && pickedQueue.queueFront === false && pickedQueue.queueInsertIndex === undefined,
+    'plain BAR Shift must append rather than applying CommandInsert state',
   );
   const pickedFrontQueue = queueModeFromEvent(keyEvent('w', 'KeyW', { ctrlKey: true, shiftKey: true }), 3);
   assertContract(
     pickedFrontQueue.queue === true &&
-      pickedFrontQueue.queueFront === true &&
+      pickedFrontQueue.queueFront === false &&
       pickedFrontQueue.queueInsertIndex === undefined,
-    'ctrl/cmd+shift command event must override the selected queue insertion slot',
+    'BAR Ctrl+Shift must not become generic queue-front insertion',
   );
   const plainFactoryQueue = factoryProductionClickModeFromEvent(keyEvent('z', 'KeyZ'), false);
   assertContract(
@@ -1675,7 +1707,7 @@ export function runCommandHotkeysContractTest(): void {
   assertContract(
     preservedDragQueue.queue === true &&
       preservedDragQueue.queueFront === false &&
-      preservedDragQueue.queueInsertIndex === 4,
+      preservedDragQueue.queueInsertIndex === undefined,
     'right-drag release must preserve queue mode captured at drag start',
   );
   const lateQueuedDragRelease = queueModeForDragRelease(
@@ -1684,7 +1716,7 @@ export function runCommandHotkeysContractTest(): void {
   );
   assertContract(
     lateQueuedDragRelease.queue === true &&
-      lateQueuedDragRelease.queueFront === true &&
+      lateQueuedDragRelease.queueFront === false &&
       lateQueuedDragRelease.queueInsertIndex === undefined,
     'right-drag release must still allow shift queueing pressed before release',
   );
@@ -1693,7 +1725,7 @@ export function runCommandHotkeysContractTest(): void {
   assertContract(
     trackedShiftQueue.queue === true &&
       trackedShiftQueue.queueFront === false &&
-      trackedShiftQueue.queueInsertIndex === 2,
+      trackedShiftQueue.queueInsertIndex === undefined,
     'tracked shift key state must queue commands when pointer events omit shiftKey',
   );
   setQueueModifierKeyState(keyEvent('Shift', 'ShiftLeft'), false);
@@ -1721,6 +1753,25 @@ export function runCommandHotkeysContractTest(): void {
       spaceFrontQueue.queueFront === true &&
       spaceFrontQueue.queueInsertIndex === undefined,
     'held Space must queue-front commands like BAR commandinsert prepend',
+  );
+  const spaceBetweenQueue = queueModeFromEvent(
+    keyEvent('w', 'KeyW', { shiftKey: true }),
+    3,
+  );
+  assertContract(
+    spaceBetweenQueue.queue === true &&
+      spaceBetweenQueue.queueFront === false &&
+      spaceBetweenQueue.queueInsertIndex === 3,
+    'held Space+Shift must use the selected between-command insertion point',
+  );
+  const nearestSpaceBetweenQueue = queueModeFromEvent(
+    keyEvent('w', 'KeyW', { shiftKey: true }),
+  );
+  assertContract(
+    nearestSpaceBetweenQueue.queue === true &&
+      nearestSpaceBetweenQueue.queueFront === false &&
+      nearestSpaceBetweenQueue.queueInsertIndex === BAR_NEAREST_QUEUE_INSERT_INDEX,
+    'held Space+Shift without a picked queue entry must request BAR shortest-route insertion',
   );
   setSpaceQueueFrontEligibilityProvider(() => false);
   assertContract(

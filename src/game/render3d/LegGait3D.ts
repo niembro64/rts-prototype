@@ -12,8 +12,8 @@ import { clamp01 } from '../math';
 // constraint. It prevents either bone from stretching or folding through
 // itself, but it does not replace the authored gait envelope.
 
-export type LegSnapSpherePoint = { x: number; y: number; z: number };
-export type LegSnapRayVelocity = { x: number; z: number };
+type LegSnapSpherePoint = { x: number; y: number; z: number };
+type LegSnapRayVelocity = { x: number; z: number };
 
 export type LegSnapSphereLocal = {
   centerX: number;

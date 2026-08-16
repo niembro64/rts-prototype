@@ -37,6 +37,8 @@ export type {
   RepairCommand,
   RepairAreaCommand,
   AreaCommandFilterCategory,
+  BarAreaCommandExpansion,
+  BarAreaTargetOrder,
   ReclaimCommand,
   ReclaimAreaCommand,
   CaptureCommand,
@@ -62,9 +64,11 @@ export type {
   
   Command,
 } from '@/types/commands';
+export { BAR_NEAREST_QUEUE_INSERT_INDEX } from '@/types/commands';
 
 import type { Command } from '@/types/commands';
 import type { PlayerId } from './types';
+import { isUint31, isUint32 } from '../integerValidation';
 
 export type CommandQueueLockstepOrder = {
   readonly playerId: PlayerId;
@@ -199,12 +203,4 @@ function assertLockstepOrder(order: CommandQueueLockstepOrder): void {
   if (!isUint32(order.playerId) || !isUint31(order.playerSequence) || !isUint31(order.commandIndex)) {
     throw new Error('[command queue] invalid lockstep order key');
   }
-}
-
-function isUint32(value: unknown): value is number {
-  return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 0xFFFF_FFFF;
-}
-
-function isUint31(value: unknown): value is number {
-  return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 0x7FFF_FFFF;
 }

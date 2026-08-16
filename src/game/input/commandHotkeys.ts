@@ -142,7 +142,7 @@ export type CommandHotkeyId =
   | 'camera.anchorSet3'
   | 'camera.anchorSet4';
 
-export type BuiltInCommandHotkeyPresetId =
+type BuiltInCommandHotkeyPresetId =
   | 'prototype'
   | 'bar-grid'
   | 'bar-grid-60pct'
@@ -171,7 +171,9 @@ type CustomCommandHotkeyOverrides = Partial<Record<CommandHotkeyId, CommandHotke
 const COMMAND_HOTKEY_STORAGE_KEY = 'budget-annihilation.commandHotkeyPreset';
 const COMMAND_HOTKEY_CUSTOM_STORAGE_KEY = 'budget-annihilation.customCommandHotkeys';
 export const DEFAULT_COMMAND_HOTKEY_PRESET: CommandHotkeyPresetId = 'bar-grid';
-export const BAR_MAP_DRAW_DOUBLE_TAP_MS = 500;
+/** BAR pins Recoil's KeyChainTimeout to 333 ms in luaintro/springconfig.lua. */
+export const BAR_KEY_CHAIN_TIMEOUT_MS = 333;
+export const BAR_MAP_DRAW_DOUBLE_TAP_MS = BAR_KEY_CHAIN_TIMEOUT_MS;
 
 /** The 12 build-menu grid slots in slot order. Single source of truth
  *  for the grid: COMMAND_HOTKEY_IDS spreads it and the build-menu
@@ -1210,7 +1212,7 @@ type CommandHotkeyResolution = {
   pending: boolean;
 };
 
-const COMMAND_HOTKEY_SEQUENCE_TIMEOUT_MS = 900;
+const COMMAND_HOTKEY_SEQUENCE_TIMEOUT_MS = BAR_KEY_CHAIN_TIMEOUT_MS;
 
 type PendingCommandHotkeySequence = {
   presetId: CommandHotkeyPresetId;

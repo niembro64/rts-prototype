@@ -1,5 +1,5 @@
 import { ConstructionSystem } from './construction';
-import { CommandQueue } from './commands';
+import { BAR_NEAREST_QUEUE_INSERT_INDEX, CommandQueue } from './commands';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import {
   SELF_DESTRUCT_COUNTDOWN_TICKS,
@@ -1799,6 +1799,23 @@ export function runCommandExecutionContractTest(): void {
     'repair-area command should enqueue damaged units and completed structures by distance',
   );
 
+  setUnitActions(commander.unit, []);
+  executeCommand(queueCtx, {
+    type: 'repairArea',
+    tick: 1,
+    commanderId: commander.id,
+    targetX: 100,
+    targetY: 100,
+    radius: 50,
+    queue: true,
+    queueInsertIndex: BAR_NEAREST_QUEUE_INSERT_INDEX,
+  });
+  assertActionTargetIds(
+    commander.unit.actions,
+    [near.id, mid.id, far.id, damagedBuilding.id],
+    'expanded area orders must preserve BAR nearest-spatial insertion for every target instead of offsetting its sentinel',
+  );
+
   setUnitActions(commander.unit, [
     { type: 'move', x: 80, y: 100 },
     { type: 'wait', x: 82, y: 100 },
@@ -1845,6 +1862,106 @@ export function runCommandExecutionContractTest(): void {
   assertContract(
     commander.unit.actions[5].type === 'wait',
     'inserted repair area should preserve existing orders after the requested index',
+  );
+
+  setUnitActions(commander.unit, []);
+  executeCommand(queueCtx, {
+    type: 'repairArea',
+    tick: 3,
+    commanderId: commander.id,
+    targetX: 100,
+    targetY: 100,
+    radius: 50,
+    queue: false,
+    targetOrderOriginX: 200,
+    targetOrderOriginY: 100,
+  });
+  assertActionTargetIds(
+    commander.unit.actions,
+    [damagedBuilding.id, far.id, mid.id, near.id],
+    'BAR expanded repair targets must be ordered from the selected-unit centroid rather than the area center',
+  );
+
+  setUnitActions(commander.unit, []);
+  executeCommand(queueCtx, {
+    type: 'repairArea',
+    tick: 3,
+    commanderId: commander.id,
+    targetX: 100,
+    targetY: 100,
+    radius: 50,
+    queue: false,
+    targetOrderOriginX: 100,
+    targetOrderOriginY: 100,
+    targetSplitIndex: 0,
+    targetSplitCount: 2,
+  });
+  assertActionTargetIds(
+    commander.unit.actions,
+    [near.id, far.id],
+    'BAR Meta+Shift repair expansion must assign the first deterministic target slice',
+  );
+
+  setUnitActions(commander.unit, []);
+  executeCommand(queueCtx, {
+    type: 'repairArea',
+    tick: 3,
+    commanderId: commander.id,
+    targetX: 100,
+    targetY: 100,
+    radius: 50,
+    queue: false,
+    targetOrderOriginX: 100,
+    targetOrderOriginY: 100,
+    targetSplitIndex: 1,
+    targetSplitCount: 2,
+  });
+  assertActionTargetIds(
+    commander.unit.actions,
+    [mid.id, damagedBuilding.id],
+    'BAR Meta+Shift repair expansion must assign the complementary deterministic target slice',
+  );
+
+  const nearestInsertZ = queueWorld.getTerrainBedZ(100, 100);
+  setUnitActions(commander.unit, [
+    { type: 'move', x: 80, y: 100, z: nearestInsertZ },
+    { type: 'wait', x: 82, y: 100 },
+    { type: 'move', x: 140, y: 100, z: nearestInsertZ },
+  ]);
+  executeCommand(queueCtx, {
+    type: 'move',
+    tick: 3,
+    entityIds: [commander.id],
+    targetX: 100,
+    targetY: 100,
+    targetZ: nearestInsertZ,
+    waypointType: 'move',
+    queue: true,
+    queueInsertIndex: BAR_NEAREST_QUEUE_INSERT_INDEX,
+  });
+  assertContract(
+    Number(commander.unit.actions.length) === 4 &&
+      commander.unit.actions[0].x === 80 &&
+      commander.unit.actions[1].type === 'wait' &&
+      commander.unit.actions[2].x === 100 &&
+      commander.unit.actions[3].x === 140,
+    'BAR nearest-spatial insertion must minimize route length while preserving non-spatial queue indices',
+  );
+
+  executeCommand(queueCtx, {
+    type: 'move',
+    tick: 3,
+    entityIds: [commander.id],
+    targetX: 180,
+    targetY: 100,
+    targetZ: nearestInsertZ,
+    waypointType: 'move',
+    queue: true,
+    queueInsertIndex: BAR_NEAREST_QUEUE_INSERT_INDEX,
+  });
+  assertContract(
+    commander.unit.actions[commander.unit.actions.length - 1]?.x === 180,
+    'BAR nearest-spatial insertion must append when the end of the route is shortest',
   );
 
   // BAR cmd_area_commands_filter parity: Alt restricts the area command
@@ -2144,6 +2261,56 @@ export function runCommandExecutionContractTest(): void {
     areaAttacker.unit.actions.filter((action) => action.type === 'attack'),
     [nearFoe.id, midFoe.id, farFoe.id],
     'area attack should enqueue every circled enemy nearest to farthest',
+  );
+  const areaAttacker2 = captureWorld.createUnitFromBlueprint(200, 200, 1, 'unitMongoose', {
+    allocateSubEntityIds: false,
+  });
+  captureWorld.addEntity(areaAttacker2);
+  assertContract(areaAttacker2.unit !== null, 'second area attacker must have a unit component');
+  setUnitActions(areaAttacker.unit, []);
+  executeCommand(captureCtx, {
+    type: 'attackArea',
+    tick: 7,
+    entityIds: [areaAttacker.id, areaAttacker2.id],
+    targetX: 100,
+    targetY: 200,
+    radius: 60,
+    queue: false,
+    targetOrderOriginX: 130,
+    targetOrderOriginY: 200,
+  });
+  assertActionTargetIds(
+    areaAttacker.unit.actions.filter((action) => action.type === 'attack'),
+    [midFoe.id, farFoe.id, nearFoe.id],
+    'BAR area attack must share selection-centroid target order across compatible attackers',
+  );
+  assertActionTargetIds(
+    areaAttacker2.unit.actions.filter((action) => action.type === 'attack'),
+    [midFoe.id, farFoe.id, nearFoe.id],
+    'every compatible attacker must receive the shared centroid-ordered target list',
+  );
+
+  setUnitActions(areaAttacker.unit, []);
+  setUnitActions(areaAttacker2.unit, []);
+  executeCommand(captureCtx, {
+    type: 'attackArea',
+    tick: 7,
+    entityIds: [areaAttacker.id, areaAttacker2.id],
+    targetX: 100,
+    targetY: 200,
+    radius: 60,
+    queue: true,
+    splitTargets: true,
+  });
+  assertActionTargetIds(
+    areaAttacker.unit.actions.filter((action) => action.type === 'attack'),
+    [nearFoe.id, farFoe.id],
+    'BAR Meta+Shift area attack must assign the first deterministic target slice',
+  );
+  assertActionTargetIds(
+    areaAttacker2.unit.actions.filter((action) => action.type === 'attack'),
+    [midFoe.id],
+    'BAR Meta+Shift area attack must assign the complementary deterministic target slice',
   );
   const nearestAirFoe = captureWorld.createUnitFromBlueprint(92, 200, 2, 'unitTransport', {
     allocateSubEntityIds: false,

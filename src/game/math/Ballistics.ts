@@ -2,9 +2,6 @@
 // shooter ("my") and target kinematic vectors under constant acceleration;
 // projectile acceleration is gravity plus optional wind-relative linear
 // air-drag force.
-// solveTurretShotAngles is the single turret-facing API that turns that
-// intercept into yaw/pitch. Low arcs use the earliest root. High arcs require
-// a distinct later lofted root instead of silently using the only/low root.
 // This file is imported by authoritative simulation and aim-preview callers.
 // Zero state, pure functions.
 
@@ -23,7 +20,7 @@ function simHandle() {
   return getSimWasm();
 }
 
-export type KinematicVec3 = {
+type KinematicVec3 = {
   x: number;
   y: number;
   z: number;
@@ -61,41 +58,11 @@ export type KinematicInterceptSolution = {
   launchVelocity: KinematicVec3;
 };
 
-export type TurretShotArcPreference = 'low' | 'high';
-
-export type TurretShotAngleInput = {
-  myPosition: KinematicVec3;
-  myVelocity: KinematicVec3;
-  myAcceleration: KinematicVec3;
-  targetPosition: KinematicVec3;
-  targetVelocity: KinematicVec3;
-  targetAcceleration: KinematicVec3;
-  projectileSpeed: number;
-  projectileMass?: number;
-  /** Per-shot velocity loss authored as friction per 60 Hz frame. */
-  projectileAirFrictionPer60HzFrame?: number;
-  /** Air velocity in world units/s. Used only by drag-aware projectile solves. */
-  windVelocity?: KinematicVec3;
-  /** Universal gravity constant in world units/s^2. Projectile acceleration is (0, 0, -gravity). */
-  gravity: number;
-  arcPreference: TurretShotArcPreference;
-  /** Positive values cap the search horizon; 0 asks the solver to choose one. */
-  maxTimeSec: number;
-};
-
-export type TurretShotAngleSolution = KinematicInterceptSolution & {
-  yaw: number;
-  pitch: number;
-  direction: KinematicVec3;
-};
-
 const INTERCEPT_SAMPLE_COUNT = 64;
 const INTERCEPT_BISECT_STEPS = 14;
 const INTERCEPT_MIN_TIME = 1 / 120;
 const INTERCEPT_MAX_TIME = 30;
 const INTERCEPT_ROOT_EPSILON = 1e-5;
-const HIGH_ARC_MIN_TIME_SEPARATION = 1 / 120;
-const SHOT_DIRECTION_EPSILON = 1e-6;
 
 function isFiniteVec3(v: KinematicVec3): boolean {
   return Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
@@ -357,26 +324,6 @@ function writeDampedInterceptSolution(
 // window (initSimWasm hasn't resolved) and as a reference impl.
 const _interceptInputScratch = new Float64Array(22);
 const _interceptOutScratch = new Float64Array(7);
-const _lowArcProbeSolution: KinematicInterceptSolution = {
-  time: 0,
-  aimPoint: { x: 0, y: 0, z: 0 },
-  launchVelocity: { x: 0, y: 0, z: 0 },
-};
-const _turretInterceptInput: KinematicInterceptInput = {
-  myPosition: { x: 0, y: 0, z: 0 },
-  myVelocity: { x: 0, y: 0, z: 0 },
-  myAcceleration: { x: 0, y: 0, z: 0 },
-  targetPosition: { x: 0, y: 0, z: 0 },
-  targetVelocity: { x: 0, y: 0, z: 0 },
-  targetAcceleration: { x: 0, y: 0, z: 0 },
-  projectileSpeed: 0,
-  projectileMass: 0,
-  projectileAirFrictionPer60HzFrame: 0,
-  windVelocity: undefined,
-  gravity: 0,
-  preferLateSolution: false,
-  maxTimeSec: 0,
-};
 const _noFrictionInterceptInput: KinematicInterceptInput = {
   myPosition: { x: 0, y: 0, z: 0 },
   myVelocity: { x: 0, y: 0, z: 0 },
@@ -465,73 +412,6 @@ export function solveKinematicIntercept(
     return solveKinematicInterceptWasm(sim, noFrictionInput, out);
   }
   return solveKinematicInterceptTs(noFrictionInput, out);
-}
-
-/**
- * Canonical turret shot-angle solver. Callers provide raw kinematic vectors
- * for the firing mount and target plus the universal gravity constant; this
- * returns the yaw/pitch for the launch velocity that actually reaches the
- * target. `low` selects the earliest intercept root. `high` keeps the later
- * lofted root only when it is distinct from the earliest root.
- */
-export function solveTurretShotAngles(
-  input: TurretShotAngleInput,
-  out: TurretShotAngleSolution,
-): TurretShotAngleSolution | null {
-  const interceptInput = _turretInterceptInput;
-  interceptInput.myPosition = input.myPosition;
-  interceptInput.myVelocity = input.myVelocity;
-  interceptInput.myAcceleration = input.myAcceleration;
-  interceptInput.targetPosition = input.targetPosition;
-  interceptInput.targetVelocity = input.targetVelocity;
-  interceptInput.targetAcceleration = input.targetAcceleration;
-  interceptInput.projectileSpeed = input.projectileSpeed;
-  interceptInput.projectileMass = input.projectileMass;
-  const airFrictionPer60HzFrame = input.projectileAirFrictionPer60HzFrame ?? 0;
-  interceptInput.projectileAirFrictionPer60HzFrame = airFrictionPer60HzFrame;
-  interceptInput.windVelocity = windVelocityForAirFriction(
-    input.windVelocity,
-    airFrictionPer60HzFrame,
-  );
-  interceptInput.gravity = input.gravity;
-  interceptInput.preferLateSolution = false;
-  interceptInput.maxTimeSec = input.maxTimeSec;
-
-  let intercept: KinematicInterceptSolution | null = null;
-  if (input.arcPreference === 'high') {
-    const lowIntercept = solveKinematicIntercept(interceptInput, _lowArcProbeSolution);
-    interceptInput.preferLateSolution = true;
-    intercept = solveKinematicIntercept(interceptInput, out);
-    if (
-      intercept !== null &&
-      (
-        lowIntercept === null ||
-        intercept.time <= lowIntercept.time + HIGH_ARC_MIN_TIME_SEPARATION
-      )
-    ) {
-      return null;
-    }
-  } else {
-    intercept = solveKinematicIntercept(interceptInput, out);
-  }
-  if (intercept === null) return null;
-
-  const launch = out.launchVelocity;
-  const horizontal = Math.hypot(launch.x, launch.y);
-  const speed = Math.hypot(horizontal, launch.z);
-  if (!Number.isFinite(speed) || speed <= SHOT_DIRECTION_EPSILON) return null;
-
-  out.direction.x = launch.x / speed;
-  out.direction.y = launch.y / speed;
-  out.direction.z = launch.z / speed;
-  out.yaw = horizontal > SHOT_DIRECTION_EPSILON
-    ? Math.atan2(launch.y, launch.x)
-    : Math.atan2(
-        out.aimPoint.y - input.myPosition.y,
-        out.aimPoint.x - input.myPosition.x,
-      );
-  out.pitch = Math.atan2(launch.z, horizontal);
-  return out;
 }
 
 function solveKinematicInterceptWasm(

@@ -1118,13 +1118,14 @@ export type BuildingConfig = {
   gridWidth: number;
   gridHeight: number;
   gridDepth: number;
-  /** Build-grid cells reserved for placement (always >= the physical
-   *  gridWidth/gridHeight, same parity, resolved from the blueprint —
-   *  equal for most buildings). The clearance ring beyond the physical
-   *  footprint blocks construction only: no physics body, no pathfinder
-   *  blocking, no visual. */
+  /** Bounding box for centered snapping/rotation of placementFootprint.
+   *  These dimensions never imply that every enclosed cell is occupied. */
   placementGridWidth: number;
   placementGridHeight: number;
+  /** Authored, non-rectangular construction reservation inside the placement
+   *  bounding box. `structure` cells also contribute grounded locomotion
+   *  obstruction; `clearance` cells reserve construction space only. */
+  placementFootprint: BuildingPlacementFootprint;
   hp: number;
   cost: ResourceCost;
   energyProduction: number | null;
@@ -1149,6 +1150,18 @@ export type BuildingConfig = {
   hovering: boolean;
   hud: import('./blueprints').EntityHudBlueprint;
   radius: EntityRadii;
+};
+
+export type BuildingPlacementFootprintCell = {
+  dx: number;
+  dy: number;
+  kind: 'structure' | 'clearance';
+};
+
+export type BuildingPlacementFootprint = {
+  gridWidth: number;
+  gridHeight: number;
+  cells: readonly BuildingPlacementFootprintCell[];
 };
 
 // Unit build configuration

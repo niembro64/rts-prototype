@@ -61,6 +61,7 @@ import {
   uploadPrefixRange,
 } from './instancedBufferUpdate';
 import { clamp01 } from '../math';
+import { growTypedArrays, nextGeometricCapacity } from '../memory/typedArrayGrowth';
 
 // ── World Y layout ──
 // Sit slightly above the terrain surface, sampled per vertex so the
@@ -181,20 +182,13 @@ export class GroundPrintRenderPacket3D {
 
   private ensureCapacity(required: number): void {
     if (required <= this.ids.length) return;
-    let nextCapacity = this.ids.length;
-    while (nextCapacity < required) nextCapacity *= 2;
-    const ids = new Float64Array(nextCapacity);
-    ids.set(this.ids);
-    this.ids = ids;
-    const x = new Float32Array(nextCapacity);
-    x.set(this.x);
-    this.x = x;
-    const y = new Float32Array(nextCapacity);
-    y.set(this.y);
-    this.y = y;
-    const grounded = new Uint8Array(nextCapacity);
-    grounded.set(this.grounded);
-    this.grounded = grounded;
+    const nextCapacity = nextGeometricCapacity(this.ids.length, required);
+    [this.ids, this.x, this.y, this.grounded] = growTypedArrays([
+      this.ids,
+      this.x,
+      this.y,
+      this.grounded,
+    ] as const, nextCapacity);
   }
 }
 

@@ -20,7 +20,7 @@ import {
   getSharedPrimitiveTetrahedronGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
-import { clamp01 } from './RenderUtils';
+import { clamp01 } from '../math';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
 

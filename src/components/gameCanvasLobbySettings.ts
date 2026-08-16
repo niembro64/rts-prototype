@@ -269,13 +269,24 @@ export function useGameCanvasLobbySettings({
   // crowns exist and which cells are metal, and LIQUID is baked into the
   // terrain mesh's per-vertex horizon liquid colour, so both need the world
   // rebuilt rather than just re-shaded.
-  function applyTerrainSurfaceMode(mode: TerrainSurfaceMode, broadcast = true): void {
-    const battleMode = currentBattleMode.value;
+  function applySurfaceMode<T extends string>({
+    storedMode,
+    nextMode,
+    persist,
+    installRuntime,
+    broadcast,
+  }: {
+    storedMode: T;
+    nextMode: T;
+    persist: (mode: T) => void;
+    installRuntime: (mode: T) => void;
+    broadcast: boolean;
+  }): void {
     applyWorldSurfaceSelection({
-      storedMode: loadStoredTerrainSurfaceMode(battleMode),
-      nextMode: mode,
-      persist: (nextMode) => saveTerrainSurfaceMode(nextMode, battleMode),
-      installRuntime: setTerrainSurfaceMode,
+      storedMode,
+      nextMode,
+      persist,
+      installRuntime,
       onChanged: () => {
         worldSurfaceStoreVersion.value++;
         restartPreviewIfNeeded();
@@ -284,18 +295,25 @@ export function useGameCanvasLobbySettings({
     });
   }
 
+  function applyTerrainSurfaceMode(mode: TerrainSurfaceMode, broadcast = true): void {
+    const battleMode = currentBattleMode.value;
+    applySurfaceMode({
+      storedMode: loadStoredTerrainSurfaceMode(battleMode),
+      nextMode: mode,
+      persist: (nextMode) => saveTerrainSurfaceMode(nextMode, battleMode),
+      installRuntime: setTerrainSurfaceMode,
+      broadcast,
+    });
+  }
+
   function applyLiquidSurfaceMode(mode: LiquidSurfaceMode, broadcast = true): void {
     const battleMode = currentBattleMode.value;
-    applyWorldSurfaceSelection({
+    applySurfaceMode({
       storedMode: loadStoredLiquidSurfaceMode(battleMode),
       nextMode: mode,
       persist: (nextMode) => saveLiquidSurfaceMode(nextMode, battleMode),
       installRuntime: setLiquidSurfaceMode,
-      onChanged: () => {
-        worldSurfaceStoreVersion.value++;
-        restartPreviewIfNeeded();
-        if (broadcast) broadcastLobbySettingsIfHost();
-      },
+      broadcast,
     });
   }
 

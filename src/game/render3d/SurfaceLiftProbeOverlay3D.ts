@@ -19,7 +19,7 @@ const RENDER_ORDER = 92;
 const BODY_PROBE_COLOR = new THREE.Color(0xffd447);
 const DIRECT_PROBE_COLOR = new THREE.Color(0xff7a36);
 
-export type SurfaceLiftProbeDebugSource = {
+type SurfaceLiftProbeDebugSource = {
   setEntityIds: (entityIds: readonly EntityId[]) => void;
   getFrame: (entityId: EntityId) => SurfaceLiftProbeDebugFrame | undefined;
 };
@@ -68,6 +68,8 @@ export class SurfaceLiftProbeOverlay3D {
   private markerMesh: THREE.InstancedMesh | null = null;
   private groundLineMesh: THREE.InstancedMesh | null = null;
   private waterLineMesh: THREE.InstancedMesh | null = null;
+  private readonly probeUnits: Entity[] = [];
+  private readonly probeEntityIds: EntityId[] = [];
   private instanceCapacity = 0;
 
   constructor(
@@ -86,9 +88,15 @@ export class SurfaceLiftProbeOverlay3D {
       return;
     }
 
-    const probeUnits = selectedUnits.filter(unitShouldShowSurfaceLiftProbes);
+    const probeUnits = this.probeUnits;
+    const probeEntityIds = this.probeEntityIds;
+    probeUnits.length = 0;
+    probeEntityIds.length = 0;
     let instanceCount = 0;
-    for (const entity of probeUnits) {
+    for (const entity of selectedUnits) {
+      if (!unitShouldShowSurfaceLiftProbes(entity)) continue;
+      probeUnits.push(entity);
+      probeEntityIds.push(entity.id);
       if (entity.unit !== null) {
         instanceCount += getSurfaceProbePointCount(
           entity.unit.locomotion.surfaceFollowing.altitudeProbeSetId,
@@ -106,8 +114,6 @@ export class SurfaceLiftProbeOverlay3D {
       this.hide();
       return;
     }
-    const probeEntityIds = new Array<EntityId>(probeUnits.length);
-    for (let i = 0; i < probeUnits.length; i++) probeEntityIds[i] = probeUnits[i].id;
     debugSource.setEntityIds(probeEntityIds);
 
     // A probe can draw one ground-inverse line plus both water-surface lines.
@@ -197,6 +203,12 @@ export class SurfaceLiftProbeOverlay3D {
   destroy(): void {
     this.debugSource?.setEntityIds([]);
     this.parentWorld.remove(this.root);
+    this.markerMesh?.dispose();
+    this.groundLineMesh?.dispose();
+    this.waterLineMesh?.dispose();
+    this.markerMesh = null;
+    this.groundLineMesh = null;
+    this.waterLineMesh = null;
     this.markerGeometry.dispose();
     this.groundLineGeometry.dispose();
     this.waterLineGeometry.dispose();
@@ -223,9 +235,18 @@ export class SurfaceLiftProbeOverlay3D {
     }
     let next = Math.max(INITIAL_INSTANCE_CAPACITY, this.instanceCapacity);
     while (next < required) next *= 2;
-    if (this.markerMesh !== null) this.root.remove(this.markerMesh);
-    if (this.groundLineMesh !== null) this.root.remove(this.groundLineMesh);
-    if (this.waterLineMesh !== null) this.root.remove(this.waterLineMesh);
+    if (this.markerMesh !== null) {
+      this.root.remove(this.markerMesh);
+      this.markerMesh.dispose();
+    }
+    if (this.groundLineMesh !== null) {
+      this.root.remove(this.groundLineMesh);
+      this.groundLineMesh.dispose();
+    }
+    if (this.waterLineMesh !== null) {
+      this.root.remove(this.waterLineMesh);
+      this.waterLineMesh.dispose();
+    }
     this.markerMesh = new THREE.InstancedMesh(this.markerGeometry, this.markerMaterial, next);
     this.groundLineMesh = new THREE.InstancedMesh(
       this.groundLineGeometry,

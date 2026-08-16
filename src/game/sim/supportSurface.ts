@@ -6,7 +6,7 @@ import { UNIT_GROUND_CONTACT_EPSILON } from './unitGroundPhysics';
  * part of this identity: a lake bed is still terrain even when water covers
  * it. `materialKind` carries the separate medium/navigation classification.
  */
-export type SupportSurfaceKind = 'terrain' | 'building' | 'unit';
+type SupportSurfaceKind = 'terrain' | 'building' | 'unit';
 export type SupportSurfaceMaterialKind = 'solid' | 'water';
 
 export type WorldSupportSurface = {

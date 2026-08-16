@@ -22,7 +22,7 @@
 
 import type * as THREE from 'three';
 
-export type ChartedCylinderUvLayout = {
+type ChartedCylinderUvLayout = {
   /** Fraction of the band's v the curved wall occupies, measured from v = 0.
    *  The remainder is the cap zone. */
   wallVEnd: number;

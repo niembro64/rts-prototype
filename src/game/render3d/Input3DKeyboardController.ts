@@ -24,6 +24,7 @@ import {
   type BarLegacyBuildKey,
 } from '../input/buildMenuLayout';
 import {
+  BAR_KEY_CHAIN_TIMEOUT_MS,
   CommandHotkeySequenceResolver,
   getActiveCommandHotkeyPresetId,
   isBarCommandHotkeyPreset,
@@ -40,6 +41,7 @@ import {
   queueModeFromEventIgnoringControlModifiers,
 } from '../input/queueModifiers';
 import type { Input3DCommandModeControls } from './Input3DCommandModeControls';
+import { isTextEntryTarget } from '../input/textEntryTarget';
 
 type Input3DKeyboardControllerConfig = Input3DCommandModeControls & {
   mode: CommanderModeController;
@@ -163,12 +165,6 @@ type Input3DKeyboardControllerConfig = Input3DCommandModeControls & {
 
 const AREA_MEX_BLUEPRINT_ID: StructureBlueprintId = 'buildingExtractor';
 
-function isTextEntryTarget(target: EventTarget | null): boolean {
-  const element = target as HTMLElement | null;
-  const tag = element?.tagName;
-  return tag === 'INPUT' || tag === 'TEXTAREA' || Boolean(element?.isContentEditable);
-}
-
 export function isControlGroupUnsetKey(
   e: Pick<KeyboardEvent, 'code' | 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>,
   presetId: CommandHotkeyPresetId,
@@ -273,7 +269,7 @@ type BarStateSelectionContext = {
   hasSelectedBuildingActiveControl: boolean;
 };
 
-export type BarStateTapTarget =
+type BarStateTapTarget =
   | 'repeat'
   | 'factoryGuard'
   | 'moveState'
@@ -281,7 +277,7 @@ export type BarStateTapTarget =
   | 'buildingActive'
   | 'trajectory';
 
-export type BarStateTapCommand =
+type BarStateTapCommand =
   | { type: 'repeat'; enabled: boolean }
   | { type: 'factoryGuard'; enabled: boolean }
   | { type: 'moveState'; moveState: UnitMoveState }
@@ -345,7 +341,7 @@ function barStateTapMaxCount(target: BarStateTapTarget): number {
   return target === 'repeat' || target === 'buildingActive' || target === 'factoryGuard' ? 2 : 3;
 }
 
-export type CameraKeyboardActionMode = 'pan' | 'height-pan' | 'orbit';
+type CameraKeyboardActionMode = 'pan' | 'height-pan' | 'orbit';
 
 export type CameraKeyboardAction = {
   mode: CameraKeyboardActionMode;
@@ -516,7 +512,7 @@ export function barLegacyBuildKeyForKey(
   return barLegacyBuildKeyForKeyboardCode(e.code);
 }
 
-export const CONTROL_GROUP_FOCUS_DOUBLE_TAP_MS = 500;
+export const CONTROL_GROUP_FOCUS_DOUBLE_TAP_MS = BAR_KEY_CHAIN_TIMEOUT_MS;
 const BUILD_COLUMN_CYCLE_TAP_MS = 1500;
 
 export type ControlGroupRecallTapState = {
@@ -542,7 +538,7 @@ type BarStateTapState = {
   timeoutId: ReturnType<typeof setTimeout> | null;
 };
 
-const BAR_STATE_TAP_WINDOW_MS = 260;
+const BAR_STATE_TAP_WINDOW_MS = BAR_KEY_CHAIN_TIMEOUT_MS;
 
 export function resetControlGroupRecallTap(state: ControlGroupRecallTapState): void {
   state.index = -1;
@@ -578,6 +574,21 @@ export class Input3DKeyboardController {
 
   constructor(config: Input3DKeyboardControllerConfig) {
     this.config = config;
+  }
+
+  /** Cancel delayed key-chain work without actualizing the pending single-tap
+   *  command. Scene teardown and window blur must not leave a timer retaining
+   *  the controller/config graph or dispatching into an inactive battle. */
+  cancelPendingInput(): void {
+    if (this.barStateTap?.timeoutId !== null && this.barStateTap?.timeoutId !== undefined) {
+      clearTimeout(this.barStateTap.timeoutId);
+    }
+    this.barStateTap = null;
+    this.commandHotkeys.reset();
+    resetControlGroupRecallTap(this.controlGroupRecallTap);
+    this.buildColumnCycleTap = null;
+    this.barLegacyBuildKeyTap = null;
+    this.cameraMoveFastHeld = false;
   }
 
   handleKeyUp(e: KeyboardEvent): void {

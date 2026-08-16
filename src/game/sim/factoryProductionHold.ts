@@ -15,7 +15,7 @@ import { getUnitGroundZ } from './unitGeometry';
 
 const FACTORY_SHELL_MIN_HOLD_CLEARANCE = 36;
 
-export type FactoryProductionHoldVisual = {
+type FactoryProductionHoldVisual = {
   localOffsetX: number;
   localOffsetY: number;
   localBaseZ: number;
@@ -23,13 +23,7 @@ export type FactoryProductionHoldVisual = {
   ringOrientation: FactoryProductionHoldRingOrientation;
 };
 
-export type FactoryProductionHoldRingOrientation = 'horizontal' | 'forward';
-
-export type FactoryProductionPylonVisual = {
-  localOffsetX: number;
-  localOffsetY: number;
-  localBaseZ: number;
-};
+type FactoryProductionHoldRingOrientation = 'horizontal' | 'forward';
 
 export function getFactoryShellSpawnClearanceAboveSurface(
   bp: Pick<UnitBlueprint, 'supportPointOffsetZ' | 'radius'>,
@@ -173,18 +167,4 @@ export function getFactoryProductionHoldVisual(
     ringRadius: productionHoldRingRadiusForProducedUnit(producedUnitBlueprintId),
     ringOrientation: productionHoldRingOrientation(),
   };
-}
-
-export function getFactoryProductionPylonVisual(
-  factory: Entity,
-  producedUnitBlueprintId: string | null,
-  turretIndex: number,
-): FactoryProductionPylonVisual | null {
-  void factory;
-  void producedUnitBlueprintId;
-  void turretIndex;
-  // Construction pylons no longer exist. Retain the compatibility query for
-  // callers compiled against the old render helper; it intentionally yields
-  // no visual.
-  return null;
 }
