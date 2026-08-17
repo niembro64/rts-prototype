@@ -1165,6 +1165,7 @@ export function fireTurrets(
       const spreadAngle = resolveFiringSpreadAngle(
         spreadConfig !== null ? spreadConfig.angle : 0,
         fireRandomness,
+        !config.verticalLauncher && isProjectileShot(shot),
       );
       const emissionLaneCount = config.emissionLaneCount;
       const fireBaseIndex = weapon.emissionLaneIndex;

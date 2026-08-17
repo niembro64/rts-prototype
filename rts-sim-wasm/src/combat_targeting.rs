@@ -442,6 +442,13 @@ pub(crate) struct CombatTargetingPool {
     // using turret mount data from the slab; JS reads these outputs
     // for transitional targeting gates and turret pose until AIM-08.5
     // consumes them directly inside the FSM kernel.
+    /// Distance from the turret pivot to the point the shot is actually
+    /// released, measured along the aim direction. The ballistic solve is a
+    /// solve for where the projectile LEAVES, and a barrel puts that tens of
+    /// units downrange of the pivot the arc used to be solved from — a shell
+    /// released that far along its own arc has not fallen yet when it reaches
+    /// the target, and passes over the top of it.
+    pub(crate) turret_muzzle_forward_offset: Vec<f64>,
     pub(crate) turret_ballistic_has_solution: Vec<u8>,
     pub(crate) turret_ballistic_flight_time: Vec<f64>,
     pub(crate) turret_ballistic_launch_vx: Vec<f64>,
@@ -595,6 +602,7 @@ impl CombatTargetingPool {
             turret_lockon_turret_mask: Vec::new(),
             turret_lockon_shot_mask: Vec::new(),
             turret_lockon_reciprocal_mode: Vec::new(),
+            turret_muzzle_forward_offset: Vec::new(),
             turret_ballistic_has_solution: Vec::new(),
             turret_ballistic_flight_time: Vec::new(),
             turret_ballistic_launch_vx: Vec::new(),
@@ -770,6 +778,7 @@ impl CombatTargetingPool {
             self.turret_lockon_shot_mask.resize(turret_needed, 0);
             self.turret_lockon_reciprocal_mode
                 .resize(turret_needed, CT_LOCK_ON_RECIPROCAL_IGNORE);
+            self.turret_muzzle_forward_offset.resize(turret_needed, 0.0);
             self.turret_ballistic_has_solution.resize(turret_needed, 0);
             self.turret_ballistic_flight_time.resize(turret_needed, 0.0);
             self.turret_ballistic_launch_vx.resize(turret_needed, 0.0);
@@ -1319,6 +1328,7 @@ pub fn combat_targeting_set_turret(
     projectile_speed: f64,
     projectile_mass: f64,
     projectile_air_friction_per_60hz_frame: f64,
+    muzzle_forward_offset: f64,
     arc_preference: u8,
     max_time_sec: f64,
     ground_aim_fraction: f64,
@@ -1397,6 +1407,7 @@ pub fn combat_targeting_set_turret(
     pool.turret_dps[global_idx] = dps;
     pool.turret_projectile_speed[global_idx] = projectile_speed;
     pool.turret_projectile_mass[global_idx] = projectile_mass;
+    pool.turret_muzzle_forward_offset[global_idx] = muzzle_forward_offset;
     pool.turret_projectile_air_friction_per_60hz_frame[global_idx] =
         projectile_air_friction_per_60hz_frame;
     pool.turret_arc_preference[global_idx] = arc_preference;

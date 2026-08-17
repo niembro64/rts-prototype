@@ -29,6 +29,7 @@ import {
   getActiveShields,
 } from './shieldTurret';
 import {
+  hasFogOfWarLineOfSight,
   MIRROR_SIGHT_QUERY_PAD,
   turretIgnoresForceMaterialSightObstruction,
   weaponRequiresNonObstructedLineOfSight,
@@ -112,10 +113,14 @@ import {
   type LockOnMasks,
 } from '../blueprints';
 import {
+  forEachEntityTurretSensorSource,
   getEntityPrimaryTurretSensorSource,
+  getEntitySignature,
   getEntityVisibilityPadding,
   isEntityCloaked,
+  type TurretSensorSource,
 } from '../sensorCoverage';
+import { getEntityMediumOccupancy } from '../entityMediumOccupancy';
 import { isEntityActive } from '../buildableHelpers';
 import {
   getShotMaxLifespan,
@@ -522,6 +527,339 @@ export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingState
     ),
   };
   return _stateViews;
+}
+
+type AuthoritativeObservationSource = {
+  ownerBit: number;
+  ownerPlayerId: PlayerId;
+  x: number;
+  y: number;
+  z: number;
+  fullAir: number;
+  fullWater: number;
+  radar: number;
+  sonar: number;
+  detectorAir: number;
+  detectorWater: number;
+  radarJam: number;
+  sonarJam: number;
+};
+
+const _authoritativeObservationSources: AuthoritativeObservationSource[] = [];
+const _authoritativeObservationSourceStartByPlayer = new Int32Array(32);
+const _authoritativeObservationSourceEndByPlayer = new Int32Array(32);
+let _authoritativeObservationSourceCount = 0;
+let _authoritativeObservationOwnerPlayerId = 0 as PlayerId;
+let _authoritativeRadarJammerSourceCount = 0;
+let _authoritativeSonarJammerSourceCount = 0;
+const SENSOR_EYE_HEIGHT = 30;
+
+function writeAuthoritativeObservationSource(
+  ownerPlayerId: PlayerId,
+  x: number,
+  y: number,
+  z: number,
+  fullAir: number,
+  fullWater: number,
+  radar: number,
+  sonar: number,
+  detectorAir: number,
+  detectorWater: number,
+  radarJam: number,
+  sonarJam: number,
+): void {
+  const index = _authoritativeObservationSourceCount++;
+  let source = _authoritativeObservationSources[index];
+  if (source === undefined) {
+    source = {
+      ownerBit: 0,
+      ownerPlayerId,
+      x: 0,
+      y: 0,
+      z: 0,
+      fullAir: 0,
+      fullWater: 0,
+      radar: 0,
+      sonar: 0,
+      detectorAir: 0,
+      detectorWater: 0,
+      radarJam: 0,
+      sonarJam: 0,
+    };
+    _authoritativeObservationSources[index] = source;
+  }
+  source.ownerBit = playerMaskBit(ownerPlayerId);
+  source.ownerPlayerId = ownerPlayerId;
+  source.x = x;
+  source.y = y;
+  source.z = z;
+  source.fullAir = fullAir;
+  source.fullWater = fullWater;
+  source.radar = radar;
+  source.sonar = sonar;
+  source.detectorAir = detectorAir;
+  source.detectorWater = detectorWater;
+  source.radarJam = radarJam;
+  source.sonarJam = sonarJam;
+  if (radarJam > 0) _authoritativeRadarJammerSourceCount++;
+  if (sonarJam > 0) _authoritativeSonarJammerSourceCount++;
+}
+
+function collectAuthoritativeObservationSource({
+  position,
+  sourceMedium,
+  sensors,
+  operational,
+}: TurretSensorSource): void {
+  const fullAir = operational.fullSight
+    ? sensors.fullSight[sourceMedium].aboveWater
+    : 0;
+  const fullWater = operational.fullSight
+    ? sensors.fullSight[sourceMedium].underwater
+    : 0;
+  const radar = operational.contactSight
+    ? sensors.contactSight[sourceMedium].aboveWater
+    : 0;
+  const sonar = operational.contactSight
+    ? sensors.contactSight[sourceMedium].underwater
+    : 0;
+  const detectorAir = operational.detector && operational.fullSight
+    ? Math.min(sensors.detectorRadius, fullAir)
+    : 0;
+  const detectorWater = operational.detector && operational.fullSight
+    ? Math.min(sensors.detectorRadius, fullWater)
+    : 0;
+  const radarJam = operational.contactSight ? sensors.radarJamRadius : 0;
+  const sonarJam = operational.contactSight ? sensors.sonarJamRadius : 0;
+  if (
+    fullAir <= 0 && fullWater <= 0 && radar <= 0 && sonar <= 0 &&
+    detectorAir <= 0 && detectorWater <= 0 && radarJam <= 0 && sonarJam <= 0
+  ) {
+    return;
+  }
+  writeAuthoritativeObservationSource(
+    _authoritativeObservationOwnerPlayerId,
+    position.x,
+    position.y,
+    position.z,
+    fullAir,
+    fullWater,
+    radar,
+    sonar,
+    detectorAir,
+    detectorWater,
+    radarJam,
+    sonarJam,
+  );
+}
+
+function collectAuthoritativeObservationSourcesFromEntities(entities: readonly Entity[]): void {
+  for (let i = 0; i < entities.length; i++) {
+    forEachEntityTurretSensorSource(entities[i], collectAuthoritativeObservationSource);
+  }
+}
+
+function collectAuthoritativeObservationSources(world: WorldState): void {
+  _authoritativeObservationSourceCount = 0;
+  _authoritativeRadarJammerSourceCount = 0;
+  _authoritativeSonarJammerSourceCount = 0;
+  _authoritativeObservationSourceStartByPlayer.fill(0);
+  _authoritativeObservationSourceEndByPlayer.fill(0);
+  for (let player = 1; player <= world.playerCount; player++) {
+    _authoritativeObservationOwnerPlayerId = player as PlayerId;
+    _authoritativeObservationSourceStartByPlayer[player] =
+      _authoritativeObservationSourceCount;
+    collectAuthoritativeObservationSourcesFromEntities(
+      world.getUnitsByPlayer(_authoritativeObservationOwnerPlayerId),
+    );
+    collectAuthoritativeObservationSourcesFromEntities(
+      world.getBuildingsByPlayer(_authoritativeObservationOwnerPlayerId),
+    );
+    for (let i = 0; i < world.scanPulses.length; i++) {
+      const pulse = world.scanPulses[i];
+      if (pulse.playerId !== _authoritativeObservationOwnerPlayerId) continue;
+      writeAuthoritativeObservationSource(
+        pulse.playerId,
+        pulse.x,
+        pulse.y,
+        pulse.z + SENSOR_EYE_HEIGHT,
+        pulse.radius,
+        pulse.radius,
+        0,
+        0,
+        pulse.radius,
+        pulse.radius,
+        0,
+        0,
+      );
+    }
+    _authoritativeObservationSourceEndByPlayer[player] =
+      _authoritativeObservationSourceCount;
+  }
+}
+
+type ObservationFact = 'fullAir' | 'fullWater' | 'radar' | 'sonar' | 'detectorAir' | 'detectorWater';
+
+function observationSourceCovers(
+  world: WorldState,
+  ownerBit: number,
+  fact: ObservationFact,
+  x: number,
+  y: number,
+  z: number,
+): boolean {
+  const playerId = 32 - Math.clz32(ownerBit);
+  const start = _authoritativeObservationSourceStartByPlayer[playerId];
+  const end = _authoritativeObservationSourceEndByPlayer[playerId];
+  for (let i = start; i < end; i++) {
+    const source = _authoritativeObservationSources[i];
+    if (source.ownerBit !== ownerBit) continue;
+    const radius = source[fact];
+    if (radius <= 0) continue;
+    const dx = x - source.x;
+    const dy = y - source.y;
+    if (dx * dx + dy * dy > radius * radius) continue;
+    if (fact === 'sonar') return true;
+    if (hasFogOfWarLineOfSight(world, source.x, source.y, source.z, x, y, z)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function contactIsJammed(
+  world: WorldState,
+  viewerPlayerId: PlayerId,
+  targetX: number,
+  targetY: number,
+  underwater: boolean,
+): boolean {
+  if (underwater) {
+    if (_authoritativeSonarJammerSourceCount === 0) return false;
+  } else if (_authoritativeRadarJammerSourceCount === 0) {
+    return false;
+  }
+  for (let i = 0; i < _authoritativeObservationSourceCount; i++) {
+    const source = _authoritativeObservationSources[i];
+    if (world.arePlayersAllied(viewerPlayerId, source.ownerPlayerId)) continue;
+    const radius = underwater ? source.sonarJam : source.radarJam;
+    if (radius <= 0) continue;
+    const dx = targetX - source.x;
+    const dy = targetY - source.y;
+    if (dx * dx + dy * dy <= radius * radius) return true;
+  }
+  return false;
+}
+
+function filterObservationFactMask(
+  world: WorldState,
+  mask: number,
+  fact: ObservationFact,
+  x: number,
+  y: number,
+  z: number,
+  jamMedium: -1 | 0 | 1 = -1,
+): number {
+  let kept = 0;
+  let pending = mask >>> 0;
+  while (pending !== 0) {
+    const ownerBit = pending & -pending;
+    const playerId = (32 - Math.clz32(ownerBit)) as PlayerId;
+    if (
+      (jamMedium < 0 || !contactIsJammed(world, playerId, x, y, jamMedium === 1)) &&
+      observationSourceCovers(world, ownerBit, fact, x, y, z)
+    ) {
+      kept |= ownerBit;
+    }
+    pending ^= ownerBit;
+  }
+  return kept >>> 0;
+}
+
+/** Native circles are the broadphase. This deterministic pass applies the
+ * information rules that depend on world geometry or opposing entities before
+ * targeting and snapshot visibility consume the masks. */
+export function applyAuthoritativeObservationRules(
+  world: WorldState,
+  sim: SimWasm,
+  targetSlots: Uint32Array = getCombatTargetingTargetSlots(),
+): void {
+  collectAuthoritativeObservationSources(world);
+  const views = getCombatTargetingStateViews(sim);
+  for (let i = 0; i < targetSlots.length; i++) {
+    const slot = targetSlots[i];
+    if (slot >= views.entityCapacity) continue;
+    const entity = world.getEntity(views.entityId[slot] as EntityId);
+    if (entity === undefined) continue;
+    const occupancy = getEntityMediumOccupancy(entity);
+    const x = entity.transform.x;
+    const y = entity.transform.y;
+    const z = entity.building !== null ? getBuildingCombatCenterZ(entity) : entity.transform.z;
+    const signature = getEntitySignature(entity);
+
+    const airSight = occupancy.aboveWater > 0
+      ? filterObservationFactMask(
+        world,
+        views.teamAirSightMask[slot],
+        'fullAir',
+        x, y, z,
+      )
+      : 0;
+    const waterSight = occupancy.underwater > 0
+      ? filterObservationFactMask(
+        world,
+        views.teamWaterSightMask[slot],
+        'fullWater',
+        x, y, z,
+      )
+      : 0;
+    const airRadar = occupancy.aboveWater > 0 && !signature.radarStealth
+      ? filterObservationFactMask(
+        world,
+        views.teamAirRadarMask[slot],
+        'radar',
+        x, y, z,
+        0,
+      )
+      : 0;
+    const waterSonar = occupancy.underwater > 0 && !signature.sonarStealth
+      ? filterObservationFactMask(
+        world,
+        views.teamWaterSonarMask[slot],
+        'sonar',
+        x, y, z,
+        1,
+      )
+      : 0;
+    const detector = (
+      (occupancy.aboveWater > 0
+        ? filterObservationFactMask(
+          world,
+          views.detectorCoverageMask[slot],
+          'detectorAir',
+          x, y, z,
+        )
+        : 0) |
+      (occupancy.underwater > 0
+        ? filterObservationFactMask(
+          world,
+          views.detectorCoverageMask[slot],
+          'detectorWater',
+          x, y, z,
+        )
+        : 0)
+    ) >>> 0;
+
+    views.teamAirSightMask[slot] = airSight;
+    views.teamWaterSightMask[slot] = waterSight;
+    views.teamAirRadarMask[slot] = airRadar;
+    views.teamWaterSonarMask[slot] = waterSonar;
+    views.fullSightCoverageMask[slot] = (airSight | waterSight) >>> 0;
+    views.detectorCoverageMask[slot] = detector;
+    views.sensorCoverageMask[slot] = (
+      airSight | waterSight | airRadar | waterSonar
+    ) >>> 0;
+  }
 }
 
 function invalidateCombatTargetingStateViews(): void {
@@ -1150,6 +1488,22 @@ function stampCombatTargetingEntityInto(
     const projectileAirFrictionPer60HzFrame = launchMedium
       ? getProjectileMediumFrictionPer60HzFrame(launchMedium)
       : 0;
+    // How far down the aim line the shot is actually released. The ballistic
+    // solver launches from the turret pivot; the shell leaves the barrel tip,
+    // which on a tower is tens of units downrange. Project the pivot→socket
+    // vector onto the current aim so lateral barrel lanes contribute nothing —
+    // only the forward reach displaces the launch point along the arc.
+    let muzzleForwardOffset = 0;
+    if (launchSocket !== undefined) {
+      const aimPitchCos = DMath.cos(t.pitch);
+      const aimDirX = DMath.cos(t.rotation) * aimPitchCos;
+      const aimDirY = DMath.sin(t.rotation) * aimPitchCos;
+      const aimDirZ = DMath.sin(t.pitch);
+      const forward = (launchSocket.position.x - t.worldPos.x) * aimDirX
+        + (launchSocket.position.y - t.worldPos.y) * aimDirY
+        + (launchSocket.position.z - t.worldPos.z) * aimDirZ;
+      muzzleForwardOffset = Number.isFinite(forward) && forward > 0 ? forward : 0;
+    }
     let maxTimeSec = 0;
     if (projectileShot) {
       const lifeMs = getShotMaxLifespan(projectileShot);
@@ -1209,6 +1563,7 @@ function stampCombatTargetingEntityInto(
       projectileSpeed,
       projectileMass,
       projectileAirFrictionPer60HzFrame,
+      muzzleForwardOffset,
       ballisticArcPreference,
       maxTimeSec,
       t.config.groundAimFraction ?? 0,
@@ -1273,6 +1628,7 @@ export function stampCombatTargetingPool(world: WorldState, wind: WindState | nu
     const pulse = scanPulses[i];
     targeting.addSensorObservationCircle(pulse.playerId, pulse.x, pulse.y, pulse.radius);
   }
+  applyAuthoritativeObservationRules(world, sim);
   // Mount queries made while stamping can only see the previous row shape.
   // Drop that tiny read cache now that setTurret has established this tick's
   // counts, otherwise a post-aim host-piece overwrite can reuse turretCount=0.

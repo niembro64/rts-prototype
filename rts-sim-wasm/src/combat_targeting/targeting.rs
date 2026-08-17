@@ -260,6 +260,49 @@ pub(crate) fn combat_targeting_solve_ballistic_aim_inner(
         return 0;
     }
 
+    // ── Muzzle correction ──────────────────────────────────────────────
+    // The solve above launches from the turret PIVOT, but the shell leaves the
+    // barrel tip tens of units downrange along the very arc just solved. A
+    // projectile released that far into its own trajectory has not fallen the
+    // corresponding amount when it reaches the target, so it arrives high and
+    // sails over the top — a systematic, range-dependent overshoot on every
+    // barrel-offset ballistic weapon.
+    //
+    // Displace the launch origin to where the shot is actually released and
+    // solve again. The offset runs along the aim direction, which the first
+    // solve just produced, so one refinement is a fixed-point step; the turret
+    // re-solves every tick and settles long before the firing gate opens.
+    // A refinement that fails to converge keeps the pivot solution rather than
+    // dropping the lock: a slightly-high shot beats no shot.
+    let muzzle_offset = pool.turret_muzzle_forward_offset[idx];
+    if muzzle_offset > CT_SHOT_DIRECTION_EPSILON {
+        let first_speed = (solution[4] * solution[4]
+            + solution[5] * solution[5]
+            + solution[6] * solution[6])
+            .sqrt();
+        if first_speed > CT_SHOT_DIRECTION_EPSILON {
+            let mut refined_input = input;
+            refined_input[0] = mount_x + solution[4] / first_speed * muzzle_offset;
+            refined_input[1] = mount_y + solution[5] / first_speed * muzzle_offset;
+            refined_input[2] = mount_z + solution[6] / first_speed * muzzle_offset;
+            let mut refined = [0.0_f64; 7];
+            let refined_found = solve_damped_kinematic_intercept_inline(
+                &refined_input,
+                &mut refined,
+                if arc_preference == CT_BALLISTIC_ARC_HIGH { 1 } else { 0 },
+                max_time_sec_or_zero,
+                projectile_air_friction_per_60hz_frame,
+                projectile_mass,
+                pool.wind_x,
+                pool.wind_y,
+                pool.wind_z,
+            );
+            if refined_found {
+                solution = refined;
+            }
+        }
+    }
+
     let launch_vx = solution[4];
     let launch_vy = solution[5];
     let launch_vz = solution[6];
