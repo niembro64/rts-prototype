@@ -362,6 +362,9 @@ export function useGameCanvasBattleSettings({
     if (changed && broadcast && mode === 'real') broadcastLobbySettingsIfHost();
   }
 
+  // Presets describe the MAP. The entity count cap is deliberately absent:
+  // switching maps must never resize the battle, so only an explicit CAP
+  // click moves it (including via DEFAULTS, which applies a preset).
   function applyPreset(preset: BattlePreset): void {
     const presetSet = new Set(preset.units);
     const allowed = currentAllowedUnitsSet.value;
@@ -379,7 +382,6 @@ export function useGameCanvasBattleSettings({
     }
     saveDemoUnits([...preset.units]);
     applyBuildingSelection([...preset.buildings]);
-    changeEntityCountCap(preset.cap, false);
     setFogOfWarEnabled(preset.fogOfWarEnabled);
     setSlowDownAtFinalWaypoint(preset.slowDownAtFinalWaypoint, false);
     setSlopePathMode(preset.slopePathMode);

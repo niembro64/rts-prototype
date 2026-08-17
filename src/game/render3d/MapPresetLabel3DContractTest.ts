@@ -73,9 +73,15 @@ export function runMapPresetLabel3DContractTest(): void {
     }
   }
 
+  // The entity count cap is display-only on the caption and takes no part in
+  // preset identity, so every preset must resolve at ANY cap.
   for (const preset of BATTLE_PRESETS) {
     const { name, backdropSlug, ...snapshot } = preset;
-    const presentation = resolveBattleMapPresentation(snapshot);
+    const presentation = resolveBattleMapPresentation({ ...snapshot, cap: 10 });
+    assertContract(
+      resolveBattleMapPresentation({ ...snapshot, cap: 10000 }).presetName === name,
+      `${name} must stay on-preset regardless of the entity count cap`,
+    );
     assertContract(
       presentation.presetName === name && presentation.labelLines[0] === name.toUpperCase(),
       `${name} must resolve as an exact stock preset`,
@@ -95,6 +101,7 @@ export function runMapPresetLabel3DContractTest(): void {
   } = source;
   const customSnapshot: BattlePresetSnapshot = {
     ...stockSnapshot,
+    cap: 500,
     terrainDetail: stockSnapshot.terrainDetail + 1,
   };
   const custom = resolveBattleMapPresentation(customSnapshot);

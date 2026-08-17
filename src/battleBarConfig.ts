@@ -92,6 +92,19 @@ function sanitizeDemoBuildingIds(value: unknown): string[] | null {
 // Unit-cap defaults are mode policy authored beside the cap options: Demo is
 // a small persistent sandbox, while Lobby/Real starts fresh at battle scale.
 const _demoPreset = getModeDefaultPreset('demo');
+
+/** The ENTITY COUNT CAP is a standalone global setting, deliberately NOT a
+ *  preset field: switching maps must never resize the battle. Only an
+ *  explicit CAP change moves it, and each mode has one authored default —
+ *  demo is a persistent sandbox, the lobby always starts fresh. */
+const MODE_DEFAULT_ENTITY_COUNT_CAPS: Record<BattleMode, number> = {
+  demo: battleBarConfig.cap.demoDefault,
+  real: battleBarConfig.cap.realDefault,
+};
+
+export function getModeDefaultEntityCountCap(mode: BattleMode): number {
+  return MODE_DEFAULT_ENTITY_COUNT_CAPS[mode];
+}
 const TERRAIN_RENDER_SMOOTHING_DEFAULT = 3;
 const TERRAIN_TEXTURE_SMOOTH_ACROSS_WALL_BOUNDARY_DEFAULT = true;
 const TERRAIN_LIGHT_SMOOTH_ACROSS_WALL_BOUNDARY_DEFAULT = false;
@@ -101,7 +114,7 @@ export const BATTLE_CONFIG = {
   units: buildUnitToggleConfig(),
   buildings: buildBuildingToggleConfig(),
   cap: {
-    default: _demoPreset.cap,
+    default: MODE_DEFAULT_ENTITY_COUNT_CAPS.demo,
     options: battleBarConfig.cap.options as readonly number[],
   },
   turretShieldPanelsEnabled: { default: _demoPreset.turretShieldPanelsEnabled },
@@ -420,7 +433,7 @@ export function getDefaultDemoBuildings(): string[] {
 }
 
 export function loadStoredDemoCap(): number {
-  return loadPosNum(STORAGE_DEMO_CAP) ?? getModeDefaultPreset('demo').cap;
+  return loadPosNum(STORAGE_DEMO_CAP) ?? getModeDefaultEntityCountCap('demo');
 }
 
 // Real-battle settings are session-only; see realBattleSessionSettings.ts
@@ -462,7 +475,7 @@ export function getUnitCap(mode: BattleMode): number {
   const stored = Number(readModeSetting('real', STORAGE_REAL_CAP, STORAGE_DEMO_CAP));
   return Number.isFinite(stored) && stored > 0
     ? stored
-    : getModeDefaultPreset('real').cap;
+    : getModeDefaultEntityCountCap('real');
 }
 
 /** Change the current mode's cap. Only Demo reaches localStorage. */

@@ -21,7 +21,6 @@ export type BattlePreset = {
    *  selection resets structure toggles and the active-preset highlight
    *  accounts for them, mirroring `units`. */
   readonly buildings: readonly string[];
-  readonly cap: number;
   readonly turretShieldPanelsEnabled: boolean;
   readonly turretShieldSpheresEnabled: boolean;
   readonly forceFieldsVisible: boolean;
@@ -62,16 +61,17 @@ export type BattlePresetSnapshot = Omit<
   | 'forceFieldsVisible'
   | 'shieldReflectionMode'
   | 'fogOfWarEnabled'
->;
+> & {
+  /** DISPLAY ONLY. The entity count cap is a standalone global setting, not
+   *  a map property: presets never carry one, applying a preset never
+   *  changes it, and it takes no part in preset matching. The map caption
+   *  prints it as live battle info. */
+  readonly cap: number;
+};
 
 const MODE_DEFAULT_PRESET_NAMES: Record<BattleMode, string> = {
   demo: battleBarConfig.demoDefault,
   real: battleBarConfig.realDefault,
-};
-
-const MODE_DEFAULT_UNIT_CAPS: Record<BattleMode, number> = {
-  demo: battleBarConfig.cap.demoDefault,
-  real: battleBarConfig.cap.realDefault,
 };
 
 function allUnits(): readonly string[] {
@@ -112,7 +112,6 @@ function buildPresets(): readonly BattlePreset[] {
       name: 'Large Circle',
       backdropSlug: 'large-circle',
       units: allUnits(),
-      cap: 100,
       ...SUBSYSTEM_DEFAULTS,
       ...STRUCTURE_DEFAULTS,
       fogOfWarEnabled: true,
@@ -131,7 +130,6 @@ function buildPresets(): readonly BattlePreset[] {
       name: 'Angels Flat',
       backdropSlug: 'angels-flat',
       units: allUnits(),
-      cap: 100,
       ...SUBSYSTEM_DEFAULTS,
       ...STRUCTURE_DEFAULTS,
       fogOfWarEnabled: true,
@@ -150,7 +148,6 @@ function buildPresets(): readonly BattlePreset[] {
       name: 'Boulder Mountain',
       backdropSlug: 'boulder-mountain',
       units: allUnits(),
-      cap: 100,
       ...SUBSYSTEM_DEFAULTS,
       ...STRUCTURE_DEFAULTS,
       fogOfWarEnabled: true,
@@ -169,7 +166,6 @@ function buildPresets(): readonly BattlePreset[] {
       name: 'Spikey Lake',
       backdropSlug: 'spikey-lake',
       units: allUnits(),
-      cap: 100,
       ...SUBSYSTEM_DEFAULTS,
       ...STRUCTURE_DEFAULTS,
       fogOfWarEnabled: true,
@@ -188,7 +184,6 @@ function buildPresets(): readonly BattlePreset[] {
       name: 'Nemo Island',
       backdropSlug: 'niemo-islands',
       units: allUnits(),
-      cap: 100,
       ...SUBSYSTEM_DEFAULTS,
       ...STRUCTURE_DEFAULTS,
       fogOfWarEnabled: true,
@@ -207,7 +202,6 @@ function buildPresets(): readonly BattlePreset[] {
       name: 'Angels Playhouse',
       backdropSlug: 'angels-playhouse',
       units: allUnits(),
-      cap: 100,
       ...SUBSYSTEM_DEFAULTS,
       ...STRUCTURE_DEFAULTS,
       fogOfWarEnabled: true,
@@ -226,7 +220,6 @@ function buildPresets(): readonly BattlePreset[] {
       name: 'METAL HELL',
       backdropSlug: 'metal-hell',
       units: allUnits(),
-      cap: 100,
       ...SUBSYSTEM_DEFAULTS,
       ...STRUCTURE_DEFAULTS,
       terrainSurfaceMode: 'metal',
@@ -247,7 +240,6 @@ function buildPresets(): readonly BattlePreset[] {
       name: 'METAL PLATE',
       backdropSlug: 'metal-plate',
       units: allUnits(),
-      cap: 100,
       ...SUBSYSTEM_DEFAULTS,
       ...STRUCTURE_DEFAULTS,
       terrainSurfaceMode: 'metal',
@@ -269,19 +261,16 @@ function buildPresets(): readonly BattlePreset[] {
 
 export const BATTLE_PRESETS: readonly BattlePreset[] = buildPresets();
 
-/** Resolve the base preset and mode-specific cap that supply defaults for a
- *  battle mode. Demo and real battles intentionally share the authored map
- *  defaults while starting at different simulation scales. */
+/** The authored map a battle mode starts on. Demo and real intentionally
+ *  share it; they differ only in the entity count cap, which is a standalone
+ *  setting (getModeDefaultEntityCountCap) rather than a preset field. */
 export function getModeDefaultPreset(mode: BattleMode): BattlePreset {
   const name = MODE_DEFAULT_PRESET_NAMES[mode];
   const found = BATTLE_PRESETS.find((p) => p.name === name);
   if (!found) {
     throw new Error(`Missing battle mode default preset: ${name}`);
   }
-  return {
-    ...found,
-    cap: MODE_DEFAULT_UNIT_CAPS[mode],
-  };
+  return found;
 }
 
 function sameUnits(a: readonly string[], b: readonly string[]): boolean {
@@ -297,12 +286,12 @@ function presetMatchesCurrent(
 ): boolean {
   // Fog of war is intentionally excluded: the lobby forces it off and the
   // real battle forces it on. The shield panel/reflection defaults that have
-  // no live preset control are excluded too. Every user-controllable
-  // map/gameplay field is compared.
+  // no live preset control are excluded too. The entity count cap is excluded
+  // because it is not a map property — changing it must not flip the caption
+  // to CUSTOM. Every other user-controllable map/gameplay field is compared.
   return (
     sameUnits(p.units, c.units) &&
     sameUnits(p.buildings, c.buildings) &&
-    p.cap === c.cap &&
     p.terrainSurfaceMode === c.terrainSurfaceMode &&
     p.liquidSurfaceMode === c.liquidSurfaceMode &&
     p.slowDownAtFinalWaypoint === c.slowDownAtFinalWaypoint &&

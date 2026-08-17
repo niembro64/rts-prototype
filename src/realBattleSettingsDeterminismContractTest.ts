@@ -1,4 +1,5 @@
 import {
+  getModeDefaultEntityCountCap,
   getUnitCap,
   loadStoredCenterMagnitude,
   loadStoredConverterTax,
@@ -73,7 +74,7 @@ function mutateEveryRealSetting(): void {
 function assertRealSettingsAtDefaults(context: string): void {
   const preset = getModeDefaultPreset('real');
   const checks: readonly [string, unknown, unknown][] = [
-    ['cap', getUnitCap('real'), preset.cap],
+    ['cap', getUnitCap('real'), getModeDefaultEntityCountCap('real')],
     ['forceFieldsVisible', loadStoredForceFieldsVisible('real'), preset.forceFieldsVisible],
     ['fogOfWarEnabled', loadStoredFogOfWarEnabled('real'), preset.fogOfWarEnabled],
     [

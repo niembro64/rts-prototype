@@ -1,11 +1,12 @@
 import {
   BATTLE_CONFIG,
+  getModeDefaultEntityCountCap,
   getUnitCap,
   resetRealBattleSettings,
   setUnitCap,
 } from './battleBarConfig';
 import battleBarConfig from './battleBarConfig.json';
-import { BATTLE_PRESETS, getModeDefaultPreset } from './components/battlePresets';
+import { BATTLE_PRESETS } from './components/battlePresets';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[entity count cap policy contract] ${message}`);
@@ -24,12 +25,12 @@ export function runUnitCapPolicyContractTest(): void {
 
     assertContract(BATTLE_CONFIG.cap.default === 500, 'boot/demo cap must default to 500');
     assertContract(
-      getModeDefaultPreset('demo').cap === 500,
-      'DEMO BATTLE defaults must resolve to cap 500',
+      getModeDefaultEntityCountCap('demo') === 500,
+      'DEMO BATTLE must default to cap 500',
     );
     assertContract(
-      getModeDefaultPreset('real').cap === 1000,
-      'Lobby/Real defaults must resolve to cap 1000',
+      getModeDefaultEntityCountCap('real') === 1000,
+      'Lobby/Real must default to cap 1000',
     );
     assertContract(getUnitCap('demo') === 500, 'an unsaved Demo profile must start at 500');
     assertContract(
@@ -37,14 +38,23 @@ export function runUnitCapPolicyContractTest(): void {
       'Real cap must ignore historical browser storage and start at 1000',
     );
 
-    // Every authored preset cap must be selectable, or applying a preset
-    // leaves the CAP row with nothing highlighted and the map caption
-    // stuck on CUSTOM.
-    const options = new Set(BATTLE_CONFIG.cap.options);
+    // The cap is a standalone global setting, not a map property: no preset
+    // may carry one, so switching maps can never resize the battle.
     for (const preset of BATTLE_PRESETS) {
       assertContract(
-        options.has(preset.cap),
-        `preset ${preset.name} cap ${preset.cap} must be one of the CAP options`,
+        !('cap' in preset),
+        `preset ${preset.name} must not carry an entity count cap`,
+      );
+    }
+
+    // Both mode defaults must be selectable, or the CAP row boots with
+    // nothing highlighted.
+    const options = new Set(BATTLE_CONFIG.cap.options);
+    for (const mode of ['demo', 'real'] as const) {
+      const value = getModeDefaultEntityCountCap(mode);
+      assertContract(
+        options.has(value),
+        `${mode} default cap ${value} must be one of the CAP options`,
       );
     }
 
