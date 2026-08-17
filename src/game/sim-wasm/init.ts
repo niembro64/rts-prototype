@@ -1496,6 +1496,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runDemoBuildingRosterContractTest();
         const { runUnitCapPolicyContractTest } = await import('../../unitCapPolicyContractTest');
         runUnitCapPolicyContractTest();
+        const { runRealBattleSettingsDeterminismContractTest } = await import('../../realBattleSettingsDeterminismContractTest');
+        runRealBattleSettingsDeterminismContractTest();
         const { runDeterministicLockstepBackendContractTest } = await import('../../components/gameCanvasDeterministicLockstepBackendContractTest');
         await runDeterministicLockstepBackendContractTest();
         const { runCommandSanitizerContractTest } = await import('../server/commandSanitizerContractTest');

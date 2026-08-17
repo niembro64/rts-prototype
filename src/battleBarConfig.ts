@@ -7,7 +7,8 @@ import {
   type LiquidSurfaceMode,
   type TerrainSurfaceMode,
 } from './types/worldSurfaceMode';
-import { persist, persistJson, readPersisted } from './persistence';
+import { persistJson, readPersisted } from './persistence';
+import { readModeSetting, writeModeSetting } from './realBattleSessionSettings';
 import { MAP_DIMENSION_CONFIG, type MapLandCellDimensions } from './mapSizeConfig';
 import {
   BUILDABLE_UNIT_BLUEPRINT_IDS,
@@ -219,6 +220,10 @@ const STORAGE_DEMO_UNITS_KNOWN_IDS = sk.demoUnitsKnownIds;
 const STORAGE_DEMO_BUILDINGS = sk.demoBuildings;
 const STORAGE_DEMO_BUILDINGS_KNOWN_IDS = sk.demoBuildingsKnownIds;
 const STORAGE_DEMO_CAP = sk.demoCap;
+// Every `real*` key below names a slot in `realSessionSettings`, NOT a
+// localStorage entry — real-battle settings are never written to the
+// browser. The names mirror the demo keys so the two stay symmetric.
+const STORAGE_REAL_CAP = sk.realCap;
 const STORAGE_DEMO_FORCE_FIELDS_VISIBLE = sk.demoForceFieldsVisible;
 const STORAGE_REAL_FORCE_FIELDS_VISIBLE = sk.realForceFieldsVisible;
 const STORAGE_DEMO_FOG_OF_WAR_ENABLED = sk.demoFogOfWarEnabled;
@@ -353,16 +358,6 @@ function adoptNewRosterBlueprints(
   persistJson(rosterKey, currentIds.filter((id) => selected.has(id)));
 }
 
-/** "true"/"false" → boolean, null otherwise. Keeps each loader a
- *  one-liner now that the try/catch is pushed into readPersisted. */
-function loadBool(key: string): boolean | null {
-  refreshDemoRosterLedgers();
-  const s = readPersisted(key);
-  if (s === 'true') return true;
-  if (s === 'false') return false;
-  return null;
-}
-
 /** "<positive-number>" → number, null otherwise. */
 function loadPosNum(key: string): number | null {
   refreshDemoRosterLedgers();
@@ -428,11 +423,9 @@ export function loadStoredDemoCap(): number {
   return loadPosNum(STORAGE_DEMO_CAP) ?? getModeDefaultPreset('demo').cap;
 }
 
-function saveDemoCap(value: number): void {
-  persist(STORAGE_DEMO_CAP, String(value));
-}
-
-let currentRealUnitCap = getModeDefaultPreset('real').cap;
+// Real-battle settings are session-only; see realBattleSessionSettings.ts
+// for the rule and the store. Re-exported so callers keep one import.
+export { resetRealBattleSettings } from './realBattleSessionSettings';
 
 /** Identifies which battle context a setting belongs to.
  *  - `demo` = the visual demo running on the BUDGET ANNIHILATION
@@ -460,29 +453,29 @@ export type BattleTerrainRuntimeConfig = {
 };
 
 
-/** Current cap for a battle mode. Demo reads the browser preference; real is
- *  deliberately session-only so a fresh lobby never inherits another game. */
+/** Current ENTITY COUNT CAP for a battle mode. Demo reads the browser
+ *  preference; real reads this session's memory, so a fresh lobby always
+ *  opens on the authored default. Rides the same store as every other
+ *  real setting — there is one reset, not one per field. */
 export function getUnitCap(mode: BattleMode): number {
-  return mode === 'real' ? currentRealUnitCap : loadStoredDemoCap();
+  if (mode === 'demo') return loadStoredDemoCap();
+  const stored = Number(readModeSetting('real', STORAGE_REAL_CAP, STORAGE_DEMO_CAP));
+  return Number.isFinite(stored) && stored > 0
+    ? stored
+    : getModeDefaultPreset('real').cap;
 }
 
-/** Change the current mode's cap. Only Demo is persisted in localStorage. */
+/** Change the current mode's cap. Only Demo reaches localStorage. */
 export function setUnitCap(mode: BattleMode, value: number): void {
   if (!Number.isFinite(value) || value <= 0) return;
-  if (mode === 'real') currentRealUnitCap = value;
-  else saveDemoCap(value);
-}
-
-/** Begin a new lobby/real-game session at its authored default. */
-export function resetRealUnitCap(): void {
-  currentRealUnitCap = getModeDefaultPreset('real').cap;
+  writeModeSetting(mode, STORAGE_REAL_CAP, STORAGE_DEMO_CAP, String(value));
 }
 
 
-/** Read a per-mode boolean. When `mode === 'real'` and the real
- *  key has never been written, falls back to the demo key (so a
- *  user's existing demo customizations seed real-battle on first
- *  use). Demo mode falls back to the BATTLE_CONFIG default. */
+/** Read a per-mode boolean. Demo reads its browser preference; real reads
+ *  this session's memory and otherwise takes the authored default. Real
+ *  never falls back to the demo key — a lobby must not inherit whatever
+ *  the sandbox was left on. */
 function loadModeBool(
   mode: BattleMode,
   realKey: string,
@@ -490,12 +483,9 @@ function loadModeBool(
   defaultValue: boolean,
 ): boolean {
   refreshDemoRosterLedgers();
-  const primary = loadBool(mode === 'real' ? realKey : demoKey);
-  if (primary !== null) return primary;
-  if (mode === 'real') {
-    const demoFallback = loadBool(demoKey);
-    if (demoFallback !== null) return demoFallback;
-  }
+  const stored = readModeSetting(mode, realKey, demoKey);
+  if (stored === 'true') return true;
+  if (stored === 'false') return false;
   return defaultValue;
 }
 
@@ -519,12 +509,7 @@ export function loadStoredForceFieldsVisible(mode: BattleMode): boolean {
 }
 
 export function saveForceFieldsVisible(enabled: boolean, mode: BattleMode): void {
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_FORCE_FIELDS_VISIBLE
-      : STORAGE_DEMO_FORCE_FIELDS_VISIBLE,
-    String(enabled),
-  );
+  writeModeSetting(mode, STORAGE_REAL_FORCE_FIELDS_VISIBLE, STORAGE_DEMO_FORCE_FIELDS_VISIBLE, String(enabled));
 }
 
 export function loadStoredFogOfWarEnabled(mode: BattleMode): boolean {
@@ -537,12 +522,7 @@ export function loadStoredFogOfWarEnabled(mode: BattleMode): boolean {
 }
 
 export function saveFogOfWarEnabled(enabled: boolean, mode: BattleMode): void {
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_FOG_OF_WAR_ENABLED
-      : STORAGE_DEMO_FOG_OF_WAR_ENABLED,
-    String(enabled),
-  );
+  writeModeSetting(mode, STORAGE_REAL_FOG_OF_WAR_ENABLED, STORAGE_DEMO_FOG_OF_WAR_ENABLED, String(enabled));
 }
 
 export function loadStoredSlowDownAtFinalWaypoint(mode: BattleMode): boolean {
@@ -555,12 +535,7 @@ export function loadStoredSlowDownAtFinalWaypoint(mode: BattleMode): boolean {
 }
 
 export function saveSlowDownAtFinalWaypoint(enabled: boolean, mode: BattleMode): void {
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_SLOW_DOWN_AT_FINAL_WAYPOINT
-      : STORAGE_DEMO_SLOW_DOWN_AT_FINAL_WAYPOINT,
-    String(enabled),
-  );
+  writeModeSetting(mode, STORAGE_REAL_SLOW_DOWN_AT_FINAL_WAYPOINT, STORAGE_DEMO_SLOW_DOWN_AT_FINAL_WAYPOINT, String(enabled));
 }
 
 export function loadStoredShieldReflectionMode(_mode: BattleMode): ShieldReflectionMode {
@@ -568,45 +543,30 @@ export function loadStoredShieldReflectionMode(_mode: BattleMode): ShieldReflect
 }
 
 export function loadStoredSlopePathMode(mode: BattleMode): SlopePathMode {
-  const stored = readPersisted(
-    mode === 'real' ? STORAGE_REAL_SLOPE_PATH_MODE : STORAGE_DEMO_SLOPE_PATH_MODE,
-  );
+  const stored = readModeSetting(mode, STORAGE_REAL_SLOPE_PATH_MODE, STORAGE_DEMO_SLOPE_PATH_MODE);
   return isSlopePathMode(stored) ? stored : getModeDefaultPreset(mode).slopePathMode;
 }
 
 export function saveSlopePathMode(value: SlopePathMode, mode: BattleMode): void {
-  persist(
-    mode === 'real' ? STORAGE_REAL_SLOPE_PATH_MODE : STORAGE_DEMO_SLOPE_PATH_MODE,
-    value,
-  );
+  writeModeSetting(mode, STORAGE_REAL_SLOPE_PATH_MODE, STORAGE_DEMO_SLOPE_PATH_MODE, value);
 }
 
 export function loadStoredTerrainSurfaceMode(mode: BattleMode): TerrainSurfaceMode {
-  const stored = readPersisted(
-    mode === 'real' ? STORAGE_REAL_TERRAIN_SURFACE_MODE : STORAGE_DEMO_TERRAIN_SURFACE_MODE,
-  );
+  const stored = readModeSetting(mode, STORAGE_REAL_TERRAIN_SURFACE_MODE, STORAGE_DEMO_TERRAIN_SURFACE_MODE);
   return isTerrainSurfaceMode(stored) ? stored : getModeDefaultPreset(mode).terrainSurfaceMode;
 }
 
 export function saveTerrainSurfaceMode(value: TerrainSurfaceMode, mode: BattleMode): void {
-  persist(
-    mode === 'real' ? STORAGE_REAL_TERRAIN_SURFACE_MODE : STORAGE_DEMO_TERRAIN_SURFACE_MODE,
-    value,
-  );
+  writeModeSetting(mode, STORAGE_REAL_TERRAIN_SURFACE_MODE, STORAGE_DEMO_TERRAIN_SURFACE_MODE, value);
 }
 
 export function loadStoredLiquidSurfaceMode(mode: BattleMode): LiquidSurfaceMode {
-  const stored = readPersisted(
-    mode === 'real' ? STORAGE_REAL_LIQUID_SURFACE_MODE : STORAGE_DEMO_LIQUID_SURFACE_MODE,
-  );
+  const stored = readModeSetting(mode, STORAGE_REAL_LIQUID_SURFACE_MODE, STORAGE_DEMO_LIQUID_SURFACE_MODE);
   return isLiquidSurfaceMode(stored) ? stored : getModeDefaultPreset(mode).liquidSurfaceMode;
 }
 
 export function saveLiquidSurfaceMode(value: LiquidSurfaceMode, mode: BattleMode): void {
-  persist(
-    mode === 'real' ? STORAGE_REAL_LIQUID_SURFACE_MODE : STORAGE_DEMO_LIQUID_SURFACE_MODE,
-    value,
-  );
+  writeModeSetting(mode, STORAGE_REAL_LIQUID_SURFACE_MODE, STORAGE_DEMO_LIQUID_SURFACE_MODE, value);
 }
 
 
@@ -635,19 +595,11 @@ function loadModeNumberOption(
   config: { readonly default: number; readonly options: readonly number[] },
 ): number {
   refreshDemoRosterLedgers();
-  const primary = parseNumberOption(
-    readPersisted(mode === 'real' ? realKey : demoKey),
+  const stored = parseNumberOption(
+    readModeSetting(mode, realKey, demoKey),
     config.options,
   );
-  if (primary !== null) return primary;
-  if (mode === 'real') {
-    const demoFallback = parseNumberOption(
-      readPersisted(demoKey),
-      config.options,
-    );
-    if (demoFallback !== null) return demoFallback;
-  }
-  return config.default;
+  return stored !== null ? stored : config.default;
 }
 
 export function normalizeCenterMagnitude(value: number): number {
@@ -715,19 +667,11 @@ function loadModeFloatOption(
   config: { readonly default: number; readonly options: readonly number[] },
 ): number {
   refreshDemoRosterLedgers();
-  const primary = parseFloatOption(
-    readPersisted(mode === 'real' ? realKey : demoKey),
+  const stored = parseFloatOption(
+    readModeSetting(mode, realKey, demoKey),
     config.options,
   );
-  if (primary !== null) return primary;
-  if (mode === 'real') {
-    const demoFallback = parseFloatOption(
-      readPersisted(demoKey),
-      config.options,
-    );
-    if (demoFallback !== null) return demoFallback;
-  }
-  return config.default;
+  return stored !== null ? stored : config.default;
 }
 
 export function normalizeConverterTax(value: number): number {
@@ -745,10 +689,7 @@ export function loadStoredConverterTax(mode: BattleMode): number {
 }
 
 export function saveConverterTax(value: number, mode: BattleMode): void {
-  persist(
-    mode === 'real' ? STORAGE_REAL_CONVERTER_TAX : STORAGE_DEMO_CONVERTER_TAX,
-    String(normalizeConverterTax(value)),
-  );
+  writeModeSetting(mode, STORAGE_REAL_CONVERTER_TAX, STORAGE_DEMO_CONVERTER_TAX, String(normalizeConverterTax(value)));
 }
 
 function parseMapLandCellAxis(s: string | null, axis: 'width' | 'length'): number | null {
@@ -775,17 +716,6 @@ function normalizeMapLandDimensions(
   return { widthLandCells: width, lengthLandCells: length };
 }
 
-function readStoredMapLandDimensions(
-  widthKey: string,
-  lengthKey: string,
-): MapLandCellDimensions | null {
-  const width = parseMapLandCellAxis(readPersisted(widthKey), 'width');
-  const length = parseMapLandCellAxis(readPersisted(lengthKey), 'length');
-  return width !== null && length !== null
-    ? { widthLandCells: width, lengthLandCells: length }
-    : null;
-}
-
 export function loadStoredCenterMagnitude(mode: BattleMode): number {
   return loadModeNumberOption(
     mode,
@@ -796,10 +726,7 @@ export function loadStoredCenterMagnitude(mode: BattleMode): number {
 }
 
 export function saveCenterMagnitude(value: number, mode: BattleMode): void {
-  persist(
-    mode === 'real' ? STORAGE_REAL_CENTER_MAGNITUDE : STORAGE_DEMO_CENTER_MAGNITUDE,
-    String(normalizeCenterMagnitude(value)),
-  );
+  writeModeSetting(mode, STORAGE_REAL_CENTER_MAGNITUDE, STORAGE_DEMO_CENTER_MAGNITUDE, String(normalizeCenterMagnitude(value)));
 }
 
 export function loadStoredDividersMagnitude(mode: BattleMode): number {
@@ -812,12 +739,7 @@ export function loadStoredDividersMagnitude(mode: BattleMode): number {
 }
 
 export function saveDividersMagnitude(value: number, mode: BattleMode): void {
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_DIVIDERS_MAGNITUDE
-      : STORAGE_DEMO_DIVIDERS_MAGNITUDE,
-    String(normalizeDividersMagnitude(value)),
-  );
+  writeModeSetting(mode, STORAGE_REAL_DIVIDERS_MAGNITUDE, STORAGE_DEMO_DIVIDERS_MAGNITUDE, String(normalizeDividersMagnitude(value)));
 }
 
 export function loadStoredPerimeterMagnitude(mode: BattleMode): number {
@@ -830,12 +752,7 @@ export function loadStoredPerimeterMagnitude(mode: BattleMode): number {
 }
 
 export function savePerimeterMagnitude(value: number, mode: BattleMode): void {
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_PERIMETER_MAGNITUDE
-      : STORAGE_DEMO_PERIMETER_MAGNITUDE,
-    String(normalizePerimeterMagnitude(value)),
-  );
+  writeModeSetting(mode, STORAGE_REAL_PERIMETER_MAGNITUDE, STORAGE_DEMO_PERIMETER_MAGNITUDE, String(normalizePerimeterMagnitude(value)));
 }
 
 export function loadStoredTerrainDTerrain(mode: BattleMode): number {
@@ -848,12 +765,7 @@ export function loadStoredTerrainDTerrain(mode: BattleMode): number {
 }
 
 export function saveTerrainDTerrain(value: number, mode: BattleMode): void {
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_TERRAIN_D_TERRAIN
-      : STORAGE_DEMO_TERRAIN_D_TERRAIN,
-    String(normalizeTerrainDTerrain(value)),
-  );
+  writeModeSetting(mode, STORAGE_REAL_TERRAIN_D_TERRAIN, STORAGE_DEMO_TERRAIN_D_TERRAIN, String(normalizeTerrainDTerrain(value)));
 }
 
 export function loadStoredPlateauWallSlopeDegrees(mode: BattleMode): number {
@@ -869,12 +781,7 @@ export function savePlateauWallSlopeDegrees(
   value: number,
   mode: BattleMode,
 ): void {
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_PLATEAU_WALL_SLOPE_DEGREES
-      : STORAGE_DEMO_PLATEAU_WALL_SLOPE_DEGREES,
-    String(normalizePlateauWallSlopeDegrees(value)),
-  );
+  writeModeSetting(mode, STORAGE_REAL_PLATEAU_WALL_SLOPE_DEGREES, STORAGE_DEMO_PLATEAU_WALL_SLOPE_DEGREES, String(normalizePlateauWallSlopeDegrees(value)));
 }
 
 export function loadStoredMetalDepositStep(mode: BattleMode): number {
@@ -887,12 +794,7 @@ export function loadStoredMetalDepositStep(mode: BattleMode): number {
 }
 
 export function saveMetalDepositStep(value: number, mode: BattleMode): void {
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_METAL_DEPOSIT_STEP
-      : STORAGE_DEMO_METAL_DEPOSIT_STEP,
-    String(normalizeMetalDepositStep(value)),
-  );
+  writeModeSetting(mode, STORAGE_REAL_METAL_DEPOSIT_STEP, STORAGE_DEMO_METAL_DEPOSIT_STEP, String(normalizeMetalDepositStep(value)));
 }
 
 export function loadStoredTerrainDetail(mode: BattleMode): number {
@@ -905,10 +807,7 @@ export function loadStoredTerrainDetail(mode: BattleMode): number {
 }
 
 export function saveTerrainDetail(value: number, mode: BattleMode): void {
-  persist(
-    mode === 'real' ? STORAGE_REAL_TERRAIN_DETAIL : STORAGE_DEMO_TERRAIN_DETAIL,
-    String(normalizeTerrainDetail(value)),
-  );
+  writeModeSetting(mode, STORAGE_REAL_TERRAIN_DETAIL, STORAGE_DEMO_TERRAIN_DETAIL, String(normalizeTerrainDetail(value)));
 }
 
 function loadStoredTerrainTextureSmoothing(mode: BattleMode): number {
@@ -921,12 +820,7 @@ function loadStoredTerrainTextureSmoothing(mode: BattleMode): number {
 }
 
 function saveTerrainTextureSmoothing(value: number, mode: BattleMode): void {
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_TERRAIN_TEXTURE_SMOOTHING
-      : STORAGE_DEMO_TERRAIN_TEXTURE_SMOOTHING,
-    String(normalizeTerrainTextureSmoothing(value)),
-  );
+  writeModeSetting(mode, STORAGE_REAL_TERRAIN_TEXTURE_SMOOTHING, STORAGE_DEMO_TERRAIN_TEXTURE_SMOOTHING, String(normalizeTerrainTextureSmoothing(value)));
 }
 
 function loadStoredTerrainLightSmoothing(mode: BattleMode): number {
@@ -939,12 +833,7 @@ function loadStoredTerrainLightSmoothing(mode: BattleMode): number {
 }
 
 function saveTerrainLightSmoothing(value: number, mode: BattleMode): void {
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_TERRAIN_LIGHT_SMOOTHING
-      : STORAGE_DEMO_TERRAIN_LIGHT_SMOOTHING,
-    String(normalizeTerrainLightSmoothing(value)),
-  );
+  writeModeSetting(mode, STORAGE_REAL_TERRAIN_LIGHT_SMOOTHING, STORAGE_DEMO_TERRAIN_LIGHT_SMOOTHING, String(normalizeTerrainLightSmoothing(value)));
 }
 
 function loadStoredTerrainTextureSmoothAcrossWallBoundary(
@@ -962,12 +851,7 @@ function saveTerrainTextureSmoothAcrossWallBoundary(
   enabled: boolean,
   mode: BattleMode,
 ): void {
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_TERRAIN_TEXTURE_SMOOTH_ACROSS_WALL_BOUNDARY
-      : STORAGE_DEMO_TERRAIN_TEXTURE_SMOOTH_ACROSS_WALL_BOUNDARY,
-    String(enabled),
-  );
+  writeModeSetting(mode, STORAGE_REAL_TERRAIN_TEXTURE_SMOOTH_ACROSS_WALL_BOUNDARY, STORAGE_DEMO_TERRAIN_TEXTURE_SMOOTH_ACROSS_WALL_BOUNDARY, String(enabled));
 }
 
 function loadStoredTerrainLightSmoothAcrossWallBoundary(
@@ -985,12 +869,7 @@ function saveTerrainLightSmoothAcrossWallBoundary(
   enabled: boolean,
   mode: BattleMode,
 ): void {
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_TERRAIN_LIGHT_SMOOTH_ACROSS_WALL_BOUNDARY
-      : STORAGE_DEMO_TERRAIN_LIGHT_SMOOTH_ACROSS_WALL_BOUNDARY,
-    String(enabled),
-  );
+  writeModeSetting(mode, STORAGE_REAL_TERRAIN_LIGHT_SMOOTH_ACROSS_WALL_BOUNDARY, STORAGE_DEMO_TERRAIN_LIGHT_SMOOTH_ACROSS_WALL_BOUNDARY, String(enabled));
 }
 
 function loadStoredTerrainSplitWallBoundaryVertices(
@@ -1008,12 +887,7 @@ function saveTerrainSplitWallBoundaryVertices(
   enabled: boolean,
   mode: BattleMode,
 ): void {
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_TERRAIN_SPLIT_WALL_BOUNDARY_VERTICES
-      : STORAGE_DEMO_TERRAIN_SPLIT_WALL_BOUNDARY_VERTICES,
-    String(enabled),
-  );
+  writeModeSetting(mode, STORAGE_REAL_TERRAIN_SPLIT_WALL_BOUNDARY_VERTICES, STORAGE_DEMO_TERRAIN_SPLIT_WALL_BOUNDARY_VERTICES, String(enabled));
 }
 
 let currentTerrainTextureSmoothing: number =
@@ -1131,22 +1005,16 @@ function getModeDefaultMapLandDimensions(mode: BattleMode): MapLandCellDimension
 
 export function loadStoredMapLandDimensions(mode: BattleMode): MapLandCellDimensions {
   refreshDemoRosterLedgers();
-  const primary = readStoredMapLandDimensions(
-    mode === 'real'
-      ? STORAGE_REAL_MAP_WIDTH_LAND_CELLS
-      : STORAGE_DEMO_MAP_WIDTH_LAND_CELLS,
-    mode === 'real'
-      ? STORAGE_REAL_MAP_LENGTH_LAND_CELLS
-      : STORAGE_DEMO_MAP_LENGTH_LAND_CELLS,
+  const width = parseMapLandCellAxis(
+    readModeSetting(mode, STORAGE_REAL_MAP_WIDTH_LAND_CELLS, STORAGE_DEMO_MAP_WIDTH_LAND_CELLS),
+    'width',
   );
-  if (primary !== null) return primary;
-  if (mode === 'real') {
-    const demoFallback = readStoredMapLandDimensions(
-      STORAGE_DEMO_MAP_WIDTH_LAND_CELLS,
-      STORAGE_DEMO_MAP_LENGTH_LAND_CELLS,
-    );
-    if (demoFallback !== null) return demoFallback;
-  }
+  const length = parseMapLandCellAxis(
+    readModeSetting(mode, STORAGE_REAL_MAP_LENGTH_LAND_CELLS, STORAGE_DEMO_MAP_LENGTH_LAND_CELLS),
+    'length',
+  );
+  // Both axes or neither — a half-stored pair is not a map size.
+  if (width !== null && length !== null) return { widthLandCells: width, lengthLandCells: length };
   return getModeDefaultMapLandDimensions(mode);
 }
 
@@ -1155,16 +1023,16 @@ export function saveMapLandDimensions(
   mode: BattleMode,
 ): void {
   const normalized = normalizeMapLandDimensions(dimensions);
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_MAP_WIDTH_LAND_CELLS
-      : STORAGE_DEMO_MAP_WIDTH_LAND_CELLS,
+  writeModeSetting(
+    mode,
+    STORAGE_REAL_MAP_WIDTH_LAND_CELLS,
+    STORAGE_DEMO_MAP_WIDTH_LAND_CELLS,
     String(normalized.widthLandCells),
   );
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_MAP_LENGTH_LAND_CELLS
-      : STORAGE_DEMO_MAP_LENGTH_LAND_CELLS,
+  writeModeSetting(
+    mode,
+    STORAGE_REAL_MAP_LENGTH_LAND_CELLS,
+    STORAGE_DEMO_MAP_LENGTH_LAND_CELLS,
     String(normalized.lengthLandCells),
   );
 }

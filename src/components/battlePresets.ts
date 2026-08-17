@@ -1,7 +1,6 @@
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from '../game/sim/blueprints/unitRoster';
 import { BUILDING_BLUEPRINT_IDS } from '../types/blueprintIds';
 import type { BattleMode } from '../battleBarConfig';
-import { persist } from '../persistence';
 import type { ShieldReflectionMode } from '../types/shotTypes';
 import type { SlopePathMode } from '../types/slopePathMode';
 import type {
@@ -270,8 +269,6 @@ function buildPresets(): readonly BattlePreset[] {
 
 export const BATTLE_PRESETS: readonly BattlePreset[] = buildPresets();
 
-const STORAGE_SELECTED_PRESET = 'battle-selected-preset';
-
 /** Resolve the base preset and mode-specific cap that supply defaults for a
  *  battle mode. Demo and real battles intentionally share the authored map
  *  defaults while starting at different simulation scales. */
@@ -285,10 +282,6 @@ export function getModeDefaultPreset(mode: BattleMode): BattlePreset {
     ...found,
     cap: MODE_DEFAULT_UNIT_CAPS[mode],
   };
-}
-
-export function saveSelectedPresetName(name: string): void {
-  persist(STORAGE_SELECTED_PRESET, name);
 }
 
 function sameUnits(a: readonly string[], b: readonly string[]): boolean {

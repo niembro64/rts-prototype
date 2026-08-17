@@ -1,5 +1,5 @@
 import { nextTick, type Ref } from 'vue';
-import { resetRealUnitCap } from '../battleBarConfig';
+import { resetRealBattleSettings } from '../battleBarConfig';
 import type {
   LobbyPlayer,
   NetworkManager,
@@ -58,7 +58,7 @@ export function useGameCanvasLobbyActions({
   }
 
   async function handleHost(): Promise<void> {
-    resetRealUnitCap();
+    resetRealBattleSettings();
     const generation = ++lobbyActionGeneration;
     try {
       isConnecting.value = true;
@@ -88,7 +88,7 @@ export function useGameCanvasLobbyActions({
   }
 
   async function handleJoin(code: string): Promise<void> {
-    resetRealUnitCap();
+    resetRealBattleSettings();
     const generation = ++lobbyActionGeneration;
     try {
       isConnecting.value = true;
@@ -136,7 +136,7 @@ export function useGameCanvasLobbyActions({
   }
 
   function handleOffline(): void {
-    resetRealUnitCap();
+    resetRealBattleSettings();
     lobbyActionGeneration++;
     networkRole.value = null;
     networkNotice.value = null;

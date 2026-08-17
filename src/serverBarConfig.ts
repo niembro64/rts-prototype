@@ -1,6 +1,6 @@
 import type { ServerBarConfig } from './types/server';
 import type { BattleMode } from './battleBarConfig';
-import { persist, readPersisted } from './persistence';
+import { readModeSetting, writeModeSetting } from './realBattleSessionSettings';
 import { UNIT_GROUND_NORMAL_EMA_MODE_DEFAULT, type UnitGroundNormalEmaMode } from './shellConfig';
 import serverBarConfig from './serverBarConfig.json';
 import { buildNamespacedStorageKeys } from './storageKeys';
@@ -32,8 +32,10 @@ export const SERVER_CONFIG = {
 
 // ── localStorage keys (module-private) ──
 // DEMO SERVER and REAL SERVER each get their own namespace —
-// `demo-server-*` and `real-server-*` — matching the DEMO/REAL split
-// already in place for the battle and client bars. No migrations.
+// `demo-server-*` and `real-server-*`. These are SIMULATION settings, so
+// they follow the battle bar's rule (realBattleSessionSettings.ts): the
+// demo namespace is localStorage, the real namespace is session memory
+// that a lobby entry clears. No migrations.
 type ServerStorageKeyName = 'unitGroundNormalEmaMode';
 
 type ServerStorageKeys = Record<ServerStorageKeyName, string>;
@@ -59,7 +61,11 @@ const SERVER_STORAGE_KEYS: Record<ServerMode, ServerStorageKeys> = {
 };
 
 export function loadStoredUnitGroundNormalEmaMode(mode: ServerMode): UnitGroundNormalEmaMode {
-  const stored = readPersisted(SERVER_STORAGE_KEYS[mode].unitGroundNormalEmaMode);
+  const stored = readModeSetting(
+    mode,
+    SERVER_STORAGE_KEYS.real.unitGroundNormalEmaMode,
+    SERVER_STORAGE_KEYS.demo.unitGroundNormalEmaMode,
+  );
   if (stored && (SERVER_CONFIG.unitGroundNormalEma.options as readonly string[]).includes(stored)) {
     return stored as UnitGroundNormalEmaMode;
   }
@@ -70,5 +76,10 @@ export function saveUnitGroundNormalEmaMode(
   mode: UnitGroundNormalEmaMode,
   serverMode: ServerMode,
 ): void {
-  persist(SERVER_STORAGE_KEYS[serverMode].unitGroundNormalEmaMode, mode);
+  writeModeSetting(
+    serverMode,
+    SERVER_STORAGE_KEYS.real.unitGroundNormalEmaMode,
+    SERVER_STORAGE_KEYS.demo.unitGroundNormalEmaMode,
+    mode,
+  );
 }

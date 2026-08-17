@@ -1,7 +1,7 @@
 import {
   BATTLE_CONFIG,
   getUnitCap,
-  resetRealUnitCap,
+  resetRealBattleSettings,
   setUnitCap,
 } from './battleBarConfig';
 import battleBarConfig from './battleBarConfig.json';
@@ -20,18 +20,18 @@ export function runUnitCapPolicyContractTest(): void {
   try {
     window.localStorage.removeItem(demoKey);
     window.localStorage.setItem(retiredRealKey, '1262');
-    resetRealUnitCap();
+    resetRealBattleSettings();
 
-    assertContract(BATTLE_CONFIG.cap.default === 1000, 'boot/demo cap must default to 1000');
+    assertContract(BATTLE_CONFIG.cap.default === 500, 'boot/demo cap must default to 500');
     assertContract(
-      getModeDefaultPreset('demo').cap === 1000,
-      'DEMO BATTLE defaults must resolve to cap 1000',
+      getModeDefaultPreset('demo').cap === 500,
+      'DEMO BATTLE defaults must resolve to cap 500',
     );
     assertContract(
       getModeDefaultPreset('real').cap === 1000,
       'Lobby/Real defaults must resolve to cap 1000',
     );
-    assertContract(getUnitCap('demo') === 1000, 'an unsaved Demo profile must start at 1000');
+    assertContract(getUnitCap('demo') === 500, 'an unsaved Demo profile must start at 500');
     assertContract(
       getUnitCap('real') === 1000,
       'Real cap must ignore historical browser storage and start at 1000',
@@ -48,10 +48,10 @@ export function runUnitCapPolicyContractTest(): void {
       );
     }
 
-    setUnitCap('demo', 50);
+    setUnitCap('demo', 100);
     setUnitCap('real', 5000);
     assertContract(
-      window.localStorage.getItem(demoKey) === '50' && getUnitCap('demo') === 50,
+      window.localStorage.getItem(demoKey) === '100' && getUnitCap('demo') === 100,
       'Demo cap changes must persist in browser storage',
     );
     assertContract(getUnitCap('real') === 5000, 'a live lobby may change its in-memory cap');
@@ -60,7 +60,7 @@ export function runUnitCapPolicyContractTest(): void {
       'Real cap changes must not write browser storage',
     );
 
-    resetRealUnitCap();
+    resetRealBattleSettings();
     assertContract(
       getUnitCap('real') === 1000,
       'a new Lobby/Real session must reset the cap to 1000',
@@ -70,6 +70,6 @@ export function runUnitCapPolicyContractTest(): void {
     else window.localStorage.setItem(demoKey, savedDemoCap);
     if (savedRetiredRealCap === null) window.localStorage.removeItem(retiredRealKey);
     else window.localStorage.setItem(retiredRealKey, savedRetiredRealCap);
-    resetRealUnitCap();
+    resetRealBattleSettings();
   }
 }

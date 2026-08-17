@@ -3,7 +3,7 @@
   "realDefault": "Angels Flat",
 
   "cap": {
-    "demoDefault": 1000,
+    "demoDefault": 500,
     "realDefault": 1000,
     "options": [10, 50, 100, 500, 1000, 5000, 10000]
   },
@@ -44,6 +44,7 @@
     "demoBuildingsKnownIds": "demo-battle-buildings-known-ids",
     "demoUnitsKnownIds": "demo-battle-units-known-ids",
     "demoCap": "demo-battle-cap",
+    "realCap": "real-battle-cap",
     "demoTurretShieldPanelsEnabled": "demo-battle-turret-shield-panels-enabled",
     "realTurretShieldPanelsEnabled": "real-battle-turret-shield-panels-enabled",
     "demoTurretShieldSpheresEnabled": "demo-battle-turret-shield-spheres-enabled",

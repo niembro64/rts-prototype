@@ -32,7 +32,6 @@ import type { MapLandCellDimensions } from '../mapSizeConfig';
 import {
   type BattlePreset,
   getModeDefaultPreset,
-  saveSelectedPresetName,
 } from './battlePresets';
 
 type GameCanvasBattleSettings = {
@@ -405,7 +404,6 @@ export function useGameCanvasBattleSettings({
       },
       false,
     );
-    saveSelectedPresetName(preset.name);
     broadcastLobbySettingsIfHost();
   }
 
