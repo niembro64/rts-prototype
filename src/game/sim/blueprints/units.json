@@ -1,6 +1,7 @@
 {
   "unitJackal": {
     "unitBlueprintId": "unitJackal",
+    "tinyName": "JKL",
     "name": "Jackal",
     "shortName": "JKL",
     "hp": 110,
@@ -141,6 +142,7 @@
   },
   "unitLynx": {
     "unitBlueprintId": "unitLynx",
+    "tinyName": "LNX",
     "name": "Lynx",
     "shortName": "LNX",
     "hp": 170,
@@ -280,6 +282,7 @@
   },
   "unitDaddy": {
     "unitBlueprintId": "unitDaddy",
+    "tinyName": "DDY",
     "name": "Daddy",
     "shortName": "DDY",
     "hp": 480,
@@ -456,6 +459,7 @@
   },
   "unitBadger": {
     "unitBlueprintId": "unitBadger",
+    "tinyName": "BDG",
     "name": "Badger",
     "shortName": "BDG",
     "hp": 520,
@@ -595,6 +599,7 @@
   },
   "unitMongoose": {
     "unitBlueprintId": "unitMongoose",
+    "tinyName": "MGS",
     "name": "Mongoose",
     "shortName": "MGS",
     "hp": 400,
@@ -735,6 +740,7 @@
   },
   "unitTick": {
     "unitBlueprintId": "unitTick",
+    "tinyName": "TCK",
     "name": "Tick",
     "shortName": "TCK",
     "hp": 98.25,
@@ -886,6 +892,7 @@
   },
   "unitHuman": {
     "unitBlueprintId": "unitHuman",
+    "tinyName": "HUM",
     "name": "Human",
     "shortName": "HUM",
     "hp": 340.0,
@@ -1158,6 +1165,7 @@
   },
   "unitRex": {
     "unitBlueprintId": "unitRex",
+    "tinyName": "REX",
     "name": "Rex",
     "shortName": "REX",
     "hp": 26000,
@@ -1742,6 +1750,7 @@
   },
   "unitMammoth": {
     "unitBlueprintId": "unitMammoth",
+    "tinyName": "MMT",
     "name": "Mammoth",
     "shortName": "MMT",
     "hp": 1500,
@@ -1873,6 +1882,7 @@
   },
   "unitFormik": {
     "unitBlueprintId": "unitFormik",
+    "tinyName": "FMK",
     "name": "Formik",
     "shortName": "FMK",
     "hp": 4800,
@@ -2059,6 +2069,7 @@
   },
   "unitWidow": {
     "unitBlueprintId": "unitWidow",
+    "tinyName": "WDW",
     "name": "Widow",
     "shortName": "WDW",
     "hp": 4200,
@@ -2355,6 +2366,7 @@
   },
   "unitHippo": {
     "unitBlueprintId": "unitHippo",
+    "tinyName": "HPO",
     "name": "Hippo",
     "shortName": "HPO",
     "hp": 2400,
@@ -2497,6 +2509,7 @@
   },
   "unitSeaTurtle": {
     "unitBlueprintId": "unitSeaTurtle",
+    "tinyName": "TRT",
     "name": "Sea Turtle",
     "shortName": "TURT",
     "hp": 1800,
@@ -2694,6 +2707,7 @@
   },
   "unitOrca": {
     "unitBlueprintId": "unitOrca",
+    "tinyName": "ORC",
     "name": "Orca",
     "shortName": "ORCA",
     "hp": 1450,
@@ -2867,6 +2881,7 @@
   },
   "unitTarantula": {
     "unitBlueprintId": "unitTarantula",
+    "tinyName": "TRN",
     "name": "Tarantula",
     "shortName": "TRN",
     "hp": 210,
@@ -3031,6 +3046,7 @@
   },
   "unitLoris": {
     "unitBlueprintId": "unitLoris",
+    "tinyName": "LRS",
     "name": "Loris",
     "shortName": "LRS",
     "hp": 420,
@@ -3176,6 +3192,7 @@
   },
   "unitBee": {
     "unitBlueprintId": "unitBee",
+    "tinyName": "BEE",
     "name": "Bee",
     "shortName": "BEE",
     "hp": 120,
@@ -3302,6 +3319,7 @@
   },
   "unitDragonfly": {
     "unitBlueprintId": "unitDragonfly",
+    "tinyName": "DRF",
     "name": "Dragonfly",
     "shortName": "DRF",
     "hp": 460,
@@ -3463,6 +3481,7 @@
   },
   "unitConstructionDrone": {
     "unitBlueprintId": "unitConstructionDrone",
+    "tinyName": "CDR",
     "name": "Construction Drone",
     "shortName": "CDR",
     "hp": 260,
@@ -3642,6 +3661,7 @@
   },
   "unitEagle": {
     "unitBlueprintId": "unitEagle",
+    "tinyName": "EGL",
     "name": "Eagle",
     "shortName": "EGL",
     "hp": 360,
@@ -3802,6 +3822,7 @@
   },
   "unitDuck": {
     "unitBlueprintId": "unitDuck",
+    "tinyName": "DUK",
     "name": "Duck",
     "shortName": "DUK",
     "hp": 300,
@@ -3959,6 +3980,7 @@
   },
   "unitAlbatros": {
     "unitBlueprintId": "unitAlbatros",
+    "tinyName": "ALB",
     "name": "Albatross",
     "shortName": "ALB",
     "hp": 7600,
@@ -4144,6 +4166,7 @@
   },
   "unitQueenBee": {
     "unitBlueprintId": "unitQueenBee",
+    "tinyName": "QBE",
     "name": "Queen Bee",
     "shortName": "QBE",
     "hp": 9000,
@@ -4396,6 +4419,7 @@
   },
   "unitQueenTick": {
     "unitBlueprintId": "unitQueenTick",
+    "tinyName": "QTK",
     "name": "Queen Tick",
     "shortName": "QTK",
     "hp": 9400,
@@ -4660,6 +4684,7 @@
   },
   "unitTransport": {
     "unitBlueprintId": "unitTransport",
+    "tinyName": "TDR",
     "name": "Transport Drone",
     "shortName": "TDR",
     "hp": 560,
@@ -4809,6 +4834,7 @@
   },
   "unitCommander": {
     "unitBlueprintId": "unitCommander",
+    "tinyName": "CMD",
     "name": "Commander",
     "shortName": "CMD",
     "hp": 1200,
@@ -5195,6 +5221,7 @@
   },
   "unitConstructionSubmarine": {
     "unitBlueprintId": "unitConstructionSubmarine",
+    "tinyName": "CSB",
     "name": "Construction Submarine",
     "shortName": "CSUB",
     "hp": 700,

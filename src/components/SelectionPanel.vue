@@ -1535,7 +1535,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           alt=""
         >
         <div v-else class="selection-info-fallback">
-          {{ selection.selectedEntityInfo.shortLabel }}
+          {{ selection.selectedEntityInfo.tinyLabel }}
         </div>
       </div>
       <div class="selection-info-main">

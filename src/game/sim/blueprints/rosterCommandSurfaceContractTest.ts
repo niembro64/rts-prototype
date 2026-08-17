@@ -917,6 +917,37 @@ export function runRosterCommandSurfaceContractTest(): void {
     'towerFabricator',
   ]);
 
+  // Three-letter codes are an identifier the player reads in fixed-width slots,
+  // so they must actually be three letters and must not collide — including
+  // across the unit/building line, since lists mix them.
+  const tinyNames = new Map<string, string>();
+  for (const unitBlueprintId of BUILDABLE_UNIT_BLUEPRINT_IDS) {
+    const tinyName = UNIT_BLUEPRINTS[unitBlueprintId].tinyName;
+    assertContract(
+      /^[A-Z]{3}$/.test(tinyName),
+      `${unitBlueprintId} must author exactly three uppercase letters; got "${tinyName}"`,
+    );
+    const owner = tinyNames.get(tinyName);
+    assertContract(
+      owner === undefined,
+      `${unitBlueprintId} and ${owner} both claim the three-letter code ${tinyName}`,
+    );
+    tinyNames.set(tinyName, unitBlueprintId);
+  }
+  for (const buildingBlueprintId of STRUCTURE_BLUEPRINT_IDS) {
+    const tinyName = BUILDING_BLUEPRINTS[buildingBlueprintId].tinyName;
+    assertContract(
+      /^[A-Z]{3}$/.test(tinyName),
+      `${buildingBlueprintId} must author exactly three uppercase letters; got "${tinyName}"`,
+    );
+    const owner = tinyNames.get(tinyName);
+    assertContract(
+      owner === undefined,
+      `${buildingBlueprintId} and ${owner} both claim the three-letter code ${tinyName}`,
+    );
+    tinyNames.set(tinyName, buildingBlueprintId);
+  }
+
   const activeStateStructureIds = STRUCTURE_BLUEPRINT_IDS.filter(buildingBlueprintHasActiveState);
   assertSameMembers('prototype active-state structures', activeStateStructureIds, [
     'buildingSolar',

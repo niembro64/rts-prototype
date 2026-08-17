@@ -1264,6 +1264,7 @@ pub struct UnitBlueprint {
     pub unitBlueprintId: String,
     pub name: String,
     pub shortName: String,
+    pub tinyName: String,
     pub base: EntityBaseLedger,
     pub hp: f64,
     pub radius: UnitRadiusConfig,

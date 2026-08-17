@@ -1124,6 +1124,8 @@ export type BuildingConfig = {
   name: string;
   /** Authored abbreviation for surfaces with no room for the full name. */
   shortName: string;
+  /** Exactly three uppercase letters, unique across the whole roster. */
+  tinyName: string;
   gridWidth: number;
   gridHeight: number;
   gridDepth: number;

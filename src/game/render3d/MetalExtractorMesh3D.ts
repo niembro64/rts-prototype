@@ -1,5 +1,8 @@
 import * as THREE from 'three';
-import { EXTRACTOR_BUILDING_VISUAL_HEIGHT } from '../sim/blueprints';
+import {
+  EXTRACTOR_BUILDING_VISUAL_HEIGHT,
+  EXTRACTOR_T2_BUILDING_VISUAL_HEIGHT,
+} from '../sim/blueprints';
 import type { BuildingShape } from './BuildingShape3D';
 import type { ResourcePylonRig } from './ResourcePylonMesh3D';
 import { buildResourcePylonRig } from './ResourcePylonMesh3D';
@@ -87,6 +90,10 @@ export type ExtractorRig = {
  *  intentionally remains the frontend shape so the extractor does not
  *  swap into busier decorative variants with camera distance.
  */
+/** Fraction of the full fold-out span each variant's ON pose uses. */
+const EXTRACTOR_STANDARD_PANEL_OPEN_REACH = 0.5;
+const EXTRACTOR_ADVANCED_PANEL_OPEN_REACH = 1;
+
 export function buildMetalExtractorMesh(
   width: number,
   depth: number,
@@ -95,15 +102,21 @@ export function buildMetalExtractorMesh(
 ): BuildingShape {
   const advanced = variant === 'advanced';
   const minDim = Math.min(width, depth);
+  // ONE shape at two scales: the T1 extractor is literally a shorter T2, so
+  // both derive their pyramid from the same formula and differ only by the
+  // visual height their own blueprint authors.
+  const visualHeight = advanced
+    ? EXTRACTOR_T2_BUILDING_VISUAL_HEIGHT
+    : EXTRACTOR_BUILDING_VISUAL_HEIGHT;
   const pyramidHeight = Math.min(
-    EXTRACTOR_BUILDING_VISUAL_HEIGHT * (advanced ? 0.78 : 0.64),
-    Math.max(advanced ? 36 : 28, minDim * (advanced ? 0.88 : 0.78)),
+    visualHeight * 0.64,
+    Math.max(28, minDim * 0.78),
   );
   const base = new THREE.Mesh(extractorPyramidGeom, primaryMat);
 
   const details: BuildingShape['details'] = [];
   const ratePillarBaseY = pyramidHeight + 2;
-  const shortRatePillarHeight = Math.max(10, Math.min(16, EXTRACTOR_BUILDING_VISUAL_HEIGHT - ratePillarBaseY - 4));
+  const shortRatePillarHeight = Math.max(10, Math.min(16, visualHeight - ratePillarBaseY - 4));
   const ratePillarHeight = shortRatePillarHeight * 2;
   const ratePillarRadius = Math.max(3.8, minDim * 0.055);
   const metalPylon = buildResourcePylonRig({
@@ -126,7 +139,7 @@ export function buildMetalExtractorMesh(
   }
 
   const rotorY = Math.min(
-    EXTRACTOR_BUILDING_VISUAL_HEIGHT - 3,
+    visualHeight - 3,
     ratePillarBaseY + ratePillarHeight + Math.max(1.5, ratePillarRadius * 0.35),
   );
 
@@ -137,9 +150,16 @@ export function buildMetalExtractorMesh(
 
   // Simple rotor — all six blades remain visible and rotating so the
   // silhouette is stable. No alternate glow/trim variant.
+  // How far the six protection panels swing off the pyramid when the machine
+  // is ON. The advanced extractor throws them almost all the way out — its
+  // whole read is a bigger machine working harder, and a wide-open flower is
+  // legible at a glance where a taller pyramid alone is not.
+  const openPanelReach = advanced
+    ? EXTRACTOR_ADVANCED_PANEL_OPEN_REACH
+    : EXTRACTOR_STANDARD_PANEL_OPEN_REACH;
   const simpleRotor = makeExtractorRotor(
     bladeLen, bladeThickness, panelThickness,
-    EXTRACTOR_FACE_COUNT, rotorY, bladeRootRadius, 0.5,
+    EXTRACTOR_FACE_COUNT, rotorY, bladeRootRadius, openPanelReach,
     width, depth, pyramidHeight,
     primaryMat, advanced,
   );

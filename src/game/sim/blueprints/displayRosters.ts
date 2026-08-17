@@ -9,6 +9,7 @@ type UnitRosterDisplay = {
   unitBlueprintId: string;
   label: string;
   shortName: string;
+  tinyName: string;
   cost: number;
   energyCost: number;
   metalCost: number;
@@ -19,6 +20,7 @@ type BuildingRosterDisplay = {
   buildingBlueprintId: BuildingBlueprintId;
   label: string;
   shortName: string;
+  tinyName: string;
   key: string;
   cost: number;
   energyCost: number;
@@ -57,6 +59,7 @@ function buildUnitRosterDisplay(): UnitRosterDisplay[] {
         unitBlueprintId: id,
         label: id,
         shortName: fallbackShortName(id),
+        tinyName: fallbackShortName(id).slice(0, 3),
         cost: 0,
         energyCost: 0,
         metalCost: 0,
@@ -68,6 +71,7 @@ function buildUnitRosterDisplay(): UnitRosterDisplay[] {
       unitBlueprintId: bp.unitBlueprintId,
       label: bp.name,
       shortName: bp.shortName,
+      tinyName: bp.tinyName,
       cost: scaledTotalCost(bp.cost),
       energyCost: scaledCostPart(bp.cost.energy),
       metalCost: scaledCostPart(bp.cost.metal),
@@ -104,6 +108,7 @@ function buildStructureRosterDisplay(
     buildingBlueprintId: BuildingBlueprintId;
     name: string;
     shortName: string;
+    tinyName: string;
     cost: ResourceCost;
   }[],
   keyOffset: number,
@@ -115,6 +120,7 @@ function buildStructureRosterDisplay(
       buildingBlueprintId: bp.buildingBlueprintId,
       label: bp.name,
       shortName: bp.shortName,
+      tinyName: bp.tinyName,
       key: `${keyOffset + i + 1}`,
       cost: scaledTotalCost(bp.cost),
       energyCost: scaledCostPart(bp.cost.energy),
@@ -176,4 +182,21 @@ const buildingRosterDisplayById = buildStructureRosterDisplayById(buildingRoster
 export function getBuildingDisplayShortName(buildingBlueprintId: string): string {
   const row = buildingRosterDisplayById.get(buildingBlueprintId);
   return row !== undefined ? row.shortName : fallbackShortName(buildingBlueprintId);
+}
+
+/** The authored three-letter code. Unlike `shortName`, its width is fixed and
+ *  guaranteed, so a slot sized for exactly three characters — a portrait
+ *  fallback, an icon badge — can use it without measuring anything. Codes are
+ *  unique across units and buildings together, so one is never ambiguous in a
+ *  list that mixes them. */
+export function getBuildingDisplayTinyName(buildingBlueprintId: string): string {
+  const row = buildingRosterDisplayById.get(buildingBlueprintId);
+  return row !== undefined ? row.tinyName : fallbackShortName(buildingBlueprintId).slice(0, 3);
+}
+
+export function getUnitDisplayTinyName(unitBlueprintId: string): string {
+  const display = unitRosterDisplayById.get(unitBlueprintId);
+  return display !== undefined
+    ? display.tinyName
+    : fallbackShortName(unitBlueprintId).slice(0, 3);
 }

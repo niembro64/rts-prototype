@@ -50,6 +50,8 @@ export type SelectedEntityInfo = {
   /** Authored abbreviation. The panel falls back to it when the full label
    *  does not fit its line. */
   shortLabel: string;
+  /** Authored three-letter code, for the fixed-width portrait slot. */
+  tinyLabel: string;
   subtitle: string;
   count: number;
   hp: number | null;
@@ -335,6 +337,8 @@ export type MinimapEntity = {
   /** Contact rows only: bit 0 is an air-radar return and bit 1 is a
    *  water-sonar return. Both may be set for a straddling body. */
   contactMediumMask?: number;
+  /** Authoritative world-space altitude of an anonymous radar/sonar contact. */
+  contactZ?: number;
 };
 
 export type CameraViewBasis = {

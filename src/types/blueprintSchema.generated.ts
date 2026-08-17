@@ -934,6 +934,7 @@ export type UnitBlueprint = {
   unitBlueprintId: UnitBlueprintId;
   name: string;
   shortName: string;
+  tinyName: string;
   base: EntityBaseLedger;
   hp: number;
   radius: UnitRadiusConfig;

@@ -26,7 +26,9 @@ import {
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import {
   getBuildingDisplayShortName,
+  getBuildingDisplayTinyName,
   getUnitDisplayShortName,
+  getUnitDisplayTinyName,
 } from '../../sim/blueprints/displayRosters';
 import {
   getBuildingAuthoredRadarRadius,
@@ -599,6 +601,7 @@ function buildEntitySelectionInfo(
   if (entity.unit !== null) {
     let label = entity.unit.unitBlueprintId;
     let shortLabel = getUnitDisplayShortName(entity.unit.unitBlueprintId);
+    const tinyLabel = getUnitDisplayTinyName(entity.unit.unitBlueprintId);
     try {
       label = getUnitBlueprint(entity.unit.unitBlueprintId).name;
     } catch {
@@ -611,6 +614,7 @@ function buildEntitySelectionInfo(
       blueprintId: entity.unit.unitBlueprintId,
       label,
       shortLabel,
+      tinyLabel,
       subtitle: selectedEntityTypeLabel(kind),
       count: 1,
       hp: entity.unit.hp,
@@ -624,6 +628,7 @@ function buildEntitySelectionInfo(
   if (entity.building !== null && entity.buildingBlueprintId !== null) {
     let label: string = entity.buildingBlueprintId;
     let shortLabel = getBuildingDisplayShortName(entity.buildingBlueprintId);
+    const tinyLabel = getBuildingDisplayTinyName(entity.buildingBlueprintId);
     try {
       label = getBuildingConfig(entity.buildingBlueprintId).name;
     } catch {
@@ -636,6 +641,7 @@ function buildEntitySelectionInfo(
       blueprintId: entity.buildingBlueprintId,
       label,
       shortLabel,
+      tinyLabel,
       subtitle: selectedEntityTypeLabel(kind),
       count: 1,
       hp: entity.building.hp,
@@ -652,6 +658,7 @@ function buildEntitySelectionInfo(
     blueprintId: null,
     label: selectedEntityTypeLabel(kind),
     shortLabel: selectedEntityTypeLabel(kind),
+    tinyLabel: selectedEntityTypeLabel(kind).slice(0, 3).toUpperCase(),
     subtitle: 'Selected entity',
     count: 1,
     hp: null,
@@ -700,6 +707,7 @@ function buildSelectionEntityInfo(
     blueprintId: null,
     label: `${totalSelected} selected`,
     shortLabel: `x${totalSelected}`,
+    tinyLabel: 'SEL',
     subtitle: typeLabels.join(', '),
     count: totalSelected,
     hp: maxHp > 0 ? hp : null,
@@ -721,6 +729,7 @@ function writeMinimapEntity(
   radarOnly: boolean | undefined,
   contactId: number | undefined = undefined,
   contactMediumMask: number | undefined = undefined,
+  contactZ: number | undefined = undefined,
 ): number {
   let entity = entities[index];
   if (!entity) {
@@ -735,6 +744,7 @@ function writeMinimapEntity(
   entity.radarOnly = radarOnly;
   entity.contactId = radarOnly ? contactId : undefined;
   entity.contactMediumMask = radarOnly ? contactMediumMask : undefined;
+  entity.contactZ = radarOnly ? contactZ : undefined;
   return index + 1;
 }
 export type {
@@ -1572,6 +1582,7 @@ export function buildMinimapData(
         e.radarOnly,
         e.contactId,
         e.contactMediumMask,
+        e.contactZ,
       );
     }
   } else {

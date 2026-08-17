@@ -60,6 +60,10 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
    *  which produced things like "SHIELD DETECTION LAB" in a slot sized for
    *  six characters. */
   shortName: string;
+  /** Exactly three uppercase letters, unique across the whole roster. This is
+   *  the code for a fixed-width slot — a portrait fallback, an icon badge —
+   *  where even `shortName` has no guaranteed width to work with. */
+  tinyName: string;
   gridWidth: number;
   gridHeight: number;
   gridDepth: number;
@@ -157,6 +161,8 @@ const BUILDING_EXPLICIT_FIELDS = [
 export const DEFAULT_BUILDING_VISUAL_HEIGHT = 120;
 export const SOLAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingSolar.visualHeight;
 export const WIND_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingWind.visualHeight;
+export const EXTRACTOR_T2_BUILDING_VISUAL_HEIGHT =
+  BUILDING_BLUEPRINTS.buildingExtractorT2.visualHeight;
 export const EXTRACTOR_BUILDING_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.buildingExtractor.visualHeight;
 export const RADAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingRadar.visualHeight;
