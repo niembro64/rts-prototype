@@ -269,7 +269,13 @@ export function snapClientNonVisualState(
         damageDelayMs: activeState === null ? 0 : activeState.damageDelayMs,
         reopenDelayMs: activeState === null ? 0 : activeState.reopenDelayMs,
       };
-    } else if (isFull && buildingBlueprintHasActiveState(entity.buildingBlueprintId)) {
+    } else if (
+      isFull &&
+      entity.building.activeState === null &&
+      buildingBlueprintHasActiveState(entity.buildingBlueprintId)
+    ) {
+      // Seed only. See the matching note in ClientViewStateBase: a snapshot
+      // that omits the field must never reset a host the player just switched.
       entity.building.activeState = {
         open: entity.buildingBlueprintId !== 'buildingSolar',
         wantOpen: true,

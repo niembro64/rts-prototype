@@ -42,6 +42,8 @@ import {
   type EntitySnapshotWireSource,
 } from './stateSerializerEntities';
 import { unpackEntitiesFromWire, type PackedEntitySnapshotWire } from './snapshotEntityWirePack';
+import { buildingBlueprintHasActiveState } from '../sim/buildingActiveState';
+import { STRUCTURE_BLUEPRINT_IDS } from '@/types/blueprintIds';
 import { decodeNetworkSnapshot } from './snapshotWireCodec';
 import { ReusableNetworkSnapshotCloner } from './snapshotClone';
 import { reserveFloat64WireRows } from './snapshotWireRows';
@@ -600,15 +602,25 @@ export function runSnapshotEntityWirePackContractTest(): void {
     'metadata-only compact building build row must preserve typed build fields',
   );
 
+  // EVERY ON/OFF host, not just solar: `activeState` lives outside the entity
+  // slab, so the hot direct-from-slab path cannot carry it and must decline the
+  // whole class. When that membership list drifted, the hosts it missed shipped
+  // `hasActiveState = 0` on exactly the delta a player's ON/OFF command
+  // produces, the client re-synthesised them as ON, and their Power switch
+  // snapped back every time it was pressed.
+  for (const buildingBlueprintId of STRUCTURE_BLUEPRINT_IDS) {
+    if (!buildingBlueprintHasActiveState(buildingBlueprintId)) continue;
+    resetEntitySnapshotPool();
+    assertContract(
+      !appendBuildingHotEntityWireRowDirectFromState(
+        createBuildingEntityStateViews(buildingBlueprintIdToCode(buildingBlueprintId)),
+        0,
+        ENTITY_CHANGED_BUILDING,
+      ),
+      `${buildingBlueprintId} build row must fall back until open-state is slab-backed`,
+    );
+  }
   resetEntitySnapshotPool();
-  assertContract(
-    !appendBuildingHotEntityWireRowDirectFromState(
-      createBuildingEntityStateViews(buildingBlueprintIdToCode('buildingSolar')),
-      0,
-      ENTITY_CHANGED_BUILDING,
-    ),
-    'active-state building build row must fall back until open-state is slab-backed',
-  );
 
   const slabBasicUnitEntities: NetworkServerSnapshotEntity[] = [];
   resetEntitySnapshotPool();

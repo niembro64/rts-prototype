@@ -12,6 +12,8 @@ import {
   type EntityStateViews,
 } from '../sim/EntitySlotRegistry';
 import { getBuildFraction } from '../sim/buildableHelpers';
+import { buildingBlueprintHasActiveState } from '../sim/buildingActiveState';
+import { STRUCTURE_BLUEPRINT_IDS } from '@/types/blueprintIds';
 import { isCommander } from '../sim/combat/combatUtils';
 import {
   getCombatTargetingEntityReadContext,
@@ -139,15 +141,22 @@ const TYPED_PLACEHOLDER_BUILDING_SLAB_FIELDS =
   ENTITY_CHANGED_ROT |
   ENTITY_CHANGED_HP |
   ENTITY_CHANGED_BUILDING;
-const BUILDING_ACTIVE_STATE_BLUEPRINT_CODES = new Set<number>([
-  buildingBlueprintIdToCode('buildingSolar'),
-  buildingBlueprintIdToCode('buildingWind'),
-  buildingBlueprintIdToCode('buildingExtractor'),
-  buildingBlueprintIdToCode('buildingExtractorT2'),
-  buildingBlueprintIdToCode('buildingRadar'),
-  buildingBlueprintIdToCode('buildingSonar'),
-  buildingBlueprintIdToCode('buildingResourceConverter'),
-]);
+/** Blueprint codes whose hosts own a BuildingActiveState.
+ *
+ *  `activeState` does not live in the entity-state slab, so the hot
+ *  direct-from-slab building path below cannot read it and MUST decline any
+ *  ON/OFF host's ENTITY_CHANGED_BUILDING delta, letting the full serializer
+ *  emit the row instead. Derived from the sim's own predicate rather than
+ *  written out here: a second hand-maintained list drifts, and when it does
+ *  the fast path ships `hasActiveState = 0` on exactly the deltas a player's
+ *  ON/OFF command produces — the client then re-synthesises the host as ON and
+ *  the switch snaps straight back. That is what it did to the two shield tech
+ *  labs, which the list never learned about. */
+const BUILDING_ACTIVE_STATE_BLUEPRINT_CODES = new Set<number>(
+  STRUCTURE_BLUEPRINT_IDS
+    .filter(buildingBlueprintHasActiveState)
+    .map(buildingBlueprintIdToCode),
+);
 const _snapshotTurretFsm: CombatTargetingTurretFsmOut = {
   stateCode: 0,
   targetId: -1,
@@ -1913,10 +1922,9 @@ export function serializeEntitySnapshot(
         }
         b.build = build;
         if (entity.building.activeState) {
-          // Wire field name is `solar` for legacy reasons; semantically
-          // carries the shared BuildingActiveState open flag for every
-          // producer/utility building (solar / wind / extractor / radar /
-          // sonar / resourceConverter).
+          // Wire field name is `solar` for legacy reasons; semantically it
+          // carries the shared BuildingActiveState open flag for every ON/OFF
+          // host (see buildingBlueprintHasActiveState).
           const s = poolEntry.solarSub;
           s.open = entity.building.activeState.open;
           b.solar = s;

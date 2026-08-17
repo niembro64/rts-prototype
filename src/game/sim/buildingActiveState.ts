@@ -276,16 +276,6 @@ export function updateBuildingActiveStates(world: WorldState, dtMs: number): voi
   }
 
   const entities = world.getActiveStateBuildings();
-  if (typeof window !== 'undefined') {
-    const w = window as unknown as { __BA_ACTIVE_DEBUG__?: Record<string, unknown> };
-    const d = (w.__BA_ACTIVE_DEBUG__ = w.__BA_ACTIVE_DEBUG__ ?? {}) as Record<string, unknown>;
-    d.calls = ((d.calls as number) ?? 0) + 1;
-    d.entities = entities.length;
-    d.blueprints = entities.slice(0, 40).map((e) => e.buildingBlueprintId);
-    d.worldBuildings = world.getAllEntities === undefined
-      ? 'n/a'
-      : world.getAllEntities().filter((e) => e.type === 'building').length;
-  }
   ensureActiveStateStepCapacity(entities.length);
   activeStateRows.length = 0;
 
@@ -320,29 +310,6 @@ export function updateBuildingActiveStates(world: WorldState, dtMs: number): voi
     throw new Error(
       'updateBuildingActiveStates: building_active_state_step_batch rejected its buffers',
     );
-  }
-
-  if (typeof window !== 'undefined') {
-    const w = window as unknown as { __BA_ACTIVE_DEBUG__?: Record<string, unknown> };
-    const d = (w.__BA_ACTIVE_DEBUG__ = w.__BA_ACTIVE_DEBUG__ ?? { calls: 0, rows: {} }) as {
-      calls: number; rows: Record<string, unknown>; count?: number;
-    };
-    d.calls++;
-    d.count = count;
-    for (let i = 0; i < count; i++) {
-      const e = activeStateRows[i];
-      const bp = e.buildingBlueprintId ?? 'null';
-      if (d.rows[bp] === undefined || bp.startsWith('buildingShield') || bp === 'buildingSolar') {
-        d.rows[bp] = {
-          id: e.id,
-          active: activeStateActive[i],
-          open: activeStateOpen[i],
-          want: activeStateWantOpen[i],
-          reopen: activeStateReopenDelayMs[i],
-          changed: activeStateOpenChanged[i],
-        };
-      }
-    }
   }
 
   for (let i = 0; i < count; i++) {

@@ -2689,13 +2689,20 @@ export class ClientViewStateBase {
       true,
       true,
     );
-    if (values[base + 20] === 0 && buildingBlueprintHasActiveState(buildingBlueprintId)) {
-      const activeState = existing.building.activeState;
+    // A row that carries no active-state field seeds one for an ON/OFF host
+    // that has none yet, and otherwise leaves the live flag alone. Overwriting
+    // it with a default here is how a single wire path that forgets the field
+    // silently undoes the player's switch on every delta.
+    if (
+      values[base + 20] === 0 &&
+      existing.building.activeState === null &&
+      buildingBlueprintHasActiveState(buildingBlueprintId)
+    ) {
       existing.building.activeState = {
         open: buildingBlueprintId !== 'buildingSolar',
-        wantOpen: activeState === null ? true : activeState.wantOpen,
-        damageDelayMs: activeState === null ? 0 : activeState.damageDelayMs,
-        reopenDelayMs: activeState === null ? 0 : activeState.reopenDelayMs,
+        wantOpen: true,
+        damageDelayMs: 0,
+        reopenDelayMs: 0,
       };
     }
     if (values[base + 18] === 0 && !isMetalExtractorBlueprintId(buildingBlueprintId)) {
