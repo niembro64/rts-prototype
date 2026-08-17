@@ -1,5 +1,4 @@
-// Combat system - re-exports from helper modules
-// This file maintains backwards compatibility with existing imports
+// Public combat-system facade over the focused helper modules.
 
 export type {
   SimEvent,

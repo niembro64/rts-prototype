@@ -9,6 +9,7 @@ import type {
   TerrainSurfaceMode,
 } from '../types/worldSurfaceMode';
 import { LAND_CELL_SIZE } from '../mapSizeConfig';
+import battleBarConfig from '../battleBarConfig.json';
 
 export type BattlePreset = {
   readonly name: string;
@@ -65,8 +66,13 @@ export type BattlePresetSnapshot = Omit<
 >;
 
 const MODE_DEFAULT_PRESET_NAMES: Record<BattleMode, string> = {
-  demo: 'Angels Flat',
-  real: 'Angels Flat',
+  demo: battleBarConfig.demoDefault,
+  real: battleBarConfig.realDefault,
+};
+
+const MODE_DEFAULT_UNIT_CAPS: Record<BattleMode, number> = {
+  demo: battleBarConfig.cap.demoDefault,
+  real: battleBarConfig.cap.realDefault,
 };
 
 function allUnits(): readonly string[] {
@@ -266,17 +272,19 @@ export const BATTLE_PRESETS: readonly BattlePreset[] = buildPresets();
 
 const STORAGE_SELECTED_PRESET = 'battle-selected-preset';
 
-/** Resolve the preset that supplies the default values for a given
- *  battle mode. Every DEMO BATTLE / REAL BATTLE bar default — cap,
- *  fog of war, terrain, bar collapse — flows through
- *  the preset returned here. The bars own no inline defaults. */
+/** Resolve the base preset and mode-specific cap that supply defaults for a
+ *  battle mode. Demo and real battles intentionally share the authored map
+ *  defaults while starting at different simulation scales. */
 export function getModeDefaultPreset(mode: BattleMode): BattlePreset {
   const name = MODE_DEFAULT_PRESET_NAMES[mode];
   const found = BATTLE_PRESETS.find((p) => p.name === name);
   if (!found) {
     throw new Error(`Missing battle mode default preset: ${name}`);
   }
-  return found;
+  return {
+    ...found,
+    cap: MODE_DEFAULT_UNIT_CAPS[mode],
+  };
 }
 
 export function saveSelectedPresetName(name: string): void {
@@ -364,6 +372,10 @@ export function resolveBattleMapPresentation(
 }
 
 function findMatchingPresetName(c: BattlePresetSnapshot): string | null {
+  for (const mode of ['demo', 'real'] as const) {
+    const preset = getModeDefaultPreset(mode);
+    if (presetMatchesCurrent(preset, c)) return preset.name;
+  }
   for (const p of BATTLE_PRESETS) {
     if (presetMatchesCurrent(p, c)) return p.name;
   }

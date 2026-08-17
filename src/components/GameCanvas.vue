@@ -37,7 +37,7 @@ import { BACKGROUND_UNIT_BLUEPRINT_IDS } from '../game/server/BackgroundBattleSt
 import { BUILDING_BLUEPRINT_IDS } from '../types/blueprintIds';
 import {
   BATTLE_CONFIG,
-  loadStoredCap,
+  getUnitCap,
   loadStoredCenterMagnitude,
   loadStoredDividersMagnitude,
   loadStoredTerrainDTerrain,
@@ -1470,7 +1470,7 @@ const displayUnitCount = computed(
   () => serverMetaFromSnapshot.value?.units.count ?? 0,
 );
 const displayUnitCap = computed(
-  () => serverMetaFromSnapshot.value?.units.max ?? loadStoredCap(currentBattleMode.value),
+  () => serverMetaFromSnapshot.value?.units.max ?? getUnitCap(currentBattleMode.value),
 );
 const displayServerTime = computed(
   () => serverMetaFromSnapshot.value?.server.time ?? '',

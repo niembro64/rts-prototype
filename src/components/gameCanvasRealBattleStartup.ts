@@ -4,7 +4,7 @@ import {
   loadStoredConverterTax,
   loadStoredMapLandDimensions,
   loadStoredLiquidSurfaceMode,
-  loadStoredRealCap,
+  getUnitCap,
   loadStoredSlowDownAtFinalWaypoint,
   loadStoredTerrainSurfaceMode,
   loadStoredTerrainRuntimeConfig,
@@ -212,7 +212,7 @@ function buildRealBattleLobbySettingsFromTerrain(
     terrainDetail: terrain.terrainRuntimeConfig.terrainDetail,
     mapWidthLandCells: terrain.mapDimensions.widthLandCells,
     mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
-    maxTotalUnits: loadStoredRealCap(),
+    maxTotalUnits: getUnitCap('real'),
     converterTax: loadStoredConverterTax('real'),
     slowDownAtFinalWaypoint: loadStoredSlowDownAtFinalWaypoint('real'),
     terrainSurfaceMode: terrain.terrainSurfaceMode,
@@ -252,13 +252,7 @@ function createRealBattleMatchContext({
           `handoff=${battleHandoff.initializationHash}, recomputed=${handoffHash}`,
       );
     }
-    if (requireHandoff && battleHandoff.settings === undefined) {
-      throw new Error(
-        `[${contextLabel}] deterministic-lockstep handoff is missing lobby settings. ` +
-          'Lockstep cannot safely start from per-browser stored settings.',
-      );
-    }
-    const settings = battleHandoff.settings ?? fallbackSettings;
+    const settings = battleHandoff.settings;
     assertTerrainMatchesSettings(
       terrain,
       settings,
@@ -589,7 +583,7 @@ async function createDeterministicLockstepBackendRuntime({
   const isFrameCoordinator = networkRole !== 'client';
   const gameId = matchContext.gameId;
   const initializationHash = matchContext.initializationHash;
-  const initialMaxTotalUnits = matchContext.settings.maxTotalUnits ?? loadStoredRealCap();
+  const initialMaxTotalUnits = matchContext.settings.maxTotalUnits ?? getUnitCap('real');
   let nextLocalPlayerSequence = 0;
   let nextFrameSequence = 0;
   let pumpTimer: ReturnType<typeof setInterval> | null = null;

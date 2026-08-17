@@ -3,8 +3,11 @@ import { COLORS } from '@/colorsConfig';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
   forEachEntityTurretSensorSource,
+  type TurretSensorSource,
 } from '../sim/sensorCoverage';
 import type { Entity, PlayerId } from '../sim/types';
+import type { SensorMedium } from '../sim/sensorConfig';
+import type { SensorCapabilityConfig } from '../../types/blueprints';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { OverlayLineSystem } from './OverlayLineSystem';
 import type { GroundLineBatch3D } from './GroundLineBatch3D';
@@ -24,10 +27,55 @@ const STYLE = {
   maxArcStepRad: Math.PI / 48,
 };
 
-const STYLE_BY_MODE = {
-  sight: COLORS.effects.selectionOverlay.radiusOther,
-  radar: COLORS.effects.selectionOverlay.radar,
+const STYLE_BY_MODE_AND_MEDIUM = {
+  sight: {
+    aboveWater: COLORS.effects.selectionOverlay.radiusOther,
+    underwater: COLORS.effects.selectionOverlay.waterSight,
+  },
+  radar: {
+    aboveWater: COLORS.effects.selectionOverlay.radar,
+    underwater: COLORS.effects.selectionOverlay.sonar,
+  },
 } as const;
+
+const RENDER_STYLE_BY_MODE_AND_MEDIUM = {
+  sight: {
+    aboveWater: {
+      color: hexToRgb01(STYLE_BY_MODE_AND_MEDIUM.sight.aboveWater.colorHex),
+      alpha: STYLE_BY_MODE_AND_MEDIUM.sight.aboveWater.opacity,
+    },
+    underwater: {
+      color: hexToRgb01(STYLE_BY_MODE_AND_MEDIUM.sight.underwater.colorHex),
+      alpha: STYLE_BY_MODE_AND_MEDIUM.sight.underwater.opacity,
+    },
+  },
+  radar: {
+    aboveWater: {
+      color: hexToRgb01(STYLE_BY_MODE_AND_MEDIUM.radar.aboveWater.colorHex),
+      alpha: STYLE_BY_MODE_AND_MEDIUM.radar.aboveWater.opacity,
+    },
+    underwater: {
+      color: hexToRgb01(STYLE_BY_MODE_AND_MEDIUM.radar.underwater.colorHex),
+      alpha: STYLE_BY_MODE_AND_MEDIUM.radar.underwater.opacity,
+    },
+  },
+} as const;
+
+const TARGET_MEDIA: readonly SensorMedium[] = ['aboveWater', 'underwater'];
+
+export type SensorBoundaryTier = 'fullSight' | 'contactSight';
+
+/** Exact source-medium x target-medium lookup used by coverage presentation.
+ * Keeping this as a matrix lookup (never a max across target media) prevents a
+ * large air radar circle from erasing or inflating an independent sonar edge. */
+export function getSensorBoundarySourceRadius(
+  sensors: SensorCapabilityConfig,
+  tier: SensorBoundaryTier,
+  sourceMedium: SensorMedium,
+  targetMedium: SensorMedium,
+): number {
+  return sensors[tier][sourceMedium][targetMedium];
+}
 
 function normalizeAngle(angle: number): number {
   const n = angle % TAU;
@@ -55,10 +103,50 @@ export class SightBoundaryRenderer3D {
   private readonly intervalStarts: number[] = [];
   private readonly intervalEnds: number[] = [];
   private readonly mode: SensorBoundaryMode;
-  private readonly color: { r: number; g: number; b: number };
-  private readonly alpha: number;
   private readonly widthPx: number;
   private readonly groundLift: number;
+  private collectRenderScope: ViewportFootprint | undefined;
+  private collectTargetMedium: SensorMedium = 'aboveWater';
+
+  private readonly collectSightSource = ({
+    position,
+    sourceMedium,
+    sensors,
+    operational,
+  }: TurretSensorSource): void => {
+    if (!operational.fullSight || this.collectRenderScope === undefined) return;
+    this.pushSource(
+      position.x,
+      position.y,
+      getSensorBoundarySourceRadius(
+        sensors,
+        'fullSight',
+        sourceMedium,
+        this.collectTargetMedium,
+      ),
+      this.collectRenderScope,
+    );
+  };
+
+  private readonly collectContactSource = ({
+    position,
+    sourceMedium,
+    sensors,
+    operational,
+  }: TurretSensorSource): void => {
+    if (!operational.contactSight || this.collectRenderScope === undefined) return;
+    this.pushSource(
+      position.x,
+      position.y,
+      getSensorBoundarySourceRadius(
+        sensors,
+        'contactSight',
+        sourceMedium,
+        this.collectTargetMedium,
+      ),
+      this.collectRenderScope,
+    );
+  };
 
   constructor(
     parent: THREE.Group,
@@ -69,9 +157,6 @@ export class SightBoundaryRenderer3D {
     this.parent = parent;
     this.getTerrainHeight = getTerrainHeight;
     this.mode = options.mode ?? 'sight';
-    const colorStyle = STYLE_BY_MODE[this.mode];
-    this.color = hexToRgb01(colorStyle.colorHex);
-    this.alpha = colorStyle.opacity;
     const kind = this.mode === 'radar' ? 'radarBoundary' : 'sight';
     const style = overlayLines.style(kind);
     this.widthPx = style.widthPx;
@@ -92,14 +177,16 @@ export class SightBoundaryRenderer3D {
       return;
     }
 
-    this.collectSources(clientViewState, localPlayerId, renderScope);
-    if (this.sourceXs.length === 0) {
-      this.batch.finishFrame();
-      return;
-    }
-
-    for (let i = 0; i < this.sourceXs.length; i++) {
-      this.drawVisibleBoundaryForSource(i);
+    // Each target medium gets its own union. Combining these arrays first
+    // lets a large air-radar circle incorrectly erase a smaller sonar edge,
+    // even though those are orthogonal facts about different targets.
+    for (let mediumIndex = 0; mediumIndex < TARGET_MEDIA.length; mediumIndex++) {
+      const targetMedium = TARGET_MEDIA[mediumIndex];
+      this.collectSources(clientViewState, localPlayerId, renderScope, targetMedium);
+      const renderStyle = RENDER_STYLE_BY_MODE_AND_MEDIUM[this.mode][targetMedium];
+      for (let i = 0; i < this.sourceXs.length; i++) {
+        this.drawVisibleBoundaryForSource(i, renderStyle.color, renderStyle.alpha);
+      }
     }
 
     this.batch.finishFrame();
@@ -114,6 +201,7 @@ export class SightBoundaryRenderer3D {
     clientViewState: ClientViewState,
     localPlayerId: PlayerId,
     renderScope: ViewportFootprint,
+    targetMedium: SensorMedium,
   ): void {
     this.sourceXs.length = 0;
     this.sourceYs.length = 0;
@@ -121,11 +209,27 @@ export class SightBoundaryRenderer3D {
     const playerIds = clientViewState.getVisionPlayerIds(localPlayerId);
     for (let i = 0; i < playerIds.length; i++) {
       const playerId = playerIds[i];
-      this.collectSightFromOwned(clientViewState.getUnitsByPlayer(playerId), renderScope);
-      this.collectSightFromOwned(clientViewState.getBuildingsByPlayer(playerId), renderScope);
+      this.collectSightFromOwned(
+        clientViewState.getUnitsByPlayer(playerId),
+        renderScope,
+        targetMedium,
+      );
+      this.collectSightFromOwned(
+        clientViewState.getBuildingsByPlayer(playerId),
+        renderScope,
+        targetMedium,
+      );
       if (this.mode === 'radar') {
-        this.collectRadarFromOwned(clientViewState.getUnitsByPlayer(playerId), renderScope);
-        this.collectRadarFromOwned(clientViewState.getBuildingsByPlayer(playerId), renderScope);
+        this.collectRadarFromOwned(
+          clientViewState.getUnitsByPlayer(playerId),
+          renderScope,
+          targetMedium,
+        );
+        this.collectRadarFromOwned(
+          clientViewState.getBuildingsByPlayer(playerId),
+          renderScope,
+          targetMedium,
+        );
       }
     }
 
@@ -136,48 +240,27 @@ export class SightBoundaryRenderer3D {
     }
   }
 
-  private collectSightFromOwned(entities: readonly Entity[], renderScope: ViewportFootprint): void {
+  private collectSightFromOwned(
+    entities: readonly Entity[],
+    renderScope: ViewportFootprint,
+    targetMedium: SensorMedium,
+  ): void {
+    this.collectRenderScope = renderScope;
+    this.collectTargetMedium = targetMedium;
     for (let i = 0; i < entities.length; i++) {
-      const entity = entities[i];
-      forEachEntityTurretSensorSource(entity, ({
-        position,
-        sourceMedium,
-        sensors,
-        operational,
-      }) => {
-        if (!operational.fullSight) return;
-        this.pushSource(
-          position.x,
-          position.y,
-          Math.max(
-            sensors.fullSight[sourceMedium].aboveWater,
-            sensors.fullSight[sourceMedium].underwater,
-          ),
-          renderScope,
-        );
-      });
+      forEachEntityTurretSensorSource(entities[i], this.collectSightSource);
     }
   }
 
-  private collectRadarFromOwned(entities: readonly Entity[], renderScope: ViewportFootprint): void {
+  private collectRadarFromOwned(
+    entities: readonly Entity[],
+    renderScope: ViewportFootprint,
+    targetMedium: SensorMedium,
+  ): void {
+    this.collectRenderScope = renderScope;
+    this.collectTargetMedium = targetMedium;
     for (let i = 0; i < entities.length; i++) {
-      const entity = entities[i];
-      forEachEntityTurretSensorSource(entity, ({
-        position,
-        sourceMedium,
-        sensors,
-        operational,
-      }) => {
-        if (!operational.contactSight) return;
-        const radarRadius = sensors.contactSight[sourceMedium].aboveWater;
-        if (radarRadius > 0) {
-          this.pushSource(position.x, position.y, radarRadius, renderScope);
-        }
-        const sonarRadius = sensors.contactSight[sourceMedium].underwater;
-        if (sonarRadius > 0) {
-          this.pushSource(position.x, position.y, sonarRadius, renderScope);
-        }
-      });
+      forEachEntityTurretSensorSource(entities[i], this.collectContactSource);
     }
   }
 
@@ -196,7 +279,11 @@ export class SightBoundaryRenderer3D {
     this.sourceRadii.push(radius);
   }
 
-  private drawVisibleBoundaryForSource(sourceIndex: number): void {
+  private drawVisibleBoundaryForSource(
+    sourceIndex: number,
+    color: { r: number; g: number; b: number },
+    alpha: number,
+  ): void {
     this.intervalStarts.length = 0;
     this.intervalEnds.length = 0;
     for (let i = 0; i < this.sourceXs.length; i++) {
@@ -209,12 +296,12 @@ export class SightBoundaryRenderer3D {
     for (let i = 0; i < this.intervalStarts.length; i++) {
       const start = this.intervalStarts[i];
       if (start > cursor + EPSILON) {
-        this.drawArc(sourceIndex, cursor, start);
+        this.drawArc(sourceIndex, cursor, start, color, alpha);
       }
       cursor = Math.max(cursor, this.intervalEnds[i]);
     }
     if (cursor < TAU - EPSILON) {
-      this.drawArc(sourceIndex, cursor, TAU);
+      this.drawArc(sourceIndex, cursor, TAU, color, alpha);
     }
   }
 
@@ -302,7 +389,13 @@ export class SightBoundaryRenderer3D {
     }
   }
 
-  private drawArc(sourceIndex: number, start: number, end: number): void {
+  private drawArc(
+    sourceIndex: number,
+    start: number,
+    end: number,
+    color: { r: number; g: number; b: number },
+    alpha: number,
+  ): void {
     const span = end - start;
     if (span <= EPSILON) return;
 
@@ -317,7 +410,7 @@ export class SightBoundaryRenderer3D {
     let prevX = sourceX + Math.cos(start) * sourceRadius;
     let prevY = sourceY + Math.sin(start) * sourceRadius;
     let prevHeight = this.getTerrainHeight(prevX, prevY) + this.groundLift;
-    const { r, g, b } = this.color;
+    const { r, g, b } = color;
     for (let i = 1; i <= segments; i++) {
       const angle = start + (span * i) / segments;
       const nextX = sourceX + Math.cos(angle) * sourceRadius;
@@ -326,7 +419,7 @@ export class SightBoundaryRenderer3D {
       this.batch.pushSegment(
         prevX, prevHeight, prevY,
         nextX, nextHeight, nextY,
-        r, g, b, this.alpha, this.widthPx,
+        r, g, b, alpha, this.widthPx,
       );
       prevX = nextX;
       prevY = nextY;

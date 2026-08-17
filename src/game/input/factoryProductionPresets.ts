@@ -41,27 +41,29 @@ function cleanProductionQueue(value: unknown): string[] {
 export function normalizeFactoryProductionPresetSnapshot(
   value: unknown,
 ): FactoryProductionPresetSnapshot | null {
-  const legacyUnitBlueprintId = cleanUnitBlueprintId(value);
-  if (legacyUnitBlueprintId !== null) {
-    return {
-      selectedUnitBlueprintId: legacyUnitBlueprintId,
-      repeatProduction: true,
-      productionQueue: [],
-    };
-  }
-
-  if (value === null || typeof value !== 'object') return null;
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
   const candidate = value as {
     selectedUnitBlueprintId?: unknown;
     repeatProduction?: unknown;
     productionQueue?: unknown;
   };
-  const selectedUnitBlueprintId = cleanUnitBlueprintId(candidate.selectedUnitBlueprintId);
+  const selectedUnitBlueprintId = candidate.selectedUnitBlueprintId === null
+    ? null
+    : cleanUnitBlueprintId(candidate.selectedUnitBlueprintId);
+  if (
+    selectedUnitBlueprintId === null && candidate.selectedUnitBlueprintId !== null ||
+    typeof candidate.repeatProduction !== 'boolean' ||
+    !Array.isArray(candidate.productionQueue) ||
+    candidate.productionQueue.length > FACTORY_PRODUCTION_PRESET_QUEUE_MAX
+  ) {
+    return null;
+  }
   const productionQueue = cleanProductionQueue(candidate.productionQueue);
+  if (productionQueue.length !== candidate.productionQueue.length) return null;
   if (selectedUnitBlueprintId === null && productionQueue.length === 0) return null;
   return {
     selectedUnitBlueprintId,
-    repeatProduction: candidate.repeatProduction !== false,
+    repeatProduction: candidate.repeatProduction,
     productionQueue,
   };
 }
@@ -72,9 +74,9 @@ export function createFactoryProductionPresetSnapshot(
   productionQueue: readonly string[] | null | undefined,
 ): FactoryProductionPresetSnapshot | null {
   return normalizeFactoryProductionPresetSnapshot({
-    selectedUnitBlueprintId,
+    selectedUnitBlueprintId: selectedUnitBlueprintId ?? null,
     repeatProduction: repeatProduction !== false,
-    productionQueue: productionQueue ?? [],
+    productionQueue: cleanProductionQueue(productionQueue ?? []),
   });
 }
 
@@ -134,7 +136,7 @@ export function getFactoryProductionPresetSlot(index: number): FactoryProduction
 
 export function setFactoryProductionPresetSlot(
   index: number,
-  snapshot: FactoryProductionPresetSnapshot | string | null,
+  snapshot: FactoryProductionPresetSnapshot | null,
 ): void {
   if (index < 0 || index >= FACTORY_PRODUCTION_PRESET_COUNT) return;
   const slots = loadFactoryProductionPresetSlots();

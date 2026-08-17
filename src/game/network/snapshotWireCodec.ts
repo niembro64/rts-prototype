@@ -7,9 +7,8 @@ import type {
 } from './NetworkTypes';
 import type { SnapshotWirePayload } from './SnapshotWirePayload';
 import {
-  encodeNetworkSnapshotWithRustFallback,
+  encodeNetworkSnapshotWithRust,
   encodeEntitiesV6Bytes,
-  isRustSnapshotWireEnabled,
 } from './snapshotRustWireEncoder';
 import { getEntitySnapshotWireSource } from './stateSerializerEntities';
 import {
@@ -44,19 +43,14 @@ import {
 } from './snapshotStaticWirePack';
 import type { NetworkServerSnapshotWire } from './snapshotWireTypes';
 
-// Some top-level snapshot sections and legacy transport envelopes still
-// use `undefined` for omission. Default msgpack encodes those as `nil`,
+// Some optional top-level snapshot sections use `undefined` for omission.
+// Default msgpack encodes those as `nil`,
 // so `ignoreUndefined: true` keeps the wire behavior aligned with
 // JSON-style omission. Pooled nested DTOs use explicit null and are
 // converted to presence bits by the section packers before msgpack.
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
-// Rust snapshot envelope encoding is the only production hot path,
-// including terrain/buildability bootstrap snapshots. The JS MessagePack
-// envelope below survives solely as the in-function fallback for when the
-// WASM encoder is unavailable or declines a snapshot shape, plus the single
-// named diagnostic opt-out (?rustSnapshotWire=0); entity packing is
-// Rust-owned on both paths.
-const ENABLE_RUST_SNAPSHOT_WIRE = isRustSnapshotWireEnabled();
+// Rust snapshot envelope encoding is the sole wire path, including
+// terrain/buildability bootstrap snapshots.
 const RUST_ENTITIES_KEY_PREFIX_BYTES = 9;
 
 const TOP_LEVEL_SNAPSHOT_KEYS = [
@@ -115,37 +109,26 @@ export type SnapshotWireBreakdown = {
 };
 
 export function encodeNetworkSnapshotDetailed(state: NetworkServerSnapshot): EncodedNetworkSnapshot {
-  if (ENABLE_RUST_SNAPSHOT_WIRE) {
-    const rustWireState = packNetworkSnapshotForWire(state, {
-      audioEvents: 'raw',
-      buildability: 'raw',
-      entities: 'raw',
-      minimapEntities: 'raw',
-      projectiles: 'raw',
-      terrain: 'raw',
-    });
-    const rustResult = encodeNetworkSnapshotWithRustFallback(rustWireState);
-    if (rustResult) {
-      return {
-        bytes: rustResult.bytes,
-        encoderKind: 'rust',
-        rustEntityCount: rustResult.rustEntityCount,
-        rawEntityCount: rustResult.rawEntityCount,
-        rawTopLevelKeys: rustResult.rawTopLevelKeys.length > 0
-          ? [...rustResult.rawTopLevelKeys]
-          : undefined,
-      };
-    }
+  const rustWireState = packNetworkSnapshotForWire(state, {
+    audioEvents: 'raw',
+    buildability: 'raw',
+    entities: 'raw',
+    minimapEntities: 'raw',
+    projectiles: 'raw',
+    terrain: 'raw',
+  });
+  const rustResult = encodeNetworkSnapshotWithRust(rustWireState);
+  if (rustResult === null) {
+    throw new Error('[snapshot wire] current Rust encoder is unavailable or rejected the snapshot');
   }
-
-  const wireState = packNetworkSnapshotForWire(state);
-  const bytes = msgpackEncode(wireState, SNAPSHOT_ENCODE_OPTIONS);
   return {
-    bytes,
-    encoderKind: 'js',
-    rustEntityCount: 0,
-    rawEntityCount: state.entities.length,
-    rawTopLevelKeys: undefined,
+    bytes: rustResult.bytes,
+    encoderKind: 'rust',
+    rustEntityCount: rustResult.rustEntityCount,
+    rawEntityCount: rustResult.rawEntityCount,
+    rawTopLevelKeys: rustResult.rawTopLevelKeys.length > 0
+      ? [...rustResult.rawTopLevelKeys]
+      : undefined,
   };
 }
 
@@ -273,6 +256,13 @@ function unpackNetworkSnapshotFromWire(
   const hasPackedTerrain = isPackedTerrainTileMapWire(terrain);
   const hasPackedBuildability = isPackedBuildabilityGridWire(buildability);
 
+  rejectUnsupportedVersionedSection('audioEvents', audioEvents, hasPackedAudioEvents);
+  rejectUnsupportedVersionedSection('minimapEntities', minimapEntities, hasPackedMinimapEntities);
+  rejectUnsupportedVersionedSection('projectiles', projectiles, hasPackedProjectiles);
+  rejectUnsupportedVersionedSection('entities', entities, hasPackedEntities);
+  rejectUnsupportedVersionedSection('terrain', terrain, hasPackedTerrain);
+  rejectUnsupportedVersionedSection('buildability', buildability, hasPackedBuildability);
+
   if (!hasPackedEntities && Array.isArray(entities)) {
     normalizeRawWireEntities(entities as NetworkServerSnapshotEntity[]);
   }
@@ -322,6 +312,17 @@ function unpackNetworkSnapshotFromWire(
     snapshot.buildability = unpackBuildabilityFromWire(buildability);
   }
   return snapshot;
+}
+
+function rejectUnsupportedVersionedSection(
+  section: string,
+  value: unknown,
+  recognized: boolean,
+): void {
+  if (recognized || typeof value !== 'object' || value === null || Array.isArray(value)) return;
+  if (!Object.prototype.hasOwnProperty.call(value, 'v')) return;
+  const version = (value as { v?: unknown }).v;
+  throw new Error(`[snapshot wire] unsupported or malformed ${section} version: ${String(version)}`);
 }
 
 function encodedPairBytes(key: string, value: unknown): number {

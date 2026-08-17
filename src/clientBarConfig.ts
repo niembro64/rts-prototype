@@ -221,7 +221,7 @@ function cloneEntityHud(source: EntityHudToggles): EntityHudToggles {
 
 const DEMO_CLIENT_DEFAULTS = resolveClientDefaults('demo');
 
-// `CLIENT_CONFIG` keeps the legacy `.default` accessor populated with
+// `CLIENT_CONFIG` keeps the boot-time `.default` accessor populated with
 // the DEMO CLIENT value (the app boots in demo). Per-mode reads should
 // go through `getClientConfig(mode)` / the bar's storage helpers; the
 // `.default` field exists for callers that just need the boot-time value.
@@ -1064,9 +1064,7 @@ export function setLegsReachToggle(show: boolean): void {
 
 // Entity LOD policy. Standalone + global (not per-mode) because it is a
 // renderer inspection/perf policy rather than a battle/profile setting.
-// Keep the legacy storage key so existing AUTO/HIGH/LOW preferences survive
-// the five-mode control upgrade.
-const LOD_MODE_STORAGE_KEY = 'client-force-lod-proxy';
+const LOD_MODE_STORAGE_KEY = 'client-lod-mode';
 export const LOD_MODE_OPTIONS: OptionList<LodMode> = [
   { value: 'auto', label: 'AUTO' },
   { value: 'high', label: 'HIGH' },
@@ -1077,7 +1075,7 @@ export const LOD_MODE_OPTIONS: OptionList<LodMode> = [
 
 function parseStoredLodMode(raw: string | null): LodMode {
   if (raw === 'off') return 'off';
-  if (raw === 'low' || raw === 'true') return 'low';
+  if (raw === 'low') return 'low';
   if (raw === 'medium') return 'medium';
   if (raw === 'high') return 'high';
   return 'auto';

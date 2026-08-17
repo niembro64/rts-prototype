@@ -426,7 +426,7 @@ pub fn snapshot_encode_entity_unit(
     qangvel_x: f64,
     qangvel_y: f64,
     qangvel_z: f64,
-    has_fire_enabled: u8,
+    _retired_fire_enabled: u8,
     has_is_commander: u8,
     has_build_target_id: u8,
     build_target_id_is_null: u8,
@@ -492,9 +492,6 @@ pub fn snapshot_encode_entity_unit(
     }
     if has_angular_velocity3 != 0 {
         unit_field_count += 1;
-    }
-    if has_fire_enabled != 0 {
-        unit_field_count += 2; // fireEnabled + fireState
     }
     if has_build != 0 {
         unit_field_count += 1;
@@ -596,16 +593,6 @@ pub fn snapshot_encode_entity_unit(
         w.write_number(qangvel_y);
         w.write_str("z");
         w.write_number(qangvel_z);
-    }
-
-    // Tri-state scalar/boolean optionals — JS emits them as
-    // `false`/`true`/`number|null` or undefined (omitted). Each
-    // `has_*` flag gates the key-value pair entirely.
-    if has_fire_enabled != 0 {
-        w.write_str("fireEnabled");
-        w.write_bool(false);
-        w.write_str("fireState");
-        w.write_str("holdFire");
     }
 
     if has_build != 0 {
@@ -1076,14 +1063,16 @@ pub fn snapshot_encode_entity_building(
 //   3. `snapshot_encode_envelope_continue()`
 //      → writes the tail fields. Returns total
 //      written bytes.
-// Minimap-entities scratch — 6 f64 per entry:
+// Minimap-entities scratch — 7 f64 per entry:
 //   [0]   id (entity id)
 //   [1]   pos.x
 //   [2]   pos.y
 //   [3]   type_tag (1 = unit, 2 = building, 3 = tower, matches SNAPSHOT_ENTITY_TYPE_*)
 //   [4]   playerId
 //   [5]   has_radar_only + (radar_only << 1) packed: 0 = omit, 2 = emit
-//         false (rare), 3 = emit true. Practically only 0 or 3 appear.
+//         false (rare), 3 = emit true; bits 2..3 carry contact medium,
+//         bit 4 means contact medium present, bit 5 means contact z present.
+//   [6]   authoritative world-space contact z (when bit 5 is set)
 snapshot_scratch_pool!(
     SnapshotEncodeMinimapScratch,
     SNAPSHOT_ENCODE_MINIMAP_SCRATCH,
@@ -1092,7 +1081,7 @@ snapshot_scratch_pool!(
     snapshot_encode_minimap_scratch_ensure,
     f64,
     0.0,
-    SNAPSHOT_ENCODE_MINIMAP_STRIDE = 6,
+    SNAPSHOT_ENCODE_MINIMAP_STRIDE = 7,
     init 16,
     ensure(count)
 );
@@ -1234,8 +1223,11 @@ snapshot_scratch_pool!(
 );
 
 pub(crate) const PACKED_BINARY_ROW_COUNT_BYTES: usize = 4;
-pub(crate) const PACKED_MINIMAP_ENTITIES_VERSION: u64 = 2;
+pub(crate) const PACKED_MINIMAP_ENTITIES_VERSION: u64 = 4;
 pub(crate) const PACKED_MINIMAP_ENTITY_FLAG_RADAR_ONLY: u32 = 0x01;
+pub(crate) const PACKED_MINIMAP_ENTITY_FLAG_WATER_CONTACT: u32 = 0x02;
+pub(crate) const PACKED_MINIMAP_ENTITY_FLAG_AIR_CONTACT: u32 = 0x04;
+pub(crate) const PACKED_MINIMAP_ENTITY_FLAG_CONTACT_ALTITUDE: u32 = 0x08;
 pub(crate) const PACKED_PROJECTILES_VERSION: u64 = 1;
 pub(crate) const PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN: u32 = 0x001;
 pub(crate) const PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE: u32 = 0x002;
@@ -1371,7 +1363,7 @@ pub(crate) fn snapshot_encode_packed_minimap_scratch(
     SNAPSHOT_ENCODE_PACKED_MINIMAP_SCRATCH.get_or_init(SnapshotEncodePackedMinimapScratch::default)
 }
 
-pub(crate) fn pack_minimap_entities_v2(count: usize) {
+pub(crate) fn pack_minimap_entities_v4(count: usize) {
     let rows = snapshot_encode_minimap_scratch();
     let scratch = snapshot_encode_packed_minimap_scratch();
     scratch.out.reset(PACKED_BINARY_ROW_COUNT_BYTES);
@@ -1383,7 +1375,31 @@ pub(crate) fn pack_minimap_entities_v2(count: usize) {
         let player_id = f64_floor_u64(rows.buf[base + 4]) as u32;
         let scratch_flags = f64_floor_u64(rows.buf[base + 5]) as u32;
         let flags = if (scratch_flags & 0x02) != 0 {
+            assert!(
+                (scratch_flags & 0x10) != 0,
+                "current minimap contact requires contactMediumMask"
+            );
+            assert!(
+                (scratch_flags & 0x20) != 0,
+                "current minimap contact requires contactZ"
+            );
+            let contact_mask = (scratch_flags >> 2) & 0x03;
+            assert!(
+                contact_mask != 0,
+                "current minimap contact requires a non-empty medium"
+            );
             PACKED_MINIMAP_ENTITY_FLAG_RADAR_ONLY
+                | if (contact_mask & 0x01) != 0 {
+                    PACKED_MINIMAP_ENTITY_FLAG_AIR_CONTACT
+                } else {
+                    0
+                }
+                | if (contact_mask & 0x02) != 0 {
+                    PACKED_MINIMAP_ENTITY_FLAG_WATER_CONTACT
+                } else {
+                    0
+                }
+                | PACKED_MINIMAP_ENTITY_FLAG_CONTACT_ALTITUDE
         } else {
             0
         };
@@ -1394,6 +1410,9 @@ pub(crate) fn pack_minimap_entities_v2(count: usize) {
         group.last_id = id;
         group.writer.write_var_int_from_f64(rows.buf[base + 1]);
         group.writer.write_var_int_from_f64(rows.buf[base + 2]);
+        if (flags & PACKED_MINIMAP_ENTITY_FLAG_CONTACT_ALTITUDE) != 0 {
+            group.writer.write_var_int_from_f64(rows.buf[base + 6]);
+        }
         group.count += 1;
     }
 

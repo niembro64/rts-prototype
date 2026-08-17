@@ -589,7 +589,6 @@ function createUnitFromNetwork(
       utilityMounts,
     );
     combat.fireState = readNetworkCombatFireState(u, unitBlueprintId);
-    combat.fireEnabled = combat.fireState !== 'holdFire';
     combat.trajectoryMode = u?.trajectoryMode ?? 'auto';
     entity.combat = combat;
   }
@@ -735,9 +734,7 @@ function createUnitFromTypedFullWireRow(
       repeatQueue: values[base + 53] !== 0 && values[base + 54] !== 0,
       moveState: values[base + 59] !== 0
         ? unitMoveStateFromWireCode(values[base + 60] | 0)
-        : values[base + 55] !== 0
-          ? (values[base + 56] !== 0 ? 'holdPosition' : 'maneuver')
-          : unitBlueprintBarDefaultMoveState(unitBlueprintId),
+        : unitBlueprintBarDefaultMoveState(unitBlueprintId),
       wantCloak: values[base + 61] !== 0 && values[base + 62] >= 1,
       cloaked: values[base + 61] !== 0 && values[base + 62] >= 2,
       cloakRestoreFireState: null,
@@ -812,7 +809,6 @@ function createUnitFromTypedFullWireRow(
       ? unitFireStateFromWireCode(values[base + 52] | 0)
       : 'fireAtWill';
     combat.fireState = fireState;
-    combat.fireEnabled = fireState !== 'holdFire';
     combat.trajectoryMode = values[base + 57] !== 0
       ? trajectoryModeFromWireCode(values[base + 58] | 0)
       : 'auto';

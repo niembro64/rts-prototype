@@ -461,8 +461,7 @@ export function runCommandExecutionContractTest(): void {
   });
   assertContract(
     unit.unit?.moveState === 'holdPosition' &&
-      unit.combat?.fireState === 'fireAtWill' &&
-      unit.combat.fireEnabled === true,
+      unit.combat?.fireState === 'fireAtWill',
     'BAR armfav/unitJackal defaults must spawn on hold-position while keeping fire-at-will',
   );
   const defaultStateTick = world.createUnitFromBlueprint(85, 240, 1, 'unitTick', {
@@ -477,8 +476,7 @@ export function runCommandExecutionContractTest(): void {
   });
   assertContract(
     defaultStateDragonfly.unit?.moveState === 'holdPosition' &&
-      defaultStateDragonfly.combat?.fireState === 'holdFire' &&
-      defaultStateDragonfly.combat.fireEnabled === false,
+      defaultStateDragonfly.combat?.fireState === 'holdFire',
     'BAR bomber defaults must spawn Dragonfly on hold-position and hold-fire like BombersDefaultHoldFire',
   );
   world.addEntity(unit);
@@ -517,7 +515,7 @@ export function runCommandExecutionContractTest(): void {
     fireState: 'returnFire',
   });
   assertContract(
-    priorityBuilder.combat?.fireState === 'returnFire' && priorityBuilder.combat.fireEnabled === true,
+    priorityBuilder.combat?.fireState === 'returnFire',
     'setFireEnabled command should apply return-fire state to the cloak-capable commander analogue',
   );
   executeCommand({
@@ -709,9 +707,8 @@ export function runCommandExecutionContractTest(): void {
     fireState: 'returnFire',
   });
   const fireStateAfterCommand: string | undefined = unit.combat?.fireState;
-  const fireEnabledAfterCommand: boolean | undefined = unit.combat?.fireEnabled;
   assertContract(
-    fireStateAfterCommand === 'returnFire' && fireEnabledAfterCommand === true,
+    fireStateAfterCommand === 'returnFire',
     'setFireEnabled command should apply return-fire combat state',
   );
   const scoutWithoutFireCommand = world.createUnitFromBlueprint(100, 240, 1, 'unitBee', {
@@ -753,8 +750,7 @@ export function runCommandExecutionContractTest(): void {
     cloakedCommanderUnit?.wantCloak === true &&
       cloakedCommanderUnit.cloaked === true &&
       cloakedCommanderUnit.cloakRestoreFireState === 'returnFire' &&
-      cloakedCommanderCombat?.fireState === 'holdFire' &&
-      cloakedCommanderCombat.fireEnabled === false,
+      cloakedCommanderCombat?.fireState === 'holdFire',
     'BAR cloak command should cloak the commander, store its previous fire state, and force hold fire',
   );
   executeCommand({
@@ -776,8 +772,7 @@ export function runCommandExecutionContractTest(): void {
     decloakedCommanderUnit?.wantCloak === false &&
       decloakedCommanderUnit.cloaked === false &&
       decloakedCommanderUnit.cloakRestoreFireState === null &&
-      decloakedCommanderCombat?.fireState === 'returnFire' &&
-      decloakedCommanderCombat.fireEnabled === true,
+      decloakedCommanderCombat?.fireState === 'returnFire',
     'BAR decloak command should restore the fire state saved when cloak was enabled',
   );
   executeCommand({
@@ -840,7 +835,6 @@ export function runCommandExecutionContractTest(): void {
         },
       },
     ],
-    fireEnabled: true,
     fireState: 'fireAtWill',
     priorityTargetId: null,
     priorityTargetPoint: null,
@@ -919,7 +913,6 @@ export function runCommandExecutionContractTest(): void {
         },
       },
     ],
-    fireEnabled: true,
     fireState: 'fireAtWill',
     priorityTargetId: unit.id,
     priorityTargetPoint: { x: 200, y: 260, z: world.getGroundZ(200, 260) },
@@ -1035,7 +1028,6 @@ export function runCommandExecutionContractTest(): void {
     holdFireCombatAfter !== undefined &&
       holdFireCombatAfter !== null &&
       holdFireCombatAfter.fireState === 'holdFire' &&
-      holdFireCombatAfter.fireEnabled === false &&
       holdFireCombatAfter.priorityTargetId === null &&
       holdFireCombatAfter.priorityTargetPoint === null &&
       holdFireCombatAfter.manualLaunchActive === false &&

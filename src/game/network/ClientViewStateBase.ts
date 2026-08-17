@@ -1377,8 +1377,6 @@ export class ClientViewStateBase {
           : moveStateCode === 1
             ? 'holdPosition'
             : 'maneuver';
-      } else if (values[base + 55] !== 0) {
-        existing.unit.moveState = values[base + 56] !== 0 ? 'holdPosition' : 'maneuver';
       }
       if (values[base + 61] !== 0) {
         existing.unit.wantCloak = values[base + 62] >= 1;
@@ -1550,7 +1548,6 @@ export class ClientViewStateBase {
         ? unitFireStateFromWireCode(values[base + 52] | 0)
         : 'fireAtWill';
       combat.fireState = fireState;
-      combat.fireEnabled = fireState !== 'holdFire';
       combat.trajectoryMode = values[base + 57] !== 0
         ? trajectoryModeFromWireCode(values[base + 58] | 0)
         : 'auto';
@@ -1561,8 +1558,6 @@ export class ClientViewStateBase {
       : false;
     if (values[base + 59] !== 0) {
       existing.unit.moveState = unitMoveStateFromWireCode(values[base + 60] | 0);
-    } else if (values[base + 55] !== 0) {
-      existing.unit.moveState = values[base + 56] !== 0 ? 'holdPosition' : 'maneuver';
     } else {
       existing.unit.moveState = unitBlueprintBarDefaultMoveState(existing.unit.unitBlueprintId);
     }

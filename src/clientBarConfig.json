@@ -324,8 +324,8 @@
     "realDefault": false
   },
   "entityShadows": {
-    "demoDefault": true,
-    "realDefault": true
+    "demoDefault": false,
+    "realDefault": false
   },
   "forceFieldsVisible": {
     "demoDefault": true,

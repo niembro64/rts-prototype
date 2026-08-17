@@ -1163,7 +1163,6 @@ function appendDirectUnitEntityWireRow(
     (trajectoryMode !== 'auto' || !isFull);
   const hasRepeatQueue = shouldEmitActions && (unit.repeatQueue === true || !isFull);
   const hasMoveState = shouldEmitActions && (unit.moveState !== 'maneuver' || !isFull);
-  const hasHoldPosition = shouldEmitActions && (unit.moveState === 'holdPosition' || !isFull);
   const hasWantCloak = shouldEmitActions && (unit.wantCloak === true || !isFull);
   const hasCloaked = combatModeChanged && (unit.cloaked === true || !isFull);
   const hasCloakState = hasWantCloak || hasCloaked;
@@ -1207,11 +1206,8 @@ function appendDirectUnitEntityWireRow(
   values[base + 33] = orientation !== null && hasVel && angularVelocity !== null && angularVelocity !== undefined ? angularVelocity.x : 0;
   values[base + 34] = orientation !== null && hasVel && angularVelocity !== null && angularVelocity !== undefined ? angularVelocity.y : 0;
   values[base + 35] = orientation !== null && hasVel && angularVelocity !== null && angularVelocity !== undefined ? angularVelocity.z : 0;
-  const fireState = entity.combat?.fireState ??
-    (entity.combat?.fireEnabled === false ? 'holdFire' : 'fireAtWill');
-  values[base + 36] = combatModeChanged && fireState === 'holdFire'
-    ? 1
-    : 0;
+  const fireState = entity.combat?.fireState ?? 'fireAtWill';
+  values[base + 36] = 0;
   values[base + 37] = isFull && isCommander(entity) ? 1 : 0;
   values[base + 38] = hasBuildTarget ? 1 : 0;
   values[base + 39] = hasBuildTarget && !canSendBuildTarget ? 1 : 0;
@@ -1230,8 +1226,8 @@ function appendDirectUnitEntityWireRow(
   values[base + 52] = fireStateToWireCode(fireState);
   values[base + 53] = hasRepeatQueue ? 1 : 0;
   values[base + 54] = unit.repeatQueue === true ? 1 : 0;
-  values[base + 55] = hasHoldPosition ? 1 : 0;
-  values[base + 56] = unit.moveState === 'holdPosition' ? 1 : 0;
+  values[base + 55] = 0;
+  values[base + 56] = 0;
   values[base + 57] = hasTrajectoryMode ? 1 : 0;
   values[base + 58] = trajectoryModeToWireCode(trajectoryMode);
   values[base + 59] = hasMoveState ? 1 : 0;
@@ -1694,7 +1690,6 @@ export function serializeEntitySnapshot(
       u.trajectoryMode = null;
       u.repeatQueue = null;
       u.moveState = null;
-      u.holdPosition = null;
       u.wantCloak = null;
       u.builderPriorityLow = null;
       u.carrierSpawnEnabled = null;
@@ -1796,11 +1791,6 @@ export function serializeEntitySnapshot(
           : isFull
             ? null
             : 'maneuver';
-        u.holdPosition = entity.unit.moveState === 'holdPosition'
-          ? true
-          : isFull
-            ? null
-            : false;
         u.wantCloak = entity.unit.wantCloak === true
           ? true
           : isFull

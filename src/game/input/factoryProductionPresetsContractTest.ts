@@ -15,12 +15,9 @@ function assertContract(condition: boolean, message: string): void {
 }
 
 export function runFactoryProductionPresetsContractTest(): void {
-  const legacy = normalizeFactoryProductionPresetSnapshot('unitLynx');
   assertContract(
-    legacy?.selectedUnitBlueprintId === 'unitLynx' &&
-      legacy.repeatProduction === true &&
-      legacy.productionQueue.length === 0,
-    'legacy single-unit preset must migrate to a repeat snapshot',
+    normalizeFactoryProductionPresetSnapshot('unitLynx') === null,
+    'obsolete single-unit preset shape must be rejected',
   );
 
   const empty = normalizeFactoryProductionPresetSnapshot({
@@ -88,7 +85,7 @@ export function runFactoryProductionPresetsContractTest(): void {
         {
           selectedUnitBlueprintId: 'unitLynx',
           repeatProduction: false,
-          productionQueue: ['unitBee', '', 'unitTick'],
+          productionQueue: ['unitBee', 'unitTick'],
         },
       ]),
     );
@@ -96,16 +93,14 @@ export function runFactoryProductionPresetsContractTest(): void {
     const loaded = loadFactoryProductionPresetSlots();
     assertContract(loaded.length === FACTORY_PRODUCTION_PRESET_COUNT, 'load must return every preset slot');
     assertContract(
-      loaded[0]?.selectedUnitBlueprintId === 'unitTick' &&
-        loaded[0]?.repeatProduction === true &&
-        loaded[0]?.productionQueue.length === 0,
-      'stored legacy slots must migrate on load',
+      loaded[0] === null,
+      'stored obsolete slots must be rejected on load',
     );
     assertContract(
       loaded[1]?.selectedUnitBlueprintId === 'unitLynx' &&
         loaded[1]?.repeatProduction === false &&
         loaded[1]?.productionQueue.join(',') === 'unitBee,unitTick',
-      'stored snapshots must preserve selected unit, finite repeat state, and cleaned queue',
+      'stored current snapshots must preserve selected unit, finite repeat state, and queue',
     );
 
     setFactoryProductionPresetSlot(2, {

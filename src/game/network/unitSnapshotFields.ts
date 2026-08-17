@@ -61,8 +61,6 @@ export function readNetworkCombatFireState(
   unitBlueprintId?: string | null,
 ): CombatFireState {
   if (isNetworkCombatFireState(src?.fireState)) return src.fireState;
-  if (src?.fireEnabled === false) return 'holdFire';
-  if (src?.fireEnabled === true) return 'fireAtWill';
   return unitBlueprintId !== null && unitBlueprintId !== undefined
     ? unitBlueprintBarDefaultFireState(unitBlueprintId)
     : 'fireAtWill';
@@ -73,8 +71,6 @@ export function readNetworkUnitMoveState(
   unitBlueprintId?: string | null,
 ): UnitMoveState {
   if (isNetworkUnitMoveState(src?.moveState)) return src.moveState;
-  if (src?.holdPosition === true) return 'holdPosition';
-  if (src?.holdPosition === false) return 'maneuver';
   return unitBlueprintId !== null && unitBlueprintId !== undefined
     ? unitBlueprintBarDefaultMoveState(unitBlueprintId)
     : 'maneuver';
@@ -91,12 +87,10 @@ export function createNetworkUnitSnapshot(): NetworkUnitSnapshot {
     surfaceNormal: null,
     orientation: null,
     angularVelocity3: null,
-    fireEnabled: null,
     fireState: null,
     trajectoryMode: null,
     repeatQueue: null,
     moveState: null,
-    holdPosition: null,
     wantCloak: null,
     builderPriorityLow: null,
     carrierSpawnEnabled: null,
@@ -284,7 +278,6 @@ export function applyNetworkUnitCombatMode(
 ): void {
   if (!entity.combat) return;
   entity.combat.fireState = readNetworkCombatFireState(src, entity.unit?.unitBlueprintId);
-  entity.combat.fireEnabled = entity.combat.fireState !== 'holdFire';
   if (src.trajectoryMode !== null && src.trajectoryMode !== undefined) {
     entity.combat.trajectoryMode = src.trajectoryMode;
   } else if (isFull) {
@@ -304,8 +297,6 @@ export function applyNetworkUnitCommandState(
   }
   if (src.moveState !== null && src.moveState !== undefined) {
     unit.moveState = readNetworkUnitMoveState(src, unit.unitBlueprintId);
-  } else if (src.holdPosition !== null && src.holdPosition !== undefined) {
-    unit.moveState = src.holdPosition === true ? 'holdPosition' : 'maneuver';
   } else if (isFull) {
     unit.moveState = unitBlueprintBarDefaultMoveState(unit.unitBlueprintId);
   }
@@ -441,19 +432,17 @@ export function writeNetworkUnitCombatMode(
   entity: Entity,
 ): void {
   const combat = entity.combat;
-  const fireState = combat?.fireState ?? (combat?.fireEnabled === false ? 'holdFire' : 'fireAtWill');
+  const fireState = combat?.fireState ?? 'fireAtWill';
   const defaultFireState = entity.unit !== null
     ? unitBlueprintBarDefaultFireState(entity.unit.unitBlueprintId)
     : 'fireAtWill';
   dst.fireState = combat !== null && fireState !== defaultFireState ? fireState : null;
-  dst.fireEnabled = combat !== null && fireState === 'holdFire' ? false : null;
   dst.trajectoryMode = combat !== null && combat.trajectoryMode !== 'auto'
     ? combat.trajectoryMode
     : null;
 }
 
 export function clearNetworkUnitCombatMode(dst: NetworkUnitSnapshot): void {
-  dst.fireEnabled = null;
   dst.fireState = null;
   dst.trajectoryMode = null;
 }
@@ -626,12 +615,10 @@ export function copyNetworkUnitSnapshotInto(
     dst.orientation = null;
   }
   dst.angularVelocity3 = copyVec3OptionalInto(src.angularVelocity3, dst.angularVelocity3);
-  dst.fireEnabled = src.fireEnabled ?? null;
   dst.fireState = src.fireState ?? null;
   dst.trajectoryMode = src.trajectoryMode ?? null;
   dst.repeatQueue = src.repeatQueue ?? null;
   dst.moveState = src.moveState ?? null;
-  dst.holdPosition = src.holdPosition ?? null;
   dst.wantCloak = src.wantCloak ?? null;
   dst.builderPriorityLow = src.builderPriorityLow ?? null;
   dst.carrierSpawnEnabled = src.carrierSpawnEnabled ?? null;

@@ -1,5 +1,6 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, PlayerId } from '../sim/types';
+import { getBuildingCombatCenterZ } from '../sim/buildingAnchors';
 import { entitySlotRegistry, type EntityStateViews } from '../sim/EntitySlotRegistry';
 import {
   ENTITY_STATE_KIND_BUILDING,
@@ -28,11 +29,15 @@ import {
 } from './snapshotWireRows';
 import { quantizeMinimapPosition as qPos } from './snapshotQuantization';
 import {
-  getEntityMediumOccupancy,
-  getSphericalUnderwaterFraction,
-} from '../sim/entityMediumOccupancy';
+  CONTACT_MEDIUM_NONE,
+  MINIMAP_CONTACT_FLAG_ALTITUDE,
+  MINIMAP_CONTACT_FLAG_RADAR_ONLY,
+  contactMediumMaskToMinimapFlags,
+  type ContactMediumMask,
+} from './contactMedium';
 
-export const MINIMAP_SNAPSHOT_WIRE_STRIDE = 6;
+/** id, x, y, coarse type, anonymous owner, flags, contact observation z. */
+export const MINIMAP_SNAPSHOT_WIRE_STRIDE = 7;
 
 type MinimapSnapshotWireSource = Float64WireRows;
 
@@ -68,14 +73,6 @@ function minimapOwnerId(playerId: number, radarOnly: boolean): number {
   return radarOnly ? CONTACT_ONLY_OWNER_ID : playerId;
 }
 
-/** Which lane a contact reads as. A body straddling the surface is present in
- *  both media, so pick the one holding most of its volume: that is the surface
- *  the blip sits at, and the only altitude information a contact ever grants. */
-function contactUnderwaterFlag(entity: Entity, radarOnly: boolean): boolean | null {
-  if (!radarOnly) return null;
-  return getEntityMediumOccupancy(entity).underwater >= 0.5;
-}
-
 function writeMinimapEntityValues(
   out: NetworkServerSnapshotMinimapEntity,
   id: number,
@@ -83,13 +80,15 @@ function writeMinimapEntityValues(
   playerId: PlayerId,
   x: number,
   y: number,
+  z: number,
   radarOnly: boolean,
-  contactUnderwater: boolean | null,
+  contactMediumMask: ContactMediumMask,
 ): NetworkServerSnapshotMinimapEntity {
   out.id = id;
   out.type = type;
   out.playerId = minimapOwnerId(playerId, radarOnly) as PlayerId;
-  out.contactUnderwater = contactUnderwater;
+  out.contactMediumMask = radarOnly ? contactMediumMask : null;
+  out.contactZ = radarOnly ? z : null;
   out.pos.x = x;
   out.pos.y = y;
   // Reset the pool slot's flag — pool entries are reused so a slot
@@ -103,6 +102,7 @@ function writeMinimapEntity(
   out: NetworkServerSnapshotMinimapEntity,
   entity: Entity,
   radarOnly: boolean,
+  contactMediumMask: ContactMediumMask,
 ): NetworkServerSnapshotMinimapEntity {
   const ownership = entity.ownership;
   return writeMinimapEntityValues(
@@ -112,8 +112,9 @@ function writeMinimapEntity(
     (ownership !== null ? ownership.playerId : 1) as PlayerId,
     qPos(entity.transform.x),
     qPos(entity.transform.y),
+    qPos(entity.building !== null ? getBuildingCombatCenterZ(entity) : entity.transform.z),
     radarOnly,
-    contactUnderwaterFlag(entity, radarOnly),
+    contactMediumMask,
   );
 }
 
@@ -147,6 +148,7 @@ function writeMinimapEntityFromSlot(
   views: EntityStateViews,
   slot: number,
   radarOnly: boolean,
+  contactMediumMask: ContactMediumMask,
 ): NetworkServerSnapshotMinimapEntity {
   const type = minimapDtoTypeFromEntityStateKind(views.kind[slot]);
   if (type === null) {
@@ -159,10 +161,9 @@ function writeMinimapEntityFromSlot(
     (views.ownerPlayerId[slot] || 1) as PlayerId,
     qPos(views.posX[slot]),
     qPos(views.posY[slot]),
+    qPos(views.posZ[slot]),
     radarOnly,
-    radarOnly
-      ? getSphericalUnderwaterFraction(views.posZ[slot], views.radiusHitbox[slot]) >= 0.5
-      : null,
+    contactMediumMask,
   );
 }
 
@@ -191,9 +192,11 @@ function appendMinimapWireRowValues(
   id: number,
   x: number,
   y: number,
+  z: number,
   typeTag: number,
   playerId: number,
   radarOnly: boolean,
+  contactMediumMask: ContactMediumMask,
 ): void {
   const rowIndex = reserveFloat64WireRows(source, 1, MINIMAP_SNAPSHOT_WIRE_STRIDE);
   const values = source.values;
@@ -204,14 +207,20 @@ function appendMinimapWireRowValues(
   values[base + 3] = typeTag;
   values[base + 4] = minimapOwnerId(playerId, radarOnly);
   let flags = 0;
-  if (radarOnly) flags |= 0x01;
+  if (radarOnly) {
+    flags |= MINIMAP_CONTACT_FLAG_RADAR_ONLY;
+    flags |= contactMediumMaskToMinimapFlags(contactMediumMask);
+    flags |= MINIMAP_CONTACT_FLAG_ALTITUDE;
+  }
   values[base + 5] = flags;
+  values[base + 6] = radarOnly ? z : 0;
 }
 
 function appendMinimapWireRow(
   source: MinimapSnapshotWireSource,
   entity: Entity,
   radarOnly: boolean,
+  contactMediumMask: ContactMediumMask,
 ): void {
   const ownership = entity.ownership;
   appendMinimapWireRowValues(
@@ -219,11 +228,13 @@ function appendMinimapWireRow(
     entity.id,
     qPos(entity.transform.x),
     qPos(entity.transform.y),
+    qPos(entity.building !== null ? getBuildingCombatCenterZ(entity) : entity.transform.z),
     entity.unit
       ? ENTITY_SNAPSHOT_WIRE_TYPE_UNIT
       : ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING,
     ownership !== null ? ownership.playerId : 1,
     radarOnly,
+    contactMediumMask,
   );
 }
 
@@ -232,15 +243,18 @@ function appendMinimapWireRowFromSlot(
   views: EntityStateViews,
   slot: number,
   radarOnly: boolean,
+  contactMediumMask: ContactMediumMask,
 ): void {
   appendMinimapWireRowValues(
     source,
     views.entityId[slot],
     qPos(views.posX[slot]),
     qPos(views.posY[slot]),
+    qPos(views.posZ[slot]),
     minimapWireTypeFromEntityStateKind(views.kind[slot]),
     views.ownerPlayerId[slot] || 1,
     radarOnly,
+    contactMediumMask,
   );
 }
 
@@ -257,8 +271,17 @@ export function getMinimapSnapshotWireSource(
 function forEachMinimapCandidate(
   world: WorldState,
   visibility: SnapshotVisibility | undefined,
-  emitFromSlot: (views: EntityStateViews, slot: number, radarOnly: boolean) => void,
-  emitFromEntity: (entity: Entity, radarOnly: boolean) => void,
+  emitFromSlot: (
+    views: EntityStateViews,
+    slot: number,
+    radarOnly: boolean,
+    contactMediumMask: ContactMediumMask,
+  ) => void,
+  emitFromEntity: (
+    entity: Entity,
+    radarOnly: boolean,
+    contactMediumMask: ContactMediumMask,
+  ) => void,
 ): void {
   const radarEntityIds = visibility?.getRadarEntityIds();
   if (radarEntityIds !== undefined) {
@@ -269,13 +292,19 @@ function forEachMinimapCandidate(
       const slot = radarEntitySlots !== undefined ? radarEntitySlots[i] : -1;
       if (canReadMinimapEntityStateSlot(views, slot, radarEntityIds[i])) {
         const radarOnly = visibleEntityIdSet !== undefined && !visibleEntityIdSet.has(radarEntityIds[i]);
-        emitFromSlot(views, slot, radarOnly);
+        const contactMediumMask = radarOnly
+          ? visibility!.getEntityContactMediumMaskById(radarEntityIds[i])
+          : CONTACT_MEDIUM_NONE;
+        emitFromSlot(views, slot, radarOnly, contactMediumMask);
         continue;
       }
       const entity = world.getEntity(radarEntityIds[i]);
       if (!entity) continue;
       const radarOnly = visibleEntityIdSet !== undefined && !visibleEntityIdSet.has(entity.id);
-      emitFromEntity(entity, radarOnly);
+      const contactMediumMask = radarOnly
+        ? visibility!.getEntityContactMediumMask(entity)
+        : CONTACT_MEDIUM_NONE;
+      emitFromEntity(entity, radarOnly, contactMediumMask);
     }
     return;
   }
@@ -300,7 +329,10 @@ function forEachMinimapCandidate(
       // color, no type icon). Full-vision contacts get the normal
       // identifiable rendering.
       const radarOnly = visibility !== undefined && !visibility.isEntityVisible(entity);
-      emitFromEntity(entity, radarOnly);
+      const contactMediumMask = radarOnly
+        ? visibility!.getEntityContactMediumMask(entity)
+        : CONTACT_MEDIUM_NONE;
+      emitFromEntity(entity, radarOnly, contactMediumMask);
     }
   }
 }
@@ -317,11 +349,17 @@ export function writeMinimapSnapshotWireRowsDirect(
   forEachMinimapCandidate(
     world,
     visibility,
-    (views, slot, radarOnly) => {
-      appendMinimapWireRowFromSlot(directMinimapWireSource, views, slot, radarOnly);
+    (views, slot, radarOnly, contactMediumMask) => {
+      appendMinimapWireRowFromSlot(
+        directMinimapWireSource,
+        views,
+        slot,
+        radarOnly,
+        contactMediumMask,
+      );
     },
-    (entity, radarOnly) => {
-      appendMinimapWireRow(directMinimapWireSource, entity, radarOnly);
+    (entity, radarOnly, contactMediumMask) => {
+      appendMinimapWireRow(directMinimapWireSource, entity, radarOnly, contactMediumMask);
     },
   );
 
@@ -349,14 +387,14 @@ export function serializeMinimapSnapshotEntities(
     forEachMinimapCandidate(
       world,
       visibility,
-      (views, slot, radarOnly) => {
+      (views, slot, radarOnly, contactMediumMask) => {
         const out = getPooledItem(state, createMinimapEntityDto);
-        writeMinimapEntityFromSlot(out, views, slot, radarOnly);
+        writeMinimapEntityFromSlot(out, views, slot, radarOnly, contactMediumMask);
         state.buf.push(out);
       },
-      (entity, radarOnly) => {
+      (entity, radarOnly, contactMediumMask) => {
         const out = getPooledItem(state, createMinimapEntityDto);
-        writeMinimapEntity(out, entity, radarOnly);
+        writeMinimapEntity(out, entity, radarOnly, contactMediumMask);
         state.buf.push(out);
       },
     );
@@ -366,16 +404,16 @@ export function serializeMinimapSnapshotEntities(
   forEachMinimapCandidate(
     world,
     visibility,
-    (views, slot, radarOnly) => {
+    (views, slot, radarOnly, contactMediumMask) => {
       const out = getPooledItem(state, createMinimapEntityDto);
-      writeMinimapEntityFromSlot(out, views, slot, radarOnly);
-      appendMinimapWireRowFromSlot(wireSource, views, slot, radarOnly);
+      writeMinimapEntityFromSlot(out, views, slot, radarOnly, contactMediumMask);
+      appendMinimapWireRowFromSlot(wireSource, views, slot, radarOnly, contactMediumMask);
       state.buf.push(out);
     },
-    (entity, radarOnly) => {
+    (entity, radarOnly, contactMediumMask) => {
       const out = getPooledItem(state, createMinimapEntityDto);
-      writeMinimapEntity(out, entity, radarOnly);
-      appendMinimapWireRow(wireSource, entity, radarOnly);
+      writeMinimapEntity(out, entity, radarOnly, contactMediumMask);
+      appendMinimapWireRow(wireSource, entity, radarOnly, contactMediumMask);
       state.buf.push(out);
     },
   );

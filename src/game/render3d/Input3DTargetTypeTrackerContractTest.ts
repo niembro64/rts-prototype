@@ -21,7 +21,6 @@ function host(id: number, x: number, y: number, priorityTargetId: number | null 
     ownership: { playerId: 1 },
     unit: { unitBlueprintId: 'unitMongoose', hp: 100, maxHp: 100 } as Entity['unit'],
     combat: {
-      fireEnabled: true,
       fireState: 'fireAtWill',
       trajectoryMode: 'auto',
       manualLaunchActive: false,

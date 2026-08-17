@@ -540,3 +540,70 @@ export class EntityLodProxyRenderer3D implements EntityLodProxyRendererBackend3D
     this.backend.destroy();
   }
 }
+
+/** Reusable single-batch form of the LOD:OFF proxy pipeline. Fog contacts use
+ * this instead of physical sphere meshes, while supplying their own fixed
+ * radius, neutral color, and non-identifying glyph. */
+export class LodProxyPointBatchRenderer3D {
+  private readonly batch = createProxyPointBatch(true);
+
+  constructor(
+    private readonly world: THREE.Group,
+    private readonly canvas?: HTMLCanvasElement,
+  ) {
+    // Contacts are HUD knowledge, not physical bodies. Once a radar/sonar
+    // return is earned it must remain legible rather than being buried by the
+    // terrain whose ridge test already gated the contact.
+    this.batch.material.depthTest = false;
+    this.batch.material.depthWrite = false;
+    this.batch.points.renderOrder = TRANSPARENT_RENDER_ORDER_3D.entityParts + 0.5;
+    this.world.add(this.batch.points);
+  }
+
+  beginFrame(): void {
+    this.batch.count = 0;
+  }
+
+  pushProxy(
+    simX: number,
+    simY: number,
+    simZ: number,
+    radius: number,
+    glyph: number,
+    colorHex: number,
+    alpha: number,
+  ): void {
+    const slot = this.batch.count;
+    if (slot >= ENTITY_LOD_PROXY_CAP) return;
+    writePoint(
+      this.batch,
+      slot,
+      simX,
+      simZ,
+      simY,
+      radius,
+      glyph,
+      colorHex,
+      alpha,
+    );
+    this.batch.count = slot + 1;
+  }
+
+  flush(cssViewportHeight = 1): void {
+    const bufferHeight = this.canvas?.height ?? 0;
+    const physicalHeight = Number.isFinite(bufferHeight) && bufferHeight > 0
+      ? bufferHeight
+      : cssViewportHeight * (
+        typeof globalThis !== 'undefined' && globalThis.devicePixelRatio > 0
+          ? globalThis.devicePixelRatio
+          : 1
+      );
+    markBatchRange(this.batch, physicalHeight);
+  }
+
+  destroy(): void {
+    this.world.remove(this.batch.points);
+    this.batch.geometry.dispose();
+    this.batch.material.dispose();
+  }
+}

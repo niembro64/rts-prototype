@@ -241,8 +241,7 @@ function isTrajectoryControllable(entity: Entity): boolean {
 
 function fireStateLabel(entity: Entity): string | null {
   if (!isFireControllable(entity)) return null;
-  const fireState = entity.combat?.fireState ??
-    (entity.combat?.fireEnabled === false ? 'holdFire' : 'fireAtWill');
+  const fireState = entity.combat?.fireState ?? 'fireAtWill';
   return combatFireStateLabel(fireState);
 }
 
@@ -297,8 +296,7 @@ function addMultiSelectionStateDetails(
   for (const entity of selectedUnits) {
     if (!isFireControllable(entity)) continue;
     fireControlCount++;
-    const fireState = entity.combat?.fireState ??
-      (entity.combat?.fireEnabled === false ? 'holdFire' : 'fireAtWill');
+    const fireState = entity.combat?.fireState ?? 'fireAtWill';
     if (fireState === 'fireAtWill') fireAtWillCount++;
     if (fireState === 'returnFire') returnFireCount++;
     if (fireState === 'holdFire') holdFireCount++;
@@ -308,8 +306,7 @@ function addMultiSelectionStateDetails(
   for (const entity of selectedBuildings) {
     if (!isFireControllable(entity)) continue;
     fireControlCount++;
-    const fireState = entity.combat?.fireState ??
-      (entity.combat?.fireEnabled === false ? 'holdFire' : 'fireAtWill');
+    const fireState = entity.combat?.fireState ?? 'fireAtWill';
     if (fireState === 'fireAtWill') fireAtWillCount++;
     if (fireState === 'returnFire') returnFireCount++;
     if (fireState === 'holdFire') holdFireCount++;
@@ -896,7 +893,7 @@ export function buildSelectionInfo(
       fireControlCount++;
       if (entityHasBarSetTargetCommand(selectedUnit)) targetControlCount++;
       if (entityHasBarManualLaunchCommand(selectedUnit)) manualLaunchControlCount++;
-      const fireState = combat.fireState ?? (combat.fireEnabled === false ? 'holdFire' : 'fireAtWill');
+      const fireState = combat.fireState;
       if (fireState === 'fireAtWill') fireAtWillCount++;
       if (fireState === 'returnFire') returnFireCount++;
       if (fireState === 'holdFire') holdFireCount++;
@@ -946,7 +943,7 @@ export function buildSelectionInfo(
       fireControlCount++;
       if (entityHasBarSetTargetCommand(selectedBuilding)) targetControlCount++;
       if (entityHasBarManualLaunchCommand(selectedBuilding)) manualLaunchControlCount++;
-      const fireState = combat.fireState ?? (combat.fireEnabled === false ? 'holdFire' : 'fireAtWill');
+      const fireState = combat.fireState;
       if (fireState === 'fireAtWill') fireAtWillCount++;
       if (fireState === 'returnFire') returnFireCount++;
       if (fireState === 'holdFire') holdFireCount++;

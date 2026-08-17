@@ -12,7 +12,7 @@ import {
   MAX_NAME_LENGTH,
 } from '@/playerNamesConfig';
 
-// Re-export types from NetworkTypes for backward compatibility
+// Public network type facade used by callers that also construct NetworkManager.
 export type {
 
   
@@ -69,6 +69,7 @@ import {
   NetworkSendBudget,
   type NetworkSendBudgetTelemetry,
 } from './NetworkSendBudget';
+import { assertCurrentLobbySettings } from './LobbySettingsContract';
 
 // Player-name policy lives in @/playerNamesConfig — single source of
 // truth for both seeding (random funny name keyed by playerId) and the
@@ -1025,22 +1026,13 @@ export class NetworkManager {
         // Client receives game start signal
         if (this.role === 'client') {
           if (!this.isMessageForCurrentGame(message.gameId)) return;
-          if (message.assignedPlayerId !== undefined) {
-            this.localPlayerId = message.assignedPlayerId;
-            this.emitPlayerAssignment(message.assignedPlayerId);
-          }
+          this.localPlayerId = message.assignedPlayerId;
+          this.emitPlayerAssignment(message.assignedPlayerId);
           const handoff = normalizeBattleHandoffMessage(
             {
               gameId: message.gameId,
               playerIds: message.playerIds,
               handoff: message.handoff,
-            },
-            {
-              gameId: this.getUniversalGameId(),
-              roomCode: this.getRoomCode(),
-              playerIds: message.playerIds,
-              players: this.roster.asReadonlyMap(),
-              settings: this.readLobbySettings(),
             },
           );
           this.roster.applyBattleHandoff(handoff);
@@ -1095,6 +1087,7 @@ export class NetworkManager {
         // of truth and never broadcasts to itself.
         if (this.role === 'client') {
           if (!this.isMessageForCurrentGame(message.gameId)) return;
+          assertCurrentLobbySettings(message.settings, 'lobby settings packet');
           this.emitLobbySettings(message.settings);
         }
         break;
@@ -1281,12 +1274,16 @@ export class NetworkManager {
     // (LobbyManager → spawnInitialBases) already iterates `playerIds`
     // unconditionally, so a single id produces a single base.
 
+    const settings = this.readLobbySettings();
+    if (settings === undefined) {
+      throw new Error('[network] current battle handoff requires lobby settings');
+    }
     const handoff = buildBattleHandoff({
       gameId: this.getUniversalGameId(),
       roomCode: this.getRoomCode(),
       playerIds,
       players: this.roster.asReadonlyMap(),
-      settings: this.readLobbySettings(),
+      settings,
     });
     this.roster.applyBattleHandoff(handoff);
 

@@ -90,6 +90,7 @@ import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { packMinimapEntitiesForWire } from '../network/snapshotMinimapWirePack';
 import { packProjectilesForWire } from '../network/snapshotProjectileWirePack';
 import {
+  isPackedTerrainTileMapWire,
   packBuildabilityForWire,
   packTerrainForWire,
 } from '../network/snapshotStaticWirePack';
@@ -273,8 +274,6 @@ type UnitFixture = BasicEntityFixture & {
     surfaceNormal?: { nx: number; ny: number; nz: number };
     orientation?: { x: number; y: number; z: number; w: number };
     angularVelocity3?: { x: number; y: number; z: number };
-    fireEnabled?: false;
-    fireState?: 'fireAtWill' | 'returnFire' | 'holdFire' | 'defend' | 'fireAtAll';
     isCommander?: true;
     buildTargetId?: number | null;
     actions?: ActionFixture[];
@@ -518,16 +517,6 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         angularVelocity3: { x: -25, y: -50, z: -75 },
       },
     },
-    // fireEnabled (hold-fire mode)
-    {
-      id: 610, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
-      unit: {
-        hp: { curr: 100, max: 100 },
-        velocity: { x: 0, y: 0, z: 0 },
-        fireEnabled: false,
-        fireState: 'holdFire',
-      },
-    },
     // isCommander flag (commander shell)
     {
       id: 611, type: 'unit', pos: { x: 1000, y: 1000, z: 50 }, rotation: 0, playerId: 1,
@@ -555,15 +544,13 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         buildTargetId: null,
       },
     },
-    // All three scalar optionals together (commander on hold-fire while building)
+    // Commander and build target scalar optionals together.
     {
       id: 614, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1, changedFields: 0x1008,
       unit: {
         hp: { curr: 4500, max: 5000 },
         velocity: { x: 0, y: 0, z: 0 },
         isCommander: true,
-        fireEnabled: false,
-        fireState: 'holdFire',
         buildTargetId: 99999,
       },
     },
@@ -853,7 +840,6 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
     const hasOrientation = or !== undefined ? 1 : 0;
     const av = f.unit.angularVelocity3;
     const hasAngularVelocity3 = av !== undefined ? 1 : 0;
-    const hasFireEnabled = f.unit.fireEnabled === false ? 1 : 0;
     const hasIsCommander = f.unit.isCommander === true ? 1 : 0;
     const hasBuildTargetId = f.unit.buildTargetId !== undefined ? 1 : 0;
     const buildTargetIdIsNull = f.unit.buildTargetId === null ? 1 : 0;
@@ -908,7 +894,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       or?.x ?? 0, or?.y ?? 0, or?.z ?? 0, or?.w ?? 0,
       hasAngularVelocity3,
       av?.x ?? 0, av?.y ?? 0, av?.z ?? 0,
-      hasFireEnabled,
+      0,
       hasIsCommander,
       hasBuildTargetId,
       buildTargetIdIsNull,
@@ -1280,6 +1266,8 @@ type MinimapEntityFixture = {
   type: Exclude<EntityType, 'shot'>;
   playerId: number;
   radarOnly?: boolean;
+  contactMediumMask?: number;
+  contactZ?: number;
 };
 
 type GameStateFixture = {
@@ -1287,7 +1275,7 @@ type GameStateFixture = {
   winnerId?: number;
 };
 
-const MINIMAP_SCRATCH_STRIDE = 6;
+const MINIMAP_SCRATCH_STRIDE = 7;
 
 function packMinimapIntoScratch(
   memory: WebAssembly.Memory,
@@ -1305,28 +1293,48 @@ function packMinimapIntoScratch(
     view[base + 2] = m.pos.y;
     view[base + 3] = entityTypeToSnapshotTag(m.type);
     view[base + 4] = m.playerId;
-    // Pack: bit 0 = has, bit 1 = value
+    // Pack: bit 0 = radar has, bit 1 = radar value, bits 2..3 = contact
+    // medium value, bit 4 = contact medium has, bit 5 = contact z has.
     let packed = 0;
     if (m.radarOnly !== undefined) {
       packed |= 0x01;
-      if (m.radarOnly) packed |= 0x02;
+      if (m.radarOnly) {
+        packed |= 0x02;
+        if (m.contactMediumMask === undefined || (m.contactMediumMask & 0x03) === 0) {
+          throw new Error(`[snapshot fixture] minimap contact ${m.id} requires contactMediumMask`);
+        }
+        if (m.contactZ === undefined || !Number.isFinite(m.contactZ)) {
+          throw new Error(`[snapshot fixture] minimap contact ${m.id} requires contactZ`);
+        }
+        packed |= 0x30;
+        packed |= (m.contactMediumMask & 0x03) << 2;
+      }
     }
     view[base + 5] = packed;
+    view[base + 6] = m.contactZ ?? 0;
   }
 }
 
 type NetworkMinimapFixture = NonNullable<NetworkServerSnapshot['minimapEntities']>;
 
 function networkMinimapFixture(entries: MinimapEntityFixture[]): NetworkMinimapFixture {
-  return entries.map((entry) => ({
-    id: entry.id,
-    pos: { x: entry.pos.x, y: entry.pos.y },
-    type: entry.type,
-    playerId: entry.playerId as NetworkMinimapFixture[number]['playerId'],
-    radarOnly: entry.radarOnly === undefined ? null : entry.radarOnly,
-    // Contacts round-trip their lane; fully visible rows carry none.
-    contactUnderwater: entry.radarOnly === true ? false : null,
-  }));
+  return entries.map((entry) => {
+    if (
+      entry.radarOnly === true &&
+      (entry.contactMediumMask === undefined || entry.contactZ === undefined)
+    ) {
+      throw new Error(`[snapshot fixture] minimap contact ${entry.id} is incomplete`);
+    }
+    return {
+      id: entry.id,
+      pos: { x: entry.pos.x, y: entry.pos.y },
+      type: entry.type,
+      playerId: entry.playerId as NetworkMinimapFixture[number]['playerId'],
+      radarOnly: entry.radarOnly === undefined ? null : entry.radarOnly,
+      contactMediumMask: entry.radarOnly === true ? entry.contactMediumMask! : null,
+      contactZ: entry.radarOnly === true ? entry.contactZ! : null,
+    };
+  });
 }
 
 type ProjectileSpawnFixture = {
@@ -2281,7 +2289,15 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       minimapEntities: [
         { id: 1, pos: { x: 100, y: 100 }, type: 'unit', playerId: 1 },
         { id: 2, pos: { x: 200, y: 300 }, type: 'building', playerId: 2 },
-        { id: 3, pos: { x: -50, y: 0 }, type: 'unit', playerId: 3, radarOnly: true },
+        {
+          id: 3,
+          pos: { x: -50, y: 0 },
+          type: 'unit',
+          playerId: 3,
+          radarOnly: true,
+          contactMediumMask: 0x03,
+          contactZ: 725,
+        },
       ],
       economy: {},
     },
@@ -3080,7 +3096,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           sn !== undefined ? 1 : 0, sn?.nx ?? 0, sn?.ny ?? 0, sn?.nz ?? 0,
           or !== undefined ? 1 : 0, or?.x ?? 0, or?.y ?? 0, or?.z ?? 0, or?.w ?? 0,
           av !== undefined ? 1 : 0, av?.x ?? 0, av?.y ?? 0, av?.z ?? 0,
-          u.unit.fireEnabled === false ? 1 : 0,
+          0,
           u.unit.isCommander === true ? 1 : 0,
           u.unit.buildTargetId !== undefined ? 1 : 0,
           u.unit.buildTargetId === null ? 1 : 0,
@@ -3261,16 +3277,49 @@ function runPackedMinimapCases(memory: WebAssembly.Memory): { passed: number; fa
         { id: 7, pos: { x: 120, y: 210 }, type: 'unit', playerId: 1 },
         { id: 9, pos: { x: -30, y: 40 }, type: 'building', playerId: 2 },
         { id: 10, pos: { x: -24, y: 36 }, type: 'building', playerId: 2 },
-        { id: 12, pos: { x: 400, y: -120 }, type: 'unit', playerId: 2, radarOnly: true },
-        { id: 18, pos: { x: 401, y: -122 }, type: 'unit', playerId: 2, radarOnly: true },
+        {
+          id: 12,
+          pos: { x: 400, y: -120 },
+          type: 'unit',
+          playerId: 2,
+          radarOnly: true,
+          contactMediumMask: 0x01,
+          contactZ: 900,
+        },
+        {
+          id: 18,
+          pos: { x: 401, y: -122 },
+          type: 'unit',
+          playerId: 2,
+          radarOnly: true,
+          contactMediumMask: 0x02,
+          contactZ: -120,
+        },
+        {
+          id: 19,
+          pos: { x: 405, y: -125 },
+          type: 'building',
+          playerId: 2,
+          radarOnly: true,
+          contactMediumMask: 0x03,
+          contactZ: 5,
+        },
       ],
     },
     {
       tick: 13,
-      label: 'explicit false collapses like JS V2 packer',
+      label: 'explicit false and current contact contract',
       minimapEntities: [
         { id: 4, pos: { x: 1, y: 2 }, type: 'unit', playerId: 1, radarOnly: false },
-        { id: 5, pos: { x: 3, y: 4 }, type: 'building', playerId: 1, radarOnly: true },
+        {
+          id: 5,
+          pos: { x: 3, y: 4 },
+          type: 'building',
+          playerId: 1,
+          radarOnly: true,
+          contactMediumMask: 0x01,
+          contactZ: 30,
+        },
       ],
     },
   ];
@@ -3583,11 +3632,19 @@ function runPackedStaticCases(memory: WebAssembly.Memory): { passed: number; fai
   let passed = 0;
   let failed = 0;
   for (const f of fixtures) {
+    const packedTerrain = packTerrainForWire(f.terrain);
+    if (
+      packedTerrain === undefined ||
+      !isPackedTerrainTileMapWire(packedTerrain) ||
+      isPackedTerrainTileMapWire({ ...packedTerrain, v: 4 })
+    ) {
+      throw new Error('[snapshot encoder] terrain wire must accept only the current packet version');
+    }
     const wireFixture = {
       tick: f.tick,
       entities: [],
       economy: {},
-      terrain: packTerrainForWire(f.terrain),
+      terrain: packedTerrain,
       buildability: packBuildabilityForWire(f.buildability),
     };
     const jsBytes = msgpackEncode(wireFixture, SNAPSHOT_ENCODE_OPTIONS);

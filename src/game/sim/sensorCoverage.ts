@@ -80,7 +80,7 @@ function resolveTurretSensorPosition(
   return resolveWeaponWorldMount(entity, turret, turretIndex, cos, sin, undefined, out);
 }
 
-type TurretSensorSource = {
+export type TurretSensorSource = {
   mount: Turret | SensorMountCapability;
   turretIndex: number;
   position: Vec3;

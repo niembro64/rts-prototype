@@ -379,7 +379,7 @@ function combatCanFire(combat: Entity['combat']): boolean {
   // even under Hold Fire. Entering Hold Fire still cancels old priorities;
   // only a command issued after that transition recreates one.
   if (combat.priorityTargetId !== null || combat.priorityTargetPoint !== null) return true;
-  const fireState = combat.fireState ?? (combat.fireEnabled === false ? 'holdFire' : 'fireAtWill');
+  const fireState = combat.fireState;
   if (fireState === 'fireAtWill' || fireState === 'defend' || fireState === 'fireAtAll') return true;
   return false;
 }

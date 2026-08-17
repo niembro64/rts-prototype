@@ -26,8 +26,7 @@ import {
 } from '../network/snapshotEntityVisibility';
 import { appendUnique } from '../collections';
 import {
-  encodeNetworkSnapshotWithRustFallback,
-  isRustSnapshotWireEnabled,
+  encodeNetworkSnapshotWithRust,
 } from '../network/snapshotRustWireEncoder';
 import { IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
 import {
@@ -57,8 +56,6 @@ import {
   type DirectSnapshotDelivery,
   type SnapshotSupplementalBuffers,
 } from './ServerSnapshotSupplementalMaterializer';
-
-const ENABLE_DIRECT_RUST_SNAPSHOT_WIRE = isRustSnapshotWireEnabled();
 
 type DirectSerializedListenerSnapshot = {
   state: NetworkServerSnapshot;
@@ -207,7 +204,7 @@ export class ServerSnapshotDirectWirePreencoder {
     materializationStages: SnapshotMaterializationStageDurations | undefined,
   ): SnapshotWirePayload | undefined {
     const stageStart = performance.now();
-    const encoded = encodeNetworkSnapshotWithRustFallback(state as NetworkServerSnapshotWire);
+    const encoded = encodeNetworkSnapshotWithRust(state as NetworkServerSnapshotWire);
     const encodeMs = performance.now() - stageStart;
     if (materializationStages !== undefined) {
       addSnapshotMaterializationStageFromStart(
@@ -231,7 +228,6 @@ export class ServerSnapshotDirectWirePreencoder {
   }
 
   tryEncode(input: ServerSnapshotDirectWireInput): DirectSerializedListenerSnapshot | undefined {
-    if (input.delivery.preencodeWire && !ENABLE_DIRECT_RUST_SNAPSHOT_WIRE) return undefined;
     if (getSimWasm() === undefined) return undefined;
 
     this.fullVisibleEntityIds.length = 0;
@@ -250,7 +246,6 @@ export class ServerSnapshotDirectWirePreencoder {
   tryEncodeSparseDelta(
     input: ServerSnapshotSparseDeltaDirectWireInput,
   ): DirectSerializedListenerSnapshot | undefined {
-    if (input.delivery.preencodeWire && !ENABLE_DIRECT_RUST_SNAPSHOT_WIRE) return undefined;
     if (getSimWasm() === undefined) return undefined;
 
     const state = this.materializeSparseDeltaWireState(input);
@@ -266,7 +261,6 @@ export class ServerSnapshotDirectWirePreencoder {
   tryEncodeRichDelta(
     input: ServerSnapshotRichDeltaDirectWireInput,
   ): DirectSerializedListenerSnapshot | undefined {
-    if (input.delivery.preencodeWire && !ENABLE_DIRECT_RUST_SNAPSHOT_WIRE) return undefined;
     if (getSimWasm() === undefined) return undefined;
 
     this.visibleBaselineAddedIds.length = 0;

@@ -13,19 +13,20 @@ import type { LobbyPlayer } from './NetworkTypes';
 import { createLobbyPlayer } from './NetworkLobbyRoster';
 import { normalizeRoomCode } from './NetworkRoomCode';
 import { createHostGameGenerationSeed } from './gameGenerationSeed';
+import { assertCurrentLobbySettings } from './LobbySettingsContract';
 
 type BuildBattleHandoffOptions = {
   gameId: string;
   roomCode: string;
   playerIds: Iterable<PlayerId>;
   players: ReadonlyMap<PlayerId, LobbyPlayer>;
-  settings: LobbySettings | undefined;
+  settings: LobbySettings;
 };
 
 type BattleHandoffMessage = {
-  gameId: string | undefined;
+  gameId: string;
   playerIds: PlayerId[];
-  handoff: BattleHandoff | undefined;
+  handoff: BattleHandoff;
 };
 
 export function buildBattleHandoff({
@@ -67,41 +68,44 @@ export function buildBattleHandoff({
 
 export function normalizeBattleHandoffMessage(
   message: BattleHandoffMessage,
-  fallback: BuildBattleHandoffOptions,
 ): BattleHandoff {
   const handoff = message.handoff;
-  if (
-    handoff &&
-    handoff.protocol === BATTLE_HANDOFF_PROTOCOL &&
-    handoff.gameId === fallback.gameId
-  ) {
-    const normalizedRoomCode = normalizeRoomCode(handoff.roomCode);
-    const normalizedPlayerIds = normalizePlayerIds(handoff.playerIds);
-    const initialization = buildCanonicalMatchInitialization({
-      gameId: handoff.gameId,
-      roomCode: normalizedRoomCode,
-      hostPlayerId: handoff.hostPlayerId,
-      playerIds: normalizedPlayerIds,
-      settings: handoff.settings,
-      gameGenerationSeed: handoff.initialization.gameGenerationSeed,
-    });
-    const initializationHash = hashCanonicalMatchInitialization(initialization);
-    if (handoff.initializationHash !== initializationHash) {
-      throw new Error(
-        `Lockstep initialization hash mismatch: host=${handoff.initializationHash}, ` +
-          `local=${initializationHash}`,
-      );
-    }
-    return {
-      ...handoff,
-      initialization,
-      initializationHash,
-      roomCode: normalizedRoomCode,
-      playerIds: normalizedPlayerIds,
-      players: copyLobbyPlayers(handoff.players),
-    };
+  if (handoff.protocol !== BATTLE_HANDOFF_PROTOCOL) {
+    throw new Error(`Unsupported battle handoff protocol: ${String(handoff.protocol)}`);
   }
-  return buildBattleHandoff(fallback);
+  if (handoff.gameId !== message.gameId) {
+    throw new Error(`Battle handoff game mismatch: message=${message.gameId}, handoff=${handoff.gameId}`);
+  }
+  assertCurrentLobbySettings(handoff.settings, 'battle handoff');
+  const normalizedRoomCode = normalizeRoomCode(handoff.roomCode);
+  const normalizedPlayerIds = normalizePlayerIds(handoff.playerIds);
+  const messagePlayerIds = normalizePlayerIds(message.playerIds);
+  if (normalizedPlayerIds.join(',') !== messagePlayerIds.join(',')) {
+    throw new Error('Battle handoff roster does not match gameStart roster');
+  }
+  const initialization = buildCanonicalMatchInitialization({
+    gameId: handoff.gameId,
+    roomCode: normalizedRoomCode,
+    hostPlayerId: handoff.hostPlayerId,
+    playerIds: normalizedPlayerIds,
+    settings: handoff.settings,
+    gameGenerationSeed: handoff.initialization.gameGenerationSeed,
+  });
+  const initializationHash = hashCanonicalMatchInitialization(initialization);
+  if (handoff.initializationHash !== initializationHash) {
+    throw new Error(
+      `Lockstep initialization hash mismatch: host=${handoff.initializationHash}, ` +
+        `local=${initializationHash}`,
+    );
+  }
+  return {
+    ...handoff,
+    initialization,
+    initializationHash,
+    roomCode: normalizedRoomCode,
+    playerIds: normalizedPlayerIds,
+    players: copyLobbyPlayers(handoff.players),
+  };
 }
 
 function normalizePlayerIds(playerIds: Iterable<PlayerId>): PlayerId[] {

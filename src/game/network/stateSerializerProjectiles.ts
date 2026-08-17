@@ -1083,12 +1083,13 @@ function shouldSendProjectileAtPoint(
   visibility: SnapshotVisibility | undefined,
   x: number,
   y: number,
+  z: number,
   homingTargetId: number | undefined = undefined,
   world: WorldState | undefined = undefined,
 ): boolean {
   if (visibility === undefined || !visibility.isFiltered) return true;
   if (visibility.isOwnedByRecipientOrAlly(ownerId)) return true;
-  if (visibility.isPointVisible(x, y)) return true;
+  if (visibility.isPointVisibleAt(x, y, z)) return true;
   // FOW-08-followup: forward in-flight updates when the projectile is
   // homing on one of the recipient's (or their allies') entities, so
   // the player at least sees the missile veering toward their unit
@@ -1125,9 +1126,12 @@ function shouldSendProjectileMotionUpdate(
 ): boolean {
   if (visibility === undefined || !visibility.isFiltered) return true;
   if (visibility.isOwnedByRecipientOrAlly(vu.ownerId)) return true;
-  if (visibility.isPointVisible(vu.pos.x, vu.pos.y)) return true;
-  if (vu.ownerId !== undefined) return false;
+  if (visibility.isPointVisibleAt(vu.pos.x, vu.pos.y, vu.pos.z)) return true;
 
+  // Motion rows do not carry the homing target, so resolve the authoritative
+  // projectile even when ownerId was stamped on the event. The owner is an
+  // early visibility shortcut, not evidence that the incoming-threat
+  // exception can be skipped.
   const projectileEntity = world.getEntity(vu.id);
   const projectile = projectileEntity === undefined ? undefined : projectileEntity.projectile;
   if (projectile === undefined || projectile === null) return false;
@@ -1141,10 +1145,10 @@ function shouldSendProjectileMotionUpdate(
   );
 }
 
-function shouldSendBeamPath(
+export function shouldSendBeamPath(
   ownerId: PlayerId | undefined,
   visibility: SnapshotVisibility | undefined,
-  points: ReadonlyArray<{ x: number; y: number }>,
+  points: ReadonlyArray<{ x: number; y: number; z: number }>,
 ): boolean {
   if (visibility === undefined || !visibility.isFiltered) return true;
   if (visibility.isOwnedByRecipientOrAlly(ownerId)) return true;
@@ -1155,9 +1159,9 @@ function shouldSendBeamPath(
   // the visible endpoint, so the player can see the direction of
   // fire rather than HP melting from nothing.
   const sourcePoint = points[0];
-  if (visibility.isPointVisible(sourcePoint.x, sourcePoint.y)) return true;
+  if (visibility.isPointVisibleAt(sourcePoint.x, sourcePoint.y, sourcePoint.z)) return true;
   const endPoint = points[points.length - 1];
-  return visibility.isPointVisible(endPoint.x, endPoint.y);
+  return visibility.isPointVisibleAt(endPoint.x, endPoint.y, endPoint.z);
 }
 
 function shouldSendProjectileSpawnEvent(
@@ -1167,7 +1171,14 @@ function shouldSendProjectileSpawnEvent(
 ): boolean {
   if (visibility === undefined || !visibility.isFiltered) return true;
   if (visibility.isOwnedByRecipientOrAlly(spawn.playerId)) return true;
-  if (visibility.isPointVisible(spawn.pos.x, spawn.pos.y)) return true;
+  if (visibility.isPointVisibleAt(spawn.pos.x, spawn.pos.y, spawn.pos.z)) return true;
+  if (spawn.beam !== undefined && shouldSendBeamPath(
+    spawn.playerId,
+    visibility,
+    [spawn.beam.start, spawn.beam.end],
+  )) {
+    return true;
+  }
   // FOW-08: forward the spawn when the shot is targeting one of the
   // recipient's (or their allies') entities. Without this, an attacker
   // hidden in fog can land a kill on the player without the player
@@ -1435,16 +1446,18 @@ export function serializeProjectileSnapshot({
         if (_resyncSeenIds.has(entity.id)) continue;
         const proj = entity.projectile;
         if (!proj) continue;
-        if (
-          !shouldSendProjectileAtPoint(
-            proj.ownerId,
-            visibility,
-            entity.transform.x,
-            entity.transform.y,
-            proj.homingTargetId,
-            world,
-          )
-        ) {
+        const visible = proj.points !== null && proj.points.length >= 2
+          ? shouldSendBeamPath(proj.ownerId, visibility, proj.points)
+          : shouldSendProjectileAtPoint(
+              proj.ownerId,
+              visibility,
+              entity.transform.x,
+              entity.transform.y,
+              entity.transform.z,
+              proj.homingTargetId,
+              world,
+            );
+        if (!visible) {
           continue;
         }
         const out = getPooledProjectileSpawn();
@@ -1565,16 +1578,18 @@ export function writeProjectileSnapshotWireRowsDirect({
         if (_resyncSeenIds.has(entity.id)) continue;
         const proj = entity.projectile;
         if (!proj) continue;
-        if (
-          !shouldSendProjectileAtPoint(
-            proj.ownerId,
-            visibility,
-            entity.transform.x,
-            entity.transform.y,
-            proj.homingTargetId,
-            world,
-          )
-        ) {
+        const visible = proj.points !== null && proj.points.length >= 2
+          ? shouldSendBeamPath(proj.ownerId, visibility, proj.points)
+          : shouldSendProjectileAtPoint(
+              proj.ownerId,
+              visibility,
+              entity.transform.x,
+              entity.transform.y,
+              entity.transform.z,
+              proj.homingTargetId,
+              world,
+            );
+        if (!visible) {
           continue;
         }
         copyProjectileEntitySpawnIntoWireRowDirect(entity, proj, world, visibility);

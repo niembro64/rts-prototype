@@ -22,7 +22,7 @@ import {
   getDefaultMapLandDimensions,
   loadStoredConverterTax,
   loadStoredSlowDownAtFinalWaypoint,
-  loadStoredRealCap,
+  getUnitCap,
   normalizeCenterMagnitude,
   normalizeConverterTax,
   normalizeDividersMagnitude,
@@ -38,7 +38,7 @@ import {
   saveMapLandDimensions,
   saveMetalDepositStep,
   savePerimeterMagnitude,
-  saveStoredCap,
+  setUnitCap,
   saveSlowDownAtFinalWaypoint,
   saveTerrainDTerrain,
   saveTerrainDetail,
@@ -52,6 +52,7 @@ import type {
 import { setTerrainRuntimeConfig } from '../game/sim/Terrain';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
 import { applyWorldSurfaceSelection } from './gameCanvasWorldSurfaceSelection';
+import { assertCurrentLobbySettings } from '../game/network/LobbySettingsContract';
 
 type GameCanvasLobbySettings = {
   currentLobbySettings(): LobbySettings;
@@ -163,7 +164,7 @@ export function useGameCanvasLobbySettings({
       terrainDetail: terrainDetail.value,
       mapWidthLandCells: mapWidthLandCells.value,
       mapLengthLandCells: mapLengthLandCells.value,
-      maxTotalUnits: loadStoredRealCap(),
+      maxTotalUnits: getUnitCap('real'),
       converterTax: loadStoredConverterTax('real'),
       slowDownAtFinalWaypoint: loadStoredSlowDownAtFinalWaypoint('real'),
       terrainSurfaceMode: loadStoredTerrainSurfaceMode('real'),
@@ -341,6 +342,7 @@ export function useGameCanvasLobbySettings({
     settings: LobbySettings,
     options: { restartPreview?: boolean } = {},
   ): void {
+    assertCurrentLobbySettings(settings, 'host lobby settings');
     const nextCenterMagnitude = normalizeCenterMagnitude(settings.centerMagnitude);
     const nextDividersMagnitude = normalizeDividersMagnitude(
       settings.dividersMagnitude,
@@ -348,30 +350,24 @@ export function useGameCanvasLobbySettings({
     const nextPerimeterMagnitude = normalizePerimeterMagnitude(
       settings.perimeterMagnitude,
     );
-    const nextDTerrain =
-      settings.terrainDTerrain === undefined
-        ? terrainDTerrain.value
-        : normalizeTerrainDTerrain(settings.terrainDTerrain);
-    const nextPlateauWallSlopeDegrees =
-      settings.plateauWallSlopeDegrees === undefined
-        ? plateauWallSlopeDegrees.value
-        : normalizePlateauWallSlopeDegrees(settings.plateauWallSlopeDegrees);
-    const nextMetalDepositStep =
-      settings.metalDepositStep === undefined
-        ? metalDepositStep.value
-        : normalizeMetalDepositStep(settings.metalDepositStep);
-    const nextTerrainDetail =
-      settings.terrainDetail === undefined
-        ? terrainDetail.value
-        : normalizeTerrainDetail(settings.terrainDetail);
-    const nextSlowDownAtFinalWaypoint =
-      settings.slowDownAtFinalWaypoint === true;
-    const nextTerrainSurfaceMode = isTerrainSurfaceMode(settings.terrainSurfaceMode)
-      ? settings.terrainSurfaceMode
-      : loadStoredTerrainSurfaceMode('real');
-    const nextLiquidSurfaceMode = isLiquidSurfaceMode(settings.liquidSurfaceMode)
-      ? settings.liquidSurfaceMode
-      : loadStoredLiquidSurfaceMode('real');
+    const nextDTerrain = normalizeTerrainDTerrain(settings.terrainDTerrain);
+    const nextPlateauWallSlopeDegrees = normalizePlateauWallSlopeDegrees(
+      settings.plateauWallSlopeDegrees,
+    );
+    const nextMetalDepositStep = normalizeMetalDepositStep(settings.metalDepositStep);
+    const nextTerrainDetail = normalizeTerrainDetail(settings.terrainDetail);
+    const nextSlowDownAtFinalWaypoint = settings.slowDownAtFinalWaypoint;
+    if (!isTerrainSurfaceMode(settings.terrainSurfaceMode)) {
+      throw new Error(`[lobby settings] invalid terrainSurfaceMode: ${String(settings.terrainSurfaceMode)}`);
+    }
+    if (!isLiquidSurfaceMode(settings.liquidSurfaceMode)) {
+      throw new Error(`[lobby settings] invalid liquidSurfaceMode: ${String(settings.liquidSurfaceMode)}`);
+    }
+    if (!Number.isFinite(settings.maxTotalUnits) || settings.maxTotalUnits <= 0) {
+      throw new Error(`[lobby settings] invalid maxTotalUnits: ${String(settings.maxTotalUnits)}`);
+    }
+    const nextTerrainSurfaceMode = settings.terrainSurfaceMode;
+    const nextLiquidSurfaceMode = settings.liquidSurfaceMode;
     const terrainSurfaceModeChanged =
       nextTerrainSurfaceMode !== loadStoredTerrainSurfaceMode('real');
     const liquidSurfaceModeChanged =
@@ -423,20 +419,12 @@ export function useGameCanvasLobbySettings({
     if (terrainSurfaceModeChanged || liquidSurfaceModeChanged) {
       worldSurfaceStoreVersion.value++;
     }
-    if (settings.converterTax !== undefined) {
-      saveConverterTax(normalizeConverterTax(settings.converterTax), 'real');
-    }
+    saveConverterTax(normalizeConverterTax(settings.converterTax), 'real');
     saveSlowDownAtFinalWaypoint(nextSlowDownAtFinalWaypoint, 'real');
     if (slowDownAtFinalWaypointChanged) {
       slowDownAtFinalWaypointStoreVersion.value++;
     }
-    if (
-      settings.maxTotalUnits !== undefined &&
-      Number.isFinite(settings.maxTotalUnits) &&
-      settings.maxTotalUnits > 0
-    ) {
-      saveStoredCap('real', settings.maxTotalUnits);
-    }
+    setUnitCap('real', settings.maxTotalUnits);
     if (changed) {
       applyCurrentTerrainRuntimeConfig();
     }

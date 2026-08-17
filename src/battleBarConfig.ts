@@ -7,7 +7,7 @@ import {
   type LiquidSurfaceMode,
   type TerrainSurfaceMode,
 } from './types/worldSurfaceMode';
-import { persist, persistJson, readPersisted, migrateKey } from './persistence';
+import { persist, persistJson, readPersisted } from './persistence';
 import { MAP_DIMENSION_CONFIG, type MapLandCellDimensions } from './mapSizeConfig';
 import {
   BUILDABLE_UNIT_BLUEPRINT_IDS,
@@ -27,7 +27,7 @@ import { getModeDefaultPreset } from './components/battlePresets';
 //   - `units`: built dynamically from BUILDABLE_UNIT_BLUEPRINT_IDS (unitRoster.json)
 //   - `mapSize`: pulled from MAP_DIMENSION_CONFIG (mapSizeConfig.json)
 // Everything else — caps, toggles, terrain options, mode defaults,
-// storage keys, migration table — is pure JSON.
+// and storage keys — is pure JSON.
 
 function buildUnitToggleConfig(): Record<string, { default: boolean }> {
   return Object.fromEntries(
@@ -87,13 +87,9 @@ function sanitizeDemoBuildingIds(value: unknown): string[] | null {
   return sanitizeIdList(value, isBuildingBlueprintId);
 }
 
-// `BATTLE_CONFIG.*.default` is no longer authored in JSON. Every
-// inline default has been moved into the DEMO BATTLE DEFAULT and REAL
-// BATTLE DEFAULT presets. The JSON only owns the *options* lists and
-// names the two presets that supply the defaults. The TS shim
-// resolves the legacy `.default` field through the demo preset so the
-// many call sites that read `BATTLE_CONFIG.cap.default` etc. keep
-// working without each having to know about the demo/real split.
+// Most `BATTLE_CONFIG.*.default` values flow through the mode's base preset.
+// Unit-cap defaults are mode policy authored beside the cap options: Demo is
+// a small persistent sandbox, while Lobby/Real starts fresh at battle scale.
 const _demoPreset = getModeDefaultPreset('demo');
 const TERRAIN_RENDER_SMOOTHING_DEFAULT = 3;
 const TERRAIN_TEXTURE_SMOOTH_ACROSS_WALL_BOUNDARY_DEFAULT = true;
@@ -195,6 +191,8 @@ void (battleBarConfig.realDefault as string);
 // bar/mode it belongs to. EVERY setting that's tunable in BOTH
 // modes (ff accel, system toggles, terrain shapes) gets paired
 // demo + real keys so the two modes don't bleed.
+// Unit cap is the intentional exception: Demo persists its cap, while Real
+// belongs to one lobby/match session and starts fresh for the next one.
 //
 // First-read fallback: when a `real-battle-*` key has no value yet,
 // the loader falls back to the matching `demo-battle-*` value — so
@@ -202,8 +200,6 @@ void (battleBarConfig.realDefault as string);
 // a user enters the lobby, and only diverge when the user explicitly
 // changes them in the lobby.
 //
-// Legacy `rts-*` keys are migrated lazily into `demo-battle-*` (the
-// original "battle" namespace) by the load helpers below.
 const sk = battleBarConfig.storageKeys;
 // There is deliberately no shared "content revision" any more.
 //
@@ -215,21 +211,14 @@ const sk = battleBarConfig.storageKeys;
 // roster grows. Using the latch for it hid the two shield labs, and then the
 // precision lab, from every developer profile while fresh ones were fine.
 //
-// So the two kinds of migration are now separated:
-//   - content adoption (adoptNewDemoBlueprints) runs unconditionally and reads
-//     a LEDGER of the ids each roster was last written against, so a blueprint
-//     added later is provably new and defaults ON with no version to bump;
-//   - a genuine one-time rewrite of a user's saved value keeps a one-shot flag,
-//     but a PURPOSE-NAMED one it owns alone, so adding content can never
-//     short-circuit it and it can never short-circuit content.
+// Content adoption reads a LEDGER of the ids each roster was last written
+// against, so a blueprint added later is provably new and defaults ON without
+// accepting or rewriting any obsolete storage shape.
 const STORAGE_DEMO_UNITS = sk.demoUnits;
 const STORAGE_DEMO_UNITS_KNOWN_IDS = sk.demoUnitsKnownIds;
-const STORAGE_DEMO_PERIMETER_LEGACY_DEFAULT_MOVED = sk.demoPerimeterLegacyDefaultMoved;
 const STORAGE_DEMO_BUILDINGS = sk.demoBuildings;
 const STORAGE_DEMO_BUILDINGS_KNOWN_IDS = sk.demoBuildingsKnownIds;
-const STORAGE_DEMO_TOWERS = sk.demoTowers;
 const STORAGE_DEMO_CAP = sk.demoCap;
-const STORAGE_REAL_CAP = sk.realCap;
 const STORAGE_DEMO_FORCE_FIELDS_VISIBLE = sk.demoForceFieldsVisible;
 const STORAGE_REAL_FORCE_FIELDS_VISIBLE = sk.realForceFieldsVisible;
 const STORAGE_DEMO_FOG_OF_WAR_ENABLED = sk.demoFogOfWarEnabled;
@@ -274,52 +263,18 @@ const STORAGE_REAL_TERRAIN_SPLIT_WALL_BOUNDARY_VERTICES =
   sk.realTerrainSplitWallBoundaryVertices;
 const STORAGE_DEMO_CONVERTER_TAX = sk.demoConverterTax;
 const STORAGE_REAL_CONVERTER_TAX = sk.realConverterTax;
-const STORAGE_DEMO_MAP_LAND_CELLS = sk.demoMapLandCells;
-const STORAGE_REAL_MAP_LAND_CELLS = sk.realMapLandCells;
 const STORAGE_DEMO_MAP_WIDTH_LAND_CELLS = sk.demoMapWidthLandCells;
 const STORAGE_REAL_MAP_WIDTH_LAND_CELLS = sk.realMapWidthLandCells;
 const STORAGE_DEMO_MAP_LENGTH_LAND_CELLS = sk.demoMapLengthLandCells;
 const STORAGE_REAL_MAP_LENGTH_LAND_CELLS = sk.realMapLengthLandCells;
 
-const BATTLE_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> =
-  battleBarConfig.storageMigrations as unknown as ReadonlyArray<readonly [string, string]>;
-
-let _battleMigrationsRun = false;
-/** Run the legacy → prefixed key rename once per process. Each
- *  load helper calls this before reading; idempotent. */
-function ensureBattleMigrations(): void {
-  if (_battleMigrationsRun) return;
-  _battleMigrationsRun = true;
-  for (const [oldK, newK] of BATTLE_KEY_MIGRATIONS) migrateKey(oldK, newK);
-  foldLegacyTowerRoster();
-  moveLegacyDemoPerimeterDefault();
+let _demoRosterRefreshRun = false;
+/** Refresh current roster ledgers once per process. */
+function refreshDemoRosterLedgers(): void {
+  if (_demoRosterRefreshRun) return;
+  _demoRosterRefreshRun = true;
   adoptNewDemoBlueprints();
 }
-
-/** The blueprint ids that existed at the moment the ledger shipped.
- *
- *  This is the ledger's bootstrap, and it is a RECORD OF A PAST STATE — not a
- *  list to keep current. Never add to it. A profile saved before the ledger
- *  existed has no record of what it had seen, so these two lists stand in for
- *  one: anything in the live id lists but absent here is provably newer than
- *  any pre-ledger roster and is adopted, while everything else defers to
- *  whatever that roster says, opt-outs included.
- *
- *  Buildings: the fourteen that predate the Precision Targeting Research Lab,
- *  which is exactly the adoption a pre-ledger profile still needs.
- *  Units: the full roster as of the same moment. The old revision-gated
- *  migration also re-pushed `unitOrca` on every bump; that repair has had many
- *  releases to land, so a profile still without Orca chose that, and this list
- *  deliberately lets the choice stand. */
-const PRE_LEDGER_BUILDING_BLUEPRINT_IDS: readonly string[] = [
-  'buildingSolar', 'buildingWind', 'towerFabricator', 'buildingExtractor',
-  'towerBeamMega', 'towerCannon', 'buildingRadar', 'buildingResourceConverter',
-  'towerAntiAir', 'buildingExtractorT2', 'buildingSonar', 'towerTorpedo',
-  'buildingShieldTargetingTech', 'buildingShieldTech',
-];
-const PRE_LEDGER_UNIT_BLUEPRINT_IDS: readonly string[] = [
-  ...BUILDABLE_UNIT_BLUEPRINT_IDS,
-];
 
 /** Adopt every blueprint that this profile's stored roster has never seen.
  *
@@ -336,26 +291,19 @@ const PRE_LEDGER_UNIT_BLUEPRINT_IDS: readonly string[] = [
  *  shield labs, and then the precision lab, went missing from the demo on
  *  every developer profile while fresh installs were fine.
  *
- *  A profile with no ledger is SEEDED without adopting anything. Its roster
- *  predates the ledger, so "missing from the ledger" carries no information
- *  there, and adopting on that basis would switch every opt-out back on.
- *
- *  Exported for demoBuildingRosterContractTest, which drives it directly:
- *  ensureBattleMigrations latches once per module load and cannot be replayed
- *  against seeded storage. */
+ *  A missing ledger is initialized to the current contract without trying to
+ *  infer the age or meaning of an unversioned roster. */
 export function adoptNewDemoBlueprints(): void {
   adoptNewRosterBlueprints(
     STORAGE_DEMO_BUILDINGS,
     STORAGE_DEMO_BUILDINGS_KNOWN_IDS,
     BUILDING_BLUEPRINT_IDS,
-    PRE_LEDGER_BUILDING_BLUEPRINT_IDS,
     sanitizeDemoBuildingIds,
   );
   adoptNewRosterBlueprints(
     STORAGE_DEMO_UNITS,
     STORAGE_DEMO_UNITS_KNOWN_IDS,
     BUILDABLE_UNIT_BLUEPRINT_IDS,
-    PRE_LEDGER_UNIT_BLUEPRINT_IDS,
     sanitizeDemoUnitIds,
   );
 }
@@ -364,27 +312,21 @@ function adoptNewRosterBlueprints(
   rosterKey: string,
   ledgerKey: string,
   currentIds: readonly string[],
-  preLedgerIds: readonly string[],
   sanitize: (value: unknown) => string[] | null,
 ): void {
   const persistLedger = (): void => {
     persistJson(ledgerKey, [...currentIds]);
   };
   const storedLedger = readPersisted(ledgerKey);
-  // A profile with no ledger is seeded from the PRE-LEDGER id list rather than
-  // the current one. Seeding from the current list would strand it — every id
-  // would look already-known and nothing added since would ever be adopted.
-  // Seeding from its roster would go the other way and adopt every deliberate
-  // opt-out. The recorded pre-ledger set is the only honest answer: ids newer
-  // than it are provably newer than the profile's roster.
-  const knownIdsForSeed = storedLedger === null ? [...preLedgerIds] : null;
-  let knownIds: string[] | null = knownIdsForSeed;
-  if (storedLedger !== null) {
-    try {
-      knownIds = sanitize(JSON.parse(storedLedger));
-    } catch {
-      // Malformed ledger: reseed rather than adopt against garbage.
-    }
+  if (storedLedger === null) {
+    persistLedger();
+    return;
+  }
+  let knownIds: string[] | null = null;
+  try {
+    knownIds = sanitize(JSON.parse(storedLedger));
+  } catch {
+    // Malformed current state is replaced, never interpreted as an older shape.
   }
   if (knownIds === null) {
     persistLedger();
@@ -411,78 +353,10 @@ function adoptNewRosterBlueprints(
   persistJson(rosterKey, currentIds.filter((id) => selected.has(id)));
 }
 
-/** Towers used to live in their own static-host roster. Fold that legacy list
- *  into the single BUILDINGS roster, preserving both of the player's choices.
- *
- *  No one-shot flag: this is idempotent by construction. The fold empties the
- *  legacy key on its way out, so every later run merges an empty list and
- *  changes nothing — and a tower the player switches off afterwards stays off,
- *  because it is the EMPTY legacy list that gets merged, not the defaults. */
-function foldLegacyTowerRoster(): void {
-  const storedTowers = readPersisted(STORAGE_DEMO_TOWERS);
-  if (storedTowers === null) return;
-  const legacyTowerBlueprintIds = new Set<string>([
-    'towerFabricator',
-    'towerBeamMega',
-    'towerCannon',
-    'towerAntiAir',
-  ]);
-  let storedTowerIds: string[] | null = null;
-  try {
-    storedTowerIds = sanitizeDemoBuildingIds(JSON.parse(storedTowers));
-  } catch {
-    // Malformed legacy state: drop it rather than resurrect a guess.
-  }
-  // Leave an inert value at the legacy key so older builds do not resurrect
-  // stale choices if a developer switches branches, and so this fold is a
-  // no-op from here on.
-  persistJson(STORAGE_DEMO_TOWERS, []);
-  if (storedTowerIds === null || storedTowerIds.length === 0) return;
-
-  let storedBuildingIds: string[] | null = null;
-  const storedBuildings = readPersisted(STORAGE_DEMO_BUILDINGS);
-  try {
-    if (storedBuildings !== null) {
-      storedBuildingIds = sanitizeDemoBuildingIds(JSON.parse(storedBuildings));
-    }
-  } catch {
-    // Malformed roster falls back to the old default building roster.
-  }
-  const selected = new Set<string>(
-    storedBuildingIds ??
-      BUILDING_BLUEPRINT_IDS.filter((id) => !legacyTowerBlueprintIds.has(id)),
-  );
-  for (const id of storedTowerIds) selected.add(id);
-  persistJson(
-    STORAGE_DEMO_BUILDINGS,
-    BUILDING_BLUEPRINT_IDS.filter((id) => selected.has(id)),
-  );
-}
-
-/** 0 was the previous DEMO BATTLE perimeter default. Move that one legacy
- *  default to the round-island value so its offshore Fabricators have an actual
- *  water ring.
- *
- *  This one genuinely needs a one-shot: it rewrites a value the player may
- *  deliberately set back to 0, and re-running would stomp that choice on every
- *  load. It owns a purpose-named flag rather than a shared revision, so adding
- *  content can never short-circuit it and it can never short-circuit content. */
-function moveLegacyDemoPerimeterDefault(): void {
-  if (readPersisted(STORAGE_DEMO_PERIMETER_LEGACY_DEFAULT_MOVED) === 'true') return;
-  persist(STORAGE_DEMO_PERIMETER_LEGACY_DEFAULT_MOVED, 'true');
-  if (readPersisted(STORAGE_DEMO_PERIMETER_MAGNITUDE) === '0') {
-    persist(STORAGE_DEMO_PERIMETER_MAGNITUDE, '-800');
-  }
-}
-
 /** "true"/"false" → boolean, null otherwise. Keeps each loader a
- *  one-liner now that the try/catch is pushed into readPersisted.
- *  Triggers the legacy-key migration on every read so the rename
- *  from `rts-*` to `demo-battle-*` / `real-battle-*` is invisible
- *  to existing users (the once-per-process flag inside makes the
- *  call cheap after the first invocation). */
+ *  one-liner now that the try/catch is pushed into readPersisted. */
 function loadBool(key: string): boolean | null {
-  ensureBattleMigrations();
+  refreshDemoRosterLedgers();
   const s = readPersisted(key);
   if (s === 'true') return true;
   if (s === 'false') return false;
@@ -491,7 +365,7 @@ function loadBool(key: string): boolean | null {
 
 /** "<positive-number>" → number, null otherwise. */
 function loadPosNum(key: string): number | null {
-  ensureBattleMigrations();
+  refreshDemoRosterLedgers();
   const s = readPersisted(key);
   if (!s) return null;
   const n = Number(s);
@@ -499,7 +373,7 @@ function loadPosNum(key: string): number | null {
 }
 
 export function loadStoredDemoUnits(): string[] | null {
-  ensureBattleMigrations();
+  refreshDemoRosterLedgers();
   const stored = readPersisted(STORAGE_DEMO_UNITS);
   if (!stored) return null;
   try {
@@ -511,10 +385,10 @@ export function loadStoredDemoUnits(): string[] | null {
 }
 
 export function saveDemoUnits(units: string[]): void {
-  // Migrations first: a save must not write a roster before adoption has had a
+  // Refresh first: a save must not write a roster before adoption has had a
   // chance to fold in blueprints this profile has never seen, or the save
   // persists the gap and the ledger then records it as deliberate.
-  ensureBattleMigrations();
+  refreshDemoRosterLedgers();
   persistJson(STORAGE_DEMO_UNITS, sanitizeDemoUnitIds(units) ?? []);
 }
 
@@ -525,13 +399,10 @@ export function getDefaultDemoUnits(): string[] {
 }
 
 // ── Demo building enablement (BUILDINGS bar group) ──
-// Persistence mirrors the unit trio. Buildings have NO legacy `rts-*`
-// key, so the loaders run ensureBattleMigrations() only to stay
-// structurally identical to the unit loaders (it's a cheap no-op after
-// the first call).
+// Persistence mirrors the unit trio.
 
 export function loadStoredDemoBuildings(): string[] | null {
-  ensureBattleMigrations();
+  refreshDemoRosterLedgers();
   const stored = readPersisted(STORAGE_DEMO_BUILDINGS);
   if (!stored) return null;
   try {
@@ -543,7 +414,7 @@ export function loadStoredDemoBuildings(): string[] | null {
 }
 
 export function saveDemoBuildings(buildings: string[]): void {
-  ensureBattleMigrations();
+  refreshDemoRosterLedgers();
   persistJson(STORAGE_DEMO_BUILDINGS, sanitizeDemoBuildingIds(buildings) ?? []);
 }
 
@@ -561,13 +432,7 @@ function saveDemoCap(value: number): void {
   persist(STORAGE_DEMO_CAP, String(value));
 }
 
-export function loadStoredRealCap(): number {
-  return loadPosNum(STORAGE_REAL_CAP) ?? getModeDefaultPreset('real').cap;
-}
-
-function saveRealCap(value: number): void {
-  persist(STORAGE_REAL_CAP, String(value));
-}
+let currentRealUnitCap = getModeDefaultPreset('real').cap;
 
 /** Identifies which battle context a setting belongs to.
  *  - `demo` = the visual demo running on the BUDGET ANNIHILATION
@@ -595,13 +460,22 @@ export type BattleTerrainRuntimeConfig = {
 };
 
 
-export function loadStoredCap(mode: BattleMode): number {
-  return mode === 'real' ? loadStoredRealCap() : loadStoredDemoCap();
+/** Current cap for a battle mode. Demo reads the browser preference; real is
+ *  deliberately session-only so a fresh lobby never inherits another game. */
+export function getUnitCap(mode: BattleMode): number {
+  return mode === 'real' ? currentRealUnitCap : loadStoredDemoCap();
 }
 
-export function saveStoredCap(mode: BattleMode, value: number): void {
-  if (mode === 'real') saveRealCap(value);
+/** Change the current mode's cap. Only Demo is persisted in localStorage. */
+export function setUnitCap(mode: BattleMode, value: number): void {
+  if (!Number.isFinite(value) || value <= 0) return;
+  if (mode === 'real') currentRealUnitCap = value;
   else saveDemoCap(value);
+}
+
+/** Begin a new lobby/real-game session at its authored default. */
+export function resetRealUnitCap(): void {
+  currentRealUnitCap = getModeDefaultPreset('real').cap;
 }
 
 
@@ -615,7 +489,7 @@ function loadModeBool(
   demoKey: string,
   defaultValue: boolean,
 ): boolean {
-  ensureBattleMigrations();
+  refreshDemoRosterLedgers();
   const primary = loadBool(mode === 'real' ? realKey : demoKey);
   if (primary !== null) return primary;
   if (mode === 'real') {
@@ -760,7 +634,7 @@ function loadModeNumberOption(
   demoKey: string,
   config: { readonly default: number; readonly options: readonly number[] },
 ): number {
-  ensureBattleMigrations();
+  refreshDemoRosterLedgers();
   const primary = parseNumberOption(
     readPersisted(mode === 'real' ? realKey : demoKey),
     config.options,
@@ -840,7 +714,7 @@ function loadModeFloatOption(
   demoKey: string,
   config: { readonly default: number; readonly options: readonly number[] },
 ): number {
-  ensureBattleMigrations();
+  refreshDemoRosterLedgers();
   const primary = parseFloatOption(
     readPersisted(mode === 'real' ? realKey : demoKey),
     config.options,
@@ -904,29 +778,12 @@ function normalizeMapLandDimensions(
 function readStoredMapLandDimensions(
   widthKey: string,
   lengthKey: string,
-  legacyKey: string,
 ): MapLandCellDimensions | null {
   const width = parseMapLandCellAxis(readPersisted(widthKey), 'width');
   const length = parseMapLandCellAxis(readPersisted(lengthKey), 'length');
-  if (width !== null && length !== null) {
-    return { widthLandCells: width, lengthLandCells: length };
-  }
-
-  const legacy = parseMapLandCellAxis(readPersisted(legacyKey), 'width');
-  if (legacy !== null) {
-    return {
-      widthLandCells: width ?? legacy,
-      lengthLandCells: length ?? legacy,
-    };
-  }
-
-  if (width !== null) {
-    return { widthLandCells: width, lengthLandCells: width };
-  }
-  if (length !== null) {
-    return { widthLandCells: length, lengthLandCells: length };
-  }
-  return null;
+  return width !== null && length !== null
+    ? { widthLandCells: width, lengthLandCells: length }
+    : null;
 }
 
 export function loadStoredCenterMagnitude(mode: BattleMode): number {
@@ -1273,7 +1130,7 @@ function getModeDefaultMapLandDimensions(mode: BattleMode): MapLandCellDimension
 }
 
 export function loadStoredMapLandDimensions(mode: BattleMode): MapLandCellDimensions {
-  ensureBattleMigrations();
+  refreshDemoRosterLedgers();
   const primary = readStoredMapLandDimensions(
     mode === 'real'
       ? STORAGE_REAL_MAP_WIDTH_LAND_CELLS
@@ -1281,16 +1138,12 @@ export function loadStoredMapLandDimensions(mode: BattleMode): MapLandCellDimens
     mode === 'real'
       ? STORAGE_REAL_MAP_LENGTH_LAND_CELLS
       : STORAGE_DEMO_MAP_LENGTH_LAND_CELLS,
-    mode === 'real'
-      ? STORAGE_REAL_MAP_LAND_CELLS
-      : STORAGE_DEMO_MAP_LAND_CELLS,
   );
   if (primary !== null) return primary;
   if (mode === 'real') {
     const demoFallback = readStoredMapLandDimensions(
       STORAGE_DEMO_MAP_WIDTH_LAND_CELLS,
       STORAGE_DEMO_MAP_LENGTH_LAND_CELLS,
-      STORAGE_DEMO_MAP_LAND_CELLS,
     );
     if (demoFallback !== null) return demoFallback;
   }

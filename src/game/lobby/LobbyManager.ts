@@ -20,7 +20,7 @@ import {
   loadStoredConverterTax,
   loadStoredDemoUnits,
   loadStoredDemoBuildings,
-  loadStoredDemoCap,
+  getUnitCap,
   loadStoredMapLandDimensions,
   loadStoredTerrainRuntimeConfig,
   getDefaultDemoUnits,
@@ -203,12 +203,11 @@ export async function createBackgroundBattle(
   // Create a GameServer for background mode (WASM physics).
   //
   // Both `initialAllowedUnitBlueprintIds` AND `initialMaxTotalUnits` MUST be
-  // resolved here from localStorage (with config defaults as fallback)
-  // because the GameServer constructor's initial-unit spawn reads them
-  // up-front. Anything that arrives via post-construction commands
-  // would only take effect AFTER the spawn — meaning users would see
-  // a battle sized by the bare config defaults until the next
-  // reinforcement tick reconciles to their stored preference.
+  // resolved here because the GameServer constructor's initial-unit spawn
+  // reads them up-front. Demo resolves its cap from the saved browser
+  // preference; Lobby/Real resolves the current session-only cap. Anything
+  // that arrives via post-construction commands would only take effect AFTER
+  // the spawn and visibly disagree with the displayed cap.
   const server = await GameServer.create(
     {
       playerIds: demoPlayerIds,
@@ -229,7 +228,7 @@ export async function createBackgroundBattle(
       backgroundMode: true,
       initialAllowedUnitBlueprintIds,
       initialAllowedBuildingBlueprintIds,
-      initialMaxTotalUnits: loadStoredDemoCap(),
+      initialMaxTotalUnits: getUnitCap(mode),
       converterTax: loadStoredConverterTax(mode),
       aiPlayerIds,
       spawnDemoInitialState: !isLobbyPreview,
@@ -264,7 +263,7 @@ export async function createBackgroundBattle(
 
   // (Demo cap is now applied via `initialMaxTotalUnits` on
   // GameServer.create above — that path runs BEFORE the initial
-  // spawn so the unit count matches the stored cap from the first
+  // spawn so the unit count matches the mode's cap from the first
   // frame. The post-construction `setMaxTotalUnits` command path
   // still exists for runtime cap changes.)
   server.start();

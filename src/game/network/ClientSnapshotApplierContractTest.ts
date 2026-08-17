@@ -47,7 +47,7 @@ import {
   serializeEntityDeltaSnapshot,
   serializeEntitySnapshot,
 } from './stateSerializerEntities';
-import { encodeNetworkSnapshotWithRustFallback } from './snapshotRustWireEncoder';
+import { encodeNetworkSnapshotWithRust } from './snapshotRustWireEncoder';
 import { decodeNetworkSnapshot } from './snapshotWireCodec';
 import {
   createNetworkUnitSnapshot,
@@ -281,12 +281,10 @@ function emptyUnitSnapshot(): NonNullable<NetworkServerSnapshotEntity['unit']> {
     surfaceNormal: null,
     orientation: null,
     angularVelocity3: null,
-    fireEnabled: null,
     fireState: null,
     trajectoryMode: null,
     repeatQueue: null,
     moveState: null,
-    holdPosition: null,
     wantCloak: null,
     factory: null,
     cloaked: null,
@@ -680,12 +678,10 @@ export function runClientSnapshotApplierContractTest(): void {
       surfaceNormal: null,
       orientation: null,
       angularVelocity3: null,
-      fireEnabled: null,
       fireState: null,
       trajectoryMode: null,
       repeatQueue: null,
       moveState: null,
-      holdPosition: null,
       wantCloak: null,
       factory: null,
       cloaked: null,
@@ -928,7 +924,7 @@ export function runClientSnapshotApplierContractTest(): void {
       actionEntity.unit.wantCloak === true,
     'typed unit action rows must update action detail and motion without DTO fallback',
   );
-  const encodedPackedAction = encodeNetworkSnapshotWithRustFallback(snapshot(5, typedActionRows));
+  const encodedPackedAction = encodeNetworkSnapshotWithRust(snapshot(5, typedActionRows));
   if (encodedPackedAction === null) {
     throw new Error('[client snapshot applier contract] packed action fixture must encode');
   }
@@ -1123,7 +1119,7 @@ export function runClientSnapshotApplierContractTest(): void {
       appliedCarrierFactory.rallyType === 'fight',
     'queen factory DTO rows must apply carrier state, finite queue, progress, pause, and rally state',
   );
-  const encodedPackedCarrier = encodeNetworkSnapshotWithRustFallback(
+  const encodedPackedCarrier = encodeNetworkSnapshotWithRust(
     deltaSnapshot(6, carrierRows),
   );
   if (encodedPackedCarrier === null) {
@@ -1172,7 +1168,7 @@ export function runClientSnapshotApplierContractTest(): void {
   if (metadataOnlyPackedMotionRow !== null) {
     metadataOnlyPackedMotionRows.push(metadataOnlyPackedMotionRow as NetworkServerSnapshotEntity);
   }
-  const encodedPackedMotion = encodeNetworkSnapshotWithRustFallback(
+  const encodedPackedMotion = encodeNetworkSnapshotWithRust(
     snapshot(5, metadataOnlyPackedMotionRows),
   );
   if (encodedPackedMotion === null) {
@@ -1245,7 +1241,7 @@ export function runClientSnapshotApplierContractTest(): void {
   if (hotPathRow !== null) hotPathRows.push(hotPathRow as NetworkServerSnapshotEntity);
   const hotPathSnapshot = snapshot(2, hotPathRows);
   hotPathSnapshot.entityDeltaOnly = true;
-  const encodedHotPath = encodeNetworkSnapshotWithRustFallback(hotPathSnapshot);
+  const encodedHotPath = encodeNetworkSnapshotWithRust(hotPathSnapshot);
   if (encodedHotPath === null) {
     throw new Error('[client snapshot applier contract] packed hot motion fixture must encode');
   }
@@ -1405,7 +1401,7 @@ export function runClientSnapshotApplierContractTest(): void {
   );
   const basicFastPathSnapshot = snapshot(2, basicFastPathRows);
   basicFastPathSnapshot.entityDeltaOnly = true;
-  const encodedBasicFastPath = encodeNetworkSnapshotWithRustFallback(basicFastPathSnapshot);
+  const encodedBasicFastPath = encodeNetworkSnapshotWithRust(basicFastPathSnapshot);
   if (encodedBasicFastPath === null) {
     throw new Error('[client snapshot applier contract] packed basic transform fixture must encode');
   }
@@ -1536,7 +1532,7 @@ export function runClientSnapshotApplierContractTest(): void {
   }
   const metadataOnlyPackedHpSnapshot = snapshot(8, metadataOnlyPackedHpRows);
   metadataOnlyPackedHpSnapshot.entityDeltaOnly = true;
-  const encodedPackedHp = encodeNetworkSnapshotWithRustFallback(metadataOnlyPackedHpSnapshot);
+  const encodedPackedHp = encodeNetworkSnapshotWithRust(metadataOnlyPackedHpSnapshot);
   if (encodedPackedHp === null) {
     throw new Error('[client snapshot applier contract] packed HP fixture must encode');
   }
@@ -1701,7 +1697,7 @@ export function runClientSnapshotApplierContractTest(): void {
   );
   const basicBuildingMotionSnapshot = snapshot(4, basicBuildingMotionRows);
   basicBuildingMotionSnapshot.entityDeltaOnly = true;
-  const encodedBasicBuildingMotion = encodeNetworkSnapshotWithRustFallback(
+  const encodedBasicBuildingMotion = encodeNetworkSnapshotWithRust(
     basicBuildingMotionSnapshot,
   );
   if (encodedBasicBuildingMotion === null) {
@@ -1794,7 +1790,7 @@ export function runClientSnapshotApplierContractTest(): void {
   buildingSource.building.maxHp = 120;
   const metadataOnlyPackedBuildingHpSnapshot = snapshot(5, metadataOnlyPackedBuildingHpRows);
   metadataOnlyPackedBuildingHpSnapshot.entityDeltaOnly = true;
-  const encodedPackedBuildingHp = encodeNetworkSnapshotWithRustFallback(
+  const encodedPackedBuildingHp = encodeNetworkSnapshotWithRust(
     metadataOnlyPackedBuildingHpSnapshot,
   );
   if (encodedPackedBuildingHp === null) {
@@ -1870,7 +1866,7 @@ export function runClientSnapshotApplierContractTest(): void {
       typedFactoryComposition.entityDtoRows === 0,
     'quota-bearing factory-private rows must use DTO-free typed building placeholders',
   );
-  const encodedPackedFactory = encodeNetworkSnapshotWithRustFallback(
+  const encodedPackedFactory = encodeNetworkSnapshotWithRust(
     deltaSnapshot(7, typedFactoryRows),
   );
   if (encodedPackedFactory === null) {
@@ -2033,7 +2029,7 @@ export function runClientSnapshotApplierContractTest(): void {
       appliedQuotaFreeFactory.airIdleState === 'land',
     'quota-free typed factory rows must apply detail and clear stale factory state',
   );
-  const encodedQuotaFreeFactory = encodeNetworkSnapshotWithRustFallback(
+  const encodedQuotaFreeFactory = encodeNetworkSnapshotWithRust(
     deltaSnapshot(9, quotaFreeFactoryRows),
   );
   if (encodedQuotaFreeFactory === null) {
@@ -2356,7 +2352,7 @@ export function runClientSnapshotApplierContractTest(): void {
       typedFullComposition.entityTypedRows === 3,
     'DTO-free full snapshot composition must count typed rows without DTO rows',
   );
-  const encodedTypedFull = encodeNetworkSnapshotWithRustFallback(snapshot(9, typedFullRows));
+  const encodedTypedFull = encodeNetworkSnapshotWithRust(snapshot(9, typedFullRows));
   if (encodedTypedFull === null) {
     throw new Error('[client snapshot applier contract] DTO-free full typed rows must encode');
   }
@@ -2575,7 +2571,7 @@ export function runClientSnapshotApplierContractTest(): void {
     ENTITY_CHANGED_TURRETS,
     {} as WorldState,
   );
-  const encodedPackedTurret = encodeNetworkSnapshotWithRustFallback(
+  const encodedPackedTurret = encodeNetworkSnapshotWithRust(
     snapshot(3, metadataOnlyPackedTurretRows),
   );
   if (encodedPackedTurret === null) {

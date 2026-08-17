@@ -16,7 +16,7 @@ use super::*;
 // (the legacy verbose encoder always emitted them); it is re-derived here as
 // `isFull || (changedFields & bit)`, exactly how serializeEntitySnapshot sets
 // the DTO sub-fields.
-pub(crate) const V6_PACKED_ENTITIES_VERSION: u64 = 20;
+pub(crate) const V6_PACKED_ENTITIES_VERSION: u64 = 21;
 
 pub(crate) const V6_ENTITY_FLAG_HAS_POS: u32 = 1 << 0;
 pub(crate) const V6_ENTITY_FLAG_HAS_ROTATION: u32 = 1 << 1;
@@ -35,7 +35,6 @@ pub(crate) const V6_UNIT_FLAG_SURFACE_NORMAL: u32 = 1 << 6;
 pub(crate) const V6_UNIT_FLAG_CLOAK_STATE_PRESENT: u32 = 1 << 8;
 pub(crate) const V6_UNIT_FLAG_ORIENTATION: u32 = 1 << 9;
 pub(crate) const V6_UNIT_FLAG_ANGULAR_VELOCITY: u32 = 1 << 10;
-pub(crate) const V6_UNIT_FLAG_FIRE_DISABLED: u32 = 1 << 11;
 pub(crate) const V6_UNIT_FLAG_IS_COMMANDER: u32 = 1 << 12;
 pub(crate) const V6_UNIT_FLAG_BUILD_TARGET_ID: u32 = 1 << 13;
 pub(crate) const V6_UNIT_FLAG_BUILD_TARGET_NULL: u32 = 1 << 14;
@@ -46,8 +45,6 @@ pub(crate) const V6_UNIT_FLAG_BUILD_COMPLETE: u32 = 1 << 18;
 pub(crate) const V6_UNIT_FLAG_BUILD_INTERRUPTED: u32 = 1 << 19;
 pub(crate) const V6_UNIT_FLAG_REPEAT_PRESENT: u32 = 1 << 20;
 pub(crate) const V6_UNIT_FLAG_REPEAT_ENABLED: u32 = 1 << 21;
-pub(crate) const V6_UNIT_FLAG_HOLD_POSITION_PRESENT: u32 = 1 << 22;
-pub(crate) const V6_UNIT_FLAG_HOLD_POSITION_ENABLED: u32 = 1 << 23;
 pub(crate) const V6_UNIT_FLAG_TRAJECTORY_PRESENT: u32 = 1 << 24;
 pub(crate) const V6_UNIT_FLAG_TRAJECTORY_HIGH: u32 = 1 << 25;
 pub(crate) const V6_UNIT_FLAG_TRAJECTORY_AUTO: u32 = 1 << 26;
@@ -1095,7 +1092,6 @@ pub(crate) fn v6_write_detail_unit(
     let has_surface_normal = unit_buf[base + 23] != 0.0;
     let has_orientation = unit_buf[base + 27] != 0.0;
     let has_angular_velocity = unit_buf[base + 32] != 0.0;
-    let fire_disabled = unit_buf[base + 36] != 0.0;
     let is_commander = unit_buf[base + 37] != 0.0;
     let build_target_present = unit_buf[base + 38] != 0.0;
     let build_target_null = unit_buf[base + 39] != 0.0;
@@ -1106,8 +1102,6 @@ pub(crate) fn v6_write_detail_unit(
     let has_fire_state = unit_buf[base + 51] != 0.0;
     let repeat_present = unit_buf[base + 53] != 0.0;
     let repeat_enabled = unit_buf[base + 54] != 0.0;
-    let hold_present = unit_buf[base + 55] != 0.0;
-    let hold_enabled = unit_buf[base + 56] != 0.0;
     let trajectory_present = unit_buf[base + 57] != 0.0;
     let trajectory_code = unit_buf[base + 58] as u32;
     let move_state_present = unit_buf[base + 59] != 0.0;
@@ -1147,9 +1141,6 @@ pub(crate) fn v6_write_detail_unit(
     if has_angular_velocity {
         flags |= V6_UNIT_FLAG_ANGULAR_VELOCITY;
     }
-    if fire_disabled {
-        flags |= V6_UNIT_FLAG_FIRE_DISABLED;
-    }
     if has_fire_state {
         flags |= V6_UNIT_FLAG_FIRE_STATE_PRESENT;
     }
@@ -1165,12 +1156,6 @@ pub(crate) fn v6_write_detail_unit(
         flags |= V6_UNIT_FLAG_REPEAT_PRESENT;
         if repeat_enabled {
             flags |= V6_UNIT_FLAG_REPEAT_ENABLED;
-        }
-    }
-    if hold_present {
-        flags |= V6_UNIT_FLAG_HOLD_POSITION_PRESENT;
-        if hold_enabled {
-            flags |= V6_UNIT_FLAG_HOLD_POSITION_ENABLED;
         }
     }
     if move_state_present {

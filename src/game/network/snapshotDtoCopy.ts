@@ -148,7 +148,8 @@ export function createMinimapEntityDto(): NetworkServerSnapshotMinimapEntity {
     type: 'unit',
     playerId: 1,
     radarOnly: null,
-    contactUnderwater: null,
+    contactMediumMask: null,
+    contactZ: null,
   };
 }
 
@@ -162,6 +163,8 @@ export function copyMinimapEntityInto(
   dst.type = src.type;
   dst.playerId = src.playerId;
   dst.radarOnly = src.radarOnly === true ? true : null;
+  dst.contactMediumMask = src.radarOnly === true ? src.contactMediumMask : null;
+  dst.contactZ = src.radarOnly === true ? src.contactZ ?? null : null;
   return dst;
 }
 

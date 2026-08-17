@@ -468,9 +468,9 @@ export type NetworkMessage =
   | {
       type: 'gameStart';
       playerIds: PlayerId[];
-      gameId: string | undefined;
-      handoff: BattleHandoff | undefined;
-      assignedPlayerId: PlayerId | undefined;
+      gameId: string;
+      handoff: BattleHandoff;
+      assignedPlayerId: PlayerId;
     }
   | { type: 'playerJoined'; gameId: string | undefined; playerId: PlayerId; playerName: string }
   | { type: 'playerLeft'; gameId: string | undefined; playerId: PlayerId }
@@ -483,9 +483,8 @@ export type NetworkMessage =
       type: 'playerInfoUpdate';
       gameId: string | undefined;
       playerId: PlayerId;
-      /** Host-assigned SIDE (the lobby's TEAM N). Optional so older
-       *  senders stay decodable; receivers leave the seat alone when it
-       *  is absent. */
+      /** Host-assigned SIDE (the lobby's TEAM N). Optional because player-info
+       *  messages are partial updates; absence leaves the seat unchanged. */
       allyTeamId?: number | undefined;
       ipAddress: string | undefined;
       location: string | undefined;
@@ -516,29 +515,26 @@ export type LobbySettings = {
    *  negative = round-island; positive = rim. */
   perimeterMagnitude: number;
   /** Plateau lattice step (world units). 0 = NONE (no terracing). */
-  terrainDTerrain: number | undefined;
-  /** D-PLATEAU wall slope angle in degrees from horizontal. Undefined
-   *  only for legacy lobby messages. */
-  plateauWallSlopeDegrees: number | undefined;
+  terrainDTerrain: number;
+  /** D-PLATEAU wall slope angle in degrees from horizontal. */
+  plateauWallSlopeDegrees: number;
   /** Metal-extractor pad altitude step (world units). */
-  metalDepositStep: number | undefined;
+  metalDepositStep: number;
   /** Fine-triangle subdivisions per land cell. 0 = off (one triangle
    *  per cell); higher values refine the mesh. */
-  terrainDetail: number | undefined;
+  terrainDetail: number;
   mapWidthLandCells: number;
   mapLengthLandCells: number;
-  /** Gameplay unit cap for real battles. Undefined only for legacy handoffs. */
-  maxTotalUnits: number | undefined;
-  converterTax: number | undefined;
-  /** Whether units brake on approach to their last waypoint. Undefined only
-   *  for legacy lobby messages, which use the off default. */
-  slowDownAtFinalWaypoint: boolean | undefined;
-  /** Ground material for the whole authoritative world. Undefined only for
-   *  legacy lobby messages. */
-  terrainSurfaceMode: TerrainSurfaceMode | undefined;
-  /** Liquid material below the water level. Undefined only for legacy lobby
-   *  messages. Lava changes simulation damage as well as rendering. */
-  liquidSurfaceMode: LiquidSurfaceMode | undefined;
+  /** Gameplay unit cap for real battles. */
+  maxTotalUnits: number;
+  converterTax: number;
+  /** Whether units brake on approach to their last waypoint. */
+  slowDownAtFinalWaypoint: boolean;
+  /** Ground material for the whole authoritative world. */
+  terrainSurfaceMode: TerrainSurfaceMode;
+  /** Liquid material below the water level. Lava changes simulation damage as
+   *  well as rendering. */
+  liquidSurfaceMode: LiquidSurfaceMode;
 };
 
 export type NetworkServerSnapshotSimEvent = {
@@ -849,13 +845,16 @@ export type NetworkServerSnapshotMinimapEntity = {
    *  positional intel. Omitted (treated as false) for entities the
    *  recipient sees in full. */
   radarOnly: boolean | null;
-  /** For a contact-only entry, which sensor lane could have earned it: true
-   *  when the body's volume is mostly under the surface (a sonar return), false
-   *  when it is mostly above (a radar return). Null for fully visible entries,
-   *  which are drawn from the real entity instead. The world blip sits at the
-   *  surface this names, which is the coarsening: a contact gives map position
-   *  and lane, never altitude. */
-  contactUnderwater: boolean | null;
+  /** Contact rows only: bit 0 means the team earned an above-water radar
+   *  contact and bit 1 means it earned an underwater sonar contact. A
+   *  straddling body may carry both. This is sensor provenance, not entity
+   *  identity. Null for fully visible entries. */
+  contactMediumMask: number | null;
+  /** Contact rows only: authoritative world-space observation altitude. Radar
+   *  and sonar are three-dimensional sensors, so their anonymous marker must
+   *  not be projected onto terrain or the water plane. Null for fully visible
+   *  entries; required and finite for contact-only entries. */
+  contactZ: number | null;
 };
 
 export type NetworkServerSnapshotSprayTarget = {
@@ -1031,9 +1030,6 @@ export type NetworkServerSnapshotEntity = {
      *  compatibility. Adjacent fixed-tick presentation reads complete
      *  orientations rather than integrating this value in TypeScript. */
     angularVelocity3: Vec3 | null;
-    /** Legacy two-state fire permission mirror. New code reads
-     *  fireState first and falls back to this bit if absent. */
-    fireEnabled: boolean | null;
     /** Player-controlled fire state. Omitted/null means unchanged for
      *  deltas and fire-at-will for full records. */
     fireState?: CombatFireState | null;
@@ -1050,9 +1046,6 @@ export type NetworkServerSnapshotEntity = {
      *  on deltas that explicitly return it to maneuver. Omitted/null
      *  means "unchanged" for deltas and maneuver for full records. */
     moveState?: UnitMoveState | null;
-    /** Legacy two-state mirror kept for older decoders. New code reads
-     *  moveState first and falls back to this bit if absent. */
-    holdPosition?: boolean | null;
     /** Private owner command intent for cloak. Present on full private
      *  records when enabled and on deltas that explicitly toggle it. */
     wantCloak?: boolean | null;
@@ -1182,7 +1175,7 @@ export type BattleHandoff = {
   hostPlayerId: PlayerId;
   playerIds: PlayerId[];
   players: LobbyPlayer[];
-  settings: LobbySettings | undefined;
+  settings: LobbySettings;
 };
 
 export type NetworkRole = 'host' | 'client';

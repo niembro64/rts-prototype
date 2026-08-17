@@ -56,6 +56,12 @@ import {
   getMinimapSnapshotWireSource,
 } from './stateSerializerMinimap';
 import {
+  MINIMAP_CONTACT_FLAG_ALTITUDE,
+  MINIMAP_CONTACT_FLAG_RADAR_ONLY,
+  contactMediumMaskFromMinimapFlags,
+  normalizeContactMediumMask,
+} from './contactMedium';
+import {
   SPRAY_TARGET_WIRE_STRIDE,
   getSprayTargetWireSource,
 } from './stateSerializerSpray';
@@ -110,33 +116,6 @@ import { getSprayTargetWireFlags } from './sprayTargetWireHelpers';
 import { isFiniteNumber } from '../math';
 
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
-
-// Rust snapshot wire encoding is the default. The single named opt-out —
-// VITE_BA_ENABLE_RUST_SNAPSHOT_WIRE=0 or ?rustSnapshotWire=0 — exists for
-// diagnostics only and gates both the direct server preencode path and the
-// DTO codec path through this one helper.
-export function isRustSnapshotWireEnabled(): boolean {
-  const env = import.meta.env.VITE_BA_ENABLE_RUST_SNAPSHOT_WIRE;
-  if (typeof env === 'string') {
-    const normalized = env.toLowerCase();
-    if (env === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') {
-      return true;
-    }
-    if (env === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') {
-      return false;
-    }
-  }
-  if (typeof window === 'undefined') return true;
-  const params = new URLSearchParams(window.location.search);
-  const value = params.get('rustSnapshotWire');
-  if (value === null) return true;
-  if (value === '' || value === '1') return true;
-  const normalized = value.toLowerCase();
-  if (value === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') {
-    return false;
-  }
-  return normalized === 'true' || normalized === 'yes' || normalized === 'on';
-}
 
 type SnapshotEncodeApi = SimWasm['snapshotEncode'];
 type SnapshotUnit = NonNullable<NetworkServerSnapshotEntity['unit']>;
@@ -588,12 +567,10 @@ function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
     (unit.supportPointOffsetZ !== null && !Number.isFinite(unit.supportPointOffsetZ)) ||
     (unit.mass !== null && !Number.isFinite(unit.mass)) ||
     hasInactiveTurret(unit.turrets) ||
-    unit.fireEnabled === true ||
     (unit.fireState !== null && unit.fireState !== undefined) ||
     (unit.trajectoryMode !== null && unit.trajectoryMode !== undefined) ||
     (unit.repeatQueue !== null && unit.repeatQueue !== undefined) ||
     (unit.moveState !== null && unit.moveState !== undefined) ||
-    (unit.holdPosition !== null && unit.holdPosition !== undefined) ||
     (unit.wantCloak !== null && unit.wantCloak !== undefined) ||
     (unit.builderPriorityLow !== null && unit.builderPriorityLow !== undefined) ||
     (unit.carrierSpawnEnabled !== null && unit.carrierSpawnEnabled !== undefined) ||
@@ -663,7 +640,7 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
     angularVelocity !== null ? angularVelocity.x : 0,
     angularVelocity !== null ? angularVelocity.y : 0,
     angularVelocity !== null ? angularVelocity.z : 0,
-    unit.fireEnabled === false ? 1 : 0,
+    0,
     unit.isCommander === true ? 1 : 0,
     unit.buildTargetIdPresent ? 1 : 0,
     unit.buildTargetId === null ? 1 : 0,
@@ -1173,9 +1150,10 @@ function packMinimapIntoScratch(
       api.minimapScratchPtr(),
       entries.length * api.minimapScratchStride,
     );
-    // The pooled source stores V2 wire flags; the Rust scratch keeps
-    // raw DTO presence/value bits so it can still emit the legacy
-    // minimap array in byte-equality tests.
+    // The pooled source stores V4 wire flags; the Rust scratch keeps raw DTO
+    // presence/value bits followed by the two-bit contact-medium value:
+    // bit 0 = radarOnly present, bit 1 = radarOnly true, bits 2..3 = medium,
+    // bit 4 = contactMediumMask present, bit 5 = contactZ present.
     for (let i = 0; i < entries.length; i++) {
       const base = i * MINIMAP_SNAPSHOT_WIRE_STRIDE;
       view[base + 0] = src[base + 0];
@@ -1183,7 +1161,22 @@ function packMinimapIntoScratch(
       view[base + 2] = src[base + 2];
       view[base + 3] = src[base + 3];
       view[base + 4] = src[base + 4];
-      view[base + 5] = src[base + 5] !== 0 ? 0x03 : 0;
+      const wireFlags = src[base + 5] | 0;
+      const radarOnly = (wireFlags & MINIMAP_CONTACT_FLAG_RADAR_ONLY) !== 0;
+      const contactMediumMask = contactMediumMaskFromMinimapFlags(wireFlags);
+      if (
+        radarOnly &&
+        ((wireFlags & MINIMAP_CONTACT_FLAG_ALTITUDE) === 0 || contactMediumMask === 0)
+      ) {
+        throw new Error('[snapshot encoder] current minimap contact requires medium and contactZ');
+      }
+      const scratchFlags = radarOnly
+        ? 0x33 | (contactMediumMask << 2)
+        : 0;
+      view[base + 5] = scratchFlags;
+      view[base + 6] = (wireFlags & MINIMAP_CONTACT_FLAG_ALTITUDE) !== 0
+        ? src[base + 6]
+        : 0;
     }
     return;
   }
@@ -1203,9 +1196,24 @@ function packMinimapIntoScratch(
     let packed = 0;
     if (entry.radarOnly !== null) {
       packed |= 0x01;
-      if (entry.radarOnly) packed |= 0x02;
+      if (entry.radarOnly) {
+        packed |= 0x02;
+        if (entry.contactMediumMask === null) {
+          throw new Error(`[snapshot encoder] minimap contact ${entry.id} is missing contactMediumMask`);
+        }
+        const contactMediumMask = normalizeContactMediumMask(entry.contactMediumMask);
+        if (contactMediumMask === 0) {
+          throw new Error(`[snapshot encoder] minimap contact ${entry.id} has an empty contactMediumMask`);
+        }
+        if (typeof entry.contactZ !== 'number' || !Number.isFinite(entry.contactZ)) {
+          throw new Error(`[snapshot encoder] minimap contact ${entry.id} is missing finite contactZ`);
+        }
+        packed |= 0x30;
+        packed |= contactMediumMask << 2;
+      }
     }
     view[base + 5] = packed;
+    view[base + 6] = (packed & 0x20) !== 0 ? entry.contactZ! : 0;
   }
 }
 
@@ -2341,7 +2349,7 @@ function emitEnvelopeTail(
   return index;
 }
 
-export function encodeNetworkSnapshotWithRustFallback(
+export function encodeNetworkSnapshotWithRust(
   state: NetworkServerSnapshotWire,
 ): RustSnapshotEncodeResult | null {
   const sim = getSimWasm();

@@ -3,8 +3,7 @@
 // Each state uses hysteresis: acquire at a tighter range, release at a wider range.
 // This prevents state flickering when targets hover near boundaries.
 
-// All type definitions are now centralized in @/types/sim.
-// This file re-exports them for backward compatibility and holds runtime constants.
+// Public simulation facade: canonical types plus runtime constants and color policy.
 
 import { linearToSrgbByte } from '../math/ColorMath';
 
@@ -167,7 +166,7 @@ type ColorTeamLayout = {
 let _playerCountForColors = 6;
 let _colorTeamLayout: ColorTeamLayout | null = null;
 
-/** Legacy entry point: N seats, each its own side (free-for-all). */
+/** Install an N-seat free-for-all color layout. */
 export function setPlayerCountForColors(count: number): void {
   const next = Math.max(1, Math.floor(count));
   if (_colorTeamLayout === null && _playerCountForColors === next) return;

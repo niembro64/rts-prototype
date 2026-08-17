@@ -77,12 +77,10 @@ function createEmptyUnitSub(): UnitSub {
     surfaceNormal: null,
     orientation: null,
     angularVelocity3: null,
-    fireEnabled: null,
     fireState: null,
     trajectoryMode: null,
     repeatQueue: null,
     moveState: null,
-    holdPosition: null,
     wantCloak: null,
     builderPriorityLow: null,
     carrierSpawnEnabled: null,
@@ -422,12 +420,10 @@ function rentDecodedUnitSub(): UnitSub {
     u.surfaceNormal = null;
     u.orientation = null;
     u.angularVelocity3 = null;
-    u.fireEnabled = null;
     u.fireState = null;
     u.trajectoryMode = null;
     u.repeatQueue = null;
     u.moveState = null;
-    u.holdPosition = null;
     u.wantCloak = null;
     u.builderPriorityLow = null;
     u.carrierSpawnEnabled = null;
@@ -520,8 +516,7 @@ function rentDecodedQuat(x: number, y: number, z: number, w: number): DecodedQua
   return q;
 }
 
-const PACKED_ENTITIES_VERSION = 20;
-const PACKED_ENTITIES_MIN_SUPPORTED_VERSION = 13;
+const PACKED_ENTITIES_VERSION = 21;
 
 // Bit flags for the packed unit row's optional-presence header.
 // One bit per optional sub-field so the decoder can tell "missing"
@@ -537,7 +532,7 @@ const UNIT_FLAG_RETIRED_SUSPENSION = 1 << 7;
 const UNIT_FLAG_CLOAK_STATE_PRESENT = 1 << 8;
 const UNIT_FLAG_ORIENTATION = 1 << 9;
 const UNIT_FLAG_ANGULAR_VELOCITY = 1 << 10;
-const UNIT_FLAG_FIRE_DISABLED = 1 << 11;
+const UNIT_FLAG_RETIRED_FIRE_DISABLED = 1 << 11;
 const UNIT_FLAG_IS_COMMANDER = 1 << 12;
 const UNIT_FLAG_BUILD_TARGET_ID = 1 << 13;
 const UNIT_FLAG_BUILD_TARGET_NULL = 1 << 14;
@@ -548,8 +543,8 @@ const UNIT_FLAG_BUILD_COMPLETE = 1 << 18;
 const UNIT_FLAG_BUILD_INTERRUPTED = 1 << 19;
 const UNIT_FLAG_REPEAT_PRESENT = 1 << 20;
 const UNIT_FLAG_REPEAT_ENABLED = 1 << 21;
-const UNIT_FLAG_HOLD_POSITION_PRESENT = 1 << 22;
-const UNIT_FLAG_HOLD_POSITION_ENABLED = 1 << 23;
+const UNIT_FLAG_RETIRED_HOLD_POSITION_PRESENT = 1 << 22;
+const UNIT_FLAG_RETIRED_HOLD_POSITION_ENABLED = 1 << 23;
 const UNIT_FLAG_TRAJECTORY_PRESENT = 1 << 24;
 const UNIT_FLAG_TRAJECTORY_HIGH = 1 << 25;
 const UNIT_FLAG_TRAJECTORY_AUTO = 1 << 26;
@@ -640,7 +635,7 @@ type PackedUnitTurretBytes = Uint8Array;
 type PackedBuildingDeltaBytes = Uint8Array;
 
 export type PackedEntitySnapshotWire = {
-  v: number;
+  v: typeof PACKED_ENTITIES_VERSION;
   m: PackedMovementUnitBytes | undefined;
   t: PackedUnitTurretBytes | undefined;
   b?: PackedBuildingDeltaBytes | undefined;
@@ -745,15 +740,8 @@ export function isPackedEntitySnapshotWire(
     return false;
   }
   const candidate = value as Partial<PackedEntitySnapshotWire>;
-  if (
-    typeof candidate.v !== 'number' ||
-    candidate.v < PACKED_ENTITIES_MIN_SUPPORTED_VERSION ||
-    candidate.v > PACKED_ENTITIES_VERSION
-  ) {
-    return false;
-  }
-  if (candidate.v < 14 && candidate.b !== undefined) return false;
   return (
+    candidate.v === PACKED_ENTITIES_VERSION &&
     (candidate.m === undefined || candidate.m instanceof Uint8Array) &&
     (candidate.t === undefined || candidate.t instanceof Uint8Array) &&
     (candidate.b === undefined || candidate.b instanceof Uint8Array) &&
@@ -876,9 +864,6 @@ function tryAppendDecodedUnitDetailTypedFullWireRow(
   if (unit.fireState !== null && unit.fireState !== undefined) {
     values[base + 51] = 1;
     values[base + 52] = fireStateToWireCode(unit.fireState);
-  } else if (unit.fireEnabled === false) {
-    values[base + 51] = 1;
-    values[base + 52] = fireStateToWireCode('holdFire');
   }
   values[base + 37] = unit.isCommander === true ? 1 : 0;
   if (unit.buildTargetIdPresent) {
@@ -905,16 +890,12 @@ function tryAppendDecodedUnitDetailTypedFullWireRow(
     values[base + 48] = unit.build.paid.metal;
     values[base + 63] = unit.build.interrupted ? 1 : 0;
   }
-  if (unit.fireState !== null && unit.fireState !== undefined || unit.fireEnabled === false) {
+  if (unit.fireState !== null && unit.fireState !== undefined) {
     values[base + 51] = 1;
   }
   if (unit.repeatQueue !== null && unit.repeatQueue !== undefined) {
     values[base + 53] = 1;
     values[base + 54] = unit.repeatQueue ? 1 : 0;
-  }
-  if (unit.holdPosition !== null && unit.holdPosition !== undefined) {
-    values[base + 55] = 1;
-    values[base + 56] = unit.holdPosition ? 1 : 0;
   }
   if (unit.trajectoryMode !== null && unit.trajectoryMode !== undefined) {
     values[base + 57] = 1;
@@ -1147,10 +1128,6 @@ function tryAppendDecodedUnitDetailTypedPlaceholderWireRow(
   if (unit.repeatQueue !== null && unit.repeatQueue !== undefined) {
     values[base + 53] = 1;
     values[base + 54] = unit.repeatQueue ? 1 : 0;
-  }
-  if (unit.holdPosition !== null && unit.holdPosition !== undefined) {
-    values[base + 55] = 1;
-    values[base + 56] = unit.holdPosition ? 1 : 0;
   }
   if (unit.moveState !== null && unit.moveState !== undefined) {
     values[base + 59] = 1;
@@ -1802,8 +1779,12 @@ function unpackUnit(row: unknown[]): UnitSub {
     const z = row[i++] as number;
     unit.angularVelocity3 = { x, y, z };
   }
-  if ((flags & UNIT_FLAG_FIRE_DISABLED) !== 0) {
-    unit.fireEnabled = false;
+  if ((flags & (
+    UNIT_FLAG_RETIRED_FIRE_DISABLED |
+    UNIT_FLAG_RETIRED_HOLD_POSITION_PRESENT |
+    UNIT_FLAG_RETIRED_HOLD_POSITION_ENABLED
+  )) !== 0) {
+    throw new Error('[entity wire] current unit row contains retired compatibility flags');
   }
   if ((flags & UNIT_FLAG_FIRE_STATE_PRESENT) !== 0) {
     const code = row[i++] as number;
@@ -1821,9 +1802,6 @@ function unpackUnit(row: unknown[]): UnitSub {
   }
   if ((flags & UNIT_FLAG_REPEAT_PRESENT) !== 0) {
     unit.repeatQueue = (flags & UNIT_FLAG_REPEAT_ENABLED) !== 0;
-  }
-  if ((flags & UNIT_FLAG_HOLD_POSITION_PRESENT) !== 0) {
-    unit.holdPosition = (flags & UNIT_FLAG_HOLD_POSITION_ENABLED) !== 0;
   }
   if ((flags & UNIT_FLAG_MOVE_STATE_PRESENT) !== 0) {
     unit.moveState = (flags & UNIT_FLAG_MOVE_STATE_HOLD) !== 0

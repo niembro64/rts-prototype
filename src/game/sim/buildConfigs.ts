@@ -45,8 +45,7 @@ function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): Building
   };
 }
 
-// Compatibility table for runtime code that still receives a static
-// structure id via the historical `buildingBlueprintId` field.
+// Canonical runtime table for every static structure blueprint.
 export const STRUCTURE_CONFIGS = {} as Record<BuildingBlueprintId, BuildingConfig>;
 const ALL_STRUCTURE_CONFIGS: BuildingConfig[] = [];
 for (const buildingBlueprintId in BUILDING_BLUEPRINTS) {
@@ -69,8 +68,7 @@ export function getBuildingConfig(buildingBlueprintId: BuildingBlueprintId): Bui
 }
 
 
-// Helper to get unit build config (now backed by blueprints)
-// Returns a shim matching the old UnitBuildConfig shape for backward compatibility
+// Derived build-cost view used by reclaim and construction accounting.
 export function getUnitBuildConfig(unitBlueprintId: string): UnitBuildConfig | undefined {
   const bp = getUnitBlueprint(unitBlueprintId);
   if (!bp) return undefined;

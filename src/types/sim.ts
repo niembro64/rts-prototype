@@ -366,9 +366,6 @@ export type CombatComponent = {
   turrets: Turret[];
   /** Mounted utility capabilities kept out of the attack-turret FSM. */
   utilityMounts: UtilityMountCapability[];
-  /** Legacy player-controlled fire permission mirror. False is hard
-   *  hold-fire for older snapshot consumers. */
-  fireEnabled: boolean;
   /** Player-controlled fire state. BAR exposes Fire at will / Return fire /
    *  Hold fire by default, while its order-menu helper also supports direct
    *  Defend and Fire at all states. */
@@ -404,7 +401,6 @@ export function createCombatComponent(
   return {
     turrets,
     utilityMounts,
-    fireEnabled: true,
     fireState: 'fireAtWill',
     trajectoryMode: 'auto',
     priorityTargetId: null,

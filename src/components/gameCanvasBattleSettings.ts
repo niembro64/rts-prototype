@@ -18,7 +18,7 @@ import {
   saveSlopePathMode,
   loadStoredTerrainSurfaceMode,
   loadStoredLiquidSurfaceMode,
-  saveStoredCap,
+  setUnitCap,
   type BattleMode,
 } from '../battleBarConfig';
 import type { SlopePathMode } from '../types/slopePathMode';
@@ -284,7 +284,7 @@ export function useGameCanvasBattleSettings({
         maxTotalUnits: value,
       });
     }
-    saveStoredCap(mode, value);
+    setUnitCap(mode, value);
     if (changed && broadcast && mode === 'real') broadcastLobbySettingsIfHost();
   }
 

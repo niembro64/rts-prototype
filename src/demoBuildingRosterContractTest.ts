@@ -2,14 +2,9 @@
 //
 // The demo battle spawns the buildings in this roster and nothing else, so a
 // building missing from a profile's stored roster is a building that never
-// appears in the demo — which has now happened three times, once per batch of
-// tech structures added after the roster feature shipped. The repair used to be
-// a hand-written id list inside a revision-gated migration, which does nothing
-// at all for a profile already sitting at the current revision. The UNITS
-// roster carried the same shape and the same latent bug.
-//
-// This pins the mechanism that replaces it: the roster is a list of opt-OUTS,
-// and a blueprint nobody has ever seen cannot have been opted out of.
+// appears in the demo. The current ledger records which blueprints a current
+// roster has seen, so newly authored blueprints can default on without decoding
+// or guessing any obsolete storage shape.
 
 import {
   adoptNewDemoBlueprints,
@@ -84,21 +79,19 @@ export function runDemoBuildingRosterContractTest(): void {
       'a second adoption pass with no new blueprints must change nothing',
     );
 
-    // No ledger yet — a profile that predates the mechanism. It is seeded from
-    // the recorded PRE-LEDGER id list, so blueprints added after the ledger
-    // shipped are still adopted (this is the case that was leaving the
-    // precision lab out of the demo), while an older opt-out stands.
+    // No ledger is not interpreted as an earlier schema. Seed the current
+    // ledger and leave the unversioned roster untouched.
     window.localStorage.removeItem(LEDGER_KEY);
     window.localStorage.setItem(ROSTER_KEY, JSON.stringify(roster));
     adoptNewDemoBlueprints();
     const seeded = new Set(readIds(ROSTER_KEY) ?? []);
     assertContract(
-      seeded.has('buildingPrecisionTargetingTech'),
-      'a pre-ledger profile must still adopt blueprints added after the ledger shipped',
+      seeded.size === roster.length && roster.every((id) => seeded.has(id)),
+      'an absent current ledger must not trigger an inferred roster migration',
     );
     assertContract(
       !seeded.has(optedOut),
-      `a pre-ledger profile's existing opt-out ${optedOut} must survive seeding`,
+      `the existing opt-out ${optedOut} must survive current-ledger seeding`,
     );
     assertContract(
       readIds(LEDGER_KEY) !== null,

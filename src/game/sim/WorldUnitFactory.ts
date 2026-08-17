@@ -171,7 +171,6 @@ export function createUnitFromBlueprintEntity(
   entity.unit!.moveState = unitBlueprintBarDefaultMoveState(unitBlueprintId);
   const defaultFireState = unitBlueprintBarDefaultFireState(unitBlueprintId);
   entity.combat.fireState = defaultFireState;
-  entity.combat.fireEnabled = defaultFireState !== 'holdFire';
   entity.unit!.shieldBoundRadius = buildShieldPanelCache(
     bp,
     entity.unit!.shieldPanels,

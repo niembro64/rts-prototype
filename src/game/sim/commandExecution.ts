@@ -1512,11 +1512,9 @@ function applyCombatFireState(ctx: CommandContext, entity: Entity, fireState: Co
   const combat = entity.combat;
   if (combat === null) return false;
 
-  const enabled = fireState !== 'holdFire';
-  const stateChanged = combat.fireState !== fireState || combat.fireEnabled !== enabled;
+  const stateChanged = combat.fireState !== fireState;
   if (stateChanged) {
     combat.fireState = fireState;
-    combat.fireEnabled = enabled;
   }
   if (fireState === 'holdFire') {
     combat.priorityTargetId = null;

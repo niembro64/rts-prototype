@@ -32,7 +32,7 @@ function nextUnitMoveState(state: UnitMoveState): UnitMoveState {
 
 function combatFireState(combat: Entity['combat']): CombatFireState {
   if (combat === null) return 'holdFire';
-  return combat.fireState ?? (combat.fireEnabled === false ? 'holdFire' : 'fireAtWill');
+  return combat.fireState;
 }
 
 function nextCombatFireState(state: CombatFireState): CombatFireState {

@@ -20,29 +20,21 @@ import {
 import {
   activeFloat64WireValues,
 } from './snapshotWireRows';
+import {
+  MINIMAP_CONTACT_FLAG_AIR,
+  MINIMAP_CONTACT_FLAG_ALTITUDE,
+  MINIMAP_CONTACT_FLAG_RADAR_ONLY,
+  MINIMAP_CONTACT_FLAG_WATER,
+  contactMediumMaskFromMinimapFlags,
+  contactMediumMaskToMinimapFlags,
+} from './contactMedium';
 
-const PACKED_MINIMAP_ENTITIES_V1_VERSION = 1;
-const PACKED_MINIMAP_ENTITIES_VERSION = 2;
-const PACKED_MINIMAP_ENTITY_STRIDE = 6;
-const MINIMAP_ENTITY_FLAG_RADAR_ONLY = 0x01;
-/** Set only on contact rows: the body's volume is mostly under the surface, so
- *  the contact reads as a sonar return and its world blip sits at the water
- *  line rather than on the ground. */
-const MINIMAP_ENTITY_FLAG_CONTACT_UNDERWATER = 0x02;
+const PACKED_MINIMAP_ENTITIES_VERSION = 4;
 
-type PackedMinimapEntitiesWireV1 = {
-  v: typeof PACKED_MINIMAP_ENTITIES_V1_VERSION;
-  r: number[];
-};
-
-type PackedMinimapEntitiesWireV2 = {
+export type PackedMinimapEntitiesWire = {
   v: typeof PACKED_MINIMAP_ENTITIES_VERSION;
   b: Uint8Array;
 };
-
-export type PackedMinimapEntitiesWire =
-  | PackedMinimapEntitiesWireV1
-  | PackedMinimapEntitiesWireV2;
 
 type PackedMinimapGroup = {
   typeTag: number;
@@ -122,43 +114,14 @@ export function packMinimapEntitiesForWire(
 
   return {
     v: PACKED_MINIMAP_ENTITIES_VERSION,
-    b: packMinimapEntitiesV2(entries),
+    b: packMinimapEntitiesV4(entries),
   };
 }
 
 export function unpackMinimapEntitiesFromWire(
   packed: PackedMinimapEntitiesWire,
 ): NetworkServerSnapshot['minimapEntities'] {
-  if (packed.v === PACKED_MINIMAP_ENTITIES_VERSION) {
-    return unpackMinimapEntitiesV2(packed.b);
-  }
-
-  const rows = packed.r;
-  const count = Math.floor(rows.length / PACKED_MINIMAP_ENTITY_STRIDE);
-  const entries: NetworkServerSnapshotMinimapEntity[] = new Array(count);
-
-  for (let i = 0; i < count; i++) {
-    const base = i * PACKED_MINIMAP_ENTITY_STRIDE;
-    const flags = rows[base + 5] ?? 0;
-    const entry: NetworkServerSnapshotMinimapEntity = {
-      id: rows[base + 0] ?? 0,
-      pos: {
-        x: rows[base + 1] ?? 0,
-        y: rows[base + 2] ?? 0,
-      },
-      type: wireTypeToMinimapType(rows[base + 3] ?? ENTITY_SNAPSHOT_WIRE_TYPE_UNIT),
-      playerId: (rows[base + 4] ?? 1) as NetworkServerSnapshotMinimapEntity['playerId'],
-      radarOnly: null,
-      contactUnderwater: null,
-    };
-    if ((flags & MINIMAP_ENTITY_FLAG_RADAR_ONLY) !== 0) {
-      entry.radarOnly = true;
-      entry.contactUnderwater = (flags & MINIMAP_ENTITY_FLAG_CONTACT_UNDERWATER) !== 0;
-    }
-    entries[i] = entry;
-  }
-
-  return entries;
+  return unpackMinimapEntitiesBinary(packed.b);
 }
 
 export function isPackedMinimapEntitiesWire(
@@ -166,16 +129,13 @@ export function isPackedMinimapEntitiesWire(
 ): value is PackedMinimapEntitiesWire {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const candidate = value as Partial<PackedMinimapEntitiesWire>;
-  if (candidate.v === PACKED_MINIMAP_ENTITIES_V1_VERSION) {
-    return Array.isArray(candidate.r);
-  }
   return (
     candidate.v === PACKED_MINIMAP_ENTITIES_VERSION &&
     candidate.b instanceof Uint8Array
   );
 }
 
-function packMinimapEntitiesV2(
+function packMinimapEntitiesV4(
   entries: readonly NetworkServerSnapshotMinimapEntity[],
 ): Uint8Array {
   resetMinimapPackScratch();
@@ -186,6 +146,7 @@ function packMinimapEntitiesV2(
     const rows = activeFloat64WireValues(source, MINIMAP_SNAPSHOT_WIRE_STRIDE);
     for (let i = 0; i < source.count; i++) {
       const base = i * MINIMAP_SNAPSHOT_WIRE_STRIDE;
+      assertCurrentContactFlags(rows[base + 5]);
       appendMinimapPackedRow(
         rows[base + 0],
         rows[base + 1],
@@ -193,6 +154,7 @@ function packMinimapEntitiesV2(
         rows[base + 3],
         rows[base + 4],
         rows[base + 5],
+        rows[base + 6],
         estimatedGroupBytes,
       );
     }
@@ -202,14 +164,30 @@ function packMinimapEntitiesV2(
 
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
+    const radarOnly = entry.radarOnly === true;
+    let flags = 0;
+    let contactZ = 0;
+    if (radarOnly) {
+      if (entry.contactMediumMask === null) {
+        throw new Error(`[minimap wire] contact ${entry.id} is missing contactMediumMask`);
+      }
+      if (typeof entry.contactZ !== 'number' || !Number.isFinite(entry.contactZ)) {
+        throw new Error(`[minimap wire] contact ${entry.id} is missing finite contactZ`);
+      }
+      flags = MINIMAP_CONTACT_FLAG_RADAR_ONLY |
+        MINIMAP_CONTACT_FLAG_ALTITUDE |
+        contactMediumMaskToMinimapFlags(entry.contactMediumMask);
+      assertCurrentContactFlags(flags);
+      contactZ = entry.contactZ;
+    }
     appendMinimapPackedRow(
       entry.id,
       entry.pos.x,
       entry.pos.y,
       minimapTypeToWireType(entry.type),
       entry.playerId,
-      (entry.radarOnly === true ? MINIMAP_ENTITY_FLAG_RADAR_ONLY : 0) |
-        (entry.contactUnderwater === true ? MINIMAP_ENTITY_FLAG_CONTACT_UNDERWATER : 0),
+      flags,
+      contactZ,
       estimatedGroupBytes,
     );
   }
@@ -224,6 +202,7 @@ function appendMinimapPackedRow(
   typeTag: number,
   playerId: number,
   flags: number,
+  contactZ: number,
   estimatedGroupBytes: number,
 ): void {
   const key = typeTag * 0x1000 + playerId * 0x10 + flags;
@@ -239,6 +218,9 @@ function appendMinimapPackedRow(
   group.lastId = id;
   group.writer.writeVarInt(x);
   group.writer.writeVarInt(y);
+  if ((flags & MINIMAP_CONTACT_FLAG_ALTITUDE) !== 0) {
+    group.writer.writeVarInt(contactZ);
+  }
   group.count++;
 }
 
@@ -258,7 +240,19 @@ function finishMinimapPackedRows(count: number): Uint8Array {
   return packed;
 }
 
-function unpackMinimapEntitiesV2(
+function assertCurrentContactFlags(flags: number): void {
+  const radarOnly = (flags & MINIMAP_CONTACT_FLAG_RADAR_ONLY) !== 0;
+  const hasAltitude = (flags & MINIMAP_CONTACT_FLAG_ALTITUDE) !== 0;
+  const hasMedium = (flags & (MINIMAP_CONTACT_FLAG_AIR | MINIMAP_CONTACT_FLAG_WATER)) !== 0;
+  if (radarOnly && (!hasAltitude || !hasMedium)) {
+    throw new Error('[minimap wire] current contact row requires medium and altitude');
+  }
+  if (!radarOnly && (hasAltitude || hasMedium)) {
+    throw new Error('[minimap wire] full-vision row cannot carry contact-only fields');
+  }
+}
+
+function unpackMinimapEntitiesBinary(
   rows: Uint8Array,
 ): NetworkServerSnapshot['minimapEntities'] {
   const totalCount = readPackedBinaryRowCount(rows);
@@ -271,24 +265,31 @@ function unpackMinimapEntitiesV2(
     const typeTag = reader.readVarUint();
     const playerId = reader.readVarUint() as NetworkServerSnapshotMinimapEntity['playerId'];
     const flags = reader.readVarUint();
+    assertCurrentContactFlags(flags);
+    const radarOnly = (flags & MINIMAP_CONTACT_FLAG_RADAR_ONLY) !== 0;
     const count = reader.readVarUint();
     let id = 0;
     for (let i = 0; i < count; i++) {
       id += reader.readVarInt();
+      const x = reader.readVarInt();
+      const y = reader.readVarInt();
+      const contactZ = radarOnly ? reader.readVarInt() : null;
       const entry: NetworkServerSnapshotMinimapEntity = {
         id,
         pos: {
-          x: reader.readVarInt(),
-          y: reader.readVarInt(),
+          x,
+          y,
         },
         type: wireTypeToMinimapType(typeTag),
         playerId,
         radarOnly: null,
-        contactUnderwater: null,
+        contactMediumMask: null,
+        contactZ: null,
       };
-      if ((flags & MINIMAP_ENTITY_FLAG_RADAR_ONLY) !== 0) {
+      if (radarOnly) {
         entry.radarOnly = true;
-        entry.contactUnderwater = (flags & MINIMAP_ENTITY_FLAG_CONTACT_UNDERWATER) !== 0;
+        entry.contactMediumMask = contactMediumMaskFromMinimapFlags(flags);
+        entry.contactZ = contactZ;
       }
       entries[outIndex++] = entry;
     }

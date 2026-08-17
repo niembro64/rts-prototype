@@ -1,8 +1,10 @@
 {
-  "demoDefault": "DEMO BATTLE DEFAULT",
-  "realDefault": "REAL BATTLE DEFAULT",
+  "demoDefault": "Angels Flat",
+  "realDefault": "Angels Flat",
 
   "cap": {
+    "demoDefault": 9,
+    "realDefault": 243,
     "options": [9, 81, 243, 729, 1262, 2187]
   },
   "centerMagnitude": {
@@ -38,14 +40,10 @@
 
   "storageKeys": {
     "demoUnits": "demo-battle-units",
-    "demoContentRevision": "demo-battle-content-revision",
     "demoBuildings": "demo-battle-buildings",
     "demoBuildingsKnownIds": "demo-battle-buildings-known-ids",
     "demoUnitsKnownIds": "demo-battle-units-known-ids",
-    "demoPerimeterLegacyDefaultMoved": "demo-battle-perimeter-legacy-default-moved",
-    "demoTowers": "demo-battle-towers",
     "demoCap": "demo-battle-cap",
-    "realCap": "real-battle-cap",
     "demoTurretShieldPanelsEnabled": "demo-battle-turret-shield-panels-enabled",
     "realTurretShieldPanelsEnabled": "real-battle-turret-shield-panels-enabled",
     "demoTurretShieldSpheresEnabled": "demo-battle-turret-shield-spheres-enabled",
@@ -90,21 +88,9 @@
     "realTerrainSplitWallBoundaryVertices": "real-battle-terrain-split-wall-boundary-vertices",
     "demoConverterTax": "demo-battle-converter-tax",
     "realConverterTax": "real-battle-converter-tax",
-    "demoMapLandCells": "demo-battle-map-land-cells",
-    "realMapLandCells": "real-battle-map-land-cells",
     "demoMapWidthLandCells": "demo-battle-map-width-land-cells",
     "realMapWidthLandCells": "real-battle-map-width-land-cells",
     "demoMapLengthLandCells": "demo-battle-map-length-land-cells",
     "realMapLengthLandCells": "real-battle-map-length-land-cells"
-  },
-
-  "storageMigrations": [
-    ["rts-demo-units", "demo-battle-units"],
-    ["rts-demo-cap", "demo-battle-cap"],
-    ["rts-real-cap", "real-battle-cap"],
-    ["rts-mirrors-enabled", "demo-battle-turret-shield-panels-enabled"],
-    ["rts-shields-enabled", "demo-battle-turret-shield-spheres-enabled"],
-    ["rts-fog-of-war-enabled", "demo-battle-fog-of-war-enabled"],
-    ["rts-map-land-cells", "demo-battle-map-width-land-cells"]
-  ]
+  }
 }

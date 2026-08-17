@@ -484,10 +484,29 @@ pub fn snapshot_encode_envelope_emit_minimap(count: u32) {
         let radar_packed = scratch.buf[base + 5] as u8;
         let has_radar = (radar_packed & 0x01) != 0;
         let radar_value = (radar_packed & 0x02) != 0;
+        let has_contact_medium = (radar_packed & 0x10) != 0;
+        let contact_medium_mask = (radar_packed >> 2) & 0x03;
+        let has_contact_z = (radar_packed & 0x20) != 0;
+        let contact_z = scratch.buf[base + 6];
+        if radar_value {
+            assert!(
+                has_contact_medium && contact_medium_mask != 0,
+                "current minimap contact requires contactMediumMask"
+            );
+            assert!(has_contact_z, "current minimap contact requires contactZ");
+        } else {
+            assert!(
+                !has_contact_medium && !has_contact_z,
+                "full-vision minimap row cannot carry contact-only fields"
+            );
+        }
 
         // Pool insertion order for the minimap DTO: id, pos, type,
-        // playerId, radarOnly.
-        let field_count = if has_radar { 5 } else { 4 };
+        // playerId, radarOnly, contactMediumMask, contactZ.
+        let field_count = 4
+            + usize::from(has_radar)
+            + usize::from(has_contact_medium)
+            + usize::from(has_contact_z);
         w.write_map_header(field_count);
         w.write_str("id");
         w.write_uint(id as u64);
@@ -510,16 +529,24 @@ pub fn snapshot_encode_envelope_emit_minimap(count: u32) {
             w.write_str("radarOnly");
             w.write_bool(radar_value);
         }
+        if has_contact_medium {
+            w.write_str("contactMediumMask");
+            w.write_uint(contact_medium_mask as u64);
+        }
+        if has_contact_z {
+            w.write_str("contactZ");
+            w.write_number(contact_z);
+        }
     }
 }
 
-/// Append compact `minimapEntities: { v: 2, b }` from the minimap
-/// scratch. Matches snapshotMinimapWirePack.ts V2 while keeping the
+/// Append compact `minimapEntities: { v: 4, b }` from the minimap
+/// scratch. Matches snapshotMinimapWirePack.ts V4 while keeping the
 /// Rust snapshot send path out of the TypeScript packed-binary writer.
 #[wasm_bindgen]
 pub fn snapshot_encode_envelope_emit_packed_minimap(count: u32) -> u32 {
     let w = messagepack_writer();
-    pack_minimap_entities_v2(count as usize);
+    pack_minimap_entities_v4(count as usize);
     let packed = snapshot_encode_packed_minimap_scratch();
 
     w.write_str("minimapEntities");

@@ -178,7 +178,6 @@ export function buildCanonicalMatchInitialization({
       maxTotalUnits: finiteOrNull(settings?.maxTotalUnits),
       converterTax: finiteOrNull(settings?.converterTax),
       fogOfWarEnabled: true,
-      // Undefined legacy messages inherit the explicit new default: off.
       slowDownAtFinalWaypoint: settings?.slowDownAtFinalWaypoint === true,
     },
     content: {

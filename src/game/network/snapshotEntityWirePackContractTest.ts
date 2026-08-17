@@ -17,7 +17,7 @@ import {
 } from '../../types/network';
 import {
   encodeEntitiesV6Bytes,
-  encodeNetworkSnapshotWithRustFallback,
+  encodeNetworkSnapshotWithRust,
 } from './snapshotRustWireEncoder';
 import { PackedBinaryWriter, PACKED_BINARY_ROW_COUNT_BYTES } from './snapshotBinaryWire';
 import {
@@ -41,7 +41,11 @@ import {
   serializeEntitySnapshot,
   type EntitySnapshotWireSource,
 } from './stateSerializerEntities';
-import { unpackEntitiesFromWire, type PackedEntitySnapshotWire } from './snapshotEntityWirePack';
+import {
+  isPackedEntitySnapshotWire,
+  unpackEntitiesFromWire,
+  type PackedEntitySnapshotWire,
+} from './snapshotEntityWirePack';
 import { buildingBlueprintHasActiveState } from '../sim/buildingActiveState';
 import { STRUCTURE_BLUEPRINT_IDS } from '@/types/blueprintIds';
 import { decodeNetworkSnapshot } from './snapshotWireCodec';
@@ -64,7 +68,7 @@ function assertContract(condition: unknown, message: string): asserts condition 
   }
 }
 
-const PACKED_ENTITIES_VERSION_V14 = 14;
+const CURRENT_PACKED_ENTITIES_VERSION = 21;
 const MOVEMENT_UNIT_FLAG_POS = 1 << 0;
 const MOVEMENT_UNIT_FLAG_ROTATION = 1 << 1;
 const MOVEMENT_UNIT_FLAG_VELOCITY = 1 << 2;
@@ -255,6 +259,10 @@ function createV6MovementNormalSource(): EntitySnapshotWireSource {
 }
 
 export function runSnapshotEntityWirePackContractTest(): void {
+  assertContract(
+    !isPackedEntitySnapshotWire({ v: 20, m: undefined, t: undefined, e: undefined }),
+    'obsolete entity packet versions must be rejected rather than decoded',
+  );
   const slabEntities: NetworkServerSnapshotEntity[] = [];
   resetEntitySnapshotPool();
   assertContract(
@@ -354,9 +362,7 @@ export function runSnapshotEntityWirePackContractTest(): void {
     allocateSubEntityIds: false,
   });
   defendEntity.combat!.fireState = 'defend';
-  defendEntity.combat!.fireEnabled = true;
   fireAtAllEntity.combat!.fireState = 'fireAtAll';
-  fireAtAllEntity.combat!.fireEnabled = true;
   fireStateWorld.addEntity(defendEntity);
   fireStateWorld.addEntity(fireAtAllEntity);
   const compactFireStateEntities: NetworkServerSnapshotEntity[] = [];
@@ -793,7 +799,7 @@ export function runSnapshotEntityWirePackContractTest(): void {
   );
 
   const buildingDeltaEntities = unpackEntitiesFromWire({
-    v: PACKED_ENTITIES_VERSION_V14,
+    v: CURRENT_PACKED_ENTITIES_VERSION,
     m: undefined,
     t: undefined,
     b: createPackedBuildingDeltaRow(),
@@ -819,7 +825,7 @@ export function runSnapshotEntityWirePackContractTest(): void {
   );
   const metadataOnlyBuildingEntities = unpackEntitiesFromWire(
     {
-      v: PACKED_ENTITIES_VERSION_V14,
+      v: CURRENT_PACKED_ENTITIES_VERSION,
       m: undefined,
       t: undefined,
       b: createPackedBuildingDeltaRow(),
@@ -854,7 +860,7 @@ export function runSnapshotEntityWirePackContractTest(): void {
   );
 
   const movementEntities = unpackEntitiesFromWire({
-    v: PACKED_ENTITIES_VERSION_V14,
+    v: CURRENT_PACKED_ENTITIES_VERSION,
     m: createPackedMovementRowWithNormal(),
     t: undefined,
     e: undefined,
@@ -907,7 +913,7 @@ export function runSnapshotEntityWirePackContractTest(): void {
   );
   const metadataOnlyMovementEntities = unpackEntitiesFromWire(
     {
-      v: PACKED_ENTITIES_VERSION_V14,
+      v: CURRENT_PACKED_ENTITIES_VERSION,
       m: createPackedMovementRowWithNormal(),
       t: undefined,
       e: undefined,
@@ -1004,7 +1010,7 @@ export function runSnapshotEntityWirePackContractTest(): void {
   );
 
   const turretEntities = unpackEntitiesFromWire({
-    v: PACKED_ENTITIES_VERSION_V14,
+    v: CURRENT_PACKED_ENTITIES_VERSION,
     m: undefined,
     t: createPackedTurretRow(),
     e: undefined,
@@ -1042,7 +1048,7 @@ export function runSnapshotEntityWirePackContractTest(): void {
   );
   const metadataOnlyTurretEntities = unpackEntitiesFromWire(
     {
-      v: PACKED_ENTITIES_VERSION_V14,
+      v: CURRENT_PACKED_ENTITIES_VERSION,
       m: undefined,
       t: createPackedTurretRow(),
       e: undefined,
@@ -1136,12 +1142,10 @@ export function runSnapshotEntityWirePackContractTest(): void {
       surfaceNormal: null,
       orientation: null,
       angularVelocity3: null,
-      fireEnabled: null,
       fireState: null,
       trajectoryMode: null,
       repeatQueue: null,
       moveState: null,
-      holdPosition: null,
       wantCloak: null,
       builderPriorityLow: null,
       carrierSpawnEnabled: null,
@@ -1321,12 +1325,10 @@ export function runSnapshotEntityWirePackContractTest(): void {
           surfaceNormal: null,
           orientation: null,
           angularVelocity3: null,
-          fireEnabled: null,
           fireState: 'returnFire',
           trajectoryMode: null,
           repeatQueue: null,
           moveState: 'roam',
-          holdPosition: false,
           wantCloak: true,
           factory: null,
           cloaked: true,
@@ -1370,7 +1372,7 @@ export function runSnapshotEntityWirePackContractTest(): void {
     removedEntityIds: undefined,
   };
 
-  const encoded = encodeNetworkSnapshotWithRustFallback(snapshot);
+  const encoded = encodeNetworkSnapshotWithRust(snapshot);
   assertContract(encoded !== null, 'Rust snapshot wire encoder must encode the contract snapshot');
   assertContract(
     encoded.rustEntityCount + encoded.rawEntityCount === snapshot.entities.length,

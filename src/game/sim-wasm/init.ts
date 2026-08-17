@@ -1274,7 +1274,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           emitPackedProjectiles: snapshot_encode_envelope_emit_packed_projectiles,
           minimapScratchPtr: snapshot_encode_minimap_scratch_ptr,
           minimapScratchEnsure: snapshot_encode_minimap_scratch_ensure,
-          minimapScratchStride: 6,
+          minimapScratchStride: 7,
           beamUpdateScratchPtr: snapshot_encode_beam_update_scratch_ptr,
           beamUpdateScratchEnsure: snapshot_encode_beam_update_scratch_ensure,
           beamUpdateScratchStride: 4,
@@ -1494,6 +1494,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runServerBarConfigContractTest();
         const { runDemoBuildingRosterContractTest } = await import('../../demoBuildingRosterContractTest');
         runDemoBuildingRosterContractTest();
+        const { runUnitCapPolicyContractTest } = await import('../../unitCapPolicyContractTest');
+        runUnitCapPolicyContractTest();
         const { runDeterministicLockstepBackendContractTest } = await import('../../components/gameCanvasDeterministicLockstepBackendContractTest');
         await runDeterministicLockstepBackendContractTest();
         const { runCommandSanitizerContractTest } = await import('../server/commandSanitizerContractTest');
@@ -1524,6 +1526,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runNetworkLockstepTransportContractTest();
         const { runNetworkManagerLockstepBufferContractTest } = await import('../network/NetworkManagerLockstepBufferContractTest');
         runNetworkManagerLockstepBufferContractTest();
+        const { runLobbySettingsContractTest } = await import('../network/LobbySettingsContractTest');
+        runLobbySettingsContractTest();
         const { runClientSnapshotApplierContractTest } = await import('../network/ClientSnapshotApplierContractTest');
         runClientSnapshotApplierContractTest();
         const { runShieldFarLodRenderPacketContractTest, runTypedSensorHydrationContractTest } = await import('../network/ClientSnapshotApplierContractTest');

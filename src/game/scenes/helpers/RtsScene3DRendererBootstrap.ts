@@ -252,7 +252,7 @@ export function bootstrapRtsScene3DRenderers(
   );
   const contactBlipRenderer = new ContactBlipRenderer3D(
     threeApp.world,
-    (x, y) => getTerrainMeshHeight(x, y, mapWidth, mapHeight),
+    threeApp.renderer.domElement,
   );
 
   return {

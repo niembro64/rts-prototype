@@ -94,7 +94,6 @@ function createFullUnitEntity(
     surfaceNormal: null,
     orientation: null,
     angularVelocity3: null,
-    fireEnabled: null,
     factory: null,
     isCommander: null,
     buildTargetId: null,

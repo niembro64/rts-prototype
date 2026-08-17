@@ -13,6 +13,7 @@ import {
   isEntityCloaked,
 } from '../sim/sensorCoverage';
 import { getEntityMediumOccupancy } from '../sim/entityMediumOccupancy';
+import { getBuildingCombatCenterZ } from '../sim/buildingAnchors';
 import type { SensorMedium } from '../sim/sensorConfig';
 import {
   ENTITY_STATE_KIND_BUILDING,
@@ -30,6 +31,12 @@ import {
   IndexedEntityIdBooleanMemo,
   IndexedEntityIdSet,
 } from './IndexedEntityIdCollections';
+import {
+  CONTACT_MEDIUM_AIR,
+  CONTACT_MEDIUM_NONE,
+  CONTACT_MEDIUM_WATER,
+  type ContactMediumMask,
+} from './contactMedium';
 
 export {
   canEntityProvideFullVision,
@@ -364,12 +371,15 @@ export class SnapshotVisibility {
     padding: number,
   ): boolean {
     const occupancy = getEntityMediumOccupancy(entity);
+    const observationZ = entity.building !== null
+      ? getBuildingCombatCenterZ(entity)
+      : entity.transform.z;
     return (
       occupancy.aboveWater > 0 &&
       this.isEntityVisibleWithLos(
         entity.transform.x,
         entity.transform.y,
-        entity.transform.z,
+        observationZ,
         padding,
         'aboveWater',
       )
@@ -378,7 +388,7 @@ export class SnapshotVisibility {
       this.isEntityVisibleWithLos(
         entity.transform.x,
         entity.transform.y,
-        entity.transform.z,
+        observationZ,
         padding,
         'underwater',
       )
@@ -388,7 +398,7 @@ export class SnapshotVisibility {
   /** Distance-then-LOS scan over fullSources. Reuses the spatial hash
    *  for the distance candidate set, then runs the shared fog LOS
    *  policy only on the candidates that pass distance — so a tank
-   *  behind terrain or force material falls out of vision even when
+   *  behind terrain falls out of vision even when
    *  the source's 2D circle covers its position. */
   private isEntityVisibleWithLos(
     x: number,
@@ -431,11 +441,15 @@ export class SnapshotVisibility {
     padding: number,
   ): boolean {
     const occupancy = getEntityMediumOccupancy(entity);
+    const observationZ = entity.building !== null
+      ? getBuildingCombatCenterZ(entity)
+      : entity.transform.z;
     return (
       occupancy.aboveWater > 0 &&
       this.isEntityDetectedInMedium(
         entity.transform.x,
         entity.transform.y,
+        observationZ,
         padding,
         'aboveWater',
       )
@@ -444,6 +458,7 @@ export class SnapshotVisibility {
       this.isEntityDetectedInMedium(
         entity.transform.x,
         entity.transform.y,
+        observationZ,
         padding,
         'underwater',
       )
@@ -453,6 +468,7 @@ export class SnapshotVisibility {
   private isEntityDetectedInMedium(
     x: number,
     y: number,
+    z: number,
     padding: number,
     targetMedium: SensorMedium,
   ): boolean {
@@ -464,10 +480,73 @@ export class SnapshotVisibility {
       y,
       padding,
       targetMedium,
+      z,
     );
   }
 
-  /** Contact-tier check: full sight, air-only radar, or water-only sonar.
+  /** Exact contact-sensor target-medium facts earned by this entity. Full
+   * sight is deliberately not folded into this mask: callers use it only for
+   * contact-only rows, where provenance must say radar, sonar, or both. */
+  getEntityContactMediumMask(entity: Entity): ContactMediumMask {
+    if (!this.isFiltered) return CONTACT_MEDIUM_NONE;
+    const ownership = entity.ownership;
+    if (this.isOwnedByRecipientOrAlly(ownership !== null ? ownership.playerId : null)) {
+      return CONTACT_MEDIUM_NONE;
+    }
+    if (isEntityCloaked(entity)) return CONTACT_MEDIUM_NONE;
+
+    this.ensureAuxiliaryObservationSources();
+    const occupancy = getEntityMediumOccupancy(entity);
+    const observationZ = entity.building !== null
+      ? getBuildingCombatCenterZ(entity)
+      : entity.transform.z;
+    let mask = CONTACT_MEDIUM_NONE;
+    if (
+      occupancy.aboveWater > 0 &&
+      !this.isContactSuppressed(entity, 'aboveWater') &&
+      this.isPointVisibleIn(
+        this.radarSources,
+        this.radarSourceCells,
+        entity.transform.x,
+        entity.transform.y,
+        0,
+        'aboveWater',
+        // Radar is a terrain ray, not a flat range circle. Passing the real
+        // target height naturally lets high aircraft clear a ridge.
+        observationZ,
+      )
+    ) {
+      mask |= CONTACT_MEDIUM_AIR;
+    }
+    if (
+      occupancy.underwater > 0 &&
+      !this.isContactSuppressed(entity, 'underwater') &&
+      this.isPointVisibleIn(
+        this.sonarSources,
+        this.sonarSourceCells,
+        entity.transform.x,
+        entity.transform.y,
+        0,
+        'underwater',
+        // Sonar intentionally stays range-only. Treating the seabed heightmap
+        // as a volumetric acoustic occluder makes ordinary submerged paths
+        // disappear on maps without complete bathymetry.
+        null,
+      )
+    ) {
+      mask |= CONTACT_MEDIUM_WATER;
+    }
+    return mask as ContactMediumMask;
+  }
+
+  getEntityContactMediumMaskById(entityId: EntityId): ContactMediumMask {
+    const entity = this.world.getEntity(entityId);
+    return entity === undefined
+      ? CONTACT_MEDIUM_NONE
+      : this.getEntityContactMediumMask(entity);
+  }
+
+  /** Contact-tier check: actual full sight, air radar, or water sonar.
    * Used by the minimap serializer without leaking full entity identity. */
   isEntityOnRadar(entity: Entity): boolean {
     if (!this.isFiltered) return true;
@@ -476,85 +555,8 @@ export class SnapshotVisibility {
     if (this.entityIdBuffersComplete) {
       return this.radarEntityIdSet.has(entity.id);
     }
-    const padding = 0;
-    const occupancy = getEntityMediumOccupancy(entity);
-    if (isEntityCloaked(entity)) {
-      return this.isEntityDetectedInOccupiedMedia(entity, padding);
-    }
-    if (
-      (
-        occupancy.aboveWater > 0 &&
-        this.isPointVisibleIn(
-          this.fullSources,
-          this.fullSourceCells,
-          entity.transform.x,
-          entity.transform.y,
-          padding,
-          'aboveWater',
-        )
-      ) ||
-      (
-        occupancy.underwater > 0 &&
-        this.isPointVisibleIn(
-          this.fullSources,
-          this.fullSourceCells,
-          entity.transform.x,
-          entity.transform.y,
-          padding,
-          'underwater',
-        )
-      )
-    ) {
-      return true;
-    }
-    this.ensureAuxiliaryObservationSources();
-    return (
-      occupancy.underwater > 0 &&
-      !this.isContactSuppressed(entity, 'underwater') &&
-      this.isPointVisibleIn(
-          this.sonarSources,
-          this.sonarSourceCells,
-          entity.transform.x,
-          entity.transform.y,
-          padding,
-          'underwater',
-          // SONAR IS DELIBERATELY NOT TERRAIN-OCCLUDED, where radar is.
-          //
-          // Radar's occluder is the landscape you can see, and hiding behind a
-          // ridge is the mechanic. Sonar's occluder would be the SEABED — and
-          // a submerged position is below the ground surface by construction
-          // on any map that does not model bathymetry, which makes every
-          // sonar ray read as blocked by the ground the target is swimming
-          // above. Between two submerged units at similar depth over real
-          // bathymetry the ray is clear almost always anyway, so the check
-          // buys nearly nothing and fails catastrophically where seabed data
-          // is thin. Radar keeps it; sonar stays a range test.
-          null,
-        )
-    ) || (
-      occupancy.aboveWater > 0 &&
-      !this.isContactSuppressed(entity, 'aboveWater') &&
-      this.isPointVisibleIn(
-          this.radarSources,
-          this.radarSourceCells,
-          entity.transform.x,
-          entity.transform.y,
-          padding,
-          'aboveWater',
-          // NOT terrain-occluded yet, and deliberately not half-done. Radar
-          // shadows are the change this system most wants — BAR's ridge-line
-          // radar shadow is a load-bearing mechanic and elevation currently
-          // buys a radar tower nothing — but radar visibility is computed
-          // TWICE here: this walk, and the native observation masks in
-          // combat_targeting.rs. Full sight already spans both (native culls
-          // by circle, then hands `losSlots` back for the raycast); radar has
-          // no such stage. Adding the raycast to only this side makes the two
-          // disagree, which the contract test catches immediately and
-          // correctly. Landing it means a radar LOS-candidate lane in Rust to
-          // match, which is a change of its own.
-          null,
-        )
-    );
+    if (this.isEntityVisible(entity)) return true;
+    return this.getEntityContactMediumMask(entity) !== CONTACT_MEDIUM_NONE;
 }
 
   /** Full-visibility entity ids for the main snapshot serializer.
@@ -828,14 +830,16 @@ export class SnapshotVisibility {
   }
 
   private appendRadarEntityIdById(id: EntityId, slot = entitySlotRegistry.getSlot(id)): void {
-    // STEALTH AND JAMMING APPLY HERE, not only in the source walk.
+    // LOS, STEALTH, AND JAMMING APPLY HERE, not only in the source walk.
     //
     // Radar contacts arrive by two routes — this class's own walk, and the
     // native observation masks, which cull by radius and know nothing about
     // either suppressor. Filtering only the walk would leave stealth and
     // jamming silently inert on every frame the native path ran, which is
     // most of them. One gate on the way into the set covers both routes.
-    if (this.isContactSuppressedById(id)) return;
+    const entity = this.world.getEntity(id);
+    if (entity !== undefined && !this.isEntityOnRadar(entity)) return;
+    if (entity === undefined && this.isContactSuppressedById(id)) return;
     if (this.radarEntityIdSet.addIfAbsent(id)) {
       this.radarEntityIds.push(id);
       this.radarEntitySlots.push(slot);
@@ -863,6 +867,22 @@ export class SnapshotVisibility {
   isPointVisible(x: number, y: number, padding = 0): boolean {
     if (!this.isFiltered) return true;
     return this.isPointVisibleIn(this.fullSources, this.fullSourceCells, x, y, padding);
+  }
+
+  /** Full-vision test for an authoritative 3D point such as a projectile or
+   * beam endpoint. Points occupy exactly one target medium and must pass the
+   * same terrain LOS gate as an entity in that medium. */
+  isPointVisibleAt(x: number, y: number, z: number, padding = 0): boolean {
+    if (!this.isFiltered) return true;
+    return this.isPointVisibleIn(
+      this.fullSources,
+      this.fullSourceCells,
+      x,
+      y,
+      padding,
+      getSensorMediumAtZ(z),
+      z,
+    );
   }
 
   /** True when the point sits inside any of the recipient's

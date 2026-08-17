@@ -6,12 +6,7 @@ import {
 import { buildTerrainCellTriangleIndex } from '../sim/terrain/terrainCellTriangleIndex';
 
 const PACKED_TERRAIN_VERSION = 5;
-const LEGACY_PACKED_TERRAIN_V2_VERSION = 2;
-const LEGACY_PACKED_TERRAIN_V3_VERSION = 3;
-const LEGACY_PACKED_TERRAIN_V4_VERSION = 4;
 const PACKED_BUILDABILITY_VERSION = 1;
-const TERRAIN_TRIANGLE_INDICES_U32 = 1 << 0;
-const TERRAIN_CELL_TRIANGLE_INDICES_U32 = 1 << 1;
 const TERRAIN_TRIANGLE_INDICES_DELTA = 1 << 2;
 
 type TerrainMeta = [
@@ -36,48 +31,7 @@ type BuildabilityMeta = [
   version: number,
 ];
 
-type LegacyPackedTerrainTileMapWire = {
-  v: typeof LEGACY_PACKED_TERRAIN_V2_VERSION;
-  m: [
-    mapWidth: number,
-    mapHeight: number,
-    cellSize: number,
-    subdiv: number,
-    cellsX: number,
-    cellsY: number,
-    verticesX: number,
-    verticesY: number,
-    version: number,
-  ];
-  vc: Uint8Array;
-  vh: Uint8Array;
-  ti: Uint8Array;
-  tl: Uint8Array;
-  ni: Uint8Array;
-  nl: Uint8Array;
-  co: Uint8Array;
-  ci: Uint8Array;
-};
-
-type LegacyPackedTerrainTileMapWireV3 = {
-  v: typeof LEGACY_PACKED_TERRAIN_V3_VERSION;
-  m: TerrainMeta;
-  vc: Uint8Array;
-  vh: Uint8Array;
-  ti: Uint8Array;
-  co: Uint8Array;
-  ci: Uint8Array;
-};
-
-type LegacyPackedTerrainTileMapWireV4 = {
-  v: typeof LEGACY_PACKED_TERRAIN_V4_VERSION;
-  m: TerrainMeta;
-  vc: Uint8Array;
-  vh: Uint8Array;
-  ti: Uint8Array;
-};
-
-type PackedTerrainTileMapWireV5 = {
+export type PackedTerrainTileMapWire = {
   v: typeof PACKED_TERRAIN_VERSION;
   m: TerrainMeta;
   vc: Uint8Array;
@@ -85,12 +39,6 @@ type PackedTerrainTileMapWireV5 = {
   ti: Uint8Array;
   tw: Uint8Array;
 };
-
-export type PackedTerrainTileMapWire =
-  | LegacyPackedTerrainTileMapWire
-  | LegacyPackedTerrainTileMapWireV3
-  | LegacyPackedTerrainTileMapWireV4
-  | PackedTerrainTileMapWireV5;
 
 export type PackedTerrainBuildabilityGridWire = {
   v: typeof PACKED_BUILDABILITY_VERSION;
@@ -131,52 +79,20 @@ export function unpackTerrainFromWire(
   packed: PackedTerrainTileMapWire,
 ): TerrainTileMap {
   const meta = packed.m;
-  if (packed.v === LEGACY_PACKED_TERRAIN_V2_VERSION) {
-    const meshTriangleIndices = readUint32Bytes(packed.ti);
-    return {
-      mapWidth: meta[0],
-      mapHeight: meta[1],
-      cellSize: meta[2],
-      subdiv: meta[3],
-      cellsX: meta[4],
-      cellsY: meta[5],
-      verticesX: meta[6],
-      verticesY: meta[7],
-      version: meta[8],
-      meshVertexCoords: readFloat32Bytes(packed.vc),
-      meshVertexHeights: readFloat32Bytes(packed.vh),
-      meshTriangleIndices,
-      meshTriangleLevels: readInt8Bytes(packed.tl),
-      meshTriangleWallFlags: new Array<number>(Math.floor(meshTriangleIndices.length / 3)).fill(0),
-      meshTriangleNeighborIndices: readInt32Bytes(packed.ni),
-      meshTriangleNeighborLevels: readInt8Bytes(packed.nl),
-      meshCellTriangleOffsets: readUint32Bytes(packed.co),
-      meshCellTriangleIndices: readUint32Bytes(packed.ci),
-    };
+  if ((meta[9] | 0) !== TERRAIN_TRIANGLE_INDICES_DELTA) {
+    throw new Error('[terrain wire] current V5 packet requires delta triangle indices');
   }
-
-  const v3Meta = meta as TerrainMeta;
-  const flags = v3Meta[9] | 0;
   const meshVertexCoords = readFloat32Bytes(packed.vc);
   const meshVertexHeights = readFloat32Bytes(packed.vh);
-  const meshTriangleIndices = readTerrainTriangleIndices(packed.ti, flags);
-  const meshTriangleWallFlags = packed.v === PACKED_TERRAIN_VERSION
-    ? readInt8Bytes(packed.tw)
-    : new Array<number>(Math.floor(meshTriangleIndices.length / 3)).fill(0);
-  const cellIndex = packed.v === LEGACY_PACKED_TERRAIN_V3_VERSION
-    ? {
-        cellTriangleOffsets: readUint32Bytes(packed.co),
-        cellTriangleIndices: (flags & TERRAIN_CELL_TRIANGLE_INDICES_U32) !== 0
-          ? readUint32Bytes(packed.ci)
-          : readUint16Bytes(packed.ci),
-      }
-    : buildTerrainCellTriangleIndex({
-        cellsX: meta[4],
-        cellsY: meta[5],
-        cellSize: meta[2],
-        vertexCoords: meshVertexCoords,
-        triangleIndices: meshTriangleIndices,
-      });
+  const meshTriangleIndices = readTriangleIndexDeltaBytes(packed.ti);
+  const meshTriangleWallFlags = readInt8Bytes(packed.tw);
+  const cellIndex = buildTerrainCellTriangleIndex({
+    cellsX: meta[4],
+    cellsY: meta[5],
+    cellSize: meta[2],
+    vertexCoords: meshVertexCoords,
+    triangleIndices: meshTriangleIndices,
+  });
   return {
     mapWidth: meta[0],
     mapHeight: meta[1],
@@ -206,53 +122,14 @@ export function isPackedTerrainTileMapWire(
 ): value is PackedTerrainTileMapWire {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const candidate = value as Partial<PackedTerrainTileMapWire>;
-  if (
-    candidate.v === LEGACY_PACKED_TERRAIN_V2_VERSION &&
-    Array.isArray(candidate.m) &&
-    candidate.m.length === 9 &&
-    isBytes(candidate.vc) &&
-    isBytes(candidate.vh) &&
-    isBytes(candidate.ti) &&
-    isBytes((candidate as Partial<LegacyPackedTerrainTileMapWire>).tl) &&
-    isBytes((candidate as Partial<LegacyPackedTerrainTileMapWire>).ni) &&
-    isBytes((candidate as Partial<LegacyPackedTerrainTileMapWire>).nl) &&
-    isBytes(candidate.co) &&
-    isBytes(candidate.ci)
-  ) {
-    return true;
-  }
-
-  if (
-    candidate.v === LEGACY_PACKED_TERRAIN_V3_VERSION &&
-    Array.isArray(candidate.m) &&
-    candidate.m.length === 10 &&
-    isBytes(candidate.vc) &&
-    isBytes(candidate.vh) &&
-    isBytes(candidate.ti) &&
-    isBytes(candidate.co) &&
-    isBytes(candidate.ci)
-  ) {
-    return true;
-  }
-
-  if (
-    candidate.v === LEGACY_PACKED_TERRAIN_V4_VERSION &&
-    Array.isArray(candidate.m) &&
-    candidate.m.length === 10 &&
-    isBytes(candidate.vc) &&
-    isBytes(candidate.vh) &&
-    isBytes(candidate.ti)
-  ) {
-    return true;
-  }
-
   return candidate.v === PACKED_TERRAIN_VERSION &&
     Array.isArray(candidate.m) &&
     candidate.m.length === 10 &&
+    (candidate.m[9] | 0) === TERRAIN_TRIANGLE_INDICES_DELTA &&
     isBytes(candidate.vc) &&
     isBytes(candidate.vh) &&
     isBytes(candidate.ti) &&
-    isBytes((candidate as Partial<PackedTerrainTileMapWireV5>).tw);
+    isBytes(candidate.tw);
 }
 
 export function packBuildabilityForWire(
@@ -377,26 +254,6 @@ function readFloat32Bytes(bytes: Uint8Array): number[] {
   return out;
 }
 
-function readUint32Bytes(bytes: Uint8Array): number[] {
-  const count = Math.floor(bytes.byteLength / 4);
-  const view = new DataView(bytes.buffer, bytes.byteOffset, count * 4);
-  const out = new Array<number>(count);
-  for (let i = 0; i < count; i++) {
-    out[i] = view.getUint32(i * 4, true);
-  }
-  return out;
-}
-
-function readUint16Bytes(bytes: Uint8Array): number[] {
-  const count = Math.floor(bytes.byteLength / 2);
-  const view = new DataView(bytes.buffer, bytes.byteOffset, count * 2);
-  const out = new Array<number>(count);
-  for (let i = 0; i < count; i++) {
-    out[i] = view.getUint16(i * 2, true);
-  }
-  return out;
-}
-
 function writeTriangleIndexDeltaBytes(values: readonly number[]): Uint8Array {
   const triangleCount = Math.floor(values.length / 3);
   const writer = new PackedBinaryWriter(Math.max(16, triangleCount * 4));
@@ -415,15 +272,6 @@ function writeTriangleIndexDeltaBytes(values: readonly number[]): Uint8Array {
   return writer.finishBytes();
 }
 
-function readTerrainTriangleIndices(bytes: Uint8Array, flags: number): number[] {
-  if ((flags & TERRAIN_TRIANGLE_INDICES_DELTA) !== 0) {
-    return readTriangleIndexDeltaBytes(bytes);
-  }
-  return (flags & TERRAIN_TRIANGLE_INDICES_U32) !== 0
-    ? readUint32Bytes(bytes)
-    : readUint16Bytes(bytes);
-}
-
 function readTriangleIndexDeltaBytes(bytes: Uint8Array): number[] {
   const reader = new PackedBinaryReader(bytes, 0);
   const triangleCount = reader.readVarUint();
@@ -438,16 +286,6 @@ function readTriangleIndexDeltaBytes(bytes: Uint8Array): number[] {
     out[offset + 1] = b;
     out[offset + 2] = c;
     previousBase = a;
-  }
-  return out;
-}
-
-function readInt32Bytes(bytes: Uint8Array): number[] {
-  const count = Math.floor(bytes.byteLength / 4);
-  const view = new DataView(bytes.buffer, bytes.byteOffset, count * 4);
-  const out = new Array<number>(count);
-  for (let i = 0; i < count; i++) {
-    out[i] = view.getInt32(i * 4, true);
   }
   return out;
 }
