@@ -437,6 +437,8 @@ function barClassicBuildSortIndex(id: BuildingBlueprintId): number {
       return 103200;
     case 'buildingShieldTech':
       return 103210;
+    case 'buildingPrecisionTargetingTech':
+      return 103220;
     default:
       return Number.MAX_SAFE_INTEGER;
   }
@@ -499,6 +501,7 @@ const BAR_HOME_BUILD_ORDER = [
     'buildingSonar',
     'buildingShieldTargetingTech',
     'buildingShieldTech',
+    'buildingPrecisionTargetingTech',
   ],
   [
     'towerFabricator',
@@ -576,6 +579,8 @@ function preferredStructureBuildGridSlotIndex(id: BuildingBlueprintId): number {
       return 2;
     case 'buildingShieldTech':
       return 3;
+    case 'buildingPrecisionTargetingTech':
+      return 4;
     // Local towerFabricator is the ARM air-plant analogue (armap), so
     // keep the armlab/armvp production slots empty and place it in the
     // bottom-row third cell like BAR's unitGrids["armcom"]["armap"].

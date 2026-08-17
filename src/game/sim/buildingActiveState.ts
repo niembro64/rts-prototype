@@ -54,7 +54,8 @@ export const BUILDING_CLOSED_DAMAGE_MULTIPLIER = 0.1;
  *  state.open; radar/sonar gate powered contact coverage on state.open while
  *  ordinary sight remains available; converter gates the energy↔metal swap
  *  on state.open; the tech structures gate their per-player upgrade
- *  channel (shield-aware targeting / shield production) on state.open,
+ *  channel (shield-aware targeting / shield production / precision fire)
+ *  on state.open,
  *  following BAR's on/offable Targeting Facility (armtarg). Every
  *  active-state structure fortifies identically while OFF
  *  (BUILDING_CLOSED_DAMAGE_MULTIPLIER). */
@@ -68,7 +69,8 @@ export function buildingBlueprintHasActiveState(
     || buildingBlueprintId === 'buildingSonar'
     || buildingBlueprintId === 'buildingResourceConverter'
     || buildingBlueprintId === 'buildingShieldTargetingTech'
-    || buildingBlueprintId === 'buildingShieldTech';
+    || buildingBlueprintId === 'buildingShieldTech'
+    || buildingBlueprintId === 'buildingPrecisionTargetingTech';
 }
 
 function createInitialBuildingActiveState(): BuildingActiveState {

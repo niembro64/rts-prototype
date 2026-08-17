@@ -601,6 +601,7 @@ const BAR_GROUP_ICON_BY_STRUCTURE_BLUEPRINT_ID: Partial<Record<StructureBlueprin
   buildingSonar: 'util',
   buildingShieldTargetingTech: 'util',
   buildingShieldTech: 'util',
+  buildingPrecisionTargetingTech: 'util',
   towerFabricator: 'builder',
   towerAntiAir: 'aa',
   towerBeamMega: 'weapon',

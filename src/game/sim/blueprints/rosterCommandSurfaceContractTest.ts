@@ -929,6 +929,7 @@ export function runRosterCommandSurfaceContractTest(): void {
     // (armtarg): the per-player upgrade channel runs only while ON.
     'buildingShieldTargetingTech',
     'buildingShieldTech',
+    'buildingPrecisionTargetingTech',
   ]);
   // ON/OFF is capability-gated on the local active-state mechanic, not on BAR's
   // onoffable unitDef flag: BAR's armwin/armrad/armsonar analogues carry the

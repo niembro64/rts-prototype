@@ -768,6 +768,10 @@ export function spawnInitialBases(
     spawnRadius,
     DEMO_CONFIG.baseRings.buildingShieldTech.radiusFraction,
   );
+  const precisionTargetingTechRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.baseRings.buildingPrecisionTargetingTech.radiusFraction,
+  );
 
   for (let i = 0; i < playerCount; i++) {
     const playerId = normalizedPlayerIds[i];
@@ -821,6 +825,16 @@ export function spawnInitialBases(
     //      cell lost to a deposit pad or cramped terrain slides to the
     //      nearest free cells instead of silently failing best-effort
     //      placement.
+    // Outside the radar↔beam band on its own ring, so the band's strict
+    // outer→inner claim order is untouched.
+    if (isBuildingEnabled('buildingPrecisionTargetingTech')) {
+      entities.push(...placeArcRow(
+        world, construction, 'buildingPrecisionTargetingTech',
+        DEMO_CONFIG.buildingPrecisionTargetingTechCount,
+        oval, precisionTargetingTechRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+        FACTORY_PLACEMENT_SEARCH_OFFSETS,
+      ));
+    }
     if (isBuildingEnabled('buildingRadar')) {
       entities.push(...placeArcRow(
         world, construction, 'buildingRadar', DEMO_CONFIG.buildingRadarCount,

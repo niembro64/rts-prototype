@@ -774,6 +774,9 @@
     "turretSensorBuildingShieldTargetingTech": {
       "targets": "none"
     },
+    "turretSensorBuildingPrecisionTargetingTech": {
+      "targets": "none"
+    },
     "turretSensorBuildingShieldTech": {
       "targets": "none"
     }
@@ -858,6 +861,9 @@
       "targets": "none"
     },
     "buildingShieldTech": {
+      "targets": "none"
+    },
+    "buildingPrecisionTargetingTech": {
       "targets": "none"
     }
   }

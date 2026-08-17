@@ -1103,6 +1103,22 @@ export class WorldState {
     return this.getCompletedBuildingPlayerMask('buildingShieldTech');
   }
 
+  /** The precision-fire upgrade: granted while the player owns a completed,
+   *  switched-ON Precision Targeting Research Lab. Every authored firing
+   *  randomness knob — aim spread cones, cooldown duration variance, beam
+   *  pulse on/off variance — is then treated as zero for that player's
+   *  turrets, so they fire exactly on their authored line and cadence. */
+  playerHasPrecisionTargeting(playerId: PlayerId): boolean {
+    return this.playerHasCompletedBuilding(playerId, 'buildingPrecisionTargetingTech');
+  }
+
+  /** Per-player precision-fire bits. The firing paths resolve this ONCE per
+   *  tick and test bits per shot: the underlying scan walks every building the
+   *  player owns, which is not something a per-shot call can afford. */
+  getPrecisionTargetingPlayerMask(): number {
+    return this.getCompletedBuildingPlayerMask('buildingPrecisionTargetingTech');
+  }
+
   /** Install the roster and rebuild the alliance sets from it. This is the
    *  ONLY way alliances should be established: an ally team is the source
    *  of truth and `alliesByPlayer` is its cache, so the two cannot drift

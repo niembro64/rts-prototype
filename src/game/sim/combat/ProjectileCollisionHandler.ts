@@ -40,6 +40,7 @@ import { getCombatTargetingSourceSlots } from './targetingInputStamping';
 import { rollTurretCooldownDuration } from '../turretCooldown';
 import { normalizeAngle } from '../../math';
 import { rollBeamPulseOffTimeMs } from './beamPulse';
+import { firingRandomnessEnabled } from './precisionFire';
 import {
   getShotWaterSurfaceCrossingFraction,
   getShotLocomotionMaxTurnRate,
@@ -1287,6 +1288,8 @@ export function checkProjectileCollisions(
   const deathContexts = _collisionDeathContexts;
   const newProjectiles = _collisionNewProjectiles;
   const spawnEvents = _collisionSpawnEvents;
+  // Resolved once for the whole pass, tested per expiring beam below.
+  const precisionTargetingMask = world.getPrecisionTargetingPlayerMask();
   let reflectorImpactEvents = 0;
   const collisionDtMs = dtMs;
   const projectileEntities = world.getProjectiles();
@@ -1936,11 +1939,13 @@ export function checkProjectileCollisions(
       const source = world.getEntity(proj.sourceEntityId);
       if (source) {
         const sourcePlayerId = source.ownership?.playerId ?? (0 as PlayerId);
+        const fireRandomness = firingRandomnessEnabled(precisionTargetingMask, sourcePlayerId);
         const cooldown = proj.beamPulsePlan !== null
-          ? rollBeamPulseOffTimeMs(() => world.nextRandom(sourcePlayerId))
+          ? rollBeamPulseOffTimeMs(() => world.nextRandom(sourcePlayerId), fireRandomness)
           : rollTurretCooldownDuration(
               proj.config.cooldown,
               () => world.nextRandom(sourcePlayerId),
+              fireRandomness,
             );
         if (cooldown > 0) {
           writeTurretCooldownToSlab(source, weaponIdx, cooldown);

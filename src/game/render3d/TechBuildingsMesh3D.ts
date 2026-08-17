@@ -9,6 +9,11 @@
 //     foundation under a bulky S-curved lathe dome, hugged by staggered
 //     nautilus shell plates, flanked by three research wings and two
 //     tusk-like horn pylons, and capped by a live force bubble.
+//   buildingPrecisionTargetingTech — "the precision lab": an annular deck
+//     around an open instrument court, three struts leaning inward to carry a
+//     three-axis gimbal of nested rings around an alignment lens, and a
+//     collimator mast above it. Nothing here is a spire or a dome: the lab
+//     that removes firing randomness reads as an optical instrument.
 //
 // Their foundations are authored polygons rather than scaled square slabs,
 // so the visible bases and pixel-cell reservations describe the same idea.
@@ -19,6 +24,7 @@
 import * as THREE from 'three';
 import { BUILDING_PALETTE, SHINY_GRAY_METAL_MATERIAL } from './BuildingVisualPalette';
 import {
+  PRECISION_TARGETING_TECH_BUILDING_VISUAL_HEIGHT,
   SHIELD_TARGETING_TECH_BUILDING_VISUAL_HEIGHT,
   SHIELD_TECH_BUILDING_VISUAL_HEIGHT,
 } from '../sim/blueprints';
@@ -35,6 +41,7 @@ import {
   createPrimitiveHemisphereGeometry,
   createPrimitiveRingGeometry,
   getOrCreate,
+  getSharedPrimitiveTetrahedronGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 import {
@@ -104,6 +111,9 @@ const forgeDomeGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>
 const forgeShellGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
 const forgeHornGeomByKey = new Map<string, THREE.BufferGeometry>();
 const forgeRingGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
+const precisionPrimaryGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
+const precisionGimbalGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
+const precisionStrutGeomByKey = new Map<string, THREE.BufferGeometry>();
 
 function getSpirePrimaryGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
   return getOrCreate(spirePrimaryGeomByTier, tier, () => createLabFoundationGeometry(
@@ -763,6 +773,199 @@ export function buildShieldTechMesh(
   };
 }
 
+/** Annular deck: a regular polygon with a matching polygon court cut out of
+ *  its middle, so the visible ring and the blueprint's ring of reserved cells
+ *  describe the same idea. */
+function getPrecisionPrimaryGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
+  return getOrCreate(precisionPrimaryGeomByTier, tier, () => {
+    const sides = tier === 'close' ? 16 : tier === 'mid' ? 12 : 8;
+    const ring = (radius: number): [number, number][] => {
+      const points: [number, number][] = [];
+      for (let i = 0; i < sides; i++) {
+        const angle = (i / sides) * Math.PI * 2;
+        points.push([Math.cos(angle) * radius, Math.sin(angle) * radius]);
+      }
+      return points;
+    };
+    // The hole winds the opposite way: an ExtrudeGeometry hole path must run
+    // counter to its outline or the shape triangulates as a solid disc.
+    return createLabFoundationGeometry(ring(0.48), ring(0.25).reverse(), tier);
+  });
+}
+
+/** One gimbal band. Thin enough to read as a machined ring rather than a
+ *  washer, and flat, so three of them nest without z-fighting. */
+function getPrecisionGimbalGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
+  return getOrCreate(precisionGimbalGeomByTier, tier, () =>
+    createPrimitiveRingGeometry('building', tier, 0.93, 1.0));
+}
+
+type StrutSpec = Readonly<{
+  baseRadius: number;
+  topRadius: number;
+  baseY: number;
+  topY: number;
+  tubeRadius: number;
+}>;
+
+/** A deck strut leaning in and up to the gimbal mount. */
+function getPrecisionStrutGeometry(
+  tier: PrimitiveGeometryTier,
+  spec: StrutSpec,
+): THREE.BufferGeometry {
+  const key = `${tier}:${spec.baseRadius}:${spec.topRadius}:`
+    + `${spec.baseY}:${spec.topY}:${spec.tubeRadius}`;
+  return getOrCreate(precisionStrutGeomByKey, key, () => {
+    const span = spec.topY - spec.baseY;
+    const curve = new THREE.CubicBezierCurve3(
+      new THREE.Vector3(spec.baseRadius, spec.baseY, 0),
+      new THREE.Vector3(spec.baseRadius * 0.96, spec.baseY + span * 0.45, 0),
+      new THREE.Vector3(spec.topRadius * 1.6, spec.baseY + span * 0.82, 0),
+      new THREE.Vector3(spec.topRadius, spec.topY, 0),
+    );
+    return new THREE.TubeGeometry(
+      curve,
+      tier === 'close' ? 9 : tier === 'mid' ? 6 : 3,
+      spec.tubeRadius,
+      3,
+      false,
+    );
+  });
+}
+
+export function buildPrecisionTargetingTechMesh(
+  width: number,
+  depth: number,
+  primaryMat: THREE.Material,
+): BuildingShape {
+  const height = PRECISION_TARGETING_TECH_BUILDING_VISUAL_HEIGHT;
+  const tier = getActiveBuildingGeometryTier();
+  const minDim = Math.min(width, depth);
+  const primary = new THREE.Mesh(getPrecisionPrimaryGeometry(tier), primaryMat);
+  const details: BuildingShape['details'] = [];
+  const operationalParts: BuildingOperationalPosePart[] = [];
+  const deckY = height * LAB_FOUNDATION_DEPTH;
+
+  const gimbalY = height * 0.62;
+  const stowY = height * 0.34;
+
+  // Three struts lean in off the deck ring and carry the whole instrument.
+  // Nothing stands in the court itself — that is the point of the ring.
+  const strutSpec: StrutSpec = {
+    baseRadius: minDim * 0.36,
+    topRadius: minDim * 0.05,
+    baseY: deckY,
+    topY: gimbalY - minDim * 0.03,
+    tubeRadius: minDim * 0.031,
+  };
+  for (let i = 0; i < 3; i++) {
+    const strut = new THREE.Mesh(getPrecisionStrutGeometry(tier, strutSpec), techShellMat);
+    strut.rotation.y = (i / 3) * Math.PI * 2 + Math.PI / 6;
+    details.push(detail(strut, 'min'));
+  }
+
+  // The alignment lens the gimbal holds, and its lit core.
+  const lensRadius = minDim * 0.072;
+  const lens = makeSphere(techDarkMat, lensRadius, 0, gimbalY, 0);
+  details.push(detail(lens, 'min'));
+  operationalParts.push(createBuildingOperationalPosePart(lens, {
+    closedPosition: new THREE.Vector3(0, stowY, 0),
+    closedScale: lens.scale.clone().multiplyScalar(0.7),
+  }));
+  const lensCore = new THREE.Mesh(crownGlowGeom, techGlowMat);
+  lensCore.position.set(0, gimbalY, 0);
+  lensCore.scale.setScalar(lensRadius * 0.62);
+  details.push(detail(lensCore, 'min'));
+  operationalParts.push(createBuildingOperationalPosePart(lensCore, {
+    closedPosition: new THREE.Vector3(0, stowY, 0),
+    closedScale: lensCore.scale.clone().multiplyScalar(0.3),
+    motion: {
+      pulseAmplitude: 0.16,
+      pulseHz: 0.9,
+    },
+  }));
+
+  // Three nested bands, each turning about a DIFFERENT local axis: that is
+  // what makes it read as a gimbal instead of a stack of hoops. The rings lie
+  // in their own XY plane, so local Z is the band's own normal.
+  const gimbalAxes: readonly (readonly [number, number, number])[] = [
+    [0, 0, 1], [1, 0, 0], [0, 1, 0],
+  ];
+  const gimbalTilts: readonly (readonly [number, number])[] = [
+    [Math.PI / 2, 0], [Math.PI / 2 + 0.55, 0.4], [0.32, -0.5],
+  ];
+  for (let i = 0; i < 2; i++) {
+    const band = new THREE.Mesh(getPrecisionGimbalGeometry(tier), techShellMat);
+    const radius = minDim * (i === 0 ? 0.205 : 0.155);
+    band.position.y = gimbalY;
+    band.rotation.set(gimbalTilts[i + 1][0], gimbalTilts[i + 1][1], 0);
+    band.scale.set(radius, radius, 1);
+    details.push(detail(band, 'min'));
+    operationalParts.push(createBuildingOperationalPosePart(band, {
+      closedPosition: new THREE.Vector3(0, stowY, 0),
+      closedScale: new THREE.Vector3(radius * 0.4, radius * 0.4, 0.5),
+      motion: {
+        spinAxis: new THREE.Vector3(...gimbalAxes[i + 1]),
+        spinRadPerSec: i === 0 ? 1.15 : -0.86,
+        phaseOffset: i * 0.7,
+      },
+    }));
+  }
+
+  // Collimator mast and its emitter tip, straight up out of the gimbal.
+  const mastHeight = height * 0.26;
+  details.push(detail(
+    makeCylinder(
+      techFrameMat,
+      minDim * 0.028,
+      mastHeight,
+      0,
+      gimbalY + mastHeight * 0.5,
+      0,
+    ),
+    'low',
+  ));
+  const emitter = new THREE.Mesh(getSharedPrimitiveTetrahedronGeometry(1), techGlowMat);
+  emitter.position.set(0, gimbalY + mastHeight, 0);
+  emitter.scale.setScalar(minDim * 0.032);
+  details.push(detail(emitter, 'low', undefined, 'tinyTrim'));
+  operationalParts.push(createBuildingOperationalPosePart(emitter, {
+    closedPosition: new THREE.Vector3(0, stowY, 0),
+    closedScale: emitter.scale.clone().multiplyScalar(0.35),
+    motion: {
+      pulseAmplitude: 0.12,
+      pulseHz: 0.7,
+      phaseOffset: 0.5,
+    },
+  }));
+
+  // Team identity: the outermost gimbal band, turning about the lab's own axis.
+  const teamBand = new THREE.Mesh(getPrecisionGimbalGeometry(tier), primaryMat);
+  const teamRadius = minDim * 0.26;
+  teamBand.position.y = gimbalY;
+  teamBand.rotation.set(gimbalTilts[0][0], gimbalTilts[0][1], 0);
+  teamBand.scale.set(teamRadius, teamRadius, 1);
+  details.push(teamOrnamentDetail(teamBand, 'precisionGimbalRing'));
+  operationalParts.push(createBuildingOperationalPosePart(teamBand, {
+    closedPosition: new THREE.Vector3(0, stowY, 0),
+    closedScale: new THREE.Vector3(teamRadius * 0.42, teamRadius * 0.42, 0.5),
+    motion: {
+      spinAxis: new THREE.Vector3(...gimbalAxes[0]),
+      spinRadPerSec: 0.62,
+    },
+  }));
+
+  return {
+    primary,
+    details,
+    height,
+    operationalRig: createBuildingOperationalRig(
+      operationalParts,
+      { chassisClosedScaleY: 0.9 },
+    ),
+  };
+}
+
 export function disposeTechBuildingsMeshGeoms(): void {
   for (const map of [
     spirePrimaryGeomByTier,
@@ -774,11 +977,13 @@ export function disposeTechBuildingsMeshGeoms(): void {
     forgeDomeGeomByTier,
     forgeShellGeomByTier,
     forgeRingGeomByTier,
+    precisionPrimaryGeomByTier,
+    precisionGimbalGeomByTier,
   ]) {
     for (const geometry of map.values()) geometry.dispose();
     map.clear();
   }
-  for (const map of [spireRibbonGeomByKey, forgeHornGeomByKey]) {
+  for (const map of [spireRibbonGeomByKey, forgeHornGeomByKey, precisionStrutGeomByKey]) {
     for (const geometry of map.values()) geometry.dispose();
     map.clear();
   }

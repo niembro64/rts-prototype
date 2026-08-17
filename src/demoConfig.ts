@@ -132,6 +132,11 @@ export const DEMO_CONFIG = {
    *  production lines from the opening layout. */
   buildingShieldTechCount: demoConfig.buildingShieldTechCount,
 
+  /** Number of Precision Targeting Research Labs per player — while one is
+   *  switched ON the seat's turrets fire with every authored randomness knob
+   *  zeroed, so the demo shows both sides of the mechanic. */
+  buildingPrecisionTargetingTechCount: demoConfig.buildingPrecisionTargetingTechCount,
+
   /**
    * Fraction of each player's TEAM slice (180°/N wide, half of the
    * 360°/N angular cycle) actually used for placing buildings

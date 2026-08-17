@@ -124,6 +124,7 @@ export function structureBuildCategory(buildingBlueprintId: BuildingBlueprintId)
     case 'buildingSonar':
     case 'buildingShieldTargetingTech':
     case 'buildingShieldTech':
+    case 'buildingPrecisionTargetingTech':
       return 'Intel';
     case 'towerFabricator':
       return 'Production';

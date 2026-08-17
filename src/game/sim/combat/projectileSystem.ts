@@ -57,6 +57,10 @@ import { spatialGrid } from '../SpatialGrid';
 import { createProjectileConfigFromShot, createProjectileConfigFromTurret } from '../projectileConfigs';
 import { rollTurretCooldownDuration } from '../turretCooldown';
 import {
+  firingRandomnessEnabled,
+  resolveFiringSpreadAngle,
+} from './precisionFire';
+import {
   getProjectileAirFrictionPer60HzFrame,
   getProjectileMediumDragCoefficient,
   getProjectileMediumFrictionPer60HzFrame,
@@ -832,6 +836,9 @@ export function fireTurrets(
   const newProjectiles = _fireNewProjectiles;
   const audioEvents = _fireSimEvents;
   const spawnEvents = _fireSpawnEvents;
+  // Precision fire is a per-player upgrade, so it is resolved once for the
+  // whole pass and tested per shot. See combat/precisionFire.ts.
+  const precisionTargetingMask = world.getPrecisionTargetingPlayerMask();
 
   for (const unit of units) {
     if (!unit.ownership || !unit.combat) continue;
@@ -844,6 +851,7 @@ export function fireTurrets(
 
     const combat = unit.combat;
     const playerId = unit.ownership.playerId;
+    const fireRandomness = firingRandomnessEnabled(precisionTargetingMask, playerId);
     const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
     const hasTargetingContext = getCombatTargetingEntityReadContext(unit, _fireTargetingContext);
     const firingMask = hasTargetingContext
@@ -933,7 +941,11 @@ export function fireTurrets(
         writeTurretCooldownToSlab(
           unit,
           weaponIndex,
-          rollTurretCooldownDuration(spec.cooldown, () => world.nextRandom(playerId)),
+          rollTurretCooldownDuration(
+            spec.cooldown,
+            () => world.nextRandom(playerId),
+            fireRandomness,
+          ),
         );
 
         const projectileConfig = createProjectileConfigFromShot(
@@ -944,7 +956,7 @@ export function fireTurrets(
         const projShot = projectileConfig.shot as ProjectileShot;
         const speed = getProjectileLaunchSpeed(projShot);
         const pellets = spec.spread.pelletCount;
-        const spreadAngle = spec.spread.angle;
+        const spreadAngle = resolveFiringSpreadAngle(spec.spread.angle, fireRandomness);
         const emissionLaneCount = config.emissionLaneCount;
         const fireBaseIndex = weapon.emissionLaneIndex;
         const shotSource = createTurretShotSource(
@@ -1128,7 +1140,11 @@ export function fireTurrets(
           writeTurretCooldownToSlab(
             unit,
             weaponIndex,
-            rollTurretCooldownDuration(config.cooldown, () => world.nextRandom(playerId)),
+            rollTurretCooldownDuration(
+              config.cooldown,
+              () => world.nextRandom(playerId),
+              fireRandomness,
+            ),
           );
           const burstConfig = config.burst;
           if (burstConfig !== null && burstConfig.count > 1) {
@@ -1146,7 +1162,10 @@ export function fireTurrets(
       const turretPitch = weapon.pitch;
       const spreadConfig = config.spread;
       const pellets = spreadConfig !== null ? spreadConfig.pelletCount : 1;
-      const spreadAngle = spreadConfig !== null ? spreadConfig.angle : 0;
+      const spreadAngle = resolveFiringSpreadAngle(
+        spreadConfig !== null ? spreadConfig.angle : 0,
+        fireRandomness,
+      );
       const emissionLaneCount = config.emissionLaneCount;
       const fireBaseIndex = weapon.emissionLaneIndex;
       const firstEmission = resolveWeaponEmissionSocket(
@@ -1345,7 +1364,10 @@ export function fireTurrets(
           const firedBeamPlan = committedBeamPlan !== null
             ? {
                 ...committedBeamPlan,
-                durationMs: rollBeamPulseOnTimeMs(() => world.nextRandom(playerId)),
+                durationMs: rollBeamPulseOnTimeMs(
+                  () => world.nextRandom(playerId),
+                  fireRandomness,
+                ),
               }
             : null;
           const emissionBlueprintId = getEmissionBlueprintId(shot);

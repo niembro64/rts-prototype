@@ -25,7 +25,8 @@ export type BuildingTeamOrnamentKind =
   | 'antiAirPedestalBrace'
   | 'torpedoWaterlineBand'
   | 'targetingSpireHalo'
-  | 'shieldForgeCrest';
+  | 'shieldForgeCrest'
+  | 'precisionGimbalRing';
 
 const BUILDING_TEAM_ORNAMENT_KIND = 'buildingTeamOrnamentKind';
 

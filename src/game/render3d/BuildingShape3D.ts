@@ -67,6 +67,7 @@ import {
   disposeFactoryMeshGeoms,
 } from './FactoryMesh3D';
 import {
+  buildPrecisionTargetingTechMesh,
   buildShieldTargetingTechMesh,
   buildShieldTechMesh,
   disposeTechBuildingsMeshGeoms,
@@ -273,6 +274,8 @@ export function buildBuildingShape(
         return buildShieldTargetingTechMesh(width, depth, primaryMat);
       case 'buildingShieldTech':
         return buildShieldTechMesh(width, depth, primaryMat);
+      case 'buildingPrecisionTargetingTech':
+        return buildPrecisionTargetingTechMesh(width, depth, primaryMat);
       case 'unknown':
         return buildUnknown(primaryMat);
       case 'bodyless':

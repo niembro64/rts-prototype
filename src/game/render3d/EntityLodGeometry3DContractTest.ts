@@ -203,6 +203,7 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   // headroom, so the ceiling still catches FUTURE growth.
   buildingShieldTargetingTech: { close: 1730, mid: 910, far: 445 },
   buildingShieldTech: { close: 1260, mid: 630, far: 215 },
+  buildingPrecisionTargetingTech: { close: 1200, mid: 640, far: 260 },
 };
 
 /** Full visible unit ceilings: body + locomotion + physical turrets + unique kit/panel art. */
@@ -2249,7 +2250,7 @@ export function runConstructionHostMarkingContracts(): void {
 
 export function runEntityLodGeometry3DContractTest(): void {
   assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 27, 'visual roster covers all 27 units');
-  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 14, 'visual roster covers all 14 buildings');
+  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 15, 'visual roster covers all 15 buildings');
   const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
   try {
     runEnvironmentLodMaterialContracts();

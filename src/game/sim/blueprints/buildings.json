@@ -1150,5 +1150,82 @@
         "sonarStealth": false
       }
     }
+  },
+  "buildingPrecisionTargetingTech": {
+    "buildingBlueprintId": "buildingPrecisionTargetingTech",
+    "name": "Precision Targeting Research Lab",
+    "gridWidth": 12,
+    "gridHeight": 12,
+    "footprintMask": [
+      "...######...",
+      "..########..",
+      ".##########.",
+      "###......###",
+      "##........##",
+      "##........##",
+      "##........##",
+      "##........##",
+      "###......###",
+      ".##########.",
+      "..########..",
+      "...######..."
+    ],
+    "gridDepth": 6,
+    "hp": 750,
+    "cost": {
+      "energy": 1400,
+      "metal": 900
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "constructionRate": null,
+    "conversionRate": null,
+    "allowedUnitBlueprintIds": null,
+    "renderProfile": "buildingPrecisionTargetingTech",
+    "visualHeight": 200,
+    "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "none"
+    },
+    "placementType": "ground",
+    "hoveringType": null,
+    "hud": {
+      "barsOffsetAboveTop": 14
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingPrecisionTargetingTech",
+        "presentation": null,
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      }
+    ],
+    "base": {
+      "cost": {
+        "energy": 1400,
+        "metal": 900
+      },
+      "mass": 950,
+      "health": 750,
+      "deathExplosion": {
+        "radius": 50.912,
+        "force": 30000,
+        "damage": 250
+      },
+      "radius": {
+        "other": 152.735,
+        "hitbox": 152.735,
+        "collision": 152.735
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    }
   }
 }

@@ -37,15 +37,23 @@ export function getTurretCooldownDuration(cooldown: TurretCooldownConfig | null)
   return Math.max(0, cooldown.duration);
 }
 
+/** `randomnessEnabled` is the precision-fire switch: a player holding a
+ *  switched-ON Precision Targeting Research Lab fires on the authored cadence
+ *  exactly, with no duration variance. Passing false zeroes the randomness
+ *  rather than discarding a rolled sample, so the canonical RNG stream is not
+ *  consumed at all — `rollDurationWithRandomness` returns early. Every peer
+ *  derives the same switch from the same world state, so the streams stay in
+ *  lockstep. */
 export function rollTurretCooldownDuration(
   cooldown: TurretCooldownConfig | null,
   nextRandom: () => number,
+  randomnessEnabled = true,
 ): number {
   if (cooldown === null) return 0;
 
   return rollDurationWithRandomness(
     getTurretCooldownDuration(cooldown),
-    cooldown.durationRandomness,
+    randomnessEnabled ? cooldown.durationRandomness : 0,
     nextRandom,
   );
 }

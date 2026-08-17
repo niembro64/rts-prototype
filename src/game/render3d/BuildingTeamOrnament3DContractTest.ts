@@ -32,6 +32,7 @@ const EXPECTED_KIND: Record<StructureBlueprintId, BuildingTeamOrnamentKind> = {
   towerTorpedo: 'torpedoWaterlineBand',
   buildingShieldTargetingTech: 'targetingSpireHalo',
   buildingShieldTech: 'shieldForgeCrest',
+  buildingPrecisionTargetingTech: 'precisionGimbalRing',
 };
 
 const TIERS: readonly PrimitiveGeometryTier[] = ['close', 'mid', 'far'];

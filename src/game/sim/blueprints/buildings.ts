@@ -161,6 +161,8 @@ export const SHIELD_TARGETING_TECH_BUILDING_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.buildingShieldTargetingTech.visualHeight;
 export const SHIELD_TECH_BUILDING_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.buildingShieldTech.visualHeight;
+export const PRECISION_TARGETING_TECH_BUILDING_VISUAL_HEIGHT =
+  BUILDING_BLUEPRINTS.buildingPrecisionTargetingTech.visualHeight;
 export const CANNON_TOWER_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.towerCannon.visualHeight;
 export const ANTI_AIR_TOWER_VISUAL_HEIGHT =

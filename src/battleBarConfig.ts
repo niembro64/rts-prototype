@@ -324,6 +324,7 @@ function migrateDemoContent(): void {
   // was saved — the demo would never spawn them.
   selected.add('buildingShieldTargetingTech');
   selected.add('buildingShieldTech');
+  selected.add('buildingPrecisionTargetingTech');
   persistJson(
     STORAGE_DEMO_BUILDINGS,
     BUILDING_BLUEPRINT_IDS.filter((id) => selected.has(id)),

@@ -67,18 +67,26 @@ export function getMaximumBeamPulseOnTimeMs(): number {
   );
 }
 
-export function rollBeamPulseOnTimeMs(nextRandom: () => number): number {
+/** See rollTurretCooldownDuration: `randomnessEnabled` false is the
+ *  precision-fire switch, and zeroes the variance without consuming a sample. */
+export function rollBeamPulseOnTimeMs(
+  nextRandom: () => number,
+  randomnessEnabled = true,
+): number {
   return rollDurationWithRandomness(
     BEAM_PULSE_ON_TIME_MS,
-    BEAM_PULSE_ON_TIME_RANDOMNESS,
+    randomnessEnabled ? BEAM_PULSE_ON_TIME_RANDOMNESS : 0,
     nextRandom,
   );
 }
 
-export function rollBeamPulseOffTimeMs(nextRandom: () => number): number {
+export function rollBeamPulseOffTimeMs(
+  nextRandom: () => number,
+  randomnessEnabled = true,
+): number {
   return rollDurationWithRandomness(
     BEAM_PULSE_OFF_TIME_MS,
-    BEAM_PULSE_OFF_TIME_RANDOMNESS,
+    randomnessEnabled ? BEAM_PULSE_OFF_TIME_RANDOMNESS : 0,
     nextRandom,
   );
 }
