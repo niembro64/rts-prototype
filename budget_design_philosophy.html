@@ -2731,12 +2731,36 @@
         mid-field-dome and panel-edge geometries with a descending-leg test for high-arc weapons is
         an allowed future refinement, not the baseline contract.
       </p>
+      <p>
+        That gate is <strong>directional, and the direction is the barrier&rsquo;s rather than the
+        sight system&rsquo;s</strong>. A closed dome obstructs a sightline only where the line
+        <em>enters</em> it, because a dome intercepts what comes at it and lets its own side&rsquo;s
+        fire out; a flat mirror panel has no inside at all, so it obstructs from either face. Both
+        readings are just the authored reflection policy restated &mdash; every barrier authors
+        <code>reflect-outside</code>, every panel <code>reflect-both</code> &mdash; and that is the
+        point: <em>sight and shot must agree about which way a piece of material is opaque, or the
+        turret refuses shots that would have landed.</em> The obstruction test therefore reads as
+        &ldquo;does this sightline enter the field&rdquo;, not &ldquo;does it touch the boundary&rdquo;.
+      </p>
+      <p>
+        Concretely: a gunner standing under a friendly dome can acquire targets outside it, a gunner
+        outside cannot acquire targets under it, a sightline that passes clean through a dome is
+        still blocked by the inbound half of its crossing, and two units under the same dome see each
+        other normally. The symmetric rule this replaced got the first of those wrong, and because
+        the clearance walk excludes nothing &mdash; not even the shooter&rsquo;s own field &mdash; a
+        shielded unit could not acquire anything outside its own bubble while its rounds left that
+        bubble unimpeded. Nothing is special-cased to fix that; the geometry now answers it. The
+        directional test is also strictly the cheaper one, since &ldquo;starts inside&rdquo; is the
+        sign of a term the intersection math already computes, decided before the discriminant, the
+        square root, and two divisions.
+      </p>
       <ul class="rule-list">
         <li>A shield-blocked pair is treated exactly like a sight-blocked pair. Autonomous acquisition never admits a candidate whose shield gate fails; an existing autonomous lock holds fire immediately and is dropped after the shared sight-drop grace, and re-acquisition then runs over candidates that can actually be hit. A shield-aware unit therefore never parks on an unhittable target &mdash; if every candidate is shielded it goes idle and keeps re-scanning as fields move, drop, or die.</li>
         <li>Player-ordered priority targets are the one exception, per the host-retention rule above: an explicit Attack on a shielded enemy keeps the commanded target in the non-firing tracking state and waits for the field to drop rather than wandering to a different enemy.</li>
         <li>NAIVE players skip the shield gate entirely &mdash; their locks and fire are shield-blind, and reflector panels punish them for it.</li>
         <li>Shield-only emitters keep their authored exemption: a turret whose emission is pure shield material must hold its own barrier and never treats force material as obstruction. Shield emitters with offensive submunitions obey the same gate as every other attacking turret.</li>
         <li>Fog, sensors, and intelligence are untouched. Force material never hides information; terrain remains the only fog occluder. Shield-awareness changes what a turret is willing to <em>attack</em>, never what a player <em>knows</em>.</li>
+        <li>The Shield Detection Lab decides <em>whether</em> a side reads shields, never which way they are opaque. It carries no direction of its own; it switches the gate above on, and that gate&rsquo;s direction comes from the material. If a barrier is ever authored inside-out or per-emission-family, the sight kernel must start reading that policy instead of assuming outside-in.</li>
       </ul>
       <p>
         Lock-on eligibility is authored as an additive <em>inclusion object</em>. A

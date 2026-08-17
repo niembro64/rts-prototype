@@ -543,6 +543,7 @@ mod lock_on_inclusion_tests {
             0.0,
             0.0,
             0.0,
+            0.0,
             0,
             0.0,
             0.0,

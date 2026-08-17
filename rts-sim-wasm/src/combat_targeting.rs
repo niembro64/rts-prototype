@@ -2595,6 +2595,98 @@ mod tests {
         assert_eq!(pool.entity_detector_coverage_mask[3] & owner_bit, 0);
     }
 
+    /// Sight obstruction has to agree with what the barrier does to a shot.
+    /// Every barrier authors `reflect-outside`, so the only case that may be
+    /// blocked is the sightline coming IN. Outbound is clear, which is what
+    /// lets a gunner shoot out of the dome it is standing under; a line that
+    /// passes clean through is still blocked, by its inbound half.
+    #[test]
+    fn sphere_sight_obstruction_is_outside_in_only() {
+        let (cx, cy, cz, r) = (0.0, 0.0, 0.0, 5.0);
+        let lo = 1e-6;
+        let hi = 1.0 - 1e-6;
+        assert!(
+            shield_segment_enters_sphere(-10.0, 0.0, 0.0, 0.0, 0.0, 0.0, cx, cy, cz, r, lo, hi),
+            "a sightline from outside into the dome must be blocked",
+        );
+        assert!(
+            !shield_segment_enters_sphere(0.0, 0.0, 0.0, -10.0, 0.0, 0.0, cx, cy, cz, r, lo, hi),
+            "a sightline from inside the dome out of it must be clear",
+        );
+        assert!(
+            shield_segment_enters_sphere(-10.0, 0.0, 0.0, 10.0, 0.0, 0.0, cx, cy, cz, r, lo, hi),
+            "a sightline passing through the dome is still blocked by its inbound half",
+        );
+        assert!(
+            !shield_segment_enters_sphere(1.0, 0.0, 0.0, -1.0, 0.0, 0.0, cx, cy, cz, r, lo, hi),
+            "both endpoints inside one dome must be clear",
+        );
+        assert!(
+            !shield_segment_enters_sphere(-10.0, 20.0, 0.0, 10.0, 20.0, 0.0, cx, cy, cz, r, lo, hi),
+            "a sightline that misses the dome entirely must be clear",
+        );
+    }
+
+    #[test]
+    fn cylinder_sight_obstruction_is_outside_in_only() {
+        let lo = 1e-6;
+        let hi = 1.0 - 1e-6;
+        assert!(
+            shield_segment_enters_infinite_vertical_cylinder(
+                -10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, lo, hi
+            ),
+            "a sightline entering the column must be blocked",
+        );
+        assert!(
+            !shield_segment_enters_infinite_vertical_cylinder(
+                0.0, 0.0, -10.0, 0.0, 0.0, 0.0, 5.0, lo, hi
+            ),
+            "a sightline leaving the column must be clear",
+        );
+        // Aimed tube along +X, radius 2, spanning the origin.
+        assert!(
+            shield_segment_enters_aimed_cylinder(
+                0.0, -10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 2.0, lo, hi
+            ),
+            "a sightline entering the aimed tube must be blocked",
+        );
+        assert!(
+            !shield_segment_enters_aimed_cylinder(
+                0.0, 0.0, 0.0, 0.0, -10.0, 0.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 2.0, lo, hi
+            ),
+            "a sightline leaving the aimed tube must be clear",
+        );
+    }
+
+    /// The rule the sight gate now follows is the one the projectile gate
+    /// already followed. If a barrier's authored policy ever stops being
+    /// outside-in, these two stop agreeing and the sight kernel needs to read
+    /// the policy rather than assume it.
+    #[test]
+    fn sight_obstruction_direction_matches_projectile_reflection() {
+        let mode = SHIELD_REFLECTION_MODE_OUTSIDE_IN;
+        // radial_velocity < 0 is inbound, > 0 outbound.
+        assert!(shield_reflection_mode_allows_crossing(mode, -1.0));
+        assert!(!shield_reflection_mode_allows_crossing(mode, 1.0));
+
+        let lo = 1e-6;
+        let hi = 1.0 - 1e-6;
+        let inbound_blocked =
+            shield_segment_enters_sphere(-10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, lo, hi);
+        let outbound_blocked =
+            shield_segment_enters_sphere(0.0, 0.0, 0.0, -10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, lo, hi);
+        assert_eq!(
+            inbound_blocked,
+            shield_reflection_mode_allows_crossing(mode, -1.0),
+            "sight must block inbound exactly when the barrier intercepts inbound",
+        );
+        assert_eq!(
+            outbound_blocked,
+            shield_reflection_mode_allows_crossing(mode, 1.0),
+            "sight must clear outbound exactly when the barrier lets outbound through",
+        );
+    }
+
     #[test]
     fn panel_centerline_intersection_still_hits_plane() {
         let t = ray_tilted_rect_intersection_t(

@@ -118,11 +118,15 @@ pub(crate) fn combat_targeting_slab_gate_config(
 ///     short-circuit.
 ///   - `shield_clear`: segment-checks the FF pool from mount to
 ///     raw aim point. Panel and sphere shapes use the same material
-///     policy and differ only in their intersection math. Skipped
-///     (returns `1`) when the feature is off, the shape toggles leave
-///     no active shield material, or for shield-only emitters that
-///     maintain the material themselves. Shield emitters with offensive
-///     submunitions do not get the exemption.
+///     policy and differ only in their intersection math, which is where
+///     their obstruction direction comes from too: a closed dome obstructs
+///     only when the sightline enters it, a flat plate obstructs from either
+///     face. That is why nothing is excluded from the walk (owner id `-1`) —
+///     a turret standing inside its own dome is cleared by the geometry
+///     itself, not by a special case. Skipped (returns `1`) when the feature
+///     is off, the shape toggles leave no active shield material, or for
+///     shield-only emitters that maintain the material themselves. Shield
+///     emitters with offensive submunitions do not get the exemption.
 ///
 /// The helper short-circuits in cost-increasing order to match the TS
 /// gate evaluation: LOS → ballistic → FF. Ground-aim fraction applies

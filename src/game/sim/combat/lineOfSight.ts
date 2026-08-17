@@ -6,6 +6,14 @@
 // submunitions) needs a clear sightline from its turret head to the
 // target aim point before it can lock on or keep firing. Cross-shield
 // sight obstruction is a separate targeting gate.
+//
+// That shield gate is directional, and deliberately matches what the barrier
+// does to a shot rather than being its own rule: a closed dome obstructs a
+// sightline only when the line ENTERS it, because every barrier authors
+// `reflect-outside` and therefore lets its own side's fire out. A flat mirror
+// panel has no inside and obstructs from either face, which is what its
+// `reflect-both` policy says too. See shield_segment_enters_sphere in
+// projectile_interactions.rs.
 
 import { LAND_CELL_SIZE } from '../../../config';
 import type { WorldState } from '../WorldState';

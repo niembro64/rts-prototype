@@ -1253,6 +1253,101 @@ export function runOrcaTargetingContractTest(): void {
   assertOrcaRejectsEnemyAboveWater(false);
 }
 
+/** Shield sight obstruction is directional, and the direction is the barrier's,
+ *  not the sight system's.
+ *
+ *  A dome intercepts what comes at it and lets its own side's fire out (every
+ *  barrier in shields.json authors `reflect-outside`). Sight has to agree with
+ *  that, or a shield-aware gunner refuses shots that would have landed. The
+ *  case that used to be wrong is a gunner standing UNDER a dome: the old
+ *  direction-agnostic crossing count blocked it from acquiring anything outside
+ *  its own bubble, while its rounds left that bubble unimpeded.
+ *
+ *  Geometry (dome center at the Widow, radius ~560; the firing line runs 200
+ *  units off the Widow's axis so no BODY sits on it and only the field is
+ *  under test):
+ *
+ *      far(300,1200)      widow(1000,1000)      enemy(1700,1200)
+ *          outside          [ dome r~560 ]          outside
+ *                     inside(1100,1200)
+ */
+function assertShieldSightObstructionIsOutsideInContract(): void {
+  resetTurretHostIntegrationState();
+  const world = createIsolatedTestWorld(9377, 4096, 4096);
+  world.playerCount = 2;
+  world.setTeamRoster(buildFreeForAllRoster([1 as PlayerId, 2 as PlayerId]));
+
+  // Player 1 runs the shield and reads it: a generator to raise the dome, a
+  // detection lab so its turrets respect shields at all.
+  const generator = world.createBuilding(1000, 3000, 60, 60, 120, 1 as PlayerId);
+  generator.buildingBlueprintId = 'buildingShieldTech';
+  world.addEntity(generator);
+  const detectionLab = world.createBuilding(1400, 3000, 60, 60, 120, 1 as PlayerId);
+  detectionLab.buildingBlueprintId = 'buildingShieldTargetingTech';
+  world.addEntity(detectionLab);
+  assertContract(
+    world.getShieldAwareTargetingPlayerMask() === 1 && world.playerHasShieldPower(1 as PlayerId),
+    'the firing side must hold both shield power and shield-aware targeting for this case to mean anything',
+  );
+
+  const widow = world.createUnitFromBlueprint(1000, 1000, 1 as PlayerId, 'unitWidow');
+  const insideAttacker = world.createUnitFromBlueprint(
+    1100, 1200, 1 as PlayerId, TEST_UNIT_BLUEPRINT_ID,
+  );
+  const farAttacker = world.createUnitFromBlueprint(
+    300, 1200, 1 as PlayerId, TEST_UNIT_BLUEPRINT_ID,
+  );
+  const enemy = world.createUnitFromBlueprint(1700, 1200, 2 as PlayerId, 'unitJackal');
+  for (const entity of [widow, insideAttacker, farAttacker, enemy]) {
+    world.addEntity(entity);
+    spatialGrid.updateUnit(entity);
+  }
+
+  const dtMs = 50;
+  const tickCombat = (): void => {
+    world.incrementTick();
+    updateShieldState(world, dtMs);
+    stampShieldSurfacePool(world);
+    stampCombatTargetingPool(world);
+    updateTargetingAndFiringState(world, dtMs);
+  };
+
+  // Raise the dome before any targeting runs (500 ms transition ramp).
+  for (let i = 0; i < 24; i++) updateShieldState(world, dtMs);
+  assertContract(
+    getActiveShields().length > 0,
+    'the Widow must hold an active dome before the sight cases run',
+  );
+
+  const insideTurret = getFirstAttackTurret(insideAttacker).turretIndex;
+  const farTurret = getFirstAttackTurret(farAttacker).turretIndex;
+  const fsm = { stateCode: CT_TURRET_STATE_ENGAGED, targetId: -1 as EntityId };
+
+  let insideLocked = false;
+  for (let i = 0; i < 40 && !insideLocked; i++) {
+    tickCombat();
+    readCombatTargetingTurretFsmInto(insideAttacker, insideTurret, fsm);
+    insideLocked = fsm.targetId === enemy.id;
+  }
+  assertContract(
+    insideLocked,
+    'a gunner standing under a friendly dome must be able to acquire a target outside it — '
+      + 'its own rounds leave that dome unimpeded',
+  );
+
+  // Control: the same weapon, same enemy, but from outside. The sightline now
+  // enters the dome before it leaves, so the inbound half still blocks it.
+  for (let i = 0; i < 40; i++) {
+    tickCombat();
+    readCombatTargetingTurretFsmInto(farAttacker, farTurret, fsm);
+    assertContract(
+      fsm.targetId !== enemy.id,
+      'a sightline that passes through a dome must stay blocked by its inbound half',
+    );
+  }
+  resetTurretHostIntegrationState();
+}
+
 export function runWaterWeaponMediumTargetingContractTest(): void {
   assertSeaTurtleTargetMediumEligibility(true, true);
   assertSeaTurtleTargetMediumEligibility(false, true);
@@ -1373,6 +1468,7 @@ export function runTurretHostIntegrationContractTest(): void {
     assertLorisReflectorRemainsAutonomousFromHostTask();
     assertShieldAwareTargetingUpgradeContract();
     assertShieldPowerContract();
+    assertShieldSightObstructionIsOutsideInContract();
   } finally {
     resetTurretHostIntegrationState();
   }

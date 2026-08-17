@@ -2150,6 +2150,9 @@ mod sim_kernel_tests {
     pub(crate) fn building_active_state_step_batch_updates_open_close_lifecycle() {
         let mut open = [1, 1, 0, 1, 0];
         let active = [1, 1, 1, 0, 1];
+        // Every host switched ON: this case is about the automatic damage
+        // flap, so the player's ON/OFF switch must not interfere with it.
+        let want_open = [1, 1, 1, 1, 1];
         let mut damage_delay = [200.0, 0.0, 0.0, 250.0, 0.0];
         let mut reopen_delay = [0.0, 0.0, 200.0, 400.0, 700.0];
         let mut changed = [0; 5];
@@ -2158,6 +2161,7 @@ mod sim_kernel_tests {
             building_active_state_step_batch(
                 &mut open,
                 &active,
+                &want_open,
                 &mut damage_delay,
                 &mut reopen_delay,
                 5,
@@ -2178,6 +2182,7 @@ mod sim_kernel_tests {
             building_active_state_step_batch(
                 &mut open,
                 &active,
+                &want_open,
                 &mut damage_delay,
                 &mut reopen_delay,
                 5,

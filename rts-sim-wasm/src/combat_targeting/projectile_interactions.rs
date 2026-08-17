@@ -447,8 +447,30 @@ pub(crate) fn shield_reflection_entity_mask_from_modes(
     mask
 }
 
+// ── Sight clearance: a closed barrier is opaque OUTSIDE-IN only ──
+//
+// These three tests answer "does this sightline ENTER the field from outside",
+// not "does it touch the boundary at all". A barrier reflects what comes at it
+// and lets its own side's fire out (every barrier in shields.json authors
+// `reflect-outside` for every emission family), so a gunner standing inside a
+// dome must be able to aim at what its rounds can reach. The old
+// direction-agnostic crossing count blocked the outbound half too, which — with
+// the clearance walk excluding nothing, not even the shooter's own field — left
+// a shielded unit unable to acquire anything outside its own bubble while its
+// shots left that bubble unimpeded.
+//
+// A segment starting strictly inside a closed shape crosses its boundary at
+// most once, outward, so "start inside" settles the whole question with no
+// intersection math: each test returns early on the sign of a term it already
+// had to compute, BEFORE the discriminant, the square root, and two divisions.
+// The directional rule is strictly cheaper than the symmetric one it replaces.
+//
+// Mirror panels are deliberately NOT covered by this: a flat plate has no
+// inside, "outside-in" is undefined for it, and it authors `reflect-both`. The
+// panel walk in shield_clearance_segment stays two-sided.
+
 #[inline]
-pub(crate) fn shield_segment_crosses_sphere(
+pub(crate) fn shield_segment_enters_sphere(
     sx: f64,
     sy: f64,
     sz: f64,
@@ -483,6 +505,11 @@ pub(crate) fn shield_segment_crosses_sphere(
     let fz = sz - cz;
     let b = 2.0 * (fx * dx + fy * dy + fz * dz);
     let c = fx * fx + fy * fy + fz * fz - r * r;
+    // c < 0 is exactly "the sightline starts inside this dome", so its only
+    // boundary crossing is outward and the barrier does not obstruct it.
+    if c < 0.0 {
+        return false;
+    }
     let disc = b * b - 4.0 * a * c;
     if disc < 0.0 {
         return false;
@@ -495,7 +522,7 @@ pub(crate) fn shield_segment_crosses_sphere(
 }
 
 #[inline]
-pub(crate) fn shield_segment_crosses_infinite_vertical_cylinder(
+pub(crate) fn shield_segment_enters_infinite_vertical_cylinder(
     sx: f64,
     sy: f64,
     tx: f64,
@@ -522,6 +549,11 @@ pub(crate) fn shield_segment_crosses_infinite_vertical_cylinder(
     let fy = sy - cy;
     let b = 2.0 * (fx * dx + fy * dy);
     let c = fx * fx + fy * fy - r * r;
+    // Inside the column: the only crossing ahead is outward. See the
+    // outside-in note above shield_segment_enters_sphere.
+    if c < 0.0 {
+        return false;
+    }
     let disc = b * b - 4.0 * a * c;
     if disc < 0.0 {
         return false;
@@ -534,7 +566,7 @@ pub(crate) fn shield_segment_crosses_infinite_vertical_cylinder(
 }
 
 #[inline]
-pub(crate) fn shield_segment_crosses_aimed_cylinder(
+pub(crate) fn shield_segment_enters_aimed_cylinder(
     sx: f64,
     sy: f64,
     sz: f64,
@@ -582,6 +614,11 @@ pub(crate) fn shield_segment_crosses_aimed_cylinder(
     }
     let qb = 2.0 * (nx * mx + ny * my + nz * mz);
     let qc = nx * nx + ny * ny + nz * nz - r * r;
+    // Inside the tube radially: the only crossing ahead is outward. See the
+    // outside-in note above shield_segment_enters_sphere.
+    if qc < 0.0 {
+        return false;
+    }
     let disc = qb * qb - 4.0 * qa * qc;
     if disc < 0.0 {
         return false;
@@ -601,7 +638,7 @@ pub(crate) fn shield_segment_crosses_aimed_cylinder(
 }
 
 #[inline]
-pub(crate) fn shield_segment_crosses_field(
+pub(crate) fn shield_segment_enters_field(
     sx: f64,
     sy: f64,
     sz: f64,
@@ -620,16 +657,16 @@ pub(crate) fn shield_segment_crosses_field(
     hi: f64,
 ) -> bool {
     if shape == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER {
-        return shield_segment_crosses_infinite_vertical_cylinder(
+        return shield_segment_enters_infinite_vertical_cylinder(
             sx, sy, tx, ty, cx, cy, r, lo, hi,
         );
     }
     if shape == SHIELD_FIELD_SHAPE_AIMED_CYLINDER {
-        return shield_segment_crosses_aimed_cylinder(
+        return shield_segment_enters_aimed_cylinder(
             sx, sy, sz, tx, ty, tz, cx, cy, cz, axis_end_x, axis_end_y, axis_end_z, r, lo, hi,
         );
     }
-    shield_segment_crosses_sphere(sx, sy, sz, tx, ty, tz, cx, cy, cz, r, lo, hi)
+    shield_segment_enters_sphere(sx, sy, sz, tx, ty, tz, cx, cy, cz, r, lo, hi)
 }
 
 #[inline]
@@ -1820,13 +1857,21 @@ pub(crate) fn shield_projectile_intersection(
 }
 
 /// Direct-segment shield clearance. Returns 1 if the segment
-/// (sx, sy, sz) → (tx, ty, tz) crosses at most `max_crossings` shield
-/// surface boundaries, 0 otherwise. Endpoint grazes (within
-/// SHIELD_GRAZE_EPS) don't count.
+/// (sx, sy, sz) → (tx, ty, tz) is obstructed by at most `max_crossings`
+/// shield surfaces, 0 otherwise. Endpoint grazes (within SHIELD_GRAZE_EPS)
+/// don't count.
+///
+/// Obstruction is directional for closed barriers and two-sided for panels,
+/// matching what each shape does to a projectile: a dome only counts when the
+/// segment ENTERS it from outside (see the outside-in note above
+/// shield_segment_enters_sphere), while a flat mirror plate has no inside and
+/// counts from either face. So a gunner inside a dome sees out of it, a gunner
+/// outside cannot see in, and a sightline that passes clean through a dome is
+/// still blocked by the inbound half of the crossing.
 ///
 /// Materials Are Independent Of Shape: this one kernel checks both
 /// shield shapes against a single crossing budget. Spheres and flat
-/// panels are the same material, so a crossing of either counts the same.
+/// panels are the same material, so an obstruction by either counts the same.
 /// `include_spheres` / `include_panels` let a caller restrict the query to
 /// shapes currently enabled by battle toggles.
 #[wasm_bindgen]
@@ -1854,7 +1899,7 @@ pub fn shield_clearance_segment(
             if pool.owner_entity_id[i] == exclude_owner_entity_id {
                 continue;
             }
-            if shield_segment_crosses_field(
+            if shield_segment_enters_field(
                 sx,
                 sy,
                 sz,
@@ -1974,9 +2019,11 @@ pub fn shield_clearance_segment(
 
 /// Ballistic-arc shield clearance. Approximates the parabola
 /// `pos = launch + v·t − 0.5·GRAVITY·ẑ·t²` with
-/// ARC_FF_CLEARANCE_SAMPLES chords and reports the same boundary-
-/// crossing budget as the segment kernel. Staying inside one field for
-/// the whole arc is clear; only crossing a boundary is blocked.
+/// ARC_FF_CLEARANCE_SAMPLES chords and applies the same per-chord
+/// obstruction rule and crossing budget as the segment kernel. Staying inside
+/// one field for the whole arc is clear, and so is arcing OUT of one — a shell
+/// lobbed from under a dome leaves it the same way a direct shot does. Only
+/// entering a dome, or clipping a panel from either face, is blocked.
 #[wasm_bindgen]
 pub fn shield_clearance_arc(
     launch_x: f64,
@@ -2027,7 +2074,7 @@ pub fn shield_clearance_arc(
             } else {
                 1.0 + SHIELD_GRAZE_EPS
             };
-            if shield_segment_crosses_field(
+            if shield_segment_enters_field(
                 prev_x,
                 prev_y,
                 prev_z,
