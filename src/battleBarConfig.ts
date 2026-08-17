@@ -205,15 +205,26 @@ void (battleBarConfig.realDefault as string);
 // Legacy `rts-*` keys are migrated lazily into `demo-battle-*` (the
 // original "battle" namespace) by the load helpers below.
 const sk = battleBarConfig.storageKeys;
-// v4 replays the tech-building roster repair for the Precision Targeting
-// Research Lab and installs the ledger below. This is the THIRD time a building
-// added after a profile saved its BUILDINGS roster went missing from the demo:
-// the revision short-circuit means a profile already at the current revision
-// never sees a newly hardcoded id. adoptNewBuildingBlueprints() retires that
-// failure mode, so a building added from here on needs no revision bump.
-const CURRENT_DEMO_CONTENT_REVISION = 'tech-buildings-v4';
+// There is deliberately no shared "content revision" any more.
+//
+// A single version string is a one-shot latch: it answers "has this migration
+// run?", and every profile that already matches it short-circuits past
+// everything the block later grows. That is the wrong question for authored
+// content, where the real question is "has this profile ever SEEN this
+// blueprint?" — a standing rule that must be re-evaluated every time the
+// roster grows. Using the latch for it hid the two shield labs, and then the
+// precision lab, from every developer profile while fresh ones were fine.
+//
+// So the two kinds of migration are now separated:
+//   - content adoption (adoptNewDemoBlueprints) runs unconditionally and reads
+//     a LEDGER of the ids each roster was last written against, so a blueprint
+//     added later is provably new and defaults ON with no version to bump;
+//   - a genuine one-time rewrite of a user's saved value keeps a one-shot flag,
+//     but a PURPOSE-NAMED one it owns alone, so adding content can never
+//     short-circuit it and it can never short-circuit content.
 const STORAGE_DEMO_UNITS = sk.demoUnits;
-const STORAGE_DEMO_CONTENT_REVISION = sk.demoContentRevision;
+const STORAGE_DEMO_UNITS_KNOWN_IDS = sk.demoUnitsKnownIds;
+const STORAGE_DEMO_PERIMETER_LEGACY_DEFAULT_MOVED = sk.demoPerimeterLegacyDefaultMoved;
 const STORAGE_DEMO_BUILDINGS = sk.demoBuildings;
 const STORAGE_DEMO_BUILDINGS_KNOWN_IDS = sk.demoBuildingsKnownIds;
 const STORAGE_DEMO_TOWERS = sk.demoTowers;
@@ -280,149 +291,188 @@ function ensureBattleMigrations(): void {
   if (_battleMigrationsRun) return;
   _battleMigrationsRun = true;
   for (const [oldK, newK] of BATTLE_KEY_MIGRATIONS) migrateKey(oldK, newK);
-  migrateDemoContent();
-  adoptNewBuildingBlueprints();
+  foldLegacyTowerRoster();
+  moveLegacyDemoPerimeterDefault();
+  adoptNewDemoBlueprints();
 }
 
-/** A building blueprint introduced after this profile last saved its BUILDINGS
- *  roster defaults ON — the roster is a list of opt-OUTS, and a building nobody
- *  has ever seen cannot have been opted out of.
+/** The blueprint ids that existed at the moment the ledger shipped.
  *
- *  The ledger is what makes that automatic. It records the blueprint ids the
- *  stored roster was last written against, so anything in the current
- *  BUILDING_BLUEPRINT_IDS missing from it is provably new. Before this, the
- *  same repair was a hand-written id list inside the revision-gated migration,
- *  which silently does nothing for any profile already at the current revision
- *  — and that is exactly how the shield labs, and then the precision lab, ended
- *  up absent from the demo on developer profiles while fresh ones were fine.
+ *  This is the ledger's bootstrap, and it is a RECORD OF A PAST STATE — not a
+ *  list to keep current. Never add to it. A profile saved before the ledger
+ *  existed has no record of what it had seen, so these two lists stand in for
+ *  one: anything in the live id lists but absent here is provably newer than
+ *  any pre-ledger roster and is adopted, while everything else defers to
+ *  whatever that roster says, opt-outs included.
  *
- *  Runs unconditionally, outside the revision gate. A profile with no ledger
- *  yet is seeded without adopting anything: migrateDemoContent's revision bump
- *  owns that one reconciliation, and adopting everything here would silently
- *  undo deliberate opt-outs.
+ *  Buildings: the fourteen that predate the Precision Targeting Research Lab,
+ *  which is exactly the adoption a pre-ledger profile still needs.
+ *  Units: the full roster as of the same moment. The old revision-gated
+ *  migration also re-pushed `unitOrca` on every bump; that repair has had many
+ *  releases to land, so a profile still without Orca chose that, and this list
+ *  deliberately lets the choice stand. */
+const PRE_LEDGER_BUILDING_BLUEPRINT_IDS: readonly string[] = [
+  'buildingSolar', 'buildingWind', 'towerFabricator', 'buildingExtractor',
+  'towerBeamMega', 'towerCannon', 'buildingRadar', 'buildingResourceConverter',
+  'towerAntiAir', 'buildingExtractorT2', 'buildingSonar', 'towerTorpedo',
+  'buildingShieldTargetingTech', 'buildingShieldTech',
+];
+const PRE_LEDGER_UNIT_BLUEPRINT_IDS: readonly string[] = [
+  ...BUILDABLE_UNIT_BLUEPRINT_IDS,
+];
+
+/** Adopt every blueprint that this profile's stored roster has never seen.
  *
- *  Exported for demoBuildingRosterContractTest, which drives it directly —
- *  ensureBattleMigrations is a once-per-module-load flag and cannot be replayed
+ *  A roster is a list of opt-OUTS: it records which blueprints the player
+ *  switched off. A blueprint added to the game after the roster was saved was
+ *  never on screen to switch off, so it defaults ON.
+ *
+ *  The LEDGER is what makes that decidable. It records the ids the roster was
+ *  last written against, so anything in the current id list missing from it is
+ *  provably new — no version string, no hand-written id list, and nothing to
+ *  remember when the next blueprint lands. The previous mechanism was a
+ *  hardcoded id list inside a revision-gated migration, which silently does
+ *  nothing for a profile already at the current revision; that is how the two
+ *  shield labs, and then the precision lab, went missing from the demo on
+ *  every developer profile while fresh installs were fine.
+ *
+ *  A profile with no ledger is SEEDED without adopting anything. Its roster
+ *  predates the ledger, so "missing from the ledger" carries no information
+ *  there, and adopting on that basis would switch every opt-out back on.
+ *
+ *  Exported for demoBuildingRosterContractTest, which drives it directly:
+ *  ensureBattleMigrations latches once per module load and cannot be replayed
  *  against seeded storage. */
-export function adoptNewBuildingBlueprints(): void {
-  const storedKnownIds = readPersisted(STORAGE_DEMO_BUILDINGS_KNOWN_IDS);
+export function adoptNewDemoBlueprints(): void {
+  adoptNewRosterBlueprints(
+    STORAGE_DEMO_BUILDINGS,
+    STORAGE_DEMO_BUILDINGS_KNOWN_IDS,
+    BUILDING_BLUEPRINT_IDS,
+    PRE_LEDGER_BUILDING_BLUEPRINT_IDS,
+    sanitizeDemoBuildingIds,
+  );
+  adoptNewRosterBlueprints(
+    STORAGE_DEMO_UNITS,
+    STORAGE_DEMO_UNITS_KNOWN_IDS,
+    BUILDABLE_UNIT_BLUEPRINT_IDS,
+    PRE_LEDGER_UNIT_BLUEPRINT_IDS,
+    sanitizeDemoUnitIds,
+  );
+}
+
+function adoptNewRosterBlueprints(
+  rosterKey: string,
+  ledgerKey: string,
+  currentIds: readonly string[],
+  preLedgerIds: readonly string[],
+  sanitize: (value: unknown) => string[] | null,
+): void {
   const persistLedger = (): void => {
-    persistJson(STORAGE_DEMO_BUILDINGS_KNOWN_IDS, [...BUILDING_BLUEPRINT_IDS]);
+    persistJson(ledgerKey, [...currentIds]);
   };
-  if (storedKnownIds === null) {
-    persistLedger();
-    return;
-  }
-  let knownIds: string[] | null = null;
-  try {
-    knownIds = sanitizeDemoBuildingIds(JSON.parse(storedKnownIds));
-  } catch {
-    // Malformed ledger: reseed it rather than adopt against garbage.
+  const storedLedger = readPersisted(ledgerKey);
+  // A profile with no ledger is seeded from the PRE-LEDGER id list rather than
+  // the current one. Seeding from the current list would strand it — every id
+  // would look already-known and nothing added since would ever be adopted.
+  // Seeding from its roster would go the other way and adopt every deliberate
+  // opt-out. The recorded pre-ledger set is the only honest answer: ids newer
+  // than it are provably newer than the profile's roster.
+  const knownIdsForSeed = storedLedger === null ? [...preLedgerIds] : null;
+  let knownIds: string[] | null = knownIdsForSeed;
+  if (storedLedger !== null) {
+    try {
+      knownIds = sanitize(JSON.parse(storedLedger));
+    } catch {
+      // Malformed ledger: reseed rather than adopt against garbage.
+    }
   }
   if (knownIds === null) {
     persistLedger();
     return;
   }
   const known = new Set<string>(knownIds);
-  const introduced = BUILDING_BLUEPRINT_IDS.filter((id) => !known.has(id));
+  const introduced = currentIds.filter((id) => !known.has(id));
   persistLedger();
   if (introduced.length === 0) return;
 
-  const storedRoster = readPersisted(STORAGE_DEMO_BUILDINGS);
   // No stored roster means the defaults apply, and those already cover every
   // current blueprint.
+  const storedRoster = readPersisted(rosterKey);
   if (storedRoster === null) return;
   let roster: string[] | null = null;
   try {
-    roster = sanitizeDemoBuildingIds(JSON.parse(storedRoster));
+    roster = sanitize(JSON.parse(storedRoster));
   } catch {
     return;
   }
   if (roster === null) return;
   const selected = new Set<string>(roster);
   for (const id of introduced) selected.add(id);
-  persistJson(
-    STORAGE_DEMO_BUILDINGS,
-    BUILDING_BLUEPRINT_IDS.filter((id) => selected.has(id)),
-  );
+  persistJson(rosterKey, currentIds.filter((id) => selected.has(id)));
 }
 
-/** One-time migration for authored demo-content revisions. */
-function migrateDemoContent(): void {
-  if (readPersisted(STORAGE_DEMO_CONTENT_REVISION) === CURRENT_DEMO_CONTENT_REVISION) return;
-
-  // Towers used to be stored as a separate static-host roster. Preserve both
-  // user choices while folding the legacy lists into the one building roster.
+/** Towers used to live in their own static-host roster. Fold that legacy list
+ *  into the single BUILDINGS roster, preserving both of the player's choices.
+ *
+ *  No one-shot flag: this is idempotent by construction. The fold empties the
+ *  legacy key on its way out, so every later run merges an empty list and
+ *  changes nothing — and a tower the player switches off afterwards stays off,
+ *  because it is the EMPTY legacy list that gets merged, not the defaults. */
+function foldLegacyTowerRoster(): void {
+  const storedTowers = readPersisted(STORAGE_DEMO_TOWERS);
+  if (storedTowers === null) return;
   const legacyTowerBlueprintIds = new Set<string>([
     'towerFabricator',
     'towerBeamMega',
     'towerCannon',
     'towerAntiAir',
   ]);
-  let storedBuildingIds: string[] | null = null;
   let storedTowerIds: string[] | null = null;
+  try {
+    storedTowerIds = sanitizeDemoBuildingIds(JSON.parse(storedTowers));
+  } catch {
+    // Malformed legacy state: drop it rather than resurrect a guess.
+  }
+  // Leave an inert value at the legacy key so older builds do not resurrect
+  // stale choices if a developer switches branches, and so this fold is a
+  // no-op from here on.
+  persistJson(STORAGE_DEMO_TOWERS, []);
+  if (storedTowerIds === null || storedTowerIds.length === 0) return;
+
+  let storedBuildingIds: string[] | null = null;
   const storedBuildings = readPersisted(STORAGE_DEMO_BUILDINGS);
-  const storedTowers = readPersisted(STORAGE_DEMO_TOWERS);
   try {
     if (storedBuildings !== null) {
       storedBuildingIds = sanitizeDemoBuildingIds(JSON.parse(storedBuildings));
     }
   } catch {
-    // Malformed legacy state falls back to the old default building roster.
-  }
-  try {
-    if (storedTowers !== null) {
-      storedTowerIds = sanitizeDemoBuildingIds(JSON.parse(storedTowers));
-    }
-  } catch {
-    // Malformed legacy state falls back to the old default tower roster.
+    // Malformed roster falls back to the old default building roster.
   }
   const selected = new Set<string>(
     storedBuildingIds ??
       BUILDING_BLUEPRINT_IDS.filter((id) => !legacyTowerBlueprintIds.has(id)),
   );
-  const selectedLegacyTowers =
-    storedTowerIds ??
-    BUILDING_BLUEPRINT_IDS.filter((id) => legacyTowerBlueprintIds.has(id));
-  for (const id of selectedLegacyTowers) selected.add(id);
-  // Newly-introduced blueprints default ON in a stored roster, the same way
-  // unitOrca is pushed into stored unit lists below. Without this a
-  // pre-existing roster silently excludes every building added after it was
-  // saved — the demo would never spawn them. Do NOT extend this list for the
-  // next building: adoptNewBuildingBlueprints() handles that automatically and
-  // without a revision bump. These three stay so profiles that never reach the
-  // ledger path still get the repair.
-  selected.add('buildingShieldTargetingTech');
-  selected.add('buildingShieldTech');
-  selected.add('buildingPrecisionTargetingTech');
+  for (const id of storedTowerIds) selected.add(id);
   persistJson(
     STORAGE_DEMO_BUILDINGS,
     BUILDING_BLUEPRINT_IDS.filter((id) => selected.has(id)),
   );
-  // Leave an inert value at the legacy key so older builds do not resurrect
-  // stale choices if a developer switches branches.
-  persistJson(STORAGE_DEMO_TOWERS, []);
+}
 
-  const storedUnits = readPersisted(STORAGE_DEMO_UNITS);
-  if (storedUnits !== null) {
-    try {
-      const units = sanitizeDemoUnitIds(JSON.parse(storedUnits));
-      if (units !== null && !units.includes('unitOrca')) {
-        units.push('unitOrca');
-        persistJson(STORAGE_DEMO_UNITS, units);
-      }
-    } catch {
-      // Malformed state will fall back to the current demo preset.
-    }
-  }
-
-  // 0 was the previous DEMO BATTLE default. Move that legacy default to the
-  // round-island value so its offshore Fabricators have an actual water ring.
-  // After this one-time migration the user's terrain choice is preserved.
+/** 0 was the previous DEMO BATTLE perimeter default. Move that one legacy
+ *  default to the round-island value so its offshore Fabricators have an actual
+ *  water ring.
+ *
+ *  This one genuinely needs a one-shot: it rewrites a value the player may
+ *  deliberately set back to 0, and re-running would stomp that choice on every
+ *  load. It owns a purpose-named flag rather than a shared revision, so adding
+ *  content can never short-circuit it and it can never short-circuit content. */
+function moveLegacyDemoPerimeterDefault(): void {
+  if (readPersisted(STORAGE_DEMO_PERIMETER_LEGACY_DEFAULT_MOVED) === 'true') return;
+  persist(STORAGE_DEMO_PERIMETER_LEGACY_DEFAULT_MOVED, 'true');
   if (readPersisted(STORAGE_DEMO_PERIMETER_MAGNITUDE) === '0') {
     persist(STORAGE_DEMO_PERIMETER_MAGNITUDE, '-800');
   }
-  persist(STORAGE_DEMO_CONTENT_REVISION, CURRENT_DEMO_CONTENT_REVISION);
 }
 
 /** "true"/"false" → boolean, null otherwise. Keeps each loader a
@@ -461,12 +511,11 @@ export function loadStoredDemoUnits(): string[] | null {
 }
 
 export function saveDemoUnits(units: string[]): void {
-  // A save must never stamp the current content revision before its roster
-  // migrations have run; doing so can strand a sibling persisted roster on
-  // an older blueprint set while making it look current.
+  // Migrations first: a save must not write a roster before adoption has had a
+  // chance to fold in blueprints this profile has never seen, or the save
+  // persists the gap and the ledger then records it as deliberate.
   ensureBattleMigrations();
   persistJson(STORAGE_DEMO_UNITS, sanitizeDemoUnitIds(units) ?? []);
-  persist(STORAGE_DEMO_CONTENT_REVISION, CURRENT_DEMO_CONTENT_REVISION);
 }
 
 export function getDefaultDemoUnits(): string[] {

@@ -41,6 +41,8 @@
     "demoContentRevision": "demo-battle-content-revision",
     "demoBuildings": "demo-battle-buildings",
     "demoBuildingsKnownIds": "demo-battle-buildings-known-ids",
+    "demoUnitsKnownIds": "demo-battle-units-known-ids",
+    "demoPerimeterLegacyDefaultMoved": "demo-battle-perimeter-legacy-default-moved",
     "demoTowers": "demo-battle-towers",
     "demoCap": "demo-battle-cap",
     "realCap": "real-battle-cap",
