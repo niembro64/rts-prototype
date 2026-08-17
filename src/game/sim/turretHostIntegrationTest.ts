@@ -1058,12 +1058,16 @@ function assertShieldAwareTargetingUpgradeContract(): void {
   // ON/OFF powered channel (BAR armtarg): a switched-off tech building
   // grants nothing; reopening restores the upgrade the same tick.
   assertContract(techBuilding.building !== null, 'tech building entity must carry a building component');
-  techBuilding.building.activeState = { open: false, damageDelayMs: 0, reopenDelayMs: 0 };
+  const techActiveState = {
+    open: false, wantOpen: false, damageDelayMs: 0, reopenDelayMs: 0,
+  };
+  techBuilding.building.activeState = techActiveState;
   assertContract(
     world.getShieldAwareTargetingPlayerMask() === 0,
     'a closed (fortified/OFF) targeting tech building must not grant the upgrade',
   );
-  techBuilding.building.activeState.open = true;
+  techActiveState.open = true;
+  techActiveState.wantOpen = true;
   assertContract(
     world.getShieldAwareTargetingPlayerMask() === 1,
     'reopening the targeting tech building must restore the upgrade the same tick',

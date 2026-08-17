@@ -428,6 +428,13 @@ export type BuildingActiveState = {
    *  False once the damage-grace timer expires or the building started
    *  closed. */
   open: boolean;
+  /** The player's ON/OFF switch, and the only durable half of this state.
+   *  It outranks the automatic damage flap below: while false the host
+   *  stays closed and fortified indefinitely, and while true the host runs
+   *  except for the transient closures the damage timers drive. A standing
+   *  order must not expire on a five-second timer, so nothing but a new
+   *  `setBuildingActive` command writes it. */
+  wantOpen: boolean;
   /** Counts down from BUILDING_DAMAGE_DELAY_MS once the building has
    *  been hit. The transition to closed fires when this reaches zero. */
   damageDelayMs: number;

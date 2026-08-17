@@ -87,6 +87,7 @@ export interface SimWasm {
   readonly buildingActiveStateStepBatch: (
     open: Uint8Array,
     active: Uint8Array,
+    wantOpen: Uint8Array,
     damageDelayMs: Float64Array,
     reopenDelayMs: Float64Array,
     count: number,

@@ -10,6 +10,7 @@ import type {
 import {
   isMetalExtractorBlueprintId,
 } from '../../../types/buildingTypes';
+import { buildingBlueprintHasActiveState } from '../../sim/buildingActiveState';
 import {
   createCombatComponent,
   createEmptyEntityComponentSlots,
@@ -938,20 +939,21 @@ function createBuildingFromNetwork(
       hp: buildingHp !== null ? buildingHp.curr : config.hp,
       maxHp: buildingHp !== null ? buildingHp.max : config.hp,
       targetRadius: config.radius.hitbox,
-      // The wire field `solar` carries the shared BuildingActiveState
-      // open flag for every producer building (solar / wind / extractor
-      // / radar / sonar / resourceConverter); map it back into the generic
-      // `activeState` slot. Solar starts closed by default; the others
-      // start in the host's authoritative initial pose, which the wire
-      // ships as soon as the first snapshot for this entity arrives.
-      activeState: (buildingBlueprintId === 'buildingSolar'
-        || buildingBlueprintId === 'buildingWind'
-        || isMetalExtractorBlueprintId(buildingBlueprintId)
-        || buildingBlueprintId === 'buildingRadar'
-        || buildingBlueprintId === 'buildingSonar'
-        || buildingBlueprintId === 'buildingResourceConverter')
+      // The wire field `solar` carries the shared BuildingActiveState open
+      // flag for every ON/OFF host; map it back into the generic
+      // `activeState` slot. Membership comes from
+      // buildingBlueprintHasActiveState — the sim's own predicate — because
+      // a second hand-written blueprint list here silently drifts: it did,
+      // leaving the shield tech labs with a null activeState on every
+      // client, which pinned their ON/OFF button to "Off" and made the
+      // toggle only ever able to send ON. Solar starts closed by default;
+      // the others start in the host's authoritative initial pose, which
+      // the wire ships as soon as the first snapshot for this entity
+      // arrives.
+      activeState: buildingBlueprintHasActiveState(buildingBlueprintId)
         ? {
             open: buildingSolar !== null ? buildingSolar.open : buildingBlueprintId !== 'buildingSolar',
+            wantOpen: true,
             damageDelayMs: 0,
             reopenDelayMs: 0,
           }
@@ -1017,12 +1019,7 @@ function createBuildingFromTypedFullWireRow(
     return null;
   }
 
-  const hasActiveState = buildingBlueprintId === 'buildingSolar' ||
-    buildingBlueprintId === 'buildingWind' ||
-    isMetalExtractorBlueprintId(buildingBlueprintId) ||
-    buildingBlueprintId === 'buildingRadar' ||
-    buildingBlueprintId === 'buildingSonar' ||
-    buildingBlueprintId === 'buildingResourceConverter';
+  const hasActiveState = buildingBlueprintHasActiveState(buildingBlueprintId);
   const entity: Entity = {
     ...createEmptyEntityComponentSlots(),
     id: values[base + 0] | 0,
@@ -1051,6 +1048,7 @@ function createBuildingFromTypedFullWireRow(
             open: values[base + 20] !== 0
               ? values[base + 21] !== 0
               : buildingBlueprintId !== 'buildingSolar',
+            wantOpen: true,
             damageDelayMs: 0,
             reopenDelayMs: 0,
           }

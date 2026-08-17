@@ -61,6 +61,7 @@ function activeBuildingEntity(
       maxHp: 100,
       activeState: {
         open: true,
+        wantOpen: true,
         damageDelayMs: 0,
         reopenDelayMs: 0,
       },

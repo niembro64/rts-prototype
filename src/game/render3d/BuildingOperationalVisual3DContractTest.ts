@@ -192,7 +192,7 @@ export function runBuildingOperationalVisual3DContractTest(): void {
       const entity = {
         buildingBlueprintId: id,
         building: {
-          activeState: { open: true, damageDelayMs: 0, reopenDelayMs: 0 },
+          activeState: { open: true, wantOpen: true, damageDelayMs: 0, reopenDelayMs: 0 },
         },
       } as Entity;
       assertContract(!isBuildingActiveStateFortified(entity), `${id} must take normal damage while ON`);

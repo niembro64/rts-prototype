@@ -9,6 +9,11 @@ import {
   type CommandContext,
 } from './commandExecution';
 import { applyCompletedBuildingEffects } from './buildingCompletion';
+import {
+  buildingBlueprintHasActiveState,
+  updateBuildingActiveStates,
+} from './buildingActiveState';
+import { STRUCTURE_BLUEPRINT_IDS } from '@/types/blueprintIds';
 import { Simulation } from './Simulation';
 import { shouldBypassFinalWaypointSlowdown } from './SimulationArrivalController';
 import type { Entity, UnitAction } from './types';
@@ -2744,4 +2749,78 @@ export function runCommandExecutionContractTest(): void {
     (entity) => entity.buildingBlueprintId === 'buildingExtractorT2',
   );
   assertContract(upgradedExtractors.length === 2, 'area mex upgrade must create another T2 shell');
+
+  runSetBuildingActiveDurabilityContractTest();
+}
+
+/** A player's ON/OFF switch is a standing order, not a five-second hint.
+ *  `open` alone used to carry both the switch AND the automatic damage flap,
+ *  so a commanded OFF was indistinguishable from a shot-down closure and the
+ *  quiet-period reopen timer switched the host back ON a few seconds later —
+ *  the ON/OFF button looked broken on every host that has one, and completely
+ *  inert on the shield tech labs, whose only output is an upgrade channel with
+ *  no visible production to watch. `wantOpen` is the durable half; pin that a
+ *  commanded OFF outlives the reopen period on every ON/OFF blueprint. */
+function runSetBuildingActiveDurabilityContractTest(): void {
+  for (const buildingBlueprintId of STRUCTURE_BLUEPRINT_IDS) {
+    if (!buildingBlueprintHasActiveState(buildingBlueprintId)) continue;
+    const world = new WorldState(9, 2048, 2048);
+    const host = world.createBuilding(600, 600, 120, 120, 60, 1);
+    host.buildingBlueprintId = buildingBlueprintId;
+    world.addEntity(host);
+    applyCompletedBuildingEffects(world, host);
+    // Read fresh each time: the whole point of the regression is that the
+    // per-tick driver writes these behind the command's back.
+    const activeState = (): { open: boolean; wantOpen: boolean } | null =>
+      host.building?.activeState ?? null;
+
+    // The shared activation debounce brings a fresh host ON by itself.
+    for (let i = 0; i < 80; i++) updateBuildingActiveStates(world, 100);
+    assertContract(
+      activeState()?.open === true,
+      `${buildingBlueprintId} must finish its activation debounce ON`,
+    );
+
+    const ctx: CommandContext = {
+      world,
+      constructionSystem: new ConstructionSystem(world.mapWidth, world.mapHeight),
+      pendingProjectileSpawns: [],
+      pendingSimEvents: [],
+      onSimEvent: null,
+    };
+    executeCommand(ctx, {
+      type: 'setBuildingActive',
+      tick: 1,
+      entityIds: [host.id],
+      open: false,
+    });
+    assertContract(
+      activeState()?.open === false && activeState()?.wantOpen === false,
+      `${buildingBlueprintId} must switch OFF the tick the command executes`,
+    );
+
+    // Twice the reopen period with no damage: the switch holds.
+    for (let i = 0; i < 400; i++) updateBuildingActiveStates(world, 33);
+    assertContract(
+      activeState()?.open === false,
+      `${buildingBlueprintId} switched OFF must stay OFF through the quiet period `
+        + 'instead of being reopened by the damage-recovery timer',
+    );
+
+    executeCommand(ctx, {
+      type: 'setBuildingActive',
+      tick: 2,
+      entityIds: [host.id],
+      open: true,
+    });
+    assertContract(
+      activeState()?.open === true && activeState()?.wantOpen === true,
+      `${buildingBlueprintId} must switch back ON the tick the command executes`,
+    );
+    updateBuildingActiveStates(world, 33);
+    assertContract(
+      activeState()?.open === true,
+      `${buildingBlueprintId} switched ON must stay ON on the next tick`,
+    );
+  }
 }

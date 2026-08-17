@@ -2021,6 +2021,7 @@ pub fn economy_accumulate_player_rates(
 pub fn building_active_state_step_batch(
     open: &mut [u8],
     active: &[u8],
+    want_open: &[u8],
     damage_delay_ms: &mut [f64],
     reopen_delay_ms: &mut [f64],
     count: u32,
@@ -2031,6 +2032,7 @@ pub fn building_active_state_step_batch(
     let n = count as usize;
     if n > open.len()
         || n > active.len()
+        || n > want_open.len()
         || n > damage_delay_ms.len()
         || n > reopen_delay_ms.len()
         || n > out_open_changed.len()
@@ -2049,6 +2051,21 @@ pub fn building_active_state_step_batch(
                 open[i] = 0;
                 out_open_changed[i] = 1;
             }
+            continue;
+        }
+
+        // The player's ON/OFF switch outranks the automatic damage flap.
+        // While it is OFF the host stays closed and fortified for as long
+        // as the player leaves it that way, with both timers parked: the
+        // quiet-period reopen exists to recover from being shot, not to
+        // undo a standing order.
+        if want_open[i] == 0 {
+            if open[i] != 0 {
+                open[i] = 0;
+                out_open_changed[i] = 1;
+            }
+            damage_delay_ms[i] = 0.0;
+            reopen_delay_ms[i] = reopen_reset;
             continue;
         }
 

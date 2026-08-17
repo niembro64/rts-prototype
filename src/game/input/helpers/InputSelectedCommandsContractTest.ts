@@ -110,6 +110,7 @@ function activeBuildingEntity(
     building: {
       activeState: {
         open,
+        wantOpen: true,
         damageDelayMs: 0,
         reopenDelayMs: 0,
       },

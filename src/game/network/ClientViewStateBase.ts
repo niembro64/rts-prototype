@@ -148,6 +148,7 @@ import {
   ClientRenderTurretStateSlab,
 } from '../render3d/ClientRenderTurretStateSlab';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
+import { buildingBlueprintHasActiveState } from '../sim/buildingActiveState';
 import {
   unitBlueprintBarDefaultMoveState,
 } from '../sim/unitCommandCapabilities';
@@ -1791,6 +1792,7 @@ export class ClientViewStateBase {
         const activeState = building.activeState;
         building.activeState = {
           open: values[base + 21] !== 0,
+          wantOpen: activeState === null ? true : activeState.wantOpen,
           damageDelayMs: activeState === null ? 0 : activeState.damageDelayMs,
           reopenDelayMs: activeState === null ? 0 : activeState.reopenDelayMs,
         };
@@ -2687,17 +2689,11 @@ export class ClientViewStateBase {
       true,
       true,
     );
-    if (
-      values[base + 20] === 0 &&
-      (
-        buildingBlueprintId === 'buildingSolar' ||
-        buildingBlueprintId === 'buildingWind' ||
-        isMetalExtractorBlueprintId(buildingBlueprintId)
-      )
-    ) {
+    if (values[base + 20] === 0 && buildingBlueprintHasActiveState(buildingBlueprintId)) {
       const activeState = existing.building.activeState;
       existing.building.activeState = {
         open: buildingBlueprintId !== 'buildingSolar',
+        wantOpen: activeState === null ? true : activeState.wantOpen,
         damageDelayMs: activeState === null ? 0 : activeState.damageDelayMs,
         reopenDelayMs: activeState === null ? 0 : activeState.reopenDelayMs,
       };

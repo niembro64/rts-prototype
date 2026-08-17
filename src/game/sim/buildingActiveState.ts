@@ -23,6 +23,15 @@
 //   - After BUILDING_REOPEN_DELAY_MS (5 s) of quiet (no further hits)
 //     the building auto-flips ON and production resumes.
 //   - Any hit while OFF RESETS the reopen timer to the full 5 s.
+//
+// The player's switch is a SECOND flag, `state.wantOpen`, and it outranks
+// all of the above. Everything in the lifecycle list is the automatic
+// damage flap, whose whole job is recovering from being shot; a standing
+// OFF order is not something to recover from, so while `wantOpen` is false
+// the host stays closed and fortified with both timers parked. Collapsing
+// the two into one flag is what made the ON/OFF button look inert: a manual
+// OFF was indistinguishable from a damage closure and the quiet-period
+// timer switched the building back on five seconds later.
 
 import { ENTITY_CHANGED_BUILDING } from '../../types/network';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
@@ -65,6 +74,7 @@ export function buildingBlueprintHasActiveState(
 function createInitialBuildingActiveState(): BuildingActiveState {
   return {
     open: false,
+    wantOpen: true,
     damageDelayMs: 0,
     reopenDelayMs: BUILDING_REOPEN_DELAY_MS,
   };
@@ -131,6 +141,12 @@ export function initializeBuildingActiveState(world: WorldState, entity: Entity)
     applyProducerRateDelta(entity, false);
     changed = true;
   }
+  // A freshly completed host arrives with its switch ON: the debounce below
+  // is an activation delay, not an OFF order.
+  if (!state.wantOpen) {
+    state.wantOpen = true;
+    changed = true;
+  }
   if (state.damageDelayMs !== 0) {
     state.damageDelayMs = 0;
     changed = true;
@@ -153,32 +169,36 @@ export function deactivateBuildingActiveState(entity: Entity): void {
   }
 }
 
-/** Player-driven ON/OFF toggle. Sets `state.open` directly, applies the
- *  income-rate delta on the transition, and resets the damage/reopen
- *  timers so the chosen state is durable for the next full cycle. The
- *  auto-flap timer behavior continues to run after — manual ON can be
- *  auto-closed by sustained damage, and manual OFF will auto-reopen
- *  after the normal quiet period. */
+/** Player-driven ON/OFF switch. Writes `state.wantOpen` — the durable half
+ *  of the state — takes `state.open` to the commanded value immediately,
+ *  applies the income-rate delta on the transition, and clears the timers
+ *  so no half-elapsed countdown survives the order.
+ *
+ *  Switching OFF is a standing order and stays put: the quiet-period reopen
+ *  exists to recover from being shot, and it does not run while the switch
+ *  is off. Switching ON hands the host back to the automatic flap, so
+ *  sustained damage can still fortify it and the quiet period reopens it. */
 export function setBuildingActiveOpen(world: WorldState, entity: Entity, open: boolean): boolean {
   const state = ensureBuildingActiveState(entity);
   if (state === null || entity.building === null) return false;
   if (!isEntityActive(entity) || entity.building.hp <= 0) return false;
   let changed = false;
+  if (state.wantOpen !== open) {
+    state.wantOpen = open;
+    changed = true;
+  }
   if (state.open !== open) {
     state.open = open;
     applyProducerRateDelta(entity, open);
     changed = true;
   }
-  if (open) {
-    if (state.damageDelayMs !== 0) {
-      state.damageDelayMs = 0;
-      changed = true;
-    }
-  } else {
-    if (state.reopenDelayMs !== BUILDING_REOPEN_DELAY_MS) {
-      state.reopenDelayMs = BUILDING_REOPEN_DELAY_MS;
-      changed = true;
-    }
+  if (state.damageDelayMs !== 0) {
+    state.damageDelayMs = 0;
+    changed = true;
+  }
+  if (state.reopenDelayMs !== BUILDING_REOPEN_DELAY_MS) {
+    state.reopenDelayMs = BUILDING_REOPEN_DELAY_MS;
+    changed = true;
   }
   if (changed) world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
   return changed;
@@ -216,6 +236,7 @@ const activeStateRows: Entity[] = [];
 const DEFAULT_ACTIVE_STATE_STEP_CAPACITY = 32;
 let activeStateOpen = new Uint8Array(32);
 let activeStateActive = new Uint8Array(32);
+let activeStateWantOpen = new Uint8Array(32);
 let activeStateDamageDelayMs = new Float64Array(32);
 let activeStateReopenDelayMs = new Float64Array(32);
 let activeStateOpenChanged = new Uint8Array(32);
@@ -227,6 +248,7 @@ export function trimBuildingActiveStateBuffers(
   if (activeStateOpen.length <= maxRetained) return;
   activeStateOpen = new Uint8Array(maxRetained);
   activeStateActive = new Uint8Array(maxRetained);
+  activeStateWantOpen = new Uint8Array(maxRetained);
   activeStateDamageDelayMs = new Float64Array(maxRetained);
   activeStateReopenDelayMs = new Float64Array(maxRetained);
   activeStateOpenChanged = new Uint8Array(maxRetained);
@@ -238,13 +260,15 @@ function ensureActiveStateStepCapacity(count: number): void {
   while (nextCapacity < count) nextCapacity *= 2;
   activeStateOpen = new Uint8Array(nextCapacity);
   activeStateActive = new Uint8Array(nextCapacity);
+  activeStateWantOpen = new Uint8Array(nextCapacity);
   activeStateDamageDelayMs = new Float64Array(nextCapacity);
   activeStateReopenDelayMs = new Float64Array(nextCapacity);
   activeStateOpenChanged = new Uint8Array(nextCapacity);
 }
 
 /** Per-tick driver. Counts down the grace timer (ON → OFF) and the
- *  reopen timer (OFF → ON). Production follows the ON flag. */
+ *  reopen timer (OFF → ON). Production follows the ON flag. Hosts whose
+ *  player switch (`wantOpen`) is off sit out both timers and stay closed. */
 export function updateBuildingActiveStates(world: WorldState, dtMs: number): void {
   const sim = getSimWasm();
   if (sim === undefined) {
@@ -264,6 +288,7 @@ export function updateBuildingActiveStates(world: WorldState, dtMs: number): voi
     activeStateRows[count] = entity;
     activeStateOpen[count] = state.open ? 1 : 0;
     activeStateActive[count] = isEntityActive(entity) && entity.building.hp > 0 ? 1 : 0;
+    activeStateWantOpen[count] = state.wantOpen ? 1 : 0;
     activeStateDamageDelayMs[count] = state.damageDelayMs;
     activeStateReopenDelayMs[count] = state.reopenDelayMs;
     count++;
@@ -274,6 +299,7 @@ export function updateBuildingActiveStates(world: WorldState, dtMs: number): voi
   if (sim.buildingActiveStateStepBatch(
     activeStateOpen,
     activeStateActive,
+    activeStateWantOpen,
     activeStateDamageDelayMs,
     activeStateReopenDelayMs,
     count,

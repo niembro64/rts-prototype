@@ -16,6 +16,8 @@ import type {
 } from './NetworkTypes';
 import { ClientViewState } from './ClientViewState';
 import { snapClientNonVisualState } from './ClientSnapshotApplier';
+import { STRUCTURE_BLUEPRINT_IDS } from '@/types/blueprintIds';
+import { buildingBlueprintHasActiveState } from '../sim/buildingActiveState';
 import { ViewportFootprint } from '../ViewportFootprint';
 import {
   BuildingRenderPacket3D,
@@ -2605,9 +2607,48 @@ export function runClientSnapshotApplierContractTest(): void {
     'packed metadata-only turret rows must apply from decoded wire rows',
   );
   turretView.assertRenderEntityStateParity(400);
+  runClientBuildingActiveStateMembershipContractTest();
   // This fixture allocates shared entity slots, so keep it last to avoid
   // perturbing the legacy hot-motion assertions above.
   runShieldFarLodRenderPacketContractTest();
   runTypedShieldRangePresentationContractTest();
   runTypedSensorHydrationContractTest();
+}
+
+/** Every ON/OFF host must hydrate an activeState on the CLIENT, and only
+ *  those hosts may. The client used to decide membership from a hand-written
+ *  blueprint list that drifted from the sim's `buildingBlueprintHasActiveState`:
+ *  the two shield tech labs were missing, so their client entities carried a
+ *  null activeState. That pinned their Power button to "Off" forever and made
+ *  the toggle compute `allOpen === false` every time, so it could only ever
+ *  send ON — the switch looked dead from the player's seat while the host sim
+ *  was working fine. Pin membership against the sim predicate for the whole
+ *  roster so a new ON/OFF host cannot ship half-wired again. */
+function runClientBuildingActiveStateMembershipContractTest(): void {
+  for (const buildingBlueprintId of STRUCTURE_BLUEPRINT_IDS) {
+    const expected = buildingBlueprintHasActiveState(buildingBlueprintId);
+    const view = new ClientViewState();
+    const id = 90100 + STRUCTURE_BLUEPRINT_IDS.indexOf(buildingBlueprintId);
+    const entity = fullBuildingEntity(id, 100, 100);
+    if (entity.building === null) throw new Error('building fixture must carry a building');
+    entity.building.buildingBlueprintCode = buildingBlueprintIdToCode(buildingBlueprintId);
+    entity.building.solar = expected ? { open: true } : null;
+    view.applyNetworkState(snapshot(1, [entity]));
+    const hydrated = view.getEntity(id);
+    assertContract(
+      hydrated !== undefined && hydrated.building !== null,
+      `${buildingBlueprintId} must hydrate a building on the client`,
+    );
+    assertContract(
+      (hydrated!.building!.activeState !== null) === expected,
+      `${buildingBlueprintId} client activeState presence must match the sim's ON/OFF `
+        + `membership (expected ${expected})`,
+    );
+    if (expected) {
+      assertContract(
+        hydrated!.building!.activeState!.open === true,
+        `${buildingBlueprintId} must hydrate the wire's ON flag rather than defaulting closed`,
+      );
+    }
+  }
 }
