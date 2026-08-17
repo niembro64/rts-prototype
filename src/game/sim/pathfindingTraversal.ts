@@ -1,4 +1,5 @@
 import type { UnitLocomotion } from './types';
+import type { LiquidSurfaceMode } from '@/types/worldSurfaceMode';
 import { computeLocomotionClimbProfile } from './pathfindingMobility';
 
 type PathCostProfile = Readonly<{
@@ -103,6 +104,24 @@ export function pathTerrainFilterForLocomotion(
       flatWaterContactAccel: mobility.flatWaterContactAccel,
       safeWaterDriveAccel: mobility.safeWaterDriveAccel,
       staticFrictionCoefficient: mobility.staticFrictionCoefficient,
+    },
+  };
+}
+
+/** Traversability describes physical capability; this layer applies match
+ *  hazard policy. Lava is never an intentional or recovery water domain for
+ *  non-air bodies, even when their propulsion could physically swim through
+ *  it. Air remains legal because allowInAir independently overflies liquid. */
+export function applyLiquidHazardPathPolicy(
+  filter: PathTerrainFilter | null,
+  liquidSurfaceMode: LiquidSurfaceMode,
+): PathTerrainFilter | null {
+  if (filter === null || liquidSurfaceMode !== 'lava') return filter;
+  return {
+    ...filter,
+    navigation: {
+      waypoint: { ...filter.navigation.waypoint, allowInWater: false },
+      move: { ...filter.navigation.move, allowInWater: false },
     },
   };
 }

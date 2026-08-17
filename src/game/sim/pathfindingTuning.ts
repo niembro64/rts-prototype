@@ -7,8 +7,8 @@ type PathfindingTuningConfig = {
   allowDiagonalNeighbors: boolean;
   softClearanceCells: number;
   softClearancePenaltyPerCell: number;
-  planBudgetPerPlayerPerTick: number;
-  planBudgetGlobalPerTick: number;
+  aStarExpansionBudgetPerTick: number;
+  refreshServiceIntervalTicks: number;
   chaseRepathCooldownTicks: number;
   chaseRepathDriftMinWu: number;
   chaseRepathDriftDistanceFraction: number;
@@ -108,17 +108,19 @@ export const PATHFINDING_FORCE_SAFETY_RATIO = readForceSafetyRatio();
 // identical plan computations on the identical ticks, so none of them may
 // ever be derived from measured frame time.
 
-/** Max full plan computations (A* runs) funded per player per fixed tick,
- *  shared between synchronous dispatch-time planning and queued serves. */
-export const PATHFINDING_PLAN_BUDGET_PER_PLAYER_PER_TICK = requirePositiveInteger(
-  'planBudgetPerPlayerPerTick',
-  config.planBudgetPerPlayerPerTick,
+/** Exact maximum number of fine-grid nodes the sole authoritative A* job may
+ *  close in one fixed tick. An unfinished frontier resumes next tick; this is
+ *  deterministic work accounting and is never derived from wall time. */
+export const PATHFINDING_A_STAR_EXPANSIONS_PER_TICK = requirePositiveInteger(
+  'aStarExpansionBudgetPerTick',
+  config.aStarExpansionBudgetPerTick,
 );
-/** Global per-tick ceiling across all players so many-player matches cannot
- *  multiply the per-player budget past the tick's compute envelope. */
-export const PATHFINDING_PLAN_BUDGET_GLOBAL_PER_TICK = requirePositiveInteger(
-  'planBudgetGlobalPerTick',
-  config.planBudgetGlobalPerTick,
+/** A pending refresh lane gets first choice on this deterministic cadence;
+ *  fresh jobs win other admissions. Free/stale requests never consume the
+ *  single A* slice, so the scheduler can continue looking in the same tick. */
+export const PATHFINDING_REFRESH_SERVICE_INTERVAL_TICKS = requirePositiveInteger(
+  'refreshServiceIntervalTicks',
+  config.refreshServiceIntervalTicks,
 );
 /** Minimum plan age (ticks) before a chase (attack/guard) may repath. */
 export const PATHFINDING_CHASE_REPATH_COOLDOWN_TICKS = requireNonNegativeInteger(
@@ -137,8 +139,8 @@ export const PATHFINDING_CHASE_REPATH_DRIFT_DISTANCE_FRACTION = requireUnitInter
   'chaseRepathDriftDistanceFraction',
   config.chaseRepathDriftDistanceFraction,
 );
-/** Retry cadence (ticks) for plans that resolved PARTIAL — the blocked
- *  world may have opened up (pile-up cleared, node budget exhausted). */
+/** Retry cadence (ticks) for plans that resolved PARTIAL at the best reachable
+ *  frontier — a changed dynamic obstacle layer may later open the goal. */
 export const PATHFINDING_PARTIAL_PLAN_RETRY_TICKS = requireNonNegativeInteger(
   'partialPlanRetryTicks',
   config.partialPlanRetryTicks,

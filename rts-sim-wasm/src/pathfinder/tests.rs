@@ -586,6 +586,69 @@ fn a_star_prefers_faster_flat_detour_over_legal_steep_hill() {
 }
 
 #[test]
+fn fine_a_star_resumes_the_same_frontier_across_slices() {
+    let mut state = open_test_state(12, 12);
+    let traversal = ground_traversal();
+    state.cur_waypoint_traversal = traversal;
+    let profile = ground_cost_profile(GRAVITY);
+    let generation_before = state.current_gen;
+
+    let first = pathfinder_a_star_slice(
+        &mut state, 0, 0, 11, 11, traversal, profile, 1,
+    );
+    assert!(matches!(first, AStarSliceOutcome::Pending(1)));
+    let search_generation = state.current_gen;
+    assert_ne!(search_generation, generation_before);
+
+    let second = pathfinder_a_star_slice(
+        &mut state, 0, 0, 11, 11, traversal, profile, 1,
+    );
+    assert!(matches!(second, AStarSliceOutcome::Pending(2)));
+    assert_eq!(state.current_gen, search_generation, "resume must not reset scores");
+
+    let result = loop {
+        match pathfinder_a_star_slice(
+            &mut state, 0, 0, 11, 11, traversal, profile, 2,
+        ) {
+            AStarSliceOutcome::Pending(_) => continue,
+            AStarSliceOutcome::Complete(result) => break result,
+        }
+    }
+    .expect("open grid must complete");
+    assert!(result.reached_goal);
+    assert!(result.expanded_nodes > 2);
+    assert_eq!(state.path_scratch.last().copied(), Some((11 * 12 + 11) as u32));
+}
+
+#[test]
+fn sliced_a_star_can_exhaust_more_than_the_old_fifty_thousand_node_cap() {
+    let mut state = open_test_state(405, 305);
+    let traversal = ground_traversal();
+    state.cur_waypoint_traversal = traversal;
+    let profile = ground_cost_profile(GRAVITY);
+    // A full-height water wall splits the dry domain. Fine A* must exhaust
+    // the entire 202x305 reachable half instead of returning an arbitrary
+    // node-limited partial route.
+    for gy in 0..state.grid_h {
+        state.terrain_water[(gy * state.grid_w + 202) as usize] = 1;
+    }
+    let result = loop {
+        match pathfinder_a_star_slice(
+            &mut state, 2, 152, 402, 152, traversal, profile, 1024,
+        ) {
+            AStarSliceOutcome::Pending(_) => continue,
+            AStarSliceOutcome::Complete(result) => break result,
+        }
+    }
+    .expect("the reachable frontier supplies a deterministic partial route");
+    assert!(!result.reached_goal);
+    assert!(
+        result.expanded_nodes > 50_000,
+        "the search must not preserve the old total-node ceiling",
+    );
+}
+
+#[test]
 fn direct_fast_path_allows_small_cost_overhead_but_not_large_detours() {
     let lower_bound = 100.0;
     assert!(pathfinder_direct_cost_within_fast_path(

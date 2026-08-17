@@ -1004,7 +1004,8 @@
         route out but never back in, with no special recovery machinery. Route plans carry the
         BuildingGrid version they were validated against; when it moves, only each plan&rsquo;s
         remaining legs re-validate &mdash; routes far from the change restamp for free, routes now
-        crossing a footprint take a budgeted refresh while the unit keeps steering.
+        crossing a footprint invalidate immediately, queue a fresh sliced search, and leave the
+        unit under a physical controller hold until a safe replacement is complete.
       </p>
       <p>
         The construction grid still answers a different question &mdash; whether a building may
@@ -1065,6 +1066,41 @@
         <li>Every waypoint, rally marker, connecting line, and drag preview resolves from the raw terrain-ray hit. Water is never a waypoint surface: a waypoint under a lake sits on the lake bed the cursor actually pointed at and remains visible through the transparent water.</li>
         <li>Pathfinding is leg-local and demand-driven: plan the active leg, cache it while valid, and throw it away on completion, obstruction, stale progress, terrain change, or target drift.</li>
         <li>Patrol and fight loops re-enter the planner per leg rather than baking one permanent expanded loop. The path should adapt to the battlefield, while the waypoint loop remains the command.</li>
+      </ul>
+
+      <h3>Path searches are resumable fixed-tick jobs, never frame-time bursts</h3>
+      <p>
+        The authoritative command timeline never waits for pathfinding: commands apply in canonical
+        lockstep order and install durable intent immediately. Derived route work enters separate
+        <code>fresh</code> and <code>refresh</code> lanes. The simulation advances at most
+        <strong>one global A* work slice per fixed tick</strong>. Admission rotates by ally team and
+        then by player, so a side with more seats cannot multiply its routing throughput. Exact
+        validated direct segments, shared formation-cache hits, and stale queue entries perform no
+        A* work and do not consume that tick's search admission.
+      </p>
+      <p>
+        Fine-grid A* retains its open heap, scores, parents, best reachable frontier, and cumulative
+        expansion count between ticks. Each slice closes a fixed configured number of nodes; it is
+        never sized from measured wall time. There is no arbitrary total expansion ceiling: a hard
+        mountain route may take many deterministic ticks and finishes only when it reaches the goal
+        or exhausts the reachable graph. A terrain or grounded-building version change, or a
+        superseding unit intent, invalidates the continuation and queues a fresh job. Continuations
+        are derivable simulation scratch and are not serialized as command or snapshot state.
+      </p>
+      <p>
+        A planless unit awaiting its fresh route applies no destination-directed propulsion. It is
+        not frozen: gravity, collision impulses, slope contact, passive friction, and external forces
+        remain authoritative. A stale plan may continue only while its remaining suffix validates
+        against the current navigation layers; otherwise the controller holds. Physical capability
+        and hazard policy are separate: ordinary water may use the unit's authored wet force
+        envelope, while lava removes the water domain from both MOVE and WAYPOINT routing even for a
+        body that could mechanically swim through it. Air traversal still overflies the liquid.
+      </p>
+      <ul class="rule-list">
+        <li>Never move toward the raw command point while a fresh path is unresolved.</li>
+        <li>Never budget authoritative search work from elapsed milliseconds or renderer cadence.</li>
+        <li>One sliced A* continuation owns the shared dense WASM search arena; queued units retain intent, not duplicate map-sized frontiers.</li>
+        <li>A completed partial route is a proved-safe reachable frontier, not a node-budget timeout. Its endpoint must remain a physically supportable stop.</li>
       </ul>
 
       <h3>Force models answer gravity; constant-speed guidance preserves velocity</h3>

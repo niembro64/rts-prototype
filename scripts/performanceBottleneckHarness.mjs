@@ -191,6 +191,10 @@ function parseArgs(args) {
       suite = true;
       continue;
     }
+    if (key === 'preset' || key === 'presetName') {
+      harnessOptions.presetName = rawValue;
+      continue;
+    }
     const value = Number(rawValue);
     if (!Number.isFinite(value)) continue;
     switch (key) {
@@ -375,7 +379,7 @@ function printReport(report) {
   const fixed = report.environment.fixedStepMs;
   const frameBudget = report.environment.frameBudgetMs60;
   console.log('Performance bottleneck harness');
-  console.log(`scenario: cap=${report.options.unitCap}, mapCells=${report.options.mapCells}, ticks=${report.options.ticks}, fullStack=${report.options.seconds}s`);
+  console.log(`scenario: cap=${report.options.unitCap}, map=${report.options.presetName || `${report.options.mapCells} flat cells`}, ticks=${report.options.ticks}, fullStack=${report.options.seconds}s`);
   console.log(`browser: ${report.fullStack.runtimeProfile}, dpr=${fmt(report.fullStack.activePixelRatio)}/${fmt(report.fullStack.nativePixelRatio)}, gpuTimer=${report.fullStack.gpuTimerSupported ? 'yes' : 'no'}`);
   console.log('');
   console.log('SIM ONLY');

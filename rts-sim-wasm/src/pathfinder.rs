@@ -14,10 +14,10 @@ pub(crate) use traversal::*;
 // ─────────────────────────────────────────────────────────────────
 //  Phase 9 — Pathfinder: A* over the terrain locomotion grid in WASM
 //
-//  Mirrors src/game/sim/Pathfinder.ts. Full pipeline (ensureMaskAndCC,
-//  snap-to-component, A*, Bresenham LOS smoothing) runs inside one
-//  WASM call. JS-side Pathfinder.ts becomes a thin wrapper that
-//  forwards terrain traversal inputs and reads the smoothed waypoint scratch.
+//  Mirrors src/game/sim/Pathfinder.ts. The synchronous compatibility pipeline
+//  still runs inside one WASM call for tools/tests. Authoritative movement
+//  retains fine-A* state and advances it through bounded WASM slices; JS stays
+//  a thin wrapper that forwards traversal inputs and reads final waypoints.
 //  Construction-grid reservations and hovering building footprints are not
 //  terrain cells and never change locomotion routing.
 //
@@ -33,12 +33,16 @@ pub(crate) use traversal::*;
 // from src/game/sim/pathfindingTuningConfig.json.
 pub(crate) const PATHFINDER_BUILD_GRID_CELL_SIZE: f64 = 20.0;
 pub(crate) const PATHFINDER_SNAP_RADIUS_CELLS: i32 = 32;
-pub(crate) const PATHFINDER_MAX_A_STAR_NODES: u32 = 50_000;
+/// Resumable fine-grid A* has no artificial total-node ceiling. Authoritative
+/// callers advance it with a deterministic per-tick expansion budget, so a
+/// difficult route can take as many fixed ticks as it needs without turning
+/// one simulation tick into a map-sized search.
 pub(crate) const PATHFINDER_SQRT2_MINUS_1: f32 = 0.41421356237309515;
 pub(crate) const PATHFINDER_RESULT_UNREACHABLE: u32 = 0;
 pub(crate) const PATHFINDER_RESULT_COMPLETE: u32 = 1;
 pub(crate) const PATHFINDER_RESULT_SNAPPED: u32 = 2;
 pub(crate) const PATHFINDER_RESULT_PARTIAL: u32 = 3;
+pub(crate) const PATHFINDER_RESULT_PENDING: u32 = 4;
 pub(crate) const PATHFINDER_SEARCH_NONE: u32 = 0;
 pub(crate) const PATHFINDER_SEARCH_DIRECT: u32 = 1;
 pub(crate) const PATHFINDER_SEARCH_HIERARCHICAL: u32 = 2;
@@ -100,6 +104,11 @@ pub(crate) struct PathfinderState {
     visited_gen: Vec<u32>,
     current_gen: u32,
     heap: Vec<u32>,
+    /// Fine-grid search retained between sliced pathfinder calls. The dense
+    /// scores/parents above remain the one shared arena; this small record is
+    /// the continuation cursor that makes the arena resumable without
+    /// duplicating map-sized memory for every queued unit.
+    pending_fine_a_star: Option<PendingFineAStar>,
     // Level-1 hierarchy scratch. One abstract node represents a square cluster
     // of fine navigation cells. Abstract edges are never assumed passable:
     // every edge is validated and priced by the exact fine-grid line tracer.
@@ -192,7 +201,7 @@ pub(crate) struct PathfinderState {
     last_direct_cost_ratio: f32,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub(crate) struct PathfinderTraversal {
     /// Minimum terrain normal supported by the unit's dry-contact force
     /// budget. This is derived from propulsion, mass, gravity, and Coulomb
@@ -285,7 +294,7 @@ fn pathfinder_traversal_cell_domain_equivalent(
 /// Query-local route objective, deliberately independent of locomotion rig
 /// names. The wrapper reduces force/mass/grip physics to flat acceleration;
 /// A* only knows how that capability changes travel time over terrain.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub(crate) struct PathfinderCostProfile {
     flat_drive_accel: f64,
     safe_drive_accel: f64,
@@ -389,6 +398,7 @@ impl PathfinderState {
             visited_gen: Vec::new(),
             current_gen: 1,
             heap: Vec::new(),
+            pending_fine_a_star: None,
             hierarchy_grid_w: 0,
             hierarchy_grid_h: 0,
             hierarchy_node_cell: Vec::new(),
@@ -481,6 +491,7 @@ pub(crate) fn pathfinder_build_snap_offsets(state: &mut PathfinderState) {
 #[wasm_bindgen]
 pub fn pathfinder_init(map_width: f64, map_height: f64) {
     let state = pathfinder_state();
+    state.pending_fine_a_star = None;
     let grid_w = (map_width / PATHFINDER_BUILD_GRID_CELL_SIZE).ceil() as i32;
     let grid_h = (map_height / PATHFINDER_BUILD_GRID_CELL_SIZE).ceil() as i32;
     let n = (grid_w * grid_h) as usize;
@@ -686,6 +697,7 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
     if key == state.terrain_only_key {
         return;
     }
+    state.pending_fine_a_star = None;
 
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
@@ -911,6 +923,7 @@ pub fn pathfinder_sync_building_occupancy(cell_gx: &[i32], cell_gy: &[i32], vers
     if state.n == 0 {
         return 0;
     }
+    state.pending_fine_a_star = None;
     debug_assert!(cell_gy.len() >= cell_gx.len());
     state.building_blocked.fill(0);
     let count = cell_gx.len().min(cell_gy.len());
@@ -1232,6 +1245,37 @@ pub(crate) struct AStarResult {
     hit_node_limit: bool,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+struct FineAStarKey {
+    start_gx: i32,
+    start_gy: i32,
+    goal_gx: i32,
+    goal_gy: i32,
+    traversal: PathfinderTraversal,
+    waypoint_traversal: PathfinderTraversal,
+    cost_profile: PathfinderCostProfile,
+    symmetric_slope: bool,
+    unit_radius: f64,
+    support_point_offset_z: f64,
+    terrain_only_key: u64,
+    building_occupancy_version: u32,
+}
+
+#[derive(Clone, Copy)]
+struct PendingFineAStar {
+    key: FineAStarKey,
+    start_idx: u32,
+    goal_idx: u32,
+    best_idx: u32,
+    best_d2: i64,
+    expanded_nodes: u32,
+}
+
+enum AStarSliceOutcome {
+    Pending(u32),
+    Complete(Option<AStarResult>),
+}
+
 #[inline]
 fn pathfinder_begin_a_star_generation(state: &mut PathfinderState) {
     state.current_gen = state.current_gen.wrapping_add(1);
@@ -1255,7 +1299,70 @@ fn pathfinder_touch_a_star_cell(state: &mut PathfinderState, idx: usize) {
     state.closed[idx] = 0;
 }
 
-pub(crate) fn pathfinder_a_star(
+fn pathfinder_fine_a_star_key(
+    state: &PathfinderState,
+    start_gx: i32,
+    start_gy: i32,
+    goal_gx: i32,
+    goal_gy: i32,
+    traversal: PathfinderTraversal,
+    cost_profile: PathfinderCostProfile,
+) -> FineAStarKey {
+    FineAStarKey {
+        start_gx,
+        start_gy,
+        goal_gx,
+        goal_gy,
+        traversal,
+        waypoint_traversal: state.cur_waypoint_traversal,
+        cost_profile,
+        symmetric_slope: state.cur_symmetric_slope,
+        unit_radius: state.cur_unit_radius,
+        support_point_offset_z: state.cur_support_point_offset_z,
+        terrain_only_key: state.terrain_only_key,
+        building_occupancy_version: state.building_occupancy_version,
+    }
+}
+
+fn pathfinder_reconstruct_a_star_path(
+    state: &mut PathfinderState,
+    pending: PendingFineAStar,
+    found: bool,
+) -> Option<AStarResult> {
+    let target = if found {
+        pending.goal_idx
+    } else {
+        pending.best_idx
+    };
+    state.path_scratch.clear();
+    let mut walker = target as i32;
+    while walker != pending.start_idx as i32 && walker != -1 {
+        state.path_scratch.push(walker as u32);
+        walker = state.parent[walker as usize];
+    }
+    if !state.path_scratch.is_empty()
+        && state.parent[*state.path_scratch.last().unwrap() as usize] == -1
+        && (*state.path_scratch.last().unwrap() as i32) != pending.start_idx as i32
+    {
+        return None;
+    }
+    state.path_scratch.reverse();
+    let gx = (target as i32) % state.grid_w;
+    let gy = ((target as i32) - gx) / state.grid_w;
+    Some(AStarResult {
+        goal_gx: gx,
+        goal_gy: gy,
+        reached_goal: found,
+        expanded_nodes: pending.expanded_nodes,
+        hit_node_limit: false,
+    })
+}
+
+/// Advance one fine-grid A* continuation by at most `expansion_budget`
+/// closed nodes. Repeating the exact same query resumes the retained frontier;
+/// any changed physics profile, endpoints, or navigation-layer version starts
+/// a fresh generation deterministically.
+fn pathfinder_a_star_slice(
     state: &mut PathfinderState,
     start_gx: i32,
     start_gy: i32,
@@ -1263,37 +1370,57 @@ pub(crate) fn pathfinder_a_star(
     goal_gy: i32,
     traversal: PathfinderTraversal,
     cost_profile: PathfinderCostProfile,
-) -> Option<AStarResult> {
+    expansion_budget: u32,
+) -> AStarSliceOutcome {
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
-    pathfinder_begin_a_star_generation(state);
-    state.heap.clear();
-    state.path_scratch.clear();
-
-    let start_idx = (start_gy * grid_w + start_gx) as usize;
-    let goal_idx = (goal_gy * grid_w + goal_gx) as u32;
-    pathfinder_touch_a_star_cell(state, start_idx);
-    state.g_score[start_idx] = 0.0;
-    state.f_score[start_idx] = pathfinder_octile(start_gx, start_gy, goal_gx, goal_gy);
-    pathfinder_heap_push(state, start_idx as u32);
-
-    let mut best_idx = start_idx as u32;
-    let mut best_d2 = {
-        let dx = start_gx - goal_gx;
-        let dy = start_gy - goal_gy;
-        dx * dx + dy * dy
+    let key = pathfinder_fine_a_star_key(
+        state,
+        start_gx,
+        start_gy,
+        goal_gx,
+        goal_gy,
+        traversal,
+        cost_profile,
+    );
+    let mut pending = match state.pending_fine_a_star.take() {
+        Some(pending) if pending.key == key => pending,
+        _ => {
+            pathfinder_begin_a_star_generation(state);
+            state.heap.clear();
+            state.path_scratch.clear();
+            let start_idx = (start_gy * grid_w + start_gx) as usize;
+            let goal_idx = (goal_gy * grid_w + goal_gx) as u32;
+            pathfinder_touch_a_star_cell(state, start_idx);
+            state.g_score[start_idx] = 0.0;
+            state.f_score[start_idx] = pathfinder_octile(start_gx, start_gy, goal_gx, goal_gy);
+            pathfinder_heap_push(state, start_idx as u32);
+            let dx = i64::from(start_gx) - i64::from(goal_gx);
+            let dy = i64::from(start_gy) - i64::from(goal_gy);
+            PendingFineAStar {
+                key,
+                start_idx: start_idx as u32,
+                goal_idx,
+                best_idx: start_idx as u32,
+                best_d2: dx * dx + dy * dy,
+                expanded_nodes: 0,
+            }
+        }
     };
-    let mut expanded = 0u32;
+
+    let expansion_budget = expansion_budget.max(1);
+    let mut expanded_this_slice = 0u32;
     let mut found = false;
-    while !state.heap.is_empty() && expanded < PATHFINDER_MAX_A_STAR_NODES {
+    while !state.heap.is_empty() && expanded_this_slice < expansion_budget {
         let cur = pathfinder_heap_pop(state);
         let cur_us = cur as usize;
         if state.closed[cur_us] != 0 {
             continue;
         }
         state.closed[cur_us] = 1;
-        expanded += 1;
-        if cur == goal_idx {
+        pending.expanded_nodes = pending.expanded_nodes.saturating_add(1);
+        expanded_this_slice += 1;
+        if cur == pending.goal_idx {
             found = true;
             break;
         }
@@ -1331,44 +1458,50 @@ pub(crate) fn pathfinder_a_star(
                 state.parent[nidx] = cur as i32;
                 state.g_score[nidx] = tentative;
                 state.f_score[nidx] = tentative + pathfinder_octile(nx, ny, goal_gx, goal_gy);
-                let dx = nx - goal_gx;
-                let dy = ny - goal_gy;
+                let dx = i64::from(nx) - i64::from(goal_gx);
+                let dy = i64::from(ny) - i64::from(goal_gy);
                 let d2 = dx * dx + dy * dy;
-                if d2 < best_d2 {
-                    best_d2 = d2;
-                    best_idx = nidx as u32;
+                if d2 < pending.best_d2 {
+                    pending.best_d2 = d2;
+                    pending.best_idx = nidx as u32;
                 }
                 pathfinder_heap_push(state, nidx as u32);
             }
         }
     }
 
-    let target = if found { goal_idx } else { best_idx };
-    let mut walker = target as i32;
-    while walker != start_idx as i32 && walker != -1 {
-        state.path_scratch.push(walker as u32);
-        walker = state.parent[walker as usize];
+    if !found && !state.heap.is_empty() {
+        let total = pending.expanded_nodes;
+        state.pending_fine_a_star = Some(pending);
+        return AStarSliceOutcome::Pending(total);
     }
-    // If parent chain didn't reach start, target is unreachable from
-    // start in the discovered subgraph — treat as no path.
-    if !state.path_scratch.is_empty()
-        && state.parent[*state.path_scratch.last().unwrap() as usize] == -1
-        && (*state.path_scratch.last().unwrap() as i32) != start_idx as i32
-    {
-        // Final node has no parent and isn't start — unreachable.
-        // (Matches the JS check `parent[path[last]] === -1`.)
-        return None;
+    AStarSliceOutcome::Complete(pathfinder_reconstruct_a_star_path(state, pending, found))
+}
+
+#[cfg(test)]
+pub(crate) fn pathfinder_a_star(
+    state: &mut PathfinderState,
+    start_gx: i32,
+    start_gy: i32,
+    goal_gx: i32,
+    goal_gy: i32,
+    traversal: PathfinderTraversal,
+    cost_profile: PathfinderCostProfile,
+) -> Option<AStarResult> {
+    state.pending_fine_a_star = None;
+    match pathfinder_a_star_slice(
+        state,
+        start_gx,
+        start_gy,
+        goal_gx,
+        goal_gy,
+        traversal,
+        cost_profile,
+        u32::MAX,
+    ) {
+        AStarSliceOutcome::Complete(result) => result,
+        AStarSliceOutcome::Pending(_) => unreachable!("u32::MAX exhausts any installed grid"),
     }
-    state.path_scratch.reverse();
-    let gx = (target as i32) % grid_w;
-    let gy = ((target as i32) - gx) / grid_w;
-    Some(AStarResult {
-        goal_gx: gx,
-        goal_gy: gy,
-        reached_goal: found,
-        expanded_nodes: expanded,
-        hit_node_limit: !found && expanded >= PATHFINDER_MAX_A_STAR_NODES,
-    })
 }
 
 /// Trace the same supercover Bresenham segment used by validation and
@@ -1493,8 +1626,7 @@ pub(crate) fn pathfinder_push_waypoint(state: &mut PathfinderState, x: f64, y: f
 /// Note: caller must have run pathfinder_init +
 /// pathfinder_rebuild_terrain_mask_and_cc for the current terrain state
 /// before calling this.
-#[wasm_bindgen]
-pub fn pathfinder_find_path(
+fn pathfinder_find_path_with_expansion_budget(
     start_x: f64,
     start_y: f64,
     goal_x: f64,
@@ -1515,6 +1647,7 @@ pub fn pathfinder_find_path(
     safe_water_drive_accel: f64,
     static_friction_coefficient: f64,
     symmetric_slope: bool,
+    expansion_budget: u32,
 ) -> u32 {
     let state = pathfinder_state();
     state.waypoint_scratch.clear();
@@ -1727,19 +1860,38 @@ pub fn pathfinder_find_path(
     }
 
     state.line_transition_cache_enabled = true;
-    let hierarchical_result = pathfinder_hierarchical_a_star(
+    let fine_key = pathfinder_fine_a_star_key(
         state,
         start_cell_gx,
         start_cell_gy,
         goal_cell_gx,
         goal_cell_gy,
-        start_x,
-        start_y,
-        raw_goal_x,
-        raw_goal_y,
         traversal,
         cost_profile,
     );
+    let resuming_fine_search = state
+        .pending_fine_a_star
+        .is_some_and(|pending| pending.key == fine_key);
+    // Hierarchy is a one-time fast-path admission. Once a fine search has a
+    // retained frontier, repeating coarse refinement every fixed tick would
+    // waste work and make the slice cost depend on route length.
+    let hierarchical_result = if resuming_fine_search {
+        None
+    } else {
+        pathfinder_hierarchical_a_star(
+            state,
+            start_cell_gx,
+            start_cell_gy,
+            goal_cell_gx,
+            goal_cell_gy,
+            start_x,
+            start_y,
+            raw_goal_x,
+            raw_goal_y,
+            traversal,
+            cost_profile,
+        )
+    };
     let a_star_result = if let Some(hierarchical) = hierarchical_result {
         state.last_coarse_expanded_nodes = hierarchical.expanded_nodes;
         // The legal direct segment remains a useful upper bound. If the sparse
@@ -1765,7 +1917,7 @@ pub fn pathfinder_find_path(
         })
     } else {
         state.last_search_strategy = PATHFINDER_SEARCH_FINE_A_STAR;
-        let result = pathfinder_a_star(
+        let result = match pathfinder_a_star_slice(
             state,
             start_cell_gx,
             start_cell_gy,
@@ -1773,7 +1925,15 @@ pub fn pathfinder_find_path(
             goal_cell_gy,
             traversal,
             cost_profile,
-        );
+            expansion_budget,
+        ) {
+            AStarSliceOutcome::Pending(expanded_nodes) => {
+                state.last_fine_expanded_nodes = expanded_nodes;
+                state.last_result_status = PATHFINDER_RESULT_PENDING;
+                return 0;
+            }
+            AStarSliceOutcome::Complete(result) => result,
+        };
         if let Some(result) = &result {
             state.last_fine_expanded_nodes = result.expanded_nodes;
             state.last_fine_hit_node_limit = result.hit_node_limit;
@@ -1801,8 +1961,9 @@ pub fn pathfinder_find_path(
     };
 
     if !a_star_result.reached_goal {
-        // A node-limited fine search must never return a partial route when a
-        // complete, physically legal straight route is already known.
+        // An exhausted fine search may still provide the best physically
+        // reachable frontier, but never prefer it over a complete legal
+        // straight route already proven by the exact line tracer.
         if direct_cost.is_some() {
             state.waypoint_scratch.push(raw_goal_x);
             state.waypoint_scratch.push(raw_goal_y);
@@ -1899,6 +2060,115 @@ pub fn pathfinder_find_path(
         };
     }
     (state.waypoint_scratch.len() / 2) as u32
+}
+
+/// Compatibility entry point for tools and tests that explicitly want a
+/// synchronous route. Authoritative simulation movement uses the sliced API
+/// below so this function is never on the fixed-tick hot path.
+#[wasm_bindgen]
+pub fn pathfinder_find_path(
+    start_x: f64,
+    start_y: f64,
+    goal_x: f64,
+    goal_y: f64,
+    min_ground_normal_z: f32,
+    water_surface_supported: bool,
+    support_point_offset_z: f64,
+    waypoint_allow_ground: bool,
+    waypoint_allow_water: bool,
+    waypoint_allow_air: bool,
+    move_allow_ground: bool,
+    move_allow_water: bool,
+    move_allow_air: bool,
+    unit_radius: f64,
+    flat_drive_accel: f64,
+    safe_drive_accel: f64,
+    flat_water_contact_accel: f64,
+    safe_water_drive_accel: f64,
+    static_friction_coefficient: f64,
+    symmetric_slope: bool,
+) -> u32 {
+    pathfinder_state().pending_fine_a_star = None;
+    pathfinder_find_path_with_expansion_budget(
+        start_x,
+        start_y,
+        goal_x,
+        goal_y,
+        min_ground_normal_z,
+        water_surface_supported,
+        support_point_offset_z,
+        waypoint_allow_ground,
+        waypoint_allow_water,
+        waypoint_allow_air,
+        move_allow_ground,
+        move_allow_water,
+        move_allow_air,
+        unit_radius,
+        flat_drive_accel,
+        safe_drive_accel,
+        flat_water_contact_accel,
+        safe_water_drive_accel,
+        static_friction_coefficient,
+        symmetric_slope,
+        u32::MAX,
+    )
+}
+
+/// Start or resume the exact same fine-grid query, advancing no more than the
+/// supplied number of A* node expansions. A return count of zero with result
+/// status PENDING means the frontier is retained for the next fixed tick.
+#[wasm_bindgen]
+pub fn pathfinder_find_path_slice(
+    start_x: f64,
+    start_y: f64,
+    goal_x: f64,
+    goal_y: f64,
+    min_ground_normal_z: f32,
+    water_surface_supported: bool,
+    support_point_offset_z: f64,
+    waypoint_allow_ground: bool,
+    waypoint_allow_water: bool,
+    waypoint_allow_air: bool,
+    move_allow_ground: bool,
+    move_allow_water: bool,
+    move_allow_air: bool,
+    unit_radius: f64,
+    flat_drive_accel: f64,
+    safe_drive_accel: f64,
+    flat_water_contact_accel: f64,
+    safe_water_drive_accel: f64,
+    static_friction_coefficient: f64,
+    symmetric_slope: bool,
+    expansion_budget: u32,
+) -> u32 {
+    pathfinder_find_path_with_expansion_budget(
+        start_x,
+        start_y,
+        goal_x,
+        goal_y,
+        min_ground_normal_z,
+        water_surface_supported,
+        support_point_offset_z,
+        waypoint_allow_ground,
+        waypoint_allow_water,
+        waypoint_allow_air,
+        move_allow_ground,
+        move_allow_water,
+        move_allow_air,
+        unit_radius,
+        flat_drive_accel,
+        safe_drive_accel,
+        flat_water_contact_accel,
+        safe_water_drive_accel,
+        static_friction_coefficient,
+        symmetric_slope,
+        expansion_budget.max(1),
+    )
+}
+
+#[wasm_bindgen]
+pub fn pathfinder_cancel_path_slice() {
+    pathfinder_state().pending_fine_a_star = None;
 }
 
 #[wasm_bindgen]

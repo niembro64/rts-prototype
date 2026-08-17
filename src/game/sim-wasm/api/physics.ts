@@ -86,8 +86,33 @@ export interface PathfinderApi {
      *  otherwise preserve controlled descent between locally valid cells. */
     symmetricSlope: boolean,
   ) => number;
+  /** Start or resume the same fine-grid query, closing no more than the given
+   *  number of A* nodes. Zero waypoints plus result status 4 means pending. */
+  findPathSlice: (
+    startX: number, startY: number,
+    goalX: number, goalY: number,
+    minGroundNormalZ: number,
+    waterSurfaceSupported: boolean,
+    supportPointOffsetZ: number,
+    waypointAllowOnGround: boolean,
+    waypointAllowInWater: boolean,
+    waypointAllowInAir: boolean,
+    moveAllowOnGround: boolean,
+    moveAllowInWater: boolean,
+    moveAllowInAir: boolean,
+    unitRadius: number,
+    flatDriveAccel: number,
+    safeDriveAccel: number,
+    flatWaterContactAccel: number,
+    safeWaterDriveAccel: number,
+    staticFrictionCoefficient: number,
+    symmetricSlope: boolean,
+    expansionBudget: number,
+  ) => number;
+  /** Discard the retained fine-grid frontier when its owning intent dies. */
+  cancelPathSlice: () => void;
   /** Resolution code for the most recent findPath call:
-   *  0 unreachable, 1 complete, 2 snapped, 3 partial. */
+   *  0 unreachable, 1 complete, 2 snapped, 3 partial, 4 pending. */
   lastResultStatus: () => number;
   /** Search strategy: 0 none, 1 direct, 2 hierarchical, 3 fine A*. */
   lastSearchStrategy: () => number;

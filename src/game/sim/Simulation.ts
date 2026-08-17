@@ -33,7 +33,8 @@ import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_HP } from '@/types/network';
 import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
 import {
-  expandPathPlan,
+  advancePathPlanSlice,
+  cancelPathPlanSlice,
   isPathPlanSuffixTraversable,
   isPathPlanTraversable,
   isPathSegmentTraversable,
@@ -42,6 +43,7 @@ import {
 import {
   pathTerrainFilterCacheKey,
   pathTerrainFilterForLocomotion,
+  applyLiquidHazardPathPolicy,
   type PathTerrainFilter,
 } from './pathfindingTraversal';
 import { getTerrainVersion, isWaterAt } from './Terrain';
@@ -52,6 +54,7 @@ import {
   PATHFINDING_DIRECT_PLAN_MAX_DISTANCE_WU,
   PATHFINDING_INTERMEDIATE_CORRIDOR_WU,
   PATHFINDING_PARTIAL_PLAN_RETRY_TICKS,
+  PATHFINDING_A_STAR_EXPANSIONS_PER_TICK,
 } from './pathfindingTuning';
 import {
   PATH_REQUEST_FRESH,
@@ -185,6 +188,26 @@ type FormationRouteMetadata = {
   radius: number;
 };
 
+type ActivePathPlanJob = {
+  entityId: EntityId;
+  lane: number;
+  forceLocal: boolean;
+  actionHash: number;
+  actionSnapshot: UnitAction;
+  terrainVersion: number;
+  buildingGridVersion: number;
+  startX: number;
+  startY: number;
+  goalX: number;
+  goalY: number;
+  goalZ: number | null;
+  terrainFilter: PathTerrainFilter | null;
+  unitRadius: number;
+  symmetricSlope: boolean;
+  formationRoute: FormationRouteMetadata | null;
+  formationCacheKey: string | null;
+};
+
 // ── Stuck-detection / replanning ─────────────────────────────────
 //
 // A unit that wants to move (thrust set) but isn't actually moving
@@ -194,14 +217,10 @@ type FormationRouteMetadata = {
 // CURRENT position to the trip's final destination produces a fresh
 // route that respects the new world state.
 //
-// Replans aren't cheap (each is a bounded A* run), so ALL plan
-// computations — new commands, chase-drift refreshes, and stuck
-// replans — are funded from one SimulationPathPlanScheduler budget
-// (fixed per player per tick plus a global ceiling, both lockstep
-// constants). Requests past the budget queue and drain at the start
-// of each movement pass; planless units drive an interim straight
-// line toward the action point and stale-but-usable chase plans keep
-// steering until their replacement is funded.
+// Replans are one deterministic global job. A difficult fine-grid A* keeps
+// its frontier across ticks and consumes one bounded expansion slice per tick;
+// all other requests wait in side-fair fresh/refresh lanes. A planless unit
+// holds under normal physics until a validated route exists.
 
 /** Broadphase slack for the patrol auto-reclaim vegetation sweep. The
  *  circle query tests prop CENTERS, while the build-range test that
@@ -253,6 +272,7 @@ export class Simulation {
   private forceAccumulator: ForceAccumulator = new ForceAccumulator();
   private readonly formationRouteCache = new Map<string, ExpandedPathPlan>();
   private readonly pathPlanScheduler = new SimulationPathPlanScheduler();
+  private activePathPlanJob: ActivePathPlanJob | null = null;
   private windState: WindState = sampleWindState(0);
   private windPowerTracker = new WindPowerTracker();
   // Accumulated sim time (ms). Drives deterministic systems like wind
@@ -665,8 +685,8 @@ export class Simulation {
    *  legally start from its current medium. Chase actions (live-target
    *  attack/guard) deliberately exclude the goal coordinates: per-tick
    *  approach re-aims are absorbed by drift-based refresh instead of
-   *  invalidating the route outright. Terrain version is also soft — a
-   *  stale-terrain route keeps steering while its replacement is funded. */
+   *  invalidating the route outright. Terrain-version changes are hard safety
+   *  invalidations because physical support or hazard domains may differ. */
   private isActivePathHardValid(
     entity: Entity,
     unit: Unit,
@@ -703,32 +723,6 @@ export class Simulation {
     terrainVersion: number,
   ): boolean {
     if (plan.terrainVersion !== terrainVersion) return true;
-    const buildingGridVersion = this.constructionSystem.getGrid().getVersion();
-    if (plan.buildingGridVersion !== buildingGridVersion) {
-      // Building occupancy changed somewhere. Re-validate only this plan's
-      // remaining legs: routes nowhere near the change restamp for free,
-      // routes now crossing a footprint queue a budgeted refresh while the
-      // unit keeps steering (physics stops it at the wall meanwhile).
-      const unit = entity.unit;
-      if (
-        unit !== null &&
-        isPathPlanSuffixTraversable(
-          entity.transform.x,
-          entity.transform.y,
-          plan.points,
-          plan.index,
-          this.world.mapWidth,
-          this.world.mapHeight,
-          this.pathTerrainFilterForUnit(entity),
-          unit.radius.collision,
-          this.world.slopePathMode === 'symmetric',
-        )
-      ) {
-        plan.buildingGridVersion = buildingGridVersion;
-      } else {
-        return true;
-      }
-    }
     const age = this.world.getTick() - plan.plannedAtTick;
     if (isChase && age >= PATHFINDING_CHASE_REPATH_COOLDOWN_TICKS) {
       const drift = magnitude(action.x - plan.goalX, action.y - plan.goalY);
@@ -862,23 +856,8 @@ export class Simulation {
       terrainVersion,
       terrainFilter,
     );
-    let anchorPlan = this.formationRouteCache.get(key);
-    if (anchorPlan === undefined) {
-      if (this.formationRouteCache.size > 256) this.formationRouteCache.clear();
-      anchorPlan = expandPathPlan(
-        metadata.startX,
-        metadata.startY,
-        metadata.goalX,
-        metadata.goalY,
-        this.world.mapWidth,
-        this.world.mapHeight,
-        action.z ?? null,
-        terrainFilter,
-        metadata.radius,
-        this.world.slopePathMode === 'symmetric',
-      );
-      this.formationRouteCache.set(key, anchorPlan);
-    }
+    const anchorPlan = this.formationRouteCache.get(key);
+    if (anchorPlan === undefined) return null;
     const translated = this.offsetFormationRoutePlan(
       anchorPlan.points,
       metadata.offsetX,
@@ -908,12 +887,10 @@ export class Simulation {
       : null;
   }
 
-  /** Resolve the active plan for the current action under the per-tick plan
-   *  budget. Hard-valid plans return immediately (with a possible funded or
-   *  queued refresh); everything else is funded synchronously while budget
-   *  remains this tick, or queued — planless units drive an interim straight
-   *  line toward the action point (the null-plan fallback in
-   *  resolveActiveMovementTarget) until their request is served. */
+  /** Resolve only validated movement. Commands and cheap direct/cache routes
+   *  apply immediately; every real A* request waits for the one global
+   *  resumable job. A unit with no safe route returns null and supplies no
+   *  destination-directed drive this tick. */
   private ensureActivePathPlan(entity: Entity, action: UnitAction): Unit['activePath'] {
     const unit = entity.unit;
     if (!unit) return null;
@@ -925,19 +902,43 @@ export class Simulation {
 
     if (this.isActivePathHardValid(entity, unit, action, isChase)) {
       const plan = unit.activePath as NonNullable<Unit['activePath']>;
+      // Terrain changes can alter physical support and hazard domains. Never
+      // steer on an unvalidated old surface while its replacement is queued.
+      if (plan.terrainVersion !== terrainVersion) {
+        unit.activePath = null;
+        this.pathPlanScheduler.requestFresh(entity, false);
+        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+        return null;
+      }
+      const buildingGridVersion = this.constructionSystem.getGrid().getVersion();
+      if (plan.buildingGridVersion !== buildingGridVersion) {
+        if (
+          isPathPlanSuffixTraversable(
+            entity.transform.x,
+            entity.transform.y,
+            plan.points,
+            plan.index,
+            this.world.mapWidth,
+            this.world.mapHeight,
+            this.pathTerrainFilterForUnit(entity),
+            unit.radius.collision,
+            this.world.slopePathMode === 'symmetric',
+          )
+        ) {
+          plan.buildingGridVersion = buildingGridVersion;
+        } else {
+          unit.activePath = null;
+          this.pathPlanScheduler.requestFresh(entity, false);
+          this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+          return null;
+        }
+      }
       if (
         unit.pathRequestLane === PATH_REQUEST_NONE &&
         this.activePathWantsRefresh(entity, plan, action, isChase, terrainVersion)
       ) {
-        // Stale-but-usable: a short validated straight segment replaces it
-        // for free, a budget slot replaces it now, otherwise the refresh
-        // lane replaces it in a coming tick — steering continues on the
-        // stale plan meanwhile.
         const direct = this.tryInstallDirectPathPlan(entity, unit, action, terrainVersion);
         if (direct !== null) return direct;
-        if (this.pathPlanScheduler.tryCharge(entity)) {
-          return this.computeAndInstallActivePathPlan(entity, action, false);
-        }
         this.pathPlanScheduler.requestRefresh(entity);
       }
       return unit.activePath;
@@ -956,13 +957,13 @@ export class Simulation {
       return null;
     }
 
-    // Formation corridor first: cache hits are translate+validate only and
-    // cost no plan budget; only the shared anchor's A* consumes a slot.
+    // Formation cache hits are translate+validate only. A cache miss queues
+    // its shared anchor as the next A* job rather than calculating inline.
     const formationRoute = !hadPlan ? this.getFormationRouteMetadata(action) : null;
     if (formationRoute !== null) {
       const terrainFilter = this.pathTerrainFilterForUnit(entity);
       const cacheKey = this.formationRouteCacheKey(formationRoute, terrainVersion, terrainFilter);
-      if (this.formationRouteCache.has(cacheKey) || this.pathPlanScheduler.tryCharge(entity)) {
+      if (this.formationRouteCache.has(cacheKey)) {
         const translated = this.expandFormationRoutePoints(
           action,
           formationRoute,
@@ -973,62 +974,16 @@ export class Simulation {
         if (translated !== null) {
           return this.installActivePathPlan(entity, unit, action, translated, terrainVersion);
         }
-        // Translation failed validation — fall through to a local plan.
-      } else {
-        this.pathPlanScheduler.requestFresh(entity, false);
-        return null;
+        // A shared corridor that cannot safely translate for this unit falls
+        // through to a queued local calculation.
       }
     }
 
     const direct = this.tryInstallDirectPathPlan(entity, unit, action, terrainVersion);
     if (direct !== null) return direct;
 
-    if (this.pathPlanScheduler.tryCharge(entity)) {
-      return this.computeAndInstallActivePathPlan(entity, action, false);
-    }
     this.pathPlanScheduler.requestFresh(entity, false);
     return null;
-  }
-
-  /** Compute and install a plan for the current action NOW. Callers own the
-   *  budget decision (a tryCharge slot or a drained queue entry). */
-  private computeAndInstallActivePathPlan(
-    entity: Entity,
-    action: UnitAction,
-    forceLocalPlan: boolean,
-  ): Unit['activePath'] {
-    const unit = entity.unit;
-    if (!unit) return null;
-
-    const terrainVersion = getTerrainVersion();
-    const terrainFilter = this.pathTerrainFilterForUnit(entity);
-    const formationRoute = !forceLocalPlan && unit.activePath === null
-      ? this.getFormationRouteMetadata(action)
-      : null;
-    let pathPlan = formationRoute !== null
-      ? this.expandFormationRoutePoints(
-          action,
-          formationRoute,
-          terrainVersion,
-          terrainFilter,
-          entity,
-        )
-      : null;
-    if (pathPlan === null) {
-      pathPlan = expandPathPlan(
-        entity.transform.x,
-        entity.transform.y,
-        action.x,
-        action.y,
-        this.world.mapWidth,
-        this.world.mapHeight,
-        action.z ?? null,
-        terrainFilter,
-        unit.radius.collision,
-        this.world.slopePathMode === 'symmetric',
-      );
-    }
-    return this.installActivePathPlan(entity, unit, action, pathPlan, terrainVersion);
   }
 
   /** Try to complete the plan as one validated straight segment. The WASM
@@ -1104,46 +1059,197 @@ export class Simulation {
     return unit.activePath;
   }
 
-  /** Serve one queued plan request against live state. Returns true when a
-   *  plan computation actually ran (charging the entry against the tick's
-   *  budgets); stale entries — dead units, superseded lanes, actions that
-   *  no longer move — are skipped for free. */
+  /** Admit one queued request into the sole global A* continuation. Returns
+   *  true only after this tick's deterministic search slice was consumed. */
   private readonly servePathPlanRequest = (entityId: EntityId, lane: number): boolean => {
     const entity = this.world.getEntity(entityId);
     if (entity === undefined) return false;
     const unit = entity.unit;
     if (unit === null || unit.hp <= 0) return false;
     if (unit.pathRequestLane !== lane) return false;
-    unit.pathRequestLane = PATH_REQUEST_NONE;
     const forceLocal = unit.pathRequestForceLocal;
-    unit.pathRequestForceLocal = false;
     const action = unit.actions[0];
-    if (action === undefined || !PATH_PLAN_SERVE_ACTION_TYPES.has(action.type)) return false;
-    if (forceLocal) {
-      // Stuck-replan semantics: plan from the live position, keep the old
-      // route when the planner collapses to a worse stay-put fallback, and
-      // hold detection quiet through the replan cooldown either way.
-      unit.stuckTicks = this.tryReplan(entity) ? REPLAN_COOLDOWN : REPLAN_FAILURE_COOLDOWN;
-      return true;
+    if (action === undefined || !PATH_PLAN_SERVE_ACTION_TYPES.has(action.type)) {
+      unit.pathRequestLane = PATH_REQUEST_NONE;
+      unit.pathRequestForceLocal = false;
+      return false;
     }
     const terrainVersion = getTerrainVersion();
     if (this.tryInstallDirectPathPlan(entity, unit, action, terrainVersion) !== null) {
-      // A validated straight segment costs no A*; don't charge the slot.
+      unit.pathRequestLane = PATH_REQUEST_NONE;
+      unit.pathRequestForceLocal = false;
+      if (forceLocal) unit.stuckTicks = REPLAN_COOLDOWN;
       return false;
     }
-    this.computeAndInstallActivePathPlan(entity, action, false);
-    return true;
+
+    const terrainFilter = this.pathTerrainFilterForUnit(entity);
+    let formationRoute = !forceLocal && unit.activePath === null
+      ? this.getFormationRouteMetadata(action)
+      : null;
+    let formationCacheKey: string | null = null;
+    if (formationRoute !== null) {
+      formationCacheKey = this.formationRouteCacheKey(
+        formationRoute,
+        terrainVersion,
+        terrainFilter,
+      );
+      if (this.formationRouteCache.has(formationCacheKey)) {
+        const translated = this.expandFormationRoutePoints(
+          action,
+          formationRoute,
+          terrainVersion,
+          terrainFilter,
+          entity,
+        );
+        if (translated !== null) {
+          unit.pathRequestLane = PATH_REQUEST_NONE;
+          unit.pathRequestForceLocal = false;
+          this.installActivePathPlan(entity, unit, action, translated, terrainVersion);
+          return false;
+        }
+        formationRoute = null;
+        formationCacheKey = null;
+      }
+    }
+
+    this.activePathPlanJob = {
+      entityId,
+      lane,
+      forceLocal,
+      actionHash: unit.actionHash,
+      actionSnapshot: { ...action },
+      terrainVersion,
+      buildingGridVersion: this.constructionSystem.getGrid().getVersion(),
+      startX: formationRoute?.startX ?? entity.transform.x,
+      startY: formationRoute?.startY ?? entity.transform.y,
+      goalX: formationRoute?.goalX ?? action.x,
+      goalY: formationRoute?.goalY ?? action.y,
+      goalZ: action.z ?? null,
+      terrainFilter,
+      unitRadius: formationRoute?.radius ?? unit.radius.collision,
+      symmetricSlope: this.world.slopePathMode === 'symmetric',
+      formationRoute,
+      formationCacheKey,
+    };
+    return this.advanceActivePathPlanJob();
   };
+
+  /** Resume or finish the sole global path job. Invalid live intent cancels
+   *  without spending the tick, allowing the scheduler to admit another job. */
+  private advanceActivePathPlanJob(): boolean {
+    const job = this.activePathPlanJob;
+    if (job === null) return false;
+    const entity = this.world.getEntity(job.entityId);
+    const unit = entity?.unit ?? null;
+    const action = unit?.actions[0];
+    const isChase = action !== undefined && action.targetId !== undefined &&
+      (action.type === 'attack' || action.type === 'guard');
+    const actionStillMatches = action !== undefined &&
+      action.type === job.actionSnapshot.type &&
+      action.targetId === job.actionSnapshot.targetId &&
+      action.buildingId === job.actionSnapshot.buildingId &&
+      (isChase || unit?.actionHash === job.actionHash);
+    const navigationStillMatches = getTerrainVersion() === job.terrainVersion &&
+      this.constructionSystem.getGrid().getVersion() === job.buildingGridVersion;
+    if (
+      entity === undefined ||
+      unit === null ||
+      unit.hp <= 0 ||
+      unit.pathRequestLane !== job.lane ||
+      !actionStillMatches ||
+      !navigationStillMatches
+    ) {
+      cancelPathPlanSlice();
+      this.activePathPlanJob = null;
+      if (unit !== null && unit.pathRequestLane === job.lane) {
+        unit.pathRequestLane = PATH_REQUEST_NONE;
+        unit.pathRequestForceLocal = false;
+        if (action !== undefined && PATH_PLAN_SERVE_ACTION_TYPES.has(action.type)) {
+          this.pathPlanScheduler.requestFresh(entity as Entity, job.forceLocal);
+        }
+      }
+      return false;
+    }
+
+    const result = advancePathPlanSlice(
+      job.startX,
+      job.startY,
+      job.goalX,
+      job.goalY,
+      this.world.mapWidth,
+      this.world.mapHeight,
+      job.goalZ,
+      job.terrainFilter,
+      job.unitRadius,
+      job.symmetricSlope,
+      PATHFINDING_A_STAR_EXPANSIONS_PER_TICK,
+    );
+    if (result.status === 'pending') return true;
+
+    this.activePathPlanJob = null;
+    unit.pathRequestLane = PATH_REQUEST_NONE;
+    unit.pathRequestForceLocal = false;
+    if (job.formationRoute !== null && job.formationCacheKey !== null) {
+      if (this.formationRouteCache.size > 256) this.formationRouteCache.clear();
+      this.formationRouteCache.set(job.formationCacheKey, result.plan);
+      const translated = this.expandFormationRoutePoints(
+        job.actionSnapshot,
+        job.formationRoute,
+        job.terrainVersion,
+        job.terrainFilter,
+        entity,
+      );
+      if (translated !== null) {
+        this.installActivePathPlan(entity, unit, job.actionSnapshot, translated, job.terrainVersion);
+      } else {
+        // The shared anchor was valid but this offset corridor was not. A
+        // local route gets the next available global job; never run twice now.
+        this.pathPlanScheduler.requestFresh(entity, true);
+      }
+      return true;
+    }
+
+    const routeStillConnects = isPathPlanTraversable(
+      entity.transform.x,
+      entity.transform.y,
+      result.plan.points,
+      this.world.mapWidth,
+      this.world.mapHeight,
+      job.terrainFilter,
+      unit.radius.collision,
+      job.symmetricSlope,
+    );
+    if (!routeStillConnects) {
+      this.pathPlanScheduler.requestFresh(entity, job.forceLocal);
+      if (job.forceLocal) unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;
+      return true;
+    }
+    if (
+      job.forceLocal &&
+      unit.activePath !== null &&
+      unit.activePath.points.length > 1 &&
+      result.plan.points.length <= 1
+    ) {
+      unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;
+      return true;
+    }
+    this.installActivePathPlan(entity, unit, job.actionSnapshot, result.plan, job.terrainVersion);
+    if (job.forceLocal) unit.stuckTicks = REPLAN_COOLDOWN;
+    return true;
+  }
 
   private resolveActiveMovementTarget(entity: Entity, action: UnitAction): ActiveMovementTarget {
     const plan = this.ensureActivePathPlan(entity, action);
     if (plan === null || plan.points.length === 0) {
       return {
-        x: action.x,
-        y: action.y,
-        z: action.z,
-        isFinalActionPoint: true,
-        pathAdvanceRadius: ARRIVAL_RADIUS,
+        // No self-propelled motion before a physically validated corridor.
+        // The body remains fully dynamic under gravity, contact, impacts, and
+        // passive friction; this is a controller hold, not a kinematic pin.
+        x: entity.transform.x,
+        y: entity.transform.y,
+        z: entity.transform.z,
+        isFinalActionPoint: false,
+        pathAdvanceRadius: 0,
         cornerBendCos: 1,
       };
     }
@@ -1570,12 +1676,18 @@ export class Simulation {
     this.combatHaltController.prepare();
     this.releaseReadyGatherWaits();
 
-    // Reset this tick's plan budgets, then serve queued path requests first
-    // so freshly funded routes are consumed by this same movement pass.
-    // Whatever budget the drain leaves over funds synchronous dispatch-time
-    // planning below; the overflow queues for coming ticks.
-    this.pathPlanScheduler.beginTick();
-    this.pathPlanScheduler.drain(this.world.getTick(), this.servePathPlanRequest);
+    // Exactly one global A* work slice may run in a fixed tick. Resume the
+    // retained frontier first; only an invalid/free completion lets admission
+    // scan the side-fair queues for a replacement job in this same tick.
+    const pathSliceConsumed = this.advanceActivePathPlanJob();
+    if (!pathSliceConsumed) {
+      this.pathPlanScheduler.drain(
+        this.world.getTick(),
+        this.world.teamRoster,
+        this.servePathPlanRequest,
+      );
+    }
+    SIM_TICK_INSTRUMENTATION.phase('sim.pathfinding');
 
     const units = this.world.getUnits();
     const planner = this.unitActionPlanner;
@@ -2190,47 +2302,6 @@ export class Simulation {
     }
   }
 
-  /** Replan the given unit's active route from its current position to
-   *  the current durable waypoint. Returns true on a successful active
-   *  path refresh, false when the action type isn't replan-eligible or
-   *  when the planner collapses to a worse stay-put fallback. */
-  private tryReplan(entity: Entity): boolean {
-    const unit = entity.unit;
-    if (!unit) return false;
-    const actions = unit.actions;
-    if (actions.length === 0) return false;
-    const action = actions[0];
-    if (
-      action.type !== 'move' &&
-      action.type !== 'fight' &&
-      action.type !== 'patrol' &&
-      action.type !== 'attack' &&
-      action.type !== 'attackGround' &&
-      action.type !== 'guard' &&
-      action.type !== 'loadTransport' &&
-      action.type !== 'unloadTransport'
-    ) {
-      return false;
-    }
-
-    const previousPath = unit.activePath;
-    unit.activePath = null;
-    const nextPath = this.computeAndInstallActivePathPlan(entity, action, true);
-    if (nextPath === null || nextPath.points.length === 0) {
-      unit.activePath = previousPath;
-      return false;
-    }
-    if (
-      previousPath !== null &&
-      previousPath.points.length > 1 &&
-      nextPath.points.length <= 1
-    ) {
-      unit.activePath = previousPath;
-      return false;
-    }
-    return true;
-  }
-
   private tryRefreshAttackApproach(
     entity: Entity,
     currentAction: UnitAction,
@@ -2275,13 +2346,14 @@ export class Simulation {
   }
 
   private pathTerrainFilterForUnit(entity: Entity): PathTerrainFilter | null {
-    return entity.unit === null
+    const physicalFilter = entity.unit === null
       ? null
       : pathTerrainFilterForLocomotion(
           entity.unit.locomotion,
           entity.unit.mass,
           entity.unit.supportPointOffsetZ,
         );
+    return applyLiquidHazardPathPolicy(physicalFilter, this.world.liquidSurfaceMode);
   }
 
   // Get force accumulator for external force application (used by RtsScene)
@@ -2390,6 +2462,9 @@ export class Simulation {
     this.arrivalController.reset();
     this.airborneLoiter.reset();
     this.stuckReplanController.reset();
+    cancelPathPlanSlice();
+    this.activePathPlanJob = null;
+    this.formationRouteCache.clear();
     this.pathPlanScheduler.reset();
     this.combatHaltController.reset();
     this.idleBuilderAutoRepair.reset();

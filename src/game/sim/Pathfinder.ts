@@ -11,8 +11,9 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 //     cache ownership live in focused helpers.
 //
 // Design choices we kept from the JS impl:
-//   • 8-connected A* with the octile heuristic. Bounded by
-//     MAX_A_STAR_NODES so a pathological query can't stall a tick.
+//   • 8-connected A* with the octile heuristic. Authoritative queries retain
+//     their frontier and advance by a fixed expansion slice each tick; there
+//     is no total-node timeout that can turn a hard route into a guess.
 //   • Exact clipped-triangle water/slope classification. A cell can contain
 //     exposed terrain, water, or both; mixed cells must pass both cases.
 //   • Terrain C-space inflation comes only from the unit's physical radius.
@@ -47,10 +48,18 @@ type Vec2 = { x: number; y: number };
 
 type PathResolution = 'complete' | 'snapped' | 'partial' | 'unreachable';
 
+type PathQueryResult =
+  | { status: 'pending' }
+  | { status: 'complete'; points: Vec2[]; resolution: PathResolution };
+
 export type ExpandedPathPlan = {
   points: UnitPathPoint[];
   resolution: PathResolution;
 };
+
+export type PathPlanSliceResult =
+  | { status: 'pending' }
+  | { status: 'complete'; plan: ExpandedPathPlan };
 
 /** When true, every path produced by `expandPathActions` is walked
  *  segment-by-segment and any world-space sample outside its exclusive
@@ -88,36 +97,63 @@ function findPath(
   terrainFilter: PathTerrainFilter | null,
   unitRadius: number,
   symmetricSlope: boolean,
-): { points: Vec2[]; resolution: PathResolution } {
+  expansionBudget: number | null = null,
+): PathQueryResult {
   ensurePathfinderTerrain(mapWidth, mapHeight);
   const traversal = resolvePathfinderTraversalInput(terrainFilter);
   const sim = getSimWasm()!;
-  const count = sim.pathfinder.findPath(
-    startX,
-    startY,
-    goalX,
-    goalY,
-    traversal.minGroundNormalZ,
-    traversal.waterSurfaceSupported,
-    traversal.supportPointOffsetZ,
-    traversal.waypoint.allowOnGround,
-    traversal.waypoint.allowInWater,
-    traversal.waypoint.allowInAir,
-    traversal.move.allowOnGround,
-    traversal.move.allowInWater,
-    traversal.move.allowInAir,
-    unitRadius,
-    traversal.flatDriveAccel,
-    traversal.safeDriveAccel,
-    traversal.flatWaterContactAccel,
-    traversal.safeWaterDriveAccel,
-    traversal.staticFrictionCoefficient,
-    symmetricSlope,
-  );
-  const resolution = decodePathResolution(sim.pathfinder.lastResultStatus());
+  const count = expansionBudget === null
+    ? sim.pathfinder.findPath(
+        startX,
+        startY,
+        goalX,
+        goalY,
+        traversal.minGroundNormalZ,
+        traversal.waterSurfaceSupported,
+        traversal.supportPointOffsetZ,
+        traversal.waypoint.allowOnGround,
+        traversal.waypoint.allowInWater,
+        traversal.waypoint.allowInAir,
+        traversal.move.allowOnGround,
+        traversal.move.allowInWater,
+        traversal.move.allowInAir,
+        unitRadius,
+        traversal.flatDriveAccel,
+        traversal.safeDriveAccel,
+        traversal.flatWaterContactAccel,
+        traversal.safeWaterDriveAccel,
+        traversal.staticFrictionCoefficient,
+        symmetricSlope,
+      )
+    : sim.pathfinder.findPathSlice(
+        startX,
+        startY,
+        goalX,
+        goalY,
+        traversal.minGroundNormalZ,
+        traversal.waterSurfaceSupported,
+        traversal.supportPointOffsetZ,
+        traversal.waypoint.allowOnGround,
+        traversal.waypoint.allowInWater,
+        traversal.waypoint.allowInAir,
+        traversal.move.allowOnGround,
+        traversal.move.allowInWater,
+        traversal.move.allowInAir,
+        unitRadius,
+        traversal.flatDriveAccel,
+        traversal.safeDriveAccel,
+        traversal.flatWaterContactAccel,
+        traversal.safeWaterDriveAccel,
+        traversal.staticFrictionCoefficient,
+        symmetricSlope,
+        expansionBudget,
+      );
+  const resultStatus = sim.pathfinder.lastResultStatus();
+  const pending = resultStatus === 4;
+  const resolution = decodePathResolution(resultStatus);
   debugLog(GAME_DIAGNOSTICS.pathfindingSearch, '[pathfinding-search]', {
     strategy: decodePathSearchStrategy(sim.pathfinder.lastSearchStrategy()),
-    resolution,
+    resolution: pending ? 'pending' : resolution,
     directCostRatio: sim.pathfinder.lastDirectCostRatio(),
     coarseExpandedNodes: sim.pathfinder.lastCoarseExpandedNodes(),
     coarseRefinementPasses: sim.pathfinder.lastCoarseRefinementPasses(),
@@ -130,15 +166,20 @@ function findPath(
     start: { x: startX, y: startY },
     goal: { x: goalX, y: goalY },
   });
+  if (pending) return { status: 'pending' };
   if (count === 0) {
-    return { points: [{ x: startX, y: startY }], resolution: 'unreachable' };
+    return {
+      status: 'complete',
+      points: [{ x: startX, y: startY }],
+      resolution: 'unreachable',
+    };
   }
   const view = new Float64Array(sim.memory.buffer, sim.pathfinder.waypointsPtr(), count * 2);
   const result: Vec2[] = new Array(count);
   for (let i = 0; i < count; i++) {
     result[i] = { x: view[i * 2], y: view[i * 2 + 1] };
   }
-  return { points: result, resolution };
+  return { status: 'complete', points: result, resolution };
 }
 
 // ── Path validator (developer self-check) ────────────────────────
@@ -271,6 +312,79 @@ export function expandPathPlan(
     unitRadius,
     symmetricSlope,
   );
+  if (result.status !== 'complete') {
+    throw new Error('Synchronous path query unexpectedly returned a pending frontier');
+  }
+  return materializeExpandedPathPlan(
+    result,
+    startX,
+    startY,
+    goalX,
+    goalY,
+    mapWidth,
+    mapHeight,
+    goalZ,
+    terrainFilter,
+  );
+}
+
+/** Advance the one authoritative resumable path job by a deterministic node
+ *  budget. The caller must repeat the exact same inputs until completion or
+ *  explicitly abandon the job; the WASM arena retains the fine-A* frontier. */
+export function advancePathPlanSlice(
+  startX: number, startY: number,
+  goalX: number, goalY: number,
+  mapWidth: number, mapHeight: number,
+  goalZ: number | null,
+  terrainFilter: PathTerrainFilter | null,
+  unitRadius: number,
+  symmetricSlope: boolean,
+  expansionBudget: number,
+): PathPlanSliceResult {
+  const result = findPath(
+    startX,
+    startY,
+    goalX,
+    goalY,
+    mapWidth,
+    mapHeight,
+    terrainFilter,
+    unitRadius,
+    symmetricSlope,
+    expansionBudget,
+  );
+  if (result.status === 'pending') return result;
+  return {
+    status: 'complete',
+    plan: materializeExpandedPathPlan(
+      result,
+      startX,
+      startY,
+      goalX,
+      goalY,
+      mapWidth,
+      mapHeight,
+      goalZ,
+      terrainFilter,
+    ),
+  };
+}
+
+export function cancelPathPlanSlice(): void {
+  getSimWasm()?.pathfinder.cancelPathSlice();
+}
+
+function materializeExpandedPathPlan(
+  result: Extract<PathQueryResult, { status: 'complete' }>,
+  startX: number,
+  startY: number,
+  goalX: number,
+  goalY: number,
+  mapWidth: number,
+  mapHeight: number,
+  goalZ: number | null,
+  terrainFilter: PathTerrainFilter | null,
+): ExpandedPathPlan {
   const path = result.points;
   if (VALIDATE_PATHS) {
     const traversal = resolvePathfinderTraversalInput(terrainFilter);

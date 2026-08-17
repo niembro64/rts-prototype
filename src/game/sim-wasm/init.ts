@@ -307,6 +307,8 @@ import __wbg_init, {
   pathfinder_sync_building_occupancy,
   pathfinder_building_occupancy_version,
   pathfinder_find_path,
+  pathfinder_find_path_slice,
+  pathfinder_cancel_path_slice,
   pathfinder_last_result_status,
   pathfinder_last_search_strategy,
   pathfinder_last_fine_expanded_nodes,
@@ -1040,6 +1042,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           syncBuildingOccupancy: pathfinder_sync_building_occupancy,
           buildingOccupancyVersion: pathfinder_building_occupancy_version,
           findPath: pathfinder_find_path,
+          findPathSlice: pathfinder_find_path_slice,
+          cancelPathSlice: pathfinder_cancel_path_slice,
           lastResultStatus: pathfinder_last_result_status,
           lastSearchStrategy: pathfinder_last_search_strategy,
           lastFineExpandedNodes: pathfinder_last_fine_expanded_nodes,
@@ -1711,6 +1715,12 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runDemoMetalExtractorSpawnContractTest();
         const { runTeamRosterContractTest } = await import('../sim/teamRosterContractTest');
         runTeamRosterContractTest();
+        const { runSimulationPathPlanSchedulerContractTest } = await import('../sim/SimulationPathPlanSchedulerContractTest');
+        runSimulationPathPlanSchedulerContractTest();
+        const { runPathfindingTraversalContractTest } = await import('../sim/pathfindingTraversalContractTest');
+        runPathfindingTraversalContractTest();
+        const { runPathPlanSafetyContractTest } = await import('../sim/pathPlanSafetyContractTest');
+        runPathPlanSafetyContractTest();
         const { runTeamColorContractTest } = await import('../sim/teamColorContractTest');
         runTeamColorContractTest();
         const { runTerrainUnderwaterDarkeningContractTest } = await import('../sim/terrain/terrainUnderwaterDarkeningContractTest');

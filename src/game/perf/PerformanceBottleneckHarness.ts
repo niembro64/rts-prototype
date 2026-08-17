@@ -1,4 +1,5 @@
 import { LAND_CELL_SIZE } from '../../config';
+import { BATTLE_PRESETS, type BattlePreset } from '../../components/battlePresets';
 import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
 import type { GameServerConfig } from '../../types/game';
 import type { PlayerId } from '../../types/sim';
@@ -56,6 +57,8 @@ export type PerformanceBottleneckHarnessOptions = {
   readonly warmupSeconds?: number;
   readonly snapshotEveryTicks?: number;
   readonly mapCells?: number;
+  /** Exact authored terrain preset. Empty uses the legacy flat mapCells case. */
+  readonly presetName?: string;
   readonly width?: number;
   readonly height?: number;
   /** Full-stack camera distance in world units; 0 = authored demo camera. */
@@ -294,6 +297,7 @@ const DEFAULT_OPTIONS: Required<PerformanceBottleneckHarnessOptions> = {
   // perimeter arc for every repeat Fabricator so roster growth cannot make
   // the harness fail during setup before it records a sample.
   mapCells: 25,
+  presetName: '',
   width: 1280,
   height: 720,
   // 0 keeps the authored demo camera. A positive value snaps the orbit
@@ -397,6 +401,7 @@ function normalizeOptions(
       DEFAULT_OPTIONS.snapshotEveryTicks,
     ),
     mapCells: positiveInteger(options.mapCells, DEFAULT_OPTIONS.mapCells),
+    presetName: normalizePerformancePresetName(options.presetName),
     width: positiveInteger(options.width, DEFAULT_OPTIONS.width),
     height: positiveInteger(options.height, DEFAULT_OPTIONS.height),
     cameraDistance: options.cameraDistance !== undefined
@@ -528,7 +533,8 @@ async function runSimSnapshot(
     ...LOCAL_PRESENTATION_CONNECTION_OPTIONS,
   });
   const view = new ClientViewState();
-  view.setMapDimensions(mapWorldSize(options.mapCells), mapWorldSize(options.mapCells));
+  const snapshotMap = performanceMapWorldDimensions(options);
+  view.setMapDimensions(snapshotMap.width, snapshotMap.height);
 
   const applySamples: number[] = [];
   const byteSamples: number[] = [];
@@ -754,8 +760,9 @@ async function runFullStack(
     ...LOCAL_PRESENTATION_CONNECTION_OPTIONS,
   });
   const clientViewState = new ClientViewState();
-  const mapSize = mapWorldSize(options.mapCells);
-  clientViewState.setMapDimensions(mapSize, mapSize);
+  const mapSize = performanceMapWorldDimensions(options);
+  const preset = resolvePerformancePreset(options.presetName);
+  clientViewState.setMapDimensions(mapSize.width, mapSize.height);
   let game: GameInstance | null = null;
 
   try {
@@ -767,11 +774,11 @@ async function runFullStack(
       localPlayerId: LOCAL_PLAYER_ID,
       gameConnection: connection,
       clientViewState,
-      mapWidth: mapSize,
-      mapHeight: mapSize,
-      centerMagnitude: 0,
-      dividersMagnitude: 0,
-      perimeterMagnitude: -800,
+      mapWidth: mapSize.width,
+      mapHeight: mapSize.height,
+      centerMagnitude: preset?.centerMagnitude ?? 0,
+      dividersMagnitude: preset?.dividersMagnitude ?? 0,
+      perimeterMagnitude: preset?.perimeterMagnitude ?? -800,
       backgroundMode: true,
     });
     server.start();
@@ -1244,17 +1251,18 @@ function summarizeSnapshotMaterializationBucket(
 function createServerConfig(
   options: Required<PerformanceBottleneckHarnessOptions>,
 ): GameServerConfig {
+  const preset = resolvePerformancePreset(options.presetName);
   return {
     playerIds: PLAYER_IDS,
-    centerMagnitude: 0,
-    dividersMagnitude: 0,
-    perimeterMagnitude: -800,
-    terrainDTerrain: 0,
-    plateauWallSlopeDegrees: 89,
-    metalDepositStep: 0,
-    terrainDetail: 1,
-    mapWidthLandCells: options.mapCells,
-    mapLengthLandCells: options.mapCells,
+    centerMagnitude: preset?.centerMagnitude ?? 0,
+    dividersMagnitude: preset?.dividersMagnitude ?? 0,
+    perimeterMagnitude: preset?.perimeterMagnitude ?? -800,
+    terrainDTerrain: preset?.terrainDTerrain ?? 0,
+    plateauWallSlopeDegrees: preset?.plateauWallSlopeDegrees ?? 89,
+    metalDepositStep: preset?.metalDepositStep ?? 0,
+    terrainDetail: preset?.terrainDetail ?? 1,
+    mapWidthLandCells: preset?.mapWidthLandCells ?? options.mapCells,
+    mapLengthLandCells: preset?.mapLengthLandCells ?? options.mapCells,
     backgroundMode: true,
     aiPlayerIds: PLAYER_IDS,
     spawnDemoInitialState: true,
@@ -1263,6 +1271,29 @@ function createServerConfig(
     // that silently doubled then halved harness load twice before.
     initialEntityCountCap: Math.max(1, Math.floor(options.unitCap)),
     converterTax: 0,
+  };
+}
+
+function resolvePerformancePreset(name: string | undefined): BattlePreset | null {
+  if (name === undefined || name.trim() === '') return null;
+  const normalized = name.trim().toLowerCase();
+  return BATTLE_PRESETS.find((preset) => preset.name.toLowerCase() === normalized) ?? null;
+}
+
+function normalizePerformancePresetName(name: string | undefined): string {
+  if (name === undefined || name.trim() === '') return DEFAULT_OPTIONS.presetName;
+  const preset = resolvePerformancePreset(name);
+  if (preset === null) throw new Error(`Unknown performance harness preset: ${name}`);
+  return preset.name;
+}
+
+function performanceMapWorldDimensions(
+  options: Required<PerformanceBottleneckHarnessOptions>,
+): { width: number; height: number } {
+  const preset = resolvePerformancePreset(options.presetName);
+  return {
+    width: mapWorldSize(preset?.mapWidthLandCells ?? options.mapCells),
+    height: mapWorldSize(preset?.mapLengthLandCells ?? options.mapCells),
   };
 }
 
