@@ -12,6 +12,7 @@ import { setActiveCommandHotkeyPresetId } from '../input/commandHotkeys';
 import { clearQueueModifierState } from '../input/queueModifiers';
 import { Input3DBuildPlacementState } from './Input3DBuildPlacementState';
 import { Input3DModeClickController } from './Input3DModeClickController';
+import { FLAT_GROUND_BUILD_SQUARE_FLAGS } from '../sim/terrain/terrainBuildability';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -456,7 +457,7 @@ export function runInput3DModeClickControllerContractTest(): void {
     cellsY: buildCellsY,
     version: 1,
     configKey: 'flat-test',
-    flags: new Array(buildCellsX * buildCellsY).fill(1),
+    flags: new Array(buildCellsX * buildCellsY).fill(FLAT_GROUND_BUILD_SQUARE_FLAGS),
     levels: new Array(buildCellsX * buildCellsY).fill(0),
   };
   const emptyBuildEntitySource = {

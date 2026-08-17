@@ -2,6 +2,11 @@ import type { MetalDeposit } from '../../metalDepositConfig';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { TerrainSurfaceMode } from '../../types/worldSurfaceMode';
 import type { Entity, BuildingBlueprintId } from './types';
+import type { BuildingPlacementSet } from '../../types/buildingTypes';
+import {
+  getBuildingPlacementAnchor,
+  getBuildingPlacementSetSquareType,
+} from '../../types/buildingTypes';
 import { getBuildingConfig } from './buildConfigs';
 import { getBuildingBlueprint } from './blueprints/buildings';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
@@ -18,13 +23,13 @@ import {
 import type { BuildingPlacementFootprint } from './types';
 import {
   evaluateBuildabilityFootprint,
+  getBuildSquareTerrainHeightRange,
   getTerrainBedHeight,
   getTerrainBuildabilityGridCell,
   getSurfaceHeight,
   WATER_LEVEL,
 } from './Terrain';
 import {
-  buildingIgnoresTerrainForPlacement,
   getBuildingPlacementBaseZ,
   getBuildingRequiredSensorSourceMedium,
 } from './buildingPlacementPolicy';
@@ -63,6 +68,11 @@ export type BuildPlacementDiagnostics = {
   metalCoveredCells: number | null;
   metalTotalCells: number | null;
   metalDepositCells: BuildPlacementCellDiagnostic[] | null;
+  /** Placement sets actually exercised by a valid footprint. Null when the
+   *  candidate is invalid. A shoreline-spanning hover footprint can use one
+   *  ground set and one water set because loader validation guarantees that
+   *  both share the same physical anchor. */
+  placementSets: readonly BuildingPlacementSet[] | null;
 };
 
 type BuildPlacementOccupiedLookup = (gx: number, gy: number) => boolean;
@@ -200,7 +210,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
   const requiredSensorSourceMedium =
     getBuildingRequiredSensorSourceMedium(candidateType);
   const centerPlacementBaseZ = getBuildingPlacementBaseZ(
-    config.placementType,
+    getBuildingPlacementAnchor(config.placementSets),
     config.gridDepth * BUILD_GRID_CELL_SIZE,
     center.x,
     center.y,
@@ -208,15 +218,15 @@ function getBuildingPlacementDiagnosticsAtGrid(
     (x, y) => getTerrainBedHeight(x, y, mapWidth, mapHeight),
   );
   const sensorMountZ = getBuildingBlueprint(candidateType).turrets.find(
-    (mount) => mount.mountId === 'sensor',
+    (mount) => mount.mountId === requiredSensorSourceMedium?.mountId,
   )?.mount.z ?? 0;
   const centerSensorSourceMedium =
-    centerPlacementBaseZ + sensorMountZ <= WATER_LEVEL
+    centerPlacementBaseZ + sensorMountZ < WATER_LEVEL
       ? 'underwater'
       : 'aboveWater';
   const sensorSourceMediumMismatch =
     requiredSensorSourceMedium !== null &&
-    centerSensorSourceMedium !== requiredSensorSourceMedium;
+    centerSensorSourceMedium !== requiredSensorSourceMedium.medium;
   const wholeMapIsMetal = (options.terrainSurfaceMode ?? 'normal') === 'metal';
   const extractorCoverage = !isMetalExtractorBlueprintId(candidateType)
     ? null
@@ -232,13 +242,9 @@ function getBuildingPlacementDiagnosticsAtGrid(
   let failureReason: BuildPlacementFailureReason | null = null;
   let metalCoveredCells = 0;
   const terrainLevelCounts = new Map<number, number>();
-  const ignoreTerrain =
-    options.ignoreTerrain ||
-    buildingIgnoresTerrainForPlacement(candidateType) ||
-    (extractorCoverage !== null && extractorCoverage.coveredCells > 0);
-  const waterSurfaceMinimumDepth = config.placementType === 'water-surface'
-    ? config.gridDepth * BUILD_GRID_CELL_SIZE * 0.5
-    : 0;
+  const exercisedPlacementSets = new Set<BuildingPlacementSet>();
+  const ignoreTerrain = options.ignoreTerrain;
+  const waterSurfaceMinimumDepth = config.gridDepth * BUILD_GRID_CELL_SIZE * 0.5;
 
   // Each authored mask cell owns one terrain read. Empty bounding-box corners
   // are intentionally ignored, so a circular or concave reservation can hug
@@ -258,6 +264,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
       let metalCovered = false;
       let depositId: number | null = null;
       let terrainLevel: number | null = null;
+      let placementSet: BuildingPlacementSet | null = null;
 
       if (gx < 0 || gy < 0 || gx >= mapCellsX || gy >= mapCellsY) {
         reason = 'outOfBounds';
@@ -268,20 +275,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
       } else if (sensorSourceMediumMismatch) {
         reason = 'terrain';
         blocking = true;
-      } else if (
-        config.placementType === 'water-surface' &&
-        !waterSurfaceBuildCellHasClearance(
-          x,
-          y,
-          BUILD_GRID_CELL_SIZE * 0.5,
-          waterSurfaceMinimumDepth,
-          mapWidth,
-          mapHeight,
-        )
-      ) {
-        reason = 'terrain';
-        blocking = true;
-      } else if (!ignoreTerrain) {
+      } else {
         const cellEval = useAuthoritativeBuildability
           ? getTerrainBuildabilityGridCell(terrainBuildabilityGrid, gx, gy)
           : evaluateBuildabilityFootprint(
@@ -292,14 +286,42 @@ function getBuildingPlacementDiagnosticsAtGrid(
             mapWidth,
             mapHeight,
           );
-        if (!cellEval.buildable) {
+        placementSet = cellEval.squareType === null
+          ? null
+          : config.placementSets.find(
+            (candidate) => getBuildingPlacementSetSquareType(candidate) === cellEval.squareType,
+          ) ?? null;
+        if (placementSet === null) {
           reason = 'terrain';
           blocking = true;
-        } else if (cellEval.level !== null) {
-          terrainLevel = cellEval.level;
-          terrainLevelCounts.set(terrainLevel, (terrainLevelCounts.get(terrainLevel) ?? 0) + 1);
+        } else if (
+          placementSet === 'water-build-squares-sea-on-surface' &&
+          !waterSurfaceBuildCellHasClearance(
+            x,
+            y,
+            BUILD_GRID_CELL_SIZE * 0.5,
+            waterSurfaceMinimumDepth,
+            mapWidth,
+            mapHeight,
+          )
+        ) {
+          reason = 'terrain';
+          blocking = true;
+        } else {
+          const requiresFlatTerrain =
+            placementSet === 'ground-build-squares-surface' ||
+            placementSet === 'water-build-squares-sea-bed';
+          if (requiresFlatTerrain && !ignoreTerrain && !cellEval.terrainBuildable) {
+            reason = 'terrain';
+            blocking = true;
+          } else if (requiresFlatTerrain && !ignoreTerrain && cellEval.level !== null) {
+            terrainLevel = cellEval.level;
+            terrainLevelCounts.set(terrainLevel, (terrainLevelCounts.get(terrainLevel) ?? 0) + 1);
+          }
         }
       }
+
+      if (!blocking && placementSet !== null) exercisedPlacementSets.add(placementSet);
 
       if (!blocking && includeMetalDiagnostics) {
         const deposit = wholeMapIsMetal ? null : findDepositContainingPoint(metalDeposits, x, y);
@@ -390,14 +412,18 @@ function getBuildingPlacementDiagnosticsAtGrid(
     metalCoveredCells: includeMetalDiagnostics && isMetalExtractorBlueprintId(candidateType) ? metalCoveredCells : null,
     metalTotalCells,
     metalDepositCells,
+    placementSets: hasBlockingCell
+      ? null
+      : config.placementSets.filter((placementSet) => exercisedPlacementSets.has(placementSet)),
   };
 }
 
 /**
- * A water-surface structure is anchored independently from the terrain, but
- * every sample beneath each reserved physical cell must contain enough water
- * for the submerged half of its cuboid. This rejects shoreline straddling and
- * seabed clipping without requiring a flat underwater plateau.
+ * A sea-on-surface structure is anchored independently from the terrain, but
+ * the entire terrain-mesh area beneath each reserved physical cell must
+ * contain enough water for the submerged half of its cuboid. This rejects
+ * shoreline straddling and seabed clipping without requiring a flat
+ * underwater plateau.
  */
 export function waterSurfaceBuildCellHasClearance(
   centerX: number,
@@ -408,6 +434,15 @@ export function waterSurfaceBuildCellHasClearance(
   mapHeight: number,
 ): boolean {
   const maxBedZ = WATER_LEVEL - minimumDepth;
+  const exactRange = getBuildSquareTerrainHeightRange(
+    centerX,
+    centerY,
+    halfCell,
+    halfCell,
+    mapWidth,
+    mapHeight,
+  );
+  if (exactRange !== null) return exactRange.maxHeight <= maxBedZ;
   if (getTerrainBedHeight(centerX, centerY, mapWidth, mapHeight) > maxBedZ) return false;
   const minX = centerX - halfCell;
   const maxX = centerX + halfCell;

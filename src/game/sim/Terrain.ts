@@ -41,6 +41,7 @@ export {
 export {
   buildTerrainBuildabilityGrid,
   evaluateBuildabilityFootprint,
+  getBuildSquareTerrainHeightRange,
   getTerrainBuildabilityGridCell,
   getTerrainBuildabilityConfigKey,
 

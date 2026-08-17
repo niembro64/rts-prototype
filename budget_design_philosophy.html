@@ -1417,6 +1417,14 @@
         renderer's structure first. The sim remains physical; rendering stays downstream of that
         physical truth.
       </p>
+      <p>
+        <strong>GPU boundary precision:</strong> the Windows/NVIDIA world-box shimmer was not a
+        duplicate terrain plane. South and east fragments lie exactly at the positive map limits,
+        and perspective interpolation could move them a few ULPs across exact shader bounds while
+        the camera moved, alternately applying fog, BUILD, or HIER presentation. Boundary sampling
+        now uses a small guard band with clamped coordinates, and top-surface overlays explicitly
+        reject vertical walls. Treat exact interpolated world-boundary comparisons as unstable.
+      </p>
 
       <h3>Fog, radar, and entity shadows are one coverage field</h3>
       <p>
@@ -3191,15 +3199,51 @@
         the fully opened panels.
         The wind turbine follows the same rule for its circular blade-sweep clearance.
       </p>
-      <h3>Placement types: ground, water-surface, hover</h3>
+      <h3>Build-square classes and exhaustive placement sets</h3>
       <p>
-        Every building blueprint authors a <code>placementType</code> of <code>ground</code>,
-        <code>water-surface</code>, or <code>hover</code>, and separately a
-        <code>hoveringType</code> (<code>null</code> = grounded; <code>fabricator</code> is
-        currently the only hovering classification, carried by the fabricator torus). Grounded and
-        water-surface buildings are the normal case: a ground-seated static cuboid body, a
-        movement-blocking footprint in the locomotion grid, and combat volumes centered on
-        <code>transform.z</code>.
+        Every build-grid cell has exactly one authoritative medium classification. A
+        <strong>GROUND BUILD SQUARE</strong> has terrain at or above the waterline over the entire
+        cell. A <strong>WATER BUILD SQUARE</strong> has terrain below the waterline over the entire
+        cell. The host computes the exact minimum and maximum height over every piecewise-planar
+        terrain triangle intersecting the cell; if both media occur anywhere in the cell, it is a
+        split square and belongs to neither class. Center or corner probes are not allowed to turn a
+        shoreline-crossed cell into a build square.
+      </p>
+      <p>
+        Medium classification is independent from flatness. The authoritative grid records the
+        square class and whether the terrain surface or sea bed satisfies the shared flatness rule.
+        &ldquo;Flat&rdquo; means no intersecting terrain face exceeds a <strong>10-degree</strong>
+        slope and every sampled support point resolves to the same plateau level. Relaxing this
+        threshold from three degrees intentionally makes mountainous maps such as BOULDER MOUNTAIN
+        substantially more buildable without weakening shoreline classification.
+      </p>
+      <p>
+        Every building blueprint authors a non-empty exhaustive <code>placementSets</code> list from
+        exactly five values: <code>ground-build-squares-hover</code>,
+        <code>ground-build-squares-surface</code>, <code>water-build-squares-sea-bed</code>,
+        <code>water-build-squares-sea-on-surface</code>, and
+        <code>water-build-squares-hover-surface</code>. Validation rejects unknown or duplicate
+        values, more than one value for the same square class, non-canonical ordering, and any list
+        whose values imply different physical anchors. This is a set of valid placement behaviors,
+        not a taxonomy that forces duplicate building blueprints.
+      </p>
+      <p>
+        Ground-surface and water-sea-bed share the terrain-bed anchor and require flat terrain.
+        Ground-hover and water-hover-surface share the visible-surface hover anchor and ignore bed
+        slope; water hover also has no minimum-depth rule. Sea-on-surface has the water-plane anchor,
+        ignores bed slope, and requires the whole cell to have enough depth for the submerged half
+        of that particular building. Thus water-square classification answers &ldquo;is this wholly
+        water?&rdquo;, while depth clearance separately answers &ldquo;does this water-surface body fit?&rdquo;.
+      </p>
+      <p>
+        Ordinary structures declare ground-surface only. Both metal extractor tiers declare
+        ground-surface plus water-sea-bed, so one extractor blueprint works on a dry deposit or an
+        underwater deposit and anchors to the real bed in both cases. Sonar declares
+        sea-on-surface; the torpedo tower declares water-sea-bed; and the Fabricator declares both
+        hover sets. Radar, sonar, and torpedo placement additionally verifies that the operative
+        mount is in its required sensor medium, preventing a legal-looking but inert completed
+        structure in shallow water. <code>hoveringType</code> remains a separate physical/body
+        classification (<code>fabricator</code> is currently the only one), not a placement policy.
       </p>
       <p>
         A hovering building keeps the shared z-model &mdash; <code>transform.z</code> remains the

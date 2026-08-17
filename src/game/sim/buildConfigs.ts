@@ -6,6 +6,7 @@ import {
   BUILDING_BLUEPRINT_IDS,
 } from '../../types/blueprintIds';
 import { parseBuildingPlacementFootprint } from './buildGrid';
+import { getBuildingPlacementAnchor } from '../../types/buildingTypes';
 
 function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): BuildingConfig {
   const bp = BUILDING_BLUEPRINTS[buildingBlueprintId];
@@ -37,9 +38,9 @@ function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): Building
     visualHeight: bp.visualHeight,
     anchorProfile: bp.anchorProfile,
     supportSurface: bp.supportSurface,
-    placementType: bp.placementType,
+    placementSets: bp.placementSets,
     hoveringType: bp.hoveringType,
-    hovering: bp.placementType === 'hover',
+    hovering: getBuildingPlacementAnchor(bp.placementSets) === 'hover-surface',
     hud: bp.hud,
     radius: { ...bp.base.radius },
   };

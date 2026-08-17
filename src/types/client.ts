@@ -5,7 +5,7 @@ import type {
   PlatformBooleanDefaults,
 } from './bars';
 import type { RenderMode } from './graphics';
-import type { BuildingPlacementType } from './buildingTypes';
+import type { BuildingPlacementSet } from './buildingTypes';
 
 export type AudioScope = 'off' | 'window' | 'padded' | 'all';
 export type MasterVolumePercent = number;
@@ -50,9 +50,8 @@ export type WaterBoundaryMode =
  *  actually planned. */
 export type WaypointDetail = 'simple' | 'detailed';
 export type PathingDebugMode = 'none' | 'waypoint' | 'move';
-/** Exclusive whole-map build-square availability view. The three active
- *  values deliberately match the authoritative structure placement domains. */
-export type BuildGridDebugMode = 'none' | BuildingPlacementType;
+/** Exclusive whole-map view for each authoritative placement set. */
+export type BuildGridDebugMode = 'none' | BuildingPlacementSet;
 export type PathingDebugUnitId = string;
 /** Entity-HUD entity classes. Each maps to a renderer category that
  *  can independently show / hide its name tag, health bar, and

@@ -24,7 +24,7 @@ export type {
   BuildingBlueprintId,
   BuildingRenderProfile,
   BuildingAnchorProfile,
-  BuildingPlacementType,
+  BuildingPlacementSet,
   BuildingHoveringType,
   BuildingSupportSurface,
   StructureBlueprintId,

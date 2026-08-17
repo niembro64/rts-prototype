@@ -22,7 +22,7 @@ import type {
 import type {
   BuildingAnchorProfile,
   BuildingHoveringType,
-  BuildingPlacementType,
+  BuildingPlacementSet,
   BuildingRenderProfile,
   BuildingBlueprintId,
   BuildingSupportSurface,
@@ -47,7 +47,7 @@ import type {
 export type {
   BuildingAnchorProfile,
   BuildingHoveringType,
-  BuildingPlacementType,
+  BuildingPlacementSet,
   BuildingRenderProfile,
   BuildingBlueprintId,
   BuildingSupportSurface,
@@ -447,9 +447,6 @@ type Building = {
    *  collision cuboid so a building can block one shape while exposing
    *  a different walkable top, pad, or no top support at all. */
   supportSurface: BuildingSupportSurface;
-  /** Semantic placement/anchor domain. Construction occupancy remains one
-   * shared X/Y grid regardless of this vertical placement policy. */
-  placementType: BuildingPlacementType;
   /** Hovering structures (the fabricator torus) are intangible at ground
    *  level: no collision body, no support surface, and excluded from path-
    *  finding — units move under them freely and falling units pass through to
@@ -1150,7 +1147,8 @@ export type BuildingConfig = {
   visualHeight: number;
   anchorProfile: BuildingAnchorProfile;
   supportSurface: BuildingSupportSurface;
-  placementType: BuildingPlacementType;
+  /** Exhaustive square domains on which this structure may be placed. */
+  placementSets: readonly BuildingPlacementSet[];
   /** Authored hovering classification. Null means grounded. */
   hoveringType: BuildingHoveringType;
   /** Derived compatibility flag for existing runtime branches. */

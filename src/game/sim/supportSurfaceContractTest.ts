@@ -62,6 +62,10 @@ import { getAuthoritativeTerrainTileMap } from './terrain/terrainState';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { getHighestBuildFootprintGroundZ } from './buildingPlacementPolicy';
 import { deterministicMath as DMath } from './deterministicMath';
+import {
+  FLAT_GROUND_BUILD_SQUARE_FLAGS,
+  GROUND_BUILD_SQUARE_FLAG,
+} from './terrain/terrainBuildability';
 
 const TEST_PLAYER_ID = 1 as PlayerId;
 const CONTRACT_EPSILON = 1e-6;
@@ -89,7 +93,7 @@ function createAllBuildableTerrainGrid(mapWidth: number, mapHeight: number): Ter
     cellsY,
     version: 1,
     configKey: 'support-surface-contract:all-buildable',
-    flags: new Array(cellCount).fill(1),
+    flags: new Array(cellCount).fill(FLAT_GROUND_BUILD_SQUARE_FLAGS),
     levels: new Array(cellCount).fill(0),
   };
 }
@@ -99,7 +103,7 @@ function createNoBuildableTerrainGrid(mapWidth: number, mapHeight: number): Terr
   return {
     ...grid,
     configKey: 'support-surface-contract:none-buildable',
-    flags: new Array(grid.flags.length).fill(0),
+    flags: new Array(grid.flags.length).fill(GROUND_BUILD_SQUARE_FLAG),
   };
 }
 

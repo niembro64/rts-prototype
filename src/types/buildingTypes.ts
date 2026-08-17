@@ -12,7 +12,50 @@ export type {
 export type BuildingBlueprintId = StructureBlueprintId;
 export type BuildingRenderProfile = StructureBlueprintId | 'unknown' | 'bodyless';
 export type BuildingAnchorProfile = 'constantVisualTop' | 'fabricator' | 'collisionDepth';
-export type BuildingPlacementType = 'ground' | 'hover' | 'water-surface';
+export const BUILDING_PLACEMENT_SETS = [
+  'ground-build-squares-hover',
+  'ground-build-squares-surface',
+  'water-build-squares-sea-bed',
+  'water-build-squares-sea-on-surface',
+  'water-build-squares-hover-surface',
+] as const;
+export type BuildingPlacementSet = typeof BUILDING_PLACEMENT_SETS[number];
+export type BuildSquareType = 'ground' | 'water';
+export type BuildingPlacementAnchor = 'terrain-bed' | 'sea-on-surface' | 'hover-surface';
+
+export function isBuildingPlacementSet(value: unknown): value is BuildingPlacementSet {
+  return typeof value === 'string' &&
+    (BUILDING_PLACEMENT_SETS as readonly string[]).includes(value);
+}
+
+export function getBuildingPlacementSetSquareType(
+  placementSet: BuildingPlacementSet,
+): BuildSquareType {
+  return placementSet.startsWith('ground-') ? 'ground' : 'water';
+}
+
+export function getBuildingPlacementSetAnchor(
+  placementSet: BuildingPlacementSet,
+): BuildingPlacementAnchor {
+  switch (placementSet) {
+    case 'ground-build-squares-surface':
+    case 'water-build-squares-sea-bed':
+      return 'terrain-bed';
+    case 'water-build-squares-sea-on-surface':
+      return 'sea-on-surface';
+    case 'ground-build-squares-hover':
+    case 'water-build-squares-hover-surface':
+      return 'hover-surface';
+  }
+}
+
+export function getBuildingPlacementAnchor(
+  placementSets: readonly BuildingPlacementSet[],
+): BuildingPlacementAnchor {
+  const first = placementSets[0];
+  if (first === undefined) throw new Error('Building placementSets must not be empty');
+  return getBuildingPlacementSetAnchor(first);
+}
 export type BuildingHoveringType = 'fabricator' | null;
 export type BuildingSupportSurface =
   | { kind: 'none' }

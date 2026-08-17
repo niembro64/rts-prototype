@@ -21,8 +21,12 @@ import {
   isWaterAt,
   setTerrainPerimeterMagnitude,
   setTerrainRuntimeConfig,
-  WATER_LEVEL,
 } from './Terrain';
+import {
+  GROUND_BUILD_SQUARE_FLAG,
+  TERRAIN_BUILDABLE_FLAG,
+  WATER_BUILD_SQUARE_FLAG,
+} from './terrain/terrainBuildability';
 
 const CONTRACT_WATER_PERIMETER_MAGNITUDE = -800;
 const CONTRACT_NEGATIVE_METAL_DEPOSIT_STEPS = [-100, -200, -400] as const;
@@ -34,6 +38,7 @@ function assertContract(condition: unknown, message: string): asserts condition 
 function createNoBuildableTerrainGrid(
   mapWidth: number,
   mapHeight: number,
+  terrainBuildable = false,
 ): TerrainBuildabilityGrid {
   const cellsX = Math.ceil(mapWidth / BUILD_GRID_CELL_SIZE);
   const cellsY = Math.ceil(mapHeight / BUILD_GRID_CELL_SIZE);
@@ -46,7 +51,15 @@ function createNoBuildableTerrainGrid(
     cellsY,
     version: 1,
     configKey: 'demo-metal-extractor-spawn:none-buildable',
-    flags: new Array(cellCount).fill(0),
+    flags: Array.from({ length: cellCount }, (_, index) => {
+      const gx = index % cellsX;
+      const gy = Math.floor(index / cellsX);
+      const x = (gx + 0.5) * BUILD_GRID_CELL_SIZE;
+      const y = (gy + 0.5) * BUILD_GRID_CELL_SIZE;
+      return isWaterAt(x, y, mapWidth, mapHeight)
+        ? WATER_BUILD_SQUARE_FLAG | (terrainBuildable ? TERRAIN_BUILDABLE_FLAG : 0)
+        : GROUND_BUILD_SQUARE_FLAG | (terrainBuildable ? TERRAIN_BUILDABLE_FLAG : 0);
+    }),
     levels: new Array(cellCount).fill(0),
   };
 }
@@ -610,6 +623,10 @@ function runDemoMetalExtractorSpawnContractTestForPreset(
 
   let aboveWaterSensorPoint: { x: number; y: number } | null = null;
   let underwaterSensorPoint: { x: number; y: number } | null = null;
+  const sensorPlacementOptions = {
+    includeMetalDiagnostics: false,
+    ignoreTerrain: true,
+  };
   for (
     let y = BUILD_GRID_CELL_SIZE * 4;
     y < mapHeight - BUILD_GRID_CELL_SIZE * 4 &&
@@ -626,11 +643,41 @@ function runDemoMetalExtractorSpawnContractTestForPreset(
         Math.round(x / BUILD_GRID_CELL_SIZE) * BUILD_GRID_CELL_SIZE;
       const snappedY =
         Math.round(y / BUILD_GRID_CELL_SIZE) * BUILD_GRID_CELL_SIZE;
-      const bedZ = world.getTerrainBedZ(snappedX, snappedY);
-      if (bedZ <= WATER_LEVEL) {
-        underwaterSensorPoint ??= { x: snappedX, y: snappedY };
-      } else {
-        aboveWaterSensorPoint ??= { x: snappedX, y: snappedY };
+      if (
+        aboveWaterSensorPoint === null &&
+        getBuildingPlacementDiagnostics(
+          'buildingRadar',
+          snappedX,
+          snappedY,
+          mapWidth,
+          mapHeight,
+          [],
+          [],
+          new Set(),
+          null,
+          0,
+          sensorPlacementOptions,
+        ).canPlace
+      ) {
+        aboveWaterSensorPoint = { x: snappedX, y: snappedY };
+      }
+      if (
+        underwaterSensorPoint === null &&
+        getBuildingPlacementDiagnostics(
+          'buildingSonar',
+          snappedX,
+          snappedY,
+          mapWidth,
+          mapHeight,
+          [],
+          [],
+          new Set(),
+          null,
+          0,
+          sensorPlacementOptions,
+        ).canPlace
+      ) {
+        underwaterSensorPoint = { x: snappedX, y: snappedY };
       }
     }
   }
@@ -638,10 +685,6 @@ function runDemoMetalExtractorSpawnContractTestForPreset(
     aboveWaterSensorPoint !== null && underwaterSensorPoint !== null,
     'demo terrain must expose both sensor source media',
   );
-  const sensorPlacementOptions = {
-    includeMetalDiagnostics: false,
-    ignoreTerrain: true,
-  };
   const radarAbove = getBuildingPlacementDiagnostics(
     'buildingRadar',
     aboveWaterSensorPoint.x,
@@ -703,7 +746,7 @@ function runDemoMetalExtractorSpawnContractTestForPreset(
   const manualConstruction = new ConstructionSystem(
     mapWidth,
     mapHeight,
-    createNoBuildableTerrainGrid(mapWidth, mapHeight),
+    createNoBuildableTerrainGrid(mapWidth, mapHeight, true),
   );
   const manualGrid = manualConstruction.getGrid();
   const snapped = manualGrid.snapToGrid(

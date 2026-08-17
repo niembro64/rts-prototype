@@ -668,9 +668,11 @@ function isWaterBoundaryMode(value: unknown): value is WaterBoundaryMode {
 
 function isBuildGridDebugMode(value: unknown): value is BuildGridDebugMode {
   return value === 'none' ||
-    value === 'ground' ||
-    value === 'hover' ||
-    value === 'water-surface';
+    value === 'ground-build-squares-hover' ||
+    value === 'ground-build-squares-surface' ||
+    value === 'water-build-squares-sea-bed' ||
+    value === 'water-build-squares-sea-on-surface' ||
+    value === 'water-build-squares-hover-surface';
 }
 
 function applyClientDefaults(mode: ClientMode): void {
@@ -845,14 +847,9 @@ function loadFromStorage(mode: ClientMode): void {
   }
   const storedBuildGridDebug = readPersisted(keys.buildGridDebug);
   if (storedBuildGridDebug !== null) {
-    // Migrate the former BUILD boolean in place. Its one active state was the
-    // ground buildability view, so existing users keep exactly that view.
-    const migrated = storedBuildGridDebug === 'true'
-      ? 'ground'
-      : storedBuildGridDebug === 'false'
-        ? 'none'
-        : storedBuildGridDebug;
-    if (isBuildGridDebugMode(migrated)) currentBuildGridDebug = migrated;
+    if (isBuildGridDebugMode(storedBuildGridDebug)) {
+      currentBuildGridDebug = storedBuildGridDebug;
+    }
   }
   const storedPathingHierarchyDebug = readPersisted(keys.pathingHierarchyDebug);
   if (storedPathingHierarchyDebug !== null) {

@@ -616,6 +616,28 @@ pub(crate) fn terrain_accumulate_touching_triangle_safety(
     min_normal_z: &mut f32,
 ) {
     let t = terrain_grid();
+    terrain_accumulate_touching_triangle_safety_in_grid(
+        t,
+        min_x,
+        min_y,
+        max_x,
+        max_y,
+        has_water,
+        has_air,
+        min_normal_z,
+    );
+}
+
+fn terrain_accumulate_touching_triangle_safety_in_grid(
+    t: &TerrainGrid,
+    min_x: f64,
+    min_y: f64,
+    max_x: f64,
+    max_y: f64,
+    has_water: &mut bool,
+    has_air: &mut bool,
+    min_normal_z: &mut f32,
+) {
     if !t.installed || t.cell_size <= 0.0 || t.cells_x <= 0 || t.cells_y <= 0 {
         return;
     }
@@ -1348,12 +1370,9 @@ pub(crate) fn terrain_sample_buildability(
     let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, y);
     let sample = terrain_triangle_sample_at(t, px, pz, cell_x, cell_y)?;
     let mesh_height = terrain_height_from_triangle_sample(sample);
-    if mesh_height < TERRAIN_WATER_LEVEL {
-        return Some((true, 1.0, None));
-    }
     let (_, _, normal_up) = terrain_normal_from_triangle_sample(sample);
     Some((
-        false,
+        mesh_height < TERRAIN_WATER_LEVEL,
         normal_up,
         terrain_plateau_level_for_height(mesh_height, d_terrain, shelf_height_tolerance),
     ))
@@ -1386,9 +1405,9 @@ pub(crate) fn terrain_evaluate_buildability_footprint(
 
     let mut footprint_level: Option<i32> = None;
     for (sx, sy) in samples {
-        let (water, normal_up, plateau_level) =
+        let (_water, normal_up, plateau_level) =
             terrain_sample_buildability(t, flat_zones, sx, sy, d_terrain, shelf_height_tolerance)?;
-        if water || normal_up < min_normal_up {
+        if normal_up < min_normal_up {
             return Some((false, 0));
         }
         let level = match plateau_level {
@@ -1440,12 +1459,15 @@ pub fn terrain_bake_buildability_grid(
         return 0;
     }
 
+    const TERRAIN_BUILDABLE_FLAG: u8 = 1 << 0;
+    const GROUND_BUILD_SQUARE_FLAG: u8 = 1 << 1;
+    const WATER_BUILD_SQUARE_FLAG: u8 = 1 << 2;
     let half = build_cell_size * 0.5;
     for gy in 0..cells_y {
         for gx in 0..cells_x {
             let x = gx as f64 * build_cell_size + half;
             let y = gy as f64 * build_cell_size + half;
-            let (buildable, level) = match terrain_evaluate_buildability_footprint(
+            let (sampled_buildable, level) = match terrain_evaluate_buildability_footprint(
                 t,
                 flat_zones,
                 x,
@@ -1459,8 +1481,29 @@ pub fn terrain_bake_buildability_grid(
                 Some(result) => result,
                 None => return 0,
             };
+            let mut has_water = false;
+            let mut has_air = false;
+            let mut min_normal_z = 1.0_f32;
+            terrain_accumulate_touching_triangle_safety_in_grid(
+                t,
+                x - half,
+                y - half,
+                x + half,
+                y + half,
+                &mut has_water,
+                &mut has_air,
+                &mut min_normal_z,
+            );
+            let square_flag = match (has_water, has_air) {
+                (false, true) => GROUND_BUILD_SQUARE_FLAG,
+                (true, false) => WATER_BUILD_SQUARE_FLAG,
+                // A square crossed by the waterline belongs to neither set.
+                _ => 0,
+            };
+            let buildable =
+                square_flag != 0 && sampled_buildable && f64::from(min_normal_z) >= min_normal_up;
             let index = gy * cells_x + gx;
-            flags_out[index] = if buildable { 1 } else { 0 };
+            flags_out[index] = square_flag | if buildable { TERRAIN_BUILDABLE_FLAG } else { 0 };
             levels_out[index] = if buildable { level } else { 0 };
         }
     }

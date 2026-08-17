@@ -1,47 +1,44 @@
-import type { BuildingBlueprintId, BuildingPlacementType } from './types';
+import type { BuildingBlueprintId } from './types';
+import type { BuildingPlacementAnchor } from '../../types/buildingTypes';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import type { BuildingPlacementFootprint } from './types';
 import type { SensorMedium } from './sensorConfig';
 import { WATER_LEVEL } from './Terrain';
 
-/** Suspended and waterline-anchored structures do not require a flat bed. */
-export function buildingIgnoresTerrainForPlacement(
-  buildingBlueprintId: BuildingBlueprintId,
-): boolean {
-  return buildingBlueprintId === 'towerFabricator' ||
-    buildingBlueprintId === 'buildingSonar';
-}
-
-/** Dedicated contact sensors must be placed in the source medium authored by
+/** Sensor-bearing mounts must be placed in the source medium authored by
  * their sensor matrix; otherwise the building would be completed but inert. */
 export function getBuildingRequiredSensorSourceMedium(
   buildingBlueprintId: BuildingBlueprintId,
-): SensorMedium | null {
-  if (buildingBlueprintId === 'buildingRadar') return 'aboveWater';
-  if (
-    buildingBlueprintId === 'buildingSonar' ||
-    buildingBlueprintId === 'towerTorpedo'
-  ) return 'underwater';
+): { medium: SensorMedium; mountId: string } | null {
+  if (buildingBlueprintId === 'buildingRadar') {
+    return { medium: 'aboveWater', mountId: 'sensor' };
+  }
+  if (buildingBlueprintId === 'buildingSonar') {
+    return { medium: 'underwater', mountId: 'sensor' };
+  }
+  if (buildingBlueprintId === 'towerTorpedo') {
+    return { medium: 'underwater', mountId: 'torpedo' };
+  }
   return null;
 }
 
 /** Resolve the bottom of a building's collision cuboid. */
 export function getBuildingPlacementBaseZ(
-  placementType: BuildingPlacementType,
+  placementAnchor: BuildingPlacementAnchor,
   buildingDepth: number,
   x: number,
   y: number,
   getSurfaceZ: (x: number, y: number) => number,
   getTerrainBedZ: (x: number, y: number) => number,
 ): number {
-  switch (placementType) {
-    case 'hover':
+  switch (placementAnchor) {
+    case 'hover-surface':
       return getSurfaceZ(x, y);
-    case 'water-surface':
+    case 'sea-on-surface':
       // Runtime transform.z is base + depth/2, so this centers the collision
       // and combat volume exactly on the water plane.
       return WATER_LEVEL - buildingDepth * 0.5;
-    case 'ground':
+    case 'terrain-bed':
       return getTerrainBedZ(x, y);
   }
 }

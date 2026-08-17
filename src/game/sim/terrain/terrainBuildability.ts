@@ -12,7 +12,7 @@ import {
 } from './terrainConfig';
 import { findDepositFlatZoneAt, getMetalDepositFlatZones } from './terrainFlatZones';
 import { getTerrainMeshHeight, getTerrainMeshNormal } from './terrainTileMap';
-import { getTerrainVersion } from './terrainState';
+import { getAuthoritativeTerrainTileMap, getTerrainVersion } from './terrainState';
 
 const TERRAIN_FLAT_ZONE_WASM_STRIDE = 4;
 const TERRAIN_FLAT_ZONE_LEVEL_OFFSET = 1_000_000;
@@ -48,9 +48,12 @@ function getFlatZoneBuildabilityLevel(height: number): number | null {
 }
 
 type FootprintBuildability = {
-  /** True iff every sampled corner/edge/center is dry land, under the
-   *  max buildable slope angle, and on the same plateau level. */
-  buildable: boolean;
+  /** True iff every sampled corner/edge/center is under the max buildable
+   *  slope angle and on the same plateau level. Applies to dry ground and
+   *  underwater sea bed alike. */
+  terrainBuildable: boolean;
+  /** Exact medium when every sample agrees; null means waterline-split. */
+  squareType: 'ground' | 'water' | null;
   /** The shared plateau level (when buildable). null when buildable
    *  is false OR the underlying sample yielded no plateau level. */
   level: number | null;
@@ -70,6 +73,166 @@ type BuildabilityTerrainSampler = (
   cellSize: number,
 ) => BuildabilityTerrainSample;
 
+type TerrainHeightVertex = { x: number; y: number; height: number };
+
+function clipTerrainHeightPolygon(
+  input: readonly TerrainHeightVertex[],
+  coordinate: 'x' | 'y',
+  limit: number,
+  keepGreater: boolean,
+): TerrainHeightVertex[] {
+  if (input.length === 0) return [];
+  const inside = (value: number): boolean => keepGreater ? value >= limit : value <= limit;
+  const output: TerrainHeightVertex[] = [];
+  let previous = input[input.length - 1];
+  let previousValue = previous[coordinate];
+  let previousInside = inside(previousValue);
+  for (const current of input) {
+    const currentValue = current[coordinate];
+    const currentInside = inside(currentValue);
+    if (currentInside !== previousInside) {
+      const denominator = currentValue - previousValue;
+      if (Math.abs(denominator) > 1e-12) {
+        const t = Math.max(0, Math.min(1, (limit - previousValue) / denominator));
+        output.push({
+          x: previous.x + (current.x - previous.x) * t,
+          y: previous.y + (current.y - previous.y) * t,
+          height: previous.height + (current.height - previous.height) * t,
+        });
+      }
+    }
+    if (currentInside) output.push(current);
+    previous = current;
+    previousValue = currentValue;
+    previousInside = currentInside;
+  }
+  return output;
+}
+
+function getExactBuildSquareTerrainSafety(
+  centerX: number,
+  centerY: number,
+  halfWidth: number,
+  halfDepth: number,
+  mapWidth: number,
+  mapHeight: number,
+): {
+  squareType: 'ground' | 'water' | null;
+  minNormalUp: number;
+  minHeight: number;
+  maxHeight: number;
+} | null {
+  const map = getAuthoritativeTerrainTileMap();
+  if (
+    map === null ||
+    map.mapWidth !== mapWidth ||
+    map.mapHeight !== mapHeight ||
+    map.cellSize <= 0
+  ) return null;
+  const minX = Math.max(0, centerX - halfWidth);
+  const minY = Math.max(0, centerY - halfDepth);
+  const maxX = Math.min(mapWidth, centerX + halfWidth);
+  const maxY = Math.min(mapHeight, centerY + halfDepth);
+  const minCellX = Math.max(0, Math.min(map.cellsX - 1, Math.floor(minX / map.cellSize)));
+  const maxCellX = Math.max(0, Math.min(map.cellsX - 1, Math.floor(maxX / map.cellSize)));
+  const minCellY = Math.max(0, Math.min(map.cellsY - 1, Math.floor(minY / map.cellSize)));
+  const maxCellY = Math.max(0, Math.min(map.cellsY - 1, Math.floor(maxY / map.cellSize)));
+  let hasWater = false;
+  let hasGround = false;
+  let found = false;
+  let minNormalUp = 1;
+  let minHeight = Number.POSITIVE_INFINITY;
+  let maxHeight = Number.NEGATIVE_INFINITY;
+  for (let cy = minCellY; cy <= maxCellY; cy++) {
+    for (let cx = minCellX; cx <= maxCellX; cx++) {
+      const cellIndex = cy * map.cellsX + cx;
+      const start = Math.max(0, map.meshCellTriangleOffsets[cellIndex] ?? 0);
+      const end = Math.min(
+        map.meshCellTriangleIndices.length,
+        Math.max(start, map.meshCellTriangleOffsets[cellIndex + 1] ?? start),
+      );
+      for (let ref = start; ref < end; ref++) {
+        const triangleIndex = map.meshCellTriangleIndices[ref];
+        if (triangleIndex === undefined || triangleIndex < 0) continue;
+        const triangleOffset = triangleIndex * 3;
+        const ia = map.meshTriangleIndices[triangleOffset];
+        const ib = map.meshTriangleIndices[triangleOffset + 1];
+        const ic = map.meshTriangleIndices[triangleOffset + 2];
+        if (ia === undefined || ib === undefined || ic === undefined) continue;
+        const ax = map.meshVertexCoords[ia * 2];
+        const ay = map.meshVertexCoords[ia * 2 + 1];
+        const ah = map.meshVertexHeights[ia];
+        const bx = map.meshVertexCoords[ib * 2];
+        const by = map.meshVertexCoords[ib * 2 + 1];
+        const bh = map.meshVertexHeights[ib];
+        const cxWorld = map.meshVertexCoords[ic * 2];
+        const cyWorld = map.meshVertexCoords[ic * 2 + 1];
+        const ch = map.meshVertexHeights[ic];
+        if ([ax, ay, ah, bx, by, bh, cxWorld, cyWorld, ch].some((value) => !Number.isFinite(value))) {
+          continue;
+        }
+        let polygon: TerrainHeightVertex[] = [
+          { x: ax, y: ay, height: ah },
+          { x: bx, y: by, height: bh },
+          { x: cxWorld, y: cyWorld, height: ch },
+        ];
+        polygon = clipTerrainHeightPolygon(polygon, 'x', minX, true);
+        polygon = clipTerrainHeightPolygon(polygon, 'x', maxX, false);
+        polygon = clipTerrainHeightPolygon(polygon, 'y', minY, true);
+        polygon = clipTerrainHeightPolygon(polygon, 'y', maxY, false);
+        if (polygon.length === 0) continue;
+        found = true;
+        for (const vertex of polygon) {
+          minHeight = Math.min(minHeight, vertex.height);
+          maxHeight = Math.max(maxHeight, vertex.height);
+          hasWater ||= vertex.height < WATER_LEVEL;
+          hasGround ||= vertex.height >= WATER_LEVEL;
+        }
+        const ux = bx - ax;
+        const uy = bh - ah;
+        const uz = by - ay;
+        const vx = cxWorld - ax;
+        const vy = ch - ah;
+        const vz = cyWorld - ay;
+        const nx = uy * vz - uz * vy;
+        const up = uz * vx - ux * vz;
+        const nz = ux * vy - uy * vx;
+        const length = Math.sqrt(nx * nx + up * up + nz * nz) || 1;
+        minNormalUp = Math.min(minNormalUp, Math.abs(up) / length);
+      }
+    }
+  }
+  if (!found) return null;
+  return {
+    squareType: hasWater === hasGround ? null : hasWater ? 'water' : 'ground',
+    minNormalUp,
+    minHeight,
+    maxHeight,
+  };
+}
+
+/** Exact bed-height range over an installed piecewise-planar terrain mesh. */
+export function getBuildSquareTerrainHeightRange(
+  centerX: number,
+  centerY: number,
+  halfWidth: number,
+  halfDepth: number,
+  mapWidth: number,
+  mapHeight: number,
+): { minHeight: number; maxHeight: number } | null {
+  const safety = getExactBuildSquareTerrainSafety(
+    centerX,
+    centerY,
+    halfWidth,
+    halfDepth,
+    mapWidth,
+    mapHeight,
+  );
+  return safety === null
+    ? null
+    : { minHeight: safety.minHeight, maxHeight: safety.maxHeight };
+}
+
 function sampleBuildabilityTerrain(
   x: number,
   z: number,
@@ -86,16 +249,9 @@ function sampleBuildabilityTerrain(
     };
   }
   const height = getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize);
-  if (height < WATER_LEVEL) {
-    return {
-      water: true,
-      normalUp: 1,
-      plateauLevel: null,
-    };
-  }
   const normal = getTerrainMeshNormal(x, z, mapWidth, mapHeight, cellSize);
   return {
-    water: false,
+    water: height < WATER_LEVEL,
     normalUp: normal.nz,
     plateauLevel: getTerrainPlateauLevelForHeight(height),
   };
@@ -127,31 +283,49 @@ function evaluateBuildabilityFootprintWithSampler(
   ];
 
   let footprintLevel: number | null = null;
+  let footprintWater: boolean | null = null;
   for (const [sx, sz] of samples) {
     const sample = sampleTerrain(sx, sz, mapWidth, mapHeight, cellSize);
-    if (sample.water) {
-      return { buildable: false, level: null };
+    if (footprintWater === null) {
+      footprintWater = sample.water;
+    } else if (sample.water !== footprintWater) {
+      return { terrainBuildable: false, level: null, squareType: null };
     }
     if (sample.normalUp < BUILD_CONFIG.minBuildableSurfaceNormalUp) {
-      return { buildable: false, level: null };
+      return {
+        terrainBuildable: false,
+        level: null,
+        squareType: sample.water ? 'water' : 'ground',
+      };
     }
     const level = sample.plateauLevel;
-    if (level === null) return { buildable: false, level: null };
+    if (level === null) {
+      return {
+        terrainBuildable: false,
+        level: null,
+        squareType: sample.water ? 'water' : 'ground',
+      };
+    }
     if (footprintLevel === null) {
       footprintLevel = level;
     } else if (level !== footprintLevel) {
-      return { buildable: false, level: null };
+      return {
+        terrainBuildable: false,
+        level: null,
+        squareType: sample.water ? 'water' : 'ground',
+      };
     }
   }
-  return { buildable: true, level: footprintLevel };
+  return {
+    terrainBuildable: true,
+    level: footprintLevel,
+    squareType: footprintWater ? 'water' : 'ground',
+  };
 }
 
-/** Walk the 9-sample buildability perimeter (corners + edges + center)
- *  ONCE and return both the buildable boolean and the shared plateau
- *  level. Callers that need only the boolean go through the
- *  `isBuildableTerrainFootprint` wrapper below; callers that also need
- *  the level (e.g. build-placement diagnostics) can read both off the
- *  returned struct without a second mesh-sample walk. */
+/** Resolve medium, slope, and shared plateau level for one footprint. The
+ *  installed triangle mesh supplies exact medium and maximum-slope coverage;
+ *  the nine support samples establish a common authored plateau level. */
 export function evaluateBuildabilityFootprint(
   centerX: number,
   centerZ: number,
@@ -161,7 +335,7 @@ export function evaluateBuildabilityFootprint(
   mapHeight: number,
   cellSize: number = LAND_CELL_SIZE,
 ): FootprintBuildability {
-  return evaluateBuildabilityFootprintWithSampler(
+  const sampled = evaluateBuildabilityFootprintWithSampler(
     centerX,
     centerZ,
     halfWidth,
@@ -171,10 +345,37 @@ export function evaluateBuildabilityFootprint(
     cellSize,
     sampleBuildabilityTerrain,
   );
+  const exact = getExactBuildSquareTerrainSafety(
+    centerX,
+    centerZ,
+    halfWidth,
+    halfDepth,
+    mapWidth,
+    mapHeight,
+  );
+  if (exact === null) return sampled;
+  const terrainBuildable =
+    exact.squareType !== null &&
+    exact.minNormalUp >= BUILD_CONFIG.minBuildableSurfaceNormalUp &&
+    sampled.terrainBuildable;
+  return {
+    terrainBuildable,
+    squareType: exact.squareType,
+    level: terrainBuildable ? sampled.level : null,
+  };
 }
 
+export const TERRAIN_BUILDABLE_FLAG = 1 << 0;
+export const GROUND_BUILD_SQUARE_FLAG = 1 << 1;
+export const WATER_BUILD_SQUARE_FLAG = 1 << 2;
+export const FLAT_GROUND_BUILD_SQUARE_FLAGS =
+  TERRAIN_BUILDABLE_FLAG | GROUND_BUILD_SQUARE_FLAG;
+export const FLAT_WATER_BUILD_SQUARE_FLAGS =
+  TERRAIN_BUILDABLE_FLAG | WATER_BUILD_SQUARE_FLAG;
+
 type TerrainBuildabilityCell = {
-  buildable: boolean;
+  terrainBuildable: boolean;
+  squareType: 'ground' | 'water' | null;
   level: number | null;
 };
 
@@ -184,13 +385,17 @@ export function getTerrainBuildabilityGridCell(
   gy: number,
 ): TerrainBuildabilityCell {
   if (gx < 0 || gy < 0 || gx >= grid.cellsX || gy >= grid.cellsY) {
-    return { buildable: false, level: null };
+    return { terrainBuildable: false, squareType: null, level: null };
   }
   const index = gy * grid.cellsX + gx;
-  const buildable = grid.flags[index] === 1;
+  const flags = grid.flags[index] ?? 0;
+  const terrainBuildable = (flags & TERRAIN_BUILDABLE_FLAG) !== 0;
+  const ground = (flags & GROUND_BUILD_SQUARE_FLAG) !== 0;
+  const water = (flags & WATER_BUILD_SQUARE_FLAG) !== 0;
   return {
-    buildable,
-    level: buildable ? grid.levels[index] : null,
+    terrainBuildable,
+    squareType: ground === water ? null : ground ? 'ground' : 'water',
+    level: terrainBuildable ? grid.levels[index] : null,
   };
 }
 
@@ -212,33 +417,11 @@ export function buildTerrainBuildabilityGrid(
 
   const flags = new Array<number>(cellsX * cellsY);
   const levels = new Array<number>(cellsX * cellsY);
-  const sampleCache = new Map<string, BuildabilityTerrainSample>();
-  const sampleTerrain: BuildabilityTerrainSampler = (
-    x,
-    z,
-    terrainMapWidth,
-    terrainMapHeight,
-    terrainCellSize,
-  ) => {
-    const key = `${x}:${z}`;
-    const cached = sampleCache.get(key);
-    if (cached !== undefined) return cached;
-    const sample = sampleBuildabilityTerrain(
-      x,
-      z,
-      terrainMapWidth,
-      terrainMapHeight,
-      terrainCellSize,
-    );
-    sampleCache.set(key, sample);
-    return sample;
-  };
-
   for (let gy = 0; gy < cellsY; gy++) {
     for (let gx = 0; gx < cellsX; gx++) {
       const x = gx * cellSize + cellSize / 2;
       const y = gy * cellSize + cellSize / 2;
-      const evaluated = evaluateBuildabilityFootprintWithSampler(
+      const evaluated = evaluateBuildabilityFootprint(
         x,
         y,
         cellSize / 2,
@@ -246,10 +429,15 @@ export function buildTerrainBuildabilityGrid(
         mapWidth,
         mapHeight,
         LAND_CELL_SIZE,
-        sampleTerrain,
       );
       const index = gy * cellsX + gx;
-      flags[index] = evaluated.buildable ? 1 : 0;
+      const squareFlag = evaluated.squareType === 'ground'
+        ? GROUND_BUILD_SQUARE_FLAG
+        : evaluated.squareType === 'water'
+          ? WATER_BUILD_SQUARE_FLAG
+          : 0;
+      flags[index] = squareFlag |
+        (evaluated.terrainBuildable ? TERRAIN_BUILDABLE_FLAG : 0);
       levels[index] = evaluated.level ?? 0;
     }
   }

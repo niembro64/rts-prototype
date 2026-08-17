@@ -6,16 +6,51 @@ import { ConstructionSystem } from './construction';
 import { getCuboidUnderwaterFraction } from './entityMediumOccupancy';
 import { WATER_LEVEL } from './Terrain';
 import { WorldState } from './WorldState';
+import { BUILD_CONFIG } from '../../buildConfig';
+import type { BuildingPlacementSet } from '../../types/buildingTypes';
+import { STRUCTURE_BLUEPRINT_IDS } from '../../types/blueprintIds';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[water-surface building] ${message}`);
 }
 
 export function runWaterSurfaceBuildingContractTest(): void {
+  const expectedPlacementSets: Record<string, readonly BuildingPlacementSet[]> = {
+    buildingSolar: ['ground-build-squares-surface'],
+    buildingWind: ['ground-build-squares-surface'],
+    buildingExtractor: ['ground-build-squares-surface', 'water-build-squares-sea-bed'],
+    buildingExtractorT2: ['ground-build-squares-surface', 'water-build-squares-sea-bed'],
+    buildingRadar: ['ground-build-squares-surface'],
+    buildingResourceConverter: ['ground-build-squares-surface'],
+    buildingSonar: ['water-build-squares-sea-on-surface'],
+    towerFabricator: ['ground-build-squares-hover', 'water-build-squares-hover-surface'],
+    towerBeamMega: ['ground-build-squares-surface'],
+    towerCannon: ['ground-build-squares-surface'],
+    towerAntiAir: ['ground-build-squares-surface'],
+    towerTorpedo: ['water-build-squares-sea-bed'],
+    buildingShieldTargetingTech: ['ground-build-squares-surface'],
+    buildingShieldTech: ['ground-build-squares-surface'],
+    buildingPrecisionTargetingTech: ['ground-build-squares-surface'],
+  };
+  assertContract(
+    BUILD_CONFIG.maxBuildableSlopeAngleDegrees === 10,
+    'surface and sea-bed flatness threshold must be exactly 10 degrees',
+  );
+  for (const id of STRUCTURE_BLUEPRINT_IDS) {
+    const expected = expectedPlacementSets[id];
+    const actual = getBuildingConfig(id).placementSets;
+    assertContract(expected !== undefined, `${id} must have an exhaustive placement-set contract`);
+    assertContract(
+      actual.length === expected.length &&
+        actual.every((placementSet, index) => placementSet === expected[index]),
+      `${id} must retain its explicit placement sets`,
+    );
+  }
   const sonarConfig = getBuildingConfig('buildingSonar');
   assertContract(
-    sonarConfig.placementType === 'water-surface',
-    'sonar must author water-surface placement',
+    sonarConfig.placementSets.length === 1 &&
+      sonarConfig.placementSets[0] === 'water-build-squares-sea-on-surface',
+    'sonar must author only sea-on-surface placement',
   );
   assertContract(
     sonarConfig.renderProfile === 'buildingSonar',

@@ -32,6 +32,7 @@ import {
   getHighestBuildFootprintCellsGroundZ,
 } from './buildingPlacementPolicy';
 import { createFactoryComponent } from './factoryComponent';
+import { getBuildingPlacementAnchor } from '../../types/buildingTypes';
 
 type StartBuildingOptions = {
   skipBuilderAuthorization: boolean;
@@ -117,7 +118,7 @@ export class ConstructionSystem {
     // Get world position for building center
     const worldPos = { x: diagnostics.x, y: diagnostics.y };
     const baseZ = getBuildingPlacementBaseZ(
-      config.placementType,
+      getBuildingPlacementAnchor(config.placementSets),
       config.gridDepth * BUILD_GRID_CELL_SIZE,
       worldPos.x,
       worldPos.y,
@@ -148,7 +149,7 @@ export class ConstructionSystem {
       rotation,
     );
     entity.transform.z = baseZ + physicalSize.depth / 2;
-    if (config.placementType === 'hover') {
+    if (getBuildingPlacementAnchor(config.placementSets) === 'hover-surface') {
       const baselineZ = getHighestBuildFootprintCellsGroundZ(
         gridX,
         gridY,

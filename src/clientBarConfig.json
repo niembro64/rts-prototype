@@ -356,16 +356,24 @@
         "label": "NONE"
       },
       {
-        "value": "ground",
-        "label": "GROUND BUILDING BUILD SQUARES"
+        "value": "ground-build-squares-hover",
+        "label": "GROUND BUILD SQUARES — HOVER"
       },
       {
-        "value": "hover",
-        "label": "HOVER BUILDING BUILD SQUARES"
+        "value": "ground-build-squares-surface",
+        "label": "GROUND BUILD SQUARES — SURFACE"
       },
       {
-        "value": "water-surface",
-        "label": "WATER SURFACE BUILDING BUILD SQUARES"
+        "value": "water-build-squares-sea-bed",
+        "label": "WATER BUILD SQUARES — SEA BED"
+      },
+      {
+        "value": "water-build-squares-sea-on-surface",
+        "label": "WATER BUILD SQUARES — SEA ON SURFACE"
+      },
+      {
+        "value": "water-build-squares-hover-surface",
+        "label": "WATER BUILD SQUARES — HOVER SURFACE"
       }
     ]
   },

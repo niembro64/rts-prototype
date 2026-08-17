@@ -10,7 +10,7 @@ import type {
   BuildingRenderProfile,
   BuildingBlueprintId,
   BuildingHoveringType,
-  BuildingPlacementType,
+  BuildingPlacementSet,
   BuildingSupportSurface,
   ResourceCost,
 } from '../types';
@@ -50,6 +50,12 @@ import {
 } from './entityBaseLedger';
 import { getMaximumSensorMatrixRadius } from '../sensorConfig';
 import { validateStationArticulation, validateWorkEmitter } from './stationArticulation';
+import {
+  BUILDING_PLACEMENT_SETS,
+  getBuildingPlacementSetAnchor,
+  getBuildingPlacementSetSquareType,
+  isBuildingPlacementSet,
+} from '../../../types/buildingTypes';
 
 export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   buildingBlueprintId: BuildingBlueprintId;
@@ -97,8 +103,8 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   anchorProfile: BuildingAnchorProfile;
   /** Authored walkable/support proxy, independent from the collision cuboid. */
   supportSurface: BuildingSupportSurface;
-  /** Semantic terrain/water anchor and placement validation policy. */
-  placementType: BuildingPlacementType;
+  /** Exhaustive square domains on which this structure may be placed. */
+  placementSets: readonly BuildingPlacementSet[];
   /** Hovering structure classification. Null means grounded. The fabricator
    *  torus is currently the only hovering structure type. */
   hoveringType: BuildingHoveringType;
@@ -153,7 +159,7 @@ const BUILDING_EXPLICIT_FIELDS = [
   'allowedUnitBlueprintIds',
   'footprintMask',
   'supportSurface',
-  'placementType',
+  'placementSets',
   'hoveringType',
   'turrets',
 ] as const;
@@ -218,19 +224,47 @@ function validateBuildingSupportSurface(
   }
 }
 
-function validateBuildingHoveringType(
+function validateBuildingPlacementSets(
   id: string,
   blueprint: BuildingBlueprint,
 ): void {
-  const placementType = blueprint.placementType;
-  if (
-    placementType !== 'ground' &&
-    placementType !== 'hover' &&
-    placementType !== 'water-surface'
-  ) {
-    throw new Error(
-      `Invalid building blueprint ${id}: unknown placementType "${String(placementType)}"`,
-    );
+  const placementSets = blueprint.placementSets;
+  if (!Array.isArray(placementSets) || placementSets.length === 0) {
+    throw new Error(`Invalid building blueprint ${id}: placementSets must not be empty`);
+  }
+  let anchor: ReturnType<typeof getBuildingPlacementSetAnchor> | null = null;
+  const squareTypes = new Set<string>();
+  const seenSets = new Set<string>();
+  let lastCanonicalIndex = -1;
+  for (const placementSet of placementSets) {
+    if (!isBuildingPlacementSet(placementSet)) {
+      throw new Error(
+        `Invalid building blueprint ${id}: unknown placementSet "${String(placementSet)}"`,
+      );
+    }
+    if (seenSets.has(placementSet)) {
+      throw new Error(`Invalid building blueprint ${id}: duplicate placementSet "${placementSet}"`);
+    }
+    seenSets.add(placementSet);
+    const canonicalIndex = BUILDING_PLACEMENT_SETS.indexOf(placementSet);
+    if (canonicalIndex <= lastCanonicalIndex) {
+      throw new Error(`Invalid building blueprint ${id}: placementSets must use canonical order`);
+    }
+    lastCanonicalIndex = canonicalIndex;
+    const squareType = getBuildingPlacementSetSquareType(placementSet);
+    if (squareTypes.has(squareType)) {
+      throw new Error(
+        `Invalid building blueprint ${id}: at most one placementSet may target ${squareType} build squares`,
+      );
+    }
+    squareTypes.add(squareType);
+    const placementAnchor = getBuildingPlacementSetAnchor(placementSet);
+    if (anchor !== null && anchor !== placementAnchor) {
+      throw new Error(
+        `Invalid building blueprint ${id}: all placementSets must share one physical anchor`,
+      );
+    }
+    anchor = placementAnchor;
   }
   const hoveringType = blueprint.hoveringType;
   if (hoveringType !== null && hoveringType !== 'fabricator') {
@@ -252,14 +286,17 @@ function validateBuildingHoveringType(
       `Invalid building blueprint ${id}: hovering structures must use supportSurface.none`,
     );
   }
-  if ((placementType === 'hover') !== (hoveringType !== null)) {
+  if ((anchor === 'hover-surface') !== (hoveringType !== null)) {
     throw new Error(
-      `Invalid building blueprint ${id}: placementType "hover" and hoveringType must be authored together`,
+      `Invalid building blueprint ${id}: hover-surface placementSets and hoveringType must be authored together`,
     );
   }
-  if (id === 'buildingSonar' && placementType !== 'water-surface') {
+  if (
+    id === 'buildingSonar' &&
+    (placementSets.length !== 1 || placementSets[0] !== 'water-build-squares-sea-on-surface')
+  ) {
     throw new Error(
-      'Invalid building blueprint buildingSonar: placementType must be "water-surface"',
+      'Invalid building blueprint buildingSonar: placementSets must contain only "water-build-squares-sea-on-surface"',
     );
   }
 }
@@ -475,7 +512,7 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   }
   validateFabricatorTorusTargetRadius(id, blueprint);
   validateBuildingSupportSurface(id, blueprint.supportSurface);
-  validateBuildingHoveringType(id, blueprint);
+  validateBuildingPlacementSets(id, blueprint);
   validateDedicatedContactSensor(id, blueprint);
   if (
     !blueprint.hud ||

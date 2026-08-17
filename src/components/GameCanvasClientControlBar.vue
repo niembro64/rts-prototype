@@ -95,9 +95,11 @@ const PATHING_DEBUG_MODE_OPTIONS: readonly {
 ];
 const BUILD_GRID_DEBUG_MODE_TITLES: Record<BuildGridDebugMode, string> = {
   none: 'Hide the whole-map build-square availability overlay',
-  ground: 'Show ground-building availability: authoritative terrain slope and plateau status plus occupied cells',
-  hover: 'Show hover-building availability: terrain-independent cells, with occupied cells blocked',
-  'water-surface': 'Show water-surface-building availability: seabed clearance beneath each cell plus occupied cells. Colors remain projected on the actual terrain/bed.',
+  'ground-build-squares-hover': 'Show wholly-ground squares available to hovering structures; slope is irrelevant',
+  'ground-build-squares-surface': 'Show wholly-ground squares with valid terrain slope and plateau level',
+  'water-build-squares-sea-bed': 'Show wholly-water squares with a valid sea-bed slope and plateau level',
+  'water-build-squares-sea-on-surface': 'Show wholly-water squares with enough depth for a waterline-centered structure',
+  'water-build-squares-hover-surface': 'Show wholly-water squares available to hovering structures; bed slope and depth are irrelevant',
 };
 
 function fmtCount4(value: number): string {

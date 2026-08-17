@@ -55,9 +55,10 @@ export type TerrainTileMap = {
  *  eligibility are baked once by the host. Dynamic blockers such as
  *  buildings remain snapshot/state driven.
  *
- *  `flags[i]` is 1 when the cell is buildable terrain, 0 otherwise.
- *  `levels[i]` is the plateau level for buildable cells; consumers
- *  require all cells in a footprint to share one level. */
+ *  `flags[i]` is a bit mask: bit 0 is flat/buildable terrain, bit 1 is a
+ *  wholly-ground build square, and bit 2 is a wholly-water build square.
+ *  Split waterline cells set neither medium bit. `levels[i]` is meaningful
+ *  when bit 0 is set; surface/sea-bed footprints require one shared level. */
 export type TerrainBuildabilityGrid = {
   readonly mapWidth: number;
   readonly mapHeight: number;

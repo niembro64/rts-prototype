@@ -1567,7 +1567,11 @@ export class TerrainTileRenderer3D {
     if (overlayMode.startsWith('build:')) {
       this.refreshBuildGridOccupiedMask(cellsX, cellsY);
     }
-    if (overlayMode === 'build:ground' || overlayMode === 'metal') {
+    if (
+      overlayMode === 'build:ground-build-squares-surface' ||
+      overlayMode === 'build:water-build-squares-sea-bed' ||
+      overlayMode === 'metal'
+    ) {
       this.refreshBuildGridMetalMask(cellsX, cellsY);
     }
     if (waterPathingMapEnabled) {
@@ -1612,11 +1616,11 @@ export class TerrainTileRenderer3D {
           );
           continue;
         }
-        const groundBuildable = buildGridMode !== 'ground' || buildabilityGrid === null
+        const buildability = buildabilityGrid === null
           ? null
-          : getTerrainBuildabilityGridCell(buildabilityGrid, gx, gy).buildable;
+          : getTerrainBuildabilityGridCell(buildabilityGrid, gx, gy);
         let waterSurfaceClear = false;
-        if (buildGridMode === 'water-surface') {
+        if (buildGridMode === 'water-build-squares-sea-on-surface') {
           const x = gx * buildCellSize + buildCellSize * 0.5;
           const y = gy * buildCellSize + buildCellSize * 0.5;
           waterSurfaceClear = waterSurfaceBuildCellHasClearance(
@@ -1630,7 +1634,8 @@ export class TerrainTileRenderer3D {
         }
         const availability = resolveBuildGridAvailabilityStatus(buildGridMode, {
           occupied: this.buildGridOccupiedMask[cellIndex] !== 0,
-          groundBuildable,
+          squareType: buildability?.squareType,
+          terrainBuildable: buildability?.terrainBuildable ?? null,
           waterSurfaceClear,
           metal: this.buildGridMetalMask[cellIndex] !== 0,
         });
