@@ -331,8 +331,9 @@ export type MinimapEntity = {
    *  draw a generic positional blip rather than the identifiable
    *  team-colored marker. */
   radarOnly?: boolean;
-  /** Contact rows only: the entity id behind the blip. Used purely as a stable
-   *  wobble phase seed for the world blip, never for identification. */
+  /** Contact rows only: the entity id behind the blip. Used purely to match a
+   *  world blip to its previous sample so it can interpolate between snapshots,
+   *  never for identification. */
   contactId?: number;
   /** Contact rows only: bit 0 is an air-radar return and bit 1 is a
    *  water-sonar return. Both may be set for a straddling body. */

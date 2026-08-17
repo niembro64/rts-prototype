@@ -27,12 +27,54 @@
 
 import { SnapshotVisibility } from './stateSerializerVisibility';
 import { serializeMinimapSnapshotEntities } from './stateSerializerMinimap';
+import {
+  isPackedMinimapEntitiesWire,
+  packMinimapEntitiesForWire,
+  unpackMinimapEntitiesFromWire,
+} from './snapshotMinimapWirePack';
+import {
+  CONTACT_MEDIUM_NONE,
+  CONTACT_MEDIUM_AIR,
+  CONTACT_MEDIUM_BOTH,
+  CONTACT_MEDIUM_WATER,
+} from './contactMedium';
+import {
+  serializeProjectileSnapshot,
+  shouldSendBeamPath,
+} from './stateSerializerProjectiles';
 import { WorldState } from '../sim/WorldState';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { buildTeamRosterFromSeatCounts } from '../sim/teamRoster';
 import { WATER_LEVEL } from '../sim/terrain/terrainConfig';
-import { stampCombatTargetingPool } from '../sim/combat/targetingInputStamping';
-import type { Entity, PlayerId } from '../sim/types';
+import {
+  buildTerrainTileMap,
+  getTerrainRuntimeConfig,
+  getTerrainTeamCount,
+  setAuthoritativeTerrainTileMap,
+  setTerrainRuntimeConfig,
+  setTerrainTeamCount,
+} from '../sim/Terrain';
+import { getAuthoritativeTerrainTileMap } from '../sim/terrain/terrainState';
+import {
+  getCombatTargetingStateViews,
+  stampCombatTargetingPool,
+} from '../sim/combat/targetingInputStamping';
+import { hasFogOfWarLineOfSight } from '../sim/combat/lineOfSight';
+import { forEachEntityTurretSensorSource } from '../sim/sensorCoverage';
+import { getSimWasm } from '../sim-wasm/init';
+import { createProjectileConfigFromShot } from '../sim/projectileConfigs';
+import {
+  CONTACT_BLIP_GLYPH,
+  CONTACT_BLIP_RADIUS,
+  getContactBlipPresentation,
+  requireContactBlipId,
+  requireContactBlipZ,
+} from '../render3d/ContactBlipRenderer3D';
+import { ClientMinimapOverrideStore } from './ClientMinimapOverrideStore';
+import { ENTITY_LOD_PROXY_GLYPH_CIRCLE } from '../render3d/EntityLod3D';
+import { getSensorBoundarySourceRadius } from '../render3d/SightBoundaryRenderer3D';
+import type { ProjectileSpawnEvent } from '../sim/combat';
+import type { Entity, EntityId, PlayerId } from '../sim/types';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -303,8 +345,431 @@ function assertContactTierCarriesNoIdentity(): void {
     'a contact keeps the coarse unit/building kind BAR also distinguishes',
   );
   assertContract(
+    contactEntry.contactMediumMask === CONTACT_MEDIUM_AIR,
+    `an above-water radar return must carry only the earned air bit; got ${contactEntry.contactMediumMask}`,
+  );
+  assertContract(
+    contactEntry.contactZ === Math.round(contactOnly.transform.z),
+    `a radar contact must carry its observed world z; got ${contactEntry.contactZ}`,
+  );
+  assertContract(
     allyEntry !== undefined && allyEntry.radarOnly !== true && allyEntry.playerId === 2,
     'a fully visible allied entry keeps its owner for team colouring',
+  );
+}
+
+function assertContactMediumProvenanceAndWirePaths(): void {
+  const world = createSensorWorld();
+  const wet = findSubmergedPair(world, 400);
+  spawn(world, wet.x, wet.y, 1, {
+    depth: WATER_LEVEL + 100,
+    sensors: { contactAA: 1000 },
+  });
+  spawn(world, wet.x, wet.y + 100, 2, {
+    depth: wet.depth,
+    sensors: { contactUU: 1000 },
+  });
+  const straddler = spawn(world, wet.x + 400, wet.y, 3, { depth: WATER_LEVEL });
+
+  stampCombatTargetingPool(world);
+  const visibility = SnapshotVisibility.forRecipient(world, 1 as PlayerId);
+  assertContract(
+    visibility.getEntityContactMediumMask(straddler) === CONTACT_MEDIUM_BOTH,
+    'a straddling target covered by allied radar and sonar must retain both earned medium facts',
+  );
+
+  const entries = serializeMinimapSnapshotEntities(world, visibility, 'contact-medium-wire');
+  assertContract(entries !== undefined, 'dual-medium contact must serialize');
+  const entry = entries.find((candidate) => candidate.id === straddler.id);
+  assertContract(
+    entry?.radarOnly === true &&
+      entry.contactMediumMask === CONTACT_MEDIUM_BOTH &&
+      entry.contactZ === Math.round(straddler.transform.z),
+    `DTO and direct-row generation must retain contact medium and z; got mask=${entry?.contactMediumMask}, z=${entry?.contactZ}`,
+  );
+
+  const packed = packMinimapEntitiesForWire(entries);
+  assertContract(packed !== undefined, 'dual-medium minimap rows must pack');
+  assertContract(
+    !isPackedMinimapEntitiesWire({ v: 3, b: packed.b }),
+    'obsolete minimap packet versions must be rejected rather than decoded',
+  );
+  const decoded = unpackMinimapEntitiesFromWire(packed);
+  const decodedEntry = decoded?.find((candidate) => candidate.id === straddler.id);
+  assertContract(
+    decodedEntry?.contactMediumMask === CONTACT_MEDIUM_BOTH &&
+      decodedEntry.contactZ === Math.round(straddler.transform.z),
+    `packed V4 minimap wire must round-trip contact medium and z; got mask=${decodedEntry?.contactMediumMask}, z=${decodedEntry?.contactZ}`,
+  );
+
+  const airOnlyWorld = createSensorWorld();
+  spawn(airOnlyWorld, 200, 200, 2, { sensors: { contactAA: 1000 } });
+  const airStraddler = spawn(airOnlyWorld, 500, 200, 3, { depth: WATER_LEVEL });
+  const airVisibility = SnapshotVisibility.forRecipient(airOnlyWorld, 1 as PlayerId);
+  assertContract(
+    airVisibility.getEntityContactMediumMask(airStraddler) === CONTACT_MEDIUM_AIR,
+    'a straddler found only by allied radar must be an air contact regardless of volume majority',
+  );
+
+  const waterOnlyWorld = createSensorWorld();
+  const waterPair = findSubmergedPair(waterOnlyWorld, 300);
+  spawn(waterOnlyWorld, waterPair.x, waterPair.y, 2, {
+    depth: waterPair.depth,
+    sensors: { contactUU: 1000 },
+  });
+  const waterStraddler = spawn(
+    waterOnlyWorld,
+    waterPair.x + 300,
+    waterPair.y,
+    3,
+    { depth: WATER_LEVEL },
+  );
+  const waterVisibility = SnapshotVisibility.forRecipient(waterOnlyWorld, 1 as PlayerId);
+  assertContract(
+    waterVisibility.getEntityContactMediumMask(waterStraddler) === CONTACT_MEDIUM_WATER,
+    'a straddler found only by allied sonar must be a water contact regardless of volume majority',
+  );
+}
+
+function projectileSpawn(
+  id: number,
+  x: number,
+  y: number,
+  z: number,
+  targetEntityId?: EntityId,
+  beam?: ProjectileSpawnEvent['beam'],
+): ProjectileSpawnEvent {
+  return {
+    id: id as EntityId,
+    pos: { x, y, z },
+    rotation: 0,
+    velocity: { x: 0, y: 0, z: 0 },
+    projectileType: 'plasma',
+    turretBlueprintId: 'turretGunLight',
+    shotBlueprintId: 'shotPlasmaLight',
+    sourceTurretBlueprintId: 'turretGunLight',
+    playerId: 3 as PlayerId,
+    sourceEntityId: 49999 as EntityId,
+    turretIndex: 0,
+    barrelIndex: 0,
+    targetEntityId,
+    beam,
+  };
+}
+
+/** Projectiles are presentation, not contacts: only exact-medium team sight
+ * reveals an ordinary enemy shot. A homing threat aimed at the ally team keeps
+ * the existing explicit safety exception. Beam endpoints follow the same
+ * policy for spawn, resync, and update rows. */
+function assertProjectileMediumVisibility(): void {
+  const world = createSensorWorld();
+  spawn(world, 200, 200, 1, {
+    depth: WATER_LEVEL + 500,
+    sensors: { sightAA: 300, contactAA: 3000 },
+  });
+  const radarContact = spawn(world, 800, 200, 3, { depth: WATER_LEVEL + 500 });
+  const alliedTarget = spawn(world, 3000, 200, 2, { depth: WATER_LEVEL + 500 });
+  const visibility = SnapshotVisibility.forRecipient(world, 1 as PlayerId);
+  assertContract(
+    visibility.getEntityContactMediumMask(radarContact) === CONTACT_MEDIUM_AIR &&
+      !visibility.isEntityVisible(radarContact),
+    'projectile fixture must put the distant lane under radar contact but outside full sight',
+  );
+
+  const visibleAirId = 50001;
+  const hiddenWaterId = 50002;
+  const radarOnlyId = 50003;
+  const incomingThreatId = 50004;
+  const visibleEndpointBeamId = 50005;
+  const hiddenWaterBeamId = 50006;
+  const radarOnlyBeamId = 50007;
+  const airZ = WATER_LEVEL + 500;
+  const waterZ = WATER_LEVEL - 100;
+  const projectileConfig = createProjectileConfigFromShot('shotPlasmaLight');
+  const incomingMotionProjectile = world.createProjectile(
+    2800,
+    200,
+    0,
+    0,
+    3 as PlayerId,
+    radarContact.id,
+    projectileConfig,
+  );
+  incomingMotionProjectile.transform.z = waterZ;
+  incomingMotionProjectile.projectile!.homingTargetId = alliedTarget.id;
+  world.addEntity(incomingMotionProjectile);
+  const ordinaryRadarMotionProjectile = world.createProjectile(
+    800,
+    200,
+    0,
+    0,
+    3 as PlayerId,
+    radarContact.id,
+    projectileConfig,
+  );
+  ordinaryRadarMotionProjectile.transform.z = airZ;
+  world.addEntity(ordinaryRadarMotionProjectile);
+  const spawns: ProjectileSpawnEvent[] = [
+    projectileSpawn(visibleAirId, 200, 200, airZ),
+    projectileSpawn(hiddenWaterId, 200, 200, waterZ),
+    projectileSpawn(radarOnlyId, 800, 200, airZ),
+    projectileSpawn(incomingThreatId, 2800, 200, waterZ, alliedTarget.id),
+    projectileSpawn(visibleEndpointBeamId, 800, 240, airZ, undefined, {
+      start: { x: 800, y: 240, z: airZ },
+      end: { x: 200, y: 200, z: airZ },
+    }),
+    projectileSpawn(hiddenWaterBeamId, 800, 280, waterZ, undefined, {
+      start: { x: 800, y: 280, z: waterZ },
+      end: { x: 200, y: 200, z: waterZ },
+    }),
+    projectileSpawn(radarOnlyBeamId, 800, 320, airZ, undefined, {
+      start: { x: 800, y: 320, z: airZ },
+      end: { x: 900, y: 320, z: airZ },
+    }),
+  ];
+  const snapshot = serializeProjectileSnapshot({
+    world,
+    fullStateResync: false,
+    visibility,
+    emitBeamUpdates: false,
+    projectileSpawns: spawns,
+    projectileDespawns: undefined,
+    projectileMotionUpdates: [
+      {
+        id: incomingMotionProjectile.id,
+        pos: { x: 2800, y: 200, z: waterZ },
+        velocity: { x: 0, y: 0, z: 0 },
+        rotation: 0,
+        angularVelocity: 0,
+        ownerId: 3 as PlayerId,
+      },
+      {
+        id: ordinaryRadarMotionProjectile.id,
+        pos: { x: 800, y: 200, z: airZ },
+        velocity: { x: 0, y: 0, z: 0 },
+        rotation: 0,
+        angularVelocity: 0,
+        ownerId: 3 as PlayerId,
+      },
+    ],
+  });
+  const ids = new Set((snapshot?.spawns ?? []).map((entry) => entry.id));
+  assertContract(ids.has(visibleAirId), 'an enemy projectile inside same-medium full sight is visible');
+  assertContract(!ids.has(hiddenWaterId), 'air sight must not reveal an underwater projectile at the same xy');
+  assertContract(!ids.has(radarOnlyId), 'radar contact must not reveal an ordinary projectile');
+  assertContract(ids.has(incomingThreatId), 'an incoming threat aimed at an allied entity remains visible');
+  assertContract(ids.has(visibleEndpointBeamId), 'a beam spawn is visible when either exact-medium endpoint is visible');
+  assertContract(!ids.has(hiddenWaterBeamId), 'air sight must not reveal underwater beam endpoints');
+  assertContract(!ids.has(radarOnlyBeamId), 'radar contact must not reveal an ordinary beam');
+  const motionIds = new Set((snapshot?.motionUpdates ?? []).map((entry) => entry.id));
+  assertContract(
+    motionIds.has(incomingMotionProjectile.id),
+    'incoming-threat visibility must continue across stamped in-flight motion rows',
+  );
+  assertContract(
+    !motionIds.has(ordinaryRadarMotionProjectile.id),
+    'radar contact must not reveal an ordinary in-flight motion row',
+  );
+  assertContract(
+    !shouldSendBeamPath(3 as PlayerId, visibility, [
+      { x: 800, y: 280, z: waterZ },
+      { x: 200, y: 200, z: waterZ },
+    ]),
+    'beam-update filtering uses endpoint z rather than a 2D sight circle',
+  );
+}
+
+type BlockedRadarFixture = {
+  sourceX: number;
+  sourceY: number;
+  sourceZ: number;
+  targetX: number;
+  targetY: number;
+  targetZ: number;
+};
+
+/** Finds an actual ridge on the seeded contract map using the mounted sensor
+ * eye, so this protects terrain behavior without depending on hand-authored
+ * terrain coordinates or an approximation of the turret mount height. */
+function findBlockedRadarFixture(
+  world: WorldState,
+  source: Entity,
+): BlockedRadarFixture {
+  const fixture: BlockedRadarFixture = {
+    sourceX: 0,
+    sourceY: 0,
+    sourceZ: 0,
+    targetX: 0,
+    targetY: 0,
+    targetZ: 0,
+  };
+  const mount = { x: 0, y: 0, z: 0 };
+  for (let sy = 256; sy < world.mapHeight - 256; sy += 512) {
+    for (let sx = 256; sx < world.mapWidth - 256; sx += 512) {
+      source.transform.x = sx;
+      source.transform.y = sy;
+      source.transform.z = Math.max(WATER_LEVEL + 40, world.getTerrainBedZ(sx, sy) + 40);
+      let foundMount = false;
+      forEachEntityTurretSensorSource(source, ({ position }) => {
+        if (foundMount) return;
+        mount.x = position.x;
+        mount.y = position.y;
+        mount.z = position.z;
+        foundMount = true;
+      });
+      if (!foundMount) continue;
+      for (let ty = 256; ty < world.mapHeight - 256; ty += 384) {
+        for (let tx = 256; tx < world.mapWidth - 256; tx += 384) {
+          const dx = tx - mount.x;
+          const dy = ty - mount.y;
+          const distanceSq = dx * dx + dy * dy;
+          if (distanceSq < 700 * 700 || distanceSq > 3200 * 3200) continue;
+          const tz = Math.max(WATER_LEVEL + 40, world.getTerrainBedZ(tx, ty) + 40);
+          if (hasFogOfWarLineOfSight(world, mount.x, mount.y, mount.z, tx, ty, tz)) continue;
+          fixture.sourceX = sx;
+          fixture.sourceY = sy;
+          fixture.sourceZ = source.transform.z;
+          fixture.targetX = tx;
+          fixture.targetY = ty;
+          fixture.targetZ = tz;
+          return fixture;
+        }
+      }
+    }
+  }
+  throw new Error('[sensor sharing contract] no terrain-blocked radar pair on the seeded map');
+}
+
+function assertTerrainBlockedRadarParity(): void {
+  const previousConfig = getTerrainRuntimeConfig();
+  const previousTeamCount = getTerrainTeamCount();
+  const previousMap = getAuthoritativeTerrainTileMap();
+  setTerrainRuntimeConfig({
+    ...previousConfig,
+    centerMagnitude: 1400,
+    dividersMagnitude: 1200,
+    perimeterMagnitude: 0,
+    terrainDTerrain: 0,
+    terrainDetail: 1,
+  });
+  setTerrainTeamCount(2);
+  setAuthoritativeTerrainTileMap(buildTerrainTileMap(4096, 4096));
+  try {
+    const world = createSensorWorld();
+    const radar = spawn(world, 200, 200, 1, {
+      sensors: { contactAA: 3500 },
+    });
+    const target = spawn(world, 800, 200, 3);
+    const blocked = findBlockedRadarFixture(world, radar);
+    radar.transform.x = blocked.sourceX;
+    radar.transform.y = blocked.sourceY;
+    radar.transform.z = blocked.sourceZ;
+    target.transform.x = blocked.targetX;
+    target.transform.y = blocked.targetY;
+    target.transform.z = blocked.targetZ;
+    spatialGrid.updateUnit(radar);
+    spatialGrid.updateUnit(target);
+
+    stampCombatTargetingPool(world);
+    const sim = getSimWasm();
+    assertContract(sim !== undefined, 'sim-wasm must be initialized for native radar parity');
+    const targetSlot = target.entitySlotId;
+    assertContract(targetSlot >= 0, 'terrain-blocked radar target must own a native slot');
+    const nativeAirRadarMask = getCombatTargetingStateViews(sim).teamAirRadarMask[targetSlot];
+    assertContract(
+      (nativeAirRadarMask & 1) === 0,
+      'authoritative native air-radar mask must remove a radius hit blocked by terrain',
+    );
+    const visibility = SnapshotVisibility.forRecipient(world, 1 as PlayerId);
+    assertContract(
+      visibility.getEntityContactMediumMask(target) === CONTACT_MEDIUM_NONE,
+      'snapshot visibility must agree that terrain blocks the above-water radar contact',
+    );
+  } finally {
+    setTerrainRuntimeConfig(previousConfig);
+    setTerrainTeamCount(previousTeamCount);
+    setAuthoritativeTerrainTileMap(previousMap);
+  }
+}
+
+function assertSensorPresentationSemantics(): void {
+  const world = createSensorWorld();
+  const sensor = spawn(world, 200, 200, 1);
+  const sensors = sensor.combat!.turrets[0].config.targeting.observation.sensors;
+  sensors.fullSight.aboveWater.aboveWater = 111;
+  sensors.fullSight.aboveWater.underwater = 222;
+  sensors.contactSight.underwater.aboveWater = 333;
+  sensors.contactSight.underwater.underwater = 444;
+  assertContract(
+    getSensorBoundarySourceRadius(sensors, 'fullSight', 'aboveWater', 'aboveWater') === 111 &&
+      getSensorBoundarySourceRadius(sensors, 'fullSight', 'aboveWater', 'underwater') === 222,
+    'sight boundaries preserve independent target-medium cells rather than taking their maximum',
+  );
+  assertContract(
+    getSensorBoundarySourceRadius(sensors, 'contactSight', 'underwater', 'aboveWater') === 333 &&
+      getSensorBoundarySourceRadius(sensors, 'contactSight', 'underwater', 'underwater') === 444,
+    'radar/sonar boundaries preserve independent target-medium cells rather than taking their maximum',
+  );
+
+  const radar = getContactBlipPresentation(CONTACT_MEDIUM_AIR);
+  const sonar = getContactBlipPresentation(CONTACT_MEDIUM_WATER);
+  const dual = getContactBlipPresentation(CONTACT_MEDIUM_BOTH);
+  assertContract(radar.kind === 'radar' && radar.surface === 'terrain', 'air contacts use the radar treatment');
+  assertContract(sonar.kind === 'sonar' && sonar.surface === 'water', 'water contacts use the sonar treatment');
+  assertContract(dual.kind === 'dual' && dual.surface === 'water', 'dual-medium contacts have an explicit treatment');
+  assertContract(
+    requireContactBlipZ(WATER_LEVEL + 700) === WATER_LEVEL + 700,
+    'an airborne radar return renders at its transmitted altitude rather than on terrain',
+  );
+  assertContract(
+    requireContactBlipZ(WATER_LEVEL - 140) === WATER_LEVEL - 140,
+    'a sonar return renders at its transmitted underwater altitude rather than on the water plane',
+  );
+  let missingAltitudeRejected = false;
+  try {
+    requireContactBlipZ(undefined);
+  } catch {
+    missingAltitudeRejected = true;
+  }
+  assertContract(missingAltitudeRejected, 'a contact without z must fail instead of using a surface fallback');
+  let missingContactIdRejected = false;
+  try {
+    requireContactBlipId(undefined);
+  } catch {
+    missingContactIdRejected = true;
+  }
+  assertContract(
+    missingContactIdRejected,
+    'a contact without an id must fail instead of silently losing its previous sample',
+  );
+  assertContract(
+    radar.colorHex !== sonar.colorHex && dual.colorHex !== radar.colorHex && dual.colorHex !== sonar.colorHex,
+    'radar, sonar, and dual contacts are visually distinguishable without identity color',
+  );
+  assertContract(
+    CONTACT_BLIP_GLYPH === ENTITY_LOD_PROXY_GLYPH_CIRCLE && CONTACT_BLIP_RADIUS > 0,
+    'all contact kinds reuse one fixed neutral LOD-proxy glyph and radius',
+  );
+  // Contacts arrive only on presentation snapshots, so the world blip bridges
+  // the gap between them itself. The bridge is a clamped glide: no shimmer, and
+  // nothing invented past the newest sample.
+  const contactSnapshots = new ClientMinimapOverrideStore({ isSelected: () => false });
+  contactSnapshots.applySnapshot(undefined, 1000);
+  const firstSample = contactSnapshots.getSampling(1000).sequence;
+  contactSnapshots.applySnapshot(undefined, 1200);
+  const secondSample = contactSnapshots.getSampling(1200);
+  assertContract(
+    secondSample.sequence !== firstSample && secondSample.alpha === 0,
+    'a new contact snapshot starts a fresh glide from where the blip was last drawn',
+  );
+  const midGlide = contactSnapshots.getSampling(1300).alpha;
+  assertContract(
+    midGlide > 0 && midGlide < 1,
+    'contact blips advance with the render clock instead of stepping at the snapshot rate',
+  );
+  assertContract(
+    contactSnapshots.getSampling(9000).alpha === 1 && contactSnapshots.getSampling(1100).alpha === 0,
+    'contact blips clamp to the newest sample rather than extrapolating past it',
   );
 }
 
@@ -314,4 +779,8 @@ export function runSensorSharingContractTest(): void {
   assertJamming();
   assertCloakAndDetection();
   assertContactTierCarriesNoIdentity();
+  assertContactMediumProvenanceAndWirePaths();
+  assertProjectileMediumVisibility();
+  assertTerrainBlockedRadarParity();
+  assertSensorPresentationSemantics();
 }

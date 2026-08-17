@@ -25,6 +25,7 @@ import type {
 } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { MinimapEntity } from '@/types/ui';
+import type { ContactSnapshotSampling } from './ClientMinimapOverrideStore';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { FootprintBounds, ViewportFootprint } from '../ViewportFootprint';
 import { viewExcludesSphere } from '../render3d/EntityDetailLevel3D';
@@ -261,6 +262,12 @@ export class ClientViewState extends ClientViewStateBase {
 
   getMinimapEntitiesOverride(): readonly MinimapEntity[] | null {
     return this.minimapOverrideStore.getOverride();
+  }
+
+  /** Render-clock progress through the current contact snapshot. Only the
+   *  world blip renderer needs it: the minimap redraws off its own interval. */
+  getMinimapContactSampling(nowMs: number): ContactSnapshotSampling {
+    return this.minimapOverrideStore.getSampling(nowMs);
   }
 
   getUnits(): Entity[] {

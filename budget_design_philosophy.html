@@ -442,14 +442,20 @@
         information; it should not silently keep streaming a full unit under another visual.
       </p>
       <p>
-        A contact is drawn in the world as well as on the minimap, and the world blip follows Beyond
-        All Reason&rsquo;s radar-icon treatment. BAR&rsquo;s coarseness is presentational rather than a
-        truncated wire value: the icon is jittered by a sine of game time with a stable per-contact
-        phase, giving a constant world-space wobble amplitude at any zoom, and drawn at reduced
-        alpha. A moving contact wobbles; a <em>building</em> contact does not, because a structure is
-        stationary and its position really is known once anything has touched it. We copy that:
-        contacts read as uncertain because they visibly shimmer, not because the server lies about
-        where they are.
+        A contact is drawn in the world as well as on the minimap. Beyond All Reason jitters its
+        radar icons by a sine of game time so that contacts read as uncertain; we deliberately do
+        not. A shimmering blip is indistinguishable from a moving one, and a contact that has come
+        to a stop has to read as stopped. Uncertainty is carried by what the blip withholds &mdash;
+        no team colour, no body, no identity &mdash; and by its reduced alpha, never by moving it
+        away from where the return was actually heard.
+      </p>
+      <p>
+        Contacts are the one moving visual that cannot ride the client prediction stepper, because
+        there is no blueprint, velocity, or order set to predict from, so they arrive only on
+        presentation snapshots &mdash; far slower than the render loop. The world blip therefore
+        interpolates between its last two received positions, the same clamped glide the fixed-tick
+        presentation history gives every other moving visual, and never extrapolates past the newest
+        sample: a contact whose returns stop arriving comes to rest exactly where it was last heard.
       </p>
       <p>
         The extension is the medium. A contact carries which sensor lane earned it, and its blip sits
@@ -3974,6 +3980,24 @@
         config flags are gone, its wire codes are gone, and its tests are gone or repointed.
       </p>
 
+      <h3>No legacy fallbacks</h3>
+      <p>
+        Budget Annihilation is served as one current build from one source. The working tree must
+        therefore contain <strong>no legacy compatibility paths</strong>: no old packet or schema
+        decoders, no deprecated argument shapes, no stale config migrations, no previous asset
+        formats, and no runtime branch that substitutes an obsolete representation when the current
+        representation is missing. A version change is atomic across the one producer and its
+        consumers. Once the new contract lands, the previous contract and every test dedicated to it
+        are deleted in the same change.
+      </p>
+      <p>
+        Missing or mismatched current data is an error and must fail loudly at validation, build, or
+        startup time. It must never be guessed, silently defaulted, projected onto an older shape, or
+        accepted because an earlier release once emitted it. Git history is the only archive. This
+        prohibition applies to every layer of the project, including networking, save/state data,
+        configuration, simulation APIs, rendering inputs, tools, and authored content.
+      </p>
+
       <h3>One language per behavior</h3>
       <p>
         The most common shape of this rule in practice is the JavaScript/TypeScript-to-Rust
@@ -4031,6 +4055,7 @@
         <li>If parity proof genuinely needs more than one change, the predecessor lives behind a single named flag, with a single owner, and a recorded removal target. There is no &ldquo;we&rsquo;ll come back to it.&rdquo;</li>
         <li>Do not keep &ldquo;just in case&rdquo; copies of the old implementation in <code>legacy/</code>, <code>old/</code>, <code>_unused/</code>, or sibling files with a <code>.old</code> suffix. Git history is the just-in-case copy.</li>
         <li>Delete the imports, the dead branches, the feature flag, the legacy wire codes, the unused config knobs, and the tests that exercise only the dead path. A half-deleted system is worse than an undeleted one because it looks intentional.</li>
+        <li>Never retain a compatibility decoder or default for an earlier packet, schema, config, save, argument, or asset shape. The sole current contract is required and version mismatches fail loudly.</li>
         <li>If a library is being replaced, remove the dependency from <code>package.json</code>, <code>Cargo.toml</code>, and the lockfiles &mdash; not just the call sites. A still-installed library will be re-adopted by the next person reaching for the easy answer.</li>
         <li>Renaming files is not a migration. If the new path lives next to the old path with a slightly different name and both still compile, no migration has happened &mdash; only confusion has been added.</li>
       </ul>

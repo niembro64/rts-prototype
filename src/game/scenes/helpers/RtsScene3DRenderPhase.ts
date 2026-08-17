@@ -478,7 +478,7 @@ export class RtsScene3DRenderPhase {
     // entity render path: a contact has no blueprint to draw.
     contactBlipRenderer.update(
       this.clientViewState.getMinimapEntitiesOverride(),
-      performance.now() / 1000,
+      this.clientViewState.getMinimapContactSampling(performance.now()),
       this.renderScope,
     );
     const inputManager = this.getInputManager();
