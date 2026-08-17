@@ -359,9 +359,20 @@ kbd {
 
 .selection-info-title-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 6px;
   align-items: baseline;
+}
+
+/* Marks the panel as reading the unit under the cursor rather than the
+   selection, so a player never mistakes a hovered enemy's stats for their
+   own selection's. */
+.selection-info-hover-tag {
+  color: var(--selection-panel-key);
+  font-size: clamp(8px, 1vh, 10px);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  opacity: 0.75;
 }
 
 .selection-info-title {

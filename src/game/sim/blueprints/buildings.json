@@ -1,6 +1,7 @@
 {
   "buildingSolar": {
     "buildingBlueprintId": "buildingSolar",
+    "shortName": "SOLAR",
     "name": "Solar",
     "gridWidth": 5,
     "gridHeight": 5,
@@ -87,6 +88,7 @@
   },
   "buildingWind": {
     "buildingBlueprintId": "buildingWind",
+    "shortName": "WIND",
     "name": "Wind",
     "gridWidth": 2,
     "gridHeight": 2,
@@ -172,6 +174,7 @@
   },
   "buildingExtractor": {
     "buildingBlueprintId": "buildingExtractor",
+    "shortName": "MEX",
     "name": "Extractor",
     "gridWidth": 5,
     "gridHeight": 5,
@@ -256,6 +259,7 @@
   },
   "buildingExtractorT2": {
     "buildingBlueprintId": "buildingExtractorT2",
+    "shortName": "MEX2",
     "name": "Advanced Extractor",
     "gridWidth": 5,
     "gridHeight": 5,
@@ -340,6 +344,7 @@
   },
   "buildingRadar": {
     "buildingBlueprintId": "buildingRadar",
+    "shortName": "RADAR",
     "name": "Radar",
     "gridWidth": 3,
     "gridHeight": 3,
@@ -411,6 +416,7 @@
   },
   "buildingResourceConverter": {
     "buildingBlueprintId": "buildingResourceConverter",
+    "shortName": "CONV",
     "name": "Converter",
     "gridWidth": 3,
     "gridHeight": 3,
@@ -482,6 +488,7 @@
   },
   "buildingSonar": {
     "buildingBlueprintId": "buildingSonar",
+    "shortName": "SONAR",
     "name": "Sonar",
     "gridWidth": 3,
     "gridHeight": 3,
@@ -550,6 +557,7 @@
   },
   "towerFabricator": {
     "buildingBlueprintId": "towerFabricator",
+    "shortName": "FAB",
     "name": "Fabricator",
     "gridWidth": 12,
     "gridHeight": 12,
@@ -674,6 +682,7 @@
   },
   "towerBeamMega": {
     "buildingBlueprintId": "towerBeamMega",
+    "shortName": "BEAM",
     "name": "Beam Tower",
     "gridWidth": 3,
     "gridHeight": 3,
@@ -753,6 +762,7 @@
   },
   "towerCannon": {
     "buildingBlueprintId": "towerCannon",
+    "shortName": "CANNON",
     "name": "Cannon Tower",
     "gridWidth": 4,
     "gridHeight": 4,
@@ -833,6 +843,7 @@
   },
   "towerAntiAir": {
     "buildingBlueprintId": "towerAntiAir",
+    "shortName": "AA",
     "name": "Anti-Air Tower",
     "gridWidth": 3,
     "gridHeight": 3,
@@ -920,6 +931,7 @@
   },
   "towerTorpedo": {
     "buildingBlueprintId": "towerTorpedo",
+    "shortName": "TORP",
     "name": "Torpedo Tower",
     "gridWidth": 3,
     "gridHeight": 3,
@@ -999,7 +1011,8 @@
   },
   "buildingShieldTargetingTech": {
     "buildingBlueprintId": "buildingShieldTargetingTech",
-    "name": "Shield Targeting Research Lab",
+    "shortName": "S-DET",
+    "name": "Shield Detection Lab",
     "gridWidth": 12,
     "gridHeight": 12,
     "footprintMask": [
@@ -1076,7 +1089,8 @@
   },
   "buildingShieldTech": {
     "buildingBlueprintId": "buildingShieldTech",
-    "name": "Shield Research Lab",
+    "shortName": "S-TECH",
+    "name": "Shield Tech Lab",
     "gridWidth": 12,
     "gridHeight": 12,
     "footprintMask": [
@@ -1153,7 +1167,8 @@
   },
   "buildingPrecisionTargetingTech": {
     "buildingBlueprintId": "buildingPrecisionTargetingTech",
-    "name": "Precision Targeting Research Lab",
+    "shortName": "PRECIS",
+    "name": "Precision Targeting Lab",
     "gridWidth": 12,
     "gridHeight": 12,
     "footprintMask": [

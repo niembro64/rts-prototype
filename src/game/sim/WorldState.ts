@@ -1034,14 +1034,30 @@ export class WorldState {
     return this.cache.getBuildingsByPlayer(playerId);
   }
 
-  /** True while the player owns at least one COMPLETED, alive, and OPEN
-   *  building of the given blueprint. Derived state: recomputed from the
-   *  per-player building cache on every read so completion, destruction,
-   *  capture, and ON/OFF toggling all take effect the same tick without
-   *  extra bookkeeping. The open requirement follows the powered-channel
-   *  rule (BAR's on/offable Targeting Facility): a fortified or
-   *  switched-off building grants nothing; buildings without an
-   *  active-state mechanic count whenever completed. */
+  /** True while the player's ALLY TEAM owns at least one COMPLETED, alive,
+   *  and OPEN building of the given blueprint.
+   *
+   *  Team-wide, like radar and sight: a tech structure is an installation the
+   *  side runs, not a private one, and an ally standing next to your Shield
+   *  Detection Lab can obviously see what it sees. Derived state: recomputed
+   *  from the per-player building caches on every read, so completion,
+   *  destruction, capture, and ON/OFF toggling all take effect the same tick
+   *  without extra bookkeeping. The open requirement follows the powered-
+   *  channel rule (BAR's on/offable Targeting Facility): a fortified or
+   *  switched-off building grants nothing; buildings without an active-state
+   *  mechanic count whenever completed. */
+  teamHasCompletedBuilding(
+    playerId: PlayerId,
+    buildingBlueprintId: BuildingBlueprintId,
+  ): boolean {
+    if (this.playerHasCompletedBuilding(playerId, buildingBlueprintId)) return true;
+    for (const allyId of this.getAllies(playerId)) {
+      if (this.playerHasCompletedBuilding(allyId, buildingBlueprintId)) return true;
+    }
+    return false;
+  }
+
+  /** The single-seat half of teamHasCompletedBuilding. */
   playerHasCompletedBuilding(
     playerId: PlayerId,
     buildingBlueprintId: BuildingBlueprintId,
@@ -1065,27 +1081,29 @@ export class WorldState {
    *  completed Shield-Aware Targeting Tech building. Their turrets then
    *  reject locks whose line of sight crosses active force material. */
   playerHasShieldAwareTargeting(playerId: PlayerId): boolean {
-    return this.playerHasCompletedBuilding(playerId, 'buildingShieldTargetingTech');
+    return this.teamHasCompletedBuilding(playerId, 'buildingShieldTargetingTech');
   }
 
   /** The shield production unlock: granted while the player owns a
    *  completed Shield Tech building. Gates producing/placing blueprints
    *  that mount shield-emitting turrets. */
   playerHasShieldTech(playerId: PlayerId): boolean {
-    return this.playerHasCompletedBuilding(playerId, 'buildingShieldTech');
+    return this.teamHasCompletedBuilding(playerId, 'buildingShieldTech');
   }
 
-  /** Bitmask of players holding a completed building of the given
+  /** Bitmask of players whose TEAM holds a completed building of the given
    *  blueprint, using the Rust targeting pool's player-bit convention
    *  (`combat_targeting_player_bit`): bit `playerId - 1`; ids outside
-   *  [1, 31] carry no bit. */
+   *  [1, 31] carry no bit. Every seat on a side that owns one carries the
+   *  bit, so the kernels need no notion of alliance to honour a team-wide
+   *  installation. */
   getCompletedBuildingPlayerMask(buildingBlueprintId: BuildingBlueprintId): number {
     let mask = 0;
     const playerIds = this.teamRoster.playerIds;
     for (let i = 0; i < playerIds.length; i++) {
       const playerId = playerIds[i];
       if (playerId < 1 || playerId > 31) continue;
-      if (this.playerHasCompletedBuilding(playerId, buildingBlueprintId)) {
+      if (this.teamHasCompletedBuilding(playerId, buildingBlueprintId)) {
         mask |= 1 << (playerId - 1);
       }
     }
@@ -1109,7 +1127,7 @@ export class WorldState {
    *  pulse on/off variance — is then treated as zero for that player's
    *  turrets, so they fire exactly on their authored line and cadence. */
   playerHasPrecisionTargeting(playerId: PlayerId): boolean {
-    return this.playerHasCompletedBuilding(playerId, 'buildingPrecisionTargetingTech');
+    return this.teamHasCompletedBuilding(playerId, 'buildingPrecisionTargetingTech');
   }
 
   /** Per-player precision-fire bits. The firing paths resolve this ONCE per

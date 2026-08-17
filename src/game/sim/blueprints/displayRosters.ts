@@ -18,6 +18,7 @@ type UnitRosterDisplay = {
 type BuildingRosterDisplay = {
   buildingBlueprintId: BuildingBlueprintId;
   label: string;
+  shortName: string;
   key: string;
   cost: number;
   energyCost: number;
@@ -99,7 +100,12 @@ export function getUnitRosterDisplay(unitBlueprintId: string): UnitRosterDisplay
 }
 
 function buildStructureRosterDisplay(
-  configs: readonly { buildingBlueprintId: BuildingBlueprintId; name: string; cost: ResourceCost }[],
+  configs: readonly {
+    buildingBlueprintId: BuildingBlueprintId;
+    name: string;
+    shortName: string;
+    cost: ResourceCost;
+  }[],
   keyOffset: number,
 ): BuildingRosterDisplay[] {
   const display = new Array<BuildingRosterDisplay>(configs.length);
@@ -108,6 +114,7 @@ function buildStructureRosterDisplay(
     display[i] = {
       buildingBlueprintId: bp.buildingBlueprintId,
       label: bp.name,
+      shortName: bp.shortName,
       key: `${keyOffset + i + 1}`,
       cost: scaledTotalCost(bp.cost),
       energyCost: scaledCostPart(bp.cost.energy),
@@ -163,11 +170,10 @@ function buildStructureRosterDisplayById(
 
 const buildingRosterDisplayById = buildStructureRosterDisplayById(buildingRosterDisplay);
 
-function structureShortName(label: string): string {
-  return label.replace(/\s*Tower$/i, '').trim().toUpperCase();
-}
-
+/** The authored abbreviation. Deriving one by stripping words off the label
+ *  produced "SHIELD DETECTION LAB" for a slot sized for six characters, so the
+ *  blueprint names its own short form the way units already do. */
 export function getBuildingDisplayShortName(buildingBlueprintId: string): string {
   const row = buildingRosterDisplayById.get(buildingBlueprintId);
-  return row !== undefined ? structureShortName(row.label) : fallbackShortName(buildingBlueprintId);
+  return row !== undefined ? row.shortName : fallbackShortName(buildingBlueprintId);
 }

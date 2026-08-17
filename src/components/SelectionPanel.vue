@@ -1162,10 +1162,25 @@ function selectedEntityImageSrc(): string | null {
   return getCachedEntityPreviewImage('panel', kind, info.blueprintId as LoadingEntityBlueprintId);
 }
 
+/** The info line is one row of a fixed-width panel, so a long authored name
+ *  falls back to the blueprint's own abbreviation rather than being clipped
+ *  mid-word. */
+const SELECTION_INFO_TITLE_MAX_CHARS = 22;
+const selectedEntityTitle = computed(() => {
+  const info = props.selection.selectedEntityInfo;
+  if (info === null) return '';
+  return info.label.length > SELECTION_INFO_TITLE_MAX_CHARS ? info.shortLabel : info.label;
+});
+
+/** Detail rows the stat block above does not already carry. */
+const SELECTION_INFO_STAT_ROW_BUDGET = 8;
 const selectedEntityDetailRows = computed(() =>
   props.selection.details
     .filter((detail) => detail.label !== 'Name' && detail.label !== 'HP')
-    .slice(0, 8),
+    .slice(0, Math.max(
+      0,
+      SELECTION_INFO_STAT_ROW_BUDGET - (props.selection.selectedEntityInfo?.stats.length ?? 0),
+    )),
 );
 
 const selectedEntityHealthLabel = computed(() => {
@@ -1520,12 +1535,15 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           alt=""
         >
         <div v-else class="selection-info-fallback">
-          {{ selection.selectedEntityInfo.label.slice(0, 3).toUpperCase() }}
+          {{ selection.selectedEntityInfo.shortLabel }}
         </div>
       </div>
       <div class="selection-info-main">
         <div class="selection-info-title-row">
-          <div class="selection-info-title">{{ selection.selectedEntityInfo.label }}</div>
+          <div class="selection-info-title">{{ selectedEntityTitle }}</div>
+          <div v-if="selection.selectedEntityInfo.hovered" class="selection-info-hover-tag">
+            HOVER
+          </div>
           <div v-if="selection.selectedEntityInfo.count > 1" class="selection-info-count">
             x{{ selection.selectedEntityInfo.count }}
           </div>
@@ -1548,6 +1566,14 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           <span>Build</span>
         </div>
         <div class="selection-info-details">
+          <div
+            v-for="stat in selection.selectedEntityInfo.stats"
+            :key="`stat-${stat.label}`"
+            class="selection-info-detail"
+          >
+            <span>{{ stat.label }}</span>
+            <strong>{{ stat.value }}</strong>
+          </div>
           <div
             v-for="detail in selectedEntityDetailRows"
             :key="detail.label"

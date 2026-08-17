@@ -47,11 +47,26 @@ export type SelectedEntityInfo = {
   blueprintKind: SelectionEntityType | null;
   blueprintId: string | null;
   label: string;
+  /** Authored abbreviation. The panel falls back to it when the full label
+   *  does not fit its line. */
+  shortLabel: string;
   subtitle: string;
   count: number;
   hp: number | null;
   maxHp: number | null;
   buildProgress: number | null;
+  /** True while this describes the entity under the cursor rather than the
+   *  current selection. BAR reads the hovered unit first and keeps the
+   *  selection untouched; the panel marks which one it is showing. */
+  hovered: boolean;
+  /** Free-form BAR-style stat rows for a single entity: cost, speed, weapon
+   *  range and damage, sight. Empty for a multi-entity selection. */
+  stats: readonly SelectedEntityStat[];
+};
+
+export type SelectedEntityStat = {
+  label: string;
+  value: string;
 };
 
 export type SelectionInfo = {
@@ -317,9 +332,9 @@ export type MinimapEntity = {
   /** Contact rows only: the entity id behind the blip. Used purely as a stable
    *  wobble phase seed for the world blip, never for identification. */
   contactId?: number;
-  /** Contact rows only: true when the body is mostly submerged, so the blip
-   *  belongs at the water line rather than on the ground. */
-  contactUnderwater?: boolean;
+  /** Contact rows only: bit 0 is an air-radar return and bit 1 is a
+   *  water-sonar return. Both may be set for a straddling body. */
+  contactMediumMask?: number;
 };
 
 export type CameraViewBasis = {
@@ -375,6 +390,13 @@ export type { LobbyPlayer } from './network';
 
 // UI entity source
 export type UIEntitySource = {
+  /** The entity under the cursor, if any.
+   *
+   *  BAR shows the HOVERED unit in its info panel and only falls back to the
+   *  selection when nothing is under the cursor, so a player can read any
+   *  unit on the field — including an enemy's — without changing what they
+   *  have selected. Optional so harness fixtures need not supply it. */
+  getHoveredEntity?(): Entity | null;
   getUnits(): Entity[];
   getBuildings(): Entity[];
   getUnitsAndBuildings(): Entity[];

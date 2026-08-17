@@ -1122,6 +1122,8 @@ export type EntityHold = {
 export type BuildingConfig = {
   buildingBlueprintId: BuildingBlueprintId;
   name: string;
+  /** Authored abbreviation for surfaces with no room for the full name. */
+  shortName: string;
   gridWidth: number;
   gridHeight: number;
   gridDepth: number;

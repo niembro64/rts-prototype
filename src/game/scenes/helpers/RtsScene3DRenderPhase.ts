@@ -163,6 +163,7 @@ type RenderPhaseEntityListOptions = {
   includeBodyHud: boolean;
   includeBodyNames: boolean;
   includeShields: boolean;
+  shieldVisibilityTeamMask: number;
   includeEntityShadows: boolean;
   includeGroundPrints: boolean;
   hoveredEntity: Entity | null;
@@ -496,6 +497,7 @@ export class RtsScene3DRenderPhase {
       includeBodyHud: bodyHudEnabled,
       includeBodyNames: bodyNamesEnabled,
       includeShields: turretShieldSpheresEnabled && forceFieldsVisible,
+      shieldVisibilityTeamMask: this.resolveShieldVisibilityTeamMask(),
       includeEntityShadows:
         ENTITY_SHADOW_RENDER_CONFIG.enabled && getEntityShadows(),
       includeGroundPrints: updateEffectsThisFrame,
@@ -785,6 +787,7 @@ export class RtsScene3DRenderPhase {
     includeBodyHud: false,
     includeBodyNames: false,
     includeShields: false,
+    shieldVisibilityTeamMask: 0,
     includeEntityShadows: false,
     includeGroundPrints: false,
     hoveredEntity: null as Entity | null,
@@ -800,6 +803,31 @@ export class RtsScene3DRenderPhase {
     isEntityNameRungVisible: this.isEntityNameRungVisibleRef,
   };
 
+  /** Zero unless this client's side has NO switched-ON Shield Detection Lab,
+   *  in which case only its own team's shields may be drawn.
+   *
+   *  The host already publishes which seats hold the detection channel, and
+   *  the vision mask already names this client's side, so the rule is a bit
+   *  test rather than a second notion of alliance on the client. A snapshot
+   *  from a host that predates the field leaves the mask undefined, and that
+   *  falls back to showing everything rather than blinding the player. */
+  private resolveShieldVisibilityTeamMask(): number {
+    const detectionMask = this.clientViewState.getServerMeta()?.shieldAwareTargetingPlayerMask;
+    if (detectionMask === undefined) return 0;
+    const localPlayerId = this.getLocalPlayerId();
+    const localBit = localPlayerId >= 1 && localPlayerId <= 31
+      ? 1 << (localPlayerId - 1)
+      : 0;
+    if ((detectionMask & localBit) !== 0) return 0;
+    let teamMask = 0;
+    for (const playerId of this.clientViewState.getVisionPlayerIds(localPlayerId)) {
+      if (playerId >= 1 && playerId <= 31) teamMask |= 1 << (playerId - 1);
+    }
+    // A team mask that resolved to nothing would hide every shield including
+    // this client's own; treat that as "no restriction" instead.
+    return teamMask === 0 ? 0 : teamMask;
+  }
+
   private prepareEntityLists(
     options: RenderPhaseEntityListOptions,
     mode: SelectionHudMode,
@@ -811,6 +839,7 @@ export class RtsScene3DRenderPhase {
     packetOptions.includeBodyHud = options.includeBodyHud;
     packetOptions.includeBodyNames = options.includeBodyNames;
     packetOptions.includeShields = options.includeShields;
+    packetOptions.shieldVisibilityTeamMask = options.shieldVisibilityTeamMask;
     packetOptions.includeEntityShadows = options.includeEntityShadows;
     packetOptions.includeGroundPrints = options.includeGroundPrints;
     packetOptions.hoveredEntity = options.hoveredEntity;

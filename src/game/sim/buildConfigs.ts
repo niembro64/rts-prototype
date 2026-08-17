@@ -16,6 +16,7 @@ function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): Building
   return {
     buildingBlueprintId: bp.buildingBlueprintId,
     name: bp.name,
+    shortName: bp.shortName,
     gridWidth: bp.gridWidth,
     gridHeight: bp.gridHeight,
     gridDepth: bp.gridDepth,

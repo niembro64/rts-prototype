@@ -251,6 +251,7 @@ export class RtsScene3D {
     getEntity: (id: EntityId) => Entity | undefined;
     getSelectedUnits: () => Entity[];
     getSelectedBuildings: () => Entity[];
+    getHoveredEntity: () => Entity | null;
     getBuildingsByPlayer: (playerId: PlayerId) => Entity[];
     getUnitsByPlayer: (playerId: PlayerId) => Entity[];
     arePlayersAllied: (a: PlayerId, b: PlayerId) => boolean;
@@ -438,6 +439,9 @@ export class RtsScene3D {
       getEntity: (id) => this.clientViewState.getEntity(id),
       getSelectedUnits: () => this.selectionSystem.getSelectedUnits(),
       getSelectedBuildings: () => this.selectionSystem.getSelectedBuildings(),
+      // BAR's info panel reads whatever is under the cursor first; the same
+      // raycastEntity-backed hover the smart cursor uses feeds it.
+      getHoveredEntity: () => this.inputManager?.getHoveredEntity() ?? null,
       getBuildingsByPlayer: (pid) => this.clientViewState.getBuildingsByPlayer(pid),
       getUnitsByPlayer: (pid) => this.clientViewState.getUnitsByPlayer(pid),
       arePlayersAllied: (a, b) => this.arePlayersAlliedForInput(a, b),

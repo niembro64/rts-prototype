@@ -1068,6 +1068,27 @@ function assertShieldAwareTargetingUpgradeContract(): void {
   );
   techActiveState.open = true;
   techActiveState.wantOpen = true;
+  // A tech structure is an installation the SIDE runs, like radar or sight: an
+  // ally standing next to the lab can obviously see what it sees, so the
+  // upgrade reaches every seat on the team and no seat off it.
+  assertContract(
+    world.playerHasShieldAwareTargeting(1 as PlayerId),
+    'the owning seat must hold the shield-aware targeting upgrade',
+  );
+  const allyOfOwner = [...world.getAllies(1 as PlayerId)][0];
+  if (allyOfOwner !== undefined) {
+    assertContract(
+      world.playerHasShieldAwareTargeting(allyOfOwner),
+      'an ALLY of the lab owner must hold the upgrade too — it is a team installation',
+    );
+  }
+  for (const playerId of world.teamRoster.playerIds) {
+    if (world.arePlayersAllied(playerId, 1 as PlayerId)) continue;
+    assertContract(
+      !world.playerHasShieldAwareTargeting(playerId),
+      `player ${playerId} is not on the lab owner's side and must not hold the upgrade`,
+    );
+  }
   assertContract(
     world.getShieldAwareTargetingPlayerMask() === 1,
     'reopening the targeting tech building must restore the upgrade the same tick',

@@ -108,6 +108,14 @@ type ClientViewRenderPacketOptions3D = {
   includeBodyHud: boolean;
   includeBodyNames: boolean;
   includeShields: boolean;
+  /** Bitmask of the players whose shields this client may SEE, using the
+   *  `playerId - 1` bit convention. Zero means "no restriction".
+   *
+   *  A side that owns no switched-ON Shield Detection Lab does not know a
+   *  foreign force field is there, and a player who cannot know must not be
+   *  shown it — the same rule fog of war applies to units. Own-team shields are
+   *  always drawn: you know about the ones you are projecting. */
+  shieldVisibilityTeamMask: number;
   includeEntityShadows: boolean;
   includeGroundPrints: boolean;
   hoveredEntity: Entity | null;
@@ -407,7 +415,12 @@ export class ClientViewState extends ClientViewStateBase {
           this.populateBodyNamePacket3D(this.getUnitsAndBuildings(), options, out);
         }
         if (options.includeShields) {
-          this.populateShieldPacket3D(this.getShieldUnits(), renderScope, out);
+          this.populateShieldPacket3D(
+            this.getShieldUnits(),
+            renderScope,
+            out,
+            options.shieldVisibilityTeamMask,
+          );
         }
         if (options.includeEntityShadows) {
           this.populateEntityShadowPacket3D(units, buildings, renderScope, out);
@@ -492,7 +505,12 @@ export class ClientViewState extends ClientViewStateBase {
         // emissions. Gather them independently from the body LOD list so a
         // field survives every distance rung and remains present when its
         // host is just outside the viewport but the barrier overlaps it.
-        this.populateShieldPacket3D(this.getShieldUnits(), renderScope, out);
+        this.populateShieldPacket3D(
+          this.getShieldUnits(),
+          renderScope,
+          out,
+          options.shieldVisibilityTeamMask,
+        );
       }
       if (options.includeEntityShadows) {
         this.populateEntityShadowPacket3D(
@@ -1084,12 +1102,13 @@ export class ClientViewState extends ClientViewStateBase {
     units: readonly Entity[],
     renderScope: ViewportFootprint,
     out: ClientViewRenderEntityPackets3D,
+    shieldVisibilityTeamMask: number,
   ): void {
     for (let i = 0; i < units.length; i++) {
       // Never apply the generic far-emission cutoff here. ShieldRenderPacket3D
       // performs barrier-radius scope culling and ShieldRenderer3D selects a
       // real High/Medium/Low surface for every packet row.
-      this.pushShieldUnit3D(units[i], renderScope, out);
+      this.pushShieldUnit3D(units[i], renderScope, out, -1, shieldVisibilityTeamMask);
     }
   }
 
@@ -1098,7 +1117,13 @@ export class ClientViewState extends ClientViewStateBase {
     renderScope: ViewportFootprint,
     out: ClientViewRenderEntityPackets3D,
     knownSlot = -1,
+    shieldVisibilityTeamMask = 0,
   ): void {
+    if (shieldVisibilityTeamMask !== 0) {
+      const ownerId = entity.ownership?.playerId ?? 0;
+      const ownerBit = ownerId >= 1 && ownerId <= 31 ? 1 << (ownerId - 1) : 0;
+      if ((shieldVisibilityTeamMask & ownerBit) === 0) return;
+    }
     let views = this.renderEntityState.getViews();
     let slot: number | undefined =
       knownSlot >= 0 &&

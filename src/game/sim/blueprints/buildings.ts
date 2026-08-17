@@ -54,6 +54,12 @@ import { validateStationArticulation, validateWorkEmitter } from './stationArtic
 export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   buildingBlueprintId: BuildingBlueprintId;
   name: string;
+  /** Authored abbreviation for surfaces with no room for the full name: the
+   *  selection info panel, build-menu thumb fallbacks, factory preset chips.
+   *  Derived abbreviations used to be built by stripping words off the label,
+   *  which produced things like "SHIELD DETECTION LAB" in a slot sized for
+   *  six characters. */
+  shortName: string;
   gridWidth: number;
   gridHeight: number;
   gridDepth: number;

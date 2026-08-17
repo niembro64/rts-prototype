@@ -25,6 +25,10 @@ import {
 } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import {
+  getBuildingDisplayShortName,
+  getUnitDisplayShortName,
+} from '../../sim/blueprints/displayRosters';
+import {
   getBuildingAuthoredRadarRadius,
   getBuildingAuthoredSonarRadius,
 } from '../../sim/sensorCoverage';
@@ -554,47 +558,91 @@ function selectedEntityTypeLabel(kind: NonNullable<SelectionInfo['selectedEntity
   return 'Unit';
 }
 
+/** BAR's info panel is a stat block, not just a name: cost, speed, weapon
+ *  range and damage, sight. Build the same rows from the blueprint the entity
+ *  actually is. */
+function buildSelectedEntityStats(entity: Entity): SelectedEntityStat[] {
+  const stats: SelectedEntityStat[] = [];
+  const overlay = buildUnitStatsOverlayInfo(entity, 'selection');
+  if (overlay === null) return stats;
+  const push = (label: string, value: string | null): void => {
+    if (value !== null && value !== '') stats.push({ label, value });
+  };
+  const round = (value: number): string => `${Math.round(value)}`;
+  if (overlay.costMetal !== null || overlay.costEnergy !== null) {
+    push('Cost', `${round(overlay.costMetal ?? 0)}m / ${round(overlay.costEnergy ?? 0)}e`);
+  }
+  if (overlay.kind === 'unit') {
+    if (overlay.mass !== null) push('Mass', round(overlay.mass));
+    if (overlay.locomotion !== null) push('Move', overlay.locomotion.type);
+  }
+  const weapons = overlay.weapons ?? [];
+  if (weapons.length > 0) {
+    const primary = weapons[0];
+    push('Weapon', primary.name);
+    if (primary.range > 0) push('Range', round(primary.range));
+    if (primary.dps !== null && primary.dps > 0) push('DPS', round(primary.dps));
+    else if (primary.volleyDamage !== null && primary.volleyDamage > 0) {
+      push('Damage', round(primary.volleyDamage));
+    }
+    if (weapons.length > 1) push('Mounts', `${weapons.length}`);
+  }
+  return stats;
+}
+
 function buildEntitySelectionInfo(
   entity: Entity,
   kind: 'unit' | 'building',
+  hovered: boolean,
 ): SelectionInfo['selectedEntityInfo'] {
+  const stats = buildSelectedEntityStats(entity);
   if (entity.unit !== null) {
     let label = entity.unit.unitBlueprintId;
+    let shortLabel = getUnitDisplayShortName(entity.unit.unitBlueprintId);
     try {
       label = getUnitBlueprint(entity.unit.unitBlueprintId).name;
     } catch {
       // Keep the authored id when a display roster entry is missing.
+      shortLabel = label;
     }
     return {
       kind,
       blueprintKind: 'unit',
       blueprintId: entity.unit.unitBlueprintId,
       label,
+      shortLabel,
       subtitle: selectedEntityTypeLabel(kind),
       count: 1,
       hp: entity.unit.hp,
       maxHp: entity.unit.maxHp,
       buildProgress: entity.buildable === null ? null : getBuildFraction(entity.buildable),
+      hovered,
+      stats,
     };
   }
 
   if (entity.building !== null && entity.buildingBlueprintId !== null) {
     let label: string = entity.buildingBlueprintId;
+    let shortLabel = getBuildingDisplayShortName(entity.buildingBlueprintId);
     try {
       label = getBuildingConfig(entity.buildingBlueprintId).name;
     } catch {
       // Keep the authored id when a display roster entry is missing.
+      shortLabel = label;
     }
     return {
       kind,
       blueprintKind: kind,
       blueprintId: entity.buildingBlueprintId,
       label,
+      shortLabel,
       subtitle: selectedEntityTypeLabel(kind),
       count: 1,
       hp: entity.building.hp,
       maxHp: entity.building.maxHp,
       buildProgress: entity.buildable === null ? null : getBuildFraction(entity.buildable),
+      hovered,
+      stats,
     };
   }
 
@@ -603,23 +651,41 @@ function buildEntitySelectionInfo(
     blueprintKind: null,
     blueprintId: null,
     label: selectedEntityTypeLabel(kind),
+    shortLabel: selectedEntityTypeLabel(kind),
     subtitle: 'Selected entity',
     count: 1,
     hp: null,
     maxHp: null,
     buildProgress: null,
+    hovered,
+    stats,
   };
 }
 
 function buildSelectionEntityInfo(
   selectedUnits: Entity[],
   selectedBuildings: Entity[],
+  hoveredEntity: Entity | null,
 ): SelectionInfo['selectedEntityInfo'] {
+  // Hover wins, the way BAR's does: the panel reads whatever is under the
+  // cursor — any owner, selected or not — and falls back to the selection when
+  // the cursor is over empty ground. Reading a unit never changes what you
+  // have selected.
+  if (hoveredEntity !== null) {
+    if (hoveredEntity.unit !== null) return buildEntitySelectionInfo(hoveredEntity, 'unit', true);
+    if (hoveredEntity.building !== null) {
+      return buildEntitySelectionInfo(hoveredEntity, 'building', true);
+    }
+  }
   const totalSelected = selectedUnits.length + selectedBuildings.length;
   if (totalSelected === 0) return null;
   if (totalSelected === 1) {
-    if (selectedUnits[0] !== undefined) return buildEntitySelectionInfo(selectedUnits[0], 'unit');
-    if (selectedBuildings[0] !== undefined) return buildEntitySelectionInfo(selectedBuildings[0], 'building');
+    if (selectedUnits[0] !== undefined) {
+      return buildEntitySelectionInfo(selectedUnits[0], 'unit', false);
+    }
+    if (selectedBuildings[0] !== undefined) {
+      return buildEntitySelectionInfo(selectedBuildings[0], 'building', false);
+    }
   }
 
   const { hp, maxHp } = sumSelectionHp(selectedUnits, selectedBuildings);
@@ -633,11 +699,14 @@ function buildSelectionEntityInfo(
     blueprintKind: null,
     blueprintId: null,
     label: `${totalSelected} selected`,
+    shortLabel: `x${totalSelected}`,
     subtitle: typeLabels.join(', '),
     count: totalSelected,
     hp: maxHp > 0 ? hp : null,
     maxHp: maxHp > 0 ? maxHp : null,
     buildProgress: null,
+    hovered: false,
+    stats: [],
   };
 }
 
@@ -650,6 +719,8 @@ function writeMinimapEntity(
   color: string,
   isSelected: boolean | undefined,
   radarOnly: boolean | undefined,
+  contactId: number | undefined = undefined,
+  contactMediumMask: number | undefined = undefined,
 ): number {
   let entity = entities[index];
   if (!entity) {
@@ -662,6 +733,8 @@ function writeMinimapEntity(
   entity.color = color;
   entity.isSelected = isSelected;
   entity.radarOnly = radarOnly;
+  entity.contactId = radarOnly ? contactId : undefined;
+  entity.contactMediumMask = radarOnly ? contactMediumMask : undefined;
   return index + 1;
 }
 export type {
@@ -671,7 +744,7 @@ export type {
   
   MinimapData,
 } from '@/types/ui';
-import type { CameraViewBasis, UIEntitySource, SelectionInfo, EconomyInfo, MinimapEntity, MinimapData, UIInputState as InputState } from '@/types/ui';
+import type { CameraViewBasis, UIEntitySource, SelectionInfo, SelectedEntityStat, EconomyInfo, MinimapEntity, MinimapData, UIInputState as InputState } from '@/types/ui';
 
 const DEFAULT_CAMERA_VIEW_BASIS: CameraViewBasis = {
   right: { x: 1, y: 0, z: 0 },
@@ -1093,7 +1166,11 @@ export function buildSelectionInfo(
     hasQueuedOrders,
     queueInsertIndex: inputState?.queueInsertIndex ?? null,
     queueInsertOptions: buildQueueInsertOptions(selectedUnits),
-    selectedEntityInfo: buildSelectionEntityInfo(selectedUnits, selectedBuildings),
+    selectedEntityInfo: buildSelectionEntityInfo(
+      selectedUnits,
+      selectedBuildings,
+      entitySource.getHoveredEntity?.() ?? null,
+    ),
     hasFactory: factory !== undefined,
     factoryHostKind,
     factoryDisplayName,
@@ -1493,6 +1570,8 @@ export function buildMinimapData(
         e.color,
         e.isSelected,
         e.radarOnly,
+        e.contactId,
+        e.contactMediumMask,
       );
     }
   } else {

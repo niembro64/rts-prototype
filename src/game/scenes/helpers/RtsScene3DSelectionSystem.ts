@@ -33,6 +33,11 @@ export class RtsScene3DSelectionSystem {
   private controlGroupSlots: ControlGroupSlotSnapshot[] = createControlGroupSlotSnapshots();
   private selectedEntityCacheDirty = true;
   private selectionInfoDirty = true;
+  /** The hovered entity the last emitted info described. The panel reads hover
+   *  first (BAR-style), so a new entity under the cursor is a real change to
+   *  what it shows — but only when the ENTITY changes, not every frame the
+   *  mouse moves within one. */
+  private lastHoveredEntityId: number | null = null;
   private waypointMode: WaypointType = 'move';
   private buildGridCategory: BarBuildCategoryId | null = null;
   private buildGridPage = 0;
@@ -294,6 +299,11 @@ export class RtsScene3DSelectionSystem {
     onSelectionChange: SelectionChangeHandler,
   ): void {
     this.rebuildEntityCachesIfNeeded();
+    const hoveredEntityId = entitySource.getHoveredEntity?.()?.id ?? null;
+    if (hoveredEntityId !== this.lastHoveredEntityId) {
+      this.lastHoveredEntityId = hoveredEntityId;
+      this.selectionInfoDirty = true;
+    }
     if (!this.selectionInfoDirty) {
       let hasProducingFactory = false;
       for (let i = 0; i < this.selectedBuildings.length; i++) {
