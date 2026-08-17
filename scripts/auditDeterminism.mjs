@@ -43,7 +43,7 @@ const HIGH_RISK_MATH_ALLOWLIST = new Map([
     reason: 'module-load terrain collapse threshold derived from canonical config before terrain bake',
   }],
   ['src/game/sim/types.ts', {
-    count: 3,
+    count: 2,
     reason: 'presentation-only player color conversion; not included in lockstep state hashes',
   }],
 ]);

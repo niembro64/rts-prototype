@@ -46,9 +46,10 @@ const {
   ...canonicalWindConfigJson
 } = windConfigJson;
 
-const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v8';
+const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v9';
 const APP_SOURCE_VERSION = '0.0.1';
 export const SIM_WASM_EXPECTED_VERSION = 'rts-sim-wasm 0.0.1';
+export const BUILD_FINGERPRINT = __BA_BUILD_FINGERPRINT__;
 
 export type CanonicalMatchInitialization = {
   readonly schema: typeof CANONICAL_MATCH_INITIALIZATION_SCHEMA;
@@ -85,6 +86,7 @@ export type CanonicalMatchInitialization = {
   };
   readonly content: {
     readonly appSourceVersion: string;
+    readonly buildFingerprint: string;
     readonly buildMode: string;
     readonly simWasmExpectedVersion: string;
     readonly blueprintHash: string;
@@ -181,6 +183,7 @@ export function buildCanonicalMatchInitialization({
     },
     content: {
       appSourceVersion: APP_SOURCE_VERSION,
+      buildFingerprint: BUILD_FINGERPRINT,
       buildMode: import.meta.env.MODE,
       simWasmExpectedVersion: SIM_WASM_EXPECTED_VERSION,
       blueprintHash: hashCanonicalValue(BLUEPRINT_CONTENT),

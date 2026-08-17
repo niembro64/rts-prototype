@@ -10,7 +10,13 @@ import {
   economyManager,
 } from './economy';
 import { resourceMovementSystem } from './resourceMovement';
-import type { BuildingBlueprintId, Entity, EntityId, PlayerId } from './types';
+import {
+  NO_ENTITY_ID,
+  type BuildingBlueprintId,
+  type Entity,
+  type EntityId,
+  type PlayerId,
+} from './types';
 import { setUnitActions } from './unitActions';
 import { updateArticulatedWorkStations } from './workStationSystem';
 import { WorldState } from './WorldState';
@@ -233,6 +239,22 @@ export function runResourceMovementConformanceContractTest(): void {
       movement.targetEntityId === buildTarget.id &&
       movement.amountPerSecond > 0),
     'realized construction must publish one host-to-target work movement',
+  );
+
+  // Recoil/BAR calls StopBuild as soon as a buildee finishes. A workstation
+  // target is also used as a one-tick auto-assist handoff, so verify that a
+  // completed building cannot turn that handoff into a permanent aim lock.
+  const buildStation = builder.builder?.workStation ?? null;
+  assertContract(
+    buildStation !== null && buildStation.targetEntityId === buildTarget.id,
+    'active construction must point QueryWork at its buildee',
+  );
+  buildTarget.buildable = null;
+  setUnitActions(builder.unit, []);
+  updateArticulatedWorkStations(buildWorld, 100);
+  assertContract(
+    buildStation.targetEntityId === NO_ENTITY_ID,
+    'completed construction must release the QueryWork target instead of latching onto the buildee',
   );
 
   economyManager.reset();

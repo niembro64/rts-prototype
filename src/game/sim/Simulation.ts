@@ -5,7 +5,11 @@ import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { magnitude } from '../math';
 import { executeCommand, SELF_DESTRUCT_COUNTDOWN_TICKS, type CommandContext } from './commandExecution';
 import { distributeEnergy, createEnergyBuffers, resetEnergyBuffers, type EnergyBuffers } from './energyDistribution';
-import { updateArticulatedWorkStations } from './workStationSystem';
+import {
+  releaseBuilderWorkStation,
+  updateArticulatedWorkStations,
+} from './workStationSystem';
+import { syncBuilderActiveBuildTarget } from './builderBuildTarget';
 import { resourceMovementSystem } from './resourceMovement';
 import {
   type SimEvent,
@@ -2304,6 +2308,16 @@ export class Simulation {
 
     const completedAction = unit.actions[0];
 
+    if (
+      completedAction.type === 'build' ||
+      completedAction.type === 'repair' ||
+      completedAction.type === 'reclaim' ||
+      completedAction.type === 'capture' ||
+      completedAction.type === 'resurrect'
+    ) {
+      releaseBuilderWorkStation(this.world, entity);
+    }
+
     if (unit.actions.length === 1 && isMovementAnchorAction(completedAction)) {
       completedAction.movementAnchorSatisfied = true;
       unit.activePath = null;
@@ -2340,6 +2354,11 @@ export class Simulation {
       const patrolStartIndex = unit.actions.findIndex((action) => action.type === 'patrol');
       unit.patrolStartIndex = patrolStartIndex >= 0 ? patrolStartIndex : null;
     }
+
+    // currentBuildTarget is only a render/network mirror of the head action.
+    // Refresh it in the completion tick so the finished buildee cannot survive
+    // in snapshots until the next economy pass.
+    syncBuilderActiveBuildTarget(this.world, entity);
 
     this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
   }

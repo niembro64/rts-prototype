@@ -138,7 +138,7 @@
       "terrain": "terrain-3d"
     },
     "rotate": {
-      "screen": "cursor",
+      "screen": "screen-center",
       "terrain": "terrain-3d"
     },
     "pan": {

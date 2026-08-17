@@ -168,7 +168,12 @@ function assertInitializationHashMismatch(): void {
       liquidSurfaceMode: 'water' as const,
     },
   };
-  const first = hashCanonicalMatchInitialization(buildCanonicalMatchInitialization(base));
+  const firstInitialization = buildCanonicalMatchInitialization(base);
+  assertContract(
+    /^sha256:[0-9a-f]{64}$/.test(firstInitialization.content.buildFingerprint),
+    'canonical initialization must bind the exact JS/WASM build fingerprint',
+  );
+  const first = hashCanonicalMatchInitialization(firstInitialization);
   const second = hashCanonicalMatchInitialization(buildCanonicalMatchInitialization({
     ...base,
       settings: {

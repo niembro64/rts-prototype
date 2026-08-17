@@ -16,6 +16,7 @@ import {
   updateAuthoritativeHostAttachmentKinematics,
 } from './combat/combatUtils';
 import { deterministicMath as DMath } from './deterministicMath';
+import { isBuildInProgress } from './buildableHelpers';
 import { resolveGuardServiceTarget } from './guard';
 import { resolveReclaimTarget } from './reclaim';
 import { getUnitGroundZ } from './unitGeometry';
@@ -117,6 +118,12 @@ function writeEntityTarget(entity: Entity, out: WorkTargetPose): WorkTargetPose 
   return out;
 }
 
+function isAutoWorkTargetStillActive(entity: Entity): boolean {
+  if (isBuildInProgress(entity.buildable)) return true;
+  const hpState = entity.unit ?? entity.building;
+  return hpState !== null && hpState.hp > 0 && hpState.hp < hpState.maxHp;
+}
+
 function resolveWorkTarget(
   world: WorldState,
   host: Entity,
@@ -155,24 +162,37 @@ function resolveWorkTarget(
       }
       return writeEntityTarget(service.target, out);
     }
+    // Only idle/fight/patrol builders participate in the automatic local
+    // assist/repair selectors below. Any other head order is BAR StopBuild:
+    // it must release the prior QueryWork target instead of inheriting it.
+    if (action.type !== 'fight' && action.type !== 'patrol') return null;
   }
 
   // Auto-assist/repair selectors run in the economy pass. They publish their
   // chosen target here, so the station can slew toward it on the next fixed
   // tick without coupling the joint motor to resource-distribution order.
+  // This is a one-tick handoff, not a durable target pointer: retain it only
+  // while the target still needs construction or repair. In particular, a
+  // completed buildee must fall through to StopBuilding/restoration.
   if (station.targetEntityId !== NO_ENTITY_ID) {
-    const reclaim = resolveReclaimTarget(world, station.targetEntityId);
-    if (reclaim !== null) {
-      out.id = reclaim.id;
-      out.x = reclaim.x;
-      out.y = reclaim.y;
-      out.z = reclaim.z;
-      return out;
-    }
     const entity = world.getEntity(station.targetEntityId);
-    if (entity !== undefined) return writeEntityTarget(entity, out);
+    if (entity !== undefined && isAutoWorkTargetStillActive(entity)) {
+      return writeEntityTarget(entity, out);
+    }
   }
   return null;
+}
+
+/** BAR StopBuild parity: sever the active work pointer immediately when a
+ * builder work command completes. The joint keeps its current pose until the
+ * authored restore delay expires, but it no longer tracks the old buildee. */
+export function releaseBuilderWorkStation(world: WorldState, host: Entity): void {
+  const station = host.builder?.workStation ?? null;
+  if (station === null || station.targetEntityId === NO_ENTITY_ID) return;
+  station.targetEntityId = NO_ENTITY_ID;
+  station.aligned = false;
+  station.idleMs = 0;
+  world.markSnapshotDirty(host.id, ENTITY_CHANGED_TURRETS);
 }
 
 function botUpperBodyYaw(host: Entity): number {

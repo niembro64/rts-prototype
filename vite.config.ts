@@ -3,9 +3,41 @@ import vue from '@vitejs/plugin-vue';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
 import { resolve } from 'path';
+import { createHash } from 'node:crypto';
+import { readdirSync, readFileSync } from 'node:fs';
 
 const isTauri = !!process.env.TAURI_ENV_PLATFORM;
 const usePollingWatcher = process.env.RTS_WATCH_POLLING === '1';
+
+function computeBuildFingerprint(): string {
+  const hash = createHash('sha256');
+  const addTree = (relativeDirectory: string): void => {
+    const absoluteDirectory = resolve(__dirname, relativeDirectory);
+    const entries = readdirSync(absoluteDirectory, { withFileTypes: true })
+      .filter((entry) => entry.name !== '.DS_Store')
+      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const entry of entries) {
+      const relativePath = `${relativeDirectory}/${entry.name}`;
+      if (entry.isDirectory()) {
+        addTree(relativePath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      hash.update(relativePath);
+      hash.update('\0');
+      hash.update(readFileSync(resolve(__dirname, relativePath)));
+      hash.update('\0');
+    }
+  };
+
+  // `src` contains the authoritative TypeScript plus the exact generated
+  // WASM bytes imported by the bundle. Dependency resolution can also change
+  // runtime semantics, so bind the lockfile into the same identity.
+  addTree('src');
+  hash.update('package-lock.json\0');
+  hash.update(readFileSync(resolve(__dirname, 'package-lock.json')));
+  return `sha256:${hash.digest('hex')}`;
+}
 
 // SharedArrayBuffer prerequisite for the sim-in-worker roadmap (SCALE-1000):
 // the page must be crossOriginIsolated, which requires these two headers on
@@ -23,6 +55,9 @@ export default defineConfig(({ command }) => {
   return {
     base: isTauri ? '/' : '/budget-annihilation/',
     plugins: [vue(), wasm(), topLevelAwait()],
+    define: {
+      __BA_BUILD_FINGERPRINT__: JSON.stringify(computeBuildFingerprint()),
+    },
     esbuild: isTauriBuild
       ? {
           drop: ['console', 'debugger'],
