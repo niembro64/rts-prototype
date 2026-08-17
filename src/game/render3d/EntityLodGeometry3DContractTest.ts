@@ -201,9 +201,14 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   // structures a player builds one or two of, so the Medium/Low rungs buy
   // silhouette rather than mass-instance throughput. Measured value plus ~5%
   // headroom, so the ceiling still catches FUTURE growth.
-  buildingShieldTargetingTech: { close: 1730, mid: 910, far: 445 },
-  buildingShieldTech: { close: 1260, mid: 630, far: 215 },
-  buildingPrecisionTargetingTech: { close: 1200, mid: 640, far: 260 },
+  // Re-baselined 2026-08-16 again when the labs' spinning bands became real
+  // square-section extruded tori instead of flat RingGeometry discs. A flat
+  // ring is 48 triangles and vanishes to a hairline edge-on; the shared torus
+  // is 224 at close and actually reads as a ring turning in three dimensions,
+  // which is the whole point of a gimbal and a crown halo.
+  buildingShieldTargetingTech: { close: 2100, mid: 1045, far: 500 },
+  buildingShieldTech: { close: 1445, mid: 695, far: 245 },
+  buildingPrecisionTargetingTech: { close: 1615, mid: 790, far: 300 },
 };
 
 /** Full visible unit ceilings: body + locomotion + physical turrets + unique kit/panel art. */

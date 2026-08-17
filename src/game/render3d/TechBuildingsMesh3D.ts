@@ -39,7 +39,7 @@ import {
 } from './BuildingMeshPrimitives3D';
 import {
   createPrimitiveHemisphereGeometry,
-  createPrimitiveRingGeometry,
+  createPrimitiveTorusGeometry,
   getOrCreate,
   getSharedPrimitiveTetrahedronGeometry,
   type PrimitiveGeometryTier,
@@ -307,9 +307,13 @@ function getSpirePetalGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometr
   });
 }
 
+/** The crown halos are real rings of material, not decals: they turn in three
+ *  dimensions above the spire, so a flat RingGeometry vanished to a line edge-on
+ *  every half revolution. This is the repo's shared square-section extruded
+ *  torus, unit major radius, so callers scale it uniformly. */
 function getSpireHaloGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
   return getOrCreate(spireHaloGeomByTier, tier, () =>
-    createPrimitiveRingGeometry('building', tier, 0.84, 1.0));
+    createPrimitiveTorusGeometry('building', tier, 1, 0.08));
 }
 
 /** Flattened dome cap for the experiment pods and research wings, unit
@@ -445,11 +449,11 @@ export function buildShieldTargetingTechMesh(
     halo.position.y = crownY;
     halo.rotation.set(Math.PI / 2 + tilt, index === 0 ? 0.24 : -0.38, 0);
     const radius = minDim * (index === 0 ? 0.16 : 0.225);
-    halo.scale.set(radius, radius, 1);
+    halo.scale.setScalar(radius);
     details.push(detail(halo, index === 0 ? 'min' : 'low', undefined, index === 0 ? undefined : 'tinyTrim'));
     operationalParts.push(createBuildingOperationalPosePart(halo, {
       closedPosition: new THREE.Vector3(0, crownStowY, 0),
-      closedScale: new THREE.Vector3(radius * 0.42, radius * 0.42, 0.55),
+      closedScale: new THREE.Vector3().setScalar(radius * 0.42),
       motion: {
         spinAxis: new THREE.Vector3(0, 1, 0),
         spinRadPerSec: index === 0 ? 0.92 : -0.72,
@@ -624,9 +628,11 @@ function getForgeHornGeometry(
 const HORN_FOOT_SCALE = 3.2;
 const HORN_TIP_SCALE = 0.65;
 
+/** See getSpireHaloGeometry: the containment ring turns under the bubble, so it
+ *  is a square-section torus rather than a flat disc. */
 function getForgeRingGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
   return getOrCreate(forgeRingGeomByTier, tier, () =>
-    createPrimitiveRingGeometry('building', tier, 0.86, 1.0));
+    createPrimitiveTorusGeometry('building', tier, 1, 0.07));
 }
 
 export function buildShieldTechMesh(
@@ -705,15 +711,11 @@ export function buildShieldTechMesh(
   const bubbleRing = new THREE.Mesh(getForgeRingGeometry(tier), techGlowMat);
   bubbleRing.position.y = bubbleY - bubbleRadius * 0.48;
   bubbleRing.rotation.x = Math.PI / 2;
-  bubbleRing.scale.set(bubbleRadius * 1.22, bubbleRadius * 1.22, 1);
+  bubbleRing.scale.setScalar(bubbleRadius * 1.22);
   details.push(detail(bubbleRing, 'min'));
   operationalParts.push(createBuildingOperationalPosePart(bubbleRing, {
     closedPosition: new THREE.Vector3(0, domeTopY * 0.84, 0),
-    closedScale: new THREE.Vector3(
-      bubbleRadius * 0.56,
-      bubbleRadius * 0.56,
-      0.62,
-    ),
+    closedScale: new THREE.Vector3().setScalar(bubbleRadius * 0.56),
     motion: {
       spinAxis: new THREE.Vector3(0, 1, 0),
       spinRadPerSec: 0.84,
@@ -793,11 +795,13 @@ function getPrecisionPrimaryGeometry(tier: PrimitiveGeometryTier): THREE.BufferG
   });
 }
 
-/** One gimbal band. Thin enough to read as a machined ring rather than a
- *  washer, and flat, so three of them nest without z-fighting. */
+/** One gimbal band: the shared square-section extruded torus at unit major
+ *  radius. A gimbal's whole read is three bands turning about three different
+ *  axes, which only works if each band has real thickness — a flat ring
+ *  disappears to a hairline twice per revolution. Callers scale it uniformly. */
 function getPrecisionGimbalGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
   return getOrCreate(precisionGimbalGeomByTier, tier, () =>
-    createPrimitiveRingGeometry('building', tier, 0.93, 1.0));
+    createPrimitiveTorusGeometry('building', tier, 1, 0.035));
 }
 
 type StrutSpec = Readonly<{
@@ -899,11 +903,11 @@ export function buildPrecisionTargetingTechMesh(
     const radius = minDim * (i === 0 ? 0.205 : 0.155);
     band.position.y = gimbalY;
     band.rotation.set(gimbalTilts[i + 1][0], gimbalTilts[i + 1][1], 0);
-    band.scale.set(radius, radius, 1);
+    band.scale.setScalar(radius);
     details.push(detail(band, 'min'));
     operationalParts.push(createBuildingOperationalPosePart(band, {
       closedPosition: new THREE.Vector3(0, stowY, 0),
-      closedScale: new THREE.Vector3(radius * 0.4, radius * 0.4, 0.5),
+      closedScale: new THREE.Vector3().setScalar(radius * 0.4),
       motion: {
         spinAxis: new THREE.Vector3(...gimbalAxes[i + 1]),
         spinRadPerSec: i === 0 ? 1.15 : -0.86,
@@ -944,11 +948,11 @@ export function buildPrecisionTargetingTechMesh(
   const teamRadius = minDim * 0.26;
   teamBand.position.y = gimbalY;
   teamBand.rotation.set(gimbalTilts[0][0], gimbalTilts[0][1], 0);
-  teamBand.scale.set(teamRadius, teamRadius, 1);
+  teamBand.scale.setScalar(teamRadius);
   details.push(teamOrnamentDetail(teamBand, 'precisionGimbalRing'));
   operationalParts.push(createBuildingOperationalPosePart(teamBand, {
     closedPosition: new THREE.Vector3(0, stowY, 0),
-    closedScale: new THREE.Vector3(teamRadius * 0.42, teamRadius * 0.42, 0.5),
+    closedScale: new THREE.Vector3().setScalar(teamRadius * 0.42),
     motion: {
       spinAxis: new THREE.Vector3(...gimbalAxes[0]),
       spinRadPerSec: 0.62,

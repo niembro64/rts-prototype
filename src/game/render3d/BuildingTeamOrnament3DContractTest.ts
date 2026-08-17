@@ -67,11 +67,18 @@ function assertRoundedProfile(
       object.geometry.name !== 'buildingBox',
       `${buildingBlueprintId}/${tier} must not expose visible cubic segments`,
     );
-    const parameters = (object.geometry as THREE.CylinderGeometry).parameters as
-      | { radialSegments?: number }
+    const parameters = object.geometry.parameters as
+      | { radialSegments?: number; tubularSegments?: number; tube?: number }
       | undefined;
+    // A square-section extruded torus is the repo's authored ring shape, and
+    // its `radialSegments` is the deliberate four-point TUBE cross-section
+    // (SQUARE_TORUS_CROSS_SECTION_SEGMENTS) — not a four-sided barrel. Its
+    // round profile is the major path, so judge that one instead.
+    const roundProfileSegments = parameters?.tube !== undefined
+      ? parameters.tubularSegments
+      : parameters?.radialSegments;
     assertContract(
-      parameters?.radialSegments !== 4,
+      roundProfileSegments !== 4,
       `${buildingBlueprintId}/${tier} must not expose four-sided cylindrical foundations`,
     );
   });
