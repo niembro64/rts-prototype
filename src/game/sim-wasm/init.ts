@@ -1492,6 +1492,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
       if (import.meta.env.DEV && shouldRunBootContractTests()) {
         const { runServerBarConfigContractTest } = await import('../../serverBarConfigContractTest');
         runServerBarConfigContractTest();
+        const { runDemoBuildingRosterContractTest } = await import('../../demoBuildingRosterContractTest');
+        runDemoBuildingRosterContractTest();
         const { runDeterministicLockstepBackendContractTest } = await import('../../components/gameCanvasDeterministicLockstepBackendContractTest');
         await runDeterministicLockstepBackendContractTest();
         const { runCommandSanitizerContractTest } = await import('../server/commandSanitizerContractTest');

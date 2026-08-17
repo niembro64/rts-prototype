@@ -205,14 +205,17 @@ void (battleBarConfig.realDefault as string);
 // Legacy `rts-*` keys are migrated lazily into `demo-battle-*` (the
 // original "battle" namespace) by the load helpers below.
 const sk = battleBarConfig.storageKeys;
-// v3 deliberately replays the tech-building roster repair. Some profiles
-// reached v2 with an already-persisted BUILDINGS list that still predated the
-// two tech structures, so the revision short-circuit preserved two empty demo
-// slots forever even though fresh profiles spawned both buildings correctly.
-const CURRENT_DEMO_CONTENT_REVISION = 'tech-buildings-v3';
+// v4 replays the tech-building roster repair for the Precision Targeting
+// Research Lab and installs the ledger below. This is the THIRD time a building
+// added after a profile saved its BUILDINGS roster went missing from the demo:
+// the revision short-circuit means a profile already at the current revision
+// never sees a newly hardcoded id. adoptNewBuildingBlueprints() retires that
+// failure mode, so a building added from here on needs no revision bump.
+const CURRENT_DEMO_CONTENT_REVISION = 'tech-buildings-v4';
 const STORAGE_DEMO_UNITS = sk.demoUnits;
 const STORAGE_DEMO_CONTENT_REVISION = sk.demoContentRevision;
 const STORAGE_DEMO_BUILDINGS = sk.demoBuildings;
+const STORAGE_DEMO_BUILDINGS_KNOWN_IDS = sk.demoBuildingsKnownIds;
 const STORAGE_DEMO_TOWERS = sk.demoTowers;
 const STORAGE_DEMO_CAP = sk.demoCap;
 const STORAGE_REAL_CAP = sk.realCap;
@@ -278,6 +281,70 @@ function ensureBattleMigrations(): void {
   _battleMigrationsRun = true;
   for (const [oldK, newK] of BATTLE_KEY_MIGRATIONS) migrateKey(oldK, newK);
   migrateDemoContent();
+  adoptNewBuildingBlueprints();
+}
+
+/** A building blueprint introduced after this profile last saved its BUILDINGS
+ *  roster defaults ON — the roster is a list of opt-OUTS, and a building nobody
+ *  has ever seen cannot have been opted out of.
+ *
+ *  The ledger is what makes that automatic. It records the blueprint ids the
+ *  stored roster was last written against, so anything in the current
+ *  BUILDING_BLUEPRINT_IDS missing from it is provably new. Before this, the
+ *  same repair was a hand-written id list inside the revision-gated migration,
+ *  which silently does nothing for any profile already at the current revision
+ *  — and that is exactly how the shield labs, and then the precision lab, ended
+ *  up absent from the demo on developer profiles while fresh ones were fine.
+ *
+ *  Runs unconditionally, outside the revision gate. A profile with no ledger
+ *  yet is seeded without adopting anything: migrateDemoContent's revision bump
+ *  owns that one reconciliation, and adopting everything here would silently
+ *  undo deliberate opt-outs.
+ *
+ *  Exported for demoBuildingRosterContractTest, which drives it directly —
+ *  ensureBattleMigrations is a once-per-module-load flag and cannot be replayed
+ *  against seeded storage. */
+export function adoptNewBuildingBlueprints(): void {
+  const storedKnownIds = readPersisted(STORAGE_DEMO_BUILDINGS_KNOWN_IDS);
+  const persistLedger = (): void => {
+    persistJson(STORAGE_DEMO_BUILDINGS_KNOWN_IDS, [...BUILDING_BLUEPRINT_IDS]);
+  };
+  if (storedKnownIds === null) {
+    persistLedger();
+    return;
+  }
+  let knownIds: string[] | null = null;
+  try {
+    knownIds = sanitizeDemoBuildingIds(JSON.parse(storedKnownIds));
+  } catch {
+    // Malformed ledger: reseed it rather than adopt against garbage.
+  }
+  if (knownIds === null) {
+    persistLedger();
+    return;
+  }
+  const known = new Set<string>(knownIds);
+  const introduced = BUILDING_BLUEPRINT_IDS.filter((id) => !known.has(id));
+  persistLedger();
+  if (introduced.length === 0) return;
+
+  const storedRoster = readPersisted(STORAGE_DEMO_BUILDINGS);
+  // No stored roster means the defaults apply, and those already cover every
+  // current blueprint.
+  if (storedRoster === null) return;
+  let roster: string[] | null = null;
+  try {
+    roster = sanitizeDemoBuildingIds(JSON.parse(storedRoster));
+  } catch {
+    return;
+  }
+  if (roster === null) return;
+  const selected = new Set<string>(roster);
+  for (const id of introduced) selected.add(id);
+  persistJson(
+    STORAGE_DEMO_BUILDINGS,
+    BUILDING_BLUEPRINT_IDS.filter((id) => selected.has(id)),
+  );
 }
 
 /** One-time migration for authored demo-content revisions. */
@@ -318,10 +385,13 @@ function migrateDemoContent(): void {
     storedTowerIds ??
     BUILDING_BLUEPRINT_IDS.filter((id) => legacyTowerBlueprintIds.has(id));
   for (const id of selectedLegacyTowers) selected.add(id);
-  // Newly-introduced blueprints default ON in a stored roster, the same
-  // way unitOrca is pushed into stored unit lists below. Without this a
-  // pre-existing roster silently excludes every building added after it
-  // was saved — the demo would never spawn them.
+  // Newly-introduced blueprints default ON in a stored roster, the same way
+  // unitOrca is pushed into stored unit lists below. Without this a
+  // pre-existing roster silently excludes every building added after it was
+  // saved — the demo would never spawn them. Do NOT extend this list for the
+  // next building: adoptNewBuildingBlueprints() handles that automatically and
+  // without a revision bump. These three stay so profiles that never reach the
+  // ledger path still get the repair.
   selected.add('buildingShieldTargetingTech');
   selected.add('buildingShieldTech');
   selected.add('buildingPrecisionTargetingTech');

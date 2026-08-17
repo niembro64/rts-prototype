@@ -40,6 +40,7 @@
     "demoUnits": "demo-battle-units",
     "demoContentRevision": "demo-battle-content-revision",
     "demoBuildings": "demo-battle-buildings",
+    "demoBuildingsKnownIds": "demo-battle-buildings-known-ids",
     "demoTowers": "demo-battle-towers",
     "demoCap": "demo-battle-cap",
     "realCap": "real-battle-cap",
