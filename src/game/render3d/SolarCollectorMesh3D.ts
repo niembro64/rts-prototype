@@ -10,6 +10,8 @@ import type { BuildingDetailMesh, BuildingDetailRole, BuildingShape } from './Bu
 import {
   getActiveBuildingGeometryTier,
   getBuildingCylinderGeometry,
+  makeBox,
+  playerColorDetail,
   teamOrnamentDetail,
 } from './BuildingMeshPrimitives3D';
 import {
@@ -352,7 +354,37 @@ export function buildSolarCollector(
 
   const minDim = Math.min(width, depth);
   const squareTopY = SOLAR_PETAL_CHOP_FRACTION * SOLAR_HEIGHT;
-  const ratePillarBaseY = squareTopY + 2;
+
+  // Crown plinth on the collector's flat top square. The pyramid itself is
+  // material-locked photovoltaic art, so this two-step stack is where the
+  // machine wears its identities: the wide lower plate is the OWNER's body
+  // colour and the narrower plate above it is the ally-team trim, both read
+  // straight down from the overhead camera. The energy pylon then rises out
+  // of the stack instead of straight off the bare panel.
+  const crownWidth = width * SOLAR_CHOP_HALF * 2;
+  const crownDepth = depth * SOLAR_CHOP_HALF * 2;
+  const ownerPlateHeight = Math.max(4, SOLAR_HEIGHT * 0.055);
+  const teamPlateHeight = Math.max(3.2, SOLAR_HEIGHT * 0.045);
+  details.push(playerColorDetail(makeBox(
+    primaryMat,
+    crownWidth * 0.99,
+    ownerPlateHeight,
+    crownDepth * 0.99,
+    0,
+    squareTopY + ownerPlateHeight * 0.5,
+    0,
+  )));
+  details.push(teamOrnamentDetail(makeBox(
+    primaryMat,
+    crownWidth * 0.72,
+    teamPlateHeight,
+    crownDepth * 0.72,
+    0,
+    squareTopY + ownerPlateHeight + teamPlateHeight * 0.5,
+    0,
+  ), 'solarPetalInlay'));
+
+  const ratePillarBaseY = squareTopY + ownerPlateHeight + teamPlateHeight;
   const shortRatePillarHeight = Math.max(10, Math.min(16, SOLAR_HEIGHT - ratePillarBaseY - 4));
   const ratePillarHeight = shortRatePillarHeight * 2;
   const ratePillarRadius = Math.max(3.8, minDim * 0.055);

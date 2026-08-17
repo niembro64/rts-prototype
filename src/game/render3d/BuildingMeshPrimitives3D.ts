@@ -297,6 +297,17 @@ export function teamOrnamentDetail(
   return { mesh, role: 'teamOrnament' };
 }
 
+/** Register an authored piece that carries the OWNER's body colour rather
+ * than the ally-team trim colour. Buildings normally get that from the
+ * `primary` chassis, so this exists for hosts whose primary is material-
+ * locked art (the solar collector's photovoltaic pyramid) and which would
+ * otherwise show no player identity at all. Like the team ornament, it is
+ * recoloured by the renderer on ownership changes and stays visible at
+ * every LOD rung. */
+export function playerColorDetail(mesh: THREE.Mesh): BuildingDetailMesh {
+  return { mesh, role: 'playerColorPlate' };
+}
+
 export function disposeBuildingMeshPrimitives(): void {
   boxGeom.dispose();
   hexCylinderGeom.dispose();

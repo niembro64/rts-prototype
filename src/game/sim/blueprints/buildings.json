@@ -25,7 +25,7 @@
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
     "renderProfile": "buildingSolar",
-    "visualHeight": 52,
+    "visualHeight": 104,
     "anchorProfile": "constantVisualTop",
     "supportSurface": {
       "kind": "boxTop",
@@ -1028,7 +1028,7 @@
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
     "renderProfile": "buildingShieldTargetingTech",
-    "visualHeight": 150,
+    "visualHeight": 220,
     "anchorProfile": "constantVisualTop",
     "supportSurface": {
       "kind": "none"
@@ -1105,7 +1105,7 @@
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
     "renderProfile": "buildingShieldTech",
-    "visualHeight": 120,
+    "visualHeight": 190,
     "anchorProfile": "constantVisualTop",
     "supportSurface": {
       "kind": "none"

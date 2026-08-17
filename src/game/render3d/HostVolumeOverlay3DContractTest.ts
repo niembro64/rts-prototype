@@ -180,8 +180,15 @@ export function runHostVolumeOverlay3DContractTest(): void {
       'SEL box centers on the drawn body, not on the footprint diagonal',
     );
     assertContract(
-      solarSel.scale.y < solarBuilding.width,
-      'SEL box must be shorter than the footprint is wide — a flat panel is flat',
+      solarSel.scale.y >= solarVisualHeight && solarSel.scale.y <= solarVisualHeight * 1.15,
+      'SEL box height tracks the drawn body height (plus its authored pick padding), '
+        + `got ${solarSel.scale.y} for a ${solarVisualHeight}-tall body`,
+    );
+    assertContract(
+      solarSel.scale.y < Math.hypot(solarBuilding.width, solarBuilding.height),
+      'SEL box must be shorter than the footprint DIAGONAL — the pinned bug was a '
+        + 'selection sphere sized off that diagonal, which picked the collector from '
+        + 'well above its roof no matter how tall the drawn body actually is',
     );
 
     // The reported bug, pinned as behavior: looking across at a flat

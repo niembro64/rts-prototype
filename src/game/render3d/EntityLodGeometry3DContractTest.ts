@@ -195,8 +195,14 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   towerCannon: { close: 1000, mid: 600, far: 320 },
   towerAntiAir: { close: 1200, mid: 750, far: 440 },
   towerTorpedo: { close: 1100, mid: 650, far: 360 },
-  buildingShieldTargetingTech: { close: 1800, mid: 850, far: 320 },
-  buildingShieldTech: { close: 1500, mid: 800, far: 320 },
+  // Re-baselined 2026-08-16 when the two shield labs got their curve
+  // sculpture back (twisted spire + helical ribbons; S-curve dome + nautilus
+  // shells + horns) on top of taller, bulkier massing. These are the only two
+  // structures a player builds one or two of, so the Medium/Low rungs buy
+  // silhouette rather than mass-instance throughput. Measured value plus ~5%
+  // headroom, so the ceiling still catches FUTURE growth.
+  buildingShieldTargetingTech: { close: 1830, mid: 1010, far: 545 },
+  buildingShieldTech: { close: 1550, mid: 785, far: 370 },
 };
 
 /** Full visible unit ceilings: body + locomotion + physical turrets + unique kit/panel art. */

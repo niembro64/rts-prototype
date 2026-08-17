@@ -103,6 +103,7 @@ export type BuildingDetailRole =
   | 'solarLeaf'
   | 'solarPanel'
   | 'teamOrnament'
+  | 'playerColorPlate'
   | 'windRig'
   | 'extractorRotor'
   | 'radarRig'

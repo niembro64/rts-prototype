@@ -117,7 +117,7 @@ function buildingDetailVisibleAtLevel(
     return true;
   }
   const tower = isTowerShapeType(shapeType);
-  if (detailMesh.role === 'teamOrnament') return true;
+  if (detailMesh.role === 'teamOrnament' || detailMesh.role === 'playerColorPlate') return true;
   if (detailMesh.role === 'tinyTrim') {
     return visualFeatureVisibleAtDetail(
       tower ? 'tower' : 'building',
@@ -321,6 +321,12 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
   const teamOrnamentMat = getTeamOrnamentMat(ownerId);
   for (const ornament of buildingTeamOrnaments) ornament.material = teamOrnamentMat;
 
+  const buildingPlayerColorMeshes = visibleDetails
+    .filter((detailMesh) => detailMesh.role === 'playerColorPlate')
+    .map((detailMesh) => detailMesh.mesh);
+  const playerColorMat = getPrimaryMat(ownerId);
+  for (const plate of buildingPlayerColorMeshes) plate.material = playerColorMat;
+
   world.add(group);
 
   return {
@@ -334,6 +340,7 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     geometryKey,
     buildingDetails: visibleDetails,
     buildingTeamOrnaments,
+    buildingPlayerColorMeshes,
     windRig: visualFeatureVisibleAtDetail('building', 'largeAnimation', detailLevel, 0.54)
       ? shape.windRig
       : undefined,
@@ -1147,9 +1154,14 @@ export class BuildingEntityRenderer3D {
     detailsReady: boolean,
   ): void {
     setObjectVisibleIfChanged(mesh.group, true);
-    if (!mesh.buildingPrimaryMaterialLocked) {
+    if (!mesh.buildingPrimaryMaterialLocked || mesh.buildingPlayerColorMeshes !== undefined) {
       const primaryMat = this.getPrimaryMat(ownerId);
-      for (const chassisMesh of mesh.chassisMeshes) chassisMesh.material = primaryMat;
+      if (!mesh.buildingPrimaryMaterialLocked) {
+        for (const chassisMesh of mesh.chassisMeshes) chassisMesh.material = primaryMat;
+      }
+      // Hosts whose primary is material-locked art carry owner identity on
+      // authored plates instead; they follow the same ownership updates.
+      for (const plate of mesh.buildingPlayerColorMeshes ?? []) plate.material = primaryMat;
     }
     if (mesh.buildingTeamOrnaments && mesh.buildingTeamOrnaments.length > 0) {
       const teamMat = this.getTeamOrnamentMat(ownerId);

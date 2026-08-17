@@ -151,6 +151,9 @@ export type EntityMesh = {
   buildingTeamOrnaments?: THREE.Mesh[];
   /** Last ally-team colour applied to the authored building ornaments. */
   buildingTeamOrnamentColorHex?: number;
+  /** Authored pieces that carry the OWNER's body colour. Used by hosts whose
+   * primary chassis is material-locked art and therefore cannot. */
+  buildingPlayerColorMeshes?: THREE.Mesh[];
   windRig?: WindTurbineRig;
   extractorRig?: ExtractorRig;
   solarRig?: SolarRig;
