@@ -59,14 +59,17 @@ export function runBuildingFootprintContractTest(): void {
 
   const solarRows = BUILDING_BLUEPRINTS.buildingSolar.footprintMask;
   assertContract(
-    solarRows.join('/') === '...+.../..###../.#####./+#####+/.#####./..###../...+...',
-    'solar must reserve the authored 7x7 diamond around its 5x5 physical footprint',
+    solarRows.join('/') ===
+      '.....+...../....+++..../...+++++.../..++###++../.++#####++./+++#####+++/.++#####++./..++###++../...+++++.../....+++..../.....+.....',
+    'solar must reserve the authored 11x11 diamond, extending two cells beyond every side of its prior footprint',
   );
   const solar = getBuildingConfig('buildingSolar').placementFootprint;
   assertContract(
-    solar.cells.length === 25 &&
-    solar.cells.filter((cell) => cell.kind === 'structure').length === 21,
-    'solar diamond must contain 21 structural cells and 4 open-panel tip clearance cells',
+    solar.gridWidth === 11 && solar.gridHeight === 11 &&
+      solar.cells.length === 61 &&
+      solar.cells.filter((cell) => cell.kind === 'structure').length === 21 &&
+      solar.cells.filter((cell) => cell.kind === 'clearance').length === 40,
+    'solar diamond must keep 21 structural cells and add a 40-cell construction-clearance perimeter',
   );
 
   const fabricator = getBuildingConfig('towerFabricator').placementFootprint;
@@ -96,11 +99,11 @@ export function runBuildingFootprintContractTest(): void {
   );
   assertContract(grid.getCell(10, 10) === undefined, 'empty diamond corners must remain buildable');
   assertContract(
-    grid.getCell(13, 10)?.blocksMovement === false,
-    'solar panel tip must reserve construction without blocking locomotion',
+    grid.getCell(15, 10)?.blocksMovement === false,
+    'outer solar clearance must reserve construction without blocking locomotion',
   );
   assertContract(
-    grid.getCell(13, 13)?.blocksMovement === true,
+    grid.getCell(15, 15)?.blocksMovement === true,
     'solar structural core must block grounded locomotion',
   );
   assertContract(

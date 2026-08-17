@@ -133,7 +133,6 @@ export function bootstrapRtsScene3DRenderers(
   const metalDepositRenderer = new MetalDepositRenderer3D(
     threeApp.world,
     metalDeposits,
-    terrainTileRenderer.getBuildGridOverlayUniforms(),
     terrainTileRenderer.getPathfindingHierarchyOverlayUniforms(),
     worldShade,
   );
@@ -227,7 +226,6 @@ export function bootstrapRtsScene3DRenderers(
     threeApp.world,
     overlayLineSystem,
     (x, y) => getTerrainMeshHeight(x, y, mapWidth, mapHeight),
-    metalDeposits,
   );
   const sprayRenderer = new SprayRenderer3D(threeApp.world);
   const pylonTubeFlowRenderer = new PylonTubeFlowRenderer(threeApp.world);

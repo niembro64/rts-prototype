@@ -1,5 +1,6 @@
-// WaterRenderer3D — transparent water surface at WATER_LEVEL with an
-// open-bottom perimeter curtain in floating-square modes.
+// WaterRenderer3D — transparent water surface at WATER_LEVEL with four
+// independently sorted open-bottom perimeter curtains in floating-square
+// modes.
 //
 // In infinity mode water is one large horizontal plane. The submerged land
 // that makes CIRCLE perimeter mode continuous is emitted by
@@ -158,8 +159,11 @@ function pushCurtainStrip(
     const row = base + r * cols;
     const next = row + cols;
     for (let i = 0; i < cols - 1; i++) {
-      indices.push(row + i, row + i + 1, next + i + 1);
-      indices.push(row + i, next + i + 1, next + i);
+      // edgePoints are authored clockwise around the water box. Reverse the
+      // original inward winding so gl_FrontFacing agrees with the explicit
+      // outward normal on all four curtains.
+      indices.push(row + i, next + i + 1, row + i + 1);
+      indices.push(row + i, next + i, next + i + 1);
     }
   }
 }
@@ -167,7 +171,16 @@ function pushCurtainStrip(
 export class WaterRenderer3D {
   private waterMesh: THREE.Mesh;
   private waterGeometry: THREE.BufferGeometry;
+  /** Four independent transparent objects so Three.js can sort the world-box
+   *  faces back-to-front. Keeping them in the surface mesh made triangle
+   *  insertion order decide which opposite face won the depth test. */
+  private waterCurtains: Array<{
+    readonly direction: 'north' | 'east' | 'south' | 'west';
+    readonly mesh: THREE.Mesh;
+    readonly geometry: THREE.BufferGeometry;
+  }> = [];
   private waterMaterial: THREE.MeshBasicMaterial;
+  private waterCurtainMaterial: THREE.MeshBasicMaterial;
   private waterTriangleLines: THREE.LineSegments;
   private waterTriangleGeometry: THREE.BufferGeometry;
   private waterTriangleMaterial: THREE.LineBasicMaterial;
@@ -205,18 +218,49 @@ export class WaterRenderer3D {
       polygonOffsetUnits: WATER_DEPTH_OFFSET_UNITS,
       side: THREE.DoubleSide,
     });
+    // A consistently wound plane does not need Three's automatic transparent
+    // BackSide + FrontSide double draw. One uncullled pass remains visible
+    // above and below water without letting driver-specific depth rounding
+    // differ between two passes over the same triangles.
+    this.waterMaterial.forceSinglePass = true;
+    this.waterCurtainMaterial = this.waterMaterial.clone();
+    this.waterCurtainMaterial.forceSinglePass = true;
+    // Only the horizontal gameplay water surface owns water occlusion. These
+    // render-only outer panels contain no pickable/gameplay surface and have
+    // nothing gameplay-relevant behind them, so they must not compete in the
+    // depth buffer with the inset terrain slab or an opposite curtain.
+    this.waterCurtainMaterial.depthWrite = false;
+    // Polygon offset exists solely to settle the horizontal shoreline against
+    // terrain. The curtains sit outside the terrain slab and share only an
+    // edge with the surface, so biasing their depth is unnecessary. Keeping
+    // the driver-defined bias on those faces was also the remaining platform-
+    // sensitive path in the reported Windows/NVIDIA +X/+Z sparkle.
+    this.waterCurtainMaterial.polygonOffset = false;
+    this.waterCurtainMaterial.polygonOffsetFactor = 0;
+    this.waterCurtainMaterial.polygonOffsetUnits = 0;
 
     this.waterMesh = new THREE.Mesh(this.waterGeometry, this.waterMaterial);
+    this.waterMesh.name = 'WaterSurface';
     this.waterMesh.renderOrder = TRANSPARENT_RENDER_ORDER_3D.waterSurface;
     this.waterMesh.frustumCulled = false;
     this.lastVisible = this.waterMesh.visible;
     parent.add(this.waterMesh);
 
+    for (const direction of ['north', 'east', 'south', 'west'] as const) {
+      const geometry = new THREE.BufferGeometry();
+      const mesh = new THREE.Mesh(geometry, this.waterCurtainMaterial);
+      mesh.name = `WaterCurtain:${direction}`;
+      mesh.renderOrder = TRANSPARENT_RENDER_ORDER_3D.waterSurface;
+      mesh.frustumCulled = false;
+      parent.add(mesh);
+      this.waterCurtains.push({ direction, mesh, geometry });
+    }
+
     // The water is indexed triangle geometry just like terrain: a rectilinear
     // surface grid (see WATER_SURFACE_GRID_STEPS) plus, in floating-square
-    // mode, four perimeter curtain strips. Keep its debug wireframe as a
-    // separate depth-tested overlay so WATER TRIS exposes those actual
-    // triangles without changing the water material or surface level.
+    // mode, four independently sorted perimeter curtain meshes. Keep its debug
+    // wireframe as one separate depth-tested overlay so WATER TRIS exposes all
+    // actual triangles without changing the water material or surface level.
     this.waterTriangleGeometry = new THREE.BufferGeometry();
     this.waterTriangleMaterial = new THREE.LineBasicMaterial({
       color: WATER_TRIANGLE_DEBUG_COLOR,
@@ -236,10 +280,10 @@ export class WaterRenderer3D {
     parent.add(this.waterTriangleLines);
   }
 
-  /** Canonical rendered water geometry for command cursor first-surface
-   *  picking. Camera anchors intentionally use terrain only. The mesh object
-   *  is stable even when its geometry is rebuilt for a different boundary
-   *  presentation mode. */
+  /** Canonical horizontal water geometry for command cursor first-surface
+   *  picking. The independently sorted vertical curtains are intentionally
+   *  excluded, and camera anchors use terrain only. The mesh object is stable
+   *  when geometry is rebuilt for a different boundary presentation mode. */
   getMesh(): THREE.Mesh {
     return this.waterMesh;
   }
@@ -257,7 +301,11 @@ export class WaterRenderer3D {
     const normals: number[] = [];
     const indices: number[] = [];
     pushHorizontalGrid(positions, normals, indices, xs, zs, WATER_LEVEL);
-    this.setGeometry(positions, normals, indices);
+    this.setGeometry(this.waterGeometry, positions, normals, indices);
+    for (const curtain of this.waterCurtains) {
+      this.setGeometry(curtain.geometry, [], [], []);
+    }
+    this.rebuildTriangleGeometry([{ positions, normals, indices }]);
   }
 
   private buildFloatingSquareGeometry(): void {
@@ -273,10 +321,25 @@ export class WaterRenderer3D {
     const xs = gridBreakpoints(x0, x0, x1, x1, WATER_SURFACE_GRID_STEPS);
     const zs = gridBreakpoints(z0, z0, z1, z1, WATER_SURFACE_GRID_STEPS);
 
-    const positions: number[] = [];
-    const normals: number[] = [];
-    const indices: number[] = [];
-    pushHorizontalGrid(positions, normals, indices, xs, zs, topY);
+    const surface = {
+      positions: [] as number[],
+      normals: [] as number[],
+      indices: [] as number[],
+    };
+    pushHorizontalGrid(
+      surface.positions,
+      surface.normals,
+      surface.indices,
+      xs,
+      zs,
+      topY,
+    );
+    this.setGeometry(
+      this.waterGeometry,
+      surface.positions,
+      surface.normals,
+      surface.indices,
+    );
 
     // The map is an open-bottom slab. These four overhanging water curtains
     // close its visible outer perimeter; an unseen horizontal bottom would
@@ -285,35 +348,87 @@ export class WaterRenderer3D {
     const east = zs.map((z): readonly [number, number] => [x1, z]);
     const south = [...xs].reverse().map((x): readonly [number, number] => [x, z1]);
     const west = [...zs].reverse().map((z): readonly [number, number] => [x0, z]);
-    // Same cell size the surface grid uses, so the two halves of this mesh
-    // carry the same depth-interpolation error rather than the curtains
-    // carrying several ULPs more than the offset can cover.
+    // Use the surface grid's cell size so the independently sorted curtains
+    // carry the same depth-interpolation error as the horizontal surface.
     const cell = Math.max(x1 - x0, z1 - z0) / WATER_SURFACE_GRID_STEPS;
-    pushCurtainStrip(positions, normals, indices, north, bottomY, topY, 0, -1, cell);
-    pushCurtainStrip(positions, normals, indices, east, bottomY, topY, 1, 0, cell);
-    pushCurtainStrip(positions, normals, indices, south, bottomY, topY, 0, 1, cell);
-    pushCurtainStrip(positions, normals, indices, west, bottomY, topY, -1, 0, cell);
-    this.setGeometry(positions, normals, indices);
+    const curtainInputs = [
+      { direction: 'north', points: north, nx: 0, nz: -1 },
+      { direction: 'east', points: east, nx: 1, nz: 0 },
+      { direction: 'south', points: south, nx: 0, nz: 1 },
+      { direction: 'west', points: west, nx: -1, nz: 0 },
+    ] as const;
+    const triangleParts = [surface];
+    for (let i = 0; i < curtainInputs.length; i++) {
+      const input = curtainInputs[i];
+      const part = {
+        positions: [] as number[],
+        normals: [] as number[],
+        indices: [] as number[],
+      };
+      pushCurtainStrip(
+        part.positions,
+        part.normals,
+        part.indices,
+        input.points,
+        bottomY,
+        topY,
+        input.nx,
+        input.nz,
+        cell,
+      );
+      const curtain = this.waterCurtains[i];
+      if (curtain.direction !== input.direction) {
+        throw new Error(`Water curtain order mismatch: ${curtain.direction}/${input.direction}`);
+      }
+      this.setGeometry(curtain.geometry, part.positions, part.normals, part.indices);
+      triangleParts.push(part);
+    }
+    this.rebuildTriangleGeometry(triangleParts);
   }
 
   private setGeometry(
+    geometry: THREE.BufferGeometry,
     positions: number[],
     normals: number[],
     indices: number[],
   ): void {
-    this.waterGeometry.dispose();
-    this.waterGeometry.setAttribute(
+    geometry.dispose();
+    geometry.setAttribute(
       'position',
       new THREE.BufferAttribute(new Float32Array(positions), 3),
     );
-    this.waterGeometry.setAttribute(
+    geometry.setAttribute(
       'normal',
       new THREE.BufferAttribute(new Float32Array(normals), 3),
     );
-    this.waterGeometry.setIndex(
+    geometry.setIndex(
       new THREE.BufferAttribute(new Uint16Array(indices), 1),
     );
-    this.waterGeometry.computeBoundingSphere();
+    geometry.computeBoundingSphere();
+  }
+
+  private rebuildTriangleGeometry(
+    parts: ReadonlyArray<{
+      readonly positions: readonly number[];
+      readonly normals: readonly number[];
+      readonly indices: readonly number[];
+    }>,
+  ): void {
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const indices: number[] = [];
+    for (const part of parts) {
+      const base = positions.length / 3;
+      positions.push(...part.positions);
+      normals.push(...part.normals);
+      for (const index of part.indices) indices.push(base + index);
+    }
+    const combined = new THREE.BufferGeometry();
+    this.setGeometry(combined, positions, normals, indices);
+    this.waterTriangleGeometry.dispose();
+    this.waterTriangleGeometry = new THREE.WireframeGeometry(combined);
+    this.waterTriangleLines.geometry = this.waterTriangleGeometry;
+    combined.dispose();
   }
 
   private buildGeometry(mode: WaterBoundaryMode): void {
@@ -322,9 +437,6 @@ export class WaterRenderer3D {
     } else {
       this.buildFloatingSquareGeometry();
     }
-    this.waterTriangleGeometry.dispose();
-    this.waterTriangleGeometry = new THREE.WireframeGeometry(this.waterGeometry);
-    this.waterTriangleLines.geometry = this.waterTriangleGeometry;
     this.built = true;
     this.lastWaterBoundaryMode = mode;
   }
@@ -349,6 +461,7 @@ export class WaterRenderer3D {
     }
     if (this.lastOpacity !== opacity) {
       this.waterMaterial.opacity = opacity;
+      this.waterCurtainMaterial.opacity = opacity;
       this.lastOpacity = opacity;
     }
     this.setVisible(true);
@@ -358,6 +471,7 @@ export class WaterRenderer3D {
   private setVisible(visible: boolean): void {
     if (this.lastVisible === visible) return;
     this.waterMesh.visible = visible;
+    for (const curtain of this.waterCurtains) curtain.mesh.visible = visible;
     this.lastVisible = visible;
   }
 
@@ -369,9 +483,15 @@ export class WaterRenderer3D {
 
   destroy(): void {
     this.waterMesh.parent?.remove(this.waterMesh);
+    for (const curtain of this.waterCurtains) {
+      curtain.mesh.parent?.remove(curtain.mesh);
+      curtain.geometry.dispose();
+    }
+    this.waterCurtains.length = 0;
     this.waterTriangleLines.parent?.remove(this.waterTriangleLines);
     this.waterGeometry.dispose();
     this.waterMaterial.dispose();
+    this.waterCurtainMaterial.dispose();
     this.waterTriangleGeometry.dispose();
     this.waterTriangleMaterial.dispose();
   }

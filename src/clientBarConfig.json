@@ -348,8 +348,26 @@
     "realDefault": false
   },
   "buildGridDebug": {
-    "demoDefault": false,
-    "realDefault": false
+    "demoDefault": "none",
+    "realDefault": "none",
+    "options": [
+      {
+        "value": "none",
+        "label": "NONE"
+      },
+      {
+        "value": "ground",
+        "label": "GROUND BUILDING BUILD SQUARES"
+      },
+      {
+        "value": "hover",
+        "label": "HOVER BUILDING BUILD SQUARES"
+      },
+      {
+        "value": "water-surface",
+        "label": "WATER SURFACE BUILDING BUILD SQUARES"
+      }
+    ]
   },
   "pathingHierarchyDebug": {
     "demoDefault": false,

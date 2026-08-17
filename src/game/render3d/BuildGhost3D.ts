@@ -2,16 +2,14 @@
 // 3D scene. Ground-cell colors describe placement/resource facts:
 // green = buildable, red = blocked, yellow = buildable but suboptimal
 // (extractor off a deposit, or a non-extractor placed on a deposit).
-// Footprint cells that land on a metal deposit are lifted onto the coin's
-// top surface (via the deposit surface index) so the preview hugs the
-// poked-up deposit instead of the buried pad. Builder range is shown
-// separately because the builder can move to the site.
+// Every footprint cell is anchored to the actual terrain mesh. That includes
+// the seabed for water-surface structures and the terrain pad beneath raised
+// metal-deposit crowns. Builder range is shown separately because the builder
+// can move to the site.
 //
-// The whole-map DEBUG: BUILD blue-on-deposit squares are NOT drawn here.
-// They are baked directly onto the terrain AND the metal-deposit coin
-// surfaces by the shared BuildGridOverlayShader (TerrainTileRenderer3D +
-// MetalDepositRenderer3D), exactly like the red/green terrain squares, so
-// they conform to the surface and occlude naturally.
+// The whole-map BUILD availability modes are not drawn here. They are baked
+// directly onto the terrain by TerrainTileRenderer3D so they conform to the
+// ground/bed instead of jumping to water or raised prop surfaces.
 //
 // Ownership: Input3DManager drives the footprint preview (setTarget on
 // mouse move, hide on mode exit). Everything is parented to the world
@@ -23,7 +21,6 @@ import { COLORS } from '@/colorsConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
-import type { MetalDeposit } from '@/metalDepositConfig';
 import {
   getBuildingAuthoredContactSightRadius,
   getSensorMediumAtZ,
@@ -33,11 +30,6 @@ import {
   type BuildPlacementDiagnostics,
   getSnappedBuildPosition,
 } from '../input/helpers';
-import {
-  createMetalDepositSurfaceIndex,
-  METAL_DEPOSIT_COIN_TOP_LIFT,
-  metalDepositCellKey,
-} from './MetalDepositVisualClusters';
 import type { OverlayLineSystem } from './OverlayLineSystem';
 import { GroundRing3D } from './GroundRing3D';
 import { GroundLineBatch3D } from './GroundLineBatch3D';
@@ -57,10 +49,6 @@ type CellMaterialPair = {
 type BuildAbilitySquareCell = {
   x: number;
   y: number;
-  gx?: number;
-  gy?: number;
-  metalCovered?: boolean;
-  depositId?: number | null;
 };
 
 type BuildAbilitySquarePose = {
@@ -97,12 +85,6 @@ export class BuildGhost3D {
   /** Footprint preview group — shown only while the player is actively
    *  hovering a build target (setTarget). */
   private group = new THREE.Group();
-  /** Maps every metal-deposit build cell to its coin-top surface Y so a
-   *  footprint cell placed on a deposit hugs the poked-up coin instead of
-   *  the buried flat pad. */
-  private metalDepositSurfaceYByCell = new Map<string, number>();
-  private metalDepositSurfaceYById = new Map<number, number>();
-
   /** Flat footprint rectangle (scaled to the current building blueprint). */
   private footprint: THREE.Mesh;
   /** Builder build-range circle — unified screen-space ground ring. */
@@ -137,7 +119,6 @@ export class BuildGhost3D {
     world: THREE.Group,
     overlayLines: OverlayLineSystem,
     getGroundHeight: GroundHeightLookup = () => 0,
-    deposits: ReadonlyArray<MetalDeposit> = [],
   ) {
     this.world = world;
     this.getGroundHeight = getGroundHeight;
@@ -189,8 +170,6 @@ export class BuildGhost3D {
 
     this.group.visible = false;
     this.world.add(this.group);
-
-    this.indexMetalDepositSurfaces(deposits);
   }
 
   /** Update the ghost position + styling. Sim y maps to world z on
@@ -326,32 +305,8 @@ export class BuildGhost3D {
     return { fill: this.cellMatOk, border: this.cellBorderMatOk };
   }
 
-  private indexMetalDepositSurfaces(deposits: ReadonlyArray<MetalDeposit>): void {
-    const surfaceIndex = createMetalDepositSurfaceIndex(deposits);
-    this.metalDepositSurfaceYByCell = surfaceIndex.surfaceYByCell;
-    this.metalDepositSurfaceYById = surfaceIndex.surfaceYById;
-  }
-
   private getBuildAbilitySquarePose(cell: BuildAbilitySquareCell): BuildAbilitySquarePose {
-    const surfaceY = this.getBuildAbilitySquareSurfaceY(cell);
-    return resolveBuildAbilitySquarePose(cell, surfaceY);
-  }
-
-  private getBuildAbilitySquareSurfaceY(cell: BuildAbilitySquareCell): number {
-    const terrainY = this.getGroundHeight(cell.x, cell.y);
-    if (!cell.metalCovered) return terrainY;
-
-    let depositSurfaceY: number | undefined;
-    if (cell.gx !== undefined && cell.gy !== undefined) {
-      depositSurfaceY = this.metalDepositSurfaceYByCell.get(metalDepositCellKey(cell.gx, cell.gy));
-    }
-    if (depositSurfaceY === undefined && cell.depositId !== undefined && cell.depositId !== null) {
-      depositSurfaceY = this.metalDepositSurfaceYById.get(cell.depositId);
-    }
-    if (depositSurfaceY === undefined) {
-      depositSurfaceY = terrainY + METAL_DEPOSIT_COIN_TOP_LIFT;
-    }
-    return Math.max(terrainY, depositSurfaceY);
+    return resolveBuildAbilitySquarePose(cell, this.getGroundHeight(cell.x, cell.y));
   }
 
   private updateDiagnosticCells(
@@ -412,8 +367,6 @@ export class BuildGhost3D {
     this.cellBorderMatOk.dispose();
     this.cellBorderMatBad.dispose();
     this.cellBorderMatWarn.dispose();
-    this.metalDepositSurfaceYByCell.clear();
-    this.metalDepositSurfaceYById.clear();
   }
 }
 

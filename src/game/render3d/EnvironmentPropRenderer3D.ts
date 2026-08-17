@@ -144,6 +144,17 @@ export function patchEnvironmentFoliageLighting(
   material.needsUpdate = true;
 }
 
+/** Fog is a knowledge veil over the final rendered prop, not an albedo edit.
+ * Applying desaturation/darkness before Lambert lighting lets the warm sun
+ * tint and brighten the material again afterward; that was especially obvious
+ * on tree trunks. Mark every environment material for WorldShade3D's
+ * post-lighting path so authored 100% color loss remains genuinely grayscale. */
+export function configureEnvironmentMaterialFogShading(
+  material: THREE.Material,
+): void {
+  material.userData.worldShadeAfterLighting = true;
+}
+
 /** Medium/Low environment geometry deliberately drops texture maps, but its
  *  base hues must remain identical to the canonical textured High assets. */
 export function environmentLodFlatMaterialSpec(
@@ -688,8 +699,12 @@ export class EnvironmentPropRenderer3D {
         geometry.computeVertexNormals();
       mesh.material = this.materialForAsset(spec, mesh.material);
       if (Array.isArray(mesh.material)) {
-        for (const material of mesh.material) this.worldShade.patchMaterial(material);
+        for (const material of mesh.material) {
+          configureEnvironmentMaterialFogShading(material);
+          this.worldShade.patchMaterial(material);
+        }
       } else {
+        configureEnvironmentMaterialFogShading(mesh.material);
         this.worldShade.patchMaterial(mesh.material);
       }
       mesh.castShadow = false;
@@ -744,6 +759,7 @@ export class EnvironmentPropRenderer3D {
     const material = this.environmentLodFlatMaterial('foliage');
     material.side = THREE.DoubleSide;
     material.needsUpdate = true;
+    configureEnvironmentMaterialFogShading(material);
     this.worldShade.patchMaterial(material);
     group.add(new THREE.Mesh(geometry, material));
     return group;
@@ -763,6 +779,8 @@ export class EnvironmentPropRenderer3D {
     // omit the bark/leaf texture maps.
     const trunkMaterial = this.environmentLodFlatMaterial('wood');
     const leafMaterial = this.environmentLodFlatMaterial('foliage');
+    configureEnvironmentMaterialFogShading(trunkMaterial);
+    configureEnvironmentMaterialFogShading(leafMaterial);
     this.worldShade.patchMaterial(trunkMaterial);
     this.worldShade.patchMaterial(leafMaterial);
 

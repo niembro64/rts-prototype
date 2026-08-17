@@ -42,9 +42,10 @@ export function buildGridOverlayUniformDeclarations(): string {
 export function buildGridOverlayFragment(
   worldPositionExpr: string,
   targetColorExpr = 'diffuseColor.rgb',
+  surfaceEligibilityExpr = 'true',
 ): string {
   return [
-    `if (uBuildGridEnabled > 0.0 &&`,
+    `if (${surfaceEligibilityExpr} && uBuildGridEnabled > 0.0 &&`,
     `    ${worldPositionExpr}.x >= 0.0 && ${worldPositionExpr}.z >= 0.0 &&`,
     `    ${worldPositionExpr}.x < uBuildGridWorldSize.x &&`,
     `    ${worldPositionExpr}.z < uBuildGridWorldSize.y) {`,

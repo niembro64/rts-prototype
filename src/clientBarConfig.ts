@@ -8,6 +8,7 @@ import type {
   CameraFollowMode,
   CameraFovDegrees,
   CameraSmoothMode,
+  BuildGridDebugMode,
   DriftMode,
   EntityHudElement,
   EntityHudToggles,
@@ -84,7 +85,7 @@ type ClientDefaults = {
   readonly triangleDebug: boolean;
   readonly waterTriangleDebug: boolean;
   readonly wallTriangleDebug: boolean;
-  readonly buildGridDebug: boolean;
+  readonly buildGridDebug: BuildGridDebugMode;
   readonly pathingHierarchyDebug: boolean;
   readonly airLiftProbeDebug: boolean;
   readonly zoomPointsDebug: boolean;
@@ -168,7 +169,8 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     triangleDebug: pickDefault(clientBarConfig.triangleDebug, mode),
     waterTriangleDebug: pickDefault(clientBarConfig.waterTriangleDebug, mode),
     wallTriangleDebug: pickDefault(clientBarConfig.wallTriangleDebug, mode),
-    buildGridDebug: pickDefault(clientBarConfig.buildGridDebug, mode),
+    buildGridDebug:
+      pickDefault(clientBarConfig.buildGridDebug, mode) as BuildGridDebugMode,
     pathingHierarchyDebug: pickDefault(clientBarConfig.pathingHierarchyDebug, mode),
     airLiftProbeDebug: pickDefault(clientBarConfig.airLiftProbeDebug, mode),
     zoomPointsDebug: pickDefault(clientBarConfig.zoomPointsDebug, mode),
@@ -275,7 +277,10 @@ export const CLIENT_CONFIG = {
   triangleDebug: { default: DEMO_CLIENT_DEFAULTS.triangleDebug },
   waterTriangleDebug: { default: DEMO_CLIENT_DEFAULTS.waterTriangleDebug },
   wallTriangleDebug: { default: DEMO_CLIENT_DEFAULTS.wallTriangleDebug },
-  buildGridDebug: { default: DEMO_CLIENT_DEFAULTS.buildGridDebug },
+  buildGridDebug: {
+    default: DEMO_CLIENT_DEFAULTS.buildGridDebug,
+    options: clientBarConfig.buildGridDebug.options as OptionList<BuildGridDebugMode>,
+  },
   pathingHierarchyDebug: { default: DEMO_CLIENT_DEFAULTS.pathingHierarchyDebug },
   airLiftProbeDebug: { default: DEMO_CLIENT_DEFAULTS.airLiftProbeDebug },
   zoomPointsDebug: { default: DEMO_CLIENT_DEFAULTS.zoomPointsDebug },
@@ -369,7 +374,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     triangleDebug: { default: defaults.triangleDebug },
     waterTriangleDebug: { default: defaults.waterTriangleDebug },
     wallTriangleDebug: { default: defaults.wallTriangleDebug },
-    buildGridDebug: { default: defaults.buildGridDebug },
+    buildGridDebug: { ...CLIENT_CONFIG.buildGridDebug, default: defaults.buildGridDebug },
     pathingHierarchyDebug: { default: defaults.pathingHierarchyDebug },
     airLiftProbeDebug: { default: defaults.airLiftProbeDebug },
     zoomPointsDebug: { default: defaults.zoomPointsDebug },
@@ -593,7 +598,7 @@ let currentMaterialExplosions: boolean = _cd.materialExplosions.default;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
 let currentWaterTriangleDebug: boolean = _cd.waterTriangleDebug.default;
 let currentWallTriangleDebug: boolean = _cd.wallTriangleDebug.default;
-let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
+let currentBuildGridDebug: BuildGridDebugMode = _cd.buildGridDebug.default;
 let currentPathingHierarchyDebug: boolean = _cd.pathingHierarchyDebug.default;
 let currentAirLiftProbeDebug: boolean = _cd.airLiftProbeDebug.default;
 let currentZoomPointsDebug: boolean = _cd.zoomPointsDebug.default;
@@ -659,6 +664,13 @@ function isWaterBoundaryMode(value: unknown): value is WaterBoundaryMode {
   return value === 'infinity' ||
     value === 'floating-square' ||
     value === 'floating-square-sea';
+}
+
+function isBuildGridDebugMode(value: unknown): value is BuildGridDebugMode {
+  return value === 'none' ||
+    value === 'ground' ||
+    value === 'hover' ||
+    value === 'water-surface';
 }
 
 function applyClientDefaults(mode: ClientMode): void {
@@ -833,7 +845,14 @@ function loadFromStorage(mode: ClientMode): void {
   }
   const storedBuildGridDebug = readPersisted(keys.buildGridDebug);
   if (storedBuildGridDebug !== null) {
-    currentBuildGridDebug = storedBuildGridDebug === 'true';
+    // Migrate the former BUILD boolean in place. Its one active state was the
+    // ground buildability view, so existing users keep exactly that view.
+    const migrated = storedBuildGridDebug === 'true'
+      ? 'ground'
+      : storedBuildGridDebug === 'false'
+        ? 'none'
+        : storedBuildGridDebug;
+    if (isBuildGridDebugMode(migrated)) currentBuildGridDebug = migrated;
   }
   const storedPathingHierarchyDebug = readPersisted(keys.pathingHierarchyDebug);
   if (storedPathingHierarchyDebug !== null) {
@@ -1379,13 +1398,13 @@ export function setWallTriangleDebug(enabled: boolean): void {
   persist(activeStorageKeys().wallTriangleDebug, String(enabled));
 }
 
-export function getBuildGridDebug(): boolean {
+export function getBuildGridDebug(): BuildGridDebugMode {
   return currentBuildGridDebug;
 }
 
-export function setBuildGridDebug(enabled: boolean): void {
-  currentBuildGridDebug = enabled;
-  persist(activeStorageKeys().buildGridDebug, String(enabled));
+export function setBuildGridDebug(mode: BuildGridDebugMode): void {
+  currentBuildGridDebug = mode;
+  persist(activeStorageKeys().buildGridDebug, mode);
 }
 
 export function getPathingHierarchyDebug(): boolean {

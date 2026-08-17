@@ -270,7 +270,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
         blocking = true;
       } else if (
         config.placementType === 'water-surface' &&
-        !waterSurfaceCellHasClearance(
+        !waterSurfaceBuildCellHasClearance(
           x,
           y,
           BUILD_GRID_CELL_SIZE * 0.5,
@@ -399,7 +399,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
  * for the submerged half of its cuboid. This rejects shoreline straddling and
  * seabed clipping without requiring a flat underwater plateau.
  */
-function waterSurfaceCellHasClearance(
+export function waterSurfaceBuildCellHasClearance(
   centerX: number,
   centerY: number,
   halfCell: number,

@@ -86,13 +86,25 @@ export function worldShadeFragment(
   shadeTarget = 'diffuseColor.rgb',
 ): string {
   return `
-if (${worldPosition}.x >= 0.0 && ${worldPosition}.z >= 0.0 &&
-    ${worldPosition}.x <= uWorldShadeWorldSize.x &&
-    ${worldPosition}.z <= uWorldShadeWorldSize.y &&
-    ${worldPosition}.x >= uWorldShadeBoundsMin.x &&
-    ${worldPosition}.z >= uWorldShadeBoundsMin.y &&
-    ${worldPosition}.x <= uWorldShadeBoundsMin.x + uWorldShadeBoundsSize.x &&
-    ${worldPosition}.z <= uWorldShadeBoundsMin.y + uWorldShadeBoundsSize.y) {
+// Vertical world-box walls have constant x or z at an exact map maximum.
+// Perspective interpolation is allowed to land a fragment a few ULPs on
+// either side of that maximum; an exact <= comparison made the fog branch
+// toggle while the camera moved on some NVIDIA drivers. Zero-valued north /
+// west coordinates do not suffer the same cancellation, which is why the
+// artifact was direction-specific. Admit a small world-space guard band and
+// clamp the lookup itself so a boundary face has one stable presentation.
+vec2 worldShadeEdgeTolerance = max(
+  vec2(0.25),
+  uWorldShadeWorldSize * 0.000001
+);
+if (${worldPosition}.x >= -worldShadeEdgeTolerance.x &&
+    ${worldPosition}.z >= -worldShadeEdgeTolerance.y &&
+    ${worldPosition}.x <= uWorldShadeWorldSize.x + worldShadeEdgeTolerance.x &&
+    ${worldPosition}.z <= uWorldShadeWorldSize.y + worldShadeEdgeTolerance.y &&
+    ${worldPosition}.x >= uWorldShadeBoundsMin.x - worldShadeEdgeTolerance.x &&
+    ${worldPosition}.z >= uWorldShadeBoundsMin.y - worldShadeEdgeTolerance.y &&
+    ${worldPosition}.x <= uWorldShadeBoundsMin.x + uWorldShadeBoundsSize.x + worldShadeEdgeTolerance.x &&
+    ${worldPosition}.z <= uWorldShadeBoundsMin.y + uWorldShadeBoundsSize.y + worldShadeEdgeTolerance.y) {
   vec2 worldShadeUv = clamp(
     (${worldPosition}.xz - uWorldShadeBoundsMin) / uWorldShadeBoundsSize,
     vec2(0.0),
@@ -156,6 +168,33 @@ if (${worldPosition}.x >= 0.0 && ${worldPosition}.z >= 0.0 &&
   );
 }
 `;
+}
+
+/** Builds the world-space sample position used by fog-of-war materials.
+ *
+ * three.js applies BatchedMesh and InstancedMesh transforms inside
+ * <project_vertex>, after <begin_vertex> has produced `transformed`. The fog
+ * shader used to sample `modelMatrix * transformed` before those transforms,
+ * so instanced vegetation (most notably tree trunks) sampled coverage at the
+ * batch origin instead of at the prop being drawn. Mirror three.js's transform
+ * order here, immediately before <project_vertex>, so every prop samples its
+ * actual position. */
+export function worldShadeVertexPositionAssignment(
+  shadeAtObjectOrigin: boolean,
+): string {
+  const localPosition = shadeAtObjectOrigin
+    ? 'vec4(0.0, 0.0, 0.0, 1.0)'
+    : 'vec4(transformed, 1.0)';
+  return [
+    `vec4 worldShadeLocalPosition = ${localPosition};`,
+    '#ifdef USE_BATCHING',
+    'worldShadeLocalPosition = batchingMatrix * worldShadeLocalPosition;',
+    '#endif',
+    '#ifdef USE_INSTANCING',
+    'worldShadeLocalPosition = instanceMatrix * worldShadeLocalPosition;',
+    '#endif',
+    'vWorldShadeWorldPos = (modelMatrix * worldShadeLocalPosition).xyz;',
+  ].join('\n');
 }
 
 type RegionBuffers = {
@@ -398,16 +437,9 @@ void main() {
     const previousCacheKey = material.customProgramCacheKey.bind(material);
     const shadeAtObjectOrigin = material.userData.worldShadeAtObjectOrigin === true;
     const shadeAfterLighting = material.userData.worldShadeAfterLighting === true;
-    const worldPositionAssignment = shadeAtObjectOrigin
-      ? [
-          '#include <begin_vertex>',
-          '#ifdef USE_INSTANCING',
-          'vWorldShadeWorldPos = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;',
-          '#else',
-          'vWorldShadeWorldPos = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;',
-          '#endif',
-        ].join('\n')
-      : '#include <begin_vertex>\nvWorldShadeWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;';
+    const worldPositionAssignment = worldShadeVertexPositionAssignment(
+      shadeAtObjectOrigin,
+    );
     material.onBeforeCompile = (shader, renderer) => {
       previousCompile.call(material, shader, renderer);
       this.assignUniforms(shader);
@@ -417,8 +449,8 @@ void main() {
           'varying vec3 vWorldShadeWorldPos;\n#include <common>',
         )
         .replace(
-          '#include <begin_vertex>',
-          worldPositionAssignment,
+          '#include <project_vertex>',
+          `${worldPositionAssignment}\n#include <project_vertex>`,
         );
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <common>',
@@ -435,7 +467,7 @@ void main() {
           );
     };
     material.customProgramCacheKey = () =>
-      `${previousCacheKey()}|world-shade-v5:${shadeAtObjectOrigin ? 'object' : 'surface'}:${shadeAfterLighting ? 'lit' : 'albedo'}`;
+      `${previousCacheKey()}|world-shade-v7:${shadeAtObjectOrigin ? 'object' : 'surface'}:${shadeAfterLighting ? 'lit' : 'albedo'}`;
     material.needsUpdate = true;
   }
 

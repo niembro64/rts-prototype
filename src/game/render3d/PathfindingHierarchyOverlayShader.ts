@@ -45,9 +45,10 @@ export function pathfindingHierarchyOverlayUniformDeclarations(): string {
 export function pathfindingHierarchyOverlayFragment(
   worldPositionExpr: string,
   targetColorExpr = 'diffuseColor.rgb',
+  surfaceEligibilityExpr = 'true',
 ): string {
   return [
-    'if (uPathfindingHierarchyEnabled > 0.0 &&',
+    `if (${surfaceEligibilityExpr} && uPathfindingHierarchyEnabled > 0.0 &&`,
     `    ${worldPositionExpr}.x >= 0.0 && ${worldPositionExpr}.z >= 0.0 &&`,
     `    ${worldPositionExpr}.x < uPathfindingHierarchyWorldSize.x &&`,
     `    ${worldPositionExpr}.z < uPathfindingHierarchyWorldSize.y) {`,

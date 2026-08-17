@@ -11,12 +11,6 @@ import type { MetalDeposit } from '../../metalDepositConfig';
 import { METAL_DEPOSIT_CONFIG } from '../../metalDepositConfig';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import {
-  assignBuildGridOverlayUniforms,
-  buildGridOverlayFragment,
-  buildGridOverlayUniformDeclarations,
-  type BuildGridOverlayUniforms,
-} from './BuildGridOverlayShader';
-import {
   assignPathfindingHierarchyOverlayUniforms,
   pathfindingHierarchyOverlayFragment,
   pathfindingHierarchyOverlayUniformDeclarations,
@@ -67,7 +61,6 @@ export class MetalDepositRenderer3D {
   constructor(
     parentWorld: THREE.Group,
     deposits: ReadonlyArray<MetalDeposit>,
-    private readonly buildGridOverlayUniforms: BuildGridOverlayUniforms,
     private readonly pathfindingHierarchyOverlayUniforms: PathfindingHierarchyOverlayUniforms,
     private readonly worldShade: WorldShade3D,
   ) {
@@ -148,7 +141,6 @@ export class MetalDepositRenderer3D {
   private getMaterial(): THREE.MeshStandardMaterial {
     if (!this.material) {
       this.material = makeDepositMaterial(
-        this.buildGridOverlayUniforms,
         this.pathfindingHierarchyOverlayUniforms,
         this.worldShade,
       );
@@ -175,7 +167,6 @@ function disposeDepositNode(node: THREE.Group): void {
 }
 
 function makeDepositMaterial(
-  buildGridOverlayUniforms: BuildGridOverlayUniforms,
   pathfindingHierarchyOverlayUniforms: PathfindingHierarchyOverlayUniforms,
   worldShade: WorldShade3D,
 ): THREE.MeshStandardMaterial {
@@ -189,7 +180,6 @@ function makeDepositMaterial(
   });
   installDepositMetalSurfaceShader(
     material,
-    buildGridOverlayUniforms,
     pathfindingHierarchyOverlayUniforms,
     worldShade,
   );
@@ -198,7 +188,6 @@ function makeDepositMaterial(
 
 function installDepositMetalSurfaceShader(
   material: THREE.MeshStandardMaterial,
-  buildGridOverlayUniforms: BuildGridOverlayUniforms,
   pathfindingHierarchyOverlayUniforms: PathfindingHierarchyOverlayUniforms,
   worldShade: WorldShade3D,
 ): void {
@@ -209,7 +198,6 @@ function installDepositMetalSurfaceShader(
     derivatives: true,
   };
   material.onBeforeCompile = (shader) => {
-    assignBuildGridOverlayUniforms(shader, buildGridOverlayUniforms);
     assignPathfindingHierarchyOverlayUniforms(
       shader,
       pathfindingHierarchyOverlayUniforms,
@@ -238,7 +226,7 @@ function installDepositMetalSurfaceShader(
       .replace(
         '#include <common>',
         [
-          'varying vec3 vBuildGridOverlayWorldPos;',
+          'varying vec3 vMetalDepositWorldPos;',
           '#include <common>',
         ].join('\n'),
       )
@@ -246,15 +234,15 @@ function installDepositMetalSurfaceShader(
         '#include <worldpos_vertex>',
         [
           '#include <worldpos_vertex>',
-          'vec4 buildGridOverlayWorldPosition = vec4(transformed, 1.0);',
+          'vec4 metalDepositWorldPosition = vec4(transformed, 1.0);',
           '#ifdef USE_BATCHING',
-          '  buildGridOverlayWorldPosition = batchingMatrix * buildGridOverlayWorldPosition;',
+          '  metalDepositWorldPosition = batchingMatrix * metalDepositWorldPosition;',
           '#endif',
           '#ifdef USE_INSTANCING',
-          '  buildGridOverlayWorldPosition = instanceMatrix * buildGridOverlayWorldPosition;',
+          '  metalDepositWorldPosition = instanceMatrix * metalDepositWorldPosition;',
           '#endif',
-          'buildGridOverlayWorldPosition = modelMatrix * buildGridOverlayWorldPosition;',
-          'vBuildGridOverlayWorldPos = buildGridOverlayWorldPosition.xyz;',
+          'metalDepositWorldPosition = modelMatrix * metalDepositWorldPosition;',
+          'vMetalDepositWorldPos = metalDepositWorldPosition.xyz;',
         ].join('\n'),
       );
     shader.fragmentShader = shader.fragmentShader
@@ -271,9 +259,8 @@ function installDepositMetalSurfaceShader(
           METAL_SURFACE_RESPONSE_GLSL,
           METAL_SURFACE_TRIPLANAR_GLSL,
           WORLD_SHADE_FRAGMENT_PARS,
-          buildGridOverlayUniformDeclarations(),
           pathfindingHierarchyOverlayUniformDeclarations(),
-          'varying vec3 vBuildGridOverlayWorldPos;',
+          'varying vec3 vMetalDepositWorldPos;',
           '#include <common>',
         ].join('\n'),
       )
@@ -281,12 +268,12 @@ function installDepositMetalSurfaceShader(
         '#include <color_fragment>',
         [
           '#include <color_fragment>',
-          'vec3 metalDepositDpdx = dFdx(vBuildGridOverlayWorldPos);',
-          'vec3 metalDepositDpdy = dFdy(vBuildGridOverlayWorldPos);',
+          'vec3 metalDepositDpdx = dFdx(vMetalDepositWorldPos);',
+          'vec3 metalDepositDpdy = dFdy(vMetalDepositWorldPos);',
           'vec3 metalDepositGeomNormal = normalize(cross(metalDepositDpdx, metalDepositDpdy));',
           'vec3 metalDepositDetail = sampleMetalSurfaceDetail(',
           '  uMetalSurfaceTexture,',
-          '  vBuildGridOverlayWorldPos,',
+          '  vMetalDepositWorldPos,',
           '  metalDepositGeomNormal,',
           '  uMetalSurfaceTileWorldSize',
           ');',
@@ -296,9 +283,8 @@ function installDepositMetalSurfaceShader(
           '  uMetalSurfaceBlend,',
           '  uMetalSurfaceContrast',
           ');',
-          worldShadeFragment('vBuildGridOverlayWorldPos', true),
-          buildGridOverlayFragment('vBuildGridOverlayWorldPos'),
-          pathfindingHierarchyOverlayFragment('vBuildGridOverlayWorldPos'),
+          worldShadeFragment('vMetalDepositWorldPos', true),
+          pathfindingHierarchyOverlayFragment('vMetalDepositWorldPos'),
         ].join('\n'),
       )
       .replace(
@@ -327,7 +313,7 @@ function installDepositMetalSurfaceShader(
       );
   };
   material.customProgramCacheKey = () =>
-    'metalDeposit-metalSurface-worldShade-buildGridOverlay-pathHierarchy-v5';
+    'metalDeposit-metalSurface-worldShade-pathHierarchy-v7';
 }
 
 type DepositOutlinePoint = { x: number; z: number };

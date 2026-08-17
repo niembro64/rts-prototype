@@ -5,6 +5,7 @@ import type {
   PlatformBooleanDefaults,
 } from './bars';
 import type { RenderMode } from './graphics';
+import type { BuildingPlacementType } from './buildingTypes';
 
 export type AudioScope = 'off' | 'window' | 'padded' | 'all';
 export type MasterVolumePercent = number;
@@ -49,6 +50,9 @@ export type WaterBoundaryMode =
  *  actually planned. */
 export type WaypointDetail = 'simple' | 'detailed';
 export type PathingDebugMode = 'none' | 'waypoint' | 'move';
+/** Exclusive whole-map build-square availability view. The three active
+ *  values deliberately match the authoritative structure placement domains. */
+export type BuildGridDebugMode = 'none' | BuildingPlacementType;
 export type PathingDebugUnitId = string;
 /** Entity-HUD entity classes. Each maps to a renderer category that
  *  can independently show / hide its name tag, health bar, and
@@ -176,7 +180,9 @@ export type ClientBarConfig = {
   /** Draws the actual indexed triangle edges in the rendered water mesh. */
   readonly waterTriangleDebug: BooleanSetting;
   readonly wallTriangleDebug: BooleanSetting;
-  readonly buildGridDebug: BooleanSetting;
+  /** Exclusive whole-map build-square availability view. All modes are
+   *  projected onto the terrain mesh, including submerged seabed terrain. */
+  readonly buildGridDebug: LabeledOptionsConfig<BuildGridDebugMode>;
   /** Draws level-1 hierarchical pathfinding chunk boundaries and nominal
    *  representative centers over the terrain. */
   readonly pathingHierarchyDebug: BooleanSetting;

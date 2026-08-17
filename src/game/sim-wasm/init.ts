@@ -1608,6 +1608,10 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runClientRenderEntityStateSlabContractTest();
         const { runTransparentRenderOrder3DContractTest } = await import('../render3d/TransparentRenderOrder3DContractTest');
         runTransparentRenderOrder3DContractTest();
+        const { runWaterRenderer3DContractTest } = await import('../render3d/WaterRenderer3DContractTest');
+        runWaterRenderer3DContractTest();
+        const { runWorldBoundaryShaderContractTest } = await import('../render3d/WorldBoundaryShaderContractTest');
+        runWorldBoundaryShaderContractTest();
         const { runParallaxBackdropRenderer3DContractTest } = await import('../render3d/ParallaxBackdropRenderer3DContractTest');
         runParallaxBackdropRenderer3DContractTest();
         const { runMapPresetLabel3DContractTest } = await import('../render3d/MapPresetLabel3DContractTest');
@@ -1678,6 +1682,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runInput3DTargetTypeTrackerContractTest();
         const { runBuildGhost3DContractTest } = await import('../render3d/BuildGhost3DContractTest');
         runBuildGhost3DContractTest();
+        const { runBuildGridAvailability3DContractTest } = await import('../render3d/BuildGridAvailability3DContractTest');
+        runBuildGridAvailability3DContractTest();
         const { runResourcePylonFlowController3DContractTest } = await import('../render3d/ResourcePylonFlowController3DContractTest');
         runResourcePylonFlowController3DContractTest();
         const { runSprayRenderer3DContractTest } = await import('../render3d/SprayRenderer3DContractTest');

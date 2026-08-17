@@ -23,7 +23,12 @@ import BarControlGroup from './BarControlGroup.vue';
 import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
 import type { GameCanvasClientControlBarModel } from './gameCanvasControlBarModels';
-import type { LodMode, PathingDebugMode, PathingDebugUnitId } from '../types/client';
+import type {
+  BuildGridDebugMode,
+  LodMode,
+  PathingDebugMode,
+  PathingDebugUnitId,
+} from '../types/client';
 import {
   budgetBarStyle,
   fmt4,
@@ -88,6 +93,12 @@ const PATHING_DEBUG_MODE_OPTIONS: readonly {
     title: 'Show every cell the selected unit can physically traverse, including recovery-only cells (amber)',
   },
 ];
+const BUILD_GRID_DEBUG_MODE_TITLES: Record<BuildGridDebugMode, string> = {
+  none: 'Hide the whole-map build-square availability overlay',
+  ground: 'Show ground-building availability: authoritative terrain slope and plateau status plus occupied cells',
+  hover: 'Show hover-building availability: terrain-independent cells, with occupied cells blocked',
+  'water-surface': 'Show water-surface-building availability: seabed clearance beneath each cell plus occupied cells. Colors remain projected on the actual terrain/bed.',
+};
 
 function fmtCount4(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return '0';
@@ -747,11 +758,16 @@ function resetEveryCustomHotkey(): void {
           title="WALL TRIS - show only terrain triangles classified as D-PLATEAU wall faces"
           @click="model.toggleWallTriangleDebug"
         >WALL TRIS</BarButton>
-        <BarButton
-          :active="model.buildGridDebug"
-          title="BUILD - show every fine build-placement cell using the same green/red/blue colors as the building ghost"
-          @click="model.toggleBuildGridDebug"
-        >BUILD</BarButton>
+        <BarLabel title="Exclusive whole-map build-square availability view. All colors are projected on the actual terrain, including the seabed.">BUILD:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.buildGridDebug.options"
+            :key="opt.value"
+            :active="model.buildGridDebugMode === opt.value"
+            :title="BUILD_GRID_DEBUG_MODE_TITLES[opt.value]"
+            @click="model.changeBuildGridDebugMode(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
         <BarButton
           :active="model.pathingHierarchyDebug"
           title="HIER - show level-1 pathfinding chunks: cyan boundaries, alternating chunk tint, and orange nominal center nodes"

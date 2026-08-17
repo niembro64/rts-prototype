@@ -121,6 +121,7 @@ import {
 } from '../game/input/commandHotkeys';
 import type {
   AudioScope,
+  BuildGridDebugMode,
   CameraFovDegrees,
   DriftMode,
   EntityHudElement,
@@ -179,7 +180,7 @@ export function useGameCanvasClientSettings({
   const triangleDebug = ref<boolean>(getTriangleDebug());
   const waterTriangleDebug = ref<boolean>(getWaterTriangleDebug());
   const wallTriangleDebug = ref<boolean>(getWallTriangleDebug());
-  const buildGridDebug = ref<boolean>(getBuildGridDebug());
+  const buildGridDebugMode = ref<BuildGridDebugMode>(getBuildGridDebug());
   const pathingHierarchyDebug = ref<boolean>(getPathingHierarchyDebug());
   const airLiftProbeDebug = ref<boolean>(getAirLiftProbeDebug());
   const zoomPointsDebug = ref<boolean>(getZoomPointsDebug());
@@ -287,7 +288,7 @@ export function useGameCanvasClientSettings({
     triangleDebug.value = getTriangleDebug();
     waterTriangleDebug.value = getWaterTriangleDebug();
     wallTriangleDebug.value = getWallTriangleDebug();
-    buildGridDebug.value = getBuildGridDebug();
+    buildGridDebugMode.value = getBuildGridDebug();
     pathingHierarchyDebug.value = getPathingHierarchyDebug();
     airLiftProbeDebug.value = getAirLiftProbeDebug();
     zoomPointsDebug.value = getZoomPointsDebug();
@@ -561,10 +562,9 @@ export function useGameCanvasClientSettings({
     wallTriangleDebug.value = newValue;
   }
 
-  function toggleBuildGridDebug(): void {
-    const newValue = !buildGridDebug.value;
-    setBuildGridDebug(newValue);
-    buildGridDebug.value = newValue;
+  function changeBuildGridDebugMode(mode: BuildGridDebugMode): void {
+    setBuildGridDebug(mode);
+    buildGridDebugMode.value = mode;
   }
 
   function togglePathingHierarchyDebug(): void {
@@ -730,7 +730,7 @@ export function useGameCanvasClientSettings({
     setWallTriangleDebug(cd.wallTriangleDebug.default);
     wallTriangleDebug.value = cd.wallTriangleDebug.default;
     setBuildGridDebug(cd.buildGridDebug.default);
-    buildGridDebug.value = cd.buildGridDebug.default;
+    buildGridDebugMode.value = cd.buildGridDebug.default;
     setPathingHierarchyDebug(cd.pathingHierarchyDebug.default);
     pathingHierarchyDebug.value = cd.pathingHierarchyDebug.default;
     setAirLiftProbeDebug(cd.airLiftProbeDebug.default);
@@ -823,7 +823,7 @@ export function useGameCanvasClientSettings({
     triangleDebug,
     waterTriangleDebug,
     wallTriangleDebug,
-    buildGridDebug,
+    buildGridDebugMode,
     pathingHierarchyDebug,
     airLiftProbeDebug,
     zoomPointsDebug,
@@ -896,7 +896,7 @@ export function useGameCanvasClientSettings({
     toggleTriangleDebug,
     toggleWaterTriangleDebug,
     toggleWallTriangleDebug,
-    toggleBuildGridDebug,
+    changeBuildGridDebugMode,
     togglePathingHierarchyDebug,
     toggleAirLiftProbeDebug,
     toggleZoomPointsDebug,

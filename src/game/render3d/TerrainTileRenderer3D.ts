@@ -29,7 +29,7 @@ import {
   getTerrainTextureSmoothing,
 } from '@/battleBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
-import type { PathingDebugMode } from '@/types/client';
+import type { BuildGridDebugMode, PathingDebugMode } from '@/types/client';
 import {
   LAND_CELL_SIZE,
   MAP_BG_COLOR,
@@ -91,6 +91,8 @@ import type { RenderFrameState3D } from './RenderFrameState3D';
 import { configureSpriteTexture } from './threeUtils';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { getBuildingConfig } from '../sim/buildConfigs';
+import { waterSurfaceBuildCellHasClearance } from '../sim/buildPlacementValidation';
+import { resolveBuildGridAvailabilityStatus } from './BuildGridAvailability3D';
 import {
   getTerrainShadowCacheKey,
   terrainPrecomputedShadow,
@@ -144,6 +146,12 @@ const BUILD_GRID_COLOR_METAL = readRgbaTuple(
   COLORS.world.terrain.buildGrid.metalRgba,
   'colorsConfig.world.terrain.buildGrid.metalRgba',
 );
+// Sonar is currently the canonical water-surface structure. Its submerged
+// half-depth is the authoritative clearance represented by the whole-map
+// WATER SURFACE view; the live build ghost still validates the exact selected
+// blueprint independently.
+const WATER_SURFACE_BUILD_CELL_MINIMUM_DEPTH =
+  getBuildingConfig('buildingSonar').gridDepth * BUILD_GRID_CELL_SIZE * 0.5;
 const BUILD_GRID_COLOR_WAYPOINT_VALID = readRgbaTuple(
   COLORS.world.terrain.buildGrid.waypointValidRgba,
   'colorsConfig.world.terrain.buildGrid.waypointValidRgba',
@@ -1047,8 +1055,21 @@ export class TerrainTileRenderer3D {
             '  diffuseColor.rgb = mix(diffuseColor.rgb, elevationRgb, 0.68);',
             '}',
             worldShadeFragment('vTerrainWorldPos', true),
-            buildGridOverlayFragment('vTerrainWorldPos'),
-            pathfindingHierarchyOverlayFragment('vTerrainWorldPos'),
+            // BUILD and HIER are top-surface projections, not additional
+            // materials for the world-box walls. On a vertical boundary the
+            // old exact map-maximum test could toggle on/off by a few ULPs as
+            // the camera moved (south/east only on the reported NVIDIA path).
+            // Reject vertical faces before either overlay reaches that test.
+            buildGridOverlayFragment(
+              'vTerrainWorldPos',
+              'diffuseColor.rgb',
+              'abs(geomNormal.y) > 0.01',
+            ),
+            pathfindingHierarchyOverlayFragment(
+              'vTerrainWorldPos',
+              'diffuseColor.rgb',
+              'abs(geomNormal.y) > 0.01',
+            ),
           ].join('\n'),
         )
         // TWO MATERIAL FAMILIES SHARE THIS PATCH, and only one of them has a
@@ -1115,7 +1136,7 @@ export class TerrainTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v39';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v40';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
@@ -1470,12 +1491,13 @@ export class TerrainTileRenderer3D {
   }
 
   private refreshBuildGridTexture(
-    buildGridEnabled: boolean,
+    buildGridMode: BuildGridDebugMode,
     metalMapEnabled: boolean,
     waterPathingMapEnabled: boolean,
     pathingDebugUnitId: string,
     pathingDebugMode: PathingDebugMode,
   ): void {
+    const buildGridEnabled = buildGridMode !== 'none';
     const waypointValidEnabled = pathingDebugMode === 'waypoint';
     const moveValidEnabled = pathingDebugMode === 'move';
     const pathingUnitRequested = pathingDebugMode !== 'none';
@@ -1498,7 +1520,7 @@ export class TerrainTileRenderer3D {
     this.buildGridEnabledUniform.value = enabled ? 1 : 0;
     if (!enabled) return;
     const overlayMode = buildGridEnabled
-      ? 'build'
+      ? `build:${buildGridMode}`
       : pathOverlayEnabled
         ? `path:${waterPathingMapEnabled ? 1 : 0}:${
             selectedUnitPathingEnabled ? pathingDebugUnitId : 'none'
@@ -1519,7 +1541,7 @@ export class TerrainTileRenderer3D {
       selectedUnitGrid.cellsX === cellsX &&
       selectedUnitGrid.cellsY === cellsY;
 
-    const entityVersion = overlayMode === 'build'
+    const entityVersion = overlayMode.startsWith('build:')
       ? this.clientViewState.getEntitySetVersion()
       : 0;
     const terrainVersion = buildabilityGrid?.version ?? getTerrainVersion();
@@ -1542,10 +1564,10 @@ export class TerrainTileRenderer3D {
 
     const cellCount = cellsX * cellsY;
     this.ensureBuildGridMasks(cellCount);
-    if (overlayMode === 'build') {
+    if (overlayMode.startsWith('build:')) {
       this.refreshBuildGridOccupiedMask(cellsX, cellsY);
     }
-    if (overlayMode === 'build' || overlayMode === 'metal') {
+    if (overlayMode === 'build:ground' || overlayMode === 'metal') {
       this.refreshBuildGridMetalMask(cellsX, cellsY);
     }
     if (waterPathingMapEnabled) {
@@ -1590,24 +1612,37 @@ export class TerrainTileRenderer3D {
           );
           continue;
         }
-        if (this.buildGridOccupiedMask[cellIndex] !== 0) {
-          this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_BLOCKED);
-          continue;
+        const groundBuildable = buildGridMode !== 'ground' || buildabilityGrid === null
+          ? null
+          : getTerrainBuildabilityGridCell(buildabilityGrid, gx, gy).buildable;
+        let waterSurfaceClear = false;
+        if (buildGridMode === 'water-surface') {
+          const x = gx * buildCellSize + buildCellSize * 0.5;
+          const y = gy * buildCellSize + buildCellSize * 0.5;
+          waterSurfaceClear = waterSurfaceBuildCellHasClearance(
+            x,
+            y,
+            buildCellSize * 0.5,
+            WATER_SURFACE_BUILD_CELL_MINIMUM_DEPTH,
+            this.mapWidth,
+            this.mapHeight,
+          );
         }
-        if (!buildabilityGrid) {
-          this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_TRANSPARENT);
-          continue;
-        }
-        const cellEval = getTerrainBuildabilityGridCell(buildabilityGrid, gx, gy);
-        if (!cellEval.buildable) {
-          this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_BLOCKED);
-          continue;
-        }
+        const availability = resolveBuildGridAvailabilityStatus(buildGridMode, {
+          occupied: this.buildGridOccupiedMask[cellIndex] !== 0,
+          groundBuildable,
+          waterSurfaceClear,
+          metal: this.buildGridMetalMask[cellIndex] !== 0,
+        });
         this.writeBuildGridPixel(
           offset,
-          this.buildGridMetalMask[cellIndex] !== 0
-            ? BUILD_GRID_COLOR_METAL
-            : BUILD_GRID_COLOR_OK,
+          availability === 'blocked'
+            ? BUILD_GRID_COLOR_BLOCKED
+            : availability === 'metal'
+              ? BUILD_GRID_COLOR_METAL
+              : availability === 'available'
+                ? BUILD_GRID_COLOR_OK
+                : BUILD_GRID_COLOR_TRANSPARENT,
         );
       }
     }
@@ -2455,13 +2490,11 @@ export class TerrainTileRenderer3D {
     );
     this.terrainMesh.visible = this.terrainGeometryReady;
 
-    // Whole-map cell overlays are driven only by explicit debug/client toggles:
-    // BUILD paints buildability + occupancy + metal, PATH paints selected-unit
-    // passable/blocked node cells through the same cached grid texture, and
-    // METAL paints only metal-producing cells. Entering build mode shows the
-    // hover footprint (BuildGhost3D), so these map-wide paints stay intentional
-    // overlays instead of appearing every time the player tries to place a
-    // building.
+    // Whole-map build availability is an exclusive explicit view. GROUND uses
+    // the authoritative terrain buildability grid, HOVER ignores terrain but
+    // still honors occupancy, and WATER SURFACE evaluates seabed clearance.
+    // All three are painted by the terrain shader, including underwater bed
+    // terrain; BuildGhost3D owns the exact selected footprint while placing.
     this.refreshBuildGridTexture(
       getBuildGridDebug(),
       getMetalMap(),

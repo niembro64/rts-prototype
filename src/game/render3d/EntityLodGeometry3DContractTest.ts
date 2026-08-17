@@ -119,12 +119,14 @@ import {
 } from '@/vegetationConfig';
 import {
   buildEnvironmentGrassLodGeometry,
+  configureEnvironmentMaterialFogShading,
   createEnvironmentLowTreeCrownGeometry,
   environmentLodFlatMaterialSpec,
   environmentPropVisibleAtDetailRung,
   environmentPropUsesGrassPresentation,
   patchEnvironmentFoliageLighting,
 } from './EnvironmentPropRenderer3D';
+import { worldShadeVertexPositionAssignment } from './WorldShade3D';
 import {
   buildConstructionHazardSleeve,
   buildConstructionHostMarking,
@@ -1980,6 +1982,31 @@ function runEnvironmentLodMaterialContracts(): void {
     'foliage renders both sides, shades from one prop anchor, and receives one Lambert floor',
   );
   foliageMaterial.dispose();
+
+  const trunkMaterial = new THREE.MeshLambertMaterial();
+  configureEnvironmentMaterialFogShading(trunkMaterial);
+  assertContract(
+    trunkMaterial.userData.worldShadeAfterLighting === true,
+    'tree trunks receive fog desaturation and darkness after lighting',
+  );
+  trunkMaterial.dispose();
+
+  const surfaceShadePosition = worldShadeVertexPositionAssignment(false);
+  const objectShadePosition = worldShadeVertexPositionAssignment(true);
+  assertContract(
+    surfaceShadePosition.includes('vec4(transformed, 1.0)') &&
+      surfaceShadePosition.includes(
+        'worldShadeLocalPosition = batchingMatrix * worldShadeLocalPosition;',
+      ) &&
+      surfaceShadePosition.includes(
+        'worldShadeLocalPosition = instanceMatrix * worldShadeLocalPosition;',
+      ) &&
+      surfaceShadePosition.indexOf('batchingMatrix') <
+        surfaceShadePosition.indexOf('instanceMatrix') &&
+      objectShadePosition.includes('vec4(0.0, 0.0, 0.0, 1.0)') &&
+      !objectShadePosition.includes('vec4(transformed, 1.0)'),
+    'fog shading applies batch and instance transforms to both surface and prop-origin samples',
+  );
 
   const lowTreeCrown = createEnvironmentLowTreeCrownGeometry(12, 18, 9);
   const lowTreeCrownPositions = lowTreeCrown.getAttribute('position');
