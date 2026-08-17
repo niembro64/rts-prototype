@@ -211,10 +211,13 @@ export function barCameraYaw(rawYaw: number, cardinalLockEnabled: boolean): numb
   return cardinalLockEnabled ? barCameraLockedYaw(rawYaw) : rawYaw;
 }
 
-/** Permanent terrain response requested for Budget Annihilation. Returning
- * only the missing vertical clearance makes the resolved pose canonical: the
- * caller adds it to rendered and destination focus state exactly once. */
-export function persistentTerrainRaise(
+/** Vertical gap an eye is missing to clear the terrain beneath it, or 0 when it
+ * already clears. Callers add it to the eye they are about to draw and nothing
+ * else: applying the same lift to a pose already lifted returns 0, so the
+ * clearance is idempotent and holds no memory of having fired. A non-finite
+ * sample (off-map, or before terrain loads) also returns 0 rather than moving
+ * the camera on unknown ground. */
+export function terrainClearanceRaise(
   eyeY: number,
   terrainY: number,
   clearance: number,

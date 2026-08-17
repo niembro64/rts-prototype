@@ -1618,7 +1618,9 @@
         elevation offset, so panning across hills raises and lowers the camera with the ground.
         <code>constant-altitude</code> is the canonical Budget Annihilation mode: pan, orbit, and
         follow never change the focus height, and altitude changes come only from explicit
-        Ctrl-drag height pan, zoom translation toward the anchor, and terrain-collision lift.
+        Ctrl-drag height pan, zoom translation toward the anchor, and the focus floor that keeps
+        the focus out of the bed beneath it. Terrain clearance is not on that list: it moves the
+        eye for one frame and leaves the focus alone.
         On this game&rsquo;s terrain relief, riding the bed is a rollercoaster; constant altitude
         treats terrain as a floor, never as a rail the camera rides.
       </p>
@@ -1644,15 +1646,30 @@
         camera.
       </p>
 
-      <h3>The battle camera floors on the terrain bed and keeps its lift</h3>
+      <h3>The battle camera floors on the terrain bed, and the floor is stateless</h3>
       <p>
         The eye keeps its configured clearance above the terrain bed alone &mdash; under water
         that is the basin floor, so the camera submerges freely; the water surface is never a
-        camera surface and never a camera floor. When that floor lifts the eye, the focus
-        translates upward by the same amount and the translation commits into ordinary camera
-        state. There is no remembered pre-collision pose, recovery interpolation, or later
-        downward correction after the camera clears the mountain. Terrain response never rebuilds
-        yaw, pitch, or orbit distance and therefore cannot ratchet or wedge those rails.
+        camera surface and never a camera floor. That lift resolves against the frame being
+        drawn and is never written back into focus, distance, yaw, or pitch: the same controller
+        state and the same heightfield always produce the same frame, and the eye falls back to
+        the pose the last gesture described the moment the ground drops away. Nothing is
+        remembered, so there is nothing to recover from either.
+      </p>
+      <p>
+        Committing the lift was tried and rejected. A clearance that writes back is a clearance
+        that fights the player: brushing a hill ratcheted the focus altitude upward every frame
+        the eye was under it, and because a zoom-in step lowers the eye toward its anchor, the
+        commit handed back exactly what the step gave &mdash; the gesture read as dead, and the
+        camera was left stranded high after a pan that merely grazed a ridge. The rule that falls
+        out of it is general: terrain may decide where a frame is drawn from, never what the
+        camera <em>is</em>.
+      </p>
+      <p>
+        Nothing else holds the eye off the ground either. There is no fixed closest-orbit rail in
+        the canonical config (<code>constraints.zoomInLimit</code> is <code>none</code>); the
+        distance closes all the way and terrain clearance alone decides how near the ground the
+        view can get.
       </p>
 
       <h3>Camera state is validated at one commit point</h3>
@@ -4135,7 +4152,7 @@
         <li>Apply gravity to every force-integrated mass body every tick; thrust-guided projectiles cancel it inside their bounded homing acceleration, while explicitly constant-speed-guided munitions preserve their complete velocity magnitude under a validated zero-thrust, zero-drag, zero-gravity kinematic policy. Never add a generic <code>ignoresGravity</code> flag.</li>
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
         <li>Derive per-part visual state from the interpolated root pose and interpolated velocities. Animation always plays off body motion; the rig never branches on whether a part is touching ground. Floor clamping and decorative spring controllers remain frontend-only and never alter the authoritative or interpolated root.</li>
-        <li>Keep the camera frontend and exhaustively enumerated: a gesture&rsquo;s anchor point is the product of two orthogonal data axes &mdash; <code>anchorPointCameraScreen</code> (<code>cursor</code> / <code>screen-center</code>) and <code>anchorPointCameraTerrain</code> (<code>plane-2d</code> / <code>terrain-3d</code>) &mdash; while movement metric (<code>bar-spring</code> / <code>anchor-distance-relative</code> / <code>absolute-world</code> / <code>absolute-world-momentum</code>), focus height (<code>focusHeightMode</code>: <code>constant-altitude</code> canonical / <code>terrain-follow</code> BAR parity), BAR cardinal yaw locking, render transition (<code>bar-spring-dampened</code> / <code>ema</code>), and transition scope (<code>all-movements</code> / <code>zoom-only</code>) are separate config choices. All anchor behaviors and movement metrics must be reachable from config, never from a hardcoded branch in the picker. The canonical camera disables cardinal yaw locking, flies at constant altitude, and applies its EMA to pan, height-pan, rotation, follow, zoom, and FOV together. Water is never an anchor surface and never a camera floor: anchoring over water reads the terrain bed, and the eye&rsquo;s clearance floors on the bed alone so the camera may submerge. Relative zoom min-filters its anchor depth across the configured sample neighborhood and clamps one tick&rsquo;s eye travel to <code>zoom.travelClampFraction</code> of controller distance. The canonical battle camera commits any collision lift into ordinary camera state, carries no pre-collision height or downward recovery memory, and validates every committed pose &mdash; finite fields, padded map bounds, bed-to-rail altitude band, distance and pitch rails &mdash; at one constraint point.</li>
+        <li>Keep the camera frontend and exhaustively enumerated: a gesture&rsquo;s anchor point is the product of two orthogonal data axes &mdash; <code>anchorPointCameraScreen</code> (<code>cursor</code> / <code>screen-center</code>) and <code>anchorPointCameraTerrain</code> (<code>plane-2d</code> / <code>terrain-3d</code>) &mdash; while movement metric (<code>bar-spring</code> / <code>anchor-distance-relative</code> / <code>absolute-world</code> / <code>absolute-world-momentum</code>), focus height (<code>focusHeightMode</code>: <code>constant-altitude</code> canonical / <code>terrain-follow</code> BAR parity), BAR cardinal yaw locking, render transition (<code>bar-spring-dampened</code> / <code>ema</code>), and transition scope (<code>all-movements</code> / <code>zoom-only</code>) are separate config choices. All anchor behaviors and movement metrics must be reachable from config, never from a hardcoded branch in the picker. The canonical camera disables cardinal yaw locking, flies at constant altitude, and applies its EMA to pan, height-pan, rotation, follow, zoom, and FOV together. Water is never an anchor surface and never a camera floor: anchoring over water reads the terrain bed, and the eye&rsquo;s clearance floors on the bed alone so the camera may submerge. Relative zoom min-filters its anchor depth across the configured sample neighborhood and clamps one tick&rsquo;s eye travel to <code>zoom.travelClampFraction</code> of controller distance. The canonical battle camera resolves collision lift at render time only &mdash; never committed into focus, distance, yaw, or pitch, so no gesture can be cancelled or outlived by terrain it brushed &mdash; keeps no fixed closest-orbit rail (<code>constraints.zoomInLimit: none</code>), and validates every committed pose &mdash; finite fields, padded map bounds, bed-to-rail altitude band, distance and pitch rails &mdash; at one constraint point.</li>
         <li>Keep unit, building, turret, shot, and ray definitions atomic, swappable, and free of overlapping responsibility. A unit owns its <strong>locomotion inline</strong>; a building is the single immobile host family. Every unit and building mounts at least one turret. Make the turret a standardized, addressable mounted emitter with one authoritative effect family: <code>attack</code>, optional economy-overlay <code>resourcePylon</code>, or <code>sensor</code>. Construction, repair, and production belong to the host. Every turret blueprint directly owns one nested <code>turretRange</code> object containing lock-on range/volume/hysteresis and sensor matrices. A turret has no independent cost, mass, health, death explosion, construction phase, or detached life.</li>
         <li>Give every physical body the same base ledger before its kind-specific fields: a universal <code>EntityId</code>, a <code>{ metal, energy }</code> cost, a mass, a health pool, and a <code>{ radius, force, damage }</code> death explosion. These are a floor that unit, building, and shot bodies all meet. A turret is still an addressable entity for lock-on and provenance, but its resources and lifetime belong to the host. A unit&rsquo;s locomotion is the same kind of intrinsic host behavior: part of the body, sharing the unit&rsquo;s id, cost, and health.</li>
         <li>Make every body death an explosion. When a unit, building, or shot&rsquo;s health hits zero it detonates its death blast, applying outward force (heavier bodies resist more) and damage to everything in its radius, friend or foe. A shot&rsquo;s detonation is the smallest case; a host death ends its mounted turrets as part of the same assembly, without separate turret health checks, detached turret pieces, or turret death explosions.</li>

@@ -806,7 +806,9 @@ export const CAMERA_SMOOTH_TAU_SECONDS = cameraConfigJson.smoothingTauSeconds as
 export const CAMERA_BAR_SPRING_HALF_LIFE_SECONDS =
   cameraConfigJson.barSpringHalfLifeSeconds as Readonly<Record<CameraSmoothMode, number>>;
 
-/** BAR's game-level Spring-camera closest focus distance. */
+/** BAR's game-level Spring-camera closest focus distance. Only consulted when
+ * `constraints.zoomInLimit` is 'zoom-max'; the canonical 'none' lets the orbit
+ * distance close all the way and leaves terrain clearance as the only floor. */
 export const ZOOM_MIN_ORBIT_DISTANCE = cameraConfigJson.zoom.minOrbitDistance;
 
 /** BAR Spring-camera zoom-out rail: controller distance is capped at 1.333x
@@ -867,9 +869,10 @@ export const CAMERA_CONSTRAINTS =
 export const CAMERA_LOST_TERRAIN_RECOVERY =
   cameraConfigJson.lostTerrainRecovery as CameraLostTerrainRecoveryConfig;
 
-/** Eye-versus-terrain resolution. persistRaiseEye is the sole intentional
- * departure from BAR: the resolved vertical lift is committed to controller
- * state instead of disappearing after the eye clears the mountain. */
+/** Eye-versus-terrain resolution, matching BAR's render-only
+ * max(eyeY, terrainY + clearance). The lift adjusts the frame being drawn and
+ * nothing else, so it can neither survive the gesture that caused it nor fight
+ * the next one. */
 export const CAMERA_TERRAIN_COLLISION = cameraConfigJson.terrainCollision as {
   readonly mode: CameraTerrainCollisionMode;
   readonly minClearance: number;

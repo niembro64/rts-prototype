@@ -56,7 +56,7 @@ import {
   barCameraZoomElevationOffset,
   barSpringDamperStep,
   cameraMouseDragModeForModifiers,
-  persistentTerrainRaise,
+  terrainClearanceRaise,
   zoomAggregationShortestCount,
   type CameraMouseDragMode,
 } from './OrbitCameraMath';
@@ -71,7 +71,7 @@ export {
   barCameraZoomElevationOffset,
   barSpringDamperStep,
   cameraMouseDragModeForModifiers,
-  persistentTerrainRaise,
+  terrainClearanceRaise,
   zoomAggregationShortestCount,
 } from './OrbitCameraMath';
 export type { BarSpringDamperStep, CameraMouseDragMode } from './OrbitCameraMath';
@@ -1019,7 +1019,7 @@ export class OrbitCamera {
       this.pitch = this.toPitch;
       this.barYawVelocity = 0;
       this.barPitchVelocity = 0;
-      this.resolveBarRenderedTerrainCollision(goal);
+      this.resolveBarRenderedTerrainCollision();
       this.applyBarRenderedPose();
       return;
     }
@@ -2576,16 +2576,18 @@ export class OrbitCamera {
    *  - 'clampPitch' — steepen the pitch so the eye stays ON the orbit
    *                   sphere at the stored distance; only the effective
    *                   pitch diverges from the stored pitch.
-   *  - 'persistRaiseEye' — lift eye and focus together, committing the lift
-   *                   into the ordinary controller state. There is no
-   *                   recovery flag or remembered pre-collision height, so
-   *                   clearing a ridge cannot pull the camera back down.
    *
-   *  An earlier version pushed the camera along terrain normals and
-   *  recovered yaw / pitch / distance from the adjusted position — which
-   *  made the view spin and ratchet its zoom as the camera brushed hills
-   *  while panning. The persistent mode only translates Y and never recovers
-   *  yaw, pitch, or distance from a collision-adjusted pose. */
+   *  Clearance is resolved against the RENDERED eye and never written back
+   *  into target / distance / yaw / pitch. Two earlier attempts did write
+   *  back and both produced the same class of bug: pushing the camera along
+   *  terrain normals and recovering the orbit state from the adjusted pose
+   *  made the view spin and ratchet its zoom while panning, and committing
+   *  the vertical lift into the focus ratcheted the focus altitude upward
+   *  every frame the eye was under a hill. That second one silently killed
+   *  zoom-in: each zoom step lowered the eye toward the anchor, the commit
+   *  lifted the whole rig back by the same amount, and the gesture read as
+   *  dead. A clearance that only ever adjusts the frame it is drawing cannot
+   *  fight a gesture, and cannot survive one either. */
   apply(): void {
     if (this.usesBarSpringTransition()) {
       this.prepareBarControllerGoal();
@@ -2617,25 +2619,13 @@ export class OrbitCamera {
       renderPitch,
       this._cameraPosTmp,
     );
-    if (sample && this.terrainCollisionMode === 'persistRaiseEye') {
-      // The clearance floor is the terrain bed alone — under water that is
-      // the basin floor, so the camera may submerge freely.
-      const terrainY = sample(pos.x, pos.z);
-      const lift = persistentTerrainRaise(pos.y, terrainY, this.minTerrainClearance);
-      if (lift > 0) {
-        // This is the one intentional difference from BAR's render-only
-        // max(eyeY, terrainY + 5): make the resolved height canonical.
-        this.target.y += lift;
-        this.toTargetY += lift;
-        pos.y += lift;
-      }
-    }
-    // raiseEye resolves AFTER building the eye (it lifts only Y). NaN-safe:
-    // a NaN sample (off-map / before terrain loads) makes the comparison
-    // false, so the eye is left where the orbit state put it.
+    // raiseEye resolves AFTER building the eye (it lifts only Y). The
+    // clearance floor is the terrain bed alone — under water that is the basin
+    // floor, so the camera may submerge freely. NaN-safe: a NaN sample
+    // (off-map / before terrain loads) leaves the lift at zero, so the eye
+    // stays where the orbit state put it.
     if (sample && this.terrainCollisionMode === 'raiseEye') {
-      const floorY = sample(pos.x, pos.z) + this.minTerrainClearance;
-      if (pos.y < floorY) pos.y = floorY;
+      pos.y += terrainClearanceRaise(pos.y, sample(pos.x, pos.z), this.minTerrainClearance);
     }
     this.camera.position.copy(pos);
     this.camera.lookAt(this._cameraLookAtTmp.copy(this.target));
@@ -2647,7 +2637,9 @@ export class OrbitCamera {
 
   /** Resolve BAR controller state into its desired eye. Terrain clearance is
    * part of controller GetPos; the active camera transitions toward this pose
-   * separately in tick(). */
+   * separately in tick(). The goal is derived, never stored: the lift lands on
+   * the returned vector alone, so the controller pose this reads is exactly the
+   * pose the last gesture left behind. */
   private prepareBarControllerGoal(): THREE.Vector3 {
     this.constrainTargets();
     const goal = this.cameraPositionForState(
@@ -2660,17 +2652,8 @@ export class OrbitCamera {
       this._barGoalEyeTmp,
     );
     const sample = this.minTerrainClearance > 0 ? this.getTerrainHeight : undefined;
-    if (sample && this.terrainCollisionMode === 'persistRaiseEye') {
-      const floorY = sample(goal.x, goal.z);
-      const lift = persistentTerrainRaise(goal.y, floorY, this.minTerrainClearance);
-      if (lift > 0) {
-        this.toTargetY += lift;
-        this.target.y = this.toTargetY;
-        goal.y += lift;
-      }
-    } else if (sample && this.terrainCollisionMode === 'raiseEye') {
-      const floorY = sample(goal.x, goal.z);
-      goal.y += persistentTerrainRaise(goal.y, floorY, this.minTerrainClearance);
+    if (sample && this.terrainCollisionMode === 'raiseEye') {
+      goal.y += terrainClearanceRaise(goal.y, sample(goal.x, goal.z), this.minTerrainClearance);
     }
     return goal;
   }
@@ -2704,34 +2687,26 @@ export class OrbitCamera {
 
   /** Resolve terrain against the active, transitioning eye, not just the
    * controller destination. This covers a spring path crossing a ridge whose
-   * endpoint is already on clear terrain. In the persistent mode, only any
-   * height beyond the controller's already-resolved goal is committed. That
-   * avoids double-counting a destination lift, and clearing the ridge later
-   * has no prior height or downward velocity to recover. */
-  private resolveBarRenderedTerrainCollision(goal: THREE.Vector3): void {
+   * endpoint is already on clear terrain. Like every other clearance site it
+   * only moves the rendered eye; the controller goal it was springing toward is
+   * left exactly as the last gesture wrote it, so the eye falls back to the
+   * goal on its own once the ridge is behind it. */
+  private resolveBarRenderedTerrainCollision(): void {
     if (this.minTerrainClearance <= 0 || this.terrainCollisionMode === 'none') return;
     const sample = this.getTerrainHeight;
     if (!sample) return;
-    const terrainY = sample(this.camera.position.x, this.camera.position.z);
-    const lift = persistentTerrainRaise(
+    const lift = terrainClearanceRaise(
       this.camera.position.y,
-      terrainY,
+      sample(this.camera.position.x, this.camera.position.z),
       this.minTerrainClearance,
     );
     if (!(lift > 0)) return;
 
     this.camera.position.y += lift;
-    if (this.terrainCollisionMode !== 'persistRaiseEye') return;
-
-    const controllerLift = Math.max(0, this.camera.position.y - goal.y);
-    if (controllerLift > 0) {
-      this.toTargetY += controllerLift;
-      this.target.y = this.toTargetY;
-      goal.y += controllerLift;
-    }
-    // The collision is now ordinary controller height. Retaining a downward
-    // spring velocity here would be hidden recovery memory and can repeatedly
-    // drive the eye back into the same ridge.
+    // The spring is pulling down into a floor it cannot cross. Letting it keep
+    // integrating that error would store the whole descent as velocity and fire
+    // it off the moment the ridge clears, so the vertical channel restarts from
+    // rest each frame it is held up.
     this.barPositionVelocity.y = 0;
   }
 
@@ -2765,8 +2740,8 @@ export class OrbitCamera {
     this.beginContinuousMovement();
     // Constant-altitude follow tracks the unit's true center, aircraft
     // included; the focus floor and eye clearance keep it out of terrain.
-    const followsTerrainOffset = this.usesTerrainFollowFocus()
-      && this.terrainCollisionMode === 'persistRaiseEye';
+    // Terrain-follow focus keeps its surface elevation offset instead.
+    const followsTerrainOffset = this.usesTerrainFollowFocus();
     const elevationOffset = followsTerrainOffset
       ? this.barFocusElevationOffset(this.toTargetX, this.toTargetY, this.toTargetZ)
       : 0;
@@ -3106,7 +3081,7 @@ export class OrbitCamera {
     this.camera.position.z = step.value;
     this.barPositionVelocity.z = step.velocity;
 
-    this.resolveBarRenderedTerrainCollision(goal);
+    this.resolveBarRenderedTerrainCollision();
 
     barSpringDamperStep(
       this.yaw,

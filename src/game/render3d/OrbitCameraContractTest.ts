@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import {
+  CAMERA_CONSTRAINTS,
   CAMERA_MOVEMENT_CONFIG,
   CAMERA_ROTATE_ANCHOR,
   CAMERA_SMOOTH_TAU_SECONDS,
+  CAMERA_TERRAIN_COLLISION,
   CAMERA_TRANSITION_SCOPE,
 } from '../../config';
 import {
@@ -17,7 +19,7 @@ import {
   barCameraWheelTicks,
   cameraMouseDragModeForModifiers,
   OrbitCamera,
-  persistentTerrainRaise,
+  terrainClearanceRaise,
   zoomAggregationShortestCount,
 } from './OrbitCamera';
 
@@ -27,6 +29,18 @@ function assertContract(condition: boolean, message: string): void {
 
 function close(actual: number, expected: number): boolean {
   return Math.abs(actual - expected) <= 1e-9;
+}
+
+/** A detached element reports a zero-size bounding rect, and `screen-center`
+ *  anchors (the canonical rotate anchor) resolve to null on one — the gesture
+ *  then silently falls back to focus-relative rotation. Give the stand-in a
+ *  real viewport so anchored paths under test are the ones that actually run. */
+function createStandInCanvas(widthPx: number, heightPx: number): HTMLElement {
+  const canvas = document.createElement('div');
+  Object.defineProperty(canvas, 'clientWidth', { configurable: true, value: widthPx });
+  Object.defineProperty(canvas, 'clientHeight', { configurable: true, value: heightPx });
+  canvas.getBoundingClientRect = () => new DOMRect(0, 0, widthPx, heightPx);
+  return canvas;
 }
 
 export function runOrbitCameraContractTest(): void {
@@ -221,18 +235,26 @@ export function runOrbitCameraContractTest(): void {
     'enabled cardinal lock must retain BAR yaw behavior',
   );
 
-  const firstLift = persistentTerrainRaise(90, 100, 5);
+  const firstLift = terrainClearanceRaise(90, 100, 5);
   assertContract(
     close(firstLift, 15),
     'terrain penetration must resolve to exactly the missing vertical clearance',
   );
   assertContract(
-    close(persistentTerrainRaise(90 + firstLift, 100, 5), 0),
-    'a committed terrain lift must not accumulate on the next frame',
+    close(terrainClearanceRaise(90 + firstLift, 100, 5), 0),
+    'a resolved terrain lift must not accumulate on the next frame',
   );
   assertContract(
-    close(persistentTerrainRaise(90 + firstLift, 80, 5), 0),
+    close(terrainClearanceRaise(90 + firstLift, 80, 5), 0),
     'clearing the mountain must never synthesize a downward recovery',
+  );
+  assertContract(
+    close(terrainClearanceRaise(90, Number.NaN, 5), 0),
+    'an unknown terrain sample must leave the eye where the orbit state put it',
+  );
+  assertContract(
+    (CAMERA_TERRAIN_COLLISION.mode as string) !== 'persistRaiseEye',
+    'terrain clearance must stay render-only — committing the lift ratchets the focus and kills zoom-in',
   );
 
   const springStep = barSpringDamperStep(0, 0, 10, 0.1, 0.016);
@@ -269,8 +291,7 @@ export function runOrbitCameraContractTest(): void {
     'EMA presets must use the doubled response rate (half the prior tau)',
   );
 
-  const canvas = document.createElement('div');
-  Object.defineProperty(canvas, 'clientHeight', { configurable: true, value: 1000 });
+  const canvas = createStandInCanvas(1000, 1000);
   const camera = new THREE.PerspectiveCamera(45, 1, 1, 10000);
   const orbit = new OrbitCamera(camera, canvas, {
     transitionMode: 'ema',
@@ -359,6 +380,80 @@ export function runOrbitCameraContractTest(): void {
       'anchored target translation, yaw, and pitch must advance together',
     );
     window.dispatchEvent(new MouseEvent('mouseup', { button: 1 }));
+  } finally {
+    orbit.destroy();
+  }
+
+  assertStatelessTerrainClearance();
+}
+
+/** The camera's pose must be a pure function of its controller state and the
+ *  heightfield. Terrain clearance is the one place that has repeatedly broken
+ *  that: when the resolved lift was committed back into the focus, brushing a
+ *  hill ratcheted the focus altitude upward every frame, and a zoom-in was
+ *  cancelled by the same lift it caused — the gesture read as dead. These cases
+ *  pin the eye under a wall of terrain and check that nothing survives it. */
+function assertStatelessTerrainClearance(): void {
+  assertContract(
+    CAMERA_CONSTRAINTS.zoomInLimit === 'none',
+    'the canonical closest approach must be terrain clearance alone, not a fixed orbit-distance rail',
+  );
+
+  const canvas = createStandInCanvas(1000, 1000);
+  const camera = new THREE.PerspectiveCamera(45, 1, 1, 10000);
+  const orbit = new OrbitCamera(camera, canvas, {
+    movementConfig: CAMERA_MOVEMENT_CONFIG,
+    rotateAnchor: CAMERA_ROTATE_ANCHOR,
+    terrainCollisionMode: CAMERA_TERRAIN_COLLISION.mode,
+    minTerrainClearance: CAMERA_TERRAIN_COLLISION.minClearance,
+  });
+  try {
+    // A wall behind the focus: flat ground under the focus, so the focus floor
+    // stays out of this, and terrain far above the eye where the eye actually
+    // sits (yaw 0 puts it at -Z).
+    const wallHeight = 2000;
+    let wallPresent = true;
+    orbit.setTerrainSampler((_x, z) => (wallPresent && z < -100 ? wallHeight : 0));
+    orbit.setTransitionSeconds(0);
+    orbit.setState({ targetX: 0, targetY: 0, targetZ: 0, distance: 1000, yaw: 0, pitch: 0.5 });
+
+    const clearedEyeY = wallHeight + CAMERA_TERRAIN_COLLISION.minClearance;
+    assertContract(
+      close(camera.position.y, clearedEyeY),
+      'an eye inside terrain must be lifted to the clearance height',
+    );
+
+    for (let i = 0; i < 60; i++) orbit.tick(0.016);
+    assertContract(
+      close(orbit.target.y, 0) && close(orbit.distance, 1000),
+      'holding the eye against terrain must not ratchet the focus altitude or the orbit distance',
+    );
+
+    // Zoom in while the eye is still pinned. The lift used to grow by exactly
+    // what each step gave back, so distance stopped responding.
+    let distance = orbit.distance;
+    for (let i = 0; i < 12; i++) {
+      distance *= 0.825;
+      orbit.setDistance(distance);
+      orbit.tick(0.016);
+    }
+    assertContract(
+      close(orbit.distance, distance) && distance < 150,
+      'zoom-in must keep closing while terrain clearance is holding the eye up',
+    );
+    assertContract(
+      close(orbit.target.y, 0),
+      'zooming against terrain must not push the focus into the sky',
+    );
+
+    // Drop the wall: with nothing committed, the eye falls straight back to the
+    // pose the controller state alone describes.
+    wallPresent = false;
+    orbit.tick(0.016);
+    assertContract(
+      close(camera.position.y, orbit.target.y + orbit.distance * Math.cos(orbit.pitch)),
+      'clearing the terrain must return the eye to its uncommitted orbit pose',
+    );
   } finally {
     orbit.destroy();
   }

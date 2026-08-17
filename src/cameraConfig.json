@@ -40,7 +40,7 @@
     }
   },
   "constraints": {
-    "zoomInLimit": "zoom-max",
+    "zoomInLimit": "none",
     "targetBounds": "map-padding"
   },
   "lostTerrainRecovery": {
@@ -48,7 +48,7 @@
     "emaTauSeconds": 0.35
   },
   "terrainCollision": {
-    "mode": "persistRaiseEye",
+    "mode": "raiseEye",
     "minClearance": 5.0
   },
   "movement": {

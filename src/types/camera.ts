@@ -149,6 +149,9 @@ export type CameraZoomDistanceSamplingConfig = {
   readonly debugSelectedColor: string;
 };
 
+/** 'none' lets the orbit distance close all the way to the focus, leaving
+ *  terrain clearance as the only thing between the eye and the ground.
+ *  'zoom-max' additionally holds the eye off at `zoom.minOrbitDistance`. */
 export type CameraZoomInLimitMode = 'none' | 'zoom-max';
 
 export type CameraTargetBoundsMode = 'none' | 'map-padding';
@@ -171,7 +174,12 @@ export type CameraLostTerrainRecoveryConfig = {
 };
 
 /** How the orbit camera resolves a frame where the eye would sit below
- *  terrain. Every mode keeps the camera looking at the orbit target:
+ *  terrain. Every mode keeps the camera looking at the orbit target, and
+ *  every mode resolves at RENDER time only: clearance is a function of the
+ *  controller pose and the heightfield, never a write back into the pose.
+ *  That is what keeps the camera stateless — the same controller state and
+ *  the same terrain always produce the same frame, so brushing a hill can
+ *  never leave behind an altitude the next gesture has to undo.
  *
  *  - 'none'       — no clearance; the eye may pass under the heightfield.
  *  - 'raiseEye'   — lift only the eye's Y until it clears. Keeps the
@@ -181,12 +189,8 @@ export type CameraLostTerrainRecoveryConfig = {
  *  - 'clampPitch' — steepen the pitch (swing the eye up the orbit arc)
  *                   until it clears. Keeps the eye ON the orbit sphere at
  *                   the stored distance and the focus centered; only the
- *                   effective pitch diverges from the stored pitch.
- *  - 'persistRaiseEye' — translate eye and focus upward together and commit
- *                   that translation as ordinary state. It never lowers the
- *                   camera later and stores no pre-collision recovery pose. */
+ *                   effective pitch diverges from the stored pitch. */
 export type CameraTerrainCollisionMode =
   | 'none'
   | 'raiseEye'
-  | 'clampPitch'
-  | 'persistRaiseEye';
+  | 'clampPitch';
