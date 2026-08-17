@@ -16,6 +16,7 @@ import GameCanvasServerControlBar from './GameCanvasServerControlBar.vue';
 import GameCanvasClientControlBar from './GameCanvasClientControlBar.vue';
 import LoadingEmblem from './LoadingEmblem.vue';
 import ChevronIcon from './ChevronIcon.vue';
+import FullscreenToggleIcon from './FullscreenToggleIcon.vue';
 import type {
   GameCanvasBattleControlBarModel,
   GameCanvasClientControlBarModel,
@@ -2082,7 +2083,6 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   cameraSmoothMode: cameraSmoothMode.value,
   cameraFollowMode: cameraFollowMode.value,
   waterBoundaryMode: waterBoundaryMode.value,
-  fullscreenActive: fullscreenActive.value,
   uiChromeVisible: uiChromeVisible.value,
   mapDetailsVisible: mapDetailsVisible.value,
   optionsMenuOpen: optionsMenuOpen.value,
@@ -2151,7 +2151,6 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   flipCameraYaw,
   setCameraAnchor,
   focusCameraAnchor,
-  toggleFullscreen,
   captureScreenshot,
   goToLastPing,
   toggleUiChrome,
@@ -2308,7 +2307,6 @@ watchEffect(() => {
   m.cameraSmoothMode = cameraSmoothMode.value;
   m.cameraFollowMode = cameraFollowMode.value;
   m.waterBoundaryMode = waterBoundaryMode.value;
-  m.fullscreenActive = fullscreenActive.value;
   m.uiChromeVisible = uiChromeVisible.value;
   m.mapDetailsVisible = mapDetailsVisible.value;
   m.optionsMenuOpen = optionsMenuOpen.value;
@@ -2417,6 +2415,19 @@ watchEffect(() => {
       >
         ⏸ PAUSED
       </div>
+
+      <button
+        v-if="gameplayHudVisible"
+        type="button"
+        class="fullscreen-game-toggle"
+        :class="{ active: fullscreenActive }"
+        :aria-label="fullscreenActive ? 'Exit fullscreen and return to window' : 'Enter fullscreen'"
+        :aria-pressed="fullscreenActive"
+        :title="fullscreenActive ? 'Exit fullscreen — return to window' : 'Enter fullscreen'"
+        @click.stop="toggleFullscreen"
+      >
+        <FullscreenToggleIcon :fullscreen="fullscreenActive" />
+      </button>
 
       <!-- Game UI (hidden during loading/client-off; desktop also hides behind full-screen lobby) -->
       <template v-if="gameplayHudVisible">
@@ -2605,8 +2616,10 @@ watchEffect(() => {
             <button
               type="button"
               :class="{ active: fullscreenActive }"
+              :aria-label="fullscreenActive ? 'Exit fullscreen and return to window' : 'Enter fullscreen'"
+              :title="fullscreenActive ? 'Exit fullscreen — return to window' : 'Enter fullscreen'"
               @click="toggleFullscreen"
-            >FULL</button>
+            ><FullscreenToggleIcon :fullscreen="fullscreenActive" /></button>
             <button
               type="button"
               @click="captureScreenshot"

@@ -268,7 +268,6 @@ export type GameCanvasClientControlBarModel = {
   readonly cameraSmoothMode: CameraSmoothMode;
   readonly cameraFollowMode: CameraFollowMode;
   readonly waterBoundaryMode: WaterBoundaryMode;
-  readonly fullscreenActive: boolean;
   readonly uiChromeVisible: boolean;
   readonly mapDetailsVisible: boolean;
   readonly optionsMenuOpen: boolean;
@@ -337,7 +336,6 @@ export type GameCanvasClientControlBarModel = {
   flipCameraYaw(): void;
   setCameraAnchor(index: number): void;
   focusCameraAnchor(index: number): void;
-  toggleFullscreen(): void;
   captureScreenshot(): void;
   goToLastPing(): void;
   toggleUiChrome(): void;

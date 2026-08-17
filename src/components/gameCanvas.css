@@ -117,6 +117,51 @@
   user-select: none;
 }
 
+/* Persistent screen-mode control. The 48px right inset deliberately clears
+ * the startup sidebar's 30px-wide top edge tab in both its open and closed
+ * positions while keeping the button visually tied to the gameplay corner. */
+.fullscreen-game-toggle {
+  position: absolute;
+  top: 12px;
+  right: 48px;
+  z-index: 1050;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid rgba(124, 145, 174, 0.72);
+  border-radius: 6px;
+  background: rgba(10, 14, 20, 0.84);
+  color: #dce7f8;
+  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(5px);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.fullscreen-game-toggle:hover {
+  border-color: #b4cdeb;
+  background: rgba(29, 38, 51, 0.94);
+  color: #fff;
+}
+
+.fullscreen-game-toggle.active {
+  border-color: #82d2ff;
+  background: rgba(31, 81, 111, 0.94);
+  color: #f8fcff;
+}
+
+.fullscreen-game-toggle:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.fullscreen-game-toggle:active {
+  background: rgba(5, 8, 12, 0.96);
+}
+
 .top-controls-shell {
   position: absolute;
   top: 0;
@@ -395,6 +440,12 @@
   font: 700 10px/1 system-ui, sans-serif;
   letter-spacing: 0;
   cursor: pointer;
+}
+
+.options-menu-grid button :deep(.fullscreen-toggle-icon) {
+  width: 16px;
+  height: 16px;
+  margin: auto;
 }
 
 .options-menu-grid button:hover,

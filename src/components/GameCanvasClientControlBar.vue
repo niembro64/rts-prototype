@@ -1079,11 +1079,6 @@ function resetEveryCustomHotkey(): void {
           @click="model.toggleOptionsMenu"
         >OPTS</BarButton>
         <BarButton
-          :active="model.fullscreenActive"
-          :title="model.fullscreenActive ? 'Exit fullscreen' : 'Enter fullscreen'"
-          @click="model.toggleFullscreen"
-        >FULL</BarButton>
-        <BarButton
           :active="false"
           title="Save the current game canvas as a PNG screenshot"
           @click="model.captureScreenshot"
