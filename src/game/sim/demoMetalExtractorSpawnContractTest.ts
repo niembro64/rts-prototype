@@ -820,6 +820,64 @@ function runDemoMetalExtractorSpawnContractTestForPreset(
   }
 }
 
+/** Every authored demo row must actually land on the map for every seat. The
+ *  tech labs are the ones this keeps catching: they are the newest rows, they
+ *  sit on tight rings inside the base, and a row that silently fails to place
+ *  looks exactly like a row nobody wired up. A count of zero here is the bug
+ *  "the building is not automatically built in the demo battle". */
+function assertDemoTechLabsSpawnForEverySeat(preset: BattlePreset): void {
+  // Run on the preset's OWN terrain, not the wet perimeter the offshore
+  // assertions force: the tech labs sit on the outer base rings, and under a
+  // -800 perimeter those rings are sea. This asserts what the demo actually
+  // ships, which is the thing a player sees.
+  const previousRuntimeConfig = getTerrainRuntimeConfig();
+  setTerrainRuntimeConfig({
+    centerMagnitude: preset.centerMagnitude,
+    dividersMagnitude: preset.dividersMagnitude,
+    perimeterMagnitude: preset.perimeterMagnitude,
+    terrainDTerrain: preset.terrainDTerrain,
+    plateauWallSlopeDegrees: preset.plateauWallSlopeDegrees,
+    metalDepositStep: preset.metalDepositStep,
+    terrainDetail: preset.terrainDetail,
+  });
+  try {
+    assertDemoTechLabsSpawnOnCurrentTerrain(preset);
+  } finally {
+    setTerrainRuntimeConfig(previousRuntimeConfig);
+  }
+}
+
+function assertDemoTechLabsSpawnOnCurrentTerrain(preset: BattlePreset): void {
+  const mapWidth = preset.mapWidthLandCells * LAND_CELL_SIZE;
+  const mapHeight = preset.mapLengthLandCells * LAND_CELL_SIZE;
+  const playerIds: PlayerId[] = [];
+  for (let i = 0; i < DEMO_CONFIG.playerCount; i++) playerIds.push((i + 1) as PlayerId);
+  const world = new WorldState(1246, mapWidth, mapHeight);
+  const construction = new ConstructionSystem(mapWidth, mapHeight, null);
+  const entities = spawnInitialBases(world, construction, [...playerIds], 'demo');
+  const expectedCounts: readonly (readonly [string, number])[] = [
+    ['buildingShieldTargetingTech', DEMO_CONFIG.buildingShieldTargetingTechCount],
+    ['buildingShieldTech', DEMO_CONFIG.buildingShieldTechCount],
+    ['buildingPrecisionTargetingTech', DEMO_CONFIG.buildingPrecisionTargetingTechCount],
+  ];
+  const shortfalls: string[] = [];
+  for (const [buildingBlueprintId, expected] of expectedCounts) {
+    if (expected <= 0) continue;
+    for (const playerId of playerIds) {
+      const placed = entities.filter((entity) =>
+        entity.buildingBlueprintId === buildingBlueprintId
+        && entity.ownership?.playerId === playerId).length;
+      if (placed !== expected) {
+        shortfalls.push(`${buildingBlueprintId}@seat${playerId}=${placed}/${expected}`);
+      }
+    }
+  }
+  assertContract(
+    shortfalls.length === 0,
+    `every authored demo tech lab must place for every seat; missing ${shortfalls.join(' ')}`,
+  );
+}
+
 export function runDemoMetalExtractorSpawnContractTest(): void {
   const preset = getModeDefaultPreset('demo');
   const previousRuntimeConfig = getTerrainRuntimeConfig();
@@ -837,6 +895,7 @@ export function runDemoMetalExtractorSpawnContractTest(): void {
   try {
     runDemoMetalExtractorSpawnContractTestForPreset(preset);
     assertCompactAuthoredRosterFactoryCoverage();
+    assertDemoTechLabsSpawnForEverySeat(preset);
     assertConstrainedFactoryPlacementIsNonFatal();
   } finally {
     setTerrainRuntimeConfig(previousRuntimeConfig);

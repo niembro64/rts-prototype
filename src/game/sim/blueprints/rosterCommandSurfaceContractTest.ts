@@ -117,9 +117,10 @@ const BAR_EQUIVALENT_CLASSIC_BUILD_ORDER: readonly StructureBlueprintId[] = [
   'buildingRadar',
   'buildingSonar',
   // Prototype-only tech structures sort directly after the intel pair
-  // (barClassicBuildSortIndex 103200/103210).
+  // (barClassicBuildSortIndex 103200/103210/103220).
   'buildingShieldTargetingTech',
   'buildingShieldTech',
+  'buildingPrecisionTargetingTech',
   'towerCannon',
   'towerTorpedo',
   'towerBeamMega',

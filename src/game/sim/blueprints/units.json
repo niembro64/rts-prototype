@@ -3493,7 +3493,8 @@
       "towerBeamMega",
       "towerAntiAir",
       "buildingShieldTargetingTech",
-      "buildingShieldTech"
+      "buildingShieldTech",
+      "buildingPrecisionTargetingTech"
     ],
     "workEmitter": {
       "points": [
@@ -4836,7 +4837,8 @@
       "towerCannon",
       "towerAntiAir",
       "buildingShieldTargetingTech",
-      "buildingShieldTech"
+      "buildingShieldTech",
+      "buildingPrecisionTargetingTech"
     ],
     "workEmitter": {
       "points": [
