@@ -1304,7 +1304,7 @@ function canEncodeServerMeta(meta: SnapshotServerMeta): boolean {
     !isOptionalBoolean(meta.turretShieldSpheresEnabled) ||
     !isOptionalBoolean(meta.forceFieldsVisible) ||
     !isOptionalFiniteNumber(meta.shieldAwareTargetingPlayerMask) ||
-    !isOptionalFiniteNumber(meta.shieldTechPlayerMask) ||
+    !isOptionalFiniteNumber(meta.shieldPowerPlayerMask) ||
     (
       meta.shieldReflectionMode !== undefined &&
       typeof meta.shieldReflectionMode !== 'string'
@@ -1382,8 +1382,8 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
     meta.forceFieldsVisible === true ? 1 : 0,
     meta.shieldAwareTargetingPlayerMask !== undefined ? 1 : 0,
     meta.shieldAwareTargetingPlayerMask ?? 0,
-    meta.shieldTechPlayerMask !== undefined ? 1 : 0,
-    meta.shieldTechPlayerMask ?? 0,
+    meta.shieldPowerPlayerMask !== undefined ? 1 : 0,
+    meta.shieldPowerPlayerMask ?? 0,
     meta.shieldReflectionMode !== undefined ? 1 : 0,
     shieldReflectionModeSlot,
     meta.fogOfWarEnabled !== undefined ? 1 : 0,

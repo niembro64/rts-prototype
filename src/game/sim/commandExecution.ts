@@ -84,10 +84,6 @@ import { setBuildingActiveOpen } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getUnitBlueprint } from './blueprints';
-import {
-  buildingBlueprintHasShield,
-  unitBlueprintHasShield,
-} from './blueprints/shieldTechGating';
 import { setUnitGroundNormalEmaMode } from './unitGroundNormal';
 import {
   clearMovementAnchorSatisfied,
@@ -913,12 +909,9 @@ function executeStartBuildCommand(ctx: CommandContext, command: StartBuildComman
 
   const playerId = builder.ownership.playerId;
 
-  // Shield Tech unlock: shielded structures require the owner to hold a
-  // completed Shield Tech building at the moment the order is placed.
-  if (
-    buildingBlueprintHasShield(command.buildingBlueprintId)
-    && !ctx.world.playerHasShieldTech(playerId)
-  ) return;
+  // No shield gate here: shielded structures are always buildable. Their
+  // fields simply stay down until the owner's team has a Shield Generator
+  // switched on (WorldState.playerHasShieldPower).
 
   // Start the building (creates the ghost/under-construction building)
   const building = ctx.constructionSystem.startBuilding(
@@ -1124,13 +1117,9 @@ function executeQueueUnitCommand(ctx: CommandContext, command: QueueUnitCommand)
   if (factory === undefined || factory.factory === null || factory.ownership === null) return;
   if (!factoryCanProduceUnit(factory, command.unitBlueprintId)) return;
 
-  // Shield Tech unlock: shielded units require the owner to hold a
-  // completed Shield Tech building when the production order is placed.
-  // Orders already in the queue keep running if the building later dies.
-  if (
-    unitBlueprintHasShield(command.unitBlueprintId)
-    && !ctx.world.playerHasShieldTech(factory.ownership.playerId)
-  ) return;
+  // No shield gate here either: every factory can queue every unit it is
+  // authored to build, shielded or not. Shield power is a runtime condition
+  // on the finished unit, not a production prerequisite.
 
   // Repeat-build selections persist even at unit cap so production resumes
   // automatically when an existing unit dies. One-shot selections clear after

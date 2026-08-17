@@ -2696,6 +2696,26 @@
         BATTLE bar&rsquo;s <code>TARGETING:</code> readout displays this per-player status; it is not
         a setting, and there is no global battle flag behind it.
       </p>
+      <h3>Shields are powered equipment, not a production unlock</h3>
+      <p>
+        A shield belongs to the side that is running it, not to the unit wearing it. Every shield a
+        team owns is raised while at least one of that team&rsquo;s <em>completed, switched-ON</em>
+        Shield Generators is up, and every one of them lowers &mdash; through its authored
+        transition, not a blink &mdash; the tick the last generator dies, closes, or is switched off.
+        One generator is enough for the whole side; a second one switched off takes nothing down.
+        A shield host still under construction has no field either: equipment runs on a finished
+        body, so the field comes up with the unit rather than with its scaffolding.
+      </p>
+      <p>
+        Nothing is gated at order time. Shielded units and buildings are buildable whenever their
+        factory or builder can make them, and a side with no generator simply fields them
+        unshielded. That is deliberately the opposite of a tech unlock: a production lock is
+        invisible until the player tries to click something and is told no, whereas an unpowered
+        shield is a visible, reversible battlefield state that the player can read off their own
+        army and fix by turning a generator back on. The BATTLE bar&rsquo;s <code>SHIELDS:</code>
+        readout names it, and it is derived from building ownership every read, so completion,
+        destruction, capture, and the ON/OFF switch all land the same tick with nothing stored.
+      </p>
       <p>
         &ldquo;Obstructs direct sight&rdquo; has one exact meaning. After the ordinary
         line-of-sight and ballistic gates pass, a shield-aware turret tests the <em>straight

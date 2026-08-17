@@ -14,6 +14,8 @@ import {
   updateWeaponWorldKinematics,
 } from './combatUtils';
 import { getUnitGroundZ } from '../unitGeometry';
+import { isEntityActive } from '../buildableHelpers';
+import { playerIsInPlayerMask } from './precisionFire';
 
 const _shieldMount = { x: 0, y: 0, z: 0 };
 
@@ -77,7 +79,18 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
   _activeShields.length = 0;
   _nextShieldPoses.clear();
 
+  // Resolved once: the underlying scan walks every building each player owns,
+  // which is fine per tick and ruinous per shield host.
+  const shieldPowerPlayerMask = world.getShieldPowerPlayerMask();
+
   for (const unit of world.getShieldUnits()) {
+    // A shield is powered equipment on a finished body. A host still under
+    // construction has no shield yet, and neither does one whose team has no
+    // Shield Generator switched on — the field lowers through its authored
+    // transition rather than blinking out, and comes back the same way.
+    const shieldsPowered = isEntityActive(unit)
+      && unit.ownership !== null
+      && playerIsInPlayerMask(shieldPowerPlayerMask, unit.ownership.playerId);
     const turrets = unit.combat!.turrets;
     for (let weaponIndex = 0; weaponIndex < turrets.length; weaponIndex++) {
       const weapon = turrets[weaponIndex];
@@ -94,11 +107,11 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
       }
 
       // Shield barriers are persistent equipment, not target-locked
-      // weapons: once the global shield-sphere toggle is enabled, every
-      // shield field raises and stays raised regardless of turret FSM
-      // state or lock-on target id.
+      // weapons: while the host is finished and its team has shield power,
+      // every field raises and stays raised regardless of turret FSM state
+      // or lock-on target id.
       weapon.shield.onTimeMs += dtMs;
-      const targetProgress = 1;
+      const targetProgress = shieldsPowered ? 1 : 0;
       if (isShieldSubmunitionTurret(weapon)) {
         weapon.shield.transition = targetProgress;
       } else {

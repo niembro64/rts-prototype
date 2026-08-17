@@ -17,7 +17,7 @@ type ServerSnapshotMetaInput = {
   turretShieldSpheresEnabled: boolean | undefined;
   forceFieldsVisible: boolean | undefined;
   shieldAwareTargetingPlayerMask: number | undefined;
-  shieldTechPlayerMask: number | undefined;
+  shieldPowerPlayerMask: number | undefined;
   shieldReflectionMode: ShieldReflectionMode | undefined;
   fogOfWarEnabled: boolean | undefined;
   converterTax: number | undefined;
@@ -67,7 +67,7 @@ export class ServerSnapshotMetaBuilder {
       turretShieldSpheresEnabled: input.turretShieldSpheresEnabled,
       forceFieldsVisible: input.forceFieldsVisible,
       shieldAwareTargetingPlayerMask: input.shieldAwareTargetingPlayerMask,
-      shieldTechPlayerMask: input.shieldTechPlayerMask,
+      shieldPowerPlayerMask: input.shieldPowerPlayerMask,
       shieldReflectionMode: input.shieldReflectionMode,
       fogOfWarEnabled: input.fogOfWarEnabled,
       converterTax: input.converterTax,

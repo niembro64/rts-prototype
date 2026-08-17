@@ -128,8 +128,8 @@ export const DEMO_CONFIG = {
    *  seat the shield-aware targeting upgrade from the opening layout. */
   buildingShieldTargetingTechCount: demoConfig.buildingShieldTargetingTechCount,
 
-  /** Number of Shield Tech forges per player — unlocks the seat's shielded
-   *  production lines from the opening layout. */
+  /** Number of Shield Generators per player — powers the seat's shields from
+   *  the opening layout. Switching them all off drops the side's shields. */
   buildingShieldTechCount: demoConfig.buildingShieldTechCount,
 
   /** Number of Precision Targeting Research Labs per player — while one is

@@ -2,6 +2,7 @@ import type { MapLandCellDimensions } from '../mapSizeConfig';
 import type { BattlePreset } from './battlePresets';
 import type {
   AudioScope,
+  BuildGridDebugMode,
   CameraFollowMode,
   CameraFovDegrees,
   CameraSmoothMode,
@@ -61,6 +62,9 @@ export type GameCanvasBattleControlBarModel = {
   /** Live per-player upgrade readout: the LOCAL player owns at least one
    *  completed Shield-Aware Targeting Tech building. */
   readonly localPlayerShieldAwareTargeting: boolean;
+  /** Live per-player shield power readout: the LOCAL player's team holds at
+   *  least one completed, switched-ON Shield Generator, so its shields are up. */
+  readonly localPlayerShieldsPowered: boolean;
   readonly currentFogOfWarEnabled: boolean;
   readonly currentSlowDownAtFinalWaypoint: boolean;
   readonly currentSlopePathMode: SlopePathMode;
@@ -226,7 +230,7 @@ export type GameCanvasClientControlBarModel = {
   readonly triangleDebug: boolean;
   readonly waterTriangleDebug: boolean;
   readonly wallTriangleDebug: boolean;
-  readonly buildGridDebug: boolean;
+  readonly buildGridDebugMode: BuildGridDebugMode;
   readonly pathingHierarchyDebug: boolean;
   readonly airLiftProbeDebug: boolean;
   readonly zoomPointsDebug: boolean;
@@ -292,7 +296,7 @@ export type GameCanvasClientControlBarModel = {
   toggleTriangleDebug(): void;
   toggleWaterTriangleDebug(): void;
   toggleWallTriangleDebug(): void;
-  toggleBuildGridDebug(): void;
+  changeBuildGridDebugMode(mode: BuildGridDebugMode): void;
   togglePathingHierarchyDebug(): void;
   toggleAirLiftProbeDebug(): void;
   toggleZoomPointsDebug(): void;

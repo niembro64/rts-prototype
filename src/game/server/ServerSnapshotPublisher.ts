@@ -305,7 +305,7 @@ export class ServerSnapshotPublisher {
       turretShieldSpheresEnabled: input.world.turretShieldSpheresEnabled,
       forceFieldsVisible: input.world.forceFieldsVisible,
       shieldAwareTargetingPlayerMask: input.world.getShieldAwareTargetingPlayerMask(),
-      shieldTechPlayerMask: input.world.getShieldTechPlayerMask(),
+      shieldPowerPlayerMask: input.world.getShieldPowerPlayerMask(),
       shieldReflectionMode: input.world.shieldReflectionMode,
       fogOfWarEnabled: input.world.fogOfWarEnabled,
       converterTax: input.world.converterTax,

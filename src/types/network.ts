@@ -740,9 +740,10 @@ export type NetworkServerSnapshotMeta = {
   /** Per-player upgrade bits (bit `playerId - 1`): shield-aware
    *  targeting from a completed Shield-Aware Targeting Tech building. */
   shieldAwareTargetingPlayerMask: number | undefined;
-  /** Per-player unlock bits (bit `playerId - 1`): shield production
-   *  from a completed Shield Tech building. */
-  shieldTechPlayerMask: number | undefined;
+  /** Per-player shield-power bits (bit `playerId - 1`): the player's team
+   *  holds at least one completed, switched-ON Shield Generator, so every
+   *  shield that team owns is raised. */
+  shieldPowerPlayerMask: number | undefined;
   shieldReflectionMode: ShieldReflectionMode | undefined;
   fogOfWarEnabled: boolean | undefined;
   /** Tax (fraction in [0, 1)) applied to each resource converter's

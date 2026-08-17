@@ -2245,8 +2245,8 @@ pub fn snapshot_encode_envelope_emit_server_meta(
     force_fields_visible: u8,
     has_shield_aware_targeting_player_mask: u8,
     shield_aware_targeting_player_mask: u32,
-    has_shield_tech_player_mask: u8,
-    shield_tech_player_mask: u32,
+    has_shield_power_player_mask: u8,
+    shield_power_player_mask: u32,
     has_shield_reflection_mode: u8,
     shield_reflection_mode_slot: u32,
     has_fog_of_war_enabled: u8,
@@ -2275,7 +2275,7 @@ pub fn snapshot_encode_envelope_emit_server_meta(
     if has_shield_aware_targeting_player_mask != 0 {
         field_count += 1;
     }
-    if has_shield_tech_player_mask != 0 {
+    if has_shield_power_player_mask != 0 {
         field_count += 1;
     }
     if has_shield_reflection_mode != 0 {
@@ -2358,9 +2358,9 @@ pub fn snapshot_encode_envelope_emit_server_meta(
         w.write_str("shieldAwareTargetingPlayerMask");
         w.write_uint(shield_aware_targeting_player_mask as u64);
     }
-    if has_shield_tech_player_mask != 0 {
-        w.write_str("shieldTechPlayerMask");
-        w.write_uint(shield_tech_player_mask as u64);
+    if has_shield_power_player_mask != 0 {
+        w.write_str("shieldPowerPlayerMask");
+        w.write_uint(shield_power_player_mask as u64);
     }
     if has_shield_reflection_mode != 0 {
         w.write_str("shieldReflectionMode");

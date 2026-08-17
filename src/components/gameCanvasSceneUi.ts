@@ -65,7 +65,7 @@ function cloneServerMeta(meta: NetworkServerSnapshotMeta): NetworkServerSnapshot
     turretShieldSpheresEnabled: meta.turretShieldSpheresEnabled,
     forceFieldsVisible: meta.forceFieldsVisible,
     shieldAwareTargetingPlayerMask: meta.shieldAwareTargetingPlayerMask,
-    shieldTechPlayerMask: meta.shieldTechPlayerMask,
+    shieldPowerPlayerMask: meta.shieldPowerPlayerMask,
     shieldReflectionMode: meta.shieldReflectionMode,
     fogOfWarEnabled: meta.fogOfWarEnabled,
     converterTax: meta.converterTax,

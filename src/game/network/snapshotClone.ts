@@ -439,7 +439,7 @@ export class ReusableNetworkSnapshotCloner {
     turretShieldSpheresEnabled: undefined,
     forceFieldsVisible: undefined,
     shieldAwareTargetingPlayerMask: undefined,
-    shieldTechPlayerMask: undefined,
+    shieldPowerPlayerMask: undefined,
     shieldReflectionMode: undefined,
     fogOfWarEnabled: undefined,
     converterTax: undefined,
@@ -631,7 +631,7 @@ export class ReusableNetworkSnapshotCloner {
       dsm.turretShieldSpheresEnabled = sm.turretShieldSpheresEnabled;
       dsm.forceFieldsVisible = sm.forceFieldsVisible;
       dsm.shieldAwareTargetingPlayerMask = sm.shieldAwareTargetingPlayerMask;
-      dsm.shieldTechPlayerMask = sm.shieldTechPlayerMask;
+      dsm.shieldPowerPlayerMask = sm.shieldPowerPlayerMask;
       dsm.shieldReflectionMode = sm.shieldReflectionMode;
       dsm.fogOfWarEnabled = sm.fogOfWarEnabled;
       if (sm.cpu) {

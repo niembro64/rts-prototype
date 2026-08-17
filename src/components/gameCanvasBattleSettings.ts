@@ -50,9 +50,9 @@ type GameCanvasBattleSettings = {
    *  completed Shield-Aware Targeting Tech building. Read-only — the
    *  TARGETING readout is earned by building, not toggled. */
   localPlayerShieldAwareTargeting: ComputedRef<boolean>;
-  /** Live per-player unlock status: true while the LOCAL player owns a
-   *  completed Shield Tech building (shielded production allowed). */
-  localPlayerShieldTechUnlocked: ComputedRef<boolean>;
+  /** Live per-player shield power: true while the LOCAL player's team holds
+   *  at least one completed, switched-ON Shield Generator. */
+  localPlayerShieldsPowered: ComputedRef<boolean>;
   currentFogOfWarEnabled: ComputedRef<boolean>;
   currentSlowDownAtFinalWaypoint: ComputedRef<boolean>;
   currentSlopePathMode: ComputedRef<SlopePathMode>;
@@ -199,8 +199,8 @@ export function useGameCanvasBattleSettings({
     localPlayerHoldsMaskBit(
       serverMetaFromSnapshot.value?.shieldAwareTargetingPlayerMask,
     ));
-  const localPlayerShieldTechUnlocked = computed(() =>
-    localPlayerHoldsMaskBit(serverMetaFromSnapshot.value?.shieldTechPlayerMask));
+  const localPlayerShieldsPowered = computed(() =>
+    localPlayerHoldsMaskBit(serverMetaFromSnapshot.value?.shieldPowerPlayerMask));
   const currentForceFieldsVisible = computed(
     () =>
       serverMetaFromSnapshot.value?.forceFieldsVisible ??
@@ -422,7 +422,7 @@ export function useGameCanvasBattleSettings({
     allDemoBuildingsActive,
     currentForceFieldsVisible,
     localPlayerShieldAwareTargeting,
-    localPlayerShieldTechUnlocked,
+    localPlayerShieldsPowered,
     currentFogOfWarEnabled,
     currentSlowDownAtFinalWaypoint,
     currentSlopePathMode,

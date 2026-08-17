@@ -1008,6 +1008,12 @@ function assertShieldAwareTargetingUpgradeContract(): void {
   const shieldedEnemy = world.createUnitFromBlueprint(1300, 300, 2 as PlayerId, 'unitWidow');
   world.addEntity(attacker);
   world.addEntity(shieldedEnemy);
+  // Shields are powered equipment: the Widow only raises its dome while its
+  // own side has a Shield Generator up. This suite is about the ATTACKER's
+  // targeting upgrade, so give the defender power and leave it on throughout.
+  const defenderShieldGenerator = world.createBuilding(1300, 900, 60, 60, 120, 2 as PlayerId);
+  defenderShieldGenerator.buildingBlueprintId = 'buildingShieldTech';
+  world.addEntity(defenderShieldGenerator);
   spatialGrid.updateUnit(attacker);
   spatialGrid.updateUnit(shieldedEnemy);
   const { turretIndex } = getFirstAttackTurret(attacker);
@@ -1138,6 +1144,108 @@ function assertShieldAwareTargetingUpgradeContract(): void {
   resetTurretHostIntegrationState();
 }
 
+/** Shield power.
+ *
+ *  A shield is not something a unit owns outright; it is equipment run off the
+ *  team's Shield Generators. The rules this pins down:
+ *
+ *    1. A shield host still under construction has no field, even with power.
+ *    2. A finished host has no field while its side has no generator switched
+ *       on — nothing is blocked at production time, so unshielded shield-units
+ *       are an ordinary battlefield state, not an impossible one.
+ *    3. One generator powers the whole team's shields, and the LAST one going
+ *       dark drops all of them. Switching a generator off is the same as not
+ *       having one; switching it back on restores every field.
+ *    4. Two seats on the same side share power, and no seat off it does. */
+function assertShieldPowerContract(): void {
+  resetTurretHostIntegrationState();
+  const world = createIsolatedTestWorld(4471, 2048, 2048);
+  world.playerCount = 2;
+  world.setTeamRoster(buildFreeForAllRoster([1 as PlayerId, 2 as PlayerId]));
+
+  const shieldHost = world.createUnitFromBlueprint(400, 400, 1 as PlayerId, 'unitWidow');
+  world.addEntity(shieldHost);
+  spatialGrid.updateUnit(shieldHost);
+
+  const dtMs = 50;
+  // 24 steps clears the authored 500 ms transition ramp in either direction.
+  const settleShields = (): void => {
+    for (let i = 0; i < 24; i++) updateShieldState(world, dtMs);
+  };
+
+  settleShields();
+  assertContract(
+    getActiveShields().length === 0,
+    'a shield host whose side has no Shield Generator must stand unshielded',
+  );
+
+  const generator = world.createBuilding(400, 900, 60, 60, 120, 1 as PlayerId);
+  generator.buildingBlueprintId = 'buildingShieldTech';
+  world.addEntity(generator);
+  assertContract(
+    world.playerHasShieldPower(1 as PlayerId)
+      && !world.playerHasShieldPower(2 as PlayerId),
+    'a completed Shield Generator must power its own side and no other',
+  );
+
+  // An unfinished host stays dark even with the generator up: a shell is not
+  // yet a unit, so it has no equipment to run.
+  shieldHost.buildable = createBuildable({ energy: 100, metal: 100 });
+  settleShields();
+  assertContract(
+    getActiveShields().length === 0,
+    'a shield host under construction must have no field even with power available',
+  );
+
+  shieldHost.buildable = null;
+  settleShields();
+  assertContract(
+    getActiveShields().length > 0,
+    'a finished host on a powered side must raise its field',
+  );
+
+  // Switching the generator off is the same as not owning one.
+  assertContract(generator.building !== null, 'the generator must carry a building component');
+  const generatorActiveState = {
+    open: false, wantOpen: false, damageDelayMs: 0, reopenDelayMs: 0,
+  };
+  generator.building.activeState = generatorActiveState;
+  settleShields();
+  assertContract(
+    getActiveShields().length === 0,
+    'switching the last Shield Generator OFF must drop every shield on that side',
+  );
+
+  generatorActiveState.open = true;
+  generatorActiveState.wantOpen = true;
+  settleShields();
+  assertContract(
+    getActiveShields().length > 0,
+    'switching a Shield Generator back ON must restore the team\'s shields',
+  );
+
+  // One generator ON is enough, however many are off.
+  const darkGenerator = world.createBuilding(900, 900, 60, 60, 120, 1 as PlayerId);
+  darkGenerator.buildingBlueprintId = 'buildingShieldTech';
+  darkGenerator.building!.activeState = {
+    open: false, wantOpen: false, damageDelayMs: 0, reopenDelayMs: 0,
+  };
+  world.addEntity(darkGenerator);
+  settleShields();
+  assertContract(
+    getActiveShields().length > 0,
+    'a second switched-OFF generator must not take down shields the first one is powering',
+  );
+
+  world.removeEntity(generator.id);
+  settleShields();
+  assertContract(
+    getActiveShields().length === 0,
+    'destroying the last powered generator must drop the shields the same way switching it off does',
+  );
+  resetTurretHostIntegrationState();
+}
+
 export function runOrcaTargetingContractTest(): void {
   assertOrcaTargetsEnemyOrca(true);
   assertOrcaTargetsEnemyOrca(false);
@@ -1264,6 +1372,7 @@ export function runTurretHostIntegrationContractTest(): void {
     assertBeamUsesSharedSnappyTurretAim();
     assertLorisReflectorRemainsAutonomousFromHostTask();
     assertShieldAwareTargetingUpgradeContract();
+    assertShieldPowerContract();
   } finally {
     resetTurretHostIntegrationState();
   }

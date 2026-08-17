@@ -1084,10 +1084,12 @@ export class WorldState {
     return this.teamHasCompletedBuilding(playerId, 'buildingShieldTargetingTech');
   }
 
-  /** The shield production unlock: granted while the player owns a
-   *  completed Shield Tech building. Gates producing/placing blueprints
-   *  that mount shield-emitting turrets. */
-  playerHasShieldTech(playerId: PlayerId): boolean {
+  /** Shield power: every shield the team owns is raised while at least one
+   *  Shield Generator on that team is completed and switched ON, and every one
+   *  of them drops the moment the last generator goes dark. Nothing is gated at
+   *  order time — shield-bearing units build freely and simply stand unshielded
+   *  until their side has power. */
+  playerHasShieldPower(playerId: PlayerId): boolean {
     return this.teamHasCompletedBuilding(playerId, 'buildingShieldTech');
   }
 
@@ -1116,8 +1118,11 @@ export class WorldState {
     return this.getCompletedBuildingPlayerMask('buildingShieldTargetingTech');
   }
 
-  /** Per-player shield production unlock bits for snapshot meta / UI. */
-  getShieldTechPlayerMask(): number {
+  /** Per-player shield-power bits. The shield update resolves this ONCE per
+   *  tick and tests bits per shield host: the underlying scan walks every
+   *  building each player owns, which is not something a per-host call can
+   *  afford. Also carried in snapshot meta for the BATTLE bar readout. */
+  getShieldPowerPlayerMask(): number {
     return this.getCompletedBuildingPlayerMask('buildingShieldTech');
   }
 

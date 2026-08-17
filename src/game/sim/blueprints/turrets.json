@@ -5231,7 +5231,7 @@
   },
   "turretSensorBuildingShieldTech": {
     "turretBlueprintId": "turretSensorBuildingShieldTech",
-    "name": "Shield Tech Sensors",
+    "name": "Shield Generator Sensors",
     "targeting": {
       "engagement": {
         "range": 0,

@@ -53,7 +53,6 @@ import {
 } from '../game/input/factoryProductionPresets';
 import { factoryProductionClickModeFromEvent, queueModeFromEvent } from '../game/input/queueModifiers';
 import type { StructureBlueprintId } from '@/types/blueprintIds';
-import { unitBlueprintHasShield } from '../game/sim/blueprints/shieldTechGating';
 import { createSelectionPanelStateHelpers } from './selectionPanelState';
 
 import type {
@@ -69,9 +68,6 @@ const props = defineProps<{
   hotkeyPreset: CommandHotkeyPresetId;
   hotkeyRevision: number;
   playableBottomInsetPx: number;
-  /** Live per-player Shield Tech unlock: while false, blueprints that
-   *  mount shield emitters render locked in produce/build menus. */
-  shieldTechUnlocked: boolean;
 }>();
 
 // Per budget_design_philosophy.html "Selection Menus Are Uniform Per Host
@@ -758,9 +754,6 @@ function costTitle(
 }
 
 function factoryProductionCellTitle(option: FactoryGridOption): string {
-  if (factoryCellShieldLocked(option.unitBlueprintId)) {
-    return `${option.label} carries a shield — build a Shield Tech building to unlock its production`;
-  }
   const modeLabel = props.selection.factoryQueueMode
     ? 'Quota'
     : props.selection.factoryRepeatsProduction === true
@@ -1389,12 +1382,7 @@ function reverseFireStateFromClick(): void {
   props.actions.setSelectedFireState(previousFireState(props.selection.fireState));
 }
 
-function factoryCellShieldLocked(unitBlueprintId: string): boolean {
-  return !props.shieldTechUnlocked && unitBlueprintHasShield(unitBlueprintId);
-}
-
 function queueFactoryUnitFromClick(factoryId: number, unitBlueprintId: string, event: MouseEvent): void {
-  if (factoryCellShieldLocked(unitBlueprintId)) return;
   const productionMode = factoryProductionClickModeFromEvent(
     event,
     props.selection.factoryRepeatsProduction === true,
@@ -2902,9 +2890,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
                 'factory-under-construction': selection.factoryUnderConstruction === true,
                 'vehicle-btn': uo.locomotion !== 'crawler',
                 'bot-btn': uo.locomotion === 'crawler',
-                'shield-tech-locked': factoryCellShieldLocked(uo.unitBlueprintId),
               }"
-              :disabled="factoryCellShieldLocked(uo.unitBlueprintId)"
               :title="factoryProductionCellTitle(uo)"
               @click="(event) => queueFactoryUnitFromClick(selection.factoryId!, uo.unitBlueprintId, event)"
               @contextmenu.prevent="(event) => removeFactoryQueuedUnitFromCell(selection.factoryId!, uo.unitBlueprintId, event)"

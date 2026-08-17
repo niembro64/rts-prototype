@@ -1134,7 +1134,7 @@ const {
   triangleDebug,
   waterTriangleDebug,
   wallTriangleDebug,
-  buildGridDebug,
+  buildGridDebugMode,
   pathingHierarchyDebug,
   airLiftProbeDebug,
   zoomPointsDebug,
@@ -1205,7 +1205,7 @@ const {
   toggleTriangleDebug,
   toggleWaterTriangleDebug,
   toggleWallTriangleDebug,
-  toggleBuildGridDebug,
+  changeBuildGridDebugMode,
   togglePathingHierarchyDebug,
   toggleAirLiftProbeDebug,
   toggleZoomPointsDebug,
@@ -1532,7 +1532,7 @@ const {
   currentAllowedBuildingsSet,
   allDemoBuildingsActive,
   localPlayerShieldAwareTargeting,
-  localPlayerShieldTechUnlocked,
+  localPlayerShieldsPowered,
   currentFogOfWarEnabled,
   currentSlowDownAtFinalWaypoint,
   currentSlopePathMode,
@@ -1785,6 +1785,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   terrainDetail: terrainDetail.value,
   displayUnitCount: displayUnitCount.value,
   localPlayerShieldAwareTargeting: localPlayerShieldAwareTargeting.value,
+  localPlayerShieldsPowered: localPlayerShieldsPowered.value,
   currentFogOfWarEnabled: currentFogOfWarEnabled.value,
   currentSlowDownAtFinalWaypoint: currentSlowDownAtFinalWaypoint.value,
   currentSlopePathMode: currentSlopePathMode.value,
@@ -1843,6 +1844,7 @@ watchEffect(() => {
   m.terrainDetail = terrainDetail.value;
   m.displayUnitCount = displayUnitCount.value;
   m.localPlayerShieldAwareTargeting = localPlayerShieldAwareTargeting.value;
+  m.localPlayerShieldsPowered = localPlayerShieldsPowered.value;
   m.currentFogOfWarEnabled = currentFogOfWarEnabled.value;
   m.currentSlowDownAtFinalWaypoint = currentSlowDownAtFinalWaypoint.value;
   m.currentSlopePathMode = currentSlopePathMode.value;
@@ -2032,7 +2034,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   triangleDebug: triangleDebug.value,
   waterTriangleDebug: waterTriangleDebug.value,
   wallTriangleDebug: wallTriangleDebug.value,
-  buildGridDebug: buildGridDebug.value,
+  buildGridDebugMode: buildGridDebugMode.value,
   pathingHierarchyDebug: pathingHierarchyDebug.value,
   airLiftProbeDebug: airLiftProbeDebug.value,
   zoomPointsDebug: zoomPointsDebug.value,
@@ -2098,7 +2100,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleTriangleDebug,
   toggleWaterTriangleDebug,
   toggleWallTriangleDebug,
-  toggleBuildGridDebug,
+  changeBuildGridDebugMode,
   togglePathingHierarchyDebug,
   toggleAirLiftProbeDebug,
   toggleZoomPointsDebug,
@@ -2264,7 +2266,7 @@ watchEffect(() => {
   m.triangleDebug = triangleDebug.value;
   m.waterTriangleDebug = waterTriangleDebug.value;
   m.wallTriangleDebug = wallTriangleDebug.value;
-  m.buildGridDebug = buildGridDebug.value;
+  m.buildGridDebugMode = buildGridDebugMode.value;
   m.pathingHierarchyDebug = pathingHierarchyDebug.value;
   m.airLiftProbeDebug = airLiftProbeDebug.value;
   m.zoomPointsDebug = zoomPointsDebug.value;
@@ -2410,7 +2412,6 @@ watchEffect(() => {
           :hotkey-preset="commandHotkeyPreset"
           :hotkey-revision="commandHotkeyRevision"
           :playable-bottom-inset-px="playableBottomInsetPx"
-          :shield-tech-unlocked="localPlayerShieldTechUnlocked"
         />
 
         <!-- Idle builders (bottom-center, BAR gui_idle_builders) -->

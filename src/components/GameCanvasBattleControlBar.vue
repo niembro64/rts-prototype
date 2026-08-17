@@ -258,6 +258,12 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
             ? 'SHIELD-AWARE: your Shield-Aware Targeting Tech building upgrades every one of your entities to reject locks whose line of sight crosses an active force field'
             : 'NAIVE: your turrets lock straight through force fields. Build a Shield-Aware Targeting Tech building to upgrade all of your entities.'"
         >TARGETING: {{ model.localPlayerShieldAwareTargeting ? 'SHIELD-AWARE' : 'NAIVE' }}</BarLabel>
+        <BarDivider />
+        <BarLabel
+          :title="model.localPlayerShieldsPowered
+            ? 'POWERED: at least one of your team\'s Shield Generators is built and switched ON, so every shield your team owns is raised'
+            : 'OFFLINE: your team has no Shield Generator built and switched ON. Shielded units and buildings still build normally, they just stand unshielded until one comes online.'"
+        >SHIELDS: {{ model.localPlayerShieldsPowered ? 'POWERED' : 'OFFLINE' }}</BarLabel>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />

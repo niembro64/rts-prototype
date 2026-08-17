@@ -7,13 +7,17 @@
     "gridWidth": 5,
     "gridHeight": 5,
     "footprintMask": [
-      "...+...",
-      "..###..",
-      ".#####.",
-      "+#####+",
-      ".#####.",
-      "..###..",
-      "...+..."
+      ".....+.....",
+      "....+++....",
+      "...+++++...",
+      "..++###++..",
+      ".++#####++.",
+      "+++#####+++",
+      ".++#####++.",
+      "..++###++..",
+      "...+++++...",
+      "....+++....",
+      ".....+....."
     ],
     "gridDepth": 1,
     "hp": 220,
@@ -1102,9 +1106,9 @@
   },
   "buildingShieldTech": {
     "buildingBlueprintId": "buildingShieldTech",
-    "tinyName": "STL",
-    "shortName": "S-TECH",
-    "name": "Shield Tech Lab",
+    "tinyName": "SHG",
+    "shortName": "S-GEN",
+    "name": "Shield Generator",
     "gridWidth": 12,
     "gridHeight": 12,
     "footprintMask": [

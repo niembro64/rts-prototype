@@ -1,5 +1,5 @@
 import { NO_ENTITY_ID, type Entity, type Turret } from './types';
-import { isConstructionPieceMaterialized } from './buildableHelpers';
+import { isEntityActive } from './buildableHelpers';
 
 type ShieldPanelTurretRef = {
   turret: Turret;
@@ -33,6 +33,8 @@ export function getActiveShieldPanelTurret(entity: Entity): ShieldPanelTurretRef
 
   const { turret } = ref;
   if (turret.id === NO_ENTITY_ID) return null;
-  if (!isConstructionPieceMaterialized(entity, 'body')) return null;
+  // Mirror plates are equipment on a finished hull: a shell that has merely
+  // materialized its body is not yet reflecting anything.
+  if (!isEntityActive(entity)) return null;
   return ref;
 }
