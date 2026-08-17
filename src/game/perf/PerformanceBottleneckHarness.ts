@@ -1258,10 +1258,10 @@ function createServerConfig(
     backgroundMode: true,
     aiPlayerIds: PLAYER_IDS,
     spawnDemoInitialState: true,
-    // maxTotalUnits is a per-player cap since the team-roster split
-    // (getUnitCapPerPlayer), so divide by seat count to keep --unit-cap
-    // meaning TOTAL live units; ledger baselines are total-unit numbers.
-    initialMaxTotalUnits: Math.max(1, Math.floor(options.unitCap / PLAYER_IDS.length)),
+    // entityCountCap IS the match total now, so --unit-cap passes straight
+    // through: no seat-count division to keep in sync, which is the trap
+    // that silently doubled then halved harness load twice before.
+    initialEntityCountCap: Math.max(1, Math.floor(options.unitCap)),
     converterTax: 0,
   };
 }

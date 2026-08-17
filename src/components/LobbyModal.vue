@@ -97,6 +97,13 @@ const converterTaxOptions = BATTLE_CONFIG.converterTax.options;
 const mapWidthOptions = BATTLE_CONFIG.mapSize.width.options;
 const mapLengthOptions = BATTLE_CONFIG.mapSize.length.options;
 const capOptions = BATTLE_CONFIG.cap.options;
+/** Sides holding at least one seat — what the entity count cap divides
+ *  by, matching WorldState.getTeamEntityCountCap. */
+const occupiedAllyTeamCount = computed(() => {
+  const sides = new Set<number>();
+  for (const player of props.players) sides.add(player.allyTeamId ?? 1);
+  return Math.max(1, sides.size);
+});
 
 // Set view of allowedUnits so per-button lookups in the v-for below
 // are O(1) instead of O(allowedUnits.length) on every parent re-render.
@@ -787,13 +794,13 @@ const terrainSectionVars = computed(() =>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
-                <BarLabel>CAP:</BarLabel>
+                <BarLabel :title="`Total entities (units + buildings) for the match, split evenly across the ${occupiedAllyTeamCount} team(s) that hold seats`">ENTITY CAP:</BarLabel>
                 <BarButtonGroup>
                   <BarButton
                     v-for="opt in capOptions"
                     :key="opt"
                     :active="unitCap === opt"
-                    :title="isHost ? `Max ${opt} total units` : 'Only the host can change battle settings'"
+                    :title="isHost ? `Max ${opt.toLocaleString()} entities total — ${Math.floor(opt / occupiedAllyTeamCount).toLocaleString()} per team across ${occupiedAllyTeamCount} team(s)` : 'Only the host can change battle settings'"
                     @click="pickUnitCap(opt)"
                   >{{ opt.toLocaleString() }}</BarButton>
                 </BarButtonGroup>

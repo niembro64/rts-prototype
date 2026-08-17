@@ -3,9 +3,9 @@
   "realDefault": "Angels Flat",
 
   "cap": {
-    "demoDefault": 9,
-    "realDefault": 243,
-    "options": [9, 81, 243, 729, 1262, 2187]
+    "demoDefault": 1000,
+    "realDefault": 1000,
+    "options": [10, 50, 100, 500, 1000, 5000, 10000]
   },
   "centerMagnitude": {
     "options": [-3200, -800, -400, -200, 0, 200, 400, 800, 1600, 3200, 6400]

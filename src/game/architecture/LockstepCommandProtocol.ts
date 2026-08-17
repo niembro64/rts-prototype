@@ -85,7 +85,7 @@ const ARCHITECTURE_CONTROL_COMMAND_TYPES: ReadonlySet<Command['type']> = new Set
 // server-control gate.
 export const LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES: ReadonlySet<Command['type']> = new Set([
   'setUnitGroundNormalEmaMode',
-  'setMaxTotalUnits',
+  'setEntityCountCap',
   'setTurretShieldPanelsEnabled',
   'setTurretShieldSpheresEnabled',
   'setForceFieldsVisible',

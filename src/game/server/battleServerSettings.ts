@@ -23,7 +23,7 @@ import type {
 
 type StoredBattleServerSettingsOptions = {
   ipAddress: string | undefined;
-  maxTotalUnits: number | undefined;
+  entityCountCap: number | undefined;
   /** When set, overrides the stored fog-of-war value. Lobby preview
    *  passes `false` and real-battle startup passes `true`; the demo
    *  battle leaves it undefined so the DEMO BATTLE bar toggle still
@@ -40,7 +40,7 @@ type StoredBattleServerSettingsOptions = {
 
 const DEFAULT_STORED_BATTLE_SERVER_SETTINGS_OPTIONS: StoredBattleServerSettingsOptions = {
   ipAddress: undefined,
-  maxTotalUnits: undefined,
+  entityCountCap: undefined,
 };
 
 function buildStoredBattleServerSettingCommands(
@@ -55,11 +55,11 @@ function buildStoredBattleServerSettingCommands(
     },
   ];
 
-  if (options.maxTotalUnits !== undefined) {
+  if (options.entityCountCap !== undefined) {
     commands.push({
-      type: 'setMaxTotalUnits',
+      type: 'setEntityCountCap',
       tick: 0,
-      maxTotalUnits: options.maxTotalUnits,
+      entityCountCap: options.entityCountCap,
     });
   }
 

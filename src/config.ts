@@ -95,7 +95,8 @@ export const GOOD_TPS = telemetryConfigJson.goodTps;
 export type { SnapshotRate,  } from './types/server';
 import { BATTLE_CONFIG } from './battleBarConfig';
 
-export const MAX_TOTAL_UNITS = BATTLE_CONFIG.cap.default;
+/** Boot value for the match-wide ENTITY COUNT CAP (units + buildings). */
+export const DEFAULT_ENTITY_COUNT_CAP = BATTLE_CONFIG.cap.default;
 export const DEFAULT_TURRET_SHIELD_PANELS_ENABLED = BATTLE_CONFIG.turretShieldPanelsEnabled.default;
 export const DEFAULT_TURRET_SHIELD_SPHERES_ENABLED =
   BATTLE_CONFIG.turretShieldSpheresEnabled.default;
@@ -247,7 +248,7 @@ export const MAX_METAL = economyConfigJson.metal.maxStockpile;
 export const BASE_METAL_PER_SECOND = economyConfigJson.metal.baseIncomePerSecond;
 
 // =============================================================================
-// UNIT CAP
+// ENTITY COUNT CAP
 // =============================================================================
 
 export const WIND_SPEED_MIN = windConfigJson.speed.min;

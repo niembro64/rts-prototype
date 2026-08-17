@@ -1229,11 +1229,14 @@ export function buildSelectionInfo(
   };
 }
 
-// Build economy info for a player
+/** Build economy info for a player. The economy and building breakdown are
+ *  this SEAT's; the entity counter is this SIDE's, because that is the scope
+ *  the cap is enforced at (`teamEntityCap` is already the side's share). */
 export function buildEconomyInfo(
   entitySource: UIEntitySource,
   playerId: PlayerId,
-  unitCap: number
+  teamEntityCap: number,
+  teamMemberIds: readonly PlayerId[],
 ): EconomyInfo | null {
   const economy = economyManager.getEconomy(playerId);
   if (!economy) return null;
@@ -1257,8 +1260,13 @@ export function buildEconomyInfo(
     }
   }
 
-  // Count units for this player
-  const unitCount = entitySource.getUnitsByPlayer(playerId).length;
+  // Count what the cap counts, across the whole side: units AND buildings,
+  // every teammate summed.
+  let teamEntityCount = 0;
+  for (let i = 0; i < teamMemberIds.length; i++) {
+    teamEntityCount += entitySource.getUnitsByPlayer(teamMemberIds[i]).length;
+    teamEntityCount += entitySource.getBuildingsByPlayer(teamMemberIds[i]).length;
+  }
 
   const total = economy.income.base + economy.income.production;
   const netFlow = total - economy.expenditure;
@@ -1277,7 +1285,7 @@ export function buildEconomyInfo(
       expenditure: economy.metal.expenditure,
       netFlow: metalNetFlow,
     },
-    units: { count: unitCount, cap: unitCap },
+    units: { count: teamEntityCount, cap: teamEntityCap },
     buildings: { solar: solarCount, wind: windCount, factory: factoryCount, extractor: extractorCount },
   };
 }

@@ -234,14 +234,15 @@ export type GameServerConfig = {
    *  restoring user-saved demo settings passes them so disabled
    *  structures are skipped at base spawn. */
   initialAllowedBuildingBlueprintIds?: ReadonlySet<string>;
-  /** Initial unit cap for the world, applied BEFORE the demo's
-   *  initial-spawn pass so the spawn count tracks the user's stored
-   *  cap (now that the demo fills `maxTotalUnits / numPlayers` slots
-   *  per team). Without this the world boots at the BATTLE_CONFIG
-   *  default (4096), the spawn fills to that, and only AFTER does
-   *  `setMaxTotalUnits` arrive from the stored value — leaving a
-   *  mismatch like "4075 units / 16 cap" on screen. */
-  initialMaxTotalUnits?: number;
+  /** Initial ENTITY COUNT CAP for the world (units + buildings, match
+   *  total), applied BEFORE the demo's initial-spawn pass so the spawn
+   *  count tracks the user's stored cap — the demo fills each SIDE's
+   *  share (`entityCountCap / seated sides`) and splits it across that
+   *  side's seats. Without this the world boots at the BATTLE_CONFIG
+   *  default, the spawn fills to that, and only AFTER does
+   *  `setEntityCountCap` arrive from the stored value — leaving a
+   *  mismatch like "4075 entities / 16 cap" on screen. */
+  initialEntityCountCap?: number;
   /** Initial CONVERTER TAX value (fraction in [0, 1)). Lobby /
    *  battle-bar selections feed this so each new battle starts with
    *  the configured tax instead of the WorldState default 0.0. */

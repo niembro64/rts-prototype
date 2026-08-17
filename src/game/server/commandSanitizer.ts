@@ -214,8 +214,8 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
       return typeof command.enabled === 'boolean' && isBuildingBlueprintId(command.buildingBlueprintId)
         ? { ...command, tick }
         : null;
-    case 'setMaxTotalUnits':
-      return sanitizeMaxTotalUnitsCommand(command, tick);
+    case 'setEntityCountCap':
+      return sanitizeEntityCountCapCommand(command, tick);
     case 'setTurretShieldPanelsEnabled':
     case 'setTurretShieldSpheresEnabled':
     case 'setForceFieldsVisible':
@@ -1281,14 +1281,14 @@ function sanitizeReclaimAreaCommand(
   return fields === null ? null : { type: 'reclaimArea', ...fields };
 }
 
-function sanitizeMaxTotalUnitsCommand(command: Command, tick: number): Command | null {
-  if (command.type !== 'setMaxTotalUnits' || !Number.isFinite(command.maxTotalUnits)) return null;
+function sanitizeEntityCountCapCommand(command: Command, tick: number): Command | null {
+  if (command.type !== 'setEntityCountCap' || !Number.isFinite(command.entityCountCap)) return null;
   const options = BATTLE_CONFIG.cap.options;
   const min = options[0];
   const max = options[options.length - 1];
   return {
-    type: 'setMaxTotalUnits',
+    type: 'setEntityCountCap',
     tick,
-    maxTotalUnits: Math.floor(clamp(command.maxTotalUnits, min, max)),
+    entityCountCap: Math.floor(clamp(command.entityCountCap, min, max)),
   };
 }

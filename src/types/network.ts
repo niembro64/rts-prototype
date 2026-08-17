@@ -525,8 +525,8 @@ export type LobbySettings = {
   terrainDetail: number;
   mapWidthLandCells: number;
   mapLengthLandCells: number;
-  /** Gameplay unit cap for real battles. */
-  maxTotalUnits: number;
+  /** Match-wide ENTITY COUNT CAP (units + buildings) for real battles. */
+  entityCountCap: number;
   converterTax: number;
   /** Whether units brake on approach to their last waypoint. */
   slowDownAtFinalWaypoint: boolean;
@@ -730,8 +730,13 @@ export type NetworkServerSnapshotMeta = {
   snaps: { rate: SnapshotRate };
   server: { time: string; ip: string };
   units: {
+    /** Allowed unit blueprint ids — genuinely about units, unlike the two
+     *  counters below. */
     allowed: string[] | undefined;
+    /** The match-wide ENTITY COUNT CAP (units + buildings), before it is
+     *  divided into per-side pools. */
     max: number | undefined;
+    /** Live entities match-wide (units + buildings), so it pairs with `max`. */
     count: number | undefined;
   };
   turretShieldPanelsEnabled: boolean | undefined;

@@ -380,8 +380,8 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
     case 'setUnitGroundNormalEmaMode':
       setUnitGroundNormalEmaMode(command.mode);
       break;
-    case 'setMaxTotalUnits':
-      ctx.world.maxTotalUnits = command.maxTotalUnits;
+    case 'setEntityCountCap':
+      ctx.world.entityCountCap = command.entityCountCap;
       break;
     case 'setTurretShieldPanelsEnabled':
       setTurretShieldPanelsEnabled(ctx.world, command.enabled);

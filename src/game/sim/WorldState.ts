@@ -17,6 +17,8 @@ import {
 import {
   buildAlliesByPlayer,
   buildFreeForAllRoster,
+  getAllyTeamMembers,
+  getOccupiedAllyTeamCount,
   type TeamRoster,
 } from './teamRoster';
 import type { MetalDeposit } from '../../metalDepositConfig';
@@ -29,7 +31,7 @@ import {
   type CreateProjectileProvenance,
 } from './WorldProjectileFactory';
 import {
-  MAX_TOTAL_UNITS,
+  DEFAULT_ENTITY_COUNT_CAP,
   DEFAULT_TURRET_SHIELD_PANELS_ENABLED,
   DEFAULT_TURRET_SHIELD_SPHERES_ENABLED,
   DEFAULT_SHIELD_REFLECTION_MODE,
@@ -154,7 +156,8 @@ export class WorldState {
   // Current player being controlled
   public activePlayerId: PlayerId = 1;
 
-  // Number of players in the game (for unit cap calculation)
+  // Number of players in the game (layout + economy; the entity count
+  // cap divides by SIDES, not by this)
   public playerCount: number = 2;
 
   /** Per-player alliance map (FOW-06). The set holds the
@@ -206,9 +209,12 @@ export class WorldState {
   // Same list across all clients (deterministic from map size).
   public metalDeposits: MetalDeposit[] = [];
 
-  // Configurable per-player unit cap (can be changed at runtime via command).
-  // The legacy field name is retained in the wire/settings schema.
-  public maxTotalUnits: number = MAX_TOTAL_UNITS;
+  /** ENTITY COUNT CAP — the match's TOTAL entity budget (units + buildings),
+   *  changeable at runtime via command. Nothing enforces this number
+   *  directly: it is divided into per-side pools by
+   *  `getTeamEntityCountCap()`, which is what production actually checks.
+   *  Because it is a total, adding seats no longer multiplies sim load. */
+  public entityCountCap: number = DEFAULT_ENTITY_COUNT_CAP;
 
   // Whether turretShieldPanels/panels participate in targeting and reflections
   public turretShieldPanelsEnabled: boolean = DEFAULT_TURRET_SHIELD_PANELS_ENABLED;
@@ -381,27 +387,53 @@ export class WorldState {
     this.cache.rebuildIfNeeded(this.entities);
   }
 
-  // CAP is already a per-player value; player count must not dilute it.
-  getUnitCapPerPlayer(): number {
-    return Math.max(0, Math.floor(this.maxTotalUnits));
+  /** TEAM ENTITY COUNT CAP — the share of `entityCountCap` one ally team may
+   *  fill. The authored cap is the whole match's total; it is split evenly
+   *  across the sides that actually have seats (an empty declared side gets
+   *  a terrain slice, not a share) and the seats on a side then share their
+   *  side's pool. Split by SIDE, never by seat: a lone player fields the
+   *  same army as the three players opposite them, which is the point.
+   *
+   *  The floor's remainder (up to sides-1 entities) is simply unreachable;
+   *  the cap is a load ceiling, not an accounting identity. */
+  getTeamEntityCountCap(): number {
+    const sides = getOccupiedAllyTeamCount(this.teamRoster);
+    return Math.max(0, Math.floor(Math.max(0, this.entityCountCap) / sides));
   }
 
-  // Check if player can build more units (existing units only, no queue accounting)
-  canPlayerBuildUnit(playerId: PlayerId): boolean {
-    const units = this.getUnitsByPlayer(playerId);
-    return units.length < this.getUnitCapPerPlayer();
+  /** Everything the cap counts, for one ally team: units AND buildings, all
+   *  seats summed. Live and shell (under-construction) entities both count —
+   *  a nanoframe already occupies its slot, which is what stops a queue from
+   *  overshooting the cap. Both indexes are cached per player, so this is a
+   *  handful of map lookups even at 10k entities. */
+  getTeamEntityCount(playerId: PlayerId): number {
+    const members = getAllyTeamMembers(this.teamRoster, playerId);
+    let total = 0;
+    for (let i = 0; i < members.length; i++) {
+      total += this.getUnitsByPlayer(members[i]).length;
+      total += this.getBuildingsByPlayer(members[i]).length;
+    }
+    return total;
   }
 
-  // Check if player can select another repeat-build unit. Repeat-build is
-  // not a queue, so only live/shell units count against the cap.
-  canPlayerQueueUnit(playerId: PlayerId): boolean {
-    return this.canPlayerBuildUnit(playerId);
+  /** Whether `playerId`'s SIDE has room for one more entity. Existing
+   *  entities only — production consults this per item, so no queue
+   *  accounting happens here. */
+  canPlayerBuildEntity(playerId: PlayerId): boolean {
+    return this.getTeamEntityCount(playerId) < this.getTeamEntityCountCap();
   }
 
-  // Get remaining unit capacity for a player
-  getRemainingUnitCapacity(playerId: PlayerId): number {
-    const units = this.getUnitsByPlayer(playerId);
-    return Math.max(0, this.getUnitCapPerPlayer() - units.length);
+  // Check if player can select another repeat-build item. Repeat-build is
+  // not a queue, so only live/shell entities count against the cap.
+  canPlayerQueueEntity(playerId: PlayerId): boolean {
+    return this.canPlayerBuildEntity(playerId);
+  }
+
+  /** Room left in `playerId`'s SIDE pool. Teammates draw from the same
+   *  number, first come first served — one seat may legitimately consume
+   *  the whole side's share. */
+  getRemainingTeamEntityCapacity(playerId: PlayerId): number {
+    return Math.max(0, this.getTeamEntityCountCap() - this.getTeamEntityCount(playerId));
   }
 
   // Generate next deterministic entity ID
@@ -1335,7 +1367,6 @@ export class WorldState {
         height,
         depth,
         supportSurface: createCollisionTopBuildingSupportSurface(width, height, depth),
-        placementType: 'ground',
         hoveringType: null,
         hovering: false,
         hp: 500,

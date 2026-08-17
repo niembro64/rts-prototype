@@ -299,7 +299,7 @@ export class ServerSnapshotPublisher {
       snapshotRate: input.maxSnapshotsDisplay,
       ipAddress: input.ipAddress,
       allowedUnits: input.backgroundMode ? input.backgroundAllowedUnitBlueprintIds : undefined,
-      maxUnits: input.world.maxTotalUnits,
+      maxUnits: input.world.entityCountCap,
       unitCount,
       turretShieldPanelsEnabled: input.world.turretShieldPanelsEnabled,
       turretShieldSpheresEnabled: input.world.turretShieldSpheresEnabled,
@@ -337,7 +337,9 @@ export class ServerSnapshotPublisher {
     const projectileDespawns = input.simulation.getAndClearProjectileDespawns();
     const projectileMotionUpdates = input.simulation.getAndClearProjectileMotionUpdates();
 
-    const unitCount = input.world.getUnits().length;
+    // Pairs with meta.units.max, which is the ENTITY count cap — so this
+    // counts buildings too, or the readout reads under its own ceiling.
+    const unitCount = input.world.getUnits().length + input.world.getBuildings().length;
 
     this.dirtyIdsBuf.length = 0;
     this.dirtyFieldsBuf.length = 0;
@@ -641,7 +643,9 @@ export class ServerSnapshotPublisher {
     addMaterializationStage(emitBaseStages, 'lifecycleDrain', lifecycleStart);
 
     let stageStart = performance.now();
-    const unitCount = input.world.getUnits().length;
+    // Pairs with meta.units.max, which is the ENTITY count cap — so this
+    // counts buildings too, or the readout reads under its own ceiling.
+    const unitCount = input.world.getUnits().length + input.world.getBuildings().length;
     const serverMeta = this.buildServerMeta(input, unitCount);
     addMaterializationStage(emitBaseStages, 'meta', stageStart);
 

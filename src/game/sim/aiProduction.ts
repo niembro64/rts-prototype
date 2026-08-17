@@ -84,7 +84,7 @@ function updateAiFactoryProduction(
 
   if (
     entity.factory.selectedUnitBlueprintId === null &&
-    world.canPlayerQueueUnit(entity.ownership.playerId)
+    world.canPlayerQueueEntity(entity.ownership.playerId)
   ) {
     if (factoryProductionSystem.selectUnit(
       entity,

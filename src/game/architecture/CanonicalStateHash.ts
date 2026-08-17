@@ -88,7 +88,7 @@ export function buildCanonicalServerState(core: ServerSimulationCore): Canonical
       playerIds,
       mapWidth: world.mapWidth,
       mapHeight: world.mapHeight,
-      maxTotalUnits: world.maxTotalUnits,
+      entityCountCap: world.entityCountCap,
       turretShieldPanelsEnabled: world.turretShieldPanelsEnabled,
       turretShieldSpheresEnabled: world.turretShieldSpheresEnabled,
       // Shield-aware targeting is derived per player from building

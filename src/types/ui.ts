@@ -316,6 +316,8 @@ export type EconomyInfo = {
     expenditure: number;
     netFlow: number;
   };
+  /** This SIDE's entity occupancy against its share of the entity count cap
+   *  (units + buildings, all teammates summed). */
   units: { count: number; cap: number };
   buildings: { solar: number; wind: number; factory: number; extractor: number };
 };

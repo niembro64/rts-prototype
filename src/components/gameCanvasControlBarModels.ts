@@ -47,7 +47,12 @@ export type GameCanvasBattleControlBarModel = {
   readonly allDemoBuildingsActive: boolean;
   readonly demoBuildingBlueprintIds: readonly string[];
   readonly currentAllowedBuildingsSet: ReadonlySet<string>;
+  /** Authored ENTITY COUNT CAP for the match — the total the CAP buttons
+   *  select, before the per-side split. */
   readonly displayUnitCap: number;
+  /** Sides with at least one seat. The cap divides by this, so the bar
+   *  can show what one team actually gets. */
+  readonly occupiedAllyTeamCount: number;
   readonly gameStarted: boolean;
   readonly mapWidthLandCells: number;
   readonly mapLengthLandCells: number;
@@ -80,7 +85,7 @@ export type GameCanvasBattleControlBarModel = {
   toggleDemoUnitBlueprintId(unitBlueprintId: string): void;
   toggleAllDemoBuildings(): void;
   toggleDemoBuildingBlueprintId(buildingBlueprintId: string): void;
-  changeMaxTotalUnits(cap: number): void;
+  changeEntityCountCap(cap: number): void;
   applyMapLandDimensions(dimensions: MapLandCellDimensions): void;
   applyCenterMagnitude(value: number): void;
   applyDividersMagnitude(value: number): void;

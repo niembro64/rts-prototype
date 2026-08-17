@@ -9,6 +9,7 @@ import { BUILDABLE_UNIT_BLUEPRINT_IDS, getUnitBlueprint, getNormalizedUnitCost }
 import { BACKGROUND_UNIT_SPAWN_DISTRIBUTION } from '../../config';
 import { DEMO_CONFIG } from '../../demoConfig';
 import { getSeatBaseAngle, normalizePlayerIds } from '../sim/playerLayout';
+import { getAllyTeamMembers } from '../sim/teamRoster';
 import {
   makeMapOvalMetrics,
   mapOvalPointAt,
@@ -197,6 +198,20 @@ function countInitialDemoUnitsByPlayer(world: WorldState, playerId: PlayerId): n
   return count;
 }
 
+/** The whole side's Fabricator reserve. The cap is a side pool, so the
+ * reserve has to be one too — otherwise a 3-seat side reserves a third of
+ * what its factories will actually try to build. */
+function seededFabricatorProductionReserveForTeam(
+  world: WorldState,
+  playerId: PlayerId,
+): number {
+  let count = 0;
+  for (const member of getAllyTeamMembers(world.teamRoster, playerId)) {
+    count += seededFabricatorProductionReserve(world, member);
+  }
+  return count;
+}
+
 /** Keep one live-unit slot available for every seeded Fabricator repeat line.
  * The quick-start center wave must not fill the cap before the one-factory-
  * per-unit demo layout can visibly produce its first shell. */
@@ -265,7 +280,20 @@ export function spawnBackgroundUnitsStandalone(
   }
   const players = normalizePlayerIds(playersSource);
   const numPlayers = players.length;
-  const unitCapPerPlayer = world.getUnitCapPerPlayer();
+  // Each seat's slice of ITS OWN SIDE's remaining pool, fixed before the wave
+  // starts so seat order cannot starve a teammate. Sides are uneven by design
+  // (DEMO_CONFIG.allyTeamSeats), and the base rings already placed count
+  // against the pool — buildings are entities too — so this reads what is
+  // actually left rather than the raw cap.
+  const seatShareByPlayer = new Map<PlayerId, number>();
+  for (let p = 0; p < numPlayers; p++) {
+    const playerId = players[p];
+    const seats = Math.max(1, getAllyTeamMembers(world.teamRoster, playerId).length);
+    seatShareByPlayer.set(
+      playerId,
+      Math.floor(world.getRemainingTeamEntityCapacity(playerId) / seats),
+    );
+  }
   const mapWidth = world.mapWidth;
   const mapHeight = world.mapHeight;
   const oval = makeMapOvalMetrics(mapWidth, mapHeight);
@@ -290,11 +318,17 @@ export function spawnBackgroundUnitsStandalone(
     for (let p = 0; p < numPlayers; p++) {
       const playerId = players[p];
       const pUnits = countInitialDemoUnitsByPlayer(world, playerId);
-      // CAP specifies the randomized opening wave itself. The Commander and
-      // seeded Fabricator lines are demo infrastructure and do not reduce it.
-      const totalPerPlayer = unitCapPerPlayer;
+      // CAP now specifies the whole match, so the opening wave gets whatever
+      // this seat's share of its side has left after infrastructure. The
+      // live-capacity guard is the real ceiling; the share only decides how
+      // the side's remainder is spread across its own seats.
+      const seatShare = seatShareByPlayer.get(playerId) ?? 0;
 
-      for (let i = 0; i < totalPerPlayer && pUnits + i < unitCapPerPlayer; i++) {
+      for (
+        let i = 0;
+        pUnits + i < seatShare && world.getRemainingTeamEntityCapacity(playerId) > 0;
+        i++
+      ) {
         const unitBlueprintId = selectWeightedUnitBlueprintId(
           () => world.nextRandom(playerId),
           initialWaveAllowedUnitBlueprintIds,
@@ -333,12 +367,14 @@ export function spawnBackgroundUnitsStandalone(
 
     for (let p = 0; p < numPlayers; p++) {
       const playerId = players[p];
-      const pUnits = world.getUnitsByPlayer(playerId).length;
+      // Reinforcements draw from the SIDE's pool, so the whole side's live
+      // entities and the whole side's reserved Fabricator lines both count.
+      const teamEntities = world.getTeamEntityCount(playerId);
       const reinforcementCeiling = Math.max(
         1,
-        unitCapPerPlayer - seededFabricatorProductionReserve(world, playerId),
+        world.getTeamEntityCountCap() - seededFabricatorProductionReserveForTeam(world, playerId),
       );
-      if (pUnits >= reinforcementCeiling) continue;
+      if (teamEntities >= reinforcementCeiling) continue;
 
       const offsetAngle = (world.nextRandom(playerId) - 0.5) * sectorAngle;
       const a = baseAngles[p] + offsetAngle;

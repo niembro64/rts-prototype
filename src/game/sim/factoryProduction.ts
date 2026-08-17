@@ -300,12 +300,12 @@ class FactoryProductionSystem {
             if (factoryCanProduceUnit(factory, selectedUnitBlueprintId)) {
               factorySelectedState[row] = FACTORY_SELECTED_VALID;
               // Reserve capacity while packing the complete deterministic
-              // factory batch. Checking world.canPlayerBuildUnit separately
+              // factory batch. Checking world.canPlayerBuildEntity separately
               // for every row lets every idle factory observe the same free
               // slot and overshoot the cap simultaneously.
               let remainingCapacity = remainingSpawnCapacityByPlayer.get(playerId);
               if (remainingCapacity === undefined) {
-                remainingCapacity = world.getRemainingUnitCapacity(playerId);
+                remainingCapacity = world.getRemainingTeamEntityCapacity(playerId);
               }
               if (remainingCapacity > 0) {
                 factoryCanBuildUnit[row] = 1;

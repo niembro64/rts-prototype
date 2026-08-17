@@ -76,7 +76,12 @@ import { RtsScene3DPredictionPhase } from './helpers/RtsScene3DPredictionPhase';
 import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
 import { CommandQueue, type Command } from '../sim/commands';
 import { getTerrainDividerTeamCount } from '../sim/playerLayout';
-import { resolveTeamRoster, type TeamRoster } from '../sim/teamRoster';
+import {
+  getAllyTeamMembers,
+  getOccupiedAllyTeamCount,
+  resolveTeamRoster,
+  type TeamRoster,
+} from '../sim/teamRoster';
 import {
   getTerrainMeshHeight,
   setTerrainTeamCount,
@@ -969,10 +974,14 @@ export class RtsScene3D {
     if (!this.onEconomyChange) return;
     const serverMeta = this.clientViewState.getServerMeta();
     const maxTotal = serverMeta?.units.max ?? 120;
+    // Same split the sim uses (WorldState.getTeamEntityCountCap): the cap is
+    // a match total divided across SEATED sides, and the panel reports this
+    // side's shared pool — not this seat's, which teammates draw from too.
     const info = buildEconomyInfo(
       this.entitySourceAdapter,
       this.localPlayerId,
-      Math.floor(maxTotal / this.playerIds.length),
+      Math.floor(maxTotal / getOccupiedAllyTeamCount(this.teamRoster)),
+      getAllyTeamMembers(this.teamRoster, this.localPlayerId),
     );
     if (info) this.onEconomyChange(info);
   }

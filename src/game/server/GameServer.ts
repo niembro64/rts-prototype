@@ -612,10 +612,10 @@ export class GameServer {
         recordAcceptedCommand(sanitizedCommand);
         this.setBackgroundBuildingBlueprintEnabled(sanitizedCommand.buildingBlueprintId, sanitizedCommand.enabled);
         return;
-      case 'setMaxTotalUnits':
+      case 'setEntityCountCap':
         if (!canApplyServerControl) return;
         recordAcceptedCommand(sanitizedCommand);
-        this.world.maxTotalUnits = sanitizedCommand.maxTotalUnits;
+        this.world.entityCountCap = sanitizedCommand.entityCountCap;
         return;
       case 'setTurretShieldPanelsEnabled':
         if (!canApplyServerControl) return;

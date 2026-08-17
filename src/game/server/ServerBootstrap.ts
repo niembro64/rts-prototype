@@ -192,8 +192,8 @@ export class ServerBootstrap {
     const backgroundAllowedBuildingBlueprintIds = new Set(
       config.initialAllowedBuildingBlueprintIds ?? BUILDING_BLUEPRINT_IDS,
     );
-    if (config.initialMaxTotalUnits !== undefined && config.initialMaxTotalUnits > 0) {
-      world.maxTotalUnits = config.initialMaxTotalUnits;
+    if (config.initialEntityCountCap !== undefined && config.initialEntityCountCap > 0) {
+      world.entityCountCap = config.initialEntityCountCap;
     }
     if (config.converterTax !== undefined && Number.isFinite(config.converterTax)) {
       world.converterTax = config.converterTax;
@@ -390,16 +390,16 @@ export class ServerBootstrap {
     const backgroundAllowedBuildingBlueprintIds = new Set(
       config.initialAllowedBuildingBlueprintIds ?? BUILDING_BLUEPRINT_IDS,
     );
-    // Same ordering rule for the unit cap: the demo spawn now fills
-    // `maxTotalUnits` randomized slots per team, so the cap must
+    // Same ordering rule for the entity count cap: the demo spawn fills
+    // each SIDE's share of it in randomized slots, so the cap must
     // be set BEFORE spawnBackgroundUnitsStandalone runs (in the
     // playerIds branch below). Without this override, the world
-    // boots at MAX_TOTAL_UNITS (4096) regardless of user storage,
-    // the spawn fills to that, and only AFTER would `setMaxTotalUnits`
+    // boots at DEFAULT_ENTITY_COUNT_CAP (4096) regardless of user storage,
+    // the spawn fills to that, and only AFTER would `setEntityCountCap`
     // arrive from LobbyManager — producing the visible "4075/16"
     // mismatch where the spawn count and the displayed cap disagree.
-    if (config.initialMaxTotalUnits !== undefined && config.initialMaxTotalUnits > 0) {
-      world.maxTotalUnits = config.initialMaxTotalUnits;
+    if (config.initialEntityCountCap !== undefined && config.initialEntityCountCap > 0) {
+      world.entityCountCap = config.initialEntityCountCap;
     }
     if (config.converterTax !== undefined && Number.isFinite(config.converterTax)) {
       world.converterTax = config.converterTax;

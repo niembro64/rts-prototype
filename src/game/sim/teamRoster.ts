@@ -237,6 +237,24 @@ export function getSeatWithinAllyTeam(
   return { index: index < 0 ? 0 : index, count: Math.max(1, members.length) };
 }
 
+/**
+ * Sides that actually have a seat on them. `allyTeamIds.length` counts
+ * DECLARED sides, including the empty ones `buildTeamRosterFromSeatCounts`
+ * exists to express — layout wants those (an empty side still gets a terrain
+ * slice), but a resource split must not hand a share to nobody. The entity
+ * cap divides by this so its setting is the real reachable total.
+ */
+export function getOccupiedAllyTeamCount(roster: TeamRoster): number {
+  let occupied = 0;
+  for (const allyTeamId of roster.allyTeamIds) {
+    const members = roster.playersByAllyTeam.get(allyTeamId);
+    if (members !== undefined && members.length > 0) occupied++;
+  }
+  // A roster with no seated side cannot divide by zero; one share is the
+  // same answer a free-for-all of one seat would give.
+  return Math.max(1, occupied);
+}
+
 /** Index of an ally team within `allyTeamIds`, for angular layout. */
 export function getAllyTeamIndex(roster: TeamRoster, allyTeamId: AllyTeamId): number {
   const index = roster.allyTeamIds.indexOf(allyTeamId);

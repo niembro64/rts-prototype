@@ -164,7 +164,7 @@ export function useGameCanvasLobbySettings({
       terrainDetail: terrainDetail.value,
       mapWidthLandCells: mapWidthLandCells.value,
       mapLengthLandCells: mapLengthLandCells.value,
-      maxTotalUnits: getUnitCap('real'),
+      entityCountCap: getUnitCap('real'),
       converterTax: loadStoredConverterTax('real'),
       slowDownAtFinalWaypoint: loadStoredSlowDownAtFinalWaypoint('real'),
       terrainSurfaceMode: loadStoredTerrainSurfaceMode('real'),
@@ -363,8 +363,8 @@ export function useGameCanvasLobbySettings({
     if (!isLiquidSurfaceMode(settings.liquidSurfaceMode)) {
       throw new Error(`[lobby settings] invalid liquidSurfaceMode: ${String(settings.liquidSurfaceMode)}`);
     }
-    if (!Number.isFinite(settings.maxTotalUnits) || settings.maxTotalUnits <= 0) {
-      throw new Error(`[lobby settings] invalid maxTotalUnits: ${String(settings.maxTotalUnits)}`);
+    if (!Number.isFinite(settings.entityCountCap) || settings.entityCountCap <= 0) {
+      throw new Error(`[lobby settings] invalid entityCountCap: ${String(settings.entityCountCap)}`);
     }
     const nextTerrainSurfaceMode = settings.terrainSurfaceMode;
     const nextLiquidSurfaceMode = settings.liquidSurfaceMode;
@@ -424,7 +424,7 @@ export function useGameCanvasLobbySettings({
     if (slowDownAtFinalWaypointChanged) {
       slowDownAtFinalWaypointStoreVersion.value++;
     }
-    setUnitCap('real', settings.maxTotalUnits);
+    setUnitCap('real', settings.entityCountCap);
     if (changed) {
       applyCurrentTerrainRuntimeConfig();
     }

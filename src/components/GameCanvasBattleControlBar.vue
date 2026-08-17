@@ -101,16 +101,18 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel>CAP:</BarLabel>
+        <BarLabel :title="`Total entities (units + buildings) for the whole match, split evenly across the ${model.occupiedAllyTeamCount} team(s) that hold seats. Teammates share their team's pool.`">ENTITY CAP:</BarLabel>
         <BarButtonGroup>
           <BarButton
             v-for="opt in BATTLE_CONFIG.cap.options"
             :key="opt"
             :active="model.displayUnitCap === opt"
-            :title="`Max ${opt} total units`"
-            @click="model.changeMaxTotalUnits(opt)"
+            :title="`Max ${opt.toLocaleString()} entities total — ${Math.floor(opt / model.occupiedAllyTeamCount).toLocaleString()} per team across ${model.occupiedAllyTeamCount} team(s)`"
+            @click="model.changeEntityCountCap(opt)"
           >{{ opt.toLocaleString() }}</BarButton>
         </BarButtonGroup>
+        <BarLabel :title="`Team entity count cap: each team may field ${Math.floor(model.displayUnitCap / model.occupiedAllyTeamCount).toLocaleString()} entities`"
+        >= {{ Math.floor(model.displayUnitCap / model.occupiedAllyTeamCount).toLocaleString() }}/TEAM</BarLabel>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
@@ -235,7 +237,7 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="Total units alive / unit cap">UNITS:</BarLabel>
+        <BarLabel title="Entities alive match-wide (units + buildings) / entity count cap">ENTITIES:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">

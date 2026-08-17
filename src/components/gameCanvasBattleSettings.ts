@@ -63,7 +63,7 @@ type GameCanvasBattleSettings = {
   toggleAllDemoUnits(): void;
   toggleDemoBuildingBlueprintId(buildingBlueprintId: string): void;
   toggleAllDemoBuildings(): void;
-  changeMaxTotalUnits(value: number): void;
+  changeEntityCountCap(value: number): void;
   setForceFieldsVisible(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;
   setSlowDownAtFinalWaypoint(enabled: boolean, broadcast?: boolean): void;
@@ -273,15 +273,15 @@ export function useGameCanvasBattleSettings({
     saveDemoUnits(enableAll ? [...demoUnitBlueprintIds] : []);
   }
 
-  function changeMaxTotalUnits(value: number, broadcast = true): void {
+  function changeEntityCountCap(value: number, broadcast = true): void {
     const mode = currentBattleMode.value;
     const authoritative = serverMetaFromSnapshot.value?.units.max;
     const changed = authoritative === undefined || authoritative !== value;
     if (changed) {
       getActiveConnection()?.sendCommand({
-        type: 'setMaxTotalUnits',
+        type: 'setEntityCountCap',
         tick: 0,
-        maxTotalUnits: value,
+        entityCountCap: value,
       });
     }
     setUnitCap(mode, value);
@@ -380,7 +380,7 @@ export function useGameCanvasBattleSettings({
     }
     saveDemoUnits([...preset.units]);
     applyBuildingSelection([...preset.buildings]);
-    changeMaxTotalUnits(preset.cap, false);
+    changeEntityCountCap(preset.cap, false);
     setFogOfWarEnabled(preset.fogOfWarEnabled);
     setSlowDownAtFinalWaypoint(preset.slowDownAtFinalWaypoint, false);
     setSlopePathMode(preset.slopePathMode);
@@ -433,7 +433,7 @@ export function useGameCanvasBattleSettings({
     toggleAllDemoUnits,
     toggleDemoBuildingBlueprintId,
     toggleAllDemoBuildings,
-    changeMaxTotalUnits,
+    changeEntityCountCap,
     setForceFieldsVisible,
     setFogOfWarEnabled,
     setSlowDownAtFinalWaypoint,

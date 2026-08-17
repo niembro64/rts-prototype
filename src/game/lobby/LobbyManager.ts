@@ -202,7 +202,7 @@ export async function createBackgroundBattle(
 
   // Create a GameServer for background mode (WASM physics).
   //
-  // Both `initialAllowedUnitBlueprintIds` AND `initialMaxTotalUnits` MUST be
+  // Both `initialAllowedUnitBlueprintIds` AND `initialEntityCountCap` MUST be
   // resolved here because the GameServer constructor's initial-unit spawn
   // reads them up-front. Demo resolves its cap from the saved browser
   // preference; Lobby/Real resolves the current session-only cap. Anything
@@ -228,7 +228,7 @@ export async function createBackgroundBattle(
       backgroundMode: true,
       initialAllowedUnitBlueprintIds,
       initialAllowedBuildingBlueprintIds,
-      initialMaxTotalUnits: getUnitCap(mode),
+      initialEntityCountCap: getUnitCap(mode),
       converterTax: loadStoredConverterTax(mode),
       aiPlayerIds,
       spawnDemoInitialState: !isLobbyPreview,
@@ -242,7 +242,7 @@ export async function createBackgroundBattle(
   const connection = new LocalGameConnection(server, resolvedLocalPlayerId, 'local-offline');
   applyStoredBattleServerSettings(server, mode, {
     ipAddress,
-    maxTotalUnits: undefined,
+    entityCountCap: undefined,
     // Lobby preview (mode='real') must never show fog of war — the
     // real battle hardcodes fog on, so the preview deliberately runs
     // with fog off to differentiate the two. Demo battle keeps its
@@ -261,10 +261,10 @@ export async function createBackgroundBattle(
   }
   await report(0.74, 'Applying unit filters');
 
-  // (Demo cap is now applied via `initialMaxTotalUnits` on
+  // (Demo cap is now applied via `initialEntityCountCap` on
   // GameServer.create above — that path runs BEFORE the initial
   // spawn so the unit count matches the mode's cap from the first
-  // frame. The post-construction `setMaxTotalUnits` command path
+  // frame. The post-construction `setEntityCountCap` command path
   // still exists for runtime cap changes.)
   server.start();
   await report(0.78, 'Starting server tick');

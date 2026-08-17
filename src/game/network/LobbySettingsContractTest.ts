@@ -11,7 +11,7 @@ const CURRENT_SETTINGS: LobbySettings = {
   terrainDetail: 4,
   mapWidthLandCells: 20,
   mapLengthLandCells: 20,
-  maxTotalUnits: 729,
+  entityCountCap: 729,
   converterTax: 0.1,
   slowDownAtFinalWaypoint: true,
   terrainSurfaceMode: 'normal',

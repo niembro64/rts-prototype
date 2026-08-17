@@ -11,7 +11,7 @@ const NUMERIC_FIELDS = [
   'terrainDetail',
   'mapWidthLandCells',
   'mapLengthLandCells',
-  'maxTotalUnits',
+  'entityCountCap',
   'converterTax',
 ] as const satisfies readonly (keyof LobbySettings)[];
 
@@ -35,8 +35,8 @@ export function assertCurrentLobbySettings(
   if ((settings.mapWidthLandCells as number) <= 0 || (settings.mapLengthLandCells as number) <= 0) {
     throw new Error(`[${context}] map dimensions must be positive`);
   }
-  if ((settings.maxTotalUnits as number) <= 0) {
-    throw new Error(`[${context}] maxTotalUnits must be positive`);
+  if ((settings.entityCountCap as number) <= 0) {
+    throw new Error(`[${context}] entityCountCap must be positive`);
   }
   if (typeof settings.slowDownAtFinalWaypoint !== 'boolean') {
     throw new Error(`[${context}] missing or invalid slowDownAtFinalWaypoint`);

@@ -5,10 +5,10 @@ import {
   setUnitCap,
 } from './battleBarConfig';
 import battleBarConfig from './battleBarConfig.json';
-import { getModeDefaultPreset } from './components/battlePresets';
+import { BATTLE_PRESETS, getModeDefaultPreset } from './components/battlePresets';
 
 function assertContract(condition: unknown, message: string): asserts condition {
-  if (!condition) throw new Error(`[unit cap policy contract] ${message}`);
+  if (!condition) throw new Error(`[entity count cap policy contract] ${message}`);
 }
 
 export function runUnitCapPolicyContractTest(): void {
@@ -22,28 +22,39 @@ export function runUnitCapPolicyContractTest(): void {
     window.localStorage.setItem(retiredRealKey, '1262');
     resetRealUnitCap();
 
-    assertContract(BATTLE_CONFIG.cap.default === 9, 'boot/demo cap must default to 9');
+    assertContract(BATTLE_CONFIG.cap.default === 1000, 'boot/demo cap must default to 1000');
     assertContract(
-      getModeDefaultPreset('demo').cap === 9,
-      'DEMO BATTLE defaults must resolve to cap 9',
+      getModeDefaultPreset('demo').cap === 1000,
+      'DEMO BATTLE defaults must resolve to cap 1000',
     );
     assertContract(
-      getModeDefaultPreset('real').cap === 243,
-      'Lobby/Real defaults must resolve to cap 243',
+      getModeDefaultPreset('real').cap === 1000,
+      'Lobby/Real defaults must resolve to cap 1000',
     );
-    assertContract(getUnitCap('demo') === 9, 'an unsaved Demo profile must start at 9');
+    assertContract(getUnitCap('demo') === 1000, 'an unsaved Demo profile must start at 1000');
     assertContract(
-      getUnitCap('real') === 243,
-      'Real cap must ignore historical browser storage and start at 243',
+      getUnitCap('real') === 1000,
+      'Real cap must ignore historical browser storage and start at 1000',
     );
 
-    setUnitCap('demo', 81);
-    setUnitCap('real', 729);
+    // Every authored preset cap must be selectable, or applying a preset
+    // leaves the CAP row with nothing highlighted and the map caption
+    // stuck on CUSTOM.
+    const options = new Set(BATTLE_CONFIG.cap.options);
+    for (const preset of BATTLE_PRESETS) {
+      assertContract(
+        options.has(preset.cap),
+        `preset ${preset.name} cap ${preset.cap} must be one of the CAP options`,
+      );
+    }
+
+    setUnitCap('demo', 50);
+    setUnitCap('real', 5000);
     assertContract(
-      window.localStorage.getItem(demoKey) === '81' && getUnitCap('demo') === 81,
+      window.localStorage.getItem(demoKey) === '50' && getUnitCap('demo') === 50,
       'Demo cap changes must persist in browser storage',
     );
-    assertContract(getUnitCap('real') === 729, 'a live lobby may change its in-memory cap');
+    assertContract(getUnitCap('real') === 5000, 'a live lobby may change its in-memory cap');
     assertContract(
       window.localStorage.getItem(retiredRealKey) === '1262',
       'Real cap changes must not write browser storage',
@@ -51,8 +62,8 @@ export function runUnitCapPolicyContractTest(): void {
 
     resetRealUnitCap();
     assertContract(
-      getUnitCap('real') === 243,
-      'a new Lobby/Real session must reset the cap to 243',
+      getUnitCap('real') === 1000,
+      'a new Lobby/Real session must reset the cap to 1000',
     );
   } finally {
     if (savedDemoCap === null) window.localStorage.removeItem(demoKey);

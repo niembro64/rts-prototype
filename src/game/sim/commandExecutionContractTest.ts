@@ -28,6 +28,7 @@ import { createPhysicsBodyForUnit } from '../server/unitPhysicsBody';
 import { createWreckFromDeadUnit } from './wrecks';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { deterministicMath as DMath } from './deterministicMath';
+import { FLAT_GROUND_BUILD_SQUARE_FLAGS } from './terrain/terrainBuildability';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -128,7 +129,7 @@ function createAllBuildableTerrainGrid(mapWidth: number, mapHeight: number): Ter
     cellsY,
     version: 1,
     configKey: 'command-execution-contract:all-buildable',
-    flags: new Array(cellCount).fill(1),
+    flags: new Array(cellCount).fill(FLAT_GROUND_BUILD_SQUARE_FLAGS),
     levels: new Array(cellCount).fill(0),
   };
 }
@@ -1708,8 +1709,8 @@ export function runCommandExecutionContractTest(): void {
     pendingSimEvents: [],
     onSimEvent: null,
   };
-  executeCommand(queueCtx, { type: 'setMaxTotalUnits', tick: 0, maxTotalUnits: 123 });
-  assertContract(queueWorld.maxTotalUnits === 123, 'scheduled max-unit setting must update world truth');
+  executeCommand(queueCtx, { type: 'setEntityCountCap', tick: 0, entityCountCap: 123 });
+  assertContract(queueWorld.entityCountCap === 123, 'scheduled max-unit setting must update world truth');
   executeCommand(queueCtx, { type: 'setConverterTax', tick: 0, tax: 0.25 });
   assertContract(queueWorld.converterTax === 0.25, 'scheduled converter-tax setting must update world truth');
   executeCommand(queueCtx, { type: 'setFogOfWarEnabled', tick: 0, enabled: false });

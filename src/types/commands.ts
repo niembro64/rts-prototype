@@ -71,7 +71,7 @@ type CommandType =
   | 'setUnitGroundNormalEmaMode'
   | 'setBackgroundUnitBlueprintEnabled'
   | 'setBackgroundBuildingBlueprintEnabled'
-  | 'setMaxTotalUnits'
+  | 'setEntityCountCap'
   | 'setTurretShieldPanelsEnabled'
   | 'setTurretShieldSpheresEnabled'
   | 'setForceFieldsVisible'
@@ -600,9 +600,9 @@ export type SetBackgroundBuildingBlueprintEnabledCommand = BaseCommand & {
   enabled: boolean;
 };
 
-export type SetMaxTotalUnitsCommand = BaseCommand & {
-  type: 'setMaxTotalUnits';
-  maxTotalUnits: number;
+export type SetEntityCountCapCommand = BaseCommand & {
+  type: 'setEntityCountCap';
+  entityCountCap: number;
 };
 
 export type SetTurretShieldPanelsEnabledCommand = BaseCommand & {
@@ -711,7 +711,7 @@ export type Command =
   | SetUnitGroundNormalEmaModeCommand
   | SetBackgroundUnitBlueprintEnabledCommand
   | SetBackgroundBuildingBlueprintEnabledCommand
-  | SetMaxTotalUnitsCommand
+  | SetEntityCountCapCommand
   | SetTurretShieldPanelsEnabledCommand
   | SetTurretShieldSpheresEnabledCommand
   | SetForceFieldsVisibleCommand

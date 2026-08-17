@@ -212,7 +212,7 @@ function buildRealBattleLobbySettingsFromTerrain(
     terrainDetail: terrain.terrainRuntimeConfig.terrainDetail,
     mapWidthLandCells: terrain.mapDimensions.widthLandCells,
     mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
-    maxTotalUnits: getUnitCap('real'),
+    entityCountCap: getUnitCap('real'),
     converterTax: loadStoredConverterTax('real'),
     slowDownAtFinalWaypoint: loadStoredSlowDownAtFinalWaypoint('real'),
     terrainSurfaceMode: terrain.terrainSurfaceMode,
@@ -583,7 +583,7 @@ async function createDeterministicLockstepBackendRuntime({
   const isFrameCoordinator = networkRole !== 'client';
   const gameId = matchContext.gameId;
   const initializationHash = matchContext.initializationHash;
-  const initialMaxTotalUnits = matchContext.settings.maxTotalUnits ?? getUnitCap('real');
+  const initialEntityCountCap = matchContext.settings.entityCountCap ?? getUnitCap('real');
   let nextLocalPlayerSequence = 0;
   let nextFrameSequence = 0;
   let pumpTimer: ReturnType<typeof setInterval> | null = null;
@@ -1104,7 +1104,7 @@ async function createDeterministicLockstepBackendRuntime({
     start() {
       applyStoredBattleServerSettings(server, 'real', {
         ipAddress: localIpAddress,
-        maxTotalUnits: initialMaxTotalUnits,
+        entityCountCap: initialEntityCountCap,
         fogOfWarEnabled: true,
         slowDownAtFinalWaypoint:
           matchContext.settings.slowDownAtFinalWaypoint ?? false,

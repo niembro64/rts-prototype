@@ -59,6 +59,7 @@ import {
   syncTerrainRenderSmoothingSettings,
   type BattleMode,
 } from '../battleBarConfig';
+import { DEMO_CONFIG } from '../demoConfig';
 import type {
   NetworkCommunicationDraft,
   NetworkCommunicationEvent,
@@ -1472,6 +1473,18 @@ const displayUnitCount = computed(
 const displayUnitCap = computed(
   () => serverMetaFromSnapshot.value?.units.max ?? getUnitCap(currentBattleMode.value),
 );
+/** Sides that actually hold a seat — what the entity count cap divides by
+ *  (WorldState.getTeamEntityCountCap / getOccupiedAllyTeamCount). The demo's
+ *  shape is authored as seats-per-side and legitimately declares an EMPTY
+ *  side, which gets terrain but no share of the cap. */
+const occupiedAllyTeamCount = computed(() => {
+  if (currentBattleMode.value === 'demo') {
+    return Math.max(1, DEMO_CONFIG.allyTeamSeats.filter((seats) => seats > 0).length);
+  }
+  const sides = new Set<number>();
+  for (const player of lobbyPlayers.value) sides.add(player.allyTeamId ?? 1);
+  return Math.max(1, sides.size);
+});
 const displayServerTime = computed(
   () => serverMetaFromSnapshot.value?.server.time ?? '',
 );
@@ -1543,7 +1556,7 @@ const {
   toggleAllDemoUnits,
   toggleDemoBuildingBlueprintId,
   toggleAllDemoBuildings,
-  changeMaxTotalUnits,
+  changeEntityCountCap,
   setFogOfWarEnabled,
   setSlowDownAtFinalWaypoint,
   setSlopePathMode,
@@ -1773,6 +1786,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   demoBuildingBlueprintIds,
   currentAllowedBuildingsSet: currentAllowedBuildingsSet.value,
   displayUnitCap: displayUnitCap.value,
+  occupiedAllyTeamCount: occupiedAllyTeamCount.value,
   gameStarted: gameStarted.value,
   mapWidthLandCells: mapWidthLandCells.value,
   mapLengthLandCells: mapLengthLandCells.value,
@@ -1801,7 +1815,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   toggleDemoUnitBlueprintId,
   toggleAllDemoBuildings,
   toggleDemoBuildingBlueprintId,
-  changeMaxTotalUnits,
+  changeEntityCountCap,
   applyMapLandDimensions,
   applyCenterMagnitude,
   applyDividersMagnitude,
@@ -1832,6 +1846,7 @@ watchEffect(() => {
   m.allDemoBuildingsActive = allDemoBuildingsActive.value;
   m.currentAllowedBuildingsSet = currentAllowedBuildingsSet.value;
   m.displayUnitCap = displayUnitCap.value;
+  m.occupiedAllyTeamCount = occupiedAllyTeamCount.value;
   m.gameStarted = gameStarted.value;
   m.mapWidthLandCells = mapWidthLandCells.value;
   m.mapLengthLandCells = mapLengthLandCells.value;
@@ -2762,7 +2777,7 @@ watchEffect(() => {
       @toggle-all-units="toggleAllDemoUnits"
       @toggle-building="(bt) => toggleDemoBuildingBlueprintId(bt)"
       @toggle-all-buildings="toggleAllDemoBuildings"
-      @set-unit-cap="(c) => changeMaxTotalUnits(c)"
+      @set-unit-cap="(c) => changeEntityCountCap(c)"
       @cycle-player-ally-team="cyclePlayerAllyTeam"
       @set-converter-tax="(v) => setConverterTax(v)"
       @set-player-name="onPlayerNameChange"

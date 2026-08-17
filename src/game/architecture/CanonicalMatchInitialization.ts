@@ -79,7 +79,7 @@ export type CanonicalMatchInitialization = {
     readonly liquidSurfaceMode: LiquidSurfaceMode | null;
   };
   readonly gameplay: {
-    readonly maxTotalUnits: number | null;
+    readonly entityCountCap: number | null;
     readonly converterTax: number | null;
     readonly fogOfWarEnabled: true;
     readonly slowDownAtFinalWaypoint: boolean;
@@ -175,7 +175,7 @@ export function buildCanonicalMatchInitialization({
         : null,
     },
     gameplay: {
-      maxTotalUnits: finiteOrNull(settings?.maxTotalUnits),
+      entityCountCap: finiteOrNull(settings?.entityCountCap),
       converterTax: finiteOrNull(settings?.converterTax),
       fogOfWarEnabled: true,
       slowDownAtFinalWaypoint: settings?.slowDownAtFinalWaypoint === true,
