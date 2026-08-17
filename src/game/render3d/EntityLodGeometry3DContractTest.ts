@@ -201,8 +201,8 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   // structures a player builds one or two of, so the Medium/Low rungs buy
   // silhouette rather than mass-instance throughput. Measured value plus ~5%
   // headroom, so the ceiling still catches FUTURE growth.
-  buildingShieldTargetingTech: { close: 1830, mid: 1010, far: 545 },
-  buildingShieldTech: { close: 1550, mid: 785, far: 370 },
+  buildingShieldTargetingTech: { close: 1730, mid: 910, far: 445 },
+  buildingShieldTech: { close: 1260, mid: 630, far: 215 },
 };
 
 /** Full visible unit ceilings: body + locomotion + physical turrets + unique kit/panel art. */

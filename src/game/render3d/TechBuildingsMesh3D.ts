@@ -26,7 +26,6 @@ import type { BuildingShape } from './BuildingShape3D';
 import {
   detail,
   hexCylinderGeom,
-  makeBox,
   makeCylinder,
   makeSphere,
   teamOrnamentDetail,
@@ -36,7 +35,6 @@ import {
   createPrimitiveHemisphereGeometry,
   createPrimitiveRingGeometry,
   getOrCreate,
-  getSharedPrimitiveTetrahedronGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 import {
@@ -65,6 +63,29 @@ const techBubbleMat = new THREE.MeshBasicMaterial({
   depthWrite: false,
   side: THREE.DoubleSide,
 });
+
+/** The calibration coil's own material. It is shared across every targeting
+ *  lab on the map, so the pulse below runs on ONE clock rather than a
+ *  per-entity phase: buildings keep the codebase's shared-material model
+ *  (nothing disposes a per-instance clone when a building dies), and the labs
+ *  read as one powered network rather than a field of unsynchronised blinkers. */
+const techCoilMat = new THREE.MeshStandardMaterial({
+  ...SHINY_GRAY_METAL_MATERIAL,
+  side: THREE.DoubleSide,
+});
+const TECH_COIL_PULSE_HZ = 0.42;
+const techCoilRestColor = new THREE.Color(SHINY_GRAY_METAL_MATERIAL.color);
+const techCoilPulseColor = new THREE.Color(0xffffff);
+
+/** Sinusoidal white pulse for the targeting lab's coil, driven once per frame
+ *  from the building animation tick's wall clock. */
+export function updateTechBuildingCoilPulse(timeMs: number): void {
+  const time = Number.isFinite(timeMs) ? timeMs : 0;
+  const amount = 0.5 - 0.5 * Math.cos(time * 0.001 * TECH_COIL_PULSE_HZ * Math.PI * 2);
+  techCoilMat.color.copy(techCoilRestColor).lerp(techCoilPulseColor, amount);
+  techCoilMat.emissive.copy(techCoilPulseColor);
+  techCoilMat.emissiveIntensity = amount * 0.55;
+}
 
 /** Extrusion depth of an authored foundation polygon, as a fraction of the
  *  host's visual height. Everything that stands on the deck derives its base
@@ -315,18 +336,6 @@ export function buildShieldTargetingTechMesh(
     const yaw = Math.PI * 0.25 + i * Math.PI * 0.5;
     const x = Math.cos(yaw) * podOrbit;
     const z = Math.sin(yaw) * podOrbit;
-    const connector = makeBox(
-      techFrameMat,
-      podOrbit * 0.88,
-      11,
-      minDim * 0.08,
-      x * 0.46,
-      deckY + 6,
-      z * 0.46,
-    );
-    connector.rotation.y = -yaw;
-    details.push(detail(connector, 'low'));
-
     details.push(detail(
       makeCylinder(techShellMat, podRadius, podHeight, x, deckY + podHeight / 2, z),
       'min',
@@ -335,23 +344,6 @@ export function buildShieldTargetingTechMesh(
     podDome.position.set(x, deckY + podHeight, z);
     podDome.scale.set(podRadius * 0.92, podRadius * 0.58, podRadius * 0.92);
     details.push(detail(podDome, 'min'));
-
-    const window = makeBox(
-      techGlowMat,
-      podRadius * 1.2,
-      9,
-      3,
-      x * (1 + podRadius / podOrbit),
-      deckY + podHeight * 0.66,
-      z * (1 + podRadius / podOrbit),
-    );
-    window.rotation.y = -yaw;
-    details.push(detail(
-      window,
-      'low',
-      undefined,
-      'tinyTrim',
-    ));
   }
 
   // The twisted calibration spire standing in the court, with a plinth wide
@@ -390,11 +382,11 @@ export function buildShieldTargetingTechMesh(
     tubeRadius: minDim * 0.018,
   };
   details.push(detail(
-    new THREE.Mesh(getSpireRibbonGeometry(tier, { ...ribbonBase, phase: 0 }), techShellMat),
+    new THREE.Mesh(getSpireRibbonGeometry(tier, { ...ribbonBase, phase: 0 }), techCoilMat),
     'low',
   ));
   details.push(detail(
-    new THREE.Mesh(getSpireRibbonGeometry(tier, { ...ribbonBase, phase: Math.PI }), techShellMat),
+    new THREE.Mesh(getSpireRibbonGeometry(tier, { ...ribbonBase, phase: Math.PI }), techCoilMat),
     'low',
     undefined,
     'tinyTrim',
@@ -498,16 +490,19 @@ export function buildShieldTargetingTechMesh(
   };
 }
 
+/** The containment lab reads as a disc from every approach: its foundation is
+ *  a regular polygon rather than the old pointed shield outline, and the
+ *  blueprint's footprint mask is the matching circle of cells. */
 function getForgePrimaryGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
-  return getOrCreate(forgePrimaryGeomByTier, tier, () => createLabFoundationGeometry(
-    [
-      [-0.32, -0.48], [0.32, -0.48], [0.48, -0.34], [0.48, 0.08],
-      [0.4, 0.24], [0.25, 0.36], [0, 0.5], [-0.25, 0.36],
-      [-0.4, 0.24], [-0.48, 0.08], [-0.48, -0.34],
-    ],
-    null,
-    tier,
-  ));
+  return getOrCreate(forgePrimaryGeomByTier, tier, () => {
+    const sides = tier === 'close' ? 18 : tier === 'mid' ? 12 : 8;
+    const outline: [number, number][] = [];
+    for (let i = 0; i < sides; i++) {
+      const angle = (i / sides) * Math.PI * 2;
+      outline.push([Math.cos(angle) * 0.48, Math.sin(angle) * 0.48]);
+    }
+    return createLabFoundationGeometry(outline, null, tier);
+  });
 }
 
 /** S-curved containment dome, normalized to the unit box the caller scales
@@ -563,7 +558,13 @@ type HornSpec = Readonly<{
   tubeRadius: number;
 }>;
 
-/** Tusk horn sweeping up and inward toward the containment bubble. */
+/** Tusk horn sweeping up and inward toward the containment bubble, planted on
+ *  a heavy foot: TubeGeometry only carries one radius, so the finished tube's
+ *  rings are pushed out from the curve by a per-ring factor that runs from a
+ *  chunky base to a thin tip. TubeGeometry lays its vertices out as
+ *  (tubularSegments + 1) rings of (radialSegments + 1) vertices sampled at the
+ *  same uniform `getPointAt` positions this recomputes, so the ring centres
+ *  line up exactly. */
 function getForgeHornGeometry(
   tier: PrimitiveGeometryTier,
   spec: HornSpec,
@@ -578,15 +579,40 @@ function getForgeHornGeometry(
       new THREE.Vector3(spec.baseRadius * 0.92, spec.baseY + span * 0.78, 0),
       new THREE.Vector3(spec.topRadius, spec.topY, 0),
     );
-    return new THREE.TubeGeometry(
+    const tubularSegments = tier === 'close' ? 12 : tier === 'mid' ? 7 : 4;
+    const radialSegments = 3;
+    const geometry = new THREE.TubeGeometry(
       curve,
-      tier === 'close' ? 12 : tier === 'mid' ? 7 : 4,
+      tubularSegments,
       spec.tubeRadius,
-      3,
+      radialSegments,
       false,
     );
+    const positions = geometry.getAttribute('position');
+    const centre = new THREE.Vector3();
+    const vertex = new THREE.Vector3();
+    for (let i = 0; i <= tubularSegments; i++) {
+      const t = i / tubularSegments;
+      curve.getPointAt(t, centre);
+      const scale = HORN_FOOT_SCALE + (HORN_TIP_SCALE - HORN_FOOT_SCALE) * t * t;
+      for (let j = 0; j <= radialSegments; j++) {
+        const index = i * (radialSegments + 1) + j;
+        vertex.fromBufferAttribute(positions, index)
+          .sub(centre)
+          .multiplyScalar(scale)
+          .add(centre);
+        positions.setXYZ(index, vertex.x, vertex.y, vertex.z);
+      }
+    }
+    positions.needsUpdate = true;
+    geometry.computeVertexNormals();
+    return geometry;
   });
 }
+
+/** Radius multipliers at the horn's foot and tip. */
+const HORN_FOOT_SCALE = 3.2;
+const HORN_TIP_SCALE = 0.65;
 
 function getForgeRingGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
   return getOrCreate(forgeRingGeomByTier, tier, () =>
@@ -608,7 +634,7 @@ export function buildShieldTechMesh(
 
   // The bulky S-curved containment dome is the building's mass; the wings
   // and shells are read against it rather than against a hidden plinth.
-  const domeSpan = minDim * 0.38;
+  const domeSpan = minDim * 0.46;
   const domeHeight = height * 0.62;
   const domeTopY = deckY + domeHeight;
   const dome = new THREE.Mesh(getForgeDomeGeometry(tier), techShellMat);
@@ -616,45 +642,21 @@ export function buildShieldTechMesh(
   dome.scale.set(domeSpan, domeHeight, domeSpan);
   details.push(detail(dome, 'min'));
 
-  // Three discrete research wings sit on the pointed shield foundation.
-  // Their spacing leaves the silhouette readable instead of rebuilding a
-  // hidden square plinth out of decorative pieces.
-  const wingRadius = minDim * 0.1;
-  const wingHeight = Math.max(34, height * 0.26);
-  const wingPositions: readonly (readonly [number, number])[] = [
-    [0, -minDim * 0.34],
-    [-minDim * 0.31, minDim * 0.19],
-    [minDim * 0.31, minDim * 0.19],
-  ];
-  for (const [x, z] of wingPositions) {
-    details.push(detail(
-      makeCylinder(techShellMat, wingRadius, wingHeight, x, deckY + wingHeight / 2, z),
-      'min',
-    ));
-    const wingDome = new THREE.Mesh(getPodDomeGeometry(tier), techShellMat);
-    wingDome.position.set(x, deckY + wingHeight, z);
-    wingDome.scale.set(wingRadius * 0.92, wingRadius * 0.6, wingRadius * 0.92);
-    details.push(detail(wingDome, 'min'));
-
-    const yaw = Math.atan2(z, x);
-    const orbit = Math.max(1, Math.hypot(x, z));
-    const window = makeBox(
-      techGlowMat,
-      wingRadius * 1.2,
-      7,
-      3,
-      x * (1 + wingRadius / orbit),
-      deckY + wingHeight * 0.62,
-      z * (1 + wingRadius / orbit),
-    );
-    window.rotation.y = -yaw;
-    details.push(detail(
-      window,
-      'low',
-      undefined,
-      'tinyTrim',
-    ));
-  }
+  // A low collar ring seats the dome on the deck. It replaces the three
+  // silo wings that used to flank it: they broke the disc silhouette and
+  // buried the dome's S-curve behind whichever one faced the camera.
+  const collarHeight = height * 0.06;
+  details.push(detail(
+    makeCylinder(
+      techDarkMat,
+      domeSpan * 0.62,
+      collarHeight,
+      0,
+      deckY + collarHeight / 2,
+      0,
+    ),
+    'min',
+  ));
 
   // Staggered nautilus shell plates spiralling up the dome flank. The detail
   // list is identical at every tier (LOD anchor contract); the plate
@@ -708,35 +710,26 @@ export function buildShieldTechMesh(
     },
   }));
 
-  // Two tusk horns cradling the bubble from opposite sides.
+  // Two tusk horns cradling the bubble from opposite sides. Their geometry is
+  // authored around the building's own axis, so spinning each mesh about local
+  // Y walks the pair around the dome instead of rolling them in place — the
+  // lab's one large moving part, and the reason its OFF pose reads instantly.
   const hornSpec: HornSpec = {
-    baseRadius: minDim * 0.3,
+    baseRadius: minDim * 0.4,
     topRadius: minDim * 0.085,
     baseY: deckY,
     topY: bubbleY + bubbleRadius * 0.7,
-    tubeRadius: minDim * 0.03,
+    tubeRadius: minDim * 0.024,
   };
-  for (const yaw of [0.62, 0.62 + Math.PI]) {
+  for (const [index, yaw] of [0.62, 0.62 + Math.PI].entries()) {
     const horn = new THREE.Mesh(getForgeHornGeometry(tier, hornSpec), techShellMat);
     horn.rotation.y = yaw;
-    details.push(detail(horn, 'low', undefined, 'tinyTrim'));
-  }
-
-  // A field-coil crystal caps each research wing. They retract into the wing
-  // when the lab is disabled, preserving the open/closed operational language
-  // without adding a second forest of masts beside the horns.
-  for (const [i, [x, z]] of wingPositions.entries()) {
-    const cap = new THREE.Mesh(getSharedPrimitiveTetrahedronGeometry(1), techGlowMat);
-    cap.position.set(x, deckY + wingHeight + minDim * 0.05, z);
-    cap.scale.setScalar(minDim * 0.055);
-    details.push(detail(cap, 'low', undefined, 'tinyTrim'));
-    operationalParts.push(createBuildingOperationalPosePart(cap, {
-      closedPosition: new THREE.Vector3(x, deckY + wingHeight * 0.55, z),
-      closedScale: cap.scale.clone().multiplyScalar(0.42),
+    details.push(detail(horn, 'low'));
+    operationalParts.push(createBuildingOperationalPosePart(horn, {
       motion: {
-        pulseAmplitude: 0.09,
-        pulseHz: 0.64,
-        phaseOffset: i * 0.16,
+        spinAxis: new THREE.Vector3(0, 1, 0),
+        spinRadPerSec: 0.46,
+        phaseOffset: index * Math.PI,
       },
     }));
   }
@@ -744,12 +737,11 @@ export function buildShieldTechMesh(
   // Team identity: a hex crest band around the dome's bulge.
   const crest = makeCylinder(
     primaryMat,
-    domeSpan * 0.47,
-    7,
+    domeSpan * 0.46,
+    8,
     0,
     deckY + domeHeight * 0.44,
     0,
-    hexCylinderGeom,
   );
   details.push(teamOrnamentDetail(
     crest,
@@ -794,6 +786,7 @@ export function disposeTechBuildingsMeshGeoms(): void {
   techFrameMat.dispose();
   techDarkMat.dispose();
   techShellMat.dispose();
+  techCoilMat.dispose();
   techGlowMat.dispose();
   techBubbleMat.dispose();
 }

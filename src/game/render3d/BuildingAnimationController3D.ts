@@ -34,6 +34,7 @@ import {
   BuildingResourcePylonAnimator3D,
 } from './BuildingResourcePylonAnimator3D';
 import { windRotorAngularSpeed } from './WindKinematics3D';
+import { updateTechBuildingCoilPulse } from './TechBuildingsMesh3D';
 import { applyBuildingOperationalPose } from './BuildingOperationalRig3D';
 
 // Open/close pose transitions are discrete local state changes, not snapshot
@@ -225,11 +226,13 @@ export class BuildingAnimationController3D {
   update(
     spinDt: number,
     currentDtMs: number,
-    // Wall-clock animation time — currently unused since the factory
-    // build-spot ghost orbs were retired, but kept on the building-
-    // animation tick signature for time-driven animators.
-    _timeMs: number,
+    // Wall-clock animation time, for animators driven by a clock rather than
+    // by per-entity state.
+    timeMs: number,
   ): void {
+    // The targeting lab's coil shares one material across every instance, so
+    // its pulse runs off the wall clock here rather than per entity.
+    updateTechBuildingCoilPulse(timeMs);
     this.resourcePylonAnimator.refreshActiveQueue();
     this.updateActiveSolarAnimations(currentDtMs / 1000);
 

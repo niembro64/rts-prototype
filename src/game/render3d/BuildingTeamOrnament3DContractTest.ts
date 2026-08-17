@@ -41,6 +41,11 @@ const ROUND_PROFILE_STRUCTURES = new Set<StructureBlueprintId>([
   'towerAntiAir',
   'buildingRadar',
   'buildingSonar',
+  // The containment lab is authored as a disc — circular foundation polygon,
+  // lathe dome, revolved shell plates — and its footprint mask is the matching
+  // circle of cells. Pin that: the silo wings and window panels it used to
+  // carry are exactly the kind of boxy trim that broke the silhouette.
+  'buildingShieldTech',
 ]);
 
 function isVisibleSolid(mesh: THREE.Mesh): boolean {
