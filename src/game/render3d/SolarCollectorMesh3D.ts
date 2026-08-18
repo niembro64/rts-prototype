@@ -38,6 +38,8 @@ type SolarActuatorAnimation = {
   closedDirection: THREE.Vector3;
   radius: number;
   thickness: number;
+  /** Captured at build time — the pose runs outside the tier scope. */
+  tier: PrimitiveGeometryTier;
 };
 
 type SolarPetalAnimation = {
@@ -165,7 +167,15 @@ const solarPetalSlabGeom = createSolarPetalSlabGeometry();
 
 /** Angular resolution of the actuator wedge cache. */
 const SOLAR_ACTUATOR_SPAN_STEP_RAD = Math.PI / 90;
-const solarActuatorGeomBySpanSteps = new Map<number, THREE.BufferGeometry>();
+/** Arc segments per quarter turn, per detail rung. The wedge is four of the
+ *  collector's pieces, so its rim is a real share of the far-rung triangle
+ *  budget and has to thin out with everything else. */
+const SOLAR_ACTUATOR_ARC_SEGMENTS_PER_QUARTER: Readonly<Record<PrimitiveGeometryTier, number>> = {
+  close: 12,
+  mid: 8,
+  far: 5,
+};
+const solarActuatorGeomByTierAndSpan = new Map<string, THREE.BufferGeometry>();
 
 /** Unit-radius, unit-depth coin segments, one per quantised span.
  *
@@ -177,9 +187,12 @@ const solarActuatorGeomBySpanSteps = new Map<number, THREE.BufferGeometry>();
  * costs a few dozen tiny buffers in total and no per-instance allocation (each
  * detail mesh keeps a shared geometry, and nothing here needs disposing per
  * entity). The pose then only has to place a rigid, uniformly scaled wedge. */
-function getSolarActuatorGeometry(spanRad: number): THREE.BufferGeometry {
+function getSolarActuatorGeometry(
+  spanRad: number,
+  tier: PrimitiveGeometryTier,
+): THREE.BufferGeometry {
   const steps = Math.max(1, Math.ceil(spanRad / SOLAR_ACTUATOR_SPAN_STEP_RAD));
-  return getOrCreate(solarActuatorGeomBySpanSteps, steps, () => {
+  return getOrCreate(solarActuatorGeomByTierAndSpan, `${tier}:${steps}`, () => {
     const span = Math.min(Math.PI * 2, steps * SOLAR_ACTUATOR_SPAN_STEP_RAD);
     const shape = new THREE.Shape();
     shape.moveTo(0, 0);
@@ -190,7 +203,9 @@ function getSolarActuatorGeometry(spanRad: number): THREE.BufferGeometry {
       depth: 1,
       bevelEnabled: false,
       steps: 1,
-      curveSegments: Math.max(3, Math.round((span / (Math.PI * 0.5)) * 12)),
+      curveSegments: Math.max(3, Math.round(
+        (span / (Math.PI * 0.5)) * SOLAR_ACTUATOR_ARC_SEGMENTS_PER_QUARTER[tier],
+      )),
     });
   });
 }
@@ -698,7 +713,7 @@ function applySolarActuatorPose(
 ): void {
   const panelAngle = Math.atan2(panelDirection.y, panelDirection.dot(anim.outward));
   const span = Math.max(SOLAR_ACTUATOR_SPAN_STEP_RAD, panelAngle - anim.groundAngle);
-  const geometry = getSolarActuatorGeometry(span);
+  const geometry = getSolarActuatorGeometry(span, anim.tier);
   if (mesh.geometry !== geometry) mesh.geometry = geometry;
   const steps = Math.max(1, Math.ceil(span / SOLAR_ACTUATOR_SPAN_STEP_RAD));
   const footAngle = panelAngle - steps * SOLAR_ACTUATOR_SPAN_STEP_RAD;
@@ -744,8 +759,9 @@ function makeSolarActuator(
     closedDirection: face.up.clone(),
     radius,
     thickness,
+    tier: getActiveBuildingGeometryTier(),
   };
-  const mesh = new THREE.Mesh(getSolarActuatorGeometry(Math.PI * 0.5), material);
+  const mesh = new THREE.Mesh(getSolarActuatorGeometry(Math.PI * 0.5, anim.tier), material);
   mesh.matrixAutoUpdate = false;
   mesh.userData.solarActuator = anim;
   applySolarActuatorPose(mesh, anim, openDirection);
@@ -781,8 +797,8 @@ function detail(
 export function disposeSolarCollectorGeoms(): void {
   solarPanelPyramidGeom.dispose();
   solarPetalSlabGeom.dispose();
-  for (const geometry of solarActuatorGeomBySpanSteps.values()) geometry.dispose();
-  solarActuatorGeomBySpanSteps.clear();
+  for (const geometry of solarActuatorGeomByTierAndSpan.values()) geometry.dispose();
+  solarActuatorGeomByTierAndSpan.clear();
   solarTrianglePetalGeom.dispose();
   for (const geometry of solarHingeCapGeometryByTier.values()) geometry.dispose();
   solarHingeCapGeometryByTier.clear();
