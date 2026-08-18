@@ -16,6 +16,14 @@ export const BUILDING_PALETTE = {
   metalResource: RESOURCE_COLOR_HEX.metal,
 } as const;
 
+/** Hard-chromed rod finish — the shiniest metal in the building palette. */
+export const MIRROR_CHROME_MATERIAL = {
+  color: COLORS.buildings.materials.mirrorChrome.colorHex,
+  metalness: COLORS.buildings.materials.mirrorChrome.metalness,
+  roughness: COLORS.buildings.materials.mirrorChrome.roughness,
+  envMapIntensity: COLORS.buildings.materials.mirrorChrome.envMapIntensity,
+} as const;
+
 export const SHINY_GRAY_METAL_MATERIAL = {
   color: COLORS.buildings.materials.shinyGrayMetal.colorHex,
   metalness: COLORS.buildings.materials.shinyGrayMetal.metalness,
