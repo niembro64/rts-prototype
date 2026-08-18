@@ -1,10 +1,14 @@
 {
   "landTileGroundLift": 0,
+  "terrainOutwardNormal": {
+    "scope": "ore",
+    "detail": "The authoritative terrain mesh is drawn by its BACK faces (set the material to FrontSide and the ground vanishes, leaving only the world-box side walls). three's DOUBLE_SIDED therefore flips the authored upward vertex normal and lights the ground through a downward one, which inverts every slope-dependent term. Ordinary ground hides it, because its relief comes from the baked terrainShade computed from the TRUE normal and the direct lights are a small share of an environment-dominated scene. Metal ore does not hide it: its metalness/roughness reflection is lit entirely through the normal, so a north-facing ore slope reflected and shaded as if it faced the southern sun. 'ore' restores the authored outward normal only where the ore region covers, fixing that and leaving every other pixel byte-identical. 'terrain' applies it to the whole surface - more physically correct, and a large change: the ground starts taking sky irradiance instead of floor irradiance and brightens substantially, so the biome palette and RenderLighting3D scales would want retuning. 'off' keeps the historical flipped normal for bisecting."
+  },
   "waypointGroundLift": 18,
   "worldBox": {
     "waterExtensionWorldUnits": 200,
     "depthAverageAxisFraction": 0.25,
-    "detail": "Water extends this far beyond every terrain edge AND this far below the world-box floor. The open-bottom world-box walls descend by depthAverageAxisFraction × ((map width + map length) / 2)."
+    "detail": "Water extends this far beyond every terrain edge AND this far below the world-box floor. The open-bottom world-box walls descend by depthAverageAxisFraction \u00d7 ((map width + map length) / 2)."
   },
   "horizonRenderExtend": 180000,
   "presetBackdrop": {
@@ -50,7 +54,7 @@
     "blockHeightMapFraction": 0.07,
     "cornerMarginMapFraction": 0.022,
     "groundLift": 40,
-    "detail": "Map caption painted readably on the ground just outside the map's (0,0) corner — the near-left corner at the default camera yaw. Exact stock settings show the preset name; changed settings show CUSTOM while retaining current map details. Font sizes are canvas pixels and set the block's internal proportions; blockHeightMapFraction scales the whole block against the larger map axis, so the caption keeps the same on-screen size at whole-map zoom on every map. cornerMarginMapFraction is the gap between the map edge and the block, also in map-axis units. groundLift is world units above the water surface."
+    "detail": "Map caption painted readably on the ground just outside the map's (0,0) corner \u2014 the near-left corner at the default camera yaw. Exact stock settings show the preset name; changed settings show CUSTOM while retaining current map details. Font sizes are canvas pixels and set the block's internal proportions; blockHeightMapFraction scales the whole block against the larger map axis, so the caption keeps the same on-screen size at whole-map zoom on every map. cornerMarginMapFraction is the gap between the map edge and the block, also in map-axis units. groundLift is world units above the water surface."
   },
   "sun": {
     "azimuthRad": 1.5707963267948966,
@@ -130,17 +134,61 @@
   "overlayLines": {
     "feather": 0.16,
     "kinds": {
-      "selection": { "widthPx": 3, "groundLift": 0.8, "renderOrder": 22 },
-      "rangeEngage": { "widthPx": 2.5, "groundLift": 6, "renderOrder": 20 },
-      "rangeTrack": { "widthPx": 2, "groundLift": 6, "renderOrder": 20 },
-      "build": { "widthPx": 2.5, "groundLift": 6, "renderOrder": 20 },
-      "radar": { "widthPx": 2.5, "groundLift": 6, "renderOrder": 20 },
-      "reclaim": { "widthPx": 2.5, "groundLift": 6, "renderOrder": 21 },
-      "projectileEnvelope": { "widthPx": 2.5, "groundLift": 9, "renderOrder": 22 },
-      "sight": { "widthPx": 2, "groundLift": 9, "renderOrder": 25 },
-      "radarBoundary": { "widthPx": 2, "groundLift": 9, "renderOrder": 24 },
-      "waypoint": { "widthPx": 2.5, "groundLift": 18, "renderOrder": 4.25 },
-      "drag": { "widthPx": 3.5, "groundLift": 1, "renderOrder": 16 }
+      "selection": {
+        "widthPx": 3,
+        "groundLift": 0.8,
+        "renderOrder": 22
+      },
+      "rangeEngage": {
+        "widthPx": 2.5,
+        "groundLift": 6,
+        "renderOrder": 20
+      },
+      "rangeTrack": {
+        "widthPx": 2,
+        "groundLift": 6,
+        "renderOrder": 20
+      },
+      "build": {
+        "widthPx": 2.5,
+        "groundLift": 6,
+        "renderOrder": 20
+      },
+      "radar": {
+        "widthPx": 2.5,
+        "groundLift": 6,
+        "renderOrder": 20
+      },
+      "reclaim": {
+        "widthPx": 2.5,
+        "groundLift": 6,
+        "renderOrder": 21
+      },
+      "projectileEnvelope": {
+        "widthPx": 2.5,
+        "groundLift": 9,
+        "renderOrder": 22
+      },
+      "sight": {
+        "widthPx": 2,
+        "groundLift": 9,
+        "renderOrder": 25
+      },
+      "radarBoundary": {
+        "widthPx": 2,
+        "groundLift": 9,
+        "renderOrder": 24
+      },
+      "waypoint": {
+        "widthPx": 2.5,
+        "groundLift": 18,
+        "renderOrder": 4.25
+      },
+      "drag": {
+        "widthPx": 3.5,
+        "groundLift": 1,
+        "renderOrder": 16
+      }
     }
   }
 }

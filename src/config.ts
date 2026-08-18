@@ -76,6 +76,32 @@ const MAP_LAND_CELLS_LENGTH = MAP_DIMENSION_CONFIG.length.default;
 // and floating-cell overlay lifts for readability instead of moving terrain.
 export const LAND_TILE_GROUND_LIFT = worldRenderConfigJson.landTileGroundLift;
 
+/** Where to light the terrain through its authored outward (upward) vertex
+ *  normal instead of the one three flips for a back-facing DOUBLE_SIDED
+ *  fragment. See worldRenderConfig.json for why the terrain is back-facing at
+ *  all, and why metal ore was the only thing that visibly cared.
+ *
+ *  Encoded for the shader as a scope level, not a boolean, because 'ore' and
+ *  'terrain' are genuinely different blast radii and the difference is worth
+ *  being able to bisect on the machine showing a fault. */
+export type TerrainOutwardNormalScope = 'off' | 'ore' | 'terrain';
+
+export const TERRAIN_OUTWARD_NORMAL_SCOPE: TerrainOutwardNormalScope = (() => {
+  const scope = worldRenderConfigJson.terrainOutwardNormal.scope;
+  if (scope !== 'off' && scope !== 'ore' && scope !== 'terrain') {
+    throw new Error(
+      `worldRenderConfig.terrainOutwardNormal.scope must be "off", "ore", or ` +
+      `"terrain"; received ${JSON.stringify(scope)}`,
+    );
+  }
+  return scope;
+})();
+
+export const TERRAIN_OUTWARD_NORMAL_SCOPE_LEVEL: number =
+  TERRAIN_OUTWARD_NORMAL_SCOPE === 'terrain'
+    ? 2
+    : TERRAIN_OUTWARD_NORMAL_SCOPE === 'ore' ? 1 : 0;
+
 // 3D waypoint visual lift above the sampled terrain surface. This is
 // render-only: command positions and pathfinding still use the actual
 // terrain height, while dots/lines/flags float this many world units up

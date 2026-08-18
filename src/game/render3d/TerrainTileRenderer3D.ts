@@ -47,6 +47,7 @@ import {
   TERRAIN_HORIZON_BLEND_CONFIG,
   TERRAIN_ROCK_BASE_COLOR,
   TERRAIN_ROCK_DETAIL_CONTRAST,
+  TERRAIN_OUTWARD_NORMAL_SCOPE_LEVEL,
   TERRAIN_ROCK_DETAIL_ENABLED,
   TERRAIN_ROCK_TEXTURE_TILE_WORLD_SIZE,
 } from '../../config';
@@ -734,6 +735,13 @@ export class TerrainTileRenderer3D {
     value: isMetalTerrainSurface() ? 0 : 1,
   };
   private readonly metalRegionField: MetalDepositSurfaceField3D;
+  // 0 = keep three's DOUBLE_SIDED flip, 1 = restore the authored outward
+  // normal inside ore only, 2 = restore it across the whole surface. A runtime
+  // knob because this is a shading term whose fault only shows on sloped
+  // ground, and the machine that shows it should be able to bisect it.
+  private terrainOutwardNormalUniform = {
+    value: TERRAIN_OUTWARD_NORMAL_SCOPE_LEVEL,
+  };
   private readonly worldShade: WorldShade3D;
 
   private gridCellsX = 0;
@@ -863,6 +871,7 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uMetalSurfaceRoughness = this.metalSurfaceRoughnessUniform;
       shader.uniforms.uTerrainHorizonWaterBlendEnabled =
         this.terrainHorizonWaterBlendEnabledUniform;
+      shader.uniforms.uTerrainOutwardNormalScope = this.terrainOutwardNormalUniform;
       assignMetalDepositSurfaceFieldUniforms(shader, this.metalRegionField.uniforms);
       this.worldShade.assignUniforms(shader);
       shader.vertexShader = shader.vertexShader
@@ -927,6 +936,7 @@ export class TerrainTileRenderer3D {
             'uniform float uMetalSurfaceEnabled;',
             metalSurfaceLayerUniformDeclarations(),
             'uniform float uTerrainHorizonWaterBlendEnabled;',
+            'uniform float uTerrainOutwardNormalScope;',
             metalDepositSurfaceFieldUniformDeclarations(),
             METAL_SURFACE_RESPONSE_GLSL,
             METAL_SURFACE_REGION_GLSL,
@@ -1133,6 +1143,37 @@ export class TerrainTileRenderer3D {
         //
         // The PBR terms are layered by ore coverage rather than set on the
         // material, so the biome ground keeps metalness 0 / roughness 1.
+        // THE TERRAIN IS DRAWN BY ITS BACK FACES. Set the material to
+        // FrontSide and the ground vanishes, leaving only the world-box side
+        // walls — they are wound the other way. Its authored vertex normals
+        // all point up, so three's DOUBLE_SIDED `normal *= faceDirection`
+        // hands the lighting an inverted, downward normal.
+        //
+        // That was survivable while nothing lit through it: relief comes from
+        // the baked `terrainShade`, which is computed at build time from the
+        // TRUE normal, and the direct lights are only a few percent of a scene
+        // the environment dominates. An inverted normal still inverts what it
+        // touches, though — and ore's metalness/roughness reflection is lit
+        // entirely through it, so a north-facing ore slope reflected and shaded
+        // as if it faced the sun while the south face went dark.
+        //
+        // faceDirection squared is 1, so multiplying by it again restores the
+        // authored outward normal. Side-wall fragments are front-facing and
+        // therefore untouched, which is what they want.
+        .replace(
+          '#include <normal_fragment_maps>',
+          [
+            '#include <normal_fragment_maps>',
+            '// Scope is a uniform, so this branch is warp-coherent. The ore',
+            '// case steps on coverage rather than interpolating: mixing the',
+            '// MULTIPLIER between 1 and -1 would pass through zero and hand',
+            '// the lighting a degenerate normal at the ore edge.',
+            'float terrainOutward = uTerrainOutwardNormalScope >= 2.0',
+            '  ? 1.0',
+            '  : (uTerrainOutwardNormalScope >= 1.0 ? step(0.5, metalCoverage) : 0.0);',
+            'normal *= mix(1.0, faceDirection, terrainOutward);',
+          ].join('\n'),
+        )
         .replace(
           '#include <roughnessmap_fragment>',
           [
@@ -1175,7 +1216,7 @@ export class TerrainTileRenderer3D {
         );
     };
     this.terrainMaterial.customProgramCacheKey = () =>
-      'authoritative-terrain-surface-metalregion-v41';
+      'authoritative-terrain-surface-metalregion-outwardnormal-v42';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
