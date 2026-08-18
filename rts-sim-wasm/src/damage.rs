@@ -2953,8 +2953,25 @@ pub(crate) fn is_in_locomotion_contact(penetration: f64, collision_radius: f64) 
     penetration >= -reach
 }
 
+/// Damping coefficient that makes the contact spring critically damped under
+/// the motion kernel's constant-acceleration position update for this exact
+/// timestep. For
+///
+///   p' = p + v*dt + 0.5*a*dt^2
+///   v' = v + a*dt
+///
+/// the repeated-root coefficient is `2*sqrt(k) - 0.5*k*dt`. The generated
+/// baseline is the authored `2*zeta*sqrt(k)` term (zeta is currently 1).
+/// Contact substeps keep dt inside the region where this coefficient remains
+/// positive and the repeated root remains within the unit circle.
 #[inline]
-pub(crate) fn ground_spring_accel(penetration: f64, normal_velocity: f64) -> f64 {
+pub(crate) fn ground_spring_damping_accel_per_speed(dt_sec: f64) -> f64 {
+    let discrete_correction = 0.5 * UNIT_GROUND_SPRING_ACCEL_PER_WORLD_UNIT * dt_sec.max(0.0);
+    (GROUND_SPRING_DAMPING_ACCEL_PER_SPEED - discrete_correction).max(0.0)
+}
+
+#[inline]
+pub(crate) fn ground_spring_accel(penetration: f64, normal_velocity: f64, dt_sec: f64) -> f64 {
     if !is_in_contact(penetration) {
         return 0.0;
     }
@@ -2963,7 +2980,8 @@ pub(crate) fn ground_spring_accel(penetration: f64, normal_velocity: f64) -> f64
         return 0.0;
     }
     let spring = UNIT_GROUND_SPRING_ACCEL_PER_WORLD_UNIT * compression;
-    let damped = spring - GROUND_SPRING_DAMPING_ACCEL_PER_SPEED * normal_velocity;
+    let damping = ground_spring_damping_accel_per_speed(dt_sec);
+    let damped = spring - damping * normal_velocity;
     if damped.is_finite() {
         damped.max(0.0)
     } else {

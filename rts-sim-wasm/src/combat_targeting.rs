@@ -40,6 +40,10 @@ pub const CT_ENTITY_FLAG_CLOAKED: u8 = 1 << 4;
 /// hovering over it. Stamped from the host blueprint's
 /// `preventLockOnIfMyTeamIsAboveMe`.
 pub const CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE: u8 = 1 << 5;
+/// Contact sensors cannot mark this target through the corresponding lane.
+/// Full sight remains authoritative and is unaffected by contact stealth.
+pub const CT_ENTITY_FLAG_RADAR_STEALTH: u8 = 1 << 6;
+pub const CT_ENTITY_FLAG_SONAR_STEALTH: u8 = 1 << 7;
 
 // Turret-config-flag bits — packed into `turret_config_flags`.
 pub const CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS: u32 = 1 << 0;
@@ -240,6 +244,7 @@ pub(crate) struct CombatTargetingPool {
     // point is the owning turret mount, never the host body center.
     pub(crate) entity_sensor_source_x: Vec<f64>,
     pub(crate) entity_sensor_source_y: Vec<f64>,
+    pub(crate) entity_sensor_source_z: Vec<f64>,
     // Full sight
     // also counts as contact-level coverage because sight is the
     // stronger information tier. Stamped from shared sensor coverage
@@ -250,6 +255,8 @@ pub(crate) struct CombatTargetingPool {
     pub(crate) entity_sonar_radius: Vec<f32>,
     pub(crate) entity_detector_above_water_radius: Vec<f32>,
     pub(crate) entity_detector_underwater_radius: Vec<f32>,
+    pub(crate) entity_radar_jam_radius: Vec<f32>,
+    pub(crate) entity_sonar_jam_radius: Vec<f32>,
     // Four exhaustive, orthogonal team-knowledge facts. These retain the
     // target medium that earned knowledge while remaining independent from
     // every weapon emission's source->target trajectory matrix.
@@ -265,9 +272,16 @@ pub(crate) struct CombatTargetingPool {
     // so contact-only targets are eligible only for radar-fire weapons.
     pub(crate) entity_full_sight_coverage_mask: Vec<u32>,
     pub(crate) entity_detector_coverage_mask: Vec<u32>,
+    // Canonical ally-team bits whose jammer fields cover each target. These
+    // are built first from compact jammer-only source lists, then consumed by
+    // the fused sight/contact/detector spatial pass.
+    pub(crate) entity_radar_jammer_team_mask: Vec<u32>,
+    pub(crate) entity_sonar_jammer_team_mask: Vec<u32>,
     pub(crate) observation_cells: HashMap<u64, CombatTargetingObservationCell>,
     pub(crate) observation_cell_keys: Vec<u64>,
     pub(crate) observation_max_detection_padding: f64,
+    pub(crate) observation_radar_jammer_source_slots: Vec<u32>,
+    pub(crate) observation_sonar_jammer_source_slots: Vec<u32>,
     // Retained in the slab ABI as zero. Visibility is center-only, so
     // target footprint never extends a sight/radar/sonar envelope.
     pub(crate) entity_detection_padding: Vec<f32>,
@@ -507,12 +521,15 @@ impl CombatTargetingPool {
             entity_lockon_shot_mask: Vec::new(),
             entity_sensor_source_x: Vec::new(),
             entity_sensor_source_y: Vec::new(),
+            entity_sensor_source_z: Vec::new(),
             entity_full_vision_above_water_radius: Vec::new(),
             entity_full_vision_underwater_radius: Vec::new(),
             entity_radar_radius: Vec::new(),
             entity_sonar_radius: Vec::new(),
             entity_detector_above_water_radius: Vec::new(),
             entity_detector_underwater_radius: Vec::new(),
+            entity_radar_jam_radius: Vec::new(),
+            entity_sonar_jam_radius: Vec::new(),
             entity_team_air_sight_mask: Vec::new(),
             entity_team_water_sight_mask: Vec::new(),
             entity_team_air_radar_mask: Vec::new(),
@@ -520,9 +537,13 @@ impl CombatTargetingPool {
             entity_sensor_coverage_mask: Vec::new(),
             entity_full_sight_coverage_mask: Vec::new(),
             entity_detector_coverage_mask: Vec::new(),
+            entity_radar_jammer_team_mask: Vec::new(),
+            entity_sonar_jammer_team_mask: Vec::new(),
             observation_cells: HashMap::default(),
             observation_cell_keys: Vec::new(),
             observation_max_detection_padding: 0.0,
+            observation_radar_jammer_source_slots: Vec::new(),
+            observation_sonar_jammer_source_slots: Vec::new(),
             entity_detection_padding: Vec::new(),
             entity_priority_target_id: Vec::new(),
             entity_priority_point_present: Vec::new(),
@@ -663,6 +684,7 @@ impl CombatTargetingPool {
             self.entity_lockon_shot_mask.resize(entity_needed, 0);
             self.entity_sensor_source_x.resize(entity_needed, 0.0);
             self.entity_sensor_source_y.resize(entity_needed, 0.0);
+            self.entity_sensor_source_z.resize(entity_needed, 0.0);
             self.entity_full_vision_above_water_radius
                 .resize(entity_needed, 0.0);
             self.entity_full_vision_underwater_radius
@@ -673,6 +695,8 @@ impl CombatTargetingPool {
                 .resize(entity_needed, 0.0);
             self.entity_detector_underwater_radius
                 .resize(entity_needed, 0.0);
+            self.entity_radar_jam_radius.resize(entity_needed, 0.0);
+            self.entity_sonar_jam_radius.resize(entity_needed, 0.0);
             self.entity_team_air_sight_mask.resize(entity_needed, 0);
             self.entity_team_water_sight_mask.resize(entity_needed, 0);
             self.entity_team_air_radar_mask.resize(entity_needed, 0);
@@ -681,6 +705,8 @@ impl CombatTargetingPool {
             self.entity_full_sight_coverage_mask
                 .resize(entity_needed, 0);
             self.entity_detector_coverage_mask.resize(entity_needed, 0);
+            self.entity_radar_jammer_team_mask.resize(entity_needed, 0);
+            self.entity_sonar_jammer_team_mask.resize(entity_needed, 0);
             self.entity_detection_padding.resize(entity_needed, 0.0);
             self.entity_priority_target_id.resize(entity_needed, -1);
             self.entity_priority_point_present.resize(entity_needed, 0);
@@ -808,6 +834,8 @@ impl CombatTargetingPool {
             self.entity_sensor_coverage_mask[s] = 0;
             self.entity_full_sight_coverage_mask[s] = 0;
             self.entity_detector_coverage_mask[s] = 0;
+            self.entity_radar_jammer_team_mask[s] = 0;
+            self.entity_sonar_jammer_team_mask[s] = 0;
             self.entity_active_turret_mask[s] = 0;
             self.entity_firing_turret_mask[s] = 0;
 
@@ -830,6 +858,8 @@ impl CombatTargetingPool {
             }
         }
         self.active_entity_slots.clear();
+        self.observation_radar_jammer_source_slots.clear();
+        self.observation_sonar_jammer_source_slots.clear();
         self.stamp_epoch = self.stamp_epoch.wrapping_add(1);
         if self.stamp_epoch == 0 {
             for epoch in self.entity_stamp_epoch.iter_mut() {
@@ -864,6 +894,8 @@ impl CombatTargetingPool {
         self.entity_sensor_coverage_mask[s] = 0;
         self.entity_full_sight_coverage_mask[s] = 0;
         self.entity_detector_coverage_mask[s] = 0;
+        self.entity_radar_jammer_team_mask[s] = 0;
+        self.entity_sonar_jammer_team_mask[s] = 0;
         self.turret_count_per_entity[s] = 0;
         let base = s * (COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
         for t in 0..(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize) {
@@ -1158,12 +1190,15 @@ pub fn combat_targeting_set_entity(
     lockon_shot_mask: u32,
     sensor_source_x: f64,
     sensor_source_y: f64,
+    sensor_source_z: f64,
     full_vision_above_water_radius: f32,
     full_vision_underwater_radius: f32,
     radar_radius: f32,
     sonar_radius: f32,
     detector_above_water_radius: f32,
     detector_underwater_radius: f32,
+    radar_jam_radius: f32,
+    sonar_jam_radius: f32,
     detection_padding: f32,
     priority_target_id: i32,
     priority_point_present: u8,
@@ -1241,12 +1276,15 @@ pub fn combat_targeting_set_entity(
     pool.entity_lockon_shot_mask[s] = lockon_shot_mask;
     pool.entity_sensor_source_x[s] = sensor_source_x;
     pool.entity_sensor_source_y[s] = sensor_source_y;
+    pool.entity_sensor_source_z[s] = sensor_source_z;
     pool.entity_full_vision_above_water_radius[s] = full_vision_above_water_radius;
     pool.entity_full_vision_underwater_radius[s] = full_vision_underwater_radius;
     pool.entity_radar_radius[s] = radar_radius;
     pool.entity_sonar_radius[s] = sonar_radius;
     pool.entity_detector_above_water_radius[s] = detector_above_water_radius;
     pool.entity_detector_underwater_radius[s] = detector_underwater_radius;
+    pool.entity_radar_jam_radius[s] = radar_jam_radius;
+    pool.entity_sonar_jam_radius[s] = sonar_jam_radius;
     pool.entity_detection_padding[s] = detection_padding;
     pool.entity_priority_target_id[s] = priority_target_id;
     pool.entity_priority_point_present[s] = priority_point_present;

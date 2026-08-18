@@ -52,6 +52,8 @@ export const CT_ENTITY_FLAG_CLOAKED = 1 << 4;
 /** Host refuses every lock-on while a friendly entity sits directly above it
  *  (stamped from the host blueprint's preventLockOnIfMyTeamIsAboveMe). */
 export const CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE = 1 << 5;
+export const CT_ENTITY_FLAG_RADAR_STEALTH = 1 << 6;
+export const CT_ENTITY_FLAG_SONAR_STEALTH = 1 << 7;
 
 /** AIM-08.1 — Turret-config-flag bits packed into the combat-targeting
  *  turret slab's `configFlags` field. Mirrors `CT_TURRET_CFG_*`. */
@@ -210,12 +212,15 @@ export interface CombatTargetingApi {
     lockOnShotIncludeMask: number,
     sensorSourceX: number,
     sensorSourceY: number,
+    sensorSourceZ: number,
     fullVisionAboveWaterRadius: number,
     fullVisionUnderwaterRadius: number,
     radarRadius: number,
     sonarRadius: number,
     detectorAboveWaterRadius: number,
     detectorUnderwaterRadius: number,
+    radarJamRadius: number,
+    sonarJamRadius: number,
     detectionPadding: number,
     priorityTargetId: number,
     priorityPointPresent: number,
@@ -254,6 +259,7 @@ export interface CombatTargetingApi {
     ownerPlayerId: number,
     x: number,
     y: number,
+    z: number,
     radius: number,
   ) => void;
   setWind: (x: number, y: number, z: number) => void;

@@ -9,6 +9,5 @@
   "bodySleepSpeedSq": 0.25,
   "bodySleepAccelSq": 0.000001,
   "bodySleepTicks": 12,
-  "bodySleepGroundPenetrationEps": 0.1,
-  "maxTickDtMs": 66.66666666666667
+  "bodySleepGroundPenetrationEps": 0.1
 }

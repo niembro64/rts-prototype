@@ -485,7 +485,7 @@ function executeScanCommand(ctx: CommandContext, command: ScanCommand): void {
   // snapshot serializer keep its native mask path on pulse frames.
   const sim = getSimWasm();
   if (sim !== undefined) {
-    sim.combatTargeting.addSensorObservationCircle(command.playerId, x, y, SCAN_PULSE_RADIUS);
+    sim.combatTargeting.addSensorObservationCircle(command.playerId, x, y, z, SCAN_PULSE_RADIUS);
   }
   // Pulse the marker visual through the existing ping channel so the
   // player sees where their sweep landed without a separate renderer.

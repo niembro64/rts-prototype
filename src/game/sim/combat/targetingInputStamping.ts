@@ -71,6 +71,8 @@ import {
   CT_ENTITY_FLAG_BUILDABLE_COMPLETE,
   CT_ENTITY_FLAG_CLOAKED,
   CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE,
+  CT_ENTITY_FLAG_RADAR_STEALTH,
+  CT_ENTITY_FLAG_SONAR_STEALTH,
   CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS,
   CT_TURRET_CFG_NEEDS_BALLISTIC,
   CT_TURRET_CFG_VERTICAL_LAUNCHER,
@@ -1328,6 +1330,9 @@ function stampCombatTargetingEntityInto(
   if (isEntityCloaked(entity)) {
     entityFlags |= CT_ENTITY_FLAG_CLOAKED;
   }
+  const signature = getEntitySignature(entity);
+  if (signature.radarStealth) entityFlags |= CT_ENTITY_FLAG_RADAR_STEALTH;
+  if (signature.sonarStealth) entityFlags |= CT_ENTITY_FLAG_SONAR_STEALTH;
 
   // LOCK-ON-03 — Stamp the entity's family + blueprint id so the Rust
   // exclusion gate can reject candidates by family/name without
@@ -1376,6 +1381,12 @@ function stampCombatTargetingEntityInto(
     : 0;
   const detectorAboveWaterRadius = Math.min(detectorRadius, fullVisionAboveWaterRadius);
   const detectorUnderwaterRadius = Math.min(detectorRadius, fullVisionUnderwaterRadius);
+  const radarJamRadius = operational?.contactSight === true
+    ? sensorConfig?.radarJamRadius ?? 0
+    : 0;
+  const sonarJamRadius = operational?.contactSight === true
+    ? sensorConfig?.sonarJamRadius ?? 0
+    : 0;
   const visibilityPadding = getEntityVisibilityPadding(entity);
   if (
     playerMaskBit(playerId) !== 0 &&
@@ -1387,7 +1398,9 @@ function stampCombatTargetingEntityInto(
       radarRadius > 0 ||
       sonarRadius > 0 ||
       detectorAboveWaterRadius > 0 ||
-      detectorUnderwaterRadius > 0
+      detectorUnderwaterRadius > 0 ||
+      radarJamRadius > 0 ||
+      sonarJamRadius > 0
     )
   ) {
     queueCombatTargetingSensorSourceSlot(slot);
@@ -1429,9 +1442,11 @@ function stampCombatTargetingEntityInto(
     hostLockOn.shot,
     sensorSource?.position.x ?? _stampPos.x,
     sensorSource?.position.y ?? _stampPos.y,
+    sensorSource?.position.z ?? _stampPos.z,
     fullVisionAboveWaterRadius, fullVisionUnderwaterRadius,
     radarRadius, sonarRadius,
     detectorAboveWaterRadius, detectorUnderwaterRadius,
+    radarJamRadius, sonarJamRadius,
     visibilityPadding,
     priorityTargetId === null ? -1 : priorityTargetId,
     priorityPointPresent,
@@ -1632,9 +1647,14 @@ export function stampCombatTargetingPool(world: WorldState, wind: WindState | nu
   const scanPulses = world.scanPulses;
   for (let i = 0; i < scanPulses.length; i++) {
     const pulse = scanPulses[i];
-    targeting.addSensorObservationCircle(pulse.playerId, pulse.x, pulse.y, pulse.radius);
+    targeting.addSensorObservationCircle(
+      pulse.playerId,
+      pulse.x,
+      pulse.y,
+      pulse.z + SENSOR_EYE_HEIGHT,
+      pulse.radius,
+    );
   }
-  applyAuthoritativeObservationRules(world, sim);
   // Mount queries made while stamping can only see the previous row shape.
   // Drop that tiny read cache now that setTurret has established this tick's
   // counts, otherwise a post-aim host-piece overwrite can reuse turretCount=0.

@@ -1566,6 +1566,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         // (budget_design_philosophy.html "Commands require real systems").
         const { runSelectionPanelCommandSurfaceContractTest } = await import('../../components/SelectionPanelCommandSurfaceContractTest');
         runSelectionPanelCommandSurfaceContractTest();
+        const { runEntityPreviewWarmupContractTest } = await import('../../components/entityPreviewWarmupContractTest');
+        runEntityPreviewWarmupContractTest();
         const { runServerCommandAuthorizerContractTest } = await import('../server/ServerCommandAuthorizerContractTest');
         runServerCommandAuthorizerContractTest();
         const { runInputSelectedCommandsContractTest } = await import('../input/helpers/InputSelectedCommandsContractTest');

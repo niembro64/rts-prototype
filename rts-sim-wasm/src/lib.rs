@@ -104,6 +104,9 @@ pub fn __init() {
 // Generated from src/sharedSimConstants.json by rts-sim-wasm/build.rs.
 include!(concat!(env!("OUT_DIR"), "/shared_sim_constants.rs"));
 
+// Generated from src/mapSizeConfig.json by build.rs.
+include!(concat!(env!("OUT_DIR"), "/map_size_constants.rs"));
+
 // Generated from src/game/sim/pathfindingTuningConfig.json by build.rs.
 include!(concat!(env!("OUT_DIR"), "/pathfinding_tuning.rs"));
 

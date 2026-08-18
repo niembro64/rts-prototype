@@ -116,6 +116,8 @@ type LoadingUnitPreviewSceneOptions = {
   fullBleed: boolean;
   geometryTier?: PrimitiveGeometryTier;
   preserveDrawingBuffer?: boolean;
+  rendererHost?: LoadingUnitPreviewRendererHost;
+  initialSize?: LoadingUnitPreviewSceneSize;
 };
 
 export type LoadingUnitPreviewSceneSize = {
@@ -307,6 +309,42 @@ function installPreviewEnvironment(
   return texture;
 }
 
+/** Renderer-owned resources shared by serialized static-thumbnail jobs.
+ *  WebGL programs and PMREM textures belong to a context, so keeping one
+ *  host alive is what actually amortizes Windows/ANGLE shader compilation;
+ *  caching only Three.js scene objects while recreating the renderer would
+ *  still pay the driver stall for every image. Animated previews simply own
+ *  one host for their lifetime. */
+export class LoadingUnitPreviewRendererHost {
+  readonly renderer: THREE.WebGLRenderer;
+  readonly environmentTexture: THREE.Texture;
+  private disposed = false;
+
+  constructor(canvas: PreviewCanvas, preserveDrawingBuffer = false) {
+    this.renderer = new THREE.WebGLRenderer({
+      canvas,
+      alpha: true,
+      antialias: true,
+      powerPreference: 'low-power',
+      preserveDrawingBuffer,
+    });
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.setClearColor(0x000000, 0);
+    this.environmentTexture = installPreviewEnvironment(this.renderer, new THREE.Scene());
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.renderer.renderLists.dispose();
+    this.environmentTexture.dispose();
+    this.renderer.forceContextLoss();
+    this.renderer.dispose();
+  }
+}
+
 const turretHeadGeom = createPrimitiveSphereGeometry('turret', 'close');
 const barrelGeom = createPrimitiveCylinderGeometry('turret', 'close');
 const coneBarrelGeom = createPrimitiveCylinderGeometry('turret', 'close', 0, 1);
@@ -368,6 +406,8 @@ const scratchLowerTaperStart = new THREE.Vector3();
 
 export class LoadingUnitPreviewScene {
   private readonly renderer: THREE.WebGLRenderer;
+  private readonly rendererHost: LoadingUnitPreviewRendererHost;
+  private readonly ownsRendererHost: boolean;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(CAMERA_FOV_DEGREES, 1, 0.1, 10000);
   private readonly materials = createPreviewUnitMaterials(HOST_PLAYER_ID);
@@ -385,29 +425,22 @@ export class LoadingUnitPreviewScene {
   private motionPhase = 0;
   private width = DEFAULT_WIDTH;
   private height = DEFAULT_HEIGHT;
-  private environmentTexture: THREE.Texture | null = null;
   private disposed = false;
 
   constructor(options: LoadingUnitPreviewSceneOptions) {
     this.fullBleed = options.fullBleed;
-    this.renderer = new THREE.WebGLRenderer({
-      canvas: options.canvas,
-      alpha: true,
-      antialias: true,
-      powerPreference: 'low-power',
-      preserveDrawingBuffer: options.preserveDrawingBuffer === true,
-    });
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.ownsRendererHost = options.rendererHost === undefined;
+    this.rendererHost = options.rendererHost ?? new LoadingUnitPreviewRendererHost(
+      options.canvas,
+      options.preserveDrawingBuffer === true,
+    );
+    this.renderer = this.rendererHost.renderer;
     // Match ThreeApp's color pipeline so the preview grades identically to
-    // the battlefield. Without ACES the raw colors read more saturated than
-    // in-game — that mismatch was why the loading unit's team color looked
-    // slightly off.
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
-    this.renderer.setClearColor(0x000000, 0);
+    // the battlefield. LoadingUnitPreviewRendererHost owns the shared ACES +
+    // PMREM setup; each scene only binds that context-owned environment.
+    this.scene.environment = this.rendererHost.environmentTexture;
     this.scene.add(this.spinRoot);
     installPreviewLighting(this.scene);
-    this.environmentTexture = installPreviewEnvironment(this.renderer, this.scene);
 
     this.spinRoot.add(this.motionRoot);
     this.model = buildPreviewModel(
@@ -418,7 +451,7 @@ export class LoadingUnitPreviewScene {
     );
     this.centerModel(this.model.root);
     this.motionRoot.add(this.model.root);
-    this.resize({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, dpr: 1 });
+    this.resize(options.initialSize ?? { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, dpr: 1 });
   }
 
   resize(size: LoadingUnitPreviewSceneSize): void {
@@ -479,11 +512,8 @@ export class LoadingUnitPreviewScene {
     this.disposed = true;
     this.spinRoot.clear();
     this.scene.clear();
-    this.renderer.renderLists.dispose();
     disposePreviewUnitMaterials(this.materials);
-    this.environmentTexture?.dispose();
-    this.renderer.forceContextLoss();
-    this.renderer.dispose();
+    if (this.ownsRendererHost) this.rendererHost.dispose();
   }
 
   private centerModel(model: THREE.Object3D): void {

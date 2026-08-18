@@ -5,6 +5,7 @@ import type { PlayerId } from '../game/sim/types';
 import type { BattleMode } from '../battleBarConfig';
 import { waitForSceneAndBind } from './gameSceneBindings';
 import { waitForLoadingOverlayPaint } from './loadingOverlayPaint';
+import { prewarmEntityPreviewImages } from './entityPreviewThumbnails';
 
 type LobbyManagerModule = typeof import('../game/lobby/LobbyManager');
 let lobbyManagerModule: LobbyManagerModule | null = null;
@@ -37,6 +38,7 @@ const BACKGROUND_LOAD_PROGRESS = {
   start: 0,
   overlayPainted: 0.06,
   settingsLoaded: 0.1,
+  previewImages: 0.18,
   battleCreated: 0.76,
   sceneCreated: 0.78,
   sceneBound: 0.82,
@@ -132,6 +134,20 @@ export function useGameCanvasBackgroundBattle({
           return;
         }
         await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.settingsLoaded, 'Loading battle settings');
+        await prewarmEntityPreviewImages((complete, total) => {
+          const fraction = total > 0 ? complete / total : 1;
+          onLoadingProgress(
+            BACKGROUND_LOAD_PROGRESS.settingsLoaded +
+              fraction *
+                (BACKGROUND_LOAD_PROGRESS.previewImages - BACKGROUND_LOAD_PROGRESS.settingsLoaded),
+            'Preparing interface previews',
+          );
+        });
+        if (myGen !== backgroundBattleGen || !backgroundContainerRef.value) {
+          onRendererWarmupChange(false);
+          return;
+        }
+        await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.previewImages, 'Interface previews ready');
         const lobbyManager = await loadLobbyManager();
         if (myGen !== backgroundBattleGen || !backgroundContainerRef.value) {
           onRendererWarmupChange(false);
@@ -140,6 +156,20 @@ export function useGameCanvasBackgroundBattle({
         let createdBattle: BackgroundBattleState | null = null;
         let startupReadyPending = false;
         let startupReady = false;
+        let rendererWarmupDone = !getPlayerClientEnabled();
+        const maybeFinishLoading = () => {
+          if (
+            myGen !== backgroundBattleGen ||
+            createdBattle === null ||
+            backgroundBattle !== createdBattle ||
+            !startupReady ||
+            !rendererWarmupDone
+          ) {
+            return;
+          }
+          onLoadingProgress(BACKGROUND_LOAD_PROGRESS.done, 'Ready');
+          onRendererWarmupChange(false);
+        };
         const handleStartupReady = () => {
           if (myGen !== backgroundBattleGen) return;
           if (createdBattle === null || backgroundBattle !== createdBattle) {
@@ -148,11 +178,10 @@ export function useGameCanvasBackgroundBattle({
           }
           startupReady = true;
           startupReadyPending = false;
-          // The first full snapshot is the point where the demo is usable.
-          // Shader warmup continues opportunistically, but it must not keep
-          // the full-screen loading overlay pinned over a running battle.
-          onLoadingProgress(BACKGROUND_LOAD_PROGRESS.done, 'Ready');
-          onRendererWarmupChange(false);
+          // Keep the loading cover in place until the cold driver work is
+          // complete. The renderer warmup acknowledges startup before it
+          // compiles, so this presentation gate cannot deadlock the server.
+          maybeFinishLoading();
         };
         const battle = await lobbyManager.createBackgroundBattle(
           backgroundContainerRef.value,
@@ -161,18 +190,17 @@ export function useGameCanvasBackgroundBattle({
           getPreviewPlayerIds(),
           getPreviewLocalPlayerId(),
           (warming) => {
-            const blocksLoadingOverlay = warming && !startupReady;
-            onLoadingProgress(
-              blocksLoadingOverlay
-                ? BACKGROUND_LOAD_PROGRESS.shaderWarmup
-                : BACKGROUND_LOAD_PROGRESS.done,
-              blocksLoadingOverlay ? 'Warming shaders' : 'Ready',
-            );
-            onRendererWarmupChange(blocksLoadingOverlay && getPlayerClientEnabled());
+            rendererWarmupDone = !warming;
+            if (warming) {
+              onLoadingProgress(BACKGROUND_LOAD_PROGRESS.shaderWarmup, 'Warming shaders');
+            }
+            const ready = startupReady && rendererWarmupDone;
+            onRendererWarmupChange(getPlayerClientEnabled() && !ready);
+            maybeFinishLoading();
           },
           (progress, phase) => reportLoadingProgress(
-            BACKGROUND_LOAD_PROGRESS.settingsLoaded +
-              progress * (BACKGROUND_LOAD_PROGRESS.battleCreated - BACKGROUND_LOAD_PROGRESS.settingsLoaded),
+            BACKGROUND_LOAD_PROGRESS.previewImages +
+              progress * (BACKGROUND_LOAD_PROGRESS.battleCreated - BACKGROUND_LOAD_PROGRESS.previewImages),
             phase ?? 'Creating battle',
           ),
           handleStartupReady,

@@ -12,6 +12,7 @@ import type { GameCanvasForegroundSceneBinding } from './gameCanvasForegroundSce
 import type { RealBattleBackendRuntime } from './gameCanvasRealBattleStartup';
 import type { GameCanvasRealBattleLifecycle } from './gameCanvasRealBattleLifecycle';
 import { waitForLoadingOverlayPaint } from './loadingOverlayPaint';
+import { prewarmEntityPreviewImages } from './entityPreviewThumbnails';
 
 export type StartRealBattleWithPlayersOptions = {
   containerRef: Ref<HTMLDivElement | null>;
@@ -44,7 +45,8 @@ export type StartRealBattleWithPlayersOptions = {
 const REAL_BATTLE_LOAD_PROGRESS = {
   start: 0,
   overlayPainted: 0.06,
-  terrainLoaded: 0.12,
+  previewImages: 0.14,
+  terrainLoaded: 0.18,
   serverReady: 0.54,
   connectionReady: 0.62,
   sceneCreated: 0.78,
@@ -129,6 +131,19 @@ export async function startRealBattleWithPlayers(
     await waitForLoadingOverlayPaint();
     if (shouldAbortStart()) return;
     await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.overlayPainted, 'Preparing loading screen');
+    if (shouldAbortStart()) return;
+
+    await prewarmEntityPreviewImages((complete, total) => {
+      const fraction = total > 0 ? complete / total : 1;
+      options.onLoadingProgress(
+        REAL_BATTLE_LOAD_PROGRESS.overlayPainted +
+          fraction *
+            (REAL_BATTLE_LOAD_PROGRESS.previewImages - REAL_BATTLE_LOAD_PROGRESS.overlayPainted),
+        'Preparing interface previews',
+      );
+    });
+    if (shouldAbortStart()) return;
+    await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.previewImages, 'Interface previews ready');
     if (shouldAbortStart()) return;
 
     const rectContainer = options.containerRef.value;

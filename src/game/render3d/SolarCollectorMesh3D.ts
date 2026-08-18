@@ -315,7 +315,7 @@ export function buildSolarCollector(
   const details: BuildingDetailMesh[] = [];
 
   const petalTilt = 0.42;
-  const petalThickness = 3.2;
+  const petalThickness = 6;
   const teamAccentThickness = 0.85;
   const teamAccentGap = 0.35;
   /** Clearance between a folded panel's cell face and the pyramid skin. */
