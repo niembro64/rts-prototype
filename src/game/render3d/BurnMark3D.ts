@@ -1,132 +1,94 @@
-// BurnMark3D — ground scorches along laser / beam paths, plus a pulsing
-// glow sphere at each live beam's termination point.
+// BurnMark3D — accumulated, terrain-oriented scorch cells.
 //
-// Every mark is a 4-vertex quad draped over the terrain: each vertex's
-// Y is sampled from the ground under its own (x, z). When a beam's
-// endpoint moves, we append a new quad AND update the previous quad's
-// end vertices to the bisector of the two segments — so consecutive
-// marks share an edge with no overlap or gap. The first/last quads of a
-// trail keep a square cap perpendicular to their segment direction.
-//
-// All marks live in a single merged BufferGeometry with a vertex-colors
-// material, so the entire trail — hundreds of segments — renders in one
-// draw call. Slots are managed with swap-and-pop on expiry (O(1)) so
-// removing an aged mark doesn't leave gaps.
-//
-// Colors, fade, cutoff, and sample rate are pulled from shared config
-// so this stays in lockstep with the 2D BurnMarkSystem.
+// A beam deposits heat and char into a fixed world grid. Repeated stationary
+// hits strengthen the same cell; moving endpoints sample the swept interval
+// into adjacent cells. Each occupied cell is one instanced disc. Its hot and
+// residue decay happen in the shader from last-hit time, so the CPU updates
+// only cells that receive energy (plus an infrequent expiry sweep).
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import { COLORS } from '@/colorsConfig';
 import { getGraphicsConfig, getBurnMarks } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
-import {
-  BURN_COLOR_HOT,
-  BURN_COLOR_TAU,
-  BURN_COOL_TAU,
-} from '../../config';
+import { BURN_COLOR_TAU, BURN_COOL_TAU } from '../../config';
 import { disposeMesh } from './threeUtils';
+import { createPrimitiveCircleGeometry } from './PrimitiveGeometryQuality3D';
+import { applyExposureToRawShader } from './RenderLighting3D';
 import {
-  computeMiteredQuad,
-  copyQuadSlot,
-  createQuadIndexBuffer,
-  writeDrapedQuadEndXZ,
-  writeDrapedQuadXZ,
-  writeQuadRgba,
-} from './RibbonTrailBuffer3D';
-import {
+  clearDirtySlotSpan,
   createDirtySlotSpan,
   markDirtySlot,
-  clearDirtySlotSpan,
   uploadDirtySlotSpan,
-  uploadPrefixRange,
 } from './instancedBufferUpdate';
 import { clamp01 } from '../math';
 
-// ── World Y layout ──
-// Burn marks sit a couple units above the terrain surface, sampled per
-// vertex so the quads drape over slopes. The terrain uses a negative
-// polygonOffset to bias its fragments toward the camera, so we apply an
-// even stronger offset to the burn-mark material so marks always draw
-// over the ground regardless of depth precision at far zoom. The lift
-// stays above ground prints' (2.4) so a scorch on a rut reads correctly.
 const MARK_LIFT = 2.5;
-
-// ── Color curve — matches 2D BurnMarkSystem exactly ──
-// Source the color components via THREE.Color so the hex (sRGB) is
-// converted to the renderer's working linear space. Writing raw
-// `hex/255` bytes as vertex-color floats is WRONG when
-// ColorManagement.enabled = true (Three r152+): the renderer re-encodes
-// linear → sRGB on output, and raw-sRGB-as-linear comes out visibly
-// darker than the 2D counterpart that fillStyle()'s the same hex.
-const COOL_COLOR = COLORS.world.burnMark.coolResidueColorHex; // dark brown residue
-const HOT_LIN = new THREE.Color(BURN_COLOR_HOT);
-const COOL_LIN = new THREE.Color(COOL_COLOR);
-
-// Hard buffer size — never need to reallocate. Memory: ~280 KB for
-// positions + colors, trivial. The active-count cap below sits inside
-// this ceiling and scales with mark density.
-const MAX_MARKS = 5000;
-
-// Constant alpha floor below which a mark is invisible enough to
-// reclaim its slot. The floor is fixed; marks die only when they fade
-// to it via natural rational-exp decay.
-const BURN_MARK_FADE_FLOOR = 0.01;
-
-// EMA tau (ms) used to smooth mark density changes.
-const DENSITY_EMA_TAU_MS = 300;
-
-// Mapping from density (0..1) to derived throttles. The density
-// is EMA-smoothed inside the renderer and these formulas turn it
-// into the three concrete knobs (cap, frame-skip, lifetime mult)
-// that drive emission, eviction, and fade.
-const MAX_BURN_FRAMES_SKIP = 5;     // density=0 → skip 5 of every 6 frames
-const BURN_LIFETIME_MULT_AT_ZERO = 0.5; // shortest visible lifetime
-
-// Miter limit: at sharp turns, the miter joint extends far from the
-// actual corner. Clamp to 3× halfWidth (PostScript default) so a tight
-// zig-zag doesn't produce a spike to infinity.
-const MITER_LIMIT = 3;
-
-// Minimum squared distance between prev and current endpoint for a new
-// mark — avoids stacking zero-length quads for stationary beams.
-const MIN_SEGMENT_DIST_SQ = 4;
-
-// How close the beam endpoint's altitude must be to the ground at that
-// (x,y) for the endpoint to count as a ground hit. Beams ending mid-air
-// (on a flying unit, on a building side, at the range circle in the
-// sky, on a shield reflector above ground) shouldn't leave scorches on
-// the dirt below. A few units of slack covers the beam's own half-width
-// and floating-point slop on a sim-authoritative ground hit (which sets
-// endpoint.z = getGroundZ(x, y) exactly).
+const MAX_SCORCH_CELLS = 5000;
+const SCORCH_CELL_SIZE = 4;
 const GROUND_HIT_Z_TOLERANCE = 4;
+const DENSITY_EMA_TAU_MS = 300;
+const SCORCH_PRUNE_INTERVAL_MS = 500;
+const SCORCH_FADE_FLOOR = 0.008;
+const MAX_SWEEP_SAMPLES_PER_PROJECTILE = 32;
 
-type BeamState = {
-  lastEndX: number;
-  lastEndY: number;
-  lastDirX: number;
-  lastDirY: number;
-  /** Reference to the most recently appended mark for this beam, so the
-   *  next sample can miter-join onto it. Null if the beam has no marks
-   *  yet (first sample) or if the prev mark was culled by aging. */
-  prevMark: Mark | null;
-  /** Endpoints sampled BEFORE lastEnd, oldest-first, flat as
-   *  [x0, y0, x1, y1]. Together with lastEnd and the next incoming
-   *  sample, gives the 4 control points used by appendCurvedSegment to
-   *  fit a cubic-Lagrange curve and tessellate the missing segment. An
-   *  empty/short history falls back to a straight quad until enough
-   *  samples accumulate. */
-  history: number[];
-};
+const COOL_LIN = new THREE.Color(COLORS.world.burnMark.coolResidueColorHex);
+const HOT_LIN = new THREE.Color(0xff4a08);
 
-// Curve tessellation: number of sub-quads laid down between two beam
-// samples once we have 4 control points. K=4 strikes a good balance
-// between visible curvature and mark-count blow-up (4× the marks per
-// original sample). The cubic still passes through both endpoints
-// exactly, so any K only changes how piecewise-linearly the curve is
-// rasterized.
-const CURVE_TESS_STEPS = 4;
+const SCORCH_VERTEX_SHADER = /* glsl */`
+  attribute float aLastHitSec;
+  attribute float aHeat;
+  attribute float aChar;
+  attribute float aSeed;
+  varying vec2 vLocal;
+  varying float vLastHitSec;
+  varying float vHeat;
+  varying float vChar;
+  varying float vSeed;
+
+  void main() {
+    vLocal = position.xy;
+    vLastHitSec = aLastHitSec;
+    vHeat = aHeat;
+    vChar = aChar;
+    vSeed = aSeed;
+    vec4 worldPosition = instanceMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * modelViewMatrix * worldPosition;
+  }
+`;
+
+const SCORCH_FRAGMENT_SHADER = /* glsl */`
+  uniform float uTimeSec;
+  uniform float uHotTauSec;
+  uniform float uResidueTauSec;
+  uniform vec3 uHotColor;
+  uniform vec3 uCoolColor;
+  varying vec2 vLocal;
+  varying float vLastHitSec;
+  varying float vHeat;
+  varying float vChar;
+  varying float vSeed;
+
+  void main() {
+    float age = max(0.0, uTimeSec - vLastHitSec);
+    float hot = vHeat * exp(-age / max(0.001, uHotTauSec));
+    float residue = vChar * exp(-age / max(0.001, uResidueTauSec));
+    float r = length(vLocal);
+    float angle = atan(vLocal.y, vLocal.x);
+    float edge = 0.80
+      + 0.09 * sin(angle * 5.0 + vSeed * 23.0)
+      + 0.06 * sin(angle * 11.0 - vSeed * 17.0);
+    float edgeAlpha = 1.0 - smoothstep(edge - 0.16, edge, r);
+    float mottling = 0.78 + 0.22 * sin(
+      vLocal.x * 13.0 + vLocal.y * 9.0 + vSeed * 41.0
+    );
+    float hotCore = hot * (1.0 - smoothstep(0.05, 0.72, r));
+    vec3 color = mix(uCoolColor * mottling, uHotColor, clamp(hotCore, 0.0, 1.0));
+    float alpha = edgeAlpha * clamp(residue * 0.66 + hotCore * 0.82, 0.0, 0.92);
+    if (alpha < 0.004) discard;
+    gl_FragColor = vec4(color, alpha);
+  }
+`;
 
 type BeamStateKey = number | string;
 const BEAM_KEY_TURRET_STRIDE = 1024;
@@ -142,442 +104,394 @@ function beamStateKey(sourceEntityId: number, turretIndex: number): BeamStateKey
   return `${sourceEntityId}:${turretIndex}`;
 }
 
-type Mark = {
-  /** Index into the big buffer (`marks[slot] === this`). Kept explicit so
-   *  appending a miter-joined mark can rewrite this mark's end vertices
-   *  even after swap-and-pop has moved it. */
-  slot: number;
-  age: number;
-  dirX: number;
-  dirY: number;
-  /** Cleared when the mark is culled so BeamState.prevMark can tell. */
-  removed: boolean;
+export function scorchCellKey(
+  x: number,
+  y: number,
+  cellSize: number = SCORCH_CELL_SIZE,
+): number | string {
+  const inv = 1 / Math.max(0.001, cellSize);
+  const ix = Math.floor(x * inv);
+  const iy = Math.floor(y * inv);
+  // 2^26 keeps the packed pair below Number.MAX_SAFE_INTEGER while still
+  // covering ±33 million cells on each axis before the string fallback.
+  const base = 67108864;
+  const offset = base / 2;
+  if (ix >= -offset && ix < offset && iy >= -offset && iy < offset) {
+    return (ix + offset) * base + iy + offset;
+  }
+  return `${ix}:${iy}`;
+}
+
+type BeamState = {
+  lastEndX: number;
+  lastEndY: number;
 };
 
+type ScorchCell = {
+  key: number | string;
+  slot: number;
+  x: number;
+  y: number;
+  z: number;
+  radius: number;
+  heat: number;
+  char: number;
+  lastHitSec: number;
+  seed: number;
+};
+
+function hashCell(key: number | string): number {
+  if (typeof key === 'number') {
+    let numericHash = (key % 0x100000000) | 0;
+    numericHash ^= numericHash >>> 16;
+    numericHash = Math.imul(numericHash, 0x45d9f3b);
+    numericHash ^= numericHash >>> 16;
+    return (numericHash >>> 0) / 0x100000000;
+  }
+  let hash = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    hash ^= key.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 0x100000000;
+}
+
 export class BurnMark3D {
-  private root: THREE.Group;
-
-  // ── Merged trail geometry ──
-  private geometry: THREE.BufferGeometry;
-  private positions: Float32Array;  // MAX_MARKS × 4 × 3
-  private colors: Float32Array;     // MAX_MARKS × 4 × 4 (RGBA)
-  private indices: Uint32Array;     // MAX_MARKS × 6 (prebuilt)
-  private mesh: THREE.Mesh;
-  private mat: THREE.MeshBasicMaterial;
-  private posAttr: THREE.BufferAttribute;
-  private colAttr: THREE.BufferAttribute;
-  private readonly posDirty = createDirtySlotSpan();
-  private colDirty = false;
-
-  // Active marks, packed — `marks[mark.slot] === mark` invariant.
-  private marks: Mark[] = [];
-
-  // Per-beam state, keyed by `${sourceEntityId}:${turretIndex}`.
-  private beams = new Map<BeamStateKey, BeamState>();
-  private _seenBeamKeys = new Set<BeamStateKey>();
-
-  private _frameCounter = 0;
-  /** EMA-smoothed copy of mark density. Stays around -1
-   *  until the first update so the first frame snaps to the
-   *  resolved value rather than easing in from 0. */
-  private _smoothedDensity = -1;
-  /** Active-count cap derived from `_smoothedDensity` once per
-   *  update() call. Cached on the instance so appendMark (called
-   *  many times per frame from the beam loop) doesn't have to
-   *  recompute from density each time. */
-  private _currentCap = 0;
-
-  /** RENDER: WIN/PAD/ALL visibility scope — beams with their endpoint
-   *  outside the scope rect skip sampling. */
-  private scope: ViewportFootprint | null = null;
-
-  /** Sim-authoritative ground height sampler — used to gate marks so
-   *  beams that end in mid-air don't paint phantom scorches on the
-   *  dirt below their endpoint, and to drape each mark vertex onto
-   *  the terrain. Returns 0 when not provided (legacy callers /
-   *  flat maps). */
-  private getGroundZ: (x: number, y: number) => number;
-  /** Per-vertex mark altitude: ground height + MARK_LIFT. */
-  private markY: (x: number, z: number) => number;
+  private readonly root = new THREE.Group();
+  private readonly geometry = createPrimitiveCircleGeometry('beam', 'mid', 1);
+  private readonly material: THREE.ShaderMaterial;
+  private readonly mesh: THREE.InstancedMesh;
+  private readonly lastHit = new Float32Array(MAX_SCORCH_CELLS);
+  private readonly heat = new Float32Array(MAX_SCORCH_CELLS);
+  private readonly char = new Float32Array(MAX_SCORCH_CELLS);
+  private readonly seed = new Float32Array(MAX_SCORCH_CELLS);
+  private readonly lastHitAttr: THREE.InstancedBufferAttribute;
+  private readonly heatAttr: THREE.InstancedBufferAttribute;
+  private readonly charAttr: THREE.InstancedBufferAttribute;
+  private readonly seedAttr: THREE.InstancedBufferAttribute;
+  private readonly matrixDirty = createDirtySlotSpan();
+  private readonly lastHitDirty = createDirtySlotSpan();
+  private readonly heatDirty = createDirtySlotSpan();
+  private readonly charDirty = createDirtySlotSpan();
+  private readonly seedDirty = createDirtySlotSpan();
+  private readonly cells: ScorchCell[] = [];
+  private readonly cellByKey = new Map<number | string, ScorchCell>();
+  private readonly beams = new Map<BeamStateKey, BeamState>();
+  private readonly seenBeamKeys = new Set<BeamStateKey>();
+  private readonly position = new THREE.Vector3();
+  private readonly scale = new THREE.Vector3();
+  private readonly quaternion = new THREE.Quaternion();
+  private readonly localNormal = new THREE.Vector3(0, 0, 1);
+  private readonly worldNormal = new THREE.Vector3();
+  private readonly matrix = new THREE.Matrix4();
+  private timeSec = 0;
+  private pruneAccumMs = 0;
+  private smoothedDensity = -1;
+  private currentCap = MAX_SCORCH_CELLS;
 
   constructor(
     parentWorld: THREE.Group,
-    scope?: ViewportFootprint,
-    getGroundZ?: (x: number, y: number) => number,
+    private readonly scope: ViewportFootprint | null = null,
+    private readonly getGroundZ: (x: number, y: number) => number = () => 0,
+    private readonly getGroundNormal?: (
+      x: number,
+      y: number,
+    ) => { nx: number; ny: number; nz: number },
   ) {
-    this.root = new THREE.Group();
     parentWorld.add(this.root);
-    this.scope = scope ?? null;
-    this.getGroundZ = getGroundZ ?? (() => 0);
-    this.markY = (x, z) => this.getGroundZ(x, z) + MARK_LIFT;
-
-    this.positions = new Float32Array(MAX_MARKS * 4 * 3);
-    this.colors = new Float32Array(MAX_MARKS * 4 * 4);
-    this.indices = createQuadIndexBuffer(MAX_MARKS);
-
-    this.geometry = new THREE.BufferGeometry();
-    this.posAttr = new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage);
-    this.colAttr = new THREE.BufferAttribute(this.colors, 4).setUsage(THREE.DynamicDrawUsage);
-    this.geometry.setAttribute('position', this.posAttr);
-    this.geometry.setAttribute('color', this.colAttr);
-    this.geometry.setIndex(new THREE.BufferAttribute(this.indices, 1));
-    this.geometry.setDrawRange(0, 0);
-
-    // Single material for the whole trail — per-vertex colors encode each
-    // mark's age-based shade and alpha. DoubleSide so marks read from a
-    // camera under the ground, polygonOffset so they always win the
-    // depth test against the terrain tile grid below.
-    this.mat = new THREE.MeshBasicMaterial({
-      vertexColors: true,
+    this.lastHitAttr = new THREE.InstancedBufferAttribute(this.lastHit, 1)
+      .setUsage(THREE.DynamicDrawUsage);
+    this.heatAttr = new THREE.InstancedBufferAttribute(this.heat, 1)
+      .setUsage(THREE.DynamicDrawUsage);
+    this.charAttr = new THREE.InstancedBufferAttribute(this.char, 1)
+      .setUsage(THREE.DynamicDrawUsage);
+    this.seedAttr = new THREE.InstancedBufferAttribute(this.seed, 1)
+      .setUsage(THREE.DynamicDrawUsage);
+    this.geometry.setAttribute('aLastHitSec', this.lastHitAttr);
+    this.geometry.setAttribute('aHeat', this.heatAttr);
+    this.geometry.setAttribute('aChar', this.charAttr);
+    this.geometry.setAttribute('aSeed', this.seedAttr);
+    this.material = new THREE.ShaderMaterial({
+      vertexShader: SCORCH_VERTEX_SHADER,
+      fragmentShader: SCORCH_FRAGMENT_SHADER,
+      uniforms: {
+        uTimeSec: { value: 0 },
+        uHotTauSec: { value: Math.max(0.001, BURN_COLOR_TAU / 1000) },
+        uResidueTauSec: { value: Math.max(0.001, BURN_COOL_TAU / 1000) },
+        uHotColor: { value: HOT_LIN },
+        uCoolColor: { value: COOL_LIN },
+      },
       transparent: true,
       side: THREE.DoubleSide,
       depthWrite: false,
+      depthTest: true,
       polygonOffset: true,
       polygonOffsetFactor: -4,
       polygonOffsetUnits: -4,
     });
-    this.mesh = new THREE.Mesh(this.geometry, this.mat);
-    this.mesh.renderOrder = 10;
-    // The geometry starts with all-zero positions, so its auto-computed
-    // bounding sphere is (origin, radius=0) — Three.js frustum-culls it
-    // the moment the camera looks anywhere other than world origin.
-    // We never auto-recompute on position updates, so just disable the
-    // per-mesh culling: burn marks cover the whole map anyway.
+    applyExposureToRawShader(this.material);
+    this.mesh = new THREE.InstancedMesh(this.geometry, this.material, MAX_SCORCH_CELLS);
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.count = 0;
     this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 10;
     this.root.add(this.mesh);
   }
 
   update(projectiles: readonly Entity[], dtMs: number): void {
-    if (projectiles.length === 0 && this.marks.length === 0 && this.beams.size === 0) return;
+    const clampedDtMs = Math.min(250, Math.max(0, dtMs));
+    const dtSec = clampedDtMs / 1000;
+    this.timeSec += dtSec;
+    this.material.uniforms.uTimeSec.value = this.timeSec;
 
-    // Snapshot the graphics config once per frame.
-    const gfx = getGraphicsConfig();
-
-    // The unified MARKS: ALL toggle gates the scorched-earth trail
-    // (this renderer) along with wheel/tread/foot prints (GroundPrint3D).
-    // When off we wipe any existing trail geometry and skip sampling.
-    // Live beam hit indicators / MAX-flare sparks are handled by
-    // BeamRenderer3D and are not affected by this toggle.
-    const marksEnabled = getBurnMarks();
-    if (!marksEnabled) {
-      if (this.marks.length > 0) this.clearMarksOnly();
-      if (this.beams.size > 0) this.beams.clear();
-      this._frameCounter = 0;
-      this._smoothedDensity = -1;
+    if (!getBurnMarks()) {
+      this.clear();
       return;
     }
 
-    // ── Density resolution (one knob, three throttles) ──
-    // Cap, frame-skip, and lifetime all derive from the smoothed value.
-    const targetDensity = clamp01(gfx.burnMarkDensity ?? 1);
-    if (this._smoothedDensity < 0) {
-      this._smoothedDensity = targetDensity;
+    const densityTarget = clamp01(getGraphicsConfig().burnMarkDensity ?? 1);
+    if (this.smoothedDensity < 0) {
+      this.smoothedDensity = densityTarget;
     } else {
-      const ema = 1 - Math.exp(-Math.max(0, dtMs) / DENSITY_EMA_TAU_MS);
-      this._smoothedDensity += (targetDensity - this._smoothedDensity) * ema;
+      const ema = 1 - Math.exp(-clampedDtMs / DENSITY_EMA_TAU_MS);
+      this.smoothedDensity += (densityTarget - this.smoothedDensity) * ema;
     }
-    const density = this._smoothedDensity;
-    const activeCap = Math.min(MAX_MARKS, Math.round(MAX_MARKS * density));
-    this._currentCap = activeCap;
-    const framesSkip = Math.max(0, Math.round(MAX_BURN_FRAMES_SKIP * (1 - density)));
-    const lifeMult =
-      BURN_LIFETIME_MULT_AT_ZERO +
-      (1 - BURN_LIFETIME_MULT_AT_ZERO) * density;
-    const invColorTau = 1 / Math.max(1, BURN_COLOR_TAU * lifeMult);
-    const invCoolTau = 1 / Math.max(1, BURN_COOL_TAU * lifeMult);
+    const density = this.smoothedDensity;
+    this.currentCap = Math.min(MAX_SCORCH_CELLS, Math.round(MAX_SCORCH_CELLS * density));
+    const lifeMultiplier = 0.5 + density * 0.5;
+    this.material.uniforms.uHotTauSec.value =
+      Math.max(0.001, BURN_COLOR_TAU * lifeMultiplier / 1000);
+    this.material.uniforms.uResidueTauSec.value =
+      Math.max(0.001, BURN_COOL_TAU * lifeMultiplier / 1000);
 
-    // Sample at every (framesSkip + 1)th frame.
-    const sampleNow = this._frameCounter === 0;
-    this._frameCounter = (this._frameCounter + 1) % (framesSkip + 1);
+    if (this.currentCap <= 0) {
+      this.clear();
+      return;
+    }
 
-    this._seenBeamKeys.clear();
-    for (const e of projectiles) {
-      const proj = e.projectile;
-      if (!proj) continue;
-      const isDGunTrail = e.dgunProjectile?.isDGun === true && proj.projectileType === 'projectile';
-      if (!isDGunTrail && proj.projectileType !== 'beam' && proj.projectileType !== 'laser') continue;
+    this.seenBeamKeys.clear();
+    for (let i = 0; i < projectiles.length; i++) {
+      const entity = projectiles[i];
+      const projectile = entity.projectile;
+      if (!projectile) continue;
+      const isDGun = entity.dgunProjectile?.isDGun === true &&
+        projectile.projectileType === 'projectile';
+      const isRay = projectile.projectileType === 'beam' || projectile.projectileType === 'laser';
+      if (!isDGun && !isRay) continue;
+      if (isRay && projectile.endpointDamageable === false) continue;
 
-      const turretIndex = proj.config.turretIndex ?? 0;
-      const key = isDGunTrail ? `dgun:${e.id}` : beamStateKey(proj.sourceEntityId, turretIndex);
-      this._seenBeamKeys.add(key);
-
-      const lastPoint = proj.points && proj.points.length >= 2
-        ? proj.points[proj.points.length - 1]
+      const key: BeamStateKey = isDGun
+        ? `dgun:${entity.id}`
+        : beamStateKey(projectile.sourceEntityId, projectile.config.turretIndex ?? 0);
+      this.seenBeamKeys.add(key);
+      const end = projectile.points && projectile.points.length >= 2
+        ? projectile.points[projectile.points.length - 1]
         : undefined;
-      const ex = isDGunTrail ? e.transform.x : (lastPoint?.x ?? e.transform.x);
-      const ez = isDGunTrail ? e.transform.y : (lastPoint?.y ?? e.transform.y);
-      // Scope gate — skip the beam entirely when the endpoint is off-
-      // scope. We use generous padding (200) since the endpoint can
-      // drift quickly and a strict rect would drop marks mid-sweep.
-      if (this.scope && !this.scope.inScope(ex, ez, 200)) continue;
-      // Ground-hit gate — beams that terminate on an airborne/bot
-      // unit, on the side of a building, on an aerial mirror, or at the
-      // range circle while still climbing should not scorch the ground.
-      // dgun trails ride the terrain, so always sample those. When a
-      // beam fails the gate we still keep its key alive (so the beam
-      // entry isn't retired-and-recreated each frame) but break the
-      // trail: reset prevMark to null and snap lastEnd to the current
-      // endpoint so the *next* ground-hit sample starts a fresh square
-      // cap instead of stretching a quad through the air gap.
-      if (!isDGunTrail) {
-        const endZ = lastPoint?.z ?? 0;
-        const groundZ = this.getGroundZ(ex, ez);
-        if (endZ - groundZ > GROUND_HIT_Z_TOLERANCE) {
-          const existing = this.beams.get(key);
-          if (existing) {
-            existing.prevMark = null;
-            existing.lastEndX = ex;
-            existing.lastEndY = ez;
-            existing.lastDirX = 0;
-            existing.lastDirY = 0;
-            existing.history.length = 0;
-          }
+      const endX = isDGun ? entity.transform.x : (end?.x ?? entity.transform.x);
+      const endY = isDGun ? entity.transform.y : (end?.y ?? entity.transform.y);
+      if (this.scope && !this.scope.inScope(endX, endY, 200)) continue;
+      const groundZ = this.getGroundZ(endX, endY);
+      if (!isDGun) {
+        const endZ = end?.z ?? 0;
+        const tolerance = Math.max(
+          GROUND_HIT_Z_TOLERANCE,
+          projectile.config.shotProfile.visual.lineRadius,
+        );
+        if (Math.abs(endZ - groundZ) > tolerance) {
+          this.beams.delete(key);
           continue;
         }
       }
-      const beamWidth = isDGunTrail
-        ? proj.config.shotProfile.visual.burnMarkWidth
-        : proj.config.shotProfile.visual.burnMarkWidth || 4;
 
+      const visual = projectile.config.shotProfile.visual;
+      const width = Math.max(4, visual.burnMarkWidth || visual.lineRadius * 2);
+      const damageRadius = Math.max(width, visual.lineDamageSphereRadius);
+      const shot = projectile.config.shot;
+      const dps = isRay && (shot.type === 'beam' || shot.type === 'laser')
+        ? Math.max(0, shot.dps)
+        : 180;
+      const deposit = Math.max(0.012, dps * dtSec / Math.max(6, damageRadius));
       let state = this.beams.get(key);
       if (!state) {
-        state = {
-          lastEndX: ex,
-          lastEndY: ez,
-          lastDirX: 0,
-          lastDirY: 0,
-          prevMark: null,
-          history: [],
-        };
+        state = { lastEndX: endX, lastEndY: endY };
         this.beams.set(key, state);
-      } else if (sampleNow) {
-        const dx = ex - state.lastEndX;
-        const dz = ez - state.lastEndY;
-        if (dx * dx + dz * dz > MIN_SEGMENT_DIST_SQ) {
-          this.appendCurvedSegment(state, ex, ez, beamWidth);
-        }
-      }
-
-    }
-
-    // Retire beams that went away this frame.
-    for (const [key] of this.beams) {
-      if (!this._seenBeamKeys.has(key)) {
-        this.beams.delete(key);
-      }
-    }
-
-    // ── Age + prune marks ──
-    // Deletion threshold is the constant fade floor. Marks always fade
-    // out along the same per-mark curve and only get reclaimed once
-    // they're effectively invisible.
-    for (let i = this.marks.length - 1; i >= 0; i--) {
-      const mark = this.marks[i];
-      mark.age += dtMs;
-      const xCool = mark.age * invCoolTau;
-      const alpha =
-        1 / (1 + xCool + 0.48 * xCool * xCool + 0.235 * xCool * xCool * xCool);
-      if (alpha < BURN_MARK_FADE_FLOOR) {
-        this.removeMarkAt(i);
+        this.depositAt(endX, endY, width, deposit);
         continue;
       }
-      // Color: hot → cool over BURN_COLOR_TAU * lifeMult.
-      const xHot = mark.age * invColorTau;
-      const hotDecay =
-        1 / (1 + xHot + 0.48 * xHot * xHot + 0.235 * xHot * xHot * xHot);
-      const coolBlend = 1 - hotDecay;
-      const r = HOT_LIN.r * hotDecay + COOL_LIN.r * coolBlend;
-      const g = HOT_LIN.g * hotDecay + COOL_LIN.g * coolBlend;
-      const b = HOT_LIN.b * hotDecay + COOL_LIN.b * coolBlend;
-      writeQuadRgba(this.colors, i, r, g, b, alpha);
-      this.colDirty = true;
-    }
-
-    if (this.marks.length > 0) {
-      uploadDirtySlotSpan(this.posAttr, this.posDirty, 12, this.marks.length);
-      if (this.colDirty) {
-        uploadPrefixRange(this.colAttr, this.marks.length * 16);
-        this.colDirty = false;
-      }
-    } else {
-      clearDirtySlotSpan(this.posDirty);
-      this.colDirty = false;
-    }
-  }
-
-  /** Replace the missing segment between state.lastEnd and (endX,endY) with
-   *  a 4-point cubic-Lagrange curve through P0..P3, where P0/P1 come from
-   *  state.history (the two sampled endpoints before lastEnd), P2 is
-   *  lastEnd, and P3 is the new sample. The cubic passes through all four
-   *  control points exactly; we tessellate from u=1 (P2) to u=2 (P3) into
-   *  CURVE_TESS_STEPS short mitered sub-quads via repeated appendMark
-   *  calls. With fewer than 4 control points (warmup) we fall back to a
-   *  single straight quad. After drawing, lastEnd's pre-call value is
-   *  pushed into history so the *next* sample has 4 control points again.
-   *  Same idea as 4-point cubic resamplers in audio. */
-  private appendCurvedSegment(
-    state: BeamState,
-    endX: number, endY: number,
-    width: number,
-  ): void {
-    const px = state.lastEndX;
-    const py = state.lastEndY;
-    const h = state.history;
-
-    if (h.length >= 4) {
-      const P0x = h[0], P0y = h[1];
-      const P1x = h[2], P1y = h[3];
-      const P2x = px,   P2y = py;
-      const P3x = endX, P3y = endY;
-      let prevX = P2x, prevY = P2y;
-      for (let k = 1; k <= CURVE_TESS_STEPS; k++) {
-        const u = 1 + k / CURVE_TESS_STEPS;
-        // Lagrange basis at sample-parametrization u with knots at -1,0,1,2.
-        const L0 = -u * (u - 1) * (u - 2) / 6;
-        const L1 = (u + 1) * (u - 1) * (u - 2) / 2;
-        const L2 = -(u + 1) * u * (u - 2) / 2;
-        const L3 = (u + 1) * u * (u - 1) / 6;
-        const x = L0 * P0x + L1 * P1x + L2 * P2x + L3 * P3x;
-        const y = L0 * P0y + L1 * P1y + L2 * P2y + L3 * P3y;
-        const dx = x - prevX;
-        const dy = y - prevY;
-        const lenSq = dx * dx + dy * dy;
-        if (lenSq > 1e-6) {
-          const invLen = 1 / Math.sqrt(lenSq);
-          this.appendMark(state, x, y, dx * invLen, dy * invLen, width);
-        }
-        prevX = x;
-        prevY = y;
-      }
-    } else {
-      const dx = endX - px;
-      const dy = endY - py;
-      const lenSq = dx * dx + dy * dy;
-      if (lenSq > 1e-6) {
-        const invLen = 1 / Math.sqrt(lenSq);
-        this.appendMark(state, endX, endY, dx * invLen, dy * invLen, width);
-      }
-    }
-
-    if (h.length >= 4) {
-      h[0] = h[2];
-      h[1] = h[3];
-      h[2] = px;
-      h[3] = py;
-      h.length = 4;
-    } else {
-      h.push(px, py);
-    }
-  }
-
-  /** Append one mitered quad to the trail. `appendX/Y` is the NEW endpoint;
-   *  the quad spans state.lastEndX/Y → appendX/Y with width beamWidth.
-   *  Updates the previous mark's end vertices (if live) so the two quads
-   *  share an edge with no overlap. */
-  private appendMark(
-    state: BeamState,
-    endX: number, endY: number,
-    dirX: number, dirZ: number,
-    width: number,
-  ): void {
-    // Fixed visual cap — if full, just drop this sample. Aging will free
-    // slots soon enough.
-    if (this.marks.length >= this._currentCap || this.marks.length >= MAX_MARKS) {
+      this.depositSweep(state.lastEndX, state.lastEndY, endX, endY, width, deposit);
       state.lastEndX = endX;
       state.lastEndY = endY;
-      state.lastDirX = dirX;
-      state.lastDirY = dirZ;
-      return;
     }
 
-    const prev = state.prevMark;
-    const haveLivePrev = prev !== null && !prev.removed;
-    const corners = computeMiteredQuad(
-      state.lastEndX,
-      state.lastEndY,
-      endX,
-      endY,
-      dirX,
-      dirZ,
-      state.lastDirX,
-      state.lastDirY,
-      width * 0.5,
-      MITER_LIMIT,
-      haveLivePrev,
+    for (const [key] of this.beams) {
+      if (!this.seenBeamKeys.has(key)) this.beams.delete(key);
+    }
+
+    while (this.cells.length > this.currentCap) this.removeOldestCell();
+    this.pruneAccumMs += clampedDtMs;
+    if (this.pruneAccumMs >= SCORCH_PRUNE_INTERVAL_MS) {
+      this.pruneAccumMs %= SCORCH_PRUNE_INTERVAL_MS;
+      this.pruneExpiredCells();
+    }
+    this.uploadChanges();
+  }
+
+  private depositSweep(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    width: number,
+    deposit: number,
+  ): void {
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    const samples = Math.min(
+      MAX_SWEEP_SAMPLES_PER_PROJECTILE,
+      Math.max(1, Math.ceil(length / (SCORCH_CELL_SIZE * 0.75))),
     );
-
-    // Rewrite predecessor's end vertices to match the shared miter edge.
-    if (haveLivePrev) {
-      writeDrapedQuadEndXZ(
-        this.positions,
-        prev!.slot,
-        this.markY,
-        corners.sRx,
-        corners.sRz,
-        corners.sLx,
-        corners.sLz,
-      );
-      markDirtySlot(this.posDirty, prev!.slot);
+    const perSampleDeposit = deposit / samples;
+    for (let i = 1; i <= samples; i++) {
+      const t = i / samples;
+      this.depositAt(startX + dx * t, startY + dy * t, width, perSampleDeposit);
     }
-
-    // Allocate the new slot and write its vertex data.
-    const slot = this.marks.length;
-    const mark: Mark = {
-      slot,
-      age: 0,
-      dirX,
-      dirY: dirZ,
-      removed: false,
-    };
-    this.marks.push(mark);
-    writeDrapedQuadXZ(this.positions, slot, this.markY, corners);
-    markDirtySlot(this.posDirty, slot);
-    // Fresh marks render at hot color + full alpha — age sweep will take
-    // over from the next frame. Writing once here avoids a 1-frame flicker.
-    writeQuadRgba(this.colors, slot, HOT_LIN.r, HOT_LIN.g, HOT_LIN.b, 1);
-
-    this.colDirty = true;
-    this.geometry.setDrawRange(0, this.marks.length * 6);
-
-    state.lastEndX = endX;
-    state.lastEndY = endY;
-    state.lastDirX = dirX;
-    state.lastDirY = dirZ;
-    state.prevMark = mark;
   }
 
-  /** Remove the mark at slot index `i`. Swap the last active mark into
-   *  slot `i` (copying its buffer data) and pop — O(1). */
-  private removeMarkAt(i: number): void {
-    const last = this.marks.length - 1;
-    this.marks[i].removed = true;
-    if (i !== last) {
-      const moved = this.marks[last];
-      copyQuadSlot(this.positions, 12, last, i);
-      copyQuadSlot(this.colors, 16, last, i);
-      moved.slot = i;
-      this.marks[i] = moved;
-      markDirtySlot(this.posDirty, i);
-      this.colDirty = true;
+  private depositAt(x: number, y: number, width: number, deposit: number): void {
+    const key = scorchCellKey(x, y);
+    let cell = this.cellByKey.get(key);
+    if (!cell) {
+      if (this.cells.length >= this.currentCap || this.cells.length >= MAX_SCORCH_CELLS) {
+        this.removeOldestCell();
+      }
+      const groundZ = this.getGroundZ(x, y);
+      cell = {
+        key,
+        slot: this.cells.length,
+        x,
+        y,
+        z: groundZ + MARK_LIFT,
+        radius: Math.max(SCORCH_CELL_SIZE * 0.8, width * 0.56),
+        heat: 0,
+        char: 0,
+        lastHitSec: this.timeSec,
+        seed: hashCell(key),
+      };
+      this.cells.push(cell);
+      this.cellByKey.set(key, cell);
+      this.writeMatrix(cell);
+      this.seed[cell.slot] = cell.seed;
+      markDirtySlot(this.seedDirty, cell.slot);
+    } else {
+      // Refresh insertion order: cellByKey doubles as the bounded LRU queue.
+      this.cellByKey.delete(key);
+      this.cellByKey.set(key, cell);
     }
-    this.marks.pop();
-    this.geometry.setDrawRange(0, this.marks.length * 6);
+
+    const age = Math.max(0, this.timeSec - cell.lastHitSec);
+    const hotTau = Math.max(0.001, this.material.uniforms.uHotTauSec.value as number);
+    const residueTau = Math.max(0.001, this.material.uniforms.uResidueTauSec.value as number);
+    cell.heat = Math.min(1, cell.heat * Math.exp(-age / hotTau) + deposit * 0.36);
+    cell.char = Math.min(1, cell.char * Math.exp(-age / residueTau) + deposit * 0.085);
+    const radius = Math.max(cell.radius, width * 0.56);
+    if (radius !== cell.radius) {
+      cell.radius = radius;
+      this.writeMatrix(cell);
+    }
+    cell.lastHitSec = this.timeSec;
+    this.writeThermalAttributes(cell);
   }
 
-  /** Wipe only the scorched-trail geometry. The next sample starts a
-   *  fresh square cap if the toggle flips back on. */
-  private clearMarksOnly(): void {
-    for (const m of this.marks) m.removed = true;
-    this.marks.length = 0;
-    this.geometry.setDrawRange(0, 0);
-    for (const state of this.beams.values()) state.prevMark = null;
-    clearDirtySlotSpan(this.posDirty);
-    this.colDirty = false;
+  private writeMatrix(cell: ScorchCell): void {
+    const normal = this.getGroundNormal?.(cell.x, cell.y);
+    this.worldNormal.set(normal?.nx ?? 0, normal?.nz ?? 1, normal?.ny ?? 0).normalize();
+    this.quaternion.setFromUnitVectors(this.localNormal, this.worldNormal);
+    this.position.set(cell.x, cell.z, cell.y);
+    this.scale.set(cell.radius, cell.radius, 1);
+    this.matrix.compose(this.position, this.quaternion, this.scale);
+    this.mesh.setMatrixAt(cell.slot, this.matrix);
+    markDirtySlot(this.matrixDirty, cell.slot);
+  }
+
+  private writeThermalAttributes(cell: ScorchCell): void {
+    const slot = cell.slot;
+    this.lastHit[slot] = cell.lastHitSec;
+    this.heat[slot] = cell.heat;
+    this.char[slot] = cell.char;
+    markDirtySlot(this.lastHitDirty, slot);
+    markDirtySlot(this.heatDirty, slot);
+    markDirtySlot(this.charDirty, slot);
+  }
+
+  private pruneExpiredCells(): void {
+    const hotTau = Math.max(0.001, this.material.uniforms.uHotTauSec.value as number);
+    const residueTau = Math.max(0.001, this.material.uniforms.uResidueTauSec.value as number);
+    for (let i = this.cells.length - 1; i >= 0; i--) {
+      const cell = this.cells[i];
+      const age = Math.max(0, this.timeSec - cell.lastHitSec);
+      const heat = cell.heat * Math.exp(-age / hotTau);
+      const char = cell.char * Math.exp(-age / residueTau);
+      if (Math.max(heat, char) < SCORCH_FADE_FLOOR) this.removeCellAt(i);
+    }
+  }
+
+  private removeOldestCell(): void {
+    const oldest = this.cellByKey.values().next();
+    if (!oldest.done) this.removeCellAt(oldest.value.slot);
+  }
+
+  private removeCellAt(slot: number): void {
+    const last = this.cells.length - 1;
+    const removed = this.cells[slot];
+    this.cellByKey.delete(removed.key);
+    if (slot !== last) {
+      const moved = this.cells[last];
+      moved.slot = slot;
+      this.cells[slot] = moved;
+      this.cellByKey.set(moved.key, moved);
+      const matrices = this.mesh.instanceMatrix.array as Float32Array;
+      matrices.copyWithin(slot * 16, last * 16, last * 16 + 16);
+      this.lastHit[slot] = this.lastHit[last];
+      this.heat[slot] = this.heat[last];
+      this.char[slot] = this.char[last];
+      this.seed[slot] = this.seed[last];
+      markDirtySlot(this.matrixDirty, slot);
+      markDirtySlot(this.lastHitDirty, slot);
+      markDirtySlot(this.heatDirty, slot);
+      markDirtySlot(this.charDirty, slot);
+      markDirtySlot(this.seedDirty, slot);
+    }
+    this.cells.pop();
+    this.mesh.count = this.cells.length;
+  }
+
+  private uploadChanges(): void {
+    this.mesh.count = this.cells.length;
+    uploadDirtySlotSpan(this.mesh.instanceMatrix, this.matrixDirty, 16, this.cells.length);
+    uploadDirtySlotSpan(this.lastHitAttr, this.lastHitDirty, 1, this.cells.length);
+    uploadDirtySlotSpan(this.heatAttr, this.heatDirty, 1, this.cells.length);
+    uploadDirtySlotSpan(this.charAttr, this.charDirty, 1, this.cells.length);
+    uploadDirtySlotSpan(this.seedAttr, this.seedDirty, 1, this.cells.length);
+  }
+
+  private clear(): void {
+    this.cells.length = 0;
+    this.cellByKey.clear();
+    this.beams.clear();
+    this.seenBeamKeys.clear();
+    this.mesh.count = 0;
+    this.pruneAccumMs = 0;
+    this.smoothedDensity = -1;
+    clearDirtySlotSpan(this.matrixDirty);
+    clearDirtySlotSpan(this.lastHitDirty);
+    clearDirtySlotSpan(this.heatDirty);
+    clearDirtySlotSpan(this.charDirty);
+    clearDirtySlotSpan(this.seedDirty);
   }
 
   destroy(): void {
-    this.marks.length = 0;
-    this.beams.clear();
+    this.clear();
     disposeMesh(this.mesh);
     this.root.parent?.remove(this.root);
   }

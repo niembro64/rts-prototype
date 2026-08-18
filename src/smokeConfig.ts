@@ -6,7 +6,6 @@ const SMOKE_USE_IDS = [
   'shotRocketLight',
   'shotMissileFast',
   'shotMissileLong',
-  'beamDamageEndpoint',
   'locomotionDuctedFan',
   'locomotionAlbatrosDroneFans',
   'locomotionDragonflyDrone',

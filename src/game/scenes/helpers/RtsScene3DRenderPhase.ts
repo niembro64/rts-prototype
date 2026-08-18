@@ -50,10 +50,7 @@ import type { SurfaceLiftProbeOverlay3D } from '../../render3d/SurfaceLiftProbeO
 import type { LineDrag3D } from '../../render3d/LineDrag3D';
 import type { SprayRenderer3D } from '../../render3d/SprayRenderer3D';
 import type { PylonTubeFlowRenderer } from '../../render3d/PylonTubeFlowRenderer';
-import type {
-  SmokePuffEmitter,
-  SmokeTrail3D,
-} from '../../render3d/SmokeTrail3D';
+import type { SmokeTrail3D } from '../../render3d/SmokeTrail3D';
 import type { SightBoundaryRenderer3D } from '../../render3d/SightBoundaryRenderer3D';
 import type { OverlayLineSystem } from '../../render3d/OverlayLineSystem';
 import {
@@ -189,7 +186,6 @@ export class RtsScene3DRenderPhase {
   private readonly nearCommanderSprays: SprayTarget[] = [];
   private readonly nearResourcePylonSprays: SprayTarget[] = [];
   private readonly nearPylonFreeLegSprays: SprayTarget[] = [];
-  private readonly combinedSmokeEmitters: SmokePuffEmitter[] = [];
   private readonly scopedUnitsScratch: Entity[] = [];
   private readonly scopedBuildingsScratch: Entity[] = [];
   private readonly bodyHudPacket = new BodyHudRenderPacket3D();
@@ -567,6 +563,7 @@ export class RtsScene3DRenderPhase {
       this.isEntityEmissionFarLodRef,
       renderFrameState.view,
       this.entityDetailRungRef,
+      effectDtMs,
     );
     phaseNow = performance.now();
     timings.beamMs = phaseNow - phaseMark;
@@ -659,17 +656,6 @@ export class RtsScene3DRenderPhase {
     this.smokeTrailAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
       const locomotionSmokeEmitters = entityRenderer.getLocomotionSmokeEmitters();
-      const beamEndpointSmokeEmitters = beamRenderer.getEndpointSmokeEmitters();
-      const smokeEmitterCount =
-        locomotionSmokeEmitters.length + beamEndpointSmokeEmitters.length;
-      this.combinedSmokeEmitters.length = smokeEmitterCount;
-      for (let i = 0; i < locomotionSmokeEmitters.length; i++) {
-        this.combinedSmokeEmitters[i] = locomotionSmokeEmitters[i];
-      }
-      for (let i = 0; i < beamEndpointSmokeEmitters.length; i++) {
-        this.combinedSmokeEmitters[locomotionSmokeEmitters.length + i] =
-          beamEndpointSmokeEmitters[i];
-      }
       smokeTrailRenderer.update(
         this.filterNearLodProjectiles(
           projectileLists.smokeTrail,
@@ -678,7 +664,7 @@ export class RtsScene3DRenderPhase {
         this.smokeTrailAccumMs,
         this.renderFrameIndex,
         this.renderScope,
-        this.combinedSmokeEmitters,
+        locomotionSmokeEmitters,
         renderFrameState.view,
       );
       this.smokeTrailAccumMs = 0;

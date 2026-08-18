@@ -100,8 +100,8 @@
     "enabled": true
   },
   "burnMark": {
-    "colorTauMs": 200,
-    "coolTauMs": 500
+    "colorTauMs": 650,
+    "coolTauMs": 8000
   },
   "tree": {
     "leaf": {

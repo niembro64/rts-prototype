@@ -19,7 +19,7 @@ import { BEAM_SNAP_ORIGIN_TO_TURRET } from '@/config';
 import { detachObject, disposeMesh } from './threeUtils';
 import { uploadPrefixRange } from './instancedBufferUpdate';
 import beamConfig from '@/beamConfig.json';
-import { getSmokeProfile } from '@/smokeConfig';
+import { BeamImpact3D, type BeamImpactEnvironment } from './BeamImpact3D';
 import {
   BEAM_INNER_VISUAL_CONFIG,
   BEAM_LAYER_INNER_SCALE,
@@ -36,7 +36,6 @@ import {
   createPrimitiveCylinderGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
-import type { SmokePuffEmitter } from './SmokeTrail3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { entityDetailLevelForView } from './EntityLod3D';
 import {
@@ -52,7 +51,6 @@ import {
 // the selected rendered QueryWeapon origin — the base of the idle pilot-light
 // cone — matching the authoritative path.
 const BEAM_SEGMENT_CAP = 8192;
-const BEAM_ENDPOINT_SMOKE_EMITTER_CAP = 4096;
 const BEAM_IMPOSTER_SEGMENT_CAP = BEAM_SEGMENT_CAP;
 const BEAM_MIN_RADIUS = 0.35;
 const BEAM_RADIUS_SCALE = 0.55;
@@ -295,57 +293,6 @@ type BeamVisualLayer = {
   activeSegmentCount: number;
 };
 
-const BEAM_ENDPOINT_SMOKE_PROFILE = getSmokeProfile('beamDamageEndpoint');
-
-/** Configure one pooled SmokeTrail3D emitter at a beam's damage endpoint.
- * The puff begins at the rendered beam cylinder and expands until it is
- * slightly larger than the authored damage region. */
-export function configureBeamEndpointSmokeEmitter(
-  emitter: SmokePuffEmitter | undefined,
-  beamEntityId: number,
-  x: number,
-  y: number,
-  z: number,
-  beamRadius: number,
-  damageRadius: number,
-): SmokePuffEmitter {
-  const out = emitter ?? {
-    x,
-    y,
-    z,
-    useId: BEAM_ENDPOINT_SMOKE_PROFILE.useId,
-    maxPoolSize: BEAM_ENDPOINT_SMOKE_PROFILE.maxPoolSize,
-    capPolicy: BEAM_ENDPOINT_SMOKE_PROFILE.capPolicy,
-    emitFramesSkip: BEAM_ENDPOINT_SMOKE_PROFILE.emitFramesSkip,
-    fadeInMs: BEAM_ENDPOINT_SMOKE_PROFILE.fadeInMs,
-    fadeOutMs: BEAM_ENDPOINT_SMOKE_PROFILE.fadeOutMs,
-    startRadius: 0,
-    endRadiusMultiplier: BEAM_ENDPOINT_SMOKE_PROFILE.endRadiusMultiplier,
-    maxAlpha: BEAM_ENDPOINT_SMOKE_PROFILE.maxAlpha,
-  };
-  out.x = x;
-  out.y = y;
-  out.z = z;
-  out.startRadius = Number.isFinite(beamRadius) ? Math.max(0, beamRadius) : 0;
-  const safeDamageRadius = Number.isFinite(damageRadius)
-    ? Math.max(0, damageRadius)
-    : 0;
-  const finalRadius = Math.max(
-    out.startRadius,
-    safeDamageRadius * BEAM_ENDPOINT_SMOKE_PROFILE.endRadiusMultiplier,
-  );
-  out.endRadiusMultiplier = out.startRadius > 1e-6
-    ? finalRadius / out.startRadius
-    : 1;
-  out.phase = beamEntityId;
-  // A very small upward drift makes overlapping impact puffs read as smoke
-  // while keeping the growing plume anchored close to the termination point.
-  out.vx = 0;
-  out.vy = 0;
-  out.vz = Math.max(1, out.startRadius * 0.1);
-  return out;
-}
-
 type CachedBeamPoint = Pick<
   BeamPoint,
   'x' | 'y' | 'z' | 'reflectorEntityId' | 'reflectorKind'
@@ -424,16 +371,21 @@ export class BeamRenderer3D {
   private lastScopeVersion = -1;
   private beamUpdateFrameIndex = -1;
   private readonly cachedPathByEntityId = new Map<number, CachedBeamPath>();
-  private readonly endpointSmokeEmitters: SmokePuffEmitter[] = [];
+  private readonly impactRenderer: BeamImpact3D;
 
   // Scratch vectors reused per frame (no per-segment allocations).
   private readonly segmentPoseScratch = createBeamSegmentPoseScratch3D();
   private _matrix = new THREE.Matrix4();
 
-  constructor(parentWorld: THREE.Group, scope: ViewportFootprint) {
+  constructor(
+    parentWorld: THREE.Group,
+    scope: ViewportFootprint,
+    impactEnvironment: BeamImpactEnvironment,
+  ) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
     this.scope = scope;
+    this.impactRenderer = new BeamImpact3D(this.root, scope, impactEnvironment);
     this.layers = new Array<BeamVisualLayer>(BEAM_VISUAL_LAYERS.length);
     for (let i = 0; i < BEAM_VISUAL_LAYERS.length; i++) {
       const layer = BEAM_VISUAL_LAYERS[i];
@@ -654,10 +606,6 @@ export class BeamRenderer3D {
     return false;
   }
 
-  getEndpointSmokeEmitters(): readonly SmokePuffEmitter[] {
-    return this.endpointSmokeEmitters;
-  }
-
   update(
     projectiles: readonly Entity[],
     graphicsConfig?: GraphicsConfig,
@@ -666,13 +614,14 @@ export class BeamRenderer3D {
     isEntityEmissionLowLod: BeamEmissionLodResolver = NEVER_EMISSION_LOW_LOD,
     view?: RenderViewState3D,
     entityDetailRung?: BeamDetailRungResolver,
+    effectDtMs: number = 0,
   ): void {
+    this.impactRenderer.update(projectiles, effectDtMs, view);
     if (
       projectiles.length === 0 &&
       !this.hasActiveVisuals() &&
       this.cachedPathByEntityId.size === 0
     ) {
-      this.endpointSmokeEmitters.length = 0;
       return;
     }
     tickBeamWaveTime();
@@ -696,7 +645,6 @@ export class BeamRenderer3D {
     let segIdx = 0;
     let mediumSegIdx = 0;
     let imposterSegIdx = 0;
-    let endpointSmokeEmitterIdx = 0;
     const layers = this.layers;
     const layerCount = layers.length;
 
@@ -846,26 +794,7 @@ export class BeamRenderer3D {
         }
       }
 
-      if (
-        path.endpointDamageable !== false &&
-        profile.lineDamageSphereRadius > 0.001 &&
-        endpointSmokeEmitterIdx < BEAM_ENDPOINT_SMOKE_EMITTER_CAP
-      ) {
-        this.endpointSmokeEmitters[endpointSmokeEmitterIdx] =
-          configureBeamEndpointSmokeEmitter(
-            this.endpointSmokeEmitters[endpointSmokeEmitterIdx],
-            e.id,
-            endPoint.x,
-            endPoint.y,
-            endPoint.z,
-            cylRadius,
-            profile.lineDamageSphereRadius,
-          );
-        endpointSmokeEmitterIdx++;
-      }
     }
-
-    this.endpointSmokeEmitters.length = endpointSmokeEmitterIdx;
 
     for (const [entityId, path] of this.cachedPathByEntityId) {
       if (path.lastSeenFrame !== this.beamUpdateFrameIndex) {
@@ -901,7 +830,7 @@ export class BeamRenderer3D {
 
   destroy(): void {
     this.cachedPathByEntityId.clear();
-    this.endpointSmokeEmitters.length = 0;
+    this.impactRenderer.destroy();
     disposeMesh(this.imposterSegmentMesh);
     disposeMesh(this.mediumLayer.segmentMesh);
     for (const layer of this.layers) {

@@ -35,9 +35,10 @@ import {
   TERRAIN_MAX_RENDER_Y,
   TILE_FLOOR_Y,
   WATER_LEVEL,
-  getSurfaceHeight,
   getTerrainMeshHeight,
   getTerrainMeshMaximumHeight,
+  getTerrainMeshNormal,
+  isWaterAt,
 } from '../../sim/Terrain';
 import type { RtsScene3DCameraFramingSystem } from './RtsScene3DCameraFramingSystem';
 import type { GameConnection } from '@/types/game';
@@ -114,7 +115,12 @@ export function bootstrapRtsScene3DRenderers(
     overlayLineSystem,
     threeApp.renderer.domElement,
   );
-  const beamRenderer = new BeamRenderer3D(threeApp.world, renderScope);
+  const beamRenderer = new BeamRenderer3D(threeApp.world, renderScope, {
+    getTerrainZ: (x, y) => getTerrainMeshHeight(x, y, mapWidth, mapHeight),
+    getTerrainNormal: (x, y) => getTerrainMeshNormal(x, y, mapWidth, mapHeight),
+    isWaterAt: (x, y) => isWaterAt(x, y, mapWidth, mapHeight),
+    waterLevel: WATER_LEVEL,
+  });
   const shieldRenderer = new ShieldRenderer3D(
     threeApp.world,
     renderScope,
@@ -199,7 +205,8 @@ export function bootstrapRtsScene3DRenderers(
   const burnMarkRenderer = new BurnMark3D(
     threeApp.world,
     renderScope,
-    (x, y) => getSurfaceHeight(x, y, mapWidth, mapHeight, LAND_CELL_SIZE),
+    (x, y) => getTerrainMeshHeight(x, y, mapWidth, mapHeight, LAND_CELL_SIZE),
+    (x, y) => getTerrainMeshNormal(x, y, mapWidth, mapHeight, LAND_CELL_SIZE),
   );
   const groundPrintRenderer = new GroundPrint3D(
     threeApp.world,

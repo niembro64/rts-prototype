@@ -67,10 +67,14 @@ import {
   beamImposterWorldRadiusForSegment,
   beamUpdateBucketForEntityId,
   composeBeamSegmentMatrix3D,
-  configureBeamEndpointSmokeEmitter,
   constrainDirectBeamEndpointToMountRay,
   createBeamSegmentPoseScratch3D,
 } from './BeamRenderer3D';
+import {
+  beamImpactCellKey,
+  classifyBeamImpactSurface,
+} from './BeamImpact3D';
+import { scorchCellKey } from './BurnMark3D';
 import { BeamPilotLightState3D } from './BeamPilotLightState3D';
 import { BEAM_OUTER_VISUAL_CONFIG } from './BeamWaveVisual3D';
 import {
@@ -1698,25 +1702,19 @@ function runEmissionPoseContracts(): void {
     pilotLights.isVisible(47, 2),
     'the pilot light returns when its live ray leaves presentation',
   );
-  const beamEndpointSmoke = configureBeamEndpointSmokeEmitter(
-    undefined,
-    17,
-    10, 20, 30,
-    8,
-    32,
+  assertContract(
+    classifyBeamImpactSurface(10, 10, false, 0) === 'terrain' &&
+      classifyBeamImpactSurface(0, -20, true, 0) === 'water' &&
+      classifyBeamImpactSurface(30, 0, false, 0) === 'entity',
+    'beam impacts distinguish terrain, water, and entity/free-space endpoints',
   );
   assertContract(
-    beamEndpointSmoke.useId === 'beamDamageEndpoint' &&
-      beamEndpointSmoke.x === 10 &&
-      beamEndpointSmoke.y === 20 &&
-      beamEndpointSmoke.z === 30 &&
-      beamEndpointSmoke.startRadius === 8 &&
-      beamEndpointSmoke.endRadiusMultiplier === 4.6 &&
-      beamEndpointSmoke.fadeInMs === 0 &&
-      beamEndpointSmoke.fadeOutMs === 1000 &&
-      beamEndpointSmoke.maxAlpha === 1 &&
-      beamEndpointSmoke.phase === 17,
-    'beam endpoint smoke grows from beam radius through the authored damage region',
+    beamImpactCellKey('terrain', 10, 20, 30) ===
+      beamImpactCellKey('terrain', 11, 21, 31) &&
+      beamImpactCellKey('water', 10, 20, 30) !==
+        beamImpactCellKey('terrain', 10, 20, 30) &&
+      scorchCellKey(10, 20) === scorchCellKey(11, 21),
+    'impact and scorch keys consolidate repeated hits while retaining material identity',
   );
   const bucketPopulation = new Array<number>(BEAM_UPDATE_BUCKET_COUNT).fill(0);
   for (let entityId = 1; entityId <= 256; entityId++) {
