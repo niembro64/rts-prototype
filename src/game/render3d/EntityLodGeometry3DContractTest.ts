@@ -75,6 +75,7 @@ import {
   classifyBeamImpactSurface,
 } from './BeamImpact3D';
 import { scorchCellKey } from './BurnMark3D';
+import { beamBurnVolumeCellKey } from './BeamBurnVolume3D';
 import { BeamPilotLightState3D } from './BeamPilotLightState3D';
 import { BEAM_OUTER_VISUAL_CONFIG } from './BeamWaveVisual3D';
 import {
@@ -1713,8 +1714,10 @@ function runEmissionPoseContracts(): void {
       beamImpactCellKey('terrain', 11, 21, 31) &&
       beamImpactCellKey('water', 10, 20, 30) !==
         beamImpactCellKey('terrain', 10, 20, 30) &&
-      scorchCellKey(10, 20) === scorchCellKey(11, 21),
-    'impact and scorch keys consolidate repeated hits while retaining material identity',
+      scorchCellKey(10, 20) === scorchCellKey(11, 21) &&
+      beamBurnVolumeCellKey(10, 20, 30) === beamBurnVolumeCellKey(11, 21, 31) &&
+      beamBurnVolumeCellKey(10, 20, 30) !== beamBurnVolumeCellKey(14, 20, 30),
+    'impact and 2D/3D scorch keys consolidate repeated hits while retaining spatial identity',
   );
   const bucketPopulation = new Array<number>(BEAM_UPDATE_BUCKET_COUNT).fill(0);
   for (let entityId = 1; entityId <= 256; entityId++) {

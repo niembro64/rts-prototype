@@ -13,6 +13,8 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { disposeMesh } from './threeUtils';
 import { applyExposureToRawShader } from './RenderLighting3D';
+import { BeamBurnVolume3D } from './BeamBurnVolume3D';
+import { createPrimitiveTetrahedronGeometry } from './PrimitiveGeometryQuality3D';
 import {
   clearDirtySlotSpan,
   createDirtySlotSpan,
@@ -35,7 +37,7 @@ const IMPACT_SITE_CAP = 2048;
 const IMPACT_SITE_TAIL_SEC = 0.45;
 const EJECTA_CAP = 4096;
 const MAX_EJECTA_BIRTHS_PER_UPDATE = 96;
-const MAX_EJECTA_BIRTHS_PER_SECOND = 1800;
+const MAX_EJECTA_BIRTHS_PER_SECOND = 2600;
 const TERRAIN_ENDPOINT_TOLERANCE = 4;
 
 const SITE_VERTEX_SHADER = /* glsl */`
@@ -89,30 +91,32 @@ const SITE_FRAGMENT_SHADER = /* glsl */`
 
 const PARTICLE_VERTEX_SHADER = /* glsl */`
   attribute vec4 aMotion;
-  attribute vec4 aBirthLifeSizeKind;
-  attribute float aSeed;
+  attribute vec4 aBirthLifeKindSeed;
   uniform float uTimeSec;
-  uniform float uViewportHeight;
   varying float vAge01;
   varying float vKind;
   varying float vSeed;
 
   void main() {
-    float age = uTimeSec - aBirthLifeSizeKind.x;
-    float life = aBirthLifeSizeKind.y;
+    float age = uTimeSec - aBirthLifeKindSeed.x;
+    float life = aBirthLifeKindSeed.y;
     vAge01 = age / max(0.001, life);
-    vKind = aBirthLifeSizeKind.w;
-    vSeed = aSeed;
-    vec3 p = position + aMotion.xyz * age;
-    p.y += 0.5 * aMotion.w * age * age;
-    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    vKind = aBirthLifeKindSeed.z;
+    vSeed = aBirthLifeKindSeed.w;
+    float spin = age * (7.0 + vSeed * 15.0);
+    float c = cos(spin);
+    float s = sin(spin);
+    vec3 local = position;
+    local.yz = mat2(c, -s, s, c) * local.yz;
+    float c2 = cos(spin * (0.63 + vSeed * 0.31));
+    float s2 = sin(spin * (0.63 + vSeed * 0.31));
+    local.xz = mat2(c2, -s2, s2, c2) * local.xz;
+    vec4 worldPosition = instanceMatrix * vec4(local, 1.0);
+    worldPosition.xyz += aMotion.xyz * age;
+    worldPosition.y += 0.5 * aMotion.w * age * age;
+    vec4 mv = modelViewMatrix * worldPosition;
     gl_Position = projectionMatrix * mv;
-    float worldSize = aBirthLifeSizeKind.z * mix(0.65, vKind < 1.5 && vKind > 0.5 ? 2.5 : 0.25, vAge01);
-    float projectedSize =
-      worldSize * projectionMatrix[1][1] * uViewportHeight /
-      max(1.0, -mv.z);
-    gl_PointSize = clamp(projectedSize, 1.0, 72.0);
-    if (age < 0.0 || age > life) gl_PointSize = 0.0;
+    if (age < 0.0 || age > life) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
   }
 `;
 
@@ -123,17 +127,16 @@ const PARTICLE_FRAGMENT_SHADER = /* glsl */`
 
   void main() {
     if (vAge01 < 0.0 || vAge01 > 1.0) discard;
-    vec2 p = gl_PointCoord * 2.0 - 1.0;
-    float r = length(p);
-    if (r > 1.0) discard;
-    float fade = (1.0 - vAge01) * (1.0 - smoothstep(0.35, 1.0, r));
+    float fadeIn = smoothstep(0.0, 0.08, vAge01);
+    float fadeOut = 1.0 - smoothstep(0.56, 1.0, vAge01);
+    float fade = fadeIn * fadeOut;
     vec3 terrainColor = mix(vec3(1.0, 0.18, 0.01), vec3(0.12, 0.06, 0.025), vAge01);
     vec3 waterColor = mix(vec3(0.82, 0.96, 1.0), vec3(0.34, 0.48, 0.54), vAge01);
     vec3 entityColor = mix(vec3(1.0, 0.92, 0.52), vec3(0.30, 0.07, 0.015), vAge01);
     vec3 color = vKind < 0.5
       ? terrainColor
       : (vKind < 1.5 ? waterColor : entityColor);
-    float alpha = fade * (vKind < 1.5 && vKind > 0.5 ? 0.22 : 0.85);
+    float alpha = fade * (vKind < 1.5 && vKind > 0.5 ? 0.48 : 0.92);
     gl_FragColor = vec4(color, alpha);
   }
 `;
@@ -227,6 +230,7 @@ export function classifyBeamImpactSurface(
 
 export class BeamImpact3D {
   private readonly root = new THREE.Group();
+  private readonly burnVolume: BeamBurnVolume3D;
   private readonly sites = new Map<ImpactSiteKey, ImpactSite>();
   private readonly siteScratch: ImpactSite[] = [];
   private timeSec = 0;
@@ -243,21 +247,21 @@ export class BeamImpact3D {
   private readonly siteMaterial: THREE.ShaderMaterial;
   private readonly sitePoints: THREE.Points;
 
-  private readonly particlePositions = new Float32Array(EJECTA_CAP * 3);
   private readonly particleMotion = new Float32Array(EJECTA_CAP * 4);
-  private readonly particleBirthLifeSizeKind = new Float32Array(EJECTA_CAP * 4);
-  private readonly particleSeed = new Float32Array(EJECTA_CAP);
-  private readonly particleGeometry = new THREE.BufferGeometry();
+  private readonly particleBirthLifeKindSeed = new Float32Array(EJECTA_CAP * 4);
+  private readonly particleGeometry = createPrimitiveTetrahedronGeometry(1);
   private readonly particleMaterial: THREE.ShaderMaterial;
-  private readonly particlePoints: THREE.Points;
-  private readonly particlePosAttr: THREE.BufferAttribute;
-  private readonly particleMotionAttr: THREE.BufferAttribute;
-  private readonly particleBirthAttr: THREE.BufferAttribute;
-  private readonly particleSeedAttr: THREE.BufferAttribute;
-  private readonly particlePosDirty = createDirtySlotSpan();
+  private readonly particleMesh: THREE.InstancedMesh;
+  private readonly particleMotionAttr: THREE.InstancedBufferAttribute;
+  private readonly particleBirthAttr: THREE.InstancedBufferAttribute;
+  private readonly particleMatrixDirty = createDirtySlotSpan();
   private readonly particleMotionDirty = createDirtySlotSpan();
   private readonly particleBirthDirty = createDirtySlotSpan();
-  private readonly particleSeedDirty = createDirtySlotSpan();
+  private readonly particlePosition = new THREE.Vector3();
+  private readonly particleScale = new THREE.Vector3();
+  private readonly particleQuaternion = new THREE.Quaternion();
+  private readonly particleEuler = new THREE.Euler();
+  private readonly particleMatrix = new THREE.Matrix4();
   private particleCursor = 0;
   private particleHighWater = 0;
 
@@ -267,6 +271,7 @@ export class BeamImpact3D {
     private readonly environment: BeamImpactEnvironment,
   ) {
     parentWorld.add(this.root);
+    this.burnVolume = new BeamBurnVolume3D(this.root);
 
     this.siteGeometry.setAttribute(
       'position',
@@ -304,35 +309,33 @@ export class BeamImpact3D {
     this.sitePoints.renderOrder = 13;
     this.root.add(this.sitePoints);
 
-    this.particlePosAttr = new THREE.BufferAttribute(this.particlePositions, 3)
+    this.particleMotionAttr = new THREE.InstancedBufferAttribute(this.particleMotion, 4)
       .setUsage(THREE.DynamicDrawUsage);
-    this.particleMotionAttr = new THREE.BufferAttribute(this.particleMotion, 4)
+    this.particleBirthAttr = new THREE.InstancedBufferAttribute(this.particleBirthLifeKindSeed, 4)
       .setUsage(THREE.DynamicDrawUsage);
-    this.particleBirthAttr = new THREE.BufferAttribute(this.particleBirthLifeSizeKind, 4)
-      .setUsage(THREE.DynamicDrawUsage);
-    this.particleSeedAttr = new THREE.BufferAttribute(this.particleSeed, 1)
-      .setUsage(THREE.DynamicDrawUsage);
-    this.particleGeometry.setAttribute('position', this.particlePosAttr);
     this.particleGeometry.setAttribute('aMotion', this.particleMotionAttr);
-    this.particleGeometry.setAttribute('aBirthLifeSizeKind', this.particleBirthAttr);
-    this.particleGeometry.setAttribute('aSeed', this.particleSeedAttr);
-    this.particleGeometry.setDrawRange(0, 0);
+    this.particleGeometry.setAttribute('aBirthLifeKindSeed', this.particleBirthAttr);
     this.particleMaterial = new THREE.ShaderMaterial({
       vertexShader: PARTICLE_VERTEX_SHADER,
       fragmentShader: PARTICLE_FRAGMENT_SHADER,
       uniforms: {
         uTimeSec: { value: 0 },
-        uViewportHeight: { value: 1080 },
       },
       transparent: true,
       depthTest: true,
       depthWrite: false,
     });
     applyExposureToRawShader(this.particleMaterial);
-    this.particlePoints = new THREE.Points(this.particleGeometry, this.particleMaterial);
-    this.particlePoints.frustumCulled = false;
-    this.particlePoints.renderOrder = 12;
-    this.root.add(this.particlePoints);
+    this.particleMesh = new THREE.InstancedMesh(
+      this.particleGeometry,
+      this.particleMaterial,
+      EJECTA_CAP,
+    );
+    this.particleMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.particleMesh.count = 0;
+    this.particleMesh.frustumCulled = false;
+    this.particleMesh.renderOrder = 12;
+    this.root.add(this.particleMesh);
   }
 
   update(
@@ -344,8 +347,8 @@ export class BeamImpact3D {
     this.timeSec += dtSec;
     const viewportHeight = Math.max(1, view?.viewportHeightPx ?? 1080);
     this.siteMaterial.uniforms.uViewportHeight.value = viewportHeight;
-    this.particleMaterial.uniforms.uViewportHeight.value = viewportHeight;
     this.particleMaterial.uniforms.uTimeSec.value = this.timeSec;
+    this.burnVolume.beginFrame(this.timeSec, dtMs);
     this.siteScratch.length = 0;
 
     for (let i = 0; i < projectiles.length; i++) {
@@ -427,6 +430,23 @@ export class BeamImpact3D {
       const dps = shot.type === 'beam' || shot.type === 'laser'
         ? Math.max(0, shot.dps)
         : 0;
+      if (site.kind === 'entity') {
+        const damageRadius = Math.max(
+          visual.lineRadius * 2,
+          visual.lineDamageSphereRadius,
+        );
+        const depositedEnergy = Math.max(
+          0.012,
+          dps * dtSec / Math.max(6, damageRadius),
+        );
+        this.burnVolume.deposit(
+          end.x,
+          end.y,
+          end.z,
+          Math.min(24, Math.max(4, visual.lineRadius, damageRadius * 0.24)),
+          depositedEnergy,
+        );
+      }
       site.heat = Math.min(1.25, site.heat + dtSec * (2.4 + Math.sqrt(dps) * 0.09));
       site.lastHitSec = this.timeSec;
       this.siteScratch.push(site);
@@ -434,6 +454,7 @@ export class BeamImpact3D {
 
     this.rebuildSites();
     this.spawnEjecta(dtSec);
+    this.burnVolume.endFrame();
   }
 
   private writeSurfaceNormal(site: ImpactSite): void {
@@ -501,7 +522,7 @@ export class BeamImpact3D {
   private spawnEjecta(dtSec: number): void {
     const active = this.siteScratch;
     if (active.length === 0 || dtSec <= 0) return;
-    const birthsPerSec = Math.min(MAX_EJECTA_BIRTHS_PER_SECOND, active.length * 10);
+    const birthsPerSec = Math.min(MAX_EJECTA_BIRTHS_PER_SECOND, active.length * 28);
     this.spawnCarry += birthsPerSec * dtSec;
     const birthCount = Math.min(MAX_EJECTA_BIRTHS_PER_UPDATE, Math.floor(this.spawnCarry));
     this.spawnCarry -= birthCount;
@@ -511,11 +532,10 @@ export class BeamImpact3D {
       this.spawnParticle(site);
     }
     if (this.particleHighWater > 0) {
-      this.particleGeometry.setDrawRange(0, this.particleHighWater);
-      uploadDirtySlotSpan(this.particlePosAttr, this.particlePosDirty, 3);
+      this.particleMesh.count = this.particleHighWater;
+      uploadDirtySlotSpan(this.particleMesh.instanceMatrix, this.particleMatrixDirty, 16);
       uploadDirtySlotSpan(this.particleMotionAttr, this.particleMotionDirty, 4);
       uploadDirtySlotSpan(this.particleBirthAttr, this.particleBirthDirty, 4);
-      uploadDirtySlotSpan(this.particleSeedAttr, this.particleSeedDirty, 1);
     }
   }
 
@@ -565,28 +585,41 @@ export class BeamImpact3D {
     const vy = site.normalY * speed + tangentY * tangentSpeed;
     const vz = site.normalZ * speed + tangentZ * tangentSpeed +
       (site.kind === 'water' ? 10 : 18) * r2;
-    const p = slot * 3;
-    this.particlePositions[p] = site.x + site.normalX * 0.5;
-    this.particlePositions[p + 1] = site.z + site.normalZ * 0.5;
-    this.particlePositions[p + 2] = site.y + site.normalY * 0.5;
     const m = slot * 4;
     this.particleMotion[m] = vx;
     this.particleMotion[m + 1] = vz;
     this.particleMotion[m + 2] = vy;
     this.particleMotion[m + 3] = site.kind === 'water' ? 18 : -150;
-    this.particleBirthLifeSizeKind[m] = this.timeSec;
-    this.particleBirthLifeSizeKind[m + 1] = site.kind === 'water'
-      ? 0.65 + r1 * 0.55
-      : 0.32 + r1 * 0.42;
-    this.particleBirthLifeSizeKind[m + 2] = site.kind === 'water'
-      ? Math.max(1.5, site.radius * 0.16)
-      : Math.max(0.8, site.radius * 0.075);
-    this.particleBirthLifeSizeKind[m + 3] = kindNumber(site.kind);
-    this.particleSeed[slot] = r2;
-    markDirtySlot(this.particlePosDirty, slot);
+    this.particleBirthLifeKindSeed[m] = this.timeSec;
+    this.particleBirthLifeKindSeed[m + 1] = site.kind === 'water'
+      ? 0.75 + r1 * 0.6
+      : 0.48 + r1 * 0.5;
+    this.particleBirthLifeKindSeed[m + 2] = kindNumber(site.kind);
+    this.particleBirthLifeKindSeed[m + 3] = r2;
+    const chunkSize = site.kind === 'water'
+      ? Math.max(2.8, site.radius * 0.18)
+      : Math.max(2.4, site.radius * 0.15);
+    this.particlePosition.set(
+      site.x + site.normalX * chunkSize * 0.35,
+      site.z + site.normalZ * chunkSize * 0.35,
+      site.y + site.normalY * chunkSize * 0.35,
+    );
+    this.particleEuler.set(r0 * Math.PI * 2, r1 * Math.PI * 2, r2 * Math.PI * 2);
+    this.particleQuaternion.setFromEuler(this.particleEuler);
+    this.particleScale.set(
+      chunkSize * (0.75 + r0 * 0.5),
+      chunkSize * (0.62 + r1 * 0.42),
+      chunkSize * (0.72 + r2 * 0.48),
+    );
+    this.particleMatrix.compose(
+      this.particlePosition,
+      this.particleQuaternion,
+      this.particleScale,
+    );
+    this.particleMesh.setMatrixAt(slot, this.particleMatrix);
+    markDirtySlot(this.particleMatrixDirty, slot);
     markDirtySlot(this.particleMotionDirty, slot);
     markDirtySlot(this.particleBirthDirty, slot);
-    markDirtySlot(this.particleSeedDirty, slot);
   }
 
   private evictOldestSite(): void {
@@ -597,12 +630,12 @@ export class BeamImpact3D {
   destroy(): void {
     this.sites.clear();
     this.siteScratch.length = 0;
-    clearDirtySlotSpan(this.particlePosDirty);
+    clearDirtySlotSpan(this.particleMatrixDirty);
     clearDirtySlotSpan(this.particleMotionDirty);
     clearDirtySlotSpan(this.particleBirthDirty);
-    clearDirtySlotSpan(this.particleSeedDirty);
+    this.burnVolume.destroy();
     disposeMesh(this.sitePoints);
-    disposeMesh(this.particlePoints);
+    disposeMesh(this.particleMesh);
     this.root.parent?.remove(this.root);
   }
 }
