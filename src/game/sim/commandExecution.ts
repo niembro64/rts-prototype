@@ -1,7 +1,7 @@
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import { setLiquidSurfaceMode, setTerrainSurfaceMode } from './worldSurfaceState';
 import { getSimWasm } from '../sim-wasm/init';
-import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
+import { DEFAULT_SIMULATION_TICK_RATE_HZ } from '../../types/simulationTickRate';
 // Command execution - extracted from Simulation.ts
 // Handles all player command types (select, move, build, queue, rally, dgun, repair)
 
@@ -458,7 +458,7 @@ function executePingCommand(ctx: CommandContext, command: PingCommand): void {
  *  long enough to see
  *  who's there, short enough that the player needs to commit a real
  *  probe (a scout, a radar) for sustained coverage. */
-const SCAN_PULSE_DURATION_TICKS = 12 * ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
+const SCAN_PULSE_DURATION_SECONDS = 12;
 /** Reveal radius for a scanner sweep. Tuned slightly larger than a
  *  unit's vision so the sweep meaningfully exposes a chunk of the
  *  map rather than spotting a single tank. */
@@ -475,7 +475,8 @@ function executeScanCommand(ctx: CommandContext, command: ScanCommand): void {
     y,
     z,
     radius: SCAN_PULSE_RADIUS,
-    expiresAtTick: ctx.world.getTick() + SCAN_PULSE_DURATION_TICKS,
+    expiresAtTick: ctx.world.getTick() +
+      ctx.world.ticksForSeconds(SCAN_PULSE_DURATION_SECONDS),
   });
   // Inject the pulse into the native observation masks immediately so a
   // snapshot emitted before the next combat stamp still sees it — the
@@ -1617,7 +1618,11 @@ function executeSetTowerTargetCommand(
  *  normal zero-hp death path (Simulation.fireDueSelfDestructs) when
  *  the countdown expires. */
 export const SELF_DESTRUCT_COUNTDOWN_TICKS =
-  5 * ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
+  5 * DEFAULT_SIMULATION_TICK_RATE_HZ;
+
+export function selfDestructCountdownTicks(world: WorldState): number {
+  return world.ticksForSeconds(5);
+}
 
 function emitSelfDestructEvent(ctx: CommandContext, entity: Entity, armed: boolean): void {
   const event = createSelfDestructEvent(entity, armed);
@@ -1665,7 +1670,7 @@ function executeSelfDestructCommand(ctx: CommandContext, command: SelfDestructCo
       armed.delete(entity.id);
       emitSelfDestructEvent(ctx, entity, false);
     } else {
-      armed.set(entity.id, ctx.world.getTick() + SELF_DESTRUCT_COUNTDOWN_TICKS);
+      armed.set(entity.id, ctx.world.getTick() + selfDestructCountdownTicks(ctx.world));
       emitSelfDestructEvent(ctx, entity, true);
     }
   }

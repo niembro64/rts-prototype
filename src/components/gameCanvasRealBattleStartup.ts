@@ -3,6 +3,7 @@ import { ARCHITECTURE_CONFIG } from '../architectureConfig';
 import {
   loadStoredConverterTax,
   loadStoredPathfindingCellConsolidation,
+  loadStoredSimulationTickRate,
   loadStoredMapLandDimensions,
   loadStoredLiquidSurfaceMode,
   getUnitCap,
@@ -25,8 +26,6 @@ import { GameServer } from '../game/server/GameServer';
 import { assertDeterministicLockstepRuntimeReady } from '../game/architecture/DeterministicLockstepRuntimeGuards';
 import {
   LockstepFrameScheduler,
-  LOCKSTEP_FIXED_DT_MS,
-  LOCKSTEP_FIXED_STEP_HZ,
   type LockstepFrameSchedulerDiagnostics,
 } from '../game/architecture/LockstepFrameScheduler';
 import {
@@ -50,7 +49,7 @@ import {
   type LockstepSupportBoundaries,
 } from '../game/architecture/LockstepSupportPolicy';
 import {
-  LOCKSTEP_PERFORMANCE_BUDGET,
+  createLockstepPerformanceBudget,
   type LockstepPerformanceBudget,
   type LockstepSnapshotPerformanceTelemetry,
 } from '../game/architecture/LockstepPerformanceBudget';
@@ -79,6 +78,10 @@ import type {
   LiquidSurfaceMode,
   TerrainSurfaceMode,
 } from '../types/worldSurfaceMode';
+import {
+  normalizeSimulationTickRateHz,
+  simulationTicksForDefaultTicks,
+} from '../types/simulationTickRate';
 
 export type RealBattleStartupTerrain = {
   terrainRuntimeConfig: BattleTerrainRuntimeConfig;
@@ -96,6 +99,7 @@ type CreateRealBattleServerOptions = {
   terrain: RealBattleStartupTerrain;
   converterTax?: number;
   pathfindingCellConsolidationMultiplier?: number;
+  simulationTickRateHz?: number;
   onLoadingProgress?: (progress: number, phase?: string) => void | Promise<void>;
 };
 
@@ -217,6 +221,7 @@ function buildRealBattleLobbySettingsFromTerrain(
     entityCountCap: getUnitCap('real'),
     pathfindingCellConsolidationMultiplier:
       loadStoredPathfindingCellConsolidation('real'),
+    simulationTickRateHz: loadStoredSimulationTickRate('real'),
     converterTax: loadStoredConverterTax('real'),
     slowDownAtFinalWaypoint: loadStoredSlowDownAtFinalWaypoint('real'),
     terrainSurfaceMode: terrain.terrainSurfaceMode,
@@ -509,6 +514,7 @@ async function createRealBattleServer({
   terrain,
   converterTax,
   pathfindingCellConsolidationMultiplier,
+  simulationTickRateHz,
   onLoadingProgress,
 }: CreateRealBattleServerOptions): Promise<GameServer> {
   return GameServer.create(
@@ -533,6 +539,8 @@ async function createRealBattleServer({
       pathfindingCellConsolidationMultiplier:
         pathfindingCellConsolidationMultiplier ??
         loadStoredPathfindingCellConsolidation('real'),
+      simulationTickRateHz: simulationTickRateHz ??
+        loadStoredSimulationTickRate('real'),
     },
     {
       onProgress: onLoadingProgress,
@@ -585,6 +593,7 @@ async function createDeterministicLockstepBackendRuntime({
     converterTax: matchContext.settings.converterTax,
     pathfindingCellConsolidationMultiplier:
       matchContext.settings.pathfindingCellConsolidationMultiplier,
+    simulationTickRateHz: matchContext.settings.simulationTickRateHz,
     onLoadingProgress,
   });
   const lockstepCore = server.getLockstepSimulationCore();
@@ -594,6 +603,18 @@ async function createDeterministicLockstepBackendRuntime({
   const gameId = matchContext.gameId;
   const initializationHash = matchContext.initializationHash;
   const initialEntityCountCap = matchContext.settings.entityCountCap ?? getUnitCap('real');
+  const simulationTickRateHz = normalizeSimulationTickRateHz(
+    matchContext.settings.simulationTickRateHz,
+  );
+  const lockstepFixedDtMs = 1000 / simulationTickRateHz;
+  const lockstepInputDelayTicks = simulationTicksForDefaultTicks(
+    simulationTickRateHz,
+    ARCHITECTURE_CONFIG.lockstep.inputDelayTicks,
+  );
+  const lockstepChecksumIntervalTicks = simulationTicksForDefaultTicks(
+    simulationTickRateHz,
+    ARCHITECTURE_CONFIG.lockstep.checksumIntervalTicks,
+  );
   let nextLocalPlayerSequence = 0;
   let nextFrameSequence = 0;
   let pumpTimer: ReturnType<typeof setInterval> | null = null;
@@ -638,7 +659,7 @@ async function createDeterministicLockstepBackendRuntime({
   let lastLockstepPresentationSnapshotMs = Number.NEGATIVE_INFINITY;
   let lastLockstepTelemetryPumpMs: number | null = null;
   let lastLockstepCommandPumpMs: number | null = null;
-  let lockstepCommandPumpAccumulatorMs = LOCKSTEP_FIXED_DT_MS;
+  let lockstepCommandPumpAccumulatorMs = lockstepFixedDtMs;
   const recordSnapshotTimingLane = (lane: SnapshotTimingLane, sampleMs: number): void => {
     const sample = Number.isFinite(sampleMs) && sampleMs >= 0 ? sampleMs : 0;
     lane.snapshotsEmitted++;
@@ -662,6 +683,8 @@ async function createDeterministicLockstepBackendRuntime({
     core: lockstepCore,
     expectedPlayerIds: playerIds,
     hostPlayerId: matchContext.hostPlayerId,
+    fixedDtMs: lockstepFixedDtMs,
+    checksumIntervalTicks: lockstepChecksumIntervalTicks,
     nowMs: () => performance.now(),
     onChecksum: ({ frame, stateHash }) => {
       desyncMonitor?.recordChecksum({ playerId: localPlayerId, frame, stateHash });
@@ -706,7 +729,7 @@ async function createDeterministicLockstepBackendRuntime({
     envelope: LockstepCommandEnvelope,
   ): LockstepCommandEnvelope => {
     const minExecuteFrame = scheduler.getDiagnostics().nextFrame +
-      ARCHITECTURE_CONFIG.lockstep.inputDelayTicks;
+      lockstepInputDelayTicks;
     if (envelope.executeFrame >= minExecuteFrame) return envelope;
     return {
       ...envelope,
@@ -753,7 +776,7 @@ async function createDeterministicLockstepBackendRuntime({
 
   const resetLockstepCommandPumpClock = (): void => {
     lastLockstepCommandPumpMs = null;
-    lockstepCommandPumpAccumulatorMs = LOCKSTEP_FIXED_DT_MS;
+    lockstepCommandPumpAccumulatorMs = lockstepFixedDtMs;
   };
 
   const takeLockstepCommandFrameBudget = (): number => {
@@ -764,15 +787,15 @@ async function createDeterministicLockstepBackendRuntime({
     lastLockstepCommandPumpMs = nowMs;
     lockstepCommandPumpAccumulatorMs = Math.min(
       lockstepCommandPumpAccumulatorMs + elapsedMs,
-      LOCKSTEP_FIXED_DT_MS * LOCKSTEP_MAX_PUMP_ADVANCE_FRAMES,
+      lockstepFixedDtMs * LOCKSTEP_MAX_PUMP_ADVANCE_FRAMES,
     );
     const frames = Math.min(
       LOCKSTEP_MAX_PUMP_ADVANCE_FRAMES,
-      Math.floor(lockstepCommandPumpAccumulatorMs / LOCKSTEP_FIXED_DT_MS),
+      Math.floor(lockstepCommandPumpAccumulatorMs / lockstepFixedDtMs),
     );
     lockstepCommandPumpAccumulatorMs = Math.max(
       0,
-      lockstepCommandPumpAccumulatorMs - frames * LOCKSTEP_FIXED_DT_MS,
+      lockstepCommandPumpAccumulatorMs - frames * lockstepFixedDtMs,
     );
     return frames;
   };
@@ -989,6 +1012,7 @@ async function createDeterministicLockstepBackendRuntime({
         currentKnownFrame: diagnostics.nextFrame,
         playerId: fromPlayerId,
         playerSequence: nextLocalPlayerSequence++,
+        inputDelayTicks: lockstepInputDelayTicks,
         command,
       });
       if (isFrameCoordinator) {
@@ -1077,7 +1101,7 @@ async function createDeterministicLockstepBackendRuntime({
     if (advanceResult.advancedFrames > 0) {
       const nowMs = performance.now();
       const elapsedMs = lastLockstepTelemetryPumpMs === null
-        ? advanceResult.advancedFrames * LOCKSTEP_FIXED_DT_MS
+        ? advanceResult.advancedFrames * lockstepFixedDtMs
         : Math.max(0.001, nowMs - lastLockstepTelemetryPumpMs);
       lastLockstepTelemetryPumpMs = nowMs;
       const postAdvanceDiagnostics = scheduler.getDiagnostics();
@@ -1085,7 +1109,7 @@ async function createDeterministicLockstepBackendRuntime({
         elapsedMs,
         stepsRun: advanceResult.advancedFrames,
         workMs: postAdvanceDiagnostics.performance.simStepMsAvg,
-        tickRateHz: LOCKSTEP_FIXED_STEP_HZ,
+        tickRateHz: simulationTickRateHz,
       });
 
       // Lockstep snapshots are local presentation only. Gate them separately
@@ -1140,7 +1164,7 @@ async function createDeterministicLockstepBackendRuntime({
       server.startLockstepPresentation();
       recordSnapshotMs('rich', performance.now() - snapshotStartMs);
       lastLockstepPresentationSnapshotMs = performance.now();
-      pumpTimer = setInterval(pumpFrame, LOCKSTEP_FIXED_DT_MS);
+      pumpTimer = setInterval(pumpFrame, lockstepFixedDtMs);
       if (typeof window !== 'undefined' && typeof document !== 'undefined') {
         browserResumePumpHandler = () => {
           if (document.visibilityState === 'visible') pumpFrame();
@@ -1177,15 +1201,15 @@ async function createDeterministicLockstepBackendRuntime({
       return {
         networkRole,
         lockstepSupport: LOCKSTEP_SUPPORT_BOUNDARIES,
-        lockstepInputDelayTicks: ARCHITECTURE_CONFIG.lockstep.inputDelayTicks,
+        lockstepInputDelayTicks,
         lockstepInitializationHash: initializationHash,
         lockstepGameId: matchContext.gameId,
         lockstepRoomCode: matchContext.roomCode,
         lockstepCoordinatorPlayerId: matchContext.hostPlayerId,
         lockstepReadyPlayerIds: [...readyPlayerIds].sort((a, b) => a - b),
         lockstepRequiredReadyPlayerIds: [...requiredReadyPlayerIds].sort((a, b) => a - b),
-        lockstepFixedStepHz: ARCHITECTURE_CONFIG.lockstep.fixedStepHz,
-        lockstepChecksumIntervalTicks: ARCHITECTURE_CONFIG.lockstep.checksumIntervalTicks,
+        lockstepFixedStepHz: simulationTickRateHz,
+        lockstepChecksumIntervalTicks,
         lockstepChecksums: desyncMonitor?.getDiagnostics(),
         lockstepNetwork: network?.getLockstepTransport().getDiagnostics() ?? null,
         lockstepPendingNetworkMessages:
@@ -1194,7 +1218,8 @@ async function createDeterministicLockstepBackendRuntime({
         lockstepResyncRequestCount: resyncRequestCount,
         lockstepReceivedCommandFrameCount: receivedCommandFrameCount,
         lockstepBroadcastCommandFrameCount: broadcastCommandFrameCount,
-        lockstepPerformanceBudget: LOCKSTEP_PERFORMANCE_BUDGET,
+        lockstepPerformanceBudget:
+          createLockstepPerformanceBudget(simulationTickRateHz),
         lockstepSnapshotPerformance: {
           snapshotMsAvg: totalSnapshotTiming.snapshotMsAvg,
           snapshotMsHi: totalSnapshotTiming.snapshotMsHi,

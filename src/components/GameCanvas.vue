@@ -46,6 +46,7 @@ import {
   loadStoredPlateauWallSlopeDegrees,
   loadStoredTerrainDetail,
   loadStoredPathfindingCellConsolidation,
+  loadStoredSimulationTickRate,
   loadStoredPerimeterMagnitude,
   loadStoredMapLandDimensions,
   getTerrainLightSmoothAcrossWallBoundary,
@@ -117,7 +118,6 @@ import {
   HUD_MINIMAP_STACK_GAP_PX,
 } from './hudLayout';
 import { LAND_CELL_SIZE } from '../mapSizeConfig';
-import { ARCHITECTURE_CONFIG } from '../architectureConfig';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -1086,6 +1086,9 @@ const terrainDetail = ref<number>(loadStoredTerrainDetail('demo'));
 const pathfindingCellConsolidation = ref<number>(
   loadStoredPathfindingCellConsolidation('demo'),
 );
+const simulationTickRateHz = ref<number>(
+  loadStoredSimulationTickRate('demo'),
+);
 const terrainTextureSmoothing = ref<number>(getTerrainTextureSmoothing());
 const terrainLightSmoothing = ref<number>(getTerrainLightSmoothing());
 const terrainTextureSmoothAcrossWallBoundary = ref<boolean>(
@@ -1322,6 +1325,7 @@ useGameCanvasLobbyPreview({
   metalDepositStep,
   terrainDetail,
   pathfindingCellConsolidation,
+  simulationTickRateHz,
   mapWidthLandCells,
   mapLengthLandCells,
   stopBackgroundBattle,
@@ -1430,7 +1434,7 @@ const displayServerCpuHi = computed(
 const displayTickRate = computed(
   () =>
     serverMetaFromSnapshot.value?.ticks.rate ??
-    ARCHITECTURE_CONFIG.lockstep.fixedStepHz,
+    simulationTickRateHz.value,
 );
 // Simulation-side unit ground normal EMA mode. Picks the half-life used by the
 // sim's updateUnitGroundNormal (UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC[mode]). Persisted to
@@ -1510,6 +1514,7 @@ const {
   applyMetalDepositStep,
   applyTerrainDetail,
   applyPathfindingCellConsolidation,
+  applySimulationTickRate,
   applyTerrainSurfaceMode,
   applyLiquidSurfaceMode,
   applyMapLandDimensions,
@@ -1528,6 +1533,7 @@ const {
   metalDepositStep,
   terrainDetail,
   pathfindingCellConsolidation,
+  simulationTickRateHz,
   mapWidthLandCells,
   mapLengthLandCells,
   slowDownAtFinalWaypointStoreVersion,
@@ -1668,6 +1674,7 @@ function resetBattleDefaultsWithGroundNormal(): void {
   applyPathfindingCellConsolidation(
     BATTLE_CONFIG.pathfindingCellConsolidation.default,
   );
+  applySimulationTickRate(BATTLE_CONFIG.simulationTickRate.default);
   resetUnitGroundNormalEmaDefault();
 }
 
@@ -1809,6 +1816,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   metalDepositStep: metalDepositStep.value,
   terrainDetail: terrainDetail.value,
   pathfindingCellConsolidation: pathfindingCellConsolidation.value,
+  simulationTickRateHz: simulationTickRateHz.value,
   displayUnitCount: displayUnitCount.value,
   localPlayerShieldAwareTargeting: localPlayerShieldAwareTargeting.value,
   localPlayerShieldsPowered: localPlayerShieldsPowered.value,
@@ -1837,6 +1845,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyMetalDepositStep,
   applyTerrainDetail,
   applyPathfindingCellConsolidation,
+  applySimulationTickRate,
   setFogOfWarEnabled,
   setSlowDownAtFinalWaypoint,
   setSlopePathMode,
@@ -1871,6 +1880,7 @@ watchEffect(() => {
   m.metalDepositStep = metalDepositStep.value;
   m.terrainDetail = terrainDetail.value;
   m.pathfindingCellConsolidation = pathfindingCellConsolidation.value;
+  m.simulationTickRateHz = simulationTickRateHz.value;
   m.displayUnitCount = displayUnitCount.value;
   m.localPlayerShieldAwareTargeting = localPlayerShieldAwareTargeting.value;
   m.localPlayerShieldsPowered = localPlayerShieldsPowered.value;
@@ -1922,6 +1932,7 @@ const serverControlBarModel = reactive<GameCanvasServerControlBarModel>({
   displayServerTpsWorst: displayServerTpsWorst.value,
   displayServerCpuAvg: displayServerCpuAvg.value,
   displayServerCpuHi: displayServerCpuHi.value,
+  displayTickRate: displayTickRate.value,
 });
 watchEffect(() => {
   const m = serverControlBarModel as {
@@ -1936,6 +1947,7 @@ watchEffect(() => {
   m.displayServerTpsWorst = displayServerTpsWorst.value;
   m.displayServerCpuAvg = displayServerCpuAvg.value;
   m.displayServerCpuHi = displayServerCpuHi.value;
+  m.displayTickRate = displayTickRate.value;
 });
 
 // Same reactive() pattern as the other two bar models. This one is
@@ -2771,6 +2783,7 @@ watchEffect(() => {
       :metal-deposit-step="metalDepositStep"
       :terrain-detail="terrainDetail"
       :pathfinding-cell-consolidation="pathfindingCellConsolidation"
+      :simulation-tick-rate-hz="simulationTickRateHz"
       :map-width-land-cells="mapWidthLandCells"
       :map-length-land-cells="mapLengthLandCells"
       :unit-blueprint-ids="demoUnitBlueprintIds"
@@ -2799,6 +2812,7 @@ watchEffect(() => {
       @set-metal-deposit-step="(v) => applyMetalDepositStep(v)"
       @set-terrain-detail="(v) => applyTerrainDetail(v)"
       @set-pathfinding-cell-consolidation="(v) => applyPathfindingCellConsolidation(v)"
+      @set-simulation-tick-rate="(v) => applySimulationTickRate(v)"
       @set-preset="(p) => applyPreset(p)"
       @set-map-land-dimensions="(dimensions) => applyMapLandDimensions(dimensions)"
       @toggle-unit="(ut) => toggleDemoUnitBlueprintId(ut)"

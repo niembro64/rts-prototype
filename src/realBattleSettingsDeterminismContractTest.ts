@@ -11,6 +11,7 @@ import {
   loadStoredMetalDepositStep,
   loadStoredPerimeterMagnitude,
   loadStoredPathfindingCellConsolidation,
+  loadStoredSimulationTickRate,
   loadStoredPlateauWallSlopeDegrees,
   loadStoredSlopePathMode,
   loadStoredSlowDownAtFinalWaypoint,
@@ -28,6 +29,7 @@ import {
   saveMetalDepositStep,
   savePerimeterMagnitude,
   savePathfindingCellConsolidation,
+  saveSimulationTickRate,
   savePlateauWallSlopeDegrees,
   saveSlopePathMode,
   saveSlowDownAtFinalWaypoint,
@@ -68,6 +70,7 @@ function mutateEveryRealSetting(): void {
   saveMetalDepositStep(1600, 'real');
   saveTerrainDetail(16, 'real');
   savePathfindingCellConsolidation(5, 'real');
+  saveSimulationTickRate(60, 'real');
   saveMapLandDimensions({ widthLandCells: 53, lengthLandCells: 53 }, 'real');
   // SERVER bar — a simulation setting, so it obeys the same rule.
   saveUnitGroundNormalEmaMode('snap', 'real');
@@ -105,6 +108,7 @@ function assertRealSettingsAtDefaults(context: string): void {
       loadStoredPathfindingCellConsolidation('real'),
       3,
     ],
+    ['simulationTickRateHz', loadStoredSimulationTickRate('real'), 20],
     [
       'unitGroundNormalEmaMode',
       loadStoredUnitGroundNormalEmaMode('real'),
@@ -164,6 +168,7 @@ export function runRealBattleSettingsDeterminismContractTest(): void {
       loadStoredTerrainSurfaceMode('real') === 'metal' &&
         loadStoredConverterTax('real') === 0.1 &&
         loadStoredPathfindingCellConsolidation('real') === 5 &&
+        loadStoredSimulationTickRate('real') === 60 &&
         loadStoredMapLandDimensions('real').widthLandCells === 53 &&
         loadStoredUnitGroundNormalEmaMode('real') === 'snap',
       'a live lobby must read back the settings it just changed',

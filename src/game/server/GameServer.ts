@@ -73,7 +73,7 @@ import {
 import { createLoadProgressReporter } from '../lifecycle/loadProgressReporter';
 import { ReplayRecorder, type BudgetReplayFile } from './ReplayRecorder';
 import type { CanonicalServerStateHash } from '../architecture/CanonicalStateHash';
-import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
+import { normalizeSimulationTickRateHz } from '../../types/simulationTickRate';
 import {
   setTurretShieldPanelsEnabled,
   setTurretShieldSpheresEnabled,
@@ -262,7 +262,8 @@ export class GameServer {
       acquireSimSlot(this);
     }
 
-    this.tickRateHz = ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
+    this.tickRateHz = bootstrapped?.world.simulationTickRateHz ??
+      normalizeSimulationTickRateHz(config.simulationTickRateHz);
 
     // Start visible host TPS at 0.0 until the first real tick period
     // seeds the EMA. CPU load starts at 0% measured work.

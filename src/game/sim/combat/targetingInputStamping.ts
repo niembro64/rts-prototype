@@ -1532,6 +1532,12 @@ function stampCombatTargetingEntityInto(
       ranges.tracking ? ranges.tracking.acquire : ranges.fire.max.acquire,
       poweredReach,
     );
+    const defaultRescorePeriodTicks = getSecondaryLockOnProfile(
+      t.config.turretBlueprintId,
+    )?.rescorePeriodTicks ?? 0;
+    const rescorePeriodTicks = defaultRescorePeriodTicks > 0
+      ? world.ticksForDefaultTicks(defaultRescorePeriodTicks)
+      : 0;
 
     targeting.setTurret(
       slot, i,
@@ -1558,7 +1564,7 @@ function stampCombatTargetingEntityInto(
       t.mount.x, t.mount.y, t.mount.z,
       t.worldPosTick,
       encodeTurretConfigFlags(t, ranges),
-      getSecondaryLockOnProfile(t.config.turretBlueprintId)?.rescorePeriodTicks ?? 0,
+      rescorePeriodTicks,
       t.sustainedDps,
       projectileSpeed,
       projectileMass,

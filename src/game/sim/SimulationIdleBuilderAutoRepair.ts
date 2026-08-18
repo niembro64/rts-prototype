@@ -4,12 +4,10 @@ import { getEntityTargetPoint } from './buildingAnchors';
 import { setUnitActions } from './unitActions';
 import type { Entity, EntityId, UnitAction } from './types';
 import type { WorldState } from './WorldState';
-import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
+import { DEFAULT_SIMULATION_TICK_RATE_HZ } from '../../types/simulationTickRate';
 
 export const BAR_IDLE_BUILDER_AUTO_REPAIR_POLL_TICKS =
-  ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
-
-const BAR_RECLAIM_BLACKLIST_DURATION_TICKS = 60 * BAR_IDLE_BUILDER_AUTO_REPAIR_POLL_TICKS;
+  DEFAULT_SIMULATION_TICK_RATE_HZ;
 
 type HomePosition = {
   x: number;
@@ -34,7 +32,7 @@ export class SimulationIdleBuilderAutoRepair {
   }
 
   update(tick: number): void {
-    if (tick % BAR_IDLE_BUILDER_AUTO_REPAIR_POLL_TICKS !== 0) return;
+    if (tick % this.world.ticksForSeconds(1) !== 0) return;
 
     this.pruneReclaimBlacklist(tick);
     this.refreshActiveReclaimers(tick);
@@ -86,7 +84,7 @@ export class SimulationIdleBuilderAutoRepair {
     if (targetId === undefined) return;
     this.activeReclaimers.delete(reclaimerId);
     if (!this.hasActiveReclaimerForTarget(targetId)) {
-      this.reclaimBlacklist.set(targetId, tick + BAR_RECLAIM_BLACKLIST_DURATION_TICKS);
+      this.reclaimBlacklist.set(targetId, tick + this.world.ticksForSeconds(60));
     }
   }
 

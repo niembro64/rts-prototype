@@ -26,6 +26,11 @@ import {
   PATHFINDING_CELL_CONSOLIDATION_OPTIONS,
   type PathfindingCellConsolidationMultiplier,
 } from './types/pathfinding';
+import {
+  normalizeSimulationTickRateHz as normalizeSimulationTickRateValue,
+  SIMULATION_TICK_RATE_OPTIONS,
+  type SimulationTickRateHz,
+} from './types/simulationTickRate';
 
 // ── Authored data lives in battleBarConfig.json ──
 // The TS shim composes BATTLE_CONFIG by reading the JSON and layering
@@ -119,6 +124,32 @@ const MODE_DEFAULT_PATHFINDING_CELL_CONSOLIDATION: Record<
   ),
 };
 
+const MODE_DEFAULT_SIMULATION_TICK_RATE: Record<
+  BattleMode,
+  SimulationTickRateHz
+> = {
+  demo: normalizeSimulationTickRateValue(
+    battleBarConfig.simulationTickRate.demoDefault,
+  ),
+  real: normalizeSimulationTickRateValue(
+    battleBarConfig.simulationTickRate.realDefault,
+  ),
+};
+
+const authoredSimulationTickRateOptions =
+  battleBarConfig.simulationTickRate.options;
+if (
+  authoredSimulationTickRateOptions.length !==
+    SIMULATION_TICK_RATE_OPTIONS.length ||
+  authoredSimulationTickRateOptions.some(
+    (value, index) => value !== SIMULATION_TICK_RATE_OPTIONS[index],
+  )
+) {
+  throw new Error(
+    'battleBarConfig.simulationTickRate.options must be 1, 5, 10, 15, 20, 30, 45, 60',
+  );
+}
+
 export function getModeDefaultEntityCountCap(mode: BattleMode): number {
   return MODE_DEFAULT_ENTITY_COUNT_CAPS[mode];
 }
@@ -137,6 +168,10 @@ export const BATTLE_CONFIG = {
   pathfindingCellConsolidation: {
     default: MODE_DEFAULT_PATHFINDING_CELL_CONSOLIDATION.demo,
     options: battleBarConfig.pathfindingCellConsolidation.options as readonly PathfindingCellConsolidationMultiplier[],
+  },
+  simulationTickRate: {
+    default: MODE_DEFAULT_SIMULATION_TICK_RATE.demo,
+    options: battleBarConfig.simulationTickRate.options as readonly SimulationTickRateHz[],
   },
   turretShieldPanelsEnabled: { default: _demoPreset.turretShieldPanelsEnabled },
   turretShieldSpheresEnabled: { default: _demoPreset.turretShieldSpheresEnabled },
@@ -262,6 +297,8 @@ const STORAGE_DEMO_PATHFINDING_CELL_CONSOLIDATION =
   sk.demoPathfindingCellConsolidation;
 const STORAGE_REAL_PATHFINDING_CELL_CONSOLIDATION =
   sk.realPathfindingCellConsolidation;
+const STORAGE_DEMO_SIMULATION_TICK_RATE = sk.demoSimulationTickRate;
+const STORAGE_REAL_SIMULATION_TICK_RATE = sk.realSimulationTickRate;
 const STORAGE_DEMO_FORCE_FIELDS_VISIBLE = sk.demoForceFieldsVisible;
 const STORAGE_REAL_FORCE_FIELDS_VISIBLE = sk.realForceFieldsVisible;
 const STORAGE_DEMO_FOG_OF_WAR_ENABLED = sk.demoFogOfWarEnabled;
@@ -541,6 +578,43 @@ export function savePathfindingCellConsolidation(
     STORAGE_REAL_PATHFINDING_CELL_CONSOLIDATION,
     STORAGE_DEMO_PATHFINDING_CELL_CONSOLIDATION,
     String(normalizePathfindingCellConsolidation(value)),
+  );
+}
+
+export function loadStoredSimulationTickRate(
+  mode: BattleMode,
+): SimulationTickRateHz {
+  const stored = Number(readModeSetting(
+    mode,
+    STORAGE_REAL_SIMULATION_TICK_RATE,
+    STORAGE_DEMO_SIMULATION_TICK_RATE,
+  ));
+  return normalizeSimulationTickRateValue(
+    stored,
+    MODE_DEFAULT_SIMULATION_TICK_RATE[mode],
+  );
+}
+
+export function saveSimulationTickRate(
+  value: number,
+  mode: BattleMode,
+): void {
+  const fallback = MODE_DEFAULT_SIMULATION_TICK_RATE[mode];
+  writeModeSetting(
+    mode,
+    STORAGE_REAL_SIMULATION_TICK_RATE,
+    STORAGE_DEMO_SIMULATION_TICK_RATE,
+    String(normalizeSimulationTickRateValue(value, fallback)),
+  );
+}
+
+export function normalizeSimulationTickRate(
+  value: number,
+  mode: BattleMode = 'demo',
+): SimulationTickRateHz {
+  return normalizeSimulationTickRateValue(
+    value,
+    MODE_DEFAULT_SIMULATION_TICK_RATE[mode],
   );
 }
 

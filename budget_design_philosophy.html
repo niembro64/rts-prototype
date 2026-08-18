@@ -176,8 +176,9 @@
       </div>
       <div class="principle">
         <b>Clients stay continuous</b>
-        The local 20 Hz simulation retains two adjacent authoritative poses in Rust/WASM, and the
-        renderer samples between them on every display frame with one shared interpolation clock.
+        The local fixed-step simulation (20 Hz by default, match-configurable) retains two adjacent
+        authoritative poses in Rust/WASM, and the renderer samples between them on every display
+        frame with one shared interpolation clock.
       </div>
       <div class="principle">
         <b>Physics is the language</b>
@@ -371,7 +372,7 @@
         Command frames and checksums are never coalesced by snapshot backpressure.
       </p>
       <ul class="rule-list">
-        <li>Every lockstep frame uses the fixed simulation step configured in <code>architecture.json</code>: <code>1000 / lockstep.fixedStepHz</code> ms.</li>
+        <li>Every lockstep frame uses the host-selected BATTLE simulation rate carried in the complete lobby contract and hashed initialization: <code>1000 / simulationTickRateHz</code> ms. The authored default remains <code>architecture.json</code>'s 20 Hz.</li>
         <li>Missing command frames stall instead of causing peers to guess different futures.</li>
         <li>Checksums are compared by frame. A mismatch pauses/desyncs the match and produces an exportable report with initialization hash, state-hash sections, peer ids, and recent command frames.</li>
         <li>First-release lockstep support is intentionally narrow: real battles only, no AI players, no late join, no reconnect, no automatic resync, no host migration, and no spectators unless they are roster seats from frame 0.</li>
@@ -672,7 +673,7 @@
         At simulation tick <code>N</code>, presentation retains the final states from
         <code>N-1</code> and <code>N</code>. Render time advances a single alpha from zero to one
         across the next fixed-step interval and clamps at one if the next tick is late. This adds at
-        most one 20 Hz tick of visual latency, but eliminates the oscillation and per-channel lag
+        most one selected simulation tick of visual latency, but eliminates the oscillation and per-channel lag
         caused by chasing a moving snapshot target. Gameplay remains exactly at tick <code>N</code>;
         only the visual sample is delayed.
       </p>

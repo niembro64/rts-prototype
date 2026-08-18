@@ -158,7 +158,7 @@ export class SimulationCombatController {
 
     // Update shield sounds based on the just-written transition progress.
     if (shieldUnits && shieldUnits.length > 0) {
-      this.emitSimEvents(updateShieldSounds(shieldUnits), onSimEvent);
+      this.emitSimEvents(updateShieldSounds(this.world, shieldUnits), onSimEvent);
     }
     SIM_TICK_INSTRUMENTATION.phase('combat.shields');
 

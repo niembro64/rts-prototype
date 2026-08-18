@@ -7,13 +7,20 @@ export type LockstepPerformanceBudget = {
   readonly fixedSimulationHz: number;
 };
 
-export const LOCKSTEP_PERFORMANCE_BUDGET: LockstepPerformanceBudget = {
-  measurementModel: 'local-server-sim-per-browser',
-  minimumSupportedDeviceClass:
-    `desktop/laptop browser that can run the full local server simulation at ${ARCHITECTURE_CONFIG.lockstep.fixedStepHz} Hz`,
-  slowClientPolicy: 'stall-and-resync-lockstep-frames',
-  fixedSimulationHz: ARCHITECTURE_CONFIG.lockstep.fixedStepHz,
-};
+export function createLockstepPerformanceBudget(
+  fixedSimulationHz: number,
+): LockstepPerformanceBudget {
+  return {
+    measurementModel: 'local-server-sim-per-browser',
+    minimumSupportedDeviceClass:
+      `desktop/laptop browser that can run the full local server simulation at ${fixedSimulationHz} Hz`,
+    slowClientPolicy: 'stall-and-resync-lockstep-frames',
+    fixedSimulationHz,
+  };
+}
+
+export const LOCKSTEP_PERFORMANCE_BUDGET: LockstepPerformanceBudget =
+  createLockstepPerformanceBudget(ARCHITECTURE_CONFIG.lockstep.fixedStepHz);
 
 type LockstepSnapshotPerformanceLaneTelemetry = {
   readonly snapshotMsAvg: number;

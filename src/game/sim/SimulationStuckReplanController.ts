@@ -1,16 +1,14 @@
 import { getSimWasm } from '../sim-wasm/init';
 import { ARRIVAL_RADIUS } from './SimulationArrivalController';
 import type { Entity } from './types';
+import type { WorldState } from './WorldState';
 import { growTypedArrays, nextDoublingCapacity } from '../memory/typedArrayGrowth';
-import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
 
 const STUCK_VEL_THRESHOLD = 5;
-const STUCK_TICK_THRESHOLD = 2 * ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
-export const REPLAN_COOLDOWN = -5 * ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
-export const REPLAN_FAILURE_COOLDOWN = REPLAN_COOLDOWN;
 const STUCK_REPLAN_BATCH_FLAG_SETTLING_CHECK = 1 << 0;
 
 export class SimulationStuckReplanController {
+  private readonly world: WorldState;
   private readonly queueRepath: (entity: Entity) => void;
   private readonly entities: Entity[] = [];
   private slots = new Uint32Array(0);
@@ -24,7 +22,8 @@ export class SimulationStuckReplanController {
   /** `queueRepath` enqueues the stuck unit into the shared path-plan
    *  scheduler (fresh lane, force-local serve); the per-tick replan cap
    *  that used to live here is now that scheduler's plan budget. */
-  constructor(queueRepath: (entity: Entity) => void) {
+  constructor(world: WorldState, queueRepath: (entity: Entity) => void) {
+    this.world = world;
     this.queueRepath = queueRepath;
   }
 
@@ -74,7 +73,7 @@ export class SimulationStuckReplanController {
       this.outTicks.subarray(0, count),
       this.outReplan.subarray(0, count),
       STUCK_VEL_THRESHOLD,
-      STUCK_TICK_THRESHOLD,
+      this.world.ticksForSeconds(2),
       ARRIVAL_RADIUS,
     );
 
@@ -95,7 +94,7 @@ export class SimulationStuckReplanController {
       // cooldown keeps detection from re-firing while the request waits
       // for a budget slot and while the fresh route gets moving.
       this.queueRepath(entity);
-      unit.stuckTicks = REPLAN_COOLDOWN;
+      unit.stuckTicks = replanCooldownFor(this.world);
       this.entities[i] = undefined as unknown as Entity;
     }
   }
@@ -123,4 +122,8 @@ export class SimulationStuckReplanController {
     this.outTicks = new Int32Array(next);
     this.outReplan = new Uint8Array(next);
   }
+}
+
+export function replanCooldownFor(world: WorldState): number {
+  return -world.ticksForSeconds(5);
 }

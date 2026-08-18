@@ -53,6 +53,12 @@ import {
   type TerrainSurfaceMode,
 } from '../../types/worldSurfaceMode';
 import {
+  DEFAULT_SIMULATION_TICK_RATE_HZ,
+  simulationTicksForDefaultTicks,
+  simulationTicksForSeconds,
+  type SimulationTickRateHz,
+} from '../../types/simulationTickRate';
+import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_COMBAT_MODE,
@@ -163,6 +169,11 @@ export class WorldState {
   // Number of players in the game (layout + economy; the entity count
   // cap divides by SIDES, not by this)
   public playerCount: number = 2;
+
+  /** Match-static authoritative cadence. Tick-based gameplay durations use
+   *  this value so changing server Hz changes resolution, not game speed. */
+  public simulationTickRateHz: SimulationTickRateHz =
+    DEFAULT_SIMULATION_TICK_RATE_HZ;
 
   /** Per-player alliance map (FOW-06). The set holds the
    *  OTHER players considered allies — a player is implicitly allied
@@ -279,7 +290,11 @@ export class WorldState {
   private _selectedFactoriesBuf: Entity[] = [];
 
   constructor(seed: number = 12345, mapWidth: number = 2000, mapHeight: number = 2000) {
-    this.entityMetadata = new WorldEntityMetadata(this.entities, (playerId) => this.getTeamId(playerId));
+    this.entityMetadata = new WorldEntityMetadata(
+      this.entities,
+      (playerId) => this.getTeamId(playerId),
+      () => this.simulationTickRateHz,
+    );
     this.projectileFactory = new WorldProjectileFactory({
       generateEntityId: () => this.generateEntityId(),
       getTeamId: (playerId) => this.getTeamId(playerId),
@@ -289,6 +304,17 @@ export class WorldState {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
     this.supportSurfaceSampler = new WorldSupportSurfaceSampler(mapWidth, mapHeight);
+  }
+
+  ticksForSeconds(seconds: number): number {
+    return simulationTicksForSeconds(this.simulationTickRateHz, seconds);
+  }
+
+  ticksForDefaultTicks(defaultTicks: number): number {
+    return simulationTicksForDefaultTicks(
+      this.simulationTickRateHz,
+      defaultTicks,
+    );
   }
 
   /** Canonical simulation randomness. Callers provide the player whose

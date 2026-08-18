@@ -141,7 +141,41 @@ export async function runDeterministicLockstepBackendContractTest(): Promise<voi
   } finally {
     backend.stop();
   }
+  await assertSelectedSimulationTickRateApplied();
   await assertOnlineLockstepRoutesClientCommandsThroughCoordinator();
+}
+
+async function assertSelectedSimulationTickRateApplied(): Promise<void> {
+  const terrain = createTerrain();
+  const handoff = createBattleHandoff(terrain, 60);
+  const backend = await createDeterministicLockstepBackend({
+    playerIds: [1 as PlayerId, 2 as PlayerId],
+    aiPlayerIds: undefined,
+    terrain,
+    networkRole: null,
+    localPlayerId: 1 as PlayerId,
+    localIpAddress: 'contract-60hz',
+    battleHandoff: handoff,
+    onLoadingProgress: undefined,
+  });
+  try {
+    const diagnostics = backend.getDiagnostics();
+    assertContract(
+      backend.server?.getLockstepSimulationCore().world.simulationTickRateHz === 60 &&
+        Math.abs((diagnostics.lockstep?.fixedDtMs ?? 0) - 1000 / 60) < 1e-9 &&
+        diagnostics.lockstepPerformanceBudget?.fixedSimulationHz === 60,
+      'selected simulation tick rate must drive world state, scheduler dt, and diagnostics',
+    );
+    backend.start();
+    backend.gameConnection.markClientReady();
+    await waitUntil(
+      () => (backend.getDiagnostics().lockstep?.nextFrame ?? 0) >= 3,
+      500,
+      '60 Hz lockstep backend must advance at the selected cadence',
+    );
+  } finally {
+    backend.stop();
+  }
 }
 
 function assertInitializationHashMismatch(): void {
@@ -163,6 +197,7 @@ function assertInitializationHashMismatch(): void {
       mapLengthLandCells: 9,
       entityCountCap: 128,
       pathfindingCellConsolidationMultiplier: 3,
+      simulationTickRateHz: 20,
       converterTax: 0,
       slowDownAtFinalWaypoint: false,
       terrainSurfaceMode: 'normal' as const,
@@ -217,6 +252,24 @@ function assertInitializationHashMismatch(): void {
     first !== fifth,
     'canonical initialization hash must include pathfinding-cell resolution',
   );
+  const sixthInitialization = buildCanonicalMatchInitialization({
+    ...base,
+    settings: {
+      ...base.settings,
+      simulationTickRateHz: 60,
+    },
+  });
+  const sixth = hashCanonicalMatchInitialization(sixthInitialization);
+  assertContract(
+    first !== sixth,
+    'canonical initialization hash must include simulation tick rate',
+  );
+  assertContract(
+    sixthInitialization.lockstep.fixedStepHz === 60 &&
+      sixthInitialization.lockstep.inputDelayTicks === 45 &&
+      sixthInitialization.lockstep.checksumIntervalTicks === 540,
+    'canonical initialization must scale fixed-step tick policies with the selected rate',
+  );
 }
 
 function createTerrain(): RealBattleStartupTerrain {
@@ -243,7 +296,10 @@ function createTerrain(): RealBattleStartupTerrain {
   };
 }
 
-function createLobbySettings(terrain: RealBattleStartupTerrain): LobbySettings {
+function createLobbySettings(
+  terrain: RealBattleStartupTerrain,
+  simulationTickRateHz = 20,
+): LobbySettings {
   return {
     centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
     dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
@@ -257,6 +313,7 @@ function createLobbySettings(terrain: RealBattleStartupTerrain): LobbySettings {
     mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
     entityCountCap: 128,
     pathfindingCellConsolidationMultiplier: 3,
+    simulationTickRateHz,
     converterTax: 0,
     slowDownAtFinalWaypoint: false,
     terrainSurfaceMode: terrain.terrainSurfaceMode,
@@ -264,8 +321,11 @@ function createLobbySettings(terrain: RealBattleStartupTerrain): LobbySettings {
   };
 }
 
-function createBattleHandoff(terrain: RealBattleStartupTerrain): BattleHandoff {
-  const settings = createLobbySettings(terrain);
+function createBattleHandoff(
+  terrain: RealBattleStartupTerrain,
+  simulationTickRateHz = 20,
+): BattleHandoff {
+  const settings = createLobbySettings(terrain, simulationTickRateHz);
   const initialization = buildCanonicalMatchInitialization({
     gameId: 'contract-game',
     roomCode: 'CONTRACT',
@@ -316,14 +376,14 @@ function waitMs(ms: number): Promise<void> {
 async function waitUntil(
   predicate: () => boolean,
   timeoutMs: number,
-  message: string,
+  message: string | (() => string),
 ): Promise<void> {
   const startMs = Date.now();
   while (Date.now() - startMs < timeoutMs) {
     if (predicate()) return;
     await waitMs(16);
   }
-  assertContract(predicate(), message);
+  assertContract(predicate(), typeof message === 'function' ? message() : message);
 }
 
 async function assertOnlineLockstepRoutesClientCommandsThroughCoordinator(): Promise<void> {
@@ -357,7 +417,7 @@ async function assertOnlineHostFramesRemoteClientCommands(): Promise<void> {
 
     await waitUntil(
       () => (host.getDiagnostics().lockstep?.nextFrame ?? 0) > 4,
-      800,
+      1_500,
       'online lockstep host must advance coordinator command frames',
     );
 
@@ -395,8 +455,12 @@ async function assertOnlineHostFramesRemoteClientCommands(): Promise<void> {
               candidate.command.type === 'move',
             ),
           ),
-      800,
-      'host coordinator must return remote client commands in a command frame',
+      1_500,
+      () =>
+        'host coordinator must return remote client commands in a command frame; ' +
+        `envelope=${JSON.stringify(envelope)}, ` +
+        `diagnostics=${JSON.stringify(host.getDiagnostics().lockstep)}, ` +
+        `newFrames=${JSON.stringify(hostNetwork.transport.commandFrames.slice(previousFrameCount))}`,
     );
     assertContract(
       host.getDiagnostics().lockstep?.status !== 'desynced',

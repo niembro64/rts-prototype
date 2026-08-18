@@ -19,6 +19,7 @@ import { BUILDING_BLUEPRINT_IDS } from '../../types/blueprintIds';
 import {
   loadStoredConverterTax,
   loadStoredPathfindingCellConsolidation,
+  loadStoredSimulationTickRate,
   loadStoredDemoUnits,
   loadStoredDemoBuildings,
   getUnitCap,
@@ -233,6 +234,7 @@ export async function createBackgroundBattle(
       converterTax: loadStoredConverterTax(mode),
       pathfindingCellConsolidationMultiplier:
         loadStoredPathfindingCellConsolidation(mode),
+      simulationTickRateHz: loadStoredSimulationTickRate(mode),
       aiPlayerIds,
       spawnDemoInitialState: !isLobbyPreview,
     },

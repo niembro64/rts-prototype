@@ -529,6 +529,8 @@ export type LobbySettings = {
   entityCountCap: number;
   /** Number of build squares represented by one path square per axis. */
   pathfindingCellConsolidationMultiplier: number;
+  /** Authoritative fixed simulation steps per real-time second. */
+  simulationTickRateHz: number;
   converterTax: number;
   /** Whether units brake on approach to their last waypoint. */
   slowDownAtFinalWaypoint: boolean;

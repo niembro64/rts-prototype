@@ -1,6 +1,7 @@
 import type { LobbySettings } from '@/types/network';
 import { isLiquidSurfaceMode, isTerrainSurfaceMode } from '@/types/worldSurfaceMode';
 import { isPathfindingCellConsolidationMultiplier } from '@/types/pathfinding';
+import { isSimulationTickRateHz } from '@/types/simulationTickRate';
 
 const NUMERIC_FIELDS = [
   'centerMagnitude',
@@ -14,6 +15,7 @@ const NUMERIC_FIELDS = [
   'mapLengthLandCells',
   'entityCountCap',
   'pathfindingCellConsolidationMultiplier',
+  'simulationTickRateHz',
   'converterTax',
 ] as const satisfies readonly (keyof LobbySettings)[];
 
@@ -45,6 +47,11 @@ export function assertCurrentLobbySettings(
   )) {
     throw new Error(
       `[${context}] pathfindingCellConsolidationMultiplier must be one of 1, 2, 3, 4, 5`,
+    );
+  }
+  if (!isSimulationTickRateHz(settings.simulationTickRateHz)) {
+    throw new Error(
+      `[${context}] simulationTickRateHz must be one of 1, 5, 10, 15, 20, 30, 45, 60`,
     );
   }
   if (typeof settings.slowDownAtFinalWaypoint !== 'boolean') {

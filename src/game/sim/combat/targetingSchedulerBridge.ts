@@ -48,12 +48,16 @@ function positiveModulo(value: number, divisor: number): number {
   return ((value % divisor) + divisor) % divisor;
 }
 
-function nextTargetingReacquireTick(tick: number, entityId: number): number {
+function nextTargetingReacquireTick(
+  tick: number,
+  entityId: number,
+  periodTicks: number,
+): number {
   const nextTick = tick + 1;
-  const phase = positiveModulo(entityId, TARGETING_REACQUIRE_PERIOD_TICKS);
+  const phase = positiveModulo(entityId, periodTicks);
   const delta = positiveModulo(
-    phase - positiveModulo(nextTick, TARGETING_REACQUIRE_PERIOD_TICKS),
-    TARGETING_REACQUIRE_PERIOD_TICKS,
+    phase - positiveModulo(nextTick, periodTicks),
+    periodTicks,
   );
   return nextTick + delta;
 }
@@ -114,7 +118,7 @@ function flushTargetingBatch(
     COMBAT_LOS_TERRAIN_STEP_LEN,
     COMBAT_LOS_ENTITY_QUERY_WIDTH,
     GRAVITY,
-    SIGHT_DROP_GRACE_TICKS,
+    world.ticksForDefaultTicks(SIGHT_DROP_GRACE_TICKS),
     _targetingBatchCachedFireRanks.subarray(0, turretValueCount),
     _targetingBatchCachedFireDistSqs.subarray(0, turretValueCount),
     world.getMaxTargetableRadius(),
@@ -147,7 +151,11 @@ function flushTargetingBatch(
     } else if (mode === CT_TARGETING_TICK_MODE_AUTO) {
       combat.nextCombatProbeTick = _targetingBatchHasCooldown[i] !== 0
         ? tick + 1
-        : nextTargetingReacquireTick(tick, unit.id);
+        : nextTargetingReacquireTick(
+            tick,
+            unit.id,
+            world.ticksForDefaultTicks(TARGETING_REACQUIRE_PERIOD_TICKS),
+          );
     } else {
       combat.nextCombatProbeTick = -1;
     }

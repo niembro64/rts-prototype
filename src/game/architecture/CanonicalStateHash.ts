@@ -85,6 +85,7 @@ export function buildCanonicalServerState(core: ServerSimulationCore): Canonical
       rngSeed: world.getRandomStreamState(),
       activePlayerId: world.activePlayerId,
       playerCount: world.playerCount,
+      simulationTickRateHz: world.simulationTickRateHz,
       playerIds,
       mapWidth: world.mapWidth,
       mapHeight: world.mapHeight,

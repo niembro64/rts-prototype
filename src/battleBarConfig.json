@@ -12,6 +12,11 @@
     "realDefault": 3,
     "options": [1, 2, 3, 4, 5]
   },
+  "simulationTickRate": {
+    "demoDefault": 20,
+    "realDefault": 20,
+    "options": [1, 5, 10, 15, 20, 30, 45, 60]
+  },
   "centerMagnitude": {
     "options": [-3200, -800, -400, -200, 0, 200, 400, 800, 1600, 3200, 6400]
   },
@@ -52,6 +57,8 @@
     "realCap": "real-battle-cap",
     "demoPathfindingCellConsolidation": "demo-battle-pathfinding-cell-consolidation",
     "realPathfindingCellConsolidation": "real-battle-pathfinding-cell-consolidation",
+    "demoSimulationTickRate": "demo-battle-simulation-tick-rate",
+    "realSimulationTickRate": "real-battle-simulation-tick-rate",
     "demoTurretShieldPanelsEnabled": "demo-battle-turret-shield-panels-enabled",
     "realTurretShieldPanelsEnabled": "real-battle-turret-shield-panels-enabled",
     "demoTurretShieldSpheresEnabled": "demo-battle-turret-shield-spheres-enabled",

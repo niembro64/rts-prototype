@@ -9,6 +9,7 @@ import {
   loadStoredTerrainDTerrain,
   loadStoredTerrainDetail,
   loadStoredPathfindingCellConsolidation,
+  loadStoredSimulationTickRate,
   type BattleMode,
 } from '../battleBarConfig';
 import type { PlayerId } from '../game/sim/types';
@@ -30,6 +31,7 @@ type GameCanvasLobbyPreviewOptions = {
   metalDepositStep: Ref<number>;
   terrainDetail: Ref<number>;
   pathfindingCellConsolidation: Ref<number>;
+  simulationTickRateHz: Ref<number>;
   mapWidthLandCells: Ref<number>;
   mapLengthLandCells: Ref<number>;
   stopBackgroundBattle: () => void;
@@ -53,6 +55,7 @@ export function useGameCanvasLobbyPreview({
   metalDepositStep,
   terrainDetail,
   pathfindingCellConsolidation,
+  simulationTickRateHz,
   mapWidthLandCells,
   mapLengthLandCells,
   stopBackgroundBattle,
@@ -81,6 +84,7 @@ export function useGameCanvasLobbyPreview({
     terrainDetail.value = loadStoredTerrainDetail(mode);
     pathfindingCellConsolidation.value =
       loadStoredPathfindingCellConsolidation(mode);
+    simulationTickRateHz.value = loadStoredSimulationTickRate(mode);
     const mapDimensions = loadStoredMapLandDimensions(mode);
     mapWidthLandCells.value = mapDimensions.widthLandCells;
     mapLengthLandCells.value = mapDimensions.lengthLandCells;

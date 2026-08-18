@@ -39,6 +39,10 @@ import {
   type TerrainSurfaceMode,
 } from '@/types/worldSurfaceMode';
 import { isPathfindingCellConsolidationMultiplier } from '@/types/pathfinding';
+import {
+  normalizeSimulationTickRateHz,
+  simulationTicksForDefaultTicks,
+} from '@/types/simulationTickRate';
 
 // Turbine animation and wind particles are presentation-only. Keep them out
 // of the deterministic content hash so visual tuning cannot split lockstep.
@@ -48,7 +52,7 @@ const {
   ...canonicalWindConfigJson
 } = windConfigJson;
 
-const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v10';
+const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v11';
 const APP_SOURCE_VERSION = '0.0.1';
 export const SIM_WASM_EXPECTED_VERSION = 'rts-sim-wasm 0.0.1';
 export const BUILD_FINGERPRINT = __BA_BUILD_FINGERPRINT__;
@@ -151,9 +155,23 @@ export function buildCanonicalMatchInitialization({
   gameGenerationSeed = DEFAULT_GAME_GENERATION_SEED,
 }: BuildCanonicalMatchInitializationOptions): CanonicalMatchInitialization {
   const seats = normalizePlayerIds(playerIds);
+  const simulationTickRateHz = normalizeSimulationTickRateHz(
+    settings?.simulationTickRateHz,
+  );
   return {
     schema: CANONICAL_MATCH_INITIALIZATION_SCHEMA,
-    lockstep: ARCHITECTURE_CONFIG.lockstep,
+    lockstep: {
+      ...ARCHITECTURE_CONFIG.lockstep,
+      fixedStepHz: simulationTickRateHz,
+      inputDelayTicks: simulationTicksForDefaultTicks(
+        simulationTickRateHz,
+        ARCHITECTURE_CONFIG.lockstep.inputDelayTicks,
+      ),
+      checksumIntervalTicks: simulationTicksForDefaultTicks(
+        simulationTickRateHz,
+        ARCHITECTURE_CONFIG.lockstep.checksumIntervalTicks,
+      ),
+    },
     gameId,
     roomCode,
     hostPlayerId,

@@ -134,6 +134,7 @@ export class ServerSimulationCore {
         const event: PresentationFrameEvent = {
           tick,
           capturedAtMs: performance.now(),
+          simulationTickRateHz: this.world.simulationTickRateHz,
         };
         for (const listener of this.presentationFrameListeners) listener(event);
       }

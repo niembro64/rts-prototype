@@ -248,6 +248,19 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
           >{{ opt }}×{{ opt }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
+      <BarControlGroup v-if="!model.gameStarted">
+        <BarDivider />
+        <BarLabel title="Authoritative server simulation steps per second; rendering remains independent">SIM TICK:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in BATTLE_CONFIG.simulationTickRate.options"
+            :key="opt"
+            :active="model.simulationTickRateHz === opt"
+            :title="`${opt} authoritative simulation tick${opt === 1 ? '' : 's'} per second`"
+            @click="model.applySimulationTickRate(opt)"
+          >{{ opt }} HZ</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel title="Entities alive match-wide (units + buildings) / entity count cap">ENTITIES:</BarLabel>

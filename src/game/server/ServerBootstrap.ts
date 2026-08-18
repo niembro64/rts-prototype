@@ -63,6 +63,7 @@ import {
   DEFAULT_TERRAIN_SURFACE_MODE,
 } from '../../types/worldSurfaceMode';
 import { normalizePathfindingCellConsolidationMultiplier } from '../../types/pathfinding';
+import { normalizeSimulationTickRateHz } from '../../types/simulationTickRate';
 
 export interface BootstrappedServerWorld {
   physics: PhysicsEngine3D;
@@ -102,6 +103,9 @@ export class ServerBootstrap {
       normalizePathfindingCellConsolidationMultiplier(
         config.pathfindingCellConsolidationMultiplier,
       );
+    const simulationTickRateHz = normalizeSimulationTickRateHz(
+      config.simulationTickRateHz,
+    );
     configurePathfindingCellConsolidationMultiplier(
       pathfindingCellConsolidationMultiplier,
     );
@@ -171,6 +175,7 @@ export class ServerBootstrap {
     const physics = providedPhysics ?? new PhysicsEngine3D(mapWidth, mapHeight);
     try {
     const world = new WorldState(gameGenerationSeed, mapWidth, mapHeight);
+    world.simulationTickRateHz = simulationTickRateHz;
     world.terrainSurfaceMode = terrainSurfaceMode;
     world.liquidSurfaceMode = liquidSurfaceMode;
     world.pathfindingCellConsolidationMultiplier =
@@ -300,6 +305,9 @@ export class ServerBootstrap {
       normalizePathfindingCellConsolidationMultiplier(
         config.pathfindingCellConsolidationMultiplier,
       );
+    const simulationTickRateHz = normalizeSimulationTickRateHz(
+      config.simulationTickRateHz,
+    );
     configurePathfindingCellConsolidationMultiplier(
       pathfindingCellConsolidationMultiplier,
     );
@@ -373,6 +381,7 @@ export class ServerBootstrap {
     const physics = providedPhysics ?? new PhysicsEngine3D(mapWidth, mapHeight);
     try {
     const world = new WorldState(gameGenerationSeed, mapWidth, mapHeight);
+    world.simulationTickRateHz = simulationTickRateHz;
     world.terrainSurfaceMode = terrainSurfaceMode;
     world.liquidSurfaceMode = liquidSurfaceMode;
     world.pathfindingCellConsolidationMultiplier =

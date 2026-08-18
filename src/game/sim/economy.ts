@@ -6,7 +6,6 @@ import {
   type PlayerId,
   type ResourceCost,
 } from './types';
-import { ARCHITECTURE_CONFIG } from '@/architectureConfig';
 import {
   STARTING_STOCKPILE,
   MAX_STOCKPILE,
@@ -217,7 +216,7 @@ class EconomyManager {
       targetEntityId,
       resource: 'energy',
       amount,
-      amountPerSecond: amount * ARCHITECTURE_CONFIG.lockstep.fixedStepHz,
+      amountPerSecond: amount * world.simulationTickRateHz,
       direction: 'outbound',
       reason,
     });

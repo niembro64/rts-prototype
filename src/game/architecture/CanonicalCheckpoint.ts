@@ -7,7 +7,6 @@ import {
   SIM_WASM_EXPECTED_VERSION,
 } from './CanonicalMatchInitialization';
 import type { CanonicalServerStateHash } from './CanonicalStateHash';
-import { LOCKSTEP_FIXED_DT_MS } from './LockstepFrameScheduler';
 import { resetReusableSimulationStateForDeterministicReplay } from './DeterministicReplayHarness';
 
 export type CanonicalCheckpointCommandFrame = {
@@ -49,7 +48,8 @@ export function exportCanonicalCheckpoint(
   options: ExportCanonicalCheckpointOptions,
 ): CanonicalCheckpoint {
   const frame = options.core.world.getTick();
-  const fixedDtMs = options.fixedDtMs ?? LOCKSTEP_FIXED_DT_MS;
+  const fixedDtMs = options.fixedDtMs ??
+    1000 / options.core.world.simulationTickRateHz;
   assertFrameInteger(frame, 'checkpoint frame');
   const config = cloneJson(options.config);
   const commandFrames = normalizeCommandFrames(options.commandFrames)

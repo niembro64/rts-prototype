@@ -9,7 +9,7 @@ import type {
 import { NO_ENTITY_ID } from './types';
 import { isConstructionPieceMaterialized } from './buildableHelpers';
 import { isAttackEmitter } from './emitterKinds';
-import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
+import { simulationTicksForSeconds } from '../../types/simulationTickRate';
 
 /** How long a removed entity's dead metadata tombstone stays queryable,
  *  in sim ticks. Post-mortem consumers (damage attribution in
@@ -19,13 +19,11 @@ import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
  *  by projectiles — for the whole match. Tombstones created by
  *  markSubEntityDead for sub-entities of live hosts are NOT pruned:
  *  their generation counter must survive dead→alive cycles. */
-const DEAD_META_RETENTION_TICKS =
-  10 * ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
-
 export class WorldEntityMetadata {
   private readonly metaById = new Map<EntityId, EntityMeta>();
   private readonly entities: Map<EntityId, Entity>;
   private readonly resolveTeamId: (playerId: PlayerId) => number;
+  private readonly resolveSimulationTickRateHz: () => number;
   private readonly pendingForgetIds: EntityId[] = [];
   private readonly pendingForgetTicks: number[] = [];
   private pendingForgetHead = 0;
@@ -33,9 +31,11 @@ export class WorldEntityMetadata {
   constructor(
     entities: Map<EntityId, Entity>,
     resolveTeamId: (playerId: PlayerId) => number,
+    resolveSimulationTickRateHz: () => number,
   ) {
     this.entities = entities;
     this.resolveTeamId = resolveTeamId;
+    this.resolveSimulationTickRateHz = resolveSimulationTickRateHz;
   }
 
   get(id: EntityId): EntityMeta | undefined {
@@ -173,7 +173,10 @@ export class WorldEntityMetadata {
   }
 
   private pruneForgottenMetadata(tick: number): void {
-    const expireAtOrBefore = tick - DEAD_META_RETENTION_TICKS;
+    const expireAtOrBefore = tick - simulationTicksForSeconds(
+      this.resolveSimulationTickRateHz(),
+      10,
+    );
     const ids = this.pendingForgetIds;
     const ticks = this.pendingForgetTicks;
     let head = this.pendingForgetHead;

@@ -68,7 +68,10 @@ export function getRecentHostileAttacker(
 ): Entity | null {
   const aggression = protectedEntity.recentAggression;
   if (aggression === null) return null;
-  if (currentTick - aggression.hitTick > GUARD_RETALIATION_MEMORY_TICKS) {
+  if (
+    currentTick - aggression.hitTick >
+      world.ticksForDefaultTicks(GUARD_RETALIATION_MEMORY_TICKS)
+  ) {
     protectedEntity.recentAggression = null;
     return null;
   }

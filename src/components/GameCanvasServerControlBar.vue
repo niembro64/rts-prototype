@@ -5,24 +5,21 @@ import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
 import type { GameCanvasServerControlBarModel } from './gameCanvasControlBarModels';
 import { fmt4, msBarStyle, statBarStyle } from './uiUtils';
-import { ARCHITECTURE_CONFIG } from '../architectureConfig';
 
 defineProps<{
   model: GameCanvasServerControlBarModel;
 }>();
 
-const LOCKSTEP_FIXED_SIM_HZ = ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
-
-function simTpsTitle(): string {
-  return `Actual lockstep frames advanced per wall-clock second in this browser. This can be below ${LOCKSTEP_FIXED_SIM_HZ} when the browser pump is slow or waiting for command frames; the fixed simulation step still remains ${LOCKSTEP_FIXED_SIM_HZ} Hz.`;
+function simTpsTitle(rateHz: number): string {
+  return `Actual lockstep frames advanced per wall-clock second in this browser. This can be below ${rateHz} when the browser pump is slow or waiting for command frames; the selected fixed simulation step remains ${rateHz} Hz.`;
 }
 
-function simTpsTarget(): number {
-  return LOCKSTEP_FIXED_SIM_HZ;
+function simTpsTarget(rateHz: number): number {
+  return rateHz;
 }
 
-function cpuTitle(): string {
-  return `Local lockstep simulation CPU load - measured server-simulation work as a percent of the fixed ${LOCKSTEP_FIXED_SIM_HZ} Hz frame budget.`;
+function cpuTitle(rateHz: number): string {
+  return `Local lockstep simulation CPU load - measured server-simulation work as a percent of the selected fixed ${rateHz} Hz frame budget.`;
 }
 
 </script>
@@ -62,7 +59,7 @@ function cpuTitle(): string {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel :title="simTpsTitle()">ADV TPS:</BarLabel>
+        <BarLabel :title="simTpsTitle(model.displayTickRate)">ADV TPS:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
@@ -73,7 +70,7 @@ function cpuTitle(): string {
               <div
                 class="stat-bar-fill"
                 :style="
-                  statBarStyle(model.displayServerTpsAvg, simTpsTarget(), model.isReadonly)
+                  statBarStyle(model.displayServerTpsAvg, simTpsTarget(model.displayTickRate), model.isReadonly)
                 "
               ></div>
             </div>
@@ -89,7 +86,7 @@ function cpuTitle(): string {
               <div
                 class="stat-bar-fill"
                 :style="
-                  statBarStyle(model.displayServerTpsWorst, simTpsTarget(), model.isReadonly)
+                  statBarStyle(model.displayServerTpsWorst, simTpsTarget(model.displayTickRate), model.isReadonly)
                 "
               ></div>
             </div>
@@ -98,7 +95,7 @@ function cpuTitle(): string {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel :title="cpuTitle()">CPU:</BarLabel>
+        <BarLabel :title="cpuTitle(model.displayTickRate)">CPU:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">

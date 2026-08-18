@@ -105,6 +105,8 @@ export type PresentationFrameEvent = {
   tick: number;
   /** Main-thread wall-clock time at which the endpoint became available. */
   capturedAtMs: number;
+  /** Fixed cadence that produced the adjacent authoritative endpoints. */
+  simulationTickRateHz: number;
 };
 export type PresentationFrameCallback = (event: PresentationFrameEvent) => void;
 export type PresentationFrameUnsubscribe = () => void;
@@ -250,6 +252,8 @@ export type GameServerConfig = {
   /** Number of build-grid cells consolidated into one authoritative path cell
    *  along each axis. Match-static and included in lockstep initialization. */
   pathfindingCellConsolidationMultiplier?: number;
+  /** Authoritative fixed simulation cadence for this match. */
+  simulationTickRateHz?: number;
 };
 
 export type EmaConfig = {

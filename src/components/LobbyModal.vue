@@ -40,6 +40,7 @@ const props = defineProps<{
   metalDepositStep: number;
   terrainDetail: number;
   pathfindingCellConsolidation: number;
+  simulationTickRateHz: number;
   mapWidthLandCells: number;
   mapLengthLandCells: number;
   unitBlueprintIds: readonly string[];
@@ -70,6 +71,7 @@ const emit = defineEmits<{
   (e: 'setMetalDepositStep', value: number): void;
   (e: 'setTerrainDetail', value: number): void;
   (e: 'setPathfindingCellConsolidation', value: number): void;
+  (e: 'setSimulationTickRate', value: number): void;
   (e: 'setPreset', preset: BattlePreset): void;
   (e: 'setMapLandDimensions', dimensions: MapLandCellDimensions): void;
   (e: 'toggleUnit', unitBlueprintId: string): void;
@@ -97,6 +99,7 @@ const metalDepositStepOptions = BATTLE_CONFIG.metalDepositStep.options;
 const terrainDetailOptions = BATTLE_CONFIG.terrainDetail.options;
 const pathfindingCellConsolidationOptions =
   BATTLE_CONFIG.pathfindingCellConsolidation.options;
+const simulationTickRateOptions = BATTLE_CONFIG.simulationTickRate.options;
 const converterTaxOptions = BATTLE_CONFIG.converterTax.options;
 const mapWidthOptions = BATTLE_CONFIG.mapSize.width.options;
 const mapLengthOptions = BATTLE_CONFIG.mapSize.length.options;
@@ -166,6 +169,11 @@ function pickTerrainDetail(value: number): void {
 function pickPathfindingCellConsolidation(value: number): void {
   if (!props.isHost) return;
   emit('setPathfindingCellConsolidation', value);
+}
+
+function pickSimulationTickRate(value: number): void {
+  if (!props.isHost) return;
+  emit('setSimulationTickRate', value);
 }
 
 function pickPreset(preset: BattlePreset): void {
@@ -772,6 +780,19 @@ const terrainSectionVars = computed(() =>
                     :title="isHost ? `${opt}×${opt} build squares per pathfinding square` : 'Only the host can change pathfinding resolution'"
                     @click="pickPathfindingCellConsolidation(opt)"
                   >{{ opt }}×{{ opt }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel title="Authoritative server simulation steps per second; rendering remains independent">SIM TICK:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="opt in simulationTickRateOptions"
+                    :key="opt"
+                    :active="simulationTickRateHz === opt"
+                    :title="isHost ? `${opt} authoritative simulation tick${opt === 1 ? '' : 's'} per second` : 'Only the host can change simulation cadence'"
+                    @click="pickSimulationTickRate(opt)"
+                  >{{ opt }} HZ</BarButton>
                 </BarButtonGroup>
               </BarControlGroup>
               <!-- Real-battle config groups. These were previously editable

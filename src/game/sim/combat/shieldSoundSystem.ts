@@ -2,15 +2,13 @@
 // Mirrors laserSoundSystem.ts pattern: emits shieldStart/shieldStop lifecycle events
 
 import type { Entity } from '../types';
+import type { WorldState } from '../WorldState';
 import type { SimEvent } from './types';
 import { resolveTurretSoundEntityId } from './turretSoundId';
-import { ARCHITECTURE_CONFIG } from '../../../architectureConfig';
 
 // Reusable arrays for shield sound events (avoids per-frame allocation)
 const _shieldSimEvents: SimEvent[] = [];
 const _shieldStopOwner: SimEvent[] = [];
-const SHIELD_SOUND_REFRESH_TICKS =
-  2 * ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
 const activeShieldSoundIds = new Set<number>();
 let shieldSoundRefreshTick = 0;
 
@@ -40,10 +38,11 @@ export function emitShieldStopsForEntity(entity: Entity): SimEvent[] {
 
 // Update shield sounds based on transition progress
 // Emits shieldStart when progress > 0, shieldStop when progress === 0 or unit is dead
-export function updateShieldSounds(units: Entity[]): SimEvent[] {
+export function updateShieldSounds(world: WorldState, units: Entity[]): SimEvent[] {
   _shieldSimEvents.length = 0;
   shieldSoundRefreshTick++;
-  const shouldRefreshActive = shieldSoundRefreshTick % SHIELD_SOUND_REFRESH_TICKS === 0;
+  const shouldRefreshActive =
+    shieldSoundRefreshTick % world.ticksForSeconds(2) === 0;
 
   for (const unit of units) {
     if (!unit.combat || !unit.unit || !unit.ownership) continue;

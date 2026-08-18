@@ -4,6 +4,7 @@ import type { ShieldReflectionMode } from './shotTypes';
 import type { SlopePathMode } from './slopePathMode';
 import type { LiquidSurfaceMode, TerrainSurfaceMode } from './worldSurfaceMode';
 import type { PathfindingCellConsolidationMultiplier } from './pathfinding';
+import type { SimulationTickRateHz } from './simulationTickRate';
 
 export type UnitToggleConfig = {
   readonly default: boolean;
@@ -17,6 +18,8 @@ export type BattleBarConfig = {
   readonly cap: OptionsConfig<number>;
   /** Number of 20×20 build cells represented by one path cell on each axis. */
   readonly pathfindingCellConsolidation: OptionsConfig<PathfindingCellConsolidationMultiplier>;
+  /** Authoritative fixed simulation steps per real-time second. */
+  readonly simulationTickRate: OptionsConfig<SimulationTickRateHz>;
   readonly turretShieldPanelsEnabled: BooleanSetting;
   readonly turretShieldSpheresEnabled: BooleanSetting;
   readonly forceFieldsVisible: BooleanSetting;

@@ -427,7 +427,11 @@ export class ClientViewStateBase {
   noteLockstepPresentationFrame(event: PresentationFrameEvent): void {
     if (!this.lockstepPresentationEnabled) return;
     this.currentTick = event.tick;
-    this.lockstepPresentation.noteFixedTick(event.tick, event.capturedAtMs);
+    this.lockstepPresentation.noteFixedTick(
+      event.tick,
+      event.capturedAtMs,
+      event.simulationTickRateHz,
+    );
   }
 
   /** Read map dimensions for renderers / overlays that need to sample

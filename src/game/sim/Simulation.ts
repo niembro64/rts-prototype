@@ -3,7 +3,7 @@ import { CommandQueue } from './commands';
 import type { Entity, EntityId, PlayerId, Unit, UnitAction, UnitPathPoint } from './types';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { magnitude } from '../math';
-import { executeCommand, SELF_DESTRUCT_COUNTDOWN_TICKS, type CommandContext } from './commandExecution';
+import { executeCommand, selfDestructCountdownTicks, type CommandContext } from './commandExecution';
 import { distributeEnergy, createEnergyBuffers, resetEnergyBuffers, type EnergyBuffers } from './energyDistribution';
 import {
   releaseBuilderWorkStation,
@@ -119,8 +119,7 @@ import {
 } from './SimulationAirborneLoiterController';
 import { SimulationCombatHaltController } from './SimulationCombatHaltController';
 import {
-  REPLAN_COOLDOWN,
-  REPLAN_FAILURE_COOLDOWN,
+  replanCooldownFor,
   SimulationStuckReplanController,
 } from './SimulationStuckReplanController';
 import {
@@ -275,7 +274,7 @@ export class Simulation {
   private unitActionMovementPlanner: SimulationUnitActionMovementPlanner = new SimulationUnitActionMovementPlanner();
   private forceAccumulator: ForceAccumulator = new ForceAccumulator();
   private readonly formationRouteCache = new Map<string, ExpandedPathPlan>();
-  private readonly pathPlanScheduler = new SimulationPathPlanScheduler();
+  private readonly pathPlanScheduler: SimulationPathPlanScheduler;
   private readonly activePathPlanJobs = new Map<AllyTeamId, ActivePathPlanJob>();
   private windState: WindState = sampleWindState(0);
   private windPowerTracker = new WindPowerTracker();
@@ -340,6 +339,9 @@ export class Simulation {
   ) {
     this.world = world;
     this.commandQueue = commandQueue;
+    this.pathPlanScheduler = new SimulationPathPlanScheduler(
+      () => this.world.simulationTickRateHz,
+    );
     this.constructionSystem = new ConstructionSystem(
       world.mapWidth,
       world.mapHeight,
@@ -388,6 +390,7 @@ export class Simulation {
     this.combatHaltController = new SimulationCombatHaltController(this.world);
     this.airborneLoiter = new SimulationAirborneLoiterController(this.world);
     this.stuckReplanController = new SimulationStuckReplanController(
+      this.world,
       (entity) => this.pathPlanScheduler.requestFresh(entity, true),
     );
   }
@@ -728,7 +731,12 @@ export class Simulation {
   ): boolean {
     if (plan.terrainVersion !== terrainVersion) return true;
     const age = this.world.getTick() - plan.plannedAtTick;
-    if (isChase && age >= PATHFINDING_CHASE_REPATH_COOLDOWN_TICKS) {
+    if (
+      isChase &&
+      age >= this.world.ticksForDefaultTicks(
+        PATHFINDING_CHASE_REPATH_COOLDOWN_TICKS,
+      )
+    ) {
       const drift = magnitude(action.x - plan.goalX, action.y - plan.goalY);
       const onFinalLeg = plan.index >= plan.points.length - 1;
       const threshold = onFinalLeg
@@ -740,7 +748,10 @@ export class Simulation {
           );
       if (drift > threshold) return true;
     }
-    return plan.resolution === 'partial' && age >= PATHFINDING_PARTIAL_PLAN_RETRY_TICKS;
+    return plan.resolution === 'partial' &&
+      age >= this.world.ticksForDefaultTicks(
+        PATHFINDING_PARTIAL_PLAN_RETRY_TICKS,
+      );
   }
 
   /** Cached routes remain usable from any physically move-valid surface.
@@ -1089,7 +1100,7 @@ export class Simulation {
     if (this.tryInstallDirectPathPlan(entity, unit, action, terrainVersion) !== null) {
       unit.pathRequestLane = PATH_REQUEST_NONE;
       unit.pathRequestForceLocal = false;
-      if (forceLocal) unit.stuckTicks = REPLAN_COOLDOWN;
+      if (forceLocal) unit.stuckTicks = replanCooldownFor(this.world);
       return false;
     }
 
@@ -1238,7 +1249,7 @@ export class Simulation {
     );
     if (!routeStillConnects) {
       this.pathPlanScheduler.requestFresh(entity, job.forceLocal);
-      if (job.forceLocal) unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;
+      if (job.forceLocal) unit.stuckTicks = replanCooldownFor(this.world);
       return { status: 'complete', expansionsUsed: result.expansionsUsed };
     }
     if (
@@ -1247,11 +1258,11 @@ export class Simulation {
       unit.activePath.points.length > 1 &&
       result.plan.points.length <= 1
     ) {
-      unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;
+      unit.stuckTicks = replanCooldownFor(this.world);
       return { status: 'complete', expansionsUsed: result.expansionsUsed };
     }
     this.installActivePathPlan(entity, unit, job.actionSnapshot, result.plan, job.terrainVersion);
-    if (job.forceLocal) unit.stuckTicks = REPLAN_COOLDOWN;
+    if (job.forceLocal) unit.stuckTicks = replanCooldownFor(this.world);
     return { status: 'complete', expansionsUsed: result.expansionsUsed };
   }
 
@@ -1669,7 +1680,10 @@ export class Simulation {
       this.world.armedSelfDestructs.delete(entity.id);
       this.emitSelfDestructEvent(entity, false);
     } else {
-      this.world.armedSelfDestructs.set(entity.id, this.world.getTick() + SELF_DESTRUCT_COUNTDOWN_TICKS);
+      this.world.armedSelfDestructs.set(
+        entity.id,
+        this.world.getTick() + selfDestructCountdownTicks(this.world),
+      );
       this.emitSelfDestructEvent(entity, true);
     }
   }
@@ -2266,7 +2280,7 @@ export class Simulation {
           }
           const targetPoint = getEntityTargetPoint(attackTarget);
           if (!this.tryRefreshAttackApproach(entity, action, targetPoint)) {
-            unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;
+            unit.stuckTicks = replanCooldownFor(this.world);
             continue;
           }
         } else if (movementPlanner.planAt(i) === UNIT_ACTION_PLAN_GUARD_FOLLOW) {

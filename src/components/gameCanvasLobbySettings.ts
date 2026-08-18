@@ -26,6 +26,7 @@ import {
   normalizeCenterMagnitude,
   normalizeConverterTax,
   normalizePathfindingCellConsolidation,
+  normalizeSimulationTickRate,
   normalizeDividersMagnitude,
   normalizeMetalDepositStep,
   normalizePlateauWallSlopeDegrees,
@@ -36,6 +37,7 @@ import {
   saveCenterMagnitude,
   saveConverterTax,
   savePathfindingCellConsolidation,
+  saveSimulationTickRate,
   saveDividersMagnitude,
   saveMapLandDimensions,
   saveMetalDepositStep,
@@ -67,6 +69,7 @@ type GameCanvasLobbySettings = {
   applyMetalDepositStep(value: number, broadcast?: boolean): void;
   applyTerrainDetail(value: number, broadcast?: boolean): void;
   applyPathfindingCellConsolidation(value: number, broadcast?: boolean): void;
+  applySimulationTickRate(value: number, broadcast?: boolean): void;
   applyTerrainSurfaceMode(mode: TerrainSurfaceMode, broadcast?: boolean): void;
   applyLiquidSurfaceMode(mode: LiquidSurfaceMode, broadcast?: boolean): void;
   applyMapLandDimensions(
@@ -94,6 +97,7 @@ type GameCanvasLobbySettingsOptions = {
   metalDepositStep: Ref<number>;
   terrainDetail: Ref<number>;
   pathfindingCellConsolidation: Ref<number>;
+  simulationTickRateHz: Ref<number>;
   mapWidthLandCells: Ref<number>;
   mapLengthLandCells: Ref<number>;
   slowDownAtFinalWaypointStoreVersion: Ref<number>;
@@ -126,6 +130,7 @@ export function useGameCanvasLobbySettings({
   metalDepositStep,
   terrainDetail,
   pathfindingCellConsolidation,
+  simulationTickRateHz,
   mapWidthLandCells,
   mapLengthLandCells,
   slowDownAtFinalWaypointStoreVersion,
@@ -172,6 +177,7 @@ export function useGameCanvasLobbySettings({
       entityCountCap: getUnitCap('real'),
       pathfindingCellConsolidationMultiplier:
         pathfindingCellConsolidation.value,
+      simulationTickRateHz: simulationTickRateHz.value,
       converterTax: loadStoredConverterTax('real'),
       slowDownAtFinalWaypoint: loadStoredSlowDownAtFinalWaypoint('real'),
       terrainSurfaceMode: loadStoredTerrainSurfaceMode('real'),
@@ -286,6 +292,20 @@ export function useGameCanvasLobbySettings({
     if (broadcast) broadcastLobbySettingsIfHost();
   }
 
+  function applySimulationTickRate(
+    value: number,
+    broadcast = true,
+  ): void {
+    const mode = currentBattleMode.value;
+    const normalized = normalizeSimulationTickRate(value, mode);
+    const changed = simulationTickRateHz.value !== normalized;
+    simulationTickRateHz.value = normalized;
+    saveSimulationTickRate(normalized, mode);
+    if (!changed) return;
+    restartPreviewIfNeeded();
+    if (broadcast) broadcastLobbySettingsIfHost();
+  }
+
   // The two WORLD toggles. Neither changes terrain GEOMETRY, so there is no
   // terrain runtime config to re-apply — but SURFACE decides whether deposit
   // crowns exist and which cells are metal, and LIQUID is baked into the
@@ -381,6 +401,10 @@ export function useGameCanvasLobbySettings({
       normalizePathfindingCellConsolidation(
         settings.pathfindingCellConsolidationMultiplier,
       );
+    const nextSimulationTickRateHz = normalizeSimulationTickRate(
+      settings.simulationTickRateHz,
+      'real',
+    );
     const nextSlowDownAtFinalWaypoint = settings.slowDownAtFinalWaypoint;
     if (!isTerrainSurfaceMode(settings.terrainSurfaceMode)) {
       throw new Error(`[lobby settings] invalid terrainSurfaceMode: ${String(settings.terrainSurfaceMode)}`);
@@ -410,6 +434,7 @@ export function useGameCanvasLobbySettings({
       nextTerrainDetail !== terrainDetail.value ||
       nextPathfindingCellConsolidation !==
         pathfindingCellConsolidation.value ||
+      nextSimulationTickRateHz !== simulationTickRateHz.value ||
       settings.mapWidthLandCells !== mapWidthLandCells.value ||
       settings.mapLengthLandCells !== mapLengthLandCells.value ||
       slowDownAtFinalWaypointChanged ||
@@ -425,6 +450,7 @@ export function useGameCanvasLobbySettings({
     terrainDetail.value = nextTerrainDetail;
     pathfindingCellConsolidation.value =
       nextPathfindingCellConsolidation;
+    simulationTickRateHz.value = nextSimulationTickRateHz;
     mapWidthLandCells.value = settings.mapWidthLandCells;
     mapLengthLandCells.value = settings.mapLengthLandCells;
     saveCenterMagnitude(nextCenterMagnitude, 'real');
@@ -438,6 +464,7 @@ export function useGameCanvasLobbySettings({
       nextPathfindingCellConsolidation,
       'real',
     );
+    saveSimulationTickRate(nextSimulationTickRateHz, 'real');
     saveMapLandDimensions(
       {
         widthLandCells: settings.mapWidthLandCells,
@@ -485,6 +512,7 @@ export function useGameCanvasLobbySettings({
     const terrainDetailDefault = BATTLE_CONFIG.terrainDetail.default;
     const pathfindingCellConsolidationDefault =
       BATTLE_CONFIG.pathfindingCellConsolidation.default;
+    const simulationTickRateDefault = BATTLE_CONFIG.simulationTickRate.default;
     const mapDimensionsDefault = getDefaultMapLandDimensions();
     if (
       centerMagnitude.value === centerMagnitudeDefault &&
@@ -496,6 +524,7 @@ export function useGameCanvasLobbySettings({
       terrainDetail.value === terrainDetailDefault &&
       pathfindingCellConsolidation.value ===
         pathfindingCellConsolidationDefault &&
+      simulationTickRateHz.value === simulationTickRateDefault &&
       sameMapLandDimensions(
         {
           widthLandCells: mapWidthLandCells.value,
@@ -516,6 +545,7 @@ export function useGameCanvasLobbySettings({
     terrainDetail.value = terrainDetailDefault;
     pathfindingCellConsolidation.value =
       pathfindingCellConsolidationDefault;
+    simulationTickRateHz.value = simulationTickRateDefault;
     mapWidthLandCells.value = mapDimensionsDefault.widthLandCells;
     mapLengthLandCells.value = mapDimensionsDefault.lengthLandCells;
     saveCenterMagnitude(centerMagnitudeDefault, mode);
@@ -529,6 +559,7 @@ export function useGameCanvasLobbySettings({
       pathfindingCellConsolidationDefault,
       mode,
     );
+    saveSimulationTickRate(simulationTickRateDefault, mode);
     saveMapLandDimensions(mapDimensionsDefault, mode);
     applyCurrentTerrainRuntimeConfig();
     restartPreviewIfNeeded();
@@ -545,6 +576,7 @@ export function useGameCanvasLobbySettings({
     applyMetalDepositStep,
     applyTerrainDetail,
     applyPathfindingCellConsolidation,
+    applySimulationTickRate,
     applyTerrainSurfaceMode,
     applyLiquidSurfaceMode,
     applyMapLandDimensions,

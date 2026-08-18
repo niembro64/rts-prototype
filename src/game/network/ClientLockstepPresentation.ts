@@ -1,10 +1,8 @@
-import { ARCHITECTURE_CONFIG } from '@/architectureConfig';
+import { DEFAULT_SIMULATION_TICK_RATE_HZ } from '@/types/simulationTickRate';
 import { entitySlotRegistry, ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY, ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION } from '../sim/EntitySlotRegistry';
 import type { Entity } from '../sim/types';
 import { getSimWasm } from '../sim-wasm/init';
 import { reuseTypedArrayView } from '../memory/typedArrayView';
-
-const FIXED_STEP_MS = 1000 / ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
 
 /**
  * Thin compatibility scatter around the Rust/WASM presentation history.
@@ -20,11 +18,13 @@ export class ClientLockstepPresentation {
   private latestTick = -1;
   private capturedAtMs = 0;
   private lastAlpha = 0;
+  private fixedStepMs = 1000 / DEFAULT_SIMULATION_TICK_RATE_HZ;
 
-  noteFixedTick(tick: number, capturedAtMs: number): void {
+  noteFixedTick(tick: number, capturedAtMs: number, rateHz: number): void {
     if (!Number.isFinite(tick) || tick < this.latestTick) return;
     this.latestTick = tick;
     this.capturedAtMs = Number.isFinite(capturedAtMs) ? capturedAtMs : performance.now();
+    if (Number.isFinite(rateHz) && rateHz > 0) this.fixedStepMs = 1000 / rateHz;
     this.lastAlpha = 0;
   }
 
@@ -36,6 +36,7 @@ export class ClientLockstepPresentation {
     this.latestTick = -1;
     this.capturedAtMs = 0;
     this.lastAlpha = 0;
+    this.fixedStepMs = 1000 / DEFAULT_SIMULATION_TICK_RATE_HZ;
   }
 
   apply(visibleEntities: Iterable<Entity>, nowMs = performance.now()): readonly Entity[] {
@@ -78,7 +79,7 @@ export class ClientLockstepPresentation {
     // One shared, monotonic render clock. Clamp instead of extrapolating:
     // rendering intentionally trails the newest authoritative state by at
     // most one fixed tick, exactly the trade Recoil makes for stable motion.
-    const alpha = Math.max(this.lastAlpha, Math.min(1, elapsedMs / FIXED_STEP_MS));
+    const alpha = Math.max(this.lastAlpha, Math.min(1, elapsedMs / this.fixedStepMs));
     this.lastAlpha = alpha;
     presentation.interpolate(count, alpha);
 

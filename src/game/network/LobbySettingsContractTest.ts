@@ -13,6 +13,7 @@ const CURRENT_SETTINGS: LobbySettings = {
   mapLengthLandCells: 20,
   entityCountCap: 729,
   pathfindingCellConsolidationMultiplier: 3,
+  simulationTickRateHz: 20,
   converterTax: 0.1,
   slowDownAtFinalWaypoint: true,
   terrainSurfaceMode: 'normal',
@@ -31,6 +32,12 @@ function assertRejected(value: unknown, label: string): void {
 
 export function runLobbySettingsContractTest(): void {
   assertCurrentLobbySettings(CURRENT_SETTINGS, 'contract test');
+  for (const simulationTickRateHz of [1, 5, 10, 15, 20, 30, 45, 60]) {
+    assertCurrentLobbySettings(
+      { ...CURRENT_SETTINGS, simulationTickRateHz },
+      'contract test supported simulation tick rate',
+    );
+  }
   const missingTerrainDetail = { ...CURRENT_SETTINGS } as Partial<LobbySettings>;
   delete missingTerrainDetail.terrainDetail;
   assertRejected(missingTerrainDetail, 'an incomplete settings packet');
@@ -45,5 +52,9 @@ export function runLobbySettingsContractTest(): void {
   assertRejected(
     { ...CURRENT_SETTINGS, pathfindingCellConsolidationMultiplier: 6 },
     'an unsupported pathfinding-cell multiplier',
+  );
+  assertRejected(
+    { ...CURRENT_SETTINGS, simulationTickRateHz: 25 },
+    'an unsupported simulation tick rate',
   );
 }

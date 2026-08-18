@@ -3,6 +3,10 @@ import {
   PATHFINDING_REFRESH_SERVICE_INTERVAL_TICKS,
 } from './pathfindingTuning';
 import type { AllyTeamId, TeamRoster } from './teamRoster';
+import {
+  DEFAULT_SIMULATION_TICK_RATE_HZ,
+  simulationTicksForDefaultTicks,
+} from '../../types/simulationTickRate';
 
 // SimulationPathPlanScheduler — deterministic per-side admission queues.
 //
@@ -52,6 +56,14 @@ export function selectPathPlanTeamTurn(
 export class SimulationPathPlanScheduler {
   private readonly lanes = new Map<PlayerId, PlayerPathRequestLanes>();
   private readonly nextPlayerIndexByTeam = new Map<AllyTeamId, number>();
+  private readonly resolveSimulationTickRateHz: () => number;
+
+  constructor(
+    resolveSimulationTickRateHz: () => number = () =>
+      DEFAULT_SIMULATION_TICK_RATE_HZ,
+  ) {
+    this.resolveSimulationTickRateHz = resolveSimulationTickRateHz;
+  }
 
   requestFresh(entity: Entity, forceLocal: boolean): void {
     const unit = entity.unit;
@@ -81,8 +93,12 @@ export class SimulationPathPlanScheduler {
     serve: PathPlanServe,
   ): boolean {
     if (this.lanes.size === 0) return false;
+    const refreshServiceIntervalTicks = simulationTicksForDefaultTicks(
+      this.resolveSimulationTickRateHz(),
+      PATHFINDING_REFRESH_SERVICE_INTERVAL_TICKS,
+    );
     const preferRefresh =
-      teamTurn % PATHFINDING_REFRESH_SERVICE_INTERVAL_TICKS === 0;
+      teamTurn % refreshServiceIntervalTicks === 0;
     const laneOrder = preferRefresh ? REFRESH_FIRST_LANES : FRESH_FIRST_LANES;
     for (let laneIndex = 0; laneIndex < laneOrder.length; laneIndex++) {
       const lane = laneOrder[laneIndex];

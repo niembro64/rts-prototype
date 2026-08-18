@@ -64,6 +64,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly metalDepositStep: number;
   readonly terrainDetail: number;
   readonly pathfindingCellConsolidation: number;
+  readonly simulationTickRateHz: number;
   readonly displayUnitCount: number;
   /** Live per-player upgrade readout: the LOCAL player owns at least one
    *  completed Shield-Aware Targeting Tech building. */
@@ -96,6 +97,7 @@ export type GameCanvasBattleControlBarModel = {
   applyMetalDepositStep(value: number): void;
   applyTerrainDetail(value: number): void;
   applyPathfindingCellConsolidation(value: number): void;
+  applySimulationTickRate(value: number): void;
   setFogOfWarEnabled(enabled: boolean): void;
   setSlowDownAtFinalWaypoint(enabled: boolean): void;
   setSlopePathMode(mode: SlopePathMode): void;
@@ -115,6 +117,7 @@ export type GameCanvasServerControlBarModel = {
   readonly displayServerTpsWorst: number;
   readonly displayServerCpuAvg: number;
   readonly displayServerCpuHi: number;
+  readonly displayTickRate: TickRate;
 };
 
 export type GameCanvasClientControlBarModel = {
