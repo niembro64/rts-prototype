@@ -1617,7 +1617,7 @@ function runVisualStateTransferContracts(material: THREE.Material): void {
   const solarTarget = visualStateMesh({ buildingDetails: solarLow.details });
   applyEntityLodVisualState3D(solarTarget, captureEntityLodVisualState3D(solarSource));
   const solarPose = (details: NonNullable<EntityMesh['buildingDetails']>) => details
-    .filter((detail) => detail.role === 'solarLeaf' || detail.role === 'solarPanel')
+    .filter((detail) => detail.role === 'solarPanel')
     .map((detail) => ({ role: detail.role, transform: transformTuple(detail.mesh) }));
   assertSame(
     'solar petal pose survives High-to-Low rebuild without detail-index drift',

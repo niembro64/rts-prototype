@@ -101,7 +101,6 @@ export type BuildingDetailRole =
   | 'static'
   | 'constructionHostBody'
   | 'constructionMarking'
-  | 'solarLeaf'
   | 'solarPanel'
   | 'teamOrnament'
   | 'playerColorPlate'

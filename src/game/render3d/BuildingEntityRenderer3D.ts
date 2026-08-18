@@ -134,7 +134,7 @@ function buildingDetailVisibleAtLevel(
       tower ? 0.68 : 0.54,
     );
   }
-  if (detailMesh.role === 'solarLeaf' || detailMesh.role === 'solarPanel') {
+  if (detailMesh.role === 'solarPanel') {
     return visualFeatureVisibleAtDetail('building', 'typeDetails', level, 0.38);
   }
   return visualFeatureVisibleAtDetail(

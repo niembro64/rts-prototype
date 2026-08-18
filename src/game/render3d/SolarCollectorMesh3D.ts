@@ -68,12 +68,82 @@ const solarTrianglePetalShape = new THREE.Shape([
   new THREE.Vector2(SOLAR_CHOP_HALF, SOLAR_PETAL_CHOP_FRACTION),
   new THREE.Vector2(-SOLAR_CHOP_HALF, SOLAR_PETAL_CHOP_FRACTION),
 ]);
-const solarTrianglePanelGeom = new THREE.ShapeGeometry(solarTrianglePetalShape);
 const solarTrianglePetalGeom = new THREE.ExtrudeGeometry(solarTrianglePetalShape, {
   depth: 1,
   bevelEnabled: false,
   steps: 1,
 });
+
+/** The petal outline, in the same local units the pose matrix scales: one
+ *  pyramid face, wide at the hinge and chopped to the top plate's width. */
+const SOLAR_PETAL_OUTLINE: readonly (readonly [number, number])[] = [
+  [-0.5, 0],
+  [0.5, 0],
+  [SOLAR_CHOP_HALF, SOLAR_PETAL_CHOP_FRACTION],
+  [-SOLAR_CHOP_HALF, SOLAR_PETAL_CHOP_FRACTION],
+];
+
+/** One solid petal: the face outline extruded through the panel thickness.
+ *
+ * The panel is a single slab, not a frame with a photovoltaic sheet floating
+ * above it, so it carries two materials instead of being two meshes. Group 0
+ * is the inner face on its own — the shiny cell side, the side that lands on
+ * the pyramid when the collector closes, sharing the pyramid's own material so
+ * the two read as one surface. Group 1 is the dull back face and the four
+ * edges together, which keeps the whole petal to two draws. */
+function createSolarPetalSlabGeometry(): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const pushTriangle = (
+    corners: readonly (readonly [number, number, number])[],
+    nx: number,
+    ny: number,
+    nz: number,
+  ): void => {
+    for (const [x, y, z] of corners) {
+      positions.push(x, y, z);
+      normals.push(nx, ny, nz);
+    }
+  };
+
+  const [c0, c1, c2, c3] = SOLAR_PETAL_OUTLINE;
+  const at = (c: readonly [number, number], z: number): [number, number, number] =>
+    [c[0], c[1], z];
+
+  // Inner (cell) face, alone in group 0. Local z is the pose normal, which
+  // points into the pyramid while the panel is shut, so z = 1 is the side
+  // that faces the skin.
+  pushTriangle([at(c0, 1), at(c1, 1), at(c2, 1)], 0, 0, 1);
+  pushTriangle([at(c0, 1), at(c2, 1), at(c3, 1)], 0, 0, 1);
+  const innerFaceVertexCount = positions.length / 3;
+
+  // Outer face, wound the other way so it faces out of the slab.
+  pushTriangle([at(c0, 0), at(c2, 0), at(c1, 0)], 0, 0, -1);
+  pushTriangle([at(c0, 0), at(c3, 0), at(c2, 0)], 0, 0, -1);
+
+  // Edges. The outline runs counter-clockwise, so each edge's outward normal
+  // is its direction rotated a quarter turn.
+  for (let i = 0; i < SOLAR_PETAL_OUTLINE.length; i++) {
+    const a = SOLAR_PETAL_OUTLINE[i];
+    const b = SOLAR_PETAL_OUTLINE[(i + 1) % SOLAR_PETAL_OUTLINE.length];
+    const edgeX = b[0] - a[0];
+    const edgeY = b[1] - a[1];
+    const edgeLength = Math.hypot(edgeX, edgeY);
+    const nx = edgeY / edgeLength;
+    const ny = -edgeX / edgeLength;
+    pushTriangle([at(a, 0), at(b, 0), at(b, 1)], nx, ny, 0);
+    pushTriangle([at(a, 0), at(b, 1), at(a, 1)], nx, ny, 0);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.addGroup(0, innerFaceVertexCount, 0);
+  geometry.addGroup(innerFaceVertexCount, positions.length / 3 - innerFaceVertexCount, 1);
+  return geometry;
+}
+
+const solarPetalSlabGeom = createSolarPetalSlabGeometry();
 const solarHingeCapGeometryByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
 
 function getSolarHingeCapGeometry(): THREE.BufferGeometry {
@@ -134,8 +204,7 @@ const _solarPetalYAxis = new THREE.Vector3();
 const _solarPetalZAxis = new THREE.Vector3();
 
 function isSolarPetalDetail(detail: BuildingDetailMesh): boolean {
-  return detail.role === 'solarLeaf' ||
-    detail.role === 'solarPanel' ||
+  return detail.role === 'solarPanel' ||
     detail.role === 'teamOrnament';
 }
 
@@ -247,23 +316,24 @@ export function buildSolarCollector(
 
   const petalTilt = 0.42;
   const petalThickness = 3.2;
-  const panelRaise = 2.4;
   const teamAccentThickness = 0.85;
   const teamAccentGap = 0.35;
   /** Clearance between a folded panel's cell face and the pyramid skin. */
   const petalFaceClearance = 0.6;
-  // Layer offsets along the pose normal, which points INTO the pyramid while
-  // the panel is closed and straight up while it is open. The cell sheet sits
-  // ON the hinge plane, because the pin is bolted to that inner face; every
-  // other layer is negative, so the frame stacks outside the skin when closed
-  // and hangs beneath the cells when open — the same plate either way.
-  const petalPanelOffset = 0;
-  const petalLeafOffset = petalPanelOffset - panelRaise - petalThickness;
-  const teamAccentOffset = petalLeafOffset - teamAccentGap - teamAccentThickness;
+  // The pin runs down the middle of the slab's thickness, so its knuckle is
+  // flush with both faces the way a barrel hinge on a real panel is. That puts
+  // the panel body symmetrically about the pose normal — which points INTO the
+  // pyramid while shut and straight up while open — and leaves the back of the
+  // panel as the only thing the team accent has to clear.
+  const hingeRadius = petalThickness * 0.5;
+  const hingeCapRadius = hingeRadius * 1.15;
+  const petalSlabOffset = -hingeRadius;
+  const teamAccentOffset = petalSlabOffset - teamAccentGap - teamAccentThickness;
   const petalStackDepth = -teamAccentOffset;
-
-  const hingeRadius = Math.max(2.2, Math.min(width, depth) * 0.035);
-  const hingeCapRadius = hingeRadius * 1.08;
+  // Standing the pin off the skin by its own radius plus the cell clearance is
+  // what keeps the knuckle out of the pyramid and lands the shut panel's cell
+  // face exactly `petalFaceClearance` above it.
+  const petalPinStandoff = hingeRadius + petalFaceClearance;
 
   const faces: readonly SolarFaceFrame[] = [
     solarFaceFrame(0, 1, depth * 0.5, width),
@@ -277,15 +347,15 @@ export function buildSolarCollector(
   // inboard edge of an open panel would be buried in the ground. The strip of
   // face left bare underneath is what the hinge bar itself covers.
   const petalHingeRise = Math.max(
-    hingeRadius,
+    0,
     ...faces.map((face) => Math.max(
       0,
-      (petalStackDepth * Math.cos(petalTilt) - petalFaceClearance * face.normal.y) / face.up.y,
+      (petalStackDepth * Math.cos(petalTilt) - petalPinStandoff * face.normal.y) / face.up.y,
     )),
   );
 
   for (const face of faces) {
-    const hinge = solarHingePoint(face, petalFaceClearance, petalHingeRise);
+    const hinge = solarHingePoint(face, petalPinStandoff, petalHingeRise);
     // Shortened by the rise so the tip still meets the top plate when closed.
     const petalLength = (face.slant - petalHingeRise) / SOLAR_PETAL_CHOP_FRACTION;
     const closedDirection = face.up;
@@ -298,19 +368,21 @@ export function buildSolarCollector(
       hinge,
       face.tangent,
     ), 'low'));
+    // One slab, two materials: shiny cells on the inner face (group 0), dull
+    // backing on the outer face and the edges (group 1).
     details.push(detail(makeTrianglePetal(
-      solarPetalBackMat,
+      [solarCellMat, solarPetalBackMat],
       face.span,
       petalLength,
       hinge,
       face,
       petalTilt,
       0,
-      petalLeafOffset,
+      petalSlabOffset,
       petalThickness,
       closedDirection,
       panelSideHint,
-    ), 'low', undefined, 'solarLeaf'));
+    ), 'low', undefined, 'solarPanel'));
     details.push(teamOrnamentDetail(makeTrianglePetal(
       primaryMat,
       face.span * 0.58,
@@ -324,27 +396,14 @@ export function buildSolarCollector(
       closedDirection,
       panelSideHint,
     ), 'solarPetalInlay'));
-    details.push(detail(makeTrianglePetal(
-      solarCellMat,
-      face.span,
-      petalLength,
-      hinge,
-      face,
-      petalTilt,
-      0,
-      petalPanelOffset,
-      0,
-      closedDirection,
-      panelSideHint,
-    ), 'low', undefined, 'solarPanel'));
   }
 
   // Caps close the four corners where adjacent hinge axes meet: each takes its
   // x from the side face's pin and its z from the front/back face's pin.
   for (const xFace of [faces[2], faces[3]]) {
     for (const zFace of [faces[0], faces[1]]) {
-      const xPin = solarHingePoint(xFace, petalFaceClearance, petalHingeRise);
-      const zPin = solarHingePoint(zFace, petalFaceClearance, petalHingeRise);
+      const xPin = solarHingePoint(xFace, petalPinStandoff, petalHingeRise);
+      const zPin = solarHingePoint(zFace, petalPinStandoff, petalHingeRise);
       details.push(detail(makeHingeCap(
         solarPetalBackMat,
         hingeCapRadius,
@@ -421,7 +480,7 @@ export function buildSolarCollector(
 }
 
 function makeTrianglePetal(
-  material: THREE.Material,
+  material: THREE.Material | THREE.Material[],
   width: number,
   length: number,
   hinge: THREE.Vector3,
@@ -463,7 +522,7 @@ function makeTrianglePetal(
 }
 
 function makeTrianglePlate(
-  material: THREE.Material,
+  material: THREE.Material | THREE.Material[],
   width: number,
   length: number,
   hinge: THREE.Vector3,
@@ -474,10 +533,10 @@ function makeTrianglePlate(
   thickness = 0,
   panelSideHint?: THREE.Vector3,
 ): THREE.Mesh {
+  // A material list means the two-sided petal slab, whose groups split the
+  // cell face from the backing; a single material is a plain extruded accent.
   const mesh = new THREE.Mesh(
-    thickness > 0
-      ? solarTrianglePetalGeom
-      : solarTrianglePanelGeom,
+    Array.isArray(material) ? solarPetalSlabGeom : solarTrianglePetalGeom,
     material,
   );
   mesh.matrixAutoUpdate = false;
@@ -570,7 +629,7 @@ function detail(
 
 export function disposeSolarCollectorGeoms(): void {
   solarPanelPyramidGeom.dispose();
-  solarTrianglePanelGeom.dispose();
+  solarPetalSlabGeom.dispose();
   solarTrianglePetalGeom.dispose();
   for (const geometry of solarHingeCapGeometryByTier.values()) geometry.dispose();
   solarHingeCapGeometryByTier.clear();
