@@ -1,4 +1,5 @@
 // Demo game configuration — controls initial base layout for AI battles
+import { BUILDING_BLUEPRINT_IDS, type BuildingBlueprintId } from './types/blueprintIds';
 import demoConfig from './demoConfig.json';
 
 export type DemoBattleWaypointType = 'move' | 'fight' | 'patrol';
@@ -32,6 +33,26 @@ function validatedWaterFabricatorConfig(): typeof demoConfig.waterFabricators {
     );
   }
   return config;
+}
+
+function validatedInitiallyOffBuildingBlueprintIds(): Set<BuildingBlueprintId> {
+  const ids = demoConfig.initiallyOffBuildingBlueprintIds;
+  if (!Array.isArray(ids)) {
+    throw new Error(
+      'demoConfig.initiallyOffBuildingBlueprintIds must be an array of building blueprint ids',
+    );
+  }
+  const known = new Set<string>(BUILDING_BLUEPRINT_IDS);
+  const out = new Set<BuildingBlueprintId>();
+  for (const id of ids) {
+    if (!known.has(id)) {
+      throw new Error(
+        `demoConfig.initiallyOffBuildingBlueprintIds contains unknown building blueprint id "${id}"`,
+      );
+    }
+    out.add(id as BuildingBlueprintId);
+  }
+  return out;
 }
 
 function validatedInitialUnitSpawnHeightAboveSurface(): number {
@@ -168,6 +189,24 @@ export const DEMO_CONFIG = {
    * outside them.
    */
   waterFabricators: validatedWaterFabricatorConfig(),
+
+  /**
+   * DEMO BATTLE pre-placed buildings that come up with their ON/OFF switch
+   * already OFF, so the opening base shows the mechanic switched off instead
+   * of every structure running.
+   *
+   * This applies ONLY to the buildings the demo places to stand up its
+   * opening base — the base that exists nowhere else. Nothing a player or an
+   * AI constructs during play is affected, in the demo or anywhere else; a
+   * normally built structure still completes with its switch ON.
+   *
+   * Listing a blueprint without an ON/OFF switch is a no-op, and the demo
+   * initial-base contract test rejects that so the list cannot quietly stop
+   * meaning anything. Validated against the canonical building registry, so
+   * a renamed or misspelled id is a startup error rather than silence.
+   */
+  initiallyOffBuildingBlueprintIds:
+    validatedInitiallyOffBuildingBlueprintIds() as ReadonlySet<BuildingBlueprintId>,
 
   /**
    * DEMO BATTLE initial-spawn unit order type. 'fight' makes the

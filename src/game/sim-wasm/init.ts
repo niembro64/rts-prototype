@@ -1733,6 +1733,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runBuildingUtilityStructuresContractTest();
         const { runDemoMetalExtractorSpawnContractTest } = await import('../sim/demoMetalExtractorSpawnContractTest');
         runDemoMetalExtractorSpawnContractTest();
+        const { runDemoInitialBaseActiveStateContractTest } = await import('../sim/demoInitialBaseActiveStateContractTest');
+        runDemoInitialBaseActiveStateContractTest();
         const { runTeamRosterContractTest } = await import('../sim/teamRosterContractTest');
         runTeamRosterContractTest();
         const { runSimulationPathPlanSchedulerContractTest } = await import('../sim/SimulationPathPlanSchedulerContractTest');

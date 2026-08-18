@@ -18,6 +18,9 @@
     "buildingWind": {
       "radiusFraction": 0.75
     },
+    "supplementalGround": {
+      "radiusFraction": 0.72
+    },
     "unitCommander": {
       "radiusFraction": 0.7
     },
@@ -47,6 +50,9 @@
     },
     "towerBeamMega": {
       "radiusFraction": 0.4
+    },
+    "supplementalWater": {
+      "radiusFraction": 0.985
     }
   },
   "waterFabricators": {
@@ -75,5 +81,10 @@
   "buildingResourceConverterCount": 1,
   "buildingShieldTargetingTechCount": 1,
   "buildingShieldTechCount": 1,
-  "buildingPrecisionTargetingTechCount": 1
+  "buildingPrecisionTargetingTechCount": 1,
+  "initiallyOffBuildingBlueprintIds": [
+    "buildingShieldTargetingTech",
+    "buildingShieldTech",
+    "buildingPrecisionTargetingTech"
+  ]
 }

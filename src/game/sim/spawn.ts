@@ -14,6 +14,7 @@ import {
   REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
 } from '../../config';
 import { applyCompletedBuildingEffects } from './buildingCompletion';
+import { setBuildingActiveOpen } from './buildingActiveState';
 import {
   getSeatBaseAngle,
   getSeatBuildArcAngle,
@@ -34,6 +35,8 @@ import {
   BUILD_GRID_CELL_SIZE,
   getRotatedBuildingPlacementFootprint,
 } from './buildGrid';
+import { BUILDING_BLUEPRINT_IDS } from '../../types/blueprintIds';
+import { getBuildingPlacementSetSquareType } from '../../types/buildingTypes';
 
 export { getSeatBaseAngle } from './playerLayout';
 
@@ -112,26 +115,93 @@ const METAL_EXTRACTOR_PLACEMENT_SEARCH_OFFSETS: readonly GridOffset[] = [
   { dx: 0, dy: 0 },
 ];
 
-type InitialFactoryWaypointConfig = {
+/** Rows with bespoke counts/semantics below. Every other non-extractor
+ * building is automatically placed on the supplemental ground/water row.
+ * This inversion is deliberate: appending a blueprint to the canonical
+ * registry makes it appear in Demo without requiring another hand-maintained
+ * spawn list. */
+const DEMO_BESPOKE_BASE_BUILDING_BLUEPRINT_IDS = new Set<BuildingBlueprintId>([
+  'buildingSolar',
+  'buildingWind',
+  'towerFabricator',
+  'towerBeamMega',
+  'towerCannon',
+  'buildingRadar',
+  'buildingResourceConverter',
+  'towerAntiAir',
+  'buildingSonar',
+  'buildingShieldTargetingTech',
+  'buildingShieldTech',
+  'buildingPrecisionTargetingTech',
+]);
+
+function getDemoExtractorBlueprintIds(
+  availableBuildingBlueprintIds: ReadonlySet<string> | undefined,
+): BuildingBlueprintId[] {
+  return BUILDING_BLUEPRINT_IDS.filter((id) => {
+    if (availableBuildingBlueprintIds !== undefined && !availableBuildingBlueprintIds.has(id)) {
+      return false;
+    }
+    return getBuildingConfig(id).metalProduction !== null;
+  });
+}
+
+function getDemoSupplementalBuildingBlueprintIds(
+  squareType: 'ground' | 'water',
+  availableBuildingBlueprintIds: ReadonlySet<string> | undefined,
+): BuildingBlueprintId[] {
+  return BUILDING_BLUEPRINT_IDS.filter((id) => {
+    if (availableBuildingBlueprintIds !== undefined && !availableBuildingBlueprintIds.has(id)) {
+      return false;
+    }
+    if (DEMO_BESPOKE_BASE_BUILDING_BLUEPRINT_IDS.has(id)) return false;
+    const config = getBuildingConfig(id);
+    if (config.metalProduction !== null) return false;
+    // A dual-domain structure belongs on the ground showcase row. Water is
+    // reserved for structures that genuinely have no ground placement set.
+    const supportsGround = config.placementSets.some(
+      (set) => getBuildingPlacementSetSquareType(set) === 'ground',
+    );
+    return squareType === 'ground'
+      ? supportsGround
+      : !supportsGround && config.placementSets.some(
+        (set) => getBuildingPlacementSetSquareType(set) === 'water',
+      );
+  });
+}
+
+/** Everything about a pre-placed initial-base building that depends on which
+ *  kind of base is being stood up. Threaded to every placement site so the
+ *  demo/real split is decided once, here, instead of at each call. */
+type InitialBasePolicy = {
   fightType: WaypointType;
   fightDistance: number;
   addDemoCenterPatrolLoop: boolean;
+  /** Pre-placed hosts that come up with their ON/OFF switch already OFF.
+   *  Only the demo's opening base authors any; a normally constructed
+   *  building always completes with its switch ON. */
+  initiallyOffBuildingBlueprintIds: ReadonlySet<BuildingBlueprintId>;
 };
 
-function getInitialFactoryWaypointConfig(mode: InitialBaseMode): InitialFactoryWaypointConfig {
+function getInitialBasePolicy(mode: InitialBaseMode): InitialBasePolicy {
   if (mode === 'real') {
     return {
       fightType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
       fightDistance: REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
       addDemoCenterPatrolLoop: false,
+      initiallyOffBuildingBlueprintIds: EMPTY_INITIALLY_OFF_BUILDING_BLUEPRINT_IDS,
     };
   }
   return {
     fightType: 'fight',
     fightDistance: DEMO_CONFIG.factoryFightWaypointDistance,
     addDemoCenterPatrolLoop: true,
+    initiallyOffBuildingBlueprintIds: DEMO_CONFIG.initiallyOffBuildingBlueprintIds,
   };
 }
+
+const EMPTY_INITIALLY_OFF_BUILDING_BLUEPRINT_IDS: ReadonlySet<BuildingBlueprintId> =
+  new Set<BuildingBlueprintId>();
 
 /**
  * Compute a factory's default waypoint along the factory -> map-center axis.
@@ -155,17 +225,17 @@ function computeFactoryDefaultWaypoints(
   factoryY: number,
   mapWidth: number,
   mapHeight: number,
-  config: InitialFactoryWaypointConfig,
+  basePolicy: InitialBasePolicy,
 ): readonly FactoryDefaultWaypoint[] {
   const fight = computeFactoryWaypoint(
     factoryX,
     factoryY,
     mapWidth,
     mapHeight,
-    config.fightDistance,
+    basePolicy.fightDistance,
   );
-  if (!config.addDemoCenterPatrolLoop) {
-    return [{ x: fight.x, y: fight.y, z: null, type: config.fightType }];
+  if (!basePolicy.addDemoCenterPatrolLoop) {
+    return [{ x: fight.x, y: fight.y, z: null, type: basePolicy.fightType }];
   }
 
   const oval = makeMapOvalMetrics(mapWidth, mapHeight);
@@ -174,7 +244,7 @@ function computeFactoryDefaultWaypoints(
   const near = mapOvalPointAt(oval, angle, patrolRadius);
   const far = mapOvalPointAt(oval, angle + Math.PI, patrolRadius);
   return [
-    { x: fight.x, y: fight.y, z: null, type: config.fightType },
+    { x: fight.x, y: fight.y, z: null, type: basePolicy.fightType },
     { x: far.x, y: far.y, z: null, type: 'patrol' },
     { x: near.x, y: near.y, z: null, type: 'patrol' },
   ];
@@ -282,7 +352,7 @@ function placeCompleteBuilding(
   worldX: number,
   worldY: number,
   playerId: PlayerId,
-  factoryWaypoint: InitialFactoryWaypointConfig,
+  basePolicy: InitialBasePolicy,
   searchOffsets: readonly GridOffset[] = INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS,
   acceptCompleted: ((entity: Entity) => boolean) | null = null,
   acceptCandidate: ((x: number, y: number) => boolean) | null = null,
@@ -335,7 +405,7 @@ function placeCompleteBuilding(
       },
     );
     if (entity === null) continue;
-    completeInitialBuilding(world, entity, config, factoryWaypoint);
+    completeInitialBuilding(world, entity, config, basePolicy);
     if (acceptCompleted !== null && !acceptCompleted(entity)) {
       construction.onBuildingDestroyed(world, entity);
       world.removeEntity(entity.id);
@@ -351,7 +421,7 @@ function completeInitialBuilding(
   world: WorldState,
   entity: Entity,
   config: ReturnType<typeof getBuildingConfig>,
-  factoryWaypoint: InitialFactoryWaypointConfig,
+  basePolicy: InitialBasePolicy,
 ): void {
   if (entity.buildable) {
     entity.buildable.paid = { ...entity.buildable.required };
@@ -369,12 +439,28 @@ function completeInitialBuilding(
       entity.transform.y,
       world.mapWidth,
       world.mapHeight,
-      factoryWaypoint,
+      basePolicy,
     );
     setFactoryDefaultWaypoints(entity, defaultWaypoints);
   }
 
   applyCompletedBuildingEffects(world, entity);
+
+  // Pre-placed hosts the base authored as switched OFF. This runs after
+  // completion on purpose: applyCompletedBuildingEffects puts every ON/OFF
+  // host into the shared activation pose (switch ON, debounce primed), and
+  // the authored OFF is a standing player-style order on top of that — the
+  // same call the ON/OFF button makes, so the host fortifies and parks its
+  // timers exactly as a manual switch-off would. Only pre-placed initial-base
+  // buildings reach here; anything constructed during play completes ON.
+  const blueprintId = entity.buildingBlueprintId;
+  if (
+    blueprintId !== null &&
+    basePolicy.initiallyOffBuildingBlueprintIds.has(blueprintId)
+  ) {
+    setBuildingActiveOpen(world, entity, false);
+  }
+
   entity.buildable = null;
 }
 
@@ -433,7 +519,7 @@ function placeArcRow(
   baseAngle: number,
   sectorAngle: number,
   playerId: PlayerId,
-  factoryWaypoint: InitialFactoryWaypointConfig,
+  basePolicy: InitialBasePolicy,
   searchOffsets: readonly GridOffset[] = INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS,
   acceptCandidate: ((x: number, y: number) => boolean) | null = null,
   ignoreTerrainForPlacement = false,
@@ -452,13 +538,65 @@ function placeArcRow(
       point.x,
       point.y,
       playerId,
-      factoryWaypoint,
+      basePolicy,
       searchOffsets,
       null,
       acceptCandidate,
       ignoreTerrainForPlacement,
     );
     if (e) entities.push(e);
+  }
+  return entities;
+}
+
+/** Place one of each blueprint across a shared showcase arc. Unlike the
+ * bespoke homogeneous rows, the registry-derived supplemental row may mix
+ * footprints and support anchors. Each item therefore runs through its own
+ * canonical building config and ordinary ConstructionSystem placement. */
+function placeMixedBlueprintArcRow(
+  world: WorldState,
+  construction: ConstructionSystem,
+  buildingBlueprintIds: readonly BuildingBlueprintId[],
+  oval: MapOvalMetrics,
+  radius: number,
+  baseAngle: number,
+  sectorAngle: number,
+  playerId: PlayerId,
+  basePolicy: InitialBasePolicy,
+  searchOffsets: readonly GridOffset[],
+  squareType: 'ground' | 'water',
+): Entity[] {
+  const count = buildingBlueprintIds.length;
+  if (count === 0) return [];
+  const entities: Entity[] = [];
+  const startAngle = baseAngle - sectorAngle / 2;
+  const angularStep = count > 1 ? sectorAngle / (count - 1) : 0;
+  for (let i = 0; i < count; i++) {
+    const buildingBlueprintId = buildingBlueprintIds[i];
+    const config = getBuildingConfig(buildingBlueprintId);
+    const angle = count > 1 ? startAngle + i * angularStep : baseAngle;
+    const point = mapOvalPointAt(oval, angle, radius);
+    const width = config.placementGridWidth * BUILD_GRID_CELL_SIZE;
+    const height = config.placementGridHeight * BUILD_GRID_CELL_SIZE;
+    const entity = placeCompleteBuilding(
+      world,
+      construction,
+      buildingBlueprintId,
+      point.x,
+      point.y,
+      playerId,
+      basePolicy,
+      searchOffsets,
+      null,
+      squareType === 'water'
+        ? (x, y) => isRectFootprintOverWater(world, x, y, width, height)
+        : (x, y) => isRectFootprintOverLand(world, x, y, width, height),
+      // These are prebuilt authored showcase rows. The medium preflight above,
+      // map bounds, and occupancy remain hard requirements; terrain slope and
+      // ordinary player-build restrictions must not silently omit a roster id.
+      true,
+    );
+    if (entity !== null) entities.push(entity);
   }
   return entities;
 }
@@ -510,7 +648,7 @@ function placeFactoryArcRowForUnitBlueprintIds(
   baseAngle: number,
   sectorAngle: number,
   playerId: PlayerId,
-  factoryWaypoint: InitialFactoryWaypointConfig,
+  basePolicy: InitialBasePolicy,
   searchOffsets: readonly GridOffset[] = INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS,
   acceptCompleted: ((entity: Entity) => boolean) | null = null,
   acceptCandidate: ((x: number, y: number) => boolean) | null = null,
@@ -532,7 +670,7 @@ function placeFactoryArcRowForUnitBlueprintIds(
       point.x,
       point.y,
       playerId,
-      factoryWaypoint,
+      basePolicy,
       searchOffsets,
       acceptCompleted,
       acceptCandidate,
@@ -550,7 +688,7 @@ function placeFactoryArcRowForUnitBlueprintIds(
         point.x,
         point.y,
         playerId,
-        factoryWaypoint,
+        basePolicy,
         searchOffsets,
         null,
         null,
@@ -631,6 +769,22 @@ function isRectFootprintOverWater(
     isWaterAt(x + halfWidth, y + halfHeight, world.mapWidth, world.mapHeight);
 }
 
+function isRectFootprintOverLand(
+  world: WorldState,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): boolean {
+  const halfWidth = width * 0.5;
+  const halfHeight = height * 0.5;
+  return !isWaterAt(x, y, world.mapWidth, world.mapHeight) &&
+    !isWaterAt(x - halfWidth, y - halfHeight, world.mapWidth, world.mapHeight) &&
+    !isWaterAt(x + halfWidth, y - halfHeight, world.mapWidth, world.mapHeight) &&
+    !isWaterAt(x - halfWidth, y + halfHeight, world.mapWidth, world.mapHeight) &&
+    !isWaterAt(x + halfWidth, y + halfHeight, world.mapWidth, world.mapHeight);
+}
+
 function configureOuterWaterFactoryWaypoints(
   world: WorldState,
   entity: Entity,
@@ -696,13 +850,24 @@ export function spawnInitialBases(
   const playerCount = normalizedPlayerIds.length;
   const { oval, radius: spawnRadius } = getDemoOval(world);
   const { cx, cy } = oval;
-  const factoryWaypoint = getInitialFactoryWaypointConfig(mode);
+  const basePolicy = getInitialBasePolicy(mode);
   // LIQUID = LAVA: the sea is molten rock, so the demo spawns nothing that
   // belongs in or on the water. The offshore Fabricator arc (the water-unit
   // production lines) and its Sonar ring are omitted entirely; every
   // Fabricator the demo still places is a land line on the land factory
   // ring. LIQUID = WATER keeps the authored offshore installation.
   const lavaLiquid = world.liquidSurfaceMode === 'lava';
+  const supplementalGroundBuildingBlueprintIds =
+    getDemoSupplementalBuildingBlueprintIds(
+      'ground',
+      availableBuildingBlueprintIds,
+    );
+  const supplementalWaterBuildingBlueprintIds = lavaLiquid
+    ? []
+    : getDemoSupplementalBuildingBlueprintIds(
+      'water',
+      availableBuildingBlueprintIds,
+    );
   const waterFactoryUnitBlueprintIds = lavaLiquid
     ? []
     : DEMO_CONFIG.waterFabricators.unitBlueprintIds.filter(
@@ -728,6 +893,10 @@ export function spawnInitialBases(
     spawnRadius,
     DEMO_CONFIG.baseRings.buildingWind.radiusFraction,
   );
+  const supplementalGroundRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.baseRings.supplementalGround.radiusFraction,
+  );
   const factoryRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
     DEMO_CONFIG.baseRings.towerFabricator.radiusFraction,
@@ -743,6 +912,10 @@ export function spawnInitialBases(
   const authoredSonarRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
     DEMO_CONFIG.waterFabricators.sonarRadiusFraction,
+  );
+  const supplementalWaterRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.baseRings.supplementalWater.radiusFraction,
   );
   const megaBeamTowerRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
@@ -807,9 +980,23 @@ export function spawnInitialBases(
     if (isBuildingEnabled('buildingWind')) {
       entities.push(...placeArcRow(
         world, construction, 'buildingWind', DEMO_CONFIG.buildingWindCount,
-        oval, windRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+        oval, windRadius, baseAngle, sectorAngle, playerId, basePolicy,
       ));
     }
+
+    entities.push(...placeMixedBlueprintArcRow(
+      world,
+      construction,
+      supplementalGroundBuildingBlueprintIds,
+      oval,
+      supplementalGroundRadius,
+      baseAngle,
+      sectorAngle,
+      playerId,
+      basePolicy,
+      FACTORY_PLACEMENT_SEARCH_OFFSETS,
+      'ground',
+    ));
 
     // ── The radar↔beam band ─────────────────────────────────────────
     // The radar (0.65) and beam-tower (0.40) rings are fixed endpoints;
@@ -831,14 +1018,14 @@ export function spawnInitialBases(
       entities.push(...placeArcRow(
         world, construction, 'buildingPrecisionTargetingTech',
         DEMO_CONFIG.buildingPrecisionTargetingTechCount,
-        oval, precisionTargetingTechRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+        oval, precisionTargetingTechRadius, baseAngle, sectorAngle, playerId, basePolicy,
         FACTORY_PLACEMENT_SEARCH_OFFSETS,
       ));
     }
     if (isBuildingEnabled('buildingRadar')) {
       entities.push(...placeArcRow(
         world, construction, 'buildingRadar', DEMO_CONFIG.buildingRadarCount,
-        oval, radarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+        oval, radarRadius, baseAngle, sectorAngle, playerId, basePolicy,
         FACTORY_PLACEMENT_SEARCH_OFFSETS,
       ));
     }
@@ -846,7 +1033,7 @@ export function spawnInitialBases(
       entities.push(...placeArcRow(
         world, construction, 'buildingShieldTargetingTech',
         DEMO_CONFIG.buildingShieldTargetingTechCount,
-        oval, shieldTargetingTechRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+        oval, shieldTargetingTechRadius, baseAngle, sectorAngle, playerId, basePolicy,
         FACTORY_PLACEMENT_SEARCH_OFFSETS,
       ));
     }
@@ -854,42 +1041,42 @@ export function spawnInitialBases(
       entities.push(...placeArcRow(
         world, construction, 'buildingShieldTech',
         DEMO_CONFIG.buildingShieldTechCount,
-        oval, shieldTechRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+        oval, shieldTechRadius, baseAngle, sectorAngle, playerId, basePolicy,
         FACTORY_PLACEMENT_SEARCH_OFFSETS,
       ));
     }
     if (isBuildingEnabled('towerAntiAir')) {
       entities.push(...placeArcRow(
         world, construction, 'towerAntiAir', DEMO_CONFIG.towerAntiAirCount,
-        oval, antiAirTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+        oval, antiAirTowerRadius, baseAngle, sectorAngle, playerId, basePolicy,
         FACTORY_PLACEMENT_SEARCH_OFFSETS,
       ));
     }
     if (isBuildingEnabled('buildingResourceConverter')) {
       entities.push(...placeArcRow(
         world, construction, 'buildingResourceConverter', DEMO_CONFIG.buildingResourceConverterCount,
-        oval, resourceConverterRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+        oval, resourceConverterRadius, baseAngle, sectorAngle, playerId, basePolicy,
         FACTORY_PLACEMENT_SEARCH_OFFSETS,
       ));
     }
     if (isBuildingEnabled('buildingSolar')) {
       entities.push(...placeArcRow(
         world, construction, 'buildingSolar', DEMO_CONFIG.buildingSolarCount,
-        oval, solarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+        oval, solarRadius, baseAngle, sectorAngle, playerId, basePolicy,
         FACTORY_PLACEMENT_SEARCH_OFFSETS,
       ));
     }
     if (isBuildingEnabled('towerCannon')) {
       entities.push(...placeArcRow(
         world, construction, 'towerCannon', DEMO_CONFIG.towerCannonCount,
-        oval, cannonTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+        oval, cannonTowerRadius, baseAngle, sectorAngle, playerId, basePolicy,
         FACTORY_PLACEMENT_SEARCH_OFFSETS,
       ));
     }
     if (isBuildingEnabled('towerBeamMega')) {
       entities.push(...placeArcRow(
         world, construction, 'towerBeamMega', DEMO_CONFIG.towerBeamMegaCount,
-        oval, megaBeamTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+        oval, megaBeamTowerRadius, baseAngle, sectorAngle, playerId, basePolicy,
         FACTORY_PLACEMENT_SEARCH_OFFSETS,
       ));
     }
@@ -919,7 +1106,7 @@ export function spawnInitialBases(
           DEMO_CONFIG.waterFabricators.arcSectorFraction,
         ),
         playerId,
-        factoryWaypoint,
+        basePolicy,
         WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS,
         (entity) => isFabricatorOverWater(world, entity),
         (x, y) => isFabricatorFootprintOverWater(
@@ -944,7 +1131,7 @@ export function spawnInitialBases(
       }
       const landFactories = placeFactoryArcRowForUnitBlueprintIds(
         world, construction, factoryUnitBlueprintIds,
-        oval, factoryRadius, baseAngle, factorySectorAngle, playerId, factoryWaypoint,
+        oval, factoryRadius, baseAngle, factorySectorAngle, playerId, basePolicy,
         FACTORY_PLACEMENT_SEARCH_OFFSETS,
         null,
         // On a lava world every Fabricator must sit fully over land: a line
@@ -1002,12 +1189,32 @@ export function spawnInitialBases(
       const sonarHeight = sonarConfig.gridHeight * BUILD_GRID_CELL_SIZE;
       entities.push(...placeArcRow(
         world, construction, 'buildingSonar', DEMO_CONFIG.buildingSonarCount,
-        oval, sonarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+        oval, sonarRadius, baseAngle, sectorAngle, playerId, basePolicy,
         WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS,
         (x, y) =>
           sampleMapOvalAt(oval, x, y).distance >= sonarRadius &&
           isRectFootprintOverWater(world, x, y, sonarWidth, sonarHeight),
         true,
+      ));
+    }
+
+    if (!lavaLiquid) {
+      entities.push(...placeMixedBlueprintArcRow(
+        world,
+        construction,
+        supplementalWaterBuildingBlueprintIds,
+        oval,
+        supplementalWaterRadius,
+        baseAngle,
+        getSeatBuildArcAngle(
+          world.teamRoster,
+          playerId,
+          DEMO_CONFIG.waterFabricators.arcSectorFraction,
+        ),
+        playerId,
+        basePolicy,
+        WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS,
+        'water',
       ));
     }
 
@@ -1035,24 +1242,33 @@ export function spawnMetalExtractorsOnDeposits(
   world: WorldState,
   construction: ConstructionSystem,
   playerIds: PlayerId[],
+  availableBuildingBlueprintIds: ReadonlySet<string> | undefined = undefined,
 ): Entity[] {
   if (playerIds.length === 0 || world.metalDeposits.length === 0) return [];
+  const extractorBlueprintIds = getDemoExtractorBlueprintIds(
+    availableBuildingBlueprintIds,
+  );
+  if (extractorBlueprintIds.length === 0) return [];
   const entities: Entity[] = [];
-  const factoryWaypoint = getInitialFactoryWaypointConfig('real');
+  const basePolicy = getInitialBasePolicy('real');
+  const extractorCountByOwner = new Map<PlayerId, number>();
 
   for (const deposit of world.metalDeposits) {
     // Rings authored with demoAutoExtractor: false start neutral — no
     // team gets a free extractor there (e.g. the exact-center deposit).
     if (deposit.demoAutoExtractor === false) continue;
     const ownerId = ownerForDeposit(world, playerIds, deposit.x, deposit.y);
+    const ownerExtractorIndex = extractorCountByOwner.get(ownerId) ?? 0;
+    const extractorBlueprintId =
+      extractorBlueprintIds[ownerExtractorIndex % extractorBlueprintIds.length];
     const extractor = placeCompleteBuilding(
       world,
       construction,
-      'buildingExtractor',
+      extractorBlueprintId,
       deposit.x,
       deposit.y,
       ownerId,
-      factoryWaypoint,
+      basePolicy,
       METAL_EXTRACTOR_PLACEMENT_SEARCH_OFFSETS,
       (entity) => (entity.metalExtractionRate ?? 0) > 0,
       null,
@@ -1064,6 +1280,7 @@ export function spawnMetalExtractorsOnDeposits(
     );
     if (!extractor) continue;
 
+    extractorCountByOwner.set(ownerId, ownerExtractorIndex + 1);
     entities.push(extractor);
   }
 
