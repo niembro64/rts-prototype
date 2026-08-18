@@ -38,6 +38,7 @@ import {
   isShieldSubmunitionTurret,
   isWeaponAimedForFire,
   resolveWeaponEmissionSocket,
+  turretOwnsSharedAimPieceClaim,
   turretMaskIncludes,
 } from './combatUtils';
 import { updateProjectileArming } from './shotArming';
@@ -895,6 +896,10 @@ export function fireTurrets(
       } else if (weapon.state !== 'engaged') {
         continue;
       }
+      // A rigid multi-barrel building head grants one station an exclusive
+      // firing window. The other station may propose its next aim, but cannot
+      // exploit a coincidentally aligned shared pose to begin a second pulse.
+      if (!turretOwnsSharedAimPieceClaim(unit, weaponIndex)) continue;
 
       // Legacy laser recoil remains per-tick here. Committed attack-beam
       // recoil is integrated from its coarse authoritative collision windows

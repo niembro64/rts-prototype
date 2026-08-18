@@ -22,9 +22,10 @@ import {
 import type { TurretMountControlMode } from '../../types/blueprints';
 import type {
   TurretEmissionSocket,
+  TurretHostAttachment,
+  TurretAngularActuator,
   TurretPresentation,
   TurretStationArticulation,
-  UnitTurretHostAttachment,
 } from '../../types/blueprints';
 import type { EntityId } from '../../types/entityTypes';
 import { NO_ENTITY_ID } from '../../types/entityTypes';
@@ -155,9 +156,10 @@ function makeRuntimeTurret(
   requiredEngagedForFightStop: boolean,
   sensorTurretBlueprintId: string | null,
   slavedToMountId: string | null,
-  hostAttachment: UnitTurretHostAttachment | null,
+  hostAttachment: TurretHostAttachment | null,
   emissionSockets: readonly TurretEmissionSocket[] | null,
   authoredArticulation: TurretStationArticulation | null,
+  angularActuatorOverride: TurretAngularActuator | null,
   mobileHost: boolean,
   presentation: TurretPresentation | null,
   identity: {
@@ -193,12 +195,20 @@ function makeRuntimeTurret(
     hostAttachment,
     turretConfig.idlePitch,
     turretConfig.verticalLauncher,
-    mobileHost && (controlMode === 'hostPreferred' || controlMode === 'hostOnly'),
+    hostAttachment?.kind === 'buildingYawPiece' ||
+      hostAttachment?.kind === 'buildingAimPiece' ||
+      (mobileHost && (controlMode === 'hostPreferred' || controlMode === 'hostOnly')),
   );
   // Mount-authored flags live on the per-instance config, not the shared
   // turret blueprint config.
   const config = {
     ...turretConfig,
+    angular: angularActuatorOverride === null
+      ? turretConfig.angular
+      : {
+        yaw: { ...angularActuatorOverride.yaw },
+        pitch: { ...angularActuatorOverride.pitch },
+      },
     controlMode,
     slavedToMountId,
     requiredEngagedForFightStop,
@@ -244,6 +254,10 @@ function makeRuntimeTurret(
     hostPieceYaw: Number.NaN,
     hostPieceYawVelocity: 0,
     hostPieceIdleMs: 0,
+    hostPieceClaimMountIndex: -1,
+    hostPieceLastClaimMountIndex: -1,
+    hostPieceClaimAgeMs: 0,
+    hostPieceClaimSawActiveBeam: false,
     emissionSockets: buildRuntimeEmissionSockets(
       emissionSockets,
       presentation,
@@ -267,7 +281,7 @@ function makeRuntimeTurret(
  * chain so no runtime weapon bypasses local articulation. */
 function resolveStationArticulation(
   authored: TurretStationArticulation | null,
-  hostAttachment: UnitTurretHostAttachment | null,
+  hostAttachment: TurretHostAttachment | null,
   idlePitch: number,
   verticalLauncher: boolean,
   mayRequestHostYaw: boolean,
@@ -291,7 +305,11 @@ function resolveStationArticulation(
     restPitch: verticalLauncher ? Math.PI / 2 : idlePitch,
     restoreDelayMs: 2200,
     hostAssist: mayRequestHostYaw ? 'requestYaw' : 'none',
-    claimGroup: hostAttachment === null ? null : 'botUpperBody',
+    claimGroup: hostAttachment === null
+      ? null
+      : hostAttachment.kind === 'buildingYawPiece' || hostAttachment.kind === 'buildingAimPiece'
+        ? hostAttachment.piece
+        : 'botUpperBody',
     claimPriority: 0,
   };
 }
@@ -362,6 +380,7 @@ export function createUnitRuntimeTurrets(
       mount.hostAttachment ?? null,
       mount.emissionSockets ?? null,
       mount.articulation ?? null,
+      null,
       true,
       mount.presentation,
       identity,
@@ -398,9 +417,10 @@ export function createBuildingRuntimeTurrets(
       false,
       m.sensorTurretBlueprintId ?? null,
       m.slavedToMountId ?? null,
-      null,
-      null,
+      m.hostAttachment ?? null,
+      m.emissionSockets ?? null,
       m.articulation ?? null,
+      m.angularActuator ?? null,
       false,
       m.presentation,
       identity,

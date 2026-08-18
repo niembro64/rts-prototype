@@ -27,6 +27,10 @@ import { getSimWasm } from '../../sim-wasm/init';
 import { isAttackEmitter, isManualEmitterConfig } from '../emitterKinds';
 import { beamIndex } from '../BeamIndex';
 import { evaluateBeamPulsePlan, type BeamPulseEvaluation } from './beamPulse';
+import {
+  isBuildingAimPieceAttachment,
+  selectBuildingHostPieceTurretIndex,
+} from '../../math/BuildingHostSocketGeometry';
 
 const _turretAimPose: CombatTargetingTurretAimOut = {
   hasSolution: true,
@@ -413,6 +417,31 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
       // --- 2) Move both axes toward targets. ---
       const aimTargetYaw = targetAngle!;
       const aimTargetPitch = targetPitch;
+      const hostAttachment = weapon.config.hostAttachment;
+      if (isBuildingAimPieceAttachment(hostAttachment)) {
+        const ownerIndex = selectBuildingHostPieceTurretIndex(turrets, hostAttachment.piece);
+        const owner = ownerIndex >= 0 ? turrets[ownerIndex] : undefined;
+        const sharedYaw = owner !== undefined && Number.isFinite(owner.hostPieceYaw)
+          ? owner.hostPieceYaw
+          : unit.transform.rotation;
+        const sharedPitch = owner?.pitch ?? 0;
+        weapon.localYaw = 0;
+        weapon.localYawVelocity = 0;
+        weapon.localPitch = 0;
+        weapon.localPitchVelocity = 0;
+        weapon.rotation = sharedYaw;
+        weapon.angularVelocity = owner?.hostPieceYawVelocity ?? 0;
+        weapon.angularAcceleration = owner?.angularAcceleration ?? 0;
+        weapon.pitch = sharedPitch;
+        weapon.pitchVelocity = owner?.pitchVelocity ?? 0;
+        weapon.pitchAcceleration = owner?.pitchAcceleration ?? 0;
+        weapon.articulationParentYaw = sharedYaw;
+        weapon.aimTargetYaw = aimTargetYaw;
+        weapon.aimTargetPitch = aimTargetPitch;
+        weapon.aimErrorYaw = normalizeAngle(aimTargetYaw - sharedYaw);
+        weapon.aimErrorPitch = aimTargetPitch - sharedPitch;
+        continue;
+      }
       // Rust/WASM owns the bounded yaw/pitch joint integration for all
       // queued turrets in one batch. TypeScript only supplies target poses
       // after resolving target policy and ballistic aim.

@@ -7,9 +7,17 @@ const BASE_URL = `http://127.0.0.1:${PORT}/budget-annihilation/`;
 const OUTPUT_DIR = new URL('../artifacts/lod-visual-regression/', import.meta.url);
 const TIERS = ['High', 'Medium', 'Low'];
 const CATEGORIES = [
-  { button: 'Units', slug: 'units', expected: 25, rowsPerSheet: 6 },
-  { button: 'Buildings', slug: 'buildings', expected: 12, rowsPerSheet: 6 },
+  { button: 'Units', slug: 'units', expected: 27, rowsPerSheet: 6 },
+  { button: 'Buildings', slug: 'buildings', expected: 20, rowsPerSheet: 6 },
 ];
+const only = process.argv.find((arg) => arg.startsWith('--only='))?.slice('--only='.length)
+  .toLowerCase() ?? null;
+const selectedCategories = only === null
+  ? CATEGORIES
+  : CATEGORIES.filter((category) => category.slug === only);
+if (selectedCategories.length === 0) {
+  throw new Error(`Unknown capture category ${only}; expected units or buildings`);
+}
 
 async function urlIsReady() {
   try {
@@ -125,7 +133,7 @@ async function run() {
     const rotate = page.locator('.entity-lab-sidebar input[type="checkbox"]').first();
     if (await rotate.isChecked()) await rotate.uncheck();
 
-    for (const category of CATEGORIES) {
+    for (const category of selectedCategories) {
       await page.getByRole('button', { name: category.button, exact: true }).click();
       await page.waitForTimeout(80);
       const options = await page.locator('.entity-lab-sidebar select option').evaluateAll((nodes) =>

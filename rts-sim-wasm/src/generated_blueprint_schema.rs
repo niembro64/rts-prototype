@@ -738,6 +738,32 @@ pub enum UnitTurretHostAttachment {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct BuildingYawPieceTurretHostAttachment {
+    pub kind: String,
+    pub piece: String,
+    pub socketOffset: MountOffset,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BuildingAimPieceTurretHostAttachment {
+    pub kind: String,
+    pub piece: String,
+    pub socketOffset: MountOffset,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum BuildingTurretHostAttachment {
+    BuildingYawPieceTurretHostAttachment(BuildingYawPieceTurretHostAttachment),
+    BuildingAimPieceTurretHostAttachment(BuildingAimPieceTurretHostAttachment),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TurretHostAttachment {
+    UnitTurretHostAttachment(UnitTurretHostAttachment),
+    BuildingTurretHostAttachment(BuildingTurretHostAttachment),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct TurretEmissionSocket {
     pub offset: MountOffset,
 }
@@ -759,6 +785,7 @@ pub struct TurretPitchTraverse {
 pub enum TurretHostAssistPolicy {
     None,
     RequestYaw,
+    RequestAim,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -804,7 +831,10 @@ pub struct BuildingTurretMount {
     pub shieldPanels: Option<Vec<ShieldPanel>>,
     pub controlMode: TurretMountControlMode,
     pub slavedToMountId: Option<String>,
+    pub hostAttachment: Option<BuildingTurretHostAttachment>,
+    pub emissionSockets: Option<Vec<TurretEmissionSocket>>,
     pub articulation: Option<TurretStationArticulation>,
+    pub angularActuator: Option<TurretAngularActuator>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -282,6 +282,8 @@ export interface CombatTargetingApi {
     pitch: number,
     angularVelocity: number,
     pitchVelocity: number,
+    hostPieceYaw: number,
+    hostPieceYawVelocity: number,
     parentYaw: number,
     yawMin: number,
     yawMax: number,

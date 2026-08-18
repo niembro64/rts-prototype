@@ -1,4 +1,4 @@
-import { computed, ref, type ComputedRef, type Ref } from 'vue';
+import { computed, ref, watch, type ComputedRef, type Ref } from 'vue';
 import {
   BATTLE_CONFIG,
   loadStoredConverterTax,
@@ -7,10 +7,9 @@ import {
   loadStoredSlowDownAtFinalWaypoint,
   normalizeConverterTax,
   saveConverterTax,
-  saveDemoUnits,
-  saveDemoBuildings,
-  loadStoredDemoBuildings,
-  getDefaultDemoBuildings,
+  loadBattleBuildingRoster,
+  saveBattleBuildingRoster,
+  saveBattleUnitRoster,
   saveForceFieldsVisible,
   saveFogOfWarEnabled,
   saveSlowDownAtFinalWaypoint,
@@ -140,14 +139,18 @@ export function useGameCanvasBattleSettings({
 
   // Building enablement (the BUILDINGS bar group). Unlike
   // units — which read their allowed set back from the authoritative
-  // server snapshot — structure toggles are driven by local refs seeded
-  // from localStorage. Each toggle (a) sends the server command that
+  // server snapshot — structure toggles are driven by a local ref seeded
+  // from the mode's roster store (persistent Demo, in-memory Real). Each
+  // toggle (a) sends the server command that
   // gates the next base spawn + live-removes existing structures and
-  // (b) persists, so the refs and the server stay in lockstep without
+  // (b) saves to that mode store, so the refs and server stay in lockstep without
   // adding structure fields to the snapshot meta wire format.
   const allowedBuildings = ref<string[]>(
-    loadStoredDemoBuildings() ?? getDefaultDemoBuildings(),
+    loadBattleBuildingRoster(currentBattleMode.value),
   );
+  watch(currentBattleMode, (mode) => {
+    allowedBuildings.value = loadBattleBuildingRoster(mode);
+  }, { flush: 'sync' });
   const currentAllowedBuildings = computed<readonly string[]>(() => allowedBuildings.value);
   const currentAllowedBuildingsSet = computed<ReadonlySet<string>>(
     () => new Set(allowedBuildings.value),
@@ -175,7 +178,7 @@ export function useGameCanvasBattleSettings({
       });
     }
     allowedBuildings.value = demoBuildingBlueprintIds.filter((id) => next.has(id));
-    saveDemoBuildings(allowedBuildings.value);
+    saveBattleBuildingRoster(allowedBuildings.value, currentBattleMode.value);
   }
 
   function toggleDemoBuildingBlueprintId(buildingBlueprintId: string): void {
@@ -239,37 +242,40 @@ export function useGameCanvasBattleSettings({
       loadStoredConverterTax(currentBattleMode.value),
   );
 
-  function toggleDemoUnitBlueprintId(unitBlueprintId: string): void {
-    const allowed = currentAllowedUnits.value;
-    const current = allowed.includes(unitBlueprintId);
-    getActiveConnection()?.sendCommand({
-      type: 'setBackgroundUnitBlueprintEnabled',
-      tick: 0,
-      unitBlueprintId,
-      enabled: !current,
-    });
-
-    const newList = current
-      ? allowed.filter((unit) => unit !== unitBlueprintId)
-      : [...allowed, unitBlueprintId];
-    saveDemoUnits(newList);
-  }
-
-  function toggleAllDemoUnits(): void {
-    const enableAll = !allDemoUnitsActive.value;
+  function applyUnitSelection(nextIds: readonly string[]): void {
+    const next = new Set(nextIds);
     const allowed = currentAllowedUnitsSet.value;
     const canSkipUnchanged = serverMetaFromSnapshot.value?.units.allowed !== undefined;
     const connection = getActiveConnection();
     for (const unitBlueprintId of demoUnitBlueprintIds) {
-      if (canSkipUnchanged && allowed.has(unitBlueprintId) === enableAll) continue;
+      const enabled = next.has(unitBlueprintId);
+      if (canSkipUnchanged && allowed.has(unitBlueprintId) === enabled) continue;
       connection?.sendCommand({
         type: 'setBackgroundUnitBlueprintEnabled',
         tick: 0,
         unitBlueprintId,
-        enabled: enableAll,
+        enabled,
       });
     }
-    saveDemoUnits(enableAll ? [...demoUnitBlueprintIds] : []);
+    saveBattleUnitRoster(
+      demoUnitBlueprintIds.filter((id) => next.has(id)),
+      currentBattleMode.value,
+    );
+  }
+
+  function toggleDemoUnitBlueprintId(unitBlueprintId: string): void {
+    const allowed = currentAllowedUnits.value;
+    const current = allowed.includes(unitBlueprintId);
+    applyUnitSelection(
+      current
+        ? allowed.filter((unit) => unit !== unitBlueprintId)
+        : [...allowed, unitBlueprintId],
+    );
+  }
+
+  function toggleAllDemoUnits(): void {
+    const enableAll = !allDemoUnitsActive.value;
+    applyUnitSelection(enableAll ? demoUnitBlueprintIds : []);
   }
 
   function changeEntityCountCap(value: number, broadcast = true): void {
@@ -364,24 +370,9 @@ export function useGameCanvasBattleSettings({
 
   // Presets describe the MAP. The entity count cap is deliberately absent:
   // switching maps must never resize the battle, so only an explicit CAP
-  // click moves it (including via DEFAULTS, which applies a preset).
+  // click moves it. Content rosters are independent session/sandbox choices;
+  // applying a terrain preset must never replace them.
   function applyPreset(preset: BattlePreset): void {
-    const presetSet = new Set(preset.units);
-    const allowed = currentAllowedUnitsSet.value;
-    const canSkipUnchanged = serverMetaFromSnapshot.value?.units.allowed !== undefined;
-    const connection = getActiveConnection();
-    for (const unitBlueprintId of demoUnitBlueprintIds) {
-      const enabled = presetSet.has(unitBlueprintId);
-      if (canSkipUnchanged && allowed.has(unitBlueprintId) === enabled) continue;
-      connection?.sendCommand({
-        type: 'setBackgroundUnitBlueprintEnabled',
-        tick: 0,
-        unitBlueprintId,
-        enabled,
-      });
-    }
-    saveDemoUnits([...preset.units]);
-    applyBuildingSelection([...preset.buildings]);
     setFogOfWarEnabled(preset.fogOfWarEnabled);
     setSlowDownAtFinalWaypoint(preset.slowDownAtFinalWaypoint, false);
     setSlopePathMode(preset.slopePathMode);
@@ -410,6 +401,11 @@ export function useGameCanvasBattleSettings({
   }
 
   function resetDemoDefaults(): void {
+    // DEFAULTS owns the mode policy, not a map preset: both contexts reset to
+    // the complete current registries, Demo persists that choice, and Real
+    // keeps it only for the current lobby/match session.
+    applyUnitSelection(demoUnitBlueprintIds);
+    applyBuildingSelection(demoBuildingBlueprintIds);
     applyPreset(getModeDefaultPreset(currentBattleMode.value));
   }
 

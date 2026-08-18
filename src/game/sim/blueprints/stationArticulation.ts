@@ -44,11 +44,11 @@ export function validateStationArticulation(
   if (!Number.isInteger(articulation.claimPriority)) {
     throw new Error(`Invalid ${label}.claimPriority: expected an integer`);
   }
-  const requestsHostYaw = articulation.hostAssist === 'requestYaw';
+  const requestsHost = articulation.hostAssist !== 'none';
   const hasClaimGroup = articulation.claimGroup !== null;
-  if (requestsHostYaw !== hasClaimGroup) {
+  if (requestsHost !== hasClaimGroup) {
     throw new Error(
-      `Invalid ${label}: hostAssist requestYaw and a claimGroup must be authored together`,
+      `Invalid ${label}: hostAssist and a claimGroup must be authored together`,
     );
   }
 }

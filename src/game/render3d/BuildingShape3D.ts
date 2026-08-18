@@ -121,6 +121,18 @@ export type BuildingDetailRole =
 export type BuildingDetailMesh = {
   mesh: THREE.Mesh;
   role?: BuildingDetailRole;
+  /** Optional articulated parent. Coordinates are local to that piece's
+   *  pivot rather than to the building root. */
+  hostPieceId?: string;
+};
+
+export type BuildingTurretHostPieceShape = {
+  pieceId: string;
+  /** World-yaw parent positioned at the authoritative host-piece pivot. */
+  root: THREE.Group;
+  /** Optional pitch child. Two-axis heads attach their rigid weapon sockets
+   * and visible housing here; yaw-only pieces omit it. */
+  pitchRoot?: THREE.Group;
 };
 
 /** What the caller receives back from `buildBuildingShape()`. */
@@ -152,6 +164,10 @@ export type BuildingShape = {
   radarRig?: RadarRig;
   converterRig?: ResourceConverterRig;
   operationalRig?: BuildingOperationalRig;
+  /** Visible building-side parents for attached turret stations. Runtime
+   *  articulation supplies yaw and optional pitch; the shape supplies the
+   *  matching scenegraph hierarchy. */
+  turretHostPieces?: BuildingTurretHostPieceShape[];
 };
 
 export type RadarRig = {

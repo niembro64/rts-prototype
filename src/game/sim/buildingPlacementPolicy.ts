@@ -10,14 +10,20 @@ import { WATER_LEVEL } from './Terrain';
 export function getBuildingRequiredSensorSourceMedium(
   buildingBlueprintId: BuildingBlueprintId,
 ): { medium: SensorMedium; mountId: string } | null {
-  if (buildingBlueprintId === 'buildingRadar') {
+  if (
+    buildingBlueprintId === 'buildingRadar'
+    || buildingBlueprintId === 'buildingRadarJammer'
+  ) {
     return { medium: 'aboveWater', mountId: 'sensor' };
   }
-  if (buildingBlueprintId === 'buildingSonar') {
+  if (
+    buildingBlueprintId === 'buildingSonar'
+    || buildingBlueprintId === 'buildingSonarJammer'
+  ) {
     return { medium: 'underwater', mountId: 'sensor' };
   }
   if (buildingBlueprintId === 'towerTorpedo') {
-    return { medium: 'underwater', mountId: 'torpedo' };
+    return { medium: 'underwater', mountId: 'torpedoPort' };
   }
   return null;
 }

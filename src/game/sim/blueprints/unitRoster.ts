@@ -23,13 +23,6 @@ function readBuildableUnitBlueprintIds(): BuildableUnitBlueprintId[] {
 export const BUILDABLE_UNIT_BLUEPRINT_IDS = readBuildableUnitBlueprintIds();
 
 const BUILDABLE_UNIT_BLUEPRINT_ID_SET = new Set<string>(BUILDABLE_UNIT_BLUEPRINT_IDS);
-const DEFAULT_DISABLED_DEMO_UNIT_BLUEPRINT_IDS = new Set<string>(
-  unitRoster.defaultDisabledDemoUnitIds,
-);
-
-export function isDemoUnitEnabledByDefault(unitBlueprintId: string): boolean {
-  return !DEFAULT_DISABLED_DEMO_UNIT_BLUEPRINT_IDS.has(unitBlueprintId);
-}
 
 export function isBuildableUnitBlueprintId(unitBlueprintId: string): unitBlueprintId is BuildableUnitBlueprintId {
   return BUILDABLE_UNIT_BLUEPRINT_ID_SET.has(unitBlueprintId);

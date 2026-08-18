@@ -12,6 +12,12 @@ import {
   validateEmissionMediumTrajectoryMatrix,
 } from './emissionMedium';
 import type { EmissionMediumTrajectoryMatrix } from '@/types/blueprintSchema.generated';
+import {
+  constrainAimPointToEmissionRoutes,
+  emissionCanTargetEntity,
+} from './combat/emissionTargeting';
+import { WATER_LEVEL } from './Terrain';
+import { WorldState } from './WorldState';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) throw new Error(`[emission medium contract] ${message}`);
@@ -72,4 +78,39 @@ export function runEmissionMediumContractTest(): void {
       `${label} must compile to its independent bit without implying another route`,
     );
   }
+
+  const surfaceTargetWorld = new WorldState(8821, 1024, 1024);
+  const surfaceTarget = surfaceTargetWorld.createBuilding(500, 500, 60, 60, 60);
+  surfaceTarget.transform.z = WATER_LEVEL;
+  const aboveOnly = cases[0][1];
+  const underwaterOnly = cases[3][1];
+  assertContract(
+    emissionCanTargetEntity(aboveOnly, 'aboveWater', surfaceTarget),
+    'an above-water weapon must target the exposed half of a surface building',
+  );
+  assertContract(
+    emissionCanTargetEntity(underwaterOnly, 'underwater', surfaceTarget),
+    'an underwater weapon must target the submerged half of a surface building',
+  );
+
+  const aboveAim = { x: 500, y: 500, z: WATER_LEVEL - 20 };
+  assertContract(
+    constrainAimPointToEmissionRoutes(
+      aboveOnly,
+      'aboveWater',
+      surfaceTarget,
+      aboveAim,
+    ) && aboveAim.z > WATER_LEVEL,
+    'surface fire must resolve its aim point into the exposed target slice',
+  );
+  const underwaterAim = { x: 500, y: 500, z: WATER_LEVEL + 20 };
+  assertContract(
+    constrainAimPointToEmissionRoutes(
+      underwaterOnly,
+      'underwater',
+      surfaceTarget,
+      underwaterAim,
+    ) && underwaterAim.z <= WATER_LEVEL,
+    'torpedo fire must resolve its aim point into the submerged target slice',
+  );
 }

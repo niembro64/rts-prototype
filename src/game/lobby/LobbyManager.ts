@@ -20,13 +20,11 @@ import {
   loadStoredConverterTax,
   loadStoredPathfindingCellConsolidation,
   loadStoredSimulationTickRate,
-  loadStoredDemoUnits,
-  loadStoredDemoBuildings,
+  loadBattleUnitRoster,
+  loadBattleBuildingRoster,
   getUnitCap,
   loadStoredMapLandDimensions,
   loadStoredTerrainRuntimeConfig,
-  getDefaultDemoUnits,
-  getDefaultDemoBuildings,
   type BattleMode,
 } from '../../battleBarConfig';
 import {
@@ -169,35 +167,33 @@ export async function createBackgroundBattle(
     }
   }
 
-  // Restore stored demo unit selection (fall back to config defaults).
+  // Resolve the roster before constructing the server. Demo reads its
+  // persistent sandbox choice; Lobby/Real reads session-only state and starts
+  // every new lobby at the complete current registries.
   // We resolve this BEFORE creating the GameServer so the constructor's
   // initial-unit spawn picks only from the user's selected types — if
   // we passed it through setBackgroundUnitBlueprintEnabled() afterwards, the
   // toggle handler would wipe initial units of any disabled type and
   // the player would see far fewer than the cap-derived per-team count.
-  // Lobby preview short-circuits this: no AI = no production = the
-  // selection is meaningless, so we just pass an empty allowed set.
-  const savedDemoUnits = loadStoredDemoUnits();
-  const storedDemoUnits = savedDemoUnits && savedDemoUnits.length > 0
-    ? savedDemoUnits
-    : getDefaultDemoUnits();
+  const selectedUnits = loadBattleUnitRoster(mode);
+  const selectedBuildings = loadBattleBuildingRoster(mode);
   const initialAllowedUnitBlueprintIds = new Set<string>();
   // Building selections gate the demo base spawn. Same
-  // resolve-from-localStorage-up-front rule as
+  // resolve-from-the-mode-store-up-front rule as
   // units: the spawn reads them in the GameServer constructor. Empty
   // sets are honoured (user disabled everything) via the `?? defaults`
   // null-only fallback — matching the demo bar's local ref seed.
   const initialAllowedBuildingBlueprintIds = new Set<string>();
-  if (!isLobbyPreview) {
-    const storedDemoUnitIds = new Set<string>(storedDemoUnits);
-    for (let i = 0; i < BACKGROUND_UNIT_BLUEPRINT_IDS.length; i++) {
-      const unitBlueprintId = BACKGROUND_UNIT_BLUEPRINT_IDS[i];
-      if (storedDemoUnitIds.has(unitBlueprintId)) initialAllowedUnitBlueprintIds.add(unitBlueprintId);
-    }
-    const storedDemoBuildingIds = new Set<string>(loadStoredDemoBuildings() ?? getDefaultDemoBuildings());
-    for (let i = 0; i < BUILDING_BLUEPRINT_IDS.length; i++) {
-      const buildingBlueprintId = BUILDING_BLUEPRINT_IDS[i];
-      if (storedDemoBuildingIds.has(buildingBlueprintId)) initialAllowedBuildingBlueprintIds.add(buildingBlueprintId);
+  const selectedUnitIds = new Set<string>(selectedUnits);
+  for (let i = 0; i < BACKGROUND_UNIT_BLUEPRINT_IDS.length; i++) {
+    const unitBlueprintId = BACKGROUND_UNIT_BLUEPRINT_IDS[i];
+    if (selectedUnitIds.has(unitBlueprintId)) initialAllowedUnitBlueprintIds.add(unitBlueprintId);
+  }
+  const selectedBuildingIds = new Set<string>(selectedBuildings);
+  for (let i = 0; i < BUILDING_BLUEPRINT_IDS.length; i++) {
+    const buildingBlueprintId = BUILDING_BLUEPRINT_IDS[i];
+    if (selectedBuildingIds.has(buildingBlueprintId)) {
+      initialAllowedBuildingBlueprintIds.add(buildingBlueprintId);
     }
   }
   await report(0.14, 'Choosing unit roster');
@@ -261,7 +257,7 @@ export async function createBackgroundBattle(
   // mode — there's no AI to talk to.
   if (!isLobbyPreview) {
     for (const ut of BACKGROUND_UNIT_BLUEPRINT_IDS) {
-      server.setBackgroundUnitBlueprintEnabled(ut, storedDemoUnits.includes(ut));
+      server.setBackgroundUnitBlueprintEnabled(ut, selectedUnitIds.has(ut));
     }
   }
   await report(0.74, 'Applying unit filters');

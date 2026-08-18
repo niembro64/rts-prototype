@@ -6,6 +6,7 @@ import {
 import { deterministicMath as DMath } from './deterministicMath';
 import {
   resolveWeaponEmissionSocket,
+  turretOwnsSharedAimPieceClaim,
   updateAuthoritativeHostAttachmentKinematics,
 } from './combat/combatUtils';
 import {
@@ -24,6 +25,9 @@ import { updateTurretRotation } from './combat/turretSystem';
 import { getUnitGroundZ } from './unitGeometry';
 import { WorldState } from './WorldState';
 import { getUnitBlueprint } from './blueprints';
+import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
+import { WATER_LEVEL } from './Terrain';
+import { beamIndex } from './BeamIndex';
 
 function assertContract(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(`[authoritative turret sockets] ${message}`);
@@ -67,7 +71,7 @@ function resolveLane(
   out: typeof _emission,
 ): typeof _emission {
   const turret = host.combat?.turrets[turretIndex];
-  if (turret === undefined || host.unit === null) {
+  if (turret === undefined) {
     throw new Error('[authoritative turret sockets] fixture turret is missing');
   }
   const { cos, sin } = getTransformCosSin(host.transform);
@@ -82,7 +86,7 @@ function resolveLane(
       currentTick: world.getTick(),
       dtMs: 50,
       unitGroundZ: getUnitGroundZ(host),
-      surfaceN: host.unit.surfaceNormal,
+      surfaceN: host.unit?.surfaceNormal,
     },
     out,
   );
@@ -401,5 +405,271 @@ export function runAuthoritativeTurretSocketContractTest(): void {
       rightFastRocket.worldVelocity.z,
     ) > 0,
     'moving upper-body sockets publish launch-inheritance velocity',
+  );
+
+  const torpedoWorld = new WorldState(91233, 2048, 2048);
+  const torpedoTower = torpedoWorld.createBuilding(
+    900,
+    900,
+    60,
+    60,
+    60,
+    1 as PlayerId,
+  );
+  torpedoTower.transform.z = WATER_LEVEL;
+  applyBuildingBlueprintRuntime(torpedoTower, 'towerTorpedo', {
+    allocateEntityId: () => torpedoWorld.generateEntityId(),
+  });
+  torpedoWorld.addEntity(torpedoTower);
+  const torpedoTurrets = torpedoTower.combat?.turrets;
+  assertContract(
+    torpedoTurrets !== undefined && torpedoTurrets.length === 2,
+    'surface torpedo tower exposes two physical launcher heads',
+  );
+  for (let turretIndex = 0; turretIndex < torpedoTurrets.length; turretIndex++) {
+    const torpedoTurret = torpedoTurrets[turretIndex];
+    const attachment = torpedoTurret.config.hostAttachment;
+    assertContract(
+      attachment?.kind === 'buildingYawPiece' &&
+        attachment.piece === 'torpedoTorso' &&
+        Math.abs(attachment.socketOffset.y) === 16 &&
+        attachment.socketOffset.z === -10,
+      `torpedo head ${turretIndex} is physically attached to the shared underwater torso yoke`,
+    );
+    assertContract(
+      torpedoTurret.config.articulation.yaw.minAngle === 0 &&
+        torpedoTurret.config.articulation.yaw.maxAngle === 0 &&
+        torpedoTurret.config.articulation.pitch.minAngle === 0 &&
+        torpedoTurret.config.articulation.pitch.maxAngle === 0,
+      `torpedo head ${turretIndex} has no local yaw or pitch escape from torso-forward`,
+    );
+    assertContract(
+      torpedoTurret.emissionSockets.length === 1 &&
+        torpedoTurret.emissionSockets[0].x === 14 &&
+        torpedoTurret.emissionSockets[0].y === 0 &&
+        torpedoTurret.emissionSockets[0].z === 0,
+      `torpedo head ${turretIndex} fires from its visible forward barrel tip`,
+    );
+    torpedoTurret.worldPosTick = -1;
+    const torpedoEmission = resolveLane(
+      torpedoWorld,
+      torpedoTower,
+      turretIndex,
+      0,
+      _emission,
+    );
+    assertContract(
+      torpedoEmission.position.z < WATER_LEVEL,
+      `torpedo head ${turretIndex} and its forward muzzle stay underwater`,
+    );
+  }
+
+  updateAuthoritativeHostAttachmentKinematics(
+    torpedoWorld.getArmedEntities(),
+    torpedoWorld.getTick(),
+    50,
+    'tickStart',
+  );
+  stampCombatTargetingPool(torpedoWorld);
+  const torpedoSlot = entitySlotRegistry.getEntitySlot(torpedoTower);
+  assertContract(torpedoSlot >= 0, 'torpedo tower fixture owns a targeting slot');
+  const torpedoStateBase = torpedoSlot * sim.combatTargeting.maxTurretsPerEntity();
+  getCombatTargetingStateViews(sim).state[torpedoStateBase] = CT_TURRET_STATE_IDLE;
+  getCombatTargetingStateViews(sim).state[torpedoStateBase + 1] = CT_TURRET_STATE_ENGAGED;
+  torpedoTurrets[0].state = 'idle';
+  torpedoTurrets[1].state = 'engaged';
+  torpedoTurrets[1].aimTargetYaw = 0.45;
+  updateAuthoritativeHostAttachmentKinematics(
+    torpedoWorld.getArmedEntities(),
+    torpedoWorld.getTick(),
+    50,
+    'hostAim',
+  );
+  assertContract(
+    torpedoTurrets[0].hostPieceYaw > 0 && torpedoTurrets[0].hostPieceYaw < 0.45,
+    'the second head can claim the common torso, which turns by its bounded motor without snapping',
+  );
+  updateTurretRotation(torpedoWorld, 50, [torpedoTower]);
+  assertNear(
+    torpedoTurrets[0].rotation,
+    torpedoTurrets[0].hostPieceYaw,
+    'port head remains fixed forward in the common torso frame',
+  );
+  assertNear(
+    torpedoTurrets[1].rotation,
+    torpedoTurrets[0].hostPieceYaw,
+    'starboard head remains fixed forward in the common torso frame',
+  );
+
+  const beamTowerWorld = new WorldState(91234, 2048, 2048);
+  const beamTower = beamTowerWorld.createBuilding(
+    1100,
+    1100,
+    60,
+    60,
+    100,
+    1 as PlayerId,
+  );
+  applyBuildingBlueprintRuntime(beamTower, 'towerBeamMega', {
+    allocateEntityId: () => beamTowerWorld.generateEntityId(),
+  });
+  beamTowerWorld.addEntity(beamTower);
+  const beamTurrets = beamTower.combat?.turrets;
+  assertContract(
+    beamTurrets !== undefined && beamTurrets.length === 2,
+    'heavy beam tower exposes two logical beam stations',
+  );
+  for (let turretIndex = 0; turretIndex < beamTurrets.length; turretIndex++) {
+    const station = beamTurrets[turretIndex];
+    const attachment = station.config.hostAttachment;
+    assertContract(
+      attachment?.kind === 'buildingAimPiece' &&
+        attachment.piece === 'beamHead' &&
+        Math.abs(attachment.socketOffset.y) === 17.5 &&
+        station.mount.x === 0 && station.mount.y === 0 && station.mount.z === 114,
+      `heavy beam station ${turretIndex} is a barrel socket on the common head pivot`,
+    );
+    assertContract(
+      station.config.articulation.hostAssist === 'requestAim' &&
+        station.config.articulation.yaw.minAngle === 0 &&
+        station.config.articulation.yaw.maxAngle === 0,
+      `heavy beam station ${turretIndex} requests the shared head and owns no local yaw`,
+    );
+    assertContract(
+      station.config.angular.yaw.maxSpeed === 2.4 &&
+        station.config.angular.yaw.maxAcceleration === 2.5,
+      `heavy beam station ${turretIndex} doubles shared-head maximum yaw speed without changing acceleration`,
+    );
+  }
+
+  // A rotated host's first targeting stamp used to leave the shared-head
+  // column at the slab's zero default. Presentation then showed an exact 90°
+  // snap even though the physical joint motor never requested one.
+  beamTower.transform.rotation = Math.PI / 2;
+  updateAuthoritativeHostAttachmentKinematics(
+    beamTowerWorld.getArmedEntities(),
+    beamTowerWorld.getTick(),
+    50,
+    'tickStart',
+  );
+  stampCombatTargetingPool(beamTowerWorld);
+  const beamTowerSlot = entitySlotRegistry.getEntitySlot(beamTower);
+  assertContract(beamTowerSlot >= 0, 'heavy beam tower fixture owns a targeting slot');
+  const beamStateBase = beamTowerSlot * sim.combatTargeting.maxTurretsPerEntity();
+  const beamStateViews = getCombatTargetingStateViews(sim);
+  assertNear(
+    beamStateViews.hostPieceYaw[beamStateBase],
+    Math.PI / 2,
+    'a first-frame shared head stamp preserves the rotated host pose',
+  );
+  assertNear(
+    beamStateViews.hostPieceYawVelocity[beamStateBase],
+    0,
+    'a first-frame shared head stamp preserves its actuator rate',
+  );
+  // Restore the original fixture frame for the claimant/motor assertions
+  // below; this is an explicit authoritative reset, not presentation repair.
+  beamTower.transform.rotation = 0;
+  beamTurrets[0].hostPieceYaw = 0;
+  beamTurrets[0].hostPieceYawVelocity = 0;
+  getCombatTargetingStateViews(sim).state[beamStateBase] = CT_TURRET_STATE_IDLE;
+  getCombatTargetingStateViews(sim).state[beamStateBase + 1] = CT_TURRET_STATE_ENGAGED;
+  beamTurrets[0].state = 'idle';
+  beamTurrets[0].aimTargetYaw = -0.7;
+  beamTurrets[0].aimTargetPitch = -0.25;
+  beamTurrets[1].state = 'engaged';
+  beamTurrets[1].aimTargetYaw = 0.6;
+  beamTurrets[1].aimTargetPitch = 0.35;
+  updateAuthoritativeHostAttachmentKinematics(
+    beamTowerWorld.getArmedEntities(),
+    beamTowerWorld.getTick(),
+    50,
+    'hostAim',
+  );
+  assertContract(
+    beamTurrets[0].hostPieceYaw > 0 && beamTurrets[0].hostPieceYaw < 0.6 &&
+      beamTurrets[0].pitch > 0 && beamTurrets[0].pitch < 0.35,
+    'the right barrel can claim both axes of the common head through bounded yaw and pitch motors',
+  );
+  assertContract(
+    beamTurrets[0].hostPieceClaimMountIndex === beamTurrets[1].mountIndex &&
+      turretOwnsSharedAimPieceClaim(beamTower, 1) &&
+      !turretOwnsSharedAimPieceClaim(beamTower, 0),
+    'the active right barrel owns an exclusive shared-head firing window',
+  );
+
+  getCombatTargetingStateViews(sim).state[beamStateBase] = CT_TURRET_STATE_ENGAGED;
+  beamTurrets[0].state = 'engaged';
+  beamIndex.addBeam(beamTower.id, 1, beamTowerWorld.generateEntityId());
+  updateAuthoritativeHostAttachmentKinematics(
+    beamTowerWorld.getArmedEntities(),
+    beamTowerWorld.getTick(),
+    50,
+    'hostAim',
+  );
+  assertContract(
+    beamTurrets[0].hostPieceClaimMountIndex === beamTurrets[1].mountIndex &&
+      turretOwnsSharedAimPieceClaim(beamTower, 1) &&
+      !turretOwnsSharedAimPieceClaim(beamTower, 0),
+    'a committed beam pulse pins ownership even while the sibling is ready',
+  );
+
+  beamIndex.removeBeam(beamTower.id, 1);
+  updateAuthoritativeHostAttachmentKinematics(
+    beamTowerWorld.getArmedEntities(),
+    beamTowerWorld.getTick(),
+    50,
+    'hostAim',
+  );
+  assertContract(
+    beamTurrets[0].hostPieceClaimMountIndex === beamTurrets[0].mountIndex &&
+      turretOwnsSharedAimPieceClaim(beamTower, 0) &&
+      !turretOwnsSharedAimPieceClaim(beamTower, 1),
+    'pulse completion yields the next shared-head turn to the ready sibling',
+  );
+  for (let elapsedMs = 0; elapsedMs < 4400; elapsedMs += 50) {
+    updateAuthoritativeHostAttachmentKinematics(
+      beamTowerWorld.getArmedEntities(),
+      beamTowerWorld.getTick(),
+      50,
+      'hostAim',
+    );
+  }
+  assertContract(
+    beamTurrets[0].hostPieceClaimMountIndex === beamTurrets[1].mountIndex &&
+      turretOwnsSharedAimPieceClaim(beamTower, 1) &&
+      !turretOwnsSharedAimPieceClaim(beamTower, 0),
+    'an unfired claim yields after its bounded deadlock timeout instead of starving its sibling',
+  );
+  beamTurrets[0].localYaw = -0.4;
+  beamTurrets[0].localPitch = -0.3;
+  beamTurrets[1].localYaw = 0.5;
+  beamTurrets[1].localPitch = 0.4;
+  updateTurretRotation(beamTowerWorld, 50, [beamTower]);
+  assertContract(
+    beamTurrets.every((station) => (
+      station.localYaw === 0 &&
+      station.localPitch === 0 &&
+      Math.abs(station.rotation - beamTurrets[0].hostPieceYaw) < 1e-8 &&
+      Math.abs(station.pitch - beamTurrets[0].pitch) < 1e-8
+    )),
+    'both barrels are rigid children of one head; neither can compensate toward its own proposal',
+  );
+  const leftBeamEmission = resolveLane(beamTowerWorld, beamTower, 0, 0, _emission);
+  const rightBeamEmission = resolveLane(beamTowerWorld, beamTower, 1, 0, _secondEmission);
+  assertNear(
+    leftBeamEmission.forward.x,
+    rightBeamEmission.forward.x,
+    'both heavy-beam barrels share one forward x direction',
+  );
+  assertNear(
+    leftBeamEmission.forward.y,
+    rightBeamEmission.forward.y,
+    'both heavy-beam barrels share one forward y direction',
+  );
+  assertNear(
+    leftBeamEmission.forward.z,
+    rightBeamEmission.forward.z,
+    'both heavy-beam barrels share one forward pitch direction',
   );
 }

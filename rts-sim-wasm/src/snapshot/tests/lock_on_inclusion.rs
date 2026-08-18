@@ -524,6 +524,8 @@ mod lock_on_inclusion_tests {
             0.0,
             0.0,
             0.0,
+            0.0,
+            0.0,
             -core::f64::consts::PI,
             core::f64::consts::PI,
             -core::f64::consts::FRAC_PI_2,

@@ -1,5 +1,6 @@
 import type {
   BotArms,
+  TurretHostAttachment,
   UnitTurretHostAttachment,
 } from '@/types/blueprints';
 
@@ -11,7 +12,7 @@ export type BotArmId = Extract<
 type BotHostTurretAttachmentSource = {
   mountIndex: number;
   config: {
-    hostAttachment: UnitTurretHostAttachment | null;
+    hostAttachment: TurretHostAttachment | null;
     requiredEngagedForFightStop: boolean;
     articulation: {
       claimGroup: string | null;

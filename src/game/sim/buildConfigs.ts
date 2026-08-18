@@ -32,6 +32,8 @@ function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): Building
     },
     energyProduction: bp.energyProduction,
     metalProduction: bp.metalProduction,
+    energyStorage: bp.energyStorage,
+    metalStorage: bp.metalStorage,
     constructionRate: bp.constructionRate,
     conversionRate: bp.conversionRate,
     renderProfile: bp.renderProfile,

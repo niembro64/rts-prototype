@@ -781,9 +781,45 @@
         },
         "sensorTurretBlueprintId": "turretSensorBuildingBeamMega",
         "mount": {
-          "x": -18,
+          "x": 0,
           "y": 0,
           "z": 114
+        },
+        "hostAttachment": {
+          "kind": "buildingAimPiece",
+          "piece": "beamHead",
+          "socketOffset": {
+            "x": 0,
+            "y": 17.5,
+            "z": 0
+          }
+        },
+        "articulation": {
+          "yaw": {
+            "continuous": false,
+            "minAngle": 0,
+            "maxAngle": 0
+          },
+          "pitch": {
+            "minAngle": -0.55,
+            "maxAngle": 0.95
+          },
+          "restYaw": 0,
+          "restPitch": 0,
+          "restoreDelayMs": 2200,
+          "hostAssist": "requestAim",
+          "claimGroup": "beamHead",
+          "claimPriority": 50
+        },
+        "angularActuator": {
+          "yaw": {
+            "maxSpeed": 2.4,
+            "maxAcceleration": 2.5
+          },
+          "pitch": {
+            "maxSpeed": 1,
+            "maxAcceleration": 2.2
+          }
         },
         "mountId": "beamLeft",
         "controlMode": "hostPreferred"
@@ -799,9 +835,45 @@
           }
         },
         "mount": {
-          "x": 18,
+          "x": 0,
           "y": 0,
           "z": 114
+        },
+        "hostAttachment": {
+          "kind": "buildingAimPiece",
+          "piece": "beamHead",
+          "socketOffset": {
+            "x": 0,
+            "y": -17.5,
+            "z": 0
+          }
+        },
+        "articulation": {
+          "yaw": {
+            "continuous": false,
+            "minAngle": 0,
+            "maxAngle": 0
+          },
+          "pitch": {
+            "minAngle": -0.55,
+            "maxAngle": 0.95
+          },
+          "restYaw": 0,
+          "restPitch": 0,
+          "restoreDelayMs": 2200,
+          "hostAssist": "requestAim",
+          "claimGroup": "beamHead",
+          "claimPriority": 50
+        },
+        "angularActuator": {
+          "yaw": {
+            "maxSpeed": 2.4,
+            "maxAcceleration": 2.5
+          },
+          "pitch": {
+            "maxSpeed": 1,
+            "maxAcceleration": 2.2
+          }
         },
         "mountId": "beamRight",
         "controlMode": "hostPreferred"
@@ -1149,16 +1221,96 @@
           "y": 0,
           "z": 12
         },
+        "hostAttachment": {
+          "kind": "buildingYawPiece",
+          "piece": "torpedoTorso",
+          "socketOffset": {
+            "x": 0,
+            "y": 16,
+            "z": -10
+          }
+        },
         "emissionSockets": [
           {
             "offset": {
               "x": 14,
               "y": 0,
-              "z": -10
+              "z": 0
             }
           }
         ],
-        "mountId": "torpedo",
+        "articulation": {
+          "yaw": {
+            "continuous": false,
+            "minAngle": 0,
+            "maxAngle": 0
+          },
+          "pitch": {
+            "minAngle": 0,
+            "maxAngle": 0
+          },
+          "restYaw": 0,
+          "restPitch": 0,
+          "restoreDelayMs": 2200,
+          "hostAssist": "requestYaw",
+          "claimGroup": "torpedoTorso",
+          "claimPriority": 50
+        },
+        "mountId": "torpedoPort",
+        "controlMode": "hostPreferred"
+      },
+      {
+        "turretBlueprintId": "turretTorpedo",
+        "presentation": {
+          "headRadius": 8,
+          "headOnly": false,
+          "barrel": {
+            "type": "singleCylinderBarrel",
+            "barrelLength": 1.8
+          }
+        },
+        "sensorTurretBlueprintId": "turretSensorBuildingSonar",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 12
+        },
+        "hostAttachment": {
+          "kind": "buildingYawPiece",
+          "piece": "torpedoTorso",
+          "socketOffset": {
+            "x": 0,
+            "y": -16,
+            "z": -10
+          }
+        },
+        "emissionSockets": [
+          {
+            "offset": {
+              "x": 14,
+              "y": 0,
+              "z": 0
+            }
+          }
+        ],
+        "articulation": {
+          "yaw": {
+            "continuous": false,
+            "minAngle": 0,
+            "maxAngle": 0
+          },
+          "pitch": {
+            "minAngle": 0,
+            "maxAngle": 0
+          },
+          "restYaw": 0,
+          "restPitch": 0,
+          "restoreDelayMs": 2200,
+          "hostAssist": "requestYaw",
+          "claimGroup": "torpedoTorso",
+          "claimPriority": 50
+        },
+        "mountId": "torpedoStarboard",
         "controlMode": "hostPreferred"
       }
     ],

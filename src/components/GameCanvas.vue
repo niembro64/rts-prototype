@@ -1892,8 +1892,6 @@ watchEffect(() => {
   m.currentConverterTax = currentConverterTax.value;
   m.serverUnitGroundNormalEmaMode = serverUnitGroundNormalEmaMode.value;
   const mapPresentation = resolveBattleMapPresentation({
-    units: currentAllowedUnits.value,
-    buildings: currentAllowedBuildings.value,
     cap: displayUnitCap.value,
     slowDownAtFinalWaypoint: currentSlowDownAtFinalWaypoint.value,
     terrainSurfaceMode: currentTerrainSurfaceMode.value,

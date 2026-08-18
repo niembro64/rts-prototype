@@ -50,9 +50,12 @@
 
   "storageKeys": {
     "demoUnits": "demo-battle-units",
+    "realUnits": "real-battle-units",
     "demoBuildings": "demo-battle-buildings",
+    "realBuildings": "real-battle-buildings",
     "demoBuildingsKnownIds": "demo-battle-buildings-known-ids",
     "demoUnitsKnownIds": "demo-battle-units-known-ids",
+    "demoUnitsAllEnabledRevision": "demo-battle-units-all-enabled-v1",
     "demoCap": "demo-battle-cap",
     "realCap": "real-battle-cap",
     "demoPathfindingCellConsolidation": "demo-battle-pathfinding-cell-consolidation",

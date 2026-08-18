@@ -174,6 +174,8 @@ function buildBuildingFunctionItems(blueprint: BuildingBlueprint): LoadingUnitIn
   if (blueprint.metalProduction) items.push(stat('Metal output', `${fmt(blueprint.metalProduction)}/s`));
   if (blueprint.constructionRate) items.push(stat('Construction rate', `${fmt(blueprint.constructionRate)}/s`));
   if (blueprint.conversionRate) items.push(stat('Conversion rate', `${fmt(blueprint.conversionRate)}/s`));
+  if (blueprint.energyStorage) items.push(stat('Energy capacity', `+${fmt(blueprint.energyStorage)}`));
+  if (blueprint.metalStorage) items.push(stat('Metal capacity', `+${fmt(blueprint.metalStorage)}`));
   return items;
 }
 
@@ -188,6 +190,10 @@ function summarizeBuildingRole(
   if (blueprint.energyProduction) return 'energy generator';
   if (blueprint.buildingBlueprintId === 'buildingRadar') return 'radar';
   if (blueprint.buildingBlueprintId === 'buildingSonar') return 'sonar';
+  if (blueprint.buildingBlueprintId === 'buildingRadarJammer') return 'radar jammer';
+  if (blueprint.buildingBlueprintId === 'buildingSonarJammer') return 'sonar jammer';
+  if (blueprint.energyStorage) return 'energy storage';
+  if (blueprint.metalStorage) return 'metal storage';
   return 'structure';
 }
 
@@ -199,6 +205,10 @@ function describeBuildingOutput(blueprint: BuildingBlueprint, firepower: Firepow
   if (blueprint.conversionRate) return `${fmt(blueprint.conversionRate)} conv/s`;
   if (blueprint.buildingBlueprintId === 'buildingRadar') return 'radar';
   if (blueprint.buildingBlueprintId === 'buildingSonar') return 'sonar';
+  if (blueprint.buildingBlueprintId === 'buildingRadarJammer') return 'radar jammer';
+  if (blueprint.buildingBlueprintId === 'buildingSonarJammer') return 'sonar jammer';
+  if (blueprint.energyStorage) return `+${fmt(blueprint.energyStorage)} energy capacity`;
+  if (blueprint.metalStorage) return `+${fmt(blueprint.metalStorage)} metal capacity`;
   return 'passive';
 }
 

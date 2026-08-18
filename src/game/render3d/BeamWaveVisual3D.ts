@@ -191,6 +191,36 @@ void main() {
 }
 `;
 
+// Per-Mesh beam emitters use the same wave family as the unit instance pool.
+// Their flow values are uniforms because one Mesh is one emitter, while the
+// vertex shader supplies the taper that the ordinary cylinder geometry lacks.
+const EMITTER_MESH_VERTEX_SHADER = `
+uniform float uTipTaper;
+varying float vAlong;
+void main() {
+  vAlong = position.y + 0.5;
+  vec3 p = position;
+  float radial = mix(1.0, uTipTaper, vAlong);
+  p.x *= radial;
+  p.z *= radial;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+}
+`;
+
+const createEmitterMeshFragmentShader = (config: BeamVisualConfig): string => `
+uniform float uTime;
+uniform float uFlowRepeats;
+uniform float uFlowPhase;
+varying float vAlong;
+void main() {
+  float repeats = max(0.001, uFlowRepeats);
+  float p = fract(vAlong * repeats - uTime * ${glsl(config.waveSpeed)} + uFlowPhase);
+  float pulse = step(${glsl(beamWaveHighAlphaStart(config))}, p);
+  float alpha = mix(${glsl(config.waveLowAlpha)}, ${glsl(config.waveHighAlpha)}, pulse);
+  gl_FragColor = vec4(${glslVec3(config.color)}, alpha);
+}
+`;
+
 /** Material for an instanced emitter pool (cone or ball — the geometry
  *  contract makes them interchangeable). One material per layer; flow
  *  params ride the pool's per-instance aFlow2 attribute. */
@@ -209,6 +239,54 @@ export function createBeamEmitterInstancedMaterial(layer: BeamWaveLayer): THREE.
   applyExposureToRawShader(material);
   material.customProgramCacheKey = () => `beamEmitterWave:inst:${layer}`;
   return material;
+}
+
+/** Shared material for tower-mounted and allocation-fallback beam emitters.
+ * Flow phase/repeat uniforms are refreshed by each Mesh immediately before
+ * its draw, so many emitters can share these two materials safely. */
+export function createBeamEmitterMeshMaterial(layer: BeamWaveLayer): THREE.ShaderMaterial {
+  const config = beamWaveLayerConfig(layer);
+  const material = new THREE.ShaderMaterial({
+    vertexShader: EMITTER_MESH_VERTEX_SHADER,
+    fragmentShader: createEmitterMeshFragmentShader(config),
+    uniforms: {
+      uTime: BEAM_WAVE_TIME,
+      uFlowRepeats: { value: 1 },
+      uFlowPhase: { value: 0 },
+      uTipTaper: { value: 0 },
+    },
+    transparent: true,
+    depthWrite: false,
+    depthTest: true,
+  });
+  applyExposureToRawShader(material);
+  material.customProgramCacheKey = () => `beamEmitterWave:mesh:${layer}`;
+  return material;
+}
+
+/** Give one per-Mesh emitter stable wave coordinates while retaining shared
+ * materials. The callback also works when EntityFade3D temporarily installs
+ * a per-object ShaderMaterial clone during construction or death. */
+export function configureBeamEmitterMeshFlow(
+  mesh: THREE.Mesh,
+  layer: BeamWaveLayer,
+  length: number,
+  seedA: number,
+  seedB: number,
+): void {
+  const config = beamWaveLayerConfig(layer);
+  const repeats = beamWaveFlowRepeats(length, config.waveSpacing);
+  const phase = beamWaveFlowPhase(seedA, seedB);
+  mesh.onBeforeRender = (): void => {
+    if (Array.isArray(mesh.material)) return;
+    const uniforms = (mesh.material as THREE.ShaderMaterial).uniforms;
+    if (uniforms?.uFlowRepeats === undefined || uniforms.uFlowPhase === undefined) return;
+    // ShaderMaterial.clone() deep-clones uniforms for per-object construction
+    // fades, so refresh the shared clock as well as this emitter's flow.
+    if (uniforms.uTime !== undefined) uniforms.uTime.value = BEAM_WAVE_TIME.value;
+    uniforms.uFlowRepeats.value = repeats;
+    uniforms.uFlowPhase.value = phase;
+  };
 }
 
 /** Shared start-ball geometry: radius 0.5 so local y spans [-0.5, +0.5]

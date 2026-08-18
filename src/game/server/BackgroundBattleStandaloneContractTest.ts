@@ -71,8 +71,8 @@ export async function runBackgroundBattleStandaloneContractTest(): Promise<void>
   const boundary = cheaperComesFirst ? 2 / 3 : 1 / 3;
   const cheaperIntervalMidpoint = cheaperComesFirst ? boundary / 2 : (boundary + 1) / 2;
   const weightedRandomValues = [
-    boundary - 0.001, 0.1, 0.1,
-    boundary + 0.001, 0.2, 0.2,
+    0.1, 0.1,
+    0.2, 0.2,
     cheaperIntervalMidpoint, 0.3, 0.3,
   ];
   weightedWorld.nextRandom = () => {
@@ -99,6 +99,32 @@ export async function runBackgroundBattleStandaloneContractTest(): Promise<void>
   assertContract(
     cheaperSpawnCount === 2 && expensiveSpawnCount === 1,
     `2:1 inverse-cost opening interval selected ${weightedBlueprintIds.join(',')}`,
+  );
+
+  // Actual-unit visibility regression: when capacity can hold the enabled
+  // roster, the opening wave must instantiate every blueprint at least once.
+  // A factory queue alone is not sufficient evidence that a new unit appears
+  // in Demo.
+  const coverageWorld = new WorldState(0x2468ace1, 6400, 6400);
+  coverageWorld.playerCount = 1;
+  coverageWorld.entityCountCap = BACKGROUND_UNIT_BLUEPRINT_IDS.length;
+  const coverageSpawn = spawnBackgroundUnitsStandalone(
+    coverageWorld,
+    createPhysicsHarness(),
+    true,
+    new Set(BACKGROUND_UNIT_BLUEPRINT_IDS),
+    [1] as PlayerId[],
+  );
+  const coverageIds = new Set(
+    coverageSpawn.map((entity) => entity.unit?.unitBlueprintId),
+  );
+  const missingCoverage = BACKGROUND_UNIT_BLUEPRINT_IDS.filter(
+    (unitBlueprintId) => !coverageIds.has(unitBlueprintId),
+  );
+  assertContract(
+    coverageSpawn.length === BACKGROUND_UNIT_BLUEPRINT_IDS.length &&
+      missingCoverage.length === 0,
+    `opening Demo wave must instantiate every enabled unit; missing ${missingCoverage.join(', ')}`,
   );
 
   // ── Entity count cap: a MATCH TOTAL, split across SEATED sides ──

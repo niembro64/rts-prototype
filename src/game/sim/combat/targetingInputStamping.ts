@@ -541,13 +541,22 @@ function invalidateCombatTargetingStateViewsIfSlotWillGrow(slot: number): void {
   }
 }
 
+/** A detached DTO/test entity can reuse the numeric id of a live entity in a
+ * different world. Targeting rows belong to the registered object, not merely
+ * to that id; accepting the alias would leak an unrelated turret FSM/target
+ * into snapshot serialization. */
+function getRegisteredCombatTargetingSlot(entity: Entity): number {
+  const slot = entitySlotRegistry.getEntitySlot(entity);
+  return slot >= 0 && entitySlotRegistry.resolveSlot(slot) === entity ? slot : -1;
+}
+
 function getCombatTargetingTurretStateIndexFromViews(
   views: CombatTargetingStateViews,
   entity: Entity,
   turretIndex: number,
 ): number {
   if (turretIndex < 0) return -1;
-  const slot = entitySlotRegistry.getEntitySlot(entity);
+  const slot = getRegisteredCombatTargetingSlot(entity);
   if (slot < 0) return -1;
   if (slot >= views.entityCapacity) return -1;
   if (turretIndex >= views.turretCountPerEntity[slot]) return -1;
@@ -561,7 +570,7 @@ export function getCombatTargetingEntityReadContext(
   const sim = getSimWasm();
   if (sim === undefined) return false;
   const views = getCombatTargetingStateViews(sim);
-  const slot = entitySlotRegistry.getEntitySlot(entity);
+  const slot = getRegisteredCombatTargetingSlot(entity);
   if (slot < 0 || slot >= views.entityCapacity) return false;
   out.views = views;
   out.slot = slot;
@@ -585,7 +594,7 @@ function getCombatTargetingMountReadContext(
     return _mountReadContext;
   }
   const views = getCombatTargetingStateViews(sim);
-  const slot = entitySlotRegistry.getEntitySlot(entity);
+  const slot = getRegisteredCombatTargetingSlot(entity);
   if (slot < 0 || slot >= views.entityCapacity) return null;
   _mountReadContext.views = views;
   _mountReadContext.slot = slot;
@@ -860,7 +869,7 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   if (turret.config.articulation.yaw.continuous) {
     f |= CT_TURRET_CFG_YAW_CONTINUOUS;
   }
-  if (turret.config.articulation.hostAssist === 'requestYaw') {
+  if (turret.config.articulation.hostAssist !== 'none') {
     f |= CT_TURRET_CFG_HOST_YAW_ASSIST;
   }
   switch (turret.config.targeting.engagement.rangeVolume) {
@@ -911,7 +920,7 @@ function stampCombatTargetingEntityInto(
 ): number {
   const combat = entity.combat;
   synchronizeHostCombatEmitterTasks(entity);
-  const slot = entitySlotRegistry.getEntitySlot(entity);
+  const slot = getRegisteredCombatTargetingSlot(entity);
   // Entities without a spatial slot can't be addressed by the slab;
   // the eventual kernel walks the slab, not the JS list, so anything
   // off-grid would be invisible to it anyway.
@@ -1231,6 +1240,8 @@ function stampCombatTargetingEntityInto(
       t.worldVelocity.x, t.worldVelocity.y, t.worldVelocity.z,
       t.rotation, t.pitch,
       t.angularVelocity, t.pitchVelocity,
+      Number.isFinite(t.hostPieceYaw) ? t.hostPieceYaw : entity.transform.rotation,
+      Number.isFinite(t.hostPieceYawVelocity) ? t.hostPieceYawVelocity : 0,
       writeTurretArticulationParentYaw(entity, t, _stampParentYaw).yaw,
       t.config.articulation.yaw.minAngle,
       t.config.articulation.yaw.maxAngle,

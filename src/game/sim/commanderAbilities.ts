@@ -24,6 +24,7 @@ import { isResurrectableWreck, restoreUnitFromWreck } from './wrecks';
 import { entityCanIssueResurrectCommand } from './unitCommandCapabilities';
 import { writeFabricatorProductionSprayOrigin } from './factoryProductionHold';
 import { requestBuilderWorkStation } from './workStationSystem';
+import { transferCompletedBuildingStorageCapacity } from './buildingCompletion';
 
 export type { SprayTarget,  } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
@@ -550,6 +551,10 @@ class CommanderAbilitiesSystem {
     if (state.progress < 1) return false;
 
     this.captureProgressByPair.delete(key);
+    const previousPlayerId = target.ownership?.playerId ?? playerId;
+    if (target.building !== null) {
+      transferCompletedBuildingStorageCapacity(target, previousPlayerId, playerId);
+    }
     world.setEntityOwner(target, playerId);
     if (target.unit !== null) {
       setUnitActions(target.unit, []);

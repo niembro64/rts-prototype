@@ -7,6 +7,11 @@ import type { ClientViewState } from '../network/ClientViewState';
 import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import { getTurretHeadRadius } from '../math';
 import {
+  isBuildingAimPieceAttachment,
+  isBuildingHostPieceAttachment,
+  selectBuildingHostPieceTurretIndex,
+} from '../math/BuildingHostSocketGeometry';
+import {
   applyEntityGroupFade,
   disposeEntityGroupFade,
   DyingMeshFade,
@@ -84,6 +89,7 @@ import {
   captureEntityLodVisualState3D,
   type EntityLodVisualState3D,
 } from './EntityLodVisualState3D';
+import { createBeamEmitterMeshMaterial } from './BeamWaveVisual3D';
 
 const BUILDING_HEIGHT = 120;
 
@@ -161,13 +167,21 @@ function entityHasPerFrameBuildingTurretWork(entity: Entity): boolean {
   return false;
 }
 
-function positionBuildingTurretRoot(turretMesh: TurretMesh, turret: Turret): void {
+function positionBuildingTurretRoot(
+  turretMesh: TurretMesh,
+  turret: Turret,
+  attachedToHostPiece: boolean,
+): void {
   const headRadius = turretMesh.headRadius ?? getTurretHeadRadius(turret.presentation);
+  const attachment = turret.config.hostAttachment;
+  const mount = attachedToHostPiece && isBuildingHostPieceAttachment(attachment)
+    ? attachment.socketOffset
+    : turret.mount;
   setVector3IfChanged(
     turretMesh.root.position,
-    turret.mount.x,
-    turret.mount.z - headRadius,
-    turret.mount.y,
+    mount.x,
+    mount.z - headRadius,
+    mount.y,
   );
   setObjectVisibleIfChanged(turretMesh.root, false);
   turretMesh.cachedRootVisible = false;
@@ -182,6 +196,7 @@ type BuildingTurretSpinEntry = {
 type BuildingTurretStateFields = {
   rotation: number;
   pitch: number;
+  hostPieceYaw: number;
   headOnly: boolean;
 };
 
@@ -195,6 +210,7 @@ function turretStateFields(
   return {
     rotation: rows.views.rotation[row],
     pitch: rows.views.pitch[row],
+    hostPieceYaw: rows.views.hostPieceYaw[row],
     headOnly: (flags & CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY) !== 0,
   };
 }
@@ -209,6 +225,10 @@ type BuildingEntityMeshFactoryOptions = {
   turretHeadGeom: THREE.SphereGeometry;
   barrelGeom: THREE.CylinderGeometry;
   coneBarrelGeom: THREE.CylinderGeometry;
+  beamEmitterMaterials: {
+    outer: THREE.ShaderMaterial;
+    inner: THREE.ShaderMaterial;
+  };
   getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
   getTeamOrnamentMat: (playerId: PlayerId | undefined) => THREE.Material;
   barrelMat: THREE.Material;
@@ -226,6 +246,7 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     turretHeadGeom,
     barrelGeom,
     coneBarrelGeom,
+    beamEmitterMaterials,
     getPrimaryMat,
     getTeamOrnamentMat,
     barrelMat,
@@ -254,11 +275,38 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
   chassis.add(shape.primary);
   group.add(chassis);
 
+  const buildingTurrets = entity.combat?.turrets;
+  const buildingTurretHostPieces: NonNullable<EntityMesh['buildingTurretHostPieces']> = [];
+  for (const authoredPiece of shape.turretHostPieces ?? []) {
+    const ownerTurretIndex = buildingTurrets === undefined
+      ? -1
+      : selectBuildingHostPieceTurretIndex(buildingTurrets, authoredPiece.pieceId);
+    if (ownerTurretIndex < 0 || buildingTurrets === undefined) continue;
+    const owner = buildingTurrets[ownerTurretIndex];
+    setVector3IfChanged(
+      authoredPiece.root.position,
+      owner.mount.x,
+      owner.mount.z,
+      owner.mount.y,
+    );
+    authoredPiece.root.userData.entityId = entity.id;
+    group.add(authoredPiece.root);
+    buildingTurretHostPieces.push({
+      pieceId: authoredPiece.pieceId,
+      root: authoredPiece.root,
+      pitchRoot: authoredPiece.pitchRoot,
+      ownerTurretIndex,
+    });
+  }
+
   const visibleDetails = shape.details.filter((detailMesh) =>
     buildingDetailVisibleAtLevel(detailMesh, shapeType, detailLevel));
   for (const detail of visibleDetails) {
     detail.mesh.userData.entityId = entity.id;
-    group.add(detail.mesh);
+    const articulatedParent = detail.hostPieceId === undefined
+      ? undefined
+      : buildingTurretHostPieces.find((piece) => piece.pieceId === detail.hostPieceId);
+    (articulatedParent?.pitchRoot ?? articulatedParent?.root ?? group).add(detail.mesh);
   }
   const solarOpenAmount = entity.building?.activeState?.open === false ? 0 : 1;
   const solarPetalPoseApplied = shapeType === 'buildingSolar' &&
@@ -273,7 +321,6 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
   );
 
   const buildingTurretMeshes: TurretMesh[] = [];
-  const buildingTurrets = entity.combat?.turrets;
   if (buildingTurrets) {
     const baseBuildingGfx = getGraphicsConfig();
     const buildingGfx = {
@@ -285,15 +332,25 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     };
     for (let ti = 0; ti < buildingTurrets.length; ti++) {
       const turret = buildingTurrets[ti];
-      const turretMesh = buildTurretMesh3D(group, turret, buildingGfx, {
+      const attachment = turret.config.hostAttachment;
+      const hostPiece = isBuildingHostPieceAttachment(attachment)
+        ? buildingTurretHostPieces.find((piece) => piece.pieceId === attachment.piece)
+        : undefined;
+      const turretMesh = buildTurretMesh3D(
+        hostPiece?.pitchRoot ?? hostPiece?.root ?? group,
+        turret,
+        buildingGfx,
+        {
         headGeom: turretHeadGeom,
         barrelGeom,
         coneBarrelGeom,
         primaryMat: getPrimaryMat(ownerId),
         barrelMat,
+        beamEmitterMaterials,
         detailLevel,
+        hideHead: isBuildingAimPieceAttachment(attachment),
       });
-      positionBuildingTurretRoot(turretMesh, turret);
+      positionBuildingTurretRoot(turretMesh, turret, hostPiece !== undefined);
       if (turretMesh.head) turretMesh.head.userData.entityId = entity.id;
       for (const barrel of turretMesh.barrels) barrel.userData.entityId = entity.id;
       // Same role table as a unit's turrets: a head is a sensor dome and a
@@ -339,6 +396,7 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     turrets: buildingTurretMeshes,
     geometryKey,
     buildingDetails: visibleDetails,
+    buildingTurretHostPieces,
     buildingTeamOrnaments,
     buildingPlayerColorMeshes,
     windRig: visualFeatureVisibleAtDetail('building', 'largeAnimation', detailLevel, 0.54)
@@ -403,6 +461,8 @@ export class BuildingEntityRenderer3D {
   private readonly turretHeadGeom: THREE.SphereGeometry;
   private readonly barrelGeom: THREE.CylinderGeometry;
   private readonly coneBarrelGeom: THREE.CylinderGeometry;
+  private readonly beamEmitterOuterMat: THREE.ShaderMaterial;
+  private readonly beamEmitterInnerMat: THREE.ShaderMaterial;
   private readonly getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
   private readonly getTeamOrnamentMat: (playerId: PlayerId | undefined) => THREE.Material;
   private readonly barrelMat: THREE.Material;
@@ -463,8 +523,6 @@ export class BuildingEntityRenderer3D {
   private readonly fixedMuzzleQuaternion = new THREE_TRIM.Quaternion();
   private readonly collarPosition = new THREE_TRIM.Vector3();
   private readonly collarQuaternion = new THREE_TRIM.Quaternion();
-  private readonly collarIdentity = new THREE_TRIM.Quaternion();
-  private readonly collarZero = new THREE_TRIM.Vector3();
   private readonly buildingPoseBatch = new BuildingPoseBatch3D();
   private buildingPoseInput = new Float32Array(BUILDING_POSE_INPUT_STRIDE * 256);
   private buildingPoseCount = 0;
@@ -487,6 +545,8 @@ export class BuildingEntityRenderer3D {
     this.turretHeadGeom = options.turretHeadGeom;
     this.barrelGeom = options.barrelGeom;
     this.coneBarrelGeom = options.coneBarrelGeom;
+    this.beamEmitterOuterMat = createBeamEmitterMeshMaterial('outer');
+    this.beamEmitterInnerMat = createBeamEmitterMeshMaterial('inner');
     this.getPrimaryMat = options.getPrimaryMat;
     this.getTeamOrnamentMat = options.getTeamOrnamentMat;
     this.barrelMat = options.barrelMat;
@@ -973,6 +1033,8 @@ export class BuildingEntityRenderer3D {
     this.buildingSpinEntriesByEntity.clear();
     this.buildingSpinDeadEntries = 0;
     this.buildingSpinResetPending = false;
+    this.beamEmitterOuterMat.dispose();
+    this.beamEmitterInnerMat.dispose();
   }
 
   private updateBuilding(
@@ -1045,6 +1107,10 @@ export class BuildingEntityRenderer3D {
         turretHeadGeom: this.turretHeadGeom,
         barrelGeom: this.barrelGeom,
         coneBarrelGeom: this.coneBarrelGeom,
+        beamEmitterMaterials: {
+          outer: this.beamEmitterOuterMat,
+          inner: this.beamEmitterInnerMat,
+        },
         getPrimaryMat: this.getPrimaryMat,
         getTeamOrnamentMat: this.getTeamOrnamentMat,
         barrelMat: this.barrelMat,
@@ -1267,6 +1333,22 @@ export class BuildingEntityRenderer3D {
     const bodyVisible = rows.bodyOpacity[row] > 0;
     const ownerId = rows.ownerIdAt(row);
     const teamColorHex = entityTeamColorHexForPlayer(ownerId);
+    const hostRotation = rows.rotation[row];
+    for (const piece of mesh.buildingTurretHostPieces ?? []) {
+      const ownerTurret = combatTurrets[piece.ownerTurretIndex];
+      const ownerState = turretStateFields(turretRows, piece.ownerTurretIndex);
+      const pieceWorldYaw = ownerState?.hostPieceYaw ?? ownerTurret?.hostPieceYaw;
+      setEulerYIfChanged(
+        piece.root.rotation,
+        hostRotation - (Number.isFinite(pieceWorldYaw) ? pieceWorldYaw : hostRotation),
+      );
+      if (piece.pitchRoot !== undefined) {
+        setEulerZIfChanged(
+          piece.pitchRoot.rotation,
+          ownerState?.pitch ?? ownerTurret?.pitch ?? 0,
+        );
+      }
+    }
     for (let turretIndex = 0; turretIndex < turretCount; turretIndex++) {
       const turret = combatTurrets[turretIndex];
       const turretState = turretStateFields(turretRows, turretIndex);
@@ -1292,14 +1374,33 @@ export class BuildingEntityRenderer3D {
         if (turretMesh.head && !underConstruction) {
           this.setTurretHeadMaterial(turretMesh, this.getPrimaryMat(ownerId));
         }
-      } else if (!underConstruction) {
+      } else if (!underConstruction && turretMesh.barrelUsesCone !== true) {
         this.setTurretBarrelMaterial(turretMesh, this.barrelMat);
       }
+      const attachment = turret.config.hostAttachment;
+      const hostPiece = isBuildingHostPieceAttachment(attachment)
+        ? mesh.buildingTurretHostPieces?.find((piece) => piece.pieceId === attachment.piece)
+        : undefined;
+      const hostPieceState = hostPiece === undefined
+        ? null
+        : turretStateFields(turretRows, hostPiece.ownerTurretIndex);
+      const hostPieceOwner = hostPiece === undefined
+        ? undefined
+        : combatTurrets[hostPiece.ownerTurretIndex];
+      const articulationParentYaw = hostPiece === undefined
+        ? hostRotation
+        : hostPieceState?.hostPieceYaw ?? hostPieceOwner?.hostPieceYaw;
+      const resolvedParentYaw = articulationParentYaw !== undefined &&
+        Number.isFinite(articulationParentYaw)
+        ? articulationParentYaw
+        : hostRotation;
       this.enqueueTurretAim(
         turretMesh,
-        rows.rotation[row],
+        resolvedParentYaw,
         turretState?.rotation ?? turret.rotation,
-        headOnly ? 0 : (turretState?.pitch ?? turret.pitch),
+        headOnly || isBuildingAimPieceAttachment(attachment)
+          ? 0
+          : (turretState?.pitch ?? turret.pitch),
         mesh,
         teamColorHex,
         entity.id,
@@ -1599,15 +1700,9 @@ export class BuildingEntityRenderer3D {
     }
   }
 
-  /**
-   * A tower turret's team collar, in the ornament pool's world space.
-   *
-   * Composed from the host's own pose rather than read off `matrixWorld`:
-   * the building pose was written moments ago in this same frame and three
-   * has not walked the graph yet, so a world matrix here would be one frame
-   * stale — which on a rotating turret reads as the collar lagging behind
-   * its own barrels.
-   */
+  /** A tower turret's team collar in ornament-pool world space. The building
+   * pose batch has already committed this frame, so updating the hierarchy
+   * here correctly includes either a direct mount or an articulated parent. */
   private writeTurretTeamCollar(
     turretMesh: TurretMesh,
     host: EntityMesh | undefined,
@@ -1621,23 +1716,12 @@ export class BuildingEntityRenderer3D {
       if (slot < 0) return;
       collar.slot = slot;
     }
-    const pitchPosition = turretMesh.pitchGroup?.position;
-    const pitchQuaternion = turretMesh.pitchGroup?.quaternion;
+    const collarParent = turretMesh.pitchGroup ?? turretMesh.yawGroup;
+    host.group.updateMatrixWorld(true);
     this.collarPosition
-      .set(collar.centerX, collar.centerY, collar.centerZ)
-      .applyQuaternion(pitchQuaternion ?? this.collarIdentity)
-      .add(pitchPosition ?? this.collarZero)
-      .applyQuaternion(turretMesh.yawGroup.quaternion)
-      .add(turretMesh.yawGroup.position)
-      .applyQuaternion(turretMesh.root.quaternion)
-      .add(turretMesh.root.position)
-      .applyQuaternion(host.group.quaternion)
-      .add(host.group.position);
-    this.collarQuaternion
-      .copy(host.group.quaternion)
-      .multiply(turretMesh.root.quaternion)
-      .multiply(turretMesh.yawGroup.quaternion)
-      .multiply(pitchQuaternion ?? this.collarIdentity);
+      .set(collar.centerX, collar.centerY, collar.centerZ);
+    collarParent.localToWorld(this.collarPosition);
+    collarParent.getWorldQuaternion(this.collarQuaternion);
     trim.setTurretCollar(
       collar.slot,
       this.collarPosition.x,

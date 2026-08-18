@@ -305,6 +305,8 @@ export class EntityCacheManager {
         } else if (
           entity.buildingBlueprintId === 'buildingRadar' ||
           entity.buildingBlueprintId === 'buildingSonar' ||
+          entity.buildingBlueprintId === 'buildingRadarJammer' ||
+          entity.buildingBlueprintId === 'buildingSonarJammer' ||
           entity.buildingBlueprintId === 'buildingShieldTargetingTech' ||
           entity.buildingBlueprintId === 'buildingShieldTech' ||
           entity.buildingBlueprintId === 'buildingPrecisionTargetingTech'

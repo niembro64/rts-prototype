@@ -125,6 +125,18 @@ function selectUnitBlueprintId(
   return BACKGROUND_UNIT_BLUEPRINT_IDS[Math.floor(rngNext() * BACKGROUND_UNIT_BLUEPRINT_IDS.length)];
 }
 
+/** Canonical opening-wave coverage order. Set iteration order is caller-owned,
+ * so derive from the authoritative roster to keep Demo deterministic and make
+ * every enabled blueprint visible before weighted duplicates begin. */
+function openingWaveCoverageBlueprintIds(
+  allowedUnitBlueprintIds: ReadonlySet<string> | undefined,
+): readonly string[] {
+  if (allowedUnitBlueprintIds === undefined) return BACKGROUND_UNIT_BLUEPRINT_IDS;
+  return BACKGROUND_UNIT_BLUEPRINT_IDS.filter(
+    (unitBlueprintId) => allowedUnitBlueprintIds.has(unitBlueprintId),
+  );
+}
+
 let bodyPoolSaturatedWarned = false;
 function warnBodyPoolSaturatedOnce(): void {
   if (bodyPoolSaturatedWarned) return;
@@ -308,12 +320,16 @@ export function spawnBackgroundUnitsStandalone(
   }
 
   if (initialSpawn) {
-    // Every opening unit draws from the enabled roster with probability
-    // proportional to 1 / (metal + energy cost), then drops into the same
-    // center disk. This intentionally performs no terrain, water, path, or
-    // factory-roster suitability checks — except on a lava world, where the
-    // water roster is off (see initialWaveAllowedUnitBlueprintIds above).
+    // Seed one of every enabled unit first whenever this seat's cap share has
+    // room, then fill remaining slots with the inverse-cost weighted roster.
+    // This turns "enabled" into a visible Demo guarantee instead of a random
+    // chance. Every unit still drops into the same center disk and intentionally
+    // performs no terrain, path, or factory-roster suitability checks — except
+    // on lava, where the water roster is off.
     const centerRadius = DEMO_CONFIG.centerSpawnRadius * oval.minDim;
+    const coverageBlueprintIds = openingWaveCoverageBlueprintIds(
+      initialWaveAllowedUnitBlueprintIds,
+    );
 
     for (let p = 0; p < numPlayers; p++) {
       const playerId = players[p];
@@ -329,10 +345,18 @@ export function spawnBackgroundUnitsStandalone(
         pUnits + i < seatShare && world.getRemainingTeamEntityCapacity(playerId) > 0;
         i++
       ) {
-        const unitBlueprintId = selectWeightedUnitBlueprintId(
-          () => world.nextRandom(playerId),
-          initialWaveAllowedUnitBlueprintIds,
-        );
+        // Rotate short-cap coverage between seats so a match that can fit the
+        // full roster in aggregate still shows all types even when no one seat
+        // can. A seat with >= roster-size slots always receives all of them.
+        const coverageIndex = coverageBlueprintIds.length > 0
+          ? (p * seatShare + i) % coverageBlueprintIds.length
+          : -1;
+        const unitBlueprintId = i < coverageBlueprintIds.length
+          ? coverageBlueprintIds[coverageIndex]
+          : selectWeightedUnitBlueprintId(
+            () => world.nextRandom(playerId),
+            initialWaveAllowedUnitBlueprintIds,
+          );
         if (unitBlueprintId === null) continue;
 
         const spawn = sampleInitialCenterSpawnPoint(

@@ -67,6 +67,8 @@ export function buildingBlueprintHasActiveState(
     || isMetalExtractorBlueprintId(buildingBlueprintId)
     || buildingBlueprintId === 'buildingRadar'
     || buildingBlueprintId === 'buildingSonar'
+    || buildingBlueprintId === 'buildingRadarJammer'
+    || buildingBlueprintId === 'buildingSonarJammer'
     || buildingBlueprintId === 'buildingResourceConverter'
     || buildingBlueprintId === 'buildingShieldTargetingTech'
     || buildingBlueprintId === 'buildingShieldTech'

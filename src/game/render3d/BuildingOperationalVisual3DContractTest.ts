@@ -182,7 +182,12 @@ export function runBuildingOperationalVisual3DContractTest(): void {
       } else {
         assertGenericOperationalRig(id, shape);
       }
-      if (id === 'buildingRadar' || id === 'buildingSonar') {
+      if (
+        id === 'buildingRadar'
+        || id === 'buildingSonar'
+        || id === 'buildingRadarJammer'
+        || id === 'buildingSonarJammer'
+      ) {
         assertContract(shape.radarRig !== undefined, `${id} ON pose must scan continuously`);
       }
       if (id === 'buildingResourceConverter') {

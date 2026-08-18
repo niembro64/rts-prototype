@@ -1,5 +1,5 @@
 import type { WorldState } from './WorldState';
-import type { Entity } from './types';
+import type { Entity, PlayerId } from './types';
 import { factoryProductionSystem } from './factoryProduction';
 import {
   deactivateBuildingActiveState,
@@ -8,13 +8,18 @@ import {
 } from './buildingActiveState';
 import { isEntityActive } from './buildableHelpers';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
+import { getBuildingConfig } from './buildConfigs';
+import { economyManager } from './economy';
 import {
   clearExtractorMetalCoverage,
   computeExtractorMetalCoverage,
 } from './metalDepositOwnership';
 
+const completedStorageOwnerByEntity = new WeakMap<Entity, PlayerId>();
 
 export function applyCompletedBuildingEffects(world: WorldState, entity: Entity): void {
+  applyCompletedBuildingStorageCapacity(entity);
+
   if (isMetalExtractorBlueprintId(entity.buildingBlueprintId) && entity.ownership) {
     // Covered-cell extraction. Walk every deposit the extractor
     // footprint overlaps and store metal/sec as a direct function of
@@ -36,6 +41,8 @@ export function applyCompletedBuildingEffects(world: WorldState, entity: Entity)
 }
 
 export function removeCompletedBuildingEffects(world: WorldState, entity: Entity): void {
+  removeCompletedBuildingStorageCapacity(entity);
+
   if (entity.factory) {
     // The factory is being destroyed — its in-progress unit frame dies
     // with it (no refund, and never released as a live unit).
@@ -60,4 +67,56 @@ export function removeCompletedBuildingEffects(world: WorldState, entity: Entity
     // so we ignore the helper's lostIncome return.
     clearExtractorMetalCoverage(world, entity);
   }
+}
+
+function getBuildingStorageCapacity(entity: Entity): { energy: number; metal: number } | null {
+  if (
+    entity.buildingBlueprintId === null
+    || entity.ownership === null
+    || entity.building === null
+  ) return null;
+  const config = getBuildingConfig(entity.buildingBlueprintId);
+  const energy = Math.max(0, config.energyStorage ?? 0);
+  const metal = Math.max(0, config.metalStorage ?? 0);
+  return energy > 0 || metal > 0 ? { energy, metal } : null;
+}
+
+function applyCompletedBuildingStorageCapacity(entity: Entity): void {
+  const capacity = getBuildingStorageCapacity(entity);
+  if (capacity === null || entity.ownership === null || !isEntityActive(entity)) return;
+  const playerId = entity.ownership.playerId;
+  const appliedOwner = completedStorageOwnerByEntity.get(entity);
+  if (appliedOwner === playerId) return;
+  if (appliedOwner !== undefined) {
+    economyManager.removeStorageCapacity(appliedOwner, capacity);
+  }
+  economyManager.addStorageCapacity(playerId, capacity);
+  completedStorageOwnerByEntity.set(entity, playerId);
+}
+
+function removeCompletedBuildingStorageCapacity(entity: Entity): void {
+  const capacity = getBuildingStorageCapacity(entity);
+  const appliedOwner = completedStorageOwnerByEntity.get(entity);
+  if (capacity === null || appliedOwner === undefined) return;
+  economyManager.removeStorageCapacity(appliedOwner, capacity);
+  completedStorageOwnerByEntity.delete(entity);
+}
+
+/** Ownership transfer is a remove/add, so each player remains exactly the sum
+ *  of their completed storage buildings. The caller invokes this around the
+ *  authoritative ownership write. */
+export function transferCompletedBuildingStorageCapacity(
+  entity: Entity,
+  previousPlayerId: PlayerId,
+  nextPlayerId: PlayerId,
+): void {
+  const capacity = getBuildingStorageCapacity(entity);
+  if (capacity === null || !isEntityActive(entity) || previousPlayerId === nextPlayerId) return;
+  const appliedOwner = completedStorageOwnerByEntity.get(entity);
+  if (appliedOwner === nextPlayerId) return;
+  if (appliedOwner !== undefined) {
+    economyManager.removeStorageCapacity(appliedOwner, capacity);
+  }
+  economyManager.addStorageCapacity(nextPlayerId, capacity);
+  completedStorageOwnerByEntity.set(entity, nextPlayerId);
 }

@@ -15,6 +15,7 @@ import { getStructureFactoryAllowedUnitBlueprintIds } from './factoryProductionR
 import { spawnInitialBases, spawnMetalExtractorsOnDeposits } from './spawn';
 import { buildTeamRosterFromSeatCounts } from './teamRoster';
 import type { PlayerId } from './types';
+import { BUILDING_BLUEPRINT_IDS } from '../../types/blueprintIds';
 import { WorldState } from './WorldState';
 import {
   getTerrainRuntimeConfig,
@@ -371,6 +372,11 @@ function assertAuthoredRosterCoverageForPreset(
   world.metalDeposits = generateMetalDeposits(mapWidth, mapHeight, playerIds.length);
   const construction = new ConstructionSystem(mapWidth, mapHeight, null);
   const entities = spawnInitialBases(world, construction, playerIds, 'demo');
+  entities.push(...spawnMetalExtractorsOnDeposits(
+    world,
+    construction,
+    playerIds,
+  ));
   const expectedUnitBlueprintIds =
     getStructureFactoryAllowedUnitBlueprintIds('towerFabricator');
   const expectedUnitBlueprintIdSet = new Set<string>(expectedUnitBlueprintIds);
@@ -407,6 +413,32 @@ function assertAuthoredRosterCoverageForPreset(
       coverage.get(playerId)?.size === expectedUnitBlueprintIds.length,
       `${compactPreset.name} player ${playerId} must retain all ` +
         `${expectedUnitBlueprintIds.length} repeat Fabricator lines`,
+    );
+  }
+
+  // End-to-end Demo visibility contract. This inspects entities returned by
+  // the real base/deposit spawning path, not toggle defaults or a duplicate
+  // expected list. Adding a registry blueprint that fails to instantiate for
+  // even one seat therefore fails immediately in development.
+  const buildingCoverageByPlayer = new Map<PlayerId, Set<string>>();
+  for (const entity of entities) {
+    const buildingBlueprintId = entity.buildingBlueprintId;
+    const playerId = entity.ownership?.playerId;
+    if (buildingBlueprintId === null || playerId === undefined) continue;
+    let coverage = buildingCoverageByPlayer.get(playerId);
+    if (coverage === undefined) {
+      coverage = new Set<string>();
+      buildingCoverageByPlayer.set(playerId, coverage);
+    }
+    coverage.add(buildingBlueprintId);
+  }
+  for (const playerId of playerIds) {
+    const coverage = buildingCoverageByPlayer.get(playerId) ?? new Set<string>();
+    const missing = BUILDING_BLUEPRINT_IDS.filter((id) => !coverage.has(id));
+    assertContract(
+      missing.length === 0,
+      `${compactPreset.name} Demo seat ${playerId} must instantiate every current building; ` +
+        `missing ${missing.join(', ')}`,
     );
   }
 

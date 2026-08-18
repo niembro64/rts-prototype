@@ -231,9 +231,12 @@ export class ServerBootstrap {
       );
       await report(0.78, 'Spawning bases');
 
-      if (backgroundAllowedBuildingBlueprintIds.has('buildingExtractor')) {
-        entities.push(...spawnMetalExtractorsOnDeposits(world, constructionSystem, playerIds));
-      }
+      entities.push(...spawnMetalExtractorsOnDeposits(
+        world,
+        constructionSystem,
+        playerIds,
+        backgroundAllowedBuildingBlueprintIds,
+      ));
       await report(0.82, 'Placing metal extractors');
 
       await ServerBootstrap.createInitialPhysicsBodiesAsync(
@@ -453,9 +456,12 @@ export class ServerBootstrap {
         backgroundAllowedUnitBlueprintIds,
         backgroundAllowedBuildingBlueprintIds,
       );
-      if (backgroundAllowedBuildingBlueprintIds.has('buildingExtractor')) {
-        entities.push(...spawnMetalExtractorsOnDeposits(world, constructionSystem, playerIds));
-      }
+      entities.push(...spawnMetalExtractorsOnDeposits(
+        world,
+        constructionSystem,
+        playerIds,
+        backgroundAllowedBuildingBlueprintIds,
+      ));
       ServerBootstrap.createInitialPhysicsBodies(world, physics, entities);
 
       // Background mode: spawn a cluster of units near center for immediate combat

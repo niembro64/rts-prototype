@@ -2556,9 +2556,10 @@ export function runClientSnapshotApplierContractTest(): void {
   );
   turretView.applyNetworkState(snapshot(2, typedTurretRows));
   resetEntitySnapshotPool();
+  const typedTurretTarget = turretView.getEntity(400)?.combat?.turrets[0]?.target;
   assertContract(
-    turretView.getEntity(400)?.combat?.turrets[0]?.target === 77,
-    'typed unit turret rows must update turret target before DTO fallback',
+    typedTurretTarget === 77,
+    `typed unit turret rows must update turret target before DTO fallback (got ${typedTurretTarget})`,
   );
   turretView.assertRenderEntityStateParity(400);
 

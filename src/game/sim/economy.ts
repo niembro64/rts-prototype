@@ -173,6 +173,36 @@ class EconomyManager {
     economy.metal.income.extraction = Math.max(0, economy.metal.income.extraction - amount);
   }
 
+  /** Completed storage structures extend the canonical pool limits. Capacity
+   *  is passive: unlike production it is never gated by the building's
+   *  fortified/open state. */
+  addStorageCapacity(playerId: PlayerId, amount: ResourceCost): void {
+    const economy = this.getOrCreateEconomy(playerId);
+    economy.stockpile.max += finiteNonNegative(amount.energy);
+    economy.metal.stockpile.max += finiteNonNegative(amount.metal);
+  }
+
+  /** Remove one completed storage contribution. If the destroyed/captured
+   *  store held the only headroom, excess resources are lost immediately,
+   *  matching the new physical capacity rather than leaving an overfilled
+   *  pool that can no longer be represented by the economy rules. */
+  removeStorageCapacity(playerId: PlayerId, amount: ResourceCost): void {
+    const economy = this.getOrCreateEconomy(playerId);
+    economy.stockpile.max = Math.max(
+      ECONOMY_CONSTANTS.maxStockpile,
+      economy.stockpile.max - finiteNonNegative(amount.energy),
+    );
+    economy.metal.stockpile.max = Math.max(
+      ECONOMY_CONSTANTS.maxMetal,
+      economy.metal.stockpile.max - finiteNonNegative(amount.metal),
+    );
+    economy.stockpile.curr = Math.min(economy.stockpile.curr, economy.stockpile.max);
+    economy.metal.stockpile.curr = Math.min(
+      economy.metal.stockpile.curr,
+      economy.metal.stockpile.max,
+    );
+  }
+
   // Get total energy income (base + production)
   getTotalIncome(playerId: PlayerId): number {
     const economy = this.getOrCreateEconomy(playerId);
@@ -723,3 +753,7 @@ class EconomyManager {
 
 // Singleton instance
 export const economyManager = new EconomyManager();
+
+function finiteNonNegative(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}

@@ -22,8 +22,16 @@ import {
   shortestBotSocketAngleDelta,
   type BotArmSocketPose,
 } from '../../math/BotHostSocketGeometry';
+import {
+  buildingHostPieceAttachmentsMatch,
+  isBuildingAimPieceAttachment,
+  isBuildingHostPieceAttachment,
+  selectBuildingHostPieceTurretIndex,
+} from '../../math/BuildingHostSocketGeometry';
 import { GRAVITY } from '../../../config';
 import { getSimWasm } from '../../sim-wasm/init';
+import { beamIndex } from '../BeamIndex';
+import { readTurretCooldownForFire } from './combatActivitySlab';
 import {
   readCombatTargetingTurretMountKinematicsFromContextInto,
   readCombatTargetingTurretMountKinematicsInto,
@@ -160,13 +168,188 @@ let _botUpperBodyOutYaw = new Float64Array(0);
 let _botUpperBodyOutVelocity = new Float64Array(0);
 let _botUpperBodyOutAcceleration = new Float64Array(0);
 let _botUpperBodyOutError = new Float64Array(0);
+let _hostPieceYawContinuous = new Uint8Array(0);
+let _hostPieceYawMin = new Float64Array(0);
+let _hostPieceYawMax = new Float64Array(0);
+let _hostPieceCurrentPitch = new Float64Array(0);
+let _hostPiecePitchVelocity = new Float64Array(0);
+let _hostPieceTargetPitch = new Float64Array(0);
+let _hostPiecePitchMin = new Float64Array(0);
+let _hostPiecePitchMax = new Float64Array(0);
+let _hostPiecePitchMaxSpeed = new Float64Array(0);
+let _hostPiecePitchMaxAcceleration = new Float64Array(0);
+let _hostPieceOutPitch = new Float64Array(0);
+let _hostPieceOutPitchVelocity = new Float64Array(0);
+let _hostPieceOutPitchAcceleration = new Float64Array(0);
+let _hostPieceOutPitchError = new Float64Array(0);
+
+const SHARED_AIM_PIECE_MIN_CLAIM_TIMEOUT_MS = 3000;
 
 export type TurretArticulationParentYaw = { yaw: number; velocity: number };
 
+function sharedAimStationStateCode(
+  host: Entity,
+  turretIndex: number,
+  turret: Turret,
+): number {
+  if (readCombatTargetingTurretFsmInto(host, turretIndex, _botTorsoFsmScratch)) {
+    return _botTorsoFsmScratch.stateCode;
+  }
+  return turret.state === 'engaged'
+    ? CT_TURRET_STATE_ENGAGED
+    : turret.state === 'tracking'
+      ? CT_TURRET_STATE_TRACKING
+      : 0;
+}
+
+function sharedAimStationIsReady(
+  host: Entity,
+  turretIndex: number,
+  turret: Turret,
+): boolean {
+  if (beamIndex.hasActiveBeam(host.id, turretIndex)) return true;
+  return sharedAimStationStateCode(host, turretIndex, turret) === CT_TURRET_STATE_ENGAGED &&
+    readTurretCooldownForFire(host, turretIndex) <= 0;
+}
+
+function findSharedAimClaimantIndex(
+  host: Entity,
+  owner: Turret,
+  ownerAttachment: NonNullable<Turret['config']['hostAttachment']> & {
+    kind: 'buildingAimPiece';
+  },
+  excludedMountIndex: number,
+): number {
+  const turrets = host.combat?.turrets ?? [];
+  let hasActiveBeamCandidate = false;
+  let highestPriority = Number.NEGATIVE_INFINITY;
+  for (let index = 0; index < turrets.length; index++) {
+    const candidate = turrets[index];
+    if (
+      candidate.mountIndex === excludedMountIndex ||
+      !buildingHostPieceAttachmentsMatch(ownerAttachment, candidate.config.hostAttachment) ||
+      !sharedAimStationIsReady(host, index, candidate)
+    ) continue;
+    const activeBeam = beamIndex.hasActiveBeam(host.id, index);
+    if (activeBeam && !hasActiveBeamCandidate) {
+      hasActiveBeamCandidate = true;
+      highestPriority = Number.NEGATIVE_INFINITY;
+    }
+    if (activeBeam !== hasActiveBeamCandidate) continue;
+    highestPriority = Math.max(highestPriority, candidate.config.articulation.claimPriority);
+  }
+  if (highestPriority === Number.NEGATIVE_INFINITY) return -1;
+
+  let afterLastIndex = -1;
+  let afterLastMount = Number.MAX_SAFE_INTEGER;
+  let wrappedIndex = -1;
+  let wrappedMount = Number.MAX_SAFE_INTEGER;
+  for (let index = 0; index < turrets.length; index++) {
+    const candidate = turrets[index];
+    if (
+      candidate.mountIndex === excludedMountIndex ||
+      candidate.config.articulation.claimPriority !== highestPriority ||
+      !buildingHostPieceAttachmentsMatch(ownerAttachment, candidate.config.hostAttachment) ||
+      beamIndex.hasActiveBeam(host.id, index) !== hasActiveBeamCandidate ||
+      !sharedAimStationIsReady(host, index, candidate)
+    ) continue;
+    if (candidate.mountIndex > owner.hostPieceLastClaimMountIndex) {
+      if (candidate.mountIndex < afterLastMount) {
+        afterLastIndex = index;
+        afterLastMount = candidate.mountIndex;
+      }
+    } else if (candidate.mountIndex < wrappedMount) {
+      wrappedIndex = index;
+      wrappedMount = candidate.mountIndex;
+    }
+  }
+  return afterLastIndex >= 0 ? afterLastIndex : wrappedIndex;
+}
+
+function selectSharedAimPieceClaimant(
+  host: Entity,
+  owner: Turret,
+  ownerAttachment: NonNullable<Turret['config']['hostAttachment']> & {
+    kind: 'buildingAimPiece';
+  },
+  dtMs: number,
+): number {
+  const turrets = host.combat?.turrets ?? [];
+  let currentIndex = -1;
+  for (let index = 0; index < turrets.length; index++) {
+    if (
+      turrets[index].mountIndex === owner.hostPieceClaimMountIndex &&
+      buildingHostPieceAttachmentsMatch(ownerAttachment, turrets[index].config.hostAttachment)
+    ) {
+      currentIndex = index;
+      break;
+    }
+  }
+
+  if (currentIndex >= 0) {
+    const claimant = turrets[currentIndex];
+    const activeBeam = beamIndex.hasActiveBeam(host.id, currentIndex);
+    if (activeBeam) owner.hostPieceClaimSawActiveBeam = true;
+    owner.hostPieceClaimAgeMs += dtMs;
+    const completedPulse = owner.hostPieceClaimSawActiveBeam && !activeBeam;
+    const noLongerReady = !activeBeam && !sharedAimStationIsReady(host, currentIndex, claimant);
+    const timedOut = !owner.hostPieceClaimSawActiveBeam &&
+      owner.hostPieceClaimAgeMs >= Math.max(
+        SHARED_AIM_PIECE_MIN_CLAIM_TIMEOUT_MS,
+        claimant.config.articulation.restoreDelayMs * 2,
+      ) &&
+      findSharedAimClaimantIndex(
+        host,
+        owner,
+        ownerAttachment,
+        claimant.mountIndex,
+      ) >= 0;
+    if (!completedPulse && !noLongerReady && !timedOut) return currentIndex;
+    owner.hostPieceLastClaimMountIndex = claimant.mountIndex;
+    owner.hostPieceClaimMountIndex = -1;
+    owner.hostPieceClaimAgeMs = 0;
+    owner.hostPieceClaimSawActiveBeam = false;
+  }
+
+  const nextIndex = findSharedAimClaimantIndex(host, owner, ownerAttachment, -1);
+  if (nextIndex < 0) return -1;
+  owner.hostPieceClaimMountIndex = turrets[nextIndex].mountIndex;
+  owner.hostPieceClaimAgeMs = 0;
+  owner.hostPieceClaimSawActiveBeam = beamIndex.hasActiveBeam(host.id, nextIndex);
+  return nextIndex;
+}
+
+/** Attack emission gate for a shared two-axis building head. Only the station
+ * currently granted the parent claim may begin or continue a pulse. */
+export function turretOwnsSharedAimPieceClaim(
+  host: Entity,
+  turretIndex: number,
+): boolean {
+  const turrets = host.combat?.turrets;
+  if (turrets === undefined) return false;
+  const turret = turrets[turretIndex];
+  if (turret === undefined) return false;
+  const attachment = turret.config.hostAttachment;
+  if (!isBuildingAimPieceAttachment(attachment)) return true;
+  const ownerIndex = selectBuildingHostPieceTurretIndex(turrets, attachment.piece);
+  const owner = ownerIndex >= 0 ? turrets[ownerIndex] : undefined;
+  return owner?.hostPieceClaimMountIndex === turret.mountIndex;
+}
+
+function selectAttachedHostPieceOwnerIndex(
+  turrets: readonly Turret[],
+  turret: Turret,
+): number {
+  const attachment = turret.config.hostAttachment;
+  return isBuildingHostPieceAttachment(attachment)
+    ? selectBuildingHostPieceTurretIndex(turrets, attachment.piece)
+    : selectBotTorsoTurretIndex(turrets);
+}
+
 /** Resolve the moving parent frame for a station's local yaw joint. Rigid
- * mounts inherit chassis yaw; bot attachments inherit the authoritative upper
- * body piece. Callers provide scratch storage so the per-turret path allocates
- * nothing. */
+ * mounts inherit chassis yaw; attached stations inherit their authoritative
+ * bot or building host piece. Callers provide scratch storage so the
+ * per-turret path allocates nothing. */
 export function writeTurretArticulationParentYaw(
   host: Entity,
   turret: Turret,
@@ -174,7 +357,7 @@ export function writeTurretArticulationParentYaw(
 ): TurretArticulationParentYaw {
   const combat = host.combat;
   if (turret.config.hostAttachment !== null && combat !== null) {
-    const ownerIndex = selectBotTorsoTurretIndex(combat.turrets);
+    const ownerIndex = selectAttachedHostPieceOwnerIndex(combat.turrets, turret);
     const owner = ownerIndex >= 0 ? combat.turrets[ownerIndex] : undefined;
     if (owner !== undefined && Number.isFinite(owner.hostPieceYaw)) {
       out.yaw = owner.hostPieceYaw;
@@ -225,14 +408,47 @@ type WeaponWorldMountOptions = {
 };
 
 function resolveAuthoritativeHostAttachmentLocal(
-  unit: Entity,
+  host: Entity,
   turret: Turret,
   out: Vec3,
 ): Vec3 | null {
   const attachment = turret.config.hostAttachment;
-  const sourceUnit = unit.unit;
-  const combat = unit.combat;
-  if (attachment === null || sourceUnit === null || combat === null) return null;
+  const combat = host.combat;
+  if (attachment === null || combat === null) return null;
+
+  if (isBuildingHostPieceAttachment(attachment)) {
+    if (host.building === null) return null;
+    const ownerIndex = selectBuildingHostPieceTurretIndex(
+      combat.turrets,
+      attachment.piece,
+    );
+    const owner = ownerIndex >= 0 ? combat.turrets[ownerIndex] : undefined;
+    const pieceWorldYaw = owner !== undefined && Number.isFinite(owner.hostPieceYaw)
+      ? owner.hostPieceYaw
+      : host.transform.rotation;
+    const pieceFromHost = shortestBotSocketAngleDelta(
+      host.transform.rotation,
+      pieceWorldYaw,
+    );
+    const pieceCos = DMath.cos(pieceFromHost);
+    const pieceSin = DMath.sin(pieceFromHost);
+    const piecePitch = isBuildingAimPieceAttachment(attachment) && owner !== undefined
+      ? owner.pitch
+      : 0;
+    const pitchCos = DMath.cos(piecePitch);
+    const pitchSin = DMath.sin(piecePitch);
+    const mount = getRuntimeTurretMount(turret);
+    const socket = attachment.socketOffset;
+    const pitchedForwardX = pitchCos * socket.x - pitchSin * socket.z;
+    const pitchedUpZ = pitchSin * socket.x + pitchCos * socket.z;
+    out.x = mount.x + pieceCos * pitchedForwardX - pieceSin * socket.y;
+    out.y = mount.y + pieceSin * pitchedForwardX + pieceCos * socket.y;
+    out.z = mount.z + pitchedUpZ;
+    return out;
+  }
+
+  const sourceUnit = host.unit;
+  if (sourceUnit === null) return null;
   const blueprint = getUnitBlueprint(sourceUnit.unitBlueprintId);
   if (blueprint.unitLocomotion.type !== 'bot') return null;
 
@@ -242,9 +458,9 @@ function resolveAuthoritativeHostAttachmentLocal(
     : undefined;
   const torsoWorldYaw = torsoOwner !== undefined && Number.isFinite(torsoOwner.hostPieceYaw)
     ? torsoOwner.hostPieceYaw
-    : unit.transform.rotation;
+    : host.transform.rotation;
   const torsoFromHost = shortestBotSocketAngleDelta(
-    unit.transform.rotation,
+    host.transform.rotation,
     torsoWorldYaw,
   );
   const torsoCos = DMath.cos(torsoFromHost);
@@ -289,7 +505,7 @@ function resolveAuthoritativeHostAttachmentLocal(
 }
 
 function resolveAuthoritativeHostAttachmentWorld(
-  unit: Entity,
+  host: Entity,
   turret: Turret,
   cos: number,
   sin: number,
@@ -299,15 +515,15 @@ function resolveAuthoritativeHostAttachmentWorld(
   out: Vec3,
 ): Vec3 | null {
   const local = resolveAuthoritativeHostAttachmentLocal(
-    unit,
+    host,
     turret,
     _hostAttachmentLocalScratch,
   );
   if (local === null) return null;
-  const suspension = unit.unit?.suspension ?? null;
+  const suspension = host.unit?.suspension ?? null;
   return getTurretWorldMount(
-    unit.transform.x,
-    unit.transform.y,
+    host.transform.x,
+    host.transform.y,
     unitGroundZ,
     cos,
     sin,
@@ -629,134 +845,308 @@ function ensureBotUpperBodyCapacity(required: number): void {
   _botUpperBodyOutVelocity = new Float64Array(next);
   _botUpperBodyOutAcceleration = new Float64Array(next);
   _botUpperBodyOutError = new Float64Array(next);
+  _hostPieceYawContinuous = new Uint8Array(next);
+  _hostPieceYawMin = new Float64Array(next);
+  _hostPieceYawMax = new Float64Array(next);
+  _hostPieceCurrentPitch = new Float64Array(next);
+  _hostPiecePitchVelocity = new Float64Array(next);
+  _hostPieceTargetPitch = new Float64Array(next);
+  _hostPiecePitchMin = new Float64Array(next);
+  _hostPiecePitchMax = new Float64Array(next);
+  _hostPiecePitchMaxSpeed = new Float64Array(next);
+  _hostPiecePitchMaxAcceleration = new Float64Array(next);
+  _hostPieceOutPitch = new Float64Array(next);
+  _hostPieceOutPitchVelocity = new Float64Array(next);
+  _hostPieceOutPitchAcceleration = new Float64Array(next);
+  _hostPieceOutPitchError = new Float64Array(next);
 }
 
-/** One shared upper-body joint per bot. A stable turret row carries the joint
- * state for snapshots, while the highest-priority active weapon or work
- * station claims its target for this tick. The bounded motor is stepped as one
- * Rust batch; sibling stations solve only their residual local traverse. */
-function updateBotUpperBodyArticulation(
-  units: readonly Entity[],
+/** One shared joint chain per articulated host piece. A stable turret row
+ * carries the joint state for snapshots, while the highest-priority active
+ * station attached to that exact piece proposes its target for this tick.
+ * Bot upper bodies and yaw-only building torsos use only the yaw joint. A
+ * building aim piece additionally owns pitch, leaving its weapon children
+ * with no residual local traverse. */
+function updateSharedHostPieceArticulation(
+  hosts: readonly Entity[],
   currentTick: number,
   dtMs: number,
 ): void {
   _botUpperBodyHosts.length = 0;
   _botUpperBodyOwners.length = 0;
   _botUpperBodyOwnerIndexes.length = 0;
-  for (let unitIndex = 0; unitIndex < units.length; unitIndex++) {
-    const unit = units[unitIndex];
-    const combat = unit.combat;
-    const sourceUnit = unit.unit;
-    if (combat === null || sourceUnit === null) continue;
-    const blueprint = getUnitBlueprint(sourceUnit.unitBlueprintId);
-    if (blueprint.unitLocomotion.type !== 'bot') continue;
-    const ownerIndex = selectBotTorsoTurretIndex(combat.turrets);
-    if (ownerIndex < 0) continue;
-    const owner = combat.turrets[ownerIndex];
-    if (!Number.isFinite(owner.hostPieceYaw)) {
-      owner.hostPieceYaw = unit.transform.rotation;
-      owner.hostPieceYawVelocity = 0;
-    }
-    let claimPriority = Number.NEGATIVE_INFINITY;
-    let claimOrder = Number.MAX_SAFE_INTEGER;
-    let claimedYaw = unit.transform.rotation;
-    for (let turretIndex = 0; turretIndex < combat.turrets.length; turretIndex++) {
-      const claimant = combat.turrets[turretIndex];
-      const station = claimant.config.articulation;
-      if (station.claimGroup !== 'botUpperBody') continue;
-      const hasFsm = readCombatTargetingTurretFsmInto(
-        unit,
-        turretIndex,
-        _botTorsoFsmScratch,
-      );
-      const active = hasFsm
-        ? _botTorsoFsmScratch.stateCode === CT_TURRET_STATE_ENGAGED ||
-          _botTorsoFsmScratch.stateCode === CT_TURRET_STATE_TRACKING
-        : claimant.state === 'engaged' || claimant.state === 'tracking';
-      if (!active || !Number.isFinite(claimant.aimTargetYaw)) continue;
+  for (let hostIndex = 0; hostIndex < hosts.length; hostIndex++) {
+    const host = hosts[hostIndex];
+    const combat = host.combat;
+    if (combat === null) continue;
+    const sourceUnit = host.unit;
+    if (sourceUnit !== null) {
+      const blueprint = getUnitBlueprint(sourceUnit.unitBlueprintId);
+      if (blueprint.unitLocomotion.type !== 'bot') continue;
+      const ownerIndex = selectBotTorsoTurretIndex(combat.turrets);
+      if (ownerIndex < 0) continue;
+      const owner = combat.turrets[ownerIndex];
+      if (!Number.isFinite(owner.hostPieceYaw)) {
+        owner.hostPieceYaw = host.transform.rotation;
+        owner.hostPieceYawVelocity = 0;
+      }
+      let claimPriority = Number.NEGATIVE_INFINITY;
+      let claimOrder = Number.MAX_SAFE_INTEGER;
+      let claimedYaw = host.transform.rotation;
+      for (let turretIndex = 0; turretIndex < combat.turrets.length; turretIndex++) {
+        const claimant = combat.turrets[turretIndex];
+        const station = claimant.config.articulation;
+        if (station.claimGroup !== 'botUpperBody') continue;
+        const hasFsm = readCombatTargetingTurretFsmInto(
+          host,
+          turretIndex,
+          _botTorsoFsmScratch,
+        );
+        const active = hasFsm
+          ? _botTorsoFsmScratch.stateCode === CT_TURRET_STATE_ENGAGED ||
+            _botTorsoFsmScratch.stateCode === CT_TURRET_STATE_TRACKING
+          : claimant.state === 'engaged' || claimant.state === 'tracking';
+        if (!active || !Number.isFinite(claimant.aimTargetYaw)) continue;
+        if (
+          station.claimPriority < claimPriority ||
+          (station.claimPriority === claimPriority && claimant.mountIndex >= claimOrder)
+        ) continue;
+        claimPriority = station.claimPriority;
+        claimOrder = claimant.mountIndex;
+        claimedYaw = readCombatTargetingTurretAimInto(
+          host,
+          turretIndex,
+          _botTorsoAimScratch,
+        ) && _botTorsoAimScratch.hasSolution
+          ? _botTorsoAimScratch.yaw
+          : claimant.aimTargetYaw;
+      }
+      const workStation = host.builder?.workStation ?? null;
+      const workEmitter = blueprint.workEmitter ?? null;
+      const workClaim = workEmitter?.articulation ?? null;
       if (
-        station.claimPriority < claimPriority ||
-        (station.claimPriority === claimPriority && claimant.mountIndex >= claimOrder)
+        workStation !== null &&
+        workClaim?.claimGroup === 'botUpperBody' &&
+        workStation.targetEntityId !== NO_ENTITY_ID &&
+        Number.isFinite(workStation.targetWorldYaw) &&
+        workClaim.claimPriority > claimPriority
+      ) {
+        claimPriority = workClaim.claimPriority;
+        claimedYaw = workStation.targetWorldYaw;
+      }
+      if (claimPriority > Number.NEGATIVE_INFINITY) {
+        owner.hostPieceIdleMs = 0;
+      } else {
+        owner.hostPieceIdleMs += dtMs;
+        if (owner.hostPieceIdleMs < blueprint.unitLocomotion.config.upperBodyRestoreDelayMs) {
+          claimedYaw = owner.hostPieceYaw;
+        }
+      }
+      const index = _botUpperBodyHosts.length;
+      ensureBotUpperBodyCapacity(index + 1);
+      _botUpperBodyHosts.push(host);
+      _botUpperBodyOwners.push(owner);
+      _botUpperBodyOwnerIndexes.push(ownerIndex);
+      _botUpperBodyCurrentYaw[index] = owner.hostPieceYaw;
+      _botUpperBodyVelocity[index] = owner.hostPieceYawVelocity;
+      _botUpperBodyTargetYaw[index] = claimedYaw;
+      _botUpperBodyMaxSpeed[index] = blueprint.unitLocomotion.config.upperBodyActuator.maxSpeed;
+      _botUpperBodyMaxAcceleration[index] =
+        blueprint.unitLocomotion.config.upperBodyActuator.maxAcceleration;
+      _hostPieceYawContinuous[index] = 1;
+      _hostPieceYawMin[index] = -Math.PI;
+      _hostPieceYawMax[index] = Math.PI;
+      _hostPieceCurrentPitch[index] = 0;
+      _hostPiecePitchVelocity[index] = 0;
+      _hostPieceTargetPitch[index] = 0;
+      _hostPiecePitchMin[index] = 0;
+      _hostPiecePitchMax[index] = 0;
+      _hostPiecePitchMaxSpeed[index] = 1;
+      _hostPiecePitchMaxAcceleration[index] = 1;
+      continue;
+    }
+
+    if (host.building === null) continue;
+    for (let ownerIndex = 0; ownerIndex < combat.turrets.length; ownerIndex++) {
+      const owner = combat.turrets[ownerIndex];
+      const ownerAttachment = owner.config.hostAttachment;
+      if (!isBuildingHostPieceAttachment(ownerAttachment)) continue;
+      if (
+        selectBuildingHostPieceTurretIndex(combat.turrets, ownerAttachment.piece) !== ownerIndex
       ) continue;
-      claimPriority = station.claimPriority;
-      claimOrder = claimant.mountIndex;
-      // Consume the just-solved targeting intent before stepping child joints.
-      // This gives parent motion real precedence instead of requiring a child
-      // to counter-rotate instantaneously after its torso has already moved.
-      // Committed beams and isolated fixtures can legitimately have no fresh
-      // solution, so retain the station's prior world intent as a fallback.
-      claimedYaw = readCombatTargetingTurretAimInto(
-        unit,
-        turretIndex,
-        _botTorsoAimScratch,
-      ) && _botTorsoAimScratch.hasSolution
-        ? _botTorsoAimScratch.yaw
-        : claimant.aimTargetYaw;
-    }
-    const workStation = unit.builder?.workStation ?? null;
-    const workEmitter = blueprint.workEmitter ?? null;
-    const workClaim = workEmitter?.articulation ?? null;
-    if (
-      workStation !== null &&
-      workClaim?.claimGroup === 'botUpperBody' &&
-      workStation.targetEntityId !== NO_ENTITY_ID &&
-      Number.isFinite(workStation.targetWorldYaw) &&
-      workClaim.claimPriority > claimPriority
-    ) {
-      claimPriority = workClaim.claimPriority;
-      claimedYaw = workStation.targetWorldYaw;
-    }
-    if (claimPriority > Number.NEGATIVE_INFINITY) {
-      owner.hostPieceIdleMs = 0;
-    } else {
-      owner.hostPieceIdleMs += dtMs;
-      if (owner.hostPieceIdleMs < blueprint.unitLocomotion.config.upperBodyRestoreDelayMs) {
-        claimedYaw = owner.hostPieceYaw;
+      if (!Number.isFinite(owner.hostPieceYaw)) {
+        owner.hostPieceYaw = host.transform.rotation;
+        owner.hostPieceYawVelocity = 0;
+      }
+      let claimPriority = Number.NEGATIVE_INFINITY;
+      let claimOrder = Number.MAX_SAFE_INTEGER;
+      let claimedYaw = host.transform.rotation;
+      let claimedPitch = owner.pitch;
+      if (isBuildingAimPieceAttachment(ownerAttachment)) {
+        const claimantIndex = selectSharedAimPieceClaimant(
+          host,
+          owner,
+          ownerAttachment,
+          dtMs,
+        );
+        if (claimantIndex >= 0) {
+          const claimant = combat.turrets[claimantIndex];
+          claimPriority = claimant.config.articulation.claimPriority;
+          claimOrder = claimant.mountIndex;
+          const hasActiveBeam = beamIndex.hasActiveBeam(host.id, claimantIndex);
+          const hasAim = !hasActiveBeam && readCombatTargetingTurretAimInto(
+            host,
+            claimantIndex,
+            _botTorsoAimScratch,
+          ) && _botTorsoAimScratch.hasSolution;
+          // A committed pulse follows its frozen beam plan through the turret's
+          // authoritative aim target. Live targeting may already be asking the
+          // sibling station to take the head next.
+          claimedYaw = hasAim ? _botTorsoAimScratch.yaw : claimant.aimTargetYaw;
+          claimedPitch = hasAim ? _botTorsoAimScratch.pitch : claimant.aimTargetPitch;
+        }
+      } else {
+        for (let turretIndex = 0; turretIndex < combat.turrets.length; turretIndex++) {
+          const claimant = combat.turrets[turretIndex];
+          if (!buildingHostPieceAttachmentsMatch(
+            ownerAttachment,
+            claimant.config.hostAttachment,
+          )) continue;
+          const station = claimant.config.articulation;
+          if (station.claimGroup !== owner.config.articulation.claimGroup) continue;
+          const hasFsm = readCombatTargetingTurretFsmInto(
+            host,
+            turretIndex,
+            _botTorsoFsmScratch,
+          );
+          const active = hasFsm
+            ? _botTorsoFsmScratch.stateCode === CT_TURRET_STATE_ENGAGED ||
+              _botTorsoFsmScratch.stateCode === CT_TURRET_STATE_TRACKING
+            : claimant.state === 'engaged' || claimant.state === 'tracking';
+          if (!active || !Number.isFinite(claimant.aimTargetYaw)) continue;
+          if (
+            station.claimPriority < claimPriority ||
+            (station.claimPriority === claimPriority && claimant.mountIndex >= claimOrder)
+          ) continue;
+          claimPriority = station.claimPriority;
+          claimOrder = claimant.mountIndex;
+          const hasAim = readCombatTargetingTurretAimInto(
+            host,
+            turretIndex,
+            _botTorsoAimScratch,
+          ) && _botTorsoAimScratch.hasSolution;
+          claimedYaw = hasAim ? _botTorsoAimScratch.yaw : claimant.aimTargetYaw;
+          claimedPitch = hasAim ? _botTorsoAimScratch.pitch : claimant.aimTargetPitch;
+        }
+      }
+      if (claimPriority > Number.NEGATIVE_INFINITY) {
+        owner.hostPieceIdleMs = 0;
+      } else {
+        owner.hostPieceIdleMs += dtMs;
+        if (owner.hostPieceIdleMs < owner.config.articulation.restoreDelayMs) {
+          claimedYaw = owner.hostPieceYaw;
+          claimedPitch = owner.pitch;
+        } else {
+          claimedPitch = owner.config.articulation.restPitch;
+        }
+      }
+      const index = _botUpperBodyHosts.length;
+      ensureBotUpperBodyCapacity(index + 1);
+      _botUpperBodyHosts.push(host);
+      _botUpperBodyOwners.push(owner);
+      _botUpperBodyOwnerIndexes.push(ownerIndex);
+      _botUpperBodyCurrentYaw[index] = owner.hostPieceYaw;
+      _botUpperBodyVelocity[index] = owner.hostPieceYawVelocity;
+      _botUpperBodyTargetYaw[index] = claimedYaw;
+      _botUpperBodyMaxSpeed[index] = owner.config.angular.yaw.maxSpeed;
+      _botUpperBodyMaxAcceleration[index] = owner.config.angular.yaw.maxAcceleration;
+      _hostPieceYawContinuous[index] = 1;
+      _hostPieceYawMin[index] = -Math.PI;
+      _hostPieceYawMax[index] = Math.PI;
+      if (isBuildingAimPieceAttachment(ownerAttachment)) {
+        _hostPieceCurrentPitch[index] = owner.pitch;
+        _hostPiecePitchVelocity[index] = owner.pitchVelocity;
+        _hostPieceTargetPitch[index] = claimedPitch;
+        _hostPiecePitchMin[index] = owner.config.articulation.pitch.minAngle;
+        _hostPiecePitchMax[index] = owner.config.articulation.pitch.maxAngle;
+        _hostPiecePitchMaxSpeed[index] = owner.config.angular.pitch.maxSpeed;
+        _hostPiecePitchMaxAcceleration[index] = owner.config.angular.pitch.maxAcceleration;
+      } else {
+        _hostPieceCurrentPitch[index] = 0;
+        _hostPiecePitchVelocity[index] = 0;
+        _hostPieceTargetPitch[index] = 0;
+        _hostPiecePitchMin[index] = 0;
+        _hostPiecePitchMax[index] = 0;
+        _hostPiecePitchMaxSpeed[index] = 1;
+        _hostPiecePitchMaxAcceleration[index] = 1;
       }
     }
-    const index = _botUpperBodyHosts.length;
-    ensureBotUpperBodyCapacity(index + 1);
-    _botUpperBodyHosts.push(unit);
-    _botUpperBodyOwners.push(owner);
-    _botUpperBodyOwnerIndexes.push(ownerIndex);
-    _botUpperBodyCurrentYaw[index] = owner.hostPieceYaw;
-    _botUpperBodyVelocity[index] = owner.hostPieceYawVelocity;
-    _botUpperBodyTargetYaw[index] = claimedYaw;
-    _botUpperBodyMaxSpeed[index] = blueprint.unitLocomotion.config.upperBodyActuator.maxSpeed;
-    _botUpperBodyMaxAcceleration[index] =
-      blueprint.unitLocomotion.config.upperBodyActuator.maxAcceleration;
   }
 
   const count = _botUpperBodyHosts.length;
   if (count === 0) return;
   const sim = getSimWasm();
   if (sim === undefined) {
-    throw new Error('updateBotUpperBodyArticulation: sim-wasm is not initialized');
+    throw new Error('updateSharedHostPieceArticulation: sim-wasm is not initialized');
   }
-  const updated = sim.articulationYawStepBatch(
+  const updated = sim.articulationJointStepBatch(
     _botUpperBodyCurrentYaw,
     _botUpperBodyVelocity,
     _botUpperBodyTargetYaw,
+    _hostPieceYawContinuous,
+    _hostPieceYawMin,
+    _hostPieceYawMax,
     _botUpperBodyMaxSpeed,
     _botUpperBodyMaxAcceleration,
+    _hostPieceCurrentPitch,
+    _hostPiecePitchVelocity,
+    _hostPieceTargetPitch,
+    _hostPiecePitchMin,
+    _hostPiecePitchMax,
+    _hostPiecePitchMaxSpeed,
+    _hostPiecePitchMaxAcceleration,
     _botUpperBodyOutYaw,
     _botUpperBodyOutVelocity,
     _botUpperBodyOutAcceleration,
+    _hostPieceOutPitch,
+    _hostPieceOutPitchVelocity,
+    _hostPieceOutPitchAcceleration,
     _botUpperBodyOutError,
+    _hostPieceOutPitchError,
     count,
     dtMs / 1000,
   );
   if (updated !== count) {
     throw new Error(
-      `updateBotUpperBodyArticulation: articulation_yaw_step_batch updated ${updated} of ${count} rows`,
+      `updateSharedHostPieceArticulation: articulation_joint_step_batch updated ${updated} of ${count} rows`,
     );
   }
   for (let i = 0; i < count; i++) {
+    const host = _botUpperBodyHosts[i];
     const owner = _botUpperBodyOwners[i];
     owner.hostPieceYaw = _botUpperBodyOutYaw[i];
     owner.hostPieceYawVelocity = _botUpperBodyOutVelocity[i];
+    const attachment = owner.config.hostAttachment;
+    if (isBuildingAimPieceAttachment(attachment)) {
+      owner.angularAcceleration = _botUpperBodyOutAcceleration[i];
+      owner.pitch = _hostPieceOutPitch[i];
+      owner.pitchVelocity = _hostPieceOutPitchVelocity[i];
+      owner.pitchAcceleration = _hostPieceOutPitchAcceleration[i];
+      const turrets = host.combat?.turrets ?? [];
+      for (const child of turrets) {
+        if (!buildingHostPieceAttachmentsMatch(attachment, child.config.hostAttachment)) continue;
+        child.localYaw = 0;
+        child.localYawVelocity = 0;
+        child.localPitch = 0;
+        child.localPitchVelocity = 0;
+        child.rotation = owner.hostPieceYaw;
+        child.angularVelocity = owner.hostPieceYawVelocity;
+        child.pitch = owner.pitch;
+        child.pitchVelocity = owner.pitchVelocity;
+      }
+    }
     writeCombatTargetingTurretHostPiecePoseInto(
-      _botUpperBodyHosts[i],
+      host,
       _botUpperBodyOwnerIndexes[i],
       currentTick,
       owner.hostPieceYaw,
@@ -772,41 +1162,41 @@ function updateBotUpperBodyArticulation(
  * targeting slab before firing.
  */
 export function updateAuthoritativeHostAttachmentKinematics(
-  units: readonly Entity[],
+  hosts: readonly Entity[],
   currentTick: number,
   dtMs: number,
   phase: 'tickStart' | 'hostAim' | 'postAim',
 ): void {
   const invDtSec = dtMs > 0 ? 1000 / dtMs : 0;
   if (phase === 'hostAim') {
-    updateBotUpperBodyArticulation(units, currentTick, dtMs);
+    updateSharedHostPieceArticulation(hosts, currentTick, dtMs);
     return;
   }
-  for (const unit of units) {
-    const combat = unit.combat;
-    const sourceUnit = unit.unit;
-    if (combat === null || sourceUnit === null) continue;
-    const blueprint = getUnitBlueprint(sourceUnit.unitBlueprintId);
-    if (blueprint.unitLocomotion.type !== 'bot') continue;
-    const torsoTurretIndex = selectBotTorsoTurretIndex(combat.turrets);
-    const torsoOwner = torsoTurretIndex >= 0
-      ? combat.turrets[torsoTurretIndex]
-      : undefined;
-    if (torsoOwner !== undefined) {
-      if (!Number.isFinite(torsoOwner.hostPieceYaw)) {
-        torsoOwner.hostPieceYaw = unit.transform.rotation;
-        torsoOwner.hostPieceYawVelocity = 0;
-      }
+  for (const host of hosts) {
+    const combat = host.combat;
+    if (combat === null) continue;
+    const sourceUnit = host.unit;
+    if (sourceUnit !== null) {
+      const blueprint = getUnitBlueprint(sourceUnit.unitBlueprintId);
+      if (blueprint.unitLocomotion.type !== 'bot') continue;
+    } else if (host.building === null) {
+      continue;
     }
-    const { cos, sin } = getTransformCosSin(unit.transform);
-    const unitGroundZ = getUnitGroundZ(unit);
-    const surfaceN = sourceUnit.surfaceNormal ?? FLAT_SURFACE_NORMAL;
-    const orientation = getEntityBodyOrientation(unit);
+    const { cos, sin } = getTransformCosSin(host.transform);
+    const unitGroundZ = getUnitGroundZ(host);
+    const surfaceN = sourceUnit?.surfaceNormal ?? FLAT_SURFACE_NORMAL;
+    const orientation = getEntityBodyOrientation(host);
     for (let turretIndex = 0; turretIndex < combat.turrets.length; turretIndex++) {
       const turret = combat.turrets[turretIndex];
       if (turret.config.hostAttachment === null) continue;
+      const ownerIndex = selectAttachedHostPieceOwnerIndex(combat.turrets, turret);
+      const owner = ownerIndex >= 0 ? combat.turrets[ownerIndex] : undefined;
+      if (owner !== undefined && !Number.isFinite(owner.hostPieceYaw)) {
+        owner.hostPieceYaw = host.transform.rotation;
+        owner.hostPieceYawVelocity = 0;
+      }
       const resolved = resolveAuthoritativeHostAttachmentWorld(
-        unit,
+        host,
         turret,
         cos,
         sin,
@@ -834,7 +1224,7 @@ export function updateAuthoritativeHostAttachmentKinematics(
         turret.worldVelocity.y = (resolved.y - oldY) * invDtSec;
         turret.worldVelocity.z = (resolved.z - oldZ) * invDtSec;
       } else {
-        const velocity = getEntityVelocity3d(unit, _entityVelocityScratch);
+        const velocity = getEntityVelocity3d(host, _entityVelocityScratch);
         turret.worldVelocity.x = velocity.x;
         turret.worldVelocity.y = velocity.y;
         turret.worldVelocity.z = velocity.z;
@@ -846,7 +1236,7 @@ export function updateAuthoritativeHostAttachmentKinematics(
 
       if (phase === 'postAim') {
         writeCombatTargetingTurretMountKinematicsInto(
-          unit,
+          host,
           turretIndex,
           currentTick,
           turret.worldPos,

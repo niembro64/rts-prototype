@@ -513,4 +513,30 @@ mod tests {
         assert!((out[6] - 0.3).abs() < 1e-5);
         assert!((out[7] - 0.5).abs() < 1e-5);
     }
+
+    #[test]
+    fn shared_host_pose_interpolates_across_wrap_without_a_visual_snap() {
+        let _guard = lock_tests();
+        entity_state_init(1);
+        combat_targeting_init(1);
+        presentation_clear();
+        entity_state_set_lifecycle(0, 77, ENTITY_STATE_KIND_UNIT, 1, 1, 1);
+        entity_state_set_transform(0, 0.0, 0.0, 0.0, 0.0);
+        {
+            let turrets = combat_targeting_pool();
+            turrets.turret_count_per_entity[0] = 1;
+            turrets.turret_entity_id[0] = 700;
+            turrets.turret_host_piece_yaw[0] = 3.10;
+        }
+        presentation_capture_tick(1);
+        combat_targeting_pool().turret_host_piece_yaw[0] = -3.10;
+        presentation_capture_tick(2);
+        presentation_history().slot_input[0] = 0;
+        assert_eq!(presentation_interpolate(1, 0.5), 1);
+        let midpoint = presentation_history().turret_output[6] as f64;
+        assert!(
+            (midpoint.abs() - core::f64::consts::PI).abs() < 1e-4,
+            "wrapped host midpoint must stay near pi, got {midpoint}",
+        );
+    }
 }

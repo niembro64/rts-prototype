@@ -1343,6 +1343,8 @@ pub fn combat_targeting_set_turret(
     pitch: f32,
     angular_velocity: f32,
     pitch_velocity: f32,
+    host_piece_yaw: f32,
+    host_piece_yaw_velocity: f32,
     parent_yaw: f64,
     yaw_min: f64,
     yaw_max: f64,
@@ -1403,6 +1405,11 @@ pub fn combat_targeting_set_turret(
     pool.turret_pitch[global_idx] = pitch;
     pool.turret_angular_velocity[global_idx] = angular_velocity;
     pool.turret_pitch_velocity[global_idx] = pitch_velocity;
+    // The shared parent is authoritative input, not slab-owned FSM state.
+    // Stamp it every tick so a fresh/recycled row can never expose zero or a
+    // previous occupant's pose to fixed-tick presentation history.
+    pool.turret_host_piece_yaw[global_idx] = host_piece_yaw;
+    pool.turret_host_piece_yaw_velocity[global_idx] = host_piece_yaw_velocity;
     pool.turret_parent_yaw[global_idx] = parent_yaw;
     pool.turret_yaw_min[global_idx] = yaw_min;
     pool.turret_yaw_max[global_idx] = yaw_max;

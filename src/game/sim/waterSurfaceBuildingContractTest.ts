@@ -178,13 +178,20 @@ export function runWaterSurfaceBuildingContractTest(): void {
     ) <= 1e-9,
     'torpedo tower must expose equal targetable volume to air and water weapons',
   );
-  const torpedoMount = torpedoTower.combat?.turrets.find(
-    (turret) => turret.mountId === 'torpedo',
+  const torpedoMounts = torpedoTower.combat?.turrets.filter(
+    (turret) => turret.mountId === 'torpedoPort' || turret.mountId === 'torpedoStarboard',
   );
-  assertContract(torpedoMount !== undefined, 'torpedo tower must materialize its launcher');
-  const towerBaseZ = torpedoTower.transform.z - torpedoTower.building.depth * 0.5;
   assertContract(
-    towerBaseZ + torpedoMount.mount.z < WATER_LEVEL,
-    'torpedo AimFrom and sonar source must remain below the waterline',
+    torpedoMounts?.length === 2,
+    'torpedo tower must materialize both launcher heads',
   );
+  const towerBaseZ = torpedoTower.transform.z - torpedoTower.building.depth * 0.5;
+  for (const torpedoMount of torpedoMounts) {
+    const attachment = torpedoMount.config.hostAttachment;
+    assertContract(
+      attachment?.kind === 'buildingYawPiece' &&
+        towerBaseZ + torpedoMount.mount.z + attachment.socketOffset.z < WATER_LEVEL,
+      `${torpedoMount.mountId} AimFrom and sonar source must remain below the waterline`,
+    );
+  }
 }

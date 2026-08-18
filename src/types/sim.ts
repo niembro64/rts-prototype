@@ -11,7 +11,7 @@ import type {
   TurretMountControlMode,
   TurretPresentation,
   TurretStationArticulation,
-  UnitTurretHostAttachment,
+  TurretHostAttachment,
   TurretRangeVolume,
   TurretSubmunitionEmitterConfig,
   SpawnTurretConfig,
@@ -542,7 +542,7 @@ export type TurretConfig = {
   /** Optional authoritative host-side piece attachment. The turret owns
    * yaw/pitch and firing policy; the host resolves the named piece chain into
    * the turret's AimFrom pivot and QueryWeapon emission sockets. */
-  hostAttachment: UnitTurretHostAttachment | null;
+  hostAttachment: TurretHostAttachment | null;
   /** Mount-local traverse, rest, host-assist and shared-claim policy. */
   articulation: TurretStationArticulation;
   spawn: SpawnTurretConfig | null;
@@ -709,13 +709,27 @@ export type Turret = {
    *  `worldPosTick === currentTick` to know it's fresh this tick. */
   worldPosTick: number;
   /** Authoritative world yaw of the shared host piece driven by this turret
-   * when it is selected as a bot's torso owner. NaN on non-owners and before
-   * the first host-piece tick. */
+   * when it is selected as that piece's stable state owner (for example a bot
+   * torso or a building launcher torso). NaN on non-owners and before the
+   * first host-piece tick. */
   hostPieceYaw: number;
-  /** Angular velocity of hostPieceYaw's bounded waist actuator. */
+  /** Angular velocity of hostPieceYaw's bounded parent-piece actuator. */
   hostPieceYawVelocity: number;
   /** Time without a station claim on the shared host piece. */
   hostPieceIdleMs: number;
+  /** Mount index currently granted exclusive control of a shared building
+   * aim piece. Stored only on that piece's stable owner turret row. */
+  hostPieceClaimMountIndex: number;
+  /** Most recently completed/yielded aim-piece claim. Round-robin selection
+   * starts after this mount so equal-priority siblings cannot starve. */
+  hostPieceLastClaimMountIndex: number;
+  /** Time the current claimant has spent aligning without beginning its
+   * committed emission. Used only as a deadlock escape when another sibling
+   * is ready. */
+  hostPieceClaimAgeMs: number;
+  /** True after the current claimant has begun a beam pulse. Ownership then
+   * remains pinned until that authoritative pulse leaves the beam index. */
+  hostPieceClaimSawActiveBeam: boolean;
   /** QueryWeapon sockets in turret-aim-local world units: +X forward, +Y
    * left, +Z up. One entry exists per emission lane. */
   emissionSockets: Vec3[];
@@ -1134,6 +1148,10 @@ export type BuildingConfig = {
   cost: ResourceCost;
   energyProduction: number | null;
   metalProduction: number | null;
+  /** Capacity added to the owning player's energy pool while completed. */
+  energyStorage: number | null;
+  /** Capacity added to the owning player's metal pool while completed. */
+  metalStorage: number | null;
   /** Max resource units per second this building can add to each
    *  construction resource lane of its active shell. */
   constructionRate: number | null;

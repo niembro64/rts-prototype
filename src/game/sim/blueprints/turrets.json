@@ -5299,5 +5299,161 @@
     "kind": "sensor",
     "emissionKind": null,
     "emissionBlueprintId": null
+  },
+  "turretSensorBuildingRadarJammer": {
+    "turretBlueprintId": "turretSensorBuildingRadarJammer",
+    "name": "Radar Jamming Array",
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": { "acquire": 0.95, "release": 1 },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
+      },
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": { "aboveWater": 0, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 0 }
+          },
+          "contactSight": {
+            "aboveWater": { "aboveWater": 0, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 0 }
+          },
+          "detectorRadius": 0,
+          "radarJamRadius": 3000,
+          "sonarJamRadius": 0
+        }
+      },
+      "effect": { "rangeSource": "engagement" },
+      "requiredIntel": "contactSight"
+    },
+    "cooldown": null,
+    "launchForce": 0,
+    "addTurretVelocityToEmissionLaunch": false,
+    "emissionLaneCount": 1,
+    "passive": true,
+    "requiresNonObstructedLineOfSight": false,
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": null,
+    "burst": null,
+    "audio": null,
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "aimMotionSnapshotVisible": false,
+    "aimStyle": { "angleType": "rayDirect" },
+    "kind": "sensor",
+    "emissionKind": null,
+    "emissionBlueprintId": null
+  },
+  "turretSensorBuildingSonarJammer": {
+    "turretBlueprintId": "turretSensorBuildingSonarJammer",
+    "name": "Sonar Jamming Array",
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": { "acquire": 0.95, "release": 1 },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
+      },
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": { "aboveWater": 0, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 0 }
+          },
+          "contactSight": {
+            "aboveWater": { "aboveWater": 0, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 0 }
+          },
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 3000
+        }
+      },
+      "effect": { "rangeSource": "engagement" },
+      "requiredIntel": "contactSight"
+    },
+    "cooldown": null,
+    "launchForce": 0,
+    "addTurretVelocityToEmissionLaunch": false,
+    "emissionLaneCount": 1,
+    "passive": true,
+    "requiresNonObstructedLineOfSight": false,
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": null,
+    "burst": null,
+    "audio": null,
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "aimMotionSnapshotVisible": false,
+    "aimStyle": { "angleType": "rayDirect" },
+    "kind": "sensor",
+    "emissionKind": null,
+    "emissionBlueprintId": null
+  },
+  "turretSensorBuildingStorage": {
+    "turretBlueprintId": "turretSensorBuildingStorage",
+    "name": "Storage Sensors",
+    "targeting": {
+      "engagement": {
+        "range": 0,
+        "rangeVolume": "turret-range-sphere",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": { "acquire": 0.95, "release": 1 },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
+      },
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": { "aboveWater": 1200, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 0 }
+          },
+          "contactSight": {
+            "aboveWater": { "aboveWater": 0, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 0 }
+          },
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
+        }
+      },
+      "effect": { "rangeSource": "engagement" },
+      "requiredIntel": "contactSight"
+    },
+    "cooldown": null,
+    "launchForce": 0,
+    "addTurretVelocityToEmissionLaunch": false,
+    "emissionLaneCount": 1,
+    "passive": true,
+    "requiresNonObstructedLineOfSight": false,
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": null,
+    "burst": null,
+    "audio": null,
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "aimMotionSnapshotVisible": false,
+    "aimStyle": { "angleType": "rayDirect" },
+    "kind": "sensor",
+    "emissionKind": null,
+    "emissionBlueprintId": null
   }
 }

@@ -39,6 +39,11 @@ import {
   getTurretCollarProfile,
   type TurretCollarProfile,
 } from './TeamOrnament3D';
+import {
+  BEAM_LAYER_INNER_SCALE,
+  BEAM_WAVE_RENDER_ORDER,
+  configureBeamEmitterMeshFlow,
+} from './BeamWaveVisual3D';
 
 export type TurretMesh = {
   /** Fixed attachment anchor. Host mount placement belongs here and must not
@@ -168,6 +173,12 @@ type TurretMesh3DDeps = {
   /** Explicitly omit the turret head while retaining its functional
    *  emitter. Used when the host's shield sphere is its full body. */
   hideHead?: boolean;
+  /** Shared outer/inner wave materials for a per-Mesh beam pilot light.
+   *  Unit instance pools provide their own equivalent material pair. */
+  beamEmitterMaterials?: {
+    outer: THREE.ShaderMaterial;
+    inner: THREE.ShaderMaterial;
+  };
   /** When true, BUILD the per-barrel Mesh objects but DON'T attach
    *  them to spinGroup — the caller is rendering barrels through the
    *  shared instanced barrel pools and reads the Mesh's position /
@@ -333,7 +344,13 @@ export function buildTurretMesh3D(
     const dz = tipZ - baseZ;
     const length = Math.hypot(dx, dy, dz);
     if (length < 1e-4) return;
-    const m = new THREE.Mesh(segmentGeom, deps.barrelMat);
+    const perMeshBeamEmitter = barrelUsesCone &&
+      deps.skipBarrels !== true &&
+      deps.beamEmitterMaterials !== undefined;
+    const m = new THREE.Mesh(
+      segmentGeom,
+      perMeshBeamEmitter ? deps.beamEmitterMaterials!.outer : deps.barrelMat,
+    );
     m.scale.set(cylRadius, length, cylRadius);
     m.position.set(
       (baseX + tipX) / 2,
@@ -344,6 +361,15 @@ export function buildTurretMesh3D(
     _barrelUp.set(0, 1, 0);
     _barrelDir.set(dx / length, dy / length, dz / length);
     m.quaternion.setFromUnitVectors(_barrelUp, _barrelDir);
+    if (perMeshBeamEmitter) {
+      m.renderOrder = BEAM_WAVE_RENDER_ORDER.outer;
+      configureBeamEmitterMeshFlow(m, 'outer', length, turret.mountIndex, 0);
+      const inner = new THREE.Mesh(segmentGeom, deps.beamEmitterMaterials!.inner);
+      inner.scale.set(BEAM_LAYER_INNER_SCALE, 1, BEAM_LAYER_INNER_SCALE);
+      inner.renderOrder = BEAM_WAVE_RENDER_ORDER.inner;
+      configureBeamEmitterMeshFlow(inner, 'inner', length, turret.mountIndex, 1);
+      m.add(inner);
+    }
     if (!deps.skipBarrels) barrelParent.add(m);
     barrels.push(m);
   };

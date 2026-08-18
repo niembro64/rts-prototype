@@ -13,7 +13,6 @@ import { MAP_DIMENSION_CONFIG, type MapLandCellDimensions } from './mapSizeConfi
 import {
   BUILDABLE_UNIT_BLUEPRINT_IDS,
   isBuildableUnitBlueprintId,
-  isDemoUnitEnabledByDefault,
 } from './game/sim/blueprints/unitRoster';
 import {
   BUILDING_BLUEPRINT_IDS,
@@ -44,7 +43,7 @@ function buildUnitToggleConfig(): Record<string, { default: boolean }> {
   return Object.fromEntries(
     BUILDABLE_UNIT_BLUEPRINT_IDS.map((unitBlueprintId) => [
       unitBlueprintId,
-      { default: isDemoUnitEnabledByDefault(unitBlueprintId) },
+      { default: true },
     ]),
   );
 }
@@ -285,8 +284,11 @@ const sk = battleBarConfig.storageKeys;
 // against, so a blueprint added later is provably new and defaults ON without
 // accepting or rewriting any obsolete storage shape.
 const STORAGE_DEMO_UNITS = sk.demoUnits;
+const STORAGE_REAL_UNITS = sk.realUnits;
 const STORAGE_DEMO_UNITS_KNOWN_IDS = sk.demoUnitsKnownIds;
+const STORAGE_DEMO_UNITS_ALL_ENABLED_REVISION = sk.demoUnitsAllEnabledRevision;
 const STORAGE_DEMO_BUILDINGS = sk.demoBuildings;
+const STORAGE_REAL_BUILDINGS = sk.realBuildings;
 const STORAGE_DEMO_BUILDINGS_KNOWN_IDS = sk.demoBuildingsKnownIds;
 const STORAGE_DEMO_CAP = sk.demoCap;
 // Every `real*` key below names a slot in `realSessionSettings`, NOT a
@@ -353,7 +355,33 @@ let _demoRosterRefreshRun = false;
 function refreshDemoRosterLedgers(): void {
   if (_demoRosterRefreshRun) return;
   _demoRosterRefreshRun = true;
+  migrateDemoUnitsToAllEnabledDefault();
   adoptNewDemoBlueprints();
+}
+
+/** One-time policy migration for profiles saved while Queen Bee and Queen
+ * Tick were authored as default-disabled. Their absence in those rosters was
+ * not a user opt-out, so the new universal all-enabled default must add them
+ * once. Every other saved choice is preserved. */
+export function migrateDemoUnitsToAllEnabledDefault(): void {
+  if (readPersisted(STORAGE_DEMO_UNITS_ALL_ENABLED_REVISION) !== null) return;
+  persistJson(STORAGE_DEMO_UNITS_ALL_ENABLED_REVISION, true);
+  const storedRoster = readPersisted(STORAGE_DEMO_UNITS);
+  if (storedRoster === null) return;
+  let roster: string[] | null = null;
+  try {
+    roster = sanitizeDemoUnitIds(JSON.parse(storedRoster));
+  } catch {
+    return;
+  }
+  if (roster === null) return;
+  const selected = new Set(roster);
+  selected.add('unitQueenBee');
+  selected.add('unitQueenTick');
+  persistJson(
+    STORAGE_DEMO_UNITS,
+    BUILDABLE_UNIT_BLUEPRINT_IDS.filter((id) => selected.has(id)),
+  );
 }
 
 /** Adopt every blueprint that this profile's stored roster has never seen.
@@ -468,6 +496,45 @@ export function getDefaultDemoUnits(): string[] {
     .map(([id]) => id);
 }
 
+/** Complete unit selection for one battle context.
+ *
+ * Demo is a persistent sandbox and reads its browser roster. Lobby/Real uses
+ * the shared in-memory session store, which is cleared on every lobby entry;
+ * it therefore starts from the complete current registry without ever
+ * reading or writing browser storage. An explicitly empty roster is valid. */
+export function loadBattleUnitRoster(mode: BattleMode): string[] {
+  if (mode === 'demo') {
+    return loadStoredDemoUnits() ?? getDefaultDemoUnits();
+  }
+  const stored = readModeSetting('real', STORAGE_REAL_UNITS, STORAGE_DEMO_UNITS);
+  if (stored !== null) {
+    try {
+      const sanitized = sanitizeDemoUnitIds(JSON.parse(stored));
+      if (sanitized !== null) return sanitized;
+    } catch {
+      // Invalid session state falls back to the authored all-enabled policy.
+    }
+  }
+  return [...BUILDABLE_UNIT_BLUEPRINT_IDS];
+}
+
+export function saveBattleUnitRoster(
+  units: readonly string[],
+  mode: BattleMode,
+): void {
+  const sanitized = sanitizeDemoUnitIds(units) ?? [];
+  if (mode === 'demo') {
+    saveDemoUnits(sanitized);
+    return;
+  }
+  writeModeSetting(
+    'real',
+    STORAGE_REAL_UNITS,
+    STORAGE_DEMO_UNITS,
+    JSON.stringify(sanitized),
+  );
+}
+
 // ── Demo building enablement (BUILDINGS bar group) ──
 // Persistence mirrors the unit trio.
 
@@ -492,6 +559,44 @@ export function getDefaultDemoBuildings(): string[] {
   return Object.entries(BATTLE_CONFIG.buildings)
     .filter(([, cfg]) => cfg.default)
     .map(([id]) => id);
+}
+
+/** Building counterpart of loadBattleUnitRoster; Real is session-only. */
+export function loadBattleBuildingRoster(mode: BattleMode): string[] {
+  if (mode === 'demo') {
+    return loadStoredDemoBuildings() ?? getDefaultDemoBuildings();
+  }
+  const stored = readModeSetting(
+    'real',
+    STORAGE_REAL_BUILDINGS,
+    STORAGE_DEMO_BUILDINGS,
+  );
+  if (stored !== null) {
+    try {
+      const sanitized = sanitizeDemoBuildingIds(JSON.parse(stored));
+      if (sanitized !== null) return sanitized;
+    } catch {
+      // Invalid session state falls back to the authored all-enabled policy.
+    }
+  }
+  return [...BUILDING_BLUEPRINT_IDS];
+}
+
+export function saveBattleBuildingRoster(
+  buildings: readonly string[],
+  mode: BattleMode,
+): void {
+  const sanitized = sanitizeDemoBuildingIds(buildings) ?? [];
+  if (mode === 'demo') {
+    saveDemoBuildings(sanitized);
+    return;
+  }
+  writeModeSetting(
+    'real',
+    STORAGE_REAL_BUILDINGS,
+    STORAGE_DEMO_BUILDINGS,
+    JSON.stringify(sanitized),
+  );
 }
 
 export function loadStoredDemoCap(): number {

@@ -42,9 +42,17 @@ export function runForceAccumulatorContractTest(): void {
   assertContract(rows[0] === 3 && rows[1] === 3 && rows[2] === 4.5, 'deduped slot must sum all forces');
 
   const resolverFallback = new ForceAccumulator();
-  resolverFallback.addForce(30 as EntityId, 1, 1, 'resolver');
+  // The app's background battle shares the process-global entity registry
+  // with boot contracts. Use an intentionally out-of-roster id so this case
+  // actually exercises the supplied resolver instead of inheriting a live
+  // background entity's cached slot.
+  const resolverOnlyEntityId = 123_456_789 as EntityId;
+  resolverFallback.addForce(resolverOnlyEntityId, 1, 1, 'resolver');
   resolverFallback.finalize();
-  const fallbackCount = resolverFallback.collectActiveEntitySlots(slots, (id) => id === 30 ? 7 : -1);
+  const fallbackCount = resolverFallback.collectActiveEntitySlots(
+    slots,
+    (id) => id === resolverOnlyEntityId ? 7 : -1,
+  );
   assertContract(
     fallbackCount === 1 && slots[0] === 7,
     'resolver fallback must still map uncached entity ids',

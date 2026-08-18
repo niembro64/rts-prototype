@@ -487,6 +487,20 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   if (blueprint.turrets.length === 0) {
     throw new Error(`Invalid building blueprint ${id}: every building must mount at least one turret`);
   }
+  const hostPieceContracts = new Map<string, {
+    kind: 'buildingYawPiece' | 'buildingAimPiece';
+    mountX: number;
+    mountY: number;
+    mountZ: number;
+    yawMaxSpeed: number;
+    yawMaxAcceleration: number;
+    pitchMaxSpeed: number;
+    pitchMaxAcceleration: number;
+    pitchMin: number;
+    pitchMax: number;
+    restPitch: number;
+    restoreDelayMs: number;
+  }>();
   for (const mount of blueprint.turrets) {
     validateStationArticulation(
       `turret station ${id} ${mount.mountId}`,
@@ -497,6 +511,99 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
       throw new Error(
         `Invalid building blueprint ${id}: unknown turretBlueprintId "${mount.turretBlueprintId}"`,
       );
+    }
+    const angularActuator = mount.angularActuator ?? turretBlueprint.angularActuator;
+    if (mount.angularActuator !== undefined) {
+      for (const [axis, actuator] of [
+        ['yaw', mount.angularActuator.yaw],
+        ['pitch', mount.angularActuator.pitch],
+      ] as const) {
+        if (
+          !Number.isFinite(actuator.maxSpeed) || actuator.maxSpeed <= 0 ||
+          !Number.isFinite(actuator.maxAcceleration) || actuator.maxAcceleration <= 0
+        ) {
+          throw new Error(
+            `Invalid building actuator override ${id} ${mount.mountId}.${axis}: ` +
+            'maxSpeed and maxAcceleration must be finite and positive',
+          );
+        }
+      }
+    }
+    const attachment = mount.hostAttachment;
+    if (attachment !== undefined) {
+      const socket = attachment.socketOffset;
+      if (
+        !Number.isFinite(socket.x) ||
+        !Number.isFinite(socket.y) ||
+        !Number.isFinite(socket.z)
+      ) {
+        throw new Error(
+          `Invalid building host attachment ${id} ${mount.mountId}: ` +
+          'socketOffset x/y/z must be finite world units',
+        );
+      }
+      if (
+        mount.articulation === undefined ||
+        mount.articulation.hostAssist !== (
+          attachment.kind === 'buildingAimPiece' ? 'requestAim' : 'requestYaw'
+        ) ||
+        mount.articulation.claimGroup !== attachment.piece
+      ) {
+        throw new Error(
+          `Invalid building host attachment ${id} ${mount.mountId}: ` +
+          `piece "${attachment.piece}" requires ${
+            attachment.kind === 'buildingAimPiece' ? 'requestAim' : 'requestYaw'
+          } articulation with the same claimGroup`,
+        );
+      }
+      const yawActuator = angularActuator?.yaw;
+      if (yawActuator === undefined) {
+        throw new Error(
+          `Invalid building yaw piece ${id} ${mount.mountId}: attack station needs a yaw actuator`,
+        );
+      }
+      const pitchActuator = angularActuator?.pitch;
+      if (attachment.kind === 'buildingAimPiece' && pitchActuator === undefined) {
+        throw new Error(
+          `Invalid building aim piece ${id} ${mount.mountId}: attack station needs a pitch actuator`,
+        );
+      }
+      const prior = hostPieceContracts.get(attachment.piece);
+      const next = {
+        kind: attachment.kind,
+        mountX: mount.mount.x,
+        mountY: mount.mount.y,
+        mountZ: mount.mount.z,
+        yawMaxSpeed: yawActuator.maxSpeed,
+        yawMaxAcceleration: yawActuator.maxAcceleration,
+        pitchMaxSpeed: pitchActuator?.maxSpeed ?? 0,
+        pitchMaxAcceleration: pitchActuator?.maxAcceleration ?? 0,
+        pitchMin: mount.articulation.pitch.minAngle,
+        pitchMax: mount.articulation.pitch.maxAngle,
+        restPitch: mount.articulation.restPitch,
+        restoreDelayMs: mount.articulation.restoreDelayMs,
+      };
+      if (prior === undefined) {
+        hostPieceContracts.set(attachment.piece, next);
+      } else if (
+        prior.kind !== next.kind ||
+        prior.mountX !== next.mountX ||
+        prior.mountY !== next.mountY ||
+        prior.mountZ !== next.mountZ ||
+        prior.yawMaxSpeed !== next.yawMaxSpeed ||
+        prior.yawMaxAcceleration !== next.yawMaxAcceleration ||
+        prior.pitchMaxSpeed !== next.pitchMaxSpeed ||
+        prior.pitchMaxAcceleration !== next.pitchMaxAcceleration ||
+        prior.pitchMin !== next.pitchMin ||
+        prior.pitchMax !== next.pitchMax ||
+        prior.restPitch !== next.restPitch ||
+        prior.restoreDelayMs !== next.restoreDelayMs
+      ) {
+        throw new Error(
+          `Invalid building host piece ${id} "${attachment.piece}": ` +
+          'all attached stations must share one pivot, actuator, traverse, and restore delay',
+        );
+      }
     }
     if (mount.emissionSockets !== undefined) {
       if (mount.emissionSockets.length !== turretBlueprint.emissionLaneCount) {

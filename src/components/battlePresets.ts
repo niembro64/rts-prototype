@@ -1,5 +1,3 @@
-import { BUILDABLE_UNIT_BLUEPRINT_IDS } from '../game/sim/blueprints/unitRoster';
-import { BUILDING_BLUEPRINT_IDS } from '../types/blueprintIds';
 import type { BattleMode } from '../battleBarConfig';
 import type { ShieldReflectionMode } from '../types/shotTypes';
 import type { SlopePathMode } from '../types/slopePathMode';
@@ -15,12 +13,6 @@ export type BattlePreset = {
   /** Generated four-layer panorama set for this authored map. Keeping it on
    *  the preset removes the second name-to-background registry. */
   readonly backdropSlug: string;
-  readonly units: readonly string[];
-  /** Enabled building blueprints (BUILDINGS bar group). Every preset
-   *  ships with all buildings on; the field exists so DEFAULTS / preset
-   *  selection resets structure toggles and the active-preset highlight
-   *  accounts for them, mirroring `units`. */
-  readonly buildings: readonly string[];
   readonly turretShieldPanelsEnabled: boolean;
   readonly turretShieldSpheresEnabled: boolean;
   readonly forceFieldsVisible: boolean;
@@ -74,13 +66,6 @@ const MODE_DEFAULT_PRESET_NAMES: Record<BattleMode, string> = {
   real: battleBarConfig.realDefault,
 };
 
-function allUnits(): readonly string[] {
-  return BUILDABLE_UNIT_BLUEPRINT_IDS;
-}
-function allBuildings(): readonly string[] {
-  return BUILDING_BLUEPRINT_IDS;
-}
-
 // Shared subsystem toggles that historically lived as inline
 // BATTLE_CONFIG defaults. Folding them into the presets means every
 // battle bar fallback flows through a preset — the JSON has zero
@@ -99,21 +84,12 @@ const SUBSYSTEM_DEFAULTS = {
   liquidSurfaceMode: 'water' as LiquidSurfaceMode,
 };
 
-// Every preset enables all buildings — there is no preset that ships with
-// static hosts disabled. Spread into each literal so the structure field
-// stays in one place (mirrors SUBSYSTEM_DEFAULTS).
-const STRUCTURE_DEFAULTS = {
-  buildings: allBuildings(),
-};
-
 function buildPresets(): readonly BattlePreset[] {
   return [
     {
       name: 'Large Circle',
       backdropSlug: 'large-circle',
-      units: allUnits(),
       ...SUBSYSTEM_DEFAULTS,
-      ...STRUCTURE_DEFAULTS,
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 0,
@@ -129,9 +105,7 @@ function buildPresets(): readonly BattlePreset[] {
     {
       name: 'Angels Flat',
       backdropSlug: 'angels-flat',
-      units: allUnits(),
       ...SUBSYSTEM_DEFAULTS,
-      ...STRUCTURE_DEFAULTS,
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 0,
@@ -147,9 +121,7 @@ function buildPresets(): readonly BattlePreset[] {
     {
       name: 'Boulder Mountain',
       backdropSlug: 'boulder-mountain',
-      units: allUnits(),
       ...SUBSYSTEM_DEFAULTS,
-      ...STRUCTURE_DEFAULTS,
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 1600,
@@ -165,9 +137,7 @@ function buildPresets(): readonly BattlePreset[] {
     {
       name: 'Spikey Lake',
       backdropSlug: 'spikey-lake',
-      units: allUnits(),
       ...SUBSYSTEM_DEFAULTS,
-      ...STRUCTURE_DEFAULTS,
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: -400,
@@ -183,9 +153,7 @@ function buildPresets(): readonly BattlePreset[] {
     {
       name: 'Nemo Island',
       backdropSlug: 'niemo-islands',
-      units: allUnits(),
       ...SUBSYSTEM_DEFAULTS,
-      ...STRUCTURE_DEFAULTS,
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 200,
@@ -201,9 +169,7 @@ function buildPresets(): readonly BattlePreset[] {
     {
       name: 'Angels Playhouse',
       backdropSlug: 'angels-playhouse',
-      units: allUnits(),
       ...SUBSYSTEM_DEFAULTS,
-      ...STRUCTURE_DEFAULTS,
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 6400,
@@ -219,9 +185,7 @@ function buildPresets(): readonly BattlePreset[] {
     {
       name: 'METAL HELL',
       backdropSlug: 'metal-hell',
-      units: allUnits(),
       ...SUBSYSTEM_DEFAULTS,
-      ...STRUCTURE_DEFAULTS,
       terrainSurfaceMode: 'metal',
       liquidSurfaceMode: 'lava',
       fogOfWarEnabled: true,
@@ -239,9 +203,7 @@ function buildPresets(): readonly BattlePreset[] {
     {
       name: 'METAL PLATE',
       backdropSlug: 'metal-plate',
-      units: allUnits(),
       ...SUBSYSTEM_DEFAULTS,
-      ...STRUCTURE_DEFAULTS,
       terrainSurfaceMode: 'metal',
       liquidSurfaceMode: 'water',
       fogOfWarEnabled: true,
@@ -273,13 +235,6 @@ export function getModeDefaultPreset(mode: BattleMode): BattlePreset {
   return found;
 }
 
-function sameUnits(a: readonly string[], b: readonly string[]): boolean {
-  if (a.length !== b.length) return false;
-  const setA = new Set(a);
-  for (const x of b) if (!setA.has(x)) return false;
-  return true;
-}
-
 function presetMatchesCurrent(
   p: BattlePreset,
   c: BattlePresetSnapshot,
@@ -290,8 +245,6 @@ function presetMatchesCurrent(
   // because it is not a map property — changing it must not flip the caption
   // to CUSTOM. Every other user-controllable map/gameplay field is compared.
   return (
-    sameUnits(p.units, c.units) &&
-    sameUnits(p.buildings, c.buildings) &&
     p.terrainSurfaceMode === c.terrainSurfaceMode &&
     p.liquidSurfaceMode === c.liquidSurfaceMode &&
     p.slowDownAtFinalWaypoint === c.slowDownAtFinalWaypoint &&

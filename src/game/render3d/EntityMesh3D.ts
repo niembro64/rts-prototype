@@ -146,6 +146,12 @@ export type EntityMesh = {
    *  so rebuilds / destroy() know what to clean up alongside the primary
    *  body. Empty / undefined for units. */
   buildingDetails?: BuildingDetailMesh[];
+  buildingTurretHostPieces?: Array<{
+    pieceId: string;
+    root: THREE.Group;
+    pitchRoot?: THREE.Group;
+    ownerTurretIndex: number;
+  }>;
   /** Authored, building-specific pieces that carry ally-team identity.
    * May include descendants nested under an animation rig. */
   buildingTeamOrnaments?: THREE.Mesh[];

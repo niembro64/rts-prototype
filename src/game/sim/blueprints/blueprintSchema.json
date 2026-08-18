@@ -2086,6 +2086,68 @@
         }
       ]
     },
+    "BuildingYawPieceTurretHostAttachment": {
+      "type": "object",
+      "required": [
+        "kind",
+        "piece",
+        "socketOffset"
+      ],
+      "properties": {
+        "kind": {
+          "const": "buildingYawPiece"
+        },
+        "piece": {
+          "type": "string",
+          "minLength": 1
+        },
+        "socketOffset": {
+          "$ref": "#/$defs/MountOffset"
+        }
+      },
+      "additionalProperties": false
+    },
+    "BuildingAimPieceTurretHostAttachment": {
+      "type": "object",
+      "required": [
+        "kind",
+        "piece",
+        "socketOffset"
+      ],
+      "properties": {
+        "kind": {
+          "const": "buildingAimPiece"
+        },
+        "piece": {
+          "type": "string",
+          "minLength": 1
+        },
+        "socketOffset": {
+          "$ref": "#/$defs/MountOffset"
+        }
+      },
+      "additionalProperties": false
+    },
+    "BuildingTurretHostAttachment": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/BuildingYawPieceTurretHostAttachment"
+        },
+        {
+          "$ref": "#/$defs/BuildingAimPieceTurretHostAttachment"
+        }
+      ]
+    },
+    "TurretHostAttachment": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/UnitTurretHostAttachment"
+        },
+        {
+          "$ref": "#/$defs/BuildingTurretHostAttachment"
+        }
+      ]
+    },
     "TurretEmissionSocket": {
       "type": "object",
       "required": [
@@ -2138,7 +2200,8 @@
       "type": "string",
       "enum": [
         "none",
-        "requestYaw"
+        "requestYaw",
+        "requestAim"
       ]
     },
     "TurretStationArticulation": {
@@ -2323,8 +2386,21 @@
           "type": "string",
           "minLength": 1
         },
+        "hostAttachment": {
+          "$ref": "#/$defs/BuildingTurretHostAttachment"
+        },
+        "emissionSockets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/TurretEmissionSocket"
+          }
+        },
         "articulation": {
           "$ref": "#/$defs/TurretStationArticulation"
+        },
+        "angularActuator": {
+          "$ref": "#/$defs/TurretAngularActuator"
         }
       },
       "additionalProperties": false

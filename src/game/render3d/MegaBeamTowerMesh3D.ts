@@ -40,6 +40,22 @@ const towerAntiAirTrimMat = new THREE.MeshStandardMaterial({
   metalness: COLORS.buildings.materials.towerAntiAirTrim.metalness,
   roughness: COLORS.buildings.materials.towerAntiAirTrim.roughness,
 });
+const TORPEDO_TORSO_PIECE_ID = 'torpedoTorso';
+const HEAVY_BEAM_HEAD_PIECE_ID = 'beamHead';
+
+function hostPieceDetail(
+  pieceId: string,
+  mesh: THREE.Mesh,
+): BuildingShape['details'][number] {
+  return {
+    ...detail(mesh, 'min', undefined, 'static'),
+    hostPieceId: pieceId,
+  };
+}
+
+function torpedoTorsoDetail(mesh: THREE.Mesh): BuildingShape['details'][number] {
+  return hostPieceDetail(TORPEDO_TORSO_PIECE_ID, mesh);
+}
 
 type DefenseTowerMeshProfile = {
   height: number;
@@ -60,9 +76,7 @@ type DefenseTowerMeshProfile = {
   socketHeight: number;
   socketY: number;
   trimMaterial: THREE.Material;
-  /** Cross-yoke carrying two side-by-side emitters. Its half-span must match
-   *  the blueprint's mount x offsets, so the heads sit on their own sockets
-   *  instead of floating beside a centre collar. */
+  /** Cross-yoke carrying the two rigid barrel sockets on a common head. */
   emitterYoke: {
     halfSpan: number;
     beamRadius: number;
@@ -115,7 +129,7 @@ const heavyBeamTowerProfile: DefenseTowerMeshProfile = {
   socketY: MEGA_BEAM_TOWER_VISUAL_HEIGHT + 2,
   trimMaterial: beamTowerTrimMat,
   emitterYoke: {
-    halfSpan: 18,
+    halfSpan: 45,
     beamRadius: 3.2,
     padRadiusFactor: 0.3,
     padHeight: 4,
@@ -188,9 +202,9 @@ export function buildLightBeamTowerMesh(primaryMat: THREE.Material): BuildingSha
   );
 }
 
-/** Static heavy beam tower — the same emitter family at a heavier gauge, with
- *  a cross-yoke carrying two independently aimed emitters. Both consume the
- *  host's single lock, so they converge on one target from either side. */
+/** Static heavy beam tower — one two-axis head carrying two rigid beam
+ *  barrels. The logical stations may propose different targets, but neither
+ *  barrel owns a local joint beneath the shared head. */
 export function buildHeavyBeamTowerMesh(primaryMat: THREE.Material): BuildingShape {
   return buildDefenseTowerMesh(
     primaryMat,
@@ -316,36 +330,44 @@ function buildDefenseTowerMesh(
       0,
     );
     details.push(detail(socket, 'min', undefined, 'static'));
-  } else {
-    // One spar across the mast, with a pad under each emitter. The pads sit on
-    // the blueprint's mount offsets so each head has something to stand on.
-    // The spar is a laid-over cylinder rather than a box: this host's ornament
-    // contract forbids visible cubic segments.
+  } else if (variant === 'beamHeavy') {
+    // The housing and yoke belong to the one shared yaw+pitch head. Weapon
+    // meshes contribute only the two rigid barrels beneath this piece.
+    details.push(hostPieceDetail(
+      HEAVY_BEAM_HEAD_PIECE_ID,
+      makeCylinder(primaryMat, foot * 0.45, 22, 0, 0, 0),
+    ));
     const spar = makeCylinder(
       profile.trimMaterial,
       yoke.beamRadius,
-      yoke.halfSpan * 2,
+      yoke.halfSpan * 1.35,
       0,
-      profile.socketY,
+      0,
       0,
     );
-    spar.rotation.z = Math.PI / 2;
-    details.push(detail(spar, 'min', undefined, 'static'));
-    for (const sign of [-1, 1] as const) {
-      details.push(detail(makeCylinder(
-        profile.trimMaterial,
-        foot * yoke.padRadiusFactor,
-        yoke.padHeight,
-        sign * yoke.halfSpan,
-        profile.socketY + yoke.padHeight * 0.5,
-        0,
-      ), 'min', undefined, 'static'));
-    }
+    spar.rotation.x = Math.PI / 2;
+    details.push(hostPieceDetail(HEAVY_BEAM_HEAD_PIECE_ID, spar));
+  } else {
+    throw new Error(`Unexpected defense-tower emitter yoke for ${variant}`);
   }
 
   addDefenseTowerTeamOrnament(details, primaryMat, profile, variant);
 
-  return { primary, details, height: h };
+  return {
+    primary,
+    details,
+    height: h,
+    turretHostPieces: variant === 'torpedo'
+      ? [{ pieceId: TORPEDO_TORSO_PIECE_ID, root: new THREE.Group() }]
+      : variant === 'beamHeavy'
+        ? (() => {
+          const root = new THREE.Group();
+          const pitchRoot = new THREE.Group();
+          root.add(pitchRoot);
+          return [{ pieceId: HEAVY_BEAM_HEAD_PIECE_ID, root, pitchRoot }];
+        })()
+        : undefined,
+  };
 }
 
 function addDefenseTowerTeamOrnament(
@@ -373,23 +395,15 @@ function addDefenseTowerTeamOrnament(
   }
 
   if (variant === 'beamHeavy') {
-    // Two crowns instead of one, so the paired emitters read as a matched set
-    // and the team colour still lands where the eye goes.
-    const yoke = profile.emitterYoke;
-    const halfSpan = yoke === null ? 0 : yoke.halfSpan;
-    for (const sign of [-1, 1] as const) {
-      details.push(teamOrnamentDetail(
-        makeCylinder(
-          primaryMat,
-          foot * 0.2,
-          3.4,
-          sign * halfSpan,
-          profile.height - profile.neckHeight - 1.6,
-          0,
-        ),
+    // One band marks the one physical head; retain the established ornament
+    // role name so team-colour contracts remain stable.
+    details.push({
+      ...teamOrnamentDetail(
+        makeCylinder(primaryMat, foot * 0.47, 3.4, 0, 0, 0),
         'beamPairedCrowns',
-      ));
-    }
+      ),
+      hostPieceId: HEAVY_BEAM_HEAD_PIECE_ID,
+    });
     return;
   }
 
@@ -428,8 +442,9 @@ function addDefenseTowerTeamOrnament(
   }
 
   // The torpedo emplacement is centered on the simulation water plane. Its
-  // broad belt and pontoons therefore sit at half the authored height, while
-  // the two launch tubes remain low in the submerged half of the housing.
+  // broad belt and pontoons sit at half the authored height. The launch heads
+  // themselves are real turret meshes; this shape owns only their one shared
+  // yawing torso and cross-yoke, authored around the blueprint's z=12 pivot.
   const waterlineY = profile.height * 0.5;
   details.push(teamOrnamentDetail(
     makeCylinder(
@@ -457,28 +472,38 @@ function addDefenseTowerTeamOrnament(
       'torpedoWaterlineBand',
     ));
   }
-  for (const sign of [-1, 1]) {
-    const tube = makeCylinder(
-      profile.trimMaterial,
-      foot * 0.075,
-      foot * 0.7,
-      0,
-      profile.height * 0.18,
-      sign * foot * 0.2,
-      hexCylinderGeom,
-    );
-    tube.rotation.z = Math.PI / 2;
-    details.push(detail(tube, 'low', undefined, 'static'));
-  }
-  details.push(detail(makeCylinder(
-    profile.trimMaterial,
-    foot * 0.11,
-    profile.height * 0.22,
+  const torso = makeCylinder(
+    primaryMat,
+    foot * 0.12,
+    14,
     0,
-    waterlineY + profile.height * 0.14,
+    -4,
     0,
     hexCylinderGeom,
-  ), 'low', undefined, 'static'));
+  );
+  details.push(torpedoTorsoDetail(torso));
+  const yoke = makeCylinder(
+    profile.trimMaterial,
+    foot * 0.07,
+    42,
+    0,
+    -10,
+    0,
+    hexCylinderGeom,
+  );
+  yoke.rotation.x = Math.PI / 2;
+  details.push(torpedoTorsoDetail(yoke));
+  for (const sign of [-1, 1]) {
+    details.push(torpedoTorsoDetail(makeCylinder(
+      primaryMat,
+      foot * 0.13,
+      4,
+      0,
+      -8,
+      sign * 16,
+      hexCylinderGeom,
+    )));
+  }
 }
 
 export function disposeMegaBeamTowerMeshGeoms(): void {

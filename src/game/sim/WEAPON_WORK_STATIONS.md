@@ -23,14 +23,17 @@ validation.
 
 ## Blueprint authority
 
-- Weapon motor limits live on the emission type in
-  `blueprints/turrets.json` under `angularActuator`. `maxSpeed` is radians per
-  second; `maxAcceleration` is radians per second squared.
+- Weapon motor limits normally live on the emission type in
+  `blueprints/turrets.json` under `angularActuator`. A building mount may
+  override that actuator when one host's physical mechanism differs without
+  changing every user of the weapon. `maxSpeed` is radians per second;
+  `maxAcceleration` is radians per second squared.
 - Per-mount traverse, rest pose, restore delay, host assistance, and shared
   parent arbitration live on the unit/building mount's `articulation` block.
-- `hostAttachment` chooses the moving piece. Bot arms, head, shoulders, and
-  backpack sockets are resolved from the same authoritative rig geometry used
-  by firing and presentation.
+- `hostAttachment` chooses the moving piece. Bot arms, head, shoulders and
+  backpack sockets, plus building `buildingYawPiece` and two-axis
+  `buildingAimPiece` sockets, are resolved from the same authoritative
+  hierarchy used by firing and presentation.
 - `emissionSockets` are the QueryWeapon muzzle lanes. The shot never falls
   back to the entity center when an authored socket exists.
 - Guided-shot behavior belongs to `blueprints/shots.json`: `turning.turnRate`,
@@ -93,6 +96,31 @@ returns them to their authored rest pose.
   moving upper body and launch-point velocity.
 - Commander construction emits from the articulated right hand, its beam from
   the left arm, and its disruptor from the moving head.
+
+## Building shared-piece policy
+
+- `buildingYawPiece` gives sibling stations one shared yaw parent while each
+  child retains its authored local articulation.
+- `buildingAimPiece` gives sibling stations one shared yaw-and-pitch head.
+  A ready station receives an exclusive claim and drives both axes through
+  the bounded parent motor while it aligns and fires.
+- A committed beam pulse pins the claim until that pulse ends. The claim then
+  advances round-robin among equally prioritized ready siblings; a bounded
+  timeout yields a claim that never reaches firing so one bad solution cannot
+  starve the other barrel.
+- Weapon stations beneath a `buildingAimPiece` are rigid sockets: runtime
+  local yaw and pitch remain zero. A losing station rides the winning head
+  pose but cannot fire, even if that pose also aligns with its own target.
+- The Heavy Beam Tower uses one `beamHead` aim piece with two barrel sockets;
+  it is one physical turret with two logical weapons, not two turrets.
+- Stations on one named `buildingYawPiece` author the same pivot and parent
+  motor. A stable station row stores that piece's state, and active siblings
+  propose world yaw by claim priority and stable mount order exactly like Rex
+  upper-body stations; no child writes the parent directly.
+- Each child keeps its own local traverse. A zero-width traverse is a rigid
+  forward-facing head, so only the common building piece can turn it.
+- Off-centre AimFrom and QueryWeapon sockets rotate with the parent and inherit
+  its tangential velocity; the render scenegraph uses the same hierarchy.
 
 ## Invariants
 

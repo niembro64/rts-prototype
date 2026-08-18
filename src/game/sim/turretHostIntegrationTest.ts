@@ -70,6 +70,7 @@ import {
 } from '../../config';
 import { rollTurretCooldownDuration } from './turretCooldown';
 import { SHIELD_REFLECTION_ENTITY_BEAM } from './combat/reflectorBatch';
+import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
 
 const TEST_UNIT_BLUEPRINT_ID = 'unitFormik';
 const TEST_VERTICAL_ROCKET_UNIT_BLUEPRINT_ID = 'unitBadger';
@@ -882,6 +883,97 @@ function assertOrcaTargetsEnemyOrca(manualTarget: boolean): void {
   resetTurretHostIntegrationState();
 }
 
+function assertSurfaceTorpedoTowerLaunchesFromUnderwaterSocket(): void {
+  resetTurretHostIntegrationState();
+  const world = createIsolatedTestWorld(6331, 1024, 1024);
+  world.playerCount = 2;
+  world.setTeamRoster(buildFreeForAllRoster([1 as PlayerId, 2 as PlayerId]));
+  const tower = world.createBuilding(160, 160, 60, 60, 60, 1 as PlayerId);
+  tower.transform.z = WATER_LEVEL;
+  applyBuildingBlueprintRuntime(tower, 'towerTorpedo', {
+    allocateEntityId: () => world.generateEntityId(),
+  });
+  const target = world.createBuilding(360, 160, 20, 20, 20, 2 as PlayerId);
+  target.transform.z = WATER_LEVEL - 20;
+  world.addEntity(tower);
+  world.addEntity(target);
+  spatialGrid.updateUnit(tower);
+  spatialGrid.updateUnit(target);
+  assertContract(tower.combat !== null, 'surface torpedo tower must be armed');
+  tower.combat.priorityTargetId = target.id;
+  tower.combat.priorityTargetPoint = null;
+
+  const turrets = tower.combat.turrets;
+  assertContract(turrets.length === 2, 'surface torpedo tower must expose both launcher heads');
+  for (const turret of turrets) turret.config.requiresNonObstructedLineOfSight = false;
+  const dtMs = 50;
+  stampCombatTargetingPool(world);
+  const activeCombatUnits = updateTargetingAndFiringState(world, dtMs);
+  updateTurretRotation(world, dtMs, activeCombatUnits);
+  for (let turretIndex = 0; turretIndex < turrets.length; turretIndex++) {
+    const targetingState = { stateCode: CT_TURRET_STATE_ENGAGED, targetId: -1 };
+    const hasTargetingState = readCombatTargetingTurretFsmInto(
+      tower,
+      turretIndex,
+      targetingState,
+    );
+    assertContract(
+      hasTargetingState &&
+        targetingState.targetId === target.id &&
+        targetingState.stateCode === CT_TURRET_STATE_ENGAGED,
+      `surface torpedo head ${turretIndex} must acquire a submerged enemy from its underwater source ` +
+        `(read=${hasTargetingState}, target=${targetingState.targetId}/${target.id}, ` +
+        `state=${targetingState.stateCode})`,
+    );
+  }
+
+  const fireResult = fireTurrets(
+    world,
+    dtMs,
+    new DamageSystem(world),
+    new ForceAccumulator(),
+    activeCombatUnits,
+  );
+  assertContract(
+    fireResult.projectiles.length === 2 && fireResult.spawnEvents.length === 2,
+    'two engaged physical launcher heads must each launch one torpedo',
+  );
+  const transformTrig = getTransformCosSin(tower.transform);
+  for (let i = 0; i < fireResult.projectiles.length; i++) {
+    const torpedo = fireResult.projectiles[i];
+    const spawn = fireResult.spawnEvents[i];
+    const turretIndex = spawn.turretIndex;
+    const expectedEmission = resolveWeaponEmissionSocket(
+      tower,
+      turrets[turretIndex],
+      turretIndex,
+      spawn.barrelIndex,
+      transformTrig.cos,
+      transformTrig.sin,
+      {
+        currentTick: world.getTick(),
+        dtMs,
+        unitGroundZ: getUnitGroundZ(tower),
+        surfaceN: undefined,
+      },
+      {
+        position: { x: 0, y: 0, z: 0 },
+        velocity: { x: 0, y: 0, z: 0 },
+        forward: { x: 0, y: 0, z: 0 },
+      },
+    );
+    assertNear(torpedo.transform.x, expectedEmission.position.x, `torpedo ${i} x uses QueryWeapon`);
+    assertNear(torpedo.transform.y, expectedEmission.position.y, `torpedo ${i} y uses QueryWeapon`);
+    assertNear(torpedo.transform.z, expectedEmission.position.z, `torpedo ${i} z uses QueryWeapon`);
+    assertNear(spawn.pos.z, expectedEmission.position.z, `torpedo ${i} spawn event uses QueryWeapon z`);
+    assertContract(
+      torpedo.transform.z < WATER_LEVEL,
+      `physical torpedo ${i} must begin underwater rather than crossing the surface after spawn`,
+    );
+  }
+  resetTurretHostIntegrationState();
+}
+
 function assertOrcaRejectsEnemyAboveWater(manualTarget: boolean): void {
   resetTurretHostIntegrationState();
   const world = createIsolatedTestWorld(manualTarget ? 6323 : 6324, 1024, 1024);
@@ -1462,6 +1554,7 @@ export function runTurretHostIntegrationContractTest(): void {
 
     runOrcaTargetingContractTest();
     runWaterWeaponMediumTargetingContractTest();
+    assertSurfaceTorpedoTowerLaunchesFromUnderwaterSocket();
     assertSlowRocketLaunchVelocityInheritance(true);
     assertSlowRocketLaunchVelocityInheritance(false);
     assertSlowRocketDropsLockAfterLosingTarget();

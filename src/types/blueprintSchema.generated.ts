@@ -500,6 +500,22 @@ export type BotPieceTurretHostAttachment = {
 
 export type UnitTurretHostAttachment = BotArmTurretHostAttachment | BotPieceTurretHostAttachment;
 
+export type BuildingYawPieceTurretHostAttachment = {
+  kind: 'buildingYawPiece';
+  piece: string;
+  socketOffset: MountOffset;
+};
+
+export type BuildingAimPieceTurretHostAttachment = {
+  kind: 'buildingAimPiece';
+  piece: string;
+  socketOffset: MountOffset;
+};
+
+export type BuildingTurretHostAttachment = BuildingYawPieceTurretHostAttachment | BuildingAimPieceTurretHostAttachment;
+
+export type TurretHostAttachment = UnitTurretHostAttachment | BuildingTurretHostAttachment;
+
 export type TurretEmissionSocket = {
   offset: MountOffset;
 };
@@ -515,7 +531,7 @@ export type TurretPitchTraverse = {
   maxAngle: number;
 };
 
-export type TurretHostAssistPolicy = 'none' | 'requestYaw';
+export type TurretHostAssistPolicy = 'none' | 'requestYaw' | 'requestAim';
 
 export type TurretStationArticulation = {
   yaw: TurretYawTraverse;
@@ -557,7 +573,10 @@ export type BuildingTurretMount = {
   shieldPanels?: ShieldPanel[];
   controlMode: TurretMountControlMode;
   slavedToMountId?: string;
+  hostAttachment?: BuildingTurretHostAttachment;
+  emissionSockets?: TurretEmissionSocket[];
   articulation?: TurretStationArticulation;
+  angularActuator?: TurretAngularActuator;
 };
 
 export type RoverConfig = {
