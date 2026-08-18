@@ -22,7 +22,8 @@ const EXPECTED_KIND: Record<StructureBlueprintId, BuildingTeamOrnamentKind> = {
   buildingWind: 'windNacelleBand',
   towerFabricator: 'fabricatorClamps',
   buildingExtractor: 'extractorIntakeSeam',
-  towerBeamMega: 'beamEmitterCrown',
+  towerBeamMega: 'beamPairedCrowns',
+  towerBeamLight: 'beamEmitterCrown',
   towerCannon: 'cannonYoke',
   buildingRadar: 'radarDishRim',
   buildingResourceConverter: 'converterPylonBridge',
@@ -33,11 +34,16 @@ const EXPECTED_KIND: Record<StructureBlueprintId, BuildingTeamOrnamentKind> = {
   buildingShieldTargetingTech: 'targetingSpireHalo',
   buildingShieldTech: 'shieldForgeCrest',
   buildingPrecisionTargetingTech: 'precisionGimbalRing',
+  buildingRadarJammer: 'radarJammerCoil',
+  buildingSonarJammer: 'sonarJammerBaffle',
+  buildingMetalStorage: 'metalStorageBrace',
+  buildingEnergyStorage: 'energyStorageBusbar',
 };
 
 const TIERS: readonly PrimitiveGeometryTier[] = ['close', 'mid', 'far'];
 const ROUND_PROFILE_STRUCTURES = new Set<StructureBlueprintId>([
   'towerBeamMega',
+  'towerBeamLight',
   'towerCannon',
   'towerAntiAir',
   'buildingRadar',
@@ -84,6 +90,58 @@ function assertRoundedProfile(
   });
 }
 
+function geometryPlanSpan(
+  mesh: THREE.Mesh,
+  footprintWidth: number,
+  footprintDepth: number,
+): { x: number; z: number } {
+  mesh.geometry.computeBoundingBox();
+  const bounds = mesh.geometry.boundingBox;
+  assertContract(bounds !== null, 'building primary geometry must expose local bounds');
+  return {
+    x: (bounds.max.x - bounds.min.x) * footprintWidth,
+    z: (bounds.max.z - bounds.min.z) * footprintDepth,
+  };
+}
+
+function assertUtilityDetailsEscapePrimaryShell(
+  shape: ReturnType<typeof buildBuildingShape>,
+  buildingBlueprintId: StructureBlueprintId,
+  tier: PrimitiveGeometryTier,
+  footprintWidth: number,
+  footprintDepth: number,
+): void {
+  if (
+    buildingBlueprintId !== 'buildingRadarJammer' &&
+    buildingBlueprintId !== 'buildingMetalStorage' &&
+    buildingBlueprintId !== 'buildingEnergyStorage'
+  ) return;
+
+  const primarySpan = geometryPlanSpan(shape.primary, footprintWidth, footprintDepth);
+  if (buildingBlueprintId === 'buildingRadarJammer') {
+    assertContract(shape.radarRig !== undefined, `buildingRadarJammer/${tier} needs its ECM rig`);
+    const rigBounds = new THREE.Box3().setFromObject(shape.radarRig.head);
+    const rigSpan = Math.max(
+      rigBounds.max.x - rigBounds.min.x,
+      rigBounds.max.z - rigBounds.min.z,
+    );
+    assertContract(
+      rigSpan > Math.max(primarySpan.x, primarySpan.z) * 1.8,
+      `buildingRadarJammer/${tier} phased array must visibly escape its mast shell`,
+    );
+    return;
+  }
+
+  const detailBounds = new THREE.Box3();
+  for (const entry of shape.details) detailBounds.expandByObject(entry.mesh);
+  const detailSpanX = detailBounds.max.x - detailBounds.min.x;
+  const detailSpanZ = detailBounds.max.z - detailBounds.min.z;
+  assertContract(
+    detailSpanX > primarySpan.x * 1.2 || detailSpanZ > primarySpan.z * 1.2,
+    `${buildingBlueprintId}/${tier} storage hardware must remain exposed outside its core shell`,
+  );
+}
+
 export function runBuildingTeamOrnament3DContractTest(): void {
   assertContract(
     new Set(Object.values(EXPECTED_KIND)).size === BUILDING_BLUEPRINT_IDS.length,
@@ -102,6 +160,15 @@ export function runBuildingTeamOrnament3DContractTest(): void {
           placeholderMaterial,
           buildingBlueprintId,
           tier,
+        );
+        const footprintWidth = blueprint.gridWidth * BUILD_GRID_CELL_SIZE;
+        const footprintDepth = blueprint.gridHeight * BUILD_GRID_CELL_SIZE;
+        assertUtilityDetailsEscapePrimaryShell(
+          shape,
+          buildingBlueprintId,
+          tier,
+          footprintWidth,
+          footprintDepth,
         );
         const root = new THREE.Group();
         root.add(shape.primary);

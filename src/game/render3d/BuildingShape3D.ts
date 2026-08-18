@@ -59,7 +59,8 @@ import { BUILDING_PALETTE } from './BuildingVisualPalette';
 import {
   buildAntiAirTowerMesh,
   buildCannonTowerMesh,
-  buildMegaBeamTowerMesh,
+  buildHeavyBeamTowerMesh,
+  buildLightBeamTowerMesh,
   disposeMegaBeamTowerMeshGeoms,
 } from './MegaBeamTowerMesh3D';
 import {
@@ -89,6 +90,13 @@ import {
   createBuildingOperationalPosePart,
   createBuildingOperationalRig,
 } from './BuildingOperationalRig3D';
+import {
+  buildEnergyStorageMesh,
+  buildMetalStorageMesh,
+  buildRadarJammerMesh,
+  buildSonarJammerMesh,
+  disposeStorageAndJammerBuildingGeoms,
+} from './StorageAndJammerBuildingsMesh3D';
 
 export type { WindTurbineRig } from './WindTurbineMesh3D';
 export type { ExtractorRig } from './MetalExtractorMesh3D';
@@ -259,8 +267,18 @@ export function buildBuildingShape(
         return buildRadarMesh(width, depth, primaryMat);
       case 'buildingSonar':
         return buildSonarMesh(width, depth, primaryMat);
+      case 'buildingRadarJammer':
+        return buildRadarJammerMesh(width, depth, primaryMat);
+      case 'buildingSonarJammer':
+        return buildSonarJammerMesh(width, depth, primaryMat);
+      case 'buildingMetalStorage':
+        return buildMetalStorageMesh(width, depth, primaryMat);
+      case 'buildingEnergyStorage':
+        return buildEnergyStorageMesh(width, depth, primaryMat);
       case 'towerBeamMega':
-        return buildMegaBeamTowerMesh(primaryMat);
+        return buildHeavyBeamTowerMesh(primaryMat);
+      case 'towerBeamLight':
+        return buildLightBeamTowerMesh(primaryMat);
       case 'towerCannon':
         return buildCannonTowerMesh(
           primaryMat,
@@ -875,6 +893,7 @@ export function disposeBuildingGeoms(): void {
   disposeFactoryMeshGeoms();
   disposeSolarCollectorGeoms();
   disposeTechBuildingsMeshGeoms();
+  disposeStorageAndJammerBuildingGeoms();
   radarTowerGeom.dispose();
   for (const geometry of radarDishGeomByTier.values()) geometry.dispose();
   for (const geometry of radarRingGeomByTier.values()) geometry.dispose();

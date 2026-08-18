@@ -21,13 +21,18 @@ export function runWaterSurfaceBuildingContractTest(): void {
     buildingExtractor: ['ground-build-squares-surface', 'water-build-squares-sea-bed'],
     buildingExtractorT2: ['ground-build-squares-surface', 'water-build-squares-sea-bed'],
     buildingRadar: ['ground-build-squares-surface'],
+    buildingRadarJammer: ['ground-build-squares-surface'],
     buildingResourceConverter: ['ground-build-squares-surface'],
     buildingSonar: ['water-build-squares-sea-on-surface'],
+    buildingSonarJammer: ['water-build-squares-sea-on-surface'],
+    buildingMetalStorage: ['ground-build-squares-surface'],
+    buildingEnergyStorage: ['ground-build-squares-surface'],
     towerFabricator: ['ground-build-squares-hover', 'water-build-squares-hover-surface'],
     towerBeamMega: ['ground-build-squares-surface'],
+    towerBeamLight: ['ground-build-squares-surface'],
     towerCannon: ['ground-build-squares-surface'],
     towerAntiAir: ['ground-build-squares-surface'],
-    towerTorpedo: ['water-build-squares-sea-bed'],
+    towerTorpedo: ['water-build-squares-sea-on-surface'],
     buildingShieldTargetingTech: ['ground-build-squares-surface'],
     buildingShieldTech: ['ground-build-squares-surface'],
     buildingPrecisionTargetingTech: ['ground-build-squares-surface'],
@@ -59,6 +64,20 @@ export function runWaterSurfaceBuildingContractTest(): void {
   assertContract(
     sonarConfig.supportSurface.kind === 'none',
     'sonar must not expose a walkable top surface',
+  );
+  const torpedoConfig = getBuildingConfig('towerTorpedo');
+  assertContract(
+    torpedoConfig.placementSets.length === 1 &&
+      torpedoConfig.placementSets[0] === 'water-build-squares-sea-on-surface',
+    'torpedo tower must author only sea-on-surface placement',
+  );
+  assertContract(
+    torpedoConfig.supportSurface.kind === 'none',
+    'torpedo tower must not expose an artificial walkable surface',
+  );
+  assertContract(
+    torpedoConfig.visualHeight === torpedoConfig.gridDepth * BUILD_GRID_CELL_SIZE,
+    'torpedo tower art must span the complete half-air/half-water combat volume',
   );
 
   const mapWidth = 8192;
@@ -125,5 +144,47 @@ export function runWaterSurfaceBuildingContractTest(): void {
       'buildingSonar',
     ) === false,
     'shared X/Y occupancy must reject a second structure at any height',
+  );
+
+  const torpedoWorld = new WorldState(7302, mapWidth, mapHeight);
+  const torpedoConstruction = new ConstructionSystem(mapWidth, mapHeight);
+  const torpedoTower = torpedoConstruction.startBuilding(
+    torpedoWorld,
+    'towerTorpedo',
+    buildGridX,
+    buildGridY,
+    1 as PlayerId,
+    0,
+    0,
+    {
+      skipBuilderAuthorization: true,
+      ignoreTerrainForPlacement: false,
+    },
+  );
+  assertContract(
+    torpedoTower?.building !== null && torpedoTower?.building !== undefined,
+    'torpedo tower must start on the same depth-valid surface-water footprint',
+  );
+  assertContract(
+    Math.abs(torpedoTower.transform.z - WATER_LEVEL) <= 1e-9,
+    'torpedo tower combat/collision center must sit exactly on the waterline',
+  );
+  assertContract(
+    Math.abs(
+      getCuboidUnderwaterFraction(
+        torpedoTower.transform.z,
+        torpedoTower.building.depth * 0.5,
+      ) - 0.5
+    ) <= 1e-9,
+    'torpedo tower must expose equal targetable volume to air and water weapons',
+  );
+  const torpedoMount = torpedoTower.combat?.turrets.find(
+    (turret) => turret.mountId === 'torpedo',
+  );
+  assertContract(torpedoMount !== undefined, 'torpedo tower must materialize its launcher');
+  const towerBaseZ = torpedoTower.transform.z - torpedoTower.building.depth * 0.5;
+  assertContract(
+    towerBaseZ + torpedoMount.mount.z < WATER_LEVEL,
+    'torpedo AimFrom and sonar source must remain below the waterline',
   );
 }

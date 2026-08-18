@@ -84,6 +84,12 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   cost: ResourceCost;
   energyProduction: number | null;
   metalProduction: number | null;
+  /** Passive capacity added to the owner's energy stockpile while this
+   *  completed structure exists. Null means this is not energy storage. */
+  energyStorage: number | null;
+  /** Passive capacity added to the owner's metal stockpile while this
+   *  completed structure exists. Null means this is not metal storage. */
+  metalStorage: number | null;
   constructionRate: number | null;
   /** Host-owned build-power origin. This is presentation geometry, not a
    *  turret, weapon, or resource-transfer lane. */
@@ -154,6 +160,8 @@ const BUILDING_EXPLICIT_FIELDS = [
   'base',
   'energyProduction',
   'metalProduction',
+  'energyStorage',
+  'metalStorage',
   'constructionRate',
   'conversionRate',
   'allowedUnitBlueprintIds',
@@ -175,6 +183,8 @@ export const RADAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingRadar.vi
 export const SONAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingSonar.visualHeight;
 export const MEGA_BEAM_TOWER_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.towerBeamMega.visualHeight;
+export const LIGHT_BEAM_TOWER_VISUAL_HEIGHT =
+  BUILDING_BLUEPRINTS.towerBeamLight.visualHeight;
 export const SHIELD_TARGETING_TECH_BUILDING_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.buildingShieldTargetingTech.visualHeight;
 export const SHIELD_TECH_BUILDING_VISUAL_HEIGHT =
@@ -292,11 +302,11 @@ function validateBuildingPlacementSets(
     );
   }
   if (
-    id === 'buildingSonar' &&
+    (id === 'buildingSonar' || id === 'buildingSonarJammer') &&
     (placementSets.length !== 1 || placementSets[0] !== 'water-build-squares-sea-on-surface')
   ) {
     throw new Error(
-      'Invalid building blueprint buildingSonar: placementSets must contain only "water-build-squares-sea-on-surface"',
+      `Invalid building blueprint ${id}: placementSets must contain only "water-build-squares-sea-on-surface"`,
     );
   }
 }
@@ -360,6 +370,61 @@ function validateDedicatedContactSensor(
   if (unexpectedRadii.some((radius) => radius !== 0)) {
     throw new Error(
       `Invalid building blueprint ${id}: dedicated radar/sonar contact coverage must stay in its authored source-target lane`,
+    );
+  }
+}
+
+function validateDedicatedJammer(
+  id: string,
+  blueprint: BuildingBlueprint,
+): void {
+  if (id !== 'buildingRadarJammer' && id !== 'buildingSonarJammer') return;
+  const sensorMount = blueprint.turrets.find(
+    (mount) => TURRET_BLUEPRINTS[mount.turretBlueprintId]?.kind === 'sensor',
+  );
+  if (sensorMount === undefined) {
+    throw new Error(`Invalid building blueprint ${id}: missing dedicated jammer turret`);
+  }
+  const sensors =
+    TURRET_BLUEPRINTS[sensorMount.turretBlueprintId].targeting.observation.sensors;
+  if (
+    getMaximumSensorMatrixRadius(sensors.fullSight) !== 0
+    || getMaximumSensorMatrixRadius(sensors.contactSight) !== 0
+    || sensors.detectorRadius !== 0
+  ) {
+    throw new Error(`Invalid building blueprint ${id}: jammer suite must not grant observation`);
+  }
+  const expectedRadius = id === 'buildingRadarJammer'
+    ? sensors.radarJamRadius
+    : sensors.sonarJamRadius;
+  const otherRadius = id === 'buildingRadarJammer'
+    ? sensors.sonarJamRadius
+    : sensors.radarJamRadius;
+  if (!Number.isFinite(expectedRadius) || expectedRadius <= 0 || otherRadius !== 0) {
+    throw new Error(
+      `Invalid building blueprint ${id}: it must jam only its authored radar/sonar medium`,
+    );
+  }
+}
+
+function validateStorageCapacity(id: string, blueprint: BuildingBlueprint): void {
+  for (const [field, capacity] of [
+    ['energyStorage', blueprint.energyStorage],
+    ['metalStorage', blueprint.metalStorage],
+  ] as const) {
+    if (capacity !== null && (!Number.isFinite(capacity) || capacity <= 0)) {
+      throw new Error(`Invalid building blueprint ${id}: ${field} must be null or positive`);
+    }
+  }
+  if (blueprint.energyStorage !== null && blueprint.metalStorage !== null) {
+    throw new Error(`Invalid building blueprint ${id}: storage structures must author one resource`);
+  }
+  if (
+    (id === 'buildingEnergyStorage') !== (blueprint.energyStorage !== null)
+    || (id === 'buildingMetalStorage') !== (blueprint.metalStorage !== null)
+  ) {
+    throw new Error(
+      `Invalid building blueprint ${id}: storage capacity must stay on its dedicated storage blueprint`,
     );
   }
 }
@@ -432,6 +497,26 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
       throw new Error(
         `Invalid building blueprint ${id}: unknown turretBlueprintId "${mount.turretBlueprintId}"`,
       );
+    }
+    if (mount.emissionSockets !== undefined) {
+      if (mount.emissionSockets.length !== turretBlueprint.emissionLaneCount) {
+        throw new Error(
+          `Invalid emission sockets for building ${id} ${mount.mountId}: ` +
+          `expected exactly ${turretBlueprint.emissionLaneCount} QueryWeapon lane(s)`,
+        );
+      }
+      for (const socket of mount.emissionSockets) {
+        if (
+          !Number.isFinite(socket.offset.x) ||
+          !Number.isFinite(socket.offset.y) ||
+          !Number.isFinite(socket.offset.z)
+        ) {
+          throw new Error(
+            `Invalid emission socket for building ${id} ${mount.mountId}: ` +
+            'offset x/y/z must be finite world units',
+          );
+        }
+      }
     }
   }
   if (blueprint.workEmitter !== null && blueprint.workEmitter !== undefined) {
@@ -514,6 +599,8 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   validateBuildingSupportSurface(id, blueprint.supportSurface);
   validateBuildingPlacementSets(id, blueprint);
   validateDedicatedContactSensor(id, blueprint);
+  validateDedicatedJammer(id, blueprint);
+  validateStorageCapacity(id, blueprint);
   if (
     !blueprint.hud ||
     !Number.isFinite(blueprint.hud.barsOffsetAboveTop)

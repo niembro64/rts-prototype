@@ -198,7 +198,9 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   buildingSonar: { close: 1500, mid: 700, far: 350 },
   buildingResourceConverter: { close: 1500, mid: 750, far: 420 },
   towerFabricator: { close: 1700, mid: 850, far: 420 },
-  towerBeamMega: { close: 900, mid: 500, far: 260 },
+  // Heavy carries a cross-yoke and two emitter heads instead of one.
+  towerBeamMega: { close: 1400, mid: 780, far: 400 },
+  towerBeamLight: { close: 900, mid: 500, far: 260 },
   towerCannon: { close: 1000, mid: 600, far: 320 },
   towerAntiAir: { close: 1200, mid: 750, far: 440 },
   towerTorpedo: { close: 1100, mid: 650, far: 360 },
@@ -2291,7 +2293,7 @@ export function runConstructionHostMarkingContracts(): void {
 
 export function runEntityLodGeometry3DContractTest(): void {
   assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 27, 'visual roster covers all 27 units');
-  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 19, 'visual roster covers all 19 buildings');
+  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 20, 'visual roster covers all 20 buildings');
   const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
   try {
     runEnvironmentLodMaterialContracts();

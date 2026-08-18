@@ -335,12 +335,17 @@ export function barLegacyBuildKeyForStructureBlueprintId(
     case 'buildingSolar':
     case 'buildingWind':
     case 'buildingResourceConverter':
+    case 'buildingMetalStorage':
+    case 'buildingEnergyStorage':
       return 'X';
     case 'towerFabricator':
       return 'V';
     case 'buildingRadar':
     case 'buildingSonar':
+    case 'buildingRadarJammer':
+    case 'buildingSonarJammer':
     case 'towerCannon':
+    case 'towerBeamLight':
     case 'towerBeamMega':
     case 'towerAntiAir':
       return 'C';
@@ -411,6 +416,10 @@ function barClassicBuildSortIndex(id: BuildingBlueprintId): number {
       return 100000;
     case 'buildingExtractorT2':
       return 100100;
+    case 'buildingMetalStorage':
+      return 100200;
+    case 'buildingEnergyStorage':
+      return 100300;
     case 'buildingResourceConverter':
       return 100500;
     case 'buildingWind':
@@ -423,8 +432,14 @@ function barClassicBuildSortIndex(id: BuildingBlueprintId): number {
       return 103100;
     case 'buildingSonar':
       return 103110;
+    case 'buildingRadarJammer':
+      return 103120;
+    case 'buildingSonarJammer':
+      return 103130;
     case 'towerCannon':
       return 106100;
+    case 'towerBeamLight':
+      return 106200;
     case 'towerBeamMega':
       return 106300;
     case 'towerAntiAir':
@@ -490,15 +505,20 @@ const BAR_HOME_BUILD_ORDER = [
     'buildingSolar',
     'buildingWind',
     'buildingResourceConverter',
+    'buildingMetalStorage',
+    'buildingEnergyStorage',
   ],
   [
     'towerCannon',
+    'towerBeamLight',
     'towerBeamMega',
     'towerAntiAir',
   ],
   [
     'buildingRadar',
     'buildingSonar',
+    'buildingRadarJammer',
+    'buildingSonarJammer',
     'buildingShieldTargetingTech',
     'buildingShieldTech',
     'buildingPrecisionTargetingTech',
@@ -567,6 +587,10 @@ function preferredStructureBuildGridSlotIndex(id: BuildingBlueprintId): number {
       return 2;
     case 'buildingResourceConverter':
       return 4;
+    case 'buildingMetalStorage':
+      return 3;
+    case 'buildingEnergyStorage':
+      return 5;
     case 'buildingExtractorT2':
       return 6;
     // BAR utility page: radar and sonar occupy the first two slots; the
@@ -575,6 +599,10 @@ function preferredStructureBuildGridSlotIndex(id: BuildingBlueprintId): number {
       return 0;
     case 'buildingSonar':
       return 1;
+    case 'buildingRadarJammer':
+      return 5;
+    case 'buildingSonarJammer':
+      return 6;
     case 'buildingShieldTargetingTech':
       return 2;
     case 'buildingShieldTech':

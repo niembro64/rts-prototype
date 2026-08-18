@@ -1,870 +1,907 @@
 {
-  "ALL TARGET OPTIONS": {
-    "relationships": [
-      "friendly",
-      "enemy"
-    ],
-    "families": [
-      "buildings",
-      "units",
-      "turrets",
-      "shots"
-    ],
-    "familyPolicies": {
-      "all": "all",
-      "onlySome": {
-        "only": [
-          "blueprintId"
-        ]
-      },
-      "disabled": "omit the family"
-    },
-    "blueprintIds": {
-      "buildings": [
-        "buildingSolar",
-        "buildingWind",
-        "buildingExtractor",
-        "buildingRadar",
-        "buildingSonar",
-        "buildingResourceConverter",
-        "buildingExtractorT2",
-        "towerFabricator",
-        "towerBeamMega",
-        "towerCannon",
-        "towerAntiAir",
-        "towerTorpedo"
-      ],
-      "units": [
-        "unitJackal",
-        "unitLynx",
-        "unitDaddy",
-        "unitBadger",
-        "unitMongoose",
-        "unitTick",
-        "unitHuman",
-        "unitMammoth",
-        "unitFormik",
-        "unitWidow",
-        "unitHippo",
-        "unitSeaTurtle",
-        "unitOrca",
-        "unitTarantula",
-        "unitLoris",
-        "unitBee",
-        "unitDragonfly",
-        "unitConstructionDrone",
-        "unitEagle",
-        "unitDuck",
-        "unitAlbatros",
-        "unitQueenBee",
-        "unitQueenTick",
-        "unitTransport",
-        "unitCommander",
-        "unitConstructionSubmarine",
-        "unitRex"
-      ],
-      "turrets": [
-        "turretGunLight",
-        "turretGunBurst",
-        "turretCannon",
-        "turretMortarSlow",
-        "turretMortarDrop",
-        "turretMortarFast",
-        "turretGatling",
-        "turretDisruptor",
-        "turretShieldPanel",
-        "turretBeam",
-        "turretBeamMini",
-        "turretBeamMega",
-        "turretShieldSphere",
-        "turretShieldSphereSmall",
-        "turretBeamLong",
-        "turretCannonLong",
-        "turretAlbatrosSiegeCannon",
-        "turretRocketSlow",
-        "turretRocketFast",
-        "turretTorpedo",
-        "turretAntiAir",
-        "turretSpawnBuildingsAndTowers",
-        "turretSpawnUnits",
-        "turretResourcePylonConstructionMetal",
-        "turretResourcePylonConstructionEnergy",
-        "turretResourcePylonExtractionMetal",
-        "turretResourcePylonExtractionEnergy",
-        "turretSensorUnitJackal",
-        "turretSensorUnitLynx",
-        "turretSensorUnitDaddy",
-        "turretSensorUnitBadger",
-        "turretSensorUnitMongoose",
-        "turretSensorUnitTick",
-        "turretSensorUnitHuman",
-        "turretSensorUnitMammoth",
-        "turretSensorUnitFormik",
-        "turretSensorUnitWidow",
-        "turretSensorUnitHippo",
-        "turretSensorUnitSeaTurtle",
-        "turretSensorUnitOrca",
-        "turretSensorUnitTarantula",
-        "turretSensorUnitLoris",
-        "turretSensorUnitBee",
-        "turretSensorUnitDragonfly",
-        "turretSensorUnitConstructionDrone",
-        "turretSensorUnitEagle",
-        "turretSensorUnitDuck",
-        "turretSensorUnitAlbatros",
-        "turretSensorUnitQueenBee",
-        "turretSensorUnitQueenTick",
-        "turretSensorUnitTransport",
-        "turretSensorUnitCommander",
-        "turretSensorBuildingSolar",
-        "turretSensorBuildingWind",
-        "turretSensorBuildingExtractor",
-        "turretSensorBuildingExtractorT2",
-        "turretSensorBuildingRadar",
-        "turretSensorBuildingResourceConverter",
-        "turretSensorBuildingSonar",
-        "turretSensorBuildingFabricator",
-        "turretSensorBuildingBeamMega",
-        "turretSensorBuildingCannon",
-        "turretSensorBuildingAntiAir"
-      ],
-      "shots": [
-        "shotPlasmaLight",
-        "shotPlasmaOther",
-        "shotPlasmaMedium",
-        "shotRocketLight",
-        "shotMissileFast",
-        "shotMissileLong",
-        "shotPlasmaHeavy",
-        "shotMortarMedium",
-        "shotMortarHeavy",
-        "shotPlasmaDisruptor",
-        "shotTorpedo"
-      ]
-    }
+ "ALL TARGET OPTIONS": {
+  "relationships": [
+   "friendly",
+   "enemy"
+  ],
+  "families": [
+   "buildings",
+   "units",
+   "turrets",
+   "shots"
+  ],
+  "familyPolicies": {
+   "all": "all",
+   "onlySome": {
+    "only": [
+     "blueprintId"
+    ]
+   },
+   "disabled": "omit the family"
   },
-  "secondaryLockOnProfiles": {
-    "turretShieldPanel": {
-      "mode": "incomingThreatReflector",
-      "candidateRelationship": "enemy_entities",
-      "candidateFamily": "turrets",
-      "rankBy": "threat_turret_sustained_dps",
-      "rescorePeriodTicks": 16,
-      "aim": "bisect_threat_turret_origin_and_threat_host_origin",
-      "intent": "Reflect incoming enemy turret fire back toward the enemy turret's host."
-    }
-  },
-  "units": {
-    "unitJackal": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitLynx": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitDaddy": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitBadger": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitMongoose": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitTick": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitHuman": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitRex": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitMammoth": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitFormik": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitWidow": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitHippo": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitSeaTurtle": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitOrca": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitTarantula": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitLoris": {
-      "targets": {
-        "enemy": {
-          "turrets": {
-            "only": [
-              "turretGunLight",
-              "turretGunBurst",
-              "turretCannon",
-              "turretGatling",
-              "turretBeam",
-              "turretBeamMini",
-              "turretBeamMega",
-              "turretBeamLong",
-              "turretCannonLong"
-            ]
-          }
-        }
-      }
-    },
-    "unitBee": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitDragonfly": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitConstructionDrone": {
-      "targets": {
-        "friendly": {
-          "buildings": "all",
-          "units": "all"
-        },
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitConstructionSubmarine": {
-      "targets": {
-        "friendly": {
-          "buildings": "all",
-          "units": "all"
-        },
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitEagle": {
-      "targets": {
-        "enemy": {
-          "units": {
-            "only": [
-              "unitBee",
-              "unitDragonfly",
-              "unitConstructionDrone",
-              "unitEagle",
-              "unitDuck",
-              "unitAlbatros",
-              "unitQueenBee",
-              "unitQueenTick"
-            ]
-          }
-        }
-      }
-    },
-    "unitAlbatros": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitDuck": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "unitQueenBee": {
-      "targets": "none"
-    },
-    "unitQueenTick": {
-      "targets": "none"
-    },
-    "unitTransport": {
-      "targets": "none"
-    },
-    "unitCommander": {
-      "targets": {
-        "friendly": {
-          "buildings": "all",
-          "units": "all"
-        },
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    }
-  },
-  "turrets": {
-    "turretGunLight": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "turretGunBurst": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "turretCannon": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "turretMortarSlow": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "turretMortarDrop": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "turretMortarFast": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "turretGatling": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "turretGatlingHeavy": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "turretDisruptor": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "turretShieldPanel": {
-      "lockOnRequiresTargetLockedOntoSelf": "require",
-      "targets": {
-        "enemy": {
-          "turrets": {
-            "only": [
-              "turretGunLight",
-              "turretGunBurst",
-              "turretCannon",
-              "turretGatling",
-              "turretBeam",
-              "turretBeamMini",
-              "turretBeamMega",
-              "turretBeamLong",
-              "turretCannonLong",
-              "turretRocketSlow"
-            ]
-          }
-        }
-      }
-    },
-    "turretBeam": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all",
-          "shots": {
-            "only": [
-              "shotRocketLight",
-              "shotMortarMedium",
-              "shotMortarHeavy"
-            ]
-          }
-        }
-      }
-    },
-    "turretBeamMini": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all",
-          "shots": {
-            "only": [
-              "shotRocketLight",
-              "shotMortarMedium",
-              "shotMortarHeavy"
-            ]
-          }
-        }
-      }
-    },
-    "turretBeamMega": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all",
-          "shots": {
-            "only": [
-              "shotRocketLight",
-              "shotMortarMedium",
-              "shotMortarHeavy"
-            ]
-          }
-        }
-      }
-    },
-    "turretShieldSphere": {
-      "targets": {
-        "enemy": {
-          "units": "all",
-          "buildings": "all"
-        }
-      }
-    },
-    "turretShieldSphereSmall": {
-      "targets": {
-        "enemy": {
-          "units": "all",
-          "buildings": "all"
-        }
-      }
-    },
-    "turretBeamLong": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all",
-          "shots": {
-            "only": [
-              "shotRocketLight",
-              "shotMortarMedium",
-              "shotMortarHeavy"
-            ]
-          }
-        }
-      }
-    },
-    "turretCannonLong": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "turretAlbatrosSiegeCannon": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "turretRocketSlow": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "turretRocketFast": {
-      "targets": {
-        "enemy": {
-          "units": {
-            "only": [
-              "unitBee",
-              "unitDragonfly",
-              "unitConstructionDrone",
-              "unitEagle",
-              "unitDuck",
-              "unitAlbatros",
-              "unitQueenBee",
-              "unitQueenTick"
-            ]
-          },
-          "shots": {
-            "only": [
-              "shotRocketLight",
-              "shotMortarMedium",
-              "shotMortarHeavy"
-            ]
-          }
-        }
-      }
-    },
-    "turretTorpedo": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "turretAntiAir": {
-      "targets": {
-        "enemy": {
-          "units": {
-            "only": [
-              "unitBee",
-              "unitConstructionDrone",
-              "unitDragonfly",
-              "unitEagle",
-              "unitDuck",
-              "unitAlbatros",
-              "unitQueenBee",
-              "unitQueenTick"
-            ]
-          },
-          "shots": {
-            "only": [
-              "shotRocketLight",
-              "shotMortarMedium",
-              "shotMortarHeavy"
-            ]
-          }
-        }
-      }
-    },
-    "turretSpawnBuildingsAndTowers": {
-      "targets": "none"
-    },
-    "turretSpawnUnits": {
-      "targets": "none"
-    },
-    "turretResourcePylonConstructionMetal": {
-      "targets": "none"
-    },
-    "turretResourcePylonConstructionEnergy": {
-      "targets": "none"
-    },
-    "turretResourcePylonExtractionMetal": {
-      "targets": "none"
-    },
-    "turretResourcePylonExtractionEnergy": {
-      "targets": "none"
-    },
-    "turretSensorUnitJackal": {
-      "targets": "none"
-    },
-    "turretSensorUnitLynx": {
-      "targets": "none"
-    },
-    "turretSensorUnitDaddy": {
-      "targets": "none"
-    },
-    "turretSensorUnitBadger": {
-      "targets": "none"
-    },
-    "turretSensorUnitMongoose": {
-      "targets": "none"
-    },
-    "turretSensorUnitTick": {
-      "targets": "none"
-    },
-    "turretSensorUnitHuman": {
-      "targets": "none"
-    },
-    "turretSensorUnitMammoth": {
-      "targets": "none"
-    },
-    "turretSensorUnitFormik": {
-      "targets": "none"
-    },
-    "turretSensorUnitWidow": {
-      "targets": "none"
-    },
-    "turretSensorUnitHippo": {
-      "targets": "none"
-    },
-    "turretSensorUnitSeaTurtle": {
-      "targets": "none"
-    },
-    "turretSensorUnitOrca": {
-      "targets": "none"
-    },
-    "turretSensorUnitTarantula": {
-      "targets": "none"
-    },
-    "turretSensorUnitLoris": {
-      "targets": "none"
-    },
-    "turretSensorUnitBee": {
-      "targets": "none"
-    },
-    "turretSensorUnitDragonfly": {
-      "targets": "none"
-    },
-    "turretSensorUnitConstructionDrone": {
-      "targets": "none"
-    },
-    "turretSensorUnitEagle": {
-      "targets": "none"
-    },
-    "turretSensorUnitDuck": {
-      "targets": "none"
-    },
-    "turretSensorUnitAlbatros": {
-      "targets": "none"
-    },
-    "turretSensorUnitQueenBee": {
-      "targets": "none"
-    },
-    "turretSensorUnitQueenTick": {
-      "targets": "none"
-    },
-    "turretSensorUnitTransport": {
-      "targets": "none"
-    },
-    "turretSensorUnitCommander": {
-      "targets": "none"
-    },
-    "turretSensorUnitRex": {
-      "targets": "none"
-    },
-    "turretSensorBuildingSolar": {
-      "targets": "none"
-    },
-    "turretSensorBuildingWind": {
-      "targets": "none"
-    },
-    "turretSensorBuildingExtractor": {
-      "targets": "none"
-    },
-    "turretSensorBuildingExtractorT2": {
-      "targets": "none"
-    },
-    "turretSensorBuildingRadar": {
-      "targets": "none"
-    },
-    "turretSensorBuildingResourceConverter": {
-      "targets": "none"
-    },
-    "turretSensorBuildingSonar": {
-      "targets": "none"
-    },
-    "turretSensorBuildingFabricator": {
-      "targets": "none"
-    },
-    "turretSensorBuildingBeamMega": {
-      "targets": "none"
-    },
-    "turretSensorBuildingCannon": {
-      "targets": "none"
-    },
-    "turretSensorBuildingAntiAir": {
-      "targets": "none"
-    },
-    "turretSensorBuildingShieldTargetingTech": {
-      "targets": "none"
-    },
-    "turretSensorBuildingPrecisionTargetingTech": {
-      "targets": "none"
-    },
-    "turretSensorBuildingShieldTech": {
-      "targets": "none"
-    }
-  },
-  "buildings": {
-    "buildingSolar": {
-      "targets": "none"
-    },
-    "buildingWind": {
-      "targets": "none"
-    },
-    "buildingExtractor": {
-      "targets": "none"
-    },
-    "buildingExtractorT2": {
-      "targets": "none"
-    },
-    "buildingRadar": {
-      "targets": "none"
-    },
-    "buildingResourceConverter": {
-      "targets": "none"
-    },
-    "buildingSonar": {
-      "targets": "none"
-    },
-    "towerFabricator": {
-      "targets": {
-        "friendly": {
-          "buildings": "all",
-          "units": "all"
-        },
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "towerBeamMega": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "towerCannon": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "towerAntiAir": {
-      "targets": {
-        "enemy": {
-          "units": {
-            "only": [
-              "unitBee",
-              "unitConstructionDrone",
-              "unitDragonfly",
-              "unitEagle",
-              "unitDuck",
-              "unitAlbatros",
-              "unitQueenBee",
-              "unitQueenTick"
-            ]
-          }
-        }
-      }
-    },
-    "towerTorpedo": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "buildingShieldTargetingTech": {
-      "targets": "none"
-    },
-    "buildingShieldTech": {
-      "targets": "none"
-    },
-    "buildingPrecisionTargetingTech": {
-      "targets": "none"
-    }
+  "blueprintIds": {
+   "buildings": [
+    "buildingSolar",
+    "buildingWind",
+    "buildingExtractor",
+    "buildingRadar",
+    "buildingSonar",
+    "buildingResourceConverter",
+    "buildingExtractorT2",
+    "towerFabricator",
+    "towerBeamMega",
+    "towerBeamLight",
+    "towerCannon",
+    "towerAntiAir",
+    "towerTorpedo",
+    "buildingRadarJammer",
+    "buildingSonarJammer",
+    "buildingMetalStorage",
+    "buildingEnergyStorage"
+   ],
+   "units": [
+    "unitJackal",
+    "unitLynx",
+    "unitDaddy",
+    "unitBadger",
+    "unitMongoose",
+    "unitTick",
+    "unitHuman",
+    "unitMammoth",
+    "unitFormik",
+    "unitWidow",
+    "unitHippo",
+    "unitSeaTurtle",
+    "unitOrca",
+    "unitTarantula",
+    "unitLoris",
+    "unitBee",
+    "unitDragonfly",
+    "unitConstructionDrone",
+    "unitEagle",
+    "unitDuck",
+    "unitAlbatros",
+    "unitQueenBee",
+    "unitQueenTick",
+    "unitTransport",
+    "unitCommander",
+    "unitConstructionSubmarine",
+    "unitRex"
+   ],
+   "turrets": [
+    "turretGunLight",
+    "turretGunBurst",
+    "turretCannon",
+    "turretMortarSlow",
+    "turretMortarDrop",
+    "turretMortarFast",
+    "turretGatling",
+    "turretDisruptor",
+    "turretShieldPanel",
+    "turretBeam",
+    "turretBeamMini",
+    "turretBeamMega",
+    "turretShieldSphere",
+    "turretShieldSphereSmall",
+    "turretBeamLong",
+    "turretCannonLong",
+    "turretAlbatrosSiegeCannon",
+    "turretRocketSlow",
+    "turretRocketFast",
+    "turretTorpedo",
+    "turretAntiAir",
+    "turretSpawnBuildingsAndTowers",
+    "turretSpawnUnits",
+    "turretResourcePylonConstructionMetal",
+    "turretResourcePylonConstructionEnergy",
+    "turretResourcePylonExtractionMetal",
+    "turretResourcePylonExtractionEnergy",
+    "turretSensorUnitJackal",
+    "turretSensorUnitLynx",
+    "turretSensorUnitDaddy",
+    "turretSensorUnitBadger",
+    "turretSensorUnitMongoose",
+    "turretSensorUnitTick",
+    "turretSensorUnitHuman",
+    "turretSensorUnitMammoth",
+    "turretSensorUnitFormik",
+    "turretSensorUnitWidow",
+    "turretSensorUnitHippo",
+    "turretSensorUnitSeaTurtle",
+    "turretSensorUnitOrca",
+    "turretSensorUnitTarantula",
+    "turretSensorUnitLoris",
+    "turretSensorUnitBee",
+    "turretSensorUnitDragonfly",
+    "turretSensorUnitConstructionDrone",
+    "turretSensorUnitEagle",
+    "turretSensorUnitDuck",
+    "turretSensorUnitAlbatros",
+    "turretSensorUnitQueenBee",
+    "turretSensorUnitQueenTick",
+    "turretSensorUnitTransport",
+    "turretSensorUnitCommander",
+    "turretSensorBuildingSolar",
+    "turretSensorBuildingWind",
+    "turretSensorBuildingExtractor",
+    "turretSensorBuildingExtractorT2",
+    "turretSensorBuildingRadar",
+    "turretSensorBuildingResourceConverter",
+    "turretSensorBuildingSonar",
+    "turretSensorBuildingFabricator",
+    "turretSensorBuildingBeamMega",
+    "turretSensorBuildingCannon",
+    "turretSensorBuildingAntiAir",
+    "turretSensorBuildingRadarJammer",
+    "turretSensorBuildingSonarJammer",
+    "turretSensorBuildingStorage"
+   ],
+   "shots": [
+    "shotPlasmaLight",
+    "shotPlasmaOther",
+    "shotPlasmaMedium",
+    "shotRocketLight",
+    "shotMissileFast",
+    "shotMissileLong",
+    "shotPlasmaHeavy",
+    "shotMortarMedium",
+    "shotMortarHeavy",
+    "shotPlasmaDisruptor",
+    "shotTorpedo"
+   ]
   }
+ },
+ "secondaryLockOnProfiles": {
+  "turretShieldPanel": {
+   "mode": "incomingThreatReflector",
+   "candidateRelationship": "enemy_entities",
+   "candidateFamily": "turrets",
+   "rankBy": "threat_turret_sustained_dps",
+   "rescorePeriodTicks": 16,
+   "aim": "bisect_threat_turret_origin_and_threat_host_origin",
+   "intent": "Reflect incoming enemy turret fire back toward the enemy turret's host."
+  }
+ },
+ "units": {
+  "unitJackal": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitLynx": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitDaddy": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitBadger": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitMongoose": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitTick": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitHuman": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitRex": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitMammoth": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitFormik": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitWidow": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitHippo": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitSeaTurtle": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitOrca": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitTarantula": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitLoris": {
+   "targets": {
+    "enemy": {
+     "turrets": {
+      "only": [
+       "turretGunLight",
+       "turretGunBurst",
+       "turretCannon",
+       "turretGatling",
+       "turretBeam",
+       "turretBeamMini",
+       "turretBeamMega",
+       "turretBeamLong",
+       "turretCannonLong"
+      ]
+     }
+    }
+   }
+  },
+  "unitBee": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitDragonfly": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitConstructionDrone": {
+   "targets": {
+    "friendly": {
+     "buildings": "all",
+     "units": "all"
+    },
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitConstructionSubmarine": {
+   "targets": {
+    "friendly": {
+     "buildings": "all",
+     "units": "all"
+    },
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitEagle": {
+   "targets": {
+    "enemy": {
+     "units": {
+      "only": [
+       "unitBee",
+       "unitDragonfly",
+       "unitConstructionDrone",
+       "unitEagle",
+       "unitDuck",
+       "unitAlbatros",
+       "unitQueenBee",
+       "unitQueenTick"
+      ]
+     }
+    }
+   }
+  },
+  "unitAlbatros": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitDuck": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitQueenBee": {
+   "targets": "none"
+  },
+  "unitQueenTick": {
+   "targets": "none"
+  },
+  "unitTransport": {
+   "targets": "none"
+  },
+  "unitCommander": {
+   "targets": {
+    "friendly": {
+     "buildings": "all",
+     "units": "all"
+    },
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  }
+ },
+ "turrets": {
+  "turretGunLight": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "turretGunBurst": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "turretCannon": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "turretMortarSlow": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "turretMortarDrop": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "turretMortarFast": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "turretGatling": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "turretGatlingHeavy": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "turretDisruptor": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "turretShieldPanel": {
+   "lockOnRequiresTargetLockedOntoSelf": "require",
+   "targets": {
+    "enemy": {
+     "turrets": {
+      "only": [
+       "turretGunLight",
+       "turretGunBurst",
+       "turretCannon",
+       "turretGatling",
+       "turretBeam",
+       "turretBeamMini",
+       "turretBeamMega",
+       "turretBeamLong",
+       "turretCannonLong",
+       "turretRocketSlow"
+      ]
+     }
+    }
+   }
+  },
+  "turretBeam": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all",
+     "shots": {
+      "only": [
+       "shotRocketLight",
+       "shotMortarMedium",
+       "shotMortarHeavy"
+      ]
+     }
+    }
+   }
+  },
+  "turretBeamMini": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all",
+     "shots": {
+      "only": [
+       "shotRocketLight",
+       "shotMortarMedium",
+       "shotMortarHeavy"
+      ]
+     }
+    }
+   }
+  },
+  "turretBeamMega": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all",
+     "shots": {
+      "only": [
+       "shotRocketLight",
+       "shotMortarMedium",
+       "shotMortarHeavy"
+      ]
+     }
+    }
+   }
+  },
+  "turretShieldSphere": {
+   "targets": {
+    "enemy": {
+     "units": "all",
+     "buildings": "all"
+    }
+   }
+  },
+  "turretShieldSphereSmall": {
+   "targets": {
+    "enemy": {
+     "units": "all",
+     "buildings": "all"
+    }
+   }
+  },
+  "turretBeamLong": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all",
+     "shots": {
+      "only": [
+       "shotRocketLight",
+       "shotMortarMedium",
+       "shotMortarHeavy"
+      ]
+     }
+    }
+   }
+  },
+  "turretCannonLong": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "turretAlbatrosSiegeCannon": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "turretRocketSlow": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "turretRocketFast": {
+   "targets": {
+    "enemy": {
+     "units": {
+      "only": [
+       "unitBee",
+       "unitDragonfly",
+       "unitConstructionDrone",
+       "unitEagle",
+       "unitDuck",
+       "unitAlbatros",
+       "unitQueenBee",
+       "unitQueenTick"
+      ]
+     },
+     "shots": {
+      "only": [
+       "shotRocketLight",
+       "shotMortarMedium",
+       "shotMortarHeavy"
+      ]
+     }
+    }
+   }
+  },
+  "turretTorpedo": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "turretAntiAir": {
+   "targets": {
+    "enemy": {
+     "units": {
+      "only": [
+       "unitBee",
+       "unitConstructionDrone",
+       "unitDragonfly",
+       "unitEagle",
+       "unitDuck",
+       "unitAlbatros",
+       "unitQueenBee",
+       "unitQueenTick"
+      ]
+     },
+     "shots": {
+      "only": [
+       "shotRocketLight",
+       "shotMortarMedium",
+       "shotMortarHeavy"
+      ]
+     }
+    }
+   }
+  },
+  "turretSpawnBuildingsAndTowers": {
+   "targets": "none"
+  },
+  "turretSpawnUnits": {
+   "targets": "none"
+  },
+  "turretResourcePylonConstructionMetal": {
+   "targets": "none"
+  },
+  "turretResourcePylonConstructionEnergy": {
+   "targets": "none"
+  },
+  "turretResourcePylonExtractionMetal": {
+   "targets": "none"
+  },
+  "turretResourcePylonExtractionEnergy": {
+   "targets": "none"
+  },
+  "turretSensorUnitJackal": {
+   "targets": "none"
+  },
+  "turretSensorUnitLynx": {
+   "targets": "none"
+  },
+  "turretSensorUnitDaddy": {
+   "targets": "none"
+  },
+  "turretSensorUnitBadger": {
+   "targets": "none"
+  },
+  "turretSensorUnitMongoose": {
+   "targets": "none"
+  },
+  "turretSensorUnitTick": {
+   "targets": "none"
+  },
+  "turretSensorUnitHuman": {
+   "targets": "none"
+  },
+  "turretSensorUnitMammoth": {
+   "targets": "none"
+  },
+  "turretSensorUnitFormik": {
+   "targets": "none"
+  },
+  "turretSensorUnitWidow": {
+   "targets": "none"
+  },
+  "turretSensorUnitHippo": {
+   "targets": "none"
+  },
+  "turretSensorUnitSeaTurtle": {
+   "targets": "none"
+  },
+  "turretSensorUnitOrca": {
+   "targets": "none"
+  },
+  "turretSensorUnitTarantula": {
+   "targets": "none"
+  },
+  "turretSensorUnitLoris": {
+   "targets": "none"
+  },
+  "turretSensorUnitBee": {
+   "targets": "none"
+  },
+  "turretSensorUnitDragonfly": {
+   "targets": "none"
+  },
+  "turretSensorUnitConstructionDrone": {
+   "targets": "none"
+  },
+  "turretSensorUnitEagle": {
+   "targets": "none"
+  },
+  "turretSensorUnitDuck": {
+   "targets": "none"
+  },
+  "turretSensorUnitAlbatros": {
+   "targets": "none"
+  },
+  "turretSensorUnitQueenBee": {
+   "targets": "none"
+  },
+  "turretSensorUnitQueenTick": {
+   "targets": "none"
+  },
+  "turretSensorUnitTransport": {
+   "targets": "none"
+  },
+  "turretSensorUnitCommander": {
+   "targets": "none"
+  },
+  "turretSensorUnitRex": {
+   "targets": "none"
+  },
+  "turretSensorBuildingSolar": {
+   "targets": "none"
+  },
+  "turretSensorBuildingWind": {
+   "targets": "none"
+  },
+  "turretSensorBuildingExtractor": {
+   "targets": "none"
+  },
+  "turretSensorBuildingExtractorT2": {
+   "targets": "none"
+  },
+  "turretSensorBuildingRadar": {
+   "targets": "none"
+  },
+  "turretSensorBuildingResourceConverter": {
+   "targets": "none"
+  },
+  "turretSensorBuildingSonar": {
+   "targets": "none"
+  },
+  "turretSensorBuildingFabricator": {
+   "targets": "none"
+  },
+  "turretSensorBuildingBeamMega": {
+   "targets": "none"
+  },
+  "turretSensorBuildingCannon": {
+   "targets": "none"
+  },
+  "turretSensorBuildingAntiAir": {
+   "targets": "none"
+  },
+  "turretSensorBuildingShieldTargetingTech": {
+   "targets": "none"
+  },
+  "turretSensorBuildingPrecisionTargetingTech": {
+   "targets": "none"
+  },
+  "turretSensorBuildingShieldTech": {
+   "targets": "none"
+  },
+  "turretSensorBuildingRadarJammer": {
+   "targets": "none"
+  },
+  "turretSensorBuildingSonarJammer": {
+   "targets": "none"
+  },
+  "turretSensorBuildingStorage": {
+   "targets": "none"
+  }
+ },
+ "buildings": {
+  "buildingSolar": {
+   "targets": "none"
+  },
+  "buildingWind": {
+   "targets": "none"
+  },
+  "buildingExtractor": {
+   "targets": "none"
+  },
+  "buildingExtractorT2": {
+   "targets": "none"
+  },
+  "buildingRadar": {
+   "targets": "none"
+  },
+  "buildingResourceConverter": {
+   "targets": "none"
+  },
+  "buildingSonar": {
+   "targets": "none"
+  },
+  "towerFabricator": {
+   "targets": {
+    "friendly": {
+     "buildings": "all",
+     "units": "all"
+    },
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "towerBeamMega": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "towerBeamLight": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "towerCannon": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "towerAntiAir": {
+   "targets": {
+    "enemy": {
+     "units": {
+      "only": [
+       "unitBee",
+       "unitConstructionDrone",
+       "unitDragonfly",
+       "unitEagle",
+       "unitDuck",
+       "unitAlbatros",
+       "unitQueenBee",
+       "unitQueenTick"
+      ]
+     }
+    }
+   }
+  },
+  "towerTorpedo": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "buildingShieldTargetingTech": {
+   "targets": "none"
+  },
+  "buildingShieldTech": {
+   "targets": "none"
+  },
+  "buildingPrecisionTargetingTech": {
+   "targets": "none"
+  },
+  "buildingRadarJammer": {
+   "targets": "none"
+  },
+  "buildingSonarJammer": {
+   "targets": "none"
+  },
+  "buildingMetalStorage": {
+   "targets": "none"
+  },
+  "buildingEnergyStorage": {
+   "targets": "none"
+  }
+ }
 }

@@ -27,6 +27,8 @@
     },
     "energyProduction": 50,
     "metalProduction": null,
+    "energyStorage": null,
+    "metalStorage": null,
     "constructionRate": null,
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
@@ -39,7 +41,9 @@
       "width": 100,
       "height": 100
     },
-    "placementSets": ["ground-build-squares-surface"],
+    "placementSets": [
+      "ground-build-squares-surface"
+    ],
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 12
@@ -114,6 +118,8 @@
     },
     "energyProduction": 50,
     "metalProduction": null,
+    "energyStorage": null,
+    "metalStorage": null,
     "constructionRate": null,
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
@@ -126,7 +132,9 @@
       "width": 40,
       "height": 40
     },
-    "placementSets": ["ground-build-squares-surface"],
+    "placementSets": [
+      "ground-build-squares-surface"
+    ],
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": -10
@@ -200,6 +208,8 @@
     },
     "energyProduction": null,
     "metalProduction": 50,
+    "energyStorage": null,
+    "metalStorage": null,
     "constructionRate": null,
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
@@ -289,6 +299,8 @@
     },
     "energyProduction": null,
     "metalProduction": 250,
+    "energyStorage": null,
+    "metalStorage": null,
     "constructionRate": null,
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
@@ -376,6 +388,8 @@
     },
     "energyProduction": null,
     "metalProduction": null,
+    "energyStorage": null,
+    "metalStorage": null,
     "constructionRate": null,
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
@@ -388,7 +402,9 @@
       "width": 60,
       "height": 60
     },
-    "placementSets": ["ground-build-squares-surface"],
+    "placementSets": [
+      "ground-build-squares-surface"
+    ],
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 16
@@ -449,6 +465,8 @@
     },
     "energyProduction": null,
     "metalProduction": null,
+    "energyStorage": null,
+    "metalStorage": null,
     "constructionRate": null,
     "conversionRate": 25,
     "allowedUnitBlueprintIds": null,
@@ -461,7 +479,9 @@
       "width": 60,
       "height": 60
     },
-    "placementSets": ["ground-build-squares-surface"],
+    "placementSets": [
+      "ground-build-squares-surface"
+    ],
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 12
@@ -522,6 +542,8 @@
     },
     "energyProduction": null,
     "metalProduction": null,
+    "energyStorage": null,
+    "metalStorage": null,
     "constructionRate": null,
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
@@ -531,7 +553,9 @@
     "supportSurface": {
       "kind": "none"
     },
-    "placementSets": ["water-build-squares-sea-on-surface"],
+    "placementSets": [
+      "water-build-squares-sea-on-surface"
+    ],
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 16
@@ -603,6 +627,8 @@
     },
     "energyProduction": null,
     "metalProduction": null,
+    "energyStorage": null,
+    "metalStorage": null,
     "constructionRate": 100,
     "workEmitter": {
       "points": [
@@ -703,9 +729,9 @@
   },
   "towerBeamMega": {
     "buildingBlueprintId": "towerBeamMega",
-    "tinyName": "BEM",
-    "shortName": "BEAM",
-    "name": "Beam Tower",
+    "tinyName": "HBM",
+    "shortName": "HBEAM",
+    "name": "Heavy Beam Tower",
     "gridWidth": 3,
     "gridHeight": 3,
     "footprintMask": [
@@ -714,13 +740,15 @@
       ".#."
     ],
     "gridDepth": 5,
-    "hp": 4200,
+    "hp": 5200,
     "cost": {
-      "energy": 5200,
-      "metal": 5200
+      "energy": 7600,
+      "metal": 7600
     },
     "energyProduction": null,
     "metalProduction": null,
+    "energyStorage": null,
+    "metalStorage": null,
     "constructionRate": null,
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
@@ -733,7 +761,9 @@
       "width": 60,
       "height": 60
     },
-    "placementSets": ["ground-build-squares-surface"],
+    "placementSets": [
+      "ground-build-squares-surface"
+    ],
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 12
@@ -742,7 +772,110 @@
       {
         "turretBlueprintId": "turretBeamLong",
         "presentation": {
-          "headRadius": 16,
+          "headRadius": 12,
+          "headOnly": false,
+          "barrel": {
+            "type": "singleConeBarrel",
+            "barrelLength": 0.8
+          }
+        },
+        "sensorTurretBlueprintId": "turretSensorBuildingBeamMega",
+        "mount": {
+          "x": -18,
+          "y": 0,
+          "z": 114
+        },
+        "mountId": "beamLeft",
+        "controlMode": "hostPreferred"
+      },
+      {
+        "turretBlueprintId": "turretBeamLong",
+        "presentation": {
+          "headRadius": 12,
+          "headOnly": false,
+          "barrel": {
+            "type": "singleConeBarrel",
+            "barrelLength": 0.8
+          }
+        },
+        "mount": {
+          "x": 18,
+          "y": 0,
+          "z": 114
+        },
+        "mountId": "beamRight",
+        "controlMode": "hostPreferred"
+      }
+    ],
+    "base": {
+      "cost": {
+        "energy": 7600,
+        "metal": 7600
+      },
+      "mass": 4500,
+      "health": 5200,
+      "deathExplosion": {
+        "radius": 50.912,
+        "force": 270000,
+        "damage": 2000
+      },
+      "radius": {
+        "other": 42.426,
+        "hitbox": 42.426,
+        "collision": 42.426
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    }
+  },
+  "towerBeamLight": {
+    "buildingBlueprintId": "towerBeamLight",
+    "tinyName": "LBM",
+    "shortName": "BEAM",
+    "name": "Light Beam Tower",
+    "gridWidth": 3,
+    "gridHeight": 3,
+    "footprintMask": [
+      ".#.",
+      "###",
+      ".#."
+    ],
+    "gridDepth": 5,
+    "hp": 2200,
+    "cost": {
+      "energy": 1800,
+      "metal": 1800
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "energyStorage": null,
+    "metalStorage": null,
+    "constructionRate": null,
+    "conversionRate": null,
+    "allowedUnitBlueprintIds": null,
+    "renderProfile": "towerBeamLight",
+    "visualHeight": 72,
+    "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 76,
+      "width": 60,
+      "height": 60
+    },
+    "placementSets": [
+      "ground-build-squares-surface"
+    ],
+    "hoveringType": null,
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretBeamMega",
+        "presentation": {
+          "headRadius": 14,
           "headOnly": false,
           "barrel": {
             "type": "singleConeBarrel",
@@ -753,23 +886,23 @@
         "mount": {
           "x": 0,
           "y": 0,
-          "z": 114
+          "z": 88
         },
-        "mountId": "beamLong",
+        "mountId": "beamLight",
         "controlMode": "hostPreferred"
       }
     ],
     "base": {
       "cost": {
-        "energy": 5200,
-        "metal": 5200
+        "energy": 1800,
+        "metal": 1800
       },
-      "mass": 4500,
-      "health": 4200,
+      "mass": 2400,
+      "health": 2200,
       "deathExplosion": {
-        "radius": 50.912,
-        "force": 270000,
-        "damage": 2000
+        "radius": 40.0,
+        "force": 160000,
+        "damage": 1100
       },
       "radius": {
         "other": 42.426,
@@ -803,6 +936,8 @@
     },
     "energyProduction": null,
     "metalProduction": null,
+    "energyStorage": null,
+    "metalStorage": null,
     "constructionRate": null,
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
@@ -815,7 +950,9 @@
       "width": 80,
       "height": 80
     },
-    "placementSets": ["ground-build-squares-surface"],
+    "placementSets": [
+      "ground-build-squares-surface"
+    ],
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 12
@@ -884,6 +1021,8 @@
     },
     "energyProduction": null,
     "metalProduction": null,
+    "energyStorage": null,
+    "metalStorage": null,
     "constructionRate": null,
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
@@ -896,7 +1035,9 @@
       "width": 60,
       "height": 60
     },
-    "placementSets": ["ground-build-squares-surface"],
+    "placementSets": [
+      "ground-build-squares-surface"
+    ],
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 12
@@ -973,19 +1114,20 @@
     },
     "energyProduction": null,
     "metalProduction": null,
+    "energyStorage": null,
+    "metalStorage": null,
     "constructionRate": null,
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
     "renderProfile": "towerCannon",
-    "visualHeight": 30,
+    "visualHeight": 60,
     "anchorProfile": "constantVisualTop",
     "supportSurface": {
-      "kind": "boxTop",
-      "topZ": 60,
-      "width": 40,
-      "height": 40
+      "kind": "none"
     },
-    "placementSets": ["water-build-squares-sea-bed"],
+    "placementSets": [
+      "water-build-squares-sea-on-surface"
+    ],
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 12
@@ -1005,8 +1147,17 @@
         "mount": {
           "x": 0,
           "y": 0,
-          "z": 45
+          "z": 12
         },
+        "emissionSockets": [
+          {
+            "offset": {
+              "x": 14,
+              "y": 0,
+              "z": -10
+            }
+          }
+        ],
         "mountId": "torpedo",
         "controlMode": "hostPreferred"
       }
@@ -1063,6 +1214,8 @@
     },
     "energyProduction": null,
     "metalProduction": null,
+    "energyStorage": null,
+    "metalStorage": null,
     "constructionRate": null,
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
@@ -1072,7 +1225,9 @@
     "supportSurface": {
       "kind": "none"
     },
-    "placementSets": ["ground-build-squares-surface"],
+    "placementSets": [
+      "ground-build-squares-surface"
+    ],
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 14
@@ -1142,6 +1297,8 @@
     },
     "energyProduction": null,
     "metalProduction": null,
+    "energyStorage": null,
+    "metalStorage": null,
     "constructionRate": null,
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
@@ -1151,7 +1308,9 @@
     "supportSurface": {
       "kind": "none"
     },
-    "placementSets": ["ground-build-squares-surface"],
+    "placementSets": [
+      "ground-build-squares-surface"
+    ],
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 14
@@ -1221,6 +1380,8 @@
     },
     "energyProduction": null,
     "metalProduction": null,
+    "energyStorage": null,
+    "metalStorage": null,
     "constructionRate": null,
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
@@ -1230,7 +1391,9 @@
     "supportSurface": {
       "kind": "none"
     },
-    "placementSets": ["ground-build-squares-surface"],
+    "placementSets": [
+      "ground-build-squares-surface"
+    ],
     "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 14
@@ -1264,6 +1427,313 @@
         "other": 152.735,
         "hitbox": 152.735,
         "collision": 152.735
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    }
+  },
+  "buildingRadarJammer": {
+    "buildingBlueprintId": "buildingRadarJammer",
+    "tinyName": "RJM",
+    "shortName": "RADJAM",
+    "name": "Radar Jammer",
+    "gridWidth": 3,
+    "gridHeight": 3,
+    "footprintMask": [
+      ".#.",
+      "###",
+      ".#."
+    ],
+    "gridDepth": 7,
+    "hp": 500,
+    "cost": {
+      "energy": 650,
+      "metal": 450
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "energyStorage": null,
+    "metalStorage": null,
+    "constructionRate": null,
+    "conversionRate": null,
+    "allowedUnitBlueprintIds": null,
+    "renderProfile": "buildingRadarJammer",
+    "visualHeight": 150,
+    "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 140,
+      "width": 60,
+      "height": 60
+    },
+    "placementSets": [
+      "ground-build-squares-surface"
+    ],
+    "hoveringType": null,
+    "hud": {
+      "barsOffsetAboveTop": 16
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingRadarJammer",
+        "presentation": null,
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      }
+    ],
+    "base": {
+      "cost": {
+        "energy": 650,
+        "metal": 450
+      },
+      "mass": 600,
+      "health": 500,
+      "deathExplosion": {
+        "radius": 33.941,
+        "force": 28000,
+        "damage": 200
+      },
+      "radius": {
+        "other": 42.426,
+        "hitbox": 42.426,
+        "collision": 42.426
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    }
+  },
+  "buildingSonarJammer": {
+    "buildingBlueprintId": "buildingSonarJammer",
+    "tinyName": "SJM",
+    "shortName": "SONJAM",
+    "name": "Sonar Jammer",
+    "gridWidth": 3,
+    "gridHeight": 3,
+    "footprintMask": [
+      ".#.",
+      "###",
+      ".#."
+    ],
+    "gridDepth": 7,
+    "hp": 500,
+    "cost": {
+      "energy": 650,
+      "metal": 450
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "energyStorage": null,
+    "metalStorage": null,
+    "constructionRate": null,
+    "conversionRate": null,
+    "allowedUnitBlueprintIds": null,
+    "renderProfile": "buildingSonarJammer",
+    "visualHeight": 140,
+    "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "none"
+    },
+    "placementSets": [
+      "water-build-squares-sea-on-surface"
+    ],
+    "hoveringType": null,
+    "hud": {
+      "barsOffsetAboveTop": 16
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingSonarJammer",
+        "presentation": null,
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 40
+        },
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      }
+    ],
+    "base": {
+      "cost": {
+        "energy": 650,
+        "metal": 450
+      },
+      "mass": 600,
+      "health": 500,
+      "deathExplosion": {
+        "radius": 33.941,
+        "force": 28000,
+        "damage": 200
+      },
+      "radius": {
+        "other": 42.426,
+        "hitbox": 42.426,
+        "collision": 42.426
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    }
+  },
+  "buildingMetalStorage": {
+    "buildingBlueprintId": "buildingMetalStorage",
+    "tinyName": "MST",
+    "shortName": "MSTORE",
+    "name": "Metal Storage",
+    "gridWidth": 4,
+    "gridHeight": 4,
+    "footprintMask": [
+      ".##.",
+      "####",
+      "####",
+      ".##."
+    ],
+    "gridDepth": 4,
+    "hp": 1000,
+    "cost": {
+      "energy": 250,
+      "metal": 450
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "energyStorage": null,
+    "metalStorage": 3000,
+    "constructionRate": null,
+    "conversionRate": null,
+    "allowedUnitBlueprintIds": null,
+    "renderProfile": "buildingMetalStorage",
+    "visualHeight": 80,
+    "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 80,
+      "width": 80,
+      "height": 80
+    },
+    "placementSets": [
+      "ground-build-squares-surface"
+    ],
+    "hoveringType": null,
+    "hud": {
+      "barsOffsetAboveTop": 14
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingStorage",
+        "presentation": null,
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      }
+    ],
+    "base": {
+      "cost": {
+        "energy": 250,
+        "metal": 450
+      },
+      "mass": 1400,
+      "health": 1000,
+      "deathExplosion": {
+        "radius": 50.912,
+        "force": 35000,
+        "damage": 280
+      },
+      "radius": {
+        "other": 56.569,
+        "hitbox": 56.569,
+        "collision": 56.569
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    }
+  },
+  "buildingEnergyStorage": {
+    "buildingBlueprintId": "buildingEnergyStorage",
+    "tinyName": "EST",
+    "shortName": "ESTORE",
+    "name": "Energy Storage",
+    "gridWidth": 4,
+    "gridHeight": 4,
+    "footprintMask": [
+      ".##.",
+      "####",
+      "####",
+      ".##."
+    ],
+    "gridDepth": 4,
+    "hp": 800,
+    "cost": {
+      "energy": 500,
+      "metal": 300
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "energyStorage": 5000,
+    "metalStorage": null,
+    "constructionRate": null,
+    "conversionRate": null,
+    "allowedUnitBlueprintIds": null,
+    "renderProfile": "buildingEnergyStorage",
+    "visualHeight": 90,
+    "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 80,
+      "width": 80,
+      "height": 80
+    },
+    "placementSets": [
+      "ground-build-squares-surface"
+    ],
+    "hoveringType": null,
+    "hud": {
+      "barsOffsetAboveTop": 14
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingStorage",
+        "presentation": null,
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      }
+    ],
+    "base": {
+      "cost": {
+        "energy": 500,
+        "metal": 300
+      },
+      "mass": 900,
+      "health": 800,
+      "deathExplosion": {
+        "radius": 50.912,
+        "force": 32000,
+        "damage": 320
+      },
+      "radius": {
+        "other": 56.569,
+        "hitbox": 56.569,
+        "collision": 56.569
       },
       "signature": {
         "radarStealth": false,

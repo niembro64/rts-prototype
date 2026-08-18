@@ -21,12 +21,17 @@ export type BuildingTeamOrnamentKind =
   | 'sonarBuoyCollar'
   | 'converterPylonBridge'
   | 'beamEmitterCrown'
+  | 'beamPairedCrowns'
   | 'cannonYoke'
   | 'antiAirPedestalBrace'
   | 'torpedoWaterlineBand'
   | 'targetingSpireHalo'
   | 'shieldForgeCrest'
-  | 'precisionGimbalRing';
+  | 'precisionGimbalRing'
+  | 'radarJammerCoil'
+  | 'sonarJammerBaffle'
+  | 'metalStorageBrace'
+  | 'energyStorageBusbar';
 
 const BUILDING_TEAM_ORNAMENT_KIND = 'buildingTeamOrnamentKind';
 
