@@ -28,6 +28,12 @@ export interface RenderPoseApi {
   projectileAxisCompute: (count: number) => void;
   projectileAxisInputStride: number;
   projectileAxisOutputStride: number;
+  plasmaArcPoseInputScratchPtr: () => number;
+  plasmaArcPoseOutputScratchPtr: () => number;
+  plasmaArcPoseScratchEnsure: (count: number) => void;
+  plasmaArcPoseCompute: (count: number) => void;
+  plasmaArcPoseInputStride: number;
+  plasmaArcPoseOutputStride: number;
   airborneEmitterInputScratchPtr: () => number;
   airborneEmitterOutputScratchPtr: () => number;
   airborneEmitterScratchEnsure: (count: number) => void;

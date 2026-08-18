@@ -102,6 +102,10 @@ import __wbg_init, {
   render_projectile_axis_input_scratch_ptr,
   render_projectile_axis_output_scratch_ptr,
   render_projectile_axis_scratch_ensure,
+  render_plasma_arc_pose_compute,
+  render_plasma_arc_pose_input_scratch_ptr,
+  render_plasma_arc_pose_output_scratch_ptr,
+  render_plasma_arc_pose_scratch_ensure,
   render_airborne_emitter_compute,
   render_airborne_emitter_input_scratch_ptr,
   render_airborne_emitter_output_scratch_ptr,
@@ -1225,6 +1229,12 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           projectileAxisCompute: render_projectile_axis_compute,
           projectileAxisInputStride: 4,
           projectileAxisOutputStride: 7,
+          plasmaArcPoseInputScratchPtr: render_plasma_arc_pose_input_scratch_ptr,
+          plasmaArcPoseOutputScratchPtr: render_plasma_arc_pose_output_scratch_ptr,
+          plasmaArcPoseScratchEnsure: render_plasma_arc_pose_scratch_ensure,
+          plasmaArcPoseCompute: render_plasma_arc_pose_compute,
+          plasmaArcPoseInputStride: 7,
+          plasmaArcPoseOutputStride: 16,
           airborneEmitterInputScratchPtr: render_airborne_emitter_input_scratch_ptr,
           airborneEmitterOutputScratchPtr: render_airborne_emitter_output_scratch_ptr,
           airborneEmitterScratchEnsure: render_airborne_emitter_scratch_ensure,
@@ -1638,6 +1648,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runTurretSnapshotDirtyContractTest();
         const { runPrimitiveGeometryQuality3DContractTest } = await import('../render3d/PrimitiveGeometryQuality3DContractTest');
         runPrimitiveGeometryQuality3DContractTest();
+        const { runProjectileTrailHistory3DContractTest } = await import('../render3d/ProjectileTrailHistory3DContractTest');
+        runProjectileTrailHistory3DContractTest();
         const { runEntityLodGeometry3DContractTest } = await import('../render3d/EntityLodGeometry3DContractTest');
         runEntityLodGeometry3DContractTest();
         const { runHostTurretPresentationGeometry3DContractTest } = await import('../render3d/EntityLodGeometry3DContractTest');
@@ -1717,6 +1729,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runQueenFactoryProductionContractTest();
         const { runWaterSurfaceBuildingContractTest } = await import('../sim/waterSurfaceBuildingContractTest');
         runWaterSurfaceBuildingContractTest();
+        const { runBuildingUtilityStructuresContractTest } = await import('../sim/buildingUtilityStructuresContractTest');
+        runBuildingUtilityStructuresContractTest();
         const { runDemoMetalExtractorSpawnContractTest } = await import('../sim/demoMetalExtractorSpawnContractTest');
         runDemoMetalExtractorSpawnContractTest();
         const { runTeamRosterContractTest } = await import('../sim/teamRosterContractTest');

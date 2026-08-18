@@ -39,7 +39,16 @@ import {
   type DetailRung,
   projectileStyleForDetail,
 } from './EntityDetailLevel3D';
-import { ProjectileAxisPoseBatch3D } from './ProjectileAxisPoseBatch3D';
+import { PlasmaArcPoseBatch3D, ProjectileAxisPoseBatch3D } from './ProjectileAxisPoseBatch3D';
+import {
+  TRAIL_HIGH_CURVE_SEGMENTS,
+  createTrailResampleScratch,
+  createTrailStampBuffer,
+  insertTrailStamp,
+  resampleTrailCenterline,
+  stampTrailHeadIfMoved,
+  type TrailStampBuffer,
+} from './ProjectileTrailHistory3D';
 
 const PROJECTILE_MIN_RADIUS = 0.5;
 // 1 revolution per second.
@@ -49,22 +58,12 @@ const ROCKET_FIN_ROLL_RATE_RAD_PER_MS = (Math.PI * 2) / 2000;
 const FIN_REAR_OVERHANG_MULT = 0.75;
 const PROJECTILE_INSTANCED_CAP = 8192;
 const PROJECTILE_ROCKET_FIN_COUNT = 3;
-const PLASMA_HIGH_CURVE_SEGMENTS = 6;
+// The deepest plasma tail sets the trail history's stamp spacing, so the
+// two constants are the same number by construction rather than by luck.
+const PLASMA_HIGH_CURVE_SEGMENTS = TRAIL_HIGH_CURVE_SEGMENTS;
 const PLASMA_HIGH_RADIAL_SEGMENTS = 10;
 const PLASMA_MEDIUM_CURVE_SEGMENTS = 3;
 const PLASMA_MEDIUM_RADIAL_SEGMENTS = 6;
-// Trail stamps record the projectile's recent path as a polyline of
-// positions frozen in render space the moment they were laid down, so
-// MOVE POS / VEL EMAs only ever affect the live head — old stamps don't
-// drift around behind the projectile. The drawn tail is resampled from
-// this history every frame (resampleTrailCenterline) instead of mapping
-// stamps to rings one-to-one, so the buffer is deeper than the ring
-// count: the resample horizon is 7/6 of the tail length (kink pin +
-// relax window), ordinary stamps land one drawn-segment-length apart,
-// and forced reflection stamps can land arbitrarily close together.
-// The extra slots keep the recorded polyline longer than the horizon,
-// so evicting the oldest stamp never moves drawn geometry.
-const TRAIL_STAMP_CAP = PLASMA_HIGH_CURVE_SEGMENTS + 4;
 const TRAIL_MIN_TANGENT_SQ = 1e-6;
 const PROJ_CYL_AXIS = new THREE.Vector3(0, 1, 0);
 
@@ -231,18 +230,6 @@ type ProjectileRadiusMeshes = {
   explosion?: THREE.LineSegments;
 };
 
-type TrailStampBuffer = {
-  // Length TRAIL_STAMP_CAP * 3, indexed newest-first. Slot 0 is the most
-  // recent stamp; slot count-1 is the oldest. The oldest stamp is
-  // evicted when stamping past the cap.
-  points: Float32Array;
-  // 1 where the matching slot is a forced reflection stamp (the exact
-  // shield contact point), 0 for ordinary distance stamps. Kept in
-  // lockstep with points so the resampler can pin a ring onto the kink.
-  flags: Uint8Array;
-  count: number;
-};
-
 type DynamicPlasmaGeometry = {
   spec: PlasmaGeometrySpec;
   geometry: THREE.BufferGeometry;
@@ -339,13 +326,10 @@ export class ProjectileRenderer3D {
   private readonly projectileRadiusMeshPool: THREE.LineSegments[] = [];
   private readonly trailStamps = new IndexedEntityIdMap<TrailStampBuffer>();
   private readonly projectileAxisPose = new ProjectileAxisPoseBatch3D();
-  // Scratch buffers reused across projectiles to avoid per-frame allocs.
-  // resampleTrailCenterline fills tailCenterline with the drawn ring
-  // centers, tailRingDist with each ring's arc distance behind the head,
-  // and trailArcScratch with cumulative stamp-polyline arc lengths.
-  private readonly tailCenterline = new Float32Array((PLASMA_HIGH_CURVE_SEGMENTS + 1) * 3);
-  private readonly tailRingDist = new Float32Array(PLASMA_HIGH_CURVE_SEGMENTS + 1);
-  private readonly trailArcScratch = new Float32Array(TRAIL_STAMP_CAP + 1);
+  private readonly plasmaArcPose = new PlasmaArcPoseBatch3D();
+  // One resample working set reused across every projectile in a frame,
+  // sized for the deepest rung any of them can select.
+  private readonly trailScratch = createTrailResampleScratch(PLASMA_HIGH_CURVE_SEGMENTS);
   private lastProjectileEntitySetVersion = -1;
   private lastProjectileScopeVersion = -1;
 
@@ -502,7 +486,13 @@ export class ProjectileRenderer3D {
     let mediumFinCount = 0;
     const wantHit = getVolumeToggle('hit');
     const wantExp = getVolumeToggle('explosion');
+    // Every scratch has to finish growing before any view is bound:
+    // growing one detaches wasm memory out from under views taken earlier,
+    // and the axis output stays live across the whole loop below while
+    // plasma LOW rows are still being written into the arc-pose input.
+    this.plasmaArcPose.ensure(projectiles.length);
     this.projectileAxisPose.begin(projectiles.length);
+    this.plasmaArcPose.bind(projectiles.length);
     for (let i = 0; i < projectiles.length; i++) {
       const entity = projectiles[i];
       const projectile = entity.projectile;
@@ -554,14 +544,15 @@ export class ProjectileRenderer3D {
 
       if (isPlasma && proj) {
         const tailRadius = r * (visualProfile?.projectileTailRadiusMult ?? 1);
-        this.composeProjectileTailPose(
-          projectileAxisOutput,
-          projectileIndex * projectileAxisOutputStride,
-          tx,
-          ty,
-          tz,
-          tailLength,
-          tailRadius,
+        // Plasma poses itself from its flight path, so the velocity axis is
+        // wanted only as writePlasmaGeometry's degenerate-tangent fallback.
+        // Reading the direction alone skips composing a position, rotation,
+        // and scale that no plasma rung consumes any more.
+        const axisBase = projectileIndex * projectileAxisOutputStride;
+        this.projDir.set(
+          projectileAxisOutput[axisBase],
+          projectileAxisOutput[axisBase + 1],
+          projectileAxisOutput[axisBase + 2],
         );
         const stamps = this.advanceTrailStamps(e.id, proj, tx, ty, tz, tailLength);
         // DOT/CORE graphics ceilings still shed to the minimum plasma mesh;
@@ -570,8 +561,9 @@ export class ProjectileRenderer3D {
           ? sharedRung ?? detailRungForLevel(detailLevel)
           : DETAIL_RUNG_FAR;
         if (rung === DETAIL_RUNG_CLOSE && plasmaHighCount < PROJECTILE_INSTANCED_CAP) {
-          const drawnSpan = this.resampleTrailCenterline(
-            tx, ty, tz, stamps, tailLength, PLASMA_HIGH_SPEC.curveSegments,
+          const drawnSpan = resampleTrailCenterline(
+            this.trailScratch, tx, ty, tz, stamps, tailLength,
+            PLASMA_HIGH_SPEC.curveSegments,
           );
           this.writePlasmaGeometry(
             this.plasmaHigh,
@@ -584,8 +576,9 @@ export class ProjectileRenderer3D {
           rung === DETAIL_RUNG_MID &&
           plasmaMediumCount < PROJECTILE_INSTANCED_CAP
         ) {
-          const drawnSpan = this.resampleTrailCenterline(
-            tx, ty, tz, stamps, tailLength, PLASMA_MEDIUM_SPEC.curveSegments,
+          const drawnSpan = resampleTrailCenterline(
+            this.trailScratch, tx, ty, tz, stamps, tailLength,
+            PLASMA_MEDIUM_SPEC.curveSegments,
           );
           this.writePlasmaGeometry(
             this.plasmaMedium,
@@ -595,15 +588,20 @@ export class ProjectileRenderer3D {
             drawnSpan,
           );
         } else if (plasmaLowCount < PROJECTILE_INSTANCED_CAP) {
-          writeComposedMatrix(
-            this.plasmaLowMatrices,
+          // Ring 1 of a one-segment resample sits at the drawn span, the
+          // same arc point ring 6 reaches at HIGH, so the tail tip does not
+          // move when a shot crosses the rung boundary. Rust turns the
+          // head/tip pair into the instance matrix after the loop.
+          resampleTrailCenterline(this.trailScratch, tx, ty, tz, stamps, tailLength, 1);
+          const centerline = this.trailScratch.centerline;
+          this.plasmaArcPose.write(
             plasmaLowCount++,
-            this.projPos.x,
-            this.projPos.y,
-            this.projPos.z,
-            this.projQuat,
-            r,
-            tailLength,
+            tx,
+            tz,
+            ty,
+            centerline[3],
+            centerline[5],
+            centerline[4],
             r,
           );
         }
@@ -769,6 +767,13 @@ export class ProjectileRenderer3D {
       this.plasmaLowInstanced.count = plasmaLowCount;
     }
     if (plasmaLowCount > 0) {
+      // Rust composed every LOW matrix from its head/tip pair. Both runs are
+      // contiguous and in the same order, so the mass rung lands in one copy
+      // rather than per-shot quaternion and matrix work.
+      const arcPoses = this.plasmaArcPose.compute(plasmaLowCount);
+      this.plasmaLowMatrices.set(
+        arcPoses.subarray(0, plasmaLowCount * this.plasmaArcPose.outputStride),
+      );
       this.markInstanceMatrixRange(this.plasmaLowInstanced, 0, plasmaLowCount - 1);
     }
     if (this.rocketLowInstanced.count !== rocketLowCount) {
@@ -865,33 +870,9 @@ export class ProjectileRenderer3D {
     ]);
   }
 
-  // Shifts older stamps one slot deeper (dropping the oldest if at cap)
-  // and writes the new stamp into slot 0.
-  private insertTrailStamp(
-    stamps: TrailStampBuffer,
-    x: number,
-    y: number,
-    z: number,
-    isReflection: boolean,
-  ): void {
-    const pts = stamps.points;
-    const flags = stamps.flags;
-    const newCount = Math.min(TRAIL_STAMP_CAP, stamps.count + 1);
-    for (let i = newCount - 1; i >= 1; i--) {
-      const dst = i * 3;
-      const src = (i - 1) * 3;
-      pts[dst] = pts[src];
-      pts[dst + 1] = pts[src + 1];
-      pts[dst + 2] = pts[src + 2];
-      flags[i] = flags[i - 1];
-    }
-    pts[0] = x;
-    pts[1] = y;
-    pts[2] = z;
-    flags[0] = isReflection ? 1 : 0;
-    stamps.count = newCount;
-  }
-
+  // Owns the per-entity trail history: the buffer lifetime, the forced
+  // shield-contact stamp, and the ordinary distance stamp. The polyline
+  // shape and its resampler live in ProjectileTrailHistory3D.
   private advanceTrailStamps(
     id: EntityId,
     proj: NonNullable<Entity['projectile']>,
@@ -902,11 +883,7 @@ export class ProjectileRenderer3D {
   ): TrailStampBuffer {
     let stamps = this.trailStamps.get(id);
     if (!stamps) {
-      stamps = {
-        points: new Float32Array(TRAIL_STAMP_CAP * 3),
-        flags: new Uint8Array(TRAIL_STAMP_CAP),
-        count: 0,
-      };
+      stamps = createTrailStampBuffer();
       this.trailStamps.set(id, stamps);
     }
 
@@ -920,137 +897,14 @@ export class ProjectileRenderer3D {
     const bounceY = proj.pendingReflectionY;
     const bounceZ = proj.pendingReflectionZ;
     if (bounceX !== null && bounceY !== null && bounceZ !== null) {
-      this.insertTrailStamp(stamps, bounceX, bounceY, bounceZ, true);
+      insertTrailStamp(stamps, bounceX, bounceY, bounceZ, true);
       proj.pendingReflectionX = null;
       proj.pendingReflectionY = null;
       proj.pendingReflectionZ = null;
     }
 
-    // Step size determines how far the head travels between stamps. We
-    // pick one segment's worth of tail length so the recorded polyline
-    // naturally spans the resample horizon when fully populated.
-    const stampStep = Math.max(0.25, tailLength / PLASMA_HIGH_CURVE_SEGMENTS);
-    const stampStepSq = stampStep * stampStep;
-    const pts = stamps.points;
-    let shouldStamp = stamps.count === 0;
-    if (!shouldStamp) {
-      const dx = headX - pts[0];
-      const dy = headY - pts[1];
-      const dz = headZ - pts[2];
-      if (dx * dx + dy * dy + dz * dz >= stampStepSq) shouldStamp = true;
-    }
-    if (shouldStamp) this.insertTrailStamp(stamps, headX, headY, headZ, false);
+    stampTrailHeadIfMoved(stamps, headX, headY, headZ, tailLength);
     return stamps;
-  }
-
-  // Rebuilds tailCenterline + tailRingDist by resampling the stamp
-  // polyline [head, stamp0, stamp1, ...] at uniform arc-length spacing
-  // over the drawn span. This decouples the drawn rings from the raw
-  // stamps: every ring position is a continuous function of head motion,
-  // so laying or evicting a stamp never moves tail geometry (the old
-  // one-stamp-per-ring centerline popped the tail tip forward a whole
-  // segment every time the oldest stamp dropped off). Returns the drawn
-  // span — the arc length the emitted tail actually covers, which is
-  // shorter than tailLength while a young projectile accumulates path.
-  //
-  // Reflection kinks stay exact: the newest reflection stamp inside the
-  // horizon gets a ring pinned onto it, because the kink is the player's
-  // evidence that a shot bounced and uniform resampling alone would cut
-  // the corner. The pin slides continuously: while the kink's arc
-  // distance sits between ring slots j and j+1 (tau in [j, j+1)), ring j
-  // holds the kink and ring j-1 walks linearly back to its uniform spot
-  // from the kink duty it just finished. At every handoff the affected
-  // rings coincide, so no ring ever teleports.
-  private resampleTrailCenterline(
-    headX: number,
-    headY: number,
-    headZ: number,
-    stamps: TrailStampBuffer,
-    tailLength: number,
-    curveSegments: number,
-  ): number {
-    const pts = stamps.points;
-    const count = stamps.count;
-    const cum = this.trailArcScratch;
-    cum[0] = 0;
-    let prevX = headX, prevY = headY, prevZ = headZ;
-    let total = 0;
-    for (let k = 0; k < count; k++) {
-      const o = k * 3;
-      const dx = pts[o] - prevX;
-      const dy = pts[o + 1] - prevY;
-      const dz = pts[o + 2] - prevZ;
-      total += Math.sqrt(dx * dx + dy * dy + dz * dz);
-      cum[k + 1] = total;
-      prevX = pts[o];
-      prevY = pts[o + 1];
-      prevZ = pts[o + 2];
-    }
-
-    const centerline = this.tailCenterline;
-    const dists = this.tailRingDist;
-    centerline[0] = headX;
-    centerline[1] = headY;
-    centerline[2] = headZ;
-    dists[0] = 0;
-
-    const drawnSpan = Math.min(tailLength, total);
-    if (drawnSpan < 1e-4) {
-      // No usable path yet (fresh spawn) — collapse every ring onto the
-      // head. writePlasmaGeometry collapses the tail rings onto that point.
-      for (let i = 1; i <= curveSegments; i++) {
-        const dst = i * 3;
-        centerline[dst] = headX;
-        centerline[dst + 1] = headY;
-        centerline[dst + 2] = headZ;
-        dists[i] = 0;
-      }
-      return 0;
-    }
-
-    const step = drawnSpan / curveSegments;
-    for (let i = 1; i <= curveSegments; i++) dists[i] = i * step;
-
-    // Pin the newest reflection kink onto a ring (holder), and let the
-    // ring that held it during the previous slot window relax home.
-    const flags = stamps.flags;
-    for (let k = 0; k < count; k++) {
-      if (!flags[k]) continue;
-      const d = cum[k + 1];
-      const tau = d / step;
-      const j = Math.floor(tau);
-      // Ring 0 is the live head and the tip must stay at the span end,
-      // so only interior rings hold the kink; once tau passes the last
-      // segment, the kink and its relax window have left the drawn tail.
-      if (j >= 1 && j < curveSegments) dists[j] = d;
-      if (j >= 2 && j <= curveSegments) {
-        dists[j - 1] = (2 * j - tau) * step;
-      }
-      break;
-    }
-
-    // Single forward walk emitting ring centers at each target distance
-    // (dists is monotone by construction).
-    let seg = 0;
-    for (let i = 1; i <= curveSegments; i++) {
-      let d = dists[i];
-      if (d > total) d = total;
-      while (seg < count - 1 && cum[seg + 1] < d) seg++;
-      const segLen = cum[seg + 1] - cum[seg];
-      let t = segLen > 1e-6 ? (d - cum[seg]) / segLen : 0;
-      if (t < 0) t = 0;
-      else if (t > 1) t = 1;
-      const ao = (seg - 1) * 3;
-      const ax = seg === 0 ? headX : pts[ao];
-      const ay = seg === 0 ? headY : pts[ao + 1];
-      const az = seg === 0 ? headZ : pts[ao + 2];
-      const bo = seg * 3;
-      const dst = i * 3;
-      centerline[dst] = ax + (pts[bo] - ax) * t;
-      centerline[dst + 1] = ay + (pts[bo + 1] - ay) * t;
-      centerline[dst + 2] = az + (pts[bo + 2] - az) * t;
-    }
-    return drawnSpan;
   }
 
   private writePlasmaGeometry(
@@ -1065,8 +919,8 @@ export class ProjectileRenderer3D {
     // indexed surface then tapers through the resampled trail to one tail
     // vertex, so there are no hidden sphere or cone-cap triangles.
     const spec = dynamic.spec;
-    const centerline = this.tailCenterline;
-    const dists = this.tailRingDist;
+    const centerline = this.trailScratch.centerline;
+    const dists = this.trailScratch.ringDist;
     const invSpan = drawnSpan > 1e-4 ? 1 / drawnSpan : 0;
     const positions = dynamic.positions;
     const vertexBase = slot * spec.verticesPerShot;
@@ -1516,7 +1370,9 @@ function createDynamicPlasmaGeometry(
 
 /** Four triangles total: one equilateral front face and three long faces
  *  meeting at the rear tail point. Local +Y is the projectile rearward
- *  axis; the caller scales Y to the authored plasma-tail length. */
+ *  axis; the caller scales Y to the chord from the head back to the drawn
+ *  end of the resampled trail, so the length shortens with the arc rather
+ *  than staying pinned at the authored plasma-tail length. */
 function createLowResolutionPlasmaGeometry(): THREE.BufferGeometry {
   const halfSqrt3 = Math.sqrt(3) * 0.5;
   const positions = new Float32Array([

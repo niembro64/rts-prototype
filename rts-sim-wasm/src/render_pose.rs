@@ -392,6 +392,23 @@ render_pose_scratch!(
     initial 1024
 );
 
+/// Equivalent to THREE.Quaternion.setFromUnitVectors(local +Y, `rearward`),
+/// for a `rearward` unit vector already in Three coordinates. Every
+/// projectile visual — velocity-aimed or path-aimed — turns its axis into a
+/// pose through here, so no caller repeats the per-projectile TypeScript
+/// vector/quaternion math.
+#[inline]
+pub(crate) fn render_rearward_axis_quat(rearward: [f64; 3]) -> [f64; 4] {
+    let r = rearward[1] + 1.0;
+    let mut q = if r < 1e-6 {
+        [0.0, 0.0, 1.0, 0.0]
+    } else {
+        [rearward[2], 0.0, -rearward[0], r]
+    };
+    quat_normalize_inplace(&mut q);
+    q
+}
+
 #[inline]
 pub(crate) fn render_projectile_rearward_pose(
     velocity_x: f64,
@@ -416,17 +433,7 @@ pub(crate) fn render_projectile_rearward_pose(
         [-yaw.cos(), 0.0, -yaw.sin()]
     };
 
-    // Equivalent to THREE.Quaternion.setFromUnitVectors(local +Y,
-    // rearward), kept here so every projectile visual consumes exactly the
-    // same axis without per-projectile TypeScript vector/quaternion math.
-    let r = rearward[1] + 1.0;
-    let mut q = if r < 1e-6 {
-        [0.0, 0.0, 1.0, 0.0]
-    } else {
-        [rearward[2], 0.0, -rearward[0], r]
-    };
-    quat_normalize_inplace(&mut q);
-    (rearward, q)
+    (rearward, render_rearward_axis_quat(rearward))
 }
 
 #[wasm_bindgen]
@@ -452,6 +459,100 @@ pub fn render_projectile_axis_compute(count: u32) {
         s.output[ob + 4] = q[1] as f32;
         s.output[ob + 5] = q[2] as f32;
         s.output[ob + 6] = q[3] as f32;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Render pose scratch — plasma LOW tail pose
+//
+//  The LOW plasma tail is one straight segment, so it carries no interior
+//  ring that could bend along the flight path. Instead of aiming it down
+//  the head's instantaneous velocity — which pivots the far tip about a
+//  full tail-length lever arm and whips it off the arc — the renderer
+//  resamples its trail history and hands over the same point the HIGH and
+//  MEDIUM tails put their last ring on. This kernel turns that
+//  head/tail-point pair into the finished instance matrix, so the mass
+//  rung costs one bulk copy of already-composed matrices and no
+//  per-projectile TypeScript vector, quaternion, or matrix work.
+//
+//  Input and output are both in Three coordinates (x, vertical-y,
+//  sim-y-z), matching the instance matrices they are copied into.
+// ─────────────────────────────────────────────────────────────────
+
+pub const RENDER_PLASMA_ARC_POSE_INPUT_STRIDE: usize = 7;
+pub const RENDER_PLASMA_ARC_POSE_OUTPUT_STRIDE: usize = 16;
+
+render_pose_scratch!(
+    RENDER_PLASMA_ARC_POSE_SCRATCH,
+    render_plasma_arc_pose_scratch,
+    render_plasma_arc_pose_input_scratch_ptr,
+    render_plasma_arc_pose_output_scratch_ptr,
+    render_plasma_arc_pose_scratch_ensure,
+    RENDER_PLASMA_ARC_POSE_INPUT_STRIDE,
+    RENDER_PLASMA_ARC_POSE_OUTPUT_STRIDE,
+    initial 1024
+);
+
+/// Pose for one straight tail drawn from `head` to `tail_point`: local +Y
+/// spans the chord between them, and local X/Z carry the plasma ball's
+/// radius. A tail with no recorded path yet (a shot on its first frames, or
+/// one that just bounced and has been cut back to the contact point)
+/// collapses to zero length at the head, which is how the HIGH and MEDIUM
+/// rungs start their tails too.
+#[inline]
+pub(crate) fn render_plasma_arc_pose(
+    head: [f64; 3],
+    tail_point: [f64; 3],
+    body_radius: f64,
+) -> ([f64; 3], [f64; 4], [f64; 3]) {
+    let dx = tail_point[0] - head[0];
+    let dy = tail_point[1] - head[1];
+    let dz = tail_point[2] - head[2];
+    let length_sq = dx * dx + dy * dy + dz * dz;
+    let (rearward, length) = if length_sq.is_finite() && length_sq > 1e-8 {
+        let length = length_sq.sqrt();
+        let inv = 1.0 / length;
+        ([dx * inv, dy * inv, dz * inv], length)
+    } else {
+        ([0.0, 1.0, 0.0], 0.0)
+    };
+
+    let center = [
+        head[0] + rearward[0] * length * 0.5,
+        head[1] + rearward[1] * length * 0.5,
+        head[2] + rearward[2] * length * 0.5,
+    ];
+    (
+        center,
+        render_rearward_axis_quat(rearward),
+        [body_radius, length, body_radius],
+    )
+}
+
+#[wasm_bindgen]
+pub fn render_plasma_arc_pose_compute(count: u32) {
+    let s = render_plasma_arc_pose_scratch();
+    let count_usize = count as usize;
+    debug_assert!(s.input.len() >= count_usize * RENDER_PLASMA_ARC_POSE_INPUT_STRIDE);
+    debug_assert!(s.output.len() >= count_usize * RENDER_PLASMA_ARC_POSE_OUTPUT_STRIDE);
+
+    for i in 0..count_usize {
+        let ib = i * RENDER_PLASMA_ARC_POSE_INPUT_STRIDE;
+        let ob = i * RENDER_PLASMA_ARC_POSE_OUTPUT_STRIDE;
+        let (center, q, scale) = render_plasma_arc_pose(
+            [
+                s.input[ib] as f64,
+                s.input[ib + 1] as f64,
+                s.input[ib + 2] as f64,
+            ],
+            [
+                s.input[ib + 3] as f64,
+                s.input[ib + 4] as f64,
+                s.input[ib + 5] as f64,
+            ],
+            s.input[ib + 6] as f64,
+        );
+        render_write_mat4_compose_scaled(&mut s.output, ob, center, q, scale);
     }
 }
 
@@ -1264,6 +1365,94 @@ mod tests {
         approx(rotated_axis[0], rearward[0], 1e-12);
         approx(rotated_axis[1], rearward[1], 1e-12);
         approx(rotated_axis[2], rearward[2], 1e-12);
+    }
+
+    #[test]
+    fn plasma_arc_pose_spans_the_head_to_tail_chord() {
+        let head = [10.0, 20.0, 30.0];
+        let tail_point = [10.0, 20.0 + 3.0, 30.0 + 4.0];
+        let (center, q, scale) = render_plasma_arc_pose(head, tail_point, 2.5);
+
+        // Local +Y spans the chord, so the drawn length is the chord length
+        // and the ball radius stays on X/Z.
+        approx(scale[0], 2.5, 1e-12);
+        approx(scale[1], 5.0, 1e-12);
+        approx(scale[2], 2.5, 1e-12);
+
+        // The tetra is centered on the chord midpoint.
+        approx(center[0], 10.0, 1e-12);
+        approx(center[1], 21.5, 1e-12);
+        approx(center[2], 32.0, 1e-12);
+
+        // +Y rotates onto the head -> tail direction, so the tip lands
+        // exactly on the resampled trail point the caller passed in.
+        let rotated_axis = quat_rotate_vec(q, [0.0, 1.0, 0.0]);
+        approx(rotated_axis[0], 0.0, 1e-12);
+        approx(rotated_axis[1], 0.6, 1e-12);
+        approx(rotated_axis[2], 0.8, 1e-12);
+        approx(center[1] + rotated_axis[1] * scale[1] * 0.5, tail_point[1], 1e-12);
+        approx(center[2] + rotated_axis[2] * scale[1] * 0.5, tail_point[2], 1e-12);
+    }
+
+    #[test]
+    fn plasma_arc_pose_collapses_onto_the_head_without_recorded_path() {
+        let head = [7.0, -3.0, 11.0];
+        let (center, q, scale) = render_plasma_arc_pose(head, head, 2.0);
+
+        // No path yet: zero length parked on the head, ball radius intact,
+        // and a finite identity axis rather than a normalized zero vector.
+        approx(scale[1], 0.0, 1e-12);
+        approx(scale[0], 2.0, 1e-12);
+        approx(center[0], head[0], 1e-12);
+        approx(center[1], head[1], 1e-12);
+        approx(center[2], head[2], 1e-12);
+        let rotated_axis = quat_rotate_vec(q, [0.0, 1.0, 0.0]);
+        approx(rotated_axis[1], 1.0, 1e-12);
+    }
+
+    #[test]
+    fn plasma_arc_matrix_places_the_tip_on_the_requested_trail_point() {
+        // Full instance-matrix round trip: transform the LOW tetra's local
+        // apex (0, +0.5, 0) and confirm it lands on the resampled trail
+        // point, while its base triangle (local y = -0.5) stays on the head.
+        let head = [3.0, 9.0, -4.0];
+        let tail_point = [-11.0, 2.5, 17.0];
+        let (center, q, scale) = render_plasma_arc_pose(head, tail_point, 1.5);
+        let mut m = [0.0f32; 16];
+        render_write_mat4_compose_scaled(&mut m, 0, center, q, scale);
+
+        let tip = [
+            m[4] as f64 * 0.5 + m[12] as f64,
+            m[5] as f64 * 0.5 + m[13] as f64,
+            m[6] as f64 * 0.5 + m[14] as f64,
+        ];
+        approx(tip[0], tail_point[0], 1e-4);
+        approx(tip[1], tail_point[1], 1e-4);
+        approx(tip[2], tail_point[2], 1e-4);
+
+        let nose = [
+            m[4] as f64 * -0.5 + m[12] as f64,
+            m[5] as f64 * -0.5 + m[13] as f64,
+            m[6] as f64 * -0.5 + m[14] as f64,
+        ];
+        approx(nose[0], head[0], 1e-4);
+        approx(nose[1], head[1], 1e-4);
+        approx(nose[2], head[2], 1e-4);
+    }
+
+    #[test]
+    fn plasma_arc_and_velocity_poses_share_one_axis_convention() {
+        // A tail point placed straight down the rearward velocity axis must
+        // produce the same orientation the velocity-aimed rung would use.
+        let (rearward, velocity_q) = render_projectile_rearward_pose(3.0, 4.0, 12.0, 0.0);
+        let head = [0.0, 0.0, 0.0];
+        let tail_point = [rearward[0] * 40.0, rearward[1] * 40.0, rearward[2] * 40.0];
+        let (_, arc_q, scale) = render_plasma_arc_pose(head, tail_point, 1.0);
+        approx(scale[1], 40.0, 1e-12);
+        approx(arc_q[0], velocity_q[0], 1e-12);
+        approx(arc_q[1], velocity_q[1], 1e-12);
+        approx(arc_q[2], velocity_q[2], 1e-12);
+        approx(arc_q[3], velocity_q[3], 1e-12);
     }
 
     #[test]

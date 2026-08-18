@@ -639,7 +639,11 @@ fn emit_unit_roster_table(generated: &mut String, manifest_dir: &Path) {
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
     let json = parse_json(&raw, &path);
     let buildable = read_string_array_field(&json, "buildableUnitIds", &path);
-    let disabled = read_string_array_field(&json, "defaultDisabledDemoUnitIds", &path);
+    // Optional: the demo roster may ship with nothing disabled by default,
+    // and an absent list means exactly that. Every other roster field stays
+    // mandatory, so a genuine typo is still a build failure.
+    let disabled =
+        read_optional_string_array_field(&json, "defaultDisabledDemoUnitIds", &path);
 
     generated.push_str(&format!(
         "pub const BLUEPRINT_UNIT_ROSTER_JSON: &str = include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/{}\"));\n",
@@ -663,6 +667,13 @@ fn emit_unit_roster_table(generated: &mut String, manifest_dir: &Path) {
         disabled.len(),
         rust_str_array_literal(&disabled)
     ));
+}
+
+fn read_optional_string_array_field(json: &Value, field: &str, path: &Path) -> Vec<String> {
+    match json.get(field) {
+        None => Vec::new(),
+        Some(_) => read_string_array_field(json, field, path),
+    }
 }
 
 fn read_string_array_field(json: &Value, field: &str, path: &Path) -> Vec<String> {

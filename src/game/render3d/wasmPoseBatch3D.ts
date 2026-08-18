@@ -8,7 +8,10 @@ type RenderPoseBatchPrefix = {
   [K in keyof RenderPoseApi]: K extends `${infer P}ScratchEnsure` ? P : never;
 }[keyof RenderPoseApi];
 
-export abstract class WasmPoseBatch3D {
+/** Resolves one RenderPoseApi scratch-batch sextet from its prefix and owns
+ *  the zero-copy view contract. Subclasses differ only in what they do when
+ *  sim-wasm is absent. */
+abstract class RenderPoseScratchBinding {
   inputStride: number;
   outputStride: number;
 
@@ -16,8 +19,9 @@ export abstract class WasmPoseBatch3D {
   protected output = new Float32Array(0);
   protected wasm: SimWasm | null = null;
 
-  private readonly defaultInputStride: number;
-  private readonly defaultOutputStride: number;
+  protected readonly defaultInputStride: number;
+  protected readonly defaultOutputStride: number;
+  protected readonly prefix: RenderPoseBatchPrefix;
   private readonly scratchEnsureKey: `${RenderPoseBatchPrefix}ScratchEnsure`;
   private readonly inputStrideKey: `${RenderPoseBatchPrefix}InputStride`;
   private readonly outputStrideKey: `${RenderPoseBatchPrefix}OutputStride`;
@@ -31,6 +35,7 @@ export abstract class WasmPoseBatch3D {
     defaultInputStride: number,
     defaultOutputStride: number,
   ) {
+    this.prefix = prefix;
     this.defaultInputStride = defaultInputStride;
     this.defaultOutputStride = defaultOutputStride;
     this.inputStride = defaultInputStride;
@@ -44,26 +49,45 @@ export abstract class WasmPoseBatch3D {
     this.computeLabel = `renderPose.${prefix}Compute`;
   }
 
-  // Views over wasm.memory.buffer must be rebuilt on every begin(): the
-  // scratch-ensure call can grow (and thus detach) the wasm memory.
+  /** Grows this batch's wasm-side scratch. Growth can detach every existing
+   *  view over wasm memory, which is why binding is a separate step. */
+  protected ensureWasmScratch(wasm: SimWasm, count: number): void {
+    wasm.renderPose[this.scratchEnsureKey](count);
+  }
+
+  /** (Re)builds the input/output views. Must run after the last ensure that
+   *  could have grown wasm memory. */
+  protected bindWasmViews(wasm: SimWasm, count: number): void {
+    const renderPose = wasm.renderPose;
+    this.inputStride = renderPose[this.inputStrideKey];
+    this.outputStride = renderPose[this.outputStrideKey];
+    this.input = new Float32Array(
+      wasm.memory.buffer,
+      renderPose[this.inputScratchPtrKey](),
+      count * this.inputStride,
+    );
+    this.output = new Float32Array(
+      wasm.memory.buffer,
+      renderPose[this.outputScratchPtrKey](),
+      count * this.outputStride,
+    );
+  }
+
+  protected runWasmCompute(wasm: SimWasm, count: number): void {
+    measureWasmBoundary(this.computeLabel, () => {
+      wasm.renderPose[this.computeKey](count);
+    });
+  }
+}
+
+/** Batch that keeps a TypeScript implementation for hosts without sim-wasm. */
+export abstract class WasmPoseBatch3D extends RenderPoseScratchBinding {
   begin(count: number): Float32Array {
     const wasm = getSimWasm() ?? null;
     this.wasm = wasm;
     if (wasm !== null) {
-      const renderPose = wasm.renderPose;
-      renderPose[this.scratchEnsureKey](count);
-      this.inputStride = renderPose[this.inputStrideKey];
-      this.outputStride = renderPose[this.outputStrideKey];
-      this.input = new Float32Array(
-        wasm.memory.buffer,
-        renderPose[this.inputScratchPtrKey](),
-        count * this.inputStride,
-      );
-      this.output = new Float32Array(
-        wasm.memory.buffer,
-        renderPose[this.outputScratchPtrKey](),
-        count * this.outputStride,
-      );
+      this.ensureWasmScratch(wasm, count);
+      this.bindWasmViews(wasm, count);
       return this.input;
     }
 
@@ -82,9 +106,7 @@ export abstract class WasmPoseBatch3D {
 
   compute(count: number): Float32Array {
     if (this.wasm !== null) {
-      measureWasmBoundary(this.computeLabel, () => {
-        this.wasm!.renderPose[this.computeKey](count);
-      });
+      this.runWasmCompute(this.wasm, count);
       return this.output;
     }
     this.computeFallback(count);
@@ -92,4 +114,44 @@ export abstract class WasmPoseBatch3D {
   }
 
   protected abstract computeFallback(count: number): void;
+}
+
+/** Batch with no TypeScript implementation: sim-wasm is the only path, so an
+ *  uninitialized host is a hard error rather than a silent slow lane.
+ *
+ *  `ensure` and `bind` are split so a caller holding several of these at once
+ *  can grow every scratch before binding any view. Growing one batch's scratch
+ *  can detach wasm memory, and a view bound earlier would go with it. */
+export abstract class RequiredWasmPoseBatch3D extends RenderPoseScratchBinding {
+  ensure(count: number): void {
+    const wasm = getSimWasm() ?? null;
+    if (wasm === null) {
+      throw new Error(`${this.prefix} pose batch requires initialized sim-wasm`);
+    }
+    this.wasm = wasm;
+    this.ensureWasmScratch(wasm, count);
+  }
+
+  bind(count: number): Float32Array {
+    const wasm = this.wasm;
+    if (wasm === null) {
+      throw new Error(`${this.prefix} pose batch bound before ensure`);
+    }
+    this.bindWasmViews(wasm, count);
+    return this.input;
+  }
+
+  begin(count: number): Float32Array {
+    this.ensure(count);
+    return this.bind(count);
+  }
+
+  compute(count: number): Float32Array {
+    const wasm = this.wasm;
+    if (wasm === null) {
+      throw new Error(`${this.prefix} pose batch computed before begin`);
+    }
+    this.runWasmCompute(wasm, count);
+    return this.output;
+  }
 }
