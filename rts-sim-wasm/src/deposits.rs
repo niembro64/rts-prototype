@@ -16,7 +16,12 @@ use wasm_bindgen::prelude::*;
 //  weighting, and sorted output cell list.
 // ─────────────────────────────────────────────────────────────────
 
-pub(crate) const METAL_DEPOSIT_RING_INPUT_STRIDE: usize = 6;
+/// Packed ring row: radiusFraction, countPerPlayer, sliceOffset,
+/// dTerrainLevels, flatPadCells, terrainBlendRadius, resourceCells,
+/// resourceRadiusCells. The last two are PER ROW because a ring (or a
+/// group-manual spot) picks its footprint from the authored size table
+/// — one map mixes standard spots with very large ore bodies.
+pub(crate) const METAL_DEPOSIT_RING_INPUT_STRIDE: usize = 8;
 pub(crate) const METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE: usize = 15;
 pub(crate) const METAL_DEPOSIT_HEIGHT_INPUT_STRIDE: usize = 3;
 pub(crate) const METAL_DEPOSIT_TERRAIN_CONFIG_LEN: usize = 29;
@@ -797,8 +802,6 @@ pub fn metal_deposit_generate_placements(
     edge_margin_px: f64,
     build_grid_cell_size: f64,
     metal_deposit_step: f64,
-    resource_cells: u32,
-    resource_radius_cells: i32,
     rings: &[f64],
     out_placements: &mut [f64],
 ) -> u32 {
@@ -810,8 +813,6 @@ pub fn metal_deposit_generate_placements(
         || !build_grid_cell_size.is_finite()
         || build_grid_cell_size <= 0.0
         || !metal_deposit_step.is_finite()
-        || resource_cells == 0
-        || resource_radius_cells <= 0
     {
         return 0;
     }
@@ -833,15 +834,20 @@ pub fn metal_deposit_generate_placements(
     let players = player_count.max(1);
     let players_f64 = players as f64;
     let slice_width = std::f64::consts::TAU / players_f64;
-    let resource_cells_f64 = resource_cells as f64;
-    let resource_cell_count = resource_cells.saturating_mul(resource_cells);
-    let resource_half_size = (resource_cells_f64 * build_grid_cell_size) * 0.5;
-    let resource_radius = (resource_radius_cells as f64 + 0.5) * build_grid_cell_size;
-    let grid_half_cells = (resource_cells / 2) as i32;
 
     let mut out_count = 0usize;
-    let mut push_placement =
-        |raw_x: f64, raw_y: f64, flat_pad_cells: f64, d_terrain_levels: f64, blend_radius: f64| {
+    let mut push_placement = |raw_x: f64,
+                              raw_y: f64,
+                              flat_pad_cells: f64,
+                              d_terrain_levels: f64,
+                              blend_radius: f64,
+                              resource_cells: u32,
+                              resource_radius_cells: i32| {
+            let resource_cells_f64 = resource_cells as f64;
+            let resource_cell_count = resource_cells.saturating_mul(resource_cells);
+            let resource_half_size = (resource_cells_f64 * build_grid_cell_size) * 0.5;
+            let resource_radius = (resource_radius_cells as f64 + 0.5) * build_grid_cell_size;
+            let grid_half_cells = (resource_cells / 2) as i32;
             let center_gx = (raw_x / build_grid_cell_size).floor() as i32;
             let center_gy = (raw_y / build_grid_cell_size).floor() as i32;
             let grid_x = center_gx - grid_half_cells;
@@ -886,11 +892,30 @@ pub fn metal_deposit_generate_placements(
         let d_terrain_levels = rings[base + 3];
         let flat_pad_cells = rings[base + 4];
         let blend_radius = rings[base + 5];
+        let resource_cells = rings[base + 6];
+        let resource_radius_cells = rings[base + 7];
+        if !resource_cells.is_finite()
+            || resource_cells < 1.0
+            || !resource_radius_cells.is_finite()
+            || resource_radius_cells < 1.0
+        {
+            return 0;
+        }
+        let resource_cells = resource_cells as u32;
+        let resource_radius_cells = resource_radius_cells as i32;
         let ring_radius = radius_fraction * half_extent;
         let ring_angular_offset = slice_offset * slice_width;
 
         if radius_fraction <= 1e-6 {
-            push_placement(cx, cy, flat_pad_cells, d_terrain_levels, blend_radius);
+            push_placement(
+                cx,
+                cy,
+                flat_pad_cells,
+                d_terrain_levels,
+                blend_radius,
+                resource_cells,
+                resource_radius_cells,
+            );
             continue;
         }
 
@@ -903,7 +928,15 @@ pub fn metal_deposit_generate_placements(
                 let angle = slice_center + angle_in_slice + ring_angular_offset;
                 let raw_x = cx + angle.cos() * ring_radius * scale_x;
                 let raw_y = cy + angle.sin() * ring_radius * scale_y;
-                push_placement(raw_x, raw_y, flat_pad_cells, d_terrain_levels, blend_radius);
+                push_placement(
+                    raw_x,
+                    raw_y,
+                    flat_pad_cells,
+                    d_terrain_levels,
+                    blend_radius,
+                    resource_cells,
+                    resource_radius_cells,
+                );
             }
         }
     }
@@ -1308,4 +1341,343 @@ pub fn metal_deposit_grow_resource_cells(
         out_cells[base + 1] = *gy;
     }
     cells.len() as u32
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Metal surface field — the world-space region mask that shades ore
+//
+//  The rendered ore body is a REGION, not geometry. This kernel bakes
+//  the deposit cell union into a signed-distance field over the whole
+//  map, which the terrain fragment shader samples by world XZ. Because
+//  the lookup is 2D and height-independent, an ore body larger than its
+//  flat pad drapes over whatever relief it covers — down a mountain
+//  side, across a shelf — with no mesh involvement at all. That is the
+//  same trick SURFACE = METAL uses for the whole map, restricted to a
+//  region instead of applied globally.
+//
+//  Signed distance rather than a 0/1 mask for two reasons: it mips
+//  gracefully (a averaged distance is still a distance, an averaged
+//  bitmask is mush), and it lets the shader derive a screen-space
+//  anti-aliased edge with fwidth at any camera distance. Smoothing
+//  passes run on the distance values, which rounds the 20-world-unit
+//  build-cell staircase into a curve.
+//
+//  RENDER-ONLY. The authoritative metal cells stay the deposit's own
+//  cell list; nothing here enters the canonical state hash.
+// ─────────────────────────────────────────────────────────────────
+
+pub(crate) const METAL_DEPOSIT_FIELD_OUTSIDE_BYTE: u8 = 255;
+
+/// One dimension of the Felzenszwalb–Huttenlocher exact squared
+/// Euclidean distance transform. `f` is the sampled parabola height at
+/// each position; the result overwrites it with the lower envelope.
+fn metal_deposit_edt_1d(f: &[f32], out: &mut [f32], v: &mut [i32], z: &mut [f32], n: usize) {
+    if n == 0 {
+        return;
+    }
+    let mut k: usize = 0;
+    v[0] = 0;
+    z[0] = f32::NEG_INFINITY;
+    z[1] = f32::INFINITY;
+    for q in 1..n {
+        let mut s;
+        loop {
+            let p = v[k] as usize;
+            s = ((f[q] + (q * q) as f32) - (f[p] + (p * p) as f32))
+                / (2.0 * q as f32 - 2.0 * p as f32);
+            if s <= z[k] && k > 0 {
+                k -= 1;
+            } else {
+                break;
+            }
+        }
+        k += 1;
+        v[k] = q as i32;
+        z[k] = s;
+        z[k + 1] = f32::INFINITY;
+    }
+    let mut k = 0usize;
+    for q in 0..n {
+        while z[k + 1] < q as f32 {
+            k += 1;
+        }
+        let p = v[k] as usize;
+        let d = q as f32 - p as f32;
+        out[q] = d * d + f[p];
+    }
+}
+
+/// Exact squared EDT over a grid. `mask` is 1 where the seed set is.
+/// Cells inside the seed set get 0; everything else gets its squared
+/// distance to the nearest seed cell, in cells².
+fn metal_deposit_edt_2d(mask: &[u8], seed_value: u8, width: usize, height: usize) -> Vec<f32> {
+    const FAR: f32 = 1.0e20;
+    let mut grid = vec![0.0f32; width * height];
+    for i in 0..width * height {
+        grid[i] = if mask[i] == seed_value { 0.0 } else { FAR };
+    }
+    let span = width.max(height);
+    let mut f = vec![0.0f32; span];
+    let mut d = vec![0.0f32; span];
+    let mut v = vec![0i32; span + 1];
+    let mut z = vec![0.0f32; span + 2];
+
+    for x in 0..width {
+        for y in 0..height {
+            f[y] = grid[y * width + x];
+        }
+        metal_deposit_edt_1d(&f[..height], &mut d[..height], &mut v, &mut z, height);
+        for y in 0..height {
+            grid[y * width + x] = d[y];
+        }
+    }
+    for y in 0..height {
+        let row = y * width;
+        f[..width].copy_from_slice(&grid[row..row + width]);
+        metal_deposit_edt_1d(&f[..width], &mut d[..width], &mut v, &mut z, width);
+        grid[row..row + width].copy_from_slice(&d[..width]);
+    }
+    grid
+}
+
+/// Bake the deposit cell union into a signed-distance field.
+///
+/// `cells_gx_gy` is the concatenated build-cell list of every workable
+/// deposit (pairs, order irrelevant — overlapping deposits simply
+/// union). Output is one unsigned byte per field texel encoding the
+/// signed world-unit distance to the ore edge, negative inside, mapped
+/// linearly over ±`edge_range_world_units`. The border texel ring is
+/// forced fully outside so a clamped sample beyond the map — the
+/// world-box side walls included — can never read as ore.
+#[allow(clippy::too_many_arguments)]
+#[wasm_bindgen]
+pub fn metal_deposit_bake_surface_field(
+    field_width: u32,
+    field_height: u32,
+    field_cell_size: f64,
+    build_grid_cell_size: f64,
+    cells_gx_gy: &[i32],
+    edge_range_world_units: f64,
+    smooth_passes: u32,
+    out_field: &mut [u8],
+) -> u32 {
+    let width = field_width as usize;
+    let height = field_height as usize;
+    if width == 0
+        || height == 0
+        || cells_gx_gy.len() % 2 != 0
+        || !field_cell_size.is_finite()
+        || field_cell_size <= 0.0
+        || !build_grid_cell_size.is_finite()
+        || build_grid_cell_size <= 0.0
+        || !edge_range_world_units.is_finite()
+        || edge_range_world_units <= 0.0
+        || out_field.len() < width * height
+    {
+        return 0;
+    }
+
+    // Rasterize the cell union at field resolution. A field texel is ore
+    // when its center falls in an ore build cell, so the raster carries
+    // the exact authored footprint before any smoothing rounds it.
+    let mut inside = vec![0u8; width * height];
+    let samples_per_cell = build_grid_cell_size / field_cell_size;
+    let cell_count = cells_gx_gy.len() / 2;
+    for i in 0..cell_count {
+        let gx = cells_gx_gy[i * 2];
+        let gy = cells_gx_gy[i * 2 + 1];
+        let x0 = (gx as f64 * samples_per_cell).floor();
+        let y0 = (gy as f64 * samples_per_cell).floor();
+        let x1 = ((gx + 1) as f64 * samples_per_cell).ceil();
+        let y1 = ((gy + 1) as f64 * samples_per_cell).ceil();
+        let fx0 = x0.max(0.0) as usize;
+        let fy0 = y0.max(0.0) as usize;
+        let fx1 = (x1.max(0.0) as usize).min(width);
+        let fy1 = (y1.max(0.0) as usize).min(height);
+        for fy in fy0..fy1 {
+            // Texel centers, so a cell boundary lands between texels
+            // rather than double-claiming one.
+            let wy = (fy as f64 + 0.5) * field_cell_size;
+            let cy = (wy / build_grid_cell_size).floor() as i32;
+            if cy != gy {
+                continue;
+            }
+            let row = fy * width;
+            for fx in fx0..fx1 {
+                let wx = (fx as f64 + 0.5) * field_cell_size;
+                let cx = (wx / build_grid_cell_size).floor() as i32;
+                if cx == gx {
+                    inside[row + fx] = 1;
+                }
+            }
+        }
+    }
+
+    // Signed distance: exact outside distance for ore-free texels, exact
+    // inside distance negated for ore texels, so the zero crossing sits
+    // on the rasterized boundary. The two transforms are scoped so only
+    // one full-field f32 buffer beyond `signed` is ever live — this runs
+    // on the largest authored map, not just the default one.
+    let texel_world = field_cell_size as f32;
+    let mut signed = vec![0.0f32; width * height];
+    {
+        let outside_sq = metal_deposit_edt_2d(&inside, 1, width, height);
+        for i in 0..width * height {
+            if inside[i] == 0 {
+                signed[i] = outside_sq[i].max(0.0).sqrt() * texel_world;
+            }
+        }
+    }
+    {
+        let inside_sq = metal_deposit_edt_2d(&inside, 0, width, height);
+        for i in 0..width * height {
+            if inside[i] != 0 {
+                signed[i] = -(inside_sq[i].max(0.0).sqrt()) * texel_world;
+            }
+        }
+    }
+    drop(inside);
+
+    // Smooth the DISTANCE, not the mask: a separable 1-2-1 pass on a
+    // distance field rounds corners while leaving the field a valid
+    // distance to sample. This is what turns the build-cell staircase
+    // into the curved ore silhouette.
+    if smooth_passes > 0 && width >= 3 && height >= 3 {
+        let mut scratch = vec![0.0f32; width * height];
+        for _ in 0..smooth_passes {
+            for y in 0..height {
+                let row = y * width;
+                for x in 0..width {
+                    let l = signed[row + x.saturating_sub(1)];
+                    let c = signed[row + x];
+                    let r = signed[row + (x + 1).min(width - 1)];
+                    scratch[row + x] = (l + 2.0 * c + r) * 0.25;
+                }
+            }
+            for y in 0..height {
+                let up = y.saturating_sub(1) * width;
+                let dn = (y + 1).min(height - 1) * width;
+                let row = y * width;
+                for x in 0..width {
+                    let u = scratch[up + x];
+                    let c = scratch[row + x];
+                    let d = scratch[dn + x];
+                    signed[row + x] = (u + 2.0 * c + d) * 0.25;
+                }
+            }
+        }
+    }
+
+    let range = edge_range_world_units as f32;
+    for i in 0..width * height {
+        let normalized = (signed[i] / range).clamp(-1.0, 1.0) * 0.5 + 0.5;
+        out_field[i] = (normalized * 255.0 + 0.5) as u8;
+    }
+
+    // Border ring: fully outside. Sampling is ClampToEdge, so every
+    // fragment beyond the map — including the vertical world-box side
+    // walls, which share the terrain mesh — reads this and shades as
+    // ordinary ground instead of picking up a bled ore edge.
+    for x in 0..width {
+        out_field[x] = METAL_DEPOSIT_FIELD_OUTSIDE_BYTE;
+        out_field[(height - 1) * width + x] = METAL_DEPOSIT_FIELD_OUTSIDE_BYTE;
+    }
+    for y in 0..height {
+        out_field[y * width] = METAL_DEPOSIT_FIELD_OUTSIDE_BYTE;
+        out_field[y * width + width - 1] = METAL_DEPOSIT_FIELD_OUTSIDE_BYTE;
+    }
+
+    (width * height) as u32
+}
+
+#[cfg(test)]
+mod metal_deposit_field_tests {
+    use super::*;
+
+    fn decode(byte: u8, range: f64) -> f64 {
+        ((byte as f64) / 255.0 * 2.0 - 1.0) * range
+    }
+
+    #[test]
+    fn signed_field_zero_crossing_sits_on_the_cell_boundary() {
+        // One 20-wu build cell of ore at (10,10) on a 10-wu field grid.
+        let w = 64u32;
+        let h = 64u32;
+        let mut out = vec![0u8; (w * h) as usize];
+        let cells: Vec<i32> = vec![10, 10];
+        let n = metal_deposit_bake_surface_field(w, h, 10.0, 20.0, &cells, 80.0, 0, &mut out);
+        assert_eq!(n, w * h);
+
+        // Build cell 10 spans world 200..220 -> field texels 20 and 21.
+        let idx = |fx: usize, fy: usize| fy * w as usize + fx;
+        assert!(decode(out[idx(20, 20)], 80.0) < 0.0, "ore texel must be inside");
+        assert!(decode(out[idx(21, 21)], 80.0) < 0.0, "ore texel must be inside");
+        assert!(decode(out[idx(19, 20)], 80.0) > 0.0, "neighbour must be outside");
+        assert!(decode(out[idx(22, 20)], 80.0) > 0.0, "neighbour must be outside");
+        // Distance grows with separation.
+        let near = decode(out[idx(23, 20)], 80.0);
+        let far = decode(out[idx(26, 20)], 80.0);
+        assert!(far > near, "distance must grow outward: {far} vs {near}");
+        // Exact euclidean: texel 24 center is 3 texels (30wu) past the last
+        // ore texel center at 21 -> distance 30.
+        let d = decode(out[idx(24, 20)], 80.0);
+        assert!((d - 30.0).abs() < 1.0, "expected ~30wu, got {d}");
+    }
+
+    #[test]
+    fn border_ring_is_always_outside() {
+        let w = 32u32;
+        let h = 32u32;
+        let mut out = vec![0u8; (w * h) as usize];
+        // Ore pushed hard against the origin corner.
+        let cells: Vec<i32> = vec![0, 0, 1, 0, 0, 1, 1, 1];
+        metal_deposit_bake_surface_field(w, h, 10.0, 20.0, &cells, 80.0, 2, &mut out);
+        for x in 0..w as usize {
+            assert_eq!(out[x], METAL_DEPOSIT_FIELD_OUTSIDE_BYTE);
+            assert_eq!(out[(h as usize - 1) * w as usize + x], METAL_DEPOSIT_FIELD_OUTSIDE_BYTE);
+        }
+        for y in 0..h as usize {
+            assert_eq!(out[y * w as usize], METAL_DEPOSIT_FIELD_OUTSIDE_BYTE);
+            assert_eq!(out[y * w as usize + w as usize - 1], METAL_DEPOSIT_FIELD_OUTSIDE_BYTE);
+        }
+    }
+
+    #[test]
+    fn empty_cell_list_bakes_a_fully_outside_field() {
+        let w = 16u32;
+        let h = 16u32;
+        let mut out = vec![0u8; (w * h) as usize];
+        metal_deposit_bake_surface_field(w, h, 10.0, 20.0, &[], 80.0, 1, &mut out);
+        for v in &out {
+            assert_eq!(*v, METAL_DEPOSIT_FIELD_OUTSIDE_BYTE);
+        }
+    }
+
+    #[test]
+    fn smoothing_rounds_a_corner_without_moving_a_straight_edge() {
+        let w = 96u32;
+        let h = 96u32;
+        // 6x6 block of build cells starting at (10,10).
+        let mut cells: Vec<i32> = Vec::new();
+        for gy in 10..16 {
+            for gx in 10..16 {
+                cells.push(gx);
+                cells.push(gy);
+            }
+        }
+        let mut sharp = vec![0u8; (w * h) as usize];
+        let mut smooth = vec![0u8; (w * h) as usize];
+        metal_deposit_bake_surface_field(w, h, 10.0, 20.0, &cells, 80.0, 0, &mut sharp);
+        metal_deposit_bake_surface_field(w, h, 10.0, 20.0, &cells, 80.0, 3, &mut smooth);
+        let idx = |fx: usize, fy: usize| fy * w as usize + fx;
+        // Block spans world 200..320 -> texels 20..31 inclusive.
+        // Mid-edge on a straight run barely moves.
+        let a = decode(sharp[idx(25, 19)], 80.0);
+        let b = decode(smooth[idx(25, 19)], 80.0);
+        assert!((a - b).abs() < 4.0, "straight edge moved too far: {a} -> {b}");
+        // The diagonal corner texel gets pushed outward (corner rounded off).
+        let ca = decode(sharp[idx(20, 20)], 80.0);
+        let cb = decode(smooth[idx(20, 20)], 80.0);
+        assert!(cb > ca, "corner should round inward: {ca} -> {cb}");
+    }
 }

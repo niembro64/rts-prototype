@@ -101,10 +101,13 @@ import {
 import { WATER_SURFACE_LINEAR_COLOR, LAVA_SURFACE_LINEAR_COLOR } from './WaterColor3D';
 import { isLavaLiquidSurface, isMetalTerrainSurface } from '../sim/worldSurfaceState';
 import {
+  METAL_SURFACE_LAYER_GLSL,
   METAL_SURFACE_MATERIAL,
+  METAL_SURFACE_REGION_GLSL,
   METAL_SURFACE_RESPONSE_GLSL,
   METAL_SURFACE_TRIPLANAR_GLSL,
-  metalSurfaceStandardParameters,
+  metalSurfaceLayerUniformDeclarations,
+  metalSurfaceOutgoingLightPatch,
 } from './MetalSurfaceMaterial3D';
 import { getSimWasm } from '../sim-wasm/init';
 import { smoothstep01 } from '../math';
@@ -115,6 +118,13 @@ import {
   type PathfindingDebugGrid,
 } from '../sim/pathfindingDebugGrid';
 import { getUnitPathTraversabilityGrid } from '../sim/pathfindingTraversabilityGrid';
+import { packMetalDepositGridCellsXY } from '../sim/metalDeposits';
+import {
+  MetalDepositSurfaceField3D,
+  assignMetalDepositSurfaceFieldUniforms,
+  metalDepositSurfaceFieldCoverage,
+  metalDepositSurfaceFieldUniformDeclarations,
+} from './MetalDepositSurfaceField3D';
 import {
   assignBuildGridOverlayUniforms,
   buildGridOverlayFragment,
@@ -605,10 +615,15 @@ function smoothTerrainRenderedScalar(
 export class TerrainTileRenderer3D {
   private terrainMesh: THREE.Mesh;
   private terrainGeometry: THREE.BufferGeometry;
-  // Lambert for the authored biome world; MeshStandardMaterial in SURFACE =
-  // METAL so the ground gets real metalness/roughness shine. Both take the
-  // same injected terrain shader.
-  private terrainMaterial: THREE.MeshLambertMaterial | THREE.MeshStandardMaterial;
+  // ONE material for every world. It is MeshStandardMaterial because metal
+  // needs a real metalness/roughness reflection, and metal is now a per-
+  // fragment REGION rather than a whole-map mode — an ordinary map has ore
+  // patches on it, so the biome ground and the ore have to share a shader.
+  // The biome ground is not paying for that: it is authored at metalness 0
+  // / roughness 1, and the injected code multiplies accumulated specular by
+  // ore coverage, so outside every deposit the response is exactly the
+  // diffuse-only one MeshLambertMaterial gave.
+  private terrainMaterial: THREE.MeshStandardMaterial;
   private terrainGeometryCache = new Map<string, CachedTerrainGeometry>();
   private terrainGeometryCacheBytes = 0;
   private currentTerrainGeometryCacheKey = '';
@@ -706,6 +721,19 @@ export class TerrainTileRenderer3D {
   private metalSurfaceRoughnessVariationUniform = {
     value: METAL_SURFACE_MATERIAL.rockTextureRoughnessVariation,
   };
+  // The PBR half now arrives as uniforms rather than material parameters,
+  // because the material itself must stay neutral for the biome ground and
+  // only become metal where the region field says so.
+  private metalSurfaceMetalnessUniform = { value: METAL_SURFACE_MATERIAL.metalness };
+  private metalSurfaceRoughnessUniform = { value: METAL_SURFACE_MATERIAL.roughness };
+  // A metal world deliberately does NOT take the post-light rim blend to
+  // the liquid colour; the authored biome world always has. That divergence
+  // predates the material merge and is preserved here on purpose rather
+  // than silently resolved in either direction.
+  private terrainHorizonWaterBlendEnabledUniform = {
+    value: isMetalTerrainSurface() ? 0 : 1,
+  };
+  private readonly metalRegionField: MetalDepositSurfaceField3D;
   private readonly worldShade: WorldShade3D;
 
   private gridCellsX = 0;
@@ -757,19 +785,26 @@ export class TerrainTileRenderer3D {
       this.rockDetailEnabledUniform.value = 1;
     }
 
+    // Baked once: deposits are fixed for the match and the terrain is
+    // immutable, so the ore region never needs a rebuild.
+    this.metalRegionField = new MetalDepositSurfaceField3D(
+      mapWidth,
+      mapHeight,
+      metalDeposits,
+    );
+
     this.terrainGeometry = new THREE.BufferGeometry();
-    this.terrainMaterial = isMetalTerrainSurface()
-      ? new THREE.MeshStandardMaterial({
-        color: NEUTRAL_COLOR,
-        side: THREE.DoubleSide,
-        vertexColors: false,
-        ...metalSurfaceStandardParameters(),
-      })
-      : new THREE.MeshLambertMaterial({
-        color: NEUTRAL_COLOR,
-        side: THREE.DoubleSide,
-        vertexColors: false,
-      });
+    // Authored NEUTRAL: metalness 0 / roughness 1 is the biome ground, and
+    // every metal term is layered on per fragment by ore coverage. Reaching
+    // for metalSurfaceStandardParameters() here instead would make the whole
+    // map metal, which is the bug this structure exists to prevent.
+    this.terrainMaterial = new THREE.MeshStandardMaterial({
+      color: NEUTRAL_COLOR,
+      side: THREE.DoubleSide,
+      vertexColors: false,
+      metalness: 0,
+      roughness: 1,
+    });
     // dFdx/dFdy in the fragment shader for per-fragment geometric slope.
     // No-op on WebGL2 (derivatives are core); enables the OES extension on
     // the WebGL1 fallback path.
@@ -824,6 +859,11 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uMetalSurfaceContrast = this.metalSurfaceContrastUniform;
       shader.uniforms.uMetalSurfaceRoughnessVariation =
         this.metalSurfaceRoughnessVariationUniform;
+      shader.uniforms.uMetalSurfaceMetalness = this.metalSurfaceMetalnessUniform;
+      shader.uniforms.uMetalSurfaceRoughness = this.metalSurfaceRoughnessUniform;
+      shader.uniforms.uTerrainHorizonWaterBlendEnabled =
+        this.terrainHorizonWaterBlendEnabledUniform;
+      assignMetalDepositSurfaceFieldUniforms(shader, this.metalRegionField.uniforms);
       this.worldShade.assignUniforms(shader);
       shader.vertexShader = shader.vertexShader
         .replace(
@@ -885,13 +925,11 @@ export class TerrainTileRenderer3D {
             'uniform vec3 uRockBaseColor;',
             'uniform float uRockDetailContrast;',
             'uniform float uMetalSurfaceEnabled;',
-            'uniform vec3 uMetalSurfaceColor;',
-            'uniform float uMetalSurfaceTileWorldSize;',
-            'uniform float uMetalSurfaceBlend;',
-            'uniform float uMetalSurfaceLitColorBlend;',
-            'uniform float uMetalSurfaceContrast;',
-            'uniform float uMetalSurfaceRoughnessVariation;',
+            metalSurfaceLayerUniformDeclarations(),
+            'uniform float uTerrainHorizonWaterBlendEnabled;',
+            metalDepositSurfaceFieldUniformDeclarations(),
             METAL_SURFACE_RESPONSE_GLSL,
+            METAL_SURFACE_REGION_GLSL,
             METAL_SURFACE_TRIPLANAR_GLSL,
             WORLD_SHADE_FRAGMENT_PARS,
             'varying vec3 vTerrainWorldPos;',
@@ -1005,42 +1043,54 @@ export class TerrainTileRenderer3D {
             '    terrainRgb = mix(terrainRgb, rockDetail.rgb, rockDetail.a * rockMask * uRockDetailContrast);',
             '  }',
             '}',
-            // SURFACE = METAL: the whole map is one ore body, so the biome
-            // ramp and the ground/rock detail overlays above are replaced
-            // wholesale by srgbToLinear(ore base) * the rock detail map,
-            // sampled triplanar so cliff walls get real rock instead of a
-            // vertical smear. The baked shade below still supplies the relief.
+            // ORE COVERAGE — the one term that decides how metal this
+            // fragment is. SURFACE = METAL pins it to 1 for the whole map;
+            // an ordinary world takes it from the baked deposit region
+            // field. Same shading path either way, which is the point: the
+            // metal world stopped being a mode and became a coverage of 1.
+            //
+            // The field lookup is world XZ with no height term, so an ore
+            // body drawn wider than its flat pad keeps going over whatever
+            // relief it crosses — the triplanar detail sample below already
+            // handles the slopes and cliff faces it runs onto.
+            `float metalCoverage = clamp(max(uMetalSurfaceEnabled, ${metalDepositSurfaceFieldCoverage('vTerrainWorldPos')}), 0.0, 1.0);`,
+            // Where there is ore the biome ramp and the ground/rock detail
+            // overlays above are replaced by srgbToLinear(ore base) * the
+            // rock detail map, sampled triplanar so cliff walls get real
+            // rock instead of a vertical smear. The baked shade below still
+            // supplies the relief.
             'vec3 metalDetail = vec3(1.0);',
-            'if (uMetalSurfaceEnabled > 0.0) {',
+            'if (metalCoverage > 0.0) {',
             '  metalDetail = sampleMetalSurfaceDetail(',
             '    uRockDetailTexture,',
             '    vTerrainWorldPos,',
             '    geomNormal,',
             '    uMetalSurfaceTileWorldSize',
             '  );',
-            '  // Identical to MetalDepositRenderer3D: the decoded ore base with',
-            '  // the contrast-expanded rock detail at the authored blend.',
-            '  terrainRgb = metalSurfaceAlbedo(',
+            '  terrainRgb = mix(terrainRgb, metalSurfaceAlbedo(',
             '    uMetalSurfaceColor,',
             '    metalDetail,',
             '    uMetalSurfaceBlend,',
             '    uMetalSurfaceContrast',
-            '  );',
+            '  ), metalCoverage);',
             '}',
             'float horizonBlend = uTerrainHorizonBlendEnabled * smoothstep(uTerrainHorizonFadeStart, uTerrainHorizonFadeEnd, vTerrainHorizonFade);',
             'terrainRgb = mix(terrainRgb, uTerrainHorizonColor, horizonBlend);',
             'float terrainFinalShade = mix(vTerrainShade, uTerrainHorizonShade, horizonBlend);',
-            '// A metal world takes NO baked sun/AO shade: a deposit crown never',
-            '// receives one, so applying it here would make the two surfaces',
-            '// respond to light differently. Relief still reads, because the',
-            '// standard material lights the ground through its own normals.',
+            '// A metal WORLD takes no baked sun/AO shade — it is lit entirely',
+            '// through the standard material and its own normals. Keyed to the',
+            '// world flag and deliberately NOT to coverage: an ore patch on an',
+            '// ordinary map keeps the baked shade of the ground it sits in, so',
+            '// it reads as part of that ground rather than as a lit-differently',
+            '// decal pasted on top of it.',
             'if (uMetalSurfaceEnabled > 0.0) terrainFinalShade = 1.0;',
-            // The 0.02 floor keeps biome ground from crushing to black. A metal
-            // world has a legitimately near-black albedo — its look comes from
-            // the reflection, not the diffuse — and srgbToLinear(#272b2e) times
-            // a rock texel lands AT that floor, so the clamp would flatten the
-            // whole map to one constant and erase the rock texture entirely.
-            'float terrainAlbedoFloor = uMetalSurfaceEnabled > 0.0 ? 0.0 : 0.02;',
+            // The 0.02 floor keeps biome ground from crushing to black. Ore has
+            // a legitimately near-black albedo — its look comes from the
+            // reflection, not the diffuse — and srgbToLinear(#272b2e) times a
+            // rock texel lands AT that floor, so the clamp would flatten it to
+            // one constant and erase the rock texture entirely. The floor
+            // therefore recedes exactly as far as the fragment is ore.
+            'float terrainAlbedoFloor = mix(0.02, 0.0, metalCoverage);',
             'diffuseColor.rgb = clamp(terrainRgb, vec3(terrainAlbedoFloor), vec3(1.0)) * terrainFinalShade;',
             'if (uElevationMapEnabled > 0.0) {',
             '  vec3 elevationLow = vec3(0.10, 0.25, 0.56);',
@@ -1072,59 +1122,47 @@ export class TerrainTileRenderer3D {
             ),
           ].join('\n'),
         )
-        // TWO MATERIAL FAMILIES SHARE THIS PATCH, and only one of them has a
-        // roughness map. The authored biome world is Lambert; SURFACE = METAL
-        // is MeshStandardMaterial, because a metal world's look is its
-        // reflection. So `#include <roughnessmap_fragment>` exists only in the
-        // metal build, and anything appended here is injected ONLY there.
+// ONE material family now, so every hook below exists in every build.
+        // It used to be two — Lambert for biome worlds, Standard for metal —
+        // and `#include <roughnessmap_fragment>` existed only in the metal
+        // one. That asymmetry silently ate a stray line once: the replace
+        // matched nothing on Lambert and referenced an identifier three.js
+        // has not declared yet on Standard, so the program never compiled
+        // and the terrain simply did not draw. three.js only reports shader
+        // errors under ?shaderErrors=1.
         //
-        // That is why a stray `outgoingLight *= terrainDepthBrightness` parked
-        // in this block took out metal maps alone and left the biome world
-        // untouched: on Lambert the replace matched nothing, on Standard it
-        // referenced an identifier three.js does not declare until the lighting
-        // stage. The fragment shader failed to compile, the program was never
-        // valid, and the terrain simply did not draw — silently, because
-        // three.js only reports shader errors under ?shaderErrors=1.
+        // The PBR terms are layered by ore coverage rather than set on the
+        // material, so the biome ground keeps metalness 0 / roughness 1.
         .replace(
           '#include <roughnessmap_fragment>',
           [
             '#include <roughnessmap_fragment>',
-            'if (uMetalSurfaceEnabled > 0.0) {',
-            '  roughnessFactor = metalSurfaceRoughness(',
-            '    roughnessFactor,',
-            '    metalDetail,',
-            '    uMetalSurfaceContrast,',
-            '    uMetalSurfaceRoughnessVariation',
-            '  );',
-            '}',
+            METAL_SURFACE_LAYER_GLSL.roughness,
+          ].join('\n'),
+        )
+        .replace(
+          '#include <metalnessmap_fragment>',
+          [
+            '#include <metalnessmap_fragment>',
+            METAL_SURFACE_LAYER_GLSL.metalness,
           ].join('\n'),
         )
         .replace(
           'vec3 outgoingLight = totalDiffuse + totalSpecular + totalEmissiveRadiance;',
-          [
+          metalSurfaceOutgoingLightPatch(
             'vec3 outgoingLight = totalDiffuse + totalSpecular + totalEmissiveRadiance;',
-            'if (uMetalSurfaceEnabled > 0.0) {',
-            '  outgoingLight = metalSurfaceLitColor(',
-            '    outgoingLight,',
-            '    metalDetail,',
-            '    uMetalSurfaceContrast,',
-            '    uMetalSurfaceLitColorBlend',
-            '  );',
-            '}',
-            // Submerged dimming, applied to the PBR declaration the same way
-            // the Lambert branch below applies it to its own. It used to sit up
-            // in roughnessmap_fragment, where `outgoingLight` does not exist
-            // yet — see the note on the two material families.
-            'outgoingLight *= terrainDepthBrightness;',
-          ].join('\n'),
-        )
-        .replace(
-          'vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;',
-          [
-            'vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;',
-            'outgoingLight = mix(outgoingLight, uTerrainHorizonWaterColor, horizonBlend);',
-            'outgoingLight *= terrainDepthBrightness;',
-          ].join('\n'),
+            [
+              // Rim seam-hider, gated by its own uniform: the biome world has
+              // always taken it and the metal world never has.
+              'outgoingLight = mix(',
+              '  outgoingLight,',
+              '  uTerrainHorizonWaterColor,',
+              '  horizonBlend * uTerrainHorizonWaterBlendEnabled',
+              ');',
+              // Submerged dimming.
+              'outgoingLight *= terrainDepthBrightness;',
+            ],
+          ),
         )
         .replace(
           '#include <dithering_fragment>',
@@ -1136,7 +1174,8 @@ export class TerrainTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v40';
+    this.terrainMaterial.customProgramCacheKey = () =>
+      'authoritative-terrain-surface-metalregion-v41';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
@@ -1295,14 +1334,16 @@ export class TerrainTileRenderer3D {
   private refreshBuildGridMetalMask(cellsX: number, cellsY: number): void {
     const cellCount = cellsX * cellsY;
     this.buildGridMetalMask.fill(0, 0, cellCount);
-    for (let i = 0; i < this.metalDeposits.length; i++) {
-      const cells = this.metalDeposits[i].cells;
-      for (let j = 0; j < cells.length; j++) {
-        const gx = cells[j].gx;
-        const gy = cells[j].gy;
-        if (gx < 0 || gy < 0 || gx >= cellsX || gy >= cellsY) continue;
-        this.buildGridMetalMask[gy * cellsX + gx] = 1;
-      }
+    // Same cell source the ore region field bakes from, so the METAL debug
+    // overlay and the shaded ore always outline the same cells. Reading
+    // deposit.cells directly here used to skip the drowned-deposit filter,
+    // leaving a deposit that pays nothing still drawn on the overlay.
+    const cells = packMetalDepositGridCellsXY(this.metalDeposits);
+    for (let i = 0; i < cells.length; i += 2) {
+      const gx = cells[i];
+      const gy = cells[i + 1];
+      if (gx < 0 || gy < 0 || gx >= cellsX || gy >= cellsY) continue;
+      this.buildGridMetalMask[gy * cellsX + gx] = 1;
     }
   }
 
@@ -2545,6 +2586,7 @@ export class TerrainTileRenderer3D {
     if (this.currentTerrainGeometryCacheKey === '') this.terrainGeometry.dispose();
     this.terrainMaterial.dispose();
     this.terrainMesh.parent?.remove(this.terrainMesh);
+    this.metalRegionField.dispose();
     this.buildGridTexture.dispose();
     this.worldShade.destroy();
     this.buildGridPixels = new Uint8Array(4);

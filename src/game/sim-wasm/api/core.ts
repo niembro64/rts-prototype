@@ -1091,8 +1091,6 @@ export interface SimWasm {
     edgeMarginPx: number,
     buildGridCellSize: number,
     metalDepositStep: number,
-    resourceCells: number,
-    resourceRadiusCells: number,
     rings: Float64Array,
     outPlacements: Float64Array,
   ) => number;
@@ -1175,6 +1173,22 @@ export interface SimWasm {
     radiusCells: number,
     seed: number,
     outCells: Int32Array,
+  ) => number;
+  /** Bake the union of every workable deposit's build cells into a
+   *  whole-map signed-distance field, one byte per texel, negative
+   *  inside the ore. The terrain shader samples it by world XZ, so the
+   *  ore region is independent of terrain triangles and drapes over
+   *  whatever relief it covers. Presentation only — the authoritative
+   *  metal cells stay the deposits' own cell lists. */
+  readonly metalDepositBakeSurfaceField: (
+    fieldWidth: number,
+    fieldHeight: number,
+    fieldCellSize: number,
+    buildGridCellSize: number,
+    cellsGxGy: Int32Array,
+    edgeRangeWorldUnits: number,
+    smoothPasses: number,
+    outField: Uint8Array,
   ) => number;
   /** Phase 8 — terrain heightmap installed in WASM linear memory.
    *  Called once at world-load (or any time setAuthoritativeTerrainTileMap

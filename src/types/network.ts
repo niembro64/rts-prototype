@@ -717,6 +717,8 @@ export type NetworkServerSnapshotBeamUpdate = {
    *  (range / hit / ground / terminal reflector), middles = reflections. Each carries its
    *  own position and velocity from the authoritative every-tick beam trace. */
   points: NetworkServerSnapshotBeamPoint[];
+  /** Quantized terminal-segment hit fraction for a physical obstruction;
+   *  null when the endpoint is clear or range-limited. */
   obstructionT: number | null;
   /** False when the authoritative path has no physical impact endpoint,
    *  so clients should not render an endpoint damage orb. */

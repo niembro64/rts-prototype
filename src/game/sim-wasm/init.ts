@@ -177,6 +177,7 @@ import __wbg_init, {
   metal_deposit_resolve_terrain_heights,
   metal_deposit_count_resource_candidates,
   metal_deposit_grow_resource_cells,
+  metal_deposit_bake_surface_field,
   terrain_sample_map_boundary_fades,
   vegetation_clear,
   vegetation_generate,
@@ -1008,6 +1009,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         metalDepositResolveTerrainHeights: metal_deposit_resolve_terrain_heights,
         metalDepositCountResourceCandidates: metal_deposit_count_resource_candidates,
         metalDepositGrowResourceCells: metal_deposit_grow_resource_cells,
+        metalDepositBakeSurfaceField: metal_deposit_bake_surface_field,
         terrainSampleMapBoundaryFades: terrain_sample_map_boundary_fades,
         vegetationClear: vegetation_clear,
         vegetationGenerate: vegetation_generate,
@@ -1712,8 +1714,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runResourcePylonFlowController3DContractTest();
         const { runSprayRenderer3DContractTest } = await import('../render3d/SprayRenderer3DContractTest');
         runSprayRenderer3DContractTest();
-        const { runMetalDepositVisualClustersContractTest } = await import('../render3d/MetalDepositVisualClustersContractTest');
-        runMetalDepositVisualClustersContractTest();
+        const { runMetalDepositSurfaceField3DContractTest } = await import('../render3d/MetalDepositSurfaceField3DContractTest');
+        runMetalDepositSurfaceField3DContractTest();
         const { runTurretHostIntegrationContractTest } = await import('../sim/turretHostIntegrationTest');
         runTurretHostIntegrationContractTest();
         const { runPrecisionFireContractTest } = await import('../sim/combat/precisionFireContractTest');

@@ -58,6 +58,22 @@ export function findDepositContainingPoint(
   return getMetalDepositGridLookup(deposits).byGridCell.get(metalDepositGridCellKey(gx, gy)) ?? null;
 }
 
+/** Every workable deposit's build cells as a flat (gx, gy) pair list.
+ *  One shared rasterization source: the terrain's metal overlay mask and
+ *  the baked ore surface field must agree on which cells are ore,
+ *  including the drowned-deposit filter above. */
+export function packMetalDepositGridCellsXY(
+  deposits: ReadonlyArray<MetalDeposit>,
+): Int32Array {
+  const cells = getMetalDepositGridLookup(deposits).cells;
+  const packed = new Int32Array(cells.length * 2);
+  for (let i = 0; i < cells.length; i++) {
+    packed[i * 2] = cells[i].gx;
+    packed[i * 2 + 1] = cells[i].gy;
+  }
+  return packed;
+}
+
 export function getMetalDepositGridCells(
   deposits: ReadonlyArray<MetalDeposit>,
   out: MetalDepositGridCell[] = [],

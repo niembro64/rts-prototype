@@ -13,7 +13,6 @@ import { GroundPrint3D } from '../../render3d/GroundPrint3D';
 import { LegInstancedRenderer } from '../../render3d/LegInstancedRenderer';
 import { LineDrag3D } from '../../render3d/LineDrag3D';
 import { getLocomotionSurfaceHeight } from '../../render3d/LocomotionTerrainSampler';
-import { MetalDepositRenderer3D } from '../../render3d/MetalDepositRenderer3D';
 import { PylonTubeFlowRenderer } from '../../render3d/PylonTubeFlowRenderer';
 import { Render3DEntities } from '../../render3d/Render3DEntities';
 import { ShieldImpactRenderer3D } from '../../render3d/ShieldImpactRenderer3D';
@@ -61,7 +60,6 @@ type RtsScene3DRendererBootstrapResult = {
   beamRenderer: BeamRenderer3D;
   shieldRenderer: ShieldRenderer3D;
   terrainTileRenderer: TerrainTileRenderer3D;
-  metalDepositRenderer: MetalDepositRenderer3D;
   environmentPropRenderer: EnvironmentPropRenderer3D;
   waterRenderer: WaterRenderer3D;
   cursorGround: CursorGround;
@@ -134,12 +132,6 @@ export function bootstrapRtsScene3DRenderers(
     mapWidth,
     mapHeight,
     metalDeposits,
-    worldShade,
-  );
-  const metalDepositRenderer = new MetalDepositRenderer3D(
-    threeApp.world,
-    metalDeposits,
-    terrainTileRenderer.getPathfindingHierarchyOverlayUniforms(),
     worldShade,
   );
   const environmentPropRenderer = new EnvironmentPropRenderer3D(
@@ -265,7 +257,6 @@ export function bootstrapRtsScene3DRenderers(
     beamRenderer,
     shieldRenderer,
     terrainTileRenderer,
-    metalDepositRenderer,
     environmentPropRenderer,
     waterRenderer,
     cursorGround,

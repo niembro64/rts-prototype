@@ -1,10 +1,16 @@
 // THE metal surface, and the only definition of it.
 //
-// Two very different renderers draw metal: MetalDepositRenderer3D builds small
-// raised ore crowns, and TerrainTileRenderer3D shades a whole SURFACE = METAL
-// world. They must be the same material — same albedo, same PBR response, same
-// light, and same world-space texture projection — so both take their
-// parameters and shader maths from here rather than each authoring their own.
+// Metal is drawn in exactly one place now — the terrain — under two
+// coverages: a SURFACE = METAL world where the whole map is ore, and an
+// ordinary world where individual deposits are ore regions. They are the
+// same material by construction: one coverage term selects between them,
+// so there is no second metal shader that can drift.
+//
+// (There used to be a third: MetalDepositRenderer3D built raised ore
+// crowns as separate meshes with a duplicate copy of this response, and
+// hand-flipped its cap normal to imitate how the DoubleSide terrain
+// lights a flat metal world. Shading the region on the terrain itself
+// inherits that for free, so the crown and its hack are both gone.)
 //
 // Everything below resolves from ONE colorsConfig entry,
 // `environment.metalDeposit`: retune a deposit and the metal world follows.
@@ -98,6 +104,131 @@ export const METAL_SURFACE_RESPONSE_GLSL = [
   '  );',
   '}',
 ].join('\n');
+
+/** Ore coverage in [0,1] from the baked region field — the term that
+ *  turns "the whole map is metal" into "this part of the map is metal".
+ *
+ *  The field stores signed distance to the ore edge (negative inside)
+ *  encoded over ±`edgeRange`, sampled by world XZ with no height term,
+ *  which is why an ore body wider than its flat pad simply continues
+ *  down the surrounding relief instead of stopping at the flat.
+ *
+ *  The edge is resolved against the SCREEN gradient of that distance, so
+ *  it stays one pixel soft at every camera distance rather than aliasing
+ *  when zoomed out. `fwidth` is bounded on both ends because a derivative
+ *  is only meaningful here between "one texel" and "the encoded range" —
+ *  past the top the field saturates and the smoothstep would be reading
+ *  noise. `edgeFeather` widens it deliberately for a soft ore-to-ground
+ *  transition; 0 leaves the edge crisp. */
+export const METAL_SURFACE_REGION_GLSL = [
+  'float metalSurfaceRegionCoverage(',
+  '  sampler2D regionField,',
+  '  vec2 fieldWorldSize,',
+  '  vec3 worldPosition,',
+  '  float edgeRange,',
+  '  float edgeFeather',
+  ') {',
+  '  vec2 uv = worldPosition.xz / max(fieldWorldSize, vec2(1.0));',
+  '  float encoded = texture2D(regionField, clamp(uv, vec2(0.0), vec2(1.0))).r;',
+  '  float signedDistance = (encoded * 2.0 - 1.0) * edgeRange;',
+  '  float screenWidth = clamp(fwidth(signedDistance), 0.25, edgeRange);',
+  '  float width = max(edgeFeather, screenWidth);',
+  '  return 1.0 - smoothstep(-width, width, signedDistance);',
+  '}',
+].join('\n');
+
+/** How a host layers the metal surface onto an ordinary one, by ore
+ *  coverage. Exported as source rather than inlined at the injection site
+ *  so the shipped strings are readable by a contract test — a shader
+ *  interface is the one contract the type system cannot check.
+ *
+ *  All three assume the host has already declared `metalCoverage` in
+ *  [0,1] and `metalDetail` from sampleMetalSurfaceDetail. */
+export const METAL_SURFACE_LAYER_GLSL = {
+  /** At `#include <roughnessmap_fragment>`. The host material stays at its
+   *  own roughness; the metal roughness is a uniform so ore can be layered
+   *  on without making the whole host metal. */
+  roughness: [
+    'roughnessFactor = mix(',
+    '  roughnessFactor,',
+    '  metalSurfaceRoughness(',
+    '    uMetalSurfaceRoughness,',
+    '    metalDetail,',
+    '    uMetalSurfaceContrast,',
+    '    uMetalSurfaceRoughnessVariation',
+    '  ),',
+    '  metalCoverage',
+    ');',
+  ].join('\n'),
+
+  /** At `#include <metalnessmap_fragment>`. */
+  metalness: 'metalnessFactor = mix(metalnessFactor, uMetalSurfaceMetalness, metalCoverage);',
+
+  /** Immediately BEFORE the host declares `outgoingLight`, while
+   *  `totalSpecular` is still assignable.
+   *
+   *  This is the line that lets a diffuse-only surface share a PBR
+   *  material with metal without changing. MeshLambertMaterial has no
+   *  specular path at all — no image-based reflection, no direct GGX lobe
+   *  — so scaling accumulated specular by ore coverage reproduces it
+   *  exactly at coverage 0, while ore at coverage 1 keeps the full
+   *  reflection its material is supposed to have. Diffuse already matches:
+   *  at metalness 0 the physical model's diffuseColor is the Lambert one.
+   *
+   *  Drop this and every non-ore surface silently gains a specular sheen. */
+  specularGate: 'totalSpecular *= metalCoverage;',
+
+  /** Immediately AFTER the host declares `outgoingLight`. Preserves the
+   *  dark rock structure through a broad reflection. */
+  litColor: [
+    'outgoingLight = mix(outgoingLight, metalSurfaceLitColor(',
+    '  outgoingLight,',
+    '  metalDetail,',
+    '  uMetalSurfaceContrast,',
+    '  uMetalSurfaceLitColorBlend',
+    '), metalCoverage);',
+  ].join('\n'),
+} as const;
+
+/** Compose the host's `outgoingLight` patch with the metal layer in the
+ *  ONLY order that works.
+ *
+ *  `totalSpecular` must be scaled BEFORE the declaration that sums it into
+ *  `outgoingLight`, and the lit-colour blend must come AFTER — both are
+ *  plain assignments, so getting either the wrong side of the declaration
+ *  compiles fine and silently does nothing. Building the block here, and
+ *  pinning the order in a contract test, is cheaper than finding out from a
+ *  screenshot that ordinary ground picked up a sheen.
+ *
+ *  `trailingHostLines` are the host's own post-lighting terms (rim blends,
+ *  depth dimming), which run after the metal layer. */
+export function metalSurfaceOutgoingLightPatch(
+  outgoingLightDeclaration: string,
+  trailingHostLines: readonly string[] = [],
+): string {
+  return [
+    METAL_SURFACE_LAYER_GLSL.specularGate,
+    outgoingLightDeclaration,
+    METAL_SURFACE_LAYER_GLSL.litColor,
+    ...trailingHostLines,
+  ].join('\n');
+}
+
+/** Uniform block the layer above reads. Declared here with the code that
+ *  consumes it: an unsupplied uniform is silently zero, so the two halves
+ *  must never be edited apart. */
+export function metalSurfaceLayerUniformDeclarations(): string {
+  return [
+    'uniform vec3 uMetalSurfaceColor;',
+    'uniform float uMetalSurfaceTileWorldSize;',
+    'uniform float uMetalSurfaceBlend;',
+    'uniform float uMetalSurfaceLitColorBlend;',
+    'uniform float uMetalSurfaceContrast;',
+    'uniform float uMetalSurfaceRoughnessVariation;',
+    'uniform float uMetalSurfaceMetalness;',
+    'uniform float uMetalSurfaceRoughness;',
+  ].join('\n');
+}
 
 /** Canonical world-space projection for the metal detail texture.
  *

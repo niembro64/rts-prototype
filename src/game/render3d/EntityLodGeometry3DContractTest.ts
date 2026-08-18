@@ -1706,14 +1706,17 @@ function runEmissionPoseContracts(): void {
   assertContract(
     classifyBeamImpactSurface(10, 10, false, 0) === 'terrain' &&
       classifyBeamImpactSurface(0, -20, true, 0) === 'water' &&
-      classifyBeamImpactSurface(30, 0, false, 0) === 'entity',
-    'beam impacts distinguish terrain, water, and entity/free-space endpoints',
+      classifyBeamImpactSurface(30, 0, false, 0) === 'endpoint' &&
+      classifyBeamImpactSurface(30, 0, false, 0, 4, true) === 'entity',
+    'beam impacts distinguish terrain, water, body strikes, and clear endpoints',
   );
   assertContract(
     beamImpactCellKey('terrain', 10, 20, 30) ===
       beamImpactCellKey('terrain', 11, 21, 31) &&
       beamImpactCellKey('water', 10, 20, 30) !==
         beamImpactCellKey('terrain', 10, 20, 30) &&
+      beamImpactCellKey('entity', 10, 20, 30) !==
+        beamImpactCellKey('endpoint', 10, 20, 30) &&
       scorchCellKey(10, 20) === scorchCellKey(11, 21) &&
       beamBurnVolumeCellKey(10, 20, 30) === beamBurnVolumeCellKey(11, 21, 31) &&
       beamBurnVolumeCellKey(10, 20, 30) !== beamBurnVolumeCellKey(14, 20, 30),

@@ -3,51 +3,116 @@
     "Metal deposit layout blueprint. Deposits are placed on concentric rings;",
     "each ring gets countPerPlayer deposits per player slice, phase-shifted by",
     "sliceOffset (fraction of one slice width). Per ring:",
-    "  dTerrainLevels — pad height in D-DEPOSIT-bar steps (METAL_DEPOSIT_STEP);",
+    "  size - name from `sizes`; omit to inherit `defaultSize`. A size is the",
+    "    ore body's footprint, INDEPENDENT of the flat pad under it.",
+    "  dTerrainLevels - pad height in D-DEPOSIT-bar steps (METAL_DEPOSIT_STEP);",
     "    null = ride the natural terrain height under the deposit.",
-    "  flatPadCells — circular flattened pad diameter in build cells; null =",
-    "    auto-size to the smallest pad covering the resource footprint.",
-    "  terrainBlendRadius — world units outside the pad where terrain eases",
+    "  flatPadCells - circular flattened pad diameter in build cells; null =",
+    "    auto-size to the smallest pad covering the ore footprint. An explicit",
+    "    value SMALLER than the footprint is legal and is the interesting case:",
+    "    the pad flattens only the buildable middle and the rest of the ore",
+    "    body drapes over whatever relief it crosses - down a mountain side,",
+    "    across a shelf - because the ore is a shaded REGION sampled in world",
+    "    XZ, not geometry. Extractors still need flat ground, so a small pad",
+    "    on a big ore body is a deliberate 'one mex, lots of scenery' spot.",
+    "  terrainBlendRadius - world units outside the pad where terrain eases",
     "    back to natural with a raised-cosine skirt.",
-    "  depositCluster — how each ring origin expands into deposits. Two types:",
+    "  depositCluster - how each ring origin expands into deposits. Two types:",
     "    type 'group-ring' (default when omitted): count deposits on a circle",
     "      of radius around the origin; angleOffset is radians relative to the",
     "      origin's radial angle from map center. Each deposit is a standalone",
-    "      pad — overlapping pads at different heights cliff (closest wins).",
+    "      pad - overlapping pads at different heights cliff (closest wins).",
     "    type 'group-manual': one deposit per authored spot, and the group is",
     "      ONE TERRAIN UNIT. Spots use one of two addressing forms (never mix):",
-    "      OFFSET spots {x, y} — world-unit offsets in the origin's radial",
+    "      OFFSET spots {x, y} - world-unit offsets in the origin's radial",
     "      frame (+x away from map center, +y perpendicular), so every player's",
     "      slice keeps the same local shape. RING-COORDINATE spots",
-    "      {radiusFraction, sliceOffset} — placed by the exact same oval/slice",
+    "      {radiusFraction, sliceOffset} - placed by the exact same oval/slice",
     "      formula as a standalone ring, so merging existing rings into one",
     "      group keeps their positions identical for every player count and",
     "      map size (ring must author countPerPlayer 1). Each spot may author",
-    "      its own dTerrainLevels (omit = inherit ring, null = natural height)",
-    "      and its own flatPadCells (omit = inherit ring).",
-    "      Terrain: every deposit's resource footprint stays perfectly flat at",
-    "      its own height; the union of the group's flat pads is fully",
-    "      overridden by one smoothed field that cosine-interpolates between",
-    "      the plateaus; the whole field eases back to natural terrain over",
+    "      its own dTerrainLevels (omit = inherit ring, null = natural height),",
+    "      its own flatPadCells (omit = inherit ring), and its own size.",
+    "      Terrain: every deposit's flat pad stays perfectly flat at its own",
+    "      height; the union of the group's flat pads is fully overridden by",
+    "      one smoothed field that cosine-interpolates between the plateaus;",
+    "      the whole field eases back to natural terrain over",
     "      terrainBlendRadius. Use this when large pads must sit near each",
-    "      other at different heights without cliffing.",
-    "      Example: \"depositCluster\": { \"type\": \"group-manual\", \"spots\":",
-    "        [ { \"x\": 0, \"y\": -230, \"dTerrainLevels\": 0 },",
-    "          { \"x\": 200, \"y\": 115, \"dTerrainLevels\": 2 },",
-    "          { \"x\": -200, \"y\": 115 } ] }"
+    "      other at different heights without cliffing."
   ],
   "edgeMarginPx": 200,
-  "coinHeight": 10,
-  "resourceCells": 5,
-  "resourceRadiusCells": 6,
+  "sizesComment": [
+    "Authored ore-body size classes. resourceCells is the nominal footprint",
+    "side in build cells: the generated body gets resourceCells^2 connected",
+    "metal cells grown from the origin cell inside a circular candidate radius",
+    "of resourceRadiusCells. Keeping radius ~= 1.15x cells across every class",
+    "holds the fill ratio near 0.25, which is what makes the silhouette",
+    "irregular instead of a disc - the classes differ in scale, not in",
+    "character. BUILD_GRID_CELL_SIZE is 20 world units, so a class of n cells",
+    "covers n^2 * 400 square units: 'titanic' lands ~1.6k units across.",
+    "",
+    "resourceCells MUST BE ODD. A deposit's world position is snapped as",
+    "(centerCell - floor(n/2)) * cellSize + n * cellSize / 2, which lands on a",
+    "cell CENTRE for odd n and a cell CORNER for even n. Odd keeps that",
+    "position independent of n, so changing a ring's size cannot move its flat",
+    "pad and cannot reshape terrain. Enforced in metalDepositConfig.ts."
+  ],
+  "sizes": {
+    "standard": {
+      "resourceCells": 5,
+      "resourceRadiusCells": 6
+    },
+    "broad": {
+      "resourceCells": 27,
+      "resourceRadiusCells": 31
+    },
+    "vast": {
+      "resourceCells": 41,
+      "resourceRadiusCells": 46
+    },
+    "colossal": {
+      "resourceCells": 55,
+      "resourceRadiusCells": 62
+    },
+    "titanic": {
+      "resourceCells": 71,
+      "resourceRadiusCells": 78
+    }
+  },
+  "defaultSize": "standard",
+  "productionNominalCellsComment": "Economy calibration only: an extractor's metal rate is its blueprint production divided by this many cells, times the metal cells its footprint actually covers. Deliberately NOT tied to a size class - retuning a size must not silently retune the economy.",
+  "productionNominalCells": 5,
+  "surfaceFieldComment": [
+    "The rendered ore region. Deposit cells are baked once, at match start,",
+    "into a whole-map signed-distance field the terrain fragment shader samples",
+    "by world XZ. Nothing here is simulation state: the authoritative metal",
+    "cells remain each deposit's own cell list, and the field never enters the",
+    "canonical state hash.",
+    "  texelWorldSize - target world units per field texel.",
+    "  maxTextureDimension - hard cap per axis; the largest authored maps",
+    "    coarsen the texel size rather than allocate an unbounded texture.",
+    "  edgeRangeWorldUnits - the +/- distance the byte encoding spans.",
+    "  smoothPasses - separable 1-2-1 passes over the DISTANCE values, which",
+    "    rounds the 20-unit build-cell staircase into a curve.",
+    "  edgeFeatherWorldUnits - 0 gives a crisp, screen-space anti-aliased ore",
+    "    edge; larger values fade ore into the surrounding ground."
+  ],
+  "surfaceField": {
+    "texelWorldSize": 10,
+    "maxTextureDimension": 2048,
+    "edgeRangeWorldUnits": 80,
+    "smoothPasses": 2,
+    "edgeFeatherWorldUnits": 0
+  },
   "rings": [
     {
       "comment": "NEUTRAL DEAD CENTER",
+      "size": "titanic",
       "radiusFraction": 0,
       "countPerPlayer": 1,
       "sliceOffset": 0,
       "dTerrainLevels": null,
-      "flatPadCells": null,
+      "flatPadCells": 13,
       "terrainBlendRadius": 600,
       "demoAutoExtractor": false,
       "depositCluster": {
@@ -59,11 +124,12 @@
     },
     {
       "comment": "CENTER PIECE",
+      "size": "colossal",
       "radiusFraction": 0.1,
       "countPerPlayer": 1,
       "sliceOffset": 0,
       "dTerrainLevels": null,
-      "flatPadCells": null,
+      "flatPadCells": 13,
       "terrainBlendRadius": 600,
       "depositCluster": {
         "type": "group-ring",
@@ -74,11 +140,12 @@
     },
     {
       "comment": "CENTER PIECE",
+      "size": "vast",
       "radiusFraction": 0.2,
       "countPerPlayer": 1,
       "sliceOffset": 0.4,
       "dTerrainLevels": null,
-      "flatPadCells": null,
+      "flatPadCells": 13,
       "terrainBlendRadius": 600,
       "depositCluster": {
         "type": "group-ring",
@@ -89,11 +156,12 @@
     },
     {
       "comment": "CENTER PIECE",
+      "size": "broad",
       "radiusFraction": 0.3,
       "countPerPlayer": 1,
       "sliceOffset": -0.4,
       "dTerrainLevels": null,
-      "flatPadCells": null,
+      "flatPadCells": 13,
       "terrainBlendRadius": 600,
       "depositCluster": {
         "type": "group-ring",
@@ -104,11 +172,12 @@
     },
     {
       "comment": "CENTER PIECE",
+      "size": "broad",
       "radiusFraction": 0.4,
       "countPerPlayer": 1,
       "sliceOffset": 0.2,
       "dTerrainLevels": null,
-      "flatPadCells": null,
+      "flatPadCells": 13,
       "terrainBlendRadius": 600,
       "depositCluster": {
         "type": "group-ring",
@@ -143,10 +212,22 @@
       "depositCluster": {
         "type": "group-manual",
         "spots": [
-          { "radiusFraction": 0.9, "sliceOffset": 0.68 },
-          { "radiusFraction": 0.8, "sliceOffset": 0.63 },
-          { "radiusFraction": 0.7, "sliceOffset": 0.6 },
-          { "radiusFraction": 0.6, "sliceOffset": 0.6 }
+          {
+            "radiusFraction": 0.9,
+            "sliceOffset": 0.68
+          },
+          {
+            "radiusFraction": 0.8,
+            "sliceOffset": 0.63
+          },
+          {
+            "radiusFraction": 0.7,
+            "sliceOffset": 0.6
+          },
+          {
+            "radiusFraction": 0.6,
+            "sliceOffset": 0.6
+          }
         ]
       }
     },
@@ -199,7 +280,7 @@
     },
     {
       "comment": "WATER LEFT CORNER INNER",
-      "radiusFraction": 0.70,
+      "radiusFraction": 0.7,
       "countPerPlayer": 1,
       "sliceOffset": 1.3,
       "dTerrainLevels": null,
@@ -225,10 +306,22 @@
       "depositCluster": {
         "type": "group-manual",
         "spots": [
-          { "radiusFraction": 0.9, "sliceOffset": -0.2 },
-          { "radiusFraction": 1.0, "sliceOffset": -0.25 },
-          { "radiusFraction": 1.1, "sliceOffset": -0.25 },
-          { "radiusFraction": 1.14, "sliceOffset": -0.2 }
+          {
+            "radiusFraction": 0.9,
+            "sliceOffset": -0.2
+          },
+          {
+            "radiusFraction": 1.0,
+            "sliceOffset": -0.25
+          },
+          {
+            "radiusFraction": 1.1,
+            "sliceOffset": -0.25
+          },
+          {
+            "radiusFraction": 1.14,
+            "sliceOffset": -0.2
+          }
         ]
       }
     },

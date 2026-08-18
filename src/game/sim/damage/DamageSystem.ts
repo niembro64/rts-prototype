@@ -1110,6 +1110,8 @@ export class DamageSystem {
     mediumTrajectory: EmissionMediumTrajectoryMatrix | undefined = undefined,
   ): {
     endX: number; endY: number; endZ: number;
+    /** Normalized hit position on the terminal segment for a physical
+     *  obstruction; undefined when the beam ends freely or on a limiter. */
     obstructionT: number | undefined;
     reflections: BeamReflectorPoint[];
     terminalReflection: BeamReflectorPoint | undefined;
@@ -1216,24 +1218,11 @@ export class DamageSystem {
       }
 
       if (!hit.isMirror) {
-        if (segmentIndex === 0) {
-          return {
-            endX: hit.x,
-            endY: hit.y,
-            endZ: hit.z,
-            obstructionT: hit.t,
-            reflections,
-            terminalReflection: undefined,
-            endpointDamageable: true,
-            segmentLimitReached: false,
-            endEntityId: hit.entityId,
-          };
-        }
         return {
           endX: hit.x,
           endY: hit.y,
           endZ: hit.z,
-          obstructionT: undefined,
+          obstructionT: hit.t,
           reflections,
           terminalReflection: undefined,
           endpointDamageable: true,

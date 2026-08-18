@@ -886,6 +886,8 @@ export type Projectile = {
   }[] | null;
   /** Sentinel NO_ENTITY_ID means no homing/line target. */
   targetEntityId: EntityId;
+  /** Normalized hit position on the terminal beam segment when it ended
+   *  against a physical obstruction; null for a clear/limited endpoint. */
   obstructionT: number | null;
   obstructionTick: number;
   hitEntities: Set<EntityId>;

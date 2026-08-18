@@ -57,10 +57,11 @@ function baseProduction(extractor: Entity): number {
 }
 
 function perMetalCellProduction(extractor: Entity): number {
-  const nominalCellCount = Math.max(
-    1,
-    METAL_DEPOSIT_CONFIG.resourceCells * METAL_DEPOSIT_CONFIG.resourceCells,
-  );
+  // Calibration constant, deliberately NOT any size class's cell count:
+  // ore bodies range from a handful of cells to thousands, and retuning
+  // one must not move every extractor's income.
+  const nominal = METAL_DEPOSIT_CONFIG.productionNominalCells;
+  const nominalCellCount = Math.max(1, nominal * nominal);
   return baseProduction(extractor) / nominalCellCount;
 }
 

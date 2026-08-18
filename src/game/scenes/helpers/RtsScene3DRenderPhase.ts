@@ -29,7 +29,6 @@ import {
 } from '../../render3d/ShieldRenderer3D';
 import type { TerrainTileRenderer3D } from '../../render3d/TerrainTileRenderer3D';
 import type { BuildGhost3D } from '../../render3d/BuildGhost3D';
-import type { MetalDepositRenderer3D } from '../../render3d/MetalDepositRenderer3D';
 import type { EnvironmentPropRenderer3D } from '../../render3d/EnvironmentPropRenderer3D';
 import type { WaterRenderer3D } from '../../render3d/WaterRenderer3D';
 import type { Explosion3D } from '../../render3d/Explosion3D';
@@ -98,7 +97,6 @@ type RtsScene3DRenderPhaseResources = {
   shieldRenderer: ShieldRenderer3D;
   terrainTileRenderer: TerrainTileRenderer3D;
   buildGhostRenderer: BuildGhost3D;
-  metalDepositRenderer: MetalDepositRenderer3D | null;
   environmentPropRenderer: EnvironmentPropRenderer3D | null;
   waterRenderer: WaterRenderer3D;
   explosionRenderer: Explosion3D;
@@ -364,7 +362,6 @@ export class RtsScene3DRenderPhase {
       beamRenderer,
       shieldRenderer,
       terrainTileRenderer,
-      metalDepositRenderer,
       environmentPropRenderer,
       waterRenderer,
       explosionRenderer,
@@ -390,7 +387,6 @@ export class RtsScene3DRenderPhase {
     const timings = this.lastPhaseTimings;
     let phaseMark = renderStart;
 
-    metalDepositRenderer?.update(graphicsConfig, renderFrameState.view);
     const hudFrameStride = Math.max(1, graphicsConfig.hudFrameStride | 0);
     const effectFrameStride = Math.max(1, graphicsConfig.effectFrameStride | 0);
     const updateHudThisFrame = hudFrameStride <= 1 || this.renderFrameIndex % hudFrameStride === 0;

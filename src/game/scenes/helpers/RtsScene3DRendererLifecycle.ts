@@ -16,7 +16,6 @@ type RtsScene3DRendererResources = {
   nameLabel3D?: Destroyable | null;
   waypoint3D?: Destroyable | null;
   entityRenderer?: Destroyable | null;
-  metalDepositRenderer?: Disposable | null;
   environmentPropRenderer?: Destroyable | null;
   beamRenderer?: Destroyable | null;
   shieldRenderer?: Destroyable | null;
@@ -52,7 +51,6 @@ export function teardownRtsScene3DRenderers(
   resources.nameLabel3D?.destroy();
   resources.waypoint3D?.destroy();
   resources.entityRenderer?.destroy();
-  resources.metalDepositRenderer?.dispose();
   resources.environmentPropRenderer?.destroy();
   resources.beamRenderer?.destroy();
   resources.shieldRenderer?.destroy();

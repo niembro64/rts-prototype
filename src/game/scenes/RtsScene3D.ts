@@ -48,7 +48,6 @@ import { Input3DManager } from '../render3d/Input3DManager';
 import { BeamRenderer3D } from '../render3d/BeamRenderer3D';
 import { ShieldRenderer3D } from '../render3d/ShieldRenderer3D';
 import { TerrainTileRenderer3D } from '../render3d/TerrainTileRenderer3D';
-import { MetalDepositRenderer3D } from '../render3d/MetalDepositRenderer3D';
 import { EnvironmentPropRenderer3D } from '../render3d/EnvironmentPropRenderer3D';
 import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConfig';
 import { WaterRenderer3D } from '../render3d/WaterRenderer3D';
@@ -168,7 +167,6 @@ export class RtsScene3D {
   private shieldRenderer!: ShieldRenderer3D;
   private terrainTileRenderer!: TerrainTileRenderer3D;
   private metalDeposits: MetalDeposit[] = [];
-  private metalDepositRenderer: MetalDepositRenderer3D | null = null;
   private environmentPropRenderer: EnvironmentPropRenderer3D | null = null;
   private waterRenderer!: WaterRenderer3D;
   private explosionRenderer!: Explosion3D;
@@ -475,7 +473,6 @@ export class RtsScene3D {
     this.beamRenderer = renderers.beamRenderer;
     this.shieldRenderer = renderers.shieldRenderer;
     this.terrainTileRenderer = renderers.terrainTileRenderer;
-    this.metalDepositRenderer = renderers.metalDepositRenderer;
     this.environmentPropRenderer = renderers.environmentPropRenderer;
     this.waterRenderer = renderers.waterRenderer;
     this.cursorGround = renderers.cursorGround;
@@ -673,7 +670,6 @@ export class RtsScene3D {
         shieldRenderer: this.shieldRenderer,
         terrainTileRenderer: this.terrainTileRenderer,
         buildGhostRenderer: this.buildGhostRenderer,
-        metalDepositRenderer: this.metalDepositRenderer,
         environmentPropRenderer: this.environmentPropRenderer,
         waterRenderer: this.waterRenderer,
         explosionRenderer: this.explosionRenderer,
@@ -1676,7 +1672,6 @@ export class RtsScene3D {
       nameLabel3D: this.nameLabel3D,
       waypoint3D: this.waypoint3D,
       entityRenderer: this.entityRenderer,
-      metalDepositRenderer: this.metalDepositRenderer,
       environmentPropRenderer: this.environmentPropRenderer,
       beamRenderer: this.beamRenderer,
       shieldRenderer: this.shieldRenderer,
@@ -1707,7 +1702,6 @@ export class RtsScene3D {
     this.healthBar3D = null;
     this.nameLabel3D = null;
     this.waypoint3D = null;
-    this.metalDepositRenderer = null;
     this.environmentPropRenderer = null;
     this.renderPhase = null;
     this.rendererWarmup = null;

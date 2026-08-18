@@ -23,7 +23,7 @@ import {
   uploadPrefixRange,
 } from './instancedBufferUpdate';
 
-export type BeamImpactSurface = 'terrain' | 'water' | 'entity';
+export type BeamImpactSurface = 'terrain' | 'water' | 'entity' | 'endpoint';
 
 export type BeamImpactEnvironment = {
   getTerrainZ(x: number, y: number): number;
@@ -39,6 +39,10 @@ const EJECTA_CAP = 4096;
 const MAX_EJECTA_BIRTHS_PER_UPDATE = 96;
 const MAX_EJECTA_BIRTHS_PER_SECOND = 2600;
 const TERRAIN_ENDPOINT_TOLERANCE = 4;
+const EJECTA_SIZE_SCALE = [0.55, 1, 1.55] as const;
+const EJECTA_SPEED_SCALE = [1.55, 1, 0.62] as const;
+const ENDPOINT_EJECTA_FORWARD_SPEED = 0.85 * 3;
+const ENDPOINT_EJECTA_RANDOM_SPREAD = 0.65;
 
 const SITE_VERTEX_SHADER = /* glsl */`
   attribute float aRadius;
@@ -80,10 +84,13 @@ const SITE_FRAGMENT_SHADER = /* glsl */`
     float halo = 1.0 - smoothstep(0.42, raggedEdge, r);
     vec3 terrainColor = mix(vec3(1.0, 0.10, 0.005), vec3(1.0, 0.72, 0.12), core);
     vec3 waterColor = mix(vec3(0.22, 0.58, 0.72), vec3(0.88, 0.98, 1.0), core);
-    vec3 entityColor = mix(vec3(1.0, 0.28, 0.03), vec3(1.0, 0.96, 0.72), core);
+    vec3 entityColor = mix(vec3(1.0, 0.08, 0.005), vec3(1.0, 0.64, 0.08), core);
+    vec3 endpointColor = mix(vec3(0.72, 0.78, 0.84), vec3(1.0), core);
     vec3 color = vKind < 0.5
       ? terrainColor
-      : (vKind < 1.5 ? waterColor : entityColor);
+      : (vKind < 1.5
+        ? waterColor
+        : (vKind < 2.5 ? entityColor : endpointColor));
     float alpha = (0.24 * halo + 0.72 * core) * clamp(vHeat, 0.0, 1.25);
     gl_FragColor = vec4(color, alpha);
   }
@@ -132,10 +139,13 @@ const PARTICLE_FRAGMENT_SHADER = /* glsl */`
     float fade = fadeIn * fadeOut;
     vec3 terrainColor = mix(vec3(1.0, 0.18, 0.01), vec3(0.12, 0.06, 0.025), vAge01);
     vec3 waterColor = mix(vec3(0.82, 0.96, 1.0), vec3(0.34, 0.48, 0.54), vAge01);
-    vec3 entityColor = mix(vec3(1.0, 0.92, 0.52), vec3(0.30, 0.07, 0.015), vAge01);
+    vec3 entityColor = mix(vec3(1.0, 0.16, 0.008), vec3(0.12, 0.035, 0.012), vAge01);
+    vec3 endpointColor = mix(vec3(1.0), vec3(0.52, 0.57, 0.62), vAge01);
     vec3 color = vKind < 0.5
       ? terrainColor
-      : (vKind < 1.5 ? waterColor : entityColor);
+      : (vKind < 1.5
+        ? waterColor
+        : (vKind < 2.5 ? entityColor : endpointColor));
     float alpha = fade * (vKind < 1.5 && vKind > 0.5 ? 0.48 : 0.92);
     gl_FragColor = vec4(color, alpha);
   }
@@ -187,7 +197,7 @@ function packedCellKey3D(
 }
 
 function kindNumber(kind: BeamImpactSurface): number {
-  return kind === 'terrain' ? 0 : kind === 'water' ? 1 : 2;
+  return kind === 'terrain' ? 0 : kind === 'water' ? 1 : kind === 'entity' ? 2 : 3;
 }
 
 function hash01(a: number, b: number): number {
@@ -222,10 +232,11 @@ export function classifyBeamImpactSurface(
   waterAtEndpoint: boolean,
   waterLevel: number,
   tolerance: number = TERRAIN_ENDPOINT_TOLERANCE,
+  hitEntity: boolean = false,
 ): BeamImpactSurface {
   if (Math.abs(endpointZ - terrainZ) <= tolerance) return 'terrain';
   if (waterAtEndpoint && Math.abs(endpointZ - waterLevel) <= tolerance) return 'water';
-  return 'entity';
+  return hitEntity ? 'entity' : 'endpoint';
 }
 
 export class BeamImpact3D {
@@ -364,6 +375,7 @@ export class BeamImpact3D {
       const end = points[points.length - 1];
       if (!this.scope.inScope(end.x, end.y, 200)) continue;
       const prev = points[points.length - 2];
+      const hitEntity = projectile.obstructionT !== null;
       const key = beamImpactSpatialCellKey(end.x, end.y, end.z);
       let site = this.sites.get(key);
       const isNewSite = site === undefined;
@@ -375,6 +387,8 @@ export class BeamImpact3D {
           terrainZ,
           this.environment.isWaterAt?.(end.x, end.y) ?? false,
           this.environment.waterLevel,
+          TERRAIN_ENDPOINT_TOLERANCE,
+          hitEntity,
         );
         site = {
           key,
@@ -404,6 +418,12 @@ export class BeamImpact3D {
         // least-recently-used queue without a per-eviction scan.
         this.sites.delete(key);
         this.sites.set(key, site);
+        // The same endpoint cell can alternate between a clear range endpoint
+        // and an obstructing body as units move through the beam. Terrain and
+        // water are stable spatial classifications; body occupancy is not.
+        if (site.kind === 'entity' || site.kind === 'endpoint') {
+          site.kind = hitEntity ? 'entity' : 'endpoint';
+        }
       }
 
       const age = Math.max(0, this.timeSec - site.lastHitSec);
@@ -420,7 +440,9 @@ export class BeamImpact3D {
       site.x = end.x;
       site.y = end.y;
       site.z = end.z;
-      if (site.kind === 'entity' || isNewSite) this.writeSurfaceNormal(site);
+      if (site.kind === 'entity' || site.kind === 'endpoint' || isNewSite) {
+        this.writeSurfaceNormal(site);
+      }
       const visual = projectile.config.shotProfile.visual;
       site.radius = Math.max(
         site.radius,
@@ -430,7 +452,7 @@ export class BeamImpact3D {
       const dps = shot.type === 'beam' || shot.type === 'laser'
         ? Math.max(0, shot.dps)
         : 0;
-      if (site.kind === 'entity') {
+      if (site.kind === 'entity' || site.kind === 'endpoint') {
         const damageRadius = Math.max(
           visual.lineRadius * 2,
           visual.lineDamageSphereRadius,
@@ -467,12 +489,18 @@ export class BeamImpact3D {
       site.normalX = 0;
       site.normalY = 0;
       site.normalZ = 1;
-    } else {
-      // Without exposing hidden target identity on the wire, the stable
-      // physically useful entity normal is the face opposing the ray.
+    } else if (site.kind === 'entity') {
+      // The snapshot does not expose collider-face normals. Opposing the
+      // terminal ray is a stable physical approximation for body ejecta.
       site.normalX = -site.incomingX;
       site.normalY = -site.incomingY;
       site.normalZ = -site.incomingZ;
+    } else {
+      // A finite/free endpoint is not a surface. Its white marker ejecta uses
+      // isotropic motion, so this normal is only a harmless fallback.
+      site.normalX = 0;
+      site.normalY = 0;
+      site.normalZ = 1;
     }
     const len = Math.sqrt(
       site.normalX * site.normalX +
@@ -547,44 +575,75 @@ export class BeamImpact3D {
     const r0 = hash01(serial, 11);
     const r1 = hash01(serial, 29);
     const r2 = hash01(serial, 47);
-    // Build an orthonormal basis around the surface normal. Ejecta therefore
-    // fans along the actual slope/entity tangent plane instead of a global XY
-    // plane, while the positive normal component carries it away from matter.
-    let tangent1X: number;
-    let tangent1Y: number;
-    let tangent1Z: number;
-    if (Math.abs(site.normalZ) < 0.9) {
-      tangent1X = -site.normalY;
-      tangent1Y = site.normalX;
-      tangent1Z = 0;
+    const r3 = hash01(serial, 71);
+    const sizeRoll = hash01(serial, 97);
+    // Most fragments are light chips, with fewer medium pieces and occasional
+    // heavy chunks. The inverse speed relationship reads as different mass:
+    // small pieces accept more acceleration while large pieces retain inertia.
+    const sizeClass = sizeRoll < 0.48 ? 0 : sizeRoll < 0.83 ? 1 : 2;
+    const sizeScale = EJECTA_SIZE_SCALE[sizeClass];
+    const speedScale = EJECTA_SPEED_SCALE[sizeClass];
+    const baseSpeed = site.kind === 'water'
+      ? 8 + 16 * r3
+      : 32 + 72 * r3;
+    const speed = baseSpeed * speedScale;
+    let vx: number;
+    let vy: number;
+    let vz: number;
+    if (site.kind === 'endpoint') {
+      // A clear finite/range endpoint is not a physical surface. Give its
+      // white marker chunks isotropic 3D scatter plus an independent component
+      // in the beam's forward direction. The forward component is deliberately
+      // not normalized away: it carries three times its previous downrange
+      // speed while leaving the random component unchanged.
+      const randomZ = r0 * 2 - 1;
+      const randomRadial = Math.sqrt(Math.max(0, 1 - randomZ * randomZ));
+      const randomAzimuth = r1 * Math.PI * 2;
+      const randomX = Math.cos(randomAzimuth) * randomRadial;
+      const randomY = Math.sin(randomAzimuth) * randomRadial;
+      vx = (site.incomingX * ENDPOINT_EJECTA_FORWARD_SPEED +
+        randomX * ENDPOINT_EJECTA_RANDOM_SPREAD) * speed;
+      vy = (site.incomingY * ENDPOINT_EJECTA_FORWARD_SPEED +
+        randomY * ENDPOINT_EJECTA_RANDOM_SPREAD) * speed;
+      vz = (site.incomingZ * ENDPOINT_EJECTA_FORWARD_SPEED +
+        randomZ * ENDPOINT_EJECTA_RANDOM_SPREAD) * speed;
     } else {
-      tangent1X = 0;
-      tangent1Y = -site.normalZ;
-      tangent1Z = site.normalY;
+      // Real terrain/water/body contacts do have a response normal. Build an
+      // orthonormal basis around it so debris reacts to the impact surface.
+      let tangent1X: number;
+      let tangent1Y: number;
+      let tangent1Z: number;
+      if (Math.abs(site.normalZ) < 0.9) {
+        tangent1X = -site.normalY;
+        tangent1Y = site.normalX;
+        tangent1Z = 0;
+      } else {
+        tangent1X = 0;
+        tangent1Y = -site.normalZ;
+        tangent1Z = site.normalY;
+      }
+      const tangentLength = Math.sqrt(
+        tangent1X * tangent1X + tangent1Y * tangent1Y + tangent1Z * tangent1Z,
+      );
+      tangent1X /= tangentLength;
+      tangent1Y /= tangentLength;
+      tangent1Z /= tangentLength;
+      const tangent2X = site.normalY * tangent1Z - site.normalZ * tangent1Y;
+      const tangent2Y = site.normalZ * tangent1X - site.normalX * tangent1Z;
+      const tangent2Z = site.normalX * tangent1Y - site.normalY * tangent1X;
+      const angle = r0 * Math.PI * 2;
+      const tangentCos = Math.cos(angle);
+      const tangentSin = Math.sin(angle);
+      const tangentX = tangent1X * tangentCos + tangent2X * tangentSin;
+      const tangentY = tangent1Y * tangentCos + tangent2Y * tangentSin;
+      const tangentZ = tangent1Z * tangentCos + tangent2Z * tangentSin;
+      const tangentSpeed = speed * (0.2 + r2 * 0.6) *
+        (site.kind === 'water' ? 0.35 : 0.8);
+      vx = site.normalX * speed + tangentX * tangentSpeed;
+      vy = site.normalY * speed + tangentY * tangentSpeed;
+      vz = site.normalZ * speed + tangentZ * tangentSpeed +
+        (site.kind === 'water' ? 10 : 18) * r2;
     }
-    const tangentLength = Math.sqrt(
-      tangent1X * tangent1X + tangent1Y * tangent1Y + tangent1Z * tangent1Z,
-    );
-    tangent1X /= tangentLength;
-    tangent1Y /= tangentLength;
-    tangent1Z /= tangentLength;
-    const tangent2X = site.normalY * tangent1Z - site.normalZ * tangent1Y;
-    const tangent2Y = site.normalZ * tangent1X - site.normalX * tangent1Z;
-    const tangent2Z = site.normalX * tangent1Y - site.normalY * tangent1X;
-    const angle = r0 * Math.PI * 2;
-    const tangentCos = Math.cos(angle);
-    const tangentSin = Math.sin(angle);
-    const tangentX = tangent1X * tangentCos + tangent2X * tangentSin;
-    const tangentY = tangent1Y * tangentCos + tangent2Y * tangentSin;
-    const tangentZ = tangent1Z * tangentCos + tangent2Z * tangentSin;
-    const speed = site.kind === 'water'
-      ? 8 + 16 * r1
-      : 32 + 72 * r1;
-    const tangentSpeed = speed * (0.2 + r2 * 0.6) * (site.kind === 'water' ? 0.35 : 0.8);
-    const vx = site.normalX * speed + tangentX * tangentSpeed;
-    const vy = site.normalY * speed + tangentY * tangentSpeed;
-    const vz = site.normalZ * speed + tangentZ * tangentSpeed +
-      (site.kind === 'water' ? 10 : 18) * r2;
     const m = slot * 4;
     this.particleMotion[m] = vx;
     this.particleMotion[m + 1] = vz;
@@ -596,13 +655,15 @@ export class BeamImpact3D {
       : 0.48 + r1 * 0.5;
     this.particleBirthLifeKindSeed[m + 2] = kindNumber(site.kind);
     this.particleBirthLifeKindSeed[m + 3] = r2;
-    const chunkSize = site.kind === 'water'
-      ? Math.max(2.8, site.radius * 0.18)
-      : Math.max(2.4, site.radius * 0.15);
+    const baseChunkSize = site.kind === 'water'
+      ? Math.max(1.4, site.radius * 0.09)
+      : Math.max(1.2, site.radius * 0.075);
+    const chunkSize = baseChunkSize * sizeScale;
+    const surfaceOffset = site.kind === 'endpoint' ? 0 : chunkSize * 0.35;
     this.particlePosition.set(
-      site.x + site.normalX * chunkSize * 0.35,
-      site.z + site.normalZ * chunkSize * 0.35,
-      site.y + site.normalY * chunkSize * 0.35,
+      site.x + site.normalX * surfaceOffset,
+      site.z + site.normalZ * surfaceOffset,
+      site.y + site.normalY * surfaceOffset,
     );
     this.particleEuler.set(r0 * Math.PI * 2, r1 * Math.PI * 2, r2 * Math.PI * 2);
     this.particleQuaternion.setFromEuler(this.particleEuler);
