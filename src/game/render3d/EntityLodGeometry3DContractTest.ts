@@ -185,7 +185,12 @@ type TierCounts = Readonly<{ close: number; mid: number; far: number }>;
 
 /** Composite body + mounted-turret ceilings, deliberately exhaustive. */
 const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
-  buildingSolar: { close: 1600, mid: 700, far: 300 },
+  // Re-baselined 2026-08-18 when each solar petal gained an actuator ram:
+  // four assemblies of a rod, two coloured bosses and two attachment pads. The
+  // anchor-signature invariant forbids dropping parts at a rung, so the far
+  // ceiling has to carry all sixteen; the rams themselves are already built a
+  // geometry rung below the body. Still under the converter and fabricator.
+  buildingSolar: { close: 1600, mid: 700, far: 400 },
   buildingWind: { close: 1100, mid: 550, far: 300 },
   buildingExtractor: { close: 800, mid: 450, far: 260 },
   buildingExtractorT2: { close: 1000, mid: 550, far: 340 },
@@ -211,6 +216,10 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   buildingShieldTargetingTech: { close: 2100, mid: 1045, far: 500 },
   buildingShieldTech: { close: 1445, mid: 695, far: 245 },
   buildingPrecisionTargetingTech: { close: 1615, mid: 790, far: 300 },
+  buildingRadarJammer: { close: 900, mid: 600, far: 360 },
+  buildingSonarJammer: { close: 900, mid: 600, far: 360 },
+  buildingMetalStorage: { close: 700, mid: 500, far: 320 },
+  buildingEnergyStorage: { close: 1620, mid: 825, far: 380 },
 };
 
 /** Full visible unit ceilings: body + locomotion + physical turrets + unique kit/panel art. */
@@ -2282,7 +2291,7 @@ export function runConstructionHostMarkingContracts(): void {
 
 export function runEntityLodGeometry3DContractTest(): void {
   assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 27, 'visual roster covers all 27 units');
-  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 15, 'visual roster covers all 15 buildings');
+  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 19, 'visual roster covers all 19 buildings');
   const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
   try {
     runEnvironmentLodMaterialContracts();

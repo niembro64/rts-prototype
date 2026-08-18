@@ -10,6 +10,7 @@ import { MIRROR_CHROME_MATERIAL } from './BuildingVisualPalette';
 import { easeBuildingActiveStateAmount } from './BuildingActiveStateTransition3D';
 import type { BuildingDetailMesh, BuildingDetailRole, BuildingShape } from './BuildingShape3D';
 import {
+  boxGeom,
   getActiveBuildingGeometryTier,
   getBuildingCylinderGeometry,
   makeBox,
@@ -47,9 +48,24 @@ type SolarPistonAnimation = {
   rodRadius: number;
   mountRadius: number;
   mountLength: number;
+  /** Pad bolted to the panel's outer face under the head, in panel axes:
+   *  across the petal, out from its face, and along the petal. */
+  panelFootingWidth: number;
+  panelFootingHeight: number;
+  panelFootingLength: number;
 };
 
-type SolarPistonSegment = 'rod' | 'groundMount' | 'panelMount';
+type SolarPistonSegment = 'rod' | 'groundMount' | 'panelMount' | 'panelFooting';
+
+/** The ram is thin hardware — its silhouette barely reads even close up, and
+ *  there are twelve cylinders of it per collector — so it is built one rung
+ *  below the body it bolts to. At the far rung that is already the shared
+ *  three-sided prism, which is all a rod that thin can justify. */
+const SOLAR_PISTON_TIER: Readonly<Record<PrimitiveGeometryTier, PrimitiveGeometryTier>> = {
+  close: 'mid',
+  mid: 'far',
+  far: 'far',
+};
 
 type SolarPetalAnimation = {
   width: number;
@@ -403,9 +419,23 @@ export function buildSolarCollector(
   // beyond the arc the petal's outer corner sweeps, so the ram never has to
   // push through its own mounting point.
   const pistonFootFraction = 0.33;
-  const pistonRodRadiusFraction = 0.016;
-  const pistonMountRadiusFraction = 0.028;
-  const pistonMountLengthFraction = 0.055;
+  const pistonRodRadiusFraction = 0.032;
+  const pistonMountRadiusFraction = 0.056;
+  // Short bosses on purpose: at full deploy the ram closes to about a third of
+  // its shut length, so long mounts would leave no rod showing at all.
+  const pistonMountLengthFraction = 0.038;
+  // Static foundation the ram's foot pivots in. Sized to swallow the ground
+  // mount, so the ram reads as socketed into the ground rather than balanced
+  // on it. It never animates — only the ram above it does.
+  const pistonFootingWidthFraction = 0.17;
+  const pistonFootingDepthFraction = 0.15;
+  const pistonFootingHeightFraction = 0.038;
+  // Its counterpart on the panel, which rides the petal. Sized off the coloured
+  // boss it carries: wider than the boss across the petal, and twice the boss's
+  // width along the petal — the direction that reads as vertical while shut.
+  const pistonPanelFootingWidthScale = 1.2;
+  const pistonPanelFootingLengthScale = 2;
+  const pistonPanelFootingHeightScale = 0.3;
 
   const faces: readonly SolarFaceFrame[] = [
     solarFaceFrame(0, 1, depth * 0.5, width),
@@ -428,6 +458,7 @@ export function buildSolarCollector(
 
   for (const face of faces) {
     const hinge = solarHingePoint(face, petalPinStandoff, petalHingeRise);
+    const pistonMountDiameter = face.span * pistonMountRadiusFraction * 2;
     // Shortened by the rise so the tip still meets the top plate when closed.
     const petalLength = (face.slant - petalHingeRise) / SOLAR_PETAL_CHOP_FRACTION;
     const closedDirection = face.up;
@@ -456,6 +487,9 @@ export function buildSolarCollector(
       rodRadius: face.span * pistonRodRadiusFraction,
       mountRadius: face.span * pistonMountRadiusFraction,
       mountLength: face.span * pistonMountLengthFraction,
+      panelFootingWidth: pistonMountDiameter * pistonPanelFootingWidthScale,
+      panelFootingHeight: pistonMountDiameter * pistonPanelFootingHeightScale,
+      panelFootingLength: pistonMountDiameter * pistonPanelFootingLengthScale,
     };
     details.push(detail(makeSolarPistonSegment(
       solarPistonRodMat,
@@ -467,11 +501,30 @@ export function buildSolarCollector(
       pistonAnim,
       'groundMount',
     )));
+    details.push(detail(makeSolarPistonSegment(
+      solarPetalBackMat,
+      pistonAnim,
+      'panelFooting',
+    ), 'low', undefined, 'solarActuator'));
     details.push(teamOrnamentDetail(makeSolarPistonSegment(
       primaryMat,
       pistonAnim,
       'panelMount',
     ), 'solarPetalInlay'));
+    // Faces are axis-aligned, so the footing's tangent/outward extents map
+    // straight onto world width and depth.
+    const footingWidth = face.span * pistonFootingWidthFraction;
+    const footingDepth = face.span * pistonFootingDepthFraction;
+    const footingHeight = face.span * pistonFootingHeightFraction;
+    details.push(detail(makeBox(
+      solarPetalBackMat,
+      Math.abs(face.tangent.x) * footingWidth + Math.abs(face.outward.x) * footingDepth,
+      footingHeight,
+      Math.abs(face.tangent.z) * footingWidth + Math.abs(face.outward.z) * footingDepth,
+      pistonAnim.groundAnchor.x,
+      footingHeight * 0.5,
+      pistonAnim.groundAnchor.z,
+    ), 'low'));
     // One slab, two materials: shiny cells on the inner face (group 0), dull
     // backing on the outer face and the edges (group 1).
     details.push(detail(makeTrianglePetal(
@@ -725,6 +778,21 @@ function writeSolarPistonMatrix(
     .addScaledVector(anim.outward, alongUp * anim.headOuterOffset);
   _solarPistonHead.y -= alongOutward * anim.headOuterOffset;
 
+  if (segment === 'panelFooting') {
+    // Flat on the panel's outer face and square to the petal, so it reads as
+    // bolted to the panel rather than as part of the ram.
+    _solarPistonSide.copy(anim.outward).multiplyScalar(alongUp);
+    _solarPistonSide.y -= alongOutward;
+    _solarPistonXAxis.copy(anim.tangent).normalize().multiplyScalar(anim.panelFootingWidth);
+    _solarPistonYAxis.copy(_solarPistonSide).multiplyScalar(anim.panelFootingHeight);
+    _solarPistonZAxis.copy(panelDirection).multiplyScalar(anim.panelFootingLength);
+    matrix.makeBasis(_solarPistonXAxis, _solarPistonYAxis, _solarPistonZAxis);
+    _solarPistonOrigin.copy(_solarPistonHead)
+      .addScaledVector(_solarPistonSide, anim.panelFootingHeight * 0.5);
+    matrix.setPosition(_solarPistonOrigin);
+    return;
+  }
+
   _solarPistonAxis.copy(_solarPistonHead).sub(anim.groundAnchor);
   const span = Math.max(1e-3, _solarPistonAxis.length());
   _solarPistonAxis.multiplyScalar(1 / span);
@@ -734,7 +802,9 @@ function writeSolarPistonMatrix(
 
   const isRod = segment === 'rod';
   const radius = isRod ? anim.rodRadius : anim.mountRadius;
-  const length = isRod ? span : Math.min(anim.mountLength, span);
+  // The bosses are fixed-length hardware pinned to their endpoints — only the
+  // chromed rod between them changes length as the ram works.
+  const length = isRod ? span : anim.mountLength;
   _solarPistonXAxis.copy(anim.tangent).normalize().multiplyScalar(radius * 2);
   _solarPistonYAxis.copy(_solarPistonAxis).multiplyScalar(length);
   _solarPistonZAxis.copy(_solarPistonSide).multiplyScalar(radius * 2);
@@ -758,7 +828,12 @@ function makeSolarPistonSegment(
   anim: SolarPistonAnimation,
   segment: SolarPistonSegment,
 ): THREE.Mesh {
-  const mesh = new THREE.Mesh(getBuildingCylinderGeometry(), material);
+  const mesh = new THREE.Mesh(
+    segment === 'panelFooting'
+      ? boxGeom
+      : getBuildingCylinderGeometry(SOLAR_PISTON_TIER[getActiveBuildingGeometryTier()]),
+    material,
+  );
   mesh.matrixAutoUpdate = false;
   mesh.userData.solarPiston = anim;
   mesh.userData.solarPistonSegment = segment;
