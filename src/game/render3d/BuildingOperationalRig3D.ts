@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { easeBuildingActiveStateAmount } from './BuildingActiveStateTransition3D';
 
 type BuildingOperationalMotion = Readonly<{
   /** Local-axis rotation while the host is operational. */
@@ -29,7 +30,6 @@ export type BuildingOperationalRig = Readonly<{
   /** Optional compression of the renderer-owned primary chassis about its
    * ground-level origin. Detail pieces author their own matching closed pose. */
   chassisClosedScaleY: number;
-  transitionHalfLifeSec: number;
   hasContinuousMotion: boolean;
   /** Keeps non-scene presentation data (for example particle endpoints)
    * aligned with scene parts that telescope during the same pose. */
@@ -63,14 +63,12 @@ export function createBuildingOperationalRig(
   parts: readonly BuildingOperationalPosePart[],
   options: Readonly<{
     chassisClosedScaleY?: number;
-    transitionHalfLifeSec?: number;
     applyLinkedPose?: (easedOperationalAmount: number) => void;
   }> = {},
 ): BuildingOperationalRig {
   return {
     parts,
     chassisClosedScaleY: options.chassisClosedScaleY ?? 1,
-    transitionHalfLifeSec: options.transitionHalfLifeSec ?? 0.18,
     hasContinuousMotion: parts.some((part) => part.motion !== undefined),
     applyLinkedPose: options.applyLinkedPose,
   };
@@ -89,9 +87,7 @@ export function applyBuildingOperationalPose(
   motionTimeSec: number,
 ): boolean {
   if (rig === undefined) return false;
-  const rawAmount = Number.isFinite(operationalAmount) ? operationalAmount : 1;
-  const amount = Math.max(0, Math.min(1, rawAmount));
-  const eased = amount * amount * (3 - 2 * amount);
+  const eased = easeBuildingActiveStateAmount(operationalAmount);
   const safeTime = Number.isFinite(motionTimeSec) ? motionTimeSec : 0;
 
   if (chassis !== undefined) {

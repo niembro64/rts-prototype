@@ -36,27 +36,27 @@ import {
 import { windRotorAngularSpeed } from './WindKinematics3D';
 import { updateTechBuildingCoilPulse } from './TechBuildingsMesh3D';
 import { applyBuildingOperationalPose } from './BuildingOperationalRig3D';
+import {
+  BUILDING_RIG_IDLE_EPSILON,
+  advanceBuildingActiveStateAmount,
+  easeBuildingActiveStateAmount,
+} from './BuildingActiveStateTransition3D';
 
 // Open/close pose transitions are discrete local state changes, not snapshot
-// rotation fields. One fixed progress duration makes closing the exact reverse
-// of opening, including the symmetric pose easing in SolarCollectorMesh3D.
-const SOLAR_PETAL_TRANSITION_DURATION_SEC = 0.6;
+// rotation fields. Every ON/OFF host shares one progress ramp and one ease from
+// BuildingActiveStateTransition3D, so closing is the exact reverse of opening
+// and no rig folds faster than its neighbour. The rates below are the
+// *continuous* ON-state motions (spin, wind tracking), which are unrelated.
 const RADAR_HEAD_RAD_PER_SEC = 0.55;
 const RADAR_SWEEP_RAD_PER_SEC = 1.8;
 const EXTRACTOR_ROTOR_SPEED_RESPONSE_HALF_LIFE_SEC = 0.08;
 const RADAR_SPEED_RESPONSE_HALF_LIFE_SEC = 0.08;
 const WIND_DIRECTION_RESPONSE_HALF_LIFE_SEC = 0.08;
 const WIND_SPEED_RESPONSE_HALF_LIFE_SEC = 0.08;
-/** Per-frame blend toward the building's target open/closed pose
- *  (wind nacelle pitch + blade fold, extractor blade fold). Matches the
- *  solar petal animator's feel — smooth but not laggy. */
-const BUILDING_FORTIFY_ANIM_ALPHA = 0.12;
 const _extractorBladeQuat = new THREE.Quaternion();
 const _extractorBladePos = new THREE.Vector3();
 const _extractorBladeScale = new THREE.Vector3();
 const _windBladeQuat = new THREE.Quaternion();
-
-const BUILDING_RIG_IDLE_EPSILON = 0.001;
 
 export class BuildingAnimationController3D {
   private readonly clientViewState: ClientViewState;
@@ -225,7 +225,6 @@ export class BuildingAnimationController3D {
 
   update(
     spinDt: number,
-    currentDtMs: number,
     // Wall-clock animation time, for animators driven by a clock rather than
     // by per-entity state.
     timeMs: number,
@@ -234,9 +233,9 @@ export class BuildingAnimationController3D {
     // its pulse runs off the wall clock here rather than per entity.
     updateTechBuildingCoilPulse(timeMs);
     this.resourcePylonAnimator.refreshActiveQueue();
-    this.updateActiveSolarAnimations(currentDtMs / 1000);
+    this.updateActiveSolarAnimations(spinDt);
 
-    this.updateActiveWindAnimations();
+    this.updateActiveWindAnimations(spinDt);
     this.updateActiveExtractorAnimations(spinDt);
     this.updateActiveOperationalAnimations(spinDt);
     this.resourcePylonAnimator.updateActive(spinDt);
@@ -326,12 +325,16 @@ export class BuildingAnimationController3D {
     );
   }
 
-  private updateActiveWindAnimations(): void {
+  private updateActiveWindAnimations(spinDt: number): void {
     if (this.activeWindBuildings.length === 0) return;
+    // Two clocks on purpose: the wind vector is tracked off its own wall-clock
+    // delta (zero until server wind meta arrives), while the ON/OFF fold rides
+    // the shared frame delta like every other active-state rig, so a turbine
+    // still stows on schedule before the first wind packet lands.
     const dtSec = this.updateWindAnimationGlobals();
     for (let i = 0; i < this.activeWindBuildings.length;) {
       const entry = this.activeWindBuildings[i];
-      if (this.updateWindAnimationEntry(entry, dtSec)) {
+      if (this.updateWindAnimationEntry(entry, spinDt, dtSec)) {
         i++;
       } else {
         removeAnimatedBuildingEntry(this.activeWindBuildings, this.activeWindBuildingIndexById, entry.id);
@@ -346,14 +349,19 @@ export class BuildingAnimationController3D {
     return Math.abs(1 - appliedClose) >= BUILDING_RIG_IDLE_EPSILON;
   }
 
-  private updateWindAnimationEntry(entry: AnimatedBuildingEntry, dtSec: number): boolean {
+  private updateWindAnimationEntry(
+    entry: AnimatedBuildingEntry,
+    spinDt: number,
+    windDtSec: number,
+  ): boolean {
     const { id, entity, mesh } = entry;
     const open = entity.building?.activeState?.open !== false;
     const closeTarget = open ? 0 : 1;
-    let close = this.windCloseAmounts.get(id) ?? closeTarget;
-    close = Math.abs(closeTarget - close) < 0.002
-      ? closeTarget
-      : close + (closeTarget - close) * BUILDING_FORTIFY_ANIM_ALPHA;
+    const close = advanceBuildingActiveStateAmount(
+      this.windCloseAmounts.get(id) ?? closeTarget,
+      closeTarget,
+      spinDt,
+    );
     this.windCloseAmounts.set(id, close);
     const detailsReady = mesh.buildingCachedDetailsReady === true;
     const rig = mesh.windRig;
@@ -366,10 +374,15 @@ export class BuildingAnimationController3D {
           WIND_TURBINE_ROTOR_TIP_SPEED_RATIO,
         )
         : WIND_TURBINE_ROTOR_POTENTIAL_RAD_PER_SEC;
-      rotorPhase += dtSec * angularSpeed;
+      rotorPhase += windDtSec * angularSpeed;
       this.windRotorPhases.set(id, rotorPhase);
     }
-    this.updateWindTurbineRig(mesh, detailsReady, close, rotorPhase);
+    this.updateWindTurbineRig(
+      mesh,
+      detailsReady,
+      easeBuildingActiveStateAmount(close),
+      rotorPhase,
+    );
     if (detailsReady) this.windAppliedCloseAmounts.set(id, close);
     return this.windAnimationNeedsFrame(entry);
   }
@@ -423,11 +436,16 @@ export class BuildingAnimationController3D {
     const { id, entity, mesh } = entry;
     const open = entity.building?.activeState?.open !== false;
     const closeTarget = open ? 0 : 1;
-    let close = this.extractorCloseAmounts.get(id) ?? closeTarget;
-    close = Math.abs(closeTarget - close) < 0.002
-      ? closeTarget
-      : close + (closeTarget - close) * BUILDING_FORTIFY_ANIM_ALPHA;
+    const close = advanceBuildingActiveStateAmount(
+      this.extractorCloseAmounts.get(id) ?? closeTarget,
+      closeTarget,
+      spinDt,
+    );
     this.extractorCloseAmounts.set(id, close);
+    // Raw progress drives the rotor-parking logic below (it needs a monotonic
+    // clock to decide when the blades have arrived); the eased amount is what
+    // the fold pose is written through.
+    const easedClose = easeBuildingActiveStateAmount(close);
 
     const actualRate = open ? (entity.metalExtractionRate ?? 0) : 0;
     let phase = this.extractorRotorPhases.get(id);
@@ -441,7 +459,7 @@ export class BuildingAnimationController3D {
         EXTRACTOR_ROTOR_RAD_PER_SEC_PER_METAL_RATE *
         METAL_EXTRACTOR_ROTOR_SPIN_MULTIPLIER
       : (actualRate > 0 ? EXTRACTOR_ROTOR_POTENTIAL_RAD_PER_SEC : 0);
-    const targetSpeed = baseSpeed * (1 - close);
+    const targetSpeed = baseSpeed * (1 - easedClose);
     let speed = this.extractorRotorSpeeds.get(id) ?? 0;
     speed = lerp(speed, targetSpeed, rotorSpeedAlpha);
     if (targetSpeed === 0 && speed < BUILDING_RIG_IDLE_EPSILON) speed = 0;
@@ -459,7 +477,7 @@ export class BuildingAnimationController3D {
       } else {
         yaw = close >= 0.999
           ? closedYaw
-          : openYaw + (closedYaw - openYaw) * close;
+          : openYaw + (closedYaw - openYaw) * easedClose;
         if (close >= 0.999) phase = alignedPhase;
       }
       const previousYaw = this.extractorRotorYaws.get(id);
@@ -472,11 +490,11 @@ export class BuildingAnimationController3D {
         for (const child of rotor.children) {
           const anim = child.userData.extractorBlade as ExtractorBladeAnim | undefined;
           if (!anim) continue;
-          _extractorBladeQuat.copy(anim.openQuat).slerp(anim.closedQuat, close);
+          _extractorBladeQuat.copy(anim.openQuat).slerp(anim.closedQuat, easedClose);
           child.quaternion.copy(_extractorBladeQuat);
-          _extractorBladePos.copy(anim.openPos).lerp(anim.closedPos, close);
+          _extractorBladePos.copy(anim.openPos).lerp(anim.closedPos, easedClose);
           child.position.copy(_extractorBladePos);
-          _extractorBladeScale.copy(anim.openScale).lerp(anim.closedScale, close);
+          _extractorBladeScale.copy(anim.openScale).lerp(anim.closedScale, easedClose);
           child.scale.copy(_extractorBladeScale);
         }
       }
@@ -530,14 +548,21 @@ export class BuildingAnimationController3D {
     if (mesh.buildingCachedDetailsReady !== true) return this.radarAnimationNeedsFrame(entry);
     const open = entity.building?.activeState?.open !== false;
     const seed = id * 0.137;
+    // Antenna speed rides the shared deploy amount, so a dish winds down over
+    // exactly the same two seconds its rig takes to fold instead of stopping
+    // dead while the mast is still moving. The half-life below is only the
+    // small response lag on top of that ramp.
+    const deployed = easeBuildingActiveStateAmount(
+      mesh.buildingOperationalAmount ?? (open ? 1 : 0),
+    );
     let headSpeed = lerp(
       this.radarHeadSpeeds.get(id) ?? 0,
-      open ? RADAR_HEAD_RAD_PER_SEC : 0,
+      RADAR_HEAD_RAD_PER_SEC * deployed,
       radarSpeedAlpha,
     );
     let sweepSpeed = lerp(
       this.radarSweepSpeeds.get(id) ?? 0,
-      open ? -RADAR_SWEEP_RAD_PER_SEC : 0,
+      -RADAR_SWEEP_RAD_PER_SEC * deployed,
       radarSpeedAlpha,
     );
     if (!open) {
@@ -600,9 +625,7 @@ export class BuildingAnimationController3D {
     const target = entity.building?.activeState?.open === false ? 0 : 1;
     const current = mesh.buildingOperationalAmount ?? target;
     const safeDeltaSec = Number.isFinite(deltaSec) ? Math.max(0, deltaSec) : 0;
-    const alpha = halfLifeBlend(safeDeltaSec, rig.transitionHalfLifeSec);
-    let next = lerp(current, target, alpha);
-    if (Math.abs(target - next) < 0.002) next = target;
+    const next = advanceBuildingActiveStateAmount(current, target, safeDeltaSec);
     const motionTime = (mesh.buildingOperationalMotionTime ?? entity.id * 0.071) +
       safeDeltaSec * next;
     applyBuildingOperationalPose(rig, mesh.chassis, next, motionTime);
@@ -621,12 +644,7 @@ export class BuildingAnimationController3D {
     if (!detailsReady) return this.solarAnimationNeedsFrame({ id: e.id, entity: e, mesh: m });
     const target = this.solarTargetAmount(e);
     const current = m.solarOpenAmount ?? target;
-    const progressDelta = Number.isFinite(deltaSec)
-      ? Math.max(0, deltaSec) / SOLAR_PETAL_TRANSITION_DURATION_SEC
-      : 0;
-    const next = target > current
-      ? Math.min(target, current + progressDelta)
-      : Math.max(target, current - progressDelta);
+    const next = advanceBuildingActiveStateAmount(current, target, deltaSec);
     m.solarOpenAmount = next;
     if (applySolarCollectorPetalPose(m.buildingDetails, next)) {
       m.solarPetalPoseAmount = next;

@@ -6,6 +6,7 @@ import {
   type ResourcePylonRig,
 } from './ResourcePylonMesh3D';
 import { PYLON_BUILDING_SOLAR_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
+import { easeBuildingActiveStateAmount } from './BuildingActiveStateTransition3D';
 import type { BuildingDetailMesh, BuildingDetailRole, BuildingShape } from './BuildingShape3D';
 import {
   getActiveBuildingGeometryTier,
@@ -146,10 +147,7 @@ export function applySolarCollectorPetalPose(
   openAmount: number,
 ): boolean {
   if (details === undefined) return false;
-  const amount = Number.isFinite(openAmount)
-    ? Math.min(1, Math.max(0, openAmount))
-    : 1;
-  const t = amount * amount * (3 - 2 * amount);
+  const t = easeBuildingActiveStateAmount(openAmount);
   let applied = false;
   for (const detail of details) {
     if (!isSolarPetalDetail(detail)) continue;
@@ -177,6 +175,68 @@ export function applySolarCollectorPetalPose(
   return applied;
 }
 
+/** One pyramid face, and the hinged panel that folds onto it.
+ *
+ * The panel hinges on its INNER face — the photovoltaic side, the side that
+ * meets the pyramid when the collector is OFF — so the whole assembly stacks
+ * OUTWARD from the hinge axis and lands on the skin the way the metal
+ * extractor's blades do. Hinging on the outer face instead buries the frame
+ * and the cells inside the pyramid the moment the panels close.
+ *
+ * `outward` is the face's horizontal direction, `up` runs up the slope to the
+ * top plate (the closed panel direction), and `normal` is the face's outward
+ * normal (the direction the panel stands off along). */
+type SolarFaceFrame = {
+  outward: THREE.Vector3;
+  tangent: THREE.Vector3;
+  up: THREE.Vector3;
+  normal: THREE.Vector3;
+  baseHalf: number;
+  span: number;
+  slant: number;
+};
+
+function solarFaceFrame(
+  outwardX: number,
+  outwardZ: number,
+  baseHalf: number,
+  span: number,
+): SolarFaceFrame {
+  const outward = new THREE.Vector3(outwardX, 0, outwardZ);
+  // Bottom-to-top-plate travel across the face, and the normal perpendicular
+  // to it. The frustum's top plate is SOLAR_CHOP_HALF*2 of the base, so the
+  // face leans inward by (baseHalf - topHalf) over SOLAR_PETAL_CHOP_FRACTION
+  // of the full height — which reduces to the same (height, baseHalf) pair.
+  const up = new THREE.Vector3(0, SOLAR_HEIGHT, 0)
+    .addScaledVector(outward, -baseHalf)
+    .normalize();
+  const normal = new THREE.Vector3(0, baseHalf, 0)
+    .addScaledVector(outward, SOLAR_HEIGHT)
+    .normalize();
+  return {
+    outward,
+    tangent: new THREE.Vector3(outward.z, 0, -outward.x),
+    up,
+    normal,
+    baseHalf,
+    span,
+    slant: SOLAR_PETAL_CHOP_FRACTION * Math.hypot(SOLAR_HEIGHT, baseHalf),
+  };
+}
+
+/** Where the panel's hinge pin runs: out from the face's bottom edge by the
+ *  cell clearance, then up the slope by the shared hinge rise. */
+function solarHingePoint(
+  face: SolarFaceFrame,
+  faceClearance: number,
+  hingeRise: number,
+): THREE.Vector3 {
+  return new THREE.Vector3()
+    .addScaledVector(face.outward, face.baseHalf)
+    .addScaledVector(face.normal, faceClearance)
+    .addScaledVector(face.up, hingeRise);
+}
+
 export function buildSolarCollector(
   width: number,
   depth: number,
@@ -186,170 +246,113 @@ export function buildSolarCollector(
   const details: BuildingDetailMesh[] = [];
 
   const petalTilt = 0.42;
-  const petalHingeY = 0;
   const petalThickness = 3.2;
   const panelRaise = 2.4;
-  const petalFaceOffset = petalThickness + panelRaise;
   const teamAccentThickness = 0.85;
-  const teamAccentOffset = -teamAccentThickness - 0.35;
-  const frontBackAspect = width / Math.hypot(SOLAR_HEIGHT, depth * 0.5);
-  const sideAspect = depth / Math.hypot(SOLAR_HEIGHT, width * 0.5);
+  const teamAccentGap = 0.35;
+  /** Clearance between a folded panel's cell face and the pyramid skin. */
+  const petalFaceClearance = 0.6;
+  // Layer offsets along the pose normal, which points INTO the pyramid while
+  // the panel is closed and straight up while it is open. The cell sheet sits
+  // ON the hinge plane, because the pin is bolted to that inner face; every
+  // other layer is negative, so the frame stacks outside the skin when closed
+  // and hangs beneath the cells when open — the same plate either way.
+  const petalPanelOffset = 0;
+  const petalLeafOffset = petalPanelOffset - panelRaise - petalThickness;
+  const teamAccentOffset = petalLeafOffset - teamAccentGap - teamAccentThickness;
+  const petalStackDepth = -teamAccentOffset;
 
-  const frontBackSpan = width;
-  const frontBackLen = frontBackSpan / frontBackAspect;
-  const frontBackZ = depth * 0.5;
-  const sideSpan = depth;
-  const sideLen = sideSpan / sideAspect;
-  const sideX = width * 0.5;
   const hingeRadius = Math.max(2.2, Math.min(width, depth) * 0.035);
   const hingeCapRadius = hingeRadius * 1.08;
 
-  for (const xSign of [-1, 1] as const) {
-    for (const zSign of [-1, 1] as const) {
+  const faces: readonly SolarFaceFrame[] = [
+    solarFaceFrame(0, 1, depth * 0.5, width),
+    solarFaceFrame(0, -1, depth * 0.5, width),
+    solarFaceFrame(1, 0, width * 0.5, depth),
+    solarFaceFrame(-1, 0, width * 0.5, depth),
+  ];
+
+  // How far up the face the hinge axis sits. The deployed panel hangs its
+  // frame below the cell plane, so the axis has to clear that depth or the
+  // inboard edge of an open panel would be buried in the ground. The strip of
+  // face left bare underneath is what the hinge bar itself covers.
+  const petalHingeRise = Math.max(
+    hingeRadius,
+    ...faces.map((face) => Math.max(
+      0,
+      (petalStackDepth * Math.cos(petalTilt) - petalFaceClearance * face.normal.y) / face.up.y,
+    )),
+  );
+
+  for (const face of faces) {
+    const hinge = solarHingePoint(face, petalFaceClearance, petalHingeRise);
+    // Shortened by the rise so the tip still meets the top plate when closed.
+    const petalLength = (face.slant - petalHingeRise) / SOLAR_PETAL_CHOP_FRACTION;
+    const closedDirection = face.up;
+    const panelSideHint = face.outward.clone().multiplyScalar(-1);
+
+    details.push(detail(makeHingeBar(
+      solarPetalBackMat,
+      face.span,
+      hingeRadius,
+      hinge,
+      face.tangent,
+    ), 'low'));
+    details.push(detail(makeTrianglePetal(
+      solarPetalBackMat,
+      face.span,
+      petalLength,
+      hinge,
+      face,
+      petalTilt,
+      0,
+      petalLeafOffset,
+      petalThickness,
+      closedDirection,
+      panelSideHint,
+    ), 'low', undefined, 'solarLeaf'));
+    details.push(teamOrnamentDetail(makeTrianglePetal(
+      primaryMat,
+      face.span * 0.58,
+      petalLength * 0.42,
+      hinge,
+      face,
+      petalTilt,
+      petalLength * 0.2,
+      teamAccentOffset,
+      teamAccentThickness,
+      closedDirection,
+      panelSideHint,
+    ), 'solarPetalInlay'));
+    details.push(detail(makeTrianglePetal(
+      solarCellMat,
+      face.span,
+      petalLength,
+      hinge,
+      face,
+      petalTilt,
+      0,
+      petalPanelOffset,
+      0,
+      closedDirection,
+      panelSideHint,
+    ), 'low', undefined, 'solarPanel'));
+  }
+
+  // Caps close the four corners where adjacent hinge axes meet: each takes its
+  // x from the side face's pin and its z from the front/back face's pin.
+  for (const xFace of [faces[2], faces[3]]) {
+    for (const zFace of [faces[0], faces[1]]) {
+      const xPin = solarHingePoint(xFace, petalFaceClearance, petalHingeRise);
+      const zPin = solarHingePoint(zFace, petalFaceClearance, petalHingeRise);
       details.push(detail(makeHingeCap(
         solarPetalBackMat,
         hingeCapRadius,
-        xSign * sideX,
-        hingeCapRadius,
-        zSign * frontBackZ,
+        xPin.x,
+        (xPin.y + zPin.y) * 0.5,
+        zPin.z,
       ), 'low', undefined, 'tinyTrim'));
     }
-  }
-
-  for (const sign of [-1, 1]) {
-    const frontBackClosedDir = new THREE.Vector3(0, SOLAR_HEIGHT, -sign * frontBackZ);
-    const frontBackPanelSide = new THREE.Vector3(0, 0, -sign);
-    details.push(detail(makeHingeBar(
-      solarPetalBackMat,
-      frontBackSpan,
-      hingeRadius,
-      0,
-      hingeRadius,
-      sign * frontBackZ,
-      1,
-      0,
-    ), 'low'));
-    details.push(detail(makeTrianglePetal(
-      solarPetalBackMat,
-      frontBackSpan,
-      frontBackLen,
-      0,
-      petalHingeY,
-      sign * frontBackZ,
-      1,
-      0,
-      0,
-      sign,
-      petalTilt,
-      0,
-      0,
-      petalThickness,
-      frontBackClosedDir,
-      frontBackPanelSide,
-    ), 'low', undefined, 'solarLeaf'));
-    details.push(teamOrnamentDetail(makeTrianglePetal(
-      primaryMat,
-      frontBackSpan * 0.58,
-      frontBackLen * 0.42,
-      0,
-      petalHingeY,
-      sign * frontBackZ,
-      1,
-      0,
-      0,
-      sign,
-      petalTilt,
-      frontBackLen * 0.2,
-      teamAccentOffset,
-      teamAccentThickness,
-      frontBackClosedDir,
-      frontBackPanelSide,
-    ), 'solarPetalInlay'));
-    details.push(detail(makeTrianglePetal(
-      solarCellMat,
-      frontBackSpan,
-      frontBackLen,
-      0,
-      petalHingeY,
-      sign * frontBackZ,
-      1,
-      0,
-      0,
-      sign,
-      petalTilt,
-      0,
-      petalFaceOffset,
-      0,
-      frontBackClosedDir,
-      frontBackPanelSide,
-    ), 'low', undefined, 'solarPanel'));
-
-    const sideClosedDir = new THREE.Vector3(-sign * sideX, SOLAR_HEIGHT, 0);
-    const sidePanelSide = new THREE.Vector3(-sign, 0, 0);
-    details.push(detail(makeHingeBar(
-      solarPetalBackMat,
-      sideSpan,
-      hingeRadius,
-      sign * sideX,
-      hingeRadius,
-      0,
-      0,
-      1,
-    ), 'low'));
-    details.push(detail(makeTrianglePetal(
-      solarPetalBackMat,
-      sideSpan,
-      sideLen,
-      sign * sideX,
-      petalHingeY,
-      0,
-      0,
-      1,
-      sign,
-      0,
-      petalTilt,
-      0,
-      0,
-      petalThickness,
-      sideClosedDir,
-      sidePanelSide,
-    ), 'low', undefined, 'solarLeaf'));
-    details.push(teamOrnamentDetail(makeTrianglePetal(
-      primaryMat,
-      sideSpan * 0.58,
-      sideLen * 0.42,
-      sign * sideX,
-      petalHingeY,
-      0,
-      0,
-      1,
-      sign,
-      0,
-      petalTilt,
-      sideLen * 0.2,
-      teamAccentOffset,
-      teamAccentThickness,
-      sideClosedDir,
-      sidePanelSide,
-    ), 'solarPetalInlay'));
-    details.push(detail(makeTrianglePetal(
-      solarCellMat,
-      sideSpan,
-      sideLen,
-      sign * sideX,
-      petalHingeY,
-      0,
-      0,
-      1,
-      sign,
-      0,
-      petalTilt,
-      0,
-      petalFaceOffset,
-      0,
-      sideClosedDir,
-      sidePanelSide,
-    ), 'low', undefined, 'solarPanel'));
   }
 
   const minDim = Math.min(width, depth);
@@ -421,53 +424,41 @@ function makeTrianglePetal(
   material: THREE.Material,
   width: number,
   length: number,
-  hingeX: number,
-  hingeY: number,
-  hingeZ: number,
-  tangentX: number,
-  tangentZ: number,
-  outwardX: number,
-  outwardZ: number,
+  hinge: THREE.Vector3,
+  face: SolarFaceFrame,
   openAngle: number,
-  inset = 0,
-  normalOffset = 0,
-  thickness = 0,
-  closedDirection?: THREE.Vector3,
-  panelSideHint = new THREE.Vector3(0, 1, 0),
+  inset: number,
+  normalOffset: number,
+  thickness: number,
+  closedDirection: THREE.Vector3,
+  panelSideHint: THREE.Vector3,
 ): THREE.Mesh {
-  const hinge = new THREE.Vector3(hingeX, hingeY, hingeZ);
-  const tangent = new THREE.Vector3(tangentX, 0, tangentZ);
-  const openDirection = new THREE.Vector3(
-    outwardX * Math.cos(openAngle),
-    Math.sin(openAngle),
-    outwardZ * Math.cos(openAngle),
-  );
+  const openDirection = new THREE.Vector3(0, Math.sin(openAngle), 0)
+    .addScaledVector(face.outward, Math.cos(openAngle));
   const mesh = makeTrianglePlate(
     material,
     width,
     length,
     hinge,
-    tangent,
+    face.tangent,
     openDirection,
     inset,
     normalOffset,
     thickness,
     panelSideHint,
   );
-  if (closedDirection) {
-    mesh.userData.solarPetal = {
-      width,
-      length,
-      hinge: hinge.clone(),
-      tangent: tangent.clone(),
-      openDirection: openDirection.clone(),
-      closedDirection: closedDirection.clone(),
-      panelSideHint: panelSideHint.clone(),
-      inset,
-      normalOffset,
-      thickness,
-    } satisfies SolarPetalAnimation;
-  }
+  mesh.userData.solarPetal = {
+    width,
+    length,
+    hinge: hinge.clone(),
+    tangent: face.tangent.clone(),
+    openDirection: openDirection.clone(),
+    closedDirection: closedDirection.clone(),
+    panelSideHint: panelSideHint.clone(),
+    inset,
+    normalOffset,
+    thickness,
+  } satisfies SolarPetalAnimation;
   return mesh;
 }
 
@@ -555,17 +546,16 @@ function makeHingeBar(
   material: THREE.Material,
   length: number,
   radius: number,
-  x: number,
-  y: number,
-  z: number,
-  tangentX: number,
-  tangentZ: number,
+  position: THREE.Vector3,
+  tangent: THREE.Vector3,
 ): THREE.Mesh {
   const mesh = new THREE.Mesh(getBuildingCylinderGeometry(), material);
   mesh.scale.set(radius * 2, length, radius * 2);
-  mesh.position.set(x, y, z);
-  const tangent = new THREE.Vector3(tangentX, 0, tangentZ).normalize();
-  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tangent);
+  mesh.position.copy(position);
+  mesh.quaternion.setFromUnitVectors(
+    new THREE.Vector3(0, 1, 0),
+    _solarPetalTangent.copy(tangent).normalize(),
+  );
   return mesh;
 }
 
