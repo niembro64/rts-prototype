@@ -64,17 +64,20 @@ export function runGuardFollowContractTest(): void {
 
   try {
     const simulation = new Simulation(world, new CommandQueue());
-    const validatedPlan = {
-      points: [{ x: commander.transform.x, y: commander.transform.y, z: commander.transform.z }],
-      index: 0,
-    } as Unit['activePath'];
     (simulation as unknown as {
       ensureActivePathPlan(entity: Entity, action: UnitAction): Unit['activePath'];
-    }).ensureActivePathPlan = () => validatedPlan;
+    }).ensureActivePathPlan = (_entity, action) => ({
+      points: [{ x: action.x, y: action.y, z: action.z ?? 0 }],
+      index: 0,
+    } as Unit['activePath']);
     simulation.update(LOCKSTEP_FIXED_DT_MS);
     assertContract(
       simulation.getMovingUnits().includes(seaTurtle),
       'a distant Sea Turtle must apply guard-follow thrust after its route resolves',
+    );
+    assertContract(
+      simulation.getMovingUnits().includes(commander),
+      'a Commander move command must reach the shared movement controller and apply thrust',
     );
   } finally {
     physics.dispose();

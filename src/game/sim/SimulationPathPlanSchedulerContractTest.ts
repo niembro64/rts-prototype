@@ -12,10 +12,11 @@ function assertContract(condition: unknown, message: string): asserts condition 
   if (!condition) throw new Error(`[path scheduler contract] ${message}`);
 }
 
-function pathEntity(id: number, playerId: number): Entity {
+function pathEntity(id: number, playerId: number, commander = false): Entity {
   return {
     id: id as EntityId,
     ownership: { playerId: playerId as PlayerId },
+    commander: commander ? {} : null,
     unit: {
       hp: 1,
       pathRequestLane: PATH_REQUEST_NONE,
@@ -145,4 +146,26 @@ export function runSimulationPathPlanSchedulerContractTest(): void {
     return true;
   });
   assertContract(servedLane === PATH_REQUEST_REFRESH, 'refresh cadence prevents starvation');
+
+  // A commander issued after an ordinary army burst must not wait behind the
+  // whole fresh FIFO. Priority only reorders the selected team's existing
+  // budget; the callback still sees the canonical fresh lane.
+  const commanderPriority = new SimulationPathPlanScheduler();
+  const ordinary = pathEntity(nextId++, 1);
+  const commander = pathEntity(nextId++, 1, true);
+  commanderPriority.requestFresh(ordinary, false);
+  commanderPriority.requestFresh(commander, false);
+  let priorityEntityId: EntityId | null = null;
+  let priorityLane = PATH_REQUEST_NONE;
+  commanderPriority.drainTeam(1, roster, roster.allyTeamIds[0], (entityId, lane) => {
+    priorityEntityId = entityId;
+    priorityLane = lane;
+    const entity = entityId === commander.id ? commander : ordinary;
+    entity.unit!.pathRequestLane = PATH_REQUEST_NONE;
+    return true;
+  });
+  assertContract(
+    priorityEntityId === commander.id && priorityLane === PATH_REQUEST_FRESH,
+    'a commander fresh route must be admitted before ordinary fresh work without creating a new budget lane',
+  );
 }

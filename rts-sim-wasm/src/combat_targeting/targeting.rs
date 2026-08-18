@@ -538,6 +538,30 @@ pub(crate) const CT_OBSERVED_LANE_SIGHT: u8 = 1 << 1;
 pub(crate) const CT_OBSERVED_LANE_DETECTOR: u8 = 1 << 2;
 pub(crate) const CT_OBSERVED_LANES_ALL: u8 =
     CT_OBSERVED_LANE_CONTACT | CT_OBSERVED_LANE_SIGHT | CT_OBSERVED_LANE_DETECTOR;
+const CT_OBSERVATION_TERRAIN_LOS_STEP_LEN: f64 = MAP_LAND_CELL_SIZE * 0.5;
+
+#[inline]
+fn combat_targeting_observation_has_terrain_los(
+    source_x: f64,
+    source_y: f64,
+    source_z: f64,
+    target_x: f64,
+    target_y: f64,
+    target_z: f64,
+) -> bool {
+    // A missing mesh is possible in small isolated kernel tests. Runtime
+    // worlds install the authoritative mesh before combat begins; no mesh
+    // means there is no terrain occluder to reject here.
+    terrain_has_line_of_sight(
+        source_x,
+        source_y,
+        source_z,
+        target_x,
+        target_y,
+        target_z,
+        CT_OBSERVATION_TERRAIN_LOS_STEP_LEN,
+    ) != 0
+}
 
 /// Returns the lanes still UNCOVERED for this slot after any marks were
 /// applied. Mask writes are unchanged from the pre-saturation version —
@@ -548,8 +572,12 @@ pub(crate) fn combat_targeting_mark_observed_slot(
     entity_owner_bit: &[u32],
     entity_pos_x: &[f64],
     entity_pos_y: &[f64],
+    entity_pos_z: &[f64],
+    entity_flags: &[u8],
     entity_above_water_fraction: &[f32],
     entity_underwater_fraction: &[f32],
+    radar_jammer_team_mask: &[u32],
+    sonar_jammer_team_mask: &[u32],
     team_air_sight_mask: &mut [u32],
     team_water_sight_mask: &mut [u32],
     team_air_radar_mask: &mut [u32],
@@ -559,10 +587,12 @@ pub(crate) fn combat_targeting_mark_observed_slot(
     detector_coverage_mask: &mut [u32],
     source_x: f64,
     source_y: f64,
+    source_z: f64,
     contact_radius: f64,
     full_sight_radius: f64,
     detector_radius: f64,
     owner_bit: u32,
+    source_team_bit: u32,
     target_medium: u8,
 ) -> u8 {
     let target_owner_bit = entity_owner_bit[target_slot];
@@ -590,7 +620,14 @@ pub(crate) fn combat_targeting_mark_observed_slot(
         (team_water_sight_mask[target_slot] & owner_bit) != 0
     };
     let detector_marked = (detector_coverage_mask[target_slot] & owner_bit) != 0;
-    let contact_already_marked = contact_radius <= 0.0 || contact_marked;
+    let contact_denied = if target_medium == CT_OBSERVATION_TARGET_AIR {
+        (entity_flags[target_slot] & CT_ENTITY_FLAG_RADAR_STEALTH) != 0
+            || (radar_jammer_team_mask[target_slot] & !source_team_bit) != 0
+    } else {
+        (entity_flags[target_slot] & CT_ENTITY_FLAG_SONAR_STEALTH) != 0
+            || (sonar_jammer_team_mask[target_slot] & !source_team_bit) != 0
+    };
+    let contact_already_marked = contact_radius <= 0.0 || contact_marked || contact_denied;
     let full_sight_already_marked = full_sight_radius <= 0.0 || full_sight_marked;
     let detector_already_marked = detector_radius <= 0.0 || detector_marked;
     let mut uncovered = 0u8;
@@ -603,13 +640,35 @@ pub(crate) fn combat_targeting_mark_observed_slot(
     if !detector_marked {
         uncovered |= CT_OBSERVED_LANE_DETECTOR;
     }
+    // Contact stealth and a hostile jammer are target/view-team facts. No
+    // alternate source owned by this player can overcome them, so count the
+    // lane as settled for cell saturation while leaving the contact bit clear.
+    if contact_denied {
+        uncovered &= !CT_OBSERVED_LANE_CONTACT;
+    }
     if contact_already_marked && full_sight_already_marked && detector_already_marked {
         return uncovered;
     }
     let dx = entity_pos_x[target_slot] - source_x;
     let dy = entity_pos_y[target_slot] - source_y;
     let distance_sq = dx * dx + dy * dy;
-    if !contact_already_marked && distance_sq <= contact_radius * contact_radius {
+    let contact_in_range = !contact_already_marked && distance_sq <= contact_radius * contact_radius;
+    let sight_in_range =
+        !full_sight_already_marked && distance_sq <= full_sight_radius * full_sight_radius;
+    let detector_in_range =
+        !detector_already_marked && distance_sq <= detector_radius * detector_radius;
+    let needs_los = sight_in_range
+        || detector_in_range
+        || (target_medium == CT_OBSERVATION_TARGET_AIR && contact_in_range);
+    let has_los = !needs_los || combat_targeting_observation_has_terrain_los(
+        source_x,
+        source_y,
+        source_z,
+        entity_pos_x[target_slot],
+        entity_pos_y[target_slot],
+        entity_pos_z[target_slot],
+    );
+    if contact_in_range && (target_medium == CT_OBSERVATION_TARGET_WATER || has_los) {
         if target_medium == CT_OBSERVATION_TARGET_AIR {
             team_air_radar_mask[target_slot] |= owner_bit;
         } else {
@@ -618,7 +677,7 @@ pub(crate) fn combat_targeting_mark_observed_slot(
         sensor_coverage_mask[target_slot] |= owner_bit;
         uncovered &= !CT_OBSERVED_LANE_CONTACT;
     }
-    if !full_sight_already_marked && distance_sq <= full_sight_radius * full_sight_radius {
+    if sight_in_range && has_los {
         if target_medium == CT_OBSERVATION_TARGET_AIR {
             team_air_sight_mask[target_slot] |= owner_bit;
         } else {
@@ -628,7 +687,7 @@ pub(crate) fn combat_targeting_mark_observed_slot(
         full_sight_coverage_mask[target_slot] |= owner_bit;
         uncovered &= !CT_OBSERVED_LANE_SIGHT;
     }
-    if !detector_already_marked && distance_sq <= detector_radius * detector_radius {
+    if detector_in_range && has_los {
         detector_coverage_mask[target_slot] |= owner_bit;
         uncovered &= !CT_OBSERVED_LANE_DETECTOR;
     }
@@ -641,8 +700,12 @@ pub(crate) fn combat_targeting_mark_observation_cell(
     entity_owner_bit: &[u32],
     entity_pos_x: &[f64],
     entity_pos_y: &[f64],
+    entity_pos_z: &[f64],
+    entity_flags: &[u8],
     entity_above_water_fraction: &[f32],
     entity_underwater_fraction: &[f32],
+    radar_jammer_team_mask: &[u32],
+    sonar_jammer_team_mask: &[u32],
     team_air_sight_mask: &mut [u32],
     team_water_sight_mask: &mut [u32],
     team_air_radar_mask: &mut [u32],
@@ -652,10 +715,12 @@ pub(crate) fn combat_targeting_mark_observation_cell(
     detector_coverage_mask: &mut [u32],
     source_x: f64,
     source_y: f64,
+    source_z: f64,
     contact_radius: f64,
     full_sight_radius: f64,
     detector_radius: f64,
     owner_bit: u32,
+    source_team_bit: u32,
     target_medium: u8,
 ) {
     if cell.owner_bits != 0 && (cell.owner_bits & !owner_bit) == 0 {
@@ -692,8 +757,12 @@ pub(crate) fn combat_targeting_mark_observation_cell(
             entity_owner_bit,
             entity_pos_x,
             entity_pos_y,
+            entity_pos_z,
+            entity_flags,
             entity_above_water_fraction,
             entity_underwater_fraction,
+            radar_jammer_team_mask,
+            sonar_jammer_team_mask,
             team_air_sight_mask,
             team_water_sight_mask,
             team_air_radar_mask,
@@ -703,10 +772,12 @@ pub(crate) fn combat_targeting_mark_observation_cell(
             detector_coverage_mask,
             source_x,
             source_y,
+            source_z,
             contact_radius,
             full_sight_radius,
             detector_radius,
             owner_bit,
+            source_team_bit,
             target_medium,
         );
         all_covered &= !uncovered;
@@ -765,13 +836,20 @@ pub(crate) fn combat_targeting_mark_observation_circles(
     pool: &mut CombatTargetingPool,
     source_x: f64,
     source_y: f64,
+    source_z: f64,
     owner_bit: u32,
+    source_team_bit: u32,
     contact_radius: f64,
     full_sight_radius: f64,
     detector_radius: f64,
     target_medium: u8,
 ) {
-    if owner_bit == 0 || !source_x.is_finite() || !source_y.is_finite() {
+    if owner_bit == 0
+        || source_team_bit == 0
+        || !source_x.is_finite()
+        || !source_y.is_finite()
+        || !source_z.is_finite()
+    {
         return;
     }
     debug_assert!(
@@ -796,8 +874,12 @@ pub(crate) fn combat_targeting_mark_observation_circles(
     let entity_owner_bit = &pool.entity_owner_bit;
     let entity_pos_x = &pool.entity_pos_x;
     let entity_pos_y = &pool.entity_pos_y;
+    let entity_pos_z = &pool.entity_pos_z;
+    let entity_flags = &pool.entity_flags;
     let entity_above_water_fraction = &pool.entity_above_water_fraction;
     let entity_underwater_fraction = &pool.entity_underwater_fraction;
+    let radar_jammer_team_mask = &pool.entity_radar_jammer_team_mask;
+    let sonar_jammer_team_mask = &pool.entity_sonar_jammer_team_mask;
     let observation_cells = &mut pool.observation_cells;
     let observation_cell_keys = &pool.observation_cell_keys;
     let team_air_sight_mask = &mut pool.entity_team_air_sight_mask;
@@ -830,8 +912,12 @@ pub(crate) fn combat_targeting_mark_observation_circles(
                 entity_owner_bit,
                 entity_pos_x,
                 entity_pos_y,
+                entity_pos_z,
+                entity_flags,
                 entity_above_water_fraction,
                 entity_underwater_fraction,
+                radar_jammer_team_mask,
+                sonar_jammer_team_mask,
                 team_air_sight_mask,
                 team_water_sight_mask,
                 team_air_radar_mask,
@@ -841,10 +927,12 @@ pub(crate) fn combat_targeting_mark_observation_circles(
                 detector_coverage_mask,
                 source_x,
                 source_y,
+                source_z,
                 contact_radius,
                 full_sight_radius,
                 detector_radius,
                 owner_bit,
+                source_team_bit,
                 target_medium,
             );
         }
@@ -865,8 +953,12 @@ pub(crate) fn combat_targeting_mark_observation_circles(
                 entity_owner_bit,
                 entity_pos_x,
                 entity_pos_y,
+                entity_pos_z,
+                entity_flags,
                 entity_above_water_fraction,
                 entity_underwater_fraction,
+                radar_jammer_team_mask,
+                sonar_jammer_team_mask,
                 team_air_sight_mask,
                 team_water_sight_mask,
                 team_air_radar_mask,
@@ -876,13 +968,174 @@ pub(crate) fn combat_targeting_mark_observation_circles(
                 detector_coverage_mask,
                 source_x,
                 source_y,
+                source_z,
                 contact_radius,
                 full_sight_radius,
                 detector_radius,
                 owner_bit,
+                source_team_bit,
                 target_medium,
             );
         }
+    }
+}
+
+#[inline]
+fn combat_targeting_mark_jammer_cell(
+    cell: &CombatTargetingObservationCell,
+    entity_pos_x: &[f64],
+    entity_pos_y: &[f64],
+    jammer_team_mask: &mut [u32],
+    source_x: f64,
+    source_y: f64,
+    radius_sq: f64,
+    source_team_bit: u32,
+) {
+    for &slot in &cell.slots {
+        let target_slot = slot as usize;
+        let dx = entity_pos_x[target_slot] - source_x;
+        let dy = entity_pos_y[target_slot] - source_y;
+        if dx * dx + dy * dy <= radius_sq {
+            jammer_team_mask[target_slot] |= source_team_bit;
+        }
+    }
+}
+
+/// Stamp one jammer into the target spatial index. This is deliberately a
+/// source-to-nearby-target pass: the old target-to-every-sensor query made one
+/// jammer activate an O(targets * all sensor sources) scan.
+fn combat_targeting_mark_jammer_circle(
+    pool: &mut CombatTargetingPool,
+    source_x: f64,
+    source_y: f64,
+    source_team_bit: u32,
+    radius: f64,
+    underwater: bool,
+) {
+    let radius = combat_targeting_valid_observation_radius(radius);
+    if radius <= 0.0
+        || source_team_bit == 0
+        || !source_x.is_finite()
+        || !source_y.is_finite()
+    {
+        return;
+    }
+    let min_cx = combat_targeting_observation_cell_coord(source_x - radius);
+    let max_cx = combat_targeting_observation_cell_coord(source_x + radius);
+    let min_cy = combat_targeting_observation_cell_coord(source_y - radius);
+    let max_cy = combat_targeting_observation_cell_coord(source_y + radius);
+    let entity_pos_x = &pool.entity_pos_x;
+    let entity_pos_y = &pool.entity_pos_y;
+    let observation_cells = &pool.observation_cells;
+    let observation_cell_keys = &pool.observation_cell_keys;
+    let jammer_team_mask = if underwater {
+        &mut pool.entity_sonar_jammer_team_mask
+    } else {
+        &mut pool.entity_radar_jammer_team_mask
+    };
+    let cells_x = (max_cx - min_cx + 1) as i64;
+    let cells_y = (max_cy - min_cy + 1) as i64;
+    if cells_x <= 0 || cells_y <= 0 {
+        return;
+    }
+    let radius_sq = radius * radius;
+    let cell_count = cells_x.saturating_mul(cells_y);
+    if cell_count > observation_cell_keys.len() as i64 {
+        for &key in observation_cell_keys {
+            let (cx, cy) = combat_targeting_observation_cell_coords_from_key(key);
+            if cx < min_cx || cx > max_cx || cy < min_cy || cy > max_cy {
+                continue;
+            }
+            if observation_cell_outside_radius(cx, cy, source_x, source_y, radius) {
+                continue;
+            }
+            let Some(cell) = observation_cells.get(&key) else {
+                continue;
+            };
+            combat_targeting_mark_jammer_cell(
+                cell,
+                entity_pos_x,
+                entity_pos_y,
+                jammer_team_mask,
+                source_x,
+                source_y,
+                radius_sq,
+                source_team_bit,
+            );
+        }
+        return;
+    }
+    for cx in min_cx..=max_cx {
+        for cy in min_cy..=max_cy {
+            if observation_cell_outside_radius(cx, cy, source_x, source_y, radius) {
+                continue;
+            }
+            let key = combat_targeting_observation_cell_key(cx, cy);
+            let Some(cell) = observation_cells.get(&key) else {
+                continue;
+            };
+            combat_targeting_mark_jammer_cell(
+                cell,
+                entity_pos_x,
+                entity_pos_y,
+                jammer_team_mask,
+                source_x,
+                source_y,
+                radius_sq,
+                source_team_bit,
+            );
+        }
+    }
+}
+
+fn combat_targeting_collect_jammer_source_slots(
+    pool: &mut CombatTargetingPool,
+    source_slots: &[u32],
+) {
+    pool.observation_radar_jammer_source_slots.clear();
+    pool.observation_sonar_jammer_source_slots.clear();
+    for &source_slot in source_slots {
+        let slot = source_slot as usize;
+        if !combat_targeting_entity_online_for_sensors(pool, slot) {
+            continue;
+        }
+        if pool.entity_radar_jam_radius[slot] > 0.0 {
+            pool.observation_radar_jammer_source_slots.push(source_slot);
+        }
+        if pool.entity_sonar_jam_radius[slot] > 0.0 {
+            pool.observation_sonar_jammer_source_slots.push(source_slot);
+        }
+    }
+}
+
+fn combat_targeting_rebuild_jammer_masks_for_sources(
+    pool: &mut CombatTargetingPool,
+    source_slots: &[u32],
+) {
+    combat_targeting_collect_jammer_source_slots(pool, source_slots);
+    for index in 0..pool.observation_radar_jammer_source_slots.len() {
+        let slot = pool.observation_radar_jammer_source_slots[index] as usize;
+        let team_bit = combat_targeting_player_bit(pool.entity_team_id[slot]);
+        combat_targeting_mark_jammer_circle(
+            pool,
+            pool.entity_sensor_source_x[slot],
+            pool.entity_sensor_source_y[slot],
+            team_bit,
+            pool.entity_radar_jam_radius[slot] as f64,
+            false,
+        );
+    }
+    for index in 0..pool.observation_sonar_jammer_source_slots.len() {
+        let slot = pool.observation_sonar_jammer_source_slots[index] as usize;
+        let team_bit = combat_targeting_player_bit(pool.entity_team_id[slot]);
+        combat_targeting_mark_jammer_circle(
+            pool,
+            pool.entity_sensor_source_x[slot],
+            pool.entity_sensor_source_y[slot],
+            team_bit,
+            pool.entity_sonar_jam_radius[slot] as f64,
+            true,
+        );
     }
 }
 
@@ -900,6 +1153,13 @@ pub(crate) fn combat_targeting_mark_observation_from_source_slot(
     }
     let source_x = pool.entity_sensor_source_x[source_slot];
     let source_y = pool.entity_sensor_source_y[source_slot];
+    let source_z = pool.entity_sensor_source_z[source_slot];
+    let stamped_team_bit = combat_targeting_player_bit(pool.entity_team_id[source_slot]);
+    let source_team_bit = if stamped_team_bit != 0 {
+        stamped_team_bit
+    } else {
+        owner_bit
+    };
 
     let full_above_water_radius = pool.entity_full_vision_above_water_radius[source_slot] as f64;
     let full_underwater_radius = pool.entity_full_vision_underwater_radius[source_slot] as f64;
@@ -914,7 +1174,9 @@ pub(crate) fn combat_targeting_mark_observation_from_source_slot(
         pool,
         source_x,
         source_y,
+        source_z,
         owner_bit,
+        source_team_bit,
         radar_radius,
         full_above_water_radius,
         detector_above_water_radius,
@@ -924,7 +1186,9 @@ pub(crate) fn combat_targeting_mark_observation_from_source_slot(
         pool,
         source_x,
         source_y,
+        source_z,
         owner_bit,
+        source_team_bit,
         sonar_radius,
         full_underwater_radius,
         detector_underwater_radius,
@@ -961,11 +1225,19 @@ pub fn combat_targeting_rebuild_observation_masks() {
     for mask in pool.entity_detector_coverage_mask.iter_mut() {
         *mask = 0;
     }
+    for mask in pool.entity_radar_jammer_team_mask.iter_mut() {
+        *mask = 0;
+    }
+    for mask in pool.entity_sonar_jammer_team_mask.iter_mut() {
+        *mask = 0;
+    }
 
     combat_targeting_rebuild_observation_index(pool);
     let n = pool.entity_flags.len();
-    for source_slot in 0..n {
-        combat_targeting_mark_observation_from_source_slot(pool, source_slot);
+    let source_slots: Vec<u32> = (0..n as u32).collect();
+    combat_targeting_rebuild_jammer_masks_for_sources(pool, &source_slots);
+    for &source_slot in &source_slots {
+        combat_targeting_mark_observation_from_source_slot(pool, source_slot as usize);
     }
 }
 
@@ -976,6 +1248,7 @@ pub fn combat_targeting_rebuild_observation_masks() {
 #[wasm_bindgen]
 pub fn combat_targeting_rebuild_observation_masks_for_sources(source_slots: &[u32]) {
     let pool = combat_targeting_pool();
+    combat_targeting_rebuild_jammer_masks_for_sources(pool, source_slots);
     for &source_slot in source_slots {
         combat_targeting_mark_observation_from_source_slot(pool, source_slot as usize);
     }
@@ -988,11 +1261,14 @@ pub fn combat_targeting_rebuild_observation_masks_for_sources(source_slots: &[u3
 #[wasm_bindgen]
 pub fn combat_targeting_add_sensor_observation_circle(
     owner_player_id: u8,
+    team_id: u8,
     x: f64,
     y: f64,
+    z: f64,
     radius: f64,
 ) {
     let owner_bit = combat_targeting_player_bit(owner_player_id);
+    let team_bit = combat_targeting_player_bit(team_id);
     let pool = combat_targeting_pool();
     // A scan pulse has no source medium and contributes both target-medium
     // sight facts wherever the corresponding target occupancy exists.
@@ -1000,7 +1276,9 @@ pub fn combat_targeting_add_sensor_observation_circle(
         pool,
         x,
         y,
+        z,
         owner_bit,
+        team_bit,
         0.0,
         radius,
         radius,
@@ -1010,7 +1288,9 @@ pub fn combat_targeting_add_sensor_observation_circle(
         pool,
         x,
         y,
+        z,
         owner_bit,
+        team_bit,
         0.0,
         radius,
         radius,

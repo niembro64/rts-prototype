@@ -257,6 +257,7 @@ export interface CombatTargetingApi {
    *  sight is included in radar-level coverage. */
   addSensorObservationCircle: (
     ownerPlayerId: number,
+    teamId: number,
     x: number,
     y: number,
     z: number,

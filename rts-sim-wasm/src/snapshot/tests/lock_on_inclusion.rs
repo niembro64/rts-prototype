@@ -156,6 +156,7 @@ mod lock_on_inclusion_tests {
             lockon_shot_mask,
             x,
             0.0,
+            z,
             0.0,
             0.0,
             200.0,
@@ -163,6 +164,8 @@ mod lock_on_inclusion_tests {
             // contact medium policy, so their generic source carries both
             // above-water and underwater contact-target lanes.
             200.0,
+            0.0,
+            0.0,
             0.0,
             0.0,
             0.0,

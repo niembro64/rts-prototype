@@ -102,6 +102,7 @@ export type BuildingDetailRole =
   | 'constructionHostBody'
   | 'constructionMarking'
   | 'solarPanel'
+  | 'solarActuator'
   | 'teamOrnament'
   | 'playerColorPlate'
   | 'windRig'

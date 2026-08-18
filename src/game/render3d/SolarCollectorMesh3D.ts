@@ -22,6 +22,24 @@ import {
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
+/** One petal's actuator wedge. `groundArm` is fixed — the foot is bolted to
+ *  the ground — while the panel arm swings with the petal, so the wedge between
+ *  them opens and closes. Both arms are the same length, which is what makes
+ *  the swept edge read as a coin's rim. */
+type SolarActuatorAnimation = {
+  hinge: THREE.Vector3;
+  tangent: THREE.Vector3;
+  /** In-plane horizontal axis. With world up it spans the plane the petal
+   *  swings through, which is where the wedge's two arms live. */
+  outward: THREE.Vector3;
+  /** Fixed angle below horizontal at which the foot meets the ground. */
+  groundAngle: number;
+  openDirection: THREE.Vector3;
+  closedDirection: THREE.Vector3;
+  radius: number;
+  thickness: number;
+};
+
 type SolarPetalAnimation = {
   width: number;
   length: number;
@@ -144,6 +162,38 @@ function createSolarPetalSlabGeometry(): THREE.BufferGeometry {
 }
 
 const solarPetalSlabGeom = createSolarPetalSlabGeometry();
+
+/** Angular resolution of the actuator wedge cache. */
+const SOLAR_ACTUATOR_SPAN_STEP_RAD = Math.PI / 90;
+const solarActuatorGeomBySpanSteps = new Map<number, THREE.BufferGeometry>();
+
+/** Unit-radius, unit-depth coin segments, one per quantised span.
+ *
+ * The wedge has to stay a real circular sector at every opening angle, and no
+ * affine transform turns one sector into a sector of a different angle — it
+ * turns it into an elliptical one, which collapses into a flat fin once the
+ * arms open past a right angle. So the angle lives in the geometry. Spans are
+ * quantised to two degrees and shared by every collector on the map, which
+ * costs a few dozen tiny buffers in total and no per-instance allocation (each
+ * detail mesh keeps a shared geometry, and nothing here needs disposing per
+ * entity). The pose then only has to place a rigid, uniformly scaled wedge. */
+function getSolarActuatorGeometry(spanRad: number): THREE.BufferGeometry {
+  const steps = Math.max(1, Math.ceil(spanRad / SOLAR_ACTUATOR_SPAN_STEP_RAD));
+  return getOrCreate(solarActuatorGeomBySpanSteps, steps, () => {
+    const span = Math.min(Math.PI * 2, steps * SOLAR_ACTUATOR_SPAN_STEP_RAD);
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0);
+    shape.lineTo(1, 0);
+    shape.absarc(0, 0, 1, 0, span, false);
+    shape.lineTo(0, 0);
+    return new THREE.ExtrudeGeometry(shape, {
+      depth: 1,
+      bevelEnabled: false,
+      steps: 1,
+      curveSegments: Math.max(3, Math.round((span / (Math.PI * 0.5)) * 12)),
+    });
+  });
+}
 const solarHingeCapGeometryByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
 
 function getSolarHingeCapGeometry(): THREE.BufferGeometry {
@@ -202,9 +252,15 @@ const _solarPetalOrigin = new THREE.Vector3();
 const _solarPetalXAxis = new THREE.Vector3();
 const _solarPetalYAxis = new THREE.Vector3();
 const _solarPetalZAxis = new THREE.Vector3();
+const _solarActuatorDirection = new THREE.Vector3();
+const _solarActuatorXAxis = new THREE.Vector3();
+const _solarActuatorYAxis = new THREE.Vector3();
+const _solarActuatorZAxis = new THREE.Vector3();
+const _solarActuatorOrigin = new THREE.Vector3();
 
 function isSolarPetalDetail(detail: BuildingDetailMesh): boolean {
   return detail.role === 'solarPanel' ||
+    detail.role === 'solarActuator' ||
     detail.role === 'teamOrnament';
 }
 
@@ -220,6 +276,17 @@ export function applySolarCollectorPetalPose(
   let applied = false;
   for (const detail of details) {
     if (!isSolarPetalDetail(detail)) continue;
+    const actuator = detail.mesh.userData.solarActuator as SolarActuatorAnimation | undefined;
+    if (actuator) {
+      _solarActuatorDirection
+        .copy(actuator.closedDirection)
+        .lerp(actuator.openDirection, t)
+        .normalize();
+      applySolarActuatorPose(detail.mesh, actuator, _solarActuatorDirection);
+      detail.mesh.matrixWorldNeedsUpdate = true;
+      applied = true;
+      continue;
+    }
     const anim = detail.mesh.userData.solarPetal as SolarPetalAnimation | undefined;
     if (!anim) continue;
     _solarPetalDirection
@@ -334,6 +401,13 @@ export function buildSolarCollector(
   // what keeps the knuckle out of the pyramid and lands the shut panel's cell
   // face exactly `petalFaceClearance` above it.
   const petalPinStandoff = hingeRadius + petalFaceClearance;
+  // Actuator wedge, as fractions of the face it drives: a reach roughly a
+  // quarter of the way up the panel, and a coin thick enough to read as a
+  // machined part rather than a fin.
+  // Reach stops short of where the team accent starts up the panel, so the
+  // wedge never eats into the ornament.
+  const actuatorRadiusFraction = 0.28;
+  const actuatorThicknessFraction = 0.09;
 
   const faces: readonly SolarFaceFrame[] = [
     solarFaceFrame(0, 1, depth * 0.5, width),
@@ -368,6 +442,14 @@ export function buildSolarCollector(
       hinge,
       face.tangent,
     ), 'low'));
+    details.push(detail(makeSolarActuator(
+      solarPetalBackMat,
+      face,
+      hinge,
+      face.slant * actuatorRadiusFraction,
+      face.span * actuatorThicknessFraction,
+      petalTilt,
+    ), 'low', undefined, 'solarActuator'));
     // One slab, two materials: shiny cells on the inner face (group 0), dull
     // backing on the outer face and the edges (group 1).
     details.push(detail(makeTrianglePetal(
@@ -601,6 +683,75 @@ function writeSolarPetalMatrix(
   matrix.setPosition(origin);
 }
 
+/** Picks the wedge whose span matches the angle the petal currently makes with
+ *  the ground, then stands it on the hinge axis.
+ *
+ * The sector is anchored by its panel edge, so that edge sits exactly on the
+ * petal's mid-plane and the wedge emerges through the panel's outer face
+ * instead of breaking the cell side. Spans round up, which pushes the small
+ * quantisation error into the foot, where a fraction of a degree just buries
+ * itself in the ground rather than leaving the wedge hovering. */
+function applySolarActuatorPose(
+  mesh: THREE.Mesh,
+  anim: SolarActuatorAnimation,
+  panelDirection: THREE.Vector3,
+): void {
+  const panelAngle = Math.atan2(panelDirection.y, panelDirection.dot(anim.outward));
+  const span = Math.max(SOLAR_ACTUATOR_SPAN_STEP_RAD, panelAngle - anim.groundAngle);
+  const geometry = getSolarActuatorGeometry(span);
+  if (mesh.geometry !== geometry) mesh.geometry = geometry;
+  const steps = Math.max(1, Math.ceil(span / SOLAR_ACTUATOR_SPAN_STEP_RAD));
+  const footAngle = panelAngle - steps * SOLAR_ACTUATOR_SPAN_STEP_RAD;
+
+  // Rigid, uniformly scaled: the wedge's own angle is already baked in, so the
+  // two in-plane axes stay orthonormal and the rim stays a circle.
+  _solarActuatorXAxis.copy(anim.outward).multiplyScalar(Math.cos(footAngle) * anim.radius);
+  _solarActuatorXAxis.y += Math.sin(footAngle) * anim.radius;
+  _solarActuatorYAxis.copy(anim.outward).multiplyScalar(-Math.sin(footAngle) * anim.radius);
+  _solarActuatorYAxis.y += Math.cos(footAngle) * anim.radius;
+  _solarActuatorZAxis.copy(anim.tangent).normalize().multiplyScalar(anim.thickness);
+  mesh.matrix.makeBasis(_solarActuatorXAxis, _solarActuatorYAxis, _solarActuatorZAxis);
+  // One coin standing at the petal's mid-span, so pull it back half its own
+  // thickness off the pin.
+  _solarActuatorOrigin.copy(anim.hinge).addScaledVector(_solarActuatorZAxis, -0.5);
+  mesh.matrix.setPosition(_solarActuatorOrigin);
+}
+
+/** The actuator that drives one petal: a wedge standing on the ground just
+ *  outside the pyramid, rising into the back of the panel. It pivots on the
+ *  same axis as the hinge pin and wears the same coin orientation, and because
+ *  its panel arm lies on the petal's mid-plane it emerges through the panel's
+ *  outer face rather than clipping the cell side. */
+function makeSolarActuator(
+  material: THREE.Material,
+  face: SolarFaceFrame,
+  hinge: THREE.Vector3,
+  radius: number,
+  thickness: number,
+  openAngle: number,
+): THREE.Mesh {
+  // The foot sits on the ground, far enough out that the arm reaching it is
+  // the same length as the arm reaching the panel.
+  const groundReach = Math.sqrt(Math.max(0, radius * radius - hinge.y * hinge.y));
+  const openDirection = new THREE.Vector3(0, Math.sin(openAngle), 0)
+    .addScaledVector(face.outward, Math.cos(openAngle));
+  const anim: SolarActuatorAnimation = {
+    hinge: hinge.clone(),
+    tangent: face.tangent.clone(),
+    outward: face.outward.clone(),
+    groundAngle: Math.atan2(-hinge.y, groundReach),
+    openDirection,
+    closedDirection: face.up.clone(),
+    radius,
+    thickness,
+  };
+  const mesh = new THREE.Mesh(getSolarActuatorGeometry(Math.PI * 0.5), material);
+  mesh.matrixAutoUpdate = false;
+  mesh.userData.solarActuator = anim;
+  applySolarActuatorPose(mesh, anim, openDirection);
+  return mesh;
+}
+
 function makeHingeBar(
   material: THREE.Material,
   length: number,
@@ -630,6 +781,8 @@ function detail(
 export function disposeSolarCollectorGeoms(): void {
   solarPanelPyramidGeom.dispose();
   solarPetalSlabGeom.dispose();
+  for (const geometry of solarActuatorGeomBySpanSteps.values()) geometry.dispose();
+  solarActuatorGeomBySpanSteps.clear();
   solarTrianglePetalGeom.dispose();
   for (const geometry of solarHingeCapGeometryByTier.values()) geometry.dispose();
   solarHingeCapGeometryByTier.clear();

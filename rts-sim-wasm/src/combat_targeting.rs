@@ -2622,7 +2622,7 @@ mod tests {
         pool.entity_team_water_sight_mask.fill(0);
         pool.entity_team_air_radar_mask.fill(0);
         pool.entity_team_water_sonar_mask.fill(0);
-        combat_targeting_add_sensor_observation_circle(1, 0.0, 0.0, 45.0);
+        combat_targeting_add_sensor_observation_circle(1, 1, 0.0, 0.0, 0.0, 45.0);
         for slot in [1, 2] {
             assert_ne!(pool.entity_sensor_coverage_mask[slot] & owner_bit, 0);
             assert_ne!(pool.entity_full_sight_coverage_mask[slot] & owner_bit, 0);

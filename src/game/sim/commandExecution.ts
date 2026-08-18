@@ -463,6 +463,7 @@ const SCAN_PULSE_DURATION_SECONDS = 12;
  *  unit's vision so the sweep meaningfully exposes a chunk of the
  *  map rather than spotting a single tank. */
 const SCAN_PULSE_RADIUS = 1400;
+const SCAN_PULSE_SENSOR_EYE_HEIGHT = 30;
 
 function executeScanCommand(ctx: CommandContext, command: ScanCommand): void {
   if (command.playerId === undefined) return;
@@ -485,7 +486,14 @@ function executeScanCommand(ctx: CommandContext, command: ScanCommand): void {
   // snapshot serializer keep its native mask path on pulse frames.
   const sim = getSimWasm();
   if (sim !== undefined) {
-    sim.combatTargeting.addSensorObservationCircle(command.playerId, x, y, z, SCAN_PULSE_RADIUS);
+    sim.combatTargeting.addSensorObservationCircle(
+      command.playerId,
+      ctx.world.getTeamId(command.playerId),
+      x,
+      y,
+      z + SCAN_PULSE_SENSOR_EYE_HEIGHT,
+      SCAN_PULSE_RADIUS,
+    );
   }
   // Pulse the marker visual through the existing ping channel so the
   // player sees where their sweep landed without a separate renderer.
