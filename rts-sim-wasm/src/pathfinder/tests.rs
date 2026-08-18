@@ -596,28 +596,85 @@ fn fine_a_star_resumes_the_same_frontier_across_slices() {
     let first = pathfinder_a_star_slice(
         &mut state, 0, 0, 11, 11, traversal, profile, 1,
     );
-    assert!(matches!(first, AStarSliceOutcome::Pending(1)));
+    assert!(matches!(
+        first,
+        AStarSliceOutcome::Pending {
+            total_expanded: 1,
+            expanded_this_slice: 1,
+        }
+    ));
     let search_generation = state.current_gen;
     assert_ne!(search_generation, generation_before);
 
     let second = pathfinder_a_star_slice(
         &mut state, 0, 0, 11, 11, traversal, profile, 1,
     );
-    assert!(matches!(second, AStarSliceOutcome::Pending(2)));
+    assert!(matches!(
+        second,
+        AStarSliceOutcome::Pending {
+            total_expanded: 2,
+            expanded_this_slice: 1,
+        }
+    ));
     assert_eq!(state.current_gen, search_generation, "resume must not reset scores");
 
     let result = loop {
         match pathfinder_a_star_slice(
             &mut state, 0, 0, 11, 11, traversal, profile, 2,
         ) {
-            AStarSliceOutcome::Pending(_) => continue,
-            AStarSliceOutcome::Complete(result) => break result,
+            AStarSliceOutcome::Pending { .. } => continue,
+            AStarSliceOutcome::Complete { result, .. } => break result,
         }
     }
     .expect("open grid must complete");
     assert!(result.reached_goal);
     assert!(result.expanded_nodes > 2);
     assert_eq!(state.path_scratch.last().copied(), Some((11 * 12 + 11) as u32));
+}
+
+#[test]
+fn fine_a_star_frontiers_resume_independently_per_team_owner() {
+    let mut state = open_test_state(12, 12);
+    let traversal = ground_traversal();
+    state.cur_waypoint_traversal = traversal;
+    let profile = ground_cost_profile(GRAVITY);
+
+    pathfinder_switch_fine_arena(&mut state, 1);
+    assert!(matches!(
+        pathfinder_a_star_slice(&mut state, 0, 0, 11, 11, traversal, profile, 1),
+        AStarSliceOutcome::Pending { total_expanded: 1, .. }
+    ));
+
+    pathfinder_switch_fine_arena(&mut state, 2);
+    assert!(matches!(
+        pathfinder_a_star_slice(&mut state, 11, 0, 0, 11, traversal, profile, 1),
+        AStarSliceOutcome::Pending { total_expanded: 1, .. }
+    ));
+
+    pathfinder_switch_fine_arena(&mut state, 1);
+    assert!(matches!(
+        pathfinder_a_star_slice(&mut state, 0, 0, 11, 11, traversal, profile, 1),
+        AStarSliceOutcome::Pending { total_expanded: 2, .. }
+    ));
+    pathfinder_switch_fine_arena(&mut state, 2);
+    assert!(matches!(
+        pathfinder_a_star_slice(&mut state, 11, 0, 0, 11, traversal, profile, 1),
+        AStarSliceOutcome::Pending { total_expanded: 2, .. }
+    ));
+}
+
+#[test]
+fn consolidated_building_occupancy_rejects_any_contained_build_square() {
+    let mut state = open_test_state(4, 3);
+    state.consolidation_multiplier = 3;
+    let gx = [-1, 0, 2, 3, 5, 6, 99];
+    let gy = [0, 0, 2, 3, 5, 0, 0];
+    pathfinder_mark_consolidated_building_cells(&mut state, &gx, &gy);
+
+    assert_eq!(state.building_blocked[0], 1, "0 and 2 share coarse cell 0,0");
+    assert_eq!(state.building_blocked[1 * 4 + 1], 1, "3 and 5 share coarse cell 1,1");
+    assert_eq!(state.building_blocked[2], 1, "build cell 6 maps to coarse cell 2,0");
+    assert_eq!(state.building_blocked.iter().filter(|&&v| v != 0).count(), 3);
 }
 
 #[test]
@@ -636,8 +693,8 @@ fn sliced_a_star_can_exhaust_more_than_the_old_fifty_thousand_node_cap() {
         match pathfinder_a_star_slice(
             &mut state, 2, 152, 402, 152, traversal, profile, 1024,
         ) {
-            AStarSliceOutcome::Pending(_) => continue,
-            AStarSliceOutcome::Complete(result) => break result,
+            AStarSliceOutcome::Pending { .. } => continue,
+            AStarSliceOutcome::Complete { result, .. } => break result,
         }
     }
     .expect("the reachable frontier supplies a deterministic partial route");

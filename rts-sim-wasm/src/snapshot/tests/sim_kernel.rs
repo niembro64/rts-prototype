@@ -2325,7 +2325,7 @@ mod sim_kernel_tests {
     pub(crate) fn pathfinder_build_reservations_do_not_change_locomotion_surface() {
         let _guard = lock_tests();
         terrain_clear();
-        pathfinder_init(400.0, 400.0);
+        pathfinder_init(400.0, 400.0, 1);
 
         // Construction reservations are deliberately absent from the
         // locomotion surface. A hovered factory's build footprint cannot
@@ -2347,7 +2347,7 @@ mod sim_kernel_tests {
     pub(crate) fn pathfinder_does_not_rescue_a_map_edge_start() {
         let _guard = lock_tests();
         terrain_clear();
-        pathfinder_init(400.0, 400.0);
+        pathfinder_init(400.0, 400.0, 1);
 
         // The current cell is in the map-edge buffer. It used to be snapped
         // toward the goal; an invalid start now remains stranded.
@@ -2368,7 +2368,7 @@ mod sim_kernel_tests {
     pub(crate) fn pathfinder_routes_through_build_reservation_space() {
         let _guard = lock_tests();
         terrain_clear();
-        pathfinder_init(400.0, 400.0);
+        pathfinder_init(400.0, 400.0, 1);
 
         pathfinder_rebuild_terrain_mask_and_cc(10_003);
         let count = pathfinder_find_path(
@@ -2484,7 +2484,7 @@ mod sim_kernel_tests {
     pub(crate) fn pathfinder_medium_permissions_intersect_on_mixed_water_squares() {
         let _guard = lock_tests();
         install_pathfinder_water_strip_test_terrain();
-        pathfinder_init(320.0, 180.0);
+        pathfinder_init(320.0, 180.0, 1);
         pathfinder_rebuild_terrain_mask_and_cc(10_031);
 
         let ground_only_count = pathfinder_find_path(
@@ -2808,7 +2808,7 @@ mod sim_kernel_tests {
     pub(crate) fn pathfinder_can_disable_ground_slope_gates_for_unfiltered_queries() {
         let _guard = lock_tests();
         install_pathfinder_cliff_test_terrain();
-        pathfinder_init(200.0, 100.0);
+        pathfinder_init(200.0, 100.0, 1);
         pathfinder_rebuild_terrain_mask_and_cc(10_004);
 
         let count = pathfinder_find_path(
@@ -2827,7 +2827,7 @@ mod sim_kernel_tests {
     pub(crate) fn pathfinder_rejects_uphill_cliff_climb() {
         let _guard = lock_tests();
         install_pathfinder_cliff_test_terrain();
-        pathfinder_init(200.0, 100.0);
+        pathfinder_init(200.0, 100.0, 1);
         pathfinder_rebuild_terrain_mask_and_cc(10_005);
 
         let mut waypoint_valid = [0u8; 50];
@@ -2973,7 +2973,7 @@ mod sim_kernel_tests {
     pub(crate) fn pathfinder_strands_a_steep_wall_start() {
         let _guard = lock_tests();
         install_pathfinder_sloped_wall_escape_test_terrain();
-        pathfinder_init(200.0, 100.0);
+        pathfinder_init(200.0, 100.0, 1);
         pathfinder_rebuild_terrain_mask_and_cc(10_006);
 
         let mut waypoint_valid = [0u8; 50];

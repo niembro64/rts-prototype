@@ -16,22 +16,26 @@ export interface PathfinderApi {
     waterSurfaceSupported: boolean,
     out: Float64Array,
   ) => number;
-  /** Allocate the per-cell SoA arrays for the given map dimensions.
-   *  Idempotent if map size is unchanged. Recomputes cell counts as
-   *  `ceil(mapW/20), ceil(mapH/20)`. */
-  init: (mapWidth: number, mapHeight: number) => void;
+  /** Allocate the per-cell SoA arrays for the given map dimensions and
+   *  build-square consolidation multiplier (1..5). */
+  init: (
+    mapWidth: number,
+    mapHeight: number,
+    consolidationMultiplier: number,
+  ) => void;
   /** Rebuild the terrain-only locomotion mask and connected components.
    *  Resets the building occupancy layer (version 0) so the caller resyncs
    *  it afterward. */
   rebuildTerrainMaskAndCc: (terrainVersion: number) => void;
   /** Replace the building occupancy layer with the given grounded footprint
-   *  cells (shared 20-wu build/path grid) and re-run the O(n)
+   *  cells in canonical 20-wu build-grid coordinates; Rust conservatively
+   *  maps them into the configured path grid and re-runs the O(n)
    *  blocked/clearance/component sweeps. Hovering structures are never
    *  submitted. */
   syncBuildingOccupancy: (cellGx: Int32Array, cellGy: Int32Array, version: number) => number;
   /** Version of the installed building occupancy layer; 0 = not synced. */
   buildingOccupancyVersion: () => number;
-  /** Bake authoritative WAYPOINT and MOVE validity for every build square.
+  /** Bake authoritative WAYPOINT and MOVE validity for every path square.
    *  Both arrays must hold at least gridWidth()*gridHeight() bytes. */
   bakeTraversabilityGrid: (
     minGroundNormalZ: number,
@@ -107,16 +111,22 @@ export interface PathfinderApi {
     safeWaterDriveAccel: number,
     staticFrictionCoefficient: number,
     symmetricSlope: boolean,
+    /** Stable ally-team id owning this resumable frontier. */
+    continuationOwner: number,
     expansionBudget: number,
   ) => number;
-  /** Discard the retained fine-grid frontier when its owning intent dies. */
-  cancelPathSlice: () => void;
+  /** Discard one ally team's retained frontier when its owning intent dies. */
+  cancelPathSlice: (continuationOwner: number) => void;
+  /** Discard every retained team frontier at match teardown/invalidation. */
+  cancelAllPathSlices: () => void;
   /** Resolution code for the most recent findPath call:
    *  0 unreachable, 1 complete, 2 snapped, 3 partial, 4 pending. */
   lastResultStatus: () => number;
   /** Search strategy: 0 none, 1 direct, 2 hierarchical, 3 fine A*. */
   lastSearchStrategy: () => number;
   lastFineExpandedNodes: () => number;
+  /** Fine-grid nodes closed by the most recent call, excluding prior slices. */
+  lastFineExpandedNodesThisSlice: () => number;
   lastCoarseExpandedNodes: () => number;
   lastCoarseRefinementPasses: () => number;
   lastCoarseExactEdgeChecks: () => number;

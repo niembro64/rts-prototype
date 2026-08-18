@@ -235,6 +235,19 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
           >{{ opt === 0 ? 'OFF' : opt.toLocaleString() }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
+      <BarControlGroup v-if="!model.gameStarted">
+        <BarDivider />
+        <BarLabel title="Build squares consolidated along each axis into one conservative pathfinding square">PATH CELL:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in BATTLE_CONFIG.pathfindingCellConsolidation.options"
+            :key="opt"
+            :active="model.pathfindingCellConsolidation === opt"
+            :title="`${opt}×${opt} build squares per pathfinding square`"
+            @click="model.applyPathfindingCellConsolidation(opt)"
+          >{{ opt }}×{{ opt }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel title="Entities alive match-wide (units + buildings) / entity count cap">ENTITIES:</BarLabel>

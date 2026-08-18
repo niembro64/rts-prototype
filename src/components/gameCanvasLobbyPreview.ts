@@ -8,6 +8,7 @@ import {
   loadStoredPerimeterMagnitude,
   loadStoredTerrainDTerrain,
   loadStoredTerrainDetail,
+  loadStoredPathfindingCellConsolidation,
   type BattleMode,
 } from '../battleBarConfig';
 import type { PlayerId } from '../game/sim/types';
@@ -28,6 +29,7 @@ type GameCanvasLobbyPreviewOptions = {
   plateauWallSlopeDegrees: Ref<number>;
   metalDepositStep: Ref<number>;
   terrainDetail: Ref<number>;
+  pathfindingCellConsolidation: Ref<number>;
   mapWidthLandCells: Ref<number>;
   mapLengthLandCells: Ref<number>;
   stopBackgroundBattle: () => void;
@@ -50,6 +52,7 @@ export function useGameCanvasLobbyPreview({
   plateauWallSlopeDegrees,
   metalDepositStep,
   terrainDetail,
+  pathfindingCellConsolidation,
   mapWidthLandCells,
   mapLengthLandCells,
   stopBackgroundBattle,
@@ -76,6 +79,8 @@ export function useGameCanvasLobbyPreview({
     plateauWallSlopeDegrees.value = loadStoredPlateauWallSlopeDegrees(mode);
     metalDepositStep.value = loadStoredMetalDepositStep(mode);
     terrainDetail.value = loadStoredTerrainDetail(mode);
+    pathfindingCellConsolidation.value =
+      loadStoredPathfindingCellConsolidation(mode);
     const mapDimensions = loadStoredMapLandDimensions(mode);
     mapWidthLandCells.value = mapDimensions.widthLandCells;
     mapLengthLandCells.value = mapDimensions.lengthLandCells;

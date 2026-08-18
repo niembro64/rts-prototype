@@ -1,5 +1,14 @@
 use super::*;
 
+#[inline]
+fn pathfinder_hierarchy_cluster_size(state: &PathfinderState) -> i32 {
+    ((PATHFINDING_HIERARCHICAL_CLUSTER_SIZE_CELLS
+        + state.consolidation_multiplier as i32
+        - 1)
+        / state.consolidation_multiplier as i32)
+        .max(1)
+}
+
 pub(super) struct HierarchicalAStarResult {
     pub(super) route_cost: f32,
     pub(super) expanded_nodes: u32,
@@ -95,7 +104,7 @@ fn pathfinder_hierarchy_resolve_node_cell(
         return if cached >= 0 { Some(cached) } else { None };
     }
 
-    let cluster_size = PATHFINDING_HIERARCHICAL_CLUSTER_SIZE_CELLS;
+    let cluster_size = pathfinder_hierarchy_cluster_size(state);
     let cluster_x = node as i32 % state.hierarchy_grid_w;
     let cluster_y = node as i32 / state.hierarchy_grid_w;
     let min_gx = cluster_x * cluster_size;
@@ -156,14 +165,20 @@ fn pathfinder_hierarchy_node_position(
     let fine_idx = pathfinder_hierarchy_resolve_node_cell(state, node, traversal)?;
     let gx = fine_idx % state.grid_w;
     let gy = (fine_idx - gx) / state.grid_w;
-    Some(pathfinder_cell_center(gx, gy))
+    Some(pathfinder_cell_center_for_state(state, gx, gy))
 }
 
 #[inline]
-fn pathfinder_hierarchy_heuristic(x: f64, y: f64, goal_x: f64, goal_y: f64) -> f32 {
+fn pathfinder_hierarchy_heuristic(
+    state: &PathfinderState,
+    x: f64,
+    y: f64,
+    goal_x: f64,
+    goal_y: f64,
+) -> f32 {
     let dx = x - goal_x;
     let dy = y - goal_y;
-    ((dx * dx + dy * dy).sqrt() / PATHFINDER_BUILD_GRID_CELL_SIZE) as f32
+    ((dx * dx + dy * dy).sqrt() / state.cell_size) as f32
 }
 
 /// Find a deterministic fine-grid portal across the shared boundary of two
@@ -178,7 +193,7 @@ fn pathfinder_hierarchy_boundary_transition(
     to: u32,
     traversal: PathfinderTraversal,
 ) -> Option<(i32, i32)> {
-    let cluster_size = PATHFINDING_HIERARCHICAL_CLUSTER_SIZE_CELLS;
+    let cluster_size = pathfinder_hierarchy_cluster_size(state);
     let from_cx = from as i32 % state.hierarchy_grid_w;
     let from_cy = from as i32 / state.hierarchy_grid_w;
     let to_cx = to as i32 % state.hierarchy_grid_w;
@@ -306,7 +321,7 @@ fn pathfinder_hierarchy_edge_cost(
     );
     let cost = match (from_position, to_position) {
         (Some((from_x, from_y)), Some((to_x, to_y))) => {
-            Some(pathfinder_hierarchy_heuristic(from_x, from_y, to_x, to_y))
+            Some(pathfinder_hierarchy_heuristic(state, from_x, from_y, to_x, to_y))
         }
         _ => None,
     };
@@ -365,8 +380,10 @@ fn pathfinder_hierarchy_refine_candidate(
         let portal_from_gy = portal_from / state.grid_w;
         let portal_to_gx = portal_to % state.grid_w;
         let portal_to_gy = portal_to / state.grid_w;
-        let portal_from_position = pathfinder_cell_center(portal_from_gx, portal_from_gy);
-        let portal_to_position = pathfinder_cell_center(portal_to_gx, portal_to_gy);
+        let portal_from_position =
+            pathfinder_cell_center_for_state(state, portal_from_gx, portal_from_gy);
+        let portal_to_position =
+            pathfinder_cell_center_for_state(state, portal_to_gx, portal_to_gy);
 
         state.last_coarse_exact_edge_checks += 1;
         let Some(approach_cost) = pathfinder_line_cost(
@@ -452,7 +469,7 @@ pub(super) fn pathfinder_hierarchical_a_star(
     {
         return None;
     }
-    let cluster_size = PATHFINDING_HIERARCHICAL_CLUSTER_SIZE_CELLS;
+    let cluster_size = pathfinder_hierarchy_cluster_size(state);
     let hierarchy_grid_w = (state.grid_w + cluster_size - 1) / cluster_size;
     let hierarchy_grid_h = (state.grid_h + cluster_size - 1) / cluster_size;
     let node_count = (hierarchy_grid_w * hierarchy_grid_h) as usize;
@@ -504,7 +521,7 @@ pub(super) fn pathfinder_hierarchical_a_star(
         state.hierarchy_path.clear();
         state.hierarchy_g_score[start_node as usize] = 0.0;
         state.hierarchy_f_score[start_node as usize] =
-            pathfinder_hierarchy_heuristic(start_x, start_y, goal_x, goal_y);
+            pathfinder_hierarchy_heuristic(state, start_x, start_y, goal_x, goal_y);
         pathfinder_hierarchy_heap_push(state, start_node);
 
         let mut expanded = 0u32;
@@ -566,7 +583,13 @@ pub(super) fn pathfinder_hierarchical_a_star(
                     continue;
                 };
                 state.hierarchy_f_score[next_idx] = tentative
-                    + pathfinder_hierarchy_heuristic(next_world_x, next_world_y, goal_x, goal_y);
+                    + pathfinder_hierarchy_heuristic(
+                        state,
+                        next_world_x,
+                        next_world_y,
+                        goal_x,
+                        goal_y,
+                    );
                 pathfinder_hierarchy_heap_push(state, next);
             }
         }

@@ -70,14 +70,14 @@ const BASE_REAL_CONFIG: GameServerConfig = {
 
 const CASES: readonly DeterministicReplayCase[] = [
   {
-    id: 'real-idle-2p-120t',
-    ticks: 120,
+    id: 'real-idle-2p-80t',
+    ticks: 80,
     config: BASE_REAL_CONFIG,
     buildCommands: () => [],
   },
   {
-    id: 'real-commander-move-2p-180t',
-    ticks: 180,
+    id: 'real-commander-move-2p-120t',
+    ticks: 120,
     config: BASE_REAL_CONFIG,
     buildCommands: (core, frame) => {
       if (frame !== 0) return [];
@@ -97,8 +97,8 @@ const CASES: readonly DeterministicReplayCase[] = [
     },
   },
   {
-    id: 'real-construction-economy-scan-2p-300t',
-    ticks: 300,
+    id: 'real-construction-economy-scan-2p-200t',
+    ticks: 200,
     config: BASE_REAL_CONFIG,
     buildCommands: (core, frame) => {
       const commander = requireCommander(core, 1 as PlayerId);
@@ -144,8 +144,8 @@ const CASES: readonly DeterministicReplayCase[] = [
     },
   },
   {
-    id: 'real-prebuilt-factory-production-2p-240t',
-    ticks: 240,
+    id: 'real-prebuilt-factory-production-2p-160t',
+    ticks: 160,
     config: BASE_REAL_CONFIG,
     setup: (core) => {
       const commander = requireCommander(core, 1 as PlayerId);
@@ -177,8 +177,8 @@ const CASES: readonly DeterministicReplayCase[] = [
     },
   },
   {
-    id: 'real-simultaneous-factory-production-2p-300t',
-    ticks: 300,
+    id: 'real-simultaneous-factory-production-2p-200t',
+    ticks: 200,
     config: BASE_REAL_CONFIG,
     setup: (core) => {
       createActiveFactoryNear(core, requireCommander(core, 1 as PlayerId));
@@ -248,10 +248,10 @@ const CASES: readonly DeterministicReplayCase[] = [
     },
   },
   {
-    id: 'real-simultaneous-projectile-death-cleanup-2p-250t',
-    // Self-destruct arms a 150-tick countdown (BAR semantics) before
+    id: 'real-simultaneous-projectile-death-cleanup-2p-167t',
+    // Self-destruct arms a 100-tick countdown (five seconds at 20 Hz) before
     // the zero-hp detonation; budget the countdown plus cleanup.
-    ticks: 250,
+    ticks: 167,
     config: BASE_REAL_CONFIG,
     buildCommands: (core, frame) => {
       if (frame !== 0) return [];
@@ -296,9 +296,9 @@ const CASES: readonly DeterministicReplayCase[] = [
     },
   },
   {
-    id: 'real-self-destruct-death-cleanup-2p-250t',
-    // Covers the 150-tick self-destruct countdown plus death cleanup.
-    ticks: 250,
+    id: 'real-self-destruct-death-cleanup-2p-167t',
+    // Covers the 100-tick self-destruct countdown plus death cleanup.
+    ticks: 167,
     config: BASE_REAL_CONFIG,
     buildCommands: (core, frame) => {
       if (frame !== 0) return [];
@@ -319,8 +319,8 @@ const CASES: readonly DeterministicReplayCase[] = [
     },
   },
   {
-    id: 'real-queen-mobile-factory-2p-150t',
-    ticks: 150,
+    id: 'real-queen-mobile-factory-2p-100t',
+    ticks: 100,
     config: BASE_REAL_CONFIG,
     setup: (core) => {
       createActiveQueenNear(core, requireCommander(core, 1 as PlayerId), 'unitQueenBee');
@@ -347,8 +347,8 @@ const CASES: readonly DeterministicReplayCase[] = [
     },
   },
   {
-    id: 'real-queen-mobile-factory-attach-release-2p-180t',
-    ticks: 180,
+    id: 'real-queen-mobile-factory-attach-release-2p-120t',
+    ticks: 120,
     config: BASE_REAL_CONFIG,
     setup: (core) => {
       createActiveQueenNear(core, requireCommander(core, 1 as PlayerId), 'unitQueenBee');

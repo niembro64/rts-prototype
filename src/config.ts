@@ -161,7 +161,7 @@ export const BEAM_PULSE_ON_TIME_RANDOMNESS = beamConfigJson.pulse.onTimeRandomne
 export const BEAM_PULSE_OFF_TIME_MS = beamConfigJson.pulse.offTimeMs;
 export const BEAM_PULSE_OFF_TIME_RANDOMNESS = beamConfigJson.pulse.offTimeRandomness;
 /** Full beam-path searches run in a deterministic tick-phase ring. One tick
- * uses the maximum authoritative 30 Hz cadence (33.3 ms between traces). */
+ * uses the authoritative 20 Hz cadence (50 ms between traces). */
 export const BEAM_PULSE_COLLISION_SAMPLE_INTERVAL_TICKS =
   beamConfigJson.pulse.collisionSampleIntervalTicks;
 export const BEAM_PULSE_ACTIVE_OUTPUT_MULTIPLIER = beamConfigJson.pulse.activeOutputMultiplier;

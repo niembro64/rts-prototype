@@ -4,18 +4,16 @@ import {
 } from './pathfindingTuning';
 import type { AllyTeamId, TeamRoster } from './teamRoster';
 
-// SimulationPathPlanScheduler — deterministic admission queue for the single
-// authoritative resumable A* job.
+// SimulationPathPlanScheduler — deterministic per-side admission queues.
 //
 // Commands execute independently. This queue contains only derived route
 // intent, split into fresh (no usable route) and refresh (safe old route) lanes.
-// At most one callback may report consuming A* work per tick. Stale entries,
-// exact direct segments, and cache hits return false and are drained for free.
+// One selected ally team drains its deterministic work quantum each tick.
+// Stale entries, exact direct segments, and cache hits return false and are
+// drained without consuming a route admission.
 //
-// Ally-team order rotates by tick; player order rotates inside the chosen team.
-// This mirrors side-level entity-cap fairness without allowing a multi-seat side
-// to multiply global path throughput. Every decision uses stable IDs and fixed
-// ticks, never measured time.
+// The Simulation selects the team round-robin. Player order rotates inside
+// that team by team-turn number, so extra seats do not multiply throughput.
 
 export const PATH_REQUEST_NONE = 0;
 export const PATH_REQUEST_FRESH = 1;
@@ -35,11 +33,25 @@ type PlayerPathRequestLanes = {
   refresh: PathRequestLaneQueue;
 };
 
-/** Return true only when the global A* slice was consumed. */
+/** Return true only when a real A* job was admitted for the selected team. */
 export type PathPlanServe = (entityId: EntityId, lane: number) => boolean;
+
+export function selectPathPlanTeamTurn(
+  tick: number,
+  roster: TeamRoster,
+): { teamId: AllyTeamId; teamTurn: number } | null {
+  const teamCount = roster.allyTeamIds.length;
+  if (teamCount === 0) return null;
+  const safeTick = Math.max(0, Math.floor(tick));
+  return {
+    teamId: roster.allyTeamIds[safeTick % teamCount],
+    teamTurn: Math.floor(safeTick / teamCount),
+  };
+}
 
 export class SimulationPathPlanScheduler {
   private readonly lanes = new Map<PlayerId, PlayerPathRequestLanes>();
+  private readonly nextPlayerIndexByTeam = new Map<AllyTeamId, number>();
 
   requestFresh(entity: Entity, forceLocal: boolean): void {
     const unit = entity.unit;
@@ -59,31 +71,33 @@ export class SimulationPathPlanScheduler {
     unit.pathRequestLane = PATH_REQUEST_REFRESH;
   }
 
-  /** Admit no more than one real A* job/slice. The preferred lane is tried
-   *  across every side before falling back to the other lane, preventing a
-   *  large fresh burst from permanently starving safe-route refreshes. */
-  drain(tick: number, roster: TeamRoster, serve: PathPlanServe): boolean {
-    const teams = roster.allyTeamIds;
-    if (teams.length === 0 || this.lanes.size === 0) return false;
-    const preferRefresh = tick % PATHFINDING_REFRESH_SERVICE_INTERVAL_TICKS === 0;
+  /** Admit one real A* job for the selected team. The team may call this
+   *  repeatedly while work remains. Refresh priority uses team-turn time so
+   *  team counts cannot pin one side permanently to one lane preference. */
+  drainTeam(
+    teamTurn: number,
+    roster: TeamRoster,
+    teamId: AllyTeamId,
+    serve: PathPlanServe,
+  ): boolean {
+    if (this.lanes.size === 0) return false;
+    const preferRefresh =
+      teamTurn % PATHFINDING_REFRESH_SERVICE_INTERVAL_TICKS === 0;
     const laneOrder = preferRefresh ? REFRESH_FIRST_LANES : FRESH_FIRST_LANES;
-    const teamStart = tick % teams.length;
     for (let laneIndex = 0; laneIndex < laneOrder.length; laneIndex++) {
       const lane = laneOrder[laneIndex];
-      for (let offset = 0; offset < teams.length; offset++) {
-        const teamId = teams[(teamStart + offset) % teams.length];
-        if (this.drainTeamLane(tick, roster, teamId, lane, serve)) return true;
-      }
+      if (this.drainTeamLane(teamTurn, roster, teamId, lane, serve)) return true;
     }
     return false;
   }
 
   reset(): void {
     this.lanes.clear();
+    this.nextPlayerIndexByTeam.clear();
   }
 
   private drainTeamLane(
-    tick: number,
+    teamTurn: number,
     roster: TeamRoster,
     teamId: AllyTeamId,
     lane: number,
@@ -91,7 +105,8 @@ export class SimulationPathPlanScheduler {
   ): boolean {
     const players = roster.playersByAllyTeam.get(teamId);
     if (players === undefined || players.length === 0) return false;
-    const playerStart = tick % players.length;
+    const playerStart = this.nextPlayerIndexByTeam.get(teamId) ??
+      teamTurn % players.length;
     for (let offset = 0; offset < players.length; offset++) {
       const playerId = players[(playerStart + offset) % players.length];
       const lanes = this.lanes.get(playerId);
@@ -99,7 +114,13 @@ export class SimulationPathPlanScheduler {
       const queue = lane === PATH_REQUEST_FRESH ? lanes.fresh : lanes.refresh;
       // Invalid entries and free direct/cache results do not spend A* work.
       while (laneSize(queue) > 0) {
-        if (serve(popLane(queue), lane)) return true;
+        if (serve(popLane(queue), lane)) {
+          this.nextPlayerIndexByTeam.set(
+            teamId,
+            (playerStart + offset + 1) % players.length,
+          );
+          return true;
+        }
       }
     }
     return false;

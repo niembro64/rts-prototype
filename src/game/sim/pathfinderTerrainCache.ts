@@ -1,9 +1,18 @@
 import { getSimWasm } from '../sim-wasm/init';
 import { getTerrainVersion } from './Terrain';
+import {
+  DEFAULT_PATHFINDING_CELL_CONSOLIDATION_MULTIPLIER,
+  normalizePathfindingCellConsolidationMultiplier,
+  type PathfindingCellConsolidationMultiplier,
+} from '@/types/pathfinding';
 
 let initializedMapWidth = 0;
 let initializedMapHeight = 0;
+let initializedConsolidationMultiplier = 0;
 let initializedSim: ReturnType<typeof getSimWasm> | null = null;
+let pathfindingCellConsolidationMultiplier:
+  PathfindingCellConsolidationMultiplier =
+  DEFAULT_PATHFINDING_CELL_CONSOLIDATION_MULTIPLIER;
 
 /** Provider of the current simulation's grounded building footprint cells.
  * Registered by the owning Simulation; the pathfinder cache pulls from it
@@ -26,19 +35,44 @@ export function registerPathfinderBuildingOccupancy(
   syncedSource = null;
 }
 
+export function configurePathfindingCellConsolidationMultiplier(
+  value: number,
+): void {
+  const normalized = normalizePathfindingCellConsolidationMultiplier(value);
+  if (pathfindingCellConsolidationMultiplier === normalized) return;
+  pathfindingCellConsolidationMultiplier = normalized;
+  initializedConsolidationMultiplier = 0;
+  syncedSource = null;
+}
+
+export function getPathfindingCellConsolidationMultiplier():
+  PathfindingCellConsolidationMultiplier {
+  return pathfindingCellConsolidationMultiplier;
+}
+
 function ensureInitialized(mapWidth: number, mapHeight: number): void {
   const sim = getSimWasm()!;
   if (sim !== initializedSim) {
     initializedSim = sim;
     initializedMapWidth = 0;
     initializedMapHeight = 0;
+    initializedConsolidationMultiplier = 0;
     syncedSource = null;
   }
-  if (mapWidth === initializedMapWidth && mapHeight === initializedMapHeight) return;
+  if (
+    mapWidth === initializedMapWidth &&
+    mapHeight === initializedMapHeight &&
+    pathfindingCellConsolidationMultiplier === initializedConsolidationMultiplier
+  ) return;
 
-  sim.pathfinder.init(mapWidth, mapHeight);
+  sim.pathfinder.init(
+    mapWidth,
+    mapHeight,
+    pathfindingCellConsolidationMultiplier,
+  );
   initializedMapWidth = mapWidth;
   initializedMapHeight = mapHeight;
+  initializedConsolidationMultiplier = pathfindingCellConsolidationMultiplier;
 }
 
 function syncBuildingOccupancy(): void {

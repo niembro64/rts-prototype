@@ -28,6 +28,7 @@ import { createPhysicsBodyForUnit } from '../server/unitPhysicsBody';
 import { createWreckFromDeadUnit } from './wrecks';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { deterministicMath as DMath } from './deterministicMath';
+import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
 import { FLAT_GROUND_BUILD_SQUARE_FLAGS } from './terrain/terrainBuildability';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -2438,7 +2439,7 @@ export function runCommandExecutionContractTest(): void {
     },
   ]);
   const queuedSelfdActivationTick = captureWorld.getTick();
-  captureSim.update(1000 / 30);
+  captureSim.update(1000 / ARCHITECTURE_CONFIG.lockstep.fixedStepHz);
   const queuedSelfdActionsAfterActivation: number = queuedSelfdUnit.unit.actions.length;
   assertContract(
     armedMap.get(queuedSelfdUnit.id) === queuedSelfdActivationTick + SELF_DESTRUCT_COUNTDOWN_TICKS &&
@@ -2452,7 +2453,7 @@ export function runCommandExecutionContractTest(): void {
     step <= SELF_DESTRUCT_COUNTDOWN_TICKS + 2 && doomed.unit.hp > 0;
     step++
   ) {
-    captureSim.update(1000 / 30);
+    captureSim.update(1000 / ARCHITECTURE_CONFIG.lockstep.fixedStepHz);
   }
   assertContract(
     doomed.unit.hp <= 0,

@@ -1,7 +1,7 @@
 // presentation — Recoil-style fixed-tick render history.
 //
 // The deterministic simulation owns the current EntityState/TurretPool slabs.
-// At the end of every 30 Hz fixed tick we retain two adjacent immutable views
+// At the end of every 20 Hz fixed tick we retain two adjacent immutable views
 // of their presentation fields. Render frames query those views with one
 // shared alpha; positions/normals/velocities use linear interpolation and
 // full orientations use shortest-path quaternion SLERP. Gameplay never reads

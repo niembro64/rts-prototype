@@ -49,8 +49,13 @@ type Vec2 = { x: number; y: number };
 type PathResolution = 'complete' | 'snapped' | 'partial' | 'unreachable';
 
 type PathQueryResult =
-  | { status: 'pending' }
-  | { status: 'complete'; points: Vec2[]; resolution: PathResolution };
+  | { status: 'pending'; expansionsUsed: number }
+  | {
+      status: 'complete';
+      points: Vec2[];
+      resolution: PathResolution;
+      expansionsUsed: number;
+    };
 
 export type ExpandedPathPlan = {
   points: UnitPathPoint[];
@@ -58,8 +63,8 @@ export type ExpandedPathPlan = {
 };
 
 export type PathPlanSliceResult =
-  | { status: 'pending' }
-  | { status: 'complete'; plan: ExpandedPathPlan };
+  | { status: 'pending'; expansionsUsed: number }
+  | { status: 'complete'; plan: ExpandedPathPlan; expansionsUsed: number };
 
 /** When true, every path produced by `expandPathActions` is walked
  *  segment-by-segment and any world-space sample outside its exclusive
@@ -98,6 +103,7 @@ function findPath(
   unitRadius: number,
   symmetricSlope: boolean,
   expansionBudget: number | null = null,
+  continuationOwner: number = 0,
 ): PathQueryResult {
   ensurePathfinderTerrain(mapWidth, mapHeight);
   const traversal = resolvePathfinderTraversalInput(terrainFilter);
@@ -146,9 +152,11 @@ function findPath(
         traversal.safeWaterDriveAccel,
         traversal.staticFrictionCoefficient,
         symmetricSlope,
+        continuationOwner,
         expansionBudget,
       );
   const resultStatus = sim.pathfinder.lastResultStatus();
+  const expansionsUsed = sim.pathfinder.lastFineExpandedNodesThisSlice();
   const pending = resultStatus === 4;
   const resolution = decodePathResolution(resultStatus);
   debugLog(GAME_DIAGNOSTICS.pathfindingSearch, '[pathfinding-search]', {
@@ -166,12 +174,13 @@ function findPath(
     start: { x: startX, y: startY },
     goal: { x: goalX, y: goalY },
   });
-  if (pending) return { status: 'pending' };
+  if (pending) return { status: 'pending', expansionsUsed };
   if (count === 0) {
     return {
       status: 'complete',
       points: [{ x: startX, y: startY }],
       resolution: 'unreachable',
+      expansionsUsed,
     };
   }
   const view = new Float64Array(sim.memory.buffer, sim.pathfinder.waypointsPtr(), count * 2);
@@ -179,7 +188,7 @@ function findPath(
   for (let i = 0; i < count; i++) {
     result[i] = { x: view[i * 2], y: view[i * 2 + 1] };
   }
-  return { status: 'complete', points: result, resolution };
+  return { status: 'complete', points: result, resolution, expansionsUsed };
 }
 
 // ── Path validator (developer self-check) ────────────────────────
@@ -328,9 +337,10 @@ export function expandPathPlan(
   );
 }
 
-/** Advance the one authoritative resumable path job by a deterministic node
- *  budget. The caller must repeat the exact same inputs until completion or
- *  explicitly abandon the job; the WASM arena retains the fine-A* frontier. */
+/** Advance one team's authoritative resumable path job by a deterministic
+ *  node budget. The caller must repeat the exact same inputs until completion
+ *  or explicitly abandon the job; the team-owned WASM arena retains the
+ *  fine-A* frontier. */
 export function advancePathPlanSlice(
   startX: number, startY: number,
   goalX: number, goalY: number,
@@ -339,6 +349,7 @@ export function advancePathPlanSlice(
   terrainFilter: PathTerrainFilter | null,
   unitRadius: number,
   symmetricSlope: boolean,
+  continuationOwner: number,
   expansionBudget: number,
 ): PathPlanSliceResult {
   const result = findPath(
@@ -352,6 +363,7 @@ export function advancePathPlanSlice(
     unitRadius,
     symmetricSlope,
     expansionBudget,
+    continuationOwner,
   );
   if (result.status === 'pending') return result;
   return {
@@ -367,11 +379,16 @@ export function advancePathPlanSlice(
       goalZ,
       terrainFilter,
     ),
+    expansionsUsed: result.expansionsUsed,
   };
 }
 
-export function cancelPathPlanSlice(): void {
-  getSimWasm()?.pathfinder.cancelPathSlice();
+export function cancelPathPlanSlice(continuationOwner: number): void {
+  getSimWasm()?.pathfinder.cancelPathSlice(continuationOwner);
+}
+
+export function cancelAllPathPlanSlices(): void {
+  getSimWasm()?.pathfinder.cancelAllPathSlices();
 }
 
 function materializeExpandedPathPlan(

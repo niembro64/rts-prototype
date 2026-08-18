@@ -25,6 +25,7 @@ import {
   getUnitCap,
   normalizeCenterMagnitude,
   normalizeConverterTax,
+  normalizePathfindingCellConsolidation,
   normalizeDividersMagnitude,
   normalizeMetalDepositStep,
   normalizePlateauWallSlopeDegrees,
@@ -34,6 +35,7 @@ import {
   savePlateauWallSlopeDegrees,
   saveCenterMagnitude,
   saveConverterTax,
+  savePathfindingCellConsolidation,
   saveDividersMagnitude,
   saveMapLandDimensions,
   saveMetalDepositStep,
@@ -64,6 +66,7 @@ type GameCanvasLobbySettings = {
   applyPlateauWallSlopeDegrees(value: number, broadcast?: boolean): void;
   applyMetalDepositStep(value: number, broadcast?: boolean): void;
   applyTerrainDetail(value: number, broadcast?: boolean): void;
+  applyPathfindingCellConsolidation(value: number, broadcast?: boolean): void;
   applyTerrainSurfaceMode(mode: TerrainSurfaceMode, broadcast?: boolean): void;
   applyLiquidSurfaceMode(mode: LiquidSurfaceMode, broadcast?: boolean): void;
   applyMapLandDimensions(
@@ -90,6 +93,7 @@ type GameCanvasLobbySettingsOptions = {
   plateauWallSlopeDegrees: Ref<number>;
   metalDepositStep: Ref<number>;
   terrainDetail: Ref<number>;
+  pathfindingCellConsolidation: Ref<number>;
   mapWidthLandCells: Ref<number>;
   mapLengthLandCells: Ref<number>;
   slowDownAtFinalWaypointStoreVersion: Ref<number>;
@@ -121,6 +125,7 @@ export function useGameCanvasLobbySettings({
   plateauWallSlopeDegrees,
   metalDepositStep,
   terrainDetail,
+  pathfindingCellConsolidation,
   mapWidthLandCells,
   mapLengthLandCells,
   slowDownAtFinalWaypointStoreVersion,
@@ -165,6 +170,8 @@ export function useGameCanvasLobbySettings({
       mapWidthLandCells: mapWidthLandCells.value,
       mapLengthLandCells: mapLengthLandCells.value,
       entityCountCap: getUnitCap('real'),
+      pathfindingCellConsolidationMultiplier:
+        pathfindingCellConsolidation.value,
       converterTax: loadStoredConverterTax('real'),
       slowDownAtFinalWaypoint: loadStoredSlowDownAtFinalWaypoint('real'),
       terrainSurfaceMode: loadStoredTerrainSurfaceMode('real'),
@@ -265,6 +272,20 @@ export function useGameCanvasLobbySettings({
     if (broadcast) broadcastLobbySettingsIfHost();
   }
 
+  function applyPathfindingCellConsolidation(
+    value: number,
+    broadcast = true,
+  ): void {
+    const mode = currentBattleMode.value;
+    const normalized = normalizePathfindingCellConsolidation(value);
+    const changed = pathfindingCellConsolidation.value !== normalized;
+    pathfindingCellConsolidation.value = normalized;
+    savePathfindingCellConsolidation(normalized, mode);
+    if (!changed) return;
+    restartPreviewIfNeeded();
+    if (broadcast) broadcastLobbySettingsIfHost();
+  }
+
   // The two WORLD toggles. Neither changes terrain GEOMETRY, so there is no
   // terrain runtime config to re-apply — but SURFACE decides whether deposit
   // crowns exist and which cells are metal, and LIQUID is baked into the
@@ -356,6 +377,10 @@ export function useGameCanvasLobbySettings({
     );
     const nextMetalDepositStep = normalizeMetalDepositStep(settings.metalDepositStep);
     const nextTerrainDetail = normalizeTerrainDetail(settings.terrainDetail);
+    const nextPathfindingCellConsolidation =
+      normalizePathfindingCellConsolidation(
+        settings.pathfindingCellConsolidationMultiplier,
+      );
     const nextSlowDownAtFinalWaypoint = settings.slowDownAtFinalWaypoint;
     if (!isTerrainSurfaceMode(settings.terrainSurfaceMode)) {
       throw new Error(`[lobby settings] invalid terrainSurfaceMode: ${String(settings.terrainSurfaceMode)}`);
@@ -383,6 +408,8 @@ export function useGameCanvasLobbySettings({
       nextPlateauWallSlopeDegrees !== plateauWallSlopeDegrees.value ||
       nextMetalDepositStep !== metalDepositStep.value ||
       nextTerrainDetail !== terrainDetail.value ||
+      nextPathfindingCellConsolidation !==
+        pathfindingCellConsolidation.value ||
       settings.mapWidthLandCells !== mapWidthLandCells.value ||
       settings.mapLengthLandCells !== mapLengthLandCells.value ||
       slowDownAtFinalWaypointChanged ||
@@ -396,6 +423,8 @@ export function useGameCanvasLobbySettings({
     plateauWallSlopeDegrees.value = nextPlateauWallSlopeDegrees;
     metalDepositStep.value = nextMetalDepositStep;
     terrainDetail.value = nextTerrainDetail;
+    pathfindingCellConsolidation.value =
+      nextPathfindingCellConsolidation;
     mapWidthLandCells.value = settings.mapWidthLandCells;
     mapLengthLandCells.value = settings.mapLengthLandCells;
     saveCenterMagnitude(nextCenterMagnitude, 'real');
@@ -405,6 +434,10 @@ export function useGameCanvasLobbySettings({
     savePlateauWallSlopeDegrees(nextPlateauWallSlopeDegrees, 'real');
     saveMetalDepositStep(nextMetalDepositStep, 'real');
     saveTerrainDetail(nextTerrainDetail, 'real');
+    savePathfindingCellConsolidation(
+      nextPathfindingCellConsolidation,
+      'real',
+    );
     saveMapLandDimensions(
       {
         widthLandCells: settings.mapWidthLandCells,
@@ -450,6 +483,8 @@ export function useGameCanvasLobbySettings({
       BATTLE_CONFIG.plateauWallSlopeDegrees.default;
     const metalDepositStepDefault = BATTLE_CONFIG.metalDepositStep.default;
     const terrainDetailDefault = BATTLE_CONFIG.terrainDetail.default;
+    const pathfindingCellConsolidationDefault =
+      BATTLE_CONFIG.pathfindingCellConsolidation.default;
     const mapDimensionsDefault = getDefaultMapLandDimensions();
     if (
       centerMagnitude.value === centerMagnitudeDefault &&
@@ -459,6 +494,8 @@ export function useGameCanvasLobbySettings({
       plateauWallSlopeDegrees.value === plateauWallSlopeDegreesDefault &&
       metalDepositStep.value === metalDepositStepDefault &&
       terrainDetail.value === terrainDetailDefault &&
+      pathfindingCellConsolidation.value ===
+        pathfindingCellConsolidationDefault &&
       sameMapLandDimensions(
         {
           widthLandCells: mapWidthLandCells.value,
@@ -477,6 +514,8 @@ export function useGameCanvasLobbySettings({
     plateauWallSlopeDegrees.value = plateauWallSlopeDegreesDefault;
     metalDepositStep.value = metalDepositStepDefault;
     terrainDetail.value = terrainDetailDefault;
+    pathfindingCellConsolidation.value =
+      pathfindingCellConsolidationDefault;
     mapWidthLandCells.value = mapDimensionsDefault.widthLandCells;
     mapLengthLandCells.value = mapDimensionsDefault.lengthLandCells;
     saveCenterMagnitude(centerMagnitudeDefault, mode);
@@ -486,6 +525,10 @@ export function useGameCanvasLobbySettings({
     savePlateauWallSlopeDegrees(plateauWallSlopeDegreesDefault, mode);
     saveMetalDepositStep(metalDepositStepDefault, mode);
     saveTerrainDetail(terrainDetailDefault, mode);
+    savePathfindingCellConsolidation(
+      pathfindingCellConsolidationDefault,
+      mode,
+    );
     saveMapLandDimensions(mapDimensionsDefault, mode);
     applyCurrentTerrainRuntimeConfig();
     restartPreviewIfNeeded();
@@ -501,6 +544,7 @@ export function useGameCanvasLobbySettings({
     applyPlateauWallSlopeDegrees,
     applyMetalDepositStep,
     applyTerrainDetail,
+    applyPathfindingCellConsolidation,
     applyTerrainSurfaceMode,
     applyLiquidSurfaceMode,
     applyMapLandDimensions,

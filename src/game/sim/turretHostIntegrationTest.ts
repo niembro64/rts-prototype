@@ -33,6 +33,7 @@ import {
 } from './combat/lineOfSight';
 import { buildFreeForAllRoster } from './teamRoster';
 import { resetProjectileBuffers } from './combat/projectileSystem';
+import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
 import {
   readTurretCooldownForFire,
 } from './combat/combatActivitySlab';
@@ -654,7 +655,7 @@ function assertBeamUsesSharedSnappyTurretAim(): void {
   let integratedWindowMs = 0;
   let sampleCount = 0;
   let previousSampleTick = cadenceSpawnTick;
-  const fixedStepMs = 1000 / 30;
+  const fixedStepMs = 1000 / ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
   const pulseExpiryTick = Math.ceil(pulsePlan.durationMs / fixedStepMs);
   for (let tick = 1; tick <= pulseExpiryTick; tick++) {
     const elapsedMs = Math.min(pulsePlan.durationMs, tick * fixedStepMs);

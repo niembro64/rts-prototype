@@ -1,6 +1,6 @@
 {
   "lockstep": {
-    "fixedStepHz": 30,
+    "fixedStepHz": 20,
     "inputDelayTicks": 15,
     "checksumIntervalTicks": 180,
     "stallTimeoutMs": 5000,

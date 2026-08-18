@@ -3,6 +3,7 @@ import type { MapDimensionAxisOption } from '../mapSizeConfig';
 import type { ShieldReflectionMode } from './shotTypes';
 import type { SlopePathMode } from './slopePathMode';
 import type { LiquidSurfaceMode, TerrainSurfaceMode } from './worldSurfaceMode';
+import type { PathfindingCellConsolidationMultiplier } from './pathfinding';
 
 export type UnitToggleConfig = {
   readonly default: boolean;
@@ -14,6 +15,8 @@ export type BattleBarConfig = {
    *  buildings all share this one static-host roster. */
   readonly buildings: Record<string, UnitToggleConfig>;
   readonly cap: OptionsConfig<number>;
+  /** Number of 20×20 build cells represented by one path cell on each axis. */
+  readonly pathfindingCellConsolidation: OptionsConfig<PathfindingCellConsolidationMultiplier>;
   readonly turretShieldPanelsEnabled: BooleanSetting;
   readonly turretShieldSpheresEnabled: BooleanSetting;
   readonly forceFieldsVisible: BooleanSetting;

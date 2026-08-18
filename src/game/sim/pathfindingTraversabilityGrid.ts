@@ -1,7 +1,10 @@
 import { getSimWasm } from '../sim-wasm/init';
 import { getAllUnitBlueprints, getUnitLocomotion } from './blueprints';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
-import { ensurePathfinderTerrain } from './pathfinderTerrainCache';
+import {
+  ensurePathfinderTerrain,
+  getPathfindingCellConsolidationMultiplier,
+} from './pathfinderTerrainCache';
 import {
   computeLocomotionClimbProfile,
   type LocomotionClimbProfile,
@@ -15,7 +18,7 @@ import { getAuthoritativeTerrainTileMap } from './terrain/terrainState';
 
 /**
  * Immutable match-start description of one unit's validity on every visible
- * build square. WAYPOINT is intentional destination validity; MOVE is the
+ * path square. WAYPOINT is intentional destination validity; MOVE is the
  * broader physical traversal/recovery domain.
  */
 type UnitPathTraversabilityGrid = Readonly<{
@@ -35,6 +38,7 @@ let cachedSim: ReturnType<typeof getSimWasm> | null = null;
 let cachedTerrainVersion = -1;
 let cachedMapWidth = 0;
 let cachedMapHeight = 0;
+let cachedConsolidationMultiplier = 0;
 let cachedGrids = new Map<string, UnitPathTraversabilityGrid>();
 
 function cacheMatches(mapWidth: number, mapHeight: number): boolean {
@@ -42,6 +46,7 @@ function cacheMatches(mapWidth: number, mapHeight: number): boolean {
     cachedTerrainVersion === getTerrainVersion() &&
     cachedMapWidth === mapWidth &&
     cachedMapHeight === mapHeight &&
+    cachedConsolidationMultiplier === getPathfindingCellConsolidationMultiplier() &&
     cachedGrids.size === getAllUnitBlueprints().length;
 }
 
@@ -73,11 +78,13 @@ export function precomputeAllUnitPathTraversabilityGrids(
   ensurePathfinderTerrain(mapWidth, mapHeight);
   const cellsX = sim.pathfinder.gridWidth();
   const cellsY = sim.pathfinder.gridHeight();
-  const expectedCellsX = Math.max(1, Math.ceil(mapWidth / BUILD_GRID_CELL_SIZE));
-  const expectedCellsY = Math.max(1, Math.ceil(mapHeight / BUILD_GRID_CELL_SIZE));
+  const consolidationMultiplier = getPathfindingCellConsolidationMultiplier();
+  const cellSize = BUILD_GRID_CELL_SIZE * consolidationMultiplier;
+  const expectedCellsX = Math.max(1, Math.ceil(mapWidth / cellSize));
+  const expectedCellsY = Math.max(1, Math.ceil(mapHeight / cellSize));
   if (cellsX !== expectedCellsX || cellsY !== expectedCellsY) {
     throw new Error(
-      `Pathfinder/build-grid resolution mismatch: ${cellsX}x${cellsY} vs ${expectedCellsX}x${expectedCellsY}`,
+      `Pathfinder consolidated-grid resolution mismatch: ${cellsX}x${cellsY} vs ${expectedCellsX}x${expectedCellsY}`,
     );
   }
 
@@ -121,7 +128,7 @@ export function precomputeAllUnitPathTraversabilityGrids(
       unitBlueprintId: blueprint.unitBlueprintId,
       mapWidth,
       mapHeight,
-      cellSize: BUILD_GRID_CELL_SIZE,
+      cellSize,
       cellsX,
       cellsY,
       terrainVersion: getTerrainVersion(),
@@ -135,6 +142,7 @@ export function precomputeAllUnitPathTraversabilityGrids(
   cachedTerrainVersion = getTerrainVersion();
   cachedMapWidth = mapWidth;
   cachedMapHeight = mapHeight;
+  cachedConsolidationMultiplier = consolidationMultiplier;
   cachedGrids = next;
   return cachedGrids;
 }

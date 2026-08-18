@@ -53,6 +53,7 @@ import {
 } from '../network/gameGenerationSeed';
 import { createLoadProgressReporter } from '../lifecycle/loadProgressReporter';
 import { precomputeAllUnitPathTraversabilityGrids } from '../sim/pathfindingTraversabilityGrid';
+import { configurePathfindingCellConsolidationMultiplier } from '../sim/pathfinderTerrainCache';
 import {
   setLiquidSurfaceMode,
   setTerrainSurfaceMode,
@@ -61,6 +62,7 @@ import {
   DEFAULT_LIQUID_SURFACE_MODE,
   DEFAULT_TERRAIN_SURFACE_MODE,
 } from '../../types/worldSurfaceMode';
+import { normalizePathfindingCellConsolidationMultiplier } from '../../types/pathfinding';
 
 export interface BootstrappedServerWorld {
   physics: PhysicsEngine3D;
@@ -96,6 +98,13 @@ export class ServerBootstrap {
       config.gameGenerationSeed ?? DEFAULT_GAME_GENERATION_SEED,
     );
     const backgroundMode = config.backgroundMode ?? false;
+    const pathfindingCellConsolidationMultiplier =
+      normalizePathfindingCellConsolidationMultiplier(
+        config.pathfindingCellConsolidationMultiplier,
+      );
+    configurePathfindingCellConsolidationMultiplier(
+      pathfindingCellConsolidationMultiplier,
+    );
     const terrainSurfaceMode =
       config.terrainSurfaceMode ?? DEFAULT_TERRAIN_SURFACE_MODE;
     const liquidSurfaceMode =
@@ -164,6 +173,8 @@ export class ServerBootstrap {
     const world = new WorldState(gameGenerationSeed, mapWidth, mapHeight);
     world.terrainSurfaceMode = terrainSurfaceMode;
     world.liquidSurfaceMode = liquidSurfaceMode;
+    world.pathfindingCellConsolidationMultiplier =
+      pathfindingCellConsolidationMultiplier;
     world.playerCount = playerIds.length;
     // One assignment drives alliances, terrain slices, and spawn angles.
     world.setTeamRoster(teamRoster);
@@ -285,6 +296,13 @@ export class ServerBootstrap {
       config.gameGenerationSeed ?? DEFAULT_GAME_GENERATION_SEED,
     );
     const backgroundMode = config.backgroundMode ?? false;
+    const pathfindingCellConsolidationMultiplier =
+      normalizePathfindingCellConsolidationMultiplier(
+        config.pathfindingCellConsolidationMultiplier,
+      );
+    configurePathfindingCellConsolidationMultiplier(
+      pathfindingCellConsolidationMultiplier,
+    );
     const terrainSurfaceMode =
       config.terrainSurfaceMode ?? DEFAULT_TERRAIN_SURFACE_MODE;
     const liquidSurfaceMode =
@@ -357,6 +375,8 @@ export class ServerBootstrap {
     const world = new WorldState(gameGenerationSeed, mapWidth, mapHeight);
     world.terrainSurfaceMode = terrainSurfaceMode;
     world.liquidSurfaceMode = liquidSurfaceMode;
+    world.pathfindingCellConsolidationMultiplier =
+      pathfindingCellConsolidationMultiplier;
     world.playerCount = playerIds.length;
     // One assignment drives alliances, terrain slices, and spawn angles.
     world.setTeamRoster(teamRoster);

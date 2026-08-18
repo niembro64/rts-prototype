@@ -162,6 +162,7 @@ function assertInitializationHashMismatch(): void {
       mapWidthLandCells: 9,
       mapLengthLandCells: 9,
       entityCountCap: 128,
+      pathfindingCellConsolidationMultiplier: 3,
       converterTax: 0,
       slowDownAtFinalWaypoint: false,
       terrainSurfaceMode: 'normal' as const,
@@ -205,6 +206,17 @@ function assertInitializationHashMismatch(): void {
     first !== fourth,
     'canonical initialization hash must include WORLD material modes',
   );
+  const fifth = hashCanonicalMatchInitialization(buildCanonicalMatchInitialization({
+    ...base,
+    settings: {
+      ...base.settings,
+      pathfindingCellConsolidationMultiplier: 4,
+    },
+  }));
+  assertContract(
+    first !== fifth,
+    'canonical initialization hash must include pathfinding-cell resolution',
+  );
 }
 
 function createTerrain(): RealBattleStartupTerrain {
@@ -244,6 +256,7 @@ function createLobbySettings(terrain: RealBattleStartupTerrain): LobbySettings {
     mapWidthLandCells: terrain.mapDimensions.widthLandCells,
     mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
     entityCountCap: 128,
+    pathfindingCellConsolidationMultiplier: 3,
     converterTax: 0,
     slowDownAtFinalWaypoint: false,
     terrainSurfaceMode: terrain.terrainSurfaceMode,

@@ -45,6 +45,7 @@ import {
   loadStoredMetalDepositStep,
   loadStoredPlateauWallSlopeDegrees,
   loadStoredTerrainDetail,
+  loadStoredPathfindingCellConsolidation,
   loadStoredPerimeterMagnitude,
   loadStoredMapLandDimensions,
   getTerrainLightSmoothAcrossWallBoundary,
@@ -1082,6 +1083,9 @@ const plateauWallSlopeDegrees = ref<number>(
 );
 const metalDepositStep = ref<number>(loadStoredMetalDepositStep('demo'));
 const terrainDetail = ref<number>(loadStoredTerrainDetail('demo'));
+const pathfindingCellConsolidation = ref<number>(
+  loadStoredPathfindingCellConsolidation('demo'),
+);
 const terrainTextureSmoothing = ref<number>(getTerrainTextureSmoothing());
 const terrainLightSmoothing = ref<number>(getTerrainLightSmoothing());
 const terrainTextureSmoothAcrossWallBoundary = ref<boolean>(
@@ -1317,6 +1321,7 @@ useGameCanvasLobbyPreview({
   plateauWallSlopeDegrees,
   metalDepositStep,
   terrainDetail,
+  pathfindingCellConsolidation,
   mapWidthLandCells,
   mapLengthLandCells,
   stopBackgroundBattle,
@@ -1504,6 +1509,7 @@ const {
   applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
   applyTerrainDetail,
+  applyPathfindingCellConsolidation,
   applyTerrainSurfaceMode,
   applyLiquidSurfaceMode,
   applyMapLandDimensions,
@@ -1521,6 +1527,7 @@ const {
   plateauWallSlopeDegrees,
   metalDepositStep,
   terrainDetail,
+  pathfindingCellConsolidation,
   mapWidthLandCells,
   mapLengthLandCells,
   slowDownAtFinalWaypointStoreVersion,
@@ -1658,6 +1665,9 @@ function resetTerrainRenderSmoothingDefaults(): void {
 
 function resetBattleDefaultsWithGroundNormal(): void {
   resetDemoDefaults();
+  applyPathfindingCellConsolidation(
+    BATTLE_CONFIG.pathfindingCellConsolidation.default,
+  );
   resetUnitGroundNormalEmaDefault();
 }
 
@@ -1798,6 +1808,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   plateauWallSlopeDegrees: plateauWallSlopeDegrees.value,
   metalDepositStep: metalDepositStep.value,
   terrainDetail: terrainDetail.value,
+  pathfindingCellConsolidation: pathfindingCellConsolidation.value,
   displayUnitCount: displayUnitCount.value,
   localPlayerShieldAwareTargeting: localPlayerShieldAwareTargeting.value,
   localPlayerShieldsPowered: localPlayerShieldsPowered.value,
@@ -1825,6 +1836,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
   applyTerrainDetail,
+  applyPathfindingCellConsolidation,
   setFogOfWarEnabled,
   setSlowDownAtFinalWaypoint,
   setSlopePathMode,
@@ -1858,6 +1870,7 @@ watchEffect(() => {
   m.plateauWallSlopeDegrees = plateauWallSlopeDegrees.value;
   m.metalDepositStep = metalDepositStep.value;
   m.terrainDetail = terrainDetail.value;
+  m.pathfindingCellConsolidation = pathfindingCellConsolidation.value;
   m.displayUnitCount = displayUnitCount.value;
   m.localPlayerShieldAwareTargeting = localPlayerShieldAwareTargeting.value;
   m.localPlayerShieldsPowered = localPlayerShieldsPowered.value;
@@ -2757,6 +2770,7 @@ watchEffect(() => {
       :plateau-wall-slope-degrees="plateauWallSlopeDegrees"
       :metal-deposit-step="metalDepositStep"
       :terrain-detail="terrainDetail"
+      :pathfinding-cell-consolidation="pathfindingCellConsolidation"
       :map-width-land-cells="mapWidthLandCells"
       :map-length-land-cells="mapLengthLandCells"
       :unit-blueprint-ids="demoUnitBlueprintIds"
@@ -2784,6 +2798,7 @@ watchEffect(() => {
       @set-plateau-wall-slope-degrees="(v) => applyPlateauWallSlopeDegrees(v)"
       @set-metal-deposit-step="(v) => applyMetalDepositStep(v)"
       @set-terrain-detail="(v) => applyTerrainDetail(v)"
+      @set-pathfinding-cell-consolidation="(v) => applyPathfindingCellConsolidation(v)"
       @set-preset="(p) => applyPreset(p)"
       @set-map-land-dimensions="(dimensions) => applyMapLandDimensions(dimensions)"
       @toggle-unit="(ut) => toggleDemoUnitBlueprintId(ut)"
@@ -2794,7 +2809,7 @@ watchEffect(() => {
       @cycle-player-ally-team="cyclePlayerAllyTeam"
       @set-converter-tax="(v) => setConverterTax(v)"
       @set-player-name="onPlayerNameChange"
-      @reset-defaults="resetDemoDefaults"
+      @reset-defaults="resetBattleDefaultsWithGroundNormal"
     />
 
     <GameCanvasOverlays

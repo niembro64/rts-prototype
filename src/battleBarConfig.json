@@ -7,6 +7,11 @@
     "realDefault": 1000,
     "options": [10, 50, 100, 500, 1000, 5000, 10000]
   },
+  "pathfindingCellConsolidation": {
+    "demoDefault": 3,
+    "realDefault": 3,
+    "options": [1, 2, 3, 4, 5]
+  },
   "centerMagnitude": {
     "options": [-3200, -800, -400, -200, 0, 200, 400, 800, 1600, 3200, 6400]
   },
@@ -45,6 +50,8 @@
     "demoUnitsKnownIds": "demo-battle-units-known-ids",
     "demoCap": "demo-battle-cap",
     "realCap": "real-battle-cap",
+    "demoPathfindingCellConsolidation": "demo-battle-pathfinding-cell-consolidation",
+    "realPathfindingCellConsolidation": "real-battle-pathfinding-cell-consolidation",
     "demoTurretShieldPanelsEnabled": "demo-battle-turret-shield-panels-enabled",
     "realTurretShieldPanelsEnabled": "real-battle-turret-shield-panels-enabled",
     "demoTurretShieldSpheresEnabled": "demo-battle-turret-shield-spheres-enabled",

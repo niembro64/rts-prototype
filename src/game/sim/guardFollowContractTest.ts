@@ -5,14 +5,17 @@ import { Simulation } from './Simulation';
 import { WorldState } from './WorldState';
 import { PhysicsEngine3D } from '../server/PhysicsEngine3D';
 import { createPhysicsBodyForUnit } from '../server/unitPhysicsBody';
+import { LOCKSTEP_FIXED_DT_MS } from '../architecture/LockstepFrameScheduler';
+import type { Entity, Unit, UnitAction } from './types';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[guard follow contract] ${message}`);
 }
 
 /** Regression for the real default-command path: a Sea Turtle guards a
- * Commander that is already walking away. The guard host must immediately
- * apply follow thrust; its mounted gun and move state are independent. */
+ * Commander that is already walking away. With path resolution isolated, the
+ * guard host must apply follow thrust; its mounted gun and move state are
+ * independent. Planless safety is covered by pathPlanSafetyContractTest. */
 export function runGuardFollowContractTest(): void {
   const world = new WorldState(17, 512, 512);
   const seaTurtle = world.createUnitFromBlueprint(80, 180, 1, 'unitSeaTurtle', {
@@ -61,10 +64,17 @@ export function runGuardFollowContractTest(): void {
 
   try {
     const simulation = new Simulation(world, new CommandQueue());
-    simulation.update(16);
+    const validatedPlan = {
+      points: [{ x: commander.transform.x, y: commander.transform.y, z: commander.transform.z }],
+      index: 0,
+    } as Unit['activePath'];
+    (simulation as unknown as {
+      ensureActivePathPlan(entity: Entity, action: UnitAction): Unit['activePath'];
+    }).ensureActivePathPlan = () => validatedPlan;
+    simulation.update(LOCKSTEP_FIXED_DT_MS);
     assertContract(
       simulation.getMovingUnits().includes(seaTurtle),
-      'a distant Sea Turtle must apply guard-follow thrust while its Commander target moves away',
+      'a distant Sea Turtle must apply guard-follow thrust after its route resolves',
     );
   } finally {
     physics.dispose();

@@ -2,6 +2,7 @@ import { getMapSize } from '../config';
 import { ARCHITECTURE_CONFIG } from '../architectureConfig';
 import {
   loadStoredConverterTax,
+  loadStoredPathfindingCellConsolidation,
   loadStoredMapLandDimensions,
   loadStoredLiquidSurfaceMode,
   getUnitCap,
@@ -94,6 +95,7 @@ type CreateRealBattleServerOptions = {
   gameGenerationSeed: number;
   terrain: RealBattleStartupTerrain;
   converterTax?: number;
+  pathfindingCellConsolidationMultiplier?: number;
   onLoadingProgress?: (progress: number, phase?: string) => void | Promise<void>;
 };
 
@@ -213,6 +215,8 @@ function buildRealBattleLobbySettingsFromTerrain(
     mapWidthLandCells: terrain.mapDimensions.widthLandCells,
     mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
     entityCountCap: getUnitCap('real'),
+    pathfindingCellConsolidationMultiplier:
+      loadStoredPathfindingCellConsolidation('real'),
     converterTax: loadStoredConverterTax('real'),
     slowDownAtFinalWaypoint: loadStoredSlowDownAtFinalWaypoint('real'),
     terrainSurfaceMode: terrain.terrainSurfaceMode,
@@ -504,6 +508,7 @@ async function createRealBattleServer({
   gameGenerationSeed,
   terrain,
   converterTax,
+  pathfindingCellConsolidationMultiplier,
   onLoadingProgress,
 }: CreateRealBattleServerOptions): Promise<GameServer> {
   return GameServer.create(
@@ -525,6 +530,9 @@ async function createRealBattleServer({
       terrainSurfaceMode: terrain.terrainSurfaceMode,
       liquidSurfaceMode: terrain.liquidSurfaceMode,
       converterTax: converterTax ?? loadStoredConverterTax('real'),
+      pathfindingCellConsolidationMultiplier:
+        pathfindingCellConsolidationMultiplier ??
+        loadStoredPathfindingCellConsolidation('real'),
     },
     {
       onProgress: onLoadingProgress,
@@ -575,6 +583,8 @@ async function createDeterministicLockstepBackendRuntime({
     gameGenerationSeed: matchContext.gameGenerationSeed,
     terrain,
     converterTax: matchContext.settings.converterTax,
+    pathfindingCellConsolidationMultiplier:
+      matchContext.settings.pathfindingCellConsolidationMultiplier,
     onLoadingProgress,
   });
   const lockstepCore = server.getLockstepSimulationCore();

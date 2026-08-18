@@ -176,7 +176,7 @@
       </div>
       <div class="principle">
         <b>Clients stay continuous</b>
-        The local 30 Hz simulation retains two adjacent authoritative poses in Rust/WASM, and the
+        The local 20 Hz simulation retains two adjacent authoritative poses in Rust/WASM, and the
         renderer samples between them on every display frame with one shared interpolation clock.
       </div>
       <div class="principle">
@@ -672,7 +672,7 @@
         At simulation tick <code>N</code>, presentation retains the final states from
         <code>N-1</code> and <code>N</code>. Render time advances a single alpha from zero to one
         across the next fixed-step interval and clamps at one if the next tick is late. This adds at
-        most one 30 Hz tick of visual latency, but eliminates the oscillation and per-channel lag
+        most one 20 Hz tick of visual latency, but eliminates the oscillation and per-channel lag
         caused by chasing a moving snapshot target. Gameplay remains exactly at tick <code>N</code>;
         only the visual sample is delayed.
       </p>
@@ -994,8 +994,12 @@
         cells &mdash; such as a wind turbine&rsquo;s blade sweep &mdash; reserve placement but never
         blocking movement), and the pathfinder syncs exactly that cell set whenever the
         BuildingGrid version moves. Building churn re-runs only the O(n) blocked/clearance/
-        connected-component sweeps, never terrain sampling. The build grid and the path grid share
-        one 20-wu cell size and indexing precisely so this mapping is the identity.
+        connected-component sweeps, never terrain sampling. The match-static path-cell
+        consolidation multiplier groups 1&times;1 through 5&times;5 canonical 20-wu build cells into
+        one path cell (3&times;3 by default). The summary is deliberately conservative: any blocked
+        build square, forbidden medium, or physically illegal touched terrain inside the group
+        rejects the whole path cell. Coarsening may decline a narrow valid passage, but it must
+        never invent a route through lava, water, a cliff, or a grounded structure.
       </p>
       <p>
         A building cell blocks every non-air medium; air overflies footprints exactly as it
@@ -1072,15 +1076,18 @@
       <p>
         The authoritative command timeline never waits for pathfinding: commands apply in canonical
         lockstep order and install durable intent immediately. Derived route work enters separate
-        <code>fresh</code> and <code>refresh</code> lanes. The simulation advances at most
-        <strong>one global A* work slice per fixed tick</strong>. Admission rotates by ally team and
-        then by player, so a side with more seats cannot multiply its routing throughput. Exact
+        <code>fresh</code> and <code>refresh</code> lanes. Exactly one ally team is selected each
+        fixed tick in stable round-robin order. That team may close at most
+        <strong>4,096 A* nodes</strong>, spending unused nodes on additional routes for the same
+        team. Admission rotates by player within the selected team, so a side with more seats
+        cannot multiply its routing throughput. Exact
         validated direct segments, shared formation-cache hits, and stale queue entries perform no
         A* work and do not consume that tick's search admission.
       </p>
       <p>
         Fine-grid A* retains its open heap, scores, parents, best reachable frontier, and cumulative
-        expansion count between ticks. Each slice closes a fixed configured number of nodes; it is
+        expansion count between team turns. Each ally team may retain at most one unfinished
+        continuation. Each turn closes a fixed configured number of nodes; it is
         never sized from measured wall time. There is no arbitrary total expansion ceiling: a hard
         mountain route may take many deterministic ticks and finishes only when it reaches the goal
         or exhausts the reachable graph. A terrain or grounded-building version change, or a
@@ -1099,7 +1106,7 @@
       <ul class="rule-list">
         <li>Never move toward the raw command point while a fresh path is unresolved.</li>
         <li>Never budget authoritative search work from elapsed milliseconds or renderer cadence.</li>
-        <li>One sliced A* continuation owns the shared dense WASM search arena; queued units retain intent, not duplicate map-sized frontiers.</li>
+        <li>Each ally team owns at most one sliced A* continuation; switching teams swaps dense WASM arenas without copying them. Queued units retain intent, not map-sized frontiers.</li>
         <li>A completed partial route is a proved-safe reachable frontier, not a node-budget timeout. Its endpoint must remain a physically supportable stop.</li>
       </ul>
 

@@ -527,6 +527,8 @@ export type LobbySettings = {
   mapLengthLandCells: number;
   /** Match-wide ENTITY COUNT CAP (units + buildings) for real battles. */
   entityCountCap: number;
+  /** Number of build squares represented by one path square per axis. */
+  pathfindingCellConsolidationMultiplier: number;
   converterTax: number;
   /** Whether units brake on approach to their last waypoint. */
   slowDownAtFinalWaypoint: boolean;

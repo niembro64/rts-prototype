@@ -7,6 +7,7 @@ import combatConfigJson from '../../combatConfig.json';
 import economyConfigJson from '../../economyConfig.json';
 import metalDepositConfigJson from '../../metalDepositConfig.json';
 import physicsTuningConfigJson from '../../physicsTuningConfig.json';
+import pathfindingTuningConfigJson from '../sim/pathfindingTuningConfig.json';
 import realBattleConfigJson from '../../realBattleConfig.json';
 import sharedSimConstantsJson from '../../sharedSimConstants.json';
 import visionConfigJson from '../../visionConfig.json';
@@ -37,6 +38,7 @@ import {
   type LiquidSurfaceMode,
   type TerrainSurfaceMode,
 } from '@/types/worldSurfaceMode';
+import { isPathfindingCellConsolidationMultiplier } from '@/types/pathfinding';
 
 // Turbine animation and wind particles are presentation-only. Keep them out
 // of the deterministic content hash so visual tuning cannot split lockstep.
@@ -46,7 +48,7 @@ const {
   ...canonicalWindConfigJson
 } = windConfigJson;
 
-const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v9';
+const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v10';
 const APP_SOURCE_VERSION = '0.0.1';
 export const SIM_WASM_EXPECTED_VERSION = 'rts-sim-wasm 0.0.1';
 export const BUILD_FINGERPRINT = __BA_BUILD_FINGERPRINT__;
@@ -80,6 +82,7 @@ export type CanonicalMatchInitialization = {
   };
   readonly gameplay: {
     readonly entityCountCap: number | null;
+    readonly pathfindingCellConsolidationMultiplier: number | null;
     readonly converterTax: number | null;
     readonly fogOfWarEnabled: true;
     readonly slowDownAtFinalWaypoint: boolean;
@@ -129,6 +132,7 @@ const GAMEPLAY_CONFIG_CONTENT = {
   shotLocomotionConfig: shotLocomotionConfigJson,
   metalDepositConfig: metalDepositConfigJson,
   physicsTuningConfig: physicsTuningConfigJson,
+  pathfindingTuningConfig: pathfindingTuningConfigJson,
   realBattleConfig: realBattleConfigJson,
   sharedSimConstants: sharedSimConstantsJson,
   surfaceProbeConfig: surfaceProbeConfigJson,
@@ -176,6 +180,12 @@ export function buildCanonicalMatchInitialization({
     },
     gameplay: {
       entityCountCap: finiteOrNull(settings?.entityCountCap),
+      pathfindingCellConsolidationMultiplier:
+        isPathfindingCellConsolidationMultiplier(
+          settings?.pathfindingCellConsolidationMultiplier,
+        )
+          ? settings.pathfindingCellConsolidationMultiplier
+          : null,
       converterTax: finiteOrNull(settings?.converterTax),
       fogOfWarEnabled: true,
       slowDownAtFinalWaypoint: settings?.slowDownAtFinalWaypoint === true,

@@ -32,7 +32,7 @@ pub(crate) use traversal::*;
 // Constants — grid/search constants live here; tuning constants are generated
 // from src/game/sim/pathfindingTuningConfig.json.
 pub(crate) const PATHFINDER_BUILD_GRID_CELL_SIZE: f64 = 20.0;
-pub(crate) const PATHFINDER_SNAP_RADIUS_CELLS: i32 = 32;
+pub(crate) const PATHFINDER_SNAP_RADIUS_WU: f64 = 640.0;
 /// Resumable fine-grid A* has no artificial total-node ceiling. Authoritative
 /// callers advance it with a deterministic per-tick expansion budget, so a
 /// difficult route can take as many fixed ticks as it needs without turning
@@ -50,7 +50,34 @@ pub(crate) const PATHFINDER_SEARCH_FINE_A_STAR: u32 = 3;
 pub(crate) const PATHFINDER_HIERARCHY_MAX_REFINEMENTS: u32 = 4;
 /// Independent of shoreline classification. Terrain-bound unit centers stay
 /// out of the outer map guard cells even for point-size developer queries.
-pub(crate) const PATHFINDER_MAP_EDGE_BUFFER_CELLS: i32 = 2;
+pub(crate) const PATHFINDER_MAP_EDGE_BUFFER_WU: f64 = 40.0;
+const PATHFINDER_SYNC_CONTINUATION_OWNER: u32 = u32::MAX;
+
+struct FineAStarArena {
+    g_score: Vec<f32>,
+    f_score: Vec<f32>,
+    parent: Vec<i32>,
+    closed: Vec<u8>,
+    visited_gen: Vec<u32>,
+    current_gen: u32,
+    heap: Vec<u32>,
+    pending: Option<PendingFineAStar>,
+}
+
+impl FineAStarArena {
+    fn new(n: usize) -> Self {
+        Self {
+            g_score: vec![f32::INFINITY; n],
+            f_score: vec![f32::INFINITY; n],
+            parent: vec![-1; n],
+            closed: vec![0; n],
+            visited_gen: vec![0; n],
+            current_gen: 1,
+            heap: Vec::new(),
+            pending: None,
+        }
+    }
+}
 
 pub(crate) struct PathfinderState {
     grid_w: i32,
@@ -58,6 +85,8 @@ pub(crate) struct PathfinderState {
     n: usize,
     map_width: f64,
     map_height: f64,
+    cell_size: f64,
+    consolidation_multiplier: u32,
 
     blocked: Vec<u8>,
     terrain_blocked: Vec<u8>,
@@ -109,6 +138,11 @@ pub(crate) struct PathfinderState {
     /// the continuation cursor that makes the arena resumable without
     /// duplicating map-sized memory for every queued unit.
     pending_fine_a_star: Option<PendingFineAStar>,
+    /// One dense search arena per ally team. Only the selected team's arena
+    /// is installed in the hot fields above; switching owners swaps vectors
+    /// without copying them, so every side may retain one unfinished search.
+    active_fine_a_star_owner: u32,
+    saved_fine_a_star_arenas: HashMap<u32, FineAStarArena>,
     // Level-1 hierarchy scratch. One abstract node represents a square cluster
     // of fine navigation cells. Abstract edges are never assumed passable:
     // every edge is validated and priced by the exact fine-grid line tracer.
@@ -192,6 +226,7 @@ pub(crate) struct PathfinderState {
     last_result_status: u32,
     last_search_strategy: u32,
     last_fine_expanded_nodes: u32,
+    last_fine_expanded_nodes_this_slice: u32,
     last_coarse_expanded_nodes: u32,
     last_coarse_refinement_passes: u32,
     last_coarse_exact_edge_checks: u32,
@@ -377,6 +412,8 @@ impl PathfinderState {
             n: 0,
             map_width: 0.0,
             map_height: 0.0,
+            cell_size: PATHFINDER_BUILD_GRID_CELL_SIZE,
+            consolidation_multiplier: 1,
             blocked: Vec::new(),
             terrain_blocked: Vec::new(),
             terrain_water: Vec::new(),
@@ -399,6 +436,8 @@ impl PathfinderState {
             current_gen: 1,
             heap: Vec::new(),
             pending_fine_a_star: None,
+            active_fine_a_star_owner: PATHFINDER_SYNC_CONTINUATION_OWNER,
+            saved_fine_a_star_arenas: HashMap::default(),
             hierarchy_grid_w: 0,
             hierarchy_grid_h: 0,
             hierarchy_node_cell: Vec::new(),
@@ -447,6 +486,7 @@ impl PathfinderState {
             last_result_status: PATHFINDER_RESULT_UNREACHABLE,
             last_search_strategy: PATHFINDER_SEARCH_NONE,
             last_fine_expanded_nodes: 0,
+            last_fine_expanded_nodes_this_slice: 0,
             last_coarse_expanded_nodes: 0,
             last_coarse_refinement_passes: 0,
             last_coarse_exact_edge_checks: 0,
@@ -465,8 +505,52 @@ pub(crate) fn pathfinder_state() -> &'static mut PathfinderState {
     PATHFINDER.get_or_init(PathfinderState::empty)
 }
 
+fn pathfinder_take_active_fine_arena(state: &mut PathfinderState) -> FineAStarArena {
+    FineAStarArena {
+        g_score: std::mem::take(&mut state.g_score),
+        f_score: std::mem::take(&mut state.f_score),
+        parent: std::mem::take(&mut state.parent),
+        closed: std::mem::take(&mut state.closed),
+        visited_gen: std::mem::take(&mut state.visited_gen),
+        current_gen: state.current_gen,
+        heap: std::mem::take(&mut state.heap),
+        pending: state.pending_fine_a_star.take(),
+    }
+}
+
+fn pathfinder_install_fine_arena(state: &mut PathfinderState, arena: FineAStarArena) {
+    state.g_score = arena.g_score;
+    state.f_score = arena.f_score;
+    state.parent = arena.parent;
+    state.closed = arena.closed;
+    state.visited_gen = arena.visited_gen;
+    state.current_gen = arena.current_gen;
+    state.heap = arena.heap;
+    state.pending_fine_a_star = arena.pending;
+}
+
+fn pathfinder_switch_fine_arena(state: &mut PathfinderState, owner: u32) {
+    if state.active_fine_a_star_owner == owner {
+        return;
+    }
+    let previous_owner = state.active_fine_a_star_owner;
+    let previous = pathfinder_take_active_fine_arena(state);
+    state.saved_fine_a_star_arenas.insert(previous_owner, previous);
+    let next = state
+        .saved_fine_a_star_arenas
+        .remove(&owner)
+        .unwrap_or_else(|| FineAStarArena::new(state.n));
+    pathfinder_install_fine_arena(state, next);
+    state.active_fine_a_star_owner = owner;
+}
+
+fn pathfinder_invalidate_all_fine_arenas(state: &mut PathfinderState) {
+    state.pending_fine_a_star = None;
+    state.saved_fine_a_star_arenas.clear();
+}
+
 pub(crate) fn pathfinder_build_snap_offsets(state: &mut PathfinderState) {
-    let r = PATHFINDER_SNAP_RADIUS_CELLS;
+    let r = (PATHFINDER_SNAP_RADIUS_WU / state.cell_size).ceil().max(1.0) as i32;
     let mut list: Vec<(i16, i16, i32)> = Vec::new();
     for dy in -r..=r {
         for dx in -r..=r {
@@ -489,13 +573,19 @@ pub(crate) fn pathfinder_build_snap_offsets(state: &mut PathfinderState) {
 }
 
 #[wasm_bindgen]
-pub fn pathfinder_init(map_width: f64, map_height: f64) {
+pub fn pathfinder_init(map_width: f64, map_height: f64, consolidation_multiplier: u32) {
     let state = pathfinder_state();
-    state.pending_fine_a_star = None;
-    let grid_w = (map_width / PATHFINDER_BUILD_GRID_CELL_SIZE).ceil() as i32;
-    let grid_h = (map_height / PATHFINDER_BUILD_GRID_CELL_SIZE).ceil() as i32;
+    pathfinder_invalidate_all_fine_arenas(state);
+    let consolidation_multiplier = consolidation_multiplier.clamp(1, 5);
+    let cell_size = PATHFINDER_BUILD_GRID_CELL_SIZE * consolidation_multiplier as f64;
+    let grid_w = (map_width / cell_size).ceil() as i32;
+    let grid_h = (map_height / cell_size).ceil() as i32;
     let n = (grid_w * grid_h) as usize;
-    if state.grid_w == grid_w && state.grid_h == grid_h && state.n == n {
+    if state.grid_w == grid_w
+        && state.grid_h == grid_h
+        && state.n == n
+        && state.consolidation_multiplier == consolidation_multiplier
+    {
         // Same dims — just invalidate caches so the next rebuild fires.
         state.terrain_only_key = u64::MAX;
         state.map_width = map_width;
@@ -507,6 +597,8 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
     state.n = n;
     state.map_width = map_width;
     state.map_height = map_height;
+    state.cell_size = cell_size;
+    state.consolidation_multiplier = consolidation_multiplier;
     state.blocked.clear();
     state.blocked.resize(n, 0);
     state.terrain_blocked.clear();
@@ -548,6 +640,8 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
     state.visited_gen.resize(n, 0);
     state.current_gen = 1;
     state.heap.clear();
+    state.active_fine_a_star_owner = PATHFINDER_SYNC_CONTINUATION_OWNER;
+    state.saved_fine_a_star_arenas.clear();
     state.hierarchy_grid_w = 0;
     state.hierarchy_grid_h = 0;
     state.hierarchy_node_cell.clear();
@@ -620,8 +714,12 @@ pub(crate) fn pathfinder_sample_terrain(x: f64, y: f64) -> (f64, f32) {
 }
 
 #[inline]
-pub(crate) fn pathfinder_sample_cell_terrain(gx: i32, gy: i32) -> (bool, bool, f32, f32, [f32; 8]) {
-    let cs = PATHFINDER_BUILD_GRID_CELL_SIZE;
+pub(crate) fn pathfinder_sample_cell_terrain(
+    gx: i32,
+    gy: i32,
+    cell_size: f64,
+) -> (bool, bool, f32, f32, [f32; 8]) {
+    let cs = cell_size;
     let x0 = gx as f64 * cs;
     let y0 = gy as f64 * cs;
     let x1 = x0 + cs;
@@ -692,12 +790,14 @@ fn pathfinder_transition_normal_z(from_height: f32, to_height: f32, horizontal: 
 }
 
 pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terrain_version: u32) {
-    let key =
-        ((terrain_version as u64) << 32) | ((state.grid_w as u64) << 16) | (state.grid_h as u64);
+    let key = ((terrain_version as u64) << 32)
+        ^ ((state.consolidation_multiplier as u64) << 28)
+        ^ ((state.grid_w as u64) << 14)
+        ^ state.grid_h as u64;
     if key == state.terrain_only_key {
         return;
     }
-    state.pending_fine_a_star = None;
+    pathfinder_invalidate_all_fine_arenas(state);
 
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
@@ -713,7 +813,7 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
         for gx in 0..grid_w {
             let idx = (gy * grid_w + gx) as usize;
             let (has_water, fully_submerged, nz, height, cell_boundary_heights) =
-                pathfinder_sample_cell_terrain(gx, gy);
+                pathfinder_sample_cell_terrain(gx, gy, state.cell_size);
             state.terrain_height[idx] = height;
             state.terrain_normal_z[idx] = nz;
             boundary_heights[idx] = cell_boundary_heights;
@@ -771,10 +871,12 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
     for gy in 0..grid_h {
         for gx in 0..grid_w {
             let idx = (gy * grid_w + gx) as usize;
-            let edge_blocked = gx < PATHFINDER_MAP_EDGE_BUFFER_CELLS
-                || gy < PATHFINDER_MAP_EDGE_BUFFER_CELLS
-                || gx >= grid_w - PATHFINDER_MAP_EDGE_BUFFER_CELLS
-                || gy >= grid_h - PATHFINDER_MAP_EDGE_BUFFER_CELLS;
+            let edge_buffer_cells =
+                (PATHFINDER_MAP_EDGE_BUFFER_WU / state.cell_size).ceil().max(1.0) as i32;
+            let edge_blocked = gx < edge_buffer_cells
+                || gy < edge_buffer_cells
+                || gx >= grid_w - edge_buffer_cells
+                || gy >= grid_h - edge_buffer_cells;
             state.terrain_edge_blocked[idx] = if edge_blocked { 1 } else { 0 };
         }
     }
@@ -911,10 +1013,32 @@ fn pathfinder_rebuild_blocked_clearance_and_components(state: &mut PathfinderSta
     }
 }
 
+fn pathfinder_mark_consolidated_building_cells(
+    state: &mut PathfinderState,
+    cell_gx: &[i32],
+    cell_gy: &[i32],
+) {
+    let count = cell_gx.len().min(cell_gy.len());
+    for i in 0..count {
+        // Inputs are canonical 20-wu build cells. Any occupied build square
+        // rejects its entire conservative path cell; negative build indices
+        // must be rejected before Rust's truncating integer division.
+        if cell_gx[i] < 0 || cell_gy[i] < 0 {
+            continue;
+        }
+        let gx = cell_gx[i] / state.consolidation_multiplier as i32;
+        let gy = cell_gy[i] / state.consolidation_multiplier as i32;
+        if gx >= state.grid_w || gy >= state.grid_h {
+            continue;
+        }
+        state.building_blocked[(gy * state.grid_w + gx) as usize] = 1;
+    }
+}
+
 /// Replace the building occupancy layer with the given footprint cells and
-/// re-run the O(n) blocked/clearance/component sweeps. Cells are grounded
-/// building footprint cells in the shared 20-wu build/path grid (hovering
-/// structures are never submitted). Full replacement per sync keeps the
+/// re-run the O(n) blocked/clearance/component sweeps. Inputs are grounded
+/// 20-wu BUILD cells; every occupied build cell rejects the larger path cell
+/// containing it (hovering structures are never submitted). Full replacement keeps the
 /// layer stateless against terrain rebuilds and desync-proof: the caller
 /// owns the authoritative cell set and the version.
 #[wasm_bindgen]
@@ -923,18 +1047,10 @@ pub fn pathfinder_sync_building_occupancy(cell_gx: &[i32], cell_gy: &[i32], vers
     if state.n == 0 {
         return 0;
     }
-    state.pending_fine_a_star = None;
+    pathfinder_invalidate_all_fine_arenas(state);
     debug_assert!(cell_gy.len() >= cell_gx.len());
     state.building_blocked.fill(0);
-    let count = cell_gx.len().min(cell_gy.len());
-    for i in 0..count {
-        let gx = cell_gx[i];
-        let gy = cell_gy[i];
-        if gx < 0 || gy < 0 || gx >= state.grid_w || gy >= state.grid_h {
-            continue;
-        }
-        state.building_blocked[(gy * state.grid_w + gx) as usize] = 1;
-    }
+    pathfinder_mark_consolidated_building_cells(state, cell_gx, cell_gy);
     state.building_occupancy_version = version;
     pathfinder_rebuild_blocked_clearance_and_components(state);
     1
@@ -1070,7 +1186,7 @@ pub fn pathfinder_bake_traversability_grid(
     state.cur_required_clearance = if move_allow_air && waypoint_allow_air {
         0
     } else {
-        pathfinder_hard_clearance_cells_for_radius(unit_radius)
+        pathfinder_hard_clearance_cells_for_state(state, unit_radius)
     };
     state.cur_unit_radius = pathfinder_query_unit_radius(unit_radius);
     state.cur_support_point_offset_z = pathfinder_query_unit_radius(support_point_offset_z);
@@ -1272,8 +1388,14 @@ struct PendingFineAStar {
 }
 
 enum AStarSliceOutcome {
-    Pending(u32),
-    Complete(Option<AStarResult>),
+    Pending {
+        total_expanded: u32,
+        expanded_this_slice: u32,
+    },
+    Complete {
+        result: Option<AStarResult>,
+        expanded_this_slice: u32,
+    },
 }
 
 #[inline]
@@ -1473,9 +1595,15 @@ fn pathfinder_a_star_slice(
     if !found && !state.heap.is_empty() {
         let total = pending.expanded_nodes;
         state.pending_fine_a_star = Some(pending);
-        return AStarSliceOutcome::Pending(total);
+        return AStarSliceOutcome::Pending {
+            total_expanded: total,
+            expanded_this_slice,
+        };
     }
-    AStarSliceOutcome::Complete(pathfinder_reconstruct_a_star_path(state, pending, found))
+    AStarSliceOutcome::Complete {
+        result: pathfinder_reconstruct_a_star_path(state, pending, found),
+        expanded_this_slice,
+    }
 }
 
 #[cfg(test)]
@@ -1499,8 +1627,10 @@ pub(crate) fn pathfinder_a_star(
         cost_profile,
         u32::MAX,
     ) {
-        AStarSliceOutcome::Complete(result) => result,
-        AStarSliceOutcome::Pending(_) => unreachable!("u32::MAX exhausts any installed grid"),
+        AStarSliceOutcome::Complete { result, .. } => result,
+        AStarSliceOutcome::Pending { .. } => {
+            unreachable!("u32::MAX exhausts any installed grid")
+        }
     }
 }
 
@@ -1516,10 +1646,11 @@ pub(crate) fn pathfinder_line_cost(
     traversal: PathfinderTraversal,
     cost_profile: PathfinderCostProfile,
 ) -> Option<f32> {
-    let mut gx = (x0 / PATHFINDER_BUILD_GRID_CELL_SIZE).floor() as i32;
-    let mut gy = (y0 / PATHFINDER_BUILD_GRID_CELL_SIZE).floor() as i32;
-    let tgx = (x1 / PATHFINDER_BUILD_GRID_CELL_SIZE).floor() as i32;
-    let tgy = (y1 / PATHFINDER_BUILD_GRID_CELL_SIZE).floor() as i32;
+    let cell_size = state.cell_size;
+    let mut gx = (x0 / cell_size).floor() as i32;
+    let mut gy = (y0 / cell_size).floor() as i32;
+    let tgx = (x1 / cell_size).floor() as i32;
+    let tgy = (y1 / cell_size).floor() as i32;
     let sx = if gx < tgx { 1 } else { -1 };
     let sy = if gy < tgy { 1 } else { -1 };
     let dx = (tgx - gx).abs();
@@ -1590,11 +1721,23 @@ pub(crate) fn pathfinder_has_los(
 }
 
 #[inline]
+#[cfg(test)]
 pub(crate) fn pathfinder_cell_center(gx: i32, gy: i32) -> (f64, f64) {
-    (
-        (gx as f64 + 0.5) * PATHFINDER_BUILD_GRID_CELL_SIZE,
-        (gy as f64 + 0.5) * PATHFINDER_BUILD_GRID_CELL_SIZE,
-    )
+    pathfinder_cell_center_with_size(gx, gy, PATHFINDER_BUILD_GRID_CELL_SIZE)
+}
+
+#[inline]
+pub(crate) fn pathfinder_cell_center_for_state(
+    state: &PathfinderState,
+    gx: i32,
+    gy: i32,
+) -> (f64, f64) {
+    pathfinder_cell_center_with_size(gx, gy, state.cell_size)
+}
+
+#[inline]
+fn pathfinder_cell_center_with_size(gx: i32, gy: i32, cell_size: f64) -> (f64, f64) {
+    ((gx as f64 + 0.5) * cell_size, (gy as f64 + 0.5) * cell_size)
 }
 
 #[inline]
@@ -1648,12 +1791,16 @@ fn pathfinder_find_path_with_expansion_budget(
     static_friction_coefficient: f64,
     symmetric_slope: bool,
     expansion_budget: u32,
+    continuation_owner: u32,
+    allow_hierarchy: bool,
 ) -> u32 {
     let state = pathfinder_state();
+    pathfinder_switch_fine_arena(state, continuation_owner);
     state.waypoint_scratch.clear();
     state.last_result_status = PATHFINDER_RESULT_UNREACHABLE;
     state.last_search_strategy = PATHFINDER_SEARCH_NONE;
     state.last_fine_expanded_nodes = 0;
+    state.last_fine_expanded_nodes_this_slice = 0;
     state.last_coarse_expanded_nodes = 0;
     state.last_coarse_refinement_passes = 0;
     state.last_coarse_exact_edge_checks = 0;
@@ -1707,7 +1854,7 @@ fn pathfinder_find_path_with_expansion_budget(
     let hard_clearance = if traversal.allow_air {
         0
     } else {
-        pathfinder_hard_clearance_cells_for_radius(unit_radius)
+        pathfinder_hard_clearance_cells_for_state(state, unit_radius)
     };
     let cost_profile = PathfinderCostProfile::for_query(
         flat_drive_accel,
@@ -1727,7 +1874,7 @@ fn pathfinder_find_path_with_expansion_budget(
         return 1;
     }
 
-    let cs = PATHFINDER_BUILD_GRID_CELL_SIZE;
+    let cs = state.cell_size;
     let sgx = ((start_x / cs).floor() as i32).max(0).min(grid_w - 1);
     let sgy = ((start_y / cs).floor() as i32).max(0).min(grid_h - 1);
     let ggx = ((goal_x / cs).floor() as i32).max(0).min(grid_w - 1);
@@ -1804,7 +1951,7 @@ fn pathfinder_find_path_with_expansion_budget(
     // Same cell after snapping — no A* needed.
     if start_cell_gx == goal_cell_gx && start_cell_gy == goal_cell_gy {
         if goal_was_snapped {
-            let (cx, cy) = pathfinder_cell_center(goal_cell_gx, goal_cell_gy);
+            let (cx, cy) = pathfinder_cell_center_for_state(state, goal_cell_gx, goal_cell_gy);
             state.waypoint_scratch.push(cx);
             state.waypoint_scratch.push(cy);
         } else {
@@ -1829,7 +1976,7 @@ fn pathfinder_find_path_with_expansion_budget(
     // move/fight/formation orders and keeps the planner out of the tick path
     // unless terrain or structures actually require a route.
     let (raw_goal_x, raw_goal_y) = if goal_was_snapped {
-        pathfinder_cell_center(goal_cell_gx, goal_cell_gy)
+        pathfinder_cell_center_for_state(state, goal_cell_gx, goal_cell_gy)
     } else {
         (goal_x, goal_y)
     };
@@ -1875,7 +2022,7 @@ fn pathfinder_find_path_with_expansion_budget(
     // Hierarchy is a one-time fast-path admission. Once a fine search has a
     // retained frontier, repeating coarse refinement every fixed tick would
     // waste work and make the slice cost depend on route length.
-    let hierarchical_result = if resuming_fine_search {
+    let hierarchical_result = if resuming_fine_search || !allow_hierarchy {
         None
     } else {
         pathfinder_hierarchical_a_star(
@@ -1927,12 +2074,22 @@ fn pathfinder_find_path_with_expansion_budget(
             cost_profile,
             expansion_budget,
         ) {
-            AStarSliceOutcome::Pending(expanded_nodes) => {
-                state.last_fine_expanded_nodes = expanded_nodes;
+            AStarSliceOutcome::Pending {
+                total_expanded,
+                expanded_this_slice,
+            } => {
+                state.last_fine_expanded_nodes = total_expanded;
+                state.last_fine_expanded_nodes_this_slice = expanded_this_slice;
                 state.last_result_status = PATHFINDER_RESULT_PENDING;
                 return 0;
             }
-            AStarSliceOutcome::Complete(result) => result,
+            AStarSliceOutcome::Complete {
+                result,
+                expanded_this_slice,
+            } => {
+                state.last_fine_expanded_nodes_this_slice = expanded_this_slice;
+                result
+            }
         };
         if let Some(result) = &result {
             state.last_fine_expanded_nodes = result.expanded_nodes;
@@ -1995,7 +2152,7 @@ fn pathfinder_find_path_with_expansion_budget(
         let first_idx = state.path_scratch[0] as i32;
         let first_gx = first_idx % grid_w;
         let first_gy = (first_idx - first_gx) / grid_w;
-        let (first_x, first_y) = pathfinder_cell_center(first_gx, first_gy);
+        let (first_x, first_y) = pathfinder_cell_center_for_state(state, first_gx, first_gy);
         state.last_smoothing_line_checks += 1;
         let mut chain_cost = pathfinder_line_cost(
             state,
@@ -2014,8 +2171,8 @@ fn pathfinder_find_path_with_expansion_budget(
             let cgy = (cand_idx - cgx) / grid_w;
             let ngx = next_idx % grid_w;
             let ngy = (next_idx - ngx) / grid_w;
-            let (cand_x, cand_y) = pathfinder_cell_center(cgx, cgy);
-            let (next_x, next_y) = pathfinder_cell_center(ngx, ngy);
+            let (cand_x, cand_y) = pathfinder_cell_center_for_state(state, cgx, cgy);
+            let (next_x, next_y) = pathfinder_cell_center_for_state(state, ngx, ngy);
             state.last_smoothing_line_checks += 1;
             let raw_edge_cost = pathfinder_line_cost(
                 state,
@@ -2047,7 +2204,7 @@ fn pathfinder_find_path_with_expansion_budget(
         }
     }
     if goal_was_snapped {
-        let (cx, cy) = pathfinder_cell_center(goal_cell_gx, goal_cell_gy);
+        let (cx, cy) = pathfinder_cell_center_for_state(state, goal_cell_gx, goal_cell_gy);
         pathfinder_push_waypoint(state, cx, cy);
     } else {
         pathfinder_push_waypoint(state, goal_x, goal_y);
@@ -2088,7 +2245,9 @@ pub fn pathfinder_find_path(
     static_friction_coefficient: f64,
     symmetric_slope: bool,
 ) -> u32 {
-    pathfinder_state().pending_fine_a_star = None;
+    let state = pathfinder_state();
+    pathfinder_switch_fine_arena(state, PATHFINDER_SYNC_CONTINUATION_OWNER);
+    state.pending_fine_a_star = None;
     pathfinder_find_path_with_expansion_budget(
         start_x,
         start_y,
@@ -2111,6 +2270,8 @@ pub fn pathfinder_find_path(
         static_friction_coefficient,
         symmetric_slope,
         u32::MAX,
+        PATHFINDER_SYNC_CONTINUATION_OWNER,
+        true,
     )
 }
 
@@ -2139,6 +2300,7 @@ pub fn pathfinder_find_path_slice(
     safe_water_drive_accel: f64,
     static_friction_coefficient: f64,
     symmetric_slope: bool,
+    continuation_owner: u32,
     expansion_budget: u32,
 ) -> u32 {
     pathfinder_find_path_with_expansion_budget(
@@ -2163,12 +2325,21 @@ pub fn pathfinder_find_path_slice(
         static_friction_coefficient,
         symmetric_slope,
         expansion_budget.max(1),
+        continuation_owner,
+        false,
     )
 }
 
 #[wasm_bindgen]
-pub fn pathfinder_cancel_path_slice() {
-    pathfinder_state().pending_fine_a_star = None;
+pub fn pathfinder_cancel_path_slice(continuation_owner: u32) {
+    let state = pathfinder_state();
+    pathfinder_switch_fine_arena(state, continuation_owner);
+    state.pending_fine_a_star = None;
+}
+
+#[wasm_bindgen]
+pub fn pathfinder_cancel_all_path_slices() {
+    pathfinder_invalidate_all_fine_arenas(pathfinder_state());
 }
 
 #[wasm_bindgen]
@@ -2186,6 +2357,11 @@ pub fn pathfinder_last_search_strategy() -> u32 {
 #[wasm_bindgen]
 pub fn pathfinder_last_fine_expanded_nodes() -> u32 {
     pathfinder_state().last_fine_expanded_nodes
+}
+
+#[wasm_bindgen]
+pub fn pathfinder_last_fine_expanded_nodes_this_slice() -> u32 {
+    pathfinder_state().last_fine_expanded_nodes_this_slice
 }
 
 #[wasm_bindgen]
@@ -2297,15 +2473,15 @@ pub fn pathfinder_validate_path(
     state.cur_required_clearance = if traversal.allow_air {
         0
     } else {
-        pathfinder_hard_clearance_cells_for_radius(unit_radius)
+        pathfinder_hard_clearance_cells_for_state(state, unit_radius)
     };
     let last_x = points[points.len() - 2];
     let last_y = points[points.len() - 1];
     if !pathfinder_position_is_in_navigation_domain(state, last_x, last_y, waypoint_traversal) {
         return 0;
     }
-    let last_gx = (last_x / PATHFINDER_BUILD_GRID_CELL_SIZE).floor() as i32;
-    let last_gy = (last_y / PATHFINDER_BUILD_GRID_CELL_SIZE).floor() as i32;
+    let last_gx = (last_x / state.cell_size).floor() as i32;
+    let last_gy = (last_y / state.cell_size).floor() as i32;
     if !pathfinder_is_grid_cell_passable(state, last_gx, last_gy, waypoint_traversal) {
         return 0;
     }

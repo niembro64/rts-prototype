@@ -18,6 +18,7 @@ import { BACKGROUND_UNIT_BLUEPRINT_IDS } from '../server/BackgroundBattleStandal
 import { BUILDING_BLUEPRINT_IDS } from '../../types/blueprintIds';
 import {
   loadStoredConverterTax,
+  loadStoredPathfindingCellConsolidation,
   loadStoredDemoUnits,
   loadStoredDemoBuildings,
   getUnitCap,
@@ -230,6 +231,8 @@ export async function createBackgroundBattle(
       initialAllowedBuildingBlueprintIds,
       initialEntityCountCap: getUnitCap(mode),
       converterTax: loadStoredConverterTax(mode),
+      pathfindingCellConsolidationMultiplier:
+        loadStoredPathfindingCellConsolidation(mode),
       aiPlayerIds,
       spawnDemoInitialState: !isLobbyPreview,
     },

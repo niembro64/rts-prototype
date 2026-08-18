@@ -12,6 +12,7 @@ const CURRENT_SETTINGS: LobbySettings = {
   mapWidthLandCells: 20,
   mapLengthLandCells: 20,
   entityCountCap: 729,
+  pathfindingCellConsolidationMultiplier: 3,
   converterTax: 0.1,
   slowDownAtFinalWaypoint: true,
   terrainSurfaceMode: 'normal',
@@ -40,5 +41,9 @@ export function runLobbySettingsContractTest(): void {
   assertRejected(
     { ...CURRENT_SETTINGS, terrainSurfaceMode: 'unknown' },
     'an unsupported terrainSurfaceMode',
+  );
+  assertRejected(
+    { ...CURRENT_SETTINGS, pathfindingCellConsolidationMultiplier: 6 },
+    'an unsupported pathfinding-cell multiplier',
   );
 }

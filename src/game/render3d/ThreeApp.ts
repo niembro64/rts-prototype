@@ -470,7 +470,7 @@ export class ThreeApp {
 
     const gpuMs = this.gpuTimer.getGpuMs();
     const hasGpuMs = this.gpuTimer.isSupported() && gpuMs > 0;
-    // RAF delta includes time the browser withheld callbacks. At 30 Hz that
+    // RAF delta includes time the browser withheld callbacks. At 20 Hz that
     // is ~33 ms even when the draw is cheap, so using it here needlessly
     // reduces resolution for display/power/browser pacing rather than actual
     // render pressure. A GPU timer is best; render-submit wall time is the

@@ -4,8 +4,10 @@ import { getEntityTargetPoint } from './buildingAnchors';
 import { setUnitActions } from './unitActions';
 import type { Entity, EntityId, UnitAction } from './types';
 import type { WorldState } from './WorldState';
+import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
 
-export const BAR_IDLE_BUILDER_AUTO_REPAIR_POLL_TICKS = 30;
+export const BAR_IDLE_BUILDER_AUTO_REPAIR_POLL_TICKS =
+  ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
 
 const BAR_RECLAIM_BLACKLIST_DURATION_TICKS = 60 * BAR_IDLE_BUILDER_AUTO_REPAIR_POLL_TICKS;
 

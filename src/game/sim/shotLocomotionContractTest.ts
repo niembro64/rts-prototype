@@ -15,6 +15,7 @@ import {
   shotLocomotionUsesBallisticFeasibility,
 } from './shotLocomotion';
 import { WATER_LEVEL } from './Terrain';
+import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) throw new Error(`[projectile motion contract] ${message}`);
@@ -76,11 +77,11 @@ export function runShotLocomotionContractTest(): void {
     'homing engagement must remain zero before the delay midpoint crosses',
   );
 
-  const fixedStepMs = 1000 / 30;
+  const fixedStepMs = 1000 / ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
   const firstPostDelayScale = getProjectileHomingEngagementScale(rocketShot, delayMs, fixedStepMs);
   assertContract(
     firstPostDelayScale > 0 && firstPostDelayScale < 0.001,
-    `first 30Hz post-delay guidance step must be a very small soft-start; got ${firstPostDelayScale}`,
+    `first fixed-tick post-delay guidance step must be a very small soft-start; got ${firstPostDelayScale}`,
   );
   assertNear(
     getProjectileHomingEngagementScale(

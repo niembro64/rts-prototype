@@ -9,6 +9,7 @@ import type {
 import { NO_ENTITY_ID } from './types';
 import { isConstructionPieceMaterialized } from './buildableHelpers';
 import { isAttackEmitter } from './emitterKinds';
+import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
 
 /** How long a removed entity's dead metadata tombstone stays queryable,
  *  in sim ticks. Post-mortem consumers (damage attribution in
@@ -18,7 +19,8 @@ import { isAttackEmitter } from './emitterKinds';
  *  by projectiles — for the whole match. Tombstones created by
  *  markSubEntityDead for sub-entities of live hosts are NOT pruned:
  *  their generation counter must survive dead→alive cycles. */
-const DEAD_META_RETENTION_TICKS = 300;
+const DEAD_META_RETENTION_TICKS =
+  10 * ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
 
 export class WorldEntityMetadata {
   private readonly metaById = new Map<EntityId, EntityMeta>();

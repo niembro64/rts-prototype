@@ -2,10 +2,11 @@ import { getSimWasm } from '../sim-wasm/init';
 import { ARRIVAL_RADIUS } from './SimulationArrivalController';
 import type { Entity } from './types';
 import { growTypedArrays, nextDoublingCapacity } from '../memory/typedArrayGrowth';
+import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
 
 const STUCK_VEL_THRESHOLD = 5;
-const STUCK_TICK_THRESHOLD = 60;
-export const REPLAN_COOLDOWN = -150;
+const STUCK_TICK_THRESHOLD = 2 * ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
+export const REPLAN_COOLDOWN = -5 * ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
 export const REPLAN_FAILURE_COOLDOWN = REPLAN_COOLDOWN;
 const STUCK_REPLAN_BATCH_FLAG_SETTLING_CHECK = 1 << 0;
 

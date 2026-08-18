@@ -17,7 +17,7 @@ type ServerTickLoopOptions = {
 };
 
 const MAX_CATCH_UP_WINDOW_MS = 25;
-// Do not force a large catch-up burst on the main thread. At 30Hz the
+// Do not force a large catch-up burst on the main thread. At 20Hz the
 // 25ms window allows one fixed step; the old minimum of five could turn a
 // brief stall into a 70ms+ render-blocking sim callback.
 const MIN_CATCH_UP_STEPS = 1;

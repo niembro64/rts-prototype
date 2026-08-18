@@ -302,11 +302,25 @@ pub(crate) fn pathfinder_required_cell_normal_z(
 /// `c >= radius/cell + 0.5` keeps the disk out of the blocker. Returns 0 for
 /// point-size / non-finite radii (gate becomes a no-op, e.g. airborne).
 #[inline]
+#[cfg(test)]
 pub(crate) fn pathfinder_hard_clearance_cells_for_radius(radius: f64) -> i32 {
+    pathfinder_hard_clearance_cells_for_radius_and_size(radius, PATHFINDER_BUILD_GRID_CELL_SIZE)
+}
+
+#[inline]
+pub(crate) fn pathfinder_hard_clearance_cells_for_state(
+    state: &PathfinderState,
+    radius: f64,
+) -> i32 {
+    pathfinder_hard_clearance_cells_for_radius_and_size(radius, state.cell_size)
+}
+
+#[inline]
+fn pathfinder_hard_clearance_cells_for_radius_and_size(radius: f64, cell_size: f64) -> i32 {
     if !radius.is_finite() || radius <= 0.0 {
         return 0;
     }
-    ((radius / PATHFINDER_BUILD_GRID_CELL_SIZE) + 0.5).ceil() as i32
+    ((radius / cell_size) + 0.5).ceil() as i32
 }
 
 #[inline]
@@ -555,7 +569,7 @@ pub(crate) fn pathfinder_step_height_forces(
     let to_gy = (to_i32 - to_gx) / state.grid_w;
     let dx = (to_gx - from_gx) as f64;
     let dy = (to_gy - from_gy) as f64;
-    let horizontal = (dx * dx + dy * dy).sqrt() * PATHFINDER_BUILD_GRID_CELL_SIZE;
+    let horizontal = (dx * dx + dy * dy).sqrt() * state.cell_size;
     if horizontal <= 1.0e-9 {
         return Some(None);
     }
@@ -910,7 +924,7 @@ pub(crate) fn pathfinder_edge_cost_from_forces(
             // assumption; water drag makes them slightly cheap, never
             // inadmissibly expensive.
             let terminal_velocity_time_scale = (flat_safe_accel / remaining_accel).max(1.0);
-            travel_cost = forces.surface_distance / PATHFINDER_BUILD_GRID_CELL_SIZE
+            travel_cost = forces.surface_distance / state.cell_size
                 * terminal_velocity_time_scale;
         }
     }
@@ -956,7 +970,7 @@ pub(crate) fn pathfinder_edge_cost(
         state,
         from_idx,
         to_idx,
-        horizontal_cells * PATHFINDER_BUILD_GRID_CELL_SIZE,
+        horizontal_cells * state.cell_size,
         traversal.allow_air,
         traversal.allow_ground,
         traversal.water_surface_supported,
@@ -1025,7 +1039,7 @@ pub(crate) fn pathfinder_neighbor_cost_uncached(
             state,
             from_idx,
             to_idx,
-            horizontal_cells * PATHFINDER_BUILD_GRID_CELL_SIZE,
+            horizontal_cells * state.cell_size,
             traversal.allow_air,
             traversal.allow_ground,
             traversal.water_surface_supported,

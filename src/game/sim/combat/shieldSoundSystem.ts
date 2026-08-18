@@ -4,11 +4,13 @@
 import type { Entity } from '../types';
 import type { SimEvent } from './types';
 import { resolveTurretSoundEntityId } from './turretSoundId';
+import { ARCHITECTURE_CONFIG } from '../../../architectureConfig';
 
 // Reusable arrays for shield sound events (avoids per-frame allocation)
 const _shieldSimEvents: SimEvent[] = [];
 const _shieldStopOwner: SimEvent[] = [];
-const SHIELD_SOUND_REFRESH_TICKS = 60;
+const SHIELD_SOUND_REFRESH_TICKS =
+  2 * ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
 const activeShieldSoundIds = new Set<number>();
 let shieldSoundRefreshTick = 0;
 

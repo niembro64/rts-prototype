@@ -1,5 +1,6 @@
 import type { LobbySettings } from '@/types/network';
 import { isLiquidSurfaceMode, isTerrainSurfaceMode } from '@/types/worldSurfaceMode';
+import { isPathfindingCellConsolidationMultiplier } from '@/types/pathfinding';
 
 const NUMERIC_FIELDS = [
   'centerMagnitude',
@@ -12,6 +13,7 @@ const NUMERIC_FIELDS = [
   'mapWidthLandCells',
   'mapLengthLandCells',
   'entityCountCap',
+  'pathfindingCellConsolidationMultiplier',
   'converterTax',
 ] as const satisfies readonly (keyof LobbySettings)[];
 
@@ -37,6 +39,13 @@ export function assertCurrentLobbySettings(
   }
   if ((settings.entityCountCap as number) <= 0) {
     throw new Error(`[${context}] entityCountCap must be positive`);
+  }
+  if (!isPathfindingCellConsolidationMultiplier(
+    settings.pathfindingCellConsolidationMultiplier,
+  )) {
+    throw new Error(
+      `[${context}] pathfindingCellConsolidationMultiplier must be one of 1, 2, 3, 4, 5`,
+    );
   }
   if (typeof settings.slowDownAtFinalWaypoint !== 'boolean') {
     throw new Error(`[${context}] missing or invalid slowDownAtFinalWaypoint`);

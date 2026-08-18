@@ -6,12 +6,14 @@ import { beamIndex } from '../BeamIndex';
 import type { SimEvent } from './types';
 import { getBeamWeaponsTargeting } from './targetIndex';
 import { resolveTurretSoundEntityId } from './turretSoundId';
+import { ARCHITECTURE_CONFIG } from '../../../architectureConfig';
 
 // Reusable array for laser sound events (avoids per-frame allocation)
 const _laserSimEvents: SimEvent[] = [];
 const _laserStopOwner: SimEvent[] = [];
 const _laserStopTarget: SimEvent[] = [];
-const LASER_SOUND_REFRESH_TICKS = 60;
+const LASER_SOUND_REFRESH_TICKS =
+  2 * ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
 const activeLaserSoundIds = new Set<number>();
 let laserSoundRefreshTick = 0;
 

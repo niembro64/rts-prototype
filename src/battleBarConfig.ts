@@ -21,6 +21,11 @@ import {
 } from './types/blueprintIds';
 import battleBarConfig from './battleBarConfig.json';
 import { getModeDefaultPreset } from './components/battlePresets';
+import {
+  normalizePathfindingCellConsolidationMultiplier as normalizePathfindingMultiplierValue,
+  PATHFINDING_CELL_CONSOLIDATION_OPTIONS,
+  type PathfindingCellConsolidationMultiplier,
+} from './types/pathfinding';
 
 // ── Authored data lives in battleBarConfig.json ──
 // The TS shim composes BATTLE_CONFIG by reading the JSON and layering
@@ -102,6 +107,18 @@ const MODE_DEFAULT_ENTITY_COUNT_CAPS: Record<BattleMode, number> = {
   real: battleBarConfig.cap.realDefault,
 };
 
+const MODE_DEFAULT_PATHFINDING_CELL_CONSOLIDATION: Record<
+  BattleMode,
+  PathfindingCellConsolidationMultiplier
+> = {
+  demo: normalizePathfindingMultiplierValue(
+    battleBarConfig.pathfindingCellConsolidation.demoDefault,
+  ),
+  real: normalizePathfindingMultiplierValue(
+    battleBarConfig.pathfindingCellConsolidation.realDefault,
+  ),
+};
+
 export function getModeDefaultEntityCountCap(mode: BattleMode): number {
   return MODE_DEFAULT_ENTITY_COUNT_CAPS[mode];
 }
@@ -116,6 +133,10 @@ export const BATTLE_CONFIG = {
   cap: {
     default: MODE_DEFAULT_ENTITY_COUNT_CAPS.demo,
     options: battleBarConfig.cap.options as readonly number[],
+  },
+  pathfindingCellConsolidation: {
+    default: MODE_DEFAULT_PATHFINDING_CELL_CONSOLIDATION.demo,
+    options: battleBarConfig.pathfindingCellConsolidation.options as readonly PathfindingCellConsolidationMultiplier[],
   },
   turretShieldPanelsEnabled: { default: _demoPreset.turretShieldPanelsEnabled },
   turretShieldSpheresEnabled: { default: _demoPreset.turretShieldSpheresEnabled },
@@ -237,6 +258,10 @@ const STORAGE_DEMO_CAP = sk.demoCap;
 // localStorage entry — real-battle settings are never written to the
 // browser. The names mirror the demo keys so the two stay symmetric.
 const STORAGE_REAL_CAP = sk.realCap;
+const STORAGE_DEMO_PATHFINDING_CELL_CONSOLIDATION =
+  sk.demoPathfindingCellConsolidation;
+const STORAGE_REAL_PATHFINDING_CELL_CONSOLIDATION =
+  sk.realPathfindingCellConsolidation;
 const STORAGE_DEMO_FORCE_FIELDS_VISIBLE = sk.demoForceFieldsVisible;
 const STORAGE_REAL_FORCE_FIELDS_VISIBLE = sk.realForceFieldsVisible;
 const STORAGE_DEMO_FOG_OF_WAR_ENABLED = sk.demoFogOfWarEnabled;
@@ -482,6 +507,41 @@ export function getUnitCap(mode: BattleMode): number {
 export function setUnitCap(mode: BattleMode, value: number): void {
   if (!Number.isFinite(value) || value <= 0) return;
   writeModeSetting(mode, STORAGE_REAL_CAP, STORAGE_DEMO_CAP, String(value));
+}
+
+export function normalizePathfindingCellConsolidation(
+  value: number,
+): PathfindingCellConsolidationMultiplier {
+  return normalizePathfindingMultiplierValue(value);
+}
+
+export function loadStoredPathfindingCellConsolidation(
+  mode: BattleMode,
+): PathfindingCellConsolidationMultiplier {
+  const fallback = MODE_DEFAULT_PATHFINDING_CELL_CONSOLIDATION[mode];
+  const stored = readModeSetting(
+    mode,
+    STORAGE_REAL_PATHFINDING_CELL_CONSOLIDATION,
+    STORAGE_DEMO_PATHFINDING_CELL_CONSOLIDATION,
+  );
+  const value = Number(stored);
+  return PATHFINDING_CELL_CONSOLIDATION_OPTIONS.includes(
+    value as PathfindingCellConsolidationMultiplier,
+  )
+    ? value as PathfindingCellConsolidationMultiplier
+    : fallback;
+}
+
+export function savePathfindingCellConsolidation(
+  value: number,
+  mode: BattleMode,
+): void {
+  writeModeSetting(
+    mode,
+    STORAGE_REAL_PATHFINDING_CELL_CONSOLIDATION,
+    STORAGE_DEMO_PATHFINDING_CELL_CONSOLIDATION,
+    String(normalizePathfindingCellConsolidation(value)),
+  );
 }
 
 

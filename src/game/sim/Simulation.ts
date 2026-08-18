@@ -34,6 +34,7 @@ import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
 import {
   advancePathPlanSlice,
+  cancelAllPathPlanSlices,
   cancelPathPlanSlice,
   isPathPlanSuffixTraversable,
   isPathPlanTraversable,
@@ -54,15 +55,17 @@ import {
   PATHFINDING_DIRECT_PLAN_MAX_DISTANCE_WU,
   PATHFINDING_INTERMEDIATE_CORRIDOR_WU,
   PATHFINDING_PARTIAL_PLAN_RETRY_TICKS,
-  PATHFINDING_A_STAR_EXPANSIONS_PER_TICK,
+  PATHFINDING_A_STAR_EXPANSIONS_PER_TEAM_TURN,
 } from './pathfindingTuning';
 import {
   PATH_REQUEST_FRESH,
   PATH_REQUEST_NONE,
   PATH_REQUEST_REFRESH,
+  selectPathPlanTeamTurn,
   SimulationPathPlanScheduler,
 } from './SimulationPathPlanScheduler';
 import { registerPathfinderBuildingOccupancy } from './pathfinderTerrainCache';
+import { getAllyTeamId, type AllyTeamId } from './teamRoster';
 import { getUnitLocomotionTraversalCapabilities } from './unitLocomotion';
 import { updateBuildingActiveStates } from './buildingActiveState';
 import { applyLavaSurfaceDamage } from './lavaSurfaceDamage';
@@ -217,10 +220,11 @@ type ActivePathPlanJob = {
 // CURRENT position to the trip's final destination produces a fresh
 // route that respects the new world state.
 //
-// Replans are one deterministic global job. A difficult fine-grid A* keeps
-// its frontier across ticks and consumes one bounded expansion slice per tick;
-// all other requests wait in side-fair fresh/refresh lanes. A planless unit
-// holds under normal physics until a validated route exists.
+// Replans consume a deterministic expansion quantum for one ally team per
+// tick. Each team may retain one difficult fine-grid A* frontier between its
+// round-robin turns; all other requests wait in per-player fresh/refresh
+// lanes. A planless unit holds under normal physics until a validated route
+// exists.
 
 /** Broadphase slack for the patrol auto-reclaim vegetation sweep. The
  *  circle query tests prop CENTERS, while the build-range test that
@@ -272,7 +276,7 @@ export class Simulation {
   private forceAccumulator: ForceAccumulator = new ForceAccumulator();
   private readonly formationRouteCache = new Map<string, ExpandedPathPlan>();
   private readonly pathPlanScheduler = new SimulationPathPlanScheduler();
-  private activePathPlanJob: ActivePathPlanJob | null = null;
+  private readonly activePathPlanJobs = new Map<AllyTeamId, ActivePathPlanJob>();
   private windState: WindState = sampleWindState(0);
   private windPowerTracker = new WindPowerTracker();
   // Accumulated sim time (ms). Drives deterministic systems like wind
@@ -888,9 +892,9 @@ export class Simulation {
   }
 
   /** Resolve only validated movement. Commands and cheap direct/cache routes
-   *  apply immediately; every real A* request waits for the one global
-   *  resumable job. A unit with no safe route returns null and supplies no
-   *  destination-directed drive this tick. */
+   *  apply immediately; every real A* request waits for its ally team's one
+   *  resumable job and round-robin work turn. A unit with no safe route
+   *  returns null and supplies no destination-directed drive this tick. */
   private ensureActivePathPlan(entity: Entity, action: UnitAction): Unit['activePath'] {
     const unit = entity.unit;
     if (!unit) return null;
@@ -1059,14 +1063,21 @@ export class Simulation {
     return unit.activePath;
   }
 
-  /** Admit one queued request into the sole global A* continuation. Returns
-   *  true only after this tick's deterministic search slice was consumed. */
-  private readonly servePathPlanRequest = (entityId: EntityId, lane: number): boolean => {
+  /** Admit one queued request into the selected ally team's continuation.
+   *  Direct routes and formation-cache hits are installed for free and return
+   *  false so admission can keep scanning. */
+  private admitPathPlanRequest(
+    teamId: AllyTeamId,
+    entityId: EntityId,
+    lane: number,
+  ): boolean {
     const entity = this.world.getEntity(entityId);
     if (entity === undefined) return false;
     const unit = entity.unit;
     if (unit === null || unit.hp <= 0) return false;
     if (unit.pathRequestLane !== lane) return false;
+    const playerId = entity.ownership?.playerId ?? (0 as PlayerId);
+    if (getAllyTeamId(this.world.teamRoster, playerId) !== teamId) return false;
     const forceLocal = unit.pathRequestForceLocal;
     const action = unit.actions[0];
     if (action === undefined || !PATH_PLAN_SERVE_ACTION_TYPES.has(action.type)) {
@@ -1112,7 +1123,7 @@ export class Simulation {
       }
     }
 
-    this.activePathPlanJob = {
+    this.activePathPlanJobs.set(teamId, {
       entityId,
       lane,
       forceLocal,
@@ -1130,15 +1141,18 @@ export class Simulation {
       symmetricSlope: this.world.slopePathMode === 'symmetric',
       formationRoute,
       formationCacheKey,
-    };
-    return this.advanceActivePathPlanJob();
-  };
+    });
+    return true;
+  }
 
-  /** Resume or finish the sole global path job. Invalid live intent cancels
-   *  without spending the tick, allowing the scheduler to admit another job. */
-  private advanceActivePathPlanJob(): boolean {
-    const job = this.activePathPlanJob;
-    if (job === null) return false;
+  /** Resume or finish one team's path job. Invalid live intent is free, so the
+   *  scheduler may admit a replacement in the same team turn. */
+  private advanceActivePathPlanJob(
+    teamId: AllyTeamId,
+    expansionBudget: number,
+  ): { status: 'invalid' | 'pending' | 'complete'; expansionsUsed: number } {
+    const job = this.activePathPlanJobs.get(teamId);
+    if (job === undefined) return { status: 'invalid', expansionsUsed: 0 };
     const entity = this.world.getEntity(job.entityId);
     const unit = entity?.unit ?? null;
     const action = unit?.actions[0];
@@ -1159,8 +1173,8 @@ export class Simulation {
       !actionStillMatches ||
       !navigationStillMatches
     ) {
-      cancelPathPlanSlice();
-      this.activePathPlanJob = null;
+      cancelPathPlanSlice(teamId);
+      this.activePathPlanJobs.delete(teamId);
       if (unit !== null && unit.pathRequestLane === job.lane) {
         unit.pathRequestLane = PATH_REQUEST_NONE;
         unit.pathRequestForceLocal = false;
@@ -1168,7 +1182,7 @@ export class Simulation {
           this.pathPlanScheduler.requestFresh(entity as Entity, job.forceLocal);
         }
       }
-      return false;
+      return { status: 'invalid', expansionsUsed: 0 };
     }
 
     const result = advancePathPlanSlice(
@@ -1182,11 +1196,14 @@ export class Simulation {
       job.terrainFilter,
       job.unitRadius,
       job.symmetricSlope,
-      PATHFINDING_A_STAR_EXPANSIONS_PER_TICK,
+      teamId,
+      expansionBudget,
     );
-    if (result.status === 'pending') return true;
+    if (result.status === 'pending') {
+      return { status: 'pending', expansionsUsed: result.expansionsUsed };
+    }
 
-    this.activePathPlanJob = null;
+    this.activePathPlanJobs.delete(teamId);
     unit.pathRequestLane = PATH_REQUEST_NONE;
     unit.pathRequestForceLocal = false;
     if (job.formationRoute !== null && job.formationCacheKey !== null) {
@@ -1206,7 +1223,7 @@ export class Simulation {
         // local route gets the next available global job; never run twice now.
         this.pathPlanScheduler.requestFresh(entity, true);
       }
-      return true;
+      return { status: 'complete', expansionsUsed: result.expansionsUsed };
     }
 
     const routeStillConnects = isPathPlanTraversable(
@@ -1222,7 +1239,7 @@ export class Simulation {
     if (!routeStillConnects) {
       this.pathPlanScheduler.requestFresh(entity, job.forceLocal);
       if (job.forceLocal) unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;
-      return true;
+      return { status: 'complete', expansionsUsed: result.expansionsUsed };
     }
     if (
       job.forceLocal &&
@@ -1231,11 +1248,11 @@ export class Simulation {
       result.plan.points.length <= 1
     ) {
       unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;
-      return true;
+      return { status: 'complete', expansionsUsed: result.expansionsUsed };
     }
     this.installActivePathPlan(entity, unit, job.actionSnapshot, result.plan, job.terrainVersion);
     if (job.forceLocal) unit.stuckTicks = REPLAN_COOLDOWN;
-    return true;
+    return { status: 'complete', expansionsUsed: result.expansionsUsed };
   }
 
   private resolveActiveMovementTarget(entity: Entity, action: UnitAction): ActiveMovementTarget {
@@ -1676,16 +1693,32 @@ export class Simulation {
     this.combatHaltController.prepare();
     this.releaseReadyGatherWaits();
 
-    // Exactly one global A* work slice may run in a fixed tick. Resume the
-    // retained frontier first; only an invalid/free completion lets admission
-    // scan the side-fair queues for a replacement job in this same tick.
-    const pathSliceConsumed = this.advanceActivePathPlanJob();
-    if (!pathSliceConsumed) {
-      this.pathPlanScheduler.drain(
-        this.world.getTick(),
-        this.world.teamRoster,
-        this.servePathPlanRequest,
-      );
+    // Exactly one ally team receives deterministic A* work in a fixed tick.
+    // It resumes its retained frontier first, then may spend unused expansions
+    // on more routes for that same team. Other teams wait for their turns.
+    const roster = this.world.teamRoster;
+    const selectedTeamTurn = selectPathPlanTeamTurn(this.world.getTick(), roster);
+    if (selectedTeamTurn !== null) {
+      const { teamId, teamTurn } = selectedTeamTurn;
+      let expansionsRemaining = PATHFINDING_A_STAR_EXPANSIONS_PER_TEAM_TURN;
+      while (expansionsRemaining > 0) {
+        if (!this.activePathPlanJobs.has(teamId)) {
+          const admitted = this.pathPlanScheduler.drainTeam(
+            teamTurn,
+            roster,
+            teamId,
+            (entityId, lane) => this.admitPathPlanRequest(teamId, entityId, lane),
+          );
+          if (!admitted) break;
+        }
+        const outcome = this.advanceActivePathPlanJob(teamId, expansionsRemaining);
+        if (outcome.status === 'invalid') continue;
+        // A query that resolves in direct/preflight work can close zero fine
+        // nodes. Charge one deterministic admission unit so a pathological
+        // stream of zero-expansion completions cannot monopolize the tick.
+        expansionsRemaining -= Math.max(1, outcome.expansionsUsed);
+        if (outcome.status === 'pending') break;
+      }
     }
     SIM_TICK_INSTRUMENTATION.phase('sim.pathfinding');
 
@@ -2462,8 +2495,8 @@ export class Simulation {
     this.arrivalController.reset();
     this.airborneLoiter.reset();
     this.stuckReplanController.reset();
-    cancelPathPlanSlice();
-    this.activePathPlanJob = null;
+    cancelAllPathPlanSlices();
+    this.activePathPlanJobs.clear();
     this.formationRouteCache.clear();
     this.pathPlanScheduler.reset();
     this.combatHaltController.reset();

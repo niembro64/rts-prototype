@@ -7,7 +7,7 @@ type PathfindingTuningConfig = {
   allowDiagonalNeighbors: boolean;
   softClearanceCells: number;
   softClearancePenaltyPerCell: number;
-  aStarExpansionBudgetPerTick: number;
+  aStarExpansionBudgetPerTeamTurn: number;
   refreshServiceIntervalTicks: number;
   chaseRepathCooldownTicks: number;
   chaseRepathDriftMinWu: number;
@@ -108,16 +108,16 @@ export const PATHFINDING_FORCE_SAFETY_RATIO = readForceSafetyRatio();
 // identical plan computations on the identical ticks, so none of them may
 // ever be derived from measured frame time.
 
-/** Exact maximum number of fine-grid nodes the sole authoritative A* job may
- *  close in one fixed tick. An unfinished frontier resumes next tick; this is
- *  deterministic work accounting and is never derived from wall time. */
-export const PATHFINDING_A_STAR_EXPANSIONS_PER_TICK = requirePositiveInteger(
-  'aStarExpansionBudgetPerTick',
-  config.aStarExpansionBudgetPerTick,
+/** Exact maximum number of navigation nodes the selected ally team may close
+ *  during one round-robin turn. Unused work may serve another route for that
+ *  team; one unfinished frontier is retained for its next turn. */
+export const PATHFINDING_A_STAR_EXPANSIONS_PER_TEAM_TURN = requirePositiveInteger(
+  'aStarExpansionBudgetPerTeamTurn',
+  config.aStarExpansionBudgetPerTeamTurn,
 );
-/** A pending refresh lane gets first choice on this deterministic cadence;
- *  fresh jobs win other admissions. Free/stale requests never consume the
- *  single A* slice, so the scheduler can continue looking in the same tick. */
+/** A pending refresh lane gets first choice on this deterministic team-turn
+ *  cadence; fresh jobs win other admissions. Free/stale requests never
+ *  consume A* work, so admission can continue in the same tick. */
 export const PATHFINDING_REFRESH_SERVICE_INTERVAL_TICKS = requirePositiveInteger(
   'refreshServiceIntervalTicks',
   config.refreshServiceIntervalTicks,

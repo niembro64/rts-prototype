@@ -63,6 +63,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly plateauWallSlopeDegrees: number;
   readonly metalDepositStep: number;
   readonly terrainDetail: number;
+  readonly pathfindingCellConsolidation: number;
   readonly displayUnitCount: number;
   /** Live per-player upgrade readout: the LOCAL player owns at least one
    *  completed Shield-Aware Targeting Tech building. */
@@ -94,6 +95,7 @@ export type GameCanvasBattleControlBarModel = {
   applyPlateauWallSlopeDegrees(value: number): void;
   applyMetalDepositStep(value: number): void;
   applyTerrainDetail(value: number): void;
+  applyPathfindingCellConsolidation(value: number): void;
   setFogOfWarEnabled(enabled: boolean): void;
   setSlowDownAtFinalWaypoint(enabled: boolean): void;
   setSlopePathMode(mode: SlopePathMode): void;

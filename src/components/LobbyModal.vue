@@ -39,6 +39,7 @@ const props = defineProps<{
   plateauWallSlopeDegrees: number;
   metalDepositStep: number;
   terrainDetail: number;
+  pathfindingCellConsolidation: number;
   mapWidthLandCells: number;
   mapLengthLandCells: number;
   unitBlueprintIds: readonly string[];
@@ -68,6 +69,7 @@ const emit = defineEmits<{
   (e: 'setPlateauWallSlopeDegrees', value: number): void;
   (e: 'setMetalDepositStep', value: number): void;
   (e: 'setTerrainDetail', value: number): void;
+  (e: 'setPathfindingCellConsolidation', value: number): void;
   (e: 'setPreset', preset: BattlePreset): void;
   (e: 'setMapLandDimensions', dimensions: MapLandCellDimensions): void;
   (e: 'toggleUnit', unitBlueprintId: string): void;
@@ -93,6 +95,8 @@ const plateauWallSlopeDegreesOptions =
   BATTLE_CONFIG.plateauWallSlopeDegrees.options;
 const metalDepositStepOptions = BATTLE_CONFIG.metalDepositStep.options;
 const terrainDetailOptions = BATTLE_CONFIG.terrainDetail.options;
+const pathfindingCellConsolidationOptions =
+  BATTLE_CONFIG.pathfindingCellConsolidation.options;
 const converterTaxOptions = BATTLE_CONFIG.converterTax.options;
 const mapWidthOptions = BATTLE_CONFIG.mapSize.width.options;
 const mapLengthOptions = BATTLE_CONFIG.mapSize.length.options;
@@ -157,6 +161,11 @@ function pickMetalDepositStep(value: number): void {
 function pickTerrainDetail(value: number): void {
   if (!props.isHost) return;
   emit('setTerrainDetail', value);
+}
+
+function pickPathfindingCellConsolidation(value: number): void {
+  if (!props.isHost) return;
+  emit('setPathfindingCellConsolidation', value);
 }
 
 function pickPreset(preset: BattlePreset): void {
@@ -750,6 +759,19 @@ const terrainSectionVars = computed(() =>
                       : 'Only the host can change terrain'"
                     @click="pickTerrainDetail(opt)"
                   >{{ opt === 0 ? 'OFF' : opt.toLocaleString() }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel title="Build squares consolidated along each axis into one conservative pathfinding square">PATH CELL:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="opt in pathfindingCellConsolidationOptions"
+                    :key="opt"
+                    :active="pathfindingCellConsolidation === opt"
+                    :title="isHost ? `${opt}×${opt} build squares per pathfinding square` : 'Only the host can change pathfinding resolution'"
+                    @click="pickPathfindingCellConsolidation(opt)"
+                  >{{ opt }}×{{ opt }}</BarButton>
                 </BarButtonGroup>
               </BarControlGroup>
               <!-- Real-battle config groups. These were previously editable
