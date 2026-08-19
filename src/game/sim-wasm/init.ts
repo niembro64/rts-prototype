@@ -1550,6 +1550,10 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runNetworkManagerLockstepBufferContractTest();
         const { runLobbySettingsContractTest } = await import('../network/LobbySettingsContractTest');
         runLobbySettingsContractTest();
+        const { runNetworkLobbySeatingContractTest } = await import('../network/NetworkLobbySeatingContractTest');
+        runNetworkLobbySeatingContractTest();
+        const { runStateMachineContractTest } = await import('../state/StateMachineContractTest');
+        runStateMachineContractTest();
         const { runClientSnapshotApplierContractTest } = await import('../network/ClientSnapshotApplierContractTest');
         runClientSnapshotApplierContractTest();
         const { runShieldFarLodRenderPacketContractTest, runTypedSensorHydrationContractTest } = await import('../network/ClientSnapshotApplierContractTest');

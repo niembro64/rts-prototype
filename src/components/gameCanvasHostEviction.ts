@@ -1,4 +1,5 @@
-import { onUnmounted, ref, type Ref } from 'vue';
+import { computed, onUnmounted, ref, type Ref } from 'vue';
+import { createStateMachine } from '../game/state/StateMachine';
 
 /**
  * What happens to everyone else when the host leaves.
@@ -14,16 +15,40 @@ import { onUnmounted, ref, type Ref } from 'vue';
  * vanishes mid-battle reads as a crash; a few seconds of "the host left" is
  * the difference between the game telling you what happened and appearing to
  * break. Players who would rather not wait can leave immediately.
+ *
+ * Driven by an explicit machine because three independent signals report the
+ * departure (farewell message, closing socket, heartbeat silence) and two more
+ * things end it (the countdown expiring, the player clicking through). Every
+ * one of those can arrive at any moment, including after the exit has already
+ * begun. The transition table names the only three states that exist and
+ * refuses everything else, so "the host left twice" and "the countdown fired
+ * after we already left" are answered once, here, instead of by a latch at
+ * each of the five call sites.
  */
 
 /** Long enough to read the reason, short enough not to feel stuck. */
 const HOST_LEFT_EXIT_SECONDS = 5;
 
+type EvictionState =
+  /** No departure known; the normal state for an entire session. */
+  | 'present'
+  /** The host is gone and the countdown to the menu is running. */
+  | 'announced'
+  /** The exit has been performed; nothing further may restart it. */
+  | 'exited';
+
+type EvictionEvent =
+  /** Any of the three departure signals. */
+  | 'hostLeft'
+  /** Countdown expired, or the player asked to leave now. */
+  | 'exit';
+
 export type GameCanvasHostEviction = {
   /** Seconds left before the automatic exit, or null when not evicting.
-   *  Doubles as the "is this happening" flag the banner renders from. */
+   *  Drives the banner. */
   readonly hostLeftSecondsRemaining: Ref<number | null>;
-  /** The host is gone — start the countdown. Ignores repeat calls. */
+  /** The host is gone — start the countdown. Repeat calls are refused by the
+   *  machine, so callers do not latch. */
   beginHostLeftEviction: () => void;
   /** Leave now instead of waiting out the countdown. */
   exitAfterHostLeft: () => void;
@@ -32,7 +57,7 @@ export type GameCanvasHostEviction = {
 export function useGameCanvasHostEviction(options: {
   exitToMenu: () => void;
 }): GameCanvasHostEviction {
-  const hostLeftSecondsRemaining = ref<number | null>(null);
+  const secondsRemaining = ref(HOST_LEFT_EXIT_SECONDS);
   let countdownTimer: ReturnType<typeof setInterval> | null = null;
 
   function clearCountdown(): void {
@@ -41,26 +66,57 @@ export function useGameCanvasHostEviction(options: {
     countdownTimer = null;
   }
 
-  function exitAfterHostLeft(): void {
-    clearCountdown();
-    hostLeftSecondsRemaining.value = null;
-    options.exitToMenu();
-  }
-
-  function beginHostLeftEviction(): void {
-    // A graceful host sends a farewell AND drops its connection, so this can
-    // be reached twice for one departure. The first call owns the countdown.
-    if (hostLeftSecondsRemaining.value !== null) return;
-    hostLeftSecondsRemaining.value = HOST_LEFT_EXIT_SECONDS;
-    countdownTimer = setInterval(() => {
-      const remaining = (hostLeftSecondsRemaining.value ?? 0) - 1;
-      if (remaining > 0) {
-        hostLeftSecondsRemaining.value = remaining;
+  const machine = createStateMachine<EvictionState, EvictionEvent>({
+    name: 'host-eviction',
+    initial: 'present',
+    transitions: {
+      // Only the first departure signal starts anything.
+      present: { hostLeft: 'announced' },
+      // Once announced, the only way out is leaving — a second departure
+      // report cannot restart the countdown.
+      announced: { exit: 'exited' },
+      // Terminal for this session. A countdown tick that lands after the
+      // player already clicked through has nowhere to go, which is the whole
+      // reason the timer does not need its own guard.
+      exited: {},
+    },
+    onTransition: ({ to }) => {
+      if (to === 'announced') {
+        secondsRemaining.value = HOST_LEFT_EXIT_SECONDS;
+        countdownTimer = setInterval(() => {
+          const remaining = secondsRemaining.value - 1;
+          if (remaining > 0) {
+            secondsRemaining.value = remaining;
+            return;
+          }
+          exitAfterHostLeft();
+        }, 1000);
         return;
       }
-      exitAfterHostLeft();
-    }, 1000);
+      if (to === 'exited') {
+        clearCountdown();
+        options.exitToMenu();
+      }
+    },
+  });
+
+  const state = ref<EvictionState>(machine.state);
+
+  function beginHostLeftEviction(): void {
+    if (!machine.send('hostLeft')) return;
+    state.value = machine.state;
   }
+
+  function exitAfterHostLeft(): void {
+    if (!machine.send('exit')) return;
+    state.value = machine.state;
+  }
+
+  /** Null unless the countdown is actually running, so the banner's own
+   *  visibility is derived from the machine rather than tracked separately. */
+  const hostLeftSecondsRemaining = computed(() =>
+    state.value === 'announced' ? secondsRemaining.value : null,
+  );
 
   onUnmounted(clearCountdown);
 

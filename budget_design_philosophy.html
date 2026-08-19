@@ -321,6 +321,52 @@
 
     <section>
       <h2>Network Model</h2>
+      <h3>Lifecycles are explicit finite state machines</h3>
+      <p>
+        Anything with a lifecycle &mdash; a session, a connection, a countdown, a peer&rsquo;s
+        health &mdash; is modelled as a declared finite state machine, not as a set of booleans
+        that happen to be read together. A pile of flags like
+        <code>isConnecting</code>, <code>gameStarted</code>, <code>alreadyNotified</code> encodes
+        its real states in the <em>combinations</em> of those flags, including every combination
+        nobody intended to allow. The bugs that follow all have the same shape: it fired twice, it
+        ran after teardown, it went back to a state it had already left. Each of those is a
+        transition no one declared and nothing refused.
+      </p>
+      <p>
+        The machine lives in <code>src/game/state/StateMachine.ts</code>. States and the events that
+        move between them are written down as data; an event that is not legal in the current state
+        is refused and returns false, and a refusal never changes state. That is what lets callers
+        stop latching: &ldquo;the host left&rdquo; arriving three different ways, or a countdown
+        expiring after the player already clicked through, are ordinary races that the table
+        answers once instead of every call site answering separately.
+      </p>
+      <ul class="rule-list">
+        <li>If a question about a lifecycle is answered by reading two or more booleans together, it wants a state machine.</li>
+        <li>Declare every legal transition. Undeclared is refused &mdash; that refusal is the safety property, not an oversight to paper over.</li>
+        <li>Derive conditions from the state rather than storing them alongside it. Late joiners are refused because the session is not in <code>lobby</code>, not because a separate flag says so.</li>
+        <li>Put side effects on the transition, not scattered through the callers that trigger it.</li>
+        <li>One writer per machine. A second path that mutates the same lifecycle is the bug the machine exists to prevent.</li>
+        <li>Hysteresis and &ldquo;fire once&rdquo; belong in the table as asymmetric edges, where they can be read, rather than hidden inside a comparison or a guard variable.</li>
+        <li>Keep them flat. Anything wanting hierarchy or parallel regions is better as several machines observing each other.</li>
+      </ul>
+
+      <h3>Matchmaking is behind one backend seam</h3>
+      <p>
+        How players find and reach each other is a swappable backend, not an assumption baked into
+        the lobby. The native backend publishes sessions to <code>web_games_backend</code> and
+        connects peers over WebRTC; a Steam backend would let Steam own the lobby list and carry the
+        traffic. These differ in nearly every detail &mdash; Steam has no room code to read aloud,
+        and its lobbies are not leases that need renewing &mdash; so the shared surface in
+        <code>src/game/network/multiplayer/</code> is written in terms of what the game needs
+        (advertise a session, find the open ones, take the advert down) and each backend answers in
+        its own terms behind it.
+      </p>
+      <ul class="rule-list">
+        <li>Session state belongs to the match, not to the matchmaking service. Backends are told the status; they do not model it.</li>
+        <li>Availability is reported honestly. A backend that cannot work in this runtime says so up front rather than failing at connect time.</li>
+        <li>Discovery is best-effort by contract: a directory that is unreachable yields an empty list, never an error that blocks joining by code.</li>
+      </ul>
+
       <h3>Architecture selection is explicit</h3>
       <p>
         The active backend is deterministic-lockstep, configured before match startup by

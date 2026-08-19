@@ -18,7 +18,7 @@ type PlayerMergeResult = {
   joined: boolean;
 };
 
-type PlayerInfoResult = {
+export type PlayerInfoResult = {
   player: LobbyPlayer | null;
   changed: boolean;
 };
@@ -138,6 +138,18 @@ export class NetworkLobbyRoster {
       }
     }
     return changed;
+  }
+
+  /** Apply info a CLIENT reported about ITSELF, minus anything the host owns.
+   *
+   *  `playerInfo` is a client describing its own name, IP and timezone, but it
+   *  shares a payload type with the host's outbound update — which also
+   *  carries the seat's SIDE. Side assignment belongs to the host alone, so it
+   *  is stripped on the way in. Living here rather than at the call sites
+   *  means the rule is stated once and cannot be forgotten by the next
+   *  inbound path (it already arrives on both `playerInfo` and `heartbeat`). */
+  applyClientReportedInfo(playerId: PlayerId, info: LobbyPlayerInfoPayload): PlayerInfoResult {
+    return this.applyInfo(playerId, { ...info, allyTeamId: undefined });
   }
 
   applyInfo(playerId: PlayerId, info: LobbyPlayerInfoPayload): PlayerInfoResult {

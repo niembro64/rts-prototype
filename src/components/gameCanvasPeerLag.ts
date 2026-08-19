@@ -1,28 +1,43 @@
 import { computed, ref, type Ref } from 'vue';
+import { createStateMachine, type StateMachine } from '../game/state/StateMachine';
 import type { PlayerId } from '../game/sim/types';
 
 /**
  * Which players are falling behind the match, and by how much.
  *
- * Lockstep runs at the speed of its slowest participant: every peer must
- * have a frame's commands before anyone may execute it. So one player on a
- * bad connection does not lag alone — everybody stutters, and from the
- * inside it is indistinguishable from the game being broken. Naming who is
- * behind turns an unexplained freeze into something the table can act on.
+ * Lockstep runs at the speed of its slowest participant: every peer must have
+ * a frame's commands before anyone may execute it. So one player on a bad
+ * connection does not lag alone — everybody stutters, and from the inside it
+ * is indistinguishable from the game being broken. Naming who is behind turns
+ * an unexplained freeze into something the table can act on.
  *
- * Progress comes from the frame coordinator, which is the only peer that
- * sees everyone's acks (see `RealBattlePeerFrameReport`).
+ * Progress comes from the frame coordinator, which is the only peer that sees
+ * everyone's acks (see `RealBattlePeerFrameReport`).
+ *
+ * Each peer gets its own explicit two-state machine rather than a recomputed
+ * boolean, because "is this player behind" is a latched condition with
+ * deliberately different thresholds in each direction. Measured healthy peers
+ * sit within a frame or two of the coordinator but can drift close to a second under
+ * load, so a single threshold makes the callout blink on and off around it.
+ * The machine enters `behind` late and leaves early, and the asymmetry is
+ * readable as the two edges of the table instead of hiding in a comparison.
  */
 
-/** How far behind a peer must fall before it is called out. Below about a
- *  second, peers cross the line constantly on healthy connections and the
- *  indicator would flicker for no reason. */
-const LAG_CALLOUT_SECONDS = 1;
+/** Gap at which a peer is called out. Above the drift healthy peers show
+ *  under load, so ordinary stutter does not accuse anyone. */
+const LAG_ENTER_SECONDS = 1.5;
+
+/** Gap at which the callout is withdrawn. Lower than the entry threshold on
+ *  purpose: without the gap, a peer hovering at the line flickers. */
+const LAG_EXIT_SECONDS = 0.75;
 
 /** Reports stop arriving when a battle ends or the coordinator goes away.
- *  Anything older than this is discarded rather than left on screen
- *  accusing a player who may already have gone. */
+ *  Anything older than this is discarded rather than left on screen accusing
+ *  a player who may already have gone. */
 const REPORT_STALE_MS = 4000;
+
+type PeerLagState = 'keepingUp' | 'behind';
+type PeerLagEvent = 'fellBehind' | 'caughtUp';
 
 export type PeerFrameReport = {
   readonly coordinatorFrame: number;
@@ -45,12 +60,24 @@ export type GameCanvasPeerLag = {
   clearPeerFrames: () => void;
 };
 
+function createPeerMachine(): StateMachine<PeerLagState, PeerLagEvent> {
+  return createStateMachine<PeerLagState, PeerLagEvent>({
+    name: 'peer-lag',
+    initial: 'keepingUp',
+    transitions: {
+      keepingUp: { fellBehind: 'behind' },
+      behind: { caughtUp: 'keepingUp' },
+    },
+  });
+}
+
 export function useGameCanvasPeerLag(): GameCanvasPeerLag {
-  const latestReport = ref<PeerFrameReport | null>(null);
-  const latestReportAtMs = ref(0);
-  /** Bumped on a timer so `laggingPeers` re-evaluates and can go stale even
-   *  when no further reports arrive. */
-  const staleTick = ref(0);
+  const machines = new Map<PlayerId, StateMachine<PeerLagState, PeerLagEvent>>();
+  const secondsBehindByPeer = new Map<PlayerId, number>();
+  /** Bumped on every accepted change so the computed re-evaluates; the
+   *  machines themselves are deliberately not reactive. */
+  const revision = ref(0);
+  const lastReportAtMs = ref(0);
   let staleTimer: ReturnType<typeof setInterval> | null = null;
 
   function stopStaleTimer(): void {
@@ -59,39 +86,63 @@ export function useGameCanvasPeerLag(): GameCanvasPeerLag {
     staleTimer = null;
   }
 
+  function machineFor(playerId: PlayerId): StateMachine<PeerLagState, PeerLagEvent> {
+    const existing = machines.get(playerId);
+    if (existing !== undefined) return existing;
+    const created = createPeerMachine();
+    machines.set(playerId, created);
+    return created;
+  }
+
   function recordPeerFrameReport(report: PeerFrameReport): void {
-    latestReport.value = report;
-    latestReportAtMs.value = Date.now();
+    lastReportAtMs.value = Date.now();
+    const tickRateHz = report.tickRateHz > 0 ? report.tickRateHz : 30;
+    let changed = false;
+
+    for (const peer of report.peers) {
+      // A peer ahead of the coordinator is not a problem worth showing, and
+      // rounding across a report boundary can briefly make one look ahead.
+      const framesBehind = Math.max(0, report.coordinatorFrame - peer.frame);
+      const secondsBehind = framesBehind / tickRateHz;
+      secondsBehindByPeer.set(peer.playerId, secondsBehind);
+      const machine = machineFor(peer.playerId);
+      if (secondsBehind >= LAG_ENTER_SECONDS) {
+        if (machine.send('fellBehind')) changed = true;
+      } else if (secondsBehind <= LAG_EXIT_SECONDS) {
+        if (machine.send('caughtUp')) changed = true;
+      }
+      // Between the two thresholds every event is refused by the table, which
+      // is exactly the hysteresis: the peer stays where it is.
+    }
+
+    // Always bump: the displayed gap moves even when the state does not.
+    revision.value++;
+    if (changed) revision.value++;
+
     if (staleTimer === null) {
       staleTimer = setInterval(() => {
-        staleTick.value++;
+        if (Date.now() - lastReportAtMs.value <= REPORT_STALE_MS) return;
+        clearPeerFrames();
       }, 1000);
     }
   }
 
   function clearPeerFrames(): void {
     stopStaleTimer();
-    latestReport.value = null;
-    latestReportAtMs.value = 0;
+    machines.clear();
+    secondsBehindByPeer.clear();
+    lastReportAtMs.value = 0;
+    revision.value++;
   }
 
   const laggingPeers = computed<readonly LaggingPeer[]>(() => {
-    // Read so the timer invalidates this even with no new report.
-    void staleTick.value;
-    const report = latestReport.value;
-    if (report === null) return [];
-    if (Date.now() - latestReportAtMs.value > REPORT_STALE_MS) return [];
-    const tickRateHz = report.tickRateHz > 0 ? report.tickRateHz : 30;
-
+    void revision.value;
+    if (lastReportAtMs.value === 0) return [];
+    if (Date.now() - lastReportAtMs.value > REPORT_STALE_MS) return [];
     const behind: LaggingPeer[] = [];
-    for (const peer of report.peers) {
-      // A peer ahead of the coordinator is not a problem worth showing, and
-      // rounding across a report boundary can briefly make one look ahead.
-      const framesBehind = report.coordinatorFrame - peer.frame;
-      if (framesBehind <= 0) continue;
-      const secondsBehind = framesBehind / tickRateHz;
-      if (secondsBehind < LAG_CALLOUT_SECONDS) continue;
-      behind.push({ playerId: peer.playerId, secondsBehind });
+    for (const [playerId, machine] of machines) {
+      if (!machine.is('behind')) continue;
+      behind.push({ playerId, secondsBehind: secondsBehindByPeer.get(playerId) ?? 0 });
     }
     behind.sort((a, b) => b.secondsBehind - a.secondsBehind);
     return behind;

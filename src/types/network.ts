@@ -501,7 +501,19 @@ export type NetworkMessage =
       handoff: BattleHandoff;
       assignedPlayerId: PlayerId;
     }
-  | { type: 'playerJoined'; gameId: string | undefined; playerId: PlayerId; playerName: string }
+  // A seat's SIDE travels with the seat. It used to be omitted here and left
+  // to a follow-up info message that was only sent when the player already
+  // had IP/location data, so clients filled the gap with the default team and
+  // two clients could disagree about where the same player was sitting.
+  // Required, not optional: an absent side is indistinguishable from team 1,
+  // which is exactly the bug.
+  | {
+      type: 'playerJoined';
+      gameId: string | undefined;
+      playerId: PlayerId;
+      playerName: string;
+      allyTeamId: number;
+    }
   | { type: 'playerLeft'; gameId: string | undefined; playerId: PlayerId }
   // Host -> client farewell, sent once as the host tears its session down.
   //

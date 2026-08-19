@@ -20,11 +20,9 @@ import type { MapLandCellDimensions } from '../mapSizeConfig';
 import type { BattlePreset } from './battlePresets';
 import { MAX_NAME_LENGTH } from '@/playerNamesConfig';
 import { closeCurrentTauriWindow, isTauriRuntime } from '@/browserRuntime';
-import {
-  fetchLobbyDirectory,
-  LOBBY_LIST_POLL_INTERVAL_MS,
-  type LobbyDirectoryEntry,
-} from '../game/network/LobbyDirectory';
+import { LOBBY_LIST_POLL_INTERVAL_MS } from '../game/network/LobbyDirectory';
+import { getMultiplayerBackend } from '../game/network/multiplayer/multiplayerBackendRegistry';
+import type { MultiplayerLobbySummary } from '../game/network/multiplayer/MultiplayerBackend';
 
 export type { LobbyPlayer } from '@/types/ui';
 import type { LobbyPlayer } from '@/types/ui';
@@ -310,7 +308,7 @@ const codeCopied = ref(false);
  * starting a battle stops it, so no timer runs during a match. Every fetch
  * is best-effort: a backend that is down yields an empty list and the
  * code-entry path above still works exactly as it always did. */
-const directoryLobbies = ref<readonly LobbyDirectoryEntry[]>([]);
+const directoryLobbies = ref<readonly MultiplayerLobbySummary[]>([]);
 const directoryLoaded = ref(false);
 let directoryPollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -322,8 +320,9 @@ const runningGames = computed(() =>
 );
 
 async function refreshDirectory(): Promise<void> {
-  const listing = await fetchLobbyDirectory();
-  directoryLobbies.value = listing.lobbies;
+  // Whichever backend this build uses — the web directory or Steam — answers
+  // in the same vocabulary, so nothing here knows which is in play.
+  directoryLobbies.value = await getMultiplayerBackend().listLobbies();
   directoryLoaded.value = true;
 }
 
@@ -341,13 +340,16 @@ function startDirectoryPolling(): void {
 
 /** One-click join straight from the list — the code is already known, so
  *  the player never has to read or type it. */
-function handleJoinListed(lobby: LobbyDirectoryEntry): void {
+function handleJoinListed(lobby: MultiplayerLobbySummary): void {
   emit('join', lobby.roomCode);
 }
 
 /** How stale a listing is, in the words a player actually wants: how long
  *  the lobby has been sitting there waiting. */
-function formatLobbyAge(lobby: LobbyDirectoryEntry): string {
+function formatLobbyAge(lobby: MultiplayerLobbySummary): string {
+  // Not every backend reports one — Steam has no lobby creation time — and a
+  // missing timestamp would otherwise render as "56 years ago".
+  if (lobby.createdAt <= 0) return '';
   const seconds = Math.max(0, Math.floor((Date.now() - lobby.createdAt) / 1000));
   if (seconds < 60) return 'just now';
   const minutes = Math.floor(seconds / 60);
@@ -537,7 +539,7 @@ const terrainSectionVars = computed(() =>
                 <span class="lobby-row-meta">
                   <span class="lobby-row-code">{{ lobby.roomCode }}</span>
                   <span v-if="lobby.mapName" class="lobby-row-map">{{ lobby.mapName }}</span>
-                  <span class="lobby-row-age">{{ formatLobbyAge(lobby) }}</span>
+                  <span v-if="formatLobbyAge(lobby)" class="lobby-row-age">{{ formatLobbyAge(lobby) }}</span>
                 </span>
               </span>
               <span class="lobby-row-players">{{ lobby.playerCount }}/{{ lobby.maxPlayers }}</span>
@@ -562,7 +564,7 @@ const terrainSectionVars = computed(() =>
                   <span class="lobby-row-name">{{ game.name || game.hostName || 'Battle' }}</span>
                   <span class="lobby-row-meta">
                     <span v-if="game.mapName" class="lobby-row-map">{{ game.mapName }}</span>
-                    <span class="lobby-row-age">started {{ formatLobbyAge(game) }}</span>
+                    <span v-if="formatLobbyAge(game)" class="lobby-row-age">started {{ formatLobbyAge(game) }}</span>
                   </span>
                 </span>
                 <span class="lobby-row-players">{{ game.playerCount }}/{{ game.maxPlayers }}</span>

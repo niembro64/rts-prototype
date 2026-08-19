@@ -70,7 +70,14 @@ import {
   type NetworkSendBudgetTelemetry,
 } from './NetworkSendBudget';
 import { assertCurrentLobbySettings } from './LobbySettingsContract';
-import { LobbyPublisher, MAX_LOBBY_PLAYERS } from './LobbyDirectory';
+import { MAX_LOBBY_PLAYERS } from './LobbyDirectory';
+import { getMultiplayerBackend } from './multiplayer/multiplayerBackendRegistry';
+import {
+  admitsNewPlayers,
+  createSessionLifecycle,
+  sessionStatusFor,
+  type SessionLifecycle,
+} from './multiplayer/MultiplayerBackend';
 
 // Player-name policy lives in @/playerNamesConfig — single source of
 // truth for both seeding (random funny name keyed by playerId) and the
@@ -208,8 +215,15 @@ export class NetworkManager {
     this.broadcastLobbyRoster();
   }
 
-  /** Host-side side change for one seat, then re-announce the roster. */
+  /** Move one seat to another side, then re-announce the roster.
+   *
+   *  Host only, and enforced here rather than only in the UI that calls it:
+   *  the roster the host broadcasts is the one every client renders, so a
+   *  client changing its local copy would just be overwritten by the next
+   *  announcement. Refusing outright keeps one writer instead of two, and
+   *  makes the disagreement impossible rather than merely short-lived. */
   setPlayerAllyTeam(playerId: PlayerId, allyTeamId: number): void {
+    if (this.role !== 'host') return;
     if (!this.roster.setAllyTeam(playerId, allyTeamId)) return;
     this.broadcastLobbyRoster();
   }
@@ -231,17 +245,27 @@ export class NetworkManager {
   private connections: Map<PlayerId, DataConnection> = new Map();
   private role: NetworkRole | null = null;
   private roomCode: string = '';
-  /** Publishes this host's lobby to the games.niemo.io directory so other
-   *  players can find it without being handed the room code. Only a host
-   *  ever owns a listing; clients read the directory but never write it. */
-  private readonly lobbyPublisher = new LobbyPublisher();
+  /** Where this build advertises and discovers sessions — the web directory
+   *  or Steam. Resolved once by the registry; nothing here knows which. */
+  private readonly multiplayer = getMultiplayerBackend();
   /** Latches `emitHostLeft` so the message and the closing socket, which a
    *  graceful host sends both of, only eject the client once. */
   private hostLeftEmitted = false;
   private localPlayerId: PlayerId = 1;
   private nextPlayerId: PlayerId = 2;
   private roster = new NetworkLobbyRoster();
-  private gameStarted: boolean = false;
+  /** The session's own lifecycle. Replaces a `gameStarted` boolean: the
+   *  questions asked of it — may a late joiner be admitted, should the lobby
+   *  still be advertised as open, has this session already ended — are all
+   *  answered from one declared table instead of from a flag plus the
+   *  implicit assumptions around it. */
+  private readonly session: SessionLifecycle = createSessionLifecycle();
+
+  /** Retained as a read-only view because several call sites read it as a
+   *  plain condition; the single writer is now the machine above. */
+  private get gameStarted(): boolean {
+    return this.session.is('playing');
+  }
   private lockstepTransport = new NetworkLockstepTransport({
     getGameId: () => this.getUniversalGameId(),
     getHostConnection: () => this.connections.get(1),
@@ -380,7 +404,7 @@ export class NetworkManager {
    *  and advertise a lobby that already rejects late joiners. */
   refreshLobbyListing(): void {
     if (this.role !== 'host' || this.roomCode === '') return;
-    this.lobbyPublisher.publish(() => {
+    this.multiplayer.publishLobby(() => {
       if (this.role !== 'host' || this.roomCode === '') return null;
       const hostName = this.getLocalPlayerName();
       // Map size is the one setting a browsing player can act on.
@@ -393,8 +417,11 @@ export class NetworkManager {
         roomCode: this.roomCode,
         name: hostName === '' ? 'Open lobby' : `${hostName}'s game`,
         hostName,
-        status: this.gameStarted ? 'in-game' : 'open',
+        // Read off the lifecycle, so a roster change arriving after launch
+        // cannot advertise a running match as joinable.
+        status: sessionStatusFor(this.session.state),
         playerCount: this.roster.toArray().length,
+        maxPlayers: MAX_LOBBY_PLAYERS,
         mapName,
       };
     });
@@ -523,12 +550,14 @@ export class NetworkManager {
     const existingPeer = this.peer;
     if (existingPeer !== null) existingPeer.destroy();
     this.peer = null;
-    this.gameStarted = false;
+    // A fresh session, not an edge: re-hosting, joining someone else and
+    // disconnecting all land here, and each starts the lifecycle over.
+    this.session.reset();
     this.hostLeftEmitted = false;
     // Withdraw before the peer is gone: every teardown path (disconnect,
     // re-host, joining someone else) passes through here, so the listing
     // never outlives the peer that backs it.
-    this.lobbyPublisher.stop();
+    this.multiplayer.withdrawLobby();
     return this.sessionGeneration;
   }
 
@@ -590,6 +619,7 @@ export class NetworkManager {
   // Host a new game
   async hostGame(): Promise<string> {
     const generation = this.beginNetworkSetup();
+    this.session.send('connect');
     this.roomCode = generateRoomCode();
     this.role = 'host';
     this.localPlayerId = 1;
@@ -631,6 +661,9 @@ export class NetworkManager {
           this.markSignalingOpen();
           this.heartbeatTracker.start();
           console.log('Host peer opened with ID:', peer.id);
+          // Signaling has accepted us: the lobby is now real and can take
+          // players, which is also what makes it worth advertising.
+          this.session.send('connected');
           // Only list the lobby once the signaling server has actually
           // accepted us: before this point the room code is not dialable,
           // and advertising it would send joiners to a dead code.
@@ -705,6 +738,7 @@ export class NetworkManager {
   // Join an existing game
   async joinGame(roomCode: string): Promise<void> {
     const generation = this.beginNetworkSetup();
+    this.session.send('connect');
     this.roomCode = normalizeRoomCode(roomCode);
     this.role = 'client';
     this.roster.clear();
@@ -749,6 +783,7 @@ export class NetworkManager {
         conn.on('open', () => {
           if (!this.isCurrentSession(generation) || this.connections.get(1) !== conn) return;
           opened = true;
+          this.session.send('connected');
           console.log('Connected to host');
           // Track host's heartbeats — if the host stops sending
           // for too long, the check loop closes our side of the
@@ -811,8 +846,8 @@ export class NetworkManager {
     conn: DataConnection,
     generation = this.sessionGeneration,
   ): void {
-    if (!this.isCurrentSession(generation) || this.gameStarted) {
-      // Reject late joiners
+    if (!this.isCurrentSession(generation) || !admitsNewPlayers(this.session.state)) {
+      // Reject late joiners — 'lobby' is the only state that admits one.
       conn.close();
       return;
     }
@@ -866,6 +901,7 @@ export class NetworkManager {
           gameId: this.getUniversalGameId(),
           playerId: p.playerId,
           playerName: p.name,
+          allyTeamId: p.allyTeamId,
         });
         if (
           p.ipAddress !== undefined ||
@@ -883,8 +919,16 @@ export class NetworkManager {
         gameId: this.getUniversalGameId(),
         playerId,
         playerName,
+        allyTeamId: player.allyTeamId,
       });
       this.emitPlayerJoined(player);
+
+      // Re-announce every seat afterwards. The joiner shifts the balance the
+      // next joiner is placed against, and this is the one moment several
+      // clients learn about the same seat from different messages — so the
+      // host restates the whole roster and everyone converges on it rather
+      // than on whatever each of them inferred.
+      this.broadcastLobbyRoster();
 
       // Bring the new player up to date on the host's current
       // lobby settings (terrain shape today, more later). Without
@@ -1066,7 +1110,7 @@ export class NetworkManager {
       case 'heartbeat':
         if (!this.isMessageForCurrentGame(message.gameId)) return;
         if (this.role === 'host' && message.playerInfo) {
-          const { player, changed } = this.roster.applyInfo(fromPlayerId, message.playerInfo);
+          const { player, changed } = this.roster.applyClientReportedInfo(fromPlayerId, message.playerInfo);
           if (player && changed) {
             this.emitPlayerInfoUpdate(this.roster.copy(player));
           }
@@ -1099,7 +1143,8 @@ export class NetworkManager {
         // already-resolved IP.
         if (this.role === 'host') {
           if (!this.isMessageForCurrentGame(message.gameId)) return;
-          const { player } = this.roster.applyInfo(fromPlayerId, message);
+          // Side assignment is the host's alone — see applyClientReportedInfo.
+          const { player } = this.roster.applyClientReportedInfo(fromPlayerId, message);
           if (player) {
             this.emitPlayerInfoUpdate(this.roster.copy(player));
             this.broadcast(this.roster.buildPlayerInfoUpdateMessage(player, this.getUniversalGameId()));
@@ -1130,7 +1175,7 @@ export class NetworkManager {
             },
           );
           this.roster.applyBattleHandoff(handoff);
-          this.gameStarted = true;
+          this.session.send('start');
           console.log(`[NET] Game start as player ${this.localPlayerId}; players=${handoff.playerIds.join(',')}`);
           this.emitGameStart(handoff);
         }
@@ -1143,7 +1188,8 @@ export class NetworkManager {
         this.mergeRosterPlayer(createLobbyPlayer(
           message.playerId,
           message.playerName,
-          message.playerId === 1,
+          message.playerId === HOST_PLAYER_ID,
+          message.allyTeamId,
         ));
         break;
 
@@ -1365,7 +1411,10 @@ export class NetworkManager {
   // Start the game (host only)
   startGame(): void {
     if (this.role !== 'host') return;
-    this.gameStarted = true;
+    // The transition IS the guard. `start` is only legal from `lobby`, so a
+    // second Start click, or one arriving before signaling opened, is refused
+    // here rather than by a separate already-started flag.
+    if (!this.session.send('start')) return;
     this.clearSignalingReconnect();
 
     const playerIds = this.getGamePlayerIds();
@@ -1447,7 +1496,6 @@ export class NetworkManager {
     }
     this.beginNetworkSetup();
     this.role = null;
-    this.gameStarted = false;
     this.roster.clear();
 
     // Clear all callbacks to release closure references
