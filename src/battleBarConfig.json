@@ -31,7 +31,7 @@
     "options": [100, 200, 400, 800, 0]
   },
   "plateauWallSlopeDegrees": {
-    "options": [89, 85, 80, 70, 45]
+    "options": [89, 85, 80, 70, 45, 30, 15]
   },
   "metalDepositStep": {
     "options": [-400, -200, -100, 0, 100, 200, 400, 800, 1600, 3200, 6400]
