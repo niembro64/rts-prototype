@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { buildGridOverlayFragment } from './BuildGridOverlayShader';
 import { pathfindingHierarchyOverlayFragment } from './PathfindingHierarchyOverlayShader';
 import { worldShadeFragment } from './WorldShade3D';
+import { resolveMapInfoAnnexFootprint } from './MapInfoAnnex3D';
 import {
   buildWorldBoxFloorGeometry,
   getWaterBoxFloorY,
@@ -55,8 +56,8 @@ export function runWorldBoundaryShaderContractTest(): void {
   const normal = floor.getAttribute('normal');
   const index = floor.index;
   assertContract(
-    position.count === 4 && index !== null && index.count === 6,
-    'the world-box floor must be two triangles across the map footprint',
+    position.count === 8 && index !== null && index.count === 12,
+    'the world-box floor must be two triangles across the map footprint and two more under the info annex',
   );
   assertContract(
     Object.keys(floor.attributes).length === 2 && normal !== undefined,
@@ -68,12 +69,27 @@ export function runWorldBoundaryShaderContractTest(): void {
       'every floor vertex must lie flat at the world-box floor, facing down',
     );
   }
-  const a = new THREE.Vector3().fromBufferAttribute(position, index.getX(0));
-  const b = new THREE.Vector3().fromBufferAttribute(position, index.getX(1));
-  const c = new THREE.Vector3().fromBufferAttribute(position, index.getX(2));
+  for (let triangle = 0; triangle < index.count / 3; triangle++) {
+    const a = new THREE.Vector3().fromBufferAttribute(position, index.getX(triangle * 3));
+    const b = new THREE.Vector3().fromBufferAttribute(position, index.getX(triangle * 3 + 1));
+    const c = new THREE.Vector3().fromBufferAttribute(position, index.getX(triangle * 3 + 2));
+    assertContract(
+      b.sub(a).cross(c.sub(a)).normalize().y < -0.999,
+      'every floor triangle must be wound so its front face is the one seen from under the world',
+    );
+  }
+  // The annex's cap sits entirely outside the map footprint, exactly under
+  // the headland the terrain mesh grows off the same edge.
+  const annex = resolveMapInfoAnnexFootprint(mapWidth, mapHeight);
+  const floorBounds = new THREE.Box3().setFromBufferAttribute(
+    position as THREE.BufferAttribute,
+  );
   assertContract(
-    b.sub(a).cross(c.sub(a)).normalize().y < -0.999,
-    'the floor must be wound so its front face is the one seen from under the world',
+    Math.abs(floorBounds.min.x - Math.min(0, annex.minX)) < 1e-6
+      && Math.abs(floorBounds.max.x - Math.max(mapWidth, annex.maxX)) < 1e-6
+      && Math.abs(floorBounds.min.z - Math.min(0, annex.minZ)) < 1e-6
+      && Math.abs(floorBounds.max.z - Math.max(mapHeight, annex.maxZ)) < 1e-6,
+    'the floor must close the map slab AND the annex hanging off it',
   );
   assertContract(
     getWaterBoxFloorY(mapWidth, mapHeight) < floorY,

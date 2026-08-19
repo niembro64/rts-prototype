@@ -377,8 +377,13 @@ export const SKY_RENDER_CONFIG = COLORS.world.sky;
  *  negative lowers every layer, and positive raises every layer. */
 export const PRESET_BACKDROP_RENDER_CONFIG = worldRenderConfigJson.presetBackdrop;
 
-/** Ground caption painted outside the map's near-left corner while the
- *  battle bar sits exactly on a stock preset. See MapPresetLabel3D. */
+/** The map's info headland: a piece of land attached to the middle of the
+ *  edge behind ally team 0, emitted into the terrain mesh and covered by the
+ *  same liquid box as the map. See MapInfoAnnex3D. */
+export const MAP_INFO_ANNEX_RENDER_CONFIG = worldRenderConfigJson.mapInfoAnnex;
+
+/** The caption standing on that headland, naming the stock preset the battle
+ *  bar sits on (or CUSTOM). See MapPresetLabel3D. */
 export const MAP_PRESET_LABEL_RENDER_CONFIG = worldRenderConfigJson.mapPresetLabel;
 
 export const FOREST_SPRUCE2_WOOD_COLOR = COLORS.environment.forestSpruce2.wood.colorHex;

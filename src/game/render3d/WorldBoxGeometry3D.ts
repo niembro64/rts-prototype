@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { WORLD_BOX_RENDER_CONFIG } from '../../config';
+import { resolveMapInfoAnnexFootprint } from './MapInfoAnnex3D';
 
 /**
  * Shared render-only bounds for the visible world slab. Gameplay terrain,
@@ -24,29 +25,46 @@ export function getWaterBoxFloorY(mapWidth: number, mapHeight: number): number {
   return getWorldBoxFloorY(mapWidth, mapHeight) - getFloatingWaterOverhang();
 }
 
-/** The quad that closes the land slab: the map footprint at the world-box
- *  floor, wound and normalled so its FRONT face is the one a camera under the
- *  world sees. Deliberately two triangles and no more — nothing samples it,
- *  so it needs no interior vertices to interpolate anything across. */
+/** The quads that close the land slab: the map footprint at the world-box
+ *  floor plus the info annex's own rectangle hanging off one edge, wound and
+ *  normalled so their FRONT face is the one a camera under the world sees.
+ *  Deliberately two triangles per rectangle and no more — nothing samples
+ *  them, so they need no interior vertices to interpolate anything across. */
 export function buildWorldBoxFloorGeometry(
   mapWidth: number,
   mapHeight: number,
   floorY: number,
 ): THREE.BufferGeometry {
+  const annex = resolveMapInfoAnnexFootprint(mapWidth, mapHeight);
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const indices: number[] = [];
+  // Corner order (min, min) → (max, min) → (max, max) → (min, max) with a
+  // fan index wound so the face normal comes out pointing DOWN, matching the
+  // authored one.
+  const pushFloorRect = (
+    minX: number,
+    minZ: number,
+    maxX: number,
+    maxZ: number,
+  ): void => {
+    const base = positions.length / 3;
+    positions.push(
+      minX, floorY, minZ,
+      maxX, floorY, minZ,
+      maxX, floorY, maxZ,
+      minX, floorY, maxZ,
+    );
+    for (let corner = 0; corner < 4; corner++) normals.push(0, -1, 0);
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  };
+  pushFloorRect(0, 0, mapWidth, mapHeight);
+  pushFloorRect(annex.minX, annex.minZ, annex.maxX, annex.maxZ);
+
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute([
-    0, floorY, 0,
-    mapWidth, floorY, 0,
-    mapWidth, floorY, mapHeight,
-    0, floorY, mapHeight,
-  ], 3));
-  geometry.setAttribute('normal', new THREE.Float32BufferAttribute([
-    0, -1, 0,
-    0, -1, 0,
-    0, -1, 0,
-    0, -1, 0,
-  ], 3));
-  geometry.setIndex([0, 1, 2, 0, 2, 3]);
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setIndex(indices);
   geometry.computeBoundingSphere();
   return geometry;
 }

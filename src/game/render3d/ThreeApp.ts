@@ -440,6 +440,9 @@ export class ThreeApp {
       if (this._renderEnabled && !this._drawSuspended) {
         this.syncWaterBoundaryPresentation();
         this._zoomTerrainPointsOverlay.update(now, getZoomPointsDebug());
+        // One terrain sample: the caption re-seats itself if the annex's
+        // altitude changed under it (a terrain bake landing after the sign).
+        this._mapPresetLabel?.update();
         // Wrap the render call so the GPU timer captures true draw-time
         // (only the render; update-callback work is CPU-side).
         this.frameProfiler.beginFrame();

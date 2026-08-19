@@ -21,6 +21,10 @@ import type { GraphicsConfig } from '@/types/graphics';
 import type { RenderFrameState3D } from './RenderFrameState3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 import { getFloatingWaterOverhang, getWaterBoxFloorY } from './WorldBoxGeometry3D';
+import {
+  resolveMapInfoAnnexFootprint,
+  resolveMapInfoAnnexLiquidRect,
+} from './MapInfoAnnex3D';
 
 // Depth bias only. The mesh vertices stay exactly at WATER_LEVEL for
 // gameplay/readability, but the fragments are pushed slightly behind
@@ -85,6 +89,25 @@ function gridBreakpoints(
     points.push(innerStart + ((innerEnd - innerStart) * i) / steps);
   }
   if (outerEnd > innerEnd) points.push(outerEnd);
+  return points;
+}
+
+/** The `points` that fall strictly inside [a, b], with both ends added — the
+ *  breakpoints of one sub-span of an axis, sharing the parent axis's
+ *  interior points so the two meshes meet without T-junctions. Empty for a
+ *  span with no length, which is a strip that must not be emitted at all. */
+function clipBreakpoints(points: readonly number[], a: number, b: number): number[] {
+  if (b - a <= 1e-6) return [];
+  const inner = points.filter((value) => value > a + 1e-6 && value < b - 1e-6);
+  return [a, ...inner, b];
+}
+
+/** Uniform breakpoints across [a, b] with spacing no coarser than `cell`. */
+function uniformBreakpoints(a: number, b: number, cell: number): number[] {
+  if (b - a <= 1e-6) return [];
+  const steps = Math.max(1, Math.ceil((b - a) / Math.max(1e-3, cell)));
+  const points: number[] = [];
+  for (let i = 0; i <= steps; i++) points.push(a + ((b - a) * i) / steps);
   return points;
 }
 
@@ -338,6 +361,36 @@ export class WaterRenderer3D {
     const bottomY = getWaterBoxFloorY(this.mapWidth, this.mapHeight);
     const xs = gridBreakpoints(x0, x0, x1, x1, WATER_SURFACE_GRID_STEPS);
     const zs = gridBreakpoints(z0, z0, z1, z1, WATER_SURFACE_GRID_STEPS);
+    // Use the surface grid's cell size so every panel added below carries the
+    // same depth-interpolation error as the horizontal surface.
+    const cell = Math.max(x1 - x0, z1 - z0) / WATER_SURFACE_GRID_STEPS;
+
+    // THE INFO ANNEX'S ARM. The liquid footprint is the map rectangle plus
+    // the annex's own, each grown by the SAME overhang: an L, not a bigger
+    // rectangle. Widening one whole side of the sea out to meet the headland
+    // would give that side a border several times every other side's; the L
+    // gives the headland exactly the border the map has, at exactly the same
+    // level, which is the whole point of attaching it. The arm stops at the
+    // map's own liquid boundary — that part is already covered, and a second
+    // coplanar sheet of translucent water over it reads as a darker patch.
+    const annex = resolveMapInfoAnnexFootprint(this.mapWidth, this.mapHeight);
+    const arm = resolveMapInfoAnnexLiquidRect(
+      annex,
+      overhang,
+      this.mapWidth,
+      this.mapHeight,
+    );
+    const armExists = arm.maxX - arm.minX > 1e-6 && arm.maxZ - arm.minZ > 1e-6;
+    const armRunsAlongX = annex.outX === 0;
+    // Where the arm shares a border with the map's rectangle it reuses that
+    // rectangle's own breakpoints, so the two grids meet without T-junctions
+    // on the seam; the axis it grows along is its own.
+    const armXs = armRunsAlongX
+      ? clipBreakpoints(xs, arm.minX, arm.maxX)
+      : uniformBreakpoints(arm.minX, arm.maxX, cell);
+    const armZs = armRunsAlongX
+      ? uniformBreakpoints(arm.minZ, arm.maxZ, cell)
+      : clipBreakpoints(zs, arm.minZ, arm.maxZ);
 
     const surface = {
       positions: [] as number[],
@@ -352,6 +405,16 @@ export class WaterRenderer3D {
       zs,
       topY,
     );
+    if (armExists) {
+      pushHorizontalGrid(
+        surface.positions,
+        surface.normals,
+        surface.indices,
+        armXs,
+        armZs,
+        topY,
+      );
+    }
     this.setGeometry(
       this.waterGeometry,
       surface.positions,
@@ -359,26 +422,73 @@ export class WaterRenderer3D {
       surface.indices,
     );
 
-    // These four overhanging curtains close the water box's outer perimeter,
-    // and the bottom face below closes its floor, so the liquid is a complete
+    // These overhanging curtains close the water box's outer perimeter, and
+    // the bottom face below closes its floor, so the liquid is a complete
     // solid from every angle the camera can reach — including from under the
     // world, where the land slab's own floor cap now sits just inside it.
-    const north = xs.map((x): readonly [number, number] => [x, z0]);
-    const east = zs.map((z): readonly [number, number] => [x1, z]);
-    const south = [...xs].reverse().map((x): readonly [number, number] => [x, z1]);
-    const west = [...zs].reverse().map((z): readonly [number, number] => [x0, z]);
-    // Use the surface grid's cell size so the independently sorted curtains
-    // carry the same depth-interpolation error as the horizontal surface.
-    const cell = Math.max(x1 - x0, z1 - z0) / WATER_SURFACE_GRID_STEPS;
+    //
+    // Every strip is walked in the direction (-nz, nx) for its outward
+    // normal (nx, nz): that is the walk pushCurtainStrip's winding agrees
+    // with, so a face is never drawn inside out.
+    const alongX = (
+      values: readonly number[],
+      z: number,
+    ): ReadonlyArray<readonly [number, number]> =>
+      values.map((x): readonly [number, number] => [x, z]);
+    const alongZ = (
+      values: readonly number[],
+      x: number,
+    ): ReadonlyArray<readonly [number, number]> =>
+      values.map((z): readonly [number, number] => [x, z]);
+    const strips: Record<WaterBoxFace, Array<ReadonlyArray<readonly [number, number]>>> = {
+      north: [alongX(xs, z0)],
+      east: [alongZ(zs, x1)],
+      south: [alongX([...xs].reverse(), z1)],
+      west: [alongZ([...zs].reverse(), x0)],
+      bottom: [],
+    };
+    if (armExists && armRunsAlongX) {
+      // The map side the arm joins is OPENED over the arm's span and closed
+      // again by the arm's own far side, one arm-depth further out; the two
+      // flanks join them. North is walked +x and south −x, and the arm's far
+      // side carries the same outward normal as the side it replaces, so one
+      // ordering flag covers all three.
+      const attached: WaterBoxFace = annex.outZ < 0 ? 'north' : 'south';
+      const attachedZ = annex.outZ < 0 ? z0 : z1;
+      const farZ = annex.outZ < 0 ? arm.minZ : arm.maxZ;
+      const order = (values: readonly number[]): readonly number[] =>
+        annex.outZ < 0 ? values : [...values].reverse();
+      strips[attached] = [
+        alongX(order(clipBreakpoints(xs, x0, arm.minX)), attachedZ),
+        alongX(order(clipBreakpoints(xs, arm.maxX, x1)), attachedZ),
+        alongX(order(armXs), farZ),
+      ];
+      strips.west.push(alongZ([...armZs].reverse(), arm.minX));
+      strips.east.push(alongZ(armZs, arm.maxX));
+    } else if (armExists) {
+      const attached: WaterBoxFace = annex.outX < 0 ? 'west' : 'east';
+      const attachedX = annex.outX < 0 ? x0 : x1;
+      const farX = annex.outX < 0 ? arm.minX : arm.maxX;
+      const order = (values: readonly number[]): readonly number[] =>
+        annex.outX > 0 ? values : [...values].reverse();
+      strips[attached] = [
+        alongZ(order(clipBreakpoints(zs, z0, arm.minZ)), attachedX),
+        alongZ(order(clipBreakpoints(zs, arm.maxZ, z1)), attachedX),
+        alongZ(order(armZs), farX),
+      ];
+      strips.north.push(alongX(armXs, arm.minZ));
+      strips.south.push(alongX([...armXs].reverse(), arm.maxZ));
+    }
+
     const curtainInputs = [
-      { direction: 'north', points: north, nx: 0, nz: -1 },
-      { direction: 'east', points: east, nx: 1, nz: 0 },
-      { direction: 'south', points: south, nx: 0, nz: 1 },
-      { direction: 'west', points: west, nx: -1, nz: 0 },
-      // The floor is a horizontal grid on the same breakpoints, so it shares
-      // the curtains' bottom edge with no T-junctions and carries the same
-      // depth-interpolation error as every other face of the box.
-      { direction: 'bottom', points: null, nx: 0, nz: 0 },
+      { direction: 'north', nx: 0, nz: -1 },
+      { direction: 'east', nx: 1, nz: 0 },
+      { direction: 'south', nx: 0, nz: 1 },
+      { direction: 'west', nx: -1, nz: 0 },
+      // The floor is a horizontal grid on the same breakpoints as the
+      // surface, so it shares the curtains' bottom edge with no T-junctions
+      // and carries the same depth-interpolation error as every other face.
+      { direction: 'bottom', nx: 0, nz: 0 },
     ] as const;
     const triangleParts = [surface];
     for (let i = 0; i < curtainInputs.length; i++) {
@@ -388,7 +498,7 @@ export class WaterRenderer3D {
         normals: [] as number[],
         indices: [] as number[],
       };
-      if (input.points === null) {
+      if (input.direction === 'bottom') {
         pushHorizontalGrid(
           part.positions,
           part.normals,
@@ -398,18 +508,32 @@ export class WaterRenderer3D {
           bottomY,
           -1,
         );
+        if (armExists) {
+          pushHorizontalGrid(
+            part.positions,
+            part.normals,
+            part.indices,
+            armXs,
+            armZs,
+            bottomY,
+            -1,
+          );
+        }
       } else {
-        pushCurtainStrip(
-          part.positions,
-          part.normals,
-          part.indices,
-          input.points,
-          bottomY,
-          topY,
-          input.nx,
-          input.nz,
-          cell,
-        );
+        for (const points of strips[input.direction]) {
+          if (points.length < 2) continue;
+          pushCurtainStrip(
+            part.positions,
+            part.normals,
+            part.indices,
+            points,
+            bottomY,
+            topY,
+            input.nx,
+            input.nz,
+            cell,
+          );
+        }
       }
       const curtain = this.waterCurtains[i];
       if (curtain.direction !== input.direction) {

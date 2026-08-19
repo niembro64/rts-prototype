@@ -45,21 +45,25 @@
     ],
     "detail": "Four map-centered panorama shells, ordered near to terminal. Effective distance is max(minimumDistanceWorldUnits, distanceMapFactor times the larger map axis). The first three generated UASTC KTX2 textures are transparent RGBA scenery/cloud layers; terminal is the fully opaque sky and is the only layer allowed to contain stars. verticalOffsetDegrees applies to all four: 0 is authored placement, negative lowers, positive raises. Generator blur must increase with distance."
   },
+  "mapInfoAnnex": {
+    "widthMapFraction": 0.3,
+    "depthMapFraction": 0.18,
+    "maxEdgeSpanFraction": 0.5,
+    "blendDepthFraction": 0.33,
+    "surfaceStepLandCellFraction": 0.5,
+    "detail": "The strip of land the map caption stands on \u2014 a headland grown straight out of the middle of the map edge BEHIND ally team 0, emitted into the terrain mesh itself so the terrain shader paints it and the liquid box grows around it. widthMapFraction (along the edge) and depthMapFraction (outward) scale against the larger map axis, so the annex keeps the same whole-map-zoom size on every map; on a long, thin map that would grow a tongue wider than the coast it hangs off, so both are scaled down together until the width fits maxEdgeSpanFraction of that edge. blendDepthFraction is how much of that depth is spent easing from the map's own edge profile to the flat table the caption stands on, as a fraction of the depth; the rest is flat. surfaceStepLandCellFraction is the annex's triangle spacing as a fraction of the land cell, so its mesh is at least as fine as the terrain it joins."
+  },
   "mapPresetLabel": {
     "titleFontPx": 84,
     "infoFontPx": 38,
     "lineGapPx": 16,
     "canvasPadPx": 24,
     "strokeWidthPx": 9,
-    "blockHeightMapFraction": 0.07,
-    "cornerMarginMapFraction": 0.055,
-    "groundLift": 40,
-    "plinthPadBlockFraction": 0.14,
-    "plinthThicknessBlockFraction": 0.55,
-    "letterDepthTitleFraction": 0.16,
+    "captionMarginAnnexDepthFraction": 0.12,
+    "letterReliefTitleFraction": 0.16,
     "letterMaskSupersample": 2,
     "letterMaskSimplifyPx": 0.7,
-    "detail": "Map caption standing on its own slab of terrain just outside the map's (0,0) corner \u2014 the near-left corner at the default camera yaw. Exact stock settings show the preset name; changed settings show CUSTOM while retaining current map details. Font sizes are canvas pixels and set the block's internal proportions; blockHeightMapFraction scales the whole block against the larger map axis, so the caption keeps the same on-screen size at whole-map zoom on every map. cornerMarginMapFraction is how far off the map edge the block stands, also in map-axis units. groundLift is world units above the water surface, and puts the plinth's grassy TOP face there. plinthPadBlockFraction is the terrain border around the caption and plinthThicknessBlockFraction the slab's depth, both in caption-block heights. The letters are extruded out of the painted glyph mask: letterDepthTitleFraction is their height as a fraction of the title font, letterMaskSupersample how much finer than the painted caption the traced mask is, and letterMaskSimplifyPx the outline simplification tolerance in mask pixels (larger = fewer triangles, blockier glyphs)."
+    "detail": "Map caption standing on the flat table of the map info annex (see mapInfoAnnex), behind ally team 0. Exact stock settings show the preset name; changed settings show CUSTOM while retaining current map details. Font sizes are canvas pixels and set the block's internal proportions; the block itself is scaled to fit the annex's flat part inset by captionMarginAnnexDepthFraction \u00d7 the annex depth on every side, so the caption keeps the same on-screen size at whole-map zoom on every map. The letters are extruded out of the painted glyph mask and always rise from the annex surface to letterReliefTitleFraction \u00d7 the title font ABOVE whichever is higher, the ground they stand on or the liquid surface \u2014 so the caption reads from above the water and the letters run down through it to the bed. letterMaskSupersample is how much finer than the painted caption the traced mask is, and letterMaskSimplifyPx the outline simplification tolerance in mask pixels (larger = fewer triangles, blockier glyphs)."
   },
   "sun": {
     "azimuthRad": 1.5707963267948966,

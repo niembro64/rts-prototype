@@ -34,6 +34,7 @@ import {
   LAND_CELL_SIZE,
   MAP_BG_COLOR,
   LAND_TILE_GROUND_LIFT,
+  MAP_INFO_ANNEX_RENDER_CONFIG,
   HORIZON_RENDER_EXTEND,
   GROUND_RENDER_ORDER,
   TERRAIN_GROUND_BASE_COLOR,
@@ -65,6 +66,11 @@ import {
   type SurfaceFieldUniforms,
 } from './SurfaceFieldTexture';
 import { buildWorldBoxFloorGeometry, getWorldBoxFloorY } from './WorldBoxGeometry3D';
+import {
+  emitMapInfoAnnexGeometry,
+  mapInfoAnnexFlatHeight,
+  resolveMapInfoAnnexFootprint,
+} from './MapInfoAnnex3D';
 import {
   WORLD_SHADE_FRAGMENT_PARS,
   WorldShade3D,
@@ -2525,6 +2531,40 @@ export class TerrainTileRenderer3D {
         terrainTriangleWallFlags.push(triWallFlag);
       }
 
+      // One vertex writer for every world-box face — the four perimeter
+      // walls and the floor cap that closes them. They share a shade, an
+      // "off the terrace vocabulary" wall-wear record, and the vertical-
+      // cliff slope; only the position and the outward normal differ.
+      const pushWorldBoxVertex = (
+        x: number,
+        y: number,
+        z: number,
+        nx: number,
+        ny: number,
+        nz: number,
+      ): number => {
+        const idx = terrainPositions.length / 3;
+        terrainPositions.push(x, y, z);
+        terrainNormals.push(nx, ny, nz);
+        terrainShades.push(SIDE_WALL_TERRAIN_SHADE);
+        terrainSourceVertices.push(-1);
+        // Map-boundary walls are the world box, not a terrace fold; they
+        // have no rim to wear. Distance 1 = past the reach, intensity 0,
+        // rim height = its own so the drop term is zero too.
+        terrainWallWears.push(1, 0, y, 1, 0, y);
+        terrainVertexWallClasses.push(0);
+        // Map-boundary side walls are vertical cliffs — neighborhood slope
+        // is 1.0 so the grass mask fully suppresses any green tint here.
+        terrainNeighborhoodSlopes.push(1);
+        terrainHorizonFades.push(
+          this.getTerrainHorizonFadeForWaterBoundaryMode(
+            x,
+            z,
+            waterBoundaryMode,
+          ),
+        );
+        return idx;
+      };
       this.worldBoxFloorVisible = false;
       if (!wallTriangleDebug && graphicsConfig.terrainTileSideWalls) {
         const edgeCounts = new Map<string, { a: number; b: number; count: number; wallClass: number }>();
@@ -2550,40 +2590,6 @@ export class TerrainTileRenderer3D {
           addEdge(b, c, triWallFlag);
           addEdge(c, a, triWallFlag);
         }
-        // One vertex writer for every world-box face — the four perimeter
-        // walls and the floor cap that closes them. They share a shade, an
-        // "off the terrace vocabulary" wall-wear record, and the vertical-
-        // cliff slope; only the position and the outward normal differ.
-        const pushWorldBoxVertex = (
-          x: number,
-          y: number,
-          z: number,
-          nx: number,
-          ny: number,
-          nz: number,
-        ): number => {
-          const idx = terrainPositions.length / 3;
-          terrainPositions.push(x, y, z);
-          terrainNormals.push(nx, ny, nz);
-          terrainShades.push(SIDE_WALL_TERRAIN_SHADE);
-          terrainSourceVertices.push(-1);
-          // Map-boundary walls are the world box, not a terrace fold; they
-          // have no rim to wear. Distance 1 = past the reach, intensity 0,
-          // rim height = its own so the drop term is zero too.
-          terrainWallWears.push(1, 0, y, 1, 0, y);
-          terrainVertexWallClasses.push(0);
-          // Map-boundary side walls are vertical cliffs — neighborhood slope
-          // is 1.0 so the grass mask fully suppresses any green tint here.
-          terrainNeighborhoodSlopes.push(1);
-          terrainHorizonFades.push(
-            this.getTerrainHorizonFadeForWaterBoundaryMode(
-              x,
-              z,
-              waterBoundaryMode,
-            ),
-          );
-          return idx;
-        };
         const boundaryEps = 1e-4;
         const wallNormal = (a: number, b: number): { nx: number; nz: number } | null => {
           const ax = authoritativeMesh.vertexCoords[a * 2];
@@ -2681,6 +2687,72 @@ export class TerrainTileRenderer3D {
         // box to close, because its shelf runs to the horizon instead of
         // dropping a wall.
         this.worldBoxFloorVisible = waterBoundaryMode !== 'infinity';
+      }
+
+      // THE INFO ANNEX. It is emitted INTO this mesh rather than beside it,
+      // because the terrain shader is what makes it the map's own ground:
+      // the same substances, the same shoreline and underwater tint, the
+      // same walls dropping to the same floor. A lookalike material standing
+      // next to the real thing is precisely the seam the annex exists to
+      // remove. Nothing gameplay-side knows it is here — the authoritative
+      // mesh, the pathfinding grid and the build grid all still stop at the
+      // map rectangle, so it looks playable and is not.
+      if (!wallTriangleDebug) {
+        const annex = resolveMapInfoAnnexFootprint(this.mapWidth, this.mapHeight);
+        emitMapInfoAnnexGeometry(
+          annex,
+          {
+            flatHeight: mapInfoAnnexFlatHeight(annex, terrainHeightAt),
+            sampleTerrainHeight: terrainHeightAt,
+            step: cellSize * MAP_INFO_ANNEX_RENDER_CONFIG.surfaceStepLandCellFraction,
+            floorY: getWorldBoxFloorY(this.mapWidth, this.mapHeight),
+            walls: graphicsConfig.terrainTileSideWalls,
+            cullAtOrBelowY: WATER_FULLY_OPAQUE ? WATER_LEVEL : null,
+          },
+          {
+            pushSurfaceVertex: (x, y, z, nx, ny, nz, slope): number => {
+              const idx = terrainPositions.length / 3;
+              terrainPositions.push(x, y, z);
+              terrainNormals.push(nx, ny, nz);
+              // No authoritative source vertex, so the render-scalar
+              // smoother skips these exactly as it skips the world-box
+              // walls; the annex's own field is already smooth.
+              terrainSourceVertices.push(-1);
+              terrainWallWears.push(1, 0, y, 1, 0, y);
+              terrainVertexWallClasses.push(0);
+              terrainNeighborhoodSlopes.push(slope);
+              terrainHorizonFades.push(
+                this.getTerrainHorizonFadeForWaterBoundaryMode(
+                  x,
+                  z,
+                  waterBoundaryMode,
+                ),
+              );
+              terrainShades.push(
+                terrainSunShade(
+                  // The sim's normal is Z-up where the renderer's is Y-up.
+                  { x: nx, y: nz, z: ny },
+                  terrainPrecomputedShadow(
+                    x,
+                    z,
+                    y - LAND_TILE_GROUND_LIFT,
+                    this.mapWidth,
+                    this.mapHeight,
+                    terrainHeightAt,
+                  ),
+                ),
+              );
+              return idx;
+            },
+            pushWallVertex: (x, y, z, nx, nz): number =>
+              pushWorldBoxVertex(x, y, z, nx, 0, nz),
+            pushTriangle: (a, b, c): void => {
+              terrainIndices.push(a, b, c);
+              terrainDebugLevels.push(-1);
+              terrainTriangleWallFlags.push(0);
+            },
+          },
+        );
       }
     }
 

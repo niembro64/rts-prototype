@@ -1652,6 +1652,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runWorldBoundaryShaderContractTest();
         const { runParallaxBackdropRenderer3DContractTest } = await import('../render3d/ParallaxBackdropRenderer3DContractTest');
         runParallaxBackdropRenderer3DContractTest();
+        const { runMapInfoAnnex3DContractTest } = await import('../render3d/MapInfoAnnex3DContractTest');
+        runMapInfoAnnex3DContractTest();
         const { runMapPresetLabel3DContractTest } = await import('../render3d/MapPresetLabel3DContractTest');
         runMapPresetLabel3DContractTest();
         const { runGameCanvasWorldSurfaceSelectionContractTest } = await import('../../components/gameCanvasWorldSurfaceSelectionContractTest');

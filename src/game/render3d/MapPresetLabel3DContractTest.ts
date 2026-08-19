@@ -1,10 +1,10 @@
 import {
-  buildPlinthGeometry,
   MAP_PRESET_LABEL_ROTATION_X,
   MAP_PRESET_LABEL_ROTATION_Z,
   mapPresetLabelCanvasHeight,
   resolveMapPresetLabelPlacement,
 } from './MapPresetLabel3D';
+import { resolveMapInfoAnnexFootprint } from './MapInfoAnnex3D';
 import {
   groupNestedContours,
   polygonSignedArea,
@@ -16,7 +16,6 @@ import {
   type BattlePresetSnapshot,
 } from '@/components/battlePresets';
 import { backdropUrlsForPresetName } from './presetBackdrops';
-import { applyTerrainSubstanceMaterial } from './TerrainSubstanceMaterial3D';
 import * as THREE from 'three';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -41,6 +40,13 @@ export function runMapPresetLabel3DContractTest(): void {
     canvasRight.x < -0.999 && canvasTop.z > 0.999 && paintedFront.y > 0.999,
     'canvas right/top/front must map to screen-right/mapward/upward world axes',
   );
+  // The annex's own yaw is what carries that frame onto whichever edge the
+  // headland landed on. It is zero for the edge ally team 0 actually backs
+  // onto, which is why the base frame above is the readable one today.
+  assertContract(
+    resolveMapInfoAnnexFootprint(10600, 10600).signYaw === 0,
+    'the sign frame must need no extra yaw on the edge the annex uses',
+  );
   assertContract(mapPresetLabelCanvasHeight(0) === 0, 'an empty caption has no canvas');
   assertContract(
     mapPresetLabelCanvasHeight(3) > mapPresetLabelCanvasHeight(2)
@@ -51,7 +57,8 @@ export function runMapPresetLabel3DContractTest(): void {
   // Smallest and largest stock map axes, against a wide and a narrow caption.
   for (const mapAxis of [1400, 23800]) {
     for (const canvasAspect of [1.2, 9]) {
-      const placement = resolveMapPresetLabelPlacement(mapAxis, canvasAspect);
+      const placement = resolveMapPresetLabelPlacement(mapAxis, mapAxis, canvasAspect);
+      const annex = placement.annex;
       assertContract(
         placement.worldHeight > 0 && placement.worldWidth > 0,
         'the caption block must have positive world size',
@@ -60,95 +67,38 @@ export function runMapPresetLabel3DContractTest(): void {
         Math.abs(placement.worldWidth / placement.worldHeight - canvasAspect) < 1e-6,
         'world size must preserve the canvas aspect so glyphs stay unsquashed',
       );
-      // The sign is map signage: it must sit entirely off the playable
-      // rectangle, on the near (-Z) side of the map's (0, 0) corner — the
-      // slab it stands on included, since that is what grew last.
+      // The sign is map signage: it stands entirely on the annex's FLAT
+      // table, which is entirely off the playable rectangle. Letters all rise
+      // from one plane, so ground still easing into the map edge under them
+      // would leave them floating at one end.
+      const centerOut =
+        (placement.centerX - annex.attachX) * annex.outX +
+        (placement.centerZ - annex.attachZ) * annex.outZ;
       assertContract(
-        placement.centerZ + placement.worldHeight / 2 + placement.plinthPad < 0,
-        'the whole caption, plinth border included, must stay outside the playable area',
+        centerOut - placement.worldHeight / 2 >= annex.blendDepth - 1e-6,
+        'the caption must stand past the blend band, on the annex\'s flat table',
       );
       assertContract(
-        placement.plinthPad > 0 && placement.plinthThickness > 0,
-        'the caption must stand on a slab with real depth, not a decal plane',
+        centerOut + placement.worldHeight / 2 <= annex.depth + 1e-6,
+        'the caption must stay on the annex, not hang off its far edge',
       );
+      const acrossHalf = Math.abs(
+        (placement.centerX - annex.attachX) * annex.alongX +
+        (placement.centerZ - annex.attachZ) * annex.alongZ,
+      ) + placement.worldWidth / 2;
       assertContract(
-        Math.abs(placement.centerX - placement.worldWidth / 2) < 1e-6,
-        'the caption must stay flush with the map corner x = 0 edge',
+        acrossHalf <= annex.width / 2 + 1e-6,
+        'the caption must stay between the annex\'s flanks',
       );
       assertContract(
         Math.abs(
           placement.worldHeight / mapAxis
-            - resolveMapPresetLabelPlacement(1, canvasAspect).worldHeight,
+            - resolveMapPresetLabelPlacement(1, 1, canvasAspect).worldHeight,
         ) < 1e-9,
         'caption size must scale with the map so its whole-map zoom size is constant',
       );
     }
   }
-
-  // The slab is the sign's ground: a closed box whose grassy top face is the
-  // plane the caption and its letters are built on.
-  const plinth = buildPlinthGeometry(900, 300, 160);
-  const plinthPositions = plinth.getAttribute('position');
-  const plinthNormals = plinth.getAttribute('normal');
-  const plinthIndex = plinth.index;
-  assertContract(
-    plinthPositions.count === 24 && plinthIndex !== null && plinthIndex.count === 36,
-    'the plinth must be a closed six-face box',
-  );
-  assertContract(
-    plinth.groups.length === 2
-      && plinth.groups.every((group) => group.materialIndex === 0 || group.materialIndex === 1),
-    'the plinth must draw as exactly two runs: the grass top and the rock shell',
-  );
-  const topGroup = plinth.groups.find((group) => group.materialIndex === 0);
-  assertContract(
-    topGroup !== undefined && topGroup.count === 6,
-    'the grass material must cover exactly the one top face',
-  );
-  const plinthBox = new THREE.Box3().setFromBufferAttribute(
-    plinthPositions as THREE.BufferAttribute,
-  );
-  assertContract(
-    Math.abs(plinthBox.max.z) < 1e-6 && Math.abs(plinthBox.min.z + 160) < 1e-6,
-    'the plinth must hang below the caption plane, never above it',
-  );
-  for (let triangle = 0; triangle < plinthIndex.count / 3; triangle++) {
-    const a = new THREE.Vector3().fromBufferAttribute(plinthPositions, plinthIndex.getX(triangle * 3));
-    const b = new THREE.Vector3().fromBufferAttribute(plinthPositions, plinthIndex.getX(triangle * 3 + 1));
-    const c = new THREE.Vector3().fromBufferAttribute(plinthPositions, plinthIndex.getX(triangle * 3 + 2));
-    const geometricNormal = b.sub(a).cross(c.sub(a)).normalize();
-    const authored = new THREE.Vector3().fromBufferAttribute(
-      plinthNormals,
-      plinthIndex.getX(triangle * 3),
-    );
-    assertContract(
-      geometricNormal.dot(authored) > 0.999,
-      'every plinth face must be wound to agree with its outward normal',
-    );
-  }
-  // No uvs at all: both substances are read from world position, which is
-  // what makes the slab the map's own grain rather than one tile stretched
-  // over each face.
-  assertContract(
-    plinth.getAttribute('uv') === undefined,
-    'the plinth must carry no uvs — its substances are sampled in world space',
-  );
-  plinth.dispose();
-
-  // Three keys its program cache on material parameters, not on the source an
-  // onBeforeCompile produced, so two standard materials patched differently
-  // share one program unless the patch says otherwise. Silent and total: the
-  // rock sides would render as grass.
-  const groundMaterial = new THREE.MeshStandardMaterial();
-  const rockMaterial = new THREE.MeshStandardMaterial();
-  applyTerrainSubstanceMaterial(groundMaterial, 'ground');
-  applyTerrainSubstanceMaterial(rockMaterial, 'rock');
-  assertContract(
-    groundMaterial.customProgramCacheKey() !== rockMaterial.customProgramCacheKey(),
-    'each terrain substance must key its own compiled program',
-  );
-  groundMaterial.dispose();
-  rockMaterial.dispose();
 
   // Extruded letters come out of the painted glyph mask, so nested outlines
   // have to survive as holes — otherwise every O, P and 4 extrudes solid.
