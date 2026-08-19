@@ -1,5 +1,5 @@
 import type { LobbySettings } from '@/types/network';
-import { isLiquidSurfaceMode, isTerrainSurfaceMode } from '@/types/worldSurfaceMode';
+import { isLiquidSurfaceMode, isMetalCoverage } from '@/types/worldSurfaceMode';
 import { isPathfindingCellConsolidationMultiplier } from '@/types/pathfinding';
 import { isSimulationTickRateHz } from '@/types/simulationTickRate';
 
@@ -57,8 +57,8 @@ export function assertCurrentLobbySettings(
   if (typeof settings.slowDownAtFinalWaypoint !== 'boolean') {
     throw new Error(`[${context}] missing or invalid slowDownAtFinalWaypoint`);
   }
-  if (!isTerrainSurfaceMode(settings.terrainSurfaceMode)) {
-    throw new Error(`[${context}] missing or invalid terrainSurfaceMode`);
+  if (!isMetalCoverage(settings.metalCoverage)) {
+    throw new Error(`[${context}] missing or invalid metalCoverage`);
   }
   if (!isLiquidSurfaceMode(settings.liquidSurfaceMode)) {
     throw new Error(`[${context}] missing or invalid liquidSurfaceMode`);

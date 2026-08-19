@@ -1,9 +1,10 @@
 import type { BattleMode } from '../battleBarConfig';
 import type { ShieldReflectionMode } from '../types/shotTypes';
 import type { SlopePathMode } from '../types/slopePathMode';
-import type {
-  LiquidSurfaceMode,
-  TerrainSurfaceMode,
+import {
+  METAL_COVERAGE_LABEL,
+  type LiquidSurfaceMode,
+  type MetalCoverage,
 } from '../types/worldSurfaceMode';
 import { LAND_CELL_SIZE } from '../mapSizeConfig';
 import battleBarConfig from '../battleBarConfig.json';
@@ -24,7 +25,7 @@ export type BattlePreset = {
   readonly slopePathMode: SlopePathMode;
   /** Ground material policy (WORLD bar group). `metal` makes the whole map
    *  one ore body — see types/worldSurfaceMode. */
-  readonly terrainSurfaceMode: TerrainSurfaceMode;
+  readonly metalCoverage: MetalCoverage;
   /** What fills the map below the water level (WORLD bar group). */
   readonly liquidSurfaceMode: LiquidSurfaceMode;
   readonly converterTax: number;
@@ -80,7 +81,7 @@ const SUBSYSTEM_DEFAULTS = {
   slowDownAtFinalWaypoint: false,
   slopePathMode: 'directional' as SlopePathMode,
   // Every stock preset ships the authored world; only METAL HELL flips these.
-  terrainSurfaceMode: 'normal' as TerrainSurfaceMode,
+  metalCoverage: 'more' as MetalCoverage,
   liquidSurfaceMode: 'water' as LiquidSurfaceMode,
 };
 
@@ -186,7 +187,7 @@ function buildPresets(): readonly BattlePreset[] {
       name: 'METAL HELL',
       backdropSlug: 'metal-hell',
       ...SUBSYSTEM_DEFAULTS,
-      terrainSurfaceMode: 'metal',
+      metalCoverage: 'all',
       liquidSurfaceMode: 'lava',
       fogOfWarEnabled: true,
       converterTax: 0.5,
@@ -204,7 +205,7 @@ function buildPresets(): readonly BattlePreset[] {
       name: 'METAL PLATE',
       backdropSlug: 'metal-plate',
       ...SUBSYSTEM_DEFAULTS,
-      terrainSurfaceMode: 'metal',
+      metalCoverage: 'all',
       liquidSurfaceMode: 'water',
       fogOfWarEnabled: true,
       converterTax: 0.5,
@@ -245,7 +246,7 @@ function presetMatchesCurrent(
   // because it is not a map property — changing it must not flip the caption
   // to CUSTOM. Every other user-controllable map/gameplay field is compared.
   return (
-    p.terrainSurfaceMode === c.terrainSurfaceMode &&
+    p.metalCoverage === c.metalCoverage &&
     p.liquidSurfaceMode === c.liquidSurfaceMode &&
     p.slowDownAtFinalWaypoint === c.slowDownAtFinalWaypoint &&
     p.slopePathMode === c.slopePathMode &&
@@ -281,9 +282,7 @@ export function resolveBattleMapPresentation(
   current: BattlePresetSnapshot,
 ): BattleMapPresentation {
   const presetName = findMatchingPresetName(current);
-  const terrain = current.terrainSurfaceMode === 'metal'
-    ? 'METAL TERRAIN'
-    : 'NORMAL TERRAIN';
+  const terrain = `${METAL_COVERAGE_LABEL[current.metalCoverage]} METAL`;
   const liquid = current.liquidSurfaceMode === 'lava' ? 'LAVA' : 'WATER';
   const worldWidth = current.mapWidthLandCells * LAND_CELL_SIZE;
   const worldLength = current.mapLengthLandCells * LAND_CELL_SIZE;

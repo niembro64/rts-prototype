@@ -49,13 +49,13 @@ import {
 } from '../../types/slopePathMode';
 import {
   isLiquidSurfaceMode,
-  isTerrainSurfaceMode,
+  isMetalCoverage,
   type LiquidSurfaceMode,
-  type TerrainSurfaceMode,
+  type MetalCoverage,
 } from '../../types/worldSurfaceMode';
 import {
   setLiquidSurfaceMode as setBattleLiquidSurfaceMode,
-  setTerrainSurfaceMode as setBattleTerrainSurfaceMode,
+  setMetalCoverage as setBattleMetalCoverage,
 } from '../sim/worldSurfaceState';
 import {
   type CommandAuthority,
@@ -653,10 +653,10 @@ export class GameServer {
         recordAcceptedCommand(sanitizedCommand);
         this.setSlopePathMode(sanitizedCommand.mode);
         return;
-      case 'setTerrainSurfaceMode':
+      case 'setMetalCoverage':
         if (!canApplyServerControl) return;
         recordAcceptedCommand(sanitizedCommand);
-        this.setTerrainSurfaceMode(sanitizedCommand.mode);
+        this.setMetalCoverage(sanitizedCommand.mode);
         return;
       case 'setLiquidSurfaceMode':
         if (!canApplyServerControl) return;
@@ -720,10 +720,10 @@ export class GameServer {
   // WORLD group ground material. WorldState carries the canonical copy (it is
   // in the state hash); worldSurfaceState mirrors it for the renderers, which
   // are constructed with a THREE.Group rather than the sim world.
-  private setTerrainSurfaceMode(mode: TerrainSurfaceMode): void {
-    if (!isTerrainSurfaceMode(mode) || this.world.terrainSurfaceMode === mode) return;
-    this.world.terrainSurfaceMode = mode;
-    setBattleTerrainSurfaceMode(mode);
+  private setMetalCoverage(mode: MetalCoverage): void {
+    if (!isMetalCoverage(mode) || this.world.metalCoverage === mode) return;
+    this.world.metalCoverage = mode;
+    setBattleMetalCoverage(mode);
   }
 
   private setLiquidSurfaceMode(mode: LiquidSurfaceMode): void {

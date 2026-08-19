@@ -3,6 +3,11 @@ import { BATTLE_CONFIG } from '../battleBarConfig';
 import { SERVER_CONFIG } from '../serverBarConfig';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import {
+  METAL_COVERAGES,
+  METAL_COVERAGE_LABEL,
+  type MetalCoverage,
+} from '../types/worldSurfaceMode';
+import {
   getUnitDisplayShortName,
   getBuildingDisplayShortName,
 } from '../game/sim/blueprints/displayRosters';
@@ -23,6 +28,14 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
   fast: 'FAST',
   mid: 'MED',
   slow: 'SLOW',
+};
+
+// All four rungs generate the same land — only the ore moves.
+const METAL_COVERAGE_TITLE: Record<MetalCoverage, string> = {
+  none: 'NONE: no metal anywhere. The deposits still shape the land, but no ore body grows on them, so no extractor can be built.',
+  some: 'SOME: one standard-size ore body on every deposit spot.',
+  more: 'MORE: the authored per-ring ore sizes, so the middle of the map carries the big bodies.',
+  all: 'ALL: the entire map is one polished ore body. No separate ore bodies, every build cell pays metal, and the world goes barren.',
 };
 </script>
 
@@ -327,12 +340,16 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
           @click="model.setFogOfWarEnabled(!model.currentFogOfWarEnabled)"
         >FOG OF WAR</BarButton>
         <BarDivider />
-        <BarLabel title="World materials. METAL treats the whole map as metal ore — the deposits still shape the land, but there are no separate deposit crowns and extractors pay out anywhere. LAVA replaces the sea with molten rock that burns anything touching it. Either one leaves the world barren: no trees, grass, or seaweed.">WORLD:</BarLabel>
-        <BarButton
-          :active="model.currentTerrainSurfaceMode === 'metal'"
-          title="ON makes the entire map one polished ore body: same terrain shaping, no deposit crowns, every build cell pays metal. OFF is the authored world with discrete metal deposits."
-          @click="model.setTerrainSurfaceMode(model.currentTerrainSurfaceMode === 'metal' ? 'normal' : 'metal')"
-        >METAL</BarButton>
+        <BarLabel title="World materials. METAL chooses how much of the map is ore; every rung shapes exactly the same land, only the metal moves. ALL metal and LAVA both leave the world barren: no trees, grass, or seaweed.">WORLD METAL:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="coverage in METAL_COVERAGES"
+            :key="coverage"
+            :active="model.currentMetalCoverage === coverage"
+            :title="METAL_COVERAGE_TITLE[coverage]"
+            @click="model.setMetalCoverage(coverage)"
+          >{{ METAL_COVERAGE_LABEL[coverage] }}</BarButton>
+        </BarButtonGroup>
         <BarButton
           :active="model.currentLiquidSurfaceMode === 'lava'"
           title="ON fills the map below the water level with opaque molten rock that drains health very fast from anything touching its surface. OFF is the authored sea."

@@ -3,11 +3,11 @@
 import { createGame, destroyGame } from '../createGame';
 import {
   setLiquidSurfaceMode,
-  setTerrainSurfaceMode,
+  setMetalCoverage,
 } from '../sim/worldSurfaceState';
 import {
   loadStoredLiquidSurfaceMode,
-  loadStoredTerrainSurfaceMode,
+  loadStoredMetalCoverage,
 } from '../../battleBarConfig';
 import { GameServer } from '../server/GameServer';
 import { LocalGameConnection } from '../server/LocalGameConnection';
@@ -144,13 +144,14 @@ export async function createBackgroundBattle(
   setTerrainCenterMagnitude(terrainRuntimeConfig.centerMagnitude);
   setTerrainDividersMagnitude(terrainRuntimeConfig.dividersMagnitude);
   setTerrainPerimeterMagnitude(terrainRuntimeConfig.perimeterMagnitude);
-  // Seed the WORLD materials BEFORE the scene builds: the 3D renderers read
-  // these at construction (deposit crowns, terrain material, liquid colour),
-  // so waiting for the setTerrainSurfaceMode / setLiquidSurfaceMode commands
+  // Seed the WORLD materials BEFORE the scene builds: deposit generation and
+  // the 3D renderers both read these at construction (ore bodies, terrain
+  // material, liquid colour),
+  // so waiting for the setMetalCoverage / setLiquidSurfaceMode commands
   // on the first sim tick would build the scene with the wrong world.
-  const terrainSurfaceMode = loadStoredTerrainSurfaceMode(mode);
+  const metalCoverage = loadStoredMetalCoverage(mode);
   const liquidSurfaceMode = loadStoredLiquidSurfaceMode(mode);
-  setTerrainSurfaceMode(terrainSurfaceMode);
+  setMetalCoverage(metalCoverage);
   setLiquidSurfaceMode(liquidSurfaceMode);
   await report(0.1, 'Loading terrain settings');
 
@@ -221,7 +222,7 @@ export async function createBackgroundBattle(
       terrainDetail: terrainRuntimeConfig.terrainDetail,
       mapWidthLandCells: mapDimensions.widthLandCells,
       mapLengthLandCells: mapDimensions.lengthLandCells,
-      terrainSurfaceMode,
+      metalCoverage,
       liquidSurfaceMode,
       backgroundMode: true,
       initialAllowedUnitBlueprintIds,

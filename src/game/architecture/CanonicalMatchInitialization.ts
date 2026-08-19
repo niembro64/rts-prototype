@@ -34,9 +34,9 @@ import type { PlayerId } from '../sim/types';
 import type { LobbySettings } from '@/types/network';
 import {
   isLiquidSurfaceMode,
-  isTerrainSurfaceMode,
+  isMetalCoverage,
   type LiquidSurfaceMode,
-  type TerrainSurfaceMode,
+  type MetalCoverage,
 } from '@/types/worldSurfaceMode';
 import { isPathfindingCellConsolidationMultiplier } from '@/types/pathfinding';
 import {
@@ -81,7 +81,7 @@ export type CanonicalMatchInitialization = {
     readonly terrainDetail: number | null;
     readonly mapWidthLandCells: number | null;
     readonly mapLengthLandCells: number | null;
-    readonly terrainSurfaceMode: TerrainSurfaceMode | null;
+    readonly metalCoverage: MetalCoverage | null;
     readonly liquidSurfaceMode: LiquidSurfaceMode | null;
   };
   readonly gameplay: {
@@ -189,8 +189,8 @@ export function buildCanonicalMatchInitialization({
       terrainDetail: finiteOrNull(settings?.terrainDetail),
       mapWidthLandCells: finiteOrNull(settings?.mapWidthLandCells),
       mapLengthLandCells: finiteOrNull(settings?.mapLengthLandCells),
-      terrainSurfaceMode: isTerrainSurfaceMode(settings?.terrainSurfaceMode)
-        ? settings.terrainSurfaceMode
+      metalCoverage: isMetalCoverage(settings?.metalCoverage)
+        ? settings.metalCoverage
         : null,
       liquidSurfaceMode: isLiquidSurfaceMode(settings?.liquidSurfaceMode)
         ? settings.liquidSurfaceMode

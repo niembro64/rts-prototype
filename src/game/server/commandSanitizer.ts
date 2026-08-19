@@ -70,7 +70,7 @@ import { isShieldReflectionMode } from '../../types/shotTypes';
 import { isSlopePathMode } from '../../types/slopePathMode';
 import {
   isLiquidSurfaceMode,
-  isTerrainSurfaceMode,
+  isMetalCoverage,
 } from '../../types/worldSurfaceMode';
 import { normalizeAngle } from '../math';
 
@@ -233,8 +233,8 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
       return isSlopePathMode(command.mode)
         ? { ...command, tick, mode: command.mode }
         : null;
-    case 'setTerrainSurfaceMode':
-      return isTerrainSurfaceMode(command.mode)
+    case 'setMetalCoverage':
+      return isMetalCoverage(command.mode)
         ? { ...command, tick, mode: command.mode }
         : null;
     case 'setLiquidSurfaceMode':

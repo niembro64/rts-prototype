@@ -5,7 +5,7 @@ import type { ShieldReflectionMode } from './shotTypes';
 import type { SlopePathMode } from './slopePathMode';
 import type {
   LiquidSurfaceMode,
-  TerrainSurfaceMode,
+  MetalCoverage,
 } from './worldSurfaceMode';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 
@@ -79,7 +79,7 @@ type CommandType =
   | 'setFogOfWarEnabled'
   | 'setSlowDownAtFinalWaypoint'
   | 'setSlopePathMode'
-  | 'setTerrainSurfaceMode'
+  | 'setMetalCoverage'
   | 'setLiquidSurfaceMode'
   | 'setConverterTax';
 
@@ -641,9 +641,9 @@ export type SetSlopePathModeCommand = BaseCommand & {
 };
 
 /** WORLD group: ground material policy. See types/worldSurfaceMode. */
-export type SetTerrainSurfaceModeCommand = BaseCommand & {
-  type: 'setTerrainSurfaceMode';
-  mode: TerrainSurfaceMode;
+export type SetMetalCoverageCommand = BaseCommand & {
+  type: 'setMetalCoverage';
+  mode: MetalCoverage;
 };
 
 /** WORLD group: what fills the map below the water level. */
@@ -719,6 +719,6 @@ export type Command =
   | SetFogOfWarEnabledCommand
   | SetSlowDownAtFinalWaypointCommand
   | SetSlopePathModeCommand
-  | SetTerrainSurfaceModeCommand
+  | SetMetalCoverageCommand
   | SetLiquidSurfaceModeCommand
   | SetConverterTaxCommand;

@@ -100,7 +100,7 @@ export function buildCanonicalServerState(core: ServerSimulationCore): Canonical
       slopePathMode: world.slopePathMode,
       pathfindingCellConsolidationMultiplier:
         world.pathfindingCellConsolidationMultiplier,
-      terrainSurfaceMode: world.terrainSurfaceMode,
+      metalCoverage: world.metalCoverage,
       liquidSurfaceMode: world.liquidSurfaceMode,
       converterTax: world.converterTax,
       unitGroundNormalEmaMode: getUnitGroundNormalEmaMode(),

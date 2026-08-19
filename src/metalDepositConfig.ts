@@ -54,6 +54,8 @@ import {
 } from './game/sim/terrain/terrainGenerationConfig';
 import { BUILD_GRID_CELL_SIZE } from './game/sim/buildGrid';
 import { getSimWasm } from './game/sim-wasm/init';
+import { getMetalCoverage } from './game/sim/worldSurfaceState';
+import type { MetalCoverage } from './types/worldSurfaceMode';
 import rawConfig from './metalDepositConfig.json';
 
 type DepositRing = {
@@ -361,11 +363,19 @@ const METAL_DEPOSIT_D_TERRAIN_NULL = Number.NaN;
  * a null pad anchored to raw natural terrain near a tall mountain
  * commander pad would sit far below it and create a cliff at the
  * blend overlap.
+ *
+ * The METAL coverage rung (BATTLE bar) is read here and changes NOTHING
+ * about the four passes: every rung lays out the same placements, resolves
+ * the same heights and installs the same flat zones, so the world is shaped
+ * identically whichever rung is picked. It decides only how big each ore
+ * body grows — and NONE goes one step further and returns no deposits at
+ * all, leaving the land they shaped behind them.
  */
 export function generateMetalDeposits(
   mapWidth: number,
   mapHeight: number,
   playerCount: number,
+  coverage: MetalCoverage = getMetalCoverage(),
 ): MetalDeposit[] {
   // Pass 1: lay out every deposit's xy + per-ring metadata. No
   // heights yet — those depend on whether the ring is explicit-height
@@ -374,6 +384,7 @@ export function generateMetalDeposits(
     mapWidth,
     mapHeight,
     playerCount,
+    coverage,
   );
 
   // Pass 2: collect explicit-dTerrain pads and install them so the
@@ -420,6 +431,11 @@ export function generateMetalDeposits(
     allZones.push(makeMetalDepositFlatZone(p, height));
   }
   setMetalDepositFlatZones(allZones);
+
+  // NONE: the pads above are already installed, so the map keeps the exact
+  // land every other rung generates. Handing back no deposits is what makes
+  // it a metal-free world — nothing to mine, nowhere to place an extractor.
+  if (coverage === 'none') return [];
 
   return deposits;
 }
@@ -540,6 +556,7 @@ function generateMetalDepositPlacementsFromWasm(
   mapWidth: number,
   mapHeight: number,
   playerCount: number,
+  coverage: MetalCoverage,
 ): PendingPlacement[] {
   const sim = getRequiredSimWasm();
   const plan = buildMetalDepositPackPlan();
@@ -574,7 +591,12 @@ function generateMetalDepositPlacementsFromWasm(
     const dTerrainRaw = placementRows[base + 12];
     const explicitHeightRaw = placementRows[base + 14];
     const origin: PendingPlacement = {
-      placement: makeMetalDepositPlacementFromWasmRow(placementRows, base, sourceIndex),
+      placement: makeMetalDepositPlacementFromWasmRow(
+        placementRows,
+        base,
+        sourceIndex,
+        coverage,
+      ),
       dTerrainLevels: Number.isNaN(dTerrainRaw)
         ? null
         : finiteInteger(dTerrainRaw, 'metal deposit dTerrainLevels'),
@@ -625,6 +647,7 @@ function generateMetalDepositPlacementsFromWasm(
         mapHeight,
         placements,
         groupIdAllocator,
+        coverage,
       );
     }
     planIndex++;
@@ -650,6 +673,7 @@ function expandMetalDepositClusterPlacements(
   mapHeight: number,
   out: PendingPlacement[],
   groupIdAllocator: { next: number },
+  coverage: MetalCoverage,
 ): void {
   const radialAngle = metalDepositRadialAngleFromMapCenter(
     origin.placement.x,
@@ -689,6 +713,7 @@ function expandMetalDepositClusterPlacements(
         rawY,
         origin.placement,
         out.length,
+        coverage,
       );
       if (spot.flatPadCells !== undefined) {
         placement.flatPadRadius =
@@ -719,7 +744,13 @@ function expandMetalDepositClusterPlacements(
     const rawX = origin.placement.x + Math.cos(angle) * cluster.radius;
     const rawY = origin.placement.y + Math.sin(angle) * cluster.radius;
     out.push({
-      placement: makeMetalDepositPlacementFromRawPoint(rawX, rawY, origin.placement, out.length),
+      placement: makeMetalDepositPlacementFromRawPoint(
+        rawX,
+        rawY,
+        origin.placement,
+        out.length,
+        coverage,
+      ),
       dTerrainLevels: origin.dTerrainLevels,
       blendRadius: origin.blendRadius,
       explicitHeight: origin.explicitHeight,
@@ -746,6 +777,7 @@ function makeMetalDepositPlacementFromRawPoint(
   rawY: number,
   template: MetalDepositPlacement,
   seedIndex: number,
+  coverage: MetalCoverage,
 ): MetalDepositPlacement {
   const gridHalfCells = Math.floor(template.resourceCells / 2);
   const centerGx = Math.floor(rawX / BUILD_GRID_CELL_SIZE);
@@ -757,11 +789,16 @@ function makeMetalDepositPlacementFromRawPoint(
   const originGx = Math.floor(x / BUILD_GRID_CELL_SIZE);
   const originGy = Math.floor(y / BUILD_GRID_CELL_SIZE);
   const resourceCellCount = template.resourceCells * template.resourceCells;
+  const ore = metalDepositOreGrowth(
+    coverage,
+    resourceCellCount,
+    template.resourceRadiusCells,
+  );
   const cells = growMetalDepositResourceCells(
     originGx,
     originGy,
-    resourceCellCount,
-    template.resourceRadiusCells,
+    ore.targetCellCount,
+    ore.radiusCells,
     hashMetalDepositSeed(originGx, originGy, seedIndex),
   );
   const bounds = getMetalDepositCellBounds(cells);
@@ -844,6 +881,7 @@ function makeMetalDepositPlacementFromWasmRow(
   rows: Float64Array,
   base: number,
   seedIndex: number,
+  coverage: MetalCoverage,
 ): MetalDepositPlacement {
   const x = rows[base];
   const y = rows[base + 1];
@@ -863,11 +901,15 @@ function makeMetalDepositPlacementFromWasmRow(
   const resourceHalfSize = rows[base + 9];
   const resourceRadius = rows[base + 10];
   const flatPadRadius = rows[base + 11];
+  // Everything above this line is the AUTHORED body — the one the terrain
+  // pipeline sized its pad and plateau from. Only the grown cells below
+  // follow the METAL setting.
+  const ore = metalDepositOreGrowth(coverage, resourceCellCount, resourceRadiusCells);
   const cells = growMetalDepositResourceCells(
     originGx,
     originGy,
-    resourceCellCount,
-    resourceRadiusCells,
+    ore.targetCellCount,
+    ore.radiusCells,
     hashMetalDepositSeed(originGx, originGy, seedIndex),
   );
   const bounds = getMetalDepositCellBounds(cells);
@@ -916,6 +958,33 @@ function resolveMetalDepositSize(name: string | undefined): MetalDepositSize {
   return size;
 }
 
+/** The ore body a METAL coverage rung actually grows at one spot, given the
+ *  authored size class. Terrain never reads this: pads, plateau radii, blend
+ *  skirts and the deposit's own xy all keep the AUTHORED size, so all four
+ *  rungs shape the land identically and only the ore moves.
+ *    NONE  - nothing is grown (and generateMetalDeposits drops the list).
+ *    SOME  - one default-size body per spot, the pre-size-table world.
+ *    MORE  - the per-ring authored sizes.
+ *    ALL   - authored too: the bodies stay under a map that is ore anyway,
+ *            so METAL-everywhere behaves exactly as it always has. */
+function metalDepositOreGrowth(
+  coverage: MetalCoverage,
+  authoredCellCount: number,
+  authoredRadiusCells: number,
+): { targetCellCount: number; radiusCells: number } {
+  if (coverage === 'none') {
+    return { targetCellCount: 0, radiusCells: authoredRadiusCells };
+  }
+  if (coverage === 'some') {
+    const size = getMetalDepositSize(METAL_DEPOSIT_CONFIG.defaultSize);
+    return {
+      targetCellCount: size.resourceCells * size.resourceCells,
+      radiusCells: size.resourceRadiusCells,
+    };
+  }
+  return { targetCellCount: authoredCellCount, radiusCells: authoredRadiusCells };
+}
+
 function getRequiredSimWasm() {
   const sim = getSimWasm();
   if (sim === undefined) {
@@ -954,6 +1023,9 @@ function growMetalDepositResourceCells(
   radiusCells: number,
   seed: number,
 ): MetalDepositResourceCell[] {
+  // NONE grows nothing. The deposit still exists as a terrain feature at
+  // this point; it simply has no ore body to rasterize.
+  if (targetCellCount <= 0) return [];
   const outCells = new Int32Array(targetCellCount * 2);
   const count = getRequiredSimWasm().metalDepositGrowResourceCells(
     originGx,

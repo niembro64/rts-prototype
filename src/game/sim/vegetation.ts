@@ -27,7 +27,7 @@ import {
 } from '@/vegetationConfig';
 import {
   getLiquidSurfaceMode,
-  getTerrainSurfaceMode,
+  getMetalCoverage,
   vegetationSupported,
 } from './worldSurfaceState';
 import {
@@ -118,7 +118,7 @@ function vegetationGenerationKey(
   // The WORLD materials decide which kinds are placed at all, so they are part
   // of the layout's identity — otherwise a mode flip would silently keep the
   // previous world's forest instead of tripping the mismatch error below.
-  return `${mapWidth}x${mapHeight}:${playerCount}:${getTerrainSurfaceMode()}:${getLiquidSurfaceMode()}`;
+  return `${mapWidth}x${mapHeight}:${playerCount}:${getMetalCoverage()}:${getLiquidSurfaceMode()}`;
 }
 
 /**

@@ -93,7 +93,7 @@ export const LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES: ReadonlySet<Command['type'
   'setFogOfWarEnabled',
   'setSlowDownAtFinalWaypoint',
   'setSlopePathMode',
-  'setTerrainSurfaceMode',
+  'setMetalCoverage',
   'setLiquidSurfaceMode',
   'setConverterTax',
 ]);

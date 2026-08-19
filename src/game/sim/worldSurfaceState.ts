@@ -11,19 +11,20 @@
 
 import {
   DEFAULT_LIQUID_SURFACE_MODE,
-  DEFAULT_TERRAIN_SURFACE_MODE,
+  DEFAULT_METAL_COVERAGE,
   isLiquidSurfaceMode,
-  isTerrainSurfaceMode,
+  isMetalCoverage,
+  metalCoverageIsWholeMap,
   type LiquidSurfaceMode,
-  type TerrainSurfaceMode,
+  type MetalCoverage,
 } from '../../types/worldSurfaceMode';
 import { WATER_LEVEL } from './terrain/terrainConfig';
 
-let terrainSurfaceMode: TerrainSurfaceMode = DEFAULT_TERRAIN_SURFACE_MODE;
+let metalCoverage: MetalCoverage = DEFAULT_METAL_COVERAGE;
 let liquidSurfaceMode: LiquidSurfaceMode = DEFAULT_LIQUID_SURFACE_MODE;
 
-export function getTerrainSurfaceMode(): TerrainSurfaceMode {
-  return terrainSurfaceMode;
+export function getMetalCoverage(): MetalCoverage {
+  return metalCoverage;
 }
 
 export function getLiquidSurfaceMode(): LiquidSurfaceMode {
@@ -35,7 +36,7 @@ export function getLiquidSurfaceMode(): LiquidSurfaceMode {
  *  polished metal. Terrain geometry is unaffected — deposit placement still
  *  shaped the land. */
 export function isMetalTerrainSurface(): boolean {
-  return terrainSurfaceMode === 'metal';
+  return metalCoverageIsWholeMap(metalCoverage);
 }
 
 /** True when the map's liquid is lava: opaque, self-lit, and lethal to touch. */
@@ -46,9 +47,9 @@ export function isLavaLiquidSurface(): boolean {
 /** Whether anything grows on the current world. Vegetation belongs to the
  *  authored world and nothing else: a map made of metal has no soil, and a
  *  world whose sea is molten rock is no place for anything to grow — not even
- *  inland, well away from the lava. So the authored NORMAL + WATER world is the
- *  only one that grows trees, grass, and seaweed; every other WORLD combination
- *  is barren. Kind-agnostic, so a new vegetation kind inherits the rule for
+ *  inland, well away from the lava. So only a world that is NOT all metal and
+ *  still has WATER grows trees, grass, and seaweed; ALL metal or LAVA leaves it
+ *  barren. Kind-agnostic, so a new vegetation kind inherits the rule for
  *  free. */
 export function vegetationSupported(): boolean {
   return !isMetalTerrainSurface() && !isLavaLiquidSurface();
@@ -65,9 +66,9 @@ export function metalDepositWorkableAtHeight(height: number): boolean {
 
 /** Returns true when the value changed, so callers can rebuild what depends
  *  on it (the terrain mesh bakes the horizon liquid colour per vertex). */
-export function setTerrainSurfaceMode(mode: TerrainSurfaceMode): boolean {
-  if (!isTerrainSurfaceMode(mode) || mode === terrainSurfaceMode) return false;
-  terrainSurfaceMode = mode;
+export function setMetalCoverage(mode: MetalCoverage): boolean {
+  if (!isMetalCoverage(mode) || mode === metalCoverage) return false;
+  metalCoverage = mode;
   return true;
 }
 

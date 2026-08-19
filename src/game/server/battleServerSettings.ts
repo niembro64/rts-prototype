@@ -6,7 +6,7 @@ import {
   loadStoredFogOfWarEnabled,
   loadStoredSlowDownAtFinalWaypoint,
   loadStoredSlopePathMode,
-  loadStoredTerrainSurfaceMode,
+  loadStoredMetalCoverage,
   loadStoredLiquidSurfaceMode,
   loadStoredTurretShieldPanelsEnabled,
 } from '../../battleBarConfig';
@@ -18,7 +18,7 @@ import type { CommandAuthority } from './commandAuthority';
 import type { Command } from '../sim/commands';
 import type {
   LiquidSurfaceMode,
-  TerrainSurfaceMode,
+  MetalCoverage,
 } from '../../types/worldSurfaceMode';
 
 type StoredBattleServerSettingsOptions = {
@@ -34,7 +34,7 @@ type StoredBattleServerSettingsOptions = {
   slowDownAtFinalWaypoint?: boolean;
   /** Canonical real-battle WORLD selections. Background/demo callers omit
    *  them and use the stored namespace. */
-  terrainSurfaceMode?: TerrainSurfaceMode;
+  metalCoverage?: MetalCoverage;
   liquidSurfaceMode?: LiquidSurfaceMode;
 };
 
@@ -97,9 +97,9 @@ function buildStoredBattleServerSettingCommands(
       mode: loadStoredSlopePathMode(mode),
     },
     {
-      type: 'setTerrainSurfaceMode',
+      type: 'setMetalCoverage',
       tick: 0,
-      mode: options.terrainSurfaceMode ?? loadStoredTerrainSurfaceMode(mode),
+      mode: options.metalCoverage ?? loadStoredMetalCoverage(mode),
     },
     {
       type: 'setLiquidSurfaceMode',

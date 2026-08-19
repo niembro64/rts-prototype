@@ -17,7 +17,7 @@ import type { BeamReflectorKind, CombatFireState, CombatTrajectoryMode, EntityTy
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import type {
   LiquidSurfaceMode,
-  TerrainSurfaceMode,
+  MetalCoverage,
 } from './worldSurfaceMode';
 // Single source of truth for the wire codes TS and Rust must agree on.
 // Rust generates its constants from this same file via build.rs.
@@ -535,7 +535,7 @@ export type LobbySettings = {
   /** Whether units brake on approach to their last waypoint. */
   slowDownAtFinalWaypoint: boolean;
   /** Ground material for the whole authoritative world. */
-  terrainSurfaceMode: TerrainSurfaceMode;
+  metalCoverage: MetalCoverage;
   /** Liquid material below the water level. Lava changes simulation damage as
    *  well as rendering. */
   liquidSurfaceMode: LiquidSurfaceMode;

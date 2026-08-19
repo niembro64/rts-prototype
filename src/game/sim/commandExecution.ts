@@ -1,5 +1,5 @@
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
-import { setLiquidSurfaceMode, setTerrainSurfaceMode } from './worldSurfaceState';
+import { setLiquidSurfaceMode, setMetalCoverage } from './worldSurfaceState';
 import { getSimWasm } from '../sim-wasm/init';
 import { DEFAULT_SIMULATION_TICK_RATE_HZ } from '../../types/simulationTickRate';
 // Command execution - extracted from Simulation.ts
@@ -409,12 +409,14 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
         ctx.world.invalidateAllActivePaths();
       }
       break;
-    case 'setTerrainSurfaceMode':
-      // Deposit crowns, metal coverage, and the ground material all follow
-      // this; the terrain geometry does not (deposit placement already shaped
-      // the land either way).
-      ctx.world.terrainSurfaceMode = command.mode;
-      setTerrainSurfaceMode(command.mode);
+    case 'setMetalCoverage':
+      // ALL's whole-map ore, the ground material, and extractor payout all
+      // follow this live. Per-deposit ore BODIES do not — they are grown when
+      // the world is built, which is why the bar restarts the battle on a rung
+      // change. Terrain geometry never follows it at all: every rung shaped
+      // the land identically.
+      ctx.world.metalCoverage = command.mode;
+      setMetalCoverage(command.mode);
       break;
     case 'setLiquidSurfaceMode':
       ctx.world.liquidSurfaceMode = command.mode;

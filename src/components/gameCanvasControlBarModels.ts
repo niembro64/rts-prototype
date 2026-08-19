@@ -28,7 +28,7 @@ import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import type { SlopePathMode } from '../types/slopePathMode';
 import type {
   LiquidSurfaceMode,
-  TerrainSurfaceMode,
+  MetalCoverage,
 } from '../types/worldSurfaceMode';
 import type { RenderMode } from '../types/graphics';
 import type { CommandHotkeyPresetId } from '../game/input/commandHotkeys';
@@ -75,7 +75,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly currentFogOfWarEnabled: boolean;
   readonly currentSlowDownAtFinalWaypoint: boolean;
   readonly currentSlopePathMode: SlopePathMode;
-  readonly currentTerrainSurfaceMode: TerrainSurfaceMode;
+  readonly currentMetalCoverage: MetalCoverage;
   readonly currentLiquidSurfaceMode: LiquidSurfaceMode;
   readonly currentConverterTax: number;
   readonly serverUnitGroundNormalEmaMode: UnitGroundNormalEmaMode;
@@ -101,7 +101,7 @@ export type GameCanvasBattleControlBarModel = {
   setFogOfWarEnabled(enabled: boolean): void;
   setSlowDownAtFinalWaypoint(enabled: boolean): void;
   setSlopePathMode(mode: SlopePathMode): void;
-  setTerrainSurfaceMode(mode: TerrainSurfaceMode): void;
+  setMetalCoverage(mode: MetalCoverage): void;
   setLiquidSurfaceMode(mode: LiquidSurfaceMode): void;
   setConverterTax(tax: number): void;
   setUnitGroundNormalEmaModeValue(mode: UnitGroundNormalEmaMode): void;

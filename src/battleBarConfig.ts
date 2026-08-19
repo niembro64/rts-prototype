@@ -3,9 +3,9 @@ import type { ShieldReflectionMode } from './types/shotTypes';
 import { isSlopePathMode, type SlopePathMode } from './types/slopePathMode';
 import {
   isLiquidSurfaceMode,
-  isTerrainSurfaceMode,
+  isMetalCoverage,
   type LiquidSurfaceMode,
-  type TerrainSurfaceMode,
+  type MetalCoverage,
 } from './types/worldSurfaceMode';
 import { persistJson, readPersisted } from './persistence';
 import { readModeSetting, writeModeSetting } from './realBattleSessionSettings';
@@ -184,8 +184,8 @@ export const BATTLE_CONFIG = {
     default: _demoPreset.slopePathMode,
   },
   // WORLD group: ground material and what fills the map below water level.
-  terrainSurfaceMode: {
-    default: _demoPreset.terrainSurfaceMode,
+  metalCoverage: {
+    default: _demoPreset.metalCoverage,
   },
   liquidSurfaceMode: {
     default: _demoPreset.liquidSurfaceMode,
@@ -309,8 +309,8 @@ const STORAGE_DEMO_SLOW_DOWN_AT_FINAL_WAYPOINT = sk.demoSlowDownAtFinalWaypoint;
 const STORAGE_REAL_SLOW_DOWN_AT_FINAL_WAYPOINT = sk.realSlowDownAtFinalWaypoint;
 const STORAGE_DEMO_SLOPE_PATH_MODE = sk.demoSlopePathMode;
 const STORAGE_REAL_SLOPE_PATH_MODE = sk.realSlopePathMode;
-const STORAGE_DEMO_TERRAIN_SURFACE_MODE = sk.demoTerrainSurfaceMode;
-const STORAGE_REAL_TERRAIN_SURFACE_MODE = sk.realTerrainSurfaceMode;
+const STORAGE_DEMO_METAL_COVERAGE = sk.demoMetalCoverage;
+const STORAGE_REAL_METAL_COVERAGE = sk.realMetalCoverage;
 const STORAGE_DEMO_LIQUID_SURFACE_MODE = sk.demoLiquidSurfaceMode;
 const STORAGE_REAL_LIQUID_SURFACE_MODE = sk.realLiquidSurfaceMode;
 const STORAGE_DEMO_CENTER_MAGNITUDE = sk.demoCenterMagnitude;
@@ -803,13 +803,13 @@ export function saveSlopePathMode(value: SlopePathMode, mode: BattleMode): void 
   writeModeSetting(mode, STORAGE_REAL_SLOPE_PATH_MODE, STORAGE_DEMO_SLOPE_PATH_MODE, value);
 }
 
-export function loadStoredTerrainSurfaceMode(mode: BattleMode): TerrainSurfaceMode {
-  const stored = readModeSetting(mode, STORAGE_REAL_TERRAIN_SURFACE_MODE, STORAGE_DEMO_TERRAIN_SURFACE_MODE);
-  return isTerrainSurfaceMode(stored) ? stored : getModeDefaultPreset(mode).terrainSurfaceMode;
+export function loadStoredMetalCoverage(mode: BattleMode): MetalCoverage {
+  const stored = readModeSetting(mode, STORAGE_REAL_METAL_COVERAGE, STORAGE_DEMO_METAL_COVERAGE);
+  return isMetalCoverage(stored) ? stored : getModeDefaultPreset(mode).metalCoverage;
 }
 
-export function saveTerrainSurfaceMode(value: TerrainSurfaceMode, mode: BattleMode): void {
-  writeModeSetting(mode, STORAGE_REAL_TERRAIN_SURFACE_MODE, STORAGE_DEMO_TERRAIN_SURFACE_MODE, value);
+export function saveMetalCoverage(value: MetalCoverage, mode: BattleMode): void {
+  writeModeSetting(mode, STORAGE_REAL_METAL_COVERAGE, STORAGE_DEMO_METAL_COVERAGE, value);
 }
 
 export function loadStoredLiquidSurfaceMode(mode: BattleMode): LiquidSurfaceMode {

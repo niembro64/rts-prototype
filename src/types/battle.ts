@@ -2,7 +2,7 @@ import type { BooleanSetting, OptionsConfig } from './bars';
 import type { MapDimensionAxisOption } from '../mapSizeConfig';
 import type { ShieldReflectionMode } from './shotTypes';
 import type { SlopePathMode } from './slopePathMode';
-import type { LiquidSurfaceMode, TerrainSurfaceMode } from './worldSurfaceMode';
+import type { LiquidSurfaceMode, MetalCoverage } from './worldSurfaceMode';
 import type { PathfindingCellConsolidationMultiplier } from './pathfinding';
 import type { SimulationTickRateHz } from './simulationTickRate';
 
@@ -32,9 +32,9 @@ export type BattleBarConfig = {
   readonly slopePathMode: {
     readonly default: SlopePathMode;
   };
-  /** Ground material policy (WORLD bar group). */
-  readonly terrainSurfaceMode: {
-    readonly default: TerrainSurfaceMode;
+  /** How much of the map is metal ore (WORLD bar group). */
+  readonly metalCoverage: {
+    readonly default: MetalCoverage;
   };
   /** What fills the map below the water level (WORLD bar group). */
   readonly liquidSurfaceMode: {

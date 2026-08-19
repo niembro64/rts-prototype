@@ -15,7 +15,7 @@ import {
   saveSlowDownAtFinalWaypoint,
   loadStoredSlopePathMode,
   saveSlopePathMode,
-  loadStoredTerrainSurfaceMode,
+  loadStoredMetalCoverage,
   loadStoredLiquidSurfaceMode,
   setUnitCap,
   type BattleMode,
@@ -23,7 +23,7 @@ import {
 import type { SlopePathMode } from '../types/slopePathMode';
 import type {
   LiquidSurfaceMode,
-  TerrainSurfaceMode,
+  MetalCoverage,
 } from '../types/worldSurfaceMode';
 import type { NetworkServerSnapshotMeta } from '../game/network/NetworkTypes';
 import type { GameConnection } from '../game/server/GameConnection';
@@ -54,7 +54,7 @@ type GameCanvasBattleSettings = {
   currentFogOfWarEnabled: ComputedRef<boolean>;
   currentSlowDownAtFinalWaypoint: ComputedRef<boolean>;
   currentSlopePathMode: ComputedRef<SlopePathMode>;
-  currentTerrainSurfaceMode: ComputedRef<TerrainSurfaceMode>;
+  currentMetalCoverage: ComputedRef<MetalCoverage>;
   currentLiquidSurfaceMode: ComputedRef<LiquidSurfaceMode>;
   currentConverterTax: ComputedRef<number>;
   toggleDemoUnitBlueprintId(unitBlueprintId: string): void;
@@ -66,7 +66,7 @@ type GameCanvasBattleSettings = {
   setFogOfWarEnabled(enabled: boolean): void;
   setSlowDownAtFinalWaypoint(enabled: boolean, broadcast?: boolean): void;
   setSlopePathMode(mode: SlopePathMode): void;
-  setTerrainSurfaceMode(mode: TerrainSurfaceMode, broadcast?: boolean): void;
+  setMetalCoverage(mode: MetalCoverage, broadcast?: boolean): void;
   setLiquidSurfaceMode(mode: LiquidSurfaceMode, broadcast?: boolean): void;
   setConverterTax(tax: number): void;
   resetDemoDefaults(): void;
@@ -92,7 +92,7 @@ type GameCanvasBattleSettingsOptions = {
   applyPlateauWallSlopeDegrees: (value: number, broadcast?: boolean) => void;
   applyMetalDepositStep: (value: number, broadcast?: boolean) => void;
   applyTerrainDetail: (value: number, broadcast?: boolean) => void;
-  applyTerrainSurfaceMode: (mode: TerrainSurfaceMode, broadcast?: boolean) => void;
+  applyMetalCoverage: (mode: MetalCoverage, broadcast?: boolean) => void;
   applyLiquidSurfaceMode: (mode: LiquidSurfaceMode, broadcast?: boolean) => void;
   applyMapLandDimensions: (
     dimensions: MapLandCellDimensions,
@@ -117,7 +117,7 @@ export function useGameCanvasBattleSettings({
   applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
   applyTerrainDetail,
-  applyTerrainSurfaceMode,
+  applyMetalCoverage,
   applyLiquidSurfaceMode,
   applyMapLandDimensions,
 }: GameCanvasBattleSettingsOptions): GameCanvasBattleSettings {
@@ -228,9 +228,9 @@ export function useGameCanvasBattleSettings({
   // Same story as the slope mode: the WORLD toggles are not mirrored on the
   // snapshot meta, so the bar reflects the stored value and the version refs
   // re-read it after each local toggle.
-  const currentTerrainSurfaceMode = computed<TerrainSurfaceMode>(() => {
+  const currentMetalCoverage = computed<MetalCoverage>(() => {
     void worldSurfaceStoreVersion.value;
-    return loadStoredTerrainSurfaceMode(currentBattleMode.value);
+    return loadStoredMetalCoverage(currentBattleMode.value);
   });
   const currentLiquidSurfaceMode = computed<LiquidSurfaceMode>(() => {
     void worldSurfaceStoreVersion.value;
@@ -346,9 +346,9 @@ export function useGameCanvasBattleSettings({
   // crowns exist and which cells are metal, and LIQUID is baked into the
   // terrain mesh's per-vertex horizon liquid colour, so neither can be
   // re-shaded in place.
-  function setTerrainSurfaceMode(mode: TerrainSurfaceMode, broadcast = true): void {
-    getActiveConnection()?.sendCommand({ type: 'setTerrainSurfaceMode', tick: 0, mode });
-    applyTerrainSurfaceMode(mode, broadcast);
+  function setMetalCoverage(mode: MetalCoverage, broadcast = true): void {
+    getActiveConnection()?.sendCommand({ type: 'setMetalCoverage', tick: 0, mode });
+    applyMetalCoverage(mode, broadcast);
   }
 
   function setLiquidSurfaceMode(mode: LiquidSurfaceMode, broadcast = true): void {
@@ -376,8 +376,8 @@ export function useGameCanvasBattleSettings({
     setFogOfWarEnabled(preset.fogOfWarEnabled);
     setSlowDownAtFinalWaypoint(preset.slowDownAtFinalWaypoint, false);
     setSlopePathMode(preset.slopePathMode);
-    if (preset.terrainSurfaceMode !== currentTerrainSurfaceMode.value) {
-      setTerrainSurfaceMode(preset.terrainSurfaceMode, false);
+    if (preset.metalCoverage !== currentMetalCoverage.value) {
+      setMetalCoverage(preset.metalCoverage, false);
     }
     if (preset.liquidSurfaceMode !== currentLiquidSurfaceMode.value) {
       setLiquidSurfaceMode(preset.liquidSurfaceMode, false);
@@ -422,7 +422,7 @@ export function useGameCanvasBattleSettings({
     currentFogOfWarEnabled,
     currentSlowDownAtFinalWaypoint,
     currentSlopePathMode,
-    currentTerrainSurfaceMode,
+    currentMetalCoverage,
     currentLiquidSurfaceMode,
     currentConverterTax,
     toggleDemoUnitBlueprintId,
@@ -434,7 +434,7 @@ export function useGameCanvasBattleSettings({
     setFogOfWarEnabled,
     setSlowDownAtFinalWaypoint,
     setSlopePathMode,
-    setTerrainSurfaceMode,
+    setMetalCoverage,
     setLiquidSurfaceMode,
     setConverterTax,
     resetDemoDefaults,

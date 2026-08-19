@@ -22,6 +22,7 @@ import {
   getRotatedBuildingPlacementFootprint,
 } from './buildGrid';
 import { METAL_DEPOSIT_CONFIG } from '../../metalDepositConfig';
+import { metalCoverageIsWholeMap } from '../../types/worldSurfaceMode';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import {
   findDepositContainingPoint,
@@ -79,7 +80,7 @@ function syncExtractorRateFromCoveredCells(world: WorldState, extractor: Entity)
   // footprint pays out and there is no individual deposit to bind to. The
   // deposits still exist — they shaped the terrain — they just no longer
   // decide where the metal is.
-  if (world.terrainSurfaceMode === 'metal') {
+  if (metalCoverageIsWholeMap(world.metalCoverage)) {
     extractor.coveredDepositIds = [];
     extractor.metalExtractionRate =
       footprint.footprint.cells.length * perMetalCellProduction(extractor);

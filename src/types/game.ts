@@ -7,7 +7,7 @@ import type { SimEvent } from './combat';
 import type { SnapshotWirePayload } from '../game/network/SnapshotWirePayload';
 import type {
   LiquidSurfaceMode,
-  TerrainSurfaceMode,
+  MetalCoverage,
 } from './worldSurfaceMode';
 
 export type { SnapshotWirePayload } from '../game/network/SnapshotWirePayload';
@@ -213,7 +213,7 @@ export type GameServerConfig = {
   mapLengthLandCells?: number;
   /** Initial authoritative ground and liquid materials. They are applied
    *  before terrain-dependent simulation state and vegetation are built. */
-  terrainSurfaceMode?: TerrainSurfaceMode;
+  metalCoverage?: MetalCoverage;
   liquidSurfaceMode?: LiquidSurfaceMode;
   backgroundMode?: boolean;
   aiPlayerIds?: PlayerId[];

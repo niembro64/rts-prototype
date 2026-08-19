@@ -17,7 +17,7 @@ import {
   loadStoredSlowDownAtFinalWaypoint,
   loadStoredTerrainDTerrain,
   loadStoredTerrainDetail,
-  loadStoredTerrainSurfaceMode,
+  loadStoredMetalCoverage,
   resetRealBattleSettings,
   saveCenterMagnitude,
   saveConverterTax,
@@ -35,7 +35,7 @@ import {
   saveSlowDownAtFinalWaypoint,
   saveTerrainDTerrain,
   saveTerrainDetail,
-  saveTerrainSurfaceMode,
+  saveMetalCoverage,
   setUnitCap,
 } from './battleBarConfig';
 import battleBarConfig from './battleBarConfig.json';
@@ -59,7 +59,7 @@ function mutateEveryRealSetting(): void {
   saveFogOfWarEnabled(false, 'real');
   saveSlowDownAtFinalWaypoint(true, 'real');
   saveSlopePathMode('symmetric', 'real');
-  saveTerrainSurfaceMode('metal', 'real');
+  saveMetalCoverage('all', 'real');
   saveLiquidSurfaceMode('lava', 'real');
   saveConverterTax(0.1, 'real');
   saveCenterMagnitude(3200, 'real');
@@ -89,7 +89,7 @@ function assertRealSettingsAtDefaults(context: string): void {
       preset.slowDownAtFinalWaypoint,
     ],
     ['slopePathMode', loadStoredSlopePathMode('real'), preset.slopePathMode],
-    ['terrainSurfaceMode', loadStoredTerrainSurfaceMode('real'), preset.terrainSurfaceMode],
+    ['metalCoverage', loadStoredMetalCoverage('real'), preset.metalCoverage],
     ['liquidSurfaceMode', loadStoredLiquidSurfaceMode('real'), preset.liquidSurfaceMode],
     ['converterTax', loadStoredConverterTax('real'), preset.converterTax],
     ['centerMagnitude', loadStoredCenterMagnitude('real'), preset.centerMagnitude],
@@ -165,7 +165,7 @@ export function runRealBattleSettingsDeterminismContractTest(): void {
       'a live lobby must still change its in-memory settings',
     );
     assertContract(
-      loadStoredTerrainSurfaceMode('real') === 'metal' &&
+      loadStoredMetalCoverage('real') === 'all' &&
         loadStoredConverterTax('real') === 0.1 &&
         loadStoredPathfindingCellConsolidation('real') === 5 &&
         loadStoredSimulationTickRate('real') === 60 &&

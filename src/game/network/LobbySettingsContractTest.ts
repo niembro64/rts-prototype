@@ -16,7 +16,7 @@ const CURRENT_SETTINGS: LobbySettings = {
   simulationTickRateHz: 20,
   converterTax: 0.1,
   slowDownAtFinalWaypoint: true,
-  terrainSurfaceMode: 'normal',
+  metalCoverage: 'more',
   liquidSurfaceMode: 'water',
 };
 
@@ -46,8 +46,8 @@ export function runLobbySettingsContractTest(): void {
     'an obsolete packet without slowDownAtFinalWaypoint',
   );
   assertRejected(
-    { ...CURRENT_SETTINGS, terrainSurfaceMode: 'unknown' },
-    'an unsupported terrainSurfaceMode',
+    { ...CURRENT_SETTINGS, metalCoverage: 'unknown' },
+    'an unsupported metalCoverage',
   );
   assertRejected(
     { ...CURRENT_SETTINGS, pathfindingCellConsolidationMultiplier: 6 },

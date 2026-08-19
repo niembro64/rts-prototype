@@ -1,21 +1,21 @@
 import { nextTick, type ComputedRef, type Ref } from 'vue';
 import type {
   LiquidSurfaceMode,
-  TerrainSurfaceMode,
+  MetalCoverage,
 } from '../types/worldSurfaceMode';
 import {
   isLiquidSurfaceMode,
-  isTerrainSurfaceMode,
+  isMetalCoverage,
 } from '../types/worldSurfaceMode';
 import {
   setLiquidSurfaceMode,
-  setTerrainSurfaceMode,
+  setMetalCoverage,
 } from '../game/sim/worldSurfaceState';
 import {
   loadStoredLiquidSurfaceMode,
-  loadStoredTerrainSurfaceMode,
+  loadStoredMetalCoverage,
   saveLiquidSurfaceMode,
-  saveTerrainSurfaceMode,
+  saveMetalCoverage,
 } from '../battleBarConfig';
 import {
   BATTLE_CONFIG,
@@ -70,7 +70,7 @@ type GameCanvasLobbySettings = {
   applyTerrainDetail(value: number, broadcast?: boolean): void;
   applyPathfindingCellConsolidation(value: number, broadcast?: boolean): void;
   applySimulationTickRate(value: number, broadcast?: boolean): void;
-  applyTerrainSurfaceMode(mode: TerrainSurfaceMode, broadcast?: boolean): void;
+  applyMetalCoverage(mode: MetalCoverage, broadcast?: boolean): void;
   applyLiquidSurfaceMode(mode: LiquidSurfaceMode, broadcast?: boolean): void;
   applyMapLandDimensions(
     dimensions: MapLandCellDimensions,
@@ -180,7 +180,7 @@ export function useGameCanvasLobbySettings({
       simulationTickRateHz: simulationTickRateHz.value,
       converterTax: loadStoredConverterTax('real'),
       slowDownAtFinalWaypoint: loadStoredSlowDownAtFinalWaypoint('real'),
-      terrainSurfaceMode: loadStoredTerrainSurfaceMode('real'),
+      metalCoverage: loadStoredMetalCoverage('real'),
       liquidSurfaceMode: loadStoredLiquidSurfaceMode('real'),
     };
   }
@@ -306,11 +306,11 @@ export function useGameCanvasLobbySettings({
     if (broadcast) broadcastLobbySettingsIfHost();
   }
 
-  // The two WORLD toggles. Neither changes terrain GEOMETRY, so there is no
-  // terrain runtime config to re-apply — but SURFACE decides whether deposit
-  // crowns exist and which cells are metal, and LIQUID is baked into the
-  // terrain mesh's per-vertex horizon liquid colour, so both need the world
-  // rebuilt rather than just re-shaded.
+  // The two WORLD settings. Neither changes terrain GEOMETRY, so there is no
+  // terrain runtime config to re-apply — but METAL decides how big the ore
+  // bodies grow (and whether the whole map is ore), and LIQUID is baked into
+  // the terrain mesh's per-vertex horizon liquid colour, so both need the
+  // world rebuilt rather than just re-shaded.
   function applySurfaceMode<T extends string>({
     storedMode,
     nextMode,
@@ -337,13 +337,13 @@ export function useGameCanvasLobbySettings({
     });
   }
 
-  function applyTerrainSurfaceMode(mode: TerrainSurfaceMode, broadcast = true): void {
+  function applyMetalCoverage(mode: MetalCoverage, broadcast = true): void {
     const battleMode = currentBattleMode.value;
     applySurfaceMode({
-      storedMode: loadStoredTerrainSurfaceMode(battleMode),
+      storedMode: loadStoredMetalCoverage(battleMode),
       nextMode: mode,
-      persist: (nextMode) => saveTerrainSurfaceMode(nextMode, battleMode),
-      installRuntime: setTerrainSurfaceMode,
+      persist: (nextMode) => saveMetalCoverage(nextMode, battleMode),
+      installRuntime: setMetalCoverage,
       broadcast,
     });
   }
@@ -406,8 +406,8 @@ export function useGameCanvasLobbySettings({
       'real',
     );
     const nextSlowDownAtFinalWaypoint = settings.slowDownAtFinalWaypoint;
-    if (!isTerrainSurfaceMode(settings.terrainSurfaceMode)) {
-      throw new Error(`[lobby settings] invalid terrainSurfaceMode: ${String(settings.terrainSurfaceMode)}`);
+    if (!isMetalCoverage(settings.metalCoverage)) {
+      throw new Error(`[lobby settings] invalid metalCoverage: ${String(settings.metalCoverage)}`);
     }
     if (!isLiquidSurfaceMode(settings.liquidSurfaceMode)) {
       throw new Error(`[lobby settings] invalid liquidSurfaceMode: ${String(settings.liquidSurfaceMode)}`);
@@ -415,10 +415,10 @@ export function useGameCanvasLobbySettings({
     if (!Number.isFinite(settings.entityCountCap) || settings.entityCountCap <= 0) {
       throw new Error(`[lobby settings] invalid entityCountCap: ${String(settings.entityCountCap)}`);
     }
-    const nextTerrainSurfaceMode = settings.terrainSurfaceMode;
+    const nextMetalCoverage = settings.metalCoverage;
     const nextLiquidSurfaceMode = settings.liquidSurfaceMode;
-    const terrainSurfaceModeChanged =
-      nextTerrainSurfaceMode !== loadStoredTerrainSurfaceMode('real');
+    const metalCoverageChanged =
+      nextMetalCoverage !== loadStoredMetalCoverage('real');
     const liquidSurfaceModeChanged =
       nextLiquidSurfaceMode !== loadStoredLiquidSurfaceMode('real');
     const slowDownAtFinalWaypointChanged =
@@ -438,7 +438,7 @@ export function useGameCanvasLobbySettings({
       settings.mapWidthLandCells !== mapWidthLandCells.value ||
       settings.mapLengthLandCells !== mapLengthLandCells.value ||
       slowDownAtFinalWaypointChanged ||
-      terrainSurfaceModeChanged ||
+      metalCoverageChanged ||
       liquidSurfaceModeChanged;
 
     centerMagnitude.value = nextCenterMagnitude;
@@ -472,11 +472,11 @@ export function useGameCanvasLobbySettings({
       },
       'real',
     );
-    saveTerrainSurfaceMode(nextTerrainSurfaceMode, 'real');
+    saveMetalCoverage(nextMetalCoverage, 'real');
     saveLiquidSurfaceMode(nextLiquidSurfaceMode, 'real');
-    setTerrainSurfaceMode(nextTerrainSurfaceMode);
+    setMetalCoverage(nextMetalCoverage);
     setLiquidSurfaceMode(nextLiquidSurfaceMode);
-    if (terrainSurfaceModeChanged || liquidSurfaceModeChanged) {
+    if (metalCoverageChanged || liquidSurfaceModeChanged) {
       worldSurfaceStoreVersion.value++;
     }
     saveConverterTax(normalizeConverterTax(settings.converterTax), 'real');
@@ -577,7 +577,7 @@ export function useGameCanvasLobbySettings({
     applyTerrainDetail,
     applyPathfindingCellConsolidation,
     applySimulationTickRate,
-    applyTerrainSurfaceMode,
+    applyMetalCoverage,
     applyLiquidSurfaceMode,
     applyMapLandDimensions,
     applyLobbySettingsFromHost,

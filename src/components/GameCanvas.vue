@@ -1515,7 +1515,7 @@ const {
   applyTerrainDetail,
   applyPathfindingCellConsolidation,
   applySimulationTickRate,
-  applyTerrainSurfaceMode,
+  applyMetalCoverage,
   applyLiquidSurfaceMode,
   applyMapLandDimensions,
   applyLobbySettingsFromHost,
@@ -1563,7 +1563,7 @@ const {
   currentFogOfWarEnabled,
   currentSlowDownAtFinalWaypoint,
   currentSlopePathMode,
-  currentTerrainSurfaceMode,
+  currentMetalCoverage,
   currentLiquidSurfaceMode,
   currentConverterTax,
   toggleDemoUnitBlueprintId,
@@ -1574,7 +1574,7 @@ const {
   setFogOfWarEnabled,
   setSlowDownAtFinalWaypoint,
   setSlopePathMode,
-  setTerrainSurfaceMode,
+  setMetalCoverage,
   setLiquidSurfaceMode,
   setConverterTax,
   resetDemoDefaults,
@@ -1596,7 +1596,7 @@ const {
   applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
   applyTerrainDetail,
-  applyTerrainSurfaceMode,
+  applyMetalCoverage,
   applyLiquidSurfaceMode,
   applyMapLandDimensions,
 });
@@ -1823,7 +1823,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   currentFogOfWarEnabled: currentFogOfWarEnabled.value,
   currentSlowDownAtFinalWaypoint: currentSlowDownAtFinalWaypoint.value,
   currentSlopePathMode: currentSlopePathMode.value,
-  currentTerrainSurfaceMode: currentTerrainSurfaceMode.value,
+  currentMetalCoverage: currentMetalCoverage.value,
   currentLiquidSurfaceMode: currentLiquidSurfaceMode.value,
   currentConverterTax: currentConverterTax.value,
   serverUnitGroundNormalEmaMode: serverUnitGroundNormalEmaMode.value,
@@ -1849,7 +1849,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   setFogOfWarEnabled,
   setSlowDownAtFinalWaypoint,
   setSlopePathMode,
-  setTerrainSurfaceMode,
+  setMetalCoverage,
   setLiquidSurfaceMode,
   setConverterTax,
   setUnitGroundNormalEmaModeValue,
@@ -1887,14 +1887,14 @@ watchEffect(() => {
   m.currentFogOfWarEnabled = currentFogOfWarEnabled.value;
   m.currentSlowDownAtFinalWaypoint = currentSlowDownAtFinalWaypoint.value;
   m.currentSlopePathMode = currentSlopePathMode.value;
-  m.currentTerrainSurfaceMode = currentTerrainSurfaceMode.value;
+  m.currentMetalCoverage = currentMetalCoverage.value;
   m.currentLiquidSurfaceMode = currentLiquidSurfaceMode.value;
   m.currentConverterTax = currentConverterTax.value;
   m.serverUnitGroundNormalEmaMode = serverUnitGroundNormalEmaMode.value;
   const mapPresentation = resolveBattleMapPresentation({
     cap: displayUnitCap.value,
     slowDownAtFinalWaypoint: currentSlowDownAtFinalWaypoint.value,
-    terrainSurfaceMode: currentTerrainSurfaceMode.value,
+    metalCoverage: currentMetalCoverage.value,
     liquidSurfaceMode: currentLiquidSurfaceMode.value,
     slopePathMode: currentSlopePathMode.value,
     converterTax: currentConverterTax.value,

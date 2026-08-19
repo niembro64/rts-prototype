@@ -56,11 +56,11 @@ import { precomputeAllUnitPathTraversabilityGrids } from '../sim/pathfindingTrav
 import { configurePathfindingCellConsolidationMultiplier } from '../sim/pathfinderTerrainCache';
 import {
   setLiquidSurfaceMode,
-  setTerrainSurfaceMode,
+  setMetalCoverage,
 } from '../sim/worldSurfaceState';
 import {
   DEFAULT_LIQUID_SURFACE_MODE,
-  DEFAULT_TERRAIN_SURFACE_MODE,
+  DEFAULT_METAL_COVERAGE,
 } from '../../types/worldSurfaceMode';
 import { normalizePathfindingCellConsolidationMultiplier } from '../../types/pathfinding';
 import { normalizeSimulationTickRateHz } from '../../types/simulationTickRate';
@@ -109,11 +109,11 @@ export class ServerBootstrap {
     configurePathfindingCellConsolidationMultiplier(
       pathfindingCellConsolidationMultiplier,
     );
-    const terrainSurfaceMode =
-      config.terrainSurfaceMode ?? DEFAULT_TERRAIN_SURFACE_MODE;
+    const metalCoverage =
+      config.metalCoverage ?? DEFAULT_METAL_COVERAGE;
     const liquidSurfaceMode =
       config.liquidSurfaceMode ?? DEFAULT_LIQUID_SURFACE_MODE;
-    setTerrainSurfaceMode(terrainSurfaceMode);
+    setMetalCoverage(metalCoverage);
     setLiquidSurfaceMode(liquidSurfaceMode);
 
     const mapConfig = getMapSize(
@@ -160,6 +160,7 @@ export class ServerBootstrap {
       mapWidth,
       mapHeight,
       teamRoster.allyTeamIds.length,
+      metalCoverage,
     );
     await report(0.24, 'Generating metal deposits');
 
@@ -176,7 +177,7 @@ export class ServerBootstrap {
     try {
     const world = new WorldState(gameGenerationSeed, mapWidth, mapHeight);
     world.simulationTickRateHz = simulationTickRateHz;
-    world.terrainSurfaceMode = terrainSurfaceMode;
+    world.metalCoverage = metalCoverage;
     world.liquidSurfaceMode = liquidSurfaceMode;
     world.pathfindingCellConsolidationMultiplier =
       pathfindingCellConsolidationMultiplier;
@@ -314,11 +315,11 @@ export class ServerBootstrap {
     configurePathfindingCellConsolidationMultiplier(
       pathfindingCellConsolidationMultiplier,
     );
-    const terrainSurfaceMode =
-      config.terrainSurfaceMode ?? DEFAULT_TERRAIN_SURFACE_MODE;
+    const metalCoverage =
+      config.metalCoverage ?? DEFAULT_METAL_COVERAGE;
     const liquidSurfaceMode =
       config.liquidSurfaceMode ?? DEFAULT_LIQUID_SURFACE_MODE;
-    setTerrainSurfaceMode(terrainSurfaceMode);
+    setMetalCoverage(metalCoverage);
     setLiquidSurfaceMode(liquidSurfaceMode);
 
     const mapConfig = getMapSize(
@@ -374,6 +375,7 @@ export class ServerBootstrap {
       mapWidth,
       mapHeight,
       teamRoster.allyTeamIds.length,
+      metalCoverage,
     );
     const terrainTileMap = buildTerrainTileMap(mapWidth, mapHeight, LAND_CELL_SIZE);
     setAuthoritativeTerrainTileMap(terrainTileMap);
@@ -385,7 +387,7 @@ export class ServerBootstrap {
     try {
     const world = new WorldState(gameGenerationSeed, mapWidth, mapHeight);
     world.simulationTickRateHz = simulationTickRateHz;
-    world.terrainSurfaceMode = terrainSurfaceMode;
+    world.metalCoverage = metalCoverage;
     world.liquidSurfaceMode = liquidSurfaceMode;
     world.pathfindingCellConsolidationMultiplier =
       pathfindingCellConsolidationMultiplier;

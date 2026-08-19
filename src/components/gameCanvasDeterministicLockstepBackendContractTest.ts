@@ -48,7 +48,7 @@ export async function runDeterministicLockstepBackendContractTest(): Promise<voi
   try {
     assertContract(backend.server !== null, 'lockstep backend must create a local server');
     assertContract(
-      backend.server.getLockstepSimulationCore().world.terrainSurfaceMode === 'metal'
+      backend.server.getLockstepSimulationCore().world.metalCoverage === 'all'
         && backend.server.getLockstepSimulationCore().world.liquidSurfaceMode === 'lava',
       'server bootstrap must install the selected WORLD modes before frame 0',
     );
@@ -200,7 +200,7 @@ function assertInitializationHashMismatch(): void {
       simulationTickRateHz: 20,
       converterTax: 0,
       slowDownAtFinalWaypoint: false,
-      terrainSurfaceMode: 'normal' as const,
+      metalCoverage: 'more' as const,
       liquidSurfaceMode: 'water' as const,
     },
   };
@@ -233,7 +233,7 @@ function assertInitializationHashMismatch(): void {
     ...base,
     settings: {
       ...base.settings,
-      terrainSurfaceMode: 'metal',
+      metalCoverage: 'all',
       liquidSurfaceMode: 'lava',
     },
   }));
@@ -291,7 +291,7 @@ function createTerrain(): RealBattleStartupTerrain {
       width: 9 * 128,
       height: 9 * 128,
     },
-    terrainSurfaceMode: 'metal',
+    metalCoverage: 'all',
     liquidSurfaceMode: 'lava',
   };
 }
@@ -316,7 +316,7 @@ function createLobbySettings(
     simulationTickRateHz,
     converterTax: 0,
     slowDownAtFinalWaypoint: false,
-    terrainSurfaceMode: terrain.terrainSurfaceMode,
+    metalCoverage: terrain.metalCoverage,
     liquidSurfaceMode: terrain.liquidSurfaceMode,
   };
 }

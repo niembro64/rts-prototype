@@ -48,9 +48,9 @@ import {
 } from '../../types/pathfinding';
 import {
   DEFAULT_LIQUID_SURFACE_MODE,
-  DEFAULT_TERRAIN_SURFACE_MODE,
+  DEFAULT_METAL_COVERAGE,
   type LiquidSurfaceMode,
-  type TerrainSurfaceMode,
+  type MetalCoverage,
 } from '../../types/worldSurfaceMode';
 import {
   DEFAULT_SIMULATION_TICK_RATE_HZ,
@@ -258,7 +258,7 @@ export class WorldState {
   // Ground material policy. `metal` treats every build-grid cell as metal ore
   // and suppresses the discrete deposit crowns; the deposits still shaped the
   // terrain. See types/worldSurfaceMode.
-  public terrainSurfaceMode: TerrainSurfaceMode = DEFAULT_TERRAIN_SURFACE_MODE;
+  public metalCoverage: MetalCoverage = DEFAULT_METAL_COVERAGE;
   // What fills the map below WATER_LEVEL. `lava` burns anything touching it.
   public liquidSurfaceMode: LiquidSurfaceMode = DEFAULT_LIQUID_SURFACE_MODE;
   /** Tax (fraction in [0, 1)) applied to a resource converter's per-tick

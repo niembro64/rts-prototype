@@ -1,6 +1,10 @@
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
-import type { TerrainSurfaceMode } from '../../types/worldSurfaceMode';
+import {
+  DEFAULT_METAL_COVERAGE,
+  metalCoverageIsWholeMap,
+  type MetalCoverage,
+} from '../../types/worldSurfaceMode';
 import type { Entity, BuildingBlueprintId } from './types';
 import type { BuildingPlacementSet } from '../../types/buildingTypes';
 import {
@@ -84,13 +88,13 @@ type BuildPlacementDiagnosticsOptions = {
    *  metal cell, so extractors are placeable anywhere and earn their full
    *  nominal rate. Optional so the many callers that predate the WORLD
    *  toggles keep the authored behaviour. */
-  terrainSurfaceMode?: TerrainSurfaceMode;
+  metalCoverage?: MetalCoverage;
 };
 
 const DEFAULT_BUILD_PLACEMENT_DIAGNOSTICS_OPTIONS: BuildPlacementDiagnosticsOptions = {
   includeMetalDiagnostics: true,
   ignoreTerrain: false,
-  terrainSurfaceMode: 'normal',
+  metalCoverage: DEFAULT_METAL_COVERAGE,
 };
 
 function cellKey(gx: number, gy: number): string {
@@ -227,7 +231,9 @@ function getBuildingPlacementDiagnosticsAtGrid(
   const sensorSourceMediumMismatch =
     requiredSensorSourceMedium !== null &&
     centerSensorSourceMedium !== requiredSensorSourceMedium.medium;
-  const wholeMapIsMetal = (options.terrainSurfaceMode ?? 'normal') === 'metal';
+  const wholeMapIsMetal = metalCoverageIsWholeMap(
+    options.metalCoverage ?? DEFAULT_METAL_COVERAGE,
+  );
   const extractorCoverage = !isMetalExtractorBlueprintId(candidateType)
     ? null
     : wholeMapIsMetal
