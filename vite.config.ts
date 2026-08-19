@@ -76,6 +76,23 @@ export default defineConfig(({ command }) => {
         '/api': {
           target: process.env.BA_LOBBY_API_TARGET || 'http://127.0.0.1:3001',
           changeOrigin: true,
+          // Running without the backend is a normal dev state — the lobby
+          // browser degrades to code-only joining. Left alone, the directory
+          // poll prints a connection-refused stack every few seconds and
+          // buries real output, so answer quietly instead.
+          configure: (proxy) => {
+            proxy.on('error', (_error, _request, response) => {
+              const socket = response as unknown as { destroy?: () => void };
+              if ('writeHead' in response && typeof response.writeHead === 'function') {
+                if (!response.headersSent) {
+                  response.writeHead(503, { 'Content-Type': 'application/json' });
+                }
+                response.end('{"error":"lobby backend not running"}');
+                return;
+              }
+              socket.destroy?.();
+            });
+          },
         },
       },
       ...(usePollingWatcher
