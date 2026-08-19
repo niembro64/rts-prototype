@@ -462,6 +462,14 @@ pub(crate) fn terrain_generated_natural_height(
         }
     }
 
+    // The edge fade exists ONLY to hand the natural field over to the
+    // perimeter ring cleanly. With the mapBoundary stage off (PERIMETER
+    // NONE) there is nothing to hand over to, so the ripple and the divider
+    // ridges run out to the rectangular map edge instead of being flattened
+    // just short of it.
+    if !terrain_pipeline_stage_active(cfg, 1) {
+        return ripple + ridge;
+    }
     let generation_fade = terrain_generation_boundary_fade_for_sample(metrics, oval, cfg);
     (ripple + ridge) * (1.0 - generation_fade)
 }

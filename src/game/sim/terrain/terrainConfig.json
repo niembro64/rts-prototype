@@ -3,7 +3,7 @@
     {
       "step": "naturalField",
       "active": true,
-      "detail": "This array DRIVES generation: stages execute top to bottom, each exactly once, in ANY order; set active: false to skip a stage (its wall-region classification turns off with it). OVERWRITES the height field with the natural surface \u2014 stages ordered before it are discarded. Radial cosine mountain ripple (CENTER bar) plus team-count divider ridges (DIVIDERS bar), faded to flat before the outer map buffer (generation.edgeFadeWidthFraction)."
+      "detail": "This array DRIVES generation: stages execute top to bottom, each exactly once, in ANY order; set active: false to skip a stage (its wall-region classification turns off with it). OVERWRITES the height field with the natural surface \u2014 stages ordered before it are discarded. Radial cosine mountain ripple (CENTER bar) plus team-count divider ridges (DIVIDERS bar), faded to flat before the outer map buffer (generation.edgeFadeWidthFraction) so the mapBoundary stage has a clean surface to blend from \u2014 with that stage off (PERIMETER NONE) the fade is skipped too and the ridges run out to the rectangular map edge."
     },
     {
       "step": "mapBoundary",

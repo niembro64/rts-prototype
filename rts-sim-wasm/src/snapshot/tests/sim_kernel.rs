@@ -3600,6 +3600,89 @@ mod sim_kernel_tests {
         );
     }
 
+    /// PERIMETER NONE is packed as an inactive mapBoundary stage. That has to
+    /// switch off BOTH halves of the map-edge treatment: the ring override and
+    /// the natural field's fade-to-flat that only exists to feed it. Otherwise
+    /// NONE is indistinguishable from a ground-level ring — the divider ridges
+    /// still get flattened just short of the map edge.
+    #[test]
+    pub(crate) fn terrain_perimeter_none_runs_the_divider_ridges_to_the_map_edge() {
+        // Ridges only (no ripple magnitude), so any height at the sample point
+        // is the DIVIDERS contribution and nothing else.
+        let base_config = [
+            0.0,     // center_magnitude
+            300.0,   // dividers_magnitude
+            0.0,     // terrain_d_terrain (plateau off)
+            0.0,     // perimeter_magnitude (ground-level ring)
+            2.0,     // team_count
+            -1200.0, // tile_floor_y
+            0.5,     // perimeter_outer_radius_fraction
+            0.4,     // perimeter_inner_radius_fraction
+            0.01,    // generation_edge_transition_width_fraction
+            0.99,    // plateau_shelf_fraction_of_step
+            1.0,     // plateau_ramp_edge_sharpness
+            0.4,     // ripple_radius_fraction
+            1.7,     // ripple_phase
+            700.0, 0.0, // ripple component 0 wavelength/magnitude
+            600.0, 0.0, // ripple component 1
+            600.0, 0.0, // ripple component 2
+            0.1, 0.4, 0.08, // ridge inner/outer/half-width fractions
+            89.0, // plateau_wall_slope_degrees
+            0.0, 1.0, 2.0, 3.0, 4.0, 5.0, // pipeline stage order, all active
+        ];
+        // Same slice with the mapBoundary stage (code 1) marked inactive —
+        // exactly what packTerrainGenerationConfigForWasm emits for NONE.
+        let mut none_config = base_config;
+        none_config[24] = 1.0 + 8.0;
+
+        let map = 2048.0;
+        let flat_zones: [f64; 0] = [];
+        // On the first ridge, far outside the perimeter band: a point on the
+        // +x axis is halfway between the two team sides of a 2-team layout.
+        let sample = [map * 0.99, map * 0.5, f64::NAN];
+
+        let mut ring_height = [0.0f64; 1];
+        assert_eq!(
+            metal_deposit_resolve_terrain_heights(
+                map,
+                map,
+                0.85,
+                &base_config,
+                &flat_zones,
+                &sample,
+                &mut ring_height,
+            ),
+            1
+        );
+        let mut none_height = [0.0f64; 1];
+        assert_eq!(
+            metal_deposit_resolve_terrain_heights(
+                map,
+                map,
+                0.85,
+                &none_config,
+                &flat_zones,
+                &sample,
+                &mut none_height,
+            ),
+            1
+        );
+
+        // A ground-level ring flattens the ridge away at the map edge...
+        assert!(
+            ring_height[0].abs() < 1e-9,
+            "PERIMETER 0 must flatten the map edge to the ring altitude; got {}",
+            ring_height[0],
+        );
+        // ...while NONE carries the full DIVIDERS amplitude out to it.
+        assert!(
+            (none_height[0] - 300.0).abs() < 1e-9,
+            "PERIMETER NONE must run the divider ridge to the map edge at full \
+             amplitude; got {}",
+            none_height[0],
+        );
+    }
+
     #[test]
     pub(crate) fn terrain_adaptive_mesh_build_is_deterministic_and_conforming() {
         // 29-value generation slice: round-island perimeter (negative

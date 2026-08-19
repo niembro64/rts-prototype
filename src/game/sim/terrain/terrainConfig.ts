@@ -223,7 +223,10 @@ export const TERRAIN_PERIMETER_CONFIG = {
   outerRadiusFraction: terrainConfig.generation.perimeter.outerRadiusFraction,
 } as const;
 
-/** Fade authored terrain features to flat before the outer map buffer. */
+/** Fade authored terrain features to flat before the outer map buffer, so the
+ *  PERIMETER ring blends from a clean surface. A NONE PERIMETER pick skips
+ *  this fade along with the ring — with nothing to hand off to, the ripple and
+ *  divider ridges run out to the rectangular map edge. */
 export const TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION =
   terrainConfig.generation.edgeFadeWidthFraction;
 
