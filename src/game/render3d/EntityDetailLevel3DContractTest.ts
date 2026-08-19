@@ -198,14 +198,14 @@ export function runEntityDetailLevel3DContractTest(): void {
   assertContract(
     Math.abs(
       detailLevelForScreenRadius(ICON_FADE_START_SCREEN_RADIUS_PX) -
-        detailRungMinLevel(DETAIL_RUNG_MID),
+        detailRungMinLevel(DETAIL_RUNG_CLOSE),
     ) <= 1e-6,
-    'icon fade starts exactly at the mid→far rung boundary (LOW-tier onset)',
+    'icon fade starts exactly at the close→mid rung boundary (HIGH→MED)',
   );
   assertContract(
     lodProxyFadeAlphaForScreenRadius(ICON_FADE_START_SCREEN_RADIUS_PX) === 0 &&
       lodProxyFadeAlphaForScreenRadius(10000) === 0,
-    'the icon remains fully transparent throughout HIGH and MED',
+    'the icon remains fully transparent throughout HIGH',
   );
   assertContract(
     lodProxyFadeAlphaForScreenRadius(ICON_FADE_START_SCREEN_RADIUS_PX - 0.01) < 0.01,

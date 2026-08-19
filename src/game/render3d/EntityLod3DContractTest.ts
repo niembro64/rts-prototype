@@ -159,14 +159,17 @@ export function runEntityLod3DContractTest(): void {
         bodyLod.entityLodProxyFadeAlphaForView(viewAt(camera), groundUnit) === 0,
       'AUTO mode draws near units as full models with no icon overlay',
     );
+    // The cross-fade band opens at the HIGH→MED boundary, so a MED entity is
+    // already carrying a partial icon — behind its still-opaque model.
     const midBandLevel =
       (detailRungMinLevel(DETAIL_RUNG_MID) + detailRungMinLevel(DETAIL_RUNG_CLOSE)) / 2;
     groundUnit.transform.y = -distanceForScreenRadiusPx(20, pxForDetailLevel(midBandLevel));
     bodyLod.beginFrame();
+    const medFadeAlpha = bodyLod.entityLodProxyFadeAlphaForView(viewAt(camera), groundUnit);
     assertContract(
       bodyLod.entityDetailRungForView(viewAt(camera), groundUnit) === DETAIL_RUNG_MID &&
-        bodyLod.entityLodProxyFadeAlphaForView(viewAt(camera), groundUnit) === 0,
-      'AUTO Medium resolves to the exact manual MED rung with no icon covering it',
+        medFadeAlpha > 0 && medFadeAlpha < 1,
+      'AUTO Medium resolves to the exact manual MED rung with its icon part-faded',
     );
     groundUnit.transform.y = -distanceForScreenRadiusPx(
       20,

@@ -1,6 +1,8 @@
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 import {
+  ENTITY_LOD_PROXY_FINAL_DEPTH_SHELL,
   ENTITY_LOD_PROXY_FINAL_DEPTH_WRITE,
+  ENTITY_LOD_PROXY_TRANSITION_DEPTH_SHELL,
   ENTITY_LOD_PROXY_TRANSITION_DEPTH_WRITE,
   ENTITY_LOD_PROXY_TRANSITION_RENDER_ORDER,
 } from './EntityLodProxyRenderer3D';
@@ -17,6 +19,11 @@ export function runTransparentRenderOrder3DContractTest(): void {
   assertContract(
     !ENTITY_LOD_PROXY_TRANSITION_DEPTH_WRITE,
     'cross-fade glyph overlays must not hide entity parts with proxy depth',
+  );
+  assertContract(
+    ENTITY_LOD_PROXY_TRANSITION_DEPTH_SHELL < 0 && ENTITY_LOD_PROXY_FINAL_DEPTH_SHELL > 0,
+    'the cross-fading glyph must take the far shell so the still-drawn model '
+      + 'occludes it, while the replacement glyph keeps the near shell',
   );
   assertContract(
     TRANSPARENT_RENDER_ORDER_3D.entityParts < ENTITY_LOD_PROXY_TRANSITION_RENDER_ORDER,

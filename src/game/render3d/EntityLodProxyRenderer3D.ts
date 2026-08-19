@@ -21,6 +21,12 @@ const ENTITY_LOD_PROXY_OPACITY = 1;
 const ENTITY_LOD_PROXY_DEPTH_TEST = true;
 export const ENTITY_LOD_PROXY_FINAL_DEPTH_WRITE = true;
 export const ENTITY_LOD_PROXY_TRANSITION_DEPTH_WRITE = false;
+/** Which shell of the entity-sized sphere the glyph's faked depth sits on:
+ *  +1 = near shell (in front of the body), -1 = far shell (behind it). The
+ *  cross-fading glyph is a backdrop to a model that is still drawn, so it
+ *  takes the far shell; the final glyph IS the body and takes the near one. */
+export const ENTITY_LOD_PROXY_FINAL_DEPTH_SHELL = 1;
+export const ENTITY_LOD_PROXY_TRANSITION_DEPTH_SHELL = -1;
 const ENTITY_LOD_PROXY_FINAL_RENDER_ORDER = 3;
 export const ENTITY_LOD_PROXY_TRANSITION_RENDER_ORDER =
   TRANSPARENT_RENDER_ORDER_3D.entityParts + 0.25;
@@ -62,6 +68,7 @@ void main() {
 
 const POINT_FRAGMENT_SHADER = `
 uniform float uOpacity;
+uniform float uDepthShellSign;
 varying vec3 vColor;
 varying float vGlyph;
 varying float vAlpha;
@@ -98,8 +105,14 @@ void main() {
   float radialSq = dot(p, p);
   if (proxyGlyphMask(p, vGlyph) < 0.5) discard;
 
-  float frontShell = sqrt(max(0.0, 1.0 - radialSq)) * vViewRadius;
-  float viewZ = vViewZ + frontShell;
+  // The glyph fakes the depth of a sphere of the entity's own radius. A final
+  // glyph replaces the body, so it takes the NEAR shell and reads in front of
+  // the terrain it stands on. A transition glyph is a backdrop behind a model
+  // that is still drawn, so it takes the FAR shell: every part of that model
+  // is nearer than this sphere's back, so the model wins the depth test and
+  // the icon shows only around its silhouette.
+  float shell = sqrt(max(0.0, 1.0 - radialSq)) * vViewRadius;
+  float viewZ = vViewZ + uDepthShellSign * shell;
   float clipZ = vDepthProjection.x * viewZ + vDepthProjection.y;
   float clipW = vDepthProjection.z * viewZ + vDepthProjection.w;
   float depth = (clipZ / clipW) * 0.5 + 0.5;
@@ -168,12 +181,17 @@ function createProxyPointMaterial(transition: boolean): THREE.ShaderMaterial {
     uniforms: {
       uViewportHeight: { value: 1 },
       uOpacity: { value: Math.max(0, Math.min(1, ENTITY_LOD_PROXY_OPACITY)) },
+      uDepthShellSign: {
+        value: transition
+          ? ENTITY_LOD_PROXY_TRANSITION_DEPTH_SHELL
+          : ENTITY_LOD_PROXY_FINAL_DEPTH_SHELL,
+      },
     },
     vertexShader: POINT_VERTEX_SHADER,
     fragmentShader: POINT_FRAGMENT_SHADER,
-    // A final glyph is an opaque replacement body. A transition glyph is a
-    // true overlay: it blends after entity parts and must not populate its
-    // fake spherical depth ahead of them.
+    // A final glyph is an opaque replacement body. A transition glyph blends
+    // after entity parts, must not populate its fake spherical depth, and sits
+    // on the sphere's FAR shell so the still-drawn model occludes it.
     transparent: transition,
     depthTest: ENTITY_LOD_PROXY_DEPTH_TEST,
     depthWrite: transition
