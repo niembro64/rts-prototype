@@ -1054,48 +1054,55 @@ pub fn terrain_sample_map_boundary_fades(
 }
 
 // ─────────────────────────────────────────────────────────────────
-//  Metal cell scatter — cosine-tapered placement inside one disc
+//  Metal cell placement — two ways to fill one disc
 //
-//  A deposit's ore body is `metalCellCount` metal build cells scattered
-//  across a disc of `placementRadiusCells` around the deposit's origin
-//  cell. Nothing is grown outward from a seed and no cell has to touch
-//  another: every cell is drawn from the whole disc at once, weighted by
-//  a raised cosine of its radial distance,
+//  A deposit's ore body is `metalCellCount` metal build cells inside a
+//  placement disc around its origin cell. Both modes share that disc and
+//  both land the whole authored count; they disagree about HOW the cells
+//  choose their spots, and they read very differently on the ground.
+//
+//  COSINE SCATTER draws every cell from the whole disc at once, weighted
+//  by a raised cosine of its radial distance,
 //
 //      p(d) = 0.5 * (1 + cos(PI * d / R))
 //
 //  which is 1.0 at the origin, 0.5 at half the radius, and 0.0 at the
-//  rim. Draws are WITHOUT REPLACEMENT — a cell already holding metal is
-//  never drawn twice — so the authored count always lands in full and a
-//  crowded core simply pushes the remainder further out. That is exactly
-//  rejection sampling (pick a cell uniformly, keep it with probability
-//  p(d), reroll if it is taken) with the rerolls done in closed form.
+//  rim. Nothing has to touch anything: the body is a dense core that
+//  frays into scattered specks, and the disc radius is its true extent.
 //
-//  The rim itself is excluded rather than kept at weight zero: a cell
-//  that can never be drawn is not a candidate, and counting it would let
-//  a size class claim room it cannot actually use.
+//  CONNECTED GROWTH starts at the origin cell and repeatedly takes one
+//  cell off the frontier of what it already owns, so every cell touches
+//  another and the body is one blob. Its shape comes from the frontier
+//  weighting — cells already touching several owned neighbours fill in
+//  first, which closes bays instead of growing tendrils — and the disc is
+//  a wander CAP the blob rarely reaches rather than an extent it fills.
 //
-//  A Fenwick tree over the candidate weights makes each draw
-//  O(log candidates) rather than a linear sweep of the whole disc, which
-//  matters because the largest authored body scatters thousands of cells.
+//  Draws are WITHOUT REPLACEMENT in both modes, so the authored count
+//  always lands in full: scatter pushes its remainder further out when the
+//  core crowds, growth pushes its frontier further out.
+//
+//  The candidate set is shared and defined once, below: the lattice points
+//  strictly inside the disc. The rim itself is excluded because the cosine
+//  is zero there — a cell that can never be drawn is not a candidate, and
+//  counting it would let a size class claim room it cannot use.
 // ─────────────────────────────────────────────────────────────────
+
+pub(crate) const METAL_DEPOSIT_GROWTH_NEIGHBOR_COUNT: usize = 4;
 
 /// Radial metal probability at distance `d` from the deposit origin,
 /// inside a disc of radius `radius`. Both are in build cells.
 #[inline]
 pub(crate) fn metal_deposit_cell_probability(d: f64, radius: f64) -> f64 {
-    if radius <= 0.0 {
-        return 0.0;
-    }
-    if d >= radius {
+    if radius <= 0.0 || d >= radius {
         return 0.0;
     }
     0.5 * (1.0 + (std::f64::consts::PI * d / radius).cos())
 }
 
 /// Every build cell a deposit of this radius may legally put metal on:
-/// the lattice points strictly inside the disc, which is where the
-/// cosine probability is still non-zero.
+/// the lattice points strictly inside the disc. One definition, both
+/// placement modes — "where metal is allowed" must not depend on how the
+/// cells were chosen.
 #[wasm_bindgen]
 pub fn metal_deposit_count_placement_candidates(placement_radius_cells: i32) -> u32 {
     if placement_radius_cells <= 0 {
@@ -1119,6 +1126,127 @@ pub(crate) fn metal_deposit_rng_next(seed: &mut u32) -> f64 {
     t = (t ^ (t >> 15)).wrapping_mul(t | 1);
     t ^= t.wrapping_add((t ^ (t >> 7)).wrapping_mul(t | 61));
     ((t ^ (t >> 14)) as f64) / 4294967296.0
+}
+
+/// The candidate cells of one placement disc, laid out once so both modes
+/// index the same list: offsets from the origin cell, their radial
+/// distances, and a reverse lookup for the growth mode's neighbour walk.
+struct MetalPlacementDisc {
+    dx_values: Vec<i32>,
+    dy_values: Vec<i32>,
+    distances: Vec<f64>,
+    /// Candidate index per (dx, dy) slot of the bounding square, -1 outside
+    /// the disc. Indexed through `lookup`.
+    offset_to_index: Vec<i32>,
+    radius_cells: i32,
+    radius: f64,
+    diameter: i32,
+}
+
+impl MetalPlacementDisc {
+    fn new(radius_cells: i32) -> Self {
+        let diameter = radius_cells * 2 + 1;
+        let r2 = radius_cells * radius_cells;
+        let mut disc = Self {
+            dx_values: Vec::new(),
+            dy_values: Vec::new(),
+            distances: Vec::new(),
+            offset_to_index: vec![-1i32; (diameter * diameter) as usize],
+            radius_cells,
+            radius: radius_cells as f64,
+            diameter,
+        };
+        for dy in -radius_cells..=radius_cells {
+            for dx in -radius_cells..=radius_cells {
+                let distance_squared = dx * dx + dy * dy;
+                if distance_squared >= r2 {
+                    continue;
+                }
+                let index = disc.dx_values.len() as i32;
+                disc.offset_to_index
+                    [((dy + radius_cells) * diameter + dx + radius_cells) as usize] = index;
+                disc.dx_values.push(dx);
+                disc.dy_values.push(dy);
+                disc.distances.push((distance_squared as f64).sqrt());
+            }
+        }
+        disc
+    }
+
+    fn len(&self) -> usize {
+        self.dx_values.len()
+    }
+
+    fn lookup(&self, dx: i32, dy: i32) -> i32 {
+        if dx < -self.radius_cells
+            || dx > self.radius_cells
+            || dy < -self.radius_cells
+            || dy > self.radius_cells
+        {
+            return -1;
+        }
+        self.offset_to_index
+            [((dy + self.radius_cells) * self.diameter + dx + self.radius_cells) as usize]
+    }
+
+    fn origin_index(&self) -> i32 {
+        self.lookup(0, 0)
+    }
+
+    /// Turn chosen candidate indices into world build cells, sorted by y
+    /// then x so the cell list is stable whatever order they were picked.
+    fn write_cells(
+        &self,
+        chosen: &[usize],
+        origin_gx: i32,
+        origin_gy: i32,
+        out_cells: &mut [i32],
+    ) -> u32 {
+        let mut cells: Vec<(i32, i32)> = chosen
+            .iter()
+            .map(|&index| {
+                (
+                    origin_gx + self.dx_values[index],
+                    origin_gy + self.dy_values[index],
+                )
+            })
+            .collect();
+        cells.sort_by(|a, b| {
+            let by_y = a.1.cmp(&b.1);
+            if by_y == std::cmp::Ordering::Equal {
+                a.0.cmp(&b.0)
+            } else {
+                by_y
+            }
+        });
+        for (i, (gx, gy)) in cells.iter().enumerate() {
+            let base = i * 2;
+            out_cells[base] = *gx;
+            out_cells[base + 1] = *gy;
+        }
+        cells.len() as u32
+    }
+}
+
+/// Shared entry guard: both modes want a positive body, a positive radius,
+/// room in the output buffer, and a disc that can actually hold the count.
+fn metal_deposit_placement_disc(
+    metal_cell_count: u32,
+    placement_radius_cells: i32,
+    out_cells: &[i32],
+) -> Option<MetalPlacementDisc> {
+    if metal_cell_count == 0 || placement_radius_cells <= 0 {
+        return None;
+    }
+    let target = metal_cell_count as usize;
+    if out_cells.len() < target * 2 {
+        return None;
+    }
+    let disc = MetalPlacementDisc::new(placement_radius_cells);
+    if disc.len() < target || disc.origin_index() < 0 {
+        return None;
+    }
+    Some(disc)
 }
 
 /// Fenwick (binary indexed) tree over the candidate weights. Supports the
@@ -1193,13 +1321,13 @@ impl MetalCellWeightTree {
     }
 }
 
-/// Scatter `metal_cell_count` metal cells over the disc of
-/// `placement_radius_cells` around (origin_gx, origin_gy), cosine-weighted
-/// toward the centre and never landing twice on the same cell. Writes
-/// (gx, gy) pairs sorted by y then x and returns the cell count, which is
-/// always the requested count unless the disc cannot hold it.
+/// COSINE SCATTER. Draw `metal_cell_count` cells from the whole disc at
+/// once, weighted toward the origin by the raised cosine and never landing
+/// twice on one cell. Writes (gx, gy) pairs sorted by y then x and returns
+/// the cell count, which is the requested count unless the disc is too
+/// small to hold it.
 #[wasm_bindgen]
-pub fn metal_deposit_place_metal_cells(
+pub fn metal_deposit_scatter_metal_cells(
     origin_gx: i32,
     origin_gy: i32,
     metal_cell_count: u32,
@@ -1207,43 +1335,23 @@ pub fn metal_deposit_place_metal_cells(
     seed: u32,
     out_cells: &mut [i32],
 ) -> u32 {
-    if metal_cell_count == 0 || placement_radius_cells <= 0 {
+    let Some(disc) =
+        metal_deposit_placement_disc(metal_cell_count, placement_radius_cells, out_cells)
+    else {
         return 0;
-    }
+    };
     let target = metal_cell_count as usize;
-    if out_cells.len() < target * 2 {
-        return 0;
-    }
+    let count = disc.len();
 
-    let radius = placement_radius_cells as f64;
-    let r2 = placement_radius_cells * placement_radius_cells;
-    let mut dx_values: Vec<i32> = Vec::new();
-    let mut dy_values: Vec<i32> = Vec::new();
-    let mut weights: Vec<f64> = Vec::new();
-    for dy in -placement_radius_cells..=placement_radius_cells {
-        for dx in -placement_radius_cells..=placement_radius_cells {
-            let distance_squared = dx * dx + dy * dy;
-            if distance_squared >= r2 {
-                continue;
-            }
-            dx_values.push(dx);
-            dy_values.push(dy);
-            weights.push(metal_deposit_cell_probability(
-                (distance_squared as f64).sqrt(),
-                radius,
-            ));
-        }
-    }
-
-    let count = weights.len();
-    if count < target {
-        return 0;
-    }
-
+    let mut weights: Vec<f64> = disc
+        .distances
+        .iter()
+        .map(|&d| metal_deposit_cell_probability(d, disc.radius))
+        .collect();
     let mut tree = MetalCellWeightTree::new(&weights);
     let mut rng_seed = seed;
-    let mut chosen_indices: Vec<usize> = Vec::with_capacity(target);
-    while chosen_indices.len() < target {
+    let mut chosen: Vec<usize> = Vec::with_capacity(target);
+    while chosen.len() < target {
         let total = tree.total();
         if !(total > 0.0) {
             break;
@@ -1270,28 +1378,234 @@ pub fn metal_deposit_place_metal_cells(
         }
         tree.subtract(index, weights[index]);
         weights[index] = 0.0;
-        chosen_indices.push(index);
+        chosen.push(index);
     }
 
-    let mut cells: Vec<(i32, i32)> = chosen_indices
+    disc.write_cells(&chosen, origin_gx, origin_gy, out_cells)
+}
+
+/// CONNECTED GROWTH. Start at the origin cell and repeatedly take one cell
+/// off the frontier of what the body already owns, so every cell touches
+/// another and the result is a single blob. The frontier weighting favours
+/// cells that already touch several owned neighbours (which closes bays
+/// rather than growing tendrils) and cells nearer the origin, with a small
+/// random term for irregularity.
+#[wasm_bindgen]
+pub fn metal_deposit_grow_metal_cells(
+    origin_gx: i32,
+    origin_gy: i32,
+    metal_cell_count: u32,
+    placement_radius_cells: i32,
+    seed: u32,
+    out_cells: &mut [i32],
+) -> u32 {
+    let Some(disc) =
+        metal_deposit_placement_disc(metal_cell_count, placement_radius_cells, out_cells)
+    else {
+        return 0;
+    };
+    let target = metal_cell_count as usize;
+    let count = disc.len();
+    let radius_scale = disc.radius.max(1.0);
+    let center_bias: Vec<f64> = disc
+        .distances
         .iter()
-        .map(|&index| (origin_gx + dx_values[index], origin_gy + dy_values[index]))
+        .map(|&d| 1.0 - (d / radius_scale).min(1.0))
         .collect();
-    cells.sort_by(|a, b| {
-        let by_y = a.1.cmp(&b.1);
-        if by_y == std::cmp::Ordering::Equal {
-            a.0.cmp(&b.0)
-        } else {
-            by_y
-        }
-    });
 
-    for (i, (gx, gy)) in cells.iter().enumerate() {
-        let base = i * 2;
-        out_cells[base] = *gx;
-        out_cells[base + 1] = *gy;
+    let mut neighbor_indices = vec![-1i32; count * METAL_DEPOSIT_GROWTH_NEIGHBOR_COUNT];
+    for i in 0..count {
+        let dx = disc.dx_values[i];
+        let dy = disc.dy_values[i];
+        let base = i * METAL_DEPOSIT_GROWTH_NEIGHBOR_COUNT;
+        neighbor_indices[base] = disc.lookup(dx + 1, dy);
+        neighbor_indices[base + 1] = disc.lookup(dx - 1, dy);
+        neighbor_indices[base + 2] = disc.lookup(dx, dy + 1);
+        neighbor_indices[base + 3] = disc.lookup(dx, dy - 1);
     }
-    cells.len() as u32
+
+    let mut selected = vec![0u8; count];
+    let mut frontier = vec![0u8; count];
+    let mut neighbor_counts = vec![0u8; count];
+    let mut frontier_prev = vec![-1i32; count];
+    let mut frontier_next = vec![-1i32; count];
+    let mut weights = vec![0.0f64; count];
+    let mut chosen: Vec<usize> = Vec::with_capacity(target);
+    let mut frontier_head = -1i32;
+    let mut frontier_tail = -1i32;
+    let mut frontier_size = 0usize;
+
+    fn remove_frontier(
+        index: usize,
+        frontier: &mut [u8],
+        frontier_prev: &mut [i32],
+        frontier_next: &mut [i32],
+        frontier_head: &mut i32,
+        frontier_tail: &mut i32,
+        frontier_size: &mut usize,
+    ) {
+        if frontier[index] == 0 {
+            return;
+        }
+        let prev = frontier_prev[index];
+        let next = frontier_next[index];
+        if prev >= 0 {
+            frontier_next[prev as usize] = next;
+        } else {
+            *frontier_head = next;
+        }
+        if next >= 0 {
+            frontier_prev[next as usize] = prev;
+        } else {
+            *frontier_tail = prev;
+        }
+        frontier_prev[index] = -1;
+        frontier_next[index] = -1;
+        frontier[index] = 0;
+        *frontier_size -= 1;
+    }
+
+    fn append_frontier(
+        index: i32,
+        selected: &[u8],
+        frontier: &mut [u8],
+        frontier_prev: &mut [i32],
+        frontier_next: &mut [i32],
+        frontier_head: &mut i32,
+        frontier_tail: &mut i32,
+        frontier_size: &mut usize,
+    ) {
+        if index < 0 {
+            return;
+        }
+        let i = index as usize;
+        if selected[i] != 0 || frontier[i] != 0 {
+            return;
+        }
+        frontier[i] = 1;
+        frontier_prev[i] = *frontier_tail;
+        frontier_next[i] = -1;
+        if *frontier_tail >= 0 {
+            frontier_next[*frontier_tail as usize] = index;
+        } else {
+            *frontier_head = index;
+        }
+        *frontier_tail = index;
+        *frontier_size += 1;
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn add_selected(
+        index: usize,
+        selected: &mut [u8],
+        frontier: &mut [u8],
+        neighbor_counts: &mut [u8],
+        frontier_prev: &mut [i32],
+        frontier_next: &mut [i32],
+        chosen: &mut Vec<usize>,
+        neighbor_indices: &[i32],
+        frontier_head: &mut i32,
+        frontier_tail: &mut i32,
+        frontier_size: &mut usize,
+    ) {
+        if selected[index] != 0 {
+            return;
+        }
+        selected[index] = 1;
+        chosen.push(index);
+        remove_frontier(
+            index,
+            frontier,
+            frontier_prev,
+            frontier_next,
+            frontier_head,
+            frontier_tail,
+            frontier_size,
+        );
+
+        let base = index * METAL_DEPOSIT_GROWTH_NEIGHBOR_COUNT;
+        for i in 0..METAL_DEPOSIT_GROWTH_NEIGHBOR_COUNT {
+            let neighbor_index = neighbor_indices[base + i];
+            if neighbor_index >= 0 {
+                neighbor_counts[neighbor_index as usize] += 1;
+            }
+        }
+        for i in 0..METAL_DEPOSIT_GROWTH_NEIGHBOR_COUNT {
+            append_frontier(
+                neighbor_indices[base + i],
+                selected,
+                frontier,
+                frontier_prev,
+                frontier_next,
+                frontier_head,
+                frontier_tail,
+                frontier_size,
+            );
+        }
+    }
+
+    add_selected(
+        disc.origin_index() as usize,
+        &mut selected,
+        &mut frontier,
+        &mut neighbor_counts,
+        &mut frontier_prev,
+        &mut frontier_next,
+        &mut chosen,
+        &neighbor_indices,
+        &mut frontier_head,
+        &mut frontier_tail,
+        &mut frontier_size,
+    );
+
+    let mut rng_seed = seed;
+    while chosen.len() < target && frontier_size > 0 {
+        let mut total_weight = 0.0;
+        let mut last_frontier_index = -1i32;
+        let mut index = frontier_head;
+        while index >= 0 {
+            let i = index as usize;
+            let weight = 0.45
+                + neighbor_counts[i] as f64 * 1.75
+                + center_bias[i] * 2.25
+                + metal_deposit_rng_next(&mut rng_seed) * 0.35;
+            total_weight += weight;
+            weights[i] = weight;
+            last_frontier_index = index;
+            index = frontier_next[i];
+        }
+
+        let mut pick = metal_deposit_rng_next(&mut rng_seed) * total_weight;
+        let mut chosen_index = last_frontier_index;
+        index = frontier_head;
+        while index >= 0 {
+            let i = index as usize;
+            pick -= weights[i];
+            if pick <= 0.0 {
+                chosen_index = index;
+                break;
+            }
+            index = frontier_next[i];
+        }
+        if chosen_index < 0 {
+            break;
+        }
+        add_selected(
+            chosen_index as usize,
+            &mut selected,
+            &mut frontier,
+            &mut neighbor_counts,
+            &mut frontier_prev,
+            &mut frontier_next,
+            &mut chosen,
+            &neighbor_indices,
+            &mut frontier_head,
+            &mut frontier_tail,
+            &mut frontier_size,
+        );
+    }
+
+    disc.write_cells(&chosen, origin_gx, origin_gy, out_cells)
 }
 
 // ─────────────────────────────────────────────────────────────────

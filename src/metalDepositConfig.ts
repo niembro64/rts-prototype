@@ -16,14 +16,20 @@
 // radian value into config.
 //
 // Each deposit owns a logical ore body on the fine build grid: exactly
-// `metalCellCount` metal cells scattered across a disc of
-// `placementRadiusCells` around its origin cell. The cells are drawn
-// statistically, not grown — a cell's chance of being metal is a raised
-// cosine of its distance from the origin (1.0 at the centre, 0.5 at half
-// the radius, 0.0 at the rim) and no cell is ever drawn twice, so the
-// authored count always lands in full. There is no connectivity rule and
-// no square footprint. Terrain flattening still reads a separate
-// flat-pad config.
+// `metalCellCount` metal cells inside a disc around its origin cell.
+// Which cells is the config's `cellPlacementMode` question, and the two
+// answers read very differently on the ground —
+//   'cosine-scatter'    draws every cell from the whole disc at once,
+//                       weighted by a raised cosine of radial distance
+//                       (1.0 at the centre, 0.5 at half the radius, 0.0
+//                       at the rim). No connectivity rule; a dense core
+//                       that frays into specks, filling its radius.
+//   'connected-growth'  takes cells off the body's own frontier so every
+//                       one touches another; a single blob, and its
+//                       radius is a wander cap it rarely reaches.
+// Neither ever draws a cell twice, so the authored count always lands in
+// full either way. Terrain flattening still reads a separate flat-pad
+// config.
 //
 // Each ring also carries `dTerrainLevels`. When set to an integer it
 // is a signed count of METAL_DEPOSIT_STEP units above/below world
@@ -174,17 +180,32 @@ type MetalDepositClusterConfig =
   | MetalDepositRingClusterConfig
   | MetalDepositManualClusterConfig;
 
-/** One authored ore-body size class: `metalCellCount` metal cells
- *  scattered over a disc of `placementRadiusCells`, cosine-weighted
- *  toward the origin. The ratio between them sets how solid the core
- *  reads and how far the fringe frays, so classes that keep it scale
- *  together in size without changing character. */
+/** How a deposit picks which build cells inside its disc are metal.
+ *  Authored once for the whole map in metalDepositConfig.json — it feeds
+ *  the canonical cell list every peer generates, so it is config, never a
+ *  runtime toggle. */
+export const METAL_DEPOSIT_CELL_PLACEMENT_MODES = [
+  'cosine-scatter',
+  'connected-growth',
+] as const;
+
+export type MetalDepositCellPlacementMode =
+  typeof METAL_DEPOSIT_CELL_PLACEMENT_MODES[number];
+
+/** One authored ore-body size class: `metalCellCount` metal cells inside a
+ *  disc, plus that disc's radius for each placement mode. The count is
+ *  shared, so switching modes moves the ore without changing how much of
+ *  it is on the map. */
 export type MetalDepositSize = {
-  /** Exactly how many metal build cells this ore body owns. */
+  /** Exactly how many metal build cells this ore body owns, in either
+   *  placement mode. */
   metalCellCount: number;
-  /** Radius, in build cells from the origin cell, of the disc those
-   *  cells may land in. Outside it nothing can ever be metal. */
-  placementRadiusCells: number;
+  /** Radius, in build cells from the origin cell, of the disc
+   *  'cosine-scatter' fills. The body's true extent. */
+  scatterRadiusCells: number;
+  /** The same disc for 'connected-growth', where it is a wander cap the
+   *  blob rarely reaches rather than an extent it fills. */
+  growthRadiusCells: number;
 };
 
 /** How the ore REGION is baked for rendering. See metalDepositConfig.json
@@ -204,6 +225,9 @@ export type MetalDepositSurfaceFieldConfig = {
  *    - `edgeMarginPx`: oval-space world units between the spawn oval
  *      and the outermost deposit ring (keeps deposits from clipping
  *      into commander spawns).
+ *    - `cellPlacementMode`: which algorithm decides WHICH cells inside a
+ *      deposit's disc are metal — see the JSON's comment block. Both
+ *      modes place the same authored count.
  *    - `sizes` / `defaultSize`: the ore-body size classes rings pick
  *      from. Size decides the ORE BODY only; how much terrain is
  *      flattened underneath stays each ring's `flatPadCells`, and the
@@ -217,12 +241,43 @@ export type MetalDepositSurfaceFieldConfig = {
  *      ring carries its own `flatPadCells` and `terrainBlendRadius`. */
 export const METAL_DEPOSIT_CONFIG = {
   edgeMarginPx: rawConfig.edgeMarginPx,
+  cellPlacementMode: validMetalDepositCellPlacementMode(
+    rawConfig.cellPlacementMode,
+  ),
   sizes: rawConfig.sizes as Record<string, MetalDepositSize>,
   defaultSize: rawConfig.defaultSize as string,
   productionNominalCells: rawConfig.productionNominalCells,
   surfaceField: rawConfig.surfaceField as MetalDepositSurfaceFieldConfig,
   rings: rawConfig.rings as DepositRing[],
 };
+
+function validMetalDepositCellPlacementMode(
+  mode: unknown,
+): MetalDepositCellPlacementMode {
+  if (
+    !METAL_DEPOSIT_CELL_PLACEMENT_MODES.includes(
+      mode as MetalDepositCellPlacementMode,
+    )
+  ) {
+    throw new Error(
+      `Metal deposit cellPlacementMode must be one of ` +
+      `${METAL_DEPOSIT_CELL_PLACEMENT_MODES.join(', ')}; received ${String(mode)}`,
+    );
+  }
+  return mode as MetalDepositCellPlacementMode;
+}
+
+/** The placement-disc radius the ACTIVE mode uses. Everything downstream —
+ *  the placer's bound, a `null` flatPadCells, the build-placement safety
+ *  radius — reads this one accessor, so the mode switch cannot leave a
+ *  consumer sized for the other algorithm. */
+export function getMetalDepositPlacementRadiusCells(
+  size: MetalDepositSize,
+): number {
+  return METAL_DEPOSIT_CONFIG.cellPlacementMode === 'connected-growth'
+    ? size.growthRadiusCells
+    : size.scatterRadiusCells;
+}
 
 /** Resolve an authored size name against the config's size table. */
 export function getMetalDepositSize(name: string): MetalDepositSize {
@@ -234,16 +289,20 @@ export function getMetalDepositSize(name: string): MetalDepositSize {
     );
   }
   const cellCount = size.metalCellCount;
-  const radiusCells = size.placementRadiusCells;
   if (!Number.isInteger(cellCount) || cellCount <= 0) {
     throw new Error(
       `Metal deposit size "${name}" metalCellCount must be a positive integer; received ${cellCount}`,
     );
   }
-  if (!Number.isInteger(radiusCells) || radiusCells <= 0) {
-    throw new Error(
-      `Metal deposit size "${name}" placementRadiusCells must be a positive integer; received ${radiusCells}`,
-    );
+  // Both modes' radii are checked whichever one is active, so flipping
+  // cellPlacementMode can never fail at map-generation time.
+  for (const field of ['scatterRadiusCells', 'growthRadiusCells'] as const) {
+    const radiusCells = size[field];
+    if (!Number.isInteger(radiusCells) || radiusCells <= 0) {
+      throw new Error(
+        `Metal deposit size "${name}" ${field} must be a positive integer; received ${radiusCells}`,
+      );
+    }
   }
   return size;
 }
@@ -473,10 +532,13 @@ type MetalDepositPackRow = {
   placementRadiusCells: number;
 };
 
-/** World-unit radius of the disc a size scatters its metal inside. This
- *  is what a `null` flatPadCells auto-sizes its pad to cover. */
+/** World-unit radius of the disc a size places its metal inside, under the
+ *  active mode. This is what a `null` flatPadCells auto-sizes its pad to
+ *  cover. */
 function metalDepositPlacementRadiusForSize(size: MetalDepositSize): number {
-  return (size.placementRadiusCells + 0.5) * BUILD_GRID_CELL_SIZE;
+  return (
+    (getMetalDepositPlacementRadiusCells(size) + 0.5) * BUILD_GRID_CELL_SIZE
+  );
 }
 
 function buildMetalDepositPackPlan(): MetalDepositPackRow[] {
@@ -519,7 +581,7 @@ function buildMetalDepositPackPlan(): MetalDepositPackRow[] {
             ),
           blendRadius,
           metalCellCount: spotSize.metalCellCount,
-          placementRadiusCells: spotSize.placementRadiusCells,
+          placementRadiusCells: getMetalDepositPlacementRadiusCells(spotSize),
         });
       }
       continue;
@@ -535,7 +597,7 @@ function buildMetalDepositPackPlan(): MetalDepositPackRow[] {
       flatPadCells: ringPadCells,
       blendRadius,
       metalCellCount: ringSize.metalCellCount,
-      placementRadiusCells: ringSize.placementRadiusCells,
+      placementRadiusCells: getMetalDepositPlacementRadiusCells(ringSize),
     });
   }
   return plan;
@@ -928,14 +990,16 @@ function finiteInteger(value: number, label: string): number {
  *  later as a short cell list. */
 function resolveMetalDepositSize(name: string | undefined): MetalDepositSize {
   const size = getMetalDepositSize(name ?? METAL_DEPOSIT_CONFIG.defaultSize);
-  const candidateCount = countMetalDepositPlacementCandidates(
-    size.placementRadiusCells,
-  );
-  if (candidateCount < size.metalCellCount) {
-    throw new Error(
-      `Metal deposit size placementRadiusCells (${size.placementRadiusCells}) offers ` +
-      `${candidateCount} placeable cells, which cannot hold ${size.metalCellCount}`,
-    );
+  // Check BOTH modes' discs, not just the active one — a config that would
+  // throw the moment cellPlacementMode flips is already broken.
+  for (const field of ['scatterRadiusCells', 'growthRadiusCells'] as const) {
+    const candidateCount = countMetalDepositPlacementCandidates(size[field]);
+    if (candidateCount < size.metalCellCount) {
+      throw new Error(
+        `Metal deposit size ${field} (${size[field]}) offers ` +
+        `${candidateCount} placeable cells, which cannot hold ${size.metalCellCount}`,
+      );
+    }
   }
   return size;
 }
@@ -964,7 +1028,7 @@ function metalDepositOreForCoverage(
     const size = getMetalDepositSize(METAL_DEPOSIT_CONFIG.defaultSize);
     return {
       metalCellCount: size.metalCellCount,
-      placementRadiusCells: size.placementRadiusCells,
+      placementRadiusCells: getMetalDepositPlacementRadiusCells(size),
     };
   }
   return {
@@ -1007,9 +1071,10 @@ function hashMetalDepositSeed(gx: number, gy: number, index: number): number {
   return h >>> 0;
 }
 
-/** Scatter one deposit's metal cells over its placement disc. Every
- *  authored cell has to land — a short list means the disc could not hold
- *  the body and is a config error, not something to render around. */
+/** Fill one deposit's placement disc with metal cells, by whichever
+ *  algorithm `cellPlacementMode` selects. Every authored cell has to land
+ *  in either mode — a short list means the disc could not hold the body
+ *  and is a config error, not something to render around. */
 function placeMetalDepositCells(
   originGx: number,
   originGy: number,
@@ -1020,8 +1085,12 @@ function placeMetalDepositCells(
   // NONE places nothing. The deposit still exists as a terrain feature at
   // this point; it simply has no ore body to rasterize.
   if (metalCellCount <= 0) return [];
+  const sim = getRequiredSimWasm();
+  const place = METAL_DEPOSIT_CONFIG.cellPlacementMode === 'connected-growth'
+    ? sim.metalDepositGrowMetalCells
+    : sim.metalDepositScatterMetalCells;
   const outCells = new Int32Array(metalCellCount * 2);
-  const count = getRequiredSimWasm().metalDepositPlaceMetalCells(
+  const count = place(
     originGx,
     originGy,
     metalCellCount,
@@ -1031,7 +1100,8 @@ function placeMetalDepositCells(
   );
   if (count !== metalCellCount) {
     throw new Error(
-      `Metal deposit cell placement returned ${count} cells; expected ${metalCellCount}`,
+      `Metal deposit ${METAL_DEPOSIT_CONFIG.cellPlacementMode} placement returned ` +
+      `${count} cells; expected ${metalCellCount}`,
     );
   }
   const cells: MetalDepositResourceCell[] = new Array(count);

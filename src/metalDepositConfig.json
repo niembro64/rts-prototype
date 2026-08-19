@@ -41,61 +41,94 @@
     "      other at different heights without cliffing."
   ],
   "edgeMarginPx": 200,
+  "cellPlacementModeComment": [
+    "Which algorithm decides WHICH build cells inside a deposit are metal.",
+    "Both modes land the whole authored metalCellCount, and both are bounded",
+    "by the size class's radius FOR THAT MODE. They disagree about shape.",
+    "  'cosine-scatter' - every cell is drawn from the whole disc at once,",
+    "    weighted by a raised cosine of its distance from the origin: 1.0",
+    "    dead centre, 0.5 at half the radius, 0.0 at the rim. Nothing has to",
+    "    touch anything. Reads as a dense core fraying into scattered specks,",
+    "    and scatterRadiusCells is the body's true extent.",
+    "  'connected-growth' - the body starts at the origin cell and repeatedly",
+    "    takes one cell off its own frontier, so every cell touches another",
+    "    and the ore is a single blob. Bays close before tendrils grow.",
+    "    growthRadiusCells is a wander CAP the blob rarely reaches, not an",
+    "    extent it fills.",
+    "",
+    "This is authored data, not a battle setting. It feeds the canonical",
+    "metal cell list every peer generates, so it must never become a runtime",
+    "toggle.",
+    "",
+    "The mode switches which radius every downstream consumer reads, so a",
+    "ring with flatPadCells: null - which auto-sizes its flat pad to cover",
+    "the placement disc - gets a different pad in each mode. Author an",
+    "explicit flatPadCells on a ring to hold its terrain across the switch."
+  ],
+  "cellPlacementMode": "cosine-scatter",
   "sizesComment": [
-    "Authored ore-body size classes. Two numbers, and they mean exactly what",
-    "they say:",
+    "Authored ore-body size classes. One count and one radius per placement",
+    "mode, and they mean exactly what they say:",
     "  metalCellCount - how many metal build cells this ore body owns. Not a",
     "    side length, not a target to approximate: the placer lands this many",
-    "    cells or the config is rejected.",
-    "  placementRadiusCells - the radius, in build cells from the deposit's",
-    "    origin cell, of the disc those cells are ALLOWED to land in. Nothing",
-    "    outside it can ever be metal.",
+    "    cells in either mode, or the config is rejected. Shared by both",
+    "    modes, so switching cellPlacementMode never changes how much ore is",
+    "    on the map, only where it sits.",
+    "  scatterRadiusCells - radius, in build cells from the deposit's origin,",
+    "    of the disc 'cosine-scatter' fills. This one IS the body's extent.",
+    "  growthRadiusCells - the same disc for 'connected-growth', where it is",
+    "    a wander cap instead: a 25-cell blob covers about radius 3 whatever",
+    "    cap it is given, so this is much wider than the ore it bounds.",
+    "Both are validated whichever mode is active, so flipping the switch",
+    "cannot fail at map-generation time.",
     "",
-    "Inside the disc the cells are scattered statistically rather than grown",
-    "outward from the centre, so an ore body has no connectivity rule and no",
-    "square footprint. A cell's chance of being metal is a raised cosine of",
-    "its distance from the origin: 1.0 dead centre, 0.5 at half the radius,",
-    "0.0 at the rim. Draws never repeat a cell, so the whole authored count",
-    "always lands - a crowded core just pushes the remainder further out.",
+    "SCATTER tuning. The disc holds about 0.297 * pi * r^2 cells' worth of",
+    "cosine probability; asking for roughly 1.5x that (the authored classes",
+    "all sit near 1.47-1.6) gives a solid core that frays into scattered",
+    "specks near the rim. Push the radius up and the same count thins into a",
+    "dusting; pull it down and the body hardens into a disc.",
     "",
-    "The two numbers together set how the body READS. The disc holds about",
-    "0.297 * pi * r^2 cells' worth of cosine probability; asking for roughly",
-    "1.5x that (the authored classes all sit near 1.47-1.6) gives a solid",
-    "core that frays into scattered specks near the rim. Push the radius up",
-    "and the same count thins into a dusting; pull it down and the body",
-    "hardens into a disc. The classes differ in scale, not in character.",
+    "GROWTH tuning. Headroom is what buys an irregular silhouette: the blob",
+    "wanders more freely the more room it has, and a cap near the blob's own",
+    "size rounds it off into a disc. The authored caps sit well clear.",
     "",
-    "BUILD_GRID_CELL_SIZE is 20 world units, so 'titanic' reaches 76 cells =",
-    "1520 units from its origin.",
+    "Either way the classes differ in scale, not in character.",
+    "BUILD_GRID_CELL_SIZE is 20 world units, so scattered 'titanic' reaches",
+    "76 cells = 1520 units from its origin.",
     "",
-    "Neither number can move a deposit: it snaps to the centre of the build",
+    "No number here can move a deposit: it snaps to the centre of the build",
     "cell its ring point landed in, reading nothing from the size class. A",
     "size is free to be any positive integer."
   ],
   "sizes": {
     "standard": {
       "metalCellCount": 25,
-      "placementRadiusCells": 4
+      "scatterRadiusCells": 4,
+      "growthRadiusCells": 8
     },
     "broad": {
       "metalCellCount": 121,
-      "placementRadiusCells": 9
+      "scatterRadiusCells": 9,
+      "growthRadiusCells": 41
     },
     "vast": {
       "metalCellCount": 1089,
-      "placementRadiusCells": 28
+      "scatterRadiusCells": 28,
+      "growthRadiusCells": 55
     },
     "colossal": {
       "metalCellCount": 3025,
-      "placementRadiusCells": 47
+      "scatterRadiusCells": 47,
+      "growthRadiusCells": 77
     },
     "titanic": {
       "metalCellCount": 7921,
-      "placementRadiusCells": 76
+      "scatterRadiusCells": 76,
+      "growthRadiusCells": 231
     }
   },
   "defaultSize": "standard",
-  "productionNominalCellsComment": "Economy calibration only: an extractor's metal rate is its blueprint production divided by this many cells, times the metal cells its footprint actually covers. Deliberately NOT tied to a size class - retuning a size must not silently retune the economy. Note that a cosine-scattered body is not solid: an extractor over the core covers fewer metal cells than its footprint has cells, and closing that gap means lowering placementRadiusCells, not raising this.",
+  "productionNominalCellsComment": "Economy calibration only: an extractor's metal rate is its blueprint production divided by this many cells, times the metal cells its footprint actually covers. Deliberately NOT tied to a size class - retuning a size must not silently retune the economy. Note that a cosine-scattered body is not solid: an extractor over the core covers fewer metal cells than its footprint has cells, and closing that gap means lowering scatterRadiusCells, not raising this. A connected-growth body has no such gap.",
   "productionNominalCells": 5,
   "surfaceFieldComment": [
     "The rendered ore region. Deposit cells are baked once, at match start,",

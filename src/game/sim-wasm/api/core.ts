@@ -4,6 +4,21 @@ import type { TurretPoolApi, CombatTargetingApi } from './turretCombat';
 import type { ShieldSurfacePoolApi } from './shield';
 import type { SnapshotEncodeApi } from './snapshot';
 import type { PathfinderApi, ProjectilePoolViews, BodyPoolViews } from './physics';
+
+/** One deposit's metal-cell placer. Both `cellPlacementMode` algorithms
+ *  share this shape — same disc, same authored count, different rule for
+ *  which cells inside it end up metal — so metalDepositConfig can pick
+ *  between them without branching on the call. Writes (gx, gy) pairs
+ *  sorted by y then x and returns the count written. */
+export type MetalDepositCellPlacer = (
+  originGx: number,
+  originGy: number,
+  metalCellCount: number,
+  placementRadiusCells: number,
+  seed: number,
+  outCells: Int32Array,
+) => number;
+
 export interface SimWasm {
   /** Build-stamp from the Rust crate (CARGO_PKG_VERSION).
    *  Useful in dev / startup logs to confirm a fresh wasm-pack
@@ -1166,23 +1181,21 @@ export interface SimWasm {
   readonly vegetationReadRemoved: (from: number, out: Uint32Array) => number;
   readonly vegetationStateHash: () => number;
   /** How many build cells a placement disc of this radius can legally
-   *  hold — the lattice points strictly inside it, where the cosine
-   *  probability is still non-zero. */
+   *  hold — the lattice points strictly inside it. One definition, both
+   *  placement modes. */
   readonly metalDepositCountPlacementCandidates: (
     placementRadiusCells: number,
   ) => number;
-  /** Scatter one deposit's metal cells over its placement disc: draws
-   *  weighted by a raised cosine of radial distance (1.0 at the origin,
-   *  0.5 at half the radius, 0.0 at the rim), never twice on one cell,
-   *  so the whole authored count lands. */
-  readonly metalDepositPlaceMetalCells: (
-    originGx: number,
-    originGy: number,
-    metalCellCount: number,
-    placementRadiusCells: number,
-    seed: number,
-    outCells: Int32Array,
-  ) => number;
+  /** COSINE SCATTER: draw the deposit's metal cells from the whole disc at
+   *  once, weighted by a raised cosine of radial distance (1.0 at the
+   *  origin, 0.5 at half the radius, 0.0 at the rim), never twice on one
+   *  cell, so the whole authored count lands. No connectivity rule. */
+  readonly metalDepositScatterMetalCells: MetalDepositCellPlacer;
+  /** CONNECTED GROWTH: take cells off the body's own frontier starting at
+   *  the origin, so every cell touches another and the ore is one blob.
+   *  Same signature and the same authored count; the radius acts as a
+   *  wander cap rather than an extent. */
+  readonly metalDepositGrowMetalCells: MetalDepositCellPlacer;
   /** Bake the union of every workable deposit's build cells into a
    *  whole-map signed-distance field, one byte per texel, negative
    *  inside the ore. The terrain shader samples it by world XZ, so the

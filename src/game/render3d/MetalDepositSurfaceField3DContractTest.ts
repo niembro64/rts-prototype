@@ -12,6 +12,7 @@
 // material with metal.
 
 import {
+  METAL_DEPOSIT_CELL_PLACEMENT_MODES,
   METAL_DEPOSIT_CONFIG,
   getMetalDepositSize,
 } from '../../metalDepositConfig';
@@ -73,6 +74,12 @@ function checkSizeClassesCannotMoveTerrain(): void {
     names.includes(METAL_DEPOSIT_CONFIG.defaultSize),
     `defaultSize "${METAL_DEPOSIT_CONFIG.defaultSize}" is not in the sizes table`,
   );
+  assertContract(
+    METAL_DEPOSIT_CELL_PLACEMENT_MODES.includes(
+      METAL_DEPOSIT_CONFIG.cellPlacementMode,
+    ),
+    `cellPlacementMode "${METAL_DEPOSIT_CONFIG.cellPlacementMode}" is not a known mode`,
+  );
 
   // A deposit snaps to the CENTRE of the build cell its raw ring point fell
   // in, reading nothing from the size class. That is what keeps a purely
@@ -88,15 +95,18 @@ function checkSizeClassesCannotMoveTerrain(): void {
       (centerCell + 0.5) * BUILD_GRID_CELL_SIZE === reference,
       `size "${name}" moves a deposit placed in cell ${centerCell} off ${reference}`,
     );
-    // Every authored metal cell has to land, so the disc must have room for
-    // the whole body. Short of that, generation throws at map build time.
-    const placeable = placeableCellCount(size.placementRadiusCells);
-    assertContract(
-      size.placementRadiusCells > 0 && placeable >= size.metalCellCount,
-      `size "${name}" scatters ${size.metalCellCount} metal cells into a ` +
-      `placement disc of radius ${size.placementRadiusCells}, which holds ` +
-      `only ${placeable}`,
-    );
+    // Every authored metal cell has to land, in EITHER placement mode, so
+    // both discs must have room for the whole body. Pinning both is what
+    // keeps flipping cellPlacementMode from throwing at map build time.
+    for (const field of ['scatterRadiusCells', 'growthRadiusCells'] as const) {
+      const radiusCells = size[field];
+      const placeable = placeableCellCount(radiusCells);
+      assertContract(
+        radiusCells > 0 && placeable >= size.metalCellCount,
+        `size "${name}" places ${size.metalCellCount} metal cells into a ` +
+        `${field} disc of radius ${radiusCells}, which holds only ${placeable}`,
+      );
+    }
   }
 }
 
