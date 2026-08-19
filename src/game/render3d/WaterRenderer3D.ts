@@ -1,6 +1,7 @@
 // WaterRenderer3D — transparent water surface at WATER_LEVEL with four
-// independently sorted open-bottom perimeter curtains in floating-square
-// modes.
+// independently sorted perimeter curtains plus a bottom face in
+// floating-square modes, so the liquid is a closed box rather than an
+// open-bottomed shell.
 //
 // In infinity mode water is one large horizontal plane. The submerged land
 // that makes CIRCLE perimeter mode continuous is emitted by
@@ -87,7 +88,11 @@ function gridBreakpoints(
   return points;
 }
 
-/** Emits one horizontal indexed grid at height `y` over xs × zs. */
+/** Emits one horizontal indexed grid at height `y` over xs × zs. `facing` is
+ *  the outward normal's sign on Y: +1 for the water surface, -1 for the box's
+ *  bottom face. The winding follows it, so gl_FrontFacing agrees with the
+ *  authored normal on every face of the box — the same invariant
+ *  pushCurtainStrip holds for the four vertical curtains. */
 function pushHorizontalGrid(
   positions: number[],
   normals: number[],
@@ -95,12 +100,13 @@ function pushHorizontalGrid(
   xs: readonly number[],
   zs: readonly number[],
   y: number,
+  facing: 1 | -1 = 1,
 ): void {
   const base = positions.length / 3;
   for (const z of zs) {
     for (const x of xs) {
       positions.push(x, y, z);
-      normals.push(0, 1, 0);
+      normals.push(0, facing, 0);
     }
   }
   const cols = xs.length;
@@ -110,7 +116,13 @@ function pushHorizontalGrid(
       const b = a + 1;
       const c = b + cols;
       const d = a + cols;
-      indices.push(a, b, c, a, c, d);
+      // a→b runs +x and a→d runs +z, so (b-a)×(c-a) points DOWN; the
+      // upward-facing surface is the one that needs the reversal.
+      if (facing > 0) {
+        indices.push(a, c, b, a, d, c);
+      } else {
+        indices.push(a, b, c, a, c, d);
+      }
     }
   }
 }
@@ -168,14 +180,20 @@ function pushCurtainStrip(
   }
 }
 
+/** The five non-surface faces of the floating water box, in the order their
+ *  meshes and geometry are built. */
+export const WATER_BOX_FACES = ['north', 'east', 'south', 'west', 'bottom'] as const;
+export type WaterBoxFace = (typeof WATER_BOX_FACES)[number];
+
 export class WaterRenderer3D {
   private waterMesh: THREE.Mesh;
   private waterGeometry: THREE.BufferGeometry;
-  /** Four independent transparent objects so Three.js can sort the world-box
-   *  faces back-to-front. Keeping them in the surface mesh made triangle
-   *  insertion order decide which opposite face won the depth test. */
+  /** Five independent transparent objects — four perimeter curtains and the
+   *  bottom face — so Three.js can sort the world-box faces back-to-front.
+   *  Keeping them in the surface mesh made triangle insertion order decide
+   *  which opposite face won the depth test. */
   private waterCurtains: Array<{
-    readonly direction: 'north' | 'east' | 'south' | 'west';
+    readonly direction: WaterBoxFace;
     readonly mesh: THREE.Mesh;
     readonly geometry: THREE.BufferGeometry;
   }> = [];
@@ -246,7 +264,7 @@ export class WaterRenderer3D {
     this.lastVisible = this.waterMesh.visible;
     parent.add(this.waterMesh);
 
-    for (const direction of ['north', 'east', 'south', 'west'] as const) {
+    for (const direction of WATER_BOX_FACES) {
       const geometry = new THREE.BufferGeometry();
       const mesh = new THREE.Mesh(geometry, this.waterCurtainMaterial);
       mesh.name = `WaterCurtain:${direction}`;
@@ -258,7 +276,7 @@ export class WaterRenderer3D {
 
     // The water is indexed triangle geometry just like terrain: a rectilinear
     // surface grid (see WATER_SURFACE_GRID_STEPS) plus, in floating-square
-    // mode, four independently sorted perimeter curtain meshes. Keep its debug
+    // mode, five independently sorted world-box face meshes. Keep its debug
     // wireframe as one separate depth-tested overlay so WATER TRIS exposes all
     // actual triangles without changing the water material or surface level.
     this.waterTriangleGeometry = new THREE.BufferGeometry();
@@ -281,7 +299,7 @@ export class WaterRenderer3D {
   }
 
   /** Canonical horizontal water geometry for command cursor first-surface
-   *  picking. The independently sorted vertical curtains are intentionally
+   *  picking. The independently sorted box faces are intentionally
    *  excluded, and camera anchors use terrain only. The mesh object is stable
    *  when geometry is rebuilt for a different boundary presentation mode. */
   getMesh(): THREE.Mesh {
@@ -341,9 +359,10 @@ export class WaterRenderer3D {
       surface.indices,
     );
 
-    // The map is an open-bottom slab. These four overhanging water curtains
-    // close its visible outer perimeter; an unseen horizontal bottom would
-    // only add fill and triangles.
+    // These four overhanging curtains close the water box's outer perimeter,
+    // and the bottom face below closes its floor, so the liquid is a complete
+    // solid from every angle the camera can reach — including from under the
+    // world, where the land slab's own floor cap now sits just inside it.
     const north = xs.map((x): readonly [number, number] => [x, z0]);
     const east = zs.map((z): readonly [number, number] => [x1, z]);
     const south = [...xs].reverse().map((x): readonly [number, number] => [x, z1]);
@@ -356,6 +375,10 @@ export class WaterRenderer3D {
       { direction: 'east', points: east, nx: 1, nz: 0 },
       { direction: 'south', points: south, nx: 0, nz: 1 },
       { direction: 'west', points: west, nx: -1, nz: 0 },
+      // The floor is a horizontal grid on the same breakpoints, so it shares
+      // the curtains' bottom edge with no T-junctions and carries the same
+      // depth-interpolation error as every other face of the box.
+      { direction: 'bottom', points: null, nx: 0, nz: 0 },
     ] as const;
     const triangleParts = [surface];
     for (let i = 0; i < curtainInputs.length; i++) {
@@ -365,20 +388,32 @@ export class WaterRenderer3D {
         normals: [] as number[],
         indices: [] as number[],
       };
-      pushCurtainStrip(
-        part.positions,
-        part.normals,
-        part.indices,
-        input.points,
-        bottomY,
-        topY,
-        input.nx,
-        input.nz,
-        cell,
-      );
+      if (input.points === null) {
+        pushHorizontalGrid(
+          part.positions,
+          part.normals,
+          part.indices,
+          xs,
+          zs,
+          bottomY,
+          -1,
+        );
+      } else {
+        pushCurtainStrip(
+          part.positions,
+          part.normals,
+          part.indices,
+          input.points,
+          bottomY,
+          topY,
+          input.nx,
+          input.nz,
+          cell,
+        );
+      }
       const curtain = this.waterCurtains[i];
       if (curtain.direction !== input.direction) {
-        throw new Error(`Water curtain order mismatch: ${curtain.direction}/${input.direction}`);
+        throw new Error(`Water box face order mismatch: ${curtain.direction}/${input.direction}`);
       }
       this.setGeometry(curtain.geometry, part.positions, part.normals, part.indices);
       triangleParts.push(part);
