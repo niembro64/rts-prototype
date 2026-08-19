@@ -44,6 +44,11 @@ export function useGameCanvasLobbyRoster({
         ...existing,
         playerId: player.playerId,
         isHost: player.isHost,
+        // The host owns side assignment, so an update always carries the
+        // authoritative value and always replaces ours. Leaving it out here
+        // was why a host moving a seat changed nothing on anyone else's
+        // screen: the network roster updated, the rendered one did not.
+        allyTeamId: player.allyTeamId,
         name: player.name || existing.name,
         ipAddress: player.ipAddress ?? existing.ipAddress,
         location: player.location ?? existing.location,

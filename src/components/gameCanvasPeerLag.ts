@@ -14,13 +14,14 @@ import type { PlayerId } from '../game/sim/types';
  * Progress comes from the frame coordinator, which is the only peer that sees
  * everyone's acks (see `RealBattlePeerFrameReport`).
  *
- * Each peer gets its own explicit two-state machine rather than a recomputed
- * boolean, because "is this player behind" is a latched condition with
- * deliberately different thresholds in each direction. Measured healthy peers
- * sit within a frame or two of the coordinator but can drift close to a second under
- * load, so a single threshold makes the callout blink on and off around it.
- * The machine enters `behind` late and leaves early, and the asymmetry is
- * readable as the two edges of the table instead of hiding in a comparison.
+ * Each peer gets its own explicit machine rather than a recomputed boolean,
+ * because "is this player behind" is a latched, deliberately asymmetric
+ * condition. Measured healthy peers sit within a frame or two of the
+ * coordinator but drift close to a second under load and spike past that, so
+ * a plain threshold both blinks and accuses people for momentary hitches. The
+ * machine therefore needs a reading to be bad twice running before it names
+ * anyone, and needs a clearly good one to stop — and both rules are readable
+ * as edges of the table rather than buried in comparisons.
  */
 
 /** Gap at which a peer is called out. Above the drift healthy peers show
@@ -36,8 +37,16 @@ const LAG_EXIT_SECONDS = 0.75;
  *  a player who may already have gone. */
 const REPORT_STALE_MS = 4000;
 
-type PeerLagState = 'keepingUp' | 'behind';
-type PeerLagEvent = 'fellBehind' | 'caughtUp';
+type PeerLagState =
+  /** Within tolerance; nothing shown. */
+  | 'keepingUp'
+  /** Over the line once. Not yet accused — a single slow report is a spike,
+   *  not a lagging player, and naming someone for it is worse than waiting. */
+  | 'slipping'
+  /** Over the line on consecutive reports; shown to everyone. */
+  | 'behind';
+
+type PeerLagEvent = 'overThreshold' | 'recovered';
 
 export type PeerFrameReport = {
   readonly coordinatorFrame: number;
@@ -65,8 +74,14 @@ function createPeerMachine(): StateMachine<PeerLagState, PeerLagEvent> {
     name: 'peer-lag',
     initial: 'keepingUp',
     transitions: {
-      keepingUp: { fellBehind: 'behind' },
-      behind: { caughtUp: 'keepingUp' },
+      // Two consecutive over-threshold reports (about a second) before
+      // anyone is named, so a momentary hitch never accuses a player.
+      keepingUp: { overThreshold: 'slipping' },
+      slipping: { overThreshold: 'behind', recovered: 'keepingUp' },
+      // Leaving needs a clearly better reading, not merely a less bad one —
+      // that asymmetry is the hysteresis, and it is why a peer hovering
+      // around the entry threshold does not blink on and off.
+      behind: { recovered: 'keepingUp' },
     },
   });
 }
@@ -107,9 +122,9 @@ export function useGameCanvasPeerLag(): GameCanvasPeerLag {
       secondsBehindByPeer.set(peer.playerId, secondsBehind);
       const machine = machineFor(peer.playerId);
       if (secondsBehind >= LAG_ENTER_SECONDS) {
-        if (machine.send('fellBehind')) changed = true;
+        if (machine.send('overThreshold')) changed = true;
       } else if (secondsBehind <= LAG_EXIT_SECONDS) {
-        if (machine.send('caughtUp')) changed = true;
+        if (machine.send('recovered')) changed = true;
       }
       // Between the two thresholds every event is refused by the table, which
       // is exactly the hysteresis: the peer stays where it is.
