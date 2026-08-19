@@ -73,6 +73,7 @@ import {
 import {
   beamImpactCellKey,
   classifyBeamImpactSurface,
+  classifyDamageImpactSurface,
 } from './BeamImpact3D';
 import { scorchCellKey } from './BurnMark3D';
 import { beamBurnVolumeCellKey } from './BeamBurnVolume3D';
@@ -1707,8 +1708,10 @@ function runEmissionPoseContracts(): void {
     classifyBeamImpactSurface(10, 10, false, 0) === 'terrain' &&
       classifyBeamImpactSurface(0, -20, true, 0) === 'water' &&
       classifyBeamImpactSurface(30, 0, false, 0) === 'endpoint' &&
-      classifyBeamImpactSurface(30, 0, false, 0, 4, true) === 'entity',
-    'beam impacts distinguish terrain, water, body strikes, and clear endpoints',
+      classifyBeamImpactSurface(30, 0, false, 0, 4, true) === 'entity' &&
+      classifyDamageImpactSurface(30, 0, false, 0, false) === 'blast' &&
+      classifyDamageImpactSurface(30, 0, false, 0, true) === 'entity',
+    'damage impacts distinguish terrain, water, body strikes, ray endpoints, and free blasts',
   );
   assertContract(
     beamImpactCellKey('terrain', 10, 20, 30) ===

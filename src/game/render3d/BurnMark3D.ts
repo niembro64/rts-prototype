@@ -31,6 +31,7 @@ const DENSITY_EMA_TAU_MS = 300;
 const SCORCH_PRUNE_INTERVAL_MS = 500;
 const SCORCH_FADE_FLOOR = 0.008;
 const MAX_SWEEP_SAMPLES_PER_PROJECTILE = 32;
+const MAX_QUEUED_DAMAGE_SCORCHES = 512;
 
 const COOL_LIN = new THREE.Color(COLORS.world.burnMark.coolResidueColorHex);
 const HOT_LIN = new THREE.Color(0xff4a08);
@@ -140,6 +141,13 @@ type ScorchCell = {
   seed: number;
 };
 
+type PendingDamageScorch = {
+  x: number;
+  y: number;
+  width: number;
+  energy: number;
+};
+
 function hashCell(key: number | string): number {
   if (typeof key === 'number') {
     let numericHash = (key % 0x100000000) | 0;
@@ -176,6 +184,7 @@ export class BurnMark3D {
   private readonly seedDirty = createDirtySlotSpan();
   private readonly cells: ScorchCell[] = [];
   private readonly cellByKey = new Map<number | string, ScorchCell>();
+  private readonly pendingDamageScorches: PendingDamageScorch[] = [];
   private readonly beams = new Map<BeamStateKey, BeamState>();
   private readonly seenBeamKeys = new Set<BeamStateKey>();
   private readonly position = new THREE.Vector3();
@@ -238,6 +247,22 @@ export class BurnMark3D {
     this.root.add(this.mesh);
   }
 
+  /** Queue a one-shot terrain scorch from the shared damage-impact pipeline.
+   *  It is deposited during update so it shares this renderer's density cap,
+   *  LRU consolidation, decay constants, and single upload batch. */
+  depositDamageImpact(x: number, y: number, width: number, energy: number): void {
+    if (this.pendingDamageScorches.length >= MAX_QUEUED_DAMAGE_SCORCHES) return;
+    if (
+      !Number.isFinite(x) ||
+      !Number.isFinite(y) ||
+      !Number.isFinite(width) ||
+      !Number.isFinite(energy) ||
+      width <= 0 ||
+      energy <= 0
+    ) return;
+    this.pendingDamageScorches.push({ x, y, width, energy });
+  }
+
   update(projectiles: readonly Entity[], dtMs: number): void {
     const clampedDtMs = Math.min(250, Math.max(0, dtMs));
     const dtSec = clampedDtMs / 1000;
@@ -268,6 +293,12 @@ export class BurnMark3D {
       this.clear();
       return;
     }
+
+    for (let i = 0; i < this.pendingDamageScorches.length; i++) {
+      const scorch = this.pendingDamageScorches[i];
+      this.depositAt(scorch.x, scorch.y, scorch.width, scorch.energy);
+    }
+    this.pendingDamageScorches.length = 0;
 
     this.seenBeamKeys.clear();
     for (let i = 0; i < projectiles.length; i++) {
@@ -478,6 +509,7 @@ export class BurnMark3D {
   private clear(): void {
     this.cells.length = 0;
     this.cellByKey.clear();
+    this.pendingDamageScorches.length = 0;
     this.beams.clear();
     this.seenBeamKeys.clear();
     this.mesh.count = 0;

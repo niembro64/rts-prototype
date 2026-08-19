@@ -1,5 +1,5 @@
-// BeamBurnVolume3D — persistent world-space thermal residue for beam hits
-// that do not terminate on terrain.
+// DamageBurnVolume3D — persistent world-space thermal residue for damage
+// impacts that do not terminate on terrain.
 //
 // Cells are fixed at the coordinates where energy was deposited. Repeated
 // exposure feeds the same 3D cell; moving endpoints leave a sparse spatial
@@ -114,7 +114,7 @@ const FRAGMENT_SHADER = /* glsl */`
 
 type BurnVolumeKey = number | string;
 
-export function beamBurnVolumeCellKey(
+export function damageBurnVolumeCellKey(
   x: number,
   y: number,
   z: number,
@@ -164,7 +164,9 @@ function hashKey(key: BurnVolumeKey): number {
   return (hash >>> 0) / 0x100000000;
 }
 
-export class BeamBurnVolume3D {
+export const beamBurnVolumeCellKey = damageBurnVolumeCellKey;
+
+export class DamageBurnVolume3D {
   private readonly geometry = createPrimitiveSphereGeometry('beam', 'far', 1);
   private readonly material: THREE.ShaderMaterial;
   private readonly mesh: THREE.InstancedMesh;
@@ -256,7 +258,7 @@ export class BeamBurnVolume3D {
 
   deposit(x: number, y: number, z: number, radius: number, energy: number): void {
     if (!this.enabled || this.currentCap <= 0 || !(energy > 0)) return;
-    const key = beamBurnVolumeCellKey(x, y, z);
+    const key = damageBurnVolumeCellKey(x, y, z);
     let volume = this.volumeByKey.get(key);
     if (!volume) {
       if (this.volumes.length >= this.currentCap || this.volumes.length >= MAX_BURN_VOLUMES) {
@@ -387,3 +389,5 @@ export class BeamBurnVolume3D {
     disposeMesh(this.mesh);
   }
 }
+
+export { DamageBurnVolume3D as BeamBurnVolume3D };

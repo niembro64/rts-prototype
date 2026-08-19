@@ -167,7 +167,7 @@ type RenderPhaseEntityListOptions = {
 export class RtsScene3DRenderPhase {
   private renderFrameIndex = 0;
   private lastEffectsTickMs = 0;
-  private fireExplosionAccumMs = 0;
+  private deathExplosionAccumMs = 0;
   private burnMarkAccumMs = 0;
   private groundPrintAccumMs = 0;
   private smokeTrailAccumMs = 0;
@@ -326,7 +326,7 @@ export class RtsScene3DRenderPhase {
   }
 
   resetEffectAccumulators(): void {
-    this.fireExplosionAccumMs = 0;
+    this.deathExplosionAccumMs = 0;
     this.burnMarkAccumMs = 0;
     this.groundPrintAccumMs = 0;
     this.smokeTrailAccumMs = 0;
@@ -570,10 +570,10 @@ export class RtsScene3DRenderPhase {
       graphicsConfig,
       renderFrameState,
     );
-    this.fireExplosionAccumMs += effectDtMs;
+    this.deathExplosionAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
-      explosionRenderer.update(this.fireExplosionAccumMs, renderFrameState.view);
-      this.fireExplosionAccumMs = 0;
+      explosionRenderer.update(this.deathExplosionAccumMs, renderFrameState.view);
+      this.deathExplosionAccumMs = 0;
     }
     shieldImpactRenderer.setVisible(forceFieldsVisible);
     if (forceFieldsVisible) {

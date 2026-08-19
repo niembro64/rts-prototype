@@ -19,7 +19,11 @@ import { BEAM_SNAP_ORIGIN_TO_TURRET } from '@/config';
 import { detachObject, disposeMesh } from './threeUtils';
 import { uploadPrefixRange } from './instancedBufferUpdate';
 import beamConfig from '@/beamConfig.json';
-import { BeamImpact3D, type BeamImpactEnvironment } from './BeamImpact3D';
+import {
+  DamageImpact3D,
+  type DamageImpactEnvironment,
+  type DamageImpactRequest,
+} from './BeamImpact3D';
 import {
   BEAM_INNER_VISUAL_CONFIG,
   BEAM_LAYER_INNER_SCALE,
@@ -371,7 +375,7 @@ export class BeamRenderer3D {
   private lastScopeVersion = -1;
   private beamUpdateFrameIndex = -1;
   private readonly cachedPathByEntityId = new Map<number, CachedBeamPath>();
-  private readonly impactRenderer: BeamImpact3D;
+  private readonly impactRenderer: DamageImpact3D;
 
   // Scratch vectors reused per frame (no per-segment allocations).
   private readonly segmentPoseScratch = createBeamSegmentPoseScratch3D();
@@ -380,12 +384,12 @@ export class BeamRenderer3D {
   constructor(
     parentWorld: THREE.Group,
     scope: ViewportFootprint,
-    impactEnvironment: BeamImpactEnvironment,
+    impactEnvironment: DamageImpactEnvironment,
   ) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
     this.scope = scope;
-    this.impactRenderer = new BeamImpact3D(this.root, scope, impactEnvironment);
+    this.impactRenderer = new DamageImpact3D(this.root, scope, impactEnvironment);
     this.layers = new Array<BeamVisualLayer>(BEAM_VISUAL_LAYERS.length);
     for (let i = 0; i < BEAM_VISUAL_LAYERS.length; i++) {
       const layer = BEAM_VISUAL_LAYERS[i];
@@ -427,6 +431,12 @@ export class BeamRenderer3D {
     this.imposterSegmentMesh.count = 0;
     this.imposterSegmentMesh.visible = BEAM_IMPOSTER_SEGMENT_CONFIG.enabled;
     this.root.add(this.imposterSegmentMesh);
+  }
+
+  /** One-shot projectile/shot impacts share the beam endpoint renderer's
+   * bounded sites, ejecta, scorch, residue, and debug damage volumes. */
+  spawnDamageImpact(request: DamageImpactRequest): void {
+    this.impactRenderer.spawnDamageImpact(request);
   }
 
   private placeSegment(

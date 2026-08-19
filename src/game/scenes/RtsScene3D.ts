@@ -917,6 +917,7 @@ export class RtsScene3D {
     dispatchSimEvent3DVisual(event, {
       clientViewState: this.clientViewState,
       entityRenderer: this.entityRenderer,
+      beamRenderer: this.beamRenderer,
       explosionRenderer: this.explosionRenderer,
       shieldImpactRenderer: this.shieldImpactRenderer,
       waterSplashRenderer: this.waterSplashRenderer,

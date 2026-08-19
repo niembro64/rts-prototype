@@ -2,6 +2,7 @@ import { getGraphicsConfig, getMaterialExplosions } from '@/clientBarConfig';
 import type { ClientViewState } from '../../network/ClientViewState';
 import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
 import type { Explosion3D } from '../../render3d/Explosion3D';
+import type { BeamRenderer3D } from '../../render3d/BeamRenderer3D';
 import type { Render3DEntities } from '../../render3d/Render3DEntities';
 import type { ShieldImpactRenderer3D } from '../../render3d/ShieldImpactRenderer3D';
 import type { WaterSplash3D } from '../../render3d/WaterSplash3D';
@@ -21,6 +22,7 @@ import {
 type RtsScene3DVisualEventDispatchContext = {
   clientViewState: ClientViewState;
   entityRenderer: Render3DEntities;
+  beamRenderer: BeamRenderer3D;
   explosionRenderer: Explosion3D;
   shieldImpactRenderer: ShieldImpactRenderer3D;
   waterSplashRenderer: WaterSplash3D;
@@ -94,17 +96,18 @@ export function dispatchSimEvent3DVisual(
         finiteOr(ctx.projectile.vel.y, 0) * 0.3 +
         finiteOr(ctx.entity.vel.y, 0) * 0.3;
     }
-    context.explosionRenderer.spawnImpact(
-      event.pos.x,
-      event.pos.y,
-      event.pos.z,
-      radius,
-      mx,
-      mz,
-      undefined,
-      effectGfx.fireExplosionStyle,
+    context.beamRenderer.spawnDamageImpact({
+      x: event.pos.x,
+      y: event.pos.y,
+      z: event.pos.z,
+      damageRadius: radius,
+      incomingX: mx,
+      incomingY: mz,
+      incomingZ: 0,
+      hitEntity: (ctx?.entity.radiusCollision ?? 0) > 0,
       detailScale,
-    );
+      seedSource: event.entityId ?? undefined,
+    });
   } else if (event.type === 'waterSplash') {
     const splash = event.waterSplash;
     const ctx = event.impactContext;
@@ -141,23 +144,31 @@ export function dispatchSimEvent3DVisual(
       event.pos.y,
       event.pos.z,
     )) return;
-    context.explosionRenderer.spawnImpact(
-      event.pos.x,
-      event.pos.y,
-      event.pos.z,
-      EFFECT_RADIUS_FALLBACKS.projectileExpireImpact,
-      0,
-      0,
-      undefined,
-      effectGfx.fireExplosionStyle,
-      explosionSpawnScaleForDetail(
+    const ctx = event.impactContext;
+    const radius = ctx
+      ? maxFiniteNonNegativeOr(
+        EFFECT_RADIUS_FALLBACKS.projectileExpireImpact,
+        ctx.radiusCollision,
+        ctx.deathExplosionRadius,
+      )
+      : EFFECT_RADIUS_FALLBACKS.projectileExpireImpact;
+    context.beamRenderer.spawnDamageImpact({
+      x: event.pos.x,
+      y: event.pos.y,
+      z: event.pos.z,
+      damageRadius: radius,
+      incomingX: ctx ? finiteOr(ctx.projectile.vel.x, 0) : 0,
+      incomingY: ctx ? finiteOr(ctx.projectile.vel.y, 0) : 0,
+      incomingZ: 0,
+      detailScale: explosionSpawnScaleForDetail(
         context.positionVisualDetailLevel(
           event.pos.x,
           event.pos.y,
           event.pos.z,
         ),
       ),
-    );
+      seedSource: event.entityId ?? undefined,
+    });
   } else if (event.type === 'shieldImpact') {
     const ctx = event.shieldImpact;
     if (ctx) {

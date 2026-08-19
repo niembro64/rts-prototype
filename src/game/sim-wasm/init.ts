@@ -1654,6 +1654,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runProjectileTrailHistory3DContractTest();
         const { runEntityLodGeometry3DContractTest } = await import('../render3d/EntityLodGeometry3DContractTest');
         runEntityLodGeometry3DContractTest();
+        const { runRtsScene3DVisualEventDispatcherContractTest } = await import('../scenes/helpers/RtsScene3DVisualEventDispatcherContractTest');
+        runRtsScene3DVisualEventDispatcherContractTest();
         const { runHostTurretPresentationGeometry3DContractTest } = await import('../render3d/EntityLodGeometry3DContractTest');
         runHostTurretPresentationGeometry3DContractTest();
         const { runTeamOrnament3DContractTest } = await import('../render3d/TeamOrnament3DContractTest');

@@ -47,7 +47,6 @@ import {
   TERRAIN_HORIZON_BLEND_CONFIG,
   TERRAIN_ROCK_BASE_COLOR,
   TERRAIN_ROCK_DETAIL_CONTRAST,
-  TERRAIN_OUTWARD_NORMAL_SCOPE_LEVEL,
   TERRAIN_ROCK_DETAIL_ENABLED,
   TERRAIN_ROCK_TEXTURE_TILE_WORLD_SIZE,
 } from '../../config';
@@ -120,6 +119,12 @@ import {
 } from '../sim/pathfindingDebugGrid';
 import { getUnitPathTraversabilityGrid } from '../sim/pathfindingTraversabilityGrid';
 import { packMetalDepositGridCellsXY } from '../sim/metalDeposits';
+import {
+  TERRAIN_OUTWARD_NORMAL_UNIFORM,
+  terrainOutwardNormalFragment,
+  terrainOutwardNormalScopeLevel,
+  terrainOutwardNormalUniformDeclaration,
+} from './TerrainOutwardNormal3D';
 import {
   MetalDepositSurfaceField3D,
   assignMetalDepositSurfaceFieldUniforms,
@@ -739,9 +744,7 @@ export class TerrainTileRenderer3D {
   // normal inside ore only, 2 = restore it across the whole surface. A runtime
   // knob because this is a shading term whose fault only shows on sloped
   // ground, and the machine that shows it should be able to bisect it.
-  private terrainOutwardNormalUniform = {
-    value: TERRAIN_OUTWARD_NORMAL_SCOPE_LEVEL,
-  };
+  private terrainOutwardNormalUniform = { value: terrainOutwardNormalScopeLevel() };
   private readonly worldShade: WorldShade3D;
 
   private gridCellsX = 0;
@@ -871,7 +874,7 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uMetalSurfaceRoughness = this.metalSurfaceRoughnessUniform;
       shader.uniforms.uTerrainHorizonWaterBlendEnabled =
         this.terrainHorizonWaterBlendEnabledUniform;
-      shader.uniforms.uTerrainOutwardNormalScope = this.terrainOutwardNormalUniform;
+      shader.uniforms[TERRAIN_OUTWARD_NORMAL_UNIFORM] = this.terrainOutwardNormalUniform;
       assignMetalDepositSurfaceFieldUniforms(shader, this.metalRegionField.uniforms);
       this.worldShade.assignUniforms(shader);
       shader.vertexShader = shader.vertexShader
@@ -936,7 +939,7 @@ export class TerrainTileRenderer3D {
             'uniform float uMetalSurfaceEnabled;',
             metalSurfaceLayerUniformDeclarations(),
             'uniform float uTerrainHorizonWaterBlendEnabled;',
-            'uniform float uTerrainOutwardNormalScope;',
+            terrainOutwardNormalUniformDeclaration(),
             metalDepositSurfaceFieldUniformDeclarations(),
             METAL_SURFACE_RESPONSE_GLSL,
             METAL_SURFACE_REGION_GLSL,
@@ -1164,14 +1167,7 @@ export class TerrainTileRenderer3D {
           '#include <normal_fragment_maps>',
           [
             '#include <normal_fragment_maps>',
-            '// Scope is a uniform, so this branch is warp-coherent. The ore',
-            '// case steps on coverage rather than interpolating: mixing the',
-            '// MULTIPLIER between 1 and -1 would pass through zero and hand',
-            '// the lighting a degenerate normal at the ore edge.',
-            'float terrainOutward = uTerrainOutwardNormalScope >= 2.0',
-            '  ? 1.0',
-            '  : (uTerrainOutwardNormalScope >= 1.0 ? step(0.5, metalCoverage) : 0.0);',
-            'normal *= mix(1.0, faceDirection, terrainOutward);',
+            terrainOutwardNormalFragment(),
           ].join('\n'),
         )
         .replace(

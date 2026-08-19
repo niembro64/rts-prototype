@@ -1,8 +1,8 @@
-// Explosion3D - short-lived fire explosion markers for projectile impacts
-// and unit deaths in the 3D view.
+// Explosion3D - short-lived material explosion marker for unit/building deaths.
 //
-// Every impact emits exactly one bright white sphere that expands and fades.
-// EntityDeathDisassembly3D owns the separate, synchronized host breakup.
+// Shot impacts use DamageImpact3D's consolidated chunks/scorch/residue instead
+// of expanding spheres. EntityDeathDisassembly3D owns the synchronized host
+// breakup while this renderer retains the deliberately separate death flash.
 
 import * as THREE from 'three';
 import { createInstancedColorAlphaParticleMaterial } from './instancedColorAlphaParticleMaterial';
@@ -143,19 +143,21 @@ export class Explosion3D {
     for (const pool of Object.values(this.puffPools)) pool.setCount(0);
   }
 
-  spawnImpact(
+  spawnDeath(
     simX: number,
     simY: number,
     simZ: number,
     radius: number,
-    _momentumX: number = 0,
-    _momentumZ: number = 0,
-    _shellColor?: number,
-    _styleOverride?: ExplosionStyle,
+    momentumX: number = 0,
+    momentumZ: number = 0,
+    styleOverride?: ExplosionStyle,
     detailScale: number = 1,
   ): void {
+    void momentumX;
+    void momentumZ;
+    void styleOverride;
     const r = Number.isFinite(radius)
-      ? Math.max(radius, MIN_IMPACT_RADIUS)
+      ? Math.max(radius * 2.5, MIN_IMPACT_RADIUS)
       : MIN_IMPACT_RADIUS;
     const durMult = durationMultiplier(r);
     const lod = clamp01(detailScale);
@@ -167,29 +169,6 @@ export class Explosion3D {
       CORE_LIFETIME_MS * durMult * (0.62 + lod * 0.38),
       r * CORE_EXPAND_START * sizeScale,
       r * CORE_EXPAND_END * sizeScale,
-    );
-  }
-
-  spawnDeath(
-    simX: number,
-    simY: number,
-    simZ: number,
-    radius: number,
-    momentumX: number = 0,
-    momentumZ: number = 0,
-    styleOverride?: ExplosionStyle,
-    detailScale: number = 1,
-  ): void {
-    this.spawnImpact(
-      simX,
-      simY,
-      simZ,
-      radius * 2.5,
-      momentumX,
-      momentumZ,
-      undefined,
-      styleOverride,
-      detailScale,
     );
   }
 

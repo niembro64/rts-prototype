@@ -1,20 +1,24 @@
-// BeamImpact3D — bounded, consolidated presentation for beam termination.
+// DamageImpact3D — bounded, consolidated presentation for damage endpoints.
 //
-// A live impact is one procedural point sprite per occupied world cell, not a
-// stream of expanding mesh puffs. Repeated beams terminating in the same cell
-// feed the same site. Small ejecta / vapour particles are born into a fixed
-// ring buffer and integrate entirely in the vertex shader from birth time, so
-// no particle is walked or rewritten as it ages.
+// Live rays and one-shot projectile detonations feed the same world-cell sites
+// instead of spawning expanding fire spheres. Small ejecta are born into a
+// fixed ring buffer and integrate entirely in the vertex shader from birth
+// time, so no particle is walked or rewritten as it ages.
 
 import * as THREE from 'three';
+import { getVolumeToggle } from '@/clientBarConfig';
+import { COLORS } from '@/colorsConfig';
 import type { Entity } from '../sim/types';
 import { isRayType } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { disposeMesh } from './threeUtils';
 import { applyExposureToRawShader } from './RenderLighting3D';
-import { BeamBurnVolume3D } from './BeamBurnVolume3D';
-import { createPrimitiveTetrahedronGeometry } from './PrimitiveGeometryQuality3D';
+import { DamageBurnVolume3D } from './BeamBurnVolume3D';
+import {
+  createPrimitiveSphereGeometry,
+  createPrimitiveTetrahedronGeometry,
+} from './PrimitiveGeometryQuality3D';
 import {
   clearDirtySlotSpan,
   createDirtySlotSpan,
@@ -23,13 +27,41 @@ import {
   uploadPrefixRange,
 } from './instancedBufferUpdate';
 
-export type BeamImpactSurface = 'terrain' | 'water' | 'entity' | 'endpoint';
+export type DamageImpactSurface =
+  | 'terrain'
+  | 'water'
+  | 'entity'
+  | 'endpoint'
+  | 'blast';
+export type BeamImpactSurface = DamageImpactSurface;
 
-export type BeamImpactEnvironment = {
+export type DamageImpactEnvironment = {
   getTerrainZ(x: number, y: number): number;
   getTerrainNormal?(x: number, y: number): { nx: number; ny: number; nz: number };
   isWaterAt?(x: number, y: number): boolean;
   waterLevel: number;
+  depositGroundBurn?(x: number, y: number, width: number, energy: number): void;
+};
+export type BeamImpactEnvironment = DamageImpactEnvironment;
+
+export type DamageImpactRequest = {
+  x: number;
+  y: number;
+  z: number;
+  /** Exact authoritative damage/splash sphere radius. */
+  damageRadius: number;
+  /** Incoming shot direction or momentum in simulation XYZ coordinates. */
+  incomingX?: number;
+  incomingY?: number;
+  incomingZ?: number;
+  /** True only when the terminal event is known to have struck a body. */
+  hitEntity?: boolean;
+  /** Presentation density selected by the shared effect LOD policy. */
+  detailScale?: number;
+  /** Thermal deposit strength; derived from radius when omitted. */
+  energy?: number;
+  /** Stable provenance used only to vary the consolidated site's shape. */
+  seedSource?: number;
 };
 
 const IMPACT_CELL_SIZE = 4;
@@ -38,6 +70,7 @@ const IMPACT_SITE_TAIL_SEC = 0.45;
 const EJECTA_CAP = 4096;
 const MAX_EJECTA_BIRTHS_PER_UPDATE = 96;
 const MAX_EJECTA_BIRTHS_PER_SECOND = 2600;
+const MAX_QUEUED_DAMAGE_IMPACTS = 512;
 const TERRAIN_ENDPOINT_TOLERANCE = 4;
 const EJECTA_SIZE_SCALE = [0.55, 1, 1.55] as const;
 const EJECTA_SPEED_SCALE = [1.55, 1, 0.62] as const;
@@ -86,11 +119,14 @@ const SITE_FRAGMENT_SHADER = /* glsl */`
     vec3 waterColor = mix(vec3(0.22, 0.58, 0.72), vec3(0.88, 0.98, 1.0), core);
     vec3 entityColor = mix(vec3(1.0, 0.08, 0.005), vec3(1.0, 0.64, 0.08), core);
     vec3 endpointColor = mix(vec3(0.72, 0.78, 0.84), vec3(1.0), core);
+    vec3 blastColor = mix(vec3(1.0, 0.055, 0.002), vec3(1.0, 0.82, 0.16), core);
     vec3 color = vKind < 0.5
       ? terrainColor
       : (vKind < 1.5
         ? waterColor
-        : (vKind < 2.5 ? entityColor : endpointColor));
+        : (vKind < 2.5
+          ? entityColor
+          : (vKind < 3.5 ? endpointColor : blastColor)));
     float alpha = (0.24 * halo + 0.72 * core) * clamp(vHeat, 0.0, 1.25);
     gl_FragColor = vec4(color, alpha);
   }
@@ -141,11 +177,14 @@ const PARTICLE_FRAGMENT_SHADER = /* glsl */`
     vec3 waterColor = mix(vec3(0.82, 0.96, 1.0), vec3(0.34, 0.48, 0.54), vAge01);
     vec3 entityColor = mix(vec3(1.0, 0.16, 0.008), vec3(0.12, 0.035, 0.012), vAge01);
     vec3 endpointColor = mix(vec3(1.0), vec3(0.52, 0.57, 0.62), vAge01);
+    vec3 blastColor = mix(vec3(1.0, 0.20, 0.008), vec3(0.11, 0.025, 0.008), vAge01);
     vec3 color = vKind < 0.5
       ? terrainColor
       : (vKind < 1.5
         ? waterColor
-        : (vKind < 2.5 ? entityColor : endpointColor));
+        : (vKind < 2.5
+          ? entityColor
+          : (vKind < 3.5 ? endpointColor : blastColor)));
     float alpha = fade * (vKind < 1.5 && vKind > 0.5 ? 0.48 : 0.92);
     gl_FragColor = vec4(color, alpha);
   }
@@ -157,6 +196,8 @@ type ImpactSite = {
   y: number;
   z: number;
   radius: number;
+  damageRadius: number;
+  radiusUpdateSerial: number;
   heat: number;
   lastHitSec: number;
   kind: BeamImpactSurface;
@@ -196,8 +237,16 @@ function packedCellKey3D(
   return `${kind}:${ix}:${iy}:${iz}`;
 }
 
-function kindNumber(kind: BeamImpactSurface): number {
-  return kind === 'terrain' ? 0 : kind === 'water' ? 1 : kind === 'entity' ? 2 : 3;
+function kindNumber(kind: DamageImpactSurface): number {
+  return kind === 'terrain'
+    ? 0
+    : kind === 'water'
+      ? 1
+      : kind === 'entity'
+        ? 2
+        : kind === 'endpoint'
+          ? 3
+          : 4;
 }
 
 function hash01(a: number, b: number): number {
@@ -208,8 +257,8 @@ function hash01(a: number, b: number): number {
   return (h >>> 0) / 0x100000000;
 }
 
-export function beamImpactCellKey(
-  kind: BeamImpactSurface,
+export function damageImpactCellKey(
+  kind: DamageImpactSurface,
   x: number,
   y: number,
   z: number,
@@ -218,7 +267,9 @@ export function beamImpactCellKey(
   return packedCellKey3D(kindNumber(kind), x, y, z, cellSize);
 }
 
-function beamImpactSpatialCellKey(
+export const beamImpactCellKey = damageImpactCellKey;
+
+function damageImpactSpatialCellKey(
   x: number,
   y: number,
   z: number,
@@ -239,15 +290,31 @@ export function classifyBeamImpactSurface(
   return hitEntity ? 'entity' : 'endpoint';
 }
 
-export class BeamImpact3D {
+export function classifyDamageImpactSurface(
+  endpointZ: number,
+  terrainZ: number,
+  waterAtEndpoint: boolean,
+  waterLevel: number,
+  hitEntity: boolean,
+  tolerance: number = TERRAIN_ENDPOINT_TOLERANCE,
+): DamageImpactSurface {
+  if (Math.abs(endpointZ - terrainZ) <= tolerance) return 'terrain';
+  if (waterAtEndpoint && Math.abs(endpointZ - waterLevel) <= tolerance) return 'water';
+  return hitEntity ? 'entity' : 'blast';
+}
+
+export class DamageImpact3D {
   private readonly root = new THREE.Group();
-  private readonly burnVolume: BeamBurnVolume3D;
+  private readonly burnVolume: DamageBurnVolume3D;
   private readonly sites = new Map<ImpactSiteKey, ImpactSite>();
   private readonly siteScratch: ImpactSite[] = [];
   private timeSec = 0;
   private spawnCarry = 0;
   private spawnSerial = 0;
   private spawnCursor = 0;
+  private particleBirthsThisUpdate = 0;
+  private updateSerial = 0;
+  private readonly pendingImpacts: DamageImpactRequest[] = [];
 
   private readonly sitePositions = new Float32Array(IMPACT_SITE_CAP * 3);
   private readonly siteRadius = new Float32Array(IMPACT_SITE_CAP);
@@ -257,6 +324,17 @@ export class BeamImpact3D {
   private readonly siteGeometry = new THREE.BufferGeometry();
   private readonly siteMaterial: THREE.ShaderMaterial;
   private readonly sitePoints: THREE.Points;
+  private readonly debugDamageVolumeGeometry = createPrimitiveSphereGeometry('effect', 'far');
+  private readonly debugDamageVolumeMaterial = new THREE.MeshBasicMaterial({
+    color: COLORS.effects.projectile.explosionRadius.colorHex,
+    transparent: true,
+    opacity: Math.max(0.3, COLORS.effects.projectile.explosionRadius.opacity),
+    depthTest: true,
+    depthWrite: false,
+    wireframe: true,
+  });
+  private readonly debugDamageVolumeMesh: THREE.InstancedMesh;
+  private readonly debugDamageVolumeMatrix = new THREE.Matrix4();
 
   private readonly particleMotion = new Float32Array(EJECTA_CAP * 4);
   private readonly particleBirthLifeKindSeed = new Float32Array(EJECTA_CAP * 4);
@@ -279,10 +357,10 @@ export class BeamImpact3D {
   constructor(
     parentWorld: THREE.Group,
     private readonly scope: ViewportFootprint,
-    private readonly environment: BeamImpactEnvironment,
+    private readonly environment: DamageImpactEnvironment,
   ) {
     parentWorld.add(this.root);
-    this.burnVolume = new BeamBurnVolume3D(this.root);
+    this.burnVolume = new DamageBurnVolume3D(this.root);
 
     this.siteGeometry.setAttribute(
       'position',
@@ -320,6 +398,17 @@ export class BeamImpact3D {
     this.sitePoints.renderOrder = 13;
     this.root.add(this.sitePoints);
 
+    this.debugDamageVolumeMesh = new THREE.InstancedMesh(
+      this.debugDamageVolumeGeometry,
+      this.debugDamageVolumeMaterial,
+      IMPACT_SITE_CAP,
+    );
+    this.debugDamageVolumeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.debugDamageVolumeMesh.count = 0;
+    this.debugDamageVolumeMesh.frustumCulled = false;
+    this.debugDamageVolumeMesh.renderOrder = 15;
+    this.root.add(this.debugDamageVolumeMesh);
+
     this.particleMotionAttr = new THREE.InstancedBufferAttribute(this.particleMotion, 4)
       .setUsage(THREE.DynamicDrawUsage);
     this.particleBirthAttr = new THREE.InstancedBufferAttribute(this.particleBirthLifeKindSeed, 4)
@@ -349,18 +438,36 @@ export class BeamImpact3D {
     this.root.add(this.particleMesh);
   }
 
+  /** Queue a one-shot damage event. Events are consumed with the next render
+   *  update so scorch, residue, site consolidation, and GPU uploads share the
+   *  exact same bounded frame lifecycle as continuous beam endpoints. */
+  spawnDamageImpact(request: DamageImpactRequest): void {
+    if (this.pendingImpacts.length >= MAX_QUEUED_DAMAGE_IMPACTS) return;
+    if (
+      !Number.isFinite(request.x) ||
+      !Number.isFinite(request.y) ||
+      !Number.isFinite(request.z) ||
+      !Number.isFinite(request.damageRadius) ||
+      request.damageRadius <= 0
+    ) return;
+    this.pendingImpacts.push(request);
+  }
+
   update(
     projectiles: readonly Entity[],
     dtMs: number,
     view?: RenderViewState3D,
   ): void {
     const dtSec = Math.min(0.25, Math.max(0, dtMs) / 1000);
+    this.updateSerial = (this.updateSerial + 1) & 0x3fffffff;
     this.timeSec += dtSec;
     const viewportHeight = Math.max(1, view?.viewportHeightPx ?? 1080);
     this.siteMaterial.uniforms.uViewportHeight.value = viewportHeight;
     this.particleMaterial.uniforms.uTimeSec.value = this.timeSec;
     this.burnVolume.beginFrame(this.timeSec, dtMs);
     this.siteScratch.length = 0;
+    this.particleBirthsThisUpdate = 0;
+    this.processPendingDamageImpacts();
 
     for (let i = 0; i < projectiles.length; i++) {
       const entity = projectiles[i];
@@ -376,7 +483,7 @@ export class BeamImpact3D {
       if (!this.scope.inScope(end.x, end.y, 200)) continue;
       const prev = points[points.length - 2];
       const hitEntity = projectile.obstructionT !== null;
-      const key = beamImpactSpatialCellKey(end.x, end.y, end.z);
+      const key = damageImpactSpatialCellKey(end.x, end.y, end.z);
       let site = this.sites.get(key);
       const isNewSite = site === undefined;
       if (!site) {
@@ -396,6 +503,8 @@ export class BeamImpact3D {
           y: end.y,
           z: end.z,
           radius: 1,
+          damageRadius: 0,
+          radiusUpdateSerial: -1,
           heat: 0,
           lastHitSec: this.timeSec,
           kind,
@@ -421,7 +530,11 @@ export class BeamImpact3D {
         // The same endpoint cell can alternate between a clear range endpoint
         // and an obstructing body as units move through the beam. Terrain and
         // water are stable spatial classifications; body occupancy is not.
-        if (site.kind === 'entity' || site.kind === 'endpoint') {
+        if (
+          site.kind === 'entity' ||
+          site.kind === 'endpoint' ||
+          site.kind === 'blast'
+        ) {
           site.kind = hitEntity ? 'entity' : 'endpoint';
         }
       }
@@ -444,9 +557,10 @@ export class BeamImpact3D {
         this.writeSurfaceNormal(site);
       }
       const visual = projectile.config.shotProfile.visual;
-      site.radius = Math.max(
-        site.radius,
+      this.recordSiteRadii(
+        site,
         Math.min(56, Math.max(visual.lineRadius * 1.4, visual.lineDamageSphereRadius * 0.42)),
+        visual.lineDamageSphereRadius,
       );
       const shot = projectile.config.shot;
       const dps = shot.type === 'beam' || shot.type === 'laser'
@@ -476,7 +590,140 @@ export class BeamImpact3D {
 
     this.rebuildSites();
     this.spawnEjecta(dtSec);
+    this.uploadParticles();
     this.burnVolume.endFrame();
+  }
+
+  private processPendingDamageImpacts(): void {
+    const pending = this.pendingImpacts;
+    for (let i = 0; i < pending.length; i++) {
+      const impact = pending[i];
+      if (!this.scope.inScope(impact.x, impact.y, 200)) continue;
+      const damageRadius = Math.max(0.01, impact.damageRadius);
+      const terrainZ = this.environment.getTerrainZ(impact.x, impact.y);
+      const kind = classifyDamageImpactSurface(
+        impact.z,
+        terrainZ,
+        this.environment.isWaterAt?.(impact.x, impact.y) ?? false,
+        this.environment.waterLevel,
+        impact.hitEntity === true,
+        Math.max(TERRAIN_ENDPOINT_TOLERANCE, damageRadius * 0.08),
+      );
+      const key = damageImpactSpatialCellKey(impact.x, impact.y, impact.z);
+      let site = this.sites.get(key);
+      if (!site) {
+        if (this.sites.size >= IMPACT_SITE_CAP) this.evictOldestSite();
+        site = {
+          key,
+          x: impact.x,
+          y: impact.y,
+          z: impact.z,
+          radius: 1,
+          damageRadius: 0,
+          radiusUpdateSerial: -1,
+          heat: 0,
+          lastHitSec: this.timeSec,
+          kind,
+          normalX: 0,
+          normalY: 0,
+          normalZ: 1,
+          incomingX: 0,
+          incomingY: 0,
+          incomingZ: 0,
+          seed: hash01(
+            impact.seedSource ?? this.spawnSerial,
+            Math.floor(impact.x / IMPACT_CELL_SIZE) ^
+              Math.imul(Math.floor(impact.y / IMPACT_CELL_SIZE), 73856093) ^
+              Math.imul(Math.floor(impact.z / IMPACT_CELL_SIZE), 19349663),
+          ),
+        };
+        this.sites.set(key, site);
+      } else {
+        this.sites.delete(key);
+        this.sites.set(key, site);
+      }
+
+      const age = Math.max(0, this.timeSec - site.lastHitSec);
+      site.heat *= Math.exp(-age / 0.2);
+      site.x = impact.x;
+      site.y = impact.y;
+      site.z = impact.z;
+      site.kind = kind;
+      const incomingX = impact.incomingX ?? 0;
+      const incomingY = impact.incomingY ?? 0;
+      const incomingZ = impact.incomingZ ?? 0;
+      const incomingLength = Math.sqrt(
+        incomingX * incomingX + incomingY * incomingY + incomingZ * incomingZ,
+      );
+      if (incomingLength > 1e-6) {
+        site.incomingX = incomingX / incomingLength;
+        site.incomingY = incomingY / incomingLength;
+        site.incomingZ = incomingZ / incomingLength;
+      } else {
+        site.incomingX = 0;
+        site.incomingY = 0;
+        site.incomingZ = 0;
+      }
+      this.writeSurfaceNormal(site);
+      this.recordSiteRadii(
+        site,
+        Math.min(56, Math.max(1.5, damageRadius * 0.42)),
+        damageRadius,
+      );
+      const energy = Math.max(
+        0.2,
+        Number.isFinite(impact.energy) ? impact.energy ?? 0 : Math.sqrt(damageRadius) * 0.16,
+      );
+      site.heat = Math.min(1.25, Math.max(site.heat, 0.86) + energy * 0.12);
+      site.lastHitSec = this.timeSec;
+
+      const residueRadius = Math.min(24, Math.max(4, damageRadius * 0.24));
+      if (kind === 'terrain') {
+        this.environment.depositGroundBurn?.(
+          impact.x,
+          impact.y,
+          Math.max(4, damageRadius * 1.2),
+          energy,
+        );
+      } else if (kind !== 'water') {
+        this.burnVolume.deposit(
+          impact.x,
+          impact.y,
+          impact.z,
+          residueRadius,
+          energy,
+        );
+      }
+
+      const detailScale = Math.max(0, Math.min(1, impact.detailScale ?? 1));
+      const requestedBirths = Math.max(
+        1,
+        Math.round((5 + Math.sqrt(damageRadius) * 2.4) * detailScale),
+      );
+      const availableBirths = Math.max(
+        0,
+        MAX_EJECTA_BIRTHS_PER_UPDATE - this.particleBirthsThisUpdate,
+      );
+      const birthCount = Math.min(requestedBirths, availableBirths);
+      for (let birth = 0; birth < birthCount; birth++) this.spawnParticle(site);
+      this.particleBirthsThisUpdate += birthCount;
+    }
+    pending.length = 0;
+  }
+
+  private recordSiteRadii(
+    site: ImpactSite,
+    visualRadius: number,
+    damageRadius: number,
+  ): void {
+    if (site.radiusUpdateSerial !== this.updateSerial) {
+      site.radius = visualRadius;
+      site.damageRadius = damageRadius;
+      site.radiusUpdateSerial = this.updateSerial;
+      return;
+    }
+    site.radius = Math.max(site.radius, visualRadius);
+    site.damageRadius = Math.max(site.damageRadius, damageRadius);
   }
 
   private writeSurfaceNormal(site: ImpactSite): void {
@@ -497,7 +744,8 @@ export class BeamImpact3D {
       site.normalZ = -site.incomingZ;
     } else {
       // A finite/free endpoint is not a surface. Its white marker ejecta uses
-      // isotropic motion, so this normal is only a harmless fallback.
+      // forward scatter, while a free-space blast uses radial scatter. This
+      // normal is only a harmless fallback for either non-surface category.
       site.normalX = 0;
       site.normalY = 0;
       site.normalZ = 1;
@@ -520,6 +768,8 @@ export class BeamImpact3D {
 
   private rebuildSites(): void {
     let count = 0;
+    let debugDamageVolumeCount = 0;
+    const showDamageVolumes = getVolumeToggle('explosion');
     for (const [key, site] of this.sites) {
       const age = Math.max(0, this.timeSec - site.lastHitSec);
       if (age > IMPACT_SITE_TAIL_SEC) {
@@ -536,9 +786,25 @@ export class BeamImpact3D {
       this.siteHeat[count] = heat;
       this.siteKind[count] = kindNumber(site.kind);
       this.siteSeed[count] = site.seed;
+      if (showDamageVolumes && site.damageRadius > 0) {
+        this.debugDamageVolumeMatrix.makeScale(
+          site.damageRadius,
+          site.damageRadius,
+          site.damageRadius,
+        );
+        this.debugDamageVolumeMatrix.setPosition(site.x, site.z, site.y);
+        this.debugDamageVolumeMesh.setMatrixAt(
+          debugDamageVolumeCount++,
+          this.debugDamageVolumeMatrix,
+        );
+      }
       count++;
     }
     this.siteGeometry.setDrawRange(0, count);
+    this.debugDamageVolumeMesh.count = debugDamageVolumeCount;
+    if (debugDamageVolumeCount > 0) {
+      this.debugDamageVolumeMesh.instanceMatrix.needsUpdate = true;
+    }
     if (count <= 0) return;
     uploadPrefixRange(this.siteGeometry.getAttribute('position') as THREE.BufferAttribute, count * 3);
     uploadPrefixRange(this.siteGeometry.getAttribute('aRadius') as THREE.BufferAttribute, count);
@@ -552,13 +818,25 @@ export class BeamImpact3D {
     if (active.length === 0 || dtSec <= 0) return;
     const birthsPerSec = Math.min(MAX_EJECTA_BIRTHS_PER_SECOND, active.length * 28);
     this.spawnCarry += birthsPerSec * dtSec;
-    const birthCount = Math.min(MAX_EJECTA_BIRTHS_PER_UPDATE, Math.floor(this.spawnCarry));
-    this.spawnCarry -= birthCount;
+    const availableBirths = Math.max(
+      0,
+      MAX_EJECTA_BIRTHS_PER_UPDATE - this.particleBirthsThisUpdate,
+    );
+    const requestedBirths = Math.floor(this.spawnCarry);
+    const birthCount = Math.min(availableBirths, requestedBirths);
+    // A one-shot burst may consume this frame's bounded birth budget. Discard
+    // the starved whole births instead of replaying a stale particle avalanche
+    // after combat becomes quiet; preserve only the fractional carry.
+    this.spawnCarry -= requestedBirths;
     for (let i = 0; i < birthCount; i++) {
       const site = active[this.spawnCursor % active.length];
       this.spawnCursor++;
       this.spawnParticle(site);
     }
+    this.particleBirthsThisUpdate += birthCount;
+  }
+
+  private uploadParticles(): void {
     if (this.particleHighWater > 0) {
       this.particleMesh.count = this.particleHighWater;
       uploadDirtySlotSpan(this.particleMesh.instanceMatrix, this.particleMatrixDirty, 16);
@@ -607,6 +885,18 @@ export class BeamImpact3D {
         randomY * ENDPOINT_EJECTA_RANDOM_SPREAD) * speed;
       vz = (site.incomingZ * ENDPOINT_EJECTA_FORWARD_SPEED +
         randomZ * ENDPOINT_EJECTA_RANDOM_SPREAD) * speed;
+    } else if (site.kind === 'blast') {
+      // Free-space detonations inherit some shot momentum but remain radial:
+      // the damage volume is spherical even while its hot matter drifts with
+      // the projectile that supplied the energy.
+      const randomZ = r0 * 2 - 1;
+      const randomRadial = Math.sqrt(Math.max(0, 1 - randomZ * randomZ));
+      const randomAzimuth = r1 * Math.PI * 2;
+      const randomX = Math.cos(randomAzimuth) * randomRadial;
+      const randomY = Math.sin(randomAzimuth) * randomRadial;
+      vx = (randomX + site.incomingX * 0.35) * speed;
+      vy = (randomY + site.incomingY * 0.35) * speed;
+      vz = (randomZ + site.incomingZ * 0.35) * speed;
     } else {
       // Real terrain/water/body contacts do have a response normal. Build an
       // orthonormal basis around it so debris reacts to the impact surface.
@@ -659,7 +949,9 @@ export class BeamImpact3D {
       ? Math.max(1.4, site.radius * 0.09)
       : Math.max(1.2, site.radius * 0.075);
     const chunkSize = baseChunkSize * sizeScale;
-    const surfaceOffset = site.kind === 'endpoint' ? 0 : chunkSize * 0.35;
+    const surfaceOffset = site.kind === 'endpoint' || site.kind === 'blast'
+      ? 0
+      : chunkSize * 0.35;
     this.particlePosition.set(
       site.x + site.normalX * surfaceOffset,
       site.z + site.normalZ * surfaceOffset,
@@ -691,12 +983,18 @@ export class BeamImpact3D {
   destroy(): void {
     this.sites.clear();
     this.siteScratch.length = 0;
+    this.pendingImpacts.length = 0;
     clearDirtySlotSpan(this.particleMatrixDirty);
     clearDirtySlotSpan(this.particleMotionDirty);
     clearDirtySlotSpan(this.particleBirthDirty);
     this.burnVolume.destroy();
     disposeMesh(this.sitePoints);
     disposeMesh(this.particleMesh);
+    disposeMesh(this.debugDamageVolumeMesh);
     this.root.parent?.remove(this.root);
   }
 }
+
+/** Compatibility export for call sites that have not yet adopted the shared
+ * damage-impact name. New code should use DamageImpact3D. */
+export { DamageImpact3D as BeamImpact3D };

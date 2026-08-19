@@ -27,6 +27,12 @@ import {
   metalDepositSurfaceFieldCoverage,
   metalDepositSurfaceFieldUniformDeclarations,
 } from './MetalDepositSurfaceField3D';
+import {
+  TERRAIN_OUTWARD_NORMAL_LEVELS,
+  TERRAIN_OUTWARD_NORMAL_UNIFORM,
+  terrainOutwardNormalFragment,
+  terrainOutwardNormalUniformDeclaration,
+} from './TerrainOutwardNormal3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -215,9 +221,67 @@ function checkMetalLayerContract(): void {
   );
 }
 
+/** The terrain is drawn by its back faces, so three inverts the authored
+ *  upward normal before lighting. Ore is lit THROUGH that normal, so the
+ *  correction below is the difference between ore that catches the sun on its
+ *  sunward slope and ore that catches it on the shadowed one. Both failure
+ *  modes here are silent: they compile. */
+function checkOutwardNormalContract(): void {
+  const declaration = terrainOutwardNormalUniformDeclaration();
+  const fragment = terrainOutwardNormalFragment();
+
+  assertContract(
+    declaration.includes(`${TERRAIN_OUTWARD_NORMAL_UNIFORM};`),
+    'the outward-normal uniform block must declare the uniform its fragment reads',
+  );
+  for (const read of fragment.matchAll(/\bu[A-Z]\w*/g)) {
+    assertContract(
+      read[0] === TERRAIN_OUTWARD_NORMAL_UNIFORM,
+      `outward-normal fragment reads ${read[0]}, which its declaration does not supply`,
+    );
+  }
+
+  // It must multiply the normal by faceDirection — that is the whole
+  // correction; three squared it away and this undoes it.
+  assertContract(
+    /normal \*= mix\(1\.0, faceDirection, /.test(fragment),
+    'the correction must restore the authored normal by multiplying through ' +
+    'faceDirection a second time',
+  );
+
+  // THE TRAP: the ore scope must STEP on coverage, never interpolate. Mixing
+  // the multiplier between 1 and -1 passes through zero, which hands the
+  // lighting a zero-length normal across the whole anti-aliased ore edge —
+  // a band of black fragments produced by code that compiles cleanly.
+  assertContract(
+    fragment.includes('step(0.5, metalCoverage)'),
+    'the ore scope must step on metalCoverage; interpolating the normal ' +
+    'multiplier passes through zero and produces a degenerate normal at the edge',
+  );
+  assertContract(
+    !/mix\([^)]*metalCoverage[^)]*\)/.test(fragment),
+    'the normal multiplier must not be mixed by metalCoverage directly',
+  );
+
+  assertContract(
+    TERRAIN_OUTWARD_NORMAL_LEVELS.off === 0 &&
+    TERRAIN_OUTWARD_NORMAL_LEVELS.ore === 1 &&
+    TERRAIN_OUTWARD_NORMAL_LEVELS.terrain === 2,
+    'outward-normal scope levels must match the ordering the fragment compares against',
+  );
+  // The fragment's thresholds have to agree with those levels, or a scope
+  // silently resolves to the wrong branch.
+  assertContract(
+    fragment.includes(`${TERRAIN_OUTWARD_NORMAL_UNIFORM} >= 2.0`) &&
+    fragment.includes(`${TERRAIN_OUTWARD_NORMAL_UNIFORM} >= 1.0`),
+    'the fragment must branch on the same scope levels the host encodes',
+  );
+}
+
 export function runMetalDepositSurfaceField3DContractTest(): void {
   checkSizeClassesCannotMoveTerrain();
   checkSurfaceFieldConfig();
   checkShaderSourceContract();
   checkMetalLayerContract();
+  checkOutwardNormalContract();
 }

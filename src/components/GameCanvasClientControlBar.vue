@@ -1043,7 +1043,7 @@ function resetEveryCustomHotkey(): void {
           >ARM</BarButton>
           <BarButton
             :active="model.volumeToggles.explosion"
-            title="EXPLOSION — the splash volume a shot detonates with, drawn on live shots that carry a death explosion."
+            title="EXPLOSION / DAMAGE — authoritative damage spheres. Draws the future splash volume on live explosive shots and the active terminal damage volume for projectile impacts and beam endpoints. Debug-only; disabled by default."
             @click="model.toggleVolume('explosion')"
           >EXP</BarButton>
         </BarButtonGroup>

@@ -113,11 +113,19 @@ export function bootstrapRtsScene3DRenderers(
     overlayLineSystem,
     threeApp.renderer.domElement,
   );
+  const burnMarkRenderer = new BurnMark3D(
+    threeApp.world,
+    renderScope,
+    (x, y) => getTerrainMeshHeight(x, y, mapWidth, mapHeight, LAND_CELL_SIZE),
+    (x, y) => getTerrainMeshNormal(x, y, mapWidth, mapHeight, LAND_CELL_SIZE),
+  );
   const beamRenderer = new BeamRenderer3D(threeApp.world, renderScope, {
     getTerrainZ: (x, y) => getTerrainMeshHeight(x, y, mapWidth, mapHeight),
     getTerrainNormal: (x, y) => getTerrainMeshNormal(x, y, mapWidth, mapHeight),
     isWaterAt: (x, y) => isWaterAt(x, y, mapWidth, mapHeight),
     waterLevel: WATER_LEVEL,
+    depositGroundBurn: (x, y, width, energy) =>
+      burnMarkRenderer.depositDamageImpact(x, y, width, energy),
   });
   const shieldRenderer = new ShieldRenderer3D(
     threeApp.world,
@@ -194,12 +202,6 @@ export function bootstrapRtsScene3DRenderers(
   const explosionRenderer = new Explosion3D(threeApp.world);
   const shieldImpactRenderer = new ShieldImpactRenderer3D(threeApp.world);
   const waterSplashRenderer = new WaterSplash3D(threeApp.world);
-  const burnMarkRenderer = new BurnMark3D(
-    threeApp.world,
-    renderScope,
-    (x, y) => getTerrainMeshHeight(x, y, mapWidth, mapHeight, LAND_CELL_SIZE),
-    (x, y) => getTerrainMeshNormal(x, y, mapWidth, mapHeight, LAND_CELL_SIZE),
-  );
   const groundPrintRenderer = new GroundPrint3D(
     threeApp.world,
     renderScope,
