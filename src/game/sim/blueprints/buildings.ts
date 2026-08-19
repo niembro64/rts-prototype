@@ -183,6 +183,33 @@ export const RADAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingRadar.vi
 export const SONAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingSonar.visualHeight;
 export const MEGA_BEAM_TOWER_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.towerBeamMega.visualHeight;
+/** Paired emitter layout in the heavy tower head's local aim frame. Keeping
+ * this derived from the weapon sockets makes its housing and authoritative
+ * QueryWeapon origins share one source of truth. */
+export const HEAVY_BEAM_TOWER_EMITTER_LAYOUT = (() => {
+  const mounts = BUILDING_BLUEPRINTS.towerBeamMega.turrets;
+  if (mounts.length !== 2) {
+    throw new Error('Heavy Beam Tower must expose exactly two emitter sockets');
+  }
+  const left = mounts[0].hostAttachment;
+  const right = mounts[1].hostAttachment;
+  if (
+    left?.kind !== 'buildingAimPiece' ||
+    right?.kind !== 'buildingAimPiece' ||
+    left.piece !== 'beamHead' ||
+    right.piece !== 'beamHead' ||
+    left.socketOffset.x !== right.socketOffset.x ||
+    left.socketOffset.y !== -right.socketOffset.y ||
+    left.socketOffset.z !== 0 ||
+    right.socketOffset.z !== 0
+  ) {
+    throw new Error('Heavy Beam Tower emitter sockets must form a symmetric beamHead pair');
+  }
+  return Object.freeze({
+    forwardOffset: left.socketOffset.x,
+    lateralHalfSpan: Math.abs(left.socketOffset.y),
+  });
+})();
 export const LIGHT_BEAM_TOWER_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.towerBeamLight.visualHeight;
 export const SHIELD_TARGETING_TECH_BUILDING_VISUAL_HEIGHT =

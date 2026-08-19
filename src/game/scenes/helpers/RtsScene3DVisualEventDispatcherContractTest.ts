@@ -135,6 +135,14 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
     particleMesh: THREE.InstancedMesh;
     siteKind: Float32Array;
   };
+  const particleFragmentShader = (
+    internals.particleMesh.material as THREE.ShaderMaterial
+  ).fragmentShader;
+  assertContract(
+    particleFragmentShader.includes('blastBirthColor = vec3(1.0, 0.82, 0.06)') &&
+      particleFragmentShader.includes('smoothstep(0.06, 0.20, vAge01)'),
+    'fire-blast tetrahedra must begin yellow-hot before rejoining their established red fade',
+  );
   try {
     setVolumeToggle('explosion', false);
     renderer.spawnDamageImpact({

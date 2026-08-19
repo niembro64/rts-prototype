@@ -154,10 +154,42 @@ export function runBuildingTurretPresentation3DContractTest(): void {
       'heavy beam barrel stations do not render independent turret heads',
     );
     assertContract(
-      Math.abs(beamMesh.turrets[0].root.position.z) === 17.5 &&
-        Math.abs(beamMesh.turrets[1].root.position.z) === 17.5 &&
+      beamMesh.turrets.every((turret) => turret.root.position.x === 24) &&
+        Math.abs(beamMesh.turrets[0].root.position.z) === 24 &&
+        Math.abs(beamMesh.turrets[1].root.position.z) === 24 &&
         beamMesh.turrets[0].root.position.z === -beamMesh.turrets[1].root.position.z,
-      'heavy beam barrels retain one head direction at 2.5 times their prior separation',
+      'heavy beam barrels sit farther apart and project ahead of the shared shaft attachment',
+    );
+    const beamHeadHousing = beamHead.pitchRoot.getObjectByName('heavyBeamHeadHousing');
+    const beamHeadYoke = beamHead.pitchRoot.getObjectByName('heavyBeamHeadYoke');
+    const beamEmitterPods = [
+      beamHead.pitchRoot.getObjectByName('heavyBeamEmitterPodLeft'),
+      beamHead.pitchRoot.getObjectByName('heavyBeamEmitterPodRight'),
+    ];
+    const beamEmitterBands = [
+      beamHead.pitchRoot.getObjectByName('heavyBeamEmitterBandLeft'),
+      beamHead.pitchRoot.getObjectByName('heavyBeamEmitterBandRight'),
+    ];
+    assertContract(
+      beamHeadHousing instanceof THREE.Mesh &&
+        beamHeadHousing.scale.x > 36 &&
+        beamHeadHousing.scale.y >= 28 &&
+        beamHeadYoke instanceof THREE.Mesh &&
+        beamHeadYoke.scale.y > 60,
+      'heavy beam shared head keeps its enlarged central housing and broad support yoke',
+    );
+    assertContract(
+      beamEmitterPods.every((pod) => (
+        pod instanceof THREE.Mesh &&
+        Math.abs(pod.position.z) === 24 &&
+        pod.position.x + pod.scale.y / 2 === 24
+      )) &&
+        beamEmitterBands.every((band) => (
+          band instanceof THREE.Mesh &&
+          Math.abs(band.position.z) === 24 &&
+          band.position.x + band.scale.y / 2 === 24
+        )),
+      'two separate forward housings and bands terminate exactly at their beam-emitter sockets',
     );
     assertContract(
       torpedoMesh.turrets.length === 2 &&

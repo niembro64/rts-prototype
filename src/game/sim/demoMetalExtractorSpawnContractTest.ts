@@ -994,14 +994,23 @@ function runDemoMetalExtractorSpawnContractTestForPreset(
     const coveredIds = extractor.coveredDepositIds;
     assertContract(coveredIds !== null, `extractor ${extractor.id} must publish covered deposit ids`);
     assertContract(
-      coveredIds.length === 1,
-      `extractor ${extractor.id} must cover exactly one authored deposit; got ${coveredIds.length}`,
+      coveredIds.length >= 1,
+      `extractor ${extractor.id} must cover an authored deposit`,
     );
-    const deposit = depositById.get(coveredIds[0]);
-    assertContract(deposit !== undefined, `extractor ${extractor.id} covered an unknown deposit`);
+    // The authored centre pieces are deliberately huge and deliberately
+    // overlap, so a footprint can straddle two ore bodies and which of them
+    // claims a shared cell is arbitrary. Income does not care — it counts ore
+    // cells, not deposits. What must hold is that the extractor is centred on
+    // a deposit it actually covers.
+    const deposit = coveredIds
+      .map((coveredId) => depositById.get(coveredId))
+      .find((covered) =>
+        covered !== undefined &&
+        extractor.transform.x === covered.x &&
+        extractor.transform.y === covered.y);
     assertContract(
-      extractor.transform.x === deposit.x && extractor.transform.y === deposit.y,
-      `extractor ${extractor.id} must be centered on deposit ${deposit.id}`,
+      deposit !== undefined,
+      `extractor ${extractor.id} must be centered on a deposit it covers`,
     );
     assertContract(
       Math.abs(

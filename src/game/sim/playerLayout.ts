@@ -8,10 +8,13 @@ import {
 
 export { normalizePlayerIds } from './teamRoster';
 
-// Angular anchor for ally team 0 on radial maps. Rotated 45 degrees
-// counterclockwise from the top so the first side starts in a
-// square-map corner rather than on a flat side.
-const FIRST_ALLY_TEAM_ANGLE = -Math.PI / 2 + Math.PI / 4;
+// Angular anchor for ally team 0 on radial maps: straight up the -Y axis, so
+// the first side is backed against the top EDGE of the square map rather than
+// wedged into a corner. Every radial layout is phased off this one angle —
+// terrain divider ridges, deposit ring slices, prebuilt base arcs, seat
+// spread, camera pre-framing — so turning it rotates the whole generated
+// world as one piece. The Rust mirror is METAL_DEPOSIT_FIRST_PLAYER_ANGLE.
+const FIRST_ALLY_TEAM_ANGLE = -Math.PI / 2;
 
 function getLayoutAllyTeamCount(allyTeamCount: number): number {
   return Math.max(1, Math.floor(allyTeamCount));

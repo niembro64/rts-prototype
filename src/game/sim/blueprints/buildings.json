@@ -789,8 +789,8 @@
           "kind": "buildingAimPiece",
           "piece": "beamHead",
           "socketOffset": {
-            "x": 0,
-            "y": 17.5,
+            "x": 24,
+            "y": 24,
             "z": 0
           }
         },
@@ -843,8 +843,8 @@
           "kind": "buildingAimPiece",
           "piece": "beamHead",
           "socketOffset": {
-            "x": 0,
-            "y": -17.5,
+            "x": 24,
+            "y": -24,
             "z": 0
           }
         },

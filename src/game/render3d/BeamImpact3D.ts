@@ -181,7 +181,19 @@ const PARTICLE_FRAGMENT_SHADER = /* glsl */`
     vec3 waterColor = mix(vec3(0.82, 0.96, 1.0), vec3(0.34, 0.48, 0.54), vAge01);
     vec3 entityColor = mix(vec3(1.0, 0.16, 0.008), vec3(0.12, 0.035, 0.012), vAge01);
     vec3 endpointColor = mix(vec3(1.0), vec3(0.52, 0.57, 0.62), vAge01);
-    vec3 blastColor = mix(vec3(1.0, 0.20, 0.008), vec3(0.11, 0.025, 0.008), vAge01);
+    // Keep the established red-to-dark blast fade intact after the opening
+    // flash; only prepend a short yellow-hot birth color for the tetrahedra.
+    vec3 blastRedFade = mix(
+      vec3(1.0, 0.20, 0.008),
+      vec3(0.11, 0.025, 0.008),
+      vAge01
+    );
+    vec3 blastBirthColor = vec3(1.0, 0.82, 0.06);
+    vec3 blastColor = mix(
+      blastBirthColor,
+      blastRedFade,
+      smoothstep(0.06, 0.20, vAge01)
+    );
     vec3 color = vKind < 0.5
       ? terrainColor
       : (vKind < 1.5

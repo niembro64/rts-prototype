@@ -36,8 +36,11 @@ pub(crate) const TERRAIN_PIPELINE_STAGE_COUNT: usize = 6;
 /// TERRAIN_FLAT_ZONE_WASM_STRIDE in terrainGenerationConfig.ts.
 pub(crate) const METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE: usize = 7;
 pub(crate) const METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT: usize = 4;
-pub(crate) const METAL_DEPOSIT_FIRST_PLAYER_ANGLE: f64 =
-    -std::f64::consts::FRAC_PI_2 + std::f64::consts::FRAC_PI_4;
+/// Mirror of FIRST_ALLY_TEAM_ANGLE in playerLayout.ts: side 0 is centred
+/// straight up the -Y axis, backed against the map's top edge. Deposit ring
+/// slices and the divider ridges between sides are both phased off it, so the
+/// generated world turns as one piece if it ever moves.
+pub(crate) const METAL_DEPOSIT_FIRST_PLAYER_ANGLE: f64 = -std::f64::consts::FRAC_PI_2;
 pub(crate) const METAL_DEPOSIT_D_TERRAIN_NULL: f64 = f64::NAN;
 
 #[derive(Clone, Copy)]
@@ -423,7 +426,11 @@ pub(crate) fn terrain_generated_natural_height(
     let team_count = cfg.team_count;
     if team_count > 0 && oval.distance > 0.0 {
         let cycle = std::f64::consts::TAU / team_count as f64;
-        let mut pos = (oval.angle + std::f64::consts::FRAC_PI_4) % cycle;
+        // A ridge sits exactly halfway between two adjacent side centres, so
+        // its phase is the first side's angle negated. Derived, never an
+        // independent constant: an independent one drifts off the sides it is
+        // supposed to divide the moment the layout rotates.
+        let mut pos = (oval.angle - METAL_DEPOSIT_FIRST_PLAYER_ANGLE) % cycle;
         if pos < 0.0 {
             pos += cycle;
         }

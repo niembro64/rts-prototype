@@ -3,6 +3,7 @@ import { COLORS } from '@/colorsConfig';
 import {
   ANTI_AIR_TOWER_VISUAL_HEIGHT,
   CANNON_TOWER_VISUAL_HEIGHT,
+  HEAVY_BEAM_TOWER_EMITTER_LAYOUT,
   LIGHT_BEAM_TOWER_VISUAL_HEIGHT,
   MEGA_BEAM_TOWER_VISUAL_HEIGHT,
 } from '../sim/blueprints';
@@ -78,10 +79,14 @@ type DefenseTowerMeshProfile = {
   trimMaterial: THREE.Material;
   /** Cross-yoke carrying the two rigid barrel sockets on a common head. */
   emitterYoke: {
-    halfSpan: number;
     beamRadius: number;
-    padRadiusFactor: number;
-    padHeight: number;
+    housingRadiusFactor: number;
+    housingHeight: number;
+    podRadiusFactor: number;
+    podDepth: number;
+    frontBandDepth: number;
+    yokeForwardOffset: number;
+    yokeEndPadding: number;
   } | null;
 };
 
@@ -129,10 +134,14 @@ const heavyBeamTowerProfile: DefenseTowerMeshProfile = {
   socketY: MEGA_BEAM_TOWER_VISUAL_HEIGHT + 2,
   trimMaterial: beamTowerTrimMat,
   emitterYoke: {
-    halfSpan: 45,
-    beamRadius: 3.2,
-    padRadiusFactor: 0.3,
-    padHeight: 4,
+    beamRadius: 4.1,
+    housingRadiusFactor: 0.56,
+    housingHeight: 28,
+    podRadiusFactor: 0.29,
+    podDepth: 20,
+    frontBandDepth: 3.6,
+    yokeForwardOffset: 8,
+    yokeEndPadding: 10,
   },
 };
 
@@ -331,22 +340,49 @@ function buildDefenseTowerMesh(
     );
     details.push(detail(socket, 'min', undefined, 'static'));
   } else if (variant === 'beamHeavy') {
-    // The housing and yoke belong to the one shared yaw+pitch head. Weapon
-    // meshes contribute only the two rigid barrels beneath this piece.
-    details.push(hostPieceDetail(
-      HEAVY_BEAM_HEAD_PIECE_ID,
-      makeCylinder(primaryMat, foot * 0.45, 22, 0, 0, 0),
-    ));
-    const spar = makeCylinder(
-      profile.trimMaterial,
-      yoke.beamRadius,
-      yoke.halfSpan * 1.35,
+    // The enlarged center housing and cross-yoke remain one yaw+pitch head,
+    // while the two deep forward pods give each rigid emitter a clearly
+    // separate physical home. Their front faces terminate exactly at the
+    // blueprint sockets; the established glowing cone emitters start there.
+    const emitterForward = HEAVY_BEAM_TOWER_EMITTER_LAYOUT.forwardOffset;
+    const emitterHalfSpan = HEAVY_BEAM_TOWER_EMITTER_LAYOUT.lateralHalfSpan;
+    const housing = makeCylinder(
+      primaryMat,
+      foot * yoke.housingRadiusFactor,
+      yoke.housingHeight,
       0,
       0,
       0,
     );
+    housing.name = 'heavyBeamHeadHousing';
+    details.push(hostPieceDetail(
+      HEAVY_BEAM_HEAD_PIECE_ID,
+      housing,
+    ));
+    const spar = makeCylinder(
+      profile.trimMaterial,
+      yoke.beamRadius,
+      (emitterHalfSpan + yoke.yokeEndPadding) * 2,
+      yoke.yokeForwardOffset,
+      0,
+      0,
+    );
+    spar.name = 'heavyBeamHeadYoke';
     spar.rotation.x = Math.PI / 2;
     details.push(hostPieceDetail(HEAVY_BEAM_HEAD_PIECE_ID, spar));
+    for (const side of [-1, 1] as const) {
+      const pod = makeCylinder(
+        primaryMat,
+        foot * yoke.podRadiusFactor,
+        yoke.podDepth,
+        emitterForward - yoke.podDepth / 2,
+        0,
+        side * emitterHalfSpan,
+      );
+      pod.name = side < 0 ? 'heavyBeamEmitterPodLeft' : 'heavyBeamEmitterPodRight';
+      pod.rotation.z = Math.PI / 2;
+      details.push(hostPieceDetail(HEAVY_BEAM_HEAD_PIECE_ID, pod));
+    }
   } else {
     throw new Error(`Unexpected defense-tower emitter yoke for ${variant}`);
   }
@@ -395,15 +431,31 @@ function addDefenseTowerTeamOrnament(
   }
 
   if (variant === 'beamHeavy') {
-    // One band marks the one physical head; retain the established ornament
-    // role name so team-colour contracts remain stable.
-    details.push({
-      ...teamOrnamentDetail(
-        makeCylinder(primaryMat, foot * 0.47, 3.4, 0, 0, 0),
-        'beamPairedCrowns',
-      ),
-      hostPieceId: HEAVY_BEAM_HEAD_PIECE_ID,
-    });
+    const yoke = profile.emitterYoke;
+    if (yoke === null) throw new Error('Heavy Beam Tower requires its emitter yoke');
+    const emitterForward = HEAVY_BEAM_TOWER_EMITTER_LAYOUT.forwardOffset;
+    const emitterHalfSpan = HEAVY_BEAM_TOWER_EMITTER_LAYOUT.lateralHalfSpan;
+    // Two distinct team-colour bands terminate the two pod housings at the
+    // unchanged beam-emitter cones. Retain the established semantic kind so
+    // team-colour and visibility contracts remain stable.
+    for (const side of [-1, 1] as const) {
+      const band = makeCylinder(
+        primaryMat,
+        foot * yoke.podRadiusFactor * 1.06,
+        yoke.frontBandDepth,
+        emitterForward - yoke.frontBandDepth / 2,
+        0,
+        side * emitterHalfSpan,
+      );
+      band.name = side < 0
+        ? 'heavyBeamEmitterBandLeft'
+        : 'heavyBeamEmitterBandRight';
+      band.rotation.z = Math.PI / 2;
+      details.push({
+        ...teamOrnamentDetail(band, 'beamPairedCrowns'),
+        hostPieceId: HEAVY_BEAM_HEAD_PIECE_ID,
+      });
+    }
     return;
   }
 

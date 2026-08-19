@@ -525,9 +525,11 @@ export function runAuthoritativeTurretSocketContractTest(): void {
     assertContract(
       attachment?.kind === 'buildingAimPiece' &&
         attachment.piece === 'beamHead' &&
-        Math.abs(attachment.socketOffset.y) === 17.5 &&
+        attachment.socketOffset.x === 24 &&
+        Math.abs(attachment.socketOffset.y) === 24 &&
+        attachment.socketOffset.z === 0 &&
         station.mount.x === 0 && station.mount.y === 0 && station.mount.z === 114,
-      `heavy beam station ${turretIndex} is a barrel socket on the common head pivot`,
+      `heavy beam station ${turretIndex} is a widened forward barrel socket on the common head pivot`,
     );
     assertContract(
       station.config.articulation.hostAssist === 'requestAim' &&
