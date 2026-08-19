@@ -70,6 +70,11 @@ import {
   type NetworkSendBudgetTelemetry,
 } from './NetworkSendBudget';
 import { assertCurrentLobbySettings } from './LobbySettingsContract';
+import {
+  LobbyPublisher,
+  MAX_LOBBY_PLAYERS,
+  type LobbyDirectoryStatus,
+} from './LobbyDirectory';
 
 // Player-name policy lives in @/playerNamesConfig — single source of
 // truth for both seeding (random funny name keyed by playerId) and the
@@ -226,6 +231,10 @@ export class NetworkManager {
   private connections: Map<PlayerId, DataConnection> = new Map();
   private role: NetworkRole | null = null;
   private roomCode: string = '';
+  /** Publishes this host's lobby to the games.niemo.io directory so other
+   *  players can find it without being handed the room code. Only a host
+   *  ever owns a listing; clients read the directory but never write it. */
+  private readonly lobbyPublisher = new LobbyPublisher();
   private localPlayerId: PlayerId = 1;
   private nextPlayerId: PlayerId = 2;
   private roster = new NetworkLobbyRoster();
@@ -314,6 +323,7 @@ export class NetworkManager {
   }
 
   private emitPlayerJoined(player: LobbyPlayer): void {
+    this.refreshLobbyListing();
     const callback = this.onPlayerJoined;
     if (callback !== undefined) callback(player);
   }
@@ -321,6 +331,37 @@ export class NetworkManager {
   private emitPlayerLeft(playerId: PlayerId): void {
     const callback = this.onPlayerLeft;
     if (callback !== undefined) callback(playerId);
+    this.refreshLobbyListing();
+  }
+
+  /** Push the current lobby state to the public directory.
+   *
+   *  Called on every change a browsing player would care about — a seat
+   *  filling or emptying, the host renaming itself, the match starting. The
+   *  publisher de-duplicates, so calling it freely costs nothing.
+   *
+   *  Status is derived from `gameStarted` rather than passed in, so a roster
+   *  change arriving after launch cannot flip a running game back to "open"
+   *  and advertise a lobby that rejects late joiners. */
+  private refreshLobbyListing(): void {
+    if (this.role !== 'host' || this.roomCode === '') return;
+    const status: LobbyDirectoryStatus = this.gameStarted ? 'in-game' : 'open';
+    const hostName = this.getLocalPlayerName();
+    // Map size is the one setting a browsing player can act on, and it is
+    // only known once the host's lobby settings exist.
+    const settings = this.readLobbySettings();
+    const mapName =
+      settings === undefined
+        ? ''
+        : `${settings.mapWidthLandCells}x${settings.mapLengthLandCells}`;
+    this.lobbyPublisher.publish({
+      roomCode: this.roomCode,
+      name: hostName === '' ? 'Open lobby' : `${hostName}'s game`,
+      hostName,
+      status,
+      playerCount: this.roster.toArray().length,
+      mapName,
+    });
   }
 
   private emitLockstepMessage(message: NetworkLockstepMessage, fromPlayerId: PlayerId): void {
@@ -447,6 +488,10 @@ export class NetworkManager {
     if (existingPeer !== null) existingPeer.destroy();
     this.peer = null;
     this.gameStarted = false;
+    // Withdraw before the peer is gone: every teardown path (disconnect,
+    // re-host, joining someone else) passes through here, so the listing
+    // never outlives the peer that backs it.
+    this.lobbyPublisher.stop();
     return this.sessionGeneration;
   }
 
@@ -549,6 +594,10 @@ export class NetworkManager {
           this.markSignalingOpen();
           this.heartbeatTracker.start();
           console.log('Host peer opened with ID:', peer.id);
+          // Only list the lobby once the signaling server has actually
+          // accepted us: before this point the room code is not dialable,
+          // and advertising it would send joiners to a dead code.
+          this.refreshLobbyListing();
           settleResolve(this.roomCode);
         });
 
@@ -731,7 +780,7 @@ export class NetworkManager {
       return;
     }
 
-    if (this.nextPlayerId > 6) {
+    if (this.nextPlayerId > MAX_LOBBY_PLAYERS) {
       // Max players reached
       conn.close();
       return;
@@ -1172,6 +1221,8 @@ export class NetworkManager {
     if (this.role === 'host') {
       const player = this.refreshLocalPlayerInfo(false);
       if (player) this.broadcast(this.roster.buildPlayerInfoUpdateMessage(player, this.getUniversalGameId()));
+      // The listing is titled after the host, so renaming retitles it.
+      this.refreshLobbyListing();
     } else if (this.role === 'client') {
       const hostConn = this.connections.get(1);
       if (hostConn) {
@@ -1286,6 +1337,10 @@ export class NetworkManager {
       settings,
     });
     this.roster.applyBattleHandoff(handoff);
+
+    // The lobby stops accepting joiners here but stays in the directory as a
+    // running game — that is the other half of what the directory shows.
+    this.refreshLobbyListing();
 
     for (const [playerId, conn] of this.connections) {
       this.safeSend(conn, {

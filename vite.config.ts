@@ -66,6 +66,18 @@ export default defineConfig(({ command }) => {
       : undefined,
     server: {
       headers: crossOriginIsolationHeaders,
+      // The lobby directory is served from /api on games.niemo.io. Point the
+      // dev server at a local checkout of web_games_backend so the lobby
+      // browser behaves the same here as it does deployed; set
+      // BA_LOBBY_API_TARGET to aim it at the deployed backend instead.
+      // The game degrades to code-only joining when nothing answers, so a
+      // dev session without the backend running is not broken, just bare.
+      proxy: {
+        '/api': {
+          target: process.env.BA_LOBBY_API_TARGET || 'http://127.0.0.1:3001',
+          changeOrigin: true,
+        },
+      },
       ...(usePollingWatcher
         ? {
             watch: {

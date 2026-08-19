@@ -20,6 +20,11 @@ import type { MapLandCellDimensions } from '../mapSizeConfig';
 import type { BattlePreset } from './battlePresets';
 import { MAX_NAME_LENGTH } from '@/playerNamesConfig';
 import { closeCurrentTauriWindow, isTauriRuntime } from '@/browserRuntime';
+import {
+  fetchLobbyDirectory,
+  LOBBY_LIST_POLL_INTERVAL_MS,
+  type LobbyDirectoryEntry,
+} from '../game/network/LobbyDirectory';
 
 export type { LobbyPlayer } from '@/types/ui';
 import type { LobbyPlayer } from '@/types/ui';
@@ -293,6 +298,63 @@ const isTauri = isTauriRuntime();
 
 const joinCode = ref('');
 const codeCopied = ref(false);
+
+/* Open-lobby directory.
+ *
+ * Joining used to require someone reading you a four-character code. The
+ * directory lists what is open so players can find each other cold, and
+ * lists running games so the screen shows there is activity even when
+ * nothing is joinable.
+ *
+ * It polls only while this menu is actually on screen — entering a lobby or
+ * starting a battle stops it, so no timer runs during a match. Every fetch
+ * is best-effort: a backend that is down yields an empty list and the
+ * code-entry path above still works exactly as it always did. */
+const directoryLobbies = ref<readonly LobbyDirectoryEntry[]>([]);
+const directoryLoaded = ref(false);
+let directoryPollTimer: ReturnType<typeof setInterval> | null = null;
+
+const openLobbies = computed(() =>
+  directoryLobbies.value.filter((lobby) => lobby.status === 'open'),
+);
+const runningGames = computed(() =>
+  directoryLobbies.value.filter((lobby) => lobby.status === 'in-game'),
+);
+
+async function refreshDirectory(): Promise<void> {
+  const listing = await fetchLobbyDirectory();
+  directoryLobbies.value = listing.lobbies;
+  directoryLoaded.value = true;
+}
+
+function stopDirectoryPolling(): void {
+  if (directoryPollTimer === null) return;
+  clearInterval(directoryPollTimer);
+  directoryPollTimer = null;
+}
+
+function startDirectoryPolling(): void {
+  if (directoryPollTimer !== null) return;
+  void refreshDirectory();
+  directoryPollTimer = setInterval(() => void refreshDirectory(), LOBBY_LIST_POLL_INTERVAL_MS);
+}
+
+/** One-click join straight from the list — the code is already known, so
+ *  the player never has to read or type it. */
+function handleJoinListed(lobby: LobbyDirectoryEntry): void {
+  emit('join', lobby.roomCode);
+}
+
+/** How stale a listing is, in the words a player actually wants: how long
+ *  the lobby has been sitting there waiting. */
+function formatLobbyAge(lobby: LobbyDirectoryEntry): string {
+  const seconds = Math.max(0, Math.floor((Date.now() - lobby.createdAt) / 1000));
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  return `${Math.floor(minutes / 60)}h ago`;
+}
+
 let codeCopiedTimeout: ReturnType<typeof setTimeout> | null = null;
 
 async function copyCode() {
@@ -320,6 +382,7 @@ async function copyCode() {
 onBeforeUnmount(() => {
   if (codeCopiedTimeout !== null) clearTimeout(codeCopiedTimeout);
   codeCopiedTimeout = null;
+  stopDirectoryPolling();
 });
 
 // Keep the color wheel divided by however many players are currently
@@ -375,6 +438,22 @@ const isInLobby = computed(() => {
 const canJoin = computed(() => {
   return joinCode.value.length >= 4;
 });
+
+/** The directory is only interesting on the menu screen: once the player is
+ *  in a lobby or connecting, they have already chosen. Polling follows that
+ *  exactly, so no timer survives into a running battle. */
+const showingMenu = computed(
+  () => props.visible && !isInLobby.value && !props.isConnecting,
+);
+
+watch(
+  showingMenu,
+  (visible) => {
+    if (visible) startDirectoryPolling();
+    else stopDirectoryPolling();
+  },
+  { immediate: true },
+);
 
 // Lobby's CENTER / DIVIDERS pickers mirror the bottom BATTLE bar's
 // CENTER / DIVIDERS pickers — same data, same component family. We
@@ -436,11 +515,61 @@ const terrainSectionVars = computed(() =>
         </div>
       </div>
 
-      <!-- Reserved for the list of open lobbies (this is what the
-           sidebar is being built toward). Placeholder for now. -->
-      <div class="lobby-list-placeholder">
-        <span class="lobby-list-label">OPEN LOBBIES</span>
-        <p class="lobby-list-hint">No public lobbies yet — host a game or join with a code.</p>
+      <!-- The open-lobby directory. Every row is a one-click join: the
+           room code is already known, so nobody has to be told one. Running
+           games are listed too but are not joinable — the host rejects late
+           joiners — so they read as status, not as buttons. -->
+      <div class="lobby-list">
+        <div class="lobby-list-header">
+          <span class="lobby-list-label">OPEN LOBBIES</span>
+          <span v-if="openLobbies.length > 0" class="lobby-list-count">{{ openLobbies.length }}</span>
+        </div>
+
+        <ul v-if="openLobbies.length > 0" class="lobby-rows">
+          <li v-for="lobby in openLobbies" :key="lobby.roomCode">
+            <button
+              class="lobby-row"
+              :title="`Join ${lobby.name || lobby.roomCode}`"
+              @click="handleJoinListed(lobby)"
+            >
+              <span class="lobby-row-main">
+                <span class="lobby-row-name">{{ lobby.name || lobby.hostName || 'Open lobby' }}</span>
+                <span class="lobby-row-meta">
+                  <span class="lobby-row-code">{{ lobby.roomCode }}</span>
+                  <span v-if="lobby.mapName" class="lobby-row-map">{{ lobby.mapName }}</span>
+                  <span class="lobby-row-age">{{ formatLobbyAge(lobby) }}</span>
+                </span>
+              </span>
+              <span class="lobby-row-players">{{ lobby.playerCount }}/{{ lobby.maxPlayers }}</span>
+            </button>
+          </li>
+        </ul>
+
+        <p v-else-if="!directoryLoaded" class="lobby-list-hint">Looking for open lobbies…</p>
+        <p v-else class="lobby-list-hint">
+          No open lobbies — host a game, or join with a code.
+        </p>
+
+        <template v-if="runningGames.length > 0">
+          <div class="lobby-list-header">
+            <span class="lobby-list-label">IN PROGRESS</span>
+            <span class="lobby-list-count">{{ runningGames.length }}</span>
+          </div>
+          <ul class="lobby-rows">
+            <li v-for="game in runningGames" :key="game.roomCode">
+              <div class="lobby-row lobby-row-running">
+                <span class="lobby-row-main">
+                  <span class="lobby-row-name">{{ game.name || game.hostName || 'Battle' }}</span>
+                  <span class="lobby-row-meta">
+                    <span v-if="game.mapName" class="lobby-row-map">{{ game.mapName }}</span>
+                    <span class="lobby-row-age">started {{ formatLobbyAge(game) }}</span>
+                  </span>
+                </span>
+                <span class="lobby-row-players">{{ game.playerCount }}/{{ game.maxPlayers }}</span>
+              </div>
+            </li>
+          </ul>
+        </template>
       </div>
 
       <div class="surface-actions">
@@ -1183,14 +1312,27 @@ const terrainSectionVars = computed(() =>
   justify-content: flex-start;
 }
 
-.lobby-list-placeholder {
+/* Open-lobby directory. Solid border rather than the old dashed
+ * placeholder — this is real content now, not a reserved slot. */
+.lobby-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 16px;
+  padding: 14px;
   background: rgba(0, 0, 0, 0.25);
-  border: 1px dashed #3a4452;
+  border: 1px solid #3a4452;
   border-radius: 10px;
+  /* The list is the one part of the sidebar that grows without bound, so it
+   * scrolls internally instead of pushing the buttons below it off-screen. */
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.lobby-list-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .lobby-list-label {
@@ -1200,12 +1342,93 @@ const terrainSectionVars = computed(() =>
   color: #8893a3;
 }
 
+.lobby-list-count {
+  font-family: monospace;
+  font-size: 12px;
+  color: #44aa44;
+}
+
 .lobby-list-hint {
   margin: 0;
   font-family: monospace;
   font-size: 12px;
   line-height: 1.5;
   color: #67707d;
+}
+
+.lobby-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lobby-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  font-family: monospace;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid #3a4452;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.lobby-row:hover {
+  background: rgba(68, 170, 68, 0.15);
+  border-color: #44aa44;
+}
+
+/* A running game is information, not an action: no pointer, no hover. */
+.lobby-row-running {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.lobby-row-running:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: #3a4452;
+}
+
+.lobby-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.lobby-row-name {
+  font-size: 13px;
+  color: #d8dee6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lobby-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: #67707d;
+}
+
+.lobby-row-code {
+  letter-spacing: 1px;
+  color: #8893a3;
+}
+
+.lobby-row-players {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #8893a3;
 }
 
 /* Preview pane — appears ONLY in the GAME LOBBY screen (after
