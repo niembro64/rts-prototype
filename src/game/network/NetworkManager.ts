@@ -332,6 +332,12 @@ export class NetworkManager {
 
   /** Publish this host's lobby to the public directory, and keep it fresh.
    *
+   *  Public because the host's lobby-settings callback is bound just AFTER
+   *  hostGame() resolves, so the first publish (fired the moment signaling
+   *  opens) cannot know the map yet. The lobby flow calls this once more once
+   *  the callbacks exist, which fills the listing in immediately rather than
+   *  on the next heartbeat.
+   *
    *  Handed to the publisher as a callback rather than a snapshot: the room
    *  code exists as soon as signaling opens, but the lobby settings that name
    *  the map are bound a moment later, so a snapshot taken at host time would
@@ -340,7 +346,7 @@ export class NetworkManager {
    *  Status is derived from `gameStarted` rather than passed in, so a roster
    *  change arriving after launch cannot flip a running game back to "open"
    *  and advertise a lobby that already rejects late joiners. */
-  private refreshLobbyListing(): void {
+  refreshLobbyListing(): void {
     if (this.role !== 'host' || this.roomCode === '') return;
     this.lobbyPublisher.publish(() => {
       if (this.role !== 'host' || this.roomCode === '') return null;

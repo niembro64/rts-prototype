@@ -77,6 +77,11 @@ export function useGameCanvasLobbyActions({
       // Eagerly report available local info; the async IP lookup can
       // call through again later to fill any missing columns.
       reportLocalPlayerInfo();
+      // The public listing was first published the moment signaling opened,
+      // which is before the lobby-settings callback above existed — so it went
+      // out without a map size. Republish now that it can be read, instead of
+      // leaving the directory row incomplete until the next heartbeat.
+      network.refreshLobbyListing();
 
       isConnecting.value = false;
     } catch (err) {
