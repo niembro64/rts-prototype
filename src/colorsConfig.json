@@ -206,18 +206,18 @@
         "tileWorldSize": 260
       },
       "shadePaletteRgb": [
-        "#2c3f22",
-        "#3a5228",
-        "#4a6730",
-        "#5d7c38",
-        "#738f42",
-        "#8a9b4c",
-        "#a3a856",
-        "#b8b168",
-        "#c9bd7e",
-        "#6b6a3a",
-        "#48512c",
-        "#25341d"
+        "#22361a",
+        "#2d4820",
+        "#375c25",
+        "#41702a",
+        "#4f8130",
+        "#628f36",
+        "#7a9438",
+        "#8e9440",
+        "#9c8f3c",
+        "#5a5c26",
+        "#3c471f",
+        "#1b2814"
       ]
     },
     "vegetationWeatheringComment": [
@@ -259,11 +259,11 @@
       "baseGrimePatchDepth": 0.55,
       "baseGrimeThicknessVariation": 0.6,
       "grainStrength": 0.85,
-      "dryColorRgb01": "#8a7c46",
-      "dryAmount": 0.55,
-      "dryCoverage": 0.38,
-      "dustColorRgb01": "#b0a98c",
-      "dustAmount": 0.3,
+      "dryColorRgb01": "#5c431d",
+      "dryAmount": 0.42,
+      "dryCoverage": 0.26,
+      "dustColorRgb01": "#8a7f5e",
+      "dustAmount": 0.12,
       "trunkWeatherAmount": 0.4
     },
     "lowTree": {

@@ -24,6 +24,7 @@ import * as THREE from 'three';
 import { createRepeatingCanvasTexture } from './repeatingCanvasTexture';
 import { COLORS, readRgbTupleArray } from '@/colorsConfig';
 import {
+  FOREST_SPRUCE2_LEAF_COLOR,
   GRASS_BLADE_BASE_COLOR,
   GRASS_BLADE_TEXTURE_RESOLUTION,
 } from '../../config';
@@ -31,6 +32,7 @@ import {
   cssRgb,
   installDetailTextureDevDownloadHelper,
   makeSeededRng,
+  matchCanvasLinearMeanToColor,
   randIn,
 } from './detailTextureHelpers';
 import { drawWrappedCanvasItem } from './repeatingCanvasTexture';
@@ -109,6 +111,22 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
       drawStreak,
     );
   }
+
+  // GRADE THE MEAN BACK TO THE CANONICAL FOLIAGE COLOUR, exactly as the leaf
+  // and bark tiles do. This is not cosmetic. A material with a map takes a
+  // near-white base colour so the map is not multiplied twice, so the moment
+  // grass gained a texture its hue stopped being the authored leaf green and
+  // became whatever this tile happened to average to — which, drawn from a
+  // palette that runs up into straw, was markedly lighter and yellower. The
+  // grade keeps every blade's variation and puts the average back where the
+  // flat reduced tiers already are, so crossing a detail rung cannot shift
+  // the colour either.
+  matchCanvasLinearMeanToColor(
+    ctx,
+    GRASS_TEXTURE_PIXELS,
+    GRASS_TEXTURE_PIXELS,
+    FOREST_SPRUCE2_LEAF_COLOR,
+  );
 
   // sRGB, matching the tree tiles: this one carries a colour, not a scalar
   // field, and three converts it in the sampler.
