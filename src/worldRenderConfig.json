@@ -103,6 +103,10 @@
   "terrainRockDetail": {
     "enabled": true
   },
+  "vegetationWeathering": {
+    "enabled": true,
+    "detail": "Weathering for everything that grows - world-unit bark/foliage/grass projection, soil at the base of each plant, dry patches dissolved through the live colour, and dust on upward-facing surfaces. false restores uv-space texture repeats and flat foliage; keep it as a bisect and as the lever if the extra fragment work ever matters, since vegetation is the most numerous thing in the world. Tuning lives in colorsConfig.environment.vegetationWeathering."
+  },
   "terrainWallWear": {
     "enabled": true,
     "detail": "The worn top and bottom rims of a D-PLATEAU wall. false draws the fold the mesh describes, which is the clean terrace edge this treatment replaces - keep it as a bisect. Tuning lives in colorsConfig.world.terrain.wallWear. Intensity is driven by the dihedral angle measured at each rim, so a wall flattened flush into the terrain wears nothing: the treatment must never draw a step the map author deliberately erased."
@@ -116,13 +120,12 @@
     "coolTauMs": 8000
   },
   "tree": {
+    "detail": "textureRepeat is gone on purpose: the bark and leaf tiles are projected from world position at an authored WORLD size (colorsConfig.environment.vegetationWeathering) rather than sampled through the models' uvs. Through uvs at a fixed repeat, a big tree and a small tree wore bark at different physical sizes.",
     "leaf": {
-      "detailContrast": 0.3,
-      "textureRepeat": 4
+      "detailContrast": 0.3
     },
     "trunk": {
-      "detailContrast": 0.3,
-      "textureRepeat": 6
+      "detailContrast": 0.3
     }
   },
   "groundRenderOrder": {

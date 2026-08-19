@@ -190,6 +190,82 @@
         "#584e44"
       ]
     },
+    "grassComment": [
+      "Grass had no texture at all - one flat leaf colour, map: undefined -",
+      "which is the flat-colour fallback tier 'every surface is textured'",
+      "exists to forbid. A sward is long thin blades seen END ON, so its",
+      "variation runs ALONG the blade and between neighbours; the palette",
+      "therefore runs green through straw and the vocabulary is streaks, not",
+      "the canopy tile's rounded facets."
+    ],
+    "grass": {
+      "texture": {
+        "sourceFile": "src/game/render3d/GrassBladeTexture.ts",
+        "resolution": 2048,
+        "baseColorHex": "#414f35",
+        "tileWorldSize": 260
+      },
+      "shadePaletteRgb": [
+        "#2c3f22",
+        "#3a5228",
+        "#4a6730",
+        "#5d7c38",
+        "#738f42",
+        "#8a9b4c",
+        "#a3a856",
+        "#b8b168",
+        "#c9bd7e",
+        "#6b6a3a",
+        "#48512c",
+        "#25341d"
+      ]
+    },
+    "vegetationWeatheringComment": [
+      "Weathering for everything that grows. Same three terms as every other",
+      "boundary in this game (see environment.weathering), aimed at the two",
+      "boundaries a plant has: where it meets the ground, and where it meets",
+      "the air.",
+      "  noiseTileWorldSize - how far apart the fields' features land. Small,",
+      "    because a plant is small; the ore edge reads the same tile at",
+      "    thousands of world units.",
+      "  barkTileWorldSize / foliageTileWorldSize / grassTileWorldSize - the",
+      "    WORLD size of one wrap of each surface's own tile. These replace",
+      "    uv-space repeats: sampled through uvs, a big tree and a small tree",
+      "    wore bark at different physical sizes, which is the texel-density",
+      "    rule broken on the most numerous object in the world. Sampling by",
+      "    world position also makes every instance unique for free, which is",
+      "    legal here only because props never move.",
+      "  baseGrimeHeightWorldUnits - how far up from a plant's own base the",
+      "    soil reaches. A trunk meeting the ground in a clean line is the",
+      "    same tell as an ore edge meeting the ground in a clean line.",
+      "  dry* - the dissolve. Patches of a canopy are dead and patches of a",
+      "    sward are straw, and which is which is decided per patch by the",
+      "    grain rather than spread evenly, so the crown stops reading as one",
+      "    solid faceted mass.",
+      "  dust* - what settles on upward-facing surfaces. Gated on the normal's",
+      "    up component, so the tops of leaves pale and their undersides do",
+      "    not - which is most of what separates a canopy from a green shape."
+    ],
+    "vegetationWeathering": {
+      "noiseTileWorldSize": 340,
+      "barkTileWorldSize": 150,
+      "foliageTileWorldSize": 190,
+      "grassTileWorldSize": 260,
+      "baseGrimeHeightWorldUnits": 26,
+      "baseGrimeStrength": 0.72,
+      "baseGrimeDarken": 0.52,
+      "baseGrimeSeamPower": 2.4,
+      "baseGrimeFalloff": 1.35,
+      "baseGrimePatchDepth": 0.55,
+      "baseGrimeThicknessVariation": 0.6,
+      "grainStrength": 0.85,
+      "dryColorRgb01": "#8a7c46",
+      "dryAmount": 0.55,
+      "dryCoverage": 0.38,
+      "dustColorRgb01": "#b0a98c",
+      "dustAmount": 0.3,
+      "trunkWeatherAmount": 0.4
+    },
     "lowTree": {
       "trunk": {
         "colorHex": "#211b17"

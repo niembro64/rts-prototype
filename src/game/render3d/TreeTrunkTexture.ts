@@ -22,7 +22,6 @@ import { COLORS, readRgbTupleArray } from '@/colorsConfig';
 import {
   FOREST_SPRUCE2_WOOD_COLOR,
   TREE_TRUNK_DETAIL_CONTRAST,
-  TREE_TRUNK_TEXTURE_REPEAT,
 } from '../../config';
 import {
   type CommonShapeItem,
@@ -108,16 +107,14 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
     FOREST_SPRUCE2_WOOD_COLOR,
   );
 
-  // See TreeLeafTexture for the rationale — tile multiple times per UV unit
-  // so the bark patterns survive minification on small-scale trees. Trunk
-  // benefits from a higher repeat than leaves because the bark look depends
-  // on seeing many vertical cracks per trunk height.
-  const repeat = Math.max(1, TREE_TRUNK_TEXTURE_REPEAT);
-  const texture = createRepeatingCanvasTexture(
-    canvas,
-    THREE.SRGBColorSpace,
-    repeat,
-  );
+  // NO UV REPEAT. This tile is projected from world position at an authored
+  // WORLD size (VegetationWeathering3D), not sampled through the model's uvs,
+  // so how many bark cracks a trunk shows follows how big that trunk actually
+  // is. Through uvs at a fixed repeat, a big tree and a small tree wore bark
+  // at different physical sizes — the texel-density rule broken on the most
+  // numerous object in the world. Density lives in
+  // colorsConfig.environment.vegetationWeathering.barkTileWorldSize now.
+  const texture = createRepeatingCanvasTexture(canvas, THREE.SRGBColorSpace);
   return { canvas, texture };
 }
 

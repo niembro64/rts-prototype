@@ -6,8 +6,17 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { SimplifyModifier } from 'three/examples/jsm/modifiers/SimplifyModifier.js';
 import { COLORS } from '@/colorsConfig';
 import { getLodMode } from '@/clientBarConfig';
-import { FOREST_SPRUCE2_LEAF_COLOR, FOREST_SPRUCE2_WOOD_COLOR } from '../../config';
+import {
+  FOREST_SPRUCE2_LEAF_COLOR,
+  FOREST_SPRUCE2_WOOD_COLOR,
+  VEGETATION_WEATHERING_ENABLED,
+} from '../../config';
+import { getGrassBladeTexture } from './GrassBladeTexture';
 import { getTreeLeafTexture } from './TreeLeafTexture';
+import {
+  patchVegetationWeathering,
+  type VegetationWeatherRole,
+} from './VegetationWeathering3D';
 import { getTreeTrunkTexture } from './TreeTrunkTexture';
 import { ViewportFootprint } from '../ViewportFootprint';
 import {
@@ -177,6 +186,18 @@ export function environmentLodFlatMaterialSpec(
  * OFF/GLYPH rung used by entities. */
 export function environmentPropVisibleAtDetailRung(rung: DetailRung): boolean {
   return rung !== DETAIL_RUNG_GLYPH;
+}
+
+/** Which weathering terms a material takes, from the one thing that is true
+ *  about every material key: what the surface is made of. Keyed on the name
+ *  rather than passed in, because `sharedMaterial` is reached from four call
+ *  sites and a fifth would otherwise be able to skip the classification and
+ *  land silently on the default. */
+export function vegetationWeatherRoleForKey(key: string): VegetationWeatherRole {
+  const lower = key.toLowerCase();
+  if (lower.includes('grass') || lower.includes('seaweed')) return 'grass';
+  if (lower.includes('trunk') || lower.includes('wood')) return 'trunk';
+  return 'foliage';
 }
 
 /** Grass and seaweed are one blade-vegetation presentation family. Keeping
@@ -903,13 +924,18 @@ export class EnvironmentPropRenderer3D {
     sourceName: string,
   ): THREE.MeshLambertMaterial | null {
     if (environmentPropUsesGrassPresentation(spec.kind)) {
-      // Land grass and waterline seaweed deliberately share one leaf-color
-      // material and no texture map. Medium/far already use this same
-      // canonical foliage color, so changing LOD cannot change their palette.
+      // Land grass and waterline seaweed share one blade material across every
+      // tier, so changing LOD cannot change their palette.
+      //
+      // It used to carry NO MAP — one flat colour, which is the flat-colour
+      // fallback tier the surface-texturing rule exists to forbid, and the
+      // reason a field of grass read as a field of identical plastic shapes.
+      // The tile is projected by world position, so a clump's tone comes from
+      // where it grew and two clumps a metre apart differ.
       return this.sharedMaterial(
         'randomEnvironment.forestSpruce2.grass-leaves',
         FOREST_SPRUCE2_LEAF_COLOR,
-        undefined,
+        getGrassBladeTexture(),
         true,
       );
     }
@@ -947,6 +973,15 @@ export class EnvironmentPropRenderer3D {
       });
       material.name = key;
       if (foliageLighting) patchEnvironmentFoliageLighting(material);
+      // THE COVERAGE CHOKE POINT. Every vegetation material in the game is
+      // created here — trunk, foliage and grass, textured close tier and flat
+      // reduced tiers alike — so weathering everything means weathering it
+      // here. Patching only the textured tier would make the treatment pop on
+      // and off as a prop crosses a detail rung; the reduced tiers take the
+      // weathering without a map and shed only what the map was carrying.
+      if (VEGETATION_WEATHERING_ENABLED) {
+        patchVegetationWeathering(material, vegetationWeatherRoleForKey(key));
+      }
       this.materialCache.set(key, material);
     }
     return material;

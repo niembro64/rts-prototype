@@ -3694,12 +3694,19 @@
         and it is generated from the same three terms everywhere.
       </p>
       <p>
-        The ore region is the reference implementation
-        (<code>MetalDepositEdgeBlend3D</code>). A signed-distance field says
-        where the ore is; drawn straight, that answer was correct, uniform,
-        and unmistakably drawn. What follows is the recipe that replaced it,
-        stated generally, because every boundary in this game is supposed to
-        receive it.
+        The maths lives in one place (<code>SurfaceWeathering3D</code>) and
+        every treatment calls it, because two weathered boundaries that meet
+        on screen have to look like the same weather. Three sites use it so
+        far: the ore region&rsquo;s edge
+        (<code>MetalDepositEdgeBlend3D</code>), the top and bottom rims of a
+        plateau wall (<code>TerrainWallWear3D</code>), and everything that
+        grows (<code>VegetationWeathering3D</code>). They differ only in which
+        quantity is being weathered &mdash; a signed distance in world units, a
+        geodesic distance to a rim, a height above a plant&rsquo;s own base
+        &mdash; and in what substance they paint, which is one shared soil
+        tile read through different tints. What follows is the recipe, stated
+        generally, because every boundary in this game is supposed to receive
+        it.
       </p>
 
       <h3>Three terms, and they are not interchangeable</h3>
@@ -3793,10 +3800,31 @@
         boundaries in the world.
       </p>
 
+      <h3>Two lessons from the second and third sites</h3>
+      <p>
+        The ore edge could read its distance from a baked world-XZ field. The
+        wall rims could not: at the shipped wall slope the top and bottom rims
+        are a few world units apart in XZ, a field cannot tell them apart, and
+        they want opposite treatments. Distance had to be measured over the
+        mesh instead. <strong>Where the quantity comes from is per-site; only
+        the recipe is shared.</strong>
+      </p>
+      <p>
+        And a weathering treatment will find every discontinuity in whatever
+        it samples. Fed world XZ, it streaked down a vertical wall, because XZ
+        barely changes there. Fed the geometric face normal, it drew the
+        mesh&rsquo;s own triangle columns down the cliff, because neighbouring
+        wall triangles face slightly different ways. Fed a per-vertex ramp on a
+        face with no interior vertices, it smeared over the whole drop.
+        <strong>None of those were visible in the maths and all three were
+        visible in one screenshot</strong> &mdash; which is the argument for
+        looking at the surface rather than at the terms.
+      </p>
+
       <h3>Where this has to land next</h3>
       <p>
-        The ore edge was first because it was the worst. It is not special.
-        Every one of these is the same clean contour waiting to be spent:
+        Three sites down. Every one of these is the same clean contour still
+        waiting to be spent:
       </p>
       <ul class="rule-list">
         <li>The biome ramp&rsquo;s own transitions &mdash; grass to rock, upland to dry, and the shoreline band, which currently change over a smooth height/slope gradient with no displacement or grain at all.</li>

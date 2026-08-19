@@ -614,6 +614,103 @@ export const SOIL_SUBSTANCE_TILE_WORLD_SIZE = readPositiveConfigNumber(
 export const SOIL_SUBSTANCE_BASE_COLOR: number =
   COLORS.environment.weathering.soilTexture.baseColorHex;
 
+/** Grass, which had no texture at all until this existed. See colorsConfig's
+ *  `grassComment`. */
+export const GRASS_BLADE_TEXTURE_RESOLUTION = readTextureResolutionConfig(
+  COLORS.environment.grass.texture.resolution,
+  'colorsConfig.environment.grass.texture.resolution',
+);
+export const GRASS_BLADE_BASE_COLOR: number = COLORS.environment.grass.texture.baseColorHex;
+
+/** Weathering for everything that grows. Full documentation lives in
+ *  colorsConfig's `vegetationWeatheringComment`.
+ *
+ *  The three tile sizes are WORLD sizes, replacing uv-space repeats. Sampled
+ *  through uvs, a big tree and a small tree wore bark at different physical
+ *  sizes — the texel-density rule broken on the most numerous object in the
+ *  world. Sampling by world position fixes that and makes every instance
+ *  unique for free, which is legal only because vegetation never moves; a
+ *  swaying prop would swim through its own bark. */
+const vegetationWeatheringConfig = COLORS.environment.vegetationWeathering;
+
+export const VEGETATION_WEATHERING_ENABLED: boolean =
+  worldRenderConfigJson.vegetationWeathering.enabled;
+
+export const VEGETATION_WEATHERING = {
+  noiseTileWorldSize: readPositiveConfigNumber(
+    vegetationWeatheringConfig.noiseTileWorldSize,
+    'colorsConfig.environment.vegetationWeathering.noiseTileWorldSize',
+  ),
+  barkTileWorldSize: readPositiveConfigNumber(
+    vegetationWeatheringConfig.barkTileWorldSize,
+    'colorsConfig.environment.vegetationWeathering.barkTileWorldSize',
+  ),
+  foliageTileWorldSize: readPositiveConfigNumber(
+    vegetationWeatheringConfig.foliageTileWorldSize,
+    'colorsConfig.environment.vegetationWeathering.foliageTileWorldSize',
+  ),
+  grassTileWorldSize: readPositiveConfigNumber(
+    vegetationWeatheringConfig.grassTileWorldSize,
+    'colorsConfig.environment.vegetationWeathering.grassTileWorldSize',
+  ),
+  baseGrimeHeightWorldUnits: readPositiveConfigNumber(
+    vegetationWeatheringConfig.baseGrimeHeightWorldUnits,
+    'colorsConfig.environment.vegetationWeathering.baseGrimeHeightWorldUnits',
+  ),
+  baseGrimeStrength: readUnitIntervalConfig(
+    vegetationWeatheringConfig.baseGrimeStrength,
+    'colorsConfig.environment.vegetationWeathering.baseGrimeStrength',
+  ),
+  baseGrimeDarken: readUnitIntervalConfig(
+    vegetationWeatheringConfig.baseGrimeDarken,
+    'colorsConfig.environment.vegetationWeathering.baseGrimeDarken',
+  ),
+  baseGrimeSeamPower: readPositiveConfigNumber(
+    vegetationWeatheringConfig.baseGrimeSeamPower,
+    'colorsConfig.environment.vegetationWeathering.baseGrimeSeamPower',
+  ),
+  baseGrimeFalloff: readPositiveConfigNumber(
+    vegetationWeatheringConfig.baseGrimeFalloff,
+    'colorsConfig.environment.vegetationWeathering.baseGrimeFalloff',
+  ),
+  baseGrimePatchDepth: readUnitIntervalConfig(
+    vegetationWeatheringConfig.baseGrimePatchDepth,
+    'colorsConfig.environment.vegetationWeathering.baseGrimePatchDepth',
+  ),
+  baseGrimeThicknessVariation: readUnitIntervalConfig(
+    vegetationWeatheringConfig.baseGrimeThicknessVariation,
+    'colorsConfig.environment.vegetationWeathering.baseGrimeThicknessVariation',
+  ),
+  grainStrength: readUnitIntervalConfig(
+    vegetationWeatheringConfig.grainStrength,
+    'colorsConfig.environment.vegetationWeathering.grainStrength',
+  ),
+  dryColor: readRgbTuple(
+    vegetationWeatheringConfig.dryColorRgb01,
+    'colorsConfig.environment.vegetationWeathering.dryColorRgb01',
+  ),
+  dryAmount: readUnitIntervalConfig(
+    vegetationWeatheringConfig.dryAmount,
+    'colorsConfig.environment.vegetationWeathering.dryAmount',
+  ),
+  dryCoverage: readUnitIntervalConfig(
+    vegetationWeatheringConfig.dryCoverage,
+    'colorsConfig.environment.vegetationWeathering.dryCoverage',
+  ),
+  dustColor: readRgbTuple(
+    vegetationWeatheringConfig.dustColorRgb01,
+    'colorsConfig.environment.vegetationWeathering.dustColorRgb01',
+  ),
+  dustAmount: readUnitIntervalConfig(
+    vegetationWeatheringConfig.dustAmount,
+    'colorsConfig.environment.vegetationWeathering.dustAmount',
+  ),
+  trunkWeatherAmount: readUnitIntervalConfig(
+    vegetationWeatheringConfig.trunkWeatherAmount,
+    'colorsConfig.environment.vegetationWeathering.trunkWeatherAmount',
+  ),
+} as const;
+
 /** The top and bottom rims of a D-PLATEAU wall, worn. Same three terms as
  *  every other weathered boundary; full documentation lives in colorsConfig's
  *  `wallWearComment`.
@@ -817,17 +914,6 @@ export const ORE_EDGE_INFLUENCE_WORLD_UNITS =
 export const TREE_LEAF_DETAIL_CONTRAST = worldRenderConfigJson.tree.leaf.detailContrast;
 export const TREE_TRUNK_DETAIL_CONTRAST = worldRenderConfigJson.tree.trunk.detailContrast;
 
-/** How many times the tree-leaf / tree-trunk texture tiles per UV unit on
- *  the model. Trees come in at a small global scale, so a face that covers
- *  most of UV [0, 1] is only a few dozen screen pixels — mipmaps average
- *  away the individual shapes and only the texture's mean color comes
- *  through. Tiling repeats packs more pattern copies into each face so the
- *  shapes survive even at heavy minification. Bark especially benefits
- *  from a higher repeat because the look depends on seeing many vertical
- *  cracks per trunk height. Trade-off: too high and the pattern reads as
- *  obvious tiling instead of organic surface. */
-export const TREE_LEAF_TEXTURE_REPEAT = worldRenderConfigJson.tree.leaf.textureRepeat;
-export const TREE_TRUNK_TEXTURE_REPEAT = worldRenderConfigJson.tree.trunk.textureRepeat;
 
 // Stable render layering for ground-adjacent systems.
 export const GROUND_RENDER_ORDER = worldRenderConfigJson.groundRenderOrder;

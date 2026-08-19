@@ -16,7 +16,6 @@ import { COLORS, readRgbTupleArray } from '@/colorsConfig';
 import {
   FOREST_SPRUCE2_LEAF_COLOR,
   TREE_LEAF_DETAIL_CONTRAST,
-  TREE_LEAF_TEXTURE_REPEAT,
 } from '../../config';
 import {
   type CommonShapeItem,
@@ -95,21 +94,15 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
     FOREST_SPRUCE2_LEAF_COLOR,
   );
 
-  // Tile the texture multiple times per UV unit. Trees come in at a small
-  // global scale so individual faces are minified hard; without this, the
-  // mipmaps average the shapes into the mean color and you only see the
-  // overall hue change. Repeating multiplies the pattern density per face
-  // so shapes survive minification.
-  const repeat = Math.max(1, TREE_LEAF_TEXTURE_REPEAT);
-  // Tree materials use stock MeshLambertMaterial whose pipeline does the
-  // sRGB→linear conversion on sample, so this texture should be tagged sRGB
-  // (unlike the terrain detail textures, which feed a custom shader that
-  // works in the "raw-vec3-as-linear" convention).
-  const texture = createRepeatingCanvasTexture(
-    canvas,
-    THREE.SRGBColorSpace,
-    repeat,
-  );
+  // NO UV REPEAT — projected from world position at an authored WORLD size
+  // instead (see TreeTrunkTexture for why). Density lives in
+  // colorsConfig.environment.vegetationWeathering.foliageTileWorldSize.
+  //
+  // Tagged sRGB because three converts a colour map in the SAMPLER, so the
+  // world-projected lookup returns linear exactly as the uv one did (unlike
+  // the terrain detail tiles, which feed a custom shader working in the
+  // "raw-vec3-as-linear" convention).
+  const texture = createRepeatingCanvasTexture(canvas, THREE.SRGBColorSpace);
   return { canvas, texture };
 }
 
