@@ -62,7 +62,7 @@ import {
   SURFACE_FIELD_GLSL,
   type SurfaceFieldUniforms,
 } from './SurfaceFieldTexture';
-import { getWorldBoxFloorY } from './WorldBoxGeometry3D';
+import { buildWorldBoxFloorGeometry, getWorldBoxFloorY } from './WorldBoxGeometry3D';
 import {
   WORLD_SHADE_FRAGMENT_PARS,
   WorldShade3D,
@@ -189,6 +189,11 @@ const TERRAIN_GEOMETRY_REBUILD_MIN_FRAME_SPACING = 24;
 const TERRAIN_GEOMETRY_CACHE_MAX_ENTRIES = 8;
 const TERRAIN_GEOMETRY_CACHE_MAX_BYTES = 96 * 1024 * 1024;
 const SIDE_WALL_TERRAIN_SHADE = 0.68;
+/** The world box's underside, as a fraction of the rock base colour. It is
+ *  the one face of the world no light reaches and no material grows on, so it
+ *  is drawn flat and unlit — dark enough to read as the shadowed bottom of a
+ *  solid, light enough to still read as rock rather than as a hole. */
+const WORLD_BOX_FLOOR_SHADE = 0.42;
 const BUILD_GRID_COLOR_OK = readRgbaTuple(
   COLORS.world.terrain.buildGrid.okRgba,
   'colorsConfig.world.terrain.buildGrid.okRgba',
@@ -694,6 +699,12 @@ export class TerrainTileRenderer3D {
   // ore coverage, so outside every deposit the response is exactly the
   // diffuse-only one MeshLambertMaterial gave.
   private terrainMaterial: THREE.MeshStandardMaterial;
+  private readonly worldBoxFloorGeometry: THREE.BufferGeometry;
+  private readonly worldBoxFloorMaterial: THREE.MeshBasicMaterial;
+  private readonly worldBoxFloorMesh: THREE.Mesh;
+  /** Whether the world is a closed box at all: INF runs its shelf to the
+   *  horizon instead, and has no underside to show. */
+  private worldBoxFloorVisible = false;
   private terrainGeometryCache = new Map<string, CachedTerrainGeometry>();
   private terrainGeometryCacheBytes = 0;
   private currentTerrainGeometryCacheKey = '';
@@ -926,6 +937,42 @@ export class TerrainTileRenderer3D {
     this.terrainMesh.visible = false;
     this.terrainMesh.renderOrder = GROUND_RENDER_ORDER.terrain;
     parentWorld.add(this.terrainMesh);
+
+    const rockBase = rawSrgbVec3(TERRAIN_ROCK_BASE_COLOR);
+    // THE UNDERSIDE OF THE WORLD, as its own mesh with its own flat material.
+    //
+    // It closes the box the perimeter walls leave open, and it is the one
+    // surface here that must have NOTHING on it. Carried in the terrain mesh
+    // it was shaded by the terrain shader, and every one of that shader's
+    // terms reads world XZ — so the bottom of the map came out wearing the
+    // grass, rock, ore and weathering of the ground directly above it, for
+    // full fragment cost, across the entire map footprint. A flat unlit
+    // colour is both what a solid's underside should look like and a
+    // rounding error to draw.
+    this.worldBoxFloorGeometry = buildWorldBoxFloorGeometry(
+      mapWidth,
+      mapHeight,
+      getWorldBoxFloorY(mapWidth, mapHeight),
+    );
+    this.worldBoxFloorMaterial = new THREE.MeshBasicMaterial({
+      color: new THREE.Color().setRGB(
+        rockBase.x * WORLD_BOX_FLOOR_SHADE,
+        rockBase.y * WORLD_BOX_FLOOR_SHADE,
+        rockBase.z * WORLD_BOX_FLOOR_SHADE,
+        THREE.LinearSRGBColorSpace,
+      ),
+      // Only ever seen from below, and it writes depth like the solid it is.
+      side: THREE.FrontSide,
+    });
+    this.worldBoxFloorMesh = new THREE.Mesh(
+      this.worldBoxFloorGeometry,
+      this.worldBoxFloorMaterial,
+    );
+    this.worldBoxFloorMesh.name = 'WorldBoxFloor';
+    this.worldBoxFloorMesh.frustumCulled = false;
+    this.worldBoxFloorMesh.visible = false;
+    this.worldBoxFloorMesh.renderOrder = GROUND_RENDER_ORDER.terrain;
+    parentWorld.add(this.worldBoxFloorMesh);
   }
 
   private installTerrainShader(): void {
@@ -1107,6 +1154,20 @@ export class TerrainTileRenderer3D {
             'vec3 dpdy = dFdy(vTerrainWorldPos);',
             'vec3 geomNormal = normalize(cross(dpdx, dpdy));',
             'float geomSlope = 1.0 - abs(geomNormal.y);',
+            // WHAT EACH NORMAL IS FOR. geomNormal is the exact triangle face,
+            // so it is CONSTANT ACROSS A TRIANGLE and steps at every shared
+            // edge — legitimate for a yes/no test about this face (the
+            // vertical-cliff guard, the overlay rejections below), and wrong
+            // for anything continuous. Projections and blend weights are
+            // continuous: driving them from the face normal draws the mesh's
+            // own triangulation onto the hillside, because every triangle
+            // picks slightly different projection weights and the tile jumps
+            // between them. `pow(abs(n), 8.0)` makes that step enormous.
+            // The interpolated normal varies smoothly within a surface and
+            // still keeps its hard seam at the wall rims, where the build
+            // splits the vertices — which is exactly the behaviour a
+            // projection wants, and what the wall wear already reads.
+            'vec3 surfaceNormal = normalize(vTerrainWorldNormal);',
             'if (uGroundDetailEnabled > 0.0 || uRockDetailEnabled > 0.0) {',
             '  // ===== Shared mask infrastructure (used by both detail textures) =====',
             '  // Per-fragment geometric slope from world-position derivatives - the',
@@ -1179,7 +1240,7 @@ export class TerrainTileRenderer3D {
             '    // cliff faces (normal.y near 0) sample mostly from the XY/YZ projections',
             '    // so the texture flows along the cliff instead of smearing into a',
             '    // single horizontal stripe like a pure XZ sample would produce.',
-            '    vec3 triW = pow(abs(geomNormal), vec3(8.0));',
+            '    vec3 triW = pow(abs(surfaceNormal), vec3(8.0));',
             '    triW /= max(triW.x + triW.y + triW.z, 1e-5);',
             '    vec2 rockUvXZ = vTerrainWorldPos.xz / uRockDetailTileWorldSize;',
             '    vec2 rockUvYZ = vTerrainWorldPos.yz / uRockDetailTileWorldSize;',
@@ -1193,7 +1254,7 @@ export class TerrainTileRenderer3D {
             '    // the blended weather plane rather than triplanar: these are',
             '    // blob fields with no structure for one coordinate to',
             '    // distort, so two taps buy what six would.',
-            '    vec2 rockFieldPlane = weatherSurfacePlane(vTerrainWorldPos, geomNormal);',
+            '    vec2 rockFieldPlane = weatherSurfacePlane(vTerrainWorldPos, surfaceNormal);',
             `    vec3 rockFielded = ${surfaceFieldLayeredCall('rock', 'terrainRgb', 'rockFieldPlane')};`,
             '    terrainRgb = mix(terrainRgb, rockFielded, rockMask);',
             '  }',
@@ -1241,7 +1302,7 @@ export class TerrainTileRenderer3D {
             '  metalDetail = weatherSampleSubstance(',
             '    uRockDetailTexture,',
             '    vTerrainWorldPos,',
-            '    geomNormal,',
+            '    surfaceNormal,',
             '    uMetalSurfaceTileWorldSize',
             '  );',
             '  // Ore is a plate field with oxidation across it, not one',
@@ -1251,7 +1312,7 @@ export class TerrainTileRenderer3D {
             '  // post-light structure alike — so the broad variation reaches',
             '  // the reflection too, which is where a metal surface is',
             '  // actually read.',
-            '  vec2 metalFieldPlane = weatherSurfacePlane(vTerrainWorldPos, geomNormal);',
+            '  vec2 metalFieldPlane = weatherSurfacePlane(vTerrainWorldPos, surfaceNormal);',
             `  metalDetail = ${surfaceFieldLayeredCall('metal', 'metalDetail', 'metalFieldPlane')};`,
             '  terrainRgb = mix(terrainRgb, metalSurfaceAlbedo(',
             '    uMetalSurfaceColor,',
@@ -1263,7 +1324,7 @@ export class TerrainTileRenderer3D {
             // Dirt goes on LAST, over whichever of the two surfaces it
             // lands on. Running it before the ore mix would let the ore
             // albedo paint straight back over the inner half of the band.
-            oreEdgeAlbedoFragment('vTerrainWorldPos', 'geomNormal'),
+            oreEdgeAlbedoFragment('vTerrainWorldPos', 'surfaceNormal'),
             // THE PLATEAU WALL RIMS. The fold where a terrace meets its wall
             // is the map's other clean edge, and the same three terms fix it.
             // Measured at TOP LEVEL for the same reason the ore's width is:
@@ -1397,7 +1458,7 @@ export class TerrainTileRenderer3D {
         );
     };
     this.terrainMaterial.customProgramCacheKey = () =>
-      'authoritative-terrain-weathering-wallwear-v50';
+      'authoritative-terrain-weathering-wallwear-v51';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
@@ -2460,6 +2521,7 @@ export class TerrainTileRenderer3D {
         terrainTriangleWallFlags.push(triWallFlag);
       }
 
+      this.worldBoxFloorVisible = false;
       if (!wallTriangleDebug && graphicsConfig.terrainTileSideWalls) {
         const edgeCounts = new Map<string, { a: number; b: number; count: number; wallClass: number }>();
         const addEdge = (a: number, b: number, wallClass: number): void => {
@@ -2610,32 +2672,11 @@ export class TerrainTileRenderer3D {
           terrainTriangleWallFlags.push(0, 0);
         }
 
-        // Cap the box. The perimeter walls above stop at the world-box floor
-        // and used to leave the slab hollow, so any camera that got under the
-        // map looked straight up into the inside of the far wall. One
-        // downward quad across the whole map footprint closes it into a solid
-        // object. INF has no box to close — its shelf runs to the horizon
-        // instead of dropping a wall — so the cap is a floating-square-only
-        // face, at exactly the depth the walls already reach.
-        if (waterBoundaryMode !== 'infinity') {
-          const cornerA = pushWorldBoxVertex(0, worldBoxFloorY, 0, 0, -1, 0);
-          const cornerB = pushWorldBoxVertex(this.mapWidth, worldBoxFloorY, 0, 0, -1, 0);
-          const cornerC = pushWorldBoxVertex(
-            this.mapWidth,
-            worldBoxFloorY,
-            this.mapHeight,
-            0,
-            -1,
-            0,
-          );
-          const cornerD = pushWorldBoxVertex(0, worldBoxFloorY, this.mapHeight, 0, -1, 0);
-          // Wound so the front face is the one seen from below, matching the
-          // authored -Y normal (the material is double sided, but its
-          // lighting still keys off which side is front).
-          terrainIndices.push(cornerA, cornerB, cornerC, cornerA, cornerC, cornerD);
-          terrainDebugLevels.push(-1, -1);
-          terrainTriangleWallFlags.push(0, 0);
-        }
+        // The cap that closes the box is NOT part of this mesh — see
+        // worldBoxFloorMesh. It only has to exist here as a flag: INF has no
+        // box to close, because its shelf runs to the horizon instead of
+        // dropping a wall.
+        this.worldBoxFloorVisible = waterBoundaryMode !== 'infinity';
       }
     }
 
@@ -2815,6 +2856,7 @@ export class TerrainTileRenderer3D {
       waterBoundaryMode,
     );
     this.terrainMesh.visible = this.terrainGeometryReady;
+    this.worldBoxFloorMesh.visible = this.terrainGeometryReady && this.worldBoxFloorVisible;
 
     // Whole-map build availability is an exclusive explicit view. GROUND uses
     // the authoritative terrain buildability grid, HOVER ignores terrain but
@@ -2866,6 +2908,9 @@ export class TerrainTileRenderer3D {
     if (this.currentTerrainGeometryCacheKey === '') this.terrainGeometry.dispose();
     this.terrainMaterial.dispose();
     this.terrainMesh.parent?.remove(this.terrainMesh);
+    this.worldBoxFloorMesh.parent?.remove(this.worldBoxFloorMesh);
+    this.worldBoxFloorGeometry.dispose();
+    this.worldBoxFloorMaterial.dispose();
     this.metalRegionField.dispose();
     this.buildGridTexture.dispose();
     this.worldShade.destroy();

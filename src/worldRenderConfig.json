@@ -52,14 +52,14 @@
     "canvasPadPx": 24,
     "strokeWidthPx": 9,
     "blockHeightMapFraction": 0.07,
-    "cornerMarginMapFraction": 0.022,
+    "cornerMarginMapFraction": 0.055,
     "groundLift": 40,
     "plinthPadBlockFraction": 0.14,
     "plinthThicknessBlockFraction": 0.55,
     "letterDepthTitleFraction": 0.16,
     "letterMaskSupersample": 2,
     "letterMaskSimplifyPx": 0.7,
-    "detail": "Map caption standing on its own slab of terrain just outside the map's (0,0) corner \u2014 the near-left corner at the default camera yaw. Exact stock settings show the preset name; changed settings show CUSTOM while retaining current map details. Font sizes are canvas pixels and set the block's internal proportions; blockHeightMapFraction scales the whole block against the larger map axis, so the caption keeps the same on-screen size at whole-map zoom on every map. cornerMarginMapFraction is the gap between the map edge and the block, also in map-axis units. groundLift is world units above the water surface, and puts the plinth's grassy TOP face there. plinthPadBlockFraction is the terrain border around the caption and plinthThicknessBlockFraction the slab's depth, both in caption-block heights. The letters are extruded out of the painted glyph mask: letterDepthTitleFraction is their height as a fraction of the title font, letterMaskSupersample how much finer than the painted caption the traced mask is, and letterMaskSimplifyPx the outline simplification tolerance in mask pixels (larger = fewer triangles, blockier glyphs)."
+    "detail": "Map caption standing on its own slab of terrain just outside the map's (0,0) corner \u2014 the near-left corner at the default camera yaw. Exact stock settings show the preset name; changed settings show CUSTOM while retaining current map details. Font sizes are canvas pixels and set the block's internal proportions; blockHeightMapFraction scales the whole block against the larger map axis, so the caption keeps the same on-screen size at whole-map zoom on every map. cornerMarginMapFraction is how far off the map edge the block stands, also in map-axis units. groundLift is world units above the water surface, and puts the plinth's grassy TOP face there. plinthPadBlockFraction is the terrain border around the caption and plinthThicknessBlockFraction the slab's depth, both in caption-block heights. The letters are extruded out of the painted glyph mask: letterDepthTitleFraction is their height as a fraction of the title font, letterMaskSupersample how much finer than the painted caption the traced mask is, and letterMaskSimplifyPx the outline simplification tolerance in mask pixels (larger = fewer triangles, blockier glyphs)."
   },
   "sun": {
     "azimuthRad": 1.5707963267948966,

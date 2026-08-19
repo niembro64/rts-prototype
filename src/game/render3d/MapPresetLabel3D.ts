@@ -17,12 +17,7 @@
 // there is no per-frame work (the meshes have no update hook).
 
 import * as THREE from 'three';
-import {
-  MAP_PRESET_LABEL_RENDER_CONFIG,
-  TERRAIN_GROUND_TEXTURE_TILE_WORLD_SIZE,
-  TERRAIN_ROCK_BASE_COLOR,
-  TERRAIN_ROCK_TEXTURE_TILE_WORLD_SIZE,
-} from '@/config';
+import { MAP_PRESET_LABEL_RENDER_CONFIG } from '@/config';
 import { COLORS } from '@/colorsConfig';
 import { NAME_LABEL_FONT_FAMILY } from '@/nameLabelConfig';
 import { WATER_LEVEL } from '../sim/Terrain';
@@ -31,8 +26,7 @@ import {
   traceAlphaMaskContours,
   type MaskPolygon,
 } from './AlphaMaskExtrusion3D';
-import { getGroundDetailTexture } from './GroundDetailTexture';
-import { getRockDetailTexture } from './RockDetailTexture';
+import { applyTerrainSubstanceMaterial } from './TerrainSubstanceMaterial3D';
 import type { MapPresetLabelLines, MapPresetLabelTarget } from './presetMapLabel';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 
@@ -75,18 +69,6 @@ const LETTER_MASK_MINIMUM_AREA = 6;
 /** Mask budget. Supersampling buys smoother outlines but the trace is per
  *  texel, and the caption is repainted whenever a lobby setting changes. */
 const LETTER_MASK_MAX_TEXELS = 2_400_000;
-
-/** The terrain's colour convention: the authored hex bytes ARE working-space
- *  values (see rawSrgbVec3 in TerrainTileRenderer3D), so they go in without an
- *  sRGB decode. */
-function rawSrgbColor(hex: number): THREE.Color {
-  return new THREE.Color().setRGB(
-    ((hex >> 16) & 0xff) / 255,
-    ((hex >> 8) & 0xff) / 255,
-    (hex & 0xff) / 255,
-    THREE.LinearSRGBColorSpace,
-  );
-}
 
 function fontString(pixels: number): string {
   return `bold ${pixels}px ${NAME_LABEL_FONT_FAMILY}`;
@@ -202,30 +184,16 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
     this.captionMesh.renderOrder = TRANSPARENT_RENDER_ORDER_3D.aboveWaterEffects;
 
     // The plinth is a slab of the world's own substances rather than a UI
-    // panel: the same grass detail the terrain surface carries on top, the
-    // same rock the world-box walls are cut from everywhere else. UVs are
-    // authored in world tiles (see buildPlinthGeometry), so both textures
-    // repeat at exactly the density they do on the map itself.
-    this.plinthMaterials = [
-      new THREE.MeshStandardMaterial({
-        map: getGroundDetailTexture(),
-        roughness: 1,
-        metalness: 0,
-      }),
-      new THREE.MeshStandardMaterial({
-        map: getRockDetailTexture(),
-        // The terrain shader keeps rock at 10% texture over the base colour;
-        // multiplying the tile by that same base lands in the same place the
-        // world-box walls do (their SIDE_WALL shade is a comparable trim)
-        // while keeping the tile's structure visible at plinth scale. Raw
-        // bytes, not setStyle: the terrain treats these as working-space
-        // values already, and converting here would darken the slab away
-        // from the walls it is quoting.
-        color: rawSrgbColor(TERRAIN_ROCK_BASE_COLOR),
-        roughness: 1,
-        metalness: 0,
-      }),
-    ];
+    // panel: the ground the map's flat green is made of on top, the rock its
+    // walls are cut from down the sides — mixed by the same base colour,
+    // detail tile and broad field layers the terrain mixes them by, and read
+    // from WORLD position, so the slab is the same physical grain as the
+    // ground it sits beside rather than a stretched copy of one tile.
+    const groundMaterial = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0 });
+    applyTerrainSubstanceMaterial(groundMaterial, 'ground');
+    const rockMaterial = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0 });
+    applyTerrainSubstanceMaterial(rockMaterial, 'rock');
+    this.plinthMaterials = [groundMaterial, rockMaterial];
     // Letter faces take the painted fill colour and letter sides the painted
     // outline colour, so the relief reads as the printed caption lifted off
     // the slab rather than as a second, differently coloured sign.
@@ -462,10 +430,11 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
 }
 
 /**
- * The caption's slab of terrain, in the sign's local frame: the grassy top
- * face at z = 0 (material 0) and the rock sides and floor hanging below it
- * (material 1). UVs are world position over the terrain's own tile size, so
- * the slab is the same grain as the map instead of a stretched decal.
+ * The caption's slab of terrain, in the sign's local frame: the ground-faced
+ * top at z = 0 (material 0) and the rock sides and floor hanging below it
+ * (material 1). No uvs — both substances are read from WORLD position by
+ * TerrainSubstanceMaterial3D, which is what makes the slab the same grain as
+ * the map rather than one stretched tile per face.
  *
  * Exported for the contract test.
  */
@@ -483,7 +452,6 @@ export function buildPlinthGeometry(
     readonly u: readonly [number, number, number];
     readonly v: readonly [number, number, number];
     readonly normal: readonly [number, number, number];
-    readonly tile: number;
     readonly material: 0 | 1;
   }> = [
     {
@@ -491,7 +459,6 @@ export function buildPlinthGeometry(
       u: [width, 0, 0],
       v: [0, height, 0],
       normal: [0, 0, 1],
-      tile: TERRAIN_GROUND_TEXTURE_TILE_WORLD_SIZE,
       material: 0,
     },
     {
@@ -499,7 +466,6 @@ export function buildPlinthGeometry(
       u: [0, height, 0],
       v: [width, 0, 0],
       normal: [0, 0, -1],
-      tile: TERRAIN_ROCK_TEXTURE_TILE_WORLD_SIZE,
       material: 1,
     },
     {
@@ -507,7 +473,6 @@ export function buildPlinthGeometry(
       u: [0, height, 0],
       v: [0, 0, thickness],
       normal: [1, 0, 0],
-      tile: TERRAIN_ROCK_TEXTURE_TILE_WORLD_SIZE,
       material: 1,
     },
     {
@@ -515,7 +480,6 @@ export function buildPlinthGeometry(
       u: [0, 0, thickness],
       v: [0, height, 0],
       normal: [-1, 0, 0],
-      tile: TERRAIN_ROCK_TEXTURE_TILE_WORLD_SIZE,
       material: 1,
     },
     {
@@ -523,7 +487,6 @@ export function buildPlinthGeometry(
       u: [0, 0, thickness],
       v: [width, 0, 0],
       normal: [0, 1, 0],
-      tile: TERRAIN_ROCK_TEXTURE_TILE_WORLD_SIZE,
       material: 1,
     },
     {
@@ -531,20 +494,16 @@ export function buildPlinthGeometry(
       u: [width, 0, 0],
       v: [0, 0, thickness],
       normal: [0, -1, 0],
-      tile: TERRAIN_ROCK_TEXTURE_TILE_WORLD_SIZE,
       material: 1,
     },
   ];
 
   const positions: number[] = [];
   const normals: number[] = [];
-  const uvs: number[] = [];
   const indices: number[] = [];
   const groups: Array<{ start: number; count: number; material: 0 | 1 }> = [];
   for (const face of faces) {
     const base = positions.length / 3;
-    const uLength = Math.hypot(face.u[0], face.u[1], face.u[2]);
-    const vLength = Math.hypot(face.v[0], face.v[1], face.v[2]);
     for (const [su, sv] of [[0, 0], [1, 0], [1, 1], [0, 1]] as const) {
       positions.push(
         face.origin[0] + su * face.u[0] + sv * face.v[0],
@@ -552,7 +511,6 @@ export function buildPlinthGeometry(
         face.origin[2] + su * face.u[2] + sv * face.v[2],
       );
       normals.push(face.normal[0], face.normal[1], face.normal[2]);
-      uvs.push((su * uLength) / face.tile, (sv * vLength) / face.tile);
     }
     const start = indices.length;
     indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
@@ -569,7 +527,6 @@ export function buildPlinthGeometry(
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setIndex(indices);
   for (const group of groups) {
     geometry.addGroup(group.start, group.count, group.material);

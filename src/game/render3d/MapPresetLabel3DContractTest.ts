@@ -16,7 +16,7 @@ import {
   type BattlePresetSnapshot,
 } from '@/components/battlePresets';
 import { backdropUrlsForPresetName } from './presetBackdrops';
-import { TERRAIN_GROUND_TEXTURE_TILE_WORLD_SIZE } from '@/config';
+import { applyTerrainSubstanceMaterial } from './TerrainSubstanceMaterial3D';
 import * as THREE from 'three';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -90,7 +90,6 @@ export function runMapPresetLabel3DContractTest(): void {
   const plinth = buildPlinthGeometry(900, 300, 160);
   const plinthPositions = plinth.getAttribute('position');
   const plinthNormals = plinth.getAttribute('normal');
-  const plinthUvs = plinth.getAttribute('uv');
   const plinthIndex = plinth.index;
   assertContract(
     plinthPositions.count === 24 && plinthIndex !== null && plinthIndex.count === 36,
@@ -127,14 +126,29 @@ export function runMapPresetLabel3DContractTest(): void {
       'every plinth face must be wound to agree with its outward normal',
     );
   }
-  // UVs are authored in world tiles, so the slab carries the terrain's own
-  // grain instead of one stretched copy of the tile per face.
-  const topSpanU = Math.abs(plinthUvs.getX(1) - plinthUvs.getX(0));
+  // No uvs at all: both substances are read from world position, which is
+  // what makes the slab the map's own grain rather than one tile stretched
+  // over each face.
   assertContract(
-    Math.abs(topSpanU - 900 / TERRAIN_GROUND_TEXTURE_TILE_WORLD_SIZE) < 1e-6,
-    'the grass face must repeat at the terrain ground tile size',
+    plinth.getAttribute('uv') === undefined,
+    'the plinth must carry no uvs — its substances are sampled in world space',
   );
   plinth.dispose();
+
+  // Three keys its program cache on material parameters, not on the source an
+  // onBeforeCompile produced, so two standard materials patched differently
+  // share one program unless the patch says otherwise. Silent and total: the
+  // rock sides would render as grass.
+  const groundMaterial = new THREE.MeshStandardMaterial();
+  const rockMaterial = new THREE.MeshStandardMaterial();
+  applyTerrainSubstanceMaterial(groundMaterial, 'ground');
+  applyTerrainSubstanceMaterial(rockMaterial, 'rock');
+  assertContract(
+    groundMaterial.customProgramCacheKey() !== rockMaterial.customProgramCacheKey(),
+    'each terrain substance must key its own compiled program',
+  );
+  groundMaterial.dispose();
+  rockMaterial.dispose();
 
   // Extruded letters come out of the painted glyph mask, so nested outlines
   // have to survive as holes — otherwise every O, P and 4 extrudes solid.
