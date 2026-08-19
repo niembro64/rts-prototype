@@ -29,35 +29,63 @@ for (let i = 0; i < SRGB_BYTE_TO_LINEAR.length; i++) {
   SRGB_BYTE_TO_LINEAR[i] = decodeSrgbByte(i);
 }
 
+/** Which space a texture is READ in, which is the only space its mean can
+ * meaningfully be graded in.
+ *
+ *   `srgb` — three.js decodes the texture before filtering and multiplying it
+ *            into a material, so the mean that has to match is the linear one.
+ *   `raw`  — the texture is sampled as LinearSRGBColorSpace and its texels are
+ *            used verbatim as working-space colour (the terrain detail tiles
+ *            and the broad field layers), so the mean that has to match is the
+ *            texel value itself.
+ *
+ * Grading in the wrong one leaves a tone shift the size of the texture's own
+ * contrast, in the direction of its dark end. */
+export type CanvasMeanEncoding = 'srgb' | 'raw';
+
+const RAW_BYTE_TO_UNIT = new Float64Array(256);
+for (let i = 0; i < RAW_BYTE_TO_UNIT.length; i++) {
+  RAW_BYTE_TO_UNIT[i] = i / 255;
+}
+
+function unitToRawByte(value: number): number {
+  const scaled = Math.round(value * 255);
+  return scaled < 0 ? 0 : scaled > 255 ? 255 : scaled;
+}
+
 /**
  * Color-grades an opaque procedural texture so its average albedo matches a
  * flat reference color while retaining the texture's authored variation.
  *
- * The mean and correction are calculated in linear light because Three.js
- * decodes sRGB color textures before filtering and multiplying them into a
- * material. Matching the byte average instead would still make the textured
- * HIGH prop visibly drift from its flat MED/LOW counterpart.
+ * `encoding` names the space the grade is computed in — see
+ * {@link CanvasMeanEncoding}. It defaults to `srgb`, which is what a texture
+ * sampled by a standard material needs; matching the byte average there would
+ * still make a textured HIGH prop visibly drift from its flat MED/LOW
+ * counterpart.
  */
-export function matchCanvasLinearMeanToColor(
+export function matchCanvasMeanToColor(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
   targetHex: number,
+  encoding: CanvasMeanEncoding = 'srgb',
 ): void {
+  const decode = encoding === 'raw' ? RAW_BYTE_TO_UNIT : SRGB_BYTE_TO_LINEAR;
+  const encode = encoding === 'raw' ? unitToRawByte : linearToSrgbByte;
   const image = ctx.getImageData(0, 0, width, height);
   const pixels = image.data;
   const sums = [0, 0, 0];
   const pixelCount = pixels.length / 4;
   for (let i = 0; i < pixels.length; i += 4) {
-    sums[0] += SRGB_BYTE_TO_LINEAR[pixels[i]];
-    sums[1] += SRGB_BYTE_TO_LINEAR[pixels[i + 1]];
-    sums[2] += SRGB_BYTE_TO_LINEAR[pixels[i + 2]];
+    sums[0] += decode[pixels[i]];
+    sums[1] += decode[pixels[i + 1]];
+    sums[2] += decode[pixels[i + 2]];
   }
 
   const target = [
-    SRGB_BYTE_TO_LINEAR[(targetHex >> 16) & 0xff],
-    SRGB_BYTE_TO_LINEAR[(targetHex >> 8) & 0xff],
-    SRGB_BYTE_TO_LINEAR[targetHex & 0xff],
+    decode[(targetHex >> 16) & 0xff],
+    decode[(targetHex >> 8) & 0xff],
+    decode[targetHex & 0xff],
   ];
   const scale = target.map((channel, index) => {
     const mean = sums[index] / pixelCount;
@@ -66,9 +94,7 @@ export function matchCanvasLinearMeanToColor(
   const channelRemap = scale.map((channelScale) => {
     const remap = new Uint8ClampedArray(256);
     for (let value = 0; value < remap.length; value++) {
-      remap[value] = linearToSrgbByte(
-        SRGB_BYTE_TO_LINEAR[value] * channelScale,
-      );
+      remap[value] = encode(decode[value] * channelScale);
     }
     return remap;
   });
@@ -79,6 +105,17 @@ export function matchCanvasLinearMeanToColor(
     pixels[i + 2] = channelRemap[2][pixels[i + 2]];
   }
   ctx.putImageData(image, 0, 0);
+}
+
+/** The `srgb` grade under its original name — the three prop tiles that
+ * predate the encoding split still ask for it by that name. */
+export function matchCanvasLinearMeanToColor(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  targetHex: number,
+): void {
+  matchCanvasMeanToColor(ctx, width, height, targetHex, 'srgb');
 }
 
 // DETERMINISM-CRITICAL: this xorshift-style PRNG must stay byte-identical to

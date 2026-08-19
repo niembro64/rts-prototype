@@ -50,7 +50,7 @@ import backgroundBattleConfigJson from './backgroundBattleConfig.json';
 import type { CameraFovDegrees, CameraSmoothMode } from './types/client';
 import type { EntityHudBlueprint } from './types/blueprints';
 import type { DemoBattleWaypointType } from './demoConfig';
-import { COLORS, readRgbTuple } from './colorsConfig';
+import { COLORS, readRgbTuple, readRgbTupleArray } from './colorsConfig';
 export { LAND_CELL_SIZE } from './mapSizeConfig';
 
 // =============================================================================
@@ -499,6 +499,92 @@ export const TERRAIN_GROUND_TEXTURE_TILE_WORLD_SIZE = readPositiveConfigNumber(
 export const TERRAIN_GROUND_TEXTURE_RESOLUTION = readTextureResolutionConfig(
   COLORS.world.terrain.ground.texture.resolution,
   'colorsConfig.world.terrain.ground.texture.resolution',
+);
+
+/** One broad field layer: the tile it is drawn into, how much world it
+ *  covers, how far it pulls the surface, and the shades it is built from.
+ *  See SurfaceFieldTexture for what the two layers are for. */
+export type SurfaceFieldLayerConfig = {
+  readonly resolution: number;
+  readonly tileWorldSize: number;
+  readonly blend: number;
+  readonly shadePaletteRgb: readonly (readonly [number, number, number])[];
+};
+
+/** A family's pair of broad layers plus the base colour BOTH are graded to.
+ *  One base, not one per layer: the grade exists to make the layers
+ *  tone-neutral against each other and against the detail tile they sit on,
+ *  and two bases would reintroduce exactly the drift it removes. */
+export type SurfaceFieldLayersConfig = {
+  readonly baseColorHex: number;
+  readonly macro: SurfaceFieldLayerConfig;
+  readonly meso: SurfaceFieldLayerConfig;
+};
+
+function readSurfaceFieldLayerConfig(
+  node: unknown,
+  fieldName: string,
+): SurfaceFieldLayerConfig {
+  const layer = node as Record<string, unknown> | undefined;
+  if (!layer || typeof layer !== 'object') {
+    throw new Error(`${fieldName} must be an object`);
+  }
+  const shadePaletteRgb = readRgbTupleArray(
+    layer.shadePaletteRgb as readonly (readonly number[])[],
+    `${fieldName}.shadePaletteRgb`,
+  );
+  if (shadePaletteRgb.length < 2) {
+    throw new Error(`${fieldName}.shadePaletteRgb needs at least two shades`);
+  }
+  return {
+    resolution: readTextureResolutionConfig(layer.resolution, `${fieldName}.resolution`),
+    tileWorldSize: readPositiveConfigNumber(layer.tileWorldSize, `${fieldName}.tileWorldSize`),
+    blend: readUnitIntervalConfig(layer.blend, `${fieldName}.blend`),
+    shadePaletteRgb,
+  };
+}
+
+function readSurfaceFieldLayersConfig(
+  node: unknown,
+  fieldName: string,
+): SurfaceFieldLayersConfig {
+  const family = node as Record<string, unknown> | undefined;
+  if (!family || typeof family !== 'object') {
+    throw new Error(`${fieldName} must be an object`);
+  }
+  const baseColorHex = family.baseColorHex;
+  if (typeof baseColorHex !== 'number') {
+    throw new Error(`${fieldName}.baseColorHex must be a CSS hex color`);
+  }
+  return {
+    baseColorHex,
+    macro: readSurfaceFieldLayerConfig(family.macro, `${fieldName}.macro`),
+    meso: readSurfaceFieldLayerConfig(family.meso, `${fieldName}.meso`),
+  };
+}
+
+/** The grass field's broad layers — the dry stretches, trampled patches and
+ *  dirt runs that a blade-scale tile cannot produce however varied its
+ *  blades are. */
+export const TERRAIN_GROUND_FIELD_LAYERS = readSurfaceFieldLayersConfig(
+  COLORS.world.terrain.ground.fieldLayers,
+  'colorsConfig.world.terrain.ground.fieldLayers',
+);
+
+/** The same for every surface outside the flat zone: staining, strata and
+ *  patina across a cliff, at scales no pebble tile reaches. */
+export const TERRAIN_ROCK_FIELD_LAYERS = readSurfaceFieldLayersConfig(
+  COLORS.world.terrain.rock.fieldLayers,
+  'colorsConfig.world.terrain.rock.fieldLayers',
+);
+
+/** And for ore. These reach further than the other two families\' do,
+ *  because the metal response reads ONE detail value for albedo, roughness
+ *  and post-light structure alike — so a plate field laid in here varies the
+ *  reflection as well as the colour. */
+export const METAL_DEPOSIT_FIELD_LAYERS = readSurfaceFieldLayersConfig(
+  COLORS.environment.metalDeposit.fieldLayers,
+  'colorsConfig.environment.metalDeposit.fieldLayers',
 );
 
 /** World-Y distance from the 0-height plane where the ground detail (the

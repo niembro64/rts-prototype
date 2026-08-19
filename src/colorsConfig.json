@@ -52,6 +52,44 @@
       },
       "ground": {
         "baseColorHex": "#222b1a",
+        "fieldLayers": {
+          "sourceFile": "src/game/render3d/SurfaceFieldTexture.ts",
+          "baseColorHex": "#272c1d",
+          "macro": {
+            "resolution": 256,
+            "tileWorldSize": 5600,
+            "blend": 0.5,
+            "shadePaletteRgb": [
+              "#12160e",
+              "#1c2414",
+              "#2f3a22",
+              "#4a4526",
+              "#6b5a30",
+              "#3d2f1e",
+              "#5e6b38",
+              "#382c1c",
+              "#232a19",
+              "#54492c"
+            ]
+          },
+          "meso": {
+            "resolution": 512,
+            "tileWorldSize": 1500,
+            "blend": 0.38,
+            "shadePaletteRgb": [
+              "#171d11",
+              "#2b3520",
+              "#44502e",
+              "#5c5730",
+              "#332818",
+              "#4d5c33",
+              "#1e2415",
+              "#635e36",
+              "#3a3020",
+              "#2a3a24"
+            ]
+          }
+        },
         "texture": {
           "sourceFile": "src/game/render3d/GroundDetailTexture.ts",
           "resolution": 4096,
@@ -61,6 +99,44 @@
       },
       "rock": {
         "baseColorHex": "#38362f",
+        "fieldLayers": {
+          "sourceFile": "src/game/render3d/SurfaceFieldTexture.ts",
+          "baseColorHex": "#3d3a33",
+          "macro": {
+            "resolution": 256,
+            "tileWorldSize": 7200,
+            "blend": 0.5,
+            "shadePaletteRgb": [
+              "#1f1d1a",
+              "#332f2a",
+              "#4e483c",
+              "#6b6250",
+              "#8c8270",
+              "#463a2c",
+              "#24221d",
+              "#7d7360",
+              "#55554e",
+              "#3a4038"
+            ]
+          },
+          "meso": {
+            "resolution": 512,
+            "tileWorldSize": 2100,
+            "blend": 0.38,
+            "shadePaletteRgb": [
+              "#232119",
+              "#3a362e",
+              "#565044",
+              "#726957",
+              "#2b2f2b",
+              "#4a3f30",
+              "#837a66",
+              "#302e28",
+              "#5f5847",
+              "#1c1a17"
+            ]
+          }
+        },
         "texture": {
           "sourceFile": "src/game/render3d/RockDetailTexture.ts",
           "resolution": 4096,
@@ -160,10 +236,10 @@
   "environment": {
     "forestSpruce2": {
       "wood": {
-        "colorHex": "#5b4230"
+        "colorHex": "#33251b"
       },
       "leaf": {
-        "colorHex": "#414f35"
+        "colorHex": "#313c28"
       },
       "leafShadePaletteRgb": [
         "#263a20",
@@ -202,7 +278,7 @@
       "texture": {
         "sourceFile": "src/game/render3d/GrassBladeTexture.ts",
         "resolution": 2048,
-        "baseColorHex": "#414f35",
+        "baseColorHex": "#313c28",
         "tileWorldSize": 260
       },
       "shadePaletteRgb": [
@@ -326,6 +402,44 @@
     },
     "metalDeposit": {
       "baseColorHex": "#687987",
+      "fieldLayers": {
+        "sourceFile": "src/game/render3d/SurfaceFieldTexture.ts",
+        "baseColorHex": "#5c5c5c",
+        "macro": {
+          "resolution": 256,
+          "tileWorldSize": 4200,
+          "blend": 0.45,
+          "shadePaletteRgb": [
+            "#2e3136",
+            "#4f4a44",
+            "#7c7a72",
+            "#a09684",
+            "#38352f",
+            "#6d7c88",
+            "#48545c",
+            "#948c7e",
+            "#847a68",
+            "#3a3d42"
+          ]
+        },
+        "meso": {
+          "resolution": 512,
+          "tileWorldSize": 1300,
+          "blend": 0.34,
+          "shadePaletteRgb": [
+            "#3a3c40",
+            "#5c5850",
+            "#8a8276",
+            "#4a5258",
+            "#312f2c",
+            "#767065",
+            "#9a9284",
+            "#454a50",
+            "#6a6258",
+            "#282a2e"
+          ]
+        }
+      },
       "rockTexture": {
         "sourceFile": "src/game/render3d/RockDetailTexture.ts",
         "resolution": 4096,

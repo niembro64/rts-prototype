@@ -54,6 +54,14 @@ import {
 } from '../../config';
 import { getGroundDetailTexture } from './GroundDetailTexture';
 import { getRockDetailTexture } from './RockDetailTexture';
+import {
+  assignSurfaceFieldUniforms,
+  createSurfaceFieldUniforms,
+  surfaceFieldLayeredCall,
+  surfaceFieldUniformDeclarations,
+  SURFACE_FIELD_GLSL,
+  type SurfaceFieldUniforms,
+} from './SurfaceFieldTexture';
 import { getWorldBoxFloorY } from './WorldBoxGeometry3D';
 import {
   WORLD_SHADE_FRAGMENT_PARS,
@@ -756,6 +764,18 @@ export class TerrainTileRenderer3D {
   private rockDetailEnabledUniform = { value: 0 };
   private rockBaseColorUniform = { value: rawSrgbVec3(TERRAIN_ROCK_BASE_COLOR) };
   private rockDetailContrastUniform = { value: TERRAIN_ROCK_DETAIL_CONTRAST };
+  // The BROAD half of each surface — see SurfaceFieldTexture. Each pair rides
+  // its family's own detail switch, because the layers are that surface's
+  // structure and not a separate effect: turn the grass tile off and there is
+  // no grass field left for a macro layer to be the character of.
+  private readonly groundFieldUniforms: SurfaceFieldUniforms =
+    createSurfaceFieldUniforms('ground', TERRAIN_GROUND_DETAIL_ENABLED);
+  private readonly rockFieldUniforms: SurfaceFieldUniforms =
+    createSurfaceFieldUniforms('rock', TERRAIN_ROCK_DETAIL_ENABLED);
+  // Ore has no such switch: a deposit draws whenever the map has one, and a
+  // METAL world is nothing but this surface.
+  private readonly metalFieldUniforms: SurfaceFieldUniforms =
+    createSurfaceFieldUniforms('metal', true);
   private metalSurfaceEnabledUniform = { value: isMetalTerrainSurface() ? 1 : 0 };
   // three.js decodes an authored hex to the linear working space, exactly as it
   // does for the metal deposits' vertex colour.
@@ -925,6 +945,9 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uRockDetailEnabled = this.rockDetailEnabledUniform;
       shader.uniforms.uRockBaseColor = this.rockBaseColorUniform;
       shader.uniforms.uRockDetailContrast = this.rockDetailContrastUniform;
+      assignSurfaceFieldUniforms(shader, 'ground', this.groundFieldUniforms);
+      assignSurfaceFieldUniforms(shader, 'rock', this.rockFieldUniforms);
+      assignSurfaceFieldUniforms(shader, 'metal', this.metalFieldUniforms);
       shader.uniforms.uMetalSurfaceEnabled = this.metalSurfaceEnabledUniform;
       shader.uniforms.uMetalSurfaceColor = this.metalSurfaceColorUniform;
       shader.uniforms.uMetalSurfaceTileWorldSize = this.metalSurfaceTileWorldSizeUniform;
@@ -1012,6 +1035,9 @@ export class TerrainTileRenderer3D {
             'uniform float uRockDetailEnabled;',
             'uniform vec3 uRockBaseColor;',
             'uniform float uRockDetailContrast;',
+            surfaceFieldUniformDeclarations('ground'),
+            surfaceFieldUniformDeclarations('rock'),
+            surfaceFieldUniformDeclarations('metal'),
             'uniform float uMetalSurfaceEnabled;',
             metalSurfaceLayerUniformDeclarations(),
             'uniform float uTerrainHorizonWaterBlendEnabled;',
@@ -1022,6 +1048,7 @@ export class TerrainTileRenderer3D {
             METAL_SURFACE_RESPONSE_GLSL,
             METAL_SURFACE_REGION_GLSL,
             SURFACE_WEATHERING_GLSL,
+            SURFACE_FIELD_GLSL,
             ORE_EDGE_BLEND_GLSL,
             TERRAIN_WALL_WEAR_GLSL,
             WORLD_SHADE_FRAGMENT_PARS,
@@ -1115,6 +1142,14 @@ export class TerrainTileRenderer3D {
             '    float blendN = clamp(0.5 + 0.55 * bx * bz, 0.0, 1.0);',
             '    vec4 detail = mix(detailA, detailB, blendN);',
             '    terrainRgb = mix(terrainRgb, detail.rgb, detail.a * flatGreenDetail * uGroundDetailContrast);',
+            '    // The BROAD layers on top of the blade-scale one: the dry',
+            '    // stretches and dirt runs a field has, at scales the tile',
+            '    // above cannot reach however many times it is resampled.',
+            '    // Gated by the SAME mask as the green pull and the detail',
+            '    // overlay, so all three appear and vanish together — the',
+            '    // whole grass treatment is one thing or it is none of it.',
+            `    vec3 groundFielded = ${surfaceFieldLayeredCall('ground', 'terrainRgb', 'worldXZ')};`,
+            '    terrainRgb = mix(terrainRgb, groundFielded, flatGreenDetail);',
             '  }',
             '',
             '  // ===== Rock texture (everywhere outside the flat grass zone) =====',
@@ -1137,6 +1172,13 @@ export class TerrainTileRenderer3D {
             '    vec4 rockXY = texture2D(uRockDetailTexture, rockUvXY);',
             '    vec4 rockDetail = rockXZ * triW.y + rockYZ * triW.x + rockXY * triW.z;',
             '    terrainRgb = mix(terrainRgb, rockDetail.rgb, rockDetail.a * rockMask * uRockDetailContrast);',
+            '    // Staining, strata and patina across a whole face. Read from',
+            '    // the blended weather plane rather than triplanar: these are',
+            '    // blob fields with no structure for one coordinate to',
+            '    // distort, so two taps buy what six would.',
+            '    vec2 rockFieldPlane = weatherSurfacePlane(vTerrainWorldPos, geomNormal);',
+            `    vec3 rockFielded = ${surfaceFieldLayeredCall('rock', 'terrainRgb', 'rockFieldPlane')};`,
+            '    terrainRgb = mix(terrainRgb, rockFielded, rockMask);',
             '  }',
             '}',
             // ORE COVERAGE — the one term that decides how metal this
@@ -1185,6 +1227,15 @@ export class TerrainTileRenderer3D {
             '    geomNormal,',
             '    uMetalSurfaceTileWorldSize',
             '  );',
+            '  // Ore is a plate field with oxidation across it, not one',
+            '  // uniform alloy. Layered INTO the detail value rather than',
+            '  // onto the albedo after it, because this one value is what',
+            '  // the metal response reads for albedo, roughness and',
+            '  // post-light structure alike — so the broad variation reaches',
+            '  // the reflection too, which is where a metal surface is',
+            '  // actually read.',
+            '  vec2 metalFieldPlane = weatherSurfacePlane(vTerrainWorldPos, geomNormal);',
+            `  metalDetail = ${surfaceFieldLayeredCall('metal', 'metalDetail', 'metalFieldPlane')};`,
             '  terrainRgb = mix(terrainRgb, metalSurfaceAlbedo(',
             '    uMetalSurfaceColor,',
             '    metalDetail,',
@@ -2416,16 +2467,21 @@ export class TerrainTileRenderer3D {
           addEdge(b, c, triWallFlag);
           addEdge(c, a, triWallFlag);
         }
-        const pushWallVertex = (
+        // One vertex writer for every world-box face — the four perimeter
+        // walls and the floor cap that closes them. They share a shade, an
+        // "off the terrace vocabulary" wall-wear record, and the vertical-
+        // cliff slope; only the position and the outward normal differ.
+        const pushWorldBoxVertex = (
           x: number,
           y: number,
           z: number,
           nx: number,
+          ny: number,
           nz: number,
         ): number => {
           const idx = terrainPositions.length / 3;
           terrainPositions.push(x, y, z);
-          terrainNormals.push(nx, 0, nz);
+          terrainNormals.push(nx, ny, nz);
           terrainShades.push(SIDE_WALL_TERRAIN_SHADE);
           terrainSourceVertices.push(-1);
           // Map-boundary walls are the world box, not a terrace fold; they
@@ -2493,32 +2549,36 @@ export class TerrainTileRenderer3D {
           // normals into the wall's horizontal normals. That bent the PBR
           // reflection across the entire tall face and produced temporal
           // shimmer while the camera moved, most visibly on METAL worlds.
-          const wallTopA = pushWallVertex(
+          const wallTopA = pushWorldBoxVertex(
             terrainPositions[topAOff],
             terrainPositions[topAOff + 1],
             terrainPositions[topAOff + 2],
             normal.nx,
+            0,
             normal.nz,
           );
-          const wallTopB = pushWallVertex(
+          const wallTopB = pushWorldBoxVertex(
             terrainPositions[topBOff],
             terrainPositions[topBOff + 1],
             terrainPositions[topBOff + 2],
             normal.nx,
+            0,
             normal.nz,
           );
-          const floorA = pushWallVertex(
+          const floorA = pushWorldBoxVertex(
             terrainPositions[topAOff],
             worldBoxFloorY,
             terrainPositions[topAOff + 2],
             normal.nx,
+            0,
             normal.nz,
           );
-          const floorB = pushWallVertex(
+          const floorB = pushWorldBoxVertex(
             terrainPositions[topBOff],
             worldBoxFloorY,
             terrainPositions[topBOff + 2],
             normal.nx,
+            0,
             normal.nz,
           );
           terrainIndices.push(
@@ -2529,6 +2589,33 @@ export class TerrainTileRenderer3D {
             wallTopB,
             floorB,
           );
+          terrainDebugLevels.push(-1, -1);
+          terrainTriangleWallFlags.push(0, 0);
+        }
+
+        // Cap the box. The perimeter walls above stop at the world-box floor
+        // and used to leave the slab hollow, so any camera that got under the
+        // map looked straight up into the inside of the far wall. One
+        // downward quad across the whole map footprint closes it into a solid
+        // object. INF has no box to close — its shelf runs to the horizon
+        // instead of dropping a wall — so the cap is a floating-square-only
+        // face, at exactly the depth the walls already reach.
+        if (waterBoundaryMode !== 'infinity') {
+          const cornerA = pushWorldBoxVertex(0, worldBoxFloorY, 0, 0, -1, 0);
+          const cornerB = pushWorldBoxVertex(this.mapWidth, worldBoxFloorY, 0, 0, -1, 0);
+          const cornerC = pushWorldBoxVertex(
+            this.mapWidth,
+            worldBoxFloorY,
+            this.mapHeight,
+            0,
+            -1,
+            0,
+          );
+          const cornerD = pushWorldBoxVertex(0, worldBoxFloorY, this.mapHeight, 0, -1, 0);
+          // Wound so the front face is the one seen from below, matching the
+          // authored -Y normal (the material is double sided, but its
+          // lighting still keys off which side is front).
+          terrainIndices.push(cornerA, cornerB, cornerC, cornerA, cornerC, cornerD);
           terrainDebugLevels.push(-1, -1);
           terrainTriangleWallFlags.push(0, 0);
         }
