@@ -1,4 +1,5 @@
 import type {
+  ResignCommand,
   AreaCommandFilterCategory,
   BarAreaTargetOrder,
   AttackAreaCommand,
@@ -143,6 +144,8 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
       return sanitizeSetBuildingActiveCommand(command, tick);
     case 'selfDestruct':
       return sanitizeSelfDestructCommand(command, tick);
+    case 'resign':
+      return sanitizeResignCommand(command, tick);
     case 'setTowerTarget':
       return sanitizeSetTowerTargetCommand(command, world, tick);
     case 'attack':
@@ -733,6 +736,14 @@ function sanitizeSetCloakStateCommand(
   return entityIds === null || typeof command.enabled !== 'boolean'
     ? null
     : { type: 'setCloakState', tick, entityIds, enabled: command.enabled };
+}
+
+function sanitizeResignCommand(
+  command: ResignCommand,
+  tick: number,
+): ResignCommand | null {
+  if (!isEntityId(command.playerId)) return null;
+  return { type: 'resign', tick, playerId: command.playerId };
 }
 
 function sanitizeSelfDestructCommand(

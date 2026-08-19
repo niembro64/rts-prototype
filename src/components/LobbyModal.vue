@@ -24,16 +24,23 @@ import { LOBBY_LIST_POLL_INTERVAL_MS } from '../game/network/LobbyDirectory';
 import { getMultiplayerBackend } from '../game/network/multiplayer/multiplayerBackendRegistry';
 import type { MultiplayerLobbySummary } from '../game/network/multiplayer/MultiplayerBackend';
 
-export type { LobbyPlayer } from '@/types/ui';
 import type { LobbyPlayer } from '@/types/ui';
+import type { LobbyMember } from '../game/network/NetworkManager';
 
 const props = defineProps<{
   visible: boolean;
   sidebarOpen: boolean;
   isHost: boolean;
   roomCode: string;
-  players: LobbyPlayer[];
+  players: readonly LobbyPlayer[];
+  /** Members holding no seat — everyone who joined and has not been put on a
+   *  team by the host. */
+  spectators: readonly LobbyMember[];
   localPlayerId: PlayerId;
+  localMemberId: number;
+  /** Seat -> the member holding it, so a control on a seated row can address
+   *  the member the host actually edits. */
+  seatedMemberIds: Readonly<Record<number, number>>;
   error: string | null;
   isConnecting: boolean;
   centerMagnitude: number;
@@ -52,6 +59,8 @@ const props = defineProps<{
   buildingBlueprintIds: readonly string[];
   allowedBuildings: readonly string[];
   unitCap: number;
+  /** Sides the host declared — empty ones included; they still carve terrain. */
+  allyTeamCount: number;
   converterTax: number;
   previewLoading: boolean;
   previewLoadingProgress: number;
@@ -66,7 +75,9 @@ const emit = defineEmits<{
   (e: 'start'): void;
   (e: 'cancel'): void;
   (e: 'entityLab'): void;
-  (e: 'spectate'): void;
+  /** Collapse or reveal the menu sidebar. Nothing to do with watching a
+   *  match — this is the chevron on the sidebar's edge. */
+  (e: 'toggleMenu'): void;
   (e: 'setCenterMagnitude', value: number): void;
   (e: 'setDividersMagnitude', value: number): void;
   (e: 'setPerimeterMagnitude', value: number): void;
@@ -83,8 +94,13 @@ const emit = defineEmits<{
   (e: 'toggleBuilding', buildingBlueprintId: string): void;
   (e: 'toggleAllBuildings'): void;
   (e: 'setUnitCap', cap: number): void;
+  /** Host changes how many sides the lobby declares. */
+  (e: 'setAllyTeamCount', count: number): void;
   /** Host moves a seat to the next side (the lobby's TEAM N). */
-  (e: 'cyclePlayerAllyTeam', playerId: PlayerId): void;
+  (e: 'cycleMemberAllyTeam', memberId: number): void;
+  /** Host moves a watcher onto a team, or a player back to the bench. The
+   *  only route between the two — nobody moves themselves. */
+  (e: 'toggleMemberSeated', memberId: number): void;
   (e: 'setConverterTax', tax: number): void;
   (e: 'setPlayerName', name: string): void;
   (e: 'resetDefaults'): void;
@@ -108,11 +124,17 @@ const converterTaxOptions = BATTLE_CONFIG.converterTax.options;
 const mapWidthOptions = BATTLE_CONFIG.mapSize.width.options;
 const mapLengthOptions = BATTLE_CONFIG.mapSize.length.options;
 const capOptions = BATTLE_CONFIG.cap.options;
-/** Sides holding at least one seat — what the entity count cap divides
- *  by, matching WorldState.getTeamEntityCountCap. */
-const occupiedAllyTeamCount = computed(
-  () => Math.max(1, teamGroups.value.length),
-);
+const allyTeamCountOptions = BATTLE_CONFIG.allyTeamCount.options;
+/** Sides holding at least one seat — what the entity count cap divides by,
+ *  matching WorldState.getTeamEntityCountCap. Declared-but-empty sides carve
+ *  terrain but own no economy, so they are not counted here. */
+const occupiedAllyTeamCount = computed(() => {
+  let occupied = 0;
+  for (const group of teamGroups.value) {
+    if (group.seats.length > 0) occupied++;
+  }
+  return Math.max(1, occupied);
+});
 
 // Set view of allowedUnits so per-button lookups in the v-for below
 // are O(1) instead of O(allowedUnits.length) on every parent re-render.
@@ -222,6 +244,18 @@ function pickToggleAllBuildings(): void {
 function pickUnitCap(cap: number): void {
   if (!props.isHost) return;
   emit('setUnitCap', cap);
+}
+
+/** The member behind a seat. The roster the host edits is keyed by member —
+ *  seats belong to members, not the other way round — so a control on a
+ *  seated row has to resolve back to one. */
+function memberIdForSeat(playerId: PlayerId): number {
+  return props.seatedMemberIds[playerId] ?? 0;
+}
+
+function pickAllyTeamCount(count: number) {
+  if (!props.isHost) return;
+  emit('setAllyTeamCount', count);
 }
 
 function pickConverterTax(value: number): void {
@@ -404,7 +438,9 @@ watch(
  *  the match will use. Both are derived, never authored here: the lobby
  *  resolves the same TeamRoster the sim resolves and reads the same
  *  identity-colour rule the renderer reads (see lobbyIdentity.ts). */
-const teamGroups = computed(() => resolveLobbyTeamGroups(props.players));
+const teamGroups = computed(() =>
+  resolveLobbyTeamGroups(props.players, props.allyTeamCount),
+);
 
 function handleHost() {
   emit('host');
@@ -486,7 +522,7 @@ const terrainSectionVars = computed(() =>
       :aria-expanded="sidebarOpen"
       :aria-label="sidebarOpen ? 'Close menu' : 'Open menu'"
       :title="sidebarOpen ? 'Close menu' : 'Open menu'"
-      @click="emit('spectate')"
+      @click="emit('toggleMenu')"
     >
       <ChevronIcon :direction="sidebarOpen ? 'right' : 'left'" />
     </button>
@@ -542,7 +578,12 @@ const terrainSectionVars = computed(() =>
                   <span v-if="formatLobbyAge(lobby)" class="lobby-row-age">{{ formatLobbyAge(lobby) }}</span>
                 </span>
               </span>
-              <span class="lobby-row-players">{{ lobby.playerCount }}/{{ lobby.maxPlayers }}</span>
+              <span class="lobby-row-players">
+                {{ lobby.playerCount }}/{{ lobby.maxPlayers }}
+                <span v-if="lobby.spectatorCount > 0" class="lobby-row-watch">
+                  +{{ lobby.spectatorCount }} watching
+                </span>
+              </span>
             </button>
           </li>
         </ul>
@@ -557,9 +598,19 @@ const terrainSectionVars = computed(() =>
             <span class="lobby-list-label">IN PROGRESS</span>
             <span class="lobby-list-count">{{ runningGames.length }}</span>
           </div>
+          <!-- A running battle takes no new SEATS — the frame-0 roster is
+               hashed and cannot grow — but it takes watchers freely, so the
+               row is a WATCH button rather than a dead entry. -->
           <ul class="lobby-rows">
             <li v-for="game in runningGames" :key="game.roomCode">
-              <div class="lobby-row lobby-row-running">
+              <button
+                class="lobby-row lobby-row-running"
+                :disabled="game.spectatorCount >= game.maxSpectators"
+                :title="game.spectatorCount >= game.maxSpectators
+                  ? 'This battle has no room left to watch'
+                  : `Watch ${game.name || game.roomCode}`"
+                @click="handleJoinListed(game)"
+              >
                 <span class="lobby-row-main">
                   <span class="lobby-row-name">{{ game.name || game.hostName || 'Battle' }}</span>
                   <span class="lobby-row-meta">
@@ -567,8 +618,11 @@ const terrainSectionVars = computed(() =>
                     <span v-if="formatLobbyAge(game)" class="lobby-row-age">started {{ formatLobbyAge(game) }}</span>
                   </span>
                 </span>
-                <span class="lobby-row-players">{{ game.playerCount }}/{{ game.maxPlayers }}</span>
-              </div>
+                <span class="lobby-row-players">
+                  {{ game.playerCount }}/{{ game.maxPlayers }}
+                  <span class="lobby-row-watch">WATCH {{ game.spectatorCount }}/{{ game.maxSpectators }}</span>
+                </span>
+              </button>
             </li>
           </ul>
         </template>
@@ -732,20 +786,83 @@ const terrainSectionVars = computed(() =>
                     type="button"
                     :style="{ borderColor: seat.teamColor }"
                     :title="`Move ${seat.player.name} to the next team`"
-                    @click="emit('cyclePlayerAllyTeam', seat.player.playerId)"
+                    @click="emit('cycleMemberAllyTeam', memberIdForSeat(seat.player.playerId))"
                   >TEAM {{ seat.allyTeamId }}</button>
                   <span
                     v-else
                     class="team-badge"
                     :style="{ borderColor: seat.teamColor }"
                   >TEAM {{ seat.allyTeamId }}</span>
+                  <!-- The host owns seating; the host's own seat has no bench
+                       button because a lobby with nobody in it is not a lobby. -->
+                  <button
+                    v-if="isHost && !seat.player.isHost"
+                    class="seat-toggle-btn"
+                    type="button"
+                    :title="`Move ${seat.player.name} back to the watchers`"
+                    @click="emit('toggleMemberSeated', memberIdForSeat(seat.player.playerId))"
+                  >BENCH</button>
                   <span v-if="seat.player.isHost" class="host-badge">HOST</span>
                   <span v-if="seat.player.playerId === localPlayerId" class="you-badge">YOU</span>
                 </div>
               </li>
+                  <!-- A declared side with nobody on it. It is not a gap in
+                       the list: the match still carves its slice, deposits
+                       and spawn arc, so the host can see the ground they
+                       just made before anyone stands on it. -->
+                  <li v-if="group.seats.length === 0" class="player-item team-empty">
+                    <span class="team-empty-text">EMPTY — slice carved, no commander</span>
+                  </li>
                 </ul>
               </li>
             </ul>
+
+            <!-- The bench. Everyone joins here; only the host moves anybody
+                 onto a team, which is why there is no control on this list
+                 for anyone else. -->
+            <div class="spectator-section">
+              <div class="spectator-heading">
+                WATCHING
+                <span class="spectator-count">{{ spectators.length }}</span>
+              </div>
+              <ul v-if="spectators.length > 0" class="player-list">
+                <li
+                  v-for="member in spectators"
+                  :key="member.memberId"
+                  class="player-item spectator-item"
+                  :class="{ 'is-local': member.memberId === localMemberId }"
+                >
+                  <div class="player-info">
+                    <div class="player-name-row">
+                      <span class="player-name">{{ member.name }}</span>
+                      <button
+                        v-if="member.memberId === localMemberId"
+                        class="player-name-edit-btn"
+                        type="button"
+                        title="Edit username"
+                        aria-label="Edit username"
+                        @click="openNameEditor"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                    <span v-if="member.location" class="player-location">{{ member.location }}</span>
+                    <span v-if="member.localTime" class="player-time">{{ member.localTime }}</span>
+                  </div>
+                  <div class="player-badges">
+                    <button
+                      v-if="isHost"
+                      class="seat-toggle-btn seat-toggle-btn-add"
+                      type="button"
+                      :title="`Put ${member.name} on a team`"
+                      @click="emit('toggleMemberSeated', member.memberId)"
+                    >SEAT</button>
+                    <span v-if="member.memberId === localMemberId" class="you-badge">YOU</span>
+                  </div>
+                </li>
+              </ul>
+              <p v-else class="spectator-empty">Nobody is watching.</p>
+            </div>
           </div>
         </div>
 
@@ -976,6 +1093,19 @@ const terrainSectionVars = computed(() =>
                     :title="isHost ? `Toggle ${bt}` : 'Only the host can change battle settings'"
                     @click="pickToggleBuilding(bt)"
                   >{{ buildingShortName(bt) }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel title="How many sides the map is carved into. A team left empty still gets its own slice, deposits and spawn arc — it just has no commander on it.">TEAMS:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="opt in allyTeamCountOptions"
+                    :key="opt"
+                    :active="allyTeamCount === opt"
+                    :title="isHost ? `Carve the map into ${opt} team slice(s)` : 'Only the host can change battle settings'"
+                    @click="pickAllyTeamCount(opt)"
+                  >{{ opt }}</BarButton>
                 </BarButtonGroup>
               </BarControlGroup>
               <BarControlGroup>
@@ -1718,6 +1848,74 @@ const terrainSectionVars = computed(() =>
 
 /* The side's own colour, straight from the identity-colour rule the
  * battle uses — not a lobby palette. */
+.lobby-row-watch {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  opacity: 0.6;
+}
+
+.lobby-row-running:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.spectator-section {
+  margin-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 8px;
+}
+
+.spectator-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  opacity: 0.7;
+  margin-bottom: 4px;
+}
+
+.spectator-count {
+  opacity: 0.6;
+}
+
+.spectator-empty {
+  font-size: 11px;
+  opacity: 0.45;
+  margin: 4px 0 0;
+}
+
+.spectator-item {
+  padding-left: 8px;
+}
+
+.seat-toggle-btn {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.seat-toggle-btn:hover {
+  border-color: rgba(255, 255, 255, 0.8);
+}
+
+.team-empty {
+  justify-content: center;
+  opacity: 0.55;
+}
+
+.team-empty-text {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .team-band {
   flex: 0 0 16px;
   border-radius: 6px;

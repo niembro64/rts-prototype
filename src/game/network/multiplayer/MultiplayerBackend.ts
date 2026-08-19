@@ -32,6 +32,8 @@ export type MultiplayerLobbySummary = {
   readonly status: SessionStatus;
   readonly playerCount: number;
   readonly maxPlayers: number;
+  readonly spectatorCount: number;
+  readonly maxSpectators: number;
   readonly mapName: string;
   /** Epoch ms the session was first advertised. */
   readonly createdAt: number;
@@ -45,6 +47,7 @@ export type MultiplayerLobbyAdvert = {
   readonly status: SessionStatus;
   readonly playerCount: number;
   readonly maxPlayers: number;
+  readonly spectatorCount: number;
   readonly mapName: string;
 };
 
@@ -114,9 +117,9 @@ export type SessionState =
   | 'idle'
   /** Standing up or dialling into one; no roster yet. */
   | 'connecting'
-  /** In the lobby, taking players. This is the only state that admits one. */
+  /** In the lobby. The only state that admits a new SEATING. */
   | 'lobby'
-  /** The match is running; late joiners are refused. */
+  /** The match is running: no new seats, but watchers are still admitted. */
   | 'playing'
   /** Over — left, kicked, or the host went away. Terminal until reset. */
   | 'ended';
@@ -142,8 +145,8 @@ export function createSessionLifecycle(
       // successful one opens the lobby.
       connecting: { connected: 'lobby', fail: 'idle', end: 'ended' },
       // Starting is one-way. Nothing returns a running match to the lobby,
-      // which is what makes "refuse late joiners" a state question rather
-      // than a separate flag.
+      // which is what makes "no new seats once it starts" a state question
+      // rather than a separate flag.
       lobby: { start: 'playing', end: 'ended' },
       playing: { end: 'ended' },
       // Terminal. A second `end` — the host's farewell followed by its socket
@@ -159,7 +162,19 @@ export function sessionStatusFor(state: SessionState): SessionStatus {
   return state === 'playing' ? 'in-game' : 'open';
 }
 
-/** Whether a new player may still be admitted. */
-export function admitsNewPlayers(state: SessionState): boolean {
+/**
+ * Whether a connection may still be admitted, and as what.
+ *
+ * Two questions, not one. A running match takes no new PLAYERS — the frame-0
+ * roster is hashed into the initialization and cannot grow — but it takes
+ * WATCHERS freely, because a spectator holds no seat and gates no frame.
+ * Deriving both from the state is what keeps "watch only, once it starts" a
+ * property of the machine rather than a check somebody has to remember.
+ */
+export function admitsSeating(state: SessionState): boolean {
   return state === 'lobby';
+}
+
+export function admitsSpectators(state: SessionState): boolean {
+  return state === 'lobby' || state === 'playing';
 }

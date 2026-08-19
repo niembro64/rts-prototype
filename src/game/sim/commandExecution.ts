@@ -6,6 +6,7 @@ import { DEFAULT_SIMULATION_TICK_RATE_HZ } from '../../types/simulationTickRate'
 // Handles all player command types (select, move, build, queue, rally, dgun, repair)
 
 import type {
+  ResignCommand,
   AreaCommandFilterCategory,
   AttackAreaCommand,
   AttackCommand,
@@ -80,7 +81,7 @@ import {
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 import { factoryCanProduceUnit } from './factoryProductionRoster';
-import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_COMBAT_MODE, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_TURRETS } from '../../types/network';
+import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_COMBAT_MODE, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../types/network';
 import { setBuildingActiveOpen } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
@@ -332,6 +333,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'selfDestruct':
       executeSelfDestructCommand(ctx, command);
+      break;
+    case 'resign':
+      executeResignCommand(ctx, command);
       break;
     case 'setTowerTarget':
       executeSetTowerTargetCommand(ctx, command);
@@ -1682,6 +1686,39 @@ function executeSelfDestructCommand(ctx: CommandContext, command: SelfDestructCo
     } else {
       armed.set(entity.id, ctx.world.getTick() + selfDestructCountdownTicks(ctx.world));
       emitSelfDestructEvent(ctx, entity, true);
+    }
+  }
+}
+
+/**
+ * Remove a player from the match.
+ *
+ * Everything they own dies at once, on this frame, on every peer. No armed
+ * countdown like self-destruct: a resign is not a tactical choice with a
+ * window to cancel, it is a seat leaving. Setting hp to zero rather than
+ * deleting rows keeps the ordinary per-tick death pass in charge of
+ * explosions, wreckage, kill attribution and the victory check, so a resign
+ * ends a match exactly the way losing a commander does.
+ *
+ * This is the ONLY path by which a player leaves the simulation. A dropped
+ * connection is not one: connection state is session state, and a
+ * disconnected player's army keeps its orders until this command says
+ * otherwise.
+ */
+function executeResignCommand(ctx: CommandContext, command: ResignCommand): void {
+  const entities = ctx.world.getAllEntities();
+  for (let i = 0; i < entities.length; i++) {
+    const entity = entities[i];
+    if (entity.ownership?.playerId !== command.playerId) continue;
+    // A resigned seat can no longer be holding a self-destruct countdown.
+    ctx.world.armedSelfDestructs.delete(entity.id);
+    if (entity.unit !== null && entity.unit.hp > 0) {
+      entity.unit.hp = 0;
+      ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
+    }
+    if (entity.building !== null && entity.building.hp > 0) {
+      entity.building.hp = 0;
+      ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
     }
   }
 }

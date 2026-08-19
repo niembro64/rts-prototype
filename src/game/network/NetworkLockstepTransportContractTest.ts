@@ -20,16 +20,27 @@ function assertContract(condition: boolean, message: string): void {
 export function runNetworkLockstepTransportContractTest(): void {
   const conn2 = createConnection(2);
   const conn3 = createConnection(3);
-  const connections = new Map<PlayerId, DataConnection>([
+  // Members and seats are 1:1 in this fixture, which keeps the test about
+  // the transport rather than about seating. The two maps are still passed
+  // separately because the transport must never treat them as the same set.
+  const connections = new Map<number, DataConnection>([
+    [2, conn2],
+    [3, conn3],
+  ]);
+  const seatedConnections = new Map<PlayerId, DataConnection>([
     [2 as PlayerId, conn2],
     [3 as PlayerId, conn3],
   ]);
   const sent: Array<{ conn: DataConnection; message: NetworkMessage }> = [];
-  const received: Array<{ message: NetworkLockstepMessage; fromPlayerId: PlayerId }> = [];
+  const received: Array<{
+    message: NetworkLockstepMessage;
+    fromPlayerId: PlayerId | undefined;
+  }> = [];
   const transport = new NetworkLockstepTransport({
     getGameId: () => 'contract-game',
     getHostConnection: () => undefined,
     getConnections: () => connections,
+    getSeatedConnections: () => seatedConnections,
     getLocalPlayerId: () => 1 as PlayerId,
     isMessageForCurrentGame: (message) => message.gameId === 'contract-game',
     onMessage: (message, fromPlayerId) => {

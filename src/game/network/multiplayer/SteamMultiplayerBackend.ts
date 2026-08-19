@@ -25,6 +25,7 @@
  * via a Tauri command, most likely) and hand it to the constructor.
  */
 
+import { MAX_LOBBY_SPECTATORS } from '../LobbyDirectory';
 import type {
   MultiplayerBackend,
   MultiplayerBackendId,
@@ -57,11 +58,20 @@ export type SteamLobbyRecord = {
 };
 
 /** Metadata keys this backend writes, so reads and writes cannot drift. */
+/** Steam lobby data is strings only, so a count arrives as text or not at
+ *  all. Null means the host never wrote one, which is different from zero. */
+function readSteamCount(raw: string | undefined): number | null {
+  if (raw === undefined) return null;
+  const parsed = Math.floor(Number(raw));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
 const LOBBY_DATA_KEYS = {
   name: 'ba_name',
   hostName: 'ba_host',
   status: 'ba_status',
   mapName: 'ba_map',
+  spectatorCount: 'ba_spectators',
 } as const;
 
 export class SteamMultiplayerBackend implements MultiplayerBackend {
@@ -108,8 +118,15 @@ export class SteamMultiplayerBackend implements MultiplayerBackend {
       name: record.data[LOBBY_DATA_KEYS.name] ?? '',
       hostName: record.data[LOBBY_DATA_KEYS.hostName] ?? '',
       status: record.data[LOBBY_DATA_KEYS.status] === 'in-game' ? 'in-game' : 'open',
-      playerCount: record.memberCount,
+      // Steam counts every attached member, watchers included, so the seat
+      // count is what the host wrote rather than what Steam observed.
+      playerCount: readSteamCount(record.data[LOBBY_DATA_KEYS.spectatorCount])
+        === null
+        ? record.memberCount
+        : Math.max(0, record.memberCount - (readSteamCount(record.data[LOBBY_DATA_KEYS.spectatorCount]) ?? 0)),
       maxPlayers: record.maxMembers,
+      spectatorCount: readSteamCount(record.data[LOBBY_DATA_KEYS.spectatorCount]) ?? 0,
+      maxSpectators: MAX_LOBBY_SPECTATORS,
       mapName: record.data[LOBBY_DATA_KEYS.mapName] ?? '',
       // Steam does not report a creation time; callers show relative age, so
       // 0 renders as "unknown" rather than as a bogus timestamp.
@@ -144,6 +161,7 @@ export class SteamMultiplayerBackend implements MultiplayerBackend {
       [LOBBY_DATA_KEYS.hostName]: advert.hostName,
       [LOBBY_DATA_KEYS.status]: advert.status,
       [LOBBY_DATA_KEYS.mapName]: advert.mapName,
+      [LOBBY_DATA_KEYS.spectatorCount]: String(advert.spectatorCount),
     };
     const serialized = JSON.stringify(data);
     if (serialized === this.lastPublished) return;

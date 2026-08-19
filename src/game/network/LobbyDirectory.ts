@@ -23,10 +23,16 @@ import { isTauriRuntime } from '../../browserRuntime';
  *  on games.niemo.io. Matches the folder the build is deployed to. */
 export const LOBBY_DIRECTORY_GAME_ID = 'budget-annihilation';
 
-/** Seats a lobby can hold. The host rejects the 7th connection
- *  (`NetworkManager.handleIncomingConnection`), so the directory reads this
- *  same constant rather than restating the number and drifting from it. */
+/** Seats a lobby can hold. The host rejects a 7th SEATING, so the directory
+ *  reads this same constant rather than restating the number and drifting
+ *  from it. */
 export const MAX_LOBBY_PLAYERS = 6;
+
+/** Benched watchers a lobby can hold on top of its seats — twelve people can
+ *  be attached to one match. Spectators are counted and advertised
+ *  separately: they take no seat, contribute no command frames, and can never
+ *  hold the match up. */
+export const MAX_LOBBY_SPECTATORS = 6;
 
 /** How often a host renews its listing. The backend expires anything it has
  *  not heard from in 30s, so this tolerates two missed beats. */
@@ -50,6 +56,8 @@ export type LobbyDirectoryEntry = {
   readonly status: LobbyDirectoryStatus;
   readonly playerCount: number;
   readonly maxPlayers: number;
+  readonly spectatorCount: number;
+  readonly maxSpectators: number;
   readonly mapName: string;
   readonly createdAt: number;
   readonly updatedAt: number;
@@ -68,6 +76,9 @@ export type LobbyAnnouncement = {
   readonly hostName: string;
   readonly status: LobbyDirectoryStatus;
   readonly playerCount: number;
+  /** Watchers attached, counted apart from seats: a running game with no free
+   *  seat is still worth showing as watchable. */
+  readonly spectatorCount: number;
   readonly mapName: string;
 };
 
@@ -158,6 +169,8 @@ function readEntry(raw: unknown): LobbyDirectoryEntry | null {
     status,
     playerCount: readCount(value.playerCount, 1),
     maxPlayers: readCount(value.maxPlayers, MAX_LOBBY_PLAYERS),
+    spectatorCount: readCount(value.spectatorCount, 0),
+    maxSpectators: readCount(value.maxSpectators, MAX_LOBBY_SPECTATORS),
     mapName: typeof value.mapName === 'string' ? value.mapName : '',
     createdAt: readCount(value.createdAt, 0),
     updatedAt: readCount(value.updatedAt, 0),
@@ -267,6 +280,7 @@ export class LobbyPublisher {
           body: JSON.stringify({
             hostToken: this.hostToken,
             maxPlayers: MAX_LOBBY_PLAYERS,
+            maxSpectators: MAX_LOBBY_SPECTATORS,
             ...announcement,
           }),
         },
@@ -292,6 +306,7 @@ export class LobbyPublisher {
       body: JSON.stringify({
         game: LOBBY_DIRECTORY_GAME_ID,
         maxPlayers: MAX_LOBBY_PLAYERS,
+        maxSpectators: MAX_LOBBY_SPECTATORS,
         ...announcement,
       }),
     });

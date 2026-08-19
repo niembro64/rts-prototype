@@ -5,11 +5,19 @@ import type { PlayerId } from '../game/sim/types';
 /**
  * Which players are falling behind the match, and by how much.
  *
- * Lockstep runs at the speed of its slowest participant: every peer must have
- * a frame's commands before anyone may execute it. So one player on a bad
- * connection does not lag alone — everybody stutters, and from the inside it
- * is indistinguishable from the game being broken. Naming who is behind turns
- * an unexplained freeze into something the table can act on.
+ * Lockstep runs at the speed of its slowest SEATED player: the coordinator
+ * will not mint a frame more than a window ahead of them (see
+ * LockstepFlowControl). So one player on a bad connection does not lag alone —
+ * everybody slows, and from the inside that is indistinguishable from the game
+ * being broken. Naming who is behind turns an unexplained stutter into
+ * something the table can act on.
+ *
+ * Informational only, and distinct from the match-hold banner: this names who
+ * is BEHIND while everyone is still playing. When nothing is advancing at all,
+ * the banner takes over and says who the match is being HELD for.
+ *
+ * Watchers never appear here. They hold no seat, so the coordinator never
+ * waits on them and they are absent from what it reports.
  *
  * Progress comes from the frame coordinator, which is the only peer that sees
  * everyone's acks (see `RealBattlePeerFrameReport`).

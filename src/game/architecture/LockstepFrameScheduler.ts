@@ -230,7 +230,20 @@ export class LockstepFrameScheduler {
     this.emitDiagnostics();
   }
 
-  advanceReadyFrames(maxFrames: number = 1): LockstepFrameSchedulerAdvanceResult {
+  /**
+   * Step every queued frame that is ready, up to `maxFrames`.
+   *
+   * `deadlineMs` bounds the work by TIME rather than by frame count, which is
+   * what catching up needs: a peer replaying a long match wants to run as many
+   * frames as it can this animation frame and no more, and the cost of a frame
+   * varies by two orders of magnitude between an empty opening and a thousand
+   * live units. A frame already begun always finishes — stepping half a tick
+   * is not a thing the simulation can do.
+   */
+  advanceReadyFrames(
+    maxFrames: number = 1,
+    deadlineMs: number | undefined = undefined,
+  ): LockstepFrameSchedulerAdvanceResult {
     if (!Number.isInteger(maxFrames) || maxFrames <= 0) {
       throw new Error('[lockstep scheduler] maxFrames must be a positive integer');
     }
@@ -270,6 +283,7 @@ export class LockstepFrameScheduler {
       this.lastAdvancedFrame = frame.frame;
       this.nextFrame = frame.frame + 1;
       advancedFrames++;
+      const pastDeadline = deadlineMs !== undefined && this.nowMs() >= deadlineMs;
       this.framesAdvancedTotal++;
       this.onFrameAdvanced?.({
         frame: frame.frame,
@@ -288,6 +302,10 @@ export class LockstepFrameScheduler {
         this.lastChecksumFrame = this.nextFrame;
         this.onChecksum?.({ frame: this.nextFrame, stateHash });
       }
+
+      // Checked after the checksum so a catch-up run cannot skip one by
+      // stopping between the step and the hash.
+      if (pastDeadline) break;
     }
 
     this.lastPumpAdvancedFrames = advancedFrames;

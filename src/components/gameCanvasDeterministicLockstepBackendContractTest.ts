@@ -196,6 +196,7 @@ function assertInitializationHashMismatch(): void {
       mapWidthLandCells: 9,
       mapLengthLandCells: 9,
       entityCountCap: 128,
+      allyTeamCount: 2,
       pathfindingCellConsolidationMultiplier: 3,
       simulationTickRateHz: 20,
       converterTax: 0,
@@ -312,6 +313,7 @@ function createLobbySettings(
     mapWidthLandCells: terrain.mapDimensions.widthLandCells,
     mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
     entityCountCap: 128,
+    allyTeamCount: 2,
     pathfindingCellConsolidationMultiplier: 3,
     simulationTickRateHz,
     converterTax: 0,
@@ -563,9 +565,18 @@ class FakeLockstepNetwork {
     return { queued: 0, dropped: 0 };
   }
 
+  getLocalMemberId(): number {
+    return this.playerId;
+  }
+
   deliverToPeer(message: NetworkLockstepMessage): boolean {
     if (this.peer?.onLockstepMessage === undefined) return false;
-    this.peer.onLockstepMessage(message, this.playerId);
+    // Seat and member coincide in this fixture: both fake peers are seated,
+    // which is the case the lockstep backend is being exercised for.
+    this.peer.onLockstepMessage(message, {
+      memberId: this.playerId,
+      playerId: this.playerId,
+    });
     return true;
   }
 }

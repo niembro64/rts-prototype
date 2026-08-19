@@ -12,10 +12,11 @@ type UseGameCanvasShellDisplayOptions = {
   currentBattleMode: Readonly<Ref<BattleMode>>;
   isMobile: boolean;
   showLobby: Ref<boolean>;
-  spectateMode: Ref<boolean>;
+  menuHidden: Ref<boolean>;
   gameStarted: Ref<boolean>;
   roomCode: Ref<string>;
-  lobbyPlayers: Ref<LobbyPlayer[]>;
+  /** Derived from the member list, so it is read-only here. */
+  lobbyPlayers: Readonly<Ref<readonly LobbyPlayer[]>>;
   localPlayerId: Ref<PlayerId>;
   networkRole: Ref<NetworkRole | null>;
   networkNotice: Ref<string | null>;
@@ -27,7 +28,7 @@ export function useGameCanvasShellDisplay({
   currentBattleMode,
   isMobile,
   showLobby,
-  spectateMode,
+  menuHidden,
   gameStarted,
   roomCode,
   lobbyPlayers,
@@ -62,7 +63,7 @@ export function useGameCanvasShellDisplay({
   });
 
   const lobbyModalVisible = computed(
-    () => !isMobile && showLobby.value && !spectateMode.value,
+    () => !isMobile && showLobby.value && !menuHidden.value,
   );
 
   const showServerControls = computed(

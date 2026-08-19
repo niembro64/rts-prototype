@@ -1534,6 +1534,10 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runLockstepDesyncMonitorContractTest();
         const { runLockstepSupportPolicyContractTest } = await import('../architecture/LockstepSupportPolicyContractTest');
         runLockstepSupportPolicyContractTest();
+        const { runLockstepFlowControlContractTest } = await import('../architecture/LockstepFlowControlContractTest');
+        runLockstepFlowControlContractTest();
+        const { runMatchCatchUpContractTest } = await import('../architecture/MatchCatchUpContractTest');
+        runMatchCatchUpContractTest();
         const { runLockstepDiagnosticsContractTest } = await import('../architecture/LockstepDiagnosticsContractTest');
         runLockstepDiagnosticsContractTest();
         const { runCanonicalCheckpointContractTest } = await import('../architecture/CanonicalCheckpointContractTest');

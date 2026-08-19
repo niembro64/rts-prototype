@@ -5,12 +5,13 @@ import {
   type LobbySettings,
 } from '@/types/network';
 import {
+  allyTeamByPlayerIdFromInitialization,
   buildCanonicalMatchInitialization,
   hashCanonicalMatchInitialization,
 } from '../architecture/CanonicalMatchInitialization';
+import { FIRST_ALLY_TEAM_ID } from '../sim/teamRoster';
 import type { PlayerId } from '../sim/types';
 import type { LobbyPlayer } from './NetworkTypes';
-import { createLobbyPlayer } from './NetworkLobbyRoster';
 import { normalizeRoomCode } from './NetworkRoomCode';
 import { createHostGameGenerationSeed } from './gameGenerationSeed';
 import { assertCurrentLobbySettings } from './LobbySettingsContract';
@@ -19,7 +20,15 @@ type BuildBattleHandoffOptions = {
   gameId: string;
   roomCode: string;
   playerIds: Iterable<PlayerId>;
-  players: ReadonlyMap<PlayerId, LobbyPlayer>;
+  /** The seated members, as the match sees them. */
+  players: readonly LobbyPlayer[];
+  /** Seat -> side, as the host seated them. Required: the lobby's TEAM
+   *  assignment decides terrain slices, spawn arcs and who may shoot whom, so
+   *  it belongs in the hashed initialization rather than being rediscovered
+   *  from the roster later. */
+  allyTeamByPlayerId: Readonly<Record<number, number>>;
+  /** Sides the lobby declared, empty ones included. */
+  allyTeamCount: number;
   settings: LobbySettings;
 };
 
@@ -34,22 +43,37 @@ export function buildBattleHandoff({
   roomCode,
   playerIds,
   players: roster,
+  allyTeamByPlayerId,
+  allyTeamCount,
   settings,
 }: BuildBattleHandoffOptions): BattleHandoff {
   const normalizedPlayerIds = normalizePlayerIds(playerIds);
+  const bySeat = new Map<PlayerId, LobbyPlayer>();
+  for (const player of roster) bySeat.set(player.playerId, player);
   const players = new Array<LobbyPlayer>(normalizedPlayerIds.length);
   for (let i = 0; i < normalizedPlayerIds.length; i++) {
     const playerId = normalizedPlayerIds[i];
-    const existing = roster.get(playerId);
+    const existing = bySeat.get(playerId);
     players[i] = existing
       ? { ...existing }
-      : createLobbyPlayer(playerId, getDefaultPlayerName(playerId), playerId === 1);
+      : {
+          playerId,
+          name: getDefaultPlayerName(playerId),
+          isHost: playerId === 1,
+          allyTeamId: FIRST_ALLY_TEAM_ID,
+          ipAddress: undefined,
+          location: undefined,
+          timezone: undefined,
+          localTime: undefined,
+        };
   }
   const initialization = buildCanonicalMatchInitialization({
     gameId,
     roomCode,
     hostPlayerId: 1 as PlayerId,
     playerIds: normalizedPlayerIds,
+    allyTeamByPlayerId,
+    allyTeamCount,
     settings,
     gameGenerationSeed: createHostGameGenerationSeed(),
   });
@@ -88,6 +112,8 @@ export function normalizeBattleHandoffMessage(
     roomCode: normalizedRoomCode,
     hostPlayerId: handoff.hostPlayerId,
     playerIds: normalizedPlayerIds,
+    allyTeamByPlayerId: allyTeamByPlayerIdFromInitialization(handoff.initialization),
+    allyTeamCount: handoff.initialization.allyTeamCount,
     settings: handoff.settings,
     gameGenerationSeed: handoff.initialization.gameGenerationSeed,
   });

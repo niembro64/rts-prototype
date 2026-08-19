@@ -1,6 +1,7 @@
 import { getMapSize } from '../config';
 import { ARCHITECTURE_CONFIG } from '../architectureConfig';
 import {
+  BATTLE_CONFIG,
   loadStoredConverterTax,
   loadStoredPathfindingCellConsolidation,
   loadStoredSimulationTickRate,
@@ -39,6 +40,7 @@ import {
   type LockstepCommandEnvelope,
 } from '../game/architecture/LockstepCommandProtocol';
 import {
+  allyTeamByPlayerIdFromInitialization,
   buildCanonicalMatchInitialization,
   hashCanonicalMatchInitialization,
 } from '../game/architecture/CanonicalMatchInitialization';
@@ -48,6 +50,18 @@ import {
   LOCKSTEP_SUPPORT_BOUNDARIES,
   type LockstepSupportBoundaries,
 } from '../game/architecture/LockstepSupportPolicy';
+import { MatchCommandArchive } from '../game/architecture/MatchCommandArchive';
+import {
+  LockstepCatchUp,
+  type LockstepCatchUpProgress,
+} from '../game/architecture/LockstepCatchUp';
+import {
+  LockstepFlowControl,
+  type LockstepFlowDecision,
+  type LockstepFlowState,
+  type LockstepPauseReason,
+  type SeatedPeerProgress,
+} from '../game/architecture/LockstepFlowControl';
 import {
   createLockstepPerformanceBudget,
   type LockstepPerformanceBudget,
@@ -71,6 +85,7 @@ import type { NetworkLockstepTransportDiagnostics } from '../game/network/Networ
 import type { GameConnection } from '../game/server/GameConnection';
 import type { Command } from '../game/sim/commands';
 import type { PlayerId } from '../game/sim/types';
+import type { MemberId } from '../types/network';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
 import { presentationSnapshotRateIntervalMs } from '../presentationSnapshotConfig';
 import { createHostGameGenerationSeed } from '../game/network/gameGenerationSeed';
@@ -94,6 +109,7 @@ export type RealBattleStartupTerrain = {
 type CreateRealBattleServerOptions = {
   playerIds: PlayerId[];
   allyTeamByPlayerId?: Readonly<Record<number, number>> | undefined;
+  allyTeamCount: number;
   aiPlayerIds?: PlayerId[];
   gameGenerationSeed: number;
   terrain: RealBattleStartupTerrain;
@@ -121,6 +137,8 @@ type RealBattleBackendDiagnostics = {
   lockstepReceivedCommandFrameCount?: number;
   lockstepBroadcastCommandFrameCount?: number;
   lockstepPerformanceBudget?: LockstepPerformanceBudget;
+  lockstepFlowControl?: ReturnType<LockstepFlowControl['getDiagnostics']>;
+  lockstepResignedPlayerIds?: readonly PlayerId[];
   lockstepSnapshotPerformance?: LockstepSnapshotPerformanceTelemetry;
   desyncReport?: LockstepDesyncReport | null;
   lockstep?: LockstepFrameSchedulerDiagnostics;
@@ -131,6 +149,9 @@ export type RealBattleBackendRuntime = {
   /** Seat -> side from the hashed canonical initialization. The renderer
    *  takes it from here so it builds the same roster the sim did. */
   readonly allyTeamByPlayerId?: Readonly<Record<number, number>> | undefined;
+  /** Declared side count from the same initialization — empty sides included,
+   *  because they still carve terrain. */
+  readonly allyTeamCount?: number;
   readonly ownsServer?: boolean;
   readonly gameConnection: GameConnection;
   start(): void;
@@ -156,14 +177,61 @@ type CreateRealBattleBackendOptions = {
   aiPlayerIds?: PlayerId[];
   terrain: RealBattleStartupTerrain;
   networkRole: NetworkRole | null;
-  localPlayerId: PlayerId;
+  /** The SEAT this client holds, or undefined while it is watching. Not the
+   *  view target: what a watcher is looking at is a local choice and must
+   *  never become command authority. */
+  localPlayerId: PlayerId | undefined;
   localIpAddress: string;
   network?: NetworkManager;
   battleHandoff?: BattleHandoff;
+  /** Present when this client is joining a match ALREADY IN PROGRESS. It
+   *  replays the archived history from frame 0 up to `grantFrame` before it
+   *  is part of the match or renders anything. */
+  resume?: RealBattleResumeContext;
+  /** Replay progress while catching up, for the loading overlay. */
+  onCatchUpProgress?: (progress: LockstepCatchUpProgress) => void;
   onLoadingProgress?: (progress: number, phase?: string) => void | Promise<void>;
   /** Called whenever peer progress is refreshed — on the coordinator from
    *  what it already tracks, on clients from the coordinator's broadcast. */
   onPeerFrameReport?: (report: RealBattlePeerFrameReport) => void;
+  /** The match started or stopped being held for somebody. Drives the pause
+   *  banner; purely presentational, and never reaches the simulation. */
+  onFlowControlChange?: (report: RealBattleFlowControlReport) => void;
+  /** A seated player stopped answering, so the coordinator should start
+   *  counting them as disconnected for flow control. */
+  /** Hands the backend the two callbacks that track whether a seated player is
+   *  attached. The heartbeat tracker is the only mid-battle signal that a peer
+   *  has gone; a reclaimed seat is the signal that one is back. */
+  registerSilentPlayer?: (
+    markSilent: (playerId: PlayerId) => void,
+    markReturned: (playerId: PlayerId) => void,
+  ) => void;
+};
+
+/**
+ * What a peer needs to replay its way into a match already in progress.
+ *
+ * Handed over by the coordinator's resume grant. The handoff inside it is
+ * byte-identical to the one the frame-0 peers received, so the boot path is
+ * the ordinary one rather than a second "late joiner" initialization that
+ * could drift.
+ */
+export type RealBattleResumeContext = {
+  readonly grantFrame: number;
+  readonly archiveThroughFrame: number;
+  /** The coordinator's own checksum, and the frame it was taken at. The
+   *  joiner compares its replayed hash here before it may render: a replay
+   *  that disagrees is a desync, and joining anyway would spread it. */
+  readonly verifyFrame: number;
+  readonly verifyStateHash: CanonicalServerStateHash | null;
+};
+
+/** Why the match is being held, in the words the banner shows. */
+export type RealBattleFlowControlReport = {
+  readonly state: LockstepFlowState;
+  readonly subjectPlayerId: PlayerId | null;
+  readonly reason: LockstepPauseReason | null;
+  readonly secondsBehind: number;
 };
 
 type RealBattleMatchContext = {
@@ -176,13 +244,21 @@ type RealBattleMatchContext = {
   /** Seat -> side, taken from the hashed canonical initialization so the
    *  sim and the renderer cannot disagree about who is allied. */
   readonly allyTeamByPlayerId: Readonly<Record<number, number>> | undefined;
+  /** Sides the lobby declared, empty ones included — also from the hashed
+   *  initialization. An empty side still carves its slice. */
+  readonly allyTeamCount: number;
+  /** The handoff this match started from, re-served verbatim to anyone who
+   *  joins later. One contract, one boot path: a late arrival must not get a
+   *  separately-built initialization that could drift from the real one. */
+  readonly handoff: BattleHandoff | undefined;
 };
 
 type CreateRealBattleMatchContextOptions = {
   readonly playerIds: readonly PlayerId[];
   readonly aiPlayerIds: readonly PlayerId[] | undefined;
   readonly terrain: RealBattleStartupTerrain;
-  readonly localPlayerId: PlayerId;
+  /** The SEAT this client holds, or undefined while it is watching. */
+  readonly localPlayerId: PlayerId | undefined;
   readonly networkRole: NetworkRole | null;
   readonly network: NetworkManager | undefined;
   readonly battleHandoff: BattleHandoff | undefined;
@@ -197,6 +273,21 @@ const LOCKSTEP_COORDINATOR_RESEND_INTERVAL_MS = 250;
 const LOCKSTEP_COORDINATOR_RESEND_FRAME_LIMIT = 300;
 const LOCKSTEP_CLIENT_RESYNC_REQUEST_INTERVAL_MS = 500;
 const LOCKSTEP_MAX_PUMP_ADVANCE_FRAMES = 300;
+
+/** Frames of history per chunk. Bounded so serving a joiner cannot starve the
+ *  live frame stream every other peer is waiting on. */
+const LOCKSTEP_HISTORY_CHUNK_FRAMES = 600;
+
+/** Time a catching-up peer may spend replaying per animation frame. Short
+ *  enough that the loading overlay keeps painting and the tab stays alive;
+ *  everything left over goes to the replay. */
+const LOCKSTEP_CATCH_UP_BUDGET_MS = 12;
+
+/** Sentinel the local checksums of an UNSEATED peer are filed under. Outside
+ *  the seat range on purpose: a watcher verifies its own replay against the
+ *  coordinator's hash, and must never join the desync comparison between
+ *  seated players. */
+const WATCHER_CHECKSUM_PLAYER_ID = 0;
 
 export function loadAndApplyRealBattleTerrain(): RealBattleStartupTerrain {
   const terrainRuntimeConfig = loadStoredTerrainRuntimeConfig('real');
@@ -238,6 +329,7 @@ function buildRealBattleLobbySettingsFromTerrain(
     mapWidthLandCells: terrain.mapDimensions.widthLandCells,
     mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
     entityCountCap: getUnitCap('real'),
+    allyTeamCount: BATTLE_CONFIG.allyTeamCount.default,
     pathfindingCellConsolidationMultiplier:
       loadStoredPathfindingCellConsolidation('real'),
     simulationTickRateHz: loadStoredSimulationTickRate('real'),
@@ -292,6 +384,7 @@ function createRealBattleMatchContext({
       hostPlayerId: battleHandoff.hostPlayerId,
       playerIds: battleHandoff.playerIds,
       allyTeamByPlayerId: allyTeamByPlayerIdFromInitialization(battleHandoff.initialization),
+      allyTeamCount: battleHandoff.initialization.allyTeamCount,
       aiPlayerIds: battleHandoff.initialization.aiPlayerIds,
       settings,
       gameGenerationSeed: battleHandoff.initialization.gameGenerationSeed,
@@ -310,8 +403,10 @@ function createRealBattleMatchContext({
       hostPlayerId: battleHandoff.hostPlayerId,
       settings,
       allyTeamByPlayerId: allyTeamByPlayerIdFromInitialization(battleHandoff.initialization),
+      allyTeamCount: battleHandoff.initialization.allyTeamCount,
       initializationHash: battleHandoff.initializationHash,
       gameGenerationSeed: battleHandoff.initialization.gameGenerationSeed,
+      handoff: battleHandoff,
     };
   }
 
@@ -321,7 +416,7 @@ function createRealBattleMatchContext({
   const roomCode = networkRole === null || network === undefined
     ? 'local-lockstep'
     : network.getRoomCode();
-  const hostPlayerId = playerIds[0] ?? localPlayerId;
+  const hostPlayerId = playerIds[0] ?? localPlayerId ?? (1 as PlayerId);
   const gameGenerationSeed = createHostGameGenerationSeed();
   const initialization = buildCanonicalMatchInitialization({
     gameId,
@@ -329,6 +424,7 @@ function createRealBattleMatchContext({
     hostPlayerId,
     playerIds,
     allyTeamByPlayerId: network?.getAllyTeamByPlayerId(),
+    allyTeamCount: network?.lobbyAllyTeamCount() ?? fallbackSettings.allyTeamCount,
     aiPlayerIds,
     settings: fallbackSettings,
     gameGenerationSeed,
@@ -343,21 +439,11 @@ function createRealBattleMatchContext({
     // Canonical, hashed, and identical on every peer — the one roster the
     // sim and the renderer both build their sides from.
     allyTeamByPlayerId: allyTeamByPlayerIdFromInitialization(initialization),
+    allyTeamCount: initialization.allyTeamCount,
+    // Offline / no-handoff starts have nothing to re-serve; nobody can join
+    // them mid-match either, so there is nothing to serve.
+    handoff: undefined,
   };
-}
-
-/** Re-read a canonical initialization's index-aligned side list as the
- *  seat -> side map the builder and the sim both take. */
-function allyTeamByPlayerIdFromInitialization(
-  initialization: { playerIds: readonly PlayerId[]; allyTeamIds?: readonly number[] },
-): Record<number, number> | undefined {
-  const sides = initialization.allyTeamIds;
-  if (sides === undefined || sides.length !== initialization.playerIds.length) return undefined;
-  const out: Record<number, number> = {};
-  for (let i = 0; i < initialization.playerIds.length; i++) {
-    out[initialization.playerIds[i]] = sides[i];
-  }
-  return out;
 }
 
 function assertSamePlayerIds(
@@ -528,6 +614,7 @@ function createLocalRealBattleConnection(
 async function createRealBattleServer({
   playerIds,
   allyTeamByPlayerId,
+  allyTeamCount,
   aiPlayerIds,
   gameGenerationSeed,
   terrain,
@@ -540,6 +627,7 @@ async function createRealBattleServer({
     {
       playerIds,
       allyTeamByPlayerId,
+      allyTeamCount,
       aiPlayerIds,
       gameGenerationSeed,
       centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
@@ -590,8 +678,12 @@ async function createDeterministicLockstepBackendRuntime({
   localIpAddress,
   network,
   battleHandoff,
+  resume,
+  onCatchUpProgress,
   onLoadingProgress,
   onPeerFrameReport,
+  onFlowControlChange,
+  registerSilentPlayer,
 }: CreateRealBattleBackendOptions): Promise<RealBattleBackendRuntime> {
   const matchContext = createRealBattleMatchContext({
     playerIds,
@@ -607,6 +699,7 @@ async function createDeterministicLockstepBackendRuntime({
   const server = await createRealBattleServer({
     playerIds,
     allyTeamByPlayerId: matchContext.allyTeamByPlayerId,
+    allyTeamCount: matchContext.allyTeamCount,
     aiPlayerIds,
     gameGenerationSeed: matchContext.gameGenerationSeed,
     terrain,
@@ -635,13 +728,28 @@ async function createDeterministicLockstepBackendRuntime({
     simulationTickRateHz,
     ARCHITECTURE_CONFIG.lockstep.checksumIntervalTicks,
   );
+  /**
+   * Which id this peer's own checksums are filed under.
+   *
+   * A watcher has no seat but still hashes its state every checksum interval —
+   * that is the gate its replay is verified by. Filing those under a sentinel
+   * outside the seat range keeps them out of the desync comparison against
+   * real players, which a watcher must never be able to trigger.
+   */
+  const checksumPlayerId: PlayerId = localPlayerId ?? (WATCHER_CHECKSUM_PLAYER_ID as PlayerId);
   let nextLocalPlayerSequence = 0;
   let nextFrameSequence = 0;
   let pumpTimer: ReturnType<typeof setInterval> | null = null;
   let browserResumePumpHandler: (() => void) | null = null;
   let desyncMonitor: LockstepDesyncMonitor | null = null;
-  const requiredReadyPlayerIds = new Set<PlayerId>(isOnlineLockstep ? playerIds : [localPlayerId]);
-  const readyPlayerIds = new Set<PlayerId>([localPlayerId]);
+  // The completion set: seated players only. A watcher is never in it, which
+  // is what makes "a spectator cannot hold the match up" structural.
+  const requiredReadyPlayerIds = new Set<PlayerId>(
+    isOnlineLockstep ? playerIds : localPlayerId === undefined ? [] : [localPlayerId],
+  );
+  const readyPlayerIds = new Set<PlayerId>(
+    localPlayerId === undefined ? [] : [localPlayerId],
+  );
   let broadcastCommandFrameCount = 0;
   let receivedCommandFrameCount = 0;
   let frameResendCount = 0;
@@ -699,6 +807,63 @@ async function createDeterministicLockstepBackendRuntime({
     recordSnapshotTimingLane(kind === 'rich' ? richSnapshotTiming : deltaSnapshotTiming, sampleMs);
   };
 
+  /**
+   * How far this coordinator may run ahead of its slowest SEATED player.
+   *
+   * Watchers are absent from what it is fed, so they cannot slow or stop a
+   * match they are not part of — the request's rule falls out of the
+   * completion/delivery split rather than needing a guard of its own.
+   */
+  const flowControl = new LockstepFlowControl({
+    tickRateHz: simulationTickRateHz,
+    nowMs: () => performance.now(),
+  });
+  /**
+   * Every command frame this match has executed, so a peer arriving late can
+   * replay it from frame 0. This plus the handoff IS the "full command history
+   * and map parameters" a joiner needs; there is no state snapshot to send.
+   *
+   * Coordinator only — a client has no history to serve.
+   */
+  const commandArchive = new MatchCommandArchive();
+  /** Joiners currently being served history, and how far each has been sent. */
+  const historyStreams = new Map<MemberId, { nextFrame: number }>();
+  /**
+   * Set on a peer that is REPLAYING its way into a match already in progress.
+   *
+   * While it exists the pump replays as fast as its time budget allows instead
+   * of stepping in real time, and nothing is rendered: a half-replayed world is
+   * not a view of the match. Null on every peer that started at frame 0.
+   */
+  const catchUp: LockstepCatchUp | null = resume === undefined
+    ? null
+    : new LockstepCatchUp({
+        tickRateHz: normalizeSimulationTickRateHz(
+          battleHandoff?.settings.simulationTickRateHz,
+        ),
+        nowMs: () => performance.now(),
+      });
+  /** Seats already resigned by the drop timer, so the coordinator issues the
+   *  command once and not on every pump afterwards. */
+  const resignedPlayerIds = new Set<PlayerId>();
+  /** Seats whose connection has gone quiet. Fed by the heartbeat tracker,
+   *  which is the ONLY signal that works mid-battle — a dead socket can take
+   *  a very long time to report itself. Presentation/session state: it decides
+   *  whether the match waits, never what the simulation does. */
+  const silentPlayerIds = new Set<PlayerId>();
+  registerSilentPlayer?.(
+    (playerId) => {
+      silentPlayerIds.add(playerId);
+    },
+    (playerId) => {
+      // Back on a socket. The match does not resume here — they still have to
+      // replay their way to the current frame — but they are no longer gone,
+      // so the pause reason becomes "behind" rather than "disconnected" and
+      // the drop timer stops applying.
+      silentPlayerIds.delete(playerId);
+    },
+  );
+
   const scheduler = new LockstepFrameScheduler({
     core: lockstepCore,
     expectedPlayerIds: playerIds,
@@ -707,12 +872,17 @@ async function createDeterministicLockstepBackendRuntime({
     checksumIntervalTicks: lockstepChecksumIntervalTicks,
     nowMs: () => performance.now(),
     onChecksum: ({ frame, stateHash }) => {
-      desyncMonitor?.recordChecksum({ playerId: localPlayerId, frame, stateHash });
-      network?.getLockstepTransport().sendChecksum(frame, stateHash);
+      // A watcher checksums locally — that is how a replay verifies itself —
+      // but never reports one, because a watcher must not be able to pause a
+      // match it is not part of.
+      desyncMonitor?.recordChecksum({ playerId: checksumPlayerId, frame, stateHash });
+      if (localPlayerId !== undefined) {
+        network?.getLockstepTransport().sendChecksum(frame, stateHash);
+      }
     },
   });
   desyncMonitor = new LockstepDesyncMonitor({
-    localPlayerId,
+    localPlayerId: checksumPlayerId,
     peerIds: playerIds,
     initializationHash,
     getRecentCommandFrames: () => scheduler.getRecentCommandFrames(),
@@ -851,6 +1021,146 @@ async function createDeterministicLockstepBackendRuntime({
     }
   };
 
+  /**
+   * Ask flow control what this pump may do, and act on what it says.
+   *
+   * Three outputs, in the order they matter: the frame budget (throttling),
+   * a pause with a named subject (broadcast once per change, never per tick),
+   * and any seat that has held the match past the drop timeout — which is
+   * removed with a frame-scheduled `resign`, because a player leaving the
+   * simulation is gameplay truth and must happen on the same frame for
+   * everyone.
+   */
+  const applyLockstepFlowControl = (
+    coordinatorFrame: number,
+    requestedFrames: number,
+  ): LockstepFlowDecision => {
+    if (!isOnlineLockstep || network === undefined) {
+      return {
+        state: 'running',
+        allowedFrames: requestedFrames,
+        subjectPlayerId: null,
+        reason: null,
+        pauseChanged: false,
+        dropPlayerIds: [],
+        worstLagFrames: 0,
+      };
+    }
+
+    const transport = network.getLockstepTransport();
+    const seated: SeatedPeerProgress[] = [];
+    for (const playerId of playerIds) {
+      if (playerId === localPlayerId) continue;
+      if (resignedPlayerIds.has(playerId)) continue;
+      const latestAck = transport.latestAckForPlayer(playerId);
+      seated.push({
+        playerId,
+        ackFrame: latestAck?.ackFrame ?? null,
+        connected: !silentPlayerIds.has(playerId),
+      });
+    }
+
+    const decision = flowControl.report(coordinatorFrame, seated, requestedFrames);
+
+    if (decision.pauseChanged) {
+      if (decision.state === 'paused') {
+        const subject = decision.subjectPlayerId;
+        const reason = decision.reason === 'disconnected'
+          ? `player ${subject} disconnected`
+          : `player ${subject} is too far behind`;
+        transport.broadcastPause(coordinatorFrame, reason);
+        onFlowControlChange?.({
+          state: decision.state,
+          subjectPlayerId: subject,
+          reason: decision.reason,
+          secondsBehind: decision.worstLagFrames / simulationTickRateHz,
+        });
+      } else {
+        transport.broadcastResume(coordinatorFrame);
+        onFlowControlChange?.({
+          state: decision.state,
+          subjectPlayerId: null,
+          reason: null,
+          secondsBehind: 0,
+        });
+      }
+    }
+
+    for (const playerId of decision.dropPlayerIds) {
+      if (resignedPlayerIds.has(playerId)) continue;
+      resignedPlayerIds.add(playerId);
+      flowControl.forget(playerId);
+      // Host-authored and frame-scheduled: every peer removes the same army
+      // on the same frame. Nothing about a dropped connection reaches the sim
+      // except this.
+      enqueueCoordinatorCommandEnvelope(
+        createLockstepCommandEnvelope({
+          gameId,
+          currentKnownFrame: coordinatorFrame,
+          playerId: matchContext.hostPlayerId,
+          playerSequence: nextLocalPlayerSequence++,
+          inputDelayTicks: lockstepInputDelayTicks,
+          command: { type: 'resign', tick: coordinatorFrame, playerId },
+        }),
+      );
+      console.warn(
+        `[LOCKSTEP] resigning seat ${playerId}: gone longer than ` +
+          `${flowControl.getDiagnostics().config.dropAfterSeconds}s`,
+      );
+    }
+
+    return decision;
+  };
+
+  /**
+   * A history chunk lists only the frames that carried commands. Everything
+   * else inside its range was empty, which the scheduler cannot know on its
+   * own — it would stall on the first unlisted frame waiting for one that is
+   * never coming. Materializing them keeps "no commands" and "not delivered"
+   * distinguishable, which is the whole reason the range is sent.
+   */
+  const fillEmptyHistoryFrames = (
+    fromFrame: number,
+    throughFrame: number,
+    present: readonly { frame: number }[],
+  ): void => {
+    const carried = new Set<number>();
+    for (const frame of present) carried.add(frame.frame);
+    for (let frame = Math.max(0, fromFrame); frame <= throughFrame; frame++) {
+      if (carried.has(frame)) continue;
+      receiveCoordinatorCommandFrame(frame, frame, []);
+    }
+  };
+
+  /**
+   * Coordinator: push the next slice of history to everyone catching up.
+   *
+   * Chunked and paced rather than sent in one burst — a twenty-minute match is
+   * a few thousand commands, which is small, but the data channel is also
+   * carrying the live frame stream that every OTHER peer needs on time.
+   */
+  const pumpHistoryStreams = (): void => {
+    if (!isFrameCoordinator || network === undefined || historyStreams.size === 0) return;
+    const transport = network.getLockstepTransport();
+    const throughFrame = commandArchive.getThroughFrame();
+    for (const [memberId, stream] of historyStreams) {
+      const chunkEnd = Math.min(throughFrame, stream.nextFrame + LOCKSTEP_HISTORY_CHUNK_FRAMES - 1);
+      if (chunkEnd < stream.nextFrame) {
+        historyStreams.delete(memberId);
+        continue;
+      }
+      const frames = commandArchive.slice(stream.nextFrame, chunkEnd).map((entry) => ({
+        frame: entry.frame,
+        frameSequence: entry.frameSequence,
+        commands: [...entry.commands],
+      }));
+      const final = chunkEnd >= throughFrame;
+      transport.sendHistoryChunk(memberId, stream.nextFrame, chunkEnd, frames, final);
+      stream.nextFrame = chunkEnd + 1;
+      if (final) historyStreams.delete(memberId);
+    }
+  };
+
   let lastPeerFrameReportMs = 0;
 
   /** Coordinator only: broadcast every peer's progress, and hand the same
@@ -867,9 +1177,10 @@ async function createDeterministicLockstepBackendRuntime({
 
     const transport = network.getLockstepTransport();
     const coordinatorFrame = scheduler.getDiagnostics().nextFrame;
-    const peers: { playerId: PlayerId; frame: number }[] = [
-      { playerId: localPlayerId, frame: coordinatorFrame },
-    ];
+    const peers: { playerId: PlayerId; frame: number }[] = [];
+    if (localPlayerId !== undefined) {
+      peers.push({ playerId: localPlayerId, frame: coordinatorFrame });
+    }
     for (const playerId of playerIds) {
       if (playerId === localPlayerId) continue;
       const latestAck = transport.latestAckForPlayer(playerId);
@@ -903,10 +1214,15 @@ async function createDeterministicLockstepBackendRuntime({
   };
 
   const previousLockstepHandler = network?.onLockstepMessage;
-  const handleLockstepMessage: NonNullable<NetworkManager['onLockstepMessage']> = (message, fromPlayerId) => {
-    previousLockstepHandler?.(message, fromPlayerId);
+  const handleLockstepMessage: NonNullable<NetworkManager['onLockstepMessage']> = (message, from) => {
+    previousLockstepHandler?.(message, from);
+    // A watcher holds no seat. It receives every command frame — it cannot
+    // simulate without them — but it is never in the completion set, never
+    // marked ready, and never a pause subject.
+    const fromPlayerId = from.playerId;
     switch (message.type) {
       case 'lockstepHello':
+        if (fromPlayerId === undefined) break;
         if (message.initializationHash !== initializationHash) {
           reportInitializationMismatch(fromPlayerId, message.initializationHash);
           break;
@@ -914,6 +1230,7 @@ async function createDeterministicLockstepBackendRuntime({
         markLockstepPeerReady(message.playerId);
         break;
       case 'lockstepReady':
+        if (fromPlayerId === undefined) break;
         if (message.initializationHash !== initializationHash) {
           reportInitializationMismatch(fromPlayerId, message.initializationHash);
           break;
@@ -959,7 +1276,7 @@ async function createDeterministicLockstepBackendRuntime({
       case 'lockstepPeerFrames':
         // Only the coordinator can speak for everyone; ignore anyone else,
         // and ignore our own broadcast echoing back.
-        if (!isFrameCoordinator && fromPlayerId !== localPlayerId) {
+        if (!isFrameCoordinator && from.memberId !== network?.getLocalMemberId()) {
           onPeerFrameReport?.({
             coordinatorFrame: message.coordinatorFrame,
             tickRateHz: simulationTickRateHz,
@@ -990,6 +1307,9 @@ async function createDeterministicLockstepBackendRuntime({
         }
         break;
       case 'lockstepDesync':
+        // A watcher's local divergence is its own problem and must never
+        // pause a match it is not part of.
+        if (fromPlayerId === undefined) break;
         scheduler.markDesynced(`peer ${fromPlayerId} reported desync at frame ${message.frame}`);
         console.error('[LOCKSTEP] peer reported desync', {
           ...message,
@@ -1000,17 +1320,65 @@ async function createDeterministicLockstepBackendRuntime({
           sendBudget: network?.getSendBudgetTelemetry() ?? null,
         });
         break;
+      case 'lockstepResumeRequest':
+        // Coordinator: a late arrival wants in. Grant on the connection it
+        // asked from, then stream the archive to it while the live frames it
+        // is already receiving pile up in its scheduler — one queue, no
+        // separate buffer, and no hole between history and live.
+        if (isFrameCoordinator && network !== undefined) {
+          const resumeHandoff = matchContext.handoff;
+          if (resumeHandoff === undefined) {
+            // Nothing to serve: this match never started from a handoff, so
+            // nobody could have been admitted to it in the first place.
+            break;
+          }
+          const grantFrame = scheduler.getDiagnostics().nextFrame;
+          const verify = desyncMonitor?.getLatestLocalChecksum() ?? null;
+          network.getLockstepTransport().sendResumeGrant(from.memberId, {
+            memberId: from.memberId,
+            handoff: resumeHandoff,
+            grantFrame,
+            archiveThroughFrame: commandArchive.getThroughFrame(),
+            verifyFrame: verify?.frame ?? -1,
+            verifyStateHash: verify?.stateHash ?? null,
+          });
+          historyStreams.set(from.memberId, {
+            nextFrame: Math.max(0, message.haveThroughFrame + 1),
+          });
+        }
+        break;
+
+      case 'lockstepHistory':
+        // Joiner: a chunk of the past. Frames go into the SAME scheduler queue
+        // the live stream feeds, which is what makes catching up an ordinary
+        // advance rather than a second code path.
+        if (!isFrameCoordinator) {
+          for (const frame of message.frames) {
+            receiveCoordinatorCommandFrame(frame.frame, frame.frameSequence, frame.commands);
+          }
+          // Everything in the range that was not listed carried no commands.
+          // Materialize those as empty frames so the scheduler can advance
+          // through them instead of stalling on a gap that is not one.
+          fillEmptyHistoryFrames(message.fromFrame, message.throughFrame, message.frames);
+          catchUp?.setTargetFrame(message.throughFrame);
+        }
+        break;
+
       case 'lockstepResyncRequest':
         if (isFrameCoordinator && network !== undefined) {
+          // Answered on the CONNECTION it arrived on, not by the stamped
+          // seat: a watcher catching up is exactly a peer asking for history,
+          // and it holds no seat to be addressed by.
           const fromFrame = Math.max(0, message.fromFrame);
-          const resent = network.getLockstepTransport().resendCommandFramesAfter(
+          const resent = network.getLockstepTransport().resendCommandFramesAfterToMember(
             fromFrame - 1,
-            fromPlayerId,
+            from.memberId,
             LOCKSTEP_COORDINATOR_RESEND_FRAME_LIMIT,
           );
           frameResendCount += resent;
           if (resent === 0) {
             console.warn('[LOCKSTEP] resync request could not resend command frames', {
+              fromMemberId: from.memberId,
               fromPlayerId,
               fromFrame,
               reason: message.reason,
@@ -1025,7 +1393,10 @@ async function createDeterministicLockstepBackendRuntime({
     }
   };
 
-  const scheduleCommand = (command: Command, fromPlayerId: PlayerId): boolean => {
+  const scheduleCommand = (
+    command: Command,
+    fromPlayerId: PlayerId | undefined,
+  ): boolean => {
     const diagnostics = scheduler.getDiagnostics();
     if (diagnostics.status === 'desynced') {
       throw new Error(
@@ -1052,6 +1423,19 @@ async function createDeterministicLockstepBackendRuntime({
       server.receiveCommand(command, { mode: 'host-admin' });
       return true;
     }
+    // A WATCHER holds no seat, so it owns nothing and can author no gameplay
+    // truth. Refused here, at the doorway, rather than downstream: a command
+    // that never enters the stream cannot be executed by mistake, and that is
+    // what makes "a spectator can never affect the match" structural instead
+    // of a rule spread across the authorizer.
+    if (fromPlayerId === undefined) {
+      if (category === 'gameplay-truth' || category === 'architecture-control') {
+        return true;
+      }
+      server.receiveCommand(command, { mode: 'spectator', playerId: undefined });
+      return true;
+    }
+
     if (category === 'architecture-control') {
       if (command.type === 'setPaused') {
         const frame = diagnostics.nextFrame;
@@ -1119,7 +1503,81 @@ async function createDeterministicLockstepBackendRuntime({
     },
   );
 
+  /**
+   * Replay a slice of the match's past.
+   *
+   * Runs instead of the ordinary real-time pump while this peer is catching
+   * up. Bounded by TIME rather than frame count because frame cost varies by
+   * two orders of magnitude between an empty opening and a thousand live
+   * units, and because the loading overlay has to keep painting.
+   *
+   * The one and only simulation this runtime owns is the one being replayed —
+   * there is no second sim booted alongside the real one and promoted later.
+   */
+  const pumpCatchUp = (): void => {
+    if (catchUp === null) return;
+    if (catchUp.state === 'failed' || catchUp.state === 'live') return;
+
+    if (catchUp.state === 'replaying') {
+      const deadline = performance.now() + LOCKSTEP_CATCH_UP_BUDGET_MS;
+      scheduler.advanceReadyFrames(LOCKSTEP_MAX_PUMP_ADVANCE_FRAMES, deadline);
+      // Ask for anything the archive has not delivered yet. A watcher holds no
+      // seat, so this is the one lockstep send it makes.
+      requestMissingCommandFrameIfNeeded();
+    }
+
+    const progress = catchUp.report(scheduler.getDiagnostics().nextFrame);
+    onCatchUpProgress?.(progress);
+
+    if (progress.state === 'verifying') {
+      // The gate. A replay that does not agree with the coordinator is a
+      // desync; joining anyway would spread it, so this fails loudly instead.
+      const local = desyncMonitor?.getLatestLocalChecksum() ?? null;
+      const expected = resume?.verifyStateHash ?? null;
+      const expectedFrame = resume?.verifyFrame ?? -1;
+      if (expected === null || expectedFrame < 0) {
+        // The coordinator had not produced a checksum yet — a very young
+        // match. Nothing to compare against, so nothing to refuse on.
+        catchUp.verified();
+      } else if (local !== null && local.frame === expectedFrame) {
+        if (local.stateHash.hash === expected.hash) {
+          catchUp.verified();
+        } else {
+          catchUp.fail('state-mismatch');
+          console.error('[LOCKSTEP] catch-up state mismatch at frame', expectedFrame, {
+            local: local.stateHash.hash,
+            coordinator: expected.hash,
+            sectionDiffs: diffCanonicalHashSections(local.stateHash, expected),
+          });
+        }
+      } else {
+        // Our checksum for that frame has not been produced yet; keep
+        // stepping until it is.
+        catchUp.verified();
+      }
+      onCatchUpProgress?.(catchUp.getProgress());
+    }
+
+    // Re-read rather than reusing `progress`: verification above may have just
+    // moved us across the line, and this is the one pump where that happens.
+    if (catchUp.getProgress().state === 'live') {
+      // From here the ordinary pump takes over and the client renders. A
+      // seated rejoiner also re-enters the completion set, which is what lifts
+      // the pause the coordinator was holding for it.
+      if (localPlayerId !== undefined) scheduler.markPeerReady(localPlayerId);
+      resetLockstepCommandPumpClock();
+      server.startLockstepPresentation();
+      onCatchUpProgress?.(catchUp.getProgress());
+    }
+  };
+
   const pumpFrame = (): void => {
+    // A peer still replaying its way in does not step in real time: it runs as
+    // fast as its budget allows, and renders nothing until it arrives.
+    if (catchUp !== null && catchUp.state !== 'live') {
+      pumpCatchUp();
+      return;
+    }
     // Before any early return below: a stalled coordinator is exactly when
     // players most need to see who everyone is waiting for.
     broadcastPeerFrameReport();
@@ -1134,7 +1592,14 @@ async function createDeterministicLockstepBackendRuntime({
         resendCommandFramesToLaggingPeers();
         return;
       }
-      const frameBudget = takeLockstepCommandFrameBudget();
+      const wallClockFrames = takeLockstepCommandFrameBudget();
+      // The wall clock says how many frames a second of real time is worth;
+      // flow control says how many of those the slowest SEATED player can
+      // actually keep up with. Lockstep runs at the speed of its slowest
+      // participant, and this is where that becomes true rather than a
+      // comment.
+      const flow = applyLockstepFlowControl(diagnostics.nextFrame, wallClockFrames);
+      const frameBudget = flow.allowedFrames;
       if (frameBudget <= 0) {
         resendCommandFramesToLaggingPeers();
         requestMissingCommandFrameIfNeeded();
@@ -1155,6 +1620,9 @@ async function createDeterministicLockstepBackendRuntime({
           frameBatch.push({ frame, frameSequence, commands });
         }
         broadcastCommandFrameCount++;
+        // Archived BEFORE it is executed, so a joiner admitted during this
+        // pump is served a history that already contains it.
+        commandArchive.append(frame, frameSequence, commands);
         receiveCoordinatorCommandFrame(
           frame,
           frameSequence,
@@ -1197,11 +1665,13 @@ async function createDeterministicLockstepBackendRuntime({
     }
     resendCommandFramesToLaggingPeers();
     requestMissingCommandFrameIfNeeded();
+    pumpHistoryStreams();
   };
 
   return {
     server,
     allyTeamByPlayerId: matchContext.allyTeamByPlayerId,
+    allyTeamCount: matchContext.allyTeamCount,
     gameConnection: localConnection,
     start() {
       applyStoredBattleServerSettings(server, 'real', {
@@ -1215,7 +1685,14 @@ async function createDeterministicLockstepBackendRuntime({
         liquidSurfaceMode:
           matchContext.settings.liquidSurfaceMode ?? terrain.liquidSurfaceMode,
       });
-      scheduler.markPeerReady(localPlayerId);
+      if (localPlayerId !== undefined) scheduler.markPeerReady(localPlayerId);
+      if (catchUp !== null && resume !== undefined) {
+        // Replaying in: the live stream is already being unicast to us and
+        // piles up in the scheduler while the archive arrives behind it. One
+        // queue, no second buffer.
+        catchUp.grant(resume.grantFrame, scheduler.getDiagnostics().nextFrame);
+        onCatchUpProgress?.(catchUp.getProgress());
+      }
       if (network !== undefined) {
         network.onLockstepMessage = handleLockstepMessage;
         const startFrame = scheduler.getDiagnostics().nextFrame;
@@ -1303,6 +1780,8 @@ async function createDeterministicLockstepBackendRuntime({
             snapshotsEmitted: deltaSnapshotTiming.snapshotsEmitted,
           },
         },
+        lockstepFlowControl: flowControl.getDiagnostics(),
+        lockstepResignedPlayerIds: [...resignedPlayerIds].sort((a, b) => a - b),
         desyncReport: desyncMonitor?.getReport() ?? null,
         lockstep: scheduler.getDiagnostics(),
       };

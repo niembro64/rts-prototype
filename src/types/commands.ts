@@ -50,6 +50,7 @@ type CommandType =
   | 'setFireEnabled'
   | 'setBuildingActive'
   | 'selfDestruct'
+  | 'resign'
   | 'setTowerTarget'
   | 'repair'
   | 'repairArea'
@@ -349,6 +350,25 @@ export type SelfDestructCommand = BaseCommand & {
   queue?: boolean;
   queueFront?: boolean;
   queueInsertIndex?: number;
+};
+
+/**
+ * Remove a player from the match.
+ *
+ * The ONLY way a seat leaves the simulation. A closed laptop is not a resign:
+ * connection state is session state and never reaches the sim, so a player who
+ * merely disconnected keeps their army and their orders. This command is what
+ * the coordinator issues once a disconnected player has been gone past the
+ * configured timeout, and what a player issues to concede — either way it is a
+ * frame-scheduled gameplay command, so every peer removes exactly the same
+ * entities on exactly the same frame.
+ *
+ * `playerId` is the SUBJECT, not the author: the coordinator resigns somebody
+ * else. Authorization is the author being either the subject or the host.
+ */
+export type ResignCommand = BaseCommand & {
+  type: 'resign';
+  playerId: PlayerId;
 };
 
 /** Set (or clear) a combat entity's host-level lock-on target. Entity
@@ -690,6 +710,7 @@ export type Command =
   | SetFireEnabledCommand
   | SetBuildingActiveCommand
   | SelfDestructCommand
+  | ResignCommand
   | SetTowerTargetCommand
   | RepairCommand
   | RepairAreaCommand

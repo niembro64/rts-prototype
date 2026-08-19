@@ -1,7 +1,7 @@
 import { nextTick, type Ref } from 'vue';
 import { resetRealBattleSettings } from '../battleBarConfig';
 import type {
-  LobbyPlayer,
+  LobbyMember,
   NetworkManager,
   NetworkRole,
 } from '../game/network/NetworkManager';
@@ -24,7 +24,7 @@ type GameCanvasLobbyActionsOptions = {
   isHost: Ref<boolean>;
   networkRole: Ref<NetworkRole | null>;
   localPlayerId: Ref<PlayerId>;
-  lobbyPlayers: Ref<LobbyPlayer[]>;
+  lobbyMembers: Ref<LobbyMember[]>;
   battleLoading: Ref<boolean>;
   setupNetworkCallbacks: () => void;
   reportLocalPlayerInfo: () => void;
@@ -44,7 +44,7 @@ export function useGameCanvasLobbyActions({
   isHost,
   networkRole,
   localPlayerId,
-  lobbyPlayers,
+  lobbyMembers,
   battleLoading,
   setupNetworkCallbacks,
   reportLocalPlayerInfo,
@@ -71,7 +71,7 @@ export function useGameCanvasLobbyActions({
       isHost.value = true;
       networkRole.value = 'host';
       localPlayerId.value = 1;
-      lobbyPlayers.value = network.getPlayers().map((player) => ({ ...player }));
+      lobbyMembers.value = network.getMembers();
 
       setupNetworkCallbacks();
       // Eagerly report available local info; the async IP lookup can
@@ -100,7 +100,7 @@ export function useGameCanvasLobbyActions({
       lobbyError.value = null;
       networkNotice.value = null;
 
-      // Bind callbacks before joining; the host can send playerAssignment
+      // Bind callbacks before joining; the host sends the session assignment
       // as soon as the PeerJS connection opens.
       networkRole.value = 'client';
       setupNetworkCallbacks();
@@ -134,7 +134,7 @@ export function useGameCanvasLobbyActions({
     networkRole.value = null;
     roomCode.value = '';
     isHost.value = false;
-    lobbyPlayers.value = [];
+    lobbyMembers.value = [];
     lobbyError.value = null;
     networkNotice.value = null;
     isConnecting.value = false;

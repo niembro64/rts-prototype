@@ -10,8 +10,8 @@ const COMMANDS_PER_SECOND = 120;
 
 type NetworkSendMessageClass =
   | 'heartbeat'
-  | 'playerInfo'
-  | 'playerInfoUpdate'
+  | 'memberInfo'
+  | 'rosterUpdate'
   | 'lobbySettings'
   | 'communication'
   | 'communicationEvent'
@@ -108,14 +108,17 @@ function classifyMessage(message: NetworkMessage): NetworkSendClassification {
   switch (message.type) {
     case 'heartbeat':
       return { messageClass: 'heartbeat', policy: 'coalesce', coalesceKey: 'heartbeat' };
-    case 'playerInfo':
-      return { messageClass: 'playerInfo', policy: 'coalesce', coalesceKey: 'playerInfo' };
-    case 'playerInfoUpdate':
-      return {
-        messageClass: 'playerInfoUpdate',
-        policy: 'coalesce',
-        coalesceKey: `playerInfoUpdate:${message.playerId}`,
-      };
+    case 'memberInfo':
+      return { messageClass: 'memberInfo', policy: 'coalesce', coalesceKey: 'memberInfo' };
+    // The roster is a whole-list replace, so only the newest one has value —
+    // an older announcement queued behind it describes a lobby that no longer
+    // exists.
+    case 'rosterUpdate':
+      return { messageClass: 'rosterUpdate', policy: 'coalesce', coalesceKey: 'rosterUpdate' };
+    // Told to one connection exactly once, and it is how that connection
+    // learns who it is. Never coalesced or dropped.
+    case 'sessionAssignment':
+      return { messageClass: 'control', policy: 'critical', coalesceKey: null };
     case 'lobbySettings':
       return { messageClass: 'lobbySettings', policy: 'coalesce', coalesceKey: 'lobbySettings' };
     case 'communication':

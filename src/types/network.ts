@@ -240,18 +240,62 @@ import type {
   TerrainTileMap,
 } from './terrain';
 
-export const BATTLE_HANDOFF_PROTOCOL = 'ba-battle-handoff-v1' as const;
+export const BATTLE_HANDOFF_PROTOCOL = 'ba-battle-handoff-v2' as const;
 
-export type LobbyPlayerInfoPayload = {
-  /** Host-assigned SIDE for this seat (the lobby's TEAM N). Rides the
-   *  existing per-player info message so team changes need no new wire
-   *  type. Undefined leaves the seat where it is. */
-  allyTeamId?: number | undefined;
+/**
+ * One CONNECTION to a lobby or match.
+ *
+ * Deliberately not a PlayerId. A member is whoever is attached; a PlayerId is
+ * a SEAT in the match, and only seated members hold one. Conflating them is
+ * what makes a spectator accidentally gate a lockstep frame, so the two id
+ * spaces stay apart: members address connections, seats address the
+ * simulation.
+ */
+export type MemberId = number;
+
+/** Whether a member holds a seat. Fixed at admission — a user joins as a
+ *  spectator and only the HOST moves anyone onto a team. */
+export type LobbyMemberRole = 'player' | 'spectator';
+
+/** Opaque secret handed to a member when it is seated, and presented back to
+ *  reclaim that seat after a disconnect. Without it a returning connection is
+ *  just another spectator, because seats are reserved by identity and not by
+ *  arrival order. */
+export type SeatToken = string;
+
+export type LobbyMemberInfoPayload = {
   ipAddress: string | undefined;
   location: string | undefined;
   timezone: string | undefined;
   localTime: string | undefined;
   name: string | undefined;
+};
+
+/**
+ * A member as every client renders it.
+ *
+ * The host is the only writer. Clients receive the whole list atomically on
+ * `rosterUpdate` and replace theirs; there is no per-field merge, because
+ * merging partial roster deltas is what let two clients disagree about where
+ * the same player was sitting.
+ */
+export type LobbyMember = {
+  memberId: MemberId;
+  role: LobbyMemberRole;
+  /** The seat this member holds. Present exactly when role === 'player'. */
+  playerId: PlayerId | undefined;
+  /** The side of that seat — the lobby's TEAM N. Present with `playerId`. */
+  allyTeamId: number | undefined;
+  name: string;
+  isHost: boolean;
+  /** True while the member's seat is held open for a rejoin: it disconnected
+   *  mid-match and its army is still being simulated. Never reaches the sim —
+   *  connection state is session state (see `resign`). */
+  awaitingRejoin: boolean;
+  ipAddress: string | undefined;
+  location: string | undefined;
+  timezone: string | undefined;
+  localTime: string | undefined;
 };
 
 export type NetworkCommunicationPoint = {
@@ -282,9 +326,28 @@ export type NetworkCommunicationDraft =
       radius?: number;
     };
 
+/**
+ * Who a message reaches.
+ *
+ * In the LOBBY everybody is in one room — watchers included, because deciding
+ * who plays is a conversation everyone is part of. Once the battle starts the
+ * room splits: allies talk to allies, watchers talk to watchers, and the two
+ * never cross. That is not decoration — a watcher sees the whole map, so a
+ * live channel from the bench to a player is a coaching channel.
+ */
+export type NetworkCommunicationChannel =
+  /** Lobby only: everyone attached. */
+  | 'all'
+  /** In battle: one ally team. */
+  | 'team'
+  /** In battle: the bench. */
+  | 'spectators';
+
 export type NetworkCommunicationChatEvent = {
   kind: 'chat';
   id: string;
+  /** Which room this was said in, so the UI can label it. */
+  channel: NetworkCommunicationChannel;
   senderPlayerId: PlayerId;
   createdAtMs: number;
   text: string;
@@ -293,6 +356,8 @@ export type NetworkCommunicationChatEvent = {
 export type NetworkCommunicationMapDrawingEvent = {
   kind: 'mapDrawing';
   id: string;
+  /** Which room this was said in, so the UI can label it. */
+  channel: NetworkCommunicationChannel;
   senderPlayerId: PlayerId;
   createdAtMs: number;
   drawingId: string;
@@ -304,6 +369,8 @@ export type NetworkCommunicationMapDrawingEvent = {
 export type NetworkCommunicationMapEraseEvent = {
   kind: 'mapErase';
   id: string;
+  /** Which room this was said in, so the UI can label it. */
+  channel: NetworkCommunicationChannel;
   senderPlayerId: PlayerId;
   createdAtMs: number;
   scope: 'all' | 'radius';
@@ -316,7 +383,7 @@ export type NetworkCommunicationEvent =
   | NetworkCommunicationMapDrawingEvent
   | NetworkCommunicationMapEraseEvent;
 
-export const LOCKSTEP_PROTOCOL_VERSION = 'budget-annihilation.lockstep.v3' as const;
+export const LOCKSTEP_PROTOCOL_VERSION = 'budget-annihilation.lockstep.v4' as const;
 type LockstepProtocolVersion = typeof LOCKSTEP_PROTOCOL_VERSION;
 
 export type LockstepProtocolBase = {
@@ -434,9 +501,72 @@ export type LockstepDesyncMessage = LockstepProtocolBase & {
   remoteHash: CanonicalServerStateHash | null;
 };
 
+/**
+ * A late arrival asking to be let into a running match.
+ *
+ * Sent once, immediately after admission, when the session is already
+ * playing. `haveThroughFrame` is how much history the requester already holds
+ * — always -1 for a fresh watcher, and the seam a state-checkpoint baseline
+ * would use later without changing this message.
+ */
+export type LockstepResumeRequestMessage = LockstepProtocolBase & {
+  type: 'lockstepResumeRequest';
+  memberId: MemberId;
+  /** The seat being reclaimed, when a returning player presented a token. */
+  playerId: PlayerId | undefined;
+  haveThroughFrame: number;
+};
+
+/**
+ * The coordinator letting one peer in, with everything it needs to arrive.
+ *
+ * The handoff is byte-identical to what the frame-0 peers received: one
+ * contract, one boot path, no separate "late joiner" initialization that
+ * could drift from the real one. From this moment the coordinator also
+ * unicasts live frames to the joiner, so there is no hole between the end of
+ * the archive and the start of the live stream.
+ */
+export type LockstepResumeGrantMessage = LockstepProtocolBase & {
+  type: 'lockstepResumeGrant';
+  memberId: MemberId;
+  handoff: BattleHandoff;
+  /** The frame the joiner must reach before it is part of the match. */
+  grantFrame: number;
+  /** Highest frame the archive holds. Frames below it that never arrive were
+   *  empty, not lost. */
+  archiveThroughFrame: number;
+  /** The coordinator's canonical state hash at the most recent checksum
+   *  frame, and which frame that was. The joiner compares its own replayed
+   *  hash there before it is allowed to render: a replay that disagrees is a
+   *  desync, and joining anyway would spread it. */
+  verifyFrame: number;
+  verifyStateHash: CanonicalServerStateHash | null;
+};
+
+/**
+ * A chunk of match history.
+ *
+ * Only frames that carried commands are listed; everything else inside
+ * `[fromFrame, throughFrame]` was empty, which is information rather than a
+ * gap. At 20 Hz a twenty-minute match is 24,000 frames and a few thousand
+ * commands, so sending the empties would multiply the transfer for nothing.
+ */
+export type LockstepHistoryMessage = LockstepProtocolBase & {
+  type: 'lockstepHistory';
+  fromFrame: number;
+  throughFrame: number;
+  frames: LockstepCommandFrameBatchFrame[];
+  /** True on the last chunk, so the receiver knows the archive is complete
+   *  rather than waiting on a chunk that will never come. */
+  final: boolean;
+};
+
 export type LockstepResyncRequestMessage = LockstepProtocolBase & {
   type: 'lockstepResyncRequest';
-  requestedByPlayerId: PlayerId;
+  /** The requester's seat, or undefined when a watcher is catching up. The
+   *  coordinator answers on the connection the request arrived on, so this is
+   *  diagnostic rather than an address. */
+  requestedByPlayerId: PlayerId | undefined;
   fromFrame: number;
   reason: string;
 };
@@ -453,68 +583,84 @@ export type NetworkLockstepMessage =
   | LockstepPauseMessage
   | LockstepResumeMessage
   | LockstepDesyncMessage
-  | LockstepResyncRequestMessage;
+  | LockstepResyncRequestMessage
+  | LockstepResumeRequestMessage
+  | LockstepResumeGrantMessage
+  | LockstepHistoryMessage;
 
 // Combined transport envelope.
 export type NetworkMessage =
   | NetworkLockstepMessage
   // Client -> host communication.
   | { type: 'communication'; gameId: string | undefined; data: NetworkCommunicationDraft }
-  // Client reports its own IP / location / timezone to the host.
-  // The host updates the local LobbyPlayer record and re-broadcasts
-  // (see `playerInfoUpdate` below) so every connected client sees
-  // the same player list with IP + location columns populated.
+  // Client reports its own IP / location / timezone / name to the host. The
+  // host folds it into its member record and re-announces the whole roster;
+  // nothing a client says about itself can move a seat, because seating is
+  // the host's alone.
   | {
-      type: 'playerInfo';
+      type: 'memberInfo';
       gameId: string | undefined;
       ipAddress: string | undefined;
       location: string | undefined;
       timezone: string | undefined;
       localTime: string | undefined;
-      /** Optional rename — set when the local user edits their own
-       *  lobby player slot. Host re-broadcasts via `playerInfoUpdate`. */
+      /** Optional rename — set when the local user edits their own slot. */
       name: string | undefined;
     }
   // Heartbeat ping. Both directions (client→host AND host→client)
-  // — every peer sends one every couple seconds while the GAME
-  // LOBBY is alive, and every peer monitors what it's received
-  // from the others. Clients attach their own latest lobby info;
-  // the host attaches the authoritative roster back to clients.
-  // A peer that hasn't sent in too long gets its connection
-  // forcibly closed, which triggers the regular `playerLeft`
-  // cleanup. Catches silent disconnects (frozen tabs, network
-  // drops) that don't fire PeerJS's `close` event.
+  // — every peer sends one every couple seconds while the session is
+  // alive, and every peer monitors what it's received from the others.
+  // Clients attach their own latest info; the host attaches the
+  // authoritative roster back. A peer that hasn't sent in too long gets its
+  // connection closed OUTSIDE a battle; inside one, silence is only
+  // reported, because dropping a peer mid-match would strand the lockstep
+  // frames the others are waiting on. Catches silent disconnects (frozen
+  // tabs, network drops) that don't fire PeerJS's `close` event.
   | {
       type: 'heartbeat';
       gameId: string | undefined;
-      playerId: PlayerId;
-      playerInfo: LobbyPlayerInfoPayload | undefined;
-      players: LobbyPlayer[] | undefined;
+      memberId: MemberId;
+      memberInfo: LobbyMemberInfoPayload | undefined;
+      members: LobbyMember[] | undefined;
     }
   // Host -> client communication relay.
   | { type: 'communicationEvent'; gameId: string | undefined; data: NetworkCommunicationEvent }
-  | { type: 'playerAssignment'; playerId: PlayerId; gameId: string | undefined }
+  // Host -> one client, once, on admission. Tells that connection who it is
+  // and — if it reclaimed a seat with a token — which seat it holds.
+  | {
+      type: 'sessionAssignment';
+      gameId: string | undefined;
+      memberId: MemberId;
+      role: LobbyMemberRole;
+      playerId: PlayerId | undefined;
+      allyTeamId: number | undefined;
+      /** Present exactly when a seat is held. Kept by the client so a
+       *  reconnect can reclaim the same seat instead of arriving as a
+       *  stranger. */
+      seatToken: SeatToken | undefined;
+      /** True when this connection landed in a match that is already running.
+       *  The joiner answers with a resume request rather than sitting in a
+       *  lobby that no longer exists. */
+      matchInProgress: boolean;
+    }
+  // Host -> all, the WHOLE member list. Atomic replace rather than a delta:
+  // the roster is small, and every disagreement about who sits where came
+  // from clients merging partial updates in different orders.
+  | {
+      type: 'rosterUpdate';
+      gameId: string | undefined;
+      members: LobbyMember[];
+      /** Sides the host declared, empty ones included. */
+      allyTeamCount: number;
+    }
   | {
       type: 'gameStart';
       playerIds: PlayerId[];
       gameId: string;
       handoff: BattleHandoff;
-      assignedPlayerId: PlayerId;
+      /** The seat this recipient holds, or undefined when it is watching. */
+      assignedPlayerId: PlayerId | undefined;
     }
-  // A seat's SIDE travels with the seat. It used to be omitted here and left
-  // to a follow-up info message that was only sent when the player already
-  // had IP/location data, so clients filled the gap with the default team and
-  // two clients could disagree about where the same player was sitting.
-  // Required, not optional: an absent side is indistinguishable from team 1,
-  // which is exactly the bug.
-  | {
-      type: 'playerJoined';
-      gameId: string | undefined;
-      playerId: PlayerId;
-      playerName: string;
-      allyTeamId: number;
-    }
-  | { type: 'playerLeft'; gameId: string | undefined; playerId: PlayerId }
   // Host -> client farewell, sent once as the host tears its session down.
   //
   // A closing PeerJS connection already tells a client the host is gone, but
@@ -525,28 +671,7 @@ export type NetworkMessage =
   // treated the same way, so a crashed or unplugged host still ejects
   // everyone.
   | { type: 'hostLeft'; gameId: string | undefined }
-  | { type: 'lobbySettings'; gameId: string | undefined; settings: LobbySettings }
-  // Host fans a player's IP + location out to every connected
-  // client (whoever just resolved their ipapi.co lookup, or a
-  // back-fill on `playerJoined` for late-joiners). Carries
-  // playerId so receivers can match it to their player list.
-  | {
-      type: 'playerInfoUpdate';
-      gameId: string | undefined;
-      playerId: PlayerId;
-      /** Host-assigned SIDE (the lobby's TEAM N). Optional because player-info
-       *  messages are partial updates; absence leaves the seat unchanged. */
-      allyTeamId?: number | undefined;
-      ipAddress: string | undefined;
-      location: string | undefined;
-      timezone: string | undefined;
-      localTime: string | undefined;
-      /** Optional rename. Sent by the host whenever a player's
-       *  username changes from their own lobby slot, or when the host
-       *  receives a `playerInfo` rename. Receivers update the matching
-       *  LobbyPlayer.name in place. */
-      name: string | undefined;
-    };
+  | { type: 'lobbySettings'; gameId: string | undefined; settings: LobbySettings };
 
 // Host → Client lobby-settings sync. Carries the host's
 // pre-game choices (terrain shape and system toggles) so every connected client sees
@@ -579,6 +704,12 @@ export type LobbySettings = {
   mapLengthLandCells: number;
   /** Match-wide ENTITY COUNT CAP (units + buildings) for real battles. */
   entityCountCap: number;
+  /** How many SIDES the lobby splits its seats across — the TEAM N the roster
+   *  labels. Host-owned, and carried here rather than derived from the roster
+   *  because a side the host declared and left empty is still a side: it takes
+   *  a terrain slice, deposits and a spawn arc. Every client needs the number
+   *  to render the same empty teams the host sees. */
+  allyTeamCount: number;
   /** Number of build squares represented by one path square per axis. */
   pathfindingCellConsolidationMultiplier: number;
   /** Authoritative fixed simulation steps per real-time second. */
@@ -1200,6 +1331,13 @@ export type NetworkServerSnapshotEconomy = {
   };
 };
 
+/**
+ * A SEATED member, as the match sees it.
+ *
+ * The projection of a `LobbyMember` that holds a seat, and the only shape the
+ * battle handoff and the simulation ever take. Spectators have no LobbyPlayer
+ * because they own nothing to simulate.
+ */
 export type LobbyPlayer = {
   playerId: PlayerId;
   name: string;
@@ -1213,7 +1351,7 @@ export type LobbyPlayer = {
   /** Public IP (v4) — populated lazily after the player's
    *  client-side IP lookup resolves and the host has fanned the
    *  value out to every connected client via
-   *  `playerInfoUpdate`. May be undefined briefly between the
+   *  the roster announcement. May be undefined briefly between the
    *  player joining and the lookup completing. */
   ipAddress: string | undefined;
   /** Coarse human-readable location ("Austin, US") from the same

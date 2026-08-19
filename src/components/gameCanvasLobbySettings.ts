@@ -100,6 +100,11 @@ type GameCanvasLobbySettingsOptions = {
   simulationTickRateHz: Ref<number>;
   mapWidthLandCells: Ref<number>;
   mapLengthLandCells: Ref<number>;
+  /** UI mirror of the host's declared side count. NetworkManager holds the
+   *  authoritative copy; this ref is what the lobby renders, and it is
+   *  written here so host edits and inbound host settings both land in one
+   *  place. */
+  allyTeamCount: Ref<number>;
   slowDownAtFinalWaypointStoreVersion: Ref<number>;
   worldSurfaceStoreVersion: Ref<number>;
   stopBackgroundBattle: () => void;
@@ -133,6 +138,7 @@ export function useGameCanvasLobbySettings({
   simulationTickRateHz,
   mapWidthLandCells,
   mapLengthLandCells,
+  allyTeamCount,
   slowDownAtFinalWaypointStoreVersion,
   worldSurfaceStoreVersion,
   stopBackgroundBattle,
@@ -175,6 +181,7 @@ export function useGameCanvasLobbySettings({
       mapWidthLandCells: mapWidthLandCells.value,
       mapLengthLandCells: mapLengthLandCells.value,
       entityCountCap: getUnitCap('real'),
+      allyTeamCount: network.lobbyAllyTeamCount(),
       pathfindingCellConsolidationMultiplier:
         pathfindingCellConsolidation.value,
       simulationTickRateHz: simulationTickRateHz.value,
@@ -485,14 +492,21 @@ export function useGameCanvasLobbySettings({
       slowDownAtFinalWaypointStoreVersion.value++;
     }
     setUnitCap('real', settings.entityCountCap);
-    if (changed) {
+    // The host owns the side count; a client adopts it without answering
+    // back. A change reshapes the terrain slices, so the preview restarts
+    // for the same reason a map-size change does.
+    const allyTeamCountChanged = network.applyLobbyAllyTeamCount(
+      settings.allyTeamCount,
+    );
+    allyTeamCount.value = network.lobbyAllyTeamCount();
+    if (changed || allyTeamCountChanged) {
       applyCurrentTerrainRuntimeConfig();
     }
 
     const restartPreview = options.restartPreview ?? true;
     if (
       restartPreview &&
-      changed &&
+      (changed || allyTeamCountChanged) &&
       !gameStarted.value &&
       currentBattleMode.value === 'real'
     ) {

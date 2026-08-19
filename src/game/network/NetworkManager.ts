@@ -33,33 +33,45 @@ export type {
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotMeta,
   LobbyPlayer,
+  LobbyMember,
+  LobbyMemberRole,
+  MemberId,
+  SeatToken,
   LobbySettings,
   NetworkRole,
   BattleHandoff,
 } from './NetworkTypes';
 
+import type { CanonicalServerStateHash } from '../architecture/CanonicalStateHash';
 import {
   type BattleHandoff,
+  type LobbyMember,
+  type LobbyMemberRole,
+  type MemberId,
+  type NetworkCommunicationChannel,
   type NetworkCommunicationDraft,
   type NetworkCommunicationEvent,
   type NetworkCommunicationPoint,
+  type LockstepResumeGrantMessage,
   type NetworkLockstepMessage,
   type LobbySettings,
+  type SeatToken,
 } from '@/types/network';
 import type {
   LobbyPlayer,
   NetworkMessage,
   NetworkRole,
 } from './NetworkTypes';
+import { LOCKSTEP_PROTOCOL_VERSION } from './NetworkTypes';
 import {
   buildBattleHandoff,
   normalizeBattleHandoffMessage,
 } from './NetworkBattleHandoff';
 import { NetworkHeartbeatTracker } from './NetworkHeartbeatTracker';
 import { NetworkLockstepTransport } from './NetworkLockstepTransport';
-import { createLobbyPlayer, NetworkLobbyRoster } from './NetworkLobbyRoster';
-import { FIRST_ALLY_TEAM_ID } from '../sim/teamRoster';
-import { DEMO_CONFIG } from '@/demoConfig';
+import { HOST_MEMBER_ID, NetworkLobbyMembers } from './NetworkLobbyMembers';
+import { MAX_ALLY_TEAM_COUNT } from '../sim/teamRoster';
+import { BATTLE_CONFIG } from '@/battleBarConfig';
 import {
   generateRoomCode,
   normalizeRoomCode,
@@ -73,7 +85,8 @@ import { assertCurrentLobbySettings } from './LobbySettingsContract';
 import { MAX_LOBBY_PLAYERS } from './LobbyDirectory';
 import { getMultiplayerBackend } from './multiplayer/multiplayerBackendRegistry';
 import {
-  admitsNewPlayers,
+  admitsSeating,
+  admitsSpectators,
   createSessionLifecycle,
   sessionStatusFor,
   type SessionLifecycle,
@@ -150,7 +163,6 @@ const PEER_OPTIONS: PeerOptions = {
 
 /** The host always seats itself first, so player 1 IS the host. Clients use
  *  this to tell "the host vanished" apart from "some other player left". */
-const HOST_PLAYER_ID = 1 as PlayerId;
 
 const SIGNALING_RECONNECT_INITIAL_DELAY_MS = 1000;
 const SIGNALING_RECONNECT_MAX_DELAY_MS = 10000;
@@ -160,9 +172,31 @@ const COMMUNICATION_POINTS_MAX = 12;
 const COMMUNICATION_ERASE_RADIUS_MIN = 24;
 const COMMUNICATION_ERASE_RADIUS_MAX = 500;
 const LOCKSTEP_PENDING_MESSAGE_QUEUE_MAX = 512;
+/**
+ * Who a lockstep message came from, at both levels.
+ *
+ * `memberId` always addresses the connection — that is how a catch-up answer
+ * is routed back to a watcher. `playerId` is the SEAT it speaks for and is
+ * undefined for a watcher, which forces every consumer to say out loud what
+ * an unseated sender is allowed to do.
+ */
+/** What a peer needs to replay its way into a running match. Mirrors the
+ *  resume grant, minus the transport envelope. */
+export type NetworkResumeContext = {
+  readonly grantFrame: number;
+  readonly archiveThroughFrame: number;
+  readonly verifyFrame: number;
+  readonly verifyStateHash: CanonicalServerStateHash | null;
+};
+
+export type LockstepMessageSource = {
+  readonly memberId: MemberId;
+  readonly playerId: PlayerId | undefined;
+};
+
 type QueuedLockstepMessage = {
   readonly message: NetworkLockstepMessage;
-  readonly fromPlayerId: PlayerId;
+  readonly from: LockstepMessageSource;
 };
 
 function sanitizeCommunicationText(value: string, maxLength: number): string | null {
@@ -190,29 +224,105 @@ function shiftQueuedLockstepMessage(queue: QueuedLockstepMessage[]): QueuedLocks
   return message;
 }
 
+/**
+ * What a connecting peer says about itself, carried on the connection itself.
+ *
+ * PeerJS delivers `metadata` with the connection, which is the only channel
+ * that arrives before the host has to decide anything — and the host must know
+ * the protocol version, and whether a seat is being reclaimed, at exactly that
+ * moment. Read defensively: this is the one payload that has not been through
+ * any version check yet.
+ */
+type ConnectionMetadata = {
+  readonly protocolVersion: string | undefined;
+  readonly seatToken: SeatToken | undefined;
+};
+
+/**
+ * Where a seat token lives between connections.
+ *
+ * sessionStorage rather than localStorage on purpose: a reload is the ordinary
+ * way a player vanishes mid-match and must come back to its own army, but a
+ * token surviving the tab would try to reclaim a seat in a match that ended
+ * hours ago.
+ */
+const SEAT_TOKEN_STORAGE_KEY = 'ba-seat-token';
+
+function readStoredSeatToken(): SeatToken | undefined {
+  try {
+    const stored = globalThis.sessionStorage?.getItem(SEAT_TOKEN_STORAGE_KEY);
+    return stored === null || stored === undefined || stored === '' ? undefined : stored;
+  } catch {
+    // Private browsing, a sandboxed frame, a non-browser runtime. Losing a
+    // rejoin is a far smaller problem than failing to connect at all.
+    return undefined;
+  }
+}
+
+function writeStoredSeatToken(token: SeatToken | undefined): void {
+  try {
+    if (token === undefined) globalThis.sessionStorage?.removeItem(SEAT_TOKEN_STORAGE_KEY);
+    else globalThis.sessionStorage?.setItem(SEAT_TOKEN_STORAGE_KEY, token);
+  } catch {
+    // Same reasoning as above.
+  }
+}
+
+function readConnectionMetadata(raw: unknown): ConnectionMetadata {
+  if (typeof raw !== 'object' || raw === null) {
+    return { protocolVersion: undefined, seatToken: undefined };
+  }
+  const value = raw as Record<string, unknown>;
+  return {
+    protocolVersion:
+      typeof value.protocolVersion === 'string' ? value.protocolVersion : undefined,
+    seatToken:
+      typeof value.seatToken === 'string' && value.seatToken.length > 0
+        ? value.seatToken
+        : undefined,
+  };
+}
+
+/** Sides a lobby may declare. One is a free-for-all of one; the ceiling is
+ *  the seat cap, because a side per seat is already the most any roster can
+ *  occupy. */
+function clampLobbyAllyTeamCount(count: number): number {
+  return Math.max(1, Math.min(MAX_ALLY_TEAM_COUNT, Math.floor(count) || 1));
+}
+
 export class NetworkManager {
-  /** How many SIDES this lobby splits its seats across. Defaults to the
-   *  demo's 2v2v2 shape and is clamped to the seat count at battle start.
-   *  Host-owned; see src/game/sim/teamRoster.ts. */
-  private allyTeamCount: number = Math.max(1, Math.floor(DEMO_CONFIG.allyTeamCount) || 1);
+  /** How many SIDES this lobby splits its seats across — the TEAM N the
+   *  roster labels. Host-owned and authored, not derived: a side the host
+   *  declares and leaves empty is a real side that still takes a terrain
+   *  slice, deposits and a spawn arc. It rides `lobbySettings` to clients so
+   *  every roster renders the same empty teams the host sees.
+   *  See src/game/sim/teamRoster.ts. */
+  private allyTeamCount: number = clampLobbyAllyTeamCount(
+    BATTLE_CONFIG.allyTeamCount.default,
+  );
 
   lobbyAllyTeamCount(): number {
     return this.allyTeamCount;
   }
 
-  /** Change how many sides the lobby offers. Seats already sitting on a
-   *  side that no longer exists are pulled back onto the emptiest
-   *  remaining one, so the roster is always internally consistent. */
+  /** Host: change how many sides the lobby offers. Seats sitting on a side
+   *  that no longer exists are pulled back onto the emptiest remaining one,
+   *  so the roster is always internally consistent. */
   setLobbyAllyTeamCount(count: number): void {
-    const next = Math.max(1, Math.min(6, Math.floor(count) || 1));
-    if (next === this.allyTeamCount) return;
-    this.allyTeamCount = next;
-    for (const player of [...this.roster.values()]) {
-      if (player.allyTeamId - FIRST_ALLY_TEAM_ID >= next) {
-        this.roster.setAllyTeam(player.playerId, this.roster.defaultAllyTeamForJoin(next));
-      }
-    }
+    if (this.role !== 'host') return;
+    if (!this.applyLobbyAllyTeamCount(count)) return;
     this.broadcastLobbyRoster();
+  }
+
+  /** Client: adopt the host's side count, arriving on `lobbySettings`. Never
+   *  re-announces — a client that answered back would be a second writer for
+   *  a value the host owns. */
+  applyLobbyAllyTeamCount(count: number): boolean {
+    const next = clampLobbyAllyTeamCount(count);
+    if (next === this.allyTeamCount) return false;
+    this.allyTeamCount = next;
+    this.members.reseatOutOfRangeSides(next);
+    return true;
   }
 
   /** Move one seat to another side, then re-announce the roster.
@@ -222,27 +332,80 @@ export class NetworkManager {
    *  client changing its local copy would just be overwritten by the next
    *  announcement. Refusing outright keeps one writer instead of two, and
    *  makes the disagreement impossible rather than merely short-lived. */
-  setPlayerAllyTeam(playerId: PlayerId, allyTeamId: number): void {
+  setMemberAllyTeam(memberId: MemberId, allyTeamId: number): void {
     if (this.role !== 'host') return;
-    if (!this.roster.setAllyTeam(playerId, allyTeamId)) return;
+    if (!this.members.setAllyTeam(memberId, allyTeamId, this.allyTeamCount)) return;
     this.broadcastLobbyRoster();
   }
 
-  /** Re-announce every seat's side to every client. Side changes ride the
-   *  existing per-player info message, so this needs no new wire type. */
+  /**
+   * Host: put a watcher on a team, or take a player off one.
+   *
+   * The ONLY route between the bench and a seat. A user cannot move
+   * themselves — they join as a watcher and stay one until the host says
+   * otherwise — because seating decides the frame-0 roster, and a roster that
+   * two people can edit is a roster two clients can disagree about. Refused
+   * once the match is running: the seated roster is hashed into the
+   * initialization and cannot grow or shrink after frame 0.
+   */
+  setMemberSeated(memberId: MemberId, seated: boolean): boolean {
+    if (this.role !== 'host') return false;
+    if (!admitsSeating(this.session.state)) return false;
+    const changed = seated
+      ? this.members.seat(memberId, this.allyTeamCount).seated
+      : this.members.unseat(memberId);
+    if (!changed) return false;
+    if (memberId === this.localMemberId) this.syncLocalSeat();
+    this.broadcastLobbyRoster();
+    this.refreshLobbyListing();
+    return true;
+  }
+
+  /** Re-announce the WHOLE member list to every client, and hand the same
+   *  list to the local UI. Atomic replace, not a delta: the roster is small,
+   *  and every disagreement about who sits where came from clients merging
+   *  partial updates in different orders. */
   private broadcastLobbyRoster(): void {
-    for (const player of this.roster.values()) {
-      this.broadcast(this.roster.buildPlayerInfoUpdateMessage(player, this.getUniversalGameId()));
-    }
+    const members = this.members.toArray();
+    this.broadcast({
+      type: 'rosterUpdate',
+      gameId: this.getUniversalGameId(),
+      members,
+      allyTeamCount: this.allyTeamCount,
+    });
+    this.emitRoster(members);
   }
 
   /** Seat -> side for handing this lobby's roster to the sim. */
   getAllyTeamByPlayerId(): Record<number, number> {
-    return this.roster.allyTeamByPlayerId();
+    return this.members.allyTeamByPlayerId();
+  }
+
+  private setLocalSeatToken(token: SeatToken | undefined): void {
+    this.localSeatToken = token;
+    writeStoredSeatToken(token);
+  }
+
+  /** Keep the local seat/role in step with whatever the roster now says. */
+  private syncLocalSeat(): void {
+    const self = this.members.get(this.localMemberId);
+    const nextSeat = self?.playerId;
+    const nextRole: LobbyMemberRole = self?.role ?? 'spectator';
+    const seatChanged = this.localPlayerId !== nextSeat;
+    this.localPlayerId = nextSeat;
+    this.localRole = nextRole;
+    if (self !== undefined && self.playerId !== undefined) {
+      const token = this.members.seatTokenFor(self.playerId);
+      if (token !== undefined) this.setLocalSeatToken(token);
+    }
+    if (seatChanged) this.emitSeatAssignment(nextSeat, nextRole);
   }
 
   private peer: Peer | null = null;
-  private connections: Map<PlayerId, DataConnection> = new Map();
+  /** Keyed by MEMBER, not by seat. Every connection has a member id from the
+   *  moment it is admitted; only some of them ever hold a seat, and a
+   *  spectator has to be reachable exactly like a player. */
+  private connections: Map<MemberId, DataConnection> = new Map();
   private role: NetworkRole | null = null;
   private roomCode: string = '';
   /** Where this build advertises and discovers sessions — the web directory
@@ -251,9 +414,19 @@ export class NetworkManager {
   /** Latches `emitHostLeft` so the message and the closing socket, which a
    *  graceful host sends both of, only eject the client once. */
   private hostLeftEmitted = false;
-  private localPlayerId: PlayerId = 1;
-  private nextPlayerId: PlayerId = 2;
-  private roster = new NetworkLobbyRoster();
+  private localMemberId: MemberId = HOST_MEMBER_ID;
+  /** The SEAT this client holds, or undefined while it is watching. Not a
+   *  default of 1: a spectator with a default seat would command somebody
+   *  else's army. */
+  private localPlayerId: PlayerId | undefined = undefined;
+  private localRole: LobbyMemberRole = 'spectator';
+  /** Handed to us when we were seated; presented on reconnect to reclaim the
+   *  same seat. Persisted for the browser SESSION so a reload — the ordinary
+   *  way a player disappears — comes back to its own army rather than arriving
+   *  as a stranger. Deliberately not localStorage: a token outliving the tab
+   *  would try to reclaim a seat in a match that is long over. */
+  private localSeatToken: SeatToken | undefined = readStoredSeatToken();
+  private members = new NetworkLobbyMembers();
   /** The session's own lifecycle. Replaces a `gameStarted` boolean: the
    *  questions asked of it — may a late joiner be admitted, should the lobby
    *  still be advertised as open, has this session already ended — are all
@@ -266,18 +439,57 @@ export class NetworkManager {
   private get gameStarted(): boolean {
     return this.session.is('playing');
   }
+  /**
+   * The lockstep transport addresses two different sets, deliberately:
+   *
+   *   DELIVERY   every connected member — command frames must reach watchers
+   *              too, or they cannot simulate.
+   *   COMPLETION seated players only — see `seatedConnections`, which is what
+   *              a per-seat resend or ack lookup resolves through.
+   *
+   * `getConnections` is the delivery set. Nothing here may use it to decide
+   * whether a frame is complete.
+   */
   private lockstepTransport = new NetworkLockstepTransport({
     getGameId: () => this.getUniversalGameId(),
-    getHostConnection: () => this.connections.get(1),
+    getHostConnection: () => this.connections.get(HOST_MEMBER_ID),
     getConnections: () => this.connections,
+    getSeatedConnections: () => this.seatedConnections(),
     getLocalPlayerId: () => this.localPlayerId,
     isMessageForCurrentGame: (message) => this.isMessageForCurrentGame(message.gameId),
-    onMessage: (message, fromPlayerId) => this.emitLockstepMessage(message, fromPlayerId),
+    onMessage: (message, fromPlayerId) =>
+      this.emitLockstepMessage(message, {
+        memberId: this.pendingLockstepSenderMemberId,
+        playerId: fromPlayerId,
+      }),
     send: (conn, message) => this.safeSend(conn, message),
   });
+
+  /** Seat -> connection, for anything addressed to a PLAYER rather than to a
+   *  connection: per-seat command-frame resends, ack bookkeeping, and the
+   *  pause policy's subject. */
+  private seatedConnections(): Map<PlayerId, DataConnection> {
+    const out = new Map<PlayerId, DataConnection>();
+    for (const [memberId, conn] of this.connections) {
+      const seat = this.members.get(memberId)?.playerId;
+      if (seat !== undefined) out.set(seat, conn);
+    }
+    return out;
+  }
+
+  /** The seat a connection speaks for, or undefined when it is watching. A
+   *  spectator's lockstep traffic is telemetry: it may ack and checksum, but
+   *  it can never carry a command or complete a frame. */
+  private seatForMember(memberId: MemberId): PlayerId | undefined {
+    return this.members.get(memberId)?.playerId;
+  }
   private lockstepMessageHandler:
-    | ((message: NetworkLockstepMessage, fromPlayerId: PlayerId) => void)
+    | ((message: NetworkLockstepMessage, from: LockstepMessageSource) => void)
     | undefined = undefined;
+  /** Which connection the message currently being routed arrived on. Set for
+   *  the duration of one `handleMessage` call so the transport's callback,
+   *  which only knows seats, can still report the member. */
+  private pendingLockstepSenderMemberId: MemberId = HOST_MEMBER_ID;
   private readonly pendingLockstepMessages: QueuedLockstepMessage[] = [];
   private droppedPendingLockstepMessages = 0;
   private readonly rawSendCallback = (conn: DataConnection, message: NetworkMessage): boolean =>
@@ -287,8 +499,8 @@ export class NetworkManager {
   });
   private heartbeatTracker = new NetworkHeartbeatTracker({
     buildHeartbeat: () => this.buildHeartbeatMessage(),
-    closeConnection: (playerId) => {
-      const conn = this.connections.get(playerId);
+    closeConnection: (memberId) => {
+      const conn = this.connections.get(memberId);
       if (conn !== undefined) conn.close();
     },
     getConnections: () => this.connections,
@@ -298,9 +510,19 @@ export class NetworkManager {
     // to notice the socket is dead. Its heartbeat stopping is the earliest
     // reliable sign, and during a battle it is the only one: nothing else
     // distinguishes a departed host from one that is merely slow.
-    onPeerSilent: (playerId) => {
-      if (this.role !== 'client' || playerId !== HOST_PLAYER_ID) return;
-      this.emitHostLeft();
+    onPeerSilent: (memberId) => {
+      if (this.role === 'client' && memberId === HOST_MEMBER_ID) {
+        this.emitHostLeft();
+        return;
+      }
+      // Host side: a seated player has gone quiet. The seat stays reserved
+      // and its army keeps its orders — the simulation is never told anyone
+      // left — but the match must stop waiting on them silently.
+      if (this.role !== 'host') return;
+      if (!this.members.markAwaitingRejoin(memberId)) return;
+      this.broadcastLobbyRoster();
+      const seat = this.seatForMember(memberId);
+      if (seat !== undefined) this.emitSeatedPeerSilent(seat);
     },
     send: (conn, message) => this.safeSend(conn, message),
     sendIntervalMs: undefined,
@@ -318,12 +540,28 @@ export class NetworkManager {
   private pendingSetupReject: ((error: Error) => void) | null = null;
 
   // Callbacks
-  public onPlayerJoined: ((player: LobbyPlayer) => void) | undefined = undefined;
-  public onPlayerLeft: ((playerId: PlayerId) => void) | undefined = undefined;
+  /** The whole member list changed. One callback, one atomic list — there is
+   *  no join/leave/info trio to apply in the right order. */
+  public onRoster: ((members: readonly LobbyMember[]) => void) | undefined = undefined;
   /** The host is gone and this session cannot continue. Clients only. */
   public onHostLeft: (() => void) | undefined = undefined;
-  public onGameStart: ((handoff: BattleHandoff) => void) | undefined = undefined;
-  public onPlayerAssignment: ((playerId: PlayerId) => void) | undefined = undefined;
+  /** `resume` is present only when joining a match already in progress: the
+   *  frame to replay up to, and the hash to verify against on arrival. */
+  public onGameStart:
+    | ((handoff: BattleHandoff, resume?: NetworkResumeContext) => void)
+    | undefined = undefined;
+  /** This client's seat changed — it was seated, unseated, or reclaimed one.
+   *  `playerId` is undefined while watching. */
+  public onSeatAssignment:
+    | ((playerId: PlayerId | undefined, role: LobbyMemberRole) => void)
+    | undefined = undefined;
+  /** Host-side: a SEATED player has stopped answering. Its seat is reserved
+   *  and the match should hold for it. Never fires for a watcher. */
+  public onSeatedPeerSilent: ((playerId: PlayerId) => void) | undefined = undefined;
+  /** Host-side: a seat that was being held has reconnected and reclaimed it.
+   *  It still has to replay its way back before the match resumes, but it is
+   *  no longer gone. */
+  public onSeatedPeerReturned: ((playerId: PlayerId) => void) | undefined = undefined;
   public onError: ((error: string) => void) | undefined = undefined;
   public onConnected: (() => void) | undefined = undefined;
   /** Client-side: invoked when the host's lobby settings arrive
@@ -338,32 +576,26 @@ export class NetworkManager {
    *  GameCanvas stays the single source of truth — no shadow
    *  copy in the network layer that could drift. */
   public getLobbySettings: (() => LobbySettings) | undefined = undefined;
-  /** Fired on every receiver (host AND clients) when a player's
-   *  IP / location info arrives or updates. Hosts get this for
-   *  joiners reporting in via `playerInfo`; clients get it for
-   *  any player via the host's re-broadcast. The receiver
-   *  updates its own LobbyPlayer record from `getPlayer(id)`. */
-  public onPlayerInfoUpdate: ((player: LobbyPlayer) => void) | undefined = undefined;
   public onCommunication: ((event: NetworkCommunicationEvent) => void) | undefined = undefined;
   public get onLockstepMessage():
-    | ((message: NetworkLockstepMessage, fromPlayerId: PlayerId) => void)
+    | ((message: NetworkLockstepMessage, from: LockstepMessageSource) => void)
     | undefined {
     return this.lockstepMessageHandler;
   }
 
   public set onLockstepMessage(
     callback:
-      | ((message: NetworkLockstepMessage, fromPlayerId: PlayerId) => void)
+      | ((message: NetworkLockstepMessage, from: LockstepMessageSource) => void)
       | undefined,
   ) {
     this.lockstepMessageHandler = callback;
     if (callback !== undefined) this.drainPendingLockstepMessages(callback);
   }
 
-  private emitPlayerJoined(player: LobbyPlayer): void {
+  private emitRoster(members: readonly LobbyMember[]): void {
     this.refreshLobbyListing();
-    const callback = this.onPlayerJoined;
-    if (callback !== undefined) callback(player);
+    const callback = this.onRoster;
+    if (callback !== undefined) callback(members);
   }
 
   /** Announce that the host is gone, once.
@@ -380,11 +612,6 @@ export class NetworkManager {
     if (callback !== undefined) callback();
   }
 
-  private emitPlayerLeft(playerId: PlayerId): void {
-    const callback = this.onPlayerLeft;
-    if (callback !== undefined) callback(playerId);
-    this.refreshLobbyListing();
-  }
 
   /** Publish this host's lobby to the public directory, and keep it fresh.
    *
@@ -420,33 +647,39 @@ export class NetworkManager {
         // Read off the lifecycle, so a roster change arriving after launch
         // cannot advertise a running match as joinable.
         status: sessionStatusFor(this.session.state),
-        playerCount: this.roster.toArray().length,
+        // Seats and benches are advertised apart: a running game with every
+        // seat taken is still worth showing as watchable.
+        playerCount: this.members.seatedPlayerIds().length,
         maxPlayers: MAX_LOBBY_PLAYERS,
+        spectatorCount: this.members.spectatorCount(),
         mapName,
       };
     });
   }
 
-  private emitLockstepMessage(message: NetworkLockstepMessage, fromPlayerId: PlayerId): void {
+  private emitLockstepMessage(
+    message: NetworkLockstepMessage,
+    from: LockstepMessageSource,
+  ): void {
     const callback = this.lockstepMessageHandler;
     if (callback !== undefined) {
-      callback(message, fromPlayerId);
+      callback(message, from);
       return;
     }
     if (this.pendingLockstepMessages.length >= LOCKSTEP_PENDING_MESSAGE_QUEUE_MAX) {
       shiftQueuedLockstepMessage(this.pendingLockstepMessages);
       this.droppedPendingLockstepMessages++;
     }
-    this.pendingLockstepMessages.push({ message, fromPlayerId });
+    this.pendingLockstepMessages.push({ message, from });
   }
 
   private drainPendingLockstepMessages(
-    callback: (message: NetworkLockstepMessage, fromPlayerId: PlayerId) => void,
+    callback: (message: NetworkLockstepMessage, from: LockstepMessageSource) => void,
   ): void {
     if (this.pendingLockstepMessages.length === 0) return;
     const queued = this.pendingLockstepMessages.splice(0);
-    for (const { message, fromPlayerId } of queued) {
-      callback(message, fromPlayerId);
+    for (const { message, from } of queued) {
+      callback(message, from);
     }
   }
 
@@ -460,13 +693,21 @@ export class NetworkManager {
     };
   }
 
-  private emitGameStart(handoff: BattleHandoff): void {
+  private emitGameStart(handoff: BattleHandoff, resume?: NetworkResumeContext): void {
     const callback = this.onGameStart;
-    if (callback !== undefined) callback(handoff);
+    if (callback !== undefined) callback(handoff, resume);
   }
 
-  private emitPlayerAssignment(playerId: PlayerId): void {
-    const callback = this.onPlayerAssignment;
+  private emitSeatAssignment(
+    playerId: PlayerId | undefined,
+    role: LobbyMemberRole,
+  ): void {
+    const callback = this.onSeatAssignment;
+    if (callback !== undefined) callback(playerId, role);
+  }
+
+  private emitSeatedPeerSilent(playerId: PlayerId): void {
+    const callback = this.onSeatedPeerSilent;
     if (callback !== undefined) callback(playerId);
   }
 
@@ -485,10 +726,6 @@ export class NetworkManager {
     if (callback !== undefined) callback(settings);
   }
 
-  private emitPlayerInfoUpdate(player: LobbyPlayer): void {
-    const callback = this.onPlayerInfoUpdate;
-    if (callback !== undefined) callback(player);
-  }
 
   private emitCommunication(event: NetworkCommunicationEvent): void {
     const callback = this.onCommunication;
@@ -604,16 +841,12 @@ export class NetworkManager {
     }, delay);
   }
 
-  private refreshLocalPlayerInfo(notify = true): LobbyPlayer | null {
-    const { player, changed } = this.roster.refreshLocalPlayerInfo(this.localPlayerId);
-    if (player && changed && notify) this.emitPlayerInfoUpdate(this.roster.copy(player));
-    return player;
-  }
-
-  private mergeRosterPlayer(player: LobbyPlayer): LobbyPlayer {
-    const result = this.roster.merge(player);
-    if (result.joined) this.emitPlayerJoined(this.roster.copy(result.player));
-    return result.player;
+  /** Refresh what we know about OURSELVES (clock, stored name) and, on the
+   *  host, re-announce if it changed. */
+  private refreshLocalMemberInfo(announce = true): boolean {
+    const changed = this.members.refreshLocalMemberInfo(this.localMemberId);
+    if (changed && announce && this.role === 'host') this.broadcastLobbyRoster();
+    return changed;
   }
 
   // Host a new game
@@ -622,18 +855,16 @@ export class NetworkManager {
     this.session.send('connect');
     this.roomCode = generateRoomCode();
     this.role = 'host';
-    this.localPlayerId = 1;
-    this.nextPlayerId = 2;
-    this.roster.clear();
+    this.members.clear();
 
-    // Add host as player 1. The host IS the local player when hosting,
-    // so seed with whatever username is persisted in localStorage (or a
-    // fresh random funny pick if this is a first-time visitor — which
-    // gets persisted immediately so subsequent loads are stable). The
-    // user can edit this from their lobby player slot; setLocalPlayerName below
-    // persists + broadcasts the change.
-    this.roster.seedHost(1);
-    this.roster.setAllyTeam(1, FIRST_ALLY_TEAM_ID);
+    // The host creates the lobby, so the host is member 1 AND seat 1 on
+    // TEAM 1 — the one member that never has to be seated by anybody. Its
+    // name comes from whatever username is persisted locally (or a fresh
+    // random pick on a first visit, persisted immediately so later loads are
+    // stable); setLocalPlayerName edits and re-announces it.
+    this.members.seedHost();
+    this.localMemberId = HOST_MEMBER_ID;
+    this.syncLocalSeat();
 
     return new Promise((resolve, reject) => {
       let resolved = false;
@@ -741,7 +972,12 @@ export class NetworkManager {
     this.session.send('connect');
     this.roomCode = normalizeRoomCode(roomCode);
     this.role = 'client';
-    this.roster.clear();
+    this.members.clear();
+    // A joiner is a WATCHER until the host seats it. Nobody joins straight
+    // into a team, which is what makes the seated roster the host's alone
+    // and makes "watch only, once it starts" fall out for free.
+    this.localPlayerId = undefined;
+    this.localRole = 'spectator';
 
     return new Promise((resolve, reject) => {
       let opened = false;
@@ -773,29 +1009,47 @@ export class NetworkManager {
         if (!isCurrentPeer(peer)) return;
         console.log('Client peer opened, connecting to host...');
 
+        // Everything the host has to know BEFORE it grants anything rides
+        // the connection itself: there is no earlier channel. A seat token
+        // from a previous connection is how a returning player reclaims its
+        // army instead of arriving as a stranger.
         const conn = peer.connect(this.getUniversalGameId(), {
           reliable: true,
+          metadata: {
+            protocolVersion: LOCKSTEP_PROTOCOL_VERSION,
+            seatToken: this.localSeatToken,
+          },
         });
 
-        this.connections.set(1, conn); // Host is always player 1
-        this.setupConnectionHandlers(conn, 1, generation);
+        this.connections.set(HOST_MEMBER_ID, conn); // The host is always member 1
+        this.setupConnectionHandlers(conn, HOST_MEMBER_ID, generation);
 
         conn.on('open', () => {
-          if (!this.isCurrentSession(generation) || this.connections.get(1) !== conn) return;
+          if (
+            !this.isCurrentSession(generation) ||
+            this.connections.get(HOST_MEMBER_ID) !== conn
+          ) {
+            return;
+          }
           opened = true;
           this.session.send('connected');
           console.log('Connected to host');
           // Track host's heartbeats — if the host stops sending
           // for too long, the check loop closes our side of the
-          // connection and the regular `playerLeft` path fires.
-          this.heartbeatTracker.track(1);
+          // connection and the host-left path fires.
+          this.heartbeatTracker.track(HOST_MEMBER_ID);
           this.heartbeatTracker.start();
           this.emitConnected();
           settleResolve();
         });
 
         conn.on('error', (err) => {
-          if (!this.isCurrentSession(generation) || this.connections.get(1) !== conn) return;
+          if (
+            !this.isCurrentSession(generation) ||
+            this.connections.get(HOST_MEMBER_ID) !== conn
+          ) {
+            return;
+          }
           console.error('Connection error:', err);
           this.emitError('Failed to connect to host');
           settleReject(err);
@@ -841,104 +1095,104 @@ export class NetworkManager {
     });
   }
 
-  // Handle incoming connection (host only)
+  /**
+   * Admit a connection (host only).
+   *
+   * Everyone is admitted as a WATCHER. The host is the only one who can put
+   * anybody on a team, so admission never has to decide a seat — which is
+   * also why a running match can keep taking connections: a watcher holds no
+   * seat, contributes no command frames, and can never hold the match up.
+   *
+   * The one exception is a returning player: a connection presenting a seat
+   * token this session issued reclaims that exact seat, army and side.
+   */
   private handleIncomingConnection(
     conn: DataConnection,
     generation = this.sessionGeneration,
   ): void {
-    if (!this.isCurrentSession(generation) || !admitsNewPlayers(this.session.state)) {
-      // Reject late joiners — 'lobby' is the only state that admits one.
+    if (!this.isCurrentSession(generation)) {
+      conn.close();
+      return;
+    }
+    if (!admitsSpectators(this.session.state)) {
+      // Not a lobby and not a running match — nothing to attach to.
       conn.close();
       return;
     }
 
-    if (this.nextPlayerId > MAX_LOBBY_PLAYERS) {
-      // Max players reached
+    const metadata = readConnectionMetadata(conn.metadata);
+    if (metadata.protocolVersion !== LOCKSTEP_PROTOCOL_VERSION) {
+      // One build, one contract. A version mismatch is refused at the door
+      // rather than half-working — see "No legacy fallbacks".
+      console.warn(
+        `[NET] refusing connection on protocol ${String(metadata.protocolVersion)}; ` +
+          `this build speaks ${LOCKSTEP_PROTOCOL_VERSION}`,
+      );
       conn.close();
       return;
     }
 
-    const playerId = this.nextPlayerId++;
-    this.connections.set(playerId, conn);
-    this.setupConnectionHandlers(conn, playerId, generation);
+    const reclaimedSeat = this.members.seatForToken(metadata.seatToken);
+    if (reclaimedSeat === null && !this.members.canAdmitSpectator()) {
+      // The bench is full. Seats are capped separately, by the seat table.
+      conn.close();
+      return;
+    }
+
+    const memberId = this.members.nextFreeMemberId();
+    if (memberId === null) {
+      conn.close();
+      return;
+    }
+
+    this.connections.set(memberId, conn);
+    this.setupConnectionHandlers(conn, memberId, generation);
 
     conn.on('open', () => {
-      if (!this.isCurrentSession(generation) || this.connections.get(playerId) !== conn) return;
-      console.log(`Player ${playerId} connected`);
+      if (!this.isCurrentSession(generation) || this.connections.get(memberId) !== conn) return;
 
-      this.heartbeatTracker.track(playerId);
+      this.heartbeatTracker.track(memberId);
       this.heartbeatTracker.start();
 
-      const playerName = getDefaultPlayerName(playerId);
-
-      // The host owns side assignment; a joiner lands on the emptiest
-      // side so a lobby fills balanced without anyone touching a control.
-      const player = createLobbyPlayer(
-        playerId,
-        playerName,
-        false,
-        this.roster.defaultAllyTeamForJoin(this.lobbyAllyTeamCount()),
-      );
-      this.roster.set(player);
-
-      // Send player their assignment
-      this.sendTo(playerId, {
-        type: 'playerAssignment',
-        playerId,
-        gameId: this.getUniversalGameId(),
-      });
-
-      this.refreshLocalPlayerInfo(false);
-
-      // Send current player list to new player, plus any IP /
-       // location info already known about each. Without the
-       // info-update follow-up the joiner would see existing
-       // players in the list but with their IP/location columns
-       // blank until those players happened to re-report.
-      for (const p of this.roster.values()) {
-        this.sendTo(playerId, {
-          type: 'playerJoined',
-          gameId: this.getUniversalGameId(),
-          playerId: p.playerId,
-          playerName: p.name,
-          allyTeamId: p.allyTeamId,
-        });
-        if (
-          p.ipAddress !== undefined ||
-          p.location !== undefined ||
-          p.timezone !== undefined ||
-          p.localTime !== undefined
-        ) {
-          this.sendTo(playerId, this.roster.buildPlayerInfoUpdateMessage(p, this.getUniversalGameId()));
-        }
+      const member = this.members.admit(memberId, getDefaultPlayerName(memberId as PlayerId));
+      if (reclaimedSeat !== null) {
+        this.members.reclaimSeat(memberId, reclaimedSeat);
+        // They are back. Tell whoever is holding the match for them, so the
+        // pause can lift once they have actually caught up.
+        this.onSeatedPeerReturned?.(reclaimedSeat);
       }
+      console.log(
+        `[NET] member ${memberId} attached as ${member.role}` +
+          (member.playerId === undefined ? '' : ` (seat ${member.playerId})`),
+      );
 
-      // Notify all players about new player
-      this.broadcast({
-        type: 'playerJoined',
+      // Tell that one connection who it is. The seat token goes only here —
+      // it is that member's handle on its own seat and belongs to nobody
+      // else, so it never appears in the roster everyone receives.
+      this.sendTo(memberId, {
+        type: 'sessionAssignment',
         gameId: this.getUniversalGameId(),
-        playerId,
-        playerName,
-        allyTeamId: player.allyTeamId,
+        memberId,
+        role: member.role,
+        playerId: member.playerId,
+        allyTeamId: member.allyTeamId,
+        seatToken: member.playerId === undefined
+          ? undefined
+          : this.members.seatTokenFor(member.playerId),
+        matchInProgress: this.gameStarted,
       });
-      this.emitPlayerJoined(player);
 
-      // Re-announce every seat afterwards. The joiner shifts the balance the
-      // next joiner is placed against, and this is the one moment several
-      // clients learn about the same seat from different messages — so the
-      // host restates the whole roster and everyone converges on it rather
-      // than on whatever each of them inferred.
+      this.refreshLocalMemberInfo(false);
+      // One announcement, whole list, everyone — including the joiner, which
+      // is how it learns about members that were already here.
       this.broadcastLobbyRoster();
 
-      // Bring the new player up to date on the host's current
-      // lobby settings (terrain shape today, more later). Without
-      // this initial push the joiner would render their own
-      // stored terrain in the preview pane until the host happens
-      // to change something — visually inconsistent across
-      // clients during the lobby idle state.
+      // Bring the new member up to date on the host's current lobby settings.
+      // Without this initial push it would render its own stored terrain in
+      // the preview pane until the host happened to change something.
       const settings = this.readLobbySettings();
       if (settings) {
-        this.sendTo(playerId, {
+        this.sendTo(memberId, {
           type: 'lobbySettings',
           gameId: this.getUniversalGameId(),
           settings,
@@ -950,44 +1204,50 @@ export class NetworkManager {
   // Setup handlers for a connection
   private setupConnectionHandlers(
     conn: DataConnection,
-    playerId: PlayerId,
+    memberId: MemberId,
     generation = this.sessionGeneration,
   ): void {
     conn.on('data', (data) => {
-      if (!this.isCurrentSession(generation) || this.connections.get(playerId) !== conn) return;
+      if (!this.isCurrentSession(generation) || this.connections.get(memberId) !== conn) return;
       const message = data as NetworkMessage;
-      this.handleMessage(message, playerId);
+      this.handleMessage(message, memberId);
     });
 
     conn.on('close', () => {
-      if (!this.isCurrentSession(generation) || this.connections.get(playerId) !== conn) return;
-      console.warn(`[NET] Player ${playerId} connection CLOSED (role=${this.role})`);
-      this.connections.delete(playerId);
+      if (!this.isCurrentSession(generation) || this.connections.get(memberId) !== conn) return;
+      console.warn(`[NET] member ${memberId} connection CLOSED (role=${this.role})`);
+      this.connections.delete(memberId);
       this.sendBudget.clearConnection(conn);
-      this.roster.delete(playerId);
-      this.heartbeatTracker.untrack(playerId);
-      this.emitPlayerLeft(playerId);
-
-      // A client that loses player 1 has lost the host, and with it the
-      // frame coordinator and every route to the other players. There is no
-      // session left to sit in, so eject rather than leave the player in a
-      // lobby or battle that can no longer progress.
-      if (this.role === 'client' && playerId === HOST_PLAYER_ID) {
-        this.emitHostLeft();
-      }
+      this.heartbeatTracker.untrack(memberId);
 
       if (this.role === 'host') {
-        this.broadcast({
-          type: 'playerLeft',
-          gameId: this.getUniversalGameId(),
-          playerId,
-        });
+        const seat = this.seatForMember(memberId);
+        if (seat !== undefined && this.gameStarted) {
+          // A SEATED player leaving mid-match does not vacate anything. Its
+          // army is still being simulated by everyone, so the seat is held
+          // open for a rejoin and the simulation is never told. The only way
+          // a player leaves the match is an explicit, frame-scheduled
+          // `resign` (see the flow-control policy).
+          this.members.markAwaitingRejoin(memberId);
+          this.emitSeatedPeerSilent(seat);
+        } else {
+          this.members.delete(memberId);
+        }
+        this.broadcastLobbyRoster();
+      }
+
+      // A client that loses member 1 has lost the host, and with it the
+      // frame coordinator and every route to the other members. There is no
+      // session left to sit in, so eject rather than leave the player in a
+      // lobby or battle that can no longer progress.
+      if (this.role === 'client' && memberId === HOST_MEMBER_ID) {
+        this.emitHostLeft();
       }
     });
 
     conn.on('error', (err) => {
-      if (!this.isCurrentSession(generation) || this.connections.get(playerId) !== conn) return;
-      console.error(`[NET] Connection error with player ${playerId}:`, err);
+      if (!this.isCurrentSession(generation) || this.connections.get(memberId) !== conn) return;
+      console.error(`[NET] Connection error with member ${memberId}:`, err);
     });
   }
 
@@ -995,14 +1255,44 @@ export class NetworkManager {
     return gameId === undefined || gameId === this.getUniversalGameId();
   }
 
-  private nextCommunicationEventId(playerId: PlayerId, clientEventId: string): string {
+  private nextCommunicationEventId(memberId: MemberId, clientEventId: string): string {
     this.communicationSequence++;
-    return `${this.getUniversalGameId()}:${playerId}:${this.communicationSequence}:${clientEventId}`;
+    return `${this.getUniversalGameId()}:${memberId}:${this.communicationSequence}:${clientEventId}`;
+  }
+
+  /**
+   * Which room a member is speaking in.
+   *
+   * In the lobby everybody shares one — deciding who plays is a conversation
+   * everyone is part of. Once the battle starts it splits: allies to allies,
+   * watchers to watchers. A watcher sees the whole map, so a live channel from
+   * the bench to a player would be a coaching channel, and that is the reason
+   * the split exists rather than a style preference.
+   */
+  private communicationChannelFor(memberId: MemberId): NetworkCommunicationChannel {
+    if (!this.gameStarted) return 'all';
+    return this.members.get(memberId)?.playerId === undefined ? 'spectators' : 'team';
+  }
+
+  /** Whether a member should receive something said in `channel` by `sender`. */
+  private receivesCommunication(
+    memberId: MemberId,
+    channel: NetworkCommunicationChannel,
+    senderMemberId: MemberId,
+  ): boolean {
+    if (channel === 'all') return true;
+    const listener = this.members.get(memberId);
+    if (listener === undefined) return false;
+    if (channel === 'spectators') return listener.playerId === undefined;
+    const sender = this.members.get(senderMemberId);
+    if (sender === undefined || listener.playerId === undefined) return false;
+    return listener.allyTeamId === sender.allyTeamId;
   }
 
   private sanitizeCommunicationDraft(
     data: NetworkCommunicationDraft,
     fromPlayerId: PlayerId,
+    channel: NetworkCommunicationChannel,
   ): NetworkCommunicationEvent | null {
     const createdAtMs = Date.now();
     const clientEventId = typeof data.clientEventId === 'string'
@@ -1017,6 +1307,7 @@ export class NetworkManager {
         return {
           kind: 'chat',
           id,
+          channel,
           senderPlayerId: fromPlayerId,
           createdAtMs,
           text,
@@ -1042,6 +1333,7 @@ export class NetworkManager {
         return {
           kind: 'mapDrawing',
           id,
+          channel,
           senderPlayerId: fromPlayerId,
           createdAtMs,
           drawingId: typeof data.drawingId === 'string' && data.drawingId.length > 0
@@ -1058,6 +1350,7 @@ export class NetworkManager {
           return {
             kind: 'mapErase',
             id,
+            channel,
             senderPlayerId: fromPlayerId,
             createdAtMs,
             scope: 'all',
@@ -1070,6 +1363,7 @@ export class NetworkManager {
         return {
           kind: 'mapErase',
           id,
+          channel,
           senderPlayerId: fromPlayerId,
           createdAtMs,
           scope: 'radius',
@@ -1086,45 +1380,75 @@ export class NetworkManager {
     }
   }
 
-  private relayCommunicationDraft(data: NetworkCommunicationDraft, fromPlayerId: PlayerId): void {
-    const event = this.sanitizeCommunicationDraft(data, fromPlayerId);
+  private relayCommunicationDraft(
+    data: NetworkCommunicationDraft,
+    fromMemberId: MemberId,
+  ): void {
+    const channel = this.communicationChannelFor(fromMemberId);
+    // Attributed by SEAT where there is one, so a player's name resolves the
+    // way it does everywhere else. A watcher has none; the bench is its own
+    // room and the member id is enough to name a speaker inside it.
+    const senderPlayerId = this.seatForMember(fromMemberId) ?? (fromMemberId as PlayerId);
+    const event = this.sanitizeCommunicationDraft(data, senderPlayerId, channel);
     if (event === null) return;
-    this.emitCommunication(event);
-    this.broadcast({
+
+    // The host is a member too, so it only hears what it is in the room for.
+    if (this.receivesCommunication(this.localMemberId, channel, fromMemberId)) {
+      this.emitCommunication(event);
+    }
+    const message: NetworkMessage = {
       type: 'communicationEvent',
       gameId: this.getUniversalGameId(),
       data: event,
-    });
+    };
+    for (const [memberId, conn] of this.connections) {
+      if (!this.receivesCommunication(memberId, channel, fromMemberId)) continue;
+      this.safeSend(conn, message);
+    }
   }
 
   // Handle incoming message
-  private handleMessage(message: NetworkMessage, fromPlayerId: PlayerId): void {
+  private handleMessage(message: NetworkMessage, fromMemberId: MemberId): void {
     // Any inbound message is also a sign of life — refresh the
     // heartbeat-received timestamp for this peer regardless of
     // type. That prevents the timeout sweep from kicking peers
     // who are sending plenty of lockstep or communication traffic but
     // happen to skip a heartbeat tick.
-    this.heartbeatTracker.markReceived(fromPlayerId);
-    if (this.lockstepTransport.handleMessage(message, fromPlayerId)) return;
+    this.heartbeatTracker.markReceived(fromMemberId);
+
+    // The resume grant is the one lockstep message that must NOT go to the
+    // battle backend, because the point of it is that this client does not
+    // have one yet. It carries the handoff we boot from, so it is handled
+    // here and turns into an ordinary game start.
+    if (
+      message.type === 'lockstepResumeGrant' &&
+      this.role === 'client' &&
+      this.isMessageForCurrentGame(message.gameId)
+    ) {
+      this.beginResumeFromGrant(message);
+      return;
+    }
+
+    this.pendingLockstepSenderMemberId = fromMemberId;
+    if (this.lockstepTransport.handleMessage(message, this.seatForMember(fromMemberId))) {
+      return;
+    }
     switch (message.type) {
       case 'heartbeat':
         if (!this.isMessageForCurrentGame(message.gameId)) return;
-        if (this.role === 'host' && message.playerInfo) {
-          const { player, changed } = this.roster.applyClientReportedInfo(fromPlayerId, message.playerInfo);
-          if (player && changed) {
-            this.emitPlayerInfoUpdate(this.roster.copy(player));
+        if (this.role === 'host' && message.memberInfo) {
+          if (this.members.applyMemberInfo(fromMemberId, message.memberInfo)) {
+            this.broadcastLobbyRoster();
           }
-        } else if (this.role === 'client' && message.players) {
-          for (const rosterPlayer of message.players) {
-            const merged = this.mergeRosterPlayer(rosterPlayer);
-            this.emitPlayerInfoUpdate(this.roster.copy(merged));
-          }
+        } else if (this.role === 'client' && message.members) {
+          this.adoptRoster(message.members);
         }
         return;
+
       case 'communication':
         if (this.role !== 'host') return;
         if (!this.isMessageForCurrentGame(message.gameId)) return;
-        this.relayCommunicationDraft(message.data, fromPlayerId);
+        this.relayCommunicationDraft(message.data, fromMemberId);
         break;
 
       case 'communicationEvent':
@@ -1133,32 +1457,46 @@ export class NetworkManager {
         this.emitCommunication(message.data);
         break;
 
-      case 'playerInfo':
-        // Host: a client is reporting its own IP/location/tz lookup
-        // and/or a username rename. Stamp the values on our player
-        // record + fan out to every connected client (including the
-        // originator — keeps every end pulling from one canonical
-        // record set, no special-casing). Field-by-field nullable so
-        // a rename-only message doesn't accidentally clobber an
-        // already-resolved IP.
+      case 'memberInfo':
+        // Host: a member is reporting its own IP/location/tz lookup and/or a
+        // rename. Nothing it can say moves a seat — the payload has no field
+        // for one — so this folds straight into the record and re-announces.
         if (this.role === 'host') {
           if (!this.isMessageForCurrentGame(message.gameId)) return;
-          // Side assignment is the host's alone — see applyClientReportedInfo.
-          const { player } = this.roster.applyClientReportedInfo(fromPlayerId, message);
-          if (player) {
-            this.emitPlayerInfoUpdate(this.roster.copy(player));
-            this.broadcast(this.roster.buildPlayerInfoUpdateMessage(player, this.getUniversalGameId()));
+          if (this.members.applyMemberInfo(fromMemberId, message)) {
+            this.broadcastLobbyRoster();
           }
         }
         break;
 
-      case 'playerAssignment':
-        // Client receives their player ID
+      case 'sessionAssignment':
+        // Client learns who it is. Arrives once, on admission.
         if (this.role === 'client') {
           if (!this.isMessageForCurrentGame(message.gameId)) return;
+          this.localMemberId = message.memberId;
           this.localPlayerId = message.playerId;
-          this.emitPlayerAssignment(message.playerId);
+          this.localRole = message.role;
+          if (message.seatToken !== undefined) this.setLocalSeatToken(message.seatToken);
+          this.emitSeatAssignment(message.playerId, message.role);
+          if (message.matchInProgress) {
+            // We joined a battle already under way. Ask to be let in; the
+            // grant carries the handoff we boot from and the frame we must
+            // replay up to. Nothing is rendered until we get there.
+            this.session.send('start');
+            this.lockstepTransport.sendResumeRequest(
+              this.localMemberId,
+              this.localPlayerId,
+              -1,
+            );
+          }
         }
+        break;
+
+      case 'rosterUpdate':
+        if (this.role !== 'client') return;
+        if (!this.isMessageForCurrentGame(message.gameId)) return;
+        this.applyLobbyAllyTeamCount(message.allyTeamCount);
+        this.adoptRoster(message.members);
         break;
 
       case 'gameStart':
@@ -1166,7 +1504,8 @@ export class NetworkManager {
         if (this.role === 'client') {
           if (!this.isMessageForCurrentGame(message.gameId)) return;
           this.localPlayerId = message.assignedPlayerId;
-          this.emitPlayerAssignment(message.assignedPlayerId);
+          this.localRole = message.assignedPlayerId === undefined ? 'spectator' : 'player';
+          this.emitSeatAssignment(this.localPlayerId, this.localRole);
           const handoff = normalizeBattleHandoffMessage(
             {
               gameId: message.gameId,
@@ -1174,59 +1513,21 @@ export class NetworkManager {
               handoff: message.handoff,
             },
           );
-          this.roster.applyBattleHandoff(handoff);
           this.session.send('start');
-          console.log(`[NET] Game start as player ${this.localPlayerId}; players=${handoff.playerIds.join(',')}`);
+          console.log(
+            `[NET] Game start as ${this.localRole}` +
+              (this.localPlayerId === undefined ? '' : ` (seat ${this.localPlayerId})`) +
+              `; players=${handoff.playerIds.join(',')}`,
+          );
           this.emitGameStart(handoff);
         }
         break;
 
-      case 'playerJoined':
-        if (!this.isMessageForCurrentGame(message.gameId)) return;
-        // Update player list without dropping richer metadata that may
-        // have arrived first via heartbeat or playerInfoUpdate.
-        this.mergeRosterPlayer(createLobbyPlayer(
-          message.playerId,
-          message.playerName,
-          message.playerId === HOST_PLAYER_ID,
-          message.allyTeamId,
-        ));
-        break;
-
-      case 'playerLeft':
-        if (!this.isMessageForCurrentGame(message.gameId)) return;
-        this.roster.delete(message.playerId);
-        this.emitPlayerLeft(message.playerId);
-        break;
-
       case 'hostLeft':
         // Only the host can say this, and only to a client.
-        if (this.role !== 'client' || fromPlayerId !== HOST_PLAYER_ID) return;
+        if (this.role !== 'client' || fromMemberId !== HOST_MEMBER_ID) return;
         if (!this.isMessageForCurrentGame(message.gameId)) return;
         this.emitHostLeft();
-        break;
-
-      case 'playerInfoUpdate':
-        // Client: host is fanning out a player's IP/location/tz/name
-        // change. Update the matching record so every client's player
-        // list stays in sync. Field-by-field nullable matches the
-        // host-side handler — a rename-only update doesn't clobber an
-        // already-known IP.
-        if (this.role === 'client') {
-          if (!this.isMessageForCurrentGame(message.gameId)) return;
-          // Keep the seat's current side when the message omits one —
-          // a rename-only update must not knock a player off their team.
-          const target = this.mergeRosterPlayer(createLobbyPlayer(
-            message.playerId,
-            message.name ?? getDefaultPlayerName(message.playerId),
-            message.playerId === 1,
-            message.allyTeamId ??
-              this.roster.get(message.playerId)?.allyTeamId ??
-              FIRST_ALLY_TEAM_ID,
-          ));
-          this.roster.applyPlayerInfo(target, message);
-          this.emitPlayerInfoUpdate(this.roster.copy(target));
-        }
         break;
 
       case 'lobbySettings':
@@ -1239,6 +1540,54 @@ export class NetworkManager {
         }
         break;
     }
+  }
+
+  /**
+   * Boot into a match that is already running.
+   *
+   * The handoff inside the grant is byte-identical to the one the frame-0
+   * peers received, so this hands it to the ORDINARY start path — there is no
+   * separate late-joiner initialization that could drift from the real one.
+   * What is different rides alongside as the resume context: the frame to
+   * replay up to, and the coordinator's checksum to verify against before
+   * this client is allowed to render.
+   */
+  private beginResumeFromGrant(message: LockstepResumeGrantMessage): void {
+    let handoff: BattleHandoff;
+    try {
+      handoff = normalizeBattleHandoffMessage({
+        gameId: message.handoff.gameId,
+        playerIds: [...message.handoff.playerIds],
+        handoff: message.handoff,
+      });
+    } catch (err) {
+      // A handoff we cannot reproduce means we would simulate a different
+      // match. Refuse rather than join and desync.
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error('[NET] refusing resume grant:', detail);
+      this.emitError(`Could not join the battle in progress: ${detail}`);
+      return;
+    }
+    console.log(
+      `[NET] resuming into a running battle as ${this.localRole}` +
+        (this.localPlayerId === undefined ? '' : ` (seat ${this.localPlayerId})`) +
+        `; replaying to frame ${message.grantFrame}`,
+    );
+    this.emitGameStart(handoff, {
+      grantFrame: message.grantFrame,
+      archiveThroughFrame: message.archiveThroughFrame,
+      verifyFrame: message.verifyFrame,
+      verifyStateHash: message.verifyStateHash,
+    });
+  }
+
+  /** Client: take the host's announcement whole. There is nothing to merge,
+   *  which is the point — a partial roster applied in the wrong order is how
+   *  two clients came to disagree about where the same player sat. */
+  private adoptRoster(members: readonly LobbyMember[]): void {
+    this.members.replaceAll(members);
+    this.syncLocalSeat();
+    this.emitRoster(this.members.toArray());
   }
 
   /** Host: ship the current lobby settings to every connected
@@ -1255,104 +1604,95 @@ export class NetworkManager {
   }
 
   private buildHeartbeatMessage(): NetworkMessage {
-    const self = this.refreshLocalPlayerInfo(true);
+    this.refreshLocalMemberInfo(false);
     return {
       type: 'heartbeat',
       gameId: this.getUniversalGameId(),
-      playerId: this.localPlayerId,
-      playerInfo: self ? this.roster.buildLocalPlayerInfo(this.localPlayerId) : undefined,
-      players: this.role === 'host' ? this.roster.toArray() : undefined,
+      memberId: this.localMemberId,
+      memberInfo: this.members.buildLocalMemberInfo(this.localMemberId),
+      members: this.role === 'host' ? this.members.toArray() : undefined,
     };
   }
 
-  /** Report the LOCAL player's IP / location / timezone and current
-   *  username. On the
-   *  host this updates the host's record + fans out to every
-   *  client; on a client it ships a `playerInfo` to the host
-   *  (which then does the broadcast). Caller invokes once the
-   *  IP lookup resolves; timezone is available immediately so
-   *  it can ride along on that single call. */
+  /** Report the LOCAL member's IP / location / timezone and current username.
+   *  On the host this updates its own record and re-announces the roster; on
+   *  a client it ships a `memberInfo` to the host, which does the
+   *  announcing. Called once the IP lookup resolves; timezone is available
+   *  immediately so it rides along on the same call. */
   reportLocalPlayerInfo(
     ipAddress: string | undefined,
     location: string | undefined,
     timezone: string | undefined,
   ): void {
-    const payload = this.roster.buildReportedLocalPlayerInfo(ipAddress, location, timezone);
+    const payload = this.members.buildReportedLocalMemberInfo(
+      ipAddress,
+      location,
+      timezone,
+    );
+    const changed = this.members.applyMemberInfo(this.localMemberId, payload);
     if (this.role === 'host') {
-      const { player: self } = this.roster.applyInfo(this.localPlayerId, payload);
-      if (self) {
-        this.emitPlayerInfoUpdate(this.roster.copy(self));
-        this.broadcast(this.roster.buildPlayerInfoUpdateMessage(self, this.getUniversalGameId()));
-      }
-    } else if (this.role === 'client') {
-      const { player: self } = this.roster.applyInfo(this.localPlayerId, payload);
-      if (self) {
-        this.emitPlayerInfoUpdate(this.roster.copy(self));
-      }
-      const hostConn = this.connections.get(1);
-      if (hostConn) {
-        this.safeSend(hostConn, {
-          type: 'playerInfo',
-          gameId: this.getUniversalGameId(),
-          ...payload,
-        });
-      }
+      if (changed) this.broadcastLobbyRoster();
+      return;
+    }
+    if (this.role !== 'client') return;
+    if (changed) this.emitRoster(this.members.toArray());
+    const hostConn = this.connections.get(HOST_MEMBER_ID);
+    if (hostConn) {
+      this.safeSend(hostConn, {
+        type: 'memberInfo',
+        gameId: this.getUniversalGameId(),
+        ...payload,
+      });
     }
   }
 
-  /** Set the LOCAL player's username. Persists to localStorage so it
-   *  survives reloads, updates the local roster, and (when networked)
-   *  broadcasts the new value via `playerInfoUpdate` so every other
-   *  connected client sees the change. Trims + length-caps the input
-   *  to match the same rules saveUsername applies, so a value typed
-   *  here matches what eventually lands in storage. */
+  /** Set the LOCAL member's username. Persists to localStorage so it survives
+   *  reloads, updates the local record, and (when networked) reaches everyone
+   *  through the host's roster announcement. Trims and length-caps to match
+   *  what saveUsername stores. */
   setLocalPlayerName(name: string): void {
     const trimmed = name.trim().slice(0, MAX_NAME_LENGTH);
     if (trimmed.length === 0) return;
     saveUsername(trimmed);
-    const self = this.roster.get(this.localPlayerId);
-    if (self && self.name !== trimmed) {
-      self.name = trimmed;
-      this.refreshLocalPlayerInfo(false);
-      this.emitPlayerInfoUpdate(this.roster.copy(self));
-    }
+    const payload = this.members.buildLocalMemberInfo(this.localMemberId);
+    payload.name = trimmed;
+    const changed = this.members.applyMemberInfo(this.localMemberId, payload);
+
     if (this.role === 'host') {
-      const player = this.refreshLocalPlayerInfo(false);
-      if (player) this.broadcast(this.roster.buildPlayerInfoUpdateMessage(player, this.getUniversalGameId()));
+      if (changed) this.broadcastLobbyRoster();
       // The listing is titled after the host, so renaming retitles it.
       this.refreshLobbyListing();
-    } else if (this.role === 'client') {
-      const hostConn = this.connections.get(1);
-      if (hostConn) {
-        const payload = this.roster.buildLocalPlayerInfo(this.localPlayerId);
-        payload.name = trimmed;
-        this.safeSend(hostConn, {
-          type: 'playerInfo',
-          gameId: this.getUniversalGameId(),
-          ...payload,
-        });
-      }
+      return;
+    }
+    if (this.role !== 'client') return;
+    if (changed) this.emitRoster(this.members.toArray());
+    const hostConn = this.connections.get(HOST_MEMBER_ID);
+    if (hostConn) {
+      this.safeSend(hostConn, {
+        type: 'memberInfo',
+        gameId: this.getUniversalGameId(),
+        ...payload,
+      });
     }
   }
 
-  /** Convenience for read-only consumers (TopBar) — returns whatever
-   *  the local player is currently called, falling back to the
-   *  deterministic-by-id default if for some reason the roster hasn't
-   *  been populated yet. */
+  /** Whatever the local member is currently called, falling back to the
+   *  deterministic-by-id default if the roster has not populated yet. */
   getLocalPlayerName(): string {
-    return this.roster.getLocalPlayerName(this.localPlayerId);
+    return this.members.getLocalMemberName(this.localMemberId);
   }
 
-  // Send message to specific player (host only)
-  private sendTo(playerId: PlayerId, message: NetworkMessage): boolean {
-    const conn = this.connections.get(playerId);
+  // Send a message to one member (host only)
+  private sendTo(memberId: MemberId, message: NetworkMessage): boolean {
+    const conn = this.connections.get(memberId);
     return conn ? this.safeSend(conn, message) : false;
   }
 
-  // Broadcast message to all connected players (host only)
-  private broadcast(message: NetworkMessage, excludePlayerId: PlayerId | undefined = undefined): void {
-    for (const [playerId, conn] of this.connections) {
-      if (playerId !== excludePlayerId) {
+  // Send to every connected member — watchers included. This is the DELIVERY
+  // set; nothing may use it to decide whether a lockstep frame is complete.
+  private broadcast(message: NetworkMessage, excludeMemberId: MemberId | undefined = undefined): void {
+    for (const [memberId, conn] of this.connections) {
+      if (memberId !== excludeMemberId) {
         this.safeSend(conn, message);
       }
     }
@@ -1395,11 +1735,11 @@ export class NetworkManager {
 
   sendCommunication(data: NetworkCommunicationDraft): void {
     if (this.role === 'host') {
-      this.relayCommunicationDraft(data, this.localPlayerId);
+      this.relayCommunicationDraft(data, this.localMemberId);
       return;
     }
     if (this.role !== 'client') return;
-    const hostConn = this.connections.get(1);
+    const hostConn = this.connections.get(HOST_MEMBER_ID);
     if (!hostConn) return;
     this.safeSend(hostConn, {
       type: 'communication',
@@ -1434,10 +1774,15 @@ export class NetworkManager {
       gameId: this.getUniversalGameId(),
       roomCode: this.getRoomCode(),
       playerIds,
-      players: this.roster.asReadonlyMap(),
+      players: this.members.seatedPlayers(),
+      // The lobby's TEAM assignment decides terrain slices, spawn arcs and
+      // who may shoot whom, so it travels inside the HASHED initialization.
+      // Leaving it out here is what used to make every online match a
+      // free-for-all no matter what the roster showed.
+      allyTeamByPlayerId: this.members.allyTeamByPlayerId(),
+      allyTeamCount: this.allyTeamCount,
       settings,
     });
-    this.roster.applyBattleHandoff(handoff);
 
     // The lobby stops accepting joiners here but stays in the directory as a
     // running game — that is the other half of what the directory shows.
@@ -1477,12 +1822,27 @@ export class NetworkManager {
     return roomCodeToGameId(this.roomCode);
   }
 
-  getLocalPlayerId(): PlayerId {
+  /** The SEAT this client holds, or undefined while it is watching. */
+  getLocalPlayerId(): PlayerId | undefined {
     return this.localPlayerId;
   }
 
+  getLocalMemberId(): MemberId {
+    return this.localMemberId;
+  }
+
+  getLocalRole(): LobbyMemberRole {
+    return this.localRole;
+  }
+
+  /** Everyone attached, watchers included. */
+  getMembers(): LobbyMember[] {
+    return this.members.toArray();
+  }
+
+  /** Only the members that hold a seat, as the match sees them. */
   getPlayers(): LobbyPlayer[] {
-    return this.roster.toArray();
+    return this.members.seatedPlayers();
   }
 
   // Disconnect and cleanup
@@ -1496,19 +1856,24 @@ export class NetworkManager {
     }
     this.beginNetworkSetup();
     this.role = null;
-    this.roster.clear();
+    this.members.clear();
+    this.localMemberId = HOST_MEMBER_ID;
+    this.localPlayerId = undefined;
+    this.localRole = 'spectator';
+    // The token belonged to a seat in a session that no longer exists.
+    this.setLocalSeatToken(undefined);
 
     // Clear all callbacks to release closure references
-    this.onPlayerJoined = undefined;
-    this.onPlayerLeft = undefined;
+    this.onRoster = undefined;
     this.onHostLeft = undefined;
     this.onGameStart = undefined;
-    this.onPlayerAssignment = undefined;
+    this.onSeatAssignment = undefined;
+    this.onSeatedPeerSilent = undefined;
+    this.onSeatedPeerReturned = undefined;
     this.onError = undefined;
     this.onConnected = undefined;
     this.onLobbySettings = undefined;
     this.getLobbySettings = undefined;
-    this.onPlayerInfoUpdate = undefined;
     this.onCommunication = undefined;
     this.onLockstepMessage = undefined;
   }

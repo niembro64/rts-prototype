@@ -9,7 +9,10 @@ import Minimap from './Minimap.vue';
 import IdleBuildersPanel from './IdleBuildersPanel.vue';
 import UnitStatsOverlay from './UnitStatsOverlay.vue';
 import type { UnitStatsOverlayInfo } from '../game/scenes/helpers';
-import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
+import LobbyModal from './LobbyModal.vue';
+import type { LobbyMember, LobbyMemberRole } from '../game/network/NetworkManager';
+import type { RealBattleFlowControlReport } from './gameCanvasRealBattleStartup';
+import type { LockstepCatchUpProgress } from '../game/architecture/LockstepCatchUp';
 import GameCanvasOverlays from './GameCanvasOverlays.vue';
 import GameCanvasBattleControlBar from './GameCanvasBattleControlBar.vue';
 import GameCanvasServerControlBar from './GameCanvasServerControlBar.vue';
@@ -114,6 +117,8 @@ import { useGameCanvasSessionLifecycle } from './gameCanvasSessionLifecycle';
 import { useGameCanvasHostEviction } from './gameCanvasHostEviction';
 import { useGameCanvasPeerLag } from './gameCanvasPeerLag';
 import NetworkPeerLagIndicator from './NetworkPeerLagIndicator.vue';
+import NetworkMatchHoldBanner from './NetworkMatchHoldBanner.vue';
+import { ARCHITECTURE_CONFIG } from '../architectureConfig';
 import { useGameCanvasShellDisplay } from './gameCanvasShellDisplay';
 import { useGameCanvasLobbyRoster } from './gameCanvasLobbyRoster';
 import {
@@ -161,8 +166,33 @@ const activeSurfaceLoading = computed(
 );
 const loadingProgress = ref(0);
 const loadingPhase = ref('Preparing battle');
-const displayedLoadingProgress = computed(() => loadingProgress.value);
-const displayedLoadingPhase = computed(() => loadingPhase.value);
+/**
+ * A peer replaying its way into a running match owns the loading overlay for
+ * the whole replay, because that IS the load: it is stepping the simulation
+ * from frame 0 to now, and there is nothing to render until it arrives.
+ *
+ * The measured rate is shown rather than hidden. Replay speed is bounded by
+ * simulation step cost, so a big match on a slow machine may genuinely not be
+ * joinable — a player watching the number fall towards 1.0x can see why, and
+ * the join is refused with it rather than spinning forever.
+ */
+const displayedLoadingProgress = computed(() =>
+  catchUpProgress.value === null ? loadingProgress.value : catchUpProgress.value.fraction,
+);
+const displayedLoadingPhase = computed(() => {
+  const catchUp = catchUpProgress.value;
+  if (catchUp === null) return loadingPhase.value;
+  if (catchUp.state === 'requesting') return 'Asking to join the battle';
+  if (catchUp.state === 'verifying') return 'Checking against the host';
+  if (catchUp.state === 'failed') return 'Could not join the battle';
+  const eta = catchUp.etaSeconds === null
+    ? ''
+    : ` — about ${Math.max(1, Math.round(catchUp.etaSeconds))}s left`;
+  return (
+    `Replaying the battle: frame ${catchUp.currentFrame} of ${catchUp.targetFrame}` +
+    ` (${catchUp.rateRealtime.toFixed(1)}x)${eta}`
+  );
+});
 const gameWrapperStyle = computed(() => ({
   '--hud-minimap-max': `${HUD_MINIMAP_MAX_PX}px`,
   '--hud-minimap-gap': `${HUD_MINIMAP_STACK_GAP_PX}px`,
@@ -203,7 +233,10 @@ const foregroundGame = useGameCanvasForegroundGame();
 const showLobby = ref(true);
 const isHost = ref(false);
 const roomCode = ref('');
-const lobbyPlayers = ref<LobbyPlayer[]>([]);
+/** Everyone attached, watchers included. The seated projection is derived
+ *  from it (`lobbyPlayers`) rather than stored beside it, so the two can
+ *  never drift. */
+const lobbyMembers = ref<LobbyMember[]>([]);
 const winningAllyTeamName = computed(() => {
   if (gameOverWinner.value === null) return '';
   const winner = lobbyPlayers.value.find((player) => player.playerId === gameOverWinner.value);
@@ -211,32 +244,102 @@ const winningAllyTeamName = computed(() => {
 });
 
 /** Host-only: move a seat to the next side, wrapping at the lobby's side
- *  count. The host is authoritative — NetworkManager re-announces the
- *  roster, and every client's list updates from that broadcast rather
- *  than from a local guess. */
-function cyclePlayerAllyTeam(playerId: PlayerId): void {
+ *  count. The host is authoritative — NetworkManager re-announces the whole
+ *  roster, and every client's list is replaced from that announcement rather
+ *  than patched from a local guess. */
+function cycleMemberAllyTeam(memberId: number): void {
   if (!isHost.value) return;
   const sides = networkManager.lobbyAllyTeamCount();
-  const current = lobbyPlayers.value.find((p) => p.playerId === playerId)?.allyTeamId ?? 1;
+  const current = lobbyMembers.value.find((m: LobbyMember) => m.memberId === memberId)?.allyTeamId ?? 1;
   const next = (current % Math.max(1, sides)) + 1;
-  networkManager.setPlayerAllyTeam(playerId, next);
-  lobbyPlayers.value = networkManager.getPlayers().map((p) => ({ ...p }));
+  networkManager.setMemberAllyTeam(memberId, next);
+  lobbyMembers.value = networkManager.getMembers();
 }
+
+/**
+ * Why the match is currently stopped, or null while it is running.
+ *
+ * Distinct from the lag indicator: that names who is BEHIND, this names who
+ * the match is being HELD for. A watcher can never appear here — it holds no
+ * seat, so flow control never sees it.
+ */
+const matchHold = ref<RealBattleFlowControlReport | null>(null);
+/** Replay progress while joining a match already in progress, or null when
+ *  this client started at frame 0 and has nothing to catch up on. */
+const catchUpProgress = ref<LockstepCatchUpProgress | null>(null);
+/** Handed to us by the backend so the heartbeat's silence signal can reach
+ *  flow control. Only the coordinator ever receives one. */
+let markSeatedPlayerSilent: ((playerId: PlayerId) => void) | null = null;
+let markSeatedPlayerReturned: ((playerId: PlayerId) => void) | null = null;
+
+/** Seat -> the member holding it. The roster is keyed by member, so a
+ *  control rendered on a seated row has to resolve back to one. */
+const seatedMemberIds = computed<Record<number, number>>(() => {
+  const out: Record<number, number> = {};
+  for (const member of lobbyMembers.value) {
+    if (member.playerId === undefined) continue;
+    out[member.playerId] = member.memberId;
+  }
+  return out;
+});
+
+/** Host-only: move a watcher onto a team, or a player back to the bench.
+ *  The only route between the two — a user can never move themselves. */
+function toggleMemberSeated(memberId: number): void {
+  if (!isHost.value) return;
+  const member = lobbyMembers.value.find((m: LobbyMember) => m.memberId === memberId);
+  if (member === undefined) return;
+  networkManager.setMemberSeated(memberId, member.playerId === undefined);
+  lobbyMembers.value = networkManager.getMembers();
+}
+
+/** Host-only: how many sides the map is carved into. Empty sides are kept —
+ *  they carve a slice with no commander on it — so this is a real map choice
+ *  and rides `lobbySettings` out to every client like any other. */
+const lobbyAllyTeamCount = ref(networkManager.lobbyAllyTeamCount());
+
+function setLobbyAllyTeamCount(count: number): void {
+  if (!isHost.value) return;
+  networkManager.setLobbyAllyTeamCount(count);
+  lobbyAllyTeamCount.value = networkManager.lobbyAllyTeamCount();
+  lobbyMembers.value = networkManager.getMembers();
+  broadcastLobbySettingsIfHost();
+}
+/** The seat this client VIEWS as. For a player it is their own seat; for a
+ *  watcher it is whoever they are following — a local choice, never command
+ *  authority. */
 const localPlayerId = ref<PlayerId>(1);
+/** Whether this client holds a seat at all. Command authority follows this,
+ *  never the view above. */
+const localRole = ref<LobbyMemberRole>('spectator');
 const lobbyError = ref<string | null>(null);
 const isConnecting = ref(false);
 const gameStarted = ref(false);
 const currentBattleMode = computed<BattleMode>(
   () => (gameStarted.value || roomCode.value !== '' ? 'real' : 'demo'),
 );
+
+const {
+  localUsername,
+  lobbyPlayers,
+  lobbySpectators,
+  resolvePlayerName,
+  resolveMemberName,
+  onPlayerNameChange,
+} = useGameCanvasLobbyRoster({
+  network: networkManager,
+  currentBattleMode,
+  lobbyMembers,
+  localPlayerId,
+});
 const {
   mobileBarsVisible,
-  spectateMode,
+  menuHidden,
   bottomBarsCollapsed,
   playerClientEnabled,
   toggleBottomBars,
   togglePlayerClientEnabled,
-  toggleSpectateMode,
+  toggleMenuHidden,
 } = useGameCanvasChromeState(currentBattleMode, applyPlayerClientEnabled);
 
 // The sidebar's open/closed state is restored from localStorage by
@@ -244,12 +347,12 @@ const {
 // A plain page load / refresh always comes up on the 'lobby' surface, so
 // that case must keep the restored value untouched. Only the explicit
 // entry surfaces reached by navigating from the entity lab override it,
-// and they set the flag directly (never via toggleSpectateMode) so they
+// and they set the flag directly (never via toggleMenuHidden) so they
 // don't overwrite the saved preference in storage.
 if (props.initialSurface === 'demoBattle') {
-  spectateMode.value = true; // slide the menu out of the way to watch the demo
+  menuHidden.value = true; // slide the menu out of the way to watch the demo
 } else if (props.initialSurface === 'onlineGame') {
-  spectateMode.value = false; // entering the online flow surfaces the menu
+  menuHidden.value = false; // entering the online flow surfaces the menu
 }
 
 function toggleUiChrome(): void {
@@ -290,7 +393,7 @@ const {
   currentBattleMode,
   isMobile,
   showLobby,
-  spectateMode,
+  menuHidden,
   gameStarted,
   roomCode,
   lobbyPlayers,
@@ -388,17 +491,6 @@ watch(
   { immediate: true },
 );
 
-const {
-  localUsername,
-  resolvePlayerName,
-  upsertLobbyPlayer,
-  onPlayerNameChange,
-} = useGameCanvasLobbyRoster({
-  network: networkManager,
-  currentBattleMode,
-  lobbyPlayers,
-  localPlayerId,
-});
 
 let battleStartTime = 0;
 const {
@@ -585,17 +677,26 @@ function nextCommunicationDraftId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${communicationDraftSequence.toString(36)}`;
 }
 
+/**
+ * The offline echo of something the local player just said.
+ *
+ * Only used when there is no host to relay through, so the room is whoever is
+ * here: nobody else. The networked path stamps the real channel host-side,
+ * where the roster that decides it actually lives.
+ */
 function createLocalCommunicationEvent(
   draft: NetworkCommunicationDraft,
   senderPlayerId: PlayerId,
 ): NetworkCommunicationEvent {
   const id = nextCommunicationDraftId(`local-${draft.kind}`);
   const createdAtMs = Date.now();
+  const channel = 'all' as const;
   switch (draft.kind) {
     case 'chat':
       return {
         kind: 'chat',
         id,
+        channel,
         senderPlayerId,
         createdAtMs,
         text: draft.text.trim().slice(0, 220),
@@ -604,6 +705,7 @@ function createLocalCommunicationEvent(
       return {
         kind: 'mapDrawing',
         id,
+        channel,
         senderPlayerId,
         createdAtMs,
         drawingId: draft.drawingId,
@@ -615,6 +717,7 @@ function createLocalCommunicationEvent(
       return {
         kind: 'mapErase',
         id,
+        channel,
         senderPlayerId,
         createdAtMs,
         scope: draft.scope,
@@ -1504,6 +1607,8 @@ const occupiedAllyTeamCount = computed(() => {
   for (const player of lobbyPlayers.value) sides.add(player.allyTeamId ?? 1);
   return Math.max(1, sides.size);
 });
+// (Declared-but-empty sides deliberately excluded: they carve terrain but
+// hold no economy, matching getOccupiedAllyTeamCount.)
 const displayServerTime = computed(
   () => serverMetaFromSnapshot.value?.server.time ?? '',
 );
@@ -1545,6 +1650,7 @@ const {
   simulationTickRateHz,
   mapWidthLandCells,
   mapLengthLandCells,
+  allyTeamCount: lobbyAllyTeamCount,
   slowDownAtFinalWaypointStoreVersion,
   worldSurfaceStoreVersion,
   stopBackgroundBattle,
@@ -1725,6 +1831,7 @@ const {
   battleLoading,
   activePlayer,
   localPlayerId,
+  localRole,
   networkRole,
   playerClientEnabled,
   cameraFovDegrees,
@@ -1732,7 +1839,7 @@ const {
   hasServer,
   networkNotice,
   lobbyError,
-  lobbyPlayers,
+  lobbyMembers,
   roomCode,
   localUsername,
   network: networkManager,
@@ -1752,12 +1859,41 @@ const {
     battleStartTime = time;
   },
   resolvePlayerName,
-  upsertLobbyPlayer,
+  resolveMemberName,
+  onSeatedPeerSilent: (playerId) => {
+    networkNotice.value = `${resolvePlayerName(playerId)} lost connection`;
+    markSeatedPlayerSilent?.(playerId);
+  },
+  onSeatedPeerReturned: (playerId) => {
+    networkNotice.value = `${resolvePlayerName(playerId)} is reconnecting`;
+    markSeatedPlayerReturned?.(playerId);
+  },
   applyLobbySettingsFromHost,
   currentLobbySettings,
   onCommunication: applyCommunicationEvent,
   onHostLeft: beginHostLeftEviction,
   onPeerFrameReport: recordPeerFrameReport,
+  onFlowControlChange: (report) => {
+    matchHold.value = report.state === 'paused' ? report : null;
+  },
+  onCatchUpProgress: (progress) => {
+    catchUpProgress.value = progress.state === 'live' ? null : progress;
+    if (progress.state === 'failed') {
+      // An honest refusal beats an infinite spinner. The measured rate is the
+      // whole explanation, so it goes in the message.
+      const why = progress.failure === 'cannot-converge'
+        ? `replay could not keep up (${progress.rateRealtime.toFixed(2)}x real time)`
+        : progress.failure === 'state-mismatch'
+          ? 'replayed state did not match the host'
+          : 'the host never answered';
+      networkNotice.value = `Could not join the battle: ${why}`;
+      battleLoading.value = false;
+    }
+  },
+  registerSilentPlayer: (markSilent, markReturned) => {
+    markSeatedPlayerSilent = markSilent;
+    markSeatedPlayerReturned = markReturned;
+  },
   onLoadingProgress: setLoadingProgress,
   bindSceneUi: (scene) => {
     bindGameSceneUi(scene, true);
@@ -1770,7 +1906,7 @@ const { restartGame } = useGameCanvasSessionLifecycle({
   gameStarted,
   showLobby,
   networkRole,
-  lobbyPlayers,
+  lobbyMembers,
   roomCode,
   lobbyError,
   networkNotice,
@@ -1809,7 +1945,7 @@ const {
   isHost,
   networkRole,
   localPlayerId,
-  lobbyPlayers,
+  lobbyMembers,
   battleLoading,
   setupNetworkCallbacks,
   reportLocalPlayerInfo,
@@ -2800,11 +2936,14 @@ watchEffect(() => {
          lobby's terrain / player controls. -->
     <LobbyModal
       :visible="!isMobile && showLobby"
-      :sidebar-open="!spectateMode"
+      :sidebar-open="!menuHidden"
       :is-host="isHost"
       :room-code="roomCode"
       :players="lobbyPlayers"
+      :spectators="lobbySpectators"
       :local-player-id="localPlayerId"
+      :local-member-id="networkManager.getLocalMemberId()"
+      :seated-member-ids="seatedMemberIds"
       :error="lobbyError"
       :is-connecting="isConnecting"
       :center-magnitude="centerMagnitude"
@@ -2823,6 +2962,7 @@ watchEffect(() => {
       :building-blueprint-ids="demoBuildingBlueprintIds"
       :allowed-buildings="currentAllowedBuildings"
       :unit-cap="displayUnitCap"
+      :ally-team-count="lobbyAllyTeamCount"
       :converter-tax="currentConverterTax"
       :preview-loading="loadingInLobbyPreview"
       :preview-loading-progress="displayedLoadingProgress"
@@ -2835,7 +2975,7 @@ watchEffect(() => {
       @cancel="handleLobbyCancel"
       @offline="handleOffline"
       @entity-lab="openEntityLab"
-      @spectate="toggleSpectateMode"
+      @toggle-menu="toggleMenuHidden"
       @set-center-magnitude="(v) => applyCenterMagnitude(v)"
       @set-dividers-magnitude="(v) => applyDividersMagnitude(v)"
       @set-perimeter-magnitude="(v) => applyPerimeterMagnitude(v)"
@@ -2852,23 +2992,36 @@ watchEffect(() => {
       @toggle-building="(bt) => toggleDemoBuildingBlueprintId(bt)"
       @toggle-all-buildings="toggleAllDemoBuildings"
       @set-unit-cap="(c) => changeEntityCountCap(c)"
-      @cycle-player-ally-team="cyclePlayerAllyTeam"
+      @set-ally-team-count="setLobbyAllyTeamCount"
+      @cycle-member-ally-team="cycleMemberAllyTeam"
+      @toggle-member-seated="toggleMemberSeated"
       @set-converter-tax="(v) => setConverterTax(v)"
       @set-player-name="onPlayerNameChange"
       @reset-defaults="resetBattleDefaultsWithGroundNormal"
     />
 
     <NetworkPeerLagIndicator
-      v-if="gameStarted && networkRole !== null"
+      v-if="gameStarted && networkRole !== null && matchHold === null"
       :peers="laggingPeers"
       :resolve-player-name="resolvePlayerName"
       :get-player-color="getPlayerColor"
     />
 
+    <!-- Distinct from the lag indicator above: that one names who is BEHIND
+         while everyone still plays, this one appears only when nothing is
+         advancing at all. Showing both at once would say the same thing
+         twice, so the hold takes over. -->
+    <NetworkMatchHoldBanner
+      v-if="gameStarted && networkRole !== null"
+      :hold="matchHold"
+      :resolve-player-name="resolvePlayerName"
+      :get-player-color="getPlayerColor"
+      :drop-after-seconds="ARCHITECTURE_CONFIG.lockstep.flowControl.dropAfterSeconds"
+    />
+
     <GameCanvasOverlays
       :is-mobile="isMobile"
       :show-lobby="showLobby"
-      :spectate-mode="spectateMode"
       :hud-visible="overlayControlsVisible"
       :mobile-bars-visible="mobileBarsVisible"
       :game-started="gameStarted"
@@ -2879,9 +3032,8 @@ watchEffect(() => {
       :winner-color="gameOverWinner === null ? '' : getPlayerColor(gameOverWinner)"
       :host-left-seconds-remaining="hostLeftSecondsRemaining"
       @exit-after-host-left="exitAfterHostLeft"
-      @toggle-spectate-mode="toggleSpectateMode"
       @toggle-mobile-bars="mobileBarsVisible = !mobileBarsVisible"
-      @dismiss-game-over="gameOverWinner = null; spectateMode = true"
+      @dismiss-game-over="gameOverWinner = null; menuHidden = true"
       @restart-game="restartGame"
     />
   </div>

@@ -3,7 +3,7 @@ import { audioManager } from '../game/audio/AudioManager';
 import { musicPlayer } from '../game/audio/MusicPlayer';
 import type { NetworkServerSnapshotMeta } from '../game/network/NetworkTypes';
 import type {
-  LobbyPlayer,
+  LobbyMember,
   NetworkManager,
   NetworkRole,
 } from '../game/network/NetworkManager';
@@ -20,7 +20,7 @@ type UseGameCanvasSessionLifecycleOptions = {
   gameStarted: Ref<boolean>;
   showLobby: Ref<boolean>;
   networkRole: Ref<NetworkRole | null>;
-  lobbyPlayers: Ref<LobbyPlayer[]>;
+  lobbyMembers: Ref<LobbyMember[]>;
   roomCode: Ref<string>;
   lobbyError: Ref<string | null>;
   networkNotice: Ref<string | null>;
@@ -44,7 +44,7 @@ export function useGameCanvasSessionLifecycle({
   gameStarted,
   showLobby,
   networkRole,
-  lobbyPlayers,
+  lobbyMembers,
   roomCode,
   lobbyError,
   networkNotice,
@@ -73,7 +73,7 @@ export function useGameCanvasSessionLifecycle({
     showLobby.value = true;
     network.disconnect();
     networkRole.value = null;
-    lobbyPlayers.value = [];
+    lobbyMembers.value = [];
     roomCode.value = '';
     lobbyError.value = null;
     networkNotice.value = null;

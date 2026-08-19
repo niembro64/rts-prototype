@@ -169,6 +169,13 @@ export const BATTLE_CONFIG = {
     default: MODE_DEFAULT_ENTITY_COUNT_CAPS.demo,
     options: battleBarConfig.cap.options as readonly number[],
   },
+  /** Sides a REAL lobby offers. Demo has no entry: its shape is authored as
+   *  seats-per-side in demoConfig.json, which is the only form that can seat
+   *  a side unevenly. */
+  allyTeamCount: {
+    default: battleBarConfig.allyTeamCount.realDefault as number,
+    options: battleBarConfig.allyTeamCount.options as readonly number[],
+  },
   pathfindingCellConsolidation: {
     default: MODE_DEFAULT_PATHFINDING_CELL_CONSOLIDATION.demo,
     options: battleBarConfig.pathfindingCellConsolidation.options as readonly PathfindingCellConsolidationMultiplier[],

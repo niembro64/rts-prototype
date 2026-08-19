@@ -1,6 +1,6 @@
 import type { Ref } from 'vue';
 import type {
-  LobbyPlayer,
+  LobbyMember,
   LobbySettings,
 } from '../game/network/NetworkManager';
 import type { PlayerId } from '../game/sim/types';
@@ -10,6 +10,7 @@ import {
   startRealBattleWithPlayers,
   type StartRealBattleWithPlayersOptions,
 } from './gameCanvasRealBattleStart';
+import type { RealBattleResumeContext } from './gameCanvasRealBattleStartup';
 
 type ResolvePlayerName = {
   (playerId: PlayerId): string;
@@ -22,11 +23,15 @@ type UseGameCanvasRealBattleHandoffOptions = Omit<
 > & {
   networkNotice: Ref<string | null>;
   lobbyError: Ref<string | null>;
-  lobbyPlayers: Ref<LobbyPlayer[]>;
+  lobbyMembers: Ref<LobbyMember[]>;
   roomCode: Ref<string>;
   localUsername: Ref<string>;
   resolvePlayerName: ResolvePlayerName;
-  upsertLobbyPlayer: (player: LobbyPlayer) => void;
+  resolveMemberName: (memberId: number) => string;
+  /** A SEATED player stopped answering; the match should hold for it. */
+  onSeatedPeerSilent: (playerId: PlayerId) => void;
+  /** A held seat reconnected. It still has to replay its way back. */
+  onSeatedPeerReturned: (playerId: PlayerId) => void;
   applyLobbySettingsFromHost: (
     settings: LobbySettings,
     options?: { restartPreview?: boolean },
@@ -44,6 +49,7 @@ export function useGameCanvasRealBattleHandoff({
   battleLoading,
   activePlayer,
   localPlayerId,
+  localRole,
   networkRole,
   playerClientEnabled,
   cameraFovDegrees,
@@ -51,7 +57,7 @@ export function useGameCanvasRealBattleHandoff({
   hasServer,
   networkNotice,
   lobbyError,
-  lobbyPlayers,
+  lobbyMembers,
   roomCode,
   localUsername,
   network,
@@ -65,19 +71,25 @@ export function useGameCanvasRealBattleHandoff({
   setActiveConnection,
   setBattleStartTime,
   resolvePlayerName,
-  upsertLobbyPlayer,
+  resolveMemberName,
+  onSeatedPeerSilent,
+  onSeatedPeerReturned,
   applyLobbySettingsFromHost,
   currentLobbySettings,
   onCommunication,
   onHostLeft,
   onLoadingProgress,
   onPeerFrameReport,
+  onFlowControlChange,
+  onCatchUpProgress,
+  registerSilentPlayer,
   bindSceneUi,
 }: UseGameCanvasRealBattleHandoffOptions) {
   async function startGameWithPlayers(
     playerIds: PlayerId[],
     aiPlayerIds?: PlayerId[],
     handoff?: BattleHandoff,
+    resume?: RealBattleResumeContext,
   ): Promise<void> {
     await startRealBattleWithPlayers(playerIds, aiPlayerIds, {
       containerRef,
@@ -86,6 +98,7 @@ export function useGameCanvasRealBattleHandoff({
       battleLoading,
       activePlayer,
       localPlayerId,
+      localRole,
       networkRole,
       playerClientEnabled,
       cameraFovDegrees,
@@ -103,8 +116,12 @@ export function useGameCanvasRealBattleHandoff({
       setBattleStartTime,
       lookupPlayerName: (pid) => resolvePlayerName(pid, null),
       battleHandoff: handoff,
+      resume,
+      onCatchUpProgress,
       onLoadingProgress,
       onPeerFrameReport,
+      onFlowControlChange,
+      registerSilentPlayer,
       bindSceneUi,
     });
   }
@@ -114,14 +131,16 @@ export function useGameCanvasRealBattleHandoff({
       network,
       networkNotice,
       lobbyError,
-      lobbyPlayers,
+      lobbyMembers,
       roomCode,
       localPlayerId,
+      localRole,
       activePlayer,
       localUsername,
       gameStarted,
-      resolvePlayerName: (playerId) => resolvePlayerName(playerId),
-      upsertLobbyPlayer,
+      resolveMemberName,
+      onSeatedPeerSilent,
+      onSeatedPeerReturned,
       applyLobbySettingsFromHost,
       currentLobbySettings,
       onCommunication,

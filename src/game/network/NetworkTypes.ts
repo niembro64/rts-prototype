@@ -18,6 +18,9 @@ export type {
   LockstepAckMessage,
   LockstepPeerFrame,
   LockstepPeerFramesMessage,
+  LockstepResumeRequestMessage,
+  LockstepResumeGrantMessage,
+  LockstepHistoryMessage,
 
   
 
@@ -37,7 +40,11 @@ export type {
   NetworkServerSnapshotEntity,
   NetworkServerSnapshotEconomy,
   NetworkServerSnapshotResourceMovement,
-  LobbyPlayerInfoPayload,
+  LobbyMemberInfoPayload,
+  LobbyMember,
+  LobbyMemberRole,
+  MemberId,
+  SeatToken,
   LobbySettings,
   LobbyPlayer,
   NetworkRole,
@@ -67,6 +74,9 @@ export function isNetworkLockstepMessage(
     case 'lockstepResume':
     case 'lockstepDesync':
     case 'lockstepResyncRequest':
+    case 'lockstepResumeRequest':
+    case 'lockstepResumeGrant':
+    case 'lockstepHistory':
       return true;
     default:
       return false;

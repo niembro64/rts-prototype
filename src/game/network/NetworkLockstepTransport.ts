@@ -1,11 +1,13 @@
 import type { DataConnection } from 'peerjs';
 import type { PlayerId } from '../sim/types';
+import type { MemberId } from '@/types/network';
 import {
   compareLockstepCommandEnvelopes,
   type LockstepCommandEnvelope,
 } from '../architecture/LockstepCommandProtocol';
 import type {
   LockstepAckMessage,
+  LockstepResumeGrantMessage,
   LockstepCommandFrameBatchFrame,
   LockstepCommandFrameBatchMessage,
   LockstepCommandFrameMessage,
@@ -27,14 +29,32 @@ type LockstepCommandFrameDraft = {
   readonly commands: readonly LockstepCommandEnvelope[];
 };
 
+/**
+ * The transport addresses two different sets, and conflating them is what
+ * would let a watcher stall a match:
+ *
+ *   DELIVERY   `getConnections` — every attached member. Command frames go
+ *              here, because a watcher cannot simulate without them.
+ *   COMPLETION `getSeatedConnections` — members that hold a seat. Only these
+ *              can send commands, and only these are ever waited on.
+ */
 type NetworkLockstepTransportOptions = {
   getGameId: () => string;
   getHostConnection: () => DataConnection | undefined;
-  getConnections: () => ReadonlyMap<PlayerId, DataConnection>;
-  getLocalPlayerId: () => PlayerId;
+  getConnections: () => ReadonlyMap<MemberId, DataConnection>;
+  getSeatedConnections: () => ReadonlyMap<PlayerId, DataConnection>;
+  /** The local SEAT, or undefined while watching. A member with no seat
+   *  cannot author a command, so the send paths that stamp one refuse. */
+  getLocalPlayerId: () => PlayerId | undefined;
   isMessageForCurrentGame: (message: { gameId: string | undefined }) => boolean;
   send: (conn: DataConnection, message: NetworkMessage) => boolean;
-  onMessage: (message: NetworkLockstepMessage, fromPlayerId: PlayerId) => void;
+  /** `fromPlayerId` is the SEAT the sender speaks for, or undefined when a
+   *  watcher sent it — which is why every consumer has to decide explicitly
+   *  what an unseated sender may do. */
+  onMessage: (
+    message: NetworkLockstepMessage,
+    fromPlayerId: PlayerId | undefined,
+  ) => void;
 };
 
 export type NetworkLockstepTransportDiagnostics = {
@@ -59,20 +79,40 @@ export class NetworkLockstepTransport {
   private readonly seenCommandKeyFrames = new Map<string, number>();
   private readonly seenCommandFrameKeyFrames = new Map<string, number>();
   private readonly receivedPeerSequences = new Map<PlayerId, number>();
+  /** Progress reported by SEATED peers only. A watcher's progress is its own
+   *  business: it is never waited on and never prunes the outbound history. */
   private readonly latestAckByPlayer = new Map<PlayerId, LockstepAckMessage>();
   private readonly outboundCommandFrames = new Map<number, LockstepCommandFrameMessage>();
   private resendCount = 0;
 
   constructor(private readonly options: NetworkLockstepTransportOptions) {}
 
+  /** The local seat, or null while watching. Every send that stamps a seat
+   *  goes through here, so "a watcher cannot enter the command stream" is one
+   *  guard rather than a rule repeated at eight call sites. */
+  /** Seat to stamp on a coordinator-authored message. The coordinator is the
+   *  host, which always holds seat 1 in its own lobby; the fallback only
+   *  covers a caller that is not the coordinator, whose broadcast is refused
+   *  by the receivers anyway. */
+  private coordinatorSeat(): PlayerId {
+    return this.options.getLocalPlayerId() ?? (1 as PlayerId);
+  }
+
+  private localSeatOrNull(): PlayerId | null {
+    const seat = this.options.getLocalPlayerId();
+    return seat === undefined ? null : seat;
+  }
+
   sendHello(
     initializationHash: string,
     lastReceivedFrame: number,
   ): boolean {
+    const playerId = this.localSeatOrNull();
+    if (playerId === null) return false;
     return this.sendToHostOrBroadcast({
       ...this.base(),
       type: 'lockstepHello',
-      playerId: this.options.getLocalPlayerId(),
+      playerId,
       initializationHash,
       lastReceivedFrame,
       receivedPeerSequences: this.buildReceivedPeerSequenceAcks(),
@@ -80,16 +120,19 @@ export class NetworkLockstepTransport {
   }
 
   sendReady(initializationHash: string, readyFrame: number): boolean {
+    const playerId = this.localSeatOrNull();
+    if (playerId === null) return false;
     return this.sendToHostOrBroadcast({
       ...this.base(),
       type: 'lockstepReady',
-      playerId: this.options.getLocalPlayerId(),
+      playerId,
       readyFrame,
       initializationHash,
     });
   }
 
   sendCommand(envelope: LockstepCommandEnvelope): boolean {
+    if (this.localSeatOrNull() === null) return false;
     return this.sendToHostOrBroadcast({
       ...this.base(),
       type: 'lockstepCommand',
@@ -106,7 +149,7 @@ export class NetworkLockstepTransport {
     const message: LockstepCommandFrameMessage = {
       ...this.base(),
       type: 'lockstepCommandFrame',
-      coordinatorPlayerId: this.options.getLocalPlayerId(),
+      coordinatorPlayerId: this.coordinatorSeat(),
       frame,
       frameSequence,
       commands: orderedCommands,
@@ -135,7 +178,7 @@ export class NetworkLockstepTransport {
       this.outboundCommandFrames.set(frame.frame, {
         ...this.base(),
         type: 'lockstepCommandFrame',
-        coordinatorPlayerId: this.options.getLocalPlayerId(),
+        coordinatorPlayerId: this.coordinatorSeat(),
         frame: frame.frame,
         frameSequence: frame.frameSequence,
         commands: orderedCommands,
@@ -145,16 +188,20 @@ export class NetworkLockstepTransport {
     return this.broadcast({
       ...this.base(),
       type: 'lockstepCommandFrameBatch',
-      coordinatorPlayerId: this.options.getLocalPlayerId(),
+      coordinatorPlayerId: this.coordinatorSeat(),
       frames: batchFrames,
     });
   }
 
+  /** Report progress to the coordinator. Seated peers only: an ack is what
+   *  the match waits on, and a watcher is never waited on. */
   sendAck(ackFrame: number, ackFrameSequence: number): boolean {
+    const playerId = this.localSeatOrNull();
+    if (playerId === null) return false;
     const sent = this.sendToHostOrBroadcast({
       ...this.base(),
       type: 'lockstepAck',
-      playerId: this.options.getLocalPlayerId(),
+      playerId,
       ackFrame,
       ackFrameSequence,
       receivedPeerSequences: this.buildReceivedPeerSequenceAcks(),
@@ -175,17 +222,21 @@ export class NetworkLockstepTransport {
     return this.broadcast({
       ...this.base(),
       type: 'lockstepPeerFrames',
-      coordinatorPlayerId: this.options.getLocalPlayerId(),
+      coordinatorPlayerId: this.coordinatorSeat(),
       coordinatorFrame,
       peers: peers.map((peer) => ({ playerId: peer.playerId, frame: peer.frame })),
     });
   }
 
+  /** Seated peers only. A watcher that diverges must fail on its own screen;
+   *  it may never pause a match it is not part of. */
   sendChecksum(frame: number, stateHash: CanonicalServerStateHash): boolean {
+    const playerId = this.localSeatOrNull();
+    if (playerId === null) return false;
     return this.sendToHostOrBroadcast({
       ...this.base(),
       type: 'lockstepChecksum',
-      playerId: this.options.getLocalPlayerId(),
+      playerId,
       frame,
       stateHash,
     });
@@ -195,7 +246,7 @@ export class NetworkLockstepTransport {
     return this.broadcast({
       ...this.base(),
       type: 'lockstepPause',
-      requestedByPlayerId: this.options.getLocalPlayerId(),
+      requestedByPlayerId: this.coordinatorSeat(),
       frame,
       reason,
     });
@@ -205,7 +256,7 @@ export class NetworkLockstepTransport {
     return this.broadcast({
       ...this.base(),
       type: 'lockstepResume',
-      requestedByPlayerId: this.options.getLocalPlayerId(),
+      requestedByPlayerId: this.coordinatorSeat(),
       resumeFrame,
     });
   }
@@ -219,7 +270,7 @@ export class NetworkLockstepTransport {
     return this.broadcast({
       ...this.base(),
       type: 'lockstepDesync',
-      detectedByPlayerId: this.options.getLocalPlayerId(),
+      detectedByPlayerId: this.coordinatorSeat(),
       frame,
       localHash,
       remotePlayerId,
@@ -227,6 +278,69 @@ export class NetworkLockstepTransport {
     });
   }
 
+  /** A late arrival asking to be let into a running match. Sent by a watcher
+   *  joining mid-battle and by a player reclaiming a seat, so it stamps the
+   *  MEMBER — the requester may hold no seat at all. */
+  sendResumeRequest(
+    memberId: MemberId,
+    playerId: PlayerId | undefined,
+    haveThroughFrame: number,
+  ): boolean {
+    return this.sendToHostOrBroadcast({
+      ...this.base(),
+      type: 'lockstepResumeRequest',
+      memberId,
+      playerId,
+      haveThroughFrame,
+    });
+  }
+
+  /** Coordinator: let one peer in. Unicast — the grant is that connection's
+   *  alone, and nobody else's business. */
+  sendResumeGrant(
+    targetMemberId: MemberId,
+    message: Omit<LockstepResumeGrantMessage, 'gameId' | 'protocolVersion' | 'type'>,
+  ): boolean {
+    const conn = this.options.getConnections().get(targetMemberId);
+    if (conn === undefined) return false;
+    const grant: LockstepResumeGrantMessage = {
+      ...this.base(),
+      type: 'lockstepResumeGrant',
+      ...message,
+    };
+    return this.options.send(conn, grant);
+  }
+
+  /** Coordinator: one chunk of match history, to one joiner. */
+  sendHistoryChunk(
+    targetMemberId: MemberId,
+    fromFrame: number,
+    throughFrame: number,
+    frames: readonly LockstepCommandFrameBatchFrame[],
+    final: boolean,
+  ): boolean {
+    const conn = this.options.getConnections().get(targetMemberId);
+    if (conn === undefined) return false;
+    return this.options.send(conn, {
+      ...this.base(),
+      type: 'lockstepHistory',
+      fromFrame,
+      throughFrame,
+      frames: frames.map((frame) => ({
+        frame: frame.frame,
+        frameSequence: frame.frameSequence,
+        commands: orderCommandEnvelopes(frame.commands),
+      })),
+      final,
+    });
+  }
+
+  /** Ask the coordinator for frames we are missing.
+   *
+   *  The one lockstep send a WATCHER also makes: catching up is exactly
+   *  asking for history. The coordinator answers on the connection the
+   *  request arrived on rather than by the stamped seat, so an unseated
+   *  requester is served the same way a seated one is. */
   sendResyncRequest(fromFrame: number, reason: string): boolean {
     return this.sendToHostOrBroadcast({
       ...this.base(),
@@ -240,7 +354,7 @@ export class NetworkLockstepTransport {
   resendCommandFrame(frame: number, targetPlayerId: PlayerId): boolean {
     const frameMessage = this.outboundCommandFrames.get(frame);
     if (frameMessage === undefined) return false;
-    const conn = this.options.getConnections().get(targetPlayerId);
+    const conn = this.options.getSeatedConnections().get(targetPlayerId);
     if (conn === undefined) return false;
     const sent = this.options.send(conn, frameMessage);
     if (sent) this.resendCount++;
@@ -250,6 +364,28 @@ export class NetworkLockstepTransport {
   resendCommandFramesAfter(
     lastAckedFrame: number,
     targetPlayerId: PlayerId,
+    maxFrames: number,
+  ): number {
+    const conn = this.options.getSeatedConnections().get(targetPlayerId);
+    if (conn === undefined) return 0;
+    return this.resendCommandFramesAfterTo(lastAckedFrame, conn, maxFrames);
+  }
+
+  /** Answer a catch-up request on the connection it arrived on. Watchers ask
+   *  for frames too and hold no seat, so the address is the member. */
+  resendCommandFramesAfterToMember(
+    lastAckedFrame: number,
+    targetMemberId: MemberId,
+    maxFrames: number,
+  ): number {
+    const conn = this.options.getConnections().get(targetMemberId);
+    if (conn === undefined) return 0;
+    return this.resendCommandFramesAfterTo(lastAckedFrame, conn, maxFrames);
+  }
+
+  private resendCommandFramesAfterTo(
+    lastAckedFrame: number,
+    conn: DataConnection,
     maxFrames: number,
   ): number {
     if (!Number.isInteger(lastAckedFrame) || !Number.isInteger(maxFrames) || maxFrames <= 0) {
@@ -263,13 +399,20 @@ export class NetworkLockstepTransport {
     let sent = 0;
     const count = Math.min(maxFrames, frames.length);
     for (let i = 0; i < count; i++) {
-      const frame = frames[i];
-      if (this.resendCommandFrame(frame, targetPlayerId)) sent++;
+      const message = this.outboundCommandFrames.get(frames[i]);
+      if (message === undefined) continue;
+      if (this.options.send(conn, message)) {
+        this.resendCount++;
+        sent++;
+      }
     }
     return sent;
   }
 
-  handleMessage(message: NetworkMessage, fromPlayerId: PlayerId): boolean {
+  handleMessage(
+    message: NetworkMessage,
+    fromPlayerId: PlayerId | undefined,
+  ): boolean {
     if (!isNetworkLockstepMessage(message)) return false;
     if (!this.options.isMessageForCurrentGame(message)) return true;
     if (message.protocolVersion !== LOCKSTEP_PROTOCOL_VERSION) return true;
@@ -358,15 +501,24 @@ export class NetworkLockstepTransport {
     return acks;
   }
 
-  private acceptInbound(message: NetworkLockstepMessage, fromPlayerId: PlayerId): boolean {
+  private acceptInbound(
+    message: NetworkLockstepMessage,
+    fromPlayerId: PlayerId | undefined,
+  ): boolean {
     switch (message.type) {
       case 'lockstepCommand':
+        // A watcher holds no seat, so it can own no unit and author no
+        // command. Refused at the transport rather than downstream: a
+        // command that never enters the stream cannot be executed by mistake.
+        if (fromPlayerId === undefined) return false;
+        if (message.envelope.playerId !== fromPlayerId) return false;
         return this.acceptCommand(message);
       case 'lockstepCommandFrame':
         return this.acceptCommandFrame(message);
       case 'lockstepCommandFrameBatch':
         return this.acceptCommandFrameBatch(message);
       case 'lockstepAck':
+        if (fromPlayerId === undefined) return true;
         this.latestAckByPlayer.set(fromPlayerId, message);
         this.pruneOutboundCommandFrames();
         return true;
@@ -437,7 +589,9 @@ export class NetworkLockstepTransport {
 
   private minAckedFrameAcrossConnectedPeers(): number | null {
     let minAckedFrame: number | null = null;
-    for (const playerId of this.options.getConnections().keys()) {
+    // Seated peers only. History is retained for the players a resend can
+    // ever be owed to; a watcher that falls behind asks for what it needs.
+    for (const playerId of this.options.getSeatedConnections().keys()) {
       const ack = this.latestAckByPlayer.get(playerId);
       if (ack === undefined) return null;
       minAckedFrame = minAckedFrame === null

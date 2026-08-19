@@ -5,11 +5,16 @@ import type { GameConnection } from '../game/server/GameConnection';
 import type { GameServer } from '../game/server/GameServer';
 import type { PlayerId } from '../game/sim/types';
 import type { CameraFovDegrees } from '../types/client';
-import type { BattleHandoff } from '../types/network';
+import type { BattleHandoff, LobbyMemberRole } from '../types/network';
 import { setPlayerClientRenderEnabled } from './gameCanvasChromeState';
 import type { GameCanvasForegroundGame } from './gameCanvasForegroundGame';
 import type { GameCanvasForegroundSceneBinding } from './gameCanvasForegroundSceneBinding';
-import type { RealBattleBackendRuntime } from './gameCanvasRealBattleStartup';
+import type {
+  RealBattleBackendRuntime,
+  RealBattleFlowControlReport,
+  RealBattleResumeContext,
+} from './gameCanvasRealBattleStartup';
+import type { LockstepCatchUpProgress } from '../game/architecture/LockstepCatchUp';
 import type { GameCanvasRealBattleLifecycle } from './gameCanvasRealBattleLifecycle';
 import { waitForLoadingOverlayPaint } from './loadingOverlayPaint';
 import { prewarmEntityPreviewImages } from './entityPreviewThumbnails';
@@ -20,7 +25,13 @@ export type StartRealBattleWithPlayersOptions = {
   gameStarted: Ref<boolean>;
   battleLoading: Ref<boolean>;
   activePlayer: Ref<PlayerId>;
+  /** The seat this client VIEWS as. For a player that is their own seat; for
+   *  a watcher it is whoever they are following, which is a local choice and
+   *  never command authority. */
   localPlayerId: Ref<PlayerId>;
+  /** Whether this client holds a seat at all. A watcher renders the match and
+   *  issues nothing. */
+  localRole: Ref<LobbyMemberRole>;
   networkRole: Ref<NetworkRole | null>;
   playerClientEnabled: Ref<boolean>;
   cameraFovDegrees: Ref<CameraFovDegrees>;
@@ -38,6 +49,11 @@ export type StartRealBattleWithPlayersOptions = {
   setBattleStartTime: (time: number) => void;
   lookupPlayerName: (playerId: PlayerId) => string | null;
   battleHandoff?: BattleHandoff;
+  /** Present when joining a match already in progress — the frame to replay
+   *  up to and the hash to verify against on arrival. */
+  resume?: RealBattleResumeContext;
+  /** Replay progress while catching up, for the loading overlay. */
+  onCatchUpProgress?: (progress: LockstepCatchUpProgress) => void;
   onLoadingProgress: (progress: number, phase?: string) => void;
   /** Peer simulation progress, refreshed roughly twice a second during an
    *  online battle. Drives the "who is falling behind" indicator. */
@@ -46,6 +62,14 @@ export type StartRealBattleWithPlayersOptions = {
     readonly tickRateHz: number;
     readonly peers: readonly { readonly playerId: PlayerId; readonly frame: number }[];
   }) => void;
+  /** The match started or stopped being held for somebody. */
+  onFlowControlChange?: (report: RealBattleFlowControlReport) => void;
+  /** Hands the backend the two callbacks that track whether a seated player is
+   *  attached: gone, and back again. */
+  registerSilentPlayer?: (
+    markSilent: (playerId: PlayerId) => void,
+    markReturned: (playerId: PlayerId) => void,
+  ) => void;
   bindSceneUi: (scene: GameScene) => void;
 };
 
@@ -79,7 +103,12 @@ export async function startRealBattleWithPlayers(
   options.foregroundSceneBinding.clear();
   options.setBattleStartTime(Date.now());
   if (options.networkRole.value !== null) {
-    options.localPlayerId.value = options.network.getLocalPlayerId();
+    const seat = options.network.getLocalPlayerId();
+    options.localRole.value = seat === undefined ? 'spectator' : 'player';
+    // A watcher has no seat, so it opens on the first one in the roster and
+    // can move from there. That is a VIEW choice: command authority follows
+    // the role, never the view.
+    options.localPlayerId.value = seat ?? playerIds[0] ?? (1 as PlayerId);
     options.activePlayer.value = options.localPlayerId.value;
   }
 
@@ -171,10 +200,17 @@ export async function startRealBattleWithPlayers(
       aiPlayerIds,
       terrain: realBattleTerrain,
       networkRole: options.networkRole.value,
-      localPlayerId: options.localPlayerId.value,
+      // The SEAT, not the view target. A watcher passes undefined and gets a
+      // connection with no command authority; what it is looking at is decided
+      // separately, below.
+      localPlayerId: options.networkRole.value === null
+        ? options.localPlayerId.value
+        : options.network.getLocalPlayerId(),
       localIpAddress: options.localIpAddress.value,
       network: options.network,
       battleHandoff: options.battleHandoff,
+      resume: options.resume,
+      onCatchUpProgress: options.onCatchUpProgress,
       onLoadingProgress: (progress, phase) => reportLoadingProgress(
         REAL_BATTLE_LOAD_PROGRESS.terrainLoaded +
           progress *
@@ -182,6 +218,8 @@ export async function startRealBattleWithPlayers(
         phase ?? 'Starting server',
       ),
       onPeerFrameReport: options.onPeerFrameReport,
+      onFlowControlChange: options.onFlowControlChange,
+      registerSilentPlayer: options.registerSilentPlayer,
     });
     ownedBackend = backend;
     if (shouldAbortStart()) return;
@@ -233,6 +271,7 @@ export async function startRealBattleWithPlayers(
       height: rect.height || window.innerHeight,
       playerIds,
       allyTeamByPlayerId: backend.allyTeamByPlayerId,
+      allyTeamCount: backend.allyTeamCount,
       localPlayerId: options.localPlayerId.value,
       gameConnection,
       mapWidth: realBattleTerrain.mapSize.width,

@@ -5,13 +5,44 @@ type LockstepDesyncPolicy = 'pause';
 
 type LockstepPresentationSnapshotConfig = SnapshotConfig;
 
+/**
+ * How far the match may run ahead of its slowest seated player, and when it
+ * stops running at all.
+ *
+ * Two tiers, because a pause is too coarse to be the only tool. Below the
+ * window nothing happens; above it the coordinator throttles to the slowest
+ * peer, which is what lockstep is supposed to feel like. A hard pause is
+ * reserved for a player who is disconnected or hopelessly behind, and it is
+ * bounded: past `dropAfterSeconds` the coordinator resigns the seat so one
+ * closed laptop cannot end everyone's evening.
+ */
+export type LockstepFlowControlConfig = {
+  /** Frames the coordinator may run ahead of the slowest seated player before
+   *  it throttles. Roughly twice the input delay: under that, a peer is
+   *  merely doing what the protocol already asks of it. */
+  readonly lagWindowTicks: number;
+  /** How far behind, in seconds and sustained, before a player becomes a
+   *  pause subject. */
+  readonly pauseAfterSeconds: number;
+  /** How close they must get before the pause lifts. Lower than the entry
+   *  threshold on purpose — without the gap a peer at the line flickers the
+   *  whole match on and off. */
+  readonly resumeWithinSeconds: number;
+  /** How long a bad reading must persist before it counts. A spike is not a
+   *  lagging player, and pausing on one is worse than waiting. */
+  readonly pauseGraceMs: number;
+  /** How long a subject may hold the match before the coordinator resigns
+   *  their seat and play continues without them. */
+  readonly dropAfterSeconds: number;
+};
+
 export type LockstepArchitectureConfig = {
   readonly fixedStepHz: number;
   readonly inputDelayTicks: number;
   readonly checksumIntervalTicks: number;
   readonly stallTimeoutMs: number;
   readonly desyncPolicy: LockstepDesyncPolicy;
-  readonly allowLateJoin: false;
+  readonly flowControl: LockstepFlowControlConfig;
   readonly presentationSnapshots: LockstepPresentationSnapshotConfig;
 };
 
@@ -47,13 +78,6 @@ function parseDesyncPolicy(value: unknown): LockstepDesyncPolicy {
   throw new Error(`architecture.lockstep.desyncPolicy must be "pause"; received ${String(value)}`);
 }
 
-function parseAllowLateJoin(value: unknown): false {
-  if (value === false) return false;
-  throw new Error(
-    'architecture.lockstep.allowLateJoin must be false until checkpoint import/export exists',
-  );
-}
-
 function parseLockstepPresentationSnapshotConfig(
   value: unknown,
 ): LockstepPresentationSnapshotConfig {
@@ -66,6 +90,48 @@ function parseLockstepPresentationSnapshotConfig(
       'architecture.lockstep.presentationSnapshots.nominalSnapshotRateHz',
     ),
   };
+}
+
+function parseLockstepFlowControlConfig(value: unknown): LockstepFlowControlConfig {
+  if (!isRecord(value)) {
+    throw new Error('architecture.lockstep.flowControl must be an object');
+  }
+  const config: LockstepFlowControlConfig = {
+    lagWindowTicks: parsePositiveInteger(
+      value.lagWindowTicks,
+      'architecture.lockstep.flowControl.lagWindowTicks',
+    ),
+    pauseAfterSeconds: parsePositiveFiniteNumber(
+      value.pauseAfterSeconds,
+      'architecture.lockstep.flowControl.pauseAfterSeconds',
+    ),
+    resumeWithinSeconds: parsePositiveFiniteNumber(
+      value.resumeWithinSeconds,
+      'architecture.lockstep.flowControl.resumeWithinSeconds',
+    ),
+    pauseGraceMs: parsePositiveInteger(
+      value.pauseGraceMs,
+      'architecture.lockstep.flowControl.pauseGraceMs',
+      { min: 0 },
+    ),
+    dropAfterSeconds: parsePositiveFiniteNumber(
+      value.dropAfterSeconds,
+      'architecture.lockstep.flowControl.dropAfterSeconds',
+    ),
+  };
+  // The hysteresis has to be real, or a peer hovering at the line toggles the
+  // whole match. Caught at startup rather than felt in a live game.
+  if (config.resumeWithinSeconds >= config.pauseAfterSeconds) {
+    throw new Error(
+      'architecture.lockstep.flowControl.resumeWithinSeconds must be below pauseAfterSeconds',
+    );
+  }
+  if (config.dropAfterSeconds <= config.pauseAfterSeconds) {
+    throw new Error(
+      'architecture.lockstep.flowControl.dropAfterSeconds must exceed pauseAfterSeconds',
+    );
+  }
+  return config;
 }
 
 function parseLockstepConfig(value: unknown): LockstepArchitectureConfig {
@@ -91,7 +157,7 @@ function parseLockstepConfig(value: unknown): LockstepArchitectureConfig {
       { min: 250 },
     ),
     desyncPolicy: parseDesyncPolicy(value.desyncPolicy),
-    allowLateJoin: parseAllowLateJoin(value.allowLateJoin),
+    flowControl: parseLockstepFlowControlConfig(value.flowControl),
     presentationSnapshots: parseLockstepPresentationSnapshotConfig(value.presentationSnapshots),
   };
 }

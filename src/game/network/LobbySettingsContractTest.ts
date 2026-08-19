@@ -12,6 +12,7 @@ const CURRENT_SETTINGS: LobbySettings = {
   mapWidthLandCells: 20,
   mapLengthLandCells: 20,
   entityCountCap: 729,
+  allyTeamCount: 2,
   pathfindingCellConsolidationMultiplier: 3,
   simulationTickRateHz: 20,
   converterTax: 0.1,

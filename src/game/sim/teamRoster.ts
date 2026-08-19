@@ -38,6 +38,11 @@ export type TeamRoster = {
  *  `teamId === 0` already means in entity metadata. */
 export const FIRST_ALLY_TEAM_ID: AllyTeamId = 1;
 
+/** Most sides a match can declare. A side per seat is already a free-for-all,
+ *  so the seat cap is also the side cap — asking for more would carve slices
+ *  nobody could ever stand on. */
+export const MAX_ALLY_TEAM_COUNT = 6;
+
 export function normalizePlayerIds(playerIds: readonly PlayerId[]): PlayerId[] {
   if (playerIds.length > 0) {
     const copy = new Array<PlayerId>(playerIds.length);
@@ -148,25 +153,57 @@ export function buildTeamRosterFromSeatCounts(
 }
 
 /**
- * Build a roster from an EXPLICIT per-seat assignment — what a lobby
- * produces once players start moving themselves between sides. Seats with
- * no assignment fall back to their own side, so a half-filled lobby is
- * still a legal roster.
+ * Build a roster from an EXPLICIT per-seat assignment — what the lobby
+ * produces once the host has seated players.
  *
- * Sides are renumbered to a dense 1..N in first-appearance order, so a
- * lobby that empties TEAM 2 does not leave a hole that layout would carve
- * an empty slice for.
+ * `declaredAllyTeamCount` is the number of sides the LOBBY declared, and it
+ * is what the roster reports, occupied or not. An empty side is a real side:
+ * it takes its terrain slice, its deposits and its spawn arc, and simply has
+ * no commander standing on it. That is a host decision, so it survives into
+ * the match rather than being optimised away — anything that must count only
+ * seated sides asks `getOccupiedAllyTeamCount`.
+ *
+ * Omitting the count falls back to "as many sides as the assignment mentions",
+ * densely renumbered in seat order, which is what a roster with no declared
+ * shape (a test fixture, an offline start) means. A seat with no assignment,
+ * or one naming a side the lobby does not have, lands on the first side rather
+ * than inventing one.
  */
 export function buildTeamRosterFromAssignment(
   playerIds: readonly PlayerId[],
   assignment: ReadonlyMap<PlayerId, AllyTeamId>,
+  declaredAllyTeamCount?: number,
 ): TeamRoster {
   const seats = normalizePlayerIds(playerIds);
-  const denseBySource = new Map<AllyTeamId, AllyTeamId>();
   const allyTeamIds: AllyTeamId[] = [];
   const allyTeamByPlayer = new Map<PlayerId, AllyTeamId>();
   const playersByAllyTeam = new Map<AllyTeamId, PlayerId[]>();
 
+  if (declaredAllyTeamCount !== undefined) {
+    const sides = Math.max(
+      1,
+      Math.min(MAX_ALLY_TEAM_COUNT, Math.floor(declaredAllyTeamCount) || 1),
+    );
+    for (let side = 0; side < sides; side++) {
+      const id = FIRST_ALLY_TEAM_ID + side;
+      allyTeamIds.push(id);
+      playersByAllyTeam.set(id, []);
+    }
+    for (const playerId of seats) {
+      const raw = assignment.get(playerId);
+      const inRange =
+        raw !== undefined &&
+        Number.isFinite(raw) &&
+        raw >= FIRST_ALLY_TEAM_ID &&
+        raw < FIRST_ALLY_TEAM_ID + sides;
+      const id = inRange ? Math.floor(raw as number) : FIRST_ALLY_TEAM_ID;
+      (playersByAllyTeam.get(id) as PlayerId[]).push(playerId);
+      allyTeamByPlayer.set(playerId, id);
+    }
+    return { playerIds: seats, allyTeamIds, allyTeamByPlayer, playersByAllyTeam };
+  }
+
+  const denseBySource = new Map<AllyTeamId, AllyTeamId>();
   for (const playerId of seats) {
     // An unassigned seat is its own side. Its source key is namespaced away
     // from real ally team ids so it can never collide with one.
@@ -266,10 +303,10 @@ export function getAllyTeamIndex(roster: TeamRoster, allyTeamId: AllyTeamId): nu
  * call this with the same inputs so their terrain slices, spawn angles,
  * and alliances cannot disagree.
  *
- * Precedence, most specific first: an explicit per-seat lobby assignment;
- * then a seats-per-side list (the only form that can declare an EMPTY side);
- * then a plain side count splitting seats into contiguous blocks; then
- * free-for-all.
+ * Precedence, most specific first: an explicit per-seat lobby assignment
+ * (which declares empty sides too when `allyTeamCount` rides along with it);
+ * then a seats-per-side list; then a plain side count splitting seats into
+ * contiguous blocks; then free-for-all.
  */
 export function resolveTeamRoster(
   playerIds: readonly PlayerId[],
@@ -287,7 +324,13 @@ export function resolveTeamRoster(
       const side = assignment[seat];
       if (Number.isFinite(seat) && Number.isFinite(side)) map.set(seat, side);
     }
-    if (map.size > 0) return buildTeamRosterFromAssignment(playerIds, map);
+    if (map.size > 0) {
+      return buildTeamRosterFromAssignment(
+        playerIds,
+        map,
+        options.allyTeamCount,
+      );
+    }
   }
   const seats = normalizePlayerIds(playerIds);
   if (options.allyTeamSeats !== undefined && options.allyTeamSeats.length > 0) {

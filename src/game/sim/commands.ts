@@ -33,6 +33,7 @@ export type {
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
   SelfDestructCommand,
+  ResignCommand,
   SetTowerTargetCommand,
   RepairCommand,
   RepairAreaCommand,

@@ -1,4 +1,5 @@
 import type { LobbySettings } from '@/types/network';
+import { MAX_ALLY_TEAM_COUNT } from '../sim/teamRoster';
 import { isLiquidSurfaceMode, isMetalCoverage } from '@/types/worldSurfaceMode';
 import { isPathfindingCellConsolidationMultiplier } from '@/types/pathfinding';
 import { isSimulationTickRateHz } from '@/types/simulationTickRate';
@@ -14,6 +15,7 @@ const NUMERIC_FIELDS = [
   'mapWidthLandCells',
   'mapLengthLandCells',
   'entityCountCap',
+  'allyTeamCount',
   'pathfindingCellConsolidationMultiplier',
   'simulationTickRateHz',
   'converterTax',
@@ -41,6 +43,15 @@ export function assertCurrentLobbySettings(
   }
   if ((settings.entityCountCap as number) <= 0) {
     throw new Error(`[${context}] entityCountCap must be positive`);
+  }
+  if (
+    !Number.isInteger(settings.allyTeamCount) ||
+    (settings.allyTeamCount as number) < 1 ||
+    (settings.allyTeamCount as number) > MAX_ALLY_TEAM_COUNT
+  ) {
+    throw new Error(
+      `[${context}] allyTeamCount must be an integer in 1..${MAX_ALLY_TEAM_COUNT}`,
+    );
   }
   if (!isPathfindingCellConsolidationMultiplier(
     settings.pathfindingCellConsolidationMultiplier,

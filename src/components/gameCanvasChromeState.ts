@@ -126,22 +126,22 @@ export function useGameCanvasChromeState(
   onPlayerClientEnabledChange: () => void,
 ): {
   mobileBarsVisible: Ref<boolean>;
-  spectateMode: Ref<boolean>;
+  menuHidden: Ref<boolean>;
   bottomBarsCollapsed: Ref<boolean>;
   playerClientEnabled: Ref<boolean>;
   toggleBottomBars: () => void;
   togglePlayerClientEnabled: () => void;
-  toggleSpectateMode: () => void;
+  toggleMenuHidden: () => void;
 } {
   const mobileBarsVisible = ref(false);
-  const spectateMode = ref(!getStoredLobbyVisible(currentBattleMode.value));
+  const menuHidden = ref(!getStoredLobbyVisible(currentBattleMode.value));
   // Deliberately session-only: the BATTLE/SERVER/CLIENT group always starts
   // hidden — no localStorage read or write, and mode switches re-hide it.
   const bottomBarsCollapsed = ref(true);
   const playerClientEnabled = ref(loadStoredClientEnabled(currentBattleMode.value));
 
   watch(currentBattleMode, (mode) => {
-    spectateMode.value = !getStoredLobbyVisible(mode);
+    menuHidden.value = !getStoredLobbyVisible(mode);
     bottomBarsCollapsed.value = true;
     playerClientEnabled.value = loadStoredClientEnabled(mode);
   });
@@ -159,18 +159,18 @@ export function useGameCanvasChromeState(
     playerClientEnabled.value = !playerClientEnabled.value;
   }
 
-  function toggleSpectateMode(): void {
-    spectateMode.value = !spectateMode.value;
-    setLobbyVisible(!spectateMode.value);
+  function toggleMenuHidden(): void {
+    menuHidden.value = !menuHidden.value;
+    setLobbyVisible(!menuHidden.value);
   }
 
   return {
     mobileBarsVisible,
-    spectateMode,
+    menuHidden,
     bottomBarsCollapsed,
     playerClientEnabled,
     toggleBottomBars,
     togglePlayerClientEnabled,
-    toggleSpectateMode,
+    toggleMenuHidden,
   };
 }

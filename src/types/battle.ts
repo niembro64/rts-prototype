@@ -16,6 +16,11 @@ export type BattleBarConfig = {
    *  buildings all share this one static-host roster. */
   readonly buildings: Record<string, UnitToggleConfig>;
   readonly cap: OptionsConfig<number>;
+  /** Sides a REAL lobby splits its seats across — the TEAM N the roster
+   *  labels. The demo has no entry because its shape is authored as
+   *  seats-per-side in demoConfig.json, the only form that can seat sides
+   *  unevenly or leave one empty on purpose. */
+  readonly allyTeamCount: OptionsConfig<number>;
   /** Number of 20×20 build cells represented by one path cell on each axis. */
   readonly pathfindingCellConsolidation: OptionsConfig<PathfindingCellConsolidationMultiplier>;
   /** Authoritative fixed simulation steps per real-time second. */

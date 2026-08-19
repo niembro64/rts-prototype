@@ -31,7 +31,11 @@ import type {
 
 export type LocalCommandAuthorityMode = 'player' | 'local-offline';
 export type LocalGameConnectionOptions = {
-  commandDoorway?: (command: Command, fromPlayerId: PlayerId) => boolean;
+  /** Where a command goes before the server sees it — in lockstep, the frame
+   *  scheduler. `fromPlayerId` is undefined for a WATCHER: selection and other
+   *  local-presentation commands still belong to it, gameplay truth never
+   *  does, and the doorway is where that line is drawn. */
+  commandDoorway?: (command: Command, fromPlayerId: PlayerId | undefined) => boolean;
   /** Encode local snapshots only to stamp/diagnose estimated wire size.
    *  Leave false for lockstep local presentation unless diagnostics need
    *  byte accounting beyond the direct-local materialization path. */
@@ -65,7 +69,9 @@ export class LocalGameConnection implements GameConnection {
    *  command but rejects gameplay and server-control mutations. */
   private commandPlayerId: PlayerId | undefined = undefined;
   private commandAuthorityMode: LocalCommandAuthorityMode;
-  private readonly commandDoorway: ((command: Command, fromPlayerId: PlayerId) => boolean) | undefined;
+  private readonly commandDoorway:
+    | ((command: Command, fromPlayerId: PlayerId | undefined) => boolean)
+    | undefined;
   private readonly recordSnapshotWireCost: boolean;
   private readonly loopbackSnapshotsThroughWire: boolean;
   private readonly directLocalSnapshotMaterialization: boolean;
@@ -267,7 +273,9 @@ export class LocalGameConnection implements GameConnection {
   sendCommand(command: Command): void {
     const server = this.server;
     if (server === null) return;
-    if (this.commandDoorway !== undefined && this.commandPlayerId !== undefined) {
+    // The doorway runs for a watcher too: it is what lets a watcher select and
+    // inspect while refusing anything that would enter the command stream.
+    if (this.commandDoorway !== undefined) {
       if (this.commandDoorway(command, this.commandPlayerId)) return;
     }
     server.receiveCommand(command, this.commandAuthority());

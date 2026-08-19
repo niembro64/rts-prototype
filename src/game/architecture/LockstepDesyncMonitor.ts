@@ -65,6 +65,21 @@ export class LockstepDesyncMonitor {
     this.onDesync = options.onDesync;
   }
 
+  /** The most recent checksum this peer produced for its OWN state.
+   *
+   *  Used as the join gate: a peer replaying a match from frame 0 compares its
+   *  hash here against the coordinator's before it is allowed to render. A
+   *  replay that disagrees is a desync, and joining anyway would spread it. */
+  getLatestLocalChecksum(): {
+    readonly frame: number;
+    readonly stateHash: CanonicalServerStateHash;
+  } | null {
+    const frame = this.latestChecksumFrameByPlayer.get(this.localPlayerId);
+    if (frame === undefined) return null;
+    const stateHash = this.checksumsByFrame.get(frame)?.get(this.localPlayerId);
+    return stateHash === undefined ? null : { frame, stateHash };
+  }
+
   recordChecksum(record: LockstepChecksumRecord): LockstepDesyncReport | null {
     if (this.desyncReport !== null) return this.desyncReport;
     if (!Number.isInteger(record.frame) || record.frame < 0) {

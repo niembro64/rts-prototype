@@ -9,7 +9,6 @@ import type { OrbitCamera } from '../game/render3d/OrbitCamera';
 defineProps<{
   isMobile: boolean;
   showLobby: boolean;
-  spectateMode: boolean;
   hudVisible: boolean;
   mobileBarsVisible: boolean;
   gameStarted: boolean;
@@ -24,7 +23,6 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  toggleSpectateMode: [];
   toggleMobileBars: [];
   dismissGameOver: [];
   restartGame: [];

@@ -162,6 +162,14 @@ export function authorizeGameServerGameplayCommand(
     case 'selfDestruct':
       return authorizeAnyEntityListCommand(world, command, playerId);
 
+    // A resign names its SUBJECT, not its author, so ownership is the wrong
+    // question: this is the seat conceding. The host's power to resign a seat
+    // that has been gone past the timeout is granted one level up, where the
+    // host player id is known (see LockstepCommandProtocol) — the same place
+    // the other host-only commands are gated.
+    case 'resign':
+      return command.playerId === playerId ? command : null;
+
     case 'setTowerTarget':
       return authorizeSetTowerTargetCommand(world, command, playerId);
 

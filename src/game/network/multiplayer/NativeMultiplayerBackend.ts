@@ -12,6 +12,7 @@ import {
   fetchLobbyDirectory,
   LobbyPublisher,
   MAX_LOBBY_PLAYERS,
+  MAX_LOBBY_SPECTATORS,
 } from '../LobbyDirectory';
 import type {
   MultiplayerBackend,
@@ -45,6 +46,8 @@ export class NativeMultiplayerBackend implements MultiplayerBackend {
       status: lobby.status,
       playerCount: lobby.playerCount,
       maxPlayers: lobby.maxPlayers || MAX_LOBBY_PLAYERS,
+      spectatorCount: lobby.spectatorCount,
+      maxSpectators: lobby.maxSpectators || MAX_LOBBY_SPECTATORS,
       mapName: lobby.mapName,
       createdAt: lobby.createdAt,
     }));
@@ -60,6 +63,7 @@ export class NativeMultiplayerBackend implements MultiplayerBackend {
         hostName: advert.hostName,
         status: advert.status,
         playerCount: advert.playerCount,
+        spectatorCount: advert.spectatorCount,
         mapName: advert.mapName,
       };
     });

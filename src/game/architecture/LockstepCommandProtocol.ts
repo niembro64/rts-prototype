@@ -219,6 +219,13 @@ export function validateLockstepCommandForPeer(
     );
   }
 
+  // The host may resign a seat that has been gone past the drop timeout —
+  // the escape hatch that stops one closed laptop ending everyone's evening.
+  // A seat conceding its own match is authorized the ordinary way below.
+  if (materialized.type === 'resign' && envelope.playerId === hostPlayerId) {
+    return { accepted: true, envelope, command: materialized };
+  }
+
   const authorized = authorizeLockstepGameplayTruthCommand(world, materialized, envelope.playerId);
   if (authorized === null) {
     return rejectLockstepCommand(envelope, 'authorization-rejected', 'player is not authorized for command', onRejected);

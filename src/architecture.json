@@ -5,7 +5,13 @@
     "checksumIntervalTicks": 180,
     "stallTimeoutMs": 5000,
     "desyncPolicy": "pause",
-    "allowLateJoin": false,
+    "flowControl": {
+      "lagWindowTicks": 30,
+      "pauseAfterSeconds": 5,
+      "resumeWithinSeconds": 1,
+      "pauseGraceMs": 750,
+      "dropAfterSeconds": 90
+    },
     "presentationSnapshots": {
       "nominalSnapshotRateHz": 5
     }

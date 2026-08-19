@@ -31,6 +31,7 @@ import {
   normalizeGameGenerationSeed,
 } from '../network/gameGenerationSeed';
 import type { PlayerId } from '../sim/types';
+import { FIRST_ALLY_TEAM_ID, MAX_ALLY_TEAM_COUNT } from '../sim/teamRoster';
 import type { LobbySettings } from '@/types/network';
 import {
   isLiquidSurfaceMode,
@@ -52,7 +53,7 @@ const {
   ...canonicalWindConfigJson
 } = windConfigJson;
 
-const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v11';
+const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v12';
 const APP_SOURCE_VERSION = '0.0.1';
 export const SIM_WASM_EXPECTED_VERSION = 'rts-sim-wasm 0.0.1';
 export const BUILD_FINGERPRINT = __BA_BUILD_FINGERPRINT__;
@@ -64,6 +65,12 @@ export type CanonicalMatchInitialization = {
   readonly roomCode: string;
   readonly hostPlayerId: PlayerId;
   readonly playerIds: readonly PlayerId[];
+  /** How many SIDES the lobby declared. Hashed separately from the per-seat
+   *  list because a declared side the host left empty is still a side: it
+   *  takes a terrain slice, deposits and a spawn arc, and simply has no
+   *  commander on it. Deriving the count from the occupied sides instead
+   *  would silently delete that slice. */
+  readonly allyTeamCount: number;
   /** SIDE per seat, index-aligned with `playerIds` — BAR's ally team, the
    *  lobby's TEAM N. Part of the hashed initialization because it decides
    *  terrain slices, spawn angles, and who can shoot whom: two peers that
@@ -109,6 +116,10 @@ type BuildCanonicalMatchInitializationOptions = {
   /** Seat -> side. Seats missing from the map become their own side, so an
    *  omitted assignment is exactly free-for-all. */
   allyTeamByPlayerId?: Readonly<Record<number, number>> | undefined;
+  /** Sides the lobby declared, empty ones included. Omitted means "however
+   *  many the assignment mentions", which is what an offline start or a test
+   *  fixture means. */
+  allyTeamCount?: number | undefined;
   aiPlayerIds?: Iterable<PlayerId> | undefined;
   settings: LobbySettings | undefined;
   gameGenerationSeed?: number;
@@ -150,11 +161,13 @@ export function buildCanonicalMatchInitialization({
   hostPlayerId,
   playerIds,
   allyTeamByPlayerId,
+  allyTeamCount,
   aiPlayerIds,
   settings,
   gameGenerationSeed = DEFAULT_GAME_GENERATION_SEED,
 }: BuildCanonicalMatchInitializationOptions): CanonicalMatchInitialization {
   const seats = normalizePlayerIds(playerIds);
+  const sides = canonicalAllyTeamIds(seats, allyTeamByPlayerId, allyTeamCount);
   const simulationTickRateHz = normalizeSimulationTickRateHz(
     settings?.simulationTickRateHz,
   );
@@ -176,7 +189,8 @@ export function buildCanonicalMatchInitialization({
     roomCode,
     hostPlayerId,
     playerIds: seats,
-    allyTeamIds: canonicalAllyTeamIds(seats, allyTeamByPlayerId),
+    allyTeamCount: canonicalAllyTeamCount(sides, allyTeamCount),
+    allyTeamIds: sides,
     aiPlayerIds: normalizePlayerIds(aiPlayerIds ?? []),
     gameGenerationSeed: normalizeGameGenerationSeed(gameGenerationSeed),
     map: {
@@ -217,6 +231,21 @@ export function buildCanonicalMatchInitialization({
       gameplayConfigHash: hashCanonicalValue(GAMEPLAY_CONFIG_CONTENT),
     },
   };
+}
+
+/** Re-read a canonical initialization's index-aligned side list as the seat ->
+ *  side map every builder and the sim take. One reader so the roster the sim
+ *  builds and the roster the renderer builds cannot drift. */
+export function allyTeamByPlayerIdFromInitialization(
+  initialization: Pick<CanonicalMatchInitialization, 'playerIds' | 'allyTeamIds'>,
+): Record<number, number> | undefined {
+  const sides = initialization.allyTeamIds;
+  if (sides === undefined || sides.length !== initialization.playerIds.length) return undefined;
+  const out: Record<number, number> = {};
+  for (let i = 0; i < initialization.playerIds.length; i++) {
+    out[initialization.playerIds[i]] = sides[i];
+  }
+  return out;
 }
 
 export function hashCanonicalMatchInitialization(
@@ -275,15 +304,36 @@ function normalizePlayerIds(playerIds: Iterable<PlayerId>): PlayerId[] {
 /**
  * Sides for the canonical roster, index-aligned with `seats`.
  *
- * Renumbered densely in seat order so two hosts that reached the same
- * grouping by different lobby routes (one emptied TEAM 2, the other never
- * created it) produce the SAME canonical value and therefore the same
+ * When the lobby declared a side count, seats keep the side the host put them
+ * on, clamped into 1..count. Nothing is renumbered, because a side the host
+ * created and left empty must still exist at frame 0 — it owns a terrain
+ * slice, deposits and a spawn arc, and only lacks a commander.
+ *
+ * With no declared count there is no authored shape to preserve, so sides are
+ * renumbered densely in seat order: two hosts that reached the same grouping
+ * by different routes then produce the same canonical value and the same
  * initialization hash. A seat with no assignment is its own side.
  */
 function canonicalAllyTeamIds(
   seats: readonly PlayerId[],
   assignment: Readonly<Record<number, number>> | undefined,
+  declaredAllyTeamCount: number | undefined,
 ): number[] {
+  if (declaredAllyTeamCount !== undefined) {
+    const sides = clampAllyTeamCount(declaredAllyTeamCount);
+    const out: number[] = [];
+    for (const seat of seats) {
+      const raw = assignment?.[seat];
+      const id = typeof raw === 'number' && Number.isFinite(raw)
+        ? Math.floor(raw)
+        : FIRST_ALLY_TEAM_ID;
+      out.push(id >= FIRST_ALLY_TEAM_ID && id < FIRST_ALLY_TEAM_ID + sides
+        ? id
+        : FIRST_ALLY_TEAM_ID);
+    }
+    return out;
+  }
+
   const dense = new Map<number, number>();
   const out: number[] = [];
   for (const seat of seats) {
@@ -299,6 +349,24 @@ function canonicalAllyTeamIds(
     out.push(id);
   }
   return out;
+}
+
+/** The declared side count that goes into the hash: the lobby's number when
+ *  it gave one, otherwise the number the derived per-seat list implies. */
+function canonicalAllyTeamCount(
+  sides: readonly number[],
+  declaredAllyTeamCount: number | undefined,
+): number {
+  if (declaredAllyTeamCount !== undefined) return clampAllyTeamCount(declaredAllyTeamCount);
+  let highest = FIRST_ALLY_TEAM_ID;
+  for (const id of sides) {
+    if (id > highest) highest = id;
+  }
+  return highest - FIRST_ALLY_TEAM_ID + 1;
+}
+
+function clampAllyTeamCount(value: number): number {
+  return Math.max(1, Math.min(MAX_ALLY_TEAM_COUNT, Math.floor(value) || 1));
 }
 
 function finiteOrNull(value: number | undefined): number | null {

@@ -43,7 +43,9 @@ export type LobbySeatIdentity = {
   readonly teamColor: string;
 };
 
-/** One side and the seats on it, in the order the match seats them. */
+/** One side and the seats on it, in the order the match seats them. An empty
+ *  side is a real side — it still carves its terrain slice — so it appears
+ *  here with no seats rather than being dropped. */
 export type LobbyTeamGroup = {
   readonly allyTeamId: AllyTeamId;
   readonly teamColor: string;
@@ -53,14 +55,16 @@ export type LobbyTeamGroup = {
 /**
  * Group the lobby roster by side and resolve every seat's identity colours.
  *
- * Returns one group per occupied side in TEAM order. An empty roster
- * returns an empty list — there is nothing to colour yet.
+ * Returns one group per DECLARED side in TEAM order, occupied or not. A side
+ * the host created and left empty is not dropped: it takes a terrain slice,
+ * deposits and a spawn arc in the match, so the lobby has to show the host
+ * the ground they just carved. `allyTeamCount` is that declared number; the
+ * seated players decide only who stands where.
  */
 export function resolveLobbyTeamGroups(
   players: readonly LobbyPlayer[],
+  allyTeamCount: number,
 ): LobbyTeamGroup[] {
-  if (players.length === 0) return [];
-
   const seatsByPlayerId = new Map<PlayerId, LobbyPlayer>();
   for (const player of players) seatsByPlayerId.set(player.playerId, player);
   const seatIds = [...seatsByPlayerId.keys()].sort((a, b) => a - b);
@@ -73,15 +77,21 @@ export function resolveLobbyTeamGroups(
       : FIRST_ALLY_TEAM_ID;
   }
 
-  const roster = resolveTeamRoster(seatIds, { allyTeamByPlayerId: assignment });
+  const roster = resolveTeamRoster(seatIds, {
+    allyTeamByPlayerId: assignment,
+    allyTeamCount,
+  });
   const sideCount = Math.max(1, roster.allyTeamIds.length);
   const groups: LobbyTeamGroup[] = [];
   for (let sideIndex = 0; sideIndex < roster.allyTeamIds.length; sideIndex++) {
     const allyTeamId = roster.allyTeamIds[sideIndex];
     const members = roster.playersByAllyTeam.get(allyTeamId) ?? [];
-    if (members.length === 0) continue;
     const seats: LobbySeatIdentity[] = [];
-    let teamColor = '';
+    // An empty side still has a colour — the band is how the host sees the
+    // slice exists — so it is read from the side index, not from a seat.
+    let teamColor = hexToHashString(
+      getIdentityColorsForSeat(sideIndex, sideCount, 0, 1).colorTeamNormal,
+    );
     for (let seatIndex = 0; seatIndex < members.length; seatIndex++) {
       const player = seatsByPlayerId.get(members[seatIndex]);
       if (player === undefined) continue;
@@ -99,7 +109,6 @@ export function resolveLobbyTeamGroups(
         teamColor,
       });
     }
-    if (seats.length === 0) continue;
     groups.push({ allyTeamId, teamColor, seats });
   }
   return groups;
