@@ -421,7 +421,71 @@
         <li>Every lockstep frame uses the host-selected BATTLE simulation rate carried in the complete lobby contract and hashed initialization: <code>1000 / simulationTickRateHz</code> ms. The authored default remains <code>architecture.json</code>'s 20 Hz.</li>
         <li>Missing command frames stall instead of causing peers to guess different futures.</li>
         <li>Checksums are compared by frame. A mismatch pauses/desyncs the match and produces an exportable report with initialization hash, state-hash sections, peer ids, and recent command frames.</li>
-        <li>First-release lockstep support is intentionally narrow: real battles only, no AI players, no late join, no reconnect, no automatic resync, no host migration, and no spectators unless they are roster seats from frame 0.</li>
+        <li>Lockstep support is still deliberately bounded: real battles only, no AI players, no automatic resync, and no host migration. Late join, reconnect and spectators are supported — see <em>Members hold connections; seats hold armies</em> below.</li>
+      </ul>
+
+      <h3>Members hold connections; seats hold armies</h3>
+      <p>
+        A <strong>member</strong> is one connection. A <strong>seat</strong> is a PlayerId in the match.
+        Everyone who joins is a member; only some of them ever hold a seat, and the two id spaces stay
+        apart. That separation is what makes &ldquo;a spectator can never stall the match&rdquo; a
+        structural fact rather than a rule somebody has to remember: the
+        <strong>frame-completion set</strong> is seated players, the <strong>frame-delivery set</strong>
+        is every member, and a watcher is absent from the first by construction while being in the
+        second, because it cannot simulate without command frames.
+      </p>
+      <p>
+        A user joins as a <strong>watcher</strong> and only the HOST moves anybody onto a team. Nobody
+        seats themselves, in the lobby or out of it. One writer for the roster means two clients cannot
+        disagree about it, and it means a running match needs no separate rule to refuse new players:
+        seating is legal in <code>lobby</code> and nowhere else, so joining a battle already under way
+        makes you a watcher without anything having to say no.
+      </p>
+      <ul>
+        <li>Roster changes are announced as ONE atomic member list, never as a join/leave/info trio. Merging partial roster deltas in different orders is how two clients came to disagree about where the same player sat.</li>
+        <li>A seat is reserved by identity — an opaque token issued when it is granted — not handed out by a counter. A counter meant lobby churn exhausted a lobby, and made rejoin impossible: a returning player cannot be given back an incrementing number.</li>
+        <li>Sides the host declares and leaves EMPTY survive into the match. An empty side still carves its terrain slice, deposits and spawn arc; it simply has no commander on it. The declared count is authored data and is hashed.</li>
+        <li>A watcher may select and inspect but authors no gameplay truth. That is refused at the command doorway, not downstream: a command that never enters the stream cannot be executed by mistake.</li>
+        <li>Chat is one room in the lobby and splits when the battle starts — allies to allies, watchers to watchers. A watcher sees the whole map, so a live channel from the bench is a coaching channel.</li>
+      </ul>
+
+      <h3>The match runs at the speed of its slowest seated player</h3>
+      <p>
+        Two tiers, both driven by the acks the coordinator already tracks, and neither of which a watcher
+        can trigger. <strong>Throttling</strong> is continuous: the coordinator will not mint a frame more
+        than a window ahead of the slowest seated player, so the match droops to that player instead of
+        leaving them behind. <strong>Pausing</strong> is discrete, latched and has a named subject: a
+        player who is disconnected or sustainedly far behind stops the match outright, with their name on
+        it. The pause is bounded — past the drop timeout the coordinator resigns that seat and play
+        continues, because one closed laptop must not end everyone&rsquo;s evening.
+      </p>
+      <ul>
+        <li>Connection state is SESSION state and never reaches the simulation. A disconnected player&rsquo;s army keeps its orders; the only thing that removes a player from the match is an explicit, frame-scheduled <code>resign</code> that every peer executes on the same frame.</li>
+        <li>All five thresholds live in <code>architecture.json</code> under <code>lockstep.flowControl</code>. Hysteresis is asymmetric on purpose: leaving a pause needs a clearly good reading, not merely a less bad one.</li>
+        <li>Noticing and acting stay separate. Silence is reported after a few missed beats; a silent peer&rsquo;s connection is still only closed OUTSIDE a battle, because dropping a peer mid-match would strand the frames others are waiting on.</li>
+      </ul>
+
+      <h3>A late arrival replays the match from frame 0</h3>
+      <p>
+        There is no simulation state serializer, so replay from genesis is not one option among several
+        &mdash; it is the mechanism. The coordinator keeps every command frame the match has executed;
+        that archive plus the <code>BattleHandoff</code> is the full history a joiner needs. The handoff
+        it is served is byte-identical to the one the frame-0 peers received, so a late arrival takes the
+        ordinary boot path rather than a separate initialization that could drift from the real one.
+      </p>
+      <p>
+        The limit that must not be discovered at runtime is the CEILING. Replay speed is bounded by
+        simulation step cost, which grows with live entity count: roughly 18&nbsp;ms/tick at an entity cap
+        of 1000 against a 50&nbsp;ms real-time frame at 20&nbsp;Hz, and about 50&nbsp;ms at 2500. So a
+        joiner replays at about 2.7&times; real time in the first case and about 1.0&times; in the second,
+        and at 1.0&times; the gap never closes. Catch-up therefore measures its own rate continuously,
+        shows it, and refuses the join with the measured number rather than spinning forever.
+      </p>
+      <ul>
+        <li>Only frames that carried commands are archived or sent; the rest are reconstructed from the range. At 20&nbsp;Hz a twenty-minute match is 24,000 frames and a few thousand commands.</li>
+        <li>History and live frames enter the joiner through the SAME scheduler queue, so catching up is an ordinary bounded advance rather than a second code path, and there is no hole between the archive and the live stream.</li>
+        <li>Arrival is gated on a checksum comparison against the coordinator. A replay that disagrees is a desync, and joining anyway would spread it.</li>
+        <li>The replay runs in the one and only gameplay-truth simulation this runtime owns, time-budgeted on the ordinary animation frame. It does not boot a second sim beside the real one and promote it later.</li>
       </ul>
 
       <h3>Fog behavior and fog visuals are separate controls</h3>
@@ -2323,6 +2387,53 @@
     </section>
 
     <section>
+      <h2>BAR Is Inspiration, Never A Content Source</h2>
+      <p>
+        The previous section makes Beyond All Reason this project&rsquo;s ergonomics and command
+        reference. That relationship covers <em>design</em> &mdash; how a command should behave, what a
+        hotkey should do, how a large battle should read. It grants no claim whatsoever on BAR&rsquo;s
+        files. We study BAR; we do not ship it.
+      </p>
+      <div class="callout">
+        <p>
+          <strong>The rule.</strong> No asset may ship in this project if the same asset also exists
+          in Beyond All Reason. Art, icons, cursors, sounds, music, models, textures, and fonts are
+          all covered. An asset authored here is ours and is fine to use, and it stays fine when the
+          native sibling copies it &mdash; but a file that came from BAR is BAR&rsquo;s, and putting it in
+          our directory tree does not change that.
+        </p>
+      </div>
+      <p>
+        This matters more here than it looks, because this repository is the content plane for both
+        products. Assets in this project are vendored into
+        <code>../annihilation-plus-plus</code> and ship in a commercial Steam build. A BAR file that
+        lands here does not stay here; it propagates into a product that is sold. Keeping this
+        boundary clean at the source is the cheapest place to enforce it.
+      </p>
+      <ul class="rule-list">
+        <li><strong>Identical bytes are disqualifying.</strong> If a file we ship hashes to the same value as a BAR file, it is BAR content &mdash; regardless of its filename or which directory it sits in.</li>
+        <li><strong>Renaming is not authorship.</strong> Moving or renaming a BAR asset, or re-encoding it into another container, does not make it ours.</li>
+        <li><strong>Replace, do not quarantine.</strong> The fix for a BAR asset is our own replacement, not an exception entry. Only <em>filename</em> coincidences on generic names may be acknowledged, and only after a human confirms the contents differ.</li>
+        <li><strong>New assets are ours or licensed.</strong> Anything added should be authored for this project, generated procedurally, or carry a license we can point to in a release audit.</li>
+      </ul>
+      <h3>The provenance audit is automated</h3>
+      <p>
+        This rule is enforced by a test rather than by memory.
+        <code>scripts/bar_asset_provenance_audit.py</code>, run as
+        <code>npm run audit:bar-assets</code>, walks every tracked asset in this repository and
+        compares it against Beyond All Reason by <strong>SHA-256 content hash</strong> and by
+        <strong>filename</strong>. The identical script ships in
+        <code>../annihilation-plus-plus</code> as the <code>bar_asset_provenance_audit</code> CTest,
+        so one fix satisfies both projects.
+      </p>
+      <ul class="rule-list">
+        <li><strong>A content-hash match fails.</strong> That is BAR content, and there is no allowlist for it.</li>
+        <li><strong>A filename match fails until acknowledged.</strong> Generic names (<code>icon.png</code>, <code>metal.png</code>) collide by accident, so a reviewed path may be recorded with a reason in <code>scripts/bar_asset_allowlist.json</code>. Acknowledging a filename never acknowledges content.</li>
+        <li><strong>It runs without a BAR checkout.</strong> The audit compares against <code>scripts/bar_asset_index.json.gz</code>, a checked-in digest of BAR filenames and hashes. Pass <code>--bar-root</code> to compare against a real BAR checkout, and <code>npm run audit:bar-assets:refresh</code> to regenerate the digest when BAR updates.</li>
+      </ul>
+    </section>
+
+    <section>
       <h2>Relationship to Annihilation Plus Plus (the native flagship)</h2>
       <p>
         A native C++/Vulkan sibling, <code>../annihilation-plus-plus</code>, ships the same game on
@@ -2334,6 +2445,7 @@
       </p>
       <ul class="rule-list">
         <li><strong>Content is shared; implementations are not.</strong> Blueprints, configs, colors, LOD tables, and wire enums in this repo are canonical and are vendored/code-generated into the native build. Simulation code, renderers, and UI implementations diverge freely on each side.</li>
+        <li><strong>This repo defines the network model.</strong> The lockstep design &mdash; tick and command scheduling, authority and identity negotiation, lobby and match-start handoff, hashing and desync detection, catch-up and spectator behavior &mdash; is invented here and is the high-level source of truth for the native build. The native side owns its own transports: it plays over Steam networking <em>and</em> a custom relay backend, behind one abstracted, modular transport interface, with cross-play among Windows, macOS, and Linux. Those are implementation concerns and carry no obligation here.</li>
         <li><strong>Behavioral parity, not bit parity.</strong> The two sims are numerically different by design (f64 + libm here; fixed-point + CORDIC there). Parity means a player cannot tell the rules apart, verified at milestone syncs &mdash; never byte-equality of state, wire, or pixels.</li>
         <li><strong>This repo carries no reverse obligation.</strong> Nothing here may be blocked on, or contorted for, the native port. Parity debt is tracked and paid on the native side at its own sync cadence.</li>
         <li><strong>The signature is the medium physics.</strong> Ground, hover, air, and water locomotion as per-unit force physics is the product&rsquo;s soul in both editions. Performance work on either side buys the physics more headroom; it never simplifies what the player can see.</li>
