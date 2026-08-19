@@ -20,9 +20,9 @@
     },
     "rungMinLevel": {
       "comment": "Floors in L at which each rung is entered, i.e. where the ladder's steps sit inside the glyph..full ramp. far has no entry (it is everything above the glyph radius and below mid). Upgrades always jump to the HIGHEST rung whose floor clears the hysteresis margin, so a hard camera cut across several rungs lands on the right one immediately instead of climbing one step per frame.",
-      "mid": 0.32,
+      "mid": 0.2,
       "midComment": "far -> mid boundary. RAISE = the boundary moves closer to the camera (an entity must be bigger on screen to earn mid); LOWER = pushed further out. Effective pixel radius = screenRadiusPx.glyph + mid * (full - glyph) = 15.12px today. Also, by derivation, where the strategic glyph starts fading in on top of the still-opaque LOW model; the glyph reaches full opacity exactly at screenRadiusPx.glyph, where the LOW model cuts. That cross-fade band is NOT authored -- it moves when this value moves.",
-      "close": 0.62,
+      "close": 0.5,
       "closeComment": "mid -> close boundary: the point where full authored geometry, all trim, and unthrottled animation come back. RAISE = close detail starts nearer the camera; LOWER = pushed further out. Effective pixel radius = 19.92px today. Clamped to be >= mid."
     },
     "hysteresisLevel": 0.02,
@@ -84,8 +84,8 @@
     "effectSpawnScale": {
       "comment": "Per-authored-rung spawn scales. AUTO resolves to exactly one of these three values; glyph/removal spawns no effect geometry.",
       "whatItScales": "A multiplier on how many particles/quads an effect emits, applied at spawn time by the rung of the emitting entity. It thins the effect rather than shrinking it, so a distant explosion still reads at the right size and duration, just with fewer pieces. Values are clamped to [0,1]; close is normally 1 (author the effect for close range, then thin it out).",
-      "smoke": { "close": 1, "mid": 0.65, "far": 0.3 },
-      "explosion": { "close": 1, "mid": 0.7, "far": 0.35 }
+      "smoke": { "close": 1, "mid": 0.5, "far": 0.2 },
+      "explosion": { "close": 1, "mid": 0.5, "far": 0.2 }
     }
   }
 }
