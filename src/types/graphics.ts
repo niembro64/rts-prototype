@@ -2,12 +2,6 @@ export type RenderMode = 'window' | 'padded' | 'all';
 
 export type BeamStyle = 'simple' | 'standard' | 'detailed' | 'complex';
 export type ProjectileStyle = 'dot' | 'core' | 'trail' | 'glow' | 'full';
-export type FireExplosionStyle =
-  | 'flash'
-  | 'spark'
-  | 'burst'
-  | 'blaze'
-  | 'inferno';
 export type TurretStyle = 'none' | 'simple' | 'full';
 export type ForceTurretStyle = 'none' | 'simple' | 'full';
 export type UnitShape = 'circles' | 'full';
@@ -39,5 +33,4 @@ export type GraphicsConfig = {
    *  Same role as burnMarkDensity but for the GroundPrint3D pipeline. */
   groundPrintDensity: number;
   projectileStyle: ProjectileStyle;
-  fireExplosionStyle: FireExplosionStyle;
 };

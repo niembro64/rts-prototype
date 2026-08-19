@@ -156,7 +156,6 @@ const PREVIEW_GFX: GraphicsConfig = {
   burnMarkDensity: 0,
   groundPrintDensity: 0,
   projectileStyle: 'full',
-  fireExplosionStyle: 'inferno',
 };
 
 const DEFAULT_WIDTH = 640;

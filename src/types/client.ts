@@ -171,7 +171,7 @@ export type ClientBarConfig = {
    *  Presentation only; battle-level fog still owns authoritative
    *  visibility and snapshot filtering. */
   readonly fogShade: BooleanSetting;
-  /** Client-only death material breakup: death fire puff plus blast-biased
+  /** Client-only death material breakup: fire blast plus blast-biased
    *  motion of the entity's actual textured render parts. Does not affect
    *  authoritative death, damage, or knockback. */
   readonly materialExplosions: BooleanSetting;

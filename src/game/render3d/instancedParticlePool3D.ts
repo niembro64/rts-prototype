@@ -1,5 +1,5 @@
 // Shared construction for the instanced color+alpha particle pools used
-// across the unified-particles family (Explosion3D, SprayRenderer3D,
+// across the unified-particles family (SprayRenderer3D,
 // SmokeTrail3D, PylonTubeFlowRenderer, and ShieldImpactRenderer3D).
 // The varying parts — geometry choice, capacity, material, render order —
 // stay at each call site; this owns only the invariant wiring.

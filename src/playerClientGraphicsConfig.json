@@ -18,6 +18,5 @@
   "antialias": false,
   "burnMarkDensity": 1,
   "groundPrintDensity": 1,
-  "projectileStyle": "trail",
-  "fireExplosionStyle": "inferno"
+  "projectileStyle": "trail"
 }

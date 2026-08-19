@@ -5,6 +5,8 @@ import {
   entityDeathBlastFromContext3D,
   type EntityDeathRenderablePart3D,
 } from './EntityDeathDisassembly3D';
+import { DyingBuildingScatter3D } from './DyingBuildingScatter3D';
+import type { TeamTrimRenderer3D } from './TeamTrimRenderer3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[entity death disassembly contract] ${message}`);
@@ -145,6 +147,55 @@ export function runEntityDeathDisassembly3DContractTest(): void {
       'death disassembly must reuse each part and its real material rather than swapping in debris',
     );
     disassembly.forget(entityMesh);
+
+    const buildingRoot = new THREE.Group();
+    const buildingChassis = new THREE.Group();
+    const articulatedRoof = new THREE.Group();
+    buildingRoot.add(buildingChassis, articulatedRoof);
+    const buildingPieces = [
+      new THREE.Mesh(geometry, material),
+      new THREE.Mesh(geometry, material),
+      new THREE.Mesh(geometry, material),
+      new THREE.Mesh(geometry, material),
+    ];
+    buildingChassis.add(buildingPieces[0], buildingPieces[1]);
+    articulatedRoof.add(buildingPieces[2], buildingPieces[3]);
+    buildingPieces.forEach((piece, index) => piece.position.set(index - 1.5, index + 1, 0));
+    let buildingCollarMoved = false;
+    const buildingMesh = {
+      group: buildingRoot,
+      chassis: buildingChassis,
+      chassisMeshes: [buildingPieces[0]],
+      bodyShapeKey: '',
+      turrets: [{ teamCollar: { slot: 7 } }],
+      geometryKey: 'building-death-contract',
+    } as unknown as EntityMesh;
+    const buildingScatter = new DyingBuildingScatter3D({
+      captureDeathPart: () => ({
+        worldPosition: new THREE.Vector3(0, 5, 0),
+        applyDelta: () => { buildingCollarMoved = true; },
+      }),
+    } as unknown as TeamTrimRenderer3D);
+    const buildingPartCount = buildingScatter.prepare(buildingMesh, {
+      seed: 0xc411ab1e,
+      pushX: 80,
+      pushZ: -30,
+      inheritedX: 0,
+      inheritedZ: 0,
+    });
+    assertContract(
+      buildingPartCount === buildingPieces.length + 1 &&
+        buildingPieces.every((piece) => piece.parent === buildingRoot),
+      'every visible building piece, including articulated descendants and renderer-owned collars, must detach independently',
+    );
+    const buildingBefore = buildingPieces.map((piece) => piece.position.clone());
+    buildingScatter.advance(buildingMesh, 16);
+    assertContract(
+      buildingPieces.every((piece, index) => !piece.position.equals(buildingBefore[index])) &&
+        buildingCollarMoved,
+      'every captured building piece must receive independent random launch motion',
+    );
+    buildingScatter.forget(buildingMesh);
 
     const firstDistribution = captureLaunchDistribution(0x51ac73d2);
     Math.random = () => 0.999999;

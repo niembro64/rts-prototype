@@ -1356,7 +1356,7 @@ export function writeFogShadePresentationSettings(
   return out;
 }
 
-/** Material-explosion toggle: client-side death fire puff plus blast-biased
+/** Material-explosion toggle: client-side fire blast plus blast-biased
  *  disassembly of the dying entity's actual textured render parts. Gameplay
  *  death, blast damage, and knockback remain authoritative / unchanged. */
 export function getMaterialExplosions(): boolean {

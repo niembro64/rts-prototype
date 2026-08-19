@@ -184,7 +184,6 @@ const FULL_GFX: GraphicsConfig = {
   burnMarkDensity: 1,
   groundPrintDensity: 1,
   projectileStyle: 'full',
-  fireExplosionStyle: 'inferno',
 };
 
 type TierCounts = Readonly<{ close: number; mid: number; far: number }>;

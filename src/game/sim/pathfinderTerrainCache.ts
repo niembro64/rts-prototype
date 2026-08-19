@@ -30,9 +30,16 @@ let cellGyScratch = new Int32Array(256);
 
 export function registerPathfinderBuildingOccupancy(
   source: PathfinderBuildingOccupancySource | null,
-): void {
+): () => void {
+  const previousSource = occupancySource;
   occupancySource = source;
   syncedSource = null;
+  return () => {
+    occupancySource = previousSource;
+    // The installed WASM layer still belongs to the temporary source. Force
+    // the restored owner to reassert its cells on the next path query.
+    syncedSource = null;
+  };
 }
 
 export function configurePathfindingCellConsolidationMultiplier(

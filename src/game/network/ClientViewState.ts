@@ -69,7 +69,10 @@ import type { ShieldRenderPacket3D } from '../render3d/ShieldRenderer3D';
 import type { EntityShadowRenderPacket3D } from '../render3d/EntityShadowRenderPacket3D';
 import type { GroundPrintRenderPacket3D } from '../render3d/GroundPrint3D';
 import type { Locomotion3DMesh } from '../render3d/Locomotion3D';
-import { getLocomotionSurfaceHeight } from '../render3d/LocomotionTerrainSampler';
+import {
+  getLocomotionSurfaceHeight,
+  locomotionTerrainModeForSupportHeight,
+} from '../render3d/LocomotionTerrainSampler';
 import type {
   BuildingRenderPacket3D,
   UnitRenderPacket3D,
@@ -1255,6 +1258,7 @@ export class ClientViewState extends ClientViewStateBase {
           views.x[slot],
           views.y[slot],
           grounded,
+          views.groundY[slot],
         );
       } else {
         out.groundPrints.pushUnit(
@@ -1277,12 +1281,14 @@ export class ClientViewState extends ClientViewStateBase {
     const x = views.x[slot];
     const y = views.y[slot];
     const z = views.z[slot];
+    const terrainMode = locomotionTerrainModeForSupportHeight(views.groundY[slot]);
     const groundY = getLocomotionSurfaceHeight(
       x,
       y,
       mapWidth,
       mapHeight,
       views.entityIds[slot] as EntityId,
+      terrainMode,
     );
     const penetration = groundY - (z - views.supportPointOffsetZ[slot]);
     return isUnitGroundPenetrationInContact(penetration, views.radiusCollision[slot]);

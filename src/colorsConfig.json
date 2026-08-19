@@ -469,11 +469,6 @@
         "opacity": 0.9
       }
     },
-    "explosion": {
-      "core": {
-        "colorHex": "#ffffff"
-      }
-    },
     "smokeTrail": {
       "default": {
         "colorHex": "#cccccc",

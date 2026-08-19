@@ -8,6 +8,7 @@
   ],
   "arcSectorFraction": 0.7,
   "spawnMarginPx": 100,
+  "commanderBuildingExclusionRadius": 240,
   "baseRings": {
     "fogOfWar": {
       "radiusFraction": 0.8

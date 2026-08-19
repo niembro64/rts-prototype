@@ -191,7 +191,7 @@ export class Render3DEntities {
   // Shared death-out flow: a dying unit's mesh is kept (instanced slots
   // allocated, pose frozen) and its materialization fade ramped 1 → 0
   // before teardown, so every body/turret/locomotion part is the debris and
-  // keeps its real textured material while Explosion3D fires the blast.
+  // keeps its real textured material while DamageImpact3D fires the blast.
   // Same controller buildings use — see EntityFade3D. Assigned in the
   // constructor (needs `this`).
   private dyingUnits!: DyingMeshFade<EntityMesh>;

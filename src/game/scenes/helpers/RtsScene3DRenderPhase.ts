@@ -31,7 +31,6 @@ import type { TerrainTileRenderer3D } from '../../render3d/TerrainTileRenderer3D
 import type { BuildGhost3D } from '../../render3d/BuildGhost3D';
 import type { EnvironmentPropRenderer3D } from '../../render3d/EnvironmentPropRenderer3D';
 import type { WaterRenderer3D } from '../../render3d/WaterRenderer3D';
-import type { Explosion3D } from '../../render3d/Explosion3D';
 import type { ShieldImpactRenderer3D } from '../../render3d/ShieldImpactRenderer3D';
 import type { WaterSplash3D } from '../../render3d/WaterSplash3D';
 import type { WindParticleField3D } from '../../render3d/WindParticleField3D';
@@ -99,7 +98,6 @@ type RtsScene3DRenderPhaseResources = {
   buildGhostRenderer: BuildGhost3D;
   environmentPropRenderer: EnvironmentPropRenderer3D | null;
   waterRenderer: WaterRenderer3D;
-  explosionRenderer: Explosion3D;
   shieldImpactRenderer: ShieldImpactRenderer3D;
   waterSplashRenderer: WaterSplash3D;
   burnMarkRenderer: BurnMark3D;
@@ -167,7 +165,6 @@ type RenderPhaseEntityListOptions = {
 export class RtsScene3DRenderPhase {
   private renderFrameIndex = 0;
   private lastEffectsTickMs = 0;
-  private deathExplosionAccumMs = 0;
   private burnMarkAccumMs = 0;
   private groundPrintAccumMs = 0;
   private smokeTrailAccumMs = 0;
@@ -321,12 +318,7 @@ export class RtsScene3DRenderPhase {
     return this.lastPhaseTimings;
   }
 
-  beginEnabledFrame(): void {
-    this.resources.explosionRenderer.beginFrame();
-  }
-
   resetEffectAccumulators(): void {
-    this.deathExplosionAccumMs = 0;
     this.burnMarkAccumMs = 0;
     this.groundPrintAccumMs = 0;
     this.smokeTrailAccumMs = 0;
@@ -364,7 +356,6 @@ export class RtsScene3DRenderPhase {
       terrainTileRenderer,
       environmentPropRenderer,
       waterRenderer,
-      explosionRenderer,
       shieldImpactRenderer,
       waterSplashRenderer,
       burnMarkRenderer,
@@ -570,11 +561,6 @@ export class RtsScene3DRenderPhase {
       graphicsConfig,
       renderFrameState,
     );
-    this.deathExplosionAccumMs += effectDtMs;
-    if (updateEffectsThisFrame) {
-      explosionRenderer.update(this.deathExplosionAccumMs, renderFrameState.view);
-      this.deathExplosionAccumMs = 0;
-    }
     shieldImpactRenderer.setVisible(forceFieldsVisible);
     if (forceFieldsVisible) {
       shieldImpactRenderer.update(effectDtMs, lineProjectiles, renderFrameState.view);

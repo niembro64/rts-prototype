@@ -56,6 +56,10 @@ export type DamageImpactRequest = {
   incomingZ?: number;
   /** True only when the terminal event is known to have struck a body. */
   hitEntity?: boolean;
+  /** Explicit presentation surface for events whose semantics are already
+   *  known. Entity deaths are free-space fire blasts even when their centre
+   *  happens to lie within the terrain endpoint tolerance. */
+  surface?: DamageImpactSurface;
   /** Presentation density selected by the shared effect LOD policy. */
   detailScale?: number;
   /** Thermal deposit strength; derived from radius when omitted. */
@@ -601,7 +605,7 @@ export class DamageImpact3D {
       if (!this.scope.inScope(impact.x, impact.y, 200)) continue;
       const damageRadius = Math.max(0.01, impact.damageRadius);
       const terrainZ = this.environment.getTerrainZ(impact.x, impact.y);
-      const kind = classifyDamageImpactSurface(
+      const kind = impact.surface ?? classifyDamageImpactSurface(
         impact.z,
         terrainZ,
         this.environment.isWaterAt?.(impact.x, impact.y) ?? false,

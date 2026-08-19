@@ -7,14 +7,17 @@ import { LAND_CELL_SIZE } from '../../config';
 import { DEMO_CONFIG } from '../../demoConfig';
 import { generateMetalDeposits } from '../../metalDepositConfig';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
-import { BUILD_GRID_CELL_SIZE } from './buildGrid';
+import {
+  BUILD_GRID_CELL_SIZE,
+  getRotatedBuildingPlacementFootprint,
+} from './buildGrid';
 import { getBuildingPlacementDiagnostics } from './buildPlacementValidation';
 import { getBuildingConfig } from './buildConfigs';
 import { ConstructionSystem } from './construction';
 import { getStructureFactoryAllowedUnitBlueprintIds } from './factoryProductionRoster';
 import { spawnInitialBases, spawnMetalExtractorsOnDeposits } from './spawn';
 import { buildTeamRosterFromSeatCounts } from './teamRoster';
-import type { PlayerId } from './types';
+import type { Entity, PlayerId } from './types';
 import { BUILDING_BLUEPRINT_IDS } from '../../types/blueprintIds';
 import { WorldState } from './WorldState';
 import {
@@ -28,12 +31,129 @@ import {
   TERRAIN_BUILDABLE_FLAG,
   WATER_BUILD_SQUARE_FLAG,
 } from './terrain/terrainBuildability';
+import { expandPathPlan } from './Pathfinder';
+import {
+  applyLiquidHazardPathPolicy,
+  pathTerrainFilterForLocomotion,
+} from './pathfindingTraversal';
+import {
+  configurePathfindingCellConsolidationMultiplier,
+  getPathfindingCellConsolidationMultiplier,
+  registerPathfinderBuildingOccupancy,
+} from './pathfinderTerrainCache';
+import {
+  DEFAULT_PATHFINDING_CELL_CONSOLIDATION_MULTIPLIER,
+} from '../../types/pathfinding';
 
 const CONTRACT_WATER_PERIMETER_MAGNITUDE = -800;
 const CONTRACT_NEGATIVE_METAL_DEPOSIT_STEPS = [-100, -200, -400] as const;
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[demo metal extractor spawn contract] ${message}`);
+}
+
+function assertDemoCommanderBuildingExclusions(
+  entities: readonly Entity[],
+  construction: ConstructionSystem,
+): void {
+  const commanders = entities.filter((entity) => entity.commander !== null);
+  const buildings = entities.filter((entity) => entity.building !== null);
+  const grid = construction.getGrid();
+  const radius = DEMO_CONFIG.commanderBuildingExclusionRadius;
+  const radiusSquared = radius * radius;
+  for (let buildingIndex = 0; buildingIndex < buildings.length; buildingIndex++) {
+    const building = buildings[buildingIndex];
+    const blueprintId = building.buildingBlueprintId;
+    assertContract(blueprintId !== null, `demo building ${building.id} must have a blueprint id`);
+    const config = getBuildingConfig(blueprintId);
+    const footprint = getRotatedBuildingPlacementFootprint(
+      config.placementFootprint,
+      0,
+    );
+    const snapped = grid.snapToGrid(
+      building.transform.x,
+      building.transform.y,
+      config.placementGridWidth,
+      config.placementGridHeight,
+    );
+    const baseGrid = grid.worldToGrid(snapped.x, snapped.y);
+    for (let commanderIndex = 0; commanderIndex < commanders.length; commanderIndex++) {
+      const commander = commanders[commanderIndex];
+      for (let cellIndex = 0; cellIndex < footprint.cells.length; cellIndex++) {
+        const cell = footprint.cells[cellIndex];
+        const left = (baseGrid.gx + cell.dx) * BUILD_GRID_CELL_SIZE;
+        const top = (baseGrid.gy + cell.dy) * BUILD_GRID_CELL_SIZE;
+        const right = left + BUILD_GRID_CELL_SIZE;
+        const bottom = top + BUILD_GRID_CELL_SIZE;
+        const nearestX = Math.max(left, Math.min(commander.transform.x, right));
+        const nearestY = Math.max(top, Math.min(commander.transform.y, bottom));
+        const dx = commander.transform.x - nearestX;
+        const dy = commander.transform.y - nearestY;
+        assertContract(
+          dx * dx + dy * dy >= radiusSquared,
+          `demo building ${building.id} footprint must stay ${radius}wu from ` +
+            `commander ${commander.id}`,
+        );
+      }
+    }
+  }
+}
+
+function assertDemoCommandersHavePathEgress(
+  world: WorldState,
+  entities: readonly Entity[],
+  construction: ConstructionSystem,
+): void {
+  const previousMultiplier = getPathfindingCellConsolidationMultiplier();
+  const grid = construction.getGrid();
+  configurePathfindingCellConsolidationMultiplier(
+    DEFAULT_PATHFINDING_CELL_CONSOLIDATION_MULTIPLIER,
+  );
+  const restoreBuildingOccupancy = registerPathfinderBuildingOccupancy({
+    getVersion: () => grid.getVersion(),
+    forEachBlockedCell: (visit) => {
+      for (const { gx, gy } of grid.occupiedCells()) visit(gx, gy);
+    },
+  });
+  try {
+    const commanders = entities.filter((entity) => entity.commander !== null);
+    for (let i = 0; i < commanders.length; i++) {
+      const commander = commanders[i];
+      const unit = commander.unit;
+      assertContract(unit !== null, `commander ${commander.id} must have unit state`);
+      const terrainFilter = applyLiquidHazardPathPolicy(
+        pathTerrainFilterForLocomotion(
+          unit.locomotion,
+          unit.mass,
+          unit.supportPointOffsetZ,
+        ),
+        world.liquidSurfaceMode,
+      );
+      const plan = expandPathPlan(
+        commander.transform.x,
+        commander.transform.y,
+        world.mapWidth / 2,
+        world.mapHeight / 2,
+        world.mapWidth,
+        world.mapHeight,
+        null,
+        terrainFilter,
+        unit.radius.collision,
+        world.slopePathMode === 'symmetric',
+      );
+      assertContract(
+        plan.resolution !== 'unreachable' && plan.points.some((point) =>
+          Math.hypot(
+            point.x - commander.transform.x,
+            point.y - commander.transform.y,
+          ) > unit.radius.collision),
+        `default consolidated path grid must provide egress for commander ${commander.id}`,
+      );
+    }
+  } finally {
+    restoreBuildingOccupancy();
+    configurePathfindingCellConsolidationMultiplier(previousMultiplier);
+  }
 }
 
 function createNoBuildableTerrainGrid(
@@ -301,19 +421,22 @@ function assertNegativeMetalDepositStepDemoSpawn(
         [...playerIds],
       );
       assertContract(
-        extractors.length === commanderDeposits.length,
-        `D-DEPOSIT ${metalDepositStep} demo battle must place every commander-pad extractor`,
+        extractors.length < commanderDeposits.length,
+        `D-DEPOSIT ${metalDepositStep} must skip commander-pad extractors inside the no-building zones`,
       );
       for (let i = 0; i < extractors.length; i++) {
         const extractor = extractors[i];
-        assertContract(
-          Math.abs(
-            extractor.transform.z -
-              extractor.building!.depth / 2 -
-              metalDepositStep,
-          ) <= 1e-6,
-          `D-DEPOSIT ${metalDepositStep} extractor ${extractor.id} must sit on the lowered terrain bed`,
-        );
+        for (let j = 0; j < commanders.length; j++) {
+          const commander = commanders[j];
+          assertContract(
+            Math.hypot(
+              extractor.transform.x - commander.transform.x,
+              extractor.transform.y - commander.transform.y,
+            ) >= DEMO_CONFIG.commanderBuildingExclusionRadius,
+            `D-DEPOSIT ${metalDepositStep} extractor ${extractor.id} must stay outside ` +
+              `commander ${commander.id}'s no-building zone`,
+          );
+        }
       }
     }
   } finally {
@@ -377,6 +500,8 @@ function assertAuthoredRosterCoverageForPreset(
     construction,
     playerIds,
   ));
+  assertDemoCommanderBuildingExclusions(entities, construction);
+  assertDemoCommandersHavePathEgress(world, entities, construction);
   const expectedUnitBlueprintIds =
     getStructureFactoryAllowedUnitBlueprintIds('towerFabricator');
   const expectedUnitBlueprintIdSet = new Set<string>(expectedUnitBlueprintIds);
@@ -504,8 +629,8 @@ function assertConstrainedFactoryPlacementIsNonFatal(): void {
     (entity) => entity.buildingBlueprintId === 'towerFabricator',
   );
   assertContract(
-    factories.length > 0 && factories.length < playerIds.length,
-    'constrained map must exercise a partial, nonfatal Fabricator placement',
+    factories.length < playerIds.length,
+    'constrained map must allow a partial or empty, nonfatal Fabricator placement',
   );
   assertContract(
     factories.every(

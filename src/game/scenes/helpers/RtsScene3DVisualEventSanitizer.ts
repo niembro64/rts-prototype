@@ -145,7 +145,7 @@ export function resolveDeathContext3D(
   }
   if (!ctx) {
     // Entity already gone and no server-supplied context: synthesize the
-    // bare-minimum neutral context for the death fire puff/disassembly.
+    // bare-minimum neutral context for the death fire blast/disassembly.
     ctx = {
       unitVel: { x: 0, y: 0 },
       hitDir: { x: 0, y: 0 },

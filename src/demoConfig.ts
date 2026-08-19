@@ -65,6 +65,16 @@ function validatedInitialUnitSpawnHeightAboveSurface(): number {
   return value;
 }
 
+function validatedCommanderBuildingExclusionRadius(): number {
+  const value = demoConfig.commanderBuildingExclusionRadius;
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(
+      'demoConfig.commanderBuildingExclusionRadius must be a finite, positive number',
+    );
+  }
+  return value;
+}
+
 /**
  * SEATS PER SIDE — the demo's roster shape, and the single place it is
  * declared.
@@ -172,6 +182,12 @@ export const DEMO_CONFIG = {
    * Larger = spawn points further from edge, more room behind base.
    */
   spawnMarginPx: demoConfig.spawnMarginPx,
+
+  /** Demo-only no-building radius around every commander spawn. The opening
+   *  base and auto-extractors both honor this circle so conservative path-grid
+   *  consolidation cannot seal the commander inside its own infrastructure. */
+  commanderBuildingExclusionRadius:
+    validatedCommanderBuildingExclusionRadius(),
 
   /**
    * DEMO BATTLE base-ring radii. These work like metal deposit

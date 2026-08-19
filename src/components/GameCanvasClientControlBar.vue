@@ -732,7 +732,7 @@ function resetEveryCustomHotkey(): void {
         >SHADE</BarButton>
         <BarButton
           :active="model.materialExplosions"
-          title="Break the dying entity's actual textured parts apart with the killing blast, plus the death fire puff"
+          title="Break every textured entity part apart with the killing blast, plus the consolidated fire effect"
           @click="model.toggleMaterialExplosions"
         >MATEXP</BarButton>
         <BarButton

@@ -8,7 +8,6 @@ import { BurnMark3D } from '../../render3d/BurnMark3D';
 import { CursorGround } from '../../render3d/CursorGround';
 import { EnvironmentPropRenderer3D } from '../../render3d/EnvironmentPropRenderer3D';
 import { WorldShade3D } from '../../render3d/WorldShade3D';
-import { Explosion3D } from '../../render3d/Explosion3D';
 import { GroundPrint3D } from '../../render3d/GroundPrint3D';
 import { LegInstancedRenderer } from '../../render3d/LegInstancedRenderer';
 import { LineDrag3D } from '../../render3d/LineDrag3D';
@@ -63,7 +62,6 @@ type RtsScene3DRendererBootstrapResult = {
   environmentPropRenderer: EnvironmentPropRenderer3D;
   waterRenderer: WaterRenderer3D;
   cursorGround: CursorGround;
-  explosionRenderer: Explosion3D;
   shieldImpactRenderer: ShieldImpactRenderer3D;
   waterSplashRenderer: WaterSplash3D;
   burnMarkRenderer: BurnMark3D;
@@ -199,13 +197,19 @@ export function bootstrapRtsScene3DRenderers(
   );
   cameraFramingSystem.seedInitialCamera();
 
-  const explosionRenderer = new Explosion3D(threeApp.world);
   const shieldImpactRenderer = new ShieldImpactRenderer3D(threeApp.world);
   const waterSplashRenderer = new WaterSplash3D(threeApp.world);
   const groundPrintRenderer = new GroundPrint3D(
     threeApp.world,
     renderScope,
-    (x, z) => getLocomotionSurfaceHeight(x, z, mapWidth, mapHeight),
+    (x, z, terrainMode) => getLocomotionSurfaceHeight(
+      x,
+      z,
+      mapWidth,
+      mapHeight,
+      null,
+      terrainMode,
+    ),
   );
   const areaDragRenderer = new AreaDrag3D(threeApp.world, overlayLineSystem);
   const surfaceLiftProbeDebugSource =
@@ -262,7 +266,6 @@ export function bootstrapRtsScene3DRenderers(
     environmentPropRenderer,
     waterRenderer,
     cursorGround,
-    explosionRenderer,
     shieldImpactRenderer,
     waterSplashRenderer,
     burnMarkRenderer,

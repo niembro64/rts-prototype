@@ -61,7 +61,6 @@ const FULL_GFX: GraphicsConfig = {
   burnMarkDensity: 1,
   groundPrintDensity: 1,
   projectileStyle: 'full',
-  fireExplosionStyle: 'inferno',
 };
 
 const DETAIL_FEATURES: readonly DetailFeature[] = [

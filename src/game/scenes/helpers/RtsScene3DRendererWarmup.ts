@@ -1,5 +1,4 @@
 import { isMobileLikeBrowser } from '@/browserRuntime';
-import type { Explosion3D } from '../../render3d/Explosion3D';
 import type { ThreeApp } from '../../render3d/ThreeApp';
 import type { RtsScene3DRenderPhase } from './RtsScene3DRenderPhase';
 import type { RtsScene3DSnapshotIntake } from './RtsScene3DSnapshotIntake';
@@ -8,7 +7,6 @@ const SHADER_WARMUP_TIMEOUT_MS = 5000;
 
 type RtsScene3DRendererWarmupOptions = {
   threeApp: ThreeApp;
-  explosionRenderer: Explosion3D;
   snapshotIntake: RtsScene3DSnapshotIntake;
   getRenderPhase: () => RtsScene3DRenderPhase | null;
   isClientRenderEnabled: () => boolean;
@@ -18,7 +16,6 @@ type RtsScene3DRendererWarmupOptions = {
 
 export class RtsScene3DRendererWarmup {
   private readonly threeApp: ThreeApp;
-  private readonly explosionRenderer: Explosion3D;
   private readonly snapshotIntake: RtsScene3DSnapshotIntake;
   private readonly getRenderPhase: () => RtsScene3DRenderPhase | null;
   private readonly isClientRenderEnabled: () => boolean;
@@ -31,7 +28,6 @@ export class RtsScene3DRendererWarmup {
 
   constructor(options: RtsScene3DRendererWarmupOptions) {
     this.threeApp = options.threeApp;
-    this.explosionRenderer = options.explosionRenderer;
     this.snapshotIntake = options.snapshotIntake;
     this.getRenderPhase = options.getRenderPhase;
     this.isClientRenderEnabled = options.isClientRenderEnabled;
@@ -78,7 +74,6 @@ export class RtsScene3DRendererWarmup {
       finished = true;
       this.clearWarmupTimeout();
       if (token !== this.token) return;
-      this.explosionRenderer.finishWarmup();
       this.threeApp.setDrawSuspended(false);
       if (this.isDestroyed()) return;
       this.markClientReadyForStartupIfPossible();
@@ -92,7 +87,6 @@ export class RtsScene3DRendererWarmup {
       }
     };
 
-    this.explosionRenderer.prepareWarmup();
     // The server startup barrier only needs to know the client has consumed
     // the full bootstrap and has render resources ready. Shader compilation is
     // an optimization for the reveal frame; waiting on it here can deadlock the

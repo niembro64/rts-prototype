@@ -20,11 +20,8 @@ import {
 } from './EntityFade3D';
 import { entityBodyColorHexForPlayer } from './EntityInstanceColor3D';
 import { VISION_FADE_IN_MS, VISION_FADE_OUT_MS } from '@/visionConfig';
-import {
-  EntityDeathDisassembly3D,
-  type EntityDeathBlast3D,
-  type EntityDeathRenderablePart3D,
-} from './EntityDeathDisassembly3D';
+import type { EntityDeathBlast3D } from './EntityDeathDisassembly3D';
+import { DyingBuildingScatter3D } from './DyingBuildingScatter3D';
 import {
   buildBuildingShape,
   type BuildingDetailMesh,
@@ -496,7 +493,7 @@ export class BuildingEntityRenderer3D {
   // Buildings/towers that left the local player's vision. Same as unit
   // vision fade-out: quiet alpha dissolve in place, distinct from death.
   private readonly vanishingBuildings: DyingMeshFade<EntityMesh>;
-  private readonly deathDisassembly = new EntityDeathDisassembly3D();
+  private readonly dyingBuildingScatter: DyingBuildingScatter3D;
   /** Per-entity vision fade-IN clock. Kept outside row updates because
    *  buildings are usually submitted only when dirty, unlike units. */
   private readonly spawnFadeElapsed = new IndexedEntityIdMap<number>();
@@ -553,6 +550,7 @@ export class BuildingEntityRenderer3D {
     this.turretMountCache = options.turretMountCache ?? null;
     this.isBeamPilotLightVisible = options.isBeamPilotLightVisible;
     this.teamTrim = options.teamTrim ?? null;
+    this.dyingBuildingScatter = new DyingBuildingScatter3D(this.teamTrim);
     this.disposeWorldParentedOverlays = options.disposeWorldParentedOverlays;
     this.scopedMeshRetention = options.scopedMeshRetention;
     this.lodProxyRenderer = options.lodProxyRenderer;
@@ -564,7 +562,7 @@ export class BuildingEntityRenderer3D {
     this.dyingBuildings = new DyingMeshFade<EntityMesh>(
       ENTITY_DEATH_FADE_MS,
       (mesh, fade, dtMs) => {
-        this.deathDisassembly.advance(mesh, dtMs);
+        this.dyingBuildingScatter.advance(mesh, dtMs);
         applyEntityGroupFade(mesh.group, fade);
         this.fadeBuildingTurretCollars(mesh, fade);
       },
@@ -579,10 +577,17 @@ export class BuildingEntityRenderer3D {
 
   markEntityKilled(id: EntityId, blast?: EntityDeathBlast3D): void {
     const mesh = this.meshes.get(id);
-    if (mesh) {
-      mesh.killed = true;
-      mesh.deathBlast = blast;
-    }
+    if (!mesh) return;
+    mesh.killed = true;
+    mesh.deathBlast = blast;
+    if (blast === undefined) return;
+
+    // Capture while the complete live hierarchy and renderer-owned collars
+    // still exist. Removal later in this frame only starts the fade; it must
+    // never be responsible for discovering which building pieces survived.
+    this.animations.unregister(id);
+    this.unregisterBuildingSpinTurrets(id);
+    this.dyingBuildingScatter.prepare(mesh, blast);
   }
 
   update(
@@ -799,7 +804,7 @@ export class BuildingEntityRenderer3D {
   }
 
   private disposeBuildingMesh(mesh: EntityMesh): void {
-    this.deathDisassembly.forget(mesh);
+    this.dyingBuildingScatter.forget(mesh);
     this.world.remove(mesh.group);
     disposeEntityGroupFade(mesh.group);
     this.disposeWorldParentedOverlays(mesh);
@@ -847,19 +852,6 @@ export class BuildingEntityRenderer3D {
       const slot = turret.teamCollar?.slot;
       if (slot !== undefined) this.teamTrim?.fade(slot, fade);
     }
-  }
-
-  private captureBuildingRendererDeathParts(
-    mesh: EntityMesh,
-  ): EntityDeathRenderablePart3D[] {
-    const parts: EntityDeathRenderablePart3D[] = [];
-    for (const turret of mesh.turrets) {
-      const slot = turret.teamCollar?.slot;
-      if (slot === undefined) continue;
-      const part = this.teamTrim?.captureDeathPart(slot);
-      if (part !== undefined && part !== null) parts.push(part);
-    }
-    return parts;
   }
 
   private updateBuildingSpawnFades(dtMs: number): void {
@@ -912,11 +904,8 @@ export class BuildingEntityRenderer3D {
     }
     if (mesh.killed) {
       if (mesh.deathBlast !== undefined) {
-        this.deathDisassembly.prepare(
-          mesh,
-          mesh.deathBlast,
-          this.captureBuildingRendererDeathParts(mesh),
-        );
+        // Idempotent fallback for alternate removal/event ordering.
+        this.dyingBuildingScatter.prepare(mesh, mesh.deathBlast);
       }
       this.dyingBuildings.markDying(id, mesh, mesh.entityLifecycleFade);
     } else {

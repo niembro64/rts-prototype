@@ -19,7 +19,7 @@
 // Per-instance position/scale ride on the instance matrix; per-
 // instance team color + alpha ride on aColor / aAlpha
 // InstancedBufferAttributes read by a tiny custom shader (matches
-// SmokeTrail3D / Explosion3D — same `gl_FragColor = vec4(vColor,
+// SmokeTrail3D / ShieldImpactRenderer3D — same `gl_FragColor = vec4(vColor,
 // vAlpha)` pattern across the unified-particles family). Was
 // previously one Mesh per particle per spray with team-keyed
 // MeshBasicMaterials — fine for a few commanders but scales linearly

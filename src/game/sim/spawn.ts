@@ -42,6 +42,12 @@ export { getSeatBaseAngle } from './playerLayout';
 
 type InitialBaseMode = 'demo' | 'real';
 
+type CommanderBuildingExclusion = Readonly<{
+  x: number;
+  y: number;
+  radius: number;
+}>;
+
 const INITIAL_BASE_PLACEMENT_SEARCH_RADIUS_CELLS = 8;
 
 type GridOffset = {
@@ -181,15 +187,21 @@ type InitialBasePolicy = {
    *  Only the demo's opening base authors any; a normally constructed
    *  building always completes with its switch ON. */
   initiallyOffBuildingBlueprintIds: ReadonlySet<BuildingBlueprintId>;
+  /** Demo-only circles that no authored building footprint may enter. */
+  commanderBuildingExclusions: readonly CommanderBuildingExclusion[];
 };
 
-function getInitialBasePolicy(mode: InitialBaseMode): InitialBasePolicy {
+function getInitialBasePolicy(
+  mode: InitialBaseMode,
+  commanderBuildingExclusions: readonly CommanderBuildingExclusion[] = [],
+): InitialBasePolicy {
   if (mode === 'real') {
     return {
       fightType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
       fightDistance: REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
       addDemoCenterPatrolLoop: false,
       initiallyOffBuildingBlueprintIds: EMPTY_INITIALLY_OFF_BUILDING_BLUEPRINT_IDS,
+      commanderBuildingExclusions,
     };
   }
   return {
@@ -197,11 +209,39 @@ function getInitialBasePolicy(mode: InitialBaseMode): InitialBasePolicy {
     fightDistance: DEMO_CONFIG.factoryFightWaypointDistance,
     addDemoCenterPatrolLoop: true,
     initiallyOffBuildingBlueprintIds: DEMO_CONFIG.initiallyOffBuildingBlueprintIds,
+    commanderBuildingExclusions,
   };
 }
 
 const EMPTY_INITIALLY_OFF_BUILDING_BLUEPRINT_IDS: ReadonlySet<BuildingBlueprintId> =
   new Set<BuildingBlueprintId>();
+
+function commanderBuildingExclusionAt(
+  x: number,
+  y: number,
+): CommanderBuildingExclusion {
+  return {
+    x,
+    y,
+    radius: DEMO_CONFIG.commanderBuildingExclusionRadius,
+  };
+}
+
+function existingCommanderBuildingExclusions(
+  world: WorldState,
+): CommanderBuildingExclusion[] {
+  const exclusions: CommanderBuildingExclusion[] = [];
+  const entities = world.getAllEntities();
+  for (let i = 0; i < entities.length; i++) {
+    const entity = entities[i];
+    if (entity.commander === null) continue;
+    exclusions.push(commanderBuildingExclusionAt(
+      entity.transform.x,
+      entity.transform.y,
+    ));
+  }
+  return exclusions;
+}
 
 /**
  * Compute a factory's default waypoint along the factory -> map-center axis.
@@ -382,6 +422,12 @@ function placeCompleteBuilding(
       candidateGridY,
       placementFootprint,
     )) continue;
+    if (!buildingFootprintAvoidsCommanderExclusions(
+      candidateGridX,
+      candidateGridY,
+      placementFootprint,
+      basePolicy.commanderBuildingExclusions,
+    )) continue;
     if (acceptCandidate !== null) {
       const candidate = grid.getBuildingCenter(
         candidateGridX,
@@ -415,6 +461,34 @@ function placeCompleteBuilding(
   }
 
   return null;
+}
+
+/** Keep the entire authored reservation mask outside every commander spawn
+ * circle. Testing cells rather than only building centers also covers large,
+ * irregular, and hovering footprints without inventing a second radius. */
+function buildingFootprintAvoidsCommanderExclusions(
+  gridX: number,
+  gridY: number,
+  footprint: ReturnType<typeof getRotatedBuildingPlacementFootprint>,
+  exclusions: readonly CommanderBuildingExclusion[],
+): boolean {
+  if (exclusions.length === 0) return true;
+  for (let cellIndex = 0; cellIndex < footprint.cells.length; cellIndex++) {
+    const cell = footprint.cells[cellIndex];
+    const left = (gridX + cell.dx) * BUILD_GRID_CELL_SIZE;
+    const top = (gridY + cell.dy) * BUILD_GRID_CELL_SIZE;
+    const right = left + BUILD_GRID_CELL_SIZE;
+    const bottom = top + BUILD_GRID_CELL_SIZE;
+    for (let exclusionIndex = 0; exclusionIndex < exclusions.length; exclusionIndex++) {
+      const exclusion = exclusions[exclusionIndex];
+      const nearestX = Math.max(left, Math.min(exclusion.x, right));
+      const nearestY = Math.max(top, Math.min(exclusion.y, bottom));
+      const dx = exclusion.x - nearestX;
+      const dy = exclusion.y - nearestY;
+      if (dx * dx + dy * dy < exclusion.radius * exclusion.radius) return false;
+    }
+  }
+  return true;
 }
 
 function completeInitialBuilding(
@@ -850,7 +924,6 @@ export function spawnInitialBases(
   const playerCount = normalizedPlayerIds.length;
   const { oval, radius: spawnRadius } = getDemoOval(world);
   const { cx, cy } = oval;
-  const basePolicy = getInitialBasePolicy(mode);
   // LIQUID = LAVA: the sea is molten rock, so the demo spawns nothing that
   // belongs in or on the water. The offshore Fabricator arc (the water-unit
   // production lines) and its Sonar ring are omitted entirely; every
@@ -885,6 +958,18 @@ export function spawnInitialBases(
   // Concentric radii — each ring is explicit so the demo layout can be
   // tuned the same way metal deposit rings are tuned.
   const commanderRadius = commanderRadiusFromOuterSpawnRadius(spawnRadius);
+  const commanderPoints = normalizedPlayerIds.map((playerId) =>
+    mapOvalPointAt(
+      oval,
+      getSeatBaseAngle(world.teamRoster, playerId),
+      commanderRadius,
+    ));
+  const basePolicy = getInitialBasePolicy(
+    mode,
+    mode === 'demo'
+      ? commanderPoints.map((point) => commanderBuildingExclusionAt(point.x, point.y))
+      : [],
+  );
   const solarRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
     DEMO_CONFIG.baseRings.buildingSolar.radiusFraction,
@@ -964,7 +1049,7 @@ export function spawnInitialBases(
 
     // Commander: single entity at the player's spawn point on the outer
     // oval, facing the map center.
-    const cmdPoint = mapOvalPointAt(oval, baseAngle, commanderRadius);
+    const cmdPoint = commanderPoints[i];
     const cmdFacing = DMath.atan2(cy - cmdPoint.y, cx - cmdPoint.x);
     const commander = spawnCommander(
       world,
@@ -1250,7 +1335,13 @@ export function spawnMetalExtractorsOnDeposits(
   );
   if (extractorBlueprintIds.length === 0) return [];
   const entities: Entity[] = [];
-  const basePolicy = getInitialBasePolicy('real');
+  // Auto-extractors are part of the authored Demo opening state. They retain
+  // real-building activation defaults, but must honor the same commander
+  // no-building zones as every base row.
+  const basePolicy = getInitialBasePolicy(
+    'real',
+    existingCommanderBuildingExclusions(world),
+  );
   const extractorCountByOwner = new Map<PlayerId, number>();
 
   for (const deposit of world.metalDeposits) {

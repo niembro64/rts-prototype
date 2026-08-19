@@ -42,7 +42,12 @@ import { getGraphicsConfig, getLocomotionMarks } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { Locomotion3DMesh } from './Locomotion3D';
 import type { LegInstance } from './CrawlerRig3D';
-import { isLocomotionGrounded } from './LocomotionTerrainSampler';
+import {
+  isLocomotionGrounded,
+  locomotionTerrainModeForSupportHeight,
+  type LocomotionTerrainMode,
+} from './LocomotionTerrainSampler';
+import { getUnitGroundZ } from '../sim/unitGeometry';
 import { disposeMesh } from './threeUtils';
 import {
   computeMiteredQuad,
@@ -138,6 +143,8 @@ export class GroundPrintRenderPacket3D {
   x = new Float32Array(UNIT_PACKET_INITIAL_CAP);
   y = new Float32Array(UNIT_PACKET_INITIAL_CAP);
   grounded = new Uint8Array(UNIT_PACKET_INITIAL_CAP);
+  /** 1 when marks must be draped over submerged terrain instead of water. */
+  terrainBed = new Uint8Array(UNIT_PACKET_INITIAL_CAP);
   count = 0;
 
   reset(): void {
@@ -162,6 +169,9 @@ export class GroundPrintRenderPacket3D {
     this.x[cursor] = entity.transform.x;
     this.y[cursor] = entity.transform.y;
     this.grounded[cursor] = grounded ? 1 : 0;
+    this.terrainBed[cursor] = locomotionTerrainModeForSupportHeight(
+      getUnitGroundZ(entity),
+    ) === 'terrainBed' ? 1 : 0;
     this.count = cursor + 1;
   }
 
@@ -170,6 +180,7 @@ export class GroundPrintRenderPacket3D {
     x: number,
     y: number,
     grounded: boolean,
+    supportHeight: number,
   ): void {
     const cursor = this.count;
     this.ensureCapacity(cursor + 1);
@@ -177,17 +188,25 @@ export class GroundPrintRenderPacket3D {
     this.x[cursor] = x;
     this.y[cursor] = y;
     this.grounded[cursor] = grounded ? 1 : 0;
+    this.terrainBed[cursor] = locomotionTerrainModeForSupportHeight(
+      supportHeight,
+    ) === 'terrainBed' ? 1 : 0;
     this.count = cursor + 1;
+  }
+
+  terrainModeAt(row: number): LocomotionTerrainMode {
+    return this.terrainBed[row] !== 0 ? 'terrainBed' : 'visibleSurface';
   }
 
   private ensureCapacity(required: number): void {
     if (required <= this.ids.length) return;
     const nextCapacity = nextGeometricCapacity(this.ids.length, required);
-    [this.ids, this.x, this.y, this.grounded] = growTypedArrays([
+    [this.ids, this.x, this.y, this.grounded, this.terrainBed] = growTypedArrays([
       this.ids,
       this.x,
       this.y,
       this.grounded,
+      this.terrainBed,
     ] as const, nextCapacity);
   }
 }
@@ -280,6 +299,7 @@ type TrailState = {
    *  contact has moved by `spacing` from this point. */
   primed: boolean;
   prevMark: Mark | null;
+  terrainMode: LocomotionTerrainMode;
 };
 
 // ── Per-stamp bookkeeping ──
@@ -292,6 +312,7 @@ type StampState = {
   lastX: number;
   lastY: number;
   hasInitial: boolean;
+  terrainMode: LocomotionTerrainMode;
 };
 
 type Mark = {
@@ -338,24 +359,34 @@ export class GroundPrint3D {
 
   private scope: ViewportFootprint | null = null;
 
-  /** Ground height sampler under a contact's world (x, z) — the same
-   *  support surface the locomotion rig floor-clamps its parts to, so
-   *  prints land exactly under wheels/treads/feet. Returns 0 when not
-   *  provided (legacy callers / flat maps). */
-  private getGroundY: (x: number, z: number) => number;
-  /** Per-vertex mark altitude: ground height + MARK_LIFT. */
-  private markY: (x: number, z: number) => number;
+  /** Ground height sampler under a contact's world (x, z). Submerged
+   *  contacts select the terrain bed rather than the visible water plane. */
+  private getGroundY: (
+    x: number,
+    z: number,
+    terrainMode: LocomotionTerrainMode,
+  ) => number;
+  /** Stable per-mode callbacks keep the quad writer allocation-free. */
+  private markVisibleSurfaceY: (x: number, z: number) => number;
+  private markTerrainBedY: (x: number, z: number) => number;
 
   constructor(
     parentWorld: THREE.Group,
     scope?: ViewportFootprint,
-    getGroundY?: (x: number, z: number) => number,
+    getGroundY?: (
+      x: number,
+      z: number,
+      terrainMode: LocomotionTerrainMode,
+    ) => number,
   ) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
     this.scope = scope ?? null;
     this.getGroundY = getGroundY ?? (() => 0);
-    this.markY = (x, z) => this.getGroundY(x, z) + MARK_LIFT;
+    this.markVisibleSurfaceY = (x, z) =>
+      this.getGroundY(x, z, 'visibleSurface') + MARK_LIFT;
+    this.markTerrainBedY = (x, z) =>
+      this.getGroundY(x, z, 'terrainBed') + MARK_LIFT;
 
     this.positions = new Float32Array(HARD_CAP * 4 * 3);
     this.colors = new Float32Array(HARD_CAP * 4 * 4);
@@ -475,6 +506,7 @@ export class GroundPrint3D {
       // is the right thing to do (we have no idea where they were
       // while off-screen).
       if (this.scope && !this.scope.inScope(packet.x[row], packet.y[row], 200)) continue;
+      const terrainMode = packet.terrainModeAt(row);
 
       switch (loc.type) {
         case 'rover': {
@@ -483,7 +515,9 @@ export class GroundPrint3D {
             if (!c.initialized) continue;
             const key = contactTrailKey(unitId, CONTACT_TYPE_WHEEL, i);
             this._seenTrailKeys.add(key);
-            this.sampleTrail(key, c.worldX, c.worldZ, loc.printWidth, spacingSq);
+            this.sampleTrail(
+              key, c.worldX, c.worldZ, loc.printWidth, spacingSq, terrainMode,
+            );
           }
           break;
         }
@@ -493,7 +527,9 @@ export class GroundPrint3D {
             if (!c.initialized) continue;
             const key = contactTrailKey(unitId, CONTACT_TYPE_TREAD, i);
             this._seenTrailKeys.add(key);
-            this.sampleTrail(key, c.worldX, c.worldZ, loc.printWidth, spacingSq);
+            this.sampleTrail(
+              key, c.worldX, c.worldZ, loc.printWidth, spacingSq, terrainMode,
+            );
           }
           break;
         }
@@ -503,7 +539,7 @@ export class GroundPrint3D {
             if (!leg.initialized) continue;
             const key = contactTrailKey(unitId, CONTACT_TYPE_LEG, i);
             this._seenStampKeys.add(key);
-            this.sampleStamp(key, leg);
+            this.sampleStamp(key, leg, terrainMode);
           }
           break;
         }
@@ -563,9 +599,10 @@ export class GroundPrint3D {
     cx: number, cz: number,
     width: number,
     spacingSq: number,
+    terrainMode: LocomotionTerrainMode,
   ): void {
     let state = this.trails.get(key);
-    if (!state) {
+    if (!state || state.terrainMode !== terrainMode) {
       state = {
         lastEmitX: cx,
         lastEmitY: cz,
@@ -573,6 +610,7 @@ export class GroundPrint3D {
         lastDirY: 0,
         primed: true,
         prevMark: null,
+        terrainMode,
       };
       this.trails.set(key, state);
       return;
@@ -584,7 +622,7 @@ export class GroundPrint3D {
     const invLen = 1 / Math.sqrt(distSq);
     const dirX = dx * invLen;
     const dirZ = dz * invLen;
-    this.appendMiteredTrail(state, cx, cz, dirX, dirZ, width);
+    this.appendMiteredTrail(state, cx, cz, dirX, dirZ, width, terrainMode);
   }
 
   // ── Stamp sampling (legs) ──
@@ -596,9 +634,10 @@ export class GroundPrint3D {
   private sampleStamp(
     key: TrailKey,
     leg: LegInstance,
+    terrainMode: LocomotionTerrainMode,
   ): void {
     let state = this.stamps.get(key);
-    if (!state) {
+    if (!state || state.terrainMode !== terrainMode) {
       // First sighting. If the foot is already planted, treat that
       // as the initial plant and stamp it.
       state = {
@@ -606,10 +645,11 @@ export class GroundPrint3D {
         lastX: leg.worldX,
         lastY: leg.worldZ,
         hasInitial: false,
+        terrainMode,
       };
       this.stamps.set(key, state);
       if (leg.contactState === 'planted') {
-        this.emitStamp(state, leg);
+        this.emitStamp(state, leg, terrainMode);
       }
       return;
     }
@@ -622,12 +662,13 @@ export class GroundPrint3D {
       const dz = leg.worldZ - state.lastY;
       if (dx * dx + dz * dz < STAMP_MIN_DIST_SQ) return;
     }
-    this.emitStamp(state, leg);
+    this.emitStamp(state, leg, terrainMode);
   }
 
   private emitStamp(
     state: StampState,
     leg: LegInstance,
+    terrainMode: LocomotionTerrainMode,
   ): void {
     const fx = leg.worldX;
     const fz = leg.worldZ;
@@ -644,7 +685,12 @@ export class GroundPrint3D {
 
     const mark = this.allocateMark();
     const corners: RibbonQuadCorners = { sLx, sLz, sRx, sRz, eRx, eRz, eLx, eLz };
-    writeDrapedQuadXZ(this.positions, mark.slot, this.markY, corners);
+    writeDrapedQuadXZ(
+      this.positions,
+      mark.slot,
+      this.markYForTerrainMode(terrainMode),
+      corners,
+    );
     markDirtySlot(this.posDirty, mark.slot);
     this.writeCircleMask(mark.slot);
     writeQuadRgba(this.colors, mark.slot, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, PRINT_INITIAL_ALPHA);
@@ -666,6 +712,7 @@ export class GroundPrint3D {
     endX: number, endY: number,
     dirX: number, dirZ: number,
     width: number,
+    terrainMode: LocomotionTerrainMode,
   ): void {
     // Capture lastDir before allocateMark; allocateMark won't
     // touch state, but we read these before any branching anyway.
@@ -695,7 +742,7 @@ export class GroundPrint3D {
       writeDrapedQuadEndXZ(
         this.positions,
         prev!.slot,
-        this.markY,
+        this.markYForTerrainMode(terrainMode),
         corners.sRx,
         corners.sRz,
         corners.sLx,
@@ -703,7 +750,12 @@ export class GroundPrint3D {
       );
       markDirtySlot(this.posDirty, prev!.slot);
     }
-    writeDrapedQuadXZ(this.positions, newMark.slot, this.markY, corners);
+    writeDrapedQuadXZ(
+      this.positions,
+      newMark.slot,
+      this.markYForTerrainMode(terrainMode),
+      corners,
+    );
     markDirtySlot(this.posDirty, newMark.slot);
     this.writeQuadMask(newMark.slot);
     writeQuadRgba(this.colors, newMark.slot, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, PRINT_INITIAL_ALPHA);
@@ -714,6 +766,14 @@ export class GroundPrint3D {
     state.lastDirX = dirX;
     state.lastDirY = dirZ;
     state.prevMark = newMark;
+  }
+
+  private markYForTerrainMode(
+    terrainMode: LocomotionTerrainMode,
+  ): (x: number, z: number) => number {
+    return terrainMode === 'terrainBed'
+      ? this.markTerrainBedY
+      : this.markVisibleSurfaceY;
   }
 
   /** Allocate a new Mark, evicting the oldest existing mark first

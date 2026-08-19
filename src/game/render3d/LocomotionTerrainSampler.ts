@@ -19,6 +19,7 @@ import {
   getUnitGroundPenetration,
   isUnitGroundPenetrationInContact,
 } from '../sim/unitGroundPhysics';
+import { getUnitGroundZ } from '../sim/unitGeometry';
 
 export type LocomotionSurfaceNormal = {
   nx: number;
@@ -144,10 +145,10 @@ export function getLocomotionSurfaceHeight(
 }
 
 /**
- * Leg rigs receive the host footprint's authoritative physical support height.
- * A support below the water plane means the walker is standing on submerged
- * terrain/support, so its feet must sample the bed rather than the visible
- * water surface. Other locomotion rigs retain the visible-surface default.
+ * Presentation paths that must follow physical support (walker feet, ground
+ * contact, and locomotion marks) receive the host footprint's support height.
+ * A support below the water plane means they must sample the submerged bed
+ * rather than the visible water surface.
  */
 export function locomotionTerrainModeForSupportHeight(
   supportHeight: number,
@@ -160,12 +161,16 @@ function sampleLocomotionGroundContact(
   mapWidth: number,
   mapHeight: number,
 ): LocomotionGroundContactSample {
+  const terrainMode = locomotionTerrainModeForSupportHeight(
+    getUnitGroundZ(entity),
+  );
   const groundY = getLocomotionSurfaceHeight(
     entity.transform.x,
     entity.transform.y,
     mapWidth,
     mapHeight,
     entity.id,
+    terrainMode,
   );
   const unit = entity.unit;
   if (!unit) {

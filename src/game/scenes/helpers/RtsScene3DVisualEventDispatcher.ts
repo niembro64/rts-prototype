@@ -1,7 +1,6 @@
-import { getGraphicsConfig, getMaterialExplosions } from '@/clientBarConfig';
+import { getMaterialExplosions } from '@/clientBarConfig';
 import type { ClientViewState } from '../../network/ClientViewState';
 import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
-import type { Explosion3D } from '../../render3d/Explosion3D';
 import type { BeamRenderer3D } from '../../render3d/BeamRenderer3D';
 import type { Render3DEntities } from '../../render3d/Render3DEntities';
 import type { ShieldImpactRenderer3D } from '../../render3d/ShieldImpactRenderer3D';
@@ -23,7 +22,6 @@ type RtsScene3DVisualEventDispatchContext = {
   clientViewState: ClientViewState;
   entityRenderer: Render3DEntities;
   beamRenderer: BeamRenderer3D;
-  explosionRenderer: Explosion3D;
   shieldImpactRenderer: ShieldImpactRenderer3D;
   waterSplashRenderer: WaterSplash3D;
   isPositionLowLod: (
@@ -64,9 +62,6 @@ export function dispatchSimEvent3DVisual(
     // self-destruct blink), no world-space effect to spawn here.
     return;
   }
-
-  const effectGfx = getGraphicsConfig();
-  if (!effectGfx) return;
 
   if (event.type === 'hit') {
     const ctx = event.impactContext;
@@ -220,12 +215,17 @@ export function dispatchSimEvent3DVisual(
       ctx.hitDir.y * attackPush +
       ctx.projectileVel.y * 0.3 +
       ctx.unitVel.y * 0.5;
-    context.explosionRenderer.spawnDeath(
-      event.pos.x, event.pos.y, event.pos.z,
-      deathRadius,
-      mx, mz,
-      effectGfx.fireExplosionStyle,
-      explosionSpawnScaleForDetail(eventDetailLevel),
-    );
+    context.beamRenderer.spawnDamageImpact({
+      x: event.pos.x,
+      y: event.pos.y,
+      z: event.pos.z,
+      damageRadius: deathRadius,
+      incomingX: mx,
+      incomingY: mz,
+      incomingZ: 0,
+      surface: 'blast',
+      detailScale: explosionSpawnScaleForDetail(eventDetailLevel),
+      seedSource: event.entityId ?? undefined,
+    });
   }
 }

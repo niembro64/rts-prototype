@@ -60,7 +60,6 @@ import { WindParticleField3D } from '../render3d/WindParticleField3D';
 import { SightBoundaryRenderer3D } from '../render3d/SightBoundaryRenderer3D';
 import { ContactBlipRenderer3D } from '../render3d/ContactBlipRenderer3D';
 import type { OverlayLineSystem } from '../render3d/OverlayLineSystem';
-import { Explosion3D } from '../render3d/Explosion3D';
 import { ShieldImpactRenderer3D } from '../render3d/ShieldImpactRenderer3D';
 import { WaterSplash3D } from '../render3d/WaterSplash3D';
 import type { ScopedRenderMeshRetentionTelemetry } from '../render3d/ScopedRenderMeshRetention3D';
@@ -169,7 +168,6 @@ export class RtsScene3D {
   private metalDeposits: MetalDeposit[] = [];
   private environmentPropRenderer: EnvironmentPropRenderer3D | null = null;
   private waterRenderer!: WaterRenderer3D;
-  private explosionRenderer!: Explosion3D;
   private shieldImpactRenderer!: ShieldImpactRenderer3D;
   private waterSplashRenderer!: WaterSplash3D;
   /** Per-frame world-XY visibility footprint driven by the PLAYER
@@ -476,7 +474,6 @@ export class RtsScene3D {
     this.environmentPropRenderer = renderers.environmentPropRenderer;
     this.waterRenderer = renderers.waterRenderer;
     this.cursorGround = renderers.cursorGround;
-    this.explosionRenderer = renderers.explosionRenderer;
     this.shieldImpactRenderer = renderers.shieldImpactRenderer;
     this.waterSplashRenderer = renderers.waterSplashRenderer;
     this.burnMarkRenderer = renderers.burnMarkRenderer;
@@ -495,7 +492,6 @@ export class RtsScene3D {
     this.contactBlipRenderer = renderers.contactBlipRenderer;
     this.rendererWarmup = new RtsScene3DRendererWarmup({
       threeApp: this.threeApp,
-      explosionRenderer: this.explosionRenderer,
       snapshotIntake: this.snapshotIntake,
       getRenderPhase: () => this.renderPhase,
       isClientRenderEnabled: () => this.clientRenderEnabled,
@@ -672,7 +668,6 @@ export class RtsScene3D {
         buildGhostRenderer: this.buildGhostRenderer,
         environmentPropRenderer: this.environmentPropRenderer,
         waterRenderer: this.waterRenderer,
-        explosionRenderer: this.explosionRenderer,
         shieldImpactRenderer: this.shieldImpactRenderer,
         waterSplashRenderer: this.waterSplashRenderer,
         burnMarkRenderer: this.burnMarkRenderer,
@@ -719,10 +714,6 @@ export class RtsScene3D {
     const frameStart = performance.now();
 
     this.frameTelemetry.recordRenderDelta(delta);
-    if (this.clientRenderEnabled) {
-      this.renderPhase?.beginEnabledFrame();
-    }
-
     this.audioSystem.drainReady(
       this.clientRenderEnabled,
       this.handleSimEvent3DCallback,
@@ -918,7 +909,6 @@ export class RtsScene3D {
       clientViewState: this.clientViewState,
       entityRenderer: this.entityRenderer,
       beamRenderer: this.beamRenderer,
-      explosionRenderer: this.explosionRenderer,
       shieldImpactRenderer: this.shieldImpactRenderer,
       waterSplashRenderer: this.waterSplashRenderer,
       isPositionLowLod: (simX, simY, simZ) =>
@@ -1678,7 +1668,6 @@ export class RtsScene3D {
       shieldRenderer: this.shieldRenderer,
       terrainTileRenderer: this.terrainTileRenderer,
       waterRenderer: this.waterRenderer,
-      explosionRenderer: this.explosionRenderer,
       shieldImpactRenderer: this.shieldImpactRenderer,
       waterSplashRenderer: this.waterSplashRenderer,
       burnMarkRenderer: this.burnMarkRenderer,

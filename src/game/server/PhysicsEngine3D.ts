@@ -392,7 +392,7 @@ export class Body3D {
 // Gravity is imported from src/config.ts as the single source of
 // truth (see `export const GRAVITY`). Every falling thing — units
 // under this engine, projectiles integrated in projectileSystem,
-// entity death pieces, explosion sparks in Explosion3D, client
+// entity death pieces, fire-blast ejecta, client
 // dead-reckoning — uses the same value so visually consistent fall
 // rates are free.
 

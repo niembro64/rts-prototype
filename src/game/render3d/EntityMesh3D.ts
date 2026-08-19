@@ -234,8 +234,9 @@ export type EntityMesh = {
   /** Set when the sim reports this entity was DESTROYED (a 'death' SimEvent),
    *  as opposed to merely leaving the local player's vision. Read when the
    *  render removal queue drops the mesh from the live set: killed units play
-   *  the scatter + death-fade, killed buildings/towers use the death fade,
-   *  and entities that just lost vision fade out quietly while coasting. */
+   *  the scatter + death-fade, killed buildings/towers play the same per-piece
+   *  scatter + death-fade, and entities that just lost vision fade out quietly
+   *  while coasting. */
   killed?: boolean;
   /** Killing-blow motion consumed only by the death disassembly. Undefined
    *  keeps the ordinary intact death fade (for example when the client-side
