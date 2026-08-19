@@ -70,11 +70,7 @@ import {
   type NetworkSendBudgetTelemetry,
 } from './NetworkSendBudget';
 import { assertCurrentLobbySettings } from './LobbySettingsContract';
-import {
-  LobbyPublisher,
-  MAX_LOBBY_PLAYERS,
-  type LobbyDirectoryStatus,
-} from './LobbyDirectory';
+import { LobbyPublisher, MAX_LOBBY_PLAYERS } from './LobbyDirectory';
 
 // Player-name policy lives in @/playerNamesConfig — single source of
 // truth for both seeding (random funny name keyed by playerId) and the
@@ -334,33 +330,35 @@ export class NetworkManager {
     this.refreshLobbyListing();
   }
 
-  /** Push the current lobby state to the public directory.
+  /** Publish this host's lobby to the public directory, and keep it fresh.
    *
-   *  Called on every change a browsing player would care about — a seat
-   *  filling or emptying, the host renaming itself, the match starting. The
-   *  publisher de-duplicates, so calling it freely costs nothing.
+   *  Handed to the publisher as a callback rather than a snapshot: the room
+   *  code exists as soon as signaling opens, but the lobby settings that name
+   *  the map are bound a moment later, so a snapshot taken at host time would
+   *  advertise a lobby with no map and never correct itself.
    *
    *  Status is derived from `gameStarted` rather than passed in, so a roster
    *  change arriving after launch cannot flip a running game back to "open"
-   *  and advertise a lobby that rejects late joiners. */
+   *  and advertise a lobby that already rejects late joiners. */
   private refreshLobbyListing(): void {
     if (this.role !== 'host' || this.roomCode === '') return;
-    const status: LobbyDirectoryStatus = this.gameStarted ? 'in-game' : 'open';
-    const hostName = this.getLocalPlayerName();
-    // Map size is the one setting a browsing player can act on, and it is
-    // only known once the host's lobby settings exist.
-    const settings = this.readLobbySettings();
-    const mapName =
-      settings === undefined
-        ? ''
-        : `${settings.mapWidthLandCells}x${settings.mapLengthLandCells}`;
-    this.lobbyPublisher.publish({
-      roomCode: this.roomCode,
-      name: hostName === '' ? 'Open lobby' : `${hostName}'s game`,
-      hostName,
-      status,
-      playerCount: this.roster.toArray().length,
-      mapName,
+    this.lobbyPublisher.publish(() => {
+      if (this.role !== 'host' || this.roomCode === '') return null;
+      const hostName = this.getLocalPlayerName();
+      // Map size is the one setting a browsing player can act on.
+      const settings = this.readLobbySettings();
+      const mapName =
+        settings === undefined
+          ? ''
+          : `${settings.mapWidthLandCells}x${settings.mapLengthLandCells}`;
+      return {
+        roomCode: this.roomCode,
+        name: hostName === '' ? 'Open lobby' : `${hostName}'s game`,
+        hostName,
+        status: this.gameStarted ? 'in-game' : 'open',
+        playerCount: this.roster.toArray().length,
+        mapName,
+      };
     });
   }
 

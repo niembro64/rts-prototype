@@ -71,6 +71,15 @@ export type LobbyAnnouncement = {
   readonly mapName: string;
 };
 
+/** Reports the host's current state on demand.
+ *
+ *  A pull rather than a push because the pieces become known at different
+ *  times: the room code exists as soon as signaling opens, but the lobby
+ *  settings that name the map are bound a moment later. Re-reading on every
+ *  beat means a listing completes itself instead of staying half-filled
+ *  until something unrelated happens to change. */
+export type LobbyAnnouncementProvider = () => LobbyAnnouncement | null;
+
 const EMPTY_LISTING: LobbyDirectoryListing = {
   lobbies: [],
   openCount: 0,
@@ -188,33 +197,25 @@ export async function fetchLobbyDirectory(): Promise<LobbyDirectoryListing> {
  */
 export class LobbyPublisher {
   private hostToken = '';
-  private announcement: LobbyAnnouncement | null = null;
+  private provider: LobbyAnnouncementProvider | null = null;
+  /** Room code of the listing currently held, so it can be withdrawn even
+   *  after the provider has stopped reporting one. */
+  private listedRoomCode = '';
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   /** Guards against overlapping requests when a beat is slower than the
    *  interval — one in-flight publish at a time is always enough. */
   private inFlight = false;
 
-  /** Begin publishing, or update what is already published. Safe to call on
-   *  every roster change; it only sends when something actually changed. */
-  publish(announcement: LobbyAnnouncement): void {
-    const previous = this.announcement;
-    this.announcement = announcement;
+  /** Begin publishing, or refresh what is already published.
+   *
+   *  Safe to call on every change worth showing; the provider is re-read each
+   *  time, so callers never assemble the payload themselves. */
+  publish(provider: LobbyAnnouncementProvider): void {
+    this.provider = provider;
     if (this.heartbeatTimer === null) {
       this.heartbeatTimer = setInterval(() => void this.beat(), HEARTBEAT_INTERVAL_MS);
-      void this.beat();
-      return;
     }
-    if (previous === null) {
-      void this.beat();
-      return;
-    }
-    const changed =
-      previous.status !== announcement.status ||
-      previous.playerCount !== announcement.playerCount ||
-      previous.name !== announcement.name ||
-      previous.hostName !== announcement.hostName ||
-      previous.roomCode !== announcement.roomCode;
-    if (changed) void this.beat();
+    void this.beat();
   }
 
   /** Stop publishing and remove the listing. Withdrawal is fire-and-forget:
@@ -225,21 +226,26 @@ export class LobbyPublisher {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
-    const announcement = this.announcement;
+    const roomCode = this.listedRoomCode;
     const hostToken = this.hostToken;
-    this.announcement = null;
+    this.provider = null;
+    this.listedRoomCode = '';
     this.hostToken = '';
-    if (announcement === null || hostToken === '') return;
+    if (roomCode === '' || hostToken === '') return;
     void requestJson(
-      `/lobbies/${encodeURIComponent(LOBBY_DIRECTORY_GAME_ID)}/${encodeURIComponent(announcement.roomCode)}`,
+      `/lobbies/${encodeURIComponent(LOBBY_DIRECTORY_GAME_ID)}/${encodeURIComponent(roomCode)}`,
       { method: 'DELETE', body: JSON.stringify({ hostToken }) },
     );
   }
 
   private async beat(): Promise<void> {
     if (this.inFlight) return;
-    const announcement = this.announcement;
-    if (announcement === null) return;
+    const announcement = this.provider?.() ?? null;
+    if (announcement === null || announcement.roomCode === '') return;
+    // A host that re-hosts gets a new code; the old listing is a different
+    // lease and must be re-announced rather than heartbeated.
+    if (announcement.roomCode !== this.listedRoomCode) this.hostToken = '';
+
     this.inFlight = true;
     try {
       if (this.hostToken === '') {
@@ -250,7 +256,11 @@ export class LobbyPublisher {
         `/lobbies/${encodeURIComponent(LOBBY_DIRECTORY_GAME_ID)}/${encodeURIComponent(announcement.roomCode)}/heartbeat`,
         {
           method: 'POST',
-          body: JSON.stringify({ hostToken: this.hostToken, ...announcement }),
+          body: JSON.stringify({
+            hostToken: this.hostToken,
+            maxPlayers: MAX_LOBBY_PLAYERS,
+            ...announcement,
+          }),
         },
       );
       // 404 = the backend forgot us (restart, or the lease expired while the
@@ -276,6 +286,8 @@ export class LobbyPublisher {
     if (result === null || result.body === null) return;
     if (result.status !== 200 && result.status !== 201) return;
     const body = result.body as Record<string, unknown>;
-    if (typeof body.hostToken === 'string') this.hostToken = body.hostToken;
+    if (typeof body.hostToken !== 'string') return;
+    this.hostToken = body.hostToken;
+    this.listedRoomCode = announcement.roomCode;
   }
 }
