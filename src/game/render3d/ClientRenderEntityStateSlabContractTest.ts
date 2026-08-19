@@ -425,6 +425,27 @@ export function runClientRenderEntityStateSlabContractTest(): void {
   assertContract(shieldPacket.hostIds[0] === shieldUnit.id, 'shield packet host id must come from slab state');
   assertContract(shieldPacket.turretIndices[0] === shieldTurretIndex, 'shield packet turret index must match typed row');
   assertContract(shieldPacket.progress[0] === Math.fround(0.75), 'shield packet progress must come from typed shield range');
+  // The field's own anchor, resolved from the host's authoritative transform
+  // rather than from a drawn chassis: this is what keeps a shield on screen
+  // once its host drops to a strategic glyph and publishes no render pose.
+  {
+    const views = slab.getViews();
+    const cos = Math.cos(views.rotation[shieldSlot!]);
+    const sin = Math.sin(views.rotation[shieldSlot!]);
+    const mountX = shieldRows!.views.mountX[shieldRow];
+    const mountY = shieldRows!.views.mountY[shieldRow];
+    const expectedX = views.x[shieldSlot!] + mountX * cos - mountY * sin;
+    const expectedY = views.y[shieldSlot!] + mountX * sin + mountY * cos;
+    const expectedZ = views.z[shieldSlot!]
+      - views.supportPointOffsetZ[shieldSlot!]
+      + shieldRows!.views.mountZ[shieldRow];
+    assertContract(
+      Math.abs(shieldPacket.originX[0] - expectedX) < 1e-3 &&
+      Math.abs(shieldPacket.originY[0] - expectedY) < 1e-3 &&
+      Math.abs(shieldPacket.originZ[0] - expectedZ) < 1e-3,
+      'shield packet must carry the barrier mount origin resolved from slab transform state',
+    );
+  }
 
   const view = new ClientViewState();
   view.applyNetworkState(snapshot(1, [fullUnitEntity(77, 60, 100), fullBuildingEntity(88, 50, 200)]));

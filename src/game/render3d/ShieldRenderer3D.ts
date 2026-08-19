@@ -239,6 +239,15 @@ export class ShieldRenderPacket3D {
   targetX: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   targetY: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   targetZ: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  /** Sim-space mount origin of the barrier, resolved from the host's
+   *  authoritative transform exactly as `updateShieldState` resolves the
+   *  gameplay barrier centre. This is the field's own anchor: it does not
+   *  depend on the host's chassis having been drawn this frame, so a field
+   *  whose host is a strategic glyph (or is off-viewport while its barrier
+   *  overlaps it) still knows where it lives. */
+  originX: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  originY: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  originZ: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   progress: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   outerRange: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   originOffsetZ: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
@@ -262,20 +271,20 @@ export class ShieldRenderPacket3D {
     const unitMountLiftY = this.resolveMountLiftY(unit);
     const fieldColor = resolveShieldSurfaceColor(unitEntity);
     const turrets = combat.turrets;
+    const { cos, sin } = getTransformCosSin(unitEntity.transform);
     for (let ti = 0; ti < turrets.length; ti++) {
       const turret = turrets[ti];
       if (!isShieldTurret(turret)) continue;
       const shot = turret.config.shot;
       if (!shot || shot.type !== 'shield' || !shot.barrier) continue;
       const barrier = shot.barrier;
+      const originX = unitEntity.transform.x + turret.mount.x * cos - turret.mount.y * sin;
+      const originY = unitEntity.transform.y + turret.mount.x * sin + turret.mount.y * cos;
+      const originZ = unitEntity.transform.z - unit.supportPointOffsetZ + turret.mount.z;
       let targetX = unitEntity.transform.x;
       let targetY = unitEntity.transform.y;
       let targetZ = unitEntity.transform.z;
       if (barrier.shape === 'aimedCylinder') {
-        const { cos, sin } = getTransformCosSin(unitEntity.transform);
-        const originX = unitEntity.transform.x + turret.mount.x * cos - turret.mount.y * sin;
-        const originY = unitEntity.transform.y + turret.mount.x * sin + turret.mount.y * cos;
-        const originZ = unitEntity.transform.z - unit.supportPointOffsetZ + turret.mount.z;
         const pitchSin = Math.sin(turret.pitch);
         const pitchCos = Math.cos(turret.pitch);
         targetX = originX + Math.cos(turret.rotation) * pitchCos * turret.config.targeting.effect.range;
@@ -283,30 +292,32 @@ export class ShieldRenderPacket3D {
         targetZ = originZ + pitchSin * turret.config.targeting.effect.range;
       }
       if (!scope.inScope(unitEntity.transform.x, unitEntity.transform.y, Math.max(300, barrier.outerRange))) continue;
-      const cursor = this.count;
-      this.ensureCapacity(cursor + 1);
-      this.hostIds[cursor] = unitEntity.id;
-      this.turretIndices[cursor] = ti;
-      this.x[cursor] = unitEntity.transform.x;
-      this.y[cursor] = unitEntity.transform.y;
-      this.z[cursor] = unitEntity.transform.z;
-      this.localX[cursor] = turret.mount.x;
-      this.localY[cursor] = turret.mount.z - unitMountLiftY;
-      this.localZ[cursor] = turret.mount.y;
-      this.targetX[cursor] = targetX;
-      this.targetY[cursor] = targetY;
-      this.targetZ[cursor] = targetZ;
-      this.progress[cursor] = turret.shield?.range ?? 0;
-      this.outerRange[cursor] = barrier.outerRange;
-      this.originOffsetZ[cursor] = barrier.originOffsetZ;
-      this.barrierAlpha[cursor] = barrier.alpha;
-      this.color[cursor] = fieldColor;
-      this.shape[cursor] = barrier.shape === 'infiniteVerticalCylinder'
-        ? SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER
-        : barrier.shape === 'aimedCylinder'
-          ? SHIELD_FIELD_SHAPE_AIMED_CYLINDER
-        : SHIELD_FIELD_SHAPE_SPHERE;
-      this.count = cursor + 1;
+      this.pushRow({
+        hostId: unitEntity.id,
+        turretIndex: ti,
+        x: unitEntity.transform.x,
+        y: unitEntity.transform.y,
+        z: unitEntity.transform.z,
+        localX: turret.mount.x,
+        localY: turret.mount.z - unitMountLiftY,
+        localZ: turret.mount.y,
+        targetX,
+        targetY,
+        targetZ,
+        originX,
+        originY,
+        originZ,
+        progress: turret.shield?.range ?? 0,
+        outerRange: barrier.outerRange,
+        originOffsetZ: barrier.originOffsetZ,
+        barrierAlpha: barrier.alpha,
+        color: fieldColor,
+        shape: barrier.shape === 'infiniteVerticalCylinder'
+          ? SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER
+          : barrier.shape === 'aimedCylinder'
+            ? SHIELD_FIELD_SHAPE_AIMED_CYLINDER
+          : SHIELD_FIELD_SHAPE_SPHERE,
+      });
     }
   }
 
@@ -335,13 +346,13 @@ export class ShieldRenderPacket3D {
       const shot = turret.config.shot;
       if (!shot || shot.type !== 'shield' || !shot.barrier) continue;
       const barrier = shot.barrier;
+      const originX = hostX + turret.mount.x * cos - turret.mount.y * sin;
+      const originY = hostY + turret.mount.x * sin + turret.mount.y * cos;
+      const originZ = hostZ - supportPointOffsetZ + turret.mount.z;
       let targetX = hostX;
       let targetY = hostY;
       let targetZ = hostZ;
       if (barrier.shape === 'aimedCylinder') {
-        const originX = hostX + turret.mount.x * cos - turret.mount.y * sin;
-        const originY = hostY + turret.mount.x * sin + turret.mount.y * cos;
-        const originZ = hostZ - supportPointOffsetZ + turret.mount.z;
         const pitchSin = Math.sin(turret.pitch);
         const pitchCos = Math.cos(turret.pitch);
         targetX = originX + Math.cos(turret.rotation) * pitchCos * turret.config.targeting.effect.range;
@@ -361,6 +372,9 @@ export class ShieldRenderPacket3D {
         targetX,
         targetY,
         targetZ,
+        originX,
+        originY,
+        originZ,
         progress: turret.shield?.range ?? 0,
         outerRange: barrier.outerRange,
         originOffsetZ: barrier.originOffsetZ,
@@ -404,15 +418,15 @@ export class ShieldRenderPacket3D {
       const outerRange = turretViews.barrierOuterRange[row];
       if (!scope.inScope(hostX, hostY, Math.max(300, outerRange))) continue;
 
+      const mountX = turretViews.mountX[row];
+      const mountY = turretViews.mountY[row];
+      const originX = hostX + mountX * cos - mountY * sin;
+      const originY = hostY + mountX * sin + mountY * cos;
+      const originZ = hostZ - supportPointOffsetZ + turretViews.mountZ[row];
       let targetX = hostX;
       let targetY = hostY;
       let targetZ = hostZ;
       if (turretViews.barrierShape[row] === SHIELD_FIELD_SHAPE_AIMED_CYLINDER) {
-        const mountX = turretViews.mountX[row];
-        const mountY = turretViews.mountY[row];
-        const originX = hostX + mountX * cos - mountY * sin;
-        const originY = hostY + mountX * sin + mountY * cos;
-        const originZ = hostZ - supportPointOffsetZ + turretViews.mountZ[row];
         const pitch = turretViews.pitch[row];
         const pitchSin = Math.sin(pitch);
         const pitchCos = Math.cos(pitch);
@@ -429,12 +443,15 @@ export class ShieldRenderPacket3D {
         x: hostX,
         y: hostY,
         z: hostZ,
-        localX: turretViews.mountX[row],
+        localX: mountX,
         localY: turretViews.mountZ[row] - turretViews.mountLiftY[row],
-        localZ: turretViews.mountY[row],
+        localZ: mountY,
         targetX,
         targetY,
         targetZ,
+        originX,
+        originY,
+        originZ,
         progress: turretViews.shieldRange[row],
         outerRange,
         originOffsetZ: turretViews.barrierOriginOffsetZ[row],
@@ -457,6 +474,9 @@ export class ShieldRenderPacket3D {
     targetX: number;
     targetY: number;
     targetZ: number;
+    originX: number;
+    originY: number;
+    originZ: number;
     progress: number;
     outerRange: number;
     originOffsetZ: number;
@@ -477,6 +497,9 @@ export class ShieldRenderPacket3D {
     this.targetX[cursor] = options.targetX;
     this.targetY[cursor] = options.targetY;
     this.targetZ[cursor] = options.targetZ;
+    this.originX[cursor] = options.originX;
+    this.originY[cursor] = options.originY;
+    this.originZ[cursor] = options.originZ;
     this.progress[cursor] = options.progress;
     this.outerRange[cursor] = options.outerRange;
     this.originOffsetZ[cursor] = options.originOffsetZ;
@@ -501,6 +524,9 @@ export class ShieldRenderPacket3D {
     this.targetX = growTypedArray(this.targetX, nextCapacity);
     this.targetY = growTypedArray(this.targetY, nextCapacity);
     this.targetZ = growTypedArray(this.targetZ, nextCapacity);
+    this.originX = growTypedArray(this.originX, nextCapacity);
+    this.originY = growTypedArray(this.originY, nextCapacity);
+    this.originZ = growTypedArray(this.originZ, nextCapacity);
     this.progress = growTypedArray(this.progress, nextCapacity);
     this.outerRange = growTypedArray(this.outerRange, nextCapacity);
     this.originOffsetZ = growTypedArray(this.originOffsetZ, nextCapacity);
@@ -920,13 +946,22 @@ export class ShieldRenderer3D {
     const localZ = field.localZ;
 
     // The bubble is written in absolute world coords, but it is a mounted
-    // attachment: its origin is the turret's mount composed through the one
-    // rendered root pose its host was drawn from, so chassis tilt, body
-    // orientation and presentation bank all carry. A host with no pose this
-    // frame was not drawn, and neither is its field — drawing it from a
-    // stale or yaw-only transform is what detached bubbles from their
-    // turrets (see budget_design_philosophy.html, "One rendered root pose
-    // owns every attachment").
+    // attachment: while its host's chassis is drawn, its origin is the
+    // turret's mount composed through the one rendered root pose that
+    // chassis was drawn from, so chassis tilt, body orientation and
+    // presentation bank all carry (see budget_design_philosophy.html,
+    // "One rendered root pose owns every attachment").
+    //
+    // A host with no pose this frame drew no chassis — it is a strategic
+    // glyph at the removal rung, mid mesh-rebuild, or outside the render
+    // scope while its barrier still overlaps the viewport. The FIELD is
+    // none of those things: it is world-scale gameplay geometry that owns
+    // its own coverage rung (selected from `outer` above), so it falls back
+    // to the mount origin the packet resolved from the host's authoritative
+    // transform. That is the same origin `updateShieldState` gives the
+    // gameplay barrier, not the stale Three.js group read that once
+    // detached bubbles from their turrets: it only forgoes chassis tilt and
+    // presentation bank, which are sub-pixel on a host too small to draw.
     if (!this.hostRenderPoses.composeAttachment(
       hostId,
       localX,
@@ -934,7 +969,11 @@ export class ShieldRenderer3D {
       localZ,
       this._sphereScratchPos,
     )) {
-      return;
+      this._sphereScratchPos.set(
+        packet.originX[row],
+        packet.originZ[row],
+        packet.originY[row],
+      );
     }
 
     const fieldCenterY = this._sphereScratchPos.y - packet.originOffsetZ[row];

@@ -1559,6 +1559,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         const { runShieldFarLodRenderPacketContractTest, runTypedSensorHydrationContractTest } = await import('../network/ClientSnapshotApplierContractTest');
         runShieldFarLodRenderPacketContractTest();
         runTypedSensorHydrationContractTest();
+        const { runShieldFieldDetailLevel3DContractTest } = await import('../render3d/ShieldFieldDetailLevel3DContractTest');
+        runShieldFieldDetailLevel3DContractTest();
         const { runClientEntityStoreContractTest } = await import('../network/ClientEntityStoreContractTest');
         runClientEntityStoreContractTest();
         const { runClientEntityIdSetContractTest } = await import('../network/ClientEntityIdSetContractTest');

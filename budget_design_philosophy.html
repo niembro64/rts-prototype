@@ -1557,7 +1557,8 @@
       </ul>
       <p>
         This ladder applies to every visual part of an entity together:
-        chassis/body, every mounted turret and barrel, shields, construction
+        chassis/body, every mounted turret and barrel, shield panels and
+        shield emitters, construction
         and resource-pylon assemblies, locomotion rigs and their animation,
         projectiles, beams, trails, smoke, sprays, impacts, debris, health
         and name presentation, and static resource/environment visuals. A
@@ -1571,6 +1572,45 @@
         create a fourth quality result. The definitive tuning and feature
         assignments live in <code>lod.json</code>; renderers consume the
         resolved rung rather than reinterpreting camera distance themselves.
+      </p>
+      <h3>Coverage is measured on the thing being drawn</h3>
+      <p>
+        The rung is chosen from projected screen coverage, and coverage belongs
+        to the geometry that is actually on screen. A mounted part inherits its
+        host's rung because it is drawn inside the host's silhouette and shrinks
+        with it. A raised <strong>shield field</strong> does not: it is a
+        world-scale force surface, routinely an order of magnitude wider than
+        the chassis running it, so it measures its own barrier radius and
+        resolves its own rung from that. It is a mounted attachment for
+        <em>placement</em> and an independent object for <em>coverage</em>, and
+        those are separate questions.
+      </p>
+      <p>
+        Consequently a field is never removed with its host's model. Removal is
+        what the glyph rung does to a model that has become too small to read;
+        it is not a statement about a barrier that still fills a quarter of the
+        screen. If a field is raised and its barrier is in view, it is drawn
+        &mdash; at every rung, in every LOD mode, including OFF, and including
+        the case where the host itself sits outside the render scope while its
+        barrier overlaps it. A field whose host drew no chassis this frame
+        anchors to the mount origin resolved from the host's authoritative
+        transform, which is the same origin the simulation gives the gameplay
+        barrier; it forgoes only chassis tilt and presentation bank, which are
+        sub-pixel on a host too small to draw. Shield <em>panels</em> and
+        emitter hardware are ordinary mounted parts and ride the host's rung
+        normally &mdash; they are unit-scale, and there is nothing left to read
+        once the unit is an icon.
+      </p>
+      <p>
+        Whose fields a client draws is a separate question from how far away
+        they are, and it is answered the same way at every rung. A side always
+        reads its own equipment: every field this player or an ally is running
+        is drawn unconditionally, because an unpowered shield is meant to be a
+        visible, reversible battlefield state the player can read off their own
+        army. Reading an <em>enemy's</em> fields is what the Shield Detection
+        Lab buys, on the same per-player mask that switches the targeting gate
+        on. Neither a distance rung nor a manual LOD pin may ever subtract from
+        that answer.
       </p>
     </section>
 

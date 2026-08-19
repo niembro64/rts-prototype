@@ -779,6 +779,18 @@ export class RtsScene3DRenderPhase {
    *  test rather than a second notion of alliance on the client. A snapshot
    *  from a host that predates the field leaves the mask undefined, and that
    *  falls back to showing everything rather than blinding the player. */
+  /** Whose shield surfaces this client draws, as an owner-player bitmask
+   *  (0 = every owner, no restriction).
+   *
+   *  A side always reads its own equipment: every field this player or an
+   *  ally is running is drawn unconditionally, because an unpowered shield
+   *  is meant to be "a visible, reversible battlefield state that the player
+   *  can read off their own army" (budget_design_philosophy.html, "Shields
+   *  are powered equipment"). Reading an ENEMY's fields is what the Shield
+   *  Detection Lab buys — the same per-player upgrade that switches the
+   *  targeting gate on — so without it the mask narrows to this side. The
+   *  local bit is OR'd in last so no vision-mask edge case can ever hide
+   *  this client's own shields from it. */
   private resolveShieldVisibilityTeamMask(): number {
     const detectionMask = this.clientViewState.getServerMeta()?.shieldAwareTargetingPlayerMask;
     if (detectionMask === undefined) return 0;
@@ -787,12 +799,13 @@ export class RtsScene3DRenderPhase {
       ? 1 << (localPlayerId - 1)
       : 0;
     if ((detectionMask & localBit) !== 0) return 0;
-    let teamMask = 0;
+    let teamMask = localBit;
     for (const playerId of this.clientViewState.getVisionPlayerIds(localPlayerId)) {
       if (playerId >= 1 && playerId <= 31) teamMask |= 1 << (playerId - 1);
     }
-    // A team mask that resolved to nothing would hide every shield including
-    // this client's own; treat that as "no restriction" instead.
+    // A team mask that resolved to nothing (no seated local player, e.g. a
+    // spectator) would hide every shield in the match; treat that as "no
+    // restriction" instead.
     return teamMask === 0 ? 0 : teamMask;
   }
 
