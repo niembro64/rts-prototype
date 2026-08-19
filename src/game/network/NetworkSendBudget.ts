@@ -119,6 +119,10 @@ function classifyMessage(message: NetworkMessage): NetworkSendClassification {
     // learns who it is. Never coalesced or dropped.
     case 'sessionAssignment':
       return { messageClass: 'control', policy: 'critical', coalesceKey: null };
+    // Sent once, immediately before the socket closes. Dropping it turns a
+    // stated refusal back into an unexplained connection failure.
+    case 'sessionRefused':
+      return { messageClass: 'control', policy: 'critical', coalesceKey: null };
     case 'lobbySettings':
       return { messageClass: 'lobbySettings', policy: 'coalesce', coalesceKey: 'lobbySettings' };
     case 'communication':

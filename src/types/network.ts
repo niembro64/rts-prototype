@@ -695,7 +695,25 @@ export type NetworkMessage =
   // treated the same way, so a crashed or unplugged host still ejects
   // everyone.
   | { type: 'hostLeft'; gameId: string | undefined }
-  | { type: 'lobbySettings'; gameId: string | undefined; settings: LobbySettings };
+  | { type: 'lobbySettings'; gameId: string | undefined; settings: LobbySettings }
+  // Host -> one client, immediately before closing the connection. A refused
+  // join otherwise arrives as a socket that simply died, which reads exactly
+  // like a network fault; the commonest real cause is a stale build, and the
+  // player can act on that only if they are told.
+  | {
+      type: 'sessionRefused';
+      gameId: string | undefined;
+      reason: SessionRefusalReason;
+      detail: string;
+    };
+
+export type SessionRefusalReason =
+  /** The peer speaks a different protocol version. One build, one contract. */
+  | 'protocol-mismatch'
+  /** No room left on the bench. */
+  | 'session-full'
+  /** The session is over, or was never open. */
+  | 'session-closed';
 
 // Host → Client lobby-settings sync. Carries the host's
 // pre-game choices (terrain shape and system toggles) so every connected client sees

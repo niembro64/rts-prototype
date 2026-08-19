@@ -53,6 +53,7 @@ import {
   type NetworkCommunicationEvent,
   type NetworkCommunicationPoint,
   type LockstepResumeGrantMessage,
+  type SessionRefusalReason,
   type NetworkLockstepMessage,
   type LobbySettings,
   type SeatToken,
@@ -1117,32 +1118,34 @@ export class NetworkManager {
     }
     if (!admitsSpectators(this.session.state)) {
       // Not a lobby and not a running match — nothing to attach to.
-      conn.close();
+      this.refuseConnection(conn, 'session-closed', 'This session is no longer accepting anyone.');
       return;
     }
 
     const metadata = readConnectionMetadata(conn.metadata);
     if (metadata.protocolVersion !== LOCKSTEP_PROTOCOL_VERSION) {
       // One build, one contract. A version mismatch is refused at the door
-      // rather than half-working — see "No legacy fallbacks".
-      console.warn(
-        `[NET] refusing connection on protocol ${String(metadata.protocolVersion)}; ` +
-          `this build speaks ${LOCKSTEP_PROTOCOL_VERSION}`,
+      // rather than half-working — see "No legacy fallbacks". Saying so is
+      // the difference between "update your game" and an evening spent
+      // blaming the network.
+      this.refuseConnection(
+        conn,
+        'protocol-mismatch',
+        'That build speaks a different version of this game. Reload to update.',
       );
-      conn.close();
       return;
     }
 
     const reclaimedSeat = this.members.seatForToken(metadata.seatToken);
     if (reclaimedSeat === null && !this.members.canAdmitSpectator()) {
       // The bench is full. Seats are capped separately, by the seat table.
-      conn.close();
+      this.refuseConnection(conn, 'session-full', 'This game has no room left to watch.');
       return;
     }
 
     const memberId = this.members.nextFreeMemberId();
     if (memberId === null) {
-      conn.close();
+      this.refuseConnection(conn, 'session-full', 'This game is full.');
       return;
     }
 
@@ -1199,6 +1202,33 @@ export class NetworkManager {
           settings,
         });
       }
+    });
+  }
+
+  /**
+   * Turn a connection away with a reason it can show.
+   *
+   * The message has to wait for `open` — there is no channel before that —
+   * and the socket closes immediately behind it. A refusal that arrives as a
+   * dead socket is indistinguishable from a network fault, and the commonest
+   * real cause is a stale build, which is exactly the thing a player can fix
+   * if anybody tells them.
+   */
+  private refuseConnection(
+    conn: DataConnection,
+    reason: SessionRefusalReason,
+    detail: string,
+  ): void {
+    console.warn(`[NET] refusing connection (${reason}): ${detail}`);
+    conn.on('open', () => {
+      this.rawSend(conn, {
+        type: 'sessionRefused',
+        gameId: this.getUniversalGameId(),
+        reason,
+        detail,
+      });
+      // Give the message a tick to leave before the socket goes.
+      setTimeout(() => conn.close(), 250);
     });
   }
 
@@ -1545,6 +1575,14 @@ export class NetworkManager {
           if (!this.isMessageForCurrentGame(message.gameId)) return;
           assertCurrentLobbySettings(message.settings, 'lobby settings packet');
           this.emitLobbySettings(message.settings);
+        }
+        break;
+
+      case 'sessionRefused':
+        // The host turned us away and said why. Report it before the socket
+        // closes behind it, or the player sees a generic connection failure.
+        if (this.role === 'client') {
+          this.emitError(message.detail);
         }
         break;
     }
