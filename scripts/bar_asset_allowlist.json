@@ -1,0 +1,9 @@
+{
+  "_comment": [
+    "Acknowledged filename collisions with Beyond All Reason, for scripts/bar_asset_provenance_audit.py.",
+    "Only add a path here after opening both files and confirming ours is not derived from BAR content.",
+    "A shared filename on a generic name (icon.png, metal.png) is a coincidence; shared bytes never are.",
+    "Content-identical assets can NOT be allowlisted. They are BAR content and must be removed or replaced."
+  ],
+  "name_collisions": []
+}

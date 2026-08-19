@@ -1,1 +1,5 @@
 * text=auto eol=lf
+
+# Compressed data must never be line-ending normalized; text=auto guesses by
+# NUL-byte detection, and a mangled index silently breaks the provenance audit.
+*.gz binary
