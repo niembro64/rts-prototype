@@ -1,31 +1,45 @@
 {
+  "comment": "Level-of-detail knobs for the 3D client. Two independent channels: 'entity' is the coarse per-entity render channel, 'detail' is the screen-coverage detail ladder that picks how much geometry, animation and effect volume each entity gets. Nothing here is simulated — every value is client presentation only, so changing it can never desync a lockstep match. The manual LOD control in the client bar (auto/high/medium/low/off) overrides the measured level: 'high' pins the close rung on everything (instanced pools must be sized for that), 'off' shows strategic glyphs only.",
   "entity": {
+    "comment": "Master switch for the per-entity LOD channel. false = every entity renders at its authored close-tier presentation regardless of screen size; useful when bisecting a visual bug that might be an LOD transition.",
     "enabled": true
   },
   "detail": {
     "comment": "AUTO measures projected screen coverage to choose the same presentations used by the manual controls: close/HIGH, mid/MED, far/LOW, or glyph/removal/OFF. The first three are authored geometry rungs; OFF is the end state, showing strategic entity glyphs while removing vegetation and effect geometry. One hysteresis (hysteresisLevel, in L units) covers every AUTO transition. rebuildBudgetPerFrame caps how many entity meshes may rebuild per frame during camera sweeps; entities over budget keep their previous rung until a later frame. Entity glyphs fade in on top of the still-opaque LOW model, then replace that model after the glyph threshold.",
+    "howItWorks": "Every entity gets a continuous coverage level L in [0,1] from its projected screen radius: screenPx = radiusWorld * (referenceViewportHeightPx/2) / tan(fovY/2) / distance, then L = (screenPx - screenRadiusPx.glyph) / (screenRadiusPx.full - screenRadiusPx.glyph), clamped. Because the pixel math uses a FIXED reference viewport height rather than the real one, the same camera picks the same rungs on a 4K monitor as on a laptop, and window resizes or DPR changes never re-tier the world. L is then latched into one of four discrete rungs -- glyph(0), far(1), mid(2), close(3) -- and only the rung is consumed downstream, so an entire zoom sweep costs at most three mesh rebuilds per entity instead of a continuous stream of them. Big units and buildings hold detail longer than small ones for free, because they occupy more pixels at the same distance.",
     "enabled": true,
     "referenceViewportHeightPx": 1080,
+    "referenceViewportHeightPxComment": "The virtual viewport height, in px, that all screen-radius math is measured against. Not the real canvas height -- pinning it makes LOD resolution- and DPR-independent, and makes recorded threshold numbers comparable across machines. Raising it makes everything measure as larger (detail is held longer everywhere); it is a global sensitivity dial, not a quality setting.",
     "screenRadiusPx": {
+      "comment": "The two ends of the coverage ramp, as projected screen radius in px at referenceViewportHeightPx. These are the real 'when does LOD kick in' numbers.",
       "glyph": 10,
-      "full": 26
+      "glyphComment": "At or below this radius L = 0: the entity is not worth drawing as geometry and hard-cuts to its strategic glyph (point-sprite proxy). Raise it to drop to icons sooner (cheaper, more strategic-looking zoomed out); lower it to keep tiny models alive longer.",
+      "full": 26,
+      "fullComment": "At or above this radius L = 1: full authored close detail. Between glyph and full, L interpolates linearly. Narrowing the gap between glyph and full makes the whole ladder snap over a shorter zoom range; widening it spreads the transitions out."
     },
     "rungMinLevel": {
+      "comment": "Floors in L at which each rung is entered, i.e. where the ladder's steps sit inside the glyph..full ramp. far has no entry (it is everything above the glyph radius and below mid). Upgrades always jump to the HIGHEST rung whose floor clears the hysteresis margin, so a hard camera cut across several rungs lands on the right one immediately instead of climbing one step per frame.",
       "mid": 0.32,
-      "close": 0.62
+      "midComment": "far -> mid boundary. Also, by derivation, where the strategic glyph starts fading in on top of the still-opaque LOW model; the glyph reaches full opacity exactly at screenRadiusPx.glyph, where the LOW model cuts. That cross-fade band is NOT authored -- it moves when this value moves.",
+      "close": 0.62,
+      "closeComment": "mid -> close boundary: the point where full authored geometry, all trim, and unthrottled animation come back. Clamped to be >= mid."
     },
     "hysteresisLevel": 0.05,
+    "hysteresisLevelComment": "Deadband in L units applied to every rung transition in both directions: an entity must overshoot a boundary by this much before it changes rung. This is what stops an entity hovering exactly on a threshold from rebuilding its mesh every frame. Too small = visible thrash and rebuild-budget starvation during slow zooms; too large = visibly stale detail after a camera move.",
     "rebuildBudgetPerFrame": {
+      "comment": "Cap on how many entities may rebuild their meshes in a single frame because their rung changed. Rung changes are a band-only rebuild; entities over budget simply keep last frame's presentation and are picked up on a later frame, so the cost of a fast zoom is spread out instead of spiking. Core-key changes (owner, blueprint, graphics settings) bypass this and always rebuild.",
       "units": 24,
       "buildings": 8
     },
     "radiusFloor": {
+      "comment": "Minimum world radius, in world units, used for the coverage math on things whose visible footprint is much larger than their physical body -- a projectile's trail or a beam's glow reads on screen long after the body itself is sub-pixel. Without a floor these would flip to glyph/removal while still clearly visible. Purely a measurement fudge: it inflates the input radius, it does not change the thresholds.",
       "projectile": 11,
       "beam": 11,
       "effectDefault": 12
     },
     "featureMinRung": {
       "comment": "Rung at/above which each named feature is built: far=1, mid=2, close=3. 'far' features survive until the glyph flip; 'close' features shed first when zooming out.",
+      "whatEachFeatureIs": "body = the chassis/hull mesh itself. healthBar / nameLabel = the HUD sprites over the entity (these also fade separately by camera distance via entityHudConfig). turret = the turret mount assembly; turretHead = its rotating head; barrelPrimary / barrelSecondary = the main and secondary barrel geometry. muzzleDetail = muzzle brakes/flash hardware on the barrel tip. locomotion = wheels/legs/treads/hover rig geometry; locomotionAnimated = whether that rig is rigged for movement at all (below it the rig is static geometry); treadCleats = the individual tread cleat/end-cap detail. chassisDetail = secondary hull greebles. buildingDetail = the building's non-silhouette detail pass. shieldPanels = shield dome panel geometry. projectileTrail / projectileGlow = shot trail ribbon and its additive glow. beamGlow = the beam's inner glow layers (the beam core is always drawn).",
       "body": "far",
       "healthBar": "mid",
       "turret": "far",
@@ -46,11 +60,13 @@
     },
     "visualFeatureMinRung": {
       "building": {
+        "comment": "Per-archetype visual gates for the hand-authored building meshes, same far/mid/close ladder as featureMinRung. typeDetails = the parts that say what KIND of building this is (extractor head, solar dish, radar rig) and so must survive far out; largeAnimation = its big moving/glowing parts; tinyTrim = pipework, vents, bolts and other sub-pixel greebles, kept at close only.",
         "typeDetails": "far",
         "largeAnimation": "far",
         "tinyTrim": "close"
       },
       "tower": {
+        "comment": "Same ladder for defensive towers. launcherDetails = the launcher/emitter hardware that identifies the tower at a glance; animationAndGlow = spin rigs and emissive glow; smallTrim = fine surface trim, close only.",
         "launcherDetails": "far",
         "animationAndGlow": "far",
         "smallTrim": "close"
@@ -58,12 +74,15 @@
     },
     "animation": {
       "comment": "Live per-frame animation shedding (no mesh rebuild). Below unitAnimationMinRung, barrel spin freezes and locomotion rigs (tread scroll, wheel spin, leg gait, floor clamps) update every locomotionFarFrameStride frames with accumulated dt instead of every frame. Building animators (wind/extractor/radar/solar) freeze below buildingAnimationMinRung.",
+      "whyItIsSeparate": "These gates cost nothing to cross -- geometry is untouched, only the per-frame update work is skipped -- so they can sit at a higher rung than the geometry gates above. Frozen state is RETAINED, not reset: a gatling that freezes mid-spin resumes from the same angle, and strided locomotion accumulates dt so EMAs stay frame-rate independent (it just goes stride-stale, never wrong). The freeze must stay level-triggered rather than edge-triggered, or a re-sync silently re-arms the animator every frame.",
       "unitAnimationMinRung": "mid",
       "locomotionFarFrameStride": 3,
+      "locomotionFarFrameStrideComment": "Once gated, run the locomotion rig every Nth frame instead of every frame. 1 = no throttle. Large values are cheap but make wheels/treads visibly step.",
       "buildingAnimationMinRung": "mid"
     },
     "effectSpawnScale": {
       "comment": "Per-authored-rung spawn scales. AUTO resolves to exactly one of these three values; glyph/removal spawns no effect geometry.",
+      "whatItScales": "A multiplier on how many particles/quads an effect emits, applied at spawn time by the rung of the emitting entity. It thins the effect rather than shrinking it, so a distant explosion still reads at the right size and duration, just with fewer pieces. Values are clamped to [0,1]; close is normally 1 (author the effect for close range, then thin it out).",
       "smoke": { "close": 1, "mid": 0.65, "far": 0.3 },
       "explosion": { "close": 1, "mid": 0.7, "far": 0.35 }
     }
