@@ -202,9 +202,13 @@ export class LobbyPublisher {
    *  after the provider has stopped reporting one. */
   private listedRoomCode = '';
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  /** Guards against overlapping requests when a beat is slower than the
-   *  interval — one in-flight publish at a time is always enough. */
+  /** Keeps two publishes from overlapping. */
   private inFlight = false;
+  /** A beat that arrived while another was in flight. It is remembered and
+   *  run afterwards rather than dropped: the refresh that follows hosting
+   *  lands during the opening announce, and discarding it left the listing
+   *  stale — missing its map size — until the next heartbeat. */
+  private pendingBeat = false;
 
   /** Begin publishing, or refresh what is already published.
    *
@@ -229,6 +233,7 @@ export class LobbyPublisher {
     const roomCode = this.listedRoomCode;
     const hostToken = this.hostToken;
     this.provider = null;
+    this.pendingBeat = false;
     this.listedRoomCode = '';
     this.hostToken = '';
     if (roomCode === '' || hostToken === '') return;
@@ -239,7 +244,10 @@ export class LobbyPublisher {
   }
 
   private async beat(): Promise<void> {
-    if (this.inFlight) return;
+    if (this.inFlight) {
+      this.pendingBeat = true;
+      return;
+    }
     const announcement = this.provider?.() ?? null;
     if (announcement === null || announcement.roomCode === '') return;
     // A host that re-hosts gets a new code; the old listing is a different
@@ -271,6 +279,10 @@ export class LobbyPublisher {
       }
     } finally {
       this.inFlight = false;
+      if (this.pendingBeat && this.provider !== null) {
+        this.pendingBeat = false;
+        void this.beat();
+      }
     }
   }
 
