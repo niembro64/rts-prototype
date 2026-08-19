@@ -511,8 +511,9 @@ export type LobbySettings = {
   centerMagnitude: number;
   /** Signed altitude of the team-separator ridges (DIVIDERS bar). */
   dividersMagnitude: number;
-  /** Signed PERIMETER ring altitude (PERIMETER bar). 0 = flat square;
-   *  negative = round-island; positive = rim. */
+  /** Signed PERIMETER ring altitude (PERIMETER bar). Negative =
+   *  round-island; positive = rim; 0 = flat rim at ground level;
+   *  `PERIMETER_MAGNITUDE_NONE` = no ring step at all. */
   perimeterMagnitude: number;
   /** Plateau lattice step (world units). 0 = NONE (no terracing). */
   terrainDTerrain: number;

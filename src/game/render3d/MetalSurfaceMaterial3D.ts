@@ -165,7 +165,7 @@ export const METAL_SURFACE_REGION_GLSL = [
  *  interface is the one contract the type system cannot check.
  *
  *  All four assume the host has already declared `metalPbrCoverage` in
- *  [0,1] and `metalDetail` from sampleMetalSurfaceDetail.
+ *  [0,1] and `metalDetail` from weatherSampleSubstance.
  *
  *  WHY `metalPbrCoverage` AND NOT `metalCoverage`. The two differ only in
  *  the ore's dirty rim, and only in one direction: the rim is still ore
@@ -264,19 +264,14 @@ export function metalSurfaceLayerUniformDeclarations(): string {
   ].join('\n');
 }
 
-/** Canonical world-space projection for the metal detail texture.
+/* The metal detail texture is projected by `weatherSampleSubstance`
+ * (SurfaceWeathering3D), which is the same triplanar every weathering
+ * substance uses: read from world position in world units, blended by the
+ * geometric face normal rather than the interpolated lighting normal, so
+ * horizontal faces sample XZ identically while rims and cliffs receive a
+ * real projection instead of a stretched top-down uv.
  *
- * Both deposit crowns and METAL terrain use the geometric face normal rather
- * than their interpolated lighting normal. Horizontal faces therefore sample
- * XZ identically, while rims and terrain cliffs receive the same triplanar
- * projection instead of stretching a top-down UV down their sides. */
-export const METAL_SURFACE_TRIPLANAR_GLSL = [
-  'vec3 sampleMetalSurfaceDetail(sampler2D detailTexture, vec3 worldPosition, vec3 geometricNormal, float tileWorldSize) {',
-  '  vec3 weights = pow(abs(geometricNormal), vec3(8.0));',
-  '  weights /= max(weights.x + weights.y + weights.z, 1.0e-5);',
-  '  vec3 detailXZ = texture2D(detailTexture, worldPosition.xz / tileWorldSize).rgb;',
-  '  vec3 detailYZ = texture2D(detailTexture, worldPosition.yz / tileWorldSize).rgb;',
-  '  vec3 detailXY = texture2D(detailTexture, worldPosition.xy / tileWorldSize).rgb;',
-  '  return detailXZ * weights.y + detailYZ * weights.x + detailXY * weights.z;',
-  '}',
-].join('\n');
+ * It used to be a second copy here under its own name. Two identical
+ * projections is exactly how one material starts landing at a different
+ * physical size from another that is supposed to be the same stock.
+ */

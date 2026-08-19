@@ -1,35 +1,43 @@
-// Procedurally generated tileable noise fields for the ore-region edge.
+// Procedurally generated tileable noise fields — the ONE noise every
+// weathering treatment in the game reads.
 //
-// This is NOT a look texture — nothing samples it as colour. It is three
-// independent scalar fields packed into R, G and B, which the terrain shader
-// reads in world XZ to decide WHERE the ore boundary actually falls:
+// This is NOT a look texture. Nothing samples it as colour. It is three
+// independent scalar fields packed into R, G and B, which a shader reads at
+// its own world scales to decide where a boundary actually falls:
 //
-//   R  smooth mottle  — displaces the ore contour. Sampled twice at two
-//                       world scales, which is what turns a stencil-clean
-//                       silhouette into lobes with fingers eroded into them.
-//   G  granular       — the dissolve grain. Inside the transition band the
-//                       ore is either there or not, and this decides which,
-//                       so the boundary breaks into grit instead of fading
-//                       through a uniform gradient.
-//   B  broad blotch   — thickness. Sampled twice, once for how wide the
-//                       ore-to-ground ramp is here and once for how far the
-//                       dirt band reaches, so neither is constant along the
-//                       edge and the two do not vary together.
+//   R  smooth mottle  — DISPLACES. Read at two world scales, which is what
+//                       turns a clean silhouette into lobes with fingers
+//                       eroded into them.
+//   G  granular       — DISSOLVES. Across a transition the material is
+//                       either there or not, and this decides which, so the
+//                       boundary breaks into grit instead of fading through
+//                       a uniform gradient.
+//   B  broad blotch   — THICKENS. Read at two world scales, once for how
+//                       wide a transition is here and once for how far the
+//                       grime reaches, so neither is constant along a
+//                       boundary and the two do not vary together.
 //
-// The channels differ in ROUGHNESS, not just in scale: R and B are sampled
-// at world scales that overlap, so if they were the same field the band
-// would always be thickest on the same side of every lobe. Independent
-// lattices are what keeps the two decorrelated where it matters.
+// The channels differ in ROUGHNESS, not just in the scale they are read at.
+// Two roles sampled from one field at overlapping scales stay correlated,
+// and correlated roles produce a pattern the eye finds immediately — the
+// band would always be thickest on the same side of every lobe. Independent
+// lattices are what keeps them apart where it matters.
 //
 // Alpha is pinned at 255 on purpose. A Canvas 2D surface premultiplies, so
 // a field stored in alpha would scale the three stored in RGB — the same
 // trap the trim sheet documents.
 //
-// In dev mode, `window.downloadOreEdgeNoiseTexture()` writes the PNG to disk.
+// ONE texture, every treatment. The ore edge, the plateau wall rims, and
+// the vegetation all read this: a second noise tile would be a second
+// vocabulary, and two weathering treatments that meet on screen would stop
+// looking like the same weather.
+//
+// In dev mode, `window.downloadWeatheringNoiseTexture()` writes the PNG to
+// disk.
 
 import * as THREE from 'three';
 import { createRepeatingCanvasTexture } from './repeatingCanvasTexture';
-import { ORE_EDGE_NOISE_TEXTURE_RESOLUTION } from '../../config';
+import { WEATHERING_NOISE_TEXTURE_RESOLUTION } from '../../config';
 import {
   installDetailTextureDevDownloadHelper,
   makeSeededRng,
@@ -46,8 +54,8 @@ type FieldSpec = {
   gain: number;
 };
 
-/** R — contour displacement. A coarse lattice carrying progressively
- *  smaller bites out of its own lobe edges. */
+/** R — displacement. A coarse lattice carrying progressively smaller
+ *  bites out of its own lobe edges. */
 const WARP_FIELD: FieldSpec = { seed: 0x0E0D61, basePeriod: 4, octaves: 5, gain: 0.55 };
 
 /** G — the dissolve grain. Starts finer and holds its high octaves harder,
@@ -63,15 +71,15 @@ const THICKNESS_FIELD: FieldSpec = { seed: 0x2be4f0, basePeriod: 3, octaves: 3, 
 let cachedTexture: THREE.CanvasTexture | null = null;
 let cachedCanvas: HTMLCanvasElement | null = null;
 
-export function getOreEdgeNoiseTexture(): THREE.CanvasTexture {
+export function getWeatheringNoiseTexture(): THREE.CanvasTexture {
   if (!cachedTexture) {
     const { canvas, texture } = generate();
     cachedCanvas = canvas;
     cachedTexture = texture;
     installDetailTextureDevDownloadHelper(
-      'ore-edge-noise.png',
+      'weathering-noise.png',
       () => cachedCanvas,
-      'downloadOreEdgeNoiseTexture',
+      'downloadWeatheringNoiseTexture',
     );
   }
   return cachedTexture;
@@ -159,12 +167,12 @@ function renderField(spec: FieldSpec, resolution: number): Float32Array {
 }
 
 function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture } {
-  const resolution = ORE_EDGE_NOISE_TEXTURE_RESOLUTION;
+  const resolution = WEATHERING_NOISE_TEXTURE_RESOLUTION;
   const canvas = document.createElement('canvas');
   canvas.width = resolution;
   canvas.height = resolution;
   const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('OreEdgeNoiseTexture: 2D context unavailable');
+  if (!ctx) throw new Error('WeatheringNoiseTexture: 2D context unavailable');
 
   const warp = renderField(WARP_FIELD, resolution);
   const grain = renderField(GRAIN_FIELD, resolution);

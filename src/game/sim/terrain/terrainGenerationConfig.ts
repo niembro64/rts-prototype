@@ -1,4 +1,6 @@
 import {
+  isTerrainPerimeterRingEnabled,
+  terrainPerimeterRingAltitude,
   TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION,
   TERRAIN_PERIMETER_CONFIG,
   TERRAIN_PIPELINE,
@@ -35,11 +37,17 @@ const TERRAIN_FLAT_ZONE_WASM_STRIDE = 7;
 export function packTerrainGenerationConfigForWasm(): Float64Array {
   const runtime = getTerrainRuntimeConfig();
   const [r0, r1, r2] = TERRAIN_RIPPLE_CONFIG.components;
+  // PERIMETER NONE is expressed to Rust the same way an authored
+  // `active: false` is — the mapBoundary stage is switched off — so the
+  // sentinel never reaches the kernel as a height. Everything downstream
+  // (height sampling, boundary fade, horizon shelf) then agrees on "no ring"
+  // through the one stage flag instead of a second off-switch.
+  const perimeterRingEnabled = isTerrainPerimeterRingEnabled();
   const rows = new Float64Array(TERRAIN_GENERATION_CONFIG_LENGTH);
   rows[0] = runtime.centerMagnitude;
   rows[1] = runtime.dividersMagnitude;
   rows[2] = runtime.terrainDTerrain;
-  rows[3] = runtime.perimeterMagnitude;
+  rows[3] = terrainPerimeterRingAltitude();
   rows[4] = getTerrainTeamCount();
   rows[5] = TILE_FLOOR_Y;
   rows[6] = TERRAIN_PERIMETER_CONFIG.outerRadiusFraction;
@@ -61,8 +69,9 @@ export function packTerrainGenerationConfigForWasm(): Float64Array {
   rows[22] = runtime.plateauWallSlopeDegrees;
   for (let i = 0; i < TERRAIN_PIPELINE.length; i++) {
     const entry = TERRAIN_PIPELINE[i];
-    rows[23 + i] =
-      TERRAIN_PIPELINE_STEP_CODES[entry.step] + (entry.active ? 0 : 8);
+    const active =
+      entry.active && (entry.step !== 'mapBoundary' || perimeterRingEnabled);
+    rows[23 + i] = TERRAIN_PIPELINE_STEP_CODES[entry.step] + (active ? 0 : 8);
   }
   return rows;
 }

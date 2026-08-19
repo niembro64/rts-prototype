@@ -50,7 +50,7 @@ import backgroundBattleConfigJson from './backgroundBattleConfig.json';
 import type { CameraFovDegrees, CameraSmoothMode } from './types/client';
 import type { EntityHudBlueprint } from './types/blueprints';
 import type { DemoBattleWaypointType } from './demoConfig';
-import { COLORS } from './colorsConfig';
+import { COLORS, readRgbTuple } from './colorsConfig';
 export { LAND_CELL_SIZE } from './mapSizeConfig';
 
 // =============================================================================
@@ -589,6 +589,120 @@ if (METAL_DEPOSIT_ROCK_TEXTURE_RESOLUTION !== TERRAIN_ROCK_TEXTURE_RESOLUTION) {
   );
 }
 
+/** Texels per axis of the ONE noise tile every weathering treatment reads.
+ *  Shared on purpose: the ore edge, the plateau wall rims and the vegetation
+ *  all sample it at their own world scales, and a second tile would be a
+ *  second vocabulary. How far apart its features land in the world is each
+ *  host's own `noiseTileWorldSize`. */
+export const WEATHERING_NOISE_TEXTURE_RESOLUTION = readTextureResolutionConfig(
+  COLORS.environment.weathering.noiseTexture.resolution,
+  'colorsConfig.environment.weathering.noiseTexture.resolution',
+);
+
+/** The ONE substance every weathered boundary is buried under. Shared for the
+ *  same reason texel density is: a dry pale wall rim and a damp dark tree base
+ *  have to be the same physical grain, read through different tints, or they
+ *  stop reading as one weather. */
+export const SOIL_SUBSTANCE_TEXTURE_RESOLUTION = readTextureResolutionConfig(
+  COLORS.environment.weathering.soilTexture.resolution,
+  'colorsConfig.environment.weathering.soilTexture.resolution',
+);
+export const SOIL_SUBSTANCE_TILE_WORLD_SIZE = readPositiveConfigNumber(
+  COLORS.environment.weathering.soilTexture.tileWorldSize,
+  'colorsConfig.environment.weathering.soilTexture.tileWorldSize',
+);
+export const SOIL_SUBSTANCE_BASE_COLOR: number =
+  COLORS.environment.weathering.soilTexture.baseColorHex;
+
+/** The top and bottom rims of a D-PLATEAU wall, worn. Same three terms as
+ *  every other weathered boundary; full documentation lives in colorsConfig's
+ *  `wallWearComment`.
+ *
+ *  The angle window is the SAFETY PROPERTY, not a nicety. Walls are often
+ *  flattened flush into the terrain on purpose, and wearing those rims would
+ *  draw a step the map author deliberately erased. At zero dihedral angle the
+ *  intensity is zero and the treatment switches itself off — measured from the
+ *  geometry, never read off the D-PLATEAU or PLATEAU WALL SLOPE settings, so a
+ *  partially flattened wall fades along its own length instead of snapping. */
+const wallWearConfig = COLORS.world.terrain.wallWear;
+
+function readWallWearSide(
+  side: 'top' | 'bottom',
+): Readonly<{
+  tint: readonly [number, number, number];
+  exposure: number;
+  strength: number;
+  darken: number;
+  seamPower: number;
+  falloff: number;
+  patchDepth: number;
+}> {
+  const raw = wallWearConfig[side];
+  const field = `colorsConfig.world.terrain.wallWear.${side}`;
+  return {
+    tint: readRgbTuple(raw.tintRgb01, `${field}.tintRgb01`),
+    exposure: readPositiveConfigNumber(raw.exposure, `${field}.exposure`),
+    strength: readUnitIntervalConfig(raw.strength, `${field}.strength`),
+    darken: readUnitIntervalConfig(raw.darken, `${field}.darken`),
+    seamPower: readPositiveConfigNumber(raw.seamPower, `${field}.seamPower`),
+    falloff: readPositiveConfigNumber(raw.falloff, `${field}.falloff`),
+    patchDepth: readUnitIntervalConfig(raw.patchDepth, `${field}.patchDepth`),
+  };
+}
+
+export const TERRAIN_WALL_WEAR_ENABLED: boolean =
+  worldRenderConfigJson.terrainWallWear.enabled;
+
+export const TERRAIN_WALL_WEAR_REACH_WORLD_UNITS = readPositiveConfigNumber(
+  wallWearConfig.reachWorldUnits,
+  'colorsConfig.world.terrain.wallWear.reachWorldUnits',
+);
+export const TERRAIN_WALL_WEAR_MIN_ANGLE_DEGREES = readNonNegativeConfigNumber(
+  wallWearConfig.minAngleDegrees,
+  'colorsConfig.world.terrain.wallWear.minAngleDegrees',
+);
+export const TERRAIN_WALL_WEAR_MAX_ANGLE_DEGREES = readPositiveConfigNumber(
+  wallWearConfig.maxAngleDegrees,
+  'colorsConfig.world.terrain.wallWear.maxAngleDegrees',
+);
+if (TERRAIN_WALL_WEAR_MAX_ANGLE_DEGREES <= TERRAIN_WALL_WEAR_MIN_ANGLE_DEGREES) {
+  throw new Error(
+    'colorsConfig.world.terrain.wallWear.maxAngleDegrees must exceed ' +
+      'minAngleDegrees; a zero-width window makes the intensity a step, and ' +
+      'the whole point of the angle term is that a partially flattened wall ' +
+      'fades along its own length',
+  );
+}
+
+export const TERRAIN_WALL_WEAR = {
+  noiseTileWorldSize: readPositiveConfigNumber(
+    wallWearConfig.noiseTileWorldSize,
+    'colorsConfig.world.terrain.wallWear.noiseTileWorldSize',
+  ),
+  growWorldUnits: readNonNegativeConfigNumber(
+    wallWearConfig.growWorldUnits,
+    'colorsConfig.world.terrain.wallWear.growWorldUnits',
+  ),
+  warpWorldUnits: readNonNegativeConfigNumber(
+    wallWearConfig.warpWorldUnits,
+    'colorsConfig.world.terrain.wallWear.warpWorldUnits',
+  ),
+  grainStrength: readUnitIntervalConfig(
+    wallWearConfig.grainStrength,
+    'colorsConfig.world.terrain.wallWear.grainStrength',
+  ),
+  thicknessVariation: readUnitIntervalConfig(
+    wallWearConfig.thicknessVariation,
+    'colorsConfig.world.terrain.wallWear.thicknessVariation',
+  ),
+  matte: readUnitIntervalConfig(
+    wallWearConfig.matte,
+    'colorsConfig.world.terrain.wallWear.matte',
+  ),
+  top: readWallWearSide('top'),
+  bottom: readWallWearSide('bottom'),
+} as const;
+
 /** The ore-to-ground transition. The region field's own contour is a clean
  *  stencil; these knobs are what turn it into a weathered boundary — the
  *  contour is displaced, dissolved against a grain, and buried under a dirt
@@ -601,23 +715,10 @@ const oreEdgeConfig = COLORS.environment.metalDeposit.edge;
 export const TERRAIN_ORE_EDGE_ENABLED: boolean =
   worldRenderConfigJson.terrainOreEdge.enabled;
 
-export const ORE_EDGE_NOISE_TEXTURE_RESOLUTION = readTextureResolutionConfig(
-  oreEdgeConfig.noiseTexture.resolution,
-  'colorsConfig.environment.metalDeposit.edge.noiseTexture.resolution',
-);
 export const ORE_EDGE_NOISE_TILE_WORLD_SIZE = readPositiveConfigNumber(
-  oreEdgeConfig.noiseTexture.tileWorldSize,
-  'colorsConfig.environment.metalDeposit.edge.noiseTexture.tileWorldSize',
+  oreEdgeConfig.noiseTileWorldSize,
+  'colorsConfig.environment.metalDeposit.edge.noiseTileWorldSize',
 );
-export const ORE_EDGE_DIRT_TEXTURE_RESOLUTION = readTextureResolutionConfig(
-  oreEdgeConfig.dirtTexture.resolution,
-  'colorsConfig.environment.metalDeposit.edge.dirtTexture.resolution',
-);
-export const ORE_EDGE_DIRT_TILE_WORLD_SIZE = readPositiveConfigNumber(
-  oreEdgeConfig.dirtTexture.tileWorldSize,
-  'colorsConfig.environment.metalDeposit.edge.dirtTexture.tileWorldSize',
-);
-export const ORE_EDGE_DIRT_BASE_COLOR: number = oreEdgeConfig.dirtTexture.baseColorHex;
 
 export const ORE_EDGE_GROW_WORLD_UNITS = readNonNegativeConfigNumber(
   oreEdgeConfig.growWorldUnits,

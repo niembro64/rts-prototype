@@ -320,8 +320,10 @@ pub(crate) fn terrain_map_boundary_fade_for_sample(
     oval: &MapOvalSampleRust,
     cfg: &MetalDepositTerrainConfigRust,
 ) -> f64 {
-    // PERIMETER off (magnitude 0) leaves the natural square map untouched.
-    if cfg.perimeter_magnitude == 0.0 {
+    // PERIMETER NONE deactivates the mapBoundary stage, which leaves the
+    // natural map untouched out to its own rectangular edge. Every magnitude
+    // — 0 included — is a real ring when the stage is active.
+    if !terrain_pipeline_stage_active(cfg, 1) {
         return 0.0;
     }
     let outer_radius = terrain_perimeter_outer_radius_for_min_dim(metrics.min_dim, cfg);

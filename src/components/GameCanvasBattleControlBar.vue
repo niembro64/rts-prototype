@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BATTLE_CONFIG } from '../battleBarConfig';
+import { BATTLE_CONFIG, PERIMETER_MAGNITUDE_NONE } from '../battleBarConfig';
 import { SERVER_CONFIG } from '../serverBarConfig';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import {
@@ -187,9 +187,11 @@ const METAL_COVERAGE_TITLE: Record<MetalCoverage, string> = {
             v-for="opt in BATTLE_CONFIG.perimeterMagnitude.options"
             :key="opt"
             :active="model.perimeterMagnitude === opt"
-            :title="`Set the map perimeter ring altitude to ${opt}`"
+            :title="opt === PERIMETER_MAGNITUDE_NONE
+              ? 'NONE — skip the perimeter ring; the generated terrain runs out to the map edge'
+              : `Set the map perimeter ring altitude to ${opt}`"
             @click="model.applyPerimeterMagnitude(opt)"
-          >{{ opt.toLocaleString() }}</BarButton>
+          >{{ opt === PERIMETER_MAGNITUDE_NONE ? 'NONE' : opt.toLocaleString() }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">

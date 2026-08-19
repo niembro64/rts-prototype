@@ -29,6 +29,7 @@ import {
   metalDepositSurfaceFieldScreenWidth,
   metalDepositSurfaceFieldUniformDeclarations,
 } from './MetalDepositSurfaceField3D';
+import { SURFACE_WEATHERING_GLSL } from './SurfaceWeathering3D';
 import {
   ORE_EDGE_BLEND_GLSL,
   oreEdgeAlbedoFragment,
@@ -343,11 +344,13 @@ function checkOreEdgeBlendContract(): void {
   // Every string the host assembles the edge path from. The uniform block
   // serves all of them together, so they are checked together — a uniform
   // that moved from one fragment to another must still be read by SOMETHING.
+  const resolveFragment = oreEdgeResolveFragment('vTerrainWorldPos', 'uMetalRegionEnabled');
+  const albedoFragment = oreEdgeAlbedoFragment('vTerrainWorldPos', 'geomNormal');
   const source = [
     ORE_EDGE_BLEND_GLSL,
-    oreEdgeResolveFragment('vTerrainWorldPos', 'uMetalRegionEnabled'),
+    resolveFragment,
     oreEdgeMatteCoverage('metalCoverage'),
-    oreEdgeAlbedoFragment('vTerrainWorldPos', 'geomNormal'),
+    albedoFragment,
   ].join('\n');
   const uniformNames = Array.from(
     declarations.matchAll(/uniform\s+\w+\s+(u\w+);/g),
@@ -377,7 +380,7 @@ function checkOreEdgeBlendContract(): void {
   // then reads, and the only declarer of the grime the matte and albedo
   // halves read. Losing either wiring compiles as long as the host happens
   // to declare something by the same name.
-  const resolve = oreEdgeResolveFragment('vTerrainWorldPos', 'uMetalRegionEnabled');
+  const resolve = resolveFragment;
   assertContract(
     resolve.includes('oreRegionCoverage = oreEdgeCoverage('),
     'the resolve block must overwrite the coverage the region field produced; ' +
@@ -390,29 +393,51 @@ function checkOreEdgeBlendContract(): void {
     'a fragment that takes the early-out is ungrimed rather than undefined',
   );
 
-  for (const definition of [
-    'OreEdgeFields oreEdgeSampleFields(',
-    'float oreEdgeWarpedDistance(',
-    'float oreEdgeCoverage(',
-    'float oreEdgeGrimeBand(',
-  ]) {
+  for (const definition of ['float oreEdgeCoverage(', 'float oreEdgeGrimeBand(']) {
     assertContract(
       ORE_EDGE_BLEND_GLSL.includes(definition),
       `the edge treatment must define ${definition}`,
     );
   }
 
-  // NAME COLLISION. The host holds the band's result in a float named
-  // `oreEdgeGrime`. In GLSL a variable hides a same-named function from its
-  // declaration onward, so a function called `oreEdgeGrime` would be
-  // unreachable from exactly the place that needs it — and the failure is a
-  // compile error three.js does not report unless booted with
-  // ?shaderErrors=1, which presents as terrain that simply does not draw.
-  assertContract(
-    !ORE_EDGE_BLEND_GLSL.includes('float oreEdgeGrime('),
-    'the grime function must not be named oreEdgeGrime; the host declares a ' +
-    'float by that name, which hides it',
-  );
+  // THE MATHS IS SHARED. The ore edge, the plateau wall rims and the
+  // vegetation all weather by the same mechanism, so the displacement,
+  // dissolve, band ramp, grime shaping and substance projection live in
+  // SurfaceWeathering3D and every treatment calls them. A treatment that
+  // re-derived one of these locally would drift from the others, and two
+  // weathered boundaries that meet on screen would stop looking like the
+  // same weather.
+  for (const shared of [
+    'weatherSampleFields(',
+    'weatherDisplace(',
+    'weatherDissolve(',
+    'weatherBandRamp(',
+    'weatherGrimeAmount(',
+    'weatherApplyGrime(',
+    'weatherSampleSubstance(',
+  ]) {
+    assertContract(
+      SURFACE_WEATHERING_GLSL.includes(`float ${shared}`) ||
+      SURFACE_WEATHERING_GLSL.includes(`vec3 ${shared}`) ||
+      SURFACE_WEATHERING_GLSL.includes(`WeatherFields ${shared}`),
+      `SurfaceWeathering3D must define ${shared}`,
+    );
+  }
+  const oreSource = [ORE_EDGE_BLEND_GLSL, resolveFragment, albedoFragment].join('\n');
+  for (const shared of [
+    'weatherSampleFields(',
+    'weatherDisplace(',
+    'weatherDissolve(',
+    'weatherBandRamp(',
+    'weatherGrimeAmount(',
+    'weatherApplyGrime(',
+    'weatherSampleSubstance(',
+  ]) {
+    assertContract(
+      oreSource.includes(shared),
+      `the ore edge must reach the shared ${shared} rather than re-deriving it`,
+    );
+  }
 
   // THE SATURATION TRAP. The region field encodes distance over
   // ±edgeRangeWorldUnits and saturates past it, so a term reaching further

@@ -1,26 +1,34 @@
-// Procedurally generated tileable dirt texture — the SURFACE the ore edge is
-// buried under. Parallel structure to RockDetailTexture: one canvas filled
-// once at startup, pre-filled with its base colour so `detail.a ≈ 1`
-// everywhere and the shader's colour pull and texture overlay stay in
-// lockstep. What differs is what it is made of.
+// Procedurally generated tileable soil — the SUBSTANCE every weathered
+// boundary in the game is buried under.
 //
-// This is a separate material from the cliff rock on purpose. Tailings and
-// churned soil around an ore body are not the same stuff as a mountain face,
-// and dressing them in the rock tile would give the rim the same slab
-// vocabulary as the cliff behind it — which is exactly the "one clean
-// authored surface meeting another" read this whole treatment exists to
-// break. The palette is wet earth through rust-stained ochre to a near-black
-// crumb, and the shape mix is biased small and blunt: clods and grit, not
-// slabs.
+// Parallel structure to RockDetailTexture: one canvas filled once at startup,
+// pre-filled with its base colour so `detail.a ~ 1` everywhere and a host's
+// colour pull and texture overlay stay in lockstep. What differs is what it
+// is made of, and that it is shared.
 //
-// In dev mode, `window.downloadOreEdgeDirtTexture()` writes the PNG to disk.
+// ONE soil, every treatment. The ore region's dirty rim, the debris at the
+// bottom of a plateau wall, the spall along its top, and the dirt at the base
+// of a tree are the same stuff — dust and grit — and they are painted from
+// this one tile at one world size. Hosts differ only in how they EXPOSE it:
+// a dry pale wall rim and a damp dark tree base are one substance under two
+// tints, not two materials that happen to look similar.
+//
+// It is deliberately NOT the cliff-rock tile. Tailings and churned earth are
+// not a mountain face, and dressing them in the rock vocabulary would give
+// every weathered boundary the same slab structure as the cliff behind it —
+// which is exactly the "one authored surface meeting another" read the whole
+// treatment exists to break. The palette is wet earth through rust-stained
+// ochre to a near-black crumb, and the shape mix is biased small and blunt:
+// clods and grit, not slabs.
+//
+// In dev mode, `window.downloadSoilSubstanceTexture()` writes the PNG to disk.
 
 import * as THREE from 'three';
 import { createRepeatingCanvasTexture } from './repeatingCanvasTexture';
 import { COLORS, readRgbTupleArray } from '@/colorsConfig';
 import {
-  ORE_EDGE_DIRT_BASE_COLOR,
-  ORE_EDGE_DIRT_TEXTURE_RESOLUTION,
+  SOIL_SUBSTANCE_BASE_COLOR,
+  SOIL_SUBSTANCE_TEXTURE_RESOLUTION,
 } from '../../config';
 import {
   type CommonShapeItem,
@@ -34,29 +42,29 @@ import {
 } from './detailTextureHelpers';
 
 const BASE_TEXTURE_PIXELS = 4096;
-const DIRT_TEXTURE_PIXELS = ORE_EDGE_DIRT_TEXTURE_RESOLUTION;
-const TEXTURE_SCALE = DIRT_TEXTURE_PIXELS / BASE_TEXTURE_PIXELS;
+const SOIL_TEXTURE_PIXELS = SOIL_SUBSTANCE_TEXTURE_RESOLUTION;
+const TEXTURE_SCALE = SOIL_TEXTURE_PIXELS / BASE_TEXTURE_PIXELS;
 // Denser than the rock tile relative to its area: dirt has no large flat
 // facets to carry it, so its whole read comes from how finely it is broken up.
 const ITEM_COUNT = 26000;
 
-const DIRT_SHADE_PALETTE = readRgbTupleArray(
-  COLORS.environment.metalDeposit.edge.dirtTexture.shadePaletteRgb,
-  'environment.metalDeposit.edge.dirtTexture.shadePaletteRgb',
+const SOIL_SHADE_PALETTE = readRgbTupleArray(
+  COLORS.environment.weathering.soilTexture.shadePaletteRgb,
+  'environment.weathering.soilTexture.shadePaletteRgb',
 );
 
 let cachedTexture: THREE.CanvasTexture | null = null;
 let cachedCanvas: HTMLCanvasElement | null = null;
 
-export function getOreEdgeDirtTexture(): THREE.CanvasTexture {
+export function getSoilSubstanceTexture(): THREE.CanvasTexture {
   if (!cachedTexture) {
     const { canvas, texture } = generate();
     cachedCanvas = canvas;
     cachedTexture = texture;
     installDetailTextureDevDownloadHelper(
-      'ore-edge-dirt.png',
+      'soil-substance.png',
       () => cachedCanvas,
-      'downloadOreEdgeDirtTexture',
+      'downloadSoilSubstanceTexture',
     );
   }
   return cachedTexture;
@@ -64,16 +72,16 @@ export function getOreEdgeDirtTexture(): THREE.CanvasTexture {
 
 function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture } {
   const canvas = document.createElement('canvas');
-  canvas.width = DIRT_TEXTURE_PIXELS;
-  canvas.height = DIRT_TEXTURE_PIXELS;
+  canvas.width = SOIL_TEXTURE_PIXELS;
+  canvas.height = SOIL_TEXTURE_PIXELS;
   const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('OreEdgeDirtTexture: 2D context unavailable');
-  ctx.fillStyle = cssRgb(ORE_EDGE_DIRT_BASE_COLOR);
-  ctx.fillRect(0, 0, DIRT_TEXTURE_PIXELS, DIRT_TEXTURE_PIXELS);
+  if (!ctx) throw new Error('SoilSubstanceTexture: 2D context unavailable');
+  ctx.fillStyle = cssRgb(SOIL_SUBSTANCE_BASE_COLOR);
+  ctx.fillRect(0, 0, SOIL_TEXTURE_PIXELS, SOIL_TEXTURE_PIXELS);
 
-  const rng = makeSeededRng(0xD1927A);
+  const rng = makeSeededRng(0x5017A1);
   for (const item of generateItems(rng)) {
-    drawCommonItemWithWrap(ctx, item, DIRT_TEXTURE_PIXELS);
+    drawCommonItemWithWrap(ctx, item, SOIL_TEXTURE_PIXELS);
   }
 
   // Sampled as-is, matching the terrain shader's "raw vec3 = working colour"
@@ -94,10 +102,10 @@ function generateItems(rng: () => number): CommonShapeItem[] {
       2.1,
     );
     const { shapeKind, shapeParam } = sampleAngularDetailShape(rng, size, 90, 40, 16);
-    const shade = DIRT_SHADE_PALETTE[Math.floor(rng() * DIRT_SHADE_PALETTE.length)];
+    const shade = SOIL_SHADE_PALETTE[Math.floor(rng() * SOIL_SHADE_PALETTE.length)];
     items.push({
-      x: rng() * DIRT_TEXTURE_PIXELS,
-      y: rng() * DIRT_TEXTURE_PIXELS,
+      x: rng() * SOIL_TEXTURE_PIXELS,
+      y: rng() * SOIL_TEXTURE_PIXELS,
       size,
       rotation: rng() * Math.PI * 2,
       shapeKind,

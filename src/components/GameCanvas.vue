@@ -101,6 +101,7 @@ import { useGameCanvasLobbySettings } from './gameCanvasLobbySettings';
 import { useGameCanvasBattleSettings } from './gameCanvasBattleSettings';
 import {
   BATTLE_PRESETS,
+  PERIMETER_MAGNITUDE_NONE,
   resolveBattleMapPresentation,
 } from './battlePresets';
 import { setActiveBackdropPresetName } from '../game/render3d/presetBackdrops';
@@ -1112,7 +1113,12 @@ const mapDetailsRows = computed(() => [
   },
   { label: 'CENTER', value: String(centerMagnitude.value) },
   { label: 'DIVIDERS', value: String(dividersMagnitude.value) },
-  { label: 'PERIMETER', value: String(perimeterMagnitude.value) },
+  {
+    label: 'PERIMETER',
+    value: perimeterMagnitude.value === PERIMETER_MAGNITUDE_NONE
+      ? 'NONE'
+      : String(perimeterMagnitude.value),
+  },
   { label: 'D-TERRAIN', value: terrainDTerrain.value === 0 ? 'NONE' : String(terrainDTerrain.value) },
   { label: 'PLATEAU WALL', value: `${plateauWallSlopeDegrees.value} deg` },
   { label: 'METAL STEP', value: metalDepositStep.value === 0 ? 'NONE' : String(metalDepositStep.value) },

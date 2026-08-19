@@ -103,6 +103,10 @@
   "terrainRockDetail": {
     "enabled": true
   },
+  "terrainWallWear": {
+    "enabled": true,
+    "detail": "The worn top and bottom rims of a D-PLATEAU wall. false draws the fold the mesh describes, which is the clean terrace edge this treatment replaces - keep it as a bisect. Tuning lives in colorsConfig.world.terrain.wallWear. Intensity is driven by the dihedral angle measured at each rim, so a wall flattened flush into the terrain wears nothing: the treatment must never draw a step the map author deliberately erased."
+  },
   "terrainOreEdge": {
     "enabled": true,
     "detail": "The weathered ore-to-ground transition (warped contour, granular dissolve, dirt band). false draws the region field's own contour straight, which is the clean stencilled edge this treatment replaces - keep it as a bisect. Tuning lives in colorsConfig.environment.metalDeposit.edge. A SURFACE = METAL world switches it off on its own: the whole map is ore there, so every deposit boundary is interior and a dirt band around one would be drawing a seam that does not exist."

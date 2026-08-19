@@ -9,6 +9,21 @@ import {
 import { LAND_CELL_SIZE } from '../mapSizeConfig';
 import battleBarConfig from '../battleBarConfig.json';
 
+/** PERIMETER "NONE": skip the map-boundary step entirely instead of blending
+ *  the outer ring toward an altitude. It has to be a sentinel rather than a
+ *  magnitude because 0 is itself a real ring — a flat rim at ground level that
+ *  still overrides the terrain and still carries the horizon shelf. Authored
+ *  in battleBarConfig.json beside the bar options so the two can't drift. */
+export const PERIMETER_MAGNITUDE_NONE =
+  battleBarConfig.perimeterMagnitude.noneValue;
+
+if (!battleBarConfig.perimeterMagnitude.options.includes(PERIMETER_MAGNITUDE_NONE)) {
+  throw new Error(
+    'battleBarConfig.perimeterMagnitude.options must contain noneValue '
+      + `(${PERIMETER_MAGNITUDE_NONE})`,
+  );
+}
+
 export type BattlePreset = {
   readonly name: string;
   /** Generated four-layer panorama set for this authored map. Keeping it on
@@ -31,8 +46,10 @@ export type BattlePreset = {
   readonly converterTax: number;
   readonly centerMagnitude: number;
   readonly dividersMagnitude: number;
-  /** Signed PERIMETER ring altitude. 0 = flat square; negative sinks the
-   *  outer ring below water (round-island); positive raises a rim. */
+  /** Signed PERIMETER ring altitude: negative sinks the outer ring below
+   *  water (round-island), positive raises a rim, 0 flattens it to ground
+   *  level. `PERIMETER_MAGNITUDE_NONE` skips the ring step altogether and
+   *  leaves the generated terrain running out to the rectangular map edge. */
   readonly perimeterMagnitude: number;
   readonly terrainDTerrain: number;
   readonly plateauWallSlopeDegrees: number;
@@ -211,7 +228,7 @@ function buildPresets(): readonly BattlePreset[] {
       converterTax: 0.5,
       centerMagnitude: 0,
       dividersMagnitude: 0,
-      perimeterMagnitude: 0,
+      perimeterMagnitude: PERIMETER_MAGNITUDE_NONE,
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 0,
@@ -276,6 +293,12 @@ function formatTerrainMagnitude(value: number): string {
   return value === 0 ? 'NONE' : String(value);
 }
 
+/** PERIMETER prints its own sentinel as NONE; 0 stays 0 because a
+ *  ground-level ring is a real (and visibly different) map shape. */
+function formatPerimeterMagnitude(value: number): string {
+  return value === PERIMETER_MAGNITUDE_NONE ? 'NONE' : String(value);
+}
+
 /** Resolve the complete map presentation once from the current settings.
  *  Custom maps retain the useful sign but use the neutral default backdrop. */
 export function resolveBattleMapPresentation(
@@ -293,7 +316,7 @@ export function resolveBattleMapPresentation(
     `${current.cap} ENTITY CAP  ·  ${terrain}  ·  ${liquid}`,
     `CENTER ${formatTerrainMagnitude(current.centerMagnitude)}`
       + `  ·  DIVIDERS ${formatTerrainMagnitude(current.dividersMagnitude)}`
-      + `  ·  PERIMETER ${formatTerrainMagnitude(current.perimeterMagnitude)}`,
+      + `  ·  PERIMETER ${formatPerimeterMagnitude(current.perimeterMagnitude)}`,
     `D-TERRAIN ${formatTerrainMagnitude(current.terrainDTerrain)}`
       + `  ·  METAL STEP ${formatTerrainMagnitude(current.metalDepositStep)}`
       + `  ·  DETAIL ${current.terrainDetail}`,

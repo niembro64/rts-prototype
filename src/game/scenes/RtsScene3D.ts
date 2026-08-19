@@ -112,6 +112,7 @@ import {
   CAMERA_CONSTRAINTS,
   WORLD_PADDING_PERCENT,
 } from '../../config';
+import { PERIMETER_MAGNITUDE_NONE } from '../../battleBarConfig';
 
 type RtsScene3DConfig = {
   playerIds: PlayerId[];
@@ -136,6 +137,8 @@ type RtsScene3DConfig = {
   mapHeight: number;
   centerMagnitude?: number;
   dividersMagnitude?: number;
+  /** Omitted = no perimeter ring (PERIMETER NONE), matching the CENTER /
+   *  DIVIDERS fallbacks that suppress their feature. */
   perimeterMagnitude?: number;
   backgroundMode: boolean;
   /** GAME LOBBY preview pane — selects the lobby camera defaults and
@@ -331,7 +334,7 @@ export class RtsScene3D {
     this.onStartupReady = config.onStartupReady;
     this.centerMagnitude = config.centerMagnitude ?? 0;
     this.dividersMagnitude = config.dividersMagnitude ?? 0;
-    this.perimeterMagnitude = config.perimeterMagnitude ?? 0;
+    this.perimeterMagnitude = config.perimeterMagnitude ?? PERIMETER_MAGNITUDE_NONE;
     // Pin the color wheel to the lobby's player count. Player ids map
     // directly to color slots, so every browser sees the same colors.
     // Identity colors nest team-then-player, so they need the real

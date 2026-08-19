@@ -49,9 +49,12 @@ export type BattleBarConfig = {
    *  button group). Same sign convention as `centerMagnitude`. */
   readonly dividersMagnitude: OptionsConfig<number>;
   /** Signed altitude amplitude of the map perimeter ring (PERIMETER
-   *  button group). 0 = flat square map (no boundary override); negative
-   *  sinks the outer ring below water (round-island); positive raises a
-   *  rim. Same sign convention as `centerMagnitude`. */
+   *  button group). Negative sinks the outer ring below water
+   *  (round-island); positive raises a rim; 0 flattens it to ground level.
+   *  The list also carries `PERIMETER_MAGNITUDE_NONE`, a sentinel rather
+   *  than an altitude: it skips the boundary override entirely and leaves
+   *  the generated terrain running to the rectangular map edge. Same sign
+   *  convention as `centerMagnitude`. */
   readonly perimeterMagnitude: OptionsConfig<number>;
   /** Plateau lattice step in world units. The value `0` is the "NONE"
    *  option (no terracing — the sim short-circuits on step <= 0), so

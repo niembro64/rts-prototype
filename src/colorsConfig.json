@@ -80,6 +80,63 @@
           "#46403a"
         ]
       },
+      "wallWearComment": [
+        "The top and bottom rims of a D-PLATEAU wall, worn. Same three terms as",
+        "every other weathered boundary (see environment.weathering): the rim's",
+        "reach is displaced, its outer edge dissolved, and soil painted over it.",
+        "  reachWorldUnits - how far the wear spreads from a rim, measured as",
+        "    GEODESIC distance over the terrain mesh, not through the air. World",
+        "    units on purpose: a short terrace and a tall cliff wear by the same",
+        "    physical amount, not by the same fraction of themselves, so where a",
+        "    terrace is short enough the two bands MERGE - which is correct, a",
+        "    short step reads as worn through.",
+        "  min/maxAngleDegrees - the dihedral angle at the rim, between the",
+        "    wall-side surface and the ground-side one, that the intensity ramps",
+        "    over. THIS IS THE SAFETY PROPERTY, not a nicety: walls are often",
+        "    flattened flush into the terrain on purpose, and wearing those rims",
+        "    would draw a step the map author deliberately erased. At zero angle",
+        "    the intensity is zero and the whole treatment switches itself off.",
+        "    Measured from the geometry, never read off the D-PLATEAU or PLATEAU",
+        "    WALL SLOPE settings, which is what lets a partially flattened wall",
+        "    fade smoothly along its own length instead of snapping.",
+        "  top / bottom - one substance, two exposures. A top rim spalls and",
+        "    sheds, so it is drier, paler, tighter to the fold and more broken",
+        "    up; a bottom rim collects what fell, so it is damper, darker and",
+        "    spread wider. Two substances here would be two materials pretending",
+        "    to be the same weather on two ends of one wall.",
+        "  matte - how much of the ore reflection the wear suppresses where the",
+        "    two overlap. Dirt is not metal, and ore regularly runs off its flat",
+        "    pad and down a terrace."
+      ],
+      "wallWear": {
+        "noiseTileWorldSize": 420,
+        "reachWorldUnits": 90,
+        "minAngleDegrees": 6,
+        "maxAngleDegrees": 52,
+        "growWorldUnits": 4,
+        "warpWorldUnits": 16,
+        "grainStrength": 0.9,
+        "thicknessVariation": 0.55,
+        "matte": 0.85,
+        "top": {
+          "tintRgb01": "#d9cdb4",
+          "exposure": 1.45,
+          "strength": 0.62,
+          "darken": 0.6,
+          "seamPower": 3.2,
+          "falloff": 1.7,
+          "patchDepth": 0.68
+        },
+        "bottom": {
+          "tintRgb01": "#8a7a60",
+          "exposure": 0.95,
+          "strength": 0.82,
+          "darken": 0.48,
+          "seamPower": 2.2,
+          "falloff": 1.1,
+          "patchDepth": 0.52
+        }
+      },
       "buildGrid": {
         "okRgba": "#006600a0",
         "blockedRgba": "#770000aa",
@@ -139,6 +196,56 @@
       },
       "leaves": {
         "colorHex": "#496f31"
+      }
+    },
+    "weatheringComment": [
+      "The shared weathering vocabulary. Every treatment that dirties a",
+      "boundary in this game - the ore region edge, the plateau wall rims, the",
+      "vegetation - reads THIS noise tile, at its own world scale. A second",
+      "noise tile would be a second vocabulary, and two treatments that meet",
+      "on screen would stop looking like the same weather.",
+      "  resolution - texels per axis of the tile. It carries three",
+      "    independent scalar fields in R/G/B (mottle, grain, blotch); alpha",
+      "    is not a fourth, because a Canvas 2D surface premultiplies and a",
+      "    field stored in alpha would scale the three stored in RGB.",
+      "How far apart the fields' features land in the world is each host's",
+      "own noiseTileWorldSize, because a tree and a plateau weather at",
+      "different scales even though they weather by the same mechanism."
+    ],
+    "weathering": {
+      "noiseTexture": {
+        "sourceFile": "src/game/render3d/WeatheringNoiseTexture.ts",
+        "resolution": 512
+      },
+      "soilTextureComment": [
+        "The ONE substance every weathered boundary is buried under - the ore",
+        "region's dirty rim, the debris at the bottom of a plateau wall, the",
+        "spall along its top, the dirt at the base of a tree. Dust and grit is",
+        "dust and grit; hosts differ only in the tint and exposure they read it",
+        "through, never in which tile they read. tileWorldSize is shared for",
+        "the same reason texel density is: a dry pale wall rim and a damp dark",
+        "tree base have to be the same physical grain or they stop reading as",
+        "one weather."
+      ],
+      "soilTexture": {
+        "sourceFile": "src/game/render3d/SoilSubstanceTexture.ts",
+        "resolution": 2048,
+        "tileWorldSize": 900,
+        "baseColorHex": "#3b3227",
+        "shadePaletteRgb": [
+          "#241c14",
+          "#312619",
+          "#443524",
+          "#524231",
+          "#63523c",
+          "#7a674c",
+          "#2b2a24",
+          "#3f4038",
+          "#584e3a",
+          "#6b4b2c",
+          "#4a2f1c",
+          "#1a1512"
+        ]
       }
     },
     "metalDeposit": {
@@ -203,31 +310,7 @@
         "would terminate in a hard ring. Pinned by contract test."
       ],
       "edge": {
-        "noiseTexture": {
-          "sourceFile": "src/game/render3d/OreEdgeNoiseTexture.ts",
-          "resolution": 512,
-          "tileWorldSize": 1200
-        },
-        "dirtTexture": {
-          "sourceFile": "src/game/render3d/OreEdgeDirtTexture.ts",
-          "resolution": 2048,
-          "tileWorldSize": 900,
-          "baseColorHex": "#3b3227",
-          "shadePaletteRgb": [
-            "#241c14",
-            "#312619",
-            "#443524",
-            "#524231",
-            "#63523c",
-            "#7a674c",
-            "#2b2a24",
-            "#3f4038",
-            "#584e3a",
-            "#6b4b2c",
-            "#4a2f1c",
-            "#1a1512"
-          ]
-        },
+        "noiseTileWorldSize": 1200,
         "growWorldUnits": 10,
         "warpWorldUnits": 24,
         "blendBandMinWorldUnits": 8,

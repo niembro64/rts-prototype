@@ -1,4 +1,4 @@
-import { BATTLE_CONFIG } from '../../../battleBarConfig';
+import { BATTLE_CONFIG, PERIMETER_MAGNITUDE_NONE } from '../../../battleBarConfig';
 import { deterministicMath as DMath } from '../deterministicMath';
 import terrainConfig from './terrainConfig.json';
 
@@ -149,21 +149,38 @@ export type TerrainRuntimeConfig = {
 export let TERRAIN_CENTER_MAGNITUDE = BATTLE_CONFIG.centerMagnitude.default;
 /** Currently-installed signed DIVIDERS amplitude. */
 export let TERRAIN_DIVIDERS_MAGNITUDE = BATTLE_CONFIG.dividersMagnitude.default;
-/** Currently-installed signed PERIMETER amplitude (matches the active
- *  battle's PERIMETER bar pick). The terrain heightmap blends the
- *  outer ring toward this value — 0 leaves the natural square map,
- *  negative sinks the ring below water (round-island), positive raises
- *  a rim. */
+/** Currently-installed PERIMETER bar pick. The terrain heightmap blends the
+ *  outer ring toward this value — negative sinks the ring below water
+ *  (round-island), positive raises a rim, 0 flattens it to ground level.
+ *  `PERIMETER_MAGNITUDE_NONE` is a sentinel, NOT an altitude: it deactivates
+ *  the mapBoundary generation stage so no ring is applied at all. Read it
+ *  through the two helpers below rather than treating it as a height. */
 export let TERRAIN_PERIMETER_MAGNITUDE = BATTLE_CONFIG.perimeterMagnitude.default;
 
+/** False when the PERIMETER bar is on NONE — the mapBoundary stage is skipped
+ *  and the generated terrain simply runs out to the rectangular map edge. */
+export function isTerrainPerimeterRingEnabled(): boolean {
+  return TERRAIN_PERIMETER_MAGNITUDE !== PERIMETER_MAGNITUDE_NONE;
+}
+
+/** Altitude the outer ring blends toward, or 0 when the ring is off. Never
+ *  the NONE sentinel, so this is always safe to use as a height. */
+export function terrainPerimeterRingAltitude(): number {
+  return isTerrainPerimeterRingEnabled() ? TERRAIN_PERIMETER_MAGNITUDE : 0;
+}
+
 /** Conservative upper bound on terrain heights — center/dividers/
- *  perimeter features can stack, so sum their absolute amplitudes. */
+ *  perimeter features can stack, so sum their absolute amplitudes. The
+ *  perimeter term is the ring altitude, so NONE contributes nothing rather
+ *  than its sentinel magnitude. */
 function computeTerrainMaxRenderY(
   centerMag: number,
   dividersMag: number,
   perimeterMag: number,
 ): number {
-  return Math.abs(centerMag) + Math.abs(dividersMag) + Math.abs(perimeterMag);
+  const perimeterHeight =
+    perimeterMag === PERIMETER_MAGNITUDE_NONE ? 0 : perimeterMag;
+  return Math.abs(centerMag) + Math.abs(dividersMag) + Math.abs(perimeterHeight);
 }
 export let TERRAIN_MAX_RENDER_Y = computeTerrainMaxRenderY(
   TERRAIN_CENTER_MAGNITUDE,
@@ -194,7 +211,8 @@ export let METAL_DEPOSIT_STEP = BATTLE_CONFIG.metalDepositStep.default;
  *  reaches full strength. Inside `innerRadiusFraction` the natural terrain
  *  is untouched; from there to `outerRadiusFraction` the height cosine-blends
  *  toward the signed PERIMETER magnitude; beyond `outerRadiusFraction` (out
- *  to the map edge) the terrain is flat at exactly that magnitude. Drives the
+ *  to the map edge) the terrain is flat at exactly that magnitude. A NONE
+ *  PERIMETER pick skips the whole band. Drives the
  *  weight in `getTerrainMapBoundaryFade` and the matching Rust sampler. NOT a
  *  coloring knob — the renderer's outer-ring color/fade is configured
  *  separately by `terrainHorizonBlend` in worldRenderConfig.json and

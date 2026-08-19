@@ -48,6 +48,7 @@ import {
   TERRAIN_ROCK_BASE_COLOR,
   TERRAIN_ROCK_DETAIL_CONTRAST,
   TERRAIN_ORE_EDGE_ENABLED,
+  TERRAIN_WALL_WEAR_ENABLED,
   TERRAIN_ROCK_DETAIL_ENABLED,
   TERRAIN_ROCK_TEXTURE_TILE_WORLD_SIZE,
 } from '../../config';
@@ -106,7 +107,6 @@ import {
   METAL_SURFACE_MATERIAL,
   METAL_SURFACE_REGION_GLSL,
   METAL_SURFACE_RESPONSE_GLSL,
-  METAL_SURFACE_TRIPLANAR_GLSL,
   metalSurfaceLayerUniformDeclarations,
   metalSurfaceOutgoingLightPatch,
 } from './MetalSurfaceMaterial3D';
@@ -134,6 +134,16 @@ import {
   metalDepositSurfaceFieldScreenWidth,
   metalDepositSurfaceFieldUniformDeclarations,
 } from './MetalDepositSurfaceField3D';
+import { SURFACE_WEATHERING_GLSL } from './SurfaceWeathering3D';
+import {
+  TERRAIN_WALL_WEAR_GLSL,
+  assignTerrainWallWearUniforms,
+  computeTerrainWallWear,
+  createTerrainWallWearUniforms,
+  terrainWallWearFragment,
+  terrainWallWearUniformDeclarations,
+  type TerrainWallWearUniforms,
+} from './TerrainWallWear3D';
 import {
   ORE_EDGE_BLEND_GLSL,
   assignOreEdgeBlendUniforms,
@@ -761,6 +771,11 @@ export class TerrainTileRenderer3D {
   private readonly oreEdgeUniforms: OreEdgeBlendUniforms = createOreEdgeBlendUniforms(
     TERRAIN_ORE_EDGE_ENABLED && !isMetalTerrainSurface(),
   );
+  // The plateau wall rims. Unlike the ore edge this stays on for a
+  // SURFACE = METAL world: a metal map still has terraces, and their folds
+  // are just as clean as any other map's.
+  private readonly wallWearUniforms: TerrainWallWearUniforms =
+    createTerrainWallWearUniforms(TERRAIN_WALL_WEAR_ENABLED);
   // 0 = keep three's DOUBLE_SIDED flip, 1 = restore the authored outward
   // normal inside ore only, 2 = restore it across the whole surface. A runtime
   // knob because this is a shading term whose fault only shows on sloped
@@ -898,17 +913,20 @@ export class TerrainTileRenderer3D {
       shader.uniforms[TERRAIN_OUTWARD_NORMAL_UNIFORM] = this.terrainOutwardNormalUniform;
       assignMetalDepositSurfaceFieldUniforms(shader, this.metalRegionField.uniforms);
       assignOreEdgeBlendUniforms(shader, this.oreEdgeUniforms);
+      assignTerrainWallWearUniforms(shader, this.wallWearUniforms);
       this.worldShade.assignUniforms(shader);
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
           [
             'attribute float terrainShade;',
+            'attribute vec2 terrainWallWear;',
             'attribute float terrainNeighborhoodSlope;',
             'attribute float terrainHorizonFade;',
             'attribute vec3 triangleDebugColor;',
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
+            'varying vec2 vTerrainWallWear;',
             'varying float vTerrainSlope;',
             'varying float vTerrainNeighborhoodSlope;',
             'varying float vTerrainHorizonFade;',
@@ -922,6 +940,7 @@ export class TerrainTileRenderer3D {
             '#include <begin_vertex>',
             'vTerrainWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;',
             'vTerrainShade = terrainShade;',
+            'vTerrainWallWear = terrainWallWear;',
             'vTerrainSlope = 1.0 - clamp(abs(normal.y), 0.0, 1.0);',
             'vTerrainNeighborhoodSlope = terrainNeighborhoodSlope;',
             'vTerrainHorizonFade = terrainHorizonFade;',
@@ -964,13 +983,16 @@ export class TerrainTileRenderer3D {
             terrainOutwardNormalUniformDeclaration(),
             metalDepositSurfaceFieldUniformDeclarations(),
             oreEdgeBlendUniformDeclarations(),
+            terrainWallWearUniformDeclarations(),
             METAL_SURFACE_RESPONSE_GLSL,
             METAL_SURFACE_REGION_GLSL,
-            METAL_SURFACE_TRIPLANAR_GLSL,
+            SURFACE_WEATHERING_GLSL,
             ORE_EDGE_BLEND_GLSL,
+            TERRAIN_WALL_WEAR_GLSL,
             WORLD_SHADE_FRAGMENT_PARS,
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
+            'varying vec2 vTerrainWallWear;',
             'varying float vTerrainSlope;',
             'varying float vTerrainNeighborhoodSlope;',
             'varying float vTerrainHorizonFade;',
@@ -1108,7 +1130,10 @@ export class TerrainTileRenderer3D {
             oreEdgeResolveFragment('vTerrainWorldPos', 'uMetalRegionEnabled'),
             'float metalCoverage = clamp(max(uMetalSurfaceEnabled, oreRegionCoverage), 0.0, 1.0);',
             // The PBR half of the metal surface reads THIS one, not the
-            // geometric coverage above.
+            // geometric coverage above. Declared here and MATTED LATER: the
+            // wall rims are resolved after the ore albedo, and dirt is dirt
+            // whichever treatment laid it down, so both suppress the same
+            // reflection through one term rather than two.
             `float metalPbrCoverage = ${oreEdgeMatteCoverage('metalCoverage')};`,
             // Where there is ore the biome ramp and the ground/rock detail
             // overlays above are replaced by srgbToLinear(ore base) * the
@@ -1117,7 +1142,7 @@ export class TerrainTileRenderer3D {
             // supplies the relief.
             'vec3 metalDetail = vec3(1.0);',
             'if (metalCoverage > 0.0) {',
-            '  metalDetail = sampleMetalSurfaceDetail(',
+            '  metalDetail = weatherSampleSubstance(',
             '    uRockDetailTexture,',
             '    vTerrainWorldPos,',
             '    geomNormal,',
@@ -1134,6 +1159,14 @@ export class TerrainTileRenderer3D {
             // lands on. Running it before the ore mix would let the ore
             // albedo paint straight back over the inner half of the band.
             oreEdgeAlbedoFragment('vTerrainWorldPos', 'geomNormal'),
+            // THE PLATEAU WALL RIMS. The fold where a terrace meets its wall
+            // is the map's other clean edge, and the same three terms fix it.
+            // Measured at TOP LEVEL for the same reason the ore's width is:
+            // the treatment below runs under a branch neighbouring fragments
+            // disagree about, and a derivative there is undefined.
+            'float wallWearRampWidth = max(fwidth(vTerrainWallWear.x), fwidth(vTerrainWallWear.y));',
+            terrainWallWearFragment('vTerrainWorldPos', 'geomNormal'),
+            'metalPbrCoverage *= 1.0 - uWallWearMatte * terrainWallWear;',
             'float horizonBlend = uTerrainHorizonBlendEnabled * smoothstep(uTerrainHorizonFadeStart, uTerrainHorizonFadeEnd, vTerrainHorizonFade);',
             'terrainRgb = mix(terrainRgb, uTerrainHorizonColor, horizonBlend);',
             'float terrainFinalShade = mix(vTerrainShade, uTerrainHorizonShade, horizonBlend);',
@@ -1259,7 +1292,7 @@ export class TerrainTileRenderer3D {
         );
     };
     this.terrainMaterial.customProgramCacheKey = () =>
-      'authoritative-terrain-surface-metalregion-oreedge-v44';
+      'authoritative-terrain-weathering-wallwear-v46';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
@@ -2111,6 +2144,8 @@ export class TerrainTileRenderer3D {
     const terrainNormals: number[] = [];
     const terrainShades: number[] = [];
     const terrainNeighborhoodSlopes: number[] = [];
+    // Interleaved (topRim, bottomRim) proximity per rendered vertex.
+    const terrainWallWears: number[] = [];
     const terrainHorizonFades: number[] = [];
     const terrainIndices: number[] = [];
     const terrainDebugLevels: number[] = [];
@@ -2152,6 +2187,10 @@ export class TerrainTileRenderer3D {
         (terrainLightSmoothing > 0 && !terrainLightSmoothAcrossWallBoundary);
       const meshVertexMapIndex = (i: number, wallClass: number): number =>
         splitWallRenderVertices ? i * 2 + (wallClass !== 0 ? 1 : 0) : i;
+      // Where the terrace rims are and how sharp they are. One pass over the
+      // authoritative mesh — the terrain is immutable for the match, so this
+      // never re-runs during play.
+      const wallWear = computeTerrainWallWear(authoritativeMesh);
       const meshVertexToTerrainVertex = new Int32Array(
         authoritativeMesh.vertexCount * (splitWallRenderVertices ? 2 : 1),
       ).fill(-1);
@@ -2215,6 +2254,7 @@ export class TerrainTileRenderer3D {
         terrainPositions.push(wx, terrainHeight + LAND_TILE_GROUND_LIFT, wz);
         terrainNormals.push(normal.nx, normal.nz, normal.ny);
         terrainSourceVertices.push(i);
+        terrainWallWears.push(wallWear.top[i] ?? 0, wallWear.bottom[i] ?? 0);
         terrainVertexWallClasses.push(wallClass !== 0 ? 1 : 0);
         terrainHorizonFades.push(
           this.getTerrainHorizonFadeForWaterBoundaryMode(
@@ -2348,6 +2388,9 @@ export class TerrainTileRenderer3D {
           terrainNormals.push(nx, 0, nz);
           terrainShades.push(SIDE_WALL_TERRAIN_SHADE);
           terrainSourceVertices.push(-1);
+          // Map-boundary walls are the world box, not a terrace fold; they
+          // have no rim to wear.
+          terrainWallWears.push(0, 0);
           terrainVertexWallClasses.push(0);
           // Map-boundary side walls are vertical cliffs — neighborhood slope
           // is 1.0 so the grass mask fully suppresses any green tint here.
@@ -2480,6 +2523,7 @@ export class TerrainTileRenderer3D {
           terrainNormals.push(0, 1, 0);
           terrainShades.push(1);
           terrainSourceVertices.push(-1);
+          terrainWallWears.push(0, 0);
           terrainVertexWallClasses.push(0);
           // Infinity-shelf quads sit at the underwater horizon and are
           // already shoreline-masked out of the grass zone, so the exact
@@ -2526,6 +2570,7 @@ export class TerrainTileRenderer3D {
       const debugPositions = new Float32Array(debugVertexCount * 3);
       const debugNormals = new Float32Array(debugVertexCount * 3);
       const debugTerrainShades = new Float32Array(debugVertexCount);
+      const debugTerrainWallWears = new Float32Array(debugVertexCount * 2);
       const debugTerrainNeighborhoodSlopes = new Float32Array(debugVertexCount);
       const debugTerrainHorizonFades = new Float32Array(debugVertexCount);
       const debugTriangleColors = new Float32Array(debugVertexCount * 3);
@@ -2541,6 +2586,8 @@ export class TerrainTileRenderer3D {
         debugNormals[dst3 + 1] = terrainNormals[src3 + 1];
         debugNormals[dst3 + 2] = terrainNormals[src3 + 2];
         debugTerrainShades[dst] = terrainShades[src];
+        debugTerrainWallWears[dst * 2] = terrainWallWears[src * 2];
+        debugTerrainWallWears[dst * 2 + 1] = terrainWallWears[src * 2 + 1];
         debugTerrainNeighborhoodSlopes[dst] = terrainNeighborhoodSlopes[src];
         debugTerrainHorizonFades[dst] = terrainHorizonFades[src];
         const triangleIndex = Math.floor(dst / 3);
@@ -2555,6 +2602,7 @@ export class TerrainTileRenderer3D {
       geometry.setAttribute('position', new THREE.BufferAttribute(debugPositions, 3));
       geometry.setAttribute('normal', new THREE.BufferAttribute(debugNormals, 3));
       geometry.setAttribute('terrainShade', new THREE.BufferAttribute(debugTerrainShades, 1));
+      geometry.setAttribute('terrainWallWear', new THREE.BufferAttribute(debugTerrainWallWears, 2));
       geometry.setAttribute('terrainNeighborhoodSlope', new THREE.BufferAttribute(debugTerrainNeighborhoodSlopes, 1));
       geometry.setAttribute('terrainHorizonFade', new THREE.BufferAttribute(debugTerrainHorizonFades, 1));
       geometry.setAttribute('triangleDebugColor', new THREE.BufferAttribute(debugTriangleColors, 3));
@@ -2563,6 +2611,7 @@ export class TerrainTileRenderer3D {
       geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(terrainPositions), 3));
       geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(terrainNormals), 3));
       geometry.setAttribute('terrainShade', new THREE.BufferAttribute(new Float32Array(terrainShades), 1));
+      geometry.setAttribute('terrainWallWear', new THREE.BufferAttribute(new Float32Array(terrainWallWears), 2));
       geometry.setAttribute('terrainNeighborhoodSlope', new THREE.BufferAttribute(new Float32Array(terrainNeighborhoodSlopes), 1));
       geometry.setAttribute('terrainHorizonFade', new THREE.BufferAttribute(new Float32Array(terrainHorizonFades), 1));
       geometry.setAttribute('triangleDebugColor', new THREE.BufferAttribute(new Float32Array(vertexCount * 3), 3));

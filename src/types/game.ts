@@ -45,8 +45,9 @@ export type GameConfig = {
   /** Signed DIVIDERS amplitude used for team-separator ridges/trenches.
    *  Same sign convention as `centerMagnitude`. */
   dividersMagnitude?: number;
-  /** Signed PERIMETER ring amplitude. 0 = flat square; negative sinks the
-   *  outer ring below water (round-island); positive raises a rim. Same
+  /** Signed PERIMETER ring amplitude. Negative sinks the outer ring below
+   *  water (round-island), positive raises a rim, 0 flattens it to ground
+   *  level; `PERIMETER_MAGNITUDE_NONE` skips the ring step entirely. Same
    *  sign convention as `centerMagnitude`. */
   perimeterMagnitude?: number;
   backgroundMode?: boolean;
@@ -194,8 +195,9 @@ export type GameServerConfig = {
   centerMagnitude?: number;
   /** Signed DIVIDERS amplitude selected by the host/lobby. */
   dividersMagnitude?: number;
-  /** Signed PERIMETER ring amplitude selected by the host/lobby. 0 = flat
-   *  square; negative = round-island; positive = rim. */
+  /** Signed PERIMETER ring amplitude selected by the host/lobby. Negative =
+   *  round-island; positive = rim; 0 = flat rim at ground level;
+   *  `PERIMETER_MAGNITUDE_NONE` = no ring step at all. */
   perimeterMagnitude?: number;
   /** Plateau lattice step (world units). 0 = NONE (no terracing). */
   terrainDTerrain?: number;

@@ -8,7 +8,7 @@
     {
       "step": "mapBoundary",
       "active": true,
-      "detail": "Blends the current height toward the signed PERIMETER bar magnitude: untouched inside generation.perimeter.innerRadiusFraction, cosine-blending to hard override at outerRadiusFraction (negative = round island below water, positive = rim wall)."
+      "detail": "Blends the current height toward the signed PERIMETER bar magnitude: untouched inside generation.perimeter.innerRadiusFraction, cosine-blending to hard override at outerRadiusFraction (negative = round island below water, positive = rim wall, 0 = flat rim at ground level). The PERIMETER bar's NONE pick deactivates this stage for the match, so the generated terrain runs out to the rectangular map edge."
     },
     {
       "step": "gradientEstimate",

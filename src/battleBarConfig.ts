@@ -102,6 +102,11 @@ function sanitizeDemoBuildingIds(value: unknown): string[] | null {
 // a small persistent sandbox, while Lobby/Real starts fresh at battle scale.
 const _demoPreset = getModeDefaultPreset('demo');
 
+/** Re-exported beside the bar options it belongs to: the PERIMETER pick that
+ *  skips the ring step entirely. Defined in battlePresets so the preset table
+ *  can name it without importing this module back. */
+export { PERIMETER_MAGNITUDE_NONE } from './components/battlePresets';
+
 /** The ENTITY COUNT CAP is a standalone global setting, deliberately NOT a
  *  preset field: switching maps must never resize the battle. Only an
  *  explicit CAP change moves it, and each mode has one authored default —
@@ -202,6 +207,9 @@ export const BATTLE_CONFIG = {
     default: _demoPreset.dividersMagnitude,
     options: battleBarConfig.dividersMagnitude.options as readonly number[],
   },
+  // PERIMETER carries `PERIMETER_MAGNITUDE_NONE` as one of its options: a
+  // sentinel that deactivates the mapBoundary generation stage rather than
+  // naming a ring altitude.
   perimeterMagnitude: {
     default: _demoPreset.perimeterMagnitude,
     options: battleBarConfig.perimeterMagnitude.options as readonly number[],
@@ -618,8 +626,9 @@ export type BattleMode = 'demo' | 'real';
 export type BattleTerrainRuntimeConfig = {
   centerMagnitude: number;
   dividersMagnitude: number;
-  /** Signed PERIMETER ring altitude. 0 = flat square; negative sinks the
-   *  outer ring below water (round-island); positive raises a rim. */
+  /** Signed PERIMETER ring altitude: negative sinks the outer ring below
+   *  water (round-island), positive raises a rim, 0 flattens it to ground
+   *  level. `PERIMETER_MAGNITUDE_NONE` skips the ring step entirely. */
   perimeterMagnitude: number;
   /** Plateau lattice step in world units. 0 = NONE (no terracing). */
   terrainDTerrain: number;

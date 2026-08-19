@@ -12,6 +12,7 @@ import {
   TERRAIN_FINE_TRIANGLE_SUBDIV,
   TERRAIN_PERIMETER_MAGNITUDE,
   TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
+  terrainPerimeterRingAltitude,
   type TerrainRuntimeConfig,
 } from './terrainConfig';
 
@@ -81,10 +82,11 @@ function installMeshIntoSim(map: TerrainTileMap): void {
   );
 }
 
-/** Currently-installed signed PERIMETER amplitude. The terrain height
- *  generator reads this to blend the outer ring toward its value. */
+/** Altitude the outer PERIMETER ring blends toward — always a real height,
+ *  so a NONE pick reads as 0 rather than its sentinel. Callers that need to
+ *  know whether the ring runs at all ask `isTerrainPerimeterRingEnabled`. */
 export function getTerrainPerimeterMagnitude(): number {
-  return perimeterMagnitude;
+  return terrainPerimeterRingAltitude();
 }
 
 export function getTerrainRuntimeConfig(): TerrainRuntimeConfig {
