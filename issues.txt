@@ -1,0 +1,5 @@
+1. our lobby should group by team, and we should show the team color and player color as they will be in the game. There is a deterministic way to figure this out, you'll have to look for it. Teams shoudl have the team color as some band on the far left in the lobby and then the individual player color can be the shape that spins. 
+
+2. When playing online, the "build spray" doesn't seem to move when the commander moves? It's very strange, I also saw something like this with shields not following their turret that produced them, but only occasionally. Figure out what is causing these weirdnesses and fix them. 
+
+3. The commander's beam weapon needs to be much stronger. Also it seems like the beam visual updates are happening way less frequently than the beam visual updates on all other units. Clean this up. 

@@ -1,6 +1,21 @@
 import * as THREE from 'three';
+import {
+  getRangeToggle,
+  getVolumeToggle,
+  RANGE_TYPES,
+  setRangeToggle,
+  setVolumeToggle,
+} from '@/clientBarConfig';
 import type { TurretRanges } from '@/types/combatTypes';
+import type { RangeType } from '@/types/client';
+import type { ClientViewState } from '../network/ClientViewState';
+import { isAttackEmitter } from '../sim/emitterKinds';
 import { WATER_LEVEL } from '../sim/Terrain';
+import { WorldState } from '../sim/WorldState';
+import type { EntityMesh } from './EntityMesh3D';
+import type { OverlayLineSystem } from './OverlayLineSystem';
+import { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
+import type { TurretMesh } from './TurretMesh3D';
 import {
   TURRET_LOCK_ON_BOUNDARY_KEYS,
   TurretLockOnVolumeRenderer3D,
@@ -124,6 +139,71 @@ export function runTurretLockOnVolume3DContractTest(): void {
       Array.from(world.children).length === 0,
       'host teardown removes world-parented shells',
     );
+
+    // Runtime wiring: TGT is independent from every TURR CIR switch and the
+    // selection-overlay pass creates the shells for every attack turret.
+    const previousRanges = new Map<RangeType, boolean>();
+    for (const type of RANGE_TYPES) {
+      previousRanges.set(type, getRangeToggle(type));
+      setRangeToggle(type, false);
+    }
+    const previousTargetingVolume = getVolumeToggle('turretLockOn');
+    setVolumeToggle('turretLockOn', true);
+    const integrationWorld = new THREE.Group();
+    const integrationSphereSource = new THREE.OctahedronGeometry(1, 1);
+    const integrationSphereWireframe = new THREE.WireframeGeometry(integrationSphereSource);
+    const integrationRenderer = new SelectionOverlayRenderer3D({
+      world: integrationWorld,
+      clientViewState: {
+        getMapWidth: () => 512,
+        getMapHeight: () => 512,
+        getSelectedIds: () => new Set<number>(),
+      } as unknown as ClientViewState,
+      radiusSphereGeom: integrationSphereWireframe,
+      overlayLines: undefined as unknown as OverlayLineSystem,
+    });
+    try {
+      const simulation = new WorldState(81931, 512, 512);
+      const host = simulation.createUnitFromBlueprint(120, 140, 1, 'unitJackal');
+      simulation.addEntity(host);
+      const turrets = host.combat?.turrets ?? [];
+      const hostMesh = {
+        group: new THREE.Group(),
+        turrets: turrets.map(() => ({} as TurretMesh)),
+      } as unknown as EntityMesh;
+      integrationRenderer.beginFrame();
+      integrationRenderer.updateRangeRings(hostMesh, host);
+      const expectedShells = turrets.reduce((total, turret) => {
+        if (!isAttackEmitter(turret)) return total;
+        return total + 2 + (turret.ranges.tracking === null ? 0 : 2) +
+          (turret.ranges.fire.min === null ? 0 : 2);
+      }, 0);
+      assertContract(
+        expectedShells > 0 && integrationWorld.children.length === expectedShells,
+        'VOLUMES TGT alone creates every configured shell without TURR CIR',
+      );
+
+      setVolumeToggle('turretLockOn', false);
+      integrationRenderer.beginFrame();
+      integrationRenderer.updateRangeRings(hostMesh, host);
+      assertContract(
+        integrationWorld.children.every((child) => child.visible === false),
+        'disabling VOLUMES TGT hides its world-parented turret shells',
+      );
+      integrationRenderer.removeWorldParentedOverlays(hostMesh);
+      assertContract(
+        Array.from(integrationWorld.children).length === 0,
+        'entity teardown releases every integrated lock-on shell',
+      );
+    } finally {
+      integrationRenderer.dispose();
+      integrationSphereWireframe.dispose();
+      integrationSphereSource.dispose();
+      setVolumeToggle('turretLockOn', previousTargetingVolume);
+      for (const type of RANGE_TYPES) {
+        setRangeToggle(type, previousRanges.get(type) ?? false);
+      }
+    }
   } finally {
     renderer.dispose();
     sphereWireframe.dispose();
