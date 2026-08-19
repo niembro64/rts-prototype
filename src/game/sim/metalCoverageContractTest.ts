@@ -54,7 +54,7 @@ function placementSignature(deposits: readonly MetalDeposit[]): string {
     deposit.height,
     deposit.dTerrainLevels,
     deposit.flatPadRadius,
-    deposit.resourceRadius,
+    deposit.placementRadius,
     deposit.blendRadius,
     deposit.groupId,
   ]));
@@ -121,7 +121,7 @@ export function runMetalCoverageContractTest(): void {
 
     // 3. Per-rung ore.
     const defaultSize = getMetalDepositSize(METAL_DEPOSIT_CONFIG.defaultSize);
-    const defaultCellCount = defaultSize.resourceCells * defaultSize.resourceCells;
+    const defaultCellCount = defaultSize.metalCellCount;
 
     assertContract(
       byCoverage.get('none')!.deposits.length === 0,
@@ -130,14 +130,14 @@ export function runMetalCoverageContractTest(): void {
 
     const some = byCoverage.get('some')!.deposits;
     assertContract(
-      some.every((deposit) => deposit.resourceCellCount === defaultCellCount),
+      some.every((deposit) => deposit.metalCellCount === defaultCellCount),
       `METAL SOME must grow one ${METAL_DEPOSIT_CONFIG.defaultSize} body per spot`,
     );
 
     assertContract(
-      reference.deposits.every((deposit) => deposit.resourceCellCount >= defaultCellCount) &&
-        reference.deposits.some((deposit) => deposit.resourceCellCount > defaultCellCount),
-      'METAL MORE must grow the authored oversized ore bodies',
+      reference.deposits.every((deposit) => deposit.metalCellCount >= defaultCellCount) &&
+        reference.deposits.some((deposit) => deposit.metalCellCount > defaultCellCount),
+      'METAL MORE must scatter the authored oversized ore bodies',
     );
 
     assertContract(

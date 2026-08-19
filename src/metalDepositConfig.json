@@ -8,7 +8,7 @@
     "  dTerrainLevels - pad height in D-DEPOSIT-bar steps (METAL_DEPOSIT_STEP);",
     "    null = ride the natural terrain height under the deposit.",
     "  flatPadCells - circular flattened pad diameter in build cells; null =",
-    "    auto-size to the smallest pad covering the ore footprint. An explicit",
+    "    auto-size to the smallest pad covering the placement disc. An explicit",
     "    value SMALLER than the footprint is legal and is the interesting case:",
     "    the pad flattens only the buildable middle and the rest of the ore",
     "    body drapes over whatever relief it crosses - down a mountain side,",
@@ -42,45 +42,60 @@
   ],
   "edgeMarginPx": 200,
   "sizesComment": [
-    "Authored ore-body size classes. resourceCells is the nominal footprint",
-    "side in build cells: the generated body gets resourceCells^2 connected",
-    "metal cells grown from the origin cell inside a circular candidate radius",
-    "of resourceRadiusCells. Keeping radius ~= 1.15x cells across every class",
-    "holds the fill ratio near 0.25, which is what makes the silhouette",
-    "irregular instead of a disc - the classes differ in scale, not in",
-    "character. BUILD_GRID_CELL_SIZE is 20 world units, so a class of n cells",
-    "covers n^2 * 400 square units: 'titanic' lands ~1.6k units across.",
+    "Authored ore-body size classes. Two numbers, and they mean exactly what",
+    "they say:",
+    "  metalCellCount - how many metal build cells this ore body owns. Not a",
+    "    side length, not a target to approximate: the placer lands this many",
+    "    cells or the config is rejected.",
+    "  placementRadiusCells - the radius, in build cells from the deposit's",
+    "    origin cell, of the disc those cells are ALLOWED to land in. Nothing",
+    "    outside it can ever be metal.",
     "",
-    "resourceCells MUST BE ODD. A deposit's world position is snapped as",
-    "(centerCell - floor(n/2)) * cellSize + n * cellSize / 2, which lands on a",
-    "cell CENTRE for odd n and a cell CORNER for even n. Odd keeps that",
-    "position independent of n, so changing a ring's size cannot move its flat",
-    "pad and cannot reshape terrain. Enforced in metalDepositConfig.ts."
+    "Inside the disc the cells are scattered statistically rather than grown",
+    "outward from the centre, so an ore body has no connectivity rule and no",
+    "square footprint. A cell's chance of being metal is a raised cosine of",
+    "its distance from the origin: 1.0 dead centre, 0.5 at half the radius,",
+    "0.0 at the rim. Draws never repeat a cell, so the whole authored count",
+    "always lands - a crowded core just pushes the remainder further out.",
+    "",
+    "The two numbers together set how the body READS. The disc holds about",
+    "0.297 * pi * r^2 cells' worth of cosine probability; asking for roughly",
+    "1.5x that (the authored classes all sit near 1.47-1.6) gives a solid",
+    "core that frays into scattered specks near the rim. Push the radius up",
+    "and the same count thins into a dusting; pull it down and the body",
+    "hardens into a disc. The classes differ in scale, not in character.",
+    "",
+    "BUILD_GRID_CELL_SIZE is 20 world units, so 'titanic' reaches 76 cells =",
+    "1520 units from its origin.",
+    "",
+    "Neither number can move a deposit: it snaps to the centre of the build",
+    "cell its ring point landed in, reading nothing from the size class. A",
+    "size is free to be any positive integer."
   ],
   "sizes": {
     "standard": {
-      "resourceCells": 5,
-      "resourceRadiusCells": 8
+      "metalCellCount": 25,
+      "placementRadiusCells": 4
     },
     "broad": {
-      "resourceCells": 11,
-      "resourceRadiusCells": 41
+      "metalCellCount": 121,
+      "placementRadiusCells": 9
     },
     "vast": {
-      "resourceCells": 33,
-      "resourceRadiusCells": 55
+      "metalCellCount": 1089,
+      "placementRadiusCells": 28
     },
     "colossal": {
-      "resourceCells": 55,
-      "resourceRadiusCells": 77
+      "metalCellCount": 3025,
+      "placementRadiusCells": 47
     },
     "titanic": {
-      "resourceCells": 89,
-      "resourceRadiusCells": 231
+      "metalCellCount": 7921,
+      "placementRadiusCells": 76
     }
   },
   "defaultSize": "standard",
-  "productionNominalCellsComment": "Economy calibration only: an extractor's metal rate is its blueprint production divided by this many cells, times the metal cells its footprint actually covers. Deliberately NOT tied to a size class - retuning a size must not silently retune the economy.",
+  "productionNominalCellsComment": "Economy calibration only: an extractor's metal rate is its blueprint production divided by this many cells, times the metal cells its footprint actually covers. Deliberately NOT tied to a size class - retuning a size must not silently retune the economy. Note that a cosine-scattered body is not solid: an extractor over the core covers fewer metal cells than its footprint has cells, and closing that gap means lowering placementRadiusCells, not raising this.",
   "productionNominalCells": 5,
   "surfaceFieldComment": [
     "The rendered ore region. Deposit cells are baked once, at match start,",

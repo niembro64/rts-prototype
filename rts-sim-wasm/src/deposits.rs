@@ -6,23 +6,26 @@ use crate::*;
 use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
-//  C16 — metal-deposit placement + resource footprint growth
+//  C16 — metal-deposit placement + metal-cell scatter
 //
-//  Replaces the deterministic ring placement and connected-cell grow
+//  Replaces the deterministic ring placement and metal-cell scatter
 //  pass from src/metalDepositConfig.ts. TypeScript still owns config
 //  validation and object assembly; Rust owns the numeric oval/ring
 //  layout, snapped grid placement, explicit-height derivation,
-//  null-height terrain anchoring, candidate layout, seeded frontier
-//  weighting, and sorted output cell list.
+//  null-height terrain anchoring, candidate layout, cosine-weighted
+//  seeded draws, and the sorted output cell list.
 // ─────────────────────────────────────────────────────────────────
 
 /// Packed ring row: radiusFraction, countPerPlayer, sliceOffset,
-/// dTerrainLevels, flatPadCells, terrainBlendRadius, resourceCells,
-/// resourceRadiusCells. The last two are PER ROW because a ring (or a
-/// group-manual spot) picks its footprint from the authored size table
+/// dTerrainLevels, flatPadCells, terrainBlendRadius, metalCellCount,
+/// placementRadiusCells. The last two are PER ROW because a ring (or a
+/// group-manual spot) picks its ore body from the authored size table
 /// — one map mixes standard spots with very large ore bodies.
 pub(crate) const METAL_DEPOSIT_RING_INPUT_STRIDE: usize = 8;
-pub(crate) const METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE: usize = 15;
+/// Packed placement row: x, y, originGx, originGy, metalCellCount,
+/// placementRadiusCells, placementRadius, flatPadRadius,
+/// dTerrainLevels, terrainBlendRadius, explicitHeight.
+pub(crate) const METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE: usize = 11;
 pub(crate) const METAL_DEPOSIT_HEIGHT_INPUT_STRIDE: usize = 3;
 pub(crate) const METAL_DEPOSIT_TERRAIN_CONFIG_LEN: usize = 29;
 /// Stage codes for terrainConfig.json `pipeline` entries. The authored
@@ -35,7 +38,6 @@ pub(crate) const TERRAIN_PIPELINE_STAGE_COUNT: usize = 6;
 /// plateauRadius, groupId (-1 = ungrouped classic pad). Matches
 /// TERRAIN_FLAT_ZONE_WASM_STRIDE in terrainGenerationConfig.ts.
 pub(crate) const METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE: usize = 7;
-pub(crate) const METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT: usize = 4;
 /// Mirror of FIRST_ALLY_TEAM_ANGLE in playerLayout.ts: side 0 is centred
 /// straight up the -Y axis, backed against the map's top edge. Deposit ring
 /// slices and the divider ridges between sides are both phased off it, so the
@@ -858,21 +860,18 @@ pub fn metal_deposit_generate_placements(
                               flat_pad_cells: f64,
                               d_terrain_levels: f64,
                               blend_radius: f64,
-                              resource_cells: u32,
-                              resource_radius_cells: i32| {
-            let resource_cells_f64 = resource_cells as f64;
-            let resource_cell_count = resource_cells.saturating_mul(resource_cells);
-            let resource_half_size = (resource_cells_f64 * build_grid_cell_size) * 0.5;
-            let resource_radius = (resource_radius_cells as f64 + 0.5) * build_grid_cell_size;
-            let grid_half_cells = (resource_cells / 2) as i32;
-            let center_gx = (raw_x / build_grid_cell_size).floor() as i32;
-            let center_gy = (raw_y / build_grid_cell_size).floor() as i32;
-            let grid_x = center_gx - grid_half_cells;
-            let grid_y = center_gy - grid_half_cells;
-            let snapped_x = grid_x as f64 * build_grid_cell_size + resource_half_size;
-            let snapped_y = grid_y as f64 * build_grid_cell_size + resource_half_size;
-            let origin_gx = (snapped_x / build_grid_cell_size).floor() as i32;
-            let origin_gy = (snapped_y / build_grid_cell_size).floor() as i32;
+                              metal_cell_count: u32,
+                              placement_radius_cells: i32| {
+            // A deposit sits at the CENTRE of whichever build cell its raw
+            // ring point fell in. That snap reads nothing from the ore body,
+            // so retuning a size class can never move a flat pad or reshape
+            // the generated heightfield.
+            let origin_gx = (raw_x / build_grid_cell_size).floor() as i32;
+            let origin_gy = (raw_y / build_grid_cell_size).floor() as i32;
+            let snapped_x = (origin_gx as f64 + 0.5) * build_grid_cell_size;
+            let snapped_y = (origin_gy as f64 + 0.5) * build_grid_cell_size;
+            let placement_radius =
+                (placement_radius_cells as f64 + 0.5) * build_grid_cell_size;
             let flat_pad_radius = (flat_pad_cells * build_grid_cell_size) * 0.5;
             let explicit_height = if d_terrain_levels.is_nan() {
                 METAL_DEPOSIT_D_TERRAIN_NULL
@@ -883,19 +882,15 @@ pub fn metal_deposit_generate_placements(
             let base = out_count * METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE;
             out_placements[base] = snapped_x;
             out_placements[base + 1] = snapped_y;
-            out_placements[base + 2] = grid_x as f64;
-            out_placements[base + 3] = grid_y as f64;
-            out_placements[base + 4] = origin_gx as f64;
-            out_placements[base + 5] = origin_gy as f64;
-            out_placements[base + 6] = resource_cells_f64;
-            out_placements[base + 7] = resource_cell_count as f64;
-            out_placements[base + 8] = resource_radius_cells as f64;
-            out_placements[base + 9] = resource_half_size;
-            out_placements[base + 10] = resource_radius;
-            out_placements[base + 11] = flat_pad_radius;
-            out_placements[base + 12] = d_terrain_levels;
-            out_placements[base + 13] = blend_radius;
-            out_placements[base + 14] = explicit_height;
+            out_placements[base + 2] = origin_gx as f64;
+            out_placements[base + 3] = origin_gy as f64;
+            out_placements[base + 4] = metal_cell_count as f64;
+            out_placements[base + 5] = placement_radius_cells as f64;
+            out_placements[base + 6] = placement_radius;
+            out_placements[base + 7] = flat_pad_radius;
+            out_placements[base + 8] = d_terrain_levels;
+            out_placements[base + 9] = blend_radius;
+            out_placements[base + 10] = explicit_height;
             out_count += 1;
         };
 
@@ -909,17 +904,17 @@ pub fn metal_deposit_generate_placements(
         let d_terrain_levels = rings[base + 3];
         let flat_pad_cells = rings[base + 4];
         let blend_radius = rings[base + 5];
-        let resource_cells = rings[base + 6];
-        let resource_radius_cells = rings[base + 7];
-        if !resource_cells.is_finite()
-            || resource_cells < 1.0
-            || !resource_radius_cells.is_finite()
-            || resource_radius_cells < 1.0
+        let metal_cell_count = rings[base + 6];
+        let placement_radius_cells = rings[base + 7];
+        if !metal_cell_count.is_finite()
+            || metal_cell_count < 1.0
+            || !placement_radius_cells.is_finite()
+            || placement_radius_cells < 1.0
         {
             return 0;
         }
-        let resource_cells = resource_cells as u32;
-        let resource_radius_cells = resource_radius_cells as i32;
+        let metal_cell_count = metal_cell_count as u32;
+        let placement_radius_cells = placement_radius_cells as i32;
         let ring_radius = radius_fraction * half_extent;
         let ring_angular_offset = slice_offset * slice_width;
 
@@ -930,8 +925,8 @@ pub fn metal_deposit_generate_placements(
                 flat_pad_cells,
                 d_terrain_levels,
                 blend_radius,
-                resource_cells,
-                resource_radius_cells,
+                metal_cell_count,
+                placement_radius_cells,
             );
             continue;
         }
@@ -951,8 +946,8 @@ pub fn metal_deposit_generate_placements(
                     flat_pad_cells,
                     d_terrain_levels,
                     blend_radius,
-                    resource_cells,
-                    resource_radius_cells,
+                    metal_cell_count,
+                    placement_radius_cells,
                 );
             }
         }
@@ -1058,16 +1053,59 @@ pub fn terrain_sample_map_boundary_fades(
     count as u32
 }
 
+// ─────────────────────────────────────────────────────────────────
+//  Metal cell scatter — cosine-tapered placement inside one disc
+//
+//  A deposit's ore body is `metalCellCount` metal build cells scattered
+//  across a disc of `placementRadiusCells` around the deposit's origin
+//  cell. Nothing is grown outward from a seed and no cell has to touch
+//  another: every cell is drawn from the whole disc at once, weighted by
+//  a raised cosine of its radial distance,
+//
+//      p(d) = 0.5 * (1 + cos(PI * d / R))
+//
+//  which is 1.0 at the origin, 0.5 at half the radius, and 0.0 at the
+//  rim. Draws are WITHOUT REPLACEMENT — a cell already holding metal is
+//  never drawn twice — so the authored count always lands in full and a
+//  crowded core simply pushes the remainder further out. That is exactly
+//  rejection sampling (pick a cell uniformly, keep it with probability
+//  p(d), reroll if it is taken) with the rerolls done in closed form.
+//
+//  The rim itself is excluded rather than kept at weight zero: a cell
+//  that can never be drawn is not a candidate, and counting it would let
+//  a size class claim room it cannot actually use.
+//
+//  A Fenwick tree over the candidate weights makes each draw
+//  O(log candidates) rather than a linear sweep of the whole disc, which
+//  matters because the largest authored body scatters thousands of cells.
+// ─────────────────────────────────────────────────────────────────
+
+/// Radial metal probability at distance `d` from the deposit origin,
+/// inside a disc of radius `radius`. Both are in build cells.
+#[inline]
+pub(crate) fn metal_deposit_cell_probability(d: f64, radius: f64) -> f64 {
+    if radius <= 0.0 {
+        return 0.0;
+    }
+    if d >= radius {
+        return 0.0;
+    }
+    0.5 * (1.0 + (std::f64::consts::PI * d / radius).cos())
+}
+
+/// Every build cell a deposit of this radius may legally put metal on:
+/// the lattice points strictly inside the disc, which is where the
+/// cosine probability is still non-zero.
 #[wasm_bindgen]
-pub fn metal_deposit_count_resource_candidates(radius_cells: i32) -> u32 {
-    if radius_cells <= 0 {
+pub fn metal_deposit_count_placement_candidates(placement_radius_cells: i32) -> u32 {
+    if placement_radius_cells <= 0 {
         return 0;
     }
-    let r2 = radius_cells * radius_cells;
+    let r2 = placement_radius_cells * placement_radius_cells;
     let mut count = 0u32;
-    for dy in -radius_cells..=radius_cells {
-        for dx in -radius_cells..=radius_cells {
-            if dx * dx + dy * dy <= r2 {
+    for dy in -placement_radius_cells..=placement_radius_cells {
+        for dx in -placement_radius_cells..=placement_radius_cells {
+            if dx * dx + dy * dy < r2 {
                 count += 1;
             }
         }
@@ -1083,263 +1121,159 @@ pub(crate) fn metal_deposit_rng_next(seed: &mut u32) -> f64 {
     ((t ^ (t >> 14)) as f64) / 4294967296.0
 }
 
-pub(crate) fn metal_deposit_lookup_offset(
-    offset_to_index: &[i32],
-    radius_cells: i32,
-    diameter: i32,
-    dx: i32,
-    dy: i32,
-) -> i32 {
-    if dx < -radius_cells || dx > radius_cells || dy < -radius_cells || dy > radius_cells {
-        return -1;
-    }
-    offset_to_index[((dy + radius_cells) * diameter + dx + radius_cells) as usize]
+/// Fenwick (binary indexed) tree over the candidate weights. Supports the
+/// two operations a without-replacement draw needs — locate the cell a
+/// uniform point in [0, total) lands on, and zero that cell's weight —
+/// each in O(log candidates).
+struct MetalCellWeightTree {
+    count: usize,
+    /// 1-based partial sums; slot 0 is unused.
+    nodes: Vec<f64>,
+    /// Largest power of two not exceeding `count`, for the search descent.
+    highest_bit: usize,
 }
 
+impl MetalCellWeightTree {
+    fn new(weights: &[f64]) -> Self {
+        let count = weights.len();
+        let mut nodes = vec![0.0f64; count + 1];
+        for (i, weight) in weights.iter().enumerate() {
+            let node = i + 1;
+            nodes[node] += weight;
+            let parent = node + (node & node.wrapping_neg());
+            if parent <= count {
+                let carried = nodes[node];
+                nodes[parent] += carried;
+            }
+        }
+        let mut highest_bit = 1usize;
+        while highest_bit * 2 <= count {
+            highest_bit *= 2;
+        }
+        Self {
+            count,
+            nodes,
+            highest_bit,
+        }
+    }
+
+    fn total(&self) -> f64 {
+        let mut sum = 0.0;
+        let mut node = self.count;
+        while node > 0 {
+            sum += self.nodes[node];
+            node -= node & node.wrapping_neg();
+        }
+        sum
+    }
+
+    fn subtract(&mut self, index: usize, weight: f64) {
+        let mut node = index + 1;
+        while node <= self.count {
+            self.nodes[node] -= weight;
+            node += node & node.wrapping_neg();
+        }
+    }
+
+    /// The candidate whose weight interval contains `pick`, a value drawn
+    /// uniformly from [0, total).
+    fn locate(&self, pick: f64) -> usize {
+        let mut position = 0usize;
+        let mut remaining = pick;
+        let mut step = self.highest_bit;
+        while step > 0 {
+            let next = position + step;
+            if next <= self.count && self.nodes[next] <= remaining {
+                remaining -= self.nodes[next];
+                position = next;
+            }
+            step /= 2;
+        }
+        position.min(self.count.saturating_sub(1))
+    }
+}
+
+/// Scatter `metal_cell_count` metal cells over the disc of
+/// `placement_radius_cells` around (origin_gx, origin_gy), cosine-weighted
+/// toward the centre and never landing twice on the same cell. Writes
+/// (gx, gy) pairs sorted by y then x and returns the cell count, which is
+/// always the requested count unless the disc cannot hold it.
 #[wasm_bindgen]
-pub fn metal_deposit_grow_resource_cells(
+pub fn metal_deposit_place_metal_cells(
     origin_gx: i32,
     origin_gy: i32,
-    target_cell_count: u32,
-    radius_cells: i32,
+    metal_cell_count: u32,
+    placement_radius_cells: i32,
     seed: u32,
     out_cells: &mut [i32],
 ) -> u32 {
-    if target_cell_count == 0 || radius_cells <= 0 {
+    if metal_cell_count == 0 || placement_radius_cells <= 0 {
         return 0;
     }
-    let target = target_cell_count as usize;
+    let target = metal_cell_count as usize;
     if out_cells.len() < target * 2 {
         return 0;
     }
 
-    let diameter = radius_cells * 2 + 1;
-    let mut offset_to_index = vec![-1i32; (diameter * diameter) as usize];
+    let radius = placement_radius_cells as f64;
+    let r2 = placement_radius_cells * placement_radius_cells;
     let mut dx_values: Vec<i32> = Vec::new();
     let mut dy_values: Vec<i32> = Vec::new();
-    let mut center_bias: Vec<f64> = Vec::new();
-    let r2 = radius_cells * radius_cells;
-    let radius_scale = (radius_cells.max(1)) as f64;
-    let mut origin_index = -1i32;
-
-    for dy in -radius_cells..=radius_cells {
-        for dx in -radius_cells..=radius_cells {
+    let mut weights: Vec<f64> = Vec::new();
+    for dy in -placement_radius_cells..=placement_radius_cells {
+        for dx in -placement_radius_cells..=placement_radius_cells {
             let distance_squared = dx * dx + dy * dy;
-            if distance_squared > r2 {
+            if distance_squared >= r2 {
                 continue;
             }
-            let index = dx_values.len() as i32;
-            offset_to_index[((dy + radius_cells) * diameter + dx + radius_cells) as usize] = index;
             dx_values.push(dx);
             dy_values.push(dy);
-            center_bias.push(1.0 - ((distance_squared as f64).sqrt() / radius_scale).min(1.0));
-            if dx == 0 && dy == 0 {
-                origin_index = index;
-            }
+            weights.push(metal_deposit_cell_probability(
+                (distance_squared as f64).sqrt(),
+                radius,
+            ));
         }
     }
 
-    let count = dx_values.len();
-    if origin_index < 0 || count < target {
+    let count = weights.len();
+    if count < target {
         return 0;
     }
 
-    let mut neighbor_indices = vec![-1i32; count * METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT];
-    for i in 0..count {
-        let dx = dx_values[i];
-        let dy = dy_values[i];
-        let base = i * METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT;
-        neighbor_indices[base] =
-            metal_deposit_lookup_offset(&offset_to_index, radius_cells, diameter, dx + 1, dy);
-        neighbor_indices[base + 1] =
-            metal_deposit_lookup_offset(&offset_to_index, radius_cells, diameter, dx - 1, dy);
-        neighbor_indices[base + 2] =
-            metal_deposit_lookup_offset(&offset_to_index, radius_cells, diameter, dx, dy + 1);
-        neighbor_indices[base + 3] =
-            metal_deposit_lookup_offset(&offset_to_index, radius_cells, diameter, dx, dy - 1);
-    }
-
-    let mut selected = vec![0u8; count];
-    let mut frontier = vec![0u8; count];
-    let mut neighbor_counts = vec![0u8; count];
-    let mut frontier_prev = vec![-1i32; count];
-    let mut frontier_next = vec![-1i32; count];
-    let mut weights = vec![0.0f64; count];
-    let mut selected_indices: Vec<usize> = Vec::with_capacity(target);
-    let mut frontier_head = -1i32;
-    let mut frontier_tail = -1i32;
-    let mut frontier_size = 0usize;
-
-    pub(crate) fn remove_frontier(
-        index: usize,
-        frontier: &mut [u8],
-        frontier_prev: &mut [i32],
-        frontier_next: &mut [i32],
-        frontier_head: &mut i32,
-        frontier_tail: &mut i32,
-        frontier_size: &mut usize,
-    ) {
-        if frontier[index] == 0 {
-            return;
-        }
-        let prev = frontier_prev[index];
-        let next = frontier_next[index];
-        if prev >= 0 {
-            frontier_next[prev as usize] = next;
-        } else {
-            *frontier_head = next;
-        }
-        if next >= 0 {
-            frontier_prev[next as usize] = prev;
-        } else {
-            *frontier_tail = prev;
-        }
-        frontier_prev[index] = -1;
-        frontier_next[index] = -1;
-        frontier[index] = 0;
-        *frontier_size -= 1;
-    }
-
-    pub(crate) fn append_frontier(
-        index: i32,
-        selected: &[u8],
-        frontier: &mut [u8],
-        frontier_prev: &mut [i32],
-        frontier_next: &mut [i32],
-        frontier_head: &mut i32,
-        frontier_tail: &mut i32,
-        frontier_size: &mut usize,
-    ) {
-        if index < 0 {
-            return;
-        }
-        let i = index as usize;
-        if selected[i] != 0 || frontier[i] != 0 {
-            return;
-        }
-        frontier[i] = 1;
-        frontier_prev[i] = *frontier_tail;
-        frontier_next[i] = -1;
-        if *frontier_tail >= 0 {
-            frontier_next[*frontier_tail as usize] = index;
-        } else {
-            *frontier_head = index;
-        }
-        *frontier_tail = index;
-        *frontier_size += 1;
-    }
-
-    pub(crate) fn add_selected(
-        index: usize,
-        selected: &mut [u8],
-        frontier: &mut [u8],
-        neighbor_counts: &mut [u8],
-        frontier_prev: &mut [i32],
-        frontier_next: &mut [i32],
-        selected_indices: &mut Vec<usize>,
-        neighbor_indices: &[i32],
-        frontier_head: &mut i32,
-        frontier_tail: &mut i32,
-        frontier_size: &mut usize,
-    ) {
-        if selected[index] != 0 {
-            return;
-        }
-        selected[index] = 1;
-        selected_indices.push(index);
-        remove_frontier(
-            index,
-            frontier,
-            frontier_prev,
-            frontier_next,
-            frontier_head,
-            frontier_tail,
-            frontier_size,
-        );
-
-        let base = index * METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT;
-        for i in 0..METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT {
-            let neighbor_index = neighbor_indices[base + i];
-            if neighbor_index >= 0 {
-                neighbor_counts[neighbor_index as usize] += 1;
-            }
-        }
-        for i in 0..METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT {
-            append_frontier(
-                neighbor_indices[base + i],
-                selected,
-                frontier,
-                frontier_prev,
-                frontier_next,
-                frontier_head,
-                frontier_tail,
-                frontier_size,
-            );
-        }
-    }
-
-    add_selected(
-        origin_index as usize,
-        &mut selected,
-        &mut frontier,
-        &mut neighbor_counts,
-        &mut frontier_prev,
-        &mut frontier_next,
-        &mut selected_indices,
-        &neighbor_indices,
-        &mut frontier_head,
-        &mut frontier_tail,
-        &mut frontier_size,
-    );
-
+    let mut tree = MetalCellWeightTree::new(&weights);
     let mut rng_seed = seed;
-    while selected_indices.len() < target && frontier_size > 0 {
-        let mut total_weight = 0.0;
-        let mut last_frontier_index = -1i32;
-        let mut index = frontier_head;
-        while index >= 0 {
-            let i = index as usize;
-            let weight = 0.45
-                + neighbor_counts[i] as f64 * 1.75
-                + center_bias[i] * 2.25
-                + metal_deposit_rng_next(&mut rng_seed) * 0.35;
-            total_weight += weight;
-            weights[i] = weight;
-            last_frontier_index = index;
-            index = frontier_next[i];
-        }
-
-        let mut pick = metal_deposit_rng_next(&mut rng_seed) * total_weight;
-        let mut chosen_index = last_frontier_index;
-        index = frontier_head;
-        while index >= 0 {
-            let i = index as usize;
-            pick -= weights[i];
-            if pick <= 0.0 {
-                chosen_index = index;
-                break;
-            }
-            index = frontier_next[i];
-        }
-        if chosen_index < 0 {
+    let mut chosen_indices: Vec<usize> = Vec::with_capacity(target);
+    while chosen_indices.len() < target {
+        let total = tree.total();
+        if !(total > 0.0) {
             break;
         }
-        add_selected(
-            chosen_index as usize,
-            &mut selected,
-            &mut frontier,
-            &mut neighbor_counts,
-            &mut frontier_prev,
-            &mut frontier_next,
-            &mut selected_indices,
-            &neighbor_indices,
-            &mut frontier_head,
-            &mut frontier_tail,
-            &mut frontier_size,
-        );
+        let mut index = tree.locate(metal_deposit_rng_next(&mut rng_seed) * total);
+        if weights[index] <= 0.0 {
+            // The tree total drifts by a few ULP as weights are zeroed,
+            // so a draw can land one slot past the live range. Take the
+            // next cell that still has weight rather than re-rolling,
+            // which would make the sequence depend on rounding.
+            let mut probe = index;
+            let mut found = false;
+            for _ in 0..count {
+                probe = if probe + 1 < count { probe + 1 } else { 0 };
+                if weights[probe] > 0.0 {
+                    index = probe;
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                break;
+            }
+        }
+        tree.subtract(index, weights[index]);
+        weights[index] = 0.0;
+        chosen_indices.push(index);
     }
 
-    let mut cells: Vec<(i32, i32)> = selected_indices
+    let mut cells: Vec<(i32, i32)> = chosen_indices
         .iter()
         .map(|&index| (origin_gx + dx_values[index], origin_gy + dy_values[index]))
         .collect();

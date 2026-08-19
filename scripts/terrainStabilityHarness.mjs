@@ -155,19 +155,16 @@ function hashDeposits(deposits) {
     h.number(deposit.y);
     h.number(deposit.height);
     h.number(deposit.dTerrainLevels ?? Number.NaN);
-    h.uint32(deposit.gridX);
-    h.uint32(deposit.gridY);
     h.uint32(deposit.originGx);
     h.uint32(deposit.originGy);
-    h.uint32(deposit.resourceCells);
-    h.uint32(deposit.resourceCellCount);
-    h.uint32(deposit.resourceRadiusCells);
+    h.uint32(deposit.authoredMetalCellCount);
+    h.uint32(deposit.metalCellCount);
+    h.uint32(deposit.placementRadiusCells);
     h.uint32(deposit.boundsGridX);
     h.uint32(deposit.boundsGridY);
     h.uint32(deposit.boundsGridW);
     h.uint32(deposit.boundsGridH);
-    h.number(deposit.resourceHalfSize);
-    h.number(deposit.resourceRadius);
+    h.number(deposit.placementRadius);
     h.number(deposit.flatPadRadius);
     h.number(deposit.blendRadius);
     h.uint32(deposit.cells.length);
@@ -184,7 +181,7 @@ function hashDeposits(deposits) {
 function summarizeDeposits(deposits) {
   return {
     count: deposits.length,
-    resourceCellCount: deposits.reduce(
+    metalCellCount: deposits.reduce(
       (sum, deposit) => sum + deposit.cells.length,
       0,
     ),

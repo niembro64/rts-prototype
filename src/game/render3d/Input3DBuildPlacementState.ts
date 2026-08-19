@@ -198,7 +198,7 @@ export class Input3DBuildPlacementState {
     for (const deposit of this.metalDeposits) {
       const dx = deposit.x - worldX;
       const dy = deposit.y - worldY;
-      if (Math.sqrt(dx * dx + dy * dy) > safeRadius + deposit.resourceRadius) continue;
+      if (Math.sqrt(dx * dx + dy * dy) > safeRadius + deposit.placementRadius) continue;
 
       this.tryAddPlannedBuildPlacement(context, deposit.x, deposit.y, true);
     }

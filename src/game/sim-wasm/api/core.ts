@@ -1165,12 +1165,21 @@ export interface SimWasm {
   readonly vegetationRemovedCount: () => number;
   readonly vegetationReadRemoved: (from: number, out: Uint32Array) => number;
   readonly vegetationStateHash: () => number;
-  readonly metalDepositCountResourceCandidates: (radiusCells: number) => number;
-  readonly metalDepositGrowResourceCells: (
+  /** How many build cells a placement disc of this radius can legally
+   *  hold — the lattice points strictly inside it, where the cosine
+   *  probability is still non-zero. */
+  readonly metalDepositCountPlacementCandidates: (
+    placementRadiusCells: number,
+  ) => number;
+  /** Scatter one deposit's metal cells over its placement disc: draws
+   *  weighted by a raised cosine of radial distance (1.0 at the origin,
+   *  0.5 at half the radius, 0.0 at the rim), never twice on one cell,
+   *  so the whole authored count lands. */
+  readonly metalDepositPlaceMetalCells: (
     originGx: number,
     originGy: number,
-    targetCellCount: number,
-    radiusCells: number,
+    metalCellCount: number,
+    placementRadiusCells: number,
     seed: number,
     outCells: Int32Array,
   ) => number;

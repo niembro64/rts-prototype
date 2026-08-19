@@ -15,12 +15,15 @@
 // on the same radial spokes without baking a player-count-specific
 // radian value into config.
 //
-// Each deposit owns an irregular connected logical resource footprint
-// on the fine build grid. The authored `resourceCells` value remains
-// the nominal side length used to derive the target cell count
-// (`resourceCells²`), while the generated footprint grows out from
-// one origin build cell within a circular candidate radius. Terrain
-// flattening still reads a separate flat-pad config.
+// Each deposit owns a logical ore body on the fine build grid: exactly
+// `metalCellCount` metal cells scattered across a disc of
+// `placementRadiusCells` around its origin cell. The cells are drawn
+// statistically, not grown — a cell's chance of being metal is a raised
+// cosine of its distance from the origin (1.0 at the centre, 0.5 at half
+// the radius, 0.0 at the rim) and no cell is ever drawn twice, so the
+// authored count always lands in full. There is no connectivity rule and
+// no square footprint. Terrain flattening still reads a separate
+// flat-pad config.
 //
 // Each ring also carries `dTerrainLevels`. When set to an integer it
 // is a signed count of METAL_DEPOSIT_STEP units above/below world
@@ -75,8 +78,8 @@ type DepositRing = {
   sliceOffset?: number;
   /** Name of an entry in the config's `sizes` table, deciding how big
    *  this ring's ore bodies are. Omit to inherit `defaultSize`. Size is
-   *  the ORE FOOTPRINT and is independent of `flatPadCells` — a large
-   *  body over a small pad drapes across whatever relief it crosses. */
+   *  the ORE BODY and is independent of `flatPadCells` — a large body
+   *  over a small pad drapes across whatever relief it crosses. */
   size?: string;
   /** Signed count of METAL_DEPOSIT_STEP units above/below world height
    *  0, used as-authored regardless of the CENTER bar sign. Pass
@@ -84,11 +87,11 @@ type DepositRing = {
    *  deposit's xy instead. */
   dTerrainLevels: number | null;
   /** Circular terrain-flattening diameter in fine building cells. Larger
-   *  than the ore footprint gives the extractor a clean buildable pad
-   *  without increasing production area; SMALLER than the footprint is
-   *  equally legal and lets the ore body leave the pad and drape over
-   *  the surrounding relief. Pass `null` to auto-size to the smallest
-   *  cell count whose circular radius covers the ore footprint. */
+   *  than the ore body gives the extractor a clean buildable pad without
+   *  increasing production area; SMALLER than the body is equally legal
+   *  and lets the ore leave the pad and drape over the surrounding
+   *  relief. Pass `null` to auto-size to the smallest cell count whose
+   *  circular radius covers the placement disc. */
   flatPadCells: number | null;
   /** World-unit width outside the circular flat pad where terrain eases
    *  back to the natural heightmap. Larger values make the deposit pad
@@ -171,13 +174,17 @@ type MetalDepositClusterConfig =
   | MetalDepositRingClusterConfig
   | MetalDepositManualClusterConfig;
 
-/** One authored ore-body size class. `resourceCells²` connected metal
- *  cells are grown from the origin cell inside a circular candidate
- *  radius of `resourceRadiusCells`; the ratio between them sets how
- *  irregular the silhouette reads, so classes scale together. */
+/** One authored ore-body size class: `metalCellCount` metal cells
+ *  scattered over a disc of `placementRadiusCells`, cosine-weighted
+ *  toward the origin. The ratio between them sets how solid the core
+ *  reads and how far the fringe frays, so classes that keep it scale
+ *  together in size without changing character. */
 export type MetalDepositSize = {
-  resourceCells: number;
-  resourceRadiusCells: number;
+  /** Exactly how many metal build cells this ore body owns. */
+  metalCellCount: number;
+  /** Radius, in build cells from the origin cell, of the disc those
+   *  cells may land in. Outside it nothing can ever be metal. */
+  placementRadiusCells: number;
 };
 
 /** How the ore REGION is baked for rendering. See metalDepositConfig.json
@@ -198,7 +205,7 @@ export type MetalDepositSurfaceFieldConfig = {
  *      and the outermost deposit ring (keeps deposits from clipping
  *      into commander spawns).
  *    - `sizes` / `defaultSize`: the ore-body size classes rings pick
- *      from. Size decides the ore FOOTPRINT only; how much terrain is
+ *      from. Size decides the ORE BODY only; how much terrain is
  *      flattened underneath stays each ring's `flatPadCells`, and the
  *      two are deliberately independent.
  *    - `productionNominalCells`: economy calibration for the extractor
@@ -226,29 +233,16 @@ export function getMetalDepositSize(name: string): MetalDepositSize {
       `known sizes: ${Object.keys(METAL_DEPOSIT_CONFIG.sizes).join(', ')}`,
     );
   }
-  const cells = size.resourceCells;
-  const radiusCells = size.resourceRadiusCells;
-  if (!Number.isInteger(cells) || cells <= 0) {
+  const cellCount = size.metalCellCount;
+  const radiusCells = size.placementRadiusCells;
+  if (!Number.isInteger(cellCount) || cellCount <= 0) {
     throw new Error(
-      `Metal deposit size "${name}" resourceCells must be a positive integer; received ${cells}`,
-    );
-  }
-  // A deposit snaps to (centerCell - floor(n/2)) * cellSize + n * cellSize/2.
-  // For odd n that reduces to centerCell * cellSize + cellSize/2 — a cell
-  // centre, INDEPENDENT of n. For even n it lands on a cell corner, half a
-  // cell away. Allowing even sizes would therefore let a purely cosmetic
-  // size change move the deposit, and with it the flat pad and the whole
-  // generated heightfield. Ore size must never reshape terrain.
-  if (cells % 2 === 0) {
-    throw new Error(
-      `Metal deposit size "${name}" resourceCells must be ODD so the deposit ` +
-      `snaps to a build-cell centre and its size cannot move the flat pad; ` +
-      `received ${cells}`,
+      `Metal deposit size "${name}" metalCellCount must be a positive integer; received ${cellCount}`,
     );
   }
   if (!Number.isInteger(radiusCells) || radiusCells <= 0) {
     throw new Error(
-      `Metal deposit size "${name}" resourceRadiusCells must be a positive integer; received ${radiusCells}`,
+      `Metal deposit size "${name}" placementRadiusCells must be a positive integer; received ${radiusCells}`,
     );
   }
   return size;
@@ -264,32 +258,30 @@ type MetalDepositResourceCell = {
 export type MetalDeposit = {
   /** Stable index — same number across all clients/peers in a session. */
   id: number;
-  /** World-space center of the origin resource cell and flat terrain pad. */
+  /** World-space center of the origin build cell and flat terrain pad. */
   x: number;
   y: number;
-  /** Top-left build cell of the nominal legacy square centered on the origin. */
-  gridX: number;
-  gridY: number;
-  /** Origin build cell from which the connected footprint is grown. */
+  /** Origin build cell — the centre of the cosine placement disc. */
   originGx: number;
   originGy: number;
-  /** Nominal legacy side length. The generated target count is this squared. */
-  resourceCells: number;
-  /** Actual connected metal-producing build cells. */
+  /** How many metal cells the authored size class asks this body for.
+   *  Cluster copies inherit it; the METAL coverage setting may scatter a
+   *  different number, which lands in `metalCellCount`. */
+  authoredMetalCellCount: number;
+  /** The metal-producing build cells this body actually owns. */
   cells: MetalDepositResourceCell[];
-  /** Actual count of metal-producing build cells. */
-  resourceCellCount: number;
-  /** Candidate-circle radius, measured from the origin cell in build cells. */
-  resourceRadiusCells: number;
+  /** How many metal cells landed — `cells.length`. */
+  metalCellCount: number;
+  /** Radius of the placement disc, measured from the origin cell in
+   *  build cells. No metal exists outside it. */
+  placementRadiusCells: number;
   /** Tight build-grid bounds around `cells`. */
   boundsGridX: number;
   boundsGridY: number;
   boundsGridW: number;
   boundsGridH: number;
-  /** Legacy nominal half-size in world units. */
-  resourceHalfSize: number;
-  /** Radius enclosing the generated cell footprint in world units. */
-  resourceRadius: number;
+  /** The placement disc's outer radius in world units. */
+  placementRadius: number;
   /** Radius of the circular flat terrain pad in world units. */
   flatPadRadius: number;
   /** Signed count of METAL_DEPOSIT_STEP units, taken directly from
@@ -313,20 +305,17 @@ type MetalDepositPlacement = Pick<
   MetalDeposit,
   | 'x'
   | 'y'
-  | 'gridX'
-  | 'gridY'
   | 'originGx'
   | 'originGy'
-  | 'resourceCells'
+  | 'authoredMetalCellCount'
   | 'cells'
-  | 'resourceCellCount'
-  | 'resourceRadiusCells'
+  | 'metalCellCount'
+  | 'placementRadiusCells'
   | 'boundsGridX'
   | 'boundsGridY'
   | 'boundsGridW'
   | 'boundsGridH'
-  | 'resourceHalfSize'
-  | 'resourceRadius'
+  | 'placementRadius'
   | 'flatPadRadius'
 >;
 
@@ -341,7 +330,7 @@ type PendingPlacement = {
 };
 
 const METAL_DEPOSIT_RING_INPUT_STRIDE = 8;
-const METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE = 15;
+const METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE = 11;
 const METAL_DEPOSIT_HEIGHT_INPUT_STRIDE = 3;
 const METAL_DEPOSIT_D_TERRAIN_NULL = Number.NaN;
 
@@ -456,7 +445,7 @@ function makeMetalDepositFlatZone(
     height,
     blendRadius: p.blendRadius,
     plateauRadius: grouped
-      ? Math.min(p.placement.resourceRadius, p.placement.flatPadRadius)
+      ? Math.min(p.placement.placementRadius, p.placement.flatPadRadius)
       : p.placement.flatPadRadius,
     groupId: p.groupId,
   };
@@ -480,14 +469,14 @@ type MetalDepositPackRow = {
   blendRadius: number;
   /** Resolved from the row's authored size name — per row, because one
    *  map mixes standard spots with very large ore bodies. */
-  resourceCells: number;
-  resourceRadiusCells: number;
+  metalCellCount: number;
+  placementRadiusCells: number;
 };
 
-/** World-unit radius of the candidate circle a size grows inside. This
+/** World-unit radius of the disc a size scatters its metal inside. This
  *  is what a `null` flatPadCells auto-sizes its pad to cover. */
-function metalDepositResourceRadiusForSize(size: MetalDepositSize): number {
-  return (size.resourceRadiusCells + 0.5) * BUILD_GRID_CELL_SIZE;
+function metalDepositPlacementRadiusForSize(size: MetalDepositSize): number {
+  return (size.placementRadiusCells + 0.5) * BUILD_GRID_CELL_SIZE;
 }
 
 function buildMetalDepositPackPlan(): MetalDepositPackRow[] {
@@ -495,10 +484,10 @@ function buildMetalDepositPackPlan(): MetalDepositPackRow[] {
   for (const ring of METAL_DEPOSIT_CONFIG.rings) {
     const cluster = validMetalDepositClusterConfig(ring.depositCluster);
     const ringSize = resolveMetalDepositSize(ring.size);
-    const ringResourceRadius = metalDepositResourceRadiusForSize(ringSize);
+    const ringPlacementRadius = metalDepositPlacementRadiusForSize(ringSize);
     const ringPadCells = resolveMetalDepositFlatPadCells(
       ring.flatPadCells,
-      ringResourceRadius,
+      ringPlacementRadius,
     );
     const ringDTerrain = validMetalDepositDTerrainLevels(ring.dTerrainLevels);
     const blendRadius = validMetalDepositTerrainBlendRadius(ring.terrainBlendRadius);
@@ -526,11 +515,11 @@ function buildMetalDepositPackPlan(): MetalDepositPackRow[] {
             ? ringPadCells
             : resolveMetalDepositFlatPadCells(
               spot.flatPadCells === undefined ? ring.flatPadCells : spot.flatPadCells,
-              metalDepositResourceRadiusForSize(spotSize),
+              metalDepositPlacementRadiusForSize(spotSize),
             ),
           blendRadius,
-          resourceCells: spotSize.resourceCells,
-          resourceRadiusCells: spotSize.resourceRadiusCells,
+          metalCellCount: spotSize.metalCellCount,
+          placementRadiusCells: spotSize.placementRadiusCells,
         });
       }
       continue;
@@ -545,8 +534,8 @@ function buildMetalDepositPackPlan(): MetalDepositPackRow[] {
       dTerrainLevels: ringDTerrain,
       flatPadCells: ringPadCells,
       blendRadius,
-      resourceCells: ringSize.resourceCells,
-      resourceRadiusCells: ringSize.resourceRadiusCells,
+      metalCellCount: ringSize.metalCellCount,
+      placementRadiusCells: ringSize.placementRadiusCells,
     });
   }
   return plan;
@@ -588,8 +577,8 @@ function generateMetalDepositPlacementsFromWasm(
   let sourceIndex = 0;
   const consumeOrigin = (row: MetalDepositPackRow, groupId: number): PendingPlacement => {
     const base = sourceIndex * METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE;
-    const dTerrainRaw = placementRows[base + 12];
-    const explicitHeightRaw = placementRows[base + 14];
+    const dTerrainRaw = placementRows[base + 8];
+    const explicitHeightRaw = placementRows[base + 10];
     const origin: PendingPlacement = {
       placement: makeMetalDepositPlacementFromWasmRow(
         placementRows,
@@ -600,7 +589,7 @@ function generateMetalDepositPlacementsFromWasm(
       dTerrainLevels: Number.isNaN(dTerrainRaw)
         ? null
         : finiteInteger(dTerrainRaw, 'metal deposit dTerrainLevels'),
-      blendRadius: placementRows[base + 13],
+      blendRadius: placementRows[base + 9],
       explicitHeight: Number.isNaN(explicitHeightRaw) ? null : explicitHeightRaw,
       demoAutoExtractor: row.ring.demoAutoExtractor !== false,
       groupId,
@@ -719,7 +708,7 @@ function expandMetalDepositClusterPlacements(
         placement.flatPadRadius =
           resolveMetalDepositFlatPadCells(
             spot.flatPadCells,
-            origin.placement.resourceRadius,
+            origin.placement.placementRadius,
           ) * BUILD_GRID_CELL_SIZE * 0.5;
       }
       out.push({
@@ -779,46 +768,40 @@ function makeMetalDepositPlacementFromRawPoint(
   seedIndex: number,
   coverage: MetalCoverage,
 ): MetalDepositPlacement {
-  const gridHalfCells = Math.floor(template.resourceCells / 2);
-  const centerGx = Math.floor(rawX / BUILD_GRID_CELL_SIZE);
-  const centerGy = Math.floor(rawY / BUILD_GRID_CELL_SIZE);
-  const gridX = centerGx - gridHalfCells;
-  const gridY = centerGy - gridHalfCells;
-  const x = gridX * BUILD_GRID_CELL_SIZE + template.resourceHalfSize;
-  const y = gridY * BUILD_GRID_CELL_SIZE + template.resourceHalfSize;
-  const originGx = Math.floor(x / BUILD_GRID_CELL_SIZE);
-  const originGy = Math.floor(y / BUILD_GRID_CELL_SIZE);
-  const resourceCellCount = template.resourceCells * template.resourceCells;
-  const ore = metalDepositOreGrowth(
+  // Mirrors the Rust placement kernel: a deposit sits at the CENTRE of
+  // whichever build cell its raw point fell in, reading nothing from the
+  // ore body, so a size class can never move a flat pad.
+  const originGx = Math.floor(rawX / BUILD_GRID_CELL_SIZE);
+  const originGy = Math.floor(rawY / BUILD_GRID_CELL_SIZE);
+  const x = (originGx + 0.5) * BUILD_GRID_CELL_SIZE;
+  const y = (originGy + 0.5) * BUILD_GRID_CELL_SIZE;
+  const ore = metalDepositOreForCoverage(
     coverage,
-    resourceCellCount,
-    template.resourceRadiusCells,
+    template.authoredMetalCellCount,
+    template.placementRadiusCells,
   );
-  const cells = growMetalDepositResourceCells(
+  const cells = placeMetalDepositCells(
     originGx,
     originGy,
-    ore.targetCellCount,
-    ore.radiusCells,
+    ore.metalCellCount,
+    ore.placementRadiusCells,
     hashMetalDepositSeed(originGx, originGy, seedIndex),
   );
   const bounds = getMetalDepositCellBounds(cells);
   return {
     x,
     y,
-    gridX,
-    gridY,
     originGx,
     originGy,
-    resourceCells: template.resourceCells,
+    authoredMetalCellCount: template.authoredMetalCellCount,
     cells,
-    resourceCellCount: cells.length,
-    resourceRadiusCells: template.resourceRadiusCells,
+    metalCellCount: cells.length,
+    placementRadiusCells: template.placementRadiusCells,
     boundsGridX: bounds.gridX,
     boundsGridY: bounds.gridY,
     boundsGridW: bounds.gridW,
     boundsGridH: bounds.gridH,
-    resourceHalfSize: template.resourceHalfSize,
-    resourceRadius: template.resourceRadius,
+    placementRadius: template.placementRadius,
     flatPadRadius: template.flatPadRadius,
   };
 }
@@ -871,8 +854,8 @@ function packMetalDepositRingRows(plan: readonly MetalDepositPackRow[]): Float64
     ringRows[base + 3] = row.dTerrainLevels ?? METAL_DEPOSIT_D_TERRAIN_NULL;
     ringRows[base + 4] = row.flatPadCells;
     ringRows[base + 5] = row.blendRadius;
-    ringRows[base + 6] = row.resourceCells;
-    ringRows[base + 7] = row.resourceRadiusCells;
+    ringRows[base + 6] = row.metalCellCount;
+    ringRows[base + 7] = row.placementRadiusCells;
   }
   return ringRows;
 }
@@ -885,51 +868,48 @@ function makeMetalDepositPlacementFromWasmRow(
 ): MetalDepositPlacement {
   const x = rows[base];
   const y = rows[base + 1];
-  const gridX = finiteInteger(rows[base + 2], 'metal deposit gridX');
-  const gridY = finiteInteger(rows[base + 3], 'metal deposit gridY');
-  const originGx = finiteInteger(rows[base + 4], 'metal deposit originGx');
-  const originGy = finiteInteger(rows[base + 5], 'metal deposit originGy');
-  const resourceCells = finiteInteger(rows[base + 6], 'metal deposit resourceCells');
-  const resourceCellCount = finiteInteger(
-    rows[base + 7],
-    'metal deposit resourceCellCount',
+  const originGx = finiteInteger(rows[base + 2], 'metal deposit originGx');
+  const originGy = finiteInteger(rows[base + 3], 'metal deposit originGy');
+  const authoredMetalCellCount = finiteInteger(
+    rows[base + 4],
+    'metal deposit metalCellCount',
   );
-  const resourceRadiusCells = finiteInteger(
-    rows[base + 8],
-    'metal deposit resourceRadiusCells',
+  const placementRadiusCells = finiteInteger(
+    rows[base + 5],
+    'metal deposit placementRadiusCells',
   );
-  const resourceHalfSize = rows[base + 9];
-  const resourceRadius = rows[base + 10];
-  const flatPadRadius = rows[base + 11];
+  const placementRadius = rows[base + 6];
+  const flatPadRadius = rows[base + 7];
   // Everything above this line is the AUTHORED body — the one the terrain
-  // pipeline sized its pad and plateau from. Only the grown cells below
-  // follow the METAL setting.
-  const ore = metalDepositOreGrowth(coverage, resourceCellCount, resourceRadiusCells);
-  const cells = growMetalDepositResourceCells(
+  // pipeline sized its pad and plateau from. Only the scattered cells
+  // below follow the METAL setting.
+  const ore = metalDepositOreForCoverage(
+    coverage,
+    authoredMetalCellCount,
+    placementRadiusCells,
+  );
+  const cells = placeMetalDepositCells(
     originGx,
     originGy,
-    ore.targetCellCount,
-    ore.radiusCells,
+    ore.metalCellCount,
+    ore.placementRadiusCells,
     hashMetalDepositSeed(originGx, originGy, seedIndex),
   );
   const bounds = getMetalDepositCellBounds(cells);
   return {
     x,
     y,
-    gridX,
-    gridY,
     originGx,
     originGy,
-    resourceCells,
+    authoredMetalCellCount,
     cells,
-    resourceCellCount: cells.length,
-    resourceRadiusCells,
+    metalCellCount: cells.length,
+    placementRadiusCells,
     boundsGridX: bounds.gridX,
     boundsGridY: bounds.gridY,
     boundsGridW: bounds.gridW,
     boundsGridH: bounds.gridH,
-    resourceHalfSize,
-    resourceRadius,
+    placementRadius,
     flatPadRadius,
   };
 }
@@ -942,47 +922,55 @@ function finiteInteger(value: number, label: string): number {
 }
 
 /** Resolve a ring's or spot's authored size name (undefined = the
- *  config default) and prove the candidate circle can actually hold the
- *  target cell count. A size class that cannot grow its own footprint
- *  is a config error, caught here rather than as a short cell list. */
+ *  config default) and prove the placement disc can actually hold the
+ *  authored cell count. Every cell must land, so a disc too small for
+ *  its own body is a config error — caught here rather than showing up
+ *  later as a short cell list. */
 function resolveMetalDepositSize(name: string | undefined): MetalDepositSize {
   const size = getMetalDepositSize(name ?? METAL_DEPOSIT_CONFIG.defaultSize);
-  const targetCellCount = size.resourceCells * size.resourceCells;
-  const candidateCount = countGridCellsInRadius(size.resourceRadiusCells);
-  if (candidateCount < targetCellCount) {
+  const candidateCount = countMetalDepositPlacementCandidates(
+    size.placementRadiusCells,
+  );
+  if (candidateCount < size.metalCellCount) {
     throw new Error(
-      `Metal deposit size resourceRadiusCells (${size.resourceRadiusCells}) offers ` +
-      `${candidateCount} candidate cells, which cannot fit ${targetCellCount}`,
+      `Metal deposit size placementRadiusCells (${size.placementRadiusCells}) offers ` +
+      `${candidateCount} placeable cells, which cannot hold ${size.metalCellCount}`,
     );
   }
   return size;
 }
 
-/** The ore body a METAL coverage rung actually grows at one spot, given the
- *  authored size class. Terrain never reads this: pads, plateau radii, blend
- *  skirts and the deposit's own xy all keep the AUTHORED size, so all four
- *  rungs shape the land identically and only the ore moves.
- *    NONE  - nothing is grown (and generateMetalDeposits drops the list).
+/** The ore body a METAL coverage rung actually scatters at one spot, given
+ *  the authored size class. Terrain never reads this: pads, plateau radii,
+ *  blend skirts and the deposit's own xy all keep the AUTHORED size, so all
+ *  four rungs shape the land identically and only the ore moves.
+ *    NONE  - nothing is placed (and generateMetalDeposits drops the list).
  *    SOME  - one default-size body per spot, the pre-size-table world.
  *    MORE  - the per-ring authored sizes.
  *    ALL   - authored too: the bodies stay under a map that is ore anyway,
  *            so METAL-everywhere behaves exactly as it always has. */
-function metalDepositOreGrowth(
+function metalDepositOreForCoverage(
   coverage: MetalCoverage,
-  authoredCellCount: number,
-  authoredRadiusCells: number,
-): { targetCellCount: number; radiusCells: number } {
+  authoredMetalCellCount: number,
+  authoredPlacementRadiusCells: number,
+): { metalCellCount: number; placementRadiusCells: number } {
   if (coverage === 'none') {
-    return { targetCellCount: 0, radiusCells: authoredRadiusCells };
+    return {
+      metalCellCount: 0,
+      placementRadiusCells: authoredPlacementRadiusCells,
+    };
   }
   if (coverage === 'some') {
     const size = getMetalDepositSize(METAL_DEPOSIT_CONFIG.defaultSize);
     return {
-      targetCellCount: size.resourceCells * size.resourceCells,
-      radiusCells: size.resourceRadiusCells,
+      metalCellCount: size.metalCellCount,
+      placementRadiusCells: size.placementRadiusCells,
     };
   }
-  return { targetCellCount: authoredCellCount, radiusCells: authoredRadiusCells };
+  return {
+    metalCellCount: authoredMetalCellCount,
+    placementRadiusCells: authoredPlacementRadiusCells,
+  };
 }
 
 function getRequiredSimWasm() {
@@ -995,8 +983,11 @@ function getRequiredSimWasm() {
   return sim;
 }
 
-function countGridCellsInRadius(radiusCells: number): number {
-  return getRequiredSimWasm().metalDepositCountResourceCandidates(radiusCells);
+/** How many build cells a placement disc of this radius can legally hold —
+ *  the lattice points strictly inside it, which is where the cosine
+ *  probability is still non-zero. */
+function countMetalDepositPlacementCandidates(radiusCells: number): number {
+  return getRequiredSimWasm().metalDepositCountPlacementCandidates(radiusCells);
 }
 
 function cellCenter(gx: number, gy: number): MetalDepositResourceCell {
@@ -1016,28 +1007,31 @@ function hashMetalDepositSeed(gx: number, gy: number, index: number): number {
   return h >>> 0;
 }
 
-function growMetalDepositResourceCells(
+/** Scatter one deposit's metal cells over its placement disc. Every
+ *  authored cell has to land — a short list means the disc could not hold
+ *  the body and is a config error, not something to render around. */
+function placeMetalDepositCells(
   originGx: number,
   originGy: number,
-  targetCellCount: number,
-  radiusCells: number,
+  metalCellCount: number,
+  placementRadiusCells: number,
   seed: number,
 ): MetalDepositResourceCell[] {
-  // NONE grows nothing. The deposit still exists as a terrain feature at
+  // NONE places nothing. The deposit still exists as a terrain feature at
   // this point; it simply has no ore body to rasterize.
-  if (targetCellCount <= 0) return [];
-  const outCells = new Int32Array(targetCellCount * 2);
-  const count = getRequiredSimWasm().metalDepositGrowResourceCells(
+  if (metalCellCount <= 0) return [];
+  const outCells = new Int32Array(metalCellCount * 2);
+  const count = getRequiredSimWasm().metalDepositPlaceMetalCells(
     originGx,
     originGy,
-    targetCellCount,
-    radiusCells,
+    metalCellCount,
+    placementRadiusCells,
     seed,
     outCells,
   );
-  if (count !== targetCellCount) {
+  if (count !== metalCellCount) {
     throw new Error(
-      `Metal deposit resource growth returned ${count} cells; expected ${targetCellCount}`,
+      `Metal deposit cell placement returned ${count} cells; expected ${metalCellCount}`,
     );
   }
   const cells: MetalDepositResourceCell[] = new Array(count);
@@ -1081,11 +1075,11 @@ function validMetalDepositDTerrainLevels(levels: number | null): number | null {
 }
 
 /** Resolve a ring's authored flatPadCells against the generated ore
- *  footprint. `null` auto-sizes to the smallest cell count whose
- *  circular flat-pad radius covers the footprint.
+ *  placement disc. `null` auto-sizes to the smallest cell count whose
+ *  circular flat-pad radius covers that disc.
  *
  *  An authored value is taken AS AUTHORED, including values smaller
- *  than the footprint. That used to throw, on the assumption that ore
+ *  than the disc. That used to throw, on the assumption that ore
  *  and buildable pad were the same thing. They are not: the pad is
  *  terrain shaping and the ore is a shaded region sampled in world XZ,
  *  so a small pad inside a large body is the authored way to get ore
@@ -1093,10 +1087,10 @@ function validMetalDepositDTerrainLevels(levels: number | null): number | null {
  *  still decides where an extractor will fit. */
 function resolveMetalDepositFlatPadCells(
   cells: number | null,
-  resourceRadius: number,
+  placementRadius: number,
 ): number {
   if (cells === null) {
-    return Math.max(1, Math.ceil((resourceRadius * 2) / BUILD_GRID_CELL_SIZE));
+    return Math.max(1, Math.ceil((placementRadius * 2) / BUILD_GRID_CELL_SIZE));
   }
   if (!Number.isFinite(cells) || !Number.isInteger(cells) || cells <= 0) {
     throw new Error(

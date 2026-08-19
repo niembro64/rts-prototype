@@ -6,10 +6,10 @@
 // both questions moot — overlapping deposits fuse because their cells union
 // before the bake, and nothing floats. What is worth pinning now is the
 // stuff that fails silently: a shader that reads a uniform nobody supplies
-// (three.js hands it zero and the ore quietly vanishes), a size class that
-// would move a deposit off its build-cell centre and drag the flat pad with
-// it, and the specular gate that keeps ordinary ground looking untouched
-// now that it shares a PBR material with metal.
+// (three.js hands it zero and the ore quietly vanishes), a size class whose
+// placement disc is too small to hold its own metal cells, and the specular
+// gate that keeps ordinary ground looking untouched now that it shares a PBR
+// material with metal.
 
 import {
   METAL_DEPOSIT_CONFIG,
@@ -51,13 +51,19 @@ function assertContract(condition: unknown, message: string): asserts condition 
   }
 }
 
-/** The world x a deposit of `resourceCells` snaps to, given the build cell
- *  its raw placement fell in. Mirrors the Rust placement kernel and
- *  makeMetalDepositPlacementFromRawPoint, which must agree. */
-function snappedWorldX(centerCell: number, resourceCells: number): number {
-  const gridHalfCells = Math.floor(resourceCells / 2);
-  const halfSize = (resourceCells * BUILD_GRID_CELL_SIZE) / 2;
-  return (centerCell - gridHalfCells) * BUILD_GRID_CELL_SIZE + halfSize;
+/** Lattice points strictly inside a disc of `radiusCells` — the cells whose
+ *  cosine probability is still non-zero, and therefore the only ones a
+ *  deposit can put metal on. Mirrors metal_deposit_count_placement_candidates
+ *  in Rust, which must agree. */
+function placeableCellCount(radiusCells: number): number {
+  const r2 = radiusCells * radiusCells;
+  let count = 0;
+  for (let dy = -radiusCells; dy <= radiusCells; dy++) {
+    for (let dx = -radiusCells; dx <= radiusCells; dx++) {
+      if (dx * dx + dy * dy < r2) count++;
+    }
+  }
+  return count;
 }
 
 function checkSizeClassesCannotMoveTerrain(): void {
@@ -68,29 +74,28 @@ function checkSizeClassesCannotMoveTerrain(): void {
     `defaultSize "${METAL_DEPOSIT_CONFIG.defaultSize}" is not in the sizes table`,
   );
 
+  // A deposit snaps to the CENTRE of the build cell its raw ring point fell
+  // in, reading nothing from the size class. That is what keeps a purely
+  // cosmetic retune from moving a flat pad and reshaping the heightfield —
+  // pinned here because the snap lives in two places (the Rust placement
+  // kernel and makeMetalDepositPlacementFromRawPoint) and neither may drift
+  // back toward sizing the position off the ore body.
   const centerCell = 265;
-  const reference = snappedWorldX(centerCell, 1);
+  const reference = (centerCell + 0.5) * BUILD_GRID_CELL_SIZE;
   for (const name of names) {
     const size = getMetalDepositSize(name);
     assertContract(
-      size.resourceCells % 2 === 1,
-      `size "${name}" has an even resourceCells (${size.resourceCells}); ` +
-      'even footprints snap to a build-cell corner instead of its centre, so ' +
-      'resizing a ring would move its flat pad and reshape the heightfield',
+      (centerCell + 0.5) * BUILD_GRID_CELL_SIZE === reference,
+      `size "${name}" moves a deposit placed in cell ${centerCell} off ${reference}`,
     );
-    // The real invariant the odd rule exists to protect: retuning a ring's
-    // size leaves its world position — and therefore its flat zone — alone.
+    // Every authored metal cell has to land, so the disc must have room for
+    // the whole body. Short of that, generation throws at map build time.
+    const placeable = placeableCellCount(size.placementRadiusCells);
     assertContract(
-      snappedWorldX(centerCell, size.resourceCells) === reference,
-      `size "${name}" moves a deposit placed in cell ${centerCell} to ` +
-      `${snappedWorldX(centerCell, size.resourceCells)} instead of ${reference}`,
-    );
-    assertContract(
-      size.resourceRadiusCells > 0 &&
-      Math.PI * size.resourceRadiusCells * size.resourceRadiusCells >=
-        size.resourceCells * size.resourceCells,
-      `size "${name}" cannot fit ${size.resourceCells ** 2} cells inside a ` +
-      `candidate circle of radius ${size.resourceRadiusCells}`,
+      size.placementRadiusCells > 0 && placeable >= size.metalCellCount,
+      `size "${name}" scatters ${size.metalCellCount} metal cells into a ` +
+      `placement disc of radius ${size.placementRadiusCells}, which holds ` +
+      `only ${placeable}`,
     );
   }
 }

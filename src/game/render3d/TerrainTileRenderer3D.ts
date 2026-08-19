@@ -1518,7 +1518,7 @@ export class TerrainTileRenderer3D {
     for (let i = 0; i < this.metalDeposits.length; i++) {
       const deposit = this.metalDeposits[i];
       hash = Math.imul(hash ^ deposit.id, 16777619) >>> 0;
-      hash = Math.imul(hash ^ deposit.resourceCellCount, 16777619) >>> 0;
+      hash = Math.imul(hash ^ deposit.metalCellCount, 16777619) >>> 0;
       hash = Math.imul(hash ^ deposit.boundsGridX, 16777619) >>> 0;
       hash = Math.imul(hash ^ deposit.boundsGridY, 16777619) >>> 0;
       hash = Math.imul(hash ^ deposit.boundsGridW, 16777619) >>> 0;
