@@ -1017,7 +1017,7 @@ function resetEveryCustomHotkey(): void {
         <BarLabel>VOLUMES:</BarLabel>
         <BarButton
           :active="model.allVolumesActive"
-          title="Toggle every 3D volume viz on/off. Each button draws one CONCEPT across every entity that carries it — units, buildings/towers, shots, and vegetation props — in that entity's true shape (sphere, box, cylinder, or ring)."
+          title="Toggle every 3D volume viz on/off. Each button draws one CONCEPT across every entity that carries it — units, buildings/towers, mounted turrets, shots, and vegetation props — in its true shape."
           @click="model.toggleAllVolumes"
         >ALL</BarButton>
         <BarButtonGroup>
@@ -1046,6 +1046,11 @@ function resetEveryCustomHotkey(): void {
             title="EXPLOSION / DAMAGE — authoritative damage spheres. Draws the future splash volume on live explosive shots and the active terminal damage volume for projectile impacts and beam endpoints. Debug-only; disabled by default."
             @click="model.toggleVolume('explosion')"
           >EXP</BarButton>
+          <BarButton
+            :active="model.volumeToggles.turretLockOn"
+            title="TURRET LOCK-ON — every turret's real 3D tracking and engagement range shells, centered on its authoritative AimFrom mount. Colors match TURR CIR. Sphere and cylinder modes follow the authored rangeVolume; arrow-tipped ends continue without bound, and water-capped volumes stop at the water surface. Target bodies become valid when their own target volume intersects these shells."
+            @click="model.toggleVolume('turretLockOn')"
+          >TGT</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup>

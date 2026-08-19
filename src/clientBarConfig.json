@@ -697,7 +697,8 @@
     "hit",
     "collision",
     "arming",
-    "explosion"
+    "explosion",
+    "turretLockOn"
   ],
   "storageKeySuffixes": {
     "renderMode": "render-mode",

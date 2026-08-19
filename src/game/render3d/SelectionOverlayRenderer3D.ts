@@ -41,6 +41,7 @@ import { sampleLocomotionSupportSurface } from './LocomotionTerrainSampler';
 import type { OverlayLineSystem } from './OverlayLineSystem';
 import type { OverlayLineKind } from '@/config';
 import { GroundRing3D } from './GroundRing3D';
+import { TurretLockOnVolumeRenderer3D } from './TurretLockOnVolume3D';
 import { hexToRgb01 } from './colorUtils';
 import {
   setObjectVisibleIfChanged,
@@ -173,6 +174,7 @@ export class SelectionOverlayRenderer3D {
   private readonly annulusGeomCache = new Map<string, THREE.BufferGeometry>();
   private readonly supportDiagnosticSurface = createWorldSupportSurface();
   private readonly supportDiagnosticNextLogAtMs = new Map<number, number>();
+  private readonly turretLockOnVolumes: TurretLockOnVolumeRenderer3D;
   private showTrackAcquire = false;
   private showTrackRelease = false;
   private showEngageAcquire = false;
@@ -187,6 +189,7 @@ export class SelectionOverlayRenderer3D {
   private showHitVolume = false;
   private showCollisionVolume = false;
   private showArmingVolume = false;
+  private showTurretLockOnVolumes = false;
   private showAnyRange = false;
   private showAnyVolume = false;
   /** Scratch volumes reused by the per-entity overlay writers. */
@@ -247,6 +250,10 @@ export class SelectionOverlayRenderer3D {
     this.clientViewState = options.clientViewState;
     this.radiusSphereGeom = options.radiusSphereGeom;
     this.overlayLines = options.overlayLines;
+    this.turretLockOnVolumes = new TurretLockOnVolumeRenderer3D(
+      this.world,
+      this.radiusSphereGeom,
+    );
     this.beginFrame();
   }
 
@@ -263,6 +270,7 @@ export class SelectionOverlayRenderer3D {
     this.showHitVolume = getVolumeToggle('hit');
     this.showCollisionVolume = getVolumeToggle('collision');
     this.showArmingVolume = getVolumeToggle('arming');
+    this.showTurretLockOnVolumes = getVolumeToggle('turretLockOn');
     this.showAnyRange = anyRangeToggleActive();
     this.showAnyVolume = anyVolumeToggleActive();
     const selectedIds = this.clientViewState.getSelectedIds();
@@ -280,16 +288,17 @@ export class SelectionOverlayRenderer3D {
       (this.showEngageMinAcquire ? 1 << 4 : 0) |
       (this.showEngageMinRelease ? 1 << 5 : 0) |
       (this.showBuild ? 1 << 6 : 0) |
-      (this.showReclaimTargets ? 1 << 7 : 0);
+      (this.showReclaimTargets ? 1 << 7 : 0) |
+      (this.showTurretLockOnVolumes ? 1 << 8 : 0);
     if (nextRangeStateMask !== this.rangeStateMask) {
       this.rangeStateMask = nextRangeStateMask;
       this.rangeStateVersion++;
     }
     const nextUnitOverlayStateMask = nextRangeStateMask |
-      (this.showSelectionVolume ? 1 << 8 : 0) |
-      (this.showHitVolume ? 1 << 9 : 0) |
-      (this.showCollisionVolume ? 1 << 10 : 0) |
-      (this.showArmingVolume ? 1 << 11 : 0);
+      (this.showSelectionVolume ? 1 << 9 : 0) |
+      (this.showHitVolume ? 1 << 10 : 0) |
+      (this.showCollisionVolume ? 1 << 11 : 0) |
+      (this.showArmingVolume ? 1 << 12 : 0);
     if (
       nextUnitOverlayStateMask !== this.unitOverlayStateMask ||
       this.selectedCount !== this.unitOverlaySelectedCount
@@ -320,6 +329,7 @@ export class SelectionOverlayRenderer3D {
   unitRangeOverlaysNeedUpdate(m: OverlayEntityMesh, selected: boolean): boolean {
     return (
       this.showAnyRange ||
+      this.showTurretLockOnVolumes ||
       this.showReclaimTargets ||
       m.rangeRingsVisible === true ||
       (selected && this.selectedCount === 1)
@@ -335,6 +345,7 @@ export class SelectionOverlayRenderer3D {
       m.rangeRingsVisible === true ||
       this.showReclaimTargets ||
       this.showAnyRange ||
+      this.showTurretLockOnVolumes ||
       (selected && Math.max(
         getEntityRadarRadius(entity),
         getEntitySonarRadius(entity),
@@ -455,11 +466,12 @@ export class SelectionOverlayRenderer3D {
     );
     const showRadar = radarRadius > 0 && entity.selectable?.selected === true;
     const showReclaim = this.showReclaimTargets && isReclaimableTarget(entity);
-    const showAnyTurretRange =
+    const showAnyTurretCircle =
       showTrackAcquire || showTrackRelease
       || showEngageAcquire || showEngageRelease
       || showEngageMinAcquire || showEngageMinRelease;
-    if (!showAnyTurretRange && !showBuild && !showRadar && !showReclaim) {
+    const showAnyTurretOverlay = showAnyTurretCircle || this.showTurretLockOnVolumes;
+    if (!showAnyTurretOverlay && !showBuild && !showRadar && !showReclaim) {
       if (m.rangeRingsVisible) this.hideRangeRings(m);
       m.rangeRingsVisible = false;
       return;
@@ -470,7 +482,7 @@ export class SelectionOverlayRenderer3D {
     const mapWidth = this.clientViewState.getMapWidth();
     const mapHeight = this.clientViewState.getMapHeight();
 
-    if (showAnyTurretRange && entity.combat) {
+    if (showAnyTurretOverlay && entity.combat) {
       const { cos, sin } = getTransformCosSin(entity.transform);
       const turrets = entity.combat.turrets;
       for (let i = 0; i < turrets.length; i++) {
@@ -529,6 +541,16 @@ export class SelectionOverlayRenderer3D {
           tm, 'engageMinRelease', showEngageMinRelease, mountX, mountY,
           this.projectGroundRadius(weapon.ranges.fire.min?.release ?? null), 'rangeEngage', COLOR_ENGAGE_MIN_RELEASE,
         );
+        if (this.showTurretLockOnVolumes) {
+          this.turretLockOnVolumes.update(
+            tm,
+            mount,
+            weapon.ranges,
+            weapon.config.targeting.engagement.rangeVolume,
+          );
+        } else {
+          this.turretLockOnVolumes.hide(tm);
+        }
       }
     } else if (m.rangeRingsVisible) {
       this.hideTurretRangeRings(m);
@@ -563,7 +585,8 @@ export class SelectionOverlayRenderer3D {
       m.reclaimRing.hide();
     }
 
-    m.rangeRingsVisible = showAnyTurretRange || (showBuild && builder !== undefined) || showRadar || showReclaim;
+    m.rangeRingsVisible = showAnyTurretOverlay ||
+      (showBuild && builder !== undefined) || showRadar || showReclaim;
   }
 
   private makeWorldRing(kind: OverlayLineKind): GroundRing3D {
@@ -602,14 +625,16 @@ export class SelectionOverlayRenderer3D {
       m.reclaimRing = undefined;
     }
     for (const tm of m.turrets) {
-      if (!tm.rangeRings) continue;
-      if (tm.rangeRings.trackAcquire)     this.removeRangeCircle(tm.rangeRings.trackAcquire);
-      if (tm.rangeRings.trackRelease)     this.removeRangeCircle(tm.rangeRings.trackRelease);
-      if (tm.rangeRings.engageAcquire)    this.removeRangeCircle(tm.rangeRings.engageAcquire);
-      if (tm.rangeRings.engageRelease)    this.removeRangeCircle(tm.rangeRings.engageRelease);
-      if (tm.rangeRings.engageMinAcquire) this.removeRangeCircle(tm.rangeRings.engageMinAcquire);
-      if (tm.rangeRings.engageMinRelease) this.removeRangeCircle(tm.rangeRings.engageMinRelease);
-      tm.rangeRings = undefined;
+      if (tm.rangeRings) {
+        if (tm.rangeRings.trackAcquire)     this.removeRangeCircle(tm.rangeRings.trackAcquire);
+        if (tm.rangeRings.trackRelease)     this.removeRangeCircle(tm.rangeRings.trackRelease);
+        if (tm.rangeRings.engageAcquire)    this.removeRangeCircle(tm.rangeRings.engageAcquire);
+        if (tm.rangeRings.engageRelease)    this.removeRangeCircle(tm.rangeRings.engageRelease);
+        if (tm.rangeRings.engageMinAcquire) this.removeRangeCircle(tm.rangeRings.engageMinAcquire);
+        if (tm.rangeRings.engageMinRelease) this.removeRangeCircle(tm.rangeRings.engageMinRelease);
+        tm.rangeRings = undefined;
+      }
+      this.turretLockOnVolumes.remove(tm);
     }
     m.rangeRingsVisible = false;
     // The selection ring is group-parented, but it also leaves immediately on
@@ -628,6 +653,7 @@ export class SelectionOverlayRenderer3D {
     this.radiusMatHit.dispose();
     this.radiusMatCollision.dispose();
     this.radiusMatArming.dispose();
+    this.turretLockOnVolumes.dispose();
     this.radiusBoxGeom.dispose();
     this.radiusCylinderGeom.dispose();
     for (const geometry of this.annulusGeomCache.values()) geometry.dispose();
@@ -742,6 +768,7 @@ export class SelectionOverlayRenderer3D {
   }
 
   private hideSingleTurretRangeRings(tm: TurretMesh): void {
+    this.turretLockOnVolumes.hide(tm);
     const rings = tm.rangeRings;
     if (!rings) return;
     rings.trackAcquire?.hide();

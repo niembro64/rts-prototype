@@ -99,13 +99,15 @@ export type RangeType =
  *    collision — the physics volume
  *    arming    — the enlarged HIT-shaped host volume a shot clears before arming
  *    explosion — the splash volume a shot detonates with
+ *    turretLockOn — every 3D tracking/engagement range shell around each turret
  */
 export type VolumeType =
   | 'selection'
   | 'hit'
   | 'collision'
   | 'arming'
-  | 'explosion';
+  | 'explosion'
+  | 'turretLockOn';
 
 export type SoundDefaults = Record<SoundCategory, boolean>;
 

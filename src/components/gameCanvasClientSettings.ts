@@ -217,6 +217,7 @@ export function useGameCanvasClientSettings({
     collision: getVolumeToggle('collision'),
     arming: getVolumeToggle('arming'),
     explosion: getVolumeToggle('explosion'),
+    turretLockOn: getVolumeToggle('turretLockOn'),
   });
   function seedEntityHud(): EntityHudToggles {
     const out = {} as EntityHudToggles;

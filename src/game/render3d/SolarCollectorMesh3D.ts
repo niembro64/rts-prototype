@@ -17,12 +17,7 @@ import {
   playerColorDetail,
   teamOrnamentDetail,
 } from './BuildingMeshPrimitives3D';
-import {
-  getOrCreate,
-  getSharedPrimitiveTetrahedronGeometry,
-  preserveGeometryVolume,
-  type PrimitiveGeometryTier,
-} from './PrimitiveGeometryQuality3D';
+import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
 
 /** One petal's actuator piston.
  *
@@ -189,34 +184,6 @@ function createSolarPetalSlabGeometry(): THREE.BufferGeometry {
 }
 
 const solarPetalSlabGeom = createSolarPetalSlabGeometry();
-
-const solarHingeCapGeometryByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
-
-function getSolarHingeCapGeometry(): THREE.BufferGeometry {
-  const tier = getActiveBuildingGeometryTier();
-  return getOrCreate(solarHingeCapGeometryByTier, tier, () => {
-    const geometry = tier === 'close'
-      ? new THREE.IcosahedronGeometry(1, 1)
-      : tier === 'mid'
-        ? new THREE.OctahedronGeometry(1)
-        : getSharedPrimitiveTetrahedronGeometry(1).clone();
-    preserveGeometryVolume(geometry, Math.PI * 4 / 3);
-    return geometry;
-  });
-}
-
-function makeHingeCap(
-  material: THREE.Material,
-  radius: number,
-  x: number,
-  y: number,
-  z: number,
-): THREE.Mesh {
-  const mesh = new THREE.Mesh(getSolarHingeCapGeometry(), material);
-  mesh.position.set(x, y, z);
-  mesh.scale.setScalar(radius);
-  return mesh;
-}
 
 function makeSolarCellMaterial(
   polygonOffsetFactor: number,
@@ -404,7 +371,6 @@ export function buildSolarCollector(
   // pyramid while shut and straight up while open — and leaves the back of the
   // panel as the only thing the team accent has to clear.
   const hingeRadius = petalThickness * 0.5;
-  const hingeCapRadius = hingeRadius * 1.15;
   const petalSlabOffset = -hingeRadius;
   const teamAccentOffset = petalSlabOffset - teamAccentGap - teamAccentThickness;
   const petalStackDepth = -teamAccentOffset;
@@ -466,7 +432,10 @@ export function buildSolarCollector(
 
     details.push(detail(makeHingeBar(
       solarPetalBackMat,
-      face.span,
+      // Let perpendicular bars overlap at the corners. This closes the frame
+      // without the four close-only rounded caps that read as an unrelated
+      // lump from the overhead game camera.
+      face.span + hingeRadius * 2,
       hingeRadius,
       hinge,
       face.tangent,
@@ -553,22 +522,6 @@ export function buildSolarCollector(
       closedDirection,
       panelSideHint,
     ), 'solarPetalInlay'));
-  }
-
-  // Caps close the four corners where adjacent hinge axes meet: each takes its
-  // x from the side face's pin and its z from the front/back face's pin.
-  for (const xFace of [faces[2], faces[3]]) {
-    for (const zFace of [faces[0], faces[1]]) {
-      const xPin = solarHingePoint(xFace, petalPinStandoff, petalHingeRise);
-      const zPin = solarHingePoint(zFace, petalPinStandoff, petalHingeRise);
-      details.push(detail(makeHingeCap(
-        solarPetalBackMat,
-        hingeCapRadius,
-        xPin.x,
-        (xPin.y + zPin.y) * 0.5,
-        zPin.z,
-      ), 'low', undefined, 'tinyTrim'));
-    }
   }
 
   const minDim = Math.min(width, depth);
@@ -871,8 +824,6 @@ export function disposeSolarCollectorGeoms(): void {
   solarPanelPyramidGeom.dispose();
   solarPetalSlabGeom.dispose();
   solarTrianglePetalGeom.dispose();
-  for (const geometry of solarHingeCapGeometryByTier.values()) geometry.dispose();
-  solarHingeCapGeometryByTier.clear();
   solarCellMat.dispose();
   solarPistonRodMat.dispose();
   solarPetalBackMat.dispose();

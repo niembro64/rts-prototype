@@ -1062,6 +1062,15 @@ function assertDemoTechLabsSpawnOnCurrentTerrain(preset: BattlePreset): void {
   const playerIds: PlayerId[] = [];
   for (let i = 0; i < DEMO_CONFIG.playerCount; i++) playerIds.push((i + 1) as PlayerId);
   const world = new WorldState(1246, mapWidth, mapHeight);
+  // Same world the demo boots: seats split across ally teams, and deposits
+  // installed before any base row places. Without the roster every seat
+  // resolves to ally team 0's spoke and all five bases pile onto one arc,
+  // which is a placement fight the shipped demo never has.
+  world.setTeamRoster(buildTeamRosterFromSeatCounts(
+    playerIds,
+    DEMO_CONFIG.allyTeamSeats,
+  ));
+  world.metalDeposits = generateMetalDeposits(mapWidth, mapHeight, playerIds.length);
   const construction = new ConstructionSystem(mapWidth, mapHeight, null);
   const entities = spawnInitialBases(world, construction, [...playerIds], 'demo');
   const expectedCounts: readonly (readonly [string, number])[] = [

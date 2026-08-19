@@ -569,6 +569,7 @@ const currentVolumeToggles: Record<VolumeType, boolean> = {
   collision: _cd.volumeToggles.default,
   arming: _cd.volumeToggles.default,
   explosion: _cd.volumeToggles.default,
+  turretLockOn: _cd.volumeToggles.default,
 };
 let currentLegsRadius: boolean = _cd.legsRadius.default;
 let currentLegsReach: boolean = _cd.legsReach.default;
@@ -1046,7 +1047,7 @@ export function anyRangeToggleActive(): boolean {
 
 /** One unified debug-volume group. A category is asked for once and every
  *  entity kind that carries that volume draws it — units, buildings,
- *  projectiles, and vegetation props all answer the same five buttons. */
+ *  projectiles, vegetation props, and mounted turrets share this group. */
 export function getVolumeToggle(type: VolumeType): boolean {
   return currentVolumeToggles[type];
 }

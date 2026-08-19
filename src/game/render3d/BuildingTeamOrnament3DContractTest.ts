@@ -193,6 +193,10 @@ export function runBuildingTeamOrnament3DContractTest(): void {
             `buildingSolar/${tier} must retain one photovoltaic face per petal `
               + 'without duplicate surface overlays',
           );
+          assertContract(
+            shape.details.every((entry) => entry.role !== 'tinyTrim'),
+            `buildingSolar/${tier} hinge frame must not add close-only corner blobs`,
+          );
         }
       }
     }

@@ -1690,6 +1690,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runShotArmingOverlay3DContractTest();
         const { runHostVolumeOverlay3DContractTest } = await import('../render3d/HostVolumeOverlay3DContractTest');
         runHostVolumeOverlay3DContractTest();
+        const { runTurretLockOnVolume3DContractTest } = await import('../render3d/TurretLockOnVolume3DContractTest');
+        runTurretLockOnVolume3DContractTest();
         const { runEntityLod3DContractTest } = await import('../render3d/EntityLod3DContractTest');
         runEntityLod3DContractTest();
         const { runEntityDetailLevel3DContractTest } = await import('../render3d/EntityDetailLevel3DContractTest');
