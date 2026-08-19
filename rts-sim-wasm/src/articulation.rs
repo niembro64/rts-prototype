@@ -68,12 +68,26 @@ pub(crate) fn step_revolute_joint(
     let mut next_angle = current + step;
     let mut final_velocity = next_velocity;
 
-    let next_error = if continuous {
-        normalize_angle_ts(target - normalize_angle_ts(next_angle))
+    // Did this step's swept arc actually contain the target? Measure the
+    // distance to the target the same way round the circle the joint is
+    // travelling. A continuous joint that is still coasting away from a new
+    // target crosses the antipode without ever passing the target, and there
+    // the shortest-path error flips sign on its own; reading that flip as an
+    // overshoot teleported the piece half a turn.
+    let travel_to_target = if !continuous || step == 0.0 {
+        error
+    } else if step > 0.0 && error < 0.0 {
+        error + core::f64::consts::TAU
+    } else if step < 0.0 && error > 0.0 {
+        error - core::f64::consts::TAU
     } else {
-        target - next_angle
+        error
     };
-    if error == 0.0 || (error > 0.0 && next_error <= 0.0) || (error < 0.0 && next_error >= 0.0) {
+    let reached = error == 0.0
+        || (step != 0.0
+            && (step > 0.0) == (travel_to_target > 0.0)
+            && step.abs() >= travel_to_target.abs());
+    if reached {
         next_angle = target;
         final_velocity = 0.0;
     } else if continuous {
@@ -241,6 +255,76 @@ mod tests {
             0.49, 0.0, 2.0, false, -0.5, 0.5, 2.0, 8.0, 1.0,
         );
         assert!(angle <= 0.5);
+        assert!(error.abs() <= 1e-12);
+    }
+
+    /// A bot waist coasting one way when a new claim lands behind it must brake
+    /// and come round under its own rate limits. It crosses the far side of the
+    /// circle on the way, which flips the shortest-path error sign without the
+    /// joint ever passing its target; that is ordinary travel, not an overshoot.
+    #[test]
+    fn continuous_joint_coasting_past_the_antipode_never_teleports() {
+        let max_speed = 0.75;
+        let max_acceleration = 1.2;
+        let dt = 1.0 / 30.0;
+        let target = 3.0;
+        let mut angle = 0.0;
+        let mut velocity = -max_speed;
+        for tick in 0..600 {
+            let (next_angle, next_velocity, _, _) = step_revolute_joint(
+                angle, velocity, target, true,
+                -core::f64::consts::PI, core::f64::consts::PI,
+                max_speed, max_acceleration, dt,
+            );
+            let travelled = normalize_angle_ts(next_angle - angle).abs();
+            assert!(
+                travelled <= max_speed * dt + 1e-9,
+                "tick {tick} swept {travelled} rad, above the {max_speed} rad/s limit",
+            );
+            angle = next_angle;
+            velocity = next_velocity;
+        }
+        assert!(normalize_angle_ts(target - angle).abs() <= 1e-9);
+    }
+
+    /// The same crossing on the other side of the circle, so the fix cannot be
+    /// a sign special case.
+    #[test]
+    fn continuous_joint_coasting_past_the_antipode_never_teleports_mirrored() {
+        let max_speed = 0.75;
+        let max_acceleration = 1.2;
+        let dt = 1.0 / 30.0;
+        let target = -3.0;
+        let mut angle = 0.0;
+        let mut velocity = max_speed;
+        for tick in 0..600 {
+            let (next_angle, next_velocity, _, _) = step_revolute_joint(
+                angle, velocity, target, true,
+                -core::f64::consts::PI, core::f64::consts::PI,
+                max_speed, max_acceleration, dt,
+            );
+            let travelled = normalize_angle_ts(next_angle - angle).abs();
+            assert!(
+                travelled <= max_speed * dt + 1e-9,
+                "tick {tick} swept {travelled} rad, above the {max_speed} rad/s limit",
+            );
+            angle = next_angle;
+            velocity = next_velocity;
+        }
+        assert!(normalize_angle_ts(target - angle).abs() <= 1e-9);
+    }
+
+    /// Reaching the target the ordinary way must still settle exactly, with no
+    /// residual error and no creeping past the stop.
+    #[test]
+    fn continuous_joint_settles_exactly_on_its_target() {
+        let (angle, velocity, _, error) = step_revolute_joint(
+            0.0, 0.0, 0.001, true,
+            -core::f64::consts::PI, core::f64::consts::PI,
+            1.5, 3.0, 0.05,
+        );
+        assert!((angle - 0.001).abs() <= 1e-12);
+        assert_eq!(velocity, 0.0);
         assert!(error.abs() <= 1e-12);
     }
 
