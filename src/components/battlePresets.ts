@@ -176,7 +176,7 @@ function buildPresets(): readonly BattlePreset[] {
       converterTax: 0.5,
       centerMagnitude: 200,
       dividersMagnitude: -3200,
-      perimeterMagnitude: -800,
+      perimeterMagnitude: -400,
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 200,
