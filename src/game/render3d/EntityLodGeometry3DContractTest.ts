@@ -1840,12 +1840,16 @@ function runReferenceGeometryCountContracts(): void {
     high: 140, medium: 48, low: 4,
   });
   assertSame('rocket reference ladder', ROCKET_PROJECTILE_TRIANGLE_COUNTS, {
-    high: 136, medium: 63, low: 8,
+    high: 136, medium: 84, low: 16,
   });
   const lowRocket = createLowResolutionRocketGeometry();
   assertContract(
     triangleCount(lowRocket) === 8,
     'Low rocket uses the eight-face capped equilateral triangular prism',
+  );
+  assertContract(
+    ROCKET_PROJECTILE_TRIANGLE_COUNTS.low === triangleCount(lowRocket) * 2,
+    'Low rocket spends its tail band on a second copy of that same prism',
   );
   lowRocket.dispose();
 

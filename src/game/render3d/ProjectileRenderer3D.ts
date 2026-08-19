@@ -56,6 +56,10 @@ const ROCKET_FIN_ROLL_RATE_RAD_PER_MS = (Math.PI * 2) / 2000;
 // Multiples of the rocket body radius — how far the fin rear edge sits
 // past the cylinder tail end. Avoids color z-fight at the tail cap.
 const FIN_REAR_OVERHANG_MULT = 0.75;
+// Medium/Low drop the authored fin blades and read team identity off the
+// rocket's own tail instead: this rear fraction of the body is drawn as its
+// own segment in the fin color.
+const PROJECTILE_TAIL_BAND_FRACTION = 0.2;
 const PROJECTILE_INSTANCED_CAP = 8192;
 const PROJECTILE_ROCKET_FIN_COUNT = 3;
 // The deepest plasma tail sets the trail history's stamp spacing, so the
@@ -124,11 +128,14 @@ export const PLASMA_PROJECTILE_TRIANGLE_COUNTS = Object.freeze({
   low: PLASMA_LOW_INDICES.length / 3,
 });
 
-/** Rocket/missile/torpedo body + tube + all three authored fins. */
+/** Rocket/missile/torpedo body + tube + all three authored fins at High;
+ *  body + split tube (forward run + team-colored tail band) below it. Both
+ *  band segments reuse their rung's own tube geometry, so the band costs
+ *  exactly one more tube instead of a fourth authored shape. */
 export const ROCKET_PROJECTILE_TRIANGLE_COUNTS = Object.freeze({
   high: 80 + 32 + 24,
-  medium: 36 + 24 + 3,
-  low: 8,
+  medium: 36 + 24 + 24,
+  low: 8 + 8,
 });
 
 /** Low rocket/missile/torpedo tube: the same capped, equilateral triangular
@@ -263,7 +270,6 @@ export class ProjectileRenderer3D {
   private readonly projectileFinGeom = createProjectileFinGeometry();
   private readonly projectileMediumGeom = createPrimitiveSphereGeometry('projectile', 'mid');
   private readonly projectileMediumCylinderGeom = createPrimitiveCylinderGeometry('projectile', 'mid');
-  private readonly projectileMediumFinGeom = createProjectileFinGeometry(false);
   private readonly projectileMat = new THREE.MeshLambertMaterial({
     color: COLORS.effects.projectile.body.colorHex,
   });
@@ -312,11 +318,18 @@ export class ProjectileRenderer3D {
   private readonly finMatrices: Float32Array;
   private readonly finColors = new Float32Array(PROJECTILE_INSTANCED_CAP * 3);
   private readonly finColorAttr = new THREE.InstancedBufferAttribute(this.finColors, 3);
-  private readonly mediumFinInstanced: THREE.InstancedMesh;
-  private readonly mediumFinMatrices: Float32Array;
-  private readonly mediumFinColors = new Float32Array(PROJECTILE_INSTANCED_CAP * 3);
-  private readonly mediumFinColorAttr = new THREE.InstancedBufferAttribute(
-    this.mediumFinColors,
+  private readonly mediumTailBandInstanced: THREE.InstancedMesh;
+  private readonly mediumTailBandMatrices: Float32Array;
+  private readonly mediumTailBandColors = new Float32Array(PROJECTILE_INSTANCED_CAP * 3);
+  private readonly mediumTailBandColorAttr = new THREE.InstancedBufferAttribute(
+    this.mediumTailBandColors,
+    3,
+  );
+  private readonly lowTailBandInstanced: THREE.InstancedMesh;
+  private readonly lowTailBandMatrices: Float32Array;
+  private readonly lowTailBandColors = new Float32Array(PROJECTILE_INSTANCED_CAP * 3);
+  private readonly lowTailBandColorAttr = new THREE.InstancedBufferAttribute(
+    this.lowTailBandColors,
     3,
   );
   private readonly seenProjectileIds = new Set<number>();
@@ -450,18 +463,35 @@ export class ProjectileRenderer3D {
     this.finInstanced.count = 0;
     this.world.add(this.finInstanced);
 
-    this.mediumFinInstanced = new THREE.InstancedMesh(
-      this.projectileMediumFinGeom,
+    // Each tail band is the same tube its rung already draws the body with,
+    // scaled to the rear slice of the same axis and colored per instance.
+    this.mediumTailBandInstanced = new THREE.InstancedMesh(
+      this.projectileMediumCylinderGeom,
       this.projectileFinMat,
       PROJECTILE_INSTANCED_CAP,
     );
-    this.mediumFinInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mediumFinMatrices = this.mediumFinInstanced.instanceMatrix.array as Float32Array;
-    this.mediumFinColorAttr.setUsage(THREE.DynamicDrawUsage);
-    this.mediumFinInstanced.instanceColor = this.mediumFinColorAttr;
-    this.mediumFinInstanced.frustumCulled = false;
-    this.mediumFinInstanced.count = 0;
-    this.world.add(this.mediumFinInstanced);
+    this.mediumTailBandInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mediumTailBandMatrices =
+      this.mediumTailBandInstanced.instanceMatrix.array as Float32Array;
+    this.mediumTailBandColorAttr.setUsage(THREE.DynamicDrawUsage);
+    this.mediumTailBandInstanced.instanceColor = this.mediumTailBandColorAttr;
+    this.mediumTailBandInstanced.frustumCulled = false;
+    this.mediumTailBandInstanced.count = 0;
+    this.world.add(this.mediumTailBandInstanced);
+
+    this.lowTailBandInstanced = new THREE.InstancedMesh(
+      this.rocketLowGeom,
+      this.projectileFinMat,
+      PROJECTILE_INSTANCED_CAP,
+    );
+    this.lowTailBandInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.lowTailBandMatrices =
+      this.lowTailBandInstanced.instanceMatrix.array as Float32Array;
+    this.lowTailBandColorAttr.setUsage(THREE.DynamicDrawUsage);
+    this.lowTailBandInstanced.instanceColor = this.lowTailBandColorAttr;
+    this.lowTailBandInstanced.frustumCulled = false;
+    this.lowTailBandInstanced.count = 0;
+    this.world.add(this.lowTailBandInstanced);
   }
 
   update(frameState: RenderFrameState3D, projectiles: readonly Entity[]): void {
@@ -483,7 +513,8 @@ export class ProjectileRenderer3D {
     let plasmaMediumCount = 0;
     let plasmaLowCount = 0;
     let finCount = 0;
-    let mediumFinCount = 0;
+    let mediumTailBandCount = 0;
+    let lowTailBandCount = 0;
     const wantHit = getVolumeToggle('hit');
     const wantExp = getVolumeToggle('explosion');
     // Every scratch has to finish growing before any view is bound:
@@ -628,6 +659,13 @@ export class ProjectileRenderer3D {
         ? DETAIL_RUNG_FAR
         : rawRocketRung;
 
+      // Only High still spends triangles on the fin blades. Every coarser
+      // rung hands that team read to the tail band, so its tube is drawn as
+      // a forward run plus a fin-colored rear slice of the same axis.
+      const banded = finSizeMult > 0 && rocketRung !== DETAIL_RUNG_CLOSE;
+      const bandLength = banded ? tailLength * PROJECTILE_TAIL_BAND_FRACTION : 0;
+      const bodyLength = tailLength - bandLength;
+
       if (rocketRung === DETAIL_RUNG_CLOSE) {
         if (sphereCount < PROJECTILE_INSTANCED_CAP) {
           writeTranslateScaleMatrix(
@@ -663,36 +701,51 @@ export class ProjectileRenderer3D {
           tailShape === 'cylinder' &&
           mediumCylinderCount < PROJECTILE_INSTANCED_CAP
         ) {
-          writeComposedMatrix(
+          this.writeAxialSegmentMatrix(
             this.mediumCylinderMatrices,
             mediumCylinderCount++,
-            this.projPos.x,
-            this.projPos.y,
-            this.projPos.z,
-            this.projQuat,
-            this.projScale.x,
-            this.projScale.y,
-            this.projScale.z,
+            tx, ty, tz,
+            bodyLength * 0.5,
+            tailRadius,
+            bodyLength,
           );
         }
       } else if (rocketLowCount < PROJECTILE_INSTANCED_CAP) {
-        writeComposedMatrix(
+        this.writeAxialSegmentMatrix(
           this.rocketLowMatrices,
           rocketLowCount++,
-          this.projPos.x,
-          this.projPos.y,
-          this.projPos.z,
-          this.projQuat,
+          tx, ty, tz,
+          bodyLength * 0.5,
           r,
-          tailLength,
-          r,
+          bodyLength,
         );
       }
 
-      if (
-        finSizeMult > 0 &&
-        (rocketRung === DETAIL_RUNG_CLOSE || rocketRung === DETAIL_RUNG_MID)
-      ) {
+      if (banded) {
+        const medium = rocketRung === DETAIL_RUNG_MID;
+        const slot = medium ? mediumTailBandCount : lowTailBandCount;
+        if (slot < PROJECTILE_INSTANCED_CAP) {
+          this.writeAxialSegmentMatrix(
+            medium ? this.mediumTailBandMatrices : this.lowTailBandMatrices,
+            slot,
+            tx, ty, tz,
+            tailLength - bandLength * 0.5,
+            medium ? tailRadius : r,
+            bandLength,
+          );
+          if (proj) {
+            this.writeInstanceTeamColor(
+              medium ? this.mediumTailBandColors : this.lowTailBandColors,
+              slot,
+              proj.ownerId,
+            );
+          }
+          if (medium) mediumTailBandCount++;
+          else lowTailBandCount++;
+        }
+      }
+
+      if (finSizeMult > 0 && rocketRung === DETAIL_RUNG_CLOSE) {
         const isRocketLike = proj?.config.shotProfile.runtime.isRocketLike === true;
         const rollAngle = proj && isRocketLike
           ? (renderNowMs + (e.id % 64) * 31) * ROCKET_FIN_ROLL_RATE_RAD_PER_MS
@@ -701,13 +754,10 @@ export class ProjectileRenderer3D {
         this.composeProjectileFinPose(
           tx, ty, tz, finRearOffset, r * finSizeMult, rollAngle,
         );
-        const medium = rocketRung === DETAIL_RUNG_MID;
-        const slot = medium ? mediumFinCount : finCount;
-        if (slot < PROJECTILE_INSTANCED_CAP) {
-          const matrices = medium ? this.mediumFinMatrices : this.finMatrices;
+        if (finCount < PROJECTILE_INSTANCED_CAP) {
           writeComposedMatrix(
-            matrices,
-            slot,
+            this.finMatrices,
+            finCount,
             this.projPos.x,
             this.projPos.y,
             this.projPos.z,
@@ -717,16 +767,10 @@ export class ProjectileRenderer3D {
             this.projScale.z,
           );
           if (proj) {
-            this.finColor.set(getPlayerColors(proj.ownerId).primary);
-            const colors = medium ? this.mediumFinColors : this.finColors;
-            const colorOffset = slot * 3;
-            colors[colorOffset] = this.finColor.r;
-            colors[colorOffset + 1] = this.finColor.g;
-            colors[colorOffset + 2] = this.finColor.b;
-            if (!medium) this.markFinColorDirty(slot);
+            this.writeInstanceTeamColor(this.finColors, finCount, proj.ownerId);
+            this.markFinColorDirty(finCount);
           }
-          if (medium) mediumFinCount++;
-          else finCount++;
+          finCount++;
         }
       }
 
@@ -798,15 +842,16 @@ export class ProjectileRenderer3D {
       this.finColorDirtyMin = Number.POSITIVE_INFINITY;
       this.finColorDirtyMax = -1;
     }
-    if (this.mediumFinInstanced.count !== mediumFinCount) {
-      this.mediumFinInstanced.count = mediumFinCount;
-    }
-    if (mediumFinCount > 0) {
-      this.markInstanceMatrixRange(this.mediumFinInstanced, 0, mediumFinCount - 1);
-      this.mediumFinColorAttr.clearUpdateRanges();
-      this.mediumFinColorAttr.addUpdateRange(0, mediumFinCount * 3);
-      this.mediumFinColorAttr.needsUpdate = true;
-    }
+    this.flushColoredInstances(
+      this.mediumTailBandInstanced,
+      this.mediumTailBandColorAttr,
+      mediumTailBandCount,
+    );
+    this.flushColoredInstances(
+      this.lowTailBandInstanced,
+      this.lowTailBandColorAttr,
+      lowTailBandCount,
+    );
 
     if (pruneProjectiles) {
       for (const [id, radii] of this.projectileRadiusMeshes) {
@@ -834,7 +879,8 @@ export class ProjectileRenderer3D {
     disposeMesh(this.plasmaLowInstanced, { material: false, geometry: false });
     disposeMesh(this.rocketLowInstanced, { material: false, geometry: false });
     disposeMesh(this.finInstanced, { material: false, geometry: false });
-    disposeMesh(this.mediumFinInstanced, { material: false, geometry: false });
+    disposeMesh(this.mediumTailBandInstanced, { material: false, geometry: false });
+    disposeMesh(this.lowTailBandInstanced, { material: false, geometry: false });
     for (const radii of this.projectileRadiusMeshes.values()) {
       if (radii.hit) {
         disposeMesh(radii.hit, { material: false, geometry: false });
@@ -859,7 +905,6 @@ export class ProjectileRenderer3D {
       this.plasmaLowGeom,
       this.rocketLowGeom,
       this.projectileFinGeom,
-      this.projectileMediumFinGeom,
     ]);
     disposeMaterials([
       this.projectileMat,
@@ -1135,6 +1180,56 @@ export class ProjectileRenderer3D {
     }
   }
 
+  /** Places one body-axis segment of `length`, centered `centerOffset` back
+   *  from the head along the flight axis. Body runs, tail bands and the Low
+   *  tube all pose off the same call, so a split tube stays exactly collinear
+   *  with the tube it was split out of. */
+  private writeAxialSegmentMatrix(
+    matrices: Float32Array,
+    slot: number,
+    x: number, y: number, z: number,
+    centerOffset: number,
+    radius: number,
+    length: number,
+  ): void {
+    writeComposedMatrix(
+      matrices,
+      slot,
+      x + this.projDir.x * centerOffset,
+      z + this.projDir.y * centerOffset,
+      y + this.projDir.z * centerOffset,
+      this.projQuat,
+      radius,
+      length,
+      radius,
+    );
+  }
+
+  private writeInstanceTeamColor(
+    colors: Float32Array,
+    slot: number,
+    ownerId: number,
+  ): void {
+    this.finColor.set(getPlayerColors(ownerId).primary);
+    const colorOffset = slot * 3;
+    colors[colorOffset] = this.finColor.r;
+    colors[colorOffset + 1] = this.finColor.g;
+    colors[colorOffset + 2] = this.finColor.b;
+  }
+
+  private flushColoredInstances(
+    mesh: THREE.InstancedMesh,
+    colorAttr: THREE.InstancedBufferAttribute,
+    count: number,
+  ): void {
+    if (mesh.count !== count) mesh.count = count;
+    if (count <= 0) return;
+    this.markInstanceMatrixRange(mesh, 0, count - 1);
+    colorAttr.clearUpdateRanges();
+    colorAttr.addUpdateRange(0, count * 3);
+    colorAttr.needsUpdate = true;
+  }
+
   private composeProjectileTailPose(
     pose: Float32Array,
     poseOffset: number,
@@ -1258,7 +1353,7 @@ export class ProjectileRenderer3D {
 // quaternion is applied. The local origin sits at the fin's rear edge so
 // the caller can place it directly at the rocket tail end; the fin tapers
 // forward along local -Y toward the rocket body.
-function createProjectileFinGeometry(extruded: boolean = true): THREE.BufferGeometry {
+function createProjectileFinGeometry(): THREE.BufferGeometry {
   const FIN_FORWARD = -2;
   const FIN_REAR = 0;
   const FIN_OUT = 1;
@@ -1277,12 +1372,6 @@ function createProjectileFinGeometry(extruded: boolean = true): THREE.BufferGeom
     const A = [0, FIN_FORWARD, 0];
     const B = [0, FIN_REAR, 0];
     const C = [ox, FIN_REAR, oz];
-    if (!extruded) {
-      // One double-sided material triangle per authored fin. It retains
-      // the exact three-fin silhouette/roll transform while shedding the
-      // hidden prism thickness at Medium.
-      return [...A, ...B, ...C];
-    }
     const Ap = [A[0] + px, A[1], A[2] + pz];
     const Bp = [B[0] + px, B[1], B[2] + pz];
     const Cp = [C[0] + px, C[1], C[2] + pz];
