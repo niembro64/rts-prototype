@@ -50,7 +50,10 @@ import {
   LOCKSTEP_SUPPORT_BOUNDARIES,
   type LockstepSupportBoundaries,
 } from '../game/architecture/LockstepSupportPolicy';
-import { MatchCommandArchive } from '../game/architecture/MatchCommandArchive';
+import {
+  MatchCommandArchive,
+  type MatchCommandArchiveDiagnostics,
+} from '../game/architecture/MatchCommandArchive';
 import {
   LockstepCatchUp,
   type LockstepCatchUpProgress,
@@ -139,6 +142,9 @@ type RealBattleBackendDiagnostics = {
   lockstepPerformanceBudget?: LockstepPerformanceBudget;
   lockstepFlowControl?: ReturnType<LockstepFlowControl['getDiagnostics']>;
   lockstepResignedPlayerIds?: readonly PlayerId[];
+  lockstepCommandArchive?: MatchCommandArchiveDiagnostics;
+  lockstepHistoryStreams?: number;
+  lockstepCatchUp?: LockstepCatchUpProgress | null;
   lockstepSnapshotPerformance?: LockstepSnapshotPerformanceTelemetry;
   desyncReport?: LockstepDesyncReport | null;
   lockstep?: LockstepFrameSchedulerDiagnostics;
@@ -1122,13 +1128,33 @@ async function createDeterministicLockstepBackendRuntime({
   const fillEmptyHistoryFrames = (
     fromFrame: number,
     throughFrame: number,
-    present: readonly { frame: number }[],
+    present: readonly { frame: number; frameSequence: number }[],
   ): void => {
-    const carried = new Set<number>();
-    for (const frame of present) carried.add(frame.frame);
+    const carried = new Map<number, number>();
+    for (const frame of present) carried.set(frame.frame, frame.frameSequence);
+
+    // A frame's sequence is derived rather than invented. The coordinator
+    // mints frames in one counting loop, so sequence and frame move together;
+    // anchoring on a frame the chunk actually carries recovers the exact
+    // sequence for the empty ones without assuming the two numbers are equal.
+    // Getting this wrong would make a synthesized frame CONFLICT with the same
+    // frame arriving on the live stream, which the scheduler reports as a
+    // desync — a spurious one.
+    let anchorFrame: number | null = null;
+    let anchorSequence = 0;
+    for (const [frame, sequence] of carried) {
+      if (anchorFrame === null || frame < anchorFrame) {
+        anchorFrame = frame;
+        anchorSequence = sequence;
+      }
+    }
+
     for (let frame = Math.max(0, fromFrame); frame <= throughFrame; frame++) {
       if (carried.has(frame)) continue;
-      receiveCoordinatorCommandFrame(frame, frame, []);
+      const frameSequence = anchorFrame === null
+        ? frame
+        : anchorSequence + (frame - anchorFrame);
+      receiveCoordinatorCommandFrame(frame, frameSequence, []);
     }
   };
 
@@ -1782,6 +1808,11 @@ async function createDeterministicLockstepBackendRuntime({
         },
         lockstepFlowControl: flowControl.getDiagnostics(),
         lockstepResignedPlayerIds: [...resignedPlayerIds].sort((a, b) => a - b),
+        // The archive's size is reported rather than left to be discovered as
+        // a memory problem in a long match.
+        lockstepCommandArchive: commandArchive.getDiagnostics(),
+        lockstepHistoryStreams: historyStreams.size,
+        lockstepCatchUp: catchUp?.getProgress() ?? null,
         desyncReport: desyncMonitor?.getReport() ?? null,
         lockstep: scheduler.getDiagnostics(),
       };

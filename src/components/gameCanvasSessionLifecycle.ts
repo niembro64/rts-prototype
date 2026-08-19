@@ -36,6 +36,9 @@ type UseGameCanvasSessionLifecycleOptions = {
   setBattleStartTime: (time: number) => void;
   startBackgroundBattle: () => void | Promise<void>;
   stopBackgroundBattle: () => void;
+  /** Forget everything about watching: the view target, the pause banner, and
+   *  the catch-up overlay all describe a match that no longer exists. */
+  resetSpectatorState: () => void;
 };
 
 export function useGameCanvasSessionLifecycle({
@@ -60,6 +63,7 @@ export function useGameCanvasSessionLifecycle({
   setBattleStartTime,
   startBackgroundBattle,
   stopBackgroundBattle,
+  resetSpectatorState,
 }: UseGameCanvasSessionLifecycleOptions) {
   function stopCurrentServer(): void {
     const currentServer = getCurrentServer();
@@ -74,6 +78,7 @@ export function useGameCanvasSessionLifecycle({
     network.disconnect();
     networkRole.value = null;
     lobbyMembers.value = [];
+    resetSpectatorState();
     roomCode.value = '';
     lobbyError.value = null;
     networkNotice.value = null;

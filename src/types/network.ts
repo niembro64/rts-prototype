@@ -257,6 +257,30 @@ export type MemberId = number;
  *  spectator and only the HOST moves anyone onto a team. */
 export type LobbyMemberRole = 'player' | 'spectator';
 
+/**
+ * Whether a member is attached, and if not, whether anything is being held
+ * for it.
+ *
+ * A declared lifecycle rather than a pair of booleans, because the questions
+ * asked of it — should the match wait, may this seat be reclaimed, has this
+ * player already been resigned — were previously answered by reading a flag
+ * and a set together, which is exactly the shape that produces "it fired
+ * twice" and "it came back after teardown".
+ */
+export type LobbyMemberPresence =
+  /** Attached and answering. */
+  | 'live'
+  /** Attached, but has not been heard from in a while. Mid-battle this is the
+   *  only signal that a peer has gone: a dead socket can take a very long time
+   *  to report itself. */
+  | 'silent'
+  /** Gone, with its seat held open. Its army is still being simulated by
+   *  everyone, so nothing about it changes until it returns or is resigned. */
+  | 'awaitingRejoin'
+  /** Resigned out of the match. Terminal — a resign is a gameplay command and
+   *  must never be issued twice for the same seat. */
+  | 'dropped';
+
 /** Opaque secret handed to a member when it is seated, and presented back to
  *  reclaim that seat after a disconnect. Without it a returning connection is
  *  just another spectator, because seats are reserved by identity and not by
@@ -288,10 +312,10 @@ export type LobbyMember = {
   allyTeamId: number | undefined;
   name: string;
   isHost: boolean;
-  /** True while the member's seat is held open for a rejoin: it disconnected
-   *  mid-match and its army is still being simulated. Never reaches the sim —
-   *  connection state is session state (see `resign`). */
-  awaitingRejoin: boolean;
+  /** Whether this member is attached, quiet, or gone. Never reaches the sim:
+   *  connection state is session state, and the only thing that removes a
+   *  player from the simulation is a frame-scheduled `resign`. */
+  presence: LobbyMemberPresence;
   ipAddress: string | undefined;
   location: string | undefined;
   timezone: string | undefined;

@@ -31,12 +31,14 @@ import { formatBrowserClockTime, getBrowserTimezone } from '../browserLocale';
 import type {
   LobbyMember,
   LobbyMemberInfoPayload,
+  LobbyMemberPresence,
   LobbyMemberRole,
   LobbyPlayer,
   MemberId,
   SeatToken,
 } from '@/types/network';
 import { MAX_LOBBY_PLAYERS, MAX_LOBBY_SPECTATORS } from './LobbyDirectory';
+import { createStateMachine, type StateMachine } from '../state/StateMachine';
 
 /** The host is always member 1 and, in the lobby it created, seat 1. */
 export const HOST_MEMBER_ID: MemberId = 1;
@@ -52,6 +54,33 @@ export type SeatGrantRefusal =
 export type SeatGrant =
   | { readonly seated: true; readonly member: LobbyMember }
   | { readonly seated: false; readonly reason: SeatGrantRefusal };
+
+type MemberPresenceEvent = 'goSilent' | 'speak' | 'disconnect' | 'reclaim' | 'drop';
+
+/**
+ * One member's connection lifecycle.
+ *
+ * The table is the guard: reclaiming a seat that was never lost, or dropping
+ * one twice, is refused by the machine rather than by a check at each call
+ * site. That refusal is the safety property — a `resign` issued twice would
+ * remove an army that is already gone.
+ */
+function createPresenceMachine(): StateMachine<LobbyMemberPresence, MemberPresenceEvent> {
+  return createStateMachine<LobbyMemberPresence, MemberPresenceEvent>({
+    name: 'member-presence',
+    initial: 'live',
+    transitions: {
+      live: { goSilent: 'silent', disconnect: 'awaitingRejoin' },
+      // Speaking again is the ordinary recovery: a peer that missed a couple
+      // of beats under load was never really gone.
+      silent: { speak: 'live', disconnect: 'awaitingRejoin' },
+      // Only a member whose seat is being HELD can be reclaimed or dropped.
+      awaitingRejoin: { reclaim: 'live', drop: 'dropped' },
+      // Terminal. Nothing talks a resigned seat back into the match.
+      dropped: {},
+    },
+  });
+}
 
 function randomToken(): SeatToken {
   // Long enough that guessing another player's seat is not a thing anyone
@@ -79,7 +108,7 @@ export function createLobbyMember(
     allyTeamId: undefined,
     name,
     isHost,
-    awaitingRejoin: false,
+    presence: 'live',
     ipAddress: undefined,
     location: undefined,
     timezone: undefined,
@@ -104,13 +133,37 @@ export function toLobbyPlayer(member: LobbyMember): LobbyPlayer | null {
 
 export class NetworkLobbyMembers {
   private readonly members = new Map<MemberId, LobbyMember>();
+  /** One presence machine per member. Kept beside the record rather than on
+   *  it because the record crosses the wire and a machine cannot. */
+  private readonly presenceByMember = new Map<MemberId, StateMachine<LobbyMemberPresence, MemberPresenceEvent>>();
   /** Seat -> the token that reclaims it. Host-side only; never broadcast in
    *  the roster, only handed to the one member that owns the seat. */
   private readonly seatTokens = new Map<PlayerId, SeatToken>();
 
   clear(): void {
     this.members.clear();
+    this.presenceByMember.clear();
     this.seatTokens.clear();
+  }
+
+  private presenceFor(memberId: MemberId): StateMachine<LobbyMemberPresence, MemberPresenceEvent> {
+    const existing = this.presenceByMember.get(memberId);
+    if (existing !== undefined) return existing;
+    const created = createPresenceMachine();
+    this.presenceByMember.set(memberId, created);
+    return created;
+  }
+
+  /** Move a member's presence and mirror it onto the record clients render.
+   *  Returns false when the table refused, which is the point: a reclaim of a
+   *  seat that was never lost, or a second drop, changes nothing. */
+  private sendPresence(memberId: MemberId, event: MemberPresenceEvent): boolean {
+    const member = this.members.get(memberId);
+    if (member === undefined) return false;
+    const machine = this.presenceFor(memberId);
+    if (!machine.send(event)) return false;
+    member.presence = machine.state;
+    return true;
   }
 
   get size(): number {
@@ -131,10 +184,22 @@ export class NetworkLobbyMembers {
     return copy;
   }
 
+  /**
+   * Forget a member entirely, seat and token included.
+   *
+   * Deleting is how somebody LEAVES; reserving a seat for a return is a
+   * different thing and is expressed by keeping the record in
+   * `awaitingRejoin`. Dropping the token here is what stops a lobby leaver's
+   * token from silently reclaiming a seat later — in the lobby the host
+   * decides who sits, and a token that outlived its seat would be a second
+   * writer for that.
+   */
   delete(memberId: MemberId): LobbyMember | undefined {
     const member = this.members.get(memberId);
     if (member === undefined) return undefined;
+    if (member.playerId !== undefined) this.seatTokens.delete(member.playerId);
     this.members.delete(memberId);
+    this.presenceByMember.delete(memberId);
     return member;
   }
 
@@ -249,7 +314,6 @@ export class NetworkLobbyMembers {
       preferredAllyTeamId ?? this.emptiestAllyTeam(sideCount),
       sideCount,
     );
-    member.awaitingRejoin = false;
     this.seatTokens.set(seat, randomToken());
     return { seated: true, member };
   }
@@ -264,7 +328,6 @@ export class NetworkLobbyMembers {
     member.role = 'spectator';
     member.playerId = undefined;
     member.allyTeamId = undefined;
-    member.awaitingRejoin = false;
     return true;
   }
 
@@ -297,18 +360,30 @@ export class NetworkLobbyMembers {
   reclaimSeat(memberId: MemberId, playerId: PlayerId): boolean {
     const member = this.members.get(memberId);
     if (member === undefined) return false;
+    // A resigned seat is out of the match for good. Its army was removed on a
+    // frame every peer executed, so there is nothing left to come back to.
+    if (member.presence === 'dropped') return false;
     const holder = this.memberForSeat(playerId);
     if (holder !== undefined && holder.memberId !== memberId) {
-      // Somebody is still attached to that seat. A token cannot evict them.
-      if (!holder.awaitingRejoin) return false;
-      this.members.delete(holder.memberId);
+      // Somebody is still attached to that seat. A token cannot evict them —
+      // only a seat that is actually being HELD can be reclaimed, which is
+      // what the presence table refuses on our behalf.
+      if (holder.presence !== 'awaitingRejoin') return false;
+      // The seat survives the handover, so its token has to as well: `delete`
+      // drops the token of whatever seat it removes, and this is the one case
+      // where the seat is not actually being given up.
+      const token = this.seatTokens.get(playerId);
+      this.delete(holder.memberId);
+      if (token !== undefined) this.seatTokens.set(playerId, token);
       member.allyTeamId = holder.allyTeamId;
       member.name = holder.name;
     }
     member.role = 'player';
     member.playerId = playerId;
     if (member.allyTeamId === undefined) member.allyTeamId = FIRST_ALLY_TEAM_ID;
-    member.awaitingRejoin = false;
+    // A fresh connection starts live; the machine for the old one went with it.
+    this.presenceByMember.delete(memberId);
+    member.presence = 'live';
     return true;
   }
 
@@ -317,8 +392,32 @@ export class NetworkLobbyMembers {
   markAwaitingRejoin(memberId: MemberId): boolean {
     const member = this.members.get(memberId);
     if (member === undefined || member.playerId === undefined) return false;
-    if (member.awaitingRejoin) return false;
-    member.awaitingRejoin = true;
+    return this.sendPresence(memberId, 'disconnect');
+  }
+
+  /** A member has gone quiet but its socket is still open. Reported after a
+   *  few missed beats; deliberately separate from disconnecting, because
+   *  noticing and acting are different decisions. */
+  markSilent(memberId: MemberId): boolean {
+    return this.sendPresence(memberId, 'goSilent');
+  }
+
+  /** Heard from again. A peer that missed a couple of beats under load was
+   *  never really gone. */
+  markHeard(memberId: MemberId): boolean {
+    return this.sendPresence(memberId, 'speak');
+  }
+
+  /** Resigned out of the match. Terminal, and refused a second time — a
+   *  `resign` issued twice would remove an army that is already gone.
+   *
+   *  The seat's token dies with it: the army was removed on a frame every peer
+   *  executed, so no connection presenting that token has anything to return
+   *  to. */
+  markDropped(memberId: MemberId): boolean {
+    if (!this.sendPresence(memberId, 'drop')) return false;
+    const playerId = this.members.get(memberId)?.playerId;
+    if (playerId !== undefined) this.seatTokens.delete(playerId);
     return true;
   }
 
@@ -429,6 +528,10 @@ export class NetworkLobbyMembers {
    *  two announcements that can leave a client showing a stale seat. */
   replaceAll(members: readonly LobbyMember[]): void {
     this.members.clear();
+    // The machines are the HOST's bookkeeping. A client renders the presence
+    // the host announced and does not run a second copy of the lifecycle,
+    // which would be a second writer for something it does not decide.
+    this.presenceByMember.clear();
     for (const member of members) {
       if (!Number.isInteger(member.memberId)) continue;
       this.members.set(member.memberId, { ...member });
@@ -446,4 +549,4 @@ export class NetworkLobbyMembers {
   }
 }
 
-export type { LobbyMember, LobbyMemberRole, MemberId, SeatToken };
+export type { LobbyMember, LobbyMemberPresence, LobbyMemberRole, MemberId, SeatToken };

@@ -118,6 +118,8 @@ import { useGameCanvasHostEviction } from './gameCanvasHostEviction';
 import { useGameCanvasPeerLag } from './gameCanvasPeerLag';
 import NetworkPeerLagIndicator from './NetworkPeerLagIndicator.vue';
 import NetworkMatchHoldBanner from './NetworkMatchHoldBanner.vue';
+import SpectatorViewBar from './SpectatorViewBar.vue';
+import SpectatorTeamOverlay from './SpectatorTeamOverlay.vue';
 import { ARCHITECTURE_CONFIG } from '../architectureConfig';
 import { useGameCanvasShellDisplay } from './gameCanvasShellDisplay';
 import { useGameCanvasLobbyRoster } from './gameCanvasLobbyRoster';
@@ -272,6 +274,49 @@ const catchUpProgress = ref<LockstepCatchUpProgress | null>(null);
 let markSeatedPlayerSilent: ((playerId: PlayerId) => void) | null = null;
 let markSeatedPlayerReturned: ((playerId: PlayerId) => void) | null = null;
 
+/**
+ * The seat a WATCHER is looking through, or null for the whole battle.
+ *
+ * Purely local, and never command authority: every peer already holds the
+ * complete world, so this is a filtering choice and nobody else is told.
+ */
+const watchingPlayerId = ref<PlayerId | null>(null);
+/** Bumped on every snapshot so the spectator overlay re-reads the economy.
+ *  The economy singleton is not reactive, and making it so for one overlay
+ *  would put Vue in the simulation's way. */
+
+/**
+ * How many units and buildings a seat owns.
+ *
+ * Read from the LOCAL simulation, not from the filtered snapshot: in
+ * deterministic lockstep every peer runs the whole authoritative world, so a
+ * watcher can count anybody's army without asking and without the number
+ * changing depending on whose vision it happens to be borrowing.
+ */
+function spectatorEntityCountFor(playerId: PlayerId): number {
+  const world = currentServer?.getLockstepSimulationCore().world;
+  if (world === undefined) return 0;
+  return world.getUnitsByPlayer(playerId).length + world.getBuildingsByPlayer(playerId).length;
+}
+
+/** Forget everything about watching. A view target, a pause banner and a
+ *  replay bar all describe a match that no longer exists. */
+function resetSpectatorState(): void {
+  watchingPlayerId.value = null;
+  matchHold.value = null;
+  catchUpProgress.value = null;
+  localRole.value = 'spectator';
+}
+
+function watchPlayer(playerId: PlayerId | null): void {
+  watchingPlayerId.value = playerId;
+  foregroundGame.getScene()?.watchPlayer(playerId ?? undefined);
+  if (playerId !== null) {
+    localPlayerId.value = playerId;
+    activePlayer.value = playerId;
+  }
+}
+
 /** Seat -> the member holding it. The roster is keyed by member, so a
  *  control rendered on a seated row has to resolve back to one. */
 const seatedMemberIds = computed<Record<number, number>>(() => {
@@ -375,6 +420,13 @@ const hasServer = ref(false); // True when we own a GameServer (host/offline/bac
 const networkNotice = ref<string | null>(null);
 // Server metadata received from snapshots for display reconciliation.
 const serverMetaFromSnapshot = ref<NetworkServerSnapshotMeta | null>(null);
+
+const spectatorOverlayRevision = ref(0);
+// serverMetaFromSnapshot is replaced wholesale on every presentation snapshot,
+// so watching it is the cheapest honest "something moved" signal there is.
+watch(serverMetaFromSnapshot, () => {
+  spectatorOverlayRevision.value++;
+});
 
 const {
   lobbyPlayerCount,
@@ -1928,6 +1980,7 @@ const { restartGame } = useGameCanvasSessionLifecycle({
   },
   startBackgroundBattle,
   stopBackgroundBattle,
+  resetSpectatorState,
 });
 
 const {
@@ -1945,6 +1998,7 @@ const {
   isHost,
   networkRole,
   localPlayerId,
+  localRole,
   lobbyMembers,
   battleLoading,
   setupNetworkCallbacks,
@@ -2714,6 +2768,15 @@ watchEffect(() => {
                 class="communication-message"
               >
                 <span class="communication-time">{{ formatCommunicationTime(message.createdAtMs) }}</span>
+                <!-- Which room this was said in. In the lobby there is only
+                     one, so it is unlabelled; in battle the split matters and
+                     a player has to be able to see which channel they are
+                     reading — and, when they answer, replying into. -->
+                <span
+                  v-if="message.channel !== 'all'"
+                  class="communication-channel"
+                  :class="`communication-channel-${message.channel}`"
+                >{{ message.channel === 'team' ? 'TEAM' : 'SPEC' }}</span>
                 <span
                   class="communication-sender"
                   :style="{ color: getPlayerColor(message.senderPlayerId) }"
@@ -3011,6 +3074,27 @@ watchEffect(() => {
          while everyone still plays, this one appears only when nothing is
          advancing at all. Showing both at once would say the same thing
          twice, so the hold takes over. -->
+    <!-- Both economies at once: the thing a watcher wants and a player cannot
+         have. Free to show, because this peer already holds the whole world. -->
+    <SpectatorTeamOverlay
+      v-if="gameStarted && localRole === 'spectator' && lobbyPlayers.length > 0"
+      :players="lobbyPlayers"
+      :revision="spectatorOverlayRevision"
+      :get-player-color="getPlayerColor"
+      :entity-count-for="spectatorEntityCountFor"
+    />
+
+    <!-- A watcher picks whose vision to borrow, or none at all. Only shown to
+         someone who actually holds no seat: for a player the view and the
+         seat are the same thing. -->
+    <SpectatorViewBar
+      v-if="gameStarted && localRole === 'spectator' && lobbyPlayers.length > 0"
+      :players="lobbyPlayers"
+      :watching="watchingPlayerId"
+      :get-player-color="getPlayerColor"
+      @watch="watchPlayer"
+    />
+
     <NetworkMatchHoldBanner
       v-if="gameStarted && networkRole !== null"
       :hold="matchHold"

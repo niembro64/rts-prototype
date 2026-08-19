@@ -2,6 +2,7 @@ import { nextTick, type Ref } from 'vue';
 import { resetRealBattleSettings } from '../battleBarConfig';
 import type {
   LobbyMember,
+  LobbyMemberRole,
   NetworkManager,
   NetworkRole,
 } from '../game/network/NetworkManager';
@@ -24,6 +25,7 @@ type GameCanvasLobbyActionsOptions = {
   isHost: Ref<boolean>;
   networkRole: Ref<NetworkRole | null>;
   localPlayerId: Ref<PlayerId>;
+  localRole: Ref<LobbyMemberRole>;
   lobbyMembers: Ref<LobbyMember[]>;
   battleLoading: Ref<boolean>;
   setupNetworkCallbacks: () => void;
@@ -44,6 +46,7 @@ export function useGameCanvasLobbyActions({
   isHost,
   networkRole,
   localPlayerId,
+  localRole,
   lobbyMembers,
   battleLoading,
   setupNetworkCallbacks,
@@ -70,7 +73,12 @@ export function useGameCanvasLobbyActions({
       roomCode.value = network.getRoomCode();
       isHost.value = true;
       networkRole.value = 'host';
+      // The host creates the lobby, so it is seated from the first moment —
+      // the one member nobody has to put on a team. Set here rather than
+      // waited for: the seat assignment fires inside hostGame(), before the
+      // callbacks below exist to hear it.
       localPlayerId.value = 1;
+      localRole.value = 'player';
       lobbyMembers.value = network.getMembers();
 
       setupNetworkCallbacks();
@@ -103,6 +111,9 @@ export function useGameCanvasLobbyActions({
       // Bind callbacks before joining; the host sends the session assignment
       // as soon as the PeerJS connection opens.
       networkRole.value = 'client';
+      // A joiner is a watcher until the host says otherwise; the assignment
+      // that arrives on admission will say which.
+      localRole.value = 'spectator';
       setupNetworkCallbacks();
 
       await network.joinGame(code);
@@ -135,6 +146,7 @@ export function useGameCanvasLobbyActions({
     roomCode.value = '';
     isHost.value = false;
     lobbyMembers.value = [];
+    localRole.value = 'spectator';
     lobbyError.value = null;
     networkNotice.value = null;
     isConnecting.value = false;

@@ -1039,6 +1039,28 @@ export class RtsScene3D {
     this.onPlayerChange?.(playerId);
   }
 
+  /**
+   * Change which seat a WATCHER is looking through, without giving it that
+   * seat's authority.
+   *
+   * Distinct from `switchPlayer`, which moves command attribution too — that
+   * is right for the demo's seat toggle and wrong for a spectator, where the
+   * whole point is that the view moves and the authority does not. `undefined`
+   * lifts the filter entirely: no fog, the whole battle at once.
+   *
+   * Costs the network nothing. Every peer in a lockstep match already holds
+   * the complete authoritative world, so what a watcher sees is a local
+   * filtering choice and no one else has to be told about it.
+   */
+  public watchPlayer(playerId: PlayerId | undefined): void {
+    this.localPlayerId = playerId ?? this.playerIds[0] ?? this.localPlayerId;
+    this.inputManager?.setActivePlayerId(this.localPlayerId);
+    this.gameConnection.setSpectatorTarget?.(playerId);
+    this.markSelectionDirty();
+    this.lastIdleBuildersSignature = '';
+    this.onPlayerChange?.(this.localPlayerId);
+  }
+
   private arePlayersAlliedForInput(a: PlayerId, b: PlayerId): boolean {
     if (a === b) return true;
     if (a !== this.localPlayerId && b !== this.localPlayerId) return false;

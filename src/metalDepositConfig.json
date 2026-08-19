@@ -65,7 +65,7 @@
     "the placement disc - gets a different pad in each mode. Author an",
     "explicit flatPadCells on a ring to hold its terrain across the switch."
   ],
-  "cellPlacementMode": "cosine-scatter",
+  "cellPlacementMode": "connected-growth",
   "sizesComment": [
     "Authored ore-body size classes. One count and one radius per placement",
     "mode, and they mean exactly what they say:",
@@ -102,27 +102,27 @@
   ],
   "sizes": {
     "standard": {
-      "metalCellCount": 25,
+      "metalCellCount": 17,
       "scatterRadiusCells": 4,
       "growthRadiusCells": 8
     },
     "broad": {
-      "metalCellCount": 121,
+      "metalCellCount": 99,
       "scatterRadiusCells": 9,
       "growthRadiusCells": 41
     },
     "vast": {
-      "metalCellCount": 1089,
+      "metalCellCount": 667,
       "scatterRadiusCells": 28,
       "growthRadiusCells": 55
     },
     "colossal": {
-      "metalCellCount": 3025,
+      "metalCellCount": 2025,
       "scatterRadiusCells": 47,
       "growthRadiusCells": 77
     },
     "titanic": {
-      "metalCellCount": 7921,
+      "metalCellCount": 3921,
       "scatterRadiusCells": 76,
       "growthRadiusCells": 231
     }

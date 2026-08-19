@@ -515,11 +515,12 @@ export class NetworkManager {
         this.emitHostLeft();
         return;
       }
-      // Host side: a seated player has gone quiet. The seat stays reserved
-      // and its army keeps its orders — the simulation is never told anyone
-      // left — but the match must stop waiting on them silently.
+      // Host side: a member has gone quiet. Noticing and acting stay separate
+      // — the socket is still open, so this is `silent`, not gone. For a
+      // SEATED member it is also the only mid-battle signal there is, so the
+      // match is told to stop waiting on them silently.
       if (this.role !== 'host') return;
-      if (!this.members.markAwaitingRejoin(memberId)) return;
+      if (!this.members.markSilent(memberId)) return;
       this.broadcastLobbyRoster();
       const seat = this.seatForMember(memberId);
       if (seat !== undefined) this.emitSeatedPeerSilent(seat);
@@ -1415,6 +1416,13 @@ export class NetworkManager {
     // who are sending plenty of lockstep or communication traffic but
     // happen to skip a heartbeat tick.
     this.heartbeatTracker.markReceived(fromMemberId);
+    // Heard from again: a peer that missed a couple of beats under load was
+    // never really gone.
+    if (this.role === 'host' && this.members.markHeard(fromMemberId)) {
+      this.broadcastLobbyRoster();
+      const seat = this.seatForMember(fromMemberId);
+      if (seat !== undefined) this.onSeatedPeerReturned?.(seat);
+    }
 
     // The resume grant is the one lockstep message that must NOT go to the
     // battle backend, because the point of it is that this client does not

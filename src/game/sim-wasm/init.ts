@@ -1542,6 +1542,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runLockstepDiagnosticsContractTest();
         const { runCanonicalCheckpointContractTest } = await import('../architecture/CanonicalCheckpointContractTest');
         runCanonicalCheckpointContractTest();
+        const { runMatchArchiveReplayContractTest } = await import('../architecture/MatchArchiveReplayContractTest');
+        runMatchArchiveReplayContractTest();
         const { runReplayRecorderContractTest } = await import('../server/ReplayRecorderContractTest');
         runReplayRecorderContractTest();
         const { runForceAccumulatorContractTest } = await import('../sim/ForceAccumulatorContractTest');

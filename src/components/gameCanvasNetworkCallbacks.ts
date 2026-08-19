@@ -87,7 +87,14 @@ export function bindGameCanvasNetworkCallbacks({
   };
 
   network.onSeatAssignment = (playerId, role) => {
-    networkNotice.value = null;
+    // Everyone joins as a watcher and only the host seats anybody, so a
+    // joiner has to be told which of those just happened — otherwise landing
+    // on the bench reads as the lobby being broken.
+    networkNotice.value = role === 'spectator'
+      ? gameStarted.value
+        ? 'Watching this battle — it is already under way, so there are no seats to take.'
+        : 'Watching — the host decides who plays.'
+      : null;
     localRole.value = role;
     // A watcher keeps whatever seat it was viewing; only a real seat moves
     // the view, because for a player the two are the same thing.

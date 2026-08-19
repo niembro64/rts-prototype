@@ -38,6 +38,11 @@ export const MAX_LOBBY_SPECTATORS = 6;
  *  not heard from in 30s, so this tolerates two missed beats. */
 const HEARTBEAT_INTERVAL_MS = 10000;
 
+/** Shortest gap between refreshes driven by a change rather than by the beat
+ *  timer. The roster changes far more often than a browsing player could
+ *  notice, and the listing is a signpost rather than a live feed. */
+const MIN_REFRESH_INTERVAL_MS = 1000;
+
 /** How often a browsing player refreshes the list. Fast enough that a lobby
  *  appears while someone is still deciding, slow enough to be invisible. */
 export const LOBBY_LIST_POLL_INTERVAL_MS = 5000;
@@ -222,17 +227,38 @@ export class LobbyPublisher {
    *  lands during the opening announce, and discarding it left the listing
    *  stale — missing its map size — until the next heartbeat. */
   private pendingBeat = false;
+  /** When the last refresh actually went out, so a churning lobby cannot spam
+   *  the lease. */
+  private lastBeatAtMs = 0;
+  private coalesceTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Begin publishing, or refresh what is already published.
    *
-   *  Safe to call on every change worth showing; the provider is re-read each
-   *  time, so callers never assemble the payload themselves. */
+   *  Safe to call on every change worth showing — and it is called on every
+   *  one, because the roster changes whenever anybody joins, leaves, is seated
+   *  or reports their clock. Refreshes are therefore rate-limited rather than
+   *  sent immediately: the listing only has to be roughly current, and the
+   *  lease is not a place to put a stream of edits. A refresh that arrives
+   *  during the cooldown is remembered and sent when it lifts, so the last
+   *  state always lands. */
   publish(provider: LobbyAnnouncementProvider): void {
     this.provider = provider;
     if (this.heartbeatTimer === null) {
       this.heartbeatTimer = setInterval(() => void this.beat(), HEARTBEAT_INTERVAL_MS);
     }
-    void this.beat();
+    const sinceLast = Date.now() - this.lastBeatAtMs;
+    if (sinceLast >= MIN_REFRESH_INTERVAL_MS) {
+      this.lastBeatAtMs = Date.now();
+      void this.beat();
+      return;
+    }
+    if (this.coalesceTimer !== null) return;
+    this.coalesceTimer = setTimeout(() => {
+      this.coalesceTimer = null;
+      if (this.provider === null) return;
+      this.lastBeatAtMs = Date.now();
+      void this.beat();
+    }, MIN_REFRESH_INTERVAL_MS - sinceLast);
   }
 
   /** Stop publishing and remove the listing. Withdrawal is fire-and-forget:
@@ -243,6 +269,11 @@ export class LobbyPublisher {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+    if (this.coalesceTimer !== null) {
+      clearTimeout(this.coalesceTimer);
+      this.coalesceTimer = null;
+    }
+    this.lastBeatAtMs = 0;
     const roomCode = this.listedRoomCode;
     const hostToken = this.hostToken;
     this.provider = null;

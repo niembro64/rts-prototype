@@ -90,6 +90,21 @@ export function runNetworkLobbySeatingContractTest(): void {
     }
     assert(members.nextFreeMemberId() === 2, 'a freed member id is reused, not burned');
     assert(members.seatedPlayerIds().length === 1, 'only the host remains seated after churn');
+
+    // A leaver's token dies with it. Reserving a seat for a RETURN is a
+    // different thing, expressed by keeping the record in `awaitingRejoin` —
+    // a token that outlived a lobby departure would let somebody seat
+    // themselves, which is the host's decision alone.
+    const churned = new NetworkLobbyMembers();
+    churned.admit(2, 'Leaver');
+    churned.seat(2, 2);
+    const leaverSeat = churned.get(2)?.playerId as PlayerId;
+    const leaverToken = churned.seatTokenFor(leaverSeat);
+    churned.delete(2);
+    assert(
+      churned.seatForToken(leaverToken) === null,
+      "a departed member's token must not still name a seat",
+    );
   }
 
   // --- a seat token reclaims exactly its own seat ---------------------------
@@ -104,8 +119,15 @@ export function runNetworkLobbySeatingContractTest(): void {
 
     // The connection drops mid-match: the seat is HELD, not freed, because
     // that army is still being simulated by everyone else.
-    members.markAwaitingRejoin(2);
-    assert(members.get(2)?.awaitingRejoin === true, 'a lost seat is reserved, not vacated');
+    assert(members.markAwaitingRejoin(2), 'losing a connection holds the seat');
+    assert(
+      members.get(2)?.presence === 'awaitingRejoin',
+      'a lost seat is reserved, not vacated',
+    );
+    assert(
+      !members.markAwaitingRejoin(2),
+      'a second disconnect for the same member is refused by the table, not repeated',
+    );
     assert(
       members.seatedPlayerIds().includes(seat),
       'a reserved seat is still part of the match roster',
@@ -120,6 +142,22 @@ export function runNetworkLobbySeatingContractTest(): void {
     assert(
       members.seatForToken('not-a-real-token') === null,
       'an unknown token reclaims nothing',
+    );
+    assert(members.get(3)?.presence === 'live', 'a returning member is attached again');
+
+    // The presence table is what makes a resign issue exactly once — twice
+    // would remove an army that is already gone.
+    members.markAwaitingRejoin(3);
+    assert(members.markDropped(3), 'a held seat past the timeout can be resigned');
+    assert(members.get(3)?.presence === 'dropped', 'a resigned seat is dropped');
+    assert(!members.markDropped(3), 'a second resign for the same seat is refused');
+    assert(
+      !members.reclaimSeat(3, seat),
+      'nothing talks a resigned seat back into the match',
+    );
+    assert(
+      members.seatForToken(token) === null,
+      "a resigned seat's token returns nothing — its army was already removed",
     );
   }
 
