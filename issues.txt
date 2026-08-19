@@ -3,3 +3,5 @@
 2. When playing online, the "build spray" doesn't seem to move when the commander moves? It's very strange, I also saw something like this with shields not following their turret that produced them, but only occasionally. Figure out what is causing these weirdnesses and fix them. 
 
 3. The commander's beam weapon needs to be much stronger. Also it seems like the beam visual updates are happening way less frequently than the beam visual updates on all other units. Clean this up. 
+
+4. For things like "height probes" (i.e. "PROBES" in the "CLIENT" bottom bar shows them), I have a suspicion that we are doing the math for these every tick, when we really do not need to. Let's randomly assign units into groups with some kind of hash and only do probe calculations for one of those buckets each tick. So maybe we have 10 buckets that the units are assigned to, this would make any unit's probes only do the math once every 10 simulation ticks instead of every tick. 
