@@ -2900,13 +2900,13 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretBeam",
+        "turretBlueprintId": "turretBeamMini",
         "presentation": {
-          "headRadius": 6,
+          "headRadius": 3,
           "headOnly": false,
           "barrel": {
             "type": "singleConeBarrel",
-            "barrelLength": 1.2
+            "barrelLength": 1.5
           }
         },
         "sensorTurretBlueprintId": "turretSensorUnitTarantula",

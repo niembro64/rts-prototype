@@ -31,9 +31,9 @@
     "hitSound": {
       "$audio": "event.hit.rayBeamMedium"
     },
-    "dps": 36,
-    "force": 260,
-    "recoil": 260,
+    "dps": 150,
+    "force": 1050,
+    "recoil": 1050,
     "radius": 3,
     "width": 6,
     "damageSphere": {
