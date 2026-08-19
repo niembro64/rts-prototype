@@ -69,6 +69,7 @@ import { buildWorldBoxFloorGeometry, getWorldBoxFloorY } from './WorldBoxGeometr
 import {
   emitMapInfoAnnexGeometry,
   mapInfoAnnexFlatHeight,
+  mapInfoAnnexMapSamplePoint,
   resolveMapInfoAnnexFootprint,
 } from './MapInfoAnnex3D';
 import {
@@ -2542,6 +2543,10 @@ export class TerrainTileRenderer3D {
         nx: number,
         ny: number,
         nz: number,
+        // Where this wall reads the horizon blend, when that is not its own
+        // position: the annex stands off the map edge, and sampling it there
+        // would score every one of its walls a full fade. Null = read here.
+        horizonFadeAt: { readonly x: number; readonly z: number } | null = null,
       ): number => {
         const idx = terrainPositions.length / 3;
         terrainPositions.push(x, y, z);
@@ -2558,8 +2563,8 @@ export class TerrainTileRenderer3D {
         terrainNeighborhoodSlopes.push(1);
         terrainHorizonFades.push(
           this.getTerrainHorizonFadeForWaterBoundaryMode(
-            x,
-            z,
+            horizonFadeAt?.x ?? x,
+            horizonFadeAt?.z ?? z,
             waterBoundaryMode,
           ),
         );
@@ -2721,10 +2726,17 @@ export class TerrainTileRenderer3D {
               terrainWallWears.push(1, 0, y, 1, 0, y);
               terrainVertexWallClasses.push(0);
               terrainNeighborhoodSlopes.push(slope);
+              // Not at (x, z): the horizon blend is total everywhere past the
+              // map's rectangle, so read here the whole headland would paint
+              // as one slab of horizon colour instead of as the seabed it is
+              // meant to continue. mapInfoAnnexMapSamplePoint folds the annex
+              // back into the map — the seam keeps the coast's own blend, and
+              // the flat table gets what the map's interior gets.
+              const blendSample = mapInfoAnnexMapSamplePoint(annex, x, z);
               terrainHorizonFades.push(
                 this.getTerrainHorizonFadeForWaterBoundaryMode(
-                  x,
-                  z,
+                  blendSample.x,
+                  blendSample.z,
                   waterBoundaryMode,
                 ),
               );
@@ -2745,7 +2757,15 @@ export class TerrainTileRenderer3D {
               return idx;
             },
             pushWallVertex: (x, y, z, nx, nz): number =>
-              pushWorldBoxVertex(x, y, z, nx, 0, nz),
+              pushWorldBoxVertex(
+                x,
+                y,
+                z,
+                nx,
+                0,
+                nz,
+                mapInfoAnnexMapSamplePoint(annex, x, z),
+              ),
             pushTriangle: (a, b, c): void => {
               terrainIndices.push(a, b, c);
               terrainDebugLevels.push(-1);

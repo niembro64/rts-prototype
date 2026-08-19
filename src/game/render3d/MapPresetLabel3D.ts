@@ -86,6 +86,12 @@ const LETTER_MASK_MAX_TEXELS = 2_400_000;
  *  keeps float noise from re-seating the sign every frame. */
 const ANNEX_ALTITUDE_EPSILON = 1e-3;
 
+/** Ink metrics a 2D context can decline to report. The font box is the
+ *  fallback, and these are its usable split — enough to keep a caption
+ *  laid out rather than collapsed if `actualBoundingBox*` is missing. */
+const ASSUMED_ASCENT_FONT_FRACTION = 0.8;
+const ASSUMED_DESCENT_FONT_FRACTION = 0.2;
+
 function fontString(pixels: number): string {
   return `bold ${pixels}px ${NAME_LABEL_FONT_FAMILY}`;
 }
@@ -94,15 +100,32 @@ function fontPxForLine(index: number): number {
   return index === 0 ? STYLE.titleFontPx : STYLE.infoFontPx;
 }
 
-/** Canvas height for `lines`: padding, the title row, then one gap +
- *  info row per remaining line. Exported for the contract test. */
-export function mapPresetLabelCanvasHeight(lineCount: number): number {
-  if (lineCount <= 0) return 0;
-  let height = 2 * STYLE.canvasPadPx + STYLE.titleFontPx;
-  for (let index = 1; index < lineCount; index++) {
-    height += STYLE.lineGapPx + STYLE.infoFontPx;
+/** The outline scales with its row, so info lines are not swallowed by a
+ *  stroke authored for the title. */
+function strokeWidthForLine(index: number, scale: number): number {
+  return STYLE.strokeWidthPx * scale * (fontPxForLine(index) / STYLE.titleFontPx);
+}
+
+function finiteOr(value: number | undefined, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+/** Baseline of row `index` measured from the FIRST row's baseline: one row
+ *  height plus one gap for every row crossed. */
+function baselineOffsetForLine(index: number, scale: number): number {
+  let offset = 0;
+  for (let row = 1; row <= index; row++) {
+    offset += (fontPxForLine(row - 1) + STYLE.lineGapPx) * scale;
   }
-  return height;
+  return offset;
+}
+
+/** Height of the stacked rows for `lineCount` lines, first baseline to last.
+ *  Padding is deliberately NOT in here: the canvas is padded around the INK,
+ *  and only measureText knows where the ink is. Exported for the contract
+ *  test. */
+export function mapPresetLabelRowStackHeight(lineCount: number): number {
+  return lineCount <= 0 ? 0 : baselineOffsetForLine(lineCount - 1, 1);
 }
 
 export type MapPresetLabelPlacement = {
@@ -113,23 +136,46 @@ export type MapPresetLabelPlacement = {
   readonly annex: MapInfoAnnexFootprint;
 };
 
-/** Fit the caption into the annex's flat table, inset by one margin on every
- *  side, largest size that keeps the canvas aspect. Pure so the contract test
- *  can hold the "entirely on the flat part, entirely off the map" invariant
- *  without WebGL. */
+/** Fit the caption onto the annex's flat table with THE SAME GAP above,
+ *  below and on both sides, at the canvas's own aspect.
+ *
+ *  Fitting the block to a fixed inset and centring what is left over does not
+ *  do that: the caption is far wider than it is tall, so it fills the table's
+ *  width and floats in the middle of its depth, leaving a band of empty
+ *  headland over and under the text several times the gap beside it. There is
+ *  exactly one inset `g` that comes out even — the one where the table minus
+ *  `g` on every side already HAS the caption's aspect:
+ *
+ *      (width - 2g) / (depth - 2g) = aspect
+ *
+ *  The authored margin is its floor, and the fixed-inset fit is the fallback
+ *  for a caption too square for the table to hold an even gap around it.
+ *
+ *  Pure so the contract test can hold the "entirely on the flat part,
+ *  entirely off the map" invariant without WebGL. */
 export function resolveMapPresetLabelPlacement(
   mapWidth: number,
   mapHeight: number,
   canvasAspect: number,
 ): MapPresetLabelPlacement {
   const annex = resolveMapInfoAnnexFootprint(mapWidth, mapHeight);
-  const area = resolveMapInfoAnnexCaptionArea(
-    annex,
-    annex.depth * STYLE.captionMarginAnnexDepthFraction,
-  );
-  const worldHeight = Math.min(area.depth, area.width / Math.max(1e-6, canvasAspect));
+  const aspect = Math.max(1e-6, canvasAspect);
+  const minimumMargin = annex.depth * STYLE.captionMarginAnnexDepthFraction;
+  const table = resolveMapInfoAnnexCaptionArea(annex, 0);
+  const evenGap =
+    aspect > 1 + 1e-6
+      ? (aspect * table.depth - table.width) / (2 * (aspect - 1))
+      : Number.NaN;
+  const margin =
+    Number.isFinite(evenGap) &&
+    evenGap >= minimumMargin &&
+    2 * evenGap < Math.min(table.width, table.depth)
+      ? evenGap
+      : minimumMargin;
+  const area = resolveMapInfoAnnexCaptionArea(annex, margin);
+  const worldHeight = Math.min(area.depth, area.width / aspect);
   return {
-    worldWidth: worldHeight * canvasAspect,
+    worldWidth: worldHeight * aspect,
     worldHeight,
     centerX: area.centerX,
     centerZ: area.centerZ,
@@ -151,6 +197,9 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
   private letterMesh: THREE.Mesh | null = null;
   private readonly mapWidth: number;
   private readonly mapHeight: number;
+  /** The annex is a pure function of the map size, and update() runs every
+   *  frame — resolve it once. */
+  private readonly annex: MapInfoAnnexFootprint;
   private lastKey: string | null = null;
   private lastLines: readonly string[] = [];
   private lastAnnexSurfaceY = Number.NaN;
@@ -164,6 +213,7 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
   ) {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
+    this.annex = resolveMapInfoAnnexFootprint(mapWidth, mapHeight);
     const ctx = this.canvas.getContext('2d');
     if (ctx === null) throw new Error('MapPresetLabel3D requires a 2D canvas context');
     this.ctx = ctx;
@@ -214,9 +264,7 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
     // The extra half-turn around Z corrects both mirrored reading order and
     // vertical stacking after the group is laid flat on the ground plane.
     this.group.rotation.x = MAP_PRESET_LABEL_ROTATION_X;
-    this.group.rotation.z =
-      MAP_PRESET_LABEL_ROTATION_Z +
-      resolveMapInfoAnnexFootprint(mapWidth, mapHeight).signYaw;
+    this.group.rotation.z = MAP_PRESET_LABEL_ROTATION_Z + this.annex.signYaw;
     this.group.visible = false;
     this.group.add(this.captionMesh);
     parent.add(this.group);
@@ -269,49 +317,98 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
   /** The rendered altitude of the annex's flat table — the plane the letters
    *  stand on. */
   private annexSurfaceY(): number {
-    const annex = resolveMapInfoAnnexFootprint(this.mapWidth, this.mapHeight);
     return mapInfoAnnexFlatSurfaceY(
-      mapInfoAnnexFlatHeight(annex, (x, z) =>
+      mapInfoAnnexFlatHeight(this.annex, (x, z) =>
         getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight)),
     );
   }
 
-  /** Paint `lines` into `canvas` at `scale`, resizing it to fit. Scale 1 is
-   *  the caption texture; the glyph trace repaints the identical layout
-   *  larger, so mask coordinates map onto the caption quad by ratio alone. */
+  /** Paint `lines` into `canvas` at `scale`, resizing it to fit with the SAME
+   *  padding above, below and on both sides.
+   *
+   *  The padding is measured against the INK — the union of the glyphs' own
+   *  bounding boxes, grown by the outline stroked around them — and not
+   *  against the font box. A font box carries internal leading above the caps
+   *  and below the baseline that no glyph in this caption fills, so padding
+   *  against it puts a visibly fatter gap over the title than beside it.
+   *
+   *  Scale 1 is the caption texture; the glyph trace repaints the identical
+   *  layout larger, so mask coordinates map onto the caption quad by ratio
+   *  alone. */
   private paint(
     ctx: CanvasRenderingContext2D,
     canvas: HTMLCanvasElement,
     lines: readonly string[],
     scale: number,
   ): void {
-    // Measure first — the font must be set before measureText, and
-    // resizing the canvas wipes both the pixels and the context state.
-    let widest = 0;
-    for (let index = 0; index < lines.length; index++) {
-      ctx.font = fontString(fontPxForLine(index) * scale);
-      widest = Math.max(widest, Math.ceil(ctx.measureText(lines[index]).width));
+    // Measure first — the font must be set before measureText, the ink
+    // metrics are reported relative to the current alignment, and resizing
+    // the canvas wipes both the pixels and the context state.
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    const rows = lines.map((line, index) => {
+      const fontPx = fontPxForLine(index) * scale;
+      ctx.font = fontString(fontPx);
+      const metrics = ctx.measureText(line);
+      return {
+        baseline: baselineOffsetForLine(index, scale),
+        ascent: finiteOr(
+          metrics.actualBoundingBoxAscent,
+          fontPx * ASSUMED_ASCENT_FONT_FRACTION,
+        ),
+        descent: finiteOr(
+          metrics.actualBoundingBoxDescent,
+          fontPx * ASSUMED_DESCENT_FONT_FRACTION,
+        ),
+        // Positive to the LEFT of the pen, per the 2D spec.
+        left: finiteOr(metrics.actualBoundingBoxLeft, 0),
+        right: finiteOr(metrics.actualBoundingBoxRight, finiteOr(metrics.width, 0)),
+        halfStroke: 0.5 * strokeWidthForLine(index, scale),
+      };
+    });
+
+    const padding = STYLE.canvasPadPx * scale;
+    let inkTop = 0;
+    let inkBottom = 0;
+    let inkLeft = 0;
+    let inkRight = 0;
+    for (let index = 0; index < rows.length; index++) {
+      const row = rows[index];
+      const top = row.baseline - row.ascent - row.halfStroke;
+      const bottom = row.baseline + row.descent + row.halfStroke;
+      const left = -row.left - row.halfStroke;
+      const right = row.right + row.halfStroke;
+      if (index === 0) {
+        inkTop = top;
+        inkBottom = bottom;
+        inkLeft = left;
+        inkRight = right;
+      } else {
+        inkTop = Math.min(inkTop, top);
+        inkBottom = Math.max(inkBottom, bottom);
+        inkLeft = Math.min(inkLeft, left);
+        inkRight = Math.max(inkRight, right);
+      }
     }
-    canvas.width = widest + 2 * Math.round(STYLE.canvasPadPx * scale);
-    canvas.height = Math.round(mapPresetLabelCanvasHeight(lines.length) * scale);
+    // The pen sits one padding in from the ink's own extreme, so the gap to
+    // every canvas edge is that same padding.
+    const originX = padding - inkLeft;
+    const originY = padding - inkTop;
+    canvas.width = Math.max(1, Math.ceil(originX + inkRight + padding));
+    canvas.height = Math.max(1, Math.ceil(originY + inkBottom + padding));
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
+    ctx.textBaseline = 'alphabetic';
     ctx.lineJoin = 'round';
     ctx.strokeStyle = STYLE.strokeColor;
     ctx.fillStyle = STYLE.fillColor;
-
-    let cursorY = STYLE.canvasPadPx * scale;
     for (let index = 0; index < lines.length; index++) {
-      const fontPx = fontPxForLine(index) * scale;
-      if (index > 0) cursorY += STYLE.lineGapPx * scale;
-      ctx.font = fontString(fontPx);
-      // The outline scales with the row so info lines don't get swallowed
-      // by a stroke authored for the title.
-      ctx.lineWidth = STYLE.strokeWidthPx * scale * (fontPx / (STYLE.titleFontPx * scale));
-      ctx.strokeText(lines[index], STYLE.canvasPadPx * scale, cursorY);
-      ctx.fillText(lines[index], STYLE.canvasPadPx * scale, cursorY);
-      cursorY += fontPx;
+      ctx.font = fontString(fontPxForLine(index) * scale);
+      ctx.lineWidth = strokeWidthForLine(index, scale);
+      const baselineY = originY + rows[index].baseline;
+      ctx.strokeText(lines[index], originX, baselineY);
+      ctx.fillText(lines[index], originX, baselineY);
     }
     if (canvas === this.canvas) this.texture.needsUpdate = true;
   }

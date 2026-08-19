@@ -1,7 +1,7 @@
 import {
   MAP_PRESET_LABEL_ROTATION_X,
   MAP_PRESET_LABEL_ROTATION_Z,
-  mapPresetLabelCanvasHeight,
+  mapPresetLabelRowStackHeight,
   resolveMapPresetLabelPlacement,
 } from './MapPresetLabel3D';
 import { resolveMapInfoAnnexFootprint } from './MapInfoAnnex3D';
@@ -47,11 +47,16 @@ export function runMapPresetLabel3DContractTest(): void {
     resolveMapInfoAnnexFootprint(10600, 10600).signYaw === 0,
     'the sign frame must need no extra yaw on the edge the annex uses',
   );
-  assertContract(mapPresetLabelCanvasHeight(0) === 0, 'an empty caption has no canvas');
+  // The row stack is baseline-to-baseline only: the padding around it is
+  // measured against the painted INK at paint time, not counted here.
   assertContract(
-    mapPresetLabelCanvasHeight(3) > mapPresetLabelCanvasHeight(2)
-      && mapPresetLabelCanvasHeight(2) > mapPresetLabelCanvasHeight(1),
-    'each extra info line must add canvas height',
+    mapPresetLabelRowStackHeight(0) === 0 && mapPresetLabelRowStackHeight(1) === 0,
+    'a caption of one line or none stacks no rows',
+  );
+  assertContract(
+    mapPresetLabelRowStackHeight(3) > mapPresetLabelRowStackHeight(2)
+      && mapPresetLabelRowStackHeight(2) > mapPresetLabelRowStackHeight(1),
+    'each extra info line must add stack height',
   );
 
   // Smallest and largest stock map axes, against a wide and a narrow caption.

@@ -182,6 +182,39 @@ export function mapInfoAnnexFlatSurfaceY(flatHeight: number): number {
   return flatHeight + LAND_TILE_GROUND_LIFT;
 }
 
+/**
+ * The point INSIDE the map that an annex point borrows the terrain's
+ * edge-of-the-world terms from: the annex FOLDED BACK across the map edge it
+ * grew out of.
+ *
+ * The horizon blend answers "how close is this fragment to the end of the
+ * world", and it is total everywhere at or past the map's rectangular edge.
+ * Read straight, then, every annex vertex scores a full blend and the whole
+ * headland paints as one slab of horizon colour — no substances, no
+ * shoreline tint, no underwater darkening, which is exactly the "that is not
+ * the seabed" tell the annex exists to avoid.
+ *
+ * Reflection is what fixes it without reintroducing a seam. The seam row
+ * (out = 0) maps to itself, so the annex's first row carries the coast's own
+ * blend EXACTLY; walking out along the annex walks in from the coast, so the
+ * flat table the caption stands on scores what ground that far inside the map
+ * scores, and is painted as the same seabed.
+ */
+export function mapInfoAnnexMapSamplePoint(
+  footprint: MapInfoAnnexFootprint,
+  x: number,
+  z: number,
+): { readonly x: number; readonly z: number } {
+  const out = Math.max(
+    0,
+    (x - footprint.attachX) * footprint.outX + (z - footprint.attachZ) * footprint.outZ,
+  );
+  return {
+    x: x - 2 * out * footprint.outX,
+    z: z - 2 * out * footprint.outZ,
+  };
+}
+
 export type MapInfoAnnexRect = {
   readonly minX: number;
   readonly maxX: number;

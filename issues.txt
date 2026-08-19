@@ -1,0 +1,9 @@
+1. Unfinished buildings should decay at a constant rate and they should disappear completely when they are down to zero.
+
+2. Online play seems to have commands missing or not functioning properly as compared to "demo battle" commands. Make sure that we run all commands through the same code path to ensure consistency and prevent drift between them.
+
+3. Commander build spray seems to continue spraying on a building even after it is done. 
+
+4. Commander seems to get stuck "in" or "next to" a building that has been constructed. 
+
+5. I saw a submarine or orca get stuck next to ground. Update our "budget_design_philosoph.html" to include that any fiction and propulsion system that is described by our "ground" is additive to that which we have described in "water" and "air". Meaning that we add the ground friction and we add the ground propulsion stuff on TOP of whatever we have going for that unit in that medium. Curently it seems that the ground friction and propulsion is overriding the water or air friction and propulsion, which is not what we want.
