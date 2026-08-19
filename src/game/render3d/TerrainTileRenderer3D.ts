@@ -137,10 +137,12 @@ import {
 import { SURFACE_WEATHERING_GLSL } from './SurfaceWeathering3D';
 import {
   TERRAIN_WALL_WEAR_GLSL,
+  WALL_WEAR_RIM_STRIDE,
   assignTerrainWallWearUniforms,
   computeTerrainWallWear,
   createTerrainWallWearUniforms,
   terrainWallWearFragment,
+  terrainWallWearMatteCoverage,
   terrainWallWearUniformDeclarations,
   type TerrainWallWearUniforms,
 } from './TerrainWallWear3D';
@@ -330,6 +332,31 @@ function computeNeighborhoodSlope(
     if (weighted > best) best = weighted;
   }
   return best;
+}
+
+/** Splits the interleaved rim buffer into the two vec3 attributes the shader
+ *  reads. Interleaved on the CPU because the two rims are produced together
+ *  and indexed together; split on upload because a shader wants each rim as
+ *  one addressable vector. */
+function setTerrainWallRimAttributes(
+  geometry: THREE.BufferGeometry,
+  interleaved: Float32Array,
+): void {
+  const vertexCount = Math.floor(interleaved.length / WALL_WEAR_RIM_STRIDE);
+  const top = new Float32Array(vertexCount * 3);
+  const bottom = new Float32Array(vertexCount * 3);
+  for (let v = 0; v < vertexCount; v++) {
+    const src = v * WALL_WEAR_RIM_STRIDE;
+    const dst = v * 3;
+    top[dst] = interleaved[src];
+    top[dst + 1] = interleaved[src + 1];
+    top[dst + 2] = interleaved[src + 2];
+    bottom[dst] = interleaved[src + 3];
+    bottom[dst + 1] = interleaved[src + 4];
+    bottom[dst + 2] = interleaved[src + 5];
+  }
+  geometry.setAttribute('terrainWallRimTop', new THREE.BufferAttribute(top, 3));
+  geometry.setAttribute('terrainWallRimBottom', new THREE.BufferAttribute(bottom, 3));
 }
 
 function terrainTriangleNormalVector(
@@ -920,13 +947,16 @@ export class TerrainTileRenderer3D {
           '#include <common>',
           [
             'attribute float terrainShade;',
-            'attribute vec2 terrainWallWear;',
+            'attribute vec3 terrainWallRimTop;',
+            'attribute vec3 terrainWallRimBottom;',
             'attribute float terrainNeighborhoodSlope;',
             'attribute float terrainHorizonFade;',
             'attribute vec3 triangleDebugColor;',
             'varying vec3 vTerrainWorldPos;',
+            'varying vec3 vTerrainWorldNormal;',
             'varying float vTerrainShade;',
-            'varying vec2 vTerrainWallWear;',
+            'varying vec3 vTerrainWallRimTop;',
+            'varying vec3 vTerrainWallRimBottom;',
             'varying float vTerrainSlope;',
             'varying float vTerrainNeighborhoodSlope;',
             'varying float vTerrainHorizonFade;',
@@ -939,8 +969,13 @@ export class TerrainTileRenderer3D {
           [
             '#include <begin_vertex>',
             'vTerrainWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;',
+            // The SMOOTH surface normal, in world space. The wall-rim
+            // treatment needs a normal that does not jump between
+            // neighbouring triangles; see terrainWallWearFragment.
+            "vTerrainWorldNormal = normalize(mat3(modelMatrix) * normal);",
             'vTerrainShade = terrainShade;',
-            'vTerrainWallWear = terrainWallWear;',
+            'vTerrainWallRimTop = terrainWallRimTop;',
+            'vTerrainWallRimBottom = terrainWallRimBottom;',
             'vTerrainSlope = 1.0 - clamp(abs(normal.y), 0.0, 1.0);',
             'vTerrainNeighborhoodSlope = terrainNeighborhoodSlope;',
             'vTerrainHorizonFade = terrainHorizonFade;',
@@ -991,8 +1026,10 @@ export class TerrainTileRenderer3D {
             TERRAIN_WALL_WEAR_GLSL,
             WORLD_SHADE_FRAGMENT_PARS,
             'varying vec3 vTerrainWorldPos;',
+            'varying vec3 vTerrainWorldNormal;',
             'varying float vTerrainShade;',
-            'varying vec2 vTerrainWallWear;',
+            'varying vec3 vTerrainWallRimTop;',
+            'varying vec3 vTerrainWallRimBottom;',
             'varying float vTerrainSlope;',
             'varying float vTerrainNeighborhoodSlope;',
             'varying float vTerrainHorizonFade;',
@@ -1164,9 +1201,9 @@ export class TerrainTileRenderer3D {
             // Measured at TOP LEVEL for the same reason the ore's width is:
             // the treatment below runs under a branch neighbouring fragments
             // disagree about, and a derivative there is undefined.
-            'float wallWearRampWidth = max(fwidth(vTerrainWallWear.x), fwidth(vTerrainWallWear.y));',
-            terrainWallWearFragment('vTerrainWorldPos', 'geomNormal'),
-            'metalPbrCoverage *= 1.0 - uWallWearMatte * terrainWallWear;',
+            'float wallWearDistanceWidth = max(fwidth(vTerrainWallRimTop.x), fwidth(vTerrainWallRimBottom.x)) * uWallWearReach;',
+            terrainWallWearFragment('vTerrainWorldPos', 'normalize(vTerrainWorldNormal)'),
+            `metalPbrCoverage = ${terrainWallWearMatteCoverage('metalPbrCoverage')};`,
             'float horizonBlend = uTerrainHorizonBlendEnabled * smoothstep(uTerrainHorizonFadeStart, uTerrainHorizonFadeEnd, vTerrainHorizonFade);',
             'terrainRgb = mix(terrainRgb, uTerrainHorizonColor, horizonBlend);',
             'float terrainFinalShade = mix(vTerrainShade, uTerrainHorizonShade, horizonBlend);',
@@ -1292,7 +1329,7 @@ export class TerrainTileRenderer3D {
         );
     };
     this.terrainMaterial.customProgramCacheKey = () =>
-      'authoritative-terrain-weathering-wallwear-v46';
+      'authoritative-terrain-weathering-wallwear-v50';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
@@ -2144,7 +2181,8 @@ export class TerrainTileRenderer3D {
     const terrainNormals: number[] = [];
     const terrainShades: number[] = [];
     const terrainNeighborhoodSlopes: number[] = [];
-    // Interleaved (topRim, bottomRim) proximity per rendered vertex.
+    // Interleaved (topDistance, topIntensity, bottomDistance, bottomIntensity)
+    // per rendered vertex; distances normalized by the wear reach.
     const terrainWallWears: number[] = [];
     const terrainHorizonFades: number[] = [];
     const terrainIndices: number[] = [];
@@ -2254,7 +2292,9 @@ export class TerrainTileRenderer3D {
         terrainPositions.push(wx, terrainHeight + LAND_TILE_GROUND_LIFT, wz);
         terrainNormals.push(normal.nx, normal.nz, normal.ny);
         terrainSourceVertices.push(i);
-        terrainWallWears.push(wallWear.top[i] ?? 0, wallWear.bottom[i] ?? 0);
+        for (let c = 0; c < WALL_WEAR_RIM_STRIDE; c++) {
+          terrainWallWears.push(wallWear.rims[i * WALL_WEAR_RIM_STRIDE + c] ?? 0);
+        }
         terrainVertexWallClasses.push(wallClass !== 0 ? 1 : 0);
         terrainHorizonFades.push(
           this.getTerrainHorizonFadeForWaterBoundaryMode(
@@ -2389,8 +2429,9 @@ export class TerrainTileRenderer3D {
           terrainShades.push(SIDE_WALL_TERRAIN_SHADE);
           terrainSourceVertices.push(-1);
           // Map-boundary walls are the world box, not a terrace fold; they
-          // have no rim to wear.
-          terrainWallWears.push(0, 0);
+          // have no rim to wear. Distance 1 = past the reach, intensity 0,
+          // rim height = its own so the drop term is zero too.
+          terrainWallWears.push(1, 0, y, 1, 0, y);
           terrainVertexWallClasses.push(0);
           // Map-boundary side walls are vertical cliffs — neighborhood slope
           // is 1.0 so the grass mask fully suppresses any green tint here.
@@ -2523,7 +2564,7 @@ export class TerrainTileRenderer3D {
           terrainNormals.push(0, 1, 0);
           terrainShades.push(1);
           terrainSourceVertices.push(-1);
-          terrainWallWears.push(0, 0);
+          terrainWallWears.push(1, 0, y, 1, 0, y);
           terrainVertexWallClasses.push(0);
           // Infinity-shelf quads sit at the underwater horizon and are
           // already shoreline-masked out of the grass zone, so the exact
@@ -2570,7 +2611,7 @@ export class TerrainTileRenderer3D {
       const debugPositions = new Float32Array(debugVertexCount * 3);
       const debugNormals = new Float32Array(debugVertexCount * 3);
       const debugTerrainShades = new Float32Array(debugVertexCount);
-      const debugTerrainWallWears = new Float32Array(debugVertexCount * 2);
+      const debugTerrainWallWears = new Float32Array(debugVertexCount * WALL_WEAR_RIM_STRIDE);
       const debugTerrainNeighborhoodSlopes = new Float32Array(debugVertexCount);
       const debugTerrainHorizonFades = new Float32Array(debugVertexCount);
       const debugTriangleColors = new Float32Array(debugVertexCount * 3);
@@ -2586,8 +2627,10 @@ export class TerrainTileRenderer3D {
         debugNormals[dst3 + 1] = terrainNormals[src3 + 1];
         debugNormals[dst3 + 2] = terrainNormals[src3 + 2];
         debugTerrainShades[dst] = terrainShades[src];
-        debugTerrainWallWears[dst * 2] = terrainWallWears[src * 2];
-        debugTerrainWallWears[dst * 2 + 1] = terrainWallWears[src * 2 + 1];
+        for (let c = 0; c < WALL_WEAR_RIM_STRIDE; c++) {
+          debugTerrainWallWears[dst * WALL_WEAR_RIM_STRIDE + c] =
+            terrainWallWears[src * WALL_WEAR_RIM_STRIDE + c];
+        }
         debugTerrainNeighborhoodSlopes[dst] = terrainNeighborhoodSlopes[src];
         debugTerrainHorizonFades[dst] = terrainHorizonFades[src];
         const triangleIndex = Math.floor(dst / 3);
@@ -2602,7 +2645,7 @@ export class TerrainTileRenderer3D {
       geometry.setAttribute('position', new THREE.BufferAttribute(debugPositions, 3));
       geometry.setAttribute('normal', new THREE.BufferAttribute(debugNormals, 3));
       geometry.setAttribute('terrainShade', new THREE.BufferAttribute(debugTerrainShades, 1));
-      geometry.setAttribute('terrainWallWear', new THREE.BufferAttribute(debugTerrainWallWears, 2));
+      setTerrainWallRimAttributes(geometry, debugTerrainWallWears);
       geometry.setAttribute('terrainNeighborhoodSlope', new THREE.BufferAttribute(debugTerrainNeighborhoodSlopes, 1));
       geometry.setAttribute('terrainHorizonFade', new THREE.BufferAttribute(debugTerrainHorizonFades, 1));
       geometry.setAttribute('triangleDebugColor', new THREE.BufferAttribute(debugTriangleColors, 3));
@@ -2611,7 +2654,7 @@ export class TerrainTileRenderer3D {
       geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(terrainPositions), 3));
       geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(terrainNormals), 3));
       geometry.setAttribute('terrainShade', new THREE.BufferAttribute(new Float32Array(terrainShades), 1));
-      geometry.setAttribute('terrainWallWear', new THREE.BufferAttribute(new Float32Array(terrainWallWears), 2));
+      setTerrainWallRimAttributes(geometry, new Float32Array(terrainWallWears));
       geometry.setAttribute('terrainNeighborhoodSlope', new THREE.BufferAttribute(new Float32Array(terrainNeighborhoodSlopes), 1));
       geometry.setAttribute('terrainHorizonFade', new THREE.BufferAttribute(new Float32Array(terrainHorizonFades), 1));
       geometry.setAttribute('triangleDebugColor', new THREE.BufferAttribute(new Float32Array(vertexCount * 3), 3));

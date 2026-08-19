@@ -110,30 +110,30 @@
       ],
       "wallWear": {
         "noiseTileWorldSize": 420,
-        "reachWorldUnits": 90,
+        "reachWorldUnits": 130,
         "minAngleDegrees": 6,
         "maxAngleDegrees": 52,
-        "growWorldUnits": 4,
-        "warpWorldUnits": 16,
+        "growWorldUnits": 6,
+        "warpWorldUnits": 26,
         "grainStrength": 0.9,
         "thicknessVariation": 0.55,
         "matte": 0.85,
         "top": {
           "tintRgb01": "#d9cdb4",
-          "exposure": 1.45,
-          "strength": 0.62,
+          "exposure": 1.5,
+          "strength": 0.74,
           "darken": 0.6,
           "seamPower": 3.2,
-          "falloff": 1.7,
+          "falloff": 1.35,
           "patchDepth": 0.68
         },
         "bottom": {
           "tintRgb01": "#8a7a60",
           "exposure": 0.95,
-          "strength": 0.82,
+          "strength": 0.88,
           "darken": 0.48,
           "seamPower": 2.2,
-          "falloff": 1.1,
+          "falloff": 0.95,
           "patchDepth": 0.52
         }
       },

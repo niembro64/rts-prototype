@@ -1720,6 +1720,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runSprayRenderer3DContractTest();
         const { runMetalDepositSurfaceField3DContractTest } = await import('../render3d/MetalDepositSurfaceField3DContractTest');
         runMetalDepositSurfaceField3DContractTest();
+        const { runTerrainWallWear3DContractTest } = await import('../render3d/TerrainWallWear3DContractTest');
+        runTerrainWallWear3DContractTest();
         const { runTurretHostIntegrationContractTest } = await import('../sim/turretHostIntegrationTest');
         runTurretHostIntegrationContractTest();
         const { runPrecisionFireContractTest } = await import('../sim/combat/precisionFireContractTest');

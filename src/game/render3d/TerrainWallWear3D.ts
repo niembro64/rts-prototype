@@ -72,15 +72,43 @@ export type TerrainWallWearMesh = {
   triangleWallFlags: ArrayLike<number>;
 };
 
-/** Per authoritative vertex, how worn its two rims are, in [0, 1]. Both are
- *  the angle intensity of the nearest rim of that kind times a linear falloff
- *  over the reach, so a vertex that is far from every rim — or near one that
- *  has been flattened flush — carries zero and its fragments take the
- *  shader's early-out. */
+/** Per authoritative vertex and per rim kind: how far that rim is, as a
+ *  fraction of the reach (0 at the rim, 1 at or past it), and how sharp the
+ *  nearest rim of that kind is.
+ *
+ *  THREE VALUES, AND EACH ONE IS THERE FOR A MEASURED REASON.
+ *
+ *  A wall face has NO INTERIOR VERTICES — at the shipped slope the mesh runs
+ *  straight from the top rim to the bottom one — so every per-vertex value on
+ *  it is interpolated across the entire drop, by whichever pair of rim
+ *  vertices that particular long thin triangle happens to join.
+ *
+ *  DISTANCE, not a pre-multiplied ramp: a [0,1] ramp smears the wear down the
+ *  whole face however short the authored reach is. A metric distance clips at
+ *  the reach, so the middle of a tall cliff comes out clean.
+ *
+ *  INTENSITY separate from it: the angle term has to survive the clip, and
+ *  folding it into the ramp makes a shallow rim indistinguishable from a
+ *  distant sharp one.
+ *
+ *  RIM HEIGHT, because distance alone still bands. Adjacent wall triangles
+ *  pair their top and bottom vertices differently, so the interpolated
+ *  distance is piecewise-linear with a kink at every triangle edge — which
+ *  draws the mesh's own triangle columns down the cliff as evenly spaced
+ *  vertical stripes. The height of the nearest rim is CONSTANT across a wall
+ *  face (every vertex of it shares the same rim), so the shader can measure
+ *  the drop directly and get a smooth field on exactly the surface where the
+ *  interpolated one is worthless. It blends back to the interpolated distance
+ *  as the surface flattens, where there are vertices again and where the
+ *  height difference stops meaning anything. */
 export type TerrainWallWear = {
-  top: Float32Array;
-  bottom: Float32Array;
+  /** Per vertex, per rim kind: (normalized distance, intensity, rim height).
+   *  Six floats, laid out top-then-bottom. */
+  rims: Float32Array;
 };
+
+/** Floats per vertex in `rims`. */
+export const WALL_WEAR_RIM_STRIDE = 6;
 
 /** Face normal of one triangle, +up, unnormalized. Mirrors the renderer's own
  *  helper; kept here so the module is self-contained and does not depend on
@@ -172,15 +200,21 @@ class VertexHeap {
  *  rather than deduplicated — a repeated edge costs one redundant relaxation
  *  that Dijkstra rejects immediately, where deduplicating costs a hash per
  *  edge over the whole terrain. */
-function buildAdjacency(mesh: TerrainWallWearMesh): {
+function buildAdjacency(
+  mesh: TerrainWallWearMesh,
+  wallOnly: boolean,
+): {
   offsets: Int32Array;
   neighbors: Int32Array;
 } {
+  const includes = (tri: number): boolean =>
+    !wallOnly || (mesh.triangleWallFlags[tri] ?? 0) !== 0;
   const degree = new Int32Array(mesh.vertexCount + 1);
   const bump = (v: number): void => {
     if (v >= 0 && v < mesh.vertexCount) degree[v + 1]++;
   };
   for (let tri = 0; tri < mesh.triangleCount; tri++) {
+    if (!includes(tri)) continue;
     const o = tri * 3;
     const ia = mesh.triangleIndices[o];
     const ib = mesh.triangleIndices[o + 1];
@@ -198,6 +232,7 @@ function buildAdjacency(mesh: TerrainWallWearMesh): {
     neighbors[cursor[a]++] = b;
   };
   for (let tri = 0; tri < mesh.triangleCount; tri++) {
+    if (!includes(tri)) continue;
     const o = tri * 3;
     const ia = mesh.triangleIndices[o];
     const ib = mesh.triangleIndices[o + 1];
@@ -220,15 +255,32 @@ function vertexDistance(mesh: TerrainWallWearMesh, a: number, b: number): number
   return Math.hypot(dx, dz, dh);
 }
 
-/** Multi-source Dijkstra bounded by `reach`, carrying each seed's intensity
- *  along with its distance so the nearest rim decides both. */
+/** How far past the reach the search still runs. Intensity has to be right on
+ *  BOTH ends of every edge that a fragment can interpolate across, and an edge
+ *  can leave the reach; searching a margin past it means the far end still
+ *  carries its nearest rim's intensity instead of falling to zero and
+ *  steepening the falloff. Past this the ramp is zero anyway. */
+const SEARCH_MARGIN = 2.5;
+
+/** Multi-source Dijkstra, carrying each seed's intensity along with its
+ *  distance so the nearest rim decides both. Writes normalized distance into
+ *  `outDistance` (1 = at or past the reach) and the seed intensity into
+ *  `outIntensity`. */
 function spreadFromSeeds(
   mesh: TerrainWallWearMesh,
   adjacency: { offsets: Int32Array; neighbors: Int32Array },
   seedIntensity: Float32Array,
   reach: number,
-): Float32Array {
-  const distance = new Float32Array(mesh.vertexCount).fill(Number.POSITIVE_INFINITY);
+  rims: Float32Array,
+  slot: number,
+): void {
+  // FLOAT64, and this is not a micro-optimisation in reverse. Stored in
+  // float32, a candidate distance that is genuinely smaller than the stored
+  // one can ROUND BACK to it: the improvement test passes, the write changes
+  // nothing, and the vertex is enqueued again — forever, shaving less than a
+  // ULP each pass. It presents as "RangeError: Invalid array length" from the
+  // heap's own backing array, several million relaxations later.
+  const distance = new Float64Array(mesh.vertexCount).fill(Number.POSITIVE_INFINITY);
   const intensity = new Float32Array(mesh.vertexCount);
   const heap = new VertexHeap();
   let seeded = false;
@@ -239,8 +291,15 @@ function spreadFromSeeds(
     heap.push(0, v);
     seeded = true;
   }
-  if (!seeded) return new Float32Array(mesh.vertexCount);
+  if (!seeded) {
+    for (let v = 0; v < mesh.vertexCount; v++) {
+      rims[v * WALL_WEAR_RIM_STRIDE + slot] = 1;
+    }
+    return;
+  }
 
+
+  const bound = reach * SEARCH_MARGIN;
   while (heap.size > 0) {
     const { distance: d, vertex: v } = heap.pop();
     // Stale entry: this vertex was already settled at a shorter distance.
@@ -249,19 +308,78 @@ function spreadFromSeeds(
     for (let e = adjacency.offsets[v]; e < end; e++) {
       const n = adjacency.neighbors[e];
       const nd = d + vertexDistance(mesh, v, n);
-      if (nd >= reach || nd >= distance[n]) continue;
+      if (nd >= bound || nd >= distance[n]) continue;
       distance[n] = nd;
       intensity[n] = intensity[v];
       heap.push(nd, n);
     }
   }
 
-  const wear = new Float32Array(mesh.vertexCount);
   for (let v = 0; v < mesh.vertexCount; v++) {
-    if (!Number.isFinite(distance[v])) continue;
-    wear[v] = intensity[v] * Math.max(0, 1 - distance[v] / reach);
+    const d = distance[v];
+    const base = v * WALL_WEAR_RIM_STRIDE + slot;
+    rims[base] = Number.isFinite(d) ? Math.min(1, d / reach) : 1;
+    rims[base + 1] = intensity[v];
   }
-  return wear;
+}
+
+/** The height of the nearest rim of one kind, propagated THROUGH THE WALL
+ *  ONLY, written into the third slot.
+ *
+ *  This is the term that makes the drop measurement work, and it has to be a
+ *  separate traversal for a reason worth stating. The main search is bounded
+ *  by the reach, so on a cliff taller than the reach the top vertices are
+ *  never reached from the bottom rim — and whatever default they carry gets
+ *  interpolated down the face by every long thin wall triangle, each pairing
+ *  its rim vertices differently. That draws the mesh's triangle columns down
+ *  the cliff as vertical stripes, which is precisely the artefact the drop
+ *  term exists to remove.
+ *
+ *  Restricting the traversal to wall triangles makes it cheap enough to run
+ *  unbounded: a wall band is a thin strip, not a map. Every vertex of a face
+ *  then agrees about which rim is below it and how high that rim is, so the
+ *  interpolated height is constant across the face and the drop is exactly
+ *  the height above the base. Vertices the wall never reaches keep their own
+ *  height, which zeroes the drop — correct, because those are flats, where
+ *  the surface is not steep and the shader takes the geodesic term instead. */
+function propagateRimHeightThroughWall(
+  mesh: TerrainWallWearMesh,
+  wallAdjacency: { offsets: Int32Array; neighbors: Int32Array },
+  seedIntensity: Float32Array,
+  rims: Float32Array,
+  slot: number,
+): void {
+  // FLOAT64, and this is not a micro-optimisation in reverse. Stored in
+  // float32, a candidate distance that is genuinely smaller than the stored
+  // one can ROUND BACK to it: the improvement test passes, the write changes
+  // nothing, and the vertex is enqueued again — forever, shaving less than a
+  // ULP each pass. It presents as "RangeError: Invalid array length" from the
+  // heap's own backing array, several million relaxations later.
+  const distance = new Float64Array(mesh.vertexCount).fill(Number.POSITIVE_INFINITY);
+  const height = new Float32Array(mesh.vertexCount);
+  for (let v = 0; v < mesh.vertexCount; v++) height[v] = mesh.vertexHeights[v] ?? 0;
+  const heap = new VertexHeap();
+  for (let v = 0; v < mesh.vertexCount; v++) {
+    if (seedIntensity[v] <= 0) continue;
+    distance[v] = 0;
+    heap.push(0, v);
+  }
+  while (heap.size > 0) {
+    const { distance: d, vertex: v } = heap.pop();
+    if (d > distance[v]) continue;
+    const end = wallAdjacency.offsets[v + 1];
+    for (let e = wallAdjacency.offsets[v]; e < end; e++) {
+      const n = wallAdjacency.neighbors[e];
+      const nd = d + vertexDistance(mesh, v, n);
+      if (nd >= distance[n]) continue;
+      distance[n] = nd;
+      height[n] = height[v];
+      heap.push(nd, n);
+    }
+  }
+  for (let v = 0; v < mesh.vertexCount; v++) {
+    rims[v * WALL_WEAR_RIM_STRIDE + slot + 2] = height[v];
+  }
 }
 
 /** Where the rims are, how sharp they are, and how far their wear reaches.
@@ -269,10 +387,19 @@ function spreadFromSeeds(
  *  Runs once per terrain geometry build. The terrain is immutable for the
  *  match, so this never re-runs during play. */
 export function computeTerrainWallWear(mesh: TerrainWallWearMesh): TerrainWallWear {
-  const empty = (): TerrainWallWear => ({
-    top: new Float32Array(mesh.vertexCount),
-    bottom: new Float32Array(mesh.vertexCount),
-  });
+  // No rim reached means distance 1 (past the reach) and intensity 0, which
+  // is the shader's "nothing here" and takes its early-out.
+  const empty = (): TerrainWallWear => {
+    const rims = new Float32Array(Math.max(0, mesh.vertexCount) * WALL_WEAR_RIM_STRIDE);
+    for (let v = 0; v < mesh.vertexCount; v++) {
+      const base = v * WALL_WEAR_RIM_STRIDE;
+      rims[base] = 1;
+      rims[base + 3] = 1;
+      rims[base + 2] = mesh.vertexHeights[v] ?? 0;
+      rims[base + 5] = mesh.vertexHeights[v] ?? 0;
+    }
+    return { rims };
+  };
   if (mesh.vertexCount <= 0 || mesh.triangleCount <= 0) return empty();
 
   // Per vertex: which classes of triangle touch it, the summed face normal of
@@ -369,11 +496,14 @@ export function computeTerrainWallWear(mesh: TerrainWallWearMesh): TerrainWallWe
   if (!anyRim) return empty();
 
   const reach = Math.max(1, TERRAIN_WALL_WEAR_REACH_WORLD_UNITS);
-  const adjacency = buildAdjacency(mesh);
-  return {
-    top: spreadFromSeeds(mesh, adjacency, topSeeds, reach),
-    bottom: spreadFromSeeds(mesh, adjacency, bottomSeeds, reach),
-  };
+  const adjacency = buildAdjacency(mesh, false);
+  const wallAdjacency = buildAdjacency(mesh, true);
+  const rims = new Float32Array(mesh.vertexCount * WALL_WEAR_RIM_STRIDE);
+  spreadFromSeeds(mesh, adjacency, topSeeds, reach, rims, 0);
+  spreadFromSeeds(mesh, adjacency, bottomSeeds, reach, rims, 3);
+  propagateRimHeightThroughWall(mesh, wallAdjacency, topSeeds, rims, 0);
+  propagateRimHeightThroughWall(mesh, wallAdjacency, bottomSeeds, rims, 3);
+  return { rims };
 }
 
 // ── The shader half ────────────────────────────────────────────────────────
@@ -514,39 +644,81 @@ export function terrainWallWearUniformDeclarations(): string {
  *  short terrace and a tall cliff wear by the same physical amount rather
  *  than by the same fraction of themselves. */
 export const TERRAIN_WALL_WEAR_GLSL = [
+  '// How far this fragment is from its rim, in world units.',
+  '//',
+  '// Two measurements, blended by how steep the surface is, because neither',
+  '// works everywhere. The interpolated geodesic distance is right on the',
+  '// flat, where the mesh has vertices to interpolate between. On a wall face',
+  '// it is worthless: the face has no interior vertices, adjacent long thin',
+  '// triangles pair their rim vertices differently, and the result is',
+  '// piecewise-linear with a kink at every triangle edge — which draws the',
+  '// mesh\'s own triangle columns down the cliff as evenly spaced vertical',
+  '// stripes. The drop below the rim has no such problem, because every',
+  '// vertex of a wall face shares one rim height.',
+  '//',
+  '// Both terms are zero AT the rim, so the blend cannot introduce a seam',
+  '// there — which is the one place a seam would be unforgivable.',
+  'float terrainWallRimDistance(',
+  '  float normalizedDistance,',
+  '  float rimHeight,',
+  '  float worldHeight,',
+  '  vec3 geometricNormal,',
+  '  float reach',
+  ') {',
+  '  float flatDistance = clamp(normalizedDistance, 0.0, 1.0) * max(reach, 1.0);',
+  '  float dropDistance = abs(worldHeight - rimHeight);',
+  '  float steep = smoothstep(0.30, 0.75, 1.0 - abs(geometricNormal.y));',
+  '  return mix(flatDistance, dropDistance, steep);',
+  '}',
+  '',
   'float terrainWallWearAmount(',
-  '  float ramp,',
+  '  float distance,',
+  '  float intensity,',
   '  WeatherFields fields,',
   '  float reach,',
   '  float grow,',
   '  float warp,',
-  '  float rampWidth,',
+  '  float distanceWidth,',
   '  float grainStrength,',
   '  float variation,',
   '  float falloff,',
   '  float patchDepth',
   ') {',
   '  float span = max(reach, 1.0);',
-  '  // Back to world units, displace there, and return.',
-  '  float distance = (1.0 - clamp(ramp, 0.0, 1.0)) * span;',
+  '  // World units throughout: the grow and the warp are authored like every',
+  '  // other weathering distance in the game, so a short terrace and a tall',
+  '  // cliff wear by the same physical amount rather than by the same',
+  '  // fraction of themselves.',
   '  float displaced = weatherDisplace(distance, fields, grow, warp);',
   '  float worn = weatherJitterRamp(clamp(1.0 - displaced / span, 0.0, 1.0), fields, variation);',
   '  // The dissolve bites only in the outer half, so the wear is solid where',
-  '  // it hugs the rim and crumbles away at its far edge. Dissolving the',
-  '  // whole ramp instead would punch holes in the fold itself, which reads',
-  '  // as damage to the terrain rather than as dirt on it.',
-  '  float crumble = weatherDissolve(clamp(worn * 2.0, 0.0, 1.0), fields, rampWidth * span * 2.0, grainStrength);',
-  '  return weatherGrimeAmount(worn, fields, falloff, patchDepth) * crumble;',
+  '  // it hugs the rim and crumbles away at its far edge. Dissolving the whole',
+  '  // ramp instead would punch holes in the fold itself, which reads as',
+  '  // damage to the terrain rather than as dirt on it.',
+  '  float crumble = weatherDissolve(clamp(worn * 2.0, 0.0, 1.0), fields, distanceWidth * 2.0, grainStrength);',
+  '  return weatherGrimeAmount(worn, fields, falloff, patchDepth) * crumble * clamp(intensity, 0.0, 1.0);',
   '}',
 ].join('\n');
+
+/** How much of a metal reflection the wear suppresses.
+ *
+ *  Ore runs off its flat pad and down a terrace often enough that the two
+ *  treatments overlap in the ordinary case, and dirt is dirt whichever one
+ *  laid it down: a rim buried in debris must not still carry the ore's
+ *  environment highlight tracing the fold. Exported rather than inlined at
+ *  the injection site so the uniform is read where it is declared. */
+export function terrainWallWearMatteCoverage(coverageExpr: string): string {
+  return `${coverageExpr} * (1.0 - uWallWearMatte * terrainWallWear)`;
+}
 
 /** Resolves both rims and dirties the surface with them.
  *
  *  Exported as source so a contract test can read the shipped strings.
  *
- *  Host contract: the varying `vTerrainWallWear` (x = top proximity, y =
- *  bottom), its screen width `wallWearRampWidth` measured at TOP LEVEL, a
- *  mutable `vec3 terrainRgb`, the world position varying and the geometric
+ *  Host contract: the varyings `vTerrainWallRimTop` and
+ *  `vTerrainWallRimBottom` — each (normalized distance, intensity, rim
+ *  height) — the screen width `wallWearDistanceWidth` measured at TOP LEVEL,
+ *  a mutable `vec3 terrainRgb`, the world position varying and the geometric
  *  normal. Declares `terrainWallWear`, the combined amount the PBR half
  *  mattes by. */
 export function terrainWallWearFragment(
@@ -555,12 +727,25 @@ export function terrainWallWearFragment(
 ): string {
   return [
     'float terrainWallWear = 0.0;',
-    // The attribute is zero everywhere except within reach of a rim that has
-    // a real angle, so the overwhelming majority of the surface pays nothing.
-    'if (uWallWearEnabled > 0.0 && max(vTerrainWallWear.x, vTerrainWallWear.y) > 0.0) {',
+    // The intensity is zero everywhere except within reach of a rim that has
+    // a real dihedral angle — which is what makes a wall flattened flush into
+    // the terrain cost nothing and, more importantly, show nothing.
+    'if (uWallWearEnabled > 0.0 && max(vTerrainWallRimTop.y, vTerrainWallRimBottom.y) > 0.0) {',
     '  WeatherFields wallFields = weatherSampleFields(',
     '    uWallWearNoise,',
-    `    ${worldPositionExpr}.xz,`,
+    // NOT world XZ. A near-vertical wall barely moves in XZ, so every field
+    // would be constant down its face and the whole treatment would streak
+    // vertically — which is exactly what it did before this line.
+    //
+    // And the normal handed in here MUST be the smooth interpolated one, not
+    // the geometric face normal the rest of the terrain shader uses. The
+    // plane blend is continuous in the normal, but a wall's face normal is
+    // not continuous ACROSS it: neighbouring long thin wall triangles pair
+    // their rim vertices differently and so face slightly different ways, and
+    // that jump lands straight in the sampling coordinate. The result is the
+    // mesh's own triangle columns drawn down the cliff as evenly spaced
+    // vertical stripes — measured, not theorised.
+    `    weatherSurfacePlane(${worldPositionExpr}, ${geometricNormalExpr}),`,
     '    uWallWearNoiseTileWorldSize',
     '  );',
     '  vec3 wallSoil = weatherSampleSubstance(',
@@ -569,18 +754,28 @@ export function terrainWallWearFragment(
     `    ${geometricNormalExpr},`,
     '    uWallWearSoilTileWorldSize',
     '  );',
+    '  float topDistance = terrainWallRimDistance(',
+    `    vTerrainWallRimTop.x, vTerrainWallRimTop.z, ${worldPositionExpr}.y,`,
+    `    ${geometricNormalExpr}, uWallWearReach`,
+    '  );',
+    '  float bottomDistance = terrainWallRimDistance(',
+    `    vTerrainWallRimBottom.x, vTerrainWallRimBottom.z, ${worldPositionExpr}.y,`,
+    `    ${geometricNormalExpr}, uWallWearReach`,
+    '  );',
     '  float topWear = terrainWallWearAmount(',
-    '    vTerrainWallWear.x, wallFields, uWallWearReach, uWallWearGrow, uWallWearWarp,',
-    '    wallWearRampWidth, uWallWearGrain, uWallWearVariation,',
+    '    topDistance, vTerrainWallRimTop.y, wallFields,',
+    '    uWallWearReach, uWallWearGrow, uWallWearWarp,',
+    '    wallWearDistanceWidth, uWallWearGrain, uWallWearVariation,',
     '    uWallWearTopFalloff, uWallWearTopPatchDepth',
     '  );',
     '  float bottomWear = terrainWallWearAmount(',
-    '    vTerrainWallWear.y, wallFields, uWallWearReach, uWallWearGrow, uWallWearWarp,',
-    '    wallWearRampWidth, uWallWearGrain, uWallWearVariation,',
+    '    bottomDistance, vTerrainWallRimBottom.y, wallFields,',
+    '    uWallWearReach, uWallWearGrow, uWallWearWarp,',
+    '    wallWearDistanceWidth, uWallWearGrain, uWallWearVariation,',
     '    uWallWearBottomFalloff, uWallWearBottomPatchDepth',
     '  );',
     '  // Bottom first, top over it. Where a terrace is short enough that the',
-    '  // two bands overlap, what you see at the fold is the spall — which is',
+    '  // two bands overlap, what shows at the fold is the spall — which is',
     '  // right: a rim that has worn through has shed onto its own base.',
     '  terrainRgb = weatherApplyGrime(',
     '    terrainRgb, wallSoil * uWallWearBottomTint * uWallWearBottomExposure,',
