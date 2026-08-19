@@ -3681,6 +3681,151 @@
     </section>
 
     <section>
+      <h2>Nothing In The World Has A Clean Edge</h2>
+      <p>
+        A boundary between two materials is the single most reliable tell
+        that a world was authored rather than found. Every other cue can be
+        right &mdash; the palette, the density, the lighting &mdash; and a
+        smooth contour of constant width will still read as a decal pasted
+        onto the surface underneath it, because a smooth contour of constant
+        width is a thing only a stencil produces. Weathering is therefore not
+        a finishing pass somebody applies to whichever boundaries looked bad
+        in a screenshot. It is a property of every place two materials meet,
+        and it is generated from the same three terms everywhere.
+      </p>
+      <p>
+        The ore region is the reference implementation
+        (<code>MetalDepositEdgeBlend3D</code>). A signed-distance field says
+        where the ore is; drawn straight, that answer was correct, uniform,
+        and unmistakably drawn. What follows is the recipe that replaced it,
+        stated generally, because every boundary in this game is supposed to
+        receive it.
+      </p>
+
+      <h3>Three terms, and they are not interchangeable</h3>
+      <p>
+        Each one fixes a different thing about a clean edge, and a boundary
+        that gets only one of them still reads as authored. Displacement
+        alone gives a wiggly stencil. Dissolve alone gives a fuzzy stencil.
+        Grime alone gives a stencil with a line drawn along it.
+      </p>
+      <ul class="rule-list">
+        <li><strong>Displacement</strong> moves where the boundary is. Two scales at least: broad lobes, and finer bites eroded into those lobes. It is applied to the metric quantity that defines the boundary &mdash; a distance, a coverage, a height &mdash; not to the colour that results, so the surface genuinely extends and retreats rather than smearing.</li>
+        <li><strong>Dissolve</strong> destroys the boundary&rsquo;s uniformity. Across a transition band the material is either present or absent, and a granular field decides which, rather than distance deciding it evenly. The band&rsquo;s own width is sampled from a broad field too: a transition that is the same thickness along its whole length is still one authored number, however ragged its edge.</li>
+        <li><strong>Grime</strong> buries the join. A band straddling the boundary, reaching different distances into the two materials, jittered along its length, thinned in patches, painting a third substance over both sides and darkening toward the contact. The two reaches must differ and both must be non-zero &mdash; grime that only lands on one side is an outline of the other.</li>
+      </ul>
+      <p>
+        Grow before you erode. Displacement that is symmetric about the
+        authored boundary makes small instances of a thing smaller, and the
+        smallest instance is usually the one whose size mattered. Push the
+        boundary out first by roughly the displacement amplitude, then let
+        the noise eat back into the slack.
+      </p>
+
+      <h3>The reflective term is the one that actually works</h3>
+      <p>
+        This is the part that is easy to leave out and impossible to
+        substitute for. A dirtied boundary that keeps its material&rsquo;s
+        specular response still reads as a crisp edge, because the
+        environment highlight traces the true contour exactly, at full
+        contrast, underneath however much dirt is painted on top of it. The
+        albedo terms are cosmetic next to this one.
+      </p>
+      <p>
+        So a weathered surface carries <em>two</em> coverages, and the
+        difference between them is the whole point: the geometric coverage
+        that says where the material is, and a second one &mdash; the
+        geometric coverage minus the grime &mdash; that the PBR terms read.
+        They must be separately named identifiers, and the shader source
+        must be readable by a contract test, because handing the wrong one
+        to a reflection term compiles perfectly and looks almost right.
+      </p>
+
+      <h3>Weathering is measured in world units, never in uv or pixels</h3>
+      <p>
+        The same rule as texel density, for the same reason. A boundary
+        treatment sized in uv makes a big instance and a small instance of
+        one material weather at different physical scales, and the world
+        stops being made of one substance. Sized in pixels, it changes as
+        the camera moves, which makes it a post-process rather than a
+        property of the ground.
+      </p>
+      <p>
+        Sizing in world units also buys the level of detail for free.
+        Sampled from a mipped texture, the granular field averages toward
+        its own mean as the camera pulls back, so the dissolve resolves back
+        into the smooth ramp it was perturbing instead of sparkling. A
+        weathering scheme that needs an explicit distance fade to stop
+        aliasing is reading its noise from something that does not filter,
+        which is usually a hash function.
+      </p>
+
+      <h3>Noise is a baked field with named channels</h3>
+      <p>
+        Analytic hash noise in the fragment shader filters badly, costs more
+        than it looks like it costs, and cannot be inspected. Bake the
+        fields into a tileable texture instead, one scalar per channel, each
+        channel authored for the ROUGHNESS its role wants rather than
+        differing only in the world scale it is read at &mdash; two roles
+        sampled from one field at overlapping scales stay correlated, and
+        correlated roles produce a pattern the eye finds immediately.
+      </p>
+      <ul class="rule-list">
+        <li>Three channels, three jobs, three independent lattices: the smooth mottle that displaces, the granular field that dissolves, the broad blotch that sets thickness.</li>
+        <li>Alpha is not a fourth channel. A Canvas 2D surface premultiplies, so a field stored in alpha scales the three stored in RGB. Pin alpha at 255 and take three.</li>
+        <li>The dirt is its own authored material with its own palette, not the nearest existing tile recoloured. Reusing the cliff-rock tile for the soil at a boundary gives the grime the same slab vocabulary as the cliff behind it, which is the &ldquo;two authored surfaces meeting&rdquo; read the whole treatment exists to break.</li>
+      </ul>
+
+      <h3>Weathering never moves the thing it dirties</h3>
+      <p>
+        It is presentation, always. The displaced ore contour disagrees with
+        the authoritative metal cells by the full displacement amplitude,
+        and that is correct: the build-square overlay says where an
+        extractor fits, and the ore&rsquo;s silhouette says what the ground
+        is made of. The moment a weathering term feeds back into placement,
+        pathing, or a hash, it has stopped being weathering.
+      </p>
+      <p>
+        The exception that proves it: deliberately crisp lines stay crisp.
+        Overlay rings, build squares, selection volumes, and HUD geometry
+        are instruments, not terrain, and an instrument with a weathered
+        edge is a broken instrument. Weathering belongs to material
+        boundaries in the world.
+      </p>
+
+      <h3>Where this has to land next</h3>
+      <p>
+        The ore edge was first because it was the worst. It is not special.
+        Every one of these is the same clean contour waiting to be spent:
+      </p>
+      <ul class="rule-list">
+        <li>The biome ramp&rsquo;s own transitions &mdash; grass to rock, upland to dry, and the shoreline band, which currently change over a smooth height/slope gradient with no displacement or grain at all.</li>
+        <li>The water line, where the liquid surface meets the beach.</li>
+        <li>Every mark a body leaves on the ground: burn marks, blast scorch, track prints, crater rims.</li>
+        <li>The contact between a grounded building&rsquo;s slab and the terrain it sits on, which is currently a hard geometric join.</li>
+        <li>Wear on the hosts themselves &mdash; the plate edges, the joints, and the ground-contact surfaces of running gear, which the trim sheet draws clean.</li>
+      </ul>
+      <div class="callout">
+        <p>
+          <strong>Traps, all of which compile.</strong> Derivatives
+          (<code>fwidth</code>, <code>dFdx</code>) are undefined in
+          non-uniform control flow, and a weathering treatment is nothing
+          but branches that neighbouring fragments disagree about &mdash;
+          measure the screen width once at top level and pass it down. A
+          field with a saturating encoding stops varying past its range, so
+          a grime band that reaches further than the field encodes
+          terminates in a perfect circle at exactly that radius, which reads
+          as a rendering bug rather than as a tuning mistake; pin the
+          treatment&rsquo;s total reach against the encoding. And gate the
+          whole thing on an early-out at that same reach: it is what makes
+          eight extra texture taps affordable on a full-screen surface,
+          because the fragments that pay are the thin fraction of the screen
+          near a boundary.
+        </p>
+      </div>
+    </section>
+
+    <section>
       <h2>A Shader Interface Is A Contract, And GPUs Disagree About The Rest</h2>
       <p>
         We write our own shaders, so we own the parts of them the language
