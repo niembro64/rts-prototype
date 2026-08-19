@@ -19,7 +19,7 @@ import {
 import type { MapLandCellDimensions } from '../mapSizeConfig';
 import type { BattlePreset } from './battlePresets';
 import { MAX_NAME_LENGTH } from '@/playerNamesConfig';
-import { AUTHOR_BYLINE } from '@/config';
+import { AUTHOR_BYLINE } from '@/authorBylineConfig';
 import { closeCurrentTauriWindow, isTauriRuntime } from '@/browserRuntime';
 import { LOBBY_LIST_POLL_INTERVAL_MS } from '../game/network/LobbyDirectory';
 import { getMultiplayerBackend } from '../game/network/multiplayer/multiplayerBackendRegistry';

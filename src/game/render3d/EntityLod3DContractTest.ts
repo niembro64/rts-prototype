@@ -22,7 +22,7 @@ import {
   detailRungMinLevel,
   detailScreenRadiusPxForLevel,
   THRESHOLD_LOW_TO_OFF_PX,
-  ICON_FADE_START_SCREEN_RADIUS_PX,
+  THRESHOLD_MED_TO_LOW_PX,
 } from './EntityDetailLevel3D';
 
 // Camera distances for a target detail level, derived from the CONFIGURED
@@ -33,6 +33,9 @@ const LOD_TEST_PX_SCALE = 1080 / (2 * Math.tan(Math.PI / 8));
 function pxForDetailLevel(level: number): number {
   return detailScreenRadiusPxForLevel(level);
 }
+/** Collision radius of the ground-unit fixture — the size the ladder projects. */
+const GROUND_UNIT_LOD_RADIUS = 15;
+
 function distanceForScreenRadiusPx(radiusWorld: number, px: number): number {
   return (radiusWorld * LOD_TEST_PX_SCALE) / px;
 }
@@ -129,7 +132,11 @@ export function runEntityLod3DContractTest(): void {
     const groundUnit = entityAt(301, 0, 0, 0);
     groundUnit.unit = {
       locomotion: { type: 'rover' },
-      radius: { other: 20, hitbox: 18, collision: 15 },
+      // The detail ladder projects the COLLISION radius (the size the glyph
+      // is drawn at), so the fixtures below measure GROUND_UNIT_LOD_RADIUS —
+      // deliberately not the largest of the three, to catch a regression that
+      // silently goes back to measuring `other`.
+      radius: { other: 20, hitbox: 18, collision: GROUND_UNIT_LOD_RADIUS },
     } as NonNullable<Entity['unit']>;
     setLodMode('low');
     bodyLod.beginFrame();
@@ -163,7 +170,8 @@ export function runEntityLod3DContractTest(): void {
     // already carrying a partial icon — behind its still-opaque model.
     const midBandLevel =
       (detailRungMinLevel(DETAIL_RUNG_MID) + detailRungMinLevel(DETAIL_RUNG_CLOSE)) / 2;
-    groundUnit.transform.y = -distanceForScreenRadiusPx(20, pxForDetailLevel(midBandLevel));
+    groundUnit.transform.y =
+      -distanceForScreenRadiusPx(GROUND_UNIT_LOD_RADIUS, pxForDetailLevel(midBandLevel));
     bodyLod.beginFrame();
     const medFadeAlpha = bodyLod.entityLodProxyFadeAlphaForView(viewAt(camera), groundUnit);
     assertContract(
@@ -172,8 +180,8 @@ export function runEntityLod3DContractTest(): void {
       'AUTO Medium resolves to the exact manual MED rung with its icon part-faded',
     );
     groundUnit.transform.y = -distanceForScreenRadiusPx(
-      20,
-      (THRESHOLD_LOW_TO_OFF_PX + ICON_FADE_START_SCREEN_RADIUS_PX) / 2,
+      GROUND_UNIT_LOD_RADIUS,
+      (THRESHOLD_LOW_TO_OFF_PX + THRESHOLD_MED_TO_LOW_PX) / 2,
     );
     bodyLod.beginFrame();
     const bandFadeAlpha = bodyLod.entityLodProxyFadeAlphaForView(viewAt(camera), groundUnit);
@@ -198,8 +206,8 @@ export function runEntityLod3DContractTest(): void {
     // mode must still hand the entity to its strategic glyph — otherwise
     // clicking HIGH makes the whole battlefield vanish.
     const fadeBandY = -distanceForScreenRadiusPx(
-      20,
-      (THRESHOLD_LOW_TO_OFF_PX + ICON_FADE_START_SCREEN_RADIUS_PX) / 2,
+      GROUND_UNIT_LOD_RADIUS,
+      (THRESHOLD_LOW_TO_OFF_PX + THRESHOLD_MED_TO_LOW_PX) / 2,
     );
     for (const mode of ['high', 'medium', 'low'] as const) {
       groundUnit.transform.y = -10000;

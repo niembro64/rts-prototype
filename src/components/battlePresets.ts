@@ -7,7 +7,7 @@ import {
   type MetalCoverage,
 } from '../types/worldSurfaceMode';
 import { LAND_CELL_SIZE } from '../mapSizeConfig';
-import { AUTHOR_BYLINE } from '../config';
+import { AUTHOR_BYLINE } from '../authorBylineConfig';
 import type { MapPresetLabelCaption } from '../game/render3d/presetMapLabel';
 import battleBarConfig from '../battleBarConfig.json';
 
