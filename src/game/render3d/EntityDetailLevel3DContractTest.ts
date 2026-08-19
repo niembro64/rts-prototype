@@ -22,7 +22,7 @@ import {
   legStyleForDetail,
   lodProxyFadeAlphaForScreenRadius,
   projectileStyleForDetail,
-  GLYPH_SCREEN_RADIUS_PX,
+  THRESHOLD_LOW_TO_OFF_PX,
   smokeSpawnScaleForDetail,
   turretStyleForDetail,
   unitDetailBand,
@@ -213,7 +213,7 @@ export function runEntityDetailLevel3DContractTest(): void {
   );
   // Midway between the CONFIGURED glyph radius and the fade onset — a
   // hardcoded glyph value here breaks the moment lod.json is tuned.
-  const bandPx = (ICON_FADE_START_SCREEN_RADIUS_PX + GLYPH_SCREEN_RADIUS_PX) / 2;
+  const bandPx = (ICON_FADE_START_SCREEN_RADIUS_PX + THRESHOLD_LOW_TO_OFF_PX) / 2;
   const bandAlpha = lodProxyFadeAlphaForScreenRadius(bandPx);
   assertContract(
     bandPx >= ICON_FADE_START_SCREEN_RADIUS_PX ||

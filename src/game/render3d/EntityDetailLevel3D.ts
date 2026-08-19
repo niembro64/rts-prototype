@@ -1,10 +1,12 @@
 // Three-rung entity visual detail selected from projected screen coverage.
 //
-// Every entity gets an internal coverage metric L in [0,1] derived from its projected
-// screen radius at a fixed reference viewport height (resolution/DPR
-// invariant): L = 0 at/below the glyph radius — the entity is the flat
-// point-sprite proxy — and L = 1 at/above the full-detail radius. L only
-// selects one discrete authored RUNG; it is never a visual level itself:
+// The ladder is authored in lod.json `detail.thresholds` as three projected
+// screen radii in px — highToMedPx / medToLowPx / lowToOffPx, named for the bar
+// controls they switch between — measured at a fixed reference viewport height
+// so the choice is resolution/DPR invariant. Internally those px thresholds are
+// normalised into a coverage metric L in [0,1] (L = 0 at the OFF threshold),
+// purely so a single scalar can be passed around; L only selects one discrete
+// authored RUNG and is never a visual level itself:
 //
 //   GLYPH (0)  point-sprite proxy (BAR-style strategic icon); the icon
 //              cross-fades in over the model beforehand — see
@@ -19,8 +21,8 @@
 // every mode (detailRungWithGlyphFloor) and a strategic zoom keeps its icons
 // instead of showing sub-pixel models. Features snap to rung boundaries on
 // purpose: one hysteresis covers every transition and a whole zoom sweep costs
-// at most three mesh transitions per entity. Thresholds live in lod.json
-// `detail`; this module is pure (no THREE) and interprets that config.
+// at most three mesh transitions per entity. This module is pure (no THREE)
+// and is the only interpreter of that config.
 
 import { ENTITY_DETAIL_CONFIG } from '@/config';
 import { getLodMode } from '@/clientBarConfig';
@@ -83,11 +85,15 @@ type EffectSpawnScaleConfig = Record<
   number
 >;
 
+/** lod.json spells rungs in the bar's HIGH/MED/LOW/OFF vocabulary; the older
+ *  geometry-tier spellings (close/mid/far/glyph) still resolve to the same
+ *  rungs so nothing that predates the rename has to be re-authored. */
 function rungFromName(name: unknown, fallback: DetailRung): DetailRung {
   switch (name) {
-    case 'glyph': return DETAIL_RUNG_GLYPH;
-    case 'far': return DETAIL_RUNG_FAR;
-    case 'mid': return DETAIL_RUNG_MID;
+    case 'off': case 'glyph': return DETAIL_RUNG_GLYPH;
+    case 'low': case 'far': return DETAIL_RUNG_FAR;
+    case 'medium': case 'med': case 'mid': return DETAIL_RUNG_MID;
+    case 'high': return DETAIL_RUNG_CLOSE;
     case 'close': return DETAIL_RUNG_CLOSE;
     default: return fallback;
   }
@@ -98,26 +104,48 @@ const detailConfig = ENTITY_DETAIL_CONFIG;
 const ENTITY_DETAIL_ENABLED: boolean = detailConfig.enabled === true;
 const REFERENCE_VIEWPORT_HEIGHT_PX = finitePositiveOr(
   detailConfig.referenceViewportHeightPx, 1080);
-export const GLYPH_SCREEN_RADIUS_PX = finitePositiveOr(detailConfig.screenRadiusPx?.glyph, 4);
-export const FULL_SCREEN_RADIUS_PX = Math.max(
-  GLYPH_SCREEN_RADIUS_PX + 1,
-  finitePositiveOr(detailConfig.screenRadiusPx?.full, 26),
+// The three authored boundaries, all in ONE unit: projected screen radius in px
+// at the reference viewport. Named for the bar controls they switch between,
+// so a threshold reads the same way in lod.json, in the HUD and here.
+export const THRESHOLD_LOW_TO_OFF_PX = finitePositiveOr(
+  detailConfig.thresholds?.lowToOffPx, 10);
+export const THRESHOLD_MED_TO_LOW_PX = Math.max(
+  THRESHOLD_LOW_TO_OFF_PX + 0.5,
+  finitePositiveOr(detailConfig.thresholds?.medToLowPx, 15.12),
 );
-const MID_RUNG_MIN_LEVEL = clamp01(finitePositiveOr(detailConfig.rungMinLevel?.mid, 0.32));
-const CLOSE_RUNG_MIN_LEVEL = Math.max(
-  MID_RUNG_MIN_LEVEL,
-  clamp01(finitePositiveOr(detailConfig.rungMinLevel?.close, 0.62)),
+export const THRESHOLD_HIGH_TO_MED_PX = Math.max(
+  THRESHOLD_MED_TO_LOW_PX + 0.5,
+  finitePositiveOr(detailConfig.thresholds?.highToMedPx, 19.92),
 );
-// BAR-style icon cross-fade band: DERIVED, not authored. The proxy glyph
-// starts fully transparent at the mid→far rung boundary radius — the moment
-// geometry drops to the LOW tier — then fades in over that still-opaque LOW
-// model. It reaches full opacity only at the glyph radius, exactly where the
-// LOW model hard-cuts.
-export const ICON_FADE_START_SCREEN_RADIUS_PX =
-  GLYPH_SCREEN_RADIUS_PX +
-  MID_RUNG_MIN_LEVEL * (FULL_SCREEN_RADIUS_PX - GLYPH_SCREEN_RADIUS_PX);
+/** Deadband on every boundary, in the same px unit. */
+export const DETAIL_HYSTERESIS_PX = finitePositiveOr(
+  detailConfig.thresholds?.hysteresisPx, 0.8);
+
+// Internal coverage level L: a normalised restatement of the px thresholds
+// above, kept only because packets and the effect/tier helpers pass a single
+// scalar around. L = 0 at the OFF threshold and 1 at the top of the ramp,
+// which sits a deadband's worth ABOVE the HIGH threshold so that upgrading
+// into HIGH (which must clear the boundary by the margin) is reachable at all.
+// Every comparison below is therefore exactly the px comparison it looks like.
+const LEVEL_RAMP_TOP_PX = THRESHOLD_HIGH_TO_MED_PX + DETAIL_HYSTERESIS_PX * 2;
+const LEVEL_RAMP_SPAN_PX = LEVEL_RAMP_TOP_PX - THRESHOLD_LOW_TO_OFF_PX;
+const MID_RUNG_MIN_LEVEL = clamp01(
+  (THRESHOLD_MED_TO_LOW_PX - THRESHOLD_LOW_TO_OFF_PX) / LEVEL_RAMP_SPAN_PX);
+const CLOSE_RUNG_MIN_LEVEL = clamp01(
+  (THRESHOLD_HIGH_TO_MED_PX - THRESHOLD_LOW_TO_OFF_PX) / LEVEL_RAMP_SPAN_PX);
 export const DETAIL_HYSTERESIS_LEVEL = clamp01(
-  finitePositiveOr(detailConfig.hysteresisLevel, 0.05));
+  DETAIL_HYSTERESIS_PX / LEVEL_RAMP_SPAN_PX);
+// BAR-style icon cross-fade band: DERIVED, not authored. The proxy glyph
+// starts fully transparent at the MED→LOW threshold — the moment geometry
+// drops to the LOW tier — then fades in over that still-opaque LOW model. It
+// reaches full opacity only at the OFF threshold, where the LOW model hard-cuts.
+export const ICON_FADE_START_SCREEN_RADIUS_PX = THRESHOLD_MED_TO_LOW_PX;
+
+/** Screen radius that maps to a given coverage level — the inverse of
+ *  detailLevelForScreenRadius, for callers reasoning in px. */
+export function detailScreenRadiusPxForLevel(level: number): number {
+  return THRESHOLD_LOW_TO_OFF_PX + level * LEVEL_RAMP_SPAN_PX;
+}
 export const DETAIL_REBUILD_BUDGET_UNITS = Math.max(
   1, Math.floor(finitePositiveOr(detailConfig.rebuildBudgetPerFrame?.units, 24)));
 export const DETAIL_REBUILD_BUDGET_BUILDINGS = Math.max(
@@ -218,7 +246,7 @@ export function detailScreenRadiusPx(
   distance: number,
   fovYRad: number,
 ): number {
-  if (!Number.isFinite(distance) || distance <= 0) return FULL_SCREEN_RADIUS_PX;
+  if (!Number.isFinite(distance) || distance <= 0) return LEVEL_RAMP_TOP_PX;
   const radius = finitePositiveOr(radiusWorld, 1);
   return (radius * detailPxScale(fovYRad)) / distance;
 }
@@ -226,8 +254,7 @@ export function detailScreenRadiusPx(
 export function detailLevelForScreenRadius(screenRadiusPx: number): number {
   if (!ENTITY_DETAIL_ENABLED) return DETAIL_LEVEL_FULL;
   return clamp01(
-    (screenRadiusPx - GLYPH_SCREEN_RADIUS_PX) /
-      (FULL_SCREEN_RADIUS_PX - GLYPH_SCREEN_RADIUS_PX),
+    (screenRadiusPx - THRESHOLD_LOW_TO_OFF_PX) / LEVEL_RAMP_SPAN_PX,
   );
 }
 
@@ -255,9 +282,9 @@ export function lodProxyFadeAlphaForScreenRadius(screenRadiusPx: number): number
   if (!ENTITY_DETAIL_ENABLED) return 0;
   if (!Number.isFinite(screenRadiusPx)) return 0;
   if (screenRadiusPx >= ICON_FADE_START_SCREEN_RADIUS_PX) return 0;
-  if (screenRadiusPx <= GLYPH_SCREEN_RADIUS_PX) return 1;
+  if (screenRadiusPx <= THRESHOLD_LOW_TO_OFF_PX) return 1;
   return (ICON_FADE_START_SCREEN_RADIUS_PX - screenRadiusPx) /
-    (ICON_FADE_START_SCREEN_RADIUS_PX - GLYPH_SCREEN_RADIUS_PX);
+    (ICON_FADE_START_SCREEN_RADIUS_PX - THRESHOLD_LOW_TO_OFF_PX);
 }
 
 /** Detail level for a bare sim position (effect events, smoke emitters)

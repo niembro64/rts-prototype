@@ -637,6 +637,22 @@ const terrainSectionVars = computed(() =>
       <div v-if="isTauri" class="footer-row">
         <button class="lobby-btn exit-btn" @click="closeCurrentTauriWindow">Exit</button>
       </div>
+
+      <!-- Whose game this is. It belongs to the panel's chrome, not to the
+           map: carried on the terrain sign it read as one more map
+           statistic beside the cell counts and the terrain magnitudes. -->
+      <div class="menu-byline">
+        <a
+          class="menu-byline-link"
+          href="https://niemo.io"
+          target="_blank"
+          rel="noopener noreferrer"
+        >https://niemo.io</a>
+        <a
+          class="menu-byline-link"
+          href="mailto:niemeyer.eric@gmail.com"
+        >niemeyer.eric@gmail.com</a>
+      </div>
     </div>
   </aside>
 
@@ -1442,6 +1458,34 @@ const terrainSectionVars = computed(() =>
 .menu-sidebar-panel .footer-row {
   margin-top: auto;
   justify-content: flex-start;
+}
+
+/* The byline sits under everything else, at the foot of the column. It is
+ * the quietest thing in the panel on purpose — it is authorship, not an
+ * action, and it must not compete with the join controls above it. */
+.menu-byline {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Only claims the leftover space when no Exit row is there to claim it,
+   * so it is at the bottom of the column either way. */
+  margin-top: auto;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #667180;
+}
+
+.menu-byline-link {
+  color: inherit;
+  text-decoration: none;
+  width: fit-content;
+}
+
+.menu-byline-link:hover,
+.menu-byline-link:focus-visible {
+  color: #b9c4d2;
+  text-decoration: underline;
 }
 
 /* Open-lobby directory. Solid border rather than the old dashed

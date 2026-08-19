@@ -289,10 +289,6 @@ type BattleMapPresentation = {
   readonly labelLines: readonly string[];
 };
 
-/** Who made the thing you are looking at. Painted as the caption's last
- *  line on the map's info annex. */
-const MAP_SIGN_BYLINE = 'https://niemo.io  ·  niemeyer.eric@gmail.com';
-
 function formatTerrainMagnitude(value: number): string {
   return value === 0 ? 'NONE' : String(value);
 }
@@ -318,17 +314,16 @@ export function resolveBattleMapPresentation(
     `${current.mapWidthLandCells} × ${current.mapLengthLandCells} LAND CELLS`
       + `  ·  ${worldWidth} × ${worldLength} WORLD`,
     `${current.cap} ENTITY CAP  ·  ${terrain}  ·  ${liquid}`,
+    // The six terrain magnitudes share ONE row on purpose. Split across two
+    // the caption block comes out squarer than the headland's flat table,
+    // and a block that shape cannot be inset by the same gap on all four
+    // sides at any size — see resolveMapPresetLabelPlacement.
     `CENTER ${formatTerrainMagnitude(current.centerMagnitude)}`
       + `  ·  DIVIDERS ${formatTerrainMagnitude(current.dividersMagnitude)}`
-      + `  ·  PERIMETER ${formatPerimeterMagnitude(current.perimeterMagnitude)}`,
-    `D-TERRAIN ${formatTerrainMagnitude(current.terrainDTerrain)}`
+      + `  ·  PERIMETER ${formatPerimeterMagnitude(current.perimeterMagnitude)}`
+      + `  ·  D-TERRAIN ${formatTerrainMagnitude(current.terrainDTerrain)}`
       + `  ·  METAL STEP ${formatTerrainMagnitude(current.metalDepositStep)}`
       + `  ·  DETAIL ${current.terrainDetail}`,
-    // The sign's byline. It is not a map setting, so it never takes part in
-    // preset identity — it is the same last line under every preset and
-    // under CUSTOM alike, and stays lowercase because a URL and an address
-    // are read, not shouted.
-    MAP_SIGN_BYLINE,
   ];
   return {
     presetName,

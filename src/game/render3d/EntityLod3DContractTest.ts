@@ -20,18 +20,18 @@ import {
   DETAIL_RUNG_GLYPH,
   DETAIL_RUNG_MID,
   detailRungMinLevel,
-  FULL_SCREEN_RADIUS_PX,
-  GLYPH_SCREEN_RADIUS_PX,
+  detailScreenRadiusPxForLevel,
+  THRESHOLD_LOW_TO_OFF_PX,
   ICON_FADE_START_SCREEN_RADIUS_PX,
 } from './EntityDetailLevel3D';
 
 // Camera distances for a target detail level, derived from the CONFIGURED
-// thresholds so lod.json tuning (glyph/full radii, rung boundaries) cannot
+// thresholds so lod.json tuning (detail.thresholds) cannot
 // invalidate these fixtures. The projection matches viewAt(): fovY π/4,
 // normalized to the LOD's 1080px reference height.
 const LOD_TEST_PX_SCALE = 1080 / (2 * Math.tan(Math.PI / 8));
 function pxForDetailLevel(level: number): number {
-  return GLYPH_SCREEN_RADIUS_PX + level * (FULL_SCREEN_RADIUS_PX - GLYPH_SCREEN_RADIUS_PX);
+  return detailScreenRadiusPxForLevel(level);
 }
 function distanceForScreenRadiusPx(radiusWorld: number, px: number): number {
   return (radiusWorld * LOD_TEST_PX_SCALE) / px;
@@ -170,7 +170,7 @@ export function runEntityLod3DContractTest(): void {
     );
     groundUnit.transform.y = -distanceForScreenRadiusPx(
       20,
-      (GLYPH_SCREEN_RADIUS_PX + ICON_FADE_START_SCREEN_RADIUS_PX) / 2,
+      (THRESHOLD_LOW_TO_OFF_PX + ICON_FADE_START_SCREEN_RADIUS_PX) / 2,
     );
     bodyLod.beginFrame();
     const bandFadeAlpha = bodyLod.entityLodProxyFadeAlphaForView(viewAt(camera), groundUnit);
@@ -196,7 +196,7 @@ export function runEntityLod3DContractTest(): void {
     // clicking HIGH makes the whole battlefield vanish.
     const fadeBandY = -distanceForScreenRadiusPx(
       20,
-      (GLYPH_SCREEN_RADIUS_PX + ICON_FADE_START_SCREEN_RADIUS_PX) / 2,
+      (THRESHOLD_LOW_TO_OFF_PX + ICON_FADE_START_SCREEN_RADIUS_PX) / 2,
     );
     for (const mode of ['high', 'medium', 'low'] as const) {
       groundUnit.transform.y = -10000;
