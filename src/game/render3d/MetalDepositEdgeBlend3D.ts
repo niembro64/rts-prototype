@@ -54,7 +54,6 @@
 // where a driver is free to hand back garbage. The host samples the
 // derivative once at top level and passes it down.
 
-import * as THREE from 'three';
 import {
   ORE_EDGE_BLEND_BAND_MAX_WORLD_UNITS,
   ORE_EDGE_BLEND_BAND_MIN_WORLD_UNITS,
@@ -74,14 +73,14 @@ import {
   ORE_EDGE_WARP_WORLD_UNITS,
   SOIL_SUBSTANCE_TILE_WORLD_SIZE,
 } from '../../config';
-import { getSoilSubstanceTexture } from './SoilSubstanceTexture';
-import { getWeatheringNoiseTexture } from './WeatheringNoiseTexture';
+import {
+  WEATHER_NOISE_SAMPLER,
+  WEATHER_SOIL_SAMPLER,
+} from './SurfaceWeathering3D';
 
 export type OreEdgeBlendUniforms = {
   enabled: { value: number };
-  noise: { value: THREE.Texture | null };
   noiseTileWorldSize: { value: number };
-  dirt: { value: THREE.Texture | null };
   dirtTileWorldSize: { value: number };
   influence: { value: number };
   grow: { value: number };
@@ -106,9 +105,7 @@ export type OreEdgeBlendUniforms = {
 export function createOreEdgeBlendUniforms(enabled: boolean): OreEdgeBlendUniforms {
   return {
     enabled: { value: enabled ? 1 : 0 },
-    noise: { value: enabled ? getWeatheringNoiseTexture() : null },
     noiseTileWorldSize: { value: ORE_EDGE_NOISE_TILE_WORLD_SIZE },
-    dirt: { value: enabled ? getSoilSubstanceTexture() : null },
     dirtTileWorldSize: { value: SOIL_SUBSTANCE_TILE_WORLD_SIZE },
     influence: { value: ORE_EDGE_INFLUENCE_WORLD_UNITS },
     grow: { value: ORE_EDGE_GROW_WORLD_UNITS },
@@ -133,9 +130,7 @@ export function assignOreEdgeBlendUniforms(
   uniforms: OreEdgeBlendUniforms,
 ): void {
   shader.uniforms.uOreEdgeEnabled = uniforms.enabled;
-  shader.uniforms.uOreEdgeNoise = uniforms.noise;
   shader.uniforms.uOreEdgeNoiseTileWorldSize = uniforms.noiseTileWorldSize;
-  shader.uniforms.uOreEdgeDirt = uniforms.dirt;
   shader.uniforms.uOreEdgeDirtTileWorldSize = uniforms.dirtTileWorldSize;
   shader.uniforms.uOreEdgeInfluence = uniforms.influence;
   shader.uniforms.uOreEdgeGrow = uniforms.grow;
@@ -157,9 +152,10 @@ export function assignOreEdgeBlendUniforms(
 export function oreEdgeBlendUniformDeclarations(): string {
   return [
     'uniform float uOreEdgeEnabled;',
-    'uniform sampler2D uOreEdgeNoise;',
+    // The two textures come from the shared weathering samplers the host
+    // declares once for every treatment in the program; only the tile sizes
+    // are the ore edge's own.
     'uniform float uOreEdgeNoiseTileWorldSize;',
-    'uniform sampler2D uOreEdgeDirt;',
     'uniform float uOreEdgeDirtTileWorldSize;',
     'uniform float uOreEdgeInfluence;',
     'uniform float uOreEdgeGrow;',
@@ -254,7 +250,7 @@ export function oreEdgeResolveFragment(
     'float oreEdgeGrime = 0.0;',
     'if (uOreEdgeEnabled > 0.0 && abs(oreDistance) < uOreEdgeInfluence) {',
     '  WeatherFields oreFields = weatherSampleFields(',
-    '    uOreEdgeNoise,',
+    `    ${WEATHER_NOISE_SAMPLER},`,
     `    ${worldPositionExpr}.xz,`,
     '    uOreEdgeNoiseTileWorldSize',
     '  );',
@@ -318,7 +314,7 @@ export function oreEdgeAlbedoFragment(
   return [
     'if (oreEdgeGrime > 0.0) {',
     '  vec3 oreEdgeDirt = weatherSampleSubstance(',
-    '    uOreEdgeDirt,',
+    `    ${WEATHER_SOIL_SAMPLER},`,
     `    ${worldPositionExpr},`,
     `    ${geometricNormalExpr},`,
     '    uOreEdgeDirtTileWorldSize',

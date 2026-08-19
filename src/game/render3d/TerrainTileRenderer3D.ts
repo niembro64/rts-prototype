@@ -142,7 +142,13 @@ import {
   metalDepositSurfaceFieldScreenWidth,
   metalDepositSurfaceFieldUniformDeclarations,
 } from './MetalDepositSurfaceField3D';
-import { SURFACE_WEATHERING_GLSL } from './SurfaceWeathering3D';
+import {
+  assignSurfaceWeatheringSamplerUniforms,
+  createSurfaceWeatheringSamplerUniforms,
+  SURFACE_WEATHERING_GLSL,
+  surfaceWeatheringSamplerDeclarations,
+  type SurfaceWeatheringSamplerUniforms,
+} from './SurfaceWeathering3D';
 import {
   TERRAIN_WALL_WEAR_GLSL,
   WALL_WEAR_RIM_STRIDE,
@@ -823,6 +829,15 @@ export class TerrainTileRenderer3D {
   // are just as clean as any other map's.
   private readonly wallWearUniforms: TerrainWallWearUniforms =
     createTerrainWallWearUniforms(TERRAIN_WALL_WEAR_ENABLED);
+  // ONE pair of samplers for both treatments above. This fragment shader is
+  // the renderer's hungriest for texture image units — ground and rock
+  // detail, six broad field layers, the ore region, the world shade pair, the
+  // build grid — and a driver that caps them at 16 does not warn when the
+  // program asks for 17: it refuses to link and the whole terrain disappears.
+  private readonly weatheringSamplerUniforms: SurfaceWeatheringSamplerUniforms =
+    createSurfaceWeatheringSamplerUniforms(
+      this.oreEdgeUniforms.enabled.value > 0 || this.wallWearUniforms.enabled.value > 0,
+    );
   // 0 = keep three's DOUBLE_SIDED flip, 1 = restore the authored outward
   // normal inside ore only, 2 = restore it across the whole surface. A runtime
   // knob because this is a shading term whose fault only shows on sloped
@@ -964,6 +979,7 @@ export class TerrainTileRenderer3D {
       assignMetalDepositSurfaceFieldUniforms(shader, this.metalRegionField.uniforms);
       assignOreEdgeBlendUniforms(shader, this.oreEdgeUniforms);
       assignTerrainWallWearUniforms(shader, this.wallWearUniforms);
+      assignSurfaceWeatheringSamplerUniforms(shader, this.weatheringSamplerUniforms);
       this.worldShade.assignUniforms(shader);
       shader.vertexShader = shader.vertexShader
         .replace(
@@ -1045,6 +1061,7 @@ export class TerrainTileRenderer3D {
             metalDepositSurfaceFieldUniformDeclarations(),
             oreEdgeBlendUniformDeclarations(),
             terrainWallWearUniformDeclarations(),
+            surfaceWeatheringSamplerDeclarations(),
             METAL_SURFACE_RESPONSE_GLSL,
             METAL_SURFACE_REGION_GLSL,
             SURFACE_WEATHERING_GLSL,

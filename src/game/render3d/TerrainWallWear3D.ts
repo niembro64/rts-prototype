@@ -57,8 +57,10 @@ import {
   TERRAIN_WALL_WEAR_MIN_ANGLE_DEGREES,
   TERRAIN_WALL_WEAR_REACH_WORLD_UNITS,
 } from '../../config';
-import { getSoilSubstanceTexture } from './SoilSubstanceTexture';
-import { getWeatheringNoiseTexture } from './WeatheringNoiseTexture';
+import {
+  WEATHER_NOISE_SAMPLER,
+  WEATHER_SOIL_SAMPLER,
+} from './SurfaceWeathering3D';
 
 /** The subset of the authoritative terrain mesh this needs. Declared
  *  structurally so the module can be exercised without building a map. */
@@ -516,8 +518,6 @@ export function computeTerrainWallWear(mesh: TerrainWallWearMesh): TerrainWallWe
  *  weather on two ends of one wall. */
 export type TerrainWallWearUniforms = {
   enabled: { value: number };
-  noise: { value: THREE.Texture | null };
-  soil: { value: THREE.Texture | null };
   noiseTileWorldSize: { value: number };
   soilTileWorldSize: { value: number };
   reach: { value: number };
@@ -546,8 +546,6 @@ export function createTerrainWallWearUniforms(enabled: boolean): TerrainWallWear
   const cfg = TERRAIN_WALL_WEAR;
   return {
     enabled: { value: enabled ? 1 : 0 },
-    noise: { value: enabled ? getWeatheringNoiseTexture() : null },
-    soil: { value: enabled ? getSoilSubstanceTexture() : null },
     noiseTileWorldSize: { value: cfg.noiseTileWorldSize },
     soilTileWorldSize: { value: SOIL_SUBSTANCE_TILE_WORLD_SIZE },
     reach: { value: TERRAIN_WALL_WEAR_REACH_WORLD_UNITS },
@@ -578,8 +576,6 @@ export function assignTerrainWallWearUniforms(
   uniforms: TerrainWallWearUniforms,
 ): void {
   shader.uniforms.uWallWearEnabled = uniforms.enabled;
-  shader.uniforms.uWallWearNoise = uniforms.noise;
-  shader.uniforms.uWallWearSoil = uniforms.soil;
   shader.uniforms.uWallWearNoiseTileWorldSize = uniforms.noiseTileWorldSize;
   shader.uniforms.uWallWearSoilTileWorldSize = uniforms.soilTileWorldSize;
   shader.uniforms.uWallWearReach = uniforms.reach;
@@ -607,8 +603,8 @@ export function assignTerrainWallWearUniforms(
 export function terrainWallWearUniformDeclarations(): string {
   return [
     'uniform float uWallWearEnabled;',
-    'uniform sampler2D uWallWearNoise;',
-    'uniform sampler2D uWallWearSoil;',
+    // Both textures arrive through the shared weathering samplers the host
+    // declares once; the rims own only how big they read.
     'uniform float uWallWearNoiseTileWorldSize;',
     'uniform float uWallWearSoilTileWorldSize;',
     'uniform float uWallWearReach;',
@@ -732,7 +728,7 @@ export function terrainWallWearFragment(
     // the terrain cost nothing and, more importantly, show nothing.
     'if (uWallWearEnabled > 0.0 && max(vTerrainWallRimTop.y, vTerrainWallRimBottom.y) > 0.0) {',
     '  WeatherFields wallFields = weatherSampleFields(',
-    '    uWallWearNoise,',
+    `    ${WEATHER_NOISE_SAMPLER},`,
     // NOT world XZ. A near-vertical wall barely moves in XZ, so every field
     // would be constant down its face and the whole treatment would streak
     // vertically — which is exactly what it did before this line.
@@ -749,7 +745,7 @@ export function terrainWallWearFragment(
     '    uWallWearNoiseTileWorldSize',
     '  );',
     '  vec3 wallSoil = weatherSampleSubstance(',
-    '    uWallWearSoil,',
+    `    ${WEATHER_SOIL_SAMPLER},`,
     `    ${worldPositionExpr},`,
     `    ${geometricNormalExpr},`,
     '    uWallWearSoilTileWorldSize',

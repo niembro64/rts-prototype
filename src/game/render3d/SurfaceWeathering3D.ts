@@ -22,19 +22,23 @@
 //              distances into the two materials, jittered along the
 //              boundary's length and thinned in patches.
 //
-// This module owns the maths. It owns no uniforms and no textures beyond the
-// shared noise, because the hosts differ in what they are weathering: the ore
-// region displaces a signed distance in world units, the plateau wall rims
-// displace a per-vertex proximity ramp, and the vegetation displaces a height
-// above its own base. What must not differ is the SHAPE of the result, which
-// is why all three call these functions rather than each rolling the noise
-// algebra it happens to need.
+// This module owns the maths, and the two SAMPLERS every treatment reads
+// through. It owns no other uniforms, because the hosts differ in what they
+// are weathering: the ore region displaces a signed distance in world units,
+// the plateau wall rims displace a per-vertex proximity ramp, and the
+// vegetation displaces a height above its own base. What must not differ is
+// the SHAPE of the result, which is why all three call these functions rather
+// than each rolling the noise algebra it happens to need.
 //
 // DERIVATIVES ARE THE HOST'S JOB. Every function here takes its softening
 // width as a parameter. `fwidth` in non-uniform control flow is undefined,
 // and a weathering treatment is nothing but branches that neighbouring
 // fragments disagree about — the host measures once at top level and passes
 // the width down.
+
+import type * as THREE from 'three';
+import { getSoilSubstanceTexture } from './SoilSubstanceTexture';
+import { getWeatheringNoiseTexture } from './WeatheringNoiseTexture';
 
 /** World scales the five field taps are read at, as multiples of the host's
  *  noise tile. Deliberately not powers of one another: two taps of the same
@@ -230,3 +234,54 @@ export const SURFACE_WEATHERING_GLSL = [
   '  return xz * weights.y + yz * weights.x + xy * weights.z;',
   '}',
 ].join('\n');
+
+// ── the shared samplers ──
+
+/** Every treatment reads the same two textures: the noise field it displaces
+ *  and dissolves with, and the soil it grimes with. Both are process-wide
+ *  singletons, so a host that runs more than one treatment in ONE program
+ *  binds one pair of samplers for all of them instead of a pair per
+ *  treatment.
+ *
+ *  That is a hard budget, not tidiness. MAX_TEXTURE_IMAGE_UNITS is 16 on
+ *  plenty of desktop drivers; the terrain fragment shader is the program that
+ *  spends units fastest, and asking for one too many does not warn or
+ *  degrade — the program fails to link and the entire terrain vanishes.
+ *
+ *  Only the SAMPLER is shared. Each treatment keeps its own tile-size
+ *  uniforms, because how big the weather reads along a terrace rim is not how
+ *  big it reads along an ore boundary. */
+export const WEATHER_NOISE_SAMPLER = 'uWeatherNoise';
+export const WEATHER_SOIL_SAMPLER = 'uWeatherSoil';
+
+export type SurfaceWeatheringSamplerUniforms = {
+  readonly noise: { value: THREE.Texture | null };
+  readonly soil: { value: THREE.Texture | null };
+};
+
+/** `enabled` is "does this host run ANY weathering treatment": both textures
+ *  are generated on first request, so a host with every treatment switched
+ *  off must not ask for them. */
+export function createSurfaceWeatheringSamplerUniforms(
+  enabled: boolean,
+): SurfaceWeatheringSamplerUniforms {
+  return {
+    noise: { value: enabled ? getWeatheringNoiseTexture() : null },
+    soil: { value: enabled ? getSoilSubstanceTexture() : null },
+  };
+}
+
+export function surfaceWeatheringSamplerDeclarations(): string {
+  return [
+    `uniform sampler2D ${WEATHER_NOISE_SAMPLER};`,
+    `uniform sampler2D ${WEATHER_SOIL_SAMPLER};`,
+  ].join('\n');
+}
+
+export function assignSurfaceWeatheringSamplerUniforms(
+  shader: { uniforms: Record<string, unknown> },
+  uniforms: SurfaceWeatheringSamplerUniforms,
+): void {
+  shader.uniforms[WEATHER_NOISE_SAMPLER] = uniforms.noise;
+  shader.uniforms[WEATHER_SOIL_SAMPLER] = uniforms.soil;
+}
