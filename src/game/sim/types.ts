@@ -122,7 +122,7 @@ import { COLORS } from '@/colorsConfig';
  * `primary` / `secondary` stay as aliases of the PLAYER pair so existing
  * callers keep working unchanged.
  */
-type PlayerColors = {
+export type PlayerColors = {
   primary: number;
   secondary: number;
   colorPlayerNormal: number;
@@ -259,8 +259,10 @@ function oklchToHex(L: number, C: number, hueDeg: number): number {
   return (ri << 16) | (gi << 8) | bi;
 }
 
-/** Format a 0xRRGGBB int as a `#RRGGBB` upper-case hex string. */
-function hexToHashString(hex: number): string {
+/** Format a 0xRRGGBB int as a `#RRGGBB` upper-case hex string. The one
+ *  identity-color-to-CSS conversion, so the lobby and the HUD spell the
+ *  same colour the same way. */
+export function hexToHashString(hex: number): string {
   return '#' + hex.toString(16).padStart(6, '0').toUpperCase();
 }
 
@@ -274,6 +276,60 @@ const PLAYER_PRIMARY_OKLCH_L = 0.5;
 const PLAYER_PRIMARY_OKLCH_C = 0.12;
 const PLAYER_SECONDARY_OKLCH_L = 0.3;
 const PLAYER_SECONDARY_OKLCH_C = 0.05;
+
+/** Build the four identity colors from an already-resolved hue pair. The
+ *  one place OKLCH becomes RGB for identity, so every caller — installed
+ *  layout, flat wheel, lobby preview — produces byte-identical colors. */
+function identityColorsFromHues(playerHue: number, teamHue: number): PlayerColors {
+  const colorPlayerNormal =
+    oklchToHex(PLAYER_PRIMARY_OKLCH_L, PLAYER_PRIMARY_OKLCH_C, playerHue);
+  const colorPlayerDark =
+    oklchToHex(PLAYER_SECONDARY_OKLCH_L, PLAYER_SECONDARY_OKLCH_C, playerHue);
+  const colorTeamNormal =
+    oklchToHex(PLAYER_PRIMARY_OKLCH_L, PLAYER_PRIMARY_OKLCH_C, teamHue);
+  const colorTeamDark =
+    oklchToHex(PLAYER_SECONDARY_OKLCH_L, PLAYER_SECONDARY_OKLCH_C, teamHue);
+  return {
+    primary: colorPlayerNormal,
+    secondary: colorPlayerDark,
+    colorPlayerNormal,
+    colorPlayerDark,
+    colorTeamNormal,
+    colorTeamDark,
+    name: hexToHashString(colorPlayerNormal),
+  };
+}
+
+/**
+ * Resolve one seat's identity colors from its PLACE in the side layout,
+ * without touching the installed layout or the cache.
+ *
+ * This is the deterministic identity-color rule itself: the wheel splits by
+ * side, and a side's slice splits by that side's seat count (see
+ * ColorTeamLayout above). A lobby can therefore show exactly the colors the
+ * match will use by resolving the same roster the sim will resolve, and a
+ * running match reads the same function through getPlayerColors().
+ */
+export function getIdentityColorsForSeat(
+  sideIndex: number,
+  sideCount: number,
+  seatIndex: number,
+  seatCount: number,
+): PlayerColors {
+  const sides = Math.max(1, Math.floor(sideCount) || 1);
+  const seats = Math.max(1, Math.floor(seatCount) || 1);
+  const side = Math.max(0, Math.floor(sideIndex));
+  const seat = Math.max(0, Math.floor(seatIndex));
+  // Team color is the MIDDLE of its wheel slice, so team 0 is red.
+  const sliceWidth = 360 / sides;
+  const teamHue = side * sliceWidth;
+  // Player color is the MIDDLE of its sub-slice of that team slice. A
+  // lone seat lands back on the team hue, which is why single-player
+  // teams come out with player == team for free.
+  const subSlice = sliceWidth / seats;
+  const playerHue = teamHue - sliceWidth * 0.5 + (seat + 0.5) * subSlice;
+  return identityColorsFromHues(playerHue, teamHue);
+}
 
 /**
  * Resolve a seat's four identity colors plus its display name.
@@ -293,48 +349,22 @@ export function getPlayerColors(playerId: PlayerId): PlayerColors {
   if (cached) return cached;
 
   const layout = _colorTeamLayout;
-  let teamHue: number;
-  let playerHue: number;
   if (layout !== null && layout.sideIndexByPlayer.has(slot)) {
-    const sideCount = Math.max(1, layout.sideCount);
-    const sideIndex = layout.sideIndexByPlayer.get(slot) as number;
-    const seatIndex = layout.seatIndexByPlayer.get(slot) ?? 0;
-    const seatCount = Math.max(1, layout.seatCountByPlayer.get(slot) ?? 1);
-    // Team color is the MIDDLE of its wheel slice, so team 0 is red.
-    const sliceWidth = 360 / sideCount;
-    teamHue = sideIndex * sliceWidth;
-    // Player color is the MIDDLE of its sub-slice of that team slice. A
-    // lone seat lands back on the team hue, which is why single-player
-    // teams come out with player == team for free.
-    const subSlice = sliceWidth / seatCount;
-    playerHue = teamHue - sliceWidth * 0.5 + (seatIndex + 0.5) * subSlice;
+    cached = getIdentityColorsForSeat(
+      layout.sideIndexByPlayer.get(slot) as number,
+      layout.sideCount,
+      layout.seatIndexByPlayer.get(slot) ?? 0,
+      layout.seatCountByPlayer.get(slot) ?? 1,
+    );
   } else {
     // No roster installed (lobby before assignment, tests, an out-of-range
     // pid): fall back to the flat per-seat wheel. Use the larger of
     // "configured count" and this slot so an unknown pid still gets a
     // valid hue instead of a divide-by-zero or a wrap.
     const total = Math.max(_playerCountForColors, slot);
-    playerHue = ((slot - 1) / total) * 360;
-    teamHue = playerHue;
+    const playerHue = ((slot - 1) / total) * 360;
+    cached = identityColorsFromHues(playerHue, playerHue);
   }
-
-  const colorPlayerNormal =
-    oklchToHex(PLAYER_PRIMARY_OKLCH_L, PLAYER_PRIMARY_OKLCH_C, playerHue);
-  const colorPlayerDark =
-    oklchToHex(PLAYER_SECONDARY_OKLCH_L, PLAYER_SECONDARY_OKLCH_C, playerHue);
-  const colorTeamNormal =
-    oklchToHex(PLAYER_PRIMARY_OKLCH_L, PLAYER_PRIMARY_OKLCH_C, teamHue);
-  const colorTeamDark =
-    oklchToHex(PLAYER_SECONDARY_OKLCH_L, PLAYER_SECONDARY_OKLCH_C, teamHue);
-  cached = {
-    primary: colorPlayerNormal,
-    secondary: colorPlayerDark,
-    colorPlayerNormal,
-    colorPlayerDark,
-    colorTeamNormal,
-    colorTeamDark,
-    name: hexToHashString(colorPlayerNormal),
-  };
   _playerColorCache.set(slot, cached);
   return cached;
 }

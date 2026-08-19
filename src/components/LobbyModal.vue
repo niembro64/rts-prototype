@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
-import { NEUTRAL_PLAYER_COLOR, PLAYER_COLORS, setPlayerCountForColors, type PlayerId } from '../game/sim/types';
+import { setPlayerCountForColors, type PlayerId } from '../game/sim/types';
+import { resolveLobbyTeamGroups } from '../game/lobby/lobbyIdentity';
 import { BATTLE_CONFIG } from '../battleBarConfig';
 import { BAR_THEMES, barVars } from '../barThemes';
 import CommanderAvatar from './CommanderAvatar.vue';
@@ -106,11 +107,9 @@ const mapLengthOptions = BATTLE_CONFIG.mapSize.length.options;
 const capOptions = BATTLE_CONFIG.cap.options;
 /** Sides holding at least one seat — what the entity count cap divides
  *  by, matching WorldState.getTeamEntityCountCap. */
-const occupiedAllyTeamCount = computed(() => {
-  const sides = new Set<number>();
-  for (const player of props.players) sides.add(player.allyTeamId ?? 1);
-  return Math.max(1, sides.size);
-});
+const occupiedAllyTeamCount = computed(
+  () => Math.max(1, teamGroups.value.length),
+);
 
 // Set view of allowedUnits so per-button lookups in the v-for below
 // are O(1) instead of O(allowedUnits.length) on every parent re-render.
@@ -336,18 +335,11 @@ watch(
   { immediate: true },
 );
 
-/** Side accent used for the TEAM badge outline. Sides are few, so a
- *  fixed ladder reads faster than deriving a hue per side. */
-const ALLY_TEAM_COLORS = ['#5ad1ff', '#ff8a5a', '#8aff6a', '#e46aff', '#ffd54a', '#6affd0'];
-function allyTeamColor(allyTeamId: number): string {
-  const index = Math.max(0, Math.floor(allyTeamId) - 1) % ALLY_TEAM_COLORS.length;
-  return ALLY_TEAM_COLORS[index];
-}
-
-function getPlayerColor(playerId: PlayerId): string {
-  const color = PLAYER_COLORS[playerId]?.primary ?? NEUTRAL_PLAYER_COLOR;
-  return '#' + color.toString(16).padStart(6, '0');
-}
+/** The roster grouped by SIDE, carrying the exact team and player colours
+ *  the match will use. Both are derived, never authored here: the lobby
+ *  resolves the same TeamRoster the sim resolves and reads the same
+ *  identity-colour rule the renderer reads (see lobbyIdentity.ts). */
+const teamGroups = computed(() => resolveLobbyTeamGroups(props.players));
 
 function handleHost() {
   emit('host');
@@ -540,15 +532,34 @@ const terrainSectionVars = computed(() =>
 
           <div class="players-section">
             <h2 class="players-title">Players ({{ players.length }}/6)</h2>
-            <ul class="player-list">
+            <!-- Grouped by SIDE, because a side is what an alliance means
+                 on the ground: shared slice, shared vision, no friendly
+                 fire. The band on the far left is the side's own colour and
+                 the spinning avatar is the seat's, so a player reads both
+                 identities here exactly as they will read them in the
+                 battle (see lobbyIdentity.ts). -->
+            <ul class="team-list">
               <li
-                v-for="player in players"
-                :key="player.playerId"
+                v-for="group in teamGroups"
+                :key="group.allyTeamId"
+                class="team-group"
+              >
+                <div
+                  class="team-band"
+                  :style="{ background: group.teamColor }"
+                  :title="`TEAM ${group.allyTeamId}`"
+                >
+                  <span class="team-band-label">TEAM {{ group.allyTeamId }}</span>
+                </div>
+                <ul class="player-list">
+              <li
+                v-for="seat in group.seats"
+                :key="seat.player.playerId"
                 class="player-item"
-                :class="{ 'is-local': player.playerId === localPlayerId }"
+                :class="{ 'is-local': seat.player.playerId === localPlayerId }"
               >
                 <CommanderAvatar
-                  :color="getPlayerColor(player.playerId)"
+                  :color="seat.playerColor"
                   :size="44"
                 />
                 <!-- Player info. The local user's row owns the only
@@ -556,9 +567,9 @@ const terrainSectionVars = computed(() =>
                      name broadcast by that player. -->
                 <div class="player-info">
                   <div class="player-name-row">
-                    <span class="player-name">{{ player.name }}</span>
+                    <span class="player-name">{{ seat.player.name }}</span>
                     <button
-                      v-if="player.playerId === localPlayerId"
+                      v-if="seat.player.playerId === localPlayerId"
                       class="player-name-edit-btn"
                       type="button"
                       title="Edit username"
@@ -568,12 +579,12 @@ const terrainSectionVars = computed(() =>
                       Edit
                     </button>
                   </div>
-                  <span v-if="player.location" class="player-location">{{ player.location }}</span>
-                  <span v-if="player.ipAddress" class="player-ip">{{ player.ipAddress }}</span>
+                  <span v-if="seat.player.location" class="player-location">{{ seat.player.location }}</span>
+                  <span v-if="seat.player.ipAddress" class="player-ip">{{ seat.player.ipAddress }}</span>
                   <span
-                    v-if="player.localTime"
+                    v-if="seat.player.localTime"
                     class="player-time"
-                  >{{ player.localTime }}</span>
+                  >{{ seat.player.localTime }}</span>
                 </div>
                 <!-- Badges pinned to the right edge of the row.
                      HOST anchors top-right (default flex-column
@@ -581,26 +592,27 @@ const terrainSectionVars = computed(() =>
                      `margin-top: auto` so it always pins to the
                      bottom whether or not HOST is also present. -->
                 <div class="player-badges">
-                  <!-- Side (BAR's ally team). Teammates share a terrain
-                       slice, vision, and immunity from each other. The host
-                       owns the assignment, so only their control is live;
-                       everyone else reads the same label. -->
+                  <!-- Side (BAR's ally team). The band on the left already
+                       names the side; this cell is the host's control for
+                       moving a seat, so only the host renders it. -->
                   <button
                     v-if="isHost"
                     class="team-badge team-badge-btn"
                     type="button"
-                    :style="{ borderColor: allyTeamColor(player.allyTeamId) }"
-                    :title="`Move ${player.name} to the next team`"
-                    @click="emit('cyclePlayerAllyTeam', player.playerId)"
-                  >TEAM {{ player.allyTeamId }}</button>
+                    :style="{ borderColor: seat.teamColor }"
+                    :title="`Move ${seat.player.name} to the next team`"
+                    @click="emit('cyclePlayerAllyTeam', seat.player.playerId)"
+                  >TEAM {{ seat.allyTeamId }}</button>
                   <span
                     v-else
                     class="team-badge"
-                    :style="{ borderColor: allyTeamColor(player.allyTeamId) }"
-                  >TEAM {{ player.allyTeamId }}</span>
-                  <span v-if="player.isHost" class="host-badge">HOST</span>
-                  <span v-if="player.playerId === localPlayerId" class="you-badge">YOU</span>
+                    :style="{ borderColor: seat.teamColor }"
+                  >TEAM {{ seat.allyTeamId }}</span>
+                  <span v-if="seat.player.isHost" class="host-badge">HOST</span>
+                  <span v-if="seat.player.playerId === localPlayerId" class="you-badge">YOU</span>
                 </div>
+              </li>
+                </ul>
               </li>
             </ul>
           </div>
@@ -1449,10 +1461,56 @@ const terrainSectionVars = computed(() =>
   margin: 0 0 15px 0;
 }
 
+.team-list,
 .player-list {
   list-style: none;
   padding: 0;
   margin: 0;
+}
+
+/* One block per SIDE. The band spans every seat on that side, which is
+ * what makes an alliance read as one thing rather than as N rows that
+ * happen to share a badge. */
+.team-group {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.team-group:last-child {
+  margin-bottom: 0;
+}
+
+.team-group .player-list {
+  flex: 1;
+  min-width: 0;
+}
+
+.team-group .player-item:last-child {
+  margin-bottom: 0;
+}
+
+/* The side's own colour, straight from the identity-colour rule the
+ * battle uses — not a lobby palette. */
+.team-band {
+  flex: 0 0 16px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.team-band-label {
+  font-family: monospace;
+  font-size: 10px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  color: rgba(0, 0, 0, 0.72);
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  white-space: nowrap;
 }
 
 /* Lobby player rows — sized so the full 6-player roster fits in
