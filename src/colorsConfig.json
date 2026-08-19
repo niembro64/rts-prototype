@@ -236,34 +236,34 @@
   "environment": {
     "forestSpruce2": {
       "wood": {
-        "colorHex": "#33251b"
+        "colorHex": "#1c150f"
       },
       "leaf": {
         "colorHex": "#313c28"
       },
       "leafShadePaletteRgb": [
-        "#263a20",
-        "#374e2a",
-        "#486434",
-        "#5e8241",
-        "#789c50",
-        "#9cb85f",
-        "#c4d273",
-        "#46562a",
-        "#6e7c38",
-        "#3c3223"
+        "#22361a",
+        "#2d4820",
+        "#3c5626",
+        "#4c6c2e",
+        "#5e8138",
+        "#719140",
+        "#88a44e",
+        "#3d4d24",
+        "#5c6a32",
+        "#333026"
       ],
       "trunkShadePaletteRgb": [
-        "#1c140e",
-        "#30241a",
-        "#463628",
-        "#604c38",
-        "#7c644c",
-        "#9c8264",
-        "#bca07c",
-        "#523220",
-        "#805638",
-        "#584e44"
+        "#100b07",
+        "#1a130d",
+        "#261d15",
+        "#33281d",
+        "#423427",
+        "#523f30",
+        "#63503f",
+        "#2c1b11",
+        "#43301f",
+        "#302b26"
       ]
     },
     "grassComment": [
@@ -287,11 +287,11 @@
         "#375c25",
         "#41702a",
         "#4f8130",
-        "#628f36",
-        "#7a9438",
-        "#8e9440",
-        "#9c8f3c",
-        "#5a5c26",
+        "#5d8b34",
+        "#6d9038",
+        "#7a923c",
+        "#82903c",
+        "#4e5c26",
         "#3c471f",
         "#1b2814"
       ]
@@ -335,16 +335,16 @@
       "baseGrimePatchDepth": 0.55,
       "baseGrimeThicknessVariation": 0.6,
       "grainStrength": 0.85,
-      "dryColorRgb01": "#5c431d",
-      "dryAmount": 0.42,
+      "dryColorRgb01": "#4a4526",
+      "dryAmount": 0.17,
       "dryCoverage": 0.26,
-      "dustColorRgb01": "#8a7f5e",
-      "dustAmount": 0.12,
-      "trunkWeatherAmount": 0.4
+      "dustColorRgb01": "#7b7a64",
+      "dustAmount": 0.05,
+      "trunkWeatherAmount": 0.26
     },
     "lowTree": {
       "trunk": {
-        "colorHex": "#211b17"
+        "colorHex": "#141010"
       },
       "leaves": {
         "colorHex": "#496f31"

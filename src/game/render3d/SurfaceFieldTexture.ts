@@ -355,6 +355,56 @@ export const SURFACE_FIELD_GLSL = [
   '}',
 ].join('\n');
 
+/**
+ * The same two layers, projected TRIPLANAR — three samples per layer, blended
+ * by the surface normal.
+ *
+ * The cheap trick above (blend the COORDINATE, sample once) is what the
+ * weather noise uses, and the argument that makes it safe there is that a
+ * noise field has no structure for a blended coordinate to distort. These
+ * layers do have structure. Blending their coordinate stretches it wherever
+ * the normal turns, which on a hillside means the texture's features are
+ * warped by a quantity that kinks at every triangle edge — and the mesh's own
+ * triangulation appears on the ground, drawn in swirls of macro field.
+ *
+ * Blending three coherent samples cannot do that: the weights kink, but each
+ * projection stays undistorted, so the seam is a cross-fade rather than a
+ * crease. It is the same projection weatherSampleSubstance already uses for
+ * the detail tiles, at the same exponent, for the same reason.
+ */
+export const SURFACE_FIELD_TRIPLANAR_GLSL = [
+  'vec3 surfaceFieldTriplanarSample(sampler2D tex, vec3 position, vec3 w, float unit, mat2 rotation) {',
+  '  vec3 xz = texture2D(tex, (rotation * position.xz) / unit).rgb;',
+  '  vec3 yz = texture2D(tex, (rotation * position.yz) / unit).rgb;',
+  '  vec3 xy = texture2D(tex, (rotation * position.xy) / unit).rgb;',
+  '  return xz * w.y + yz * w.x + xy * w.z;',
+  '}',
+  '',
+  'vec3 surfaceFieldLayeredTriplanar(',
+  '  vec3 base,',
+  '  sampler2D macroTex,',
+  '  sampler2D mesoTex,',
+  '  vec3 position,',
+  '  vec3 surfaceNormal,',
+  '  vec2 tileWorldSize,',
+  '  vec2 blend',
+  ') {',
+  '  vec3 w = pow(abs(surfaceNormal), vec3(8.0));',
+  '  w /= max(w.x + w.y + w.z, 1.0e-5);',
+  '  vec3 macro = surfaceFieldTriplanarSample(',
+  '    macroTex, position, w, max(tileWorldSize.x, 1.0), mat2(1.0, 0.0, 0.0, 1.0)',
+  '  );',
+  // The meso layer keeps the rotation the flat path gives it, so the two
+  // layers still refuse to fall into register with each other.
+  '  vec3 meso = surfaceFieldTriplanarSample(',
+  '    mesoTex, position, w, max(tileWorldSize.y, 1.0),',
+  '    mat2(0.8253, 0.5647, -0.5647, 0.8253)',
+  '  );',
+  '  vec3 fielded = mix(base, macro, clamp(blend.x, 0.0, 1.0));',
+  '  return mix(fielded, meso, clamp(blend.y, 0.0, 1.0));',
+  '}',
+].join('\n');
+
 /** The call, built here so the uniform names stay private to this module. */
 export function surfaceFieldLayeredCall(
   family: SurfaceFieldFamily,
@@ -365,5 +415,23 @@ export function surfaceFieldLayeredCall(
   return (
     `surfaceFieldLayered(${baseExpression}, ${p}Macro, ${p}Meso, ` +
     `${planeExpression}, ${p}TileWorldSize, ${p}Blend)`
+  );
+}
+
+
+/** The triplanar call. `positionExpression` is a world position and
+ *  `normalExpression` the INTERPOLATED surface normal — never the geometric
+ *  one, which is constant per triangle and would step the blend at every
+ *  edge. */
+export function surfaceFieldLayeredTriplanarCall(
+  family: SurfaceFieldFamily,
+  baseExpression: string,
+  positionExpression: string,
+  normalExpression: string,
+): string {
+  const p = UNIFORM_PREFIX[family];
+  return (
+    `surfaceFieldLayeredTriplanar(${baseExpression}, ${p}Macro, ${p}Meso, ` +
+    `${positionExpression}, ${normalExpression}, ${p}TileWorldSize, ${p}Blend)`
   );
 }

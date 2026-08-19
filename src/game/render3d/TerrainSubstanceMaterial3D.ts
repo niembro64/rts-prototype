@@ -32,8 +32,10 @@ import {
   createSurfaceFieldUniforms,
   assignSurfaceFieldUniforms,
   surfaceFieldLayeredCall,
+  surfaceFieldLayeredTriplanarCall,
   surfaceFieldUniformDeclarations,
   SURFACE_FIELD_GLSL,
+  SURFACE_FIELD_TRIPLANAR_GLSL,
 } from './SurfaceFieldTexture';
 import { SURFACE_WEATHERING_GLSL } from './SurfaceWeathering3D';
 
@@ -108,11 +110,12 @@ const ROCK_ALBEDO_GLSL = [
   '  vec4 rockXY = texture2D(uSubstanceTexture, vSubstanceWorldPos.xy / uSubstanceTileWorldSize);',
   '  vec4 detail = rockXZ * triW.y + rockYZ * triW.x + rockXY * triW.z;',
   '  substance = mix(substance, detail.rgb, detail.a * uSubstanceContrast);',
-  '  vec2 fieldPlane = weatherSurfacePlane(',
-  '    vSubstanceWorldPos,',
-  '    normalize(vSubstanceWorldNormal)',
-  '  );',
-  `  substance = ${surfaceFieldLayeredCall('rock', 'substance', 'fieldPlane')};`,
+  `  substance = ${surfaceFieldLayeredTriplanarCall(
+    'rock',
+    'substance',
+    'vSubstanceWorldPos',
+    'normalize(vSubstanceWorldNormal)',
+  )};`,
 ].join('\n');
 
 /**
@@ -172,6 +175,7 @@ export function applyTerrainSubstanceMaterial(
           surfaceFieldUniformDeclarations(substance),
           SURFACE_WEATHERING_GLSL,
           SURFACE_FIELD_GLSL,
+          SURFACE_FIELD_TRIPLANAR_GLSL,
           'varying vec3 vSubstanceWorldPos;',
           'varying vec3 vSubstanceWorldNormal;',
           '#include <common>',

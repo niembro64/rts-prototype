@@ -58,6 +58,8 @@ import {
   assignSurfaceFieldUniforms,
   createSurfaceFieldUniforms,
   surfaceFieldLayeredCall,
+  surfaceFieldLayeredTriplanarCall,
+  SURFACE_FIELD_TRIPLANAR_GLSL,
   surfaceFieldUniformDeclarations,
   SURFACE_FIELD_GLSL,
   type SurfaceFieldUniforms,
@@ -1113,6 +1115,7 @@ export class TerrainTileRenderer3D {
             METAL_SURFACE_REGION_GLSL,
             SURFACE_WEATHERING_GLSL,
             SURFACE_FIELD_GLSL,
+            SURFACE_FIELD_TRIPLANAR_GLSL,
             ORE_EDGE_BLEND_GLSL,
             TERRAIN_WALL_WEAR_GLSL,
             WORLD_SHADE_FRAGMENT_PARS,
@@ -1250,12 +1253,14 @@ export class TerrainTileRenderer3D {
             '    vec4 rockXY = texture2D(uRockDetailTexture, rockUvXY);',
             '    vec4 rockDetail = rockXZ * triW.y + rockYZ * triW.x + rockXY * triW.z;',
             '    terrainRgb = mix(terrainRgb, rockDetail.rgb, rockDetail.a * rockMask * uRockDetailContrast);',
-            '    // Staining, strata and patina across a whole face. Read from',
-            '    // the blended weather plane rather than triplanar: these are',
-            '    // blob fields with no structure for one coordinate to',
-            '    // distort, so two taps buy what six would.',
-            '    vec2 rockFieldPlane = weatherSurfacePlane(vTerrainWorldPos, surfaceNormal);',
-            `    vec3 rockFielded = ${surfaceFieldLayeredCall('rock', 'terrainRgb', 'rockFieldPlane')};`,
+            '    // Staining, strata and patina across a whole face. TRIPLANAR,',
+            '    // not the weather plane: unlike the noise fields these layers',
+            '    // have structure, and a blended coordinate stretches that',
+            '    // structure by a quantity that kinks at every triangle edge —',
+            '    // which drew the mesh onto the hillside in swirls of macro',
+            '    // field. Six taps, and the ground stops showing its own',
+            '    // triangulation.',
+            `    vec3 rockFielded = ${surfaceFieldLayeredTriplanarCall('rock', 'terrainRgb', 'vTerrainWorldPos', 'surfaceNormal')};`,
             '    terrainRgb = mix(terrainRgb, rockFielded, rockMask);',
             '  }',
             '}',
@@ -1312,8 +1317,7 @@ export class TerrainTileRenderer3D {
             '  // post-light structure alike — so the broad variation reaches',
             '  // the reflection too, which is where a metal surface is',
             '  // actually read.',
-            '  vec2 metalFieldPlane = weatherSurfacePlane(vTerrainWorldPos, surfaceNormal);',
-            `  metalDetail = ${surfaceFieldLayeredCall('metal', 'metalDetail', 'metalFieldPlane')};`,
+            `  metalDetail = ${surfaceFieldLayeredTriplanarCall('metal', 'metalDetail', 'vTerrainWorldPos', 'surfaceNormal')};`,
             '  terrainRgb = mix(terrainRgb, metalSurfaceAlbedo(',
             '    uMetalSurfaceColor,',
             '    metalDetail,',
@@ -1458,7 +1462,7 @@ export class TerrainTileRenderer3D {
         );
     };
     this.terrainMaterial.customProgramCacheKey = () =>
-      'authoritative-terrain-weathering-wallwear-v51';
+      'authoritative-terrain-weathering-wallwear-v52';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
