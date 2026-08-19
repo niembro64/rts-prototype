@@ -129,7 +129,7 @@ export function bootstrapRtsScene3DRenderers(
     threeApp.world,
     renderScope,
     threeApp.camera,
-    (eid) => entityRenderer.getUnitYawGroup(eid),
+    entityRenderer.getHostRenderPoses(),
   );
   const worldShade = new WorldShade3D(threeApp.renderer, mapWidth, mapHeight);
   const terrainTileRenderer = new TerrainTileRenderer3D(

@@ -54,6 +54,7 @@ import {
 } from './instancedBufferUpdate';
 import { applyExposureToRawShader } from './RenderLighting3D';
 import { setShieldSphereVisualRotation3D } from './ShieldSphereVisualRotation3D';
+import type { HostRenderPoseStore3D } from './HostRenderPoseStore3D';
 
 // barrier.alpha (from shieldMaterials.json visual.alpha) is the rendered
 // surface alpha directly — no renderer-side boost, so the authored knob
@@ -201,10 +202,6 @@ type FieldMesh = {
   // `sphereInstancedMesh` slot in the per-frame loop — every active
   // field consumes one instance slot, so the entire shield layer
   // renders in one draw call regardless of field count.
-  mountOffsetX: number;
-  mountOffsetY: number;
-  mountZ: number;
-  mountLiftY: number;
   localX: number;
   localY: number;
   localZ: number;
@@ -236,9 +233,6 @@ export class ShieldRenderPacket3D {
   x: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   y: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   z: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
-  rotation: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
-  supportPointOffsetZ: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
-  mountLiftY: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   localX: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   localY: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   localZ: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
@@ -296,9 +290,6 @@ export class ShieldRenderPacket3D {
       this.x[cursor] = unitEntity.transform.x;
       this.y[cursor] = unitEntity.transform.y;
       this.z[cursor] = unitEntity.transform.z;
-      this.rotation[cursor] = unitEntity.transform.rotation;
-      this.supportPointOffsetZ[cursor] = unit.supportPointOffsetZ;
-      this.mountLiftY[cursor] = unitMountLiftY;
       this.localX[cursor] = turret.mount.x;
       this.localY[cursor] = turret.mount.z - unitMountLiftY;
       this.localZ[cursor] = turret.mount.y;
@@ -364,9 +355,6 @@ export class ShieldRenderPacket3D {
         x: hostX,
         y: hostY,
         z: hostZ,
-        rotation: hostRotation,
-        supportPointOffsetZ,
-        mountLiftY: unitMountLiftY,
         localX: turret.mount.x,
         localY: turret.mount.z - unitMountLiftY,
         localZ: turret.mount.y,
@@ -441,9 +429,6 @@ export class ShieldRenderPacket3D {
         x: hostX,
         y: hostY,
         z: hostZ,
-        rotation: hostRotation,
-        supportPointOffsetZ,
-        mountLiftY: turretViews.mountLiftY[row],
         localX: turretViews.mountX[row],
         localY: turretViews.mountZ[row] - turretViews.mountLiftY[row],
         localZ: turretViews.mountY[row],
@@ -466,9 +451,6 @@ export class ShieldRenderPacket3D {
     x: number;
     y: number;
     z: number;
-    rotation: number;
-    supportPointOffsetZ: number;
-    mountLiftY: number;
     localX: number;
     localY: number;
     localZ: number;
@@ -489,9 +471,6 @@ export class ShieldRenderPacket3D {
     this.x[cursor] = options.x;
     this.y[cursor] = options.y;
     this.z[cursor] = options.z;
-    this.rotation[cursor] = options.rotation;
-    this.supportPointOffsetZ[cursor] = options.supportPointOffsetZ;
-    this.mountLiftY[cursor] = options.mountLiftY;
     this.localX[cursor] = options.localX;
     this.localY[cursor] = options.localY;
     this.localZ[cursor] = options.localZ;
@@ -516,9 +495,6 @@ export class ShieldRenderPacket3D {
     this.x = growTypedArray(this.x, nextCapacity);
     this.y = growTypedArray(this.y, nextCapacity);
     this.z = growTypedArray(this.z, nextCapacity);
-    this.rotation = growTypedArray(this.rotation, nextCapacity);
-    this.supportPointOffsetZ = growTypedArray(this.supportPointOffsetZ, nextCapacity);
-    this.mountLiftY = growTypedArray(this.mountLiftY, nextCapacity);
     this.localX = growTypedArray(this.localX, nextCapacity);
     this.localY = growTypedArray(this.localY, nextCapacity);
     this.localZ = growTypedArray(this.localZ, nextCapacity);
@@ -677,13 +653,10 @@ export class ShieldRenderer3D {
   private _sphereScratchMat = new THREE.Matrix4();
   private _sphereScratchPos = new THREE.Vector3();
   private _sphereScratchScale = new THREE.Vector3();
-  private _sphereLocalPos = new THREE.Vector3();
   private _cylinderTargetPos = new THREE.Vector3();
   private _cylinderMidPos = new THREE.Vector3();
   private _cylinderDir = new THREE.Vector3();
   private _cylinderQuat = new THREE.Quaternion();
-  private _sphereParentQuat = new THREE.Quaternion();
-  private _sphereYawQuat = new THREE.Quaternion();
   private _sphereSpinEuler = new THREE.Euler(0, 0, 0, 'XYZ');
   private _sphereSpinQuat = new THREE.Quaternion();
   private static readonly _SPHERE_UP = new THREE.Vector3(0, 1, 0);
@@ -691,25 +664,23 @@ export class ShieldRenderer3D {
   /** Reused across frames to track which fields are still active this
    *  frame; everything not in here gets pruned in endFrame. */
   private _seenFieldKeys = new Set<FieldKey>();
-  /** Look up the unit's yaw subgroup. Used to compose the field's
-   *  world position from the unit's parent-chain (group → realYawGroup
-   *  → liftGroup) so the bubble follows chassis tilt + yaw exactly.
-   *  Returns undefined when the unit's mesh hasn't been built yet
-   *  (off-scope at scene start) or was torn down during a rebuild;
-   *  in that case we fall back to the unit's transform. */
-  private getYawGroup: (eid: EntityId) => THREE.Group | undefined;
+  /** The rendered root pose every host was drawn from this frame. The field
+   *  is a mounted attachment like any turret, so it composes its origin
+   *  through the same pose the turret carrying it used — see
+   *  HostRenderPoseStore3D. */
+  private hostRenderPoses: HostRenderPoseStore3D;
   private camera: THREE.PerspectiveCamera;
 
   constructor(
     parentWorld: THREE.Group,
     _scope: ViewportFootprint,
     camera: THREE.PerspectiveCamera,
-    getYawGroup: (eid: EntityId) => THREE.Group | undefined,
+    hostRenderPoses: HostRenderPoseStore3D,
   ) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
     this.camera = camera;
-    this.getYawGroup = getYawGroup;
+    this.hostRenderPoses = hostRenderPoses;
 
     // One immutable instance pool per geometry tier. Field pose/color writes
     // are identical across pools; only the selected primitive changes.
@@ -769,10 +740,6 @@ export class ShieldRenderer3D {
     const existing = this.fields.get(key);
     if (existing) return existing;
     const field: FieldMesh = {
-      mountOffsetX: NaN,
-      mountOffsetY: NaN,
-      mountZ: NaN,
-      mountLiftY: NaN,
       localX: 0,
       localY: 0,
       localZ: 0,
@@ -783,24 +750,17 @@ export class ShieldRenderer3D {
 
   private updateMountCache(
     field: FieldMesh,
-    mountLiftY: number,
     localX: number,
     localY: number,
     localZ: number,
   ): void {
     if (
-      field.mountOffsetX === localX &&
-      field.mountOffsetY === localZ &&
-      field.mountZ === localY + mountLiftY &&
-      field.mountLiftY === mountLiftY
+      field.localX === localX &&
+      field.localY === localY &&
+      field.localZ === localZ
     ) {
       return;
     }
-
-    field.mountOffsetX = localX;
-    field.mountOffsetY = localZ;
-    field.mountZ = localY + mountLiftY;
-    field.mountLiftY = mountLiftY;
     field.localX = localX;
     field.localY = localY;
     field.localZ = localZ;
@@ -936,7 +896,6 @@ export class ShieldRenderer3D {
     const field = this.acquire(key);
     this.updateMountCache(
       field,
-      packet.mountLiftY[row],
       packet.localX[row],
       packet.localY[row],
       packet.localZ[row],
@@ -960,44 +919,22 @@ export class ShieldRenderer3D {
     const localY = field.localY;
     const localZ = field.localZ;
 
-    // The bubble is written in absolute world coords below, so it
-    // doesn't need a parent. yawGroup is only consulted to read the
-    // unit's parent-chain pose for accurate world-position composition
-    // (chassis tilt + yaw); when it's missing we fall back to the
-    // packet's transform row.
-    const liftGroupNode = this.getYawGroup(hostId); // getYawGroup returns liftGroup
-    const realYawGroup = liftGroupNode?.parent;
-    const groupOuter = realYawGroup?.parent;
-    if (liftGroupNode && realYawGroup && groupOuter) {
-      this._sphereYawQuat.setFromAxisAngle(
-        ShieldRenderer3D._SPHERE_UP,
-        realYawGroup.rotation.y,
-      );
-      this._sphereParentQuat
-        .copy(groupOuter.quaternion)
-        .multiply(this._sphereYawQuat);
-      this._sphereLocalPos.set(localX, liftGroupNode.position.y + localY, localZ);
-      this._sphereLocalPos.applyQuaternion(this._sphereParentQuat);
-      this._sphereScratchPos
-        .copy(groupOuter.position)
-        .add(this._sphereLocalPos);
-    } else {
-      // No liftGroup — use the fallback unit transform from the packet.
-      // Rebuild the same base-Y convention Render3DEntities uses:
-      // group.y = sim altitude − supportPointOffsetZ, then add the
-      // cached blueprint chassis lift and this turret's chassis-
-      // local mount Y. Slope tilt lives only on the unit mesh chain;
-      // yaw and vertical body lift still stay coherent.
-      const yaw = packet.rotation[row];
-      const cosYaw = Math.cos(yaw);
-      const sinYaw = Math.sin(yaw);
-      const rx = cosYaw * localX - sinYaw * localZ;
-      const rz = sinYaw * localX + cosYaw * localZ;
-      this._sphereScratchPos.set(
-        packet.x[row] + rx,
-        packet.z[row] - packet.supportPointOffsetZ[row] + field.mountLiftY + localY,
-        packet.y[row] + rz,
-      );
+    // The bubble is written in absolute world coords, but it is a mounted
+    // attachment: its origin is the turret's mount composed through the one
+    // rendered root pose its host was drawn from, so chassis tilt, body
+    // orientation and presentation bank all carry. A host with no pose this
+    // frame was not drawn, and neither is its field — drawing it from a
+    // stale or yaw-only transform is what detached bubbles from their
+    // turrets (see budget_design_philosophy.html, "One rendered root pose
+    // owns every attachment").
+    if (!this.hostRenderPoses.composeAttachment(
+      hostId,
+      localX,
+      localY,
+      localZ,
+      this._sphereScratchPos,
+    )) {
+      return;
     }
 
     const fieldCenterY = this._sphereScratchPos.y - packet.originOffsetZ[row];

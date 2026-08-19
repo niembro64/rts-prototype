@@ -1,4 +1,4 @@
-import type { Entity, EntityId } from '../sim/types';
+import type { Entity, EntityId, Turret } from '../sim/types';
 import { growTypedArray } from '../memory/typedArrayGrowth';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { getBuildingConfig } from '../sim/buildConfigs';
@@ -25,6 +25,7 @@ import {
 } from './EntityLod3D';
 import {
   getShieldPanelTurretIndex,
+  shieldFieldRenderReach3D,
   NO_SHIELD_PANEL_TURRET_INDEX,
 } from './turretRenderHelpers3D';
 
@@ -107,6 +108,26 @@ function assertNear(label: string, actual: number, expected: number, tolerance =
   if (Math.abs(actual - expected) <= tolerance) return;
   throw new Error(
     `[client render entity state] ${label} mismatch: slab=${actual}, entity=${expected}`,
+  );
+}
+
+/**
+ * How far past its own body a unit's presentation can reach, and therefore
+ * how much padding the render scope owes it.
+ *
+ * A shield dome reaches far beyond the body projecting it, so the host has to
+ * stay in the render scope for as long as its field could be on screen: the
+ * field composes through the host's rendered root pose (HostRenderPoseStore3D)
+ * and is not drawn at all without one.
+ */
+function unitRenderScopePadding(
+  radiusOther: number,
+  turrets: readonly Turret[] | undefined,
+): number {
+  return Math.max(
+    350,
+    radiusOther,
+    turrets !== undefined ? shieldFieldRenderReach3D(turrets) : 0,
   );
 }
 
@@ -382,7 +403,10 @@ export class ClientRenderEntityStateSlab {
     views.hudNameY[slot] = getUnitHudNameY(entity);
     views.entityShadowWidth[slot] = 0;
     views.entityShadowDepth[slot] = 0;
-    views.renderScopePadding[slot] = Math.max(350, views.radiusOther[slot]);
+    views.renderScopePadding[slot] = unitRenderScopePadding(
+      views.radiusOther[slot],
+      turrets,
+    );
     views.hp[slot] = unit.hp;
     views.maxHp[slot] = unit.maxHp;
     views.buildEnergyRatio[slot] = buildable !== null
@@ -692,7 +716,7 @@ export class ClientRenderEntityStateSlab {
       assertNear(
         'renderScopePadding',
         views.renderScopePadding[slot],
-        Math.max(350, views.radiusOther[slot]),
+        unitRenderScopePadding(views.radiusOther[slot], entity.combat?.turrets),
       );
       assertNear(
         'groundContactEnabled',

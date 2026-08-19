@@ -74,6 +74,7 @@ import { VISION_FADE_OUT_MS } from '@/visionConfig';
 import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 import { TurretMountCache3D, type TurretMountEntry } from './TurretMountCache3D';
+import { HostRenderPoseStore3D } from './HostRenderPoseStore3D';
 import { tickBeamWaveTime } from './BeamWaveVisual3D';
 import { ShieldPanelPose3D } from './ShieldPanelPose3D';
 import type { ShieldPanelMesh } from './ShieldPanelMesh3D';
@@ -323,6 +324,7 @@ export class Render3DEntities {
   private _smoothLiftedPos = new THREE.Vector3();
   private _locomotionParentQuat = new THREE.Quaternion();
   private turretMountCache = new TurretMountCache3D();
+  private readonly hostRenderPoses = new HostRenderPoseStore3D();
   private readonly beamPilotLights = new BeamPilotLightState3D();
   private readonly isBeamPilotLightVisible = (
     entityId: EntityId,
@@ -666,6 +668,9 @@ export class Render3DEntities {
   }
 
   private updateUnits(unitRows: UnitRenderPacket3D | undefined, scopedRender: boolean): void {
+    // Root poses are per-frame: a host that is not posed below resolves to
+    // nothing rather than to where it stood last frame.
+    this.hostRenderPoses.beginFrame();
     this.locomotionSmokeEmitters.length = 0;
     this.airborneEmitterBatch.begin();
     const packetProvided = unitRows !== undefined;
@@ -1034,6 +1039,8 @@ export class Render3DEntities {
         poseOutput[poseBase + 13],
         poseOutput[poseBase + 14],
       );
+      // Attachments drawn outside this loop resolve the same pose by id.
+      this.hostRenderPoses.publish(e.id, this._smoothLiftedPos, this._smoothParentQuat);
       this._unitChainMat.fromArray(poseOutput, poseBase + 16);
       this.chassisInstancePose.update(
         e,
@@ -1355,18 +1362,13 @@ export class Render3DEntities {
     if (m.locomotion) this.activeLocomotionUnitIds.add(id);
   }
 
-  /** Look up the lift subgroup for a unit's mesh. The lift group
-   *  carries the body's vertical lift (so it sits on top of the
-   *  locomotion instead of embedded in it) AND is parented through
-   *  yawGroup → group, so it inherits position + tilt + yaw + lift.
-   *  Renderers that attach extra meshes to a unit's BODY (not its
-   *  locomotion) — e.g. the shield bubble — parent to this
-   *  group at chassis-local positions; the scenegraph chain places
-   *  them in world. Returns undefined for units whose mesh has been
-   *  torn down (despawn / renderer rebuild). Buildings have no
-   *  liftGroup so this is unit-only. */
-  getUnitYawGroup(eid: EntityId): THREE.Group | undefined {
-    return this.unitMeshes.get(eid)?.liftGroup;
+  /** The rendered root pose of every unit posed this frame, keyed by entity
+   *  id. Renderers that draw attachments outside a unit's own mesh chain —
+   *  the shield field — compose through this rather than reading the
+   *  scenegraph, so they land on exactly the pose the chassis was drawn
+   *  from. See HostRenderPoseStore3D. */
+  getHostRenderPoses(): HostRenderPoseStore3D {
+    return this.hostRenderPoses;
   }
 
   getResourcePylonSprayTargets(): readonly SprayTarget[] {
