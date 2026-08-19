@@ -269,6 +269,15 @@ export class NetworkManager {
     },
     getConnections: () => this.connections,
     isGameStarted: () => this.gameStarted,
+    // A host that dies without closing its connection — a killed tab, a
+    // yanked cable — sends no farewell, and PeerJS may take a very long time
+    // to notice the socket is dead. Its heartbeat stopping is the earliest
+    // reliable sign, and during a battle it is the only one: nothing else
+    // distinguishes a departed host from one that is merely slow.
+    onPeerSilent: (playerId) => {
+      if (this.role !== 'client' || playerId !== HOST_PLAYER_ID) return;
+      this.emitHostLeft();
+    },
     send: (conn, message) => this.safeSend(conn, message),
     sendIntervalMs: undefined,
     timeoutMs: undefined,
