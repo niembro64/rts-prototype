@@ -152,6 +152,21 @@ export function mapInfoAnnexFlatHeight(
   return sampleTerrainHeight(footprint.attachX, footprint.attachZ);
 }
 
+/** How far out of the map (x, z) lies, along the annex's own outward axis. */
+function outDistance(footprint: MapInfoAnnexFootprint, x: number, z: number): number {
+  return Math.max(
+    0,
+    (x - footprint.attachX) * footprint.outX + (z - footprint.attachZ) * footprint.outZ,
+  );
+}
+
+/** The annex's one blend curve, shared by everything that eases off the map
+ *  edge onto the flat table: 0 at the seam, 1 once past `blendDepth`. */
+function blendWeight(footprint: MapInfoAnnexFootprint, out: number): number {
+  const t = footprint.blendDepth > 0 ? Math.min(1, out / footprint.blendDepth) : 1;
+  return t * t * (3 - 2 * t);
+}
+
 /** The annex's rendered surface height at (x, z). The seam row (out = 0)
  *  returns the map's own edge height at that point EXACTLY — the terrain
  *  sampler interpolates linearly inside a mesh triangle, so samples taken
@@ -164,55 +179,52 @@ export function mapInfoAnnexSurfaceY(
   flatHeight: number,
   sampleTerrainHeight: (x: number, z: number) => number,
 ): number {
-  const out = Math.max(
-    0,
-    (x - footprint.attachX) * footprint.outX + (z - footprint.attachZ) * footprint.outZ,
-  );
+  const out = outDistance(footprint, x, z);
   const edgeHeight = sampleTerrainHeight(
     x - footprint.outX * out,
     z - footprint.outZ * out,
   );
-  const t = footprint.blendDepth > 0 ? Math.min(1, out / footprint.blendDepth) : 1;
-  const eased = t * t * (3 - 2 * t);
-  return edgeHeight + (flatHeight - edgeHeight) * eased + LAND_TILE_GROUND_LIFT;
+  return (
+    edgeHeight +
+    (flatHeight - edgeHeight) * blendWeight(footprint, out) +
+    LAND_TILE_GROUND_LIFT
+  );
+}
+
+/**
+ * The annex's horizon blend at (x, z) — how much of the terrain's
+ * end-of-the-world colour is painted over it — eased off the map edge on the
+ * SAME band and the SAME curve as the height above.
+ *
+ * It cannot be read at (x, z) directly. The blend answers "how close is this
+ * to the edge of the world", and the map's rectangle IS that edge: sampled
+ * where it actually stands, every annex vertex scores a full blend, and the
+ * headland paints as one flat slab of horizon colour with no substances, no
+ * shoreline tint and no underwater darkening — the "that is not the seabed"
+ * tell the annex exists to avoid.
+ *
+ * So the annex inherits the coast's blend at the seam and sheds it over
+ * `blendDepth`, exactly as it inherits the coast's height and eases to its
+ * own flat table. The join stays continuous, and the table the caption stands
+ * on is painted by the same terms as the seabed inside the map.
+ */
+export function mapInfoAnnexHorizonFade(
+  footprint: MapInfoAnnexFootprint,
+  x: number,
+  z: number,
+  sampleMapHorizonFade: (x: number, z: number) => number,
+): number {
+  const out = outDistance(footprint, x, z);
+  const edgeFade = sampleMapHorizonFade(
+    x - footprint.outX * out,
+    z - footprint.outZ * out,
+  );
+  return edgeFade * (1 - blendWeight(footprint, out));
 }
 
 /** The rendered altitude of the flat table itself. */
 export function mapInfoAnnexFlatSurfaceY(flatHeight: number): number {
   return flatHeight + LAND_TILE_GROUND_LIFT;
-}
-
-/**
- * The point INSIDE the map that an annex point borrows the terrain's
- * edge-of-the-world terms from: the annex FOLDED BACK across the map edge it
- * grew out of.
- *
- * The horizon blend answers "how close is this fragment to the end of the
- * world", and it is total everywhere at or past the map's rectangular edge.
- * Read straight, then, every annex vertex scores a full blend and the whole
- * headland paints as one slab of horizon colour — no substances, no
- * shoreline tint, no underwater darkening, which is exactly the "that is not
- * the seabed" tell the annex exists to avoid.
- *
- * Reflection is what fixes it without reintroducing a seam. The seam row
- * (out = 0) maps to itself, so the annex's first row carries the coast's own
- * blend EXACTLY; walking out along the annex walks in from the coast, so the
- * flat table the caption stands on scores what ground that far inside the map
- * scores, and is painted as the same seabed.
- */
-export function mapInfoAnnexMapSamplePoint(
-  footprint: MapInfoAnnexFootprint,
-  x: number,
-  z: number,
-): { readonly x: number; readonly z: number } {
-  const out = Math.max(
-    0,
-    (x - footprint.attachX) * footprint.outX + (z - footprint.attachZ) * footprint.outZ,
-  );
-  return {
-    x: x - 2 * out * footprint.outX,
-    z: z - 2 * out * footprint.outZ,
-  };
 }
 
 export type MapInfoAnnexRect = {
