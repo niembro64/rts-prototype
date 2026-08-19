@@ -19,6 +19,7 @@ import {
 import type { MapLandCellDimensions } from '../mapSizeConfig';
 import type { BattlePreset } from './battlePresets';
 import { MAX_NAME_LENGTH } from '@/playerNamesConfig';
+import { AUTHOR_BYLINE } from '@/config';
 import { closeCurrentTauriWindow, isTauriRuntime } from '@/browserRuntime';
 import { LOBBY_LIST_POLL_INTERVAL_MS } from '../game/network/LobbyDirectory';
 import { getMultiplayerBackend } from '../game/network/multiplayer/multiplayerBackendRegistry';
@@ -644,14 +645,14 @@ const terrainSectionVars = computed(() =>
       <div class="menu-byline">
         <a
           class="menu-byline-link"
-          href="https://niemo.io"
+          :href="AUTHOR_BYLINE.siteUrl"
           target="_blank"
           rel="noopener noreferrer"
-        >https://niemo.io</a>
+        >{{ AUTHOR_BYLINE.siteUrl }}</a>
         <a
           class="menu-byline-link"
-          href="mailto:niemeyer.eric@gmail.com"
-        >niemeyer.eric@gmail.com</a>
+          :href="`mailto:${AUTHOR_BYLINE.email}`"
+        >{{ AUTHOR_BYLINE.email }}</a>
       </div>
     </div>
   </aside>

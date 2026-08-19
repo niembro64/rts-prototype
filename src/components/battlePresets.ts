@@ -7,6 +7,8 @@ import {
   type MetalCoverage,
 } from '../types/worldSurfaceMode';
 import { LAND_CELL_SIZE } from '../mapSizeConfig';
+import { AUTHOR_BYLINE } from '../config';
+import type { MapPresetLabelCaption } from '../game/render3d/presetMapLabel';
 import battleBarConfig from '../battleBarConfig.json';
 
 /** PERIMETER "NONE": skip the map-boundary step entirely instead of blending
@@ -286,7 +288,7 @@ type BattleMapPresentation = {
   /** Only exact stock matches receive the preset's special panorama. */
   readonly backdropPresetName: string | null;
   /** The ground sign is always present and always describes current values. */
-  readonly labelLines: readonly string[];
+  readonly labelCaption: NonNullable<MapPresetLabelCaption>;
 };
 
 function formatTerrainMagnitude(value: number): string {
@@ -309,26 +311,32 @@ export function resolveBattleMapPresentation(
   const liquid = current.liquidSurfaceMode === 'lava' ? 'LAVA' : 'WATER';
   const worldWidth = current.mapWidthLandCells * LAND_CELL_SIZE;
   const worldLength = current.mapLengthLandCells * LAND_CELL_SIZE;
-  const labelLines = [
-    presetName?.toUpperCase() ?? 'CUSTOM',
-    `${current.mapWidthLandCells} × ${current.mapLengthLandCells} LAND CELLS`
-      + `  ·  ${worldWidth} × ${worldLength} WORLD`,
-    `${current.cap} ENTITY CAP  ·  ${terrain}  ·  ${liquid}`,
-    // The six terrain magnitudes share ONE row on purpose. Split across two
-    // the caption block comes out squarer than the headland's flat table,
-    // and a block that shape cannot be inset by the same gap on all four
-    // sides at any size — see resolveMapPresetLabelPlacement.
-    `CENTER ${formatTerrainMagnitude(current.centerMagnitude)}`
-      + `  ·  DIVIDERS ${formatTerrainMagnitude(current.dividersMagnitude)}`
-      + `  ·  PERIMETER ${formatPerimeterMagnitude(current.perimeterMagnitude)}`
-      + `  ·  D-TERRAIN ${formatTerrainMagnitude(current.terrainDTerrain)}`
-      + `  ·  METAL STEP ${formatTerrainMagnitude(current.metalDepositStep)}`
-      + `  ·  DETAIL ${current.terrainDetail}`,
-  ];
+  // ONE FIELD PER ENTRY, not one row. How many share a row is a typographic
+  // decision about the headland the sign has to fill, and the painter makes
+  // it: fixing the rows here fixes the block's shape, and a block whose shape
+  // does not match the table cannot be inset by the same gap on all four
+  // sides at any size — see resolveMapPresetLabelPlacement.
+  const labelCaption = {
+    title: presetName?.toUpperCase() ?? 'CUSTOM',
+    info: [
+      `${current.mapWidthLandCells} × ${current.mapLengthLandCells} LAND CELLS`,
+      `${worldWidth} × ${worldLength} WORLD`,
+      `${current.cap} ENTITY CAP`,
+      terrain,
+      liquid,
+      `CENTER ${formatTerrainMagnitude(current.centerMagnitude)}`,
+      `DIVIDERS ${formatTerrainMagnitude(current.dividersMagnitude)}`,
+      `PERIMETER ${formatPerimeterMagnitude(current.perimeterMagnitude)}`,
+      `D-TERRAIN ${formatTerrainMagnitude(current.terrainDTerrain)}`,
+      `METAL STEP ${formatTerrainMagnitude(current.metalDepositStep)}`,
+      `DETAIL ${current.terrainDetail}`,
+    ],
+    byline: [AUTHOR_BYLINE.siteUrl, AUTHOR_BYLINE.email],
+  };
   return {
     presetName,
     backdropPresetName: presetName,
-    labelLines,
+    labelCaption,
   };
 }
 

@@ -1616,7 +1616,7 @@
       <ul class="rule-list">
         <li><strong>HIGH</strong> is the close rung: the complete authored visual and its high geometry tier.</li>
         <li><strong>MED</strong> is the middle rung: the same authored assembly at its medium geometry and feature budget.</li>
-        <li><strong>LOW</strong> is the far rung: the same authored assembly at its low geometry and feature budget. LOW is still real geometry; it is not an implicit removal rule.</li>
+        <li><strong>LOW</strong> is the far rung: the same authored assembly at its low geometry and feature budget. LOW is still real geometry; it is not an implicit removal rule, and it is deliberately the widest band of the three. An entity leaves LOW only when it has become too small on screen to be worth rendering at all &mdash; a handful of pixels across &mdash; not merely when it is far away.</li>
         <li>The only fourth state is removal: once AUTO takes an entity below the glyph threshold, its strategic collision-shape glyph fades in over the still-opaque LOW model and then replaces it. The fade is a transition to removal, not another detail level.</li>
       </ul>
       <p>
@@ -1637,10 +1637,33 @@
         assignments live in <code>lod.json</code>; renderers consume the
         resolved rung rather than reinterpreting camera distance themselves.
       </p>
-      <h3>Coverage is measured on the thing being drawn</h3>
+      <h3>Coverage is measured on the collision volume</h3>
       <p>
-        The rung is chosen from projected screen coverage, and coverage belongs
-        to the geometry that is actually on screen. A mounted part inherits its
+        The size that gets projected is the entity&rsquo;s <strong>collision
+        volume</strong> &mdash; the COL entry of the shared volume model, the
+        same sphere or box physics, picking and the volume overlays already
+        agree on &mdash; never a visual mesh extent, a render bounding box, or a
+        per-blueprint LOD radius authored on the side. Two reasons, and both are
+        structural rather than aesthetic. It is the only size in the entity that
+        is already authoritative and already correct: a visual estimate is a
+        second source of truth that drifts every time a model is re-authored,
+        and drift there silently retunes every LOD threshold in the game.
+        And it is the size the strategic glyph is drawn at, because the glyph
+        <em>is</em> the collision shape; measuring the flip on one radius while
+        drawing the marker at another makes the icon pop to a different size
+        than the model it replaced. One volume decides when detail sheds and how
+        big the thing that replaces it is.
+      </p>
+      <p>
+        Trail-dominated entities are the one exception, and it is a floor rather
+        than a different source: projectiles and beams clamp the projected
+        radius <em>up</em> to an authored minimum, because a shot&rsquo;s visual
+        salience is its trail and its beam length, which outrun any body volume
+        it owns. The floor raises a too-small collision radius; it never
+        replaces it with a visual measurement.
+      </p>
+      <p>
+        Coverage also belongs to the geometry that is actually on screen. A mounted part inherits its
         host's rung because it is drawn inside the host's silhouette and shrinks
         with it. A raised <strong>shield field</strong> does not: it is a
         world-scale force surface, routinely an order of magnitude wider than

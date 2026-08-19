@@ -243,9 +243,15 @@ export function runMapInfoAnnex3DContractTest(): void {
     const dot = (gx * a.nx + gy * a.ny + gz * a.nz) / length;
     if (a.kind === 'surface') {
       surfaceTriangles++;
+      // Clockwise from above, matching the authoritative terrain mesh: the
+      // DoubleSide terrain material negates the shading normal on a back
+      // face, so an annex wound the other way is lit by the sun on top of
+      // the same baked shade and renders several times brighter than the
+      // seabed it joins. The authored vertex normal still points UP, exactly
+      // as the map's own surface vertices do.
       assertContract(
-        gy / length > 0.5 && dot > 0.9,
-        'every annex top triangle must face up and agree with its authored normal',
+        gy / length < -0.5 && dot < -0.9,
+        "every annex top triangle must carry the terrain mesh's own winding",
       );
     } else {
       wallTriangles++;

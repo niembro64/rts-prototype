@@ -131,42 +131,27 @@ export function entityLodProxyRadius3D(entity: Entity): number {
 }
 
 /**
- * Radius the DETAIL ladder measures — how big the entity LOOKS: the visual
- * radius for units, the footprint half-diagonal for buildings. Projectiles
- * and beams use authored floors because their visual salience (trails,
- * beam length) far exceeds their tiny body radius.
+ * Radius the DETAIL ladder measures — the entity's COLLISION volume, which is
+ * the same size {@link entityLodProxyRadius3D} draws the glyph at. One size
+ * decides when detail sheds and how big the marker that replaces it is, so the
+ * icon can never be authored bigger or smaller than the thing whose
+ * disappearance it triggered; it is also the size picking, physics and the
+ * volume overlays already agree on, rather than a private visual estimate.
+ * Projectiles and beams still clamp UP to authored floors, because their
+ * visual salience (trails, beam length) far exceeds any body volume.
  */
 function entityDetailRadius3D(entity: Entity): number {
-  const unit = entity.unit;
-  if (unit !== null) {
-    return firstFinitePositiveRadius(
-      unit.radius.other,
-      unit.radius.hitbox,
-      unit.radius.collision,
-    );
-  }
-
-  const building = entity.building;
-  if (building !== null) {
-    return firstFinitePositiveRadius(
-      Math.hypot(building.width, building.height) * 0.5,
-      building.targetRadius,
-    );
-  }
+  const collisionRadius = entityLodProxyRadius3D(entity);
 
   const projectile = entity.projectile;
   if (projectile !== null) {
     const floor = isRayType(projectile.config.shot.type)
       ? DETAIL_RADIUS_FLOOR_BEAM
       : DETAIL_RADIUS_FLOOR_PROJECTILE;
-    const radius = projectile.config.shotProfile.runtime.radius;
-    return Math.max(
-      floor,
-      firstFinitePositiveRadius(radius.other, radius.hitbox, radius.collision),
-    );
+    return Math.max(floor, collisionRadius);
   }
 
-  return DETAIL_RADIUS_FLOOR_PROJECTILE;
+  return collisionRadius;
 }
 
 export function entityLodProxyGlyph3D(entity: Entity): EntityLodProxyGlyph3D {

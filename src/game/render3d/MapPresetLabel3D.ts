@@ -9,6 +9,15 @@
 // annex is real map now — emitted into the terrain mesh, covered by the same
 // liquid box — so all that is left here is the sign itself.
 //
+// THE SIGN IS SET, NOT LISTED. It is one centred block in three sections —
+// the preset's name, the live map's settings, then a rule and the byline —
+// and the settings arrive as FIELDS rather than as rows, because how many
+// share a row is the one free variable that lets the block match the shape
+// of the table it stands on. Only a block of the table's own aspect can be
+// inset by the same gap on all four sides, so the painter wraps the fields,
+// then grows the section leading, until the two aspects agree. What comes
+// out is the largest type the headland can carry with an even margin.
+//
 // The letters are EXTRUDED off the annex's flat table rather than only
 // printed on it, and they always rise to a fixed relief above WHICHEVER IS
 // HIGHER, the ground they stand on or the liquid surface. On a dry headland
@@ -40,13 +49,17 @@ import {
   resolveMapInfoAnnexFootprint,
   type MapInfoAnnexFootprint,
 } from './MapInfoAnnex3D';
-import type { MapPresetLabelLines, MapPresetLabelTarget } from './presetMapLabel';
+import type { MapPresetLabelCaption, MapPresetLabelTarget } from './presetMapLabel';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 
 const STYLE = {
   titleFontPx: MAP_PRESET_LABEL_RENDER_CONFIG.titleFontPx,
   infoFontPx: MAP_PRESET_LABEL_RENDER_CONFIG.infoFontPx,
+  bylineFontPx: MAP_PRESET_LABEL_RENDER_CONFIG.bylineFontPx,
   lineGapPx: MAP_PRESET_LABEL_RENDER_CONFIG.lineGapPx,
+  sectionGapPx: MAP_PRESET_LABEL_RENDER_CONFIG.sectionGapPx,
+  ruleThicknessPx: MAP_PRESET_LABEL_RENDER_CONFIG.ruleThicknessPx,
+  ruleWidthInkFraction: MAP_PRESET_LABEL_RENDER_CONFIG.ruleWidthInkFraction,
   canvasPadPx: MAP_PRESET_LABEL_RENDER_CONFIG.canvasPadPx,
   strokeWidthPx: MAP_PRESET_LABEL_RENDER_CONFIG.strokeWidthPx,
   captionMarginAnnexDepthFraction:
@@ -68,6 +81,10 @@ const STYLE = {
 export const MAP_PRESET_LABEL_ROTATION_X = -Math.PI / 2;
 export const MAP_PRESET_LABEL_ROTATION_Z = Math.PI;
 
+/** What separates two settings sharing a row. Wide enough to read as a list
+ *  rather than as one run-on sentence. */
+const FIELD_SEPARATOR = '  ·  ';
+
 /** Clearance between the stacked coplanar layers of the sign (letter tops and
  *  the painted caption), as a fraction of the caption block. Only enough to
  *  settle depth-fighting: the caption must still read as printed on the
@@ -85,48 +102,67 @@ const LETTER_MASK_MAX_TEXELS = 2_400_000;
  *  The terrain sample is exact once the baked mesh is installed; this only
  *  keeps float noise from re-seating the sign every frame. */
 const ANNEX_ALTITUDE_EPSILON = 1e-3;
+/** Ceiling on the leading the fit may add, as a multiple of the leading the
+ *  block already has. Past it the sections read as scattered rows rather
+ *  than as one sign, and an even margin is not worth that. */
+const MAX_LEADING_GROWTH = 1.6;
 
 /** Ink metrics a 2D context can decline to report. The font box is the
- *  fallback, and these are its usable split — enough to keep a caption
- *  laid out rather than collapsed if `actualBoundingBox*` is missing. */
-const ASSUMED_ASCENT_FONT_FRACTION = 0.8;
-const ASSUMED_DESCENT_FONT_FRACTION = 0.2;
+ *  fallback, and these are its usable split — enough to keep a caption laid
+ *  out rather than collapsed if `actualBoundingBox*` is missing. */
+const ASSUMED_ASCENT_FONT_FRACTION = 0.62;
+const ASSUMED_DESCENT_FONT_FRACTION = 0.22;
 
 function fontString(pixels: number): string {
   return `bold ${pixels}px ${NAME_LABEL_FONT_FAMILY}`;
 }
 
-function fontPxForLine(index: number): number {
-  return index === 0 ? STYLE.titleFontPx : STYLE.infoFontPx;
-}
-
-/** The outline scales with its row, so info lines are not swallowed by a
- *  stroke authored for the title. */
-function strokeWidthForLine(index: number, scale: number): number {
-  return STYLE.strokeWidthPx * scale * (fontPxForLine(index) / STYLE.titleFontPx);
+/** The outline scales with its row, so a byline is not swallowed by a stroke
+ *  authored for the title. */
+function strokeWidthForFont(fontPx: number): number {
+  return STYLE.strokeWidthPx * (fontPx / STYLE.titleFontPx);
 }
 
 function finiteOr(value: number | undefined, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
-/** Baseline of row `index` measured from the FIRST row's baseline: one row
- *  height plus one gap for every row crossed. */
-function baselineOffsetForLine(index: number, scale: number): number {
-  let offset = 0;
-  for (let row = 1; row <= index; row++) {
-    offset += (fontPxForLine(row - 1) + STYLE.lineGapPx) * scale;
+/** One line of the block, or the divider between its sections. `gapAbovePx`
+ *  is the space between this item's box and the previous one's — CSS margins
+ *  rather than baselines, so a section break is one number instead of a
+ *  special case in the stack arithmetic. */
+type CaptionItem =
+  | {
+    readonly kind: 'text';
+    readonly text: string;
+    readonly fontPx: number;
+    readonly gapAbovePx: number;
   }
-  return offset;
-}
+  | {
+    readonly kind: 'rule';
+    readonly gapAbovePx: number;
+  };
 
-/** Height of the stacked rows for `lineCount` lines, first baseline to last.
- *  Padding is deliberately NOT in here: the canvas is padded around the INK,
- *  and only measureText knows where the ink is. Exported for the contract
- *  test. */
-export function mapPresetLabelRowStackHeight(lineCount: number): number {
-  return lineCount <= 0 ? 0 : baselineOffsetForLine(lineCount - 1, 1);
-}
+type CaptionItemBox = {
+  readonly item: CaptionItem;
+  /** Top of the item's own box in the stack, before centring. */
+  readonly top: number;
+  readonly height: number;
+  /** Painted extents relative to the stack, stroke included. */
+  readonly inkTop: number;
+  readonly inkBottom: number;
+};
+
+type CaptionLayout = {
+  readonly boxes: readonly CaptionItemBox[];
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+  /** Where the pen goes: every item is centred on this column. */
+  readonly originX: number;
+  /** Added to an item's box top to land it on the canvas. */
+  readonly originY: number;
+  readonly ruleHalfWidth: number;
+};
 
 export type MapPresetLabelPlacement = {
   readonly worldWidth: number;
@@ -136,51 +172,123 @@ export type MapPresetLabelPlacement = {
   readonly annex: MapInfoAnnexFootprint;
 };
 
-/** Fit the caption onto the annex's flat table with THE SAME GAP above,
- *  below and on both sides, at the canvas's own aspect.
- *
- *  Fitting the block to a fixed inset and centring what is left over does not
- *  do that: the caption is far wider than it is tall, so it fills the table's
- *  width and floats in the middle of its depth, leaving a band of empty
- *  headland over and under the text several times the gap beside it. There is
- *  exactly one inset `g` that comes out even — the one where the table minus
- *  `g` on every side already HAS the caption's aspect:
- *
- *      (width - 2g) / (depth - 2g) = aspect
- *
- *  The authored margin is its floor, and the fixed-inset fit is the fallback
- *  for a caption too square for the table to hold an even gap around it.
- *
- *  Pure so the contract test can hold the "entirely on the flat part,
- *  entirely off the map" invariant without WebGL. */
+/** The patch of headland the caption may cover: the annex's flat table inset
+ *  by the authored margin on every side. Exported so the contract test can
+ *  hold "entirely on the flat part, entirely off the map" without WebGL. */
+export function resolveMapPresetLabelCaptionBox(
+  mapWidth: number,
+  mapHeight: number,
+): {
+  readonly annex: MapInfoAnnexFootprint;
+  readonly centerX: number;
+  readonly centerZ: number;
+  readonly width: number;
+  readonly depth: number;
+} {
+  const annex = resolveMapInfoAnnexFootprint(mapWidth, mapHeight);
+  const area = resolveMapInfoAnnexCaptionArea(
+    annex,
+    annex.depth * STYLE.captionMarginAnnexDepthFraction,
+  );
+  return { annex, ...area };
+}
+
+/** Fit a block of `canvasAspect` into that box, largest size that keeps the
+ *  aspect, centred. The painter's whole job is to arrive here with an aspect
+ *  that already matches the box, in which case the fit is exact and the gap
+ *  around the sign is the authored margin on all four sides. */
 export function resolveMapPresetLabelPlacement(
   mapWidth: number,
   mapHeight: number,
   canvasAspect: number,
 ): MapPresetLabelPlacement {
-  const annex = resolveMapInfoAnnexFootprint(mapWidth, mapHeight);
+  const box = resolveMapPresetLabelCaptionBox(mapWidth, mapHeight);
   const aspect = Math.max(1e-6, canvasAspect);
-  const minimumMargin = annex.depth * STYLE.captionMarginAnnexDepthFraction;
-  const table = resolveMapInfoAnnexCaptionArea(annex, 0);
-  const evenGap =
-    aspect > 1 + 1e-6
-      ? (aspect * table.depth - table.width) / (2 * (aspect - 1))
-      : Number.NaN;
-  const margin =
-    Number.isFinite(evenGap) &&
-    evenGap >= minimumMargin &&
-    2 * evenGap < Math.min(table.width, table.depth)
-      ? evenGap
-      : minimumMargin;
-  const area = resolveMapInfoAnnexCaptionArea(annex, margin);
-  const worldHeight = Math.min(area.depth, area.width / aspect);
+  const worldHeight = Math.min(box.depth, box.width / aspect);
   return {
     worldWidth: worldHeight * aspect,
     worldHeight,
-    centerX: area.centerX,
-    centerZ: area.centerZ,
-    annex,
+    centerX: box.centerX,
+    centerZ: box.centerZ,
+    annex: box.annex,
   };
+}
+
+/**
+ * Which wrap to set the settings in, given what each candidate's block shape
+ * would be. The chosen block is the NARROWEST one still at least as wide as
+ * the table wants: leading can always be added to bring a too-wide block down
+ * onto the target aspect, and nothing can take leading away from a too-tall
+ * one. Falls back to the widest candidate when every wrap comes out taller
+ * than the table, which only happens for a caption of very few fields.
+ *
+ * Pure, and exported for the contract test.
+ */
+export function pickCaptionWrap(
+  candidateAspects: readonly number[],
+  targetAspect: number,
+): number {
+  let best = -1;
+  for (let index = 0; index < candidateAspects.length; index++) {
+    if (candidateAspects[index] < targetAspect) continue;
+    if (best < 0 || candidateAspects[index] < candidateAspects[best]) best = index;
+  }
+  if (best >= 0) return best;
+  for (let index = 0; index < candidateAspects.length; index++) {
+    if (best < 0 || candidateAspects[index] > candidateAspects[best]) best = index;
+  }
+  return Math.max(0, best);
+}
+
+/** Break `fields` into `rowCount` rows of near-equal measured width, in
+ *  order. Greedy against the average row width, which is what a flex-wrap
+ *  container of that width would do. Exported for the contract test. */
+export function wrapCaptionFields(
+  measure: (text: string) => number,
+  fields: readonly string[],
+  rowCount: number,
+): string[] {
+  if (fields.length === 0) return [];
+  const rows = Math.max(1, Math.min(Math.floor(rowCount), fields.length));
+  if (rows === 1) return [fields.join(FIELD_SEPARATOR)];
+  const separator = measure(FIELD_SEPARATOR);
+  const widths = fields.map(measure);
+  const total = widths.reduce((sum, width) => sum + width, 0)
+    + separator * (fields.length - 1);
+  const target = total / rows;
+
+  const out: string[] = [];
+  let current: string[] = [];
+  let currentWidth = 0;
+  for (let index = 0; index < fields.length; index++) {
+    const added = (current.length > 0 ? separator : 0) + widths[index];
+    const rowsLeft = rows - out.length;
+    const fieldsLeft = fields.length - index;
+    // Break when this field would push the row past its share — but never so
+    // early that a later row would be left with nothing to set.
+    if (
+      current.length > 0 &&
+      currentWidth + added > target &&
+      rowsLeft > 1 &&
+      fieldsLeft > rowsLeft - 1
+    ) {
+      out.push(current.join(FIELD_SEPARATOR));
+      current = [];
+      currentWidth = 0;
+    }
+    current.push(fields[index]);
+    currentWidth += (current.length > 1 ? separator : 0) + widths[index];
+  }
+  if (current.length > 0) out.push(current.join(FIELD_SEPARATOR));
+  return out;
+}
+
+/** The sign's identity: what a repaint has to differ in to be worth doing. */
+function captionKey(caption: MapPresetLabelCaption): string | null {
+  if (caption === null) return null;
+  const parts = [caption.title, ...caption.info, ...caption.byline]
+    .filter((part) => part.length > 0);
+  return parts.length > 0 ? parts.join('\n') : null;
 }
 
 export class MapPresetLabel3D implements MapPresetLabelTarget {
@@ -201,7 +309,10 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
    *  frame — resolve it once. */
   private readonly annex: MapInfoAnnexFootprint;
   private lastKey: string | null = null;
-  private lastLines: readonly string[] = [];
+  /** The chosen setting of the current caption: its wrapped rows and the
+   *  leading the fit added, so the supersampled glyph mask repaints the SAME
+   *  block instead of re-deciding the wrap at a different measured width. */
+  private items: readonly CaptionItem[] = [];
   private lastAnnexSurfaceY = Number.NaN;
   private destroyed = false;
 
@@ -270,22 +381,21 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
     parent.add(this.group);
   }
 
-  setMapPresetLabelLines(lines: MapPresetLabelLines): void {
+  setMapPresetLabelCaption(caption: MapPresetLabelCaption): void {
     if (this.destroyed) return;
-    const painted = lines?.filter((line) => line.length > 0) ?? [];
-    const key = painted.length > 0 ? painted.join('\n') : null;
+    const key = captionKey(caption);
     if (key === this.lastKey) return;
     this.lastKey = key;
-    this.lastLines = painted;
-    if (key === null) {
+    if (caption === null || key === null) {
       this.group.visible = false;
       return;
     }
-    this.paint(this.ctx, this.canvas, painted, 1);
+    this.items = this.setCaption(caption);
+    this.paint(this.ctx, this.canvas, this.items, 1);
     // New text, new glyph mask. placeSign only traces when there is no
     // letter mesh, which is what keeps an altitude-only re-seat cheap.
     this.disposeLetterMesh();
-    this.placeSign(painted);
+    this.placeSign();
     this.group.visible = true;
   }
 
@@ -298,7 +408,7 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
     if (this.destroyed || this.lastKey === null) return;
     const surfaceY = this.annexSurfaceY();
     if (Math.abs(surfaceY - this.lastAnnexSurfaceY) <= ANNEX_ALTITUDE_EPSILON) return;
-    this.placeSign(this.lastLines);
+    this.placeSign();
   }
 
   destroy(): void {
@@ -323,99 +433,172 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
     );
   }
 
-  /** Paint `lines` into `canvas` at `scale`, resizing it to fit with the SAME
-   *  padding above, below and on both sides.
+  /**
+   * Choose the setting: wrap the settings across rows, then add leading until
+   * the block is exactly the shape of the table it has to fill.
    *
-   *  The padding is measured against the INK — the union of the glyphs' own
-   *  bounding boxes, grown by the outline stroked around them — and not
-   *  against the font box. A font box carries internal leading above the caps
-   *  and below the baseline that no glyph in this caption fills, so padding
-   *  against it puts a visibly fatter gap over the title than beside it.
+   * Both halves exist for the same reason. The gap around the sign is even on
+   * all four sides only when the block and the inset table share an aspect,
+   * and the block's aspect is what the wrap and the leading control. The wrap
+   * is the coarse knob — one row fewer is a much wider block — and the
+   * leading is the fine one. The leading only ever GROWS, so the type never
+   * shrinks to buy the match.
+   */
+  private setCaption(caption: NonNullable<MapPresetLabelCaption>): CaptionItem[] {
+    const box = resolveMapPresetLabelCaptionBox(this.mapWidth, this.mapHeight);
+    const targetAspect = box.depth > 0 ? box.width / box.depth : 1;
+    const measureInfo = (text: string): number => {
+      this.ctx.font = fontString(STYLE.infoFontPx);
+      return this.ctx.measureText(text).width;
+    };
+
+    const candidates: Array<{ items: CaptionItem[]; aspect: number }> = [];
+    for (let rowCount = 1; rowCount <= Math.max(1, caption.info.length); rowCount++) {
+      const items = buildCaptionItems(caption, measureInfo, rowCount);
+      const layout = this.layOutCaption(this.ctx, items, 1);
+      candidates.push({
+        items,
+        aspect: layout.canvasHeight > 0 ? layout.canvasWidth / layout.canvasHeight : 1,
+      });
+    }
+    const chosen = candidates[
+      pickCaptionWrap(candidates.map((candidate) => candidate.aspect), targetAspect)
+    ];
+
+    // The block is now at least as wide as the table wants; the depth it is
+    // short becomes leading, shared out in proportion to the gaps already
+    // there so the sections keep their relative weight.
+    const layout = this.layOutCaption(this.ctx, chosen.items, 1);
+    const wantedHeight = layout.canvasWidth / Math.max(1e-6, targetAspect);
+    const extra = wantedHeight - layout.canvasHeight;
+    const gapTotal = chosen.items.reduce((sum, item) => sum + item.gapAbovePx, 0);
+    if (extra <= 0 || gapTotal <= 0 || extra > gapTotal * MAX_LEADING_GROWTH) {
+      return chosen.items;
+    }
+    const growth = 1 + extra / gapTotal;
+    return chosen.items.map((item) => ({ ...item, gapAbovePx: item.gapAbovePx * growth }));
+  }
+
+  /**
+   * Measure the block: where every item's box sits in the stack, how far its
+   * painted ink reaches out of that box, and the canvas that holds the lot
+   * with THE SAME padding on all four sides.
    *
-   *  Scale 1 is the caption texture; the glyph trace repaints the identical
-   *  layout larger, so mask coordinates map onto the caption quad by ratio
-   *  alone. */
-  private paint(
+   * The padding is measured against the INK — the union of the glyphs' own
+   * bounding boxes, grown by the outline stroked around them — and not
+   * against the font box. A font box carries internal leading above the caps
+   * and below the baseline that no glyph in this caption fills, so padding
+   * against it puts a visibly fatter gap over the title than beside it.
+   */
+  private layOutCaption(
     ctx: CanvasRenderingContext2D,
-    canvas: HTMLCanvasElement,
-    lines: readonly string[],
+    items: readonly CaptionItem[],
     scale: number,
-  ): void {
-    // Measure first — the font must be set before measureText, the ink
-    // metrics are reported relative to the current alignment, and resizing
-    // the canvas wipes both the pixels and the context state.
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    const rows = lines.map((line, index) => {
-      const fontPx = fontPxForLine(index) * scale;
+  ): CaptionLayout {
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const boxes: CaptionItemBox[] = [];
+    let cursor = 0;
+    let textInkHalfWidth = 0;
+    for (const item of items) {
+      cursor += item.gapAbovePx * scale;
+      const top = cursor;
+      if (item.kind === 'rule') {
+        const height = STYLE.ruleThicknessPx * scale;
+        cursor += height;
+        boxes.push({ item, top, height, inkTop: top, inkBottom: top + height });
+        continue;
+      }
+      const fontPx = item.fontPx * scale;
       ctx.font = fontString(fontPx);
-      const metrics = ctx.measureText(line);
-      return {
-        baseline: baselineOffsetForLine(index, scale),
-        ascent: finiteOr(
-          metrics.actualBoundingBoxAscent,
-          fontPx * ASSUMED_ASCENT_FONT_FRACTION,
-        ),
-        descent: finiteOr(
-          metrics.actualBoundingBoxDescent,
-          fontPx * ASSUMED_DESCENT_FONT_FRACTION,
-        ),
-        // Positive to the LEFT of the pen, per the 2D spec.
-        left: finiteOr(metrics.actualBoundingBoxLeft, 0),
-        right: finiteOr(metrics.actualBoundingBoxRight, finiteOr(metrics.width, 0)),
-        halfStroke: 0.5 * strokeWidthForLine(index, scale),
-      };
-    });
+      const metrics = ctx.measureText(item.text);
+      const halfStroke = 0.5 * strokeWidthForFont(fontPx);
+      const middle = top + fontPx / 2;
+      const inkTop = middle
+        - finiteOr(metrics.actualBoundingBoxAscent, fontPx * ASSUMED_ASCENT_FONT_FRACTION)
+        - halfStroke;
+      const inkBottom = middle
+        + finiteOr(metrics.actualBoundingBoxDescent, fontPx * ASSUMED_DESCENT_FONT_FRACTION)
+        + halfStroke;
+      // Centred text reports its extents either side of the pen. The block is
+      // symmetric about that pen, so the wider side is what the padding has
+      // to clear on BOTH sides for the gap to come out even.
+      const halfWidth = finiteOr(metrics.width, 0) / 2;
+      const inkHalfWidth = Math.max(
+        finiteOr(metrics.actualBoundingBoxLeft, halfWidth),
+        finiteOr(metrics.actualBoundingBoxRight, halfWidth),
+      ) + halfStroke;
+      textInkHalfWidth = Math.max(textInkHalfWidth, inkHalfWidth);
+      cursor += fontPx;
+      boxes.push({ item, top, height: fontPx, inkTop, inkBottom });
+    }
 
     const padding = STYLE.canvasPadPx * scale;
     let inkTop = 0;
     let inkBottom = 0;
-    let inkLeft = 0;
-    let inkRight = 0;
-    for (let index = 0; index < rows.length; index++) {
-      const row = rows[index];
-      const top = row.baseline - row.ascent - row.halfStroke;
-      const bottom = row.baseline + row.descent + row.halfStroke;
-      const left = -row.left - row.halfStroke;
-      const right = row.right + row.halfStroke;
+    for (let index = 0; index < boxes.length; index++) {
       if (index === 0) {
-        inkTop = top;
-        inkBottom = bottom;
-        inkLeft = left;
-        inkRight = right;
-      } else {
-        inkTop = Math.min(inkTop, top);
-        inkBottom = Math.max(inkBottom, bottom);
-        inkLeft = Math.min(inkLeft, left);
-        inkRight = Math.max(inkRight, right);
+        inkTop = boxes[index].inkTop;
+        inkBottom = boxes[index].inkBottom;
+        continue;
       }
+      inkTop = Math.min(inkTop, boxes[index].inkTop);
+      inkBottom = Math.max(inkBottom, boxes[index].inkBottom);
     }
-    // The pen sits one padding in from the ink's own extreme, so the gap to
-    // every canvas edge is that same padding.
-    const originX = padding - inkLeft;
-    const originY = padding - inkTop;
-    canvas.width = Math.max(1, Math.ceil(originX + inkRight + padding));
-    canvas.height = Math.max(1, Math.ceil(originY + inkBottom + padding));
+    return {
+      boxes,
+      canvasWidth: Math.max(1, Math.ceil(2 * (textInkHalfWidth + padding))),
+      canvasHeight: Math.max(1, Math.ceil(inkBottom - inkTop + 2 * padding)),
+      originX: textInkHalfWidth + padding,
+      originY: padding - inkTop,
+      ruleHalfWidth: 0.5 * STYLE.ruleWidthInkFraction * 2 * textInkHalfWidth,
+    };
+  }
 
+  /** Paint `items` into `canvas` at `scale`, resizing it to fit. Scale 1 is
+   *  the caption texture; the glyph trace repaints the identical stack
+   *  larger, so mask coordinates map onto the caption quad by ratio alone. */
+  private paint(
+    ctx: CanvasRenderingContext2D,
+    canvas: HTMLCanvasElement,
+    items: readonly CaptionItem[],
+    scale: number,
+  ): void {
+    const layout = this.layOutCaption(ctx, items, scale);
+    // Resizing wipes both the pixels and the context state, so everything the
+    // draw depends on is set after it.
+    canvas.width = layout.canvasWidth;
+    canvas.height = layout.canvasHeight;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
     ctx.strokeStyle = STYLE.strokeColor;
     ctx.fillStyle = STYLE.fillColor;
-    for (let index = 0; index < lines.length; index++) {
-      ctx.font = fontString(fontPxForLine(index) * scale);
-      ctx.lineWidth = strokeWidthForLine(index, scale);
-      const baselineY = originY + rows[index].baseline;
-      ctx.strokeText(lines[index], originX, baselineY);
-      ctx.fillText(lines[index], originX, baselineY);
+    for (const box of layout.boxes) {
+      if (box.item.kind === 'rule') {
+        ctx.fillRect(
+          layout.originX - layout.ruleHalfWidth,
+          layout.originY + box.top,
+          2 * layout.ruleHalfWidth,
+          box.height,
+        );
+        continue;
+      }
+      const fontPx = box.item.fontPx * scale;
+      ctx.font = fontString(fontPx);
+      ctx.lineWidth = strokeWidthForFont(fontPx);
+      const middle = layout.originY + box.top + box.height / 2;
+      ctx.strokeText(box.item.text, layout.originX, middle);
+      ctx.fillText(box.item.text, layout.originX, middle);
     }
     if (canvas === this.canvas) this.texture.needsUpdate = true;
   }
 
   /** Seat the sign on the annex: size it to the flat table, stand it at the
    *  table's altitude, and stretch the letters up to clear the liquid. */
-  private placeSign(lines: readonly string[]): void {
+  private placeSign(): void {
     const placement = resolveMapPresetLabelPlacement(
       this.mapWidth,
       this.mapHeight,
@@ -441,7 +624,7 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
       // The extrusion is authored one unit deep and SCALED to the depth the
       // liquid asks for, so re-seating the sign when the terrain bake lands
       // is a transform write rather than a second glyph trace.
-      const letters = this.buildLetterGeometry(lines, placement);
+      const letters = this.buildLetterGeometry(placement);
       if (letters !== null) {
         const mesh = new THREE.Mesh(
           letters,
@@ -474,7 +657,6 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
    *  or a context that cannot hand back pixels) — the printed caption alone
    *  is then still a complete, readable sign. */
   private buildLetterGeometry(
-    lines: readonly string[],
     placement: MapPresetLabelPlacement,
   ): THREE.ExtrudeGeometry | null {
     const maskCanvas = document.createElement('canvas');
@@ -489,7 +671,7 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
         ),
       ),
     );
-    this.paint(maskCtx, maskCanvas, lines, supersample);
+    this.paint(maskCtx, maskCanvas, this.items, supersample);
     let pixels: ImageData;
     try {
       pixels = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
@@ -548,4 +730,47 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
     this.letterMesh.geometry.dispose();
     this.letterMesh = null;
   }
+}
+
+/** The item stack for one candidate wrap, at scale 1: title, the settings
+ *  wrapped into `infoRowCount` rows, then the rule and the byline. */
+function buildCaptionItems(
+  caption: NonNullable<MapPresetLabelCaption>,
+  measureInfo: (text: string) => number,
+  infoRowCount: number,
+): CaptionItem[] {
+  const items: CaptionItem[] = [];
+  if (caption.title.length > 0) {
+    items.push({
+      kind: 'text',
+      text: caption.title,
+      fontPx: STYLE.titleFontPx,
+      gapAbovePx: 0,
+    });
+  }
+  const infoRows = wrapCaptionFields(
+    measureInfo,
+    caption.info.filter((field) => field.length > 0),
+    infoRowCount,
+  );
+  for (let row = 0; row < infoRows.length; row++) {
+    items.push({
+      kind: 'text',
+      text: infoRows[row],
+      fontPx: STYLE.infoFontPx,
+      gapAbovePx:
+        items.length === 0 ? 0 : row === 0 ? STYLE.sectionGapPx : STYLE.lineGapPx,
+    });
+  }
+  const byline = caption.byline.filter((entry) => entry.length > 0);
+  if (byline.length > 0) {
+    if (items.length > 0) items.push({ kind: 'rule', gapAbovePx: STYLE.sectionGapPx });
+    items.push({
+      kind: 'text',
+      text: byline.join(FIELD_SEPARATOR),
+      fontPx: STYLE.bylineFontPx,
+      gapAbovePx: items.length === 0 ? 0 : STYLE.sectionGapPx,
+    });
+  }
+  return items;
 }

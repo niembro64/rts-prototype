@@ -386,6 +386,16 @@ export const MAP_INFO_ANNEX_RENDER_CONFIG = worldRenderConfigJson.mapInfoAnnex;
  *  bar sits on (or CUSTOM). See MapPresetLabel3D. */
 export const MAP_PRESET_LABEL_RENDER_CONFIG = worldRenderConfigJson.mapPresetLabel;
 
+/** Whose game this is. ONE definition: the menu column prints it as links,
+ *  and the map's info annex paints the same two strings as the caption's
+ *  closing section. Not a map setting — it never takes part in preset
+ *  identity, and it stays lowercase because a URL and an address are read,
+ *  not shouted. */
+export const AUTHOR_BYLINE = {
+  siteUrl: 'https://niemo.io',
+  email: 'niemeyer.eric@gmail.com',
+} as const;
+
 export const FOREST_SPRUCE2_WOOD_COLOR = COLORS.environment.forestSpruce2.wood.colorHex;
 export const FOREST_SPRUCE2_LEAF_COLOR = COLORS.environment.forestSpruce2.leaf.colorHex;
 

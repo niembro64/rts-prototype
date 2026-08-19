@@ -334,8 +334,20 @@ export type MapInfoAnnexEmitOptions = {
  * map's own wall already closes that plane, from inside the annex's solid.
  *
  * The grid is walked (along, out). `along` is `out` rotated a quarter turn,
- * which is what makes the quad order (a, b, c) / (a, c, d) wind upward on
- * every edge instead of only on the one the annex happens to use today.
+ * so the quad order below has the same handedness on every edge instead of
+ * only on the one the annex happens to use today.
+ *
+ * THE TOP IS WOUND THE WAY THE AUTHORITATIVE TERRAIN MESH IS WOUND, which is
+ * clockwise seen from above — its triangles present their BACK face to a
+ * camera over the map. That is not a bug to route around: the terrain
+ * material is DoubleSide, and three.js negates the shading normal on a back
+ * face, so every square metre of this map is lit through a downward normal
+ * and its daylight comes from the baked `terrainShade` instead. An annex
+ * wound the other way is lit by the sun and the environment on top of that
+ * same baked shade and comes out several times brighter than the seabed it
+ * is welded to — which is exactly the "that is not the map" tell the annex
+ * exists to remove. Matching the map's winding is therefore load-bearing,
+ * and is asserted by MapInfoAnnex3DContractTest.
  */
 export function emitMapInfoAnnexGeometry(
   footprint: MapInfoAnnexFootprint,
@@ -437,8 +449,9 @@ export function emitMapInfoAnnexGeometry(
       const vb = allocateSurfaceVertex(column + 1, row);
       const vc = allocateSurfaceVertex(column + 1, row + 1);
       const vd = allocateSurfaceVertex(column, row + 1);
-      sink.pushTriangle(va, vb, vc);
-      sink.pushTriangle(va, vc, vd);
+      // Reversed on purpose — see the winding note in this function's doc.
+      sink.pushTriangle(va, vc, vb);
+      sink.pushTriangle(va, vd, vc);
     }
   }
 

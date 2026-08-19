@@ -2137,7 +2137,7 @@ watchEffect(() => {
   // a custom map still gets a layered horizon rather than a flat sky.
   m.activePresetName = mapPresentation.presetName;
   setActiveBackdropPresetName(mapPresentation.backdropPresetName);
-  setActiveMapPresetLabel(mapPresentation.labelLines);
+  setActiveMapPresetLabel(mapPresentation.labelCaption);
 });
 
 // Same reactive() pattern as battleControlBarModel: stable proxy

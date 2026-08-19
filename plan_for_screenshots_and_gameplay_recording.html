@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plan: Screenshots &amp; Gameplay Recording</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f4ed;
+      --ink: #1f2528;
+      --muted: #59666b;
+      --rule: #c8d0ca;
+      --panel: #fffdf8;
+      --accent: #266b5e;
+      --accent-2: #8a4d2f;
+      --code: #e8eee9;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.58 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(980px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 44px 0 64px;
+    }
+
+    header {
+      border-bottom: 1px solid var(--rule);
+      padding-bottom: 28px;
+      margin-bottom: 32px;
+    }
+
+    h1, h2, h3 { line-height: 1.15; margin: 0; letter-spacing: 0; }
+    h1 { max-width: 860px; font-size: clamp(2rem, 5vw, 3.6rem); font-weight: 780; }
+    h2 { margin-top: 42px; font-size: 1.45rem; color: var(--accent); }
+    h3 { margin-top: 26px; font-size: 1.08rem; color: var(--accent-2); }
+
+    p { max-width: 850px; margin: 14px 0 0; }
+    ul, ol { max-width: 850px; margin: 12px 0 0; padding-left: 24px; }
+    li { margin: 8px 0; }
+    strong { font-weight: 720; }
+
+    code {
+      background: var(--code);
+      border-radius: 4px;
+      padding: 0.08rem 0.28rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.95em;
+    }
+
+    .dek { color: var(--muted); font-size: 1.1rem; max-width: 780px; margin-top: 18px; }
+
+    .callout {
+      background: var(--panel);
+      border-left: 4px solid var(--accent);
+      margin: 26px 0;
+      padding: 18px 20px;
+    }
+    .callout p { margin-top: 0; }
+    .callout.warn { border-left-color: var(--accent-2); }
+
+    .rule-list li::marker { color: var(--accent); }
+
+    .table-scroll { overflow-x: auto; margin: 18px 0 0; }
+    table {
+      border-collapse: collapse;
+      min-width: 640px;
+      width: 100%;
+      background: var(--panel);
+      border: 1px solid var(--rule);
+      font-size: 0.95rem;
+    }
+    th, td {
+      border: 1px solid var(--rule);
+      padding: 8px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: var(--code); font-weight: 720; }
+
+    .mock {
+      background: #0d131c;
+      border: 1px solid var(--rule);
+      border-radius: 8px;
+      padding: 22px;
+      margin: 20px 0 0;
+      display: flex;
+      justify-content: flex-end;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .mock .cap-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 46px);
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid rgba(124, 145, 174, 0.72);
+      border-radius: 6px;
+      background: rgba(10, 14, 20, 0.84);
+    }
+    .mock .cap-grid span {
+      display: grid;
+      place-items: center;
+      height: 26px;
+      border: 1px solid #667184;
+      border-radius: 4px;
+      background: #191f2a;
+      color: #dce7f8;
+      font: 700 9px/1 system-ui;
+      letter-spacing: 0.04em;
+    }
+    .mock .cap-grid span.rec { border-color: #ff7a7a; color: #ffb3b3; }
+    .mock .fs {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border: 1px solid rgba(124, 145, 174, 0.72);
+      border-radius: 6px;
+      background: rgba(10, 14, 20, 0.84);
+      color: #dce7f8;
+      font: 700 12px/1 system-ui;
+    }
+    .mock-note { color: var(--muted); font-size: 0.9rem; margin-top: 8px; }
+
+    footer {
+      border-top: 1px solid var(--rule);
+      color: var(--muted);
+      margin-top: 46px;
+      padding-top: 20px;
+      font-size: 0.95rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Plan: Picture Screenshots &amp; Video Recording</h1>
+      <p class="dek">
+        A four-button capture grid beside the fullscreen toggle: record video or take a snapshot,
+        each with the HUD or as a clean world-only view. Fullscreen on a 1080p monitor produces
+        1920&times;1080 media at 60&nbsp;Hz. This document is the implementation plan; the design
+        constraints come from <code>budget_design_philosophy.html</code>.
+      </p>
+    </header>
+
+    <section>
+      <h2>What We Are Building</h2>
+      <p>
+        A 2&times;2 button grid rendered next to the existing fullscreen button in the top-right of
+        the game area. Rows are the media kind, columns are the HUD treatment:
+      </p>
+      <div class="mock">
+        <div>
+          <div class="cap-grid">
+            <span class="rec">VID&nbsp;HUD</span>
+            <span class="rec">VID&nbsp;RAW</span>
+            <span>PIC&nbsp;HUD</span>
+            <span>PIC&nbsp;RAW</span>
+          </div>
+          <div class="mock-note" style="color:#7f8ea4">capture grid &middot; fullscreen &rarr;</div>
+        </div>
+        <div class="fs">&#x26F6;</div>
+      </div>
+      <ul class="rule-list">
+        <li><strong>VID HUD</strong> &mdash; record video of exactly what the player sees: world plus every overlay.</li>
+        <li><strong>VID RAW</strong> &mdash; record video of the world only. All HUD is hidden for the duration of the recording.</li>
+        <li><strong>PIC HUD</strong> &mdash; one PNG of exactly what the player sees.</li>
+        <li><strong>PIC RAW</strong> &mdash; one PNG of the world only. HUD is hidden for the one or two frames the capture needs.</li>
+      </ul>
+      <p>
+        VID buttons toggle: first click starts, second click stops and saves. PIC buttons are
+        one-shot. Output goes through the existing object-URL download idiom
+        (<code>budget-annihilation-&lt;ISO&gt;.png</code> / <code>.webm</code>), with a native save
+        dialog on Tauri as a later phase.
+      </p>
+    </section>
+
+    <section>
+      <h2>What Counts As HUD</h2>
+      <p>
+        The stated rule &mdash; <em>HUD is everything other than what the game camera sees</em> &mdash;
+        maps onto two distinct layers in this codebase, and a RAW capture must strip <strong>both</strong>,
+        because several HUD instruments are technically drawn <em>by the game camera inside the WebGL
+        canvas</em>. The philosophy already names this taxonomy: &ldquo;overlay rings, build squares,
+        selection volumes, and HUD geometry are instruments, not terrain&rdquo;
+        (<code>budget_design_philosophy.html</code> &sect;Nothing In The World Has A Clean Edge, ~line 4018).
+        Instruments are HUD regardless of which renderer draws them.
+      </p>
+      <div class="table-scroll">
+        <table>
+          <tr><th>Layer</th><th>Contents</th><th>Where it lives</th><th>RAW capture</th></tr>
+          <tr>
+            <td><strong>In-canvas instruments</strong></td>
+            <td>Health/build bars, name tags, selection rings, range/volume rings, ground overlay lines,
+                drag-box geometry, build ghost squares, waypoint markers, map preset caption</td>
+            <td><code>HealthBar3D.ts</code>, <code>NameLabel3D.ts</code>, <code>SelectionOverlayRenderer3D.ts</code>,
+                <code>OverlayLineSystem.ts</code> + consumers, <code>MapPresetLabel3D.ts</code> &mdash;
+                three.js objects in the main scene</td>
+            <td>Hidden</td>
+          </tr>
+          <tr>
+            <td><strong>DOM chrome</strong></td>
+            <td>TopBar (resources, compass canvas), minimap (2D canvas), selection panel, idle-builders panel,
+                unit stats, spectator overlays, chat, banners, options panel, the fullscreen button, the new capture grid</td>
+            <td>Vue components over the canvas in <code>GameCanvas.vue</code></td>
+            <td>Hidden (irrelevant for canvas-source captures; hidden anyway for consistency)</td>
+          </tr>
+          <tr>
+            <td><strong>World</strong></td>
+            <td>Terrain, water, entities, projectiles, beams, explosions, vegetation, sky backdrop, fog shade,
+                nanoframe build visuals, contact blips</td>
+            <td>Main scene</td>
+            <td>Kept &mdash; this is the shot</td>
+          </tr>
+        </table>
+      </div>
+      <p>
+        Contact blips and the fog terrain shade are <strong>world</strong>, not HUD: they are the
+        player&rsquo;s sensor truth, and a cinematic clip that suddenly reveals unseen enemies would
+        misrepresent the battle. RAW means &ldquo;no instruments,&rdquo; not &ldquo;no fog.&rdquo;
+      </p>
+    </section>
+
+    <section>
+      <h2>Current State (What The Code Already Has)</h2>
+      <ul class="rule-list">
+        <li><strong>Fullscreen button</strong>: <code>GameCanvas.vue:2666-2677</code>, absolutely positioned
+            child of <code>.game-area</code> at <code>top:12px; right:48px</code>
+            (<code>gameCanvas.css:123-163</code>), shown when <code>gameplayHudVisible</code>. Fullscreen is
+            <code>document.documentElement.requestFullscreen()</code> (<code>GameCanvas.vue:607-623</code>),
+            so DOM HUD remains visible in fullscreen &mdash; good: with-HUD capture has something to capture.</li>
+        <li><strong>Renderer</strong>: one <code>WebGLRenderer</code> in <code>ThreeApp.ts:172-182</code> with
+            <code>preserveDrawingBuffer:&nbsp;false</code> (line 179), single
+            <code>renderer.render()</code> at line 451, no post-processing composer, rAF loop at 426-465
+            with an <code>onFrameComplete</code> hook already wired through <code>createGame.ts:61-70</code>.</li>
+        <li><strong>Resolution is not stable</strong>: canvas tracks the container via a
+            <code>ResizeObserver</code> (<code>ThreeApp.ts:311-319</code>) and a dynamic pixel-ratio
+            governor retunes DPR by &plusmn;0.25 every 750&nbsp;ms on browser-desktop
+            (<code>ThreeApp.ts:467-497</code>). Left alone, a recording would change resolution mid-clip.</li>
+        <li><strong>The existing screenshot is unreliable</strong>: <code>captureScreenshot()</code>
+            (<code>GameCanvas.vue:625-642</code>, the <code>SHOT</code> button and F12) calls
+            <code>canvas.toBlob()</code> outside the render tick against a non-preserved drawing buffer &mdash;
+            on most browsers that reads a cleared buffer. It gets replaced, not patched
+            (&sect;Delete The Old Path).</li>
+        <li><strong>No capture machinery exists</strong>: no <code>MediaRecorder</code>,
+            <code>captureStream</code>, or <code>getDisplayMedia</code> anywhere in <code>src/</code>. The
+            one working capture precedent is the entity preview thumbnails
+            (<code>loadingUnitPreviewScene.ts</code>), which use a dedicated
+            <code>preserveDrawingBuffer:&nbsp;true</code> renderer.</li>
+        <li><strong>Tauri</strong> has no fs/dialog plugins (<code>src-tauri/Cargo.toml:20-23</code>); its CSP
+            already allows <code>blob:</code> for media and workers.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>What The Philosophy Demands</h2>
+      <ul class="rule-list">
+        <li><strong>This is a sanctioned &ldquo;mode-specific tool&rdquo;</strong>. The PIP ban
+            (&sect;Minimap camera and PIP, ~1826) forbids a second always-live viewport but explicitly
+            blesses mode-specific capture/replay surfaces. Nothing here renders a second view: both lanes
+            capture the one existing render.</li>
+        <li><strong>The capture path never touches the sim</strong>. It is pure client presentation,
+            downstream of the renderer. It never asks the sim for more data and never becomes a second
+            cadence owner &mdash; <code>requestAnimationFrame</code> samples, capture samples the sample.</li>
+        <li><strong>No per-frame JS pixel loops</strong> (&sect;What TS must never own). Video encoding stays
+            inside the browser engine via <code>canvas.captureStream()</code> + <code>MediaRecorder</code>;
+            TypeScript only starts, stops, and collects blobs. We do not read pixels back per frame, and we
+            do not bundle a JS/WASM video encoder.</li>
+        <li><strong>Browser APIs are wrapped at one seam</strong> (&sect;Explicit Absence, ~4646).
+            <code>MediaRecorder</code> / <code>captureStream</code> / <code>getDisplayMedia</code> live behind
+            a <code>CaptureSource</code> boundary; the domain side is strict <code>T | null</code>.</li>
+        <li><strong>Availability is reported honestly</strong> (matchmaking-backend precedent). A lane that
+            cannot work in this runtime says so up front &mdash; its buttons disable with a reason &mdash;
+            rather than failing at click time. No silent fallback to a different lane.</li>
+        <li><strong>The lifecycle is a declared FSM</strong> (&sect;Lifecycles are explicit finite state
+            machines) built on <code>src/game/state/StateMachine.ts</code>, one writer, undeclared
+            transitions refused.</li>
+        <li><strong>Knobs are data</strong> (&sect;Config Is Data, Not Code). Resolution, frame rate, bitrate,
+            codec preference order, and the four mode definitions are authored in a schema-validated
+            <code>captureConfig.json</code>; defaults live in the schema. The four modes are enumerated
+            config entries (camera-model precedent), not <code>if (noHud)</code> branches in a component.</li>
+        <li><strong>HUD hiding is one level-triggered gate</strong>, like the LOD gate: a single flag every
+            HUD consumer reads each frame, not a pile of imperative show/hide calls that can miss teardown.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Architecture</h2>
+
+      <h3>Two capture lanes behind one seam</h3>
+      <p>
+        The two HUD treatments need different pixel sources, because the composited page (WebGL canvas
+        + minimap 2D canvas + compass canvas + Vue DOM) exists nowhere we can read it except the
+        browser&rsquo;s own compositor:
+      </p>
+      <div class="table-scroll">
+        <table>
+          <tr><th>Lane</th><th>Source</th><th>Serves</th><th>How</th></tr>
+          <tr>
+            <td><strong>Canvas lane</strong> (RAW)</td>
+            <td>The main WebGL canvas, post-render</td>
+            <td>PIC RAW, VID RAW</td>
+            <td>PIC: <code>canvas.toBlob()</code> invoked from a post-render hook inside the rAF tick
+                (drawing buffer still valid; <code>preserveDrawingBuffer</code> stays <code>false</code>).
+                VID: <code>canvas.captureStream(60)</code> &rarr; <code>MediaRecorder</code>.
+                Works in every runtime including Tauri. No permission prompt, pixel-exact.</td>
+          </tr>
+          <tr>
+            <td><strong>Display lane</strong> (HUD)</td>
+            <td>The browser compositor via <code>getDisplayMedia</code></td>
+            <td>PIC HUD, VID HUD</td>
+            <td><code>getDisplayMedia({ video: { frameRate: 60 }, preferCurrentTab: true })</code>, cropped
+                to <code>.game-area</code> with Region Capture (<code>CropTarget.fromElement</code>) where
+                supported. VID: pipe the stream into <code>MediaRecorder</code>. PIC: draw one
+                <code>VideoFrame</code> to a scratch canvas, <code>toBlob()</code>, stop tracks.
+                One permission prompt per session (browser-imposed; unavoidable).</td>
+          </tr>
+        </table>
+      </div>
+      <p>
+        Both lanes implement one <code>CaptureSource</code> interface: <code>availability()</code>
+        (supported / unsupported-with-reason), <code>still()</code>, <code>startVideo()</code> /
+        <code>stopVideo()</code>. That interface is the third-party boundary; everything behind it is
+        strict domain code. We deliberately do <strong>not</strong> build a DOM-rasterizing compositor
+        (SVG <code>foreignObject</code> tricks or an html2canvas-class library) as a HUD-lane fallback:
+        it would be a second implementation of the same truth, it cannot reach 60&nbsp;Hz, and the
+        library route is banned outright.
+      </p>
+
+      <h3>The capture lifecycle is an FSM</h3>
+      <p>
+        One <code>CaptureController</code> owns one machine built on
+        <code>src/game/state/StateMachine.ts</code>. One recording at a time; a PIC request during a VID
+        is legal only through a declared transition (it is refused in v1 &mdash; simplest correct table).
+      </p>
+      <div class="table-scroll">
+        <table>
+          <tr><th>State</th><th>Meaning</th><th>Legal exits</th></tr>
+          <tr><td><code>idle</code></td><td>Nothing in flight</td><td><code>requestStill</code> &rarr; arming-still; <code>requestVideo</code> &rarr; arming-video</td></tr>
+          <tr><td><code>arming-still</code></td><td>HUD gate applied (RAW) and resolution pinned; waiting for the next completed render</td><td>frame rendered &rarr; capturing-still; failure &rarr; idle (restore)</td></tr>
+          <tr><td><code>capturing-still</code></td><td><code>toBlob</code> / frame-grab in flight</td><td>blob ready &rarr; saving; failure &rarr; idle (restore)</td></tr>
+          <tr><td><code>arming-video</code></td><td>Gate + pin applied; stream and recorder being created (display lane: user permission prompt lives here)</td><td>recorder started &rarr; recording; denied/failed &rarr; idle (restore)</td></tr>
+          <tr><td><code>recording</code></td><td>MediaRecorder running; elapsed time ticking</td><td><code>requestStop</code> &rarr; finalizing; recorder error &rarr; finalizing (salvage chunks)</td></tr>
+          <tr><td><code>finalizing</code></td><td>Recorder flushing; blob assembling</td><td>blob ready &rarr; saving</td></tr>
+          <tr><td><code>saving</code></td><td>Download/native-save in flight</td><td>done &rarr; idle (restore gate, pin, DPR governor)</td></tr>
+        </table>
+      </div>
+      <p>
+        Every path back to <code>idle</code> runs the same restore side effects on the transition
+        (&sect;side effects on the transition, not in callers): release the HUD gate, release the
+        resolution pin, resume the DPR governor, stop stray tracks. A mid-recording fullscreen exit,
+        tab switch, or match end must land in a declared transition, never a leaked recorder.
+      </p>
+
+      <h3>One HUD gate, level-triggered</h3>
+      <p>
+        A single <code>captureHudHidden</code> flag owned by the controller, consumed in exactly two places:
+      </p>
+      <ul class="rule-list">
+        <li><strong>DOM</strong>: <code>resolveGameCanvasChromeVisibility()</code>
+            (<code>gameCanvasChromeState.ts:104-124</code>) already centralizes chrome visibility; it gains
+            the capture term so every Vue overlay (TopBar, minimap, panels, banners, the capture grid and
+            fullscreen button themselves) hides through the one existing choke point.</li>
+        <li><strong>In-canvas instruments</strong>: <code>RtsScene3DRenderPhase.ts</code> already computes
+            <code>bodyHudEnabled</code> per frame (~469-478) and gates overlay/selection/label updates.
+            The capture flag ANDs into that computation and into the selection-overlay / overlay-line /
+            map-label visibility, so the very next rendered frame is clean. Level-triggered: the gate is
+            evaluated every frame from current state, so restore is automatic and cannot be missed.</li>
+      </ul>
+      <p>
+        PIC RAW therefore costs one to two frames of HUD blink on screen (hidden frame is rendered,
+        captured, gate released) &mdash; explicitly acceptable per the feature brief. VID RAW holds the
+        gate for the whole recording: the player plays without HUD while filming, which is the stated
+        trade.
+      </p>
+
+      <h3>Resolution and cadence contract: 1080p60</h3>
+      <ul class="rule-list">
+        <li><strong>Pinning</strong>: while a capture is armed or recording, <code>ThreeApp</code> exposes
+            <code>pinBackingStore(width, height)</code> / <code>releasePin()</code>: the drawing buffer is set
+            with <code>setSize(w, h, false)</code> (CSS size untouched), the <code>ResizeObserver</code>
+            reactions and the dynamic-DPR governor (<code>adjustPixelRatio</code>) are suspended while the pin
+            is held. This also fixes the retina problem: without the pin, a 2&times;-DPR fullscreen canvas
+            would silently record 4K.</li>
+        <li><strong>Target size</strong>: output height comes from config (1080); width is derived from the
+            live viewport aspect and rounded to even (encoder requirement). Fullscreen on a 16:9 monitor
+            &rArr; exactly 1920&times;1080. A windowed 21:9 canvas records 2520&times;1080 rather than
+            distorting &mdash; the contract is &ldquo;1080-class at the player&rsquo;s aspect,&rdquo; with the
+            titular 1920&times;1080 as the fullscreen case.</li>
+        <li><strong>60 Hz</strong>: <code>captureStream(60)</code> samples each canvas composite; the rAF loop
+            already renders every display frame, so a 60&nbsp;Hz monitor yields 60&nbsp;fps. Browsers encode
+            variable-frame-rate WebM &mdash; a dropped sim frame becomes a held frame, not a desync. The
+            display lane requests <code>frameRate: 60</code> equivalently.</li>
+        <li><strong>Coverage/fog render target</strong>: it is viewport-derived and supersampled to a texture
+            cap (&sect;Rendering Philosophy ~1600). The pin changes the physical viewport like any window
+            resize does; no special-casing, but Phase B verifies the shade texture follows the pinned size.</li>
+      </ul>
+
+      <h3>Encoding and output</h3>
+      <ul class="rule-list">
+        <li><strong>Codec selection</strong> walks an authored preference list through
+            <code>MediaRecorder.isTypeSupported</code>:
+            <code>video/webm;codecs=vp9</code> &rarr; <code>video/webm;codecs=vp8</code> &rarr;
+            <code>video/mp4</code> (Safari/WKWebView). Bitrate authored in config
+            (default ~16&nbsp;Mbps for 1080p60). The chosen container decides the file extension.</li>
+        <li><strong>Stills</strong> are PNG via <code>toBlob('image/png')</code>.</li>
+        <li><strong>Memory</strong>: recorder chunks (<code>ondataavailable</code> every ~1&nbsp;s) accumulate
+            in an array and become one Blob on stop. At 16&nbsp;Mbps that is ~2&nbsp;MB/s &mdash; minutes of
+            recording are fine; a config <code>maxDurationSeconds</code> (default 600) auto-stops rather than
+            letting the tab eat RAM unbounded.</li>
+        <li><strong>Saving</strong>: browser &mdash; the existing object-URL <code>&lt;a download&gt;</code>
+            idiom (<code>downloadReplay()</code> precedent), filenames
+            <code>budget-annihilation-&lt;mode&gt;-&lt;ISO&gt;.&lt;ext&gt;</code>.
+            Tauri &mdash; Phase F adds <code>tauri-plugin-dialog</code> + <code>tauri-plugin-fs</code> for a
+            native save dialog, selected via the existing <code>isTauriRuntime()</code> check.</li>
+      </ul>
+
+      <h3>Config: <code>src/captureConfig.json</code> + schema</h3>
+      <p>
+        Following &sect;Schema is the contract: one schema next to the data, defaults in the schema,
+        loader validates at startup. Authored knobs: <code>outputHeight</code>, <code>frameRateHz</code>,
+        <code>videoBitsPerSecond</code>, <code>codecPreference[]</code>, <code>stillFormat</code>,
+        <code>maxDurationSeconds</code>, <code>filenamePrefix</code>, and the four <strong>mode entries</strong>
+        as data &mdash; <code>{ id, media: "video" | "still", source: "canvas" | "display", hud: boolean,
+        label, hotkey }</code>. The controller iterates modes; nothing in the UI or controller hardcodes
+        the four combinations.
+      </p>
+    </section>
+
+    <section>
+      <h2>UI Specification</h2>
+      <ul class="rule-list">
+        <li><strong>Placement</strong>: new <code>.capture-grid</code> as a sibling of
+            <code>.fullscreen-game-toggle</code> in <code>.game-area</code> (<code>GameCanvas.vue:~2666</code>),
+            <code>top: 12px; right: 92px</code> &mdash; immediately left of the fullscreen button, same
+            <code>v-if="gameplayHudVisible"</code> gate, same z-band (1050).</li>
+        <li><strong>Styling</strong>: the floating glass container idiom of the fullscreen button
+            (<code>rgba(10,14,20,.84)</code>, blur, radius 6) holding four dense cells in the
+            <code>.options-menu-grid</code> idiom (<code>gameCanvas.css:425-462</code>: <code>#191f2a</code>
+            cells, <code>#667184</code> borders, <code>700 10px</code> labels, active =
+            <code>#82d2ff</code>/<code>#265270</code>). Cells: <code>VID&nbsp;HUD</code>,
+            <code>VID&nbsp;RAW</code>, <code>PIC&nbsp;HUD</code>, <code>PIC&nbsp;RAW</code>.</li>
+        <li><strong>Recording state</strong>: the active VID cell switches to a red-bordered state with
+            elapsed <code>M:SS</code> replacing its label; the other three cells disable while recording
+            (matches the FSM: one capture at a time). In VID RAW the whole grid is hidden by the HUD gate
+            anyway &mdash; stopping uses the hotkey or the chrome-restore affordance, and the grid&rsquo;s
+            recording state is visible again the moment chrome returns. In VID HUD the red cell is honestly
+            part of the captured HUD, the same way OBS-style overlays appear in casual captures.</li>
+        <li><strong>Unavailability</strong>: display-lane cells render disabled with a tooltip naming the
+            reason (&ldquo;tab capture unsupported in this runtime&rdquo;) when
+            <code>availability()</code> says no &mdash; decided at mount, not at click.</li>
+        <li><strong>Hotkeys</strong>: four commands (<code>ui.capturePicRaw</code>,
+            <code>ui.capturePicHud</code>, <code>ui.captureVidRaw</code> toggle,
+            <code>ui.captureVidHud</code> toggle) added alongside the existing
+            <code>ui.captureScreenshot</code> plumbing in <code>commandHotkeys.ts</code> /
+            <code>Input3DKeyboardController.ts</code> / <code>GameCanvas.vue:1044</code>. The existing
+            F12 / Meta+8 binding moves to <code>ui.capturePicRaw</code> (F12-as-screenshot matches
+            Steam/Spring norms; the old binding&rsquo;s output was canvas-only, so RAW is its successor).</li>
+        <li><strong>Old entry points rerouted, old path deleted</strong>: the <code>SHOT</code> BarButton
+            (<code>GameCanvasClientControlBar.vue:1086-1090</code>), the options-grid <code>SHOT</code>
+            (<code>GameCanvas.vue:2879-2882</code>), and the <code>captureScreenshot()</code> model contract
+            (<code>gameCanvasControlBarModels.ts:344</code>) all route into the controller&rsquo;s PIC RAW.
+            The broken direct-<code>toBlob</code> body of <code>captureScreenshot()</code>
+            (<code>GameCanvas.vue:625-642</code>) is removed in the same change.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Platform Support (Reported Honestly)</h2>
+      <div class="table-scroll">
+        <table>
+          <tr><th>Runtime</th><th>PIC RAW</th><th>VID RAW</th><th>PIC HUD</th><th>VID HUD</th></tr>
+          <tr>
+            <td>Chrome / Edge (desktop)</td>
+            <td>Yes</td><td>Yes (VP9 WebM)</td>
+            <td>Yes (<code>preferCurrentTab</code> + Region Capture crop)</td>
+            <td>Yes, 1080p60</td>
+          </tr>
+          <tr>
+            <td>Firefox</td>
+            <td>Yes</td><td>Yes (VP8/VP9 WebM)</td>
+            <td colspan="2">Partial: <code>getDisplayMedia</code> exists but has no current-tab hint or crop;
+                the user picks the window in the browser dialog. Fullscreen gameplay &mdash; the feature&rsquo;s
+                stated scenario &mdash; makes window &equiv; game, so this is acceptable, and the cells stay
+                enabled with a tooltip noting the picker.</td>
+          </tr>
+          <tr>
+            <td>Safari</td>
+            <td>Yes</td><td>Yes (MP4/H.264 via MediaRecorder)</td>
+            <td colspan="2">Effectively no (no usable tab self-capture) &mdash; cells disabled with reason.</td>
+          </tr>
+          <tr>
+            <td>Tauri (WKWebView)</td>
+            <td>Yes</td><td>Yes (MP4)</td>
+            <td colspan="2">No <code>getDisplayMedia</code> &mdash; cells disabled with reason. A native
+                window-capture lane is possible later behind the same <code>CaptureSource</code> seam if
+                desktop HUD capture becomes important.</td>
+          </tr>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Performance Rules For This Feature</h2>
+      <ul class="rule-list">
+        <li>Zero cost while idle: no stream, no recorder, no extra render target, no per-frame branch beyond
+            the two existing gate evaluations.</li>
+        <li>While recording, the only added main-thread work is the compositor copy
+            <code>captureStream</code> performs; encoding runs in the browser&rsquo;s media pipeline. No
+            <code>readPixels</code>, no per-frame JS access to pixel data, no per-frame allocations
+            (chunk array reuse; one Blob at stop).</li>
+        <li>The capture path never changes sim cadence, snapshot cadence, or LOD rungs. If recording drops
+            display frames, the recording drops the same frames the player lost &mdash; capture must not
+            trigger quality reductions or private detail paths.</li>
+        <li>Measured, not assumed: run <code>npm run performance:bottleneck</code> at
+            <code>--width=1920 --height=1080</code> with a recording active and compare against the baseline
+            before calling VID done (&sect;Bottlenecks are measured by layer, which already documents the
+            1080p harness invocation).</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Implementation Phases</h2>
+      <p>Each phase compiles, passes <code>npx tsc --noEmit</code>, and lands as its own commit.</p>
+
+      <h3>Phase A &mdash; Plumbing and contract</h3>
+      <ul class="rule-list">
+        <li><code>src/captureConfig.json</code> + <code>src/captureConfig.schema.json</code>; startup-validated
+            loader; generated types following the blueprint-schema pattern.</li>
+        <li><code>src/game/capture/CaptureController.ts</code>: the FSM on
+            <code>StateMachine.ts</code>, mode table from config, restore-on-every-exit side effects.</li>
+        <li><code>ThreeApp.ts</code>: post-render capture hook (immediately after the
+            <code>render()</code> call, before the GPU-timer end is fine), plus
+            <code>pinBackingStore</code>/<code>releasePin</code> suspending the ResizeObserver reaction and
+            the DPR governor.</li>
+        <li>The <code>captureHudHidden</code> gate wired into
+            <code>resolveGameCanvasChromeVisibility()</code> and the
+            <code>RtsScene3DRenderPhase</code> HUD computation.</li>
+      </ul>
+
+      <h3>Phase B &mdash; PIC RAW (replaces the broken screenshot)</h3>
+      <ul class="rule-list">
+        <li>Canvas-lane <code>still()</code>: arm &rarr; clean pinned frame &rarr; post-render
+            <code>toBlob</code> &rarr; restore &rarr; download.</li>
+        <li>Reroute <code>SHOT</code> buttons, the model contract, and F12/Meta+8; delete the old
+            <code>captureScreenshot()</code> body.</li>
+        <li>Verify: fog shade correct at pinned size; instruments absent; output is exactly
+            aspect&times;1080.</li>
+      </ul>
+
+      <h3>Phase C &mdash; VID RAW</h3>
+      <ul class="rule-list">
+        <li>Canvas-lane video: <code>captureStream(60)</code>, codec probe walk, chunked recording,
+            auto-stop at <code>maxDurationSeconds</code>, salvage-on-error transition.</li>
+        <li>Gate held for the duration; pin held; DPR governor suspended; all released through the FSM exit.</li>
+        <li>Bottleneck-harness comparison recorded in the commit message.</li>
+      </ul>
+
+      <h3>Phase D &mdash; Display lane (PIC HUD, VID HUD)</h3>
+      <ul class="rule-list">
+        <li><code>TabCaptureSource</code> behind the same seam: <code>getDisplayMedia</code> +
+            <code>preferCurrentTab</code> + Region-Capture crop to <code>.game-area</code> where available;
+            availability probe at construction.</li>
+        <li>PIC HUD: single frame grab to scratch canvas, tracks stopped immediately.
+            VID HUD: recorder on the display stream, same chunk/stop/salvage machinery as Phase C.</li>
+        <li>Disabled-with-reason UI for unsupported runtimes.</li>
+      </ul>
+
+      <h3>Phase E &mdash; The grid</h3>
+      <ul class="rule-list">
+        <li><code>.capture-grid</code> component + CSS next to the fullscreen toggle; recording/elapsed/disabled
+            states; four hotkey commands; contract test for the FSM transition table alongside the existing
+            contract suites (<code>npm run contract:tests</code> is the gate).</li>
+      </ul>
+
+      <h3>Phase F &mdash; Tauri native save</h3>
+      <ul class="rule-list">
+        <li><code>tauri-plugin-dialog</code> + <code>tauri-plugin-fs</code> (Cargo, npm, capability entries);
+            save path selected by <code>isTauriRuntime()</code>; browser download idiom otherwise.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Accepted Trade-offs &amp; Risks</h2>
+      <ul class="rule-list">
+        <li><strong>Permission prompt</strong> on the display lane, once per session &mdash; browser-imposed,
+            no way around it without leaving the platform.</li>
+        <li><strong>HUD blink</strong> (~1&ndash;2 frames) on PIC RAW; <strong>HUD gone while filming</strong>
+            on VID RAW &mdash; both explicitly accepted in the brief.</li>
+        <li><strong>The red recording cell appears inside VID HUD footage</strong> &mdash; it is HUD, and
+            with-HUD capture is defined as what the player sees.</li>
+        <li><strong>Variable frame rate WebM</strong>: browsers timestamp real composites, so heavy scenes
+            produce held frames rather than a fixed-cadence stream. Correct for gameplay capture; anyone
+            needing constant-frame-rate can transcode offline.</li>
+        <li><strong>Pin vs. mid-recording resize</strong>: entering/leaving fullscreen mid-recording changes
+            the viewport aspect under a pinned buffer. V1 policy: the recording keeps its pinned size
+            (letterboxed by the browser&rsquo;s CSS scaling on screen); declared FSM behavior, not an accident.</li>
+        <li><strong>Safari/Tauri lack the HUD lane</strong> &mdash; reported honestly, revisitable via a native
+            capture source behind the same seam.</li>
+      </ul>
+    </section>
+
+    <footer>
+      Plan authored 2026-08-19 against <code>budget_design_philosophy.html</code> and the current
+      <code>main</code>. Line references are as of commit <code>04889560</code>.
+    </footer>
+  </main>
+</body>
+</html>

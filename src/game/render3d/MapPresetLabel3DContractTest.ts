@@ -1,8 +1,10 @@
 import {
   MAP_PRESET_LABEL_ROTATION_X,
   MAP_PRESET_LABEL_ROTATION_Z,
-  mapPresetLabelRowStackHeight,
+  pickCaptionWrap,
+  resolveMapPresetLabelCaptionBox,
   resolveMapPresetLabelPlacement,
+  wrapCaptionFields,
 } from './MapPresetLabel3D';
 import { resolveMapInfoAnnexFootprint } from './MapInfoAnnex3D';
 import {
@@ -47,16 +49,42 @@ export function runMapPresetLabel3DContractTest(): void {
     resolveMapInfoAnnexFootprint(10600, 10600).signYaw === 0,
     'the sign frame must need no extra yaw on the edge the annex uses',
   );
-  // The row stack is baseline-to-baseline only: the padding around it is
-  // measured against the painted INK at paint time, not counted here.
+  // THE WRAP. Leading can only be ADDED, so the block the painter sets has
+  // to be at least as wide as the table wants; among those, the narrowest is
+  // the one that needs the least leading and therefore keeps the tightest
+  // block. Aspects here are "candidate block width / height" for one row
+  // count each, widest first as row counts go up.
   assertContract(
-    mapPresetLabelRowStackHeight(0) === 0 && mapPresetLabelRowStackHeight(1) === 0,
-    'a caption of one line or none stacks no rows',
+    pickCaptionWrap([8, 4.4, 2.9, 2.0], 2.75) === 1,
+    'the wrap must take the narrowest block still wider than the table',
   );
   assertContract(
-    mapPresetLabelRowStackHeight(3) > mapPresetLabelRowStackHeight(2)
-      && mapPresetLabelRowStackHeight(2) > mapPresetLabelRowStackHeight(1),
-    'each extra info line must add stack height',
+    pickCaptionWrap([8, 4.4, 2.9, 2.0], 2.9) === 2,
+    'a block exactly on the target aspect is a valid wrap',
+  );
+  assertContract(
+    pickCaptionWrap([2.4, 1.8, 1.1], 2.75) === 0,
+    'with every candidate too tall, the wrap must take the widest one',
+  );
+
+  // The fields are wrapped in order and balanced by measured width, so no row
+  // is left empty and reading order survives the wrap.
+  const fields = ['AAAA', 'B', 'CCCCCCCC', 'DD', 'EEE'];
+  const measureByLength = (text: string): number => text.length;
+  for (let rowCount = 1; rowCount <= fields.length; rowCount++) {
+    const rows = wrapCaptionFields(measureByLength, fields, rowCount);
+    assertContract(
+      rows.length === rowCount && rows.every((row) => row.length > 0),
+      `wrapping ${fields.length} fields into ${rowCount} rows must fill every row`,
+    );
+    assertContract(
+      rows.join('').replace(/[^A-E]/g, '') === fields.join(''),
+      'wrapping must keep every field, in order',
+    );
+  }
+  assertContract(
+    wrapCaptionFields(measureByLength, [], 3).length === 0,
+    'a caption with no settings wraps to no rows',
   );
 
   // Smallest and largest stock map axes, against a wide and a narrow caption.
@@ -103,6 +131,27 @@ export function runMapPresetLabel3DContractTest(): void {
         'caption size must scale with the map so its whole-map zoom size is constant',
       );
     }
+
+    // THE EVEN MARGIN. A block set to the caption box's own aspect must fill
+    // it exactly — that is the target the painter wraps and leads the caption
+    // to hit, and the whole reason the gap comes out the same on all four
+    // sides rather than three times wider at the flanks than at the rims.
+    const box = resolveMapPresetLabelCaptionBox(mapAxis, mapAxis);
+    const exact = resolveMapPresetLabelPlacement(mapAxis, mapAxis, box.width / box.depth);
+    assertContract(
+      Math.abs(exact.worldWidth - box.width) < 1e-6
+        && Math.abs(exact.worldHeight - box.depth) < 1e-6,
+      'a block of the caption box\'s aspect must fill it with no slack on either axis',
+    );
+    const boxOut =
+      (box.centerX - box.annex.attachX) * box.annex.outX +
+      (box.centerZ - box.annex.attachZ) * box.annex.outZ;
+    assertContract(
+      boxOut - box.depth / 2 >= box.annex.blendDepth - 1e-6
+        && boxOut + box.depth / 2 <= box.annex.depth + 1e-6
+        && box.width < box.annex.width,
+      'the caption box must be the annex\'s flat table, inset on every side',
+    );
   }
 
   // Extruded letters come out of the painted glyph mask, so nested outlines
@@ -153,7 +202,8 @@ export function runMapPresetLabel3DContractTest(): void {
       `${name} must stay on-preset regardless of the entity count cap`,
     );
     assertContract(
-      presentation.presetName === name && presentation.labelLines[0] === name.toUpperCase(),
+      presentation.presetName === name
+        && presentation.labelCaption.title === name.toUpperCase(),
       `${name} must resolve as an exact stock preset`,
     );
     assertContract(
@@ -176,10 +226,23 @@ export function runMapPresetLabel3DContractTest(): void {
   };
   const custom = resolveBattleMapPresentation(customSnapshot);
   assertContract(custom.presetName === null, 'a changed map setting must leave the preset');
-  assertContract(custom.labelLines[0] === 'CUSTOM', 'an off-preset map must be named CUSTOM');
+  assertContract(custom.labelCaption.title === 'CUSTOM', 'an off-preset map must be named CUSTOM');
   assertContract(
-    custom.labelLines.some((line) => line.includes(`DETAIL ${customSnapshot.terrainDetail}`)),
+    custom.labelCaption.info.some(
+      (field) => field === `DETAIL ${customSnapshot.terrainDetail}`,
+    ),
     'the CUSTOM sign must retain the changed current settings',
+  );
+  // The byline is its own section, and never a map setting: it is the same
+  // under every preset and under CUSTOM alike, and takes no part in preset
+  // identity.
+  assertContract(
+    custom.labelCaption.byline.length === 2
+      && custom.labelCaption.byline.every((entry) => entry.length > 0)
+      && custom.labelCaption.info.every(
+        (field) => !custom.labelCaption.byline.includes(field),
+      ),
+    'the site and the address must be their own section, not settings rows',
   );
   assertContract(
     backdropUrlsForPresetName(custom.backdropPresetName)[0]
