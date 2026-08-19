@@ -47,6 +47,7 @@ import {
   TERRAIN_HORIZON_BLEND_CONFIG,
   TERRAIN_ROCK_BASE_COLOR,
   TERRAIN_ROCK_DETAIL_CONTRAST,
+  TERRAIN_ORE_EDGE_ENABLED,
   TERRAIN_ROCK_DETAIL_ENABLED,
   TERRAIN_ROCK_TEXTURE_TILE_WORLD_SIZE,
 } from '../../config';
@@ -129,8 +130,20 @@ import {
   MetalDepositSurfaceField3D,
   assignMetalDepositSurfaceFieldUniforms,
   metalDepositSurfaceFieldCoverage,
+  metalDepositSurfaceFieldDistance,
+  metalDepositSurfaceFieldScreenWidth,
   metalDepositSurfaceFieldUniformDeclarations,
 } from './MetalDepositSurfaceField3D';
+import {
+  ORE_EDGE_BLEND_GLSL,
+  assignOreEdgeBlendUniforms,
+  createOreEdgeBlendUniforms,
+  oreEdgeAlbedoFragment,
+  oreEdgeBlendUniformDeclarations,
+  oreEdgeMatteCoverage,
+  oreEdgeResolveFragment,
+  type OreEdgeBlendUniforms,
+} from './MetalDepositEdgeBlend3D';
 import {
   assignBuildGridOverlayUniforms,
   buildGridOverlayFragment,
@@ -740,6 +753,14 @@ export class TerrainTileRenderer3D {
     value: isMetalTerrainSurface() ? 0 : 1,
   };
   private readonly metalRegionField: MetalDepositSurfaceField3D;
+  // How the region MEETS the ground. A SURFACE = METAL world switches it
+  // off: there every deposit boundary is interior to a map that is already
+  // entirely ore, so weathering one would be drawing a seam that is not
+  // there. Built here rather than in installTerrainShader because it
+  // generates two textures and the shader may recompile.
+  private readonly oreEdgeUniforms: OreEdgeBlendUniforms = createOreEdgeBlendUniforms(
+    TERRAIN_ORE_EDGE_ENABLED && !isMetalTerrainSurface(),
+  );
   // 0 = keep three's DOUBLE_SIDED flip, 1 = restore the authored outward
   // normal inside ore only, 2 = restore it across the whole surface. A runtime
   // knob because this is a shading term whose fault only shows on sloped
@@ -876,6 +897,7 @@ export class TerrainTileRenderer3D {
         this.terrainHorizonWaterBlendEnabledUniform;
       shader.uniforms[TERRAIN_OUTWARD_NORMAL_UNIFORM] = this.terrainOutwardNormalUniform;
       assignMetalDepositSurfaceFieldUniforms(shader, this.metalRegionField.uniforms);
+      assignOreEdgeBlendUniforms(shader, this.oreEdgeUniforms);
       this.worldShade.assignUniforms(shader);
       shader.vertexShader = shader.vertexShader
         .replace(
@@ -941,9 +963,11 @@ export class TerrainTileRenderer3D {
             'uniform float uTerrainHorizonWaterBlendEnabled;',
             terrainOutwardNormalUniformDeclaration(),
             metalDepositSurfaceFieldUniformDeclarations(),
+            oreEdgeBlendUniformDeclarations(),
             METAL_SURFACE_RESPONSE_GLSL,
             METAL_SURFACE_REGION_GLSL,
             METAL_SURFACE_TRIPLANAR_GLSL,
+            ORE_EDGE_BLEND_GLSL,
             WORLD_SHADE_FRAGMENT_PARS,
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
@@ -1066,7 +1090,26 @@ export class TerrainTileRenderer3D {
             // body drawn wider than its flat pad keeps going over whatever
             // relief it crosses — the triplanar detail sample below already
             // handles the slopes and cliff faces it runs onto.
-            `float metalCoverage = clamp(max(uMetalSurfaceEnabled, ${metalDepositSurfaceFieldCoverage('vTerrainWorldPos')}), 0.0, 1.0);`,
+            `float oreDistance = ${metalDepositSurfaceFieldDistance('vTerrainWorldPos')};`,
+            // TOP LEVEL, DELIBERATELY. This is the only derivative the ore
+            // path takes, and everything downstream of it is branched — a
+            // derivative inside non-uniform control flow is undefined, and
+            // "undefined" here means one driver returns the gradient and
+            // another returns whatever was in the register.
+            `float oreDistanceWidth = ${metalDepositSurfaceFieldScreenWidth('oreDistance')};`,
+            'float oreRegionCoverage = ' +
+              `${metalDepositSurfaceFieldCoverage('oreDistance', 'oreDistanceWidth')};`,
+            // THE EDGE TREATMENT. The coverage above is the field's own
+            // contour: clean, smooth, and exactly as wide everywhere — a
+            // stencil. This replaces it with a displaced, dissolved
+            // boundary and raises a dirt band across it. See
+            // MetalDepositEdgeBlend3D for why each term is there and what
+            // the surface looks like without it.
+            oreEdgeResolveFragment('vTerrainWorldPos', 'uMetalRegionEnabled'),
+            'float metalCoverage = clamp(max(uMetalSurfaceEnabled, oreRegionCoverage), 0.0, 1.0);',
+            // The PBR half of the metal surface reads THIS one, not the
+            // geometric coverage above.
+            `float metalPbrCoverage = ${oreEdgeMatteCoverage('metalCoverage')};`,
             // Where there is ore the biome ramp and the ground/rock detail
             // overlays above are replaced by srgbToLinear(ore base) * the
             // rock detail map, sampled triplanar so cliff walls get real
@@ -1087,6 +1130,10 @@ export class TerrainTileRenderer3D {
             '    uMetalSurfaceContrast',
             '  ), metalCoverage);',
             '}',
+            // Dirt goes on LAST, over whichever of the two surfaces it
+            // lands on. Running it before the ore mix would let the ore
+            // albedo paint straight back over the inner half of the band.
+            oreEdgeAlbedoFragment('vTerrainWorldPos', 'geomNormal'),
             'float horizonBlend = uTerrainHorizonBlendEnabled * smoothstep(uTerrainHorizonFadeStart, uTerrainHorizonFadeEnd, vTerrainHorizonFade);',
             'terrainRgb = mix(terrainRgb, uTerrainHorizonColor, horizonBlend);',
             'float terrainFinalShade = mix(vTerrainShade, uTerrainHorizonShade, horizonBlend);',
@@ -1212,7 +1259,7 @@ export class TerrainTileRenderer3D {
         );
     };
     this.terrainMaterial.customProgramCacheKey = () =>
-      'authoritative-terrain-surface-metalregion-outwardnormal-v42';
+      'authoritative-terrain-surface-metalregion-oreedge-v44';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {

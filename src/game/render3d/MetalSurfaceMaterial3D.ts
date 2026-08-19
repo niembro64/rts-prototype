@@ -105,8 +105,13 @@ export const METAL_SURFACE_RESPONSE_GLSL = [
   '}',
 ].join('\n');
 
-/** Ore coverage in [0,1] from the baked region field — the term that
- *  turns "the whole map is metal" into "this part of the map is metal".
+/** Ore coverage from the baked region field — the term that turns "the
+ *  whole map is metal" into "this part of the map is metal".
+ *
+ *  Three functions, not one, because the distance is worth more than the
+ *  coverage: MetalDepositEdgeBlend3D displaces and dissolves that distance
+ *  to weather the boundary, and it can only do that if it gets the metric
+ *  value rather than an already-resolved [0,1].
  *
  *  The field stores signed distance to the ore edge (negative inside)
  *  encoded over ±`edgeRange`, sampled by world XZ with no height term,
@@ -119,19 +124,36 @@ export const METAL_SURFACE_RESPONSE_GLSL = [
  *  is only meaningful here between "one texel" and "the encoded range" —
  *  past the top the field saturates and the smoothstep would be reading
  *  noise. `edgeFeather` widens it deliberately for a soft ore-to-ground
- *  transition; 0 leaves the edge crisp. */
+ *  transition; 0 leaves the edge crisp.
+ *
+ *  THE SCREEN WIDTH IS ITS OWN FUNCTION because it is the only one of the
+ *  three that may not be called under a branch. A derivative in non-uniform
+ *  control flow is undefined, and the edge treatment's early-out is
+ *  precisely a branch neighbouring fragments disagree about. Sampling the
+ *  width at top level and passing it down is what keeps that legal. */
 export const METAL_SURFACE_REGION_GLSL = [
-  'float metalSurfaceRegionCoverage(',
+  'float metalSurfaceRegionDistance(',
   '  sampler2D regionField,',
   '  vec2 fieldWorldSize,',
   '  vec3 worldPosition,',
-  '  float edgeRange,',
-  '  float edgeFeather',
+  '  float edgeRange',
   ') {',
   '  vec2 uv = worldPosition.xz / max(fieldWorldSize, vec2(1.0));',
   '  float encoded = texture2D(regionField, clamp(uv, vec2(0.0), vec2(1.0))).r;',
-  '  float signedDistance = (encoded * 2.0 - 1.0) * edgeRange;',
-  '  float screenWidth = clamp(fwidth(signedDistance), 0.25, edgeRange);',
+  '  return (encoded * 2.0 - 1.0) * edgeRange;',
+  '}',
+  '',
+  '// MUST be called at top level — fwidth under non-uniform control flow is',
+  '// undefined, and the callers below are all branched.',
+  'float metalSurfaceRegionScreenWidth(float signedDistance, float edgeRange) {',
+  '  return clamp(fwidth(signedDistance), 0.25, edgeRange);',
+  '}',
+  '',
+  'float metalSurfaceRegionCoverage(',
+  '  float signedDistance,',
+  '  float screenWidth,',
+  '  float edgeFeather',
+  ') {',
   '  float width = max(edgeFeather, screenWidth);',
   '  return 1.0 - smoothstep(-width, width, signedDistance);',
   '}',
@@ -142,8 +164,18 @@ export const METAL_SURFACE_REGION_GLSL = [
  *  so the shipped strings are readable by a contract test — a shader
  *  interface is the one contract the type system cannot check.
  *
- *  All three assume the host has already declared `metalCoverage` in
- *  [0,1] and `metalDetail` from sampleMetalSurfaceDetail. */
+ *  All four assume the host has already declared `metalPbrCoverage` in
+ *  [0,1] and `metalDetail` from sampleMetalSurfaceDetail.
+ *
+ *  WHY `metalPbrCoverage` AND NOT `metalCoverage`. The two differ only in
+ *  the ore's dirty rim, and only in one direction: the rim is still ore
+ *  geologically — it takes the ore albedo, and the outward-normal
+ *  correction still applies to it — but it is buried under dirt, and dirt
+ *  has no metal reflection. Handing these four terms the geometric
+ *  coverage would give the rim a full specular highlight tracing the
+ *  boundary, which reads as a crisp edge no matter how much dirt is
+ *  painted over it. The host owns the relationship between the two; this
+ *  block only insists on being told which one it is getting. */
 export const METAL_SURFACE_LAYER_GLSL = {
   /** At `#include <roughnessmap_fragment>`. The host material stays at its
    *  own roughness; the metal roughness is a uniform so ore can be layered
@@ -157,12 +189,12 @@ export const METAL_SURFACE_LAYER_GLSL = {
     '    uMetalSurfaceContrast,',
     '    uMetalSurfaceRoughnessVariation',
     '  ),',
-    '  metalCoverage',
+    '  metalPbrCoverage',
     ');',
   ].join('\n'),
 
   /** At `#include <metalnessmap_fragment>`. */
-  metalness: 'metalnessFactor = mix(metalnessFactor, uMetalSurfaceMetalness, metalCoverage);',
+  metalness: 'metalnessFactor = mix(metalnessFactor, uMetalSurfaceMetalness, metalPbrCoverage);',
 
   /** Immediately BEFORE the host declares `outgoingLight`, while
    *  `totalSpecular` is still assignable.
@@ -174,9 +206,11 @@ export const METAL_SURFACE_LAYER_GLSL = {
    *  exactly at coverage 0, while ore at coverage 1 keeps the full
    *  reflection its material is supposed to have. Diffuse already matches:
    *  at metalness 0 the physical model's diffuseColor is the Lambert one.
+   *  The dirty rim rides the same line at a fractional coverage, which is
+   *  how it comes out matte rather than as a dark polished band.
    *
    *  Drop this and every non-ore surface silently gains a specular sheen. */
-  specularGate: 'totalSpecular *= metalCoverage;',
+  specularGate: 'totalSpecular *= metalPbrCoverage;',
 
   /** Immediately AFTER the host declares `outgoingLight`. Preserves the
    *  dark rock structure through a broad reflection. */
@@ -186,7 +220,7 @@ export const METAL_SURFACE_LAYER_GLSL = {
     '  metalDetail,',
     '  uMetalSurfaceContrast,',
     '  uMetalSurfaceLitColorBlend',
-    '), metalCoverage);',
+    '), metalPbrCoverage);',
   ].join('\n'),
 } as const;
 

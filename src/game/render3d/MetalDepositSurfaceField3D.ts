@@ -154,17 +154,44 @@ export function metalDepositSurfaceFieldUniformDeclarations(): string {
   ].join('\n');
 }
 
-/** GLSL expression yielding ore coverage in [0,1] at a world position.
- *  Kept next to the uniform names it reads so a rename cannot leave one
- *  half behind; the coverage MATH itself lives in MetalSurfaceMaterial3D
- *  with the rest of the metal surface contract. */
-export function metalDepositSurfaceFieldCoverage(worldPositionExpr: string): string {
+/** GLSL expression yielding the SIGNED DISTANCE to the ore edge at a world
+ *  position, in world units, negative inside. Kept next to the uniform names
+ *  it reads so a rename cannot leave one half behind; the math itself lives
+ *  in MetalSurfaceMaterial3D with the rest of the metal surface contract.
+ *
+ *  The distance is the useful quantity, not the coverage: the edge treatment
+ *  displaces and dissolves it before anything is resolved to [0,1]. Hosts
+ *  therefore read distance first, take its screen width at top level, and
+ *  resolve coverage last. */
+export function metalDepositSurfaceFieldDistance(worldPositionExpr: string): string {
   return [
-    'metalSurfaceRegionCoverage(',
+    'metalSurfaceRegionDistance(',
     '  uMetalRegionField,',
     '  uMetalRegionWorldSize,',
     `  ${worldPositionExpr},`,
-    '  uMetalRegionEdgeRange,',
+    '  uMetalRegionEdgeRange',
+    ')',
+  ].join('\n');
+}
+
+/** Screen width of that distance. MUST be evaluated at top level: fwidth
+ *  under non-uniform control flow is undefined. */
+export function metalDepositSurfaceFieldScreenWidth(distanceExpr: string): string {
+  return `metalSurfaceRegionScreenWidth(${distanceExpr}, uMetalRegionEdgeRange)`;
+}
+
+/** GLSL expression yielding ore coverage in [0,1] from a distance and its
+ *  screen width. `uMetalRegionEnabled` gates the whole region here, which is
+ *  why it multiplies the coverage rather than the distance — a zeroed
+ *  distance would read as "exactly on the boundary everywhere". */
+export function metalDepositSurfaceFieldCoverage(
+  distanceExpr: string,
+  screenWidthExpr: string,
+): string {
+  return [
+    'metalSurfaceRegionCoverage(',
+    `  ${distanceExpr},`,
+    `  ${screenWidthExpr},`,
     '  uMetalRegionEdgeFeather',
     ') * uMetalRegionEnabled',
   ].join('\n');

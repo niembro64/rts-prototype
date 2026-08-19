@@ -25,8 +25,18 @@ import {
 } from './MetalSurfaceMaterial3D';
 import {
   metalDepositSurfaceFieldCoverage,
+  metalDepositSurfaceFieldDistance,
+  metalDepositSurfaceFieldScreenWidth,
   metalDepositSurfaceFieldUniformDeclarations,
 } from './MetalDepositSurfaceField3D';
+import {
+  ORE_EDGE_BLEND_GLSL,
+  oreEdgeAlbedoFragment,
+  oreEdgeBlendUniformDeclarations,
+  oreEdgeMatteCoverage,
+  oreEdgeResolveFragment,
+} from './MetalDepositEdgeBlend3D';
+import { ORE_EDGE_INFLUENCE_WORLD_UNITS } from '../../config';
 import {
   TERRAIN_OUTWARD_NORMAL_LEVELS,
   TERRAIN_OUTWARD_NORMAL_UNIFORM,
@@ -118,7 +128,14 @@ function checkSurfaceFieldConfig(): void {
  *  assembled from and prove the two halves line up. */
 function checkShaderSourceContract(): void {
   const declarations = metalDepositSurfaceFieldUniformDeclarations();
-  const coverage = metalDepositSurfaceFieldCoverage('vTerrainWorldPos');
+  // Every expression the host assembles the ore path from. They are checked
+  // together because the uniform block serves all three, and a uniform that
+  // moved from one expression to another must still be read by SOMETHING.
+  const coverage = [
+    metalDepositSurfaceFieldDistance('vTerrainWorldPos'),
+    metalDepositSurfaceFieldScreenWidth('oreDistance'),
+    metalDepositSurfaceFieldCoverage('oreDistance', 'oreDistanceWidth'),
+  ].join('\n');
   const uniformNames = Array.from(
     declarations.matchAll(/uniform\s+\w+\s+(u\w+);/g),
     (match) => match[1],
@@ -141,10 +158,16 @@ function checkShaderSourceContract(): void {
     );
   }
 
-  assertContract(
-    METAL_SURFACE_REGION_GLSL.includes('float metalSurfaceRegionCoverage('),
-    'the metal surface must define metalSurfaceRegionCoverage',
-  );
+  for (const definition of [
+    'float metalSurfaceRegionDistance(',
+    'float metalSurfaceRegionScreenWidth(',
+    'float metalSurfaceRegionCoverage(',
+  ]) {
+    assertContract(
+      METAL_SURFACE_REGION_GLSL.includes(definition),
+      `the metal surface must define ${definition}`,
+    );
+  }
   assertContract(
     coverage.includes('metalSurfaceRegionCoverage('),
     'the coverage expression must call the shared metal surface definition ' +
@@ -155,6 +178,27 @@ function checkShaderSourceContract(): void {
   assertContract(
     /clamp\(\s*fwidth\(/.test(METAL_SURFACE_REGION_GLSL),
     'the ore edge derivative must be bounded, not raw fwidth',
+  );
+  // THE DERIVATIVE MUST BE ALONE IN ITS OWN FUNCTION. Both the coverage
+  // resolve and the whole edge treatment run under branches, and a
+  // derivative in non-uniform control flow is undefined — it compiles, and
+  // it works on whichever GPU the author happened to have. Keeping fwidth
+  // out of everything except metalSurfaceRegionScreenWidth is what makes
+  // "called at top level" a property a reader can check locally.
+  const fwidthOwner = METAL_SURFACE_REGION_GLSL.split(
+    'float metalSurfaceRegionScreenWidth(',
+  );
+  assertContract(
+    fwidthOwner.length === 2 && !fwidthOwner[0].includes('fwidth('),
+    'fwidth must appear only inside metalSurfaceRegionScreenWidth; the other ' +
+    'region functions are called under branches, where a derivative is undefined',
+  );
+  assertContract(
+    !ORE_EDGE_BLEND_GLSL.includes('fwidth(') &&
+    !ORE_EDGE_BLEND_GLSL.includes('dFdx(') &&
+    !ORE_EDGE_BLEND_GLSL.includes('dFdy('),
+    'the edge treatment runs entirely under the host\'s early-out branch, so ' +
+    'it must take the screen width as a parameter rather than measuring it',
   );
   assertContract(
     METAL_SURFACE_RESPONSE_GLSL.includes('metalSurfaceRoughness('),
@@ -184,11 +228,24 @@ function checkMetalLayerContract(): void {
   // Every layer term is gated on coverage. A term that forgot it would
   // apply metal to the whole host surface, which is exactly the bug the
   // region field exists to prevent.
+  //
+  // And it must be the PBR coverage, not the geometric one. The two differ
+  // only across the ore's dirty rim, where the geometric coverage would
+  // hand the dirt a full metal reflection — a specular highlight tracing
+  // the ore boundary exactly, which is the crisp edge the whole treatment
+  // exists to break, surviving underneath however much dirt is painted on.
+  // `metalPbrCoverage` does not contain `metalCoverage` as a substring, so
+  // this test cannot be satisfied by the wrong one.
   for (const [name, source] of Object.entries(METAL_SURFACE_LAYER_GLSL)) {
     assertContract(
-      source.includes('metalCoverage'),
-      `metal layer term "${name}" is not gated on metalCoverage, so it would ` +
-      'apply to every fragment of the host surface',
+      source.includes('metalPbrCoverage'),
+      `metal layer term "${name}" is not gated on metalPbrCoverage, so it ` +
+      'would apply to every fragment of the host surface',
+    );
+    assertContract(
+      !/\bmetalCoverage\b/.test(source),
+      `metal layer term "${name}" reads the geometric metalCoverage; the PBR ` +
+      'terms must take metalPbrCoverage so the dirty rim comes out matte',
     );
   }
 
@@ -278,10 +335,114 @@ function checkOutwardNormalContract(): void {
   );
 }
 
+/** The ore edge treatment. Its failures are all quiet ones: an undeclared
+ *  uniform reads zero and the effect simply stops, and a term that reaches
+ *  past the field's encoded range produces a shape that looks authored. */
+function checkOreEdgeBlendContract(): void {
+  const declarations = oreEdgeBlendUniformDeclarations();
+  // Every string the host assembles the edge path from. The uniform block
+  // serves all of them together, so they are checked together — a uniform
+  // that moved from one fragment to another must still be read by SOMETHING.
+  const source = [
+    ORE_EDGE_BLEND_GLSL,
+    oreEdgeResolveFragment('vTerrainWorldPos', 'uMetalRegionEnabled'),
+    oreEdgeMatteCoverage('metalCoverage'),
+    oreEdgeAlbedoFragment('vTerrainWorldPos', 'geomNormal'),
+  ].join('\n');
+  const uniformNames = Array.from(
+    declarations.matchAll(/uniform\s+\w+\s+(u\w+);/g),
+    (match) => match[1],
+  );
+
+  // Both directions. A uniform the source never reads is dead weight the
+  // next reader has to disprove; a uniform the source reads and nobody
+  // declares is silently zero, which for `uOreEdgeInfluence` means the
+  // early-out never fires and for `uOreEdgeBandMax` means every transition
+  // collapses to its minimum width.
+  for (const read of source.matchAll(/\buOreEdge\w*/g)) {
+    assertContract(
+      uniformNames.includes(read[0]),
+      `the edge treatment reads ${read[0]}, which its uniform block does not ` +
+      'declare — an unsupplied uniform is silently zero',
+    );
+  }
+  for (const name of uniformNames) {
+    assertContract(
+      source.includes(name),
+      `uniform ${name} is declared by the edge treatment but never read`,
+    );
+  }
+
+  // The resolve block is the only writer of the coverage the metal surface
+  // then reads, and the only declarer of the grime the matte and albedo
+  // halves read. Losing either wiring compiles as long as the host happens
+  // to declare something by the same name.
+  const resolve = oreEdgeResolveFragment('vTerrainWorldPos', 'uMetalRegionEnabled');
+  assertContract(
+    resolve.includes('oreRegionCoverage = oreEdgeCoverage('),
+    'the resolve block must overwrite the coverage the region field produced; ' +
+    'without that the ore keeps the field\'s own clean contour and only the ' +
+    'dirt band moves',
+  );
+  assertContract(
+    resolve.includes('float oreEdgeGrime = 0.0;'),
+    'the resolve block must declare oreEdgeGrime and default it to zero, so ' +
+    'a fragment that takes the early-out is ungrimed rather than undefined',
+  );
+
+  for (const definition of [
+    'OreEdgeFields oreEdgeSampleFields(',
+    'float oreEdgeWarpedDistance(',
+    'float oreEdgeCoverage(',
+    'float oreEdgeGrimeBand(',
+  ]) {
+    assertContract(
+      ORE_EDGE_BLEND_GLSL.includes(definition),
+      `the edge treatment must define ${definition}`,
+    );
+  }
+
+  // NAME COLLISION. The host holds the band's result in a float named
+  // `oreEdgeGrime`. In GLSL a variable hides a same-named function from its
+  // declaration onward, so a function called `oreEdgeGrime` would be
+  // unreachable from exactly the place that needs it — and the failure is a
+  // compile error three.js does not report unless booted with
+  // ?shaderErrors=1, which presents as terrain that simply does not draw.
+  assertContract(
+    !ORE_EDGE_BLEND_GLSL.includes('float oreEdgeGrime('),
+    'the grime function must not be named oreEdgeGrime; the host declares a ' +
+    'float by that name, which hides it',
+  );
+
+  // THE SATURATION TRAP. The region field encodes distance over
+  // ±edgeRangeWorldUnits and saturates past it, so a term reaching further
+  // reads a distance that has stopped varying: its falloff flattens and the
+  // band ends in a perfectly circular hard ring at the radius the encoding
+  // ran out. That reads as a rendering bug, not as a tuning mistake, and
+  // nothing about the code that produced it looks wrong.
+  const edgeRange = METAL_DEPOSIT_CONFIG.surfaceField.edgeRangeWorldUnits;
+  assertContract(
+    ORE_EDGE_INFLUENCE_WORLD_UNITS <= edgeRange,
+    `the edge treatment reaches ${ORE_EDGE_INFLUENCE_WORLD_UNITS} world units ` +
+    `from the contour but the region field only encodes ±${edgeRange}; past ` +
+    'that the distance saturates and the band terminates in a hard ring',
+  );
+
+  // The early-out is the whole reason five extra texture taps are
+  // affordable on a full-screen surface, and it is only correct if the
+  // radius it tests against is the one every term is bounded by.
+  assertContract(
+    source.includes('uOreEdgeInfluence'),
+    'the edge treatment must expose the influence radius the host early-outs ' +
+    'on, or every terrain fragment on the map pays for the ore edge',
+  );
+}
+
 export function runMetalDepositSurfaceField3DContractTest(): void {
   checkSizeClassesCannotMoveTerrain();
   checkSurfaceFieldConfig();
   checkShaderSourceContract();
   checkMetalLayerContract();
+  checkOreEdgeBlendContract();
   checkOutwardNormalContract();
 }

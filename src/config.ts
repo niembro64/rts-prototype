@@ -455,6 +455,13 @@ function readPositiveConfigNumber(value: unknown, fieldName: string): number {
   return value;
 }
 
+function readNonNegativeConfigNumber(value: unknown, fieldName: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new Error(`${fieldName} must be a finite non-negative number`);
+  }
+  return value;
+}
+
 function readTextureResolutionConfig(value: unknown, fieldName: string): number {
   if (
     typeof value !== 'number' ||
@@ -581,6 +588,123 @@ if (METAL_DEPOSIT_ROCK_TEXTURE_RESOLUTION !== TERRAIN_ROCK_TEXTURE_RESOLUTION) {
       'colorsConfig.world.terrain.rock.texture.resolution because both use RockDetailTexture.ts',
   );
 }
+
+/** The ore-to-ground transition. The region field's own contour is a clean
+ *  stencil; these knobs are what turn it into a weathered boundary — the
+ *  contour is displaced, dissolved against a grain, and buried under a dirt
+ *  band of varying thickness. All distances are WORLD UNITS, because the
+ *  field they displace is a metric signed distance. Nothing here touches the
+ *  authoritative metal cells: this moves where ore is DRAWN, never where it
+ *  is mined. Full documentation lives in colorsConfig's `edgeComment`. */
+const oreEdgeConfig = COLORS.environment.metalDeposit.edge;
+
+export const TERRAIN_ORE_EDGE_ENABLED: boolean =
+  worldRenderConfigJson.terrainOreEdge.enabled;
+
+export const ORE_EDGE_NOISE_TEXTURE_RESOLUTION = readTextureResolutionConfig(
+  oreEdgeConfig.noiseTexture.resolution,
+  'colorsConfig.environment.metalDeposit.edge.noiseTexture.resolution',
+);
+export const ORE_EDGE_NOISE_TILE_WORLD_SIZE = readPositiveConfigNumber(
+  oreEdgeConfig.noiseTexture.tileWorldSize,
+  'colorsConfig.environment.metalDeposit.edge.noiseTexture.tileWorldSize',
+);
+export const ORE_EDGE_DIRT_TEXTURE_RESOLUTION = readTextureResolutionConfig(
+  oreEdgeConfig.dirtTexture.resolution,
+  'colorsConfig.environment.metalDeposit.edge.dirtTexture.resolution',
+);
+export const ORE_EDGE_DIRT_TILE_WORLD_SIZE = readPositiveConfigNumber(
+  oreEdgeConfig.dirtTexture.tileWorldSize,
+  'colorsConfig.environment.metalDeposit.edge.dirtTexture.tileWorldSize',
+);
+export const ORE_EDGE_DIRT_BASE_COLOR: number = oreEdgeConfig.dirtTexture.baseColorHex;
+
+export const ORE_EDGE_GROW_WORLD_UNITS = readNonNegativeConfigNumber(
+  oreEdgeConfig.growWorldUnits,
+  'colorsConfig.environment.metalDeposit.edge.growWorldUnits',
+);
+export const ORE_EDGE_WARP_WORLD_UNITS = readNonNegativeConfigNumber(
+  oreEdgeConfig.warpWorldUnits,
+  'colorsConfig.environment.metalDeposit.edge.warpWorldUnits',
+);
+export const ORE_EDGE_BLEND_BAND_MIN_WORLD_UNITS = readPositiveConfigNumber(
+  oreEdgeConfig.blendBandMinWorldUnits,
+  'colorsConfig.environment.metalDeposit.edge.blendBandMinWorldUnits',
+);
+export const ORE_EDGE_BLEND_BAND_MAX_WORLD_UNITS = readPositiveConfigNumber(
+  oreEdgeConfig.blendBandMaxWorldUnits,
+  'colorsConfig.environment.metalDeposit.edge.blendBandMaxWorldUnits',
+);
+if (ORE_EDGE_BLEND_BAND_MAX_WORLD_UNITS < ORE_EDGE_BLEND_BAND_MIN_WORLD_UNITS) {
+  throw new Error(
+    'colorsConfig.environment.metalDeposit.edge.blendBandMaxWorldUnits must be ' +
+      'at least blendBandMinWorldUnits',
+  );
+}
+export const ORE_EDGE_GRAIN_STRENGTH = readUnitIntervalConfig(
+  oreEdgeConfig.grainStrength,
+  'colorsConfig.environment.metalDeposit.edge.grainStrength',
+);
+export const ORE_EDGE_GRIME_INNER_REACH_WORLD_UNITS = readNonNegativeConfigNumber(
+  oreEdgeConfig.grimeInnerReachWorldUnits,
+  'colorsConfig.environment.metalDeposit.edge.grimeInnerReachWorldUnits',
+);
+export const ORE_EDGE_GRIME_OUTER_REACH_WORLD_UNITS = readNonNegativeConfigNumber(
+  oreEdgeConfig.grimeOuterReachWorldUnits,
+  'colorsConfig.environment.metalDeposit.edge.grimeOuterReachWorldUnits',
+);
+export const ORE_EDGE_GRIME_THICKNESS_VARIATION = readUnitIntervalConfig(
+  oreEdgeConfig.grimeThicknessVariation,
+  'colorsConfig.environment.metalDeposit.edge.grimeThicknessVariation',
+);
+export const ORE_EDGE_GRIME_FALLOFF = readPositiveConfigNumber(
+  oreEdgeConfig.grimeFalloff,
+  'colorsConfig.environment.metalDeposit.edge.grimeFalloff',
+);
+export const ORE_EDGE_GRIME_PATCH_DEPTH = readUnitIntervalConfig(
+  oreEdgeConfig.grimePatchDepth,
+  'colorsConfig.environment.metalDeposit.edge.grimePatchDepth',
+);
+export const ORE_EDGE_GRIME_STRENGTH = readUnitIntervalConfig(
+  oreEdgeConfig.grimeStrength,
+  'colorsConfig.environment.metalDeposit.edge.grimeStrength',
+);
+export const ORE_EDGE_GRIME_DARKEN = readUnitIntervalConfig(
+  oreEdgeConfig.grimeDarken,
+  'colorsConfig.environment.metalDeposit.edge.grimeDarken',
+);
+export const ORE_EDGE_GRIME_SEAM_POWER = readPositiveConfigNumber(
+  oreEdgeConfig.grimeSeamPower,
+  'colorsConfig.environment.metalDeposit.edge.grimeSeamPower',
+);
+export const ORE_EDGE_GRIME_MATTE = readUnitIntervalConfig(
+  oreEdgeConfig.grimeMatte,
+  'colorsConfig.environment.metalDeposit.edge.grimeMatte',
+);
+
+/** The furthest, in world units, any edge term can reach from the field's own
+ *  contour: the outward push plus the peak warp, plus whichever of the blend
+ *  ramp or the jittered dirt reach extends further.
+ *
+ *  THE TRAP this exists for: the region field encodes distance over
+ *  ±edgeRangeWorldUnits and SATURATES past it. A term reaching beyond that
+ *  reads a distance that has stopped varying, so its falloff flattens and the
+ *  band terminates in a hard ring — a perfectly circular one, at the exact
+ *  radius the encoding ran out, which reads as a rendering bug rather than as
+ *  a tuning mistake. Pinned against the field's range by contract test.
+ *
+ *  It is also the shader's early-out: a fragment further than this from the
+ *  contour cannot be affected by any of it, and skips the whole sample set. */
+export const ORE_EDGE_INFLUENCE_WORLD_UNITS =
+  ORE_EDGE_GROW_WORLD_UNITS +
+  ORE_EDGE_WARP_WORLD_UNITS +
+  Math.max(
+    ORE_EDGE_BLEND_BAND_MAX_WORLD_UNITS,
+    Math.max(
+      ORE_EDGE_GRIME_INNER_REACH_WORLD_UNITS,
+      ORE_EDGE_GRIME_OUTER_REACH_WORLD_UNITS,
+    ) * (1 + ORE_EDGE_GRIME_THICKNESS_VARIATION),
+  );
 
 /** How strongly the procedural tree-leaf / tree-trunk textures override the
  *  prop's solid base color, in [0, 1]. 0 = pure base color (the original
