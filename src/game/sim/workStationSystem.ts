@@ -286,7 +286,17 @@ function writeQueryWorkAimFrom(
   );
 }
 
-function writeQueryWorkSocket(
+/**
+ * BAR-style QueryWork nozzle: the authored emitter point carried on the
+ * solved forearm, in world space.
+ *
+ * Derived entirely from live host state — transform, surface normal, body
+ * orientation, suspension, and the station's authoritative local yaw/pitch —
+ * so a caller between fixed ticks gets the socket for the pose it is
+ * actually drawing. That is why it is exported: client presentation resolves
+ * the same nozzle every render frame (see workEmitterOrigin.ts).
+ */
+export function writeWorkEmitterSocketWorld(
   host: Entity,
   station: BuilderWorkStationRuntime,
   emitter: WorkEmitterSpec,
@@ -525,7 +535,7 @@ export function updateArticulatedWorkStations(
     const oldX = station.worldPosition.x;
     const oldY = station.worldPosition.y;
     const oldZ = station.worldPosition.z;
-    writeQueryWorkSocket(_hosts[i], station, emitter, _socket);
+    writeWorkEmitterSocketWorld(_hosts[i], station, emitter, _socket);
     if (station.worldPosTick === tick - 1 && invDtSec > 0) {
       station.worldVelocity.x = (_socket.x - oldX) * invDtSec;
       station.worldVelocity.y = (_socket.y - oldY) * invDtSec;

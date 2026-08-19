@@ -24,6 +24,7 @@ import type {
   NetworkServerSnapshotMeta,
 } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
+import { writeWorkEmitterOriginWorld } from '../sim/workEmitterOrigin';
 import type { MinimapEntity } from '@/types/ui';
 import type { ContactSnapshotSampling } from './ClientMinimapOverrideStore';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
@@ -170,6 +171,10 @@ function renderConeCullExcludes(
   }
   return false;
 }
+
+/** Reused work-emitter output. Spray re-anchoring runs per visible spray
+ *  per effects frame, so it must not allocate. */
+const _sprayEndpoint = { x: 0, y: 0, z: 0 };
 
 export class ClientViewState extends ClientViewStateBase {
   /** Called every render frame. Adjacent authoritative Rust poses own root
@@ -1393,8 +1398,42 @@ export class ClientViewState extends ClientViewStateBase {
     return this.cache.getArmedEntities();
   }
 
+  /**
+   * Active work sprays, re-anchored to the pose being drawn.
+   *
+   * A spray's world points are authored by the simulation and ride the
+   * presentation snapshot, which is far slower than the render loop
+   * (architecture.json authors 5 Hz), so a commander driving across the map
+   * left its own build stream standing where the last snapshot found it.
+   * Continuous world positions belong to the interpolated pose, not to
+   * whatever tick last shipped — budget_design_philosophy.html, "One clock
+   * owns all continuous root pose".
+   *
+   * Only UNIT endpoints are re-derived. A building does not move, and a
+   * fabricator's ring origin is a per-tick simulation choice a client cannot
+   * reproduce, so both keep the point the snapshot gave them.
+   */
   getSprayTargets(): SprayTarget[] {
-    return this.sprayTargetStore.getTargets();
+    const targets = this.sprayTargetStore.getTargets();
+    for (let i = 0; i < targets.length; i++) {
+      const spray = targets[i];
+      const source = this.entities.get(spray.source.id);
+      if (source !== undefined && source.unit !== null) {
+        // Every authored work emitter carries exactly one point, which is
+        // also why the wire has no channel to recover here.
+        const origin = writeWorkEmitterOriginWorld(source, 0, _sprayEndpoint);
+        spray.source.pos.x = origin.x;
+        spray.source.pos.y = origin.y;
+        spray.source.z = origin.z;
+      }
+      const target = this.entities.get(spray.target.id);
+      if (target !== undefined && target.unit !== null) {
+        spray.target.pos.x = target.transform.x;
+        spray.target.pos.y = target.transform.y;
+        spray.target.z = target.transform.z;
+      }
+    }
+    return targets;
   }
 
   getPendingAudioEvents(): NetworkServerSnapshot['audioEvents'] {

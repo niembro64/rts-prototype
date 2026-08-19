@@ -2,8 +2,6 @@ import type { WorldState } from './WorldState';
 import { NO_ENTITY_ID, type Entity, type EntityId, type PlayerId } from './types';
 import { isBuildTargetInRange } from './builderRange';
 import { getBuilderConstructionRate } from './hostCapabilities';
-import { getTransformCosSin } from '../math';
-import { getBuildingBlueprint, getUnitBlueprint } from './blueprints';
 import { economyManager } from './economy';
 import { isCapturableTarget } from './capture';
 import {
@@ -24,6 +22,7 @@ import { isResurrectableWreck, restoreUnitFromWreck } from './wrecks';
 import { entityCanIssueResurrectCommand } from './unitCommandCapabilities';
 import { writeFabricatorProductionSprayOrigin } from './factoryProductionHold';
 import { requestBuilderWorkStation } from './workStationSystem';
+import { getWorkEmitterSpec, writeWorkEmitterOriginWorld } from './workEmitterOrigin';
 import { transferCompletedBuildingStorageCapacity } from './buildingCompletion';
 
 export type { SprayTarget,  } from '@/types/ui';
@@ -39,16 +38,14 @@ function repairRatePairKey(sourceId: EntityId, targetId: EntityId): number {
   return sourceId * REPAIR_RATE_PAIR_KEY_STRIDE + targetId;
 }
 
-function getWorkEmitterSpec(entity: Entity) {
-  if (entity.unit !== null) {
-    return getUnitBlueprint(entity.unit.unitBlueprintId).workEmitter ?? null;
-  }
-  if (entity.buildingBlueprintId !== null) {
-    return getBuildingBlueprint(entity.buildingBlueprintId).workEmitter ?? null;
-  }
-  return null;
-}
-
+/**
+ * The spray's authoritative source point for this tick.
+ *
+ * An articulated station whose socket the articulation pass already resolved
+ * this tick reuses that exact value; everything else derives through the
+ * shared helper, which client presentation also runs every render frame so a
+ * moving builder's spray tracks it between snapshots.
+ */
 function writeWorkEmitterWorldPosition(
   source: Entity,
   pointIndex: number,
@@ -61,22 +58,7 @@ function writeWorkEmitterWorldPosition(
     out.z = station.worldPosition.z;
     return out;
   }
-  const spec = getWorkEmitterSpec(source);
-  const point = spec?.points[pointIndex] ?? spec?.points[0];
-  if (point === undefined) {
-    out.x = source.transform.x;
-    out.y = source.transform.y;
-    out.z = source.transform.z;
-    return out;
-  }
-  const scale = source.unit?.radius.other ?? 1;
-  const localX = point.x * scale;
-  const localY = point.y * scale;
-  const { cos, sin } = getTransformCosSin(source.transform);
-  out.x = source.transform.x + localX * cos - localY * sin;
-  out.y = source.transform.y + localX * sin + localY * cos;
-  out.z = source.transform.z + point.z * scale;
-  return out;
+  return writeWorkEmitterOriginWorld(source, pointIndex, out);
 }
 
 // Commander abilities system - handles build queue (ONE target at a time)
