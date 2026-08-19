@@ -60,23 +60,23 @@
   "sizes": {
     "standard": {
       "resourceCells": 5,
-      "resourceRadiusCells": 6
+      "resourceRadiusCells": 8
     },
     "broad": {
-      "resourceCells": 27,
-      "resourceRadiusCells": 31
+      "resourceCells": 11,
+      "resourceRadiusCells": 41
     },
     "vast": {
-      "resourceCells": 41,
-      "resourceRadiusCells": 46
+      "resourceCells": 33,
+      "resourceRadiusCells": 55
     },
     "colossal": {
       "resourceCells": 55,
-      "resourceRadiusCells": 62
+      "resourceRadiusCells": 77
     },
     "titanic": {
-      "resourceCells": 71,
-      "resourceRadiusCells": 78
+      "resourceCells": 89,
+      "resourceRadiusCells": 231
     }
   },
   "defaultSize": "standard",
