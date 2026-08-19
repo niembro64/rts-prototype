@@ -69,7 +69,7 @@ import { buildWorldBoxFloorGeometry, getWorldBoxFloorY } from './WorldBoxGeometr
 import {
   emitMapInfoAnnexGeometry,
   mapInfoAnnexFlatHeight,
-  mapInfoAnnexMapSamplePoint,
+  mapInfoAnnexHorizonFade,
   resolveMapInfoAnnexFootprint,
 } from './MapInfoAnnex3D';
 import {
@@ -2543,10 +2543,11 @@ export class TerrainTileRenderer3D {
         nx: number,
         ny: number,
         nz: number,
-        // Where this wall reads the horizon blend, when that is not its own
-        // position: the annex stands off the map edge, and sampling it there
-        // would score every one of its walls a full fade. Null = read here.
-        horizonFadeAt: { readonly x: number; readonly z: number } | null = null,
+        // The horizon blend this wall carries, when it is not the one its own
+        // position scores: the annex stands off the map edge, where the blend
+        // is total, so its walls are handed the eased value the annex surface
+        // they hang off already uses. Null = read it here.
+        horizonFade: number | null = null,
       ): number => {
         const idx = terrainPositions.length / 3;
         terrainPositions.push(x, y, z);
@@ -2562,11 +2563,8 @@ export class TerrainTileRenderer3D {
         // is 1.0 so the grass mask fully suppresses any green tint here.
         terrainNeighborhoodSlopes.push(1);
         terrainHorizonFades.push(
-          this.getTerrainHorizonFadeForWaterBoundaryMode(
-            horizonFadeAt?.x ?? x,
-            horizonFadeAt?.z ?? z,
-            waterBoundaryMode,
-          ),
+          horizonFade ??
+            this.getTerrainHorizonFadeForWaterBoundaryMode(x, z, waterBoundaryMode),
         );
         return idx;
       };
@@ -2704,6 +2702,13 @@ export class TerrainTileRenderer3D {
       // map rectangle, so it looks playable and is not.
       if (!wallTriangleDebug) {
         const annex = resolveMapInfoAnnexFootprint(this.mapWidth, this.mapHeight);
+        const annexHorizonFade = (x: number, z: number): number =>
+          mapInfoAnnexHorizonFade(annex, x, z, (mapX, mapZ) =>
+            this.getTerrainHorizonFadeForWaterBoundaryMode(
+              mapX,
+              mapZ,
+              waterBoundaryMode,
+            ));
         emitMapInfoAnnexGeometry(
           annex,
           {
@@ -2726,20 +2731,12 @@ export class TerrainTileRenderer3D {
               terrainWallWears.push(1, 0, y, 1, 0, y);
               terrainVertexWallClasses.push(0);
               terrainNeighborhoodSlopes.push(slope);
-              // Not at (x, z): the horizon blend is total everywhere past the
-              // map's rectangle, so read here the whole headland would paint
-              // as one slab of horizon colour instead of as the seabed it is
-              // meant to continue. mapInfoAnnexMapSamplePoint folds the annex
-              // back into the map — the seam keeps the coast's own blend, and
-              // the flat table gets what the map's interior gets.
-              const blendSample = mapInfoAnnexMapSamplePoint(annex, x, z);
-              terrainHorizonFades.push(
-                this.getTerrainHorizonFadeForWaterBoundaryMode(
-                  blendSample.x,
-                  blendSample.z,
-                  waterBoundaryMode,
-                ),
-              );
+              // Not read at (x, z): the horizon blend is total everywhere past
+              // the map's rectangle, so taken there the whole headland paints
+              // as one slab of horizon colour instead of as the seabed it
+              // continues. It inherits the coast's blend at the seam and sheds
+              // it over the same band the height eases across.
+              terrainHorizonFades.push(annexHorizonFade(x, z));
               terrainShades.push(
                 terrainSunShade(
                   // The sim's normal is Z-up where the renderer's is Y-up.
@@ -2757,15 +2754,7 @@ export class TerrainTileRenderer3D {
               return idx;
             },
             pushWallVertex: (x, y, z, nx, nz): number =>
-              pushWorldBoxVertex(
-                x,
-                y,
-                z,
-                nx,
-                0,
-                nz,
-                mapInfoAnnexMapSamplePoint(annex, x, z),
-              ),
+              pushWorldBoxVertex(x, y, z, nx, 0, nz, annexHorizonFade(x, z)),
             pushTriangle: (a, b, c): void => {
               terrainIndices.push(a, b, c);
               terrainDebugLevels.push(-1);
