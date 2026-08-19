@@ -345,6 +345,14 @@ export class UnitTurretPose3D {
         this.aimTurretIndexes[i],
         turretMountCache,
       );
+      this.writeUnbarrelledTurretEmission(
+        turretMesh,
+        this.deferredParentPosition,
+        this.deferredParentQuaternion,
+        this.aimEntities[i].id,
+        this.aimTurretIndexes[i],
+        turretMountCache,
+      );
       this.writeBarrelInstances(
         turretMesh,
         this.deferredParentPosition,
@@ -580,6 +588,88 @@ export class UnitTurretPose3D {
         turretMesh.fixedMultiBarrelMuzzle === undefined,
       );
     }
+  }
+
+  /**
+   * Publish the AimFrom pivot as the QueryWeapon origin for a turret whose
+   * barrels never reach the instanced batch.
+   *
+   * The rendered barrel normally publishes that socket (see flushBarrels),
+   * but a host may replace the shared barrel rig with bespoke geometry — the
+   * Commander's arm cannon and the Human's weapon both clear `barrels` and
+   * build their own — and then nothing published one at all. A live beam
+   * whose socket is missing keeps the polyline the presentation snapshot
+   * gave it, so it stepped at the snapshot rate while every other unit's
+   * beam was re-anchored every render frame.
+   *
+   * The pivot is the correct answer here, not a stand-in: a beam's socket is
+   * the broad base of its pilot-light cone at the turret's AimFrom pivot, so
+   * its QueryWeapon offset is zero in turret-local space (see
+   * budget_design_philosophy.html, "The beam cone is the beam pilot light
+   * and shares the live beam's origin").
+   *
+   * Only the emission lane is published. `writeForward` mutates the head
+   * mount row, which flushHeadMounts has not written yet at this point in
+   * the flush; the emission row carries its own forward and is what beam
+   * presentation reads.
+   */
+  private writeUnbarrelledTurretEmission(
+    turretMesh: TurretMesh,
+    parentPosition: THREE.Vector3,
+    parentQuaternion: THREE.Quaternion,
+    entityId: number,
+    turretIdx: number,
+    turretMountCache: TurretMountCache3D,
+  ): void {
+    if (turretMesh.fixedMultiBarrelMuzzle !== undefined) return;
+    // Same predicate writeBarrelInstances bails on. When it draws, it also
+    // publishes, so this must not double-publish over it.
+    const barrelSlots = turretMesh.barrelSlots;
+    if (
+      barrelSlots !== undefined &&
+      turretMesh.barrels.length > 0 &&
+      barrelSlots.length === turretMesh.barrels.length
+    ) {
+      return;
+    }
+
+    const pitchGroup = turretMesh.pitchGroup;
+    this.fixedMuzzlePosition.set(0, 0, 0);
+    if (pitchGroup !== undefined) {
+      this.fixedMuzzlePosition
+        .applyQuaternion(pitchGroup.quaternion)
+        .add(pitchGroup.position);
+    }
+    this.fixedMuzzlePosition
+      .applyQuaternion(turretMesh.yawGroup.quaternion)
+      .add(turretMesh.yawGroup.position)
+      .applyQuaternion(turretMesh.root.quaternion)
+      .add(turretMesh.root.position)
+      .applyQuaternion(parentQuaternion)
+      .add(parentPosition);
+    this.fixedMuzzleQuaternion
+      .copy(parentQuaternion)
+      .multiply(turretMesh.root.quaternion)
+      .multiply(turretMesh.yawGroup.quaternion);
+    if (pitchGroup !== undefined) {
+      this.fixedMuzzleQuaternion.multiply(pitchGroup.quaternion);
+    }
+    this.fixedMuzzleForward
+      .set(1, 0, 0)
+      .applyQuaternion(this.fixedMuzzleQuaternion)
+      .normalize();
+
+    turretMountCache.writeEmission(
+      entityId,
+      turretIdx,
+      0,
+      this.fixedMuzzlePosition.x,
+      this.fixedMuzzlePosition.z,
+      this.fixedMuzzlePosition.y,
+      this.fixedMuzzleForward.x,
+      this.fixedMuzzleForward.z,
+      this.fixedMuzzleForward.y,
+    );
   }
 
   /** Publish the one stationary firing socket of a rotating barrel cluster.
