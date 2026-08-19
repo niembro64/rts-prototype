@@ -89,6 +89,19 @@ function dataChannelClosed(conn: DataConnection): boolean {
 }
 
 function classifyMessage(message: NetworkMessage): NetworkSendClassification {
+  // Checked ahead of the lockstep branch on purpose. Peer-frame reports are
+  // routed as lockstep traffic but are purely informational, and only the
+  // newest one has any value — so a queued report should be replaced rather
+  // than delivered. Congestion is precisely when these are generated most,
+  // and letting them queue would spend a strained link on stale numbers that
+  // real command frames need.
+  if (message.type === 'lockstepPeerFrames') {
+    return {
+      messageClass: 'lockstep',
+      policy: 'coalesce',
+      coalesceKey: 'lockstepPeerFrames',
+    };
+  }
   if (isNetworkLockstepMessage(message)) {
     return { messageClass: 'lockstep', policy: 'critical', coalesceKey: null };
   }

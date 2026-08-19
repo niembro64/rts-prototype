@@ -31,6 +31,8 @@ type GameCanvasNetworkCallbackOptions = {
     aiPlayerIds?: PlayerId[],
     handoff?: BattleHandoff,
   ) => void | Promise<void>;
+  /** The host is gone and this client cannot stay in the session. */
+  onHostLeft: () => void;
 };
 
 export function bindGameCanvasNetworkCallbacks({
@@ -49,6 +51,7 @@ export function bindGameCanvasNetworkCallbacks({
   currentLobbySettings,
   onCommunication,
   startGameWithPlayers,
+  onHostLeft,
 }: GameCanvasNetworkCallbackOptions): void {
   network.onPlayerJoined = (player: LobbyPlayer) => {
     networkNotice.value = null;
@@ -63,6 +66,12 @@ export function bindGameCanvasNetworkCallbacks({
     if (gameStarted.value) {
       networkNotice.value = `${playerName} disconnected`;
     }
+  };
+
+  // Distinct from onPlayerLeft: any other player leaving is a roster change
+  // the session survives, but losing the host ends it for everyone.
+  network.onHostLeft = () => {
+    onHostLeft();
   };
 
   network.onPlayerAssignment = (playerId: PlayerId) => {

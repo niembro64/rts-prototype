@@ -16,6 +16,8 @@ export type {
   LockstepCommandFrameBatchFrame,
   LockstepCommandFrameBatchMessage,
   LockstepAckMessage,
+  LockstepPeerFrame,
+  LockstepPeerFramesMessage,
 
   
 
@@ -59,6 +61,7 @@ export function isNetworkLockstepMessage(
     case 'lockstepCommandFrame':
     case 'lockstepCommandFrameBatch':
     case 'lockstepAck':
+    case 'lockstepPeerFrames':
     case 'lockstepChecksum':
     case 'lockstepPause':
     case 'lockstepResume':

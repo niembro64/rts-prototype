@@ -138,6 +138,19 @@ export type RealBattleBackendRuntime = {
   getDiagnostics(): RealBattleBackendDiagnostics;
 };
 
+/** How far along every peer is, as the frame coordinator last saw it.
+ *
+ *  Reported to the UI so players can see who is falling behind. Peers whose
+ *  progress is not yet known are omitted rather than reported at frame 0 —
+ *  at match start that would paint everyone as lagging. */
+export type RealBattlePeerFrameReport = {
+  readonly coordinatorFrame: number;
+  /** Lets the UI turn a frame gap into seconds. Not on the wire: every peer
+   *  in a lockstep match runs the same rate, so each side reads its own. */
+  readonly tickRateHz: number;
+  readonly peers: readonly { readonly playerId: PlayerId; readonly frame: number }[];
+};
+
 type CreateRealBattleBackendOptions = {
   playerIds: PlayerId[];
   aiPlayerIds?: PlayerId[];
@@ -148,6 +161,9 @@ type CreateRealBattleBackendOptions = {
   network?: NetworkManager;
   battleHandoff?: BattleHandoff;
   onLoadingProgress?: (progress: number, phase?: string) => void | Promise<void>;
+  /** Called whenever peer progress is refreshed — on the coordinator from
+   *  what it already tracks, on clients from the coordinator's broadcast. */
+  onPeerFrameReport?: (report: RealBattlePeerFrameReport) => void;
 };
 
 type RealBattleMatchContext = {
@@ -174,6 +190,9 @@ type CreateRealBattleMatchContextOptions = {
   readonly contextLabel: string;
 };
 
+/** How often the coordinator publishes peer progress. Half a second is well
+ *  under the point where a stall becomes visible, and it is a tiny message. */
+const LOCKSTEP_PEER_FRAME_REPORT_INTERVAL_MS = 500;
 const LOCKSTEP_COORDINATOR_RESEND_INTERVAL_MS = 250;
 const LOCKSTEP_COORDINATOR_RESEND_FRAME_LIMIT = 300;
 const LOCKSTEP_CLIENT_RESYNC_REQUEST_INTERVAL_MS = 500;
@@ -572,6 +591,7 @@ async function createDeterministicLockstepBackendRuntime({
   network,
   battleHandoff,
   onLoadingProgress,
+  onPeerFrameReport,
 }: CreateRealBattleBackendOptions): Promise<RealBattleBackendRuntime> {
   const matchContext = createRealBattleMatchContext({
     playerIds,
@@ -831,6 +851,37 @@ async function createDeterministicLockstepBackendRuntime({
     }
   };
 
+  let lastPeerFrameReportMs = 0;
+
+  /** Coordinator only: broadcast every peer's progress, and hand the same
+   *  picture to the local UI.
+   *
+   *  The coordinator is the only peer that sees everyone's acks — in a hosted
+   *  session the clients are not connected to each other at all — so without
+   *  this nobody but the host could tell who was lagging. */
+  const broadcastPeerFrameReport = (): void => {
+    if (!isOnlineLockstep || !isFrameCoordinator || network === undefined) return;
+    const nowMs = performance.now();
+    if (nowMs - lastPeerFrameReportMs < LOCKSTEP_PEER_FRAME_REPORT_INTERVAL_MS) return;
+    lastPeerFrameReportMs = nowMs;
+
+    const transport = network.getLockstepTransport();
+    const coordinatorFrame = scheduler.getDiagnostics().nextFrame;
+    const peers: { playerId: PlayerId; frame: number }[] = [
+      { playerId: localPlayerId, frame: coordinatorFrame },
+    ];
+    for (const playerId of playerIds) {
+      if (playerId === localPlayerId) continue;
+      const latestAck = transport.latestAckForPlayer(playerId);
+      // No ack yet means "not known", not "at frame 0" — reporting zero here
+      // would show every peer as maximally behind for the first seconds.
+      if (latestAck === undefined) continue;
+      peers.push({ playerId, frame: latestAck.ackFrame });
+    }
+    transport.broadcastPeerFrames(coordinatorFrame, peers);
+    onPeerFrameReport?.({ coordinatorFrame, tickRateHz: simulationTickRateHz, peers });
+  };
+
   const requestMissingCommandFrameIfNeeded = (): void => {
     if (!isOnlineLockstep || isFrameCoordinator || network === undefined) return;
     const diagnostics = scheduler.getDiagnostics();
@@ -904,6 +955,20 @@ async function createDeterministicLockstepBackendRuntime({
         }
         break;
       case 'lockstepAck':
+        break;
+      case 'lockstepPeerFrames':
+        // Only the coordinator can speak for everyone; ignore anyone else,
+        // and ignore our own broadcast echoing back.
+        if (!isFrameCoordinator && fromPlayerId !== localPlayerId) {
+          onPeerFrameReport?.({
+            coordinatorFrame: message.coordinatorFrame,
+            tickRateHz: simulationTickRateHz,
+            peers: message.peers.map((peer) => ({
+              playerId: peer.playerId,
+              frame: peer.frame,
+            })),
+          });
+        }
         break;
       case 'lockstepChecksum':
         desyncMonitor?.recordChecksum({
@@ -1055,6 +1120,9 @@ async function createDeterministicLockstepBackendRuntime({
   );
 
   const pumpFrame = (): void => {
+    // Before any early return below: a stalled coordinator is exactly when
+    // players most need to see who everyone is waiting for.
+    broadcastPeerFrameReport();
     const diagnostics = scheduler.getDiagnostics();
     if (diagnostics.status === 'protocol-paused' || diagnostics.status === 'desynced') {
       resetLockstepCommandPumpClock();

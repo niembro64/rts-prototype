@@ -141,6 +141,10 @@ const PEER_OPTIONS: PeerOptions = {
   ...(readPeerServerOverride() ?? {}),
 };
 
+/** The host always seats itself first, so player 1 IS the host. Clients use
+ *  this to tell "the host vanished" apart from "some other player left". */
+const HOST_PLAYER_ID = 1 as PlayerId;
+
 const SIGNALING_RECONNECT_INITIAL_DELAY_MS = 1000;
 const SIGNALING_RECONNECT_MAX_DELAY_MS = 10000;
 const COMMUNICATION_CHAT_MAX_LENGTH = 220;
@@ -231,6 +235,9 @@ export class NetworkManager {
    *  players can find it without being handed the room code. Only a host
    *  ever owns a listing; clients read the directory but never write it. */
   private readonly lobbyPublisher = new LobbyPublisher();
+  /** Latches `emitHostLeft` so the message and the closing socket, which a
+   *  graceful host sends both of, only eject the client once. */
+  private hostLeftEmitted = false;
   private localPlayerId: PlayerId = 1;
   private nextPlayerId: PlayerId = 2;
   private roster = new NetworkLobbyRoster();
@@ -280,6 +287,8 @@ export class NetworkManager {
   // Callbacks
   public onPlayerJoined: ((player: LobbyPlayer) => void) | undefined = undefined;
   public onPlayerLeft: ((playerId: PlayerId) => void) | undefined = undefined;
+  /** The host is gone and this session cannot continue. Clients only. */
+  public onHostLeft: (() => void) | undefined = undefined;
   public onGameStart: ((handoff: BattleHandoff) => void) | undefined = undefined;
   public onPlayerAssignment: ((playerId: PlayerId) => void) | undefined = undefined;
   public onError: ((error: string) => void) | undefined = undefined;
@@ -322,6 +331,20 @@ export class NetworkManager {
     this.refreshLobbyListing();
     const callback = this.onPlayerJoined;
     if (callback !== undefined) callback(player);
+  }
+
+  /** Announce that the host is gone, once.
+   *
+   *  Both the explicit `hostLeft` message and the host connection closing
+   *  land here, and a graceful host produces both — the message first, then
+   *  the socket closing behind it. Latching means the client tears down on
+   *  whichever arrives first and ignores the echo, so it never restarts a
+   *  teardown that is already running. */
+  private emitHostLeft(): void {
+    if (this.role !== 'client' || this.hostLeftEmitted) return;
+    this.hostLeftEmitted = true;
+    const callback = this.onHostLeft;
+    if (callback !== undefined) callback();
   }
 
   private emitPlayerLeft(playerId: PlayerId): void {
@@ -492,6 +515,7 @@ export class NetworkManager {
     if (existingPeer !== null) existingPeer.destroy();
     this.peer = null;
     this.gameStarted = false;
+    this.hostLeftEmitted = false;
     // Withdraw before the peer is gone: every teardown path (disconnect,
     // re-host, joining someone else) passes through here, so the listing
     // never outlives the peer that backs it.
@@ -891,6 +915,14 @@ export class NetworkManager {
       this.heartbeatTracker.untrack(playerId);
       this.emitPlayerLeft(playerId);
 
+      // A client that loses player 1 has lost the host, and with it the
+      // frame coordinator and every route to the other players. There is no
+      // session left to sit in, so eject rather than leave the player in a
+      // lobby or battle that can no longer progress.
+      if (this.role === 'client' && playerId === HOST_PLAYER_ID) {
+        this.emitHostLeft();
+      }
+
       if (this.role === 'host') {
         this.broadcast({
           type: 'playerLeft',
@@ -1110,6 +1142,13 @@ export class NetworkManager {
         if (!this.isMessageForCurrentGame(message.gameId)) return;
         this.roster.delete(message.playerId);
         this.emitPlayerLeft(message.playerId);
+        break;
+
+      case 'hostLeft':
+        // Only the host can say this, and only to a client.
+        if (this.role !== 'client' || fromPlayerId !== HOST_PLAYER_ID) return;
+        if (!this.isMessageForCurrentGame(message.gameId)) return;
+        this.emitHostLeft();
         break;
 
       case 'playerInfoUpdate':
@@ -1390,6 +1429,13 @@ export class NetworkManager {
 
   // Disconnect and cleanup
   disconnect(): void {
+    // Tell the clients why, while there is still a connection to say it on.
+    // beginNetworkSetup closes every connection, so this cannot wait: after
+    // it, clients would only learn from the socket dropping and could not
+    // tell a deliberate exit from a network failure.
+    if (this.role === 'host') {
+      this.broadcast({ type: 'hostLeft', gameId: this.getUniversalGameId() });
+    }
     this.beginNetworkSetup();
     this.role = null;
     this.gameStarted = false;
@@ -1398,6 +1444,7 @@ export class NetworkManager {
     // Clear all callbacks to release closure references
     this.onPlayerJoined = undefined;
     this.onPlayerLeft = undefined;
+    this.onHostLeft = undefined;
     this.onGameStart = undefined;
     this.onPlayerAssignment = undefined;
     this.onError = undefined;

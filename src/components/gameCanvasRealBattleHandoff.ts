@@ -33,6 +33,8 @@ type UseGameCanvasRealBattleHandoffOptions = Omit<
   ) => void;
   currentLobbySettings: () => LobbySettings;
   onCommunication: (event: NetworkCommunicationEvent) => void;
+  /** Eject this client — the host has left and the session is over. */
+  onHostLeft: () => void;
 };
 
 export function useGameCanvasRealBattleHandoff({
@@ -67,7 +69,9 @@ export function useGameCanvasRealBattleHandoff({
   applyLobbySettingsFromHost,
   currentLobbySettings,
   onCommunication,
+  onHostLeft,
   onLoadingProgress,
+  onPeerFrameReport,
   bindSceneUi,
 }: UseGameCanvasRealBattleHandoffOptions) {
   async function startGameWithPlayers(
@@ -100,6 +104,7 @@ export function useGameCanvasRealBattleHandoff({
       lookupPlayerName: (pid) => resolvePlayerName(pid, null),
       battleHandoff: handoff,
       onLoadingProgress,
+      onPeerFrameReport,
       bindSceneUi,
     });
   }
@@ -121,6 +126,7 @@ export function useGameCanvasRealBattleHandoff({
       currentLobbySettings,
       onCommunication,
       startGameWithPlayers,
+      onHostLeft,
     });
   }
 

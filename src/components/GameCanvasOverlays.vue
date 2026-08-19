@@ -18,6 +18,9 @@ defineProps<{
   gameOverWinner: PlayerId | null;
   winnerName: string;
   winnerColor: string;
+  /** Seconds until this client is returned to the menu because the host
+   *  left, or null when that is not happening. */
+  hostLeftSecondsRemaining: number | null;
 }>();
 
 const emit = defineEmits<{
@@ -25,6 +28,7 @@ const emit = defineEmits<{
   toggleMobileBars: [];
   dismissGameOver: [];
   restartGame: [];
+  exitAfterHostLeft: [];
 }>();
 
 const CAMERA_TUTORIAL_DONE_KEY = 'rts-camera-tutorial-done';
@@ -53,6 +57,20 @@ function handleCameraTutorialDone(): void {
     ☰
   </button>
 
+  <!-- Host left. Outranks the game-over banner: if both land at once, why the
+       session is ending matters more than how it ended. -->
+  <div v-if="hostLeftSecondsRemaining !== null" class="host-left-banner">
+    <div class="host-left-content">
+      <h1 class="host-left-title">HOST HAS LEFT</h1>
+      <p class="host-left-text">
+        Returning to the menu in {{ hostLeftSecondsRemaining }}s…
+      </p>
+      <button class="host-left-btn" @click="emit('exitAfterHostLeft')">
+        Return to Menu
+      </button>
+    </div>
+  </div>
+
   <div
     v-if="gameOverWinner !== null"
     class="game-over-banner"
@@ -79,6 +97,65 @@ function handleCameraTutorialDone(): void {
 </template>
 
 <style scoped>
+.host-left-banner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Above the game-over banner (2000) so a simultaneous win cannot bury it. */
+  z-index: 2100;
+}
+
+.host-left-content {
+  text-align: center;
+  padding: 40px 60px;
+  background: rgba(15, 18, 24, 0.95);
+  border: 1px solid #aa4444;
+  border-radius: 16px;
+  box-shadow: 0 0 40px rgba(170, 68, 68, 0.35);
+}
+
+.host-left-title {
+  font-family: monospace;
+  font-size: 40px;
+  margin: 0 0 16px 0;
+  color: #ff6666;
+  text-shadow: 0 0 20px currentColor;
+}
+
+.host-left-text {
+  font-family: monospace;
+  font-size: 18px;
+  color: #cccccc;
+  margin: 0 0 28px 0;
+}
+
+.host-left-btn {
+  font-family: monospace;
+  font-size: 16px;
+  padding: 12px 32px;
+  background: #aa4444;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.host-left-btn:hover {
+  background: #cc5555;
+  transform: scale(1.05);
+}
+
+.host-left-btn:active {
+  transform: scale(0.98);
+}
+
 .game-over-banner {
   position: absolute;
   top: 0;

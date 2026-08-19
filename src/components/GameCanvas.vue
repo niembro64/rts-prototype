@@ -111,6 +111,9 @@ import { useGameCanvasClientSettings } from './gameCanvasClientSettings';
 import { useGameCanvasRealBattleHandoff } from './gameCanvasRealBattleHandoff';
 import { useGameCanvasSceneUi } from './gameCanvasSceneUi';
 import { useGameCanvasSessionLifecycle } from './gameCanvasSessionLifecycle';
+import { useGameCanvasHostEviction } from './gameCanvasHostEviction';
+import { useGameCanvasPeerLag } from './gameCanvasPeerLag';
+import NetworkPeerLagIndicator from './NetworkPeerLagIndicator.vue';
 import { useGameCanvasShellDisplay } from './gameCanvasShellDisplay';
 import { useGameCanvasLobbyRoster } from './gameCanvasLobbyRoster';
 import {
@@ -1689,6 +1692,29 @@ function resetClientDefaultsWithTerrainRender(): void {
   resetTerrainRenderSmoothingDefaults();
 }
 
+// Declared ahead of the network wiring below, which needs somewhere to send
+// a client whose host has vanished. `restartGame` is defined further down, so
+// the exit is passed as a lambda: by the time a host can leave, it is bound.
+const {
+  hostLeftSecondsRemaining,
+  beginHostLeftEviction,
+  exitAfterHostLeft,
+} = useGameCanvasHostEviction({ exitToMenu: () => restartGame() });
+
+const {
+  laggingPeers,
+  recordPeerFrameReport,
+  clearPeerFrames,
+} = useGameCanvasPeerLag();
+
+// Peer progress only means something inside a running battle. Clearing on
+// every exit — not just the Return-to-Lobby one — stops the composable's
+// staleness timer and guarantees a new match never opens showing the last
+// match's laggards.
+watch(gameStarted, (started) => {
+  if (!started) clearPeerFrames();
+});
+
 const {
   setupNetworkCallbacks,
   startGameWithPlayers,
@@ -1730,6 +1756,8 @@ const {
   applyLobbySettingsFromHost,
   currentLobbySettings,
   onCommunication: applyCommunicationEvent,
+  onHostLeft: beginHostLeftEviction,
+  onPeerFrameReport: recordPeerFrameReport,
   onLoadingProgress: setLoadingProgress,
   bindSceneUi: (scene) => {
     bindGameSceneUi(scene, true);
@@ -2830,6 +2858,13 @@ watchEffect(() => {
       @reset-defaults="resetBattleDefaultsWithGroundNormal"
     />
 
+    <NetworkPeerLagIndicator
+      v-if="gameStarted && networkRole !== null"
+      :peers="laggingPeers"
+      :resolve-player-name="resolvePlayerName"
+      :get-player-color="getPlayerColor"
+    />
+
     <GameCanvasOverlays
       :is-mobile="isMobile"
       :show-lobby="showLobby"
@@ -2842,6 +2877,8 @@ watchEffect(() => {
       :game-over-winner="gameOverWinner"
       :winner-name="winningAllyTeamName"
       :winner-color="gameOverWinner === null ? '' : getPlayerColor(gameOverWinner)"
+      :host-left-seconds-remaining="hostLeftSecondsRemaining"
+      @exit-after-host-left="exitAfterHostLeft"
       @toggle-spectate-mode="toggleSpectateMode"
       @toggle-mobile-bars="mobileBarsVisible = !mobileBarsVisible"
       @dismiss-game-over="gameOverWinner = null; spectateMode = true"

@@ -39,6 +39,13 @@ export type StartRealBattleWithPlayersOptions = {
   lookupPlayerName: (playerId: PlayerId) => string | null;
   battleHandoff?: BattleHandoff;
   onLoadingProgress: (progress: number, phase?: string) => void;
+  /** Peer simulation progress, refreshed roughly twice a second during an
+   *  online battle. Drives the "who is falling behind" indicator. */
+  onPeerFrameReport?: (report: {
+    readonly coordinatorFrame: number;
+    readonly tickRateHz: number;
+    readonly peers: readonly { readonly playerId: PlayerId; readonly frame: number }[];
+  }) => void;
   bindSceneUi: (scene: GameScene) => void;
 };
 
@@ -174,6 +181,7 @@ export async function startRealBattleWithPlayers(
             (REAL_BATTLE_LOAD_PROGRESS.serverReady - REAL_BATTLE_LOAD_PROGRESS.terrainLoaded),
         phase ?? 'Starting server',
       ),
+      onPeerFrameReport: options.onPeerFrameReport,
     });
     ownedBackend = backend;
     if (shouldAbortStart()) return;

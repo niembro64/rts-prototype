@@ -10,6 +10,7 @@ import type {
   LockstepCommandFrameBatchMessage,
   LockstepCommandFrameMessage,
   LockstepCommandMessage,
+  LockstepPeerFrame,
   LockstepPeerSequenceAck,
   NetworkLockstepMessage,
   NetworkMessage,
@@ -160,6 +161,24 @@ export class NetworkLockstepTransport {
     });
     this.pruneAcknowledgedDedupState(ackFrame);
     return sent;
+  }
+
+  /** Coordinator only: tell everyone how far along everyone is.
+   *
+   *  Broadcast rather than sent to the host, because this is the one piece
+   *  of lockstep state that travels outward — the coordinator is the only
+   *  peer that knows it. */
+  broadcastPeerFrames(
+    coordinatorFrame: number,
+    peers: readonly LockstepPeerFrame[],
+  ): boolean {
+    return this.broadcast({
+      ...this.base(),
+      type: 'lockstepPeerFrames',
+      coordinatorPlayerId: this.options.getLocalPlayerId(),
+      coordinatorFrame,
+      peers: peers.map((peer) => ({ playerId: peer.playerId, frame: peer.frame })),
+    });
   }
 
   sendChecksum(frame: number, stateHash: CanonicalServerStateHash): boolean {

@@ -369,6 +369,34 @@ export type LockstepCommandFrameBatchMessage = LockstepProtocolBase & {
   frames: LockstepCommandFrameBatchFrame[];
 };
 
+/** One peer's simulation progress, as the coordinator last saw it. */
+export type LockstepPeerFrame = {
+  playerId: PlayerId;
+  frame: number;
+};
+
+/**
+ * The coordinator's periodic report of how far along every peer is.
+ *
+ * Peers already tell the coordinator their frame through `lockstepAck`, but
+ * those acks only ever travel one way — in a hosted session nobody is
+ * connected to anybody except the coordinator, so no client can see how any
+ * other client is doing. This closes that loop by broadcasting what the
+ * coordinator alone knows, which is what lets every player see who is
+ * falling behind rather than just feeling the game stutter.
+ *
+ * Purely informational: it is never fed to the simulation and carries no
+ * commands, so it cannot affect determinism.
+ */
+export type LockstepPeerFramesMessage = LockstepProtocolBase & {
+  type: 'lockstepPeerFrames';
+  coordinatorPlayerId: PlayerId;
+  /** The frame the coordinator itself has reached — the reference every
+   *  peer's lag is measured against. */
+  coordinatorFrame: number;
+  peers: LockstepPeerFrame[];
+};
+
 export type LockstepAckMessage = LockstepProtocolBase & {
   type: 'lockstepAck';
   playerId: PlayerId;
@@ -420,6 +448,7 @@ export type NetworkLockstepMessage =
   | LockstepCommandFrameMessage
   | LockstepCommandFrameBatchMessage
   | LockstepAckMessage
+  | LockstepPeerFramesMessage
   | LockstepChecksumMessage
   | LockstepPauseMessage
   | LockstepResumeMessage
@@ -474,6 +503,16 @@ export type NetworkMessage =
     }
   | { type: 'playerJoined'; gameId: string | undefined; playerId: PlayerId; playerName: string }
   | { type: 'playerLeft'; gameId: string | undefined; playerId: PlayerId }
+  // Host -> client farewell, sent once as the host tears its session down.
+  //
+  // A closing PeerJS connection already tells a client the host is gone, but
+  // only eventually and without saying why — a dropped WiFi link looks
+  // identical to a host quitting. This says it outright so clients can show
+  // the real reason immediately instead of waiting out a socket. It is an
+  // optimisation, never the only signal: losing the host connection is
+  // treated the same way, so a crashed or unplugged host still ejects
+  // everyone.
+  | { type: 'hostLeft'; gameId: string | undefined }
   | { type: 'lobbySettings'; gameId: string | undefined; settings: LobbySettings }
   // Host fans a player's IP + location out to every connected
   // client (whoever just resolved their ipapi.co lookup, or a
