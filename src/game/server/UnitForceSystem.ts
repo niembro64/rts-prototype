@@ -19,6 +19,7 @@ import {
   SURFACE_FOLLOWING_MINIMUM_DISTANCE_WORLD,
   SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE,
 } from '../sim/surfaceProbeSets';
+import { SurfaceLiftProbeSampleCache } from './SurfaceLiftProbeSampleCache';
 import { isUnitGroundPenetrationInContact } from '../sim/unitGroundPhysics';
 import { WATER_LEVEL, getTerrainVersion } from '../sim/Terrain';
 import {
@@ -327,6 +328,9 @@ export class UnitForceSystem {
   private physicsActiveUnitSlotMarks = new Uint32Array(1024);
   private physicsActiveUnitSlotMark = 1;
   private probeSupportIndexReady = false;
+  /** Sampled surfaces under each lifted unit's outrigger probes, refreshed
+   *  one deterministic bucket per tick instead of every unit every tick. */
+  private readonly surfaceProbeSamples = new SurfaceLiftProbeSampleCache();
   private readonly surfaceLiftProbeDebugEntityIds = new Set<EntityId>();
   private readonly surfaceLiftProbeDebugFrames = new Map<EntityId, SurfaceLiftProbeDebugFrame>();
 
@@ -615,6 +619,7 @@ export class UnitForceSystem {
         }
 
         this.sampleSurfaceLiftAggregatedProposedForces(
+          entitySlot,
           unit.locomotion.surfaceFollowing.altitudeProbeSetId,
           bodyZ,
           bodyX,
@@ -986,7 +991,21 @@ export class UnitForceSystem {
     return frame;
   }
 
+  /**
+   * Resolve the three surface-following force proposals for one unit.
+   *
+   * Two halves with different cadences. SAMPLING the outrigger lattice —
+   * a terrain-bed lookup plus a support-surface query per point — is the
+   * expensive half, so it runs only on this unit's deterministic refresh
+   * tick and is cached (see SurfaceLiftProbeSampleCache). AGGREGATING runs
+   * every tick against the unit's live altitude, so the response still
+   * tracks the body the instant it rises or falls. The centre point is
+   * never cached: it sits at the body, its support height is the contact
+   * surface this tick already resolved, and its medium is a single bed
+   * lookup.
+   */
   private sampleSurfaceLiftAggregatedProposedForces(
+    entitySlot: number,
     probeSetId: SurfaceProbeSetId,
     bodyZ: number,
     bodyX: number,
@@ -1009,127 +1028,135 @@ export class UnitForceSystem {
     },
     debugFrame: SurfaceLiftProbeDebugFrame | undefined = undefined,
   ): void {
-    let airInverseProposedForceAggregate = 0;
-    let waterInverseProposedForceAggregate = 0;
-    let waterProportionalProposedForceAggregate = 0;
+    const samples = this.surfaceProbeSamples;
+    if (samples.needsRefresh(entitySlot, ignoreEntityId, this.world.getTick())) {
+      samples.beginRefresh(entitySlot, ignoreEntityId);
+      forEachSurfaceProbePoint(
+        probeSetId,
+        bodyX,
+        bodyY,
+        probeDirX,
+        probeDirY,
+        (x, y, isCenter) => {
+          if (isCenter) return;
+          samples.push(
+            entitySlot,
+            x,
+            y,
+            this.sampleSurfaceLiftSupportZAt(x, y, ignoreEntityId, includeSupportSurfaces),
+            surfaceProbeUsesWaterSurface(this.world.getTerrainBedZ(x, y), WATER_LEVEL),
+          );
+        },
+      );
+      samples.endRefresh(entitySlot);
+    }
+
     const waterSurfaceDepth = waterSurfaceFollowingProportionalForceFromWater > 0
       ? this.surfaceFollowingProportionalResponseFromWater(bodyZ)
       : 0;
-    const sampleCount = forEachSurfaceProbePoint(
-      probeSetId,
-      bodyX,
-      bodyY,
-      probeDirX,
-      probeDirY,
-      (x, y, isCenter) => {
-        const groundZ = isCenter
-          ? directGroundZ
-          : this.sampleSurfaceLiftSupportZAt(x, y, ignoreEntityId, includeSupportSurfaces);
-        const waterCovered = surfaceProbeUsesWaterSurface(
-          this.world.getTerrainBedZ(x, y),
+    let airInverseProposedForceAggregate = 0;
+    let waterInverseProposedForceAggregate = 0;
+    let waterProportionalProposedForceAggregate = 0;
+
+    const accumulateProbe = (
+      x: number,
+      y: number,
+      groundZ: number,
+      waterCovered: boolean,
+      isCenter: boolean,
+    ): void => {
+      if (debugFrame !== undefined) {
+        const usesGroundInverseDistance =
+          (airLiftMediumActive && !waterCovered && airSurfaceFollowingInverseForceFromGround > 0) ||
+          (waterLiftMediumActive && waterCovered &&
+            waterSurfaceFollowingInverseForceFromGround > 0);
+        const usesWaterSurfaceInverseDistance =
+          airLiftMediumActive && waterCovered && airSurfaceFollowingInverseForceFromWater > 0;
+        const usesWaterSurfaceDepth =
+          waterLiftMediumActive && waterCovered &&
+          waterSurfaceFollowingProportionalForceFromWater > 0;
+        debugFrame.samples.push({
+          x,
+          y,
+          bodyZ,
+          isCenter,
+          groundInverseDistanceWorld: getSurfaceLiftInverseDistanceToSurfaceWorld(bodyZ, groundZ),
+          usesGroundInverseDistance,
+          waterSurfaceInverseDistanceWorld: waterCovered
+            ? getSurfaceLiftInverseDistanceToSurfaceWorld(bodyZ, WATER_LEVEL)
+            : null,
+          usesWaterSurfaceInverseDistance,
+          waterSurfaceDepthWorld: waterCovered
+            ? waterSurfaceDepth
+            : null,
+          usesWaterSurfaceDepth,
+        });
+      }
+      if (!waterCovered && airSurfaceFollowingInverseForceFromGround > 0) {
+        const forceMultiplier = this.surfaceFollowingInverseResponseFromSurfaceZ(
+          bodyZ,
+          groundZ,
+        );
+        const proposedForce = airSurfaceFollowingInverseForceFromGround * forceMultiplier;
+        airInverseProposedForceAggregate = accumulateSurfaceProbeProposedForce(
+          airInverseProposedForceAggregate,
+          proposedForce,
+          SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE,
+        );
+      }
+      if (waterCovered && airSurfaceFollowingInverseForceFromWater > 0) {
+        const forceMultiplier = this.surfaceFollowingInverseResponseFromSurfaceZ(
+          bodyZ,
           WATER_LEVEL,
         );
-        if (debugFrame !== undefined) {
-          const usesGroundInverseDistance =
-            (airLiftMediumActive && !waterCovered && airSurfaceFollowingInverseForceFromGround > 0) ||
-            (waterLiftMediumActive && waterCovered &&
-              waterSurfaceFollowingInverseForceFromGround > 0);
-          const usesWaterSurfaceInverseDistance =
-            airLiftMediumActive && waterCovered && airSurfaceFollowingInverseForceFromWater > 0;
-          const usesWaterSurfaceDepth =
-            waterLiftMediumActive && waterCovered &&
-            waterSurfaceFollowingProportionalForceFromWater > 0;
-          debugFrame.samples.push({
-            x,
-            y,
-            bodyZ,
-            isCenter,
-            groundInverseDistanceWorld: getSurfaceLiftInverseDistanceToSurfaceWorld(bodyZ, groundZ),
-            usesGroundInverseDistance,
-            waterSurfaceInverseDistanceWorld: waterCovered
-              ? getSurfaceLiftInverseDistanceToSurfaceWorld(bodyZ, WATER_LEVEL)
-              : null,
-            usesWaterSurfaceInverseDistance,
-            waterSurfaceDepthWorld: waterCovered
-              ? waterSurfaceDepth
-              : null,
-            usesWaterSurfaceDepth,
-          });
-        }
-        if (!waterCovered && airSurfaceFollowingInverseForceFromGround > 0) {
-          const forceMultiplier = this.surfaceFollowingInverseResponseFromSurfaceZ(
-            bodyZ,
-            groundZ,
-          );
-          const proposedForce = airSurfaceFollowingInverseForceFromGround * forceMultiplier;
-          airInverseProposedForceAggregate = accumulateSurfaceProbeProposedForce(
-            airInverseProposedForceAggregate,
-            proposedForce,
-            SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE,
-          );
-        }
-        if (waterCovered && airSurfaceFollowingInverseForceFromWater > 0) {
-          const forceMultiplier = this.surfaceFollowingInverseResponseFromSurfaceZ(
-            bodyZ,
-            WATER_LEVEL,
-          );
-          const proposedForce = airSurfaceFollowingInverseForceFromWater * forceMultiplier;
-          airInverseProposedForceAggregate = accumulateSurfaceProbeProposedForce(
-            airInverseProposedForceAggregate,
-            proposedForce,
-            SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE,
-          );
-        }
-        if (waterCovered && waterSurfaceFollowingInverseForceFromGround > 0) {
-          const forceMultiplier = this.surfaceFollowingInverseResponseFromSurfaceZ(
-            bodyZ,
-            groundZ,
-          );
-          const proposedForce = waterSurfaceFollowingInverseForceFromGround * forceMultiplier;
-          waterInverseProposedForceAggregate = accumulateSurfaceProbeProposedForce(
-            waterInverseProposedForceAggregate,
-            proposedForce,
-            SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE,
-          );
-        }
-        if (waterCovered && waterSurfaceFollowingProportionalForceFromWater > 0) {
-          const proposedForce = waterSurfaceFollowingProportionalForceFromWater * waterSurfaceDepth;
-          waterProportionalProposedForceAggregate = accumulateSurfaceProbeProposedForce(
-            waterProportionalProposedForceAggregate,
-            proposedForce,
-            SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE,
-          );
-        }
-      },
-    );
+        const proposedForce = airSurfaceFollowingInverseForceFromWater * forceMultiplier;
+        airInverseProposedForceAggregate = accumulateSurfaceProbeProposedForce(
+          airInverseProposedForceAggregate,
+          proposedForce,
+          SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE,
+        );
+      }
+      if (waterCovered && waterSurfaceFollowingInverseForceFromGround > 0) {
+        const forceMultiplier = this.surfaceFollowingInverseResponseFromSurfaceZ(
+          bodyZ,
+          groundZ,
+        );
+        const proposedForce = waterSurfaceFollowingInverseForceFromGround * forceMultiplier;
+        waterInverseProposedForceAggregate = accumulateSurfaceProbeProposedForce(
+          waterInverseProposedForceAggregate,
+          proposedForce,
+          SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE,
+        );
+      }
+      if (waterCovered && waterSurfaceFollowingProportionalForceFromWater > 0) {
+        const proposedForce = waterSurfaceFollowingProportionalForceFromWater * waterSurfaceDepth;
+        waterProportionalProposedForceAggregate = accumulateSurfaceProbeProposedForce(
+          waterProportionalProposedForceAggregate,
+          proposedForce,
+          SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE,
+        );
+      }
+    };
 
-    if (sampleCount === 0) {
-      const waterCovered = surfaceProbeUsesWaterSurface(
-        this.world.getTerrainBedZ(bodyX, bodyY),
-        WATER_LEVEL,
+    // The centre carries the body's own live ground and medium; the
+    // outriggers carry this unit's most recent lattice refresh.
+    const centerWaterCovered = surfaceProbeUsesWaterSurface(
+      this.world.getTerrainBedZ(bodyX, bodyY),
+      WATER_LEVEL,
+    );
+    accumulateProbe(bodyX, bodyY, directGroundZ, centerWaterCovered, true);
+    const outriggerCount = samples.count(entitySlot);
+    for (let i = 0; i < outriggerCount; i++) {
+      accumulateProbe(
+        samples.x(entitySlot, i),
+        samples.y(entitySlot, i),
+        samples.groundZ(entitySlot, i),
+        samples.waterCovered(entitySlot, i),
+        false,
       );
-      const airSurfaceZ = waterCovered ? WATER_LEVEL : directGroundZ;
-      const airInverseForce = waterCovered
-        ? airSurfaceFollowingInverseForceFromWater
-        : airSurfaceFollowingInverseForceFromGround;
-      out.airInverse = airInverseForce > 0
-        ? airInverseForce * this.surfaceFollowingInverseResponseFromSurfaceZ(
-          bodyZ,
-          airSurfaceZ,
-        )
-        : 0;
-      out.waterInverse = waterCovered && waterSurfaceFollowingInverseForceFromGround > 0
-        ? waterSurfaceFollowingInverseForceFromGround * this.surfaceFollowingInverseResponseFromSurfaceZ(
-          bodyZ,
-          directGroundZ,
-        )
-        : 0;
-      out.waterProportional = waterCovered && waterSurfaceFollowingProportionalForceFromWater > 0
-        ? waterSurfaceFollowingProportionalForceFromWater *
-          waterSurfaceDepth
-        : 0;
-      return;
     }
+
+    const sampleCount = 1 + outriggerCount;
     out.airInverse = finalizeSurfaceProbeProposedForce(
       airInverseProposedForceAggregate,
       sampleCount,
@@ -1146,6 +1173,7 @@ export class UnitForceSystem {
       SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE,
     );
   }
+
 
   private sampleSurfaceLiftSupportZAt(
     x: number,

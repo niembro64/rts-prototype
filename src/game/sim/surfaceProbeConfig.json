@@ -3,6 +3,9 @@
     "minimumDistanceWorld": 10,
     "probeAggregation": "average"
   },
+  "refresh": {
+    "bucketCount": 10
+  },
   "spacing": {
     "world": 150
   },

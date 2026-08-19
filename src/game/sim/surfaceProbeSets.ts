@@ -23,6 +23,21 @@ type SurfaceProbeSpacing = Readonly<{
   world: number;
 }>;
 
+type SurfaceProbeRefresh = Readonly<{
+  /**
+   * How many deterministic refresh phases the lattice sampling rotates
+   * through. One disables staggering and every lifted unit re-samples its
+   * probes on every fixed tick; N means a unit re-samples once every N
+   * ticks, on the tick its hashed bucket comes up.
+   *
+   * This staggers only the terrain/support QUERIES. The lift force is still
+   * computed every tick from the unit's live altitude against the cached
+   * surfaces, so raising this does not make a body push against a stale
+   * force — see SurfaceLiftProbeSampleCache.
+   */
+  bucketCount: number;
+}>;
+
 type SurfaceProbeSet = Readonly<{
   points: readonly SurfaceProbePoint[];
 }>;
@@ -36,6 +51,7 @@ type SurfaceFollowingDefaults = Readonly<{
 
 type SurfaceProbeConfig = {
   surfaceFollowingDefaults: SurfaceFollowingDefaults;
+  refresh: SurfaceProbeRefresh;
   spacing: SurfaceProbeSpacing;
   sets: Record<SurfaceProbeSetId, SurfaceProbeSet>;
 };
@@ -66,7 +82,11 @@ function isSurfaceFollowingProbeAggregationMode(
 
 function readSurfaceProbeConfig(): SurfaceProbeConfig {
   assertObject('root', rawSurfaceProbeConfig);
-  assertExactKeys('root', rawSurfaceProbeConfig, ['surfaceFollowingDefaults', 'spacing', 'sets']);
+  assertExactKeys(
+    'root',
+    rawSurfaceProbeConfig,
+    ['surfaceFollowingDefaults', 'refresh', 'spacing', 'sets'],
+  );
   assertObject('surfaceFollowingDefaults', rawSurfaceProbeConfig.surfaceFollowingDefaults);
   assertExactKeys(
     'surfaceFollowingDefaults',
@@ -79,6 +99,15 @@ function readSurfaceProbeConfig(): SurfaceProbeConfig {
   );
   if (!isSurfaceFollowingProbeAggregationMode(rawSurfaceProbeConfig.surfaceFollowingDefaults.probeAggregation)) {
     throw new Error('Invalid surfaceProbeConfig.json: invalid surfaceFollowingDefaults.probeAggregation');
+  }
+  assertObject('refresh', rawSurfaceProbeConfig.refresh);
+  assertExactKeys('refresh', rawSurfaceProbeConfig.refresh, ['bucketCount']);
+  assertPositiveFiniteNumber(
+    rawSurfaceProbeConfig.refresh.bucketCount,
+    'surfaceProbeConfig.refresh.bucketCount',
+  );
+  if (!Number.isInteger(rawSurfaceProbeConfig.refresh.bucketCount)) {
+    throw new Error('Invalid surfaceProbeConfig.json: refresh.bucketCount must be an integer');
   }
   assertObject('spacing', rawSurfaceProbeConfig.spacing);
   assertExactKeys('spacing', rawSurfaceProbeConfig.spacing, ['world']);
@@ -118,6 +147,9 @@ function readSurfaceProbeConfig(): SurfaceProbeConfig {
       minimumDistanceWorld: rawSurfaceProbeConfig.surfaceFollowingDefaults.minimumDistanceWorld,
       probeAggregation: rawSurfaceProbeConfig.surfaceFollowingDefaults.probeAggregation,
     }),
+    refresh: Object.freeze({
+      bucketCount: rawSurfaceProbeConfig.refresh.bucketCount,
+    }),
     spacing: Object.freeze({
       world: rawSurfaceProbeConfig.spacing.world,
     }),
@@ -131,6 +163,18 @@ export const SURFACE_FOLLOWING_MINIMUM_DISTANCE_WORLD =
   SURFACE_PROBE_CONFIG.surfaceFollowingDefaults.minimumDistanceWorld;
 export const SURFACE_FOLLOWING_PROBE_AGGREGATION_MODE =
   SURFACE_PROBE_CONFIG.surfaceFollowingDefaults.probeAggregation;
+export const SURFACE_PROBE_REFRESH_BUCKET_COUNT =
+  SURFACE_PROBE_CONFIG.refresh.bucketCount;
+
+/** The widest authored lattice. One cache row per unit is sized from this,
+ *  so a set can gain points without every consumer re-deriving a stride. */
+export const SURFACE_PROBE_MAX_POINTS = (() => {
+  let widest = 1;
+  for (const setId of SURFACE_PROBE_SET_IDS) {
+    widest = Math.max(widest, SURFACE_PROBE_CONFIG.sets[setId].points.length);
+  }
+  return widest;
+})();
 
 export function isSurfaceProbeSetId(value: unknown): value is SurfaceProbeSetId {
   return typeof value === 'string' &&
