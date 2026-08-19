@@ -1,0 +1,935 @@
+================================================================================
+SPECTATORS, TEAMS, REJOIN AND CATCH-UP — ARCHITECTURE AUDIT AND PLAN
+Budget Annihilation (rts-prototype)
+Written 2026-08-19. Audit against HEAD 16217ca0.
+Authority for anything not stated here: budget_design_philosophy.html, then BAR.
+================================================================================
+
+0. WHAT THIS DOCUMENT IS
+
+An audit of how lobbies, seats, teams and lockstep flow control actually work
+today, a test of the eight assumptions in the request against that code, and a
+phased plan to get to the requested model.
+
+No code was changed producing this document.
+
+The short version:
+
+  - Three of the eight assumptions are already true in code and need only
+    plumbing or a UI control.
+  - One assumption ("host can define teams / move players between them") is
+    implemented in the lobby and then SILENTLY DISCARDED at match start. That is
+    a live bug, not a missing feature.
+  - The catch-up assumption (full command history + map parameters, replay from
+    frame 0) is architecturally correct and is the only option this codebase can
+    ship today — but it has a hard throughput ceiling that must be designed
+    around, not discovered at runtime.
+  - The pause assumption is new work, not a tweak: there is NO lockstep flow
+    control at all today. The coordinator free-runs on a wall clock and never
+    waits for anyone. The "WAITING FOR" indicator on screen is honest about who
+    is behind and dishonest about anybody waiting.
+
+================================================================================
+1. CURRENT STATE — AUDIT
+================================================================================
+
+1.1 THE THREE OWNERSHIP LEVELS ARE MODELLED CORRECTLY
+
+src/game/sim/teamRoster.ts is faithful to the philosophy document: PLAYER (a
+client seat), TEAM (owner of units and an economy), ALLY TEAM (the alliance,
+what the lobby labels TEAM N). Terrain slices, spawn arcs, metal-deposit ring
+phase and damage legality all count ALLY TEAMS. src/game/lobby/lobbyIdentity.ts
+resolves the same roster the sim will resolve, so lobby colours cannot drift
+from match colours.
+
+buildTeamRosterFromSeatCounts() is the only builder that can express an EMPTY
+side, and it exists specifically so a declared side still gets its terrain
+slice. That matters for "the host can define as many teams as he likes" — see
+F2 below.
+
+Verdict: the model is right. Nothing in this plan changes it.
+
+1.2 LOBBY SEATING — WHAT WORKS
+
+  - NetworkLobbyRoster.seedHost() seats the host as player 1 on
+    FIRST_ALLY_TEAM_ID (TEAM 1). The request's rule 1 is already true.
+  - NetworkLobbyRoster.defaultAllyTeamForJoin() places a joiner on the emptiest
+    side, ties to the lowest id. The request's auto-balance rule is already true.
+  - NetworkManager.setPlayerAllyTeam() (NetworkManager.ts:225) is host-only and
+    enforced in the network layer, not just the UI, then re-announces the whole
+    roster. One writer, as the philosophy document requires.
+  - roster.applyClientReportedInfo() strips allyTeamId from client-authored
+    payloads, so a client cannot seat itself.
+  - The seat's SIDE is a REQUIRED field on `playerJoined`, which was a real bug
+    fix — an absent side is indistinguishable from TEAM 1.
+
+1.3 FINDINGS
+
+F1  [BUG, BLOCKING]  Lobby team assignment never reaches an online match.
+
+    src/game/network/NetworkBattleHandoff.ts:47-55 calls
+    buildCanonicalMatchInitialization() WITHOUT allyTeamByPlayerId.
+    CanonicalMatchInitialization.canonicalAllyTeamIds() then treats every seat
+    as unassigned and gives each one its own side (`-seat` namespace, renumbered
+    densely). Result: every ONLINE lockstep match is a free-for-all regardless
+    of what the lobby shows.
+
+    The offline path is fine — gameCanvasRealBattleStartup.ts:331 passes
+    network.getAllyTeamByPlayerId(). Only the handoff path, which is the one
+    every online match takes, drops it.
+
+    Consequence: TEAM badges in the lobby, the team colour bands, the terrain
+    dividers and friendly-fire rules all disagree with what players were shown.
+    `git log -S allyTeamByPlayerId -- NetworkBattleHandoff.ts` is empty, so this
+    has never worked online.
+
+F2  [GAP]  The host cannot change the number of teams, and the default is wrong.
+
+    NetworkManager.setLobbyAllyTeamCount() exists (NetworkManager.ts:206),
+    clamps to 1..6, and re-seats orphaned players. Nothing calls it — there is
+    no lobby control. The default side count is
+    `Math.max(1, Math.floor(DEMO_CONFIG.allyTeamCount) || 1)`, and
+    demoConfig.json's allyTeamSeats is [1,2,1,1], so a real lobby silently
+    defaults to FOUR sides. The request wants two.
+
+    Also unresolved: canonicalAllyTeamIds() renumbers densely over OCCUPIED
+    seats, so a side the host created and left empty disappears at match start
+    and its terrain slice is never carved. "As many teams as he likes" therefore
+    currently means "as many occupied teams". That is a deliberate decision to
+    make, not an accident to inherit.
+
+F3  [BUG]  Seat ids are a monotonic counter, so lobby churn exhausts the lobby.
+
+    NetworkManager.ts:855 refuses a connection when `nextPlayerId >
+    MAX_LOBBY_PLAYERS` (6), and :861 does `nextPlayerId++`. Seats are never
+    reclaimed on leave (`roster.delete(playerId)` only). Five joins and five
+    leaves leaves a two-person lobby unable to accept anyone. `nextPlayerId` is
+    only reset in beginNetworkSetup() — i.e. by tearing the session down.
+
+    This also blocks rejoin: a returning player cannot be given back their seat
+    because seats are handed out by a counter, not reserved by identity.
+
+F4  [ARCHITECTURAL GAP]  There is no lockstep flow control. Nothing waits.
+
+    gameCanvasRealBattleStartup.ts pumpFrame() (line ~1128):
+
+      - takeLockstepCommandFrameBudget() derives a frame budget from
+        performance.now() elapsed time.
+      - The coordinator immediately emits frames [startFrame ..
+        startFrame+budget), feeds them to its OWN scheduler, and broadcasts.
+      - LockstepFrameScheduler.advanceReadyFrames() then steps them.
+
+    The coordinator's own queue is therefore always populated, so the
+    coordinator never stalls. Peer acks (`lockstepAck`) are consumed ONLY for
+    resend and for the peer-frame report. They gate nothing.
+
+    A lagging client stalls locally (it has no frame to run) while the match
+    runs on without it. Its commands are rescheduled forward by
+    rescheduleCoordinatorEnvelope() to `coordinatorNextFrame + inputDelay`, so
+    they do execute — arbitrarily far in that player's subjective future. The
+    match does not desync; it just becomes unplayable for the person behind.
+
+    src/components/gameCanvasPeerLag.ts opens with "Lockstep runs at the speed
+    of its slowest participant: every peer must have a frame's commands before
+    anyone may execute it." That describes the intended design and not the
+    implemented one. The banner reads "WAITING FOR <name>" while nobody waits.
+
+    The protocol pieces for the fix already exist and are wired:
+    `lockstepPause` / `lockstepResume` messages, LockstepFrameScheduler.pause()
+    / resume() / 'protocol-paused' status, and the coordinator's per-peer
+    latestAckForPlayer(). Only the POLICY is missing.
+
+F5  [BOUNDARY]  Spectators, late join and reconnect are explicitly refused.
+
+    src/game/architecture/LockstepSupportPolicy.ts declares
+    `spectators: 'frame-0-only-roster-seat-required'`, `lateJoin: false`,
+    `reconnect: false`, and assertDeterministicLockstepSupported() throws when
+    the local player is not in the frame-0 roster.
+    src/architecture.json sets `allowLateJoin: false`, and architectureConfig.ts
+    parseAllowLateJoin() THROWS if it is anything but false.
+    MultiplayerBackend.admitsNewPlayers() returns true only in state 'lobby', and
+    NetworkManager.handleIncomingConnection() closes the socket otherwise.
+
+    These are the four gates that must come down, in that order, and they must
+    be DELETED rather than flipped — the philosophy document's "no legacy
+    fallbacks" rule forbids leaving a disabled branch behind.
+
+F6  [NAMING COLLISION]  `spectateMode` in the UI means "sidebar hidden".
+
+    gameCanvasChromeState.ts:129/137/162, GameCanvas.vue, LobbyModal.vue's
+    `spectate` emit, GameCanvasOverlays.vue's `spectateMode` prop. It is a
+    localStorage-backed chrome toggle with nothing to do with watching a match.
+    Every one of these must be renamed before real spectators land, or "grep for
+    spectator" stops answering anything.
+
+1.4 WHAT ALREADY EXISTS AND SHOULD BE REUSED
+
+  - Spectator command authority. commandAuthority.ts already has
+    `{ mode: 'spectator', playerId: PlayerId | undefined }`;
+    canApplyServerControlCommand() returns false for it and
+    commandAuthorityPlayerId() returns undefined, so no gameplay command can be
+    attributed to a spectator.
+
+  - Spectator viewing. LocalGameConnection.setSpectatorTarget()
+    (LocalGameConnection.ts:125) re-aims ONLY the snapshot filter, leaving
+    command attribution alone. GameServer.addSnapshotListener(cb, undefined)
+    is an explicit global-observer subscription with no fog filter, and
+    stateSerializerVisibility.ts has a documented admin/spectator path.
+
+    IMPORTANT CONSEQUENCE OF LOCKSTEP: every peer already runs the whole
+    authoritative simulation locally, and snapshots are presentation-only. A
+    spectator's "view as player N" or "view everything" is therefore a purely
+    LOCAL decision that costs the network nothing. Almost all of the spectator
+    experience is free once the seat model and catch-up exist.
+
+  - Replay-from-command-log. CanonicalCheckpoint.ts already defines
+    `format: 'deterministic-command-log.v1'` — a config plus a list of command
+    frames — and importCanonicalCheckpoint() boots a fresh
+    ServerBootstrap/ServerSimulationCore, replays every frame, and verifies the
+    resulting canonical state hash against the recorded one. That is exactly the
+    catch-up mechanism. It is currently reachable only from
+    CanonicalCheckpointContractTest.ts.
+
+  - Deterministic reset. resetReusableSimulationStateForDeterministicReplay()
+    already clears the module singletons (terrain, vegetation, spatial grid,
+    projectile/damage/energy buffers, entity pools) that would otherwise leak
+    across a boot in the same page. Catch-up MUST go through it.
+
+  - Frame retention. NetworkLockstepTransport prunes outbound command frames to
+    `minAckedFrameAcrossConnectedPeers - 900`, so frames a lagging peer has not
+    acked are already retained indefinitely, and
+    resendCommandFramesAfter(..., 300) at 250 ms intervals already gives a
+    ~60x-realtime resend channel at 20 Hz. Catch-up delivery is mostly a matter
+    of pointing existing machinery at a new archive.
+
+  - Explicit FSMs. src/game/state/StateMachine.ts, plus the session lifecycle,
+    host eviction and peer-lag machines. Every new lifecycle in this plan is
+    written as one of these, per house rule.
+
+  - Silence detection. NetworkHeartbeatTracker already REPORTS a silent peer at
+    10 s (onPeerSilent) while deliberately refusing to CLOSE the connection
+    mid-battle. That report is the correct trigger for a disconnect pause. Do
+    not build a second detector.
+
+1.5 RELEVANT CONSTANTS AS SHIPPED
+
+    architecture.json          fixedStepHz 20, inputDelayTicks 15 (= 750 ms),
+                               checksumIntervalTicks 180 (= 9 s),
+                               stallTimeoutMs 5000, desyncPolicy "pause",
+                               allowLateJoin false, presentation snapshots 5 Hz.
+    LobbySettings              simulationTickRateHz is per-lobby (1..60) and is
+                               part of the hashed initialization.
+    MAX_LOBBY_PLAYERS          6 (LobbyDirectory.ts), shared with the directory.
+    RECENT_FRAME_LIMIT         180 frames kept by LockstepFrameScheduler.
+    OUTBOUND_COMMAND_FRAME_
+      RETAIN_AFTER_ACK         900 frames past the slowest ack.
+    LOCKSTEP_MAX_PUMP_
+      ADVANCE_FRAMES           300.
+    Measured sim step          ~18.1 ms/tick @ entity cap 1000,
+                               ~50 ms/tick @ cap 2500 (2026-08-12 harness).
+
+================================================================================
+2. TESTING THE ASSUMPTIONS
+================================================================================
+
+A1. "Creating a lobby makes you a player on team 1."
+    VERDICT: already true. seedHost() → FIRST_ALLY_TEAM_ID.
+    CAVEAT: the lobby's SIDE COUNT defaults to DEMO_CONFIG.allyTeamCount = 4.
+    Fix the default to 2 for real lobbies (F2); the demo keeps its own shape.
+
+A2. "Join as player, or watch. If a game is in progress, watch is the only
+     option."
+    VERDICT: sound, and matches BAR. Not implemented.
+    IMPLICATION: `admitsNewPlayers(state)` must become two questions —
+    admitsPlayers (lobby only) and admitsSpectators (lobby OR playing). The
+    session FSM itself does not change; the predicate does. That is exactly the
+    "derive conditions from the state" pattern the philosophy document asks for.
+    The lobby directory already publishes status 'open' | 'in-game', so the
+    browse list can render JOIN on open rows and WATCH on both.
+
+A3. "A user cannot move himself between spectator and player in the lobby; they
+     leave and rejoin."
+    VERDICT: accept, and it is the better rule. Role fixed at admission means
+    seat allocation is a connect-time decision, the frame-0 roster is stable,
+    and there is no mid-lobby reshuffle of PlayerIds to keep two clients
+    agreeing on. Most engines allow the toggle and pay for it with roster races.
+    CONSEQUENCE: the client must declare its role BEFORE the host grants a seat.
+    Today the host assigns blindly on `conn.open`. This is the single most
+    invasive protocol change in the plan (see 5.2).
+    OPEN QUESTION: the rule constrains the USER. Should the HOST be able to move
+    a spectator into an empty seat, or a player to the spectator bench? The
+    mechanism is identical to a team move and costs almost nothing to add. Not
+    assumed; see section 9.
+
+A4. "A player joining is auto-assigned to the team with fewer players."
+    VERDICT: already true. defaultAllyTeamForJoin(), ties to lowest id.
+    CAVEAT: it balances across the lobby's declared side count, so it only
+    behaves as expected once A5's side-count control exists.
+
+A5. "The host can move players between any team; he can define as many teams as
+     he likes; default 2."
+    VERDICT: half true, and the working half is discarded.
+    - Moving players: implemented and host-authoritative — but see F1, the
+      result never reaches the match. This must be fixed first; every other
+      team-related change is untestable until it is.
+    - Defining teams: setLobbyAllyTeamCount() exists, is unreachable from the
+      UI, is clamped to 6, and defaults to 4.
+    - "As many as he likes" needs a bound and a decision about empty sides.
+      Recommended bound: MAX_LOBBY_PLAYERS (6) — a side per seat is a true FFA
+      and is the most any roster can occupy.
+      Recommended decision: EMPTY SIDES ARE DROPPED at match start, which is
+      what canonicalAllyTeamIds() already does and what BAR does. The lobby
+      should therefore not let the host create a side it will silently lose:
+      show empty sides as "no slice will be carved" or collapse them on start
+      with a visible notice. Do not leave the discrepancy silent.
+
+A6. "Full command history and map parameters, so a player can rejoin after
+     disconnect or a spectator can join any time and catch up from the very
+     beginning."
+    VERDICT: architecturally correct, and the only option this codebase can ship
+    today, because there is no simulation state serializer — CanonicalCheckpoint
+    is a command log, not a state dump. But four things must be designed in, not
+    discovered:
+
+    (a) THROUGHPUT CEILING. Catch-up speed is bounded by sim step cost.
+        At 20 Hz a real-time frame is 50 ms. Measured step cost is ~18 ms/tick
+        at entity cap 1000 → replay runs at ~2.7x real time, so the gap closes
+        at ~1.7x and a 20-minute match takes ~7.5 minutes to replay. At cap 2500
+        the step is ~50 ms → replay runs at ~1.0x and the joiner NEVER converges.
+        Early frames are cheap (few entities), late frames are not, so the
+        effective rate falls as the replay progresses.
+        REQUIRED: measure the achieved rate continuously during catch-up, show
+        it, and FAIL LOUDLY with the measured number when convergence is not
+        possible. Never replay forever behind a spinner.
+        This is also the honest argument for a state checkpoint later — but only
+        after phase 3 has produced real numbers. Do not build it speculatively.
+
+    (b) HISTORY SIZE IS A NON-ISSUE. At 20 Hz, 20 minutes is 24,000 frames, but
+        only frames that actually carry commands need storing or sending. Six
+        players at RTS action rates produce on the order of 6-10 commands/second
+        — roughly 7,000-12,000 envelopes for a 20-minute match, ~1.5-3 MB as
+        live JS objects and far less on the wire. Even a two-hour match fits.
+        Send only non-empty frames plus a `throughFrame` high-water mark; the
+        receiving scheduler treats every unlisted frame as empty.
+
+    (c) THE SIM MUST NOT LEARN THAT ANYONE DISCONNECTED. A rejoin only works if
+        the seat's units are exactly where the deterministic stream left them.
+        Connection state is presentation/session state and must never enter the
+        command stream. The ONLY way a player leaves the simulation is an
+        explicit, frame-scheduled `resign` command that every peer executes on
+        the same frame. Write this down as an invariant; it is the easiest thing
+        in this whole plan to get wrong.
+
+    (d) REJOIN NEEDS A STABLE SEAT IDENTITY. PeerJS ids are random per
+        connection. A returning player must present an opaque seat token issued
+        when the seat was granted, or they will be handed a new seat and their
+        army will belong to a ghost. F3 must be fixed for this to be possible.
+
+A7. "A spectator being behind shouldn't cause the game to pause."
+    VERDICT: correct and non-negotiable. Enforce it structurally, not by policy:
+    a spectator must never appear in the FRAME COMPLETION SET. Concretely they
+    must be absent from LockstepFrameScheduler's expectedPlayerIds, from
+    requiredReadyPlayerIds, from handoff.playerIds, and from the hashed
+    canonical initialization — while still being in the FRAME DELIVERY SET,
+    because they need every command frame to keep simulating.
+    Separating those two sets is the core structural change of phase 1.
+    COROLLARY: a spectator must have no route into the command stream at all.
+    Note that `ping` is deliberately classified gameplay-truth
+    (LockstepCommandProtocol.ts) because it is team-shared, so a spectator ping
+    would be a gameplay mutation. Spectator pings and chat ride the existing
+    non-lockstep `communication` relay or they do not exist.
+
+A8. "If a player is behind too far or disconnected, pause until they're
+     reasonably caught up."
+    VERDICT: right intent; this is new work, not a tweak (F4).
+    REFINEMENT FROM PRACTICE: pausing is too coarse to be the only tool. BAR /
+    Recoil, SC2 and every other lockstep RTS spend most of their time in
+    CONTINUOUS flow control — the frame rate droops to the slowest peer — and
+    reserve a hard pause for disconnects and severe stalls. If pause is the only
+    mechanism, a player with mildly bad latency toggles the whole match between
+    frozen and running, which is worse than a slightly slower match.
+    Recommended TWO TIERS, both driven by the acks the coordinator already has:
+
+      Tier 1, flow control (continuous, unlatched): the coordinator may emit
+      frame F only when every SEATED, CONNECTED player has acked at least
+      F - lagWindowTicks. Under the window nothing changes; over it the
+      coordinator throttles. This is what makes "WAITING FOR" honest, and it
+      makes tier 2 rare.
+
+      Tier 2, protocol pause (discrete, latched, has a named subject): trigger
+      when a seated player is silent (reuse NetworkHeartbeatTracker's 10 s
+      onPeerSilent) OR is behind by more than pauseAfterSeconds continuously.
+      Broadcast the existing `lockstepPause` extended with subjectPlayerId and a
+      machine-readable reason. Resume when the subject is connected and within
+      resumeWithinSeconds. Both thresholds asymmetric, in the FSM table, not in
+      an inline comparison.
+
+      Escape hatch: a pause must be bounded. After dropAfterSeconds the
+      coordinator issues a host-only, frame-scheduled `resign` for the subject,
+      the match resumes, and the seat stays reserved for a rejoin that can no
+      longer affect the outcome. Without this, one closed laptop ends everyone's
+      evening.
+
+    All five numbers belong in architecture.json under lockstep.flowControl —
+    config is data.
+
+    SIDE NOTE, out of scope but worth recording: inputDelayTicks is 15, which is
+    750 ms at 20 Hz. Once tier-1 flow control is real that delay becomes much
+    more noticeable. BAR-class engines run 120-300 ms. Worth revisiting after
+    phase 2 measurements, as its own change.
+
+================================================================================
+3. TARGET MODEL
+================================================================================
+
+3.1 VOCABULARY (extends the existing three levels; does not replace them)
+
+  SESSION MEMBER   one connection to a lobby/match. Has a role fixed at
+                   admission. Every member has a memberId; only PLAYERS have a
+                   PlayerId.
+  PLAYER           a member holding a SEAT. Owns a Team, sits on an Ally Team,
+                   contributes command frames, is in the frame completion set,
+                   is in the hashed roster.
+  SPECTATOR        a member holding no seat. Simulates, never commands, never
+                   gates a frame, is not in the hashed roster, and is invisible
+                   to the match's determinism.
+  SEAT             a reserved PlayerId in 1..MAX_SEATS, with a token. Reusable
+                   in the lobby, reserved-not-recycled during a match.
+
+3.2 MEMBER SHAPE
+
+  SessionMember {
+    memberId          stable for the session, never reused
+    role              'player' | 'spectator'        fixed at admission
+    seatToken         opaque; issued once; presented to reclaim a seat
+    playerId          PlayerId when role === 'player'; absent otherwise
+    allyTeamId        when role === 'player'; host-assigned only
+    name, ipAddress, location, timezone, localTime
+    presence          FSM state; NEVER reaches the simulation
+  }
+
+  LobbyPlayer as it exists today becomes the player-role projection of this.
+
+3.3 THE TWO SETS THAT MUST NOT BE CONFLATED
+
+  FRAME COMPLETION SET   seated, connected players. Gates frame emission,
+                         gates pause, is hashed into the initialization,
+                         is LockstepFrameScheduler.expectedPlayerIds.
+  FRAME DELIVERY SET     every connected member, players and spectators.
+                         Receives command frames, acks for resend/telemetry
+                         only.
+
+  Every question about lag, pause and readiness resolves against the completion
+  set. Every question about transport resolves against the delivery set. If a
+  future reader has to ask which one a piece of code means, this plan failed.
+
+3.4 LIFECYCLES (all as declared FSMs in src/game/state/StateMachine.ts)
+
+  SessionLifecycle (exists, unchanged)
+      idle → connecting → lobby → playing → ended
+      Change only the predicates:
+        admitsPlayers(state)     = state === 'lobby'
+        admitsSpectators(state)  = state === 'lobby' || state === 'playing'
+      Delete admitsNewPlayers().
+
+  MemberPresence (new, one per member, coordinator-side)
+      joining → seated → live → silent → reconnecting → live
+                                     ↘ dropped (terminal)
+      'silent' is fed by NetworkHeartbeatTracker.onPeerSilent. 'dropped' is the
+      only state that permits the frame-scheduled `resign`.
+
+  MatchFlow (new, coordinator-side)
+      running → throttled → running
+      running/throttled → paused(subject) → resuming → running
+      any → aborted (desync, host gone)
+      Tier-1 and tier-2 policy live here as asymmetric edges, not as counters.
+
+  CatchUp (new, joining peer)
+      requesting → grantReceived → replaying → verifying → live
+                                            ↘ failed(reason)
+      This is the classic pile-of-booleans shape; it gets a table.
+
+================================================================================
+4. WHERE STATE LIVES — BACKEND vs PEER-TO-PEER vs LOCAL
+================================================================================
+
+The single rule: THE DIRECTORY BACKEND CARRIES NO MATCH DATA. web_games_backend
+is a zero-dependency lease registry with no database, deliberately. It exists so
+players can find a room code without being told one, and every call in
+LobbyDirectory.ts is best-effort with a 6 s deadline that degrades to an empty
+list. Putting rosters, settings, seat tokens or command history there would make
+the directory load-bearing and would resurrect dead matches on restart. It stays
+a signpost.
+
+4.1 BACKEND SERVER (games.niemo.io /api/lobbies) — PUBLIC DISCOVERY ONLY
+
+  FIELD              SOURCE                     WHEN SENT
+  ---------------------------------------------------------------------------
+  game               constant                   every announce/heartbeat
+  roomCode           host, at signaling open     "
+  name               host lobby name             "
+  hostName           host roster entry           "
+  status             SessionLifecycle-derived    "  ('open' | 'in-game')
+  playerCount        seated members              "
+  maxPlayers         MAX_LOBBY_PLAYERS           "
+  spectatorCount     NEW: spectator members      "
+  mapName            LobbySettings-derived       "
+  createdAt/updatedAt backend-owned lease clock  backend
+
+  CADENCE
+    - Announce once when PeerJS signaling opens.
+    - Heartbeat every 10 s (existing HEARTBEAT_INTERVAL_MS); backend expires at
+      30 s, so two missed beats are tolerated.
+    - Immediate republish on: session start (open → in-game), map/settings
+      change that alters mapName, and member count change — coalesced to at most
+      one extra publish per second so a churning lobby cannot spam the lease.
+    - Withdraw on teardown; withdrawal already hangs off beginNetworkSetup(),
+      which every teardown path passes through.
+
+  KNOWN BACKEND TRAP (already fixed once, do not regress): a SLIM heartbeat that
+  omits a field must PRESERVE the announced value, not reset it to a default.
+  Adding spectatorCount adds one more field with that requirement.
+
+  NEVER ON THE BACKEND: rosters, member names beyond the host's, seat tokens,
+  ally-team assignment, LobbySettings, BattleHandoff, command history, state
+  hashes, frame numbers, chat.
+
+4.2 PEER-TO-PEER (PeerJS data channels; host relays, host is frame coordinator)
+
+  LOBBY PHASE
+    connection metadata   {protocolVersion, role, seatToken?}  — ON CONNECT,
+                          before the host grants anything. This is the only
+                          place role can be declared early enough (A3).
+    sessionAssignment     host → one client, once, on admission.
+                          {memberId, role, playerId?, seatToken, allyTeamId?}
+                          Replaces `playerAssignment`.
+    rosterUpdate          host → all, ATOMIC FULL LIST. On: any join, any leave,
+                          any seat move, any side-count change, any rename, any
+                          info arrival. Replaces the N×playerJoined +
+                          N×playerInfoUpdate fan-out, which is where the seat/
+                          side drift bugs came from. Same reasoning already
+                          applied to `lobbySettings`: the object is small enough
+                          that atomic replace beats deltas.
+    lobbySettings         host → all, full object. On every change and on every
+                          admission.
+    playerInfo            client → host. Own name/ip/tz only; the host strips
+                          anything it owns (already true) and folds it into the
+                          next rosterUpdate.
+    heartbeat             both directions, 2 s. Unchanged.
+    communication         chat and map drawings, host-relayed. Unchanged.
+
+  MATCH START
+    gameStart + BattleHandoff   host → all, once.
+                          Carries the CanonicalMatchInitialization (now WITH
+                          allyTeamIds — F1), its hash, the seated roster, and
+                          LobbySettings. Every peer rebuilds and re-hashes it
+                          locally and refuses to start on mismatch. That check
+                          already exists and is good; it just needs the correct
+                          input.
+
+  MATCH PHASE
+    lockstepCommand       seated client → coordinator. Per command.
+    lockstepCommandFrame  coordinator → FRAME DELIVERY SET. Per frame (batched).
+      /Batch              Spectators receive these; they simply never send.
+    lockstepAck           every member → coordinator. Frame progress.
+                          From the COMPLETION SET it gates emission (tier 1).
+                          From spectators it is resend/telemetry only.
+    lockstepPeerFrames    coordinator → all, ~2 Hz. Informational; classified
+                          `coalesce`, never `critical`. Extend with role so the
+                          UI can show spectators separately without accusing
+                          them of lagging.
+    lockstepChecksum      every member → coordinator, every 180 frames.
+                          Spectator checksums are worth keeping: a spectator
+                          that replayed from genesis and matches is the
+                          strongest determinism signal the system can produce.
+    lockstepPause/Resume  coordinator → all. Pause gains subjectPlayerId and a
+                          reason code.
+    lockstepDesync        any → all. Unchanged.
+
+  JOIN-IN-PROGRESS / REJOIN (new)
+    sessionResumeRequest  joiner → host, immediately after admission when the
+                          session is already 'playing'.
+                          {memberId, role, seatToken?, haveThroughFrame}
+    sessionResumeGrant    host → joiner, once.
+                          {handoff, grantFrame, grantStateHash,
+                           archiveThroughFrame}
+                          The handoff is byte-identical to what the frame-0
+                          peers received — one contract, one code path.
+    lockstepHistory       host → joiner, chunked, backpressure-aware.
+                          {fromFrame, throughFrame, frames: [non-empty only]}
+                          Reuses the send budget's existing classification.
+                          The coordinator begins UNICASTING LIVE FRAMES to the
+                          joiner at the moment it grants, so there is no hole
+                          between the archive tail and the live stream.
+
+  KEY SIMPLIFICATION: history frames and live frames both enter the joiner
+  through the SAME LockstepFrameScheduler.receiveCommandFrame(). The scheduler
+  already keys by frame index, tolerates arrival order, and refuses frames below
+  its cursor. The joiner therefore needs no second buffer — only a time-budgeted
+  pump and the CatchUp FSM to know when it is live.
+
+4.3 LOCAL ONLY — NEVER ON THE WIRE
+
+  Which player a spectator is viewing as, or "view everything". Camera. Selection
+  (already local presentation). Fog presentation. Client bar settings. UI chrome.
+  Replay progress. Because lockstep gives every peer the whole authoritative
+  world, spectator vision costs the network nothing and the coordinator nothing.
+
+4.4 SECURITY REALITY (state it plainly, do not pretend otherwise)
+
+  In deterministic lockstep every client holds the complete world in memory.
+  Fog of war is a presentation filter — the philosophy document says so
+  outright: "Lockstep snapshots are presentation-only". A modified client can
+  therefore see everything, today, with or without spectators. Adding spectators
+  does not weaken this; it makes the existing property visible.
+
+  Consequences to accept and write into the product, not to engineer around:
+    - Spectator fog is a courtesy, not a boundary.
+    - Live spectating of a competitive match is only as safe as the people in
+      the room. If that ever matters, the answer is a delayed spectator stream
+      (a spectator held N seconds behind the coordinator's frame), which this
+      architecture supports trivially — cap the spectator's catch-up target at
+      grantFrame - delayTicks and keep it there. Note it as an available lever;
+      do not build it now.
+
+================================================================================
+5. THE CHANGES, IN DEPENDENCY ORDER
+================================================================================
+
+5.1 SEAT ALLOCATION BECOMES A RESERVATION TABLE
+
+  Replace NetworkManager.nextPlayerId with a SeatTable owning slots
+  1..MAX_LOBBY_PLAYERS:
+    - grant(role, seatToken?) → the lowest free seat, or the reserved seat that
+      the presented token owns, or null when full.
+    - release(playerId) in the LOBBY returns the seat to the pool.
+    - release(playerId) during PLAYING marks it RESERVED, not free: it belongs
+      to the disconnected player until they rejoin or are dropped.
+    - Spectators consume NO seat and get no PlayerId.
+  Fixes F3, and is the precondition for rejoin.
+
+5.2 ROLE IS DECLARED BEFORE ADMISSION
+
+  Today the host assigns a seat inside `conn.on('open')` with no input from the
+  client. PeerJS carries connection metadata with the connection itself, which
+  is the only channel that arrives early enough:
+    peer.connect(hostId, { reliable: true, metadata: { protocolVersion, role,
+                                                       seatToken } })
+  The host reads conn.metadata in handleIncomingConnection(), validates the
+  protocol version, checks admitsPlayers/admitsSpectators for the current
+  session state, and either grants (sessionAssignment) or closes with a reason.
+  A missing or malformed metadata block is a protocol error — refuse it, do not
+  default it to 'player'.
+
+5.3 TEAM ASSIGNMENT REACHES THE MATCH (F1)
+
+  buildBattleHandoff() takes allyTeamByPlayerId and forwards it to
+  buildCanonicalMatchInitialization(). NetworkManager.startGame() supplies
+  this.roster.allyTeamByPlayerId(). Contract test: a lobby with a non-trivial
+  side assignment produces an initialization whose allyTeamIds match, whose hash
+  differs from the FFA arrangement, and whose resolved TeamRoster puts the right
+  seats on the right sides. This is small and must land FIRST — every other
+  team-facing change is untestable without it.
+
+5.4 SIDE COUNT BECOMES A HOST CONTROL
+
+  Wire setLobbyAllyTeamCount() to a lobby bar control (same style as the other
+  host-only battle settings). Default 2 for real lobbies, sourced from a real-
+  battle constant rather than DEMO_CONFIG. Bound at MAX_LOBBY_PLAYERS. Decide
+  and display the empty-side rule (recommendation: empty sides collapse at start
+  and the lobby says so before the host clicks START).
+
+5.5 FLOW CONTROL AND PAUSE
+
+  New module, coordinator-side, e.g. src/game/architecture/LockstepFlowControl.ts:
+    - Owns the MatchFlow FSM.
+    - Input: per-player latestAckForPlayer() (already tracked), MemberPresence
+      states, and the clock.
+    - Output: the frame budget pumpFrame() is allowed to emit this tick, and
+      pause/resume decisions with a named subject.
+  pumpFrame() asks it for a budget instead of asking the wall clock alone.
+  LockstepFrameScheduler needs one addition: a deadline-bounded advance
+  (advanceReadyFrames(maxFrames, deadlineMs)) so both throttling and catch-up
+  can bound their own work. Keep it a parameter, not a second method.
+
+  architecture.json gains:
+    "flowControl": {
+      "lagWindowTicks": <2x inputDelayTicks>,
+      "pauseAfterSeconds": ...,
+      "resumeWithinSeconds": ...,
+      "pauseGraceMs": ...,
+      "dropAfterSeconds": ...
+    }
+
+  UI: the existing NetworkPeerLagIndicator becomes truthful (it is now naming
+  who the match is actually waiting on), and a distinct pause banner names the
+  subject, the reason, and the countdown to auto-drop.
+
+5.6 THE MATCH COMMAND ARCHIVE
+
+  New module, coordinator-side, e.g.
+  src/game/architecture/MatchCommandArchive.ts:
+    - append(frame, frameSequence, commands) — called from pumpFrame() where
+      frames are minted. Stores ONLY non-empty frames; tracks throughFrame.
+    - slice(fromFrame, toFrame) for chunked delivery.
+    - Bounded and reported: expose entry count and estimated bytes in the
+      lockstep diagnostics block so the cost is visible, never silently growing.
+  Do NOT widen LockstepFrameScheduler.RECENT_FRAME_LIMIT to serve this. The
+  scheduler's recent frames exist for desync reports; the archive is a separate
+  concern with a separate lifetime.
+
+  The archive plus the BattleHandoff IS the "full command history and map
+  parameters" the request asks for. It is the same pair CanonicalCheckpoint
+  already validates end-to-end in a contract test.
+
+5.7 CATCH-UP ON THE JOINER
+
+  1. Admitted with role and (for rejoin) seat token.
+  2. Receives sessionResumeGrant; boots the server from handoff.initialization
+     through the SAME path a frame-0 peer takes, after
+     resetReusableSimulationStateForDeterministicReplay().
+  3. Coordinator starts unicasting live frames immediately; archive chunks
+     stream in parallel. Both go into scheduler.receiveCommandFrame().
+  4. Catch-up pump: each animation frame, advanceReadyFrames(large,
+     deadline = now + budgetMs) with a budget that keeps the UI responsive
+     (~10-12 ms). Loading overlay reports frames replayed, frames remaining, and
+     the MEASURED replay rate (x realtime).
+  5. Convergence guard: if the measured rate stays below ~1.15x for long enough
+     that the projected finish never arrives, abort with the measured numbers.
+     A refused join with a reason beats an infinite spinner.
+  6. At localFrame >= grantFrame, compare the local canonical state hash against
+     grantStateHash. Mismatch is a hard failure with an exportable report — the
+     same treatment a mid-match desync already gets. Never continue on a
+     mismatch.
+  7. Transition CatchUp → live, start rendering, and for a rejoining PLAYER also
+     re-enter the completion set: send lockstepReady, and the coordinator adds
+     the seat back to the ack gate and lifts the tier-2 pause.
+
+  The user's rule — a lagging SPECTATOR never pauses the match, a lagging or
+  absent PLAYER does — falls out of the completion/delivery split for free. A
+  spectator catching up is simply a delivery-set member that has not reached the
+  live frame yet.
+
+5.8 SPECTATOR CLIENT
+
+  - localPlayerId is required by createGame/RtsScene3D (createGame.ts:20 defaults
+    to 1). A spectator gets a VIEW-AS target instead of an identity: default to
+    "view all" (no fog) or to the first seat, and let the user cycle. Route it
+    through LocalGameConnection.setSpectatorTarget(), which already changes only
+    the snapshot filter and leaves command attribution alone.
+  - Command authority: construct with the existing
+    `{ mode: 'spectator', playerId: undefined }` authority. It already refuses
+    server-control commands and yields no attribution.
+  - Additionally, refuse spectator commands at the DOORWAY (scheduleCommand)
+    rather than relying only on downstream authorization, so a spectator command
+    can never enter the command stream at all — that is the invariant A7 needs.
+  - Chat and pings for spectators go through the `communication` relay only.
+
+================================================================================
+6. PHASED PLAN
+================================================================================
+
+Each phase is independently shippable and has a gate. Per house rule, each phase
+DELETES the path it replaces in the same change.
+
+PHASE 0 — Debts that block everything (small, mechanical)
+  0.1  Pass allyTeamByPlayerId through buildBattleHandoff (F1). Contract test.
+  0.2  SeatTable replaces nextPlayerId++ (F3). Contract test for churn.
+  0.3  Rename UI `spectateMode`/`spectate` → `menuHidden`/`toggleMenu` (F6).
+  0.4  Host side-count control; default 2 from a real-battle constant; empty-
+       side rule decided and surfaced (F2).
+  GATE: npm run contract:tests; a hosted 2v2 where the lobby's TEAM badges match
+  the in-game alliances, dividers and colours.
+
+PHASE 1 — Member/role model and the completion/delivery split
+  Roles declared in connection metadata; sessionAssignment + rosterUpdate
+  replace playerAssignment/playerJoined/playerInfoUpdate fan-out;
+  admitsPlayers/admitsSpectators replace admitsNewPlayers; MemberPresence FSM;
+  LOCKSTEP_PROTOCOL_VERSION → v4 and BATTLE_HANDOFF_PROTOCOL bumped;
+  scheduler/ready/hash sets take seated players only while transport fans out to
+  all members; lobby UI gets JOIN and WATCH; spectator section in the roster.
+  Spectators may join a LOBBY and watch from frame 0. Late join still refused.
+  GATE: contract tests; two-browser Playwright with host + player + spectator
+  through a full match; the spectator never appears in requiredReadyPlayerIds
+  and never affects the initialization hash.
+
+PHASE 2 — Flow control and pause policy
+  LockstepFlowControl + MatchFlow FSM; deadline-bounded scheduler advance;
+  architecture.json lockstep.flowControl; frame-scheduled `resign` for auto-drop;
+  truthful lag indicator and pause banner.
+  GATE: CPU-throttled peer test — the match visibly throttles, then pauses
+  naming the subject, then resumes; a throttled SPECTATOR changes nothing;
+  a killed player tab pauses the match and auto-drops on the configured timeout.
+
+PHASE 3 — Match archive + spectator join-in-progress
+  MatchCommandArchive; sessionResumeRequest/Grant; chunked lockstepHistory;
+  budgeted catch-up pump; CatchUp FSM; grant-frame checksum gate; catch-up
+  loading overlay with measured replay rate; convergence refusal.
+  Delete LockstepSupportPolicy's spectators/lateJoin fields and the throw;
+  delete architecture.json allowLateJoin and parseAllowLateJoin.
+  GATE: a spectator joins a match already 10+ minutes old, converges, and its
+  grant-frame hash matches; the match never stalls or pauses for it; the
+  archive's reported size matches the projection.
+
+PHASE 4 — Player rejoin
+  Seat tokens persisted client-side for the session; seats reserved (not freed)
+  while a player is gone during PLAYING; rejoin reuses the phase-3 catch-up
+  path; tier-2 pause holds the match while the rejoiner replays, bounded by
+  dropAfterSeconds.
+  GATE: kill a player's tab mid-match; the match pauses naming them; they rejoin
+  by room code, catch up, and resume with their units, queues and economy
+  intact; state hashes agree.
+
+PHASE 5 — Spectator experience (all local, no protocol work)
+  View-as-player / view-all cycling, free camera, per-team economy and unit-
+  count overlays, spectator chat routing per the decision in section 9.
+
+PHASE 6 — Only if phase 3 measurements demand it: state checkpoint baseline
+  Replace the genesis prefix with a serialized simulation state at frame N plus
+  the command tail. This requires a real Rust-side state serializer/deserializer
+  and is a large project in its own right. Do not start it on suspicion; start it
+  on the numbers phase 3 produces.
+
+================================================================================
+7. WHAT GETS DELETED (no legacy fallbacks)
+================================================================================
+
+  LockstepSupportPolicy.ts    the `spectators`, `lateJoin`, `reconnect` fields
+                              and the frame-0-roster throw. They become
+                              capabilities, so the refusal must go, not be
+                              flipped to a disabled branch.
+  architecture.json           lockstep.allowLateJoin, plus
+                              architectureConfig.parseAllowLateJoin(). Replaced
+                              by the flowControl block.
+  MultiplayerBackend.ts       admitsNewPlayers() → admitsPlayers/admitsSpectators.
+  NetworkTypes/network.ts     `playerAssignment`, `playerJoined`,
+                              `playerInfoUpdate` message types, replaced by
+                              `sessionAssignment` + `rosterUpdate`. Delete the
+                              old encoders, the old handlers and their tests in
+                              the same change.
+  NetworkManager.ts           nextPlayerId and the counter-based cap check.
+  gameCanvasChromeState.ts    spectateMode / toggleSpectateMode and every
+                              consumer name (GameCanvas.vue, LobbyModal.vue,
+                              GameCanvasOverlays.vue, gameCanvasShellDisplay.ts).
+  gameCanvasPeerLag.ts        the header comment describing behaviour the code
+                              did not implement — it becomes true in phase 2 and
+                              must be corrected in the same change either way.
+
+  Protocol versions bump atomically. There is no compatibility decoder for the
+  old shapes; a mismatched peer is refused at connect with a clear message.
+
+================================================================================
+8. RISKS
+================================================================================
+
+R1  Determinism under a fresh boot in a live page. Catch-up boots a second
+    simulation lifetime inside a browser that has already run one. Module
+    singletons (Terrain, vegetation, spatial grid, projectile/damage/energy
+    buffers, entity pools) are exactly the class of state that makes the sim
+    contract tests order-dependent today. Mitigation: catch-up MUST go through
+    resetReusableSimulationStateForDeterministicReplay(), the same path
+    importCanonicalCheckpoint() uses, and phase 3's gate must include a
+    fresh-page contract run. Also: only one gameplay-truth simulation may exist
+    per runtime, so catch-up replays the ONE sim, in the same thread — it is not
+    a side simulation that gets promoted.
+
+R2  Replay throughput (see A6a). The ceiling is real and entity-count dependent.
+    Measure it, show it, refuse when it cannot converge.
+
+R3  Coordinator memory. Outbound frames are already retained until the slowest
+    peer acks, and the archive adds a second retained copy. A long pause with a
+    dead peer grows both. The dropAfterSeconds escape hatch is what bounds them;
+    both sizes must appear in the lockstep diagnostics.
+
+R4  Single coordinator. Host departure still ends the session, and spectators
+    inherit that. Host migration remains out of scope — it is a much larger
+    problem than anything here, and the current three-signal eviction path is
+    correct and should not be weakened.
+
+R5  Information symmetry (section 4.4). Not a regression, but now visible.
+
+R6  Wire churn. Phase 1 changes the lobby protocol wholesale. Since there is no
+    compatibility path by policy, every peer must be on the same build — which
+    is already true for a single deployed web build, but is worth stating for
+    the Tauri desktop build, which can be older. The protocol-version check at
+    connect must produce a human-readable "update your client" refusal.
+
+================================================================================
+9. DECISIONS NEEDED BEFORE PHASE 1
+================================================================================
+
+D1  May the HOST convert a spectator into a player (and back) in the lobby? The
+    request forbids SELF-service; it is silent about the host. The mechanism is
+    the same as a seat move and is nearly free. Recommendation: yes, host-only,
+    lobby-only.
+
+    - Ok let's actually only let users "join", when they join a lobby they are automatically in the "spectator" pool. The host is the only one that can put them on a team or move them back to being a "spectator". The host owns the game. 
+
+D2  Empty teams: dropped at match start (current behaviour, BAR-like) or
+    preserved so an empty side still gets a carved terrain slice
+    (buildTeamRosterFromSeatCounts supports it)? Recommendation: dropped, with
+    the lobby saying so before START.
+
+    - We should be able to have empty teams, they would be slices of the map just like any other, just would not have any commanders in it. 
+
+D3  Spectator chat: all-chat, spectator-only, or delayed? BAR keeps spectators
+    out of player chat during play to prevent coaching. Recommendation:
+    spectator→spectator and spectator→all-after-game; players never receive
+    live spectator chat.
+
+    - Spectators should be able to chat while in the lobby just like any other user, but in game spectators can only chat with one another (spectator chat) and teams may only be able to chat within the team (as is what makes sense).
+
+D4  Maximum spectators, and do they count toward the directory's playerCount?
+    Recommendation: separate spectatorCount field, an explicit cap (start at 8),
+    and a host toggle to disable spectators for a match.
+
+    - Let's have a maximum of 6 spectators, so a total maximum of 12 people interacting with a game.
+
+D5  dropAfterSeconds for an absent player, and is auto-drop a coordinator
+    decision or a host click / vote? Recommendation: coordinator auto-drop at a
+    configured timeout, with the host able to drop earlier.
+
+    - Auto-drop should be automatic. 
+
+D6  Confirm the invariant in A6c: a disconnected player's units keep their
+    orders and keep acting, because the simulation is never told anyone left.
+    This is not negotiable in lockstep, but it is a gameplay-visible choice and
+    should be an explicit product decision rather than an implementation
+    consequence discovered in a match.
+
+    - Yes exactly, the player's commands remain, a player being gone from the game is nearly equivalent to that player just not adding any more commands. 
+    
+================================================================================
+10. ACCEPTANCE, END TO END
+================================================================================
+
+The feature is done when all of the following hold in a real two-machine run:
+
+  1. Host creates a lobby, is player 1 on TEAM 1, and the lobby defaults to two
+     teams.
+  2. A joiner picking JOIN lands on the emptier team; a joiner picking WATCH
+     takes no seat and appears in a separate spectator list.
+  3. A running match offers only WATCH in the directory and refuses a player
+     join with a stated reason.
+  4. Neither a player nor a spectator can change their own role in the lobby.
+  5. The host can set the team count and move any player to any team, and the
+     in-match alliances, dividers, spawn arcs and colours match what the lobby
+     showed.
+  6. A spectator joining a 10-minute-old match catches up from frame 0, its
+     grant-frame state hash matches the coordinator's, and no player observes
+     any stall or pause caused by it.
+  7. A player whose connection degrades causes the match to throttle, and, past
+     the threshold, to pause naming them; it resumes when they are within the
+     resume window.
+  8. A player who disconnects and rejoins by room code recovers their seat,
+     catches up, and resumes commanding their original army; the match paused
+     for them and resumed on their return.
+  9. A player who never returns is auto-dropped at the configured timeout via a
+     frame-scheduled resign, and the match continues.
+ 10. npm run contract:tests passes, npm run deterministic:replay passes, and the
+     lockstep diagnostics block reports archive size, catch-up rate, flow-control
+     state and pause subject.
+
+================================================================================
+END
+================================================================================
