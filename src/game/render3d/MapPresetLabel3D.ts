@@ -26,6 +26,17 @@
 // out of the water like pilings, readable from above the surface and still
 // readable from under it.
 //
+// NOTHING IS DRAWN AROUND THE GLYPHS EITHER. The mask is filled, never
+// stroked. An outline pen belongs to printed text — white letters needing a
+// dark edge to survive any background — and drawing one into the mask costs
+// twice: it fattens every glyph by half the pen on every side, and it eats
+// that same distance OUT of every counter. At the shipped 9px title pen the
+// capital A's counter came out at 1.5% of the glyph instead of 9%, the
+// byline's counters closed completely, and neighbouring title letters fused
+// into one extruded island rather than eleven. The letters get their outline
+// from their own extruded sides, which is the whole point of standing them
+// up; the face colour and the side colour are that outline.
+//
 // A painted caption used to cap that relief, and it is gone deliberately. It
 // drew the same text a second time across the letter tops, so the shapes the
 // mask had already cut were never seen as themselves — and they are the
@@ -74,7 +85,7 @@ const STYLE = {
   ruleThicknessPx: MAP_PRESET_LABEL_RENDER_CONFIG.ruleThicknessPx,
   ruleWidthInkFraction: MAP_PRESET_LABEL_RENDER_CONFIG.ruleWidthInkFraction,
   canvasPadPx: MAP_PRESET_LABEL_RENDER_CONFIG.canvasPadPx,
-  strokeWidthPx: MAP_PRESET_LABEL_RENDER_CONFIG.strokeWidthPx,
+  fontWeight: MAP_PRESET_LABEL_RENDER_CONFIG.fontWeight,
   captionMarginAnnexDepthFraction:
     MAP_PRESET_LABEL_RENDER_CONFIG.captionMarginAnnexDepthFraction,
   captionFlatToleranceAnnexDepthFraction:
@@ -83,8 +94,8 @@ const STYLE = {
   letterReliefTitleFraction: MAP_PRESET_LABEL_RENDER_CONFIG.letterReliefTitleFraction,
   letterMaskSupersample: MAP_PRESET_LABEL_RENDER_CONFIG.letterMaskSupersample,
   letterMaskSimplifyPx: MAP_PRESET_LABEL_RENDER_CONFIG.letterMaskSimplifyPx,
-  fillColor: COLORS.ui.mapPresetLabel.fillColor,
-  strokeColor: COLORS.ui.mapPresetLabel.strokeColor,
+  faceColor: COLORS.ui.mapPresetLabel.faceColor,
+  sideColor: COLORS.ui.mapPresetLabel.sideColor,
 };
 
 /** Ground-plane orientation for a readable sign at the default -Z camera.
@@ -131,14 +142,13 @@ const MIN_LEADING_FACTOR = 0.55;
 const ASSUMED_ASCENT_FONT_FRACTION = 0.62;
 const ASSUMED_DESCENT_FONT_FRACTION = 0.22;
 
+/** The weight is authored rather than pinned at `bold`, because the letters
+ *  are read as SOLIDS: their dark sides show around every glyph from any
+ *  camera above grazing, so a face that measures right flat comes out heavier
+ *  on the headland. The knob is what lets that be judged in the world instead
+ *  of on a canvas. */
 function fontString(pixels: number): string {
-  return `bold ${pixels}px ${NAME_LABEL_FONT_FAMILY}`;
-}
-
-/** The outline scales with its row, so a byline is not swallowed by a stroke
- *  authored for the title. */
-function strokeWidthForFont(fontPx: number): number {
-  return STYLE.strokeWidthPx * (fontPx / STYLE.titleFontPx);
+  return `${STYLE.fontWeight} ${pixels}px ${NAME_LABEL_FONT_FAMILY}`;
 }
 
 function finiteOr(value: number | undefined, fallback: number): number {
@@ -166,7 +176,7 @@ type CaptionItemBox = {
   /** Top of the item's own box in the stack, before centring. */
   readonly top: number;
   readonly height: number;
-  /** Painted extents relative to the stack, stroke included. */
+  /** Painted extents relative to the stack — the glyphs' own ink. */
   readonly inkTop: number;
   readonly inkBottom: number;
 };
@@ -412,17 +422,17 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
     if (ctx === null) throw new Error('MapPresetLabel3D requires a 2D canvas context');
     this.ctx = ctx;
 
-    // Letter faces take the caption's fill colour and letter sides its
-    // outline colour, so the relief reads as one lettered sign whose sides
-    // are its own outline rather than as two differently coloured objects.
+    // The face reads the sign and the sides outline it. That is why they are
+    // named for the surfaces they land on rather than for a fill and a pen:
+    // there is no pen any more, and the dark is geometry.
     this.letterMaterials = [
       new THREE.MeshStandardMaterial({
-        color: new THREE.Color(STYLE.fillColor),
+        color: new THREE.Color(STYLE.faceColor),
         roughness: 0.55,
         metalness: 0,
       }),
       new THREE.MeshStandardMaterial({
-        color: new THREE.Color(STYLE.strokeColor),
+        color: new THREE.Color(STYLE.sideColor),
         roughness: 0.8,
         metalness: 0,
       }),
@@ -574,10 +584,10 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
    * with THE SAME padding on all four sides.
    *
    * The padding is measured against the INK — the union of the glyphs' own
-   * bounding boxes, grown by the outline stroked around them — and not
-   * against the font box. A font box carries internal leading above the caps
-   * and below the baseline that no glyph in this caption fills, so padding
-   * against it puts a visibly fatter gap over the title than beside it.
+   * bounding boxes — and not against the font box. A font box carries
+   * internal leading above the caps and below the baseline that no glyph in
+   * this caption fills, so padding against it puts a visibly fatter gap over
+   * the title than beside it.
    */
   private layOutCaption(
     ctx: CanvasRenderingContext2D,
@@ -602,14 +612,11 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
       const fontPx = item.fontPx * scale;
       ctx.font = fontString(fontPx);
       const metrics = ctx.measureText(item.text);
-      const halfStroke = 0.5 * strokeWidthForFont(fontPx);
       const middle = top + fontPx / 2;
       const inkTop = middle
-        - finiteOr(metrics.actualBoundingBoxAscent, fontPx * ASSUMED_ASCENT_FONT_FRACTION)
-        - halfStroke;
+        - finiteOr(metrics.actualBoundingBoxAscent, fontPx * ASSUMED_ASCENT_FONT_FRACTION);
       const inkBottom = middle
-        + finiteOr(metrics.actualBoundingBoxDescent, fontPx * ASSUMED_DESCENT_FONT_FRACTION)
-        + halfStroke;
+        + finiteOr(metrics.actualBoundingBoxDescent, fontPx * ASSUMED_DESCENT_FONT_FRACTION);
       // Centred text reports its extents either side of the pen. The block is
       // symmetric about that pen, so the wider side is what the padding has
       // to clear on BOTH sides for the gap to come out even.
@@ -617,7 +624,7 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
       const inkHalfWidth = Math.max(
         finiteOr(metrics.actualBoundingBoxLeft, halfWidth),
         finiteOr(metrics.actualBoundingBoxRight, halfWidth),
-      ) + halfStroke;
+      );
       textInkHalfWidth = Math.max(textInkHalfWidth, inkHalfWidth);
       cursor += fontPx;
       boxes.push({ item, top, height: fontPx, inkTop, inkBottom });
@@ -663,9 +670,7 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = STYLE.strokeColor;
-    ctx.fillStyle = STYLE.fillColor;
+    ctx.fillStyle = STYLE.faceColor;
     for (const box of layout.boxes) {
       if (box.item.kind === 'rule') {
         ctx.fillRect(
@@ -678,9 +683,7 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
       }
       const fontPx = box.item.fontPx * scale;
       ctx.font = fontString(fontPx);
-      ctx.lineWidth = strokeWidthForFont(fontPx);
       const middle = layout.originY + box.top + box.height / 2;
-      ctx.strokeText(box.item.text, layout.originX, middle);
       ctx.fillText(box.item.text, layout.originX, middle);
     }
   }
