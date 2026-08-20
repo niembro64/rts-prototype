@@ -18,19 +18,31 @@
 // then grows the section leading, until the two aspects agree. What comes
 // out is the largest type the headland can carry with an even margin.
 //
-// The letters are EXTRUDED off the annex's flat table rather than only
-// printed on it, and they always rise to a fixed relief above WHICHEVER IS
-// HIGHER, the ground they stand on or the liquid surface. On a dry headland
-// that is exactly the relief the letters always had. On a submerged one they
-// run up out of the water like pilings, readable from above the surface and
-// still readable from under it. The painted caption caps them (mipmapped and
-// anisotropic, which raw geometry is not), so at whole-map zoom the sign is
-// carried by a filtered texture rather than by shimmering triangles.
+// THE SIGN IS RAISED, NOT PRINTED. The letters are extruded geometry cut
+// from the caption's own glyph mask, and nothing is drawn over them: the
+// relief IS the sign. They rise to a fixed relief above WHICHEVER IS HIGHER,
+// the ground they stand on or the liquid surface. On a dry headland that is
+// exactly the relief the letters always had. On a submerged one they run up
+// out of the water like pilings, readable from above the surface and still
+// readable from under it.
+//
+// A painted caption used to cap that relief, and it is gone deliberately. It
+// drew the same text a second time across the letter tops, so the shapes the
+// mask had already cut were never seen as themselves — and they are the
+// better read, because raised glyphs take the scene's own light, shade their
+// own sides, and turn with the camera the way every other thing on the map
+// does, while a flat print stays the same picture from every angle. What the
+// texture bought was filtering at whole-map zoom, where it was mipmapped and
+// anisotropic and the triangles are not; the frame's MSAA is what covers the
+// glyph edges there now, which is the ordinary way this renderer resolves
+// every other silhouette on the map.
 //
 // Exact presets show their authored name; changed settings show CUSTOM and
-// continue describing the live map. One pooled canvas is repainted on change;
-// per-frame work is one terrain sample, and only to notice when the annex's
-// altitude has changed under the sign.
+// continue describing the live map. The caption block is MEASURED at its
+// authored scale rather than rasterized there; the one raster left is the
+// supersampled glyph mask the extrusion traces. Per-frame work is one terrain
+// sample, and only to notice when the annex's altitude has changed under the
+// sign.
 
 import * as THREE from 'three';
 import { MAP_PRESET_LABEL_RENDER_CONFIG } from '@/config';
@@ -52,7 +64,6 @@ import {
   type MapInfoAnnexFootprint,
 } from './MapInfoAnnex3D';
 import type { MapPresetLabelCaption, MapPresetLabelTarget } from './presetMapLabel';
-import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 
 const STYLE = {
   titleFontPx: MAP_PRESET_LABEL_RENDER_CONFIG.titleFontPx,
@@ -89,11 +100,11 @@ export const MAP_PRESET_LABEL_ROTATION_Z = Math.PI;
  *  rather than as one run-on sentence. */
 const FIELD_SEPARATOR = '  ·  ';
 
-/** Clearance between the stacked coplanar layers of the sign (letter tops and
- *  the painted caption), as a fraction of the caption block. Only enough to
- *  settle depth-fighting: the caption must still read as printed on the
- *  letters, not as a second sign hovering over them. */
-const CAPTION_SURFACE_LIFT_FRACTION = 0.004;
+/** Clearance between the letters' base and the flat table they stand on, as a
+ *  fraction of the caption block. Only enough to settle depth-fighting
+ *  between two coplanar surfaces: the letters must still read as standing on
+ *  the headland, not as hovering over it. */
+const LETTER_SURFACE_LIFT_FRACTION = 0.004;
 /** Alpha the glyph mask is cut at, and the smallest loop worth extruding
  *  (square mask pixels — well under a period's counter, well over the specks
  *  antialiasing leaves behind). */
@@ -319,14 +330,11 @@ function captionKey(caption: MapPresetLabelCaption): string | null {
 }
 
 export class MapPresetLabel3D implements MapPresetLabelTarget {
+  /** Measuring context only — the block is laid out against it and the mask
+   *  is painted into its own canvas, so this one is never rasterized. */
   private readonly canvas = document.createElement('canvas');
   private readonly ctx: CanvasRenderingContext2D;
-  private readonly texture: THREE.CanvasTexture;
-  private readonly captionGeometry = new THREE.PlaneGeometry(1, 1);
-  private readonly captionMaterial: THREE.MeshBasicMaterial;
-  private readonly captionMesh: THREE.Mesh;
-  /** Local frame shared by caption and letters: +X canvas-right, +Y
-   *  canvas-up, +Z world-up. */
+  /** The letters' local frame: +X block-right, +Y block-up, +Z world-up. */
   private readonly group = new THREE.Group();
   private readonly letterMaterials: readonly THREE.MeshStandardMaterial[];
   private letterMesh: THREE.Mesh | null = null;
@@ -342,6 +350,11 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
    *  leading the fit added, so the supersampled glyph mask repaints the SAME
    *  block instead of re-deciding the wrap at a different measured width. */
   private items: readonly CaptionItem[] = [];
+  /** The chosen block at scale 1, in the units the layout measures in. It is
+   *  the sign's proportions — what the placement fits to the table — and the
+   *  scale the authored font sizes are relative to. */
+  private blockWidthPx = 1;
+  private blockHeightPx = 1;
   private lastAnnexSurfaceY = Number.NaN;
   /** How much of the annex's ramp off the coast actually rises, in world
    *  units — resampled with the altitude, because both come from the same
@@ -349,48 +362,17 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
   private settledDepth = 0;
   private destroyed = false;
 
-  constructor(
-    parent: THREE.Object3D,
-    renderer: THREE.WebGLRenderer,
-    mapWidth: number,
-    mapHeight: number,
-  ) {
+  constructor(parent: THREE.Object3D, mapWidth: number, mapHeight: number) {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
     this.annex = resolveMapInfoAnnexFootprint(mapWidth, mapHeight);
     const ctx = this.canvas.getContext('2d');
     if (ctx === null) throw new Error('MapPresetLabel3D requires a 2D canvas context');
     this.ctx = ctx;
-    // Non-zero starter dimensions keep the CanvasTexture valid before the
-    // first paint; every paint resizes the canvas to fit its own text.
-    this.canvas.width = 2;
-    this.canvas.height = 2;
-    this.texture = new THREE.CanvasTexture(this.canvas);
-    this.texture.colorSpace = THREE.SRGBColorSpace;
-    // Whole-map zoom minifies this hard, so mipmaps + anisotropy are what
-    // keep the caption from shimmering into noise as the camera pulls out.
-    // The extruded letters have no such filtering, which is exactly why the
-    // painted caption caps them instead of being replaced by them.
-    this.texture.generateMipmaps = true;
-    this.texture.minFilter = THREE.LinearMipmapLinearFilter;
-    this.texture.magFilter = THREE.LinearFilter;
-    this.texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-    this.captionMaterial = new THREE.MeshBasicMaterial({
-      map: this.texture,
-      transparent: true,
-      depthWrite: false,
-      // The quad caps the letters, so the camera sees whichever face the
-      // current pitch presents — including from below, through the water.
-      side: THREE.DoubleSide,
-      toneMapped: false,
-    });
-    this.captionMesh = new THREE.Mesh(this.captionGeometry, this.captionMaterial);
-    this.captionMesh.name = 'MapPresetLabelCaption';
-    this.captionMesh.renderOrder = TRANSPARENT_RENDER_ORDER_3D.aboveWaterEffects;
 
-    // Letter faces take the painted fill colour and letter sides the painted
-    // outline colour, so the relief reads as the printed caption lifted off
-    // the annex rather than as a second, differently coloured sign.
+    // Letter faces take the caption's fill colour and letter sides its
+    // outline colour, so the relief reads as one lettered sign whose sides
+    // are its own outline rather than as two differently coloured objects.
     this.letterMaterials = [
       new THREE.MeshStandardMaterial({
         color: new THREE.Color(STYLE.fillColor),
@@ -410,7 +392,6 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
     this.group.rotation.x = MAP_PRESET_LABEL_ROTATION_X;
     this.group.rotation.z = MAP_PRESET_LABEL_ROTATION_Z + this.annex.signYaw;
     this.group.visible = false;
-    this.group.add(this.captionMesh);
     parent.add(this.group);
   }
 
@@ -425,13 +406,11 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
     }
     this.caption = caption;
     this.refreshSettledDepth();
-    this.items = this.setCaption(caption);
-    this.paint(this.ctx, this.canvas, this.items, 1);
+    this.setBlock(caption);
     // New text, new glyph mask. placeSign only traces when there is no
     // letter mesh, which is what keeps an altitude-only re-seat cheap.
     this.disposeLetterMesh();
     this.placeSign();
-    this.group.visible = true;
   }
 
   /** The annex's altitude is the terrain's, and the terrain mesh is not
@@ -450,8 +429,7 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
     this.refreshSettledDepth();
     if (Math.abs(this.settledDepth - previousSettledDepth) > ANNEX_ALTITUDE_EPSILON) {
       this.disposeLetterMesh();
-      this.items = this.setCaption(this.caption);
-      this.paint(this.ctx, this.canvas, this.items, 1);
+      this.setBlock(this.caption);
     }
     this.placeSign();
   }
@@ -461,9 +439,6 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
     this.destroyed = true;
     this.group.parent?.remove(this.group);
     this.disposeLetterMesh();
-    this.texture.dispose();
-    this.captionMaterial.dispose();
-    this.captionGeometry.dispose();
     for (const material of this.letterMaterials) material.dispose();
   }
 
@@ -492,6 +467,17 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
     );
   }
 
+  /** Set the caption and measure what came out. The block is only measured
+   *  here — the sign's proportions and the scale its authored font sizes are
+   *  relative to — because the only pixels this renderer needs are the
+   *  supersampled ones the glyph trace paints for itself. */
+  private setBlock(caption: NonNullable<MapPresetLabelCaption>): void {
+    this.items = this.chooseSetting(caption);
+    const layout = this.layOutCaption(this.ctx, this.items, 1);
+    this.blockWidthPx = layout.canvasWidth;
+    this.blockHeightPx = layout.canvasHeight;
+  }
+
   /**
    * Choose the setting: wrap the settings across rows, then add leading until
    * the block is exactly the shape of the table it has to fill.
@@ -503,7 +489,7 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
    * leading is the fine one. The leading only ever GROWS, so the type never
    * shrinks to buy the match.
    */
-  private setCaption(caption: NonNullable<MapPresetLabelCaption>): CaptionItem[] {
+  private chooseSetting(caption: NonNullable<MapPresetLabelCaption>): CaptionItem[] {
     const box = resolveMapPresetLabelCaptionBox(
       this.mapWidth,
       this.mapHeight,
@@ -619,9 +605,10 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
     };
   }
 
-  /** Paint `items` into `canvas` at `scale`, resizing it to fit. Scale 1 is
-   *  the caption texture; the glyph trace repaints the identical stack
-   *  larger, so mask coordinates map onto the caption quad by ratio alone. */
+  /** Paint `items` into `canvas` at `scale`, resizing it to fit. The only
+   *  caller is the glyph trace, which paints the block supersampled; because
+   *  it is the same stack the layout measured at scale 1, mask coordinates
+   *  map onto the sign's local frame by ratio alone. */
   private paint(
     ctx: CanvasRenderingContext2D,
     canvas: HTMLCanvasElement,
@@ -656,7 +643,6 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
       ctx.strokeText(box.item.text, layout.originX, middle);
       ctx.fillText(box.item.text, layout.originX, middle);
     }
-    if (canvas === this.canvas) this.texture.needsUpdate = true;
   }
 
   /** Seat the sign on the annex: size it to the flat table, stand it at the
@@ -665,21 +651,20 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
     const placement = resolveMapPresetLabelPlacement(
       this.mapWidth,
       this.mapHeight,
-      this.canvas.width / this.canvas.height,
+      this.blockWidthPx / this.blockHeightPx,
       this.settledDepth,
     );
     const surfaceY = this.annexSurfaceY();
     this.lastAnnexSurfaceY = surfaceY;
     this.group.position.set(placement.centerX, surfaceY, placement.centerZ);
-    this.captionMesh.scale.set(placement.worldWidth, placement.worldHeight, 1);
 
-    const captionLift = placement.worldHeight * CAPTION_SURFACE_LIFT_FRACTION;
+    const letterLift = placement.worldHeight * LETTER_SURFACE_LIFT_FRACTION;
     // The relief is the letters' authored height above what they stand on.
     // What they stand on is the higher of the ground and the liquid surface —
     // lava and water share WATER_LEVEL — so a caption on a shallow seabed
     // still reads from a boat's-eye view instead of drowning in the shallows.
     const relief =
-      (placement.worldHeight / this.canvas.height) *
+      (placement.worldHeight / this.blockHeightPx) *
       STYLE.titleFontPx *
       STYLE.letterReliefTitleFraction;
     const letterDepth = Math.max(surfaceY, WATER_LEVEL) + relief - surfaceY;
@@ -700,26 +685,20 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
       }
     }
     if (this.letterMesh !== null) {
-      this.letterMesh.position.z = captionLift;
+      this.letterMesh.position.z = letterLift;
       this.letterMesh.scale.z = letterDepth;
     }
-    // The painted caption caps the relief instead of lying under it. Printed
-    // on the ground it showed around every raised letter as a second, offset
-    // copy of the same text; capping the letters puts it exactly where their
-    // top faces already are, so it reads as the letters' own printed surface
-    // and still carries the sign at whole-map zoom, where mipmaps beat
-    // geometry.
-    this.captionMesh.position.set(
-      0,
-      0,
-      this.letterMesh === null ? captionLift : captionLift + letterDepth + captionLift,
-    );
+    // The letters are the whole sign, so a mask that traced nothing leaves
+    // nothing to show. Resolved here rather than at the caption doorway
+    // because the trace runs from here, and a re-set on a terrain bake can
+    // land on a different answer than the first one did.
+    this.group.visible = this.letterMesh !== null;
   }
 
   /** Trace the painted glyphs and extrude them ONE UNIT off the sign plane.
    *  Returns null when the mask yields nothing to extrude (an empty caption,
-   *  or a context that cannot hand back pixels) — the printed caption alone
-   *  is then still a complete, readable sign. */
+   *  or a context that cannot hand back pixels), which leaves no sign at all
+   *  — the relief is the only thing the headland carries. */
   private buildLetterGeometry(
     placement: MapPresetLabelPlacement,
   ): THREE.ExtrudeGeometry | null {
@@ -731,7 +710,7 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
       Math.min(
         STYLE.letterMaskSupersample,
         Math.sqrt(
-          LETTER_MASK_MAX_TEXELS / Math.max(1, this.canvas.width * this.canvas.height),
+          LETTER_MASK_MAX_TEXELS / Math.max(1, this.blockWidthPx * this.blockHeightPx),
         ),
       ),
     );
@@ -760,8 +739,8 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
     if (groups.length === 0) return null;
 
     // Mask texel to local sign units. Integer mask coordinates are texel
-    // CENTRES, so the half-texel shift keeps the extrusion registered on the
-    // caption printed over it.
+    // CENTRES, so the half-texel shift keeps the glyphs centred in the block
+    // the placement sized, rather than off by half a mask texel.
     const toLocal = (polygon: MaskPolygon): THREE.Vector2[] => {
       const points: THREE.Vector2[] = [];
       for (let i = 0; i < polygon.length; i += 2) {

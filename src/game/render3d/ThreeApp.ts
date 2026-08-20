@@ -323,12 +323,7 @@ export class ThreeApp {
     });
     this._resizeObserver.observe(parent);
 
-    this._mapPresetLabel = new MapPresetLabel3D(
-      this.world,
-      this.renderer,
-      mapWidth,
-      mapHeight,
-    );
+    this._mapPresetLabel = new MapPresetLabel3D(this.world, mapWidth, mapHeight);
 
     // Pick up the current preset backdrop + corner caption (and future
     // preset switches). Registered last so the initial layer set / caption
