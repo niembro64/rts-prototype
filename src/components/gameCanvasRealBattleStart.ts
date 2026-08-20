@@ -277,6 +277,7 @@ export async function startRealBattleWithPlayers(
       mapWidth: realBattleTerrain.mapSize.width,
       mapHeight: realBattleTerrain.mapSize.height,
       centerMagnitude: realBattleTerrain.terrainRuntimeConfig.centerMagnitude,
+      ringMagnitude: realBattleTerrain.terrainRuntimeConfig.ringMagnitude,
       dividersMagnitude: realBattleTerrain.terrainRuntimeConfig.dividersMagnitude,
       perimeterMagnitude: realBattleTerrain.terrainRuntimeConfig.perimeterMagnitude,
       terrainPrecedence: realBattleTerrain.terrainRuntimeConfig.terrainPrecedence,

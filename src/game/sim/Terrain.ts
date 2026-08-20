@@ -19,6 +19,7 @@ export {
   resetTerrainStateForDeterministicReplay,
   setTerrainRuntimeConfig,
   setTerrainCenterMagnitude,
+  setTerrainRingMagnitude,
   setTerrainDividersMagnitude,
   setTerrainPerimeterMagnitude,
   setTerrainPrecedence,

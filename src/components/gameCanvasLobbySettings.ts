@@ -25,6 +25,7 @@ import {
   loadStoredSlowDownAtFinalWaypoint,
   getUnitCap,
   normalizeCenterMagnitude,
+  normalizeRingMagnitude,
   normalizeConverterTax,
   normalizePathfindingCellConsolidation,
   normalizeSimulationTickRate,
@@ -37,6 +38,7 @@ import {
   normalizeTerrainDetail,
   savePlateauWallSlopeDegrees,
   saveCenterMagnitude,
+  saveRingMagnitude,
   saveConverterTax,
   savePathfindingCellConsolidation,
   saveSimulationTickRate,
@@ -65,6 +67,7 @@ type GameCanvasLobbySettings = {
   currentLobbySettings(): LobbySettings;
   broadcastLobbySettingsIfHost(): void;
   applyCenterMagnitude(value: number, broadcast?: boolean): void;
+  applyRingMagnitude(value: number, broadcast?: boolean): void;
   applyDividersMagnitude(value: number, broadcast?: boolean): void;
   applyPerimeterMagnitude(value: number, broadcast?: boolean): void;
   applyTerrainPrecedence(value: TerrainPrecedence, broadcast?: boolean): void;
@@ -94,6 +97,7 @@ type GameCanvasLobbySettingsOptions = {
   roomCode: Ref<string>;
   gameStarted: Ref<boolean>;
   centerMagnitude: Ref<number>;
+  ringMagnitude: Ref<number>;
   dividersMagnitude: Ref<number>;
   perimeterMagnitude: Ref<number>;
   terrainPrecedence: Ref<TerrainPrecedence>;
@@ -133,6 +137,7 @@ export function useGameCanvasLobbySettings({
   roomCode,
   gameStarted,
   centerMagnitude,
+  ringMagnitude,
   dividersMagnitude,
   perimeterMagnitude,
   terrainPrecedence,
@@ -166,6 +171,7 @@ export function useGameCanvasLobbySettings({
   function applyCurrentTerrainRuntimeConfig(): void {
     setTerrainRuntimeConfig({
       centerMagnitude: centerMagnitude.value,
+      ringMagnitude: ringMagnitude.value,
       dividersMagnitude: dividersMagnitude.value,
       perimeterMagnitude: perimeterMagnitude.value,
       terrainPrecedence: terrainPrecedence.value,
@@ -179,6 +185,7 @@ export function useGameCanvasLobbySettings({
   function currentLobbySettings(): LobbySettings {
     return {
       centerMagnitude: centerMagnitude.value,
+      ringMagnitude: ringMagnitude.value,
       dividersMagnitude: dividersMagnitude.value,
       perimeterMagnitude: perimeterMagnitude.value,
       terrainPrecedence: terrainPrecedence.value,
@@ -212,6 +219,18 @@ export function useGameCanvasLobbySettings({
     const changed = centerMagnitude.value !== normalized;
     centerMagnitude.value = normalized;
     saveCenterMagnitude(normalized, mode);
+    if (!changed) return;
+    applyCurrentTerrainRuntimeConfig();
+    restartPreviewIfNeeded();
+    if (broadcast) broadcastLobbySettingsIfHost();
+  }
+
+  function applyRingMagnitude(value: number, broadcast = true): void {
+    const mode = currentBattleMode.value;
+    const normalized = normalizeRingMagnitude(value);
+    const changed = ringMagnitude.value !== normalized;
+    ringMagnitude.value = normalized;
+    saveRingMagnitude(normalized, mode);
     if (!changed) return;
     applyCurrentTerrainRuntimeConfig();
     restartPreviewIfNeeded();
@@ -415,6 +434,7 @@ export function useGameCanvasLobbySettings({
   ): void {
     assertCurrentLobbySettings(settings, 'host lobby settings');
     const nextCenterMagnitude = normalizeCenterMagnitude(settings.centerMagnitude);
+    const nextRingMagnitude = normalizeRingMagnitude(settings.ringMagnitude);
     const nextDividersMagnitude = normalizeDividersMagnitude(
       settings.dividersMagnitude,
     );
@@ -459,6 +479,7 @@ export function useGameCanvasLobbySettings({
       loadStoredSlowDownAtFinalWaypoint('real');
     const changed =
       nextCenterMagnitude !== centerMagnitude.value ||
+      nextRingMagnitude !== ringMagnitude.value ||
       nextDividersMagnitude !== dividersMagnitude.value ||
       nextPerimeterMagnitude !== perimeterMagnitude.value ||
       nextTerrainPrecedence !== terrainPrecedence.value ||
@@ -476,6 +497,7 @@ export function useGameCanvasLobbySettings({
       liquidSurfaceModeChanged;
 
     centerMagnitude.value = nextCenterMagnitude;
+    ringMagnitude.value = nextRingMagnitude;
     dividersMagnitude.value = nextDividersMagnitude;
     perimeterMagnitude.value = nextPerimeterMagnitude;
     terrainPrecedence.value = nextTerrainPrecedence;
@@ -489,6 +511,7 @@ export function useGameCanvasLobbySettings({
     mapWidthLandCells.value = settings.mapWidthLandCells;
     mapLengthLandCells.value = settings.mapLengthLandCells;
     saveCenterMagnitude(nextCenterMagnitude, 'real');
+    saveRingMagnitude(nextRingMagnitude, 'real');
     saveDividersMagnitude(nextDividersMagnitude, 'real');
     savePerimeterMagnitude(nextPerimeterMagnitude, 'real');
     saveTerrainPrecedence(nextTerrainPrecedence, 'real');
@@ -546,6 +569,7 @@ export function useGameCanvasLobbySettings({
   function resetTerrainDefaults(): void {
     const mode = currentBattleMode.value;
     const centerMagnitudeDefault = BATTLE_CONFIG.centerMagnitude.default;
+    const ringMagnitudeDefault = BATTLE_CONFIG.ringMagnitude.default;
     const dividersMagnitudeDefault = BATTLE_CONFIG.dividersMagnitude.default;
     const perimeterMagnitudeDefault = BATTLE_CONFIG.perimeterMagnitude.default;
     const terrainPrecedenceDefault = BATTLE_CONFIG.terrainPrecedence.default;
@@ -560,6 +584,7 @@ export function useGameCanvasLobbySettings({
     const mapDimensionsDefault = getDefaultMapLandDimensions();
     if (
       centerMagnitude.value === centerMagnitudeDefault &&
+      ringMagnitude.value === ringMagnitudeDefault &&
       dividersMagnitude.value === dividersMagnitudeDefault &&
       perimeterMagnitude.value === perimeterMagnitudeDefault &&
       terrainPrecedence.value === terrainPrecedenceDefault &&
@@ -582,6 +607,7 @@ export function useGameCanvasLobbySettings({
     }
 
     centerMagnitude.value = centerMagnitudeDefault;
+    ringMagnitude.value = ringMagnitudeDefault;
     dividersMagnitude.value = dividersMagnitudeDefault;
     perimeterMagnitude.value = perimeterMagnitudeDefault;
     terrainPrecedence.value = terrainPrecedenceDefault;
@@ -595,6 +621,7 @@ export function useGameCanvasLobbySettings({
     mapWidthLandCells.value = mapDimensionsDefault.widthLandCells;
     mapLengthLandCells.value = mapDimensionsDefault.lengthLandCells;
     saveCenterMagnitude(centerMagnitudeDefault, mode);
+    saveRingMagnitude(ringMagnitudeDefault, mode);
     saveDividersMagnitude(dividersMagnitudeDefault, mode);
     savePerimeterMagnitude(perimeterMagnitudeDefault, mode);
     saveTerrainPrecedence(terrainPrecedenceDefault, mode);
@@ -616,6 +643,7 @@ export function useGameCanvasLobbySettings({
     currentLobbySettings,
     broadcastLobbySettingsIfHost,
     applyCenterMagnitude,
+    applyRingMagnitude,
     applyDividersMagnitude,
     applyPerimeterMagnitude,
     applyTerrainPrecedence,

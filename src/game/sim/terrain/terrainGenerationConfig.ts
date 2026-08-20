@@ -1,11 +1,12 @@
 import {
+  TERRAIN_CENTER_CONFIG,
   TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION,
   TERRAIN_PERIMETER_CONFIG,
   TERRAIN_PIPELINE,
   TERRAIN_PIPELINE_STEP_CODES,
   TERRAIN_PLATEAU_CONFIG,
   TERRAIN_RIDGE_CONFIG,
-  TERRAIN_RIPPLE_CONFIG,
+  TERRAIN_RING_CONFIG,
   TILE_FLOOR_Y,
 } from './terrainConfig';
 import type { TerrainFlatZone } from './terrainFlatZones';
@@ -22,14 +23,14 @@ export const TERRAIN_GENERATION_EXTENT_FRACTION = 0.85;
 
 /** Length of the packed generation-config slice consumed by Rust
  *  (`metal_deposit_terrain_config_from_slice`). */
-const TERRAIN_GENERATION_CONFIG_LENGTH = 30;
+const TERRAIN_GENERATION_CONFIG_LENGTH = 27;
 
 /** Stride of a packed deposit flat-zone row: x, y, radius, height,
  *  blendRadius, plateauRadius, groupId (-1 = ungrouped classic pad).
  *  Matches `METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE` in the Rust sim. */
 const TERRAIN_FLAT_ZONE_WASM_STRIDE = 7;
 
-/** Pack the live terrain generation config into the 30-value slice the Rust
+/** Pack the live terrain generation config into the 27-value slice the Rust
  *  height sampler reads. Single source of truth for both the adaptive mesh
  *  baker and the metal-deposit placement/height kernels.
  *
@@ -40,7 +41,6 @@ const TERRAIN_FLAT_ZONE_WASM_STRIDE = 7;
  *  order it already executes — no second flag to drift. */
 export function packTerrainGenerationConfigForWasm(): Float64Array {
   const runtime = getTerrainRuntimeConfig();
-  const [r0, r1, r2] = TERRAIN_RIPPLE_CONFIG.components;
   const rows = new Float64Array(TERRAIN_GENERATION_CONFIG_LENGTH);
   rows[0] = runtime.centerMagnitude;
   rows[1] = runtime.dividersMagnitude;
@@ -53,18 +53,14 @@ export function packTerrainGenerationConfigForWasm(): Float64Array {
   rows[8] = TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION;
   rows[9] = TERRAIN_PLATEAU_CONFIG.shelfFractionOfStep;
   rows[10] = TERRAIN_PLATEAU_CONFIG.rampEdgeSharpness;
-  rows[11] = TERRAIN_RIPPLE_CONFIG.radiusFraction;
-  rows[12] = TERRAIN_RIPPLE_CONFIG.phase;
-  rows[13] = r0.wavelength;
-  rows[14] = r0.magnitude;
-  rows[15] = r1.wavelength;
-  rows[16] = r1.magnitude;
-  rows[17] = r2.wavelength;
-  rows[18] = r2.magnitude;
-  rows[19] = TERRAIN_RIDGE_CONFIG.innerRadiusFraction;
-  rows[20] = TERRAIN_RIDGE_CONFIG.outerRadiusFraction;
-  rows[21] = TERRAIN_RIDGE_CONFIG.halfWidthFraction;
-  rows[22] = runtime.plateauWallSlopeDegrees;
+  rows[11] = TERRAIN_CENTER_CONFIG.radiusFraction;
+  rows[12] = runtime.ringMagnitude;
+  rows[13] = TERRAIN_RING_CONFIG.crestRadiusFraction;
+  rows[14] = TERRAIN_RING_CONFIG.outerRadiusFraction;
+  rows[15] = TERRAIN_RIDGE_CONFIG.innerRadiusFraction;
+  rows[16] = TERRAIN_RIDGE_CONFIG.outerRadiusFraction;
+  rows[17] = TERRAIN_RIDGE_CONFIG.halfWidthFraction;
+  rows[18] = runtime.plateauWallSlopeDegrees;
   const pipeline = [...TERRAIN_PIPELINE];
   if (runtime.terrainPrecedence === 'dividers-precedence') {
     const dividerIndex = pipeline.findIndex((e) => e.step === 'dividerRidges');
@@ -77,7 +73,7 @@ export function packTerrainGenerationConfigForWasm(): Float64Array {
   }
   for (let i = 0; i < pipeline.length; i++) {
     const entry = pipeline[i];
-    rows[23 + i] = TERRAIN_PIPELINE_STEP_CODES[entry.step] + (entry.active ? 0 : 8);
+    rows[19 + i] = TERRAIN_PIPELINE_STEP_CODES[entry.step] + (entry.active ? 0 : 8);
   }
   return rows;
 }

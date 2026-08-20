@@ -29,6 +29,7 @@ import {
 } from '../../battleBarConfig';
 import {
   setTerrainCenterMagnitude,
+  setTerrainRingMagnitude,
   setTerrainDividersMagnitude,
   setTerrainPerimeterMagnitude,
   setTerrainPrecedence,
@@ -143,6 +144,7 @@ export async function createBackgroundBattle(
   );
   setTerrainRuntimeConfig(terrainRuntimeConfig);
   setTerrainCenterMagnitude(terrainRuntimeConfig.centerMagnitude);
+  setTerrainRingMagnitude(terrainRuntimeConfig.ringMagnitude);
   setTerrainDividersMagnitude(terrainRuntimeConfig.dividersMagnitude);
   setTerrainPerimeterMagnitude(terrainRuntimeConfig.perimeterMagnitude);
   setTerrainPrecedence(terrainRuntimeConfig.terrainPrecedence);
@@ -216,6 +218,7 @@ export async function createBackgroundBattle(
       allyTeamSeats: demoAllyTeamSeats,
       gameGenerationSeed: createHostGameGenerationSeed(),
       centerMagnitude: terrainRuntimeConfig.centerMagnitude,
+      ringMagnitude: terrainRuntimeConfig.ringMagnitude,
       dividersMagnitude: terrainRuntimeConfig.dividersMagnitude,
       perimeterMagnitude: terrainRuntimeConfig.perimeterMagnitude,
       terrainPrecedence: terrainRuntimeConfig.terrainPrecedence,
@@ -292,6 +295,7 @@ export async function createBackgroundBattle(
     mapWidth: mapSize.width,
     mapHeight: mapSize.height,
     centerMagnitude: terrainRuntimeConfig.centerMagnitude,
+    ringMagnitude: terrainRuntimeConfig.ringMagnitude,
     dividersMagnitude: terrainRuntimeConfig.dividersMagnitude,
     perimeterMagnitude: terrainRuntimeConfig.perimeterMagnitude,
     terrainPrecedence: terrainRuntimeConfig.terrainPrecedence,

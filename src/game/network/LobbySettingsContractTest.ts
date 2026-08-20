@@ -3,6 +3,7 @@ import { assertCurrentLobbySettings } from './LobbySettingsContract';
 
 const CURRENT_SETTINGS: LobbySettings = {
   centerMagnitude: 0,
+  ringMagnitude: 0,
   dividersMagnitude: 0,
   perimeterMagnitude: 0,
   terrainPrecedence: 'perimeter-precedence',

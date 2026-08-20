@@ -209,6 +209,13 @@ export const BATTLE_CONFIG = {
     default: _demoPreset.centerMagnitude,
     options: battleBarConfig.centerMagnitude.options as readonly number[],
   },
+  // RING annulus crest amplitude — baseline at the map centre, full signed
+  // magnitude at the authored crest radius, baseline again at the outer
+  // radius.
+  ringMagnitude: {
+    default: _demoPreset.ringMagnitude,
+    options: battleBarConfig.ringMagnitude.options as readonly number[],
+  },
   dividersMagnitude: {
     default: _demoPreset.dividersMagnitude,
     options: battleBarConfig.dividersMagnitude.options as readonly number[],
@@ -332,6 +339,8 @@ const STORAGE_DEMO_LIQUID_SURFACE_MODE = sk.demoLiquidSurfaceMode;
 const STORAGE_REAL_LIQUID_SURFACE_MODE = sk.realLiquidSurfaceMode;
 const STORAGE_DEMO_CENTER_MAGNITUDE = sk.demoCenterMagnitude;
 const STORAGE_REAL_CENTER_MAGNITUDE = sk.realCenterMagnitude;
+const STORAGE_DEMO_RING_MAGNITUDE = sk.demoRingMagnitude;
+const STORAGE_REAL_RING_MAGNITUDE = sk.realRingMagnitude;
 const STORAGE_DEMO_DIVIDERS_MAGNITUDE = sk.demoDividersMagnitude;
 const STORAGE_REAL_DIVIDERS_MAGNITUDE = sk.realDividersMagnitude;
 const STORAGE_DEMO_PERIMETER_MAGNITUDE = sk.demoPerimeterMagnitude;
@@ -636,6 +645,8 @@ export type BattleMode = 'demo' | 'real';
 
 export type BattleTerrainRuntimeConfig = {
   centerMagnitude: number;
+  /** Signed RING annulus crest altitude (RING bar). */
+  ringMagnitude: number;
   dividersMagnitude: number;
   /** Signed PERIMETER ring altitude: negative sinks the outer ring below
    *  water (round-island), positive raises a rim, 0 flattens it to ground
@@ -881,6 +892,10 @@ export function normalizeCenterMagnitude(value: number): number {
   return normalizeNumberOption(value, BATTLE_CONFIG.centerMagnitude);
 }
 
+export function normalizeRingMagnitude(value: number): number {
+  return normalizeNumberOption(value, BATTLE_CONFIG.ringMagnitude);
+}
+
 export function normalizeDividersMagnitude(value: number): number {
   return normalizeNumberOption(value, BATTLE_CONFIG.dividersMagnitude);
 }
@@ -1002,6 +1017,19 @@ export function loadStoredCenterMagnitude(mode: BattleMode): number {
 
 export function saveCenterMagnitude(value: number, mode: BattleMode): void {
   writeModeSetting(mode, STORAGE_REAL_CENTER_MAGNITUDE, STORAGE_DEMO_CENTER_MAGNITUDE, String(normalizeCenterMagnitude(value)));
+}
+
+export function loadStoredRingMagnitude(mode: BattleMode): number {
+  return loadModeNumberOption(
+    mode,
+    STORAGE_REAL_RING_MAGNITUDE,
+    STORAGE_DEMO_RING_MAGNITUDE,
+    BATTLE_CONFIG.ringMagnitude,
+  );
+}
+
+export function saveRingMagnitude(value: number, mode: BattleMode): void {
+  writeModeSetting(mode, STORAGE_REAL_RING_MAGNITUDE, STORAGE_DEMO_RING_MAGNITUDE, String(normalizeRingMagnitude(value)));
 }
 
 export function loadStoredDividersMagnitude(mode: BattleMode): number {
@@ -1284,6 +1312,7 @@ export function loadStoredTerrainRuntimeConfig(
 ): BattleTerrainRuntimeConfig {
   return {
     centerMagnitude: loadStoredCenterMagnitude(mode),
+    ringMagnitude: loadStoredRingMagnitude(mode),
     dividersMagnitude: loadStoredDividersMagnitude(mode),
     perimeterMagnitude: loadStoredPerimeterMagnitude(mode),
     terrainPrecedence: loadStoredTerrainPrecedence(mode),

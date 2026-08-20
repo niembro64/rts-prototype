@@ -84,6 +84,7 @@ import {
   getTerrainMeshHeight,
   setTerrainTeamCount,
   setTerrainCenterMagnitude,
+  setTerrainRingMagnitude,
   setTerrainDividersMagnitude,
   setTerrainPerimeterMagnitude,
   setTerrainPrecedence,
@@ -141,6 +142,9 @@ type RtsScene3DConfig = {
   mapWidth: number;
   mapHeight: number;
   centerMagnitude?: number;
+  /** Signed RING annulus crest amplitude. Omitted = no ring, matching the
+   *  CENTER / DIVIDERS fallbacks that suppress their feature. */
+  ringMagnitude?: number;
   dividersMagnitude?: number;
   /** Omitted = the authored default ring altitude. */
   perimeterMagnitude?: number;
@@ -239,6 +243,7 @@ export class RtsScene3D {
   private mapWidth: number;
   private mapHeight: number;
   private centerMagnitude: number;
+  private ringMagnitude: number;
   private dividersMagnitude: number;
   private perimeterMagnitude: number;
   private terrainPrecedence: TerrainPrecedence;
@@ -341,6 +346,7 @@ export class RtsScene3D {
     this.onRendererWarmupChange = config.onRendererWarmupChange;
     this.onStartupReady = config.onStartupReady;
     this.centerMagnitude = config.centerMagnitude ?? 0;
+    this.ringMagnitude = config.ringMagnitude ?? 0;
     this.dividersMagnitude = config.dividersMagnitude ?? 0;
     this.perimeterMagnitude =
       config.perimeterMagnitude ?? BATTLE_CONFIG.perimeterMagnitude.default;
@@ -362,6 +368,7 @@ export class RtsScene3D {
     // but remote clients only construct the renderer.
     setTerrainTeamCount(getTerrainDividerTeamCount(this.teamRoster.allyTeamIds.length));
     setTerrainCenterMagnitude(this.centerMagnitude);
+    setTerrainRingMagnitude(this.ringMagnitude);
     setTerrainDividersMagnitude(this.dividersMagnitude);
     setTerrainPerimeterMagnitude(this.perimeterMagnitude);
     setTerrainPrecedence(this.terrainPrecedence);

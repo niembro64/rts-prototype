@@ -46,11 +46,16 @@ export type BattleBarConfig = {
   readonly liquidSurfaceMode: {
     readonly default: LiquidSurfaceMode;
   };
-  /** Signed altitude amplitude of the central ripple zone (CENTER
-   *  button group). Negative values dish the centre below ground
-   *  (valley), positive raise it (mountain), zero suppresses the
-   *  feature entirely. */
+  /** Signed altitude of the central cosine dome/dish at the exact map
+   *  centre (CENTER button group). Negative values dish the centre
+   *  below ground (valley), positive raise it (mountain), zero
+   *  suppresses the feature entirely. */
   readonly centerMagnitude: OptionsConfig<number>;
+  /** Signed crest altitude of the RING annulus (RING button group):
+   *  baseline at the map centre, full magnitude at the authored crest
+   *  radius, baseline again at the outer radius. Same sign convention
+   *  as `centerMagnitude`. */
+  readonly ringMagnitude: OptionsConfig<number>;
   /** Signed altitude amplitude of the team-separator ridges (DIVIDERS
    *  button group). Same sign convention as `centerMagnitude`. */
   readonly dividersMagnitude: OptionsConfig<number>;

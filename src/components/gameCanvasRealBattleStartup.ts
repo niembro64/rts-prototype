@@ -15,6 +15,7 @@ import {
 } from '../battleBarConfig';
 import {
   setTerrainCenterMagnitude,
+  setTerrainRingMagnitude,
   setTerrainDividersMagnitude,
   setTerrainPerimeterMagnitude,
   setTerrainPrecedence,
@@ -308,6 +309,7 @@ export function loadAndApplyRealBattleTerrain(): RealBattleStartupTerrain {
   const liquidSurfaceMode = loadStoredLiquidSurfaceMode('real');
   setTerrainRuntimeConfig(terrainRuntimeConfig);
   setTerrainCenterMagnitude(terrainRuntimeConfig.centerMagnitude);
+  setTerrainRingMagnitude(terrainRuntimeConfig.ringMagnitude);
   setTerrainDividersMagnitude(terrainRuntimeConfig.dividersMagnitude);
   setTerrainPerimeterMagnitude(terrainRuntimeConfig.perimeterMagnitude);
   setTerrainPrecedence(terrainRuntimeConfig.terrainPrecedence);
@@ -327,6 +329,7 @@ function buildRealBattleLobbySettingsFromTerrain(
 ): LobbySettings {
   return {
     centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
+    ringMagnitude: terrain.terrainRuntimeConfig.ringMagnitude,
     dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
     perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
     terrainPrecedence: terrain.terrainRuntimeConfig.terrainPrecedence,
@@ -477,6 +480,7 @@ function assertTerrainMatchesSettings(
 ): void {
   const mismatches: string[] = [];
   pushMismatch(mismatches, 'centerMagnitude', terrain.terrainRuntimeConfig.centerMagnitude, settings.centerMagnitude);
+  pushMismatch(mismatches, 'ringMagnitude', terrain.terrainRuntimeConfig.ringMagnitude, settings.ringMagnitude);
   pushMismatch(mismatches, 'dividersMagnitude', terrain.terrainRuntimeConfig.dividersMagnitude, settings.dividersMagnitude);
   pushMismatch(mismatches, 'perimeterMagnitude', terrain.terrainRuntimeConfig.perimeterMagnitude, settings.perimeterMagnitude);
   pushMismatch(mismatches, 'terrainPrecedence', terrain.terrainRuntimeConfig.terrainPrecedence, settings.terrainPrecedence);
@@ -641,6 +645,7 @@ async function createRealBattleServer({
       aiPlayerIds,
       gameGenerationSeed,
       centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
+      ringMagnitude: terrain.terrainRuntimeConfig.ringMagnitude,
       dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
       perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
       terrainPrecedence: terrain.terrainRuntimeConfig.terrainPrecedence,

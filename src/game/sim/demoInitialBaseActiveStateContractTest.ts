@@ -19,6 +19,7 @@ function spawnDemoBase(seed: number, mode: 'demo' | 'real'): Entity[] {
   const preset = getModeDefaultPreset('demo');
   setTerrainRuntimeConfig({
     centerMagnitude: preset.centerMagnitude,
+    ringMagnitude: preset.ringMagnitude,
     dividersMagnitude: preset.dividersMagnitude,
     perimeterMagnitude: preset.perimeterMagnitude,
     terrainPrecedence: preset.terrainPrecedence,

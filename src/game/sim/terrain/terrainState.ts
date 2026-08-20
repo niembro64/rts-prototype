@@ -14,10 +14,12 @@ import {
   TERRAIN_PERIMETER_MAGNITUDE,
   TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
   TERRAIN_PRECEDENCE,
+  TERRAIN_RING_MAGNITUDE,
   type TerrainRuntimeConfig,
 } from './terrainConfig';
 
-let mountainRippleAmplitude = TERRAIN_CENTER_MAGNITUDE;
+let centerDomeAmplitude = TERRAIN_CENTER_MAGNITUDE;
+let ringCrestAmplitude = TERRAIN_RING_MAGNITUDE;
 let mountainSeparatorAmplitude = TERRAIN_DIVIDERS_MAGNITUDE;
 let perimeterMagnitude = TERRAIN_PERIMETER_MAGNITUDE;
 let terrainPrecedence: TerrainPrecedence = TERRAIN_PRECEDENCE;
@@ -30,7 +32,8 @@ export function getTerrainVersion(): number {
 }
 
 export function resetTerrainStateForDeterministicReplay(): void {
-  mountainRippleAmplitude = TERRAIN_CENTER_MAGNITUDE;
+  centerDomeAmplitude = TERRAIN_CENTER_MAGNITUDE;
+  ringCrestAmplitude = TERRAIN_RING_MAGNITUDE;
   mountainSeparatorAmplitude = TERRAIN_DIVIDERS_MAGNITUDE;
   perimeterMagnitude = TERRAIN_PERIMETER_MAGNITUDE;
   terrainPrecedence = TERRAIN_PRECEDENCE;
@@ -93,6 +96,7 @@ export function getTerrainPerimeterMagnitude(): number {
 export function getTerrainRuntimeConfig(): TerrainRuntimeConfig {
   return {
     centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
+    ringMagnitude: TERRAIN_RING_MAGNITUDE,
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
     perimeterMagnitude: TERRAIN_PERIMETER_MAGNITUDE,
     terrainPrecedence: TERRAIN_PRECEDENCE,
@@ -105,7 +109,8 @@ export function getTerrainRuntimeConfig(): TerrainRuntimeConfig {
 
 export function setTerrainRuntimeConfig(config: TerrainRuntimeConfig): void {
   if (!applyTerrainRuntimeConfig(config)) return;
-  mountainRippleAmplitude = TERRAIN_CENTER_MAGNITUDE;
+  centerDomeAmplitude = TERRAIN_CENTER_MAGNITUDE;
+  ringCrestAmplitude = TERRAIN_RING_MAGNITUDE;
   mountainSeparatorAmplitude = TERRAIN_DIVIDERS_MAGNITUDE;
   perimeterMagnitude = TERRAIN_PERIMETER_MAGNITUDE;
   terrainPrecedence = TERRAIN_PRECEDENCE;
@@ -113,10 +118,28 @@ export function setTerrainRuntimeConfig(config: TerrainRuntimeConfig): void {
 }
 
 export function setTerrainCenterMagnitude(value: number): void {
-  if (value === mountainRippleAmplitude) return;
-  mountainRippleAmplitude = value;
+  if (value === centerDomeAmplitude) return;
+  centerDomeAmplitude = value;
   applyTerrainRuntimeConfig({
     centerMagnitude: value,
+    ringMagnitude: TERRAIN_RING_MAGNITUDE,
+    dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
+    perimeterMagnitude: TERRAIN_PERIMETER_MAGNITUDE,
+    terrainPrecedence: TERRAIN_PRECEDENCE,
+    terrainDTerrain: TERRAIN_D_TERRAIN,
+    plateauWallSlopeDegrees: TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
+    metalDepositStep: METAL_DEPOSIT_STEP,
+    terrainDetail: TERRAIN_FINE_TRIANGLE_SUBDIV,
+  });
+  invalidateTerrainConfig();
+}
+
+export function setTerrainRingMagnitude(value: number): void {
+  if (value === ringCrestAmplitude) return;
+  ringCrestAmplitude = value;
+  applyTerrainRuntimeConfig({
+    centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
+    ringMagnitude: value,
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
     perimeterMagnitude: TERRAIN_PERIMETER_MAGNITUDE,
     terrainPrecedence: TERRAIN_PRECEDENCE,
@@ -133,6 +156,7 @@ export function setTerrainDividersMagnitude(value: number): void {
   mountainSeparatorAmplitude = value;
   applyTerrainRuntimeConfig({
     centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
+    ringMagnitude: TERRAIN_RING_MAGNITUDE,
     dividersMagnitude: value,
     perimeterMagnitude: TERRAIN_PERIMETER_MAGNITUDE,
     terrainPrecedence: TERRAIN_PRECEDENCE,
@@ -149,6 +173,7 @@ export function setTerrainPerimeterMagnitude(value: number): void {
   perimeterMagnitude = value;
   applyTerrainRuntimeConfig({
     centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
+    ringMagnitude: TERRAIN_RING_MAGNITUDE,
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
     perimeterMagnitude: value,
     terrainPrecedence: TERRAIN_PRECEDENCE,
@@ -165,6 +190,7 @@ export function setTerrainPrecedence(value: TerrainPrecedence): void {
   terrainPrecedence = value;
   applyTerrainRuntimeConfig({
     centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
+    ringMagnitude: TERRAIN_RING_MAGNITUDE,
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
     perimeterMagnitude: TERRAIN_PERIMETER_MAGNITUDE,
     terrainPrecedence: value,

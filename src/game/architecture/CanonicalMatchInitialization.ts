@@ -84,6 +84,7 @@ export type CanonicalMatchInitialization = {
   readonly gameGenerationSeed: number;
   readonly map: {
     readonly centerMagnitude: number | null;
+    readonly ringMagnitude: number | null;
     readonly dividersMagnitude: number | null;
     readonly perimeterMagnitude: number | null;
     readonly terrainPrecedence: TerrainPrecedence | null;
@@ -200,6 +201,7 @@ export function buildCanonicalMatchInitialization({
     gameGenerationSeed: normalizeGameGenerationSeed(gameGenerationSeed),
     map: {
       centerMagnitude: finiteOrNull(settings?.centerMagnitude),
+      ringMagnitude: finiteOrNull(settings?.ringMagnitude),
       dividersMagnitude: finiteOrNull(settings?.dividersMagnitude),
       perimeterMagnitude: finiteOrNull(settings?.perimeterMagnitude),
       terrainPrecedence: isTerrainPrecedence(settings?.terrainPrecedence)

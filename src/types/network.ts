@@ -726,8 +726,10 @@ export type SessionRefusalReason =
 // complexity, and atomic-replace avoids the "client missed one
 // field" failure mode if a future delta protocol drops a packet.
 export type LobbySettings = {
-  /** Signed altitude of the central ripple (CENTER bar). */
+  /** Signed altitude of the central cosine dome/dish (CENTER bar). */
   centerMagnitude: number;
+  /** Signed crest altitude of the RING annulus (RING bar). */
+  ringMagnitude: number;
   /** Signed altitude of the team-separator ridges (DIVIDERS bar). */
   dividersMagnitude: number;
   /** Signed PERIMETER ring altitude (PERIMETER bar). Negative =

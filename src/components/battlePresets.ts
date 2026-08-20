@@ -32,7 +32,10 @@ export type BattlePreset = {
   /** What fills the map below the water level (WORLD bar group). */
   readonly liquidSurfaceMode: LiquidSurfaceMode;
   readonly converterTax: number;
+  /** Signed CENTER dome/dish altitude at the exact map centre. */
   readonly centerMagnitude: number;
+  /** Signed RING annulus crest altitude (0 = no ring). */
+  readonly ringMagnitude: number;
   readonly dividersMagnitude: number;
   /** Signed PERIMETER ring altitude: negative sinks the outer ring below
    *  water (round-island), positive raises a rim, 0 flattens it to ground
@@ -101,6 +104,7 @@ function buildPresets(): readonly BattlePreset[] {
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 0,
+      ringMagnitude: 0,
       dividersMagnitude: 0,
       perimeterMagnitude: -400,
       terrainPrecedence: 'perimeter-precedence',
@@ -118,6 +122,7 @@ function buildPresets(): readonly BattlePreset[] {
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 0,
+      ringMagnitude: 0,
       dividersMagnitude: 800,
       perimeterMagnitude: -400,
       terrainPrecedence: 'perimeter-precedence',
@@ -135,6 +140,7 @@ function buildPresets(): readonly BattlePreset[] {
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 1600,
+      ringMagnitude: 0,
       dividersMagnitude: 800,
       perimeterMagnitude: -200,
       terrainPrecedence: 'perimeter-precedence',
@@ -152,6 +158,7 @@ function buildPresets(): readonly BattlePreset[] {
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: -400,
+      ringMagnitude: 0,
       dividersMagnitude: 1600,
       perimeterMagnitude: -200,
       terrainPrecedence: 'perimeter-precedence',
@@ -169,6 +176,7 @@ function buildPresets(): readonly BattlePreset[] {
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 200,
+      ringMagnitude: 0,
       dividersMagnitude: -3200,
       perimeterMagnitude: -400,
       terrainPrecedence: 'perimeter-precedence',
@@ -186,6 +194,7 @@ function buildPresets(): readonly BattlePreset[] {
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 1600,
+      ringMagnitude: 0,
       dividersMagnitude: 6400,
       perimeterMagnitude: -400,
       terrainPrecedence: 'perimeter-precedence',
@@ -205,6 +214,7 @@ function buildPresets(): readonly BattlePreset[] {
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 0,
+      ringMagnitude: 0,
       dividersMagnitude: -400,
       perimeterMagnitude: -400,
       terrainPrecedence: 'perimeter-precedence',
@@ -224,6 +234,7 @@ function buildPresets(): readonly BattlePreset[] {
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 0,
+      ringMagnitude: 0,
       dividersMagnitude: 0,
       // The plate is flat at 0 everywhere, so a ground-level ring is the
       // same surface the old "no ring" pick produced.
@@ -269,6 +280,7 @@ function presetMatchesCurrent(
     p.slopePathMode === c.slopePathMode &&
     Math.abs(p.converterTax - c.converterTax) < 1e-6 &&
     p.centerMagnitude === c.centerMagnitude &&
+    p.ringMagnitude === c.ringMagnitude &&
     p.dividersMagnitude === c.dividersMagnitude &&
     p.perimeterMagnitude === c.perimeterMagnitude &&
     p.terrainPrecedence === c.terrainPrecedence &&
@@ -324,6 +336,7 @@ export function resolveBattleMapPresentation(
       terrain,
       liquid,
       `CENTER ${formatTerrainMagnitude(current.centerMagnitude)}`,
+      `RING ${formatTerrainMagnitude(current.ringMagnitude)}`,
       `DIVIDERS ${formatTerrainMagnitude(current.dividersMagnitude)}`,
       `PERIMETER ${formatPerimeterMagnitude(current.perimeterMagnitude)}`,
       `PRECEDENCE ${current.terrainPrecedence === 'dividers-precedence' ? 'DIVIDERS' : 'PERIMETER'}`,

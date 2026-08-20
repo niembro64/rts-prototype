@@ -57,6 +57,7 @@ import {
   loadStoredPathfindingCellConsolidation,
   loadStoredSimulationTickRate,
   loadStoredPerimeterMagnitude,
+  loadStoredRingMagnitude,
   loadStoredTerrainPrecedence,
   loadStoredMapLandDimensions,
   getTerrainLightSmoothAcrossWallBoundary,
@@ -1259,6 +1260,7 @@ const demoBuildingBlueprintIds: readonly string[] = [...BUILDING_BLUEPRINT_IDS];
 // `currentBattleMode` to `real`; the lobby-preview composable reloads
 // these refs from the real-battle keys at that point.
 const centerMagnitude = ref<number>(loadStoredCenterMagnitude('demo'));
+const ringMagnitude = ref<number>(loadStoredRingMagnitude('demo'));
 const dividersMagnitude = ref<number>(loadStoredDividersMagnitude('demo'));
 const perimeterMagnitude = ref<number>(loadStoredPerimeterMagnitude('demo'));
 const terrainPrecedence = ref<TerrainPrecedence>(
@@ -1298,6 +1300,7 @@ const mapDetailsRows = computed(() => [
     value: `${mapWidthLandCells.value * LAND_CELL_SIZE} x ${mapLengthLandCells.value * LAND_CELL_SIZE}`,
   },
   { label: 'CENTER', value: String(centerMagnitude.value) },
+  { label: 'RING', value: String(ringMagnitude.value) },
   { label: 'DIVIDERS', value: String(dividersMagnitude.value) },
   { label: 'PERIMETER', value: String(perimeterMagnitude.value) },
   {
@@ -1511,6 +1514,7 @@ useGameCanvasLobbyPreview({
   lobbyPlayerCount,
   localPlayerId,
   centerMagnitude,
+  ringMagnitude,
   dividersMagnitude,
   perimeterMagnitude,
   terrainPrecedence,
@@ -1703,6 +1707,7 @@ const {
   currentLobbySettings,
   broadcastLobbySettingsIfHost,
   applyCenterMagnitude,
+  applyRingMagnitude,
   applyDividersMagnitude,
   applyPerimeterMagnitude,
   applyTerrainPrecedence,
@@ -1723,6 +1728,7 @@ const {
   roomCode,
   gameStarted,
   centerMagnitude,
+  ringMagnitude,
   dividersMagnitude,
   perimeterMagnitude,
   terrainPrecedence,
@@ -1789,6 +1795,7 @@ const {
   getActiveConnection: () => activeConnection,
   broadcastLobbySettingsIfHost,
   applyCenterMagnitude,
+  applyRingMagnitude,
   applyDividersMagnitude,
   applyPerimeterMagnitude,
   applyTerrainPrecedence,
@@ -2066,6 +2073,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   mapWidthLandCells: mapWidthLandCells.value,
   mapLengthLandCells: mapLengthLandCells.value,
   centerMagnitude: centerMagnitude.value,
+  ringMagnitude: ringMagnitude.value,
   dividersMagnitude: dividersMagnitude.value,
   perimeterMagnitude: perimeterMagnitude.value,
   terrainPrecedence: terrainPrecedence.value,
@@ -2096,6 +2104,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   changeEntityCountCap,
   applyMapLandDimensions,
   applyCenterMagnitude,
+  applyRingMagnitude,
   applyDividersMagnitude,
   applyPerimeterMagnitude,
   applyTerrainPrecedence,
@@ -2132,6 +2141,7 @@ watchEffect(() => {
   m.mapWidthLandCells = mapWidthLandCells.value;
   m.mapLengthLandCells = mapLengthLandCells.value;
   m.centerMagnitude = centerMagnitude.value;
+  m.ringMagnitude = ringMagnitude.value;
   m.dividersMagnitude = dividersMagnitude.value;
   m.perimeterMagnitude = perimeterMagnitude.value;
   m.terrainPrecedence = terrainPrecedence.value;
@@ -2159,6 +2169,7 @@ watchEffect(() => {
     slopePathMode: currentSlopePathMode.value,
     converterTax: currentConverterTax.value,
     centerMagnitude: centerMagnitude.value,
+    ringMagnitude: ringMagnitude.value,
     dividersMagnitude: dividersMagnitude.value,
     perimeterMagnitude: perimeterMagnitude.value,
     terrainPrecedence: terrainPrecedence.value,
@@ -3056,6 +3067,7 @@ watchEffect(() => {
       :error="lobbyError"
       :is-connecting="isConnecting"
       :center-magnitude="centerMagnitude"
+      :ring-magnitude="ringMagnitude"
       :dividers-magnitude="dividersMagnitude"
       :perimeter-magnitude="perimeterMagnitude"
       :terrain-precedence="terrainPrecedence"
@@ -3087,6 +3099,7 @@ watchEffect(() => {
       @entity-lab="openEntityLab"
       @toggle-menu="toggleMenuHidden"
       @set-center-magnitude="(v) => applyCenterMagnitude(v)"
+      @set-ring-magnitude="(v) => applyRingMagnitude(v)"
       @set-dividers-magnitude="(v) => applyDividersMagnitude(v)"
       @set-perimeter-magnitude="(v) => applyPerimeterMagnitude(v)"
       @set-terrain-precedence="(v) => applyTerrainPrecedence(v)"

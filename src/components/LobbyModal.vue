@@ -46,6 +46,7 @@ const props = defineProps<{
   error: string | null;
   isConnecting: boolean;
   centerMagnitude: number;
+  ringMagnitude: number;
   dividersMagnitude: number;
   perimeterMagnitude: number;
   terrainPrecedence: TerrainPrecedence;
@@ -82,6 +83,7 @@ const emit = defineEmits<{
    *  match — this is the chevron on the sidebar's edge. */
   (e: 'toggleMenu'): void;
   (e: 'setCenterMagnitude', value: number): void;
+  (e: 'setRingMagnitude', value: number): void;
   (e: 'setDividersMagnitude', value: number): void;
   (e: 'setPerimeterMagnitude', value: number): void;
   (e: 'setTerrainPrecedence', value: TerrainPrecedence): void;
@@ -114,6 +116,7 @@ const emit = defineEmits<{
 // clicks one to pick the shape; non-hosts see the same UI but the
 // click handler is gated on isHost so only the host can change it.
 const centerMagnitudeOptions = BATTLE_CONFIG.centerMagnitude.options;
+const ringMagnitudeOptions = BATTLE_CONFIG.ringMagnitude.options;
 const dividersMagnitudeOptions = BATTLE_CONFIG.dividersMagnitude.options;
 const perimeterMagnitudeOptions = BATTLE_CONFIG.perimeterMagnitude.options;
 const terrainPrecedenceOptions = BATTLE_CONFIG.terrainPrecedence.options;
@@ -163,6 +166,11 @@ const allBuildingsActive = computed(() => {
 function pickCenterMagnitude(value: number): void {
   if (!props.isHost) return;
   emit('setCenterMagnitude', value);
+}
+
+function pickRingMagnitude(value: number): void {
+  if (!props.isHost) return;
+  emit('setRingMagnitude', value);
 }
 
 function pickDividersMagnitude(value: number): void {
@@ -962,8 +970,21 @@ const terrainSectionVars = computed(() =>
                     v-for="opt in centerMagnitudeOptions"
                     :key="opt"
                     :active="centerMagnitude === opt"
-                    :title="isHost ? `Set the central ripple altitude to ${opt}` : 'Only the host can change terrain'"
+                    :title="isHost ? `Set the centre dome altitude to ${opt}` : 'Only the host can change terrain'"
                     @click="pickCenterMagnitude(opt)"
+                  >{{ opt.toLocaleString() }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>RING:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="opt in ringMagnitudeOptions"
+                    :key="opt"
+                    :active="ringMagnitude === opt"
+                    :title="isHost ? `Set the ring crest altitude to ${opt}` : 'Only the host can change terrain'"
+                    @click="pickRingMagnitude(opt)"
                   >{{ opt.toLocaleString() }}</BarButton>
                 </BarButtonGroup>
               </BarControlGroup>

@@ -2,6 +2,7 @@ import { computed, nextTick, onUnmounted, watch, type ComputedRef, type Ref } fr
 import {
   loadStoredCenterMagnitude,
   loadStoredDividersMagnitude,
+  loadStoredRingMagnitude,
   loadStoredMapLandDimensions,
   loadStoredMetalDepositStep,
   loadStoredPlateauWallSlopeDegrees,
@@ -26,6 +27,7 @@ type GameCanvasLobbyPreviewOptions = {
   lobbyPlayerCount: ComputedRef<number>;
   localPlayerId: Ref<PlayerId>;
   centerMagnitude: Ref<number>;
+  ringMagnitude: Ref<number>;
   dividersMagnitude: Ref<number>;
   perimeterMagnitude: Ref<number>;
   terrainPrecedence: Ref<TerrainPrecedence>;
@@ -51,6 +53,7 @@ export function useGameCanvasLobbyPreview({
   lobbyPlayerCount,
   localPlayerId,
   centerMagnitude,
+  ringMagnitude,
   dividersMagnitude,
   perimeterMagnitude,
   terrainPrecedence,
@@ -80,6 +83,7 @@ export function useGameCanvasLobbyPreview({
 
   watch(currentBattleMode, (mode) => {
     centerMagnitude.value = loadStoredCenterMagnitude(mode);
+    ringMagnitude.value = loadStoredRingMagnitude(mode);
     dividersMagnitude.value = loadStoredDividersMagnitude(mode);
     perimeterMagnitude.value = loadStoredPerimeterMagnitude(mode);
     terrainPrecedence.value = loadStoredTerrainPrecedence(mode);

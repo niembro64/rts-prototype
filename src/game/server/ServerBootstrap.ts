@@ -26,6 +26,7 @@ import {
   getTerrainRuntimeConfig,
   setAuthoritativeTerrainTileMap,
   setTerrainCenterMagnitude,
+  setTerrainRingMagnitude,
   setTerrainDividersMagnitude,
   setTerrainPerimeterMagnitude,
   setTerrainPrecedence,
@@ -129,6 +130,8 @@ export class ServerBootstrap {
     const terrainRuntimeConfig = getTerrainRuntimeConfig();
     const centerMagnitude =
       config.centerMagnitude ?? terrainRuntimeConfig.centerMagnitude;
+    const ringMagnitude =
+      config.ringMagnitude ?? terrainRuntimeConfig.ringMagnitude;
     const dividersMagnitude =
       config.dividersMagnitude ?? terrainRuntimeConfig.dividersMagnitude;
     const perimeterMagnitude =
@@ -137,6 +140,7 @@ export class ServerBootstrap {
       config.terrainPrecedence ?? terrainRuntimeConfig.terrainPrecedence;
     setTerrainRuntimeConfig({
       centerMagnitude,
+      ringMagnitude,
       dividersMagnitude,
       perimeterMagnitude,
       terrainPrecedence,
@@ -152,6 +156,7 @@ export class ServerBootstrap {
     });
     setTerrainTeamCount(getTerrainDividerTeamCount(teamRoster.allyTeamIds.length));
     setTerrainCenterMagnitude(centerMagnitude);
+    setTerrainRingMagnitude(ringMagnitude);
     setTerrainDividersMagnitude(dividersMagnitude);
     setTerrainPerimeterMagnitude(perimeterMagnitude);
     setTerrainPrecedence(terrainPrecedence);
@@ -343,6 +348,8 @@ export class ServerBootstrap {
     const terrainRuntimeConfig = getTerrainRuntimeConfig();
     const centerMagnitude =
       config.centerMagnitude ?? terrainRuntimeConfig.centerMagnitude;
+    const ringMagnitude =
+      config.ringMagnitude ?? terrainRuntimeConfig.ringMagnitude;
     const dividersMagnitude =
       config.dividersMagnitude ?? terrainRuntimeConfig.dividersMagnitude;
     const perimeterMagnitude =
@@ -351,6 +358,7 @@ export class ServerBootstrap {
       config.terrainPrecedence ?? terrainRuntimeConfig.terrainPrecedence;
     setTerrainRuntimeConfig({
       centerMagnitude,
+      ringMagnitude,
       dividersMagnitude,
       perimeterMagnitude,
       terrainPrecedence,
@@ -366,6 +374,7 @@ export class ServerBootstrap {
     });
     setTerrainTeamCount(getTerrainDividerTeamCount(teamRoster.allyTeamIds.length));
     setTerrainCenterMagnitude(centerMagnitude);
+    setTerrainRingMagnitude(ringMagnitude);
     setTerrainDividersMagnitude(dividersMagnitude);
     setTerrainPerimeterMagnitude(perimeterMagnitude);
     setTerrainPrecedence(terrainPrecedence);

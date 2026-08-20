@@ -473,6 +473,7 @@ function assertAuthoredRosterCoverageForPreset(
 ): void {
   setTerrainRuntimeConfig({
     centerMagnitude: compactPreset.centerMagnitude,
+    ringMagnitude: compactPreset.ringMagnitude,
     dividersMagnitude: compactPreset.dividersMagnitude,
     perimeterMagnitude: compactPreset.perimeterMagnitude,
     terrainPrecedence: compactPreset.terrainPrecedence,
@@ -1043,6 +1044,7 @@ function assertDemoTechLabsSpawnForEverySeat(preset: BattlePreset): void {
   const previousRuntimeConfig = getTerrainRuntimeConfig();
   setTerrainRuntimeConfig({
     centerMagnitude: preset.centerMagnitude,
+    ringMagnitude: preset.ringMagnitude,
     dividersMagnitude: preset.dividersMagnitude,
     perimeterMagnitude: preset.perimeterMagnitude,
     terrainPrecedence: preset.terrainPrecedence,
@@ -1103,6 +1105,7 @@ export function runDemoMetalExtractorSpawnContractTest(): void {
   const previousRuntimeConfig = getTerrainRuntimeConfig();
   setTerrainRuntimeConfig({
     centerMagnitude: preset.centerMagnitude,
+    ringMagnitude: preset.ringMagnitude,
     dividersMagnitude: preset.dividersMagnitude,
     // The baseline assertions exercise the authored offshore layout even if
     // the current demo preset has deliberately selected a dry perimeter.

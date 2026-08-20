@@ -87,6 +87,7 @@ type GameCanvasBattleSettingsOptions = {
   getActiveConnection: () => GameConnection | null;
   broadcastLobbySettingsIfHost: () => void;
   applyCenterMagnitude: (value: number, broadcast?: boolean) => void;
+  applyRingMagnitude: (value: number, broadcast?: boolean) => void;
   applyDividersMagnitude: (value: number, broadcast?: boolean) => void;
   applyPerimeterMagnitude: (value: number, broadcast?: boolean) => void;
   applyTerrainPrecedence: (
@@ -116,6 +117,7 @@ export function useGameCanvasBattleSettings({
   getActiveConnection,
   broadcastLobbySettingsIfHost,
   applyCenterMagnitude,
+  applyRingMagnitude,
   applyDividersMagnitude,
   applyPerimeterMagnitude,
   applyTerrainPrecedence,
@@ -390,6 +392,7 @@ export function useGameCanvasBattleSettings({
     }
     setConverterTax(preset.converterTax, false);
     applyCenterMagnitude(preset.centerMagnitude, false);
+    applyRingMagnitude(preset.ringMagnitude, false);
     applyDividersMagnitude(preset.dividersMagnitude, false);
     applyPerimeterMagnitude(preset.perimeterMagnitude, false);
     applyTerrainPrecedence(preset.terrainPrecedence, false);

@@ -777,6 +777,7 @@ async function runFullStack(
       mapWidth: mapSize.width,
       mapHeight: mapSize.height,
       centerMagnitude: preset?.centerMagnitude ?? 0,
+      ringMagnitude: preset?.ringMagnitude ?? 0,
       dividersMagnitude: preset?.dividersMagnitude ?? 0,
       perimeterMagnitude: preset?.perimeterMagnitude ?? -800,
       terrainPrecedence: preset?.terrainPrecedence ?? 'perimeter-precedence',
@@ -1256,6 +1257,7 @@ function createServerConfig(
   return {
     playerIds: PLAYER_IDS,
     centerMagnitude: preset?.centerMagnitude ?? 0,
+    ringMagnitude: preset?.ringMagnitude ?? 0,
     dividersMagnitude: preset?.dividersMagnitude ?? 0,
     perimeterMagnitude: preset?.perimeterMagnitude ?? -800,
     terrainPrecedence: preset?.terrainPrecedence ?? 'perimeter-precedence',

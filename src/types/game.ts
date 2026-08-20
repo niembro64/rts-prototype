@@ -40,9 +40,12 @@ export type GameConfig = {
   mapHeight: number;
   /** Signed CENTER amplitude used for the central terrain heightmap and
    *  terrain-polarized metal-deposit dTerrain levels. Sign decides
-   *  ripple polarity (negative dishes a valley, positive raises a
-   *  mountain), magnitude decides height. */
+   *  dome/dish polarity (negative dishes a valley, positive raises a
+   *  mountain), magnitude decides the centre height. */
   centerMagnitude?: number;
+  /** Signed RING annulus crest amplitude (RING bar). Same sign
+   *  convention as `centerMagnitude`. */
+  ringMagnitude?: number;
   /** Signed DIVIDERS amplitude used for team-separator ridges/trenches.
    *  Same sign convention as `centerMagnitude`. */
   dividersMagnitude?: number;
@@ -196,6 +199,8 @@ export type GameServerConfig = {
   gameGenerationSeed?: number;
   /** Signed CENTER amplitude selected by the host/lobby. */
   centerMagnitude?: number;
+  /** Signed RING annulus crest amplitude selected by the host/lobby. */
+  ringMagnitude?: number;
   /** Signed DIVIDERS amplitude selected by the host/lobby. */
   dividersMagnitude?: number;
   /** Signed PERIMETER ring amplitude selected by the host/lobby. Negative =

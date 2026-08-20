@@ -24,6 +24,9 @@
   "centerMagnitude": {
     "options": [-3200, -800, -400, -200, 0, 200, 400, 800, 1600, 3200, 6400]
   },
+  "ringMagnitude": {
+    "options": [-3200, -800, -400, -200, 0, 200, 400, 800, 1600, 3200, 6400]
+  },
   "dividersMagnitude": {
     "options": [-3200, -800, -400, -200, 0, 200, 400, 800, 1600, 3200, 6400]
   },
@@ -89,6 +92,8 @@
     "realLiquidSurfaceMode": "real-battle-liquid-surface-mode",
     "demoCenterMagnitude": "demo-battle-center-magnitude",
     "realCenterMagnitude": "real-battle-center-magnitude",
+    "demoRingMagnitude": "demo-battle-ring-magnitude",
+    "realRingMagnitude": "real-battle-ring-magnitude",
     "demoDividersMagnitude": "demo-battle-dividers-magnitude",
     "realDividersMagnitude": "real-battle-dividers-magnitude",
     "demoPerimeterMagnitude": "demo-battle-perimeter-magnitude",

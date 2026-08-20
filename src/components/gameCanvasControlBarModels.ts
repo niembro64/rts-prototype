@@ -58,6 +58,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly mapWidthLandCells: number;
   readonly mapLengthLandCells: number;
   readonly centerMagnitude: number;
+  readonly ringMagnitude: number;
   readonly dividersMagnitude: number;
   readonly perimeterMagnitude: number;
   readonly terrainPrecedence: TerrainPrecedence;
@@ -92,6 +93,7 @@ export type GameCanvasBattleControlBarModel = {
   changeEntityCountCap(cap: number): void;
   applyMapLandDimensions(dimensions: MapLandCellDimensions): void;
   applyCenterMagnitude(value: number): void;
+  applyRingMagnitude(value: number): void;
   applyDividersMagnitude(value: number): void;
   applyPerimeterMagnitude(value: number): void;
   applyTerrainPrecedence(value: TerrainPrecedence): void;

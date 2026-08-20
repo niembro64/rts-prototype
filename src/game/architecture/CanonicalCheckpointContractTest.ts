@@ -42,6 +42,7 @@ function runCanonicalCheckpointContract(): void {
   const config: GameServerConfig = {
     playerIds: [1 as PlayerId, 2 as PlayerId],
     centerMagnitude: 0,
+    ringMagnitude: 0,
     dividersMagnitude: 0,
     perimeterMagnitude: -800,
     terrainPrecedence: 'perimeter-precedence',

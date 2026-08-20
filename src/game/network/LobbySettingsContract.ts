@@ -7,6 +7,7 @@ import { isSimulationTickRateHz } from '@/types/simulationTickRate';
 
 const NUMERIC_FIELDS = [
   'centerMagnitude',
+  'ringMagnitude',
   'dividersMagnitude',
   'perimeterMagnitude',
   'terrainDTerrain',

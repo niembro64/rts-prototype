@@ -161,8 +161,21 @@ const METAL_COVERAGE_TITLE: Record<MetalCoverage, string> = {
             v-for="opt in BATTLE_CONFIG.centerMagnitude.options"
             :key="opt"
             :active="model.centerMagnitude === opt"
-            :title="`Set the central ripple altitude to ${opt}`"
+            :title="`Set the centre dome altitude to ${opt}`"
             @click="model.applyCenterMagnitude(opt)"
+          >{{ opt.toLocaleString() }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup v-if="!model.gameStarted">
+        <BarDivider />
+        <BarLabel title="Annular crest: baseline at the map centre, full altitude at the authored crest radius, baseline again at the outer radius">RING:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in BATTLE_CONFIG.ringMagnitude.options"
+            :key="opt"
+            :active="model.ringMagnitude === opt"
+            :title="`Set the ring crest altitude to ${opt}`"
+            @click="model.applyRingMagnitude(opt)"
           >{{ opt.toLocaleString() }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
