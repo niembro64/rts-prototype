@@ -15,13 +15,16 @@
 // directly. It asks the authoritative rendered terrain and water meshes for
 // sorted intersections first, then falls back to a forward terrain scan only
 // when no rendered terrain mesh is available.
+//
+// Every height this file samples comes from CameraSurface3D, which is the same
+// field the orbit camera floors its focus and its eye clearance on. Using the
+// raw map height sampler here instead reported a phantom plateau at the coast
+// altitude for the whole world outside the map square, so a ray aimed over the
+// void resolved an anchor on ground that is not drawn.
 
 import * as THREE from 'three';
-import {
-  getTerrainMeshHeight,
-  TILE_FLOOR_Y,
-  WATER_LEVEL,
-} from '../sim/Terrain';
+import { TILE_FLOOR_Y, WATER_LEVEL } from '../sim/Terrain';
+import { cameraSurfaceHeight } from './CameraSurface3D';
 import type { CameraAnchorTerrain } from '../../types/camera';
 
 const TERRAIN_RAY_FALLBACK_STEP = 20;
@@ -173,9 +176,7 @@ export class CursorGround {
   }
 
   private zoomSampleSurfaceHeight(x: number, z: number): number {
-    const insideTerrain = x >= 0 && x <= this.mapWidth && z >= 0 && z <= this.mapHeight;
-    if (!insideTerrain) return Number.NaN;
-    return getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight);
+    return cameraSurfaceHeight(x, z, this.mapWidth, this.mapHeight);
   }
 
   private setRayFromClient(clientX: number, clientY: number): boolean {
@@ -270,7 +271,11 @@ export class CursorGround {
     const ray = this.raycaster.ray;
     if (ray.direction.y >= -1e-6) return null;
 
-    const heightAt = (t: number): number => getTerrainMeshHeight(
+    // NaN where nothing is drawn. Every comparison below is written so a NaN
+    // reads as "no surface on this step": `<= 0` and `> 0` are both false, so
+    // the march flies over the void and lands on the first real ground it
+    // crosses instead of stopping on ground that is not there.
+    const heightAt = (t: number): number => cameraSurfaceHeight(
       ray.origin.x + t * ray.direction.x,
       ray.origin.z + t * ray.direction.z,
       this.mapWidth,
@@ -324,11 +329,12 @@ export class CursorGround {
     const t = hiClearance <= 0 ? hitHi : hitLo;
     const x = ray.origin.x + t * ray.direction.x;
     const z = ray.origin.z + t * ray.direction.z;
-    this.worldHit.set(
-      x,
-      getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight),
-      z,
-    );
+    const y = cameraSurfaceHeight(x, z, this.mapWidth, this.mapHeight);
+    // The bisection converges onto the side that reported a surface, but a
+    // bracket straddling the map's own boundary can land its last sample a
+    // hair outside it. A point with no ground under it is not a pick.
+    if (!Number.isFinite(y)) return null;
+    this.worldHit.set(x, y, z);
     return this.worldHit;
   }
 

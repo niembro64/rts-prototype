@@ -10,7 +10,11 @@ import {
   resolveMapInfoAnnexFootprint,
   resolveMapInfoAnnexLiquidRows,
 } from './MapInfoAnnex3D';
-import { resolveCameraTargetBounds } from './CameraTargetBounds3D';
+import {
+  resolveCameraTargetBounds,
+  resolveCameraTargetBufferDepth,
+} from './CameraTargetBounds3D';
+import { cameraSurfaceHeight, isOnMapInfoAnnex } from './CameraSurface3D';
 import { getFloatingWaterOverhang } from './WorldBoxGeometry3D';
 import { LAND_TILE_GROUND_LIFT, MAP_INFO_ANNEX_RENDER_CONFIG } from '@/config';
 import { getAllyTeamBaseAngle } from '../sim/playerLayout';
@@ -70,6 +74,90 @@ export function runMapInfoAnnex3DContractTest(): void {
         cameraBounds.minZ <= annex.attachZ + annex.outZ * annex.depth &&
         cameraBounds.maxZ >= annex.attachZ + annex.outZ * annex.depth,
       'the camera focus must reach the annex far rim, not just its seam',
+    );
+
+    // The union alone gave the annex's edge a deep extension and the other
+    // three nothing, so the camera could stand well past one coast and not one
+    // unit past its opposite. Every side gets the same standoff buffer.
+    const buffer = resolveCameraTargetBufferDepth(mapWidth, mapHeight);
+    assertContract(
+      buffer > 0,
+      'the camera rail buffer must be a real distance, not zero',
+    );
+    assertContract(
+      cameraBounds.minX <= Math.min(0, annex.minX) - buffer + 1e-6 &&
+        cameraBounds.minZ <= Math.min(0, annex.minZ) - buffer + 1e-6 &&
+        cameraBounds.maxX >= Math.max(mapWidth, annex.maxX) + buffer - 1e-6 &&
+        cameraBounds.maxZ >= Math.max(mapHeight, annex.maxZ) + buffer - 1e-6,
+      'the camera rail must clear the drawn world by the buffer on all four sides',
+    );
+    // Standoff, not reach: a buffer as deep as the annex would put as much
+    // void past every coast as there is headland past one of them.
+    assertContract(
+      buffer < annex.depth,
+      'the all-sides buffer must stay shallower than the annex it is derived from',
+    );
+
+    // ONE height field for the camera. The rail now runs well outside the map
+    // square, and the sampler that used to serve the camera answered every
+    // point out there with the height of the nearest map edge — a plateau over
+    // ground that is drawn as open air, which floors the focus above the
+    // surface beneath it and is what let a zoom-out walk its own altitude
+    // upward until the gesture throttled itself to nothing.
+    const insideMap = cameraSurfaceHeight(
+      mapWidth / 2,
+      mapHeight / 2,
+      mapWidth,
+      mapHeight,
+    );
+    assertContract(
+      Number.isFinite(insideMap),
+      'the camera surface must be defined everywhere inside the map square',
+    );
+    const annexMiddleX = annex.attachX + annex.outX * annex.depth * 0.5;
+    const annexMiddleZ = annex.attachZ + annex.outZ * annex.depth * 0.5;
+    assertContract(
+      Number.isFinite(cameraSurfaceHeight(annexMiddleX, annexMiddleZ, mapWidth, mapHeight)),
+      'the camera surface must include the info annex — it is drawn land',
+    );
+    // Halfway into the buffer off the edge OPPOSITE the annex: the side that
+    // had no rail at all before, and that has no land under it at any time.
+    const voidX = (annex.outX !== 0 ? mapWidth - annex.attachX : annex.attachX)
+      - annex.outX * buffer * 0.5;
+    const voidZ = (annex.outZ !== 0 ? mapHeight - annex.attachZ : annex.attachZ)
+      - annex.outZ * buffer * 0.5;
+    assertContract(
+      !isOnMapInfoAnnex(voidX, voidZ, mapWidth, mapHeight),
+      'the far-side buffer probe must genuinely miss the annex',
+    );
+    assertContract(
+      voidX >= cameraBounds.minX && voidX <= cameraBounds.maxX &&
+        voidZ >= cameraBounds.minZ && voidZ <= cameraBounds.maxZ,
+      'the buffer off the far coast must be inside the rail — that is the point of it',
+    );
+    assertContract(
+      Number.isNaN(cameraSurfaceHeight(voidX, voidZ, mapWidth, mapHeight)),
+      'the camera surface must report NaN over the void, never a phantom coast',
+    );
+    // The seam is a join, not a step: the annex inherits the map's own edge
+    // height at out = 0, so the field either side of the boundary agrees.
+    const seamStep = Math.abs(
+      cameraSurfaceHeight(
+        annex.attachX + annex.outX * 1e-3,
+        annex.attachZ + annex.outZ * 1e-3,
+        mapWidth,
+        mapHeight,
+      ) -
+        cameraSurfaceHeight(
+          annex.attachX - annex.outX * 1e-3,
+          annex.attachZ - annex.outZ * 1e-3,
+          mapWidth,
+          mapHeight,
+        ),
+    );
+    assertContract(
+      seamStep < 1,
+      'the camera surface must be continuous across the map/annex seam',
     );
 
     // The annex belongs to ally team 0, at every side count: the layout's
