@@ -64,6 +64,10 @@ const STYLE = {
   lineAlpha: 0.6,
   /** Alpha multiplier for the patrol-return arc (the loop-back). */
   patrolReturnAlpha: 0.3,
+  /** Maximum world-unit spacing between samples along a DETAILED-SMOOTH
+   *  curve. Finer than subStep so the bend itself, not just the terrain,
+   *  sets the tessellation. */
+  smoothSampleStep: 10,
   /** Square size for build / repair markers, in world units. */
   rectWorldSize: 18,
   /** Flag sprite size in world units. */
@@ -90,6 +94,15 @@ type ActionDisplayPoint = {
   x: number;
   y: number;
   target?: Entity;
+};
+
+/** One vertex of a unit's threaded route polyline. `color` is the color of
+ *  the leg ARRIVING at this point, so each drawn span inherits the color of
+ *  its destination — same convention the straight-line draw always used. */
+type RoutePoint = {
+  x: number;
+  y: number;
+  color: number;
 };
 
 function configureFlagSprite(slot: FlagSlot): void {
@@ -304,6 +317,94 @@ export class Waypoint3D {
     }
   }
 
+  /** Draw a threaded route polyline. Sharp mode connects consecutive points
+   *  with straight terrain-hugging lines. Smooth mode bends through every
+   *  interior point with a cubic Hermite whose unit tangent is normal to the
+   *  corner's angle bisector — i.e. the normalized sum of the incoming and
+   *  outgoing segment directions — so the curve passes exactly through each
+   *  point at exactly that angle, never cutting the corner. Endpoints keep
+   *  their single segment's direction; tangent magnitude is the span's chord
+   *  length (Catmull-Rom-style) so bend radius scales with leg length. */
+  private pushRoute(route: readonly RoutePoint[], smooth: boolean): void {
+    const n = route.length;
+    if (n < 2) return;
+    if (!smooth) {
+      for (let i = 1; i < n; i++) {
+        const a = route[i - 1];
+        const b = route[i];
+        this.pushTerrainLine(a.x, a.y, b.x, b.y, b.color, STYLE.lineAlpha);
+      }
+      return;
+    }
+    // Unit direction of each span; zero-length spans keep (0,0) and are
+    // absorbed by the fallbacks below.
+    const sdx = new Float64Array(n - 1);
+    const sdy = new Float64Array(n - 1);
+    for (let i = 0; i < n - 1; i++) {
+      const dx = route[i + 1].x - route[i].x;
+      const dy = route[i + 1].y - route[i].y;
+      const l = Math.hypot(dx, dy);
+      if (l > 1e-6) {
+        sdx[i] = dx / l;
+        sdy[i] = dy / l;
+      }
+    }
+    // Per-point unit tangents. Degenerate corners (exact reversals,
+    // duplicate points) fall back to whichever adjacent direction exists.
+    const tx = new Float64Array(n);
+    const ty = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      let vx = 0;
+      let vy = 0;
+      if (i > 0) {
+        vx += sdx[i - 1];
+        vy += sdy[i - 1];
+      }
+      if (i < n - 1) {
+        vx += sdx[i];
+        vy += sdy[i];
+      }
+      const l = Math.hypot(vx, vy);
+      if (l > 1e-6) {
+        tx[i] = vx / l;
+        ty[i] = vy / l;
+      } else if (i < n - 1 && (sdx[i] !== 0 || sdy[i] !== 0)) {
+        tx[i] = sdx[i];
+        ty[i] = sdy[i];
+      } else if (i > 0) {
+        tx[i] = sdx[i - 1];
+        ty[i] = sdy[i - 1];
+      }
+    }
+    for (let i = 1; i < n; i++) {
+      const a = route[i - 1];
+      const b = route[i];
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (len < 1e-6) continue;
+      const steps = Math.max(1, Math.ceil(len / STYLE.smoothSampleStep));
+      const m0x = tx[i - 1] * len;
+      const m0y = ty[i - 1] * len;
+      const m1x = tx[i] * len;
+      const m1y = ty[i] * len;
+      let px = a.x;
+      let py = a.y;
+      for (let s = 1; s <= steps; s++) {
+        const t = s / steps;
+        const t2 = t * t;
+        const t3 = t2 * t;
+        const h00 = 2 * t3 - 3 * t2 + 1;
+        const h10 = t3 - 2 * t2 + t;
+        const h01 = -2 * t3 + 3 * t2;
+        const h11 = t3 - t2;
+        const cx = h00 * a.x + h10 * m0x + h01 * b.x + h11 * m1x;
+        const cy = h00 * a.y + h10 * m0y + h01 * b.y + h11 * m1y;
+        this.pushTerrainLine(px, py, cx, cy, b.color, STYLE.lineAlpha);
+        px = cx;
+        py = cy;
+      }
+    }
+  }
+
   /** Join a unit or build target's 3D center to the raised ground route at
    *  the same x/y. These stems make ownership and build endpoints explicit
    *  without letting the terrain-following route cut through either model. */
@@ -430,56 +531,61 @@ export class Waypoint3D {
     // terrain-bed elevation, including under water.
     //
     // `actions` is durable intent; `activePath` is the disposable resolved
-    // plan for actions[0]. Both modes connect the complete authored queue.
-    // DETAILED replaces the active leg's straight connection with the exact
-    // remaining activePath when one exists; later, not-yet-planned legs keep
-    // their direct authored connections. SIMPLE never reads activePath.
-    const detailed = getWaypointDetail() === 'detailed';
+    // plan for actions[0]. All modes connect the complete authored queue.
+    // The DETAILED modes replace the active leg's straight connection with
+    // the exact remaining activePath when one exists; later, not-yet-planned
+    // legs keep their direct authored connections. SIMPLE never reads
+    // activePath. DETAILED-SHARP draws the threaded route as straight spans;
+    // DETAILED-SMOOTH bends the same route through every point (pathfinder
+    // sub-points and authored waypoints alike) — see pushRoute.
+    const mode = getWaypointDetail();
+    const detailed = mode !== 'simple';
+    const smooth = mode === 'detailed-smooth';
     for (const u of selectedUnits) {
       const unit = u.unit;
       const actions = unit?.actions;
       if (!unit || !actions || actions.length === 0) continue;
-      let prevX = u.transform.x;
-      let prevY = u.transform.y;
       const previewPoints = detailed ? unit.activePath?.points : undefined;
       const firstActionColor =
         ACTION_COLORS[actions[0].type] ?? COLORS.units.turret.barrel.colorHex;
       this.pushGroundStem(
-        prevX,
-        prevY,
+        u.transform.x,
+        u.transform.y,
         u.transform.z,
         firstActionColor,
         STYLE.lineAlpha,
       );
+      const route: RoutePoint[] = [
+        { x: u.transform.x, y: u.transform.y, color: firstActionColor },
+      ];
       for (let i = 0; i < actions.length; i++) {
         const a = actions[i];
         const p = this.actionDisplayPoint(a);
         const color = ACTION_COLORS[a.type] ?? COLORS.units.turret.barrel.colorHex;
-        // Active leg in DETAILED mode: thread the exact authoritative smoothed
-        // plan. Only the authored waypoint itself gets a marker — the
-        // resolved route points draw as lines alone.
+        // Active leg in the DETAILED modes: thread the exact authoritative
+        // resolved plan. Only the authored waypoint itself gets a marker —
+        // the route points thread through as lines alone.
         if (detailed && i === 0 && previewPoints !== undefined && previewPoints.length > 0) {
           for (let k = 0; k < previewPoints.length; k++) {
             const pt = previewPoints[k];
-            this.pushTerrainLine(prevX, prevY, pt.x, pt.y, color, STYLE.lineAlpha);
-            prevX = pt.x;
-            prevY = pt.y;
+            route.push({ x: pt.x, y: pt.y, color });
           }
         }
-        // SIMPLE always draws the direct authored leg. DETAILED does the same
-        // for future legs and as a fallback when no active plan exists. If a
-        // snapped/partial active path ends before the requested first
-        // waypoint, retain a direct tail so the visible queue stays exhaustive
-        // without pretending that tail came from the pathfinder.
+        // SIMPLE always threads the direct authored leg. The DETAILED modes
+        // do the same for future legs and as a fallback when no active plan
+        // exists. If a snapped/partial active path ends before the requested
+        // first waypoint, retain a direct tail so the visible queue stays
+        // exhaustive without pretending that tail came from the pathfinder.
+        const tail = route[route.length - 1];
         if (
           !detailed ||
           i > 0 ||
           previewPoints === undefined ||
           previewPoints.length === 0 ||
-          Math.abs(prevX - p.x) > 1e-6 ||
-          Math.abs(prevY - p.y) > 1e-6
+          Math.abs(tail.x - p.x) > 1e-6 ||
+          Math.abs(tail.y - p.y) > 1e-6
         ) {
-          this.pushTerrainLine(prevX, prevY, p.x, p.y, color, STYLE.lineAlpha);
+          route.push({ x: p.x, y: p.y, color });
         }
         if (
           p.target?.building &&
@@ -500,9 +606,8 @@ export class Waypoint3D {
           this.pushDot(state, p.x, p.y, color);
         }
         this.acquireLabel(labelCount++, String(i + 1), color, p.x, p.y);
-        prevX = p.x;
-        prevY = p.y;
       }
+      this.pushRoute(route, smooth);
       // Patrol return — link the last patrol waypoint back to the first
       // with a dimmer line.
       if (unit.patrolStartIndex !== null && actions.length > 0) {

@@ -62,7 +62,7 @@ export type WaterBoundaryMode =
  *  smoothed active plan consumed by locomotion, including snapped or partial
  *  endpoints; future command points remain markers until their legs are
  *  actually planned. */
-export type WaypointDetail = 'simple' | 'detailed';
+export type WaypointDetail = 'simple' | 'detailed-sharp' | 'detailed-smooth';
 export type PathingDebugMode = 'none' | 'waypoint' | 'move';
 /** Exclusive whole-map view for each authoritative placement set. */
 export type BuildGridDebugMode = 'none' | BuildingPlacementSet;
