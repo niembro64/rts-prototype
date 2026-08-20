@@ -377,7 +377,7 @@
     },
     "plane": {
       "actuator": {
-        "propulsionAxis": "bodyForward",
+        "propulsionAxis": "bodyForwardOnly",
         "ground": {
           "staticFrictionCoefficient": 0.1,
           "tangentialDampingRate": 0.151906847906
