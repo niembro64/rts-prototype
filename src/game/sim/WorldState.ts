@@ -223,6 +223,14 @@ export class WorldState {
    *  it is not serialized: every peer runs the same lifecycle pass. */
   public readonly unfundedBuildSeconds = new Map<EntityId, number>();
 
+  /** Buildings added since the last tick that still need a collision body.
+   *  A structure placed during play is the same obstacle as one placed at
+   *  boot: Simulation drains this into `onBuildingSpawn`, which is where the
+   *  static body is built. Without it a player-built structure had a
+   *  pathfinding footprint but no physical presence, so a unit standing on
+   *  the site was never pushed out of it. */
+  public readonly pendingBuildingBodySpawns: Entity[] = [];
+
   // Map dimensions
   public readonly mapWidth: number;
   public readonly mapHeight: number;
@@ -706,7 +714,10 @@ export class WorldState {
     // Towers share the buildingVersion bucket because their structural
     // shape (static, footprint, building component) matches buildings;
     // the entity.type discriminator is what selection/UI code reads.
-    if (entity.type === 'building') this.buildingVersion++;
+    if (entity.type === 'building') {
+      this.buildingVersion++;
+      if (entity.body === null) this.pendingBuildingBodySpawns.push(entity);
+    }
     if (entity.type === 'unit' || entity.type === 'building') {
       const r = entity.unit
         ? entity.unit.radius.hitbox

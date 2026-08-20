@@ -79,6 +79,11 @@ export class ServerSimulationCore {
   private readonly unitForceSystem: UnitForceSystem;
   private physicsSyncEntitySlotsBuf = new Uint32Array(1024);
   private readonly onGameOver: ((winnerId: PlayerId) => void) | undefined;
+  /** Set by the host so a lockstep command frame is recorded exactly like a
+   *  command handed straight to the server in the sandbox. Without it an
+   *  online match exported an empty replay while the same actions in a demo
+   *  battle exported a full one. */
+  private onAcceptedCommand: ((command: Command) => void) | null = null;
   private isGameOver = false;
   private disposed = false;
   private readonly presentationFrameListeners = new Set<(event: PresentationFrameEvent) => void>();
@@ -103,10 +108,15 @@ export class ServerSimulationCore {
     this.setupSimulationCallbacks();
   }
 
+  setAcceptedCommandRecorder(recorder: ((command: Command) => void) | null): void {
+    this.onAcceptedCommand = recorder;
+  }
+
   stepFixedTick(dtMs: number, orderedCommandsForThisTick: readonly Command[] = []): void {
     const phases = SIM_TICK_INSTRUMENTATION;
     phases.tickBegin();
     for (const command of orderedCommandsForThisTick) {
+      this.onAcceptedCommand?.(command);
       this.commandQueue.enqueue(command);
     }
 

@@ -392,6 +392,22 @@
         <li>Command latency should be hidden with local intent previews, not by letting clients create real gameplay state.</li>
         <li>Every command path should be stable enough to work for local host play, remote WebRTC play, and a future dedicated worker or server.</li>
       </ul>
+      <p>
+        <strong>One command has one implementation.</strong> The demo sandbox hands a command
+        straight to the local server; a real battle sends it through the frame scheduler and back
+        as part of a command frame. Those are two <em>transports</em>, and they are allowed to
+        differ. What must never differ is what the command DOES: sanitizing, authorizing, and
+        applying are single functions that both transports call. A second copy of a command's
+        effect on the server side is how a battle setting came to work in the sandbox and quietly
+        do nothing online &mdash; the copies agreed on the day they were written and drifted
+        afterwards, with nothing to notice.
+      </p>
+      <ul class="rule-list">
+        <li>Sanitizing is shared: the two entry points differ only in which tick the command is stamped with, never in what a payload is allowed to contain.</li>
+        <li>Gameplay settings are simulation state and are applied by the simulation, from the same function, whichever transport delivered them. The lockstep registry of that family is the single list both sides read; a type absent from the applier is dead UI in every battle, and a contract test says so.</li>
+        <li>Only genuinely non-simulation control &mdash; pause, game speed, sandbox roster toggles &mdash; is handled by the server outside the command stream, because it is not gameplay truth and never crosses the wire as one.</li>
+        <li>Accepted commands are recorded for replay where they ENTER the simulation, so an online match and a sandbox match produce the same replay for the same actions.</li>
+      </ul>
 
       <h3>Snapshots flow downward</h3>
       <p>
@@ -1116,7 +1132,12 @@
         A building cell blocks every non-air medium; air overflies footprints exactly as it
         overflies terrain. Blockage is one-way by construction: no step may ever enter a building
         cell, so a unit standing where a building just went up is an <em>escape start</em> that can
-        route out but never back in, with no special recovery machinery. Route plans carry the
+        route out but never back in, with no special recovery machinery. An escape start also
+        relaxes the clearance requirement to the clearance the body <em>already has</em>: demanding
+        more room than the cell it is standing in makes every neighbour illegal and strands it
+        where it stands, which is what left a commander pinned beside the structure it had just
+        finished. The goal still demands full clearance, so the route ends somewhere the body
+        genuinely fits; only the way out is allowed to be as tight as the spot it is leaving. Route plans carry the
         BuildingGrid version they were validated against; when it moves, only each plan&rsquo;s
         remaining legs re-validate &mdash; routes far from the change restamp for free, routes now
         crossing a footprint invalidate immediately, queue a fresh sliced search, and leave the
@@ -1131,6 +1152,7 @@
         <li>Map bounds and hard blockers remain symmetric. Water is an intentional-domain boundary for ordinary land waypoints but may remain a physical MOVE/recovery medium when the unit has water propulsion.</li>
         <li>Other units may be ignored by the global path calculation; local collision, steering, and arrival control handle moving-unit congestion.</li>
         <li>Grounded building footprints are hard blockers, clearance sources, component splitters, and route-staleness triggers. Hovering buildings are none of these; their only ground effect is the construction reservation.</li>
+        <li>A structure placed during play is a physical body from the moment it is placed, exactly like one placed at boot. A footprint that blocks pathing but has no collision body is half an obstacle: nothing pushes a unit off the site, so it ends up inside the finished building — the one place the router will never route it back into.</li>
         <li>Goal points inside a footprint snap to the nearest legal cell through the same passability the router uses; assaulting a base is pathable by construction.</li>
         <li>Dry contact, wet commanded movement, and wet resting-waypoint support have separate force-derived surface envelopes; air and fluid-supported water are terrain-angle independent.</li>
         <li>Connected-component shortcuts encode invariant obstacles plus the current building layer; unit-specific medium, mass, force, contact, and directed-edge rules remain query-time tests.</li>

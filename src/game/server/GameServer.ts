@@ -22,7 +22,6 @@ import {
 } from '../../presentationSnapshotConfig';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { getSimWasm } from '../sim-wasm/init';
-import { setUnitGroundNormalEmaMode } from '../sim/unitGroundNormal';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { trimBuildingActiveStateBuffers } from '../sim/buildingActiveState';
@@ -40,27 +39,11 @@ import {
 import type { BootstrappedServerWorld } from './ServerBootstrap';
 import { ServerSimulationCore } from './ServerSimulationCore';
 import {
-  isShieldReflectionMode,
-  type ShieldReflectionMode,
-} from '../../types/shotTypes';
-import {
-  isSlopePathMode,
-  type SlopePathMode,
-} from '../../types/slopePathMode';
-import {
-  isLiquidSurfaceMode,
-  isMetalCoverage,
-  type LiquidSurfaceMode,
-  type MetalCoverage,
-} from '../../types/worldSurfaceMode';
-import {
-  setLiquidSurfaceMode as setBattleLiquidSurfaceMode,
-  setMetalCoverage as setBattleMetalCoverage,
-} from '../sim/worldSurfaceState';
-import {
   type CommandAuthority,
 } from './commandAuthority';
 import { sanitizeCommand } from './commandSanitizer';
+import { applyGameplaySettingCommand } from '../sim/commandExecution';
+import { LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES } from '../architecture/LockstepCommandProtocol';
 import {
   authorizeGameServerGameplayCommand,
   canApplyGameServerControlCommand,
@@ -74,10 +57,6 @@ import { createLoadProgressReporter } from '../lifecycle/loadProgressReporter';
 import { ReplayRecorder, type BudgetReplayFile } from './ReplayRecorder';
 import type { CanonicalServerStateHash } from '../architecture/CanonicalStateHash';
 import { normalizeSimulationTickRateHz } from '../../types/simulationTickRate';
-import {
-  setTurretShieldPanelsEnabled,
-  setTurretShieldSpheresEnabled,
-} from '../sim/turretShieldToggle';
 
 import type { GameServerConfig } from '@/types/game';
 
@@ -295,6 +274,17 @@ export class GameServer {
         },
       });
       this.replayRecorder = new ReplayRecorder(config, this.playerIds);
+      // A lockstep frame's commands never pass through receiveCommand, so the
+      // recorder is attached where they actually enter the simulation. Both
+      // paths therefore produce the same replay for the same actions.
+      this.core.setAcceptedCommandRecorder((command) => {
+        this.replayRecorder.recordAcceptedCommand(
+          command,
+          { mode: 'host-admin' },
+          this.world.getTick(),
+          performance.now(),
+        );
+      });
     } catch (err) {
       boot?.physics.dispose();
       releaseSimSlot(this);
@@ -594,15 +584,6 @@ export class GameServer {
         recordAcceptedCommand(sanitizedCommand);
         this.adjustGameSpeed(sanitizedCommand.direction);
         return;
-      case 'setUnitGroundNormalEmaMode':
-        if (!canApplyServerControl) return;
-        recordAcceptedCommand(sanitizedCommand);
-        // updateUnitGroundNormal reads its mode from the unitGroundNormal module's
-        // private state; flipping it from a command keeps host +
-        // every client running with the same effective EMA the
-        // moment the user clicks the bar button.
-        setUnitGroundNormalEmaMode(sanitizedCommand.mode);
-        return;
       case 'setBackgroundUnitBlueprintEnabled':
         if (!canApplyServerControl) return;
         recordAcceptedCommand(sanitizedCommand);
@@ -613,61 +594,18 @@ export class GameServer {
         recordAcceptedCommand(sanitizedCommand);
         this.setBackgroundBuildingBlueprintEnabled(sanitizedCommand.buildingBlueprintId, sanitizedCommand.enabled);
         return;
-      case 'setEntityCountCap':
-        if (!canApplyServerControl) return;
-        recordAcceptedCommand(sanitizedCommand);
-        this.world.entityCountCap = sanitizedCommand.entityCountCap;
-        return;
-      case 'setTurretShieldPanelsEnabled':
-        if (!canApplyServerControl) return;
-        recordAcceptedCommand(sanitizedCommand);
-        setTurretShieldPanelsEnabled(this.world, sanitizedCommand.enabled);
-        return;
-      case 'setTurretShieldSpheresEnabled':
-        if (!canApplyServerControl) return;
-        recordAcceptedCommand(sanitizedCommand);
-        setTurretShieldSpheresEnabled(this.world, sanitizedCommand.enabled);
-        return;
-      case 'setForceFieldsVisible':
-        if (!canApplyServerControl) return;
-        recordAcceptedCommand(sanitizedCommand);
-        this.setForceFieldsVisible(sanitizedCommand.enabled);
-        return;
-      case 'setShieldReflectionMode':
-        if (!canApplyServerControl) return;
-        recordAcceptedCommand(sanitizedCommand);
-        this.setShieldReflectionMode(sanitizedCommand.mode);
-        return;
-      case 'setFogOfWarEnabled':
-        if (!canApplyServerControl) return;
-        recordAcceptedCommand(sanitizedCommand);
-        this.setFogOfWarEnabled(sanitizedCommand.enabled);
-        return;
-      case 'setSlowDownAtFinalWaypoint':
-        if (!canApplyServerControl) return;
-        recordAcceptedCommand(sanitizedCommand);
-        this.world.slowDownAtFinalWaypoint = sanitizedCommand.enabled;
-        return;
-      case 'setSlopePathMode':
-        if (!canApplyServerControl) return;
-        recordAcceptedCommand(sanitizedCommand);
-        this.setSlopePathMode(sanitizedCommand.mode);
-        return;
-      case 'setMetalCoverage':
-        if (!canApplyServerControl) return;
-        recordAcceptedCommand(sanitizedCommand);
-        this.setMetalCoverage(sanitizedCommand.mode);
-        return;
-      case 'setLiquidSurfaceMode':
-        if (!canApplyServerControl) return;
-        recordAcceptedCommand(sanitizedCommand);
-        this.setLiquidSurfaceMode(sanitizedCommand.mode);
-        return;
-      case 'setConverterTax':
-        if (!canApplyServerControl) return;
-        recordAcceptedCommand(sanitizedCommand);
-        this.setConverterTax(sanitizedCommand.tax);
-        return;
+    }
+    // Gameplay settings are simulation state, so the SIMULATION owns how they
+    // are applied. A real battle reaches this through the lockstep command
+    // frame and the demo sandbox reaches it here; both end in the same
+    // applyGameplaySettingCommand, which is what keeps a bar toggle from
+    // meaning one thing online and another thing in the sandbox. Ownership is
+    // still host-only, matching the lockstep validator's host-only gate.
+    if (LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES.has(sanitizedCommand.type)) {
+      if (!canApplyServerControl) return;
+      recordAcceptedCommand(sanitizedCommand);
+      applyGameplaySettingCommand(this.world, sanitizedCommand);
+      return;
     }
     const authorizedCommand = authorizeGameServerGameplayCommand(
       this.world,
@@ -690,51 +628,6 @@ export class GameServer {
 
   getCanonicalStateHash(): CanonicalServerStateHash {
     return this.core.getCanonicalStateHash();
-  }
-
-  private setShieldReflectionMode(mode: ShieldReflectionMode): void {
-    if (!isShieldReflectionMode(mode)) return;
-    if (this.world.shieldReflectionMode === mode) return;
-    this.world.shieldReflectionMode = mode;
-  }
-
-  private setForceFieldsVisible(enabled: boolean): void {
-    if (this.world.forceFieldsVisible === enabled) return;
-    this.world.forceFieldsVisible = enabled;
-  }
-
-  private setFogOfWarEnabled(enabled: boolean): void {
-    if (this.world.fogOfWarEnabled === enabled) return;
-    this.world.fogOfWarEnabled = enabled;
-  }
-
-  private setSlopePathMode(mode: SlopePathMode): void {
-    if (!isSlopePathMode(mode)) return;
-    if (this.world.slopePathMode === mode) return;
-    this.world.slopePathMode = mode;
-    // A live policy change reroutes everyone: drop cached plans so the next
-    // movement step re-plans under the new slope rule.
-    this.world.invalidateAllActivePaths();
-  }
-
-  // WORLD group ground material. WorldState carries the canonical copy (it is
-  // in the state hash); worldSurfaceState mirrors it for the renderers, which
-  // are constructed with a THREE.Group rather than the sim world.
-  private setMetalCoverage(mode: MetalCoverage): void {
-    if (!isMetalCoverage(mode) || this.world.metalCoverage === mode) return;
-    this.world.metalCoverage = mode;
-    setBattleMetalCoverage(mode);
-  }
-
-  private setLiquidSurfaceMode(mode: LiquidSurfaceMode): void {
-    if (!isLiquidSurfaceMode(mode) || this.world.liquidSurfaceMode === mode) return;
-    this.world.liquidSurfaceMode = mode;
-    setBattleLiquidSurfaceMode(mode);
-  }
-
-  private setConverterTax(tax: number): void {
-    if (this.world.converterTax === tax) return;
-    this.world.converterTax = tax;
   }
 
   // Add a snapshot listener. Returns the trackingKey so callers can

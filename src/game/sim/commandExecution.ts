@@ -383,57 +383,89 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       executeGuardCommand(ctx, command);
       break;
     case 'setUnitGroundNormalEmaMode':
-      setUnitGroundNormalEmaMode(command.mode);
-      break;
     case 'setEntityCountCap':
-      ctx.world.entityCountCap = command.entityCountCap;
-      break;
     case 'setTurretShieldPanelsEnabled':
-      setTurretShieldPanelsEnabled(ctx.world, command.enabled);
-      break;
     case 'setTurretShieldSpheresEnabled':
-      setTurretShieldSpheresEnabled(ctx.world, command.enabled);
-      break;
     case 'setForceFieldsVisible':
-      ctx.world.forceFieldsVisible = command.enabled;
-      break;
     case 'setShieldReflectionMode':
-      ctx.world.shieldReflectionMode = command.mode;
-      break;
     case 'setFogOfWarEnabled':
-      ctx.world.fogOfWarEnabled = command.enabled;
-      break;
     case 'setSlowDownAtFinalWaypoint':
-      ctx.world.slowDownAtFinalWaypoint = command.enabled;
-      break;
     case 'setSlopePathMode':
-      if (ctx.world.slopePathMode !== command.mode) {
-        ctx.world.slopePathMode = command.mode;
-        // Reroute in-flight units under the new slope rule.
-        ctx.world.invalidateAllActivePaths();
-      }
-      break;
     case 'setMetalCoverage':
-      // ALL's whole-map ore, the ground material, and extractor payout all
-      // follow this live. Per-deposit ore BODIES do not — they are grown when
-      // the world is built, which is why the bar restarts the battle on a rung
-      // change. Terrain geometry never follows it at all: every rung shaped
-      // the land identically.
-      ctx.world.metalCoverage = command.mode;
-      setMetalCoverage(command.mode);
-      break;
     case 'setLiquidSurfaceMode':
-      ctx.world.liquidSurfaceMode = command.mode;
-      setLiquidSurfaceMode(command.mode);
-      break;
     case 'setConverterTax':
-      ctx.world.converterTax = command.tax;
+      applyGameplaySettingCommand(ctx.world, command);
       break;
     case 'setPaused':
     case 'adjustGameSpeed':
     case 'setBackgroundUnitBlueprintEnabled':
     case 'setBackgroundBuildingBlueprintEnabled':
       break;
+  }
+}
+
+/** Apply one gameplay-setting command to world state.
+ *
+ *  These commands reach the simulation two ways — through the lockstep command
+ *  frame in a real battle, and straight from the host in the demo sandbox —
+ *  and this is the ONE implementation both use. A second copy on the server
+ *  side is exactly the drift that made a setting behave differently online
+ *  than it did in the sandbox. The payload is already validated by the shared
+ *  command sanitizer, so this only applies. */
+export function applyGameplaySettingCommand(
+  world: WorldState,
+  command: Command,
+): void {
+  switch (command.type) {
+    case 'setUnitGroundNormalEmaMode':
+      setUnitGroundNormalEmaMode(command.mode);
+      return;
+    case 'setEntityCountCap':
+      world.entityCountCap = command.entityCountCap;
+      return;
+    case 'setTurretShieldPanelsEnabled':
+      setTurretShieldPanelsEnabled(world, command.enabled);
+      return;
+    case 'setTurretShieldSpheresEnabled':
+      setTurretShieldSpheresEnabled(world, command.enabled);
+      return;
+    case 'setForceFieldsVisible':
+      world.forceFieldsVisible = command.enabled;
+      return;
+    case 'setShieldReflectionMode':
+      world.shieldReflectionMode = command.mode;
+      return;
+    case 'setFogOfWarEnabled':
+      world.fogOfWarEnabled = command.enabled;
+      return;
+    case 'setSlowDownAtFinalWaypoint':
+      world.slowDownAtFinalWaypoint = command.enabled;
+      return;
+    case 'setSlopePathMode':
+      if (world.slopePathMode !== command.mode) {
+        world.slopePathMode = command.mode;
+        // Reroute in-flight units under the new slope rule.
+        world.invalidateAllActivePaths();
+      }
+      return;
+    case 'setMetalCoverage':
+      // ALL's whole-map ore, the ground material, and extractor payout all
+      // follow this live. Per-deposit ore BODIES do not — they are grown when
+      // the world is built, which is why the bar restarts the battle on a rung
+      // change. Terrain geometry never follows it at all: every rung shaped
+      // the land identically.
+      world.metalCoverage = command.mode;
+      setMetalCoverage(command.mode);
+      return;
+    case 'setLiquidSurfaceMode':
+      world.liquidSurfaceMode = command.mode;
+      setLiquidSurfaceMode(command.mode);
+      return;
+    case 'setConverterTax':
+      world.converterTax = command.tax;
+      return;
+    default:
+      return;
   }
 }
 
