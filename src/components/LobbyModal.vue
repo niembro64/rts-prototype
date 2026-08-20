@@ -835,9 +835,9 @@ const terrainSectionVars = computed(() =>
             next-label="LOBBY VISUALIZATION"
           />
         </div>
-        <!-- Why the roster grids above are shorter than usual, said in the
-             corner of the map it is true of. Hidden while the preview is still
-             loading so it does not sit over the emblem. -->
+        <!-- Why the UNITS / BUILDINGS grids are shorter than usual, said in
+             the corner of the map it is true of. Hidden while the preview is
+             still loading so it does not sit over the emblem. -->
         <div
           v-if="!mapHasWater && !previewLoading"
           class="preview-note"
