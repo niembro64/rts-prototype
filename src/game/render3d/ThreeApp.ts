@@ -50,7 +50,12 @@ import {
   CAMERA_TERRAIN_COLLISION,
   CAMERA_ZOOM_DISTANCE_SAMPLING,
 } from '../../config';
-import { getWaterBoundaryMode, getZoomPointsDebug } from '@/clientBarConfig';
+import {
+  getAaMsaaMode,
+  getAaResolutionMode,
+  getWaterBoundaryMode,
+  getZoomPointsDebug,
+} from '@/clientBarConfig';
 import { WATER_SURFACE_OUTPUT_LINEAR_RGB } from './WaterColor3D';
 
 const RENDER_DISABLED_UPDATE_INTERVAL_MS = 200;
@@ -148,6 +153,24 @@ export class ThreeApp {
    *  false; same-task reads are the supported way to capture it). */
   private _capturePostRenderCallbacks: Array<(canvas: HTMLCanvasElement) => void> = [];
   private _captureFidelityHold = false;
+  // ── Antialias pipeline (CLIENT bar AA group; live, no rebuild) ──
+  // MSAA: with a mode other than DEFAULT the scene is drawn into an explicit
+  // multisampled offscreen target and presented with a raw fullscreen copy,
+  // instead of relying on the sample count the browser granted the context's
+  // `antialias: true` hint (usually 4×, and never adjustable after creation).
+  /** Multisampled scene target; null while the DEFAULT direct-to-canvas
+   *  path is active. */
+  private _aaTarget: THREE.WebGLRenderTarget | null = null;
+  /** Sample count of the live `_aaTarget` (0 = direct-to-canvas). */
+  private _aaActiveSamples = 0;
+  private _aaPresentScene: THREE.Scene | null = null;
+  private _aaPresentCamera: THREE.OrthographicCamera | null = null;
+  private _aaPresentMaterial: THREE.ShaderMaterial | null = null;
+  private _aaPresentGeometry: THREE.BufferGeometry | null = null;
+  /** True while the RES knob pins an explicit pixel ratio; the adaptive
+   *  governor and the capture fidelity hold both stand down when set. */
+  private _aaResolutionPinned = false;
+  private readonly _aaDrawingBufferSize = new THREE.Vector2();
   private readonly _zoomTerrainPointsOverlay: ZoomTerrainPointsOverlay3D;
 
   constructor(
@@ -190,6 +213,11 @@ export class ThreeApp {
     // Driver log reads are synchronous and can dwarf the actual render frame;
     // keep them opt-in for shader debugging.
     this.renderer.debug.checkShaderErrors = GAME_DIAGNOSTICS.shaderErrorChecks;
+    // The MSAA path draws two render() calls per frame (scene + present).
+    // Default info auto-reset would leave only the trivial present pass in
+    // renderer.info for the DRAW telemetry, so the tick loop resets info
+    // manually once per frame instead.
+    this.renderer.info.autoReset = false;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = this._runtimeProfile.highQualityToneMapping
       ? THREE.ACESFilmicToneMapping
@@ -380,12 +408,14 @@ export class ThreeApp {
     nativePixelRatio: number;
     activePixelRatio: number;
     dynamicPixelRatioEnabled: boolean;
+    antialiasSamples: number;
   } {
     return {
       runtimeProfile: this._runtimeProfile.label,
       nativePixelRatio: this._nativePixelRatio,
       activePixelRatio: this._activePixelRatio,
-      dynamicPixelRatioEnabled: this._dynamicPixelRatioEnabled,
+      dynamicPixelRatioEnabled: this._dynamicPixelRatioEnabled && !this._aaResolutionPinned,
+      antialiasSamples: this._aaActiveSamples,
     };
   }
 
@@ -412,12 +442,12 @@ export class ThreeApp {
     if (this._captureFidelityHold === active) return;
     this._captureFidelityHold = active;
     if (!active) return;
-    const maxRatio = Math.min(this._nativePixelRatio, this._runtimeProfile.pixelRatioCap);
-    if (Math.abs(maxRatio - this._activePixelRatio) < 0.01) return;
-    this._activePixelRatio = maxRatio;
-    this.renderer.setPixelRatio(maxRatio);
-    const canvas = this.renderer.domElement;
-    this.resizeRenderer(canvas.clientWidth, canvas.clientHeight, false, true);
+    // An explicit RES pin already holds a fixed resolution — including one
+    // deliberately above the profile cap — so don't drag it back down.
+    if (this._aaResolutionPinned) return;
+    this.applyPixelRatio(
+      Math.min(this._nativePixelRatio, this._runtimeProfile.pixelRatioCap),
+    );
   }
 
   setCameraFovDegrees(fovDegrees: number): void {
@@ -471,12 +501,24 @@ export class ThreeApp {
         // One terrain sample: the caption re-seats itself if the annex's
         // altitude changed under it (a terrain bake landing after the sign).
         this._mapPresetLabel?.update();
+        this.syncAntialiasResolution();
+        const aaTarget = this.syncAntialiasPipeline();
         // Wrap the render call so the GPU timer captures true draw-time
         // (only the render; update-callback work is CPU-side).
         this.frameProfiler.beginFrame();
         this.gpuTimer.begin();
         const renderStart = performance.now();
-        this.renderer.render(this.scene, this.camera);
+        // Manual reset (autoReset is off) so DRAW telemetry covers every
+        // pass this frame instead of only the last render() call.
+        this.renderer.info.reset();
+        if (aaTarget) {
+          this.renderer.setRenderTarget(aaTarget);
+          this.renderer.render(this.scene, this.camera);
+          this.renderer.setRenderTarget(null);
+          this.renderer.render(this._aaPresentScene!, this._aaPresentCamera!);
+        } else {
+          this.renderer.render(this.scene, this.camera);
+        }
         rendererRenderMs = performance.now() - renderStart;
         this.gpuTimer.end();
         this.frameProfiler.endFrame(this.renderer, rendererRenderMs);
@@ -506,6 +548,8 @@ export class ThreeApp {
     if (!this._dynamicPixelRatioEnabled) return;
     // A live capture pins resolution; the governor resumes when it ends.
     if (this._captureFidelityHold) return;
+    // An explicit RES pin owns the pixel ratio outright.
+    if (this._aaResolutionPinned) return;
     if (now - this._lastPixelRatioAdjustMs < 750) return;
 
     const gpuMs = this.gpuTimer.getGpuMs();
@@ -525,12 +569,149 @@ export class ThreeApp {
     } else if (comfortable) {
       next = Math.min(this._nativePixelRatio, this._activePixelRatio + 0.25);
     }
-    if (Math.abs(next - this._activePixelRatio) < 0.01) return;
+    this.applyPixelRatio(next);
+  }
 
+  /** Single choke point for pixel-ratio changes: reallocates the drawing
+   *  buffer only when the ratio actually moved. */
+  private applyPixelRatio(ratio: number): void {
+    const next = Math.max(DYNAMIC_PIXEL_RATIO_FLOOR * 0.5, ratio);
+    if (Math.abs(next - this._activePixelRatio) < 0.01) return;
     this._activePixelRatio = next;
     this.renderer.setPixelRatio(this._activePixelRatio);
     const canvas = this.renderer.domElement;
     this.resizeRenderer(canvas.clientWidth, canvas.clientHeight, false, true);
+  }
+
+  /** RES knob: 'auto' leaves the profile behavior (governor / profile cap)
+   *  in charge; a percent pins pixel ratio to native × percent/100 — which
+   *  is also how the Tauri/mobile profile caps are deliberately overridden. */
+  private syncAntialiasResolution(): void {
+    const mode = getAaResolutionMode();
+    if (mode === 'auto') {
+      if (!this._aaResolutionPinned) return;
+      this._aaResolutionPinned = false;
+      this.applyPixelRatio(
+        Math.min(this._nativePixelRatio, this._runtimeProfile.pixelRatioCap),
+      );
+      return;
+    }
+    this._aaResolutionPinned = true;
+    this.applyPixelRatio(this._nativePixelRatio * (mode / 100));
+  }
+
+  /** MSAA knob: reconcile the offscreen multisampled target against the
+   *  requested mode and the current drawing-buffer size. Returns the target
+   *  to render into, or null for the DEFAULT direct-to-canvas path. */
+  private syncAntialiasPipeline(): THREE.WebGLRenderTarget | null {
+    const desiredSamples = this.desiredAntialiasSamples();
+    if (desiredSamples <= 0) {
+      if (this._aaTarget) {
+        this._aaTarget.dispose();
+        this._aaTarget = null;
+        this._aaActiveSamples = 0;
+      }
+      return null;
+    }
+    const size = this.renderer.getDrawingBufferSize(this._aaDrawingBufferSize);
+    const width = Math.max(1, Math.floor(size.x));
+    const height = Math.max(1, Math.floor(size.y));
+    if (this._aaTarget && this._aaActiveSamples !== desiredSamples) {
+      this._aaTarget.dispose();
+      this._aaTarget = null;
+    }
+    if (!this._aaTarget) {
+      const target = new THREE.WebGLRenderTarget(width, height, {
+        samples: desiredSamples,
+        // HalfFloat keeps the multisampled renderbuffer and its resolve
+        // texture on the same RGBA16F internal format (8-bit sRGB storage
+        // would split them into SRGB8_ALPHA8 vs RGBA8 and break the resolve
+        // blit) while adding headroom over the canvas's 8 bits.
+        type: THREE.HalfFloatType,
+        colorSpace: THREE.SRGBColorSpace,
+        minFilter: THREE.NearestFilter,
+        magFilter: THREE.NearestFilter,
+        generateMipmaps: false,
+        depthBuffer: true,
+        stencilBuffer: false,
+      });
+      // Three hard-disables per-material tone mapping and the output
+      // colorspace encode for ordinary render targets (WebGLRenderer
+      // setProgram). This offscreen pass must reproduce the CANVAS pipeline
+      // bit-for-bit — built-in materials tone-map and sRGB-encode in-shader,
+      // raw ShaderMaterials keep writing their authored values untouched —
+      // and the XR-target flag is the supported escape hatch that routes
+      // both decisions through this target's texture colorSpace instead.
+      // The present pass is then a pure copy with no conversions.
+      (target as unknown as { isXRRenderTarget: boolean }).isXRRenderTarget = true;
+      this._aaTarget = target;
+      this._aaActiveSamples = desiredSamples;
+      this.ensureAntialiasPresentPass();
+      this._aaPresentMaterial!.uniforms.uSource.value = target.texture;
+    } else if (this._aaTarget.width !== width || this._aaTarget.height !== height) {
+      this._aaTarget.setSize(width, height);
+    }
+    return this._aaTarget;
+  }
+
+  /** Requested MSAA samples for the offscreen path, clamped to the GPU's
+   *  MAX_SAMPLES. 0 = use the DEFAULT direct-to-canvas path. Requires the
+   *  float-renderbuffer extension for the RGBA16F multisampled storage. */
+  private desiredAntialiasSamples(): number {
+    const mode = getAaMsaaMode();
+    if (mode === 'default') return 0;
+    const maxSamples = this.renderer.capabilities.maxSamples;
+    if (maxSamples <= 0) return 0;
+    if (
+      !this.renderer.extensions.has('EXT_color_buffer_float') &&
+      !this.renderer.extensions.has('EXT_color_buffer_half_float')
+    ) {
+      return 0;
+    }
+    if (mode === '4x') return Math.min(4, maxSamples);
+    if (mode === '8x') return Math.min(8, maxSamples);
+    return maxSamples;
+  }
+
+  /** Fullscreen-triangle copy of the resolved MSAA color onto the canvas.
+   *  Deliberately conversion-free — see the XR-flag note above. */
+  private ensureAntialiasPresentPass(): void {
+    if (this._aaPresentScene) return;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(
+        new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]),
+        3,
+      ),
+    );
+    const material = new THREE.ShaderMaterial({
+      uniforms: { uSource: { value: null } },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = position.xy * 0.5 + 0.5;
+          gl_Position = vec4(position.xy, 0.0, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D uSource;
+        varying vec2 vUv;
+        void main() {
+          gl_FragColor = texture2D(uSource, vUv);
+        }
+      `,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.frustumCulled = false;
+    const scene = new THREE.Scene();
+    scene.add(mesh);
+    this._aaPresentGeometry = geometry;
+    this._aaPresentMaterial = material;
+    this._aaPresentScene = scene;
+    this._aaPresentCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   }
 
   private resizeRenderer(
@@ -576,6 +757,15 @@ export class ThreeApp {
     this._unregisterMapPresetLabelTarget = null;
     this._mapPresetLabel?.destroy();
     this._mapPresetLabel = null;
+    this._aaTarget?.dispose();
+    this._aaTarget = null;
+    this._aaActiveSamples = 0;
+    this._aaPresentGeometry?.dispose();
+    this._aaPresentGeometry = null;
+    this._aaPresentMaterial?.dispose();
+    this._aaPresentMaterial = null;
+    this._aaPresentScene = null;
+    this._aaPresentCamera = null;
     unregisterLightingTargets(this.scene, this.renderer);
     this.scene.environment = null;
     this.scene.background = null;

@@ -1358,6 +1358,8 @@ const {
   legsRadiusToggle,
   legsReachToggle,
   lodMode,
+  aaMsaaMode,
+  aaResolutionMode,
   cameraSmoothMode,
   cameraFollowMode,
   cameraFovDegrees,
@@ -1385,6 +1387,8 @@ const {
   toggleLegsRadius,
   toggleLegsReach,
   changeLodMode,
+  changeAaMsaaMode,
+  changeAaResolutionMode,
   setCameraMode,
   setCameraFollow,
   changeCameraFovDegrees,
@@ -1550,6 +1554,7 @@ const {
   nativePixelRatio,
   activePixelRatio,
   dynamicPixelRatioEnabled,
+  antialiasSamples,
   webglBufferProfilerSupported,
   webglRendererRenderMs,
   webglDrawCalls,
@@ -2363,6 +2368,9 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   legsRadiusToggle: legsRadiusToggle.value,
   legsReachToggle: legsReachToggle.value,
   lodMode: lodMode.value,
+  aaMsaaMode: aaMsaaMode.value,
+  aaResolutionMode: aaResolutionMode.value,
+  antialiasSamples: antialiasSamples.value,
   cameraFovDegrees: cameraFovDegrees.value,
   cameraSmoothMode: cameraSmoothMode.value,
   cameraFollowMode: cameraFollowMode.value,
@@ -2426,6 +2434,8 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleLegsRadius,
   toggleLegsReach,
   changeLodMode,
+  changeAaMsaaMode,
+  changeAaResolutionMode,
   changeCameraFovDegrees,
   changeWaterBoundaryMode,
   setCameraMode,
@@ -2587,6 +2597,9 @@ watchEffect(() => {
   m.legsRadiusToggle = legsRadiusToggle.value;
   m.legsReachToggle = legsReachToggle.value;
   m.lodMode = lodMode.value;
+  m.aaMsaaMode = aaMsaaMode.value;
+  m.aaResolutionMode = aaResolutionMode.value;
+  m.antialiasSamples = antialiasSamples.value;
   m.cameraFovDegrees = cameraFovDegrees.value;
   m.cameraSmoothMode = cameraSmoothMode.value;
   m.cameraFollowMode = cameraFollowMode.value;

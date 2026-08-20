@@ -1,6 +1,8 @@
 import type { MapLandCellDimensions } from '../mapSizeConfig';
 import type { BattlePreset } from './battlePresets';
 import type {
+  AntialiasMsaaMode,
+  AntialiasResolutionMode,
   AudioScope,
   BuildGridDebugMode,
   CameraFollowMode,
@@ -272,6 +274,9 @@ export type GameCanvasClientControlBarModel = {
   readonly legsRadiusToggle: boolean;
   readonly legsReachToggle: boolean;
   readonly lodMode: LodMode;
+  readonly aaMsaaMode: AntialiasMsaaMode;
+  readonly aaResolutionMode: AntialiasResolutionMode;
+  readonly antialiasSamples: number;
   readonly cameraFovDegrees: CameraFovDegrees;
   readonly cameraSmoothMode: CameraSmoothMode;
   readonly cameraFollowMode: CameraFollowMode;
@@ -335,6 +340,8 @@ export type GameCanvasClientControlBarModel = {
   toggleLegsRadius(): void;
   toggleLegsReach(): void;
   changeLodMode(mode: LodMode): void;
+  changeAaMsaaMode(mode: AntialiasMsaaMode): void;
+  changeAaResolutionMode(mode: AntialiasResolutionMode): void;
   changeCameraFovDegrees(fov: CameraFovDegrees): void;
   changeWaterBoundaryMode(mode: WaterBoundaryMode): void;
   setCameraMode(mode: CameraSmoothMode): void;

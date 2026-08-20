@@ -22,6 +22,7 @@ export type RtsScene3DFrameTiming = {
   nativePixelRatio: number;
   activePixelRatio: number;
   dynamicPixelRatioEnabled: boolean;
+  antialiasSamples: number;
   webglBufferProfilerSupported: boolean;
   webglRendererRenderMs: number;
   webglDrawCalls: number;
@@ -61,6 +62,7 @@ type RtsScene3DFrameTimingGpuSample = {
   nativePixelRatio: number;
   activePixelRatio: number;
   dynamicPixelRatioEnabled: boolean;
+  antialiasSamples: number;
   webglBufferProfilerSupported: boolean;
   webglRendererRenderMs: number;
   webglDrawCalls: number;
@@ -166,6 +168,7 @@ export class RtsScene3DFrameTelemetry {
       nativePixelRatio: sample.nativePixelRatio,
       activePixelRatio: sample.activePixelRatio,
       dynamicPixelRatioEnabled: sample.dynamicPixelRatioEnabled,
+      antialiasSamples: sample.antialiasSamples,
       webglBufferProfilerSupported: sample.webglBufferProfilerSupported,
       webglRendererRenderMs: sample.webglRendererRenderMs,
       webglDrawCalls: sample.webglDrawCalls,

@@ -40,6 +40,7 @@ type RenderProfileSample = {
   readonly activePixelRatio: number;
   readonly nativePixelRatio: number;
   readonly dynamicPixelRatioEnabled: boolean;
+  readonly antialiasSamples: number;
 };
 
 type RenderProfileApi = {
@@ -85,6 +86,7 @@ export function useGameCanvasTelemetry({
   const nativePixelRatio = ref(1);
   const activePixelRatio = ref(1);
   const dynamicPixelRatioEnabled = ref(false);
+  const antialiasSamples = ref(0);
   const webglBufferProfilerSupported = ref(false);
   const webglRendererRenderMs = ref(0);
   const webglDrawCalls = ref(0);
@@ -208,6 +210,7 @@ export function useGameCanvasTelemetry({
       setNumberRefIfChanged(nativePixelRatio, timing.nativePixelRatio, 0.001);
       setNumberRefIfChanged(activePixelRatio, timing.activePixelRatio, 0.001);
       setRefIfChanged(dynamicPixelRatioEnabled, timing.dynamicPixelRatioEnabled);
+      setNumberRefIfChanged(antialiasSamples, timing.antialiasSamples, 0);
       setRefIfChanged(webglBufferProfilerSupported, timing.webglBufferProfilerSupported);
       setNumberRefIfChanged(webglRendererRenderMs, timing.webglRendererRenderMs);
       setNumberRefIfChanged(webglDrawCalls, timing.webglDrawCalls, 0);
@@ -352,6 +355,7 @@ export function useGameCanvasTelemetry({
       activePixelRatio: activePixelRatio.value,
       nativePixelRatio: nativePixelRatio.value,
       dynamicPixelRatioEnabled: dynamicPixelRatioEnabled.value,
+      antialiasSamples: antialiasSamples.value,
     };
   }
 
@@ -398,6 +402,7 @@ export function useGameCanvasTelemetry({
     nativePixelRatio,
     activePixelRatio,
     dynamicPixelRatioEnabled,
+    antialiasSamples,
     webglBufferProfilerSupported,
     webglRendererRenderMs,
     webglDrawCalls,
