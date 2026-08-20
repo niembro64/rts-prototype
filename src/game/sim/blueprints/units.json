@@ -1459,10 +1459,10 @@
             "barrelLength": 1.0,
             "orbitRadius": 0.38,
             "spin": {
-              "idle": 0,
-              "max": 0,
-              "accel": 0,
-              "decel": 0
+              "idle": 1,
+              "max": 6,
+              "accel": 12,
+              "decel": 6
             }
           }
         },
@@ -1513,10 +1513,10 @@
             "barrelLength": 1.0,
             "orbitRadius": 0.38,
             "spin": {
-              "idle": 0,
-              "max": 0,
-              "accel": 0,
-              "decel": 0
+              "idle": 1,
+              "max": 6,
+              "accel": 12,
+              "decel": 6
             }
           }
         },

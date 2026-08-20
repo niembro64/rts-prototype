@@ -49,7 +49,11 @@ import {
   normalizeEntityBaseLedgerFromAliases,
 } from './entityBaseLedger';
 import { getMaximumSensorMatrixRadius } from '../sensorConfig';
-import { validateStationArticulation, validateWorkEmitter } from './stationArticulation';
+import {
+  validateStationArticulation,
+  validateTurretBarrelPresentation,
+  validateWorkEmitter,
+} from './stationArticulation';
 import {
   BUILDING_PLACEMENT_SETS,
   getBuildingPlacementSetAnchor,
@@ -532,6 +536,10 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
     validateStationArticulation(
       `turret station ${id} ${mount.mountId}`,
       mount.articulation,
+    );
+    validateTurretBarrelPresentation(
+      `turret station ${id} ${mount.mountId}`,
+      mount.presentation,
     );
     const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
     if (!turretBlueprint) {
