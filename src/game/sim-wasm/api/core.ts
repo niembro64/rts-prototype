@@ -177,6 +177,18 @@ export interface SimWasm {
     outMetalRateFraction: Float64Array,
     outChangedMask: Uint8Array,
   ) => number;
+  readonly constructionDecayStep: (
+    paidEnergy: number,
+    paidMetal: number,
+    requiredEnergy: number,
+    requiredMetal: number,
+    previousProgress: number,
+    hp: number,
+    maxHp: number,
+    decayFractionPerSecond: number,
+    dtSec: number,
+    out: Float64Array,
+  ) => number;
   readonly constructionReconcileAndGrowPieces: (
     totalPaidEnergy: number,
     totalPaidMetal: number,

@@ -216,6 +216,13 @@ export class WorldState {
    *  across lockstep peers. */
   public readonly armedSelfDestructs = new Map<EntityId, number>();
 
+  /** Unfinished shells that nobody funded this tick: entity id → seconds
+   *  since the last construction work landed on them. constructionLifecycle
+   *  owns every write, drops entries the moment funding resumes, and removes
+   *  the frame outright once decay reaches zero progress. Derived state, so
+   *  it is not serialized: every peer runs the same lifecycle pass. */
+  public readonly unfundedBuildSeconds = new Map<EntityId, number>();
+
   // Map dimensions
   public readonly mapWidth: number;
   public readonly mapHeight: number;
@@ -753,6 +760,7 @@ export class WorldState {
     }
     this.pendingDeathCheckIds.delete(id);
     this.snapshotDirtyFieldsById.delete(id);
+    this.unfundedBuildSeconds.delete(id);
     if (entity !== undefined) this.markEntityMetadataDead(entity);
     if (entity !== undefined) entitySlotRegistry.unsetEntity(id);
     this.entities.delete(id);

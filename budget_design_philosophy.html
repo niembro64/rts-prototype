@@ -1306,6 +1306,34 @@
         <li><strong>Fluid resistance</strong> is isotropic linear damping relative to the medium (wind for air, still water until currents are added), plus angular damping. This deliberately keeps the model small and identifiable.</li>
         <li><strong>Attitude control</strong> has no global angular-speed limit. The critically damped servo derives torque from force the active locomotion media can actually supply, with ground authority constrained by the same Coulomb grip as translation and total lateral control constrained to one body-weight. That torque acts against the solid-sphere moment of inertia <code>I = 2/5 m r^2</code>, so turning is an acceleration-and-inertia result: larger or heavier bodies respond more conservatively under the same force rather than converging on a shared maximum turn speed. The closed-loop response deliberately takes twice the fastest torque-supported response time, halving angular rates while preserving those physical ratios.</li>
       </ul>
+
+      <h3>Ground is a third addend, never an override</h3>
+      <p>
+        Ground is <strong>additive</strong> to air and water. Every ground term &mdash; propulsion,
+        static friction, tangential damping, contact braking, and contact attitude authority &mdash;
+        is one more contribution summed into the same force and torque totals the occupied fluid
+        media already contribute. Touching a surface never disables, replaces, or suppresses the
+        air or water response of a body that is still occupying that medium. A submarine resting on
+        the lakebed keeps its full water drive, water drag, and water attitude behavior and
+        <em>gains</em> whatever the contact adds; it does not become a ground unit for the tick.
+      </p>
+      <p>
+        Ground carries its own occupancy, exactly as air and water carry theirs. Air and water are
+        weighted by displaced-volume fraction; ground is weighted by the fraction of the body&rsquo;s
+        weight the contact actually carries &mdash; <code>normalLoad / (m &middot; g)</code>, the
+        same Coulomb <code>N</code> that already caps contact drive, so upward medium support
+        unloads the contact continuously. A neutrally supported body near a surface has a ground
+        occupancy of about zero and therefore behaves as the fluid says; a body whose weight rests
+        entirely on the surface has a ground occupancy of one and behaves as the contact says.
+        Nothing switches; the weights move.
+      </p>
+      <ul class="rule-list">
+        <li>Ground friction and ground tangential damping are scaled by ground occupancy and <strong>added</strong> to the fluid damping already acting on the body. A floating or neutrally buoyant body does not inherit full dry-land friction because its hull grazed a slope.</li>
+        <li>Ground propulsion is scaled by the same contact load through the Coulomb limit and <strong>added</strong> to the occupancy-weighted air and water drives. A body with zero authored ground force loses nothing by touching a surface.</li>
+        <li>The attitude leveling target is the occupancy-weighted sum of the contact normal and the fluid&rsquo;s level up-vector, normalized. A tank on a hill still lies on the hill; a submarine hovering a hull&rsquo;s width off a steep lakebed wall still lies level, because the wall is carrying none of its weight.</li>
+        <li>A contact that carries no load contributes no ground term. This is a weight reaching zero, not a branch being skipped &mdash; the same expression evaluates for every body in every medium.</li>
+        <li>Any code that reads &ldquo;if grounded, use the ground value, otherwise use the fluid value&rdquo; is a bug against this rule. The correct shape is always <code>fluidTerm(occupancy) + groundTerm(contactLoad)</code>.</li>
+      </ul>
       <p>
         Medium is sampled rather than typed. Ground applies on a supporting contact; air and water
         use complementary displaced-volume fractions. Their forces are occupancy weighted and add.
@@ -2928,6 +2956,22 @@
         detonation (per <strong>Shots are destructible bodies too</strong>) &mdash; a small fire
         blast and, at most, a single shard of debris.
       </p>
+
+      <h3>An unattended build site rots away</h3>
+      <p>
+        An unfinished structure is not permanent scenery. A shell that nobody is answering for
+        loses a constant fraction of its own full cost per second and is removed outright when it
+        reaches zero progress. The rate is a fraction of that shell&rsquo;s cost rather than an
+        absolute resource rate, so a bunker and a factory both take the same authored wall-clock
+        time to rot away from full, and health falls with the progress it loses.
+      </p>
+      <ul class="rule-list">
+        <li>Attendance, not funding, starts the clock. A site is attended while construction work lands on it and while any living builder still carries it in an order queue &mdash; a shift-queued site is placed the instant the order is issued and must be allowed to stand until its turn.</li>
+        <li>Abandoned and cancelled frames both rot. Decay is the only way a partial assembly leaves the map on its own; an interrupted shell has no other exit.</li>
+        <li>Reaching zero is a removal, not a death: no explosion, no wreck, no death event. Nothing that was never funded should detonate.</li>
+        <li>Factory unit shells are exempt. A factory owns its shell&rsquo;s whole lifecycle, including pauses, so a second timer would be a second authority over it.</li>
+        <li>The delay before decay begins and the decay rate are authored in <code>buildConfig.json</code> and hashed into match initialization like every other gameplay constant.</li>
+      </ul>
 
       <h3>Sensor coverage belongs to turret origins</h3>
       <p>

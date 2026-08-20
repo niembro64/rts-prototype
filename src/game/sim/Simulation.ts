@@ -563,10 +563,13 @@ export class Simulation {
     // Shared construction lifecycle for both building shells and
     // factory unit shells: HP growth, paid-full completion, building
     // completion effects, and dirty flags all flow through one pass.
-    const constructionResult = updateConstructionLifecycle(this.world);
+    const constructionResult = updateConstructionLifecycle(this.world, dtMs);
     this.actionQueueMaintenance.advanceCompletedConstructionActions(
       constructionResult.completedBuildings,
     );
+    if (constructionResult.decayedBuildings.length > 0) {
+      this.removeDecayedConstructionShells(constructionResult.decayedBuildings);
+    }
     SIM_TICK_INSTRUMENTATION.phase('sim.construction');
 
     // AI auto-queues units at idle factories
@@ -1637,6 +1640,19 @@ export class Simulation {
   // unit.velocityX/Y/Z and is only overwritten by syncFromPhysics, so
   // lead-prediction in turretSystem reads the real velocity, not this thrust
   // target.
+  /** Retire shells that decayed back to zero progress. This is the same
+   *  teardown the dead-building path runs (spatial grid, build-grid release
+   *  through onBuildingDeath, entity removal) with no death event: a frame
+   *  nobody paid for was never alive enough to explode. */
+  private removeDecayedConstructionShells(shells: readonly Entity[]): void {
+    const ids: EntityId[] = [];
+    for (let i = 0; i < shells.length; i++) ids.push(shells[i].id);
+    ids.sort((a, b) => a - b);
+    for (let i = 0; i < ids.length; i++) spatialGrid.removeBuilding(ids[i]);
+    if (this.onBuildingDeath !== null) this.onBuildingDeath(ids);
+    for (let i = 0; i < ids.length; i++) this.world.removeEntity(ids[i]);
+  }
+
   /** Detonate armed self-destructs whose countdown expired. Entries
    *  whose entity died or vanished by other means are dropped lazily
    *  here. Map iteration is insertion-ordered and the map is only

@@ -1,3 +1,7 @@
 {
-  "maxBuildableSlopeAngleDegrees": 10
+  "maxBuildableSlopeAngleDegrees": 10,
+  "unfinishedBuildDecay": {
+    "unfundedDelaySeconds": 6,
+    "fractionPerSecond": 0.05
+  }
 }
