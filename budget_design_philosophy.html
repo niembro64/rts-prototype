@@ -2304,6 +2304,30 @@
         yaw/pitch servo, aim-error firing gate, snapshot, interpolation, and renderer
         pose path. An emission family does not get a private targeting path.
       </p>
+      <h3>A building turret has no rest angle</h3>
+      <p>
+        A rest angle is a chassis idea: it says where a weapon sits relative to a body that has
+        a forward, so a unit that stops fighting stows its gun over its own nose. A structure has
+        no forward. Its turrets therefore never restore &mdash; no rest yaw, no rest pitch, no
+        restore delay to wait out. When a defensive tower loses its target it stays exactly where
+        the engagement left it, still covering the bearing the enemy came from, which is also the
+        bearing the next one is most likely to come from. Unit turrets keep restoring exactly as
+        they do today; this rule is only about static hosts.
+      </p>
+      <p>
+        That makes the first bearing the only one anything ever chooses for a structure, so it is
+        chosen deliberately: a building&rsquo;s turrets are aimed at the <strong>centre of the
+        map</strong> the moment the site is placed &mdash; the direction the fighting comes from
+        &mdash; rather than at whatever the blueprint&rsquo;s authored zero happens to be. A
+        turret with a limited traverse takes that bearing as far as its arc allows. The choice is
+        derived from position, host rotation, and map size alone, so every peer computes it
+        identically.
+      </p>
+      <ul class="rule-list">
+        <li>This applies to the turret&rsquo;s own local yaw/pitch and to any rotating building piece it drives. Both are the same rule seen from two mechanisms; a piece that returned to the host&rsquo;s facing while the turret held station would be a rest angle by another name.</li>
+        <li>Vertical launchers keep their pinned pose. They are not aiming, so there is nothing to hold.</li>
+      </ul>
+
       <h3>Bot hosts expose authoritative piece sockets</h3>
       <p>
         A bot is not one rigid transform. Its upper body, shoulders, forearms, hands, and

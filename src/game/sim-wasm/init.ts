@@ -1754,6 +1754,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runBuildingFootprintContractTest();
         const { runUnfinishedBuildDecayContractTest } = await import('../sim/unfinishedBuildDecayContractTest');
         runUnfinishedBuildDecayContractTest();
+        const { runBuildingTurretRestContractTest } = await import('../sim/buildingTurretRestContractTest');
+        runBuildingTurretRestContractTest();
         const { runSupportSurfaceContractTest } = await import('../sim/supportSurfaceContractTest');
         runSupportSurfaceContractTest();
         const { runFabricatorProductionRingContractTest, runQueenFactoryProductionContractTest } = await import('../sim/supportSurfaceContractTest');

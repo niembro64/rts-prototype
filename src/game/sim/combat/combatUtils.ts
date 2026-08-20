@@ -1043,12 +1043,12 @@ function updateSharedHostPieceArticulation(
         owner.hostPieceIdleMs = 0;
       } else {
         owner.hostPieceIdleMs += dtMs;
-        if (owner.hostPieceIdleMs < owner.config.articulation.restoreDelayMs) {
-          claimedYaw = owner.hostPieceYaw;
-          claimedPitch = owner.pitch;
-        } else {
-          claimedPitch = owner.config.articulation.restPitch;
-        }
+        // A structure's rotating piece keeps the bearing its last engagement
+        // left it on. It has no chassis forward to return to, so there is no
+        // rest angle and no restore delay to wait out — see
+        // budget_design_philosophy.html, "A building turret has no rest angle".
+        claimedYaw = owner.hostPieceYaw;
+        claimedPitch = owner.pitch;
       }
       const index = _botUpperBodyHosts.length;
       ensureBotUpperBodyCapacity(index + 1);

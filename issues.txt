@@ -1,5 +1,3 @@
 2. Online play seems to have commands missing or not functioning properly as compared to "demo battle" commands. Make sure that we run all commands through the same code path to ensure consistency and prevent drift between them.
 
 4. Commander seems to get stuck "in" or "next to" a building that has been constructed.
-
-6. Turrets on defence buildings shouldn't have a "reset to this angle" concept like units have. Turrets on these defensive buildings should initialize to have them pointing towards the center of the map, and should just remain wherever they were when they aren't aiming at something; units should remain as they are.

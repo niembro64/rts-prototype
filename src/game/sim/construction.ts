@@ -17,6 +17,7 @@ import {
 import { removeCompletedBuildingEffects } from './buildingCompletion';
 import { createBuildable } from './buildableHelpers';
 import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
+import { aimBuildingTurretsAtMapCenter } from './runtimeTurrets';
 import { applyCompletedBuildingEffects } from './buildingCompletion';
 import { initializeConstructionPieceHealth } from './constructionLifecycle';
 import { entityCanBuild } from './hostCapabilities';
@@ -173,6 +174,10 @@ export class ConstructionSystem {
     applyBuildingBlueprintRuntime(entity, buildingBlueprintId, {
       allocateEntityId: () => world.generateEntityId(),
     });
+    // A structure's turrets never restore to a rest angle, so the bearing set
+    // here is the only one anything ever chooses for them: face the middle of
+    // the map, where the fighting comes from.
+    aimBuildingTurretsAtMapCenter(entity, world.mapWidth, world.mapHeight);
     if (isMetalExtractorBlueprintId(buildingBlueprintId)) {
       // Inactive at construction start. The completion handler runs
       // computeExtractorMetalCoverage fills `coveredDepositIds` and sets
