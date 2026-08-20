@@ -28,6 +28,8 @@ import {
   getBurnMarks,
   getWindParticles,
   getAaMsaaMode,
+  AA_MSAA_MODE_DEFAULT,
+  AA_RESOLUTION_MODE_DEFAULT,
   getAaResolutionMode,
   getLodMode,
   getLegsRadiusToggle,
@@ -802,6 +804,10 @@ export function useGameCanvasClientSettings({
     setCameraFollow(cd.cameraFollow.default);
     changeCameraFovDegrees(cd.cameraFov.default);
     changeWaterBoundaryMode(cd.waterBoundaryMode.default);
+    // AA knobs are standalone globals; their authored defaults live next to
+    // the option lists rather than in the per-mode config.
+    changeAaMsaaMode(AA_MSAA_MODE_DEFAULT);
+    changeAaResolutionMode(AA_RESOLUTION_MODE_DEFAULT);
   }
 
   const SOUND_LABELS: Record<SoundCategory, string> = {
