@@ -401,14 +401,14 @@
       }
     },
     "metalDeposit": {
-      "baseColorHex": "#687987",
+      "baseColorHex": "#4d5964",
       "fieldLayers": {
         "sourceFile": "src/game/render3d/SurfaceFieldTexture.ts",
-        "baseColorHex": "#5c5c5c",
+        "baseColorHex": "#525252",
         "macro": {
           "resolution": 256,
           "tileWorldSize": 4200,
-          "blend": 0.45,
+          "blend": 0.6,
           "shadePaletteRgb": [
             "#2e3136",
             "#4f4a44",
@@ -425,7 +425,7 @@
         "meso": {
           "resolution": 512,
           "tileWorldSize": 1300,
-          "blend": 0.34,
+          "blend": 0.5,
           "shadePaletteRgb": [
             "#3a3c40",
             "#5c5850",
@@ -443,10 +443,10 @@
       "rockTexture": {
         "sourceFile": "src/game/render3d/RockDetailTexture.ts",
         "resolution": 4096,
-        "blend": 0.2,
-        "litColorBlend": 0.55,
-        "contrast": 0.6,
-        "roughnessVariation": 0.1,
+        "blend": 0.45,
+        "litColorBlend": 0.7,
+        "contrast": 0.85,
+        "roughnessVariation": 0.22,
         "tileWorldSize": 2000
       },
       "standardMaterial": {
@@ -506,8 +506,8 @@
         "blendBandMinWorldUnits": 8,
         "blendBandMaxWorldUnits": 40,
         "grainStrength": 0.92,
-        "grimeInnerReachWorldUnits": 48,
-        "grimeOuterReachWorldUnits": 56,
+        "grimeInnerReachWorldUnits": 480,
+        "grimeOuterReachWorldUnits": 560,
         "grimeThicknessVariation": 0.55,
         "grimeFalloff": 1.2,
         "grimePatchDepth": 0.6,
@@ -515,6 +515,35 @@
         "grimeDarken": 0.34,
         "grimeSeamPower": 2.0,
         "grimeMatte": 0.9
+      },
+      "bodyGrimeComment": [
+        "Dirt and grime over the metal BODY itself - every fragment of ore, not",
+        "just the band where it meets the ground. This is what keeps a deposit's",
+        "interior (and a SURFACE = METAL world, which has no ore boundary at all)",
+        "from reading as clean milled plate. Same weathering vocabulary as the",
+        "edge band; where the two overlap the dirt simply accumulates.",
+        "  noiseTileWorldSize - world size of the blotch pattern. Bigger reads as",
+        "                       weather staining, smaller as speckle.",
+        "  coverage   - target fraction of the metal carrying grime. 1 grimes",
+        "               everything (still varying in depth); lower values leave",
+        "               clean plate showing through between the stains.",
+        "  falloff    - >1 thins the shallow tail of each stain.",
+        "  patchDepth - how much the grit field can thin a stain locally.",
+        "  strength   - how much of the dirt texture replaces the metal.",
+        "  darken     - multiplier at full grime; the deep-stain darkening.",
+        "  seamPower  - exponent the darkening alone takes, so only the stain",
+        "               cores go dark while the wash keeps its full spread.",
+        "  matte      - how much of the metal reflection the dirt suppresses."
+      ],
+      "bodyGrime": {
+        "noiseTileWorldSize": 1700,
+        "coverage": 0.9,
+        "falloff": 1.1,
+        "patchDepth": 0.5,
+        "strength": 0.55,
+        "darken": 0.5,
+        "seamPower": 2.2,
+        "matte": 0.7
       }
     }
   },

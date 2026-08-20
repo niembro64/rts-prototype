@@ -1197,8 +1197,8 @@ export interface SimWasm {
    *  wander cap rather than an extent. */
   readonly metalDepositGrowMetalCells: MetalDepositCellPlacer;
   /** Bake the union of every workable deposit's build cells into a
-   *  whole-map signed-distance field, one byte per texel, negative
-   *  inside the ore. The terrain shader samples it by world XZ, so the
+   *  whole-map signed-distance field, two bytes per texel (16-bit
+   *  hi/lo split across R and G), negative inside the ore. The terrain shader samples it by world XZ, so the
    *  ore region is independent of terrain triangles and drapes over
    *  whatever relief it covers. Presentation only — the authoritative
    *  metal cells stay the deposits' own cell lists. */

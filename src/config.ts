@@ -995,6 +995,49 @@ export const ORE_EDGE_INFLUENCE_WORLD_UNITS =
     ) * (1 + ORE_EDGE_GRIME_THICKNESS_VARIATION),
   );
 
+/** Dirt and grime over the metal BODY itself — every ore fragment, not just
+ *  the edge band. Needs no boundary and no region-field distance, so unlike
+ *  the edge treatment it also runs on a SURFACE = METAL world, where it is
+ *  the only source of dirt. Tuning:
+ *  colorsConfig.environment.metalDeposit.bodyGrime. */
+const metalBodyGrimeConfig = COLORS.environment.metalDeposit.bodyGrime;
+
+export const TERRAIN_METAL_GRIME_ENABLED: boolean =
+  worldRenderConfigJson.terrainMetalGrime.enabled;
+
+export const METAL_GRIME_NOISE_TILE_WORLD_SIZE = readPositiveConfigNumber(
+  metalBodyGrimeConfig.noiseTileWorldSize,
+  'colorsConfig.environment.metalDeposit.bodyGrime.noiseTileWorldSize',
+);
+export const METAL_GRIME_COVERAGE = readUnitIntervalConfig(
+  metalBodyGrimeConfig.coverage,
+  'colorsConfig.environment.metalDeposit.bodyGrime.coverage',
+);
+export const METAL_GRIME_FALLOFF = readPositiveConfigNumber(
+  metalBodyGrimeConfig.falloff,
+  'colorsConfig.environment.metalDeposit.bodyGrime.falloff',
+);
+export const METAL_GRIME_PATCH_DEPTH = readUnitIntervalConfig(
+  metalBodyGrimeConfig.patchDepth,
+  'colorsConfig.environment.metalDeposit.bodyGrime.patchDepth',
+);
+export const METAL_GRIME_STRENGTH = readUnitIntervalConfig(
+  metalBodyGrimeConfig.strength,
+  'colorsConfig.environment.metalDeposit.bodyGrime.strength',
+);
+export const METAL_GRIME_DARKEN = readUnitIntervalConfig(
+  metalBodyGrimeConfig.darken,
+  'colorsConfig.environment.metalDeposit.bodyGrime.darken',
+);
+export const METAL_GRIME_SEAM_POWER = readPositiveConfigNumber(
+  metalBodyGrimeConfig.seamPower,
+  'colorsConfig.environment.metalDeposit.bodyGrime.seamPower',
+);
+export const METAL_GRIME_MATTE = readUnitIntervalConfig(
+  metalBodyGrimeConfig.matte,
+  'colorsConfig.environment.metalDeposit.bodyGrime.matte',
+);
+
 /** How strongly the procedural tree-leaf / tree-trunk textures override the
  *  prop's solid base color, in [0, 1]. 0 = pure base color (the original
  *  flat green / brown look), 1 = full texture variation. Same semantics as

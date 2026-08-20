@@ -55,6 +55,14 @@
 // derivative once at top level and passes it down.
 
 import {
+  METAL_GRIME_COVERAGE,
+  METAL_GRIME_DARKEN,
+  METAL_GRIME_FALLOFF,
+  METAL_GRIME_MATTE,
+  METAL_GRIME_NOISE_TILE_WORLD_SIZE,
+  METAL_GRIME_PATCH_DEPTH,
+  METAL_GRIME_SEAM_POWER,
+  METAL_GRIME_STRENGTH,
   ORE_EDGE_BLEND_BAND_MAX_WORLD_UNITS,
   ORE_EDGE_BLEND_BAND_MIN_WORLD_UNITS,
   ORE_EDGE_GRAIN_STRENGTH,
@@ -97,14 +105,29 @@ export type OreEdgeBlendUniforms = {
   grimeDarken: { value: number };
   grimeSeamPower: { value: number };
   grimeMatte: { value: number };
+  bodyEnabled: { value: number };
+  bodyTileWorldSize: { value: number };
+  bodyCoverage: { value: number };
+  bodyFalloff: { value: number };
+  bodyPatchDepth: { value: number };
+  bodyStrength: { value: number };
+  bodyDarken: { value: number };
+  bodySeamPower: { value: number };
+  bodyMatte: { value: number };
 };
 
-/** Builds the uniform block, generating both textures. `enabled` is the
- *  caller's: a SURFACE = METAL world has no ore boundary to weather, because
- *  every deposit edge on it is interior to a map that is entirely ore. */
-export function createOreEdgeBlendUniforms(enabled: boolean): OreEdgeBlendUniforms {
+/** Builds the uniform block, generating both textures. Both enables are the
+ *  caller's. `edgeEnabled`: a SURFACE = METAL world has no ore boundary to
+ *  weather, because every deposit edge on it is interior to a map that is
+ *  entirely ore. `bodyEnabled` is the grime over the metal body itself —
+ *  it needs no boundary, so it stays ON for a SURFACE = METAL world, where
+ *  it is the only source of dirt. */
+export function createOreEdgeBlendUniforms(
+  edgeEnabled: boolean,
+  bodyEnabled: boolean,
+): OreEdgeBlendUniforms {
   return {
-    enabled: { value: enabled ? 1 : 0 },
+    enabled: { value: edgeEnabled ? 1 : 0 },
     noiseTileWorldSize: { value: ORE_EDGE_NOISE_TILE_WORLD_SIZE },
     dirtTileWorldSize: { value: SOIL_SUBSTANCE_TILE_WORLD_SIZE },
     influence: { value: ORE_EDGE_INFLUENCE_WORLD_UNITS },
@@ -122,6 +145,15 @@ export function createOreEdgeBlendUniforms(enabled: boolean): OreEdgeBlendUnifor
     grimeDarken: { value: ORE_EDGE_GRIME_DARKEN },
     grimeSeamPower: { value: ORE_EDGE_GRIME_SEAM_POWER },
     grimeMatte: { value: ORE_EDGE_GRIME_MATTE },
+    bodyEnabled: { value: bodyEnabled ? 1 : 0 },
+    bodyTileWorldSize: { value: METAL_GRIME_NOISE_TILE_WORLD_SIZE },
+    bodyCoverage: { value: METAL_GRIME_COVERAGE },
+    bodyFalloff: { value: METAL_GRIME_FALLOFF },
+    bodyPatchDepth: { value: METAL_GRIME_PATCH_DEPTH },
+    bodyStrength: { value: METAL_GRIME_STRENGTH },
+    bodyDarken: { value: METAL_GRIME_DARKEN },
+    bodySeamPower: { value: METAL_GRIME_SEAM_POWER },
+    bodyMatte: { value: METAL_GRIME_MATTE },
   };
 }
 
@@ -147,6 +179,15 @@ export function assignOreEdgeBlendUniforms(
   shader.uniforms.uOreEdgeGrimeDarken = uniforms.grimeDarken;
   shader.uniforms.uOreEdgeGrimeSeamPower = uniforms.grimeSeamPower;
   shader.uniforms.uOreEdgeGrimeMatte = uniforms.grimeMatte;
+  shader.uniforms.uMetalGrimeEnabled = uniforms.bodyEnabled;
+  shader.uniforms.uMetalGrimeTileWorldSize = uniforms.bodyTileWorldSize;
+  shader.uniforms.uMetalGrimeCoverage = uniforms.bodyCoverage;
+  shader.uniforms.uMetalGrimeFalloff = uniforms.bodyFalloff;
+  shader.uniforms.uMetalGrimePatchDepth = uniforms.bodyPatchDepth;
+  shader.uniforms.uMetalGrimeStrength = uniforms.bodyStrength;
+  shader.uniforms.uMetalGrimeDarken = uniforms.bodyDarken;
+  shader.uniforms.uMetalGrimeSeamPower = uniforms.bodySeamPower;
+  shader.uniforms.uMetalGrimeMatte = uniforms.bodyMatte;
 }
 
 export function oreEdgeBlendUniformDeclarations(): string {
@@ -172,6 +213,18 @@ export function oreEdgeBlendUniformDeclarations(): string {
     'uniform float uOreEdgeGrimeDarken;',
     'uniform float uOreEdgeGrimeSeamPower;',
     'uniform float uOreEdgeGrimeMatte;',
+    // The grime over the metal body itself — every ore fragment, not just
+    // the edge band. Shares the edge's samplers and dirt tile; only the
+    // blotch pattern's own scale and shaping are separate knobs.
+    'uniform float uMetalGrimeEnabled;',
+    'uniform float uMetalGrimeTileWorldSize;',
+    'uniform float uMetalGrimeCoverage;',
+    'uniform float uMetalGrimeFalloff;',
+    'uniform float uMetalGrimePatchDepth;',
+    'uniform float uMetalGrimeStrength;',
+    'uniform float uMetalGrimeDarken;',
+    'uniform float uMetalGrimeSeamPower;',
+    'uniform float uMetalGrimeMatte;',
   ].join('\n');
 }
 
@@ -281,6 +334,80 @@ export function oreEdgeResolveFragment(
   ].join('\n');
 }
 
+/** The grime over the metal BODY — every fragment of ore, not just the band
+ *  where it meets the ground. Without it a deposit's interior (and a
+ *  SURFACE = METAL world, which has no ore boundary at all) reads as clean
+ *  milled plate however weathered its edges are.
+ *
+ *  No distance term: the stain pattern is drawn from the shared noise
+ *  fields alone, thresholded so an authored fraction of the metal carries
+ *  grime, then shaped by the same grime maths as every other treatment.
+ *  That independence from the region field is exactly what lets it run on
+ *  a metal world, where the field's distance is meaningless.
+ *
+ *  Host contract: runs AFTER `metalCoverage` is declared and BEFORE the
+ *  matte coverage is resolved — the matte reads the `metalBodyGrime` this
+ *  declares. The samples happen under a branch, which is the same
+ *  trade-off the edge treatment makes: ore is a fraction of most frames,
+ *  and the fragments that skip it skip five texture taps. */
+export function metalBodyGrimeResolveFragment(worldPositionExpr: string): string {
+  return [
+    'float metalBodyGrime = 0.0;',
+    'if (uMetalGrimeEnabled > 0.0 && metalCoverage > 0.0) {',
+    '  WeatherFields metalGrimeFields = weatherSampleFields(',
+    `    ${WEATHER_NOISE_SAMPLER},`,
+    `    ${worldPositionExpr}.xz,`,
+    '    uMetalGrimeTileWorldSize',
+    '  );',
+    '  // Two blotch scales, so the staining reads as weather rather than',
+    '  // as one repeated pattern.',
+    '  float metalGrimeBlotch = mix(metalGrimeFields.reach, metalGrimeFields.lobes, 0.45);',
+    '  // `coverage` is the authored fraction of metal carrying grime: the',
+    '  // ramp rescales the blotch so that fraction of it survives, still',
+    '  // varying in depth across what does.',
+    '  float metalGrimeRamp = clamp(',
+    '    1.0 - (1.0 - metalGrimeBlotch) / max(uMetalGrimeCoverage, 0.001),',
+    '    0.0,',
+    '    1.0',
+    '  );',
+    '  metalBodyGrime = weatherGrimeAmount(',
+    '    metalGrimeRamp,',
+    '    metalGrimeFields,',
+    '    uMetalGrimeFalloff,',
+    '    uMetalGrimePatchDepth',
+    '  ) * metalCoverage;',
+    '}',
+  ].join('\n');
+}
+
+/** The albedo half of the body grime. Runs after the ore surface is
+ *  composed and BEFORE the edge band's dirt, so the seam still paints over
+ *  everything — the band is the tell that two materials meet, and dirt laid
+ *  over dirt is exactly how it accumulates. */
+export function metalBodyGrimeAlbedoFragment(
+  worldPositionExpr: string,
+  geometricNormalExpr: string,
+): string {
+  return [
+    'if (metalBodyGrime > 0.0) {',
+    '  vec3 metalGrimeDirt = weatherSampleSubstance(',
+    `    ${WEATHER_SOIL_SAMPLER},`,
+    `    ${worldPositionExpr},`,
+    `    ${geometricNormalExpr},`,
+    '    uOreEdgeDirtTileWorldSize',
+    '  );',
+    '  terrainRgb = weatherApplyGrime(',
+    '    terrainRgb,',
+    '    metalGrimeDirt,',
+    '    metalBodyGrime,',
+    '    uMetalGrimeStrength,',
+    '    uMetalGrimeDarken,',
+    '    uMetalGrimeSeamPower',
+    '  );',
+    '}',
+  ].join('\n');
+}
+
 /** The coverage the PBR half of the metal surface must take, given the
  *  geometric one.
  *
@@ -289,9 +416,16 @@ export function oreEdgeResolveFragment(
  *  environment highlight still traces the ore boundary exactly, so the edge
  *  reads as crisp no matter how much dirt is painted over it. Every other
  *  term here is cosmetic by comparison — this one is why the boundary stops
- *  being visible as a boundary. */
+ *  being visible as a boundary.
+ *
+ *  The body grime rides the same principle: its stains suppress the metal
+ *  reflection by their own matte, multiplicatively with the edge band's,
+ *  because dirt on dirt is not shinier than either layer alone. */
 export function oreEdgeMatteCoverage(coverageExpr: string): string {
-  return `${coverageExpr} * (1.0 - uOreEdgeGrimeMatte * oreEdgeGrime)`;
+  return (
+    `${coverageExpr} * (1.0 - uOreEdgeGrimeMatte * oreEdgeGrime)` +
+    ' * (1.0 - uMetalGrimeMatte * metalBodyGrime)'
+  );
 }
 
 /** The albedo half of the grime, applied AFTER the ore surface has been
