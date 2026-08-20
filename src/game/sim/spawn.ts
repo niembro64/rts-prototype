@@ -7,6 +7,7 @@ import { aimTurretsToward } from './turretInit';
 import { setUnitFacingYaw } from './unitOrientation';
 import { getBuildingConfig } from './buildConfigs';
 import { getStructureFactoryAllowedUnitBlueprintIds } from './factoryProductionRoster';
+import { mapHasWater } from './mapWater';
 import { DEMO_CONFIG } from '../../demoConfig';
 import type { WaypointType } from '../../types/commandTypes';
 import {
@@ -924,32 +925,45 @@ export function spawnInitialBases(
   const playerCount = normalizedPlayerIds.length;
   const { oval, radius: spawnRadius } = getDemoOval(world);
   const { cx, cy } = oval;
-  // LIQUID = LAVA: the sea is molten rock, so the demo spawns nothing that
-  // belongs in or on the water. The offshore Fabricator arc (the water-unit
-  // production lines) and its Sonar ring are omitted entirely; every
-  // Fabricator the demo still places is a land line on the land factory
-  // ring. LIQUID = WATER keeps the authored offshore installation.
+  // No water on this map — because nothing digs below datum, or because the
+  // liquid is molten rock — and the demo spawns nothing that belongs in or on
+  // it. The offshore Fabricator arc (the water-unit production lines) and its
+  // Sonar ring are omitted entirely; every Fabricator the demo still places is
+  // a land line on the land factory ring. A map with water keeps the authored
+  // offshore installation. `mapHasWater()` owns which maps those are.
+  const hasWater = mapHasWater();
+  // Losing the offshore arc must not lose the hulls that never needed it. The
+  // arc's roster is a mixed bag — an amphibian and an aerosub alongside the two
+  // submarines — and only the submarines have nowhere to be on a dry map. So
+  // when the arc is gone, nothing is held back FROM the land ring either: the
+  // land ring draws from the factory roster, which `mapHasWater()` has already
+  // narrowed, so the submarines stay gone and the rest simply move ashore.
+  const landFactoryExclusions = new Set<string>(
+    hasWater ? DEMO_CONFIG.waterFabricators.unitBlueprintIds : [],
+  );
+  // Narrower than `!hasWater`: only LAVA actively burns what stands in it, so
+  // only lava makes an over-land footprint a requirement rather than a
+  // formality. A dry map has no wet cells to avoid in the first place.
   const lavaLiquid = world.liquidSurfaceMode === 'lava';
   const supplementalGroundBuildingBlueprintIds =
     getDemoSupplementalBuildingBlueprintIds(
       'ground',
       availableBuildingBlueprintIds,
     );
-  const supplementalWaterBuildingBlueprintIds = lavaLiquid
-    ? []
-    : getDemoSupplementalBuildingBlueprintIds(
+  const supplementalWaterBuildingBlueprintIds = hasWater
+    ? getDemoSupplementalBuildingBlueprintIds(
       'water',
       availableBuildingBlueprintIds,
-    );
-  const waterFactoryUnitBlueprintIds = lavaLiquid
-    ? []
-    : DEMO_CONFIG.waterFabricators.unitBlueprintIds.filter(
+    )
+    : [];
+  const waterFactoryUnitBlueprintIds = hasWater
+    ? DEMO_CONFIG.waterFabricators.unitBlueprintIds.filter(
       (id) => availableUnitBlueprintIds === undefined || availableUnitBlueprintIds.has(id),
-    );
-  const waterFactoryUnitBlueprintIdSet = new Set<string>(DEMO_CONFIG.waterFabricators.unitBlueprintIds);
+    )
+    : [];
   const factoryUnitBlueprintIds = getAvailableDemoFactoryUnitBlueprintIds(
     availableUnitBlueprintIds,
-    waterFactoryUnitBlueprintIdSet,
+    landFactoryExclusions,
   );
   const fabricatorConfig = getBuildingConfig('towerFabricator');
   const fabricatorWidth = fabricatorConfig.gridWidth * BUILD_GRID_CELL_SIZE;
@@ -1248,8 +1262,8 @@ export function spawnInitialBases(
     // One Sonar sits immediately outside the offshore Fabricator arc.
     // Use their actual post-grid-snap radius, then add both collision radii
     // plus one grid cell so the installation remains visually separated.
-    // Sonar is a water-surface building, so a lava world places none.
-    if (!lavaLiquid && isBuildingEnabled('buildingSonar')) {
+    // Sonar is a water-surface building, so a map with no water places none.
+    if (hasWater && isBuildingEnabled('buildingSonar')) {
       let outermostWaterFactoryRadius = waterFactoryRadius;
       for (let j = 0; j < waterFactories.length; j++) {
         const factory = waterFactories[j];
@@ -1283,7 +1297,7 @@ export function spawnInitialBases(
       ));
     }
 
-    if (!lavaLiquid) {
+    if (hasWater) {
       entities.push(...placeMixedBlueprintArcRow(
         world,
         construction,

@@ -22,7 +22,7 @@ import {
 } from '../../input/buildMenuLayout';
 import { resolveFactoryProductionPresetReplay } from '../../input/factoryProductionPresets';
 import { getStructureFactoryAllowedUnitBlueprintIds } from '../factoryProductionRoster';
-import { getUnitBuilderAllowedBuildBlueprintIds } from '../hostCapabilities';
+import { getUnitAuthoredBuildBlueprintIds } from '../hostCapabilities';
 import { createTransportComponentForUnitBlueprint } from '../transports';
 import { buildingBlueprintHasActiveState } from '../buildingActiveState';
 import { BUILDING_BLUEPRINTS } from './buildings';
@@ -443,7 +443,7 @@ export function runRosterCommandSurfaceContractTest(): void {
     );
   }
 
-  const commanderBuildBlueprintIds = getUnitBuilderAllowedBuildBlueprintIds(UNIT_BLUEPRINTS['unitCommander']);
+  const commanderBuildBlueprintIds = getUnitAuthoredBuildBlueprintIds(UNIT_BLUEPRINTS['unitCommander']);
   assertBarStructureMembershipMatchesUnitdef(
     'unitCommander',
     'armcom',
@@ -518,7 +518,7 @@ export function runRosterCommandSurfaceContractTest(): void {
     'commander BAR home Utility/Build columns must expose radar and fabricator in the bottom row',
   );
 
-  const constructionDroneBuildBlueprintIds = getUnitBuilderAllowedBuildBlueprintIds(UNIT_BLUEPRINTS['unitConstructionDrone']);
+  const constructionDroneBuildBlueprintIds = getUnitAuthoredBuildBlueprintIds(UNIT_BLUEPRINTS['unitConstructionDrone']);
   assertBarStructureMembershipMatchesUnitdef(
     'unitConstructionDrone',
     'armca',
@@ -550,7 +550,7 @@ export function runRosterCommandSurfaceContractTest(): void {
   );
 
   const constructionSubBuildBlueprintIds =
-    getUnitBuilderAllowedBuildBlueprintIds(UNIT_BLUEPRINTS.unitConstructionSubmarine);
+    getUnitAuthoredBuildBlueprintIds(UNIT_BLUEPRINTS.unitConstructionSubmarine);
   assertSameMembers(
     'construction submarine naval build roster',
     constructionSubBuildBlueprintIds,
@@ -710,7 +710,7 @@ export function runRosterCommandSurfaceContractTest(): void {
     const unitBlueprint = UNIT_BLUEPRINTS[unitBlueprintId];
     assertContract(unitBlueprint !== undefined, `stable unit ${unitBlueprintId} must have a blueprint`);
     if (unitBlueprint.builder === null) continue;
-    const allowedBuildBlueprintIds = getUnitBuilderAllowedBuildBlueprintIds(unitBlueprint);
+    const allowedBuildBlueprintIds = getUnitAuthoredBuildBlueprintIds(unitBlueprint);
     assertContract(
       allowedBuildBlueprintIds.length > 0,
       `${unitBlueprintId} builder roster must author at least one build option`,

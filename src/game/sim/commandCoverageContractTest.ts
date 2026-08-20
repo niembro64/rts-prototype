@@ -37,7 +37,7 @@ import {
   getFactoryAllowedUnitBlueprintIds,
   getStructureFactoryAllowedUnitBlueprintIds,
 } from './factoryProductionRoster';
-import { getUnitBuilderAllowedBuildBlueprintIds } from './hostCapabilities';
+import { getUnitAuthoredBuildBlueprintIds } from './hostCapabilities';
 import { UNIT_BLUEPRINTS } from './blueprints/units';
 import { createTransportComponentForUnitBlueprint } from './transports';
 import { buildingBlueprintHasActiveState } from './buildingActiveState';
@@ -185,7 +185,7 @@ function findPlaceableBuildCell(
   kind: 'unit' | 'building',
 ): Scenario['buildCell'] {
   if (kind !== 'unit') return null;
-  const roster = getUnitBuilderAllowedBuildBlueprintIds(UNIT_BLUEPRINTS[blueprintId as UnitBlueprintId]);
+  const roster = getUnitAuthoredBuildBlueprintIds(UNIT_BLUEPRINTS[blueprintId as UnitBlueprintId]);
   if (roster.length === 0) return null;
   const grid = construction.getGrid();
   for (const candidate of roster) {

@@ -18,6 +18,7 @@ import type { MultiLegWaypoint } from '../sim/Pathfinder';
 import { setUnitActions } from '../sim/unitActions';
 import { setUnitFacingYaw } from '../sim/unitOrientation';
 import { createPhysicsBodyForUnit } from './unitPhysicsBody';
+import { mapHasWater } from '../sim/mapWater';
 
 // Available unit blueprints for background spawning (excludes commander)
 export const BACKGROUND_UNIT_BLUEPRINT_IDS = [...BUILDABLE_UNIT_BLUEPRINT_IDS];
@@ -274,13 +275,14 @@ export function spawnBackgroundUnitsStandalone(
     if (DEMO_CONFIG.waterFabricators.unitBlueprintIds.includes(unitBlueprintId)) continue;
     centerBattleAllowedUnitBlueprintIds.add(unitBlueprintId);
   }
-  // LIQUID = LAVA turns the demo's water roster off entirely: the opening
-  // wave must not drop sea units into molten rock. Reinforcements already
-  // draw from the water-excluded center-battle set in every world.
-  const lavaLiquid = world.liquidSurfaceMode === 'lava';
-  const initialWaveAllowedUnitBlueprintIds = lavaLiquid
-    ? centerBattleAllowedUnitBlueprintIds
-    : allowedUnitBlueprintIds;
+  // A map with no water turns the demo's water roster off entirely: the
+  // opening wave must not drop sea units onto dry land, or into molten rock.
+  // Reinforcements already draw from the water-excluded center-battle set in
+  // every world. `mapHasWater()` owns which maps those are — LIQUID = LAVA is
+  // one of them, an unexcavated map is another.
+  const initialWaveAllowedUnitBlueprintIds = mapHasWater()
+    ? allowedUnitBlueprintIds
+    : centerBattleAllowedUnitBlueprintIds;
   let playersSource: readonly PlayerId[];
   if (playerIds && playerIds.length > 0) {
     playersSource = playerIds;

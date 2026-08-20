@@ -15,6 +15,9 @@ import { getBuildingPlacementDiagnostics } from './buildPlacementValidation';
 import { getBuildingConfig } from './buildConfigs';
 import { ConstructionSystem } from './construction';
 import { getStructureFactoryAllowedUnitBlueprintIds } from './factoryProductionRoster';
+import { isWaterOnlyUnitBlueprintId } from './blueprints/waterOnlyRoster';
+import { mapHasWater } from './mapWater';
+import { getLiquidSurfaceMode, setLiquidSurfaceMode } from './worldSurfaceState';
 import { spawnInitialBases, spawnMetalExtractorsOnDeposits } from './spawn';
 import { buildTeamRosterFromSeatCounts } from './teamRoster';
 import type { Entity, PlayerId } from './types';
@@ -190,8 +193,7 @@ function assertDryPerimeterFactoryFallback(
   mapHeight: number,
   playerIds: readonly PlayerId[],
 ): void {
-  const previousPerimeterMagnitude =
-    getTerrainRuntimeConfig().perimeterMagnitude;
+  const previousRuntimeConfig = getTerrainRuntimeConfig();
   const waterUnitBlueprintIds = new Set<string>(
     DEMO_CONFIG.waterFabricators.unitBlueprintIds,
   );
@@ -202,6 +204,16 @@ function assertDryPerimeterFactoryFallback(
   );
 
   try {
+    // A dry OUTER RING on a map that still has water somewhere. The CENTER dish
+    // is what supplies the sea here, so `mapHasWater()` is true and the offshore
+    // installation is authored — but the ring it wants to sit on is above the
+    // waterline, which is precisely the fallback under test. Raising the
+    // perimeter alone would instead produce a map with no water at all, where
+    // there is correctly no offshore arc to fall back FROM.
+    setTerrainRuntimeConfig({
+      ...previousRuntimeConfig,
+      centerMagnitude: CONTRACT_WATER_PERIMETER_MAGNITUDE,
+    });
     for (const perimeterMagnitude of [0, 800]) {
       setTerrainPerimeterMagnitude(perimeterMagnitude);
       const world = new WorldState(
@@ -261,71 +273,165 @@ function assertDryPerimeterFactoryFallback(
       );
     }
   } finally {
-    setTerrainPerimeterMagnitude(previousPerimeterMagnitude);
+    setTerrainRuntimeConfig(previousRuntimeConfig);
   }
 }
 
-/** LIQUID = LAVA turns off everything that belongs in or on the water: the
- * offshore water-unit Fabricator arc and its Sonar ring must not spawn, and
- * every Fabricator that does spawn must be a land production line placed
- * over land. The baseline assertions above prove LIQUID = WATER keeps the
- * authored offshore installation on this same terrain. */
+/** A map with NO water at all — every magnitude at or above datum — stands up
+ *  no offshore installation, and nothing that only exists for water. What it
+ *  must NOT do is lose the rest of the offshore roster: the amphibian and the
+ *  aerosub have somewhere to be on dry land, so their production lines move to
+ *  the land factory ring rather than disappearing with the arc. */
+function assertDryMapDropsOnlyWaterOnlyFactoryLines(
+  mapWidth: number,
+  mapHeight: number,
+  playerIds: readonly PlayerId[],
+): void {
+  const previousRuntimeConfig = getTerrainRuntimeConfig();
+  const offshoreUnitBlueprintIds = DEMO_CONFIG.waterFabricators.unitBlueprintIds;
+  const expectedLines = offshoreUnitBlueprintIds.filter(
+    (unitBlueprintId) => !isWaterOnlyUnitBlueprintId(unitBlueprintId),
+  );
+  const factoryBuildingBlueprintIds = new Set<string>(['towerFabricator']);
+  try {
+    setTerrainRuntimeConfig({
+      ...previousRuntimeConfig,
+      centerMagnitude: 0,
+      ringMagnitude: 0,
+      dividersMagnitude: 800,
+      perimeterMagnitude: 0,
+    });
+    assertContract(
+      !mapHasWater(),
+      'the no-water case must actually describe a map with no water',
+    );
+    assertContract(
+      expectedLines.length > 0 && expectedLines.length < offshoreUnitBlueprintIds.length,
+      'the offshore roster must mix water-only hulls with hulls that survive a dry map, ' +
+        'or this case proves nothing',
+    );
+    const world = new WorldState(1247, mapWidth, mapHeight);
+    const construction = new ConstructionSystem(
+      mapWidth,
+      mapHeight,
+      createNoBuildableTerrainGrid(mapWidth, mapHeight),
+    );
+    const entities = spawnInitialBases(
+      world,
+      construction,
+      [...playerIds],
+      'demo',
+      new Set<string>(offshoreUnitBlueprintIds),
+      factoryBuildingBlueprintIds,
+    );
+    const producedUnitBlueprintIds = new Set<string>();
+    let factoryCount = 0;
+    for (let i = 0; i < entities.length; i++) {
+      const entity = entities[i];
+      if (entity.buildingBlueprintId !== 'towerFabricator') continue;
+      factoryCount++;
+      const selected = entity.factory?.selectedUnitBlueprintId ?? null;
+      assertContract(
+        selected !== null && !isWaterOnlyUnitBlueprintId(selected),
+        `a map with no water must not stand up a production line for ${String(selected)}`,
+      );
+      producedUnitBlueprintIds.add(selected);
+    }
+    assertContract(
+      factoryCount === playerIds.length * expectedLines.length,
+      'a map with no water must keep one Fabricator per surviving offshore hull per player; ' +
+        `got ${factoryCount} for ${playerIds.length} player(s) x ${expectedLines.length} hull(s)`,
+    );
+    for (const unitBlueprintId of expectedLines) {
+      assertContract(
+        producedUnitBlueprintIds.has(unitBlueprintId),
+        `${unitBlueprintId} still has somewhere to be, so its line must move ashore`,
+      );
+    }
+    assertContract(
+      !entities.some((entity) => entity.buildingBlueprintId === 'buildingSonar'),
+      'a map with no water must place no Sonar — it has no surface to sit on',
+    );
+  } finally {
+    setTerrainRuntimeConfig(previousRuntimeConfig);
+  }
+}
+
+/** LIQUID = LAVA is a map with no water, so it turns off everything that
+ * belongs in or on the water: the offshore Fabricator arc and its Sonar ring
+ * must not spawn, no water-only hull may get a production line, and every
+ * Fabricator that does spawn must sit over land. It must NOT turn off the
+ * hulls that merely happened to be built offshore — the amphibian and the
+ * aerosub still drive and fly, so their lines move to the land ring. The
+ * baseline assertions above prove a map WITH water keeps the authored offshore
+ * installation on this same terrain. */
 function assertLavaWorldSpawnExcludesWaterRoster(
   mapWidth: number,
   mapHeight: number,
   playerIds: readonly PlayerId[],
 ): void {
-  const world = new WorldState(1245, mapWidth, mapHeight);
-  world.liquidSurfaceMode = 'lava';
-  const construction = new ConstructionSystem(mapWidth, mapHeight, null);
-  const entities = spawnInitialBases(
-    world,
-    construction,
-    [...playerIds],
-    'demo',
-  );
-  const waterUnitBlueprintIds = new Set<string>(
-    DEMO_CONFIG.waterFabricators.unitBlueprintIds,
-  );
-  const expectedLandUnitBlueprintIds =
-    getStructureFactoryAllowedUnitBlueprintIds('towerFabricator').filter(
-      (unitBlueprintId) => !waterUnitBlueprintIds.has(unitBlueprintId),
+  // Install lava on the process-wide world-surface state too, not just on this
+  // WorldState: `mapHasWater()` is the one answer every roster surface reads,
+  // and a test that moved only half of it would be testing a world that cannot
+  // exist (commandExecution writes both together).
+  const previousLiquidSurfaceMode = getLiquidSurfaceMode();
+  try {
+    setLiquidSurfaceMode('lava');
+    const world = new WorldState(1245, mapWidth, mapHeight);
+    world.liquidSurfaceMode = 'lava';
+    const construction = new ConstructionSystem(mapWidth, mapHeight, null);
+    const entities = spawnInitialBases(
+      world,
+      construction,
+      [...playerIds],
+      'demo',
     );
-  const selectionsByPlayer = new Map<PlayerId, Set<string>>();
-  for (let i = 0; i < entities.length; i++) {
-    const entity = entities[i];
+    // Already narrowed by the map: the two submarines are gone from this list,
+    // and everything left has somewhere to be on a lava world's land.
+    const expectedLandUnitBlueprintIds =
+      getStructureFactoryAllowedUnitBlueprintIds('towerFabricator');
     assertContract(
-      entity.buildingBlueprintId !== 'buildingSonar',
-      'LIQUID = LAVA demo must not spawn the water-surface Sonar ring',
+      !expectedLandUnitBlueprintIds.some(isWaterOnlyUnitBlueprintId),
+      'LIQUID = LAVA must leave no water-only hull in the Fabricator roster',
     );
-    if (entity.buildingBlueprintId !== 'towerFabricator') continue;
-    const playerId = entity.ownership?.playerId;
-    const selected = entity.factory?.selectedUnitBlueprintId;
-    assertContract(playerId !== undefined, 'lava demo Fabricator must have an owner');
-    assertContract(
-      selected !== null && selected !== undefined &&
-        !waterUnitBlueprintIds.has(selected),
-      `LIQUID = LAVA demo must not seed water production line ${selected}`,
-    );
-    assertContract(
-      !isWaterAt(entity.transform.x, entity.transform.y, mapWidth, mapHeight),
-      `LIQUID = LAVA demo Fabricator ${entity.id} must be placed over land`,
-    );
-    let selections = selectionsByPlayer.get(playerId);
-    if (selections === undefined) {
-      selections = new Set<string>();
-      selectionsByPlayer.set(playerId, selections);
+    const selectionsByPlayer = new Map<PlayerId, Set<string>>();
+    for (let i = 0; i < entities.length; i++) {
+      const entity = entities[i];
+      assertContract(
+        entity.buildingBlueprintId !== 'buildingSonar',
+        'LIQUID = LAVA demo must not spawn the water-surface Sonar ring',
+      );
+      if (entity.buildingBlueprintId !== 'towerFabricator') continue;
+      const playerId = entity.ownership?.playerId;
+      const selected = entity.factory?.selectedUnitBlueprintId;
+      assertContract(playerId !== undefined, 'lava demo Fabricator must have an owner');
+      assertContract(
+        selected !== null && selected !== undefined &&
+          !isWaterOnlyUnitBlueprintId(selected),
+        `LIQUID = LAVA demo must not seed water-only production line ${selected}`,
+      );
+      assertContract(
+        !isWaterAt(entity.transform.x, entity.transform.y, mapWidth, mapHeight),
+        `LIQUID = LAVA demo Fabricator ${entity.id} must be placed over land`,
+      );
+      let selections = selectionsByPlayer.get(playerId);
+      if (selections === undefined) {
+        selections = new Set<string>();
+        selectionsByPlayer.set(playerId, selections);
+      }
+      selections.add(selected);
     }
-    selections.add(selected);
-  }
-  for (let i = 0; i < playerIds.length; i++) {
-    const playerId = playerIds[i];
-    const selections = selectionsByPlayer.get(playerId);
-    assertContract(
-      selections?.size === expectedLandUnitBlueprintIds.length,
-      `LIQUID = LAVA player ${playerId} must keep every land repeat line; ` +
-        `expected ${expectedLandUnitBlueprintIds.length}, got ${selections?.size ?? 0}`,
-    );
+    for (let i = 0; i < playerIds.length; i++) {
+      const playerId = playerIds[i];
+      const selections = selectionsByPlayer.get(playerId);
+      assertContract(
+        selections?.size === expectedLandUnitBlueprintIds.length,
+        `LIQUID = LAVA player ${playerId} must keep every land repeat line; ` +
+          `expected ${expectedLandUnitBlueprintIds.length}, got ${selections?.size ?? 0}`,
+      );
+    }
+  } finally {
+    setLiquidSurfaceMode(previousLiquidSurfaceMode);
   }
 }
 
@@ -742,6 +848,7 @@ function runDemoMetalExtractorSpawnContractTestForPreset(
     );
   }
   assertDryPerimeterFactoryFallback(mapWidth, mapHeight, playerIds);
+  assertDryMapDropsOnlyWaterOnlyFactoryLines(mapWidth, mapHeight, playerIds);
   assertLavaWorldSpawnExcludesWaterRoster(mapWidth, mapHeight, playerIds);
   assertNegativeMetalDepositStepDemoSpawn(mapWidth, mapHeight, playerIds);
 

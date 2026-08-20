@@ -2,12 +2,19 @@ import type { UnitBlueprint } from './blueprints/types';
 import { getUnitBlueprint } from './blueprints';
 import type { Entity, StructureBlueprintId } from './types';
 import type { ConstructionCapability } from '../../types/constructionTypes';
+import { buildingBlueprintIdsWithoutWaterOnly } from './mapRoster';
+import { mapHasWater } from './mapWater';
 
 type UnitHostCapabilities = {
   construction: ConstructionCapability | null;
   /** Shared build-power ceiling owned by the host, not a mounted emitter. */
   constructionRate: number;
   allowedBuildBlueprintIds: readonly StructureBlueprintId[];
+  /** The same roster minus the structures that only stand on water. Compiled
+   *  beside the authored one — not swapped in — because which of the two
+   *  applies is a property of the MAP, and this table is compiled once for the
+   *  life of the process. `allowedBuildBlueprintIdsForMap` picks. */
+  allowedBuildBlueprintIdsWithoutWater: readonly StructureBlueprintId[];
 };
 
 type SelectedBuilderTypeInfo = {
@@ -43,7 +50,22 @@ function compileUnitHostCapabilities(unitBlueprint: UnitBlueprint): UnitHostCapa
     construction,
     constructionRate,
     allowedBuildBlueprintIds: Object.freeze([...allowedBuildBlueprintIds]),
+    allowedBuildBlueprintIdsWithoutWater: Object.freeze(
+      [...buildingBlueprintIdsWithoutWaterOnly(allowedBuildBlueprintIds)],
+    ),
   });
+}
+
+/** The build list this host actually offers on the installed map. Every build
+ *  menu, hotkey list, and placement authorization reads through here, so a
+ *  structure with nowhere to stand is gone from the UI and refused by the
+ *  server for the same reason, at the same moment. */
+function allowedBuildBlueprintIdsForMap(
+  capabilities: UnitHostCapabilities,
+): readonly StructureBlueprintId[] {
+  return mapHasWater()
+    ? capabilities.allowedBuildBlueprintIds
+    : capabilities.allowedBuildBlueprintIdsWithoutWater;
 }
 
 function getUnitHostCapabilities(unitBlueprint: UnitBlueprint): UnitHostCapabilities {
@@ -74,7 +96,9 @@ function entityCanSpawnStructure(
 ): boolean {
   if (buildingBlueprintId === null || buildingBlueprintId === undefined) return false;
   const capability = getEntityHostCapabilities(entity);
-  return capability?.allowedBuildBlueprintIds.includes(buildingBlueprintId as StructureBlueprintId) === true;
+  if (capability === null) return false;
+  return allowedBuildBlueprintIdsForMap(capability)
+    .includes(buildingBlueprintId as StructureBlueprintId);
 }
 
 /** Build placement creates a nanoframe directly; the host then applies build
@@ -95,10 +119,23 @@ function getBuilderAllowedBuildBlueprintIds(
   entity: Entity | null | undefined,
 ): readonly StructureBlueprintId[] {
   if (entity?.builder === null || entity?.builder === undefined) return EMPTY_STRUCTURE_IDS;
-  return getEntityHostCapabilities(entity)?.allowedBuildBlueprintIds ?? EMPTY_STRUCTURE_IDS;
+  const capabilities = getEntityHostCapabilities(entity);
+  if (capabilities === null) return EMPTY_STRUCTURE_IDS;
+  return allowedBuildBlueprintIdsForMap(capabilities);
 }
 
+/** What this builder offers on the installed map. */
 export function getUnitBuilderAllowedBuildBlueprintIds(
+  unitBlueprint: UnitBlueprint,
+): readonly StructureBlueprintId[] {
+  return allowedBuildBlueprintIdsForMap(getUnitHostCapabilities(unitBlueprint));
+}
+
+/** What this builder's BLUEPRINT authors, whatever map is installed. For code
+ *  asking about the authored roster itself — BAR parity, command coverage,
+ *  "is this unit a builder at all" — rather than about what a player can place
+ *  right now. */
+export function getUnitAuthoredBuildBlueprintIds(
   unitBlueprint: UnitBlueprint,
 ): readonly StructureBlueprintId[] {
   return getUnitHostCapabilities(unitBlueprint).allowedBuildBlueprintIds;

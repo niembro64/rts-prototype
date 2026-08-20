@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { BATTLE_CONFIG } from '../battleBarConfig';
 import { SERVER_CONFIG } from '../serverBarConfig';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
@@ -18,10 +19,30 @@ import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
 import type { GameCanvasBattleControlBarModel } from './gameCanvasControlBarModels';
 import { statBarStyle } from './uiUtils';
+import {
+  buildingBlueprintIdsForMapSetup,
+  unitBlueprintIdsForMapSetup,
+} from '../game/sim/mapRoster';
 
-defineProps<{
+const props = defineProps<{
   model: GameCanvasBattleControlBarModel;
 }>();
+
+// The bar edits the roster of the map the bar itself is describing, so the two
+// groups list what THAT map can field. Derived from the model's own terrain
+// magnitudes and liquid mode rather than from the installed battle: the bar
+// shows the pick the player just made, before it is restarted into the world.
+const rosterMapSetup = computed(() => ({
+  centerMagnitude: props.model.centerMagnitude,
+  ringMagnitude: props.model.ringMagnitude,
+  dividersMagnitude: props.model.dividersMagnitude,
+  perimeterMagnitude: props.model.perimeterMagnitude,
+  liquidSurfaceMode: props.model.currentLiquidSurfaceMode,
+}));
+const rosterUnitBlueprintIds = computed(() =>
+  unitBlueprintIdsForMapSetup(props.model.demoUnitBlueprintIds, rosterMapSetup.value));
+const rosterBuildingBlueprintIds = computed(() =>
+  buildingBlueprintIdsForMapSetup(props.model.demoBuildingBlueprintIds, rosterMapSetup.value));
 
 const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
   snap: 'SNAP',
@@ -86,7 +107,7 @@ const METAL_COVERAGE_TITLE: Record<MetalCoverage, string> = {
         >ALL</BarButton>
         <BarButtonGroup>
           <BarButton
-            v-for="ut in model.demoUnitBlueprintIds"
+            v-for="ut in rosterUnitBlueprintIds"
             :key="ut"
             :active="model.currentAllowedUnitsSet.has(ut)"
             :title="`Toggle ${ut} units in demo battle`"
@@ -104,7 +125,7 @@ const METAL_COVERAGE_TITLE: Record<MetalCoverage, string> = {
         >ALL</BarButton>
         <BarButtonGroup>
           <BarButton
-            v-for="bt in model.demoBuildingBlueprintIds"
+            v-for="bt in rosterBuildingBlueprintIds"
             :key="bt"
             :active="model.currentAllowedBuildingsSet.has(bt)"
             :title="`Toggle ${bt} in demo battle`"
