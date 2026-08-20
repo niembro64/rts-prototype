@@ -1,6 +1,7 @@
 import type { LobbySettings } from '@/types/network';
 import { MAX_ALLY_TEAM_COUNT } from '../sim/teamRoster';
 import { isLiquidSurfaceMode, isMetalCoverage } from '@/types/worldSurfaceMode';
+import { isTerrainPrecedence } from '@/types/terrainPrecedence';
 import { isPathfindingCellConsolidationMultiplier } from '@/types/pathfinding';
 import { isSimulationTickRateHz } from '@/types/simulationTickRate';
 
@@ -73,5 +74,8 @@ export function assertCurrentLobbySettings(
   }
   if (!isLiquidSurfaceMode(settings.liquidSurfaceMode)) {
     throw new Error(`[${context}] missing or invalid liquidSurfaceMode`);
+  }
+  if (!isTerrainPrecedence(settings.terrainPrecedence)) {
+    throw new Error(`[${context}] missing or invalid terrainPrecedence`);
   }
 }

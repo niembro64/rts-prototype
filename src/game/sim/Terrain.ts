@@ -21,6 +21,7 @@ export {
   setTerrainCenterMagnitude,
   setTerrainDividersMagnitude,
   setTerrainPerimeterMagnitude,
+  setTerrainPrecedence,
   setTerrainTeamCount,
 } from './terrain/terrainState';
 export {

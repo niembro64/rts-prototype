@@ -3,6 +3,7 @@ import type {
   LiquidSurfaceMode,
   MetalCoverage,
 } from '../types/worldSurfaceMode';
+import type { TerrainPrecedence } from '../types/terrainPrecedence';
 import {
   isLiquidSurfaceMode,
   isMetalCoverage,
@@ -31,6 +32,7 @@ import {
   normalizeMetalDepositStep,
   normalizePlateauWallSlopeDegrees,
   normalizePerimeterMagnitude,
+  normalizeTerrainPrecedence,
   normalizeTerrainDTerrain,
   normalizeTerrainDetail,
   savePlateauWallSlopeDegrees,
@@ -42,6 +44,7 @@ import {
   saveMapLandDimensions,
   saveMetalDepositStep,
   savePerimeterMagnitude,
+  saveTerrainPrecedence,
   setUnitCap,
   saveSlowDownAtFinalWaypoint,
   saveTerrainDTerrain,
@@ -64,6 +67,7 @@ type GameCanvasLobbySettings = {
   applyCenterMagnitude(value: number, broadcast?: boolean): void;
   applyDividersMagnitude(value: number, broadcast?: boolean): void;
   applyPerimeterMagnitude(value: number, broadcast?: boolean): void;
+  applyTerrainPrecedence(value: TerrainPrecedence, broadcast?: boolean): void;
   applyTerrainDTerrain(value: number, broadcast?: boolean): void;
   applyPlateauWallSlopeDegrees(value: number, broadcast?: boolean): void;
   applyMetalDepositStep(value: number, broadcast?: boolean): void;
@@ -92,6 +96,7 @@ type GameCanvasLobbySettingsOptions = {
   centerMagnitude: Ref<number>;
   dividersMagnitude: Ref<number>;
   perimeterMagnitude: Ref<number>;
+  terrainPrecedence: Ref<TerrainPrecedence>;
   terrainDTerrain: Ref<number>;
   plateauWallSlopeDegrees: Ref<number>;
   metalDepositStep: Ref<number>;
@@ -130,6 +135,7 @@ export function useGameCanvasLobbySettings({
   centerMagnitude,
   dividersMagnitude,
   perimeterMagnitude,
+  terrainPrecedence,
   terrainDTerrain,
   plateauWallSlopeDegrees,
   metalDepositStep,
@@ -162,6 +168,7 @@ export function useGameCanvasLobbySettings({
       centerMagnitude: centerMagnitude.value,
       dividersMagnitude: dividersMagnitude.value,
       perimeterMagnitude: perimeterMagnitude.value,
+      terrainPrecedence: terrainPrecedence.value,
       terrainDTerrain: terrainDTerrain.value,
       plateauWallSlopeDegrees: plateauWallSlopeDegrees.value,
       metalDepositStep: metalDepositStep.value,
@@ -174,6 +181,7 @@ export function useGameCanvasLobbySettings({
       centerMagnitude: centerMagnitude.value,
       dividersMagnitude: dividersMagnitude.value,
       perimeterMagnitude: perimeterMagnitude.value,
+      terrainPrecedence: terrainPrecedence.value,
       terrainDTerrain: terrainDTerrain.value,
       plateauWallSlopeDegrees: plateauWallSlopeDegrees.value,
       metalDepositStep: metalDepositStep.value,
@@ -228,6 +236,21 @@ export function useGameCanvasLobbySettings({
     const changed = perimeterMagnitude.value !== normalized;
     perimeterMagnitude.value = normalized;
     savePerimeterMagnitude(normalized, mode);
+    if (!changed) return;
+    applyCurrentTerrainRuntimeConfig();
+    restartPreviewIfNeeded();
+    if (broadcast) broadcastLobbySettingsIfHost();
+  }
+
+  function applyTerrainPrecedence(
+    value: TerrainPrecedence,
+    broadcast = true,
+  ): void {
+    const mode = currentBattleMode.value;
+    const normalized = normalizeTerrainPrecedence(value);
+    const changed = terrainPrecedence.value !== normalized;
+    terrainPrecedence.value = normalized;
+    saveTerrainPrecedence(normalized, mode);
     if (!changed) return;
     applyCurrentTerrainRuntimeConfig();
     restartPreviewIfNeeded();
@@ -398,6 +421,9 @@ export function useGameCanvasLobbySettings({
     const nextPerimeterMagnitude = normalizePerimeterMagnitude(
       settings.perimeterMagnitude,
     );
+    const nextTerrainPrecedence = normalizeTerrainPrecedence(
+      settings.terrainPrecedence,
+    );
     const nextDTerrain = normalizeTerrainDTerrain(settings.terrainDTerrain);
     const nextPlateauWallSlopeDegrees = normalizePlateauWallSlopeDegrees(
       settings.plateauWallSlopeDegrees,
@@ -435,6 +461,7 @@ export function useGameCanvasLobbySettings({
       nextCenterMagnitude !== centerMagnitude.value ||
       nextDividersMagnitude !== dividersMagnitude.value ||
       nextPerimeterMagnitude !== perimeterMagnitude.value ||
+      nextTerrainPrecedence !== terrainPrecedence.value ||
       nextDTerrain !== terrainDTerrain.value ||
       nextPlateauWallSlopeDegrees !== plateauWallSlopeDegrees.value ||
       nextMetalDepositStep !== metalDepositStep.value ||
@@ -451,6 +478,7 @@ export function useGameCanvasLobbySettings({
     centerMagnitude.value = nextCenterMagnitude;
     dividersMagnitude.value = nextDividersMagnitude;
     perimeterMagnitude.value = nextPerimeterMagnitude;
+    terrainPrecedence.value = nextTerrainPrecedence;
     terrainDTerrain.value = nextDTerrain;
     plateauWallSlopeDegrees.value = nextPlateauWallSlopeDegrees;
     metalDepositStep.value = nextMetalDepositStep;
@@ -463,6 +491,7 @@ export function useGameCanvasLobbySettings({
     saveCenterMagnitude(nextCenterMagnitude, 'real');
     saveDividersMagnitude(nextDividersMagnitude, 'real');
     savePerimeterMagnitude(nextPerimeterMagnitude, 'real');
+    saveTerrainPrecedence(nextTerrainPrecedence, 'real');
     saveTerrainDTerrain(nextDTerrain, 'real');
     savePlateauWallSlopeDegrees(nextPlateauWallSlopeDegrees, 'real');
     saveMetalDepositStep(nextMetalDepositStep, 'real');
@@ -519,6 +548,7 @@ export function useGameCanvasLobbySettings({
     const centerMagnitudeDefault = BATTLE_CONFIG.centerMagnitude.default;
     const dividersMagnitudeDefault = BATTLE_CONFIG.dividersMagnitude.default;
     const perimeterMagnitudeDefault = BATTLE_CONFIG.perimeterMagnitude.default;
+    const terrainPrecedenceDefault = BATTLE_CONFIG.terrainPrecedence.default;
     const dTerrainDefault = BATTLE_CONFIG.terrainDTerrain.default;
     const plateauWallSlopeDegreesDefault =
       BATTLE_CONFIG.plateauWallSlopeDegrees.default;
@@ -532,6 +562,7 @@ export function useGameCanvasLobbySettings({
       centerMagnitude.value === centerMagnitudeDefault &&
       dividersMagnitude.value === dividersMagnitudeDefault &&
       perimeterMagnitude.value === perimeterMagnitudeDefault &&
+      terrainPrecedence.value === terrainPrecedenceDefault &&
       terrainDTerrain.value === dTerrainDefault &&
       plateauWallSlopeDegrees.value === plateauWallSlopeDegreesDefault &&
       metalDepositStep.value === metalDepositStepDefault &&
@@ -553,6 +584,7 @@ export function useGameCanvasLobbySettings({
     centerMagnitude.value = centerMagnitudeDefault;
     dividersMagnitude.value = dividersMagnitudeDefault;
     perimeterMagnitude.value = perimeterMagnitudeDefault;
+    terrainPrecedence.value = terrainPrecedenceDefault;
     terrainDTerrain.value = dTerrainDefault;
     plateauWallSlopeDegrees.value = plateauWallSlopeDegreesDefault;
     metalDepositStep.value = metalDepositStepDefault;
@@ -565,6 +597,7 @@ export function useGameCanvasLobbySettings({
     saveCenterMagnitude(centerMagnitudeDefault, mode);
     saveDividersMagnitude(dividersMagnitudeDefault, mode);
     savePerimeterMagnitude(perimeterMagnitudeDefault, mode);
+    saveTerrainPrecedence(terrainPrecedenceDefault, mode);
     saveTerrainDTerrain(dTerrainDefault, mode);
     savePlateauWallSlopeDegrees(plateauWallSlopeDegreesDefault, mode);
     saveMetalDepositStep(metalDepositStepDefault, mode);
@@ -585,6 +618,7 @@ export function useGameCanvasLobbySettings({
     applyCenterMagnitude,
     applyDividersMagnitude,
     applyPerimeterMagnitude,
+    applyTerrainPrecedence,
     applyTerrainDTerrain,
     applyPlateauWallSlopeDegrees,
     applyMetalDepositStep,

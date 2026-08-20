@@ -475,6 +475,7 @@ function assertAuthoredRosterCoverageForPreset(
     centerMagnitude: compactPreset.centerMagnitude,
     dividersMagnitude: compactPreset.dividersMagnitude,
     perimeterMagnitude: compactPreset.perimeterMagnitude,
+    terrainPrecedence: compactPreset.terrainPrecedence,
     terrainDTerrain: compactPreset.terrainDTerrain,
     plateauWallSlopeDegrees: compactPreset.plateauWallSlopeDegrees,
     metalDepositStep: compactPreset.metalDepositStep,
@@ -1044,6 +1045,7 @@ function assertDemoTechLabsSpawnForEverySeat(preset: BattlePreset): void {
     centerMagnitude: preset.centerMagnitude,
     dividersMagnitude: preset.dividersMagnitude,
     perimeterMagnitude: preset.perimeterMagnitude,
+    terrainPrecedence: preset.terrainPrecedence,
     terrainDTerrain: preset.terrainDTerrain,
     plateauWallSlopeDegrees: preset.plateauWallSlopeDegrees,
     metalDepositStep: preset.metalDepositStep,
@@ -1105,6 +1107,7 @@ export function runDemoMetalExtractorSpawnContractTest(): void {
     // The baseline assertions exercise the authored offshore layout even if
     // the current demo preset has deliberately selected a dry perimeter.
     perimeterMagnitude: CONTRACT_WATER_PERIMETER_MAGNITUDE,
+    terrainPrecedence: preset.terrainPrecedence,
     terrainDTerrain: preset.terrainDTerrain,
     plateauWallSlopeDegrees: preset.plateauWallSlopeDegrees,
     metalDepositStep: preset.metalDepositStep,

@@ -17,6 +17,7 @@ import {
   setTerrainCenterMagnitude,
   setTerrainDividersMagnitude,
   setTerrainPerimeterMagnitude,
+  setTerrainPrecedence,
   setTerrainRuntimeConfig,
 } from '../game/sim/Terrain';
 import {
@@ -309,6 +310,7 @@ export function loadAndApplyRealBattleTerrain(): RealBattleStartupTerrain {
   setTerrainCenterMagnitude(terrainRuntimeConfig.centerMagnitude);
   setTerrainDividersMagnitude(terrainRuntimeConfig.dividersMagnitude);
   setTerrainPerimeterMagnitude(terrainRuntimeConfig.perimeterMagnitude);
+  setTerrainPrecedence(terrainRuntimeConfig.terrainPrecedence);
   setMetalCoverage(metalCoverage);
   setLiquidSurfaceMode(liquidSurfaceMode);
   return {
@@ -327,6 +329,7 @@ function buildRealBattleLobbySettingsFromTerrain(
     centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
     dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
     perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
+    terrainPrecedence: terrain.terrainRuntimeConfig.terrainPrecedence,
     terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
     plateauWallSlopeDegrees:
       terrain.terrainRuntimeConfig.plateauWallSlopeDegrees,
@@ -476,6 +479,7 @@ function assertTerrainMatchesSettings(
   pushMismatch(mismatches, 'centerMagnitude', terrain.terrainRuntimeConfig.centerMagnitude, settings.centerMagnitude);
   pushMismatch(mismatches, 'dividersMagnitude', terrain.terrainRuntimeConfig.dividersMagnitude, settings.dividersMagnitude);
   pushMismatch(mismatches, 'perimeterMagnitude', terrain.terrainRuntimeConfig.perimeterMagnitude, settings.perimeterMagnitude);
+  pushMismatch(mismatches, 'terrainPrecedence', terrain.terrainRuntimeConfig.terrainPrecedence, settings.terrainPrecedence);
   pushMismatch(mismatches, 'terrainDTerrain', terrain.terrainRuntimeConfig.terrainDTerrain, settings.terrainDTerrain);
   pushMismatch(mismatches, 'plateauWallSlopeDegrees', terrain.terrainRuntimeConfig.plateauWallSlopeDegrees, settings.plateauWallSlopeDegrees);
   pushMismatch(mismatches, 'metalDepositStep', terrain.terrainRuntimeConfig.metalDepositStep, settings.metalDepositStep);
@@ -639,6 +643,7 @@ async function createRealBattleServer({
       centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
       dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
       perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
+      terrainPrecedence: terrain.terrainRuntimeConfig.terrainPrecedence,
       terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
       plateauWallSlopeDegrees:
         terrain.terrainRuntimeConfig.plateauWallSlopeDegrees,

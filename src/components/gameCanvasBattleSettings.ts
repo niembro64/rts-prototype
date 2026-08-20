@@ -21,6 +21,7 @@ import {
   type BattleMode,
 } from '../battleBarConfig';
 import type { SlopePathMode } from '../types/slopePathMode';
+import type { TerrainPrecedence } from '../types/terrainPrecedence';
 import type {
   LiquidSurfaceMode,
   MetalCoverage,
@@ -88,6 +89,10 @@ type GameCanvasBattleSettingsOptions = {
   applyCenterMagnitude: (value: number, broadcast?: boolean) => void;
   applyDividersMagnitude: (value: number, broadcast?: boolean) => void;
   applyPerimeterMagnitude: (value: number, broadcast?: boolean) => void;
+  applyTerrainPrecedence: (
+    value: TerrainPrecedence,
+    broadcast?: boolean,
+  ) => void;
   applyTerrainDTerrain: (value: number, broadcast?: boolean) => void;
   applyPlateauWallSlopeDegrees: (value: number, broadcast?: boolean) => void;
   applyMetalDepositStep: (value: number, broadcast?: boolean) => void;
@@ -113,6 +118,7 @@ export function useGameCanvasBattleSettings({
   applyCenterMagnitude,
   applyDividersMagnitude,
   applyPerimeterMagnitude,
+  applyTerrainPrecedence,
   applyTerrainDTerrain,
   applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
@@ -386,6 +392,7 @@ export function useGameCanvasBattleSettings({
     applyCenterMagnitude(preset.centerMagnitude, false);
     applyDividersMagnitude(preset.dividersMagnitude, false);
     applyPerimeterMagnitude(preset.perimeterMagnitude, false);
+    applyTerrainPrecedence(preset.terrainPrecedence, false);
     applyTerrainDTerrain(preset.terrainDTerrain, false);
     applyPlateauWallSlopeDegrees(preset.plateauWallSlopeDegrees, false);
     applyMetalDepositStep(preset.metalDepositStep, false);

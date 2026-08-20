@@ -3600,13 +3600,13 @@ mod sim_kernel_tests {
         );
     }
 
-    /// PERIMETER NONE is packed as an inactive mapBoundary stage. That has to
-    /// switch off BOTH halves of the map-edge treatment: the ring override and
-    /// the natural field's fade-to-flat that only exists to feed it. Otherwise
-    /// NONE is indistinguishable from a ground-level ring — the divider ridges
+    /// An inactive mapBoundary stage has to switch off BOTH halves of the
+    /// map-edge treatment: the ring override and the divider ridges'
+    /// fade-to-flat that only exists to feed it. Otherwise "ring off" is
+    /// indistinguishable from a ground-level ring — the divider ridges
     /// still get flattened just short of the map edge.
     #[test]
-    pub(crate) fn terrain_perimeter_none_runs_the_divider_ridges_to_the_map_edge() {
+    pub(crate) fn terrain_inactive_map_boundary_runs_the_divider_ridges_to_the_map_edge() {
         // Ridges only (no ripple magnitude), so any height at the sample point
         // is the DIVIDERS contribution and nothing else.
         let base_config = [
@@ -3628,12 +3628,14 @@ mod sim_kernel_tests {
             600.0, 0.0, // ripple component 2
             0.1, 0.4, 0.08, // ridge inner/outer/half-width fractions
             89.0, // plateau_wall_slope_degrees
-            0.0, 1.0, 2.0, 3.0, 4.0, 5.0, // pipeline stage order, all active
+            // Pipeline stage order (PERIMETER precedence: dividerRidges
+            // before mapBoundary), all active.
+            0.0, 6.0, 1.0, 2.0, 3.0, 4.0, 5.0,
         ];
-        // Same slice with the mapBoundary stage (code 1) marked inactive —
-        // exactly what packTerrainGenerationConfigForWasm emits for NONE.
+        // Same slice with the mapBoundary stage (code 1, slot 2) marked
+        // inactive — what an authored `active: false` packs to.
         let mut none_config = base_config;
-        none_config[24] = 1.0 + 8.0;
+        none_config[25] = 1.0 + 8.0;
 
         let map = 2048.0;
         let flat_zones: [f64; 0] = [];
@@ -3674,18 +3676,89 @@ mod sim_kernel_tests {
             "PERIMETER 0 must flatten the map edge to the ring altitude; got {}",
             ring_height[0],
         );
-        // ...while NONE carries the full DIVIDERS amplitude out to it.
+        // ...while an inactive ring stage carries the full DIVIDERS
+        // amplitude out to it.
         assert!(
             (none_height[0] - 300.0).abs() < 1e-9,
-            "PERIMETER NONE must run the divider ridge to the map edge at full \
-             amplitude; got {}",
+            "an inactive mapBoundary stage must run the divider ridge to the \
+             map edge at full amplitude; got {}",
             none_height[0],
+        );
+    }
+
+    /// DIVIDERS precedence (dividerRidges ordered after mapBoundary) must run
+    /// a ridge out to the map edge at its own full amplitude — suppressing the
+    /// ring across the ridge width — while the ring keeps full effect between
+    /// the ridges.
+    #[test]
+    pub(crate) fn terrain_dividers_precedence_punches_the_ridge_through_the_ring() {
+        let config = [
+            0.0,     // center_magnitude
+            300.0,   // dividers_magnitude
+            0.0,     // terrain_d_terrain (plateau off)
+            -400.0,  // perimeter_magnitude (below-water ring)
+            2.0,     // team_count
+            -1200.0, // tile_floor_y
+            0.5,     // perimeter_outer_radius_fraction
+            0.4,     // perimeter_inner_radius_fraction
+            0.01,    // generation_edge_transition_width_fraction
+            0.99,    // plateau_shelf_fraction_of_step
+            1.0,     // plateau_ramp_edge_sharpness
+            0.4,     // ripple_radius_fraction
+            1.7,     // ripple_phase
+            700.0, 0.0, // ripple component 0 wavelength/magnitude
+            600.0, 0.0, // ripple component 1
+            600.0, 0.0, // ripple component 2
+            0.1, 0.4, 0.08, // ridge inner/outer/half-width fractions
+            89.0, // plateau_wall_slope_degrees
+            // Pipeline stage order (DIVIDERS precedence: dividerRidges
+            // after mapBoundary), all active.
+            0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0,
+        ];
+
+        let map = 2048.0;
+        let flat_zones: [f64; 0] = [];
+        // Ridge centreline at the map edge (2-team layout: the +x axis is
+        // halfway between the two sides), and an off-ridge edge point on a
+        // side centreline (straight up the -y axis).
+        let samples = [
+            map * 0.99,
+            map * 0.5,
+            f64::NAN,
+            map * 0.5,
+            map * 0.01,
+            f64::NAN,
+        ];
+        let mut heights = [0.0f64; 2];
+        assert_eq!(
+            metal_deposit_resolve_terrain_heights(
+                map,
+                map,
+                0.85,
+                &config,
+                &flat_zones,
+                &samples,
+                &mut heights,
+            ),
+            2
+        );
+
+        assert!(
+            (heights[0] - 300.0).abs() < 1e-9,
+            "DIVIDERS precedence must run the ridge to the map edge at full \
+             amplitude through the ring; got {}",
+            heights[0],
+        );
+        assert!(
+            (heights[1] - -400.0).abs() < 1e-9,
+            "between the ridges the ring must keep its full override; got {}",
+            heights[1],
         );
     }
 
     #[test]
     pub(crate) fn terrain_adaptive_mesh_build_is_deterministic_and_conforming() {
-        // 29-value generation slice: round-island perimeter (negative
+        // 30-value generation slice: round-island perimeter (negative
         // magnitude), 2 teams, ripple + ridge so the LOD walk actually
         // varies triangle sizes.
         let terrain_config = [
@@ -3707,7 +3780,8 @@ mod sim_kernel_tests {
             600.0, 0.0, // ripple component 2
             0.1, 0.4, 0.08, // ridge inner/outer/half-width fractions
             89.0, // plateau_wall_slope_degrees
-            0.0, 1.0, 2.0, 3.0, 4.0, 5.0, // pipeline stage order, all active
+            // Pipeline stage order (PERIMETER precedence), all active.
+            0.0, 6.0, 1.0, 2.0, 3.0, 4.0, 5.0,
         ];
         // 10-value LOD slice mirroring terrainConfig.json defaults.
         let lod_config = [
