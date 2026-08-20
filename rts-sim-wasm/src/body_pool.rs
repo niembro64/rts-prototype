@@ -1589,6 +1589,138 @@ fn resolve_pool_sphere_pair(
     p.vel_z[slot_b] = b_vz + iz * b_inv_mass;
 }
 
+/// Body A's contact data and the broadphase cell window to scan for its
+/// partners.
+///
+/// All four sphere resolve passes (hash/dense x all/active) open with exactly
+/// this computation; only what they do inside the cell window differs. Sharing
+/// it keeps the four passes from drifting into different broadphase windows,
+/// which would make contacts appear or vanish depending on which pass ran.
+struct SphereBroadphaseQuery {
+    ar: f64,
+    a_inv_mass: f64,
+    a_restitution: f64,
+    query_min_cx: i32,
+    query_max_cx: i32,
+    query_min_cy: i32,
+    query_max_cy: i32,
+    query_min_cz: i32,
+    query_max_cz: i32,
+}
+
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn sphere_broadphase_query(
+    p: &BodyPool,
+    sphere_slots: &[u32],
+    i: usize,
+    cell_size: f64,
+    half_cs: f64,
+    max_radius: f64,
+    min_cx: i32,
+    min_cy: i32,
+    min_cz: i32,
+    max_cx: i32,
+    max_cy: i32,
+    max_cz: i32,
+) -> SphereBroadphaseQuery {
+    let slot_a = sphere_slots[i] as usize;
+    let ar = p.radius[slot_a];
+    // A global `max_radius * 2` range is correct but expensive: one
+    // queen-class body makes every small unit scan a 5x5x5 neighborhood. For
+    // body A, any possible B has radius <= max_radius, so `ar + max_radius` is
+    // the same conservative broadphase bound with fewer impossible bucket
+    // probes.
+    let range = (((ar + max_radius) / cell_size).ceil() as i32).max(1);
+
+    let acx = (p.pos_x[slot_a] / cell_size).floor() as i32;
+    let acy = (p.pos_y[slot_a] / cell_size).floor() as i32;
+    let acz = ((p.pos_z[slot_a] + half_cs) / cell_size).floor() as i32;
+
+    SphereBroadphaseQuery {
+        ar,
+        a_inv_mass: p.inv_mass[slot_a],
+        a_restitution: p.restitution[slot_a],
+        query_min_cx: (acx - range).max(min_cx),
+        query_max_cx: (acx + range).min(max_cx),
+        query_min_cy: (acy - range).max(min_cy),
+        query_max_cy: (acy + range).min(max_cy),
+        query_min_cz: (acz - range).max(min_cz),
+        query_max_cz: (acz + range).min(max_cz),
+    }
+}
+
+/// Choose the dense-grid or hashed broadphase and fill its buckets.
+///
+/// Both sphere-resolve entry points make the same choice from the same cell
+/// bounds and then bin every body the same way; returning the shape alongside
+/// the decision lets each caller pick the matching resolve pass. Keeping the
+/// choice in one place means the binning and the pass selection can never
+/// disagree about which structure holds this frame's buckets.
+#[allow(clippy::too_many_arguments)]
+fn sphere_contact_fill_buckets(
+    scratch: &mut SphereResolveScratch,
+    count: usize,
+    gen: u32,
+    min_cx: i32,
+    min_cy: i32,
+    min_cz: i32,
+    max_cx: i32,
+    max_cy: i32,
+    max_cz: i32,
+) -> (Option<(usize, usize, usize, usize)>, bool) {
+    let dense_shape = sphere_contact_dense_shape(min_cx, min_cy, min_cz, max_cx, max_cy, max_cz);
+    let use_dense = matches!(
+        dense_shape,
+        Some((_width, _height, _depth, volume)) if volume <= SPHERE_DENSE_CELL_LIMIT
+    );
+    if use_dense {
+        let (width, height, _depth, volume) = dense_shape.unwrap();
+        if scratch.dense_cells.len() < volume {
+            scratch
+                .dense_cells
+                .resize_with(volume, || SphereContactBucket {
+                    gen: 0,
+                    items: Vec::new(),
+                    max_index: 0,
+                });
+        }
+        for i in 0..count {
+            let index = sphere_contact_dense_index(
+                scratch.cell_x[i],
+                scratch.cell_y[i],
+                scratch.cell_z[i],
+                min_cx,
+                min_cy,
+                min_cz,
+                width,
+                height,
+            );
+            let bucket = &mut scratch.dense_cells[index];
+            if bucket.gen != gen {
+                reset_sphere_contact_bucket(bucket, gen);
+            }
+            push_sphere_contact_bucket_item(bucket, i as u32);
+        }
+    } else {
+        let cells = &mut scratch.cells;
+        for i in 0..count {
+            let key =
+                pack_contact_cell_key(scratch.cell_x[i], scratch.cell_y[i], scratch.cell_z[i]);
+            let bucket = cells.entry(key).or_insert_with(|| SphereContactBucket {
+                gen,
+                items: Vec::new(),
+                max_index: 0,
+            });
+            if bucket.gen != gen {
+                reset_sphere_contact_bucket(bucket, gen);
+            }
+            push_sphere_contact_bucket_item(bucket, i as u32);
+        }
+    }
+    (dense_shape, use_dense)
+}
+
 #[inline]
 fn run_pool_sphere_resolve_hash(
     p: &mut BodyPool,
@@ -1610,27 +1742,30 @@ fn run_pool_sphere_resolve_hash(
     let count = sphere_slots.len();
     for _iter in 0..iterations {
         for i in 0..count {
-            let slot_a = sphere_slots[i] as usize;
-            let ar = p.radius[slot_a];
-            let a_inv_mass = p.inv_mass[slot_a];
-            let a_restitution = p.restitution[slot_a];
-            // A global `max_radius * 2` range is correct but expensive:
-            // one queen-class body makes every small unit scan a 5x5x5
-            // neighborhood. For body A, any possible B has radius <=
-            // max_radius, so `ar + max_radius` is the same conservative
-            // broadphase bound with fewer impossible bucket probes.
-            let range = (((ar + max_radius) / cell_size).ceil() as i32).max(1);
-
-            let acx = (p.pos_x[slot_a] / cell_size).floor() as i32;
-            let acy = (p.pos_y[slot_a] / cell_size).floor() as i32;
-            let acz = ((p.pos_z[slot_a] + half_cs) / cell_size).floor() as i32;
-
-            let query_min_cx = (acx - range).max(min_cx);
-            let query_max_cx = (acx + range).min(max_cx);
-            let query_min_cy = (acy - range).max(min_cy);
-            let query_max_cy = (acy + range).min(max_cy);
-            let query_min_cz = (acz - range).max(min_cz);
-            let query_max_cz = (acz + range).min(max_cz);
+            let SphereBroadphaseQuery {
+                ar,
+                a_inv_mass,
+                a_restitution,
+                query_min_cx,
+                query_max_cx,
+                query_min_cy,
+                query_max_cy,
+                query_min_cz,
+                query_max_cz,
+            } = sphere_broadphase_query(
+                p,
+                sphere_slots,
+                i,
+                cell_size,
+                half_cs,
+                max_radius,
+                min_cx,
+                min_cy,
+                min_cz,
+                max_cx,
+                max_cy,
+                max_cz,
+            );
 
             for cz in query_min_cz..=query_max_cz {
                 for cy in query_min_cy..=query_max_cy {
@@ -1688,22 +1823,30 @@ fn run_pool_sphere_resolve_hash_active(
 ) {
     for _iter in 0..iterations {
         for &i in active_indices {
-            let slot_a = sphere_slots[i] as usize;
-            let ar = p.radius[slot_a];
-            let a_inv_mass = p.inv_mass[slot_a];
-            let a_restitution = p.restitution[slot_a];
-            let range = (((ar + max_radius) / cell_size).ceil() as i32).max(1);
-
-            let acx = (p.pos_x[slot_a] / cell_size).floor() as i32;
-            let acy = (p.pos_y[slot_a] / cell_size).floor() as i32;
-            let acz = ((p.pos_z[slot_a] + half_cs) / cell_size).floor() as i32;
-
-            let query_min_cx = (acx - range).max(min_cx);
-            let query_max_cx = (acx + range).min(max_cx);
-            let query_min_cy = (acy - range).max(min_cy);
-            let query_max_cy = (acy + range).min(max_cy);
-            let query_min_cz = (acz - range).max(min_cz);
-            let query_max_cz = (acz + range).min(max_cz);
+            let SphereBroadphaseQuery {
+                ar,
+                a_inv_mass,
+                a_restitution,
+                query_min_cx,
+                query_max_cx,
+                query_min_cy,
+                query_max_cy,
+                query_min_cz,
+                query_max_cz,
+            } = sphere_broadphase_query(
+                p,
+                sphere_slots,
+                i,
+                cell_size,
+                half_cs,
+                max_radius,
+                min_cx,
+                min_cy,
+                min_cz,
+                max_cx,
+                max_cy,
+                max_cz,
+            );
 
             for cz in query_min_cz..=query_max_cz {
                 for cy in query_min_cy..=query_max_cy {
@@ -1759,22 +1902,30 @@ fn run_pool_sphere_resolve_dense(
     let count = sphere_slots.len();
     for _iter in 0..iterations {
         for i in 0..count {
-            let slot_a = sphere_slots[i] as usize;
-            let ar = p.radius[slot_a];
-            let a_inv_mass = p.inv_mass[slot_a];
-            let a_restitution = p.restitution[slot_a];
-            let range = (((ar + max_radius) / cell_size).ceil() as i32).max(1);
-
-            let acx = (p.pos_x[slot_a] / cell_size).floor() as i32;
-            let acy = (p.pos_y[slot_a] / cell_size).floor() as i32;
-            let acz = ((p.pos_z[slot_a] + half_cs) / cell_size).floor() as i32;
-
-            let query_min_cx = (acx - range).max(min_cx);
-            let query_max_cx = (acx + range).min(max_cx);
-            let query_min_cy = (acy - range).max(min_cy);
-            let query_max_cy = (acy + range).min(max_cy);
-            let query_min_cz = (acz - range).max(min_cz);
-            let query_max_cz = (acz + range).min(max_cz);
+            let SphereBroadphaseQuery {
+                ar,
+                a_inv_mass,
+                a_restitution,
+                query_min_cx,
+                query_max_cx,
+                query_min_cy,
+                query_max_cy,
+                query_min_cz,
+                query_max_cz,
+            } = sphere_broadphase_query(
+                p,
+                sphere_slots,
+                i,
+                cell_size,
+                half_cs,
+                max_radius,
+                min_cx,
+                min_cy,
+                min_cz,
+                max_cx,
+                max_cy,
+                max_cz,
+            );
 
             for cz in query_min_cz..=query_max_cz {
                 for cy in query_min_cy..=query_max_cy {
@@ -1836,22 +1987,30 @@ fn run_pool_sphere_resolve_dense_active(
 ) {
     for _iter in 0..iterations {
         for &i in active_indices {
-            let slot_a = sphere_slots[i] as usize;
-            let ar = p.radius[slot_a];
-            let a_inv_mass = p.inv_mass[slot_a];
-            let a_restitution = p.restitution[slot_a];
-            let range = (((ar + max_radius) / cell_size).ceil() as i32).max(1);
-
-            let acx = (p.pos_x[slot_a] / cell_size).floor() as i32;
-            let acy = (p.pos_y[slot_a] / cell_size).floor() as i32;
-            let acz = ((p.pos_z[slot_a] + half_cs) / cell_size).floor() as i32;
-
-            let query_min_cx = (acx - range).max(min_cx);
-            let query_max_cx = (acx + range).min(max_cx);
-            let query_min_cy = (acy - range).max(min_cy);
-            let query_max_cy = (acy + range).min(max_cy);
-            let query_min_cz = (acz - range).max(min_cz);
-            let query_max_cz = (acz + range).min(max_cz);
+            let SphereBroadphaseQuery {
+                ar,
+                a_inv_mass,
+                a_restitution,
+                query_min_cx,
+                query_max_cx,
+                query_min_cy,
+                query_max_cy,
+                query_min_cz,
+                query_max_cz,
+            } = sphere_broadphase_query(
+                p,
+                sphere_slots,
+                i,
+                cell_size,
+                half_cs,
+                max_radius,
+                min_cx,
+                min_cy,
+                min_cz,
+                max_cx,
+                max_cy,
+                max_cz,
+            );
 
             for cz in query_min_cz..=query_max_cz {
                 for cy in query_min_cy..=query_max_cy {
@@ -1957,55 +2116,9 @@ pub fn pool_resolve_sphere_sphere(
         }
     }
 
-    let dense_shape = sphere_contact_dense_shape(min_cx, min_cy, min_cz, max_cx, max_cy, max_cz);
-    let use_dense = matches!(
-        dense_shape,
-        Some((_width, _height, _depth, volume)) if volume <= SPHERE_DENSE_CELL_LIMIT
+    let (dense_shape, use_dense) = sphere_contact_fill_buckets(
+        scratch, count, gen, min_cx, min_cy, min_cz, max_cx, max_cy, max_cz,
     );
-    if use_dense {
-        let (width, height, _depth, volume) = dense_shape.unwrap();
-        if scratch.dense_cells.len() < volume {
-            scratch
-                .dense_cells
-                .resize_with(volume, || SphereContactBucket {
-                    gen: 0,
-                    items: Vec::new(),
-                    max_index: 0,
-                });
-        }
-        for i in 0..count {
-            let index = sphere_contact_dense_index(
-                scratch.cell_x[i],
-                scratch.cell_y[i],
-                scratch.cell_z[i],
-                min_cx,
-                min_cy,
-                min_cz,
-                width,
-                height,
-            );
-            let bucket = &mut scratch.dense_cells[index];
-            if bucket.gen != gen {
-                reset_sphere_contact_bucket(bucket, gen);
-            }
-            push_sphere_contact_bucket_item(bucket, i as u32);
-        }
-    } else {
-        let cells = &mut scratch.cells;
-        for i in 0..count {
-            let key =
-                pack_contact_cell_key(scratch.cell_x[i], scratch.cell_y[i], scratch.cell_z[i]);
-            let bucket = cells.entry(key).or_insert_with(|| SphereContactBucket {
-                gen,
-                items: Vec::new(),
-                max_index: 0,
-            });
-            if bucket.gen != gen {
-                reset_sphere_contact_bucket(bucket, gen);
-            }
-            push_sphere_contact_bucket_item(bucket, i as u32);
-        }
-    }
 
     // Track "got pushed" per local index so JS can fire wakeBody on
     // exactly the bodies whose state flipped. Reused across calls; only
@@ -2172,55 +2285,9 @@ pub fn pool_resolve_sphere_sphere_active(
         return 0;
     }
 
-    let dense_shape = sphere_contact_dense_shape(min_cx, min_cy, min_cz, max_cx, max_cy, max_cz);
-    let use_dense = matches!(
-        dense_shape,
-        Some((_width, _height, _depth, volume)) if volume <= SPHERE_DENSE_CELL_LIMIT
+    let (dense_shape, use_dense) = sphere_contact_fill_buckets(
+        scratch, count, gen, min_cx, min_cy, min_cz, max_cx, max_cy, max_cz,
     );
-    if use_dense {
-        let (width, height, _depth, volume) = dense_shape.unwrap();
-        if scratch.dense_cells.len() < volume {
-            scratch
-                .dense_cells
-                .resize_with(volume, || SphereContactBucket {
-                    gen: 0,
-                    items: Vec::new(),
-                    max_index: 0,
-                });
-        }
-        for i in 0..count {
-            let index = sphere_contact_dense_index(
-                scratch.cell_x[i],
-                scratch.cell_y[i],
-                scratch.cell_z[i],
-                min_cx,
-                min_cy,
-                min_cz,
-                width,
-                height,
-            );
-            let bucket = &mut scratch.dense_cells[index];
-            if bucket.gen != gen {
-                reset_sphere_contact_bucket(bucket, gen);
-            }
-            push_sphere_contact_bucket_item(bucket, i as u32);
-        }
-    } else {
-        let cells = &mut scratch.cells;
-        for i in 0..count {
-            let key =
-                pack_contact_cell_key(scratch.cell_x[i], scratch.cell_y[i], scratch.cell_z[i]);
-            let bucket = cells.entry(key).or_insert_with(|| SphereContactBucket {
-                gen,
-                items: Vec::new(),
-                max_index: 0,
-            });
-            if bucket.gen != gen {
-                reset_sphere_contact_bucket(bucket, gen);
-            }
-            push_sphere_contact_bucket_item(bucket, i as u32);
-        }
-    }
 
     if scratch.woke.len() < count {
         scratch.woke.resize(count, false);

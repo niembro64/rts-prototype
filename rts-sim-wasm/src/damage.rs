@@ -668,6 +668,127 @@ pub(crate) fn damage_area_slice_pass(
     };
     angle_diff.abs() <= slice_half_angle + angular_size
 }
+/// Shared area-damage overlap classifier for ONE candidate row.
+///
+/// `damage_area_overlap_batch` (TypeScript-packed geometry columns) and
+/// `damage_area_candidates_batch` (slab-driven, geometry read from
+/// CombatTargetingPool) are documented as producing identical results — "the
+/// overlap math, slice-cone filter, and knockback-direction output are
+/// identical (same expressions, same order)". They now share this function so
+/// that guarantee is structural rather than a promise two copies have to keep.
+///
+/// Returns `None` for a row the caller must skip (a building with non-finite
+/// half-extents); otherwise the row's flags. Direction outputs are written
+/// only when the distance is positive, and the building arm deliberately
+/// leaves `out_dir_z` untouched — both preserved from the original arms.
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn damage_area_classify_row(
+    target_kind: u8,
+    tx: f64,
+    ty: f64,
+    tz: f64,
+    tr: f64,
+    box_half_x: f64,
+    box_half_y: f64,
+    box_half_z: f64,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    area_radius: f64,
+    use_slice: bool,
+    slice_direction: f64,
+    slice_half_angle: f64,
+    out_dir_x: &mut f64,
+    out_dir_y: &mut f64,
+    out_dir_z: &mut f64,
+    out_distance: &mut f64,
+) -> Option<u8> {
+    let mut flags = 0_u8;
+    match target_kind {
+        DAMAGE_TARGET_KIND_UNIT | DAMAGE_TARGET_KIND_PROJECTILE => {
+            let dx = tx - center_x;
+            let dy = ty - center_y;
+            let dz = tz - center_z;
+            let dist_sq = dx * dx + dy * dy + dz * dz;
+            let distance = dist_sq.sqrt();
+            if distance > 0.0 {
+                let inv = 1.0 / distance;
+                *out_dir_x = dx * inv;
+                *out_dir_y = dy * inv;
+                *out_dir_z = dz * inv;
+            }
+            *out_distance = distance;
+
+            let slice_pass = target_kind == DAMAGE_TARGET_KIND_PROJECTILE
+                || damage_area_slice_pass(
+                    dx,
+                    dy,
+                    distance,
+                    area_radius,
+                    tr,
+                    use_slice,
+                    slice_direction,
+                    slice_half_angle,
+                );
+            if slice_pass {
+                flags |= DAMAGE_AREA_FLAG_SLICE_PASS;
+            }
+            let max_dist = area_radius + tr;
+            if dist_sq <= max_dist * max_dist {
+                flags |= DAMAGE_AREA_FLAG_OVERLAP;
+            }
+        }
+        DAMAGE_TARGET_KIND_BUILDING => {
+            let hx = box_half_x.max(0.0);
+            let hy = box_half_y.max(0.0);
+            let hz = box_half_z.max(0.0);
+            if !(hx.is_finite() && hy.is_finite() && hz.is_finite()) {
+                return None;
+            }
+            let min_x = tx - hx;
+            let max_x = tx + hx;
+            let min_y = ty - hy;
+            let max_y = ty + hy;
+            let min_z = tz - hz;
+            let max_z = tz + hz;
+            let closest_x = center_x.clamp(min_x, max_x);
+            let closest_y = center_y.clamp(min_y, max_y);
+            let closest_z = center_z.clamp(min_z, max_z);
+            let box_dx = center_x - closest_x;
+            let box_dy = center_y - closest_y;
+            let box_dz = center_z - closest_z;
+            if box_dx * box_dx + box_dy * box_dy + box_dz * box_dz <= area_radius * area_radius {
+                flags |= DAMAGE_AREA_FLAG_OVERLAP;
+            }
+
+            let hdx = tx - center_x;
+            let hdy = ty - center_y;
+            let h_dist = (hdx * hdx + hdy * hdy).sqrt();
+            if h_dist > 0.0 {
+                let inv = 1.0 / h_dist;
+                *out_dir_x = hdx * inv;
+                *out_dir_y = hdy * inv;
+            }
+            *out_distance = h_dist;
+            if damage_area_slice_pass(
+                hdx,
+                hdy,
+                h_dist,
+                area_radius,
+                tr,
+                use_slice,
+                slice_direction,
+                slice_half_angle,
+            ) {
+                flags |= DAMAGE_AREA_FLAG_SLICE_PASS;
+            }
+        }
+        _ => {}
+    }
+    Some(flags)
+}
+
 
 /// C1 damage migration — splash/area target-overlap classifier.
 ///
@@ -749,89 +870,30 @@ pub fn damage_area_overlap_batch(
             continue;
         }
 
-        let mut flags = 0_u8;
-        match target_kind[i] {
-            DAMAGE_TARGET_KIND_UNIT | DAMAGE_TARGET_KIND_PROJECTILE => {
-                let dx = tx - center_x;
-                let dy = ty - center_y;
-                let dz = tz - center_z;
-                let dist_sq = dx * dx + dy * dy + dz * dz;
-                let distance = dist_sq.sqrt();
-                if distance > 0.0 {
-                    let inv = 1.0 / distance;
-                    out_dir_x[i] = dx * inv;
-                    out_dir_y[i] = dy * inv;
-                    out_dir_z[i] = dz * inv;
-                }
-                out_distance[i] = distance;
-
-                let slice_pass = target_kind[i] == DAMAGE_TARGET_KIND_PROJECTILE
-                    || damage_area_slice_pass(
-                        dx,
-                        dy,
-                        distance,
-                        area_radius,
-                        tr,
-                        use_slice,
-                        slice_direction,
-                        slice_half_angle,
-                    );
-                if slice_pass {
-                    flags |= DAMAGE_AREA_FLAG_SLICE_PASS;
-                }
-                let max_dist = area_radius + tr;
-                if dist_sq <= max_dist * max_dist {
-                    flags |= DAMAGE_AREA_FLAG_OVERLAP;
-                }
-            }
-            DAMAGE_TARGET_KIND_BUILDING => {
-                let hx = box_half_x[i].max(0.0);
-                let hy = box_half_y[i].max(0.0);
-                let hz = box_half_z[i].max(0.0);
-                if !(hx.is_finite() && hy.is_finite() && hz.is_finite()) {
-                    continue;
-                }
-                let min_x = tx - hx;
-                let max_x = tx + hx;
-                let min_y = ty - hy;
-                let max_y = ty + hy;
-                let min_z = tz - hz;
-                let max_z = tz + hz;
-                let closest_x = center_x.clamp(min_x, max_x);
-                let closest_y = center_y.clamp(min_y, max_y);
-                let closest_z = center_z.clamp(min_z, max_z);
-                let box_dx = center_x - closest_x;
-                let box_dy = center_y - closest_y;
-                let box_dz = center_z - closest_z;
-                if box_dx * box_dx + box_dy * box_dy + box_dz * box_dz <= area_radius * area_radius
-                {
-                    flags |= DAMAGE_AREA_FLAG_OVERLAP;
-                }
-
-                let hdx = tx - center_x;
-                let hdy = ty - center_y;
-                let h_dist = (hdx * hdx + hdy * hdy).sqrt();
-                if h_dist > 0.0 {
-                    let inv = 1.0 / h_dist;
-                    out_dir_x[i] = hdx * inv;
-                    out_dir_y[i] = hdy * inv;
-                }
-                out_distance[i] = h_dist;
-                if damage_area_slice_pass(
-                    hdx,
-                    hdy,
-                    h_dist,
-                    area_radius,
-                    tr,
-                    use_slice,
-                    slice_direction,
-                    slice_half_angle,
-                ) {
-                    flags |= DAMAGE_AREA_FLAG_SLICE_PASS;
-                }
-            }
-            _ => {}
-        }
+        let flags = match damage_area_classify_row(
+            target_kind[i],
+            tx,
+            ty,
+            tz,
+            tr,
+            box_half_x[i],
+            box_half_y[i],
+            box_half_z[i],
+            center_x,
+            center_y,
+            center_z,
+            area_radius,
+            use_slice,
+            slice_direction,
+            slice_half_angle,
+            &mut out_dir_x[i],
+            &mut out_dir_y[i],
+            &mut out_dir_z[i],
+            &mut out_distance[i],
+        ) {
+            Some(flags) => flags,
+            None => continue,
+        };
         out_flags[i] = flags;
         processed += 1;
     }
@@ -944,89 +1006,30 @@ pub fn damage_area_candidates_batch(
             continue;
         }
 
-        let mut flags = 0_u8;
-        match target_kind {
-            DAMAGE_TARGET_KIND_UNIT | DAMAGE_TARGET_KIND_PROJECTILE => {
-                let dx = tx - center_x;
-                let dy = ty - center_y;
-                let dz = tz - center_z;
-                let dist_sq = dx * dx + dy * dy + dz * dz;
-                let distance = dist_sq.sqrt();
-                if distance > 0.0 {
-                    let inv = 1.0 / distance;
-                    out_dir_x[i] = dx * inv;
-                    out_dir_y[i] = dy * inv;
-                    out_dir_z[i] = dz * inv;
-                }
-                out_distance[i] = distance;
-
-                let slice_pass = target_kind == DAMAGE_TARGET_KIND_PROJECTILE
-                    || damage_area_slice_pass(
-                        dx,
-                        dy,
-                        distance,
-                        area_radius,
-                        tr,
-                        use_slice,
-                        slice_direction,
-                        slice_half_angle,
-                    );
-                if slice_pass {
-                    flags |= DAMAGE_AREA_FLAG_SLICE_PASS;
-                }
-                let max_dist = area_radius + tr;
-                if dist_sq <= max_dist * max_dist {
-                    flags |= DAMAGE_AREA_FLAG_OVERLAP;
-                }
-            }
-            DAMAGE_TARGET_KIND_BUILDING => {
-                let hx = hx.max(0.0);
-                let hy = hy.max(0.0);
-                let hz = hz.max(0.0);
-                if !(hx.is_finite() && hy.is_finite() && hz.is_finite()) {
-                    continue;
-                }
-                let min_x = tx - hx;
-                let max_x = tx + hx;
-                let min_y = ty - hy;
-                let max_y = ty + hy;
-                let min_z = tz - hz;
-                let max_z = tz + hz;
-                let closest_x = center_x.clamp(min_x, max_x);
-                let closest_y = center_y.clamp(min_y, max_y);
-                let closest_z = center_z.clamp(min_z, max_z);
-                let box_dx = center_x - closest_x;
-                let box_dy = center_y - closest_y;
-                let box_dz = center_z - closest_z;
-                if box_dx * box_dx + box_dy * box_dy + box_dz * box_dz <= area_radius * area_radius
-                {
-                    flags |= DAMAGE_AREA_FLAG_OVERLAP;
-                }
-
-                let hdx = tx - center_x;
-                let hdy = ty - center_y;
-                let h_dist = (hdx * hdx + hdy * hdy).sqrt();
-                if h_dist > 0.0 {
-                    let inv = 1.0 / h_dist;
-                    out_dir_x[i] = hdx * inv;
-                    out_dir_y[i] = hdy * inv;
-                }
-                out_distance[i] = h_dist;
-                if damage_area_slice_pass(
-                    hdx,
-                    hdy,
-                    h_dist,
-                    area_radius,
-                    tr,
-                    use_slice,
-                    slice_direction,
-                    slice_half_angle,
-                ) {
-                    flags |= DAMAGE_AREA_FLAG_SLICE_PASS;
-                }
-            }
-            _ => {}
-        }
+        let flags = match damage_area_classify_row(
+            target_kind,
+            tx,
+            ty,
+            tz,
+            tr,
+            hx,
+            hy,
+            hz,
+            center_x,
+            center_y,
+            center_z,
+            area_radius,
+            use_slice,
+            slice_direction,
+            slice_half_angle,
+            &mut out_dir_x[i],
+            &mut out_dir_y[i],
+            &mut out_dir_z[i],
+            &mut out_distance[i],
+        ) {
+            Some(flags) => flags,
+            None => continue,
+        };
         out_flags[i] = flags;
         processed += 1;
     }

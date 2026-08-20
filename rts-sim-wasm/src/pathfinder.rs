@@ -1132,28 +1132,29 @@ pub fn pathfinder_rebuild_terrain_mask_and_cc(terrain_version: u32) {
 /// capability profile. This calls the same cell kernel used by A*, so the
 /// presentation grid is authoritative data rather than a second
 /// implementation of slope, medium, and clearance math.
-#[wasm_bindgen]
-pub fn pathfinder_bake_traversability_grid(
+/// Build the move/waypoint traversal pair every pathfinder entry point needs.
+///
+/// The three entry points (bake, find-path, validate) all derive exactly this
+/// pair from the same locomotion inputs, differing only in `water_waypoint_hold`
+/// (false for movement, true for waypoints) and which allow-medium triple each
+/// half reads. Deriving them here keeps a new traversal field from reaching one
+/// entry point and not the others — which would make a unit path one way and
+/// validate another.
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn pathfinder_traversal_pair(
     min_ground_normal_z: f32,
-    water_surface_supported: bool,
-    support_point_offset_z: f64,
-    waypoint_allow_ground: bool,
-    waypoint_allow_water: bool,
-    waypoint_allow_air: bool,
-    move_allow_ground: bool,
-    move_allow_water: bool,
-    move_allow_air: bool,
-    unit_radius: f64,
     safe_drive_accel: f64,
     safe_water_drive_accel: f64,
     static_friction_coefficient: f64,
-    waypoint_out: &mut [u8],
-    move_out: &mut [u8],
-) -> u32 {
-    let state = pathfinder_state();
-    if state.n == 0 || waypoint_out.len() < state.n || move_out.len() < state.n {
-        return 0;
-    }
+    water_surface_supported: bool,
+    move_allow_ground: bool,
+    move_allow_water: bool,
+    move_allow_air: bool,
+    waypoint_allow_ground: bool,
+    waypoint_allow_water: bool,
+    waypoint_allow_air: bool,
+) -> (PathfinderTraversal, PathfinderTraversal) {
     let move_traversal = PathfinderTraversal {
         min_ground_normal_z,
         safe_ground_accel: safe_drive_accel,
@@ -1180,6 +1181,44 @@ pub fn pathfinder_bake_traversability_grid(
         wet_contact_required_normal_z: 0.0,
     }
     .derived();
+    (move_traversal, waypoint_traversal)
+}
+
+#[wasm_bindgen]
+pub fn pathfinder_bake_traversability_grid(
+    min_ground_normal_z: f32,
+    water_surface_supported: bool,
+    support_point_offset_z: f64,
+    waypoint_allow_ground: bool,
+    waypoint_allow_water: bool,
+    waypoint_allow_air: bool,
+    move_allow_ground: bool,
+    move_allow_water: bool,
+    move_allow_air: bool,
+    unit_radius: f64,
+    safe_drive_accel: f64,
+    safe_water_drive_accel: f64,
+    static_friction_coefficient: f64,
+    waypoint_out: &mut [u8],
+    move_out: &mut [u8],
+) -> u32 {
+    let state = pathfinder_state();
+    if state.n == 0 || waypoint_out.len() < state.n || move_out.len() < state.n {
+        return 0;
+    }
+    let (move_traversal, waypoint_traversal) = pathfinder_traversal_pair(
+        min_ground_normal_z,
+        safe_drive_accel,
+        safe_water_drive_accel,
+        static_friction_coefficient,
+        water_surface_supported,
+        move_allow_ground,
+        move_allow_water,
+        move_allow_air,
+        waypoint_allow_ground,
+        waypoint_allow_water,
+        waypoint_allow_air,
+    );
     let previous_clearance = state.cur_required_clearance;
     let previous_unit_radius = state.cur_unit_radius;
     let previous_support_offset = state.cur_support_point_offset_z;
@@ -1808,32 +1847,19 @@ fn pathfinder_find_path_with_expansion_budget(
     state.last_fine_hit_node_limit = false;
     state.last_smoothing_line_checks = 0;
     state.last_direct_cost_ratio = f32::NAN;
-    let traversal = PathfinderTraversal {
+    let (traversal, waypoint_traversal) = pathfinder_traversal_pair(
         min_ground_normal_z,
-        safe_ground_accel: safe_drive_accel,
+        safe_drive_accel,
         safe_water_drive_accel,
         static_friction_coefficient,
         water_surface_supported,
-        water_waypoint_hold: false,
-        allow_ground: move_allow_ground,
-        allow_water: move_allow_water,
-        allow_air: move_allow_air,
-        wet_contact_required_normal_z: 0.0,
-    }
-    .derived();
-    let waypoint_traversal = PathfinderTraversal {
-        min_ground_normal_z,
-        safe_ground_accel: safe_drive_accel,
-        safe_water_drive_accel,
-        static_friction_coefficient,
-        water_surface_supported,
-        water_waypoint_hold: true,
-        allow_ground: waypoint_allow_ground,
-        allow_water: waypoint_allow_water,
-        allow_air: waypoint_allow_air,
-        wet_contact_required_normal_z: 0.0,
-    }
-    .derived();
+        move_allow_ground,
+        move_allow_water,
+        move_allow_air,
+        waypoint_allow_ground,
+        waypoint_allow_water,
+        waypoint_allow_air,
+    );
     state.cur_waypoint_traversal = waypoint_traversal;
     state.cur_waypoint_matches_move_domain =
         pathfinder_traversal_cell_domain_equivalent(waypoint_traversal, traversal);
@@ -2441,32 +2467,19 @@ pub fn pathfinder_validate_path(
     if state.grid_w == 0 || state.grid_h == 0 {
         return 0;
     }
-    let traversal = PathfinderTraversal {
+    let (traversal, waypoint_traversal) = pathfinder_traversal_pair(
         min_ground_normal_z,
-        safe_ground_accel: safe_drive_accel,
+        safe_drive_accel,
         safe_water_drive_accel,
         static_friction_coefficient,
         water_surface_supported,
-        water_waypoint_hold: false,
-        allow_ground: move_allow_ground,
-        allow_water: move_allow_water,
-        allow_air: move_allow_air,
-        wet_contact_required_normal_z: 0.0,
-    }
-    .derived();
-    let waypoint_traversal = PathfinderTraversal {
-        min_ground_normal_z,
-        safe_ground_accel: safe_drive_accel,
-        safe_water_drive_accel,
-        static_friction_coefficient,
-        water_surface_supported,
-        water_waypoint_hold: true,
-        allow_ground: waypoint_allow_ground,
-        allow_water: waypoint_allow_water,
-        allow_air: waypoint_allow_air,
-        wet_contact_required_normal_z: 0.0,
-    }
-    .derived();
+        move_allow_ground,
+        move_allow_water,
+        move_allow_air,
+        waypoint_allow_ground,
+        waypoint_allow_water,
+        waypoint_allow_air,
+    );
     state.cur_waypoint_traversal = waypoint_traversal;
     state.cur_waypoint_matches_move_domain =
         pathfinder_traversal_cell_domain_equivalent(waypoint_traversal, traversal);

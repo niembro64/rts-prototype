@@ -62,8 +62,6 @@ pub(crate) struct MapOvalMetricsRust {
 }
 
 pub(crate) struct MapOvalSampleRust {
-    ox: f64,
-    oy: f64,
     distance: f64,
     angle: f64,
 }
@@ -218,8 +216,6 @@ pub(crate) fn terrain_sample_map_oval_at(
     let ox = (x - metrics.cx) / metrics.scale_x;
     let oy = (y - metrics.cy) / metrics.scale_y;
     MapOvalSampleRust {
-        ox,
-        oy,
         distance: (ox * ox + oy * oy).sqrt(),
         angle: oy.atan2(ox),
     }
