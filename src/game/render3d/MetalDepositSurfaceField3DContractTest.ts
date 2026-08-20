@@ -33,8 +33,6 @@ import {
 import { SURFACE_WEATHERING_GLSL } from './SurfaceWeathering3D';
 import {
   ORE_EDGE_BLEND_GLSL,
-  metalBodyGrimeAlbedoFragment,
-  metalBodyGrimeResolveFragment,
   oreEdgeAlbedoFragment,
   oreEdgeBlendUniformDeclarations,
   oreEdgeMatteCoverage,
@@ -122,7 +120,7 @@ function checkSurfaceFieldConfig(): void {
   assertContract(
     cfg.edgeRangeWorldUnits > 0,
     'surfaceField.edgeRangeWorldUnits must be positive — it is the ± span the ' +
-    '16-bit encoding covers, and zero would collapse every distance to one value',
+    'byte encoding covers, and zero would collapse every distance to one value',
   );
   assertContract(
     cfg.smoothPasses >= 0 && Number.isInteger(cfg.smoothPasses),
@@ -363,14 +361,10 @@ function checkOreEdgeBlendContract(): void {
   // that moved from one fragment to another must still be read by SOMETHING.
   const resolveFragment = oreEdgeResolveFragment('vTerrainWorldPos', 'uMetalRegionEnabled');
   const albedoFragment = oreEdgeAlbedoFragment('vTerrainWorldPos', 'geomNormal');
-  const bodyResolveFragment = metalBodyGrimeResolveFragment('vTerrainWorldPos');
-  const bodyAlbedoFragment = metalBodyGrimeAlbedoFragment('vTerrainWorldPos', 'geomNormal');
   const source = [
     ORE_EDGE_BLEND_GLSL,
     resolveFragment,
-    bodyResolveFragment,
     oreEdgeMatteCoverage('metalCoverage'),
-    bodyAlbedoFragment,
     albedoFragment,
   ].join('\n');
   const uniformNames = Array.from(
@@ -383,7 +377,7 @@ function checkOreEdgeBlendContract(): void {
   // declares is silently zero, which for `uOreEdgeInfluence` means the
   // early-out never fires and for `uOreEdgeBandMax` means every transition
   // collapses to its minimum width.
-  for (const read of source.matchAll(/\bu(?:OreEdge|MetalGrime)\w*/g)) {
+  for (const read of source.matchAll(/\buOreEdge\w*/g)) {
     assertContract(
       uniformNames.includes(read[0]),
       `the edge treatment reads ${read[0]}, which its uniform block does not ` +
@@ -412,27 +406,6 @@ function checkOreEdgeBlendContract(): void {
     resolve.includes('float oreEdgeGrime = 0.0;'),
     'the resolve block must declare oreEdgeGrime and default it to zero, so ' +
     'a fragment that takes the early-out is ungrimed rather than undefined',
-  );
-
-  // THE BODY GRIME. It must declare its own default-zero local (same reason
-  // as above), the matte must read it (dirt with a live metal reflection
-  // under it reads as clean plate however dark it is painted), and it must
-  // never read the region field's distance — its independence from the
-  // field is exactly what makes it legal on a SURFACE = METAL world, where
-  // the distance is meaningless.
-  assertContract(
-    bodyResolveFragment.includes('float metalBodyGrime = 0.0;'),
-    'the body grime block must declare metalBodyGrime and default it to zero',
-  );
-  assertContract(
-    oreEdgeMatteCoverage('metalCoverage').includes('metalBodyGrime'),
-    'the matte coverage must suppress the metal reflection under the body ' +
-    'grime, not just under the edge band',
-  );
-  assertContract(
-    !/\boreDistance\b/.test(bodyResolveFragment),
-    'the body grime must not read the region field distance — it has to work ' +
-    'on a SURFACE = METAL world, where that distance is meaningless',
   );
 
   for (const definition of ['float oreEdgeCoverage(', 'float oreEdgeGrimeBand(']) {
@@ -465,13 +438,7 @@ function checkOreEdgeBlendContract(): void {
       `SurfaceWeathering3D must define ${shared}`,
     );
   }
-  const oreSource = [
-    ORE_EDGE_BLEND_GLSL,
-    resolveFragment,
-    bodyResolveFragment,
-    bodyAlbedoFragment,
-    albedoFragment,
-  ].join('\n');
+  const oreSource = [ORE_EDGE_BLEND_GLSL, resolveFragment, albedoFragment].join('\n');
   for (const shared of [
     'weatherSampleFields(',
     'weatherDisplace(',

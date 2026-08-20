@@ -48,7 +48,6 @@ import {
   TERRAIN_HORIZON_BLEND_CONFIG,
   TERRAIN_ROCK_BASE_COLOR,
   TERRAIN_ROCK_DETAIL_CONTRAST,
-  TERRAIN_METAL_GRIME_ENABLED,
   TERRAIN_ORE_EDGE_ENABLED,
   TERRAIN_WALL_WEAR_ENABLED,
   TERRAIN_ROCK_DETAIL_ENABLED,
@@ -174,8 +173,6 @@ import {
   ORE_EDGE_BLEND_GLSL,
   assignOreEdgeBlendUniforms,
   createOreEdgeBlendUniforms,
-  metalBodyGrimeAlbedoFragment,
-  metalBodyGrimeResolveFragment,
   oreEdgeAlbedoFragment,
   oreEdgeBlendUniformDeclarations,
   oreEdgeMatteCoverage,
@@ -839,16 +836,13 @@ export class TerrainTileRenderer3D {
     value: isMetalTerrainSurface() ? 0 : 1,
   };
   private readonly metalRegionField: MetalDepositSurfaceField3D;
-  // How the region MEETS the ground. A SURFACE = METAL world switches the
-  // EDGE half off: there every deposit boundary is interior to a map that
-  // is already entirely ore, so weathering one would be drawing a seam that
-  // is not there. The BODY grime stays on regardless — it needs no
-  // boundary, and an all-metal world is exactly where it is the only
-  // source of dirt. Built here rather than in installTerrainShader because
-  // it generates two textures and the shader may recompile.
+  // How the region MEETS the ground. A SURFACE = METAL world switches it
+  // off: there every deposit boundary is interior to a map that is already
+  // entirely ore, so weathering one would be drawing a seam that is not
+  // there. Built here rather than in installTerrainShader because it
+  // generates two textures and the shader may recompile.
   private readonly oreEdgeUniforms: OreEdgeBlendUniforms = createOreEdgeBlendUniforms(
     TERRAIN_ORE_EDGE_ENABLED && !isMetalTerrainSurface(),
-    TERRAIN_METAL_GRIME_ENABLED,
   );
   // The plateau wall rims. Unlike the ore edge this stays on for a
   // SURFACE = METAL world: a metal map still has terraces, and their folds
@@ -862,9 +856,7 @@ export class TerrainTileRenderer3D {
   // program asks for 17: it refuses to link and the whole terrain disappears.
   private readonly weatheringSamplerUniforms: SurfaceWeatheringSamplerUniforms =
     createSurfaceWeatheringSamplerUniforms(
-      this.oreEdgeUniforms.enabled.value > 0 ||
-        this.oreEdgeUniforms.bodyEnabled.value > 0 ||
-        this.wallWearUniforms.enabled.value > 0,
+      this.oreEdgeUniforms.enabled.value > 0 || this.wallWearUniforms.enabled.value > 0,
     );
   // 0 = keep three's DOUBLE_SIDED flip, 1 = restore the authored outward
   // normal inside ore only, 2 = restore it across the whole surface. A runtime
@@ -1306,11 +1298,6 @@ export class TerrainTileRenderer3D {
             // the surface looks like without it.
             oreEdgeResolveFragment('vTerrainWorldPos', 'uMetalRegionEnabled'),
             'float metalCoverage = clamp(max(uMetalSurfaceEnabled, oreRegionCoverage), 0.0, 1.0);',
-            // GRIME OVER THE METAL BODY — every ore fragment, deposit
-            // interiors and SURFACE = METAL worlds included, not just the
-            // edge band above. Resolved here because it reads the coverage
-            // and the matte below reads its result.
-            metalBodyGrimeResolveFragment('vTerrainWorldPos'),
             // The PBR half of the metal surface reads THIS one, not the
             // geometric coverage above. Declared here and MATTED LATER: the
             // wall rims are resolved after the ore albedo, and dirt is dirt
@@ -1348,10 +1335,6 @@ export class TerrainTileRenderer3D {
             // Dirt goes on LAST, over whichever of the two surfaces it
             // lands on. Running it before the ore mix would let the ore
             // albedo paint straight back over the inner half of the band.
-            // Body grime first, the edge band's seam over it — dirt on
-            // dirt accumulates, and the seam is the tell that two
-            // materials meet, so it must stay on top.
-            metalBodyGrimeAlbedoFragment('vTerrainWorldPos', 'surfaceNormal'),
             oreEdgeAlbedoFragment('vTerrainWorldPos', 'surfaceNormal'),
             // THE PLATEAU WALL RIMS. The fold where a terrace meets its wall
             // is the map's other clean edge, and the same three terms fix it.

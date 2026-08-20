@@ -1878,18 +1878,11 @@ fn metal_deposit_edt_2d(mask: &[u8], seed_value: u8, width: usize, height: usize
 ///
 /// `cells_gx_gy` is the concatenated build-cell list of every workable
 /// deposit (pairs, order irrelevant — overlapping deposits simply
-/// union). Output is TWO unsigned bytes per field texel — the high and
-/// low byte of a 16-bit value encoding the signed world-unit distance
-/// to the ore edge, negative inside, mapped linearly over
-/// ±`edge_range_world_units`. Sixteen bits because the encoded range
-/// has to cover the grime band's full reach (hundreds of world units),
-/// and a byte over that span steps in ~7-unit increments — coarser than
-/// the dissolve band at the contour itself. The hi/lo split stays a
-/// LINEAR function of the value, so the GPU's bilinear filtering and
-/// mip averaging of the two channels recombine to exactly the filtered
-/// distance. The border texel ring is forced fully outside so a clamped
-/// sample beyond the map — the world-box side walls included — can
-/// never read as ore.
+/// union). Output is one unsigned byte per field texel encoding the
+/// signed world-unit distance to the ore edge, negative inside, mapped
+/// linearly over ±`edge_range_world_units`. The border texel ring is
+/// forced fully outside so a clamped sample beyond the map — the
+/// world-box side walls included — can never read as ore.
 #[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
 pub fn metal_deposit_bake_surface_field(
@@ -1913,7 +1906,7 @@ pub fn metal_deposit_bake_surface_field(
         || build_grid_cell_size <= 0.0
         || !edge_range_world_units.is_finite()
         || edge_range_world_units <= 0.0
-        || out_field.len() < width * height * 2
+        || out_field.len() < width * height
     {
         return 0;
     }
@@ -2012,26 +2005,20 @@ pub fn metal_deposit_bake_surface_field(
     let range = edge_range_world_units as f32;
     for i in 0..width * height {
         let normalized = (signed[i] / range).clamp(-1.0, 1.0) * 0.5 + 0.5;
-        let encoded = (normalized * 65535.0 + 0.5) as u16;
-        out_field[i * 2] = (encoded >> 8) as u8;
-        out_field[i * 2 + 1] = (encoded & 0xff) as u8;
+        out_field[i] = (normalized * 255.0 + 0.5) as u8;
     }
 
     // Border ring: fully outside. Sampling is ClampToEdge, so every
     // fragment beyond the map — including the vertical world-box side
     // walls, which share the terrain mesh — reads this and shades as
     // ordinary ground instead of picking up a bled ore edge.
-    let mut write_outside = |texel: usize| {
-        out_field[texel * 2] = METAL_DEPOSIT_FIELD_OUTSIDE_BYTE;
-        out_field[texel * 2 + 1] = METAL_DEPOSIT_FIELD_OUTSIDE_BYTE;
-    };
     for x in 0..width {
-        write_outside(x);
-        write_outside((height - 1) * width + x);
+        out_field[x] = METAL_DEPOSIT_FIELD_OUTSIDE_BYTE;
+        out_field[(height - 1) * width + x] = METAL_DEPOSIT_FIELD_OUTSIDE_BYTE;
     }
     for y in 0..height {
-        write_outside(y * width);
-        write_outside(y * width + width - 1);
+        out_field[y * width] = METAL_DEPOSIT_FIELD_OUTSIDE_BYTE;
+        out_field[y * width + width - 1] = METAL_DEPOSIT_FIELD_OUTSIDE_BYTE;
     }
 
     (width * height) as u32
@@ -2041,9 +2028,8 @@ pub fn metal_deposit_bake_surface_field(
 mod metal_deposit_field_tests {
     use super::*;
 
-    fn decode_at(field: &[u8], texel: usize, range: f64) -> f64 {
-        let encoded = ((field[texel * 2] as u32) << 8) | field[texel * 2 + 1] as u32;
-        ((encoded as f64) / 65535.0 * 2.0 - 1.0) * range
+    fn decode(byte: u8, range: f64) -> f64 {
+        ((byte as f64) / 255.0 * 2.0 - 1.0) * range
     }
 
     #[test]
@@ -2051,65 +2037,42 @@ mod metal_deposit_field_tests {
         // One 20-wu build cell of ore at (10,10) on a 10-wu field grid.
         let w = 64u32;
         let h = 64u32;
-        let mut out = vec![0u8; (w * h * 2) as usize];
+        let mut out = vec![0u8; (w * h) as usize];
         let cells: Vec<i32> = vec![10, 10];
         let n = metal_deposit_bake_surface_field(w, h, 10.0, 20.0, &cells, 80.0, 0, &mut out);
         assert_eq!(n, w * h);
 
         // Build cell 10 spans world 200..220 -> field texels 20 and 21.
         let idx = |fx: usize, fy: usize| fy * w as usize + fx;
-        assert!(decode_at(&out, idx(20, 20), 80.0) < 0.0, "ore texel must be inside");
-        assert!(decode_at(&out, idx(21, 21), 80.0) < 0.0, "ore texel must be inside");
-        assert!(decode_at(&out, idx(19, 20), 80.0) > 0.0, "neighbour must be outside");
-        assert!(decode_at(&out, idx(22, 20), 80.0) > 0.0, "neighbour must be outside");
+        assert!(decode(out[idx(20, 20)], 80.0) < 0.0, "ore texel must be inside");
+        assert!(decode(out[idx(21, 21)], 80.0) < 0.0, "ore texel must be inside");
+        assert!(decode(out[idx(19, 20)], 80.0) > 0.0, "neighbour must be outside");
+        assert!(decode(out[idx(22, 20)], 80.0) > 0.0, "neighbour must be outside");
         // Distance grows with separation.
-        let near = decode_at(&out, idx(23, 20), 80.0);
-        let far = decode_at(&out, idx(26, 20), 80.0);
+        let near = decode(out[idx(23, 20)], 80.0);
+        let far = decode(out[idx(26, 20)], 80.0);
         assert!(far > near, "distance must grow outward: {far} vs {near}");
         // Exact euclidean: texel 24 center is 3 texels (30wu) past the last
         // ore texel center at 21 -> distance 30.
-        let d = decode_at(&out, idx(24, 20), 80.0);
+        let d = decode(out[idx(24, 20)], 80.0);
         assert!((d - 30.0).abs() < 1.0, "expected ~30wu, got {d}");
-    }
-
-    #[test]
-    fn encoding_resolves_well_under_one_world_unit_over_a_wide_range() {
-        // The grime band reaches hundreds of world units, so the field is
-        // baked over a range that would step ~7wu per level in one byte.
-        // Sixteen bits must resolve neighbouring texels distinctly.
-        let w = 64u32;
-        let h = 64u32;
-        let mut out = vec![0u8; (w * h * 2) as usize];
-        let cells: Vec<i32> = vec![10, 10];
-        metal_deposit_bake_surface_field(w, h, 10.0, 20.0, &cells, 960.0, 0, &mut out);
-        let idx = |fx: usize, fy: usize| fy * w as usize + fx;
-        let near = decode_at(&out, idx(23, 20), 960.0);
-        let far = decode_at(&out, idx(24, 20), 960.0);
-        assert!(
-            (far - near - 10.0).abs() < 0.5,
-            "adjacent texels 10wu apart must decode ~10wu apart: {near} -> {far}"
-        );
     }
 
     #[test]
     fn border_ring_is_always_outside() {
         let w = 32u32;
         let h = 32u32;
-        let mut out = vec![0u8; (w * h * 2) as usize];
+        let mut out = vec![0u8; (w * h) as usize];
         // Ore pushed hard against the origin corner.
         let cells: Vec<i32> = vec![0, 0, 1, 0, 0, 1, 1, 1];
         metal_deposit_bake_surface_field(w, h, 10.0, 20.0, &cells, 80.0, 2, &mut out);
-        let assert_outside = |texel: usize| {
-            assert_eq!(out[texel * 2], METAL_DEPOSIT_FIELD_OUTSIDE_BYTE);
-            assert_eq!(out[texel * 2 + 1], METAL_DEPOSIT_FIELD_OUTSIDE_BYTE);
-        };
         for x in 0..w as usize {
-            assert_outside(x);
-            assert_outside((h as usize - 1) * w as usize + x);
+            assert_eq!(out[x], METAL_DEPOSIT_FIELD_OUTSIDE_BYTE);
+            assert_eq!(out[(h as usize - 1) * w as usize + x], METAL_DEPOSIT_FIELD_OUTSIDE_BYTE);
         }
         for y in 0..h as usize {
-            assert_outside(y * w as usize);
-            assert_outside(y * w as usize + w as usize - 1);
+            assert_eq!(out[y * w as usize], METAL_DEPOSIT_FIELD_OUTSIDE_BYTE);
+            assert_eq!(out[y * w as usize + w as usize - 1], METAL_DEPOSIT_FIELD_OUTSIDE_BYTE);
         }
     }
 
@@ -2117,7 +2080,7 @@ mod metal_deposit_field_tests {
     fn empty_cell_list_bakes_a_fully_outside_field() {
         let w = 16u32;
         let h = 16u32;
-        let mut out = vec![0u8; (w * h * 2) as usize];
+        let mut out = vec![0u8; (w * h) as usize];
         metal_deposit_bake_surface_field(w, h, 10.0, 20.0, &[], 80.0, 1, &mut out);
         for v in &out {
             assert_eq!(*v, METAL_DEPOSIT_FIELD_OUTSIDE_BYTE);
@@ -2136,19 +2099,19 @@ mod metal_deposit_field_tests {
                 cells.push(gy);
             }
         }
-        let mut sharp = vec![0u8; (w * h * 2) as usize];
-        let mut smooth = vec![0u8; (w * h * 2) as usize];
+        let mut sharp = vec![0u8; (w * h) as usize];
+        let mut smooth = vec![0u8; (w * h) as usize];
         metal_deposit_bake_surface_field(w, h, 10.0, 20.0, &cells, 80.0, 0, &mut sharp);
         metal_deposit_bake_surface_field(w, h, 10.0, 20.0, &cells, 80.0, 3, &mut smooth);
         let idx = |fx: usize, fy: usize| fy * w as usize + fx;
         // Block spans world 200..320 -> texels 20..31 inclusive.
         // Mid-edge on a straight run barely moves.
-        let a = decode_at(&sharp, idx(25, 19), 80.0);
-        let b = decode_at(&smooth, idx(25, 19), 80.0);
+        let a = decode(sharp[idx(25, 19)], 80.0);
+        let b = decode(smooth[idx(25, 19)], 80.0);
         assert!((a - b).abs() < 4.0, "straight edge moved too far: {a} -> {b}");
         // The diagonal corner texel gets pushed outward (corner rounded off).
-        let ca = decode_at(&sharp, idx(20, 20), 80.0);
-        let cb = decode_at(&smooth, idx(20, 20), 80.0);
+        let ca = decode(sharp[idx(20, 20)], 80.0);
+        let cb = decode(smooth[idx(20, 20)], 80.0);
         assert!(cb > ca, "corner should round inward: {ca} -> {cb}");
     }
 }
