@@ -53,8 +53,8 @@ const _treadClamp: LocomotionPartClamp = { groundY: 0, renderedY: 0 };
 const TREAD_HEIGHT = TREAD_CHASSIS_LIFT_Y;
 const TREAD_Y = TREAD_HEIGHT / 2;
 /**
- * CLEAT GEOMETRY IS ABSOLUTE. All three of these are world units, not
- * fractions of anything.
+ * CLEAT GEOMETRY IS ABSOLUTE. These are world units, not fractions of
+ * anything — except the one width ratio, which is called out below.
  *
  * A track is a chain of standard parts. The belt it runs on is sized to the
  * unit — a Mammoth's is wider and longer than a Lynx's — but the grousers
@@ -71,12 +71,36 @@ const TREAD_Y = TREAD_HEIGHT / 2;
  *
  * Depth and pitch move together — doubling both keeps the duty ratio at 0.4,
  * so the bars stay the same proportion of the belt they sit on and only the
- * scale of the pattern changes. Height is independent and deliberately fixed:
- * it is how far the grouser stands proud of the belt, which is a property of
- * the part rather than of the rhythm.
+ * scale of the pattern changes. The radial numbers are independent of that
+ * rhythm and of the unit: they are properties of the part.
  */
-const TREAD_CLEAT_HEIGHT = 1.1;
+/** How far the grouser stands proud of the belt surface. The only radial
+ *  number with a silhouette — it alone decides where the outer face lands
+ *  and how coarse the track reads edge-on. */
+const TREAD_CLEAT_PROUD = 1.1;
+/**
+ * Radial thickness of the whole bar, root to tip. Twice the proud height,
+ * because a cleat is CENTRED ON the belt surface rather than resting on it:
+ * half stands out, half is rooted inside the shell.
+ *
+ * A bar that only kissed the belt was tangent to it, which is true on the
+ * straights and a lie on the rounded ends — a flat box meets a curve along a
+ * single line, so both of its ends lifted off the arc by the chord's sagitta
+ * and the teeth visibly floated as they came round the drive and the idler.
+ * Sinking the root a full proud-height into the shell swallows that gap at
+ * every arc position, and does it without moving the outer face by a hair:
+ * what changes is only the half nobody could see.
+ */
+const TREAD_CLEAT_THICKNESS = TREAD_CLEAT_PROUD * 2;
 const TREAD_CLEAT_LENGTH = 3.2;
+/** Span across the belt, as a fraction of its width. The one cleat dimension
+ *  that stays relative — a grouser spans the track it is bolted across, and a
+ *  fixed width would leave a strip down the middle of a wide belt and overhang
+ *  a narrow one. Deliberately under 1: at exactly 1 the bar's side faces were
+ *  coplanar with the shell's, which is a coincident-surface flicker and the
+ *  wrong read besides. The belt has to show past its own grousers on both
+ *  sides for them to look bolted on rather than milled in. */
+const TREAD_CLEAT_WIDTH_RATIO = 0.85;
 /** Target spacing along the belt. The near rung is the real number; the mid
  *  rung doubles it, which is a distance decision rather than a size one — a
  *  belt at that range is a few dozen pixels and the halved count is not
@@ -408,16 +432,13 @@ export function buildTank(
     );
     cleatSpacing = cleatLoopLength / cleatCount;
     const cleatLen = TREAD_CLEAT_LENGTH;
-    // Width is the one dimension that stays relative: a grouser spans the
-    // track it is bolted across. A fixed width would leave a strip down the
-    // middle of a wide belt and overhang a narrow one.
-    const cleatWidth = width;
+    const cleatWidth = width * TREAD_CLEAT_WIDTH_RATIO;
     const cleatsPerSide = cleatCount + 1;
     for (let s = 0; s < 2; s++) {
       const sideGroup = sides[s].group;
       for (let i = 0; i < cleatsPerSide; i++) {
         const cleat = new THREE.Mesh(treadBoxGeom, cleatMat);
-        cleat.scale.set(cleatLen, TREAD_CLEAT_HEIGHT, cleatWidth);
+        cleat.scale.set(cleatLen, TREAD_CLEAT_THICKNESS, cleatWidth);
         // Bright unpainted steel against the belt's dark band. Both bands are
         // equally plain — they differ in VALUE, not in busyness, because what
         // a track reads as in motion is the rhythm of light bars crossing a
@@ -432,8 +453,9 @@ export function buildTank(
   }
 
   unitGroup.add(group);
-  // Rut width sized to the cleat: narrower than the slab so the
-  // left+right ruts read as two parallel lines instead of merging.
+  // Rut width is the belt's full width — the whole track presses ground,
+  // not just the bars across it — floored so the left+right ruts stay two
+  // resolvable parallel lines instead of degenerating to nothing.
   const printWidth = Math.max(0.5, width);
   return {
     type: 'tank',
@@ -591,7 +613,11 @@ function layoutTreadCleat(
   const arcLength = Math.PI * treadRadius;
   const loopLength = 2 * straightLength + 2 * arcLength;
   let d = ((distance % loopLength) + loopLength) % loopLength;
-  const outerRadius = treadRadius + TREAD_CLEAT_HEIGHT / 2;
+  // Centre of the bar, not its outer face: the cleat straddles the belt
+  // surface, standing TREAD_CLEAT_PROUD out of it and rooting the rest
+  // inside the shell. Spelled out as face-minus-half-thickness rather than
+  // as the bare belt radius so the two radial constants stay independent.
+  const cleatRadius = treadRadius + TREAD_CLEAT_PROUD - TREAD_CLEAT_THICKNESS / 2;
 
   let x = 0;
   let y = 0;
@@ -599,26 +625,26 @@ function layoutTreadCleat(
 
   if (d < straightLength) {
     x = -halfStraight + d;
-    y = TREAD_Y + outerRadius;
+    y = TREAD_Y + cleatRadius;
     angle = 0;
   } else {
     d -= straightLength;
     if (d < arcLength) {
       const theta = Math.PI / 2 - d / treadRadius;
-      x = halfStraight + Math.cos(theta) * outerRadius;
-      y = TREAD_Y + Math.sin(theta) * outerRadius;
+      x = halfStraight + Math.cos(theta) * cleatRadius;
+      y = TREAD_Y + Math.sin(theta) * cleatRadius;
       angle = Math.atan2(-Math.cos(theta), Math.sin(theta));
     } else {
       d -= arcLength;
       if (d < straightLength) {
         x = halfStraight - d;
-        y = TREAD_Y - outerRadius;
+        y = TREAD_Y - cleatRadius;
         angle = Math.PI;
       } else {
         d -= straightLength;
         const theta = -Math.PI / 2 - d / treadRadius;
-        x = -halfStraight + Math.cos(theta) * outerRadius;
-        y = TREAD_Y + Math.sin(theta) * outerRadius;
+        x = -halfStraight + Math.cos(theta) * cleatRadius;
+        y = TREAD_Y + Math.sin(theta) * cleatRadius;
         angle = Math.atan2(-Math.cos(theta), Math.sin(theta));
       }
     }
