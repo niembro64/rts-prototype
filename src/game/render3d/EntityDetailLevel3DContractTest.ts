@@ -1,11 +1,15 @@
 import {
-  DETAIL_HYSTERESIS_LEVEL,
   DETAIL_LEVEL_FULL,
   DETAIL_LEVEL_GLYPH,
   DETAIL_RUNG_CLOSE,
   DETAIL_RUNG_FAR,
   DETAIL_RUNG_GLYPH,
   DETAIL_RUNG_MID,
+  GLYPH_MIN_SCREEN_RADIUS_PX,
+  GLYPH_PLAYER_RING_FRACTION,
+  GLYPH_TEAM_RING_FRACTION,
+  GLYPH_WHITE_CORE_FRACTION,
+  glyphMinScreenRadiusPxForViewport,
   ICON_FADE_START_SCREEN_RADIUS_PX,
   beamStyleForDetail,
   detailLevelForRung,
@@ -14,7 +18,6 @@ import {
   detailRungForLevel,
   detailRungForViewPosition,
   detailRungMinLevel,
-  detailRungWithHysteresis,
   detailScreenRadiusPx,
   explosionSpawnScaleForDetail,
   featureVisibleAtDetail,
@@ -159,13 +162,6 @@ export function runEntityDetailLevel3DContractTest(): void {
       detailRungForViewPosition(view, 0, -10000, 0, 1000) === DETAIL_RUNG_FAR,
       'LOW did not drop a close-coverage prop to the far rung',
     );
-    // The pin is applied on top of the caller's latch, never fed back into it:
-    // a latched CLOSE coverage rung must still resolve to the pinned rung.
-    assertContract(
-      detailRungForViewPosition(view, 0, -10000, 0, 1000, DETAIL_RUNG_CLOSE) ===
-        DETAIL_RUNG_FAR,
-      'a manual pin leaked into the coverage hysteresis latch',
-    );
   } finally {
     setLodMode(previousLodMode);
   }
@@ -251,52 +247,48 @@ export function runEntityDetailLevel3DContractTest(): void {
     'barely-above-glyph L is the far rung',
   );
 
-  // ── Hysteresis ────────────────────────────────────────────────────
-  const midFloor = detailLevelForRung(DETAIL_RUNG_MID);
-  assertContract(
-    detailRungWithHysteresis(DETAIL_RUNG_FAR, midFloor + DETAIL_HYSTERESIS_LEVEL / 2) ===
-      DETAIL_RUNG_FAR,
-    'upgrade inside the hysteresis margin keeps the latched rung',
-  );
-  assertContract(
-    detailRungWithHysteresis(DETAIL_RUNG_FAR, midFloor + DETAIL_HYSTERESIS_LEVEL * 1.5) ===
-      DETAIL_RUNG_MID,
-    'upgrade past the hysteresis margin switches rungs',
-  );
-  assertContract(
-    detailRungWithHysteresis(DETAIL_RUNG_MID, midFloor - DETAIL_HYSTERESIS_LEVEL / 2) ===
-      DETAIL_RUNG_MID,
-    'downgrade inside the hysteresis margin keeps the latched rung',
-  );
-  assertContract(
-    detailRungWithHysteresis(DETAIL_RUNG_MID, midFloor - DETAIL_HYSTERESIS_LEVEL * 1.5) ===
-      DETAIL_RUNG_FAR,
-    'downgrade past the hysteresis margin switches rungs',
-  );
-  assertContract(
-    detailRungWithHysteresis(DETAIL_RUNG_CLOSE, DETAIL_LEVEL_GLYPH) === DETAIL_RUNG_GLYPH,
-    'the glyph flip is never blocked by hysteresis',
-  );
-  assertContract(
-    detailRungWithHysteresis(DETAIL_RUNG_MID, midFloor) === DETAIL_RUNG_MID,
-    'sitting exactly on a rung floor never oscillates',
-  );
-  // Multi-rung jumps (camera cuts) must land on the highest rung whose
-  // floor clears the margin — never stay stuck rungs below the target.
+  // ── The ladder is stateless ───────────────────────────────────────
+  // There is no deadband and no latch: the rung is a pure function of L, so
+  // the same coverage always gives the same answer however the entity got
+  // there. A regression that reintroduces per-entity memory shows up here as
+  // a rung that depends on call order.
+  const midFloor = detailRungMinLevel(DETAIL_RUNG_MID);
   const closeFloor = detailRungMinLevel(DETAIL_RUNG_CLOSE);
   assertContract(
-    detailRungWithHysteresis(DETAIL_RUNG_FAR, closeFloor + DETAIL_HYSTERESIS_LEVEL / 2) ===
-      DETAIL_RUNG_MID,
-    'a far-latched entity inside the close hysteresis band steps to mid, not stays far',
+    detailRungForLevel(midFloor) === DETAIL_RUNG_MID &&
+      detailRungForLevel(closeFloor) === DETAIL_RUNG_CLOSE,
+    'sitting exactly on a rung floor resolves to that rung',
+  );
+  const EPSILON_LEVEL = 1e-4;
+  assertContract(
+    detailRungForLevel(midFloor - EPSILON_LEVEL) === DETAIL_RUNG_FAR &&
+      detailRungForLevel(closeFloor - EPSILON_LEVEL) === DETAIL_RUNG_MID,
+    'a hair below a floor is the rung below — no deadband holds the higher one',
+  );
+  for (const level of [DETAIL_LEVEL_GLYPH, midFloor, closeFloor, DETAIL_LEVEL_FULL]) {
+    const first = detailRungForLevel(level);
+    assertContract(
+      detailRungForLevel(level) === first && detailRungForLevel(level) === first,
+      'repeat calls at one level disagree — the ladder kept state',
+    );
+  }
+
+  // ── Strategic glyph: bands and floor ──────────────────────────────
+  assertContract(
+    GLYPH_WHITE_CORE_FRACTION > 0 &&
+      GLYPH_WHITE_CORE_FRACTION < GLYPH_TEAM_RING_FRACTION &&
+      GLYPH_TEAM_RING_FRACTION < GLYPH_PLAYER_RING_FRACTION &&
+      GLYPH_PLAYER_RING_FRACTION < 1,
+    'every glyph must show all four colors: white core, team, player, black outline',
   );
   assertContract(
-    detailRungWithHysteresis(DETAIL_RUNG_GLYPH, midFloor + DETAIL_HYSTERESIS_LEVEL / 2) ===
-      DETAIL_RUNG_FAR,
-    'a glyph-latched entity inside the mid hysteresis band steps to far, not stays glyph',
+    GLYPH_MIN_SCREEN_RADIUS_PX === THRESHOLD_LOW_TO_OFF_PX,
+    'the glyph floor is the size the glyph had at the OFF flip',
   );
   assertContract(
-    detailRungWithHysteresis(DETAIL_RUNG_GLYPH, DETAIL_LEVEL_FULL) === DETAIL_RUNG_CLOSE,
-    'a glyph-latched entity at full level jumps straight to close',
+    glyphMinScreenRadiusPxForViewport(2160) === GLYPH_MIN_SCREEN_RADIUS_PX * 2 &&
+      glyphMinScreenRadiusPxForViewport(0) === GLYPH_MIN_SCREEN_RADIUS_PX,
+    'the glyph floor scales from the reference viewport to the live one',
   );
 
   // ── Features: monotonic ladder, all-on at full, all-off at glyph ──

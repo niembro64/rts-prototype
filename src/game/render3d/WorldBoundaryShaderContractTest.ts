@@ -21,6 +21,17 @@ export function runWorldBoundaryShaderContractTest(): void {
       shade.includes('uWorldShadeBoundsSize.x + worldShadeEdgeTolerance.x'),
     'fog/shadow coverage must tolerate interpolation around positive map boundaries',
   );
+  // The info annex stands outside the coverage field. Its lookup is clamped
+  // onto the map edge so the headland carries the fog of the coast it joins
+  // — without that it is a lit shelf welded to a shore in shadow, and the
+  // whole point of welding it on is lost. The DEPTH tier still comes from
+  // the fragment's own altitude, not from the clamped lookup.
+  assertContract(
+    shade.includes('uWorldShadeAnnexMin') && shade.includes('uWorldShadeAnnexMax')
+      && shade.includes('worldShadeSample.xz = clamp(')
+      && shade.includes('float targetIsUnderwater = vTerrainWorldPos.y'),
+    'the annex must read the map edge\'s coverage at its own altitude',
+  );
 
   const verticalFaceGuard = 'abs(geomNormal.y) > 0.01';
   const build = buildGridOverlayFragment(

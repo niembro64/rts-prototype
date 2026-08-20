@@ -10,6 +10,7 @@ import { ENTITY_SHADOW_RENDER_CONFIG } from '../../config';
 import { SUN_DIRECTION_SIM } from './SunLighting';
 import type { EntityShadowRenderPacket3D } from './EntityShadowRenderPacket3D';
 import { WATER_LEVEL } from '../sim/Terrain';
+import { resolveMapInfoAnnexFootprint } from './MapInfoAnnex3D';
 import { clamp01 } from '../math';
 
 export type WorldShadeSettings3D = {
@@ -47,6 +48,8 @@ uniform sampler2D uWorldShadowMap;
 uniform vec2 uWorldShadeBoundsMin;
 uniform vec2 uWorldShadeBoundsSize;
 uniform vec2 uWorldShadeWorldSize;
+uniform vec2 uWorldShadeAnnexMin;
+uniform vec2 uWorldShadeAnnexMax;
 uniform float uWorldShadeWaterLevel;
 uniform float uFogOfWarShadeEnabled;
 uniform vec3 uWorldShadeColor;
@@ -97,20 +100,44 @@ vec2 worldShadeEdgeTolerance = max(
   vec2(0.25),
   uWorldShadeWorldSize * 0.000001
 );
-if (${worldPosition}.x >= -worldShadeEdgeTolerance.x &&
-    ${worldPosition}.z >= -worldShadeEdgeTolerance.y &&
-    ${worldPosition}.x <= uWorldShadeWorldSize.x + worldShadeEdgeTolerance.x &&
-    ${worldPosition}.z <= uWorldShadeWorldSize.y + worldShadeEdgeTolerance.y &&
-    ${worldPosition}.x >= uWorldShadeBoundsMin.x - worldShadeEdgeTolerance.x &&
-    ${worldPosition}.z >= uWorldShadeBoundsMin.y - worldShadeEdgeTolerance.y &&
-    ${worldPosition}.x <= uWorldShadeBoundsMin.x + uWorldShadeBoundsSize.x + worldShadeEdgeTolerance.x &&
-    ${worldPosition}.z <= uWorldShadeBoundsMin.y + uWorldShadeBoundsSize.y + worldShadeEdgeTolerance.y) {
+// THE INFO ANNEX READS THE COAST IT GREW OUT OF. The headland stands
+// outside the map rectangle, where there is no coverage field to sample and
+// the guard below would leave it permanently unfogged — a lit shelf welded
+// to a shore in shadow, which is the one seam the annex exists to remove.
+// Its lookup is clamped onto the map edge instead, so it carries exactly the
+// fog of the ground it joins. Nothing else in the world box is touched: the
+// clamp only applies inside the annex's own footprint.
+//
+// The SAME guard band, for the same reason and then some: the annex's three
+// walls stand exactly ON this rectangle's edges, so an exact comparison put
+// neighbouring fragments of one flat wall on opposite sides of the branch
+// and stippled it with fogged and unfogged dashes. Widening the test cannot
+// catch anything it should not — the only other terrain within a guard band
+// of the annex is the coast at its seam, and clamping ground already inside
+// the map is a no-op.
+vec3 worldShadeSample = ${worldPosition};
+if (worldShadeSample.x >= uWorldShadeAnnexMin.x - worldShadeEdgeTolerance.x &&
+    worldShadeSample.x <= uWorldShadeAnnexMax.x + worldShadeEdgeTolerance.x &&
+    worldShadeSample.z >= uWorldShadeAnnexMin.y - worldShadeEdgeTolerance.y &&
+    worldShadeSample.z <= uWorldShadeAnnexMax.y + worldShadeEdgeTolerance.y) {
+  worldShadeSample.xz = clamp(worldShadeSample.xz, vec2(0.0), uWorldShadeWorldSize);
+}
+if (worldShadeSample.x >= -worldShadeEdgeTolerance.x &&
+    worldShadeSample.z >= -worldShadeEdgeTolerance.y &&
+    worldShadeSample.x <= uWorldShadeWorldSize.x + worldShadeEdgeTolerance.x &&
+    worldShadeSample.z <= uWorldShadeWorldSize.y + worldShadeEdgeTolerance.y &&
+    worldShadeSample.x >= uWorldShadeBoundsMin.x - worldShadeEdgeTolerance.x &&
+    worldShadeSample.z >= uWorldShadeBoundsMin.y - worldShadeEdgeTolerance.y &&
+    worldShadeSample.x <= uWorldShadeBoundsMin.x + uWorldShadeBoundsSize.x + worldShadeEdgeTolerance.x &&
+    worldShadeSample.z <= uWorldShadeBoundsMin.y + uWorldShadeBoundsSize.y + worldShadeEdgeTolerance.y) {
   vec2 worldShadeUv = clamp(
-    (${worldPosition}.xz - uWorldShadeBoundsMin) / uWorldShadeBoundsSize,
+    (worldShadeSample.xz - uWorldShadeBoundsMin) / uWorldShadeBoundsSize,
     vec2(0.0),
     vec2(1.0)
   );
   vec4 worldCoverage = texture2D(uWorldShadeMap, worldShadeUv);
+  // Depth is the fragment's OWN altitude, never the clamped lookup's: which
+  // sight tier covers it is a question about where it stands.
   float targetIsUnderwater = ${worldPosition}.y <= uWorldShadeWaterLevel
     ? 1.0
     : 0.0;
@@ -239,6 +266,11 @@ export class WorldShade3D {
   private coverageTextureWidth = 1;
   private coverageTextureHeight = 1;
   private readonly worldSizeUniform: { value: THREE.Vector2 };
+  /** The info annex's footprint, so its fragments can read the coast they
+   *  grew out of instead of falling off the coverage field. Constant for the
+   *  match — the headland is a pure function of the map size. */
+  private readonly annexMinUniform: { value: THREE.Vector2 };
+  private readonly annexMaxUniform: { value: THREE.Vector2 };
   private readonly waterLevelUniform = { value: WATER_LEVEL };
   private readonly fogEnabledUniform = { value: 0 };
   private readonly shadeColorUniform = { value: SHADE_COLOR };
@@ -268,6 +300,9 @@ export class WorldShade3D {
     this.mapHeight = mapHeight;
     this.maxRegions = FOG_CONFIG.presentation.coverage.maxRegions;
     this.worldSizeUniform = { value: new THREE.Vector2(mapWidth, mapHeight) };
+    const annex = resolveMapInfoAnnexFootprint(mapWidth, mapHeight);
+    this.annexMinUniform = { value: new THREE.Vector2(annex.minX, annex.minZ) };
+    this.annexMaxUniform = { value: new THREE.Vector2(annex.maxX, annex.maxZ) };
 
     this.renderTarget = new THREE.WebGLRenderTarget(1, 1, {
       count: 2,
@@ -413,6 +448,8 @@ void main() {
     shader.uniforms.uWorldShadeBoundsMin = this.coverageBoundsMinUniform;
     shader.uniforms.uWorldShadeBoundsSize = this.coverageBoundsSizeUniform;
     shader.uniforms.uWorldShadeWorldSize = this.worldSizeUniform;
+    shader.uniforms.uWorldShadeAnnexMin = this.annexMinUniform;
+    shader.uniforms.uWorldShadeAnnexMax = this.annexMaxUniform;
     shader.uniforms.uWorldShadeWaterLevel = this.waterLevelUniform;
     shader.uniforms.uFogOfWarShadeEnabled = this.fogEnabledUniform;
     shader.uniforms.uWorldShadeColor = this.shadeColorUniform;
