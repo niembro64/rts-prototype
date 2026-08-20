@@ -20,6 +20,7 @@ type RtsScene3DRendererResources = {
   beamRenderer?: Destroyable | null;
   shieldRenderer?: Destroyable | null;
   terrainTileRenderer?: Destroyable | null;
+  worldShade?: Destroyable | null;
   waterRenderer?: Destroyable | null;
   shieldImpactRenderer?: Destroyable | null;
   waterSplashRenderer?: Destroyable | null;
@@ -54,6 +55,10 @@ export function teardownRtsScene3DRenderers(
   resources.beamRenderer?.destroy();
   resources.shieldRenderer?.destroy();
   resources.terrainTileRenderer?.destroy();
+  // WorldShade3D owns a full-screen WebGLRenderTarget shared by the terrain
+  // and water renderers; the rematch path reuses the GL context, so it has
+  // to be released here or every rematch leaks another target.
+  resources.worldShade?.destroy();
   resources.waterRenderer?.destroy();
   resources.shieldImpactRenderer?.destroy();
   resources.waterSplashRenderer?.destroy();

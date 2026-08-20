@@ -59,6 +59,7 @@ type RtsScene3DRendererBootstrapResult = {
   beamRenderer: BeamRenderer3D;
   shieldRenderer: ShieldRenderer3D;
   terrainTileRenderer: TerrainTileRenderer3D;
+  worldShade: WorldShade3D;
   environmentPropRenderer: EnvironmentPropRenderer3D;
   waterRenderer: WaterRenderer3D;
   cursorGround: CursorGround;
@@ -260,6 +261,7 @@ export function bootstrapRtsScene3DRenderers(
 
   return {
     entityRenderer,
+    worldShade,
     beamRenderer,
     shieldRenderer,
     terrainTileRenderer,

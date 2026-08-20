@@ -49,6 +49,7 @@ import { Input3DManager } from '../render3d/Input3DManager';
 import { BeamRenderer3D } from '../render3d/BeamRenderer3D';
 import { ShieldRenderer3D } from '../render3d/ShieldRenderer3D';
 import { TerrainTileRenderer3D } from '../render3d/TerrainTileRenderer3D';
+import type { WorldShade3D } from '../render3d/WorldShade3D';
 import { EnvironmentPropRenderer3D } from '../render3d/EnvironmentPropRenderer3D';
 import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConfig';
 import { WaterRenderer3D } from '../render3d/WaterRenderer3D';
@@ -177,6 +178,7 @@ export class RtsScene3D {
   private beamRenderer!: BeamRenderer3D;
   private shieldRenderer!: ShieldRenderer3D;
   private terrainTileRenderer!: TerrainTileRenderer3D;
+  private worldShade: WorldShade3D | null = null;
   private metalDeposits: MetalDeposit[] = [];
   private environmentPropRenderer: EnvironmentPropRenderer3D | null = null;
   private waterRenderer!: WaterRenderer3D;
@@ -491,6 +493,7 @@ export class RtsScene3D {
     this.beamRenderer = renderers.beamRenderer;
     this.shieldRenderer = renderers.shieldRenderer;
     this.terrainTileRenderer = renderers.terrainTileRenderer;
+    this.worldShade = renderers.worldShade;
     this.environmentPropRenderer = renderers.environmentPropRenderer;
     this.waterRenderer = renderers.waterRenderer;
     this.cursorGround = renderers.cursorGround;
@@ -1711,6 +1714,7 @@ export class RtsScene3D {
       beamRenderer: this.beamRenderer,
       shieldRenderer: this.shieldRenderer,
       terrainTileRenderer: this.terrainTileRenderer,
+      worldShade: this.worldShade,
       waterRenderer: this.waterRenderer,
       shieldImpactRenderer: this.shieldImpactRenderer,
       waterSplashRenderer: this.waterSplashRenderer,
@@ -1737,6 +1741,7 @@ export class RtsScene3D {
     this.nameLabel3D = null;
     this.waypoint3D = null;
     this.environmentPropRenderer = null;
+    this.worldShade = null;
     this.renderPhase = null;
     this.rendererWarmup = null;
     if (!opts.keepConnection) {

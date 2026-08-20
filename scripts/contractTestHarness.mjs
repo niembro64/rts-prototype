@@ -28,7 +28,7 @@
 // nothing else. See EXCLUSIVE_SIM_SLOT_TESTS below. Nothing is skipped.
 
 import { createServer } from 'vite';
-import { chromium } from 'playwright';
+import { chromium } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
