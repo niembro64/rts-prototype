@@ -68,6 +68,7 @@ const STYLE = {
     MAP_PRESET_LABEL_RENDER_CONFIG.captionMarginAnnexDepthFraction,
   captionFlatToleranceAnnexDepthFraction:
     MAP_PRESET_LABEL_RENDER_CONFIG.captionFlatToleranceAnnexDepthFraction,
+  captionMinAspect: MAP_PRESET_LABEL_RENDER_CONFIG.captionMinAspect,
   letterReliefTitleFraction: MAP_PRESET_LABEL_RENDER_CONFIG.letterReliefTitleFraction,
   letterMaskSupersample: MAP_PRESET_LABEL_RENDER_CONFIG.letterMaskSupersample,
   letterMaskSimplifyPx: MAP_PRESET_LABEL_RENDER_CONFIG.letterMaskSimplifyPx,
@@ -106,10 +107,12 @@ const LETTER_MASK_MAX_TEXELS = 2_400_000;
  *  The terrain sample is exact once the baked mesh is installed; this only
  *  keeps float noise from re-seating the sign every frame. */
 const ANNEX_ALTITUDE_EPSILON = 1e-3;
-/** Ceiling on the leading the fit may add, as a multiple of the leading the
- *  block already has. Past it the sections read as scattered rows rather
- *  than as one sign, and an even margin is not worth that. */
-const MAX_LEADING_GROWTH = 1.6;
+/** How far the fit may open or close the authored leading to land the block
+ *  on the table's shape. Past the ceiling the sections read as scattered rows
+ *  rather than as one sign; under the floor they crowd into a slab. An even
+ *  margin is worth a good deal of leading, but not either of those. */
+const MAX_LEADING_FACTOR = 1.6;
+const MIN_LEADING_FACTOR = 0.55;
 
 /** Ink metrics a 2D context can decline to report. The font box is the
  *  fallback, and these are its usable split — enough to keep a caption laid
@@ -198,6 +201,7 @@ export function resolveMapPresetLabelCaptionBox(
     annex,
     annex.depth * STYLE.captionMarginAnnexDepthFraction,
     settledDepth,
+    STYLE.captionMinAspect,
   );
   return { annex, ...area };
 }
@@ -224,30 +228,68 @@ export function resolveMapPresetLabelPlacement(
   };
 }
 
+/** What one candidate wrap measures, and what the fit would have to do to it
+ *  to land the block on the table's shape. */
+export type CaptionWrapCandidate = {
+  /** Block width and height in canvas pixels, at the authored leading. */
+  readonly width: number;
+  readonly height: number;
+  /** The leading in that height — the part the fit can move. */
+  readonly leading: number;
+};
+
 /**
- * Which wrap to set the settings in, given what each candidate's block shape
- * would be. The chosen block is the NARROWEST one still at least as wide as
- * the table wants: leading can always be added to bring a too-wide block down
- * onto the target aspect, and nothing can take leading away from a too-tall
- * one. Falls back to the widest candidate when every wrap comes out taller
- * than the table, which only happens for a caption of very few fields.
+ * Which wrap to set the settings in, and by how much to open or close its
+ * leading.
+ *
+ * The gap around the sign is even on all four sides only when the block and
+ * the inset table share an aspect. The wrap is the coarse knob — one row
+ * fewer is a much wider block, and the steps between row counts are big — so
+ * the leading is what closes the remaining distance, opened or CLOSED as
+ * needed. Setting a page a little tight to make it fit is what a compositor
+ * does; refusing to and leaving a band of empty rock down two sides is not.
+ *
+ * Among the wraps the leading can reach, the winner is the one that needs the
+ * least of it, so the authored rhythm survives wherever it can. If none is
+ * reachable the block closest in shape is set at its authored leading and the
+ * fit simply centres it.
  *
  * Pure, and exported for the contract test.
  */
-export function pickCaptionWrap(
-  candidateAspects: readonly number[],
+export function pickCaptionSetting(
+  candidates: readonly CaptionWrapCandidate[],
   targetAspect: number,
-): number {
+  minLeadingFactor: number,
+  maxLeadingFactor: number,
+): { readonly index: number; readonly leadingFactor: number } {
   let best = -1;
-  for (let index = 0; index < candidateAspects.length; index++) {
-    if (candidateAspects[index] < targetAspect) continue;
-    if (best < 0 || candidateAspects[index] < candidateAspects[best]) best = index;
+  let bestFactor = 1;
+  let bestDistortion = Infinity;
+  let closest = -1;
+  let closestAspectDistance = Infinity;
+  for (let index = 0; index < candidates.length; index++) {
+    const candidate = candidates[index];
+    if (!(candidate.height > 0) || !(candidate.width > 0)) continue;
+    const aspectDistance = Math.abs(
+      Math.log(candidate.width / candidate.height) - Math.log(targetAspect),
+    );
+    if (aspectDistance < closestAspectDistance) {
+      closestAspectDistance = aspectDistance;
+      closest = index;
+    }
+    if (!(candidate.leading > 0)) continue;
+    const wantedHeight = candidate.width / targetAspect;
+    const factor = 1 + (wantedHeight - candidate.height) / candidate.leading;
+    if (factor < minLeadingFactor || factor > maxLeadingFactor) continue;
+    const distortion = Math.abs(Math.log(factor));
+    if (distortion < bestDistortion) {
+      bestDistortion = distortion;
+      bestFactor = factor;
+      best = index;
+    }
   }
-  if (best >= 0) return best;
-  for (let index = 0; index < candidateAspects.length; index++) {
-    if (best < 0 || candidateAspects[index] > candidateAspects[best]) best = index;
-  }
-  return Math.max(0, best);
+  if (best >= 0) return { index: best, leadingFactor: bestFactor };
+  return { index: Math.max(0, closest), leadingFactor: 1 };
 }
 
 /**
@@ -493,15 +535,14 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
   }
 
   /**
-   * Choose the setting: wrap the settings across rows, then add leading until
-   * the block is exactly the shape of the table it has to fill.
+   * Choose the setting: wrap the settings across rows, then open or close the
+   * leading until the block is exactly the shape of the table it has to fill.
    *
-   * Both halves exist for the same reason. The gap around the sign is even on
-   * all four sides only when the block and the inset table share an aspect,
-   * and the block's aspect is what the wrap and the leading control. The wrap
-   * is the coarse knob — one row fewer is a much wider block — and the
-   * leading is the fine one. The leading only ever GROWS, so the type never
-   * shrinks to buy the match.
+   * Both halves exist for the same reason — the gap around the sign is even
+   * on all four sides only when the block and the inset table share an
+   * aspect, and the block's aspect is what the wrap and the leading control.
+   * The leading is shared out in proportion to the gaps already there, so
+   * whichever way it moves, the sections keep their relative weight.
    */
   private setCaption(caption: NonNullable<MapPresetLabelCaption>): CaptionItem[] {
     const box = resolveMapPresetLabelCaptionBox(
@@ -515,31 +556,30 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
       return this.ctx.measureText(text).width;
     };
 
-    const candidates: Array<{ items: CaptionItem[]; aspect: number }> = [];
+    const settings: CaptionItem[][] = [];
+    const candidates: CaptionWrapCandidate[] = [];
     for (let rowCount = 1; rowCount <= Math.max(1, caption.info.length); rowCount++) {
       const items = buildCaptionItems(caption, measureInfo, rowCount);
       const layout = this.layOutCaption(this.ctx, items, 1);
+      settings.push(items);
       candidates.push({
-        items,
-        aspect: layout.canvasHeight > 0 ? layout.canvasWidth / layout.canvasHeight : 1,
+        width: layout.canvasWidth,
+        height: layout.canvasHeight,
+        leading: items.reduce((sum, item) => sum + item.gapAbovePx, 0),
       });
     }
-    const chosen = candidates[
-      pickCaptionWrap(candidates.map((candidate) => candidate.aspect), targetAspect)
-    ];
-
-    // The block is now at least as wide as the table wants; the depth it is
-    // short becomes leading, shared out in proportion to the gaps already
-    // there so the sections keep their relative weight.
-    const layout = this.layOutCaption(this.ctx, chosen.items, 1);
-    const wantedHeight = layout.canvasWidth / Math.max(1e-6, targetAspect);
-    const extra = wantedHeight - layout.canvasHeight;
-    const gapTotal = chosen.items.reduce((sum, item) => sum + item.gapAbovePx, 0);
-    if (extra <= 0 || gapTotal <= 0 || extra > gapTotal * MAX_LEADING_GROWTH) {
-      return chosen.items;
-    }
-    const growth = 1 + extra / gapTotal;
-    return chosen.items.map((item) => ({ ...item, gapAbovePx: item.gapAbovePx * growth }));
+    const chosen = pickCaptionSetting(
+      candidates,
+      targetAspect,
+      MIN_LEADING_FACTOR,
+      MAX_LEADING_FACTOR,
+    );
+    const items = settings[chosen.index];
+    if (Math.abs(chosen.leadingFactor - 1) < 1e-6) return items;
+    return items.map((item) => ({
+      ...item,
+      gapAbovePx: item.gapAbovePx * chosen.leadingFactor,
+    }));
   }
 
   /**

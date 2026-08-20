@@ -2,11 +2,13 @@ import {
   emitMapInfoAnnexGeometry,
   mapInfoAnnexFlatHeight,
   mapInfoAnnexFlatSurfaceY,
+  mapInfoAnnexHalfWidthAt,
+  mapInfoAnnexProfileBreakpoints,
   mapInfoAnnexSettledDepth,
   mapInfoAnnexSurfaceY,
   resolveMapInfoAnnexCaptionArea,
   resolveMapInfoAnnexFootprint,
-  resolveMapInfoAnnexLiquidRect,
+  resolveMapInfoAnnexLiquidRows,
 } from './MapInfoAnnex3D';
 import { getFloatingWaterOverhang } from './WorldBoxGeometry3D';
 import { LAND_TILE_GROUND_LIFT, MAP_INFO_ANNEX_RENDER_CONFIG } from '@/config';
@@ -81,8 +83,11 @@ export function runMapInfoAnnex3DContractTest(): void {
       'the annex must be flush against the map edge, neither overlapping it nor floating off it',
     );
     const edgeSpan = annex.outX === 0 ? mapWidth : mapHeight;
+    // The SEAM is what has to fit, not the body: the flare is the widest the
+    // headland ever gets, and it is exactly where it meets the coast.
     assertContract(
-      annex.width <= edgeSpan * MAP_INFO_ANNEX_RENDER_CONFIG.maxEdgeSpanFraction + 1e-9,
+      2 * mapInfoAnnexHalfWidthAt(annex, 0)
+        <= edgeSpan * MAP_INFO_ANNEX_RENDER_CONFIG.maxEdgeSpanFraction + 1e-9,
       'the annex must never take over the coast it hangs off',
     );
     assertContract(
@@ -161,63 +166,158 @@ export function runMapInfoAnnex3DContractTest(): void {
       );
     }
 
+    const minAspect = 1.9;
     for (const nearLimit of [0, annex.blendDepth]) {
-      const area = resolveMapInfoAnnexCaptionArea(annex, margin, nearLimit);
-      const areaNearOut =
+      const area = resolveMapInfoAnnexCaptionArea(annex, margin, nearLimit, minAspect);
+      const centerOut =
         (area.centerX - annex.attachX) * annex.outX +
-        (area.centerZ - annex.attachZ) * annex.outZ -
-        area.depth / 2;
+        (area.centerZ - annex.attachZ) * annex.outZ;
       assertContract(
         area.width > 0 && area.depth > 0,
         'the caption must have somewhere to stand',
       );
       assertContract(
-        areaNearOut >= nearLimit + margin - 1e-9,
+        centerOut - area.depth / 2 >= nearLimit + margin - 1e-9,
         'the caption area must start past the ramp, one margin clear of it',
       );
       assertContract(
-        areaNearOut + area.depth <= annex.depth - margin + 1e-9,
+        centerOut + area.depth / 2 <= annex.depth - margin + 1e-9,
         'the caption area must stay inside the annex, one margin clear of its far edge',
       );
+      // Centred on the headland it stands on, whatever depth it settles at:
+      // a sign in one half of its own island reads as a mistake.
+      assertContract(
+        Math.abs(centerOut - (nearLimit + (annex.depth - nearLimit) / 2)) < 1e-9,
+        'the caption area must stay centred on the land left to it',
+      );
+      // And never squarer than a sign can be set in, with every corner —
+      // the far pair, where the headland is narrowest — standing on land.
+      assertContract(
+        area.width / area.depth >= minAspect - 1e-6,
+        'the caption area must never come out squarer than a caption can fill',
+      );
+      for (const corner of [-1, 1]) {
+        assertContract(
+          area.width / 2
+            <= mapInfoAnnexHalfWidthAt(annex, centerOut + corner * area.depth / 2) + 1e-9,
+          'no corner of the caption area may hang over the headland\'s taper',
+        );
+      }
     }
 
-    // The liquid grows around the annex by the same overhang every map edge
-    // gets, and stops at the map's own liquid border.
+    // THE SILHOUETTE. Each flank is divided in three: the outer third's
+    // corner is cut away and the identical triangle added back over the inner
+    // third, so the headland loses a corner to open water and gains one
+    // filling the inside corner against the map's edge.
+    const band = annex.cornerBandDepth;
+    const cut = annex.cornerCut;
+    assertContract(
+      Math.abs(band - annex.depth / 3) < 1e-9 && cut > 0,
+      'each flank must be divided in three, with a real corner to cut',
+    );
+    assertContract(
+      Math.abs(mapInfoAnnexHalfWidthAt(annex, 0) - (annex.width / 2 + cut)) < 1e-9
+        && Math.abs(mapInfoAnnexHalfWidthAt(annex, band) - annex.width / 2) < 1e-9
+        && Math.abs(mapInfoAnnexHalfWidthAt(annex, annex.depth - band) - annex.width / 2) < 1e-9
+        && Math.abs(mapInfoAnnexHalfWidthAt(annex, annex.depth) - (annex.width / 2 - cut)) < 1e-9,
+      'the silhouette must flare by the cut at the seam, run parallel, and taper by it at the rim',
+    );
+    // Chop equals fill: the two diagonals are the same line moved, so the
+    // headland covers exactly the ground its rectangle did.
+    for (const fraction of [0.2, 0.5, 0.8]) {
+      const filled = mapInfoAnnexHalfWidthAt(annex, fraction * band) - annex.width / 2;
+      const chopped = annex.width / 2
+        - mapInfoAnnexHalfWidthAt(annex, annex.depth - band + fraction * band);
+      assertContract(
+        Math.abs(filled - (cut - chopped)) < 1e-9,
+        'the corner cut away and the corner added back must be the same triangle',
+      );
+    }
+    assertContract(
+      mapInfoAnnexHalfWidthAt(annex, -100) === mapInfoAnnexHalfWidthAt(annex, 0)
+        && mapInfoAnnexHalfWidthAt(annex, annex.depth + 100)
+          === mapInfoAnnexHalfWidthAt(annex, annex.depth),
+      'the profile must clamp past its own ends rather than run off into nothing',
+    );
+
+    // The liquid grows around the SILHOUETTE by the same overhang every map
+    // edge gets — measured perpendicular to whatever edge it stands off, so a
+    // cut corner carries the same border as a flank — and stops at the map's
+    // own liquid border.
     const overhang = getFloatingWaterOverhang();
-    const arm = resolveMapInfoAnnexLiquidRect(annex, overhang, mapWidth, mapHeight);
-    const farFace =
-      annex.outX !== 0
-        ? annex.outX > 0
-          ? arm.maxX - annex.maxX
-          : annex.minX - arm.minX
-        : annex.outZ > 0
-          ? arm.maxZ - annex.maxZ
-          : annex.minZ - arm.minZ;
+    const rows = resolveMapInfoAnnexLiquidRows(annex, overhang, 400);
     assertContract(
-      Math.abs(farFace - overhang) < 1e-9,
-      "the liquid must clear the annex's far edge by exactly the map's own overhang",
+      rows.length >= 2 && Math.abs(rows[0].out - overhang) < 1e-9,
+      "the arm must start on the map's own liquid border, not lay a second sheet over it",
     );
-    const flankLow = annex.outX === 0 ? annex.minX - arm.minX : annex.minZ - arm.minZ;
-    const flankHigh = annex.outX === 0 ? arm.maxX - annex.maxX : arm.maxZ - annex.maxZ;
     assertContract(
-      Math.abs(flankLow - overhang) < 1e-9 && Math.abs(flankHigh - overhang) < 1e-9,
-      'both flanks must carry the same overhang as the far edge',
+      Math.abs(rows[rows.length - 1].out - (annex.depth + overhang)) < 1e-9,
+      "the liquid must clear the annex's far rim by the map's own overhang",
     );
-    const sharedFace =
-      annex.outX !== 0
-        ? annex.outX > 0
-          ? arm.minX
-          : arm.maxX
-        : annex.outZ > 0
-          ? arm.minZ
-          : arm.maxZ;
+    for (let index = 1; index < rows.length; index++) {
+      assertContract(
+        rows[index].out > rows[index - 1].out,
+        'the arm rows must march outward',
+      );
+    }
+    // The border's own kinks are its miters — the corners of the headland
+    // pushed out — and they do not sit above the land's corners: a convex one
+    // reaches past, a reflex one falls short. So each run is measured between
+    // the miters that actually bound it, which is also the only way this
+    // holds on a small map, where a 200-unit border's miters can swallow the
+    // parallel run whole.
+    const offsetKinks = mapInfoAnnexProfileBreakpoints(annex, overhang);
+    assertContract(
+      offsetKinks.length === 4 && offsetKinks[1] < offsetKinks[2],
+      'the offset profile must kink once per corner, in order',
+    );
+    // Across the parallel middle, "perpendicular to the edge" and "across the
+    // annex" are the same measurement.
     assertContract(
       Math.abs(
-        sharedFace -
-          ((annex.outX !== 0 ? annex.attachX : annex.attachZ) +
-            (annex.outX !== 0 ? annex.outX : annex.outZ) * overhang),
+        mapInfoAnnexHalfWidthAt(annex, (offsetKinks[1] + offsetKinks[2]) / 2, overhang)
+          - (annex.width / 2 + overhang),
       ) < 1e-9,
-      "the arm must stop on the map's own liquid border, not lay a second sheet over it",
+      'the liquid border must be one overhang across the parallel flanks',
+    );
+    // Across a CUT CORNER they are not, and that is the whole point: the land
+    // and its border are parallel lines there, so the distance between them
+    // is the along-axis gap foreshortened by the diagonal. Offsetting along
+    // the axis instead leaves it short by exactly that factor — the pinch a
+    // bounding-box arm puts in every corner this shape exists to soften.
+    // Sampled where the land's diagonal and its own offset are BOTH the
+    // active edge — the offset run reaches past the land's at either end,
+    // and out there the land has clamped to its rim and the two are no
+    // longer the parallel pair this measures.
+    const diagonalRuns: ReadonlyArray<readonly [number, number]> = [
+      [Math.max(0, offsetKinks[0]), Math.min(band, offsetKinks[1])],
+      [
+        Math.max(annex.depth - band, offsetKinks[2]),
+        Math.min(annex.depth, offsetKinks[3]),
+      ],
+    ];
+    for (const [low, high] of diagonalRuns) {
+      assertContract(high > low, 'each diagonal must survive its own offset');
+      const out = (low + high) / 2;
+      const gap = mapInfoAnnexHalfWidthAt(annex, out, overhang)
+        - mapInfoAnnexHalfWidthAt(annex, out);
+      assertContract(
+        Math.abs(gap * band / Math.hypot(band, cut) - overhang) < 1e-6,
+        'the liquid border must be one overhang PERPENDICULAR to a cut corner',
+      );
+    }
+    // The rows the mesh is built from are that profile, sampled.
+    for (const row of rows) {
+      assertContract(
+        Math.abs(row.halfWidth - mapInfoAnnexHalfWidthAt(annex, row.out, overhang)) < 1e-9,
+        'every arm row must sit on the offset profile',
+      );
+    }
+    assertContract(
+      mapInfoAnnexProfileBreakpoints(annex, overhang).every(
+        (out) => rows.some((row) => Math.abs(row.out - out) < 1e-6) || out < overhang,
+      ),
+      'the arm must carry a row on every kink, or its diagonals come out as staircases',
     );
   }
 
@@ -309,16 +409,36 @@ export function runMapInfoAnnex3DContractTest(): void {
     vertices.every((vertex) => vertex.y >= floorY - 1e-9),
     'nothing in the annex may hang below the world-box floor',
   );
-  // The outward normals are the three sides that face open water. The side
-  // the annex grew out of is left open on purpose: the map's own wall already
-  // closes that plane, from inside the annex's solid.
-  const wallNormals = new Set(
-    walls.map((vertex) => `${Math.round(vertex.nx)}:${Math.round(vertex.nz)}`),
+  // Every wall faces open water. The side the annex grew out of is left open
+  // on purpose: the map's own wall already closes that plane, from inside the
+  // annex's solid — so nothing may face back at the coast.
+  const wallNormals = walls.map((vertex) => ({
+    out: vertex.nx * annex.outX + vertex.nz * annex.outZ,
+    along: vertex.nx * annex.alongX + vertex.nz * annex.alongZ,
+  }));
+  assertContract(
+    wallNormals.every((normal) => normal.out >= -1e-6),
+    "no annex wall may face back at the coast it grew out of — that side is open",
   );
   assertContract(
-    wallNormals.size === 3 &&
-      !wallNormals.has(`${Math.round(-annex.outX)}:${Math.round(-annex.outZ)}`),
-    'the annex must wall its three outer sides and leave the attached side open',
+    wallNormals.some((normal) => normal.out > 0.999)
+      && wallNormals.some((normal) => normal.along > 0.999)
+      && wallNormals.some((normal) => normal.along < -0.999),
+    'the far rim and both parallel flanks must each be walled',
+  );
+  // The fill and the cut are the same diagonal on each flank, so there are
+  // exactly two of these directions and both lean out to open water.
+  const acrossDiagonal =
+    annex.cornerBandDepth / Math.hypot(annex.cornerBandDepth, annex.cornerCut);
+  const diagonals = wallNormals.filter(
+    (normal) => Math.abs(Math.abs(normal.along) - acrossDiagonal) < 1e-6,
+  );
+  assertContract(
+    diagonals.length > 0
+      && diagonals.some((normal) => normal.along > 0)
+      && diagonals.some((normal) => normal.along < 0)
+      && diagonals.every((normal) => normal.out > 0),
+    'the cut corner and the fill must be walled on the diagonal, leaning out to open water',
   );
 
   // Emission with the walls off is the terrain's own side-wall graphics
