@@ -77,6 +77,9 @@ function isIntentionallyUnboundCommand(presetId: string, commandId: string): boo
   if (!isBarLegacyPreset && commandId === 'select.previousNonBuildersNotInControlGroups') return true;
   if (!isBarLegacyPreset && commandId === 'select.groundWeaponUnits') return true;
   if (commandId === 'combat.restore') return true;
+  if (commandId === 'ui.capturePicHud') return true;
+  if (commandId === 'ui.captureVidRaw') return true;
+  if (commandId === 'ui.captureVidHud') return true;
   if (commandId === 'command.builderPriority') return true;
   if (commandId === 'command.carrierSpawn') return true;
   if (commandId === 'factory.airIdleState') return true;
@@ -216,6 +219,10 @@ export function runCommandHotkeysContractTest(): void {
             ? 'BAR resurrect is area-capable without a separate resurrect-area button'
           : commandId === 'ui.mapErase'
             ? 'BAR erases map drawings through the draw key plus right-mouse drag, not a separate erase hotkey'
+          : commandId === 'ui.capturePicHud' ||
+            commandId === 'ui.captureVidRaw' ||
+            commandId === 'ui.captureVidHud'
+            ? 'BAR binds only the F12 screenshot; the HUD screenshot and both video recordings ship unbound and are driven by the capture grid buttons'
           : commandId === 'command.buildCycle'
             ? presetId === 'bar-grid' || presetId === 'bar-grid-60pct'
               ? 'BAR-grid period cycles the active builder type, not build blueprints'
