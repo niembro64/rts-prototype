@@ -478,8 +478,9 @@ export class EnvironmentPropRenderer3D {
         if (node.root !== null) node.root.visible = false;
         continue;
       }
-      // The node latches the CAMERA-COVERAGE rung so its hysteresis survives a
-      // mode switch; the manual pin is applied on top for this frame only.
+      // The node stores the CAMERA-COVERAGE rung, never the mode-resolved one,
+      // so a manual pin can never be fed back in as if it were coverage; the
+      // pin is applied on top for this frame only.
       node.coverageRung = view
         ? coverageRungForViewPosition(
             view,
@@ -487,7 +488,6 @@ export class EnvironmentPropRenderer3D {
             p.y,
             p.z + p.height * 0.5,
             Math.max(p.radius, p.height * 0.5),
-            node.coverageRung,
           )
         : DETAIL_RUNG_CLOSE;
       const rung = detailRungForMode(node.coverageRung);

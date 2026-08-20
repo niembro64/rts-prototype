@@ -1630,12 +1630,77 @@
         a private fourth mesh budget or a different AUTO threshold system.
       </p>
       <p>
-        AUTO may use continuous projected-size math and hysteresis internally
-        to avoid oscillation at a boundary. That math is only a selector for
-        HIGH/MED/LOW. Rebuild budgets may delay a swap by a frame; they do not
+        AUTO&rsquo;s choice is a pure function of projected size: the same entity
+        at the same distance in the same camera always resolves to the same
+        level, with no latch, no per-entity memory and no hysteresis band. An
+        earlier design carried a deadband to stop an entity parked exactly on a
+        threshold from rebuilding every frame; it is gone, because unit motion
+        in this game is continuously smoothed and a boundary is crossed cleanly
+        rather than jittered across. Statelessness is worth more than the
+        deadband was: a level that depends on where an entity <em>was</em> is a
+        level that differs between two clients watching the same battle, and it
+        is one more thing to get wrong on a camera cut. That math is only a
+        selector for HIGH/MED/LOW. Rebuild budgets may delay a swap by a frame; they do not
         create a fourth quality result. The definitive tuning and feature
         assignments live in <code>lod.json</code>; renderers consume the
         resolved rung rather than reinterpreting camera distance themselves.
+      </p>
+      <h3>A strategic glyph never shrinks below its flip size</h3>
+      <p>
+        Once an entity has become its glyph, the glyph stops shrinking. It is
+        drawn at whatever screen size it had at the OFF threshold and holds
+        that size no matter how far the camera pulls back, so a strategic zoom
+        produces a readable constellation of markers rather than a dust of
+        sub-pixel dots that dissolves into the terrain. This is the one place
+        the renderer deliberately breaks perspective, and it is the whole point
+        of the glyph: past the flip it is no longer a picture of a unit, it is
+        a <em>symbol</em> that says a unit is there, and a symbol you cannot
+        see does not say anything. Position stays exact; only the size stops
+        tracking distance. Entities still occlude and depth-sort normally,
+        because the glyph keeps writing the depth of the sphere it stands for.
+      </p>
+      <h3>Four colors on every entity, always</h3>
+      <p>
+        Every entity carries <strong>all four</strong> of these somewhere in
+        its presentation: <strong>white</strong>, its <strong>team
+        color</strong>, its <strong>player color</strong>, and
+        <strong>black</strong>. Not one of them is decoration.
+      </p>
+      <ul class="rule-list">
+        <li><strong>White and black</strong> are the contrast pair. A palette of team hues alone is legible over grass and illegible over bright water, snow, or a lit explosion &mdash; whichever way the backdrop goes, one of white or black is still separating the entity from it. Black additionally does the work of an outline: it is what keeps two adjacent units from melting into one silhouette.</li>
+        <li><strong>Team color</strong> answers the only question that matters in a fight &mdash; friend or enemy &mdash; and it must be readable at the exact moment the entity is smallest, which is why it is never the outermost or the innermost band.</li>
+        <li><strong>Player color</strong> answers who specifically, which matters in team games for reading an ally&rsquo;s army apart from your own, and matters immediately after the battle when a player wants to find their own units.</li>
+      </ul>
+      <p>
+        An entity that shows all four is legible against any backdrop the map
+        can put behind it and sorts into friend, ally, and enemy without the
+        player having to zoom to check. An entity missing one of them is
+        readable right up until the one situation that color was there for.
+      </p>
+      <h3>Strategic glyphs carry the four colors in a fixed order</h3>
+      <p>
+        The LOD:OFF glyph is the smallest an entity ever gets and therefore the
+        strictest test of the rule above, so its layout is fixed rather than
+        per-shape. Every glyph, for every entity type, is drawn as concentric
+        bands of the same silhouette, from the middle outward: a small
+        <strong>white</strong> core, then the <strong>team</strong> color, then
+        the <strong>player</strong> color, then a <strong>black</strong>
+        outline. The shape itself &mdash; circle, diamond, triangle, square,
+        cross &mdash; carries the entity <em>kind</em>; the bands carry the
+        identity, and they carry it identically no matter which shape is
+        underneath.
+      </p>
+      <p>
+        The order is deliberate. Black is outermost because that is where the
+        backdrop is, and an outline only works at the boundary. White is
+        innermost because the core is the part no neighbouring glyph can
+        overlap, so the guaranteed-contrast color is spent where it is
+        guaranteed to be seen. Team sits inside player because friend-or-enemy
+        must survive further into the distance than who-specifically: as a
+        glyph approaches its minimum size the outer bands are what thin out
+        first, and the ordering decides which question stops being answerable
+        first. Widths are authored as fractions of the glyph radius, so every
+        band scales together and none of them can vanish at the floor size.
       </p>
       <h3>Coverage is measured on the collision volume</h3>
       <p>
