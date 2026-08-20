@@ -2901,12 +2901,20 @@ export class ClientViewStateBase {
     const entityDeltaOnly = state.entityDeltaOnly === true;
     const projectileDeltaOnly = state.projectileDeltaOnly === true;
     const presentationDeltaOnly = entityDeltaOnly || projectileDeltaOnly;
+    // Presentation SETS — minimap blips, resource movements, work sprays,
+    // scan pulses — are restated in full by every snapshot that carries
+    // entity state; the serializers return `undefined` for "there are none
+    // right now", not for "unchanged". Only a projectile-only delta omits
+    // them because it never looked. Treating an entity delta's absent set as
+    // "unchanged" is what let a finished building keep getting sprayed: the
+    // last non-empty list stayed live until some later full snapshot.
+    const carriesPresentationSets = !projectileDeltaOnly;
     const collectCorrectionStats = options.collectCorrectionStats === true;
     const collectMaterializationStages = options.collectMaterializationStages === true;
     const deferPredictedTurretRenderRefresh =
       options.deferPredictedTurretRenderRefresh === true;
     let materializationStageStart = collectMaterializationStages ? performance.now() : 0;
-    if (!presentationDeltaOnly || state.minimapEntities !== undefined) {
+    if (carriesPresentationSets || state.minimapEntities !== undefined) {
       this.minimapOverrideStore.applySnapshot(state.minimapEntities);
     }
     let cacheNeedsInvalidate = false;
@@ -3425,10 +3433,10 @@ export class ClientViewStateBase {
       }
     }
 
-    if (!presentationDeltaOnly || state.resourceMovements !== undefined) {
+    if (carriesPresentationSets || state.resourceMovements !== undefined) {
       this.applyResourceMovements(state.resourceMovements);
     }
-    if (!presentationDeltaOnly || state.sprayTargets !== undefined) {
+    if (carriesPresentationSets || state.sprayTargets !== undefined) {
       this.sprayTargetStore.applySnapshot(state.sprayTargets);
     }
 
@@ -3461,7 +3469,7 @@ export class ClientViewStateBase {
     // Snapshot owns the full list of active scan pulses for this
     // client's team. Length is small (a few at most), so a fresh copy
     // each snapshot is cheaper than maintaining incremental state.
-    if (!presentationDeltaOnly || state.scanPulses !== undefined || state.serverMeta !== undefined) {
+    if (carriesPresentationSets || state.scanPulses !== undefined) {
       const incomingPulses = state.scanPulses;
       if (incomingPulses && incomingPulses.length > 0) {
         this.scanPulses.length = incomingPulses.length;

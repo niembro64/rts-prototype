@@ -751,6 +751,42 @@ export function runClientSnapshotApplierContractTest(): void {
   );
   assertHudContains(view, id, true);
 
+  // Work sprays are a presentation SET, restated by every snapshot that
+  // carries entity state. An entity delta with no sprays means the work
+  // stopped — a finished building must not keep getting sprayed. Only a
+  // projectile-only delta says nothing about sprays at all.
+  const sprayView = new ClientViewState();
+  const sprayingSnapshot = snapshot(1, [fullUnitEntity(id, 60, 100)]);
+  sprayingSnapshot.sprayTargets = [{
+    source: { id, pos: { x: 10, y: 20 }, z: 30, playerId: 2 as PlayerId },
+    target: { id: id + 1, pos: { x: 100, y: 200 }, z: 300, radius: 5, dim: null },
+    type: 'build',
+    intensity: 1,
+    speed: null,
+    particleRadius: null,
+    ballSpawnRate: null,
+  }];
+  sprayView.applyNetworkState(sprayingSnapshot);
+  assertContract(
+    sprayView.getSprayTargets().length === 1,
+    'a snapshot carrying a spray must start that spray',
+  );
+  const sprayStoppedDelta = snapshot(2, [movementOnlySparseEntity(id)]);
+  sprayStoppedDelta.entityDeltaOnly = true;
+  sprayView.applyNetworkState(sprayStoppedDelta);
+  assertContract(
+    sprayView.getSprayTargets().length === 0,
+    'an entity delta with no sprays must stop the spray, not latch the last one',
+  );
+  sprayView.applyNetworkState(sprayingSnapshot);
+  const sprayProjectileDelta = snapshot(3, []);
+  sprayProjectileDelta.projectileDeltaOnly = true;
+  sprayView.applyNetworkState(sprayProjectileDelta);
+  assertContract(
+    sprayView.getSprayTargets().length === 1,
+    'a projectile-only delta carries no spray information and must leave the set alone',
+  );
+
   view.applyNetworkState(snapshot(2, [movementOnlySparseEntity(id)]));
   assertContract(
     view.getEntity(id)?.unit?.hp === 60,

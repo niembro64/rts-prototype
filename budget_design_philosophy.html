@@ -4261,11 +4261,26 @@
       <h3>Hard invariant: construction and repair show build power</h3>
       <p>
         Builders and factories own one build-power capability and one or more authored work-emitter
-        points. Construction and repair emit the same outward, team-coloured particle stream.
+        points. Construction and repair emit the same outward particle stream.
         Particle density follows <em>realized work</em>: construction progress or restored HP
         converted through the target&rsquo;s original build duration. It never follows independent
         metal and energy rates.
       </p>
+      <p>
+        <strong>Build spray is bright green</strong>, as in Total Annihilation &mdash; not the
+        builder&rsquo;s team colour. Nanolathe work is the same physical act whoever performs it, and
+        one fixed colour makes &ldquo;something is being built here&rdquo; readable across the whole
+        map at a glance, including on a team whose colour is dim, blue-grey, or already carried by
+        the structure being built. Team identity is already written on the builder, the frame, and
+        the HUD; spending a fourth channel on it costs the read and buys nothing. Repair keeps its
+        own white so the two acts stay distinguishable, and pylon resource balls keep their
+        per-resource colours &mdash; those encode <em>which</em> resource, which green would erase.
+      </p>
+      <ul class="rule-list">
+        <li>The spray colour is authored in <code>resourceConfig.json</code>, not derived from the player, and applies to construction, assist, and reclaim alike.</li>
+        <li>Spray particles are <strong>presentation only</strong>. They carry no simulation state, are never serialized, and no gameplay decision may read one. Their count, jitter, spin, and lifetime are free to differ between clients.</li>
+        <li>Each particle tumbles on its own axis at its own rate, seeded from the particle rather than from a clock, so a stream reads as thrown material instead of sliding cards. Spin is a rotation written into an instance matrix the renderer already uploads &mdash; it must not cost a second buffer, a second draw, or per-particle CPU state.</li>
+      </ul>
       <ul class="rule-list">
         <li>
           Construction consumes metal and energy as one coupled work step. If either resource is

@@ -3,6 +3,7 @@ import type { SprayTarget } from '@/types/ui';
 import { getSprayTargetWireFlags } from '../network/sprayTargetWireHelpers';
 import { serializeSprayTargets } from '../network/stateSerializerSpray';
 import { SprayRenderer3D } from './SprayRenderer3D';
+import { RESOURCE_CONFIG } from '@/resourceConfig';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) throw new Error(`SprayRenderer3D contract: ${message}`);
@@ -16,6 +17,10 @@ type SprayParticleDebugState = {
   pEndX: Float32Array;
   pEndY: Float32Array;
   pEndZ: Float32Array;
+  pR: Float32Array;
+  pG: Float32Array;
+  pB: Float32Array;
+  pSpinRate: Float32Array;
 };
 
 function makeDirectSpray(inverse: boolean): SprayTarget {
@@ -71,6 +76,33 @@ export function runSprayRenderer3DContractTest(): void {
     assertNear(state.pEndX[1], 10, 'inverse spray must converge on builder x');
     assertNear(state.pEndY[1], 30, 'inverse spray must converge on builder z/height');
     assertNear(state.pEndZ[1], 20, 'inverse spray must converge on builder ground y');
+
+    // Build spray is the authored nanolathe green for every player, and it
+    // tumbles. Both are presentation facts, so the renderer owns them.
+    const [buildR, buildG, buildB] = RESOURCE_CONFIG.spray.buildRgb01;
+    for (let i = 0; i < 2; i++) {
+      assertNear(state.pR[i], buildR, 'build spray must use the authored green, not a team color');
+      assertNear(state.pG[i], buildG, 'build spray must use the authored green, not a team color');
+      assertNear(state.pB[i], buildB, 'build spray must use the authored green, not a team color');
+      assertContract(state.pSpinRate[i] > 0, 'build spray particles must tumble');
+    }
+
+    const otherTeamSpray = makeDirectSpray(false);
+    otherTeamSpray.source = { ...otherTeamSpray.source, playerId: 4 };
+    renderer.update([], 0, [otherTeamSpray]);
+    state = renderer as unknown as SprayParticleDebugState;
+    assertNear(state.pR[2], buildR, 'a second player must spray the same green');
+    assertNear(state.pG[2], buildG, 'a second player must spray the same green');
+    assertNear(state.pB[2], buildB, 'a second player must spray the same green');
+
+    // Pylon resource balls ride the same 'build' path but carry an explicit
+    // per-resource color, which must survive and must not tumble.
+    const pylonSpray = makeDirectSpray(false);
+    pylonSpray.colorRGB = { r: 0.9, g: 0.2, b: 0.1 };
+    renderer.update([], 0, [pylonSpray]);
+    state = renderer as unknown as SprayParticleDebugState;
+    assertNear(state.pR[3], 0.9, 'an explicit spray color must win over the build green');
+    assertContract(state.pSpinRate[3] === 0, 'pylon resource balls must not tumble');
   } finally {
     renderer.destroy();
   }

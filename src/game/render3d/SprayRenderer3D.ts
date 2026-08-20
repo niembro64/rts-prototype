@@ -78,6 +78,20 @@ const MAX_PARTICLES = RESOURCE_CONFIG.spray.maxParticles;
  *  don't take the caster's team color. Constant white. */
 const [HEAL_R, HEAL_G, HEAL_B] = RESOURCE_CONFIG.spray.healRgb01;
 
+/** Build-spray color — Total Annihilation's nanolathe green, the same for
+ *  every player. Build spray answers "something is being built here", which
+ *  reads across the map only if it is one fixed color; team identity is
+ *  already carried by the builder, the frame, and the HUD. See
+ *  budget_design_philosophy.html, "Build spray is bright green". */
+const [BUILD_R, BUILD_G, BUILD_B] = RESOURCE_CONFIG.spray.buildRgb01;
+
+/** Radians of per-particle tumble per second. */
+const BUILD_PARTICLE_SPIN_RATE =
+  RESOURCE_CONFIG.spray.buildParticleSpinTurnsPerSecond * Math.PI * 2;
+
+const HEAL_COLOR = { r: HEAL_R, g: HEAL_G, b: HEAL_B } as const;
+const BUILD_COLOR = { r: BUILD_R, g: BUILD_G, b: BUILD_B } as const;
+
 /** Build-spray color alpha (matches the previous per-team
  *  MeshBasicMaterial.opacity = 0.85). Heal trails were 0.8 — we use
  *  one global alpha here since the visual difference is tiny. */
@@ -121,6 +135,13 @@ export class SprayRenderer3D {
   private pWobble = new Float32Array(MAX_PARTICLES);
   private pArc = new Float32Array(MAX_PARTICLES);
   private pSeed = new Float32Array(MAX_PARTICLES);
+  // Per-particle tumble: a seeded unit axis and a rate in radians/sec.
+  // Zero rate means "no spin" (heal + pylon particles), which keeps the
+  // write loop on its cheap scale+translate path.
+  private pSpinAxisX = new Float32Array(MAX_PARTICLES);
+  private pSpinAxisY = new Float32Array(MAX_PARTICLES);
+  private pSpinAxisZ = new Float32Array(MAX_PARTICLES);
+  private pSpinRate = new Float32Array(MAX_PARTICLES);
   private pR = new Float32Array(MAX_PARTICLES);
   private pG = new Float32Array(MAX_PARTICLES);
   private pB = new Float32Array(MAX_PARTICLES);
@@ -139,6 +160,11 @@ export class SprayRenderer3D {
   // Scratch matrix reused across the per-particle write loop —
   // particles are spheres so the rotation component is identity.
   private _scratchMat = new THREE.Matrix4();
+  // Spin composition scratch — reused, never allocated per particle.
+  private _scratchQuat = new THREE.Quaternion();
+  private _scratchAxis = new THREE.Vector3();
+  private _scratchPos = new THREE.Vector3();
+  private _scratchScale = new THREE.Vector3();
   // Scratch Color for per-team color resolution (cached lookup
   // across frames via `_teamColorCache` — getPlayerPrimaryColor
   // returns a hex int, we unpack to RGB once per pid). Keeps the
@@ -308,9 +334,9 @@ export class SprayRenderer3D {
     if (spray.colorRGB) {
       return spray.colorRGB;
     }
-    if (spray.type === 'heal' || spray.source.playerId === undefined) {
-      return { r: HEAL_R, g: HEAL_G, b: HEAL_B };
-    }
+    if (spray.type === 'heal') return HEAL_COLOR;
+    if (spray.type === 'build') return BUILD_COLOR;
+    if (spray.source.playerId === undefined) return HEAL_COLOR;
     const cached = this._teamColorCache.get(spray.source.playerId);
     if (cached) return cached;
     const color = hexToRgb01(getPlayerPrimaryColor(spray.source.playerId));
@@ -659,6 +685,26 @@ export class SprayRenderer3D {
       ? 0
       : Math.min(18, Math.max(3, len * 0.045));
     this.pSeed[idx] = this.random() * Math.PI * 2;
+    // Build pellets tumble; heal and pylon balls do not. The axis is drawn
+    // once at emission (uniform on the sphere) and the angle is derived from
+    // the particle's own age, so spin costs no per-frame state.
+    // Only the nanolathe stream tumbles. Pylon resource balls are also
+    // 'build' sprays but carry an explicit per-resource color; they read as
+    // flowing material and keep their steady pose.
+    if (spray.type === 'build' && spray.colorRGB === undefined) {
+      const cosTheta = 1 - 2 * this.random();
+      const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
+      const phi = this.random() * Math.PI * 2;
+      this.pSpinAxisX[idx] = sinTheta * Math.cos(phi);
+      this.pSpinAxisY[idx] = cosTheta;
+      this.pSpinAxisZ[idx] = sinTheta * Math.sin(phi);
+      this.pSpinRate[idx] = BUILD_PARTICLE_SPIN_RATE * (0.6 + this.random() * 0.8);
+    } else {
+      this.pSpinAxisX[idx] = 0;
+      this.pSpinAxisY[idx] = 1;
+      this.pSpinAxisZ[idx] = 0;
+      this.pSpinRate[idx] = 0;
+    }
     this.pR[idx] = r;
     this.pG[idx] = g;
     this.pB[idx] = b;
@@ -712,6 +758,10 @@ export class SprayRenderer3D {
       this.pWobble[index] = this.pWobble[last];
       this.pArc[index] = this.pArc[last];
       this.pSeed[index] = this.pSeed[last];
+      this.pSpinAxisX[index] = this.pSpinAxisX[last];
+      this.pSpinAxisY[index] = this.pSpinAxisY[last];
+      this.pSpinAxisZ[index] = this.pSpinAxisZ[last];
+      this.pSpinRate[index] = this.pSpinRate[last];
       this.pR[index] = this.pR[last];
       this.pG[index] = this.pG[last];
       this.pB[index] = this.pB[last];
@@ -812,8 +862,17 @@ export class SprayRenderer3D {
       const size = this.pUniformSize[i]
         ? this.pSize[i]
         : this.pSize[i] * (0.78 + 0.36 * phase);
-      this._scratchMat.makeScale(size, size, size);
-      this._scratchMat.setPosition(px, py, pz);
+      const spinRate = this.pSpinRate[i];
+      if (spinRate > 0) {
+        this._scratchAxis.set(this.pSpinAxisX[i], this.pSpinAxisY[i], this.pSpinAxisZ[i]);
+        this._scratchQuat.setFromAxisAngle(this._scratchAxis, this.pSeed[i] + this.pAge[i] * spinRate);
+        this._scratchPos.set(px, py, pz);
+        this._scratchScale.set(size, size, size);
+        this._scratchMat.compose(this._scratchPos, this._scratchQuat, this._scratchScale);
+      } else {
+        this._scratchMat.makeScale(size, size, size);
+        this._scratchMat.setPosition(px, py, pz);
+      }
       const tier = view
         ? geometryTierForDetail(detailLevelForViewPosition(view, px, pz, py, size))
         : 'close';
