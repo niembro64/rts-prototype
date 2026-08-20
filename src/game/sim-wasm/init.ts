@@ -1524,6 +1524,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         await runDeterministicLockstepBackendContractTest();
         const { runCommandSanitizerContractTest } = await import('../server/commandSanitizerContractTest');
         runCommandSanitizerContractTest();
+        const { runCaptureControllerContractTest } = await import('../capture/CaptureControllerContractTest');
+        runCaptureControllerContractTest();
         const { runServerSnapshotPublisherContractTest } = await import('../server/ServerSnapshotPublisherContractTest');
         runServerSnapshotPublisherContractTest();
         const { runLockstepCommandProtocolContractTest } = await import('../architecture/LockstepCommandProtocolContractTest');

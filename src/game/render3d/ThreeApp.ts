@@ -143,6 +143,11 @@ export class ThreeApp {
   private _renderEnabled = true;
   private _drawSuspended = false;
   private _destroyed = false;
+  /** One-shot callbacks drained right after the WebGL draw, while the
+   *  drawing buffer still holds this frame (preserveDrawingBuffer stays
+   *  false; same-task reads are the supported way to capture it). */
+  private _capturePostRenderCallbacks: Array<(canvas: HTMLCanvasElement) => void> = [];
+  private _captureFidelityHold = false;
   private readonly _zoomTerrainPointsOverlay: ZoomTerrainPointsOverlay3D;
 
   constructor(
@@ -392,6 +397,29 @@ export class ThreeApp {
     this._drawSuspended = suspended;
   }
 
+  /** Run `callback` once, immediately after the next completed WebGL draw,
+   *  in the same task — the only moment the non-preserved drawing buffer is
+   *  guaranteed to hold the frame. Used by clean-frame screenshot capture. */
+  requestCapturePostRender(callback: (canvas: HTMLCanvasElement) => void): void {
+    this._capturePostRenderCallbacks.push(callback);
+  }
+
+  /** While held, capture fidelity is pinned at the profile maximum: the
+   *  dynamic pixel-ratio governor is suspended and DPR is raised to
+   *  min(native, profile cap), so a recording neither drifts in resolution
+   *  mid-clip nor sits at a degraded rung the governor picked earlier. */
+  setCaptureFidelityHold(active: boolean): void {
+    if (this._captureFidelityHold === active) return;
+    this._captureFidelityHold = active;
+    if (!active) return;
+    const maxRatio = Math.min(this._nativePixelRatio, this._runtimeProfile.pixelRatioCap);
+    if (Math.abs(maxRatio - this._activePixelRatio) < 0.01) return;
+    this._activePixelRatio = maxRatio;
+    this.renderer.setPixelRatio(maxRatio);
+    const canvas = this.renderer.domElement;
+    this.resizeRenderer(canvas.clientWidth, canvas.clientHeight, false, true);
+  }
+
   setCameraFovDegrees(fovDegrees: number): void {
     this.orbit.setFovDegrees(fovDegrees);
   }
@@ -452,6 +480,13 @@ export class ThreeApp {
         rendererRenderMs = performance.now() - renderStart;
         this.gpuTimer.end();
         this.frameProfiler.endFrame(this.renderer, rendererRenderMs);
+        // Capture callbacks must run before adjustPixelRatio: a pixel-ratio
+        // resize reallocates the drawing buffer and would clear the frame.
+        if (this._capturePostRenderCallbacks.length > 0) {
+          const callbacks = this._capturePostRenderCallbacks;
+          this._capturePostRenderCallbacks = [];
+          for (const callback of callbacks) callback(this.renderer.domElement);
+        }
         // Poll results from any queries that resolved during this frame —
         // results arrive 2-3 frames after the begin/end pair, so `getGpuMs()`
         // always reflects slightly stale data (acceptable for a UI readout).
@@ -469,6 +504,8 @@ export class ThreeApp {
     // buffer is reallocated by setPixelRatio()+setSize(). Those profiles
     // keep DPR stable; browser desktop keeps the adaptive quality loop.
     if (!this._dynamicPixelRatioEnabled) return;
+    // A live capture pins resolution; the governor resumes when it ends.
+    if (this._captureFidelityHold) return;
     if (now - this._lastPixelRatioAdjustMs < 750) return;
 
     const gpuMs = this.gpuTimer.getGpuMs();
@@ -526,6 +563,7 @@ export class ThreeApp {
     this.stop();
     this._updateCallback = null;
     this._frameCompleteCallback = null;
+    this._capturePostRenderCallbacks = [];
     this._zoomTerrainPointsOverlay.destroy();
     this.orbit.destroy();
     this._resizeObserver.disconnect();

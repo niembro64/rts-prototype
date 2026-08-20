@@ -122,6 +122,9 @@ export type CommandHotkeyId =
   | 'ui.volumeIncrease'
   | 'ui.volumeDecrease'
   | 'ui.captureScreenshot'
+  | 'ui.capturePicHud'
+  | 'ui.captureVidRaw'
+  | 'ui.captureVidHud'
   | 'ui.toggleFullscreen'
   | 'ui.chat'
   | 'ui.mapDraw'
@@ -306,6 +309,9 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'ui.volumeIncrease',
   'ui.volumeDecrease',
   'ui.captureScreenshot',
+  'ui.capturePicHud',
+  'ui.captureVidRaw',
+  'ui.captureVidHud',
   'ui.toggleFullscreen',
   'ui.chat',
   'ui.mapDraw',
@@ -518,7 +524,10 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'ui.muteSound': 'Mute Sound',
   'ui.volumeIncrease': 'Volume Up',
   'ui.volumeDecrease': 'Volume Down',
-  'ui.captureScreenshot': 'Screenshot',
+  'ui.captureScreenshot': 'Screenshot (No HUD)',
+  'ui.capturePicHud': 'Screenshot With HUD',
+  'ui.captureVidRaw': 'Record Video (No HUD)',
+  'ui.captureVidHud': 'Record Video With HUD',
   'ui.toggleFullscreen': 'Toggle Fullscreen',
   'ui.chat': 'Chat',
   'ui.mapDraw': 'Draw On Map',
@@ -731,6 +740,9 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'ui.volumeIncrease': [],
     'ui.volumeDecrease': [],
     'ui.captureScreenshot': [code('F12', 'F12', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.capturePicHud': [],
+    'ui.captureVidRaw': [],
+    'ui.captureVidHud': [],
     'ui.toggleFullscreen': [key('Alt+Backspace', 'backspace', { alt: true })],
     'ui.chat': [key('Enter', 'enter', { shift: 'any' })],
     'ui.mapDraw': [code('Ctrl+Shift+D', 'KeyD', { ctrl: true, shift: true })],
@@ -919,6 +931,9 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
       code('Numpad-', 'NumpadSubtract'),
     ],
     'ui.captureScreenshot': [code('F12', 'F12', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.capturePicHud': [],
+    'ui.captureVidRaw': [],
+    'ui.captureVidHud': [],
     'ui.toggleFullscreen': [key('Alt+Backspace', 'backspace', { alt: true })],
     'ui.chat': [key('Enter', 'enter', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.mapDraw': [code('`', 'Backquote')],
@@ -1113,6 +1128,9 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
       code('Numpad-', 'NumpadSubtract'),
     ],
     'ui.captureScreenshot': [code('F12', 'F12', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.capturePicHud': [],
+    'ui.captureVidRaw': [],
+    'ui.captureVidHud': [],
     'ui.toggleFullscreen': [
       key('Alt+Backspace', 'backspace', { alt: true }),
       key('Alt+Enter', 'enter', { alt: true }),

@@ -1,0 +1,52 @@
+{
+  "filenamePrefix": "budget-annihilation",
+  "stillMimeType": "image/png",
+  "videoMimeTypePreference": [
+    "video/webm;codecs=vp9",
+    "video/webm;codecs=vp8",
+    "video/webm",
+    "video/mp4"
+  ],
+  "videoBitsPerPixelPerFrame": 0.1,
+  "videoReferenceFramesPerSecond": 60,
+  "minVideoBitsPerSecond": 8000000,
+  "maxVideoBitsPerSecond": 85000000,
+  "recorderChunkIntervalMs": 1000,
+  "maxVideoDurationSeconds": 600,
+  "displayCaptureIdealFrameRate": 240,
+  "stillCaptureTimeoutMs": 4000,
+  "modes": [
+    {
+      "id": "vid-hud",
+      "media": "video",
+      "source": "display",
+      "hud": true,
+      "label": "VID HUD",
+      "title": "Record video of exactly what you see, HUD included (tab capture)"
+    },
+    {
+      "id": "vid-raw",
+      "media": "video",
+      "source": "canvas",
+      "hud": false,
+      "label": "VID RAW",
+      "title": "Record clean gameplay video — world only, no HUD"
+    },
+    {
+      "id": "pic-hud",
+      "media": "still",
+      "source": "display",
+      "hud": true,
+      "label": "PIC HUD",
+      "title": "Screenshot of exactly what you see, HUD included (tab capture)"
+    },
+    {
+      "id": "pic-raw",
+      "media": "still",
+      "source": "canvas",
+      "hud": false,
+      "label": "PIC RAW",
+      "title": "Clean screenshot — world only, no HUD"
+    }
+  ]
+}

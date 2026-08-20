@@ -11,6 +11,7 @@ import {
   writeFogShadePresentationSettings,
 } from '@/clientBarConfig';
 import type { SelectionHudMode } from '@/clientBarConfig';
+import { areCaptureInstrumentsHidden } from '@/game/capture/captureInstrumentGate';
 import { isAttackEmitter } from '@/game/sim/emitterKinds';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { CameraViewBasis, SprayTarget } from '@/types/ui';
@@ -161,6 +162,10 @@ type RenderPhaseEntityListOptions = {
   includeGroundPrints: boolean;
   hoveredEntity: Entity | null;
 };
+
+/** Shared empty selection used while a clean capture suppresses the
+ *  selection-driven instruments (waypoints, lift probes). */
+const EMPTY_CAPTURE_SELECTION: readonly Entity[] = [];
 
 export class RtsScene3DRenderPhase {
   private renderFrameIndex = 0;
@@ -382,12 +387,18 @@ export class RtsScene3DRenderPhase {
     const effectFrameStride = Math.max(1, graphicsConfig.effectFrameStride | 0);
     const updateHudThisFrame = hudFrameStride <= 1 || this.renderFrameIndex % hudFrameStride === 0;
     const updateEffectsThisFrame = effectFrameStride <= 1 || this.renderFrameIndex % effectFrameStride === 0;
+    // Clean-capture gate: while a no-HUD screenshot/recording is live, every
+    // in-canvas instrument (bars, labels, overlay lines, waypoints, probes)
+    // is suppressed. Level-triggered — read fresh each frame, so the gate
+    // dropping restores everything on the very next frame. Contact blips and
+    // the fog shade stay: sensor truth is world, not instrumentation.
+    const captureClean = areCaptureInstrumentsHidden();
     // Body bars are motion anchors, not just HUD content. They must follow
     // fast units every render frame even when the budget throttles heavier HUD
     // work with hudFrameStride; otherwise flyers visibly jump between stale and
     // current bar positions.
-    const updateNameHudThisFrame = updateHudThisFrame && nameLabel3D !== null;
-    const updateBodyHudThisFrame = healthBar3D !== null;
+    const updateNameHudThisFrame = !captureClean && updateHudThisFrame && nameLabel3D !== null;
+    const updateBodyHudThisFrame = !captureClean && healthBar3D !== null;
     const unitNameHudEnabled = updateNameHudThisFrame &&
       nameLabel3D !== null &&
       getEntityHudToggle('unit', 'name');
@@ -444,6 +455,7 @@ export class RtsScene3DRenderPhase {
     // canvas size (one shared material drives all of them).
     const overlaySize = this.threeApp.renderer.getSize(this._overlayResolution);
     overlayLineSystem.setResolution(overlaySize.x, overlaySize.y);
+    overlayLineSystem.setSuppressed(captureClean);
     sightBoundaryRenderer.update(
       this.clientViewState,
       this.getLocalPlayerId(),
@@ -465,7 +477,7 @@ export class RtsScene3DRenderPhase {
       this.renderScope,
     );
     const inputManager = this.getInputManager();
-    const hoveredEntity = inputManager?.getHoveredEntity() ?? null;
+    const hoveredEntity = captureClean ? null : (inputManager?.getHoveredEntity() ?? null);
     const bodyHudEnabled = updateBodyHudThisFrame &&
       (
         hoveredEntity !== null ||
@@ -509,7 +521,9 @@ export class RtsScene3DRenderPhase {
       rendererPacket,
       this.entityRendererOverlayModes,
     );
-    airLiftProbeOverlay.update(this.selectionSystem.getSelectedUnits());
+    airLiftProbeOverlay.update(
+      captureClean ? EMPTY_CAPTURE_SELECTION : this.selectionSystem.getSelectedUnits(),
+    );
     phaseNow = performance.now();
     timings.entityRendererMs = phaseNow - phaseMark;
     phaseMark = phaseNow;
@@ -695,9 +709,16 @@ export class RtsScene3DRenderPhase {
         hudFrustum,
         entityLists,
       );
+    } else if (captureClean) {
+      // Force an empty begin/end pass so the sprite pools hide whatever the
+      // last instrumented frame left visible — the clean frame must not
+      // inherit stale bars or labels.
+      this.drawEntityHud(healthBar3D, nameLabel3D, hudFrustum, entityLists);
     }
 
-    if (updateHudThisFrame) {
+    if (captureClean) {
+      waypoint3D?.update(EMPTY_CAPTURE_SELECTION, EMPTY_CAPTURE_SELECTION);
+    } else if (updateHudThisFrame) {
       waypoint3D?.update(
         this.selectionSystem.getSelectedUnits(),
         this.selectionSystem.getSelectedBuildings(),

@@ -42,6 +42,14 @@ export class OverlayLineSystem {
     if (width > 0 && height > 0) this.resolution.set(width, height);
   }
 
+  /** Clean-capture gate: every ground overlay line/ring shares this one
+   *  material, so hiding it here hides selection rings, range rings, drag
+   *  boxes, build squares, waypoint lines, and debug boundaries in one move.
+   *  Level-triggered — the render phase calls this every frame. */
+  setSuppressed(suppressed: boolean): void {
+    this.material.visible = !suppressed;
+  }
+
   dispose(): void {
     this.material.dispose();
   }

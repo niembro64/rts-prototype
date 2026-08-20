@@ -20,6 +20,12 @@ import GameCanvasClientControlBar from './GameCanvasClientControlBar.vue';
 import LoadingEmblem from './LoadingEmblem.vue';
 import ChevronIcon from './ChevronIcon.vue';
 import FullscreenToggleIcon from './FullscreenToggleIcon.vue';
+import CaptureControlGrid from './CaptureControlGrid.vue';
+import {
+  CaptureController,
+  type CaptureUiSnapshot,
+} from '../game/capture/CaptureController';
+import type { CaptureModeId } from '@/captureConfig';
 import type {
   GameCanvasBattleControlBarModel,
   GameCanvasClientControlBarModel,
@@ -622,23 +628,31 @@ async function toggleFullscreen(): Promise<void> {
   }
 }
 
-function captureScreenshot(): void {
-  const canvas =
-    containerRef.value?.querySelector('canvas') ??
-    backgroundContainerRef.value?.querySelector('canvas');
-  if (!(canvas instanceof HTMLCanvasElement)) return;
+// Gameplay capture (VID/PIC grid + F12). The controller owns the whole
+// lifecycle — clean-frame instrument hiding, fidelity pinning, MediaRecorder,
+// display capture, and saving; this component only forwards triggers and
+// mirrors the lifecycle into a ref for the grid.
+const captureController = new CaptureController({
+  getApp: () =>
+    foregroundGame.getInstance()?.app ?? getBackgroundBattle()?.gameInstance?.app ?? null,
+  getGameArea: () => gameAreaRef.value,
+  onChanged: () => syncCaptureUi(),
+});
+const captureUi = ref<CaptureUiSnapshot>(captureController.getUiSnapshot());
 
-  canvas.toBlob((blob) => {
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `budget-annihilation-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  }, 'image/png');
+function syncCaptureUi(): void {
+  captureUi.value = captureController.getUiSnapshot();
+}
+
+function triggerCapture(modeId: CaptureModeId): void {
+  captureController.trigger(modeId);
+}
+
+/** The historical SHOT button / F12 entry point — now the clean (no-HUD)
+ *  screenshot. The old direct canvas.toBlob() path read a non-preserved
+ *  drawing buffer outside the render tick and produced blank frames. */
+function captureScreenshot(): void {
+  triggerCapture('pic-raw');
 }
 
 function downloadReplay(): void {
@@ -1042,7 +1056,16 @@ function handleGameUiCommandHotkey(commandId: CommandHotkeyId, event?: KeyboardE
       changeMasterVolumeByBarStep(-1);
       return true;
     case 'ui.captureScreenshot':
-      captureScreenshot();
+      triggerCapture('pic-raw');
+      return true;
+    case 'ui.capturePicHud':
+      triggerCapture('pic-hud');
+      return true;
+    case 'ui.captureVidRaw':
+      triggerCapture('vid-raw');
+      return true;
+    case 'ui.captureVidHud':
+      triggerCapture('vid-hud');
       return true;
     case 'ui.toggleFullscreen':
       void toggleFullscreen();
@@ -1213,6 +1236,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('blur', handleGameUiWindowBlur);
   endUnitStatsHold();
   clearBarMapDrawTap();
+  captureController.dispose();
   bottomControlsResizeObserver?.disconnect();
   bottomControlsResizeObserver = null;
 });
@@ -2662,6 +2686,15 @@ watchEffect(() => {
       >
         ⏸ PAUSED
       </div>
+
+      <CaptureControlGrid
+        v-if="gameplayHudVisible"
+        :availability="captureUi.availability"
+        :lifecycle-state="captureUi.lifecycleState"
+        :recording-mode-id="captureUi.recordingModeId"
+        :recording-started-at-ms="captureUi.recordingStartedAtMs"
+        @trigger="triggerCapture"
+      />
 
       <button
         v-if="gameplayHudVisible"

@@ -1235,6 +1235,9 @@ export class Input3DKeyboardController {
       case 'ui.volumeIncrease':
       case 'ui.volumeDecrease':
       case 'ui.captureScreenshot':
+      case 'ui.capturePicHud':
+      case 'ui.captureVidRaw':
+      case 'ui.captureVidHud':
       case 'ui.toggleFullscreen':
       case 'ui.chat':
       case 'ui.mapDraw':
