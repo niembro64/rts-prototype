@@ -4,10 +4,10 @@
     "probeAggregation": "average"
   },
   "refresh": {
-    "bucketCount": 10
+    "bucketCount": 16
   },
   "spacing": {
-    "world": 150
+    "world": 100
   },
   "sets": {
     "single": {
@@ -30,10 +30,9 @@
         { "forward": 0, "lateral": 0 },
         { "forward": 2, "lateral": 0 },
         { "forward": 4, "lateral": 0 },
-        { "forward": 6, "lateral": 0 },
-        { "forward": 0, "lateral": 2 },
-        { "forward": 0, "lateral": -2 },
-        { "forward": -2, "lateral": 0 }
+        { "forward": -1, "lateral": 0 },
+        { "forward": 0, "lateral": 1 },
+        { "forward": 0, "lateral": -1 }
       ]
     }
   }

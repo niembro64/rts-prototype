@@ -265,12 +265,14 @@ export function wrapCaptionFields(
     const rowsLeft = rows - out.length;
     const fieldsLeft = fields.length - index;
     // Break when this field would push the row past its share — but never so
-    // early that a later row would be left with nothing to set.
+    // early that a later row would be left with nothing to set. Breaking here
+    // closes one row and leaves `fieldsLeft` fields to fill `rowsLeft - 1`,
+    // so that is exactly the count this field has to clear.
     if (
       current.length > 0 &&
       currentWidth + added > target &&
       rowsLeft > 1 &&
-      fieldsLeft > rowsLeft - 1
+      fieldsLeft >= rowsLeft - 1
     ) {
       out.push(current.join(FIELD_SEPARATOR));
       current = [];

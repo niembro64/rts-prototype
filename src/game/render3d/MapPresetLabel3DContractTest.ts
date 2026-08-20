@@ -55,8 +55,12 @@ export function runMapPresetLabel3DContractTest(): void {
   // block. Aspects here are "candidate block width / height" for one row
   // count each, widest first as row counts go up.
   assertContract(
-    pickCaptionWrap([8, 4.4, 2.9, 2.0], 2.75) === 1,
+    pickCaptionWrap([8, 4.4, 2.9, 2.0], 2.75) === 2,
     'the wrap must take the narrowest block still wider than the table',
+  );
+  assertContract(
+    pickCaptionWrap([8, 4.4, 2.9, 2.0], 3.5) === 1,
+    'a block narrower than the table is never a candidate, however close',
   );
   assertContract(
     pickCaptionWrap([8, 4.4, 2.9, 2.0], 2.9) === 2,
