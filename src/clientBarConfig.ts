@@ -1136,16 +1136,24 @@ export const AA_RESOLUTION_MODE_OPTIONS: OptionList<AntialiasResolutionMode> = [
   { value: 200, label: '200' },
 ];
 
+// Authored defaults, used whenever no valid persisted value exists and by
+// the CLIENT bar's reset-to-defaults sweep.
+export const AA_MSAA_MODE_DEFAULT: AntialiasMsaaMode = 'default';
+export const AA_RESOLUTION_MODE_DEFAULT: AntialiasResolutionMode = 200;
+
 function parseStoredAaMsaaMode(raw: string | null): AntialiasMsaaMode {
-  if (raw === '4x' || raw === '8x' || raw === 'max') return raw;
-  return 'default';
+  if (raw === 'default' || raw === '4x' || raw === '8x' || raw === 'max') return raw;
+  return AA_MSAA_MODE_DEFAULT;
 }
 
 function parseStoredAaResolutionMode(raw: string | null): AntialiasResolutionMode {
-  if (raw === null || raw === 'auto') return 'auto';
-  const parsed = Number(raw);
-  const matched = AA_RESOLUTION_MODE_OPTIONS.find((opt) => opt.value === parsed);
-  return matched ? matched.value : 'auto';
+  if (raw === 'auto') return 'auto';
+  if (raw !== null) {
+    const parsed = Number(raw);
+    const matched = AA_RESOLUTION_MODE_OPTIONS.find((opt) => opt.value === parsed);
+    if (matched) return matched.value;
+  }
+  return AA_RESOLUTION_MODE_DEFAULT;
 }
 
 let currentAaMsaaMode: AntialiasMsaaMode =
