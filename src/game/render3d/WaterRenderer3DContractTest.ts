@@ -6,8 +6,11 @@ import {
 } from '@/clientBarConfig';
 import { getFloatingWaterOverhang, getWaterBoxFloorY } from './WorldBoxGeometry3D';
 import {
+  mapInfoAnnexHalfWidthAt,
+  mapInfoAnnexRowPointX,
+  mapInfoAnnexRowPointZ,
   resolveMapInfoAnnexFootprint,
-  resolveMapInfoAnnexLiquidRect,
+  resolveMapInfoAnnexLiquidRows,
 } from './MapInfoAnnex3D';
 import { WATER_LEVEL } from '../sim/Terrain';
 import { WATER_BOX_FACES, WaterRenderer3D } from './WaterRenderer3D';
@@ -89,22 +92,36 @@ export function runWaterRenderer3DContractTest(): void {
 
     const overhang = getFloatingWaterOverhang();
     const annex = resolveMapInfoAnnexFootprint(mapWidth, mapHeight);
-    const arm = resolveMapInfoAnnexLiquidRect(annex, overhang, mapWidth, mapHeight);
+    const armRows = resolveMapInfoAnnexLiquidRows(annex, overhang, 400);
+    const armSeam = armRows[0];
+    const armRim = armRows[armRows.length - 1];
+    const armMinZ = mapInfoAnnexRowPointZ(annex, armRim, 0);
+    const armSeamMinX = Math.min(
+      mapInfoAnnexRowPointX(annex, armSeam, -1),
+      mapInfoAnnexRowPointX(annex, armSeam, 1),
+    );
+    const armSeamMaxX = Math.max(
+      mapInfoAnnexRowPointX(annex, armSeam, -1),
+      mapInfoAnnexRowPointX(annex, armSeam, 1),
+    );
     const bounds = new Map(curtains.map((curtain) => {
       curtain.geometry.computeBoundingBox();
       return [curtain.name.slice('WaterCurtain:'.length), curtain.geometry.boundingBox];
     }));
-    // Each face mesh still owns exactly the plane(s) of its own direction —
-    // the annex's arm adds panels to the sides it actually touches and to no
-    // others, so transparent sorting still orders the box by direction.
+    // Each face mesh still owns the plane(s) of its own direction — the arm
+    // sorts each of its segments onto the face its outward normal most nearly
+    // points at, so transparent sorting still orders the box by direction.
+    // The arm's flanks are diagonal now, so a face's bounds reach as far as
+    // the segments it took, not to a rectangle's corner.
     assertContract(
       Math.abs((bounds.get('north')?.max.z ?? Infinity) + overhang) < 1e-6
-        && Math.abs((bounds.get('north')?.min.z ?? Infinity) - arm.minZ) < 1e-6,
+        && Math.abs((bounds.get('north')?.min.z ?? Infinity) - armMinZ) < 1e-6,
       'the north face must run from the map boundary out to the annex arm and no further',
     );
     assertContract(
-      Math.abs((bounds.get('east')?.min.x ?? Infinity) - arm.maxX) < 1e-6
-        && Math.abs((bounds.get('east')?.max.x ?? Infinity) - (mapWidth + overhang)) < 1e-6,
+      Math.abs((bounds.get('east')?.max.x ?? Infinity) - (mapWidth + overhang)) < 1e-6
+        && (bounds.get('east')?.min.x ?? Infinity) < armSeamMaxX + 1e-6
+        && (bounds.get('east')?.min.z ?? Infinity) < 0,
       'the east face must own the map boundary and the arm flank on its side',
     );
     assertContract(
@@ -114,7 +131,8 @@ export function runWaterRenderer3DContractTest(): void {
     );
     assertContract(
       Math.abs((bounds.get('west')?.min.x ?? Infinity) + overhang) < 1e-6
-        && Math.abs((bounds.get('west')?.max.x ?? Infinity) - arm.minX) < 1e-6,
+        && (bounds.get('west')?.max.x ?? -Infinity) > armSeamMinX - 1e-6
+        && (bounds.get('west')?.min.z ?? Infinity) < 0,
       'the west face must own the map boundary and the arm flank on its side',
     );
     // The opened span of the attached side is what the arm closes further
@@ -128,8 +146,8 @@ export function runWaterRenderer3DContractTest(): void {
       const z = northPositions.getZ(vertex);
       assertContract(
         Math.abs(z + overhang) > 1e-6
-          || x <= arm.minX + 1e-6
-          || x >= arm.maxX - 1e-6,
+          || x <= armSeamMinX + 1e-6
+          || x >= armSeamMaxX - 1e-6,
         'the map boundary must be OPEN across the annex arm, not walled off inside the liquid',
       );
     }
@@ -148,10 +166,10 @@ export function runWaterRenderer3DContractTest(): void {
       'the bottom face must lie flat at the water box floor',
     );
     assertContract(
-      Math.abs(bottomBounds.min.x - Math.min(-overhang, arm.minX)) < 1e-6
-        && Math.abs(bottomBounds.max.x - Math.max(mapWidth + overhang, arm.maxX)) < 1e-6
-        && Math.abs(bottomBounds.min.z - Math.min(-overhang, arm.minZ)) < 1e-6
-        && Math.abs(bottomBounds.max.z - Math.max(mapHeight + overhang, arm.maxZ)) < 1e-6,
+      Math.abs(bottomBounds.min.x + overhang) < 1e-6
+        && Math.abs(bottomBounds.max.x - (mapWidth + overhang)) < 1e-6
+        && Math.abs(bottomBounds.min.z - armMinZ) < 1e-6
+        && Math.abs(bottomBounds.max.z - (mapHeight + overhang)) < 1e-6,
       'the bottom face must span the whole overhanging water footprint, annex arm included',
     );
     // The surface is the same footprint at the liquid level: the annex is
@@ -162,9 +180,32 @@ export function runWaterRenderer3DContractTest(): void {
       surfaceBounds !== null
         && Math.abs(surfaceBounds.min.y - WATER_LEVEL) < 1e-6
         && Math.abs(surfaceBounds.max.y - WATER_LEVEL) < 1e-6
-        && Math.abs(surfaceBounds.min.z - Math.min(-overhang, arm.minZ)) < 1e-6,
+        && Math.abs(surfaceBounds.min.z - armMinZ) < 1e-6,
       'the liquid surface must reach over the annex at exactly the map\'s own level',
     );
+    // THE ARM FOLLOWS THE HEADLAND, NOT ITS BOX. Every liquid vertex out past
+    // the map's own border has to sit within one overhang of the land — a
+    // bounding-box arm would put its corners a good deal further out than
+    // that, in a wedge of slack water at each cut corner.
+    for (const face of [...curtains, surface]) {
+      const positions = face.geometry.getAttribute('position');
+      for (let vertex = 0; vertex < positions.count; vertex++) {
+        const z = positions.getZ(vertex);
+        if (z >= -overhang - 1e-6) continue;
+        const x = positions.getX(vertex);
+        const out = (x - annex.attachX) * annex.outX + (z - annex.attachZ) * annex.outZ;
+        const across = Math.abs(
+          (x - annex.attachX) * annex.alongX + (z - annex.attachZ) * annex.alongZ,
+        );
+        // A world unit of slack: the geometry is float32, and the numbers a
+        // diagonal produces are not exactly representable. Far tighter than
+        // the hundreds of units a bounding-box arm would be out by.
+        assertContract(
+          across <= mapInfoAnnexHalfWidthAt(annex, out, overhang) + 1,
+          `${face.name} must stay inside the annex's own liquid border`,
+        );
+      }
+    }
     const bottomNormal = new THREE.Vector3().fromBufferAttribute(
       bottom.geometry.getAttribute('normal'),
       0,
