@@ -27,14 +27,6 @@ Gates for this work:
 
 ## C. Duplication → helpers (TypeScript)
 
-- [ ] **C1** `ServerBootstrap.bootstrapAsync` and `ServerBootstrap.bootstrap` are two ~200-line
-      near-identical copies (config resolution 94-127 ≡ 308-341, terrain config 130-162 ≡ 348-380,
-      world construction 186-207 ≡ 404-427, roster sets 216-230 ≡ 439-463). The two copies MUST
-      stay identical or host/background worlds desync, so a shared helper is the correct fix.
-      Extract phase-pure helpers; the async copy keeps only its `await report(...)` calls.
-- [ ] **C2** `RtsScene3DFrameTelemetry.ts` declares `RtsScene3DFrameTimingGpuSample` (61-95) as a
-      verbatim 35-field copy of `RtsScene3DFrameTiming` (21-55) minus the timing fields.
-      Replace with `Omit<RtsScene3DFrameTiming, ...>`.
 - [ ] **C3** The `LobbySettings` default factory is written out three times
       (`gameCanvasRealBattleStartup.ts:329-345` and `:650-661`,
       `gameCanvasDeterministicLockstepBackendContractTest.ts:308-322`). Extract one factory.

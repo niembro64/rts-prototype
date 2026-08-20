@@ -55,45 +55,23 @@ export type RtsScene3DFrameTiming = {
   renderPhaseLineProjectileRows: number;
 };
 
-type RtsScene3DFrameTimingGpuSample = {
-  gpuTimerMs: number;
-  gpuTimerSupported: boolean;
-  runtimeProfile: string;
-  nativePixelRatio: number;
-  activePixelRatio: number;
-  dynamicPixelRatioEnabled: boolean;
-  antialiasSamples: number;
-  webglBufferProfilerSupported: boolean;
-  webglRendererRenderMs: number;
-  webglDrawCalls: number;
-  webglTriangles: number;
-  webglPoints: number;
-  webglLines: number;
-  webglGeometries: number;
-  webglTextures: number;
-  webglBufferDataCalls: number;
-  webglBufferSubDataCalls: number;
-  webglBufferUploadBytes: number;
-  renderBudgetTier: string;
-  renderBudgetTierIndex: number;
-  renderBudgetUnitCount: number;
-  renderBudgetHudFrameStride: number;
-  renderBudgetEffectFrameStride: number;
-  renderPhaseScopeMs: number;
-  renderPhaseProjectileQueryMs: number;
-  renderPhaseEntityPacketMs: number;
-  renderPhaseEntityRendererMs: number;
-  renderPhaseTerrainMs: number;
-  renderPhaseBeamMs: number;
-  renderPhaseEffectsMs: number;
-  renderPhaseHudMs: number;
-  renderPhaseUnitRows: number;
-  renderPhaseBuildingRows: number;
-  renderPhaseUnitLodProxyRows: number;
-  renderPhaseBuildingLodProxyRows: number;
-  renderPhaseProjectileRows: number;
-  renderPhaseLineProjectileRows: number;
-};
+/** The per-frame fields the caller samples directly, i.e. everything in
+ *  RtsScene3DFrameTiming except the values this class derives itself from
+ *  its EMA trackers and the longtask observer. */
+type RtsScene3DFrameTimingGpuSample = Omit<
+  RtsScene3DFrameTiming,
+  | 'frameMsAvg'
+  | 'frameMsHi'
+  | 'renderMsAvg'
+  | 'renderMsHi'
+  | 'logicMsAvg'
+  | 'logicMsHi'
+  | 'predMsAvg'
+  | 'predMsHi'
+  | 'longtaskMsPerSec'
+  | 'longtaskCountPerSec'
+  | 'longtaskSupported'
+>;
 
 export class RtsScene3DFrameTelemetry {
   private readonly renderTpsTracker = new EmaTracker(EMA_CONFIG.tps);
