@@ -1764,6 +1764,30 @@
         on. Neither a distance rung nor a manual LOD pin may ever subtract from
         that answer.
       </p>
+      <p>
+        <strong>That mask is the material's, not the field renderer's.</strong>
+        It asks whether this client may read the force material a side is
+        running, so it covers both shapes: a mirror plate is drawn by the unit
+        renderer rather than the field renderer &mdash; it is unit-scale
+        hardware and rides the host's rung, per the paragraph above &mdash; and
+        it still answers the same detection question a dome does. The panel
+        shape escaping the mask once made the Loris the one piece of force
+        material every enemy could see for free, which is worth naming because
+        the failure is structural rather than local: <em>every</em> question
+        asked about force material has to be asked of the material, and a
+        second renderer for the second shape is exactly where that quietly
+        stops happening.
+      </p>
+      <p>
+        What the mask hides is the <em>plate</em>, never the machinery. Support
+        arms, grabbers, and emitter housings are ordinary mounted parts and
+        stay drawn for anyone who can see the unit at all, so a mirror host you
+        are not cleared to read looks precisely like one whose side has no
+        Shield Generator switched on. That collision is deliberate: those two
+        states are supposed to be indistinguishable from the outside, and
+        drawing bare hardware in both is what makes them so. Force material
+        never hides information, but it does not volunteer any either.
+      </p>
     </section>
 
     <section>
@@ -3045,6 +3069,20 @@
         body, so the field comes up with the unit rather than with its scaffolding.
       </p>
       <p>
+        <strong>&ldquo;Every shield&rdquo; means every shape.</strong> Powering is a property of the
+        material, so a directional mirror plate answers to the generator gate and rides the authored
+        transition exactly as a dome does: dark side, no plate; last generator switched off, the
+        plates lower with the domes; unfinished hull, nothing at all. The Loris ran outside that
+        rule for a while &mdash; reflecting and obstructing on its own hit points, snapping on and
+        off with no ramp &mdash; and the reason is worth recording, because it was not a missing
+        line so much as a missing <em>list</em>: the powered-equipment pass walked the hosts that
+        own a <em>barrier</em>, and a plate has no barrier, so the one shape that is not a closed
+        surface fell out of the one pass that says what force material costs. Anything asking
+        &ldquo;which entities are running force material&rdquo; must ask for the emission, never for
+        the barrier geometry; the barrier list answers a narrower question &mdash; which hosts have a
+        field <em>surface</em> to draw and collide &mdash; and the two are not interchangeable.
+      </p>
+      <p>
         Nothing is gated at order time. Shielded units and buildings are buildable whenever their
         factory or builder can make them, and a side with no generator simply fields them
         unshielded. That is deliberately the opposite of a tech unlock: a production lock is
@@ -3067,7 +3105,10 @@
         <em>every</em> path from outside to a target inside it crosses the material and the straight
         segment already gives the physically correct answer at slab cost. Refining the rare
         mid-field-dome and panel-edge geometries with a descending-leg test for high-arc weapons is
-        an allowed future refinement, not the baseline contract.
+        an allowed future refinement, not the baseline contract; its kernel
+        (<code>shield_clearance_arc</code>) is written and walks both shapes through the same panel
+        walk the segment gate uses, but nothing calls it, and the shipped gate stays the straight
+        segment until something does.
       </p>
       <p>
         That gate is <strong>directional, and the direction is the barrier&rsquo;s rather than the

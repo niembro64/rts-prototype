@@ -21,6 +21,7 @@ import {
   updateTurretRotation,
 } from './combat';
 import { getActiveShields } from './combat/shieldTurret';
+import { getActiveShieldPanelTurret } from './shieldPanelRuntime';
 import {
   getProjectileLaunchSpeed,
   isShieldSubmunitionTurret,
@@ -1249,7 +1250,13 @@ function assertShieldAwareTargetingUpgradeContract(): void {
  *    3. One generator powers the whole team's shields, and the LAST one going
  *       dark drops all of them. Switching a generator off is the same as not
  *       having one; switching it back on restores every field.
- *    4. Two seats on the same side share power, and no seat off it does. */
+ *    4. Two seats on the same side share power, and no seat off it does.
+ *
+ *  Every one of them is asserted twice over, on a dome host AND on a mirror
+ *  host, because force material is ONE material in two shapes. A panel that
+ *  answered to hp alone was the only equipment in the game that ran for free:
+ *  it reflected and obstructed with its side's generators dark, and it popped
+ *  in and out instead of riding the authored transition. */
 function assertShieldPowerContract(): void {
   resetTurretHostIntegrationState();
   const world = createIsolatedTestWorld(4471, 2048, 2048);
@@ -1260,16 +1267,26 @@ function assertShieldPowerContract(): void {
   world.addEntity(shieldHost);
   spatialGrid.updateUnit(shieldHost);
 
+  // The panel-shaped half of the same material, on the same side.
+  const mirrorHost = world.createUnitFromBlueprint(700, 400, 1 as PlayerId, 'unitLoris');
+  world.addEntity(mirrorHost);
+  spatialGrid.updateUnit(mirrorHost);
+
   const dtMs = 50;
   // 24 steps clears the authored 500 ms transition ramp in either direction.
   const settleShields = (): void => {
     for (let i = 0; i < 24; i++) updateShieldState(world, dtMs);
   };
+  const mirrorIsUp = (): boolean => getActiveShieldPanelTurret(mirrorHost) !== null;
 
   settleShields();
   assertContract(
     getActiveShields().length === 0,
     'a shield host whose side has no Shield Generator must stand unshielded',
+  );
+  assertContract(
+    !mirrorIsUp(),
+    'a mirror host whose side has no Shield Generator must stand unshielded too',
   );
 
   const generator = world.createBuilding(400, 900, 60, 60, 120, 1 as PlayerId);
@@ -1284,17 +1301,45 @@ function assertShieldPowerContract(): void {
   // An unfinished host stays dark even with the generator up: a shell is not
   // yet a unit, so it has no equipment to run.
   shieldHost.buildable = createBuildable({ energy: 100, metal: 100 });
+  mirrorHost.buildable = createBuildable({ energy: 100, metal: 100 });
   settleShields();
   assertContract(
     getActiveShields().length === 0,
     'a shield host under construction must have no field even with power available',
   );
+  assertContract(
+    !mirrorIsUp(),
+    'a mirror host under construction must have no panel even with power available',
+  );
 
   shieldHost.buildable = null;
+  mirrorHost.buildable = null;
+  // One 50 ms step into the authored 500 ms ramp: both shapes are physically
+  // present the moment their transition leaves zero, and both are still
+  // partway through the raise. A panel that ignored the transition would read
+  // fully up here with no ramp behind it.
+  updateShieldState(world, dtMs);
+  assertContract(
+    getActiveShields().length > 0 && mirrorIsUp(),
+    'both shapes must become physical as soon as their transition leaves zero',
+  );
+  const mirrorPanel = getActiveShieldPanelTurret(mirrorHost);
+  assertContract(
+    mirrorPanel !== null
+      && mirrorPanel.turret.shield !== null
+      && mirrorPanel.turret.shield.transition > 0
+      && mirrorPanel.turret.shield.transition < 1,
+    'a mirror must ride the authored raise transition rather than snapping on',
+  );
+
   settleShields();
   assertContract(
     getActiveShields().length > 0,
     'a finished host on a powered side must raise its field',
+  );
+  assertContract(
+    mirrorIsUp(),
+    'a finished mirror host on a powered side must raise its panel',
   );
 
   // Switching the generator off is the same as not owning one.
@@ -1308,6 +1353,10 @@ function assertShieldPowerContract(): void {
     getActiveShields().length === 0,
     'switching the last Shield Generator OFF must drop every shield on that side',
   );
+  assertContract(
+    !mirrorIsUp(),
+    'switching the last Shield Generator OFF must lower that side\'s mirrors too',
+  );
 
   generatorActiveState.open = true;
   generatorActiveState.wantOpen = true;
@@ -1315,6 +1364,10 @@ function assertShieldPowerContract(): void {
   assertContract(
     getActiveShields().length > 0,
     'switching a Shield Generator back ON must restore the team\'s shields',
+  );
+  assertContract(
+    mirrorIsUp(),
+    'switching a Shield Generator back ON must restore the team\'s mirrors',
   );
 
   // One generator ON is enough, however many are off.
@@ -1335,6 +1388,10 @@ function assertShieldPowerContract(): void {
   assertContract(
     getActiveShields().length === 0,
     'destroying the last powered generator must drop the shields the same way switching it off does',
+  );
+  assertContract(
+    !mirrorIsUp(),
+    'destroying the last powered generator must drop the mirrors along with the domes',
   );
   resetTurretHostIntegrationState();
 }

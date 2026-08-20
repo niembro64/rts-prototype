@@ -1926,95 +1926,136 @@ pub fn shield_clearance_segment(
     }
 
     // ── Rect-panel surfaces ──
-    if include_panels != 0 {
-        let unit_count = pool.unit_count as usize;
-        for u in 0..unit_count {
-            if pool.unit_id[u] == exclude_owner_entity_id {
-                continue;
-            }
-            let panel_count = pool.panel_count[u] as usize;
-            if panel_count == 0 {
-                continue;
-            }
-            let ux = pool.unit_x[u];
-            let uy = pool.unit_y[u];
-            let uz = pool.unit_z[u];
-            let broad_r = pool.unit_broad_radius[u] as f64;
-            if point_segment_dist_sq3(ux, uy, uz, sx, sy, sz, tx, ty, tz) > broad_r * broad_r {
-                continue;
-            }
+    if include_panels != 0
+        && !shield_panel_crossings_for_segment(
+            sx,
+            sy,
+            sz,
+            tx,
+            ty,
+            tz,
+            exclude_owner_entity_id,
+            FORCE_MATERIAL_GRAZE_EPS,
+            1.0 - FORCE_MATERIAL_GRAZE_EPS,
+            max_crossings,
+            &mut crossings,
+        )
+    {
+        return 0;
+    }
 
-            let mirror_yaw = pool.mirror_yaw[u] as f64;
-            let mirror_pitch = pool.mirror_pitch[u] as f64;
-            let cos_yaw = mirror_yaw.cos();
-            let sin_yaw = mirror_yaw.sin();
-            let cos_pitch = mirror_pitch.cos();
-            let sin_pitch = mirror_pitch.sin();
+    1
+}
 
-            let pivot_x = pool.pivot_x[u];
-            let pivot_y = pool.pivot_y[u];
-            let pivot_z = pool.pivot_z[u];
+/// Walk every stamped mirror plate against one straight segment, adding a
+/// crossing per plate the segment passes through between `lo` and `hi`
+/// (fractions along the segment). Returns false the moment `max_crossings`
+/// is exceeded, so callers can bail exactly as the inline walk used to.
+///
+/// A plate is two-sided: it has no inside, so it counts from either face.
+/// This is the single panel-shape implementation — the straight-segment
+/// gate and the ballistic-arc gate both walk it, because one material must
+/// not answer two different ways depending on which kernel asked.
+#[allow(clippy::too_many_arguments)]
+fn shield_panel_crossings_for_segment(
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    tx: f64,
+    ty: f64,
+    tz: f64,
+    exclude_owner_entity_id: i32,
+    lo: f64,
+    hi: f64,
+    max_crossings: u32,
+    crossings: &mut u32,
+) -> bool {
+    let pool = shield_pool();
+    let unit_count = pool.unit_count as usize;
+    for u in 0..unit_count {
+        if pool.unit_id[u] == exclude_owner_entity_id {
+            continue;
+        }
+        let panel_count = pool.panel_count[u] as usize;
+        if panel_count == 0 {
+            continue;
+        }
+        let ux = pool.unit_x[u];
+        let uy = pool.unit_y[u];
+        let uz = pool.unit_z[u];
+        let broad_r = pool.unit_broad_radius[u] as f64;
+        if point_segment_dist_sq3(ux, uy, uz, sx, sy, sz, tx, ty, tz) > broad_r * broad_r {
+            continue;
+        }
 
-            let panel_start = pool.panel_start[u] as usize;
-            for pi in panel_start..panel_start + panel_count {
-                // Panel arm extends from pivot along the panel-yaw / pitch
-                // direction (same `a(α, β)` formula MirrorPanelHit.ts uses).
-                // Per-panel lateral pivot offset goes along the chassis-
-                // perpendicular axis, derived from the mirror's yaw on
-                // tick (matches JS `perpX = -sinRot; perpY = cosRot`).
-                let perp_x = -sin_yaw;
-                let perp_y = cos_yaw;
-                let offset_y = pool.panel_offset_y[pi] as f64;
-                let panel_pivot_x = pivot_x + perp_x * offset_y;
-                let panel_pivot_y = pivot_y + perp_y * offset_y;
-                let panel_pivot_z = pivot_z;
+        let mirror_yaw = pool.mirror_yaw[u] as f64;
+        let mirror_pitch = pool.mirror_pitch[u] as f64;
+        let cos_yaw = mirror_yaw.cos();
+        let sin_yaw = mirror_yaw.sin();
+        let cos_pitch = mirror_pitch.cos();
+        let sin_pitch = mirror_pitch.sin();
 
-                // Per-panel yaw composes the mirror turret yaw with the
-                // panel's authored angle (typically 0).
-                let panel_angle = pool.panel_angle[pi] as f64;
-                let panel_yaw = mirror_yaw + panel_angle;
-                let panel_cos_yaw = panel_yaw.cos();
-                let panel_sin_yaw = panel_yaw.sin();
+        let pivot_x = pool.pivot_x[u];
+        let pivot_y = pool.pivot_y[u];
+        let pivot_z = pool.pivot_z[u];
 
-                let arm_length = pool.panel_arm_length[pi] as f64;
-                let pcx = panel_pivot_x + cos_yaw * cos_pitch * arm_length;
-                let pcy = panel_pivot_y + sin_yaw * cos_pitch * arm_length;
-                let pcz = panel_pivot_z + sin_pitch * arm_length;
+        let panel_start = pool.panel_start[u] as usize;
+        for pi in panel_start..panel_start + panel_count {
+            // Panel arm extends from pivot along the panel-yaw / pitch
+            // direction (same `a(α, β)` formula MirrorPanelHit.ts uses).
+            // Per-panel lateral pivot offset goes along the chassis-
+            // perpendicular axis, derived from the mirror's yaw on
+            // tick (matches JS `perpX = -sinRot; perpY = cosRot`).
+            let perp_x = -sin_yaw;
+            let perp_y = cos_yaw;
+            let offset_y = pool.panel_offset_y[pi] as f64;
+            let panel_pivot_x = pivot_x + perp_x * offset_y;
+            let panel_pivot_y = pivot_y + perp_y * offset_y;
+            let panel_pivot_z = pivot_z;
 
-                // Panel face normal = arm direction. Using the panel's
-                // composed yaw + the mirror pitch matches getMirrorArmDirection.
-                let nx = panel_cos_yaw * cos_pitch;
-                let ny = panel_sin_yaw * cos_pitch;
-                let nz = sin_pitch;
+            // Per-panel yaw composes the mirror turret yaw with the
+            // panel's authored angle (typically 0).
+            let panel_angle = pool.panel_angle[pi] as f64;
+            let panel_yaw = mirror_yaw + panel_angle;
+            let panel_cos_yaw = panel_yaw.cos();
+            let panel_sin_yaw = panel_yaw.sin();
 
-                // Horizontal perpendicular to panel yaw (edge axis); pitch
-                // rotates around this axis so it stays in the XY plane.
-                let edx = -panel_sin_yaw;
-                let edy = panel_cos_yaw;
-                let edz = 0.0;
+            let arm_length = pool.panel_arm_length[pi] as f64;
+            let pcx = panel_pivot_x + cos_yaw * cos_pitch * arm_length;
+            let pcy = panel_pivot_y + sin_yaw * cos_pitch * arm_length;
+            let pcz = panel_pivot_z + sin_pitch * arm_length;
 
-                let half_w = pool.panel_half_width[pi] as f64;
-                let base_y = pool.panel_base_y[pi] as f64;
-                let top_y = pool.panel_top_y[pi] as f64;
-                let half_h = (top_y - base_y) * 0.5;
+            // Panel face normal = arm direction. Using the panel's
+            // composed yaw + the mirror pitch matches getMirrorArmDirection.
+            let nx = panel_cos_yaw * cos_pitch;
+            let ny = panel_sin_yaw * cos_pitch;
+            let nz = sin_pitch;
 
-                let hit_t = ray_tilted_rect_intersection_t(
-                    sx, sy, sz, tx, ty, tz, pcx, pcy, pcz, nx, ny, nz, edx, edy, edz, half_w,
-                    half_h,
-                );
-                if let Some(t) = hit_t {
-                    if t > FORCE_MATERIAL_GRAZE_EPS && t < 1.0 - FORCE_MATERIAL_GRAZE_EPS {
-                        crossings += 1;
-                        if crossings > max_crossings {
-                            return 0;
-                        }
+            // Horizontal perpendicular to panel yaw (edge axis); pitch
+            // rotates around this axis so it stays in the XY plane.
+            let edx = -panel_sin_yaw;
+            let edy = panel_cos_yaw;
+            let edz = 0.0;
+
+            let half_w = pool.panel_half_width[pi] as f64;
+            let base_y = pool.panel_base_y[pi] as f64;
+            let top_y = pool.panel_top_y[pi] as f64;
+            let half_h = (top_y - base_y) * 0.5;
+
+            let hit_t = ray_tilted_rect_intersection_t(
+                sx, sy, sz, tx, ty, tz, pcx, pcy, pcz, nx, ny, nz, edx, edy, edz, half_w, half_h,
+            );
+            if let Some(t) = hit_t {
+                if t > lo && t < hi {
+                    *crossings += 1;
+                    if *crossings > max_crossings {
+                        return false;
                     }
                 }
             }
         }
     }
-
-    1
+    true
 }
 
 /// Ballistic-arc shield clearance. Approximates the parabola
@@ -2024,6 +2065,14 @@ pub fn shield_clearance_segment(
 /// one field for the whole arc is clear, and so is arcing OUT of one — a shell
 /// lobbed from under a dome leaves it the same way a direct shot does. Only
 /// entering a dome, or clipping a panel from either face, is blocked.
+///
+/// Both shapes of the one material are walked, through the same
+/// `shield_panel_crossings_for_segment` the straight-segment gate uses; the
+/// `include_spheres` / `include_panels` flags mean exactly what they mean
+/// there. This is the descending-leg refinement's kernel and is not yet on
+/// any live path — see budget_design_philosophy.html, "Obstructs direct
+/// sight".
+#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
 pub fn shield_clearance_arc(
     launch_x: f64,
@@ -2035,10 +2084,21 @@ pub fn shield_clearance_arc(
     flight_time: f64,
     exclude_owner_entity_id: i32,
     max_crossings: u32,
+    include_spheres: u8,
+    include_panels: u8,
 ) -> u32 {
     let pool = shield_pool();
-    let count = pool.count as usize;
-    if count == 0 {
+    let count = if include_spheres != 0 {
+        pool.count as usize
+    } else {
+        0
+    };
+    let panel_unit_count = if include_panels != 0 {
+        pool.unit_count as usize
+    } else {
+        0
+    };
+    if count == 0 && panel_unit_count == 0 {
         return 1;
     }
     if !flight_time.is_finite() || flight_time <= 0.0 {
@@ -2104,6 +2164,49 @@ pub fn shield_clearance_arc(
             if crossings > max_crossings {
                 return 0;
             }
+        }
+    }
+
+    // Plates are flat and two-sided, so there is no "stayed inside" case to
+    // collapse: every chord that clips one is a crossing, exactly as the
+    // straight-segment gate counts it.
+    if panel_unit_count > 0 {
+        let mut prev_x = launch_x;
+        let mut prev_y = launch_y;
+        let mut prev_z = launch_z;
+        for i in 1..=ARC_FF_CLEARANCE_SAMPLES {
+            let t = i as f64 * inv_n * flight_time;
+            let x = launch_x + launch_vx * t;
+            let y = launch_y + launch_vy * t;
+            let z = launch_z + launch_vz * t - 0.5 * GRAVITY * t * t;
+            let lo = if i == 1 {
+                FORCE_MATERIAL_GRAZE_EPS
+            } else {
+                -FORCE_MATERIAL_GRAZE_EPS
+            };
+            let hi = if i == ARC_FF_CLEARANCE_SAMPLES {
+                1.0 - FORCE_MATERIAL_GRAZE_EPS
+            } else {
+                1.0 + FORCE_MATERIAL_GRAZE_EPS
+            };
+            if !shield_panel_crossings_for_segment(
+                prev_x,
+                prev_y,
+                prev_z,
+                x,
+                y,
+                z,
+                exclude_owner_entity_id,
+                lo,
+                hi,
+                max_crossings,
+                &mut crossings,
+            ) {
+                return 0;
+            }
+            prev_x = x;
+            prev_y = y;
+            prev_z = z;
         }
     }
     1

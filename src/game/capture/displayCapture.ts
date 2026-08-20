@@ -28,17 +28,28 @@ type VideoFrameCallbackCapable = HTMLVideoElement & {
 };
 
 export function getDisplayCaptureAvailability(): DisplayCaptureAvailability {
-  const supported =
-    typeof navigator !== 'undefined' &&
-    navigator.mediaDevices !== undefined &&
-    typeof navigator.mediaDevices.getDisplayMedia === 'function' &&
-    typeof MediaRecorder !== 'undefined';
-  return supported
-    ? { supported: true, reason: null }
-    : {
+  if (typeof navigator === 'undefined') {
+    return { supported: false, reason: 'Tab capture is not supported in this runtime' };
+  }
+  // Browsers remove navigator.mediaDevices entirely outside secure contexts,
+  // so a plain-http LAN dev URL grays these buttons while localhost and the
+  // deployed https game keep them. Name the actual cause in the tooltip.
+  if (navigator.mediaDevices === undefined || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      return {
         supported: false,
-        reason: 'Tab capture is not supported in this runtime',
+        reason: 'HUD capture needs a secure context — open the game over https or localhost',
       };
+    }
+    return {
+      supported: false,
+      reason: 'Tab capture is not supported in this runtime',
+    };
+  }
+  if (typeof MediaRecorder === 'undefined') {
+    return { supported: false, reason: 'Video encoding is not supported in this runtime' };
+  }
+  return { supported: true, reason: null };
 }
 
 export function stopStreamTracks(stream: MediaStream): void {

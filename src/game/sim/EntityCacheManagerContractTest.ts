@@ -167,6 +167,7 @@ function snapshot(manager: EntityCacheManager): Record<string, string> {
     factoriesP1: ids(manager.getFactoriesByPlayer(1 as PlayerId)),
     factoriesP2: ids(manager.getFactoriesByPlayer(2 as PlayerId)),
     shieldUnits: ids(manager.getShieldUnits()),
+    shieldEquipmentUnits: ids(manager.getShieldEquipmentUnits()),
     commanderUnits: ids(manager.getCommanderUnits()),
     builderUnits: ids(manager.getBuilderUnits()),
     cruisingUnits: ids(manager.getCruisingUnits()),

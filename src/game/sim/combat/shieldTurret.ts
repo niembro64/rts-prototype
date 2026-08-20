@@ -82,8 +82,15 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
   // Resolved once: the underlying scan walks every building each player owns,
   // which is fine per tick and ruinous per shield host.
   const shieldPowerPlayerMask = world.getShieldPowerPlayerMask();
+  // Field surfaces are the only thing the sphere toggle removes. Transitions
+  // still run for every host so a battle that re-enables spheres resumes from
+  // real progress rather than a frozen one.
+  const fieldSurfacesEnabled = world.turretShieldSpheresEnabled;
 
-  for (const unit of world.getShieldUnits()) {
+  // Every shield host, not just the barrier ones: a flat mirror panel is the
+  // same powered equipment in a different shape, so it answers to the same
+  // Shield Generator gate and rides the same authored transition.
+  for (const unit of world.getShieldEquipmentUnits()) {
     // A shield is powered equipment on a finished body. A host still under
     // construction has no shield yet, and neither does one whose team has no
     // Shield Generator switched on — the field lowers through its authored
@@ -128,6 +135,7 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
       weapon.shield.range = weapon.shield.transition;
 
       if (
+        fieldSurfacesEnabled &&
         weapon.shield.transition > 0 &&
         unit.unit &&
         unit.unit.hp > 0 &&
