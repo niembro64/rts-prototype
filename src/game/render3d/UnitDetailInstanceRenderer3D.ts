@@ -38,9 +38,9 @@ import {
   createBeamEmitterInstancedMaterial,
 } from './BeamWaveVisual3D';
 import {
+  createExtrudedEquilateralTriangleGeometry,
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
-  getSharedExtrudedEquilateralTriangleGeometry,
   getSharedPrimitiveTetrahedronGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
@@ -183,11 +183,22 @@ type UnitDetailInstanceRendererOptions = {
 /** Barrel geometry whose end caps address their own zone of the trim sheet
  *  rather than duplicating the tube's coordinates. Untextured barrels are
  *  unaffected — they never sample the sheet — so this is applied to the shared
- *  pool geometry unconditionally rather than forked per chart. */
+ *  pool geometry unconditionally rather than forked per chart.
+ *
+ *  EVERY tier, including the FAR tier's triangular prism. The prism is a
+ *  cylinder as far as this remap is concerned — caps point along the axis,
+ *  walls across it, and it carries the same unit-disc cap uv — so leaving it
+ *  out did not make the far barrel untextured, it made it sample the wall's
+ *  band rows on its cap and the cap's rows down its tube. It is built fresh
+ *  here rather than taken from the shared cache because the remap rewrites the
+ *  uv attribute in place, and the shared prism is also the far-tier stand-in
+ *  for shield panels, building tubes and rockets. */
 function chartedBarrelGeometry(
   tier: PrimitiveGeometryTier,
-): THREE.CylinderGeometry {
-  const geometry = createPrimitiveCylinderGeometry('turret', tier);
+): THREE.BufferGeometry {
+  const geometry = tier === 'far'
+    ? createExtrudedEquilateralTriangleGeometry()
+    : createPrimitiveCylinderGeometry('turret', tier);
   const zone = BAND_CAP_ZONES.barrelShaft;
   if (zone !== undefined) remapChartedCylinderUvs(geometry, zone);
   return geometry;
@@ -297,9 +308,7 @@ export class UnitDetailInstanceRenderer3D {
         chartMode,
       ));
       this.barrelPools.push(this.createTierPool(
-        tierName === 'far'
-          ? getSharedExtrudedEquilateralTriangleGeometry()
-          : chartedBarrelGeometry(tierName),
+        chartedBarrelGeometry(tierName),
         options.barrelMat.clone(),
         BARREL_TIER_CAPS[t],
         chartMode,

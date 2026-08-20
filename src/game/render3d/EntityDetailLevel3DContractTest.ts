@@ -23,9 +23,13 @@ import {
   featureVisibleAtDetail,
   geometryTierForDetail,
   legStyleForDetail,
+  ladderEquivalentScreenRadiusPx,
   lodProxyFadeAlphaForScreenRadius,
+  projectileDetailLadder,
   projectileStyleForDetail,
+  THRESHOLD_HIGH_TO_MED_PX,
   THRESHOLD_LOW_TO_OFF_PX,
+  THRESHOLD_MED_TO_LOW_PX,
   smokeSpawnScaleForDetail,
   turretStyleForDetail,
   unitDetailBand,
@@ -272,6 +276,50 @@ export function runEntityDetailLevel3DContractTest(): void {
       'repeat calls at one level disagree — the ladder kept state',
     );
   }
+
+  // ── Projectile per-class px ladders ────────────────────────────────
+  // Traveling shots have their own authored ladders (plasma/rocket/missile),
+  // remapped boundary-to-boundary onto the entity ladder: sitting on a class
+  // boundary must behave exactly like sitting on the matching entity
+  // boundary, and rays must NOT have a ladder (they keep the beam floor).
+  for (const shotType of ['plasma', 'rocket', 'missile'] as const) {
+    const ladder = projectileDetailLadder(shotType);
+    assertContract(ladder !== null, `${shotType} shots have an authored px ladder`);
+    assertContract(
+      ladder.highToMedPx > ladder.medToLowPx &&
+        ladder.medToLowPx > ladder.lowToOffPx &&
+        ladder.lowToOffPx > 0,
+      `${shotType} ladder boundaries are strictly ordered`,
+    );
+    assertContract(
+      ladderEquivalentScreenRadiusPx(ladder.highToMedPx, ladder) === THRESHOLD_HIGH_TO_MED_PX &&
+        ladderEquivalentScreenRadiusPx(ladder.medToLowPx, ladder) === THRESHOLD_MED_TO_LOW_PX &&
+        ladderEquivalentScreenRadiusPx(ladder.lowToOffPx, ladder) === THRESHOLD_LOW_TO_OFF_PX,
+      `${shotType} ladder boundaries land exactly on the entity boundaries`,
+    );
+    assertContract(
+      detailRungForLevel(detailLevelForScreenRadius(
+        ladderEquivalentScreenRadiusPx(ladder.highToMedPx * 4, ladder))) === DETAIL_RUNG_CLOSE &&
+        detailRungForLevel(detailLevelForScreenRadius(
+          ladderEquivalentScreenRadiusPx(ladder.lowToOffPx / 2, ladder))) === DETAIL_RUNG_GLYPH,
+      `${shotType} shots are CLOSE far above the ladder and GLYPH below its OFF boundary`,
+    );
+    let previousPx = 0;
+    for (let px = 0; px <= ladder.highToMedPx * 2; px += ladder.lowToOffPx / 8) {
+      const mapped = ladderEquivalentScreenRadiusPx(px, ladder);
+      assertContract(
+        mapped >= previousPx,
+        `${shotType} ladder remap is monotonic in projected size`,
+      );
+      previousPx = mapped;
+    }
+  }
+  assertContract(
+    projectileDetailLadder('beam') === null &&
+      projectileDetailLadder('laser') === null &&
+      projectileDetailLadder('shield') === null,
+    'rays and shields have no projectile ladder — beams keep the radius floor',
+  );
 
   // ── Strategic glyph: bands and floor ──────────────────────────────
   assertContract(
