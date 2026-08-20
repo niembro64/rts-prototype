@@ -17,9 +17,20 @@ Gates for this work:
 
 ## C. Duplication → helpers (TypeScript)
 
-- [ ] **C12** `SelectionPanel.vue` repeats the `bar-order-state` button markup across five clusters
-      (1725/2037, 1746/2058/2654, 1764/2076, 1783/2177, 1821/2691). Extract a component or a
-      v-for-driven descriptor list.
+- [x] **C12** `SelectionPanel.vue` writes the same `bar-order-state` button 19 times
+      (~190 lines). ATTEMPTED AND REVERTED — the duplication is real, but the fix is a
+      CSS refactor, not a template one. Extracting `BarOrderStateButton.vue` moves
+      `.btn-label` / `.btn-key` / `.bar-state-light` into a child scope, and a DOM probe
+      (host a battle, Tab to select the commander, diff the rendered buttons' classes,
+      titles, inner markup and computed styles) proved the regression: the hotkey label
+      became permanently visible, because `.btn-key`'s base rules and
+      `.options-panel.bar-hotkey-preset .action-btn:not(.bar-grid-cell) > .btn-key
+      { display: none }` live in `selectionPanelBuildMenu.css` under the PARENT scope and
+      no longer reach the child's inner elements. Importing both stylesheets into the
+      child fixes it but duplicates 52 KB of CSS; extracting just the shared rules means
+      splitting 18 rules that are entangled with the `.bar-grid-cell` /
+      `.thumbnail-action-btn` variants belonging to other buttons in the same panel.
+      That is a visual change worth an A/B, so it is left for the user to call.
 
 ## D. Duplication → helpers (Rust sim)
 
