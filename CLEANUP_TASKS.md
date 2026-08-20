@@ -24,10 +24,6 @@ Gates for this work:
 
 ## C. Duplication → helpers (TypeScript)
 
-- [ ] **C8** `snapshotEntityWirePack.ts` typed-full vs typed-placeholder decode paths duplicate four
-      field-fill blocks (869-891 ≡ 1104-1126, 904-924 ≡ 1132-1152, 969-1016 ≡ 1208-1256).
-      Same-file verbatim fill helpers only (wire layout is determinism-critical).
-
 - [ ] **C12** `SelectionPanel.vue` repeats the `bar-order-state` button markup across five clusters
       (1725/2037, 1746/2058/2654, 1764/2076, 1783/2177, 1821/2691). Extract a component or a
       v-for-driven descriptor list.

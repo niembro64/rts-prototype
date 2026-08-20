@@ -800,48 +800,31 @@ const DECODED_TYPED_BUILDING_DETAIL_FIELDS =
   ENTITY_CHANGED_BUILDING |
   ENTITY_CHANGED_FACTORY;
 
-function tryAppendDecodedDetailTypedFullWireRow(
-  entity: NetworkServerSnapshotEntity,
-): boolean {
-  if (entity.changedFields !== null) return false;
-  if (entity.type === 'unit') return tryAppendDecodedUnitDetailTypedFullWireRow(entity);
-  if (entity.type === 'building') return tryAppendDecodedBuildingDetailTypedFullWireRow(entity);
-  return false;
-}
+// ── Shared wire-row field groups ──────────────────────────────────
+//
+// The typed-full and typed-placeholder decode paths write the SAME field
+// groups at the SAME offsets; only which groups they write differs. Each group
+// is filled by exactly one function so a layout change lands on both paths at
+// once — the encoder and these readers agree on every slot index or the
+// snapshot silently decodes garbage.
 
-function tryAppendDecodedUnitDetailTypedFullWireRow(
-  entity: NetworkServerSnapshotEntity,
-): boolean {
-  if (entity.type !== 'unit' || entity.pos === null || entity.rotation === null) return false;
-  const unit = entity.unit;
-  if (
-    unit === null ||
-    unit.unitBlueprintCode === null ||
-    unit.hp === null
-  ) {
-    return false;
-  }
-
-  const wireRow = appendDecodedUnitEntityWireRow(false, 0);
-  const values = wireRow.values;
-  const base = wireRow.base;
-  values[base + 0] = entity.id;
-  values[base + 1] = entity.pos.x;
-  values[base + 2] = entity.pos.y;
-  values[base + 3] = entity.pos.z;
-  values[base + 4] = entity.rotation;
-  values[base + 5] = entity.playerId;
-  values[base + 6] = 0;
-  values[base + 7] = 0;
-  values[base + 8] = unit.hp.curr;
-  values[base + 9] = unit.hp.max;
+function writeDecodedUnitVelocityWireFields(
+  unit: UnitSub,
+  values: Float64Array,
+  base: number,
+): void {
   if (unit.velocity !== null) {
     values[base + 10] = unit.velocity.x;
     values[base + 11] = unit.velocity.y;
     values[base + 12] = unit.velocity.z;
   }
-  values[base + 13] = 1;
-  values[base + 14] = unit.unitBlueprintCode;
+}
+
+function writeDecodedUnitPoseWireFields(
+  unit: UnitSub,
+  values: Float64Array,
+  base: number,
+): void {
   if (unit.surfaceNormal !== null) {
     values[base + 23] = 1;
     values[base + 24] = unit.surfaceNormal.nx;
@@ -861,11 +844,13 @@ function tryAppendDecodedUnitDetailTypedFullWireRow(
     values[base + 34] = unit.angularVelocity3.y;
     values[base + 35] = unit.angularVelocity3.z;
   }
-  if (unit.fireState !== null && unit.fireState !== undefined) {
-    values[base + 51] = 1;
-    values[base + 52] = fireStateToWireCode(unit.fireState);
-  }
-  values[base + 37] = unit.isCommander === true ? 1 : 0;
+}
+
+function writeDecodedUnitBuildWireFields(
+  unit: UnitSub,
+  values: Float64Array,
+  base: number,
+): void {
   if (unit.buildTargetIdPresent) {
     values[base + 38] = 1;
     values[base + 39] = unit.buildTargetId === null ? 1 : 0;
@@ -890,17 +875,13 @@ function tryAppendDecodedUnitDetailTypedFullWireRow(
     values[base + 48] = unit.build.paid.metal;
     values[base + 63] = unit.build.interrupted ? 1 : 0;
   }
-  if (unit.fireState !== null && unit.fireState !== undefined) {
-    values[base + 51] = 1;
-  }
-  if (unit.repeatQueue !== null && unit.repeatQueue !== undefined) {
-    values[base + 53] = 1;
-    values[base + 54] = unit.repeatQueue ? 1 : 0;
-  }
-  if (unit.trajectoryMode !== null && unit.trajectoryMode !== undefined) {
-    values[base + 57] = 1;
-    values[base + 58] = trajectoryModeToWireCode(unit.trajectoryMode);
-  }
+}
+
+function writeDecodedUnitOrderStateWireFields(
+  unit: UnitSub,
+  values: Float64Array,
+  base: number,
+): void {
   if (unit.moveState !== null && unit.moveState !== undefined) {
     values[base + 59] = 1;
     values[base + 60] = unit.moveState === 'roam' ? 2 : unit.moveState === 'holdPosition' ? 1 : 0;
@@ -921,51 +902,13 @@ function tryAppendDecodedUnitDetailTypedFullWireRow(
     values[base + 67] = unit.builderPriorityLow ? 1 : 0;
   }
   writeDecodedWorkStationWireFields(unit, values, base);
-  return true;
 }
 
-function tryAppendDecodedBuildingDetailTypedFullWireRow(
-  entity: NetworkServerSnapshotEntity,
-): boolean {
-  if (
-    (entity.type !== 'building') ||
-    entity.pos === null ||
-    entity.rotation === null
-  ) {
-    return false;
-  }
-  const building = entity.building;
-  if (
-    building === null ||
-    building.buildingBlueprintCode === null ||
-    building.dim === null ||
-    building.hp === null ||
-    building.build === null
-  ) {
-    return false;
-  }
-
-  const wireRow = appendDecodedBuildingEntityWireRow(false, 0);
-  const values = wireRow.values;
-  const base = wireRow.base;
-  values[base + 0] = entity.id;
-  values[base + 1] = entity.pos.x;
-  values[base + 2] = entity.pos.y;
-  values[base + 3] = entity.pos.z;
-  values[base + 4] = entity.rotation;
-  values[base + 5] = entity.playerId;
-  values[base + 6] = 0;
-  values[base + 7] = 0;
-  values[base + 8] = 1;
-  values[base + 9] = building.buildingBlueprintCode;
-  values[base + 10] = 1;
-  values[base + 11] = building.dim.x;
-  values[base + 12] = building.dim.y;
-  values[base + 13] = building.hp.curr;
-  values[base + 14] = building.hp.max;
-  values[base + 15] = building.build.complete ? 1 : 0;
-  values[base + 16] = building.build.paid.energy;
-  values[base + 17] = building.build.paid.metal;
+function writeDecodedBuildingProductionWireFields(
+  building: BuildingSub,
+  values: Float64Array,
+  base: number,
+): void {
   if (building.metalExtractionRate !== null) {
     values[base + 18] = 1;
     values[base + 19] = building.metalExtractionRate;
@@ -1015,6 +958,111 @@ function tryAppendDecodedBuildingDetailTypedFullWireRow(
     values[base + 48] = moveStateToWireCode(factory.moveState);
     values[base + 49] = factory.airIdleState === 'fly' ? 1 : 0;
   }
+}
+
+function tryAppendDecodedDetailTypedFullWireRow(
+  entity: NetworkServerSnapshotEntity,
+): boolean {
+  if (entity.changedFields !== null) return false;
+  if (entity.type === 'unit') return tryAppendDecodedUnitDetailTypedFullWireRow(entity);
+  if (entity.type === 'building') return tryAppendDecodedBuildingDetailTypedFullWireRow(entity);
+  return false;
+}
+
+function tryAppendDecodedUnitDetailTypedFullWireRow(
+  entity: NetworkServerSnapshotEntity,
+): boolean {
+  if (entity.type !== 'unit' || entity.pos === null || entity.rotation === null) return false;
+  const unit = entity.unit;
+  if (
+    unit === null ||
+    unit.unitBlueprintCode === null ||
+    unit.hp === null
+  ) {
+    return false;
+  }
+
+  const wireRow = appendDecodedUnitEntityWireRow(false, 0);
+  const values = wireRow.values;
+  const base = wireRow.base;
+  values[base + 0] = entity.id;
+  values[base + 1] = entity.pos.x;
+  values[base + 2] = entity.pos.y;
+  values[base + 3] = entity.pos.z;
+  values[base + 4] = entity.rotation;
+  values[base + 5] = entity.playerId;
+  values[base + 6] = 0;
+  values[base + 7] = 0;
+  values[base + 8] = unit.hp.curr;
+  values[base + 9] = unit.hp.max;
+  writeDecodedUnitVelocityWireFields(unit, values, base);
+  values[base + 13] = 1;
+  values[base + 14] = unit.unitBlueprintCode;
+  writeDecodedUnitPoseWireFields(unit, values, base);
+  if (unit.fireState !== null && unit.fireState !== undefined) {
+    values[base + 51] = 1;
+    values[base + 52] = fireStateToWireCode(unit.fireState);
+  }
+  values[base + 37] = unit.isCommander === true ? 1 : 0;
+  writeDecodedUnitBuildWireFields(unit, values, base);
+  if (unit.fireState !== null && unit.fireState !== undefined) {
+    values[base + 51] = 1;
+  }
+  if (unit.repeatQueue !== null && unit.repeatQueue !== undefined) {
+    values[base + 53] = 1;
+    values[base + 54] = unit.repeatQueue ? 1 : 0;
+  }
+  if (unit.trajectoryMode !== null && unit.trajectoryMode !== undefined) {
+    values[base + 57] = 1;
+    values[base + 58] = trajectoryModeToWireCode(unit.trajectoryMode);
+  }
+  writeDecodedUnitOrderStateWireFields(unit, values, base);
+  return true;
+}
+
+function tryAppendDecodedBuildingDetailTypedFullWireRow(
+  entity: NetworkServerSnapshotEntity,
+): boolean {
+  if (
+    (entity.type !== 'building') ||
+    entity.pos === null ||
+    entity.rotation === null
+  ) {
+    return false;
+  }
+  const building = entity.building;
+  if (
+    building === null ||
+    building.buildingBlueprintCode === null ||
+    building.dim === null ||
+    building.hp === null ||
+    building.build === null
+  ) {
+    return false;
+  }
+
+  const wireRow = appendDecodedBuildingEntityWireRow(false, 0);
+  const values = wireRow.values;
+  const base = wireRow.base;
+  values[base + 0] = entity.id;
+  values[base + 1] = entity.pos.x;
+  values[base + 2] = entity.pos.y;
+  values[base + 3] = entity.pos.z;
+  values[base + 4] = entity.rotation;
+  values[base + 5] = entity.playerId;
+  values[base + 6] = 0;
+  values[base + 7] = 0;
+  values[base + 8] = 1;
+  values[base + 9] = building.buildingBlueprintCode;
+  values[base + 10] = 1;
+  values[base + 11] = building.dim.x;
+  values[base + 12] = building.dim.y;
+  values[base + 13] = building.hp.curr;
+  values[base + 14] = building.hp.max;
+  values[base + 15] = building.build.complete ? 1 : 0;
+  values[base + 16] = building.build.paid.energy;
+  values[base + 17] = building.build.paid.metal;
+  writeDecodedBuildingProductionWireFields(building, values, base);
   values[base + 34] = building.build.interrupted ? 1 : 0;
   return true;
 }
@@ -1077,78 +1125,14 @@ function tryAppendDecodedUnitDetailTypedPlaceholderWireRow(
     values[base + 8] = unit.hp.curr;
     values[base + 9] = unit.hp.max;
   }
-  if (unit.velocity !== null) {
-    values[base + 10] = unit.velocity.x;
-    values[base + 11] = unit.velocity.y;
-    values[base + 12] = unit.velocity.z;
-  }
-  if (unit.surfaceNormal !== null) {
-    values[base + 23] = 1;
-    values[base + 24] = unit.surfaceNormal.nx;
-    values[base + 25] = unit.surfaceNormal.ny;
-    values[base + 26] = unit.surfaceNormal.nz;
-  }
-  if (unit.orientation !== null) {
-    values[base + 27] = 1;
-    values[base + 28] = unit.orientation.x;
-    values[base + 29] = unit.orientation.y;
-    values[base + 30] = unit.orientation.z;
-    values[base + 31] = unit.orientation.w;
-  }
-  if (unit.angularVelocity3 !== null) {
-    values[base + 32] = 1;
-    values[base + 33] = unit.angularVelocity3.x;
-    values[base + 34] = unit.angularVelocity3.y;
-    values[base + 35] = unit.angularVelocity3.z;
-  }
-  if (unit.buildTargetIdPresent) {
-    values[base + 38] = 1;
-    values[base + 39] = unit.buildTargetId === null ? 1 : 0;
-    values[base + 40] = unit.buildTargetId ?? 0;
-  }
-  if (unit.actions !== null) {
-    const actionRows = appendDecodedActionWireRows(unit.actions);
-    values[base + 41] = 1;
-    values[base + 42] = actionRows.count;
-    values[base + 50] = actionRows.offset;
-  }
-  if (unit.turrets !== null) {
-    const turretRows = appendDecodedTurretWireRows(unit.turrets);
-    values[base + 43] = 1;
-    values[base + 44] = turretRows.count;
-    values[base + 49] = turretRows.offset;
-  }
-  if (unit.build !== null) {
-    values[base + 45] = 1;
-    values[base + 46] = unit.build.complete ? 1 : 0;
-    values[base + 47] = unit.build.paid.energy;
-    values[base + 48] = unit.build.paid.metal;
-    values[base + 63] = unit.build.interrupted ? 1 : 0;
-  }
+  writeDecodedUnitVelocityWireFields(unit, values, base);
+  writeDecodedUnitPoseWireFields(unit, values, base);
+  writeDecodedUnitBuildWireFields(unit, values, base);
   if (unit.repeatQueue !== null && unit.repeatQueue !== undefined) {
     values[base + 53] = 1;
     values[base + 54] = unit.repeatQueue ? 1 : 0;
   }
-  if (unit.moveState !== null && unit.moveState !== undefined) {
-    values[base + 59] = 1;
-    values[base + 60] = unit.moveState === 'roam' ? 2 : unit.moveState === 'holdPosition' ? 1 : 0;
-  }
-  if (
-    unit.wantCloak !== null && unit.wantCloak !== undefined ||
-    unit.cloaked !== null && unit.cloaked !== undefined
-  ) {
-    values[base + 61] = 1;
-    values[base + 62] = unit.cloaked === true ? 2 : unit.wantCloak === true ? 1 : 0;
-  }
-  if (unit.carrierSpawnEnabled !== null && unit.carrierSpawnEnabled !== undefined) {
-    values[base + 64] = 1;
-    values[base + 65] = unit.carrierSpawnEnabled ? 1 : 0;
-  }
-  if (unit.builderPriorityLow !== null && unit.builderPriorityLow !== undefined) {
-    values[base + 66] = 1;
-    values[base + 67] = unit.builderPriorityLow ? 1 : 0;
-  }
-  writeDecodedWorkStationWireFields(unit, values, base);
+  writeDecodedUnitOrderStateWireFields(unit, values, base);
   return true;
 }
 
@@ -1205,56 +1189,7 @@ function tryAppendDecodedBuildingDetailTypedPlaceholderWireRow(
     values[base + 17] = building.build.paid.metal;
     values[base + 34] = building.build.interrupted ? 1 : 0;
   }
-  if (building.metalExtractionRate !== null) {
-    values[base + 18] = 1;
-    values[base + 19] = building.metalExtractionRate;
-  }
-  if (building.solar !== null) {
-    values[base + 20] = 1;
-    values[base + 21] = building.solar.open ? 1 : 0;
-  }
-  if (building.turrets !== null) {
-    const turretRows = appendDecodedTurretWireRows(building.turrets);
-    values[base + 22] = 1;
-    values[base + 23] = turretRows.count;
-    values[base + 31] = turretRows.offset;
-  }
-
-  const factory = building.factory;
-  if (factory !== null) {
-    const selected = appendDecodedFactorySelectedUnitWireRow(factory.selectedUnitBlueprintCode);
-    const queue = appendDecodedFactoryQueueWireRows(factory.queue);
-    const quotas = appendDecodedFactoryQuotaWireRows(factory.quotas);
-    const quotaCounts = appendDecodedFactoryQuotaWireRows(factory.quotaCounts);
-    const rally = appendDecodedWaypointWireRows([factory.rally]);
-    const route = factory.route !== null && factory.route !== undefined
-      ? appendDecodedWaypointWireRows(factory.route)
-      : { offset: -1, count: -1 };
-    values[base + 24] = 1;
-    values[base + 25] = selected.hasValue;
-    values[base + 26] = factory.progress;
-    values[base + 27] = factory.producing ? 1 : 0;
-    values[base + 28] = factory.energyRate ?? 0;
-    values[base + 29] = factory.metalRate ?? 0;
-    values[base + 30] = rally.count;
-    values[base + 32] = selected.offset;
-    values[base + 33] = rally.offset;
-    values[base + 35] = factory.guardTargetId !== null && factory.guardTargetId !== undefined ? 1 : 0;
-    values[base + 36] = factory.guardTargetId ?? 0;
-    values[base + 37] = factory.repeat === false ? 0 : 1;
-    values[base + 38] = queue.offset;
-    values[base + 39] = queue.count;
-    values[base + 40] = route.offset;
-    values[base + 41] = route.count;
-    values[base + 42] = quotas.offset;
-    values[base + 43] = quotas.count;
-    values[base + 44] = quotaCounts.offset;
-    values[base + 45] = quotaCounts.count;
-    values[base + 46] = factory.lowPriority === true ? 1 : 0;
-    values[base + 47] = factory.paused === true ? 1 : 0;
-    values[base + 48] = moveStateToWireCode(factory.moveState);
-    values[base + 49] = factory.airIdleState === 'fly' ? 1 : 0;
-  }
+  writeDecodedBuildingProductionWireFields(building, values, base);
 
   return true;
 }
