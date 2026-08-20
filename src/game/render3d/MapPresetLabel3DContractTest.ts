@@ -94,16 +94,37 @@ export function runMapPresetLabel3DContractTest(): void {
       'wrapping must keep every field, in order',
     );
   }
-  // The widest row of a balanced two-row split of these fields is 'CCCCCCCC'
-  // plus one neighbour; a greedy pack to the average leaves the whole tail on
-  // the last row instead.
-  const balanced = wrapCaptionFields(measureByLength, fields, 2);
-  const widest = balanced.reduce((most, row) => Math.max(most, row.length), 0);
-  const narrowest = balanced.reduce((least, row) => Math.min(least, row.length), Infinity);
-  assertContract(
-    balanced.length === 2 && widest - narrowest <= widest * 0.5,
-    'a two-row wrap must split the measure, not dump the tail on one row',
-  );
+  // And it is the NARROWEST such split, not merely a tidy-looking one: the
+  // widest row it sets must match the best any in-order split into that many
+  // rows can do, brute-forced here. The separator comes from the wrap's own
+  // output so the two agree on what a row measures.
+  const separator = wrapCaptionFields(measureByLength, ['A', 'B'], 1)[0].slice(1, -1);
+  const narrowestPossibleRow = (rowCount: number): number => {
+    let best = Infinity;
+    const walk = (start: number, rowsLeft: number, worst: number): void => {
+      if (rowsLeft === 1) {
+        best = Math.min(best, Math.max(worst, fields.slice(start).join(separator).length));
+        return;
+      }
+      for (let end = start + 1; end <= fields.length - (rowsLeft - 1); end++) {
+        walk(
+          end,
+          rowsLeft - 1,
+          Math.max(worst, fields.slice(start, end).join(separator).length),
+        );
+      }
+    };
+    walk(0, rowCount, 0);
+    return best;
+  };
+  for (const rowCount of [2, 3, 4]) {
+    const rows = wrapCaptionFields(measureByLength, fields, rowCount);
+    assertContract(
+      rows.reduce((most, row) => Math.max(most, row.length), 0)
+        <= narrowestPossibleRow(rowCount),
+      `a ${rowCount}-row wrap must be the narrowest split into that many rows`,
+    );
+  }
   assertContract(
     wrapCaptionFields(measureByLength, [], 3).length === 0,
     'a caption with no settings wraps to no rows',
