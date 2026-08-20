@@ -351,6 +351,11 @@ function toggleMemberSeated(memberId: number): void {
  *  and rides `lobbySettings` out to every client like any other. */
 const lobbyAllyTeamCount = ref(networkManager.lobbyAllyTeamCount());
 
+/** What the host called this lobby. Session state like every other real-
+ *  battle setting: it belongs to one lobby, so it is never persisted and it
+ *  is cleared on the way in. */
+const lobbyName = ref('');
+
 function setLobbyAllyTeamCount(count: number): void {
   if (!isHost.value) return;
   networkManager.setLobbyAllyTeamCount(count);
@@ -358,6 +363,35 @@ function setLobbyAllyTeamCount(count: number): void {
   lobbyMembers.value = networkManager.getMembers();
   broadcastLobbySettingsIfHost();
 }
+
+/** Host-only: declare one more side. Capped by the roster's own ceiling — a
+ *  side per seat is already the most any lobby can occupy. */
+function addLobbyAllyTeam(): void {
+  setLobbyAllyTeamCount(lobbyAllyTeamCount.value + 1);
+}
+
+/** Host-only: delete one EMPTY side. NetworkManager refuses a side that
+ *  holds a seat, so the button on an occupied team can only ever be a
+ *  no-op — the check is there, not here. */
+function removeLobbyAllyTeam(allyTeamId: number): void {
+  if (!isHost.value) return;
+  if (!networkManager.removeLobbyAllyTeam(allyTeamId)) return;
+  lobbyAllyTeamCount.value = networkManager.lobbyAllyTeamCount();
+  lobbyMembers.value = networkManager.getMembers();
+  broadcastLobbySettingsIfHost();
+}
+
+function setLobbyName(name: string): void {
+  if (!isHost.value) return;
+  applyLobbyName(name);
+}
+
+/** A name belongs to one lobby. Leaving clears it so the next lobby this
+ *  browser hosts starts unnamed instead of inheriting the last one's title —
+ *  the same rule every other real-battle setting follows. */
+watch(roomCode, (code) => {
+  if (code === '') lobbyName.value = '';
+});
 /** The seat this client VIEWS as. For a player it is their own seat; for a
  *  watcher it is whoever they are following — a local choice, never command
  *  authority. */
@@ -1711,6 +1745,7 @@ const worldSurfaceStoreVersion = ref(0);
 const {
   currentLobbySettings,
   broadcastLobbySettingsIfHost,
+  applyLobbyName,
   applyCenterMagnitude,
   applyRingMagnitude,
   applyDividersMagnitude,
@@ -1745,6 +1780,7 @@ const {
   simulationTickRateHz,
   mapWidthLandCells,
   mapLengthLandCells,
+  lobbyName,
   allyTeamCount: lobbyAllyTeamCount,
   slowDownAtFinalWaypointStoreVersion,
   worldSurfaceStoreVersion,
@@ -3099,6 +3135,7 @@ watchEffect(() => {
       :allowed-buildings="currentAllowedBuildings"
       :unit-cap="displayUnitCap"
       :ally-team-count="lobbyAllyTeamCount"
+      :lobby-name="lobbyName"
       :converter-tax="currentConverterTax"
       :preview-loading="loadingInLobbyPreview"
       :preview-loading-progress="displayedLoadingProgress"
@@ -3131,6 +3168,9 @@ watchEffect(() => {
       @toggle-all-buildings="toggleAllDemoBuildings"
       @set-unit-cap="(c) => changeEntityCountCap(c)"
       @set-ally-team-count="setLobbyAllyTeamCount"
+      @add-ally-team="addLobbyAllyTeam"
+      @remove-ally-team="removeLobbyAllyTeam"
+      @set-lobby-name="setLobbyName"
       @cycle-member-ally-team="cycleMemberAllyTeam"
       @toggle-member-seated="toggleMemberSeated"
       @set-converter-tax="(v) => setConverterTax(v)"

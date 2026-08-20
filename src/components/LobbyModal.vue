@@ -26,6 +26,14 @@ import {
   unitBlueprintIdsForMapSetup,
 } from '../game/sim/mapRoster';
 import { MAX_NAME_LENGTH } from '@/playerNamesConfig';
+import {
+  MAX_LOBBY_NAME_LENGTH,
+  normalizeLobbyName,
+  resolveLobbyDisplayName,
+} from '../game/network/lobbyName';
+import { MAX_ALLY_TEAM_COUNT } from '../game/sim/teamRoster';
+import { getMapPresetThumbnailUrl } from './mapPresetThumbnails';
+import { readableInkOn } from './uiUtils';
 import { AUTHOR_BYLINE } from '@/authorBylineConfig';
 import { closeCurrentTauriWindow, isTauriRuntime } from '@/browserRuntime';
 import { LOBBY_LIST_POLL_INTERVAL_MS } from '../game/network/LobbyDirectory';
@@ -76,6 +84,8 @@ const props = defineProps<{
   unitCap: number;
   /** Sides the host declared — empty ones included; they still carve terrain. */
   allyTeamCount: number;
+  /** What the host called this lobby; empty until they type one. */
+  lobbyName: string;
   converterTax: number;
   previewLoading: boolean;
   previewLoadingProgress: number;
@@ -113,6 +123,12 @@ const emit = defineEmits<{
   (e: 'setUnitCap', cap: number): void;
   /** Host changes how many sides the lobby declares. */
   (e: 'setAllyTeamCount', count: number): void;
+  /** Host declares one more side. */
+  (e: 'addAllyTeam'): void;
+  /** Host deletes one EMPTY side, closing the gap behind it. */
+  (e: 'removeAllyTeam', allyTeamId: number): void;
+  /** Host renames the lobby — the title the directory lists it under. */
+  (e: 'setLobbyName', name: string): void;
   /** Host moves a seat to the next side (the lobby's TEAM N). */
   (e: 'cycleMemberAllyTeam', memberId: number): void;
   /** Host moves a watcher onto a team, or a player back to the bench. The
@@ -540,6 +556,97 @@ watch(
   { immediate: true },
 );
 
+/* ── The map picker ───────────────────────────────────────────────────────
+ *
+ * A map is a place, and a place is recognised by looking at it. The eight
+ * authored maps are offered as pictures of themselves — captured from the
+ * real terrain generator, see mapPresetThumbnails.ts — because a row of
+ * names ("Spikey Lake", "Angels Playhouse") tells a player nothing about
+ * what they are about to fight on.
+ *
+ * The full battle-options bar is still there, one click away behind CUSTOM.
+ * It is the fine control: every terrain magnitude, the unit and building
+ * rosters, the caps. Most hosts want a map, not a terrain editor, so the
+ * pictures are what the lobby opens on. */
+const customOptionsOpen = ref(false);
+
+type MapPresetTile = {
+  readonly preset: BattlePreset;
+  readonly thumbnailUrl: string;
+  readonly active: boolean;
+};
+
+const mapPresetTiles = computed<MapPresetTile[]>(() =>
+  props.presets.map((preset) => ({
+    preset,
+    thumbnailUrl: getMapPresetThumbnailUrl(preset.backdropSlug),
+    active: props.activePresetName === preset.name,
+  })),
+);
+
+/** A capture that has not been taken yet must not leave a broken-image glyph
+ *  in the grid; the tile falls back to its own name plate. */
+const missingThumbnails = ref<Set<string>>(new Set());
+
+function markThumbnailMissing(slug: string): void {
+  const next = new Set(missingThumbnails.value);
+  next.add(slug);
+  missingThumbnails.value = next;
+}
+
+/* ── Lobby name ────────────────────────────────────────────────────────── */
+
+/** Host's in-progress text. Committed on blur or Enter rather than on every
+ *  keystroke: each commit broadcasts the settings contract and republishes
+ *  the public listing, and a lobby does not need renaming per character. */
+const editingLobbyName = ref('');
+const lobbyNameFocused = ref(false);
+const lobbyNameInputEl = ref<HTMLInputElement | null>(null);
+
+watch(
+  () => props.lobbyName,
+  (name) => {
+    if (!lobbyNameFocused.value) editingLobbyName.value = name;
+  },
+  { immediate: true },
+);
+
+/** The title this lobby is listed and shown under, host-typed or derived. */
+const lobbyDisplayName = computed(() =>
+  resolveLobbyDisplayName(
+    props.lobbyName,
+    props.players.find((p) => p.isHost)?.name ?? '',
+  ),
+);
+
+function commitLobbyName(): void {
+  lobbyNameFocused.value = false;
+  if (!props.isHost) return;
+  // Show the host exactly what was stored. A name that normalizes to what is
+  // already set produces no prop change to watch, so the field would
+  // otherwise keep the raw text (stray spaces and all) on screen.
+  const normalized = normalizeLobbyName(editingLobbyName.value);
+  editingLobbyName.value = normalized;
+  emit('setLobbyName', normalized);
+}
+
+/* ── Sides ─────────────────────────────────────────────────────────────── */
+
+const canAddAllyTeam = computed(
+  () => props.isHost && props.allyTeamCount < MAX_ALLY_TEAM_COUNT,
+);
+
+/** A side may only be deleted while nobody is standing on it — the same rule
+ *  NetworkManager enforces; this only decides whether to offer the control. */
+function canRemoveAllyTeam(group: { seats: readonly unknown[] }): boolean {
+  return props.isHost && props.allyTeamCount > 1 && group.seats.length === 0;
+}
+
+/** Ink for a label painted straight onto a side's generated colour. */
+function teamBandInk(teamColor: string): string {
+  return readableInkOn(teamColor);
+}
+
 // Lobby's CENTER / DIVIDERS pickers mirror the bottom BATTLE bar's
 // CENTER / DIVIDERS pickers — same data, same component family. We
 // apply the same BATTLE palette inline so the active button color
@@ -760,12 +867,39 @@ const terrainSectionVars = computed(() =>
            visually park it in the right column regardless. -->
       <template v-else-if="isInLobby">
         <div class="lobby-left">
-          <!-- Lobby actions pinned to the top of the left column.
-               Start + Leave used to live in the footer; pulled up here
-               so the host's primary action is anchored against the
-               same edge of the screen as the lobby title and player
-               list. Tauri's Exit and the error banner stay in the
-               footer (less frequent / more passive). -->
+          <!-- Who this lobby is. The host types the title the directory
+               lists it under; everyone else reads it. The room code sits
+               under it as the thing you read aloud, not as the heading —
+               a lobby is a name first and a four-character code second. -->
+          <div class="lobby-identity">
+            <input
+              v-if="isHost"
+              ref="lobbyNameInputEl"
+              v-model="editingLobbyName"
+              class="lobby-name-input"
+              type="text"
+              :maxlength="MAX_LOBBY_NAME_LENGTH"
+              :placeholder="lobbyDisplayName"
+              spellcheck="false"
+              autocomplete="off"
+              title="Name this lobby — the title it is listed under"
+              @focus="lobbyNameFocused = true"
+              @blur="commitLobbyName"
+              @keyup.enter="lobbyNameInputEl?.blur()"
+            />
+            <h1 v-else class="lobby-name-static">{{ lobbyDisplayName }}</h1>
+
+            <div
+              class="room-code-row"
+              :title="codeCopied ? 'Copied!' : 'Copy the lobby code'"
+              @click="copyCode"
+            >
+              <span class="room-code-label">CODE</span>
+              <span class="room-code">{{ roomCode }}</span>
+              <span class="copy-btn" :class="{ copied: codeCopied }">{{ codeCopied ? '✓' : '⧉' }}</span>
+            </div>
+          </div>
+
           <div class="lobby-actions-row">
             <button class="lobby-btn cancel-btn" @click="handleCancel">Leave</button>
             <button
@@ -777,18 +911,24 @@ const terrainSectionVars = computed(() =>
             <span v-else class="waiting-text">Waiting for host...</span>
           </div>
 
-          <div class="room-code-display">
-            <h1 class="title">GAME LOBBY CODE:</h1>
-            <div class="room-code-row" @click="copyCode">
-              <span class="room-code">{{ roomCode }}</span>
-              <button class="copy-btn" :class="{ copied: codeCopied }" :title="codeCopied ? 'Copied!' : 'Copy'">
-                {{ codeCopied ? '✓' : '⧉' }}
-              </button>
-            </div>
-          </div>
-
           <div class="players-section">
-            <h2 class="players-title">Players ({{ players.length }}/6)</h2>
+            <div class="players-header">
+              <h2 class="players-title">Players ({{ players.length }}/6)</h2>
+              <!-- Sides are added and removed here rather than picked off a
+                   1..6 button row: the host is looking at the teams while
+                   they decide, and a side is a thing you add to a list, not
+                   a number you set. -->
+              <button
+                v-if="isHost"
+                class="team-add-btn"
+                type="button"
+                :disabled="!canAddAllyTeam"
+                :title="canAddAllyTeam
+                  ? `Add TEAM ${allyTeamCount + 1} — it carves its own slice, deposits and spawn arc`
+                  : `A lobby cannot declare more than ${MAX_ALLY_TEAM_COUNT} teams`"
+                @click="emit('addAllyTeam')"
+              >+ TEAM</button>
+            </div>
             <!-- Grouped by SIDE, because a side is what an alliance means
                  on the ground: shared slice, shared vision, no friendly
                  fire. The band on the far left is the side's own colour and
@@ -801,12 +941,25 @@ const terrainSectionVars = computed(() =>
                 :key="group.allyTeamId"
                 class="team-group"
               >
+                <!-- The side's own colour, straight from the identity rule
+                     the battle uses. The label takes whichever ink stays
+                     readable on it — these colours are generated, so half of
+                     them are dark and a fixed black label vanished on those. -->
                 <div
                   class="team-band"
-                  :style="{ background: group.teamColor }"
+                  :style="{ background: group.teamColor, color: teamBandInk(group.teamColor) }"
                   :title="`TEAM ${group.allyTeamId}`"
                 >
                   <span class="team-band-label">TEAM {{ group.allyTeamId }}</span>
+                  <!-- Only on a side nobody is standing on. Deleting an
+                       occupied side would move somebody without being asked. -->
+                  <button
+                    v-if="canRemoveAllyTeam(group)"
+                    class="team-remove-btn"
+                    type="button"
+                    :title="`Remove TEAM ${group.allyTeamId} — no commander is on it`"
+                    @click.stop="emit('removeAllyTeam', group.allyTeamId)"
+                  >−</button>
                 </div>
                 <ul class="player-list">
               <li
@@ -843,37 +996,30 @@ const terrainSectionVars = computed(() =>
                     class="player-time"
                   >{{ seat.player.localTime }}</span>
                 </div>
-                <!-- Badges pinned to the right edge of the row.
-                     HOST anchors top-right (default flex-column
-                     position), YOU drops to bottom-right via
-                     `margin-top: auto` so it always pins to the
-                     bottom whether or not HOST is also present. -->
-                <div class="player-badges">
-                  <!-- Side (BAR's ally team). The band on the left already
-                       names the side; this cell is the host's control for
-                       moving a seat, so only the host renders it. -->
+                <!-- The host's controls for this seat. No TEAM label here:
+                     the row already sits inside its side's band, so printing
+                     the number again on the right was the same fact twice. -->
+                <div v-if="isHost" class="player-controls">
                   <button
-                    v-if="isHost"
-                    class="team-badge team-badge-btn"
+                    class="player-control-btn"
                     type="button"
-                    :style="{ borderColor: seat.teamColor }"
                     :title="`Move ${seat.player.name} to the next team`"
                     @click="emit('cycleMemberAllyTeam', memberIdForSeat(seat.player.playerId))"
-                  >TEAM {{ seat.allyTeamId }}</button>
-                  <span
-                    v-else
-                    class="team-badge"
-                    :style="{ borderColor: seat.teamColor }"
-                  >TEAM {{ seat.allyTeamId }}</span>
-                  <!-- The host owns seating; the host's own seat has no bench
-                       button because a lobby with nobody in it is not a lobby. -->
+                  >MOVE</button>
+                  <!-- The host's own seat has no bench button: a lobby with
+                       nobody in it is not a lobby. -->
                   <button
-                    v-if="isHost && !seat.player.isHost"
-                    class="seat-toggle-btn"
+                    v-if="!seat.player.isHost"
+                    class="player-control-btn"
                     type="button"
                     :title="`Move ${seat.player.name} back to the watchers`"
                     @click="emit('toggleMemberSeated', memberIdForSeat(seat.player.playerId))"
                   >BENCH</button>
+                </div>
+                <!-- Badges pinned to the right edge of the row. HOST anchors
+                     top-right, YOU bottom-right, whether or not the other is
+                     present. -->
+                <div class="player-badges">
                   <span v-if="seat.player.isHost" class="host-badge">HOST</span>
                   <span v-if="seat.player.playerId === localPlayerId" class="you-badge">YOU</span>
                 </div>
@@ -939,6 +1085,51 @@ const terrainSectionVars = computed(() =>
         </div>
 
         <div class="lobby-right">
+          <!-- What map, and how it is chosen. The eight authored maps are
+               offered as pictures of themselves; CUSTOM swaps the grid for
+               the full battle-options bar behind it. Two views of the same
+               choice, never both at once — so the map picker is not a
+               summary of the bar, it is the default way to answer it. -->
+          <div class="map-section-header">
+            <span class="map-section-title">MAP</span>
+            <span class="map-section-current">{{ activePresetName ?? 'CUSTOM' }}</span>
+            <button
+              class="custom-toggle"
+              :class="{ active: customOptionsOpen }"
+              type="button"
+              :title="customOptionsOpen
+                ? 'Back to the map picker'
+                : 'Open the full battle options — terrain, rosters, caps'"
+              @click="customOptionsOpen = !customOptionsOpen"
+            >CUSTOM</button>
+          </div>
+
+          <div
+            v-show="!customOptionsOpen"
+            class="map-grid"
+            :class="{ 'bar-readonly': !isHost }"
+          >
+            <button
+              v-for="tile in mapPresetTiles"
+              :key="tile.preset.name"
+              class="map-tile"
+              :class="{ active: tile.active }"
+              type="button"
+              :title="isHost ? `Play on ${tile.preset.name}` : 'Only the host can change the map'"
+              @click="pickPreset(tile.preset)"
+            >
+              <img
+                v-if="!missingThumbnails.has(tile.preset.backdropSlug)"
+                class="map-tile-image"
+                :src="tile.thumbnailUrl"
+                :alt="tile.preset.name"
+                loading="lazy"
+                @error="markThumbnailMissing(tile.preset.backdropSlug)"
+              />
+              <span class="map-tile-name">{{ tile.preset.name }}</span>
+            </button>
+          </div>
+
           <!-- Battle-config bar. Same component family + flex-wrap
                layout as the bottom DEMO BATTLE bar, just adapted to
                the lobby's right column: small `.control-btn` buttons
@@ -946,6 +1137,7 @@ const terrainSectionVars = computed(() =>
                viewers get the `bar-readonly` pointer-events lock so
                the saturated active palette stays bright. -->
           <div
+            v-show="customOptionsOpen"
             class="control-bar terrain-section"
             :class="{ 'bar-readonly': !isHost }"
             :style="terrainSectionVars"
@@ -1326,6 +1518,11 @@ const terrainSectionVars = computed(() =>
   box-sizing: border-box;
   text-align: center;
   box-shadow: 0 0 60px rgba(68, 68, 170, 0.25);
+  /* The panel is dark, so the DEFAULT ink has to be light. Without this the
+   * modal inherits the document's black — every label that deliberately
+   * says `color: inherit` (the watcher list, the empty-side notes, the small
+   * outline buttons) rendered black on near-black. */
+  color: #e6edf7;
 }
 
 .lobby-modal:not(.in-lobby) {
@@ -1355,18 +1552,23 @@ const terrainSectionVars = computed(() =>
  * options off-screen, only the other way around. */
 .lobby-modal.in-lobby {
   display: grid;
-  grid-template-columns: minmax(360px, 1fr) minmax(480px, 1.6fr);
+  grid-template-columns: minmax(320px, 24vw) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto auto;
   grid-template-areas:
-    "left   preview"
-    "left   terrain"
-    "footer footer";
+    "left preview"
+    "left terrain"
+    "error footer";
   width: 100vw;
   height: 100vh;
   max-width: none;
   min-width: 0;
-  padding: 32px 40px;
-  gap: 24px;
+  /* No inset anywhere. The lobby IS the screen: the live simulation runs
+   * edge to edge and the battle options sit flush under it, so nothing is
+   * spent on a frame around a full-screen surface. The roster column keeps
+   * its own padding because a list of names needs one; the map and the
+   * simulation do not. */
+  padding: 0;
+  gap: 0;
   text-align: left;
   /* Fullscreen lobby has no surrounding chrome — the dark
    * `.lobby-overlay` already covers the whole viewport, so the
@@ -1381,9 +1583,12 @@ const terrainSectionVars = computed(() =>
   grid-area: left;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 14px;
   min-height: 0;
   overflow: hidden;
+  padding: 18px 18px 14px;
+  background: rgba(9, 11, 16, 0.72);
+  border-right: 1px solid rgba(120, 140, 165, 0.28);
 }
 
 /* Top-of-left-column action row. Leave + Start (or "Waiting for
@@ -1400,11 +1605,24 @@ const terrainSectionVars = computed(() =>
   grid-area: terrain;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 0;
+  min-width: 0;
+  border-top: 1px solid rgba(120, 140, 165, 0.28);
 }
 
+/* Tauri's Exit and the error banner get their own cells in a last row that
+ * sizes to content — so on the web, where neither is present, the row
+ * collapses to nothing and the simulation keeps the space. */
 .lobby-modal.in-lobby > .footer-row {
   grid-area: footer;
+  margin: 0;
+  padding: 8px 12px;
+  justify-content: flex-end;
+}
+
+.lobby-modal.in-lobby > .error-message {
+  grid-area: error;
+  margin: 0;
 }
 
 /* When in fullscreen lobby mode the preview-pane lives in the
@@ -1420,6 +1638,8 @@ const terrainSectionVars = computed(() =>
   height: 100%;
   margin: 0;
   min-height: 0;
+  border: none;
+  border-radius: 0;
 }
 
 /* Players list in fullscreen mode gets vertical scroll if many
@@ -1510,6 +1730,10 @@ const terrainSectionVars = computed(() =>
   border-left: 1px solid #444;
   box-shadow: -16px 0 38px rgba(0, 0, 0, 0.55);
   pointer-events: auto;
+  /* Same reason as `.lobby-modal`: on a near-black panel the inherited
+   * document ink is black, so anything that does not name its own colour
+   * has to be given a light default here rather than at each site. */
+  color: #e6edf7;
 }
 
 .menu-sidebar:not(.open) .menu-sidebar-panel {
@@ -1903,46 +2127,39 @@ const terrainSectionVars = computed(() =>
   margin-top: 20px;
 }
 
-.room-code-display {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 0;
-  margin-bottom: 16px;
-}
-
 .room-code-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   cursor: pointer;
 }
 
 .room-code {
+  flex: 1;
   font-family: monospace;
-  font-size: 28px;
+  font-size: 22px;
   color: #4a9eff;
-  letter-spacing: 6px;
+  letter-spacing: 5px;
   font-weight: bold;
   user-select: all;
   text-shadow: 0 0 10px rgba(74, 158, 255, 0.4);
 }
 
 .copy-btn {
-  font-size: 16px;
-  width: 32px;
-  height: 32px;
+  font-size: 14px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   background: rgba(74, 158, 255, 0.2);
   border: 1px solid #4a9eff;
-  border-radius: 8px;
+  border-radius: 6px;
   color: #4a9eff;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .copy-btn:hover {
@@ -1956,14 +2173,291 @@ const terrainSectionVars = computed(() =>
 }
 
 .players-section {
-  margin-bottom: 25px;
+  margin-bottom: 0;
+}
+
+.players-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 10px;
 }
 
 .players-title {
   font-family: monospace;
-  font-size: 16px;
-  color: #aaa;
-  margin: 0 0 15px 0;
+  font-size: 15px;
+  color: #aeb9c8;
+  margin: 0;
+}
+
+.team-add-btn {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #9fd0ff;
+  background: rgba(74, 158, 255, 0.14);
+  border: 1px solid rgba(74, 158, 255, 0.45);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.team-add-btn:hover:not(:disabled) {
+  background: rgba(74, 158, 255, 0.3);
+  border-color: #4a9eff;
+  color: #fff;
+}
+
+.team-add-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Lobby identity: the name, then the code ───────────────────────────── */
+
+.lobby-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lobby-name-input,
+.lobby-name-static {
+  width: 100%;
+  margin: 0;
+  padding: 7px 10px;
+  font-family: monospace;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(120, 140, 165, 0.3);
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+
+.lobby-name-input {
+  outline: none;
+  caret-color: currentColor;
+}
+
+.lobby-name-input::placeholder {
+  color: #6d7a8b;
+  font-weight: 400;
+}
+
+.lobby-name-input:hover {
+  border-color: rgba(120, 140, 165, 0.55);
+}
+
+.lobby-name-input:focus {
+  border-color: #4a9eff;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.lobby-name-static {
+  background: transparent;
+  border-color: transparent;
+  padding-left: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.room-code-label {
+  font-family: monospace;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: #7d8899;
+}
+
+/* ── Host controls on a seat row ───────────────────────────────────────── */
+
+.player-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.player-control-btn {
+  padding: 2px 7px;
+  font-family: monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #c3cddb;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.player-control-btn:hover,
+.player-control-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.6);
+  color: #ffffff;
+  outline: none;
+}
+
+/* The options bar is flush with the column: no card border, no rounding, no
+ * outer margin. It scrolls inside itself so adding more controls can never
+ * push the live simulation off the screen. */
+.lobby-modal.in-lobby > .lobby-right > .control-bar {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  align-items: flex-start;
+  /* Same band height the map grid claims, so switching between the two
+   * views does not resize the live simulation above them. */
+  max-height: clamp(190px, 32vh, 400px);
+  overflow-y: auto;
+}
+
+/* ── Map picker ────────────────────────────────────────────────────────── */
+
+.map-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: rgba(9, 11, 16, 0.72);
+  border-bottom: 1px solid rgba(120, 140, 165, 0.22);
+}
+
+.map-section-title {
+  font-family: monospace;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: #7d8899;
+}
+
+.map-section-current {
+  flex: 1;
+  min-width: 0;
+  font-family: monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #e6edf7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.custom-toggle {
+  flex: 0 0 auto;
+  padding: 3px 12px;
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #c3cddb;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.custom-toggle:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.6);
+  color: #ffffff;
+}
+
+.custom-toggle.active {
+  background: rgba(74, 158, 255, 0.28);
+  border-color: #4a9eff;
+  color: #ffffff;
+}
+
+/* Four across, two down — the eight authored maps, whole, with nothing
+ * between them but a hairline. The tiles carry the choice; the row of names
+ * they replaced is still available under CUSTOM. */
+.map-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Exactly two rows, both the same height. The band's own height is what
+   * bounds the tiles — not the tiles' aspect ratio — so the live simulation
+   * above always keeps the larger share of the screen no matter how wide
+   * the window is. */
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  height: clamp(190px, 32vh, 400px);
+  gap: 2px;
+  padding: 2px;
+  background: rgba(9, 11, 16, 0.72);
+}
+
+.map-tile {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #0b0f14;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, filter 0.15s ease;
+}
+
+/* Host-locked, the same way the options bar locks: the tiles keep their full
+ * colour so a joiner sees exactly the map the host picked, they just do not
+ * answer a click. (`bar-readonly` in barControls.css only reaches
+ * `.control-btn`, and a map tile is a picture, not a bar button.) */
+.map-grid.bar-readonly .map-tile {
+  pointer-events: none;
+  cursor: default;
+}
+
+.map-tile:hover {
+  border-color: rgba(255, 255, 255, 0.45);
+  filter: brightness(1.15);
+}
+
+.map-tile.active {
+  border-color: #4a9eff;
+  filter: brightness(1.1);
+}
+
+.map-tile-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.map-tile-name {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 4px 6px;
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #ffffff;
+  text-align: left;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.map-tile.active .map-tile-name {
+  color: #cfe6ff;
 }
 
 .team-list,
@@ -2067,12 +2561,43 @@ const terrainSectionVars = computed(() =>
 }
 
 .team-band {
-  flex: 0 0 16px;
+  flex: 0 0 20px;
   border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 0;
+  overflow: hidden;
+}
+
+/* Sits inside the band so the control that deletes a side is on the side
+ * itself, not in a separate list of team numbers somewhere else. */
+.team-remove-btn {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  font-family: monospace;
+  font-size: 13px;
+  line-height: 1;
+  color: inherit;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.72;
+}
+
+.team-remove-btn:hover,
+.team-remove-btn:focus-visible {
+  background: rgba(0, 0, 0, 0.55);
+  opacity: 1;
+  outline: none;
 }
 
 .team-band-label {
@@ -2080,7 +2605,10 @@ const terrainSectionVars = computed(() =>
   font-size: 10px;
   font-weight: bold;
   letter-spacing: 2px;
-  color: rgba(0, 0, 0, 0.72);
+  /* Inherited from the band's inline style, which picks black or white from
+   * the side's own generated colour — see readableInkOn. */
+  color: inherit;
+  opacity: 0.82;
   writing-mode: vertical-rl;
   text-orientation: mixed;
   white-space: nowrap;
@@ -2268,32 +2796,6 @@ const terrainSectionVars = computed(() =>
    * cells touch the row's outer rounded edges. Keep these in sync
    * if the player-item padding ever changes. */
   margin: -10px -14px -10px 0;
-}
-
-/* TEAM badge: a compact outlined pill in the badge column. The host's
-   variant is a button; every other client renders the same pill inert. */
-.player-badges .team-badge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: monospace;
-  font-size: 11px;
-  font-weight: bold;
-  letter-spacing: 1px;
-  color: white;
-  padding: 2px 6px;
-  border: 1px solid currentColor;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.35);
-  white-space: nowrap;
-}
-
-.player-badges .team-badge-btn {
-  cursor: pointer;
-}
-
-.player-badges .team-badge-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
 }
 
 .player-badges .host-badge,

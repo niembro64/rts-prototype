@@ -41,6 +41,7 @@ import { getTurretCooldownDuration } from './turretCooldown';
 import { cloneSensorCapabilityConfig } from './sensorConfig';
 import { BEAM_PULSE_INITIAL_STAGGER_MAX_MS } from '../../config';
 import { getTurretBarrelCenterToTipLength } from '../math/BarrelGeometry';
+import { normalizeAngle } from '../math/MathHelpers';
 
 function getBeamPulseInitialDelayMs(turretId: EntityId): number {
   if (turretId < 0 || BEAM_PULSE_INITIAL_STAGGER_MAX_MS <= 0) return 0;
@@ -427,6 +428,42 @@ export function createBuildingRuntimeTurrets(
     ));
   }
   return turrets;
+}
+
+/** Point a finished building's attack turrets at the middle of the map.
+ *
+ *  A defensive structure has no "forward" the way a chassis does, and it never
+ *  restores to a rest angle (see budget_design_philosophy.html, "A building
+ *  turret has no rest angle"), so its FIRST bearing is the only one anything
+ *  chooses for it. Facing the map centre points it at the side the fighting
+ *  arrives from instead of at whatever the blueprint author happened to
+ *  author. Deterministic: position, host rotation and map size only. */
+export function aimBuildingTurretsAtMapCenter(
+  entity: { transform: { x: number; y: number; rotation: number }; combat: { turrets: Turret[] } | null },
+  mapWidth: number,
+  mapHeight: number,
+): void {
+  const combat = entity.combat;
+  if (combat === null) return;
+  const dx = mapWidth / 2 - entity.transform.x;
+  const dy = mapHeight / 2 - entity.transform.y;
+  if (dx === 0 && dy === 0) return;
+  const worldYaw = DMath.atan2(dy, dx);
+  const localYaw = normalizeAngle(worldYaw - entity.transform.rotation);
+  for (let i = 0; i < combat.turrets.length; i++) {
+    const turret = combat.turrets[i];
+    const yaw = turret.config.articulation.yaw;
+    // A limited traverse cannot promise the centre; take it as far as it goes.
+    const aimed = yaw.continuous
+      ? localYaw
+      : Math.max(yaw.minAngle, Math.min(yaw.maxAngle, localYaw));
+    turret.localYaw = aimed;
+    turret.rotation = normalizeAngle(entity.transform.rotation + aimed);
+    turret.articulationParentYaw = entity.transform.rotation;
+    // Turrets that drive a rotating building piece steer through hostPieceYaw
+    // rather than their own local yaw, so the piece has to start there too.
+    turret.hostPieceYaw = turret.rotation;
+  }
 }
 
 function makeUtilityMount(

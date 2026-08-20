@@ -39,6 +39,7 @@ import __wbg_init, {
   construction_apply_coupled_consumer_debits,
   construction_reconcile_and_grow_pieces,
   construction_apply_consumer_spends,
+  construction_decay_step,
   damage_area_overlap_batch,
   damage_area_candidates_batch,
   damage_area_turret_candidates_batch,
@@ -925,6 +926,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         constructionApplyCoupledConsumerDebits: construction_apply_coupled_consumer_debits,
         constructionReconcileAndGrowPieces: construction_reconcile_and_grow_pieces,
         constructionApplyConsumerSpends: construction_apply_consumer_spends,
+        constructionDecayStep: construction_decay_step,
         economyApplyIncomeCredits: economy_apply_income_credits,
         economyApplyConverterTransfers: economy_apply_converter_transfers,
         arrivalCompletionStepBatch: arrival_completion_step_batch,
@@ -1750,6 +1752,14 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runResourceMovementConformanceContractTest();
         const { runBuildingFootprintContractTest } = await import('../sim/buildingFootprintContractTest');
         runBuildingFootprintContractTest();
+        const { runUnfinishedBuildDecayContractTest } = await import('../sim/unfinishedBuildDecayContractTest');
+        runUnfinishedBuildDecayContractTest();
+        const { runBuildingTurretRestContractTest } = await import('../sim/buildingTurretRestContractTest');
+        runBuildingTurretRestContractTest();
+        const { runGameplaySettingCommandContractTest } = await import('../sim/gameplaySettingCommandContractTest');
+        runGameplaySettingCommandContractTest();
+        const { runBuildingCollisionSpawnContractTest } = await import('../sim/buildingCollisionSpawnContractTest');
+        runBuildingCollisionSpawnContractTest();
         const { runSupportSurfaceContractTest } = await import('../sim/supportSurfaceContractTest');
         runSupportSurfaceContractTest();
         const { runFabricatorProductionRingContractTest, runQueenFactoryProductionContractTest } = await import('../sim/supportSurfaceContractTest');

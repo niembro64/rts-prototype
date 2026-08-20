@@ -71,7 +71,7 @@ import {
 import { NetworkHeartbeatTracker } from './NetworkHeartbeatTracker';
 import { NetworkLockstepTransport } from './NetworkLockstepTransport';
 import { HOST_MEMBER_ID, NetworkLobbyMembers } from './NetworkLobbyMembers';
-import { MAX_ALLY_TEAM_COUNT } from '../sim/teamRoster';
+import { FIRST_ALLY_TEAM_ID, MAX_ALLY_TEAM_COUNT } from '../sim/teamRoster';
 import { BATTLE_CONFIG } from '@/battleBarConfig';
 import {
   generateRoomCode,
@@ -83,6 +83,7 @@ import {
   type NetworkSendBudgetTelemetry,
 } from './NetworkSendBudget';
 import { assertCurrentLobbySettings } from './LobbySettingsContract';
+import { resolveLobbyDisplayName } from './lobbyName';
 import { MAX_LOBBY_PLAYERS } from './LobbyDirectory';
 import { getMultiplayerBackend } from './multiplayer/multiplayerBackendRegistry';
 import {
@@ -313,6 +314,25 @@ export class NetworkManager {
     if (this.role !== 'host') return;
     if (!this.applyLobbyAllyTeamCount(count)) return;
     this.broadcastLobbyRoster();
+  }
+
+  /**
+   * Host: delete one declared side, closing the gap behind it.
+   *
+   * Only an EMPTY side. A side with a commander on it is somebody's game, and
+   * a control that silently relocated them would make the roster change under
+   * their feet — so the host benches or moves the players first and the
+   * removal is refused until they have.
+   */
+  removeLobbyAllyTeam(allyTeamId: number): boolean {
+    if (this.role !== 'host') return false;
+    if (this.allyTeamCount <= 1) return false;
+    if (allyTeamId < FIRST_ALLY_TEAM_ID) return false;
+    if (allyTeamId >= FIRST_ALLY_TEAM_ID + this.allyTeamCount) return false;
+    if (!this.members.collapseAllyTeam(allyTeamId)) return false;
+    this.allyTeamCount--;
+    this.broadcastLobbyRoster();
+    return true;
   }
 
   /** Client: adopt the host's side count, arriving on `lobbySettings`. Never
@@ -644,7 +664,9 @@ export class NetworkManager {
           : `${settings.mapWidthLandCells}x${settings.mapLengthLandCells}`;
       return {
         roomCode: this.roomCode,
-        name: hostName === '' ? 'Open lobby' : `${hostName}'s game`,
+        // Whatever the host typed, falling back to their name — one rule,
+        // shared with the lobby screen that shows the same title.
+        name: resolveLobbyDisplayName(settings?.lobbyName ?? '', hostName),
         hostName,
         // Read off the lifecycle, so a roster change arriving after launch
         // cannot advertise a running match as joinable.

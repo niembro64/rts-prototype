@@ -1969,7 +1969,18 @@ fn pathfinder_find_path_with_expansion_budget(
 
     // Search and smoothing enforce only physical clearance. Extra stand-off is
     // represented by the soft cost profile and can never make a route illegal.
-    state.cur_required_clearance = hard_clearance;
+    //
+    // A body already standing in a pocket tighter than its own hard clearance
+    // — the ordinary case once a structure goes up beside it — must still be
+    // able to walk out. Demanding more room than the cell it currently
+    // occupies makes every neighbour illegal and strands it where it stands,
+    // so the search runs at the clearance the body actually has. This can only
+    // widen what is legal, and never below what the start already proves is
+    // occupiable; goal snapping above still demands the full hard clearance,
+    // so the destination is a place the body genuinely fits.
+    let start_clearance = pathfinder_clearance_at(state, start_idx, traversal).max(0);
+    let escape_clearance = hard_clearance.min(start_clearance);
+    state.cur_required_clearance = escape_clearance;
 
     // BAR-style raw move: if the current leg has direct line-of-sight through
     // passable cells, do not touch A*. This is the common case for open-field
@@ -2473,7 +2484,18 @@ pub fn pathfinder_validate_path(
     state.cur_required_clearance = if traversal.allow_air {
         0
     } else {
-        pathfinder_hard_clearance_cells_for_state(state, unit_radius)
+        // Same escape rule as the planner: the polyline starts where the body
+        // already stands, so a route may not be rejected for the pocket the
+        // body is already occupying.
+        let hard = pathfinder_hard_clearance_cells_for_state(state, unit_radius);
+        let start_gx = ((points[0] / state.cell_size).floor() as i32)
+            .max(0)
+            .min(state.grid_w - 1);
+        let start_gy = ((points[1] / state.cell_size).floor() as i32)
+            .max(0)
+            .min(state.grid_h - 1);
+        let start_idx = (start_gy * state.grid_w + start_gx) as usize;
+        hard.min(pathfinder_clearance_at(state, start_idx, traversal).max(0))
     };
     let last_x = points[points.len() - 2];
     let last_y = points[points.len() - 1];

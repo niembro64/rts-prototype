@@ -519,6 +519,40 @@ pub(crate) fn unit_force_contact_normal_load(
     (weight_into_surface - force_out_of_surface).max(0.0)
 }
 
+/// Ground's occupancy: the fraction of the body's weight the contact actually
+/// carries. This is the ground analogue of the air/water displaced-volume
+/// fractions, so every medium contributes an additive, continuously weighted
+/// term instead of one medium switching another off. Upward medium support
+/// already unloads `normal_load`, so a neutrally buoyant hull grazing a slope
+/// lands at ~0 and a body resting its full weight on the surface lands at 1.
+#[inline]
+pub(crate) fn unit_force_ground_occupancy(normal_load: f64, gravity_force: f64) -> f64 {
+    if !normal_load.is_finite() || !gravity_force.is_finite() || gravity_force <= 0.0 {
+        return 0.0;
+    }
+    (normal_load / gravity_force).clamp(0.0, 1.0)
+}
+
+/// Occupancy-weighted leveling target: the contact normal at full ground
+/// occupancy, world up at zero, and the normalized sum in between. Falls back
+/// to world up when the blend degenerates.
+#[inline]
+pub(crate) fn unit_force_attitude_target_up(
+    normal_x: f64,
+    normal_y: f64,
+    normal_z: f64,
+    ground_occupancy: f64,
+) -> [f64; 3] {
+    let w = ground_occupancy.clamp(0.0, 1.0);
+    if w <= 0.0 || !normal_x.is_finite() || !normal_y.is_finite() || !normal_z.is_finite() {
+        return [0.0, 0.0, 1.0];
+    }
+    let x = normal_x * w;
+    let y = normal_y * w;
+    let z = normal_z * w + (1.0 - w);
+    unit_force_normalize3(x, y, z).unwrap_or([0.0, 0.0, 1.0])
+}
+
 /// Split the Coulomb-limited ground drive budget between cross-track slope
 /// hold and along-track propulsion. The lateral (perpendicular-to-command)
 /// component of slope gravity is cancelled first, at full authority — a
@@ -1196,6 +1230,7 @@ fn unit_force_step_batch_core(
         let mut profile_flags = 0_u32;
         let mut air_angular_damping_rate = 0.0;
         let mut water_angular_damping_rate = 0.0;
+        let mut authored_ground_tangential_damping_rate = 0.0;
         if flag & UF_FLAG_BLOCKED_OR_DEAD != 0 {
             out_flags[i] |= UF_OUT_MOVEMENT_ACCEL | UF_OUT_CLEAR_COMBAT;
             processed += 1;
@@ -1241,8 +1276,12 @@ fn unit_force_step_batch_core(
                         profile.values[pbase + UF_PROFILE_AIR_ANGULAR_DAMPING_RATE];
                     water_angular_damping_rate =
                         profile.values[pbase + UF_PROFILE_WATER_ANGULAR_DAMPING_RATE];
-                    p.ground_tangential_damping_rate[slot] =
+                    // Authored rate; the contact block below scales it by the
+                    // load this contact actually carries so ground damping adds
+                    // to fluid drag instead of replacing it.
+                    authored_ground_tangential_damping_rate =
                         profile.values[pbase + UF_PROFILE_GROUND_TANGENTIAL_DAMPING_RATE].max(0.0);
+                    p.ground_tangential_damping_rate[slot] = 0.0;
                     flag |= profile_flags & UF_PROFILE_KERNEL_FLAG_MASK;
                 }
             }
@@ -1579,6 +1618,11 @@ fn unit_force_step_batch_core(
         };
 
         let mut attitude_ground_control_force = 0.0;
+        // Ground occupancy: the share of the body's weight this contact
+        // actually carries. Air and water are weighted by displaced volume;
+        // ground is weighted by carried load, so every medium contributes an
+        // additive term and none of them switches the others off.
+        let mut ground_occupancy = 0.0;
         if ground_contact {
             // Contact drive is constrained by Coulomb grip and the effective
             // normal load. Any already-applied upward medium support unloads
@@ -1594,6 +1638,9 @@ fn unit_force_step_batch_core(
                 thrust_force_y + external_fy,
                 thrust_force_z + external_fz,
             );
+            ground_occupancy = unit_force_ground_occupancy(normal_load, gravity_force);
+            p.ground_tangential_damping_rate[slot] =
+                authored_ground_tangential_damping_rate * ground_occupancy;
             let contact_force_limit =
                 normal_load * rows[base + UF_ROW_GROUND_STATIC_FRICTION_COEFFICIENT].max(0.0);
             let available_ground_force = ground_max_propulsive_force.min(contact_force_limit);
@@ -1638,22 +1685,24 @@ fn unit_force_step_batch_core(
         }
 
         if flag & UF_FLAG_HAS_ORIENTATION != 0 {
-            let attitude_ground_contact = ground_contact;
             let prev_omega_x = rows[base + UF_ROW_OMEGA_X];
             let prev_omega_y = rows[base + UF_ROW_OMEGA_Y];
             let prev_omega_z = rows[base + UF_ROW_OMEGA_Z];
-            let target_up = if attitude_ground_contact {
-                [
-                    rows[base + UF_ROW_NORMAL_X],
-                    rows[base + UF_ROW_NORMAL_Y],
-                    rows[base + UF_ROW_NORMAL_Z],
-                ]
-            } else {
-                [0.0, 0.0, 1.0]
-            };
+            // The leveling target is the occupancy-weighted sum of the contact
+            // normal and the fluid's level up. A body whose weight rests on the
+            // surface lies on the surface; a neutrally supported body grazing a
+            // steep lakebed wall stays level, because the wall carries none of
+            // its weight.
+            let target_up = unit_force_attitude_target_up(
+                rows[base + UF_ROW_NORMAL_X],
+                rows[base + UF_ROW_NORMAL_Y],
+                rows[base + UF_ROW_NORMAL_Z],
+                ground_occupancy,
+            );
             let mut angular_damping = 0.0;
-            if attitude_ground_contact {
-                angular_damping += rows[base + UF_ROW_GROUND_STATIC_FRICTION_COEFFICIENT].max(0.0);
+            if ground_occupancy > 0.0 {
+                angular_damping += rows[base + UF_ROW_GROUND_STATIC_FRICTION_COEFFICIENT].max(0.0)
+                    * ground_occupancy;
             }
             angular_damping += unit_force_occupancy_weighted_positive_value(
                 air_angular_damping_rate,
@@ -1774,6 +1823,43 @@ mod tests {
         assert!(
             (actual - expected).abs() <= 1e-9,
             "expected {expected}, got {actual}"
+        );
+    }
+
+    #[test]
+    fn ground_occupancy_is_the_share_of_weight_the_contact_carries() {
+        // Resting body: the contact carries everything.
+        assert_near(unit_force_ground_occupancy(10.0, 10.0), 1.0);
+        // Half the weight held by medium support.
+        assert_near(unit_force_ground_occupancy(5.0, 10.0), 0.5);
+        // Neutrally supported hull grazing a surface: the contact carries none.
+        assert_near(unit_force_ground_occupancy(0.0, 10.0), 0.0);
+        // Never exceeds one, and a massless/degenerate body contributes nothing.
+        assert_near(unit_force_ground_occupancy(40.0, 10.0), 1.0);
+        assert_near(unit_force_ground_occupancy(10.0, 0.0), 0.0);
+    }
+
+    #[test]
+    fn attitude_target_up_blends_contact_normal_by_ground_occupancy() {
+        let theta: f64 = 30.0_f64.to_radians();
+        let (nx, ny, nz) = (0.0, -theta.sin(), theta.cos());
+        // Full contact load: lie on the surface.
+        let full = unit_force_attitude_target_up(nx, ny, nz, 1.0);
+        assert_near(full[0], nx);
+        assert_near(full[1], ny);
+        assert_near(full[2], nz);
+        // No contact load: stay level, even though the surface is right there.
+        let none = unit_force_attitude_target_up(nx, ny, nz, 0.0);
+        assert_near(none[0], 0.0);
+        assert_near(none[1], 0.0);
+        assert_near(none[2], 1.0);
+        // Partial support tilts partway and stays a unit vector.
+        let half = unit_force_attitude_target_up(nx, ny, nz, 0.5);
+        let mag = (half[0] * half[0] + half[1] * half[1] + half[2] * half[2]).sqrt();
+        assert_near(mag, 1.0);
+        assert!(
+            half[1] < 0.0 && half[1] > ny,
+            "half support leans toward the slope without reaching it"
         );
     }
 

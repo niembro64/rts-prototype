@@ -18,11 +18,16 @@ import {
 } from './blueprints';
 import type { ResourceCost } from '../../types/economyTypes';
 import { ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_HP } from '../../types/network';
+import { BUILD_CONFIG } from '../../buildConfig';
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 
 type ConstructionLifecycleResult = {
   completedUnits: Entity[];
   completedBuildings: Entity[];
+  /** Shells that rotted all the way back to zero progress this tick. The
+   *  caller removes them; a decayed frame is not a death, so it produces no
+   *  explosion, wreck, or death event. */
+  decayedBuildings: Entity[];
 };
 
 type ConstructionPieceSpec = {
@@ -386,20 +391,118 @@ function completeConstruction(
   world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
 }
 
-export function updateConstructionLifecycle(world: WorldState): ConstructionLifecycleResult {
+const _attendedConstructionTargets = new Set<number>();
+const _decayOut = new Float64Array(4);
+
+/** Every shell somebody is still answering for this tick: one that received
+ *  construction work during resource distribution, plus one that any living
+ *  builder still carries in its order queue.
+ *
+ *  `distributeEnergy` clears and refills `workMovements` immediately before
+ *  this pass, so it is the authoritative "somebody is paying for this frame"
+ *  record. The queue scan covers the gap the work ledger cannot see: a
+ *  shift-queued site is placed the moment the order is issued and stands there
+ *  unfunded while the builder finishes the sites ahead of it. Intent counts as
+ *  attendance; only an abandoned or cancelled frame rots. */
+function collectAttendedConstructionTargets(world: WorldState): ReadonlySet<number> {
+  const attended = _attendedConstructionTargets;
+  attended.clear();
+  const movements = world.workMovements;
+  for (let i = 0; i < movements.length; i++) {
+    const movement = movements[i];
+    if (movement.operation === 'construct') attended.add(movement.targetEntityId);
+  }
+  const builders = world.getBuilderUnits();
+  for (let i = 0; i < builders.length; i++) {
+    const unit = builders[i].unit;
+    if (unit === null || unit.hp <= 0) continue;
+    const actions = unit.actions;
+    for (let a = 0; a < actions.length; a++) {
+      const action = actions[a];
+      if (action.type !== 'build') continue;
+      const buildingId = action.buildingId;
+      if (buildingId !== undefined) attended.add(buildingId);
+    }
+  }
+  return attended;
+}
+
+/** Decay one unfunded shell. Returns true once the frame has rotted back to
+ *  zero progress and must leave the world. */
+function decayUnfundedConstruction(
+  world: WorldState,
+  entity: Entity,
+  dtSec: number,
+): boolean {
+  const buildable = entity.buildable;
+  if (buildable === null) return false;
+  const elapsed = (world.unfundedBuildSeconds.get(entity.id) ?? 0) + dtSec;
+  world.unfundedBuildSeconds.set(entity.id, elapsed);
+  const decay = BUILD_CONFIG.unfinishedBuildDecay;
+  const decaySeconds = Math.min(dtSec, elapsed - decay.unfundedDelaySeconds);
+  if (decaySeconds <= 0) return false;
+
+  const hpState = entity.building ?? entity.unit;
+  if (hpState === null) return false;
+  const sim = requireConstructionSim();
+  if (sim.constructionDecayStep(
+    buildable.paid.energy,
+    buildable.paid.metal,
+    buildable.required.energy,
+    buildable.required.metal,
+    buildable.healthBuildFraction,
+    hpState.hp,
+    hpState.maxHp,
+    decay.fractionPerSecond,
+    decaySeconds,
+    _decayOut,
+  ) === 0) {
+    throw new Error('constructionLifecycle: construction_decay_step rejected its buffer');
+  }
+  buildable.paid.energy = _decayOut[0];
+  buildable.paid.metal = _decayOut[1];
+  buildable.healthBuildFraction = _decayOut[2];
+  ensureConstructionPieceRecords(entity);
+  reconcileAndGrowConstructionPieces(world, entity, 'current');
+  // Decay owns health on the way down. The growth kernel only ever raises hp
+  // (and floors a live piece at 1), so the decayed value is written after it.
+  hpState.hp = _decayOut[3];
+  world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING | ENTITY_CHANGED_HP);
+  return _decayOut[2] <= 0;
+}
+
+export function updateConstructionLifecycle(
+  world: WorldState,
+  dtMs: number,
+): ConstructionLifecycleResult {
   const result: ConstructionLifecycleResult = {
     completedUnits: [],
     completedBuildings: [],
+    decayedBuildings: [],
   };
   const sources: ReadonlyArray<readonly Entity[]> = [
     world.getUnits(),
     world.getBuildings(),
   ];
+  const attended = collectAttendedConstructionTargets(world);
+  const dtSec = dtMs / 1000;
 
   for (const list of sources) {
     for (const entity of list) {
       const buildable = entity.buildable;
-      if (!buildable || buildable.isComplete || buildable.isInterrupted) continue;
+      if (!buildable || buildable.isComplete) continue;
+      // An unfinished building nobody is answering for rots at a constant rate
+      // and is gone at zero. Cancelled (interrupted) frames rot too — that is
+      // the only way a partial assembly ever leaves the map on its own.
+      // Factory unit shells are exempt: their factory owns their lifecycle.
+      if (entity.building !== null && !attended.has(entity.id)) {
+        if (decayUnfundedConstruction(world, entity, dtSec)) {
+          result.decayedBuildings.push(entity);
+        }
+        continue;
+      }
+      world.unfundedBuildSeconds.delete(entity.id);
+      if (buildable.isInterrupted) continue;
       const buildFraction = getBuildFraction(buildable);
       growConstructionHp(world, entity, buildFraction);
       if (isConstructionAlive(entity) && isBuildFullyPaid(buildable)) {

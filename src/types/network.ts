@@ -726,6 +726,13 @@ export type SessionRefusalReason =
 // complexity, and atomic-replace avoids the "client missed one
 // field" failure mode if a future delta protocol drops a packet.
 export type LobbySettings = {
+  /** What the host called this lobby. Directory metadata rather than a
+   *  simulation setting — the canonical match initialization ignores it, so
+   *  it can never move a checksum — but it rides the settings contract
+   *  because that is already the one host-owned payload every client is
+   *  guaranteed to receive, on join and on every change. Empty means the
+   *  host never named it; the listing falls back to the host's name. */
+  lobbyName: string;
   /** Signed altitude of the central cosine dome/dish (CENTER bar). */
   centerMagnitude: number;
   /** Signed crest altitude of the RING annulus (RING bar). */

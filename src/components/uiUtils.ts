@@ -109,3 +109,28 @@ export function msBarStyle(
 export function getPlayerColor(playerId: PlayerId): string {
   return '#' + getPlayerPrimaryColor(playerId).toString(16).padStart(6, '0');
 }
+
+/**
+ * Black or white ink, whichever stays readable on `background`.
+ *
+ * Identity colours are generated, not authored, so any label painted on one
+ * has to choose its ink from the colour it actually got rather than assuming
+ * the palette is light. Uses the sRGB relative-luminance threshold from
+ * WCAG's contrast ratio, which is the point where black and white contrast
+ * equally against a background.
+ */
+export function readableInkOn(background: string): string {
+  const hex = background.trim().replace('#', '');
+  if (hex.length !== 6) return '#ffffff';
+  const value = Number.parseInt(hex, 16);
+  if (!Number.isFinite(value)) return '#ffffff';
+  const channel = (byte: number): number => {
+    const c = byte / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance =
+    0.2126 * channel((value >> 16) & 0xff) +
+    0.7152 * channel((value >> 8) & 0xff) +
+    0.0722 * channel(value & 0xff);
+  return luminance > 0.179 ? '#0b0f14' : '#ffffff';
+}

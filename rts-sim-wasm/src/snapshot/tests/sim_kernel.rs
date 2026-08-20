@@ -3017,6 +3017,50 @@ mod sim_kernel_tests {
     }
 
     #[test]
+    pub(crate) fn pathfinder_walks_a_body_out_of_a_pocket_tighter_than_its_clearance() {
+        let _guard = lock_tests();
+        terrain_clear();
+        pathfinder_init(400.0, 400.0, 1);
+        pathfinder_rebuild_terrain_mask_and_cc(10_007);
+
+        // Two structure walls two cells apart. Every cell of the corridor
+        // between them sits closer to a building than a radius-20 body's hard
+        // clearance asks for — the ordinary shape of "a commander finished a
+        // building and is now standing beside it". The body must still be able
+        // to walk out of the open south end.
+        let mut cell_gx: Vec<i32> = Vec::new();
+        let mut cell_gy: Vec<i32> = Vec::new();
+        for gy in 3..=9 {
+            cell_gx.push(4);
+            cell_gy.push(gy);
+            cell_gx.push(7);
+            cell_gy.push(gy);
+        }
+        assert_eq!(pathfinder_sync_building_occupancy(&cell_gx, &cell_gy, 7), 1);
+
+        let count = pathfinder_find_path(
+            110.0, 90.0, 300.0, 300.0, 0.0, false, 0.0, true, false, false, true, false, false,
+            20.0, 0.0, 0.0, 0.0, 0.0, 0.0, false,
+        );
+        assert!(count >= 1);
+        let waypoints =
+            unsafe { std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (count as usize) * 2) };
+        let stranded = count == 1
+            && (waypoints[0] - 110.0).abs() < 1.0
+            && (waypoints[1] - 90.0).abs() < 1.0;
+        assert!(
+            !stranded,
+            "a body in a pocket tighter than its clearance must still route out"
+        );
+        let last_x = waypoints[(count as usize - 1) * 2];
+        let last_y = waypoints[(count as usize - 1) * 2 + 1];
+        assert!(
+            last_y > 200.0,
+            "the route must leave the corridor, ended at ({last_x}, {last_y})"
+        );
+    }
+
+    #[test]
     pub(crate) fn factory_plan_production_actions_handles_shell_and_selection_states() {
         let has_shell = [1, 1, 1, 0, 0, 0, 0, 0];
         let shell_exists = [0, 1, 1, 0, 0, 0, 0, 0];

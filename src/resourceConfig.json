@@ -25,6 +25,8 @@
     "maxParticlesPerSpray": 42,
     "maxParticles": 1536,
     "healRgb01": [1, 1, 1],
+    "buildRgb01": [0.16, 1, 0.22],
+    "buildParticleSpinTurnsPerSecond": 1.8,
     "particleAlpha": 0.85,
     "healParticleSpeed": 560,
     "healMaxFlightSec": 0.62,

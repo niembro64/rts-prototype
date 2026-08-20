@@ -2494,6 +2494,65 @@ pub(crate) fn construction_advance_piece_hp(
     max_hp.min(current + progress_delta * max_hp)
 }
 
+/// One decay step for an unfinished shell nobody is funding. Decay is a
+/// constant fraction of the shell's OWN full cost per second, so a big
+/// structure and a small one both take the same authored wall-clock time to
+/// rot away from full. Health rides the progress it lost, and reaching zero
+/// progress is what removes the frame from the world.
+///
+/// `out` receives `[paid_energy, paid_metal, progress, hp]`.
+#[wasm_bindgen]
+pub fn construction_decay_step(
+    paid_energy: f64,
+    paid_metal: f64,
+    required_energy: f64,
+    required_metal: f64,
+    previous_progress: f64,
+    hp: f64,
+    max_hp: f64,
+    decay_fraction_per_second: f64,
+    dt_sec: f64,
+    out: &mut [f64],
+) -> u32 {
+    if out.len() < 4 {
+        return 0;
+    }
+    let req_energy = economy_normalized_amount(required_energy);
+    let req_metal = economy_normalized_amount(required_metal);
+    let paid_e = economy_normalized_amount(paid_energy);
+    let paid_m = economy_normalized_amount(paid_metal);
+    let rate = if decay_fraction_per_second.is_finite() {
+        decay_fraction_per_second.max(0.0)
+    } else {
+        0.0
+    };
+    let dt = if dt_sec.is_finite() { dt_sec.max(0.0) } else { 0.0 };
+    let step = rate * dt;
+
+    let next_energy = (paid_e - req_energy * step).max(0.0);
+    let next_metal = (paid_m - req_metal * step).max(0.0);
+    let next_progress =
+        construction_build_fraction(next_energy, next_metal, req_energy, req_metal);
+
+    let prev = if previous_progress.is_finite() {
+        previous_progress.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let max_hp_value = if max_hp.is_finite() { max_hp.max(0.0) } else { 0.0 };
+    let current_hp = if hp.is_finite() { hp.max(0.0) } else { 0.0 };
+    // Lost progress takes its own health back. Damage already taken stays
+    // taken: this subtracts the delta rather than re-deriving hp from progress.
+    let lost = (prev - next_progress).max(0.0);
+    let next_hp = (current_hp - lost * max_hp_value).max(0.0).min(max_hp_value);
+
+    out[0] = next_energy;
+    out[1] = next_metal;
+    out[2] = next_progress;
+    out[3] = next_hp;
+    1
+}
+
 #[wasm_bindgen]
 pub fn construction_reconcile_and_grow_pieces(
     total_paid_energy: f64,

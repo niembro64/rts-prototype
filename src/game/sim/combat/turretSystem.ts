@@ -399,7 +399,13 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
 
       if (!hasActiveTarget) {
         weapon.articulationIdleMs += dtMs;
-        const restore = weapon.articulationIdleMs >= weapon.config.articulation.restoreDelayMs;
+        // A rest angle is a chassis idea: it is where the weapon sits relative
+        // to a body that has a forward. A structure has no forward, so its
+        // turrets simply stay where the last engagement left them and keep
+        // covering that bearing — see budget_design_philosophy.html,
+        // "A building turret has no rest angle". Units are unchanged.
+        const restore = hostBuilding === null &&
+          weapon.articulationIdleMs >= weapon.config.articulation.restoreDelayMs;
         // Before BAR-style restore delay expires, hold the current LOCAL pose.
         // The world pose therefore follows a turning host instead of remaining
         // nailed to the old compass bearing.

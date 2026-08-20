@@ -28,6 +28,7 @@ import type { Entity } from '../sim/types';
 import { authorizeGameServerGameplayCommand } from './ServerCommandAuthorizer';
 import { LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES } from '../architecture/LockstepCommandProtocol';
 import gameServerSource from './GameServer.ts?raw';
+import commandExecutionSource from '../sim/commandExecution.ts?raw';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -37,17 +38,23 @@ function assertContract(condition: boolean, message: string): void {
 
 /** Gameplay-setting commands carry no per-entity ownership, so
  *  authorizeGameServerGameplayCommand deliberately drops them (`default:
- *  return null`). That makes GameServer.receiveCommand's host-only
- *  server-control switch their ONLY path on the authoritative architecture:
- *  a type missing from that switch is silently dead for every non-host-admin
- *  authority, which is exactly how the WORLD group's TERRAIN/LIQUID toggles
- *  stopped working. The lockstep set is the single registry of the family, so
- *  assert the switch still covers all of it. */
+ *  return null`). Their host-only path in the sandbox is
+ *  GameServer.receiveCommand, and their path online is the lockstep command
+ *  frame — but BOTH must end in the simulation's single
+ *  applyGameplaySettingCommand. A type the applier does not handle is
+ *  silently dead UI, which is exactly how the WORLD group's TERRAIN/LIQUID
+ *  toggles stopped working. The lockstep set is the single registry of the
+ *  family, so assert against it from both ends. */
 function assertServerControlSwitchCoversEveryGameplaySetting(): void {
+  assertContract(
+    gameServerSource.includes('LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES.has(') &&
+      gameServerSource.includes('applyGameplaySettingCommand('),
+    'GameServer.receiveCommand must route the whole gameplay-setting registry into the shared applier, not re-implement it',
+  );
   for (const commandType of LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES) {
     assertContract(
-      gameServerSource.includes(`      case '${commandType}':`),
-      `GameServer.receiveCommand must intercept gameplay-setting command ${commandType}; the authorizer drops it, so an unhandled case is dead UI`,
+      commandExecutionSource.includes(`    case '${commandType}':`),
+      `applyGameplaySettingCommand must handle gameplay-setting command ${commandType}; an unhandled case is dead UI in every battle`,
     );
     assertContract(
       authorizeGameServerGameplayCommand(

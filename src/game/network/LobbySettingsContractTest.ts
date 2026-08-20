@@ -1,7 +1,9 @@
 import type { LobbySettings } from '@/types/network';
 import { assertCurrentLobbySettings } from './LobbySettingsContract';
+import { MAX_LOBBY_NAME_LENGTH } from './lobbyName';
 
 const CURRENT_SETTINGS: LobbySettings = {
+  lobbyName: 'Test lobby',
   centerMagnitude: 0,
   ringMagnitude: 0,
   dividersMagnitude: 0,
@@ -41,6 +43,19 @@ export function runLobbySettingsContractTest(): void {
       'contract test supported simulation tick rate',
     );
   }
+  // An unnamed lobby is the common case, not an error: the directory falls
+  // back to the host's name.
+  assertCurrentLobbySettings(
+    { ...CURRENT_SETTINGS, lobbyName: '' },
+    'contract test unnamed lobby',
+  );
+  const missingLobbyName = { ...CURRENT_SETTINGS } as Partial<LobbySettings>;
+  delete missingLobbyName.lobbyName;
+  assertRejected(missingLobbyName, 'a packet without lobbyName');
+  assertRejected(
+    { ...CURRENT_SETTINGS, lobbyName: 'x'.repeat(MAX_LOBBY_NAME_LENGTH + 1) },
+    'a lobbyName past the length ceiling',
+  );
   const missingTerrainDetail = { ...CURRENT_SETTINGS } as Partial<LobbySettings>;
   delete missingTerrainDetail.terrainDetail;
   assertRejected(missingTerrainDetail, 'an incomplete settings packet');

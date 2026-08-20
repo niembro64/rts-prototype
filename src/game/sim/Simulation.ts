@@ -508,6 +508,13 @@ export class Simulation {
       executeCommand(cmdCtx, commands[i]);
     }
 
+    // A structure placed by a command this tick becomes a physical obstacle
+    // immediately, exactly like one placed at boot. The build-grid footprint
+    // already blocked pathing at placement; without the body a unit standing
+    // on the site was never pushed off it and ended up inside the finished
+    // building with no route out.
+    this.flushPendingBuildingBodies();
+
     // Fire due self-destruct countdowns AFTER command processing so a
     // Stop or re-toggle arriving on the fire tick wins the tie. The
     // zero-hp write routes the blast through the normal death path.
@@ -563,10 +570,13 @@ export class Simulation {
     // Shared construction lifecycle for both building shells and
     // factory unit shells: HP growth, paid-full completion, building
     // completion effects, and dirty flags all flow through one pass.
-    const constructionResult = updateConstructionLifecycle(this.world);
+    const constructionResult = updateConstructionLifecycle(this.world, dtMs);
     this.actionQueueMaintenance.advanceCompletedConstructionActions(
       constructionResult.completedBuildings,
     );
+    if (constructionResult.decayedBuildings.length > 0) {
+      this.removeDecayedConstructionShells(constructionResult.decayedBuildings);
+    }
     SIM_TICK_INSTRUMENTATION.phase('sim.construction');
 
     // AI auto-queues units at idle factories
@@ -1637,6 +1647,39 @@ export class Simulation {
   // unit.velocityX/Y/Z and is only overwritten by syncFromPhysics, so
   // lead-prediction in turretSystem reads the real velocity, not this thrust
   // target.
+  /** Hand every building added since the last drain to the host so it can
+   *  build the static collision body. Entities that already have one (the
+   *  bootstrap pass builds its own, wrecks are handed over directly) are
+   *  skipped, so this is idempotent. */
+  private flushPendingBuildingBodies(): void {
+    const pending = this.world.pendingBuildingBodySpawns;
+    if (pending.length === 0) return;
+    const spawned: Entity[] = [];
+    for (let i = 0; i < pending.length; i++) {
+      const entity = pending[i];
+      if (entity.body !== null) continue;
+      if (this.world.getEntity(entity.id) !== entity) continue;
+      spawned.push(entity);
+    }
+    pending.length = 0;
+    if (spawned.length === 0) return;
+    const onBuildingSpawn = this.onBuildingSpawn;
+    if (onBuildingSpawn !== null) onBuildingSpawn(spawned);
+  }
+
+  /** Retire shells that decayed back to zero progress. This is the same
+   *  teardown the dead-building path runs (spatial grid, build-grid release
+   *  through onBuildingDeath, entity removal) with no death event: a frame
+   *  nobody paid for was never alive enough to explode. */
+  private removeDecayedConstructionShells(shells: readonly Entity[]): void {
+    const ids: EntityId[] = [];
+    for (let i = 0; i < shells.length; i++) ids.push(shells[i].id);
+    ids.sort((a, b) => a - b);
+    for (let i = 0; i < ids.length; i++) spatialGrid.removeBuilding(ids[i]);
+    if (this.onBuildingDeath !== null) this.onBuildingDeath(ids);
+    for (let i = 0; i < ids.length; i++) this.world.removeEntity(ids[i]);
+  }
+
   /** Detonate armed self-destructs whose countdown expired. Entries
    *  whose entity died or vanished by other means are dropped lazily
    *  here. Map iteration is insertion-ordered and the map is only
