@@ -40,9 +40,4 @@ Every item here needs `npm run deterministic:replay` to pass with unchanged hash
       config parameter list through ~19 call sites and ~16 signatures (fsm.rs 412, 747, 953, 985,
       1197; scheduler.rs 30, 82, 129, 145, 249, 268, 293, 371, 431, 717, 749, 819, 837, 870, 927,
       2014). Introduce one params struct.
-- [ ] **D2** `body_pool.rs:1613-1637`, `1691-1710`, `1762-1781`, `1839-1858` — the same sphere-pair
-      resolution preamble four times.
-- [ ] **D3** `body_pool.rs:1960-2021` ≡ `2175-2233` (46-line dense-shape selection block).
-
-- [ ] **D5** `pathfinder.rs:1158-1182` ≡ `1812-1836` ≡ `2445-2469` (23-line locomotion param block).
 
