@@ -24,12 +24,17 @@
   "centerMagnitude": {
     "options": [-3200, -800, -400, -200, 0, 200, 400, 800, 1600, 3200, 6400]
   },
+  "ringMagnitude": {
+    "options": [-3200, -800, -400, -200, 0, 200, 400, 800, 1600, 3200, 6400]
+  },
   "dividersMagnitude": {
     "options": [-3200, -800, -400, -200, 0, 200, 400, 800, 1600, 3200, 6400]
   },
   "perimeterMagnitude": {
-    "noneValue": -1000000,
-    "options": [-3200, -800, -400, -200, 0, 200, 400, 800, 1600, 3200, 6400, -1000000]
+    "options": [-3200, -800, -400, -200, 0, 200, 400, 800, 1600, 3200, 6400]
+  },
+  "terrainPrecedence": {
+    "options": ["perimeter-precedence", "dividers-precedence"]
   },
   "terrainDTerrain": {
     "options": [100, 200, 400, 800, 0]
@@ -87,10 +92,14 @@
     "realLiquidSurfaceMode": "real-battle-liquid-surface-mode",
     "demoCenterMagnitude": "demo-battle-center-magnitude",
     "realCenterMagnitude": "real-battle-center-magnitude",
+    "demoRingMagnitude": "demo-battle-ring-magnitude",
+    "realRingMagnitude": "real-battle-ring-magnitude",
     "demoDividersMagnitude": "demo-battle-dividers-magnitude",
     "realDividersMagnitude": "real-battle-dividers-magnitude",
     "demoPerimeterMagnitude": "demo-battle-perimeter-magnitude",
     "realPerimeterMagnitude": "real-battle-perimeter-magnitude",
+    "demoTerrainPrecedence": "demo-battle-terrain-precedence",
+    "realTerrainPrecedence": "real-battle-terrain-precedence",
     "demoTerrainDTerrain": "demo-battle-terrain-d-terrain",
     "realTerrainDTerrain": "real-battle-terrain-d-terrain",
     "demoPlateauWallSlopeDegrees": "demo-battle-plateau-wall-slope-degrees",

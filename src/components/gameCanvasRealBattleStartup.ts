@@ -15,8 +15,10 @@ import {
 } from '../battleBarConfig';
 import {
   setTerrainCenterMagnitude,
+  setTerrainRingMagnitude,
   setTerrainDividersMagnitude,
   setTerrainPerimeterMagnitude,
+  setTerrainPrecedence,
   setTerrainRuntimeConfig,
 } from '../game/sim/Terrain';
 import {
@@ -307,8 +309,10 @@ export function loadAndApplyRealBattleTerrain(): RealBattleStartupTerrain {
   const liquidSurfaceMode = loadStoredLiquidSurfaceMode('real');
   setTerrainRuntimeConfig(terrainRuntimeConfig);
   setTerrainCenterMagnitude(terrainRuntimeConfig.centerMagnitude);
+  setTerrainRingMagnitude(terrainRuntimeConfig.ringMagnitude);
   setTerrainDividersMagnitude(terrainRuntimeConfig.dividersMagnitude);
   setTerrainPerimeterMagnitude(terrainRuntimeConfig.perimeterMagnitude);
+  setTerrainPrecedence(terrainRuntimeConfig.terrainPrecedence);
   setMetalCoverage(metalCoverage);
   setLiquidSurfaceMode(liquidSurfaceMode);
   return {
@@ -325,8 +329,10 @@ function buildRealBattleLobbySettingsFromTerrain(
 ): LobbySettings {
   return {
     centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
+    ringMagnitude: terrain.terrainRuntimeConfig.ringMagnitude,
     dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
     perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
+    terrainPrecedence: terrain.terrainRuntimeConfig.terrainPrecedence,
     terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
     plateauWallSlopeDegrees:
       terrain.terrainRuntimeConfig.plateauWallSlopeDegrees,
@@ -474,8 +480,10 @@ function assertTerrainMatchesSettings(
 ): void {
   const mismatches: string[] = [];
   pushMismatch(mismatches, 'centerMagnitude', terrain.terrainRuntimeConfig.centerMagnitude, settings.centerMagnitude);
+  pushMismatch(mismatches, 'ringMagnitude', terrain.terrainRuntimeConfig.ringMagnitude, settings.ringMagnitude);
   pushMismatch(mismatches, 'dividersMagnitude', terrain.terrainRuntimeConfig.dividersMagnitude, settings.dividersMagnitude);
   pushMismatch(mismatches, 'perimeterMagnitude', terrain.terrainRuntimeConfig.perimeterMagnitude, settings.perimeterMagnitude);
+  pushMismatch(mismatches, 'terrainPrecedence', terrain.terrainRuntimeConfig.terrainPrecedence, settings.terrainPrecedence);
   pushMismatch(mismatches, 'terrainDTerrain', terrain.terrainRuntimeConfig.terrainDTerrain, settings.terrainDTerrain);
   pushMismatch(mismatches, 'plateauWallSlopeDegrees', terrain.terrainRuntimeConfig.plateauWallSlopeDegrees, settings.plateauWallSlopeDegrees);
   pushMismatch(mismatches, 'metalDepositStep', terrain.terrainRuntimeConfig.metalDepositStep, settings.metalDepositStep);
@@ -637,8 +645,10 @@ async function createRealBattleServer({
       aiPlayerIds,
       gameGenerationSeed,
       centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
+      ringMagnitude: terrain.terrainRuntimeConfig.ringMagnitude,
       dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
       perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
+      terrainPrecedence: terrain.terrainRuntimeConfig.terrainPrecedence,
       terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
       plateauWallSlopeDegrees:
         terrain.terrainRuntimeConfig.plateauWallSlopeDegrees,

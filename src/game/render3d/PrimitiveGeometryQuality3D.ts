@@ -645,25 +645,46 @@ export function createExtrudedEquilateralTriangleGeometry(
     return [Math.cos(angle), Math.sin(angle)] as const;
   });
   const vertices: number[] = [];
-  const push = (a: number, ay: number, b: number, by: number, c: number, cy: number): void => {
-    const ar = ay > 0 ? radiusTop : radiusBottom;
-    const br = by > 0 ? radiusTop : radiusBottom;
-    const cr = cy > 0 ? radiusTop : radiusBottom;
-    vertices.push(unitRing[a][0] * ar, ay, unitRing[a][1] * ar);
-    vertices.push(unitRing[b][0] * br, by, unitRing[b][1] * br);
-    vertices.push(unitRing[c][0] * cr, cy, unitRing[c][1] * cr);
+  // A REAL uv, on the cylinder's convention: u runs once around the three
+  // faces, v runs 0 -> 1 from the bottom cap to the top. This attribute used to
+  // be a zeroed placeholder, and a placed surface chart samples BY uv — so
+  // every fragment of every LOW-detail leg segment read the one texel at the
+  // band's corner, which is the collar bevel's near-white highlight, and the
+  // strut came out blown-out white against the charted mid-detail one. A
+  // geometry that wears a charted material has no such thing as a spare uv.
+  const uvs: number[] = [];
+  // `u` is passed in rather than derived from the corner index: the last face
+  // runs corner 2 -> corner 0, and its far edge is u = 1, not u = 0. Deriving
+  // it would fold that one face back across the whole band.
+  const push = (corner: number, y: number, u: number, v: number): void => {
+    const radius = y > 0 ? radiusTop : radiusBottom;
+    vertices.push(unitRing[corner][0] * radius, y, unitRing[corner][1] * radius);
+    uvs.push(u, v);
+  };
+  // A cap takes each corner's own place in the unit disc, as CylinderGeometry's
+  // caps do. They are end-on to the camera and carry no band structure.
+  const cap = (a: number, b: number, c: number, y: number): void => {
+    for (const corner of [a, b, c]) {
+      push(corner, y, unitRing[corner][0] * 0.5 + 0.5, unitRing[corner][1] * 0.5 + 0.5);
+    }
   };
   // One triangle per cap, then two triangles for each rectangular side.
-  push(2, halfHeight, 1, halfHeight, 0, halfHeight);
-  push(0, -halfHeight, 1, -halfHeight, 2, -halfHeight);
+  cap(2, 1, 0, halfHeight);
+  cap(0, 1, 2, -halfHeight);
   for (let side = 0; side < 3; side++) {
     const next = (side + 1) % 3;
-    push(side, -halfHeight, next, halfHeight, next, -halfHeight);
-    push(side, -halfHeight, side, halfHeight, next, halfHeight);
+    const uNear = side / 3;
+    const uFar = (side + 1) / 3;
+    push(side, -halfHeight, uNear, 0);
+    push(next, halfHeight, uFar, 1);
+    push(next, -halfHeight, uFar, 0);
+    push(side, -halfHeight, uNear, 0);
+    push(side, halfHeight, uNear, 1);
+    push(next, halfHeight, uFar, 1);
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(16 * 3), 2));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geometry.computeVertexNormals();
   const radialScale = regularPolygonAreaScale(3);
   geometry.scale(radialScale, 1, radialScale);

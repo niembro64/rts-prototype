@@ -6,16 +6,17 @@ import { canIndexClientEntityId } from '../network/ClientEntityIds';
 import type { Entity, EntityId } from '../sim/types';
 import {
   DETAIL_RADIUS_FLOOR_BEAM,
-  DETAIL_RADIUS_FLOOR_PROJECTILE,
   DETAIL_RUNG_GLYPH,
   type DetailRung,
-  detailLevelForRadiusDistance,
   detailLevelForRung,
+  detailLevelForScreenRadius,
   detailRungForLevel,
   detailRungForMode,
   detailScreenRadiusPx,
+  ladderEquivalentScreenRadiusPx,
   lodProxyFadeAlphaForScreenRadius,
   pinnedRungForLodMode,
+  projectileDetailLadder,
 } from './EntityDetailLevel3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 
@@ -136,21 +137,42 @@ export function entityLodProxyRadius3D(entity: Entity): number {
  * icon can never be authored bigger or smaller than the thing whose
  * disappearance it triggered; it is also the size picking, physics and the
  * volume overlays already agree on, rather than a private visual estimate.
- * Projectiles and beams still clamp UP to authored floors, because their
- * visual salience (trails, beam length) far exceeds any body volume.
+ * Beams still clamp UP to an authored floor, because their salience is their
+ * length, not their width; traveling shots project their REAL radius and get
+ * their own px ladders instead (see {@link entityDetailScreenRadiusPx}).
  */
 function entityDetailRadius3D(entity: Entity): number {
   const collisionRadius = entityLodProxyRadius3D(entity);
 
   const projectile = entity.projectile;
-  if (projectile !== null) {
-    const floor = isRayType(projectile.config.shot.type)
-      ? DETAIL_RADIUS_FLOOR_BEAM
-      : DETAIL_RADIUS_FLOOR_PROJECTILE;
-    return Math.max(floor, collisionRadius);
+  if (projectile !== null && isRayType(projectile.config.shot.type)) {
+    return Math.max(DETAIL_RADIUS_FLOOR_BEAM, collisionRadius);
   }
 
   return collisionRadius;
+}
+
+/**
+ * Projected screen radius on the ENTITY ladder's px scale — THE coverage
+ * input for everything downstream (level L, rung, glyph cross-fade). Units,
+ * buildings and beams project {@link entityDetailRadius3D} directly;
+ * traveling shots (plasma/rocket/missile) project their real body radius
+ * against their class's authored ladder from lod.json
+ * `detail.projectileThresholds` and are remapped boundary-to-boundary onto
+ * the entity ladder, so one px scale feeds every consumer.
+ */
+function entityDetailScreenRadiusPx(
+  entity: Entity,
+  distance: number,
+  fovYRad: number,
+): number {
+  const screenRadiusPx = detailScreenRadiusPx(
+    entityDetailRadius3D(entity), distance, fovYRad);
+  const projectile = entity.projectile;
+  if (projectile === null) return screenRadiusPx;
+  const ladder = projectileDetailLadder(projectile.config.shot.type);
+  if (ladder === null) return screenRadiusPx;
+  return ladderEquivalentScreenRadiusPx(screenRadiusPx, ladder);
 }
 
 export function entityLodProxyGlyph3D(entity: Entity): EntityLodProxyGlyph3D {
@@ -192,8 +214,8 @@ function detailLevelForMode(coverageLevel: number): number {
  * {@link entityDetailLevel3D}.
  */
 export function entityDetailLevelForView(view: RenderViewState3D, entity: Entity): number {
-  return detailLevelForMode(detailLevelForRadiusDistance(
-    entityDetailRadius3D(entity),
+  return detailLevelForMode(detailLevelForScreenRadius(entityDetailScreenRadiusPx(
+    entity,
     Math.sqrt(simPositionViewDistanceSq3D(
       view,
       entity.transform.x,
@@ -201,7 +223,7 @@ export function entityDetailLevelForView(view: RenderViewState3D, entity: Entity
       entity.transform.z,
     )),
     view.fovYRad,
-  ));
+  )));
 }
 
 export class EntityLodState3D {
@@ -311,11 +333,11 @@ export class EntityLodState3D {
   /** Raw camera-coverage level, ignoring the LOD mode. Everything mode-aware
    *  layers on top of this so a manual pin is never applied twice. */
   private entityCoverageDetailLevel(view: RenderViewState3D, entity: Entity): number {
-    return detailLevelForRadiusDistance(
-      entityDetailRadius3D(entity),
+    return detailLevelForScreenRadius(entityDetailScreenRadiusPx(
+      entity,
       Math.sqrt(this.entityViewDistanceSq(view, entity)),
       view.fovYRad,
-    );
+    ));
   }
 
   /**
@@ -330,8 +352,8 @@ export class EntityLodState3D {
   entityLodProxyFadeAlphaForView(view: RenderViewState3D, entity: Entity): number {
     if (getLodMode() === 'off') return 0;
     if (!entityLodEnabled()) return 0;
-    return lodProxyFadeAlphaForScreenRadius(detailScreenRadiusPx(
-      entityDetailRadius3D(entity),
+    return lodProxyFadeAlphaForScreenRadius(entityDetailScreenRadiusPx(
+      entity,
       Math.sqrt(this.entityViewDistanceSq(view, entity)),
       view.fovYRad,
     ));
@@ -391,10 +413,12 @@ export class EntityLodState3D {
   ): boolean {
     const gated = this.channelProxyModeGate(channel, entity);
     if (gated !== null) return gated;
-    const useProxy = detailRungForLevel(detailLevelForRadiusDistance(
-      entityDetailRadius3D(entity),
-      Math.sqrt(this.entityCameraDistanceSq(camera, entity)),
-      cameraFovYRad(camera),
+    const useProxy = detailRungForLevel(detailLevelForScreenRadius(
+      entityDetailScreenRadiusPx(
+        entity,
+        Math.sqrt(this.entityCameraDistanceSq(camera, entity)),
+        cameraFovYRad(camera),
+      ),
     )) === DETAIL_RUNG_GLYPH;
     return this.applyChannelProxyUse(channel, entity, useProxy);
   }
@@ -425,11 +449,11 @@ export class EntityLodState3D {
    * camera distance. Callers must resolve it to the shared three-rung ladder.
    */
   entityDetailLevel(camera: THREE.Camera, entity: Entity): number {
-    return detailLevelForMode(detailLevelForRadiusDistance(
-      entityDetailRadius3D(entity),
+    return detailLevelForMode(detailLevelForScreenRadius(entityDetailScreenRadiusPx(
+      entity,
       Math.sqrt(this.entityCameraDistanceSq(camera, entity)),
       cameraFovYRad(camera),
-    ));
+    )));
   }
 
   /** Shared explicit-mode gate for the proxy-decision entry points: the

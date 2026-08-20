@@ -38,9 +38,9 @@ import {
   createBeamEmitterInstancedMaterial,
 } from './BeamWaveVisual3D';
 import {
+  createExtrudedEquilateralTriangleGeometry,
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
-  getSharedExtrudedEquilateralTriangleGeometry,
   getSharedPrimitiveTetrahedronGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
@@ -183,11 +183,22 @@ type UnitDetailInstanceRendererOptions = {
 /** Barrel geometry whose end caps address their own zone of the trim sheet
  *  rather than duplicating the tube's coordinates. Untextured barrels are
  *  unaffected — they never sample the sheet — so this is applied to the shared
- *  pool geometry unconditionally rather than forked per chart. */
+ *  pool geometry unconditionally rather than forked per chart.
+ *
+ *  EVERY tier, including the FAR tier's triangular prism. The prism is a
+ *  cylinder as far as this remap is concerned — caps point along the axis,
+ *  walls across it, and it carries the same unit-disc cap uv — so leaving it
+ *  out did not make the far barrel untextured, it made it sample the wall's
+ *  band rows on its cap and the cap's rows down its tube. It is built fresh
+ *  here rather than taken from the shared cache because the remap rewrites the
+ *  uv attribute in place, and the shared prism is also the far-tier stand-in
+ *  for shield panels, building tubes and rockets. */
 function chartedBarrelGeometry(
   tier: PrimitiveGeometryTier,
-): THREE.CylinderGeometry {
-  const geometry = createPrimitiveCylinderGeometry('turret', tier);
+): THREE.BufferGeometry {
+  const geometry = tier === 'far'
+    ? createExtrudedEquilateralTriangleGeometry()
+    : createPrimitiveCylinderGeometry('turret', tier);
   const zone = BAND_CAP_ZONES.barrelShaft;
   if (zone !== undefined) remapChartedCylinderUvs(geometry, zone);
   return geometry;
@@ -247,6 +258,12 @@ export class UnitDetailInstanceRenderer3D {
   private readonly shieldPanelFreeSlots: number[] = [];
   private shieldPanelNextSlot = 0;
   private readonly shieldPanelAlphaArr = new Float32Array(SHIELD_PANEL_CAP);
+  /** The two independent dimmers on a mirror plate, kept apart so neither
+   *  can clobber the other: `body` is the host's build/death fade, `shield`
+   *  is the barrier's own raise/lower transition (the panel-shaped twin of
+   *  the dome's fade-in). Alpha is always their product. */
+  private readonly shieldPanelBodyFadeArr = new Float32Array(SHIELD_PANEL_CAP).fill(1);
+  private readonly shieldPanelShieldFadeArr = new Float32Array(SHIELD_PANEL_CAP).fill(1);
   private readonly shieldPanelColorArr = new Float32Array(SHIELD_PANEL_CAP * 3);
   private readonly shieldPanelAlphaAttr = new THREE.InstancedBufferAttribute(
     this.shieldPanelAlphaArr,
@@ -291,9 +308,7 @@ export class UnitDetailInstanceRenderer3D {
         chartMode,
       ));
       this.barrelPools.push(this.createTierPool(
-        tierName === 'far'
-          ? getSharedExtrudedEquilateralTriangleGeometry()
-          : chartedBarrelGeometry(tierName),
+        chartedBarrelGeometry(tierName),
         options.barrelMat.clone(),
         BARREL_TIER_CAPS[t],
         chartMode,
@@ -353,26 +368,36 @@ export class UnitDetailInstanceRenderer3D {
     this.world.add(this.shieldPanelInstanced);
   }
 
-  /** Write the shield surface color + alpha for one panel slot. Both
-   *  panel write paths funnel through here; the colorKey cache skips the
-   *  attribute write when nothing changed. Alpha is the constant surface
-   *  opacity (the panel's fade is carried by its pose, not per-instance). */
+  /** Write the shield surface color for one panel slot. Both panel write
+   *  paths funnel through here; the colorKey cache skips the attribute
+   *  write when nothing changed. Alpha is NOT written here — it is the
+   *  product of the two fades, resolved by writeShieldPanelAlpha. */
   private writeShieldPanelInstanceColor(slot: number, colorKey: number): void {
     if (this.shieldPanelColorKey.get(slot) === colorKey) return;
     writeHexToRgb01Array(colorKey, this.shieldPanelColorArr, slot * 3);
-    if (this.shieldPanelAlphaArr[slot] !== SHIELD_SURFACE_OPACITY) {
-      this.shieldPanelAlphaArr[slot] = SHIELD_SURFACE_OPACITY;
-      markDirtySlot(this.shieldPanelAlphaDirty, slot);
-    }
     this.shieldPanelColorKey.set(slot, colorKey);
     markDirtySlot(this.shieldPanelColorDirty, slot);
   }
 
-  private writeShieldPanelFade(slot: number, fade: number): void {
-    const alpha = SHIELD_SURFACE_OPACITY * fade;
+  private writeShieldPanelAlpha(slot: number): void {
+    const alpha = SHIELD_SURFACE_OPACITY
+      * this.shieldPanelBodyFadeArr[slot]
+      * this.shieldPanelShieldFadeArr[slot];
     if (this.shieldPanelAlphaArr[slot] === alpha) return;
     this.shieldPanelAlphaArr[slot] = alpha;
     markDirtySlot(this.shieldPanelAlphaDirty, slot);
+  }
+
+  private writeShieldPanelBodyFade(slot: number, fade: number): void {
+    if (this.shieldPanelBodyFadeArr[slot] === fade) return;
+    this.shieldPanelBodyFadeArr[slot] = fade;
+    this.writeShieldPanelAlpha(slot);
+  }
+
+  private writeShieldPanelShieldFade(slot: number, fade: number): void {
+    if (this.shieldPanelShieldFadeArr[slot] === fade) return;
+    this.shieldPanelShieldFadeArr[slot] = fade;
+    this.writeShieldPanelAlpha(slot);
   }
 
   /** Allocate one tier-encoded slot from a tier-pool family. Zeroes the
@@ -975,6 +1000,7 @@ export class UnitDetailInstanceRenderer3D {
     matrix: ArrayLike<number>,
     offset: number,
     entity: Entity,
+    shieldFade: number,
   ): void {
     writeInstanceMatrixArray(
       this.shieldPanelInstanced,
@@ -984,6 +1010,7 @@ export class UnitDetailInstanceRenderer3D {
       this.shieldPanelMatrixDirty,
     );
     this.writeShieldPanelInstanceColor(slot, resolveShieldSurfaceColor(entity));
+    this.writeShieldPanelShieldFade(slot, shieldFade);
   }
 
   clearShieldPanelSlots(slots: readonly number[]): void {
@@ -1210,7 +1237,7 @@ export class UnitDetailInstanceRenderer3D {
     }
     if (mesh.mirrors?.panelSlots) {
       for (const slot of mesh.mirrors.panelSlots) {
-        this.writeShieldPanelFade(slot, bodyFade);
+        this.writeShieldPanelBodyFade(slot, bodyFade);
       }
     }
   }
@@ -1458,6 +1485,9 @@ export class UnitDetailInstanceRenderer3D {
       ZERO_MATRIX,
       this.shieldPanelMatrixDirty,
     );
+    this.shieldPanelBodyFadeArr[slot] = 1;
+    this.shieldPanelShieldFadeArr[slot] = 1;
+    this.writeShieldPanelAlpha(slot);
     return slot;
   }
 

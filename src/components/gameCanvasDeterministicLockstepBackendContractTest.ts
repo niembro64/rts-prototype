@@ -187,8 +187,10 @@ function assertInitializationHashMismatch(): void {
     aiPlayerIds: [],
     settings: {
       centerMagnitude: 0,
+      ringMagnitude: 0,
       dividersMagnitude: 0,
       perimeterMagnitude: -800,
+      terrainPrecedence: 'perimeter-precedence' as const,
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 0,
@@ -277,8 +279,10 @@ function createTerrain(): RealBattleStartupTerrain {
   return {
     terrainRuntimeConfig: {
       centerMagnitude: 0,
+      ringMagnitude: 0,
       dividersMagnitude: 0,
       perimeterMagnitude: -800,
+      terrainPrecedence: 'perimeter-precedence' as const,
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 0,
@@ -303,8 +307,10 @@ function createLobbySettings(
 ): LobbySettings {
   return {
     centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
+    ringMagnitude: terrain.terrainRuntimeConfig.ringMagnitude,
     dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
     perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
+    terrainPrecedence: terrain.terrainRuntimeConfig.terrainPrecedence,
     terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
     plateauWallSlopeDegrees:
       terrain.terrainRuntimeConfig.plateauWallSlopeDegrees,

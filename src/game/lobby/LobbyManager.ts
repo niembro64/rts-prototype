@@ -29,8 +29,10 @@ import {
 } from '../../battleBarConfig';
 import {
   setTerrainCenterMagnitude,
+  setTerrainRingMagnitude,
   setTerrainDividersMagnitude,
   setTerrainPerimeterMagnitude,
+  setTerrainPrecedence,
   setTerrainRuntimeConfig,
 } from '../sim/Terrain';
 import type { PlayerId } from '../sim/types';
@@ -142,8 +144,10 @@ export async function createBackgroundBattle(
   );
   setTerrainRuntimeConfig(terrainRuntimeConfig);
   setTerrainCenterMagnitude(terrainRuntimeConfig.centerMagnitude);
+  setTerrainRingMagnitude(terrainRuntimeConfig.ringMagnitude);
   setTerrainDividersMagnitude(terrainRuntimeConfig.dividersMagnitude);
   setTerrainPerimeterMagnitude(terrainRuntimeConfig.perimeterMagnitude);
+  setTerrainPrecedence(terrainRuntimeConfig.terrainPrecedence);
   // Seed the WORLD materials BEFORE the scene builds: deposit generation and
   // the 3D renderers both read these at construction (ore bodies, terrain
   // material, liquid colour),
@@ -214,8 +218,10 @@ export async function createBackgroundBattle(
       allyTeamSeats: demoAllyTeamSeats,
       gameGenerationSeed: createHostGameGenerationSeed(),
       centerMagnitude: terrainRuntimeConfig.centerMagnitude,
+      ringMagnitude: terrainRuntimeConfig.ringMagnitude,
       dividersMagnitude: terrainRuntimeConfig.dividersMagnitude,
       perimeterMagnitude: terrainRuntimeConfig.perimeterMagnitude,
+      terrainPrecedence: terrainRuntimeConfig.terrainPrecedence,
       terrainDTerrain: terrainRuntimeConfig.terrainDTerrain,
       plateauWallSlopeDegrees: terrainRuntimeConfig.plateauWallSlopeDegrees,
       metalDepositStep: terrainRuntimeConfig.metalDepositStep,
@@ -289,8 +295,10 @@ export async function createBackgroundBattle(
     mapWidth: mapSize.width,
     mapHeight: mapSize.height,
     centerMagnitude: terrainRuntimeConfig.centerMagnitude,
+    ringMagnitude: terrainRuntimeConfig.ringMagnitude,
     dividersMagnitude: terrainRuntimeConfig.dividersMagnitude,
     perimeterMagnitude: terrainRuntimeConfig.perimeterMagnitude,
+    terrainPrecedence: terrainRuntimeConfig.terrainPrecedence,
     backgroundMode: true,
     lobbyPreview: isLobbyPreview,
     onRendererWarmupChange,

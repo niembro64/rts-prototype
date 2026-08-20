@@ -27,13 +27,20 @@ pub(crate) const METAL_DEPOSIT_RING_INPUT_STRIDE: usize = 8;
 /// dTerrainLevels, terrainBlendRadius, explicitHeight.
 pub(crate) const METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE: usize = 11;
 pub(crate) const METAL_DEPOSIT_HEIGHT_INPUT_STRIDE: usize = 3;
-pub(crate) const METAL_DEPOSIT_TERRAIN_CONFIG_LEN: usize = 29;
+pub(crate) const METAL_DEPOSIT_TERRAIN_CONFIG_LEN: usize = 27;
 /// Stage codes for terrainConfig.json `pipeline` entries. The authored
 /// order (and each stage's active flag) is packed into config slots
-/// 23..29 as `code | 8` for inactive stages.
+/// 19..27 as `code | 8` for inactive stages.
 /// 0 naturalField, 1 mapBoundary, 2 gradientEstimate,
-/// 3 plateauTerracing, 4 metalDepositPads, 5 floorClamp.
-pub(crate) const TERRAIN_PIPELINE_STAGE_COUNT: usize = 6;
+/// 3 plateauTerracing, 4 metalDepositPads, 5 floorClamp,
+/// 6 dividerRidges, 7 ringRidge.
+///
+/// The PRECEDENCE bar is expressed purely as stage order: dividerRidges
+/// before mapBoundary = PERIMETER precedence (the perimeter ring
+/// overrides the ridges at the rim, today's classic look); dividerRidges
+/// after mapBoundary = DIVIDERS precedence (the ridges run out to the
+/// map edge and suppress the perimeter ring across their own width).
+pub(crate) const TERRAIN_PIPELINE_STAGE_COUNT: usize = 8;
 /// Packed flat-zone row: x, y, radius, height, blendRadius,
 /// plateauRadius, groupId (-1 = ungrouped classic pad). Matches
 /// TERRAIN_FLAT_ZONE_WASM_STRIDE in terrainGenerationConfig.ts.
@@ -75,10 +82,17 @@ pub(crate) struct MetalDepositTerrainConfigRust {
     plateau_shelf_fraction_of_step: f64,
     plateau_ramp_edge_sharpness: f64,
     plateau_wall_slope_degrees: f64,
-    ripple_radius_fraction: f64,
-    ripple_phase: f64,
-    ripple_wavelengths: [f64; 3],
-    ripple_magnitudes: [f64; 3],
+    /// CENTER dome: radius (fraction of min_dim) where the cosine dome
+    /// returns to baseline 0. The dome's centre height IS center_magnitude.
+    center_radius_fraction: f64,
+    /// RING annulus (RING bar): signed crest altitude at the crest radius.
+    ring_magnitude: f64,
+    /// Radius A (fraction of min_dim): the crest line — baseline at the map
+    /// centre cosine-rises to ring_magnitude here.
+    ring_crest_radius_fraction: f64,
+    /// Radius B (fraction of min_dim, >= A): where the outer cosine shoulder
+    /// returns to baseline.
+    ring_outer_radius_fraction: f64,
     ridge_inner_radius_fraction: f64,
     ridge_outer_radius_fraction: f64,
     ridge_half_width_fraction: f64,
@@ -113,19 +127,19 @@ pub(crate) fn metal_deposit_terrain_config_from_slice(
         generation_edge_transition_width_fraction: values[8],
         plateau_shelf_fraction_of_step: values[9],
         plateau_ramp_edge_sharpness: values[10],
-        ripple_radius_fraction: values[11],
-        ripple_phase: values[12],
-        ripple_wavelengths: [values[13], values[15], values[17]],
-        ripple_magnitudes: [values[14], values[16], values[18]],
-        ridge_inner_radius_fraction: values[19],
-        ridge_outer_radius_fraction: values[20],
-        ridge_half_width_fraction: values[21],
-        plateau_wall_slope_degrees: values[22],
+        center_radius_fraction: values[11],
+        ring_magnitude: values[12],
+        ring_crest_radius_fraction: values[13],
+        ring_outer_radius_fraction: values[14],
+        ridge_inner_radius_fraction: values[15],
+        ridge_outer_radius_fraction: values[16],
+        ridge_half_width_fraction: values[17],
+        plateau_wall_slope_degrees: values[18],
         pipeline_order: {
             let mut order = [0u8; TERRAIN_PIPELINE_STAGE_COUNT];
             let mut seen = [false; TERRAIN_PIPELINE_STAGE_COUNT];
             for (slot, entry) in order.iter_mut().enumerate() {
-                let raw = values[23 + slot];
+                let raw = values[19 + slot];
                 if raw < 0.0 || raw.fract() != 0.0 {
                     return None;
                 }
@@ -141,7 +155,7 @@ pub(crate) fn metal_deposit_terrain_config_from_slice(
         pipeline_active: {
             let mut active = [true; TERRAIN_PIPELINE_STAGE_COUNT];
             for (slot, entry) in active.iter_mut().enumerate() {
-                *entry = ((values[23 + slot] as u8) & 8) == 0;
+                *entry = ((values[19 + slot] as u8) & 8) == 0;
             }
             active
         },
@@ -317,29 +331,73 @@ pub(crate) fn terrain_generation_boundary_fade_for_sample(
     ))
 }
 
+/// True when the dividerRidges stage is ordered AFTER mapBoundary in the
+/// authored pipeline — the DIVIDERS-precedence arrangement. The PRECEDENCE
+/// bar swaps the two stages; nothing else about them changes, so this
+/// order test IS the precedence flag.
+pub(crate) fn terrain_dividers_take_precedence(cfg: &MetalDepositTerrainConfigRust) -> bool {
+    terrain_stage_runs_after(cfg, 6, 1)
+}
+
+/// True when stage `code` is ordered AFTER stage `other` in the authored
+/// pipeline (both present).
+pub(crate) fn terrain_stage_runs_after(
+    cfg: &MetalDepositTerrainConfigRust,
+    code: u8,
+    other: u8,
+) -> bool {
+    let mut code_slot = usize::MAX;
+    let mut other_slot = usize::MAX;
+    for slot in 0..TERRAIN_PIPELINE_STAGE_COUNT {
+        if cfg.pipeline_order[slot] == code {
+            code_slot = slot;
+        } else if cfg.pipeline_order[slot] == other {
+            other_slot = slot;
+        }
+    }
+    code_slot != usize::MAX && other_slot != usize::MAX && code_slot > other_slot
+}
+
 pub(crate) fn terrain_map_boundary_fade_for_sample(
     metrics: &MapOvalMetricsRust,
     oval: &MapOvalSampleRust,
     cfg: &MetalDepositTerrainConfigRust,
 ) -> f64 {
-    // PERIMETER NONE deactivates the mapBoundary stage, which leaves the
-    // natural map untouched out to its own rectangular edge. Every magnitude
-    // — 0 included — is a real ring when the stage is active.
+    // An authored `active: false` deactivates the mapBoundary stage, which
+    // leaves the natural map untouched out to its own rectangular edge.
+    // Every magnitude — 0 included — is a real ring when the stage is
+    // active.
     if !terrain_pipeline_stage_active(cfg, 1) {
         return 0.0;
     }
     let outer_radius = terrain_perimeter_outer_radius_for_min_dim(metrics.min_dim, cfg);
     let inner_radius =
         terrain_perimeter_inner_radius_for_min_dim(metrics.min_dim, outer_radius, cfg);
-    if oval.distance <= inner_radius {
-        return 0.0;
+    let mut w = if oval.distance <= inner_radius {
+        0.0
+    } else if oval.distance >= outer_radius {
+        1.0
+    } else {
+        terrain_perimeter_ramp_weight(terrain_clamp01(
+            (oval.distance - inner_radius) / (outer_radius - inner_radius).max(1e-6),
+        ))
+    };
+    // DIVIDERS precedence: a ridge punches through the ring, so the ring's
+    // blend weight is suppressed by the ridge's own normalized profile and
+    // the divider reads as one continuous surface from the interior out to
+    // the map edge, with the ring filling in around it. Zero-magnitude
+    // dividers author no ridges at all, so they suppress nothing. Exposed
+    // through this one fade function so the height pipeline, the renderer's
+    // boundary-fade shading, and the horizon color seam all agree on the
+    // handoff.
+    if w > 0.0
+        && cfg.dividers_magnitude != 0.0
+        && terrain_pipeline_stage_active(cfg, 6)
+        && terrain_dividers_take_precedence(cfg)
+    {
+        w *= 1.0 - terrain_divider_ridge_profile(metrics, oval, cfg);
     }
-    if oval.distance >= outer_radius {
-        return 1.0;
-    }
-    terrain_perimeter_ramp_weight(terrain_clamp01(
-        (oval.distance - inner_radius) / (outer_radius - inner_radius).max(1e-6),
-    ))
+    w
 }
 
 pub(crate) fn terrain_apply_map_boundary_for_sample(
@@ -358,6 +416,11 @@ pub(crate) fn terrain_apply_map_boundary_for_sample(
     height + (cfg.perimeter_magnitude - height) * w
 }
 
+/// The shaped (pre-plateau) surface: the three shaping stages —
+/// naturalField, dividerRidges, mapBoundary — executed in their authored
+/// pipeline order, inactive stages skipped. Kept order-driven so the
+/// PRECEDENCE swap of dividerRidges/mapBoundary shapes this surface (and
+/// the mesh baker riding it) exactly like the full pipeline.
 pub(crate) fn terrain_shaped_height_before_plateaus(
     x: f64,
     y: f64,
@@ -365,8 +428,20 @@ pub(crate) fn terrain_shaped_height_before_plateaus(
     cfg: &MetalDepositTerrainConfigRust,
 ) -> f64 {
     let oval = terrain_sample_map_oval_at(metrics, x, y);
-    let natural = terrain_generated_natural_height(metrics, &oval, cfg);
-    terrain_apply_map_boundary_for_sample(natural, metrics, &oval, cfg)
+    let mut height = 0.0;
+    for slot in 0..TERRAIN_PIPELINE_STAGE_COUNT {
+        if !cfg.pipeline_active[slot] {
+            continue;
+        }
+        match cfg.pipeline_order[slot] {
+            0 => height = terrain_generated_natural_height(metrics, &oval, cfg),
+            1 => height = terrain_apply_map_boundary_for_sample(height, metrics, &oval, cfg),
+            6 => height = terrain_apply_divider_ridges_for_sample(height, metrics, &oval, cfg),
+            7 => height = terrain_apply_ring_ridge_for_sample(height, metrics, &oval, cfg),
+            _ => {}
+        }
+    }
+    height
 }
 
 pub(crate) fn terrain_estimate_shaped_gradient_before_plateaus(
@@ -406,74 +481,166 @@ pub(crate) fn terrain_estimate_shaped_gradient(
     (gx * gx + gy * gy).sqrt()
 }
 
+/// naturalField stage: the CENTER dome/dish. One raised-cosine blend
+/// between two anchors — the map centre, whose height IS the CENTER bar
+/// magnitude (positive = dome, negative = dish), and the authored dome
+/// radius, where the surface returns to baseline 0. Zero slope at both
+/// anchors. The RING annulus and DIVIDERS ridges live in their own
+/// stages.
 pub(crate) fn terrain_generated_natural_height(
     metrics: &MapOvalMetricsRust,
     oval: &MapOvalSampleRust,
     cfg: &MetalDepositTerrainConfigRust,
 ) -> f64 {
-    let mut ripple = 0.0;
-    let max_dist = metrics.min_dim * cfg.ripple_radius_fraction;
-    if oval.distance < max_dist && max_dist > 0.0 {
-        let fade_t = (oval.distance / max_dist) * (std::f64::consts::PI * 0.5);
-        let fade = fade_t.cos();
-        let a = (oval.distance / cfg.ripple_wavelengths[0]).cos();
-        let b = (oval.distance / cfg.ripple_wavelengths[1] + cfg.ripple_phase).cos();
-        let c = ((oval.ox + oval.oy) / cfg.ripple_wavelengths[2]).sin();
-        let sum = a * cfg.ripple_magnitudes[0]
-            + b * cfg.ripple_magnitudes[1]
-            + c * cfg.ripple_magnitudes[2];
-        let norm = (sum + 1.0) * 0.5;
-        ripple = cfg.center_magnitude * fade * norm;
-    }
-
-    let mut ridge = 0.0;
-    let team_count = cfg.team_count;
-    if team_count > 0 && oval.distance > 0.0 {
-        let cycle = std::f64::consts::TAU / team_count as f64;
-        // A ridge sits exactly halfway between two adjacent side centres, so
-        // its phase is the first side's angle negated. Derived, never an
-        // independent constant: an independent one drifts off the sides it is
-        // supposed to divide the moment the layout rotates.
-        let mut pos = (oval.angle - METAL_DEPOSIT_FIRST_PLAYER_ANGLE) % cycle;
-        if pos < 0.0 {
-            pos += cycle;
-        }
-        let barrier_mid = cycle * 0.5;
-        let dist_from_barrier_center = (pos - barrier_mid).abs();
-        let half_width = metrics.min_dim * cfg.ridge_half_width_fraction;
-        let along_dist = oval.distance * dist_from_barrier_center.cos();
-        let perp_dist = oval.distance * dist_from_barrier_center.sin();
-        if along_dist > 0.0 && perp_dist < half_width {
-            let width_t = perp_dist / half_width;
-            let ang_falloff = (1.0 + (width_t * std::f64::consts::PI).cos()) * 0.5;
-            let inner_r = metrics.min_dim * cfg.ridge_inner_radius_fraction;
-            let outer_r = metrics.min_dim * cfg.ridge_outer_radius_fraction;
-            let rad_t = if along_dist >= outer_r {
-                1.0
-            } else if along_dist <= inner_r {
-                0.0
-            } else {
-                let span = outer_r - inner_r;
-                if span > 0.0 {
-                    (along_dist - inner_r) / span
-                } else {
-                    1.0
-                }
-            };
-            ridge = cfg.dividers_magnitude * ang_falloff * rad_t;
-        }
+    let mut dome = 0.0;
+    let dome_radius = metrics.min_dim * cfg.center_radius_fraction;
+    if oval.distance < dome_radius && dome_radius > 0.0 {
+        let t = oval.distance / dome_radius;
+        dome = cfg.center_magnitude * (1.0 + (t * std::f64::consts::PI).cos()) * 0.5;
     }
 
     // The edge fade exists ONLY to hand the natural field over to the
-    // perimeter ring cleanly. With the mapBoundary stage off (PERIMETER
-    // NONE) there is nothing to hand over to, so the ripple and the divider
-    // ridges run out to the rectangular map edge instead of being flattened
-    // just short of it.
+    // perimeter ring cleanly. With the mapBoundary stage off there is
+    // nothing to hand over to, so the dome runs out to the rectangular
+    // map edge instead of being flattened just short of it.
     if !terrain_pipeline_stage_active(cfg, 1) {
-        return ripple + ridge;
+        return dome;
     }
     let generation_fade = terrain_generation_boundary_fade_for_sample(metrics, oval, cfg);
-    (ripple + ridge) * (1.0 - generation_fade)
+    dome * (1.0 - generation_fade)
+}
+
+/// Normalized RING annulus profile at a sample: 0 at the map centre,
+/// cosine-rising to 1 at the crest radius A, cosine-falling back to 0 at
+/// the outer radius B, 0 beyond. Zero slope at the centre, the crest, and
+/// B. Ring height is `ring_magnitude * profile`. A degenerate A (<= 0)
+/// starts the profile at 1 on the centre (the ring collapses into a
+/// dome); a degenerate B (<= A) drops the profile to 0 immediately past
+/// the crest.
+pub(crate) fn terrain_ring_ridge_profile(
+    metrics: &MapOvalMetricsRust,
+    oval: &MapOvalSampleRust,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
+    let crest_radius = metrics.min_dim * cfg.ring_crest_radius_fraction;
+    let outer_radius = metrics.min_dim * cfg.ring_outer_radius_fraction;
+    let r = oval.distance;
+    if r < crest_radius {
+        let t = r / crest_radius;
+        return (1.0 - (t * std::f64::consts::PI).cos()) * 0.5;
+    }
+    if r >= outer_radius {
+        return 0.0;
+    }
+    let span = outer_radius - crest_radius.max(0.0);
+    if span <= 0.0 {
+        return 0.0;
+    }
+    let t = (r - crest_radius.max(0.0)) / span;
+    (1.0 + (t * std::f64::consts::PI).cos()) * 0.5
+}
+
+/// ringRidge stage: add the RING annulus (RING bar) to the current
+/// surface.
+pub(crate) fn terrain_apply_ring_ridge_for_sample(
+    height: f64,
+    metrics: &MapOvalMetricsRust,
+    oval: &MapOvalSampleRust,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
+    if cfg.ring_magnitude == 0.0 {
+        return height;
+    }
+    let profile = terrain_ring_ridge_profile(metrics, oval, cfg);
+    if profile <= 0.0 {
+        return height;
+    }
+    let mut ring = cfg.ring_magnitude * profile;
+    // Same handoff rule as the other natural-field features: ordered
+    // before an active mapBoundary stage, fade to flat at the outer buffer
+    // so the perimeter blends from a clean surface; otherwise run out to
+    // the rectangular map edge.
+    if terrain_pipeline_stage_active(cfg, 1) && !terrain_stage_runs_after(cfg, 7, 1) {
+        let generation_fade = terrain_generation_boundary_fade_for_sample(metrics, oval, cfg);
+        ring *= 1.0 - generation_fade;
+    }
+    height + ring
+}
+
+/// Normalized DIVIDERS ridge profile at a sample: 0 outside the ridge
+/// bands, 1 on a ridge centreline beyond the outer ramp radius. Ridge
+/// height is `dividers_magnitude * profile`; the SAME profile is the
+/// ring-suppression weight when the dividerRidges stage runs after
+/// mapBoundary (DIVIDERS precedence), which is what makes a divider one
+/// continuous surface through the ring instead of stacking on top of it.
+pub(crate) fn terrain_divider_ridge_profile(
+    metrics: &MapOvalMetricsRust,
+    oval: &MapOvalSampleRust,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
+    let team_count = cfg.team_count;
+    if team_count == 0 || oval.distance <= 0.0 {
+        return 0.0;
+    }
+    let cycle = std::f64::consts::TAU / team_count as f64;
+    // A ridge sits exactly halfway between two adjacent side centres, so
+    // its phase is the first side's angle negated. Derived, never an
+    // independent constant: an independent one drifts off the sides it is
+    // supposed to divide the moment the layout rotates.
+    let mut pos = (oval.angle - METAL_DEPOSIT_FIRST_PLAYER_ANGLE) % cycle;
+    if pos < 0.0 {
+        pos += cycle;
+    }
+    let barrier_mid = cycle * 0.5;
+    let dist_from_barrier_center = (pos - barrier_mid).abs();
+    let half_width = metrics.min_dim * cfg.ridge_half_width_fraction;
+    let along_dist = oval.distance * dist_from_barrier_center.cos();
+    let perp_dist = oval.distance * dist_from_barrier_center.sin();
+    if along_dist <= 0.0 || perp_dist >= half_width {
+        return 0.0;
+    }
+    let width_t = perp_dist / half_width;
+    let ang_falloff = (1.0 + (width_t * std::f64::consts::PI).cos()) * 0.5;
+    let inner_r = metrics.min_dim * cfg.ridge_inner_radius_fraction;
+    let outer_r = metrics.min_dim * cfg.ridge_outer_radius_fraction;
+    let rad_t = if along_dist >= outer_r {
+        1.0
+    } else if along_dist <= inner_r {
+        0.0
+    } else {
+        let span = outer_r - inner_r;
+        if span > 0.0 {
+            (along_dist - inner_r) / span
+        } else {
+            1.0
+        }
+    };
+    ang_falloff * rad_t
+}
+
+/// dividerRidges stage: add the team-separator ridges (DIVIDERS bar) to
+/// the current surface.
+pub(crate) fn terrain_apply_divider_ridges_for_sample(
+    height: f64,
+    metrics: &MapOvalMetricsRust,
+    oval: &MapOvalSampleRust,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
+    let profile = terrain_divider_ridge_profile(metrics, oval, cfg);
+    if profile <= 0.0 {
+        return height;
+    }
+    let mut ridge = cfg.dividers_magnitude * profile;
+    // Ordered before an active mapBoundary stage (PERIMETER precedence),
+    // the ridges fade to flat at the outer buffer so the ring blends from
+    // a clean surface. Ordered after it (DIVIDERS precedence) — or with
+    // the ring stage off — there is nothing to hand over to, and the
+    // ridges run out to the rectangular map edge.
+    if !terrain_dividers_take_precedence(cfg) && terrain_pipeline_stage_active(cfg, 1) {
+        let generation_fade = terrain_generation_boundary_fade_for_sample(metrics, oval, cfg);
+        ridge *= 1.0 - generation_fade;
+    }
+    height + ridge
 }
 
 /// Deposit flat-pad override at (x, y): returns the natural-terrain
@@ -756,7 +923,9 @@ pub(crate) fn terrain_pipeline_eval(
                     metal_deposit_override_from_flat_zone_rows(x, y, explicit_flat_zones);
                 height = pad_height * (1.0 - weight) + height * weight;
             }
-            _ => height = height.max(cfg.tile_floor_y),
+            5 => height = height.max(cfg.tile_floor_y),
+            6 => height = terrain_apply_divider_ridges_for_sample(height, metrics, &oval, cfg),
+            _ => height = terrain_apply_ring_ridge_for_sample(height, metrics, &oval, cfg),
         }
     }
     (height, gradient, reference)

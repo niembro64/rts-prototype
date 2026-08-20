@@ -2,6 +2,7 @@
 
 import type { EntityId, PlayerId } from './sim';
 import type { Command } from './commands';
+import type { TerrainPrecedence } from './terrainPrecedence';
 import type { NetworkServerSnapshot } from './network';
 import type { SimEvent } from './combat';
 import type { SnapshotWirePayload } from '../game/network/SnapshotWirePayload';
@@ -39,17 +40,22 @@ export type GameConfig = {
   mapHeight: number;
   /** Signed CENTER amplitude used for the central terrain heightmap and
    *  terrain-polarized metal-deposit dTerrain levels. Sign decides
-   *  ripple polarity (negative dishes a valley, positive raises a
-   *  mountain), magnitude decides height. */
+   *  dome/dish polarity (negative dishes a valley, positive raises a
+   *  mountain), magnitude decides the centre height. */
   centerMagnitude?: number;
+  /** Signed RING annulus crest amplitude (RING bar). Same sign
+   *  convention as `centerMagnitude`. */
+  ringMagnitude?: number;
   /** Signed DIVIDERS amplitude used for team-separator ridges/trenches.
    *  Same sign convention as `centerMagnitude`. */
   dividersMagnitude?: number;
   /** Signed PERIMETER ring amplitude. Negative sinks the outer ring below
    *  water (round-island), positive raises a rim, 0 flattens it to ground
-   *  level; `PERIMETER_MAGNITUDE_NONE` skips the ring step entirely. Same
-   *  sign convention as `centerMagnitude`. */
+   *  level. Same sign convention as `centerMagnitude`. */
   perimeterMagnitude?: number;
+  /** Which of DIVIDERS/PERIMETER applies last in terrain generation
+   *  (PRECEDENCE bar) — last wins where they overlap. */
+  terrainPrecedence?: TerrainPrecedence;
   backgroundMode?: boolean;
   /** Lobby-preview rendering: select the lobby camera defaults and
    *  skip the usual demo base spawn so the small pane in the GAME
@@ -193,12 +199,16 @@ export type GameServerConfig = {
   gameGenerationSeed?: number;
   /** Signed CENTER amplitude selected by the host/lobby. */
   centerMagnitude?: number;
+  /** Signed RING annulus crest amplitude selected by the host/lobby. */
+  ringMagnitude?: number;
   /** Signed DIVIDERS amplitude selected by the host/lobby. */
   dividersMagnitude?: number;
   /** Signed PERIMETER ring amplitude selected by the host/lobby. Negative =
-   *  round-island; positive = rim; 0 = flat rim at ground level;
-   *  `PERIMETER_MAGNITUDE_NONE` = no ring step at all. */
+   *  round-island; positive = rim; 0 = flat rim at ground level. */
   perimeterMagnitude?: number;
+  /** Which of DIVIDERS/PERIMETER applies last in terrain generation
+   *  (PRECEDENCE bar) — last wins where they overlap. */
+  terrainPrecedence?: TerrainPrecedence;
   /** Plateau lattice step (world units). 0 = NONE (no terracing). */
   terrainDTerrain?: number;
   /** D-PLATEAU wall slope angle in degrees from horizontal. */

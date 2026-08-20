@@ -57,6 +57,8 @@ import {
   loadStoredPathfindingCellConsolidation,
   loadStoredSimulationTickRate,
   loadStoredPerimeterMagnitude,
+  loadStoredRingMagnitude,
+  loadStoredTerrainPrecedence,
   loadStoredMapLandDimensions,
   getTerrainLightSmoothAcrossWallBoundary,
   getTerrainLightSmoothing,
@@ -110,9 +112,9 @@ import { useGameCanvasLobbySettings } from './gameCanvasLobbySettings';
 import { useGameCanvasBattleSettings } from './gameCanvasBattleSettings';
 import {
   BATTLE_PRESETS,
-  PERIMETER_MAGNITUDE_NONE,
   resolveBattleMapPresentation,
 } from './battlePresets';
+import type { TerrainPrecedence } from '../types/terrainPrecedence';
 import { setActiveBackdropPresetName } from '../game/render3d/presetBackdrops';
 import { setActiveMapPresetLabel } from '../game/render3d/presetMapLabel';
 import { useGameCanvasServerSettings } from './gameCanvasServerSettings';
@@ -1258,8 +1260,12 @@ const demoBuildingBlueprintIds: readonly string[] = [...BUILDING_BLUEPRINT_IDS];
 // `currentBattleMode` to `real`; the lobby-preview composable reloads
 // these refs from the real-battle keys at that point.
 const centerMagnitude = ref<number>(loadStoredCenterMagnitude('demo'));
+const ringMagnitude = ref<number>(loadStoredRingMagnitude('demo'));
 const dividersMagnitude = ref<number>(loadStoredDividersMagnitude('demo'));
 const perimeterMagnitude = ref<number>(loadStoredPerimeterMagnitude('demo'));
+const terrainPrecedence = ref<TerrainPrecedence>(
+  loadStoredTerrainPrecedence('demo'),
+);
 const terrainDTerrain = ref<number>(loadStoredTerrainDTerrain('demo'));
 const plateauWallSlopeDegrees = ref<number>(
   loadStoredPlateauWallSlopeDegrees('demo'),
@@ -1294,12 +1300,14 @@ const mapDetailsRows = computed(() => [
     value: `${mapWidthLandCells.value * LAND_CELL_SIZE} x ${mapLengthLandCells.value * LAND_CELL_SIZE}`,
   },
   { label: 'CENTER', value: String(centerMagnitude.value) },
+  { label: 'RING', value: String(ringMagnitude.value) },
   { label: 'DIVIDERS', value: String(dividersMagnitude.value) },
+  { label: 'PERIMETER', value: String(perimeterMagnitude.value) },
   {
-    label: 'PERIMETER',
-    value: perimeterMagnitude.value === PERIMETER_MAGNITUDE_NONE
-      ? 'NONE'
-      : String(perimeterMagnitude.value),
+    label: 'PRECEDENCE',
+    value: terrainPrecedence.value === 'dividers-precedence'
+      ? 'DIVIDERS'
+      : 'PERIMETER',
   },
   { label: 'D-TERRAIN', value: terrainDTerrain.value === 0 ? 'NONE' : String(terrainDTerrain.value) },
   { label: 'PLATEAU WALL', value: `${plateauWallSlopeDegrees.value} deg` },
@@ -1353,6 +1361,8 @@ const {
   legsRadiusToggle,
   legsReachToggle,
   lodMode,
+  aaMsaaMode,
+  aaResolutionMode,
   cameraSmoothMode,
   cameraFollowMode,
   cameraFovDegrees,
@@ -1380,6 +1390,8 @@ const {
   toggleLegsRadius,
   toggleLegsReach,
   changeLodMode,
+  changeAaMsaaMode,
+  changeAaResolutionMode,
   setCameraMode,
   setCameraFollow,
   changeCameraFovDegrees,
@@ -1506,8 +1518,10 @@ useGameCanvasLobbyPreview({
   lobbyPlayerCount,
   localPlayerId,
   centerMagnitude,
+  ringMagnitude,
   dividersMagnitude,
   perimeterMagnitude,
+  terrainPrecedence,
   terrainDTerrain,
   plateauWallSlopeDegrees,
   metalDepositStep,
@@ -1544,6 +1558,7 @@ const {
   nativePixelRatio,
   activePixelRatio,
   dynamicPixelRatioEnabled,
+  antialiasSamples,
   webglBufferProfilerSupported,
   webglRendererRenderMs,
   webglDrawCalls,
@@ -1697,8 +1712,10 @@ const {
   currentLobbySettings,
   broadcastLobbySettingsIfHost,
   applyCenterMagnitude,
+  applyRingMagnitude,
   applyDividersMagnitude,
   applyPerimeterMagnitude,
+  applyTerrainPrecedence,
   applyTerrainDTerrain,
   applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
@@ -1716,8 +1733,10 @@ const {
   roomCode,
   gameStarted,
   centerMagnitude,
+  ringMagnitude,
   dividersMagnitude,
   perimeterMagnitude,
+  terrainPrecedence,
   terrainDTerrain,
   plateauWallSlopeDegrees,
   metalDepositStep,
@@ -1781,8 +1800,10 @@ const {
   getActiveConnection: () => activeConnection,
   broadcastLobbySettingsIfHost,
   applyCenterMagnitude,
+  applyRingMagnitude,
   applyDividersMagnitude,
   applyPerimeterMagnitude,
+  applyTerrainPrecedence,
   applyTerrainDTerrain,
   applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
@@ -2057,8 +2078,10 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   mapWidthLandCells: mapWidthLandCells.value,
   mapLengthLandCells: mapLengthLandCells.value,
   centerMagnitude: centerMagnitude.value,
+  ringMagnitude: ringMagnitude.value,
   dividersMagnitude: dividersMagnitude.value,
   perimeterMagnitude: perimeterMagnitude.value,
+  terrainPrecedence: terrainPrecedence.value,
   terrainDTerrain: terrainDTerrain.value,
   plateauWallSlopeDegrees: plateauWallSlopeDegrees.value,
   metalDepositStep: metalDepositStep.value,
@@ -2086,8 +2109,10 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   changeEntityCountCap,
   applyMapLandDimensions,
   applyCenterMagnitude,
+  applyRingMagnitude,
   applyDividersMagnitude,
   applyPerimeterMagnitude,
+  applyTerrainPrecedence,
   applyTerrainDTerrain,
   applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
@@ -2121,8 +2146,10 @@ watchEffect(() => {
   m.mapWidthLandCells = mapWidthLandCells.value;
   m.mapLengthLandCells = mapLengthLandCells.value;
   m.centerMagnitude = centerMagnitude.value;
+  m.ringMagnitude = ringMagnitude.value;
   m.dividersMagnitude = dividersMagnitude.value;
   m.perimeterMagnitude = perimeterMagnitude.value;
+  m.terrainPrecedence = terrainPrecedence.value;
   m.terrainDTerrain = terrainDTerrain.value;
   m.plateauWallSlopeDegrees = plateauWallSlopeDegrees.value;
   m.metalDepositStep = metalDepositStep.value;
@@ -2147,8 +2174,10 @@ watchEffect(() => {
     slopePathMode: currentSlopePathMode.value,
     converterTax: currentConverterTax.value,
     centerMagnitude: centerMagnitude.value,
+    ringMagnitude: ringMagnitude.value,
     dividersMagnitude: dividersMagnitude.value,
     perimeterMagnitude: perimeterMagnitude.value,
+    terrainPrecedence: terrainPrecedence.value,
     terrainDTerrain: terrainDTerrain.value,
     plateauWallSlopeDegrees: plateauWallSlopeDegrees.value,
     metalDepositStep: metalDepositStep.value,
@@ -2350,6 +2379,9 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   legsRadiusToggle: legsRadiusToggle.value,
   legsReachToggle: legsReachToggle.value,
   lodMode: lodMode.value,
+  aaMsaaMode: aaMsaaMode.value,
+  aaResolutionMode: aaResolutionMode.value,
+  antialiasSamples: antialiasSamples.value,
   cameraFovDegrees: cameraFovDegrees.value,
   cameraSmoothMode: cameraSmoothMode.value,
   cameraFollowMode: cameraFollowMode.value,
@@ -2413,6 +2445,8 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleLegsRadius,
   toggleLegsReach,
   changeLodMode,
+  changeAaMsaaMode,
+  changeAaResolutionMode,
   changeCameraFovDegrees,
   changeWaterBoundaryMode,
   setCameraMode,
@@ -2574,6 +2608,9 @@ watchEffect(() => {
   m.legsRadiusToggle = legsRadiusToggle.value;
   m.legsReachToggle = legsReachToggle.value;
   m.lodMode = lodMode.value;
+  m.aaMsaaMode = aaMsaaMode.value;
+  m.aaResolutionMode = aaResolutionMode.value;
+  m.antialiasSamples = antialiasSamples.value;
   m.cameraFovDegrees = cameraFovDegrees.value;
   m.cameraSmoothMode = cameraSmoothMode.value;
   m.cameraFollowMode = cameraFollowMode.value;
@@ -3043,8 +3080,10 @@ watchEffect(() => {
       :error="lobbyError"
       :is-connecting="isConnecting"
       :center-magnitude="centerMagnitude"
+      :ring-magnitude="ringMagnitude"
       :dividers-magnitude="dividersMagnitude"
       :perimeter-magnitude="perimeterMagnitude"
+      :terrain-precedence="terrainPrecedence"
       :terrain-d-terrain="terrainDTerrain"
       :plateau-wall-slope-degrees="plateauWallSlopeDegrees"
       :metal-deposit-step="metalDepositStep"
@@ -3073,8 +3112,10 @@ watchEffect(() => {
       @entity-lab="openEntityLab"
       @toggle-menu="toggleMenuHidden"
       @set-center-magnitude="(v) => applyCenterMagnitude(v)"
+      @set-ring-magnitude="(v) => applyRingMagnitude(v)"
       @set-dividers-magnitude="(v) => applyDividersMagnitude(v)"
       @set-perimeter-magnitude="(v) => applyPerimeterMagnitude(v)"
+      @set-terrain-precedence="(v) => applyTerrainPrecedence(v)"
       @set-terrain-d-terrain="(v) => applyTerrainDTerrain(v)"
       @set-plateau-wall-slope-degrees="(v) => applyPlateauWallSlopeDegrees(v)"
       @set-metal-deposit-step="(v) => applyMetalDepositStep(v)"

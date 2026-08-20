@@ -57,8 +57,10 @@ type DeterministicReplayHarnessReport = {
 const BASE_REAL_CONFIG: GameServerConfig = {
   playerIds: [1 as PlayerId, 2 as PlayerId],
   centerMagnitude: 0,
+  ringMagnitude: 0,
   dividersMagnitude: 0,
   perimeterMagnitude: -800,
+  terrainPrecedence: 'perimeter-precedence',
   terrainDTerrain: 0,
   plateauWallSlopeDegrees: 89,
   metalDepositStep: 0,

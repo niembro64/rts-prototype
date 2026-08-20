@@ -25,8 +25,10 @@ import type { PlayerId } from '../sim/types';
 
 const HANDOFF_SETTINGS: LobbySettings = {
   centerMagnitude: 0,
+  ringMagnitude: 0,
   dividersMagnitude: 0,
   perimeterMagnitude: -800,
+  terrainPrecedence: 'perimeter-precedence',
   terrainDTerrain: 0,
   plateauWallSlopeDegrees: 89,
   metalDepositStep: 0,

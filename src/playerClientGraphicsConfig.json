@@ -15,7 +15,7 @@
   "barrelSpin": true,
   "beamStyle": "detailed",
   "beamGlow": true,
-  "antialias": false,
+  "antialias": true,
   "burnMarkDensity": 1,
   "groundPrintDensity": 1,
   "projectileStyle": "trail"

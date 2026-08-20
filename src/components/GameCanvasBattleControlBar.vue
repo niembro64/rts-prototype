@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BATTLE_CONFIG, PERIMETER_MAGNITUDE_NONE } from '../battleBarConfig';
+import { BATTLE_CONFIG } from '../battleBarConfig';
 import { SERVER_CONFIG } from '../serverBarConfig';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import {
@@ -161,8 +161,21 @@ const METAL_COVERAGE_TITLE: Record<MetalCoverage, string> = {
             v-for="opt in BATTLE_CONFIG.centerMagnitude.options"
             :key="opt"
             :active="model.centerMagnitude === opt"
-            :title="`Set the central ripple altitude to ${opt}`"
+            :title="`Set the centre dome altitude to ${opt}`"
             @click="model.applyCenterMagnitude(opt)"
+          >{{ opt.toLocaleString() }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup v-if="!model.gameStarted">
+        <BarDivider />
+        <BarLabel title="Annular crest: baseline at the map centre, full altitude at the authored crest radius, baseline again at the outer radius">RING:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in BATTLE_CONFIG.ringMagnitude.options"
+            :key="opt"
+            :active="model.ringMagnitude === opt"
+            :title="`Set the ring crest altitude to ${opt}`"
+            @click="model.applyRingMagnitude(opt)"
           >{{ opt.toLocaleString() }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
@@ -187,11 +200,25 @@ const METAL_COVERAGE_TITLE: Record<MetalCoverage, string> = {
             v-for="opt in BATTLE_CONFIG.perimeterMagnitude.options"
             :key="opt"
             :active="model.perimeterMagnitude === opt"
-            :title="opt === PERIMETER_MAGNITUDE_NONE
-              ? 'NONE — skip the perimeter ring; the generated terrain runs out to the map edge'
-              : `Set the map perimeter ring altitude to ${opt}`"
+            :title="`Set the map perimeter ring altitude to ${opt}`"
             @click="model.applyPerimeterMagnitude(opt)"
-          >{{ opt === PERIMETER_MAGNITUDE_NONE ? 'NONE' : opt.toLocaleString() }}</BarButton>
+          >{{ opt.toLocaleString() }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup v-if="!model.gameStarted">
+        <BarDivider />
+        <BarLabel title="Which terrain step applies last — last wins where they overlap">PRECEDENCE:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            :active="model.terrainPrecedence === 'perimeter-precedence'"
+            title="PERIMETER last: the ring overrides the divider ridges at the rim — an unbroken rim/moat"
+            @click="model.applyTerrainPrecedence('perimeter-precedence')"
+          >PERIMETER</BarButton>
+          <BarButton
+            :active="model.terrainPrecedence === 'dividers-precedence'"
+            title="DIVIDERS last: the ridges run out to the map edge, punching through the ring; the ring fills in between them"
+            @click="model.applyTerrainPrecedence('dividers-precedence')"
+          >DIVIDERS</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">

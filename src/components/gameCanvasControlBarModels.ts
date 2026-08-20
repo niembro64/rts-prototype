@@ -1,6 +1,8 @@
 import type { MapLandCellDimensions } from '../mapSizeConfig';
 import type { BattlePreset } from './battlePresets';
 import type {
+  AntialiasMsaaMode,
+  AntialiasResolutionMode,
   AudioScope,
   BuildGridDebugMode,
   CameraFollowMode,
@@ -26,6 +28,7 @@ import type {
 import type { SnapshotRate, TickRate } from '../types/server';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import type { SlopePathMode } from '../types/slopePathMode';
+import type { TerrainPrecedence } from '../types/terrainPrecedence';
 import type {
   LiquidSurfaceMode,
   MetalCoverage,
@@ -57,8 +60,10 @@ export type GameCanvasBattleControlBarModel = {
   readonly mapWidthLandCells: number;
   readonly mapLengthLandCells: number;
   readonly centerMagnitude: number;
+  readonly ringMagnitude: number;
   readonly dividersMagnitude: number;
   readonly perimeterMagnitude: number;
+  readonly terrainPrecedence: TerrainPrecedence;
   readonly terrainDTerrain: number;
   readonly plateauWallSlopeDegrees: number;
   readonly metalDepositStep: number;
@@ -90,8 +95,10 @@ export type GameCanvasBattleControlBarModel = {
   changeEntityCountCap(cap: number): void;
   applyMapLandDimensions(dimensions: MapLandCellDimensions): void;
   applyCenterMagnitude(value: number): void;
+  applyRingMagnitude(value: number): void;
   applyDividersMagnitude(value: number): void;
   applyPerimeterMagnitude(value: number): void;
+  applyTerrainPrecedence(value: TerrainPrecedence): void;
   applyTerrainDTerrain(value: number): void;
   applyPlateauWallSlopeDegrees(value: number): void;
   applyMetalDepositStep(value: number): void;
@@ -269,6 +276,9 @@ export type GameCanvasClientControlBarModel = {
   readonly legsRadiusToggle: boolean;
   readonly legsReachToggle: boolean;
   readonly lodMode: LodMode;
+  readonly aaMsaaMode: AntialiasMsaaMode;
+  readonly aaResolutionMode: AntialiasResolutionMode;
+  readonly antialiasSamples: number;
   readonly cameraFovDegrees: CameraFovDegrees;
   readonly cameraSmoothMode: CameraSmoothMode;
   readonly cameraFollowMode: CameraFollowMode;
@@ -332,6 +342,8 @@ export type GameCanvasClientControlBarModel = {
   toggleLegsRadius(): void;
   toggleLegsReach(): void;
   changeLodMode(mode: LodMode): void;
+  changeAaMsaaMode(mode: AntialiasMsaaMode): void;
+  changeAaResolutionMode(mode: AntialiasResolutionMode): void;
   changeCameraFovDegrees(fov: CameraFovDegrees): void;
   changeWaterBoundaryMode(mode: WaterBoundaryMode): void;
   setCameraMode(mode: CameraSmoothMode): void;

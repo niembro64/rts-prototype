@@ -176,12 +176,91 @@ export const DETAIL_REBUILD_BUDGET_UNITS = Math.max(
   1, Math.floor(finitePositiveOr(detailConfig.rebuildBudgetPerFrame?.units, 24)));
 export const DETAIL_REBUILD_BUDGET_BUILDINGS = Math.max(
   1, Math.floor(finitePositiveOr(detailConfig.rebuildBudgetPerFrame?.buildings, 8)));
-export const DETAIL_RADIUS_FLOOR_PROJECTILE = finitePositiveOr(
-  detailConfig.radiusFloor?.projectile, 11);
 export const DETAIL_RADIUS_FLOOR_BEAM = finitePositiveOr(
   detailConfig.radiusFloor?.beam, 11);
 const DETAIL_RADIUS_FLOOR_EFFECT = finitePositiveOr(
   detailConfig.radiusFloor?.effectDefault, 12);
+
+// ── Per-class projectile ladders ─────────────────────────────────────
+// Traveling shots are tiny bodies with outsized visual salience (trail,
+// glow), so instead of the entity thresholds they get per-class ladders in
+// lod.json `detail.projectileThresholds` — same px unit, same vocabulary,
+// measured against the shot's REAL collision radius. This replaced the old
+// radiusFloor.projectile fudge that made every shot measure as one fixed
+// 11wu ball regardless of its true size or class.
+
+/** One LOD ladder: the three boundaries as projected screen radii in px. */
+export interface DetailPxLadder {
+  highToMedPx: number;
+  medToLowPx: number;
+  lowToOffPx: number;
+}
+
+/** Same monotonicity repair as the entity thresholds above, scaled
+ *  multiplicatively because projectile ladders live in sub-5px territory. */
+function ladderFromConfig(authored: unknown, fallback: DetailPxLadder): DetailPxLadder {
+  const record = (authored ?? {}) as Partial<Record<keyof DetailPxLadder, unknown>>;
+  const lowToOffPx = finitePositiveOr(record.lowToOffPx, fallback.lowToOffPx);
+  const medToLowPx = Math.max(
+    lowToOffPx * 1.01, finitePositiveOr(record.medToLowPx, fallback.medToLowPx));
+  const highToMedPx = Math.max(
+    medToLowPx * 1.01, finitePositiveOr(record.highToMedPx, fallback.highToMedPx));
+  return { highToMedPx, medToLowPx, lowToOffPx };
+}
+
+const PROJECTILE_DETAIL_LADDERS: Record<'plasma' | 'rocket' | 'missile', DetailPxLadder> = {
+  plasma: ladderFromConfig(
+    detailConfig.projectileThresholds?.plasma,
+    { highToMedPx: 4, medToLowPx: 2.7, lowToOffPx: 1.4 },
+  ),
+  rocket: ladderFromConfig(
+    detailConfig.projectileThresholds?.rocket,
+    { highToMedPx: 3.4, medToLowPx: 2.3, lowToOffPx: 1.1 },
+  ),
+  missile: ladderFromConfig(
+    detailConfig.projectileThresholds?.missile,
+    { highToMedPx: 3.4, medToLowPx: 2.3, lowToOffPx: 1.1 },
+  ),
+};
+
+/** The authored ladder for a traveling-shot type, or null for anything that
+ *  is not one (rays keep the beam radius floor on the entity ladder). */
+export function projectileDetailLadder(shotType: string): DetailPxLadder | null {
+  return shotType === 'plasma' || shotType === 'rocket' || shotType === 'missile'
+    ? PROJECTILE_DETAIL_LADDERS[shotType]
+    : null;
+}
+
+/**
+ * Maps a screen radius measured against a per-class ladder onto the ENTITY
+ * ladder's px scale, piecewise-linearly boundary-to-boundary, so every
+ * downstream consumer — coverage level L, rung selection, feature gates, the
+ * glyph cross-fade — keeps exactly one interpretation: a shot sitting on its
+ * class's MED→LOW boundary behaves like a unit sitting on the entity MED→LOW
+ * boundary. Clamped to the entity HIGH threshold above the ladder top (all of
+ * it is CLOSE) and scaled proportionally below the OFF boundary (all of it is
+ * GLYPH).
+ */
+export function ladderEquivalentScreenRadiusPx(
+  screenRadiusPx: number,
+  ladder: DetailPxLadder,
+): number {
+  if (!Number.isFinite(screenRadiusPx)) return THRESHOLD_HIGH_TO_MED_PX;
+  if (screenRadiusPx >= ladder.highToMedPx) return THRESHOLD_HIGH_TO_MED_PX;
+  if (screenRadiusPx >= ladder.medToLowPx) {
+    return THRESHOLD_MED_TO_LOW_PX +
+      ((screenRadiusPx - ladder.medToLowPx) /
+        (ladder.highToMedPx - ladder.medToLowPx)) *
+      (THRESHOLD_HIGH_TO_MED_PX - THRESHOLD_MED_TO_LOW_PX);
+  }
+  if (screenRadiusPx >= ladder.lowToOffPx) {
+    return THRESHOLD_LOW_TO_OFF_PX +
+      ((screenRadiusPx - ladder.lowToOffPx) /
+        (ladder.medToLowPx - ladder.lowToOffPx)) *
+      (THRESHOLD_MED_TO_LOW_PX - THRESHOLD_LOW_TO_OFF_PX);
+  }
+  return Math.max(0, screenRadiusPx) * (THRESHOLD_LOW_TO_OFF_PX / ladder.lowToOffPx);
+}
 
 const FEATURE_MIN_RUNG: Record<DetailFeature, DetailRung> = {
   body: DETAIL_RUNG_FAR,

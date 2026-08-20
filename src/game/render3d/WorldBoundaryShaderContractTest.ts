@@ -2,7 +2,10 @@ import * as THREE from 'three';
 import { buildGridOverlayFragment } from './BuildGridOverlayShader';
 import { pathfindingHierarchyOverlayFragment } from './PathfindingHierarchyOverlayShader';
 import { worldShadeFragment } from './WorldShade3D';
-import { resolveMapInfoAnnexFootprint } from './MapInfoAnnex3D';
+import {
+  mapInfoAnnexProfileBreakpoints,
+  resolveMapInfoAnnexFootprint,
+} from './MapInfoAnnex3D';
 import {
   buildWorldBoxFloorGeometry,
   getWaterBoxFloorY,
@@ -66,9 +69,18 @@ export function runWorldBoundaryShaderContractTest(): void {
   const position = floor.getAttribute('position');
   const normal = floor.getAttribute('normal');
   const index = floor.index;
+  // Two triangles for the map, and one band per stretch of the info annex's
+  // silhouette — flare, parallel middle, cut — because the cap has to have
+  // the cut corners cut when you look up at it from under the world.
+  const annexBands = mapInfoAnnexProfileBreakpoints(
+    resolveMapInfoAnnexFootprint(mapWidth, mapHeight),
+  ).length - 1;
   assertContract(
-    position.count === 8 && index !== null && index.count === 12,
-    'the world-box floor must be two triangles across the map footprint and two more under the info annex',
+    annexBands === 3
+      && position.count === 4 * (1 + annexBands)
+      && index !== null
+      && index.count === 6 * (1 + annexBands),
+    'the world-box floor must be two triangles across the map and one band per stretch of the annex',
   );
   assertContract(
     Object.keys(floor.attributes).length === 2 && normal !== undefined,

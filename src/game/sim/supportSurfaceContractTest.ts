@@ -71,10 +71,12 @@ const TEST_PLAYER_ID = 1 as PlayerId;
 const CONTRACT_EPSILON = 1e-6;
 const SUPPORT_SURFACE_CONTRACT_TERRAIN: TerrainRuntimeConfig = {
   centerMagnitude: 0,
+  ringMagnitude: 0,
   dividersMagnitude: 0,
   // Negative perimeter sinks the outer ring below water so the contract
   // test can find both ground and water support surfaces (round-island).
   perimeterMagnitude: -800,
+  terrainPrecedence: 'perimeter-precedence' as const,
   terrainDTerrain: 0,
   plateauWallSlopeDegrees: 89,
   metalDepositStep: 0,

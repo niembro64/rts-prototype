@@ -3,6 +3,7 @@ import type { MapDimensionAxisOption } from '../mapSizeConfig';
 import type { ShieldReflectionMode } from './shotTypes';
 import type { SlopePathMode } from './slopePathMode';
 import type { LiquidSurfaceMode, MetalCoverage } from './worldSurfaceMode';
+import type { TerrainPrecedence } from './terrainPrecedence';
 import type { PathfindingCellConsolidationMultiplier } from './pathfinding';
 import type { SimulationTickRateHz } from './simulationTickRate';
 
@@ -45,22 +46,27 @@ export type BattleBarConfig = {
   readonly liquidSurfaceMode: {
     readonly default: LiquidSurfaceMode;
   };
-  /** Signed altitude amplitude of the central ripple zone (CENTER
-   *  button group). Negative values dish the centre below ground
-   *  (valley), positive raise it (mountain), zero suppresses the
-   *  feature entirely. */
+  /** Signed altitude of the central cosine dome/dish at the exact map
+   *  centre (CENTER button group). Negative values dish the centre
+   *  below ground (valley), positive raise it (mountain), zero
+   *  suppresses the feature entirely. */
   readonly centerMagnitude: OptionsConfig<number>;
+  /** Signed crest altitude of the RING annulus (RING button group):
+   *  baseline at the map centre, full magnitude at the authored crest
+   *  radius, baseline again at the outer radius. Same sign convention
+   *  as `centerMagnitude`. */
+  readonly ringMagnitude: OptionsConfig<number>;
   /** Signed altitude amplitude of the team-separator ridges (DIVIDERS
    *  button group). Same sign convention as `centerMagnitude`. */
   readonly dividersMagnitude: OptionsConfig<number>;
   /** Signed altitude amplitude of the map perimeter ring (PERIMETER
    *  button group). Negative sinks the outer ring below water
    *  (round-island); positive raises a rim; 0 flattens it to ground level.
-   *  The list also carries `PERIMETER_MAGNITUDE_NONE`, a sentinel rather
-   *  than an altitude: it skips the boundary override entirely and leaves
-   *  the generated terrain running to the rectangular map edge. Same sign
-   *  convention as `centerMagnitude`. */
+   *  Same sign convention as `centerMagnitude`. */
   readonly perimeterMagnitude: OptionsConfig<number>;
+  /** Which of DIVIDERS/PERIMETER applies last in terrain generation
+   *  (PRECEDENCE button group) — last wins where they overlap. */
+  readonly terrainPrecedence: OptionsConfig<TerrainPrecedence>;
   /** Plateau lattice step in world units. The value `0` is the "NONE"
    *  option (no terracing — the sim short-circuits on step <= 0), so
    *  this bar replaces the old PLATEAU on/off toggle plus the step

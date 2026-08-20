@@ -401,7 +401,7 @@
       }
     },
     "metalDeposit": {
-      "baseColorHex": "#687987",
+      "baseColorHex": "#4d5964",
       "fieldLayers": {
         "sourceFile": "src/game/render3d/SurfaceFieldTexture.ts",
         "baseColorHex": "#5c5c5c",

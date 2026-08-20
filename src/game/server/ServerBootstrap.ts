@@ -26,8 +26,10 @@ import {
   getTerrainRuntimeConfig,
   setAuthoritativeTerrainTileMap,
   setTerrainCenterMagnitude,
+  setTerrainRingMagnitude,
   setTerrainDividersMagnitude,
   setTerrainPerimeterMagnitude,
+  setTerrainPrecedence,
   setTerrainRuntimeConfig,
   setTerrainTeamCount,
 } from '../sim/Terrain';
@@ -128,14 +130,20 @@ export class ServerBootstrap {
     const terrainRuntimeConfig = getTerrainRuntimeConfig();
     const centerMagnitude =
       config.centerMagnitude ?? terrainRuntimeConfig.centerMagnitude;
+    const ringMagnitude =
+      config.ringMagnitude ?? terrainRuntimeConfig.ringMagnitude;
     const dividersMagnitude =
       config.dividersMagnitude ?? terrainRuntimeConfig.dividersMagnitude;
     const perimeterMagnitude =
       config.perimeterMagnitude ?? terrainRuntimeConfig.perimeterMagnitude;
+    const terrainPrecedence =
+      config.terrainPrecedence ?? terrainRuntimeConfig.terrainPrecedence;
     setTerrainRuntimeConfig({
       centerMagnitude,
+      ringMagnitude,
       dividersMagnitude,
       perimeterMagnitude,
+      terrainPrecedence,
       terrainDTerrain:
         config.terrainDTerrain ?? terrainRuntimeConfig.terrainDTerrain,
       plateauWallSlopeDegrees:
@@ -148,8 +156,10 @@ export class ServerBootstrap {
     });
     setTerrainTeamCount(getTerrainDividerTeamCount(teamRoster.allyTeamIds.length));
     setTerrainCenterMagnitude(centerMagnitude);
+    setTerrainRingMagnitude(ringMagnitude);
     setTerrainDividersMagnitude(dividersMagnitude);
     setTerrainPerimeterMagnitude(perimeterMagnitude);
+    setTerrainPrecedence(terrainPrecedence);
     await report(0.14, 'Configuring terrain');
 
     // Deposits are laid out in radial slices phase-aligned to the terrain
@@ -338,14 +348,20 @@ export class ServerBootstrap {
     const terrainRuntimeConfig = getTerrainRuntimeConfig();
     const centerMagnitude =
       config.centerMagnitude ?? terrainRuntimeConfig.centerMagnitude;
+    const ringMagnitude =
+      config.ringMagnitude ?? terrainRuntimeConfig.ringMagnitude;
     const dividersMagnitude =
       config.dividersMagnitude ?? terrainRuntimeConfig.dividersMagnitude;
     const perimeterMagnitude =
       config.perimeterMagnitude ?? terrainRuntimeConfig.perimeterMagnitude;
+    const terrainPrecedence =
+      config.terrainPrecedence ?? terrainRuntimeConfig.terrainPrecedence;
     setTerrainRuntimeConfig({
       centerMagnitude,
+      ringMagnitude,
       dividersMagnitude,
       perimeterMagnitude,
+      terrainPrecedence,
       terrainDTerrain:
         config.terrainDTerrain ?? terrainRuntimeConfig.terrainDTerrain,
       plateauWallSlopeDegrees:
@@ -358,8 +374,10 @@ export class ServerBootstrap {
     });
     setTerrainTeamCount(getTerrainDividerTeamCount(teamRoster.allyTeamIds.length));
     setTerrainCenterMagnitude(centerMagnitude);
+    setTerrainRingMagnitude(ringMagnitude);
     setTerrainDividersMagnitude(dividersMagnitude);
     setTerrainPerimeterMagnitude(perimeterMagnitude);
+    setTerrainPrecedence(terrainPrecedence);
 
     // Metal deposits — same set across all clients (deterministic from
     // map size + player count). `generateMetalDeposits` installs the

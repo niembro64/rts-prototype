@@ -1,4 +1,5 @@
-import { BATTLE_CONFIG, PERIMETER_MAGNITUDE_NONE } from '../../../battleBarConfig';
+import { BATTLE_CONFIG } from '../../../battleBarConfig';
+import type { TerrainPrecedence } from '../../../types/terrainPrecedence';
 import { deterministicMath as DMath } from '../deterministicMath';
 import terrainConfig from './terrainConfig.json';
 
@@ -121,14 +122,24 @@ export const TERRAIN_MESH_HEIGHT_SMOOTHING: {
 export const WATER_FULLY_OPAQUE = terrainConfig.water.fullyOpaque;
 
 export type TerrainRuntimeConfig = {
-  /** Signed altitude of the central ripple (CENTER bar). */
+  /** Signed altitude of the central cosine dome/dish (CENTER bar): the
+   *  height at the exact map centre, blending back to baseline 0 at the
+   *  authored dome radius. */
   centerMagnitude: number;
+  /** Signed crest altitude of the RING annulus (RING bar): baseline at
+   *  the map centre, full magnitude at the authored crest radius A,
+   *  baseline again at outer radius B. */
+  ringMagnitude: number;
   /** Signed altitude of the team-separator ridges (DIVIDERS bar). */
   dividersMagnitude: number;
   /** Signed altitude of the map perimeter ring (PERIMETER bar). 0 =
-   *  flat square (no boundary override); negative dishes the outer
+   *  flat rim at ground level; negative dishes the outer
    *  ring below water (round-island); positive raises a rim wall. */
   perimeterMagnitude: number;
+  /** Which of DIVIDERS/PERIMETER applies last (PRECEDENCE bar) — last
+   *  wins where they overlap. Packed to WASM as the relative order of
+   *  the dividerRidges and mapBoundary pipeline stages. */
+  terrainPrecedence: TerrainPrecedence;
   /** Plateau lattice step (D-PLATEAU bar). 0 = NONE (terracing
    *  disabled — the sim short-circuits on step <= 0). */
   terrainDTerrain: number;
@@ -145,45 +156,42 @@ export type TerrainRuntimeConfig = {
 
 /** Currently-installed signed CENTER amplitude (matches the active
  *  battle's CENTER bar pick). The actual terrain heightmap reads this
- *  directly — sign decides ripple polarity, magnitude decides height. */
+ *  directly — sign decides dome/dish polarity, magnitude decides the
+ *  centre height. */
 export let TERRAIN_CENTER_MAGNITUDE = BATTLE_CONFIG.centerMagnitude.default;
+/** Currently-installed signed RING crest amplitude. */
+export let TERRAIN_RING_MAGNITUDE = BATTLE_CONFIG.ringMagnitude.default;
 /** Currently-installed signed DIVIDERS amplitude. */
 export let TERRAIN_DIVIDERS_MAGNITUDE = BATTLE_CONFIG.dividersMagnitude.default;
 /** Currently-installed PERIMETER bar pick. The terrain heightmap blends the
  *  outer ring toward this value — negative sinks the ring below water
  *  (round-island), positive raises a rim, 0 flattens it to ground level.
- *  `PERIMETER_MAGNITUDE_NONE` is a sentinel, NOT an altitude: it deactivates
- *  the mapBoundary generation stage so no ring is applied at all. Read it
- *  through the two helpers below rather than treating it as a height. */
+ *  Always a real altitude. */
 export let TERRAIN_PERIMETER_MAGNITUDE = BATTLE_CONFIG.perimeterMagnitude.default;
 
-/** False when the PERIMETER bar is on NONE — the mapBoundary stage is skipped
- *  and the generated terrain simply runs out to the rectangular map edge. */
-export function isTerrainPerimeterRingEnabled(): boolean {
-  return TERRAIN_PERIMETER_MAGNITUDE !== PERIMETER_MAGNITUDE_NONE;
-}
+/** Currently-installed PRECEDENCE bar pick: which of DIVIDERS/PERIMETER
+ *  applies last (last wins where they overlap). */
+export let TERRAIN_PRECEDENCE: TerrainPrecedence =
+  BATTLE_CONFIG.terrainPrecedence.default;
 
-/** Altitude the outer ring blends toward, or 0 when the ring is off. Never
- *  the NONE sentinel, so this is always safe to use as a height. */
-export function terrainPerimeterRingAltitude(): number {
-  return isTerrainPerimeterRingEnabled() ? TERRAIN_PERIMETER_MAGNITUDE : 0;
-}
-
-/** Conservative upper bound on terrain heights — center/dividers/
- *  perimeter features can stack, so sum their absolute amplitudes. The
- *  perimeter term is the ring altitude, so NONE contributes nothing rather
- *  than its sentinel magnitude. */
+/** Conservative upper bound on terrain heights — center/ring/dividers/
+ *  perimeter features can stack, so sum their absolute amplitudes. */
 function computeTerrainMaxRenderY(
   centerMag: number,
+  ringMag: number,
   dividersMag: number,
   perimeterMag: number,
 ): number {
-  const perimeterHeight =
-    perimeterMag === PERIMETER_MAGNITUDE_NONE ? 0 : perimeterMag;
-  return Math.abs(centerMag) + Math.abs(dividersMag) + Math.abs(perimeterHeight);
+  return (
+    Math.abs(centerMag) +
+    Math.abs(ringMag) +
+    Math.abs(dividersMag) +
+    Math.abs(perimeterMag)
+  );
 }
 export let TERRAIN_MAX_RENDER_Y = computeTerrainMaxRenderY(
   TERRAIN_CENTER_MAGNITUDE,
+  TERRAIN_RING_MAGNITUDE,
   TERRAIN_DIVIDERS_MAGNITUDE,
   TERRAIN_PERIMETER_MAGNITUDE,
 );
@@ -211,8 +219,9 @@ export let METAL_DEPOSIT_STEP = BATTLE_CONFIG.metalDepositStep.default;
  *  reaches full strength. Inside `innerRadiusFraction` the natural terrain
  *  is untouched; from there to `outerRadiusFraction` the height cosine-blends
  *  toward the signed PERIMETER magnitude; beyond `outerRadiusFraction` (out
- *  to the map edge) the terrain is flat at exactly that magnitude. A NONE
- *  PERIMETER pick skips the whole band. Drives the
+ *  to the map edge) the terrain is flat at exactly that magnitude — except
+ *  across divider ridges under DIVIDERS precedence, which suppress the
+ *  band by their own profile. Drives the
  *  weight in `getTerrainMapBoundaryFade` and the matching Rust sampler. NOT a
  *  coloring knob — the renderer's outer-ring color/fade is configured
  *  separately by `terrainHorizonBlend` in worldRenderConfig.json and
@@ -224,9 +233,9 @@ export const TERRAIN_PERIMETER_CONFIG = {
 } as const;
 
 /** Fade authored terrain features to flat before the outer map buffer, so the
- *  PERIMETER ring blends from a clean surface. A NONE PERIMETER pick skips
- *  this fade along with the ring — with nothing to hand off to, the ripple and
- *  divider ridges run out to the rectangular map edge. */
+ *  PERIMETER ring blends from a clean surface. Divider ridges skip this fade
+ *  under DIVIDERS precedence — with the ring applied first there is nothing
+ *  to hand off to, and the ridges run out to the rectangular map edge. */
 export const TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION =
   terrainConfig.generation.edgeFadeWidthFraction;
 
@@ -249,6 +258,10 @@ export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean
     TERRAIN_CENTER_MAGNITUDE = config.centerMagnitude;
     changed = true;
   }
+  if (TERRAIN_RING_MAGNITUDE !== config.ringMagnitude) {
+    TERRAIN_RING_MAGNITUDE = config.ringMagnitude;
+    changed = true;
+  }
   if (TERRAIN_DIVIDERS_MAGNITUDE !== config.dividersMagnitude) {
     TERRAIN_DIVIDERS_MAGNITUDE = config.dividersMagnitude;
     changed = true;
@@ -257,9 +270,14 @@ export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean
     TERRAIN_PERIMETER_MAGNITUDE = config.perimeterMagnitude;
     changed = true;
   }
+  if (TERRAIN_PRECEDENCE !== config.terrainPrecedence) {
+    TERRAIN_PRECEDENCE = config.terrainPrecedence;
+    changed = true;
+  }
   if (changed) {
     TERRAIN_MAX_RENDER_Y = computeTerrainMaxRenderY(
       TERRAIN_CENTER_MAGNITUDE,
+      TERRAIN_RING_MAGNITUDE,
       TERRAIN_DIVIDERS_MAGNITUDE,
       TERRAIN_PERIMETER_MAGNITUDE,
     );
@@ -303,17 +321,21 @@ export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean
   return changed;
 }
 
-/** Three summed wave components form the central mountain ripple.
- *  Each carries its own wavelength and magnitude (the per-component
- *  weight in the sum, normalized to [0,1] before being scaled by the
- *  global mountain ripple amplitude). The component formulas differ
- *  in shape — see `getGeneratedNaturalTerrainHeight` — so wavelength
- *  means slightly different things per component, but magnitude is
- *  uniformly the relative weight. */
-export const TERRAIN_RIPPLE_CONFIG = {
-  radiusFraction: terrainConfig.generation.ripple.radiusFraction,
-  phase: terrainConfig.generation.ripple.phase,
-  components: terrainConfig.generation.ripple.components,
+/** CENTER dome shape (sim authority): the radius, as a fraction of the
+ *  map's smaller dimension, where the centre dome/dish returns to
+ *  baseline 0. The dome's centre height is the CENTER bar magnitude. */
+export const TERRAIN_CENTER_CONFIG = {
+  radiusFraction: terrainConfig.generation.center.radiusFraction,
+} as const;
+
+/** RING annulus shape (sim authority): crest radius A (where the ring
+ *  reaches its full signed RING magnitude) and outer radius B (where the
+ *  outer cosine shoulder returns to baseline), both as fractions of the
+ *  map's smaller dimension. The inner shoulder always starts at the map
+ *  centre. */
+export const TERRAIN_RING_CONFIG = {
+  crestRadiusFraction: terrainConfig.generation.ring.crestRadiusFraction,
+  outerRadiusFraction: terrainConfig.generation.ring.outerRadiusFraction,
 } as const;
 
 export const TERRAIN_RIDGE_CONFIG = {
@@ -322,20 +344,25 @@ export const TERRAIN_RIDGE_CONFIG = {
   halfWidthFraction: terrainConfig.generation.ridge.halfWidthFraction,
 } as const;
 
-/** The six terrain-generation pipeline stages. terrainConfig.json's
+/** The eight terrain-generation pipeline stages. terrainConfig.json's
  *  `pipeline` array drives execution: entries run strictly in authored
  *  order, each carrying an `active` flag (inactive stages are skipped
  *  by the generators AND by wall-region classification). Every stage
  *  must appear exactly once, in ANY order — the semantics are defined
  *  for all arrangements:
  *    - naturalField OVERWRITES the height, discarding earlier stages.
+ *    - dividerRidges before mapBoundary = PERIMETER precedence (the
+ *      classic look); after it = DIVIDERS precedence. The PRECEDENCE
+ *      bar swaps the two at pack time, on top of the authored order.
  *    - gradientEstimate snapshots the surface + slope at its position;
  *      stages consuming them earlier see zeros (plateau walls go
  *      near-vertical).
  *    - floorClamp clamps at its position; a final safety clamp always
  *      runs at the end of the pipeline regardless. */
-type TerrainPipelineStep =
+export type TerrainPipelineStep =
   | 'naturalField'
+  | 'ringRidge'
+  | 'dividerRidges'
   | 'mapBoundary'
   | 'gradientEstimate'
   | 'plateauTerracing'
@@ -344,6 +371,8 @@ type TerrainPipelineStep =
 
 const TERRAIN_PIPELINE_STEPS: readonly TerrainPipelineStep[] = [
   'naturalField',
+  'ringRidge',
+  'dividerRidges',
   'mapBoundary',
   'gradientEstimate',
   'plateauTerracing',
@@ -398,4 +427,6 @@ export const TERRAIN_PIPELINE_STEP_CODES: Readonly<
   plateauTerracing: 3,
   metalDepositPads: 4,
   floorClamp: 5,
+  dividerRidges: 6,
+  ringRidge: 7,
 };

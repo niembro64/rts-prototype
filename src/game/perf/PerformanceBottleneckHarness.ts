@@ -777,8 +777,10 @@ async function runFullStack(
       mapWidth: mapSize.width,
       mapHeight: mapSize.height,
       centerMagnitude: preset?.centerMagnitude ?? 0,
+      ringMagnitude: preset?.ringMagnitude ?? 0,
       dividersMagnitude: preset?.dividersMagnitude ?? 0,
       perimeterMagnitude: preset?.perimeterMagnitude ?? -800,
+      terrainPrecedence: preset?.terrainPrecedence ?? 'perimeter-precedence',
       backgroundMode: true,
     });
     server.start();
@@ -1255,8 +1257,10 @@ function createServerConfig(
   return {
     playerIds: PLAYER_IDS,
     centerMagnitude: preset?.centerMagnitude ?? 0,
+    ringMagnitude: preset?.ringMagnitude ?? 0,
     dividersMagnitude: preset?.dividersMagnitude ?? 0,
     perimeterMagnitude: preset?.perimeterMagnitude ?? -800,
+    terrainPrecedence: preset?.terrainPrecedence ?? 'perimeter-precedence',
     terrainDTerrain: preset?.terrainDTerrain ?? 0,
     plateauWallSlopeDegrees: preset?.plateauWallSlopeDegrees ?? 89,
     metalDepositStep: preset?.metalDepositStep ?? 0,

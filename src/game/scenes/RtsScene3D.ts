@@ -84,8 +84,10 @@ import {
   getTerrainMeshHeight,
   setTerrainTeamCount,
   setTerrainCenterMagnitude,
+  setTerrainRingMagnitude,
   setTerrainDividersMagnitude,
   setTerrainPerimeterMagnitude,
+  setTerrainPrecedence,
 } from '../sim/Terrain';
 import { HealthBar3D } from '../render3d/HealthBar3D';
 import { NameLabel3D } from '../render3d/NameLabel3D';
@@ -112,7 +114,11 @@ import {
   CAMERA_CONSTRAINTS,
   WORLD_PADDING_PERCENT,
 } from '../../config';
-import { PERIMETER_MAGNITUDE_NONE } from '../../battleBarConfig';
+import { BATTLE_CONFIG } from '../../battleBarConfig';
+import {
+  DEFAULT_TERRAIN_PRECEDENCE,
+  type TerrainPrecedence,
+} from '../../types/terrainPrecedence';
 
 type RtsScene3DConfig = {
   playerIds: PlayerId[];
@@ -136,10 +142,15 @@ type RtsScene3DConfig = {
   mapWidth: number;
   mapHeight: number;
   centerMagnitude?: number;
+  /** Signed RING annulus crest amplitude. Omitted = no ring, matching the
+   *  CENTER / DIVIDERS fallbacks that suppress their feature. */
+  ringMagnitude?: number;
   dividersMagnitude?: number;
-  /** Omitted = no perimeter ring (PERIMETER NONE), matching the CENTER /
-   *  DIVIDERS fallbacks that suppress their feature. */
+  /** Omitted = the authored default ring altitude. */
   perimeterMagnitude?: number;
+  /** Which of DIVIDERS/PERIMETER applies last in terrain generation.
+   *  Omitted = the classic PERIMETER-precedence arrangement. */
+  terrainPrecedence?: TerrainPrecedence;
   backgroundMode: boolean;
   /** GAME LOBBY preview pane — selects the lobby camera defaults and
    *  expects the GameServer to have spawned commanders only (no AI,
@@ -232,8 +243,10 @@ export class RtsScene3D {
   private mapWidth: number;
   private mapHeight: number;
   private centerMagnitude: number;
+  private ringMagnitude: number;
   private dividersMagnitude: number;
   private perimeterMagnitude: number;
+  private terrainPrecedence: TerrainPrecedence;
   private backgroundMode: boolean;
   private lobbyPreview: boolean;
 
@@ -333,8 +346,12 @@ export class RtsScene3D {
     this.onRendererWarmupChange = config.onRendererWarmupChange;
     this.onStartupReady = config.onStartupReady;
     this.centerMagnitude = config.centerMagnitude ?? 0;
+    this.ringMagnitude = config.ringMagnitude ?? 0;
     this.dividersMagnitude = config.dividersMagnitude ?? 0;
-    this.perimeterMagnitude = config.perimeterMagnitude ?? PERIMETER_MAGNITUDE_NONE;
+    this.perimeterMagnitude =
+      config.perimeterMagnitude ?? BATTLE_CONFIG.perimeterMagnitude.default;
+    this.terrainPrecedence =
+      config.terrainPrecedence ?? DEFAULT_TERRAIN_PRECEDENCE;
     // Pin the color wheel to the lobby's player count. Player ids map
     // directly to color slots, so every browser sees the same colors.
     // Identity colors nest team-then-player, so they need the real
@@ -351,8 +368,10 @@ export class RtsScene3D {
     // but remote clients only construct the renderer.
     setTerrainTeamCount(getTerrainDividerTeamCount(this.teamRoster.allyTeamIds.length));
     setTerrainCenterMagnitude(this.centerMagnitude);
+    setTerrainRingMagnitude(this.ringMagnitude);
     setTerrainDividersMagnitude(this.dividersMagnitude);
     setTerrainPerimeterMagnitude(this.perimeterMagnitude);
+    setTerrainPrecedence(this.terrainPrecedence);
     this.mapWidth = config.mapWidth;
     this.mapHeight = config.mapHeight;
     this.backgroundMode = config.backgroundMode;
@@ -1596,6 +1615,7 @@ export class RtsScene3D {
       nativePixelRatio: renderRuntime.nativePixelRatio,
       activePixelRatio: renderRuntime.activePixelRatio,
       dynamicPixelRatioEnabled: renderRuntime.dynamicPixelRatioEnabled,
+      antialiasSamples: renderRuntime.antialiasSamples,
       webglBufferProfilerSupported: webglProfile.bufferProfilerSupported,
       webglRendererRenderMs: webglProfile.rendererRenderMs,
       webglDrawCalls: webglProfile.drawCalls,

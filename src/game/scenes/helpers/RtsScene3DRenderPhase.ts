@@ -253,6 +253,7 @@ export class RtsScene3DRenderPhase {
     isEntityEmissionFarLod: this.isEntityEmissionFarLodRef,
     entityDetailRung: this.entityDetailRungRef,
     entityLodProxyFadeAlpha: this.entityLodProxyFadeAlphaRef,
+    shieldVisibilityTeamMask: 0,
     scoped: false,
   };
   private readonly entityRendererOverlayModes = { reclaimTargets: false };
@@ -477,6 +478,8 @@ export class RtsScene3DRenderPhase {
       this.renderScope,
     );
     const inputManager = this.getInputManager();
+    // Resolved once per frame and handed to BOTH force-material renderers.
+    const shieldVisibilityTeamMask = this.resolveShieldVisibilityTeamMask();
     const hoveredEntity = captureClean ? null : (inputManager?.getHoveredEntity() ?? null);
     const bodyHudEnabled = updateBodyHudThisFrame &&
       (
@@ -492,7 +495,7 @@ export class RtsScene3DRenderPhase {
       includeBodyHud: bodyHudEnabled,
       includeBodyNames: bodyNamesEnabled,
       includeShields: turretShieldSpheresEnabled && forceFieldsVisible,
-      shieldVisibilityTeamMask: this.resolveShieldVisibilityTeamMask(),
+      shieldVisibilityTeamMask,
       includeEntityShadows:
         ENTITY_SHADOW_RENDER_CONFIG.enabled && getEntityShadows(),
       includeGroundPrints: updateEffectsThisFrame,
@@ -510,6 +513,10 @@ export class RtsScene3DRenderPhase {
     rendererPacket.projectileRenderProjectiles = projectileLists.traveling;
     rendererPacket.lineProjectiles = lineProjectiles;
     rendererPacket.scoped = this.renderScope.getMode() !== 'all';
+    // Mirror panels are drawn by the unit renderer rather than the shield
+    // renderer (they are unit-scale mounted hardware, not world-scale field
+    // geometry), so the same visibility answer has to reach both.
+    rendererPacket.shieldVisibilityTeamMask = shieldVisibilityTeamMask;
     this.entityRendererOverlayModes.reclaimTargets =
       (inputManager?.isInReclaimMode() ?? false) ||
       (inputManager?.isInCaptureMode() ?? false) ||

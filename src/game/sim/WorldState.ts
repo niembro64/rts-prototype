@@ -969,10 +969,19 @@ export class WorldState {
     return this.cache.getLineProjectiles();
   }
 
-  // Get units with shield weapons (cached - DO NOT MODIFY returned array)
+  // Get units running a FIELD barrier (cached - DO NOT MODIFY returned array)
   getShieldUnits(): Entity[] {
     this.rebuildCachesIfNeeded();
     return this.cache.getShieldUnits();
+  }
+
+  /** Every host carrying any shield emission — field barriers AND flat
+   *  mirror panels. The powered-equipment pass walks this list so both
+   *  shapes of the one force material answer to the same Shield
+   *  Generator gate. (cached - DO NOT MODIFY returned array) */
+  getShieldEquipmentUnits(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getShieldEquipmentUnits();
   }
 
   getCommanderUnits(): Entity[] {

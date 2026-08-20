@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { CLIENT_CONFIG, LOD_MODE_OPTIONS } from '../clientBarConfig';
+import {
+  AA_MSAA_MODE_OPTIONS,
+  AA_RESOLUTION_MODE_OPTIONS,
+  CLIENT_CONFIG,
+  LOD_MODE_OPTIONS,
+} from '../clientBarConfig';
 import { BATTLE_CONFIG } from '../battleBarConfig';
 import { AUDIO_ENABLED, GOOD_TPS, ZOOM_MAX_MAP_CENTER_DISTANCE } from '../config';
 import {
@@ -24,6 +29,8 @@ import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
 import type { GameCanvasClientControlBarModel } from './gameCanvasControlBarModels';
 import type {
+  AntialiasMsaaMode,
+  AntialiasResolutionMode,
   BuildGridDebugMode,
   LodMode,
   PathingDebugMode,
@@ -62,6 +69,26 @@ const LOD_MODE_TITLES: Record<LodMode, string> = {
   low: 'Freeze all visual detail at the low-resolution rung',
   off: 'Hide models: show entity strategic shapes and remove trees and grass',
 };
+
+const AA_MSAA_MODE_TITLES: Record<AntialiasMsaaMode, string> = {
+  default: 'Draw straight into the canvas. MSAA is whatever the browser granted the WebGL context hint — usually 4x, never adjustable after creation.',
+  '4x': 'Draw the scene into an explicit 4x multisampled offscreen target and present it with a raw copy pass. Applies live.',
+  '8x': 'Draw the scene into an explicit 8x multisampled offscreen target and present it with a raw copy pass — double the default edge quality. Clamped to the GPU MAX_SAMPLES. Applies live.',
+  max: 'Draw the scene into a multisampled offscreen target at the GPU\'s maximum supported sample count. Applies live.',
+};
+
+function aaResolutionTitle(value: AntialiasResolutionMode): string {
+  if (value === 'auto') {
+    return 'Let the runtime profile drive render resolution: the adaptive pixel-ratio governor on browser desktop, the fixed 1x cap on the desktop app and mobile.';
+  }
+  if (value > 100) {
+    return `Pin render resolution to ${value}% of the display's native pixel ratio — supersampling. The only antialiasing here that also fixes shader/specular shimmer; cost grows with the square of the factor.`;
+  }
+  if (value === 100) {
+    return 'Pin render resolution to the display\'s full native pixel ratio and suspend the adaptive governor. On the desktop app this lifts the built-in 1x cap — the biggest edge-quality win on HiDPI screens.';
+  }
+  return `Pin render resolution to ${value}% of the display's native pixel ratio — reduced-resolution performance mode.`;
+}
 
 const CAMERA_ANCHOR_SLOTS = [0, 1, 2, 3] as const;
 const TELEMETRY_BUDGETS = CLIENT_CONFIG.telemetryBudgets;
@@ -625,6 +652,29 @@ function resetEveryCustomHotkey(): void {
             :active="model.lodMode === opt.value"
             :title="LOD_MODE_TITLES[opt.value]"
             @click="model.changeLodMode(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel :title="`Antialiasing. MSAA picks the geometric edge pipeline; RES pins render resolution as a percent of the display's native pixel ratio. Both apply live. Current MSAA target: ${model.antialiasSamples > 0 ? `${model.antialiasSamples}x offscreen` : 'canvas default'}; DPR ${fmt4(model.activePixelRatio)} / native ${fmt4(model.nativePixelRatio)}.`">AA MSAA:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in AA_MSAA_MODE_OPTIONS"
+            :key="opt.value"
+            :active="model.aaMsaaMode === opt.value"
+            :title="AA_MSAA_MODE_TITLES[opt.value]"
+            @click="model.changeAaMsaaMode(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+        <BarLabel>RES:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in AA_RESOLUTION_MODE_OPTIONS"
+            :key="opt.value"
+            :active="model.aaResolutionMode === opt.value"
+            :title="aaResolutionTitle(opt.value)"
+            @click="model.changeAaResolutionMode(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>

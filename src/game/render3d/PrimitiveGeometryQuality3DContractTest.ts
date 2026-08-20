@@ -213,6 +213,30 @@ export function runPrimitiveGeometryQuality3DContractTest(): void {
     'low leg segment is an eight-triangle equilateral triangular prism',
   );
   assertVolume(lowLegSegment, 'low leg segment', Math.PI);
+  // The LOW leg segment wears the same charted material as every other tier,
+  // and a placed chart samples by uv. A zeroed uv is not "no texture" — it
+  // pins every fragment to one texel of the band, which is how the LOW strut
+  // once rendered as a flat near-white bar. Assert the side faces really do
+  // sweep the band: once around in u, end to end in v.
+  const lowLegUv = lowLegSegment.getAttribute('uv');
+  assertContract(
+    lowLegUv !== undefined && lowLegUv.count === lowLegSegment.getAttribute('position').count,
+    'low leg segment carries one uv per vertex',
+  );
+  let uMin = Infinity;
+  let uMax = -Infinity;
+  let vMin = Infinity;
+  let vMax = -Infinity;
+  for (let vertex = 0; vertex < lowLegUv.count; vertex++) {
+    uMin = Math.min(uMin, lowLegUv.getX(vertex));
+    uMax = Math.max(uMax, lowLegUv.getX(vertex));
+    vMin = Math.min(vMin, lowLegUv.getY(vertex));
+    vMax = Math.max(vMax, lowLegUv.getY(vertex));
+  }
+  assertContract(
+    uMin === 0 && uMax === 1 && vMin === 0 && vMax === 1,
+    `low leg segment uv spans the full band, got u [${uMin}, ${uMax}] v [${vMin}, ${vMax}]`,
+  );
   lowLegSegment.dispose();
   const taperedLowLegSegment = createExtrudedEquilateralTriangleGeometry(1, 1, 2);
   assertContract(

@@ -3644,15 +3644,15 @@ mod sim_kernel_tests {
         );
     }
 
-    /// PERIMETER NONE is packed as an inactive mapBoundary stage. That has to
-    /// switch off BOTH halves of the map-edge treatment: the ring override and
-    /// the natural field's fade-to-flat that only exists to feed it. Otherwise
-    /// NONE is indistinguishable from a ground-level ring — the divider ridges
+    /// An inactive mapBoundary stage has to switch off BOTH halves of the
+    /// map-edge treatment: the ring override and the divider ridges'
+    /// fade-to-flat that only exists to feed it. Otherwise "ring off" is
+    /// indistinguishable from a ground-level ring — the divider ridges
     /// still get flattened just short of the map edge.
     #[test]
-    pub(crate) fn terrain_perimeter_none_runs_the_divider_ridges_to_the_map_edge() {
-        // Ridges only (no ripple magnitude), so any height at the sample point
-        // is the DIVIDERS contribution and nothing else.
+    pub(crate) fn terrain_inactive_map_boundary_runs_the_divider_ridges_to_the_map_edge() {
+        // Ridges only (no CENTER dome, no RING annulus), so any height at
+        // the sample point is the DIVIDERS contribution and nothing else.
         let base_config = [
             0.0,     // center_magnitude
             300.0,   // dividers_magnitude
@@ -3665,19 +3665,20 @@ mod sim_kernel_tests {
             0.01,    // generation_edge_transition_width_fraction
             0.99,    // plateau_shelf_fraction_of_step
             1.0,     // plateau_ramp_edge_sharpness
-            0.4,     // ripple_radius_fraction
-            1.7,     // ripple_phase
-            700.0, 0.0, // ripple component 0 wavelength/magnitude
-            600.0, 0.0, // ripple component 1
-            600.0, 0.0, // ripple component 2
+            0.4,     // center_radius_fraction
+            0.0,     // ring_magnitude
+            0.2,     // ring_crest_radius_fraction
+            0.4,     // ring_outer_radius_fraction
             0.1, 0.4, 0.08, // ridge inner/outer/half-width fractions
             89.0, // plateau_wall_slope_degrees
-            0.0, 1.0, 2.0, 3.0, 4.0, 5.0, // pipeline stage order, all active
+            // Pipeline stage order (PERIMETER precedence: dividerRidges
+            // before mapBoundary), all active.
+            0.0, 7.0, 6.0, 1.0, 2.0, 3.0, 4.0, 5.0,
         ];
-        // Same slice with the mapBoundary stage (code 1) marked inactive —
-        // exactly what packTerrainGenerationConfigForWasm emits for NONE.
+        // Same slice with the mapBoundary stage (code 1, slot 3) marked
+        // inactive — what an authored `active: false` packs to.
         let mut none_config = base_config;
-        none_config[24] = 1.0 + 8.0;
+        none_config[22] = 1.0 + 8.0;
 
         let map = 2048.0;
         let flat_zones: [f64; 0] = [];
@@ -3718,20 +3719,181 @@ mod sim_kernel_tests {
             "PERIMETER 0 must flatten the map edge to the ring altitude; got {}",
             ring_height[0],
         );
-        // ...while NONE carries the full DIVIDERS amplitude out to it.
+        // ...while an inactive ring stage carries the full DIVIDERS
+        // amplitude out to it.
         assert!(
             (none_height[0] - 300.0).abs() < 1e-9,
-            "PERIMETER NONE must run the divider ridge to the map edge at full \
-             amplitude; got {}",
+            "an inactive mapBoundary stage must run the divider ridge to the \
+             map edge at full amplitude; got {}",
             none_height[0],
+        );
+    }
+
+    /// DIVIDERS precedence (dividerRidges ordered after mapBoundary) must run
+    /// a ridge out to the map edge at its own full amplitude — suppressing the
+    /// ring across the ridge width — while the ring keeps full effect between
+    /// the ridges.
+    #[test]
+    pub(crate) fn terrain_dividers_precedence_punches_the_ridge_through_the_ring() {
+        let config = [
+            0.0,     // center_magnitude
+            300.0,   // dividers_magnitude
+            0.0,     // terrain_d_terrain (plateau off)
+            -400.0,  // perimeter_magnitude (below-water ring)
+            2.0,     // team_count
+            -1200.0, // tile_floor_y
+            0.5,     // perimeter_outer_radius_fraction
+            0.4,     // perimeter_inner_radius_fraction
+            0.01,    // generation_edge_transition_width_fraction
+            0.99,    // plateau_shelf_fraction_of_step
+            1.0,     // plateau_ramp_edge_sharpness
+            0.4,     // center_radius_fraction
+            0.0,     // ring_magnitude
+            0.2,     // ring_crest_radius_fraction
+            0.4,     // ring_outer_radius_fraction
+            0.1, 0.4, 0.08, // ridge inner/outer/half-width fractions
+            89.0, // plateau_wall_slope_degrees
+            // Pipeline stage order (DIVIDERS precedence: dividerRidges
+            // after mapBoundary), all active.
+            0.0, 7.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0,
+        ];
+
+        let map = 2048.0;
+        let flat_zones: [f64; 0] = [];
+        // Ridge centreline at the map edge (2-team layout: the +x axis is
+        // halfway between the two sides), and an off-ridge edge point on a
+        // side centreline (straight up the -y axis).
+        let samples = [
+            map * 0.99,
+            map * 0.5,
+            f64::NAN,
+            map * 0.5,
+            map * 0.01,
+            f64::NAN,
+        ];
+        let mut heights = [0.0f64; 2];
+        assert_eq!(
+            metal_deposit_resolve_terrain_heights(
+                map,
+                map,
+                0.85,
+                &config,
+                &flat_zones,
+                &samples,
+                &mut heights,
+            ),
+            2
+        );
+
+        assert!(
+            (heights[0] - 300.0).abs() < 1e-9,
+            "DIVIDERS precedence must run the ridge to the map edge at full \
+             amplitude through the ring; got {}",
+            heights[0],
+        );
+        assert!(
+            (heights[1] - -400.0).abs() < 1e-9,
+            "between the ridges the ring must keep its full override; got {}",
+            heights[1],
+        );
+    }
+
+    /// CENTER is a single cosine dome anchored at the map centre (whose
+    /// height IS the bar magnitude) and returning to baseline at the dome
+    /// radius; RING is two cosine shoulders — baseline at the centre, full
+    /// magnitude at crest radius A, baseline again at outer radius B. The
+    /// two sum independently.
+    #[test]
+    pub(crate) fn terrain_center_dome_and_ring_annulus_compose() {
+        let config = [
+            500.0,   // center_magnitude
+            0.0,     // dividers_magnitude
+            0.0,     // terrain_d_terrain (plateau off)
+            0.0,     // perimeter_magnitude (ground-level ring)
+            2.0,     // team_count
+            -1200.0, // tile_floor_y
+            0.5,     // perimeter_outer_radius_fraction
+            0.4,     // perimeter_inner_radius_fraction
+            0.01,    // generation_edge_transition_width_fraction
+            0.99,    // plateau_shelf_fraction_of_step
+            1.0,     // plateau_ramp_edge_sharpness
+            0.3,     // center_radius_fraction
+            200.0,   // ring_magnitude
+            0.2,     // ring_crest_radius_fraction (A)
+            0.4,     // ring_outer_radius_fraction (B)
+            0.1, 0.4, 0.08, // ridge inner/outer/half-width fractions
+            89.0, // plateau_wall_slope_degrees
+            // Pipeline stage order (PERIMETER precedence), all active.
+            0.0, 7.0, 6.0, 1.0, 2.0, 3.0, 4.0, 5.0,
+        ];
+
+        let map = 2048.0;
+        let extent = 0.85;
+        let min_dim = map * extent;
+        let cx = map * 0.5;
+        let flat_zones: [f64; 0] = [];
+        // Off the divider centrelines (2-team ridges run along +x/-x): sample
+        // straight up the -y axis where dividers contribute nothing anyway
+        // (dividers_magnitude is 0 here regardless).
+        let samples = [
+            cx,
+            cx, // map centre
+            f64::NAN,
+            cx,
+            cx - min_dim * 0.2, // ring crest (A)
+            f64::NAN,
+            cx,
+            cx - min_dim * 0.3, // dome edge + ring outer-shoulder midpoint
+            f64::NAN,
+            cx,
+            cx - min_dim * 0.45, // beyond B: baseline
+            f64::NAN,
+        ];
+        let mut heights = [0.0f64; 4];
+        assert_eq!(
+            metal_deposit_resolve_terrain_heights(
+                map,
+                map,
+                extent,
+                &config,
+                &flat_zones,
+                &samples,
+                &mut heights,
+            ),
+            4
+        );
+
+        assert!(
+            (heights[0] - 500.0).abs() < 1e-6,
+            "map centre must sit at the CENTER magnitude; got {}",
+            heights[0],
+        );
+        // At the crest (r = 2/3 of the dome radius) the dome contributes
+        // 500 * (1 + cos(2*pi/3)) / 2 = 125, the ring its full 200.
+        assert!(
+            (heights[1] - 325.0).abs() < 1e-6,
+            "ring crest must add full RING magnitude onto the dome; got {}",
+            heights[1],
+        );
+        // At r = dome radius the dome is back to baseline; the ring's outer
+        // shoulder midpoint is at half magnitude.
+        assert!(
+            (heights[2] - 100.0).abs() < 1e-6,
+            "ring outer-shoulder midpoint must be half the RING magnitude; got {}",
+            heights[2],
+        );
+        assert!(
+            heights[3].abs() < 1e-6,
+            "beyond the ring's outer radius the surface must be baseline; got {}",
+            heights[3],
         );
     }
 
     #[test]
     pub(crate) fn terrain_adaptive_mesh_build_is_deterministic_and_conforming() {
-        // 29-value generation slice: round-island perimeter (negative
-        // magnitude), 2 teams, ripple + ridge so the LOD walk actually
-        // varies triangle sizes.
+        // 27-value generation slice: round-island perimeter (negative
+        // magnitude), 2 teams, CENTER dome + RING annulus + divider ridge
+        // so the LOD walk actually varies triangle sizes.
         let terrain_config = [
             40.0,    // center_magnitude
             30.0,    // dividers_magnitude
@@ -3744,14 +3906,14 @@ mod sim_kernel_tests {
             0.04,    // generation_edge_transition_width_fraction
             0.99,    // plateau_shelf_fraction_of_step
             1.0,     // plateau_ramp_edge_sharpness
-            0.4,     // ripple_radius_fraction
-            1.7,     // ripple_phase
-            700.0, 0.9, // ripple component 0 wavelength/magnitude
-            600.0, 0.0, // ripple component 1
-            600.0, 0.0, // ripple component 2
+            0.25,    // center_radius_fraction
+            30.0,    // ring_magnitude
+            0.2,     // ring_crest_radius_fraction
+            0.38,    // ring_outer_radius_fraction
             0.1, 0.4, 0.08, // ridge inner/outer/half-width fractions
             89.0, // plateau_wall_slope_degrees
-            0.0, 1.0, 2.0, 3.0, 4.0, 5.0, // pipeline stage order, all active
+            // Pipeline stage order (PERIMETER precedence), all active.
+            0.0, 7.0, 6.0, 1.0, 2.0, 3.0, 4.0, 5.0,
         ];
         // 10-value LOD slice mirroring terrainConfig.json defaults.
         let lod_config = [

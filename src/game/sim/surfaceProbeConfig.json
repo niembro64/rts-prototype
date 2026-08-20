@@ -4,7 +4,7 @@
     "probeAggregation": "average"
   },
   "refresh": {
-    "bucketCount": 16
+    "bucketCount": 8
   },
   "spacing": {
     "world": 100

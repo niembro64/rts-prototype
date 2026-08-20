@@ -69,8 +69,10 @@ export function runMetalCoverageContractTest(): void {
   const previousRuntimeConfig = getTerrainRuntimeConfig();
   setTerrainRuntimeConfig({
     centerMagnitude: preset.centerMagnitude,
+    ringMagnitude: preset.ringMagnitude,
     dividersMagnitude: preset.dividersMagnitude,
     perimeterMagnitude: preset.perimeterMagnitude,
+    terrainPrecedence: preset.terrainPrecedence,
     terrainDTerrain: preset.terrainDTerrain,
     plateauWallSlopeDegrees: preset.plateauWallSlopeDegrees,
     metalDepositStep: preset.metalDepositStep,

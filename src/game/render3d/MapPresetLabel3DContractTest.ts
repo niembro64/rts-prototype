@@ -1,12 +1,15 @@
 import {
   MAP_PRESET_LABEL_ROTATION_X,
   MAP_PRESET_LABEL_ROTATION_Z,
-  pickCaptionWrap,
+  pickCaptionSetting,
   resolveMapPresetLabelCaptionBox,
   resolveMapPresetLabelPlacement,
   wrapCaptionFields,
 } from './MapPresetLabel3D';
-import { resolveMapInfoAnnexFootprint } from './MapInfoAnnex3D';
+import {
+  mapInfoAnnexHalfWidthAt,
+  resolveMapInfoAnnexFootprint,
+} from './MapInfoAnnex3D';
 import {
   groupNestedContours,
   polygonSignedArea,
@@ -49,26 +52,52 @@ export function runMapPresetLabel3DContractTest(): void {
     resolveMapInfoAnnexFootprint(10600, 10600).signYaw === 0,
     'the sign frame must need no extra yaw on the edge the annex uses',
   );
-  // THE WRAP. Leading can only be ADDED, so the block the painter sets has
-  // to be at least as wide as the table wants; among those, the narrowest is
-  // the one that needs the least leading and therefore keeps the tightest
-  // block. Aspects here are "candidate block width / height" for one row
-  // count each, widest first as row counts go up.
+  // THE SETTING. The wrap is the coarse knob and the leading the fine one,
+  // and the leading moves BOTH ways — a page set a little tight to make it
+  // fit is ordinary; a band of empty rock down two sides because the leading
+  // refused to close is not. Among the wraps the leading can reach, the one
+  // needing least of it wins, so the authored rhythm survives where it can.
+  //
+  // Candidates below are 100 wide with 40 of leading, so the height alone
+  // sets each one's aspect: 50 → 2.0, 40 → 2.5, 25 → 4.0.
+  const candidate = (height: number): {
+    width: number;
+    height: number;
+    leading: number;
+  } => ({ width: 100, height, leading: 40 });
+  const exact = pickCaptionSetting([candidate(50), candidate(40)], 2.0, 0.5, 1.6);
   assertContract(
-    pickCaptionWrap([8, 4.4, 2.9, 2.0], 2.75) === 2,
-    'the wrap must take the narrowest block still wider than the table',
+    exact.index === 0 && Math.abs(exact.leadingFactor - 1) < 1e-9,
+    'a wrap already on the target aspect must be set at its authored leading',
+  );
+  const tightened = pickCaptionSetting([candidate(50), candidate(20)], 2.5, 0.5, 1.6);
+  assertContract(
+    tightened.index === 0 && Math.abs(tightened.leadingFactor - 0.75) < 1e-9,
+    'a block a little too tall must be set tighter rather than left uneven',
+  );
+  // 25 would need the leading opened to 1.625× and 65 closed to 0.375×; both
+  // are past the bounds, so the reachable wrap takes it either way.
+  const pastCeiling = pickCaptionSetting([candidate(25), candidate(45)], 2.0, 0.5, 1.6);
+  const pastFloor = pickCaptionSetting([candidate(65), candidate(44)], 2.5, 0.5, 1.6);
+  assertContract(
+    pastCeiling.index === 1 && Math.abs(pastCeiling.leadingFactor - 1.125) < 1e-9
+      && pastFloor.index === 1 && Math.abs(pastFloor.leadingFactor - 0.9) < 1e-9,
+    'a wrap the leading can only reach by stretching past its bounds is not a candidate',
+  );
+  const leastMeddling = pickCaptionSetting(
+    [candidate(50), candidate(44)],
+    2.5,
+    0.5,
+    1.6,
   );
   assertContract(
-    pickCaptionWrap([8, 4.4, 2.9, 2.0], 3.5) === 1,
-    'a block narrower than the table is never a candidate, however close',
+    leastMeddling.index === 1 && Math.abs(leastMeddling.leadingFactor - 0.9) < 1e-9,
+    'the winner must be the wrap that needs the least leading moved',
   );
+  const unreachable = pickCaptionSetting([candidate(500), candidate(400)], 2.0, 0.5, 1.6);
   assertContract(
-    pickCaptionWrap([8, 4.4, 2.9, 2.0], 2.9) === 2,
-    'a block exactly on the target aspect is a valid wrap',
-  );
-  assertContract(
-    pickCaptionWrap([2.4, 1.8, 1.1], 2.75) === 0,
-    'with every candidate too tall, the wrap must take the widest one',
+    unreachable.index === 1 && unreachable.leadingFactor === 1,
+    'with no wrap the leading can reach, the closest shape is set as authored',
   );
 
   // The wrap is BALANCED, not greedy-to-an-average: packing to the average
@@ -209,13 +238,22 @@ export function runMapPresetLabel3DContractTest(): void {
     const boxOut =
       (box.centerX - box.annex.attachX) * box.annex.outX +
       (box.centerZ - box.annex.attachZ) * box.annex.outZ;
+    // A flat coast asks the caption to stand back from nothing, so the box is
+    // centred on the whole headland — and every corner of it, the far pair
+    // included, has to be standing on land.
     assertContract(
       boxOut - box.depth / 2 > 0
         && boxOut + box.depth / 2 <= box.annex.depth + 1e-6
-        && box.width < box.annex.width
-        && box.depth > box.annex.depth - box.annex.blendDepth,
-      'a flat coast must hand the caption the whole headland, inset on every side',
+        && Math.abs(boxOut - box.annex.depth / 2) < 1e-6,
+      'a flat coast must centre the caption on the whole headland',
     );
+    for (const corner of [-1, 1]) {
+      const cornerOut = boxOut + corner * box.depth / 2;
+      assertContract(
+        box.width / 2 <= mapInfoAnnexHalfWidthAt(box.annex, cornerOut) + 1e-6,
+        'no corner of the caption box may hang over the headland\'s taper',
+      );
+    }
   }
 
   // Extruded letters come out of the painted glyph mask, so nested outlines

@@ -72,9 +72,19 @@ export type MapInfoAnnexFootprint = {
    *  (along, out) always winds its top face upward. */
   readonly alongX: number;
   readonly alongZ: number;
-  /** Extent along the edge and away from it. */
+  /** Extent along the edge and away from it. `width` is the BODY: the annex
+   *  is wider than this where it meets the coast and narrower at its far
+   *  rim — see {@link mapInfoAnnexHalfWidthAt}. */
   readonly width: number;
   readonly depth: number;
+  /** One third of the depth. Each flank is divided into three bands: the
+   *  inner one carries the flare into the coast, the middle one is parallel,
+   *  and the outer one carries the cut corner. */
+  readonly cornerBandDepth: number;
+  /** How far across the annex the corner diagonal travels over one band —
+   *  the leg the cut takes off the far rim, and the identical leg the fill
+   *  adds at the seam. Zero leaves a plain rectangle. */
+  readonly cornerCut: number;
   /** How much of `depth`, measured from the map edge, is spent easing from
    *  the map's own edge profile into the flat table. */
   readonly blendDepth: number;
@@ -111,18 +121,32 @@ export function resolveMapInfoAnnexFootprint(
   // itself. Width and depth are scaled down TOGETHER, so the headland keeps
   // its shape (and the caption on it its proportions) rather than being
   // squashed into a different one.
+  // The SEAM is what the coast has to hold, not the body: the flare is the
+  // widest the headland ever gets. Sizing the body against the ceiling and
+  // then flaring past it would let a narrow map's annex grow shoulders off
+  // the ends of its own coastline.
+  const cornerSlope = Math.max(0, MAP_INFO_ANNEX_RENDER_CONFIG.cornerCutSlope);
+  const flareFactor = 1 + (2 / 3) * cornerSlope * (
+    MAP_INFO_ANNEX_RENDER_CONFIG.depthMapFraction /
+    Math.max(1e-9, MAP_INFO_ANNEX_RENDER_CONFIG.widthMapFraction)
+  );
   const edgeSpan = frame.outX === 0 ? mapWidth : mapHeight;
   const wantedWidth = axis * MAP_INFO_ANNEX_RENDER_CONFIG.widthMapFraction;
-  const widthCeiling = edgeSpan * MAP_INFO_ANNEX_RENDER_CONFIG.maxEdgeSpanFraction;
+  const widthCeiling =
+    edgeSpan * MAP_INFO_ANNEX_RENDER_CONFIG.maxEdgeSpanFraction / flareFactor;
   const fit = wantedWidth > 0 ? Math.min(1, widthCeiling / wantedWidth) : 1;
   const width = wantedWidth * fit;
   const depth = axis * MAP_INFO_ANNEX_RENDER_CONFIG.depthMapFraction * fit;
+  const cornerBandDepth = depth / 3;
+  const cornerCut = cornerBandDepth * cornerSlope;
   const attachX = frame.outX > 0 ? mapWidth : frame.outX < 0 ? 0 : mapWidth / 2;
   const attachZ = frame.outZ > 0 ? mapHeight : frame.outZ < 0 ? 0 : mapHeight / 2;
   const farX = attachX + frame.outX * depth;
   const farZ = attachZ + frame.outZ * depth;
-  const halfAlongX = frame.outX === 0 ? width / 2 : 0;
-  const halfAlongZ = frame.outZ === 0 ? width / 2 : 0;
+  // The bounding box is the SEAM's, since that is the annex at its widest.
+  const halfSpan = width / 2 + cornerCut;
+  const halfAlongX = frame.outX === 0 ? halfSpan : 0;
+  const halfAlongZ = frame.outZ === 0 ? halfSpan : 0;
   return {
     edge: frame.edge,
     minX: Math.min(attachX, farX) - halfAlongX,
@@ -137,9 +161,81 @@ export function resolveMapInfoAnnexFootprint(
     alongZ: frame.outX,
     width,
     depth,
+    cornerBandDepth,
+    cornerCut,
     blendDepth: depth * MAP_INFO_ANNEX_RENDER_CONFIG.blendDepthFraction,
     signYaw: frame.signYaw,
   };
+}
+
+/**
+ * THE HEADLAND'S SILHOUETTE, as a half-width measured `out` from the seam —
+ * and, with a non-zero `outset`, the same silhouette pushed out by that much
+ * PERPENDICULAR to every edge, which is what the liquid border and anything
+ * else that has to keep an even margin around it wants.
+ *
+ * Three bands per flank. The inner one flares from `width/2 + cornerCut` at
+ * the coast down to `width/2`: that is the fill, the triangle that turns the
+ * butt joint against the map's edge wall into an inside corner. The middle
+ * one is parallel. The outer one takes the same triangle back off, tapering
+ * to `width/2 - cornerCut` at the far rim: that is the cut, the corner off
+ * the cake. Chop and fill are congruent, so the annex covers exactly the
+ * ground the rectangle did — it just stops looking like a rectangle.
+ *
+ * The two diagonals are therefore PARALLEL, and the outline reads as one
+ * taper rather than two unrelated bevels.
+ *
+ * Written as min/max of three lines rather than as a branch per band because
+ * that is also its own dilation: at the reflex corners where a diagonal meets
+ * the parallel flank, the crossing of the two offset lines IS the right
+ * answer, and at the convex ones it is a miter — which suits a rugged coast
+ * better than the arc a true offset would draw.
+ */
+export function mapInfoAnnexHalfWidthAt(
+  footprint: MapInfoAnnexFootprint,
+  out: number,
+  outset = 0,
+): number {
+  const band = footprint.cornerBandDepth;
+  const flank = footprint.width / 2 + outset;
+  if (band <= 0 || footprint.cornerCut <= 0) return flank;
+  const slope = footprint.cornerCut / band;
+  // The outset's reach across a diagonal is measured along the diagonal's own
+  // normal, not its shadow on the along axis — otherwise the border pinches
+  // in at exactly the corners this shape exists to soften.
+  const diagonal = outset * Math.hypot(band, footprint.cornerCut) / band;
+  // Clamped to the OUTSET shape's own span, not the land's: past the far rim
+  // the cut's offset line is still the boundary, all the way to the miter
+  // where it meets the rim's. Clamping at the land's depth instead would let
+  // the border bulge back outward over its last overhang.
+  const clamped = Math.max(-outset, Math.min(footprint.depth + outset, out));
+  const fill = footprint.width / 2 + footprint.cornerCut + diagonal - slope * clamped;
+  const cut = footprint.width / 2
+    + slope * (footprint.depth - band) + diagonal - slope * clamped;
+  return Math.min(cut, Math.max(fill, flank));
+}
+
+/** The `out` values where that profile kinks, in order, over the span the
+ *  outset version occupies: the seam border, the two miters, the far rim.
+ *  Anything meshing the annex or its liquid has to carry a row at each, or
+ *  the diagonals come out as staircases. */
+export function mapInfoAnnexProfileBreakpoints(
+  footprint: MapInfoAnnexFootprint,
+  outset = 0,
+): number[] {
+  const start = -outset;
+  const end = footprint.depth + outset;
+  const band = footprint.cornerBandDepth;
+  if (band <= 0 || footprint.cornerCut <= 0) return [start, end];
+  const slope = footprint.cornerCut / band;
+  const diagonal = outset * Math.hypot(band, footprint.cornerCut) / band;
+  // Where each diagonal's offset line crosses the flank's.
+  const fillMiter = (footprint.cornerCut + diagonal - outset) / slope;
+  const cutMiter = (footprint.depth - band) + (diagonal - outset) / slope;
+  const miters = [fillMiter, cutMiter]
+    .filter((value) => value > start + 1e-6 && value < end - 1e-6)
+    .sort((a, b) => a - b);
+  return [start, ...miters, end];
 }
 
 /** The map's terrain height at the attachment point — the altitude the whole
@@ -227,46 +323,76 @@ export function mapInfoAnnexFlatSurfaceY(flatHeight: number): number {
   return flatHeight + LAND_TILE_GROUND_LIFT;
 }
 
-export type MapInfoAnnexRect = {
-  readonly minX: number;
-  readonly maxX: number;
-  readonly minZ: number;
-  readonly maxZ: number;
+/** One row of a profile stack: how far out it sits, and how far across the
+ *  shape reaches there. World positions come from
+ *  {@link mapInfoAnnexRowPointX} / {@link mapInfoAnnexRowPointZ}. */
+export type MapInfoAnnexRow = {
+  readonly out: number;
+  readonly halfWidth: number;
 };
 
+/** World X of the point `across` ∈ [-1, 1] of the way across `row`. */
+export function mapInfoAnnexRowPointX(
+  footprint: MapInfoAnnexFootprint,
+  row: MapInfoAnnexRow,
+  across: number,
+): number {
+  return footprint.attachX
+    + footprint.alongX * across * row.halfWidth
+    + footprint.outX * row.out;
+}
+
+/** World Z of the same point. */
+export function mapInfoAnnexRowPointZ(
+  footprint: MapInfoAnnexFootprint,
+  row: MapInfoAnnexRow,
+  across: number,
+): number {
+  return footprint.attachZ
+    + footprint.alongZ * across * row.halfWidth
+    + footprint.outZ * row.out;
+}
+
 /**
- * The annex's own share of the liquid footprint: its rectangle grown by the
- * same `overhang` every map edge gets, with the map-facing side stopped at
- * the map's own liquid border — that part is already covered, and a second
- * coplanar layer of translucent water over it would read as a darker patch.
+ * The annex's own share of the liquid footprint, as a stack of rows from the
+ * map's liquid border out to the far rim's.
  *
- * The result is the arm of an L. Its along-edge extent is clamped to the
- * map's liquid rectangle so the union stays an L rather than a cross.
+ * It is the headland's SILHOUETTE grown by the same `overhang` every map edge
+ * gets — not its bounding box grown by it. Against a shape with cut corners
+ * those are very different: a box leaves a wedge of extra water in each cut
+ * corner and pinches the border at each flare, which is exactly the uneven
+ * padding the annex's liquid was built to avoid.
+ *
+ * The map-facing end stops at the map's own liquid border. That part is
+ * already covered, and a second coplanar sheet of translucent water over it
+ * reads as a darker patch.
+ *
+ * `maxRowSpacing` subdivides each straight run so the rows carry the same
+ * depth-interpolation error as the rest of the liquid; the profile's own
+ * kinks are always rows, or the diagonals come out as staircases.
  */
-export function resolveMapInfoAnnexLiquidRect(
+export function resolveMapInfoAnnexLiquidRows(
   footprint: MapInfoAnnexFootprint,
   overhang: number,
-  mapWidth: number,
-  mapHeight: number,
-): MapInfoAnnexRect {
-  let minX = footprint.minX - overhang;
-  let maxX = footprint.maxX + overhang;
-  let minZ = footprint.minZ - overhang;
-  let maxZ = footprint.maxZ + overhang;
-  if (footprint.outX === 0) {
-    const shared = footprint.attachZ + footprint.outZ * overhang;
-    if (footprint.outZ < 0) maxZ = shared;
-    else minZ = shared;
-    minX = Math.max(minX, -overhang);
-    maxX = Math.min(maxX, mapWidth + overhang);
-  } else {
-    const shared = footprint.attachX + footprint.outX * overhang;
-    if (footprint.outX < 0) maxX = shared;
-    else minX = shared;
-    minZ = Math.max(minZ, -overhang);
-    maxZ = Math.min(maxZ, mapHeight + overhang);
+  maxRowSpacing: number,
+): MapInfoAnnexRow[] {
+  // The arm starts ON the map's liquid border — the dilation reaches further
+  // in than that, but the map's own rectangle already covers it.
+  const outs: number[] = [overhang];
+  const kinks = mapInfoAnnexProfileBreakpoints(footprint, overhang)
+    .filter((out) => out > overhang + 1e-6);
+  for (const next of kinks) {
+    const previous = outs[outs.length - 1];
+    if (next <= previous + 1e-6) continue;
+    const steps = Math.max(1, Math.ceil((next - previous) / Math.max(1e-3, maxRowSpacing)));
+    for (let step = 1; step <= steps; step++) {
+      outs.push(previous + ((next - previous) * step) / steps);
+    }
   }
-  return { minX, maxX, minZ, maxZ };
+  return outs.map((out) => ({
+    out,
+    halfWidth: mapInfoAnnexHalfWidthAt(footprint, out, overhang),
+  }));
 }
 
 /**
@@ -294,15 +420,35 @@ export function mapInfoAnnexSettledDepth(
   return footprint.blendDepth * Math.max(0, Math.min(1, t));
 }
 
-/** Where the caption may stand: everything past `nearLimit` — the point the
- *  ramp off the coast has settled onto the flat table — inset by one margin
- *  on every side. Letters all rise from one plane, so ground still easing
- *  under them would leave them floating at one end; ground that eased to
- *  nothing costs the caption nothing. */
+/**
+ * Where the caption may stand: the largest rectangle of headland past
+ * `nearLimit` — the point the ramp off the coast has settled onto the flat
+ * table — inset by one margin on every side.
+ *
+ * The near limit is a ramp question: letters all rise from one plane, so
+ * ground still easing under them would leave them floating at one end, and
+ * ground that eased to nothing costs the caption nothing.
+ *
+ * The SHAPE is the headland's problem and the caption's at once. The
+ * rectangle stays centred on the land it stands on — a sign parked in one
+ * half of its own island, with a bay of empty rock under it, is the thing
+ * this whole feature exists not to look like. But the headland tapers, and a
+ * box taken all the way to the rim comes out nearly square, which a caption
+ * can only fill by breaking its settings into a column of scraps narrower
+ * than its own title.
+ *
+ * So the box is the DEEPEST centred rectangle that still reads as a sign:
+ * `minAspect` is the squarest shape the caption is willing to be set in, and
+ * the depth is bisected down to it. Both terms move the same way as the box
+ * deepens — it gets taller, and the taper takes width off its far corners —
+ * so the aspect falls monotonically and one bisection finds the answer.
+ * Everything past it stays headland, which is what the taper wanted to be.
+ */
 export function resolveMapInfoAnnexCaptionArea(
   footprint: MapInfoAnnexFootprint,
   margin: number,
   nearLimit: number,
+  minAspect: number,
 ): {
   readonly centerX: number;
   readonly centerZ: number;
@@ -310,13 +456,33 @@ export function resolveMapInfoAnnexCaptionArea(
   readonly depth: number;
 } {
   const near = Math.max(0, Math.min(footprint.depth, nearLimit));
-  const flatDepth = footprint.depth - near;
-  const centerOut = near + flatDepth / 2;
+  const centerOut = near + (footprint.depth - near) / 2;
+  const deepest = Math.max(0, (footprint.depth - near) / 2 - margin);
+  // The profile never widens with distance out, so the far corners are always
+  // the ones that run out of land first.
+  const halfWidthFor = (halfDepth: number): number => Math.max(
+    0,
+    mapInfoAnnexHalfWidthAt(
+      footprint,
+      Math.min(footprint.depth - margin, centerOut + halfDepth + margin),
+    ) - margin,
+  );
+  let halfDepth = deepest;
+  if (deepest > 0 && halfWidthFor(deepest) < deepest * Math.max(0, minAspect)) {
+    let tooDeep = deepest;
+    let setsWell = 0;
+    for (let step = 0; step < 24; step++) {
+      const middle = (tooDeep + setsWell) / 2;
+      if (halfWidthFor(middle) >= middle * minAspect) setsWell = middle;
+      else tooDeep = middle;
+    }
+    halfDepth = setsWell;
+  }
   return {
     centerX: footprint.attachX + footprint.outX * centerOut,
     centerZ: footprint.attachZ + footprint.outZ * centerOut,
-    width: Math.max(0, footprint.width - 2 * margin),
-    depth: Math.max(0, flatDepth - 2 * margin),
+    width: 2 * halfWidthFor(halfDepth),
+    depth: 2 * halfDepth,
   };
 }
 
@@ -387,6 +553,12 @@ export type MapInfoAnnexEmitOptions = {
  * so the quad order below has the same handedness on every edge instead of
  * only on the one the annex happens to use today.
  *
+ * Every row spans the headland's own width AT THAT ROW rather than one fixed
+ * width, so the grid is a stack of trapezoids and the flare and the cut come
+ * out of the same loop as the parallel middle. The flanks then trace the
+ * silhouette for free — which is why the walls take their outward normal from
+ * each segment's direction instead of carrying one authored per side.
+ *
  * THE TOP IS WOUND THE WAY THE AUTHORITATIVE TERRAIN MESH IS WOUND, which is
  * clockwise seen from above — its triangles present their BACK face to a
  * camera over the map. That is not a bug to route around: the terrain
@@ -405,16 +577,27 @@ export function emitMapInfoAnnexGeometry(
   sink: MapInfoAnnexSink,
 ): void {
   const step = Math.max(1, options.step);
-  const columns = Math.max(2, Math.ceil(footprint.width / step) + 1);
-  const rows = Math.max(2, Math.ceil(footprint.depth / step) + 1);
-  const positionX = (column: number, row: number): number =>
-    footprint.attachX +
-    footprint.alongX * ((column / (columns - 1)) * footprint.width - footprint.width / 2) +
-    footprint.outX * ((row / (rows - 1)) * footprint.depth);
-  const positionZ = (column: number, row: number): number =>
-    footprint.attachZ +
-    footprint.alongZ * ((column / (columns - 1)) * footprint.width - footprint.width / 2) +
-    footprint.outZ * ((row / (rows - 1)) * footprint.depth);
+  const seamHalfWidth = mapInfoAnnexHalfWidthAt(footprint, 0);
+  const columns = Math.max(2, Math.ceil((2 * seamHalfWidth) / step) + 1);
+  // A row lands on every kink in the silhouette, and each straight run
+  // between them is subdivided to the step — so the diagonals are exact
+  // rather than sampled across.
+  const rowOuts: number[] = [];
+  const breakpoints = mapInfoAnnexProfileBreakpoints(footprint);
+  rowOuts.push(breakpoints[0]);
+  for (const next of breakpoints.slice(1)) {
+    const previous = rowOuts[rowOuts.length - 1];
+    if (next <= previous + 1e-6) continue;
+    const steps = Math.max(1, Math.ceil((next - previous) / step));
+    for (let index = 1; index <= steps; index++) {
+      rowOuts.push(previous + ((next - previous) * index) / steps);
+    }
+  }
+  const rows = rowOuts.length;
+  const rowHalfWidths = rowOuts.map(
+    (out) => mapInfoAnnexHalfWidthAt(footprint, out),
+  );
+  const across = (column: number): number => (column / (columns - 1)) * 2 - 1;
 
   const heights = new Float64Array(columns * rows);
   const xs = new Float64Array(columns * rows);
@@ -422,8 +605,13 @@ export function emitMapInfoAnnexGeometry(
   for (let row = 0; row < rows; row++) {
     for (let column = 0; column < columns; column++) {
       const at = row * columns + column;
-      const x = positionX(column, row);
-      const z = positionZ(column, row);
+      const offset = across(column) * rowHalfWidths[row];
+      const x = footprint.attachX
+        + footprint.alongX * offset
+        + footprint.outX * rowOuts[row];
+      const z = footprint.attachZ
+        + footprint.alongZ * offset
+        + footprint.outZ * rowOuts[row];
       xs[at] = x;
       zs[at] = z;
       heights[at] = mapInfoAnnexSurfaceY(
@@ -440,8 +628,6 @@ export function emitMapInfoAnnexGeometry(
   // surface the triangles actually describe rather than a second sampling of
   // the height field at a different scale.
   const surfaceIndices = new Int32Array(columns * rows).fill(-1);
-  const gradientStepX = footprint.width / (columns - 1);
-  const gradientStepZ = footprint.depth / (rows - 1);
   const allocateSurfaceVertex = (column: number, row: number): number => {
     const at = row * columns + column;
     const existing = surfaceIndices[at];
@@ -450,12 +636,18 @@ export function emitMapInfoAnnexGeometry(
     const rightColumn = Math.min(columns - 1, column + 1);
     const nearRow = Math.max(0, row - 1);
     const farRow = Math.min(rows - 1, row + 1);
+    // Both spacings are measured off the grid this row actually has: rows are
+    // neither evenly spaced (they land on the silhouette's kinks) nor evenly
+    // wide (they follow the flare and the cut).
+    const alongSpan =
+      ((rightColumn - leftColumn) / (columns - 1)) * 2 * rowHalfWidths[row];
+    const outSpan = rowOuts[farRow] - rowOuts[nearRow];
     const alongSlope =
       (heights[row * columns + rightColumn] - heights[row * columns + leftColumn]) /
-      Math.max(1e-6, (rightColumn - leftColumn) * gradientStepX);
+      Math.max(1e-6, alongSpan);
     const outSlope =
       (heights[farRow * columns + column] - heights[nearRow * columns + column]) /
-      Math.max(1e-6, (farRow - nearRow) * gradientStepZ);
+      Math.max(1e-6, outSpan);
     // The two gradients are measured along the annex's own axes; rotate them
     // back onto world X/Z through the same (along, out) basis.
     const gradientX = alongSlope * footprint.alongX + outSlope * footprint.outX;
@@ -509,17 +701,20 @@ export function emitMapInfoAnnexGeometry(
 
   // A wall quad is wound (bottom0, top0, top1) / (bottom0, top1, bottom1),
   // whose face normal comes out as (dz, 0, -dx) for a top edge running
-  // (dx, dz). Walking each side in the direction (-nz, nx) is therefore what
-  // makes the drawn face agree with the outward normal it is authored with.
-  const pushWall = (
-    rim: ReadonlyArray<number>,
-    nx: number,
-    nz: number,
-  ): void => {
+  // (dx, dz). So the outward normal is READ OFF each segment rather than
+  // authored per side: the flanks are no longer straight, and one normal per
+  // side would leave the flare and the cut lit as if they still were.
+  const pushWall = (rim: ReadonlyArray<number>): void => {
     for (let i = 0; i < rim.length - 1; i++) {
       const a = rim[i];
       const b = rim[i + 1];
+      const dx = xs[b] - xs[a];
+      const dz = zs[b] - zs[a];
+      const span = Math.hypot(dx, dz);
+      if (span < 1e-6) continue;
       if (cull !== null && heights[a] <= cull && heights[b] <= cull) continue;
+      const nx = dz / span;
+      const nz = -dx / span;
       const topA = sink.pushWallVertex(xs[a], heights[a], zs[a], nx, nz);
       const topB = sink.pushWallVertex(xs[b], heights[b], zs[b], nx, nz);
       const floorA = sink.pushWallVertex(xs[a], options.floorY, zs[a], nx, nz);
@@ -539,9 +734,10 @@ export function emitMapInfoAnnexGeometry(
     firstColumnRim.push(row * columns);
     lastColumnRim.push(row * columns + columns - 1);
   }
-  pushWall(farRim, footprint.outX, footprint.outZ);
-  // The low-column side faces −along and is walked outward; the high-column
-  // side faces +along and is walked back toward the map.
-  pushWall(firstColumnRim, -footprint.alongX, -footprint.alongZ);
-  pushWall([...lastColumnRim].reverse(), footprint.alongX, footprint.alongZ);
+  // Walk directions unchanged: the far rim across the columns, the
+  // low-column side outward, the high-column side back toward the map. Those
+  // are what put the derived normal on the outside of the solid.
+  pushWall(farRim);
+  pushWall(firstColumnRim);
+  pushWall([...lastColumnRim].reverse());
 }

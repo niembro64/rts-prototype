@@ -15,6 +15,7 @@ import type {
 import type { SnapshotRate, TickRate } from './server';
 import type { BeamReflectorKind, CombatFireState, CombatTrajectoryMode, EntityType, PlayerId, TurretState, UnitAirIdleState, UnitMoveState } from './sim';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
+import type { TerrainPrecedence } from './terrainPrecedence';
 import type {
   LiquidSurfaceMode,
   MetalCoverage,
@@ -725,14 +726,18 @@ export type SessionRefusalReason =
 // complexity, and atomic-replace avoids the "client missed one
 // field" failure mode if a future delta protocol drops a packet.
 export type LobbySettings = {
-  /** Signed altitude of the central ripple (CENTER bar). */
+  /** Signed altitude of the central cosine dome/dish (CENTER bar). */
   centerMagnitude: number;
+  /** Signed crest altitude of the RING annulus (RING bar). */
+  ringMagnitude: number;
   /** Signed altitude of the team-separator ridges (DIVIDERS bar). */
   dividersMagnitude: number;
   /** Signed PERIMETER ring altitude (PERIMETER bar). Negative =
-   *  round-island; positive = rim; 0 = flat rim at ground level;
-   *  `PERIMETER_MAGNITUDE_NONE` = no ring step at all. */
+   *  round-island; positive = rim; 0 = flat rim at ground level. */
   perimeterMagnitude: number;
+  /** Which of DIVIDERS/PERIMETER applies last in terrain generation
+   *  (PRECEDENCE bar) — last wins where they overlap. */
+  terrainPrecedence: TerrainPrecedence;
   /** Plateau lattice step (world units). 0 = NONE (no terracing). */
   terrainDTerrain: number;
   /** D-PLATEAU wall slope angle in degrees from horizontal. */

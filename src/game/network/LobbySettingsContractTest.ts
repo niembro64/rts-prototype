@@ -3,8 +3,10 @@ import { assertCurrentLobbySettings } from './LobbySettingsContract';
 
 const CURRENT_SETTINGS: LobbySettings = {
   centerMagnitude: 0,
+  ringMagnitude: 0,
   dividersMagnitude: 0,
   perimeterMagnitude: 0,
+  terrainPrecedence: 'perimeter-precedence',
   terrainDTerrain: 0,
   plateauWallSlopeDegrees: 85,
   metalDepositStep: 0,
@@ -49,6 +51,14 @@ export function runLobbySettingsContractTest(): void {
   assertRejected(
     { ...CURRENT_SETTINGS, metalCoverage: 'unknown' },
     'an unsupported metalCoverage',
+  );
+  assertRejected(
+    { ...CURRENT_SETTINGS, terrainPrecedence: undefined },
+    'an obsolete packet without terrainPrecedence',
+  );
+  assertRejected(
+    { ...CURRENT_SETTINGS, terrainPrecedence: 'perimeter' },
+    'an unsupported terrainPrecedence',
   );
   assertRejected(
     { ...CURRENT_SETTINGS, pathfindingCellConsolidationMultiplier: 6 },
