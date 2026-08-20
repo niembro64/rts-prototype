@@ -207,7 +207,7 @@
         "renderOrder": 24
       },
       "waypoint": {
-        "widthPx": 2.5,
+        "widthPx": 1,
         "groundLift": 18,
         "renderOrder": 4.25
       },
