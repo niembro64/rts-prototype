@@ -1608,6 +1608,7 @@ export class RtsScene3D {
       nativePixelRatio: renderRuntime.nativePixelRatio,
       activePixelRatio: renderRuntime.activePixelRatio,
       dynamicPixelRatioEnabled: renderRuntime.dynamicPixelRatioEnabled,
+      antialiasSamples: renderRuntime.antialiasSamples,
       webglBufferProfilerSupported: webglProfile.bufferProfilerSupported,
       webglRendererRenderMs: webglProfile.rendererRenderMs,
       webglDrawCalls: webglProfile.drawCalls,

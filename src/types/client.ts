@@ -32,6 +32,20 @@ export type CameraFovDegrees = number;
 /** Renderer visual LOD policy. AUTO uses projected screen coverage to select
  *  the same HIGH, MEDIUM, LOW, or OFF presentation as the manual modes. */
 export type LodMode = 'auto' | 'high' | 'medium' | 'low' | 'off';
+/** Geometric antialiasing pipeline.
+ *    default — draw straight into the canvas; MSAA is whatever the browser
+ *              granted the context's `antialias: true` hint (usually 4×).
+ *    4x/8x   — draw into an explicit multisampled offscreen target with that
+ *              many samples (clamped to the GPU's MAX_SAMPLES) and present it
+ *              with a fullscreen copy pass.
+ *    max     — the offscreen path at the GPU's MAX_SAMPLES. */
+export type AntialiasMsaaMode = 'default' | '4x' | '8x' | 'max';
+/** Render-resolution policy, as a PERCENT of the display's native
+ *  devicePixelRatio. AUTO keeps the runtime profile's behavior (the adaptive
+ *  pixel-ratio governor on browser desktop, the fixed profile cap on
+ *  Tauri/mobile). A number pins the pixel ratio to native × percent/100 and
+ *  suspends the governor — values over 100 supersample. */
+export type AntialiasResolutionMode = 'auto' | number;
 /** Presentation-only treatment of the map/water boundary.
  *    infinity             — extend water and perimeter terrain to a fake horizon.
  *    floating-square      — cut off the real map and render water as an

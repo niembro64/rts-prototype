@@ -27,6 +27,8 @@ import {
   getPathingDebugMode,
   getBurnMarks,
   getWindParticles,
+  getAaMsaaMode,
+  getAaResolutionMode,
   getLodMode,
   getLegsRadiusToggle,
   getLegsReachToggle,
@@ -77,6 +79,8 @@ import {
   setPathingDebugMode,
   setBurnMarks,
   setWindParticles,
+  setAaMsaaMode,
+  setAaResolutionMode,
   setLodMode,
   setLegsRadiusToggle,
   setLegsReachToggle,
@@ -120,6 +124,8 @@ import {
   type CommandHotkeyPresetId,
 } from '../game/input/commandHotkeys';
 import type {
+  AntialiasMsaaMode,
+  AntialiasResolutionMode,
   AudioScope,
   BuildGridDebugMode,
   CameraFovDegrees,
@@ -236,6 +242,8 @@ export function useGameCanvasClientSettings({
   const legsRadiusToggle = ref(getLegsRadiusToggle());
   const legsReachToggle = ref(getLegsReachToggle());
   const lodMode = ref<LodMode>(getLodMode());
+  const aaMsaaMode = ref<AntialiasMsaaMode>(getAaMsaaMode());
+  const aaResolutionMode = ref<AntialiasResolutionMode>(getAaResolutionMode());
   const cameraSmoothMode = ref<CameraSmoothMode>(getCameraSmoothMode());
   const cameraFollowMode = ref<CameraFollowMode>(getCameraFollowMode());
   const cameraFovDegrees = ref<CameraFovDegrees>(getCameraFovDegrees());
@@ -316,6 +324,8 @@ export function useGameCanvasClientSettings({
     legsRadiusToggle.value = getLegsRadiusToggle();
     legsReachToggle.value = getLegsReachToggle();
     lodMode.value = getLodMode();
+    aaMsaaMode.value = getAaMsaaMode();
+    aaResolutionMode.value = getAaResolutionMode();
     cameraSmoothMode.value = getCameraSmoothMode();
     cameraFollowMode.value = getCameraFollowMode();
     cameraFovDegrees.value = getCameraFovDegrees();
@@ -419,6 +429,18 @@ export function useGameCanvasClientSettings({
   function changeLodMode(mode: LodMode): void {
     setLodMode(mode);
     lodMode.value = mode;
+  }
+
+  // Both AA knobs are polled by ThreeApp every frame, so persisting the new
+  // value is all it takes — the render pipeline reconciles on the next tick.
+  function changeAaMsaaMode(mode: AntialiasMsaaMode): void {
+    setAaMsaaMode(mode);
+    aaMsaaMode.value = getAaMsaaMode();
+  }
+
+  function changeAaResolutionMode(mode: AntialiasResolutionMode): void {
+    setAaResolutionMode(mode);
+    aaResolutionMode.value = getAaResolutionMode();
   }
 
   function setCameraMode(mode: CameraSmoothMode): void {
@@ -850,6 +872,8 @@ export function useGameCanvasClientSettings({
     legsRadiusToggle,
     legsReachToggle,
     lodMode,
+    aaMsaaMode,
+    aaResolutionMode,
     cameraSmoothMode,
     cameraFollowMode,
     cameraFovDegrees,
@@ -875,6 +899,8 @@ export function useGameCanvasClientSettings({
     toggleLegsRadius,
     toggleLegsReach,
     changeLodMode,
+    changeAaMsaaMode,
+    changeAaResolutionMode,
     setCameraMode,
     setCameraFollow,
     changeCameraFovDegrees,
