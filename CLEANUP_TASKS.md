@@ -43,6 +43,6 @@ Every item here needs `npm run deterministic:replay` to pass with unchanged hash
 - [ ] **D2** `body_pool.rs:1613-1637`, `1691-1710`, `1762-1781`, `1839-1858` — the same sphere-pair
       resolution preamble four times.
 - [ ] **D3** `body_pool.rs:1960-2021` ≡ `2175-2233` (46-line dense-shape selection block).
-- [ ] **D4** `damage.rs:791-860` ≡ `986-1046` (39-line AABB overlap block).
+
 - [ ] **D5** `pathfinder.rs:1158-1182` ≡ `1812-1836` ≡ `2445-2469` (23-line locomotion param block).
 
