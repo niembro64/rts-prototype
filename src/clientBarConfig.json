@@ -576,16 +576,20 @@
     }
   },
   "waypointDetail": {
-    "demoDefault": "detailed",
-    "realDefault": "detailed",
+    "demoDefault": "detailed-sharp",
+    "realDefault": "detailed-sharp",
     "options": [
       {
         "value": "simple",
         "label": "SIMPLE"
       },
       {
-        "value": "detailed",
-        "label": "DETAILED"
+        "value": "detailed-sharp",
+        "label": "DETAILED-SHARP"
+      },
+      {
+        "value": "detailed-smooth",
+        "label": "DETAILED-SMOOTH"
       }
     ]
   },

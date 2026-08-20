@@ -978,8 +978,15 @@ function loadFromStorage(mode: ClientMode): void {
     currentDragPanEnabled = storedDragPan === 'true';
   }
   const storedWaypointDetail = readPersisted(keys.waypointDetail);
-  if (storedWaypointDetail === 'simple' || storedWaypointDetail === 'detailed') {
+  if (
+    storedWaypointDetail === 'simple' ||
+    storedWaypointDetail === 'detailed-sharp' ||
+    storedWaypointDetail === 'detailed-smooth'
+  ) {
     currentWaypointDetail = storedWaypointDetail;
+  } else if (storedWaypointDetail === 'detailed') {
+    // Pre-split persisted value: DETAILED became DETAILED-SHARP.
+    currentWaypointDetail = 'detailed-sharp';
   }
   const storedEntityHud = readPersisted(keys.entityHud);
   if (storedEntityHud) {
