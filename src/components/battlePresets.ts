@@ -132,7 +132,7 @@ function buildPresets(): readonly BattlePreset[] {
       dividersMagnitude: 800,
       perimeterMagnitude: -400,
       terrainDTerrain: 400,
-      plateauWallSlopeDegrees: 89,
+      plateauWallSlopeDegrees: 70,
       metalDepositStep: 0,
       terrainDetail: 4,
       mapWidthLandCells: 79,
