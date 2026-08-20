@@ -3083,6 +3083,7 @@ watchEffect(() => {
       :ring-magnitude="ringMagnitude"
       :dividers-magnitude="dividersMagnitude"
       :perimeter-magnitude="perimeterMagnitude"
+      :liquid-surface-mode="currentLiquidSurfaceMode"
       :terrain-precedence="terrainPrecedence"
       :terrain-d-terrain="terrainDTerrain"
       :plateau-wall-slope-degrees="plateauWallSlopeDegrees"

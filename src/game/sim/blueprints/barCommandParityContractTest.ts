@@ -37,7 +37,7 @@ import { WorldState } from '../WorldState';
 import { applyBuildingBlueprintRuntime } from '../buildingEntityRuntime';
 import { getBuildingConfig } from '../buildConfigs';
 import { getStructureFactoryAllowedUnitBlueprintIds } from '../factoryProductionRoster';
-import { getUnitBuilderAllowedBuildBlueprintIds } from '../hostCapabilities';
+import { getUnitAuthoredBuildBlueprintIds } from '../hostCapabilities';
 import { buildingBlueprintHasActiveState } from '../buildingActiveState';
 import { createTransportComponentForUnitBlueprint } from '../transports';
 import { BUILD_GRID_CELL_SIZE } from '../buildGrid';
@@ -195,7 +195,7 @@ function actualCommands(entity: Entity, blueprintId: string, kind: 'unit' | 'bui
   if (entity.builder !== null) {
     actual.add('repairReclaim');
     if (kind === 'unit' &&
-      getUnitBuilderAllowedBuildBlueprintIds(UNIT_BLUEPRINTS[blueprintId as UnitBlueprintId]).length > 0) {
+      getUnitAuthoredBuildBlueprintIds(UNIT_BLUEPRINTS[blueprintId as UnitBlueprintId]).length > 0) {
       actual.add('buildMenu');
     }
   }

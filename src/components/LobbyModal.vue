@@ -19,6 +19,12 @@ import {
 import type { MapLandCellDimensions } from '../mapSizeConfig';
 import type { BattlePreset } from './battlePresets';
 import type { TerrainPrecedence } from '../types/terrainPrecedence';
+import type { LiquidSurfaceMode } from '../types/worldSurfaceMode';
+import { mapHasWaterForSetup } from '../game/sim/mapWater';
+import {
+  buildingBlueprintIdsForMapSetup,
+  unitBlueprintIdsForMapSetup,
+} from '../game/sim/mapRoster';
 import { MAX_NAME_LENGTH } from '@/playerNamesConfig';
 import { AUTHOR_BYLINE } from '@/authorBylineConfig';
 import { closeCurrentTauriWindow, isTauriRuntime } from '@/browserRuntime';
@@ -49,6 +55,11 @@ const props = defineProps<{
   ringMagnitude: number;
   dividersMagnitude: number;
   perimeterMagnitude: number;
+  /** What fills the map below the liquid level. Carried here — with no control
+   *  of its own, since presets are what set it — because it is half of the
+   *  answer to whether this map has water, and the roster grids and the
+   *  visualizer readout both need that answer. */
+  liquidSurfaceMode: LiquidSurfaceMode;
   terrainPrecedence: TerrainPrecedence;
   terrainDTerrain: number;
   plateauWallSlopeDegrees: number;
@@ -143,6 +154,24 @@ const occupiedAllyTeamCount = computed(() => {
   }
   return Math.max(1, occupied);
 });
+
+// The map this lobby is currently describing. Nothing has generated it yet, so
+// the water question is asked of the SETUP the host is editing — the same
+// question, and the same answer, the battle will get once it is built.
+const mapSetup = computed(() => ({
+  centerMagnitude: props.centerMagnitude,
+  ringMagnitude: props.ringMagnitude,
+  dividersMagnitude: props.dividersMagnitude,
+  perimeterMagnitude: props.perimeterMagnitude,
+  liquidSurfaceMode: props.liquidSurfaceMode,
+}));
+const mapHasWater = computed(() => mapHasWaterForSetup(mapSetup.value));
+// The roster grids list what this map can actually field: a hull or a structure
+// that only exists for water has no place on a map with none.
+const rosterUnitBlueprintIds = computed(() =>
+  unitBlueprintIdsForMapSetup(props.unitBlueprintIds, mapSetup.value));
+const rosterBuildingBlueprintIds = computed(() =>
+  buildingBlueprintIdsForMapSetup(props.buildingBlueprintIds, mapSetup.value));
 
 // Set view of allowedUnits so per-button lookups in the v-for below
 // are O(1) instead of O(allowedUnits.length) on every parent re-render.
@@ -699,6 +728,15 @@ const terrainSectionVars = computed(() =>
             next-label="LOBBY VISUALIZATION"
           />
         </div>
+        <!-- Why the roster grids above are shorter than usual, said in the
+             corner of the map it is true of. Hidden while the preview is still
+             loading so it does not sit over the emblem. -->
+        <div
+          v-if="!mapHasWater && !previewLoading"
+          class="preview-note"
+          role="note"
+          title="No part of this map lies below the water line, or its liquid is lava — so water-only units and structures are out of the roster."
+        >NO WATER UNITS</div>
       </div>
 
       <!-- Connecting screen -->
@@ -1133,7 +1171,7 @@ const terrainSectionVars = computed(() =>
                 >ALL</BarButton>
                 <BarButtonGroup>
                   <BarButton
-                    v-for="ut in unitBlueprintIds"
+                    v-for="ut in rosterUnitBlueprintIds"
                     :key="ut"
                     :active="allowedUnitsSet.has(ut)"
                     :title="isHost ? `Toggle ${ut}` : 'Only the host can change battle settings'"
@@ -1151,7 +1189,7 @@ const terrainSectionVars = computed(() =>
                 >ALL</BarButton>
                 <BarButtonGroup>
                   <BarButton
-                    v-for="bt in buildingBlueprintIds"
+                    v-for="bt in rosterBuildingBlueprintIds"
                     :key="bt"
                     :active="allowedBuildingsSet.has(bt)"
                     :title="isHost ? `Toggle ${bt}` : 'Only the host can change battle settings'"
@@ -1668,6 +1706,26 @@ const terrainSectionVars = computed(() =>
   border: 1px solid #444;
   border-radius: 8px;
   overflow: hidden;
+}
+
+/* Map footnote, bottom-right of the visualizer. Deliberately small and quiet:
+ * it explains the roster, it is not a warning. Sits above the teleported demo
+ * container but below the loading overlay. */
+.preview-note {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  z-index: 5;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(5, 7, 10, 0.55);
+  font-family: monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: #8893a3;
+  /* Hoverable so the title explains WHY, which is the part a player cannot
+   * infer from the map. A ~100px corner badge over a non-interactive preview. */
+  cursor: default;
 }
 
 .preview-loading-overlay {
