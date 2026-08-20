@@ -1,4 +1,4 @@
-import type { WorkEmitterSpec } from '@/types/constructionTypes';
+import type { WorkEmitterSpec, WorkStationAttachment } from '@/types/constructionTypes';
 import type { Vec3 } from '@/types/vec2';
 import { getTransformCosSin, normalizeAngle } from '../math/MathHelpers';
 import { getTurretWorldMount } from '../math/MountGeometry';
@@ -242,28 +242,39 @@ function writeBotLocalPointWorld(
   );
 }
 
-/** BAR-style AimFromWork pivot. The forearm joint, rather than the host
- * center, owns the direction that the QueryWork nozzle must realize. */
-function writeQueryWorkAimFrom(
+/** Solve the host's articulated work arm into the shared _armPose scratch.
+ *
+ * Returns false — having written the plain host transform into `out` — for any
+ * host that has no solved arm to speak of (no unit, a non-botArm attachment,
+ * or a non-bot locomotion). Both work-emitter queries below need the exact
+ * same guards and the exact same pose solve, and a divergence between them
+ * would aim the nozzle somewhere the drawn arm is not. */
+// Companion outputs of the last successful solveWorkStationArmPose call, kept
+// alongside _armPose so the socket math below can read them without the solve
+// allocating a result object on every tick.
+let _armSolveRadius = 0;
+let _armSolveAttachment: Extract<WorkStationAttachment, { kind: 'botArm' }> | null = null;
+
+function solveWorkStationArmPose(
   host: Entity,
   station: BuilderWorkStationRuntime,
   emitter: WorkEmitterSpec,
   out: Vec3,
-): Vec3 {
+): boolean {
   const sourceUnit = host.unit;
   const attachment = emitter.attachment;
   if (sourceUnit === null || attachment.kind !== 'botArm') {
     out.x = host.transform.x;
     out.y = host.transform.y;
     out.z = host.transform.z;
-    return out;
+    return false;
   }
   const blueprint = getUnitBlueprint(sourceUnit.unitBlueprintId);
   if (blueprint.unitLocomotion.type !== 'bot') {
     out.x = host.transform.x;
     out.y = host.transform.y;
     out.z = host.transform.z;
-    return out;
+    return false;
   }
   const radius = sourceUnit.radius.other;
   const arms = blueprint.unitLocomotion.config.arms;
@@ -277,6 +288,20 @@ function writeQueryWorkAimFrom(
     DMath,
     _armPose,
   );
+  _armSolveRadius = radius;
+  _armSolveAttachment = attachment;
+  return true;
+}
+
+/** BAR-style AimFromWork pivot. The forearm joint, rather than the host
+ * center, owns the direction that the QueryWork nozzle must realize. */
+function writeQueryWorkAimFrom(
+  host: Entity,
+  station: BuilderWorkStationRuntime,
+  emitter: WorkEmitterSpec,
+  out: Vec3,
+): Vec3 {
+  if (!solveWorkStationArmPose(host, station, emitter, out)) return out;
   return writeBotLocalPointWorld(
     host,
     _armPose.elbowX,
@@ -302,33 +327,7 @@ export function writeWorkEmitterSocketWorld(
   emitter: WorkEmitterSpec,
   out: Vec3,
 ): Vec3 {
-  const sourceUnit = host.unit;
-  const attachment = emitter.attachment;
-  if (sourceUnit === null || attachment.kind !== 'botArm') {
-    out.x = host.transform.x;
-    out.y = host.transform.y;
-    out.z = host.transform.z;
-    return out;
-  }
-  const blueprint = getUnitBlueprint(sourceUnit.unitBlueprintId);
-  if (blueprint.unitLocomotion.type !== 'bot') {
-    out.x = host.transform.x;
-    out.y = host.transform.y;
-    out.z = host.transform.z;
-    return out;
-  }
-  const radius = sourceUnit.radius.other;
-  const arms = blueprint.unitLocomotion.config.arms;
-  resolveBotWeaponArmSocketPose(
-    arms,
-    radius,
-    attachment.arm,
-    radius * arms.shoulder.zUnitRadiusRatio,
-    station.localPitch,
-    station.localYaw,
-    DMath,
-    _armPose,
-  );
+  if (!solveWorkStationArmPose(host, station, emitter, out)) return out;
 
   // Articulated emitter points are QueryWork-local: +X follows the solved
   // forearm, +Y is its horizontal left, and +Z completes the right-handed
@@ -343,16 +342,18 @@ export function writeWorkEmitterSocketWorld(
   const upX = -forwardZ * leftY;
   const upY = forwardZ * leftX;
   const upZ = horizontal;
+  const radius = _armSolveRadius;
+  const socketOffset = _armSolveAttachment!.socketOffset;
   const socketX = _armPose.handX + radius * (
-    attachment.socketOffset.x +
+    socketOffset.x +
     point.x * forwardX + point.y * leftX + point.z * upX
   );
   const socketY = _armPose.handY + radius * (
-    attachment.socketOffset.y +
+    socketOffset.y +
     point.x * forwardY + point.y * leftY + point.z * upY
   );
   const socketZ = _armPose.handZ + radius * (
-    attachment.socketOffset.z + point.x * forwardZ + point.z * upZ
+    socketOffset.z + point.x * forwardZ + point.z * upZ
   );
   return writeBotLocalPointWorld(host, socketX, socketY, socketZ, out);
 }

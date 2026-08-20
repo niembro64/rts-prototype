@@ -397,10 +397,13 @@ class SpatialGrid {
     return this._unitsAndBuildingsResult;
   }
 
-  queryUnitsAndBuildingsSlotsInRadius(
-    x: number, y: number, z: number, radius: number,
+  /** Decode a wasm unit+building slot payload into the shared result object.
+   *  The payload layout — [unitCount, buildingCount, ...unitSlots,
+   *  ...buildingSlots] — is fixed by the Rust side, so every query that
+   *  returns it decodes here rather than re-deriving the offsets. */
+  private resolveUnitsAndBuildingsSlots(
+    total: number,
   ): { units: Entity[]; buildings: Entity[]; unitSlots: number[]; buildingSlots: number[] } {
-    const total = this.api().queryUnitsAndBuildingsInRadius(x, y, z, radius);
     const slots = this.scratch(total);
     const nUnits = slots[0];
     const nBuildings = slots[1];
@@ -423,6 +426,13 @@ class SpatialGrid {
     this._unitsAndBuildingsSlotsResult.unitSlots = this._queryResultUnitSlots;
     this._unitsAndBuildingsSlotsResult.buildingSlots = this._queryResultBuildingSlots;
     return this._unitsAndBuildingsSlotsResult;
+  }
+
+  queryUnitsAndBuildingsSlotsInRadius(
+    x: number, y: number, z: number, radius: number,
+  ): { units: Entity[]; buildings: Entity[]; unitSlots: number[]; buildingSlots: number[] } {
+    const total = this.api().queryUnitsAndBuildingsInRadius(x, y, z, radius);
+    return this.resolveUnitsAndBuildingsSlots(total);
   }
 
   queryUnitBuildingSlotRangesInRadius(
@@ -630,28 +640,7 @@ class SpatialGrid {
     lineWidth: number,
   ): { units: Entity[]; buildings: Entity[]; unitSlots: number[]; buildingSlots: number[] } {
     const total = this.api().queryEntitiesAlongLine(x1, y1, z1, x2, y2, z2, lineWidth);
-    const slots = this.scratch(total);
-    const nUnits = slots[0];
-    const nBuildings = slots[1];
-    this.resolveSlotsRangeWithSlots(
-      slots,
-      2,
-      2 + nUnits,
-      this.queryResultUnits,
-      this._queryResultUnitSlots,
-    );
-    this.resolveSlotsRangeWithSlots(
-      slots,
-      2 + nUnits,
-      2 + nUnits + nBuildings,
-      this.queryResultBuildings,
-      this._queryResultBuildingSlots,
-    );
-    this._unitsAndBuildingsSlotsResult.units = this.queryResultUnits;
-    this._unitsAndBuildingsSlotsResult.buildings = this.queryResultBuildings;
-    this._unitsAndBuildingsSlotsResult.unitSlots = this._queryResultUnitSlots;
-    this._unitsAndBuildingsSlotsResult.buildingSlots = this._queryResultBuildingSlots;
-    return this._unitsAndBuildingsSlotsResult;
+    return this.resolveUnitsAndBuildingsSlots(total);
   }
 
 }

@@ -27,16 +27,10 @@ Gates for this work:
 
 ## C. Duplication → helpers (TypeScript)
 
-- [ ] **C4** `Input3DModeClickControllerContractTest.ts` repeats the same ~30-field mode-controller
-      stub 7 times (158-185, 525-552, 611-627, 692-712, 768-788, 846-866, 931-951).
-      Extract `makeModeStub(overrides)`.
-
 - [ ] **C8** `snapshotEntityWirePack.ts` typed-full vs typed-placeholder decode paths duplicate four
       field-fill blocks (869-891 ≡ 1104-1126, 904-924 ≡ 1132-1152, 969-1016 ≡ 1208-1256).
       Same-file verbatim fill helpers only (wire layout is determinism-critical).
-- [ ] **C9** `SpatialGrid.ts:404-425` ≡ `:633-654`.
-- [ ] **C10** `workStationSystem.ts:248-279` ≡ `:300-331`.
-- [ ] **C11** `commandHotkeys.ts:802-821` ≡ `:998-1017` (the 20-line factoryPreset binding block).
+
 - [ ] **C12** `SelectionPanel.vue` repeats the `bar-order-state` button markup across five clusters
       (1725/2037, 1746/2058/2654, 1764/2076, 1783/2177, 1821/2691). Extract a component or a
       v-for-driven descriptor list.
