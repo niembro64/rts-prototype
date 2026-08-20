@@ -73,6 +73,27 @@ function addMaterializationStage(
   addSnapshotMaterializationStageFromStart(stages, stage, start);
 }
 
+/** Fetch a per-ally-team serialization, producing and timing it on first use.
+ *
+ *  Every listener on the same team shares one serialization of the audio,
+ *  spray, and minimap payloads — that sharing is the entire point of the team
+ *  caches, and it is why the stage timing is only charged on the miss. */
+function memoTeamOverride<T>(
+  cache: Map<string, T>,
+  teamKey: string,
+  stages: SnapshotMaterializationStageDurations,
+  stage: SnapshotMaterializationStage,
+  produce: () => T,
+): T {
+  const cached = cache.get(teamKey);
+  if (cached !== undefined) return cached;
+  const stageStart = performance.now();
+  const created = produce();
+  cache.set(teamKey, created);
+  addMaterializationStage(stages, stage, stageStart);
+  return created;
+}
+
 function timeMaterializationStage<T>(
   stages: SnapshotMaterializationStageDurations,
   stage: SnapshotMaterializationStage,
@@ -137,6 +158,35 @@ type ServerSnapshotPublisherInput = {
   tickMsHi: number;
   tickMsInitialized: boolean;
 };
+
+type DrainedSimulationFrame = {
+  gamePhase: ReturnType<Simulation['getGamePhase']>;
+  winnerId: PlayerId | undefined;
+  sprayTargets: ReturnType<Simulation['getSprayTargets']>;
+  audioEvents: ReturnType<Simulation['getAndClearEvents']>;
+  projectileSpawns: ReturnType<Simulation['getAndClearProjectileSpawns']>;
+  projectileDespawns: ReturnType<Simulation['getAndClearProjectileDespawns']>;
+  projectileMotionUpdates: ReturnType<Simulation['getAndClearProjectileMotionUpdates']>;
+};
+
+/** Take this tick's phase, winner, and queued events off the simulation.
+ *
+ *  The getAndClear* calls DRAIN their queues, so both publish paths have to
+ *  make exactly this set of calls exactly once per tick: skip one and its
+ *  events leak into the next snapshot, make one twice and they are lost. The
+ *  sequence lives here so the full-emit and dirty-delta paths cannot diverge. */
+function drainSimulationFrame(simulation: Simulation): DrainedSimulationFrame {
+  const gamePhase = simulation.getGamePhase();
+  return {
+    gamePhase,
+    winnerId: gamePhase === 'gameOver' ? simulation.getWinnerId() ?? undefined : undefined,
+    sprayTargets: simulation.getSprayTargets(),
+    audioEvents: simulation.getAndClearEvents(),
+    projectileSpawns: simulation.getAndClearProjectileSpawns(),
+    projectileDespawns: simulation.getAndClearProjectileDespawns(),
+    projectileMotionUpdates: simulation.getAndClearProjectileMotionUpdates(),
+  };
+}
 
 export class ServerSnapshotPublisher {
   private readonly metaBuilder = new ServerSnapshotMetaBuilder();
@@ -327,15 +377,15 @@ export class ServerSnapshotPublisher {
   emit(input: ServerSnapshotPublisherInput): void {
     const emitBaseStages = createSnapshotMaterializationStageDurations();
     const lifecycleStart = performance.now();
-    const gamePhase = input.simulation.getGamePhase();
-    const winnerId = gamePhase === 'gameOver'
-      ? input.simulation.getWinnerId() ?? undefined
-      : undefined;
-    const sprayTargets = input.simulation.getSprayTargets();
-    const audioEvents = input.simulation.getAndClearEvents();
-    const projectileSpawns = input.simulation.getAndClearProjectileSpawns();
-    const projectileDespawns = input.simulation.getAndClearProjectileDespawns();
-    const projectileMotionUpdates = input.simulation.getAndClearProjectileMotionUpdates();
+    const {
+      gamePhase,
+      winnerId,
+      sprayTargets,
+      audioEvents,
+      projectileSpawns,
+      projectileDespawns,
+      projectileMotionUpdates,
+    } = drainSimulationFrame(input.simulation);
 
     // Pairs with meta.units.max, which is the ENTITY count cap — so this
     // counts buildings too, or the readout reads under its own ceiling.
@@ -455,38 +505,22 @@ export class ServerSnapshotPublisher {
         }
       }
       if (teamKey !== undefined) {
-        audioOverride = teamAudioCache.get(teamKey);
-        if (!audioOverride) {
-          stageStart = performance.now();
-          audioOverride = {
-            value: serializeAudioEvents(audioEvents, visibility, listener.cacheKey),
-          };
-          teamAudioCache.set(teamKey, audioOverride);
-          addMaterializationStage(stages, 'audio', stageStart);
-        }
-        sprayOverride = teamSprayCache.get(teamKey);
-        if (!sprayOverride) {
-          stageStart = performance.now();
-          sprayOverride = {
-            value: serializeSprayTargets(sprayTargets, visibility, listener.cacheKey),
-          };
-          teamSprayCache.set(teamKey, sprayOverride);
-          addMaterializationStage(stages, 'spray', stageStart);
-        }
+        audioOverride = memoTeamOverride(teamAudioCache, teamKey, stages, 'audio', () => ({
+          value: serializeAudioEvents(audioEvents, visibility, listener.cacheKey),
+        }));
+        sprayOverride = memoTeamOverride(teamSprayCache, teamKey, stages, 'spray', () => ({
+          value: serializeSprayTargets(sprayTargets, visibility, listener.cacheKey),
+        }));
         if (shouldEmitMinimap) {
-          minimapOverride = teamMinimapCache.get(teamKey);
-          if (!minimapOverride) {
-            stageStart = performance.now();
-            minimapOverride = {
+          minimapOverride = memoTeamOverride(
+            teamMinimapCache, teamKey, stages, 'minimap', () => ({
               value: serializeMinimapSnapshotEntities(
                 input.world,
                 visibility,
                 listener.cacheKey,
               ),
-            };
-            teamMinimapCache.set(teamKey, minimapOverride);
-            addMaterializationStage(stages, 'minimap', stageStart);
-          }
+            }),
+          );
         }
       }
       const serializeOptions: SerializeGameStateOptions = {
@@ -614,15 +648,15 @@ export class ServerSnapshotPublisher {
   private emitDirtyPresentationDelta(input: ServerSnapshotPublisherInput): boolean {
     const emitBaseStages = createSnapshotMaterializationStageDurations();
     const lifecycleStart = performance.now();
-    const gamePhase = input.simulation.getGamePhase();
-    const winnerId = gamePhase === 'gameOver'
-      ? input.simulation.getWinnerId() ?? undefined
-      : undefined;
-    const sprayTargets = input.simulation.getSprayTargets();
-    const audioEvents = input.simulation.getAndClearEvents();
-    const projectileSpawns = input.simulation.getAndClearProjectileSpawns();
-    const projectileDespawns = input.simulation.getAndClearProjectileDespawns();
-    const projectileMotionUpdates = input.simulation.getAndClearProjectileMotionUpdates();
+    const {
+      gamePhase,
+      winnerId,
+      sprayTargets,
+      audioEvents,
+      projectileSpawns,
+      projectileDespawns,
+      projectileMotionUpdates,
+    } = drainSimulationFrame(input.simulation);
     const hasLiveLineProjectiles = input.world.getLineProjectiles().length > 0;
 
     this.dirtyIdsBuf.length = 0;
@@ -772,37 +806,21 @@ export class ServerSnapshotPublisher {
       let sprayOverride: SerializerSprayOverride | undefined;
       let minimapOverride: SerializerMinimapOverride | undefined;
       if (teamKey !== undefined) {
-        audioOverride = teamAudioCache.get(teamKey);
-        if (!audioOverride) {
-          stageStart = performance.now();
-          audioOverride = {
-            value: serializeAudioEvents(audioEvents, visibility, listener.cacheKey),
-          };
-          teamAudioCache.set(teamKey, audioOverride);
-          addMaterializationStage(stages, 'audio', stageStart);
-        }
-        sprayOverride = teamSprayCache.get(teamKey);
-        if (!sprayOverride) {
-          stageStart = performance.now();
-          sprayOverride = {
-            value: serializeSprayTargets(sprayTargets, visibility, listener.cacheKey),
-          };
-          teamSprayCache.set(teamKey, sprayOverride);
-          addMaterializationStage(stages, 'spray', stageStart);
-        }
-        minimapOverride = teamMinimapCache.get(teamKey);
-        if (!minimapOverride) {
-          stageStart = performance.now();
-          minimapOverride = {
+        audioOverride = memoTeamOverride(teamAudioCache, teamKey, stages, 'audio', () => ({
+          value: serializeAudioEvents(audioEvents, visibility, listener.cacheKey),
+        }));
+        sprayOverride = memoTeamOverride(teamSprayCache, teamKey, stages, 'spray', () => ({
+          value: serializeSprayTargets(sprayTargets, visibility, listener.cacheKey),
+        }));
+        minimapOverride = memoTeamOverride(
+          teamMinimapCache, teamKey, stages, 'minimap', () => ({
             value: serializeMinimapSnapshotEntities(
               input.world,
               visibility,
               listener.cacheKey,
             ),
-          };
-          teamMinimapCache.set(teamKey, minimapOverride);
-          addMaterializationStage(stages, 'minimap', stageStart);
-        }
+          }),
+        );
       }
 
       const minimapEntities = minimapOverride !== undefined

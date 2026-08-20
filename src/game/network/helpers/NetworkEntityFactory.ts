@@ -1,5 +1,6 @@
 // Network entity creation helpers
 
+import { readWireWorkStationInto } from '../wireFieldDecoders';
 import type {
   Entity,
   BuildingBlueprintId,
@@ -843,14 +844,7 @@ function createUnitFromTypedFullWireRow(
     );
     if (entity.builder.workStation !== null && values[base + 68] !== 0) {
       const station = entity.builder.workStation;
-      station.localYaw = deqRot(values[base + 69]);
-      station.localPitch = deqRot(values[base + 70]);
-      station.localYawVelocity = deqRot(values[base + 71]);
-      station.localPitchVelocity = deqRot(values[base + 72]);
-      station.targetEntityId = values[base + 73] !== 0 ? 0 : NO_ENTITY_ID;
-      station.aligned = values[base + 74] !== 0;
-      station.targetWorldYaw = deqRot(values[base + 75]);
-      station.targetWorldPitch = deqRot(values[base + 76]);
+      readWireWorkStationInto(station, values, base);
     }
   }
   if (unitBlueprint !== undefined) {

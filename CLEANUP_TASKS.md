@@ -21,9 +21,6 @@ Gates for this work:
       (used by `scripts/generate_backdrops.py`), and `createBackgroundBattle` /
       `destroyBackgroundBattle` (dynamic namespace import). Cascade with vue-tsc; never blind-delete
       a `let` (may be write-only) and never touch `blueprintSchema.generated.ts`.
-- [ ] **B4** Collapse the 6 knip "duplicate exports" (same symbol exported under two names):
-      `commandHotkeys.ts`, `BeamBurnVolume3D.ts`, `BeamImpact3D.ts`, `EntityDetailLevel3D.ts` (x2),
-      `blueprintIds.ts` — keep one name per symbol, update call sites.
 
 ## C. Duplication → helpers (TypeScript)
 
@@ -34,12 +31,6 @@ Gates for this work:
 - [ ] **C12** `SelectionPanel.vue` repeats the `bar-order-state` button markup across five clusters
       (1725/2037, 1746/2058/2654, 1764/2076, 1783/2177, 1821/2691). Extract a component or a
       v-for-driven descriptor list.
-- [ ] **C13** `ServerSnapshotPublisher.ts:328-338` ≡ `:615-625` and `:457-474` ≡ `:774-791`.
-- [ ] **C14** `ClientViewStateBase.ts` repeats the orientation-decode block 4x
-      (1282, 1474, 1631, 2103), plus a work-station rot-decode block shared with
-      `helpers/NetworkEntityFactory.ts:846`.
-- [ ] **C15** `BeamBurnVolume3D.ts:199-211` ≡ `BurnMark3D.ts:211-223` — identical instanced
-      attribute setup. (Check against the do-not-dedup instanced-renderer rule first.)
 
 ## D. Duplication → helpers (Rust sim)
 

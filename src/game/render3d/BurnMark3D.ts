@@ -7,6 +7,7 @@
 // only cells that receive energy (plus an infrequent expiry sweep).
 
 import * as THREE from 'three';
+import { bindBurnDecayAttributes } from './instancedBufferUpdate';
 import type { Entity } from '../sim/types';
 import { COLORS } from '@/colorsConfig';
 import { getGraphicsConfig, getBurnMarks } from '@/clientBarConfig';
@@ -208,18 +209,16 @@ export class BurnMark3D {
     ) => { nx: number; ny: number; nz: number },
   ) {
     parentWorld.add(this.root);
-    this.lastHitAttr = new THREE.InstancedBufferAttribute(this.lastHit, 1)
-      .setUsage(THREE.DynamicDrawUsage);
-    this.heatAttr = new THREE.InstancedBufferAttribute(this.heat, 1)
-      .setUsage(THREE.DynamicDrawUsage);
-    this.charAttr = new THREE.InstancedBufferAttribute(this.char, 1)
-      .setUsage(THREE.DynamicDrawUsage);
-    this.seedAttr = new THREE.InstancedBufferAttribute(this.seed, 1)
-      .setUsage(THREE.DynamicDrawUsage);
-    this.geometry.setAttribute('aLastHitSec', this.lastHitAttr);
-    this.geometry.setAttribute('aHeat', this.heatAttr);
-    this.geometry.setAttribute('aChar', this.charAttr);
-    this.geometry.setAttribute('aSeed', this.seedAttr);
+    const burnAttrs = bindBurnDecayAttributes(this.geometry, {
+      lastHit: this.lastHit,
+      heat: this.heat,
+      char: this.char,
+      seed: this.seed,
+    });
+    this.lastHitAttr = burnAttrs.lastHitAttr;
+    this.heatAttr = burnAttrs.heatAttr;
+    this.charAttr = burnAttrs.charAttr;
+    this.seedAttr = burnAttrs.seedAttr;
     this.material = new THREE.ShaderMaterial({
       vertexShader: SCORCH_VERTEX_SHADER,
       fragmentShader: SCORCH_FRAGMENT_SHADER,

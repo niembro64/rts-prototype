@@ -7,6 +7,7 @@
 // LRU eviction, matching the ground-scorch performance policy.
 
 import * as THREE from 'three';
+import { bindBurnDecayAttributes } from './instancedBufferUpdate';
 import { getBurnMarks, getGraphicsConfig } from '@/clientBarConfig';
 import { BURN_COLOR_TAU } from '@/config';
 import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
@@ -114,7 +115,7 @@ const FRAGMENT_SHADER = /* glsl */`
 
 type BurnVolumeKey = number | string;
 
-export function damageBurnVolumeCellKey(
+export function beamBurnVolumeCellKey(
   x: number,
   y: number,
   z: number,
@@ -164,7 +165,6 @@ function hashKey(key: BurnVolumeKey): number {
   return (hash >>> 0) / 0x100000000;
 }
 
-export const beamBurnVolumeCellKey = damageBurnVolumeCellKey;
 
 export class DamageBurnVolume3D {
   private readonly geometry = createPrimitiveSphereGeometry('beam', 'far', 1);
@@ -196,18 +196,16 @@ export class DamageBurnVolume3D {
   private enabled = true;
 
   constructor(parent: THREE.Group) {
-    this.lastHitAttr = new THREE.InstancedBufferAttribute(this.lastHit, 1)
-      .setUsage(THREE.DynamicDrawUsage);
-    this.heatAttr = new THREE.InstancedBufferAttribute(this.heat, 1)
-      .setUsage(THREE.DynamicDrawUsage);
-    this.charAttr = new THREE.InstancedBufferAttribute(this.char, 1)
-      .setUsage(THREE.DynamicDrawUsage);
-    this.seedAttr = new THREE.InstancedBufferAttribute(this.seed, 1)
-      .setUsage(THREE.DynamicDrawUsage);
-    this.geometry.setAttribute('aLastHitSec', this.lastHitAttr);
-    this.geometry.setAttribute('aHeat', this.heatAttr);
-    this.geometry.setAttribute('aChar', this.charAttr);
-    this.geometry.setAttribute('aSeed', this.seedAttr);
+    const burnAttrs = bindBurnDecayAttributes(this.geometry, {
+      lastHit: this.lastHit,
+      heat: this.heat,
+      char: this.char,
+      seed: this.seed,
+    });
+    this.lastHitAttr = burnAttrs.lastHitAttr;
+    this.heatAttr = burnAttrs.heatAttr;
+    this.charAttr = burnAttrs.charAttr;
+    this.seedAttr = burnAttrs.seedAttr;
     this.material = new THREE.ShaderMaterial({
       vertexShader: VERTEX_SHADER,
       fragmentShader: FRAGMENT_SHADER,
@@ -258,7 +256,7 @@ export class DamageBurnVolume3D {
 
   deposit(x: number, y: number, z: number, radius: number, energy: number): void {
     if (!this.enabled || this.currentCap <= 0 || !(energy > 0)) return;
-    const key = damageBurnVolumeCellKey(x, y, z);
+    const key = beamBurnVolumeCellKey(x, y, z);
     let volume = this.volumeByKey.get(key);
     if (!volume) {
       if (this.volumes.length >= this.currentCap || this.volumes.length >= MAX_BURN_VOLUMES) {

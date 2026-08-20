@@ -273,7 +273,7 @@ function hash01(a: number, b: number): number {
   return (h >>> 0) / 0x100000000;
 }
 
-export function damageImpactCellKey(
+export function beamImpactCellKey(
   kind: DamageImpactSurface,
   x: number,
   y: number,
@@ -283,7 +283,6 @@ export function damageImpactCellKey(
   return packedCellKey3D(kindNumber(kind), x, y, z, cellSize);
 }
 
-export const beamImpactCellKey = damageImpactCellKey;
 
 function damageImpactSpatialCellKey(
   x: number,

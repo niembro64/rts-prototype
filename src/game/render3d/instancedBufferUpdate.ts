@@ -172,3 +172,39 @@ function writeInstancedMatrixValues(
 function floatValue(value: number, roundToFloat32: boolean): number {
   return roundToFloat32 ? Math.fround(value) : value;
 }
+
+/** The per-instance decay channels shared by the burn renderers. */
+export type BurnDecayAttributes = {
+  lastHitAttr: THREE.InstancedBufferAttribute;
+  heatAttr: THREE.InstancedBufferAttribute;
+  charAttr: THREE.InstancedBufferAttribute;
+  seedAttr: THREE.InstancedBufferAttribute;
+};
+
+/** Wrap the four burn decay channels as dynamic instanced attributes and bind
+ *  them under the names both burn shaders declare. The attribute NAMES are the
+ *  contract with those shaders, so BurnMark3D and BeamBurnVolume3D bind them
+ *  here rather than each spelling out `aLastHitSec`/`aHeat`/`aChar`/`aSeed`. */
+export function bindBurnDecayAttributes(
+  geometry: THREE.BufferGeometry,
+  buffers: {
+    lastHit: Float32Array;
+    heat: Float32Array;
+    char: Float32Array;
+    seed: Float32Array;
+  },
+): BurnDecayAttributes {
+  const lastHitAttr = new THREE.InstancedBufferAttribute(buffers.lastHit, 1)
+    .setUsage(THREE.DynamicDrawUsage);
+  const heatAttr = new THREE.InstancedBufferAttribute(buffers.heat, 1)
+    .setUsage(THREE.DynamicDrawUsage);
+  const charAttr = new THREE.InstancedBufferAttribute(buffers.char, 1)
+    .setUsage(THREE.DynamicDrawUsage);
+  const seedAttr = new THREE.InstancedBufferAttribute(buffers.seed, 1)
+    .setUsage(THREE.DynamicDrawUsage);
+  geometry.setAttribute('aLastHitSec', lastHitAttr);
+  geometry.setAttribute('aHeat', heatAttr);
+  geometry.setAttribute('aChar', charAttr);
+  geometry.setAttribute('aSeed', seedAttr);
+  return { lastHitAttr, heatAttr, charAttr, seedAttr };
+}

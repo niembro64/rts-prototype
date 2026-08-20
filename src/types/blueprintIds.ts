@@ -143,7 +143,6 @@ export type TurretBlueprintId = typeof TURRET_BLUEPRINT_IDS[number];
 
 const UNIT_BLUEPRINT_ID_SET = new Set<string>(UNIT_BLUEPRINT_IDS);
 const BUILDING_BLUEPRINT_ID_SET = new Set<string>(BUILDING_BLUEPRINT_IDS);
-const STRUCTURE_BLUEPRINT_ID_SET = new Set<string>(STRUCTURE_BLUEPRINT_IDS);
 const SHOT_BLUEPRINT_ID_SET = new Set<string>(SHOT_BLUEPRINT_IDS);
 const RAY_BLUEPRINT_ID_SET = new Set<string>(RAY_BLUEPRINT_IDS);
 const SHIELD_MATERIAL_ID_SET = new Set<string>(SHIELD_MATERIAL_IDS);
@@ -157,8 +156,11 @@ export function isBuildingBlueprintId(value: string): value is BuildingBlueprint
   return BUILDING_BLUEPRINT_ID_SET.has(value);
 }
 
+// Structures and buildings are one family (see STRUCTURE_BLUEPRINT_IDS), so
+// this shares the building membership set rather than building a second copy
+// of it that could drift.
 export function isStructureBlueprintId(value: string): value is StructureBlueprintId {
-  return STRUCTURE_BLUEPRINT_ID_SET.has(value);
+  return isBuildingBlueprintId(value);
 }
 
 export function isShotBlueprintId(value: string): value is ShotBlueprintId {

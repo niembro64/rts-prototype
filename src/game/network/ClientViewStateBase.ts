@@ -72,6 +72,7 @@ import { ClientEntityStore } from './ClientEntityStore';
 import { ClientEntityIdSet } from './ClientEntityIdSet';
 import { IndexedEntityIdMap, IndexedEntityIdSet } from './IndexedEntityIdCollections';
 import { ClientServerTargetStore } from './ClientServerTargetStore';
+import { readWireOrientationInto, readWireWorkStationInto } from './wireFieldDecoders';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
 import {
   applyNetworkUnitActionWireRows,
@@ -1279,19 +1280,7 @@ export class ClientViewStateBase {
     }
     if (target !== undefined && (changedFields & ENTITY_CHANGED_ROT) !== 0) {
       target.rotation = deqRot(values[base + 4]);
-      if (values[base + 27] !== 0) {
-        let orientation = target.orientation;
-        if (orientation === null) {
-          orientation = { x: 0, y: 0, z: 0, w: 1 };
-          target.orientation = orientation;
-        }
-        orientation.x = values[base + 28];
-        orientation.y = values[base + 29];
-        orientation.z = values[base + 30];
-        orientation.w = values[base + 31];
-      } else {
-        target.orientation = null;
-      }
+      readWireOrientationInto(target, values, base);
     }
     if (target !== undefined && (changedFields & ENTITY_CHANGED_VEL) !== 0) {
       target.velocityX = deqVel(values[base + 10]);
@@ -1329,14 +1318,7 @@ export class ClientViewStateBase {
       existing.builder?.workStation !== undefined
     ) {
       const station = existing.builder.workStation;
-      station.localYaw = deqRot(values[base + 69]);
-      station.localPitch = deqRot(values[base + 70]);
-      station.localYawVelocity = deqRot(values[base + 71]);
-      station.localPitchVelocity = deqRot(values[base + 72]);
-      station.targetEntityId = values[base + 73] !== 0 ? 0 : NO_ENTITY_ID;
-      station.aligned = values[base + 74] !== 0;
-      station.targetWorldYaw = deqRot(values[base + 75]);
-      station.targetWorldPitch = deqRot(values[base + 76]);
+      readWireWorkStationInto(station, values, base);
       copiedWorkStation = true;
     }
 
@@ -1471,19 +1453,7 @@ export class ClientViewStateBase {
       target.surfaceNormalY = deqNormal(values[base + 25]);
       target.surfaceNormalZ = deqNormal(values[base + 26]);
     }
-    if (values[base + 27] !== 0) {
-      let orientation = target.orientation;
-      if (orientation === null) {
-        orientation = { x: 0, y: 0, z: 0, w: 1 };
-        target.orientation = orientation;
-      }
-      orientation.x = values[base + 28];
-      orientation.y = values[base + 29];
-      orientation.z = values[base + 30];
-      orientation.w = values[base + 31];
-    } else {
-      target.orientation = null;
-    }
+    readWireOrientationInto(target, values, base);
     if (values[base + 32] !== 0) {
       target.angularVelocityX = values[base + 33];
       target.angularVelocityY = values[base + 34];
@@ -1516,14 +1486,7 @@ export class ClientViewStateBase {
       existing.builder?.workStation !== undefined
     ) {
       const station = existing.builder.workStation;
-      station.localYaw = deqRot(values[base + 69]);
-      station.localPitch = deqRot(values[base + 70]);
-      station.localYawVelocity = deqRot(values[base + 71]);
-      station.localPitchVelocity = deqRot(values[base + 72]);
-      station.targetEntityId = values[base + 73] !== 0 ? 0 : NO_ENTITY_ID;
-      station.aligned = values[base + 74] !== 0;
-      station.targetWorldYaw = deqRot(values[base + 75]);
-      station.targetWorldPitch = deqRot(values[base + 76]);
+      readWireWorkStationInto(station, values, base);
     }
     target.updatedAtMs = now;
 
@@ -1628,19 +1591,7 @@ export class ClientViewStateBase {
     }
     if ((changedFields & ENTITY_CHANGED_ROT) !== 0) {
       target.rotation = values[base + 4] * ROTATION_WIRE_INV_SCALE;
-      if (values[base + 27] !== 0) {
-        let orientation = target.orientation;
-        if (orientation === null) {
-          orientation = { x: 0, y: 0, z: 0, w: 1 };
-          target.orientation = orientation;
-        }
-        orientation.x = values[base + 28];
-        orientation.y = values[base + 29];
-        orientation.z = values[base + 30];
-        orientation.w = values[base + 31];
-      } else {
-        target.orientation = null;
-      }
+      readWireOrientationInto(target, values, base);
     }
     if ((changedFields & ENTITY_CHANGED_VEL) !== 0) {
       target.velocityX = values[base + 10] * VELOCITY_WIRE_INV_SCALE;
@@ -2100,19 +2051,7 @@ export class ClientViewStateBase {
       }
       if ((changedFields & ENTITY_CHANGED_ROT) !== 0) {
         target.rotation = values[base + 4] * rotScale;
-        if (values[base + 27] !== 0) {
-          let orientation = target.orientation;
-          if (orientation === null) {
-            orientation = { x: 0, y: 0, z: 0, w: 1 };
-            target.orientation = orientation;
-          }
-          orientation.x = values[base + 28];
-          orientation.y = values[base + 29];
-          orientation.z = values[base + 30];
-          orientation.w = values[base + 31];
-        } else {
-          target.orientation = null;
-        }
+        readWireOrientationInto(target, values, base);
       }
       if ((changedFields & ENTITY_CHANGED_VEL) !== 0) {
         target.velocityX = values[base + 10] * velScale;
