@@ -90,9 +90,6 @@ const SUBSYSTEM_DEFAULTS = {
   // Every stock preset ships the authored world; only METAL HELL flips these.
   metalCoverage: 'more' as MetalCoverage,
   liquidSurfaceMode: 'water' as LiquidSurfaceMode,
-  // The classic terrain arrangement: the PERIMETER ring overrides the
-  // DIVIDERS ridges at the rim.
-  terrainPrecedence: 'perimeter-precedence' as TerrainPrecedence,
 };
 
 function buildPresets(): readonly BattlePreset[] {
@@ -106,6 +103,7 @@ function buildPresets(): readonly BattlePreset[] {
       centerMagnitude: 0,
       dividersMagnitude: 0,
       perimeterMagnitude: -400,
+      terrainPrecedence: 'perimeter-precedence',
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 0,
@@ -122,6 +120,7 @@ function buildPresets(): readonly BattlePreset[] {
       centerMagnitude: 0,
       dividersMagnitude: 800,
       perimeterMagnitude: -400,
+      terrainPrecedence: 'perimeter-precedence',
       terrainDTerrain: 400,
       plateauWallSlopeDegrees: 70,
       metalDepositStep: 0,
@@ -138,6 +137,7 @@ function buildPresets(): readonly BattlePreset[] {
       centerMagnitude: 1600,
       dividersMagnitude: 800,
       perimeterMagnitude: -200,
+      terrainPrecedence: 'perimeter-precedence',
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 400,
@@ -154,6 +154,7 @@ function buildPresets(): readonly BattlePreset[] {
       centerMagnitude: -400,
       dividersMagnitude: 1600,
       perimeterMagnitude: -200,
+      terrainPrecedence: 'perimeter-precedence',
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 200,
@@ -170,6 +171,7 @@ function buildPresets(): readonly BattlePreset[] {
       centerMagnitude: 200,
       dividersMagnitude: -3200,
       perimeterMagnitude: -400,
+      terrainPrecedence: 'perimeter-precedence',
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 200,
@@ -186,6 +188,7 @@ function buildPresets(): readonly BattlePreset[] {
       centerMagnitude: 1600,
       dividersMagnitude: 6400,
       perimeterMagnitude: -400,
+      terrainPrecedence: 'perimeter-precedence',
       terrainDTerrain: 800,
       plateauWallSlopeDegrees: 89,
       metalDepositStep: -800,
@@ -204,6 +207,7 @@ function buildPresets(): readonly BattlePreset[] {
       centerMagnitude: 0,
       dividersMagnitude: -400,
       perimeterMagnitude: -400,
+      terrainPrecedence: 'perimeter-precedence',
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 200,
@@ -224,6 +228,7 @@ function buildPresets(): readonly BattlePreset[] {
       // The plate is flat at 0 everywhere, so a ground-level ring is the
       // same surface the old "no ring" pick produced.
       perimeterMagnitude: 0,
+      terrainPrecedence: 'perimeter-precedence',
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 0,
