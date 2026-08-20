@@ -64,10 +64,6 @@ const STYLE = {
   lineAlpha: 0.6,
   /** Alpha multiplier for the patrol-return arc (the loop-back). */
   patrolReturnAlpha: 0.3,
-  /** Brightness multiplier for DETAILED-mode pathfinding intermediate dots.
-   *  Dimmer than the numbered command waypoints so the planner's route nodes
-   *  read as subordinate route hints rather than user-issued orders. */
-  pathIntermediateAlpha: 0.4,
   /** Square size for build / repair markers, in world units. */
   rectWorldSize: 18,
   /** Flag sprite size in world units. */
@@ -356,7 +352,7 @@ export class Waypoint3D {
 
   private pushDot(
     state: { dotCount: number },
-    x: number, y: number, color: number, alpha = 1,
+    x: number, y: number, color: number,
   ): void {
     if (state.dotCount + 1 > this.dotCap) {
       this.growDotCap(state.dotCount + 1);
@@ -367,13 +363,6 @@ export class Waypoint3D {
     this.dotPositions[o + 1] = z;
     this.dotPositions[o + 2] = y;
     writeHexToRgb01Array(color, this.dotColors, o);
-    // The dot mesh is opaque over a dark clear, so pre-multiplying the color
-    // by alpha reads as transparency (same trick the line buffer uses).
-    if (alpha !== 1) {
-      this.dotColors[o + 0] *= alpha;
-      this.dotColors[o + 1] *= alpha;
-      this.dotColors[o + 2] *= alpha;
-    }
     state.dotCount++;
   }
 
@@ -467,12 +456,12 @@ export class Waypoint3D {
         const p = this.actionDisplayPoint(a);
         const color = ACTION_COLORS[a.type] ?? COLORS.units.turret.barrel.colorHex;
         // Active leg in DETAILED mode: thread the exact authoritative smoothed
-        // plan, marking each resolved point with a subordinate dot.
+        // plan. Only the authored waypoint itself gets a marker — the
+        // resolved route points draw as lines alone.
         if (detailed && i === 0 && previewPoints !== undefined && previewPoints.length > 0) {
           for (let k = 0; k < previewPoints.length; k++) {
             const pt = previewPoints[k];
             this.pushTerrainLine(prevX, prevY, pt.x, pt.y, color, STYLE.lineAlpha);
-            this.pushDot(state, pt.x, pt.y, color, STYLE.pathIntermediateAlpha);
             prevX = pt.x;
             prevY = pt.y;
           }

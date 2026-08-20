@@ -576,8 +576,8 @@
     }
   },
   "waypointDetail": {
-    "demoDefault": "simple",
-    "realDefault": "simple",
+    "demoDefault": "detailed",
+    "realDefault": "detailed",
     "options": [
       {
         "value": "simple",
