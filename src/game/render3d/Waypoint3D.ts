@@ -98,11 +98,15 @@ type ActionDisplayPoint = {
 
 /** One vertex of a unit's threaded route polyline. `color` is the color of
  *  the leg ARRIVING at this point, so each drawn span inherits the color of
- *  its destination — same convention the straight-line draw always used. */
+ *  its destination — same convention the straight-line draw always used.
+ *  `major` marks the authored nodes — the unit's own position and every
+ *  command point the player placed — as opposed to the MINOR sub-points the
+ *  pathfinder threaded between them. Smoothing rounds only the minor ones. */
 type RoutePoint = {
   x: number;
   y: number;
   color: number;
+  major: boolean;
 };
 
 function configureFlagSprite(slot: FlagSlot): void {
@@ -319,12 +323,17 @@ export class Waypoint3D {
 
   /** Draw a threaded route polyline. Sharp mode connects consecutive points
    *  with straight terrain-hugging lines. Smooth mode bends through every
-   *  interior point with a cubic Hermite whose unit tangent is normal to the
-   *  corner's angle bisector — i.e. the normalized sum of the incoming and
-   *  outgoing segment directions — so the curve passes exactly through each
-   *  point at exactly that angle, never cutting the corner. Endpoints keep
-   *  their single segment's direction; tangent magnitude is the span's chord
-   *  length (Catmull-Rom-style) so bend radius scales with leg length. */
+   *  interior MINOR point with a cubic Hermite whose unit tangent is normal
+   *  to the corner's angle bisector — i.e. the normalized sum of the incoming
+   *  and outgoing segment directions — so the curve passes exactly through
+   *  each point at exactly that angle, never cutting the corner. MAJOR points
+   *  (the unit and the player's own command points) instead keep the one-
+   *  sided direction of each adjacent span, so the curve arrives and leaves
+   *  along the straight leg and the authored corner stays as sharp as it is
+   *  in SHARP mode — a leg with major ends and no pathfinder sub-points is
+   *  drawn dead straight. Endpoints keep their single segment's direction;
+   *  tangent magnitude is the span's chord length (Catmull-Rom-style) so
+   *  bend radius scales with leg length. */
   private pushRoute(route: readonly RoutePoint[], smooth: boolean): void {
     const n = route.length;
     if (n < 2) return;
@@ -349,31 +358,53 @@ export class Waypoint3D {
         sdy[i] = dy / l;
       }
     }
-    // Per-point unit tangents. Degenerate corners (exact reversals,
+    // Per-point unit tangents, split into the one used arriving at the point
+    // (the m1 of the span before it) and the one used leaving it (the m0 of
+    // the span after it). They differ only at MAJOR points, which is what
+    // keeps authored corners sharp. Degenerate corners (exact reversals,
     // duplicate points) fall back to whichever adjacent direction exists.
-    const tx = new Float64Array(n);
-    const ty = new Float64Array(n);
+    const inx = new Float64Array(n);
+    const iny = new Float64Array(n);
+    const outx = new Float64Array(n);
+    const outy = new Float64Array(n);
     for (let i = 0; i < n; i++) {
-      let vx = 0;
-      let vy = 0;
-      if (i > 0) {
-        vx += sdx[i - 1];
-        vy += sdy[i - 1];
+      const hasPrev = i > 0 && (sdx[i - 1] !== 0 || sdy[i - 1] !== 0);
+      const hasNext = i < n - 1 && (sdx[i] !== 0 || sdy[i] !== 0);
+      // Bisector tangent — the smooth one.
+      let bx = 0;
+      let by = 0;
+      if (hasPrev) {
+        bx += sdx[i - 1];
+        by += sdy[i - 1];
       }
-      if (i < n - 1) {
-        vx += sdx[i];
-        vy += sdy[i];
+      if (hasNext) {
+        bx += sdx[i];
+        by += sdy[i];
       }
-      const l = Math.hypot(vx, vy);
+      const l = Math.hypot(bx, by);
       if (l > 1e-6) {
-        tx[i] = vx / l;
-        ty[i] = vy / l;
-      } else if (i < n - 1 && (sdx[i] !== 0 || sdy[i] !== 0)) {
-        tx[i] = sdx[i];
-        ty[i] = sdy[i];
-      } else if (i > 0) {
-        tx[i] = sdx[i - 1];
-        ty[i] = sdy[i - 1];
+        bx /= l;
+        by /= l;
+      } else if (hasNext) {
+        bx = sdx[i];
+        by = sdy[i];
+      } else if (hasPrev) {
+        bx = sdx[i - 1];
+        by = sdy[i - 1];
+      } else {
+        bx = 0;
+        by = 0;
+      }
+      if (route[i].major) {
+        inx[i] = hasPrev ? sdx[i - 1] : bx;
+        iny[i] = hasPrev ? sdy[i - 1] : by;
+        outx[i] = hasNext ? sdx[i] : bx;
+        outy[i] = hasNext ? sdy[i] : by;
+      } else {
+        inx[i] = bx;
+        iny[i] = by;
+        outx[i] = bx;
+        outy[i] = by;
       }
     }
     for (let i = 1; i < n; i++) {
@@ -381,11 +412,18 @@ export class Waypoint3D {
       const b = route[i];
       const len = Math.hypot(b.x - a.x, b.y - a.y);
       if (len < 1e-6) continue;
+      // Major-to-major span: both tangents are this span's own direction, so
+      // the Hermite degenerates to the straight chord. Draw it as one line
+      // and skip the curve tessellation entirely.
+      if (a.major && b.major) {
+        this.pushTerrainLine(a.x, a.y, b.x, b.y, b.color, STYLE.lineAlpha);
+        continue;
+      }
       const steps = Math.max(1, Math.ceil(len / STYLE.smoothSampleStep));
-      const m0x = tx[i - 1] * len;
-      const m0y = ty[i - 1] * len;
-      const m1x = tx[i] * len;
-      const m1y = ty[i] * len;
+      const m0x = outx[i - 1] * len;
+      const m0y = outy[i - 1] * len;
+      const m1x = inx[i] * len;
+      const m1y = iny[i] * len;
       let px = a.x;
       let py = a.y;
       for (let s = 1; s <= steps; s++) {
@@ -536,8 +574,9 @@ export class Waypoint3D {
     // the exact remaining activePath when one exists; later, not-yet-planned
     // legs keep their direct authored connections. SIMPLE never reads
     // activePath. DETAILED-SHARP draws the threaded route as straight spans;
-    // DETAILED-SMOOTH bends the same route through every point (pathfinder
-    // sub-points and authored waypoints alike) — see pushRoute.
+    // DETAILED-SMOOTH bends the same route through the pathfinder's MINOR
+    // sub-points only — the unit and the player's own command points stay
+    // sharp corners in both DETAILED modes — see pushRoute.
     const mode = getWaypointDetail();
     const detailed = mode !== 'simple';
     const smooth = mode === 'detailed-smooth';
@@ -556,7 +595,7 @@ export class Waypoint3D {
         STYLE.lineAlpha,
       );
       const route: RoutePoint[] = [
-        { x: u.transform.x, y: u.transform.y, color: firstActionColor },
+        { x: u.transform.x, y: u.transform.y, color: firstActionColor, major: true },
       ];
       for (let i = 0; i < actions.length; i++) {
         const a = actions[i];
@@ -568,7 +607,7 @@ export class Waypoint3D {
         if (detailed && i === 0 && previewPoints !== undefined && previewPoints.length > 0) {
           for (let k = 0; k < previewPoints.length; k++) {
             const pt = previewPoints[k];
-            route.push({ x: pt.x, y: pt.y, color });
+            route.push({ x: pt.x, y: pt.y, color, major: false });
           }
         }
         // SIMPLE always threads the direct authored leg. The DETAILED modes
@@ -585,7 +624,11 @@ export class Waypoint3D {
           Math.abs(tail.x - p.x) > 1e-6 ||
           Math.abs(tail.y - p.y) > 1e-6
         ) {
-          route.push({ x: p.x, y: p.y, color });
+          route.push({ x: p.x, y: p.y, color, major: true });
+        } else {
+          // The plan's last sub-point IS this authored waypoint — promote it
+          // rather than duplicating it, so smoothing leaves the corner sharp.
+          tail.major = true;
         }
         if (
           p.target?.building &&
