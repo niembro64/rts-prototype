@@ -131,6 +131,10 @@
     "enabled": true,
     "detail": "The weathered ore-to-ground transition (warped contour, granular dissolve, dirt band). false draws the region field's own contour straight, which is the clean stencilled edge this treatment replaces - keep it as a bisect. Tuning lives in colorsConfig.environment.metalDeposit.edge. A SURFACE = METAL world switches it off on its own: the whole map is ore there, so every deposit boundary is interior and a dirt band around one would be drawing a seam that does not exist."
   },
+  "terrainMetalGrime": {
+    "enabled": true,
+    "detail": "Dirt and grime over the metal body itself - every ore fragment, deposit interiors and SURFACE = METAL worlds included, not just the edge band. false restores clean plate everywhere the edge band does not reach - keep it as a bisect. Tuning lives in colorsConfig.environment.metalDeposit.bodyGrime. Unlike terrainOreEdge this stays ON for a SURFACE = METAL world: it needs no boundary, and an all-metal world is exactly where it is the only source of dirt."
+  },
   "burnMark": {
     "colorTauMs": 650,
     "coolTauMs": 8000

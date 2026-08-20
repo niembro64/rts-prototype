@@ -74,10 +74,16 @@ export class MetalDepositSurfaceField3D {
     const cfg = METAL_DEPOSIT_CONFIG.surfaceField;
     this.grid = resolveMetalDepositFieldGrid(mapWidth, mapHeight);
     const { width, height, texelWorldSize } = this.grid;
-    const bytes = new Uint8Array(width * height);
+    // Two bytes per texel: the encoded distance is 16-bit, split hi/lo
+    // across R and G. The split is LINEAR in the value, so bilinear
+    // filtering and mip averaging of the two channels recombine to the
+    // correctly filtered distance — which is what lets the encoded range
+    // stretch to the grime band's full reach without the contour itself
+    // stepping in byte-sized increments.
+    const bytes = new Uint8Array(width * height * 2);
 
     // A field the kernel never filled must read as ore-free everywhere,
-    // not as a fully-ore map: 255 is the encoding's "far outside".
+    // not as a fully-ore map: 0xFFFF is the encoding's "far outside".
     bytes.fill(255);
     const sim = getSimWasm();
     if (sim !== undefined) {
@@ -98,11 +104,11 @@ export class MetalDepositSurfaceField3D {
       bytes,
       width,
       height,
-      THREE.RedFormat,
+      THREE.RGFormat,
       THREE.UnsignedByteType,
     );
-    // Rows are one byte per texel and the width is rarely a multiple of
-    // four, so the default 4-byte unpack alignment would skew the image.
+    // Rows are two bytes per texel and the width is rarely a multiple of
+    // two, so the default 4-byte unpack alignment would skew the image.
     this.texture.unpackAlignment = 1;
     this.texture.wrapS = THREE.ClampToEdgeWrapping;
     this.texture.wrapT = THREE.ClampToEdgeWrapping;
