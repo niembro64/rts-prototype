@@ -712,21 +712,6 @@ function checkNoBakedDirectionalShading(pixels: Uint8ClampedArray): void {
   }
 }
 
-/** Dev aid: the measured low-harmonic share per band, for tuning the threshold
- *  above against real content rather than guesswork. */
-export function measureBandLowHarmonics(): Record<string, string> {
-  const canvas = buildTrimSheetCanvasForTest();
-  const context = canvas.getContext('2d');
-  if (context === null) throw new Error('no 2D context');
-  const pixels = context.getImageData(0, 0, TRIM_SHEET_PIXELS, TRIM_SHEET_PIXELS).data;
-  const out: Record<string, string> = {};
-  for (const band of TRIM_BAND_ORDER) {
-    const { share, amplitude } = lowHarmonicStats(pixels, band);
-    out[band] = `${(share * 100).toFixed(1)}% @ ${amplitude.toFixed(1)}`;
-  }
-  return out;
-}
-
 /**
  * The barrel pitch slot.
  *

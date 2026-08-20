@@ -14,7 +14,7 @@
 import { WORLD_PADDING_PERCENT } from '../../config';
 import { resolveMapInfoAnnexFootprint } from './MapInfoAnnex3D';
 
-export type CameraTargetBounds = {
+type CameraTargetBounds = {
   readonly minX: number;
   readonly minZ: number;
   readonly maxX: number;

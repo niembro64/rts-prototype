@@ -41,7 +41,7 @@ for (let i = 0; i < SRGB_BYTE_TO_LINEAR.length; i++) {
  *
  * Grading in the wrong one leaves a tone shift the size of the texture's own
  * contrast, in the direction of its dark end. */
-export type CanvasMeanEncoding = 'srgb' | 'raw';
+type CanvasMeanEncoding = 'srgb' | 'raw';
 
 const RAW_BYTE_TO_UNIT = new Float64Array(256);
 for (let i = 0; i < RAW_BYTE_TO_UNIT.length; i++) {

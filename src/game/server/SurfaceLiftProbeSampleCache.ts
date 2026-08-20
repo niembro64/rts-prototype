@@ -45,7 +45,7 @@ const INITIAL_SLOT_CAPACITY = 512;
 /** Stable pseudo-random bucket for one entity. Entity ids never change
  *  during a unit's life, so a unit keeps its refresh phase from spawn to
  *  death and cannot drift onto its neighbours' tick. */
-export function surfaceProbeRefreshBucketForEntityId(
+function surfaceProbeRefreshBucketForEntityId(
   entityId: number,
   bucketCount: number = SURFACE_PROBE_REFRESH_BUCKET_COUNT,
 ): number {

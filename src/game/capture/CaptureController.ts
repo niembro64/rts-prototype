@@ -55,7 +55,7 @@ export type CaptureLifecycleState =
   | 'recording'
   | 'finalizing';
 
-export type CaptureLifecycleEvent =
+type CaptureLifecycleEvent =
   | 'requestStill'
   | 'requestVideo'
   | 'started'
@@ -110,7 +110,7 @@ export type CaptureUiSnapshot = {
   readonly availability: Readonly<Record<CaptureModeId, CaptureAvailability>>;
 };
 
-export type CaptureControllerDeps = {
+type CaptureControllerDeps = {
   /** The live renderer, foreground battle preferred over the demo. */
   getApp(): ThreeApp | null;
   /** Region-capture crop target for the display lane. */

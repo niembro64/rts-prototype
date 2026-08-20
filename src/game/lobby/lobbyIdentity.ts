@@ -33,7 +33,7 @@ import {
 import type { LobbyPlayer } from '@/types/network';
 
 /** One seat, with the colours its units will actually wear. */
-export type LobbySeatIdentity = {
+type LobbySeatIdentity = {
   readonly player: LobbyPlayer;
   /** Dense side id — the TEAM N the match will use, not the raw lobby value. */
   readonly allyTeamId: AllyTeamId;
@@ -46,7 +46,7 @@ export type LobbySeatIdentity = {
 /** One side and the seats on it, in the order the match seats them. An empty
  *  side is a real side — it still carves its terrain slice — so it appears
  *  here with no seats rather than being dropped. */
-export type LobbyTeamGroup = {
+type LobbyTeamGroup = {
   readonly allyTeamId: AllyTeamId;
   readonly teamColor: string;
   readonly seats: readonly LobbySeatIdentity[];

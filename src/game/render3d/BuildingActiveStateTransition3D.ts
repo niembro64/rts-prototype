@@ -19,7 +19,7 @@
 // never gates production, damage resistance, or any other simulation outcome.
 
 /** Wall-clock seconds for one full 0↔1 ON/OFF pose transition, both directions. */
-export const BUILDING_ACTIVE_STATE_TRANSITION_SEC = 2;
+const BUILDING_ACTIVE_STATE_TRANSITION_SEC = 2;
 
 /** Below this distance from its target an animator stops asking for frames and
  *  the host is dequeued until its state changes again. */

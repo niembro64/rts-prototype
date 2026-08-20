@@ -28,7 +28,7 @@ import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { packMetalDepositGridCellsXY } from '../sim/metalDeposits';
 import { getSimWasm } from '../sim-wasm/init';
 
-export type MetalDepositSurfaceFieldUniforms = {
+type MetalDepositSurfaceFieldUniforms = {
   field: { value: THREE.DataTexture };
   /** World extent the field's texels actually cover — the texel count
    *  times the texel size, which is a hair larger than the map when the

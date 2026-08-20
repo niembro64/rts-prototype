@@ -63,7 +63,7 @@ const RENDER_STYLE_BY_MODE_AND_MEDIUM = {
 
 const TARGET_MEDIA: readonly SensorMedium[] = ['aboveWater', 'underwater'];
 
-export type SensorBoundaryTier = 'fullSight' | 'contactSight';
+type SensorBoundaryTier = 'fullSight' | 'contactSight';
 
 /** Exact source-medium x target-medium lookup used by coverage presentation.
  * Keeping this as a matrix lookup (never a max across target media) prevents a

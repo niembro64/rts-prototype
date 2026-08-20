@@ -1,12 +1,12 @@
 import type { BuildGridDebugMode } from '@/types/client';
 
-export type BuildGridAvailabilityStatus =
+type BuildGridAvailabilityStatus =
   | 'hidden'
   | 'available'
   | 'blocked'
   | 'metal';
 
-export type BuildGridAvailabilityFacts = {
+type BuildGridAvailabilityFacts = {
   readonly occupied: boolean;
   /** Undefined means the authoritative grid has not arrived; null is an
    *  authoritative waterline-split square that belongs to neither medium. */

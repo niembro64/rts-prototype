@@ -60,7 +60,7 @@ const {
 const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v12';
 const APP_SOURCE_VERSION = '0.0.1';
 export const SIM_WASM_EXPECTED_VERSION = 'rts-sim-wasm 0.0.1';
-export const BUILD_FINGERPRINT = __BA_BUILD_FINGERPRINT__;
+const BUILD_FINGERPRINT = __BA_BUILD_FINGERPRINT__;
 
 export type CanonicalMatchInitialization = {
   readonly schema: typeof CANONICAL_MATCH_INITIALIZATION_SCHEMA;

@@ -512,7 +512,7 @@ export function mapInfoAnnexSeamDeviation(
 /** Where the emitted triangles go. TerrainTileRenderer3D implements this over
  *  its own parallel vertex arrays, so the annex ends up in the terrain mesh
  *  itself rather than in a lookalike mesh beside it. */
-export type MapInfoAnnexSink = {
+type MapInfoAnnexSink = {
   /** One annex TOP vertex, with its surface normal (render space, +Y up) and
    *  its own slope. Returns the vertex index. */
   pushSurfaceVertex(
@@ -530,7 +530,7 @@ export type MapInfoAnnexSink = {
   pushTriangle(a: number, b: number, c: number): void;
 };
 
-export type MapInfoAnnexEmitOptions = {
+type MapInfoAnnexEmitOptions = {
   readonly flatHeight: number;
   readonly sampleTerrainHeight: (x: number, z: number) => number;
   /** Triangle spacing along both annex axes. */

@@ -9,7 +9,7 @@
 // A map WITH water returns the caller's own array untouched, so the common case
 // costs one boolean and allocates nothing.
 
-import { mapHasWater, mapHasWaterForSetup, type MapWaterSetup } from './mapWater';
+import { mapHasWaterForSetup, type MapWaterSetup } from './mapWater';
 import {
   isWaterOnlyBuildingBlueprintId,
   isWaterOnlyUnitBlueprintId,
@@ -29,22 +29,6 @@ export function buildingBlueprintIdsWithoutWaterOnly<T extends string>(
   buildingBlueprintIds: readonly T[],
 ): readonly T[] {
   return buildingBlueprintIds.filter((id) => !isWaterOnlyBuildingBlueprintId(id));
-}
-
-/** The units of `unitBlueprintIds` the installed map can field. */
-export function unitBlueprintIdsForMap<T extends string>(
-  unitBlueprintIds: readonly T[],
-): readonly T[] {
-  if (mapHasWater()) return unitBlueprintIds;
-  return unitBlueprintIdsWithoutWaterOnly(unitBlueprintIds);
-}
-
-/** The structures of `buildingBlueprintIds` the installed map can host. */
-export function buildingBlueprintIdsForMap<T extends string>(
-  buildingBlueprintIds: readonly T[],
-): readonly T[] {
-  if (mapHasWater()) return buildingBlueprintIds;
-  return buildingBlueprintIdsWithoutWaterOnly(buildingBlueprintIds);
 }
 
 /** The units a map with THIS setup could field. The lobby edits a map nothing

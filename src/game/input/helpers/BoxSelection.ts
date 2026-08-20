@@ -36,9 +36,9 @@ export type ScreenRectSelectionOptions = {
   readonly previousSelection?: readonly Entity[];
 };
 
-export type SelectBoxHeldModifier = 'sameType' | 'idle';
+type SelectBoxHeldModifier = 'sameType' | 'idle';
 
-export type ScreenRectSelectionModifierState = {
+type ScreenRectSelectionModifierState = {
   readonly shiftKey?: boolean;
   readonly ctrlKey?: boolean;
   readonly metaKey?: boolean;
@@ -48,13 +48,13 @@ export type ScreenRectSelectionModifierState = {
   readonly previousSelection?: readonly Entity[];
 };
 
-export type ResolvedScreenRectSelectionModifiers = {
+type ResolvedScreenRectSelectionModifiers = {
   readonly additive: boolean;
   readonly subtractive: boolean;
   readonly options: ScreenRectSelectionOptions;
 };
 
-export type BarSelectionClickTap = {
+type BarSelectionClickTap = {
   readonly typeKey: string;
   readonly timeMs: number;
   readonly clientX: number;
@@ -63,8 +63,8 @@ export type BarSelectionClickTap = {
 
 /** Recoil's default DoubleClickTime is 200 ms; BAR's Ignore Self selection
  * widget accepts a 12-pixel Manhattan movement between the two taps. */
-export const BAR_SELECTION_DOUBLE_CLICK_MS = 200;
-export const BAR_SELECTION_DOUBLE_CLICK_MAX_MANHATTAN_PX = 12;
+const BAR_SELECTION_DOUBLE_CLICK_MS = 200;
+const BAR_SELECTION_DOUBLE_CLICK_MAX_MANHATTAN_PX = 12;
 
 export function isBarSameTypeSelectionDoubleClick(
   previous: BarSelectionClickTap | null,

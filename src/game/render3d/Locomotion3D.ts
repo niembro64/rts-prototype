@@ -387,22 +387,6 @@ function airframeSmokeUseId(unitBlueprintId: string): AirframeSmokeUseId {
   return 'locomotionEaglePlane';
 }
 
-/** Capture per-leg state from a legged locomotion mesh into a plain
- *  array of POJOs the caller can stash across a tear-down/rebuild.
- *  Returns `undefined` for non-legged units (treads/wheels/none) so
- *  the caller can `if (snap)` cheaply. */
-export function captureLegState(loc: Locomotion3DMesh): LegStateSnapshot | undefined {
-  if (!loc || loc.type !== 'crawler') return undefined;
-  return captureLegStateImpl(loc);
-}
-
-/** Pour a captured snapshot back into a freshly-built legged mesh.
- *  No-op for non-legged units. */
-export function applyLegState(loc: Locomotion3DMesh, snapshot: LegStateSnapshot): void {
-  if (!loc || loc.type !== 'crawler') return;
-  applyLegStateImpl(loc, snapshot);
-}
-
 export function buildLocomotion(
   unitGroup: THREE.Group,
   airborneUnitGroup: THREE.Group,

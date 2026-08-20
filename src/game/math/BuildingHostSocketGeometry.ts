@@ -16,7 +16,7 @@ type BuildingHostTurretAttachmentSource = {
   };
 };
 
-export function isBuildingYawPieceAttachment(
+function isBuildingYawPieceAttachment(
   attachment: TurretHostAttachment | null,
 ): attachment is BuildingYawPieceTurretHostAttachment {
   return attachment?.kind === 'buildingYawPiece';
@@ -60,23 +60,6 @@ export function selectBuildingHostPieceTurretIndex(
     selectedMountIndex = turret.mountIndex;
   }
   return selected >= 0 ? selected : fallback;
-}
-
-
-export function selectBuildingYawPieceTurretIndex(
-  turrets: readonly BuildingHostTurretAttachmentSource[],
-  piece: string,
-): number {
-  return selectBuildingHostPieceTurretIndex(turrets, piece);
-}
-
-export function buildingYawPieceAttachmentsMatch(
-  left: TurretHostAttachment | null,
-  right: TurretHostAttachment | null,
-): boolean {
-  return isBuildingYawPieceAttachment(left) &&
-    isBuildingYawPieceAttachment(right) &&
-    left.piece === right.piece;
 }
 
 

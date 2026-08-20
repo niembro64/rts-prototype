@@ -11,8 +11,6 @@ import {
   terrainMeshNormalFromSampleInto,
 } from './terrainTileMap';
 
-const WATER_CLEARANCE_SAMPLES = 8;
-
 // Module-scope scratch for the WASM normal sampler — Rust writes
 // (nx, ny, nz) at indices 0..3. Reused across calls to avoid per-
 // call typed-array allocation. Callers that pass `out` avoid the
@@ -181,20 +179,3 @@ export function isWaterAt(
   );
 }
 
-export function isFarFromWater(
-  x: number,
-  z: number,
-  mapWidth: number,
-  mapHeight: number,
-  bufferPx: number,
-): boolean {
-  if (isWaterAt(x, z, mapWidth, mapHeight)) return false;
-  if (bufferPx <= 0) return true;
-  for (let i = 0; i < WATER_CLEARANCE_SAMPLES; i++) {
-    const a = (i / WATER_CLEARANCE_SAMPLES) * Math.PI * 2;
-    const px = x + DMath.cos(a) * bufferPx;
-    const pz = z + DMath.sin(a) * bufferPx;
-    if (isWaterAt(px, pz, mapWidth, mapHeight)) return false;
-  }
-  return true;
-}

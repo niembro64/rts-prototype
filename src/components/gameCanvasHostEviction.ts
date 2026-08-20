@@ -43,7 +43,7 @@ type EvictionEvent =
   /** Countdown expired, or the player asked to leave now. */
   | 'exit';
 
-export type GameCanvasHostEviction = {
+type GameCanvasHostEviction = {
   /** Seconds left before the automatic exit, or null when not evicting.
    *  Drives the banner. */
   readonly hostLeftSecondsRemaining: Ref<number | null>;

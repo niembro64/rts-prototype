@@ -23,7 +23,7 @@ export type CaptureModeConfig = {
   readonly title: string;
 };
 
-export type CaptureConfig = {
+type CaptureConfig = {
   readonly filenamePrefix: string;
   readonly stillMimeType: string;
   readonly videoMimeTypePreference: readonly string[];

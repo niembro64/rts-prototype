@@ -10,7 +10,7 @@ import type { BarrelShape } from '@/types/blueprints';
 import type { ActiveProjectileShot, EmissionConfig } from '../sim/types';
 import { isProjectileShot, isRayConfig, isRocketLikeShot } from '../sim/types';
 
-export const TURRET_BARREL_MIN_DIAMETER = 2;
+const TURRET_BARREL_MIN_DIAMETER = 2;
 
 /** Maximum barrel orbit radius — fractions of the turret body sphere
  *  radius — applied to authored blueprint orbit values so a barrel

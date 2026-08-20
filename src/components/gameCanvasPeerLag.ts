@@ -56,7 +56,7 @@ type PeerLagState =
 
 type PeerLagEvent = 'overThreshold' | 'recovered';
 
-export type PeerFrameReport = {
+type PeerFrameReport = {
   readonly coordinatorFrame: number;
   readonly tickRateHz: number;
   readonly peers: readonly { readonly playerId: PlayerId; readonly frame: number }[];
@@ -68,7 +68,7 @@ export type LaggingPeer = {
   readonly secondsBehind: number;
 };
 
-export type GameCanvasPeerLag = {
+type GameCanvasPeerLag = {
   /** Players currently behind, worst first. Empty when everyone is keeping
    *  up — the indicator is meant to be invisible in a healthy match. */
   readonly laggingPeers: Ref<readonly LaggingPeer[]>;

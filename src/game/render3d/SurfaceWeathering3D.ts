@@ -50,7 +50,7 @@ import { getWeatheringNoiseTexture } from './WeatheringNoiseTexture';
  *  blotch. The two thickness taps must come from different scales of the
  *  smoothest channel, or a transition band and the grime band over it would
  *  thicken together — one varying width wearing two names. */
-export const WEATHER_FIELD_TAPS = {
+const WEATHER_FIELD_TAPS = {
   /** R at full tile — the lobes. */
   lobes: 1.0,
   /** R, smaller — fingers eroded into those lobes. */

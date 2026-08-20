@@ -189,14 +189,14 @@ export const METAL_DEPOSIT_CELL_PLACEMENT_MODES = [
   'connected-growth',
 ] as const;
 
-export type MetalDepositCellPlacementMode =
+type MetalDepositCellPlacementMode =
   typeof METAL_DEPOSIT_CELL_PLACEMENT_MODES[number];
 
 /** One authored ore-body size class: `metalCellCount` metal cells inside a
  *  disc, plus that disc's radius for each placement mode. The count is
  *  shared, so switching modes moves the ore without changing how much of
  *  it is on the map. */
-export type MetalDepositSize = {
+type MetalDepositSize = {
   /** Exactly how many metal build cells this ore body owns, in either
    *  placement mode. */
   metalCellCount: number;
@@ -211,7 +211,7 @@ export type MetalDepositSize = {
 /** How the ore REGION is baked for rendering. See metalDepositConfig.json
  *  `surfaceFieldComment` — this is presentation data only and never
  *  reaches the simulation or the canonical state hash. */
-export type MetalDepositSurfaceFieldConfig = {
+type MetalDepositSurfaceFieldConfig = {
   texelWorldSize: number;
   maxTextureDimension: number;
   edgeRangeWorldUnits: number;
@@ -271,7 +271,7 @@ function validMetalDepositCellPlacementMode(
  *  the placer's bound, a `null` flatPadCells, the build-placement safety
  *  radius — reads this one accessor, so the mode switch cannot leave a
  *  consumer sized for the other algorithm. */
-export function getMetalDepositPlacementRadiusCells(
+function getMetalDepositPlacementRadiusCells(
   size: MetalDepositSize,
 ): number {
   return METAL_DEPOSIT_CONFIG.cellPlacementMode === 'connected-growth'

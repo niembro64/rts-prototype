@@ -172,7 +172,7 @@ export type RealBattleBackendRuntime = {
  *  Reported to the UI so players can see who is falling behind. Peers whose
  *  progress is not yet known are omitted rather than reported at frame 0 —
  *  at match start that would paint everyone as lagging. */
-export type RealBattlePeerFrameReport = {
+type RealBattlePeerFrameReport = {
   readonly coordinatorFrame: number;
   /** Lets the UI turn a frame gap into seconds. Not on the wire: every peer
    *  in a lockstep match runs the same rate, so each side reads its own. */

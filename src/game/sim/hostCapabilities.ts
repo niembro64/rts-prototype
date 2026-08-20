@@ -145,7 +145,7 @@ export function getUnitBuilderConstructionRate(unitBlueprint: UnitBlueprint): nu
   return getUnitHostCapabilities(unitBlueprint).constructionRate;
 }
 
-export function getSelectedBuilderTypeInfos(
+function getSelectedBuilderTypeInfos(
   selectedUnits: readonly Entity[],
 ): readonly SelectedBuilderTypeInfo[] {
   const byUnitBlueprintId = new Map<string, SelectedBuilderTypeInfo>();
@@ -211,30 +211,3 @@ export function getActiveSelectedBuilder(
   )?.firstEntity ?? null;
 }
 
-export function getSelectedBuilderAllowedBuildBlueprintIds(
-  selectedUnits: readonly Entity[],
-): readonly StructureBlueprintId[] {
-  let allowed: Set<StructureBlueprintId> | null = null;
-  let order: readonly StructureBlueprintId[] = EMPTY_STRUCTURE_IDS;
-
-  for (let i = 0; i < selectedUnits.length; i++) {
-    if (selectedUnits[i].builder === null) continue;
-    const ids = getBuilderAllowedBuildBlueprintIds(selectedUnits[i]);
-    if (allowed === null) {
-      allowed = new Set(ids);
-      order = ids;
-      continue;
-    }
-    for (const id of allowed) {
-      if (!ids.includes(id)) allowed.delete(id);
-    }
-  }
-
-  if (allowed === null) return EMPTY_STRUCTURE_IDS;
-  const result: StructureBlueprintId[] = [];
-  for (let i = 0; i < order.length; i++) {
-    const id = order[i];
-    if (allowed.has(id)) result.push(id);
-  }
-  return result;
-}

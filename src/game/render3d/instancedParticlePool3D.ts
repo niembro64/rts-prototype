@@ -25,7 +25,7 @@ export type InstancedColorAlphaGeometryPool = InstancedColorAlphaPool & {
   geom: THREE.BufferGeometry;
 };
 
-export type InstancedColorAlphaPoolSet = {
+type InstancedColorAlphaPoolSet = {
   root: THREE.Group;
   material: THREE.ShaderMaterial;
   pools: Record<PrimitiveGeometryTier, InstancedColorAlphaGeometryPool>;

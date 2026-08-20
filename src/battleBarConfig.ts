@@ -498,7 +498,7 @@ function loadPosNum(key: string): number | null {
   return !isNaN(n) && n > 0 ? n : null;
 }
 
-export function loadStoredDemoUnits(): string[] | null {
+function loadStoredDemoUnits(): string[] | null {
   refreshDemoRosterLedgers();
   const stored = readPersisted(STORAGE_DEMO_UNITS);
   if (!stored) return null;
@@ -510,7 +510,7 @@ export function loadStoredDemoUnits(): string[] | null {
   return null;
 }
 
-export function saveDemoUnits(units: string[]): void {
+function saveDemoUnits(units: string[]): void {
   // Refresh first: a save must not write a roster before adoption has had a
   // chance to fold in blueprints this profile has never seen, or the save
   // persists the gap and the ledger then records it as deliberate.
@@ -566,7 +566,7 @@ export function saveBattleUnitRoster(
 // ── Demo building enablement (BUILDINGS bar group) ──
 // Persistence mirrors the unit trio.
 
-export function loadStoredDemoBuildings(): string[] | null {
+function loadStoredDemoBuildings(): string[] | null {
   refreshDemoRosterLedgers();
   const stored = readPersisted(STORAGE_DEMO_BUILDINGS);
   if (!stored) return null;
@@ -578,7 +578,7 @@ export function loadStoredDemoBuildings(): string[] | null {
   return null;
 }
 
-export function saveDemoBuildings(buildings: string[]): void {
+function saveDemoBuildings(buildings: string[]): void {
   refreshDemoRosterLedgers();
   persistJson(STORAGE_DEMO_BUILDINGS, sanitizeDemoBuildingIds(buildings) ?? []);
 }
@@ -627,7 +627,7 @@ export function saveBattleBuildingRoster(
   );
 }
 
-export function loadStoredDemoCap(): number {
+function loadStoredDemoCap(): number {
   return loadPosNum(STORAGE_DEMO_CAP) ?? getModeDefaultEntityCountCap('demo');
 }
 

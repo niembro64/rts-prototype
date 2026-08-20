@@ -7,28 +7,18 @@ export {
 } from './SelectionHelper';
 
 export {
-  
   resolveScreenRectSelectionModifiers,
   selectBoxHeldModifierForKeyCode,
   type ScreenRectSelectionOptions,
-  type ResolvedScreenRectSelectionModifiers,
-  type ScreenRectSelectionModifierState,
-  type SelectBoxHeldModifier,
   entityMatchesScreenRectSelectionOptions,
   selectEntitiesInScreenRect,
   isBarSameTypeSelectionDoubleClick,
-  BAR_SELECTION_DOUBLE_CLICK_MS,
-  BAR_SELECTION_DOUBLE_CLICK_MAX_MANHATTAN_PX,
-  type BarSelectionClickTap,
 } from './BoxSelection';
 
 export { SelectionChangeTracker } from './SelectionChangeTracker';
 
 export {
   resolveBarDefaultPointerAction,
-  type BarDefaultPointerAction,
-  type BarDefaultPointerActionInput,
-  type BarPointerTargetRelationship,
 } from './BarDefaultPointerAction';
 
 export { LinePathAccumulator } from './LinePathAccumulator';
@@ -65,7 +55,6 @@ export {
 
 export {
   buildRepairAreaCommand,
-  buildRepairOrGuardCommandAt,
   buildRepairOrGuardCommandForTarget,
   buildRepairCommandForTarget,
   buildReclaimAreaCommand,

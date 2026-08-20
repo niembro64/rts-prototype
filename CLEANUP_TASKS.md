@@ -15,13 +15,6 @@ Gates for this work:
 
 ## B. Dead code
 
-- [ ] **B3** Un-export / delete genuinely-unused exports and exported types (knip@5 reports 97 +
-      121). Must be verified case by case — knip false-positives confirmed already:
-      `turretMountContractValidation.ts` (loaded by string via `ssrLoadModule`), `basisu`
-      (used by `scripts/generate_backdrops.py`), and `createBackgroundBattle` /
-      `destroyBackgroundBattle` (dynamic namespace import). Cascade with vue-tsc; never blind-delete
-      a `let` (may be write-only) and never touch `blueprintSchema.generated.ts`.
-
 ## C. Duplication → helpers (TypeScript)
 
 - [ ] **C12** `SelectionPanel.vue` repeats the `bar-order-state` button markup across five clusters

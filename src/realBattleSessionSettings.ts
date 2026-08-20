@@ -21,7 +21,7 @@ import { persist, readPersisted } from './persistence';
 /** `demo` = the backdrop demo battle. `real` = the lobby AND the real game.
  *  Structurally identical to `BattleMode`; declared here so this module sits
  *  below battleBarConfig with no import cycle. */
-export type SettingsMode = 'demo' | 'real';
+type SettingsMode = 'demo' | 'real';
 
 const realSessionSettings = new Map<string, string>();
 

@@ -158,7 +158,7 @@ const BEAM_TURRET_IDS: ReadonlySet<string> = new Set([
  * the wire-stable registries makes additions fail the contract until the new
  * model participates in the same High/Medium/Low gallery.
  */
-export const ENTITY_LOD_VISUAL_REGRESSION_ROSTER = Object.freeze({
+const ENTITY_LOD_VISUAL_REGRESSION_ROSTER = Object.freeze({
   units: UNIT_BLUEPRINT_IDS,
   buildings: BUILDING_BLUEPRINT_IDS,
 });
@@ -599,7 +599,7 @@ function runBodyContracts(material: THREE.Material): Map<UnitBlueprintId, TierCo
   return countsByUnit;
 }
 
-export function runBotBodySeamContracts(): void {
+function runBotBodySeamContracts(): void {
   for (const unitId of ['unitHuman', 'unitCommander'] as const) {
     const blueprint = getUnitBlueprint(unitId);
     const locomotion = blueprint.unitLocomotion;
@@ -2107,7 +2107,7 @@ function runEnvironmentLodMaterialContracts(): void {
   });
 }
 
-export function runConstructionHostMarkingContracts(): void {
+function runConstructionHostMarkingContracts(): void {
   assertContract(
     CONSTRUCTION_HAZARD_MARKING_STYLE.stripeAngleDeg === 45,
     'construction hazard bands use the one exact 45-degree style',

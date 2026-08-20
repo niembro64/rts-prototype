@@ -84,9 +84,9 @@ export const LAND_TILE_GROUND_LIFT = worldRenderConfigJson.landTileGroundLift;
  *  Encoded for the shader as a scope level, not a boolean, because 'ore' and
  *  'terrain' are genuinely different blast radii and the difference is worth
  *  being able to bisect on the machine showing a fault. */
-export type TerrainOutwardNormalScope = 'off' | 'ore' | 'terrain';
+type TerrainOutwardNormalScope = 'off' | 'ore' | 'terrain';
 
-export const TERRAIN_OUTWARD_NORMAL_SCOPE: TerrainOutwardNormalScope = (() => {
+const TERRAIN_OUTWARD_NORMAL_SCOPE: TerrainOutwardNormalScope = (() => {
   const scope = worldRenderConfigJson.terrainOutwardNormal.scope;
   if (scope !== 'off' && scope !== 'ore' && scope !== 'terrain') {
     throw new Error(
@@ -1025,7 +1025,6 @@ export const OVERLAY_LINE_CONFIG = worldRenderConfigJson.overlayLines;
 export type OverlayLineKind = keyof typeof OVERLAY_LINE_CONFIG.kinds;
 
 // Scorched earth burn mark colors and decay
-export const BURN_COLOR_HOT = COLORS.world.burnMark.hotColorHex; // bright red start
 export const BURN_COLOR_TAU = worldRenderConfigJson.burnMark.colorTauMs; // color decay: red → black (ms), fast
 export const BURN_COOL_TAU = worldRenderConfigJson.burnMark.coolTauMs; // color decay: black → background (ms), slow
 

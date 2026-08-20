@@ -50,7 +50,7 @@ export function firingRandomnessEnabled(
  *  Sized to read as a weapon that is aimed but not surgical: at 700 units it
  *  puts a round roughly one unit-radius off the solved point, so a stationary
  *  target is still usually struck and a distant one is not guaranteed. */
-export const BASE_TURRET_AIM_SCATTER_RAD = 0.024;
+const BASE_TURRET_AIM_SCATTER_RAD = 0.024;
 
 /** The spread cone a shot should actually use.
  *

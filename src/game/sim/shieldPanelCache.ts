@@ -19,7 +19,7 @@ import type { UnitBlueprint } from '../../types/blueprints';
  *  Render3DEntities reads `shieldPanels[0].halfWidth` directly so a
  *  bump here flows through to the visual panel without any other
  *  edit. 1.0 = legacy "panel side = 2 × radius.other". */
-export const SHIELD_PANEL_SIZE_MULT = 2.0;
+const SHIELD_PANEL_SIZE_MULT = 2.0;
 
 /** Mirror frame geometry derived from `panelHalfSide` (= radius.other
  *  × SHIELD_PANEL_SIZE_MULT).

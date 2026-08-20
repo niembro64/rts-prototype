@@ -87,10 +87,10 @@ export const CT_TURRET_CFG_CONSTANT_SPEED_LEAD = 1 << 18;
 /** A moving parent joint may absorb residual station yaw. */
 export const CT_TURRET_CFG_HOST_YAW_ASSIST = 1 << 19;
 /** Exhaustive, unordered emission source->target medium routes. */
-export const CT_TURRET_CFG_ROUTE_ABOVE_TO_ABOVE = 1 << 20;
-export const CT_TURRET_CFG_ROUTE_ABOVE_TO_UNDERWATER = 1 << 21;
-export const CT_TURRET_CFG_ROUTE_UNDERWATER_TO_ABOVE = 1 << 22;
-export const CT_TURRET_CFG_ROUTE_UNDERWATER_TO_UNDERWATER = 1 << 23;
+const CT_TURRET_CFG_ROUTE_ABOVE_TO_ABOVE = 1 << 20;
+const CT_TURRET_CFG_ROUTE_ABOVE_TO_UNDERWATER = 1 << 21;
+const CT_TURRET_CFG_ROUTE_UNDERWATER_TO_ABOVE = 1 << 22;
+const CT_TURRET_CFG_ROUTE_UNDERWATER_TO_UNDERWATER = 1 << 23;
 export const CT_TURRET_CFG_ROUTE_MASK =
   CT_TURRET_CFG_ROUTE_ABOVE_TO_ABOVE |
   CT_TURRET_CFG_ROUTE_ABOVE_TO_UNDERWATER |

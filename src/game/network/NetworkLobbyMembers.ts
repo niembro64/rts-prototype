@@ -32,7 +32,6 @@ import type {
   LobbyMember,
   LobbyMemberInfoPayload,
   LobbyMemberPresence,
-  LobbyMemberRole,
   LobbyPlayer,
   MemberId,
   SeatToken,
@@ -44,14 +43,14 @@ import { createStateMachine, type StateMachine } from '../state/StateMachine';
 export const HOST_MEMBER_ID: MemberId = 1;
 
 /** Every connection a session can hold at once — seats plus benches. */
-export const MAX_LOBBY_MEMBERS = MAX_LOBBY_PLAYERS + MAX_LOBBY_SPECTATORS;
+const MAX_LOBBY_MEMBERS = MAX_LOBBY_PLAYERS + MAX_LOBBY_SPECTATORS;
 
-export type SeatGrantRefusal =
+type SeatGrantRefusal =
   | 'not-a-member'
   | 'already-seated'
   | 'no-free-seat';
 
-export type SeatGrant =
+type SeatGrant =
   | { readonly seated: true; readonly member: LobbyMember }
   | { readonly seated: false; readonly reason: SeatGrantRefusal };
 
@@ -96,7 +95,7 @@ function randomToken(): SeatToken {
   return out;
 }
 
-export function createLobbyMember(
+function createLobbyMember(
   memberId: MemberId,
   name: string,
   isHost: boolean,
@@ -117,7 +116,7 @@ export function createLobbyMember(
 }
 
 /** The seated projection a member presents to the match. */
-export function toLobbyPlayer(member: LobbyMember): LobbyPlayer | null {
+function toLobbyPlayer(member: LobbyMember): LobbyPlayer | null {
   if (member.playerId === undefined) return null;
   return {
     playerId: member.playerId,
@@ -581,4 +580,3 @@ export class NetworkLobbyMembers {
   }
 }
 
-export type { LobbyMember, LobbyMemberPresence, LobbyMemberRole, MemberId, SeatToken };

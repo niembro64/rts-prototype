@@ -33,7 +33,7 @@ export type DamageImpactSurface =
   | 'entity'
   | 'endpoint'
   | 'blast';
-export type BeamImpactSurface = DamageImpactSurface;
+type BeamImpactSurface = DamageImpactSurface;
 
 export type DamageImpactEnvironment = {
   getTerrainZ(x: number, y: number): number;
@@ -42,7 +42,6 @@ export type DamageImpactEnvironment = {
   waterLevel: number;
   depositGroundBurn?(x: number, y: number, width: number, energy: number): void;
 };
-export type BeamImpactEnvironment = DamageImpactEnvironment;
 
 export type DamageImpactRequest = {
   x: number;
@@ -1010,6 +1009,3 @@ export class DamageImpact3D {
   }
 }
 
-/** Compatibility export for call sites that have not yet adopted the shared
- * damage-impact name. New code should use DamageImpact3D. */
-export { DamageImpact3D as BeamImpact3D };

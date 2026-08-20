@@ -74,7 +74,7 @@ export {
   terrainClearanceRaise,
   zoomAggregationShortestCount,
 } from './OrbitCameraMath';
-export type { BarSpringDamperStep, CameraMouseDragMode } from './OrbitCameraMath';
+
 
 const TOUCH_ROTATE_DEADZONE_RAD = 0.006;
 const TOUCH_ROTATE_MAX_DELTA_RAD = 0.35;

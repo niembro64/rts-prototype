@@ -1,4 +1,4 @@
-export type BarDefaultPointerAction =
+type BarDefaultPointerAction =
   | 'none'
   | 'waypoint'
   | 'attack'
@@ -6,13 +6,13 @@ export type BarDefaultPointerAction =
   | 'repair'
   | 'reclaim';
 
-export type BarPointerTargetRelationship =
+type BarPointerTargetRelationship =
   | 'none'
   | 'friendly'
   | 'enemy'
   | 'feature';
 
-export type BarDefaultPointerActionInput = {
+type BarDefaultPointerActionInput = {
   relationship: BarPointerTargetRelationship;
   hasWaypointSource: boolean;
   hasAttacker: boolean;

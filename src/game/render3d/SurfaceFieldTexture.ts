@@ -60,11 +60,11 @@ import {
 /** Which surface the broad layers belong to. The families are separate
  *  because their palettes and world scales are, NOT because their
  *  construction is — that is shared below. */
-export type SurfaceFieldFamily = 'ground' | 'rock' | 'metal';
+type SurfaceFieldFamily = 'ground' | 'rock' | 'metal';
 
 /** The two broad scales. `macro` is the field's character, `meso` the
  *  clumping inside it; a host applies both or neither. */
-export type SurfaceFieldLayerName = 'macro' | 'meso';
+type SurfaceFieldLayerName = 'macro' | 'meso';
 
 const FAMILY_CONFIG: Record<SurfaceFieldFamily, SurfaceFieldLayersConfig> = {
   ground: TERRAIN_GROUND_FIELD_LAYERS,
@@ -134,7 +134,7 @@ function capitalize(value: string): string {
 
 /** The broad layer for one family and scale. Built on first ask and kept —
  *  they are static for the session, like every other authored tile. */
-export function getSurfaceFieldTexture(
+function getSurfaceFieldTexture(
   family: SurfaceFieldFamily,
   layer: SurfaceFieldLayerName,
 ): THREE.CanvasTexture {

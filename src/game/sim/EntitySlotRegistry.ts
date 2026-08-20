@@ -151,7 +151,7 @@ type EntityStateExpectation = {
   buildFlags: number;
 };
 
-export class EntitySlotRegistry {
+class EntitySlotRegistry {
   private readonly slotByEntityId = new Map<EntityId, number>();
   private readonly entityBySlot: (Entity | undefined)[] = [];
   private spatialKindBySlot = new Uint8Array(INITIAL_KIND_CAPACITY);

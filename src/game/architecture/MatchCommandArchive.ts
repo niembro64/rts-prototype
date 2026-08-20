@@ -25,7 +25,7 @@
 
 import type { LockstepCommandEnvelope } from './LockstepCommandProtocol';
 
-export type ArchivedCommandFrame = {
+type ArchivedCommandFrame = {
   readonly frame: number;
   readonly frameSequence: number;
   readonly commands: readonly LockstepCommandEnvelope[];

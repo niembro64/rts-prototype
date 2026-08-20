@@ -192,7 +192,7 @@ type CaptionLayout = {
   readonly ruleHalfWidth: number;
 };
 
-export type MapPresetLabelPlacement = {
+type MapPresetLabelPlacement = {
   readonly worldWidth: number;
   readonly worldHeight: number;
   readonly centerX: number;
@@ -251,7 +251,7 @@ export function resolveMapPresetLabelPlacement(
 
 /** What one candidate wrap measures, and what the fit would have to do to it
  *  to land the block on the table's shape. */
-export type CaptionWrapCandidate = {
+type CaptionWrapCandidate = {
   /** Block width and height in canvas pixels, at the authored leading. */
   readonly width: number;
   readonly height: number;

@@ -1,4 +1,3 @@
-import { ARCHITECTURE_CONFIG } from '@/architectureConfig';
 
 export type LockstepPerformanceBudget = {
   readonly measurementModel: 'local-server-sim-per-browser';
@@ -18,9 +17,6 @@ export function createLockstepPerformanceBudget(
     fixedSimulationHz,
   };
 }
-
-export const LOCKSTEP_PERFORMANCE_BUDGET: LockstepPerformanceBudget =
-  createLockstepPerformanceBudget(ARCHITECTURE_CONFIG.lockstep.fixedStepHz);
 
 type LockstepSnapshotPerformanceLaneTelemetry = {
   readonly snapshotMsAvg: number;

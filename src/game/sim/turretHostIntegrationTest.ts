@@ -1461,7 +1461,7 @@ function assertShieldPowerContract(): void {
   resetTurretHostIntegrationState();
 }
 
-export function runOrcaTargetingContractTest(): void {
+function runOrcaTargetingContractTest(): void {
   assertOrcaTargetsEnemyOrca(true);
   assertOrcaTargetsEnemyOrca(false);
   assertOrcaRejectsEnemyAboveWater(true);
@@ -1563,7 +1563,7 @@ function assertShieldSightObstructionIsOutsideInContract(): void {
   resetTurretHostIntegrationState();
 }
 
-export function runWaterWeaponMediumTargetingContractTest(): void {
+function runWaterWeaponMediumTargetingContractTest(): void {
   assertSeaTurtleTargetMediumEligibility(true, true);
   assertSeaTurtleTargetMediumEligibility(false, true);
   assertSeaTurtleTargetMediumEligibility(true, false);

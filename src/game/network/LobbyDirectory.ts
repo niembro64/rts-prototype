@@ -21,7 +21,7 @@ import { isTauriRuntime } from '../../browserRuntime';
 
 /** Namespaces this game's listings inside a directory shared by every game
  *  on games.niemo.io. Matches the folder the build is deployed to. */
-export const LOBBY_DIRECTORY_GAME_ID = 'budget-annihilation';
+const LOBBY_DIRECTORY_GAME_ID = 'budget-annihilation';
 
 /** Seats a lobby can hold. The host rejects a 7th SEATING, so the directory
  *  reads this same constant rather than restating the number and drifting
@@ -51,9 +51,9 @@ export const LOBBY_LIST_POLL_INTERVAL_MS = 5000;
  *  host waiting — it just means no listing this beat. */
 const REQUEST_TIMEOUT_MS = 6000;
 
-export type LobbyDirectoryStatus = 'open' | 'in-game';
+type LobbyDirectoryStatus = 'open' | 'in-game';
 
-export type LobbyDirectoryEntry = {
+type LobbyDirectoryEntry = {
   readonly game: string;
   readonly roomCode: string;
   readonly name: string;
@@ -68,14 +68,14 @@ export type LobbyDirectoryEntry = {
   readonly updatedAt: number;
 };
 
-export type LobbyDirectoryListing = {
+type LobbyDirectoryListing = {
   readonly lobbies: readonly LobbyDirectoryEntry[];
   readonly openCount: number;
   readonly runningCount: number;
 };
 
 /** What a host publishes about itself. */
-export type LobbyAnnouncement = {
+type LobbyAnnouncement = {
   readonly roomCode: string;
   readonly name: string;
   readonly hostName: string;
@@ -94,7 +94,7 @@ export type LobbyAnnouncement = {
  *  settings that name the map are bound a moment later. Re-reading on every
  *  beat means a listing completes itself instead of staying half-filled
  *  until something unrelated happens to change. */
-export type LobbyAnnouncementProvider = () => LobbyAnnouncement | null;
+type LobbyAnnouncementProvider = () => LobbyAnnouncement | null;
 
 const EMPTY_LISTING: LobbyDirectoryListing = {
   lobbies: [],

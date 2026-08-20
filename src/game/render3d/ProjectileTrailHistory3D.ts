@@ -48,7 +48,7 @@ export type TrailStampBuffer = {
 
 /** Reused per-frame working set for the resampler. One instance serves
  *  every projectile in a frame, sized for the deepest rung it will run. */
-export type TrailResampleScratch = {
+type TrailResampleScratch = {
   /** Ring centers, sim axis order, ring 0 being the live head. */
   centerline: Float32Array;
   /** Each ring's arc distance behind the head. */

@@ -20,7 +20,7 @@ export const BUILDING_PLACEMENT_SETS = [
   'water-build-squares-hover-surface',
 ] as const;
 export type BuildingPlacementSet = typeof BUILDING_PLACEMENT_SETS[number];
-export type BuildSquareType = 'ground' | 'water';
+type BuildSquareType = 'ground' | 'water';
 export type BuildingPlacementAnchor = 'terrain-bed' | 'sea-on-surface' | 'hover-surface';
 
 export function isBuildingPlacementSet(value: unknown): value is BuildingPlacementSet {

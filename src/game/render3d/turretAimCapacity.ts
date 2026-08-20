@@ -1,7 +1,7 @@
 import { TURRET_AIM_INPUT_STRIDE } from './UnitTurretAimBatch3D';
 import { growFloat32Array } from './typedArrayRenderUtils';
 
-export type TurretAimBuffers = {
+type TurretAimBuffers = {
   aimInput: Float32Array;
   parentPose: Float32Array;
 };

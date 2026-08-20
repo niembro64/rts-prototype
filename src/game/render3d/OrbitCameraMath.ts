@@ -226,7 +226,7 @@ export function terrainClearanceRaise(
   return Math.max(0, terrainY + Math.max(0, clearance) - eyeY);
 }
 
-export type BarSpringDamperStep = {
+type BarSpringDamperStep = {
   value: number;
   velocity: number;
 };

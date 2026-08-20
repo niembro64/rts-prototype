@@ -7,7 +7,7 @@ import {
 } from './EntityDeathDisassembly3D';
 
 /** Capture the few building surfaces that live outside the building group. */
-export function captureBuildingRendererOwnedParts3D(
+function captureBuildingRendererOwnedParts3D(
   mesh: EntityMesh,
   teamTrim: TeamTrimRenderer3D | null,
 ): EntityDeathRenderablePart3D[] {

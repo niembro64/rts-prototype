@@ -190,7 +190,7 @@ const DETAIL_RADIUS_FLOOR_EFFECT = finitePositiveOr(
 // 11wu ball regardless of its true size or class.
 
 /** One LOD ladder: the three boundaries as projected screen radii in px. */
-export interface DetailPxLadder {
+interface DetailPxLadder {
   highToMedPx: number;
   medToLowPx: number;
   lowToOffPx: number;
@@ -363,7 +363,7 @@ export function detailLevelForScreenRadius(screenRadiusPx: number): number {
   );
 }
 
-export function detailLevelForRadiusDistance(
+function detailLevelForRadiusDistance(
   radiusWorld: number,
   distance: number,
   fovYRad: number,

@@ -15,7 +15,6 @@
 // Everything below resolves from ONE colorsConfig entry,
 // `environment.metalDeposit`: retune a deposit and the metal world follows.
 
-import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import {
   METAL_DEPOSIT_ROCK_TEXTURE_BLEND,
@@ -40,20 +39,6 @@ export const METAL_SURFACE_MATERIAL = {
   rockTextureContrast: METAL_DEPOSIT_ROCK_TEXTURE_CONTRAST,
   rockTextureRoughnessVariation: METAL_DEPOSIT_ROCK_TEXTURE_ROUGHNESS_VARIATION,
 } as const;
-
-/** The metal surface's PBR half, for a THREE.MeshStandardMaterial.
- *
- *  `envMapIntensity` is deliberately absent: neither surface sets it, so both
- *  take three.js's default of 1 and reflect `scene.environment` identically.
- *  Setting it on one and not the other is exactly how the two drifted apart
- *  before. Surface normals are likewise owned by the renderers' geometry, not
- *  duplicated as a material parameter. */
-export function metalSurfaceStandardParameters(): THREE.MeshStandardMaterialParameters {
-  return {
-    metalness: METAL_SURFACE_MATERIAL.metalness,
-    roughness: METAL_SURFACE_MATERIAL.roughness,
-  };
-}
 
 /** GLSL for the metal texture response, shared verbatim by both renderers'
  *  injected shaders so the maths cannot drift.

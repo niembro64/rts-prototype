@@ -540,7 +540,7 @@ export function geometryEnclosedVolume(geometry: THREE.BufferGeometry): number {
 /** Uniformly expand a closed low-poly solid to a target volume. Positions,
  * normals and bounds are kept coherent; authored mesh transforms do not need
  * tier-specific compensation. */
-export function preserveGeometryVolume(
+function preserveGeometryVolume(
   geometry: THREE.BufferGeometry,
   targetVolume: number,
 ): void {

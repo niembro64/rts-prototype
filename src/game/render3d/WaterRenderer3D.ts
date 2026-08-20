@@ -243,7 +243,7 @@ function pushCurtainStrip(
 /** The five non-surface faces of the floating water box, in the order their
  *  meshes and geometry are built. */
 export const WATER_BOX_FACES = ['north', 'east', 'south', 'west', 'bottom'] as const;
-export type WaterBoxFace = (typeof WATER_BOX_FACES)[number];
+type WaterBoxFace = (typeof WATER_BOX_FACES)[number];
 
 export class WaterRenderer3D {
   private waterMesh: THREE.Mesh;

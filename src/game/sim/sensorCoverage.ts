@@ -241,15 +241,6 @@ function getMaximumEntityTurretRadius(
   return max;
 }
 
-export function canEntityProvideFullVision(
-  entity: Entity,
-  targetMedium?: SensorMedium,
-): boolean {
-  if (targetMedium !== undefined) return getEntityFullVisionRadius(entity, targetMedium) > 0;
-  return getEntityFullVisionRadius(entity, 'aboveWater') > 0 ||
-    getEntityFullVisionRadius(entity, 'underwater') > 0;
-}
-
 export function getEntityFullVisionRadius(
   entity: Entity,
   targetMedium: SensorMedium,

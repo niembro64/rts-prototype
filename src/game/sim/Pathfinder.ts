@@ -62,7 +62,7 @@ export type ExpandedPathPlan = {
   resolution: PathResolution;
 };
 
-export type PathPlanSliceResult =
+type PathPlanSliceResult =
   | { status: 'pending'; expansionsUsed: number }
   | { status: 'complete'; plan: ExpandedPathPlan; expansionsUsed: number };
 

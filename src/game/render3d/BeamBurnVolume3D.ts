@@ -388,4 +388,3 @@ export class DamageBurnVolume3D {
   }
 }
 
-export { DamageBurnVolume3D as BeamBurnVolume3D };

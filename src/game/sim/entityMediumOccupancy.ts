@@ -14,7 +14,7 @@ const _mediumOccupancy: EntityMediumOccupancy = {
 };
 
 /** Exact submerged volume fraction for a sphere cut by the water plane. */
-export function getSphericalUnderwaterFraction(
+function getSphericalUnderwaterFraction(
   centerZ: number,
   radius: number,
 ): number {

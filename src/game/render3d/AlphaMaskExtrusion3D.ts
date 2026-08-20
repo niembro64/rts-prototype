@@ -17,12 +17,12 @@
 export type MaskPolygon = readonly number[];
 
 /** One extrudable island: an outline and the holes punched through it. */
-export type MaskContourGroup = {
+type MaskContourGroup = {
   readonly outline: MaskPolygon;
   readonly holes: readonly MaskPolygon[];
 };
 
-export type AlphaMaskContourOptions = {
+type AlphaMaskContourOptions = {
   /** Alpha in [0, 1] the surface is cut at. 0.5 puts the outline on the
    *  antialiased edge's half-covered texels, where the eye reads the glyph
    *  boundary. */
@@ -56,7 +56,7 @@ export function polygonSignedArea(points: MaskPolygon): number {
 
 /** Even-odd crossing test. Points exactly on an edge are undefined either
  *  way, which is fine for nesting: glyph outlines never touch. */
-export function polygonContainsPoint(
+function polygonContainsPoint(
   polygon: MaskPolygon,
   x: number,
   y: number,

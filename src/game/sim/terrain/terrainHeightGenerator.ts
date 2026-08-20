@@ -48,7 +48,6 @@ function packedTerrainInputs(): { config: Float64Array; zones: Float64Array } {
 let heightInputScratch = new Float64Array(0);
 let heightOutputScratch = new Float64Array(0);
 const singlePointScratch = new Float64Array(2);
-const singleHeightScratch = new Float64Array(1);
 const singleFadeScratch = new Float64Array(1);
 
 /**
@@ -116,26 +115,6 @@ export function sampleGeneratedTerrainHeights(
       ? heightOutputScratch[read++]
       : Number.NaN;
   }
-}
-
-/** Generated (analytic) terrain height at one point. Prefer
- *  {@link sampleGeneratedTerrainHeights} when sampling several points. */
-export function getTerrainHeight(
-  x: number,
-  y: number,
-  mapWidth: number,
-  mapHeight: number,
-): number {
-  singlePointScratch[0] = x;
-  singlePointScratch[1] = y;
-  sampleGeneratedTerrainHeights(
-    singlePointScratch,
-    1,
-    mapWidth,
-    mapHeight,
-    singleHeightScratch,
-  );
-  return singleHeightScratch[0];
 }
 
 /** Map-boundary (PERIMETER ring) fade weight at (x, y): 0 inside the

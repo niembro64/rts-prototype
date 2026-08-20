@@ -28,7 +28,6 @@ export type {
   BuildingHoveringType,
   BuildingSupportSurface,
   StructureBlueprintId,
-  SensorCapabilityConfig,
   UnitSupportSurface,
   UnitAction,
   UnitPathPoint,
@@ -43,9 +42,7 @@ export type {
   
   ShieldBarrierConfig,
   CombatComponent,
-  MountedCapabilityBase,
   SensorMountCapability,
-  ResourceFlowMountCapability,
   UtilityMountCapability,
   ProjectileShot,
   BeamRay,
@@ -55,14 +52,6 @@ export type {
   ShieldConfig,
   EmissionConfig,
   ShotConfig,
-  ShotLocomotion,
-  ShotLocomotionMedia,
-  ShotLocomotionMediumPhysics,
-  ShotLocomotionMotionModel,
-  ShotLocomotionTerminalOutcome,
-  ShotLocomotionTerminalPolicy,
-  ShotLocomotionTransitionOutcome,
-  ShotLocomotionTransitions,
   ShotRuntimeProfile,
   ShotVisualProfile,
   ShotProfile,
@@ -71,8 +60,6 @@ export type {
   ProjectileConfig,
   TurretState,
   Turret,
-  TurretTask,
-  TurretEntityTask,
   TurretEntityTaskOperation,
   TurretPointTask,
   ProjectileType,
@@ -122,7 +109,7 @@ import { COLORS } from '@/colorsConfig';
  * `primary` / `secondary` stay as aliases of the PLAYER pair so existing
  * callers keep working unchanged.
  */
-export type PlayerColors = {
+type PlayerColors = {
   primary: number;
   secondary: number;
   colorPlayerNormal: number;
@@ -369,47 +356,9 @@ export function getPlayerColors(playerId: PlayerId): PlayerColors {
   return cached;
 }
 
-/** Indexable-record view over the player-color cache. `PLAYER_COLORS[pid]`
- *  resolves through getPlayerColors() and auto-fills the cache. Iterating
- *  the proxy (Object.entries / for…in / Object.values) yields only the
- *  pids that have been seen so far — useful for "what teams are in play
- *  right now?" lookups but it is NOT a static list of "all possible
- *  players". Renderers that pre-create per-team resources should create
- *  them lazily on first sighting per pid (see Render3DEntities for the
- *  pattern). */
-export const PLAYER_COLORS: Record<PlayerId, PlayerColors> = new Proxy(
-  {} as Record<PlayerId, PlayerColors>,
-  {
-    get(_target, prop: string | symbol) {
-      if (typeof prop === 'string') {
-        const pid = Number(prop);
-        if (Number.isFinite(pid) && pid >= 1) {
-          return getPlayerColors(pid as PlayerId);
-        }
-      }
-      return undefined;
-    },
-    ownKeys() {
-      return Array.from(_playerColorCache.keys()).map(String);
-    },
-    getOwnPropertyDescriptor(_target, prop: string | symbol) {
-      if (typeof prop === 'string') {
-        const pid = Number(prop);
-        if (Number.isFinite(pid) && _playerColorCache.has(pid as PlayerId)) {
-          return {
-            enumerable: true, configurable: true,
-            value: getPlayerColors(pid as PlayerId),
-          };
-        }
-      }
-      return undefined;
-    },
-  },
-);
-
 /** Neutral fallback color for "no player" / unknown-playerId display.
  *  Soft gray so it reads as "ownerless" regardless of background. */
-export const NEUTRAL_PLAYER_COLOR = COLORS.units.neutral.colorHex;
+const NEUTRAL_PLAYER_COLOR = COLORS.units.neutral.colorHex;
 
 /** Resolve a player's primary display color. Returns NEUTRAL_PLAYER_COLOR
  *  for undefined player IDs — the single canonical source of truth for

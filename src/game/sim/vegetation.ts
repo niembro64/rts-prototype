@@ -42,7 +42,7 @@ import type { EntityId } from './types';
  *  allocated from 1 upward, so a base this far above any reachable
  *  entity count keeps the two spaces disjoint while staying an exact
  *  integer in every float64 and int32 field a target id passes through. */
-export const VEGETATION_TARGET_ID_BASE = 1_000_000_000;
+const VEGETATION_TARGET_ID_BASE = 1_000_000_000;
 
 /** Immutable layout of one generated prop, in simulation coordinates
  *  (x/y horizontal, z up). Mirrors one Rust prop row. */

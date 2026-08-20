@@ -44,7 +44,7 @@ const STYLE = COLORS.effects.contactBlip;
 export const CONTACT_BLIP_GLYPH = ENTITY_LOD_PROXY_GLYPH_CIRCLE;
 export const CONTACT_BLIP_RADIUS = STYLE.radius;
 
-export type ContactBlipPresentation = Readonly<{
+type ContactBlipPresentation = Readonly<{
   kind: 'radar' | 'sonar' | 'dual';
   surface: 'terrain' | 'water';
   colorHex: number;

@@ -21,11 +21,11 @@
  */
 
 /** Which state each event leads to, per state. Omitted event = not legal. */
-export type StateMachineTransitions<TState extends string, TEvent extends string> = {
+type StateMachineTransitions<TState extends string, TEvent extends string> = {
   readonly [state in TState]: { readonly [event in TEvent]?: TState };
 };
 
-export type StateMachineDefinition<TState extends string, TEvent extends string> = {
+type StateMachineDefinition<TState extends string, TEvent extends string> = {
   readonly initial: TState;
   readonly transitions: StateMachineTransitions<TState, TEvent>;
   /** Called after every accepted transition. Use for side effects that

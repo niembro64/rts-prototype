@@ -10,7 +10,7 @@
 
 import { CAPTURE_CONFIG } from '@/captureConfig';
 
-export type DisplayCaptureAvailability = {
+type DisplayCaptureAvailability = {
   readonly supported: boolean;
   readonly reason: string | null;
 };

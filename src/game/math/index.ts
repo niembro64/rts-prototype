@@ -3,7 +3,6 @@
 export {
   
   magnitude,
-  magnitude3,
   normalizeAngle,
   clamp,
   clamp01,
@@ -16,19 +15,9 @@ export {
   isFiniteNumber,
   finiteOr,
   finiteOrZero,
-  shouldRunOnStride,
 } from './MathHelpers';
 
-export {
-  lineSphereIntersectionT,
-  rayBoxIntersectionT,
-  rayBoxIntersectionTWithDelta,
-} from './CollisionHelpers';
 
-export {
-  computeConstantSpeedHomingVelocity,
-  computeHomingThrust,
-} from './HomingSteering';
 export {
   computeTerrainFollowVerticalThrustAccel,
 } from './TerrainFollowThrust';
@@ -42,7 +31,6 @@ export {
   getTurretBarrelDiameter,
   getTurretBarrelCenterToTipLength,
   getTurretHeadRadius,
-  TURRET_BARREL_MIN_DIAMETER,
 } from './BarrelGeometry';
 
 export {

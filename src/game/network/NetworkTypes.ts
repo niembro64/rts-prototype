@@ -17,10 +17,7 @@ export type {
   LockstepCommandFrameBatchMessage,
   LockstepAckMessage,
   LockstepPeerFrame,
-  LockstepPeerFramesMessage,
-  LockstepResumeRequestMessage,
   LockstepResumeGrantMessage,
-  LockstepHistoryMessage,
 
   
 
@@ -40,11 +37,8 @@ export type {
   NetworkServerSnapshotEntity,
   NetworkServerSnapshotEconomy,
   NetworkServerSnapshotResourceMovement,
-  LobbyMemberInfoPayload,
   LobbyMember,
   LobbyMemberRole,
-  MemberId,
-  SeatToken,
   LobbySettings,
   LobbyPlayer,
   NetworkRole,

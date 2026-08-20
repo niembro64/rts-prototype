@@ -38,13 +38,6 @@ import {
   type ContactMediumMask,
 } from './contactMedium';
 
-export {
-  canEntityProvideFullVision,
-
-  
-  getEntityFullVisionRadius,
-  
-} from '../sim/sensorCoverage';
 
 const VISION_CELL_SIZE = 512;
 /** Additional radius beyond a full-vision source where sounds carry

@@ -74,7 +74,7 @@ export type BotArmHostAttachment = Extract<
   UnitTurretHostAttachment,
   { kind: 'botArm' }
 >;
-export type BotArmId = BotArmHostAttachment['arm'];
+type BotArmId = BotArmHostAttachment['arm'];
 
 /** Local yaw/pitch a held turret takes from the arm carrying it. */
 type BotArmTurretAim = { yaw: number; pitch: number };

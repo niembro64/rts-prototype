@@ -8,7 +8,6 @@ export {
   TILE_FLOOR_Y,
   WATER_FULLY_OPAQUE,
   WATER_LEVEL,
-  terrainUnderwaterBrightnessAtHeight,
   type TerrainRuntimeConfig,
 } from './terrain/terrainConfig';
 export {
@@ -41,11 +40,9 @@ export {
   terrainMeshNormalFromSample,
 } from './terrain/terrainTileMap';
 export {
-  buildTerrainBuildabilityGrid,
   evaluateBuildabilityFootprint,
   getBuildSquareTerrainHeightRange,
   getTerrainBuildabilityGridCell,
-  getTerrainBuildabilityConfigKey,
 
 } from './terrain/terrainBuildability';
 export {
@@ -54,6 +51,5 @@ export {
   getTerrainBedNormal,
   getSurfaceHeight,
   getSurfaceNormal,
-  isFarFromWater,
   isWaterAt,
 } from './terrain/terrainSurface';

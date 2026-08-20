@@ -6,7 +6,7 @@ import {
   ClientViewStateBase,
   type ClientResourcePylonFlow,
 } from './ClientViewStateBase';
-export type { ClientResourcePylonFlow } from './ClientViewStateBase';
+
 
 const EMPTY_RESOURCE_PYLON_FLOWS: readonly ClientResourcePylonFlow[] = [];
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];

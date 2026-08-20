@@ -1,4 +1,4 @@
-export type PointXZ = Readonly<{ x: number; z: number }>;
+type PointXZ = Readonly<{ x: number; z: number }>;
 
 export function signedPolygonAreaXZ(points: readonly PointXZ[]): number {
   let area = 0;

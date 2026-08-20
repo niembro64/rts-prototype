@@ -174,7 +174,7 @@ function floatValue(value: number, roundToFloat32: boolean): number {
 }
 
 /** The per-instance decay channels shared by the burn renderers. */
-export type BurnDecayAttributes = {
+type BurnDecayAttributes = {
   lastHitAttr: THREE.InstancedBufferAttribute;
   heatAttr: THREE.InstancedBufferAttribute;
   charAttr: THREE.InstancedBufferAttribute;

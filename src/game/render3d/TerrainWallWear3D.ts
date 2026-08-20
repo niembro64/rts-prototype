@@ -103,7 +103,7 @@ export type TerrainWallWearMesh = {
  *  interpolated one is worthless. It blends back to the interpolated distance
  *  as the surface flattens, where there are vertices again and where the
  *  height difference stops meaning anything. */
-export type TerrainWallWear = {
+type TerrainWallWear = {
   /** Per vertex, per rim kind: (normalized distance, intensity, rim height).
    *  Six floats, laid out top-then-bottom. */
   rims: Float32Array;

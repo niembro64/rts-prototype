@@ -88,14 +88,6 @@ export type {
   ProjectileShot,
   ProjectileType,
   ShotConfig,
-  ShotLocomotion,
-  ShotLocomotionMedia,
-  ShotLocomotionMediumPhysics,
-  ShotLocomotionMotionModel,
-  ShotLocomotionTerminalOutcome,
-  ShotLocomotionTerminalPolicy,
-  ShotLocomotionTransitionOutcome,
-  ShotLocomotionTransitions,
   ShotProfile,
   ShotRuntimeProfile,
   ShotVisualProfile,
@@ -609,7 +601,7 @@ export type TurretState = 'idle' | 'tracking' | 'engaged';
 
 export type TurretEntityTaskOperation = 'attack';
 
-export type TurretEntityTask = {
+type TurretEntityTask = {
   kind: 'entity';
   operation: TurretEntityTaskOperation;
   targetId: EntityId;

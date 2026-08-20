@@ -44,7 +44,7 @@ type PlayerPathRequestLanes = {
 };
 
 /** Return true only when a real A* job was admitted for the selected team. */
-export type PathPlanServe = (entityId: EntityId, lane: number) => boolean;
+type PathPlanServe = (entityId: EntityId, lane: number) => boolean;
 
 export function selectPathPlanTeamTurn(
   tick: number,

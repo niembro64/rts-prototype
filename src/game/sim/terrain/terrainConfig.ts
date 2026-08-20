@@ -359,7 +359,7 @@ export const TERRAIN_RIDGE_CONFIG = {
  *      near-vertical).
  *    - floorClamp clamps at its position; a final safety clamp always
  *      runs at the end of the pipeline regardless. */
-export type TerrainPipelineStep =
+type TerrainPipelineStep =
   | 'naturalField'
   | 'ringRidge'
   | 'dividerRidges'

@@ -4,7 +4,7 @@ import type {
   UnitTurretHostAttachment,
 } from '@/types/blueprints';
 
-export type BotArmId = Extract<
+type BotArmId = Extract<
   UnitTurretHostAttachment,
   { kind: 'botArm' }
 >['arm'];

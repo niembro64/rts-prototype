@@ -11,9 +11,8 @@ export function magnitude(x: number, y: number): number {
 
 
 /** 3D vector magnitude. */
-export function magnitude3(x: number, y: number, z: number): number {
-  return Math.sqrt(x * x + y * y + z * z);
-}
+
+
 
 /**
  * Normalize an angle to the range [-π, π]
@@ -127,14 +126,8 @@ export function finiteOrZero(value: unknown): number {
  *  evenly across the stride window instead of every entity firing on
  *  the same tick. `stride <= 1` short-circuits to true so callers
  *  don't have to special-case the disabled-stride path. */
-export function shouldRunOnStride(
-  tick: number,
-  stride: number,
-  entityPhase: number = 0,
-): boolean {
-  if (stride <= 1) return true;
-  return ((tick + entityPhase) % stride) === 0;
-}
+
+
 
 
 

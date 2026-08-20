@@ -35,8 +35,6 @@ export type {
   LobbyPlayer,
   LobbyMember,
   LobbyMemberRole,
-  MemberId,
-  SeatToken,
   LobbySettings,
   NetworkRole,
   BattleHandoff,
@@ -191,7 +189,7 @@ export type NetworkResumeContext = {
   readonly verifyStateHash: CanonicalServerStateHash | null;
 };
 
-export type LockstepMessageSource = {
+type LockstepMessageSource = {
   readonly memberId: MemberId;
   readonly playerId: PlayerId | undefined;
 };

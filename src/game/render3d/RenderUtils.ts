@@ -7,33 +7,12 @@
 import * as THREE from 'three';
 import type { PlayerId } from '../sim/types';
 import { locomotionPieceColorHex } from './colorUtils';
-import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
 import { patchSurfaceChartSurface } from './SurfaceChartMaterial3D';
 export {
   growTypedArray as growFloat32Array,
   growTypedArray as growFloat64Array,
   growTypedArray as growUint8Array,
 } from '../memory/typedArrayGrowth';
-
-// Shared unit sphere used by makeSphere. Every former local copy built
-// its own sphere primitive; this is the one shared instance. It is a
-// module-level const shared across battles, so it intentionally lives
-// for the page session and must NOT be disposed at scene teardown.
-const sphereGeom = createPrimitiveSphereGeometry('unitDetail', 'close');
-
-/** A scaled, positioned sphere mesh on the shared unit sphere geometry. */
-export function makeSphere(
-  material: THREE.Material,
-  radius: number,
-  x: number,
-  y: number,
-  z: number,
-): THREE.Mesh {
-  const mesh = new THREE.Mesh(sphereGeom, material);
-  mesh.scale.setScalar(radius);
-  mesh.position.set(x, y, z);
-  return mesh;
-}
 
 /**
  * THE locomotion surface material, and the only definition of it.
