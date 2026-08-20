@@ -27,18 +27,10 @@ Gates for this work:
 
 ## C. Duplication → helpers (TypeScript)
 
-- [ ] **C3** The `LobbySettings` default factory is written out three times
-      (`gameCanvasRealBattleStartup.ts:329-345` and `:650-661`,
-      `gameCanvasDeterministicLockstepBackendContractTest.ts:308-322`). Extract one factory.
 - [ ] **C4** `Input3DModeClickControllerContractTest.ts` repeats the same ~30-field mode-controller
       stub 7 times (158-185, 525-552, 611-627, 692-712, 768-788, 846-866, 931-951).
       Extract `makeModeStub(overrides)`.
-- [ ] **C5** `ServerCommandAuthorizer.ts` repeats the same entity-id filter loop 6 times
-      (574, 594, 634, 659, 717, 741). Extract one helper.
-- [ ] **C6** `terrainCellTriangleIndex.ts` duplicates a 16-line triangle-walk loop in the same file
-      (67-82 ≡ 98-113). Same-file verbatim helper.
-- [ ] **C7** `Input3DManager.ts:373-395` ≡ `:548-570` — the same 23-field mode-accessor object
-      literal built twice. Extract one builder.
+
 - [ ] **C8** `snapshotEntityWirePack.ts` typed-full vs typed-placeholder decode paths duplicate four
       field-fill blocks (869-891 ≡ 1104-1126, 904-924 ≡ 1132-1152, 969-1016 ≡ 1208-1256).
       Same-file verbatim fill helpers only (wire layout is determinism-critical).

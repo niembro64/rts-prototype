@@ -324,6 +324,42 @@ export function loadAndApplyRealBattleTerrain(): RealBattleStartupTerrain {
   };
 }
 
+/** The terrain-derived fields shared by every consumer that has to describe a
+ *  battle's world: the lobby settings the host publishes and the GameServer
+ *  config it boots from. Written once so a new terrain knob cannot reach one
+ *  of them and miss the other — the two must agree or host and clients
+ *  generate different maps. */
+export function realBattleTerrainWorldFields(
+  terrain: RealBattleStartupTerrain,
+): Pick<
+  LobbySettings,
+  | 'centerMagnitude'
+  | 'ringMagnitude'
+  | 'dividersMagnitude'
+  | 'perimeterMagnitude'
+  | 'terrainPrecedence'
+  | 'terrainDTerrain'
+  | 'plateauWallSlopeDegrees'
+  | 'metalDepositStep'
+  | 'terrainDetail'
+  | 'mapWidthLandCells'
+  | 'mapLengthLandCells'
+> {
+  return {
+    centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
+    ringMagnitude: terrain.terrainRuntimeConfig.ringMagnitude,
+    dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
+    perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
+    terrainPrecedence: terrain.terrainRuntimeConfig.terrainPrecedence,
+    terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
+    plateauWallSlopeDegrees: terrain.terrainRuntimeConfig.plateauWallSlopeDegrees,
+    metalDepositStep: terrain.terrainRuntimeConfig.metalDepositStep,
+    terrainDetail: terrain.terrainRuntimeConfig.terrainDetail,
+    mapWidthLandCells: terrain.mapDimensions.widthLandCells,
+    mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
+  };
+}
+
 function buildRealBattleLobbySettingsFromTerrain(
   terrain: RealBattleStartupTerrain,
 ): LobbySettings {
@@ -331,18 +367,7 @@ function buildRealBattleLobbySettingsFromTerrain(
     // Presentation only, and the battle is already starting: the name the
     // lobby was listed under has no bearing on the world being built.
     lobbyName: '',
-    centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
-    ringMagnitude: terrain.terrainRuntimeConfig.ringMagnitude,
-    dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
-    perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
-    terrainPrecedence: terrain.terrainRuntimeConfig.terrainPrecedence,
-    terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
-    plateauWallSlopeDegrees:
-      terrain.terrainRuntimeConfig.plateauWallSlopeDegrees,
-    metalDepositStep: terrain.terrainRuntimeConfig.metalDepositStep,
-    terrainDetail: terrain.terrainRuntimeConfig.terrainDetail,
-    mapWidthLandCells: terrain.mapDimensions.widthLandCells,
-    mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
+    ...realBattleTerrainWorldFields(terrain),
     entityCountCap: getUnitCap('real'),
     allyTeamCount: BATTLE_CONFIG.allyTeamCount.default,
     pathfindingCellConsolidationMultiplier:
@@ -647,18 +672,7 @@ async function createRealBattleServer({
       allyTeamCount,
       aiPlayerIds,
       gameGenerationSeed,
-      centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
-      ringMagnitude: terrain.terrainRuntimeConfig.ringMagnitude,
-      dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
-      perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
-      terrainPrecedence: terrain.terrainRuntimeConfig.terrainPrecedence,
-      terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
-      plateauWallSlopeDegrees:
-        terrain.terrainRuntimeConfig.plateauWallSlopeDegrees,
-      metalDepositStep: terrain.terrainRuntimeConfig.metalDepositStep,
-      terrainDetail: terrain.terrainRuntimeConfig.terrainDetail,
-      mapWidthLandCells: terrain.mapDimensions.widthLandCells,
-      mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
+      ...realBattleTerrainWorldFields(terrain),
       metalCoverage: terrain.metalCoverage,
       liquidSurfaceMode: terrain.liquidSurfaceMode,
       converterTax: converterTax ?? loadStoredConverterTax('real'),

@@ -23,6 +23,7 @@ import {
 import type { PlayerId } from '../game/sim/types';
 import {
   createDeterministicLockstepBackend,
+  realBattleTerrainWorldFields,
   type RealBattleStartupTerrain,
 } from './gameCanvasRealBattleStartup';
 
@@ -308,18 +309,7 @@ function createLobbySettings(
 ): LobbySettings {
   return {
     lobbyName: '',
-    centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
-    ringMagnitude: terrain.terrainRuntimeConfig.ringMagnitude,
-    dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
-    perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
-    terrainPrecedence: terrain.terrainRuntimeConfig.terrainPrecedence,
-    terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
-    plateauWallSlopeDegrees:
-      terrain.terrainRuntimeConfig.plateauWallSlopeDegrees,
-    metalDepositStep: terrain.terrainRuntimeConfig.metalDepositStep,
-    terrainDetail: terrain.terrainRuntimeConfig.terrainDetail,
-    mapWidthLandCells: terrain.mapDimensions.widthLandCells,
-    mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
+    ...realBattleTerrainWorldFields(terrain),
     entityCountCap: 128,
     allyTeamCount: 2,
     pathfindingCellConsolidationMultiplier: 3,

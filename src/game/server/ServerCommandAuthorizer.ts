@@ -421,6 +421,31 @@ function authorizeScanCommand(command: ScanCommand, playerId: PlayerId): ScanCom
   return { ...command, playerId };
 }
 
+/** BAR-style order filtering: keep only the ids this player may actually issue
+ *  this order to, in their original order.
+ *
+ *  Returns null when nothing survives, the UNTOUCHED command when every id
+ *  survives (so the common case allocates nothing and the queued command keeps
+ *  its identity), and a narrowed copy otherwise. Every per-order authorizer
+ *  below differs only in its eligibility predicate — sharing this tail is what
+ *  keeps "empty means reject" and "full means pass through unchanged"
+ *  identical across all of them. */
+function authorizeEntityIds<C extends { entityIds: EntityId[] }>(
+  command: C,
+  isEligible: (id: EntityId) => boolean,
+): C | null {
+  const sourceIds = command.entityIds;
+  if (sourceIds.length === 0) return null;
+
+  const entityIds: EntityId[] = [];
+  for (let i = 0; i < sourceIds.length; i++) {
+    const id = sourceIds[i];
+    if (isEligible(id)) entityIds.push(id);
+  }
+  if (entityIds.length === 0) return null;
+  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+}
+
 function authorizeMoveCommand(
   world: WorldState,
   command: MoveCommand,
@@ -433,9 +458,8 @@ function authorizeMoveCommand(
     command.individualTargets !== undefined &&
     command.individualTargets.length === sourceIds.length;
 
-  const entityIds: EntityId[] = [];
-
   if (hasPerUnitTargets) {
+    const entityIds: EntityId[] = [];
     const individualTargets: MoveCommand['individualTargets'] = [];
     for (let i = 0; i < sourceIds.length; i++) {
       const id = sourceIds[i];
@@ -447,12 +471,7 @@ function authorizeMoveCommand(
     return { ...command, entityIds, individualTargets };
   }
 
-  for (let i = 0; i < sourceIds.length; i++) {
-    const id = sourceIds[i];
-    if (isOwnedUnit(world, id, playerId)) entityIds.push(id);
-  }
-  if (entityIds.length === 0) return null;
-  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+  return authorizeEntityIds(command, (id) => isOwnedUnit(world, id, playerId));
 }
 
 function authorizeUnitListCommand(
@@ -460,16 +479,7 @@ function authorizeUnitListCommand(
   command: UnitListCommand,
   playerId: PlayerId,
 ): UnitListCommand | null {
-  const sourceIds = command.entityIds;
-  if (sourceIds.length === 0) return null;
-
-  const entityIds: EntityId[] = [];
-  for (let i = 0; i < sourceIds.length; i++) {
-    const id = sourceIds[i];
-    if (isOwnedUnit(world, id, playerId)) entityIds.push(id);
-  }
-  if (entityIds.length === 0) return null;
-  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+  return authorizeEntityIds(command, (id) => isOwnedUnit(world, id, playerId));
 }
 
 function authorizeStopCommand(
@@ -477,18 +487,8 @@ function authorizeStopCommand(
   command: StopCommand,
   playerId: PlayerId,
 ): StopCommand | null {
-  const sourceIds = command.entityIds;
-  if (sourceIds.length === 0) return null;
-
-  const entityIds: EntityId[] = [];
-  for (let i = 0; i < sourceIds.length; i++) {
-    const id = sourceIds[i];
-    if (isOwnedBarStoppableEntity(world, id, playerId)) {
-      entityIds.push(id);
-    }
-  }
-  if (entityIds.length === 0) return null;
-  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+  return authorizeEntityIds(command, (id) =>
+    isOwnedBarStoppableEntity(world, id, playerId));
 }
 
 function authorizeWaitCommand(
@@ -500,18 +500,8 @@ function authorizeWaitCommand(
     return authorizeUnitListCommand(world, command, playerId) as WaitCommand | null;
   }
 
-  const sourceIds = command.entityIds;
-  if (sourceIds.length === 0) return null;
-
-  const entityIds: EntityId[] = [];
-  for (let i = 0; i < sourceIds.length; i++) {
-    const id = sourceIds[i];
-    if (isOwnedUnit(world, id, playerId) || isOwnedFactory(world, id, playerId)) {
-      entityIds.push(id);
-    }
-  }
-  if (entityIds.length === 0) return null;
-  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+  return authorizeEntityIds(command, (id) =>
+    isOwnedUnit(world, id, playerId) || isOwnedFactory(world, id, playerId));
 }
 
 function authorizeAttackCommand(
@@ -519,8 +509,6 @@ function authorizeAttackCommand(
   command: AttackCommand,
   playerId: PlayerId,
 ): AttackCommand | null {
-  const sourceIds = command.entityIds;
-  if (sourceIds.length === 0) return null;
   const target = world.getEntity(command.targetId);
   if (
     target === undefined ||
@@ -530,17 +518,13 @@ function authorizeAttackCommand(
     return null;
   }
 
-  const entityIds: EntityId[] = [];
-  for (let i = 0; i < sourceIds.length; i++) {
-    const id = sourceIds[i];
+  return authorizeEntityIds(command, (id) => {
     const entity = world.getEntity(id);
-    if (entity === undefined || entity.ownership?.playerId !== playerId) continue;
-    if (!entityHasBarAttackCommand(entity)) continue;
-    if (!entityCanBarAttackTarget(entity, target)) continue;
-    entityIds.push(id);
-  }
-  if (entityIds.length === 0) return null;
-  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+    return entity !== undefined
+      && entity.ownership?.playerId === playerId
+      && entityHasBarAttackCommand(entity)
+      && entityCanBarAttackTarget(entity, target);
+  });
 }
 
 function authorizeAttackGroundCommand(
@@ -548,22 +532,12 @@ function authorizeAttackGroundCommand(
   command: AttackGroundCommand,
   playerId: PlayerId,
 ): AttackGroundCommand | null {
-  const sourceIds = command.entityIds;
-  if (sourceIds.length === 0) return null;
-
-  const entityIds: EntityId[] = [];
-  for (let i = 0; i < sourceIds.length; i++) {
-    const entity = world.getEntity(sourceIds[i]);
-    if (
-      entity !== undefined &&
-      entity.ownership?.playerId === playerId &&
-      entityCanBarAttackGround(entity)
-    ) {
-      entityIds.push(entity.id);
-    }
-  }
-  if (entityIds.length === 0) return null;
-  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+  return authorizeEntityIds(command, (id) => {
+    const entity = world.getEntity(id);
+    return entity !== undefined
+      && entity.ownership?.playerId === playerId
+      && entityCanBarAttackGround(entity);
+  });
 }
 
 function authorizeAttackAreaCommand(
@@ -571,19 +545,12 @@ function authorizeAttackAreaCommand(
   command: AttackAreaCommand,
   playerId: PlayerId,
 ): AttackAreaCommand | null {
-  const sourceIds = command.entityIds;
-  if (sourceIds.length === 0) return null;
-
-  const entityIds: EntityId[] = [];
-  for (let i = 0; i < sourceIds.length; i++) {
-    const id = sourceIds[i];
+  return authorizeEntityIds(command, (id) => {
     const entity = world.getEntity(id);
-    if (entity === undefined || entity.ownership?.playerId !== playerId) continue;
-    if (!entityHasBarAreaAttackCommand(entity)) continue;
-    entityIds.push(id);
-  }
-  if (entityIds.length === 0) return null;
-  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+    return entity !== undefined
+      && entity.ownership?.playerId === playerId
+      && entityHasBarAreaAttackCommand(entity);
+  });
 }
 
 function authorizeSetUnitMoveStateCommand(
@@ -591,19 +558,12 @@ function authorizeSetUnitMoveStateCommand(
   command: SetUnitMoveStateCommand,
   playerId: PlayerId,
 ): SetUnitMoveStateCommand | null {
-  const sourceIds = command.entityIds;
-  if (sourceIds.length === 0) return null;
-
-  const entityIds: EntityId[] = [];
-  for (let i = 0; i < sourceIds.length; i++) {
-    const id = sourceIds[i];
+  return authorizeEntityIds(command, (id) => {
     const entity = world.getEntity(id);
-    if (entity === undefined || entity.ownership?.playerId !== playerId) continue;
-    if (!entityHasBarMoveStateCommand(entity)) continue;
-    entityIds.push(id);
-  }
-  if (entityIds.length === 0) return null;
-  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+    return entity !== undefined
+      && entity.ownership?.playerId === playerId
+      && entityHasBarMoveStateCommand(entity);
+  });
 }
 
 function authorizeGuardCommand(
@@ -613,17 +573,8 @@ function authorizeGuardCommand(
 ): GuardCommand | null {
   if (!isAlliedEntity(world, command.targetId, playerId)) return null;
 
-  const sourceIds = command.entityIds;
-  if (sourceIds.length === 0) return null;
-
-  const entityIds: EntityId[] = [];
-  for (let i = 0; i < sourceIds.length; i++) {
-    const id = sourceIds[i];
-    if (id === command.targetId) continue;
-    if (isOwnedUnit(world, id, playerId)) entityIds.push(id);
-  }
-  if (entityIds.length === 0) return null;
-  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+  return authorizeEntityIds(command, (id) =>
+    id !== command.targetId && isOwnedUnit(world, id, playerId));
 }
 
 function authorizeSetBuilderPriorityCommand(
@@ -631,24 +582,13 @@ function authorizeSetBuilderPriorityCommand(
   command: SetBuilderPriorityCommand,
   playerId: PlayerId,
 ): SetBuilderPriorityCommand | null {
-  const sourceIds = command.entityIds;
-  if (sourceIds.length === 0) return null;
-
-  const entityIds: EntityId[] = [];
-  for (let i = 0; i < sourceIds.length; i++) {
-    const id = sourceIds[i];
+  return authorizeEntityIds(command, (id) => {
     const entity = world.getEntity(id);
-    if (
-      entity !== undefined &&
-      entity.ownership?.playerId === playerId &&
-      entityHasBarBuilderPriorityCommand(entity) &&
-      (entity.builder !== null || entity.factory !== null)
-    ) {
-      entityIds.push(id);
-    }
-  }
-  if (entityIds.length === 0) return null;
-  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+    return entity !== undefined
+      && entity.ownership?.playerId === playerId
+      && entityHasBarBuilderPriorityCommand(entity)
+      && (entity.builder !== null || entity.factory !== null);
+  });
 }
 
 function authorizeSetCarrierSpawnCommand(
@@ -656,25 +596,14 @@ function authorizeSetCarrierSpawnCommand(
   command: SetCarrierSpawnCommand,
   playerId: PlayerId,
 ): SetCarrierSpawnCommand | null {
-  const sourceIds = command.entityIds;
-  if (sourceIds.length === 0) return null;
-
-  const entityIds: EntityId[] = [];
-  for (let i = 0; i < sourceIds.length; i++) {
-    const id = sourceIds[i];
+  return authorizeEntityIds(command, (id) => {
     const entity = world.getEntity(id);
-    if (
-      entity !== undefined &&
-      entity.type === 'unit' &&
-      entity.factory !== null &&
-      entityHasBarCarrierSpawnCommand(entity) &&
-      entity.ownership?.playerId === playerId
-    ) {
-      entityIds.push(id);
-    }
-  }
-  if (entityIds.length === 0) return null;
-  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+    return entity !== undefined
+      && entity.type === 'unit'
+      && entity.factory !== null
+      && entityHasBarCarrierSpawnCommand(entity)
+      && entity.ownership?.playerId === playerId;
+  });
 }
 
 /** Authorize a target-lock command: every entityId must be an owned combat
@@ -685,28 +614,18 @@ function authorizeSetTowerTargetCommand(
   command: SetTowerTargetCommand,
   playerId: PlayerId,
 ): SetTowerTargetCommand | null {
-  const sourceIds = command.entityIds;
-  if (sourceIds.length === 0) return null;
   const target = command.targetId !== null ? world.getEntity(command.targetId) : null;
   const isClearTarget = command.targetId === null &&
     command.targetX === undefined &&
     command.targetY === undefined;
-  const entityIds: EntityId[] = [];
-  for (let i = 0; i < sourceIds.length; i++) {
-    const id = sourceIds[i];
+  return authorizeEntityIds(command, (id) => {
     const entity = world.getEntity(id);
-    if (
-      entity !== undefined
+    return entity !== undefined
       && entityHasBarSetTargetCommand(entity)
       && (isClearTarget || entityCanBarAttackTarget(entity, target))
       && entity.ownership !== null
-      && entity.ownership.playerId === playerId
-    ) {
-      entityIds.push(id);
-    }
-  }
-  if (entityIds.length === 0) return null;
-  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+      && entity.ownership.playerId === playerId;
+  });
 }
 
 function authorizeSetFireEnabledCommand(
@@ -714,23 +633,12 @@ function authorizeSetFireEnabledCommand(
   command: SetFireEnabledCommand,
   playerId: PlayerId,
 ): SetFireEnabledCommand | null {
-  const sourceIds = command.entityIds;
-  if (sourceIds.length === 0) return null;
-
-  const entityIds: EntityId[] = [];
-  for (let i = 0; i < sourceIds.length; i++) {
-    const id = sourceIds[i];
+  return authorizeEntityIds(command, (id) => {
     const entity = world.getEntity(id);
-    if (
-      entity !== undefined &&
-      entity.ownership?.playerId === playerId &&
-      entityHasBarFireControlCommand(entity)
-    ) {
-      entityIds.push(id);
-    }
-  }
-  if (entityIds.length === 0) return null;
-  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+    return entity !== undefined
+      && entity.ownership?.playerId === playerId
+      && entityHasBarFireControlCommand(entity);
+  });
 }
 
 function authorizeSetCloakStateCommand(
@@ -738,22 +646,12 @@ function authorizeSetCloakStateCommand(
   command: SetCloakStateCommand,
   playerId: PlayerId,
 ): SetCloakStateCommand | null {
-  const sourceIds = command.entityIds;
-  if (sourceIds.length === 0) return null;
-  const entityIds: EntityId[] = [];
-  for (let i = 0; i < sourceIds.length; i++) {
-    const id = sourceIds[i];
+  return authorizeEntityIds(command, (id) => {
     const entity = world.getEntity(id);
-    if (
-      entity !== undefined &&
-      entity.ownership?.playerId === playerId &&
-      entityHasCloakCommand(entity)
-    ) {
-      entityIds.push(id);
-    }
-  }
-  if (entityIds.length === 0) return null;
-  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+    return entity !== undefined
+      && entity.ownership?.playerId === playerId
+      && entityHasCloakCommand(entity);
+  });
 }
 
 /** Authorize a command whose entityIds may reference any owned entity
@@ -764,16 +662,7 @@ function authorizeAnyEntityListCommand(
   command: AnyEntityListCommand,
   playerId: PlayerId,
 ): AnyEntityListCommand | null {
-  const sourceIds = command.entityIds;
-  if (sourceIds.length === 0) return null;
-
-  const entityIds: EntityId[] = [];
-  for (let i = 0; i < sourceIds.length; i++) {
-    const id = sourceIds[i];
-    if (isOwnedEntity(world, id, playerId)) entityIds.push(id);
-  }
-  if (entityIds.length === 0) return null;
-  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+  return authorizeEntityIds(command, (id) => isOwnedEntity(world, id, playerId));
 }
 
 function authorizeSetFactoryGuardCommand(
