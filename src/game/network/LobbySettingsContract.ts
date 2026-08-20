@@ -4,6 +4,7 @@ import { isLiquidSurfaceMode, isMetalCoverage } from '@/types/worldSurfaceMode';
 import { isTerrainPrecedence } from '@/types/terrainPrecedence';
 import { isPathfindingCellConsolidationMultiplier } from '@/types/pathfinding';
 import { isSimulationTickRateHz } from '@/types/simulationTickRate';
+import { MAX_LOBBY_NAME_LENGTH } from './lobbyName';
 
 const NUMERIC_FIELDS = [
   'centerMagnitude',
@@ -65,6 +66,14 @@ export function assertCurrentLobbySettings(
   if (!isSimulationTickRateHz(settings.simulationTickRateHz)) {
     throw new Error(
       `[${context}] simulationTickRateHz must be one of 1, 5, 10, 15, 20, 30, 45, 60`,
+    );
+  }
+  if (typeof settings.lobbyName !== 'string') {
+    throw new Error(`[${context}] missing or invalid lobbyName`);
+  }
+  if ((settings.lobbyName as string).length > MAX_LOBBY_NAME_LENGTH) {
+    throw new Error(
+      `[${context}] lobbyName must be at most ${MAX_LOBBY_NAME_LENGTH} characters`,
     );
   }
   if (typeof settings.slowDownAtFinalWaypoint !== 'boolean') {

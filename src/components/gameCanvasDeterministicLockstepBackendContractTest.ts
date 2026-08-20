@@ -195,6 +195,7 @@ function assertInitializationHashMismatch(): void {
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 0,
       terrainDetail: 1,
+      lobbyName: '',
       mapWidthLandCells: 9,
       mapLengthLandCells: 9,
       entityCountCap: 128,
@@ -306,6 +307,7 @@ function createLobbySettings(
   simulationTickRateHz = 20,
 ): LobbySettings {
   return {
+    lobbyName: '',
     centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
     ringMagnitude: terrain.terrainRuntimeConfig.ringMagnitude,
     dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,

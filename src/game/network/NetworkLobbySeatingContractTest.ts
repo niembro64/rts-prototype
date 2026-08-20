@@ -24,6 +24,7 @@ import type { LobbySettings } from '@/types/network';
 import type { PlayerId } from '../sim/types';
 
 const HANDOFF_SETTINGS: LobbySettings = {
+  lobbyName: '',
   centerMagnitude: 0,
   ringMagnitude: 0,
   dividersMagnitude: 0,
@@ -291,6 +292,63 @@ export function runNetworkLobbySeatingContractTest(): void {
     assert(
       groups[2].seats.length === 0,
       'the lobby must render the declared-but-empty side as empty, not omit it',
+    );
+  }
+
+  // --- deleting a side: only an empty one, and the gap closes behind it ----
+  //
+  // The host's remove control is offered per side, so it has to work on a side
+  // in the MIDDLE of the list, not just the last one. Sides are named by
+  // position (TEAM 1..N), so removing one has to renumber the ones above it —
+  // otherwise the roster shows a TEAM 3 in a lobby that declares two sides,
+  // and the terrain slices stop matching the labels.
+  {
+    const members = new NetworkLobbyMembers();
+    members.seedHost();
+    members.admit(2, 'Two');
+    members.admit(3, 'Three');
+    members.seat(2, 3);
+    members.seat(3, 3);
+    members.setAllyTeam(1, FIRST_ALLY_TEAM_ID, 3);
+    members.setAllyTeam(2, FIRST_ALLY_TEAM_ID + 2, 3);
+    members.setAllyTeam(3, FIRST_ALLY_TEAM_ID + 2, 3);
+
+    assert(
+      members.allyTeamIsEmpty(FIRST_ALLY_TEAM_ID + 1),
+      'the middle side holds nobody',
+    );
+    assert(
+      !members.allyTeamIsEmpty(FIRST_ALLY_TEAM_ID),
+      'a side with a commander on it does not read as empty',
+    );
+    assert(
+      !members.collapseAllyTeam(FIRST_ALLY_TEAM_ID),
+      'an occupied side must refuse to be deleted',
+    );
+    assert(
+      members.get(2)?.allyTeamId === FIRST_ALLY_TEAM_ID + 2,
+      'a refused deletion must move nobody',
+    );
+
+    assert(
+      members.collapseAllyTeam(FIRST_ALLY_TEAM_ID + 1),
+      'an empty side is deletable',
+    );
+    assert(
+      members.get(1)?.allyTeamId === FIRST_ALLY_TEAM_ID,
+      'a seat below the removed side keeps its side',
+    );
+    assert(
+      members.get(2)?.allyTeamId === FIRST_ALLY_TEAM_ID + 1 &&
+        members.get(3)?.allyTeamId === FIRST_ALLY_TEAM_ID + 1,
+      'seats above the removed side shift down together, staying allied',
+    );
+
+    const groups = resolveLobbyTeamGroups(members.seatedPlayers(), 2);
+    assert(groups.length === 2, 'the lobby renders the two remaining sides');
+    assert(
+      groups[0].seats.length === 1 && groups[1].seats.length === 2,
+      'the surviving sides keep the seats they had before the gap closed',
     );
   }
 

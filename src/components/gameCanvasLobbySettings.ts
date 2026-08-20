@@ -62,9 +62,11 @@ import { setTerrainRuntimeConfig } from '../game/sim/Terrain';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
 import { applyWorldSurfaceSelection } from './gameCanvasWorldSurfaceSelection';
 import { assertCurrentLobbySettings } from '../game/network/LobbySettingsContract';
+import { normalizeLobbyName } from '../game/network/lobbyName';
 
 type GameCanvasLobbySettings = {
   currentLobbySettings(): LobbySettings;
+  applyLobbyName(value: string, broadcast?: boolean): void;
   broadcastLobbySettingsIfHost(): void;
   applyCenterMagnitude(value: number, broadcast?: boolean): void;
   applyRingMagnitude(value: number, broadcast?: boolean): void;
@@ -109,6 +111,9 @@ type GameCanvasLobbySettingsOptions = {
   simulationTickRateHz: Ref<number>;
   mapWidthLandCells: Ref<number>;
   mapLengthLandCells: Ref<number>;
+  /** What the host called this lobby. Session state, never persisted — a
+   *  name belongs to one lobby, not to this browser. */
+  lobbyName: Ref<string>;
   /** UI mirror of the host's declared side count. NetworkManager holds the
    *  authoritative copy; this ref is what the lobby renders, and it is
    *  written here so host edits and inbound host settings both land in one
@@ -149,6 +154,7 @@ export function useGameCanvasLobbySettings({
   simulationTickRateHz,
   mapWidthLandCells,
   mapLengthLandCells,
+  lobbyName,
   allyTeamCount,
   slowDownAtFinalWaypointStoreVersion,
   worldSurfaceStoreVersion,
@@ -184,6 +190,7 @@ export function useGameCanvasLobbySettings({
 
   function currentLobbySettings(): LobbySettings {
     return {
+      lobbyName: normalizeLobbyName(lobbyName.value),
       centerMagnitude: centerMagnitude.value,
       ringMagnitude: ringMagnitude.value,
       dividersMagnitude: dividersMagnitude.value,
@@ -210,6 +217,20 @@ export function useGameCanvasLobbySettings({
   function broadcastLobbySettingsIfHost(): void {
     if (networkRole.value === 'host' && roomCode.value !== '') {
       network.broadcastLobbySettings(currentLobbySettings());
+    }
+  }
+
+  /** Host renames the lobby. Only the listing and the lobby screen change —
+   *  no terrain, so nothing to rebuild and no preview restart. */
+  function applyLobbyName(value: string, broadcast = true): void {
+    const normalized = normalizeLobbyName(value);
+    if (lobbyName.value === normalized) return;
+    lobbyName.value = normalized;
+    if (broadcast) {
+      broadcastLobbySettingsIfHost();
+      // The directory row carries the name, so it is stale the moment the
+      // host retypes it. Republish rather than waiting out the heartbeat.
+      network.refreshLobbyListing();
     }
   }
 
@@ -544,6 +565,7 @@ export function useGameCanvasLobbySettings({
       slowDownAtFinalWaypointStoreVersion.value++;
     }
     setUnitCap('real', settings.entityCountCap);
+    lobbyName.value = normalizeLobbyName(settings.lobbyName);
     // The host owns the side count; a client adopts it without answering
     // back. A change reshapes the terrain slices, so the preview restarts
     // for the same reason a map-size change does.
@@ -642,6 +664,7 @@ export function useGameCanvasLobbySettings({
   return {
     currentLobbySettings,
     broadcastLobbySettingsIfHost,
+    applyLobbyName,
     applyCenterMagnitude,
     applyRingMagnitude,
     applyDividersMagnitude,

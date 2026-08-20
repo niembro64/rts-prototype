@@ -328,6 +328,9 @@ function buildRealBattleLobbySettingsFromTerrain(
   terrain: RealBattleStartupTerrain,
 ): LobbySettings {
   return {
+    // Presentation only, and the battle is already starting: the name the
+    // lobby was listed under has no bearing on the world being built.
+    lobbyName: '',
     centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
     ringMagnitude: terrain.terrainRuntimeConfig.ringMagnitude,
     dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,

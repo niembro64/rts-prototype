@@ -430,6 +430,38 @@ export class NetworkLobbyMembers {
     return true;
   }
 
+  /**
+   * Whether a declared side holds no seats.
+   *
+   * The question the host's remove control asks: a side with a commander on
+   * it cannot be deleted, because deleting it would move somebody without
+   * being asked to.
+   */
+  allyTeamIsEmpty(allyTeamId: number): boolean {
+    for (const member of this.members.values()) {
+      if (member.playerId === undefined) continue;
+      if (member.allyTeamId === allyTeamId) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Delete one EMPTY side and close the gap behind it.
+   *
+   * Sides are named by position — TEAM 1..N — so removing one in the middle
+   * has to renumber the ones above it, or the roster would show a hole the
+   * side count says is not there. Refused for a side that holds a seat: the
+   * caller's job is to bench the players first, not this one's to move them.
+   */
+  collapseAllyTeam(allyTeamId: number): boolean {
+    if (!this.allyTeamIsEmpty(allyTeamId)) return false;
+    for (const member of this.members.values()) {
+      if (member.allyTeamId === undefined) continue;
+      if (member.allyTeamId > allyTeamId) member.allyTeamId--;
+    }
+    return true;
+  }
+
   /** Pull every seat back inside a shrunken side count. */
   reseatOutOfRangeSides(sideCount: number): boolean {
     let changed = false;
