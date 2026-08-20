@@ -149,6 +149,12 @@ type RenderEntityUpdatePacket3D = {
    *  rung: > 0 inside the fade band, where the proxy glyph is drawn ON
    *  TOP of the still-fully-opaque model. */
   entityLodProxyFadeAlpha?: (entity: Entity) => number;
+  /** Owner-player bitmask of whose force material this client may draw
+   *  (0 = no restriction). Force material is one material in two shapes, so
+   *  a mirror panel answers to the same Shield Detection Lab rule the shield
+   *  renderer applies to fields — reading an ENEMY's barrier is what the lab
+   *  buys, at every rung and in every LOD mode. */
+  shieldVisibilityTeamMask?: number;
   scoped: boolean;
 };
 
@@ -340,6 +346,7 @@ export class Render3DEntities {
   private _unitChainMat = new THREE.Matrix4();
 
   private turretShieldPanelsEnabled = true;
+  private shieldVisibilityTeamMask = 0;
 
   constructor(
     world: THREE.Group,
@@ -504,6 +511,7 @@ export class Render3DEntities {
       ?? snapshotRenderFrameState(this.camera, this.getViewportHeight(), this.frameState);
     this.frameState = newFrameState;
     this.turretShieldPanelsEnabled = turretShieldPanelsEnabled;
+    this.shieldVisibilityTeamMask = entityPacket?.shieldVisibilityTeamMask ?? 0;
     this.isEntityEmissionFarLod = entityPacket?.isEntityEmissionFarLod
       ?? DEFAULT_ENTITY_EMISSION_FAR_LOD;
     this.entityDetailRung = entityPacket?.entityDetailRung;
@@ -1159,6 +1167,26 @@ export class Render3DEntities {
         } else {
           const shieldPanelTurretIndex = unitRows.shieldPanelTurretIndex[row];
           const shieldPanelTurret = shieldPanelTurretIndex >= 0 ? turrets[shieldPanelTurretIndex] : undefined;
+          const shieldPanelRow = turretRows !== undefined &&
+            shieldPanelTurretIndex >= 0 &&
+            shieldPanelTurretIndex < turretRows.count
+            ? turretRows.start + shieldPanelTurretIndex
+            : -1;
+          // The barrier's own raise/lower progress, read off the same wire
+          // field a dome's fade comes from. A lowered mirror is drawn at zero
+          // alpha rather than special-cased away: the sim has already stopped
+          // stamping its surface, so what is left is purely the visual ramp.
+          const shieldPanelProgress = shieldPanelRow >= 0
+            ? turretRows!.views.shieldRange[shieldPanelRow]
+            : shieldPanelTurret?.shield?.range ?? 0;
+          // Force material this client is not cleared to read simply is not
+          // raised as far as the renderer is concerned. The mirror's ARMS
+          // still draw — hardware is hardware — so an unreadable Loris looks
+          // exactly like one whose side has no Shield Generator up, which is
+          // the honest picture: you cannot tell, and that is the point.
+          const shieldPanelPlateProgress = this.mayDrawForceMaterialOf(e)
+            ? shieldPanelProgress
+            : 0;
           const shieldPanelMaterialized = bodyMaterialized && (
             turretRows !== undefined
               ? shieldPanelTurretIndex >= 0 && shieldPanelTurretIndex < turretRows.count
@@ -1172,6 +1200,7 @@ export class Render3DEntities {
               shieldPanelTurretIndex,
               this._smoothLiftedPos,
               this._smoothParentQuat,
+              shieldPanelPlateProgress,
               shieldPanelTurret?.rotation,
               shieldPanelTurret?.pitch,
             );
@@ -1248,6 +1277,20 @@ export class Render3DEntities {
       const type = mesh.locomotion?.type;
       if (type === 'drone' || type === 'plane') this.activeLocomotionUnitIds.add(id);
     }
+  }
+
+  /** Whether this client may see the force material `entity` is running.
+   *  Mirrors ShieldRenderer3D's field rule so one material cannot be opaque
+   *  to intelligence in one shape and transparent in the other: a side always
+   *  reads its own equipment, and reading an enemy's is what the Shield
+   *  Detection Lab buys (budget_design_philosophy.html, "Whose fields a
+   *  client draws"). */
+  private mayDrawForceMaterialOf(entity: Entity): boolean {
+    const mask = this.shieldVisibilityTeamMask;
+    if (mask === 0) return true;
+    const ownerId = entity.ownership?.playerId ?? 0;
+    const ownerBit = ownerId >= 1 && ownerId <= 31 ? 1 << (ownerId - 1) : 0;
+    return (mask & ownerBit) !== 0;
   }
 
   private deactivateShieldPanelMesh(mirrors: ShieldPanelMesh): void {

@@ -49,7 +49,17 @@ export class EntityCacheManager {
   private cachedFactoryBuildings: Entity[] = [];
   private cachedFactoryUnits: Entity[] = [];
   private cachedFactoriesByPlayer: Map<PlayerId, Entity[]> = new Map();
+  /** Hosts running a FIELD barrier (sphere / cylinder). This is the
+   *  barrier-geometry list: `updateShieldState` derives `_activeShields`
+   *  from it and the shield renderer draws its surfaces. */
   private cachedShieldUnits: Entity[] = [];
+  /** Every host carrying ANY shield emission — field barriers AND flat
+   *  mirror panels. Shields are one material in two shapes, so the
+   *  powered-equipment rule (Shield Generator gate + authored transition)
+   *  has to walk this list, not the barrier-only one; otherwise a panel
+   *  host is the one piece of force material that runs unpowered.
+   *  See budget_design_philosophy.html, "Shields are powered equipment". */
+  private cachedShieldEquipmentUnits: Entity[] = [];
   private cachedCommanderUnits: Entity[] = [];
   private cachedBuilderUnits: Entity[] = [];
   /** Airborne-cruising units specifically. Force and snapshot-delta passes poll these
@@ -151,6 +161,7 @@ export class EntityCacheManager {
     this.cachedFactoryBuildings.length = 0;
     this.cachedFactoryUnits.length = 0;
     this.cachedShieldUnits.length = 0;
+    this.cachedShieldEquipmentUnits.length = 0;
     this.cachedCommanderUnits.length = 0;
     this.cachedBuilderUnits.length = 0;
     this.cachedCruisingUnits.length = 0;
@@ -192,6 +203,7 @@ export class EntityCacheManager {
       const turrets = entity.combat.turrets;
       let hasShield = false;
       let hasBeam = false;
+      let hasShieldEquipment = false;
       let hasCombatTurret = false;
       for (let i = 0; i < turrets.length; i++) {
         const config = turrets[i].config;
@@ -201,10 +213,18 @@ export class EntityCacheManager {
         // its FIELD is still gameplay-readable geometry the shield renderer
         // has to draw. Classify the shield before the attack-emitter gate or
         // every sphere host silently drops out of the shield render list.
-        if (shot !== null && shot.type === 'shield' && shot.barrier !== undefined) {
-          hasShield = true;
-          if (hasBeam) break;
-          continue;
+        //
+        // A flat mirror panel is the same material in a different shape: it
+        // has no barrier, so it is NOT field geometry and stays an attack
+        // emitter (aiming at the incoming threat is its whole job), but it
+        // is still shield equipment and must be powered like one.
+        if (shot !== null && shot.type === 'shield') {
+          hasShieldEquipment = true;
+          if (shot.barrier !== undefined) {
+            hasShield = true;
+            if (hasBeam) break;
+            continue;
+          }
         }
         if (!isAttackEmitterConfig(config)) continue;
         hasCombatTurret = true;
@@ -214,6 +234,9 @@ export class EntityCacheManager {
       }
       if (hasCombatTurret) addEntityToList(this.cachedArmedEntities, entity, sortedInsert);
       if (hasShield) addEntityToList(this.cachedShieldUnits, entity, sortedInsert);
+      if (hasShieldEquipment) {
+        addEntityToList(this.cachedShieldEquipmentUnits, entity, sortedInsert);
+      }
       if (hasBeam) addEntityToList(this.cachedBeamUnits, entity, sortedInsert);
     }
     switch (entity.type) {
@@ -345,6 +368,7 @@ export class EntityCacheManager {
     removeEntityFromList(this.cachedFactoryBuildings, entity);
     removeEntityFromList(this.cachedFactoryUnits, entity);
     removeEntityFromList(this.cachedShieldUnits, entity);
+    removeEntityFromList(this.cachedShieldEquipmentUnits, entity);
     removeEntityFromList(this.cachedCommanderUnits, entity);
     removeEntityFromList(this.cachedBuilderUnits, entity);
     removeEntityFromList(this.cachedCruisingUnits, entity);
@@ -496,6 +520,10 @@ export class EntityCacheManager {
 
   getShieldUnits(): Entity[] {
     return this.cachedShieldUnits;
+  }
+
+  getShieldEquipmentUnits(): Entity[] {
+    return this.cachedShieldEquipmentUnits;
   }
 
   getCommanderUnits(): Entity[] {

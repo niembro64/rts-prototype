@@ -88,16 +88,23 @@ export interface ShieldSurfacePoolApi {
     includeSpheres: number,
     includePanels: number,
   ) => number;
-  /** AIM-08.2 — ballistic-arc shield clearance against sphere surfaces.
-   *  Approximates the parabola `pos = launch + v·t − 0.5·g·ẑ·t²` from
-   *  0..flightTime, with the same boundary-crossing rule as the segment
-   *  kernel. Returns 1 if total crossings ≤ `maxCrossings`, 0 otherwise. */
+  /** AIM-08.2 — ballistic-arc shield clearance against BOTH shapes of the
+   *  one force material. Approximates the parabola
+   *  `pos = launch + v·t − 0.5·g·ẑ·t²` from 0..flightTime, with the same
+   *  boundary-crossing rule as the segment kernel. Returns 1 if total
+   *  crossings ≤ `maxCrossings`, 0 otherwise.
+   *
+   *  Not on a live path: the shipped gate is the straight segment, and this
+   *  is the kernel for the descending-leg refinement the design doc leaves
+   *  as allowed future work. */
   readonly clearanceArc: (
     launchX: number, launchY: number, launchZ: number,
     launchVx: number, launchVy: number, launchVz: number,
     flightTime: number,
     excludeOwnerEntityId: number,
     maxCrossings: number,
+    includeSpheres: number,
+    includePanels: number,
   ) => number;
 }
 

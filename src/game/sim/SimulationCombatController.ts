@@ -138,10 +138,13 @@ export class SimulationCombatController {
     // Update shield state before projectile emission. Aimed tube shields
     // are one turret with two emissions: the physical tube and the
     // sprayed payload both derive from the same engaged lock this tick.
-    const shieldUnits = this.world.turretShieldSpheresEnabled
-      ? this.world.getShieldUnits()
-      : undefined;
-    if (shieldUnits && shieldUnits.length > 0) {
+    //
+    // This runs over every shield HOST, panels included: powering and the
+    // authored raise/lower transition belong to the material, not to one of
+    // its two shapes. The sphere toggle is applied inside updateShieldState,
+    // where it drops field surfaces without freezing anyone's transition.
+    const shieldEquipmentUnits = this.world.getShieldEquipmentUnits();
+    if (shieldEquipmentUnits.length > 0) {
       updateShieldState(this.world, dtMs);
     } else {
       resetShieldBuffers();
@@ -157,8 +160,13 @@ export class SimulationCombatController {
     stampShieldSurfacePool(this.world);
 
     // Update shield sounds based on the just-written transition progress.
-    if (shieldUnits && shieldUnits.length > 0) {
-      this.emitSimEvents(updateShieldSounds(this.world, shieldUnits), onSimEvent);
+    // Field hosts only: the mirror shape authors no hit sound and has no
+    // hum, so there is nothing for the sound pass to say about it.
+    const shieldFieldUnits = this.world.turretShieldSpheresEnabled
+      ? this.world.getShieldUnits()
+      : undefined;
+    if (shieldFieldUnits && shieldFieldUnits.length > 0) {
+      this.emitSimEvents(updateShieldSounds(this.world, shieldFieldUnits), onSimEvent);
     }
     SIM_TICK_INSTRUMENTATION.phase('combat.shields');
 
