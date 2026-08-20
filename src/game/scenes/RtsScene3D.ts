@@ -43,6 +43,7 @@ import { getGraphicsConfig } from '@/clientBarConfig';
 import type { ClientCommandSink } from '../input/ClientCommandSink';
 import type { BarBuildCategoryId } from '../input/buildMenuLayout';
 import { ThreeApp } from '../render3d/ThreeApp';
+import { resolveCameraTargetBounds } from '../render3d/CameraTargetBounds3D';
 import { Render3DEntities } from '../render3d/Render3DEntities';
 import { Input3DManager } from '../render3d/Input3DManager';
 import { BeamRenderer3D } from '../render3d/BeamRenderer3D';
@@ -110,10 +111,7 @@ import type {
   BuildingBlueprintId,
 } from '../sim/types';
 
-import {
-  CAMERA_CONSTRAINTS,
-  WORLD_PADDING_PERCENT,
-} from '../../config';
+import { CAMERA_CONSTRAINTS } from '../../config';
 import { BATTLE_CONFIG } from '../../battleBarConfig';
 import {
   DEFAULT_TERRAIN_PRECEDENCE,
@@ -715,15 +713,16 @@ export class RtsScene3D {
       () => this.onCameraQuadUpdate,
     );
 
-    // Camera clamping: keep the orbit target inside a padded map region.
+    // Camera clamping: keep the orbit target inside the padded map region
+    // UNIONED with the out-of-map land we draw (the info annex the caption
+    // stands on), so every rendered surface can be panned to.
     if (CAMERA_CONSTRAINTS.targetBounds === 'map-padding') {
-      const paddingX = this.mapWidth * WORLD_PADDING_PERCENT;
-      const paddingY = this.mapHeight * WORLD_PADDING_PERCENT;
+      const bounds = resolveCameraTargetBounds(this.mapWidth, this.mapHeight);
       this.threeApp.orbit.setTargetBounds(
-        -paddingX,
-        -paddingY,
-        this.mapWidth + paddingX,
-        this.mapHeight + paddingY,
+        bounds.minX,
+        bounds.minZ,
+        bounds.maxX,
+        bounds.maxZ,
       );
     }
   }

@@ -10,6 +10,7 @@ import {
   resolveMapInfoAnnexFootprint,
   resolveMapInfoAnnexLiquidRows,
 } from './MapInfoAnnex3D';
+import { resolveCameraTargetBounds } from './CameraTargetBounds3D';
 import { getFloatingWaterOverhang } from './WorldBoxGeometry3D';
 import { LAND_TILE_GROUND_LIFT, MAP_INFO_ANNEX_RENDER_CONFIG } from '@/config';
 import { getAllyTeamBaseAngle } from '../sim/playerLayout';
@@ -43,6 +44,33 @@ export function runMapInfoAnnex3DContractTest(): void {
     [7000, 23800],
   ] as const) {
     const annex = resolveMapInfoAnnexFootprint(mapWidth, mapHeight);
+
+    // The camera rail has to reach the land we draw. The annex is rendered
+    // terrain outside the map square, so an orbit focus railed to the square
+    // alone would show the caption without ever letting the player pan onto
+    // it.
+    const cameraBounds = resolveCameraTargetBounds(mapWidth, mapHeight);
+    assertContract(
+      cameraBounds.minX <= 0 &&
+        cameraBounds.minZ <= 0 &&
+        cameraBounds.maxX >= mapWidth &&
+        cameraBounds.maxZ >= mapHeight,
+      'the camera rail must still cover the whole playable map square',
+    );
+    assertContract(
+      cameraBounds.minX <= annex.minX &&
+        cameraBounds.minZ <= annex.minZ &&
+        cameraBounds.maxX >= annex.maxX &&
+        cameraBounds.maxZ >= annex.maxZ,
+      'the camera rail must cover the info annex footprint',
+    );
+    assertContract(
+      cameraBounds.minX <= annex.attachX + annex.outX * annex.depth &&
+        cameraBounds.maxX >= annex.attachX + annex.outX * annex.depth &&
+        cameraBounds.minZ <= annex.attachZ + annex.outZ * annex.depth &&
+        cameraBounds.maxZ >= annex.attachZ + annex.outZ * annex.depth,
+      'the camera focus must reach the annex far rim, not just its seam',
+    );
 
     // The annex belongs to ally team 0, at every side count: the layout's
     // first-side angle is one constant, and the annex must be phased off it
