@@ -88,6 +88,7 @@ import { assertCurrentLobbySettings } from './LobbySettingsContract';
 import { resolveLobbyDisplayName } from './lobbyName';
 import { MAX_LOBBY_PLAYERS } from './LobbyDirectory';
 import { getMultiplayerBackend } from './multiplayer/multiplayerBackendRegistry';
+import { isTauriRuntime } from '../../browserRuntime';
 import {
   admitsSeating,
   admitsSpectators,
@@ -126,14 +127,17 @@ if (peerUtil === undefined) {
   throw new Error('PeerJS util.defaultConfig is unavailable');
 }
 
+/** The signaling server a session dials: host/port/path/secure for the
+ *  `Peer` constructor, or `null` for the public PeerJS cloud. */
+type PeerServerTarget = Pick<PeerOptions, 'host' | 'port' | 'path' | 'secure'>;
+
 /** Dev/test override for the PeerJS signaling server. Set
  *  VITE_BA_PEER_HOST (plus optional VITE_BA_PEER_PORT,
  *  VITE_BA_PEER_PATH, VITE_BA_PEER_SECURE) to point the lobby at a
- *  self-hosted `peerjs --port N` server instead of the public cloud —
- *  the cloud throttles repeated connections from one IP, which breaks
- *  automated two-page testing and local development loops. Unset, the
- *  default cloud behavior is unchanged. */
-function readPeerServerOverride(): Pick<PeerOptions, 'host' | 'port' | 'path' | 'secure'> | null {
+ *  self-hosted `peerjs --port N` server. Wins over both the same-origin
+ *  relay and the public cloud, so automated two-page tests keep their
+ *  private signaling regardless of what a backend answers. */
+function readPeerServerOverride(): PeerServerTarget | null {
   const env = import.meta.env as Record<string, string | undefined>;
   const host = env['VITE_BA_PEER_HOST'];
   if (typeof host !== 'string' || host === '') return null;
@@ -150,7 +154,8 @@ function readPeerServerOverride(): Pick<PeerOptions, 'host' | 'port' | 'path' | 
   };
 }
 
-const PEER_OPTIONS: PeerOptions = {
+/** ICE and debug settings shared by every signaling choice. */
+const PEER_BASE_OPTIONS: PeerOptions = {
   debug: 0,
   // Keep PeerJS's default TURN fallback. The previous STUN-only
   // override worked on easy local networks but could fail for real
@@ -162,8 +167,80 @@ const PEER_OPTIONS: PeerOptions = {
       { urls: 'stun:stun1.l.google.com:19302' },
     ],
   },
-  ...(readPeerServerOverride() ?? {}),
 };
+
+/** The peerjs client appends `peerjs` to this to form the socket URL, so on
+ *  games.niemo.io the socket is wss://…/api/signal/peerjs — the same nginx
+ *  and the same backend that serve the game and the lobby directory. */
+const SELF_HOSTED_SIGNAL_PATH = '/api/signal/';
+
+/** Where a build with no same-origin backend (the Tauri desktop app, a
+ *  file:// open) finds the relay. Matches LobbyDirectory's fallback host. */
+const DEPLOYED_SIGNAL_HOST = 'games.niemo.io';
+
+/** How long the relay probe may take before the session settles for the
+ *  public cloud. Same-origin answers in tens of milliseconds; this exists
+ *  so a dead backend costs one short pause, never a hang. */
+const SIGNAL_PROBE_TIMEOUT_MS = 2500;
+
+/** The self-hosted relay this page would use, plus the URL that proves it
+ *  is alive. Same-origin wherever the game is served over http(s) — nginx
+ *  in production, the Vite proxy in dev — and the deployed host for Tauri,
+ *  which loads from a custom protocol with no backend behind it. */
+function selfHostedSignalCandidate(): { target: PeerServerTarget; probeUrl: string } {
+  if (
+    !isTauriRuntime() &&
+    typeof window !== 'undefined' &&
+    /^https?:$/.test(window.location.protocol)
+  ) {
+    const secure = window.location.protocol === 'https:';
+    const port = window.location.port !== ''
+      ? Number(window.location.port)
+      : secure ? 443 : 80;
+    return {
+      target: { host: window.location.hostname, port, path: SELF_HOSTED_SIGNAL_PATH, secure },
+      probeUrl: `${window.location.origin}/api/signal/health`,
+    };
+  }
+  return {
+    target: { host: DEPLOYED_SIGNAL_HOST, port: 443, path: SELF_HOSTED_SIGNAL_PATH, secure: true },
+    probeUrl: `https://${DEPLOYED_SIGNAL_HOST}/api/signal/health`,
+  };
+}
+
+/**
+ * Decide where this session signals, once, before its peer is created.
+ *
+ * The public PeerJS cloud used to be the only choice, and it is why online
+ * play "worked sometimes": a free shared EU box that throttles repeated
+ * connections from one IP and drops sockets mid-OFFER, which surfaced as
+ * "Connection timeout - room may not exist" with a perfectly healthy lobby
+ * listing. The self-hosted relay on games.niemo.io shares nginx — and
+ * therefore availability — with the game itself, so it is preferred
+ * whenever its health probe answers.
+ *
+ * The probe, not a constant, is what keeps every launch working: a dev
+ * server without the backend running, an outdated deployed backend, or an
+ * outage all fail the probe and degrade to exactly the old cloud behavior.
+ * Host and joiner run the same probe against the same URL, which is what
+ * keeps them dialing the same server.
+ */
+async function resolvePeerServerTarget(): Promise<PeerServerTarget | null> {
+  const override = readPeerServerOverride();
+  if (override !== null) return override;
+  const candidate = selfHostedSignalCandidate();
+  try {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), SIGNAL_PROBE_TIMEOUT_MS);
+    const response = await fetch(candidate.probeUrl, { signal: abort.signal, cache: 'no-store' });
+    clearTimeout(timer);
+    if (!response.ok) return null;
+    const health = (await response.json()) as { peerSignal?: string };
+    return health.peerSignal === 'ready' ? candidate.target : null;
+  } catch {
+    return null;
+  }
+}
 
 /** The host always seats itself first, so player 1 IS the host. Clients use
  *  this to tell "the host vanished" apart from "some other player left". */
@@ -763,8 +840,8 @@ export class NetworkManager {
     return callback !== undefined ? callback() : undefined;
   }
 
-  private createPeer(peerId: string): Peer {
-    return new Peer(peerId, PEER_OPTIONS);
+  private createPeer(peerId: string, serverTarget: PeerServerTarget | null): Peer {
+    return new Peer(peerId, { ...PEER_BASE_OPTIONS, ...(serverTarget ?? {}) });
   }
 
   private clearSignalingReconnect(): void {
@@ -892,6 +969,12 @@ export class NetworkManager {
     this.localMemberId = HOST_MEMBER_ID;
     this.syncLocalSeat();
 
+    // Decided before the peer exists so the unavailable-id retry below
+    // recreates its peer against the same server; a joiner resolving the
+    // same probe is what lets it find this room.
+    const serverTarget = await resolvePeerServerTarget();
+    if (!this.isCurrentSession(generation)) throw new Error('Network setup canceled');
+
     return new Promise((resolve, reject) => {
       let resolved = false;
       const isCurrentPeer = (peer: Peer): boolean =>
@@ -953,7 +1036,7 @@ export class NetworkManager {
             // Room code already in use, try another
             peer.destroy();
             this.roomCode = generateRoomCode();
-            const retryPeer = this.createPeer(this.getUniversalGameId());
+            const retryPeer = this.createPeer(this.getUniversalGameId(), serverTarget);
             this.peer = retryPeer;
             installHostPeerHandlers(retryPeer);
           } else if (
@@ -986,7 +1069,7 @@ export class NetworkManager {
       }, 10000);
 
       // Use room code as peer ID prefix for discoverability.
-      const peer = this.createPeer(this.getUniversalGameId());
+      const peer = this.createPeer(this.getUniversalGameId(), serverTarget);
       this.peer = peer;
       installHostPeerHandlers(peer);
     });
@@ -1004,6 +1087,11 @@ export class NetworkManager {
     // and makes "watch only, once it starts" fall out for free.
     this.localPlayerId = undefined;
     this.localRole = 'spectator';
+
+    // The same probe the host ran: matching answers are what put joiner and
+    // host on the same signaling server.
+    const serverTarget = await resolvePeerServerTarget();
+    if (!this.isCurrentSession(generation)) throw new Error('Network setup canceled');
 
     return new Promise((resolve, reject) => {
       let opened = false;
@@ -1028,7 +1116,7 @@ export class NetworkManager {
 
       // Generate a random ID for the client
       const clientId = `ba-client-${Math.random().toString(36).substring(2, 10)}`;
-      const peer = this.createPeer(clientId);
+      const peer = this.createPeer(clientId, serverTarget);
       this.peer = peer;
 
       peer.on('open', () => {

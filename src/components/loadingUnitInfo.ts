@@ -41,7 +41,7 @@ export type LoadingUnitInfoSection = {
   items: LoadingUnitInfoNode[];
 };
 
-type LoadingUnitInfo = {
+export type LoadingUnitInfo = {
   summary: LoadingUnitInfoNode[];
   leftSections: LoadingUnitInfoSection[];
   rightSections: LoadingUnitInfoSection[];

@@ -6,8 +6,9 @@ import {
   requestEntityPreviewImage,
   subscribeEntityThumbnailCache,
 } from './entityPreviewThumbnails';
-import { buildLoadingEntityInfo } from './loadingUnitInfo';
+import { buildLoadingEntityInfo, type LoadingUnitInfo } from './loadingUnitInfo';
 import LoadingInfoColumn from './LoadingInfoColumn.vue';
+import { initSimWasm } from '@/game/sim-wasm/init';
 
 const props = withDefaults(defineProps<{
   progress?: number;
@@ -33,7 +34,15 @@ const progressBarStyle = computed(() => ({
 const phaseText = computed(() => props.phase.trim() || 'Preparing battle');
 const nextLabelText = computed(() => props.nextLabel.trim());
 const previewEntity = pickRandomLoadingEntity();
-const entityInfo = buildLoadingEntityInfo(previewEntity.kind, previewEntity.id);
+// The stat columns read turret blueprints through the same deterministic
+// kernels the sim runs on, and those live in the WASM module this screen is
+// shown while downloading — building them synchronously here threw on every
+// cold production load and took the whole emblem down with it. Fill the
+// panels in when the kernels arrive; on a warm cache that beats first paint.
+const entityInfo = ref<LoadingUnitInfo | null>(null);
+void initSimWasm().then(() => {
+  entityInfo.value = buildLoadingEntityInfo(previewEntity.kind, previewEntity.id);
+});
 const previewImageSrc = ref<string | null>(
   getCachedEntityPreviewImage('loading', previewEntity.kind, previewEntity.id),
 );
@@ -72,7 +81,7 @@ onBeforeUnmount(() => {
 
     <div class="loader-body">
       <div class="loader-info-col left">
-        <LoadingInfoColumn :sections="entityInfo.leftSections" />
+        <LoadingInfoColumn v-if="entityInfo" :sections="entityInfo.leftSections" />
       </div>
 
       <div class="loader-stage-col">
@@ -94,7 +103,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="loader-summary-strip">
           <div
-            v-for="item in entityInfo.summary"
+            v-for="item in entityInfo?.summary ?? []"
             :key="item.label"
             class="loader-summary-item"
           >
@@ -105,7 +114,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="loader-info-col right">
-        <LoadingInfoColumn :sections="entityInfo.rightSections" />
+        <LoadingInfoColumn v-if="entityInfo" :sections="entityInfo.rightSections" />
       </div>
     </div>
 

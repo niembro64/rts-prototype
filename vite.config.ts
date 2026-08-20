@@ -76,6 +76,9 @@ export default defineConfig(({ command }) => {
         '/api': {
           target: process.env.BA_LOBBY_API_TARGET || 'http://127.0.0.1:3001',
           changeOrigin: true,
+          // The backend also carries the PeerJS signaling socket at
+          // /api/signal/peerjs, which arrives as a WebSocket upgrade.
+          ws: true,
           // Running without the backend is a normal dev state — the lobby
           // browser degrades to code-only joining. Left alone, the directory
           // poll prints a connection-refused stack every few seconds and
