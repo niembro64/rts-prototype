@@ -10,6 +10,7 @@ import {
   loadStoredMapLandDimensions,
   loadStoredMetalDepositStep,
   loadStoredPerimeterMagnitude,
+  loadStoredTerrainPrecedence,
   loadStoredPathfindingCellConsolidation,
   loadStoredSimulationTickRate,
   loadStoredPlateauWallSlopeDegrees,
@@ -95,6 +96,7 @@ function assertRealSettingsAtDefaults(context: string): void {
     ['centerMagnitude', loadStoredCenterMagnitude('real'), preset.centerMagnitude],
     ['dividersMagnitude', loadStoredDividersMagnitude('real'), preset.dividersMagnitude],
     ['perimeterMagnitude', loadStoredPerimeterMagnitude('real'), preset.perimeterMagnitude],
+    ['terrainPrecedence', loadStoredTerrainPrecedence('real'), preset.terrainPrecedence],
     ['terrainDTerrain', loadStoredTerrainDTerrain('real'), preset.terrainDTerrain],
     [
       'plateauWallSlopeDegrees',

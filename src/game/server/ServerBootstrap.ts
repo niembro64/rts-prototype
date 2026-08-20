@@ -28,6 +28,7 @@ import {
   setTerrainCenterMagnitude,
   setTerrainDividersMagnitude,
   setTerrainPerimeterMagnitude,
+  setTerrainPrecedence,
   setTerrainRuntimeConfig,
   setTerrainTeamCount,
 } from '../sim/Terrain';
@@ -132,10 +133,13 @@ export class ServerBootstrap {
       config.dividersMagnitude ?? terrainRuntimeConfig.dividersMagnitude;
     const perimeterMagnitude =
       config.perimeterMagnitude ?? terrainRuntimeConfig.perimeterMagnitude;
+    const terrainPrecedence =
+      config.terrainPrecedence ?? terrainRuntimeConfig.terrainPrecedence;
     setTerrainRuntimeConfig({
       centerMagnitude,
       dividersMagnitude,
       perimeterMagnitude,
+      terrainPrecedence,
       terrainDTerrain:
         config.terrainDTerrain ?? terrainRuntimeConfig.terrainDTerrain,
       plateauWallSlopeDegrees:
@@ -150,6 +154,7 @@ export class ServerBootstrap {
     setTerrainCenterMagnitude(centerMagnitude);
     setTerrainDividersMagnitude(dividersMagnitude);
     setTerrainPerimeterMagnitude(perimeterMagnitude);
+    setTerrainPrecedence(terrainPrecedence);
     await report(0.14, 'Configuring terrain');
 
     // Deposits are laid out in radial slices phase-aligned to the terrain
@@ -342,10 +347,13 @@ export class ServerBootstrap {
       config.dividersMagnitude ?? terrainRuntimeConfig.dividersMagnitude;
     const perimeterMagnitude =
       config.perimeterMagnitude ?? terrainRuntimeConfig.perimeterMagnitude;
+    const terrainPrecedence =
+      config.terrainPrecedence ?? terrainRuntimeConfig.terrainPrecedence;
     setTerrainRuntimeConfig({
       centerMagnitude,
       dividersMagnitude,
       perimeterMagnitude,
+      terrainPrecedence,
       terrainDTerrain:
         config.terrainDTerrain ?? terrainRuntimeConfig.terrainDTerrain,
       plateauWallSlopeDegrees:
@@ -360,6 +368,7 @@ export class ServerBootstrap {
     setTerrainCenterMagnitude(centerMagnitude);
     setTerrainDividersMagnitude(dividersMagnitude);
     setTerrainPerimeterMagnitude(perimeterMagnitude);
+    setTerrainPrecedence(terrainPrecedence);
 
     // Metal deposits — same set across all clients (deterministic from
     // map size + player count). `generateMetalDeposits` installs the

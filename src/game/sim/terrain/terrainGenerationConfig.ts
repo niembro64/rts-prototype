@@ -1,6 +1,4 @@
 import {
-  isTerrainPerimeterRingEnabled,
-  terrainPerimeterRingAltitude,
   TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION,
   TERRAIN_PERIMETER_CONFIG,
   TERRAIN_PIPELINE,
@@ -24,30 +22,30 @@ export const TERRAIN_GENERATION_EXTENT_FRACTION = 0.85;
 
 /** Length of the packed generation-config slice consumed by Rust
  *  (`metal_deposit_terrain_config_from_slice`). */
-const TERRAIN_GENERATION_CONFIG_LENGTH = 29;
+const TERRAIN_GENERATION_CONFIG_LENGTH = 30;
 
 /** Stride of a packed deposit flat-zone row: x, y, radius, height,
  *  blendRadius, plateauRadius, groupId (-1 = ungrouped classic pad).
  *  Matches `METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE` in the Rust sim. */
 const TERRAIN_FLAT_ZONE_WASM_STRIDE = 7;
 
-/** Pack the live terrain generation config into the 29-value slice the Rust
+/** Pack the live terrain generation config into the 30-value slice the Rust
  *  height sampler reads. Single source of truth for both the adaptive mesh
- *  baker and the metal-deposit placement/height kernels. */
+ *  baker and the metal-deposit placement/height kernels.
+ *
+ *  The PRECEDENCE bar is expressed purely as stage order: the authored
+ *  pipeline places dividerRidges before mapBoundary (PERIMETER precedence);
+ *  a DIVIDERS pick swaps the two entries here at pack time, so Rust derives
+ *  every behavioral difference (edge fade, ring suppression) from the one
+ *  order it already executes — no second flag to drift. */
 export function packTerrainGenerationConfigForWasm(): Float64Array {
   const runtime = getTerrainRuntimeConfig();
   const [r0, r1, r2] = TERRAIN_RIPPLE_CONFIG.components;
-  // PERIMETER NONE is expressed to Rust the same way an authored
-  // `active: false` is — the mapBoundary stage is switched off — so the
-  // sentinel never reaches the kernel as a height. Everything downstream
-  // (height sampling, boundary fade, horizon shelf) then agrees on "no ring"
-  // through the one stage flag instead of a second off-switch.
-  const perimeterRingEnabled = isTerrainPerimeterRingEnabled();
   const rows = new Float64Array(TERRAIN_GENERATION_CONFIG_LENGTH);
   rows[0] = runtime.centerMagnitude;
   rows[1] = runtime.dividersMagnitude;
   rows[2] = runtime.terrainDTerrain;
-  rows[3] = terrainPerimeterRingAltitude();
+  rows[3] = runtime.perimeterMagnitude;
   rows[4] = getTerrainTeamCount();
   rows[5] = TILE_FLOOR_Y;
   rows[6] = TERRAIN_PERIMETER_CONFIG.outerRadiusFraction;
@@ -67,11 +65,19 @@ export function packTerrainGenerationConfigForWasm(): Float64Array {
   rows[20] = TERRAIN_RIDGE_CONFIG.outerRadiusFraction;
   rows[21] = TERRAIN_RIDGE_CONFIG.halfWidthFraction;
   rows[22] = runtime.plateauWallSlopeDegrees;
-  for (let i = 0; i < TERRAIN_PIPELINE.length; i++) {
-    const entry = TERRAIN_PIPELINE[i];
-    const active =
-      entry.active && (entry.step !== 'mapBoundary' || perimeterRingEnabled);
-    rows[23 + i] = TERRAIN_PIPELINE_STEP_CODES[entry.step] + (active ? 0 : 8);
+  const pipeline = [...TERRAIN_PIPELINE];
+  if (runtime.terrainPrecedence === 'dividers-precedence') {
+    const dividerIndex = pipeline.findIndex((e) => e.step === 'dividerRidges');
+    const boundaryIndex = pipeline.findIndex((e) => e.step === 'mapBoundary');
+    if (dividerIndex >= 0 && boundaryIndex >= 0 && dividerIndex < boundaryIndex) {
+      const divider = pipeline[dividerIndex];
+      pipeline[dividerIndex] = pipeline[boundaryIndex];
+      pipeline[boundaryIndex] = divider;
+    }
+  }
+  for (let i = 0; i < pipeline.length; i++) {
+    const entry = pipeline[i];
+    rows[23 + i] = TERRAIN_PIPELINE_STEP_CODES[entry.step] + (entry.active ? 0 : 8);
   }
   return rows;
 }

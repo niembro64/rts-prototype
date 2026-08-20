@@ -3,6 +3,7 @@ import type { MapDimensionAxisOption } from '../mapSizeConfig';
 import type { ShieldReflectionMode } from './shotTypes';
 import type { SlopePathMode } from './slopePathMode';
 import type { LiquidSurfaceMode, MetalCoverage } from './worldSurfaceMode';
+import type { TerrainPrecedence } from './terrainPrecedence';
 import type { PathfindingCellConsolidationMultiplier } from './pathfinding';
 import type { SimulationTickRateHz } from './simulationTickRate';
 
@@ -56,11 +57,11 @@ export type BattleBarConfig = {
   /** Signed altitude amplitude of the map perimeter ring (PERIMETER
    *  button group). Negative sinks the outer ring below water
    *  (round-island); positive raises a rim; 0 flattens it to ground level.
-   *  The list also carries `PERIMETER_MAGNITUDE_NONE`, a sentinel rather
-   *  than an altitude: it skips the boundary override entirely and leaves
-   *  the generated terrain running to the rectangular map edge. Same sign
-   *  convention as `centerMagnitude`. */
+   *  Same sign convention as `centerMagnitude`. */
   readonly perimeterMagnitude: OptionsConfig<number>;
+  /** Which of DIVIDERS/PERIMETER applies last in terrain generation
+   *  (PRECEDENCE button group) — last wins where they overlap. */
+  readonly terrainPrecedence: OptionsConfig<TerrainPrecedence>;
   /** Plateau lattice step in world units. The value `0` is the "NONE"
    *  option (no terracing — the sim short-circuits on step <= 0), so
    *  this bar replaces the old PLATEAU on/off toggle plus the step

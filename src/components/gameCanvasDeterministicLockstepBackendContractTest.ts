@@ -189,6 +189,7 @@ function assertInitializationHashMismatch(): void {
       centerMagnitude: 0,
       dividersMagnitude: 0,
       perimeterMagnitude: -800,
+      terrainPrecedence: 'perimeter-precedence' as const,
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 0,
@@ -279,6 +280,7 @@ function createTerrain(): RealBattleStartupTerrain {
       centerMagnitude: 0,
       dividersMagnitude: 0,
       perimeterMagnitude: -800,
+      terrainPrecedence: 'perimeter-precedence' as const,
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 0,
@@ -305,6 +307,7 @@ function createLobbySettings(
     centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
     dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
     perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
+    terrainPrecedence: terrain.terrainRuntimeConfig.terrainPrecedence,
     terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
     plateauWallSlopeDegrees:
       terrain.terrainRuntimeConfig.plateauWallSlopeDegrees,

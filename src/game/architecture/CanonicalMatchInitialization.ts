@@ -39,6 +39,10 @@ import {
   type LiquidSurfaceMode,
   type MetalCoverage,
 } from '@/types/worldSurfaceMode';
+import {
+  isTerrainPrecedence,
+  type TerrainPrecedence,
+} from '@/types/terrainPrecedence';
 import { isPathfindingCellConsolidationMultiplier } from '@/types/pathfinding';
 import {
   normalizeSimulationTickRateHz,
@@ -82,6 +86,7 @@ export type CanonicalMatchInitialization = {
     readonly centerMagnitude: number | null;
     readonly dividersMagnitude: number | null;
     readonly perimeterMagnitude: number | null;
+    readonly terrainPrecedence: TerrainPrecedence | null;
     readonly terrainDTerrain: number | null;
     readonly plateauWallSlopeDegrees: number | null;
     readonly metalDepositStep: number | null;
@@ -197,6 +202,9 @@ export function buildCanonicalMatchInitialization({
       centerMagnitude: finiteOrNull(settings?.centerMagnitude),
       dividersMagnitude: finiteOrNull(settings?.dividersMagnitude),
       perimeterMagnitude: finiteOrNull(settings?.perimeterMagnitude),
+      terrainPrecedence: isTerrainPrecedence(settings?.terrainPrecedence)
+        ? settings.terrainPrecedence
+        : null,
       terrainDTerrain: finiteOrNull(settings?.terrainDTerrain),
       plateauWallSlopeDegrees: finiteOrNull(settings?.plateauWallSlopeDegrees),
       metalDepositStep: finiteOrNull(settings?.metalDepositStep),

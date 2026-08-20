@@ -3,12 +3,17 @@
     {
       "step": "naturalField",
       "active": true,
-      "detail": "This array DRIVES generation: stages execute top to bottom, each exactly once, in ANY order; set active: false to skip a stage (its wall-region classification turns off with it). OVERWRITES the height field with the natural surface \u2014 stages ordered before it are discarded. Radial cosine mountain ripple (CENTER bar) plus team-count divider ridges (DIVIDERS bar), faded to flat before the outer map buffer (generation.edgeFadeWidthFraction) so the mapBoundary stage has a clean surface to blend from \u2014 with that stage off (PERIMETER NONE) the fade is skipped too and the ridges run out to the rectangular map edge."
+      "detail": "This array DRIVES generation: stages execute top to bottom, each exactly once, in ANY order; set active: false to skip a stage (its wall-region classification turns off with it). OVERWRITES the height field with the natural surface \u2014 stages ordered before it are discarded. Radial cosine mountain ripple (CENTER bar), faded to flat before the outer map buffer (generation.edgeFadeWidthFraction) so the mapBoundary stage has a clean surface to blend from \u2014 with that stage off the fade is skipped too and the ripple runs out to the rectangular map edge."
+    },
+    {
+      "step": "dividerRidges",
+      "active": true,
+      "detail": "Adds the team-count divider ridges (DIVIDERS bar) to the current surface. This authored position \u2014 before mapBoundary \u2014 is the PERIMETER-precedence arrangement: the ridges fade to flat before the outer buffer and the ring overrides them at the rim. The PRECEDENCE bar's DIVIDERS pick swaps this stage to after mapBoundary at pack time: the ridges then run out to the rectangular map edge and suppress the ring's blend weight across their own width, so a divider reads as one continuous surface through the ring."
     },
     {
       "step": "mapBoundary",
       "active": true,
-      "detail": "Blends the current height toward the signed PERIMETER bar magnitude: untouched inside generation.perimeter.innerRadiusFraction, cosine-blending to hard override at outerRadiusFraction (negative = round island below water, positive = rim wall, 0 = flat rim at ground level). The PERIMETER bar's NONE pick deactivates this stage for the match, so the generated terrain runs out to the rectangular map edge."
+      "detail": "Blends the current height toward the signed PERIMETER bar magnitude: untouched inside generation.perimeter.innerRadiusFraction, cosine-blending to hard override at outerRadiusFraction (negative = round island below water, positive = rim wall, 0 = flat rim at ground level). Every PERIMETER bar magnitude is a real ring; only an authored active: false skips this stage."
     },
     {
       "step": "gradientEstimate",

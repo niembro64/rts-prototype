@@ -2,6 +2,10 @@ import type { BattleBarConfig } from './types/battle';
 import type { ShieldReflectionMode } from './types/shotTypes';
 import { isSlopePathMode, type SlopePathMode } from './types/slopePathMode';
 import {
+  isTerrainPrecedence,
+  type TerrainPrecedence,
+} from './types/terrainPrecedence';
+import {
   isLiquidSurfaceMode,
   isMetalCoverage,
   type LiquidSurfaceMode,
@@ -101,11 +105,6 @@ function sanitizeDemoBuildingIds(value: unknown): string[] | null {
 // Unit-cap defaults are mode policy authored beside the cap options: Demo is
 // a small persistent sandbox, while Lobby/Real starts fresh at battle scale.
 const _demoPreset = getModeDefaultPreset('demo');
-
-/** Re-exported beside the bar options it belongs to: the PERIMETER pick that
- *  skips the ring step entirely. Defined in battlePresets so the preset table
- *  can name it without importing this module back. */
-export { PERIMETER_MAGNITUDE_NONE } from './components/battlePresets';
 
 /** The ENTITY COUNT CAP is a standalone global setting, deliberately NOT a
  *  preset field: switching maps must never resize the battle. Only an
@@ -214,12 +213,15 @@ export const BATTLE_CONFIG = {
     default: _demoPreset.dividersMagnitude,
     options: battleBarConfig.dividersMagnitude.options as readonly number[],
   },
-  // PERIMETER carries `PERIMETER_MAGNITUDE_NONE` as one of its options: a
-  // sentinel that deactivates the mapBoundary generation stage rather than
-  // naming a ring altitude.
   perimeterMagnitude: {
     default: _demoPreset.perimeterMagnitude,
     options: battleBarConfig.perimeterMagnitude.options as readonly number[],
+  },
+  // PRECEDENCE: which of DIVIDERS/PERIMETER applies last in terrain
+  // generation — last wins where they overlap.
+  terrainPrecedence: {
+    default: _demoPreset.terrainPrecedence,
+    options: battleBarConfig.terrainPrecedence.options as readonly TerrainPrecedence[],
   },
   terrainDTerrain: {
     default: _demoPreset.terrainDTerrain,
@@ -334,6 +336,8 @@ const STORAGE_DEMO_DIVIDERS_MAGNITUDE = sk.demoDividersMagnitude;
 const STORAGE_REAL_DIVIDERS_MAGNITUDE = sk.realDividersMagnitude;
 const STORAGE_DEMO_PERIMETER_MAGNITUDE = sk.demoPerimeterMagnitude;
 const STORAGE_REAL_PERIMETER_MAGNITUDE = sk.realPerimeterMagnitude;
+const STORAGE_DEMO_TERRAIN_PRECEDENCE = sk.demoTerrainPrecedence;
+const STORAGE_REAL_TERRAIN_PRECEDENCE = sk.realTerrainPrecedence;
 const STORAGE_DEMO_TERRAIN_D_TERRAIN = sk.demoTerrainDTerrain;
 const STORAGE_REAL_TERRAIN_D_TERRAIN = sk.realTerrainDTerrain;
 const STORAGE_DEMO_PLATEAU_WALL_SLOPE_DEGREES = sk.demoPlateauWallSlopeDegrees;
@@ -635,8 +639,11 @@ export type BattleTerrainRuntimeConfig = {
   dividersMagnitude: number;
   /** Signed PERIMETER ring altitude: negative sinks the outer ring below
    *  water (round-island), positive raises a rim, 0 flattens it to ground
-   *  level. `PERIMETER_MAGNITUDE_NONE` skips the ring step entirely. */
+   *  level. */
   perimeterMagnitude: number;
+  /** Which of DIVIDERS/PERIMETER applies last in terrain generation
+   *  (PRECEDENCE bar) — last wins where they overlap. */
+  terrainPrecedence: TerrainPrecedence;
   /** Plateau lattice step in world units. 0 = NONE (no terracing). */
   terrainDTerrain: number;
   /** D-PLATEAU wall slope angle in degrees from horizontal. */
@@ -1023,6 +1030,36 @@ export function savePerimeterMagnitude(value: number, mode: BattleMode): void {
   writeModeSetting(mode, STORAGE_REAL_PERIMETER_MAGNITUDE, STORAGE_DEMO_PERIMETER_MAGNITUDE, String(normalizePerimeterMagnitude(value)));
 }
 
+export function normalizeTerrainPrecedence(value: unknown): TerrainPrecedence {
+  return isTerrainPrecedence(value)
+    ? value
+    : BATTLE_CONFIG.terrainPrecedence.default;
+}
+
+export function loadStoredTerrainPrecedence(mode: BattleMode): TerrainPrecedence {
+  refreshDemoRosterLedgers();
+  const stored = readModeSetting(
+    mode,
+    STORAGE_REAL_TERRAIN_PRECEDENCE,
+    STORAGE_DEMO_TERRAIN_PRECEDENCE,
+  );
+  return isTerrainPrecedence(stored)
+    ? stored
+    : getModeDefaultPreset(mode).terrainPrecedence;
+}
+
+export function saveTerrainPrecedence(
+  value: TerrainPrecedence,
+  mode: BattleMode,
+): void {
+  writeModeSetting(
+    mode,
+    STORAGE_REAL_TERRAIN_PRECEDENCE,
+    STORAGE_DEMO_TERRAIN_PRECEDENCE,
+    normalizeTerrainPrecedence(value),
+  );
+}
+
 export function loadStoredTerrainDTerrain(mode: BattleMode): number {
   return loadModeNumberOption(
     mode,
@@ -1249,6 +1286,7 @@ export function loadStoredTerrainRuntimeConfig(
     centerMagnitude: loadStoredCenterMagnitude(mode),
     dividersMagnitude: loadStoredDividersMagnitude(mode),
     perimeterMagnitude: loadStoredPerimeterMagnitude(mode),
+    terrainPrecedence: loadStoredTerrainPrecedence(mode),
     terrainDTerrain: loadStoredTerrainDTerrain(mode),
     plateauWallSlopeDegrees: loadStoredPlateauWallSlopeDegrees(mode),
     metalDepositStep: loadStoredMetalDepositStep(mode),

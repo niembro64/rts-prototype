@@ -26,6 +26,7 @@ import type {
 import type { SnapshotRate, TickRate } from '../types/server';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import type { SlopePathMode } from '../types/slopePathMode';
+import type { TerrainPrecedence } from '../types/terrainPrecedence';
 import type {
   LiquidSurfaceMode,
   MetalCoverage,
@@ -59,6 +60,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly centerMagnitude: number;
   readonly dividersMagnitude: number;
   readonly perimeterMagnitude: number;
+  readonly terrainPrecedence: TerrainPrecedence;
   readonly terrainDTerrain: number;
   readonly plateauWallSlopeDegrees: number;
   readonly metalDepositStep: number;
@@ -92,6 +94,7 @@ export type GameCanvasBattleControlBarModel = {
   applyCenterMagnitude(value: number): void;
   applyDividersMagnitude(value: number): void;
   applyPerimeterMagnitude(value: number): void;
+  applyTerrainPrecedence(value: TerrainPrecedence): void;
   applyTerrainDTerrain(value: number): void;
   applyPlateauWallSlopeDegrees(value: number): void;
   applyMetalDepositStep(value: number): void;

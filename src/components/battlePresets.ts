@@ -1,6 +1,7 @@
 import type { BattleMode } from '../battleBarConfig';
 import type { ShieldReflectionMode } from '../types/shotTypes';
 import type { SlopePathMode } from '../types/slopePathMode';
+import type { TerrainPrecedence } from '../types/terrainPrecedence';
 import {
   METAL_COVERAGE_LABEL,
   type LiquidSurfaceMode,
@@ -10,21 +11,6 @@ import { LAND_CELL_SIZE } from '../mapSizeConfig';
 import { AUTHOR_BYLINE } from '../authorBylineConfig';
 import type { MapPresetLabelCaption } from '../game/render3d/presetMapLabel';
 import battleBarConfig from '../battleBarConfig.json';
-
-/** PERIMETER "NONE": skip the map-boundary step entirely instead of blending
- *  the outer ring toward an altitude. It has to be a sentinel rather than a
- *  magnitude because 0 is itself a real ring — a flat rim at ground level that
- *  still overrides the terrain and still carries the horizon shelf. Authored
- *  in battleBarConfig.json beside the bar options so the two can't drift. */
-export const PERIMETER_MAGNITUDE_NONE =
-  battleBarConfig.perimeterMagnitude.noneValue;
-
-if (!battleBarConfig.perimeterMagnitude.options.includes(PERIMETER_MAGNITUDE_NONE)) {
-  throw new Error(
-    'battleBarConfig.perimeterMagnitude.options must contain noneValue '
-      + `(${PERIMETER_MAGNITUDE_NONE})`,
-  );
-}
 
 export type BattlePreset = {
   readonly name: string;
@@ -50,9 +36,11 @@ export type BattlePreset = {
   readonly dividersMagnitude: number;
   /** Signed PERIMETER ring altitude: negative sinks the outer ring below
    *  water (round-island), positive raises a rim, 0 flattens it to ground
-   *  level. `PERIMETER_MAGNITUDE_NONE` skips the ring step altogether and
-   *  leaves the generated terrain running out to the rectangular map edge. */
+   *  level. */
   readonly perimeterMagnitude: number;
+  /** Which of DIVIDERS/PERIMETER applies last in terrain generation
+   *  (PRECEDENCE bar) — last wins where they overlap. */
+  readonly terrainPrecedence: TerrainPrecedence;
   readonly terrainDTerrain: number;
   readonly plateauWallSlopeDegrees: number;
   readonly metalDepositStep: number;
@@ -102,6 +90,9 @@ const SUBSYSTEM_DEFAULTS = {
   // Every stock preset ships the authored world; only METAL HELL flips these.
   metalCoverage: 'more' as MetalCoverage,
   liquidSurfaceMode: 'water' as LiquidSurfaceMode,
+  // The classic terrain arrangement: the PERIMETER ring overrides the
+  // DIVIDERS ridges at the rim.
+  terrainPrecedence: 'perimeter-precedence' as TerrainPrecedence,
 };
 
 function buildPresets(): readonly BattlePreset[] {
@@ -230,7 +221,9 @@ function buildPresets(): readonly BattlePreset[] {
       converterTax: 0.5,
       centerMagnitude: 0,
       dividersMagnitude: 0,
-      perimeterMagnitude: PERIMETER_MAGNITUDE_NONE,
+      // The plate is flat at 0 everywhere, so a ground-level ring is the
+      // same surface the old "no ring" pick produced.
+      perimeterMagnitude: 0,
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 0,
@@ -273,6 +266,7 @@ function presetMatchesCurrent(
     p.centerMagnitude === c.centerMagnitude &&
     p.dividersMagnitude === c.dividersMagnitude &&
     p.perimeterMagnitude === c.perimeterMagnitude &&
+    p.terrainPrecedence === c.terrainPrecedence &&
     p.terrainDTerrain === c.terrainDTerrain &&
     p.plateauWallSlopeDegrees === c.plateauWallSlopeDegrees &&
     p.metalDepositStep === c.metalDepositStep &&
@@ -295,10 +289,10 @@ function formatTerrainMagnitude(value: number): string {
   return value === 0 ? 'NONE' : String(value);
 }
 
-/** PERIMETER prints its own sentinel as NONE; 0 stays 0 because a
- *  ground-level ring is a real (and visibly different) map shape. */
+/** PERIMETER prints 0 as 0 rather than NONE because a ground-level ring is
+ *  a real (and visibly different) map shape. */
 function formatPerimeterMagnitude(value: number): string {
-  return value === PERIMETER_MAGNITUDE_NONE ? 'NONE' : String(value);
+  return String(value);
 }
 
 /** Resolve the complete map presentation once from the current settings.
@@ -327,6 +321,7 @@ export function resolveBattleMapPresentation(
       `CENTER ${formatTerrainMagnitude(current.centerMagnitude)}`,
       `DIVIDERS ${formatTerrainMagnitude(current.dividersMagnitude)}`,
       `PERIMETER ${formatPerimeterMagnitude(current.perimeterMagnitude)}`,
+      `PRECEDENCE ${current.terrainPrecedence === 'dividers-precedence' ? 'DIVIDERS' : 'PERIMETER'}`,
       `D-TERRAIN ${formatTerrainMagnitude(current.terrainDTerrain)}`,
       `METAL STEP ${formatTerrainMagnitude(current.metalDepositStep)}`,
       `DETAIL ${current.terrainDetail}`,

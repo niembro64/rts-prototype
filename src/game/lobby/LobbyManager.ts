@@ -31,6 +31,7 @@ import {
   setTerrainCenterMagnitude,
   setTerrainDividersMagnitude,
   setTerrainPerimeterMagnitude,
+  setTerrainPrecedence,
   setTerrainRuntimeConfig,
 } from '../sim/Terrain';
 import type { PlayerId } from '../sim/types';
@@ -144,6 +145,7 @@ export async function createBackgroundBattle(
   setTerrainCenterMagnitude(terrainRuntimeConfig.centerMagnitude);
   setTerrainDividersMagnitude(terrainRuntimeConfig.dividersMagnitude);
   setTerrainPerimeterMagnitude(terrainRuntimeConfig.perimeterMagnitude);
+  setTerrainPrecedence(terrainRuntimeConfig.terrainPrecedence);
   // Seed the WORLD materials BEFORE the scene builds: deposit generation and
   // the 3D renderers both read these at construction (ore bodies, terrain
   // material, liquid colour),
@@ -216,6 +218,7 @@ export async function createBackgroundBattle(
       centerMagnitude: terrainRuntimeConfig.centerMagnitude,
       dividersMagnitude: terrainRuntimeConfig.dividersMagnitude,
       perimeterMagnitude: terrainRuntimeConfig.perimeterMagnitude,
+      terrainPrecedence: terrainRuntimeConfig.terrainPrecedence,
       terrainDTerrain: terrainRuntimeConfig.terrainDTerrain,
       plateauWallSlopeDegrees: terrainRuntimeConfig.plateauWallSlopeDegrees,
       metalDepositStep: terrainRuntimeConfig.metalDepositStep,
@@ -291,6 +294,7 @@ export async function createBackgroundBattle(
     centerMagnitude: terrainRuntimeConfig.centerMagnitude,
     dividersMagnitude: terrainRuntimeConfig.dividersMagnitude,
     perimeterMagnitude: terrainRuntimeConfig.perimeterMagnitude,
+    terrainPrecedence: terrainRuntimeConfig.terrainPrecedence,
     backgroundMode: true,
     lobbyPreview: isLobbyPreview,
     onRendererWarmupChange,

@@ -6,12 +6,14 @@ import {
   loadStoredMetalDepositStep,
   loadStoredPlateauWallSlopeDegrees,
   loadStoredPerimeterMagnitude,
+  loadStoredTerrainPrecedence,
   loadStoredTerrainDTerrain,
   loadStoredTerrainDetail,
   loadStoredPathfindingCellConsolidation,
   loadStoredSimulationTickRate,
   type BattleMode,
 } from '../battleBarConfig';
+import type { TerrainPrecedence } from '../types/terrainPrecedence';
 import type { PlayerId } from '../game/sim/types';
 
 type GameCanvasLobbyPreviewOptions = {
@@ -26,6 +28,7 @@ type GameCanvasLobbyPreviewOptions = {
   centerMagnitude: Ref<number>;
   dividersMagnitude: Ref<number>;
   perimeterMagnitude: Ref<number>;
+  terrainPrecedence: Ref<TerrainPrecedence>;
   terrainDTerrain: Ref<number>;
   plateauWallSlopeDegrees: Ref<number>;
   metalDepositStep: Ref<number>;
@@ -50,6 +53,7 @@ export function useGameCanvasLobbyPreview({
   centerMagnitude,
   dividersMagnitude,
   perimeterMagnitude,
+  terrainPrecedence,
   terrainDTerrain,
   plateauWallSlopeDegrees,
   metalDepositStep,
@@ -78,6 +82,7 @@ export function useGameCanvasLobbyPreview({
     centerMagnitude.value = loadStoredCenterMagnitude(mode);
     dividersMagnitude.value = loadStoredDividersMagnitude(mode);
     perimeterMagnitude.value = loadStoredPerimeterMagnitude(mode);
+    terrainPrecedence.value = loadStoredTerrainPrecedence(mode);
     terrainDTerrain.value = loadStoredTerrainDTerrain(mode);
     plateauWallSlopeDegrees.value = loadStoredPlateauWallSlopeDegrees(mode);
     metalDepositStep.value = loadStoredMetalDepositStep(mode);

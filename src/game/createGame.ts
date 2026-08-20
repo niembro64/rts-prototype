@@ -48,6 +48,7 @@ export function createGame(config: GameConfig): GameInstance {
         centerMagnitude: config.centerMagnitude,
         dividersMagnitude: config.dividersMagnitude,
         perimeterMagnitude: config.perimeterMagnitude,
+        terrainPrecedence: config.terrainPrecedence,
         backgroundMode,
         lobbyPreview,
         lookupPlayerName: config.lookupPlayerName,

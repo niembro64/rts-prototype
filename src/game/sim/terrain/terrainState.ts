@@ -3,6 +3,7 @@ import {
 } from '@/types/terrain';
 import { getTerrainDividerTeamCount } from '../playerLayout';
 import { getSimWasm } from '../../sim-wasm/init';
+import type { TerrainPrecedence } from '@/types/terrainPrecedence';
 import {
   applyTerrainRuntimeConfig,
   METAL_DEPOSIT_STEP,
@@ -12,13 +13,14 @@ import {
   TERRAIN_FINE_TRIANGLE_SUBDIV,
   TERRAIN_PERIMETER_MAGNITUDE,
   TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
-  terrainPerimeterRingAltitude,
+  TERRAIN_PRECEDENCE,
   type TerrainRuntimeConfig,
 } from './terrainConfig';
 
 let mountainRippleAmplitude = TERRAIN_CENTER_MAGNITUDE;
 let mountainSeparatorAmplitude = TERRAIN_DIVIDERS_MAGNITUDE;
 let perimeterMagnitude = TERRAIN_PERIMETER_MAGNITUDE;
+let terrainPrecedence: TerrainPrecedence = TERRAIN_PRECEDENCE;
 let teamCount = 0;
 let terrainVersion = 1;
 let authoritativeTerrainTileMap: TerrainTileMap | null = null;
@@ -31,6 +33,7 @@ export function resetTerrainStateForDeterministicReplay(): void {
   mountainRippleAmplitude = TERRAIN_CENTER_MAGNITUDE;
   mountainSeparatorAmplitude = TERRAIN_DIVIDERS_MAGNITUDE;
   perimeterMagnitude = TERRAIN_PERIMETER_MAGNITUDE;
+  terrainPrecedence = TERRAIN_PRECEDENCE;
   teamCount = 0;
   terrainVersion = 1;
   authoritativeTerrainTileMap = null;
@@ -82,11 +85,9 @@ function installMeshIntoSim(map: TerrainTileMap): void {
   );
 }
 
-/** Altitude the outer PERIMETER ring blends toward — always a real height,
- *  so a NONE pick reads as 0 rather than its sentinel. Callers that need to
- *  know whether the ring runs at all ask `isTerrainPerimeterRingEnabled`. */
+/** Altitude the outer PERIMETER ring blends toward — always a real height. */
 export function getTerrainPerimeterMagnitude(): number {
-  return terrainPerimeterRingAltitude();
+  return TERRAIN_PERIMETER_MAGNITUDE;
 }
 
 export function getTerrainRuntimeConfig(): TerrainRuntimeConfig {
@@ -94,6 +95,7 @@ export function getTerrainRuntimeConfig(): TerrainRuntimeConfig {
     centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
     perimeterMagnitude: TERRAIN_PERIMETER_MAGNITUDE,
+    terrainPrecedence: TERRAIN_PRECEDENCE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
     plateauWallSlopeDegrees: TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
     metalDepositStep: METAL_DEPOSIT_STEP,
@@ -106,6 +108,7 @@ export function setTerrainRuntimeConfig(config: TerrainRuntimeConfig): void {
   mountainRippleAmplitude = TERRAIN_CENTER_MAGNITUDE;
   mountainSeparatorAmplitude = TERRAIN_DIVIDERS_MAGNITUDE;
   perimeterMagnitude = TERRAIN_PERIMETER_MAGNITUDE;
+  terrainPrecedence = TERRAIN_PRECEDENCE;
   invalidateTerrainConfig();
 }
 
@@ -116,6 +119,7 @@ export function setTerrainCenterMagnitude(value: number): void {
     centerMagnitude: value,
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
     perimeterMagnitude: TERRAIN_PERIMETER_MAGNITUDE,
+    terrainPrecedence: TERRAIN_PRECEDENCE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
     plateauWallSlopeDegrees: TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
     metalDepositStep: METAL_DEPOSIT_STEP,
@@ -131,6 +135,7 @@ export function setTerrainDividersMagnitude(value: number): void {
     centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
     dividersMagnitude: value,
     perimeterMagnitude: TERRAIN_PERIMETER_MAGNITUDE,
+    terrainPrecedence: TERRAIN_PRECEDENCE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
     plateauWallSlopeDegrees: TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
     metalDepositStep: METAL_DEPOSIT_STEP,
@@ -146,6 +151,23 @@ export function setTerrainPerimeterMagnitude(value: number): void {
     centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
     perimeterMagnitude: value,
+    terrainPrecedence: TERRAIN_PRECEDENCE,
+    terrainDTerrain: TERRAIN_D_TERRAIN,
+    plateauWallSlopeDegrees: TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
+    metalDepositStep: METAL_DEPOSIT_STEP,
+    terrainDetail: TERRAIN_FINE_TRIANGLE_SUBDIV,
+  });
+  invalidateTerrainConfig();
+}
+
+export function setTerrainPrecedence(value: TerrainPrecedence): void {
+  if (value === terrainPrecedence) return;
+  terrainPrecedence = value;
+  applyTerrainRuntimeConfig({
+    centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
+    dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
+    perimeterMagnitude: TERRAIN_PERIMETER_MAGNITUDE,
+    terrainPrecedence: value,
     terrainDTerrain: TERRAIN_D_TERRAIN,
     plateauWallSlopeDegrees: TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
     metalDepositStep: METAL_DEPOSIT_STEP,

@@ -779,6 +779,7 @@ async function runFullStack(
       centerMagnitude: preset?.centerMagnitude ?? 0,
       dividersMagnitude: preset?.dividersMagnitude ?? 0,
       perimeterMagnitude: preset?.perimeterMagnitude ?? -800,
+      terrainPrecedence: preset?.terrainPrecedence ?? 'perimeter-precedence',
       backgroundMode: true,
     });
     server.start();
@@ -1257,6 +1258,7 @@ function createServerConfig(
     centerMagnitude: preset?.centerMagnitude ?? 0,
     dividersMagnitude: preset?.dividersMagnitude ?? 0,
     perimeterMagnitude: preset?.perimeterMagnitude ?? -800,
+    terrainPrecedence: preset?.terrainPrecedence ?? 'perimeter-precedence',
     terrainDTerrain: preset?.terrainDTerrain ?? 0,
     plateauWallSlopeDegrees: preset?.plateauWallSlopeDegrees ?? 89,
     metalDepositStep: preset?.metalDepositStep ?? 0,

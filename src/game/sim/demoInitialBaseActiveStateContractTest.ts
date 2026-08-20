@@ -21,6 +21,7 @@ function spawnDemoBase(seed: number, mode: 'demo' | 'real'): Entity[] {
     centerMagnitude: preset.centerMagnitude,
     dividersMagnitude: preset.dividersMagnitude,
     perimeterMagnitude: preset.perimeterMagnitude,
+    terrainPrecedence: preset.terrainPrecedence,
     terrainDTerrain: preset.terrainDTerrain,
     plateauWallSlopeDegrees: preset.plateauWallSlopeDegrees,
     metalDepositStep: preset.metalDepositStep,
