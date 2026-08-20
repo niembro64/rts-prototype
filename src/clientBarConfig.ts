@@ -4,6 +4,8 @@ import type {
 } from './types/graphics';
 import type { ClientBarConfig } from './types/client';
 import type {
+  AntialiasMsaaMode,
+  AntialiasResolutionMode,
   AudioScope,
   CameraFollowMode,
   CameraFovDegrees,
@@ -1107,6 +1109,66 @@ export function getLodMode(): LodMode {
 export function setLodMode(mode: LodMode): void {
   currentLodMode = mode;
   persist(LOD_MODE_STORAGE_KEY, mode);
+}
+
+// Antialias policy. Standalone + global (not per-mode) for the same reason
+// as LOD: it is a renderer quality/perf policy rather than a battle/profile
+// setting. Both knobs apply live — ThreeApp reconciles the render pipeline
+// against them every frame, so no restart or rebuild is involved.
+const AA_MSAA_MODE_STORAGE_KEY = 'client-aa-msaa-mode';
+const AA_RESOLUTION_MODE_STORAGE_KEY = 'client-aa-resolution-mode';
+
+export const AA_MSAA_MODE_OPTIONS: OptionList<AntialiasMsaaMode> = [
+  { value: 'default', label: 'DEF' },
+  { value: '4x', label: '4X' },
+  { value: '8x', label: '8X' },
+  { value: 'max', label: 'MAX' },
+];
+
+/** Percent of native devicePixelRatio; 'auto' keeps the runtime profile's
+ *  pixel-ratio behavior (adaptive governor / profile cap). */
+export const AA_RESOLUTION_MODE_OPTIONS: OptionList<AntialiasResolutionMode> = [
+  { value: 'auto', label: 'AUTO' },
+  { value: 50, label: '50' },
+  { value: 75, label: '75' },
+  { value: 100, label: '100' },
+  { value: 150, label: '150' },
+  { value: 200, label: '200' },
+];
+
+function parseStoredAaMsaaMode(raw: string | null): AntialiasMsaaMode {
+  if (raw === '4x' || raw === '8x' || raw === 'max') return raw;
+  return 'default';
+}
+
+function parseStoredAaResolutionMode(raw: string | null): AntialiasResolutionMode {
+  if (raw === null || raw === 'auto') return 'auto';
+  const parsed = Number(raw);
+  const matched = AA_RESOLUTION_MODE_OPTIONS.find((opt) => opt.value === parsed);
+  return matched ? matched.value : 'auto';
+}
+
+let currentAaMsaaMode: AntialiasMsaaMode =
+  parseStoredAaMsaaMode(readPersisted(AA_MSAA_MODE_STORAGE_KEY));
+let currentAaResolutionMode: AntialiasResolutionMode =
+  parseStoredAaResolutionMode(readPersisted(AA_RESOLUTION_MODE_STORAGE_KEY));
+
+export function getAaMsaaMode(): AntialiasMsaaMode {
+  return currentAaMsaaMode;
+}
+
+export function setAaMsaaMode(mode: AntialiasMsaaMode): void {
+  currentAaMsaaMode = mode;
+  persist(AA_MSAA_MODE_STORAGE_KEY, mode);
+}
+
+export function getAaResolutionMode(): AntialiasResolutionMode {
+  return currentAaResolutionMode;
+}
+
+export function setAaResolutionMode(mode: AntialiasResolutionMode): void {
+  currentAaResolutionMode = parseStoredAaResolutionMode(String(mode));
+  persist(AA_RESOLUTION_MODE_STORAGE_KEY, String(currentAaResolutionMode));
 }
 
 export function getCameraSmoothMode(): CameraSmoothMode {

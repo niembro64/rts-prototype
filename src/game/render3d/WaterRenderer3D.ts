@@ -22,8 +22,11 @@ import type { RenderFrameState3D } from './RenderFrameState3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 import { getFloatingWaterOverhang, getWaterBoxFloorY } from './WorldBoxGeometry3D';
 import {
+  mapInfoAnnexRowPointX,
+  mapInfoAnnexRowPointZ,
   resolveMapInfoAnnexFootprint,
-  resolveMapInfoAnnexLiquidRect,
+  resolveMapInfoAnnexLiquidRows,
+  type MapInfoAnnexRow,
 } from './MapInfoAnnex3D';
 
 // Depth bias only. The mesh vertices stay exactly at WATER_LEVEL for
@@ -102,13 +105,47 @@ function clipBreakpoints(points: readonly number[], a: number, b: number): numbe
   return [a, ...inner, b];
 }
 
-/** Uniform breakpoints across [a, b] with spacing no coarser than `cell`. */
-function uniformBreakpoints(a: number, b: number, cell: number): number[] {
-  if (b - a <= 1e-6) return [];
-  const steps = Math.max(1, Math.ceil((b - a) / Math.max(1e-3, cell)));
-  const points: number[] = [];
-  for (let i = 0; i <= steps; i++) points.push(a + ((b - a) * i) / steps);
-  return points;
+/**
+ * Emits one horizontal indexed grid at height `y` over a stack of the info
+ * annex's ROWS — a trapezoid per band rather than a rectangle, so the liquid
+ * covering the headland is the headland's own shape.
+ *
+ * The winding is the reverse of {@link pushHorizontalGrid}'s for the same
+ * `facing`: the annex's (along, out) frame is a fixed quarter-turn of `out`,
+ * which makes it left-handed against world (+X, +Z) on every map edge.
+ */
+function pushAnnexRowGrid(
+  positions: number[],
+  normals: number[],
+  indices: number[],
+  point: (row: MapInfoAnnexRow, across: number) => readonly [number, number],
+  rows: readonly MapInfoAnnexRow[],
+  columns: number,
+  y: number,
+  facing: 1 | -1 = 1,
+): void {
+  const base = positions.length / 3;
+  const stride = columns + 1;
+  for (const row of rows) {
+    for (let column = 0; column <= columns; column++) {
+      const [x, z] = point(row, (column / columns) * 2 - 1);
+      positions.push(x, y, z);
+      normals.push(0, facing, 0);
+    }
+  }
+  for (let row = 0; row < rows.length - 1; row++) {
+    for (let column = 0; column < columns; column++) {
+      const a = base + row * stride + column;
+      const b = a + 1;
+      const c = b + stride;
+      const d = a + stride;
+      if (facing > 0) {
+        indices.push(a, b, c, a, c, d);
+      } else {
+        indices.push(a, c, b, a, d, c);
+      }
+    }
+  }
 }
 
 /** Emits one horizontal indexed grid at height `y` over xs × zs. `facing` is
@@ -373,24 +410,31 @@ export class WaterRenderer3D {
     // level, which is the whole point of attaching it. The arm stops at the
     // map's own liquid boundary — that part is already covered, and a second
     // coplanar sheet of translucent water over it reads as a darker patch.
+    //
+    // The arm follows the headland's SILHOUETTE, not its bounding box. Since
+    // the annex gained cut corners those are very different shapes: a box
+    // would leave a wedge of slack water in each cut corner and pinch the
+    // border at each flare, which is the uneven padding this arm exists to
+    // prevent. So it comes back as a stack of rows, each as wide as the
+    // headland is at that distance out plus one overhang measured
+    // perpendicular to whatever edge it is standing off.
     const annex = resolveMapInfoAnnexFootprint(this.mapWidth, this.mapHeight);
-    const arm = resolveMapInfoAnnexLiquidRect(
-      annex,
-      overhang,
-      this.mapWidth,
-      this.mapHeight,
-    );
-    const armExists = arm.maxX - arm.minX > 1e-6 && arm.maxZ - arm.minZ > 1e-6;
+    const armRows = resolveMapInfoAnnexLiquidRows(annex, overhang, cell);
+    const armExists = armRows.length >= 2
+      && armRows.every((row) => row.halfWidth > 1e-6);
     const armRunsAlongX = annex.outX === 0;
-    // Where the arm shares a border with the map's rectangle it reuses that
-    // rectangle's own breakpoints, so the two grids meet without T-junctions
-    // on the seam; the axis it grows along is its own.
-    const armXs = armRunsAlongX
-      ? clipBreakpoints(xs, arm.minX, arm.maxX)
-      : uniformBreakpoints(arm.minX, arm.maxX, cell);
-    const armZs = armRunsAlongX
-      ? uniformBreakpoints(arm.minZ, arm.maxZ, cell)
-      : clipBreakpoints(zs, arm.minZ, arm.maxZ);
+    const armHalfWidth = armRows.reduce(
+      (widest, row) => Math.max(widest, row.halfWidth),
+      0,
+    );
+    const armColumns = Math.max(2, Math.ceil((2 * armHalfWidth) / Math.max(1e-3, cell)));
+    const armPoint = (
+      row: MapInfoAnnexRow,
+      across: number,
+    ): readonly [number, number] => [
+      mapInfoAnnexRowPointX(annex, row, across),
+      mapInfoAnnexRowPointZ(annex, row, across),
+    ];
 
     const surface = {
       positions: [] as number[],
@@ -406,12 +450,13 @@ export class WaterRenderer3D {
       topY,
     );
     if (armExists) {
-      pushHorizontalGrid(
+      pushAnnexRowGrid(
         surface.positions,
         surface.normals,
         surface.indices,
-        armXs,
-        armZs,
+        armPoint,
+        armRows,
+        armColumns,
         topY,
       );
     }
@@ -440,65 +485,100 @@ export class WaterRenderer3D {
       x: number,
     ): ReadonlyArray<readonly [number, number]> =>
       values.map((z): readonly [number, number] => [x, z]);
-    const strips: Record<WaterBoxFace, Array<ReadonlyArray<readonly [number, number]>>> = {
-      north: [alongX(xs, z0)],
-      east: [alongZ(zs, x1)],
-      south: [alongX([...xs].reverse(), z1)],
-      west: [alongZ([...zs].reverse(), x0)],
+    // Each strip carries its OWN outward normal now: the map's four sides are
+    // still axis-aligned, but the arm's perimeter runs diagonally around the
+    // headland's cut corners and no single normal per face would fit it.
+    type CurtainStrip = {
+      readonly points: ReadonlyArray<readonly [number, number]>;
+      readonly nx: number;
+      readonly nz: number;
+    };
+    const strips: Record<WaterBoxFace, CurtainStrip[]> = {
+      north: [{ points: alongX(xs, z0), nx: 0, nz: -1 }],
+      east: [{ points: alongZ(zs, x1), nx: 1, nz: 0 }],
+      south: [{ points: alongX([...xs].reverse(), z1), nx: 0, nz: 1 }],
+      west: [{ points: alongZ([...zs].reverse(), x0), nx: -1, nz: 0 }],
       bottom: [],
     };
-    if (armExists && armRunsAlongX) {
-      // The map side the arm joins is OPENED over the arm's span and closed
-      // again by the arm's own far side, one arm-depth further out; the two
-      // flanks join them. North is walked +x and south −x, and the arm's far
-      // side carries the same outward normal as the side it replaces, so one
-      // ordering flag covers all three.
-      const attached: WaterBoxFace = annex.outZ < 0 ? 'north' : 'south';
-      const attachedZ = annex.outZ < 0 ? z0 : z1;
-      const farZ = annex.outZ < 0 ? arm.minZ : arm.maxZ;
-      const order = (values: readonly number[]): readonly number[] =>
-        annex.outZ < 0 ? values : [...values].reverse();
-      strips[attached] = [
-        alongX(order(clipBreakpoints(xs, x0, arm.minX)), attachedZ),
-        alongX(order(clipBreakpoints(xs, arm.maxX, x1)), attachedZ),
-        alongX(order(armXs), farZ),
-      ];
-      strips.west.push(alongZ([...armZs].reverse(), arm.minX));
-      strips.east.push(alongZ(armZs, arm.maxX));
-    } else if (armExists) {
-      const attached: WaterBoxFace = annex.outX < 0 ? 'west' : 'east';
-      const attachedX = annex.outX < 0 ? x0 : x1;
-      const farX = annex.outX < 0 ? arm.minX : arm.maxX;
-      const order = (values: readonly number[]): readonly number[] =>
-        annex.outX > 0 ? values : [...values].reverse();
-      strips[attached] = [
-        alongZ(order(clipBreakpoints(zs, z0, arm.minZ)), attachedX),
-        alongZ(order(clipBreakpoints(zs, arm.maxZ, z1)), attachedX),
-        alongZ(order(armZs), farX),
-      ];
-      strips.north.push(alongX(armXs, arm.minZ));
-      strips.south.push(alongX([...armXs].reverse(), arm.maxZ));
+    if (armExists) {
+      // The map side the arm joins is OPENED over exactly the span the arm's
+      // first row covers, and the arm's own perimeter closes it again further
+      // out. The opening comes from that row rather than from a rectangle,
+      // because the flare means the arm is at its widest right here.
+      const seam = armRows[0];
+      const seamLow = armPoint(seam, -1);
+      const seamHigh = armPoint(seam, 1);
+      if (armRunsAlongX) {
+        const attached: WaterBoxFace = annex.outZ < 0 ? 'north' : 'south';
+        const attachedZ = annex.outZ < 0 ? z0 : z1;
+        const nz = annex.outZ < 0 ? -1 : 1;
+        const order = (values: readonly number[]): readonly number[] =>
+          annex.outZ < 0 ? values : [...values].reverse();
+        const openLow = Math.min(seamLow[0], seamHigh[0]);
+        const openHigh = Math.max(seamLow[0], seamHigh[0]);
+        strips[attached] = [
+          { points: alongX(order(clipBreakpoints(xs, x0, openLow)), attachedZ), nx: 0, nz },
+          { points: alongX(order(clipBreakpoints(xs, openHigh, x1)), attachedZ), nx: 0, nz },
+        ];
+      } else {
+        const attached: WaterBoxFace = annex.outX < 0 ? 'west' : 'east';
+        const attachedX = annex.outX < 0 ? x0 : x1;
+        const nx = annex.outX < 0 ? -1 : 1;
+        const order = (values: readonly number[]): readonly number[] =>
+          annex.outX > 0 ? values : [...values].reverse();
+        const openLow = Math.min(seamLow[1], seamHigh[1]);
+        const openHigh = Math.max(seamLow[1], seamHigh[1]);
+        strips[attached] = [
+          { points: alongZ(order(clipBreakpoints(zs, z0, openLow)), attachedX), nx, nz: 0 },
+          { points: alongZ(order(clipBreakpoints(zs, openHigh, z1)), attachedX), nx, nz: 0 },
+        ];
+      }
+
+      // ONE walk around the arm's perimeter: up the low-across flank, across
+      // the far rim, back down the high-across flank. Those directions are
+      // what put each segment's derived normal on the outside, exactly as
+      // they do for the annex's own walls. Each segment is emitted on its own
+      // so it can carry that normal — a shared vertex could only hold one,
+      // and a headland with cut corners wants the hard edge anyway.
+      const perimeter: Array<readonly [number, number]> = [];
+      for (const row of armRows) perimeter.push(armPoint(row, -1));
+      const rim = armRows[armRows.length - 1];
+      for (let column = 1; column < armColumns; column++) {
+        perimeter.push(armPoint(rim, (column / armColumns) * 2 - 1));
+      }
+      for (let index = armRows.length - 1; index >= 0; index--) {
+        perimeter.push(armPoint(armRows[index], 1));
+      }
+      for (let index = 0; index < perimeter.length - 1; index++) {
+        const from = perimeter[index];
+        const to = perimeter[index + 1];
+        const dx = to[0] - from[0];
+        const dz = to[1] - from[1];
+        const span = Math.hypot(dx, dz);
+        if (span < 1e-6) continue;
+        const nx = dz / span;
+        const nz = -dx / span;
+        // Sorted with whichever face it most nearly belongs to, so the
+        // transparent draw order still runs by direction.
+        const face: WaterBoxFace = Math.abs(nx) >= Math.abs(nz)
+          ? (nx >= 0 ? 'east' : 'west')
+          : (nz >= 0 ? 'south' : 'north');
+        strips[face].push({ points: [from, to], nx, nz });
+      }
     }
 
-    const curtainInputs = [
-      { direction: 'north', nx: 0, nz: -1 },
-      { direction: 'east', nx: 1, nz: 0 },
-      { direction: 'south', nx: 0, nz: 1 },
-      { direction: 'west', nx: -1, nz: 0 },
-      // The floor is a horizontal grid on the same breakpoints as the
-      // surface, so it shares the curtains' bottom edge with no T-junctions
-      // and carries the same depth-interpolation error as every other face.
-      { direction: 'bottom', nx: 0, nz: 0 },
-    ] as const;
     const triangleParts = [surface];
-    for (let i = 0; i < curtainInputs.length; i++) {
-      const input = curtainInputs[i];
+    for (let i = 0; i < WATER_BOX_FACES.length; i++) {
+      const direction = WATER_BOX_FACES[i];
       const part = {
         positions: [] as number[],
         normals: [] as number[],
         indices: [] as number[],
       };
-      if (input.direction === 'bottom') {
+      if (direction === 'bottom') {
+        // The floor is the surface's own footprint at the box's floor, so it
+        // shares the curtains' bottom edge with no T-junctions and carries the
+        // same depth-interpolation error as every other face.
         pushHorizontalGrid(
           part.positions,
           part.normals,
@@ -509,35 +589,36 @@ export class WaterRenderer3D {
           -1,
         );
         if (armExists) {
-          pushHorizontalGrid(
+          pushAnnexRowGrid(
             part.positions,
             part.normals,
             part.indices,
-            armXs,
-            armZs,
+            armPoint,
+            armRows,
+            armColumns,
             bottomY,
             -1,
           );
         }
       } else {
-        for (const points of strips[input.direction]) {
-          if (points.length < 2) continue;
+        for (const strip of strips[direction]) {
+          if (strip.points.length < 2) continue;
           pushCurtainStrip(
             part.positions,
             part.normals,
             part.indices,
-            points,
+            strip.points,
             bottomY,
             topY,
-            input.nx,
-            input.nz,
+            strip.nx,
+            strip.nz,
             cell,
           );
         }
       }
       const curtain = this.waterCurtains[i];
-      if (curtain.direction !== input.direction) {
-        throw new Error(`Water box face order mismatch: ${curtain.direction}/${input.direction}`);
+      if (curtain.direction !== direction) {
+        throw new Error(`Water box face order mismatch: ${curtain.direction}/${direction}`);
       }
       this.setGeometry(curtain.geometry, part.positions, part.normals, part.indices);
       triangleParts.push(part);
