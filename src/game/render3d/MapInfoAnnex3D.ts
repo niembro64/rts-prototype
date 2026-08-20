@@ -269,28 +269,78 @@ export function resolveMapInfoAnnexLiquidRect(
   return { minX, maxX, minZ, maxZ };
 }
 
-/** Where the caption may stand: the flat table inset by one margin on every
- *  side. The blended part is excluded on purpose — letters all rise from one
- *  plane, so ground that is still easing under them would leave them
- *  floating at one end. */
+/**
+ * How far out the annex's surface has SETTLED to within `tolerance` of the
+ * flat table, given the worst height its seam is handed by the coast.
+ *
+ * Zero when the map edge behind the team is already at the table's altitude:
+ * a flat coast leaves the whole headland flat, and a caption has no reason to
+ * stand back from ground that never ramps. The blend band is not a keep-out
+ * zone, it is a ramp — and on most maps most of it is a ramp of nothing.
+ *
+ * This inverts the same smoothstep {@link mapInfoAnnexSurfaceY} eases with,
+ * in closed form, so the answer is the exact distance rather than a guess
+ * with a safety factor bolted on.
+ */
+export function mapInfoAnnexSettledDepth(
+  footprint: MapInfoAnnexFootprint,
+  seamDeviation: number,
+  tolerance: number,
+): number {
+  const deviation = Math.abs(seamDeviation);
+  if (!(deviation > Math.max(0, tolerance))) return 0;
+  const settled = 1 - Math.max(0, tolerance) / deviation;
+  const t = 0.5 - Math.sin(Math.asin(Math.max(-1, Math.min(1, 1 - 2 * settled))) / 3);
+  return footprint.blendDepth * Math.max(0, Math.min(1, t));
+}
+
+/** Where the caption may stand: everything past `nearLimit` — the point the
+ *  ramp off the coast has settled onto the flat table — inset by one margin
+ *  on every side. Letters all rise from one plane, so ground still easing
+ *  under them would leave them floating at one end; ground that eased to
+ *  nothing costs the caption nothing. */
 export function resolveMapInfoAnnexCaptionArea(
   footprint: MapInfoAnnexFootprint,
   margin: number,
+  nearLimit: number,
 ): {
   readonly centerX: number;
   readonly centerZ: number;
   readonly width: number;
   readonly depth: number;
 } {
-  const flatDepth = Math.max(0, footprint.depth - footprint.blendDepth);
-  const usableDepth = Math.max(0, flatDepth - 2 * margin);
-  const centerOut = footprint.blendDepth + flatDepth / 2;
+  const near = Math.max(0, Math.min(footprint.depth, nearLimit));
+  const flatDepth = footprint.depth - near;
+  const centerOut = near + flatDepth / 2;
   return {
     centerX: footprint.attachX + footprint.outX * centerOut,
     centerZ: footprint.attachZ + footprint.outZ * centerOut,
     width: Math.max(0, footprint.width - 2 * margin),
-    depth: usableDepth,
+    depth: Math.max(0, flatDepth - 2 * margin),
   };
+}
+
+/** The worst the coast deviates from the flat table along the annex's seam,
+ *  sampled across its width. This is what decides how much of the ramp the
+ *  caption has to stand clear of. */
+export function mapInfoAnnexSeamDeviation(
+  footprint: MapInfoAnnexFootprint,
+  flatHeight: number,
+  sampleTerrainHeight: (x: number, z: number) => number,
+  samples = 9,
+): number {
+  let worst = 0;
+  const count = Math.max(2, Math.floor(samples));
+  for (let i = 0; i < count; i++) {
+    const across = (i / (count - 1) - 0.5) * footprint.width;
+    const height = sampleTerrainHeight(
+      footprint.attachX + footprint.alongX * across,
+      footprint.attachZ + footprint.alongZ * across,
+    );
+    if (!Number.isFinite(height)) continue;
+    worst = Math.max(worst, Math.abs(height - flatHeight));
+  }
+  return worst;
 }
 
 /** Where the emitted triangles go. TerrainTileRenderer3D implements this over

@@ -45,6 +45,8 @@ import {
 import {
   mapInfoAnnexFlatHeight,
   mapInfoAnnexFlatSurfaceY,
+  mapInfoAnnexSeamDeviation,
+  mapInfoAnnexSettledDepth,
   resolveMapInfoAnnexCaptionArea,
   resolveMapInfoAnnexFootprint,
   type MapInfoAnnexFootprint,
@@ -64,6 +66,8 @@ const STYLE = {
   strokeWidthPx: MAP_PRESET_LABEL_RENDER_CONFIG.strokeWidthPx,
   captionMarginAnnexDepthFraction:
     MAP_PRESET_LABEL_RENDER_CONFIG.captionMarginAnnexDepthFraction,
+  captionFlatToleranceAnnexDepthFraction:
+    MAP_PRESET_LABEL_RENDER_CONFIG.captionFlatToleranceAnnexDepthFraction,
   letterReliefTitleFraction: MAP_PRESET_LABEL_RENDER_CONFIG.letterReliefTitleFraction,
   letterMaskSupersample: MAP_PRESET_LABEL_RENDER_CONFIG.letterMaskSupersample,
   letterMaskSimplifyPx: MAP_PRESET_LABEL_RENDER_CONFIG.letterMaskSimplifyPx,
@@ -172,12 +176,16 @@ export type MapPresetLabelPlacement = {
   readonly annex: MapInfoAnnexFootprint;
 };
 
-/** The patch of headland the caption may cover: the annex's flat table inset
- *  by the authored margin on every side. Exported so the contract test can
- *  hold "entirely on the flat part, entirely off the map" without WebGL. */
+/** The patch of headland the caption may cover: everything past the annex's
+ *  ramp off the coast, inset by the authored margin on every side.
+ *  `settledDepth` is how much of that ramp actually rises — zero on a map
+ *  whose edge is already at the table's altitude, which hands the sign the
+ *  whole headland. Exported so the contract test can hold "entirely on the
+ *  flat part, entirely off the map" without WebGL. */
 export function resolveMapPresetLabelCaptionBox(
   mapWidth: number,
   mapHeight: number,
+  settledDepth: number,
 ): {
   readonly annex: MapInfoAnnexFootprint;
   readonly centerX: number;
@@ -189,6 +197,7 @@ export function resolveMapPresetLabelCaptionBox(
   const area = resolveMapInfoAnnexCaptionArea(
     annex,
     annex.depth * STYLE.captionMarginAnnexDepthFraction,
+    settledDepth,
   );
   return { annex, ...area };
 }
@@ -201,8 +210,9 @@ export function resolveMapPresetLabelPlacement(
   mapWidth: number,
   mapHeight: number,
   canvasAspect: number,
+  settledDepth: number,
 ): MapPresetLabelPlacement {
-  const box = resolveMapPresetLabelCaptionBox(mapWidth, mapHeight);
+  const box = resolveMapPresetLabelCaptionBox(mapWidth, mapHeight, settledDepth);
   const aspect = Math.max(1e-6, canvasAspect);
   const worldHeight = Math.min(box.depth, box.width / aspect);
   return {
@@ -240,9 +250,23 @@ export function pickCaptionWrap(
   return Math.max(0, best);
 }
 
-/** Break `fields` into `rowCount` rows of near-equal measured width, in
- *  order. Greedy against the average row width, which is what a flex-wrap
- *  container of that width would do. Exported for the contract test. */
+/**
+ * Break `fields` into at most `rowCount` rows, BALANCED: the widest row is as
+ * narrow as it can be for that many rows.
+ *
+ * Not greedy-to-an-average, which is what a first pass reaches for and what
+ * makes a caption look thrown together — packing to the average overshoots on
+ * every row, so the early rows come out short, the fields run out, and the
+ * last row is left holding everything nobody else took. Binary-searching the
+ * row WIDTH instead and packing to it is the classic minimum-largest-row
+ * partition, and it is also exactly what a page does: rows of one measure,
+ * broken where the measure runs out.
+ *
+ * A row count the fields cannot actually be split into comes back as fewer
+ * rows, which is honest — that setting simply is the shorter one.
+ *
+ * Exported for the contract test.
+ */
 export function wrapCaptionFields(
   measure: (text: string) => number,
   fields: readonly string[],
@@ -253,36 +277,37 @@ export function wrapCaptionFields(
   if (rows === 1) return [fields.join(FIELD_SEPARATOR)];
   const separator = measure(FIELD_SEPARATOR);
   const widths = fields.map(measure);
-  const total = widths.reduce((sum, width) => sum + width, 0)
-    + separator * (fields.length - 1);
-  const target = total / rows;
 
-  const out: string[] = [];
-  let current: string[] = [];
-  let currentWidth = 0;
-  for (let index = 0; index < fields.length; index++) {
-    const added = (current.length > 0 ? separator : 0) + widths[index];
-    const rowsLeft = rows - out.length;
-    const fieldsLeft = fields.length - index;
-    // Break when this field would push the row past its share — but never so
-    // early that a later row would be left with nothing to set. Breaking here
-    // closes one row and leaves `fieldsLeft` fields to fill `rowsLeft - 1`,
-    // so that is exactly the count this field has to clear.
-    if (
-      current.length > 0 &&
-      currentWidth + added > target &&
-      rowsLeft > 1 &&
-      fieldsLeft >= rowsLeft - 1
-    ) {
-      out.push(current.join(FIELD_SEPARATOR));
-      current = [];
-      currentWidth = 0;
+  const packAt = (limit: number): string[][] => {
+    const packed: string[][] = [];
+    let current: string[] = [];
+    let currentWidth = 0;
+    for (let index = 0; index < fields.length; index++) {
+      const added = (current.length > 0 ? separator : 0) + widths[index];
+      if (current.length > 0 && currentWidth + added > limit) {
+        packed.push(current);
+        current = [];
+        currentWidth = widths[index];
+      } else {
+        currentWidth += added;
+      }
+      current.push(fields[index]);
     }
-    current.push(fields[index]);
-    currentWidth += (current.length > 1 ? separator : 0) + widths[index];
+    if (current.length > 0) packed.push(current);
+    return packed;
+  };
+
+  let tooNarrow = widths.reduce((widest, width) => Math.max(widest, width), 0);
+  let wideEnough = widths.reduce((sum, width) => sum + width, 0)
+    + separator * (fields.length - 1);
+  // 32 halvings resolves the measure to well under a pixel at any font size
+  // this caption uses, and the packing is a single pass over eleven fields.
+  for (let step = 0; step < 32; step++) {
+    const middle = (tooNarrow + wideEnough) / 2;
+    if (packAt(middle).length <= rows) wideEnough = middle;
+    else tooNarrow = middle;
   }
-  if (current.length > 0) out.push(current.join(FIELD_SEPARATOR));
-  return out;
+  return packAt(wideEnough).map((row) => row.join(FIELD_SEPARATOR));
 }
 
 /** The sign's identity: what a repaint has to differ in to be worth doing. */
@@ -311,11 +336,17 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
    *  frame — resolve it once. */
   private readonly annex: MapInfoAnnexFootprint;
   private lastKey: string | null = null;
+  private caption: NonNullable<MapPresetLabelCaption> =
+    { title: '', info: [], byline: [] };
   /** The chosen setting of the current caption: its wrapped rows and the
    *  leading the fit added, so the supersampled glyph mask repaints the SAME
    *  block instead of re-deciding the wrap at a different measured width. */
   private items: readonly CaptionItem[] = [];
   private lastAnnexSurfaceY = Number.NaN;
+  /** How much of the annex's ramp off the coast actually rises, in world
+   *  units — resampled with the altitude, because both come from the same
+   *  terrain that may not be baked yet. */
+  private settledDepth = 0;
   private destroyed = false;
 
   constructor(
@@ -392,6 +423,8 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
       this.group.visible = false;
       return;
     }
+    this.caption = caption;
+    this.refreshSettledDepth();
     this.items = this.setCaption(caption);
     this.paint(this.ctx, this.canvas, this.items, 1);
     // New text, new glyph mask. placeSign only traces when there is no
@@ -410,6 +443,16 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
     if (this.destroyed || this.lastKey === null) return;
     const surfaceY = this.annexSurfaceY();
     if (Math.abs(surfaceY - this.lastAnnexSurfaceY) <= ANNEX_ALTITUDE_EPSILON) return;
+    // The altitude moved, so the coast under the seam did too: the block's
+    // target shape can have changed with it, and that is a re-set, not a
+    // re-seat. Rare — once, when the bake lands.
+    const previousSettledDepth = this.settledDepth;
+    this.refreshSettledDepth();
+    if (Math.abs(this.settledDepth - previousSettledDepth) > ANNEX_ALTITUDE_EPSILON) {
+      this.disposeLetterMesh();
+      this.items = this.setCaption(this.caption);
+      this.paint(this.ctx, this.canvas, this.items, 1);
+    }
     this.placeSign();
   }
 
@@ -429,9 +472,23 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
   /** The rendered altitude of the annex's flat table — the plane the letters
    *  stand on. */
   private annexSurfaceY(): number {
-    return mapInfoAnnexFlatSurfaceY(
-      mapInfoAnnexFlatHeight(this.annex, (x, z) =>
+    return mapInfoAnnexFlatSurfaceY(this.annexFlatHeight());
+  }
+
+  private annexFlatHeight(): number {
+    return mapInfoAnnexFlatHeight(this.annex, (x, z) =>
+      getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight));
+  }
+
+  /** Resample the coast the annex grows out of and turn the worst rise it
+   *  hands the ramp into the distance the caption has to stand back. */
+  private refreshSettledDepth(): void {
+    const flatHeight = this.annexFlatHeight();
+    this.settledDepth = mapInfoAnnexSettledDepth(
+      this.annex,
+      mapInfoAnnexSeamDeviation(this.annex, flatHeight, (x, z) =>
         getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight)),
+      this.annex.depth * STYLE.captionFlatToleranceAnnexDepthFraction,
     );
   }
 
@@ -447,7 +504,11 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
    * shrinks to buy the match.
    */
   private setCaption(caption: NonNullable<MapPresetLabelCaption>): CaptionItem[] {
-    const box = resolveMapPresetLabelCaptionBox(this.mapWidth, this.mapHeight);
+    const box = resolveMapPresetLabelCaptionBox(
+      this.mapWidth,
+      this.mapHeight,
+      this.settledDepth,
+    );
     const targetAspect = box.depth > 0 ? box.width / box.depth : 1;
     const measureInfo = (text: string): number => {
       this.ctx.font = fontString(STYLE.infoFontPx);
@@ -605,6 +666,7 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
       this.mapWidth,
       this.mapHeight,
       this.canvas.width / this.canvas.height,
+      this.settledDepth,
     );
     const surfaceY = this.annexSurfaceY();
     this.lastAnnexSurfaceY = surfaceY;

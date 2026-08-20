@@ -2,6 +2,7 @@ import {
   emitMapInfoAnnexGeometry,
   mapInfoAnnexFlatHeight,
   mapInfoAnnexFlatSurfaceY,
+  mapInfoAnnexSettledDepth,
   mapInfoAnnexSurfaceY,
   resolveMapInfoAnnexCaptionArea,
   resolveMapInfoAnnexFootprint,
@@ -126,26 +127,59 @@ export function runMapInfoAnnex3DContractTest(): void {
       );
     }
 
-    // The caption's ground is the flat part only: letters all rise from one
-    // plane, so ground still easing under them would leave them floating.
+    // THE RAMP IS A RAMP, NOT A KEEP-OUT ZONE. Letters all rise from one
+    // plane, so the caption stands clear of ground that is still easing off
+    // the coast — but only as far as that ground actually rises. A coast
+    // already at the table's altitude hands the sign the whole headland.
     const margin = annex.depth * 0.12;
-    const area = resolveMapInfoAnnexCaptionArea(annex, margin);
-    const areaNearOut =
-      (area.centerX - annex.attachX) * annex.outX +
-      (area.centerZ - annex.attachZ) * annex.outZ -
-      area.depth / 2;
+    const tolerance = annex.depth * 0.004;
     assertContract(
-      area.width > 0 && area.depth > 0,
-      'the caption must have somewhere to stand',
+      mapInfoAnnexSettledDepth(annex, 0, tolerance) === 0
+        && mapInfoAnnexSettledDepth(annex, tolerance * 0.5, tolerance) === 0,
+      'a coast at the table\'s own altitude must cost the caption nothing',
     );
+    const bigDeviation = mapInfoAnnexSettledDepth(annex, 400, tolerance);
+    const smallDeviation = mapInfoAnnexSettledDepth(annex, 40, tolerance);
     assertContract(
-      areaNearOut >= annex.blendDepth - 1e-9,
-      'the caption area must start past the blend band, on the flat table',
+      bigDeviation > smallDeviation && smallDeviation > 0
+        && bigDeviation < annex.blendDepth,
+      'a steeper coast must push the caption further out, but never past the ramp',
     );
-    assertContract(
-      areaNearOut + area.depth <= annex.depth - margin + 1e-9,
-      'the caption area must stay inside the annex, one margin clear of its far edge',
-    );
+    // The settled distance is the exact inverse of the ramp's own curve: at
+    // it, the surface is within tolerance of the flat table by construction.
+    for (const deviation of [40, 400]) {
+      const settled = mapInfoAnnexSettledDepth(annex, deviation, tolerance);
+      const x = annex.attachX + annex.outX * settled;
+      const z = annex.attachZ + annex.outZ * settled;
+      const residual = Math.abs(
+        mapInfoAnnexSurfaceY(annex, x, z, 0, () => -deviation)
+          - mapInfoAnnexFlatSurfaceY(0),
+      );
+      assertContract(
+        Math.abs(residual - tolerance) < tolerance * 1e-6,
+        'the settled distance must be where the ramp is exactly one tolerance from flat',
+      );
+    }
+
+    for (const nearLimit of [0, annex.blendDepth]) {
+      const area = resolveMapInfoAnnexCaptionArea(annex, margin, nearLimit);
+      const areaNearOut =
+        (area.centerX - annex.attachX) * annex.outX +
+        (area.centerZ - annex.attachZ) * annex.outZ -
+        area.depth / 2;
+      assertContract(
+        area.width > 0 && area.depth > 0,
+        'the caption must have somewhere to stand',
+      );
+      assertContract(
+        areaNearOut >= nearLimit + margin - 1e-9,
+        'the caption area must start past the ramp, one margin clear of it',
+      );
+      assertContract(
+        areaNearOut + area.depth <= annex.depth - margin + 1e-9,
+        'the caption area must stay inside the annex, one margin clear of its far edge',
+      );
+    }
 
     // The liquid grows around the annex by the same overhang every map edge
     // gets, and stops at the map's own liquid border.

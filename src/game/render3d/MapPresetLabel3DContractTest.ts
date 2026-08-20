@@ -71,77 +71,115 @@ export function runMapPresetLabel3DContractTest(): void {
     'with every candidate too tall, the wrap must take the widest one',
   );
 
-  // The fields are wrapped in order and balanced by measured width, so no row
-  // is left empty and reading order survives the wrap.
+  // The wrap is BALANCED, not greedy-to-an-average: packing to the average
+  // overshoots on every row, so the early rows come out short and the last
+  // one is left holding whatever nobody else took — which is exactly what a
+  // caption thrown together looks like.
   const fields = ['AAAA', 'B', 'CCCCCCCC', 'DD', 'EEE'];
   const measureByLength = (text: string): number => text.length;
+  let previousRows = 0;
   for (let rowCount = 1; rowCount <= fields.length; rowCount++) {
     const rows = wrapCaptionFields(measureByLength, fields, rowCount);
     assertContract(
-      rows.length === rowCount && rows.every((row) => row.length > 0),
-      `wrapping ${fields.length} fields into ${rowCount} rows must fill every row`,
+      rows.length >= 1 && rows.length <= rowCount && rows.every((row) => row.length > 0),
+      `wrapping into at most ${rowCount} rows must leave no row empty`,
     );
+    assertContract(
+      rows.length >= previousRows,
+      'asking for more rows must never come back with fewer',
+    );
+    previousRows = rows.length;
     assertContract(
       rows.join('').replace(/[^A-E]/g, '') === fields.join(''),
       'wrapping must keep every field, in order',
     );
   }
+  // The widest row of a balanced two-row split of these fields is 'CCCCCCCC'
+  // plus one neighbour; a greedy pack to the average leaves the whole tail on
+  // the last row instead.
+  const balanced = wrapCaptionFields(measureByLength, fields, 2);
+  const widest = balanced.reduce((most, row) => Math.max(most, row.length), 0);
+  const narrowest = balanced.reduce((least, row) => Math.min(least, row.length), Infinity);
+  assertContract(
+    balanced.length === 2 && widest - narrowest <= widest * 0.5,
+    'a two-row wrap must split the measure, not dump the tail on one row',
+  );
   assertContract(
     wrapCaptionFields(measureByLength, [], 3).length === 0,
     'a caption with no settings wraps to no rows',
   );
 
-  // Smallest and largest stock map axes, against a wide and a narrow caption.
+  // Smallest and largest stock map axes, a wide and a narrow caption, and
+  // both a flat coast (the sign gets the whole headland) and a coast that
+  // ramps the full blend band.
   for (const mapAxis of [1400, 23800]) {
     for (const canvasAspect of [1.2, 9]) {
-      const placement = resolveMapPresetLabelPlacement(mapAxis, mapAxis, canvasAspect);
-      const annex = placement.annex;
-      assertContract(
-        placement.worldHeight > 0 && placement.worldWidth > 0,
-        'the caption block must have positive world size',
-      );
-      assertContract(
-        Math.abs(placement.worldWidth / placement.worldHeight - canvasAspect) < 1e-6,
-        'world size must preserve the canvas aspect so glyphs stay unsquashed',
-      );
-      // The sign is map signage: it stands entirely on the annex's FLAT
-      // table, which is entirely off the playable rectangle. Letters all rise
-      // from one plane, so ground still easing into the map edge under them
-      // would leave them floating at one end.
-      const centerOut =
-        (placement.centerX - annex.attachX) * annex.outX +
-        (placement.centerZ - annex.attachZ) * annex.outZ;
-      assertContract(
-        centerOut - placement.worldHeight / 2 >= annex.blendDepth - 1e-6,
-        'the caption must stand past the blend band, on the annex\'s flat table',
-      );
-      assertContract(
-        centerOut + placement.worldHeight / 2 <= annex.depth + 1e-6,
-        'the caption must stay on the annex, not hang off its far edge',
-      );
-      const acrossHalf = Math.abs(
-        (placement.centerX - annex.attachX) * annex.alongX +
-        (placement.centerZ - annex.attachZ) * annex.alongZ,
-      ) + placement.worldWidth / 2;
-      assertContract(
-        acrossHalf <= annex.width / 2 + 1e-6,
-        'the caption must stay between the annex\'s flanks',
-      );
-      assertContract(
-        Math.abs(
-          placement.worldHeight / mapAxis
-            - resolveMapPresetLabelPlacement(1, 1, canvasAspect).worldHeight,
-        ) < 1e-9,
-        'caption size must scale with the map so its whole-map zoom size is constant',
-      );
+      const annexForAxis = resolveMapInfoAnnexFootprint(mapAxis, mapAxis);
+      for (const settledDepth of [0, annexForAxis.blendDepth]) {
+        const placement = resolveMapPresetLabelPlacement(
+          mapAxis,
+          mapAxis,
+          canvasAspect,
+          settledDepth,
+        );
+        const annex = placement.annex;
+        assertContract(
+          placement.worldHeight > 0 && placement.worldWidth > 0,
+          'the caption block must have positive world size',
+        );
+        assertContract(
+          Math.abs(placement.worldWidth / placement.worldHeight - canvasAspect) < 1e-6,
+          'world size must preserve the canvas aspect so glyphs stay unsquashed',
+        );
+        // The sign is map signage: it stands entirely on the annex's FLAT
+        // table, which is entirely off the playable rectangle. Letters all rise
+        // from one plane, so ground still easing into the map edge under them
+        // would leave them floating at one end.
+        const centerOut =
+          (placement.centerX - annex.attachX) * annex.outX +
+          (placement.centerZ - annex.attachZ) * annex.outZ;
+        assertContract(
+          centerOut - placement.worldHeight / 2 >= settledDepth - 1e-6,
+          'the caption must stand past the annex\'s ramp off the coast',
+        );
+        assertContract(
+          centerOut + placement.worldHeight / 2 <= annex.depth + 1e-6,
+          'the caption must stay on the annex, not hang off its far edge',
+        );
+        const acrossHalf = Math.abs(
+          (placement.centerX - annex.attachX) * annex.alongX +
+          (placement.centerZ - annex.attachZ) * annex.alongZ,
+        ) + placement.worldWidth / 2;
+        assertContract(
+          acrossHalf <= annex.width / 2 + 1e-6,
+          'the caption must stay between the annex\'s flanks',
+        );
+        assertContract(
+          Math.abs(
+            placement.worldHeight / mapAxis
+              - resolveMapPresetLabelPlacement(
+                1,
+                1,
+                canvasAspect,
+                settledDepth / mapAxis,
+              ).worldHeight,
+          ) < 1e-9,
+          'caption size must scale with the map so its whole-map zoom size is constant',
+        );
+      }
     }
 
     // THE EVEN MARGIN. A block set to the caption box's own aspect must fill
     // it exactly — that is the target the painter wraps and leads the caption
     // to hit, and the whole reason the gap comes out the same on all four
     // sides rather than three times wider at the flanks than at the rims.
-    const box = resolveMapPresetLabelCaptionBox(mapAxis, mapAxis);
-    const exact = resolveMapPresetLabelPlacement(mapAxis, mapAxis, box.width / box.depth);
+    const box = resolveMapPresetLabelCaptionBox(mapAxis, mapAxis, 0);
+    const exact = resolveMapPresetLabelPlacement(
+      mapAxis,
+      mapAxis,
+      box.width / box.depth,
+      0,
+    );
     assertContract(
       Math.abs(exact.worldWidth - box.width) < 1e-6
         && Math.abs(exact.worldHeight - box.depth) < 1e-6,
@@ -151,10 +189,11 @@ export function runMapPresetLabel3DContractTest(): void {
       (box.centerX - box.annex.attachX) * box.annex.outX +
       (box.centerZ - box.annex.attachZ) * box.annex.outZ;
     assertContract(
-      boxOut - box.depth / 2 >= box.annex.blendDepth - 1e-6
+      boxOut - box.depth / 2 > 0
         && boxOut + box.depth / 2 <= box.annex.depth + 1e-6
-        && box.width < box.annex.width,
-      'the caption box must be the annex\'s flat table, inset on every side',
+        && box.width < box.annex.width
+        && box.depth > box.annex.depth - box.annex.blendDepth,
+      'a flat coast must hand the caption the whole headland, inset on every side',
     );
   }
 
