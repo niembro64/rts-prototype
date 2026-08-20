@@ -963,8 +963,8 @@
       "ownerStrokeColor": "#111111"
     },
     "mapPresetLabel": {
-      "fillColor": "#ffffff",
-      "strokeColor": "#000000"
+      "faceColor": "#ffffff",
+      "sideColor": "#000000"
     },
     "minimap": {
       "radarBlip": {

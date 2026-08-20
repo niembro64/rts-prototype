@@ -59,13 +59,13 @@ try {
     let baseline = 0, top = Infinity, bottom = -Infinity, lft = Infinity, rgt = -Infinity;
     lines.forEach((line, i) => {
       if (i > 0) baseline += fontPxFor(i - 1) + style.lineGapPx;
-      pctx.font = `bold ${fontPxFor(i)}px ${nameFont.NAME_LABEL_FONT_FAMILY}`;
+      pctx.font = `${style.fontWeight} ${fontPxFor(i)}px ${nameFont.NAME_LABEL_FONT_FAMILY}`;
       const m = pctx.measureText(line);
-      const hs = 0.5 * style.strokeWidthPx * (fontPxFor(i) / style.titleFontPx);
-      top = Math.min(top, baseline - m.actualBoundingBoxAscent - hs);
-      bottom = Math.max(bottom, baseline + m.actualBoundingBoxDescent + hs);
-      lft = Math.min(lft, -m.actualBoundingBoxLeft - hs);
-      rgt = Math.max(rgt, m.actualBoundingBoxRight + hs);
+      // Ink is the glyphs' own; the sign carries no outline pen to allow for.
+      top = Math.min(top, baseline - m.actualBoundingBoxAscent);
+      bottom = Math.max(bottom, baseline + m.actualBoundingBoxDescent);
+      lft = Math.min(lft, -m.actualBoundingBoxLeft);
+      rgt = Math.max(rgt, m.actualBoundingBoxRight);
     });
     const pad = style.canvasPadPx;
     const realCanvas = {
