@@ -68,7 +68,11 @@ import {
 } from './NetworkBattleHandoff';
 import { NetworkHeartbeatTracker } from './NetworkHeartbeatTracker';
 import { NetworkLockstepTransport } from './NetworkLockstepTransport';
-import { HOST_MEMBER_ID, NetworkLobbyMembers } from './NetworkLobbyMembers';
+import {
+  HOST_MEMBER_ID,
+  NetworkLobbyMembers,
+  normalizeWireOptional,
+} from './NetworkLobbyMembers';
 import { FIRST_ALLY_TEAM_ID, MAX_ALLY_TEAM_COUNT } from '../sim/teamRoster';
 import { BATTLE_CONFIG } from '@/battleBarConfig';
 import {
@@ -1532,7 +1536,8 @@ export class NetworkManager {
         if (this.role === 'client') {
           if (!this.isMessageForCurrentGame(message.gameId)) return;
           this.localMemberId = message.memberId;
-          this.localPlayerId = message.playerId;
+          // Absent arrives as null, not undefined — see normalizeWireOptional.
+          this.localPlayerId = normalizeWireOptional(message.playerId);
           this.localRole = message.role;
           if (message.seatToken !== undefined) this.setLocalSeatToken(message.seatToken);
           this.emitSeatAssignment(message.playerId, message.role);
@@ -1561,8 +1566,9 @@ export class NetworkManager {
         // Client receives game start signal
         if (this.role === 'client') {
           if (!this.isMessageForCurrentGame(message.gameId)) return;
-          this.localPlayerId = message.assignedPlayerId;
-          this.localRole = message.assignedPlayerId === undefined ? 'spectator' : 'player';
+          const assignedSeat = normalizeWireOptional(message.assignedPlayerId);
+          this.localPlayerId = assignedSeat;
+          this.localRole = assignedSeat === undefined ? 'spectator' : 'player';
           this.emitSeatAssignment(this.localPlayerId, this.localRole);
           const handoff = normalizeBattleHandoffMessage(
             {

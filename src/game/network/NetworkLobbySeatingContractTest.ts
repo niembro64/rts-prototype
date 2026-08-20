@@ -352,5 +352,55 @@ export function runNetworkLobbySeatingContractTest(): void {
     );
   }
 
+  // --- a watcher survives the trip over the wire as a watcher --------------
+  {
+    // The transport does not round-trip `undefined`: the host leaves a
+    // watcher's seat unset, and the client receives `null`. Every reader here
+    // spells "holds no seat" as `=== undefined`, so an un-normalized null
+    // seats the watcher — on TEAM 1, beside the host, wearing the host's
+    // colour and holding a seat the host never granted. That shipped once.
+    const client = new NetworkLobbyMembers();
+    client.replaceAll([
+      {
+        memberId: 1, role: 'player', playerId: 1 as PlayerId,
+        allyTeamId: FIRST_ALLY_TEAM_ID, name: 'host', isHost: true,
+        presence: 'live', ipAddress: undefined, location: undefined,
+        timezone: undefined, localTime: undefined,
+      },
+      // Exactly what arrives on the wire for an unseated member.
+      {
+        memberId: 2, role: 'spectator',
+        playerId: null as unknown as undefined,
+        allyTeamId: null as unknown as undefined,
+        name: 'watcher', isHost: false, presence: 'live',
+        ipAddress: null as unknown as undefined,
+        location: null as unknown as undefined,
+        timezone: null as unknown as undefined,
+        localTime: null as unknown as undefined,
+      },
+    ]);
+
+    assert(
+      client.get(2)?.playerId === undefined,
+      'a null seat from the wire reads as no seat',
+    );
+    assert(
+      client.get(2)?.allyTeamId === undefined,
+      'a null side from the wire reads as no side',
+    );
+    assert(
+      client.seatedPlayers().length === 1,
+      'the client counts exactly the seats the host granted',
+    );
+    assert(
+      client.seatedPlayers()[0]?.playerId === 1,
+      'the one seat is the host, not the watcher',
+    );
+    assert(
+      Object.keys(client.allyTeamByPlayerId()).length === 1,
+      'a watcher contributes no side to the match roster',
+    );
+  }
+
   console.log('[contract] network lobby seating OK');
 }

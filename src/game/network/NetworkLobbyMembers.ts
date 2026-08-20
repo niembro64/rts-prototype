@@ -95,6 +95,37 @@ function randomToken(): SeatToken {
   return out;
 }
 
+/**
+ * The transport does not round-trip `undefined`.
+ *
+ * A field the host never set — `playerId` on a watcher, `allyTeamId` on the
+ * bench — is serialized out and arrives on the client as `null`. Everything
+ * downstream spells "holds no seat" as `playerId === undefined`, and `null`
+ * fails that test: the watcher passes the seated filter, `allyTeamId ?? 1`
+ * puts it on TEAM 1 beside the host, and both commanders wear one colour
+ * while the client holds no seat to command with.
+ *
+ * So absent gets one spelling, and it is restored at the door rather than
+ * asked about at each of the dozen places that read these fields.
+ */
+export function normalizeWireOptional<T>(value: T | null | undefined): T | undefined {
+  return value ?? undefined;
+}
+
+/** A member as it arrived from the wire, with absent fields spelled the way
+ *  the rest of this module expects. */
+function normalizeWireLobbyMember(member: LobbyMember): LobbyMember {
+  return {
+    ...member,
+    playerId: normalizeWireOptional(member.playerId),
+    allyTeamId: normalizeWireOptional(member.allyTeamId),
+    ipAddress: normalizeWireOptional(member.ipAddress),
+    location: normalizeWireOptional(member.location),
+    timezone: normalizeWireOptional(member.timezone),
+    localTime: normalizeWireOptional(member.localTime),
+  };
+}
+
 function createLobbyMember(
   memberId: MemberId,
   name: string,
@@ -565,7 +596,7 @@ export class NetworkLobbyMembers {
     this.presenceByMember.clear();
     for (const member of members) {
       if (!Number.isInteger(member.memberId)) continue;
-      this.members.set(member.memberId, { ...member });
+      this.members.set(member.memberId, normalizeWireLobbyMember(member));
     }
   }
 
