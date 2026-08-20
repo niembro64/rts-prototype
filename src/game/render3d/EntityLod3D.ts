@@ -13,7 +13,6 @@ import {
   detailLevelForRung,
   detailRungForLevel,
   detailRungForMode,
-  detailRungWithHysteresis,
   detailScreenRadiusPx,
   lodProxyFadeAlphaForScreenRadius,
   pinnedRungForLodMode,
@@ -363,11 +362,7 @@ export class EntityLodState3D {
       if (frame === this.frame && stored !== undefined) {
         return stored;
       }
-      const level = this.entityCoverageDetailLevel(view, entity);
-      const rung = stored !== undefined && frame !== undefined &&
-        this.frame - frame <= LOD_STATE_STALE_FRAME_LIMIT
-        ? detailRungWithHysteresis(stored, level)
-        : detailRungForLevel(level);
+      const rung = detailRungForLevel(this.entityCoverageDetailLevel(view, entity));
       this.trackIndexedEntityCache(
         entityId,
         this.rungIndexedEntityIds,
@@ -383,11 +378,7 @@ export class EntityLodState3D {
     if (frame === this.frame && stored !== undefined) {
       return stored;
     }
-    const level = this.entityCoverageDetailLevel(view, entity);
-    const rung = stored !== undefined && frame !== undefined &&
-      this.frame - frame <= LOD_STATE_STALE_FRAME_LIMIT
-      ? detailRungWithHysteresis(stored, level)
-      : detailRungForLevel(level);
+    const rung = detailRungForLevel(this.entityCoverageDetailLevel(view, entity));
     this.rungByEntityId.set(entityId, rung);
     this.rungFrameByEntityId.set(entityId, this.frame);
     return rung;

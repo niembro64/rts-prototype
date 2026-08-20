@@ -20,9 +20,11 @@
 // DRAWN model only — it is not a visibility policy, so GLYPH stays the floor in
 // every mode (detailRungWithGlyphFloor) and a strategic zoom keeps its icons
 // instead of showing sub-pixel models. Features snap to rung boundaries on
-// purpose: one hysteresis covers every transition and a whole zoom sweep costs
-// at most three mesh transitions per entity. This module is pure (no THREE)
-// and is the only interpreter of that config.
+// purpose: a whole zoom sweep costs at most three mesh transitions per entity.
+// The choice is a pure function of projected size — no latch, no deadband, no
+// per-entity memory — so the same entity at the same distance always resolves
+// the same way. This module is pure (no THREE) and the only interpreter of
+// that config.
 
 import { ENTITY_DETAIL_CONFIG } from '@/config';
 import { getLodMode } from '@/clientBarConfig';
@@ -117,24 +119,45 @@ export const THRESHOLD_HIGH_TO_MED_PX = Math.max(
   THRESHOLD_MED_TO_LOW_PX + 0.5,
   finitePositiveOr(detailConfig.thresholds?.highToMedPx, 19.92),
 );
-/** Deadband on every boundary, in the same px unit. */
-export const DETAIL_HYSTERESIS_PX = finitePositiveOr(
-  detailConfig.thresholds?.hysteresisPx, 0.8);
-
 // Internal coverage level L: a normalised restatement of the px thresholds
 // above, kept only because packets and the effect/tier helpers pass a single
-// scalar around. L = 0 at the OFF threshold and 1 at the top of the ramp,
-// which sits a deadband's worth ABOVE the HIGH threshold so that upgrading
-// into HIGH (which must clear the boundary by the margin) is reachable at all.
-// Every comparison below is therefore exactly the px comparison it looks like.
-const LEVEL_RAMP_TOP_PX = THRESHOLD_HIGH_TO_MED_PX + DETAIL_HYSTERESIS_PX * 2;
-const LEVEL_RAMP_SPAN_PX = LEVEL_RAMP_TOP_PX - THRESHOLD_LOW_TO_OFF_PX;
+// scalar around. L = 0 at the OFF threshold and 1 at the HIGH threshold, so
+// every comparison below is exactly the px comparison it looks like.
+const LEVEL_RAMP_SPAN_PX = THRESHOLD_HIGH_TO_MED_PX - THRESHOLD_LOW_TO_OFF_PX;
 const MID_RUNG_MIN_LEVEL = clamp01(
   (THRESHOLD_MED_TO_LOW_PX - THRESHOLD_LOW_TO_OFF_PX) / LEVEL_RAMP_SPAN_PX);
-const CLOSE_RUNG_MIN_LEVEL = clamp01(
-  (THRESHOLD_HIGH_TO_MED_PX - THRESHOLD_LOW_TO_OFF_PX) / LEVEL_RAMP_SPAN_PX);
-export const DETAIL_HYSTERESIS_LEVEL = clamp01(
-  DETAIL_HYSTERESIS_PX / LEVEL_RAMP_SPAN_PX);
+const CLOSE_RUNG_MIN_LEVEL = DETAIL_LEVEL_FULL;
+
+// ── Strategic glyph ─────────────────────────────────────────────────
+// Every glyph, whatever its silhouette, is filled as concentric bands of the
+// four colors every entity must carry: white core, team, player, black
+// outline. These are the band EDGES as a fraction of the glyph radius; the
+// outline is whatever is left out to 1.
+export const GLYPH_WHITE_CORE_FRACTION = clamp01(
+  finitePositiveOr(detailConfig.glyph?.whiteCoreFraction, 0.3));
+export const GLYPH_TEAM_RING_FRACTION = clamp01(Math.max(
+  GLYPH_WHITE_CORE_FRACTION,
+  finitePositiveOr(detailConfig.glyph?.teamRingFraction, 0.62),
+));
+export const GLYPH_PLAYER_RING_FRACTION = clamp01(Math.max(
+  GLYPH_TEAM_RING_FRACTION,
+  finitePositiveOr(detailConfig.glyph?.playerRingFraction, 0.86),
+));
+/**
+ * Screen radius, in px at the reference viewport, below which a strategic
+ * glyph stops shrinking. It is the OFF threshold itself: past the flip the
+ * glyph is no longer a picture of the entity but a symbol saying one is
+ * there, and a symbol too small to see says nothing. Derived rather than
+ * authored — a second knob here could only ever disagree with the flip.
+ */
+export const GLYPH_MIN_SCREEN_RADIUS_PX = THRESHOLD_LOW_TO_OFF_PX;
+
+/** Reference→live viewport conversion for the glyph floor: the drawn floor is
+ *  the size the glyph had at the flip, in the viewport actually being drawn. */
+export function glyphMinScreenRadiusPxForViewport(viewportHeightPx: number): number {
+  if (!(viewportHeightPx > 0)) return GLYPH_MIN_SCREEN_RADIUS_PX;
+  return GLYPH_MIN_SCREEN_RADIUS_PX * (viewportHeightPx / REFERENCE_VIEWPORT_HEIGHT_PX);
+}
 // BAR-style icon cross-fade band: DERIVED, not authored. The proxy glyph is
 // fully transparent while the entity is HIGH, starts fading in the moment
 // geometry drops off HIGH, and covers the whole MED and LOW span — reaching
@@ -249,7 +272,7 @@ export function detailScreenRadiusPx(
   distance: number,
   fovYRad: number,
 ): number {
-  if (!Number.isFinite(distance) || distance <= 0) return LEVEL_RAMP_TOP_PX;
+  if (!Number.isFinite(distance) || distance <= 0) return THRESHOLD_HIGH_TO_MED_PX;
   const radius = finitePositiveOr(radiusWorld, 1);
   return (radius * detailPxScale(fovYRad)) / distance;
 }
@@ -308,10 +331,6 @@ export function detailLevelForViewPosition(
   ));
 }
 
-/** Raw projected-size rung for non-entity world objects, ignoring the LOD mode.
- * Supplying the previous coverage rung gives static props the same hysteresis
- * as entities. Latches must always track THIS value, never the mode-resolved
- * one, so a mode switch cannot feed a pinned rung back into the hysteresis. */
 /** Safety factor on the cull cone, so the cone always strictly contains the
  *  view frustum even as the aspect ratio changes mid-frame. */
 const VIEW_CULL_CONE_MARGIN = 1.15;
@@ -352,22 +371,21 @@ export function viewExcludesSphere(
   return perpSq > coneRadius * coneRadius;
 }
 
+/** Raw projected-size rung for non-entity world objects, ignoring the LOD mode.
+ *  Callers that latch a rung must latch THIS value and never the mode-resolved
+ *  one, so a manual pin can never be fed back in as if it were coverage. */
 export function coverageRungForViewPosition(
   view: RenderViewState3D,
   simX: number,
   simY: number,
   simZ: number,
   radiusWorld: number = DETAIL_RADIUS_FLOOR_EFFECT,
-  currentCoverageRung?: DetailRung,
 ): DetailRung {
-  const level = detailLevelForRadiusDistance(
+  return detailRungForLevel(detailLevelForRadiusDistance(
     radiusWorld,
     Math.hypot(view.cameraX - simX, view.cameraY - simZ, view.cameraZ - simY),
     view.fovYRad,
-  );
-  return currentCoverageRung === undefined
-    ? detailRungForLevel(level)
-    : detailRungWithHysteresis(currentCoverageRung, level);
+  ));
 }
 
 /** Shared projected-size rung selection for non-entity world objects, with the
@@ -378,12 +396,11 @@ export function detailRungForViewPosition(
   simY: number,
   simZ: number,
   radiusWorld: number = DETAIL_RADIUS_FLOOR_EFFECT,
-  currentCoverageRung?: DetailRung,
 ): DetailRung {
   // OFF is the glyph end state, so it never needs the coverage rung at all.
   if (pinnedRungForLodMode() === DETAIL_RUNG_GLYPH) return DETAIL_RUNG_GLYPH;
   return detailRungForMode(coverageRungForViewPosition(
-    view, simX, simY, simZ, radiusWorld, currentCoverageRung));
+    view, simX, simY, simZ, radiusWorld));
 }
 
 /** The authored rung the current manual LOD override pins, or null in AUTO. */
@@ -438,32 +455,6 @@ export function detailLevelForRung(rung: DetailRung): number {
   }
 }
 
-/** Latched rung transition: moving to a different rung requires L to
- *  clear that rung's boundary by the hysteresis margin, so an entity
- *  sitting on a boundary never oscillates. Multi-rung jumps (camera
- *  cuts) step to the HIGHEST rung whose floor clears the margin — an
- *  entity is never latched more than one rung below its raw target. */
-export function detailRungWithHysteresis(
-  currentRung: DetailRung,
-  level: number,
-): DetailRung {
-  const targetRung = detailRungForLevel(level);
-  if (targetRung === currentRung) return currentRung;
-  if (targetRung > currentRung) {
-    for (let rung = targetRung; rung > currentRung; rung--) {
-      if (level >= rungMinLevel(rung as DetailRung) + DETAIL_HYSTERESIS_LEVEL) {
-        return rung as DetailRung;
-      }
-    }
-    return currentRung;
-  }
-  // Downgrading: L must fall below the current rung's floor by the margin.
-  const floor = rungMinLevel(currentRung);
-  return level <= floor - DETAIL_HYSTERESIS_LEVEL || targetRung === DETAIL_RUNG_GLYPH
-    ? targetRung
-    : currentRung;
-}
-
 /** Minimum raw L at which a rung becomes the target (its ladder floor). */
 export function detailRungMinLevel(rung: DetailRung): number {
   switch (rung) {
@@ -471,10 +462,6 @@ export function detailRungMinLevel(rung: DetailRung): number {
     case DETAIL_RUNG_MID: return MID_RUNG_MIN_LEVEL;
     default: return 0;
   }
-}
-
-function rungMinLevel(rung: DetailRung): number {
-  return detailRungMinLevel(rung);
 }
 
 export function detailRungIndex(level: number): number {

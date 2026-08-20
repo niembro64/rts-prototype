@@ -2,11 +2,20 @@ import * as THREE from 'three';
 import type { Entity, PlayerId } from '../sim/types';
 import { getBuildingCombatCenterZ } from '../sim/buildingAnchors';
 import { writeHexToRgb01Array } from './colorUtils';
-import { entityInstanceColorHexForPlayer } from './EntityInstanceColor3D';
+import {
+  entityInstanceColorHexForPlayer,
+  entityTeamColorHexForPlayer,
+} from './EntityInstanceColor3D';
 import {
   entityLodProxyGlyph3D,
   entityLodProxyRadius3D,
 } from './EntityLod3D';
+import {
+  GLYPH_PLAYER_RING_FRACTION,
+  GLYPH_TEAM_RING_FRACTION,
+  GLYPH_WHITE_CORE_FRACTION,
+  glyphMinScreenRadiusPxForViewport,
+} from './EntityDetailLevel3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 import {
   createDirtySlotSpan as createDirtySpan,
@@ -27,11 +36,14 @@ export const ENTITY_LOD_PROXY_TRANSITION_RENDER_ORDER =
 
 const POINT_VERTEX_SHADER = `
 attribute vec3 color;
+attribute vec3 aTeamColor;
 attribute float aRadius;
 attribute float aGlyph;
 attribute float aAlpha;
 uniform float uViewportHeight;
+uniform float uMinPointSizePx;
 varying vec3 vColor;
+varying vec3 vTeamColor;
 varying float vGlyph;
 varying float vAlpha;
 varying float vViewZ;
@@ -40,15 +52,22 @@ varying vec4 vDepthProjection;
 
 void main() {
   vColor = color;
+  vTeamColor = aTeamColor;
   vGlyph = aGlyph;
   vAlpha = aAlpha;
   vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mvPosition;
   float viewDistance = max(1.0, -mvPosition.z);
   // Glyphs are bounded by the entity's true collision radius in world space:
-  // project that radius straight to pixels with no min/max clamp, so the
-  // marker tracks the collision volume at every zoom level.
-  gl_PointSize = aRadius * projectionMatrix[1][1] * uViewportHeight / viewDistance;
+  // project that radius straight to pixels, so the marker tracks the collision
+  // volume at every zoom level — until it reaches the floor. Past the OFF flip
+  // the glyph IS the entity rather than a picture of it, and a symbol shrinking
+  // into a sub-pixel dot stops saying anything, so the size stops tracking
+  // distance there. Position and depth still do.
+  gl_PointSize = max(
+    aRadius * projectionMatrix[1][1] * uViewportHeight / viewDistance,
+    uMinPointSizePx
+  );
   vViewZ = mvPosition.z;
   vViewRadius = aRadius;
   vDepthProjection = vec4(
@@ -62,41 +81,68 @@ void main() {
 
 const POINT_FRAGMENT_SHADER = `
 uniform float uOpacity;
+uniform float uWhiteCoreFraction;
+uniform float uTeamRingFraction;
+uniform float uPlayerRingFraction;
 varying vec3 vColor;
+varying vec3 vTeamColor;
 varying float vGlyph;
 varying float vAlpha;
 varying float vViewZ;
 varying float vViewRadius;
 varying vec4 vDepthProjection;
 
-float proxyGlyphMask(vec2 p, float glyph) {
+// Normalised distance to a glyph's silhouette: <= 1 is inside, and the value
+// scales linearly out from the shape's centre, so the SAME function draws the
+// concentric colour bands — band edge f is just this field compared against a
+// fraction of the radius. Each shape keeps the exact outline it had when the
+// mask was a boolean; only its interior is now graded.
+float proxyGlyphField(vec2 p, float glyph) {
   float glyphId = floor(glyph + 0.5);
-  if (glyphId < 0.5) {
-    return dot(p, p) <= 1.0 ? 1.0 : 0.0;
-  }
   if (glyphId < 1.5) {
-    return abs(p.x) + abs(p.y) <= 1.0 ? 1.0 : 0.0;
+    // 0 circle, 1 diamond — both centred on the origin.
+    return glyphId < 0.5 ? length(p) : abs(p.x) + abs(p.y);
   }
   if (glyphId < 2.5) {
-    return p.y >= -0.85 && p.y <= 0.95 && abs(p.x) <= (0.95 - p.y) * 0.58
-      ? 1.0
-      : 0.0;
+    // 2 triangle. Graded about its centroid so the bands stay concentric
+    // instead of crowding the apex.
+    vec2 c = vec2(0.0, -0.25);
+    vec2 q = p - c;
+    float apex = 0.95 - c.y;
+    float baseY = -0.85 - c.y;
+    float top = q.y / apex;
+    float bottom = q.y / baseY;
+    float side = abs(q.x) / max(1e-4, (apex - q.y) * 0.58);
+    return max(max(top, bottom), side);
   }
   if (glyphId < 3.5) {
-    return max(abs(p.x), abs(p.y)) <= 0.78 ? 1.0 : 0.0;
+    // 3 square.
+    return max(abs(p.x), abs(p.y)) / 0.78;
   }
   if (glyphId < 4.5) {
-    return max(abs(p.x), abs(p.y)) <= 0.9 && (abs(p.x) <= 0.26 || abs(p.y) <= 0.26)
-      ? 1.0
-      : 0.0;
+    // 4 cross: inside the 0.9 box AND within the 0.26 arm of one axis.
+    return max(max(abs(p.x), abs(p.y)) / 0.9, min(abs(p.x), abs(p.y)) / 0.26);
   }
-  return dot(p, p) <= 1.0 ? 1.0 : 0.0;
+  return length(p);
+}
+
+// Every glyph carries all four colors an entity must show: a small white core,
+// then the team color, then the player color, then a black outline. White and
+// black are the contrast pair that keeps the marker legible over any terrain;
+// team sits INSIDE player so friend-or-enemy is the last thing to become
+// unreadable as the glyph approaches its floor size.
+vec3 proxyGlyphBandColor(float field, vec3 playerColor, vec3 teamColor) {
+  if (field <= uWhiteCoreFraction) return vec3(1.0);
+  if (field <= uTeamRingFraction) return teamColor;
+  if (field <= uPlayerRingFraction) return playerColor;
+  return vec3(0.0);
 }
 
 void main() {
   vec2 p = gl_PointCoord * 2.0 - 1.0;
   float radialSq = dot(p, p);
-  if (proxyGlyphMask(p, vGlyph) < 0.5) discard;
+  float field = proxyGlyphField(p, vGlyph);
+  if (field > 1.0) discard;
 
   // The glyph fakes the depth of a sphere of the entity's own radius, on that
   // sphere's NEAR shell — the icon reads in front of the model it is replacing
@@ -111,7 +157,10 @@ void main() {
   float depth = (clipZ / clipW) * 0.5 + 0.5;
   if (depth < 0.0 || depth > 1.0) discard;
   gl_FragDepthEXT = depth;
-  gl_FragColor = vec4(vColor, uOpacity * vAlpha);
+  gl_FragColor = vec4(
+    proxyGlyphBandColor(field, vColor, vTeamColor),
+    uOpacity * vAlpha
+  );
 }
 `;
 
@@ -121,16 +170,19 @@ type ProxyPointBatch = {
   material: THREE.ShaderMaterial;
   positions: Float32Array;
   colors: Float32Array;
+  teamColors: Float32Array;
   radii: Float32Array;
   glyphs: Float32Array;
   alphas: Float32Array;
   positionAttr: THREE.BufferAttribute;
   colorAttr: THREE.BufferAttribute;
+  teamColorAttr: THREE.BufferAttribute;
   radiusAttr: THREE.BufferAttribute;
   glyphAttr: THREE.BufferAttribute;
   alphaAttr: THREE.BufferAttribute;
   positionDirty: DirtySpan;
   colorDirty: DirtySpan;
+  teamColorDirty: DirtySpan;
   radiusDirty: DirtySpan;
   glyphDirty: DirtySpan;
   alphaDirty: DirtySpan;
@@ -174,6 +226,10 @@ function createProxyPointMaterial(transition: boolean): THREE.ShaderMaterial {
     uniforms: {
       uViewportHeight: { value: 1 },
       uOpacity: { value: Math.max(0, Math.min(1, ENTITY_LOD_PROXY_OPACITY)) },
+      uMinPointSizePx: { value: 0 },
+      uWhiteCoreFraction: { value: GLYPH_WHITE_CORE_FRACTION },
+      uTeamRingFraction: { value: GLYPH_TEAM_RING_FRACTION },
+      uPlayerRingFraction: { value: GLYPH_PLAYER_RING_FRACTION },
     },
     vertexShader: POINT_VERTEX_SHADER,
     fragmentShader: POINT_FRAGMENT_SHADER,
@@ -196,21 +252,25 @@ function createProxyPointBatch(transition: boolean): ProxyPointBatch {
   const geometry = new THREE.BufferGeometry();
   const positions = new Float32Array(ENTITY_LOD_PROXY_CAP * 3);
   const colors = new Float32Array(ENTITY_LOD_PROXY_CAP * 3);
+  const teamColors = new Float32Array(ENTITY_LOD_PROXY_CAP * 3);
   const radii = new Float32Array(ENTITY_LOD_PROXY_CAP);
   const glyphs = new Float32Array(ENTITY_LOD_PROXY_CAP);
   const alphas = new Float32Array(ENTITY_LOD_PROXY_CAP);
   const positionAttr = new THREE.BufferAttribute(positions, 3);
   const colorAttr = new THREE.BufferAttribute(colors, 3);
+  const teamColorAttr = new THREE.BufferAttribute(teamColors, 3);
   const radiusAttr = new THREE.BufferAttribute(radii, 1);
   const glyphAttr = new THREE.BufferAttribute(glyphs, 1);
   const alphaAttr = new THREE.BufferAttribute(alphas, 1);
   positionAttr.setUsage(THREE.DynamicDrawUsage);
   colorAttr.setUsage(THREE.DynamicDrawUsage);
+  teamColorAttr.setUsage(THREE.DynamicDrawUsage);
   radiusAttr.setUsage(THREE.DynamicDrawUsage);
   glyphAttr.setUsage(THREE.DynamicDrawUsage);
   alphaAttr.setUsage(THREE.DynamicDrawUsage);
   geometry.setAttribute('position', positionAttr);
   geometry.setAttribute('color', colorAttr);
+  geometry.setAttribute('aTeamColor', teamColorAttr);
   geometry.setAttribute('aRadius', radiusAttr);
   geometry.setAttribute('aGlyph', glyphAttr);
   geometry.setAttribute('aAlpha', alphaAttr);
@@ -228,16 +288,19 @@ function createProxyPointBatch(transition: boolean): ProxyPointBatch {
     material,
     positions,
     colors,
+    teamColors,
     radii,
     glyphs,
     alphas,
     positionAttr,
     colorAttr,
+    teamColorAttr,
     radiusAttr,
     glyphAttr,
     alphaAttr,
     positionDirty: createDirtySpan(),
     colorDirty: createDirtySpan(),
+    teamColorDirty: createDirtySpan(),
     radiusDirty: createDirtySpan(),
     glyphDirty: createDirtySpan(),
     alphaDirty: createDirtySpan(),
@@ -251,8 +314,12 @@ function createProxyPointBatch(transition: boolean): ProxyPointBatch {
 // as the former inline math compared.
 const _scratchRgb01: number[] = [0, 0, 0];
 
-function writeColorHex(batch: ProxyPointBatch, slot: number, colorHex: number): void {
-  const out = batch.colors;
+function writeColorChannel(
+  out: Float32Array,
+  dirty: DirtySpan,
+  slot: number,
+  colorHex: number,
+): void {
   const o = slot * 3;
   writeHexToRgb01Array(colorHex, _scratchRgb01, 0);
   const r = _scratchRgb01[0];
@@ -262,11 +329,17 @@ function writeColorHex(batch: ProxyPointBatch, slot: number, colorHex: number): 
   out[o] = r;
   out[o + 1] = g;
   out[o + 2] = b;
-  markDirty(batch.colorDirty, slot);
+  markDirty(dirty, slot);
 }
 
+/** A glyph carries BOTH seat identities — the player's own color and the
+ *  side's — because the shader bands them together with white and black. */
 function lodProxyColorHex(ownerId: PlayerId | undefined): number {
   return entityInstanceColorHexForPlayer(ownerId);
+}
+
+function lodProxyTeamColorHex(ownerId: PlayerId | undefined): number {
+  return entityTeamColorHexForPlayer(ownerId);
 }
 
 function writePoint(
@@ -278,6 +351,7 @@ function writePoint(
   radius: number,
   glyph: number,
   colorHex: number,
+  teamColorHex: number,
   alpha: number,
 ): void {
   const posOffset = slot * 3;
@@ -310,7 +384,8 @@ function writePoint(
     batch.alphas[slot] = nextAlpha;
     markDirty(batch.alphaDirty, slot);
   }
-  writeColorHex(batch, slot, colorHex);
+  writeColorChannel(batch.colors, batch.colorDirty, slot, colorHex);
+  writeColorChannel(batch.teamColors, batch.teamColorDirty, slot, teamColorHex);
 }
 
 function writeSimPoint(
@@ -324,7 +399,18 @@ function writeSimPoint(
   ownerId: PlayerId | undefined,
   alpha: number,
 ): void {
-  writePoint(batch, slot, simX, simZ, simY, radius, glyph, lodProxyColorHex(ownerId), alpha);
+  writePoint(
+    batch,
+    slot,
+    simX,
+    simZ,
+    simY,
+    radius,
+    glyph,
+    lodProxyColorHex(ownerId),
+    lodProxyTeamColorHex(ownerId),
+    alpha,
+  );
 }
 
 function markBatchRange(batch: ProxyPointBatch, viewportHeight: number): void {
@@ -333,10 +419,16 @@ function markBatchRange(batch: ProxyPointBatch, viewportHeight: number): void {
     batch.geometry.setDrawRange(0, count);
     batch.drawRangeCount = count;
   }
-  batch.material.uniforms.uViewportHeight.value = Math.max(1, viewportHeight);
+  const liveViewportHeight = Math.max(1, viewportHeight);
+  batch.material.uniforms.uViewportHeight.value = liveViewportHeight;
+  // gl_PointSize is a diameter, and the floor is authored as a radius at the
+  // reference viewport — convert once per batch rather than per vertex.
+  batch.material.uniforms.uMinPointSizePx.value =
+    2 * glyphMinScreenRadiusPxForViewport(liveViewportHeight);
   if (count <= 0) return;
   uploadDirty(batch.positionAttr, batch.positionDirty, 3);
   uploadDirty(batch.colorAttr, batch.colorDirty, 3);
+  uploadDirty(batch.teamColorAttr, batch.teamColorDirty, 3);
   uploadDirty(batch.radiusAttr, batch.radiusDirty, 1);
   uploadDirty(batch.glyphAttr, batch.glyphDirty, 1);
   uploadDirty(batch.alphaAttr, batch.alphaDirty, 1);
@@ -570,6 +662,10 @@ export class LodProxyPointBatchRenderer3D {
     this.batch.count = 0;
   }
 
+  /** A contact has no seat to read a second identity from, so its player and
+   *  team bands are the same neutral color — it still gets the white core and
+   *  the black outline, which is what keeps it legible over any terrain.
+   *  Passing teamColorHex splits the two bands where a caller does know. */
   pushProxy(
     simX: number,
     simY: number,
@@ -578,6 +674,7 @@ export class LodProxyPointBatchRenderer3D {
     glyph: number,
     colorHex: number,
     alpha: number,
+    teamColorHex: number = colorHex,
   ): void {
     const slot = this.batch.count;
     if (slot >= ENTITY_LOD_PROXY_CAP) return;
@@ -590,6 +687,7 @@ export class LodProxyPointBatchRenderer3D {
       radius,
       glyph,
       colorHex,
+      teamColorHex,
       alpha,
     );
     this.batch.count = slot + 1;
