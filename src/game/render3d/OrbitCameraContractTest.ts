@@ -6,6 +6,10 @@ import {
   CAMERA_SMOOTH_TAU_SECONDS,
   CAMERA_TERRAIN_COLLISION,
   CAMERA_TRANSITION_SCOPE,
+  CAMERA_ZOOM_IN_ANCHOR,
+  CAMERA_ZOOM_OUT_ANCHOR,
+  ZOOM_STEP_FRACTION,
+  ZOOM_TRAVEL_CLAMP_FRACTION,
 } from '../../config';
 import {
   averageOfShortestDistances,
@@ -21,6 +25,7 @@ import {
   OrbitCamera,
   terrainClearanceRaise,
   zoomAggregationShortestCount,
+  zoomPivotTravelBudgetFraction,
 } from './OrbitCamera';
 
 function assertContract(condition: boolean, message: string): void {
@@ -137,6 +142,67 @@ export function runOrbitCameraContractTest(): void {
   assertContract(
     close(barCameraTravelClampedZoomFactor(0.825, 100000, 1000, 0), 0.825),
     'a zero travel-clamp fraction must disable the ceiling entirely',
+  );
+
+  // THE TRAVEL BUDGET SPENDS THE PIVOT BEFORE IT SPENDS THE FACTOR. Both
+  // clamps below are handed the same pathological anchor; the pivot version
+  // keeps the gesture full strength by giving up the pin, which is what stops
+  // a wheel notch from going dead at shallow pitch and out past the coast.
+  //
+  // Geometry throughout: focus at the origin, eye 1000 above it, so a centre
+  // zoom moves the eye |1 − factor| · 1000 and the budget is 0.5 · 1000.
+  assertContract(
+    close(
+      zoomPivotTravelBudgetFraction(0, 1000, 0, 0, 0, 0, 0, 0, 900, 1.175, 1000, 0.5),
+      1,
+    ),
+    'an anchor whose gesture already fits the travel budget must not be moved',
+  );
+  const farAnchorFraction = zoomPivotTravelBudgetFraction(
+    0, 1000, 0, 0, 0, 0, 0, 0, 100000, 1.175, 1000, 0.5,
+  );
+  assertContract(
+    farAnchorFraction > 0 && farAnchorFraction < 1,
+    'a grazing-ray anchor must slide down the focus → anchor segment',
+  );
+  // The resolved pivot must sit exactly on the budget sphere: the eye travels
+  // the full allowance and not one unit more.
+  const resolvedPivotZ = 100000 * farAnchorFraction;
+  const resolvedAnchorDistance = Math.hypot(1000, resolvedPivotZ);
+  assertContract(
+    Math.abs(0.175 * resolvedAnchorDistance - 0.5 * 1000) <= 1e-6,
+    'the resolved pivot must spend exactly the configured travel budget',
+  );
+  assertContract(
+    Math.abs(
+      barCameraTravelClampedZoomFactor(1.175, resolvedAnchorDistance, 1000, 0.5) - 1.175,
+    ) <= 1e-9,
+    'after the pivot gives way the factor clamp must be inert — the whole '
+      + 'requested distance change survives a distant anchor',
+  );
+  // The one case the pivot cannot rescue: a notch so large that even a centre
+  // zoom overshoots. There the factor clamp is still the honest answer.
+  assertContract(
+    close(
+      zoomPivotTravelBudgetFraction(0, 1000, 0, 0, 0, 0, 0, 0, 5000, 2.5, 1000, 0.5),
+      0,
+    ),
+    'a step too large for even a centre zoom must collapse the pivot onto the '
+      + 'focus and leave the factor clamp to throttle it',
+  );
+  assertContract(
+    close(
+      zoomPivotTravelBudgetFraction(0, 1000, 0, 0, 0, 0, 0, 0, 100000, 1.175, 1000, 0),
+      1,
+    ),
+    'a zero travel-clamp fraction must disable the pivot budget too',
+  );
+  assertContract(
+    close(
+      zoomPivotTravelBudgetFraction(0, 1000, 0, 0, 0, 0, 0, 0, 100000, 1, 1000, 0.5),
+      1,
+    ),
+    'a no-op zoom factor moves the eye nowhere, so its pivot is unconstrained',
   );
 
   assertContract(
@@ -385,6 +451,113 @@ export function runOrbitCameraContractTest(): void {
   }
 
   assertStatelessTerrainClearance();
+  assertRailConstrainsWholeZoom();
+}
+
+/** The focus rail is a constraint on the WHOLE gesture. A pan only moves the
+ *  focus, so clamping X and Z after the fact is the whole story; a zoom ships a
+ *  coupled (focus, altitude) pair derived from one pivot, and truncating the
+ *  two horizontal axes while keeping the altitude left the camera in a pose no
+ *  gesture could have produced. Because a zoom scales the focus/anchor height
+ *  gap by its own factor, that banked altitude compounded per notch instead of
+ *  settling — the accumulation behind a camera that "gets weird" after panning
+ *  to an edge and scrolling around out there.
+ *
+ *  The rail must also not become a second dead zoom: refusing the focus step
+ *  is not a reason to refuse the distance step, which no rail governs. */
+function assertRailConstrainsWholeZoom(): void {
+  const canvas = createStandInCanvas(1000, 1000);
+  const camera = new THREE.PerspectiveCamera(45, 1, 1, 100000);
+  const orbit = new OrbitCamera(camera, canvas, {
+    movementConfig: CAMERA_MOVEMENT_CONFIG,
+    zoomInAnchor: CAMERA_ZOOM_IN_ANCHOR,
+    zoomOutAnchor: CAMERA_ZOOM_OUT_ANCHOR,
+    zoomStepFraction: ZOOM_STEP_FRACTION,
+    zoomTravelClampFraction: ZOOM_TRAVEL_CLAMP_FRACTION,
+    terrainCollisionMode: 'none',
+  });
+  const wheelOut = (): void => {
+    canvas.dispatchEvent(new WheelEvent('wheel', {
+      deltaY: 100,
+      deltaMode: 0,
+      clientX: 500,
+      clientY: 500,
+      bubbles: true,
+      cancelable: true,
+    }));
+  };
+  try {
+    const railMaxZ = 5000;
+    const anchorDrop = 400;
+    const anchorAhead = 500;
+    // No terrain sampler at all, so the focus altitude band stands down and
+    // this measures the gesture rather than the floor. The anchor is kept near
+    // the focus throughout so the travel budget never engages and the rail is
+    // the only thing under test.
+    const anchor = new THREE.Vector3();
+    orbit.setCursorPicker(() => anchor);
+    orbit.setTransitionSeconds(0);
+    orbit.setTargetBounds(-railMaxZ, -railMaxZ, railMaxZ, railMaxZ);
+    orbit.setState({
+      targetX: 0,
+      targetY: 0,
+      targetZ: railMaxZ,
+      distance: 1000,
+      yaw: 0,
+      pitch: 0.5,
+    });
+
+    // The focus is parked against the +Z wall with its anchor short of it and
+    // below it, so an unclamped zoom-out — which pushes the focus AWAY from
+    // its anchor — would drive the focus through the wall and lift its
+    // altitude by ZOOM_STEP_FRACTION · anchorDrop on the way.
+    const wallZ = orbit.target.z;
+    anchor.set(0, -anchorDrop, wallZ - anchorAhead);
+    wheelOut();
+    assertContract(
+      close(orbit.target.z, wallZ),
+      'a focus already against the rail must not slide through it',
+    );
+    assertContract(
+      close(orbit.target.y, 0),
+      'a focus step the rail refuses must not deliver its ALTITUDE either — '
+        + 'that leftover is what compounds into a runaway focus',
+    );
+    assertContract(
+      close(orbit.distance, 1000 * (1 + ZOOM_STEP_FRACTION)),
+      'the rail governs the focus, not the distance: a blocked zoom-out must '
+        + 'still deliver its whole step as a plain centre zoom',
+    );
+
+    // The same gesture with room to move must be entirely unaffected: the rail
+    // may only ever take away what it actually blocks.
+    orbit.setState({
+      targetX: 0,
+      targetY: 0,
+      targetZ: 0,
+      distance: 1000,
+      yaw: 0,
+      pitch: 0.5,
+    });
+    anchor.set(0, -anchorDrop, -anchorAhead);
+    wheelOut();
+    // The resolved pivot rides the zoom's shared sample buffer, whose depths
+    // are Float32 for the debug renderer, so the anchored focus step carries
+    // that buffer's ~1e-7 relative precision and no more.
+    const nearlyExact = (actual: number, expected: number): boolean =>
+      Math.abs(actual - expected) <= Math.abs(expected) * 1e-5;
+    assertContract(
+      close(orbit.distance, 1000 * (1 + ZOOM_STEP_FRACTION))
+        && nearlyExact(orbit.target.z, ZOOM_STEP_FRACTION * anchorAhead),
+      'a zoom-out with rail clearance must deliver its whole requested step',
+    );
+    assertContract(
+      nearlyExact(orbit.target.y, ZOOM_STEP_FRACTION * anchorDrop),
+      'with clearance, the anchored focus altitude step must arrive in full',
+    );
+  } finally {
+    orbit.destroy();
+  }
 }
 
 /** The camera's pose must be a pure function of its controller state and the

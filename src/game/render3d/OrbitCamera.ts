@@ -58,6 +58,7 @@ import {
   cameraMouseDragModeForModifiers,
   terrainClearanceRaise,
   zoomAggregationShortestCount,
+  zoomPivotTravelBudgetFraction,
   type CameraMouseDragMode,
 } from './OrbitCameraMath';
 export {
@@ -73,6 +74,7 @@ export {
   cameraMouseDragModeForModifiers,
   terrainClearanceRaise,
   zoomAggregationShortestCount,
+  zoomPivotTravelBudgetFraction,
 } from './OrbitCameraMath';
 
 
@@ -450,6 +452,8 @@ export class OrbitCamera {
   private _zoomCenterTmp = new THREE.Vector3();
   private _zoomSampleCenterTmp = new THREE.Vector3();
   private _zoomPivotTmp = new THREE.Vector3();
+  private _zoomBudgetPivotTmp = new THREE.Vector3();
+  private _controllerEyeTmp = new THREE.Vector3();
   private _zoomScreenAnchorTmp = new THREE.Vector2();
   private _barControllerEyeTmp = new THREE.Vector3();
   private _barRenderedRayTmp = new THREE.Vector3();
@@ -1476,15 +1480,7 @@ export class OrbitCamera {
       : center;
     const sampledCenter = this._zoomSampleCenterTmp.copy(sampledCenterHit ?? center);
     const samples = this.zoomTerrainSamples;
-    const motionCamera = this.cameraPositionForState(
-      this.toTargetX,
-      this.toTargetY,
-      this.toTargetZ,
-      this.toDistance,
-      this.toYaw,
-      this.pitch,
-      this._cameraPosTmp,
-    );
+    const motionCamera = this.controllerEyePosition(this._cameraPosTmp);
     // The 17 sample rays originate at the rendered camera, so compare their
     // distances from that same camera. Using the smooth TO-state here mixed
     // two camera poses during an EMA zoom and could make the center look like
@@ -1649,17 +1645,9 @@ export class OrbitCamera {
       return;
     }
     const resolvedAnchor = anchor ?? (worldStep < 0 ? this.zoomInAnchor : this.zoomOutAnchor);
-    const cam = this.cameraPositionForState(
-      this.toTargetX,
-      this.toTargetY,
-      this.toTargetZ,
-      this.toDistance,
-      this.toYaw,
-      this.pitch,
-      this._cameraPosTmp,
-    );
-    const sinP = Math.sin(this.pitch);
-    const cosP = Math.cos(this.pitch);
+    const cam = this.controllerEyePosition(this._cameraPosTmp);
+    const sinP = Math.sin(this.toPitch);
+    const cosP = Math.cos(this.toPitch);
     const targetToCameraX = sinP * Math.sin(this.toYaw);
     const targetToCameraY = cosP;
     const targetToCameraZ = sinP * -Math.cos(this.toYaw);
@@ -1691,7 +1679,7 @@ export class OrbitCamera {
       this.toTargetY,
       this.toTargetZ,
       this.toYaw,
-      this.pitch,
+      this.toPitch,
     );
     this.applyDestinationIfSnap();
   }
@@ -1701,24 +1689,40 @@ export class OrbitCamera {
     p0: THREE.Vector3 | null,
   ): void {
     if (!Number.isFinite(wantFactor) || wantFactor <= 0 || this.toDistance <= 0) return;
-    // Bound this tick's eye travel by the camera's own scale first: the
-    // anchor stays where it is, but a silhouette or fallback anchor at
-    // pathological depth can only pull the eye a configured fraction of the
-    // current distance per tick.
+    // Bound this tick's eye travel by the camera's own scale. The PIVOT gives
+    // way first: an anchor at silhouette or grazing-ray depth slides down the
+    // focus → anchor segment until the gesture fits, which weakens the pin but
+    // preserves the whole requested distance change (see
+    // zoomPivotTravelBudgetFraction). Only when even a plain centre zoom would
+    // overshoot does the factor itself get throttled — clamping the factor
+    // first is what used to make wheel notches stop moving the camera at
+    // shallow pitch and out past the map's coast.
     let travelSafeFactor = wantFactor;
+    let pivot: THREE.Vector3 | null = p0;
     if (p0) {
-      const controllerEye = this.cameraPositionForState(
+      const controllerEye = this.controllerEyePosition(this._controllerEyeTmp);
+      const pivotFraction = zoomPivotTravelBudgetFraction(
+        controllerEye.x,
+        controllerEye.y,
+        controllerEye.z,
         this.toTargetX,
         this.toTargetY,
         this.toTargetZ,
+        p0.x,
+        p0.y,
+        p0.z,
+        wantFactor,
         this.toDistance,
-        this.toYaw,
-        this.pitch,
-        this._cameraPosTmp,
+        this.zoomTravelClampFraction,
+      );
+      pivot = this._zoomBudgetPivotTmp.set(
+        this.toTargetX + (p0.x - this.toTargetX) * pivotFraction,
+        this.toTargetY + (p0.y - this.toTargetY) * pivotFraction,
+        this.toTargetZ + (p0.z - this.toTargetZ) * pivotFraction,
       );
       travelSafeFactor = barCameraTravelClampedZoomFactor(
         wantFactor,
-        controllerEye.distanceTo(p0),
+        controllerEye.distanceTo(pivot),
         this.toDistance,
         this.zoomTravelClampFraction,
       );
@@ -1726,8 +1730,8 @@ export class OrbitCamera {
     // Clamp the factor BEFORE it translates target + eye around an anchor,
     // so an outward zoom ends exactly on the eye-distance rail instead of
     // leaving an impossible target/rail combination for the distance solver.
-    const railSafeFactor = p0
-      ? this.constrainZoomFactorToCameraRail(travelSafeFactor, p0)
+    const railSafeFactor = pivot
+      ? this.constrainZoomFactorToCameraRail(travelSafeFactor, pivot)
       : travelSafeFactor;
     const wantedDistance = this.toDistance * railSafeFactor;
     const startTargetX = this.toTargetX;
@@ -1742,21 +1746,58 @@ export class OrbitCamera {
       nextTargetX = startTargetX;
       nextTargetY = startTargetY;
       nextTargetZ = startTargetZ;
-      if (!p0) return;
+      if (!pivot) return;
       const k = 1 - actualFactor;
-      // Blend ALL THREE target axes toward p0 — Y matters because
+      // Blend ALL THREE target axes toward the pivot — Y matters because
       // the cursor pin invariant is c'_new = α·c + (1-α)·p0 in 3D,
       // not just XZ. Skipping Y leaves newCamera.y at α·c.y +
       // (1-α)·target.y instead of α·c.y + (1-α)·p0.y, and the
       // cursor pin drifts vertically by (1-α)·(p0.y - target.y)
       // per scroll / pinch whenever the user zooms over terrain at
       // a different height than target.y.
-      nextTargetX = actualFactor * startTargetX + k * p0.x;
-      nextTargetY = actualFactor * startTargetY + k * p0.y;
-      nextTargetZ = actualFactor * startTargetZ + k * p0.z;
+      nextTargetX = actualFactor * startTargetX + k * pivot.x;
+      nextTargetY = actualFactor * startTargetY + k * pivot.y;
+      nextTargetZ = actualFactor * startTargetZ + k * pivot.z;
     };
     resolveTarget();
 
+    // THE FOCUS RAIL CONSTRAINS THE WHOLE GESTURE, not two of its three axes.
+    // constrainTargets() clamps X and Z after the fact, which is the whole
+    // story for a pan — nothing else in a pan depends on them — but a zoom
+    // ships a coupled (focus, altitude) pair derived from one pivot.
+    // Truncating X and Z and keeping the altitude left the camera in a pose no
+    // gesture could have produced: a focus pinned against the rail carrying an
+    // altitude computed for a focus somewhere else. Every notch into the wall
+    // banked more of that, and since a zoom scales the focus/anchor height gap
+    // by its own factor, the banked altitude compounded rather than settled.
+    //
+    // The rail therefore moves the PIVOT, exactly as the travel budget above
+    // does: the focus step is (1 − factor) · (focus − pivot), so sliding the
+    // pivot toward the focus by the fraction the rail allows scales all three
+    // axes of that step by the same amount and lands the focus exactly on the
+    // rail. The result is the pose a zoom anchored one pivot nearer would have
+    // produced — a reachable one — and the distance change survives intact,
+    // because distance never depended on the pivot. Against the wall the
+    // gesture degenerates to a plain centre zoom rather than going dead.
+    if (pivot) {
+      const railFraction = this.stepFractionInsideTargetRail(
+        startTargetX,
+        startTargetZ,
+        nextTargetX,
+        nextTargetZ,
+      );
+      if (railFraction < 1) {
+        pivot.set(
+          startTargetX + (pivot.x - startTargetX) * railFraction,
+          startTargetY + (pivot.y - startTargetY) * railFraction,
+          startTargetZ + (pivot.z - startTargetZ) * railFraction,
+        );
+        resolveTarget();
+      }
+    }
+
+    // Any distance rail can only shrink |1 − factor|, so the focus step only
+    // ever gets smaller here and stays inside the rail resolved above.
     for (let i = 0; i < 3; i++) {
       const constrainedDistance = this.constrainOrbitDistance(
         nextDistance,
@@ -1764,7 +1805,7 @@ export class OrbitCamera {
         nextTargetY,
         nextTargetZ,
         this.toYaw,
-        this.pitch,
+        this.toPitch,
       );
       if (constrainedDistance === nextDistance) break;
       nextDistance = constrainedDistance;
@@ -1791,6 +1832,48 @@ export class OrbitCamera {
     this.toDistance = nextDistance;
 
     this.applyDestinationIfSnap();
+  }
+
+  /** The largest fraction of a focus step from (startX, startZ) toward
+   *  (endX, endZ) that stays inside the focus rail. 1 when the step already
+   *  lands inside, 0 when the start is already against the rail and the step
+   *  pushes further out. Each axis is solved independently and the tighter
+   *  one wins, which is the exact clip of a segment against the rectangle. */
+  private stepFractionInsideTargetRail(
+    startX: number,
+    startZ: number,
+    endX: number,
+    endZ: number,
+  ): number {
+    let fraction = 1;
+    const axis = (start: number, end: number, min: number, max: number): void => {
+      const delta = end - start;
+      if (delta > 0 && Number.isFinite(max) && end > max) {
+        fraction = Math.min(fraction, Math.max(0, (max - start) / delta));
+      } else if (delta < 0 && Number.isFinite(min) && end < min) {
+        fraction = Math.min(fraction, Math.max(0, (min - start) / delta));
+      }
+    };
+    axis(startX, endX, this.targetMinX, this.targetMaxX);
+    axis(startZ, endZ, this.targetMinZ, this.targetMaxZ);
+    return fraction;
+  }
+
+  /** The eye the CONTROLLER state describes — the pose this gesture is
+   *  steering toward, with no rendered channel mixed in. Anchor math that
+   *  reached for `this.pitch` while reading `toTarget`/`toDistance`/`toYaw`
+   *  was solving for a camera that exists in neither state during a
+   *  transition. */
+  private controllerEyePosition(out: THREE.Vector3): THREE.Vector3 {
+    return this.cameraPositionForState(
+      this.toTargetX,
+      this.toTargetY,
+      this.toTargetZ,
+      this.toDistance,
+      this.toYaw,
+      this.toPitch,
+      out,
+    );
   }
 
   private worldStepForZoomFactor(factor: number): number {
@@ -2382,15 +2465,7 @@ export class OrbitCamera {
     anchor: THREE.Vector3,
   ): number {
     if (!Number.isFinite(this.maxCameraDistanceFromOrigin)) return wantFactor;
-    const eye = this.cameraPositionForState(
-      this.toTargetX,
-      this.toTargetY,
-      this.toTargetZ,
-      this.toDistance,
-      this.toYaw,
-      this.pitch,
-      this._cameraPosTmp,
-    );
+    const eye = this.controllerEyePosition(this._cameraPosTmp);
     const nextEyeX = wantFactor * eye.x + (1 - wantFactor) * anchor.x;
     const nextEyeY = wantFactor * eye.y + (1 - wantFactor) * anchor.y;
     const nextEyeZ = wantFactor * eye.z + (1 - wantFactor) * anchor.z;

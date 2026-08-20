@@ -5,7 +5,9 @@ import { SurfaceLiftProbeOverlay3D } from '../../render3d/SurfaceLiftProbeOverla
 import { BeamRenderer3D } from '../../render3d/BeamRenderer3D';
 import { BuildGhost3D } from '../../render3d/BuildGhost3D';
 import { BurnMark3D } from '../../render3d/BurnMark3D';
+import { cameraSurfaceHeight } from '../../render3d/CameraSurface3D';
 import { CursorGround } from '../../render3d/CursorGround';
+import { resolveMapInfoAnnexFootprint } from '../../render3d/MapInfoAnnex3D';
 import { EnvironmentPropRenderer3D } from '../../render3d/EnvironmentPropRenderer3D';
 import { WorldShade3D } from '../../render3d/WorldShade3D';
 import { GroundPrint3D } from '../../render3d/GroundPrint3D';
@@ -162,10 +164,22 @@ export function bootstrapRtsScene3DRenderers(
     mapHeight,
   );
   // Recovery follows terrain only. Water is presentation and never counts as
-  // a camera surface, even when the sea reaches the viewport edge.
+  // a camera surface, even when the sea reaches the viewport edge. The info
+  // annex is terrain — a view filled by the headland and its caption is not a
+  // lost view — so the box covers the whole drawn surface, not the playable
+  // square inside it.
+  const annexFootprint = resolveMapInfoAnnexFootprint(mapWidth, mapHeight);
   const terrainSurfaceBounds = new THREE.Box3(
-    new THREE.Vector3(0, TILE_FLOOR_Y, 0),
-    new THREE.Vector3(mapWidth, TERRAIN_MAX_RENDER_Y, mapHeight),
+    new THREE.Vector3(
+      Math.min(0, annexFootprint.minX),
+      TILE_FLOOR_Y,
+      Math.min(0, annexFootprint.minZ),
+    ),
+    new THREE.Vector3(
+      Math.max(mapWidth, annexFootprint.maxX),
+      TERRAIN_MAX_RENDER_Y,
+      Math.max(mapHeight, annexFootprint.maxZ),
+    ),
   );
   threeApp.orbit.setSurfaceVisibilityChecker((frustum) =>
     frustum.intersectsBox(terrainSurfaceBounds));
@@ -192,9 +206,13 @@ export function bootstrapRtsScene3DRenderers(
     cursorGround.pickWorldRay(origin, direction, terrainMode, fallbackPlaneHeight)
   );
   // Camera clearance floors on the terrain bed alone — under water that is
-  // the basin floor, so the camera may dive below the surface freely.
+  // the basin floor, so the camera may dive below the surface freely. This is
+  // the SAME field CursorGround resolves its anchors against (see
+  // CameraSurface3D): off the map and off the info annex it reports NaN, and
+  // the camera's focus band and clearance lift both stand down rather than
+  // floor on a coastline that stopped several thousand units back.
   threeApp.orbit.setTerrainSampler((x, z) =>
-    getTerrainMeshHeight(x, z, mapWidth, mapHeight)
+    cameraSurfaceHeight(x, z, mapWidth, mapHeight)
   );
   cameraFramingSystem.seedInitialCamera();
 

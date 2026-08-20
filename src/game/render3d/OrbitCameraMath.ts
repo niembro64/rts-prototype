@@ -134,16 +134,113 @@ export function barCameraRelativeZoomFactor(
   return Math.max(1e-6, 1 + signedTicks * fraction);
 }
 
+/**
+ * How far along focus → anchor a cursor-pinned zoom may put its scale pivot
+ * and still keep the eye's travel inside `clampFraction` of the orbit
+ * distance. 1 leaves the anchor where it is; 0 collapses the gesture to a
+ * plain centre zoom about the focus.
+ *
+ * This exists because the travel budget has two jobs that used to be one
+ * knob. Anchor-relative zoom moves the eye by |1 − factor| · anchorDistance,
+ * and anchorDistance is a raycast depth that is discontinuous at terrain
+ * silhouettes: the pixel on a peak and the pixel beside it differ by orders
+ * of magnitude, and a grazing ray over a distant coast is quasi-infinite.
+ * Spending the whole budget on the FACTOR — the only lever there used to be —
+ * conflates "do not teleport the eye" with "do not zoom": a far anchor drags
+ * the factor toward 1, and past roughly fifty times the orbit distance a
+ * wheel notch stops moving the camera at all. That is the dead zoom players
+ * hit at shallow pitch and off the map's edges.
+ *
+ * The pivot is the right lever, because a CENTRE zoom always fits the budget:
+ * its travel is |1 − factor| · orbitDistance, and |1 − factor| is a fraction
+ * of a per-notch step while clampFraction is a fraction of the distance. So
+ * an anchor too far to pin degrades toward the focus and keeps the full
+ * requested distance change, instead of keeping a perfect pin on a gesture
+ * that no longer does anything. The factor clamp below still backstops the
+ * one case the pivot cannot fix — a single notch so large that even a centre
+ * zoom overshoots — where throttling really is the intended answer.
+ *
+ * Geometrically: solve |eye − lerp(focus, anchor, t)| = budget / |1 − factor|
+ * for the largest t in [0, 1]. t = 0 is inside the sphere whenever the centre
+ * zoom fits, so the segment crosses the surface exactly once and the positive
+ * root is that crossing.
+ */
+export function zoomPivotTravelBudgetFraction(
+  eyeX: number,
+  eyeY: number,
+  eyeZ: number,
+  focusX: number,
+  focusY: number,
+  focusZ: number,
+  anchorX: number,
+  anchorY: number,
+  anchorZ: number,
+  wantFactor: number,
+  orbitDistance: number,
+  clampFraction: number,
+): number {
+  if (!Number.isFinite(wantFactor) || wantFactor <= 0) return 1;
+  if (!Number.isFinite(orbitDistance) || !(orbitDistance > 0)) return 1;
+  const fraction = Number.isFinite(clampFraction)
+    ? clampFraction
+    : DEFAULT_ZOOM_TRAVEL_CLAMP_FRACTION;
+  // Zero or negative disables the budget entirely, as it does for the factor.
+  if (!(fraction > 0)) return 1;
+  const factorDelta = Math.abs(1 - wantFactor);
+  // A no-op zoom moves the eye nowhere from any pivot.
+  if (!(factorDelta > 1e-9)) return 1;
+
+  const radius = (fraction * orbitDistance) / factorDelta;
+  const toEyeX = eyeX - focusX;
+  const toEyeY = eyeY - focusY;
+  const toEyeZ = eyeZ - focusZ;
+  const toAnchorX = anchorX - focusX;
+  const toAnchorY = anchorY - focusY;
+  const toAnchorZ = anchorZ - focusZ;
+  if (
+    !Number.isFinite(toAnchorX) || !Number.isFinite(toAnchorY) || !Number.isFinite(toAnchorZ)
+    || !Number.isFinite(toEyeX) || !Number.isFinite(toEyeY) || !Number.isFinite(toEyeZ)
+  ) {
+    return 0;
+  }
+
+  const radiusSq = radius * radius;
+  // t = 1: the anchor as given. Nothing to do if it already fits.
+  const anchorOffsetX = toEyeX - toAnchorX;
+  const anchorOffsetY = toEyeY - toAnchorY;
+  const anchorOffsetZ = toEyeZ - toAnchorZ;
+  const anchorDistanceSq =
+    anchorOffsetX * anchorOffsetX
+    + anchorOffsetY * anchorOffsetY
+    + anchorOffsetZ * anchorOffsetZ;
+  if (anchorDistanceSq <= radiusSq) return 1;
+
+  // t = 0: the focus. When even that overshoots, the pivot has nothing left
+  // to give and barCameraTravelClampedZoomFactor throttles the factor.
+  const focusDistanceSq = toEyeX * toEyeX + toEyeY * toEyeY + toEyeZ * toEyeZ;
+  if (focusDistanceSq >= radiusSq) return 0;
+
+  const a =
+    toAnchorX * toAnchorX + toAnchorY * toAnchorY + toAnchorZ * toAnchorZ;
+  if (!(a > 1e-12)) return 0;
+  const b = -2 * (toEyeX * toAnchorX + toEyeY * toAnchorY + toEyeZ * toAnchorZ);
+  const c = focusDistanceSq - radiusSq;
+  const discriminant = b * b - 4 * a * c;
+  if (!(discriminant >= 0)) return 0;
+  const crossing = (-b + Math.sqrt(discriminant)) / (2 * a);
+  if (!Number.isFinite(crossing)) return 0;
+  return Math.min(1, Math.max(0, crossing));
+}
+
 /** Bound an anchor-relative zoom factor so the eye's travel cannot exceed
  * `clampFraction` of the current orbit distance.
  *
- * Anchor-relative zoom moves the eye by |1 − factor| · anchorDistance, and
- * anchorDistance is a raycast depth that is discontinuous at terrain
- * silhouettes: the pixel on a peak and the pixel beside it can differ by two
- * orders of magnitude, and a fallback hit can be quasi-infinite. Clamping the
- * factor — never the anchor point — keeps the gesture aimed at the same
- * world point while making per-tick motion proportional to the camera's own
- * scale. Ordinary zooms (anchorDistance ≈ orbitDistance) are unaffected. */
+ * This is the BACKSTOP behind {@link zoomPivotTravelBudgetFraction}, not the
+ * first line of defence: callers move the pivot first and reach this with an
+ * anchor that already fits the budget, so it is inert on every ordinary zoom.
+ * It still binds when one notch is large enough that even a centre zoom would
+ * overshoot, which is the case the budget was actually written for — there,
+ * making the gesture smaller is the only honest answer. */
 export function barCameraTravelClampedZoomFactor(
   wantFactor: number,
   anchorDistance: number,
