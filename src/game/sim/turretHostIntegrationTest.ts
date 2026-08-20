@@ -1,6 +1,13 @@
 import { getTransformCosSin } from '../math';
 import { deterministicMath as DMath } from './deterministicMath';
-import { getBuildingBlueprint, getUnitBlueprint, TURRET_BLUEPRINTS } from './blueprints';
+import {
+  BUILDING_BLUEPRINTS,
+  getBuildingBlueprint,
+  getUnitBlueprint,
+  TURRET_BLUEPRINTS,
+  UNIT_BLUEPRINTS,
+} from './blueprints';
+import { validateTurretBarrelPresentation } from './blueprints/stationArticulation';
 import { createBuildable } from './buildableHelpers';
 import { CT_TURRET_STATE_ENGAGED } from '../sim-wasm/init';
 import { DamageSystem } from './damage';
@@ -165,6 +172,64 @@ function assertLogicalTurretPresentationOwnership(): void {
       antiAir.barrel.barrelCount === 6,
     'Anti-Air tower keeps its pre-migration six-barrel host presentation',
   );
+}
+
+/** Every presented multi-barrel cluster is a rotary mechanism, so the whole
+ *  roster must author a spin envelope that actually turns — a 2+ barrel
+ *  cluster frozen in place reads as a modelling bug in game. The loader
+ *  refuses a dead envelope (validateTurretBarrelPresentation); this walks the
+ *  shipped roster from the other side and pins the refusal itself. */
+function assertMultiBarrelClustersRotate(): void {
+  for (const [hostId, mounts] of [
+    ...Object.entries(UNIT_BLUEPRINTS).map(
+      ([id, bp]) => [id, bp.turrets] as const,
+    ),
+    ...Object.entries(BUILDING_BLUEPRINTS).map(
+      ([id, bp]) => [id, bp.turrets] as const,
+    ),
+  ]) {
+    for (const mount of mounts) {
+      const barrel = mount.presentation?.barrel;
+      if (
+        barrel === null ||
+        barrel === undefined ||
+        (barrel.type !== 'simpleMultiBarrel' && barrel.type !== 'coneMultiBarrel')
+      ) {
+        continue;
+      }
+      const spin = barrel.spin;
+      assertContract(
+        barrel.barrelCount >= 2,
+        `${hostId}/${mount.mountId} multi-barrel cluster mounts 2 or more barrels`,
+      );
+      assertContract(
+        mount.presentation?.headOnly !== true,
+        `${hostId}/${mount.mountId} multi-barrel cluster is not headOnly (spin would be suppressed)`,
+      );
+      assertContract(
+        spin.idle > 0 && spin.accel > 0 && spin.decel > 0 && spin.max >= spin.idle,
+        `${hostId}/${mount.mountId} multi-barrel cluster rotates at idle and spins up when engaged`,
+      );
+    }
+  }
+
+  let refused = false;
+  try {
+    validateTurretBarrelPresentation('contract probe', {
+      headRadius: 10,
+      headOnly: false,
+      barrel: {
+        type: 'simpleMultiBarrel',
+        barrelCount: 3,
+        barrelLength: 1,
+        orbitRadius: 0.4,
+        spin: { idle: 0, max: 0, accel: 0, decel: 0 },
+      },
+    });
+  } catch {
+    refused = true;
+  }
+  assertContract(refused, 'a dead multi-barrel spin envelope is refused at the loader boundary');
 }
 
 let nextTestWorldEntityIdFloor = 64;
@@ -1509,6 +1574,7 @@ export function runTurretHostIntegrationContractTest(): void {
   resetTurretHostIntegrationState();
   try {
     assertLogicalTurretPresentationOwnership();
+    assertMultiBarrelClustersRotate();
     const world = createIsolatedTestWorld(1234, 512, 512);
     world.playerCount = 2;
     const host = world.createUnitFromBlueprint(

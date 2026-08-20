@@ -49,6 +49,39 @@ traverse compile to a continuous local-yaw station, which gives ordinary
 vehicles and base-defense turrets the same parent-relative behavior without
 duplicating data.
 
+## Barrel presentation
+
+A station's `presentation.barrel` is the physical mechanism the player reads;
+it never changes where a shot comes from.
+
+- `singleCylinderBarrel` / `singleConeBarrel` are one fixed tube. They do not
+  rotate.
+- `simpleMultiBarrel` (parallel ring) and `coneMultiBarrel` (diverging cone)
+  are **rotary clusters**: two or more tubes sharing one mechanical firing
+  station. The cluster axis is lowered by the firing orbit radius so exactly
+  one tube sits on the aimed centerline, and every emission leaves that single
+  centered socket regardless of which lane fired. Lane identity drives burst
+  cadence and effects, not geometry.
+- **Every multi-barrel cluster rotates.** The shared-socket geometry only
+  reads correctly while the cluster turns — a frozen 2+ tube cluster looks
+  like a bundle of dead pipes bolted to a head. So the spin envelope is part
+  of the contract, not a per-mount style choice: `spin.idle`, `spin.accel` and
+  `spin.decel` must be positive and `spin.max >= spin.idle`. Idle is a visible
+  creep; engaging spins up toward `max`, disengaging decays back to idle.
+  A mount that should hold still authors a single-tube barrel instead.
+- `barrelCount` must be at least 2 on both cluster types, must equal the
+  station's `emissionLaneCount`, and a cluster may not be `headOnly` (head-only
+  presentation suppresses barrel animation, which would freeze the cluster).
+- `validateTurretBarrelPresentation` (blueprints/stationArticulation.ts)
+  enforces all of the above at the JSON loader boundary for unit and building
+  mounts alike, so a dead cluster fails at load rather than shipping as a
+  visual bug.
+- Spin is presentation state, not simulation state: the renderer integrates it
+  per frame from the engagement state on the render turret slab, so it costs
+  nothing authoritative and never affects determinism. The detail-level gate
+  may freeze the animation at distant rungs and collapse the cluster to one
+  visible tube; both resume from the retained angle.
+
 ## Fixed-tick order
 
 1. Resolve current QueryWork intent. Shared parent claims are arbitrated by
@@ -131,6 +164,8 @@ returns them to their authored rest pose.
 - No weapon may fire through an unreachable traverse or before alignment.
 - No TypeScript spring or presentation-only aiming path may bypass the Rust
   motor limits.
+- Every presented multi-barrel cluster rotates. A station that should hold
+  still authors a single tube instead of a zeroed spin envelope.
 - Selection, targeting, recoil, launch inheritance, snapshots, and rendering
   identify the station by stable host id plus mount index/id.
 - Physics and targeting math remain deterministic and allocation-free in the

@@ -1,9 +1,56 @@
-import type { TurretStationArticulation } from '../../../types/blueprints';
+import type { TurretPresentation, TurretStationArticulation } from '../../../types/blueprints';
 import type { WorkEmitterSpec } from '../../../types/constructionTypes';
 import { assertFiniteNumber } from '../../../configValidation';
 
 function assertFinite(label: string, value: number): void {
   assertFiniteNumber(value, `Invalid ${label}`);
+}
+
+/** Validate the presented barrel cluster at the JSON loader boundary.
+ *
+ * A `simpleMultiBarrel`/`coneMultiBarrel` cluster is a ROTARY mechanism: two
+ * or more tubes share one fixed firing station, and the cluster turns so a
+ * different tube reaches that station for each shot. That rotation is what
+ * makes the shared-socket geometry read as a gatling instead of a bundle of
+ * dead pipes, so it is a contract rather than an option — every multi-barrel
+ * mount spins, idles at a visible creep, and spins up when engaged. A cluster
+ * that cannot rotate is an authoring error, not a style choice: author a
+ * `singleCylinderBarrel` when a mount should hold still. */
+export function validateTurretBarrelPresentation(
+  label: string,
+  presentation: TurretPresentation | null | undefined,
+): void {
+  const barrel = presentation?.barrel;
+  if (
+    barrel === null ||
+    barrel === undefined ||
+    (barrel.type !== 'simpleMultiBarrel' && barrel.type !== 'coneMultiBarrel')
+  ) {
+    return;
+  }
+  if (!Number.isInteger(barrel.barrelCount) || barrel.barrelCount < 2) {
+    throw new Error(
+      `Invalid ${label}.barrel.barrelCount: a ${barrel.type} cluster needs 2 or more barrels`,
+    );
+  }
+  if (presentation?.headOnly) {
+    throw new Error(
+      `Invalid ${label}.barrel: a headOnly mount suppresses barrel animation, ` +
+      'so it cannot present a rotating multi-barrel cluster',
+    );
+  }
+  const spin = barrel.spin;
+  assertFinite(`${label}.barrel.spin.idle`, spin.idle);
+  assertFinite(`${label}.barrel.spin.max`, spin.max);
+  assertFinite(`${label}.barrel.spin.accel`, spin.accel);
+  assertFinite(`${label}.barrel.spin.decel`, spin.decel);
+  if (spin.idle <= 0 || spin.accel <= 0 || spin.decel <= 0 || spin.max < spin.idle) {
+    throw new Error(
+      `Invalid ${label}.barrel.spin: every multi-barrel cluster rotates — ` +
+      'idle, accel and decel must be positive radians-per-second envelopes and ' +
+      'max must be at least idle',
+    );
+  }
 }
 
 /** Validate the physical station envelope at the JSON loader boundary. */

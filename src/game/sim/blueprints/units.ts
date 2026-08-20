@@ -35,7 +35,11 @@ import {
   normalizeEntityBaseLedgerFromAliases,
 } from './entityBaseLedger';
 import type { UnitSupportSurface } from '../../../types/blueprints';
-import { validateStationArticulation, validateWorkEmitter } from './stationArticulation';
+import {
+  validateStationArticulation,
+  validateTurretBarrelPresentation,
+  validateWorkEmitter,
+} from './stationArticulation';
 
 type JsonUnitBlueprint = Omit<UnitBlueprint, keyof LockOnInclusionObject>;
 
@@ -545,6 +549,10 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
     validateStationArticulation(
       `turret station ${bp.unitBlueprintId}[${i}] ${turret.mountId}`,
       turret.articulation,
+    );
+    validateTurretBarrelPresentation(
+      `turret station ${bp.unitBlueprintId}[${i}] ${turret.mountId}`,
+      turret.presentation,
     );
     const mount = turret.mount;
     if (
