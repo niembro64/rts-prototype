@@ -1566,6 +1566,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runNetworkLobbySeatingContractTest();
         const { runStateMachineContractTest } = await import('../state/StateMachineContractTest');
         runStateMachineContractTest();
+        const { runAppSurfaceMachineContractTest } = await import('../../appSurfaceMachineContractTest');
+        runAppSurfaceMachineContractTest();
         const { runClientSnapshotApplierContractTest } = await import('../network/ClientSnapshotApplierContractTest');
         runClientSnapshotApplierContractTest();
         const { runShieldFarLodRenderPacketContractTest, runTypedSensorHydrationContractTest } = await import('../network/ClientSnapshotApplierContractTest');

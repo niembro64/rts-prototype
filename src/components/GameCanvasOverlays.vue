@@ -64,7 +64,7 @@ function handleCameraTutorialDone(): void {
         Returning to the menu in {{ hostLeftSecondsRemaining }}s…
       </p>
       <button class="host-left-btn" @click="emit('exitAfterHostLeft')">
-        Return to Menu
+        Return to Lobby
       </button>
     </div>
   </div>

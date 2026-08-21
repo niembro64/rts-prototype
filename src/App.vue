@@ -1,24 +1,22 @@
 <script setup lang="ts">
-import { defineAsyncComponent, ref } from 'vue';
+import { defineAsyncComponent, ref, watch } from 'vue';
+import { appSurface } from './appSurfaceMachine';
 
 const GameCanvas = defineAsyncComponent(() => import('./components/GameCanvas.vue'));
 const EntityLabPage = defineAsyncComponent(() => import('./components/EntityLabPage.vue'));
-type GameSurface = 'demoBattle' | 'lobby' | 'onlineGame';
-type AppSurface = GameSurface | 'entityLab';
 
-const activeSurface = ref<AppSurface>('lobby');
-const gameSurface = ref<GameSurface>('lobby');
+// The high-level surface lives in the app surface machine
+// (src/appSurfaceMachine.ts): init, lobby, demoBattle and onlineGame are all
+// hosted by GameCanvas, entityLab by its own page. This component renders
+// the state and holds no navigation logic of its own — the components that
+// own the gestures send the events.
 const gameCanvasKey = ref(0);
-
-function openEntityLab(): void {
-  activeSurface.value = 'entityLab';
-}
-
-function openGameSurface(surface: GameSurface): void {
-  gameSurface.value = surface;
-  gameCanvasKey.value++;
-  activeSurface.value = surface;
-}
+watch(appSurface, (surface, previous) => {
+  // Remount the canvas fresh each time the entity lab hands control back;
+  // moves between the canvas-hosted surfaces never remount it, which is
+  // what lets a network session survive them.
+  if (previous === 'entityLab' && surface !== 'entityLab') gameCanvasKey.value++;
+});
 
 // 3D-only: the renderer choice is no longer URL- or storage-driven.
 // Any /2d or /3d path the URL still carries is harmless; we just
@@ -38,18 +36,8 @@ if (after !== '' && after !== '/') {
 </script>
 
 <template>
-  <EntityLabPage
-    v-if="activeSurface === 'entityLab'"
-    @open-demo-battle="openGameSurface('demoBattle')"
-    @open-lobby="openGameSurface('lobby')"
-    @open-online-game="openGameSurface('onlineGame')"
-  />
-  <GameCanvas
-    v-else
-    :key="gameCanvasKey"
-    :initial-surface="gameSurface"
-    @open-entity-lab="openEntityLab"
-  />
+  <EntityLabPage v-if="appSurface === 'entityLab'" />
+  <GameCanvas v-else :key="gameCanvasKey" />
 </template>
 
 <style>

@@ -627,8 +627,21 @@ export function saveBattleBuildingRoster(
   );
 }
 
+/** A cap is only meaningful when it sits on the authored ladder: the BATTLE
+ *  bar renders exactly those buttons, so an off-ladder value (a default from
+ *  an older build, a hand-edited store) lights no CAP at all and the bar
+ *  reads as capless. Off the ladder falls back to the mode default. */
+function sanitizeEntityCountCap(value: number, mode: BattleMode): number {
+  return (battleBarConfig.cap.options as readonly number[]).includes(value)
+    ? value
+    : MODE_DEFAULT_ENTITY_COUNT_CAPS[mode];
+}
+
 function loadStoredDemoCap(): number {
-  return loadPosNum(STORAGE_DEMO_CAP) ?? getModeDefaultEntityCountCap('demo');
+  const stored = loadPosNum(STORAGE_DEMO_CAP);
+  return stored === null
+    ? getModeDefaultEntityCountCap('demo')
+    : sanitizeEntityCountCap(stored, 'demo');
 }
 
 // Real-battle settings are session-only; see realBattleSessionSettings.ts
@@ -675,7 +688,7 @@ export function getUnitCap(mode: BattleMode): number {
   if (mode === 'demo') return loadStoredDemoCap();
   const stored = Number(readModeSetting('real', STORAGE_REAL_CAP, STORAGE_DEMO_CAP));
   return Number.isFinite(stored) && stored > 0
-    ? stored
+    ? sanitizeEntityCountCap(stored, 'real')
     : getModeDefaultEntityCountCap('real');
 }
 

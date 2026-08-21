@@ -1,3 +1,4 @@
+import { sendAppSurface } from '../appSurfaceMachine';
 import type { Ref } from 'vue';
 import type { GameScene } from '../game/createGame';
 import type { NetworkManager, NetworkRole } from '../game/network/NetworkManager';
@@ -98,6 +99,9 @@ export async function startRealBattleWithPlayers(
 
   options.showLobby.value = false;
   options.gameStarted.value = true;
+  // Host start and client handoff both funnel through here, so this is the
+  // one writer of the surface machine's lobby -> onlineGame edge.
+  sendAppSurface('startOnlineGame');
   options.battleLoading.value = true;
   const startGen = options.lifecycle.beginStart();
   options.foregroundSceneBinding.clear();

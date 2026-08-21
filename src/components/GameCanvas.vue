@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, reactive, shallowRef, watch, watchEffect, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { appSurface, sendAppSurface } from '../appSurfaceMachine';
 import type { GameInstance } from '../game/createGame';
 import type { PlayerId } from '../game/sim/types';
 import type { BackgroundBattleState } from '../game/lobby/LobbyManager';
@@ -143,15 +144,6 @@ const isMobile =
     navigator.userAgent,
   );
 
-const emit = defineEmits<{
-  openEntityLab: [];
-}>();
-
-const props = withDefaults(defineProps<{
-  initialSurface?: 'demoBattle' | 'lobby' | 'onlineGame';
-}>(), {
-  initialSurface: 'lobby',
-});
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const backgroundContainerRef = ref<HTMLDivElement | null>(null);
@@ -431,15 +423,15 @@ const {
 
 // The sidebar's open/closed state is restored from localStorage by
 // useGameCanvasChromeState, which is what lets it persist across reloads.
-// A plain page load / refresh always comes up on the 'lobby' surface, so
-// that case must keep the restored value untouched. Only the explicit
-// entry surfaces reached by navigating from the entity lab override it,
-// and they set the flag directly (never via toggleMenuHidden) so they
-// don't overwrite the saved preference in storage.
-if (props.initialSurface === 'demoBattle') {
+// On a fresh boot the machine is still in 'init', so the restored value
+// stands (onMounted then replays it into the machine as a closeMenu). The
+// other two states here are re-entries from the entity lab, whose nav
+// buttons name the surface they want; both set the flag directly (never
+// via toggleMenuHidden) so they don't overwrite the saved preference.
+if (appSurface.value === 'demoBattle') {
   menuHidden.value = true; // slide the menu out of the way to watch the demo
-} else if (props.initialSurface === 'onlineGame') {
-  menuHidden.value = false; // entering the online flow surfaces the menu
+} else if (appSurface.value === 'lobby') {
+  menuHidden.value = false; // "Lobby" means the menu, so surface it
 }
 
 function toggleUiChrome(): void {
@@ -1473,7 +1465,10 @@ const {
 });
 
 function openEntityLab(): void {
-  emit('openEntityLab');
+  // Refused during an online game: unmounting the canvas would disconnect
+  // the network session, so leaving a match stays an explicit act on the
+  // match's own exits.
+  sendAppSurface('openEntityLab');
 }
 
 useGameCanvasEntityLabHotkey(openEntityLab);
@@ -2033,7 +2028,7 @@ const {
   },
 });
 
-const { restartGame } = useGameCanvasSessionLifecycle({
+const { restartGame: restartGameSession } = useGameCanvasSessionLifecycle({
   gameOverWinner,
   battleLoading,
   gameStarted,
@@ -2063,6 +2058,38 @@ const { restartGame } = useGameCanvasSessionLifecycle({
   stopBackgroundBattle,
   resetSpectatorState,
 });
+
+/** Every way out of a match funnels here: the game-over banner, the OPTIONS
+ *  LEAVE button, host eviction. Tear the session down, take the machine's
+ *  one exit, and land the player on the MENU — the exits all read "Return
+ *  to Lobby", so the lobby is what they get. The nextTick outruns the
+ *  battle-mode watcher that would otherwise restore a saved closed-menu
+ *  preference over the destination the player just chose. */
+function restartGame(): void {
+  restartGameSession();
+  if (sendAppSurface('exitOnlineGame')) {
+    void nextTick(() => {
+      menuHidden.value = false;
+    });
+  }
+}
+
+onMounted(() => {
+  // Boot ends when the canvas is actually on screen; a remount returning
+  // from the entity lab sends this too and is refused, machine already out
+  // of init. The restored closed-menu preference is replayed as the edge it
+  // means, so the machine tracks what the player actually sees.
+  if (sendAppSurface('boot') && menuHidden.value) sendAppSurface('closeMenu');
+});
+
+/** The sidebar chevron is the lobby <-> demoBattle edge. Chrome first (the
+ *  toggle also persists the preference), then the machine records the move;
+ *  both surfaces declare the edge, so the send only refuses if chrome and
+ *  machine have somehow diverged — and then refusing is the right answer. */
+function handleMenuToggle(): void {
+  toggleMenuHidden();
+  sendAppSurface(menuHidden.value ? 'closeMenu' : 'openMenu');
+}
 
 const {
   handleHost,
@@ -3014,6 +3041,13 @@ watchEffect(() => {
               :title="gamePhase === 'paused' ? 'Resume the game' : 'Pause the game'"
               @click="setGamePaused(gamePhase !== 'paused')"
             >PAUSE</button>
+            <button
+              v-if="gameStarted"
+              type="button"
+              class="options-menu-leave"
+              title="Leave the match and return to the lobby"
+              @click="optionsMenuOpen = false; restartGame()"
+            >LEAVE</button>
           </div>
         </section>
       </template>
@@ -3148,7 +3182,7 @@ watchEffect(() => {
       @cancel="handleLobbyCancel"
       @offline="handleOffline"
       @entity-lab="openEntityLab"
-      @toggle-menu="toggleMenuHidden"
+      @toggle-menu="handleMenuToggle"
       @set-center-magnitude="(v) => applyCenterMagnitude(v)"
       @set-ring-magnitude="(v) => applyRingMagnitude(v)"
       @set-dividers-magnitude="(v) => applyDividersMagnitude(v)"
