@@ -16,6 +16,12 @@ const GLOBAL_CHAT_GAME_ID = 'budget-annihilation';
 /** Fallback cadence until a read advertises the server's own. */
 const DEFAULT_POLL_INTERVAL_MS = 4000;
 
+/** Ceiling for the failure backoff. An absent backend is the ordinary local
+ *  dev state, and knocking every four seconds on a door nobody answers just
+ *  fills the dev server's log — so unanswered polls stretch toward this,
+ *  and the first answered one snaps back to the advertised cadence. */
+const MAX_FAILURE_BACKOFF_MS = 60000;
+
 const REQUEST_TIMEOUT_MS = 6000;
 
 export type GlobalChatMessage = {
@@ -69,6 +75,7 @@ async function requestJson(
 export class GlobalChatClient {
   private latestSeq = 0;
   private pollIntervalMs = DEFAULT_POLL_INTERVAL_MS;
+  private consecutiveFailures = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private inFlight = false;
   private onMessages: ((messages: readonly GlobalChatMessage[]) => void) | null = null;
@@ -76,6 +83,9 @@ export class GlobalChatClient {
   start(onMessages: (messages: readonly GlobalChatMessage[]) => void): void {
     this.onMessages = onMessages;
     if (this.timer !== null) return;
+    // A fresh arrival deserves a fresh first knock, whatever the backoff
+    // said before the player left the surface.
+    this.consecutiveFailures = 0;
     // First read fetches the whole kept ring, so a player arriving at home
     // sees the conversation already in progress.
     void this.poll();
@@ -110,7 +120,10 @@ export class GlobalChatClient {
         `/chat/${encodeURIComponent(GLOBAL_CHAT_GAME_ID)}?after=${this.latestSeq}`,
       );
       const handler = this.onMessages;
-      if (body !== null && handler !== null) {
+      if (body === null) {
+        this.consecutiveFailures++;
+      } else if (handler !== null) {
+        this.consecutiveFailures = 0;
         const value = body as Record<string, unknown>;
         const interval = Math.floor(Number(value.pollIntervalMs));
         if (Number.isFinite(interval) && interval >= 1000) this.pollIntervalMs = interval;
@@ -128,10 +141,16 @@ export class GlobalChatClient {
     } finally {
       this.inFlight = false;
       if (this.onMessages !== null) {
+        const delay = this.consecutiveFailures === 0
+          ? this.pollIntervalMs
+          : Math.min(
+              MAX_FAILURE_BACKOFF_MS,
+              this.pollIntervalMs * 2 ** this.consecutiveFailures,
+            );
         this.timer = setTimeout(() => {
           this.timer = null;
           void this.poll();
-        }, this.pollIntervalMs);
+        }, delay);
       }
     }
   }

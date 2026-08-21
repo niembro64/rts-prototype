@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { createLogger, defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
@@ -50,10 +50,32 @@ const crossOriginIsolationHeaders = {
   'Cross-Origin-Embedder-Policy': 'require-corp',
 };
 
+// Running without web_games_backend is a NORMAL dev state — the lobby
+// browser degrades to code-only joining and the home chat to a quiet room.
+// The proxy's `configure` handler below already answers those requests with
+// a quiet 503, but Vite's own proxy error listener still paints a
+// connection-refused stack every poll, which buries real output and teaches
+// people to ignore red text. Filter exactly that message: /api proxy +
+// connection refused. Any OTHER proxy failure (a running backend hanging
+// up, a bad response) still prints, because that one is news.
+const devLogger = createLogger();
+const devLoggerError = devLogger.error.bind(devLogger);
+devLogger.error = (message, options) => {
+  if (
+    typeof message === 'string' &&
+    message.includes('http proxy error: /api') &&
+    message.includes('ECONNREFUSED')
+  ) {
+    return;
+  }
+  devLoggerError(message, options);
+};
+
 export default defineConfig(({ command }) => {
   const isTauriBuild = isTauri && command === 'build';
   return {
     base: isTauri ? '/' : '/budget-annihilation/',
+    customLogger: devLogger,
     plugins: [vue(), wasm(), topLevelAwait()],
     define: {
       __BA_BUILD_FINGERPRINT__: JSON.stringify(computeBuildFingerprint()),
