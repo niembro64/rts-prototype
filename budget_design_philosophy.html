@@ -320,42 +320,46 @@
     </section>
 
     <section>
-      <h2>Five Surfaces, One Declared Map</h2>
+      <h2>Home, Game Room, Two Side Rooms &mdash; One Declared Map</h2>
       <p>
         The app&rsquo;s high-level navigation is itself a lifecycle, so it follows the same rule as
         every other lifecycle here: it is a declared finite state machine, not a scatter of refs
-        that happen to agree. There are exactly five surfaces a player can be on &mdash;
-        <code>init</code>, <code>lobby</code>, <code>demoBattle</code>, <code>onlineGame</code>,
-        <code>entityLab</code> &mdash; and the machine that owns which one is current lives in
-        <code>src/appSurfaceMachine.ts</code>. <code>App.vue</code> renders the state and holds no
-        navigation logic of its own; the components that own the gestures send the events, and an
-        event the table does not declare is refused.
+        that happen to agree. The map follows the shape Beyond All Reason players already know
+        &mdash; a home screen with the sandbox behind the menus, a battle room you enter to play
+        with people, and the battle itself with an explicit loading phase. The machine that owns
+        which surface is current lives in <code>src/appSurfaceMachine.ts</code>.
+        <code>App.vue</code> renders the state and holds no navigation logic of its own; the
+        components that own the gestures send the events, and an event the table does not declare
+        is refused.
       </p>
       <p>
         <code>init</code> is boot &mdash; modules loading, the sim WASM compiling &mdash; and its
-        only edge is into the <code>lobby</code>; nothing ever returns to it. The
-        <code>lobby</code> is the menu: host, join, browse the directory, and &mdash; after hosting
-        or joining &mdash; the seating screen for a networked match. The demo battle plays behind
-        it, but that is a backdrop, not a state: the menu is what you are on.
-        <code>demoBattle</code> is the same canvas with the menu slid away and the BATTLE bar live;
-        <code>onlineGame</code> is a real lockstep match from battle handoff until it ends (a
-        solo-hosted real battle counts &mdash; same surface, same lockstep, one seat); and
-        <code>entityLab</code> is the inspection lab, with no network and no battle.
+        only edge is into <code>home</code>; nothing ever returns to it. <code>HOME</code> is one
+        surface: the demo battle, the lobby directory, and host/join. Whether the menu sidebar is
+        slid open or away is CHROME, not navigation &mdash; either way you are home, watching and
+        tuning the demo. The <code>GAME ROOM</code> is a networked session with declared
+        sub-states: <code>lobby</code> (the seating screen &mdash; teams, presets, the host
+        deciding who plays) and <code>battle</code>, which itself passes through
+        <code>loading</code> (handoff received; booting, and for a late joiner replaying the
+        archive) before <code>playing</code>. A solo-hosted real battle enters the battle directly
+        from home &mdash; same surface, same lockstep, one seat, no seats to negotiate.
+        <code>ENTITY LAB</code> is the inspection lab and <code>GAME CONTROLS</code> the controls
+        reference; neither has a network or a battle. The StateMachine primitive is flat, so the
+        hierarchy is encoded in the state ids and read through the
+        <code>isGameRoomSurface</code>/<code>isBattleSurface</code> predicates &mdash; the
+        declaration is still one table.
       </p>
       <p>
-        The shape of the map is a hub. The lobby is the only surface connected to everything,
-        because it is the only place every flow can regroup: <code>lobby &harr; demoBattle</code>
-        is the menu sliding away and back, <code>lobby &harr; entityLab</code> and
-        <code>demoBattle &harr; entityLab</code> are the lab doors, and
-        <code>lobby &rarr; onlineGame</code> is battle handoff. The asymmetries are the point of
-        writing the table down:
+        The shape of the map is a hub. Home is the only surface connected to everything, because
+        it is the only place every flow can regroup: the side rooms&rsquo; doors, hosting and
+        joining into the game room&rsquo;s seating screen, the solo battle&rsquo;s direct road.
+        The asymmetries are the point of writing the table down:
       </p>
       <ul class="rule-list">
-        <li>The entity lab cannot start an online game. A match needs a host or a room code, and the lab has neither &mdash; the road runs lab &rarr; lobby &rarr; host/join. The lab&rsquo;s nav deliberately has no such button, and the machine declares no such edge behind one.</li>
-        <li>Nothing leaves an online game except its one exit to the lobby. Leaving a match has network consequences &mdash; a seat resigns, a host ejects everyone &mdash; so it is an explicit act on the match&rsquo;s own exits: the game-over banner, the OPTIONS menu&rsquo;s LEAVE, host eviction. The <code>~</code> lab hotkey mid-match is refused by the table; before the machine existed it silently unmounted the canvas and disconnected the seat.</li>
-        <li>The demo cannot start a match either. Hosting and joining live in the menu, so the road passes through the lobby.</li>
-        <li>Every exit from a match says the same thing &mdash; &ldquo;Return to Lobby&rdquo; &mdash; and lands there with the menu open, whatever the sidebar preference last was. The destination the player just chose beats a stored default.</li>
-        <li>Persistence replays as events. A saved closed-menu preference becomes a <code>closeMenu</code> edge at boot, so the machine tracks what the player actually sees instead of diverging from chrome state.</li>
+        <li>Neither side room can start a battle or enter a game room. A match needs a host or a room code, and only home has either &mdash; the road always runs through home. Their navs deliberately have no such button, and the machine declares no such edge behind one.</li>
+        <li>Nothing leaves the game room except its declared exits home. Leaving has network consequences &mdash; a seat resigns, a host ejects everyone &mdash; so it is an explicit act on the match&rsquo;s own exits: the game-over banner, the OPTIONS menu&rsquo;s LEAVE, host eviction, the seating screen&rsquo;s cancel. The <code>~</code> lab hotkey is refused by the table anywhere in the game room &mdash; the seating screen included, where it used to silently disconnect the seat.</li>
+        <li>Loading is a declared battle sub-state, not a boolean beside the machine. The handoff enters it; finishing the boot (or the catch-up replay) is the one edge into <code>playing</code>.</li>
+        <li>Every exit from the game room says the same thing &mdash; &ldquo;Return to Lobby&rdquo; &mdash; and lands home with the menu surfaced, whatever the sidebar preference last was. The destination the player just chose beats a stored default.</li>
       </ul>
     </section>
 

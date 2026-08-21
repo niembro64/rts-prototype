@@ -164,14 +164,14 @@ function ensureAudio(): void {
   audioManager.setMuted(false);
 }
 
-function openDemoBattle(): void {
+function openHome(): void {
   stopContinuous();
-  sendAppSurface('openDemoBattle');
+  sendAppSurface('openHome');
 }
 
-function openLobby(): void {
+function openGameControls(): void {
   stopContinuous();
-  sendAppSurface('openLobby');
+  sendAppSurface('openGameControls');
 }
 
 function playRawSynth(name: string): void {
@@ -266,12 +266,12 @@ function degreesToRadians(value: number): number {
           <p>{{ selectedEntityName }} / {{ selectedEntityId }}</p>
         </div>
         <nav class="mode-nav" aria-label="App modes">
-          <button @click="openDemoBattle">Demo Battle</button>
-          <button @click="openLobby">Lobby</button>
-          <!-- No "Online Game" here on purpose: a match needs a host or a
-               code, and the lab has neither. The road runs through the
-               lobby, and the surface machine declares no other edge. -->
+          <button @click="openHome">Home</button>
           <button class="active" aria-current="page">Entity Lab</button>
+          <button @click="openGameControls">Game Controls</button>
+          <!-- No "Game Room" here on purpose: a match needs a host or a
+               code, and the lab has neither. The road runs through home,
+               and the surface machine declares no other edge. -->
         </nav>
       </div>
 

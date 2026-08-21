@@ -100,6 +100,7 @@ const emit = defineEmits<{
   (e: 'start'): void;
   (e: 'cancel'): void;
   (e: 'entityLab'): void;
+  (e: 'gameControls'): void;
   /** Collapse or reveal the menu sidebar. Nothing to do with watching a
    *  match — this is the chevron on the sidebar's edge. */
   (e: 'toggleMenu'): void;
@@ -548,6 +549,10 @@ function handleEntityLab() {
   emit('entityLab');
 }
 
+function handleGameControls() {
+  emit('gameControls');
+}
+
 const canStart = computed(() => {
   return props.isHost && props.players.length >= 1;
 });
@@ -804,6 +809,7 @@ const terrainSectionVars = computed(() =>
 
       <div class="surface-actions">
         <button class="secondary-surface-btn" @click="handleEntityLab">Entity Lab</button>
+        <button class="secondary-surface-btn" @click="handleGameControls">Game Controls</button>
       </div>
 
       <div v-if="error" class="error-message">{{ error }}</div>

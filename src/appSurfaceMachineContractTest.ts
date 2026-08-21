@@ -1,12 +1,17 @@
 /**
- * The navigation guarantees the app shell leans on: the lab cannot start an
- * online game, nothing leaves an online game except its one exit to the
- * lobby, and the lobby is the hub every flow regroups through. Drives a
- * fresh machine built from the real table, so the live singleton is never
- * disturbed and the table cannot drift from what is tested.
+ * The navigation guarantees the app shell leans on: neither side room (lab,
+ * controls) can start a battle or enter a game room, nothing leaves the game
+ * room except its declared exits, and HOME is the hub every flow regroups
+ * through. Drives a fresh machine built from the real table, so the live
+ * singleton is never disturbed and the table cannot drift from what is
+ * tested.
  */
 
-import { createAppSurfaceMachine } from './appSurfaceMachine';
+import {
+  createAppSurfaceMachine,
+  isBattleSurface,
+  isGameRoomSurface,
+} from './appSurfaceMachine';
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(`[app-surface] ${message}`);
@@ -18,37 +23,68 @@ export function runAppSurfaceMachineContractTest(): void {
   // Boot is the only road out of init, and nothing returns there.
   assert(machine.state === 'init', 'the app starts in init');
   assert(machine.send('openEntityLab') === false, 'nothing navigates before boot');
-  assert(machine.send('startOnlineGame') === false, 'no match can start before boot');
-  assert(machine.send('boot') === true, 'boot lands in the lobby');
-  assert(machine.state === 'lobby', 'the lobby is the post-boot surface');
+  assert(machine.send('startBattle') === false, 'no battle can start before boot');
+  assert(machine.send('boot') === true, 'boot lands home');
+  assert(machine.state === 'home', 'home is the post-boot surface');
   assert(machine.send('boot') === false, 'boot fires once; a remount cannot re-boot');
 
-  // Lobby <-> demo battle is the menu sliding away and back.
-  assert(machine.send('closeMenu') === true, 'closing the menu enters the demo battle');
-  assert(machine.state === 'demoBattle', 'demo battle is the closed-menu surface');
-  assert(machine.send('startOnlineGame') === false, 'the demo cannot start a match — hosting lives in the menu');
-  assert(machine.send('openMenu') === true, 'opening the menu returns to the lobby');
+  // The menu sidebar sliding open or away is CHROME, not navigation: there
+  // is no state pair to toggle between any more, so no such event exists on
+  // the table at all. Home is home with the sidebar in either position.
 
-  // The lab is reachable from both non-match surfaces, and both roads back exist.
-  assert(machine.send('openEntityLab') === true, 'the lobby can open the entity lab');
+  // Both side rooms are reachable from home, from each other, and lead back.
+  assert(machine.send('openEntityLab') === true, 'home can open the entity lab');
   assert(machine.state === 'entityLab', 'and lands in it');
-  assert(machine.send('startOnlineGame') === false, 'the lab can NEVER start an online game');
-  assert(machine.send('openDemoBattle') === true, 'the lab returns to the demo battle');
-  assert(machine.send('openEntityLab') === true, 'the demo battle can open the entity lab');
-  assert(machine.send('openLobby') === true, 'the lab returns to the lobby');
+  assert(machine.send('startBattle') === false, 'the lab can NEVER start a battle');
+  assert(machine.send('enterLobby') === false, 'nor enter a game room');
+  assert(machine.send('openGameControls') === true, 'the lab reaches the controls screen');
+  assert(machine.state === 'gameControls', 'and lands in it');
+  assert(machine.send('startBattle') === false, 'the controls screen can NEVER start a battle');
+  assert(machine.send('enterLobby') === false, 'nor enter a game room');
+  assert(machine.send('openEntityLab') === true, 'the controls screen reaches the lab');
+  assert(machine.send('openHome') === true, 'the lab returns home');
+  assert(machine.send('openGameControls') === true, 'home can open the controls screen');
+  assert(machine.send('openHome') === true, 'the controls screen returns home');
 
-  // An online game is entered from the lobby alone and has exactly one exit.
-  assert(machine.send('startOnlineGame') === true, 'the lobby starts the online game');
-  assert(machine.state === 'onlineGame', 'battle handoff is the entry edge');
-  assert(machine.send('startOnlineGame') === false, 'a second start is refused');
+  // Hosting or joining enters the game room's seating screen; cancel comes
+  // straight home.
+  assert(machine.send('enterLobby') === true, 'host/join enters the seating screen');
+  assert(machine.state === 'gameRoomLobby', 'the seating screen is a game room sub-state');
+  assert(isGameRoomSurface(machine.state), 'the predicate agrees');
+  assert(!isBattleSurface(machine.state), 'but the seating screen is not the battle');
+  assert(machine.send('openEntityLab') === false,
+    'the lab hotkey is refused from the seating screen — it would silently disconnect the seat');
+  assert(machine.send('openGameControls') === false, 'so is the controls screen');
+  assert(machine.send('battleReady') === false, 'a battle that never started cannot become ready');
+  assert(machine.send('leaveLobby') === true, 'cancel returns home');
+  assert(machine.state === 'home', 'where every flow regroups');
+
+  // The battle passes through an explicit loading phase before play.
+  assert(machine.send('enterLobby') === true, 're-enter the seating screen');
+  assert(machine.send('startBattle') === true, 'the handoff starts the battle');
+  assert(machine.state === 'gameRoomBattleLoading', 'which begins in loading');
+  assert(isBattleSurface(machine.state), 'loading is part of the battle sub-tree');
+  assert(machine.send('startBattle') === false, 'a second start is refused');
+  assert(machine.send('openEntityLab') === false, 'the lab hotkey mid-load is refused');
+  assert(machine.send('enterLobby') === false, 'no road back into a seating screen mid-battle');
+  assert(machine.send('battleReady') === true, 'finished loading means playing');
+  assert(machine.state === 'gameRoomBattlePlaying', 'the live match');
+  assert(machine.send('battleReady') === false, 'ready fires once');
   assert(machine.send('openEntityLab') === false, 'the hotkey mid-match is refused — it would disconnect the seat');
-  assert(machine.send('openMenu') === false, 'no menu slide leaves a match');
-  assert(machine.send('closeMenu') === false, 'in either direction');
-  assert(machine.send('openDemoBattle') === false, 'no shortcut to the demo from a match');
-  assert(machine.state === 'onlineGame', 'refusals never move the machine');
-  assert(machine.send('exitOnlineGame') === true, 'the one exit leads to the lobby');
-  assert(machine.state === 'lobby', 'where every flow regroups');
-  assert(machine.send('exitOnlineGame') === false, 'a stale exit after leaving is refused');
+  assert(machine.send('leaveLobby') === false, 'the lobby cancel means nothing inside a battle');
+  assert(machine.state === 'gameRoomBattlePlaying', 'refusals never move the machine');
+  assert(machine.send('exitGameRoom') === true, 'the one exit leads home');
+  assert(machine.state === 'home', 'home again');
+  assert(machine.send('exitGameRoom') === false, 'a stale exit after leaving is refused');
+
+  // A solo real battle skips the seating screen: home starts it directly.
+  assert(machine.send('startBattle') === true, 'home starts a solo battle without a lobby');
+  assert(machine.state === 'gameRoomBattleLoading', 'and it loads like any other');
+  assert(machine.send('exitGameRoom') === true, 'a battle abandoned mid-load also exits home');
+
+  // Eviction from the seating screen (the host left) uses the game room exit.
+  assert(machine.send('enterLobby') === true, 'enter the seating screen once more');
+  assert(machine.send('exitGameRoom') === true, 'host eviction comes home too');
 
   console.log('[contract] appSurfaceMachine: navigation table holds');
 }

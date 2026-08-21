@@ -423,15 +423,12 @@ const {
 
 // The sidebar's open/closed state is restored from localStorage by
 // useGameCanvasChromeState, which is what lets it persist across reloads.
-// On a fresh boot the machine is still in 'init', so the restored value
-// stands (onMounted then replays it into the machine as a closeMenu). The
-// other two states here are re-entries from the entity lab, whose nav
-// buttons name the surface they want; both set the flag directly (never
-// via toggleMenuHidden) so they don't overwrite the saved preference.
-if (appSurface.value === 'demoBattle') {
-  menuHidden.value = true; // slide the menu out of the way to watch the demo
-} else if (appSurface.value === 'lobby') {
-  menuHidden.value = false; // "Lobby" means the menu, so surface it
+// The sidebar is CHROME within the home surface, not navigation, so a
+// re-entry from the lab or the controls screen surfaces the menu (that is
+// what "Home" on their nav means) while leaving the saved preference alone
+// (never via toggleMenuHidden).
+if (appSurface.value === 'home') {
+  menuHidden.value = false;
 }
 
 function toggleUiChrome(): void {
@@ -1465,10 +1462,15 @@ const {
 });
 
 function openEntityLab(): void {
-  // Refused during an online game: unmounting the canvas would disconnect
-  // the network session, so leaving a match stays an explicit act on the
-  // match's own exits.
+  // Refused anywhere in the game room — seating screen included: unmounting
+  // the canvas would disconnect the network session, so leaving stays an
+  // explicit act on the match's own exits.
   sendAppSurface('openEntityLab');
+}
+
+function openGameControls(): void {
+  // Same refusal shape as the lab: a side room, reachable from home only.
+  sendAppSurface('openGameControls');
 }
 
 useGameCanvasEntityLabHotkey(openEntityLab);
@@ -2059,15 +2061,15 @@ const { restartGame: restartGameSession } = useGameCanvasSessionLifecycle({
   resetSpectatorState,
 });
 
-/** Every way out of a match funnels here: the game-over banner, the OPTIONS
- *  LEAVE button, host eviction. Tear the session down, take the machine's
- *  one exit, and land the player on the MENU — the exits all read "Return
- *  to Lobby", so the lobby is what they get. The nextTick outruns the
- *  battle-mode watcher that would otherwise restore a saved closed-menu
- *  preference over the destination the player just chose. */
+/** Every way out of a game room funnels here: the game-over banner, the
+ *  OPTIONS LEAVE button, host eviction. Tear the session down, take the
+ *  machine's exit, and land the player HOME with the menu surfaced — the
+ *  exits all read "Return to Lobby", so the menu is what they get. The
+ *  nextTick outruns the battle-mode watcher that would otherwise restore a
+ *  saved closed-menu preference over the destination the player just chose. */
 function restartGame(): void {
   restartGameSession();
-  if (sendAppSurface('exitOnlineGame')) {
+  if (sendAppSurface('exitGameRoom') || sendAppSurface('leaveLobby')) {
     void nextTick(() => {
       menuHidden.value = false;
     });
@@ -2077,18 +2079,16 @@ function restartGame(): void {
 onMounted(() => {
   // Boot ends when the canvas is actually on screen; a remount returning
   // from the entity lab sends this too and is refused, machine already out
-  // of init. The restored closed-menu preference is replayed as the edge it
-  // means, so the machine tracks what the player actually sees.
-  if (sendAppSurface('boot') && menuHidden.value) sendAppSurface('closeMenu');
+  // of init. The sidebar's restored open/closed preference is chrome inside
+  // the home surface, so the machine has nothing to replay.
+  sendAppSurface('boot');
 });
 
-/** The sidebar chevron is the lobby <-> demoBattle edge. Chrome first (the
- *  toggle also persists the preference), then the machine records the move;
- *  both surfaces declare the edge, so the send only refuses if chrome and
- *  machine have somehow diverged — and then refusing is the right answer. */
+/** The sidebar chevron slides the menu over the demo battle and back. Pure
+ *  chrome within the home surface — the machine has no edge here, which is
+ *  exactly the point of calling it home. */
 function handleMenuToggle(): void {
   toggleMenuHidden();
-  sendAppSurface(menuHidden.value ? 'closeMenu' : 'openMenu');
 }
 
 const {
@@ -3182,6 +3182,7 @@ watchEffect(() => {
       @cancel="handleLobbyCancel"
       @offline="handleOffline"
       @entity-lab="openEntityLab"
+      @game-controls="openGameControls"
       @toggle-menu="handleMenuToggle"
       @set-center-magnitude="(v) => applyCenterMagnitude(v)"
       @set-ring-magnitude="(v) => applyRingMagnitude(v)"

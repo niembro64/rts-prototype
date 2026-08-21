@@ -99,9 +99,11 @@ export async function startRealBattleWithPlayers(
 
   options.showLobby.value = false;
   options.gameStarted.value = true;
-  // Host start and client handoff both funnel through here, so this is the
-  // one writer of the surface machine's lobby -> onlineGame edge.
-  sendAppSurface('startOnlineGame');
+  // Host start, client handoff, and the solo offline battle all funnel
+  // through here, so this is the one writer of the machine's startBattle
+  // edge — declared from both home (solo skips the seating screen) and the
+  // game room's lobby.
+  sendAppSurface('startBattle');
   options.battleLoading.value = true;
   const startGen = options.lifecycle.beginStart();
   options.foregroundSceneBinding.clear();
@@ -266,6 +268,8 @@ export async function startRealBattleWithPlayers(
       ) {
         options.onLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.done, 'Ready');
         options.battleLoading.value = false;
+        // Loading is a declared battle sub-state; finishing it is the edge.
+        sendAppSurface('battleReady');
       }
     };
 

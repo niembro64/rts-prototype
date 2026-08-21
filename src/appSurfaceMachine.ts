@@ -1,45 +1,51 @@
 /**
  * The app's high-level navigation, as one declared finite state machine.
  *
- * BUDGET ANNIHILATION has exactly five surfaces a player can be on, and not
- * every pair of them is connected. Before this machine existed the surface
- * was smeared across an `activeSurface` ref in App.vue, a `menuHidden` flag
- * in the canvas chrome, and the network session's own lifecycle — which is
- * how the entity lab grew an "Online Game" button that teleported past the
- * lobby, and how the `~` hotkey could yank a seated player out of a live
- * match (unmounting GameCanvas disconnects the network) without so much as a
- * prompt. Both of those are simply transitions nobody meant to declare.
+ * The map follows the shape Beyond All Reason players already know: a HOME
+ * screen with the sandbox running behind the menus, a GAME ROOM you enter to
+ * play with people (its battle room / seating screen), and the battle itself
+ * with an explicit loading phase before play. Here that is three top-level
+ * surfaces plus two side rooms:
  *
- * The states:
+ *   init          Boot. Modules loading, the sim WASM compiling, nothing on
+ *                 screen yet. Exists so "where are we before anyone can
+ *                 navigate" has an answer; nothing ever returns here.
+ *   home          The demo battle, the lobby directory, and host/join — one
+ *                 surface. Whether the menu sidebar is slid open or away is
+ *                 CHROME, not navigation: either way you are home, watching
+ *                 and tuning the demo. (This surface was previously two
+ *                 states, `lobby` and `demoBattle`, split on that sidebar.)
+ *   gameRoom      A networked session, in one of three sub-states:
+ *                   .lobby            the seating screen — teams, presets,
+ *                                     the host deciding who plays
+ *                   .battle.loading   handoff received; booting, and for a
+ *                                     late joiner replaying the archive
+ *                   .battle.playing   the live match
+ *                 A solo-hosted real battle enters .battle directly from
+ *                 home: same surface, same lockstep, one seat.
+ *   entityLab     The inspection lab. No network, no battle.
+ *   gameControls  The controls reference — hotkey presets and bindings.
  *
- *   init        Boot. Modules loading, the sim WASM compiling, nothing on
- *               screen yet. Exists so "where are we before anyone can
- *               navigate" has an answer; nothing ever returns here.
- *   lobby       The menu. Host/join/browse in the sidebar, and — after
- *               hosting or joining — the seating screen for a networked
- *               match. The demo battle plays behind it, but that is a
- *               backdrop, not a state: the MENU is what you are on.
- *   demoBattle  The demo sandbox as the primary surface: menu slid away,
- *               BATTLE bar live, the demo yours to tune and watch.
- *   onlineGame  A real networked match, from battle handoff until you leave
- *               or it ends. (A solo-hosted real battle counts: it is the
- *               same surface, the same lockstep, one seat.)
- *   entityLab   The inspection lab. No network, no battle.
+ * The StateMachine primitive is flat, so the hierarchy is encoded in the
+ * state ids (`gameRoomLobby`, `gameRoomBattleLoading`, ...) and read through
+ * the `isGameRoomSurface` / `isBattleSurface` predicates. The declaration
+ * below is still the single map: every edge the app has, and nothing else.
  *
- * The shape of the map is a hub: LOBBY is the only state connected to
- * everything, because it is the only place every flow can regroup. The two
- * asymmetries are the point of writing this down:
+ * The asymmetries are the point of writing this down:
  *
- *   - The lab cannot start an online game. A match needs a host or a code,
- *     and the lab has neither — the road runs lab -> lobby -> host/join.
- *   - Nothing leaves an online game except the one exit to the lobby.
- *     Leaving a match has network consequences (your seat resigns, a host
- *     ejects everyone), so it is an explicit act on the match's own exits —
- *     game over, the LEAVE button, host eviction — never a side effect of
- *     wandering to another surface.
+ *   - Neither the lab nor the controls screen can start a battle or enter a
+ *     game room. A match needs a host or a code, and only home has either —
+ *     the road always runs through home.
+ *   - Nothing leaves the game room except `exitGameRoom` (and the lobby's
+ *     own cancel). Leaving has network consequences — a seat resigns, a host
+ *     ejects everyone — so it is an explicit act on the match's own exits:
+ *     game over, the LEAVE button, host eviction. Wandering to another
+ *     surface mid-match (the `~` lab hotkey included, now ALSO from the
+ *     seating screen, where it used to silently disconnect you) is refused
+ *     by the table.
  *
  * Everything undeclared is refused by the machine, which is the safety
- * property: the hotkey mid-match, a second Start, a stale "return to lobby"
+ * property: a hotkey mid-match, a second Start, a stale "return to lobby"
  * firing after the player already left — all answered by the table instead
  * of by guards at every call site.
  */
@@ -47,17 +53,39 @@
 import { ref, type Ref } from 'vue';
 import { createStateMachine, type StateMachine } from './game/state/StateMachine';
 
-export type AppSurface = 'init' | 'lobby' | 'demoBattle' | 'onlineGame' | 'entityLab';
+export type AppSurface =
+  | 'init'
+  | 'home'
+  | 'gameRoomLobby'
+  | 'gameRoomBattleLoading'
+  | 'gameRoomBattlePlaying'
+  | 'entityLab'
+  | 'gameControls';
 
 export type AppSurfaceEvent =
   | 'boot'
-  | 'openMenu'
-  | 'closeMenu'
+  | 'openHome'
   | 'openEntityLab'
-  | 'openLobby'
-  | 'openDemoBattle'
-  | 'startOnlineGame'
-  | 'exitOnlineGame';
+  | 'openGameControls'
+  | 'enterLobby'
+  | 'leaveLobby'
+  | 'startBattle'
+  | 'battleReady'
+  | 'exitGameRoom';
+
+/** Any of the game room's sub-states: seating screen or battle. */
+export function isGameRoomSurface(surface: AppSurface): boolean {
+  return (
+    surface === 'gameRoomLobby' ||
+    surface === 'gameRoomBattleLoading' ||
+    surface === 'gameRoomBattlePlaying'
+  );
+}
+
+/** The battle sub-tree of the game room (loading or playing). */
+export function isBattleSurface(surface: AppSurface): boolean {
+  return surface === 'gameRoomBattleLoading' || surface === 'gameRoomBattlePlaying';
+}
 
 /** The whole map. Exported so the contract test exercises the real table,
  *  not a copy that can drift. */
@@ -69,23 +97,38 @@ export function createAppSurfaceMachine(
     initial: 'init',
     transitions: {
       init: {
-        boot: 'lobby',
+        boot: 'home',
       },
-      lobby: {
-        closeMenu: 'demoBattle',
+      home: {
         openEntityLab: 'entityLab',
-        startOnlineGame: 'onlineGame',
+        openGameControls: 'gameControls',
+        // Hosting or joining lands you in the game room's seating screen...
+        enterLobby: 'gameRoomLobby',
+        // ...while a solo real battle skips it: no seats to negotiate.
+        startBattle: 'gameRoomBattleLoading',
       },
-      demoBattle: {
-        openMenu: 'lobby',
-        openEntityLab: 'entityLab',
+      gameRoomLobby: {
+        // Cancel and eviction both come home; two names because they are
+        // different intents with different senders, and a table that names
+        // them both refuses neither by accident.
+        leaveLobby: 'home',
+        exitGameRoom: 'home',
+        startBattle: 'gameRoomBattleLoading',
       },
-      onlineGame: {
-        exitOnlineGame: 'lobby',
+      gameRoomBattleLoading: {
+        battleReady: 'gameRoomBattlePlaying',
+        exitGameRoom: 'home',
+      },
+      gameRoomBattlePlaying: {
+        exitGameRoom: 'home',
       },
       entityLab: {
-        openLobby: 'lobby',
-        openDemoBattle: 'demoBattle',
+        openHome: 'home',
+        openGameControls: 'gameControls',
+      },
+      gameControls: {
+        openHome: 'home',
+        openEntityLab: 'entityLab',
       },
     },
     onTransition: (change) => onTransition?.(change.to),

@@ -1,4 +1,5 @@
 import { nextTick, type Ref } from 'vue';
+import { sendAppSurface } from '../appSurfaceMachine';
 import { resetRealBattleSettings } from '../battleBarConfig';
 import type {
   LobbyMember,
@@ -91,6 +92,9 @@ export function useGameCanvasLobbyActions({
       // leaving the directory row incomplete until the next heartbeat.
       network.refreshLobbyListing();
 
+      // Hosting succeeded: the player is now in the game room's seating
+      // screen, and the machine records it.
+      sendAppSurface('enterLobby');
       isConnecting.value = false;
     } catch (err) {
       if (!isCurrentLobbyAction(generation)) return;
@@ -125,6 +129,10 @@ export function useGameCanvasLobbyActions({
       // may still arrive later and overwrite the partial report.
       reportLocalPlayerInfo();
 
+      // Joining succeeded: seating screen. Joining a RUNNING match may have
+      // already jumped straight to the battle via the resume grant, in which
+      // case this is refused by the table — which is correct.
+      sendAppSurface('enterLobby');
       isConnecting.value = false;
     } catch (err) {
       if (!isCurrentLobbyAction(generation)) return;
@@ -140,6 +148,9 @@ export function useGameCanvasLobbyActions({
 
   function handleLobbyCancel(): void {
     lobbyActionGeneration++;
+    // Cancel is the seating screen's own way home. Refused (harmlessly) when
+    // the player was never in one — a cancel racing a failed host attempt.
+    sendAppSurface('leaveLobby');
     battleLoading.value = false;
     network.disconnect();
     networkRole.value = null;
