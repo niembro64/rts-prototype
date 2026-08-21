@@ -25,12 +25,8 @@ import {
 } from './loadingUnitPreview3d';
 import type { TurretBlueprintId } from '@/types/blueprintIds';
 import type { PrimitiveGeometryTier } from '@/game/render3d/PrimitiveGeometryQuality3D';
+import { sendAppSurface } from '../appSurfaceMachine';
 
-const emit = defineEmits<{
-  openDemoBattle: [];
-  openLobby: [];
-  openOnlineGame: [];
-}>();
 
 const firstUnit = buildEntityLabSelections('unit')[0];
 const selectedKind = ref<LoadingPreviewKind>('unit');
@@ -170,17 +166,12 @@ function ensureAudio(): void {
 
 function openDemoBattle(): void {
   stopContinuous();
-  emit('openDemoBattle');
+  sendAppSurface('openDemoBattle');
 }
 
 function openLobby(): void {
   stopContinuous();
-  emit('openLobby');
-}
-
-function openOnlineGame(): void {
-  stopContinuous();
-  emit('openOnlineGame');
+  sendAppSurface('openLobby');
 }
 
 function playRawSynth(name: string): void {
@@ -277,7 +268,9 @@ function degreesToRadians(value: number): number {
         <nav class="mode-nav" aria-label="App modes">
           <button @click="openDemoBattle">Demo Battle</button>
           <button @click="openLobby">Lobby</button>
-          <button @click="openOnlineGame">Online Game</button>
+          <!-- No "Online Game" here on purpose: a match needs a host or a
+               code, and the lab has neither. The road runs through the
+               lobby, and the surface machine declares no other edge. -->
           <button class="active" aria-current="page">Entity Lab</button>
         </nav>
       </div>

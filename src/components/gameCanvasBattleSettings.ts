@@ -18,6 +18,7 @@ import {
   loadStoredMetalCoverage,
   loadStoredLiquidSurfaceMode,
   setUnitCap,
+  getModeDefaultEntityCountCap,
   type BattleMode,
 } from '../battleBarConfig';
 import type { SlopePathMode } from '../types/slopePathMode';
@@ -417,6 +418,10 @@ export function useGameCanvasBattleSettings({
     applyUnitSelection(demoUnitBlueprintIds);
     applyBuildingSelection(demoBuildingBlueprintIds);
     applyPreset(getModeDefaultPreset(currentBattleMode.value));
+    // The CAP is deliberately not a preset field — switching maps must never
+    // resize the battle — but DEFAULTS is mode policy and the cap's default
+    // is mode policy too, so this is the one button that resets it.
+    changeEntityCountCap(getModeDefaultEntityCountCap(currentBattleMode.value));
   }
 
   return {

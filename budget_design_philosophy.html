@@ -320,6 +320,46 @@
     </section>
 
     <section>
+      <h2>Five Surfaces, One Declared Map</h2>
+      <p>
+        The app&rsquo;s high-level navigation is itself a lifecycle, so it follows the same rule as
+        every other lifecycle here: it is a declared finite state machine, not a scatter of refs
+        that happen to agree. There are exactly five surfaces a player can be on &mdash;
+        <code>init</code>, <code>lobby</code>, <code>demoBattle</code>, <code>onlineGame</code>,
+        <code>entityLab</code> &mdash; and the machine that owns which one is current lives in
+        <code>src/appSurfaceMachine.ts</code>. <code>App.vue</code> renders the state and holds no
+        navigation logic of its own; the components that own the gestures send the events, and an
+        event the table does not declare is refused.
+      </p>
+      <p>
+        <code>init</code> is boot &mdash; modules loading, the sim WASM compiling &mdash; and its
+        only edge is into the <code>lobby</code>; nothing ever returns to it. The
+        <code>lobby</code> is the menu: host, join, browse the directory, and &mdash; after hosting
+        or joining &mdash; the seating screen for a networked match. The demo battle plays behind
+        it, but that is a backdrop, not a state: the menu is what you are on.
+        <code>demoBattle</code> is the same canvas with the menu slid away and the BATTLE bar live;
+        <code>onlineGame</code> is a real lockstep match from battle handoff until it ends (a
+        solo-hosted real battle counts &mdash; same surface, same lockstep, one seat); and
+        <code>entityLab</code> is the inspection lab, with no network and no battle.
+      </p>
+      <p>
+        The shape of the map is a hub. The lobby is the only surface connected to everything,
+        because it is the only place every flow can regroup: <code>lobby &harr; demoBattle</code>
+        is the menu sliding away and back, <code>lobby &harr; entityLab</code> and
+        <code>demoBattle &harr; entityLab</code> are the lab doors, and
+        <code>lobby &rarr; onlineGame</code> is battle handoff. The asymmetries are the point of
+        writing the table down:
+      </p>
+      <ul class="rule-list">
+        <li>The entity lab cannot start an online game. A match needs a host or a room code, and the lab has neither &mdash; the road runs lab &rarr; lobby &rarr; host/join. The lab&rsquo;s nav deliberately has no such button, and the machine declares no such edge behind one.</li>
+        <li>Nothing leaves an online game except its one exit to the lobby. Leaving a match has network consequences &mdash; a seat resigns, a host ejects everyone &mdash; so it is an explicit act on the match&rsquo;s own exits: the game-over banner, the OPTIONS menu&rsquo;s LEAVE, host eviction. The <code>~</code> lab hotkey mid-match is refused by the table; before the machine existed it silently unmounted the canvas and disconnected the seat.</li>
+        <li>The demo cannot start a match either. Hosting and joining live in the menu, so the road passes through the lobby.</li>
+        <li>Every exit from a match says the same thing &mdash; &ldquo;Return to Lobby&rdquo; &mdash; and lands there with the menu open, whatever the sidebar preference last was. The destination the player just chose beats a stored default.</li>
+        <li>Persistence replays as events. A saved closed-menu preference becomes a <code>closeMenu</code> edge at boot, so the machine tracks what the player actually sees instead of diverging from chrome state.</li>
+      </ul>
+    </section>
+
+    <section>
       <h2>Network Model</h2>
       <h3>Lifecycles are explicit finite state machines</h3>
       <p>

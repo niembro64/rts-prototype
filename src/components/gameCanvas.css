@@ -456,7 +456,10 @@
   position: absolute;
   top: 0;
   left: calc(var(--hud-minimap-max, 320px) + 332px);
-  z-index: 1001;
+  /* Above the communication panel (1002): the two overlap on narrow
+   * viewports, and an options menu the player just opened must not have
+   * its lower rows (PAUSE, LEAVE) buried under an open chat panel. */
+  z-index: 1003;
   width: min(244px, calc(100vw - var(--hud-minimap-max, 320px) - 352px));
   max-width: 244px;
   border: 1px solid #4f6074;
@@ -526,6 +529,19 @@
   border-color: #82d2ff;
   color: #f8fcff;
   background: #265270;
+}
+
+/* LEAVE ends the match for this seat, so it reads as the one destructive
+ * act in a grid of toggles. */
+.options-menu-grid button.options-menu-leave {
+  border-color: #8a5560;
+  color: #ffd9de;
+  background: #2a1a20;
+}
+
+.options-menu-grid button.options-menu-leave:hover {
+  border-color: #e08a97;
+  background: #43242d;
 }
 
 @media (max-width: 760px) {
