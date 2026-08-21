@@ -734,6 +734,14 @@ export class NetworkManager {
     if (this.role !== 'host' || this.roomCode === '') return;
     this.multiplayer.publishLobby(() => {
       if (this.role !== 'host' || this.roomCode === '') return null;
+      // A host whose signaling socket is gone is undialable: a listing for it
+      // is a door painted on a wall. Withholding the announcement stops the
+      // heartbeat, the lease expires, and the room leaves the list — while a
+      // successful reconnect resumes beating and the 404 recovery re-lists
+      // it. This is what kept dead rooms visible "for a long time": the
+      // publisher kept beating for a peer nobody could reach.
+      const peer = this.peer;
+      if (peer === null || peer.destroyed || peer.disconnected) return null;
       const hostName = this.getLocalPlayerName();
       // Map size is the one setting a browsing player can act on.
       const settings = this.readLobbySettings();

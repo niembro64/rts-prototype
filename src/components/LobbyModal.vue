@@ -416,23 +416,43 @@ const runningGames = computed(() =>
   directoryLobbies.value.filter((lobby) => lobby.status === 'in-game'),
 );
 
+/** Monotonic ticket for refreshes: only the NEWEST request may write the
+ *  list. The request timeout (6s) outlives the poll interval (5s), so
+ *  overlapping fetches can resolve out of order — without this, a slow stale
+ *  response overwrote a fresh list and resurrected rooms that were gone. */
+let directoryRefreshSequence = 0;
+
 async function refreshDirectory(): Promise<void> {
   // Whichever backend this build uses — the web directory or Steam — answers
   // in the same vocabulary, so nothing here knows which is in play.
-  directoryLobbies.value = await getMultiplayerBackend().listLobbies();
+  const ticket = ++directoryRefreshSequence;
+  const lobbies = await getMultiplayerBackend().listLobbies();
+  if (ticket !== directoryRefreshSequence) return;
+  directoryLobbies.value = lobbies;
   directoryLoaded.value = true;
+}
+
+/** Browsers throttle a hidden tab's timers far past the poll interval, so a
+ *  player returning to the menu tab would stare at a minute-old list for up
+ *  to a full poll. Refresh the moment the tab becomes visible again. */
+function handleDirectoryVisibility(): void {
+  if (document.visibilityState === 'visible' && directoryPollTimer !== null) {
+    void refreshDirectory();
+  }
 }
 
 function stopDirectoryPolling(): void {
   if (directoryPollTimer === null) return;
   clearInterval(directoryPollTimer);
   directoryPollTimer = null;
+  document.removeEventListener('visibilitychange', handleDirectoryVisibility);
 }
 
 function startDirectoryPolling(): void {
   if (directoryPollTimer !== null) return;
   void refreshDirectory();
   directoryPollTimer = setInterval(() => void refreshDirectory(), LOBBY_LIST_POLL_INTERVAL_MS);
+  document.addEventListener('visibilitychange', handleDirectoryVisibility);
 }
 
 /** One-click join straight from the list — the code is already known, so

@@ -35,8 +35,9 @@ export const MAX_LOBBY_PLAYERS = 6;
 export const MAX_LOBBY_SPECTATORS = 6;
 
 /** How often a host renews its listing. The backend expires anything it has
- *  not heard from in 30s, so this tolerates two missed beats. */
-const HEARTBEAT_INTERVAL_MS = 10000;
+ *  not heard from in 15s, so this tolerates two missed beats. Kept in step
+ *  with LOBBY_TTL_MS in web_games_backend/server/lobbyRegistry.js. */
+const HEARTBEAT_INTERVAL_MS = 5000;
 
 /** Shortest gap between refreshes driven by a change rather than by the beat
  *  timer. The roster changes far more often than a browsing player could
@@ -231,6 +232,17 @@ export class LobbyPublisher {
    *  the lease. */
   private lastBeatAtMs = 0;
   private coalesceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Bumped by stop(). An announce that resolves under a different generation
+   *  belongs to a session that no longer exists and must not store its lease
+   *  — see announce(). */
+  private generation = 0;
+
+  /** Withdraw when the page itself goes away. A killed tab can send nothing,
+   *  but ordinary closes and navigations fire `pagehide`, and the keepalive
+   *  DELETE below survives the unload — so the common host exit removes the
+   *  listing immediately instead of burning the whole lease. Registered once,
+   *  on first publish. */
+  private pagehideHandler: (() => void) | null = null;
 
   /** Begin publishing, or refresh what is already published.
    *
@@ -243,6 +255,10 @@ export class LobbyPublisher {
    *  state always lands. */
   publish(provider: LobbyAnnouncementProvider): void {
     this.provider = provider;
+    if (this.pagehideHandler === null && typeof window !== 'undefined') {
+      this.pagehideHandler = () => this.stop();
+      window.addEventListener('pagehide', this.pagehideHandler);
+    }
     if (this.heartbeatTimer === null) {
       this.heartbeatTimer = setInterval(() => void this.beat(), HEARTBEAT_INTERVAL_MS);
     }
@@ -274,6 +290,7 @@ export class LobbyPublisher {
       this.coalesceTimer = null;
     }
     this.lastBeatAtMs = 0;
+    this.generation++;
     const roomCode = this.listedRoomCode;
     const hostToken = this.hostToken;
     this.provider = null;
@@ -281,9 +298,12 @@ export class LobbyPublisher {
     this.listedRoomCode = '';
     this.hostToken = '';
     if (roomCode === '' || hostToken === '') return;
+    // keepalive lets this DELETE outlive the page when stop() runs from
+    // pagehide; without it the browser cancels the request mid-unload and
+    // the listing burns its whole lease instead of vanishing at once.
     void requestJson(
       `/lobbies/${encodeURIComponent(LOBBY_DIRECTORY_GAME_ID)}/${encodeURIComponent(roomCode)}`,
-      { method: 'DELETE', body: JSON.stringify({ hostToken }) },
+      { method: 'DELETE', body: JSON.stringify({ hostToken }), keepalive: true },
     );
   }
 
@@ -332,6 +352,7 @@ export class LobbyPublisher {
   }
 
   private async announce(announcement: LobbyAnnouncement): Promise<void> {
+    const generation = this.generation;
     const result = await requestJson('/lobbies', {
       method: 'POST',
       body: JSON.stringify({
@@ -345,6 +366,17 @@ export class LobbyPublisher {
     if (result.status !== 200 && result.status !== 201) return;
     const body = result.body as Record<string, unknown>;
     if (typeof body.hostToken !== 'string') return;
+    if (this.generation !== generation) {
+      // stop() ran while this announce was in flight. Storing the token on a
+      // stopped (or re-hosted) publisher listed a lobby nobody was hosting,
+      // with nothing left to heartbeat or withdraw it — it sat there for the
+      // full lease.
+      void requestJson(
+        `/lobbies/${encodeURIComponent(LOBBY_DIRECTORY_GAME_ID)}/${encodeURIComponent(announcement.roomCode)}`,
+        { method: 'DELETE', body: JSON.stringify({ hostToken: body.hostToken }), keepalive: true },
+      );
+      return;
+    }
     this.hostToken = body.hostToken;
     this.listedRoomCode = announcement.roomCode;
   }
