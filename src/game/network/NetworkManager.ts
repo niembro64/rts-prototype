@@ -566,6 +566,33 @@ export class NetworkManager {
   private get gameStarted(): boolean {
     return this.session.is('playing');
   }
+
+  /** Which MATCH within this session lockstep traffic belongs to. The host
+   *  bumps it on every startGame; clients adopt it from the gameStart /
+   *  sessionAssignment messages. The lockstep transport keys its wire
+   *  identity on it, so a REMATCH cannot inherit — or even see — the
+   *  previous match's frames, acks, or per-seat sequence high-water marks:
+   *  stale traffic fails the identity check instead of silently corrupting
+   *  the new match (dropped commands, unresendable frames, phantom
+   *  desyncs at frame 0 were all real failure modes of the shared id). */
+  private matchSequence = 0;
+
+  /** The lockstep wire identity: the room's gameId scoped to ONE match. */
+  getLockstepGameId(): string {
+    return this.matchSequence === 0
+      ? this.getUniversalGameId()
+      : `${this.getUniversalGameId()}~m${this.matchSequence}`;
+  }
+
+  /** Everything the lockstep layer may carry across a match boundary is
+   *  NOTHING: transport bookkeeping and the not-yet-drained buffer both
+   *  describe the match that ended. Runs on every playing->lobby edge and
+   *  on every match start, on host and client alike. */
+  private resetLockstepForMatchBoundary(): void {
+    this.lockstepTransport.clear();
+    this.pendingLockstepMessages.length = 0;
+    this.droppedPendingLockstepMessages = 0;
+  }
   /**
    * The lockstep transport addresses two different sets, deliberately:
    *
@@ -578,12 +605,15 @@ export class NetworkManager {
    * whether a frame is complete.
    */
   private lockstepTransport = new NetworkLockstepTransport({
-    getGameId: () => this.getUniversalGameId(),
+    getGameId: () => this.getLockstepGameId(),
     getHostConnection: () => this.connections.get(HOST_MEMBER_ID),
     getConnections: () => this.connections,
     getSeatedConnections: () => this.seatedConnections(),
     getLocalPlayerId: () => this.localPlayerId,
-    isMessageForCurrentGame: (message) => this.isMessageForCurrentGame(message.gameId),
+    // Match-scoped, not room-scoped: a frame from the PREVIOUS match in this
+    // same room is not "for the current game" no matter how fresh it looks.
+    isMessageForCurrentGame: (message) =>
+      message.gameId === undefined || message.gameId === this.getLockstepGameId(),
     onMessage: (message, fromPlayerId) =>
       this.emitLockstepMessage(message, {
         memberId: this.pendingLockstepSenderMemberId,
@@ -925,9 +955,8 @@ export class NetworkManager {
     this.sessionGeneration++;
     this.heartbeatTracker.stop();
     this.sendBudget.clear();
-    this.lockstepTransport.clear();
-    this.pendingLockstepMessages.length = 0;
-    this.droppedPendingLockstepMessages = 0;
+    this.resetLockstepForMatchBoundary();
+    this.matchSequence = 0;
     for (const conn of this.connections.values()) {
       conn.close();
     }
@@ -1354,6 +1383,7 @@ export class NetworkManager {
           ? undefined
           : this.members.seatTokenFor(member.playerId),
         matchInProgress: this.gameStarted,
+        matchSequence: this.matchSequence,
       });
 
       this.refreshLocalMemberInfo(false);
@@ -1629,6 +1659,7 @@ export class NetworkManager {
           this.localPlayerId = normalizeWireOptional(message.playerId);
           this.localRole = message.role;
           if (message.seatToken !== undefined) this.setLocalSeatToken(message.seatToken);
+          this.matchSequence = message.matchSequence;
           this.emitSeatAssignment(message.playerId, message.role);
           if (message.matchInProgress) {
             // We joined a battle already under way. Ask to be let in; the
@@ -1666,6 +1697,11 @@ export class NetworkManager {
               handoff: message.handoff,
             },
           );
+          // The new match's identity, adopted BEFORE its first lockstep
+          // message can arrive (ordered channel). Everything still keyed to
+          // the old identity is residue and goes with it.
+          this.resetLockstepForMatchBoundary();
+          this.matchSequence = message.matchSequence;
           this.session.send('start');
           console.log(
             `[NET] Game start as ${this.localRole}` +
@@ -1690,6 +1726,7 @@ export class NetworkManager {
         if (this.role !== 'client' || fromMemberId !== HOST_MEMBER_ID) return;
         if (!this.isMessageForCurrentGame(message.gameId)) return;
         if (!this.session.send('returnToLobby')) return;
+        this.resetLockstepForMatchBoundary();
         this.onReturnToLobby?.();
         break;
 
@@ -1930,6 +1967,12 @@ export class NetworkManager {
     // here rather than by a separate already-started flag.
     if (!this.session.send('start')) return;
     this.clearSignalingReconnect();
+    // A NEW match: give it its own lockstep identity and drop anything the
+    // last match left behind. Clients adopt the sequence from the gameStart
+    // message below, before any of the new match's lockstep traffic (the
+    // DataConnection is ordered, so gameStart always lands first).
+    this.matchSequence++;
+    this.resetLockstepForMatchBoundary();
 
     // SEAT truth, bots included. The old connection-derived list was the
     // wrong universe under the member/seat model: member ids are not seat
@@ -1972,6 +2015,7 @@ export class NetworkManager {
       this.safeSend(conn, {
         type: 'gameStart',
         gameId: handoff.gameId,
+        matchSequence: this.matchSequence,
         playerIds: handoff.playerIds,
         handoff,
         // The member's SEAT, not its member id — the two number spaces are
@@ -1998,6 +2042,7 @@ export class NetworkManager {
     if (this.role !== 'host') return;
     if (!this.session.send('returnToLobby')) return;
 
+    this.resetLockstepForMatchBoundary();
     const connected = new Set(this.connections.keys());
     this.members.resetPresenceForLobby(connected, this.localMemberId);
 

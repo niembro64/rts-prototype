@@ -251,6 +251,11 @@ export async function createBackgroundBattle(
   );
   await report(0.66, 'Server ready');
 
+  // From here the server EXISTS. Any throw below (renderer slot contention,
+  // scene creation, vegetation) must stop it on the way out — a leaked
+  // ticking server holds the sim singleton and poisons every later
+  // GameServer.create for the rest of the page session.
+  try {
   const connection = new LocalGameConnection(server, resolvedLocalPlayerId, 'local-offline');
   applyStoredBattleServerSettings(server, mode, {
     ipAddress,
@@ -311,6 +316,14 @@ export async function createBackgroundBattle(
   await report(1, 'Creating 3D scene');
 
   return { gameInstance, server, connection, clientViewState };
+  } catch (err) {
+    try {
+      server.stop();
+    } catch (stopErr) {
+      console.error('[Lobby] failed server cleanup after battle-create failure:', stopErr);
+    }
+    throw err;
+  }
 }
 
 /** Tear down a background battle: stop the server and destroy the game

@@ -114,7 +114,16 @@ export function useGameCanvasLobbyPreview({
     const container = backgroundContainerRef.value;
     if (!container) return;
     nextTick(() => {
-      if (disposed || !container.isConnected) return;
+      if (disposed) return;
+      // A DISCONNECTED container is the NORM here, not an error: when a
+      // battle starts, the lobby modal unmounts and Vue destroys the
+      // subtree WITH the adopted container inside it, cutting the node out
+      // of the document. appendChild re-attaches a detached node, so both
+      // moves below are also the recovery path — the old
+      // `!container.isConnected` bail is exactly what used to orphan the
+      // preview permanently: every battle exit after the first left the
+      // demo/preview simulation rendering into a detached div, which read
+      // as "going back to the lobby breaks the simulation".
       if (active) {
         const target = document.getElementById('lobby-preview-target');
         if (target && container.parentElement !== target) {

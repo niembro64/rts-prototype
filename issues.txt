@@ -1,9 +1,0 @@
-1. The "type" icons we have for each build item look good but let's also add the "color" to the icons as well. So like we have the high level type which has a default icon and color, but then we could have a different icon for a sub type (like metal has a different icon but same color because it is economy. "solar" would still just have the general icon and the "economy" color). Also make sure the icons are fitting in the area that they are being applied to, some of those icons are currently spilling out of their region. 
-
-2. The "spectator" still seems to think he is "player 1", he has a bias to be able to select player 1 entities, even though he can't issue commands. Ensure that spectators are agnostic to players and teams. 
-
-3. Also in the deployed version of the game it seems that going back to the "setup / lobby" state breaks the simualtion as well as "leave" breaks the simulations. We need stronger finite state mechanisms implemented. 
-
-4. In our "home" screen let's rename "Host Game" to "Host Internet Game" and rename "Local Skirmish" to "Play Local Skirmish". Move the skirmish button above the host button, and let's make sure the host/join/code  is obviously separate from "skirmish" section both with a divider and color. 
-
-5. In the "game room lobby" we need to give less space to the right simulation and options, and more space to the left side stuff. The simulatino should always occupy 50% of the right side and the options should always occupy the bottom 50% of the right side. The right side options acan be scrollable. The left side user list items need to be vertically tighter and our "+ BOT" should be an option inside of each team as a line item, not in the colored team definition bars. 

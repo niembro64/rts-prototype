@@ -124,11 +124,10 @@ function vegetationGenerationKey(
 /**
  * Generate the map's vegetation once, or return the already-generated
  * list. Unlike metal deposits, props carry mutable reclaim state, so a
- * second generation pass would silently restore consumed energy —
- * hence the idempotent front door. Every caller (server bootstrap and
- * the renderer alike) goes through it, and a caller that asks for a
- * DIFFERENT map than the one already installed is a hard error rather
- * than a quiet divergence.
+ * second generation pass FOR THE SAME WORLD would silently restore
+ * consumed energy — hence the idempotent front door: the same key always
+ * returns the installed list. A different key is a different world
+ * bootstrapping in this page session and regenerates cleanly.
  */
 export function ensureVegetationGenerated(
   mapWidth: number,
@@ -146,11 +145,17 @@ export function ensureVegetationGenerated(
   }
   if (installedKey !== '') {
     if (installedKey !== key) {
-      throw new Error(
-        `Vegetation was generated for ${installedKey} but ${key} was requested; one simulation owns one prop layout`,
-      );
+      // A DIFFERENT key means a NEW world is bootstrapping in this page
+      // session — every input here (map size, player count, coverage,
+      // liquid mode) is a frame-0 constant, so a mid-match key change is
+      // impossible. The previous layout describes a sim that no longer
+      // exists in that shape; regenerate for the new one. (This used to
+      // throw, which killed the lobby preview the moment a bot joined and
+      // changed the player count — the sim never came back up.)
+      clearVegetation();
+    } else {
+      return installedProps;
     }
-    return installedProps;
   }
   installedProps = generateVegetation(mapWidth, mapHeight);
   installedKey = key;

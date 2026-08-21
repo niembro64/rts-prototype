@@ -72,7 +72,10 @@ export class RtsScene3DSelectionSystem {
 
   constructor(
     private readonly clientViewState: ClientViewState,
-    private readonly getLocalPlayerId: () => PlayerId,
+    /** The owning seat, or undefined for a seatless SPECTATOR — every
+     *  owner filter below is skipped then, so a watcher's selection caches
+     *  (panel, cursor, control groups) see foreign entities too. */
+    private readonly getLocalPlayerId: () => PlayerId | undefined,
   ) {}
 
   getSelectedUnits(): Entity[] {
@@ -288,7 +291,8 @@ export class RtsScene3DSelectionSystem {
     // Iterating the maintained selection set is O(N_selected).
     for (const id of this.clientViewState.getSelectedIds()) {
       const entity = this.clientViewState.getEntity(id);
-      if (!entity?.selectable?.selected || entity.ownership?.playerId !== playerId) continue;
+      if (!entity?.selectable?.selected) continue;
+      if (playerId !== undefined && entity.ownership?.playerId !== playerId) continue;
       if (entity.unit) this.selectedUnits.push(entity);
       else if (entity.building) this.selectedBuildings.push(entity);
     }
@@ -377,7 +381,8 @@ export class RtsScene3DSelectionSystem {
 
       for (let j = 0; j < group.entityIds.length; j++) {
         const entity = this.clientViewState.getEntity(group.entityIds[j]);
-        if (!entity?.selectable || entity.ownership?.playerId !== playerId) continue;
+        if (!entity?.selectable) continue;
+        if (playerId !== undefined && entity.ownership?.playerId !== playerId) continue;
         if (entity.unit && entity.unit.hp <= 0) continue;
         if (entity.building && entity.building.hp <= 0) continue;
         count++;
@@ -405,7 +410,7 @@ export class RtsScene3DSelectionSystem {
       if (
         entity?.unit &&
         entity.selectable?.selected &&
-        entity.ownership?.playerId === playerId
+        (playerId === undefined || entity.ownership?.playerId === playerId)
       ) {
         hasSelectedUnit = true;
         break;
@@ -421,7 +426,7 @@ export class RtsScene3DSelectionSystem {
       if (
         entity?.building &&
         entity.selectable?.selected &&
-        entity.ownership?.playerId === playerId
+        (playerId === undefined || entity.ownership?.playerId === playerId)
       ) {
         buildingsToDeselect.push(id);
       }

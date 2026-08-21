@@ -725,28 +725,39 @@ const terrainSectionVars = computed(() =>
       </div>
 
       <div class="main-actions">
-        <button class="lobby-btn host-btn" @click="handleHost">Host Game</button>
-        <button
-          class="lobby-btn skirmish-btn"
-          title="A sealed lobby for this machine alone: no listing, no joiners, add bots and play — works with no internet"
-          @click="emit('hostLocal')"
-        >Local Skirmish</button>
-
-        <div class="join-row">
-          <input
-            v-model="joinCode"
-            class="code-input"
-            type="text"
-            maxlength="4"
-            placeholder="CODE"
-            @keyup.enter="handleJoinSubmit"
-          />
+        <!-- OFFLINE first — the zero-friction way in. Boxed and tinted apart
+             from the internet cluster below so the two ways to play read as
+             two sections, not one pile of buttons. -->
+        <section class="action-section skirmish-section">
+          <span class="action-section-label">OFFLINE</span>
           <button
-            class="lobby-btn join-btn"
-            :disabled="!canJoin"
-            @click="handleJoinSubmit"
-          >Join</button>
-        </div>
+            class="lobby-btn skirmish-btn"
+            title="A sealed lobby for this machine alone: no listing, no joiners, add bots and play — works with no internet"
+            @click="emit('hostLocal')"
+          >Play Local Skirmish</button>
+        </section>
+
+        <div class="action-divider" role="presentation"></div>
+
+        <section class="action-section internet-section">
+          <span class="action-section-label">ONLINE</span>
+          <button class="lobby-btn host-btn" @click="handleHost">Host Internet Game</button>
+          <div class="join-row">
+            <input
+              v-model="joinCode"
+              class="code-input"
+              type="text"
+              maxlength="4"
+              placeholder="CODE"
+              @keyup.enter="handleJoinSubmit"
+            />
+            <button
+              class="lobby-btn join-btn"
+              :disabled="!canJoin"
+              @click="handleJoinSubmit"
+            >Join</button>
+          </div>
+        </section>
       </div>
 
       <!-- The open-lobby directory. Every row is a one-click join: the
@@ -994,15 +1005,6 @@ const terrainSectionVars = computed(() =>
                   :title="`TEAM ${group.allyTeamId}`"
                 >
                   <span class="team-band-label">TEAM {{ group.allyTeamId }}</span>
-                  <!-- Seat a BOT on this side: a seat the sim drives, no
-                       member behind it. Host only, like all seating. -->
-                  <button
-                    v-if="isHost"
-                    class="team-add-bot-btn"
-                    type="button"
-                    :title="`Add a bot to TEAM ${group.allyTeamId}`"
-                    @click.stop="emit('addBotSeat', group.allyTeamId)"
-                  >+ BOT</button>
                   <!-- Only on a side nobody is standing on. Deleting an
                        occupied side would move somebody without being asked. -->
                   <button
@@ -1022,7 +1024,7 @@ const terrainSectionVars = computed(() =>
               >
                 <CommanderAvatar
                   :color="seat.playerColor"
-                  :size="44"
+                  :size="36"
                 />
                 <!-- Player info. The local user's row owns the only
                      name-edit entry point; remote slots render the
@@ -1112,6 +1114,18 @@ const terrainSectionVars = computed(() =>
                        just made before anyone stands on it. -->
                   <li v-if="group.seats.length === 0" class="player-item team-empty">
                     <span class="team-empty-text">EMPTY — slice carved, no commander</span>
+                  </li>
+                  <!-- Seat a BOT on this side: a seat the sim drives, no
+                       member behind it. A LINE ITEM in the side's own list —
+                       "one more row here" — rather than a control squeezed
+                       onto the colored band. Host only, like all seating. -->
+                  <li v-if="isHost" class="player-item add-bot-item">
+                    <button
+                      class="add-bot-row-btn"
+                      type="button"
+                      :title="`Add a bot to TEAM ${group.allyTeamId}`"
+                      @click="emit('addBotSeat', group.allyTeamId)"
+                    >+ BOT</button>
                   </li>
                 </ul>
               </li>
@@ -1639,15 +1653,15 @@ const terrainSectionVars = computed(() =>
  * Left column (title / share code / players list / actions row at
  * top) spans the top two grid rows; the preview-pane and options
  * stack in the right column; footer (Tauri Exit only) spans both.
- * Row sizing rule: the OPTIONS row sizes to its content (auto), so
- * adding more battle-config rows always claims the space it needs;
- * the PREVIEW row gets the remaining 1fr — i.e. whatever vertical
- * space is left over. The lobby simulation can never push the
- * options off-screen, only the other way around. */
+ * Row sizing rule: the right side is a FIXED 50/50 split — the
+ * simulation always holds the top half and the options always hold
+ * the bottom half, scrolling internally when the config rows outgrow
+ * it. Neither can push the other around, which is what makes the
+ * lobby read the same at every window size. */
 .lobby-modal.in-lobby {
   display: grid;
-  grid-template-columns: minmax(320px, 24vw) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(360px, 34vw) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
   grid-template-areas:
     "left preview"
     "left terrain"
@@ -1677,21 +1691,33 @@ const terrainSectionVars = computed(() =>
   margin-top: 10px;
 }
 
-.team-add-bot-btn {
-  margin-left: auto;
-  margin-right: 4px;
-  padding: 1px 7px;
-  border: 1px solid rgba(0, 0, 0, 0.35);
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.18);
-  color: inherit;
-  font: 700 10px/1.4 monospace;
-  letter-spacing: 0.06em;
+/* The add-a-bot LINE ITEM: one more row in the side's own list, drawn as
+ * the ghost of the row it will become rather than a control on the band. */
+.player-item.add-bot-item {
+  min-height: 0;
+  padding: 0;
+  margin-bottom: 4px;
+  background: none;
+  border: none;
+}
+
+.add-bot-row-btn {
+  width: 100%;
+  padding: 4px 10px;
+  border: 1px dashed rgba(150, 170, 195, 0.45);
+  border-radius: 8px;
+  background: rgba(150, 170, 195, 0.06);
+  color: #9fb2c8;
+  font: 700 11px/1.6 monospace;
+  letter-spacing: 0.08em;
+  text-align: center;
   cursor: pointer;
 }
 
-.team-add-bot-btn:hover {
-  background: rgba(255, 255, 255, 0.32);
+.add-bot-row-btn:hover {
+  background: rgba(150, 170, 195, 0.16);
+  border-color: rgba(170, 190, 215, 0.7);
+  color: #d7e2ef;
 }
 
 .bot-badge {
@@ -1746,6 +1772,11 @@ const terrainSectionVars = computed(() =>
   flex-direction: column;
   gap: 0;
   min-width: 0;
+  /* The bottom HALF of the right column, fixed by the grid's 1fr/1fr rows.
+   * Options that outgrow it scroll here rather than resizing the
+   * simulation above. */
+  min-height: 0;
+  overflow-y: auto;
   border-top: 1px solid rgba(120, 140, 165, 0.28);
 }
 
@@ -2128,6 +2159,47 @@ const terrainSectionVars = computed(() =>
   margin: 0 auto 8px;
 }
 
+/* The two ways to play are two SECTIONS — each boxed and tinted after its
+ * own primary button — with a hard divider between them, so "offline
+ * skirmish" and "internet host/join" never read as one pile of buttons. */
+.action-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-radius: 10px;
+}
+
+.action-section-label {
+  font: 700 10px/1 monospace;
+  letter-spacing: 0.22em;
+  opacity: 0.85;
+}
+
+.skirmish-section {
+  background: rgba(122, 95, 184, 0.12);
+  border: 1px solid rgba(122, 95, 184, 0.45);
+}
+
+.skirmish-section .action-section-label {
+  color: #b9a4e6;
+}
+
+.internet-section {
+  background: rgba(74, 158, 255, 0.10);
+  border: 1px solid rgba(74, 158, 255, 0.40);
+}
+
+.internet-section .action-section-label {
+  color: #8fc2ff;
+}
+
+.action-divider {
+  height: 1px;
+  background: rgba(150, 170, 195, 0.35);
+  margin: 2px 6px;
+}
+
 .surface-actions {
   display: flex;
   justify-content: center;
@@ -2453,17 +2525,15 @@ const terrainSectionVars = computed(() =>
 }
 
 /* The options bar is flush with the column: no card border, no rounding, no
- * outer margin. It scrolls inside itself so adding more controls can never
- * push the live simulation off the screen. */
+ * outer margin. The 50% row is the bound now; overflow scrolls in
+ * `.lobby-right`, so adding more controls can never resize the live
+ * simulation above. */
 .lobby-modal.in-lobby > .lobby-right > .control-bar {
   margin: 0;
   border: none;
   border-radius: 0;
   align-items: flex-start;
-  /* Same band height the map grid claims, so switching between the two
-   * views does not resize the live simulation above them. */
-  max-height: clamp(190px, 32vh, 400px);
-  overflow-y: auto;
+  max-height: none;
 }
 
 /* ── Map picker ────────────────────────────────────────────────────────── */
@@ -2534,7 +2604,9 @@ const terrainSectionVars = computed(() =>
    * above always keeps the larger share of the screen no matter how wide
    * the window is. */
   grid-template-rows: repeat(2, minmax(0, 1fr));
-  height: clamp(190px, 32vh, 400px);
+  height: auto;
+  min-height: 190px;
+  flex: 1 0 auto;
   gap: 2px;
   padding: 2px;
   background: rgba(9, 11, 16, 0.72);
@@ -2787,20 +2859,19 @@ const terrainSectionVars = computed(() =>
   white-space: nowrap;
 }
 
-/* Lobby player rows — sized so the full 6-player roster fits in
- * the left column without scrolling on typical desktop viewports
- * (≥720px tall). Per-row height ≈ 60-64px content + 6px margin
- * → 6 rows × ~70px = ~420px total. The `.players-section`
- * still has `overflow-y: auto` for genuinely cramped windows. */
+/* Lobby player rows — deliberately TIGHT so a full roster plus the
+ * add-bot rows fits without scrolling: ≈44px content + 4px margin
+ * → ~48px per row. The `.players-section` still has
+ * `overflow-y: auto` for genuinely cramped windows. */
 .player-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
+  gap: 10px;
+  padding: 5px 10px;
   background: rgba(0, 0, 0, 0.2);
-  border-radius: 10px;
-  margin-bottom: 6px;
-  min-height: 60px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  min-height: 44px;
 }
 
 .player-item.is-local {
@@ -2968,7 +3039,7 @@ const terrainSectionVars = computed(() =>
   /* Negative margins must match `.player-item`'s padding so the
    * cells touch the row's outer rounded edges. Keep these in sync
    * if the player-item padding ever changes. */
-  margin: -10px -14px -10px 0;
+  margin: -5px -10px -5px 0;
 }
 
 .player-badges .host-badge,

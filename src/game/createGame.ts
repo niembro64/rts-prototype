@@ -14,7 +14,6 @@ const clearSceneByInstance = new WeakMap<GameInstance, () => void>();
 
 export function createGame(config: GameConfig): GameInstance {
   const rendererSlotOwner = { constructor: { name: 'createGame' } };
-  acquireRendererSlot(rendererSlotOwner);
 
   const playerIds = config.playerIds ?? [1, 2];
   const localPlayerId = config.localPlayerId ?? 1;
@@ -24,6 +23,9 @@ export function createGame(config: GameConfig): GameInstance {
   let app: ThreeApp | null = null;
   let currentScene: GameScene | null = null;
   try {
+    // Inside the try so a slot-contention throw reaches the cleanup below
+    // like every other construction failure, instead of escaping raw.
+    acquireRendererSlot(rendererSlotOwner);
     app = new ThreeApp(
       config.parent,
       config.width,

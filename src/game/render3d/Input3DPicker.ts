@@ -141,7 +141,7 @@ export class Input3DPicker {
 
   selectEntitiesInScreenRect(
     source: SelectionEntitySource,
-    playerId: PlayerId,
+    playerId: PlayerId | undefined,
     a: { x: number; y: number },
     b: { x: number; y: number },
     options: ScreenRectSelectionOptions = {},

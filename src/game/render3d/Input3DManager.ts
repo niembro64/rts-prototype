@@ -1220,7 +1220,7 @@ export class Input3DManager {
     const rect = this.picker.canvasRect();
     const entityIds = this.picker.selectEntitiesInScreenRect(
       this.entitySource,
-      this.context.activePlayerId,
+      this.context.isSpectator ? undefined : this.context.activePlayerId,
       { x: rect.left, y: rect.top },
       { x: rect.right, y: rect.bottom },
       { includeBuildingsWithUnits: true },
@@ -2487,8 +2487,12 @@ export class Input3DManager {
   }
 
   private isSelectableByActivePlayer(entity: Entity | null): boolean {
-    return this.isSelectableHoverTarget(entity) &&
-      entity?.ownership?.playerId === this.context.activePlayerId;
+    if (!this.isSelectableHoverTarget(entity)) return false;
+    // A spectator holds no seat: every live body is equally selectable for
+    // inspection. Players keep the own-army gate — selection is command
+    // intent for them, and commands need ownership.
+    if (this.context.isSpectator) return true;
+    return entity?.ownership?.playerId === this.context.activePlayerId;
   }
 
   private inferCursorKind(): CommandCursorKind {
@@ -2517,7 +2521,10 @@ export class Input3DManager {
     let targetReclaimable = false;
     let targetIsSoleSelection = false;
     let hasGuardSource = false;
-    if (hovered?.ownership) {
+    if (hovered?.ownership && !this.context.isSpectator) {
+      // A spectator has no side, so nothing reads as friendly OR enemy —
+      // the relationship stays 'none' and the cursor stays plain instead of
+      // offering attack/repair/guard verbs a watcher cannot issue.
       const targetPlayerId = hovered.ownership.playerId;
       const allied = this.entitySource.arePlayersAllied !== undefined
         ? this.entitySource.arePlayersAllied(this.context.activePlayerId, targetPlayerId)
@@ -2732,9 +2739,14 @@ export class Input3DManager {
     const visibleEntityIds = this.scratchEntityIds;
     this.writeViewportSelectableEntityIds(visibleEntityIds);
     const entityIds: EntityId[] = [];
+    // A player expands within their OWN army; a seatless spectator expands
+    // within the CLICKED entity's army — the only owner the gesture names.
+    const sameTypeOwner = this.context.isSpectator
+      ? entity.ownership?.playerId ?? this.context.activePlayerId
+      : this.context.activePlayerId;
     const unitBlueprintId = entity.unit?.unitBlueprintId;
     if (unitBlueprintId) {
-      const units = this.entitySource.getUnitsByPlayer(this.context.activePlayerId);
+      const units = this.entitySource.getUnitsByPlayer(sameTypeOwner);
       for (let i = 0; i < units.length; i++) {
         const unit = units[i];
         if (!this.isSelectableByActivePlayer(unit) || !visibleEntityIds.has(unit.id)) continue;
@@ -2746,7 +2758,7 @@ export class Input3DManager {
         visibleEntityIds.clear();
         return false;
       }
-      const buildings = this.entitySource.getBuildingsByPlayer(this.context.activePlayerId);
+      const buildings = this.entitySource.getBuildingsByPlayer(sameTypeOwner);
       for (let i = 0; i < buildings.length; i++) {
         const building = buildings[i];
         if (!this.isSelectableByActivePlayer(building) || !visibleEntityIds.has(building.id)) continue;
@@ -3018,7 +3030,7 @@ export class Input3DManager {
           world.x,
           world.y,
           {
-            playerId: this.context.activePlayerId,
+            playerId: this.context.isSpectator ? undefined : this.context.activePlayerId,
             minUnitRadius: SELECTABLE_GROUND_MIN_UNIT_RADIUS,
           },
         );
@@ -3050,7 +3062,7 @@ export class Input3DManager {
     this.lastSelectionClick = null;
     const ids = this.picker.selectEntitiesInScreenRect(
       this.entitySource,
-      this.context.activePlayerId,
+      this.context.isSpectator ? undefined : this.context.activePlayerId,
       this.selectionDrag.start,
       this.selectionDrag.end,
       options,

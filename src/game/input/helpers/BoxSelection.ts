@@ -180,7 +180,10 @@ export function entityMatchesScreenRectSelectionOptions(
 export function selectEntitiesInScreenRect(
   source: SelectionEntitySource,
   rect: ScreenRect,
-  playerId: PlayerId,
+  /** The selecting seat, or undefined for a seatless SPECTATOR — owner
+   *  filters are skipped entirely then, so a box keeps every in-rect
+   *  entity regardless of side (the preference rules stay owner-blind). */
+  playerId: PlayerId | undefined,
   project: ProjectToScreen,
   options: ScreenRectSelectionOptions = {},
 ): EntityId[] {
@@ -201,7 +204,7 @@ export function selectEntitiesInScreenRect(
   };
 
   for (const u of source.getUnits()) {
-    if (u.ownership?.playerId !== playerId) continue;
+    if (playerId !== undefined && u.ownership?.playerId !== playerId) continue;
     if (!canIncludeUnit(u, sameTypeFilters, options)) continue;
     if (!isInsideRect(u)) continue;
     unitIds.push(u.id);
@@ -216,7 +219,7 @@ export function selectEntitiesInScreenRect(
   }
 
   for (const b of source.getBuildings()) {
-    if (b.ownership?.playerId !== playerId) continue;
+    if (playerId !== undefined && b.ownership?.playerId !== playerId) continue;
     if (!canIncludeBuilding(b, sameTypeFilters, options)) continue;
     if (isInsideRect(b)) buildingIds.push(b.id);
   }

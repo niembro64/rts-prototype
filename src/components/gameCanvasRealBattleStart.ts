@@ -99,13 +99,18 @@ export async function startRealBattleWithPlayers(
     await waitForLoadingOverlayPaint();
   }
 
-  options.showLobby.value = false;
-  options.gameStarted.value = true;
   // Host start, client handoff, and the solo offline battle all funnel
   // through here, so this is the one writer of the machine's startBattle
   // edge — declared from both home (solo skips the seating screen) and the
-  // game room's lobby.
-  sendAppSurface('startBattle');
+  // game room's lobby. The transition is ASKED FIRST and its refusal is
+  // final: a second handoff, or a start racing an exit, must not half-tear
+  // the app before anyone consults the table.
+  if (!sendAppSurface('startBattle')) {
+    console.warn('[battle-start] refused: no startBattle edge from the current surface');
+    return;
+  }
+  options.showLobby.value = false;
+  options.gameStarted.value = true;
   options.battleLoading.value = true;
   const startGen = options.lifecycle.beginStart();
   options.foregroundSceneBinding.clear();
@@ -175,8 +180,7 @@ export async function startRealBattleWithPlayers(
   await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.start, 'Preparing battle');
   if (shouldAbortStart()) return;
 
-  options.lifecycle.setStartTimeout(setTimeout(async () => {
-    options.lifecycle.markStartTimeoutFired();
+  async function runDeferredStart(): Promise<void> {
     if (shouldAbortStart()) return;
     await waitForLoadingOverlayPaint();
     if (shouldAbortStart()) return;
@@ -343,5 +347,17 @@ export async function startRealBattleWithPlayers(
         options.bindSceneUi(readyScene);
       },
     );
+  }
+
+  options.lifecycle.setStartTimeout(setTimeout(() => {
+    options.lifecycle.markStartTimeoutFired();
+    // A throw ANYWHERE in the boot lands in cleanup instead of an unhandled
+    // rejection: before this catch existed, a failed start left the loading
+    // overlay up forever with the surface machine stuck in
+    // gameRoomBattleLoading — the deployed "simulation is broken" face.
+    void runDeferredStart().catch((err) => {
+      console.error('[battle-start] boot failed; tearing the start down', err);
+      cleanupOwnedStartResources(true);
+    });
   }, 100));
 }

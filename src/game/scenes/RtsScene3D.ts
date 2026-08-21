@@ -247,6 +247,9 @@ export class RtsScene3D {
    *  for UI plumbing that needs a number; nothing perspective-shaped (fog
    *  shade, sight rings, shield masks) may key off it while this is set. */
   private watchingAll = false;
+  /** Whether this client holds NO seat. Never changes mid-match — a role,
+   *  not a view. */
+  private isSpectator = false;
   /** Mirrors the sim's paused state into the presentation clocks. */
   private simulationPaused = false;
   private playerIds: PlayerId[];
@@ -348,6 +351,11 @@ export class RtsScene3D {
     this.threeApp = threeApp;
     this.clientRenderEnabled = threeApp.isRenderEnabled();
     this.localPlayerId = config.localPlayerId;
+    // The ROLE is permanent for the match; `watchingAll` is just the view
+    // toggle a spectator starts on. Keeping both is what lets watchPlayer
+    // move the view seat without the input layer ever mistaking a watcher
+    // for that seat's owner.
+    this.isSpectator = config.localRole === 'spectator';
     // A spectator boots in ALL: before this, the view bar highlighted ALL
     // while the scene silently rendered the first seat's fog.
     this.watchingAll = config.localRole === 'spectator';
@@ -420,7 +428,9 @@ export class RtsScene3D {
     );
     this.selectionSystem = new RtsScene3DSelectionSystem(
       this.clientViewState,
-      () => this.localPlayerId,
+      // A spectator's caches are owner-blind: the seat it "views as" is a
+      // fog/economy lens, never a selection allegiance.
+      () => (this.isSpectator ? undefined : this.localPlayerId),
     );
     this.snapshotIntake = new RtsScene3DSnapshotIntake(
       this.clientViewState,
@@ -578,6 +588,7 @@ export class RtsScene3D {
       {
         getTick: () => this.clientViewState.getTick(),
         activePlayerId: this.localPlayerId,
+        isSpectator: this.isSpectator,
       },
       this.entitySourceAdapter,
       this.clientCommandSink,

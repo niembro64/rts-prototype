@@ -1386,6 +1386,10 @@ watch(simulationPausedForPresentation, (paused) => {
   waitForBackgroundBattleIdle,
 } = useGameCanvasBackgroundBattle({
   backgroundContainerRef,
+  // The preview/demo may only run when no foreground battle is live or
+  // booting — the queued restarts from settings/roster changes are checked
+  // against this INSIDE the start, after every await, not just at the door.
+  canRunBackgroundBattle: () => !gameStarted.value && !battleLoading.value,
   getLocalIpAddress: () => localIpAddress.value,
   getBattleMode: () => currentBattleMode.value,
   getPreviewPlayerIds: () => currentBattleMode.value === 'real'
