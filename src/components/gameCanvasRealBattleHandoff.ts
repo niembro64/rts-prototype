@@ -4,7 +4,7 @@ import type {
   LobbySettings,
 } from '../game/network/NetworkManager';
 import type { PlayerId } from '../game/sim/types';
-import type { BattleHandoff, NetworkCommunicationEvent } from '../types/network';
+import type { BattleHandoff, LobbyBotSeat, NetworkCommunicationEvent } from '../types/network';
 import { bindGameCanvasNetworkCallbacks } from './gameCanvasNetworkCallbacks';
 import {
   startRealBattleWithPlayers,
@@ -24,6 +24,7 @@ type UseGameCanvasRealBattleHandoffOptions = Omit<
   networkNotice: Ref<string | null>;
   lobbyError: Ref<string | null>;
   lobbyMembers: Ref<LobbyMember[]>;
+  lobbyBotSeats: Ref<LobbyBotSeat[]>;
   roomCode: Ref<string>;
   localUsername: Ref<string>;
   resolvePlayerName: ResolvePlayerName;
@@ -58,6 +59,7 @@ export function useGameCanvasRealBattleHandoff({
   networkNotice,
   lobbyError,
   lobbyMembers,
+  lobbyBotSeats,
   roomCode,
   localUsername,
   network,
@@ -81,6 +83,7 @@ export function useGameCanvasRealBattleHandoff({
   onLoadingProgress,
   onPeerFrameReport,
   onFlowControlChange,
+  onLockstepHaltChange,
   onCatchUpProgress,
   registerSilentPlayer,
   bindSceneUi,
@@ -121,6 +124,7 @@ export function useGameCanvasRealBattleHandoff({
       onLoadingProgress,
       onPeerFrameReport,
       onFlowControlChange,
+      onLockstepHaltChange,
       registerSilentPlayer,
       bindSceneUi,
     });
@@ -132,6 +136,7 @@ export function useGameCanvasRealBattleHandoff({
       networkNotice,
       lobbyError,
       lobbyMembers,
+      lobbyBotSeats,
       roomCode,
       localPlayerId,
       localRole,

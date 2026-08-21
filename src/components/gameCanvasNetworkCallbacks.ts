@@ -7,7 +7,7 @@ import type {
   LobbySettings,
   NetworkManager,
 } from '../game/network/NetworkManager';
-import type { NetworkCommunicationEvent } from '../types/network';
+import type { LobbyBotSeat, NetworkCommunicationEvent } from '../types/network';
 import type { PlayerId } from '../game/sim/types';
 
 type GameCanvasNetworkCallbackOptions = {
@@ -15,6 +15,7 @@ type GameCanvasNetworkCallbackOptions = {
   networkNotice: Ref<string | null>;
   lobbyError: Ref<string | null>;
   lobbyMembers: Ref<LobbyMember[]>;
+  lobbyBotSeats: Ref<LobbyBotSeat[]>;
   roomCode: Ref<string>;
   localPlayerId: Ref<PlayerId>;
   localRole: Ref<LobbyMemberRole>;
@@ -47,6 +48,7 @@ export function bindGameCanvasNetworkCallbacks({
   networkNotice,
   lobbyError,
   lobbyMembers,
+  lobbyBotSeats,
   roomCode,
   localPlayerId,
   localRole,
@@ -65,9 +67,10 @@ export function bindGameCanvasNetworkCallbacks({
   // One callback, one whole list. There is no join/leave/info trio to apply
   // in the right order, which is what used to let two clients disagree about
   // where the same player was sitting.
-  network.onRoster = (members) => {
+  network.onRoster = (members, botSeats) => {
     const previousIds = new Set(lobbyMembers.value.map((member) => member.memberId));
     lobbyMembers.value = members.map((member) => ({ ...member }));
+    lobbyBotSeats.value = botSeats.map((bot) => ({ ...bot }));
     if (members.length > 0) networkNotice.value = null;
 
     const self = members.find((member) => member.memberId === network.getLocalMemberId());

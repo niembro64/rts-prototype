@@ -872,6 +872,18 @@ impl CombatTargetingPool {
 
     pub(crate) fn clear_all(&mut self) {
         self.begin_stamp();
+        // A hard clear ends the match, so no slot holds an entity any
+        // more. `entity_id` doubles as set_entity's slot-reuse detector:
+        // the same id restamped into the same slot preserves the
+        // slab-owned FSM tuple (state, target, cooldowns,
+        // losBlockedTicks). A restarted match deals out the same entity
+        // ids into the same slots again, so a surviving id would hand
+        // the new match's turrets the old match's cooldowns — the
+        // deterministic-replay harness caught exactly that. Forget every
+        // occupant so the next stamp reseeds each slot as fresh.
+        for id in self.entity_id.iter_mut() {
+            *id = ENTITY_META_NO_ID;
+        }
         self.entity_slot_by_id.clear();
     }
 

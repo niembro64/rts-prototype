@@ -102,12 +102,17 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'host'): void;
+  (e: 'hostLocal'): void;
   (e: 'join', roomCode: string): void;
   (e: 'start'): void;
   (e: 'cancel'): void;
   (e: 'entityLab'): void;
   (e: 'gameControls'): void;
   (e: 'chatSend', text: string): void;
+  (e: 'addBotSeat', allyTeamId: number): void;
+  (e: 'removeBotSeat', playerId: PlayerId): void;
+  (e: 'cycleBotAllyTeam', playerId: PlayerId): void;
+  (e: 'setSeatInitialState', playerId: PlayerId, initialState: 'commander' | 'base'): void;
   /** Collapse or reveal the menu sidebar. Nothing to do with watching a
    *  match — this is the chevron on the sidebar's edge. */
   (e: 'toggleMenu'): void;
@@ -721,6 +726,11 @@ const terrainSectionVars = computed(() =>
 
       <div class="main-actions">
         <button class="lobby-btn host-btn" @click="handleHost">Host Game</button>
+        <button
+          class="lobby-btn skirmish-btn"
+          title="A sealed lobby for this machine alone: no listing, no joiners, add bots and play — works with no internet"
+          @click="emit('hostLocal')"
+        >Local Skirmish</button>
 
         <div class="join-row">
           <input
@@ -984,6 +994,15 @@ const terrainSectionVars = computed(() =>
                   :title="`TEAM ${group.allyTeamId}`"
                 >
                   <span class="team-band-label">TEAM {{ group.allyTeamId }}</span>
+                  <!-- Seat a BOT on this side: a seat the sim drives, no
+                       member behind it. Host only, like all seating. -->
+                  <button
+                    v-if="isHost"
+                    class="team-add-bot-btn"
+                    type="button"
+                    :title="`Add a bot to TEAM ${group.allyTeamId}`"
+                    @click.stop="emit('addBotSeat', group.allyTeamId)"
+                  >+ BOT</button>
                   <!-- Only on a side nobody is standing on. Deleting an
                        occupied side would move somebody without being asked. -->
                   <button
@@ -1037,24 +1056,54 @@ const terrainSectionVars = computed(() =>
                     class="player-control-btn"
                     type="button"
                     :title="`Move ${seat.player.name} to the next team`"
-                    @click="emit('cycleMemberAllyTeam', memberIdForSeat(seat.player.playerId))"
+                    @click="seat.player.isBot
+                      ? emit('cycleBotAllyTeam', seat.player.playerId)
+                      : emit('cycleMemberAllyTeam', memberIdForSeat(seat.player.playerId))"
                   >MOVE</button>
                   <!-- The host's own seat has no bench button: a lobby with
-                       nobody in it is not a lobby. -->
+                       nobody in it is not a lobby. A bot has no bench to go
+                       to — removing it is the whole gesture. -->
                   <button
-                    v-if="!seat.player.isHost"
+                    v-if="!seat.player.isHost && !seat.player.isBot"
                     class="player-control-btn"
                     type="button"
                     :title="`Move ${seat.player.name} back to the watchers`"
                     @click="emit('toggleMemberSeated', memberIdForSeat(seat.player.playerId))"
                   >BENCH</button>
+                  <button
+                    v-if="seat.player.isBot"
+                    class="player-control-btn"
+                    type="button"
+                    :title="`Remove ${seat.player.name}`"
+                    @click="emit('removeBotSeat', seat.player.playerId)"
+                  >REMOVE</button>
+                  <!-- The seat's INITIAL STATE axis: a lone commander, or
+                       the authored full base. Independent of WHO drives the
+                       seat — the demo is base seats with one human on one. -->
+                  <button
+                    class="player-control-btn seat-state-btn"
+                    type="button"
+                    :title="(seat.player.initialState ?? 'commander') === 'base'
+                      ? `${seat.player.name} opens with a full base — click for a lone commander`
+                      : `${seat.player.name} opens as a lone commander — click for a full base`"
+                    @click="emit('setSeatInitialState', seat.player.playerId,
+                      (seat.player.initialState ?? 'commander') === 'base' ? 'commander' : 'base')"
+                  >{{ (seat.player.initialState ?? 'commander') === 'base' ? 'BASE' : 'CMDR' }}</button>
                 </div>
                 <!-- Badges pinned to the right edge of the row. HOST anchors
                      top-right, YOU bottom-right, whether or not the other is
                      present. -->
                 <div class="player-badges">
                   <span v-if="seat.player.isHost" class="host-badge">HOST</span>
+                  <span v-if="seat.player.isBot" class="bot-badge">BOT</span>
                   <span v-if="seat.player.playerId === localPlayerId" class="you-badge">YOU</span>
+                  <span
+                    v-if="!isHost"
+                    class="seat-state-badge"
+                    :title="(seat.player.initialState ?? 'commander') === 'base'
+                      ? 'Opens with a full base'
+                      : 'Opens as a lone commander'"
+                  >{{ (seat.player.initialState ?? 'commander') === 'base' ? 'BASE' : 'CMDR' }}</span>
                 </div>
               </li>
                   <!-- A declared side with nobody on it. It is not a gap in
@@ -1628,6 +1677,47 @@ const terrainSectionVars = computed(() =>
   margin-top: 10px;
 }
 
+.team-add-bot-btn {
+  margin-left: auto;
+  margin-right: 4px;
+  padding: 1px 7px;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.18);
+  color: inherit;
+  font: 700 10px/1.4 monospace;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.team-add-bot-btn:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.bot-badge {
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(150, 120, 220, 0.35);
+  border: 1px solid rgba(170, 140, 240, 0.6);
+  color: #ded2f5;
+  font: 700 9px/1.4 monospace;
+  letter-spacing: 0.08em;
+}
+
+.seat-state-btn,
+.seat-state-badge {
+  font: 700 9px/1.6 monospace;
+  letter-spacing: 0.08em;
+}
+
+.seat-state-badge {
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid rgba(180, 199, 209, 0.35);
+  background: rgba(255, 255, 255, 0.07);
+  color: #c8d6de;
+}
+
 .lobby-modal.in-lobby > .lobby-left {
   grid-area: left;
   display: flex;
@@ -2085,6 +2175,16 @@ const terrainSectionVars = computed(() =>
 
 .host-btn:hover:not(:disabled) {
   background: #55cc55;
+}
+
+.skirmish-btn {
+  background: #7a5fb8;
+  color: white;
+  width: 100%;
+}
+
+.skirmish-btn:hover:not(:disabled) {
+  background: #9578d4;
 }
 
 .join-btn {

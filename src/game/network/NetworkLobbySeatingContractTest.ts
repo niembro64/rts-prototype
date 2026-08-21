@@ -237,6 +237,8 @@ export function runNetworkLobbySeatingContractTest(): void {
       players: members.seatedPlayers(),
       allyTeamByPlayerId: members.allyTeamByPlayerId(),
       allyTeamCount: 3,
+      aiPlayerIds: members.botSeatPlayerIds(),
+      baseSeatPlayerIds: members.baseSeatPlayerIds(),
       settings: HANDOFF_SETTINGS,
     });
 
@@ -363,7 +365,7 @@ export function runNetworkLobbySeatingContractTest(): void {
     client.replaceAll([
       {
         memberId: 1, role: 'player', playerId: 1 as PlayerId,
-        allyTeamId: FIRST_ALLY_TEAM_ID, name: 'host', isHost: true,
+        allyTeamId: FIRST_ALLY_TEAM_ID, initialState: 'commander', name: 'host', isHost: true,
         presence: 'live', ipAddress: undefined, location: undefined,
         timezone: undefined, localTime: undefined,
       },
@@ -372,6 +374,7 @@ export function runNetworkLobbySeatingContractTest(): void {
         memberId: 2, role: 'spectator',
         playerId: null as unknown as undefined,
         allyTeamId: null as unknown as undefined,
+        initialState: null as unknown as undefined,
         name: 'watcher', isHost: false, presence: 'live',
         ipAddress: null as unknown as undefined,
         location: null as unknown as undefined,
@@ -399,6 +402,61 @@ export function runNetworkLobbySeatingContractTest(): void {
     assert(
       Object.keys(client.allyTeamByPlayerId()).length === 1,
       'a watcher contributes no side to the match roster',
+    );
+  }
+
+  // --- bot seats: seats the sim drives, in the same seat number space ------
+  {
+    const members = new NetworkLobbyMembers();
+    members.seedHost();
+    members.admit(2, 'P2');
+    members.seat(2, 2);
+
+    const bot = members.addBotSeat(2);
+    assert(bot !== null, 'the host can seat a bot');
+    assert(bot!.playerId === 3, 'a bot takes the lowest free seat, like anybody');
+    assert(bot!.initialState === 'base',
+      "a bot defaults to the 'base' opening — the demo's whole character in one default");
+
+    const players = members.seatedPlayers();
+    assert(players.length === 3, 'bot seats are seats: the match roster holds them');
+    assert(players.find((p) => p.playerId === 3)?.isBot === true,
+      'the roster says which seats are bots');
+    assert(
+      members.humanSeatedPlayerIds().join(',') === '1,2',
+      'the completion/ack universe is HUMAN seats only',
+    );
+    assert(members.botSeatPlayerIds().join(',') === '3', 'and the bot set is its own list');
+    assert(members.baseSeatPlayerIds().join(',') === '3',
+      "initial-state 'base' follows the bot default until the host flips it");
+
+    // The axes are independent: flip the bot to a commander start, and give
+    // the HOST the base opening — the demo's exact mix, inverted.
+    assert(members.setSeatInitialState(3 as PlayerId, 'commander'), 'a bot can open as a commander');
+    assert(members.setSeatInitialState(1 as PlayerId, 'base'), 'a human can open with a base');
+    assert(members.baseSeatPlayerIds().join(',') === '1',
+      'initial state mixes freely across agent types');
+
+    // A member seat may not collide with a bot seat.
+    members.admit(4, 'P4');
+    const granted = members.seat(4, 2);
+    assert(granted.seated && granted.member.playerId === 4,
+      'human seating skips seats bots hold');
+
+    // A side holding only a bot is not empty, and removal frees the seat.
+    assert(!members.allyTeamIsEmpty(members.botSeatsList()[0]!.allyTeamId),
+      'a side with a bot on it cannot be deleted out from under it');
+    assert(members.removeBotSeat(3 as PlayerId), 'the host can remove a bot');
+    assert(members.seatedPlayers().length === 3, 'the seat frees up');
+
+    // Adoption is atomic, bots included.
+    const client = new NetworkLobbyMembers();
+    members.addBotSeat(1);
+    client.replaceAll(members.toArray(), members.botSeatsList());
+    assert(
+      client.seatedPlayers().map((p) => `${p.playerId}${p.isBot ? 'b' : ''}`).join(',') ===
+        members.seatedPlayers().map((p) => `${p.playerId}${p.isBot ? 'b' : ''}`).join(','),
+      'a client adopts the whole roster, bot seats included, in one announcement',
     );
   }
 

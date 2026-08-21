@@ -27,6 +27,10 @@ type BuildBattleHandoffOptions = {
    *  it belongs in the hashed initialization rather than being rediscovered
    *  from the roster later. */
   allyTeamByPlayerId: Readonly<Record<number, number>>;
+  /** The two seat axes (src/game/sim/agentSeat.ts), destined for the
+   *  hashed initialization: bot-driven seats and base-opening seats. */
+  aiPlayerIds: readonly PlayerId[];
+  baseSeatPlayerIds: readonly PlayerId[];
   /** Sides the lobby declared, empty ones included. */
   allyTeamCount: number;
   settings: LobbySettings;
@@ -45,6 +49,8 @@ export function buildBattleHandoff({
   players: roster,
   allyTeamByPlayerId,
   allyTeamCount,
+  aiPlayerIds,
+  baseSeatPlayerIds,
   settings,
 }: BuildBattleHandoffOptions): BattleHandoff {
   const normalizedPlayerIds = normalizePlayerIds(playerIds);
@@ -74,6 +80,8 @@ export function buildBattleHandoff({
     playerIds: normalizedPlayerIds,
     allyTeamByPlayerId,
     allyTeamCount,
+    aiPlayerIds,
+    baseSeatPlayerIds,
     settings,
     gameGenerationSeed: createHostGameGenerationSeed(),
   });
@@ -114,6 +122,8 @@ export function normalizeBattleHandoffMessage(
     playerIds: normalizedPlayerIds,
     allyTeamByPlayerId: allyTeamByPlayerIdFromInitialization(handoff.initialization),
     allyTeamCount: handoff.initialization.allyTeamCount,
+    aiPlayerIds: handoff.initialization.aiPlayerIds,
+    baseSeatPlayerIds: handoff.initialization.baseSeatPlayerIds,
     settings: handoff.settings,
     gameGenerationSeed: handoff.initialization.gameGenerationSeed,
   });

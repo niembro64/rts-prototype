@@ -15,6 +15,7 @@ import type {
 import type { SnapshotRate, TickRate } from './server';
 import type { BeamReflectorKind, CombatFireState, CombatTrajectoryMode, EntityType, PlayerId, TurretState, UnitAirIdleState, UnitMoveState } from './sim';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
+import type { SeatInitialState } from '../game/sim/agentSeat';
 import type { TerrainPrecedence } from './terrainPrecedence';
 import type {
   LiquidSurfaceMode,
@@ -311,6 +312,9 @@ export type LobbyMember = {
   playerId: PlayerId | undefined;
   /** The side of that seat — the lobby's TEAM N. Present with `playerId`. */
   allyTeamId: number | undefined;
+  /** The seat's INITIAL STATE axis (src/game/sim/agentSeat.ts). Present
+   *  only while seated; absent means the human default, 'commander'. */
+  initialState: SeatInitialState | undefined;
   name: string;
   isHost: boolean;
   /** Whether this member is attached, quiet, or gone. Never reaches the sim:
@@ -321,6 +325,16 @@ export type LobbyMember = {
   location: string | undefined;
   timezone: string | undefined;
   localTime: string | undefined;
+};
+
+/** A seat held by NOBODY's connection: the deterministic in-sim policy
+ *  drives it (src/game/sim/agentSeat.ts). Travels in the roster because
+ *  every client renders it on its team, but it is not a member — members
+ *  hold connections, and a bot holds none. */
+export type LobbyBotSeat = {
+  playerId: PlayerId;
+  allyTeamId: number;
+  initialState: SeatInitialState;
 };
 
 export type NetworkCommunicationDraft = {
@@ -368,7 +382,9 @@ export type NetworkCommunicationEvent = NetworkCommunicationChatEvent;
 // v5: the periodic checksum went LIGHT (composed root hash, no entityHashes
 // on the wire). Hash values changed, so a v4 build meeting a v5 build would
 // read as a phantom desync — refused at the door instead.
-export const LOCKSTEP_PROTOCOL_VERSION = 'budget-annihilation.lockstep.v5' as const;
+// v6: bot seats — rosterUpdate carries botSeats, seats carry initialState,
+// and the canonical initialization hashes both axes (match-init v13).
+export const LOCKSTEP_PROTOCOL_VERSION = 'budget-annihilation.lockstep.v6' as const;
 type LockstepProtocolVersion = typeof LOCKSTEP_PROTOCOL_VERSION;
 
 export type LockstepProtocolBase = {
@@ -635,6 +651,10 @@ export type NetworkMessage =
       type: 'rosterUpdate';
       gameId: string | undefined;
       members: LobbyMember[];
+      /** Bot seats beside the members, in the same atomic announcement —
+       *  a partial roster is exactly the disagreement this message exists
+       *  to prevent. */
+      botSeats: LobbyBotSeat[];
       /** Sides the host declared, empty ones included. */
       allyTeamCount: number;
     }
@@ -1356,6 +1376,10 @@ export type LobbyPlayer = {
   playerId: PlayerId;
   name: string;
   isHost: boolean;
+  /** True for a seat the sim drives — no member, no connection. */
+  isBot?: boolean;
+  /** The seat's INITIAL STATE axis; absent means 'commander'. */
+  initialState?: SeatInitialState;
   /** Which SIDE this seat plays on — BAR calls it the ally team, the
    *  lobby labels it TEAM N. Host-authoritative: the host assigns one on
    *  join and broadcasts it, and a seat change is a host decision even

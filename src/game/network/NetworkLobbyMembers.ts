@@ -29,6 +29,7 @@ import type { PlayerId } from '../sim/types';
 import { FIRST_ALLY_TEAM_ID } from '../sim/teamRoster';
 import { formatBrowserClockTime, getBrowserTimezone } from '../browserLocale';
 import type {
+  LobbyBotSeat,
   LobbyMember,
   LobbyMemberInfoPayload,
   LobbyMemberPresence,
@@ -36,6 +37,11 @@ import type {
   MemberId,
   SeatToken,
 } from '@/types/network';
+import {
+  DEFAULT_BOT_INITIAL_STATE,
+  DEFAULT_HUMAN_INITIAL_STATE,
+  type SeatInitialState,
+} from '../sim/agentSeat';
 import { MAX_LOBBY_PLAYERS, MAX_LOBBY_SPECTATORS } from './LobbyDirectory';
 import { createStateMachine, type StateMachine } from '../state/StateMachine';
 
@@ -119,6 +125,7 @@ function normalizeWireLobbyMember(member: LobbyMember): LobbyMember {
     ...member,
     playerId: normalizeWireOptional(member.playerId),
     allyTeamId: normalizeWireOptional(member.allyTeamId),
+    initialState: normalizeWireOptional(member.initialState),
     ipAddress: normalizeWireOptional(member.ipAddress),
     location: normalizeWireOptional(member.location),
     timezone: normalizeWireOptional(member.timezone),
@@ -136,6 +143,7 @@ function createLobbyMember(
     role: 'spectator',
     playerId: undefined,
     allyTeamId: undefined,
+    initialState: undefined,
     name,
     isHost,
     presence: 'live',
@@ -154,6 +162,7 @@ function toLobbyPlayer(member: LobbyMember): LobbyPlayer | null {
     name: member.name,
     isHost: member.isHost,
     allyTeamId: member.allyTeamId ?? FIRST_ALLY_TEAM_ID,
+    initialState: member.initialState ?? DEFAULT_HUMAN_INITIAL_STATE,
     ipAddress: member.ipAddress,
     location: member.location,
     timezone: member.timezone,
@@ -169,11 +178,16 @@ export class NetworkLobbyMembers {
   /** Seat -> the token that reclaims it. Host-side only; never broadcast in
    *  the roster, only handed to the one member that owns the seat. */
   private readonly seatTokens = new Map<PlayerId, SeatToken>();
+  /** Seats the SIM drives — no member, no connection, no token. They share
+   *  the one seat number space with member seats (src/game/sim/agentSeat.ts)
+   *  and travel in the same atomic roster announcement. */
+  private readonly botSeats = new Map<PlayerId, LobbyBotSeat>();
 
   clear(): void {
     this.members.clear();
     this.presenceByMember.clear();
     this.seatTokens.clear();
+    this.botSeats.clear();
   }
 
   private presenceFor(memberId: MemberId): StateMachine<LobbyMemberPresence, MemberPresenceEvent> {
@@ -241,15 +255,110 @@ export class NetworkLobbyMembers {
     return out;
   }
 
-  /** Every seated member, ordered by seat, as the match sees them. */
+  /** Every seat — member-held and bot alike — ordered by seat, as the
+   *  match sees them. Bot seats render and hash like any other; what they
+   *  lack is a CONNECTION, which is a session fact, not a roster one. */
   seatedPlayers(): LobbyPlayer[] {
     const out: LobbyPlayer[] = [];
     for (const member of this.members.values()) {
       const player = toLobbyPlayer(member);
       if (player !== null) out.push(player);
     }
+    for (const bot of this.botSeats.values()) {
+      out.push({
+        playerId: bot.playerId,
+        name: `BOT ${bot.playerId}`,
+        isHost: false,
+        isBot: true,
+        allyTeamId: bot.allyTeamId,
+        initialState: bot.initialState,
+        ipAddress: undefined,
+        location: undefined,
+        timezone: undefined,
+        localTime: undefined,
+      });
+    }
     out.sort((a, b) => a.playerId - b.playerId);
     return out;
+  }
+
+  /** The seats a CONNECTION answers for — the completion/ack universe. */
+  humanSeatedPlayerIds(): PlayerId[] {
+    const out: PlayerId[] = [];
+    for (const member of this.members.values()) {
+      if (member.playerId !== undefined) out.push(member.playerId);
+    }
+    return out.sort((a, b) => a - b);
+  }
+
+  botSeatPlayerIds(): PlayerId[] {
+    return [...this.botSeats.keys()].sort((a, b) => a - b);
+  }
+
+  /** Seats whose INITIAL STATE is 'base' — the other seat axis. */
+  baseSeatPlayerIds(): PlayerId[] {
+    const out: PlayerId[] = [];
+    for (const member of this.members.values()) {
+      if (member.playerId !== undefined && member.initialState === 'base') {
+        out.push(member.playerId);
+      }
+    }
+    for (const bot of this.botSeats.values()) {
+      if (bot.initialState === 'base') out.push(bot.playerId);
+    }
+    return out.sort((a, b) => a - b);
+  }
+
+  botSeatsList(): LobbyBotSeat[] {
+    return [...this.botSeats.values()]
+      .map((bot) => ({ ...bot }))
+      .sort((a, b) => a.playerId - b.playerId);
+  }
+
+  /** Seat a bot on a team (host gesture). Bots default to the 'base'
+   *  opening — the demo's whole character in one default — and the host
+   *  can flip any seat's initial state afterwards. */
+  addBotSeat(sideCount: number, preferredAllyTeamId?: number): LobbyBotSeat | null {
+    const seat = this.lowestFreeSeat();
+    if (seat === null) return null;
+    const bot: LobbyBotSeat = {
+      playerId: seat,
+      allyTeamId: this.clampSide(
+        preferredAllyTeamId ?? this.emptiestAllyTeam(sideCount),
+        sideCount,
+      ),
+      initialState: DEFAULT_BOT_INITIAL_STATE,
+    };
+    this.botSeats.set(seat, bot);
+    return { ...bot };
+  }
+
+  removeBotSeat(playerId: PlayerId): boolean {
+    return this.botSeats.delete(playerId);
+  }
+
+  setBotSeatAllyTeam(playerId: PlayerId, allyTeamId: number, sideCount: number): boolean {
+    const bot = this.botSeats.get(playerId);
+    if (bot === undefined) return false;
+    const next = this.clampSide(allyTeamId, sideCount);
+    if (bot.allyTeamId === next) return false;
+    bot.allyTeamId = next;
+    return true;
+  }
+
+  /** Flip one seat's INITIAL STATE, member-held or bot. */
+  setSeatInitialState(playerId: PlayerId, initialState: SeatInitialState): boolean {
+    const bot = this.botSeats.get(playerId);
+    if (bot !== undefined) {
+      if (bot.initialState === initialState) return false;
+      bot.initialState = initialState;
+      return true;
+    }
+    const member = this.memberForSeat(playerId);
+    if (member === undefined) return false;
+    if ((member.initialState ?? DEFAULT_HUMAN_INITIAL_STATE) === initialState) return false;
+    member.initialState = initialState;
+    return true;
   }
 
   seatedPlayerIds(): PlayerId[] {
@@ -296,7 +405,7 @@ export class NetworkLobbyMembers {
   // ── Seating (host only) ────────────────────────────────────────────────
 
   private lowestFreeSeat(): PlayerId | null {
-    const taken = new Set<PlayerId>();
+    const taken = new Set<PlayerId>(this.botSeats.keys());
     for (const member of this.members.values()) {
       if (member.playerId !== undefined) taken.add(member.playerId);
     }
@@ -319,6 +428,10 @@ export class NetworkLobbyMembers {
     for (const member of this.members.values()) {
       if (member.allyTeamId === undefined) continue;
       const index = member.allyTeamId - FIRST_ALLY_TEAM_ID;
+      if (index >= 0 && index < sides) counts[index]++;
+    }
+    for (const bot of this.botSeats.values()) {
+      const index = bot.allyTeamId - FIRST_ALLY_TEAM_ID;
       if (index >= 0 && index < sides) counts[index]++;
     }
     let best = 0;
@@ -344,6 +457,7 @@ export class NetworkLobbyMembers {
       preferredAllyTeamId ?? this.emptiestAllyTeam(sideCount),
       sideCount,
     );
+    member.initialState = DEFAULT_HUMAN_INITIAL_STATE;
     this.seatTokens.set(seat, randomToken());
     return { seated: true, member };
   }
@@ -358,6 +472,7 @@ export class NetworkLobbyMembers {
     member.role = 'spectator';
     member.playerId = undefined;
     member.allyTeamId = undefined;
+    member.initialState = undefined;
     return true;
   }
 
@@ -367,6 +482,7 @@ export class NetworkLobbyMembers {
     member.role = 'player';
     member.playerId = 1 as PlayerId;
     member.allyTeamId = FIRST_ALLY_TEAM_ID;
+    member.initialState = DEFAULT_HUMAN_INITIAL_STATE;
     this.seatTokens.set(1 as PlayerId, randomToken());
     return member;
   }
@@ -472,6 +588,9 @@ export class NetworkLobbyMembers {
       if (member.playerId === undefined) continue;
       if (member.allyTeamId === allyTeamId) return false;
     }
+    for (const bot of this.botSeats.values()) {
+      if (bot.allyTeamId === allyTeamId) return false;
+    }
     return true;
   }
 
@@ -489,6 +608,9 @@ export class NetworkLobbyMembers {
       if (member.allyTeamId === undefined) continue;
       if (member.allyTeamId > allyTeamId) member.allyTeamId--;
     }
+    for (const bot of this.botSeats.values()) {
+      if (bot.allyTeamId > allyTeamId) bot.allyTeamId--;
+    }
     return true;
   }
 
@@ -499,6 +621,11 @@ export class NetworkLobbyMembers {
       if (member.playerId === undefined || member.allyTeamId === undefined) continue;
       if (member.allyTeamId - FIRST_ALLY_TEAM_ID < sideCount) continue;
       member.allyTeamId = this.emptiestAllyTeam(sideCount);
+      changed = true;
+    }
+    for (const bot of this.botSeats.values()) {
+      if (bot.allyTeamId - FIRST_ALLY_TEAM_ID < sideCount) continue;
+      bot.allyTeamId = this.emptiestAllyTeam(sideCount);
       changed = true;
     }
     return changed;
@@ -588,7 +715,10 @@ export class NetworkLobbyMembers {
   /** Replace the whole roster with the host's announcement. Atomic by design:
    *  there is no field-by-field merge to get wrong, and no ordering between
    *  two announcements that can leave a client showing a stale seat. */
-  replaceAll(members: readonly LobbyMember[]): void {
+  replaceAll(
+    members: readonly LobbyMember[],
+    botSeats: readonly LobbyBotSeat[] = [],
+  ): void {
     this.members.clear();
     // The machines are the HOST's bookkeeping. A client renders the presence
     // the host announced and does not run a second copy of the lifecycle,
@@ -598,6 +728,15 @@ export class NetworkLobbyMembers {
       if (!Number.isInteger(member.memberId)) continue;
       this.members.set(member.memberId, normalizeWireLobbyMember(member));
     }
+    this.botSeats.clear();
+    for (const bot of botSeats) {
+      if (!Number.isInteger(bot.playerId)) continue;
+      this.botSeats.set(bot.playerId, {
+        playerId: bot.playerId,
+        allyTeamId: bot.allyTeamId,
+        initialState: bot.initialState === 'commander' ? 'commander' : 'base',
+      });
+    }
   }
 
   /** Seat -> side, for handing this lobby's roster to the sim. */
@@ -606,6 +745,9 @@ export class NetworkLobbyMembers {
     for (const member of this.members.values()) {
       if (member.playerId === undefined) continue;
       out[member.playerId] = member.allyTeamId ?? FIRST_ALLY_TEAM_ID;
+    }
+    for (const bot of this.botSeats.values()) {
+      out[bot.playerId] = bot.allyTeamId;
     }
     return out;
   }

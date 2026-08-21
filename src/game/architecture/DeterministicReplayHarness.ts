@@ -78,6 +78,21 @@ const CASES: readonly DeterministicReplayCase[] = [
     buildCommands: () => [],
   },
   {
+    // The two seat axes in one match (src/game/sim/agentSeat.ts): seat 2 is
+    // a BOT with the full 'base' opening — factories re-picking repeat-build
+    // units from the sim RNG the whole run — while seat 1 is a human-style
+    // commander start. Proves a botted skirmish replays identically, which
+    // is what makes bots legal in online lockstep at all.
+    id: 'real-bot-base-vs-commander-2p-160t',
+    ticks: 160,
+    config: {
+      ...BASE_REAL_CONFIG,
+      aiPlayerIds: [2 as PlayerId],
+      baseSeatPlayerIds: [2 as PlayerId],
+    },
+    buildCommands: () => [],
+  },
+  {
     id: 'real-commander-move-2p-120t',
     ticks: 120,
     config: BASE_REAL_CONFIG,

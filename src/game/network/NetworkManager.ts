@@ -6,6 +6,7 @@ import type {
   Util,
 } from 'peerjs';
 import type { PlayerId } from '../sim/types';
+import type { SeatInitialState } from '../sim/agentSeat';
 import {
   getDefaultPlayerName,
   saveUsername,
@@ -43,6 +44,7 @@ export type {
 import type { CanonicalServerStateHash } from '../architecture/CanonicalStateHash';
 import {
   type BattleHandoff,
+  type LobbyBotSeat,
   type LobbyMember,
   type LobbyMemberRole,
   type MemberId,
@@ -446,19 +448,60 @@ export class NetworkManager {
     return true;
   }
 
+  /** Host: seat a bot on a team, or remove one. The same rules as human
+   *  seating — lobby only, one writer — with one less ceremony: a bot has
+   *  no member to ask, so the host's click is the whole gesture. */
+  addBotSeat(preferredAllyTeamId?: number): boolean {
+    if (this.role !== 'host') return false;
+    if (!admitsSeating(this.session.state)) return false;
+    const bot = this.members.addBotSeat(this.allyTeamCount, preferredAllyTeamId);
+    if (bot === null) return false;
+    this.broadcastLobbyRoster();
+    this.refreshLobbyListing();
+    return true;
+  }
+
+  removeBotSeat(playerId: PlayerId): boolean {
+    if (this.role !== 'host') return false;
+    if (!admitsSeating(this.session.state)) return false;
+    if (!this.members.removeBotSeat(playerId)) return false;
+    this.broadcastLobbyRoster();
+    this.refreshLobbyListing();
+    return true;
+  }
+
+  /** Host: flip one seat's INITIAL STATE ('commander' <-> 'base') — the
+   *  other seat axis, member-held seats and bots alike. */
+  setSeatInitialState(playerId: PlayerId, initialState: SeatInitialState): boolean {
+    if (this.role !== 'host') return false;
+    if (!admitsSeating(this.session.state)) return false;
+    if (!this.members.setSeatInitialState(playerId, initialState)) return false;
+    this.broadcastLobbyRoster();
+    return true;
+  }
+
+  setBotSeatAllyTeam(playerId: PlayerId, allyTeamId: number): boolean {
+    if (this.role !== 'host') return false;
+    if (!this.members.setBotSeatAllyTeam(playerId, allyTeamId, this.allyTeamCount)) return false;
+    this.broadcastLobbyRoster();
+    return true;
+  }
+
   /** Re-announce the WHOLE member list to every client, and hand the same
    *  list to the local UI. Atomic replace, not a delta: the roster is small,
    *  and every disagreement about who sits where came from clients merging
    *  partial updates in different orders. */
   private broadcastLobbyRoster(): void {
     const members = this.members.toArray();
+    const botSeats = this.members.botSeatsList();
     this.broadcast({
       type: 'rosterUpdate',
       gameId: this.getUniversalGameId(),
       members,
+      botSeats,
       allyTeamCount: this.allyTeamCount,
     });
-    this.emitRoster(members);
+    this.emitRoster(members, botSeats);
   }
 
   /** Seat -> side for handing this lobby's roster to the sim. */
@@ -492,6 +535,10 @@ export class NetworkManager {
    *  spectator has to be reachable exactly like a player. */
   private connections: Map<MemberId, DataConnection> = new Map();
   private role: NetworkRole | null = null;
+  /** 'local' seals the session: no signaling peer, no directory listing,
+   *  no joiners — a skirmish for this machine alone. 'online' is the open
+   *  lobby everything else documents. */
+  private sessionVisibility: 'online' | 'local' = 'online';
   private roomCode: string = '';
   /** Where this build advertises and discovers sessions — the web directory
    *  or Steam. Resolved once by the registry; nothing here knows which. */
@@ -628,7 +675,9 @@ export class NetworkManager {
   // Callbacks
   /** The whole member list changed. One callback, one atomic list — there is
    *  no join/leave/info trio to apply in the right order. */
-  public onRoster: ((members: readonly LobbyMember[]) => void) | undefined = undefined;
+  public onRoster:
+    | ((members: readonly LobbyMember[], botSeats: readonly LobbyBotSeat[]) => void)
+    | undefined = undefined;
   /** The host is gone and this session cannot continue. Clients only. */
   public onHostLeft: (() => void) | undefined = undefined;
   /** `resume` is present only when joining a match already in progress: the
@@ -678,10 +727,13 @@ export class NetworkManager {
     if (callback !== undefined) this.drainPendingLockstepMessages(callback);
   }
 
-  private emitRoster(members: readonly LobbyMember[]): void {
+  private emitRoster(
+    members: readonly LobbyMember[],
+    botSeats: readonly LobbyBotSeat[] = this.members.botSeatsList(),
+  ): void {
     this.refreshLobbyListing();
     const callback = this.onRoster;
-    if (callback !== undefined) callback(members);
+    if (callback !== undefined) callback(members, botSeats);
   }
 
   /** Announce that the host is gone, once.
@@ -946,8 +998,9 @@ export class NetworkManager {
   }
 
   // Host a new game
-  async hostGame(): Promise<string> {
+  async hostGame(options: { visibility?: 'online' | 'local' } = {}): Promise<string> {
     const generation = this.beginNetworkSetup();
+    this.sessionVisibility = options.visibility ?? 'online';
     this.session.send('connect');
     this.roomCode = generateRoomCode();
     this.role = 'host';
@@ -961,6 +1014,18 @@ export class NetworkManager {
     this.members.seedHost();
     this.localMemberId = HOST_MEMBER_ID;
     this.syncLocalSeat();
+
+    // A LOCAL skirmish opens no signaling at all: nothing to dial, nothing
+    // to list, nothing that needs the internet. The publisher's provider
+    // already reports nothing while the peer is absent, so the directory
+    // never hears about it, and with no peer there is no door to knock on.
+    // Same lobby, same seating screen, same lockstep — just sealed.
+    if (this.sessionVisibility === 'local') {
+      this.roomCode = 'LOCAL';
+      this.session.send('connected');
+      this.emitRoster(this.members.toArray());
+      return this.roomCode;
+    }
 
     // Decided before the peer exists so the unavailable-id retry below
     // recreates its peer against the same server; a joiner resolving the
@@ -1525,7 +1590,9 @@ export class NetworkManager {
             this.broadcastLobbyRoster();
           }
         } else if (this.role === 'client' && message.members) {
-          this.adoptRoster(message.members);
+          // Heartbeats echo the member list for freshness but do not carry
+          // bot seats; keep the ones the last full rosterUpdate announced.
+          this.adoptRoster(message.members, this.members.botSeatsList());
         }
         return;
 
@@ -1581,7 +1648,7 @@ export class NetworkManager {
         if (this.role !== 'client') return;
         if (!this.isMessageForCurrentGame(message.gameId)) return;
         this.applyLobbyAllyTeamCount(message.allyTeamCount);
-        this.adoptRoster(message.members);
+        this.adoptRoster(message.members, message.botSeats ?? []);
         break;
 
       case 'gameStart':
@@ -1678,10 +1745,13 @@ export class NetworkManager {
   /** Client: take the host's announcement whole. There is nothing to merge,
    *  which is the point — a partial roster applied in the wrong order is how
    *  two clients came to disagree about where the same player sat. */
-  private adoptRoster(members: readonly LobbyMember[]): void {
-    this.members.replaceAll(members);
+  private adoptRoster(
+    members: readonly LobbyMember[],
+    botSeats: readonly LobbyBotSeat[],
+  ): void {
+    this.members.replaceAll(members, botSeats);
     this.syncLocalSeat();
-    this.emitRoster(this.members.toArray());
+    this.emitRoster(this.members.toArray(), this.members.botSeatsList());
   }
 
   /** Host: ship the current lobby settings to every connected
@@ -1851,14 +1921,15 @@ export class NetworkManager {
     if (!this.session.send('start')) return;
     this.clearSignalingReconnect();
 
-    const playerIds = this.getGamePlayerIds();
+    // SEAT truth, bots included. The old connection-derived list was the
+    // wrong universe under the member/seat model: member ids are not seat
+    // ids, and a connected WATCHER would have been counted as a player.
+    const playerIds = this.members.seatedPlayers().map((player) => player.playerId);
 
     // 1-player real games are first-class — they spawn exactly one
     // commander, one base, one team. The same code path that handles
     // 2/4/6/N players runs here too; no fork that injects a fake
-    // second team / second commander. The host's real-battle preview
-    // (LobbyManager → spawnInitialBases) already iterates `playerIds`
-    // unconditionally, so a single id produces a single base.
+    // second team / second commander.
 
     const settings = this.readLobbySettings();
     if (settings === undefined) {
@@ -1869,6 +1940,11 @@ export class NetworkManager {
       roomCode: this.getRoomCode(),
       playerIds,
       players: this.members.seatedPlayers(),
+      // The two seat axes (src/game/sim/agentSeat.ts), straight from the
+      // roster into the HASHED initialization: who the sim drives, and who
+      // opens with a base.
+      aiPlayerIds: this.members.botSeatPlayerIds(),
+      baseSeatPlayerIds: this.members.baseSeatPlayerIds(),
       // The lobby's TEAM assignment decides terrain slices, spawn arcs and
       // who may shoot whom, so it travels inside the HASHED initialization.
       // Leaving it out here is what used to make every online match a
@@ -1882,25 +1958,19 @@ export class NetworkManager {
     // running game — that is the other half of what the directory shows.
     this.refreshLobbyListing();
 
-    for (const [playerId, conn] of this.connections) {
+    for (const [memberId, conn] of this.connections) {
       this.safeSend(conn, {
         type: 'gameStart',
         gameId: handoff.gameId,
         playerIds: handoff.playerIds,
         handoff,
-        assignedPlayerId: playerId,
+        // The member's SEAT, not its member id — the two number spaces are
+        // separate, and a member whose id drifted from its seat used to be
+        // handed somebody else's army here. Watchers get undefined.
+        assignedPlayerId: this.members.get(memberId)?.playerId,
       });
     }
     this.emitGameStart(handoff);
-  }
-
-  private getGamePlayerIds(): PlayerId[] {
-    const ids: PlayerId[] = [1 as PlayerId];
-    for (const [playerId, conn] of this.connections) {
-      if (conn.open && playerId !== 1) ids.push(playerId);
-    }
-    ids.sort((a, b) => a - b);
-    return ids;
   }
 
   // Getters

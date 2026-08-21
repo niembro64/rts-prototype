@@ -1,4 +1,4 @@
-import { nextTick, type Ref } from 'vue';
+import type { Ref } from 'vue';
 import { sendAppSurface } from '../appSurfaceMachine';
 import { resetRealBattleSettings } from '../battleBarConfig';
 import type {
@@ -14,7 +14,7 @@ type GameCanvasLobbyActions = {
   handleJoin(code: string): Promise<void>;
   handleLobbyStart(): void;
   handleLobbyCancel(): void;
-  handleOffline(): void;
+  handleHostLocal(): Promise<void>;
 };
 
 type GameCanvasLobbyActionsOptions = {
@@ -31,11 +31,6 @@ type GameCanvasLobbyActionsOptions = {
   battleLoading: Ref<boolean>;
   setupNetworkCallbacks: () => void;
   reportLocalPlayerInfo: () => void;
-  onLoadingProgress: (progress: number, phase?: string) => void;
-  startGameWithPlayers: (
-    playerIds: PlayerId[],
-    aiPlayerIds?: PlayerId[],
-  ) => void | Promise<void>;
 };
 
 export function useGameCanvasLobbyActions({
@@ -52,8 +47,6 @@ export function useGameCanvasLobbyActions({
   battleLoading,
   setupNetworkCallbacks,
   reportLocalPlayerInfo,
-  onLoadingProgress,
-  startGameWithPlayers,
 }: GameCanvasLobbyActionsOptions): GameCanvasLobbyActions {
   let lobbyActionGeneration = 0;
 
@@ -163,21 +156,39 @@ export function useGameCanvasLobbyActions({
     isConnecting.value = false;
   }
 
-  function handleOffline(): void {
+  /** A LOCAL skirmish: the same seating screen as hosting, with the session
+   *  sealed — no listing, no joiners, no signaling, no internet needed. The
+   *  host adds bots and presses Start. This replaces the old dead "offline"
+   *  path, which no button reached and whose AI roster the lockstep policy
+   *  would have refused anyway. */
+  async function handleHostLocal(): Promise<void> {
     resetRealBattleSettings();
-    lobbyActionGeneration++;
-    networkRole.value = null;
-    networkNotice.value = null;
-    battleLoading.value = true;
-    onLoadingProgress(0, 'Preparing battle');
-    localPlayerId.value = 1;
+    const generation = ++lobbyActionGeneration;
+    try {
+      isConnecting.value = true;
+      lobbyError.value = null;
+      networkNotice.value = null;
 
-    nextTick(() => {
-      void startGameWithPlayers(
-        [1, 2, 3, 4] as PlayerId[],
-        [2, 3, 4] as PlayerId[],
-      );
-    });
+      await network.hostGame({ visibility: 'local' });
+      if (!isCurrentLobbyAction(generation)) return;
+      roomCode.value = network.getRoomCode();
+      isHost.value = true;
+      networkRole.value = 'host';
+      localPlayerId.value = 1;
+      localRole.value = 'player';
+      lobbyMembers.value = network.getMembers();
+
+      setupNetworkCallbacks();
+      reportLocalPlayerInfo();
+
+      sendAppSurface('enterLobby');
+      isConnecting.value = false;
+    } catch (err) {
+      if (!isCurrentLobbyAction(generation)) return;
+      lobbyError.value = (err as Error).message || 'Failed to start a local skirmish';
+      networkNotice.value = lobbyError.value;
+      isConnecting.value = false;
+    }
   }
 
   return {
@@ -185,6 +196,6 @@ export function useGameCanvasLobbyActions({
     handleJoin,
     handleLobbyStart,
     handleLobbyCancel,
-    handleOffline,
+    handleHostLocal,
   };
 }

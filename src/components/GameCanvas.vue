@@ -12,6 +12,7 @@ import UnitStatsOverlay from './UnitStatsOverlay.vue';
 import type { UnitStatsOverlayInfo } from '../game/scenes/helpers';
 import LobbyModal from './LobbyModal.vue';
 import type { LobbyMember, LobbyMemberRole } from '../game/network/NetworkManager';
+import type { LobbyBotSeat } from '../types/network';
 import type { RealBattleFlowControlReport } from './gameCanvasRealBattleStartup';
 import type { LockstepCatchUpProgress } from '../game/architecture/LockstepCatchUp';
 import GameCanvasOverlays from './GameCanvasOverlays.vue';
@@ -237,6 +238,17 @@ const roomCode = ref('');
  *  from it (`lobbyPlayers`) rather than stored beside it, so the two can
  *  never drift. */
 const lobbyMembers = ref<LobbyMember[]>([]);
+/** Bot seats beside the members, adopted from the same atomic roster
+ *  announcement (src/game/sim/agentSeat.ts). */
+const lobbyBotSeats = ref<LobbyBotSeat[]>([]);
+
+function cycleBotAllyTeam(playerId: PlayerId): void {
+  const bot = lobbyBotSeats.value.find((b) => b.playerId === playerId);
+  if (bot === undefined) return;
+  const sides = networkManager.lobbyAllyTeamCount();
+  const next = bot.allyTeamId >= sides ? 1 : bot.allyTeamId + 1;
+  networkManager.setBotSeatAllyTeam(playerId, next);
+}
 const winningAllyTeamName = computed(() => {
   if (gameOverWinner.value === null) return '';
   const winner = lobbyPlayers.value.find((player) => player.playerId === gameOverWinner.value);
@@ -404,6 +416,7 @@ const {
   resolveMemberName,
   onPlayerNameChange,
 } = useGameCanvasLobbyRoster({
+  lobbyBotSeats,
   network: networkManager,
   currentBattleMode,
   lobbyMembers,
@@ -1815,11 +1828,15 @@ watch(gameStarted, (started) => {
   if (!started) clearPeerFrames();
 });
 
+// startGameWithPlayers still exists on the composable — the network
+// callbacks reach it internally for the client's gameStart handoff — but
+// nothing in this component calls it directly any more: hosting flows
+// start via network.startGame(), and the old dead offline path is gone.
 const {
   setupNetworkCallbacks,
-  startGameWithPlayers,
 } = useGameCanvasRealBattleHandoff({
   containerRef,
+  lobbyBotSeats,
   showLobby,
   gameStarted,
   battleLoading,
@@ -1936,9 +1953,11 @@ const { restartGame: restartGameSession } = useGameCanvasSessionLifecycle({
  *  saved closed-menu preference over the destination the player just chose. */
 function restartGame(): void {
   restartGameSession();
-  // The session's conversation ends with the session, and so does its halt.
+  // The session's conversation ends with the session, and so do its halt
+  // and its bot seats.
   communicationMessages.value = [];
   lockstepHalt.value = null;
+  lobbyBotSeats.value = [];
   if (sendAppSurface('exitGameRoom') || sendAppSurface('leaveLobby')) {
     void nextTick(() => {
       menuHidden.value = false;
@@ -1966,7 +1985,7 @@ const {
   handleJoin,
   handleLobbyStart,
   handleLobbyCancel,
-  handleOffline,
+  handleHostLocal,
 } = useGameCanvasLobbyActions({
   network: networkManager,
   isConnecting,
@@ -1981,8 +2000,6 @@ const {
   battleLoading,
   setupNetworkCallbacks,
   reportLocalPlayerInfo,
-  startGameWithPlayers,
-  onLoadingProgress: setLoadingProgress,
 });
 
 // Reactive object instead of computed-returning-fresh-literal so the
@@ -2962,10 +2979,14 @@ watchEffect(() => {
       @join="handleJoin"
       @start="handleLobbyStart"
       @cancel="handleLobbyCancel"
-      @offline="handleOffline"
+      @host-local="handleHostLocal"
       @entity-lab="openEntityLab"
       @game-controls="openGameControls"
       @chat-send="sendLobbyChat"
+      @add-bot-seat="(teamId: number) => networkManager.addBotSeat(teamId)"
+      @remove-bot-seat="(pid: PlayerId) => networkManager.removeBotSeat(pid)"
+      @cycle-bot-ally-team="cycleBotAllyTeam"
+      @set-seat-initial-state="(pid: PlayerId, state: 'commander' | 'base') => networkManager.setSeatInitialState(pid, state)"
       @toggle-menu="handleMenuToggle"
       @set-center-magnitude="(v) => applyCenterMagnitude(v)"
       @set-ring-magnitude="(v) => applyRingMagnitude(v)"

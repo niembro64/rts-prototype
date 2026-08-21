@@ -20,6 +20,7 @@ import {
 } from '../../../config';
 import { spatialGrid } from '../SpatialGrid';
 import { getBuildingCombatCenterZ } from '../buildingAnchors';
+import { growScratchArray } from '../scratchArrayGrowth';
 import { magnitude, getTransformCosSin } from '../../math';
 import {
   REFLECTOR_HIT_KIND_NONE,
@@ -500,15 +501,19 @@ function clearAreaDamageEntities(count: number): void {
   }
 }
 
+// Grows PER APPENDED TURRET ROW inside the area-damage turret scan, so
+// rows already written must survive the reallocation — see
+// scratchArrayGrowth.ts for the determinism leak a contents-dropping
+// growth causes here.
 function ensureAreaTurretDamageCapacity(count: number): void {
   if (count <= _areaTurretDamageCapacity) return;
   let next = Math.max(16, _areaTurretDamageCapacity);
   while (next < count) next *= 2;
   _areaTurretDamageCapacity = next;
-  _areaTurretDamageSlots = new Uint32Array(next);
-  _areaTurretDamageTurretIndices = new Int32Array(next);
-  _areaTurretDamageOutFlags = new Uint8Array(next);
-  _areaTurretDamageRefFlags = new Uint8Array(next);
+  _areaTurretDamageSlots = growScratchArray(_areaTurretDamageSlots, next);
+  _areaTurretDamageTurretIndices = growScratchArray(_areaTurretDamageTurretIndices, next);
+  _areaTurretDamageOutFlags = growScratchArray(_areaTurretDamageOutFlags, next);
+  _areaTurretDamageRefFlags = growScratchArray(_areaTurretDamageRefFlags, next);
 }
 
 function ensureDeathExplosionDamageCapacity(count: number): void {
@@ -756,6 +761,10 @@ function classifyDeathExplosionDamageRows(
   }
 }
 
+// Grows PER APPENDED ROW (appendSegmentDamage*Row), so rows already
+// written must survive the reallocation — see scratchArrayGrowth.ts for
+// the determinism leak a contents-dropping growth causes here. The two
+// plain JS arrays keep their contents on `.length` growth already.
 function ensureSegmentDamageCapacity(count: number): void {
   if (count <= _segmentDamageCapacity) return;
   let next = Math.max(16, _segmentDamageCapacity);
@@ -763,24 +772,24 @@ function ensureSegmentDamageCapacity(count: number): void {
   _segmentDamageCapacity = next;
   _segmentDamageEntityIds.length = next;
   _segmentDamageHostEntityIds.length = next;
-  _segmentDamageIsUnit = new Uint8Array(next);
-  _segmentDamageIsBuilding = new Uint8Array(next);
-  _segmentDamageIsProjectile = new Uint8Array(next);
-  _segmentDamageEnabled = new Uint8Array(next);
-  _segmentDamageTargetKind = new Uint8Array(next);
-  _segmentDamageTargetX = new Float64Array(next);
-  _segmentDamageTargetY = new Float64Array(next);
-  _segmentDamageTargetZ = new Float64Array(next);
-  _segmentDamageTargetRadius = new Float64Array(next);
-  _segmentDamageBoxHalfX = new Float64Array(next);
-  _segmentDamageBoxHalfY = new Float64Array(next);
-  _segmentDamageBoxHalfZ = new Float64Array(next);
-  _segmentDamageSlots = new Uint32Array(next);
-  _segmentDamageTurretIndices = new Int32Array(next);
-  _segmentDamageOutFlags = new Uint8Array(next);
-  _segmentDamageOutT = new Float64Array(next);
-  _segmentDamageRefFlags = new Uint8Array(next);
-  _segmentDamageRefT = new Float64Array(next);
+  _segmentDamageIsUnit = growScratchArray(_segmentDamageIsUnit, next);
+  _segmentDamageIsBuilding = growScratchArray(_segmentDamageIsBuilding, next);
+  _segmentDamageIsProjectile = growScratchArray(_segmentDamageIsProjectile, next);
+  _segmentDamageEnabled = growScratchArray(_segmentDamageEnabled, next);
+  _segmentDamageTargetKind = growScratchArray(_segmentDamageTargetKind, next);
+  _segmentDamageTargetX = growScratchArray(_segmentDamageTargetX, next);
+  _segmentDamageTargetY = growScratchArray(_segmentDamageTargetY, next);
+  _segmentDamageTargetZ = growScratchArray(_segmentDamageTargetZ, next);
+  _segmentDamageTargetRadius = growScratchArray(_segmentDamageTargetRadius, next);
+  _segmentDamageBoxHalfX = growScratchArray(_segmentDamageBoxHalfX, next);
+  _segmentDamageBoxHalfY = growScratchArray(_segmentDamageBoxHalfY, next);
+  _segmentDamageBoxHalfZ = growScratchArray(_segmentDamageBoxHalfZ, next);
+  _segmentDamageSlots = growScratchArray(_segmentDamageSlots, next);
+  _segmentDamageTurretIndices = growScratchArray(_segmentDamageTurretIndices, next);
+  _segmentDamageOutFlags = growScratchArray(_segmentDamageOutFlags, next);
+  _segmentDamageOutT = growScratchArray(_segmentDamageOutT, next);
+  _segmentDamageRefFlags = growScratchArray(_segmentDamageRefFlags, next);
+  _segmentDamageRefT = growScratchArray(_segmentDamageRefT, next);
 }
 
 function writeSegmentDamageRowMetadata(

@@ -115,7 +115,8 @@ type CreateRealBattleServerOptions = {
   playerIds: PlayerId[];
   allyTeamByPlayerId?: Readonly<Record<number, number>> | undefined;
   allyTeamCount: number;
-  aiPlayerIds?: PlayerId[];
+  aiPlayerIds?: readonly PlayerId[];
+  baseSeatPlayerIds?: readonly PlayerId[];
   gameGenerationSeed: number;
   terrain: RealBattleStartupTerrain;
   converterTax?: number;
@@ -183,6 +184,7 @@ type RealBattlePeerFrameReport = {
 type CreateRealBattleBackendOptions = {
   playerIds: PlayerId[];
   aiPlayerIds?: PlayerId[];
+  baseSeatPlayerIds?: PlayerId[];
   terrain: RealBattleStartupTerrain;
   networkRole: NetworkRole | null;
   /** The SEAT this client holds, or undefined while it is watching. Not the
@@ -264,11 +266,17 @@ type RealBattleMatchContext = {
    *  joins later. One contract, one boot path: a late arrival must not get a
    *  separately-built initialization that could drift from the real one. */
   readonly handoff: BattleHandoff | undefined;
+  /** Seats with AGENT TYPE 'bot', from the hashed initialization — never
+   *  the raw start option, which a CLIENT does not carry. */
+  readonly aiPlayerIds: readonly PlayerId[];
+  /** Seats with INITIAL STATE 'base', from the hashed initialization. */
+  readonly baseSeatPlayerIds: readonly PlayerId[];
 };
 
 type CreateRealBattleMatchContextOptions = {
   readonly playerIds: readonly PlayerId[];
   readonly aiPlayerIds: readonly PlayerId[] | undefined;
+  readonly baseSeatPlayerIds: readonly PlayerId[] | undefined;
   readonly terrain: RealBattleStartupTerrain;
   /** The SEAT this client holds, or undefined while it is watching. */
   readonly localPlayerId: PlayerId | undefined;
@@ -388,6 +396,7 @@ function buildRealBattleLobbySettingsFromTerrain(
 function createRealBattleMatchContext({
   playerIds,
   aiPlayerIds,
+  baseSeatPlayerIds,
   terrain,
   localPlayerId,
   networkRole,
@@ -431,6 +440,7 @@ function createRealBattleMatchContext({
       allyTeamByPlayerId: allyTeamByPlayerIdFromInitialization(battleHandoff.initialization),
       allyTeamCount: battleHandoff.initialization.allyTeamCount,
       aiPlayerIds: battleHandoff.initialization.aiPlayerIds,
+      baseSeatPlayerIds: battleHandoff.initialization.baseSeatPlayerIds,
       settings,
       gameGenerationSeed: battleHandoff.initialization.gameGenerationSeed,
     });
@@ -452,6 +462,8 @@ function createRealBattleMatchContext({
       initializationHash: battleHandoff.initializationHash,
       gameGenerationSeed: battleHandoff.initialization.gameGenerationSeed,
       handoff: battleHandoff,
+      aiPlayerIds: battleHandoff.initialization.aiPlayerIds,
+      baseSeatPlayerIds: battleHandoff.initialization.baseSeatPlayerIds,
     };
   }
 
@@ -471,6 +483,7 @@ function createRealBattleMatchContext({
     allyTeamByPlayerId: network?.getAllyTeamByPlayerId(),
     allyTeamCount: network?.lobbyAllyTeamCount() ?? fallbackSettings.allyTeamCount,
     aiPlayerIds,
+    baseSeatPlayerIds,
     settings: fallbackSettings,
     gameGenerationSeed,
   });
@@ -488,6 +501,8 @@ function createRealBattleMatchContext({
     // Offline / no-handoff starts have nothing to re-serve; nobody can join
     // them mid-match either, so there is nothing to serve.
     handoff: undefined,
+    aiPlayerIds: initialization.aiPlayerIds,
+    baseSeatPlayerIds: initialization.baseSeatPlayerIds,
   };
 }
 
@@ -663,6 +678,7 @@ async function createRealBattleServer({
   allyTeamByPlayerId,
   allyTeamCount,
   aiPlayerIds,
+  baseSeatPlayerIds,
   gameGenerationSeed,
   terrain,
   converterTax,
@@ -675,7 +691,8 @@ async function createRealBattleServer({
       playerIds,
       allyTeamByPlayerId,
       allyTeamCount,
-      aiPlayerIds,
+      aiPlayerIds: aiPlayerIds === undefined ? undefined : [...aiPlayerIds],
+      baseSeatPlayerIds: baseSeatPlayerIds === undefined ? undefined : [...baseSeatPlayerIds],
       gameGenerationSeed,
       ...realBattleTerrainWorldFields(terrain),
       metalCoverage: terrain.metalCoverage,
@@ -697,19 +714,16 @@ export function createDeterministicLockstepBackend(
   options: CreateRealBattleBackendOptions,
 ): Promise<RealBattleBackendRuntime> {
   assertDeterministicLockstepRuntimeReady();
-  assertDeterministicLockstepSupported({
-    playerIds: options.playerIds,
-    aiPlayerIds: options.aiPlayerIds,
-    localPlayerId: options.localPlayerId,
-    networkRole: options.networkRole,
-    battleKind: 'real',
-  });
+  // The support policy is asserted inside the runtime, against the seat
+  // axes from the HASHED initialization — a client's raw options never
+  // carry them, so checking options here would vacuously pass for clients.
   return createDeterministicLockstepBackendRuntime(options);
 }
 
 async function createDeterministicLockstepBackendRuntime({
   playerIds,
   aiPlayerIds,
+  baseSeatPlayerIds,
   terrain,
   networkRole,
   localPlayerId,
@@ -727,6 +741,7 @@ async function createDeterministicLockstepBackendRuntime({
   const matchContext = createRealBattleMatchContext({
     playerIds,
     aiPlayerIds,
+    baseSeatPlayerIds,
     terrain,
     localPlayerId,
     networkRole,
@@ -735,11 +750,26 @@ async function createDeterministicLockstepBackendRuntime({
     requireHandoff: networkRole !== null,
     contextLabel: 'deterministic-lockstep',
   });
+  // The seat axes come from the HASHED initialization from here on — a
+  // client's raw start options never carry them, the handoff does.
+  assertDeterministicLockstepSupported({
+    playerIds,
+    aiPlayerIds: matchContext.aiPlayerIds,
+    localPlayerId,
+    networkRole,
+    battleKind: 'real',
+  });
+  const botPlayerIdSet = new Set<PlayerId>(matchContext.aiPlayerIds);
+  // The HUMAN seats: the completion/ack/checksum/ready universe. Bots hold
+  // seats in the SIM roster but no connection ever answers for them, so
+  // waiting on one would wait forever.
+  const humanPlayerIds = playerIds.filter((playerId) => !botPlayerIdSet.has(playerId));
   const server = await createRealBattleServer({
     playerIds,
     allyTeamByPlayerId: matchContext.allyTeamByPlayerId,
     allyTeamCount: matchContext.allyTeamCount,
-    aiPlayerIds,
+    aiPlayerIds: matchContext.aiPlayerIds,
+    baseSeatPlayerIds: matchContext.baseSeatPlayerIds,
     gameGenerationSeed: matchContext.gameGenerationSeed,
     terrain,
     converterTax: matchContext.settings.converterTax,
@@ -784,7 +814,7 @@ async function createDeterministicLockstepBackendRuntime({
   // The completion set: seated players only. A watcher is never in it, which
   // is what makes "a spectator cannot hold the match up" structural.
   const requiredReadyPlayerIds = new Set<PlayerId>(
-    isOnlineLockstep ? playerIds : localPlayerId === undefined ? [] : [localPlayerId],
+    isOnlineLockstep ? humanPlayerIds : localPlayerId === undefined ? [] : [localPlayerId],
   );
   const readyPlayerIds = new Set<PlayerId>(
     localPlayerId === undefined ? [] : [localPlayerId],
@@ -905,7 +935,9 @@ async function createDeterministicLockstepBackendRuntime({
 
   const scheduler = new LockstepFrameScheduler({
     core: lockstepCore,
-    expectedPlayerIds: playerIds,
+    // The scheduler's roster of peers that SPEAK — ready reports, pause
+    // subjects. Bots hold sim seats but never a connection.
+    expectedPlayerIds: humanPlayerIds,
     hostPlayerId: matchContext.hostPlayerId,
     fixedDtMs: lockstepFixedDtMs,
     checksumIntervalTicks: lockstepChecksumIntervalTicks,
@@ -922,7 +954,7 @@ async function createDeterministicLockstepBackendRuntime({
   });
   desyncMonitor = new LockstepDesyncMonitor({
     localPlayerId: checksumPlayerId,
-    peerIds: playerIds,
+    peerIds: humanPlayerIds,
     initializationHash,
     getRecentCommandFrames: () => scheduler.getRecentCommandFrames(),
     nowMs: () => performance.now(),
@@ -1099,8 +1131,10 @@ async function createDeterministicLockstepBackendRuntime({
     }
 
     const transport = network.getLockstepTransport();
+    // HUMAN seats only: a bot has no connection to be behind on, and flow
+    // control waiting on one would hold the match forever.
     const seated: SeatedPeerProgress[] = [];
-    for (const playerId of playerIds) {
+    for (const playerId of humanPlayerIds) {
       if (playerId === localPlayerId) continue;
       if (resignedPlayerIds.has(playerId)) continue;
       const latestAck = transport.latestAckForPlayer(playerId);
@@ -1252,7 +1286,7 @@ async function createDeterministicLockstepBackendRuntime({
     if (localPlayerId !== undefined) {
       peers.push({ playerId: localPlayerId, frame: coordinatorFrame });
     }
-    for (const playerId of playerIds) {
+    for (const playerId of humanPlayerIds) {
       if (playerId === localPlayerId) continue;
       const latestAck = transport.latestAckForPlayer(playerId);
       // No ack yet means "not known", not "at frame 0" — reporting zero here

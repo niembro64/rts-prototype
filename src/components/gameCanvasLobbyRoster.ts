@@ -1,6 +1,7 @@
 import { computed, ref, type ComputedRef, type Ref } from 'vue';
 import type { BattleMode } from '../battleBarConfig';
 import type { LobbyMember, LobbyPlayer, NetworkManager } from '../game/network/NetworkManager';
+import type { LobbyBotSeat } from '../types/network';
 import type { PlayerId } from '../game/sim/types';
 import {
   getDefaultPlayerName,
@@ -13,6 +14,7 @@ type UseGameCanvasLobbyRosterOptions = {
   currentBattleMode: ComputedRef<BattleMode>;
   /** Everyone attached, watchers included. The one list the UI renders. */
   lobbyMembers: Ref<LobbyMember[]>;
+  lobbyBotSeats: Ref<LobbyBotSeat[]>;
   localPlayerId: Ref<PlayerId>;
 };
 
@@ -20,6 +22,7 @@ export function useGameCanvasLobbyRoster({
   network,
   currentBattleMode,
   lobbyMembers,
+  lobbyBotSeats,
   localPlayerId,
 }: UseGameCanvasLobbyRosterOptions) {
   const localUsername = ref<string>(getInitialLocalUsername());
@@ -40,10 +43,27 @@ export function useGameCanvasLobbyRoster({
         name: member.name,
         isHost: member.isHost,
         allyTeamId: member.allyTeamId ?? 1,
+        initialState: member.initialState ?? 'commander',
         ipAddress: member.ipAddress,
         location: member.location,
         timezone: member.timezone,
         localTime: member.localTime,
+      });
+    }
+    // Bot seats are seats: they render on their team like anybody, and the
+    // isBot flag is what the row's chrome keys off.
+    for (const bot of lobbyBotSeats.value) {
+      out.push({
+        playerId: bot.playerId,
+        name: `BOT ${bot.playerId}`,
+        isHost: false,
+        isBot: true,
+        allyTeamId: bot.allyTeamId,
+        initialState: bot.initialState,
+        ipAddress: undefined,
+        location: undefined,
+        timezone: undefined,
+        localTime: undefined,
       });
     }
     out.sort((a, b) => a.playerId - b.playerId);

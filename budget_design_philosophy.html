@@ -481,7 +481,7 @@
         <li>Every lockstep frame uses the host-selected BATTLE simulation rate carried in the complete lobby contract and hashed initialization: <code>1000 / simulationTickRateHz</code> ms. The authored default remains <code>architecture.json</code>'s 20 Hz.</li>
         <li>Missing command frames stall instead of causing peers to guess different futures.</li>
         <li>Checksums are compared by frame. A mismatch pauses/desyncs the match and produces an exportable report with initialization hash, state-hash sections, peer ids, and recent command frames.</li>
-        <li>Lockstep support is still deliberately bounded: real battles only, no AI players, no automatic resync, and no host migration. Late join, reconnect and spectators are supported — see <em>Members hold connections; seats hold armies</em> below.</li>
+        <li>Lockstep support is still deliberately bounded: real battles only, bots only as deterministic-sim-driven seats (see <em>Agent type and initial state are two seat axes</em> below), no automatic resync, and no host migration. Late join, reconnect and spectators are supported — see <em>Members hold connections; seats hold armies</em> below.</li>
       </ul>
 
       <h3>Two state hashes over one truth</h3>
@@ -513,6 +513,35 @@
         <li>LIGHT and FULL agree byte-for-byte on <code>hash</code> and <code>sections</code>, so a full hash can always be compared against a light one. Only the diagnostic payload is mode-dependent, and every reader of it already tolerates absence.</li>
         <li>The periodic checksum, the late-join verify gate, checkpoints, and the replay harness all run LIGHT. Desync reports, initialization-mismatch broadcasts, and diagnostics exports run FULL. There is no runtime mode toggle — the split is structural, so peers cannot disagree about it.</li>
         <li>Changing what a hash covers changes its value, which between mixed builds would surface as a phantom desync minutes in. Any such change bumps <code>LOCKSTEP_PROTOCOL_VERSION</code>, so mismatched builds are refused at the door with a message that says to update.</li>
+      </ul>
+
+      <h3>Agent type and initial state are two seat axes</h3>
+      <p>
+        A seat has two independent properties, and conflating them is how the demo battle stayed
+        a special case for so long. The <strong>AGENT TYPE</strong> says who drives the seat once
+        the match runs: a <code>human</code> seat answers to a connection; a <code>bot</code> seat
+        is driven by the deterministic in-simulation policy — idle factories re-picking
+        repeat-build units from the sim&rsquo;s own RNG stream — with no connection, no commands,
+        and no wire traffic at all. The <strong>INITIAL STATE</strong> says what the seat starts
+        the match with: a lone <code>commander</code> on its spawn arc, or the authored full
+        <code>base</code> — building arcs, fabricators seeded to repeat-build, auto-extractors on
+        the seat&rsquo;s deposits, and the opening unit wave.
+      </p>
+      <p>
+        The axes mix freely, and the DEMO battle is the proof rather than the exception: every
+        demo seat opens with a <code>base</code>, and every seat except the local one is a
+        <code>bot</code> — the user&rsquo;s own demo seat is a <em>human with the bot&rsquo;s
+        opening</em>. A skirmish can seat a bot that starts from a bare commander, or hand a human
+        the full base. Both axes are gameplay truth — they decide what spawns at frame&nbsp;0 and
+        who the sim drives — so both are hashed into the canonical match initialization and a
+        peer that disagrees about either is refused before the first frame.
+      </p>
+      <ul class="rule-list">
+        <li>Bots are lockstep-legal precisely because they live entirely inside the deterministic simulation. Every peer computes their behaviour identically from the hashed roster; a late joiner replays them for free because they add nothing to the command archive. The old support boundary said &ldquo;no AI players&rdquo;; the boundary now is <code>bots: deterministic-sim-only</code> — a bot that needed wall clocks or its own network presence would be refused.</li>
+        <li>A bot is a SEAT, not a member. It occupies a seat number, a side, a terrain slice, and a share of the entity cap like anybody; what it lacks is a connection, so it appears in no completion set, no ack or checksum comparison, no ready gate, and no resign path. The frame-completion universe is HUMAN seats — a match of only bots is refused, since nobody would complete a frame.</li>
+        <li>Deposit ownership is decided over the WHOLE roster even when only base seats spawn extractors: a commander-start seat&rsquo;s deposits stay bare rather than being claimed across the map by the nearest base seat.</li>
+        <li>The host seats and removes bots in the lobby exactly like human seating — one writer, lobby only, announced in the same atomic roster message — and flips any seat&rsquo;s initial state there too. After frame&nbsp;0 the roster is hashed and closed, bots included.</li>
+        <li>Session VISIBILITY is the orthogonal third choice, made at hosting time: an <code>online</code> session lists itself in the directory and admits joiners as ever, while a <code>local</code> skirmish opens no signaling peer at all — nothing to dial, nothing to list, nothing that needs the internet. Same seating screen, same lockstep, same bots; the session is simply sealed. The old &ldquo;offline&rdquo; path this replaces was dead wiring no button reached, with an AI roster the support policy would have refused.</li>
       </ul>
 
       <h3>Members hold connections; seats hold armies</h3>

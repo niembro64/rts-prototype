@@ -25,6 +25,7 @@ import {
 } from './targetingInputStamping';
 import { getSimWasm } from '../../sim-wasm/init';
 import { isAttackEmitter, isManualEmitterConfig } from '../emitterKinds';
+import { growScratchArray } from '../scratchArrayGrowth';
 import { beamIndex } from '../BeamIndex';
 import { evaluateBeamPulsePlan, type BeamPulseEvaluation } from './beamPulse';
 import {
@@ -90,35 +91,38 @@ let _turretOutAimErrorYaw = new Float64Array(0);
 let _turretOutAimErrorPitch = new Float64Array(0);
 const _turretParentYawScratch: TurretArticulationParentYaw = { yaw: 0, velocity: 0 };
 
+// Grows PER QUEUED ROW (queueTurretRotationStep), so rows already written
+// this tick must survive the reallocation — see scratchArrayGrowth.ts for
+// the determinism leak a contents-dropping growth causes here.
 function ensureTurretRotationCapacity(required: number): void {
   if (_turretCurrentYaw.length >= required) return;
   const next = Math.max(64, required, _turretCurrentYaw.length * 2);
-  _turretCurrentYaw = new Float64Array(next);
-  _turretYawVelocity = new Float64Array(next);
-  _turretTargetYaw = new Float64Array(next);
-  _turretTargetWorldYaw = new Float64Array(next);
-  _turretParentYaw = new Float64Array(next);
-  _turretParentYawVelocity = new Float64Array(next);
-  _turretYawContinuous = new Uint8Array(next);
-  _turretYawMin = new Float64Array(next);
-  _turretYawMax = new Float64Array(next);
-  _turretYawMaxSpeed = new Float64Array(next);
-  _turretYawMaxAcceleration = new Float64Array(next);
-  _turretCurrentPitch = new Float64Array(next);
-  _turretPitchVelocity = new Float64Array(next);
-  _turretTargetPitch = new Float64Array(next);
-  _turretPitchMin = new Float64Array(next);
-  _turretPitchMax = new Float64Array(next);
-  _turretPitchMaxSpeed = new Float64Array(next);
-  _turretPitchMaxAcceleration = new Float64Array(next);
-  _turretOutYaw = new Float64Array(next);
-  _turretOutYawVelocity = new Float64Array(next);
-  _turretOutYawAcceleration = new Float64Array(next);
-  _turretOutPitch = new Float64Array(next);
-  _turretOutPitchVelocity = new Float64Array(next);
-  _turretOutPitchAcceleration = new Float64Array(next);
-  _turretOutAimErrorYaw = new Float64Array(next);
-  _turretOutAimErrorPitch = new Float64Array(next);
+  _turretCurrentYaw = growScratchArray(_turretCurrentYaw, next);
+  _turretYawVelocity = growScratchArray(_turretYawVelocity, next);
+  _turretTargetYaw = growScratchArray(_turretTargetYaw, next);
+  _turretTargetWorldYaw = growScratchArray(_turretTargetWorldYaw, next);
+  _turretParentYaw = growScratchArray(_turretParentYaw, next);
+  _turretParentYawVelocity = growScratchArray(_turretParentYawVelocity, next);
+  _turretYawContinuous = growScratchArray(_turretYawContinuous, next);
+  _turretYawMin = growScratchArray(_turretYawMin, next);
+  _turretYawMax = growScratchArray(_turretYawMax, next);
+  _turretYawMaxSpeed = growScratchArray(_turretYawMaxSpeed, next);
+  _turretYawMaxAcceleration = growScratchArray(_turretYawMaxAcceleration, next);
+  _turretCurrentPitch = growScratchArray(_turretCurrentPitch, next);
+  _turretPitchVelocity = growScratchArray(_turretPitchVelocity, next);
+  _turretTargetPitch = growScratchArray(_turretTargetPitch, next);
+  _turretPitchMin = growScratchArray(_turretPitchMin, next);
+  _turretPitchMax = growScratchArray(_turretPitchMax, next);
+  _turretPitchMaxSpeed = growScratchArray(_turretPitchMaxSpeed, next);
+  _turretPitchMaxAcceleration = growScratchArray(_turretPitchMaxAcceleration, next);
+  _turretOutYaw = growScratchArray(_turretOutYaw, next);
+  _turretOutYawVelocity = growScratchArray(_turretOutYawVelocity, next);
+  _turretOutYawAcceleration = growScratchArray(_turretOutYawAcceleration, next);
+  _turretOutPitch = growScratchArray(_turretOutPitch, next);
+  _turretOutPitchVelocity = growScratchArray(_turretOutPitchVelocity, next);
+  _turretOutPitchAcceleration = growScratchArray(_turretOutPitchAcceleration, next);
+  _turretOutAimErrorYaw = growScratchArray(_turretOutAimErrorYaw, next);
+  _turretOutAimErrorPitch = growScratchArray(_turretOutAimErrorPitch, next);
 }
 
 function queueTurretRotationStep(

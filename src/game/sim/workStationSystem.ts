@@ -11,6 +11,7 @@ import {
 import { getSimWasm } from '../sim-wasm/init';
 import { getBuildingCombatCenterZ } from './buildingAnchors';
 import { getUnitBlueprint } from './blueprints';
+import { growScratchArray } from './scratchArrayGrowth';
 import {
   getEntityBodyOrientation,
   updateAuthoritativeHostAttachmentKinematics,
@@ -75,37 +76,41 @@ let _workTargetX = new Float64Array(0);
 let _workTargetY = new Float64Array(0);
 let _workTargetZ = new Float64Array(0);
 
+// Grows PER PUSHED HOST ROW in the builder collection loop, so rows
+// already written this tick must survive the reallocation — see
+// scratchArrayGrowth.ts for the determinism leak a contents-dropping
+// growth causes here.
 function ensureCapacity(required: number): void {
   if (_currentYaw.length >= required) return;
   const next = Math.max(16, required, _currentYaw.length * 2);
-  _parentYaw = new Float64Array(next);
-  _targetWorldYaw = new Float64Array(next);
-  _currentYaw = new Float64Array(next);
-  _yawVelocity = new Float64Array(next);
-  _targetYaw = new Float64Array(next);
-  _yawContinuous = new Uint8Array(next);
-  _yawMin = new Float64Array(next);
-  _yawMax = new Float64Array(next);
-  _yawMaxSpeed = new Float64Array(next);
-  _yawMaxAcceleration = new Float64Array(next);
-  _currentPitch = new Float64Array(next);
-  _pitchVelocity = new Float64Array(next);
-  _targetPitch = new Float64Array(next);
-  _pitchMin = new Float64Array(next);
-  _pitchMax = new Float64Array(next);
-  _pitchMaxSpeed = new Float64Array(next);
-  _pitchMaxAcceleration = new Float64Array(next);
-  _outYaw = new Float64Array(next);
-  _outYawVelocity = new Float64Array(next);
-  _outYawAcceleration = new Float64Array(next);
-  _outPitch = new Float64Array(next);
-  _outPitchVelocity = new Float64Array(next);
-  _outPitchAcceleration = new Float64Array(next);
-  _outAimErrorYaw = new Float64Array(next);
-  _outAimErrorPitch = new Float64Array(next);
-  _workTargetX = new Float64Array(next);
-  _workTargetY = new Float64Array(next);
-  _workTargetZ = new Float64Array(next);
+  _parentYaw = growScratchArray(_parentYaw, next);
+  _targetWorldYaw = growScratchArray(_targetWorldYaw, next);
+  _currentYaw = growScratchArray(_currentYaw, next);
+  _yawVelocity = growScratchArray(_yawVelocity, next);
+  _targetYaw = growScratchArray(_targetYaw, next);
+  _yawContinuous = growScratchArray(_yawContinuous, next);
+  _yawMin = growScratchArray(_yawMin, next);
+  _yawMax = growScratchArray(_yawMax, next);
+  _yawMaxSpeed = growScratchArray(_yawMaxSpeed, next);
+  _yawMaxAcceleration = growScratchArray(_yawMaxAcceleration, next);
+  _currentPitch = growScratchArray(_currentPitch, next);
+  _pitchVelocity = growScratchArray(_pitchVelocity, next);
+  _targetPitch = growScratchArray(_targetPitch, next);
+  _pitchMin = growScratchArray(_pitchMin, next);
+  _pitchMax = growScratchArray(_pitchMax, next);
+  _pitchMaxSpeed = growScratchArray(_pitchMaxSpeed, next);
+  _pitchMaxAcceleration = growScratchArray(_pitchMaxAcceleration, next);
+  _outYaw = growScratchArray(_outYaw, next);
+  _outYawVelocity = growScratchArray(_outYawVelocity, next);
+  _outYawAcceleration = growScratchArray(_outYawAcceleration, next);
+  _outPitch = growScratchArray(_outPitch, next);
+  _outPitchVelocity = growScratchArray(_outPitchVelocity, next);
+  _outPitchAcceleration = growScratchArray(_outPitchAcceleration, next);
+  _outAimErrorYaw = growScratchArray(_outAimErrorYaw, next);
+  _outAimErrorPitch = growScratchArray(_outAimErrorPitch, next);
+  _workTargetX = growScratchArray(_workTargetX, next);
+  _workTargetY = growScratchArray(_workTargetY, next);
+  _workTargetZ = growScratchArray(_workTargetZ, next);
 }
 
 function writeEntityTarget(entity: Entity, out: WorkTargetPose): WorkTargetPose {

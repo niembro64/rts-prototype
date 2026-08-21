@@ -13,6 +13,7 @@ import {
   entitySlotRegistry,
 } from '../EntitySlotRegistry';
 import { getRuntimeTurretMount } from '../turretMounts';
+import { growScratchArray } from '../scratchArrayGrowth';
 import { getUnitBlueprint } from '../blueprints';
 import { deterministicMath as DMath } from '../deterministicMath';
 import {
@@ -833,32 +834,36 @@ export function resolveWeaponEmissionSocket(
   return out;
 }
 
+// Grows PER PUSHED HOST ROW inside updateSharedHostPieceArticulation, so
+// rows already written this tick must survive the reallocation — see
+// scratchArrayGrowth.ts for the determinism leak a contents-dropping
+// growth causes here.
 function ensureBotUpperBodyCapacity(required: number): void {
   if (_botUpperBodyCurrentYaw.length >= required) return;
   const next = Math.max(16, required, _botUpperBodyCurrentYaw.length * 2);
-  _botUpperBodyCurrentYaw = new Float64Array(next);
-  _botUpperBodyVelocity = new Float64Array(next);
-  _botUpperBodyTargetYaw = new Float64Array(next);
-  _botUpperBodyMaxSpeed = new Float64Array(next);
-  _botUpperBodyMaxAcceleration = new Float64Array(next);
-  _botUpperBodyOutYaw = new Float64Array(next);
-  _botUpperBodyOutVelocity = new Float64Array(next);
-  _botUpperBodyOutAcceleration = new Float64Array(next);
-  _botUpperBodyOutError = new Float64Array(next);
-  _hostPieceYawContinuous = new Uint8Array(next);
-  _hostPieceYawMin = new Float64Array(next);
-  _hostPieceYawMax = new Float64Array(next);
-  _hostPieceCurrentPitch = new Float64Array(next);
-  _hostPiecePitchVelocity = new Float64Array(next);
-  _hostPieceTargetPitch = new Float64Array(next);
-  _hostPiecePitchMin = new Float64Array(next);
-  _hostPiecePitchMax = new Float64Array(next);
-  _hostPiecePitchMaxSpeed = new Float64Array(next);
-  _hostPiecePitchMaxAcceleration = new Float64Array(next);
-  _hostPieceOutPitch = new Float64Array(next);
-  _hostPieceOutPitchVelocity = new Float64Array(next);
-  _hostPieceOutPitchAcceleration = new Float64Array(next);
-  _hostPieceOutPitchError = new Float64Array(next);
+  _botUpperBodyCurrentYaw = growScratchArray(_botUpperBodyCurrentYaw, next);
+  _botUpperBodyVelocity = growScratchArray(_botUpperBodyVelocity, next);
+  _botUpperBodyTargetYaw = growScratchArray(_botUpperBodyTargetYaw, next);
+  _botUpperBodyMaxSpeed = growScratchArray(_botUpperBodyMaxSpeed, next);
+  _botUpperBodyMaxAcceleration = growScratchArray(_botUpperBodyMaxAcceleration, next);
+  _botUpperBodyOutYaw = growScratchArray(_botUpperBodyOutYaw, next);
+  _botUpperBodyOutVelocity = growScratchArray(_botUpperBodyOutVelocity, next);
+  _botUpperBodyOutAcceleration = growScratchArray(_botUpperBodyOutAcceleration, next);
+  _botUpperBodyOutError = growScratchArray(_botUpperBodyOutError, next);
+  _hostPieceYawContinuous = growScratchArray(_hostPieceYawContinuous, next);
+  _hostPieceYawMin = growScratchArray(_hostPieceYawMin, next);
+  _hostPieceYawMax = growScratchArray(_hostPieceYawMax, next);
+  _hostPieceCurrentPitch = growScratchArray(_hostPieceCurrentPitch, next);
+  _hostPiecePitchVelocity = growScratchArray(_hostPiecePitchVelocity, next);
+  _hostPieceTargetPitch = growScratchArray(_hostPieceTargetPitch, next);
+  _hostPiecePitchMin = growScratchArray(_hostPiecePitchMin, next);
+  _hostPiecePitchMax = growScratchArray(_hostPiecePitchMax, next);
+  _hostPiecePitchMaxSpeed = growScratchArray(_hostPiecePitchMaxSpeed, next);
+  _hostPiecePitchMaxAcceleration = growScratchArray(_hostPiecePitchMaxAcceleration, next);
+  _hostPieceOutPitch = growScratchArray(_hostPieceOutPitch, next);
+  _hostPieceOutPitchVelocity = growScratchArray(_hostPieceOutPitchVelocity, next);
+  _hostPieceOutPitchAcceleration = growScratchArray(_hostPieceOutPitchAcceleration, next);
+  _hostPieceOutPitchError = growScratchArray(_hostPieceOutPitchError, next);
 }
 
 /** One shared joint chain per articulated host piece. A stable turret row

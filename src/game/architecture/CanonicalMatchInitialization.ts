@@ -57,7 +57,10 @@ const {
   ...canonicalWindConfigJson
 } = windConfigJson;
 
-const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v12';
+// v13: baseSeatPlayerIds joined the hashed roster — a seat's INITIAL STATE
+// ('base' vs 'commander', src/game/sim/agentSeat.ts) decides what spawns at
+// frame 0, so peers disagreeing on it diverge immediately.
+const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v13';
 const APP_SOURCE_VERSION = '0.0.1';
 export const SIM_WASM_EXPECTED_VERSION = 'rts-sim-wasm 0.0.1';
 const BUILD_FINGERPRINT = __BA_BUILD_FINGERPRINT__;
@@ -80,7 +83,12 @@ export type CanonicalMatchInitialization = {
    *  terrain slices, spawn angles, and who can shoot whom: two peers that
    *  disagreed here would diverge on frame one. */
   readonly allyTeamIds: readonly number[];
+  /** Seats with AGENT TYPE 'bot' — driven by the deterministic in-sim
+   *  policy, no connection, no commands. */
   readonly aiPlayerIds: readonly PlayerId[];
+  /** Seats with INITIAL STATE 'base' — the authored full base instead of a
+   *  lone commander. Orthogonal to aiPlayerIds; the axes mix freely. */
+  readonly baseSeatPlayerIds: readonly PlayerId[];
   readonly gameGenerationSeed: number;
   readonly map: {
     readonly centerMagnitude: number | null;
@@ -127,6 +135,7 @@ type BuildCanonicalMatchInitializationOptions = {
    *  fixture means. */
   allyTeamCount?: number | undefined;
   aiPlayerIds?: Iterable<PlayerId> | undefined;
+  baseSeatPlayerIds?: Iterable<PlayerId> | undefined;
   settings: LobbySettings | undefined;
   gameGenerationSeed?: number;
 };
@@ -169,6 +178,7 @@ export function buildCanonicalMatchInitialization({
   allyTeamByPlayerId,
   allyTeamCount,
   aiPlayerIds,
+  baseSeatPlayerIds,
   settings,
   gameGenerationSeed = DEFAULT_GAME_GENERATION_SEED,
 }: BuildCanonicalMatchInitializationOptions): CanonicalMatchInitialization {
@@ -198,6 +208,7 @@ export function buildCanonicalMatchInitialization({
     allyTeamCount: canonicalAllyTeamCount(sides, allyTeamCount),
     allyTeamIds: sides,
     aiPlayerIds: normalizePlayerIds(aiPlayerIds ?? []),
+    baseSeatPlayerIds: normalizePlayerIds(baseSeatPlayerIds ?? []),
     gameGenerationSeed: normalizeGameGenerationSeed(gameGenerationSeed),
     map: {
       centerMagnitude: finiteOrNull(settings?.centerMagnitude),
