@@ -144,6 +144,48 @@ export function runLockstepFlowControlContractTest(): void {
     );
   }
 
+  // --- the drop clock measures silence, not wall time held ------------------
+  //
+  // A rejoiner replays a long match back from frame 0, which can take far
+  // longer than `dropAfterSeconds`. Its acks move the whole time — and they
+  // move through values BELOW its old ones, so change is the signal, not
+  // increase. Resigning a seat whose owner is actively replaying would remove
+  // an army seconds from being commanded again.
+  {
+    const clock = createClock();
+    const flow = new LockstepFlowControl({ tickRateHz: TICK_RATE_HZ, config: CONFIG, nowMs: clock.now });
+
+    // Socket dies at frame 400 with a healthy last ack; the pause latches.
+    flow.report(400, [peer(2, 399, false)], 4);
+    clock.advance(CONFIG.pauseGraceMs + 1);
+    const paused = flow.report(400, [peer(2, 399, false)], 4);
+    assertContract(paused.state === 'paused' && paused.reason === 'disconnected',
+      'a dead socket must pause the match');
+
+    // Back on a socket, replaying from frame 0. Wall time spent replaying
+    // exceeds the drop timeout, but every reading shows a new ack.
+    const dropMs = CONFIG.dropAfterSeconds * 1000;
+    let replayFrame = 0;
+    for (let i = 0; i < 8; i++) {
+      clock.advance(dropMs / 4);
+      replayFrame += 40;
+      const replaying = flow.report(400, [peer(2, replayFrame)], 4);
+      assertContract(
+        replaying.dropPlayerIds.length === 0,
+        'a subject whose acks are moving must never be resigned, however long the replay',
+      );
+      assertContract(replaying.state === 'paused', 'the match stays held while the replay runs');
+    }
+
+    // The replay wedges: acks stop moving. NOW the clock runs out.
+    clock.advance(dropMs + 1);
+    const wedged = flow.report(400, [peer(2, replayFrame)], 4);
+    assertContract(
+      wedged.dropPlayerIds.length === 1 && wedged.dropPlayerIds[0] === 2,
+      'a subject whose acks have stopped must be resigned once the clock runs out',
+    );
+  }
+
   // --- an empty completion set never holds anything -------------------------
   //
   // This is the watcher case: a spectator holds no seat, so it never appears

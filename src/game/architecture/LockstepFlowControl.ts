@@ -19,9 +19,12 @@
  *
  *   PAUSE (discrete, latched, named subject)  a player who is disconnected or
  *     sustainedly far behind stops the match outright, with their name on it.
- *     Bounded: past `dropAfterSeconds` the coordinator resigns that seat and
- *     play continues, because one closed laptop must not end everyone's
- *     evening.
+ *     Bounded: a subject that spends `dropAfterSeconds` making NO progress is
+ *     resigned and play continues, because one closed laptop must not end
+ *     everyone's evening. Progress defers the clock — a reconnected player
+ *     replaying a long match back from frame 0 acks continuously and is
+ *     waited for however long the replay takes, while a dead socket, a killed
+ *     tab, or a failed replay all go silent and run the clock out.
  *
  * WATCHERS ARE NEVER INPUTS HERE. A spectator holds no seat, so it never
  * appears in the ack set this reads, and cannot throttle or pause anything.
@@ -125,7 +128,19 @@ export class LockstepFlowControl {
    *  window is measured from here rather than counted in ticks, because pump
    *  cadence varies under exactly the load this is watching for. */
   private overThresholdSinceMs: number | null = null;
-  private pausedSinceMs: number | null = null;
+  /**
+   * When the drop clock last (re)started. Set when a pause latches, and RESET
+   * whenever the paused subject reports a new ack: the timeout measures time
+   * the subject spends making no progress, not wall time held. A closed laptop
+   * never acks and is resigned on schedule; a player replaying their way back
+   * into a long match acks continuously and is waited for — dropping a seat
+   * mid-recovery would remove an army whose owner is seconds from returning.
+   */
+  private dropClockSinceMs: number | null = null;
+  /** The subject's last seen ack while paused, for telling a stalled peer from
+   *  one that is replaying. CHANGE is the signal, not increase: a rejoiner
+   *  replays from frame 0, so its first acks are far below its old ones. */
+  private subjectProgressAckFrame: number | null = null;
   private worstLagFrames = 0;
   private readonly droppedPlayerIds = new Set<PlayerId>();
 
@@ -169,6 +184,7 @@ export class LockstepFlowControl {
       this.subjectPlayerId = worst.playerId;
       if (isNewSubject) {
         this.overThresholdSinceMs = now;
+        this.subjectProgressAckFrame = null;
         // First bad reading only reaches `slipping`. The grace window below is
         // what decides whether it becomes a pause, so a spike stops here.
         this.machine.send('overPauseThreshold');
@@ -177,8 +193,8 @@ export class LockstepFlowControl {
         now - this.overThresholdSinceMs >= this.config.pauseGraceMs
       ) {
         this.machine.send('overPauseThreshold');
-        if (this.machine.is('paused') && this.pausedSinceMs === null) {
-          this.pausedSinceMs = now;
+        if (this.machine.is('paused') && this.dropClockSinceMs === null) {
+          this.dropClockSinceMs = now;
         }
       }
     } else {
@@ -187,10 +203,13 @@ export class LockstepFlowControl {
         if (this.machine.send('recovered') || this.machine.send('withinWindow')) {
           this.subjectPlayerId = null;
           this.reason = null;
-          this.pausedSinceMs = null;
+          this.dropClockSinceMs = null;
+          this.subjectProgressAckFrame = null;
         }
       }
     }
+
+    if (this.machine.is('paused')) this.deferDropWhileSubjectProgresses(seated, now);
 
     // Throttling only applies while not paused: a paused match emits nothing
     // at all, so the window is moot.
@@ -222,8 +241,33 @@ export class LockstepFlowControl {
       this.subjectPlayerId = null;
       this.reason = null;
       this.overThresholdSinceMs = null;
-      this.pausedSinceMs = null;
+      this.dropClockSinceMs = null;
+      this.subjectProgressAckFrame = null;
       this.machine.send('recovered');
+    }
+  }
+
+  /**
+   * A paused subject that is still reporting NEW acks is coming back — either
+   * replaying into the match after a reconnect, or grinding through a stall —
+   * so each fresh ack restarts the drop clock. A subject whose acks have
+   * stopped moving is the case the timeout exists for: a dead socket, a killed
+   * tab, or a failed replay all go silent, and the clock runs out on them.
+   */
+  private deferDropWhileSubjectProgresses(
+    seated: readonly SeatedPeerProgress[],
+    now: number,
+  ): void {
+    const subject = this.subjectPlayerId;
+    if (subject === null || this.dropClockSinceMs === null) return;
+    for (const peer of seated) {
+      if (peer.playerId !== subject) continue;
+      if (!peer.connected || peer.ackFrame === null) return;
+      if (peer.ackFrame !== this.subjectProgressAckFrame) {
+        this.subjectProgressAckFrame = peer.ackFrame;
+        this.dropClockSinceMs = now;
+      }
+      return;
     }
   }
 
@@ -291,12 +335,14 @@ export class LockstepFlowControl {
     return Math.min(requestedFrames, headroom);
   }
 
-  /** Subjects that have held the match past `dropAfterSeconds`. Reported once
-   *  each: resigning is a frame-scheduled gameplay command, and issuing it
-   *  twice for one seat would remove an army that is already gone. */
+  /** Subjects that have held the match past `dropAfterSeconds` WITHOUT making
+   *  progress — the clock restarts on every new ack, so only a subject that
+   *  has gone quiet runs it out. Reported once each: resigning is a
+   *  frame-scheduled gameplay command, and issuing it twice for one seat would
+   *  remove an army that is already gone. */
   private collectDrops(now: number): readonly PlayerId[] {
-    if (this.pausedSinceMs === null || this.subjectPlayerId === null) return [];
-    if (now - this.pausedSinceMs < this.config.dropAfterSeconds * 1000) return [];
+    if (this.dropClockSinceMs === null || this.subjectPlayerId === null) return [];
+    if (now - this.dropClockSinceMs < this.config.dropAfterSeconds * 1000) return [];
     const subject = this.subjectPlayerId;
     if (this.droppedPlayerIds.has(subject)) return [];
     this.droppedPlayerIds.add(subject);

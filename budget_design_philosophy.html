@@ -512,8 +512,11 @@
         than a window ahead of the slowest seated player, so the match droops to that player instead of
         leaving them behind. <strong>Pausing</strong> is discrete, latched and has a named subject: a
         player who is disconnected or sustainedly far behind stops the match outright, with their name on
-        it. The pause is bounded — past the drop timeout the coordinator resigns that seat and play
-        continues, because one closed laptop must not end everyone&rsquo;s evening.
+        it. The pause is bounded — a subject that spends the drop timeout making NO PROGRESS is
+        resigned and play continues, because one closed laptop must not end everyone&rsquo;s evening.
+        Progress defers the clock: a reconnected player replaying a long match back from frame&nbsp;0
+        acks continuously and is waited for however long the replay takes, while a dead socket, a
+        killed tab, or a failed replay all go silent and run the clock out.
       </p>
       <ul>
         <li>Connection state is SESSION state and never reaches the simulation. A disconnected player&rsquo;s army keeps its orders; the only thing that removes a player from the match is an explicit, frame-scheduled <code>resign</code> that every peer executes on the same frame.</li>
