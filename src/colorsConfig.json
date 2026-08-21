@@ -634,17 +634,6 @@
       },
       "foregroundAlpha": 0.9
     },
-    "hpBar": {
-      "high": {
-        "cssColor": "#44dd44"
-      },
-      "low": {
-        "cssColor": "#ff4444"
-      },
-      "build": {
-        "cssColor": "#4488ff"
-      }
-    },
     "hazardStripe": {
       "yellow": {
         "colorHex": "#e3b02e",

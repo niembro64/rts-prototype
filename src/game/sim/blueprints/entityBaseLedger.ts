@@ -53,6 +53,20 @@ type EntityBaseLedgerAliasFields = {
   radius?: EntityRadiusConfig;
 };
 
+/**
+ * Every unit and building dies in a blast sized by its own body:
+ * deathExplosion.radius = this multiple of radius.hitbox.
+ *
+ * The RULE is the source, not the JSON: the authored per-blueprint radius
+ * numbers had drifted into folklore (the commander's blast was smaller than
+ * its own hurtbox), so the radius is derived here at the one choke point
+ * both units and buildings pass through. Force and damage stay authored —
+ * how HARD something explodes is still a per-blueprint gameplay decision;
+ * how FAR is anatomy. Shots keep their own authored splash: a projectile's
+ * explosion is its payload, not its corpse.
+ */
+export const DEATH_EXPLOSION_HITBOX_RADIUS_MULT = 1.4;
+
 /** Reconcile legacy top-level body fields with the canonical base ledger.
  *
  *  The JSON still carries aliases such as unit.mass / unit.hp because
@@ -90,5 +104,10 @@ export function normalizeEntityBaseLedgerFromAliases(
     assertValidEntityRadius(label, aliases.radius);
     normalized.radius = { ...aliases.radius };
   }
+  // After the aliases settle, so a tuned top-level radius moves the blast
+  // with it. Deterministic: a pure function of blueprint data, identical on
+  // every peer.
+  normalized.deathExplosion.radius =
+    normalized.radius.hitbox * DEATH_EXPLOSION_HITBOX_RADIUS_MULT;
   return normalized;
 }

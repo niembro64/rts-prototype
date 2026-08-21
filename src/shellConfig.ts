@@ -38,8 +38,6 @@ export const SHELL_BAR_CANVAS_HEIGHT = shellConfig.shellBar.canvasHeight;
  *  this codebase; configurable here so a debug overlay can flip it. */
 export const SHELL_BAR_HIDE_AT_FULL = shellConfig.shellBar.hideAtFull;
 
-export const HP_BAR_COLOR_BUILD = COLORS.construction.hpBar.build.cssColor;
-
 /** Per-resource transfer-rate smoothing for the factory + commander
  *  build emitters. The rate fractions written by the sim each tick
  *  are noisy by nature — once-a-tick step changes whenever a stockpile

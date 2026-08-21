@@ -1883,6 +1883,7 @@ const {
   currentLobbySettings,
   onCommunication: applyCommunicationEvent,
   onHostLeft: beginHostLeftEviction,
+  onReturnToLobby: () => returnRoomToLobby(),
   onPeerFrameReport: recordPeerFrameReport,
   onFlowControlChange: (report) => {
     matchHold.value = report.state === 'paused' ? report : null;
@@ -1914,7 +1915,10 @@ const {
   },
 });
 
-const { restartGame: restartGameSession } = useGameCanvasSessionLifecycle({
+const {
+  restartGame: restartGameSession,
+  returnToLobby: returnToLobbySession,
+} = useGameCanvasSessionLifecycle({
   gameOverWinner,
   battleLoading,
   gameStarted,
@@ -1945,12 +1949,13 @@ const { restartGame: restartGameSession } = useGameCanvasSessionLifecycle({
   resetSpectatorState,
 });
 
-/** Every way out of a game room funnels here: the game-over banner, the
- *  OPTIONS LEAVE button, host eviction. Tear the session down, take the
- *  machine's exit, and land the player HOME with the menu surfaced — the
- *  exits all read "Return to Lobby", so the menu is what they get. The
- *  nextTick outruns the battle-mode watcher that would otherwise restore a
- *  saved closed-menu preference over the destination the player just chose. */
+/** Every EXIT-TO-HOME out of a game room funnels here: the game-over
+ *  banner's exit, the OPTIONS LEAVE button, host eviction. Tear the session
+ *  down, take the machine's exit, and land the player HOME with the menu
+ *  surfaced. The host's whole-room rematch is the OTHER road out — see
+ *  returnRoomToLobby below, which keeps the session alive. The nextTick
+ *  outruns the battle-mode watcher that would otherwise restore a saved
+ *  closed-menu preference over the destination the player just chose. */
 function restartGame(): void {
   restartGameSession();
   // The session's conversation ends with the session, and so do its halt
@@ -1963,6 +1968,36 @@ function restartGame(): void {
       menuHidden.value = false;
     });
   }
+}
+
+/** The room came back to its seating screen — the host said so (that call
+ *  reaches the host itself through the same network callback). Only the
+ *  battle presentation comes down; the session, roster, chat and bot seats
+ *  all survive into the rematch lobby. */
+function returnRoomToLobby(): void {
+  returnToLobbySession();
+  lockstepHalt.value = null;
+  // The seat survived the trip back: resetSpectatorState assumed the match's
+  // end was the session's end, so re-read role and seat from the session.
+  localRole.value = networkManager.getLocalRole();
+  const seat = networkManager.getLocalPlayerId();
+  if (seat !== undefined) {
+    localPlayerId.value = seat;
+    activePlayer.value = seat;
+  }
+  sendAppSurface('returnToLobby');
+  // Same race as restartGame: outrun the battle-mode watcher that would
+  // restore a closed-menu preference over the seating screen.
+  void nextTick(() => {
+    menuHidden.value = false;
+  });
+}
+
+/** Host only: end the battle for the WHOLE room. NetworkManager refuses it
+ *  from anyone else, and its callback lands in returnRoomToLobby above —
+ *  the same path every client rides. */
+function hostReturnRoomToLobby(): void {
+  networkManager.returnToLobby();
 }
 
 onMounted(() => {
@@ -2840,10 +2875,19 @@ watchEffect(() => {
               @click="setGamePaused(gamePhase !== 'paused')"
             >PAUSE</button>
             <button
+              v-if="gameStarted && isHost && roomCode !== ''"
+              type="button"
+              class="options-menu-leave"
+              title="End the battle for everyone and return the room to its seating screen"
+              @click="optionsMenuOpen = false; hostReturnRoomToLobby()"
+            >LOBBY</button>
+            <button
               v-if="gameStarted"
               type="button"
               class="options-menu-leave"
-              title="Leave the match and return to the lobby"
+              :title="isHost
+                ? 'Leave and end the session for everyone — exit to home'
+                : 'Leave the match — exit to home'"
               @click="optionsMenuOpen = false; restartGame()"
             >LEAVE</button>
           </div>
@@ -3068,11 +3112,14 @@ watchEffect(() => {
       :game-over-winner="gameOverWinner"
       :winner-name="winningAllyTeamName"
       :winner-color="gameOverWinner === null ? '' : getPlayerColor(gameOverWinner)"
+      :is-host="isHost"
+      :can-return-to-lobby="roomCode !== ''"
       :host-left-seconds-remaining="hostLeftSecondsRemaining"
       @exit-after-host-left="exitAfterHostLeft"
       @toggle-mobile-bars="mobileBarsVisible = !mobileBarsVisible"
       @dismiss-game-over="gameOverWinner = null; menuHidden = true"
       @restart-game="restartGame"
+      @return-room-to-lobby="hostReturnRoomToLobby"
     />
   </div>
 </template>

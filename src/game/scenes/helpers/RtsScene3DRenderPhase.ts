@@ -500,11 +500,8 @@ export class RtsScene3DRenderPhase {
       (
         hoveredEntity !== null ||
         getEntityHudToggle('unit', 'healthBar') ||
-        getEntityHudToggle('unit', 'buildBars') ||
         getEntityHudToggle('tower', 'healthBar') ||
-        getEntityHudToggle('tower', 'buildBars') ||
-        getEntityHudToggle('building', 'healthBar') ||
-        getEntityHudToggle('building', 'buildBars')
+        getEntityHudToggle('building', 'healthBar')
       );
     const entityLists = this.prepareEntityLists({
       includeBodyHud: bodyHudEnabled,

@@ -43,6 +43,12 @@
  *     surface mid-match (the `~` lab hotkey included, now ALSO from the
  *     seating screen, where it used to silently disconnect you) is refused
  *     by the table.
+ *   - The battle's one road back to the seating screen is `returnToLobby`,
+ *     and only the HOST's session-level broadcast fires it: the host ends
+ *     the match for the whole room and everyone lands back in the lobby with
+ *     their seats intact, ready for a rematch. A client has no control that
+ *     sends this — its exits are `exitGameRoom` (home) or being brought
+ *     along by the host.
  *
  * Everything undeclared is refused by the machine, which is the safety
  * property: a hotkey mid-match, a second Start, a stale "return to lobby"
@@ -71,6 +77,7 @@ export type AppSurfaceEvent =
   | 'leaveLobby'
   | 'startBattle'
   | 'battleReady'
+  | 'returnToLobby'
   | 'exitGameRoom';
 
 /** Any of the game room's sub-states: seating screen or battle. */
@@ -117,9 +124,15 @@ export function createAppSurfaceMachine(
       },
       gameRoomBattleLoading: {
         battleReady: 'gameRoomBattlePlaying',
+        // The host can call the room back while a late joiner is still
+        // loading — the abort lands them in the seating screen, not home.
+        returnToLobby: 'gameRoomLobby',
         exitGameRoom: 'home',
       },
       gameRoomBattlePlaying: {
+        // The HOST's whole-room rematch signal; clients have no control
+        // that sends this, they are brought along by the broadcast.
+        returnToLobby: 'gameRoomLobby',
         exitGameRoom: 'home',
       },
       entityLab: {

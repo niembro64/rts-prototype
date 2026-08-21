@@ -680,6 +680,11 @@ export class NetworkManager {
     | undefined = undefined;
   /** The host is gone and this session cannot continue. Clients only. */
   public onHostLeft: (() => void) | undefined = undefined;
+  /** The host ended the battle back into the seating screen. The session
+   *  SURVIVES — roster, seats and connections all stay — so the receiver
+   *  tears down only the battle presentation and reopens the lobby. Fires on
+   *  the host too, after its own broadcast, so both sides ride one path. */
+  public onReturnToLobby: (() => void) | undefined = undefined;
   /** `resume` is present only when joining a match already in progress: the
    *  frame to replay up to, and the hash to verify against on arrival. */
   public onGameStart:
@@ -1275,8 +1280,12 @@ export class NetworkManager {
    * also why a running match can keep taking connections: a watcher holds no
    * seat, contributes no command frames, and can never hold the match up.
    *
-   * The one exception is a returning player: a connection presenting a seat
-   * token this session issued reclaims that exact seat, army and side.
+   * The one exception is a returning player MID-MATCH: a connection
+   * presenting a seat token this session issued reclaims that exact seat,
+   * army and side, because its army is still being simulated and the match
+   * may be holding for it. In the LOBBY the exception does not apply — the
+   * host is the only seater there, so every arrival lands on the bench and
+   * the host decides, token or no token.
    */
   private handleIncomingConnection(
     conn: DataConnection,
@@ -1306,7 +1315,12 @@ export class NetworkManager {
       return;
     }
 
-    const reclaimedSeat = this.members.seatForToken(metadata.seatToken);
+    // Tokens reclaim only while the match RUNS. In the lobby the host is the
+    // only seater, so a token from the last match cannot silently take a
+    // seat the host is in the middle of handing out.
+    const reclaimedSeat = this.gameStarted
+      ? this.members.seatForToken(metadata.seatToken)
+      : null;
     if (reclaimedSeat === null && !this.members.canAdmitSpectator()) {
       // The bench is full. Seats are capped separately, by the seat table.
       this.refuseConnection(conn, 'session-full', 'This game has no room left to watch.');
@@ -1683,6 +1697,16 @@ export class NetworkManager {
         this.emitHostLeft();
         break;
 
+      case 'returnToLobby':
+        // Only the host controls the game-room state, so only the host
+        // connection may say this — and the machine is the second guard: a
+        // client whose battle never started has nothing to return from.
+        if (this.role !== 'client' || fromMemberId !== HOST_MEMBER_ID) return;
+        if (!this.isMessageForCurrentGame(message.gameId)) return;
+        if (!this.session.send('returnToLobby')) return;
+        this.onReturnToLobby?.();
+        break;
+
       case 'lobbySettings':
         // Only meaningful client-side — the host owns the source
         // of truth and never broadcasts to itself.
@@ -1973,6 +1997,32 @@ export class NetworkManager {
     this.emitGameStart(handoff);
   }
 
+  /**
+   * End the battle and return the WHOLE room to its seating screen
+   * (host only). The mirror of startGame(): the transition is the guard —
+   * `returnToLobby` is only legal from `playing`, so a stray click in a
+   * lobby, or a stale one after the session ended, is refused by the table.
+   *
+   * The session survives. Nobody disconnects, seats and roster stay, and the
+   * lobby re-advertises as open; what does NOT survive is a seat being HELD
+   * for a mid-match rejoin — the match it was reserved for is over, and in
+   * the lobby the host is the only seater.
+   */
+  returnToLobby(): void {
+    if (this.role !== 'host') return;
+    if (!this.session.send('returnToLobby')) return;
+
+    const connected = new Set(this.connections.keys());
+    this.members.resetPresenceForLobby(connected, this.localMemberId);
+
+    // Say it while the battle handlers are still attached, then re-announce
+    // the (possibly pruned) roster and re-open the directory listing.
+    this.broadcast({ type: 'returnToLobby', gameId: this.getUniversalGameId() });
+    this.broadcastLobbyRoster();
+    this.refreshLobbyListing();
+    this.onReturnToLobby?.();
+  }
+
   // Getters
   getRole(): NetworkRole | null {
     return this.role;
@@ -2030,6 +2080,7 @@ export class NetworkManager {
     // Clear all callbacks to release closure references
     this.onRoster = undefined;
     this.onHostLeft = undefined;
+    this.onReturnToLobby = undefined;
     this.onGameStart = undefined;
     this.onSeatAssignment = undefined;
     this.onSeatedPeerSilent = undefined;

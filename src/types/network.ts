@@ -384,7 +384,10 @@ export type NetworkCommunicationEvent = NetworkCommunicationChatEvent;
 // read as a phantom desync — refused at the door instead.
 // v6: bot seats — rosterUpdate carries botSeats, seats carry initialState,
 // and the canonical initialization hashes both axes (match-init v13).
-export const LOCKSTEP_PROTOCOL_VERSION = 'budget-annihilation.lockstep.v6' as const;
+// v7: `returnToLobby` — the host can end a battle back into the seating
+// screen for a rematch. A v6 client would stay in a battle its host has
+// already left, so the builds are refused at the door instead.
+export const LOCKSTEP_PROTOCOL_VERSION = 'budget-annihilation.lockstep.v7' as const;
 type LockstepProtocolVersion = typeof LOCKSTEP_PROTOCOL_VERSION;
 
 export type LockstepProtocolBase = {
@@ -676,6 +679,12 @@ export type NetworkMessage =
   // treated the same way, so a crashed or unplugged host still ejects
   // everyone.
   | { type: 'hostLeft'; gameId: string | undefined }
+  // Host -> all. The battle is over and the whole room returns to its
+  // seating screen for a rematch. The SESSION survives — nobody disconnects,
+  // seats and roster stay — which is exactly what distinguishes this from
+  // `hostLeft`. Only the host may say it; the game-room state is the host's
+  // alone, and a client's only exits are its own "exit to home".
+  | { type: 'returnToLobby'; gameId: string | undefined }
   | { type: 'lobbySettings'; gameId: string | undefined; settings: LobbySettings }
   // Host -> one client, immediately before closing the connection. A refused
   // join otherwise arrives as a socket that simply died, which reads exactly

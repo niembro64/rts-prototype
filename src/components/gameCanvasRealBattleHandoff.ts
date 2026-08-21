@@ -41,6 +41,9 @@ type UseGameCanvasRealBattleHandoffOptions = Omit<
   onCommunication: (event: NetworkCommunicationEvent) => void;
   /** Eject this client — the host has left and the session is over. */
   onHostLeft: () => void;
+  /** The host ended the battle back into the seating screen; the session
+   *  survives, only the battle presentation comes down. */
+  onReturnToLobby: () => void;
 };
 
 export function useGameCanvasRealBattleHandoff({
@@ -80,6 +83,7 @@ export function useGameCanvasRealBattleHandoff({
   currentLobbySettings,
   onCommunication,
   onHostLeft,
+  onReturnToLobby,
   onLoadingProgress,
   onPeerFrameReport,
   onFlowControlChange,
@@ -151,6 +155,7 @@ export function useGameCanvasRealBattleHandoff({
       onCommunication,
       startGameWithPlayers,
       onHostLeft,
+      onReturnToLobby,
     });
   }
 

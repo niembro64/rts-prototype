@@ -102,6 +102,35 @@ export function useGameCanvasSessionLifecycle({
     });
   }
 
+  /**
+   * End the battle but keep the session: the host returned the room to its
+   * seating screen. Everything `restartGame` tears down EXCEPT the network —
+   * room code, roster, role and seat all survive, so the lobby modal reopens
+   * over the same session and the preview battle restarts behind it (still in
+   * 'real' mode, because the room code is still set).
+   */
+  function returnToLobby(): void {
+    gameOverWinner.value = null;
+    setBattleStartTime(0);
+    battleLoading.value = false;
+    lifecycle.clearTimers();
+    foregroundSceneBinding.clear();
+    gameStarted.value = false;
+    showLobby.value = true;
+    // The view target, pause banner and replay bar describe the match that
+    // just ended; the caller restores the surviving seat/role on top.
+    resetSpectatorState();
+    setActiveConnection(null);
+    hasServer.value = false;
+    serverMetaFromSnapshot.value = null;
+    stopCurrentServer();
+    foregroundGame.destroy();
+
+    nextTick(() => {
+      void startBackgroundBattle();
+    });
+  }
+
   onMounted(() => {
     nextTick(() => {
       void startBackgroundBattle();
@@ -121,5 +150,6 @@ export function useGameCanvasSessionLifecycle({
 
   return {
     restartGame,
+    returnToLobby,
   };
 }

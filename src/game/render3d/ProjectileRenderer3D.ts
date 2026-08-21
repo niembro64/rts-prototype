@@ -661,9 +661,17 @@ export class ProjectileRenderer3D {
         tailRadius,
       );
       const rawRocketRung = sharedRung ?? detailRungForLevel(detailLevel);
-      const rocketRung = emissionFarLod || (!drawProjectileTail && !drawProjectileFins)
-        ? DETAIL_RUNG_FAR
-        : rawRocketRung;
+      // MISSILES (the fast family, 20-33x rocket speed) are deliberately
+      // plain at EVERY distance: the Low extruded triangle — triangle nose
+      // and tail caps, three quad sides — plus the team tail band. No nose
+      // sphere, no spinning fin blades, no per-rung upgrade: they cross the
+      // screen in a blink and read by silhouette, so forcing the FAR rung
+      // here IS their entire look. Rockets and torpedoes keep the ladder.
+      const isMissile = shotProfile?.runtime.type === 'missile';
+      const rocketRung =
+        isMissile || emissionFarLod || (!drawProjectileTail && !drawProjectileFins)
+          ? DETAIL_RUNG_FAR
+          : rawRocketRung;
 
       // Only High still spends triangles on the fin blades. Every coarser
       // rung hands that team read to the tail band, so its tube is drawn as

@@ -125,6 +125,23 @@ export async function startRealBattleWithPlayers(
   let registeredConnection: GameConnection | null = null;
   let foregroundCreated = false;
 
+  // Single-shot: nulls `ownedBackend` before stopping, so the abort path and
+  // the lifecycle's adopted teardown (exit home, return to lobby, next start)
+  // can both point here without ever double-stopping.
+  function stopOwnedBackend(): void {
+    const backend = ownedBackend;
+    ownedBackend = null;
+    if (backend === null) return;
+    const server = backend.server;
+    if (server !== null && options.getCurrentServer() === server) {
+      if (registeredServer === server) {
+        options.setCurrentServer(null);
+        registeredServer = null;
+      }
+    }
+    backend.stop();
+  }
+
   function cleanupOwnedStartResources(clearRegisteredRefs: boolean): void {
     if (clearRegisteredRefs) {
       options.foregroundSceneBinding.clear();
@@ -137,18 +154,7 @@ export async function startRealBattleWithPlayers(
       options.setActiveConnection(null);
       registeredConnection = null;
     }
-    const backend = ownedBackend;
-    ownedBackend = null;
-    if (backend !== null) {
-      const server = backend.server;
-      if (server !== null && options.getCurrentServer() === server) {
-        if (registeredServer === server) {
-          options.setCurrentServer(null);
-          registeredServer = null;
-        }
-      }
-      backend.stop();
-    }
+    stopOwnedBackend();
     if (clearRegisteredRefs) options.hasServer.value = false;
     if (clearRegisteredRefs) options.battleLoading.value = false;
   }
@@ -231,6 +237,10 @@ export async function startRealBattleWithPlayers(
       registerSilentPlayer: options.registerSilentPlayer,
     });
     ownedBackend = backend;
+    // From here the backend outlives this function, so its stop belongs to
+    // the lifecycle: every teardown path calls clearTimers(), which invokes
+    // this exactly once (stopOwnedBackend is single-shot either way).
+    options.lifecycle.adoptBackendStop(stopOwnedBackend);
     if (shouldAbortStart()) return;
 
     const createdServer = backend.server;

@@ -37,6 +37,9 @@ type GameCanvasNetworkCallbackOptions = {
   ) => void | Promise<void>;
   /** The host is gone and this client cannot stay in the session. */
   onHostLeft: () => void;
+  /** The host ended the battle back into the seating screen; the session
+   *  survives, only the battle presentation comes down. */
+  onReturnToLobby: () => void;
   /** A SEATED player stopped answering. Host-side only. */
   onSeatedPeerSilent: (playerId: PlayerId) => void;
   /** A held seat reconnected and reclaimed its army. Host-side only. */
@@ -61,6 +64,7 @@ export function bindGameCanvasNetworkCallbacks({
   onCommunication,
   startGameWithPlayers,
   onHostLeft,
+  onReturnToLobby,
   onSeatedPeerSilent,
   onSeatedPeerReturned,
 }: GameCanvasNetworkCallbackOptions): void {
@@ -87,6 +91,12 @@ export function bindGameCanvasNetworkCallbacks({
   // the session survives, but losing the host ends it for everyone.
   network.onHostLeft = () => {
     onHostLeft();
+  };
+
+  // The host called the room back to its seating screen. Distinct from
+  // hostLeft in exactly one way that matters: the session is still alive.
+  network.onReturnToLobby = () => {
+    onReturnToLobby();
   };
 
   network.onSeatAssignment = (playerId, role) => {

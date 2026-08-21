@@ -15,10 +15,7 @@ import type {
   PlayerId,
   EntityId,
 } from '../sim/types';
-import {
-  getResourceFillRatio,
-  isBuildInProgress,
-} from '../sim/buildableHelpers';
+import { isBuildInProgress } from '../sim/buildableHelpers';
 import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotMeta,
@@ -955,16 +952,12 @@ export class ClientViewState extends ClientViewStateBase {
           options.selectionHudMode,
           healthNotFull,
         );
-        const showBuild = this.barVisible3D(
-          options.getEntityHudToggle(type, 'buildBars'),
-          selected,
-          options.selectionHudMode,
-          buildInProgress,
-        );
+        // A nanoframe under construction shows its hp bar at 0 hp — the bar
+        // IS the visible build progress now that the per-resource
+        // construction bars are gone.
         const showHp = maxHp > 0 && (showHealth || forceVisible)
           && (buildInProgress || hp > 0);
-        const showBuildBars = showBuild && buildInProgress;
-        if (!showHp && !showBuildBars) return;
+        if (!showHp) return;
 
         out.bodyHud.pushRow(
           views.entityIds[slot],
@@ -973,19 +966,13 @@ export class ClientViewState extends ClientViewStateBase {
           views.y[slot],
           views.bodyHudWidth[slot],
           maxHp > 0 ? hp / maxHp : 0,
-          buildInProgress ? views.buildEnergyRatio[slot] : 0,
-          buildInProgress ? views.buildMetalRatio[slot] : 0,
-          showHp,
-          showBuildBars,
         );
         return;
       }
     }
 
     const selected = entity.selectable?.selected === true;
-    const buildable = isBuildInProgress(entity.buildable)
-      ? entity.buildable
-      : null;
+    const buildInProgress = isBuildInProgress(entity.buildable);
     const hp = unit !== null ? unit.hp : building !== null ? building.hp : 0;
     const maxHp = unit !== null ? unit.maxHp : building !== null ? building.maxHp : 0;
     const healthNotFull = maxHp > 0 && hp < maxHp;
@@ -995,16 +982,9 @@ export class ClientViewState extends ClientViewStateBase {
       options.selectionHudMode,
       healthNotFull,
     );
-    const showBuild = this.barVisible3D(
-      options.getEntityHudToggle(type, 'buildBars'),
-      selected,
-      options.selectionHudMode,
-      buildable !== null,
-    );
     const showHp = maxHp > 0 && (showHealth || forceVisible)
-      && (buildable !== null || hp > 0);
-    const showBuildBars = showBuild && buildable !== null;
-    if (!showHp && !showBuildBars) return;
+      && (buildInProgress || hp > 0);
+    if (!showHp) return;
 
     out.bodyHud.pushRow(
       entity.id,
@@ -1013,10 +993,6 @@ export class ClientViewState extends ClientViewStateBase {
       entity.transform.y,
       unit !== null ? unit.radius.other * 2 : building!.width,
       maxHp > 0 ? hp / maxHp : 0,
-      buildable !== null ? getResourceFillRatio(buildable, 'energy') : 0,
-      buildable !== null ? getResourceFillRatio(buildable, 'metal') : 0,
-      showHp,
-      showBuildBars,
     );
   }
 

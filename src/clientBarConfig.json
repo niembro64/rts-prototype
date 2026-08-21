@@ -597,55 +597,45 @@
     "demoDefault": {
       "unit": {
         "name": false,
-        "healthBar": true,
-        "buildBars": true
+        "healthBar": true
       },
       "tower": {
         "name": false,
-        "healthBar": true,
-        "buildBars": true
+        "healthBar": true
       },
       "building": {
         "name": false,
-        "healthBar": true,
-        "buildBars": true
+        "healthBar": true
       },
       "turret": {
         "name": false,
-        "healthBar": false,
-        "buildBars": false
+        "healthBar": false
       },
       "shot": {
         "name": false,
-        "healthBar": false,
-        "buildBars": false
+        "healthBar": false
       }
     },
     "realDefault": {
       "unit": {
         "name": false,
-        "healthBar": true,
-        "buildBars": true
+        "healthBar": true
       },
       "tower": {
         "name": false,
-        "healthBar": true,
-        "buildBars": true
+        "healthBar": true
       },
       "building": {
         "name": false,
-        "healthBar": true,
-        "buildBars": true
+        "healthBar": true
       },
       "turret": {
         "name": false,
-        "healthBar": false,
-        "buildBars": false
+        "healthBar": false
       },
       "shot": {
         "name": false,
-        "healthBar": false,
-        "buildBars": false
+        "healthBar": false
       }
     }
   },
@@ -684,8 +674,7 @@
   ],
   "entityHudElements": [
     "name",
-    "healthBar",
-    "buildBars"
+    "healthBar"
   ],
   "rangeTypes": [
     "trackAcquire",

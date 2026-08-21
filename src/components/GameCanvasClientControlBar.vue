@@ -403,7 +403,7 @@ function resetEveryCustomHotkey(): void {
       <BarControlGroup>
         <BarDivider />
         <BarLabel>ENTITY HUD:</BarLabel>
-        <BarLabel title="How enabled per-type HUD elements behave on selected entities. ALL shows enabled health even when full; OFF suppresses selected bars and names; DMG shows health only when damaged and build bars only during construction. Names have no fullness, so DMG leaves enabled selected names visible. Hover can still force a health bar for inspection, and unselected entities are unaffected by this selector.">SEL:</BarLabel>
+        <BarLabel title="How enabled per-type HUD elements behave on selected entities. ALL shows enabled health even when full; OFF suppresses selected bars and names; DMG shows health only when damaged. Names have no fullness, so DMG leaves enabled selected names visible. Hover can still force a health bar for inspection, and unselected entities are unaffected by this selector.">SEL:</BarLabel>
         <BarButtonGroup>
           <BarButton
             v-for="opt in CLIENT_CONFIG.selectionHudMode.options"

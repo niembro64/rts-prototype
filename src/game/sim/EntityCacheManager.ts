@@ -251,10 +251,10 @@ export class EntityCacheManager {
         if (ownership !== null) {
           addEntityToList(this.getOrCreateUnitsByPlayer(ownership.playerId), entity, sortedInsert);
         }
-        // Damaged-or-shell list: feeds HealthBar3D.perUnit. A unit
-        // shell (incomplete buildable) belongs here too even though
-        // its hp is 0 at spawn — the bar renderer needs to draw the
-        // build bars regardless of HP.
+        // Damaged-or-shell list: feeds the HealthBar3D body-HUD packet.
+        // A unit shell (incomplete buildable) belongs here too even
+        // though its hp is 0 at spawn — the hp bar IS the visible build
+        // progress while construction runs.
         if (
           entity.unit
           && (

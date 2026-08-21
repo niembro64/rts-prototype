@@ -17,6 +17,12 @@ defineProps<{
   gameOverWinner: PlayerId | null;
   winnerName: string;
   winnerColor: string;
+  /** Only the HOST controls the game-room state: its game-over exit returns
+   *  the whole room to the seating screen, everyone else's exits to home. */
+  isHost: boolean;
+  /** Whether this session HAS a seating screen to return to — a solo battle
+   *  started straight from home does not. */
+  canReturnToLobby: boolean;
   /** Seconds until this client is returned to the menu because the host
    *  left, or null when that is not happening. */
   hostLeftSecondsRemaining: number | null;
@@ -26,6 +32,7 @@ const emit = defineEmits<{
   toggleMobileBars: [];
   dismissGameOver: [];
   restartGame: [];
+  returnRoomToLobby: [];
   exitAfterHostLeft: [];
 }>();
 
@@ -64,7 +71,7 @@ function handleCameraTutorialDone(): void {
         Returning to the menu in {{ hostLeftSecondsRemaining }}s…
       </p>
       <button class="host-left-btn" @click="emit('exitAfterHostLeft')">
-        Return to Lobby
+        Exit to Home
       </button>
     </div>
   </div>
@@ -83,8 +90,19 @@ function handleCameraTutorialDone(): void {
       </h1>
       <p class="loser-text">{{ winnerName }} is the only team with living commanders.</p>
       <div class="game-over-actions">
-        <button class="restart-btn" @click="emit('restartGame')">
+        <!-- The game-room state is the HOST's alone: only its button returns
+             the room to the seating screen (and it brings everyone along).
+             Everyone else — and a solo battle with no seating screen — gets
+             exit to home. -->
+        <button
+          v-if="isHost && canReturnToLobby"
+          class="restart-btn"
+          @click="emit('returnRoomToLobby')"
+        >
           Return to Lobby
+        </button>
+        <button v-else class="restart-btn" @click="emit('restartGame')">
+          Exit to Home
         </button>
         <button class="dismiss-btn" @click="emit('dismissGameOver')">
           Keep Watching

@@ -128,6 +128,7 @@ export type SessionEvent =
   | 'connect'
   | 'connected'
   | 'start'
+  | 'returnToLobby'
   | 'end'
   | 'fail';
 
@@ -144,11 +145,13 @@ export function createSessionLifecycle(
       // A failed connect returns to idle so the player can retry; a
       // successful one opens the lobby.
       connecting: { connected: 'lobby', fail: 'idle', end: 'ended' },
-      // Starting is one-way. Nothing returns a running match to the lobby,
-      // which is what makes "no new seats once it starts" a state question
-      // rather than a separate flag.
+      // "No new seats once it starts" is a state question rather than a
+      // separate flag: seating is admitted only in `lobby`, and the ONE road
+      // back there is the host's own `returnToLobby` — the room reopens for a
+      // rematch with its roster and seats intact. Nobody else can send it:
+      // the message is refused from anyone but the host connection.
       lobby: { start: 'playing', end: 'ended' },
-      playing: { end: 'ended' },
+      playing: { returnToLobby: 'lobby', end: 'ended' },
       // Terminal. A second `end` — the host's farewell followed by its socket
       // closing, say — is refused rather than re-running teardown.
       ended: {},

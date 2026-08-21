@@ -6,7 +6,6 @@ import { getBuildingCombatCenterZ } from '../sim/buildingAnchors';
 import {
   getConstructionPieceBuildFraction,
   getConstructionPieceRenderAlpha,
-  getResourceFillRatio,
   isBuildInProgress,
   isConstructionPieceMaterialized,
   isShell,
@@ -94,8 +93,6 @@ export type ClientRenderEntityStateViews = {
   readonly renderScopePadding: Float32Array;
   readonly hp: Float32Array;
   readonly maxHp: Float32Array;
-  readonly buildEnergyRatio: Float32Array;
-  readonly buildMetalRatio: Float32Array;
   readonly groundContactEnabled: Uint8Array;
   readonly turretCount: Uint16Array;
   readonly shieldPanelTurretIndex: Int16Array;
@@ -208,8 +205,6 @@ export class ClientRenderEntityStateSlab {
     renderScopePadding: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     hp: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     maxHp: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
-    buildEnergyRatio: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
-    buildMetalRatio: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     groundContactEnabled: new Uint8Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     turretCount: new Uint16Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     shieldPanelTurretIndex: new Int16Array(INITIAL_RENDER_ENTITY_STATE_CAP),
@@ -336,16 +331,9 @@ export class ClientRenderEntityStateSlab {
 
   private writeBuildStateSlot(entity: Entity, slot: number): number {
     const views = this.views;
-    const buildable = isBuildInProgress(entity.buildable) ? entity.buildable : null;
     views.flags[slot] = refreshConstructionFlags(entity, views.flags[slot]);
     views.buildProgress[slot] = getConstructionPieceBuildFraction(entity, 'body');
     views.bodyOpacity[slot] = getConstructionPieceRenderAlpha(entity, 'body');
-    views.buildEnergyRatio[slot] = buildable !== null
-      ? getResourceFillRatio(buildable, 'energy')
-      : 0;
-    views.buildMetalRatio[slot] = buildable !== null
-      ? getResourceFillRatio(buildable, 'metal')
-      : 0;
     this.markSlotDirty(slot);
     return slot;
   }
@@ -409,12 +397,6 @@ export class ClientRenderEntityStateSlab {
     );
     views.hp[slot] = unit.hp;
     views.maxHp[slot] = unit.maxHp;
-    views.buildEnergyRatio[slot] = buildable !== null
-      ? getResourceFillRatio(buildable, 'energy')
-      : 0;
-    views.buildMetalRatio[slot] = buildable !== null
-      ? getResourceFillRatio(buildable, 'metal')
-      : 0;
     views.groundContactEnabled[slot] = unit.suspension?.legContact === false ? 0 : 1;
     views.turretCount[slot] = turrets?.length ?? 0;
     views.shieldPanelTurretIndex[slot] = turrets !== undefined
@@ -476,12 +458,6 @@ export class ClientRenderEntityStateSlab {
     );
     views.hp[slot] = building.hp;
     views.maxHp[slot] = building.maxHp;
-    views.buildEnergyRatio[slot] = buildable !== null
-      ? getResourceFillRatio(buildable, 'energy')
-      : 0;
-    views.buildMetalRatio[slot] = buildable !== null
-      ? getResourceFillRatio(buildable, 'metal')
-      : 0;
     views.groundContactEnabled[slot] = 0;
     views.turretCount[slot] = turrets?.length ?? 0;
     views.shieldPanelTurretIndex[slot] = NO_SHIELD_PANEL_TURRET_INDEX;
@@ -729,16 +705,6 @@ export class ClientRenderEntityStateSlab {
       const buildable = isBuildInProgress(entity.buildable) ? entity.buildable : null;
       assertNear('bodyOpacity', views.bodyOpacity[slot], getConstructionPieceRenderAlpha(entity, 'body'));
       assertNear('buildProgress', views.buildProgress[slot], getConstructionPieceBuildFraction(entity, 'body'));
-      assertNear(
-        'buildEnergyRatio',
-        views.buildEnergyRatio[slot],
-        buildable !== null ? getResourceFillRatio(buildable, 'energy') : 0,
-      );
-      assertNear(
-        'buildMetalRatio',
-        views.buildMetalRatio[slot],
-        buildable !== null ? getResourceFillRatio(buildable, 'metal') : 0,
-      );
       assertFlag(
         'buildInProgress flag',
         views.flags[slot],
@@ -785,16 +751,6 @@ export class ClientRenderEntityStateSlab {
       const buildable = isBuildInProgress(entity.buildable) ? entity.buildable : null;
       assertNear('buildProgress', views.buildProgress[slot], getConstructionPieceBuildFraction(entity, 'body'));
       assertNear('bodyOpacity', views.bodyOpacity[slot], getConstructionPieceRenderAlpha(entity, 'body'));
-      assertNear(
-        'buildEnergyRatio',
-        views.buildEnergyRatio[slot],
-        buildable !== null ? getResourceFillRatio(buildable, 'energy') : 0,
-      );
-      assertNear(
-        'buildMetalRatio',
-        views.buildMetalRatio[slot],
-        buildable !== null ? getResourceFillRatio(buildable, 'metal') : 0,
-      );
       assertFlag(
         'buildInProgress flag',
         views.flags[slot],
@@ -860,8 +816,6 @@ export class ClientRenderEntityStateSlab {
       renderScopePadding: growTypedArray(views.renderScopePadding, nextCapacity),
       hp: growTypedArray(views.hp, nextCapacity),
       maxHp: growTypedArray(views.maxHp, nextCapacity),
-      buildEnergyRatio: growTypedArray(views.buildEnergyRatio, nextCapacity),
-      buildMetalRatio: growTypedArray(views.buildMetalRatio, nextCapacity),
       groundContactEnabled: growTypedArray(views.groundContactEnabled, nextCapacity),
       turretCount: growTypedArray(views.turretCount, nextCapacity),
       shieldPanelTurretIndex: growTypedArray(views.shieldPanelTurretIndex, nextCapacity),

@@ -1004,12 +1004,7 @@ function loadFromStorage(mode: ClientMode): void {
             currentEntityHud[type][element] = false;
             continue;
           }
-          let value = rowRecord[element];
-          if (element === 'buildBars' && typeof value !== 'boolean') {
-            // Saved HUD blobs from before the RES->BUILD rename used
-            // `resourceBars` for this construction-progress toggle.
-            value = rowRecord.resourceBars;
-          }
+          const value = rowRecord[element];
           if (typeof value === 'boolean') {
             currentEntityHud[type][element] = value;
           }

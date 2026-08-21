@@ -76,8 +76,8 @@ export type EntityHudType =
   | 'building'
   | 'turret'
   | 'shot';
-/** The three per-entity HUD elements that can be toggled. */
-export type EntityHudElement = 'name' | 'healthBar' | 'buildBars';
+/** The per-entity HUD elements that can be toggled. */
+export type EntityHudElement = 'name' | 'healthBar';
 /** Tri-state controlling enabled HUD elements on the CURRENT SELECTION.
  *  Per-type toggles remain the first gate.
  *    always      — show enabled selection bars even when full.

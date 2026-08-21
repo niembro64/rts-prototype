@@ -533,6 +533,38 @@ export class NetworkLobbyMembers {
     return true;
   }
 
+  /**
+   * The room returned to its seating screen; the match the presence machines
+   * were describing is over.
+   *
+   * Members without a live connection are forgotten, token and all — a seat
+   * held in `awaitingRejoin` was reserved for a MATCH that no longer exists,
+   * and in the lobby the host is the only seater, so nothing may sit reserved
+   * for a connection that might never come back. Everyone still attached gets
+   * a fresh presence: a resign or a silence described the last match, not the
+   * next one, and `dropped` being terminal is a property of one match.
+   *
+   * The connected set comes from the caller because connections are session
+   * facts, not roster ones — the same split that keeps bot seats memberless.
+   */
+  resetPresenceForLobby(
+    connectedMemberIds: ReadonlySet<MemberId>,
+    localMemberId: MemberId,
+  ): boolean {
+    let changed = false;
+    for (const member of [...this.members.values()]) {
+      if (member.memberId !== localMemberId && !connectedMemberIds.has(member.memberId)) {
+        this.delete(member.memberId);
+        changed = true;
+        continue;
+      }
+      if (member.presence !== 'live') changed = true;
+      this.presenceByMember.delete(member.memberId);
+      member.presence = 'live';
+    }
+    return changed;
+  }
+
   /** Mark a seated member as gone-but-expected. Its seat stays reserved and
    *  its units keep their orders: the simulation is never told anyone left. */
   markAwaitingRejoin(memberId: MemberId): boolean {

@@ -164,6 +164,47 @@ export function runNetworkLobbySeatingContractTest(): void {
     );
   }
 
+  // --- the room returns to its seating screen: held seats are released -----
+  //
+  // A seat in `awaitingRejoin` was reserved for a MATCH; when the host
+  // returns the room to the lobby that match is over, and in the lobby the
+  // host is the only seater — so the held seat is released, token and all,
+  // while everyone still attached keeps their seat with a fresh presence.
+  {
+    const members = new NetworkLobbyMembers();
+    members.seedHost();
+    members.admit(2, 'Stays');
+    members.seat(2, 2);
+    members.admit(3, 'Gone');
+    members.seat(3, 2);
+    const goneSeat = members.get(3)?.playerId as PlayerId;
+    const goneToken = members.seatTokenFor(goneSeat);
+    members.markAwaitingRejoin(3);
+    members.markSilent(2);
+
+    members.resetPresenceForLobby(new Set([2]), 1);
+    assert(
+      members.get(3) === undefined,
+      'a seat held for a mid-match rejoin is released when the room returns to its lobby',
+    );
+    assert(
+      members.seatForToken(goneToken) === null,
+      "the released seat's token dies with it — the host decides who sits in a lobby",
+    );
+    assert(
+      members.get(2)?.playerId !== undefined,
+      'a connected player keeps their seat for the rematch',
+    );
+    assert(
+      members.get(2)?.presence === 'live',
+      "everyone still attached gets a fresh presence — 'silent' described the last match",
+    );
+    assert(
+      members.get(1) !== undefined,
+      "the host's own record survives even though it holds no connection entry",
+    );
+  }
+
   // --- caps: six seats and six benches --------------------------------------
   {
     const members = new NetworkLobbyMembers();
