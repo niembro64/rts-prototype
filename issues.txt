@@ -1,6 +1,12 @@
 1. on our home page let's include the "open lobbies" visually in the "ONLINE" section. Also let's move the "Entities Lab", "Game Controls" and as well as "Game info" into a new separate section at the bottom of the sidebar, buttons for each of those thaat take us to pages for specifically those gruopings of info.
 
 
-2. In our "GAME ROOM" Lobby, for our players line items let's only show the IP, time, and location if we hover over the name. Let's also have our "MOVE" text be just a down arrow, our "REMOVE" be a trash can, our "BASE"/"CMDR" be a stateful icon instead of text. And our "SEAT" button to a "+" also "WATCHING" should say "SPECTATORS". Also the chat window should only be able to occupy at most a fifth (1/5) of the space on the bottom of the left side of our lobby. 
+2. In our "GAME ROOM" Lobby, for our players line items let's only show the IP, time, and location if we hover over the name. Let's also have our "MOVE" text be just a down arrow, our "REMOVE" be a trash can, our "BASE"/"CMDR" be icons that represent the state instead of text. 
 
-3. Our "spectator" user still seems to have things on his screen that dont' make snese, the top bar metal / energy stuff should not be there. Let's also remove our "idle" concepts, that doesn't make sense as a spectator. Define which things make sense for a spectator to be able to do, then make sure it is implented correctly. 
+3. And our "SEAT" button to a "+" also "WATCHING" should say "SPECTATORS". And "PLAYERS" and "SPECTATORS" section headers should have the same styling and aesthetic. 
+
+4. Also the chat window in the "GAME ROOM" lobby should only be able to occupy at most a fifth (1/5) of the space on the bottom of the left side of our lobby. 
+
+5. Our "spectator" user still seems to have things on his screen that dont' make snese, the top bar metal / energy stuff should not be there. Let's also remove our "idle" concepts, that doesn't make sense as a spectator. Define which things make sense for a spectator to be able to do, then make sure it is implented correctly. 
+
+6. We currently have a test for whether there is "NO WATER", and disabling "only water" entities. Let's do a similar thing for testing if there is "NO LAND", and disabling "only land" entities. Implement this elegantly. 
