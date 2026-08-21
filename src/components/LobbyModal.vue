@@ -741,8 +741,8 @@ const terrainSectionVars = computed(() =>
 
       <!-- The open-lobby directory. Every row is a one-click join: the
            room code is already known, so nobody has to be told one. Running
-           games are listed too but are not joinable — the host rejects late
-           joiners — so they read as status, not as buttons. -->
+           games take no new SEATS, but they take watchers freely — so those
+           rows are one-click WATCH buttons, styled to say so. -->
       <div class="lobby-list">
         <div class="lobby-list-header">
           <span class="lobby-list-label">OPEN LOBBIES</span>
@@ -794,7 +794,7 @@ const terrainSectionVars = computed(() =>
                 :disabled="game.spectatorCount >= game.maxSpectators"
                 :title="game.spectatorCount >= game.maxSpectators
                   ? 'This battle has no room left to watch'
-                  : `Watch ${game.name || game.roomCode}`"
+                  : `Watch ${game.name || game.roomCode} — join as a spectator`"
                 @click="handleJoinListed(game)"
               >
                 <span class="lobby-row-main">
@@ -806,7 +806,7 @@ const terrainSectionVars = computed(() =>
                 </span>
                 <span class="lobby-row-players">
                   {{ game.playerCount }}/{{ game.maxPlayers }}
-                  <span class="lobby-row-watch">WATCH {{ game.spectatorCount }}/{{ game.maxSpectators }}</span>
+                  <span class="lobby-row-watch lobby-row-watch-cta">▶ WATCH {{ game.spectatorCount }}/{{ game.maxSpectators }}</span>
                 </span>
               </button>
             </li>
@@ -1921,15 +1921,13 @@ const terrainSectionVars = computed(() =>
   border-color: #44aa44;
 }
 
-/* A running game is information, not an action: no pointer, no hover. */
-.lobby-row-running {
-  cursor: default;
-  opacity: 0.65;
-}
-
-.lobby-row-running:hover {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: #3a4452;
+/* A running game is one click from WATCHING it, and the row has to say so
+ * as loudly as an open lobby says Join: full ink, a pointer, and a hover in
+ * the watch accent. Only a battle with no bench left goes quiet — see the
+ * :disabled rule. */
+.lobby-row-running:hover:not(:disabled) {
+  background: rgba(96, 168, 216, 0.16);
+  border-color: #60a8d8;
 }
 
 .lobby-row-main {
@@ -2548,9 +2546,35 @@ const terrainSectionVars = computed(() =>
   opacity: 0.6;
 }
 
+/* The running row's call to action: a button-shaped chip, not a statistic.
+ * This is what tells a player the row is CLICKABLE — join as a spectator. */
+.lobby-row-watch-cta {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 2px 7px;
+  border: 1px solid #60a8d8;
+  border-radius: 4px;
+  background: rgba(96, 168, 216, 0.18);
+  color: #bfe0f5;
+  font-weight: 700;
+  opacity: 1;
+}
+
+.lobby-row-running:hover:not(:disabled) .lobby-row-watch-cta {
+  background: rgba(96, 168, 216, 0.38);
+  color: #eaf6ff;
+}
+
 .lobby-row-running:disabled {
   cursor: default;
   opacity: 0.5;
+}
+
+.lobby-row-running:disabled .lobby-row-watch-cta {
+  border-color: #3a4452;
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font-weight: 400;
 }
 
 .spectator-section {

@@ -1,0 +1,74 @@
+1. When an online game is in progress, the "IN PROGRESS" game seems muted on the home screen, but we can still click it. Make sure it seems obvious that we can click it to join as a spectator.
+
+2. I think our state hashing is too heavy. We probably need a "FULL STATE HASH" that checks everything for debug purposes, and a "LIGHT STATE HASH" that only checks the most important things for normal gameplay. This will help with performance. Document this in "budget_design_philosophy.html" and then update our code. 
+
+0.1 ms0.0 %
+208.2 ms100.0 %
+Timer fired
+0.4 ms0.2 %
+208.1 ms100.0 %
+Function call
+gameCanvasRealBattleStartup-BdaipEjf.js:785:11
+0.0 ms0.0 %
+202.9 ms97.5 %
+Ae
+gameCanvasRealBattleStartup-BdaipEjf.js:785:11
+0.0 ms0.0 %
+201.7 ms96.9 %
+advanceReadyFrames
+gameCanvasRealBattleStartup-BdaipEjf.js:85:21
+0.0 ms0.0 %
+110.3 ms53.0 %
+getCanonicalStateHash
+battleServerSettings-BwR4_hUC.js:10646:24
+0.4 ms0.2 %
+110.3 ms53.0 %
+s1
+battleServerSettings-BwR4_hUC.js:10074:12
+12.9 ms6.2 %
+51.2 ms24.6 %
+g1
+battleServerSettings-BwR4_hUC.js:10154:12
+10.0 ms4.8 %
+49.0 ms23.6 %
+Bs
+GameCanvas-BW5TX1Q6.js:14397:16
+0.0 ms0.0 %
+9.7 ms4.7 %
+a1
+battleServerSettings-BwR4_hUC.js:10078:12
+0.0 ms0.0 %
+87.5 ms42.0 %
+onChecksum
+gameCanvasRealBattleStartup-BdaipEjf.js:568:168
+0.0 ms0.0 %
+3.9 ms1.9 %
+stepFixedTick
+battleServerSettings-BwR4_hUC.js:10620:16
+0.0 ms0.0 %
+1.1 ms0.6 %
+emitLockstepPresentationSnapshot
+battleServerSettings-BwR4_hUC.js:10915:35
+0.0 ms0.0 %
+0.0 ms0.0 %
+ce
+gameCanvasRealBattleStartup-BdaipEjf.js:664:11
+0.0 ms0.0 %
+4.4 ms2.1 %
+i
+vendor-network-B4qNm7d8.js:243:15
+0.1 ms0.1 %
+0.1 ms0.1 %
+pack_uint16
+vendor-network-B4qNm7d8.js:291:14
+0.1 ms0.1 %
+0.1 ms0.1 %
+Ls
+GameCanvas-BW5TX1Q6.js:14403:14
+0.1 ms0.1 %
+0.1 ms0.1 %
+pack_string
+vendor-network-B4qNm7d8.js:229:14
+
+
+3. Any time we "pause" our game, we need to make sure we have a "PAUSED" in the middle of the screen and the whole screen should have a sort of semi-transparent black overlay. This will make it obvious to the user that the game is paused. Also we need to make sure all "frontend-only" animations are paused, things like "build spray" or "smoke" or "explosions". 
