@@ -198,7 +198,12 @@ export class Input3DBuildPlacementState {
     for (const deposit of this.metalDeposits) {
       const dx = deposit.x - worldX;
       const dy = deposit.y - worldY;
-      if (Math.sqrt(dx * dx + dy * dy) > safeRadius + deposit.placementRadius) continue;
+      // Membership is the deposit ORIGIN inside the dragged circle — BAR's
+      // exact test. placementRadius must never widen this: it is the
+      // connected-growth wander cap, not the ore's size, and the titanic
+      // center deposit's cap exceeds the whole playable map, which made every
+      // area-mex drag anywhere select the deposit at dead center.
+      if (dx * dx + dy * dy > safeRadius * safeRadius) continue;
 
       this.tryAddPlannedBuildPlacement(context, deposit.x, deposit.y, true);
     }

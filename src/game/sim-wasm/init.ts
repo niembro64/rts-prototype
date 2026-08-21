@@ -1630,6 +1630,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runShotArmingContractTest();
         const { runBoxSelectionContractTest } = await import('../input/helpers/BoxSelectionContractTest');
         runBoxSelectionContractTest();
+        const { runAreaMexPlacementContractTest } = await import('../render3d/AreaMexPlacementContractTest');
+        runAreaMexPlacementContractTest();
         const { runRightClickCommandsContractTest } = await import('../input/helpers/RightClickCommandsContractTest');
         runRightClickCommandsContractTest();
         const { runBarDefaultPointerActionContractTest } = await import('../input/helpers/BarDefaultPointerActionContractTest');
