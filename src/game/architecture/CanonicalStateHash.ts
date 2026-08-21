@@ -63,11 +63,11 @@ export type CanonicalServerState = {
  *
  * The root hash is composed from the section hashes rather than from a
  * second stringify of the whole state — one pass over the state instead of
- * two, and the same answer on every peer running the same build. That
- * composition (and any change to what the sections cover) shifts every hash
- * value, which is why LOCKSTEP_PROTOCOL_VERSION must be bumped alongside:
- * two builds that hash differently must be refused at the door, not
- * discovered as a phantom desync 180 ticks in.
+ * two, and the same answer on every peer running the same build. Changing
+ * the composition shifts every hash value, and that is fine: one build,
+ * everywhere (budget_design_philosophy.html) — every peer in a session runs
+ * the same bundle, and the hashed initialization's build fingerprint refuses
+ * a mismatched build at match start rather than as a phantom desync later.
  */
 export function hashCanonicalServerStateLight(core: ServerSimulationCore): CanonicalServerStateHash {
   return finishLightHash(buildCanonicalServerState(core));

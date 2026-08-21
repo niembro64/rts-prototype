@@ -57,16 +57,15 @@ const {
   ...canonicalWindConfigJson
 } = windConfigJson;
 
-// v13: baseSeatPlayerIds joined the hashed roster — a seat's INITIAL STATE
-// ('base' vs 'commander', src/game/sim/agentSeat.ts) decides what spawns at
-// frame 0, so peers disagreeing on it diverge immediately.
-const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v13';
+// There is deliberately no schema-version tag in the initialization: one
+// build everywhere (budget_design_philosophy.html, "One build, everywhere"),
+// and `content.buildFingerprint` below already makes any two builds hash
+// differently, so a hand-bumped schema number on top carried no information.
 const APP_SOURCE_VERSION = '0.0.1';
 export const SIM_WASM_EXPECTED_VERSION = 'rts-sim-wasm 0.0.1';
 const BUILD_FINGERPRINT = __BA_BUILD_FINGERPRINT__;
 
 export type CanonicalMatchInitialization = {
-  readonly schema: typeof CANONICAL_MATCH_INITIALIZATION_SCHEMA;
   readonly lockstep: LockstepArchitectureConfig;
   readonly gameId: string;
   readonly roomCode: string;
@@ -188,7 +187,6 @@ export function buildCanonicalMatchInitialization({
     settings?.simulationTickRateHz,
   );
   return {
-    schema: CANONICAL_MATCH_INITIALIZATION_SCHEMA,
     lockstep: {
       ...ARCHITECTURE_CONFIG.lockstep,
       fixedStepHz: simulationTickRateHz,

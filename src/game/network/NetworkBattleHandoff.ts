@@ -1,6 +1,5 @@
 import { getDefaultPlayerName } from '@/playerNamesConfig';
 import {
-  BATTLE_HANDOFF_PROTOCOL,
   type BattleHandoff,
   type LobbySettings,
 } from '@/types/network';
@@ -86,7 +85,6 @@ export function buildBattleHandoff({
     gameGenerationSeed: createHostGameGenerationSeed(),
   });
   return {
-    protocol: BATTLE_HANDOFF_PROTOCOL,
     gameId,
     roomCode,
     initialization,
@@ -102,9 +100,6 @@ export function normalizeBattleHandoffMessage(
   message: BattleHandoffMessage,
 ): BattleHandoff {
   const handoff = message.handoff;
-  if (handoff.protocol !== BATTLE_HANDOFF_PROTOCOL) {
-    throw new Error(`Unsupported battle handoff protocol: ${String(handoff.protocol)}`);
-  }
   if (handoff.gameId !== message.gameId) {
     throw new Error(`Battle handoff game mismatch: message=${message.gameId}, handoff=${handoff.gameId}`);
   }

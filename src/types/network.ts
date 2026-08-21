@@ -242,8 +242,6 @@ import type {
   TerrainTileMap,
 } from './terrain';
 
-export const BATTLE_HANDOFF_PROTOCOL = 'ba-battle-handoff-v2' as const;
-
 /**
  * One CONNECTION to a lobby or match.
  *
@@ -379,20 +377,15 @@ export type NetworkCommunicationChatEvent = {
 
 export type NetworkCommunicationEvent = NetworkCommunicationChatEvent;
 
-// v5: the periodic checksum went LIGHT (composed root hash, no entityHashes
-// on the wire). Hash values changed, so a v4 build meeting a v5 build would
-// read as a phantom desync — refused at the door instead.
-// v6: bot seats — rosterUpdate carries botSeats, seats carry initialState,
-// and the canonical initialization hashes both axes (match-init v13).
-// v7: `returnToLobby` — the host can end a battle back into the seating
-// screen for a rematch. A v6 client would stay in a battle its host has
-// already left, so the builds are refused at the door instead.
-export const LOCKSTEP_PROTOCOL_VERSION = 'budget-annihilation.lockstep.v7' as const;
-type LockstepProtocolVersion = typeof LOCKSTEP_PROTOCOL_VERSION;
-
+// There is deliberately NO protocol version here. One build, everywhere:
+// the frontends a session connects always agree because they are the same
+// deployed bundle, and the backend is always current — see "One build,
+// everywhere" in budget_design_philosophy.html. The hashed initialization
+// already carries the automatic build fingerprint, so two builds that
+// somehow met could never lockstep anyway; a maintained version tag on top
+// of that was ceremony.
 export type LockstepProtocolBase = {
   gameId: string | undefined;
-  protocolVersion: LockstepProtocolVersion;
 };
 
 export type LockstepPeerSequenceAck = {
@@ -698,8 +691,6 @@ export type NetworkMessage =
     };
 
 export type SessionRefusalReason =
-  /** The peer speaks a different protocol version. One build, one contract. */
-  | 'protocol-mismatch'
   /** No room left on the bench. */
   | 'session-full'
   /** The session is over, or was never open. */
@@ -1416,7 +1407,6 @@ export type LobbyPlayer = {
 };
 
 export type BattleHandoff = {
-  protocol: typeof BATTLE_HANDOFF_PROTOCOL;
   gameId: string;
   roomCode: string;
   initialization: CanonicalMatchInitialization;

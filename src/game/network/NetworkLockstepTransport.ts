@@ -17,7 +17,7 @@ import type {
   NetworkLockstepMessage,
   NetworkMessage,
 } from './NetworkTypes';
-import { isNetworkLockstepMessage, LOCKSTEP_PROTOCOL_VERSION } from './NetworkTypes';
+import { isNetworkLockstepMessage } from './NetworkTypes';
 import type { CanonicalServerStateHash } from '../architecture/CanonicalStateHash';
 
 const OUTBOUND_COMMAND_FRAME_RETAIN_AFTER_ACK = 900;
@@ -299,7 +299,7 @@ export class NetworkLockstepTransport {
    *  alone, and nobody else's business. */
   sendResumeGrant(
     targetMemberId: MemberId,
-    message: Omit<LockstepResumeGrantMessage, 'gameId' | 'protocolVersion' | 'type'>,
+    message: Omit<LockstepResumeGrantMessage, 'gameId' | 'type'>,
   ): boolean {
     const conn = this.options.getConnections().get(targetMemberId);
     if (conn === undefined) return false;
@@ -415,7 +415,6 @@ export class NetworkLockstepTransport {
   ): boolean {
     if (!isNetworkLockstepMessage(message)) return false;
     if (!this.options.isMessageForCurrentGame(message)) return true;
-    if (message.protocolVersion !== LOCKSTEP_PROTOCOL_VERSION) return true;
     if (!this.acceptInbound(message, fromPlayerId)) return true;
     this.options.onMessage(message, fromPlayerId);
     return true;
@@ -474,7 +473,6 @@ export class NetworkLockstepTransport {
   private base() {
     return {
       gameId: this.options.getGameId(),
-      protocolVersion: LOCKSTEP_PROTOCOL_VERSION,
     };
   }
 

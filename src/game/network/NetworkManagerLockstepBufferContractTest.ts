@@ -13,7 +13,6 @@ import type { PlayerId } from '../sim/types';
 import { NetworkManager } from './NetworkManager';
 import { HOST_MEMBER_ID } from './NetworkLobbyMembers';
 import {
-  LOCKSTEP_PROTOCOL_VERSION,
   type NetworkLockstepMessage,
   type NetworkMessage,
 } from './NetworkTypes';
@@ -36,7 +35,6 @@ export function runNetworkManagerLockstepBufferContractTest(): void {
   };
   const readyMessage: NetworkLockstepMessage = {
     gameId: undefined,
-    protocolVersion: LOCKSTEP_PROTOCOL_VERSION,
     type: 'lockstepReady',
     playerId: 1 as PlayerId,
     readyFrame: 0,

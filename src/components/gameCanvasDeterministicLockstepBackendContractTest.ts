@@ -11,8 +11,6 @@ import {
 import type { NetworkManager } from '../game/network/NetworkManager';
 import type { NetworkLockstepTransportDiagnostics } from '../game/network/NetworkLockstepTransport';
 import {
-  BATTLE_HANDOFF_PROTOCOL,
-  LOCKSTEP_PROTOCOL_VERSION,
   type BattleHandoff,
   type LockstepCommandFrameBatchFrame,
   type LockstepCommandFrameMessage,
@@ -334,7 +332,6 @@ function createBattleHandoff(
     settings,
   });
   return {
-    protocol: BATTLE_HANDOFF_PROTOCOL,
     gameId: 'contract-game',
     roomCode: 'CONTRACT',
     initialization,
@@ -772,7 +769,6 @@ class FakeLockstepTransport {
   private base() {
     return {
       gameId: 'contract-game',
-      protocolVersion: LOCKSTEP_PROTOCOL_VERSION,
     };
   }
 }

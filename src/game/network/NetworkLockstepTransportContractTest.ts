@@ -3,7 +3,6 @@ import type { LockstepCommandEnvelope } from '../architecture/LockstepCommandPro
 import type { MoveCommand } from '../sim/commands';
 import type { PlayerId } from '../sim/types';
 import {
-  LOCKSTEP_PROTOCOL_VERSION,
   type LockstepCommandFrameMessage,
   type NetworkLockstepMessage,
   type NetworkMessage,
@@ -55,9 +54,8 @@ export function runNetworkLockstepTransportContractTest(): void {
   assertContract(transport.sendHello('init-hash', 0), 'hello must broadcast from the host/coordinator');
   const hello = sent[0]?.message;
   assertContract(
-    hello?.type === 'lockstepHello' &&
-      hello.protocolVersion === LOCKSTEP_PROTOCOL_VERSION,
-    'handshake must include the lockstep protocol version',
+    hello?.type === 'lockstepHello',
+    'the handshake hello must broadcast as a lockstep message',
   );
   sent.length = 0;
 
@@ -273,7 +271,6 @@ export function runNetworkLockstepTransportContractTest(): void {
 function baseMessage() {
   return {
     gameId: 'contract-game',
-    protocolVersion: LOCKSTEP_PROTOCOL_VERSION,
   };
 }
 

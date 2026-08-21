@@ -512,7 +512,7 @@
       <ul class="rule-list">
         <li>LIGHT and FULL agree byte-for-byte on <code>hash</code> and <code>sections</code>, so a full hash can always be compared against a light one. Only the diagnostic payload is mode-dependent, and every reader of it already tolerates absence.</li>
         <li>The periodic checksum, the late-join verify gate, checkpoints, and the replay harness all run LIGHT. Desync reports, initialization-mismatch broadcasts, and diagnostics exports run FULL. There is no runtime mode toggle — the split is structural, so peers cannot disagree about it.</li>
-        <li>Changing what a hash covers changes its value, which between mixed builds would surface as a phantom desync minutes in. Any such change bumps <code>LOCKSTEP_PROTOCOL_VERSION</code>, so mismatched builds are refused at the door with a message that says to update.</li>
+        <li>Changing what a hash covers changes its value, and that needs no version dance: one build, everywhere (see &ldquo;One build, everywhere &mdash; no protocol versioning&rdquo;). The hashed initialization carries the automatic build fingerprint, so a mixed-build pairing is refused at match start rather than surfacing as a phantom desync minutes in.</li>
       </ul>
 
       <h3>Agent type and initial state are two seat axes</h3>
@@ -4857,6 +4857,34 @@
         accepted because an earlier release once emitted it. Git history is the only archive. This
         prohibition applies to every layer of the project, including networking, save/state data,
         configuration, simulation APIs, rendering inputs, tools, and authored content.
+      </p>
+
+      <h3>One build, everywhere &mdash; no protocol versioning</h3>
+      <p>
+        The no-legacy rule has a stronger corollary that we now state as an explicit assumption:
+        <strong>every frontend in a session is the same build, and the backend is always
+        current.</strong> The game is served from one origin as one bundle; the peers a session
+        connects are, by construction, running identical code, and the one backend we operate is
+        deployed alongside it. We therefore maintain <strong>no protocol version numbers, no
+        version handshakes, and no version-mismatch refusals anywhere</strong> &mdash; not on the
+        lockstep messages, not in the connection metadata, not on the battle handoff, not as a
+        schema tag inside the hashed match initialization. Versioning is compatibility machinery,
+        and compatibility between builds is a problem we have declared out of scope: there is
+        never a second build to be compatible with.
+      </p>
+      <p>
+        This is not a leap of faith &mdash; the system already enforces the assumption at a deeper
+        layer for the one case that matters. The canonical match initialization hashes the
+        <em>automatic build fingerprint</em>, so if two different builds ever did meet (a tab left
+        open across a deploy), their initialization hashes differ and the lockstep hello/ready
+        exchange refuses the match at frame 0. That guard is free: it is derived from the build
+        itself, requires no discipline, and can never be forgotten. Every hand-bumped version
+        string we used to maintain on top of it (<code>lockstep.v7</code>,
+        <code>match-init.v13</code>, <code>ba-battle-handoff-v2</code>) carried no additional
+        information and demanded a human remember to bump it &mdash; so they are gone. What remains
+        are self-identification tags on <em>saved artifacts</em> (replay files, checkpoints,
+        desync reports) and shape discriminators on packed wire sections, which name what a blob
+        <em>is</em>, not which build wrote it.
       </p>
 
       <h3>One language per behavior</h3>

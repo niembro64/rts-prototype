@@ -46,7 +46,6 @@ export type {
   GamePhase,
 } from '@/types/network';
 
-export { BATTLE_HANDOFF_PROTOCOL, LOCKSTEP_PROTOCOL_VERSION } from '@/types/network';
 
 // Single source of truth for which message types are lockstep traffic.
 // Both the lockstep transport (routing) and the send budget

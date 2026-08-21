@@ -62,7 +62,6 @@ import type {
   NetworkMessage,
   NetworkRole,
 } from './NetworkTypes';
-import { LOCKSTEP_PROTOCOL_VERSION } from './NetworkTypes';
 import {
   buildBattleHandoff,
   normalizeBattleHandoffMessage,
@@ -296,13 +295,11 @@ function shiftQueuedLockstepMessage(queue: QueuedLockstepMessage[]): QueuedLocks
  * What a connecting peer says about itself, carried on the connection itself.
  *
  * PeerJS delivers `metadata` with the connection, which is the only channel
- * that arrives before the host has to decide anything — and the host must know
- * the protocol version, and whether a seat is being reclaimed, at exactly that
- * moment. Read defensively: this is the one payload that has not been through
- * any version check yet.
+ * that arrives before the host has to decide anything — and the host must
+ * know whether a seat is being reclaimed at exactly that moment. Read
+ * defensively: this payload comes straight off the wire.
  */
 type ConnectionMetadata = {
-  readonly protocolVersion: string | undefined;
   readonly seatToken: SeatToken | undefined;
 };
 
@@ -338,12 +335,10 @@ function writeStoredSeatToken(token: SeatToken | undefined): void {
 
 function readConnectionMetadata(raw: unknown): ConnectionMetadata {
   if (typeof raw !== 'object' || raw === null) {
-    return { protocolVersion: undefined, seatToken: undefined };
+    return { seatToken: undefined };
   }
   const value = raw as Record<string, unknown>;
   return {
-    protocolVersion:
-      typeof value.protocolVersion === 'string' ? value.protocolVersion : undefined,
     seatToken:
       typeof value.seatToken === 'string' && value.seatToken.length > 0
         ? value.seatToken
@@ -1193,7 +1188,6 @@ export class NetworkManager {
         const conn = peer.connect(this.getUniversalGameId(), {
           reliable: true,
           metadata: {
-            protocolVersion: LOCKSTEP_PROTOCOL_VERSION,
             seatToken: this.localSeatToken,
           },
         });
@@ -1301,19 +1295,11 @@ export class NetworkManager {
       return;
     }
 
+    // No protocol-version handshake — one build, everywhere (see
+    // budget_design_philosophy.html). A build that somehow differed could
+    // not lockstep anyway: the hashed initialization carries the build
+    // fingerprint, so the hello/ready exchange refuses it at match start.
     const metadata = readConnectionMetadata(conn.metadata);
-    if (metadata.protocolVersion !== LOCKSTEP_PROTOCOL_VERSION) {
-      // One build, one contract. A version mismatch is refused at the door
-      // rather than half-working — see "No legacy fallbacks". Saying so is
-      // the difference between "update your game" and an evening spent
-      // blaming the network.
-      this.refuseConnection(
-        conn,
-        'protocol-mismatch',
-        'That build speaks a different version of this game. Reload to update.',
-      );
-      return;
-    }
 
     // Tokens reclaim only while the match RUNS. In the lobby the host is the
     // only seater, so a token from the last match cannot silently take a
