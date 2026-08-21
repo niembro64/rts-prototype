@@ -636,7 +636,9 @@ const BAR_GROUP_ICON_BY_UNIT_BLUEPRINT_ID: Readonly<Record<string, BarGroupIconI
 };
 
 function barGroupIconSrc(groupId: BarGroupIconId): string {
-  return publicAssetSrc(`assets/bar/groupicons/${groupId}.png`);
+  // In-house glyphs. BAR's own groupicons are all-rights-reserved and must
+  // never ship here — the provenance audit in the build gate enforces that.
+  return publicAssetSrc(`assets/ui/groupicons/${groupId}.svg`);
 }
 
 function buildingGroupIconSrc(buildingBlueprintId: StructureBlueprintId): string | null {

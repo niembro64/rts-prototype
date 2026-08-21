@@ -22,11 +22,17 @@ Two kinds of hit are reported:
 
 ``identical``
     Same content hash as a BAR file. This is BAR content and always fails.
+    ``--remove`` deletes these instead of only reporting them — identity by
+    hash is unambiguous, so removal needs no human judgment.
 
 ``name``
     Same filename as a BAR file but different content. Usually a coincidence on
     a generic name, so it fails only until the path is acknowledged in
-    ``scripts/bar_asset_allowlist.json`` with a reason.
+    ``scripts/bar_asset_allowlist.json`` with a reason. Never auto-removed.
+
+The sweep walks the FILESYSTEM, not ``git ls-files``: an untracked asset ships
+exactly as well as a tracked one, and build output (``dist/``) is what a web
+host actually serves, so both are audited.
 
 This file is kept byte-identical in ``annihilation-plus-plus`` and
 ``rts-prototype`` so a single fix lands in both projects.
@@ -38,6 +44,7 @@ import argparse
 import gzip
 import hashlib
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -60,12 +67,14 @@ ASSET_SUFFIXES = {
     ".obj", ".fbx", ".dae", ".blend", ".glb", ".gltf", ".s3o", ".3do", ".atlas",
 }
 
-# Directories that never hold shipped source assets: dependency trees, build
-# output, and generated capture galleries.
+# Directories that never hold shipped assets: dependency trees, tooling state,
+# and intermediate compilation output. ``dist`` is deliberately NOT here — it
+# is the tree a web host serves, so BAR content hiding in it is precisely a
+# shipping violation.
 EXCLUDED_DIR_NAMES = {
     ".git",
+    ".claude",
     "node_modules",
-    "dist",
     "release-output",
     "Testing",
     "CMakeFiles",
@@ -90,29 +99,33 @@ def is_asset(relative: str) -> bool:
     return Path(relative).suffix.lower() in ASSET_SUFFIXES
 
 
-def tracked_files(root: Path) -> list[str]:
-    """List git-tracked files, falling back to a filesystem walk."""
-    try:
-        completed = subprocess.run(
-            ["git", "-C", str(root), "ls-files", "-z"],
-            check=True,
-            capture_output=True,
-        )
-        names = completed.stdout.decode("utf-8", "surrogateescape").split("\0")
-        return [name for name in names if name]
-    except (OSError, subprocess.CalledProcessError):
-        return [
-            path.relative_to(root).as_posix()
-            for path in root.rglob("*")
-            if path.is_file()
+def candidate_files(root: Path) -> list[str]:
+    """Walk the filesystem, pruning excluded directories as we go.
+
+    Deliberately NOT ``git ls-files``: an untracked asset ships exactly as
+    well as a tracked one, and the old git-only walk is how sixteen BAR icons
+    sat in ``public/`` unflagged while their ``dist/`` copies were served to
+    the web.
+    """
+    out: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [
+            name
+            for name in dirnames
+            if name not in EXCLUDED_DIR_NAMES
+            and not name.startswith(EXCLUDED_DIR_PREFIXES)
         ]
+        relative_dir = Path(dirpath).relative_to(root)
+        for name in filenames:
+            out.append((relative_dir / name).as_posix())
+    return out
 
 
 def asset_paths(root: Path) -> list[str]:
     """List repo-relative asset paths worth auditing, in stable order."""
     return sorted(
         relative
-        for relative in tracked_files(root)
+        for relative in candidate_files(root)
         if is_asset(relative)
         and not is_excluded(relative)
         and (root / relative).is_file()
@@ -262,6 +275,13 @@ def main() -> int:
         help="Rewrite the checked-in index from --bar-root and exit. Defaults "
         "to the ../Beyond-All-Reason sibling checkout.",
     )
+    parser.add_argument(
+        "--remove",
+        action="store_true",
+        help="Delete byte-identical offenders instead of failing on them. "
+        "Hash identity is unambiguous BAR content; name collisions are still "
+        "only reported, because judging those needs a human.",
+    )
     args = parser.parse_args()
 
     repo_root = args.repo_root.resolve()
@@ -298,6 +318,12 @@ def main() -> int:
 
     allowlist = read_allowlist(allowlist_path)
     identical, unacknowledged, acknowledged, checked = audit(repo_root, index, allowlist)
+
+    if args.remove and identical:
+        for relative, bar_match in identical:
+            (repo_root / relative).unlink()
+            print(f"BAR asset provenance audit removed {relative} (identical to BAR {bar_match}).")
+        identical = []
 
     if identical or unacknowledged:
         print("BAR asset provenance audit failed:")

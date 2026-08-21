@@ -31,10 +31,10 @@ type BarBuildCategory = {
 };
 
 export const BAR_BUILD_CATEGORIES: readonly BarBuildCategory[] = [
-  { id: 'Economy', sourceCategory: 'Economy', label: 'Economy', description: 'Show economy structures', iconPath: 'assets/bar/groupicons/energy.png', keyCommandId: 'build.slot1' },
-  { id: 'Combat', sourceCategory: 'Defense', label: 'Combat', description: 'Show combat and defensive structures', iconPath: 'assets/bar/groupicons/weapon.png', keyCommandId: 'build.slot2' },
-  { id: 'Utility', sourceCategory: 'Intel', label: 'Utility', description: 'Show utility structures', iconPath: 'assets/bar/groupicons/util.png', keyCommandId: 'build.slot3' },
-  { id: 'Production', sourceCategory: 'Production', label: 'Build', description: 'Show production structures', iconPath: 'assets/bar/groupicons/builder.png', keyCommandId: 'build.slot4' },
+  { id: 'Economy', sourceCategory: 'Economy', label: 'Economy', description: 'Show economy structures', iconPath: 'assets/ui/groupicons/energy.svg', keyCommandId: 'build.slot1' },
+  { id: 'Combat', sourceCategory: 'Defense', label: 'Combat', description: 'Show combat and defensive structures', iconPath: 'assets/ui/groupicons/weapon.svg', keyCommandId: 'build.slot2' },
+  { id: 'Utility', sourceCategory: 'Intel', label: 'Utility', description: 'Show utility structures', iconPath: 'assets/ui/groupicons/util.svg', keyCommandId: 'build.slot3' },
+  { id: 'Production', sourceCategory: 'Production', label: 'Build', description: 'Show production structures', iconPath: 'assets/ui/groupicons/builder.svg', keyCommandId: 'build.slot4' },
 ];
 
 export type BuildMenuLayoutItem = {

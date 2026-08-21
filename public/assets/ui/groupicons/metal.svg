@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Original glyph drawn for this project. Ingot stack = metal. -->
+  <g fill="#ffffff">
+    <polygon points="20,10 44,10 50,24 14,24"/>
+    <polygon points="12,28 34,28 40,42 6,42"/>
+    <polygon points="30,46 52,46 58,60 24,60"/>
+  </g>
+</svg>
