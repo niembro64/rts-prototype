@@ -1333,7 +1333,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           audioEventScratchStride: 20,
           deathContextScratchPtr: snapshot_encode_death_context_scratch_ptr,
           deathContextScratchEnsure: snapshot_encode_death_context_scratch_ensure,
-          deathContextScratchStride: 16,
+          deathContextScratchStride: 17,
           turretPoseScratchPtr: snapshot_encode_turret_pose_scratch_ptr,
           turretPoseScratchEnsure: snapshot_encode_turret_pose_scratch_ensure,
           turretPoseScratchStride: 2,

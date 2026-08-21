@@ -1560,6 +1560,7 @@ function packPackedDeathContextsIntoScratch(
       : 0;
     const turretPoses = context.turretPoses;
     view[base + 15] = turretPoses !== undefined ? turretPoses.length : 0;
+    view[base + 16] = context.explosionDamage ?? 0;
 
     if (turretPoses !== undefined && poseView !== undefined) {
       for (let p = 0; p < turretPoses.length; p++) {

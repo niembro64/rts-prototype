@@ -806,6 +806,7 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
             let unit_type_slot = death_scratch.buf[db + 13] as u32;
             let turret_pose_count = death_scratch.buf[db + 14] as usize;
             let dflags = death_scratch.buf[db + 15] as u32;
+            let explosion_damage = death_scratch.buf[db + 16];
 
             let has_visual_radius = (dflags & 0x01) != 0;
             let has_collision_radius = (dflags & 0x02) != 0;
@@ -813,6 +814,7 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
             let has_unit_type = (dflags & 0x08) != 0;
             let has_rotation = (dflags & 0x10) != 0;
             let has_turret_poses = (dflags & 0x20) != 0;
+            let has_explosion_damage = (dflags & 0x40) != 0;
 
             // Field count: 6 always (unitVel, hitDir, projectileVel,
             // attackMagnitude, radius, color) + optionals.
@@ -833,6 +835,9 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
                 dc_field_count += 1;
             }
             if has_turret_poses {
+                dc_field_count += 1;
+            }
+            if has_explosion_damage {
                 dc_field_count += 1;
             }
 
@@ -901,6 +906,10 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
                     w.write_number(pitch);
                 }
                 pose_offset += turret_pose_count;
+            }
+            if has_explosion_damage {
+                w.write_str("explosionDamage");
+                w.write_number(explosion_damage);
             }
             death_offset += 1;
         }
@@ -1151,6 +1160,9 @@ pub fn snapshot_encode_envelope_emit_packed_audio_events(
             if (flags & 0x20) != 0 {
                 row_len += 1;
             }
+            if (flags & 0x40) != 0 {
+                row_len += 1;
+            }
 
             w.write_array_header(row_len);
             w.write_number(flags as f64);
@@ -1174,6 +1186,11 @@ pub fn snapshot_encode_envelope_emit_packed_audio_events(
             }
             if (flags & 0x20) != 0 {
                 w.write_number(death_scratch.buf[base + 15]);
+            }
+            // explosionDamage rides after the turret-pose count, matching
+            // appendDeathContextRow / unpackDeathContextRow field order.
+            if (flags & 0x40) != 0 {
+                w.write_number(death_scratch.buf[base + 16]);
             }
         }
     }

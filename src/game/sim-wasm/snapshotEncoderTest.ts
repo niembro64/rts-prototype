@@ -1635,6 +1635,7 @@ type DeathContextFixture = {
   unitBlueprintId?: string;
   rotation?: number;
   turretPoses?: Array<{ rotation: number; pitch: number }>;
+  explosionDamage?: number;
 };
 type ImpactContextFixture = {
   radiusCollision: number;
@@ -1667,7 +1668,7 @@ type AudioEventFixture = {
   waterSplash?: WaterSplashContextFixture;
 };
 
-const DEATH_CONTEXT_STRIDE = 16;
+const DEATH_CONTEXT_STRIDE = 17;
 const TURRET_POSE_STRIDE = 2;
 const IMPACT_CONTEXT_STRIDE = 11;
 
@@ -1717,7 +1718,9 @@ function packDeathContextsIntoScratch(
     if (dc.unitBlueprintId !== undefined) flags |= 0x08;
     if (dc.rotation !== undefined) flags |= 0x10;
     if (dc.turretPoses !== undefined) flags |= 0x20;
+    if (dc.explosionDamage !== undefined) flags |= 0x40;
     view[base + 15] = flags;
+    view[base + 16] = dc.explosionDamage ?? 0;
 
     if (dc.turretPoses && poseView) {
       for (let p = 0; p < dc.turretPoses.length; p++) {
@@ -2612,6 +2615,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
             { rotation: 0.5, pitch: 0.2 },
             { rotation: -0.3, pitch: 0 },
           ],
+          explosionDamage: 700,
         },
         killerPlayerId: 2,
       }],

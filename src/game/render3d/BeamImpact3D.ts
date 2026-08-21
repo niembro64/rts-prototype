@@ -49,6 +49,10 @@ export type DamageImpactRequest = {
   z: number;
   /** Exact authoritative damage/splash sphere radius. */
   damageRadius: number;
+  /** Damage the detonation deals (blueprint truth). Drives the one-shot
+   *  particle COUNT; when absent the count falls back to a radius-derived
+   *  estimate. Particle SPEED rides `damageRadius` either way. */
+  damage?: number;
   /** Incoming shot direction or momentum in simulation XYZ coordinates. */
   incomingX?: number;
   incomingY?: number;
@@ -710,9 +714,20 @@ export class DamageImpact3D {
       }
 
       const detailScale = Math.max(0, Math.min(1, impact.detailScale ?? 1));
+      // Particle count is proportional to the DAMAGE the blast deals, not
+      // its size — a commander's 700-damage farewell throws far more matter
+      // than a scout's 60. Calibrated so typical small blasts keep roughly
+      // their old density; MAX_EJECTA_BIRTHS_PER_UPDATE still caps the
+      // colossal ones. Radius-derived fallback covers events that carry no
+      // damage (beam rays, legacy contexts).
+      const impactDamage = impact.damage;
       const requestedBirths = Math.max(
         1,
-        Math.round((5 + Math.sqrt(damageRadius) * 2.4) * detailScale),
+        Math.round(
+          (impactDamage !== undefined && Number.isFinite(impactDamage) && impactDamage > 0
+            ? 4 + impactDamage * 0.15
+            : 5 + Math.sqrt(damageRadius) * 2.4) * detailScale,
+        ),
       );
       const availableBirths = Math.max(
         0,
@@ -875,9 +890,16 @@ export class DamageImpact3D {
     const sizeClass = sizeRoll < 0.48 ? 0 : sizeRoll < 0.83 ? 1 : 2;
     const sizeScale = EJECTA_SIZE_SCALE[sizeClass];
     const speedScale = EJECTA_SPEED_SCALE[sizeClass];
+    // Particle speed is proportional to the blast's own damage radius:
+    // matter from a bigger explosion flies faster and farther, so the
+    // debris cloud reads at the scale of the sphere that got hurt. The
+    // coefficients reproduce the previous hand-tuned constants exactly at
+    // the reference radius (40); the clamp keeps beam pinpricks visible
+    // and colossal blasts drawable.
+    const speedRadius = Math.min(200, Math.max(8, site.damageRadius > 0 ? site.damageRadius : 40));
     const baseSpeed = site.kind === 'water'
-      ? 8 + 16 * r3
-      : 32 + 72 * r3;
+      ? (0.2 + 0.4 * r3) * speedRadius
+      : (0.8 + 1.8 * r3) * speedRadius;
     const speed = baseSpeed * speedScale;
     let vx: number;
     let vy: number;

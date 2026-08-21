@@ -18,6 +18,7 @@ import {
   AUDIO_EVENT_TYPES_BY_CODE,
   DEATH_HAS_BASE_Z,
   DEATH_HAS_COLLISION_RADIUS,
+  DEATH_HAS_EXPLOSION_DAMAGE,
   DEATH_HAS_ROTATION,
   DEATH_HAS_TURRET_POSES,
   DEATH_HAS_UNIT_TYPE,
@@ -287,6 +288,7 @@ function appendDeathContextSourceRows(source: AudioEventWireSource): void {
     if ((flags & DEATH_HAS_UNIT_TYPE) !== 0) row.push(values[base + 13] ?? 0);
     if ((flags & DEATH_HAS_ROTATION) !== 0) row.push(values[base + 14] ?? 0);
     if ((flags & DEATH_HAS_TURRET_POSES) !== 0) row.push(values[base + 15] ?? 0);
+    if ((flags & DEATH_HAS_EXPLOSION_DAMAGE) !== 0) row.push(values[base + 16] ?? 0);
     _packDeathRows.push(row);
   }
 }
@@ -442,6 +444,7 @@ function appendDeathContextRow(
       turretPoseRows.push(poseRow);
     }
   }
+  if (context.explosionDamage !== undefined) row.push(context.explosionDamage);
 
   deathRows.push(row);
 }
@@ -503,6 +506,9 @@ function unpackDeathContextRow(
     }
     context.turretPoses = poses;
     turretPoseOffset += count;
+  }
+  if ((flags & DEATH_HAS_EXPLOSION_DAMAGE) !== 0) {
+    context.explosionDamage = source[cursor++] ?? 0;
   }
 
   return {

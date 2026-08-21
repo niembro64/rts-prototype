@@ -1746,7 +1746,7 @@ snapshot_scratch_pool!(
     snapshot_encode_death_context_scratch_ensure,
     f64,
     0.0,
-    SNAPSHOT_ENCODE_DEATH_CONTEXT_STRIDE = 16,
+    SNAPSHOT_ENCODE_DEATH_CONTEXT_STRIDE = 17,
     init 4,
     ensure(count)
 );

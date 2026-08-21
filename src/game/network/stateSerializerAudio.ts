@@ -50,7 +50,7 @@ type PooledSimEvent = NetworkServerSnapshotSimEvent & {
 };
 
 export const AUDIO_EVENT_WIRE_STRIDE = 20;
-export const AUDIO_DEATH_CONTEXT_WIRE_STRIDE = 16;
+export const AUDIO_DEATH_CONTEXT_WIRE_STRIDE = 17;
 export const AUDIO_TURRET_POSE_WIRE_STRIDE = 2;
 export const AUDIO_IMPACT_CONTEXT_WIRE_STRIDE = 11;
 
@@ -191,6 +191,7 @@ function appendDeathContextWireRow(
   values[base + 14] = context.rotation !== undefined ? qRot(context.rotation) : 0;
   const turretPoses = context.turretPoses;
   values[base + 15] = turretPoses !== undefined ? turretPoses.length : 0;
+  values[base + 16] = context.explosionDamage ?? 0;
 
   if (turretPoses !== undefined) {
     for (let i = 0; i < turretPoses.length; i++) {

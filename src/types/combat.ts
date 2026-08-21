@@ -53,6 +53,11 @@ export type SimDeathContext = {
    *  Retained for wire compatibility and non-3D consumers. The 3D death
    *  disassembly now reuses the live turret/barrel render poses directly. */
   turretPoses?: Array<{ rotation: number; pitch: number }>;
+  /** The damage this entity's OWN death blast deals (blueprint
+   *  base.deathExplosion.damage). The fire-explosion particle COUNT is
+   *  proportional to it; the blast radius needs no field of its own because
+   *  it is `radius` × DEATH_EXPLOSION_HITBOX_RADIUS_MULT on both sides. */
+  explosionDamage?: number;
 };
 
 export type ShieldImpactContext = {

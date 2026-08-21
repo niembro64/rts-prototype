@@ -1,6 +1,7 @@
 import {
   DEATH_HAS_BASE_Z,
   DEATH_HAS_COLLISION_RADIUS,
+  DEATH_HAS_EXPLOSION_DAMAGE,
   DEATH_HAS_ROTATION,
   DEATH_HAS_TURRET_POSES,
   DEATH_HAS_UNIT_TYPE,
@@ -31,6 +32,7 @@ export function getDeathContextWireFlags(context: DeathContext): number {
   if (context.unitBlueprintId !== undefined) flags |= DEATH_HAS_UNIT_TYPE;
   if (context.rotation !== undefined) flags |= DEATH_HAS_ROTATION;
   if (context.turretPoses !== undefined) flags |= DEATH_HAS_TURRET_POSES;
+  if (context.explosionDamage !== undefined) flags |= DEATH_HAS_EXPLOSION_DAMAGE;
   return flags;
 }
 

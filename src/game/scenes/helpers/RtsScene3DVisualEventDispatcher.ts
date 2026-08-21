@@ -8,6 +8,9 @@ import type { WaterSplash3D } from '../../render3d/WaterSplash3D';
 import { explosionSpawnScaleForDetail } from '../../render3d/EntityDetailLevel3D';
 import { entityDeathBlastFromContext3D } from '../../render3d/EntityDeathDisassembly3D';
 import { finiteOr } from '../../math';
+import { DEATH_EXPLOSION_HITBOX_RADIUS_MULT } from '../../sim/blueprints/entityBaseLedger';
+import { getShotBlueprint } from '../../sim/blueprints/shots';
+import { isShotBlueprintId } from '@/types/blueprintIds';
 import { playSimEventAudio3D } from './RtsScene3DSimEventAudio';
 import {
   WATER_SURFACE_NORMAL_SIM,
@@ -41,6 +44,19 @@ const EFFECT_RADIUS_FALLBACKS = {
   hitImpact: 2,
   projectileExpireImpact: 8,
 } as const;
+
+/** The damage a shot's detonation deals, from its own blueprint. hit /
+ *  projectileExpire events carry the SHOT blueprint id as their audio key,
+ *  and every peer runs the same build with the same blueprints, so the
+ *  fire-explosion particle count needs nothing extra on the wire. */
+function shotExplosionDamageForEvent(
+  event: NetworkServerSnapshotSimEvent,
+): number | undefined {
+  const key = event.turretBlueprintId;
+  if (typeof key !== 'string' || !isShotBlueprintId(key)) return undefined;
+  const damage = getShotBlueprint(key).base.deathExplosion.damage;
+  return damage > 0 ? damage : undefined;
+}
 
 export function dispatchSimEvent3DVisual(
   event: NetworkServerSnapshotSimEvent,
@@ -96,6 +112,7 @@ export function dispatchSimEvent3DVisual(
       y: event.pos.y,
       z: event.pos.z,
       damageRadius: radius,
+      damage: shotExplosionDamageForEvent(event),
       incomingX: mx,
       incomingY: mz,
       incomingZ: 0,
@@ -152,6 +169,7 @@ export function dispatchSimEvent3DVisual(
       y: event.pos.y,
       z: event.pos.z,
       damageRadius: radius,
+      damage: shotExplosionDamageForEvent(event),
       incomingX: ctx ? finiteOr(ctx.projectile.vel.x, 0) : 0,
       incomingY: ctx ? finiteOr(ctx.projectile.vel.y, 0) : 0,
       incomingZ: 0,
@@ -201,7 +219,13 @@ export function dispatchSimEvent3DVisual(
       event.pos.z,
     )) return;
     const attackPush = Math.min(ctx.attackMagnitude * 2, 200);
-    const deathRadius = Math.max(ctx.radius, EFFECT_RADIUS_FALLBACKS.deathExplosionMin);
+    // The fire blast draws at the death explosion's DAMAGE sphere — the
+    // same derived radius the sim detonates (hitbox × the shared multiple)
+    // — so what the player sees burning is exactly what got hurt.
+    const deathRadius = Math.max(
+      ctx.radius * DEATH_EXPLOSION_HITBOX_RADIUS_MULT,
+      EFFECT_RADIUS_FALLBACKS.deathExplosionMin,
+    );
     const eventDetailLevel = context.positionVisualDetailLevel(
       event.pos.x,
       event.pos.y,
@@ -220,6 +244,7 @@ export function dispatchSimEvent3DVisual(
       y: event.pos.y,
       z: event.pos.z,
       damageRadius: deathRadius,
+      damage: ctx.explosionDamage,
       incomingX: mx,
       incomingY: mz,
       incomingZ: 0,

@@ -72,6 +72,9 @@ function sanitizeDeathContext(ctx: SimDeathContext3D): SimDeathContext3D {
       : COLORS.units.locomotion.drone.smoke.colorHex,
     rotation: ctx.rotation === undefined ? undefined : finiteOr(ctx.rotation, 0),
     turretPoses: sanitizeTurretPoses(ctx.turretPoses),
+    explosionDamage: ctx.explosionDamage === undefined
+      ? undefined
+      : finiteAtLeast(ctx.explosionDamage, 0, 0),
   };
 }
 

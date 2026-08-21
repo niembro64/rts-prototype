@@ -12,6 +12,7 @@ import type { DeathContext, DamageResult } from '../damage/types';
 import type { Projectile, ProjectileConfig } from '../types';
 import { getUnitSupportPointOffsetZ } from '../unitGeometry';
 import { isTurretBlueprintId, isUnitBlueprintId } from '../../../types/blueprintIds';
+import { getBuildingBlueprint, getUnitBlueprint } from '../blueprints';
 
 function eventAudioKey(
   sourceKey: string,
@@ -136,6 +137,12 @@ export function buildUnitDeathEvent(
       };
     }
   }
+  // The dying unit's OWN blast damage — the fire-explosion particle count
+  // rides it on the client. From the blueprint, same source the death
+  // explosion planner detonates from.
+  const explosionDamage = deathUnitType !== undefined
+    ? getUnitBlueprint(deathUnitType).base.deathExplosion.damage
+    : undefined;
   // ctx present → rich directional context from the killing blow.
   // ctx absent → synthesize a neutral one so the renderer still fires
   //   a material breakup (splash kills, DoT, cleanup-pass kills).
@@ -153,6 +160,7 @@ export function buildUnitDeathEvent(
         unitBlueprintId: deathUnitType,
         rotation,
         turretPoses,
+        explosionDamage,
       }
     : {
         unitVel,
@@ -167,6 +175,7 @@ export function buildUnitDeathEvent(
         unitBlueprintId: deathUnitType,
         rotation,
         turretPoses,
+        explosionDamage,
       };
   return {
     type: 'death',
@@ -217,6 +226,10 @@ export function buildBuildingDeathEvent(
   const deathX = buildingPhysicsBody !== null ? buildingPhysicsBody.x : (buildingTransform !== null ? buildingTransform.x : 0);
   const deathY = buildingPhysicsBody !== null ? buildingPhysicsBody.y : (buildingTransform !== null ? buildingTransform.y : 0);
   const deathZ = buildingPhysicsBody !== null ? buildingPhysicsBody.z : (buildingTransform !== null ? buildingTransform.z : 0);
+  const buildingBlueprintId = building !== undefined ? building.buildingBlueprintId : null;
+  const explosionDamage = buildingBlueprintId !== null && buildingBlueprintId !== undefined
+    ? getBuildingBlueprint(buildingBlueprintId).base.deathExplosion.damage
+    : undefined;
   return {
     type: 'death',
     turretBlueprintId: eventAudioKey(sourceKey, sourceType),
@@ -238,6 +251,7 @@ export function buildBuildingDeathEvent(
       collisionRadius: buildingComponent !== null ? buildingComponent.depth : footprintRadius,
       baseZ,
       color: playerColor,
+      explosionDamage,
     },
     killerPlayerId,
   };

@@ -18,6 +18,7 @@ import type { WaterSplash3D } from '../../render3d/WaterSplash3D';
 import type { ClientViewState } from '../../network/ClientViewState';
 import type { ViewportFootprint } from '../../ViewportFootprint';
 import { dispatchSimEvent3DVisual } from './RtsScene3DVisualEventDispatcher';
+import { DEATH_EXPLOSION_HITBOX_RADIUS_MULT } from '../../sim/blueprints/entityBaseLedger';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[damage impact routing contract] ${message}`);
@@ -100,10 +101,10 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
     'entity death must enter the consolidated fire-blast pipeline explicitly',
   );
   assertContract(
-    impacts[2].damageRadius === 18 &&
+    impacts[2].damageRadius === 18 * DEATH_EXPLOSION_HITBOX_RADIUS_MULT &&
       impacts[2].incomingX === 40 &&
       impacts[2].incomingY === -20,
-    'death fire must retain the entity radius and killing-blow momentum',
+    'death fire must burn at the derived death-blast sphere (hitbox × the shared multiple) with killing-blow momentum',
   );
   assertContract(
     killed.length === 1 && killed[0].id === 73 && killed[0].blast !== undefined,

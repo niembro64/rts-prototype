@@ -19,6 +19,7 @@ export const DEATH_HAS_BASE_Z = 0x04;
 export const DEATH_HAS_UNIT_TYPE = 0x08;
 export const DEATH_HAS_ROTATION = 0x10;
 export const DEATH_HAS_TURRET_POSES = 0x20;
+export const DEATH_HAS_EXPLOSION_DAMAGE = 0x40;
 
 export const AUDIO_EVENT_TYPE_CODES: Record<NetworkServerSnapshotSimEvent['type'], number> = {
   fire: 0,
