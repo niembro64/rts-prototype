@@ -1,3 +1,5 @@
 1. The "type" icons we have for each build item look good but let's also add the "color" to the icons as well. So like we have the high level type which has a default icon and color, but then we could have a different icon for a sub type (like metal has a different icon but same color because it is economy. "solar" would still just have the general icon and the "economy" color). Also make sure the icons are fitting in the area that they are being applied to, some of those icons are currently spilling out of their region. 
 
 2. The "spectator" still seems to think he is "player 1", he has a bias to be able to select player 1 entities, even though he can't issue commands. Ensure that spectators are agnostic to players and teams. 
+
+3. Also in the deployed version of the game it seems that going back to the "setup / lobby" state breaks the simualtion as well as "leave" breaks the simulations. We need stronger finite state mechanisms implemented. 
