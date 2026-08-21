@@ -1269,7 +1269,7 @@ function createServerConfig(
     mapLengthLandCells: preset?.mapLengthLandCells ?? options.mapCells,
     backgroundMode: true,
     aiPlayerIds: PLAYER_IDS,
-    spawnDemoInitialState: true,
+    baseSeatPlayerIds: PLAYER_IDS,
     // entityCountCap IS the match total now, so --unit-cap passes straight
     // through: no seat-count division to keep in sync, which is the trap
     // that silently doubled then halved harness load twice before.

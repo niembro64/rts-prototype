@@ -260,8 +260,10 @@ export function createBootstrapSimulation(
 export type BootstrapSpawnRules = {
   backgroundAllowedUnitBlueprintIds: Set<string>;
   backgroundAllowedBuildingBlueprintIds: Set<string>;
+  /** Seats with AGENT TYPE 'bot' — see src/game/sim/agentSeat.ts. */
   aiPlayerIds: PlayerId[];
-  spawnDemoInitialState: boolean;
+  /** Seats with INITIAL STATE 'base'; everyone else spawns a commander. */
+  baseSeatPlayerIds: PlayerId[];
 };
 
 /** Phase 8 — resolve the spawn rules and apply the world-level overrides they
@@ -298,32 +300,52 @@ export function resolveBootstrapSpawnRules(
   }
   const aiPlayerIds =
     config.aiPlayerIds ?? (resolved.backgroundMode ? [...resolved.playerIds] : []);
-  // Only background/demo battles get full bases; real games, including
-  // offline games with AI players, start from commanders so their spawn
-  // layout matches hosted network games.
-  const spawnDemoInitialState =
-    resolved.backgroundMode &&
-    (config.spawnDemoInitialState ?? aiPlayerIds.length > 0);
+  // Initial state is a PER-SEAT axis (src/game/sim/agentSeat.ts). When the
+  // caller says nothing, the old defaults hold: the demo/background battle
+  // opens every seat with a full base, real games open every seat as a
+  // commander so their spawn layout matches hosted network games. Callers
+  // mix the axes explicitly — a lobby preview passes [] to stay
+  // commander-only, a skirmish may hand a base to any subset of seats.
+  const baseSeatPlayerIds =
+    config.baseSeatPlayerIds !== undefined
+      ? normalizeSeatSubset(config.baseSeatPlayerIds, resolved.playerIds)
+      : resolved.backgroundMode && aiPlayerIds.length > 0
+        ? [...resolved.playerIds]
+        : [];
   return {
     backgroundAllowedUnitBlueprintIds,
     backgroundAllowedBuildingBlueprintIds,
     aiPlayerIds,
-    spawnDemoInitialState,
+    baseSeatPlayerIds,
   };
 }
 
-/** Phase 9a — the demo/background base spawn. */
+/** A seat-axis subset is only meaningful over seats that exist; anything
+ *  else in it is a caller bug that would otherwise spawn a ghost base. */
+function normalizeSeatSubset(
+  subset: readonly PlayerId[],
+  playerIds: readonly PlayerId[],
+): PlayerId[] {
+  const seats = new Set(playerIds);
+  return subset.filter((playerId) => seats.has(playerId));
+}
+
+/** Phase 9a — the full-base spawn for every seat whose INITIAL STATE is
+ *  'base'. The base MODE (demo patrol loops and initially-off switches vs
+ *  the real battle's waypoint policy) follows the battle kind, not the
+ *  seat: a base seat in a real battle plays by real-battle rules. */
 export function spawnBootstrapDemoBases(
   world: WorldState,
   simulation: Simulation,
   playerIds: PlayerId[],
   rules: BootstrapSpawnRules,
+  backgroundMode: boolean,
 ): Entity[] {
   return spawnInitialBases(
     world,
     simulation.getConstructionSystem(),
     playerIds,
-    'demo',
+    backgroundMode ? 'demo' : 'real',
     rules.backgroundAllowedUnitBlueprintIds,
     rules.backgroundAllowedBuildingBlueprintIds,
   );
@@ -335,11 +357,13 @@ export function spawnBootstrapDemoExtractors(
   simulation: Simulation,
   playerIds: PlayerId[],
   rules: BootstrapSpawnRules,
+  ownerCandidatePlayerIds: readonly PlayerId[],
 ): Entity[] {
   return spawnMetalExtractorsOnDeposits(
     world,
     simulation.getConstructionSystem(),
     playerIds,
     rules.backgroundAllowedBuildingBlueprintIds,
+    ownerCandidatePlayerIds,
   );
 }

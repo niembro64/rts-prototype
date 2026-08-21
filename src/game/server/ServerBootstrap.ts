@@ -103,49 +103,48 @@ export class ServerBootstrap {
       const rules = resolveBootstrapSpawnRules(config, world, resolved);
       await report(0.72, 'Preparing spawn rules');
 
-      if (rules.spawnDemoInitialState) {
-        const entities = spawnBootstrapDemoBases(
-          world,
-          simulation,
-          resolved.playerIds,
-          rules,
+      // Initial state is per SEAT (src/game/sim/agentSeat.ts): 'base' seats
+      // get the authored full base, opening wave, and their deposits'
+      // extractors; every other seat gets a lone commander. The two mix in
+      // one roster.
+      const baseSeats = rules.baseSeatPlayerIds;
+      const commanderSeats = resolved.playerIds.filter(
+        (playerId) => !baseSeats.includes(playerId),
+      );
+      const entities: Entity[] = [];
+      if (baseSeats.length > 0) {
+        entities.push(
+          ...spawnBootstrapDemoBases(world, simulation, baseSeats, rules, resolved.backgroundMode),
         );
         await report(0.78, 'Spawning bases');
-
         entities.push(
-          ...spawnBootstrapDemoExtractors(world, simulation, resolved.playerIds, rules),
+          ...spawnBootstrapDemoExtractors(
+            world, simulation, baseSeats, rules, resolved.playerIds,
+          ),
         );
-        await report(0.82, 'Placing metal extractors');
-
-        await ServerBootstrap.createInitialPhysicsBodiesAsync(
-          world,
-          physics,
-          entities,
-          0.82,
-          0.88,
-          'Creating base physics',
-          report,
-        );
-
-        await report(0.9, 'Generating demo units');
+        await report(0.8, 'Placing metal extractors');
+      }
+      if (commanderSeats.length > 0) {
+        entities.push(...spawnInitialEntities(world, commanderSeats));
+        await report(0.82, 'Spawning commanders');
+      }
+      await ServerBootstrap.createInitialPhysicsBodiesAsync(
+        world,
+        physics,
+        entities,
+        0.82,
+        0.88,
+        'Creating spawn physics',
+        report,
+      );
+      if (baseSeats.length > 0) {
+        await report(0.9, 'Generating opening units');
         spawnBackgroundUnitsStandalone(
           world, physics, true,
           rules.backgroundAllowedUnitBlueprintIds,
-          resolved.playerIds,
+          baseSeats,
         );
-        await report(0.94, 'Demo units ready');
-      } else {
-        const entities = spawnInitialEntities(world, resolved.playerIds);
-        await report(0.82, 'Spawning commanders');
-        await ServerBootstrap.createInitialPhysicsBodiesAsync(
-          world,
-          physics,
-          entities,
-          0.82,
-          0.94,
-          'Creating unit physics',
-          report,
-        );
+        await report(0.94, 'Opening units ready');
       }
       simulation.setAiPlayerIds(rules.aiPlayerIds);
       await report(1, 'Starting AI players');
@@ -192,27 +191,34 @@ export class ServerBootstrap {
       );
       const rules = resolveBootstrapSpawnRules(config, world, resolved);
 
-      if (rules.spawnDemoInitialState) {
-        const entities = spawnBootstrapDemoBases(
-          world,
-          simulation,
-          resolved.playerIds,
-          rules,
+      // Mirror of the async variant above: initial state is per SEAT.
+      const baseSeats = rules.baseSeatPlayerIds;
+      const commanderSeats = resolved.playerIds.filter(
+        (playerId) => !baseSeats.includes(playerId),
+      );
+      const entities: Entity[] = [];
+      if (baseSeats.length > 0) {
+        entities.push(
+          ...spawnBootstrapDemoBases(world, simulation, baseSeats, rules, resolved.backgroundMode),
         );
         entities.push(
-          ...spawnBootstrapDemoExtractors(world, simulation, resolved.playerIds, rules),
+          ...spawnBootstrapDemoExtractors(
+            world, simulation, baseSeats, rules, resolved.playerIds,
+          ),
         );
-        ServerBootstrap.createInitialPhysicsBodies(world, physics, entities);
-
-        // Background mode: spawn a cluster of units near center for immediate combat
+      }
+      if (commanderSeats.length > 0) {
+        entities.push(...spawnInitialEntities(world, commanderSeats));
+      }
+      ServerBootstrap.createInitialPhysicsBodies(world, physics, entities);
+      if (baseSeats.length > 0) {
+        // Base seats open with a cluster of units near center for immediate
+        // combat, exactly as the demo always has.
         spawnBackgroundUnitsStandalone(
           world, physics, true,
           rules.backgroundAllowedUnitBlueprintIds,
-          resolved.playerIds,
+          baseSeats,
         );
-      } else {
-        const entities = spawnInitialEntities(world, resolved.playerIds);
-        ServerBootstrap.createInitialPhysicsBodies(world, physics, entities);
       }
       simulation.setAiPlayerIds(rules.aiPlayerIds);
 

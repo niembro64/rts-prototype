@@ -231,11 +231,17 @@ export type GameServerConfig = {
   metalCoverage?: MetalCoverage;
   liquidSurfaceMode?: LiquidSurfaceMode;
   backgroundMode?: boolean;
+  /** Seats whose AGENT TYPE is 'bot': driven by the deterministic in-sim
+   *  production policy instead of a connection. One of the two seat axes —
+   *  see src/game/sim/agentSeat.ts. */
   aiPlayerIds?: PlayerId[];
-  /** Background/demo battles can still use the rich prebuilt RTS
-   *  opening state even when no players are AI-controlled. Lobby
-   *  previews pass false so they stay commander-only. */
-  spawnDemoInitialState?: boolean;
+  /** Seats whose INITIAL STATE is 'base': the authored full base, opening
+   *  unit wave, and auto-extractors. Every other seat starts as a lone
+   *  commander. The other seat axis — the two mix freely (the demo is all
+   *  'base' seats with only the non-local ones being bots). Omitted: the
+   *  demo default (every seat, when the battle is background with bots),
+   *  or none for real battles. */
+  baseSeatPlayerIds?: PlayerId[];
   maxSnapshotsPerSec?: number;
   /** Restrict the demo battle's initial-unit spawn to this set of unit
    *  blueprint ids. When omitted the server falls back to "all background

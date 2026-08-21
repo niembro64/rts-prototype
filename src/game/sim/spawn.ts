@@ -560,7 +560,10 @@ export function spawnInitialEntities(world: WorldState, playerIds: PlayerId[] = 
   const entities: Entity[] = [];
   const normalizedPlayerIds = normalizePlayerIds(playerIds);
 
-  world.playerCount = normalizedPlayerIds.length;
+  // Raise, never lower: bootstrap may call this with a SUBSET of seats (the
+  // commander-start half of a mixed roster) after the world already knows
+  // the full count. Standalone callers on a fresh world still get it set.
+  world.playerCount = Math.max(world.playerCount, normalizedPlayerIds.length);
 
   for (const playerId of normalizedPlayerIds) {
     economyManager.initPlayer(playerId);
@@ -916,7 +919,9 @@ export function spawnInitialBases(
 
   const normalizedPlayerIds = normalizePlayerIds(playerIds);
 
-  world.playerCount = normalizedPlayerIds.length;
+  // Raise, never lower — bootstrap may pass only the 'base' seats of a
+  // mixed roster (see spawnInitialEntities for the same rule).
+  world.playerCount = Math.max(world.playerCount, normalizedPlayerIds.length);
 
   for (const playerId of normalizedPlayerIds) {
     economyManager.initPlayer(playerId);
@@ -1342,8 +1347,17 @@ export function spawnMetalExtractorsOnDeposits(
   construction: ConstructionSystem,
   playerIds: PlayerId[],
   availableBuildingBlueprintIds: ReadonlySet<string> | undefined = undefined,
+  // Deposit OWNERSHIP is decided over the whole roster; extractors only
+  // SPAWN for the seats in `playerIds` (the 'base' initial-state seats).
+  // Without the split, a mixed roster would let a base seat claim the
+  // deposits sitting in a commander seat's slice on the far side of the map.
+  ownerCandidatePlayerIds: readonly PlayerId[] = playerIds,
 ): Entity[] {
   if (playerIds.length === 0 || world.metalDeposits.length === 0) return [];
+  const spawnSeats = new Set(playerIds);
+  const ownerCandidates = ownerCandidatePlayerIds.length > 0
+    ? [...ownerCandidatePlayerIds]
+    : playerIds;
   const extractorBlueprintIds = getDemoExtractorBlueprintIds(
     availableBuildingBlueprintIds,
   );
@@ -1362,7 +1376,9 @@ export function spawnMetalExtractorsOnDeposits(
     // Rings authored with demoAutoExtractor: false start neutral — no
     // team gets a free extractor there (e.g. the exact-center deposit).
     if (deposit.demoAutoExtractor === false) continue;
-    const ownerId = ownerForDeposit(world, playerIds, deposit.x, deposit.y);
+    const ownerId = ownerForDeposit(world, ownerCandidates, deposit.x, deposit.y);
+    // The rightful owner is a commander-start seat: its deposits stay bare.
+    if (!spawnSeats.has(ownerId)) continue;
     const ownerExtractorIndex = extractorCountByOwner.get(ownerId) ?? 0;
     const extractorBlueprintId =
       extractorBlueprintIds[ownerExtractorIndex % extractorBlueprintIds.length];
