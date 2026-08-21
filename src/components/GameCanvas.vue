@@ -1331,12 +1331,40 @@ const {
   foregroundGame,
   getBackgroundBattle: () => getBackgroundBattle(),
 });
-const pauseBannerVisible = computed(
+/** The lockstep scheduler's halt state, from the pump's edge detector:
+ *  'paused' is a deliberate protocol pause, 'desynced' a dead match. */
+const lockstepHalt = ref<'paused' | 'desynced' | null>(null);
+
+/** Every way the game stops is one overlay: the demo/sim pause (gamePhase),
+ *  a lockstep protocol pause, a desync, and the flow-control match hold. */
+const pausedOverlayVisible = computed(
   () =>
-    presentationPhase.value === 'real-battle-interactive' &&
-    gamePhase.value === 'paused' &&
+    (gamePhase.value === 'paused' || lockstepHalt.value !== null || matchHold.value !== null) &&
     gameOverWinner.value === null,
 );
+/** Click-to-resume only where a click can actually resume: manual pauses.
+ *  A match hold lifts on its own; a desync never does. */
+const pausedOverlayResumable = computed(
+  () =>
+    matchHold.value === null &&
+    lockstepHalt.value !== 'desynced' &&
+    (gamePhase.value === 'paused' || lockstepHalt.value === 'paused'),
+);
+const pausedOverlaySubtitle = computed(() => {
+  if (lockstepHalt.value === 'desynced') return 'Desync detected — the match is stopped';
+  if (matchHold.value !== null) return 'The match is held for a player — see the banner above';
+  return 'Click to resume';
+});
+
+/** The sim stopping is also a PRESENTATION fact: every frontend-only
+ *  animation clock (spray, smoke, explosions, build bands, fans...) freezes
+ *  with it, while the camera and HUD stay live. */
+const simulationPausedForPresentation = computed(
+  () => gamePhase.value === 'paused' || lockstepHalt.value !== null || matchHold.value !== null,
+);
+watch(simulationPausedForPresentation, (paused) => {
+  foregroundGame.getScene()?.setSimulationPaused(paused);
+}, { immediate: true });
 
 ({
   getBackgroundBattle,
@@ -1842,6 +1870,9 @@ const {
   onFlowControlChange: (report) => {
     matchHold.value = report.state === 'paused' ? report : null;
   },
+  onLockstepHaltChange: (halt) => {
+    lockstepHalt.value = halt;
+  },
   onCatchUpProgress: (progress) => {
     catchUpProgress.value = progress.state === 'live' ? null : progress;
     if (progress.state === 'failed') {
@@ -1905,8 +1936,9 @@ const { restartGame: restartGameSession } = useGameCanvasSessionLifecycle({
  *  saved closed-menu preference over the destination the player just chose. */
 function restartGame(): void {
   restartGameSession();
-  // The session's conversation ends with the session.
+  // The session's conversation ends with the session, and so does its halt.
   communicationMessages.value = [];
+  lockstepHalt.value = null;
   if (sendAppSurface('exitGameRoom') || sendAppSurface('leaveLobby')) {
     void nextTick(() => {
       menuHidden.value = false;
@@ -2612,17 +2644,21 @@ watchEffect(() => {
         />
       </div>
 
-      <!-- Authoritative pause banner (BAR-style center-screen indicator).
-           Click resumes — the same setPaused command the PAUSE button sends. -->
+      <!-- The pause is unmissable: a dimmed world and PAUSED in the middle
+           of it, for every way the game stops — manual pause (demo or
+           lockstep), match hold, desync. Clicking resumes where a click can
+           resume; the control bars sit above the scrim and stay usable. -->
       <div
-        v-if="pauseBannerVisible"
-        class="game-paused-banner"
+        v-if="pausedOverlayVisible"
+        class="game-paused-overlay"
+        :class="{ resumable: pausedOverlayResumable }"
         role="status"
         aria-live="polite"
-        title="Click to resume"
-        @click="setGamePaused(false)"
+        :title="pausedOverlayResumable ? 'Click to resume' : undefined"
+        @click="pausedOverlayResumable ? setGamePaused(false) : undefined"
       >
-        ⏸ PAUSED
+        <div class="game-paused-title">⏸ PAUSED</div>
+        <div class="game-paused-subtitle">{{ pausedOverlaySubtitle }}</div>
       </div>
 
       <CaptureControlGrid

@@ -12,6 +12,7 @@ import {
   CLIENT_RENDER_TURRET_STATE_ENGAGED,
   type ClientRenderTurretHostRows,
 } from './ClientRenderTurretStateSlab';
+import { isPresentationAnimationPaused } from './presentationClock';
 
 type BarrelSpinState = {
   angle: number;
@@ -43,11 +44,16 @@ export class UnitBarrelSpinState3D {
 
   beginFrame(): BarrelSpinFrameState {
     const timeMs = performance.now();
-    const spinDtSec = Math.min((timeMs - this.lastSpinMs) / 1000, 0.1);
+    // While the presentation is paused: zero dt (nothing advances) and a
+    // HELD timeMs (shader clocks like the build band stop mid-phase).
+    // lastSpinMs still tracks the wall clock so resuming never sees the
+    // whole pause as one giant dt spike.
+    const paused = isPresentationAnimationPaused();
+    const spinDtSec = paused ? 0 : Math.min((timeMs - this.lastSpinMs) / 1000, 0.1);
     this.lastSpinMs = timeMs;
     this.frameState.spinDtSec = spinDtSec;
     this.frameState.currentDtMs = spinDtSec * 1000;
-    this.frameState.timeMs = timeMs;
+    if (!paused) this.frameState.timeMs = timeMs;
     return this.frameState;
   }
 

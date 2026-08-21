@@ -21,6 +21,7 @@ import type { ContactBlipRenderer3D } from '../../render3d/ContactBlipRenderer3D
 import { featureVisibleAtRung } from '../../render3d/EntityDetailLevel3D';
 import type { Entity, EntityId, PlayerId } from '../../sim/types';
 import type { ThreeApp } from '../../render3d/ThreeApp';
+import { isPresentationAnimationPaused } from '../../render3d/presentationClock';
 import type { Render3DEntities } from '../../render3d/Render3DEntities';
 import type { Input3DManager } from '../../render3d/Input3DManager';
 import type { BeamRenderer3D } from '../../render3d/BeamRenderer3D';
@@ -297,6 +298,9 @@ export class RtsScene3DRenderPhase {
     projectileRows: 0,
     lineProjectileRows: 0,
   };
+
+  /** Wall-clock value held for the shield lattice during a pause. */
+  private pausedShieldTimeMs: number | null = null;
 
   constructor(
     private readonly threeApp: ThreeApp,
@@ -713,7 +717,12 @@ export class RtsScene3DRenderPhase {
     }
 
     if (turretShieldSpheresEnabled && forceFieldsVisible) {
-      shieldRenderer.beginFrame(graphicsConfig, renderFrameState.view, renderStart);
+      // The lattice spin runs on a wall timestamp; hold it while the
+      // presentation is paused so shields freeze with everything else.
+      const shieldTimeMs = isPresentationAnimationPaused()
+        ? (this.pausedShieldTimeMs ??= renderStart)
+        : (this.pausedShieldTimeMs = null, renderStart);
+      shieldRenderer.beginFrame(graphicsConfig, renderFrameState.view, shieldTimeMs);
       shieldRenderer.processPacket(entityLists.shields);
       shieldRenderer.endFrame();
     } else {

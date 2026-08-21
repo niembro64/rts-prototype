@@ -205,6 +205,11 @@ type CreateRealBattleBackendOptions = {
   /** The match started or stopped being held for somebody. Drives the pause
    *  banner; purely presentational, and never reaches the simulation. */
   onFlowControlChange?: (report: RealBattleFlowControlReport) => void;
+  /** The lockstep scheduler stopped ('paused' = a deliberate protocol pause,
+   *  'desynced' = the match is dead) or resumed (null). Drives the PAUSED
+   *  overlay; purely presentational. Distinct from onFlowControlChange —
+   *  flow-control holds have a named subject and their own banner. */
+  onLockstepHaltChange?: (halt: 'paused' | 'desynced' | null) => void;
   /** A seated player stopped answering, so the coordinator should start
    *  counting them as disconnected for flow control. */
   /** Hands the backend the two callbacks that track whether a seated player is
@@ -716,6 +721,7 @@ async function createDeterministicLockstepBackendRuntime({
   onLoadingProgress,
   onPeerFrameReport,
   onFlowControlChange,
+  onLockstepHaltChange,
   registerSilentPlayer,
 }: CreateRealBattleBackendOptions): Promise<RealBattleBackendRuntime> {
   const matchContext = createRealBattleMatchContext({
@@ -1636,6 +1642,22 @@ async function createDeterministicLockstepBackendRuntime({
     }
   };
 
+  /** Edge-detects the scheduler's halt state so the PAUSED overlay hears
+   *  about pauses from EVERY source — the local doorway, an inbound pause
+   *  message, a desync — without instrumenting each of those sites. The
+   *  pump polls status anyway; only changes are reported. */
+  let lastReportedLockstepHalt: 'paused' | 'desynced' | null = null;
+  const notifyLockstepHaltChange = (status: string): void => {
+    const halt = status === 'protocol-paused'
+      ? 'paused' as const
+      : status === 'desynced'
+        ? 'desynced' as const
+        : null;
+    if (halt === lastReportedLockstepHalt) return;
+    lastReportedLockstepHalt = halt;
+    onLockstepHaltChange?.(halt);
+  };
+
   const pumpFrame = (): void => {
     // A peer still replaying its way in does not step in real time: it runs as
     // fast as its budget allows, and renders nothing until it arrives.
@@ -1647,6 +1669,7 @@ async function createDeterministicLockstepBackendRuntime({
     // players most need to see who everyone is waiting for.
     broadcastPeerFrameReport();
     const diagnostics = scheduler.getDiagnostics();
+    notifyLockstepHaltChange(diagnostics.status);
     if (diagnostics.status === 'protocol-paused' || diagnostics.status === 'desynced') {
       resetLockstepCommandPumpClock();
       return;

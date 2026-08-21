@@ -65,6 +65,8 @@ export type StartRealBattleWithPlayersOptions = {
   }) => void;
   /** The match started or stopped being held for somebody. */
   onFlowControlChange?: (report: RealBattleFlowControlReport) => void;
+  /** The lockstep scheduler halted (paused/desynced) or resumed (null). */
+  onLockstepHaltChange?: (halt: 'paused' | 'desynced' | null) => void;
   /** Hands the backend the two callbacks that track whether a seated player is
    *  attached: gone, and back again. */
   registerSilentPlayer?: (
@@ -225,6 +227,7 @@ export async function startRealBattleWithPlayers(
       ),
       onPeerFrameReport: options.onPeerFrameReport,
       onFlowControlChange: options.onFlowControlChange,
+      onLockstepHaltChange: options.onLockstepHaltChange,
       registerSilentPlayer: options.registerSilentPlayer,
     });
     ownedBackend = backend;

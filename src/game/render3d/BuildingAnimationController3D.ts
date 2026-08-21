@@ -14,6 +14,7 @@ import {
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ClientViewState } from '../network/ClientViewState';
 import { halfLifeBlend } from '../math/halfLife';
+import { isPresentationAnimationPaused } from './presentationClock';
 import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import { lerp, lerpAngle } from '../math';
 import type { Entity, EntityId } from '../sim/types';
@@ -655,7 +656,11 @@ export class BuildingAnimationController3D {
   private updateWindAnimationGlobals(): number {
     const wind = this.clientViewState.getServerMeta()?.wind;
     const now = performance.now();
-    const dtSec = this.windAnimLastMs > 0 ? (now - this.windAnimLastMs) / 1000 : 0;
+    // Wind turbines are frontend-only motion: frozen while the presentation
+    // is paused, with the clock still tracked so resume sees no dt spike.
+    const dtSec = this.windAnimLastMs > 0 && !isPresentationAnimationPaused()
+      ? (now - this.windAnimLastMs) / 1000
+      : 0;
     this.windAnimLastMs = now;
     if (!wind) return 0;
 

@@ -43,6 +43,7 @@ import { getGraphicsConfig } from '@/clientBarConfig';
 import type { ClientCommandSink } from '../input/ClientCommandSink';
 import type { BarBuildCategoryId } from '../input/buildMenuLayout';
 import { ThreeApp } from '../render3d/ThreeApp';
+import { setPresentationAnimationPaused } from '../render3d/presentationClock';
 import { resolveCameraTargetBounds } from '../render3d/CameraTargetBounds3D';
 import { Render3DEntities } from '../render3d/Render3DEntities';
 import { Input3DManager } from '../render3d/Input3DManager';
@@ -246,6 +247,8 @@ export class RtsScene3D {
    *  for UI plumbing that needs a number; nothing perspective-shaped (fog
    *  shade, sight rings, shield masks) may key off it while this is set. */
   private watchingAll = false;
+  /** Mirrors the sim's paused state into the presentation clocks. */
+  private simulationPaused = false;
   private playerIds: PlayerId[];
   /** Player -> team -> ally team for this match. */
   private teamRoster: TeamRoster;
@@ -461,6 +464,20 @@ export class RtsScene3D {
 
   public isClientRenderEnabled(): boolean {
     return this.clientRenderEnabled;
+  }
+
+  /**
+   * Freeze every frontend-only animation while the SIMULATION is paused —
+   * spray, smoke, explosions, death disassembly, build bands, fans, beam
+   * waves. Bodies already hold still (no new ticks means the interpolator
+   * pins to the last authoritative pose); this stops the ambient motion
+   * that made a paused battle look alive. The camera and HUD stay live —
+   * a paused game is for looking around in.
+   */
+  public setSimulationPaused(paused: boolean): void {
+    if (this.simulationPaused === paused) return;
+    this.simulationPaused = paused;
+    setPresentationAnimationPaused(paused);
   }
 
   create(): void {
@@ -852,7 +869,10 @@ export class RtsScene3D {
     renderFrameState.gfx = budgetState.graphicsConfig;
 
     const { cameraQuad, cameraView, renderMs } = renderPhase.run({
-      effectDtMs,
+      // Camera smoothing above keeps the REAL dt — panning a paused world
+      // must stay smooth — but every effect inside the render phase gets a
+      // frozen clock while the simulation is paused.
+      effectDtMs: this.simulationPaused ? 0 : effectDtMs,
       graphicsConfig: budgetState.graphicsConfig,
       renderFrameState,
     });
@@ -1722,6 +1742,9 @@ export class RtsScene3D {
   public shutdown(opts: { keepConnection?: boolean } = {}): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    // The presentation clocks are process-wide; a paused scene must not
+    // leave the next scene frozen.
+    setPresentationAnimationPaused(false);
     this.rendererWarmup?.shutdown();
     teardownRtsScene3DRenderers({
       inputManager: this.inputManager,

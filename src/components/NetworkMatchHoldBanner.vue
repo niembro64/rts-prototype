@@ -75,7 +75,9 @@ const explanation = computed(() => {
   font-size: 12px;
   letter-spacing: 0.08em;
   pointer-events: none;
-  z-index: 40;
+  /* Above the pause scrim (1900): the hold banner names WHO the match is
+   * held for, and the scrim's subtitle points at it. */
+  z-index: 1950;
 }
 
 .match-hold-label {

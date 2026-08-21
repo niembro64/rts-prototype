@@ -40,6 +40,7 @@ import {
   projectileStyleForDetail,
 } from './EntityDetailLevel3D';
 import { PlasmaArcPoseBatch3D, ProjectileAxisPoseBatch3D } from './ProjectileAxisPoseBatch3D';
+import { isPresentationAnimationPaused } from './presentationClock';
 import {
   TRAIL_HIGH_CURVE_SEGMENTS,
   createTrailResampleScratch,
@@ -260,6 +261,8 @@ const NEVER_EMISSION_FAR_LOD = (): boolean => false;
 export class ProjectileRenderer3D {
   private readonly world: THREE.Group;
   private readonly clientViewState: ClientViewState;
+  /** Wall-clock value held for the duration of a presentation pause. */
+  private pausedRenderNowMs: number | null = null;
   private readonly scope: ViewportFootprint;
   private readonly radiusSphereGeom: THREE.BufferGeometry;
   private readonly isEntityEmissionFarLod: (entity: Entity) => boolean;
@@ -495,7 +498,10 @@ export class ProjectileRenderer3D {
   }
 
   update(frameState: RenderFrameState3D, projectiles: readonly Entity[]): void {
-    const renderNowMs = performance.now();
+    // Held while paused so rocket fins stop rolling with everything else.
+    const renderNowMs = isPresentationAnimationPaused()
+      ? (this.pausedRenderNowMs ??= performance.now())
+      : (this.pausedRenderNowMs = null, performance.now());
     const seen = this.seenProjectileIds;
     const entitySetVersion = this.clientViewState.getEntitySetVersion();
     const scopeVersion = this.scope.getVersion();

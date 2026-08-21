@@ -15,6 +15,7 @@ import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import beamConfig from '@/beamConfig.json';
 import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
+import { isPresentationAnimationPaused } from './presentationClock';
 import { applyExposureToRawShader } from './RenderLighting3D';
 
 export type BeamVisualConfig = {
@@ -75,6 +76,8 @@ export const BEAM_WAVE_RENDER_ORDER: Record<BeamWaveLayer, number> = {
 export const BEAM_WAVE_TIME: { value: number } = { value: 0 };
 
 export function tickBeamWaveTime(): void {
+  // Held while the presentation is paused: the wave freezes mid-flow.
+  if (isPresentationAnimationPaused()) return;
   BEAM_WAVE_TIME.value = performance.now() * 0.001;
 }
 
