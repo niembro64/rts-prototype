@@ -3,3 +3,5 @@
 2. The "spectator" still seems to think he is "player 1", he has a bias to be able to select player 1 entities, even though he can't issue commands. Ensure that spectators are agnostic to players and teams. 
 
 3. Also in the deployed version of the game it seems that going back to the "setup / lobby" state breaks the simualtion as well as "leave" breaks the simulations. We need stronger finite state mechanisms implemented. 
+
+4. In our "home" screen let's rename "Host Game" to "Host Internet Game" and rename "Local Skirmish" to "Play Local Skirmish". Move the skirmish button above the host button, and let's make sure the host/join/code  is obviously separate from "skirmish" section both with a divider and color. 
