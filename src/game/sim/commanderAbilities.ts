@@ -24,11 +24,57 @@ import { writeFabricatorProductionSprayOrigin } from './factoryProductionHold';
 import { requestBuilderWorkStation } from './workStationSystem';
 import { getWorkEmitterSpec, writeWorkEmitterOriginWorld } from './workEmitterOrigin';
 import { transferCompletedBuildingStorageCapacity } from './buildingCompletion';
+import { createEntityVolume, writeHitVolume } from './entityVolumes';
 
 export type { SprayTarget,  } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 
 const _workEmitterWorld = { x: 0, y: 0, z: 0 };
+const _sprayTargetVolume = createEntityVolume();
+/** Per-pooled-endpoint dim scratch: box targets reuse one {x,y} per pool
+ *  slot, so the per-tick spray loop stays allocation-free after warmup. */
+const _sprayDimByEndpoint = new WeakMap<object, { x: number; y: number }>();
+
+/**
+ * Aim a work spray at the target's HIT volume, not its raw transform.
+ *
+ * Units stay spheres (transform center, hitbox radius — unchanged). Buildings
+ * become the box the shared volume model already describes: centered on
+ * buildingCombatCenterZ, so a hovering fabricator is sprayed at its torus
+ * instead of the empty footprint under it, and sized to the real collision
+ * extents instead of a sphere of the footprint half-diagonal. The renderer's
+ * box path reads `dim` as FULL x/y extents and `radius` as the vertical
+ * half-extent, which maps exactly onto the volume's halves.
+ */
+function writeSprayTargetVolume(spray: SprayTarget, target: Entity): void {
+  const endpoint = spray.target;
+  if (writeHitVolume(target, _sprayTargetVolume)) {
+    endpoint.pos.x = _sprayTargetVolume.x;
+    endpoint.pos.y = _sprayTargetVolume.y;
+    endpoint.z = _sprayTargetVolume.z;
+    if (_sprayTargetVolume.shape === 'box') {
+      let dim = _sprayDimByEndpoint.get(endpoint);
+      if (dim === undefined) {
+        dim = { x: 0, y: 0 };
+        _sprayDimByEndpoint.set(endpoint, dim);
+      }
+      dim.x = _sprayTargetVolume.halfX * 2;
+      dim.y = _sprayTargetVolume.halfY * 2;
+      endpoint.dim = dim;
+      endpoint.radius = _sprayTargetVolume.halfZ;
+    } else {
+      endpoint.radius = _sprayTargetVolume.halfX;
+    }
+    return;
+  }
+  // Wrecks and anything else without a hit volume keep the old sphere.
+  endpoint.pos.x = target.transform.x;
+  endpoint.pos.y = target.transform.y;
+  endpoint.z = target.transform.z;
+  endpoint.radius = target.unit !== null
+    ? target.unit.radius.hitbox
+    : target.building?.targetRadius ?? 20;
+}
 const _reclaimTickOut = new Float64Array(5);
 const REPAIR_RATE_PAIR_KEY_STRIDE = 67_108_864;
 
@@ -209,14 +255,14 @@ class CommanderAbilitiesSystem {
         spray.source.z = origin.z;
         spray.source.playerId = source.ownership.playerId;
         spray.target.id = movement.targetEntityId;
-        spray.target.pos.x = point !== null ? point.x : target!.transform.x;
-        spray.target.pos.y = point !== null ? point.y : target!.transform.y;
-        spray.target.z = point !== null ? point.z : target!.transform.z;
-        spray.target.radius = point !== null
-          ? point.radius
-          : target!.unit !== null
-            ? target!.unit.radius.hitbox
-            : target!.building?.targetRadius ?? 20;
+        if (point !== null) {
+          spray.target.pos.x = point.x;
+          spray.target.pos.y = point.y;
+          spray.target.z = point.z;
+          spray.target.radius = point.radius;
+        } else {
+          writeSprayTargetVolume(spray, target!);
+        }
         // Construction and repair deliberately share one outward, team-color
         // visual vocabulary. Operation remains in the work ledger for debug.
         spray.type = 'build';
@@ -516,10 +562,7 @@ class CommanderAbilitiesSystem {
     spray.source.z = sourceZ;
     spray.source.playerId = playerId;
     spray.target.id = target.id;
-    spray.target.pos.x = target.transform.x;
-    spray.target.pos.y = target.transform.y;
-    spray.target.z = target.transform.z;
-    spray.target.radius = target.unit !== null ? target.unit.radius.hitbox : target.building?.targetRadius ?? 0;
+    writeSprayTargetVolume(spray, target);
     // BAR capture nano is builder -> target and uses the builder's team
     // color, the same visual family as construction rather than repair's
     // legacy white/wobbling stream.
@@ -586,10 +629,7 @@ class CommanderAbilitiesSystem {
       spray.source.z = sourceZ;
       spray.source.playerId = playerId;
       spray.target.id = target.id;
-      spray.target.pos.x = target.transform.x;
-      spray.target.pos.y = target.transform.y;
-      spray.target.z = target.transform.z;
-      spray.target.radius = target.building?.targetRadius ?? 20;
+      writeSprayTargetVolume(spray, target);
       spray.type = 'build';
       spray.intensity = Math.max(0.2, progress);
       spray.channel = channel;

@@ -103,6 +103,27 @@ export function runSprayRenderer3DContractTest(): void {
     state = renderer as unknown as SprayParticleDebugState;
     assertNear(state.pR[3], 0.9, 'an explicit spray color must win over the build green');
     assertContract(state.pSpinRate[3] === 0, 'pylon resource balls must not tumble');
+
+    // A building target arrives as its HIT box: `dim` is the FULL x/y
+    // extents, `radius` the vertical half-extent, and the center already
+    // carries the combat-centered z (a hovering fabricator's torus, not the
+    // ground under it). Particles must land inside that box.
+    const boxSpray = makeDirectSpray(false);
+    boxSpray.target = {
+      id: 21,
+      pos: { x: 400, y: 500 },
+      z: 250,
+      dim: { x: 100, y: 40 },
+      radius: 10,
+    };
+    renderer.update([], 0, [boxSpray]);
+    state = renderer as unknown as SprayParticleDebugState;
+    assertContract(
+      Math.abs(state.pEndX[4] - 400) <= 50.0001 &&
+        Math.abs(state.pEndZ[4] - 500) <= 20.0001 &&
+        Math.abs(state.pEndY[4] - 250) <= 10.0001,
+      'a box-target build spray must end inside the target box, centered on its combat z',
+    );
   } finally {
     renderer.destroy();
   }
