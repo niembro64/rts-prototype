@@ -123,6 +123,13 @@ function resolveLobbyApiBaseUrl(): string {
 
 const LOBBY_API_BASE_URL = resolveLobbyApiBaseUrl();
 
+/** The one resolution of where the games.niemo.io API lives, shared with
+ *  every other consumer of that backend (global chat today) so the override
+ *  and Tauri rules cannot drift between them. */
+export function lobbyApiBaseUrl(): string {
+  return LOBBY_API_BASE_URL;
+}
+
 /** One fetch, with a deadline, that resolves to null instead of throwing.
  *  Callers treat null as "the directory is unavailable right now", which is
  *  a normal state and not an error worth surfacing to the player. */

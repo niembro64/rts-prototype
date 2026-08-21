@@ -3,9 +3,6 @@ import {
   COMMAND_HOTKEY_IDS,
   COMMAND_HOTKEY_PRESET_IDS,
   BAR_KEY_CHAIN_TIMEOUT_MS,
-  CommandHotkeySequenceResolver,
-  barMapDrawCommandForTapCount,
-  barMapDrawHotkeySignature,
   commandHotkeyLabel,
   getCommandHotkeyPreset,
   getCommandHotkeyConflicts,
@@ -122,8 +119,7 @@ function isIntentionallyUnboundCommand(presetId: string, commandId: string): boo
       (isBarLegacyPreset && commandId === 'combat.capture') ||
       commandId === 'combat.attackLine' ||
       commandId === 'combat.attackGround' ||
-      commandId === 'combat.resurrectArea' ||
-      commandId === 'ui.mapErase'
+      commandId === 'combat.resurrectArea'
     )
   ) {
     return true;
@@ -217,8 +213,6 @@ export function runCommandHotkeysContractTest(): void {
             ? 'BAR legacy does not bind Capture; C is used by legacy build bindings'
           : commandId === 'combat.resurrectArea'
             ? 'BAR resurrect is area-capable without a separate resurrect-area button'
-          : commandId === 'ui.mapErase'
-            ? 'BAR erases map drawings through the draw key plus right-mouse drag, not a separate erase hotkey'
           : commandId === 'ui.capturePicHud' ||
             commandId === 'ui.captureVidRaw' ||
             commandId === 'ui.captureVidHud'
@@ -261,29 +255,6 @@ export function runCommandHotkeysContractTest(): void {
   assertContract(
     BAR_KEY_CHAIN_TIMEOUT_MS === 333,
     'BAR command key chains must use luaintro/springconfig.lua KeyChainTimeout=333',
-  );
-  const sequenceResolver = new CommandHotkeySequenceResolver();
-  assertContract(
-    sequenceResolver.resolve(keyEvent('q', 'KeyQ'), 'bar-legacy', 1000).pending,
-    'the first BAR legacy map-draw tap must begin the double-tap key chain',
-  );
-  const exactBoundarySequence = sequenceResolver.resolve(
-    keyEvent('q', 'KeyQ'),
-    'bar-legacy',
-    1000 + BAR_KEY_CHAIN_TIMEOUT_MS,
-  );
-  assertContract(
-    exactBoundarySequence.commandId === 'ui.mapLabel' && !exactBoundarySequence.pending,
-    'the second BAR key-chain tap must actualize at the exact 333 ms boundary',
-  );
-  assertContract(
-    sequenceResolver.resolve(keyEvent('q', 'KeyQ'), 'bar-legacy', 2000).pending &&
-      sequenceResolver.resolve(
-        keyEvent('q', 'KeyQ'),
-        'bar-legacy',
-        2000 + BAR_KEY_CHAIN_TIMEOUT_MS + 1,
-      ).pending,
-    'an expired BAR key-chain tap must begin a new sequence instead of actualizing the old one',
   );
 
   assertContract(
@@ -351,53 +322,8 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid Ctrl+Shift+Y must not resolve a fake wait binding',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('`', 'Backquote'), 'bar-grid') === 'ui.mapDraw',
-    'bar-grid backquote should resolve BAR map draw, not a separate Ping order',
-  );
-  assertContract(
-    resolveCommandHotkey(keyEvent('~', 'Backquote', { shiftKey: true }), 'bar-grid') === null,
-    'bar-grid Shift+Backquote must not resolve BAR map draw',
-  );
-  assertContract(
     commandHotkeyLabel('combat.ping', 'bar-grid') === '',
     'bar-grid ping command must display no fake BAR order-menu hotkey',
-  );
-  assertContract(
-    commandHotkeyLabel('ui.mapDraw', 'bar-grid') === '`',
-    'bar-grid map draw should display the BAR backquote key',
-  );
-  assertContract(
-    commandHotkeyLabel('ui.mapLabel', 'bar-grid') === '` `',
-    'bar-grid map label should display BAR double-backquote',
-  );
-  assertContract(
-    barMapDrawHotkeySignature(keyEvent('`', 'Backquote'), 'bar-grid') === 'bar-grid:Backquote',
-    'bar-grid backquote must enter the BAR map draw double-tap resolver',
-  );
-  assertContract(
-    barMapDrawCommandForTapCount(1) === 'ui.mapDraw' &&
-      barMapDrawCommandForTapCount(2) === 'ui.mapLabel',
-    'BAR map draw tap resolver must map single tap to draw and double tap to label',
-  );
-  assertContract(
-    resolveCommandHotkey(keyEvent('q', 'KeyQ', { metaKey: true }), 'bar-grid-60pct') === 'ui.mapDraw',
-    'bar-grid-60pct Meta+Q should resolve BAR map draw',
-  );
-  assertContract(
-    commandHotkeyLabel('ui.mapDraw', 'bar-grid-60pct') === 'Meta+Q',
-    'bar-grid-60pct map draw should display BAR Meta+Q',
-  );
-  assertContract(
-    commandHotkeyLabel('ui.mapLabel', 'bar-grid-60pct') === 'Meta+Q Meta+Q',
-    'bar-grid-60pct map label should display BAR double Meta+Q',
-  );
-  assertContract(
-    resolveCommandHotkey(keyEvent('e', 'KeyE', { ctrlKey: true, altKey: true }), 'bar-grid') === null,
-    'bar-grid must not expose a fake map-erase hotkey',
-  );
-  assertContract(
-    commandHotkeyLabel('ui.mapErase', 'bar-grid') === '',
-    'bar-grid map erase should display no separate hotkey label',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('.', 'Period', { altKey: true }), 'bar-grid') === 'ui.attackRangeCycleNext',
@@ -624,11 +550,6 @@ export function runCommandHotkeysContractTest(): void {
     resolveCommandHotkey(keyEvent('Enter', 'Enter', { ctrlKey: true, metaKey: true }), 'bar-grid-60pct') ===
       'ui.chat',
     'bar-grid-60pct modified Enter should still open chat because chat_and_ui_keys.txt binds Any+enter chat',
-  );
-  assertContract(
-    barMapDrawHotkeySignature(keyEvent('q', 'KeyQ', { metaKey: true }), 'bar-grid-60pct') ===
-      'bar-grid-60pct:Meta+KeyQ',
-    'bar-grid-60pct Meta+Q must enter the BAR map draw double-tap resolver',
   );
   // grid_keys_60pct.txt keeps "bind sc_i unit_stats".
   assertContract(
@@ -955,25 +876,13 @@ export function runCommandHotkeysContractTest(): void {
     'bar-legacy fire state should display no fake Ctrl+Alt+L hotkey',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('`', 'Backquote'), 'bar-legacy') === 'ui.mapDraw',
-    'bar-legacy backquote should resolve BAR map draw, not a separate Ping order',
-  );
-  assertContract(
-    resolveCommandHotkey(keyEvent('q', 'KeyQ'), 'bar-legacy') === 'ui.mapDraw',
-    'bar-legacy Q should resolve BAR map draw',
-  );
-  assertContract(
     commandHotkeyLabel('combat.ping', 'bar-legacy') === '',
     'bar-legacy ping command must display no fake BAR order-menu hotkey',
   );
   assertContract(
-    commandHotkeyLabel('ui.mapLabel', 'bar-legacy') === 'Q Q',
-    'bar-legacy map label should display BAR double-Q first',
-  );
-  assertContract(
     resolveCommandHotkey(keyEvent('l', 'KeyL', { ctrlKey: true, shiftKey: true }), 'bar-legacy') ===
       'ui.toggleLosMap',
-    'bar-legacy Ctrl+Shift+L should resolve BAR Any+togglelos instead of a fake map-label hotkey',
+    'bar-legacy Ctrl+Shift+L should resolve BAR Any+togglelos',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('Tab', 'Tab'), 'bar-legacy') === 'ui.showMapOverview',
@@ -1095,10 +1004,6 @@ export function runCommandHotkeysContractTest(): void {
   assertContract(
     commandHotkeyLabel('camera.viewRadiusIncrease', 'bar-legacy') === 'Home',
     'bar-legacy view-radius increase should display the BAR Home key',
-  );
-  assertContract(
-    resolveCommandHotkey(keyEvent('q', 'KeyQ'), 'bar-legacy-60pct') === 'ui.mapDraw',
-    'bar-legacy-60pct Q should resolve BAR map draw',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('F2', 'F2', { ctrlKey: true }), 'bar-legacy') === 'camera.viewTa',
@@ -1290,14 +1195,6 @@ export function runCommandHotkeysContractTest(): void {
   assertContract(
     commandHotkeyLabel('ui.optionsMenu', 'bar-legacy-60pct') === '',
     'bar-legacy-60pct options menu should display no F10 hotkey',
-  );
-  assertContract(
-    commandHotkeyLabel('ui.mapLabel', 'bar-legacy-60pct') === 'Q Q',
-    'bar-legacy-60pct map label should display BAR double-Q',
-  );
-  assertContract(
-    barMapDrawHotkeySignature(keyEvent('q', 'KeyQ'), 'bar-legacy-60pct') === 'bar-legacy-60pct:KeyQ',
-    'bar-legacy-60pct Q must enter the BAR map draw double-tap resolver',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('x', 'KeyX'), 'bar-legacy') === 'command.buildingActive',

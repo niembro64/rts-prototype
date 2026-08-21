@@ -259,138 +259,13 @@
   pointer-events: auto;
 }
 
-.communication-panel {
+.hud-chat {
+  /* BAR's corner console: bottom-left, above the control bars, never over
+     the minimap column. */
   position: absolute;
-  top: 62px;
-  left: 50%;
+  left: 10px;
+  bottom: calc(var(--bottom-controls-height, 0px) + 10px);
   z-index: 1002;
-  width: auto;
-  max-width: min(420px, calc(100vw - 560px));
-  border: 1px solid #4f6074;
-  border-radius: 4px;
-  background: #080c12;
-  color: #edf3ff;
-  font: 11px/1.25 system-ui, sans-serif;
-  letter-spacing: 0;
-  pointer-events: auto;
-  transform: translateX(-50%);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.34);
-}
-
-.communication-panel.open {
-  width: min(420px, calc(100vw - 560px));
-  min-width: 360px;
-}
-
-.communication-panel.drawing {
-  border-color: #82d2ff;
-}
-
-.communication-toolbar {
-  display: flex;
-  justify-content: center;
-  gap: 2px;
-  padding: 3px;
-}
-
-.communication-toolbar button,
-.communication-input-row button {
-  min-width: 0;
-  width: 38px;
-  height: 20px;
-  padding: 0 2px;
-  border: 1px solid #667184;
-  border-radius: 2px;
-  background: #191f2a;
-  color: #dce7fb;
-  font: 700 7px/1 system-ui, sans-serif;
-  letter-spacing: 0;
-  cursor: pointer;
-}
-
-.communication-toolbar button:hover,
-.communication-input-row button:hover {
-  border-color: #b4cdeb;
-  background: #263142;
-}
-
-.communication-toolbar button.active,
-.communication-toggle[aria-pressed="true"] {
-  border-color: #82d2ff;
-  color: #f8fcff;
-  background: #265270;
-}
-
-.communication-body {
-  border-top: 1px solid rgba(120, 140, 165, 0.28);
-  padding: 7px;
-}
-
-.communication-log {
-  display: grid;
-  gap: 3px;
-  max-height: 136px;
-  min-height: 24px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-}
-
-.communication-message {
-  display: grid;
-  grid-template-columns: 38px 72px minmax(0, 1fr);
-  gap: 6px;
-  align-items: baseline;
-  min-width: 0;
-}
-
-.communication-time {
-  color: #8998ad;
-  font-family: monospace;
-  font-size: 10px;
-}
-
-.communication-sender {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 800;
-}
-
-.communication-text {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  color: #f5f8ff;
-}
-
-.communication-input-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 6px;
-  margin-top: 7px;
-}
-
-.communication-input {
-  min-width: 0;
-  height: 24px;
-  box-sizing: border-box;
-  border: 1px solid #667184;
-  border-radius: 4px;
-  background: #04080e;
-  color: #edf3ff;
-  padding: 0 7px;
-  font: 11px/1 system-ui, sans-serif;
-  outline: none;
-}
-
-.communication-input:focus {
-  border-color: #82d2ff;
-}
-
-.communication-status {
-  margin-top: 7px;
-  color: #a9bdd6;
-  font: 700 10px/1.2 system-ui, sans-serif;
 }
 
 .map-details-panel {
@@ -549,16 +424,9 @@
     display: block;
   }
 
-  .communication-panel {
-    top: var(--hud-minimap-follow-top, 326px);
-    left: 0;
-    max-width: min(300px, 100vw);
-    transform: none;
-  }
-
-  .communication-panel.open {
-    width: min(300px, 100vw);
-    min-width: 0;
+  .hud-chat {
+    left: 4px;
+    max-width: min(300px, calc(100vw - 8px));
   }
 
   .map-details-panel {

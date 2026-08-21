@@ -1240,9 +1240,6 @@ export class Input3DKeyboardController {
       case 'ui.captureVidHud':
       case 'ui.toggleFullscreen':
       case 'ui.chat':
-      case 'ui.mapDraw':
-      case 'ui.mapLabel':
-      case 'ui.mapErase':
       case 'ui.attackRangeCycleNext':
       case 'ui.attackRangeCyclePrevious':
       case 'ui.toggleLosMap':

@@ -49,7 +49,6 @@ import {
   type NetworkCommunicationChannel,
   type NetworkCommunicationDraft,
   type NetworkCommunicationEvent,
-  type NetworkCommunicationPoint,
   type LockstepResumeGrantMessage,
   type SessionRefusalReason,
   type NetworkLockstepMessage,
@@ -248,10 +247,6 @@ async function resolvePeerServerTarget(): Promise<PeerServerTarget | null> {
 const SIGNALING_RECONNECT_INITIAL_DELAY_MS = 1000;
 const SIGNALING_RECONNECT_MAX_DELAY_MS = 10000;
 const COMMUNICATION_CHAT_MAX_LENGTH = 220;
-const COMMUNICATION_LABEL_MAX_LENGTH = 48;
-const COMMUNICATION_POINTS_MAX = 12;
-const COMMUNICATION_ERASE_RADIUS_MIN = 24;
-const COMMUNICATION_ERASE_RADIUS_MAX = 500;
 const LOCKSTEP_PENDING_MESSAGE_QUEUE_MAX = 512;
 /**
  * Who a lockstep message came from, at both levels.
@@ -285,16 +280,6 @@ function sanitizeCommunicationText(value: string, maxLength: number): string | n
   const compact = value.replace(/\s+/g, ' ').trim();
   if (compact.length === 0) return null;
   return compact.slice(0, maxLength);
-}
-
-function sanitizeCommunicationPoint(value: NetworkCommunicationPoint | undefined): NetworkCommunicationPoint | null {
-  if (value === undefined) return null;
-  const x = Number(value.x);
-  const y = Number(value.y);
-  const z = value.z === undefined ? undefined : Number(value.z);
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-  if (z !== undefined && !Number.isFinite(z)) return null;
-  return z === undefined ? { x, y } : { x, y, z };
 }
 
 function shiftQueuedLockstepMessage(queue: QueuedLockstepMessage[]): QueuedLockstepMessage | undefined {
@@ -1415,13 +1400,19 @@ export class NetworkManager {
    * Which room a member is speaking in.
    *
    * In the lobby everybody shares one — deciding who plays is a conversation
-   * everyone is part of. Once the battle starts it splits: allies to allies,
-   * watchers to watchers. A watcher sees the whole map, so a live channel from
-   * the bench to a player would be a coaching channel, and that is the reason
-   * the split exists rather than a style preference.
+   * everyone is part of. In battle the sender chooses, BAR-style: ALL is the
+   * public room everybody hears, watchers included; TEAM resolves by roster
+   * (allies for a seat, the bench for a watcher). The team/bench split is not
+   * a style preference — a watcher sees the whole map, so a live channel from
+   * the bench to one player would be a coaching channel. ALL is public, so
+   * there is nothing to whisper.
    */
-  private communicationChannelFor(memberId: MemberId): NetworkCommunicationChannel {
+  private communicationChannelFor(
+    memberId: MemberId,
+    requested: 'all' | 'team',
+  ): NetworkCommunicationChannel {
     if (!this.gameStarted) return 'all';
+    if (requested === 'all') return 'all';
     return this.members.get(memberId)?.playerId === undefined ? 'spectators' : 'team';
   }
 
@@ -1445,97 +1436,32 @@ export class NetworkManager {
     fromPlayerId: PlayerId,
     channel: NetworkCommunicationChannel,
   ): NetworkCommunicationEvent | null {
+    if (data.kind !== 'chat') return null;
     const createdAtMs = Date.now();
     const clientEventId = typeof data.clientEventId === 'string'
       ? data.clientEventId.slice(0, 64)
       : 'event';
     const id = this.nextCommunicationEventId(fromPlayerId, clientEventId);
-
-    switch (data.kind) {
-      case 'chat': {
-        const text = sanitizeCommunicationText(data.text, COMMUNICATION_CHAT_MAX_LENGTH);
-        if (text === null) return null;
-        return {
-          kind: 'chat',
-          id,
-          channel,
-          senderPlayerId: fromPlayerId,
-          createdAtMs,
-          text,
-        };
-      }
-
-      case 'mapDrawing': {
-        const drawingKind = data.drawingKind === 'label' ? 'label' : 'line';
-        const points: NetworkCommunicationPoint[] = [];
-        if (Array.isArray(data.points)) {
-          const pointCount = Math.min(data.points.length, COMMUNICATION_POINTS_MAX);
-          for (let i = 0; i < pointCount; i++) {
-            const point = sanitizeCommunicationPoint(data.points[i]);
-            if (point !== null) points.push(point);
-          }
-        }
-        const minPoints = drawingKind === 'label' ? 1 : 2;
-        if (points.length < minPoints) return null;
-        const label = drawingKind === 'label'
-          ? sanitizeCommunicationText(data.label ?? '', COMMUNICATION_LABEL_MAX_LENGTH)
-          : undefined;
-        if (drawingKind === 'label' && label === null) return null;
-        return {
-          kind: 'mapDrawing',
-          id,
-          channel,
-          senderPlayerId: fromPlayerId,
-          createdAtMs,
-          drawingId: typeof data.drawingId === 'string' && data.drawingId.length > 0
-            ? data.drawingId.slice(0, 80)
-            : id,
-          drawingKind,
-          points,
-          ...(label !== undefined && label !== null ? { label } : {}),
-        };
-      }
-
-      case 'mapErase': {
-        if (data.scope === 'all') {
-          return {
-            kind: 'mapErase',
-            id,
-            channel,
-            senderPlayerId: fromPlayerId,
-            createdAtMs,
-            scope: 'all',
-          };
-        }
-        const center = sanitizeCommunicationPoint(data.center);
-        if (center === null) return null;
-        const radius = Number(data.radius);
-        if (!Number.isFinite(radius)) return null;
-        return {
-          kind: 'mapErase',
-          id,
-          channel,
-          senderPlayerId: fromPlayerId,
-          createdAtMs,
-          scope: 'radius',
-          center,
-          radius: Math.max(
-            COMMUNICATION_ERASE_RADIUS_MIN,
-            Math.min(COMMUNICATION_ERASE_RADIUS_MAX, radius),
-          ),
-        };
-      }
-
-      default:
-        return null;
-    }
+    const text = sanitizeCommunicationText(data.text, COMMUNICATION_CHAT_MAX_LENGTH);
+    if (text === null) return null;
+    return {
+      kind: 'chat',
+      id,
+      channel,
+      senderPlayerId: fromPlayerId,
+      createdAtMs,
+      text,
+    };
   }
 
   private relayCommunicationDraft(
     data: NetworkCommunicationDraft,
     fromMemberId: MemberId,
   ): void {
-    const channel = this.communicationChannelFor(fromMemberId);
+    const channel = this.communicationChannelFor(
+      fromMemberId,
+      data.kind === 'chat' && data.channel === 'all' ? 'all' : 'team',
+    );
     // Attributed by SEAT where there is one, so a player's name resolves the
     // way it does everywhere else. A watcher has none; the bench is its own
     // room and the member id is enough to name a speaker inside it.

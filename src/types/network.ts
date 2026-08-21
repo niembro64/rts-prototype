@@ -323,45 +323,30 @@ export type LobbyMember = {
   localTime: string | undefined;
 };
 
-export type NetworkCommunicationPoint = {
-  x: number;
-  y: number;
-  z?: number;
+export type NetworkCommunicationDraft = {
+  kind: 'chat';
+  clientEventId: string;
+  text: string;
+  /** The room the SENDER wants, BAR-style: 'all' is the public room, 'team'
+   *  their own side. Advisory — the host resolves the real channel from the
+   *  roster (a watcher's 'team' is the bench), and outside a battle
+   *  everything is 'all'. Absent means 'team' for battle compatibility. */
+  channel?: 'all' | 'team';
 };
-
-export type NetworkCommunicationDraft =
-  | {
-      kind: 'chat';
-      clientEventId: string;
-      text: string;
-    }
-  | {
-      kind: 'mapDrawing';
-      clientEventId: string;
-      drawingId: string;
-      drawingKind: 'line' | 'label';
-      points: NetworkCommunicationPoint[];
-      label?: string;
-    }
-  | {
-      kind: 'mapErase';
-      clientEventId: string;
-      scope: 'all' | 'radius';
-      center?: NetworkCommunicationPoint;
-      radius?: number;
-    };
 
 /**
  * Who a message reaches.
  *
  * In the LOBBY everybody is in one room — watchers included, because deciding
- * who plays is a conversation everyone is part of. Once the battle starts the
- * room splits: allies talk to allies, watchers talk to watchers, and the two
- * never cross. That is not decoration — a watcher sees the whole map, so a
- * live channel from the bench to a player is a coaching channel.
+ * who plays is a conversation everyone is part of. In battle the sender
+ * chooses, BAR-style: ALL is a public room everybody hears, spectators
+ * included; TEAM is allies only; and a watcher's private room is the bench.
+ * The team/bench split is not decoration — a watcher sees the whole map, so
+ * a live channel from the bench to one player would be a coaching channel.
+ * ALL is fine: everyone hears it, so there is nothing to whisper.
  */
 export type NetworkCommunicationChannel =
-  /** Lobby only: everyone attached. */
+  /** The whole session: lobby always, and the battle's public room. */
   | 'all'
   /** In battle: one ally team. */
   | 'team'
@@ -378,35 +363,7 @@ export type NetworkCommunicationChatEvent = {
   text: string;
 };
 
-export type NetworkCommunicationMapDrawingEvent = {
-  kind: 'mapDrawing';
-  id: string;
-  /** Which room this was said in, so the UI can label it. */
-  channel: NetworkCommunicationChannel;
-  senderPlayerId: PlayerId;
-  createdAtMs: number;
-  drawingId: string;
-  drawingKind: 'line' | 'label';
-  points: NetworkCommunicationPoint[];
-  label?: string;
-};
-
-export type NetworkCommunicationMapEraseEvent = {
-  kind: 'mapErase';
-  id: string;
-  /** Which room this was said in, so the UI can label it. */
-  channel: NetworkCommunicationChannel;
-  senderPlayerId: PlayerId;
-  createdAtMs: number;
-  scope: 'all' | 'radius';
-  center?: NetworkCommunicationPoint;
-  radius?: number;
-};
-
-export type NetworkCommunicationEvent =
-  | NetworkCommunicationChatEvent
-  | NetworkCommunicationMapDrawingEvent
-  | NetworkCommunicationMapEraseEvent;
+export type NetworkCommunicationEvent = NetworkCommunicationChatEvent;
 
 export const LOCKSTEP_PROTOCOL_VERSION = 'budget-annihilation.lockstep.v4' as const;
 type LockstepProtocolVersion = typeof LOCKSTEP_PROTOCOL_VERSION;

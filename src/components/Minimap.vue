@@ -12,14 +12,6 @@ import { minimapPointerToWorld } from './minimapHelpers';
 
 import type { MinimapData } from '@/types/ui';
 
-type MinimapMapDrawing = {
-  id: string;
-  kind: 'line' | 'label';
-  points: ReadonlyArray<{ x: number; y: number }>;
-  label?: string;
-  color: string;
-};
-
 function darkenChannel(value: number, scale: number): number {
   return Math.max(0, Math.min(255, Math.round(value * scale)));
 }
@@ -48,15 +40,9 @@ const MINIMAP_ARROW_HALO = 'rgba(0, 0, 0, 0.78)';
 
 const props = withDefaults(defineProps<{
   data: MinimapData;
-  drawings?: ReadonlyArray<MinimapMapDrawing>;
   dragPan?: boolean;
-  /** BAR: while map-draw mode is active, right-drag erases drawings
-   *  instead of issuing commands. */
-  eraseOnRightDrag?: boolean;
 }>(), {
-  drawings: () => [],
   dragPan: true,
-  eraseOnRightDrag: false,
 });
 
 const emit = defineEmits<{
@@ -65,14 +51,10 @@ const emit = defineEmits<{
    *  left = camera, right = order the current selection). `queue`
    *  carries shift-queue. */
   (e: 'command', x: number, y: number, queue: boolean): void;
-  /** Right-drag erase point while map-draw mode is active (BAR erases
-   *  drawings with right-mouse drag in draw mode). */
-  (e: 'erase', x: number, y: number): void;
 }>();
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const draggingPointerId = ref<number | null>(null);
-const erasingPointerId = ref<number | null>(null);
 
 // Minimap display size. The longest side is pinned at MINIMAP_MAX;
 // the other side follows the map's aspect ratio — so a 3000x3000
@@ -329,66 +311,6 @@ function drawEntityLayer(): void {
   }
 }
 
-function drawCommunicationLayer(
-  ctx: CanvasRenderingContext2D,
-  scaleX: number,
-  scaleY: number,
-): void {
-  const drawings = props.drawings;
-  if (drawings.length === 0) return;
-
-  ctx.save();
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.font = '700 10px system-ui, sans-serif';
-  ctx.textBaseline = 'middle';
-  ctx.shadowBlur = 5;
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
-
-  for (const drawing of drawings) {
-    const points = drawing.points;
-    if (drawing.kind === 'line') {
-      if (points.length < 2) continue;
-      ctx.strokeStyle = drawing.color;
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(points[0].x * scaleX, points[0].y * scaleY);
-      for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i].x * scaleX, points[i].y * scaleY);
-      }
-      ctx.stroke();
-      continue;
-    }
-
-    const point = points[0];
-    if (!point) continue;
-    const x = point.x * scaleX;
-    const y = point.y * scaleY;
-    const label = drawing.label ?? '';
-    ctx.fillStyle = drawing.color;
-    ctx.beginPath();
-    ctx.arc(x, y, 3, 0, Math.PI * 2);
-    ctx.fill();
-    if (label.length > 0) {
-      const metrics = ctx.measureText(label);
-      const padX = 4;
-      const boxX = x + 6;
-      const boxY = y - 8;
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = 'rgba(4, 8, 14, 0.78)';
-      ctx.fillRect(boxX, boxY, metrics.width + padX * 2, 16);
-      ctx.strokeStyle = drawing.color;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(boxX, boxY, metrics.width + padX * 2, 16);
-      ctx.fillStyle = '#f6fbff';
-      ctx.fillText(label, boxX + padX, boxY + 8);
-      ctx.shadowBlur = 5;
-    }
-  }
-
-  ctx.restore();
-}
-
 function windSpeedUnit(speed: number): number {
   const min = Math.min(WIND_SPEED_MIN, WIND_SPEED_MAX);
   const max = Math.max(WIND_SPEED_MIN, WIND_SPEED_MAX);
@@ -509,7 +431,6 @@ function compose(): void {
 
   ctx.clearRect(0, 0, w, h);
   ctx.drawImage(offscreen, 0, 0);
-  drawCommunicationLayer(ctx, scaleX, scaleY);
 
   // Camera footprint polygon — axis-aligned rect for an unrotated
   // 2D camera, rotated rect for 2D with rotation, trapezoid for the
@@ -553,12 +474,6 @@ function handlePointerDown(event: PointerEvent): void {
     event.stopPropagation();
     const target = minimapPointerToWorld(event, canvas, props.data);
     if (!target) return;
-    if (props.eraseOnRightDrag) {
-      erasingPointerId.value = event.pointerId;
-      canvas.setPointerCapture(event.pointerId);
-      emit('erase', target.x, target.y);
-      return;
-    }
     emit('command', target.x, target.y, event.shiftKey);
     return;
   }
@@ -571,19 +486,6 @@ function handlePointerDown(event: PointerEvent): void {
 }
 
 function handlePointerMove(event: PointerEvent): void {
-  if (erasingPointerId.value === event.pointerId) {
-    if ((event.buttons & 2) === 0) {
-      erasingPointerId.value = null;
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    const canvas = canvasRef.value;
-    if (!canvas) return;
-    const target = minimapPointerToWorld(event, canvas, props.data);
-    if (target) emit('erase', target.x, target.y);
-    return;
-  }
   if (draggingPointerId.value !== event.pointerId) return;
   if (!props.dragPan) return;
   if ((event.buttons & 1) === 0) {
@@ -596,12 +498,6 @@ function handlePointerMove(event: PointerEvent): void {
 }
 
 function handlePointerEnd(event: PointerEvent): void {
-  if (erasingPointerId.value === event.pointerId) {
-    erasingPointerId.value = null;
-    event.preventDefault();
-    event.stopPropagation();
-    return;
-  }
   if (draggingPointerId.value !== event.pointerId) return;
   draggingPointerId.value = null;
   event.preventDefault();
@@ -630,14 +526,6 @@ watch(
 // Redraw camera box on every quad change (expected 60 Hz).
 watch(
   () => props.data.cameraQuad,
-  compose,
-);
-
-// Shallow on purpose: the parent builds a fresh drawings array (computed
-// .map) whenever content changes, so identity comparison is enough — a
-// deep walk of every drawing object per change bought nothing.
-watch(
-  () => props.drawings,
   compose,
 );
 

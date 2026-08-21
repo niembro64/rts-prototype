@@ -38,10 +38,7 @@ import {
   type NetworkRole,
 } from '../game/network/NetworkManager';
 import {
-  BAR_MAP_DRAW_DOUBLE_TAP_MS,
   CommandHotkeySequenceResolver,
-  barMapDrawCommandForTapCount,
-  barMapDrawHotkeySignature,
   type CommandHotkeyId,
 } from '../game/input/commandHotkeys';
 import { BACKGROUND_UNIT_BLUEPRINT_IDS } from '../game/server/BackgroundBattleStandalone';
@@ -78,10 +75,11 @@ import { DEMO_CONFIG } from '../demoConfig';
 import type {
   NetworkCommunicationDraft,
   NetworkCommunicationEvent,
-  NetworkCommunicationMapDrawingEvent,
-  NetworkCommunicationMapEraseEvent,
-  NetworkCommunicationPoint,
 } from '../types/network';
+import ChatConsole from './ChatConsole.vue';
+import type { ChatChannelOption, ChatConsoleMessage } from './chatConsoleTypes';
+import { GlobalChatClient, type GlobalChatMessage } from '../game/network/GlobalChatClient';
+import { getInitialLocalUsername } from '../playerNamesConfig';
 import {
   SERVER_CONFIG,
   loadStoredUnitGroundNormalEmaMode,
@@ -733,35 +731,18 @@ function focusCameraAnchor(index: number): void {
   getActiveGameScene()?.focusCameraAnchor(index);
 }
 
-type CommunicationMode = 'none' | 'chat' | 'draw' | 'label' | 'erase';
 type CommunicationChatEvent = Extract<NetworkCommunicationEvent, { kind: 'chat' }>;
 
-const communicationPanelOpen = ref(false);
-const communicationMode = ref<CommunicationMode>('none');
 const communicationMessages = ref<CommunicationChatEvent[]>([]);
-const communicationDrawings = ref<NetworkCommunicationMapDrawingEvent[]>([]);
-const communicationDraftText = ref('');
-const communicationLabelText = ref('');
-const clearMapMarksContinuous = ref(false);
-const pendingDrawStart = ref<NetworkCommunicationPoint | null>(null);
-const chatInputRef = ref<HTMLInputElement | null>(null);
+/** The battle console's OUTGOING room, BAR-style: 'all' is public, 'team'
+ *  resolves host-side to allies or the bench. */
+const chatChannelId = ref<'all' | 'team'>('all');
+const battleChatRef = ref<InstanceType<typeof ChatConsole> | null>(null);
+const homeChatRef = ref<InstanceType<typeof ChatConsole> | null>(null);
+const globalChatMessages = ref<GlobalChatMessage[]>([]);
+const globalChat = new GlobalChatClient();
 const gameUiHotkeys = new CommandHotkeySequenceResolver();
 let communicationDraftSequence = 0;
-let barMapDrawTap: {
-  signature: string;
-  count: number;
-  timeoutId: ReturnType<typeof setTimeout> | null;
-} | null = null;
-
-const minimapCommunicationDrawings = computed(() => communicationDrawings.value.map((drawing) => ({
-  id: drawing.drawingId,
-  kind: drawing.drawingKind,
-  points: drawing.points,
-  label: drawing.label,
-  color: getPlayerColor(drawing.senderPlayerId),
-})));
-
-const minimapDragPanEnabled = computed(() => communicationMode.value === 'none');
 
 function nextCommunicationDraftId(prefix: string): string {
   communicationDraftSequence++;
@@ -779,82 +760,23 @@ function createLocalCommunicationEvent(
   draft: NetworkCommunicationDraft,
   senderPlayerId: PlayerId,
 ): NetworkCommunicationEvent {
-  const id = nextCommunicationDraftId(`local-${draft.kind}`);
-  const createdAtMs = Date.now();
-  const channel = 'all' as const;
-  switch (draft.kind) {
-    case 'chat':
-      return {
-        kind: 'chat',
-        id,
-        channel,
-        senderPlayerId,
-        createdAtMs,
-        text: draft.text.trim().slice(0, 220),
-      };
-    case 'mapDrawing':
-      return {
-        kind: 'mapDrawing',
-        id,
-        channel,
-        senderPlayerId,
-        createdAtMs,
-        drawingId: draft.drawingId,
-        drawingKind: draft.drawingKind,
-        points: draft.points,
-        ...(draft.label ? { label: draft.label.trim().slice(0, 48) } : {}),
-      };
-    case 'mapErase':
-      return {
-        kind: 'mapErase',
-        id,
-        channel,
-        senderPlayerId,
-        createdAtMs,
-        scope: draft.scope,
-        ...(draft.center ? { center: draft.center } : {}),
-        ...(draft.radius !== undefined ? { radius: draft.radius } : {}),
-      };
-  }
-}
-
-function drawingTouchesErase(
-  drawing: NetworkCommunicationMapDrawingEvent,
-  erase: NetworkCommunicationMapEraseEvent,
-): boolean {
-  if (erase.scope === 'all') return true;
-  const center = erase.center;
-  const radius = erase.radius;
-  if (!center || radius === undefined) return false;
-  const radiusSq = radius * radius;
-  return drawing.points.some((point) => {
-    const dx = point.x - center.x;
-    const dy = point.y - center.y;
-    return dx * dx + dy * dy <= radiusSq;
-  });
+  return {
+    kind: 'chat',
+    id: nextCommunicationDraftId('local-chat'),
+    channel: 'all',
+    senderPlayerId,
+    createdAtMs: Date.now(),
+    text: draft.text.trim().slice(0, 220),
+  };
 }
 
 function applyCommunicationEvent(event: NetworkCommunicationEvent): void {
-  if (event.kind === 'chat') {
-    communicationMessages.value = [...communicationMessages.value.slice(-39), event];
-    communicationPanelOpen.value = true;
-    return;
-  }
-  if (event.kind === 'mapDrawing') {
-    if (clearMapMarksContinuous.value) return;
-    communicationDrawings.value = [
-      ...communicationDrawings.value.filter((drawing) => drawing.drawingId !== event.drawingId),
-      event,
-    ].slice(-80);
-    return;
-  }
-  communicationDrawings.value = communicationDrawings.value.filter(
-    (drawing) => !drawingTouchesErase(drawing, event),
-  );
+  // The console renders whatever is here and sticks to the bottom on its
+  // own; nothing force-opens, BAR-style.
+  communicationMessages.value = [...communicationMessages.value.slice(-79), event];
 }
 
 function sendCommunicationDraft(draft: NetworkCommunicationDraft): void {
-  if (draft.kind === 'mapDrawing' && clearMapMarksContinuous.value) return;
   const role = networkManager.getRole();
   if (role === 'host' || role === 'client') {
     networkManager.sendCommunication(draft);
@@ -863,102 +785,92 @@ function sendCommunicationDraft(draft: NetworkCommunicationDraft): void {
   applyCommunicationEvent(createLocalCommunicationEvent(draft, activePlayer.value));
 }
 
-function setCommunicationMode(mode: CommunicationMode): void {
-  communicationPanelOpen.value = true;
-  communicationMode.value = mode;
-  pendingDrawStart.value = null;
-  if (mode === 'chat') {
-    void nextTick(() => chatInputRef.value?.focus());
-  }
-}
-
-function submitCommunicationChat(): void {
-  const text = communicationDraftText.value.trim();
-  if (text.length === 0) return;
+function sendBattleChat(text: string): void {
   sendCommunicationDraft({
     kind: 'chat',
     clientEventId: nextCommunicationDraftId('chat'),
     text,
+    channel: chatChannelId.value,
   });
-  communicationDraftText.value = '';
-  setCommunicationMode('chat');
 }
 
-function eraseAllCommunicationDrawings(): void {
+function sendGlobalChat(text: string): void {
+  void globalChat.send(getInitialLocalUsername(), text);
+}
+
+function sendLobbyChat(text: string): void {
+  // The lobby is one shared room; the host resolves 'all' regardless, but
+  // saying it keeps the draft honest.
   sendCommunicationDraft({
-    kind: 'mapErase',
-    clientEventId: nextCommunicationDraftId('erase-all'),
-    scope: 'all',
+    kind: 'chat',
+    clientEventId: nextCommunicationDraftId('chat'),
+    text,
+    channel: 'all',
   });
 }
 
-function handleClearMapMarksClick(event: MouseEvent): void {
-  eraseAllCommunicationDrawings();
-  if (!event.ctrlKey) return;
-  clearMapMarksContinuous.value = !clearMapMarksContinuous.value;
-  if (clearMapMarksContinuous.value) {
-    communicationDrawings.value = [];
-    pendingDrawStart.value = null;
-  }
+function focusChatConsole(): void {
+  if (gameStarted.value) battleChatRef.value?.focusInput();
+  else homeChatRef.value?.focusInput();
 }
 
-function sendCommunicationMapEraseAt(x: number, y: number): void {
-  sendCommunicationDraft({
-    kind: 'mapErase',
-    clientEventId: nextCommunicationDraftId('erase-radius'),
-    scope: 'radius',
-    center: { x, y },
-    radius: 120,
-  });
-}
+/** The session console's rows — lobby room and battle rooms alike. */
+const sessionChatConsoleMessages = computed<ChatConsoleMessage[]>(() =>
+  communicationMessages.value.map((message) => ({
+    id: message.id,
+    senderName: communicationSenderName(message.senderPlayerId),
+    senderColor: getPlayerColor(message.senderPlayerId),
+    channelTag: message.channel === 'team'
+      ? 'TEAM'
+      : message.channel === 'spectators'
+        ? 'SPEC'
+        : gameStarted.value ? 'ALL' : '',
+    text: message.text,
+  })),
+);
 
-function handleCommunicationMapClick(x: number, y: number): boolean {
-  const point = { x, y };
-  if (communicationMode.value === 'none' || communicationMode.value === 'chat') return false;
-  communicationPanelOpen.value = true;
-  if (communicationMode.value === 'draw') {
-    if (pendingDrawStart.value === null) {
-      pendingDrawStart.value = point;
-      return true;
+const battleChatChannels = computed<ChatChannelOption[]>(() => [
+  { id: 'all', label: 'ALL' },
+  { id: 'team', label: localRole.value === 'spectator' ? 'SPEC' : 'TEAM' },
+]);
+
+const globalChatConsoleMessages = computed<ChatConsoleMessage[]>(() =>
+  globalChatMessages.value.map((message) => ({
+    id: `global-${message.seq}`,
+    senderName: message.name,
+    senderColor: '',
+    channelTag: '',
+    text: message.text,
+  })),
+);
+
+const GLOBAL_CHAT_CHANNELS: ChatChannelOption[] = [{ id: 'global', label: 'GLOBAL' }];
+
+// The HOME room is served by games.niemo.io — poll it only while the player
+// is actually home. Everything network-session chat does stays untouched.
+watch(
+  () => appSurface.value === 'home',
+  (onHome) => {
+    if (onHome) {
+      globalChat.start((incoming) => {
+        globalChatMessages.value = [...globalChatMessages.value, ...incoming].slice(-100);
+      });
+    } else {
+      globalChat.stop();
     }
-    const start = pendingDrawStart.value;
-    pendingDrawStart.value = null;
-    sendCommunicationDraft({
-      kind: 'mapDrawing',
-      clientEventId: nextCommunicationDraftId('draw'),
-      drawingId: nextCommunicationDraftId('line'),
-      drawingKind: 'line',
-      points: [start, point],
-    });
-    return true;
-  }
-  if (communicationMode.value === 'label') {
-    const label = communicationLabelText.value.trim();
-    if (label.length === 0) return true;
-    sendCommunicationDraft({
-      kind: 'mapDrawing',
-      clientEventId: nextCommunicationDraftId('label'),
-      drawingId: nextCommunicationDraftId('map-label'),
-      drawingKind: 'label',
-      points: [point],
-      label,
-    });
-    communicationLabelText.value = '';
-    return true;
-  }
-  sendCommunicationMapEraseAt(point.x, point.y);
-  return true;
-}
+  },
+  { immediate: true },
+);
+
+// A NEW session is a new conversation: entering a lobby clears whatever the
+// last session (or the home screen's neighbors) left on the console. The
+// lobby -> battle transition keeps history — it is the same room splitting.
+watch(roomCode, (code, previous) => {
+  if (code !== '' && previous === '') communicationMessages.value = [];
+});
 
 function handleMinimapInteraction(x: number, y: number): void {
-  if (handleCommunicationMapClick(x, y)) return;
   centerMinimapCamera(x, y);
-}
-
-// BAR erases drawings by right-dragging while the draw mode is active; the
-// minimap forwards right-drag points as 'erase' events while drawing.
-function handleMinimapErase(x: number, y: number): void {
-  sendCommunicationMapEraseAt(x, y);
 }
 
 function handleMinimapCommandInteraction(x: number, y: number, queue: boolean): void {
@@ -967,13 +879,6 @@ function handleMinimapCommandInteraction(x: number, y: number, queue: boolean): 
 
 function communicationSenderName(playerId: PlayerId): string {
   return resolvePlayerName(playerId);
-}
-
-function formatCommunicationTime(createdAtMs: number): string {
-  const date = new Date(createdAtMs);
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  return `${hours}:${minutes}`;
 }
 
 // ── Hold-I unit stats peek (BAR gui_unit_stats: press shows, release
@@ -1096,16 +1001,7 @@ function handleGameUiCommandHotkey(commandId: CommandHotkeyId, event?: KeyboardE
       void toggleFullscreen();
       return true;
     case 'ui.chat':
-      setCommunicationMode('chat');
-      return true;
-    case 'ui.mapDraw':
-      setCommunicationMode(communicationMode.value === 'draw' ? 'none' : 'draw');
-      return true;
-    case 'ui.mapLabel':
-      setCommunicationMode(communicationMode.value === 'label' ? 'none' : 'label');
-      return true;
-    case 'ui.mapErase':
-      setCommunicationMode(communicationMode.value === 'erase' ? 'none' : 'erase');
+      focusChatConsole();
       return true;
     case 'ui.attackRangeCycleNext':
       cycleAttackRangeDisplay(1);
@@ -1154,62 +1050,6 @@ function handleGameUiCommandHotkey(commandId: CommandHotkeyId, event?: KeyboardE
   }
 }
 
-function clearBarMapDrawTap(): void {
-  const timeoutId = barMapDrawTap?.timeoutId ?? null;
-  if (timeoutId !== null) clearTimeout(timeoutId);
-  barMapDrawTap = null;
-}
-
-function flushBarMapDrawTap(): void {
-  const tap = barMapDrawTap;
-  if (tap === null) return;
-  if (tap.timeoutId !== null) clearTimeout(tap.timeoutId);
-  barMapDrawTap = null;
-  handleGameUiCommandHotkey(barMapDrawCommandForTapCount(tap.count));
-}
-
-function recordBarMapDrawTap(signature: string): void {
-  if (barMapDrawTap !== null && barMapDrawTap.signature !== signature) {
-    flushBarMapDrawTap();
-  }
-
-  if (barMapDrawTap === null) {
-    barMapDrawTap = {
-      signature,
-      count: 1,
-      timeoutId: null,
-    };
-  } else {
-    barMapDrawTap.count++;
-  }
-
-  if (barMapDrawTap.timeoutId !== null) {
-    clearTimeout(barMapDrawTap.timeoutId);
-    barMapDrawTap.timeoutId = null;
-  }
-
-  if (barMapDrawTap.count >= 2) {
-    flushBarMapDrawTap();
-    return;
-  }
-
-  barMapDrawTap.timeoutId = setTimeout(() => {
-    flushBarMapDrawTap();
-  }, BAR_MAP_DRAW_DOUBLE_TAP_MS);
-}
-
-function handleBarMapDrawKeydown(event: KeyboardEvent): boolean {
-  const signature = barMapDrawHotkeySignature(event, commandHotkeyPreset.value);
-  if (signature === null) {
-    flushBarMapDrawTap();
-    return false;
-  }
-  event.preventDefault();
-  gameUiHotkeys.reset();
-  recordBarMapDrawTap(signature);
-  return true;
-}
-
 function handleGameUiKeydown(event: KeyboardEvent): void {
   const target = event.target;
   if (
@@ -1219,7 +1059,6 @@ function handleGameUiKeydown(event: KeyboardEvent): void {
   ) {
     return;
   }
-  if (handleBarMapDrawKeydown(event)) return;
   const hotkey = gameUiHotkeys.resolve(event);
   if (hotkey.pending) {
     event.preventDefault();
@@ -1231,13 +1070,10 @@ function handleGameUiKeydown(event: KeyboardEvent): void {
   }
   if (
     event.key === 'Escape' &&
-    (communicationMode.value !== 'none' || optionsMenuOpen.value || mapDetailsVisible.value)
+    (optionsMenuOpen.value || mapDetailsVisible.value)
   ) {
     event.preventDefault();
     gameUiHotkeys.reset();
-    clearBarMapDrawTap();
-    communicationMode.value = 'none';
-    pendingDrawStart.value = null;
     optionsMenuOpen.value = false;
     mapDetailsVisible.value = false;
   }
@@ -1260,7 +1096,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keyup', handleGameUiKeyup);
   window.removeEventListener('blur', handleGameUiWindowBlur);
   endUnitStatsHold();
-  clearBarMapDrawTap();
+  globalChat.stop();
   captureController.dispose();
   bottomControlsResizeObserver?.disconnect();
   bottomControlsResizeObserver = null;
@@ -2069,6 +1905,8 @@ const { restartGame: restartGameSession } = useGameCanvasSessionLifecycle({
  *  saved closed-menu preference over the destination the player just chose. */
 function restartGame(): void {
   restartGameSession();
+  // The session's conversation ends with the session.
+  communicationMessages.value = [];
   if (sendAppSurface('exitGameRoom') || sendAppSurface('leaveLobby')) {
     void nextTick(() => {
       menuHidden.value = false;
@@ -2839,128 +2677,35 @@ watchEffect(() => {
         <div class="minimap-stack">
           <Minimap
             :data="minimapData"
-            :drawings="minimapCommunicationDrawings"
-            :drag-pan="minimapDragPanEnabled"
-            :erase-on-right-drag="communicationMode === 'draw'"
             @click="handleMinimapInteraction"
             @command="handleMinimapCommandInteraction"
-            @erase="handleMinimapErase"
           />
         </div>
 
-        <section
-          class="communication-panel"
-          :class="{
-            open: communicationPanelOpen,
-            drawing: communicationMode !== 'none' && communicationMode !== 'chat',
-          }"
-          aria-label="Team communication"
-        >
-          <div class="communication-toolbar">
-            <button
-              type="button"
-              class="communication-toggle"
-              :aria-pressed="communicationPanelOpen"
-              title="Chat"
-              @click="setCommunicationMode('chat')"
-            >CHAT</button>
-            <button
-              type="button"
-              :class="{ active: communicationMode === 'draw' }"
-              title="Draw on map"
-              @click="setCommunicationMode(communicationMode === 'draw' ? 'none' : 'draw')"
-            >DRAW</button>
-            <button
-              type="button"
-              :class="{ active: communicationMode === 'label' }"
-              title="Draw label"
-              @click="setCommunicationMode(communicationMode === 'label' ? 'none' : 'label')"
-            >LABEL</button>
-            <button
-              type="button"
-              :class="{ active: communicationMode === 'erase' }"
-              title="Erase drawings"
-              @click="setCommunicationMode(communicationMode === 'erase' ? 'none' : 'erase')"
-            >ERASE</button>
-            <button
-              type="button"
-              :class="{ active: clearMapMarksContinuous }"
-              title="Clear mapmarks/drawings - CTRL-click to continuously clear"
-              @click="handleClearMapMarksClick"
-            >CLEAR</button>
-          </div>
-
-          <div
-            v-if="communicationPanelOpen"
-            class="communication-body"
-          >
-            <div class="communication-log" aria-live="polite">
-              <div
-                v-for="message in communicationMessages"
-                :key="message.id"
-                class="communication-message"
-              >
-                <span class="communication-time">{{ formatCommunicationTime(message.createdAtMs) }}</span>
-                <!-- Which room this was said in. In the lobby there is only
-                     one, so it is unlabelled; in battle the split matters and
-                     a player has to be able to see which channel they are
-                     reading — and, when they answer, replying into. -->
-                <span
-                  v-if="message.channel !== 'all'"
-                  class="communication-channel"
-                  :class="`communication-channel-${message.channel}`"
-                >{{ message.channel === 'team' ? 'TEAM' : 'SPEC' }}</span>
-                <span
-                  class="communication-sender"
-                  :style="{ color: getPlayerColor(message.senderPlayerId) }"
-                >{{ communicationSenderName(message.senderPlayerId) }}</span>
-                <span class="communication-text">{{ message.text }}</span>
-              </div>
-            </div>
-
-            <form
-              v-if="communicationMode === 'chat'"
-              class="communication-input-row"
-              @submit.prevent="submitCommunicationChat"
-            >
-              <input
-                ref="chatInputRef"
-                v-model="communicationDraftText"
-                class="communication-input"
-                type="text"
-                maxlength="220"
-                autocomplete="off"
-                aria-label="Chat message"
-                @keydown.stop
-              />
-              <button type="submit">SEND</button>
-            </form>
-
-            <div
-              v-if="communicationMode === 'label'"
-              class="communication-input-row"
-            >
-              <input
-                v-model="communicationLabelText"
-                class="communication-input"
-                type="text"
-                maxlength="48"
-                autocomplete="off"
-                aria-label="Map label"
-                @keydown.stop
-              />
-            </div>
-
-            <div
-              v-if="communicationMode === 'draw'"
-              class="communication-status"
-            >DRAW {{ pendingDrawStart === null ? '1/2' : '2/2' }}</div>
-            <div
-              v-if="communicationMode === 'erase'"
-              class="communication-status"
-            >ERASE</div>
-          </div>
-        </section>
+        <!-- BAR-style corner console. In a battle it is the session's rooms
+             (ALL public / TEAM-or-SPEC); at home it is the games.niemo.io
+             global room, since the player is connected to nobody yet. -->
+        <ChatConsole
+          v-if="gameStarted"
+          ref="battleChatRef"
+          class="hud-chat"
+          :messages="sessionChatConsoleMessages"
+          :channels="battleChatChannels"
+          :active-channel-id="chatChannelId"
+          placeholder="Enter to chat"
+          @send="sendBattleChat"
+          @update:active-channel-id="(id: string) => (chatChannelId = id === 'all' ? 'all' : 'team')"
+        />
+        <ChatConsole
+          v-else
+          ref="homeChatRef"
+          class="hud-chat"
+          :messages="globalChatConsoleMessages"
+          :channels="GLOBAL_CHAT_CHANNELS"
+          active-channel-id="global"
+          placeholder="Enter to chat with everyone online"
+          @send="sendGlobalChat"
+        />
 
         <section
           v-if="mapDetailsVisible"
@@ -3147,6 +2892,7 @@ watchEffect(() => {
       :local-player-id="localPlayerId"
       :local-member-id="networkManager.getLocalMemberId()"
       :seated-member-ids="seatedMemberIds"
+      :chat-messages="sessionChatConsoleMessages"
       :error="lobbyError"
       :is-connecting="isConnecting"
       :center-magnitude="centerMagnitude"
@@ -3183,6 +2929,7 @@ watchEffect(() => {
       @offline="handleOffline"
       @entity-lab="openEntityLab"
       @game-controls="openGameControls"
+      @chat-send="sendLobbyChat"
       @toggle-menu="handleMenuToggle"
       @set-center-magnitude="(v) => applyCenterMagnitude(v)"
       @set-ring-magnitude="(v) => applyRingMagnitude(v)"

@@ -7,10 +7,23 @@
  * than the ore's size. The titanic dead-center deposit's cap exceeds the whole
  * playable map, so every area-mex drag, anywhere, of any size, "contained" the
  * deposit at map center and queued an extractor far outside the drawn circle.
+ *
+ * Deliberately HERMETIC: synthetic deposits and a synthetic all-ground
+ * buildability grid, never generateMetalDeposits. The real generator installs
+ * flat zones into the shared terrain module and drives Rust-side deposit
+ * state, and an earlier draft of this test corrupted both for every
+ * terrain-reading contract test registered after it (the turret-host suite
+ * failure of 2026-08-21). The membership rule under test needs neither.
  */
 
 import { Input3DBuildPlacementState } from './Input3DBuildPlacementState';
-import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConfig';
+import type { MetalDeposit } from '../../metalDepositConfig';
+import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
+import {
+  GROUND_BUILD_SQUARE_FLAG,
+  TERRAIN_BUILDABLE_FLAG,
+} from '../sim/terrain/terrainBuildability';
+import type { TerrainBuildabilityGrid } from '@/types/terrain';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) throw new Error(`[area mex contract] ${message}`);
@@ -20,31 +33,83 @@ function assertContract(condition: boolean, message: string): void {
  *  cells; membership itself must not be looser than the drawn circle. */
 const SNAP_SLACK = 60;
 
-export function runAreaMexPlacementContractTest(): void {
-  // The authored default map: 53 land cells of 200 world units per side.
-  const mapSize = 53 * 200;
-  const deposits = generateMetalDeposits(mapSize, mapSize, 2);
-  assertContract(deposits.length > 2, 'the generated map must hold deposits to test against');
+const CELLS_PER_SIDE = 200;
+const MAP_SIZE = CELLS_PER_SIDE * BUILD_GRID_CELL_SIZE;
 
-  const centerX = mapSize / 2;
-  const centerY = mapSize / 2;
-  let centerDeposit: MetalDeposit = deposits[0];
-  let farDeposit: MetalDeposit = deposits[0];
-  const distToCenter = (d: MetalDeposit): number => Math.hypot(d.x - centerX, d.y - centerY);
-  for (const deposit of deposits) {
-    if (distToCenter(deposit) < distToCenter(centerDeposit)) centerDeposit = deposit;
-    if (distToCenter(deposit) > distToCenter(farDeposit)) farDeposit = deposit;
+function makeAllGroundGrid(): TerrainBuildabilityGrid {
+  const cellCount = CELLS_PER_SIDE * CELLS_PER_SIDE;
+  return {
+    mapWidth: MAP_SIZE,
+    mapHeight: MAP_SIZE,
+    cellSize: BUILD_GRID_CELL_SIZE,
+    cellsX: CELLS_PER_SIDE,
+    cellsY: CELLS_PER_SIDE,
+    version: 1,
+    configKey: 'area-mex-contract',
+    flags: new Array<number>(cellCount).fill(
+      TERRAIN_BUILDABLE_FLAG | GROUND_BUILD_SQUARE_FLAG,
+    ),
+    levels: new Array<number>(cellCount).fill(0),
+  };
+}
+
+/** A deposit owning a 3x3 block of metal cells around its origin, with an
+ *  arbitrary authored placementRadius — the value membership must IGNORE. */
+function makeDeposit(id: number, originGx: number, originGy: number, placementRadius: number): MetalDeposit {
+  const cells: MetalDeposit['cells'] = [];
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const gx = originGx + dx;
+      const gy = originGy + dy;
+      cells.push({
+        gx,
+        gy,
+        x: gx * BUILD_GRID_CELL_SIZE + BUILD_GRID_CELL_SIZE / 2,
+        y: gy * BUILD_GRID_CELL_SIZE + BUILD_GRID_CELL_SIZE / 2,
+      });
+    }
   }
-  assertContract(
-    distToCenter(farDeposit) > 1000,
-    'the map must hold a deposit well away from center for this test to mean anything',
-  );
+  return {
+    id,
+    x: originGx * BUILD_GRID_CELL_SIZE + BUILD_GRID_CELL_SIZE / 2,
+    y: originGy * BUILD_GRID_CELL_SIZE + BUILD_GRID_CELL_SIZE / 2,
+    originGx,
+    originGy,
+    authoredMetalCellCount: cells.length,
+    cells,
+    metalCellCount: cells.length,
+    placementRadiusCells: Math.round(placementRadius / BUILD_GRID_CELL_SIZE),
+    boundsGridX: originGx - 1,
+    boundsGridY: originGy - 1,
+    boundsGridW: 3,
+    boundsGridH: 3,
+    placementRadius,
+    flatPadRadius: Math.min(placementRadius, 3 * BUILD_GRID_CELL_SIZE),
+    dTerrainLevels: null,
+    // Far above any liquid, so the drowned-deposit filter never bites.
+    height: 10000,
+    blendRadius: 0,
+    demoAutoExtractor: false,
+    groupId: -1,
+  };
+}
+
+export function runAreaMexPlacementContractTest(): void {
+  // The pathological center deposit: a growth cap wider than the whole map,
+  // exactly the titanic ring's authored shape that caused the bug.
+  const centerDeposit = makeDeposit(0, CELLS_PER_SIDE / 2, CELLS_PER_SIDE / 2, MAP_SIZE * 2);
+  const farDeposit = makeDeposit(1, 30, 30, 90);
+  const deposits = [centerDeposit, farDeposit];
 
   const state = new Input3DBuildPlacementState();
-  state.setMapBounds(mapSize, mapSize, 2, deposits);
-  const entitySource = { getBuildings: () => [] };
+  state.setMapBounds(MAP_SIZE, MAP_SIZE, 2, deposits);
+  const grid = makeAllGroundGrid();
+  const entitySource = {
+    getBuildings: () => [],
+    getTerrainBuildabilityGrid: () => grid,
+  };
 
-  // A circle drawn around a far-from-center deposit plans that deposit...
+  // A circle drawn around the far deposit plans that deposit...
   const radius = 300;
   const plan = state.planMetalExtractorPlacementsInArea(
     farDeposit.x, farDeposit.y, radius, entitySource,
@@ -62,34 +127,25 @@ export function runAreaMexPlacementContractTest(): void {
     );
   }
 
-  // A small circle over empty ground plans nothing at all. Walk outward from
-  // the far corner until a probe point clears every deposit origin.
-  const emptyRadius = 120;
-  let emptyX: number | null = null;
-  let emptyY: number | null = null;
-  for (let y = 400; y < mapSize && emptyX === null; y += 160) {
-    for (let x = 400; x < mapSize; x += 160) {
-      let clear = true;
-      for (const deposit of deposits) {
-        if (Math.hypot(deposit.x - x, deposit.y - y) <= emptyRadius + SNAP_SLACK) {
-          clear = false;
-          break;
-        }
-      }
-      if (clear) {
-        emptyX = x;
-        emptyY = y;
-        break;
-      }
-    }
-  }
-  assertContract(emptyX !== null && emptyY !== null, 'the map must hold some empty ground');
+  // A small circle over empty ground plans nothing at all. Before the fix
+  // the center deposit's map-wide growth cap put it inside EVERY circle, so
+  // this exact drag planned an extractor at dead center.
   const emptyPlan = state.planMetalExtractorPlacementsInArea(
-    emptyX as number, emptyY as number, emptyRadius, entitySource,
+    150 * BUILD_GRID_CELL_SIZE, 150 * BUILD_GRID_CELL_SIZE, 120, entitySource,
   );
   assertContract(
     emptyPlan.length === 0,
     'a circle over empty ground must plan nothing — before the fix it always planned dead center',
+  );
+
+  // And the giant deposit is still perfectly reachable the honest way: put
+  // the drag ON it and its origin is inside the circle.
+  const centerPlan = state.planMetalExtractorPlacementsInArea(
+    centerDeposit.x, centerDeposit.y, radius, entitySource,
+  );
+  assertContract(
+    centerPlan.length >= 1,
+    'a circle drawn over the center deposit itself must still plan it',
   );
 
   console.log('[contract] area mex placement OK');

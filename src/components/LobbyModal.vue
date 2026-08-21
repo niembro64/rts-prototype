@@ -42,6 +42,8 @@ import type { MultiplayerLobbySummary } from '../game/network/multiplayer/Multip
 
 import type { LobbyPlayer } from '@/types/ui';
 import type { LobbyMember } from '../game/network/NetworkManager';
+import ChatConsole from './ChatConsole.vue';
+import type { ChatConsoleMessage } from './chatConsoleTypes';
 
 const props = defineProps<{
   visible: boolean;
@@ -57,6 +59,10 @@ const props = defineProps<{
   /** Seat -> the member holding it, so a control on a seated row can address
    *  the member the host actually edits. */
   seatedMemberIds: Readonly<Record<number, number>>;
+  /** The session's shared room, already rendered into console rows. The
+   *  lobby is ONE room — deciding who plays is a conversation everyone
+   *  attached is part of, watchers included. */
+  chatMessages: readonly ChatConsoleMessage[];
   error: string | null;
   isConnecting: boolean;
   centerMagnitude: number;
@@ -101,6 +107,7 @@ const emit = defineEmits<{
   (e: 'cancel'): void;
   (e: 'entityLab'): void;
   (e: 'gameControls'): void;
+  (e: 'chatSend', text: string): void;
   /** Collapse or reveal the menu sidebar. Nothing to do with watching a
    *  match — this is the chevron on the sidebar's edge. */
   (e: 'toggleMenu'): void;
@@ -1108,6 +1115,18 @@ const terrainSectionVars = computed(() =>
               <p v-else class="spectator-empty">Nobody is watching.</p>
             </div>
           </div>
+
+          <!-- One shared room. Deciding who plays is a conversation everyone
+               attached is part of, watchers included — the split into
+               team/spectator rooms happens only when the battle starts. -->
+          <ChatConsole
+            class="lobby-chat"
+            :messages="chatMessages"
+            :channels="[{ id: 'all', label: 'LOBBY' }]"
+            active-channel-id="all"
+            placeholder="Say something to the lobby"
+            @send="(text: string) => emit('chatSend', text)"
+          />
         </div>
 
         <div class="lobby-right">
@@ -1603,6 +1622,10 @@ const terrainSectionVars = computed(() =>
   border: none;
   border-radius: 0;
   box-shadow: none;
+}
+
+.lobby-chat {
+  margin-top: 10px;
 }
 
 .lobby-modal.in-lobby > .lobby-left {

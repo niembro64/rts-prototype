@@ -127,9 +127,6 @@ export type CommandHotkeyId =
   | 'ui.captureVidHud'
   | 'ui.toggleFullscreen'
   | 'ui.chat'
-  | 'ui.mapDraw'
-  | 'ui.mapLabel'
-  | 'ui.mapErase'
   | 'ui.attackRangeCycleNext'
   | 'ui.attackRangeCyclePrevious'
   | 'ui.toggleLosMap'
@@ -176,7 +173,6 @@ const COMMAND_HOTKEY_CUSTOM_STORAGE_KEY = 'budget-annihilation.customCommandHotk
 export const DEFAULT_COMMAND_HOTKEY_PRESET: CommandHotkeyPresetId = 'bar-grid';
 /** BAR pins Recoil's KeyChainTimeout to 333 ms in luaintro/springconfig.lua. */
 export const BAR_KEY_CHAIN_TIMEOUT_MS = 333;
-export const BAR_MAP_DRAW_DOUBLE_TAP_MS = BAR_KEY_CHAIN_TIMEOUT_MS;
 
 /** The 12 build-menu grid slots in slot order. Single source of truth
  *  for the grid: COMMAND_HOTKEY_IDS spreads it and the build-menu
@@ -314,9 +310,6 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'ui.captureVidHud',
   'ui.toggleFullscreen',
   'ui.chat',
-  'ui.mapDraw',
-  'ui.mapLabel',
-  'ui.mapErase',
   'ui.attackRangeCycleNext',
   'ui.attackRangeCyclePrevious',
   'ui.toggleLosMap',
@@ -356,49 +349,6 @@ export function isBarCommandHotkeyPreset(presetId: CommandHotkeyPresetId): boole
 
 export function hasBarFactoryPresetHotkeys(presetId: CommandHotkeyPresetId): boolean {
   return presetId === 'bar-grid' || presetId === 'bar-legacy';
-}
-
-type BarMapDrawKeyEvent = Pick<
-  KeyboardEvent,
-  'code' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey'
->;
-
-export function barMapDrawHotkeySignature(
-  event: BarMapDrawKeyEvent,
-  presetId: CommandHotkeyPresetId,
-): string | null {
-  if (presetId === 'bar-grid') {
-    return isPlainCode(event, 'Backquote') ? 'bar-grid:Backquote' : null;
-  }
-  if (presetId === 'bar-grid-60pct') {
-    return event.code === 'KeyQ' &&
-      !event.ctrlKey &&
-      !event.shiftKey &&
-      !event.altKey &&
-      event.metaKey
-      ? 'bar-grid-60pct:Meta+KeyQ'
-      : null;
-  }
-  if (presetId === 'bar-legacy') {
-    if (isPlainCode(event, 'KeyQ')) return 'bar-legacy:KeyQ';
-    return isPlainCode(event, 'Backquote') ? 'bar-legacy:Backquote' : null;
-  }
-  if (presetId === 'bar-legacy-60pct') {
-    return isPlainCode(event, 'KeyQ') ? 'bar-legacy-60pct:KeyQ' : null;
-  }
-  return null;
-}
-
-export function barMapDrawCommandForTapCount(tapCount: number): Extract<CommandHotkeyId, 'ui.mapDraw' | 'ui.mapLabel'> {
-  return tapCount >= 2 ? 'ui.mapLabel' : 'ui.mapDraw';
-}
-
-function isPlainCode(event: BarMapDrawKeyEvent, codeValue: string): boolean {
-  return event.code === codeValue &&
-    !event.ctrlKey &&
-    !event.shiftKey &&
-    !event.altKey &&
-    !event.metaKey;
 }
 
 export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, string>> = {
@@ -530,9 +480,6 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'ui.captureVidHud': 'Record Video With HUD',
   'ui.toggleFullscreen': 'Toggle Fullscreen',
   'ui.chat': 'Chat',
-  'ui.mapDraw': 'Draw On Map',
-  'ui.mapLabel': 'Draw Map Label',
-  'ui.mapErase': 'Erase Map Drawings',
   'ui.attackRangeCycleNext': 'Attack Range Next',
   'ui.attackRangeCyclePrevious': 'Attack Range Previous',
   'ui.toggleLosMap': 'Toggle LOS Map',
@@ -564,14 +511,6 @@ function key(label: string, keyValue: string, options: ChordOptions = {}): Comma
 
 function code(label: string, codeValue: string, options: ChordOptions = {}): CommandHotkeyBinding {
   return [{ code: codeValue, label, ...options }];
-}
-
-function sequence(...bindings: readonly CommandHotkeyBinding[]): CommandHotkeyBinding {
-  const chords: CommandKeyChord[] = [];
-  for (const binding of bindings) {
-    for (const chord of binding) chords.push(chord);
-  }
-  return chords;
 }
 
 function commandPreset(
@@ -771,9 +710,6 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'ui.captureVidHud': [],
     'ui.toggleFullscreen': [key('Alt+Backspace', 'backspace', { alt: true })],
     'ui.chat': [key('Enter', 'enter', { shift: 'any' })],
-    'ui.mapDraw': [code('Ctrl+Shift+D', 'KeyD', { ctrl: true, shift: true })],
-    'ui.mapLabel': [code('Ctrl+Shift+L', 'KeyL', { ctrl: true, shift: true })],
-    'ui.mapErase': [code('Ctrl+Shift+E', 'KeyE', { ctrl: true, shift: true })],
     'ui.attackRangeCycleNext': [],
     'ui.attackRangeCyclePrevious': [],
     'ui.toggleLosMap': [],
@@ -943,9 +879,6 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'ui.captureVidHud': [],
     'ui.toggleFullscreen': [key('Alt+Backspace', 'backspace', { alt: true })],
     'ui.chat': [key('Enter', 'enter', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
-    'ui.mapDraw': [code('`', 'Backquote')],
-    'ui.mapLabel': [sequence(code('`', 'Backquote'), code('`', 'Backquote'))],
-    'ui.mapErase': [],
     // chat_and_ui_keys.txt: Alt+sc_. attack_range_inc,
     // Alt+sc_comma attack_range_dec.
     'ui.attackRangeCycleNext': [code('Alt+.', 'Period', { alt: true })],
@@ -1124,15 +1057,6 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
       key('Alt+Enter', 'enter', { alt: true }),
     ],
     'ui.chat': [key('Enter', 'enter', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
-    'ui.mapDraw': [
-      code('Q', 'KeyQ'),
-      code('`', 'Backquote'),
-    ],
-    'ui.mapLabel': [
-      sequence(code('Q', 'KeyQ'), code('Q', 'KeyQ')),
-      sequence(code('`', 'Backquote'), code('`', 'Backquote')),
-    ],
-    'ui.mapErase': [],
     // chat_and_ui_keys.txt: Alt+sc_. attack_range_inc,
     // Alt+sc_comma attack_range_dec.
     'ui.attackRangeCycleNext': [code('Alt+.', 'Period', { alt: true })],
@@ -1160,13 +1084,6 @@ const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetId, Comm
     withoutFactoryPresetBindings(BASE_COMMAND_HOTKEY_PRESETS['bar-grid']),
     {
       'factory.queueMode': [],
-      'ui.mapDraw': [code('Meta+Q', 'KeyQ', { meta: true })],
-      'ui.mapLabel': [
-        sequence(
-          code('Meta+Q', 'KeyQ', { meta: true }),
-          code('Meta+Q', 'KeyQ', { meta: true }),
-        ),
-      ],
       // grid_keys_60pct.txt moves the damaged filter to Ctrl+Alt+sc_q because
       // Alt+Q is the 60% autogroup-remove chord.
       'select.damagedOnly': [code('Ctrl+Alt+Q', 'KeyQ', { ctrl: true, alt: true })],
@@ -1191,8 +1108,6 @@ const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetId, Comm
     withoutFactoryPresetBindings(BASE_COMMAND_HOTKEY_PRESETS['bar-legacy']),
     {
       'factory.queueMode': [],
-      'ui.mapDraw': [code('Q', 'KeyQ')],
-      'ui.mapLabel': [sequence(code('Q', 'KeyQ'), code('Q', 'KeyQ'))],
       'ui.optionsMenu': [],
       'camera.viewTa': [code('Ctrl+Meta+2', 'Digit2', { ctrl: true, meta: true })],
       'camera.viewSpring': [code('Ctrl+Meta+3', 'Digit3', { ctrl: true, meta: true })],
