@@ -41,6 +41,7 @@ export function createGame(config: GameConfig): GameInstance {
         allyTeamSeats: config.allyTeamSeats,
         allyTeamByPlayerId: config.allyTeamByPlayerId,
         localPlayerId,
+        localRole: config.localRole,
         gameConnection: config.gameConnection,
         clientViewState: config.clientViewState,
         mapWidth: config.mapWidth,

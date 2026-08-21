@@ -131,6 +131,10 @@ type RtsScene3DConfig = {
   /** Explicit lobby side assignment; takes precedence over both. */
   allyTeamByPlayerId?: Readonly<Record<number, number>>;
   localPlayerId: PlayerId;
+  /** 'spectator' boots the scene watching the WHOLE battle — fog shade off,
+   *  no seat's sight rings — matching the view bar's default ALL state.
+   *  Omitted means 'player'. */
+  localRole?: 'player' | 'spectator';
   gameConnection: GameConnection;
   /** Hoisted up to GameCanvas so state survives a live 2D↔3D renderer
    *  swap without waiting for the next snapshot. If the old scene's
@@ -237,6 +241,11 @@ export class RtsScene3D {
   private cursorGround!: CursorGround;
 
   private localPlayerId: PlayerId;
+  /** True while a WATCHER views the whole battle rather than one seat's
+   *  perspective. `localPlayerId` keeps its last value purely as a view seat
+   *  for UI plumbing that needs a number; nothing perspective-shaped (fog
+   *  shade, sight rings, shield masks) may key off it while this is set. */
+  private watchingAll = false;
   private playerIds: PlayerId[];
   /** Player -> team -> ally team for this match. */
   private teamRoster: TeamRoster;
@@ -336,6 +345,9 @@ export class RtsScene3D {
     this.threeApp = threeApp;
     this.clientRenderEnabled = threeApp.isRenderEnabled();
     this.localPlayerId = config.localPlayerId;
+    // A spectator boots in ALL: before this, the view bar highlighted ALL
+    // while the scene silently rendered the first seat's fog.
+    this.watchingAll = config.localRole === 'spectator';
     this.playerIds = config.playerIds;
     this.teamRoster = resolveTeamRoster(this.playerIds, {
       allyTeamCount: config.allyTeamCount,
@@ -711,6 +723,7 @@ export class RtsScene3D {
         waypoint3D: this.waypoint3D,
       },
       () => this.localPlayerId,
+      () => this.watchingAll,
       () => this.inputManager,
       (playerId) => this.lookupPlayerName(playerId),
       () => this.onCameraQuadUpdate,
@@ -1074,12 +1087,18 @@ export class RtsScene3D {
    * filtering choice and no one else has to be told about it.
    */
   public watchPlayer(playerId: PlayerId | undefined): void {
-    this.localPlayerId = playerId ?? this.playerIds[0] ?? this.localPlayerId;
+    this.watchingAll = playerId === undefined;
+    if (playerId !== undefined) this.localPlayerId = playerId;
     this.inputManager?.setActivePlayerId(this.localPlayerId);
     this.gameConnection.setSpectatorTarget?.(playerId);
     this.markSelectionDirty();
     this.lastIdleBuildersSignature = '';
     this.onPlayerChange?.(this.localPlayerId);
+  }
+
+  /** Whether a watcher is viewing the whole battle (no seat perspective). */
+  public isWatchingAll(): boolean {
+    return this.watchingAll;
   }
 
   private arePlayersAlliedForInput(a: PlayerId, b: PlayerId): boolean {

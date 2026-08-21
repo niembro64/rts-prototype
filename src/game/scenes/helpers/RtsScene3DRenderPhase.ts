@@ -306,6 +306,11 @@ export class RtsScene3DRenderPhase {
     private readonly selectionSystem: RtsScene3DSelectionSystem,
     private readonly resources: RtsScene3DRenderPhaseResources,
     private readonly getLocalPlayerId: () => PlayerId,
+    /** True while a spectator views the whole battle. Everything
+     *  perspective-shaped in this phase — fog shade, sight/radar rings,
+     *  shield visibility — must go wide open rather than borrowing the
+     *  view seat's perspective. */
+    private readonly getWatchingAll: () => boolean,
     private readonly getInputManager: () => Input3DManager | null,
     private readonly lookupPlayerName: (id: PlayerId) => string | null,
     private readonly getCameraQuadUpdate: () => ((
@@ -444,7 +449,11 @@ export class RtsScene3DRenderPhase {
     );
 
     const serverMeta = this.clientViewState.getServerMeta();
-    const fogOfWarEnabled = serverMeta?.fogOfWarEnabled === true;
+    // A watcher on ALL sees the whole map: the sim's fog stays authoritative
+    // and hashed (lockstep never turns it off), but this client renders no
+    // shade over it. Following one seat restores that seat's exact view.
+    const watchingAll = this.getWatchingAll();
+    const fogOfWarEnabled = serverMeta?.fogOfWarEnabled === true && !watchingAll;
     const turretShieldSpheresEnabled = serverMeta?.turretShieldSpheresEnabled ?? true;
     const forceFieldsVisible = getForceFieldsVisible();
     windParticleFieldRenderer.update(
@@ -457,16 +466,18 @@ export class RtsScene3DRenderPhase {
     const overlaySize = this.threeApp.renderer.getSize(this._overlayResolution);
     overlayLineSystem.setResolution(overlaySize.x, overlaySize.y);
     overlayLineSystem.setSuppressed(captureClean);
+    // Sight/radar rings trace ONE seat's sensor perspective; on ALL there is
+    // no such seat, so they draw nothing rather than the view seat's rings.
     sightBoundaryRenderer.update(
       this.clientViewState,
       this.getLocalPlayerId(),
-      getSightBoundary(),
+      getSightBoundary() && !watchingAll,
       this.renderScope,
     );
     radarBoundaryRenderer.update(
       this.clientViewState,
       this.getLocalPlayerId(),
-      getRadarBoundary(),
+      getRadarBoundary() && !watchingAll,
       this.renderScope,
     );
     // Contact-only enemies are drawn as generic blips here, from the same
@@ -822,6 +833,9 @@ export class RtsScene3DRenderPhase {
   private resolveShieldVisibilityTeamMask(): number {
     const detectionMask = this.clientViewState.getServerMeta()?.shieldAwareTargetingPlayerMask;
     if (detectionMask === undefined) return 0;
+    // A watcher on ALL sees every shield; a seat-scoped mask would borrow
+    // the view seat's detection upgrades.
+    if (this.getWatchingAll()) return 0;
     const localPlayerId = this.getLocalPlayerId();
     const localBit = localPlayerId >= 1 && localPlayerId <= 31
       ? 1 << (localPlayerId - 1)

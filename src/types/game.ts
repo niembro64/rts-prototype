@@ -31,6 +31,9 @@ export type GameConfig = {
    *  `allyTeamCount`. Seats missing here fall back to their own side. */
   allyTeamByPlayerId?: Readonly<Record<number, number>>;
   localPlayerId?: PlayerId;
+  /** 'spectator' boots the scene watching the whole battle (fog shade off,
+   *  ALL view) instead of posing as the first seat. Omitted = 'player'. */
+  localRole?: 'player' | 'spectator';
   gameConnection: GameConnection;
   /** ClientViewState owned by GameCanvas so its contents (units, buildings,
    *  prediction, selection, etc.) survive a scene rebuild without waiting
