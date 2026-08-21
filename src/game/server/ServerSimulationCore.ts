@@ -14,7 +14,8 @@ import type { Simulation } from '../sim/Simulation';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';
 import {
-  hashCanonicalServerState,
+  hashCanonicalServerStateFull,
+  hashCanonicalServerStateLight,
   type CanonicalServerStateHash,
 } from '../architecture/CanonicalStateHash';
 import type { Body3D, PhysicsEngine3D } from './PhysicsEngine3D';
@@ -167,8 +168,17 @@ export class ServerSimulationCore {
     return this.unitForceSystem.getSurfaceLiftProbeDebugFrame(entityId);
   }
 
+  /** The LIGHT hash: full state coverage at section granularity, none of
+   *  the per-entity diagnostic breakdown. This is what the living match
+   *  checksums on — see CanonicalStateHash.ts. */
   getCanonicalStateHash(): CanonicalServerStateHash {
-    return hashCanonicalServerState(this);
+    return hashCanonicalServerStateLight(this);
+  }
+
+  /** The FULL hash: light plus the per-entity/component/field breakdown.
+   *  Expensive — for desync reports and diagnostics exports only. */
+  getCanonicalStateHashFull(): CanonicalServerStateHash {
+    return hashCanonicalServerStateFull(this);
   }
 
   clearPendingCommandsAndStepBuffers(): void {

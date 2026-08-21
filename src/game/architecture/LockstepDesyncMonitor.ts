@@ -17,6 +17,12 @@ export type LockstepDesyncReport = {
     readonly stateHash: CanonicalServerStateHash;
   }[];
   readonly recentCommandFrames: readonly LockstepCompleteCommandFrame[];
+  /** The FULL local hash (per-entity/component/field breakdown) computed at
+   *  the moment the desync was DETECTED. The periodic checksums above are
+   *  LIGHT, so this is the only entity-level detail the report carries; it
+   *  describes the local world at detection time, which has advanced past
+   *  the frame that disagreed. Attached via recordLocalStateDetail. */
+  readonly localStateDetail?: CanonicalServerStateHash;
 };
 
 type LockstepChecksumRecord = {
@@ -78,6 +84,14 @@ export class LockstepDesyncMonitor {
     if (frame === undefined) return null;
     const stateHash = this.checksumsByFrame.get(frame)?.get(this.localPlayerId);
     return stateHash === undefined ? null : { frame, stateHash };
+  }
+
+  /** Attach the FULL local state breakdown to an already-latched report.
+   *  A no-op before any desync: there is nothing to explain yet, and the
+   *  full hash is too expensive to carry around on suspicion. */
+  recordLocalStateDetail(stateHash: CanonicalServerStateHash): void {
+    if (this.desyncReport === null) return;
+    this.desyncReport = { ...this.desyncReport, localStateDetail: stateHash };
   }
 
   recordChecksum(record: LockstepChecksumRecord): LockstepDesyncReport | null {

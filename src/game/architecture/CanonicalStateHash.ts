@@ -43,18 +43,55 @@ export type CanonicalServerState = {
   readonly entities: CanonicalValue;
 };
 
-export function hashCanonicalServerState(core: ServerSimulationCore): CanonicalServerStateHash {
+/**
+ * Two hashes over ONE canonical truth (budget_design_philosophy.html,
+ * "Two state hashes over one truth"):
+ *
+ *   LIGHT  what the living match runs on. Covers EVERYTHING the full hash
+ *          covers — every entity, every field — because the sections hash
+ *          the complete canonical state. What it skips is the per-entity /
+ *          per-component / per-field DIAGNOSTIC breakdown, which is the
+ *          overwhelming majority of the cost (~120 separate stringify+hash
+ *          passes per entity) and of the wire weight (megabytes per
+ *          checksum at high entity counts), and which nothing reads until
+ *          something has already gone wrong.
+ *   FULL   the same light hash plus that breakdown. Computed on demand at
+ *          the moments that justify it: a desync being reported, an
+ *          initialization mismatch, a diagnostics export. Its `hash` and
+ *          `sections` are byte-identical to light's, so a full hash can
+ *          always be compared against a light one.
+ *
+ * The root hash is composed from the section hashes rather than from a
+ * second stringify of the whole state — one pass over the state instead of
+ * two, and the same answer on every peer running the same build. That
+ * composition (and any change to what the sections cover) shifts every hash
+ * value, which is why LOCKSTEP_PROTOCOL_VERSION must be bumped alongside:
+ * two builds that hash differently must be refused at the door, not
+ * discovered as a phantom desync 180 ticks in.
+ */
+export function hashCanonicalServerStateLight(core: ServerSimulationCore): CanonicalServerStateHash {
+  return finishLightHash(buildCanonicalServerState(core));
+}
+
+export function hashCanonicalServerStateFull(core: ServerSimulationCore): CanonicalServerStateHash {
   const state = buildCanonicalServerState(core);
   return {
-    hash: hashCanonicalValue(state),
-    sections: {
-      world: hashCanonicalValue(state.world),
-      simulation: hashCanonicalValue(state.simulation),
-      economy: hashCanonicalValue(state.economy),
-      commands: hashCanonicalValue(state.commands),
-      entities: hashCanonicalValue(state.entities),
-    },
+    ...finishLightHash(state),
     entityHashes: buildEntityHashes(state.entities),
+  };
+}
+
+function finishLightHash(state: CanonicalServerState): CanonicalServerStateHash {
+  const sections = {
+    world: hashCanonicalValue(state.world),
+    simulation: hashCanonicalValue(state.simulation),
+    economy: hashCanonicalValue(state.economy),
+    commands: hashCanonicalValue(state.commands),
+    entities: hashCanonicalValue(state.entities),
+  };
+  return {
+    hash: hashCanonicalValue({ schema: state.schema, ...sections }),
+    sections,
   };
 }
 
@@ -354,7 +391,11 @@ function buildEntityHashes(entities: CanonicalValue): readonly CanonicalEntitySt
     hashes[i] = {
       id,
       type,
-      hash: hashCanonicalValue(entityState),
+      // Composed from the component hashes already in hand rather than a
+      // second full stringify of the entity — this value is diagnostic
+      // (never compared across the wire for agreement), so its cheapness
+      // matters more than its spelling.
+      hash: hashCanonicalValue({ id, type, ...components }),
       components,
       componentFields,
     };

@@ -365,7 +365,10 @@ export type NetworkCommunicationChatEvent = {
 
 export type NetworkCommunicationEvent = NetworkCommunicationChatEvent;
 
-export const LOCKSTEP_PROTOCOL_VERSION = 'budget-annihilation.lockstep.v4' as const;
+// v5: the periodic checksum went LIGHT (composed root hash, no entityHashes
+// on the wire). Hash values changed, so a v4 build meeting a v5 build would
+// read as a phantom desync — refused at the door instead.
+export const LOCKSTEP_PROTOCOL_VERSION = 'budget-annihilation.lockstep.v5' as const;
 type LockstepProtocolVersion = typeof LOCKSTEP_PROTOCOL_VERSION;
 
 export type LockstepProtocolBase = {

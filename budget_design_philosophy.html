@@ -484,6 +484,37 @@
         <li>Lockstep support is still deliberately bounded: real battles only, no AI players, no automatic resync, and no host migration. Late join, reconnect and spectators are supported — see <em>Members hold connections; seats hold armies</em> below.</li>
       </ul>
 
+      <h3>Two state hashes over one truth</h3>
+      <p>
+        There is one canonical serialization of the simulation and two hashes over it. The
+        <strong>LIGHT</strong> hash is what the living match runs on: five section hashes
+        (world, simulation, economy, commands, entities) over the complete canonical state,
+        with the root composed from them. It covers <em>everything</em> — every entity, every
+        field — because the sections do; what it declines to compute is the per-entity,
+        per-component, per-field diagnostic breakdown, which nothing reads until something has
+        already gone wrong. The <strong>FULL</strong> hash is the light hash plus that
+        breakdown, computed on demand at the moments that justify its cost: a desync being
+        reported, an initialization mismatch, a diagnostics export.
+      </p>
+      <p>
+        The split exists because the breakdown was the cost. Producing it meant on the order of
+        a hundred separate stringify-and-hash passes per entity, five-plus complete
+        re-serializations of the entity payload per checksum, and a multi-megabyte checksum
+        message every interval — profiled at ~110&nbsp;ms per checksum at high entity counts,
+        every nine seconds, on every peer, to compute detail that is only ever read on the
+        desync frame. A light checksum weakens nothing: two peers whose worlds differ in any
+        hashed field still disagree at the section level, which is what stops the match. What
+        the light hash cannot do is name the entity — so a desync immediately escalates,
+        computing a FULL hash of the still-live local state and attaching it to the exportable
+        report, clearly labelled as the state at <em>detection</em> time rather than at the
+        frame that disagreed.
+      </p>
+      <ul class="rule-list">
+        <li>LIGHT and FULL agree byte-for-byte on <code>hash</code> and <code>sections</code>, so a full hash can always be compared against a light one. Only the diagnostic payload is mode-dependent, and every reader of it already tolerates absence.</li>
+        <li>The periodic checksum, the late-join verify gate, checkpoints, and the replay harness all run LIGHT. Desync reports, initialization-mismatch broadcasts, and diagnostics exports run FULL. There is no runtime mode toggle — the split is structural, so peers cannot disagree about it.</li>
+        <li>Changing what a hash covers changes its value, which between mixed builds would surface as a phantom desync minutes in. Any such change bumps <code>LOCKSTEP_PROTOCOL_VERSION</code>, so mismatched builds are refused at the door with a message that says to update.</li>
+      </ul>
+
       <h3>Members hold connections; seats hold armies</h3>
       <p>
         A <strong>member</strong> is one connection. A <strong>seat</strong> is a PlayerId in the match.

@@ -922,14 +922,24 @@ async function createDeterministicLockstepBackendRuntime({
     nowMs: () => performance.now(),
     onDesync: (report) => {
       scheduler.markDesynced(`checksum mismatch at frame ${report.frame}`);
+      // The periodic checksums are LIGHT (sections only), so the cached
+      // hashes in the report cannot name WHICH entity diverged. The state is
+      // still live right here, and the match is already stopping — so this
+      // is the one moment the FULL hash earns its cost. It describes the
+      // frame the desync was DETECTED on, which has moved past the frame
+      // that disagreed; the section diffs from the checksum frame say where
+      // to look, the full breakdown says what the world looks like now.
+      const fullStateAtDetection = lockstepCore.getCanonicalStateHashFull();
       console.error('[LOCKSTEP] checksum desync detected', {
         ...report,
         sectionDiffs: diffCanonicalHashSections(report.localHash, report.remoteHash),
         entityDiffs: diffCanonicalEntityHashes(report.localHash, report.remoteHash),
+        fullStateAtDetection,
         diagnostics: scheduler.getDiagnostics(),
         lockstepNetwork: network?.getLockstepTransport().getDiagnostics() ?? null,
         sendBudget: network?.getSendBudgetTelemetry() ?? null,
       });
+      desyncMonitor?.recordLocalStateDetail(fullStateAtDetection);
       network?.getLockstepTransport().broadcastDesync(
         report.frame,
         report.localHash,
@@ -970,9 +980,11 @@ async function createDeterministicLockstepBackendRuntime({
       `initialization hash mismatch from peer ${fromPlayerId}: ` +
         `${peerHash} !== ${initializationHash}`;
     scheduler.markDesynced(reason);
+    // Fatal path, off the hot loop: the FULL hash so the report can name
+    // entities, not just sections.
     network?.getLockstepTransport().broadcastDesync(
       currentFrame,
-      lockstepCore.getCanonicalStateHash(),
+      lockstepCore.getCanonicalStateHashFull(),
       fromPlayerId,
       null,
     );

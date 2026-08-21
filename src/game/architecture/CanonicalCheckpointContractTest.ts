@@ -80,6 +80,28 @@ function runCanonicalCheckpointContract(): void {
       checkpoint.stateHash.hash === baseline.getCanonicalStateHash().hash,
       'checkpoint must carry the frame-N state hash',
     );
+
+    // The light/full contract: FULL is LIGHT plus the diagnostic breakdown,
+    // never a different truth. If these drift, a full hash computed at a
+    // desync could not be compared against the light checksums that raised
+    // it. (See "Two state hashes over one truth" in the design doc.)
+    const light = baseline.getCanonicalStateHash();
+    const full = baseline.getCanonicalStateHashFull();
+    assertContract(light.entityHashes === undefined,
+      'the light hash must not pay for the per-entity breakdown');
+    assertContract(full.entityHashes !== undefined && full.entityHashes.length > 0,
+      'the full hash must carry the per-entity breakdown');
+    assertContract(light.hash === full.hash,
+      'light and full must agree on the root hash');
+    assertContract(
+      light.sections.world === full.sections.world &&
+        light.sections.simulation === full.sections.simulation &&
+        light.sections.economy === full.sections.economy &&
+        light.sections.commands === full.sections.commands &&
+        light.sections.entities === full.sections.entities,
+      'light and full must agree on every section hash',
+    );
+
     stepCoreToFrame(baseline, 30, []);
     baselineFrame30Hash = baseline.getCanonicalStateHash().hash;
   } finally {

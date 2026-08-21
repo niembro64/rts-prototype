@@ -630,6 +630,10 @@ export class GameServer {
     return this.core.getCanonicalStateHash();
   }
 
+  getCanonicalStateHashFull(): CanonicalServerStateHash {
+    return this.core.getCanonicalStateHashFull();
+  }
+
   // Add a snapshot listener. Returns the trackingKey so callers can
   // later removeSnapshotListener — without that, listeners (and the
   // closures they capture) accumulate forever as clients connect /
