@@ -48,7 +48,7 @@
   --bar-grid-button-padding: max(1px, calc(var(--bar-grid-bg-padding) * 0.52));
   --bar-grid-active-area-margin: calc(var(--bar-grid-bg-padding) * 0.1);
   --bar-grid-category-rect-height: calc(var(--bar-grid-category-button-height) - var(--bar-grid-active-area-margin) - (var(--bar-grid-button-padding) * 2));
-  --bar-grid-category-icon-size: min(calc(var(--bar-grid-category-rect-height) * 1.1), var(--bar-grid-category-button-height));
+  --bar-grid-category-icon-size: min(calc(var(--bar-grid-category-rect-height) - var(--bar-grid-bg-padding)), calc(var(--bar-grid-bg-padding) * 6));
   --bar-grid-footer-button-height: calc(var(--bar-grid-category-button-height) - (var(--bar-grid-button-padding) * 2));
   --bar-builder-button-size: calc(var(--bar-grid-category-button-base-height) * 2);
   --bar-builder-next-height: calc(var(--bar-builder-button-size) * 0.6);
@@ -200,6 +200,9 @@
   transform: scaleX(-1);
 }
 
+/* The glyph is a MASK now, filled with its category's color — the icon says
+ * what the item is, the color says which family it serves. The masked span
+ * can never paint outside its own box, which is also the overflow fix. */
 .bar-cell-group-icon {
   position: absolute;
   top: 0;
@@ -207,7 +210,9 @@
   z-index: 2;
   width: var(--bar-grid-group-icon-size);
   height: var(--bar-grid-group-icon-size);
-  object-fit: contain;
+  background-color: var(--icon-tint, #ffffff);
+  -webkit-mask: var(--icon-mask) no-repeat center / contain;
+  mask: var(--icon-mask) no-repeat center / contain;
   pointer-events: none;
   filter: none;
 }
@@ -319,7 +324,7 @@
 
 .bar-grid-category-btn {
   width: var(--bar-grid-cell-size);
-  overflow: visible;
+  overflow: hidden;
 }
 
 .bar-grid-footer:not(.category-active):not(.page-only) .bar-grid-category-btn {
@@ -536,11 +541,14 @@
 
 .bar-category-icon {
   position: absolute;
-  top: calc(var(--bar-grid-bg-padding) * 0.5);
+  top: 50%;
   left: calc(var(--bar-grid-bg-padding) * 0.5);
   width: var(--bar-grid-category-icon-size);
   height: var(--bar-grid-category-icon-size);
-  object-fit: contain;
+  transform: translateY(-50%);
+  background-color: var(--icon-tint, #ffffff);
+  -webkit-mask: var(--icon-mask) no-repeat center / contain;
+  mask: var(--icon-mask) no-repeat center / contain;
   opacity: 0.9;
   pointer-events: none;
 }

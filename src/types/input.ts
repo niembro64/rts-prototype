@@ -18,6 +18,11 @@ export type WorldPoint = {
 export type InputContext = {
   getTick(): number;
   activePlayerId: PlayerId;
+  /** True when this client holds NO seat — it watches. A spectator's
+   *  activePlayerId is only a VIEW target (whose fog/economy to borrow),
+   *  never an allegiance: selection and cursors must stay agnostic to
+   *  players and teams instead of impersonating the viewed seat. */
+  isSpectator: boolean;
 };
 
 

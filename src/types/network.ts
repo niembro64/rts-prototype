@@ -639,6 +639,9 @@ export type NetworkMessage =
        *  The joiner answers with a resume request rather than sitting in a
        *  lobby that no longer exists. */
       matchInProgress: boolean;
+      /** The running match's sequence within this session (0 = none yet).
+       *  Adopted before the resume request rides the lockstep transport. */
+      matchSequence: number;
     }
   // Host -> all, the WHOLE member list. Atomic replace rather than a delta:
   // the roster is small, and every disagreement about who sits where came
@@ -658,6 +661,10 @@ export type NetworkMessage =
       type: 'gameStart';
       playerIds: PlayerId[];
       gameId: string;
+      /** Which match within the session this is (host-bumped). Clients key
+       *  their lockstep wire identity on it, so a rematch shares nothing
+       *  with the frames that came before. */
+      matchSequence: number;
       handoff: BattleHandoff;
       /** The seat this recipient holds, or undefined when it is watching. */
       assignedPlayerId: PlayerId | undefined;

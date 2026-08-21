@@ -19,7 +19,7 @@ export class Input3DBoxSelection {
     source: SelectionEntitySource,
     viewportRect: DOMRect,
     camera: THREE.Camera,
-    playerId: PlayerId,
+    playerId: PlayerId | undefined,
     a: { x: number; y: number },
     b: { x: number; y: number },
     options: ScreenRectSelectionOptions = {},

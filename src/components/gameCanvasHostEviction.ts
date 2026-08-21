@@ -103,6 +103,15 @@ export function useGameCanvasHostEviction(options: {
   const state = ref<EvictionState>(machine.state);
 
   function beginHostLeftEviction(): void {
+    // 'exited' is terminal for the SESSION that lost its host, not for the
+    // page. This composable outlives sessions, so a departure in a LATER
+    // session finds the machine parked on the old terminal state — reset it
+    // to the top or the second eviction is refused and the client freezes
+    // in a dead room.
+    if (machine.state === 'exited') {
+      machine.reset();
+      state.value = machine.state;
+    }
     if (!machine.send('hostLeft')) return;
     state.value = machine.state;
   }

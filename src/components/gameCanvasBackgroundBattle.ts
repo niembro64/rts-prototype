@@ -22,6 +22,12 @@ function loadLobbyManager(): Promise<LobbyManagerModule> {
 
 type BackgroundBattleOptions = {
   backgroundContainerRef: Ref<HTMLDivElement | null>;
+  /** Whether the stage is free. The preview/demo battle must never race a
+   *  FOREGROUND battle (live or booting) for the sim/renderer singletons —
+   *  and the racers are real: nextTick-queued restarts from lobby-settings
+   *  and roster changes land here mid-transition all the time. Checked on
+   *  entry AND after every await, because the answer changes mid-flight. */
+  canRunBackgroundBattle: () => boolean;
   getLocalIpAddress: () => string;
   getBattleMode: () => BattleMode;
   getPreviewPlayerIds: () => PlayerId[] | undefined;
@@ -49,6 +55,7 @@ const BACKGROUND_LOAD_PROGRESS = {
 
 export function useGameCanvasBackgroundBattle({
   backgroundContainerRef,
+  canRunBackgroundBattle,
   getLocalIpAddress,
   getBattleMode,
   getPreviewPlayerIds,
@@ -109,9 +116,20 @@ export function useGameCanvasBackgroundBattle({
   }
 
   async function startBackgroundBattle(): Promise<void> {
+    if (!canRunBackgroundBattle()) {
+      // Refused, not deferred: the foreground battle owns the stage. The
+      // next legitimate transition (return to lobby, leave) queues its own
+      // start, so a refused one has nobody to answer to.
+      return;
+    }
     const myGen = ++backgroundBattleGen;
     destroyCurrentBackgroundBattle();
     const previousStart = backgroundBattleStartTail;
+
+    const superseded = (): boolean =>
+      myGen !== backgroundBattleGen ||
+      !backgroundContainerRef.value ||
+      !canRunBackgroundBattle();
 
     const runStart = async (): Promise<void> => {
       try {
@@ -124,12 +142,12 @@ export function useGameCanvasBackgroundBattle({
         onRendererWarmupChange(getPlayerClientEnabled());
         await waitForLoadingOverlayPaint();
         await previousStart;
-        if (myGen !== backgroundBattleGen || !backgroundContainerRef.value) {
+        if (superseded()) {
           onRendererWarmupChange(false);
           return;
         }
         await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.overlayPainted, 'Preparing loading screen');
-        if (myGen !== backgroundBattleGen || !backgroundContainerRef.value) {
+        if (superseded()) {
           onRendererWarmupChange(false);
           return;
         }
@@ -143,13 +161,13 @@ export function useGameCanvasBackgroundBattle({
             'Preparing interface previews',
           );
         });
-        if (myGen !== backgroundBattleGen || !backgroundContainerRef.value) {
+        if (superseded()) {
           onRendererWarmupChange(false);
           return;
         }
         await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.previewImages, 'Interface previews ready');
         const lobbyManager = await loadLobbyManager();
-        if (myGen !== backgroundBattleGen || !backgroundContainerRef.value) {
+        if (superseded()) {
           onRendererWarmupChange(false);
           return;
         }
@@ -205,7 +223,7 @@ export function useGameCanvasBackgroundBattle({
           ),
           handleStartupReady,
         );
-        if (myGen !== backgroundBattleGen) {
+        if (myGen !== backgroundBattleGen || !canRunBackgroundBattle()) {
           lobbyManager.destroyBackgroundBattle(battle);
           onRendererWarmupChange(false);
           return;

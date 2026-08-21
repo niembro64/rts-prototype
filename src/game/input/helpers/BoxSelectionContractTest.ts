@@ -196,4 +196,40 @@ export function runBoxSelectionContractTest(): void {
       }),
     'same-type double click must reject late, distant, and different-type second taps',
   );
+
+  // ── Seatless (spectator) selection is owner-blind ─────────────────────
+  // A watcher holds no seat, so a box keeps every in-rect entity regardless
+  // of side; the units-over-buildings preference stays, applied owner-blind.
+  {
+    const ownUnit = unit(41, 4, 4, 'tank');
+    const foreignUnit = unit(42, 5, 5, 'tank');
+    (foreignUnit.ownership as { playerId: PlayerId }).playerId = 2 as PlayerId;
+    const foreignBuilding = building(43, 6, 6, 'solar');
+    (foreignBuilding.ownership as { playerId: PlayerId }).playerId = 3 as PlayerId;
+    const mixed = source([ownUnit, foreignUnit], [foreignBuilding]);
+
+    const seatless = selectEntitiesInScreenRect(
+      mixed,
+      RECT,
+      undefined,
+      PROJECT_ENTITY_POSITION,
+      {},
+    );
+    assertContract(
+      seatless.includes(41) && seatless.includes(42) && !seatless.includes(43),
+      'a seatless box must keep every in-rect unit regardless of owner (buildings still yield to units)',
+    );
+
+    const seated = selectEntitiesInScreenRect(
+      mixed,
+      RECT,
+      LOCAL_PLAYER,
+      PROJECT_ENTITY_POSITION,
+      {},
+    );
+    assertContract(
+      seated.includes(41) && !seated.includes(42) && !seated.includes(43),
+      'a seated box must keep only the selecting seat\'s own entities',
+    );
+  }
 }

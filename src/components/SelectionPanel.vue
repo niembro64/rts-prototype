@@ -618,9 +618,11 @@ const BAR_GROUP_ICON_BY_UNIT_BLUEPRINT_ID: Readonly<Record<string, BarGroupIconI
   unitConstructionSubmarine: 'builder',
   unitDaddy: 'weapon',
   unitDragonfly: 'weapon',
+  unitDuck: 'weapon',
   unitEagle: 'aa',
   unitFormik: 'weapon',
   unitHippo: 'weapon',
+  unitHuman: 'weapon',
   unitJackal: 'weapon',
   unitLoris: 'weapon',
   unitLynx: 'weapon',
@@ -630,6 +632,7 @@ const BAR_GROUP_ICON_BY_UNIT_BLUEPRINT_ID: Readonly<Record<string, BarGroupIconI
   unitOrca: 'weapon',
   unitQueenBee: 'weapon',
   unitQueenTick: 'weapon',
+  unitRex: 'weapon',
   unitTarantula: 'weapon',
   unitTick: 'weapon',
   unitWidow: 'weapon',
@@ -641,14 +644,56 @@ function barGroupIconSrc(groupId: BarGroupIconId): string {
   return publicAssetSrc(`assets/ui/groupicons/${groupId}.svg`);
 }
 
+/** The CATEGORY each glyph belongs to. A sub-type may swap the GLYPH (the
+ *  metal ingots vs the generic economy bolt) but it keeps its category's
+ *  COLOR: the icon says what it is, the color says which family it serves.
+ *  Units carry no BuildMenuCategory of their own, so their tint rides this
+ *  same table. */
+const BAR_GROUP_ICON_CATEGORY: Readonly<Record<BarGroupIconId, BuildMenuCategory>> = {
+  aa: 'Defense',
+  builder: 'Production',
+  energy: 'Economy',
+  metal: 'Economy',
+  util: 'Intel',
+  weapon: 'Defense',
+};
+
 function buildingGroupIconSrc(buildingBlueprintId: StructureBlueprintId): string | null {
   const groupId = BAR_GROUP_ICON_BY_STRUCTURE_BLUEPRINT_ID[buildingBlueprintId];
   return groupId === undefined ? null : barGroupIconSrc(groupId);
 }
 
-function unitGroupIconSrc(unitBlueprintId: string): string | null {
+/** Masked-span style for a build cell's group icon: the white glyph becomes
+ *  a mask, the CATEGORY color fills it. Structures tint by the option's own
+ *  authored category. */
+function buildingGroupIconStyle(
+  buildingBlueprintId: StructureBlueprintId,
+  category: BuildMenuCategory,
+): Record<string, string> | null {
+  const src = buildingGroupIconSrc(buildingBlueprintId);
+  if (src === null) return null;
+  return {
+    '--icon-mask': `url('${src}')`,
+    '--icon-tint': BUILD_MENU_CATEGORY_BORDER_COLORS[category],
+  };
+}
+
+/** Units tint by the glyph's own category (they have no authored one). */
+function unitGroupIconStyle(unitBlueprintId: string): Record<string, string> | null {
   const groupId = BAR_GROUP_ICON_BY_UNIT_BLUEPRINT_ID[unitBlueprintId];
-  return groupId === undefined ? null : barGroupIconSrc(groupId);
+  if (groupId === undefined) return null;
+  return {
+    '--icon-mask': `url('${barGroupIconSrc(groupId)}')`,
+    '--icon-tint': BUILD_MENU_CATEGORY_BORDER_COLORS[BAR_GROUP_ICON_CATEGORY[groupId]],
+  };
+}
+
+/** Footer category selectors: same mask treatment, the category's own color. */
+function categoryIconStyle(category: { iconPath: string; sourceCategory: BuildMenuCategory }): Record<string, string> {
+  return {
+    '--icon-mask': `url('${publicAssetSrc(category.iconPath)}')`,
+    '--icon-tint': BUILD_MENU_CATEGORY_BORDER_COLORS[category.sourceCategory],
+  };
 }
 
 const waypointModes = computed<WaypointModeOption[]>(() => [
@@ -2294,12 +2339,12 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
                 alt=""
               >
               <span v-else class="btn-thumb-fallback">{{ compactBuildingLabel(bo.label) }}</span>
-              <img
-                v-if="buildingGroupIconSrc(bo.buildingBlueprintId)"
+              <span
+                v-if="buildingGroupIconStyle(bo.buildingBlueprintId, bo.category)"
                 class="bar-cell-group-icon"
-                :src="buildingGroupIconSrc(bo.buildingBlueprintId)!"
-                alt=""
-              >
+                :style="buildingGroupIconStyle(bo.buildingBlueprintId, bo.category)!"
+                aria-hidden="true"
+              ></span>
             </span>
             <span class="btn-cost bar-cost-stack">
               <span class="cost-metal">{{ formatCostPart(bo.metalCost) }}</span>
@@ -2327,11 +2372,11 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
               :title="barBuildCategoryTitle(category)"
               @click="selectBuildGridCategory(category.id)"
             >
-              <img
+              <span
                 class="bar-category-icon"
-                :src="publicAssetSrc(category.iconPath)"
-                alt=""
-              >
+                :style="categoryIconStyle(category)"
+                aria-hidden="true"
+              ></span>
               <span class="bar-category-label">{{ category.label }}</span>
               <span class="bar-category-key">{{ hotkey(category.keyCommandId) }}</span>
             </button>
@@ -2351,11 +2396,11 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
               class="bar-grid-category-btn bar-grid-current-category active"
               aria-current="true"
             >
-              <img
+              <span
                 class="bar-category-icon"
-                :src="publicAssetSrc(currentBuildCategory.iconPath)"
-                alt=""
-              >
+                :style="categoryIconStyle(currentBuildCategory)"
+                aria-hidden="true"
+              ></span>
               <span class="bar-category-label">{{ currentBuildCategory.label }}</span>
             </div>
             <button
@@ -2912,12 +2957,12 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
                   alt=""
                 >
                 <span v-else class="btn-thumb-fallback">{{ uo.shortName }}</span>
-                <img
-                  v-if="unitGroupIconSrc(uo.unitBlueprintId)"
+                <span
+                  v-if="unitGroupIconStyle(uo.unitBlueprintId)"
                   class="bar-cell-group-icon"
-                  :src="unitGroupIconSrc(uo.unitBlueprintId)!"
-                  alt=""
-                >
+                  :style="unitGroupIconStyle(uo.unitBlueprintId)!"
+                  aria-hidden="true"
+                ></span>
               </span>
               <span
                 v-if="factoryCellShowsBuildProgress(uo.unitBlueprintId)"

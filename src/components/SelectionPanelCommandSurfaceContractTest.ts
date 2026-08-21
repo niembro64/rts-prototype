@@ -367,11 +367,11 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
       !/class="bar-grid-under-construction"[\s\S]{0,180}<button[\s\S]{0,80}v-else[\s\S]{0,160}title="Next page"/.test(selectionPanelSource) &&
       /\.bar-grid-cell\.factory-under-construction:not\(:hover\):not\(:focus-visible\) \.btn-thumb-img \{\s*filter:\s*brightness\(0\.77\);/.test(selectionPanelSource) &&
       /--bar-grid-group-icon-size:\s*round\(down,\s*calc\(var\(--bar-grid-icon-inner-size\) \* 0\.3\),\s*1px\);/.test(selectionPanelSource) &&
-      /\.bar-cell-group-icon \{[\s\S]{0,160}width:\s*var\(--bar-grid-group-icon-size\);[\s\S]{0,80}height:\s*var\(--bar-grid-group-icon-size\);[\s\S]{0,160}filter:\s*none;/.test(selectionPanelSource) &&
+      /\.bar-cell-group-icon \{[\s\S]{0,160}width:\s*var\(--bar-grid-group-icon-size\);[\s\S]{0,80}height:\s*var\(--bar-grid-group-icon-size\);[\s\S]{0,120}background-color:\s*var\(--icon-tint,\s*#ffffff\);[\s\S]{0,160}mask:\s*var\(--icon-mask\) no-repeat center \/ contain;[\s\S]{0,80}filter:\s*none;/.test(selectionPanelSource) &&
       /\.bar-grid-cell\.factory-under-construction:not\(:hover\):not\(:focus-visible\) \.bar-cell-group-icon \{\s*filter:\s*brightness\(0\.63\);/.test(selectionPanelSource) &&
       !/\.bar-cell-group-icon \{[\s\S]{0,180}drop-shadow/.test(selectionPanelSource) &&
       /\.bar-grid-under-construction \{[\s\S]{0,220}color:\s*rgb\(255,\s*200,\s*50\);[\s\S]{0,120}font-size:\s*calc\(var\(--bar-grid-page-font-size\) \* 1\.1\);/.test(selectionPanelSource),
-    'BAR incomplete selected factories must dim production cells, draw group icons at gui_flowui.lua floor(iconWidth*0.3), tint them with gui_gridmenu.lua t0.63 only, draw the Under Construction footer warning, and keep pages>1 pagination available',
+    'BAR incomplete selected factories must dim production cells, draw group icons at gui_flowui.lua floor(iconWidth*0.3) as category-color-filled masks, tint them with gui_gridmenu.lua t0.63 only, draw the Under Construction footer warning, and keep pages>1 pagination available',
   );
   assertContract(
     /\.bar-grid-cell\.empty \{\s*position:\s*relative;\s*background:\s*transparent;\s*border:\s*0;/.test(selectionPanelSource) &&
@@ -519,19 +519,19 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
       /--bar-grid-button-padding:\s*max\(1px,\s*calc\(var\(--bar-grid-bg-padding\) \* 0\.52\)\);/.test(selectionPanelSource) &&
       /--bar-grid-active-area-margin:\s*calc\(var\(--bar-grid-bg-padding\) \* 0\.1\);/.test(selectionPanelSource) &&
       /--bar-grid-category-rect-height:\s*calc\(var\(--bar-grid-category-button-height\) - var\(--bar-grid-active-area-margin\) - \(var\(--bar-grid-button-padding\) \* 2\)\);/.test(selectionPanelSource) &&
-      /--bar-grid-category-icon-size:\s*min\(calc\(var\(--bar-grid-category-rect-height\) \* 1\.1\),\s*var\(--bar-grid-category-button-height\)\);/.test(selectionPanelSource) &&
+      /--bar-grid-category-icon-size:\s*min\(calc\(var\(--bar-grid-category-rect-height\) - var\(--bar-grid-bg-padding\)\),\s*calc\(var\(--bar-grid-bg-padding\) \* 6\)\);/.test(selectionPanelSource) &&
       /--bar-grid-footer-button-height:\s*calc\(var\(--bar-grid-category-button-height\) - \(var\(--bar-grid-button-padding\) \* 2\)\);/.test(selectionPanelSource) &&
       /\.bar-grid-category-btn,[\s\S]{0,80}\.bar-grid-footer-btn \{[\s\S]{0,180}height:\s*var\(--bar-grid-category-button-height\);[\s\S]{0,260}font-size:\s*var\(--bar-grid-category-font-size\);/.test(selectionPanelSource) &&
       /\.bar-grid-footer:not\(\.category-active\):not\(\.page-only\) \.bar-grid-category-btn \{[\s\S]{0,120}height:\s*var\(--bar-grid-category-rect-height\);[\s\S]{0,80}margin-top:\s*var\(--bar-grid-button-padding\);/.test(selectionPanelSource) &&
-      /\.bar-grid-category-btn \{\s*width:\s*var\(--bar-grid-cell-size\);\s*overflow:\s*visible;/.test(selectionPanelSource) &&
-      /\.bar-category-icon \{[\s\S]{0,160}top:\s*calc\(var\(--bar-grid-bg-padding\) \* 0\.5\);[\s\S]{0,100}left:\s*calc\(var\(--bar-grid-bg-padding\) \* 0\.5\);[\s\S]{0,100}width:\s*var\(--bar-grid-category-icon-size\);[\s\S]{0,80}height:\s*var\(--bar-grid-category-icon-size\);/.test(selectionPanelSource) &&
+      /\.bar-grid-category-btn \{\s*width:\s*var\(--bar-grid-cell-size\);\s*overflow:\s*hidden;/.test(selectionPanelSource) &&
+      /\.bar-category-icon \{[\s\S]{0,160}top:\s*50%;[\s\S]{0,100}left:\s*calc\(var\(--bar-grid-bg-padding\) \* 0\.5\);[\s\S]{0,100}width:\s*var\(--bar-grid-category-icon-size\);[\s\S]{0,80}height:\s*var\(--bar-grid-category-icon-size\);[\s\S]{0,80}transform:\s*translateY\(-50%\);/.test(selectionPanelSource) &&
       /\.bar-grid-footer\.category-active \.bar-grid-current-category \{\s*height:\s*var\(--bar-grid-category-rect-height\);/.test(selectionPanelSource) &&
       /\.bar-grid-footer\.category-active \.bar-grid-back-btn,[\s\S]{0,120}\.bar-grid-footer\.page-only \.bar-grid-next-page-btn \{\s*height:\s*var\(--bar-grid-footer-button-height\);/.test(selectionPanelSource) &&
       /\.bar-category-key \{[\s\S]{0,220}font-size:\s*var\(--bar-grid-hotkey-font-size\);/.test(selectionPanelSource) &&
       !/height:\s*calc\(100% - var\(--bar-grid-bg-padding\)\);/.test(selectionPanelSource) &&
       !/height:\s*4\.2vh;/.test(selectionPanelSource) &&
       !/font-size:\s*1\.35vh;/.test(selectionPanelSource),
-    'BAR grid category/footer labels, icons, hotkeys, button heights, and padded rects must derive from gui_gridmenu.lua categoryFontSize/pageFontSize/hotkeyFontSize/setupCategoryRects/drawButton formulas, including floored categoryButtonHeight, instead of fixed approximations',
+    'BAR grid category/footer labels, icons, hotkeys, button heights, and padded rects must derive from gui_gridmenu.lua categoryFontSize/pageFontSize/hotkeyFontSize/setupCategoryRects/drawButton formulas, with the category icon CLAMPED inside its clipped button (no 1.1x spill) and vertically centered, instead of fixed approximations',
   );
   assertContract(
       /--bar-builder-button-size:\s*calc\(var\(--bar-grid-category-button-base-height\) \* 2\);/.test(selectionPanelSource) &&
