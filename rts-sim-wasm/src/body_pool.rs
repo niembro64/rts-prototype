@@ -767,19 +767,21 @@ pub fn airborne_loiter_step_batch(
 }
 
 /// Per-tick steering interlock for cruise-locomotion waypoint legs
-/// (plane/aerosub): the no-turn escape ring.
+/// (plane/aerosub): the no-turn deadzone with a front slice.
 ///
 /// A forward-flight body cannot reach a goal inside its turning circle by
-/// steering toward it — greedy pursuit decays into a constant-radius orbit.
-/// Any such orbit spends half of every revolution heading AWAY from the
-/// waypoint; forbidding that half from turning straightens the circle into an
-/// outbound line. Inside the escape ring (a fixed ratio of the unit's turn
-/// radius) a unit heading away may not turn at all: thrust pins straight
-/// along the current nose. Heading toward the waypoint steering is free at
-/// any distance, and outside the ring it is free regardless of facing — from
-/// >= 2R away the waypoint lies outside both turning circles for every
-/// heading, so the turn-back always completes into a straight pass. Pure
-/// stateless function of (position, heading, waypoint, R); no latched state.
+/// steering toward it — pursuit decays into a constant-radius orbit. In a
+/// POWERED orbit the nose always lags the waypoint direction by less than
+/// 90 degrees (forward-only thrust dies past 90), so any half-plane
+/// "heading away" test never fires inside the orbit; the turn permission
+/// must be a slice NARROWER than the orbit's lag angle. Inside the deadzone
+/// (an authored multiple of the natural turn radius) the unit may keep
+/// turning only while the waypoint sits within the authored front slice of
+/// its nose; anywhere else in the deadzone it may not turn at all — a miss
+/// becomes a large straight miss that leaves the deadzone, and outside the
+/// deadzone steering is free, so the turn-back always has the room to line
+/// up a straight pass. Stateless: a pure function of position, nose,
+/// waypoint, and turn radius each tick.
 #[inline]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn compute_airborne_waypoint_steer(
@@ -790,9 +792,10 @@ pub(crate) fn compute_airborne_waypoint_steer(
     velocity_x: f64,
     velocity_y: f64,
     max_yaw_rate: f64,
+    deadzone_turn_radius_multiplier: f64,
+    front_slice_degrees: f64,
     min_turn_radius: f64,
     max_turn_radius: f64,
-    escape_radius_ratio: f64,
     lock_speed_floor: f64,
 ) -> (f64, f64, u8) {
     let forward_x = rotation.cos();
@@ -814,24 +817,26 @@ pub(crate) fn compute_airborne_waypoint_steer(
         return (goal_dir_x, goal_dir_y, 0);
     }
 
-    // Heading toward the waypoint: free steering at any distance.
-    let facing = forward_x * goal_dir_x + forward_y * goal_dir_y;
-    if facing > 0.0 {
-        return (goal_dir_x, goal_dir_y, 0);
-    }
-
     let turn_radius = if max_yaw_rate > 1.0e-9 && max_yaw_rate.is_finite() {
         (speed / max_yaw_rate).clamp(min_turn_radius, max_turn_radius)
     } else {
         max_turn_radius
     };
-    let escape_radius = turn_radius * escape_radius_ratio;
-    if distance < escape_radius {
-        // Inside the ring and heading away: no turning AT ALL. Thrust along
-        // the current nose commands the yaw servo to hold heading exactly.
-        (forward_x, forward_y, 1)
-    } else {
+    let deadzone_radius = turn_radius * deadzone_turn_radius_multiplier.max(1.0);
+    if distance >= deadzone_radius {
+        return (goal_dir_x, goal_dir_y, 0);
+    }
+
+    // Inside the deadzone: turning is allowed only while the waypoint is
+    // within the authored front slice of the nose.
+    let slice_cos = (front_slice_degrees.clamp(0.0, 90.0) * core::f64::consts::PI / 180.0).cos();
+    let facing_cos = forward_x * goal_dir_x + forward_y * goal_dir_y;
+    if facing_cos >= slice_cos {
         (goal_dir_x, goal_dir_y, 0)
+    } else {
+        // No turning AT ALL: thrust along the current nose commands the yaw
+        // servo to hold heading exactly.
+        (forward_x, forward_y, 1)
     }
 }
 
@@ -872,13 +877,14 @@ pub fn airborne_waypoint_steer_batch(
     dy: &[f64],
     distance: &[f64],
     rotation: &[f64],
+    deadzone_turn_radius_multiplier: &[f64],
+    front_slice_degrees: &[f64],
     fallback_velocity_x: &[f64],
     fallback_velocity_y: &[f64],
     out_thrust_x: &mut [f64],
     out_thrust_y: &mut [f64],
     min_turn_radius: f64,
     max_turn_radius: f64,
-    escape_radius_ratio: f64,
     lock_speed_floor: f64,
 ) -> u32 {
     let count = slots.len();
@@ -886,6 +892,8 @@ pub fn airborne_waypoint_steer_batch(
     debug_assert!(dy.len() >= count);
     debug_assert!(distance.len() >= count);
     debug_assert!(rotation.len() >= count);
+    debug_assert!(deadzone_turn_radius_multiplier.len() >= count);
+    debug_assert!(front_slice_degrees.len() >= count);
     debug_assert!(fallback_velocity_x.len() >= count);
     debug_assert!(fallback_velocity_y.len() >= count);
     debug_assert!(out_thrust_x.len() >= count);
@@ -918,9 +926,10 @@ pub fn airborne_waypoint_steer_batch(
             velocity_x,
             velocity_y,
             max_yaw_rate,
+            deadzone_turn_radius_multiplier[i],
+            front_slice_degrees[i],
             min_turn_radius,
             max_turn_radius,
-            escape_radius_ratio,
             lock_speed_floor,
         );
         out_thrust_x[i] = thrust_x;
@@ -2988,11 +2997,10 @@ mod tests {
 
     const STEER_MIN_R: f64 = 40.0;
     const STEER_MAX_R: f64 = 600.0;
-    // Escape ring = 1.25 x orbit diameter (2R) = 2.5 x R.
-    const STEER_ESCAPE_RATIO: f64 = 2.5;
+    const STEER_DEADZONE_MULT: f64 = 2.5;
+    const STEER_FRONT_SLICE_DEG: f64 = 45.0;
     const STEER_SPEED_FLOOR: f64 = 5.0;
 
-    #[allow(clippy::too_many_arguments)]
     fn steer(
         dx: f64,
         dy: f64,
@@ -3009,65 +3017,79 @@ mod tests {
             vx,
             vy,
             max_yaw_rate,
+            STEER_DEADZONE_MULT,
+            STEER_FRONT_SLICE_DEG,
             STEER_MIN_R,
             STEER_MAX_R,
-            STEER_ESCAPE_RATIO,
             STEER_SPEED_FLOOR,
         )
     }
 
+    // Speed 200 / yaw ceiling 1 rad/s -> turn radius 200, deadzone 500.
+
     #[test]
-    fn airborne_steer_heading_toward_the_waypoint_turns_freely() {
-        // Nose +x, goal ahead-left: facing dot > 0, steering aims at the goal
-        // at any distance, however close.
-        let (tx, ty, locked) = steer(30.0, 30.0, 0.0, 200.0, 0.0, 1.0);
+    fn airborne_steer_waypoint_in_the_front_slice_keeps_turning() {
+        // Waypoint 30 degrees off the nose at 300 wu: inside the deadzone but
+        // inside the +/-45 slice, so pursuit steering continues.
+        let (dx, dy) = (300.0 * 30_f64.to_radians().cos(), 300.0 * 30_f64.to_radians().sin());
+        let (tx, ty, locked) = steer(dx, dy, 0.0, 200.0, 0.0, 1.0);
         assert_eq!(locked, 0);
-        let inv = 1.0 / (30.0f64 * 30.0 + 30.0 * 30.0).sqrt();
-        assert!((tx - 30.0 * inv).abs() < 1e-12 && (ty - 30.0 * inv).abs() < 1e-12);
+        let inv = 1.0 / (dx * dx + dy * dy).sqrt();
+        assert!((tx - dx * inv).abs() < 1e-12 && (ty - dy * inv).abs() < 1e-12);
     }
 
     #[test]
-    fn airborne_steer_heading_away_inside_the_ring_may_not_turn_at_all() {
-        // Speed 200, yaw ceiling 1 rad/s -> R = 200, ring = 500. Goal 300
-        // behind: inside the ring and heading away -> thrust pinned exactly
-        // along the current nose (+x), zero turn command.
+    fn airborne_steer_waypoint_outside_the_slice_may_not_turn_at_all() {
+        // The powered-orbit geometry the old half-plane rule never caught:
+        // waypoint 70 degrees off the nose at orbit distance (200 wu), well
+        // inside the 500 deadzone. facing dot is still positive (0.34), but
+        // it is outside the 45-degree slice -> thrust pinned along the nose.
+        let (dx, dy) = (200.0 * 70_f64.to_radians().cos(), 200.0 * 70_f64.to_radians().sin());
+        let (tx, ty, locked) = steer(dx, dy, 0.0, 200.0, 0.0, 1.0);
+        assert_eq!(locked, 1);
+        assert!((tx - 1.0).abs() < 1e-12 && ty.abs() < 1e-12);
+    }
+
+    #[test]
+    fn airborne_steer_waypoint_behind_inside_the_deadzone_locks_too() {
         let (tx, ty, locked) = steer(-300.0, 0.0, 0.0, 200.0, 0.0, 1.0);
         assert_eq!(locked, 1);
         assert!((tx - 1.0).abs() < 1e-12 && ty.abs() < 1e-12);
     }
 
     #[test]
-    fn airborne_steer_heading_away_outside_the_ring_turns_back() {
-        // Same geometry at 600 behind: outside the 500 ring, the turn-back is
-        // allowed and steering aims at the goal.
-        let (tx, ty, locked) = steer(-600.0, 0.0, 0.0, 200.0, 0.0, 1.0);
+    fn airborne_steer_outside_the_deadzone_turns_freely_at_any_angle() {
+        // Same 70-degrees-off geometry at 600 wu: outside the 500 deadzone,
+        // the turn-back is free.
+        let (dx, dy) = (600.0 * 70_f64.to_radians().cos(), 600.0 * 70_f64.to_radians().sin());
+        let (tx, ty, locked) = steer(dx, dy, 0.0, 200.0, 0.0, 1.0);
         assert_eq!(locked, 0);
-        assert!(tx < -0.99 && ty.abs() < 1e-12);
+        let inv = 1.0 / (dx * dx + dy * dy).sqrt();
+        assert!((tx - dx * inv).abs() < 1e-12 && (ty - dy * inv).abs() < 1e-12);
     }
 
     #[test]
     fn airborne_steer_lock_releases_below_the_speed_floor() {
-        // A boundary-pinned (near-zero-speed) unit heading away inside the
-        // ring steers freely instead of thrusting into the wall forever.
+        // A boundary-pinned (near-zero-speed) unit steers freely instead of
+        // thrusting into the wall forever.
         let (tx, _, locked) = steer(-300.0, 0.0, 0.0, 1.0, 0.0, 1.0);
         assert_eq!(locked, 0);
         assert!(tx < -0.99);
     }
 
     #[test]
-    fn airborne_steer_ring_scales_with_speed_over_yaw_rate() {
+    fn airborne_steer_deadzone_scales_with_speed_over_yaw_rate() {
         // Slower flight shrinks the turning circle: at speed 40 the radius
-        // clamps to the 40 floor, ring = 100, so a goal 300 behind is already
-        // outside the ring and the turn-back is immediate.
-        let (tx, _, locked) = steer(-300.0, 0.0, 0.0, 40.0, 0.0, 1.0);
+        // clamps to the 40 floor, deadzone = 100, so a waypoint 70 degrees
+        // off at 200 wu is already outside it and pursuit is free.
+        let (dx, dy) = (200.0 * 70_f64.to_radians().cos(), 200.0 * 70_f64.to_radians().sin());
+        let (_, _, locked) = steer(dx, dy, 0.0, 40.0, 0.0, 1.0);
         assert_eq!(locked, 0);
-        assert!(tx < -0.99);
 
-        // A zero yaw authority falls back to the max radius: ring = 1500,
-        // the same goal is inside it and the lock holds.
-        let (tx, _, locked) = steer(-300.0, 0.0, 0.0, 200.0, 0.0, 0.0);
+        // Zero yaw authority falls back to the max radius: deadzone = 1500,
+        // the same waypoint is inside it and outside the slice -> locked.
+        let (_, _, locked) = steer(dx, dy, 0.0, 200.0, 0.0, 0.0);
         assert_eq!(locked, 1);
-        assert!(tx > 0.99);
     }
 
     #[test]

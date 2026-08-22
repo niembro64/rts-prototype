@@ -207,7 +207,7 @@ export function createUnitLocomotion(
     actuator: {
       propulsionAxis: preset.actuator.propulsionAxis,
     },
-    motionControl: { ...preset.motionControl },
+    motionControl: cloneMotionControl(preset.motionControl),
     surfaceFollowing: { ...preset.surfaceFollowing },
     navigation: {
       waypoint: {
@@ -227,6 +227,17 @@ export function createUnitLocomotion(
     environmentalHazards.waterDamagePerSecond,
   );
   return runtime;
+}
+
+function cloneMotionControl(
+  motionControl: UnitLocomotion['motionControl'],
+): UnitLocomotion['motionControl'] {
+  return {
+    ...motionControl,
+    waypointDeadzone: motionControl.waypointDeadzone === undefined
+      ? undefined
+      : { ...motionControl.waypointDeadzone },
+  };
 }
 
 function cloneGroundPhysics(physics: UnitLocomotionGroundPhysics): UnitLocomotionGroundPhysics {
@@ -257,7 +268,7 @@ export function cloneUnitLocomotion(
     },
     environmentalHazards: { ...locomotion.environmentalHazards },
     actuator: { ...locomotion.actuator },
-    motionControl: { ...locomotion.motionControl },
+    motionControl: cloneMotionControl(locomotion.motionControl),
     surfaceFollowing: { ...locomotion.surfaceFollowing },
     navigation: {
       waypoint: { ...locomotion.navigation.waypoint },

@@ -372,7 +372,11 @@
       "motionControl": {
         "maintainFullThrustAtWaypoints": true,
         "alwaysBrakeAtFinalWaypoint": false,
-        "cruiseWhenUncommanded": true
+        "cruiseWhenUncommanded": true,
+        "waypointDeadzone": {
+          "turnRadiusMultiplier": 2.5,
+          "frontSliceDegrees": 45
+        }
       },
       "surfaceFollowing": {
         "altitudeProbeSetId": "few"
@@ -412,7 +416,11 @@
       "motionControl": {
         "maintainFullThrustAtWaypoints": true,
         "alwaysBrakeAtFinalWaypoint": false,
-        "cruiseWhenUncommanded": true
+        "cruiseWhenUncommanded": true,
+        "waypointDeadzone": {
+          "turnRadiusMultiplier": 2.5,
+          "frontSliceDegrees": 45
+        }
       },
       "surfaceFollowing": {
         "altitudeProbeSetId": "many"

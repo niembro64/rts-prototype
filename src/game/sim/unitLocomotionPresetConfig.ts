@@ -47,6 +47,14 @@ export type UnitLocomotionPresetConfig = {
     maintainFullThrustAtWaypoints: boolean;
     alwaysBrakeAtFinalWaypoint: boolean;
     cruiseWhenUncommanded: boolean;
+    /** Cruise presets only: the no-turn deadzone around a waypoint. Inside
+     * `turnRadiusMultiplier x natural turn radius`, the unit may only keep
+     * turning while the waypoint sits within `frontSliceDegrees` left or
+     * right of its nose; otherwise it may not turn at all. */
+    waypointDeadzone?: {
+      turnRadiusMultiplier: number;
+      frontSliceDegrees: number;
+    };
   };
   surfaceFollowing: {
     altitudeProbeSetId: SurfaceProbeSetId;
@@ -162,11 +170,23 @@ function assertPreset(
     throw new Error(`Invalid unit locomotion presets.${presetId}.actuator.propulsionAxis`);
   }
   assertObject(`presets.${presetId}.motionControl`, preset.motionControl);
-  assertExactKeys(`presets.${presetId}.motionControl`, preset.motionControl, [
-    'maintainFullThrustAtWaypoints',
-    'alwaysBrakeAtFinalWaypoint',
-    'cruiseWhenUncommanded',
-  ]);
+  const cruiseWhenUncommanded = preset.motionControl.cruiseWhenUncommanded === true;
+  assertExactKeys(
+    `presets.${presetId}.motionControl`,
+    preset.motionControl as unknown as Record<string, unknown>,
+    cruiseWhenUncommanded
+      ? [
+        'maintainFullThrustAtWaypoints',
+        'alwaysBrakeAtFinalWaypoint',
+        'cruiseWhenUncommanded',
+        'waypointDeadzone',
+      ]
+      : [
+        'maintainFullThrustAtWaypoints',
+        'alwaysBrakeAtFinalWaypoint',
+        'cruiseWhenUncommanded',
+      ],
+  );
   assertUnitLocomotionBoolean(
     `presets.${presetId}.motionControl.maintainFullThrustAtWaypoints`,
     preset.motionControl.maintainFullThrustAtWaypoints,
@@ -179,6 +199,29 @@ function assertPreset(
     `presets.${presetId}.motionControl.cruiseWhenUncommanded`,
     preset.motionControl.cruiseWhenUncommanded,
   );
+  if (cruiseWhenUncommanded) {
+    const deadzoneLabel = `presets.${presetId}.motionControl.waypointDeadzone`;
+    const deadzone = preset.motionControl.waypointDeadzone;
+    assertObject(deadzoneLabel, deadzone);
+    assertExactKeys(deadzoneLabel, deadzone as unknown as Record<string, unknown>, [
+      'turnRadiusMultiplier',
+      'frontSliceDegrees',
+    ]);
+    const { turnRadiusMultiplier, frontSliceDegrees } = deadzone as {
+      turnRadiusMultiplier: number;
+      frontSliceDegrees: number;
+    };
+    if (!Number.isFinite(turnRadiusMultiplier) || turnRadiusMultiplier < 1) {
+      throw new Error(
+        `Invalid unitLocomotionConfig.json: ${deadzoneLabel}.turnRadiusMultiplier must be a finite number >= 1`,
+      );
+    }
+    if (!Number.isFinite(frontSliceDegrees) || frontSliceDegrees <= 0 || frontSliceDegrees >= 90) {
+      throw new Error(
+        `Invalid unitLocomotionConfig.json: ${deadzoneLabel}.frontSliceDegrees must be in (0, 90) - at 90 the slice becomes the half-plane a powered orbit never leaves`,
+      );
+    }
+  }
   if (
     preset.motionControl.maintainFullThrustAtWaypoints &&
     preset.motionControl.alwaysBrakeAtFinalWaypoint

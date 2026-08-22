@@ -1184,22 +1184,26 @@
         <li>A forward-flight chassis cannot hold a point. Its satisfied anchor becomes the center of the airborne loiter circle &mdash; the same deliberate orbit an uncommanded cruise unit flies &mdash; and the loiter&rsquo;s radial correction is its wind counter. A cruise unit&rsquo;s anchor is never drift-cleared; the orbit is the hold.</li>
       </ul>
 
-      <h3>Forward-flight units turn back only from outside the escape ring</h3>
+      <h3>Forward-flight waypoints have a no-turn deadzone with a front slice</h3>
       <p>
-        A body that must keep moving forward has a minimum turning circle. A goal inside either of
-        the two circles tangent to its current heading is mathematically unreachable by steering
-        toward it &mdash; greedy pursuit decays into a constant-speed, constant-turn orbit that
-        never crosses the point and never completes the order, which also freezes every queued
-        waypoint behind it. Cruise locomotion (plane, aerosub) therefore steers every waypoint leg
-        through one stateless per-tick interlock, the <em>no-turn escape ring</em>:
+        A body that must keep moving forward has a minimum turning circle. A goal inside that
+        circle is unreachable by steering toward it &mdash; pursuit decays into a constant-speed,
+        constant-turn orbit that never crosses the point, never completes the order, and freezes
+        every queued waypoint behind it. The subtle part is that a <em>powered</em> orbit keeps the
+        nose within 90&deg; of the waypoint at all times (forward-only thrust dies past a 90&deg;
+        lag), so any half-plane &ldquo;heading away&rdquo; test never fires inside the orbit. The
+        turn permission must be a slice <em>narrower</em> than the orbit&rsquo;s lag angle. Cruise
+        locomotion (plane, aerosub) therefore steers every waypoint leg through one stateless
+        per-tick interlock, authored per preset in
+        <code>motionControl.waypointDeadzone</code>:
       </p>
       <ul class="rule-list">
-        <li><strong>The escape ring</strong> around the current waypoint has radius <code>E = 1.25 &times; orbit diameter</code>, where the orbit diameter is <code>2R</code> and <code>R = speed / maxYawRate</code>. The yaw-rate ceiling is derived from the <em>same</em> torque-limited attitude-servo spring the sim integrates &mdash; a critically damped servo tracking a turn at rate <code>&Omega;</code> lags by <code>2&Omega;/&radic;k</code>, and forward-only power stalls at a 90&deg; lag, so <code>maxYawRate = &pi;&radic;k/4</code>. Kernel parity: the interlock calls the servo&rsquo;s own gain functions, never a re-derivation.</li>
-        <li><strong>Inside the ring and heading away from the waypoint, the unit may not turn at all.</strong> Thrust is pinned straight along the current nose; the escape is a dead-straight line out of the ring.</li>
-        <li><strong>Heading toward the waypoint, steering is free at any distance.</strong> Outside the ring, steering is free regardless of facing &mdash; that is where the turn-back happens, and from <code>&ge; 2R</code> away the waypoint lies outside both turning circles for every possible heading, so the turn always completes into a straight pass through the point.</li>
-        <li><strong>Why circling cannot persist:</strong> any orbit around the waypoint spends half of every revolution heading away. The interlock forbids that half from turning, which straightens the circle into an outbound line that leaves the ring. The rule is a pure function of position, heading, waypoint, and <code>R</code> each tick &mdash; no latched state, no hysteresis, nothing to dither.</li>
+        <li><strong>The deadzone</strong> around the current waypoint has radius <code>turnRadiusMultiplier &times; R</code> (authored, <code>2.5</code> on plane and aerosub), where <code>R = speed / maxYawRate</code> is the natural turn radius. The yaw-rate ceiling comes from the <em>same</em> torque-limited attitude-servo spring the sim integrates &mdash; a critically damped servo tracking a turn at rate <code>&Omega;</code> lags by <code>2&Omega;/&radic;k</code>, and forward-only power stalls at a 90&deg; lag, so <code>maxYawRate = &pi;&radic;k/4</code>. Kernel parity: the interlock calls the servo&rsquo;s own gain functions, never a re-derivation.</li>
+        <li><strong>Inside the deadzone the unit may keep turning only while the waypoint sits within <code>frontSliceDegrees</code> left or right of its nose</strong> (authored, <code>45&deg;</code> per side). Anywhere else in the deadzone it may not turn at all: thrust is pinned straight along the current nose. If the unit is going to miss the waypoint, it misses large &mdash; a dead-straight line that leaves the deadzone.</li>
+        <li><strong>Outside the deadzone steering is free at any angle.</strong> That is where the turn-back happens, with a full deadzone of room to complete the turn and line up a straight pass through the point.</li>
+        <li><strong>Why circling cannot persist:</strong> a sustained powered orbit needs enough off-nose thrust to hold speed against drag, and the servo lag of tracking the rotating center direction pushes the nose far off the waypoint &mdash; well outside a 45&deg; slice. The interlock therefore forbids the orbit configuration itself from turning, straightening it into an outbound line. The slice must stay below 90&deg;: at 90&deg; it degenerates into the half-plane a powered orbit never leaves, which is the failure the config validator refuses.</li>
         <li><strong>The lock applies only while actually moving.</strong> A plane pinned against the map boundary at near-zero speed releases the lock and steers freely; at near-zero speed its turning circle is tiny anyway.</li>
-        <li>The interlock covers every waypoint leg, the terminal one included. Capture radii are unchanged: a non-final waypoint captures at the standard arrival radius on the pass, so queues and patrol loops always advance; the final waypoint captures at the loiter radius and hands the unit to the loiter circle around its anchor. The whole cruise population evaluates in one WASM batch per tick.</li>
+        <li>The interlock covers every pre-capture waypoint leg, the terminal one included &mdash; without it, a wide-turning plane could never reach the terminal capture ring at all. Capture radii are unchanged: a non-final waypoint captures at the standard arrival radius on the pass, so queues and patrol loops always advance; the final waypoint captures at the loiter radius and hands the unit to the loiter circle around its anchor, where turning is again free. The rule is a pure function of position, nose, waypoint, and <code>R</code> each tick &mdash; no latched state, no hysteresis &mdash; and the whole cruise population evaluates in one WASM batch per tick.</li>
       </ul>
 
       <h3>Terrain pathfinding is directional around slopes and cliffs</h3>

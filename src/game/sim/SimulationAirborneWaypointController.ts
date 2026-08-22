@@ -13,22 +13,25 @@ import { growTypedArrays, nextDoublingCapacity } from '../memory/typedArrayGrowt
  *  the sim's own attitude-servo spring inside the kernel). */
 const AIRBORNE_STEER_MIN_TURN_RADIUS = 40;
 const AIRBORNE_STEER_MAX_TURN_RADIUS = 600;
-/** Escape ring = 1.25 x the orbit diameter (2R), i.e. 2.5 x R. Inside it a
- *  unit heading away from the waypoint may not turn at all. */
-const AIRBORNE_STEER_ESCAPE_RADIUS_RATIO = 2.5;
 /** The no-turn lock applies only while actually moving; below this speed a
  *  boundary-pinned or freshly launched unit steers freely. */
 const AIRBORNE_STEER_LOCK_SPEED_FLOOR = 5;
+/** Fallbacks matching the authored plane/aerosub waypointDeadzone config;
+ *  used only if a cruise preset somehow lacks the block. */
+const AIRBORNE_STEER_DEFAULT_DEADZONE_TURN_RADIUS_MULTIPLIER = 2.5;
+const AIRBORNE_STEER_DEFAULT_FRONT_SLICE_DEGREES = 45;
 
 /** Waypoint steering for cruise locomotion (plane, aerosub). A forward-
  *  flight body cannot brake at a point, and a goal inside its turning circle
- *  cannot be reached by steering toward it — greedy pursuit decays into a
+ *  cannot be reached by steering toward it — pursuit decays into a
  *  constant-radius orbit that never completes the order. This controller
  *  captures waypoints at flight-appropriate radii (the arrival radius for
  *  intermediate/queued points, the loiter radius for the final point) and
- *  steers every remaining approach through the no-turn escape ring: a
- *  stateless per-tick interlock, evaluated for the whole cruise population
- *  in one WASM batch. */
+ *  steers every remaining approach through the authored no-turn deadzone:
+ *  inside `turnRadiusMultiplier x turn radius` of the waypoint, the unit may
+ *  keep turning only while the waypoint sits within `frontSliceDegrees` of
+ *  its nose — a stateless per-tick interlock, evaluated for the whole cruise
+ *  population in one WASM batch. */
 export class SimulationAirborneWaypointController {
   private readonly advanceAction: (entity: Entity) => void;
   private readonly advanceActivePathPoint: (entity: Entity) => void;
@@ -40,6 +43,8 @@ export class SimulationAirborneWaypointController {
   private dy = new Float64Array(0);
   private distance = new Float64Array(0);
   private rotation = new Float64Array(0);
+  private deadzoneMultiplier = new Float64Array(0);
+  private frontSliceDegrees = new Float64Array(0);
   private fallbackVx = new Float64Array(0);
   private fallbackVy = new Float64Array(0);
   private outThrustX = new Float64Array(0);
@@ -100,6 +105,11 @@ export class SimulationAirborneWaypointController {
     this.dy[index] = dy;
     this.distance[index] = distance;
     this.rotation[index] = entity.transform.rotation;
+    const deadzone = unit.locomotion.motionControl.waypointDeadzone;
+    this.deadzoneMultiplier[index] = deadzone?.turnRadiusMultiplier
+      ?? AIRBORNE_STEER_DEFAULT_DEADZONE_TURN_RADIUS_MULTIPLIER;
+    this.frontSliceDegrees[index] = deadzone?.frontSliceDegrees
+      ?? AIRBORNE_STEER_DEFAULT_FRONT_SLICE_DEGREES;
     this.fallbackVx[index] = unit.velocityX;
     this.fallbackVy[index] = unit.velocityY;
   }
@@ -118,13 +128,14 @@ export class SimulationAirborneWaypointController {
       this.dy.subarray(0, count),
       this.distance.subarray(0, count),
       this.rotation.subarray(0, count),
+      this.deadzoneMultiplier.subarray(0, count),
+      this.frontSliceDegrees.subarray(0, count),
       this.fallbackVx.subarray(0, count),
       this.fallbackVy.subarray(0, count),
       this.outThrustX.subarray(0, count),
       this.outThrustY.subarray(0, count),
       AIRBORNE_STEER_MIN_TURN_RADIUS,
       AIRBORNE_STEER_MAX_TURN_RADIUS,
-      AIRBORNE_STEER_ESCAPE_RADIUS_RATIO,
       AIRBORNE_STEER_LOCK_SPEED_FLOOR,
     );
 
@@ -162,6 +173,8 @@ export class SimulationAirborneWaypointController {
       this.dy,
       this.distance,
       this.rotation,
+      this.deadzoneMultiplier,
+      this.frontSliceDegrees,
       this.fallbackVx,
       this.fallbackVy,
     ] = growTypedArrays([
@@ -171,6 +184,8 @@ export class SimulationAirborneWaypointController {
       this.dy,
       this.distance,
       this.rotation,
+      this.deadzoneMultiplier,
+      this.frontSliceDegrees,
       this.fallbackVx,
       this.fallbackVy,
     ] as const, next);
