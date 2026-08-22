@@ -13,3 +13,5 @@
 7. Make our mini-map 85% the size it curently is.
 
 8. There are still a few strange things going on with the flows of our buildings being built. Go look at "Beyond-All-Reason" at how buildings should look and act when they are in a future command in the queue, also look at what happens when they are "abandoned" (I believe they should immediately start decaying and then if they reach zero health they disappear). Consider all situations that buildings might face, look at how "BAR" does it, then implement that here as well. 
+
+9. I've identified a clear issue --- a unit who has just completed a building seems to be requesting its pathfinding BEFORE that new building registers the squares that is on as invalid pathfinding squares. What I'm seeing is that the commander is finishing a building but then seeing that its pathfinding tries to go through that building. Look through all of this and describe the order of events that are necessary to prevent this and other issues like it. Then fix everything. 
