@@ -238,10 +238,11 @@ export function runInput3DModeClickControllerContractTest(): void {
   );
   assertContract(mode.isInBuildMode, 'queued build commit must keep active build mode');
 
-  // BAR multi-builder batch semantics: same-type builders share one
-  // queue with guard-assist locally standing in for BAR duplicate
-  // nanoframe build orders. Build-split forks the batch, preserving
-  // contiguous placement order instead of round-robin interleaving.
+  // BAR multi-builder batch semantics: every capable builder rides each
+  // startBuild command's builderIds (leader first), so the whole crew
+  // holds the same real build queue. Build-split forks the batch,
+  // preserving contiguous placement order instead of round-robin
+  // interleaving.
   const multiMode = new CommanderModeController();
   const leader = makeCommanderBuilder(301);
   const helper = makeCommanderBuilder(302);
@@ -263,22 +264,18 @@ export function runInput3DModeClickControllerContractTest(): void {
   multiMode.enterBuildMode('buildingSolar');
   multiController.commitBuildShapePlacements(makeBuildDrag(true), 'buildingSolar', multiPlanner);
   assertContract(
-    multiCommands.length === 4,
-    'same-type shared-queue build commit must enqueue every startBuild plus one guard command',
+    multiCommands.length === 3,
+    'shared-queue build commit must enqueue one startBuild per placement and no guards',
   );
   assertContract(
-    multiCommands.slice(0, 3).every(
-      (command) => command.type === 'startBuild' && command.builderId === leader.id,
+    multiCommands.every(
+      (command) =>
+        command.type === 'startBuild' &&
+        command.builderIds.length === 2 &&
+        command.builderIds[0] === leader.id &&
+        command.builderIds[1] === helper.id,
     ),
-    'without the split modifier one same-type group leader must own the contiguous placement queue',
-  );
-  const guardCommand = multiCommands[3];
-  assertContract(
-    guardCommand.type === 'guard' &&
-      guardCommand.targetId === leader.id &&
-      guardCommand.entityIds.length === 1 &&
-      guardCommand.entityIds[0] === helper.id,
-    'without the split modifier the other capable builders must guard-assist the active builder',
+    'without the split modifier every capable builder must ride each startBuild, leader first',
   );
 
   multiCommands.length = 0;
@@ -289,12 +286,13 @@ export function runInput3DModeClickControllerContractTest(): void {
     'split-modifier build commit must enqueue split startBuild commands plus assist follow-ups',
   );
   const splitStartBuilds = multiCommands.filter((command) => command.type === 'startBuild');
-  const splitBuilderIds = splitStartBuilds.map((command) => command.builderId);
+  const splitBuilderIds = splitStartBuilds.map((command) => command.builderIds[0]);
   assertContract(
-    splitBuilderIds[0] === leader.id &&
+    splitStartBuilds.every((command) => command.builderIds.length === 1) &&
+      splitBuilderIds[0] === leader.id &&
       splitBuilderIds[1] === leader.id &&
       splitBuilderIds[2] === helper.id,
-    'split-modifier build commit must partition placements into contiguous builder chunks',
+    'split-modifier build commit must partition placements into contiguous single-builder chunks',
   );
   const splitGuards = multiCommands.filter((command) => command.type === 'guard');
   assertContract(
@@ -441,17 +439,17 @@ export function runInput3DModeClickControllerContractTest(): void {
 
   mixedMode.enterBuildMode('buildingSolar');
   mixedController.commitBuildShapePlacements(makeBuildDrag(true), 'buildingSolar', fivePlacements);
-  const mixedBuilderIds = mixedCommands
-    .filter((command) => command.type === 'startBuild')
-    .map((command) => command.builderId);
+  const mixedStartBuilds = mixedCommands
+    .filter((command) => command.type === 'startBuild');
   assertContract(
-    mixedBuilderIds.length === 5 &&
-      mixedBuilderIds[0] === commander.id &&
-      mixedBuilderIds[1] === commander.id &&
-      mixedBuilderIds[2] === commander.id &&
-      mixedBuilderIds[3] === drone.id &&
-      mixedBuilderIds[4] === drone.id,
-    'mixed builder-type build commit must partition ordered placements by build power',
+    mixedStartBuilds.length === 5 &&
+      mixedStartBuilds.every(
+        (command) =>
+          command.builderIds.length === 2 &&
+          command.builderIds[0] === commander.id &&
+          command.builderIds[1] === drone.id,
+      ),
+    'mixed builder-type build commit must put the whole crew on every ordered placement',
   );
 
   const placementState = new Input3DBuildPlacementState();

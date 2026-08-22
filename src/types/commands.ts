@@ -208,7 +208,10 @@ export type ScanCommand = BaseCommand & {
 
 export type StartBuildCommand = BaseCommand & {
   type: 'startBuild';
-  builderId: EntityId;
+  /** Every selected capable builder, leader (active builder) first. The
+   *  first id that resolves seeds the nanoframe; every id gets the build
+   *  order, so the crew cooperates on one shared queue (BAR default). */
+  builderIds: EntityId[];
   buildingBlueprintId: BuildingBlueprintId;
   gridX: number;
   gridY: number;

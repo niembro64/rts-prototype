@@ -859,9 +859,14 @@ export class Input3DModeClickController {
     }
 
     const split = this.config.isBuildSplitModifierHeld() && roster.capableBuilders.length > 1;
+    // BAR default: ONE cooperative crew — every capable builder carries
+    // the full placement queue as real build orders, so the whole
+    // selection walks to each site and builds it together, and the queue
+    // survives any single builder's death. The Space split modifier is
+    // the opt-in for per-builder placement splits.
     const groups = split
       ? this.createSplitBuildOrderGroups(roster.capableBuilders)
-      : this.createDefaultBuildOrderGroups(roster);
+      : [this.createSharedBuildOrderGroup(roster)];
     this.distributeBuildPlacements(groups, placements, buildingBlueprintId);
 
     const tick = this.config.getTick();
@@ -879,10 +884,9 @@ export class Input3DModeClickController {
         tick,
       );
     } else {
-      this.enqueueDefaultBuildAssists(
-        groups,
-        workingGroups,
+      this.enqueueIneligibleBuildAssists(
         roster.ineligibleBuilders,
+        workingGroups,
         drag,
         tick,
       );
@@ -929,26 +933,19 @@ export class Input3DModeClickController {
     };
   }
 
-  private createDefaultBuildOrderGroups(roster: SelectedBuildRoster): BuildOrderGroup[] {
-    const byType = new Map<string, BuildOrderGroup>();
+  /** The whole capable roster as one crew. The active builder leads (it
+   *  seeds the nanoframe on the sim side), everyone shares the queue. */
+  private createSharedBuildOrderGroup(roster: SelectedBuildRoster): BuildOrderGroup {
+    let power = 0;
     for (let i = 0; i < roster.capableBuilders.length; i++) {
-      const builder = roster.capableBuilders[i];
-      const unitBlueprintId = builder.unit?.unitBlueprintId ?? `entity:${builder.id}`;
-      let group = byType.get(unitBlueprintId);
-      if (group === undefined) {
-        group = {
-          leader: builder,
-          builders: [],
-          power: 0,
-          placements: [],
-        };
-        byType.set(unitBlueprintId, group);
-      }
-      group.builders.push(builder);
-      group.power += this.builderBuildPower(builder);
-      if (builder.id === roster.activeBuilder.id) group.leader = builder;
+      power += this.builderBuildPower(roster.capableBuilders[i]);
     }
-    return this.sortBuildOrderGroups(Array.from(byType.values()));
+    return {
+      leader: roster.activeBuilder,
+      builders: [...roster.capableBuilders],
+      power,
+      placements: [],
+    };
   }
 
   private createSplitBuildOrderGroups(builders: readonly Entity[]): BuildOrderGroup[] {
@@ -1023,12 +1020,20 @@ export class Input3DModeClickController {
     buildingBlueprintId: BuildingBlueprintId,
     tick: number,
   ): void {
+    if (group.placements.length === 0) return;
+    // Leader first: the sim seeds the nanoframe from the first id that
+    // resolves, and the leader is the seat's active builder.
+    const builderIds: EntityId[] = [group.leader.id];
+    for (let i = 0; i < group.builders.length; i++) {
+      const builder = group.builders[i];
+      if (builder.id !== group.leader.id) builderIds.push(builder.id);
+    }
     for (let i = 0; i < group.placements.length; i++) {
       const placement = group.placements[i];
       this.config.commandQueue.enqueue({
         type: 'startBuild',
         tick,
-        builderId: group.leader.id,
+        builderIds,
         buildingBlueprintId,
         gridX: placement.gridX,
         gridY: placement.gridY,
@@ -1038,41 +1043,6 @@ export class Input3DModeClickController {
         queueInsertIndex: i === 0 ? drag.queueInsertIndex : undefined,
       });
     }
-  }
-
-  private enqueueDefaultBuildAssists(
-    groups: readonly BuildOrderGroup[],
-    workingGroups: readonly BuildOrderGroup[],
-    ineligibleBuilders: readonly Entity[],
-    drag: AreaDrag,
-    tick: number,
-  ): void {
-    for (let i = 0; i < groups.length; i++) {
-      const group = groups[i];
-      if (group.placements.length > 0) {
-        this.enqueueGuardForBuilders(
-          group.builders.filter((builder) => builder.id !== group.leader.id),
-          group.leader,
-          tick,
-          drag.queue,
-          drag.queueFront,
-          drag.queueInsertIndex,
-        );
-      } else {
-        const target = this.assistTargetForIndex(workingGroups, i);
-        if (target !== null) {
-          this.enqueueGuardForBuilders(
-            group.builders,
-            target.leader,
-            tick,
-            drag.queue,
-            drag.queueFront,
-            drag.queueInsertIndex,
-          );
-        }
-      }
-    }
-    this.enqueueIneligibleBuildAssists(ineligibleBuilders, workingGroups, drag, tick);
   }
 
   private enqueueSplitBuildAssists(

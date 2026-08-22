@@ -918,8 +918,9 @@ function sanitizeGuardCommand(command: GuardCommand, tick: number): GuardCommand
 }
 
 function sanitizeStartBuildCommand(command: StartBuildCommand, tick: number): StartBuildCommand | null {
+  const builderIds = sanitizeEntityIdArray(command.builderIds);
   if (
-    !isEntityId(command.builderId) ||
+    builderIds === null ||
     !isStructureBlueprintId(command.buildingBlueprintId) ||
     !Number.isFinite(command.gridX) ||
     !Number.isFinite(command.gridY) ||
@@ -936,7 +937,7 @@ function sanitizeStartBuildCommand(command: StartBuildCommand, tick: number): St
   return {
     type: 'startBuild',
     tick,
-    builderId: command.builderId,
+    builderIds,
     buildingBlueprintId: command.buildingBlueprintId,
     gridX: Math.floor(command.gridX),
     gridY: Math.floor(command.gridY),

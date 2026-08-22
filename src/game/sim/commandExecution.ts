@@ -953,15 +953,24 @@ function executeWaitCommand(ctx: CommandContext, command: WaitCommand): void {
 }
 
 function executeStartBuildCommand(ctx: CommandContext, command: StartBuildCommand): void {
-  const builder = ctx.world.getEntity(command.builderId);
-  if (
-    builder === undefined ||
-    builder.builder === null ||
-    builder.ownership === null ||
-    builder.unit === null
-  ) return;
+  // Every id in builderIds is a crew member on ONE shared build: the
+  // first resolvable builder seeds the nanoframe, then every member gets
+  // the same real build order and their build power sums on the frame.
+  const builders: Entity[] = [];
+  for (let i = 0; i < command.builderIds.length; i++) {
+    const builder = ctx.world.getEntity(command.builderIds[i]);
+    if (
+      builder === undefined ||
+      builder.builder === null ||
+      builder.ownership === null ||
+      builder.unit === null
+    ) continue;
+    builders.push(builder);
+  }
+  const lead = builders[0];
+  if (lead === undefined) return;
 
-  const playerId = builder.ownership.playerId;
+  const playerId = lead.ownership!.playerId;
 
   // No shield gate here: shielded structures are always buildable. Their
   // fields simply stay down until the owner's team has a Shield Generator
@@ -974,7 +983,7 @@ function executeStartBuildCommand(ctx: CommandContext, command: StartBuildComman
     command.gridX,
     command.gridY,
     playerId,
-    command.builderId,
+    lead.id,
     command.rotation ?? 0,
   );
 
@@ -983,17 +992,19 @@ function executeStartBuildCommand(ctx: CommandContext, command: StartBuildComman
     return;
   }
 
-  enqueueBuildActionForBuilding(
-    ctx,
-    builder,
-    building,
-    command.buildingBlueprintId,
-    command.gridX,
-    command.gridY,
-    command.queue,
-    commandQueuesInFront(command),
-    commandQueueInsertIndex(command),
-  );
+  for (let i = 0; i < builders.length; i++) {
+    enqueueBuildActionForBuilding(
+      ctx,
+      builders[i],
+      building,
+      command.buildingBlueprintId,
+      command.gridX,
+      command.gridY,
+      command.queue,
+      commandQueuesInFront(command),
+      commandQueueInsertIndex(command),
+    );
+  }
 }
 
 function executeUpgradeMetalExtractorCommand(

@@ -464,7 +464,7 @@ const PROBES: readonly CommandProbe[] = [
     command: (s) => ({
       type: 'startBuild',
       tick: 0,
-      builderId: s.subject.id,
+      builderIds: [s.subject.id],
       buildingBlueprintId: s.buildCell!.blueprintId,
       gridX: s.buildCell!.gridX,
       gridY: s.buildCell!.gridY,

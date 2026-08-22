@@ -111,7 +111,7 @@ export class CommanderModeController {
     return {
       type: 'startBuild',
       tick,
-      builderId: builder.id,
+      builderIds: [builder.id],
       buildingBlueprintId: this._buildBuildingBlueprintId,
       gridX: snapped.gridX,
       gridY: snapped.gridY,

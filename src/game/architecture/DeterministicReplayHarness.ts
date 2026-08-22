@@ -125,7 +125,7 @@ const CASES: readonly DeterministicReplayCase[] = [
           {
             type: 'startBuild',
             tick: core.world.getTick(),
-            builderId: commander.id,
+            builderIds: [commander.id],
             buildingBlueprintId: 'buildingSolar',
             gridX: placement.gridX,
             gridY: placement.gridY,

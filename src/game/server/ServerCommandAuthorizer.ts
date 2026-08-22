@@ -361,9 +361,14 @@ function authorizeStartBuildCommand(
   command: StartBuildCommand,
   playerId: PlayerId,
 ): StartBuildCommand | null {
-  const builder = world.getEntity(command.builderId);
-  if (builder === undefined || builder.ownership?.playerId !== playerId) return null;
-  return entityCanBuild(builder, command.buildingBlueprintId) ? command : null;
+  const builderIds: EntityId[] = [];
+  for (let i = 0; i < command.builderIds.length; i++) {
+    const builder = world.getEntity(command.builderIds[i]);
+    if (builder === undefined || builder.ownership?.playerId !== playerId) continue;
+    if (!entityCanBuild(builder, command.buildingBlueprintId)) continue;
+    builderIds.push(builder.id);
+  }
+  return builderIds.length > 0 ? { ...command, builderIds } : null;
 }
 
 function authorizeQueueUnitCommand<T extends Pick<QueueUnitCommand, 'factoryId' | 'unitBlueprintId'>>(
