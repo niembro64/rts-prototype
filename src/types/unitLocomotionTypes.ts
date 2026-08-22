@@ -104,6 +104,12 @@ export type UnitLocomotion = {
      * request only aims the yaw servo, so forward flight never slows in a
      * turn (plane, aerosub). */
     propulsionAxis: 'waypointForward' | 'waypointForwardOnly' | 'worldPlanar' | 'alwaysForward';
+    /** `alwaysForward` chassis only: the constant-rate yaw slew in degrees
+     * per second — the circle turn. The nose turns at exactly this rate
+     * until aligned, then snaps onto the bearing; it never eases off as the
+     * error shrinks the way a damped spring does. The waypoint deadzone's
+     * turn radius derives from the same number: R = speed / rate. */
+    turnRateDegreesPerSecond?: number;
   };
   motionControl: {
     /** Air propulsion continues along the nose with no waypoint thrust input. */

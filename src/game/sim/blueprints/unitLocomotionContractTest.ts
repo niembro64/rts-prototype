@@ -566,6 +566,11 @@ export function runUnitLocomotionContractTest(): void {
         locomotion.actuator.propulsionAxis === 'alwaysForward',
         `${blueprint.unitBlueprintId} is forward-flight: the gas is always on along the nose (alwaysForward)`,
       );
+      const turnRate = locomotion.actuator.turnRateDegreesPerSecond;
+      assertContract(
+        typeof turnRate === 'number' && Number.isFinite(turnRate) && turnRate > 0 && turnRate <= 720,
+        `${blueprint.unitBlueprintId} is forward-flight: it must author the constant-rate circle turn (turnRateDegreesPerSecond)`,
+      );
       const deadzone = locomotion.motionControl.waypointDeadzone;
       assertContract(
         deadzone !== undefined &&

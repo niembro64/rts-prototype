@@ -33,7 +33,7 @@ pub const UNIT_FORCE_BATCH_STRIDE: usize = 59;
 
 /** Direct, SI-style values: force is converted to the simulator's mass scale
  * only at F = ma. There are no hidden force multipliers or coupling factors. */
-pub const UF_PROFILE_STRIDE: usize = 14;
+pub const UF_PROFILE_STRIDE: usize = 15;
 pub(crate) const UF_PROFILE_GROUND_MAX_PROPULSIVE_FORCE: usize = 0;
 pub(crate) const UF_PROFILE_GROUND_STATIC_FRICTION_COEFFICIENT: usize = 1;
 pub(crate) const UF_PROFILE_GROUND_TANGENTIAL_DAMPING_RATE: usize = 2;
@@ -48,6 +48,9 @@ pub(crate) const UF_PROFILE_WATER_SURFACE_FOLLOWING_PROPORTIONAL_FORCE_FROM_WATE
 pub(crate) const UF_PROFILE_WATER_LINEAR_DAMPING_RATE: usize = 11;
 pub(crate) const UF_PROFILE_WATER_ANGULAR_DAMPING_RATE: usize = 12;
 pub(crate) const UF_PROFILE_WATER_DAMAGE_PER_SECOND: usize = 13;
+/// Authored constant-rate yaw slew (rad/s) for `alwaysForward` chassis; 0 for
+/// every other actuator, which keeps the critically damped attitude servo.
+pub(crate) const UF_PROFILE_TURN_RATE_RAD_PER_SEC: usize = 14;
 
 pub(crate) struct UnitForceProfileTable {
     pub(crate) values: Vec<f64>,
@@ -914,6 +917,7 @@ fn unit_force_attitude_step(
     control_force_mag: f64,
     target_up: [f64; 3],
     medium_angular_damping: f64,
+    slew_yaw_rate: f64,
     dt_sec: f64,
 ) -> bool {
     if dt_sec <= 0.0 || body_mass <= 0.0 {
@@ -942,6 +946,42 @@ fn unit_force_attitude_step(
         (current_yaw.cos(), current_yaw.sin())
     };
     let target = unit_force_quat_from_forward_up([forward_x, forward_y, 0.0], target_up);
+
+    // alwaysForward chassis (plane, aerosub) turn as a constant-rate slew —
+    // the circle turn. A damped spring's rate collapses with the remaining
+    // error, so the nose eases off as it closes on a moving bearing and
+    // never actually aligns; the slew turns at the full authored rate until
+    // aligned, then snaps exactly onto the bearing.
+    if slew_yaw_rate > 0.0 && slew_yaw_rate.is_finite() {
+        let target_yaw = forward_y.atan2(forward_x);
+        let mut yaw_error = target_yaw - current_yaw;
+        while yaw_error > core::f64::consts::PI {
+            yaw_error -= core::f64::consts::TAU;
+        }
+        while yaw_error < -core::f64::consts::PI {
+            yaw_error += core::f64::consts::TAU;
+        }
+        let max_step = slew_yaw_rate * dt_sec;
+        let step = yaw_error.clamp(-max_step, max_step);
+        let next_yaw = current_yaw + step;
+        let next_orientation = unit_force_quat_from_forward_up(
+            [next_yaw.cos(), next_yaw.sin(), 0.0],
+            target_up,
+        );
+        let next_omega_z = step / dt_sec;
+        rows[base + UF_ROW_ORIENTATION_X] = next_orientation[0];
+        rows[base + UF_ROW_ORIENTATION_Y] = next_orientation[1];
+        rows[base + UF_ROW_ORIENTATION_Z] = next_orientation[2];
+        rows[base + UF_ROW_ORIENTATION_W] = next_orientation[3];
+        rows[base + UF_ROW_OMEGA_X] = 0.0;
+        rows[base + UF_ROW_OMEGA_Y] = 0.0;
+        rows[base + UF_ROW_OMEGA_Z] = next_omega_z;
+        rows[base + UF_ROW_ANGULAR_ACCEL_X] = 0.0;
+        rows[base + UF_ROW_ANGULAR_ACCEL_Y] = 0.0;
+        rows[base + UF_ROW_ANGULAR_ACCEL_Z] = (next_omega_z - omega[2]) / dt_sec;
+        return true;
+    }
+
     let axis_angle = quat_shortest_axis_angle(orientation, target);
 
     let max_alpha =
@@ -1234,6 +1274,7 @@ fn unit_force_step_batch_core(
         let mut flag = flags[i];
         let mut profile_flags = 0_u32;
         let mut air_angular_damping_rate = 0.0;
+        let mut cruise_slew_yaw_rate = 0.0;
         let mut water_angular_damping_rate = 0.0;
         let mut authored_ground_tangential_damping_rate = 0.0;
         if flag & UF_FLAG_BLOCKED_OR_DEAD != 0 {
@@ -1286,6 +1327,8 @@ fn unit_force_step_batch_core(
                     // to fluid drag instead of replacing it.
                     authored_ground_tangential_damping_rate =
                         profile.values[pbase + UF_PROFILE_GROUND_TANGENTIAL_DAMPING_RATE].max(0.0);
+                    cruise_slew_yaw_rate =
+                        profile.values[pbase + UF_PROFILE_TURN_RATE_RAD_PER_SEC].max(0.0);
                     p.ground_tangential_damping_rate[slot] = 0.0;
                     flag |= profile_flags & UF_PROFILE_KERNEL_FLAG_MASK;
                 }
@@ -1744,6 +1787,11 @@ fn unit_force_step_batch_core(
                 attitude_control_force,
                 target_up,
                 angular_damping,
+                if propulsion_always_forward {
+                    cruise_slew_yaw_rate
+                } else {
+                    0.0
+                },
                 dt_sec,
             ) {
                 out_flags[i] |= UF_OUT_HOVER_ORIENTATION;
@@ -2201,6 +2249,50 @@ mod tests {
     }
 
     #[test]
+    fn always_forward_slew_turns_at_a_constant_rate_and_snaps_onto_the_bearing() {
+        // 90-degree bearing change at 1 rad/s, 20 Hz ticks: every full tick
+        // turns exactly 0.05 rad (no easing as the error shrinks), and the
+        // final partial tick lands exactly on the bearing.
+        let mut rows = vec![0.0; UNIT_FORCE_BATCH_STRIDE];
+        rows[UF_ROW_ORIENTATION_W] = 1.0;
+        rows[UF_ROW_HEADING_X] = 0.0;
+        rows[UF_ROW_HEADING_Y] = 1.0;
+        let dt = 1.0 / 20.0;
+        let mut previous_yaw = 0.0_f64;
+        for _ in 0..33 {
+            assert!(unit_force_attitude_step(
+                &mut rows,
+                0,
+                450.0,
+                9.6,
+                26.666_666_666_667,
+                [0.0, 0.0, 1.0],
+                0.0,
+                1.0,
+                dt,
+            ));
+            let yaw = quat_yaw([
+                rows[UF_ROW_ORIENTATION_X],
+                rows[UF_ROW_ORIENTATION_Y],
+                rows[UF_ROW_ORIENTATION_Z],
+                rows[UF_ROW_ORIENTATION_W],
+            ]);
+            let step = yaw - previous_yaw;
+            let remaining = core::f64::consts::FRAC_PI_2 - previous_yaw;
+            if remaining > dt {
+                assert_near(step, dt);
+                assert_near(rows[UF_ROW_OMEGA_Z], 1.0);
+            } else {
+                assert_near(yaw, core::f64::consts::FRAC_PI_2);
+            }
+            previous_yaw = yaw;
+        }
+        // Aligned and holding: zero turn, zero yaw rate.
+        assert_near(previous_yaw, core::f64::consts::FRAC_PI_2);
+        assert_near(rows[UF_ROW_OMEGA_Z], 0.0);
+    }
+
+    #[test]
     fn attitude_servo_does_not_impose_an_angular_speed_ceiling() {
         let mut rows = vec![0.0; UNIT_FORCE_BATCH_STRIDE];
         rows[UF_ROW_ORIENTATION_W] = 1.0;
@@ -2212,6 +2304,7 @@ mod tests {
             10.0,
             0.0,
             [0.0, 0.0, 1.0],
+            0.0,
             0.0,
             0.1,
         ));
@@ -2238,6 +2331,7 @@ mod tests {
                 9.6,
                 26.666_666_666_667,
                 [0.0, 0.0, 1.0],
+                0.0,
                 0.0,
                 1.0 / 60.0,
             ));
