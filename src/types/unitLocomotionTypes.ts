@@ -95,8 +95,15 @@ export type UnitLocomotion = {
     waterDamagePerSecond: number;
   };
   actuator: {
-    /** Axis through which the locomotion actuator can apply horizontal force. */
-    propulsionAxis: 'bodyForward' | 'bodyForwardOnly' | 'worldPlanar';
+    /** Axis through which the locomotion actuator can apply horizontal force.
+     * `worldPlanar` drives directly along the requested direction;
+     * `waypointForward` projects the request onto the nose (signed, may
+     * reverse); `waypointForwardOnly` is the same but powers only forward —
+     * the unit turns toward the waypoint before it starts moving;
+     * `alwaysForward` keeps full throttle along the nose every tick — the
+     * request only aims the yaw servo, so forward flight never slows in a
+     * turn (plane, aerosub). */
+    propulsionAxis: 'waypointForward' | 'waypointForwardOnly' | 'worldPlanar' | 'alwaysForward';
   };
   motionControl: {
     /** Air propulsion continues along the nose with no waypoint thrust input. */

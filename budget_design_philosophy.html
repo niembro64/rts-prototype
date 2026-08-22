@@ -1189,12 +1189,14 @@
         A body that must keep moving forward has a minimum turning circle. A goal inside that
         circle is unreachable by steering toward it &mdash; pursuit decays into a constant-speed,
         constant-turn orbit that never crosses the point, never completes the order, and freezes
-        every queued waypoint behind it. The subtle part is that a <em>powered</em> orbit keeps the
-        nose within 90&deg; of the waypoint at all times (forward-only thrust dies past a 90&deg;
-        lag), so any half-plane &ldquo;heading away&rdquo; test never fires inside the orbit. The
-        turn permission must be a slice <em>narrower</em> than the orbit&rsquo;s lag angle. Cruise
-        locomotion (plane, aerosub) therefore steers every waypoint leg through one stateless
-        per-tick interlock, authored per preset in
+        every queued waypoint behind it. The subtle part is that a pursuit orbit keeps the nose
+        within the servo&rsquo;s tracking-lag angle of the waypoint direction &mdash; always well
+        inside the forward half-plane &mdash; so any half-plane &ldquo;heading away&rdquo; test
+        never fires inside the orbit. The turn permission must be a slice <em>narrower</em> than
+        the orbit&rsquo;s lag angle. Cruise locomotion (plane, aerosub) rides the
+        <code>alwaysForward</code> actuator, so the orbit cannot even rely on off-nose throttle
+        loss to shrink itself; the interlock is the one thing that breaks it. Every waypoint leg
+        steers through one stateless per-tick interlock, authored per preset in
         <code>motionControl.waypointDeadzone</code>:
       </p>
       <ul class="rule-list">
@@ -1469,7 +1471,7 @@
       </p>
       <ul class="rule-list">
         <li><strong>Propulsion</strong> is a separate maximum directed force for ground, air, and water. Air and water forces are weighted by their occupied volume fractions, independently of route permission; when a body contacts a slope, every directed drive resolves along that supporting tangent rather than into the terrain. The simulator applies <code>a = F / m</code>, so mass matters directly and each medium can be tuned independently.</li>
-        <li><strong>Propulsion axis</strong> is explicit actuator behavior. <code>worldPlanar</code> drives directly along the requested horizontal direction; <code>bodyForward</code> projects that request onto the nose and permits signed forward/reverse thrust; <code>bodyForwardOnly</code> uses the same nose-aligned drive but supplies no powered force for requests at or behind the lateral plane. A forward-only unit keeps turning toward its requested heading while bounded contact braking stops existing motion, then advances only after the request enters its forward hemisphere. Standing units use <code>bodyForwardOnly</code>: they turn instead of walking backward.</li>
+        <li><strong>Propulsion axis</strong> is explicit actuator behavior. <code>worldPlanar</code> drives directly along the requested horizontal direction. <code>waypointForward</code> projects that request onto the nose and permits signed forward/reverse thrust; <code>waypointForwardOnly</code> uses the same nose-aligned drive but supplies no powered force for requests at or behind the lateral plane &mdash; the unit turns toward the waypoint before it starts moving, and standing units use it to turn instead of walking backward. Both waypoint modes throttle by the off-nose projection, which means a hard turn bleeds speed &mdash; correct for walkers and vehicles, fatal for flight. <code>alwaysForward</code> (plane, aerosub) therefore keeps the gas fully on along the nose every tick: the steering request only aims the yaw servo, and forward flight may turn but may never stop accelerating forward. A plane that slows in a turn is the seed of every waypoint orbit.</li>
         <li><strong>Static friction</strong> is contact traction: ground propulsion is limited by <code>normalLoad * staticFrictionCoefficient</code>, and passive friction can hold or brake an uncommanded body within that same contact limit. It is not a velocity-resistance setting or a motor-force substitute.</li>
         <li><strong>Tangential damping</strong> is a supported-contact velocity decay rate. It damps residual sliding along the contact plane and is therefore separate from static friction: one caps commanded force, the other removes existing tangential velocity.</li>
         <li><strong>Fluid resistance</strong> is isotropic linear damping relative to the medium (wind for air, still water until currents are added), plus angular damping. This deliberately keeps the model small and identifiable.</li>

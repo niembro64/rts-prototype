@@ -2,7 +2,7 @@
   "presets": {
     "rover": {
       "actuator": {
-        "propulsionAxis": "bodyForward",
+        "propulsionAxis": "waypointForward",
         "ground": {
           "staticFrictionCoefficient": 0.55,
           "tangentialDampingRate": 0.835487663482
@@ -39,7 +39,7 @@
     },
     "tank": {
       "actuator": {
-        "propulsionAxis": "bodyForward",
+        "propulsionAxis": "waypointForward",
         "ground": {
           "staticFrictionCoefficient": 0.85,
           "tangentialDampingRate": 1.291208207199
@@ -76,7 +76,7 @@
     },
     "amphibious-tank": {
       "actuator": {
-        "propulsionAxis": "bodyForward",
+        "propulsionAxis": "waypointForward",
         "ground": {
           "staticFrictionCoefficient": 0.85,
           "tangentialDampingRate": 1.291208207199
@@ -115,7 +115,7 @@
     },
     "amphibian": {
       "actuator": {
-        "propulsionAxis": "bodyForward",
+        "propulsionAxis": "waypointForward",
         "ground": {
           "staticFrictionCoefficient": 2,
           "tangentialDampingRate": 7.595342395285
@@ -154,7 +154,7 @@
     },
     "submarine": {
       "actuator": {
-        "propulsionAxis": "bodyForward",
+        "propulsionAxis": "waypointForward",
         "ground": {
           "staticFrictionCoefficient": 0,
           "tangentialDampingRate": 0
@@ -269,7 +269,7 @@
     },
     "bot": {
       "actuator": {
-        "propulsionAxis": "bodyForwardOnly",
+        "propulsionAxis": "waypointForwardOnly",
         "ground": {
           "staticFrictionCoefficient": 1,
           "tangentialDampingRate": 1.519068479057
@@ -347,7 +347,7 @@
     },
     "aerosub": {
       "actuator": {
-        "propulsionAxis": "bodyForward",
+        "propulsionAxis": "alwaysForward",
         "ground": {
           "staticFrictionCoefficient": 0.1,
           "tangentialDampingRate": 0.151906847906
@@ -391,7 +391,7 @@
     },
     "plane": {
       "actuator": {
-        "propulsionAxis": "bodyForwardOnly",
+        "propulsionAxis": "alwaysForward",
         "ground": {
           "staticFrictionCoefficient": 0.1,
           "tangentialDampingRate": 0.151906847906
