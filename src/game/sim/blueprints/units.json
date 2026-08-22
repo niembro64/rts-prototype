@@ -2741,6 +2741,32 @@
           "y": 0,
           "z": 0
         },
+        "emissionSockets": [
+          {
+            "offset": {
+              "x": 14,
+              "y": 0,
+              "z": -4
+            }
+          }
+        ],
+        "articulation": {
+          "yaw": {
+            "continuous": true,
+            "minAngle": 0,
+            "maxAngle": 0
+          },
+          "pitch": {
+            "minAngle": 0,
+            "maxAngle": 0
+          },
+          "restYaw": 0,
+          "restPitch": 0,
+          "restoreDelayMs": 2200,
+          "hostAssist": "none",
+          "claimGroup": null,
+          "claimPriority": 0
+        },
         "requiredEngagedForFightStop": true,
         "mountId": "torpedo",
         "controlMode": "hostPreferred"

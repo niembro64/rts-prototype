@@ -1,5 +1,19 @@
-import type { BuildingBlueprintId, CombatFireState, CombatTrajectoryMode, Entity, UnitMoveState } from './types';
+import type { BuildingBlueprintId, CombatFireState, CombatTrajectoryMode, Entity, TurretConfig, UnitMoveState } from './types';
 import { isAttackEmitterConfig } from './emitterKinds';
+import {
+  getBuildingHostLockOnMasks,
+  getUnitHostLockOnMasks,
+  type LockOnMasks,
+} from './blueprints';
+import {
+  CT_LOCK_ON_FAM_INCLUDE_BUILDINGS,
+  CT_LOCK_ON_FAM_INCLUDE_UNITS,
+  CT_LOCK_ON_REL_INCLUDE_ENEMY,
+  CT_LOCK_ON_RECIPROCAL_REQUIRE,
+} from '../sim-wasm/init';
+import { buildingBlueprintIdToCode, unitBlueprintIdToCode } from '../../types/network';
+import { emissionMediumAtZ } from './emissionMedium';
+import { WATER_LEVEL } from './Terrain';
 
 type BarTrajectoryCommandKind = 'standardHighLow' | 'smartAutoLowHigh';
 
@@ -106,6 +120,61 @@ const BAR_CAPTURE_UNIT_BLUEPRINT_IDS = new Set<string>([
 // build-option constructor slots instead.
 const BAR_RESURRECT_UNIT_BLUEPRINT_IDS = new Set<string>();
 
+/** BAR's category rule, restated over this repo's authored lock-on data:
+ *  a level-1 `only` mask of 0 admits the whole family; otherwise the target
+ *  blueprint's wire code must be inside the 32-bit mask. Mirrors
+ *  `combat_targeting_level1_mask_allows` in Rust — the command layer and the
+ *  targeting kernel must give the same answer. */
+function lockOnLevel1MaskAllows(mask: number, code: number): boolean {
+  if (mask === 0) return true;
+  return code >= 0 && code < 32 && (mask & (1 << code)) !== 0;
+}
+
+/** TS mirror of `combat_targeting_lockon_masks_allow_body_entity` for the
+ *  two target families a player can name in an attack order. Towers stamp
+ *  as BUILDING family, exactly as the kernel sees them. */
+function lockOnMasksAllowBodyTarget(masks: LockOnMasks, target: Entity): boolean {
+  if ((masks.relationship & CT_LOCK_ON_REL_INCLUDE_ENEMY) === 0) return false;
+  const unit = target.unit;
+  if (unit !== null) {
+    return (masks.entityFamily & CT_LOCK_ON_FAM_INCLUDE_UNITS) !== 0 &&
+      lockOnLevel1MaskAllows(masks.unit, unitBlueprintIdToCode(unit.unitBlueprintId));
+  }
+  if (target.building !== null) {
+    const buildingBlueprintId = target.buildingBlueprintId;
+    return (masks.entityFamily & CT_LOCK_ON_FAM_INCLUDE_BUILDINGS) !== 0 &&
+      (buildingBlueprintId === null ||
+        lockOnLevel1MaskAllows(masks.building, buildingBlueprintIdToCode(buildingBlueprintId)));
+  }
+  return false;
+}
+
+function getHostLockOnMasksForEntity(entity: Entity): LockOnMasks | null {
+  const unitBlueprintId = entity.unit?.unitBlueprintId;
+  if (unitBlueprintId !== undefined) return getUnitHostLockOnMasks(unitBlueprintId);
+  const buildingBlueprintId = entity.buildingBlueprintId;
+  if (buildingBlueprintId !== null && buildingBlueprintId !== undefined) {
+    return getBuildingHostLockOnMasks(buildingBlueprintId);
+  }
+  return null;
+}
+
+/** Is this a turret an explicit player attack order can ride? Passive and
+ *  shield emitters never take orders (the Loris reflector), and neither do
+ *  reciprocal-lock turrets — those engage only what already locks them. */
+function isPlayerOrderableAttackTurretConfig(config: TurretConfig): boolean {
+  const shot = config.shot;
+  return (
+    isAttackEmitterConfig(config) &&
+    !config.passive &&
+    shot !== null &&
+    shot !== undefined &&
+    shot.type !== 'shield' &&
+    config.targeting.engagement.range > 10 &&
+    config.lockOnRequiresTargetLockedOntoSelfMode !== CT_LOCK_ON_RECIPROCAL_REQUIRE
+  );
+}
+
 export function entityHasBarSetTargetCommand(entity: Entity): boolean {
   const unitBlueprintId = entity.unit?.unitBlueprintId;
   if (
@@ -114,20 +183,15 @@ export function entityHasBarSetTargetCommand(entity: Entity): boolean {
   ) {
     return false;
   }
+  // A host whose own lock-on masks include nothing (authored
+  // `targets: "none"` — the queens) never honors an explicit target in the
+  // kernel, so it gets no Attack/Set Target surface either: showing the
+  // button would accept orders the sim silently drops.
+  const hostMasks = getHostLockOnMasksForEntity(entity);
+  if (hostMasks === null || hostMasks.entityFamily === 0) return false;
   const turrets = entity.combat?.turrets ?? [];
   for (let i = 0; i < turrets.length; i++) {
-    const config = turrets[i].config;
-    const shot = config.shot;
-    if (
-      isAttackEmitterConfig(config) &&
-      !config.passive &&
-      shot !== null &&
-      shot !== undefined &&
-      shot.type !== 'shield' &&
-      config.targeting.engagement.range > 10
-    ) {
-      return true;
-    }
+    if (isPlayerOrderableAttackTurretConfig(turrets[i].config)) return true;
   }
   return false;
 }
@@ -228,14 +292,57 @@ function entityIsBarAirTarget(entity: Entity | null | undefined): boolean {
   return unitBlueprintId !== undefined && unitBlueprintIsBarAirTarget(unitBlueprintId);
 }
 
+/** "May this host be ORDERED onto that target?" — the symmetric rule: an
+ *  order is accepted exactly when the targeting kernel will honor it. That
+ *  is BAR's model (AllowCommand consults the same per-weapon TestTarget
+ *  predicate the engine auto-acquires with), restated over this repo's
+ *  authored lock-on masks and emission-medium routes:
+ *    1. the HOST's lock-on masks must admit the target's family + name
+ *       (the kernel's `combat_targeting_entity_may_lock_entity_slot`);
+ *    2. SOME player-orderable turret's masks must admit it AND its shot
+ *       must have an emission route from the host's current medium to the
+ *       target's (the kernel's per-turret gate) — a torpedo tube cannot be
+ *       ordered onto a land tank, a cannon cannot be ordered onto a
+ *       submerged submarine;
+ *    3. BAR's bomber gadget rule stays as the one hand-authored overlay:
+ *       drop-weapon hosts refuse air targets even though their prototype
+ *       projectile data could nick a flyer.
+ *  Fighters and AA towers need no hand rule any more — their air-only
+ *  lock-on lists ARE the rule, so orders follow the masks exactly. */
 export function entityCanBarAttackTarget(source: Entity, target: Entity | null | undefined): boolean {
+  if (target === null || target === undefined) return false;
   const unitBlueprintId = source.unit?.unitBlueprintId;
-  if (unitBlueprintId === undefined) {
-    return !buildingBlueprintHasBarAirTargetOnlyRule(source.buildingBlueprintId) ||
-      entityIsBarAirTarget(target);
+  if (
+    unitBlueprintId !== undefined &&
+    unitBlueprintHasBarBomberNoAirTargetRule(unitBlueprintId) &&
+    entityIsBarAirTarget(target)
+  ) {
+    return false;
   }
-  if (unitBlueprintHasBarFighterAirTargetOnlyRule(unitBlueprintId)) return entityIsBarAirTarget(target);
-  return !unitBlueprintHasBarBomberNoAirTargetRule(unitBlueprintId) || !entityIsBarAirTarget(target);
+  const hostMasks = getHostLockOnMasksForEntity(source);
+  if (hostMasks === null || !lockOnMasksAllowBodyTarget(hostMasks, target)) return false;
+  const sourceMedium = emissionMediumAtZ(source.transform.z, WATER_LEVEL);
+  const targetMedium = emissionMediumAtZ(target.transform.z, WATER_LEVEL);
+  const turrets = source.combat?.turrets ?? [];
+  for (let i = 0; i < turrets.length; i++) {
+    const config = turrets[i].config;
+    if (!isPlayerOrderableAttackTurretConfig(config)) continue;
+    const turretMasks: LockOnMasks = {
+      relationship: config.lockOnRelationshipIncludeMask,
+      entityFamily: config.lockOnEntityFamilyIncludeMask,
+      building: config.lockOnBuildingIncludeMask,
+      tower: config.lockOnTowerIncludeMask,
+      unit: config.lockOnUnitIncludeMask,
+      turret: config.lockOnTurretIncludeMask,
+      shot: config.lockOnShotIncludeMask,
+      reciprocal: config.lockOnRequiresTargetLockedOntoSelfMode,
+    };
+    if (!lockOnMasksAllowBodyTarget(turretMasks, target)) continue;
+    const matrix = config.shot?.mediumTrajectory;
+    if (matrix !== undefined && matrix !== null && !matrix[sourceMedium][targetMedium]) continue;
+    return true;
+  }
+  return false;
 }
 
 function buildingBlueprintHasBarFactoryMoveStateCommand(
