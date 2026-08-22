@@ -352,9 +352,13 @@ export function runEntityDetailLevel3DContractTest(): void {
       wasVisible = visible;
     }
   }
+  // The 2026-08-22 perf round gated tread cleats to the HIGH rung only
+  // (lod.json featureMinRung.treadCleats: high) — the per-cleat layout
+  // pass is the tank rig's hottest loop and MED distances can't read
+  // individual cleats anyway.
   assertContract(
     featureVisibleAtDetail('treadCleats', DETAIL_LEVEL_FULL) &&
-      featureVisibleAtDetail(
+      !featureVisibleAtDetail(
         'treadCleats',
         detailLevelForRung(DETAIL_RUNG_MID),
       ) &&
@@ -362,7 +366,7 @@ export function runEntityDetailLevel3DContractTest(): void {
         'treadCleats',
         detailLevelForRung(DETAIL_RUNG_FAR),
       ),
-    'tread cleats are present at HIGH/MED and absent at LOW/OFF',
+    'tread cleats are present at HIGH only and absent at MED/LOW/OFF',
   );
 
   assertContract(
