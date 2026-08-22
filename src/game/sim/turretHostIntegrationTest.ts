@@ -15,7 +15,14 @@ import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
 import { beamIndex } from './BeamIndex';
 import type { Entity, EntityId, PlayerId, Turret } from './types';
-import { isProjectileShot, NO_ENTITY_ID } from './types';
+import {
+  isProjectileShot,
+  NO_ENTITY_ID,
+  PROJECTILE_GUIDANCE_LOST_INTERCEPT_ALIGNED,
+  PROJECTILE_GUIDANCE_LOST_INTERCEPT_TURNING,
+  PROJECTILE_GUIDANCE_NONE,
+  PROJECTILE_GUIDANCE_TRACKING_ENTITY,
+} from './types';
 import {
   checkProjectileCollisions,
   collectTurretRotationUnits,
@@ -51,7 +58,7 @@ import {
   stampShieldSurfacePool,
 } from './combat/targetingInputStamping';
 import { isAttackEmitter, isPassiveShieldFieldConfig } from './emitterKinds';
-import { createProjectileConfigFromTurret } from './projectileConfigs';
+import { createProjectileConfigFromShot, createProjectileConfigFromTurret } from './projectileConfigs';
 import { getUnitGroundZ } from './unitGeometry';
 import { isWaterAt, WATER_LEVEL } from './Terrain';
 import type { WindState } from './wind';
@@ -379,7 +386,7 @@ function assertSlowRocketLaunchVelocityInheritance(addTurretVelocityToEmissionLa
   }
 }
 
-function assertSlowRocketDropsLockAfterLosingTarget(): void {
+function assertGuidedShotsHandleLostTargetsByAuthoredPolicy(): void {
   resetTurretHostIntegrationState();
   const world = createIsolatedTestWorld(5321, 1024, 1024);
   world.playerCount = 2;
@@ -390,7 +397,7 @@ function assertSlowRocketDropsLockAfterLosingTarget(): void {
     TEST_VERTICAL_ROCKET_UNIT_BLUEPRINT_ID,
   );
   const lostTarget = world.createUnitFromBlueprint(
-    290,
+    700,
     120,
     2 as PlayerId,
     'unitJackal',
@@ -409,8 +416,6 @@ function assertSlowRocketDropsLockAfterLosingTarget(): void {
   if (lostTarget.unit === null || badger.combat === null) {
     throw new Error('[turret host integration] retarget fixtures must be armed/live units');
   }
-  lostTarget.unit.hp = 0;
-
   const { turret } = getFirstAttackTurret(badger);
   const projectileConfig = createProjectileConfigFromTurret(
     turret.config,
@@ -419,7 +424,7 @@ function assertSlowRocketDropsLockAfterLosingTarget(): void {
   const rocket = world.createProjectile(
     250,
     120,
-    40,
+    0,
     0,
     1 as PlayerId,
     badger.id,
@@ -429,16 +434,86 @@ function assertSlowRocketDropsLockAfterLosingTarget(): void {
   if (rocket.projectile === null) {
     throw new Error('[turret host integration] retarget rocket must have a projectile component');
   }
-  rocket.projectile.velocityZ = 0;
-  rocket.projectile.timeAlive = 3000;
+  rocket.projectile.velocityZ = 40;
+  rocket.projectile.timeAlive = 3700;
   rocket.projectile.homingTargetId = lostTarget.id;
+  rocket.projectile.guidanceMode = PROJECTILE_GUIDANCE_TRACKING_ENTITY;
 
   updateProjectiles(world, 50, new DamageSystem(world), STILL_AIR);
   assertContract(
-    rocket.projectile.homingTargetId === NO_ENTITY_ID,
-    'homing rocket must drop its dead inherited lock instead of acquiring a replacement target',
+    rocket.projectile.guidanceInterceptValid,
+    'live rocket must cache the solver-produced speculative intercept',
+  );
+  const interceptX = rocket.projectile.guidanceInterceptX;
+  const interceptY = rocket.projectile.guidanceInterceptY;
+  const interceptZ = rocket.projectile.guidanceInterceptZ;
+  lostTarget.unit.hp = 0;
+
+  updateProjectiles(world, 50, new DamageSystem(world), STILL_AIR);
+  assertContract(
+    rocket.projectile.homingTargetId === lostTarget.id,
+    'lost-point rocket must retain its inherited target id as provenance',
+  );
+  assertContract(
+    Number(rocket.projectile.guidanceMode) === PROJECTILE_GUIDANCE_LOST_INTERCEPT_TURNING ||
+      Number(rocket.projectile.guidanceMode) === PROJECTILE_GUIDANCE_LOST_INTERCEPT_ALIGNED,
+    'lost-point rocket must keep turning toward its cached speculative intercept',
+  );
+  assertContract(
+    rocket.projectile.guidanceInterceptX === interceptX &&
+      rocket.projectile.guidanceInterceptY === interceptY &&
+      rocket.projectile.guidanceInterceptZ === interceptZ,
+    'lost-point rocket must not replace its speculative intercept with the target last-known position',
+  );
+  assertContract(
+    rocket.projectile.homingTargetId !== replacementTarget.id,
+    'lost-point rocket must never acquire a replacement entity',
+  );
+
+  for (let step = 0; step < 80; step++) {
+    updateProjectiles(world, 50, new DamageSystem(world), STILL_AIR);
+    if (Number(rocket.projectile.guidanceMode) === PROJECTILE_GUIDANCE_LOST_INTERCEPT_ALIGNED) break;
+  }
+  assertContract(
+    Number(rocket.projectile.guidanceMode) === PROJECTILE_GUIDANCE_LOST_INTERCEPT_ALIGNED,
+    'lost-point rocket must enter the no-more-steering state once sufficiently aligned',
+  );
+  const alignedVx = rocket.projectile.velocityX;
+  const alignedVy = rocket.projectile.velocityY;
+  const alignedVz = rocket.projectile.velocityZ;
+  updateProjectiles(world, 50, new DamageSystem(world), STILL_AIR);
+  assertNear(rocket.projectile.velocityX, alignedVx, 'aligned lost-point rocket must coast at fixed vx');
+  assertNear(rocket.projectile.velocityY, alignedVy, 'aligned lost-point rocket must coast at fixed vy');
+  assertNear(rocket.projectile.velocityZ, alignedVz, 'aligned lost-point rocket must coast at fixed vz');
+
+  const missileConfig = createProjectileConfigFromShot('shotMissileLong');
+  const missile = world.createProjectile(
+    250,
+    180,
+    40,
+    0,
+    1 as PlayerId,
+    badger.id,
+    missileConfig,
+  );
+  world.addEntity(missile);
+  if (missile.projectile === null) {
+    throw new Error('[turret host integration] missile fixture must have a projectile component');
+  }
+  missile.projectile.homingTargetId = lostTarget.id;
+  missile.projectile.guidanceMode = PROJECTILE_GUIDANCE_TRACKING_ENTITY;
+  updateProjectiles(world, 50, new DamageSystem(world), STILL_AIR);
+  assertContract(
+    missile.projectile.homingTargetId === NO_ENTITY_ID &&
+      Number(missile.projectile.guidanceMode) === PROJECTILE_GUIDANCE_NONE &&
+      !missile.projectile.guidanceInterceptValid,
+    'missile must clear its dead inherited lock and coast without a saved point',
   );
   resetTurretHostIntegrationState();
+}
+
+export function runProjectileGuidanceCadenceContractTest(): void {
+  assertGuidedShotsHandleLostTargetsByAuthoredPolicy();
 }
 
 function assertBeamUsesSharedSnappyTurretAim(): void {
@@ -1680,7 +1755,6 @@ export function runTurretHostIntegrationContractTest(): void {
     assertSurfaceTorpedoTowerLaunchesFromUnderwaterSocket();
     assertSlowRocketLaunchVelocityInheritance(true);
     assertSlowRocketLaunchVelocityInheritance(false);
-    assertSlowRocketDropsLockAfterLosingTarget();
     assertBeamUsesSharedSnappyTurretAim();
     assertLorisReflectorRemainsAutonomousFromHostTask();
     assertShieldAwareTargetingUpgradeContract();

@@ -204,9 +204,7 @@ export class SimulationCombatController {
     SIM_TICK_INSTRUMENTATION.phase('combat.fireTurrets');
 
     // Update projectile positions and remove orphaned beams (from dead units)
-    if (this.world.getProjectiles().length > 0) {
-      this.updateProjectileCombat(dtMs, wind, onSimEvent, onUnitDeath, onBuildingDeath);
-    }
+    this.updateProjectileCombat(dtMs, wind, onSimEvent, onUnitDeath, onBuildingDeath);
     SIM_TICK_INSTRUMENTATION.phase('combat.projectiles');
   }
 
@@ -246,6 +244,7 @@ export class SimulationCombatController {
     // spatial update ran before combat, so projectile-vs-projectile
     // hitbox checks need the post-move positions here.
     spatialGrid.updateProjectiles(this.world.getTravelingProjectiles());
+    SIM_TICK_INSTRUMENTATION.phase('combat.projectiles.lifecycle');
 
     // Check projectile collisions and get dead units
     const collisionResult = checkProjectileCollisions(
@@ -277,6 +276,7 @@ export class SimulationCombatController {
       this.eventQueues.projectileDespawns.push(event);
       this.projectileMotionEvents.delete(event.id);
     }
+    SIM_TICK_INSTRUMENTATION.phase('combat.projectiles.collisions');
 
     // Lockstep presentation reads the final authoritative state after the
     // whole fixed tick, including reflections and collision-spawned shots.
@@ -308,6 +308,7 @@ export class SimulationCombatController {
       event.ownerId = projectile.ownerId;
       this.eventQueues.projectileMotionUpdates.set(entity.id, event);
     }
+    SIM_TICK_INSTRUMENTATION.phase('combat.projectiles.presentation');
 
     this.deathExplosionPlanner.detonate(
       collisionResult.deadUnitIds,
@@ -326,6 +327,7 @@ export class SimulationCombatController {
       onUnitDeath,
     );
     this.removeCollisionDeadBuildings(collisionResult.deadBuildingIds, onBuildingDeath);
+    SIM_TICK_INSTRUMENTATION.phase('combat.projectiles.terminal');
   }
 
   private removeCollisionDeadUnits(

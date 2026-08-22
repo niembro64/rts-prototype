@@ -197,6 +197,9 @@ pub struct ShotLocomotion {
     pub gravityForceMultiplier: f64,
     pub guidanceDelayMs: f64,
     pub guidanceRampMs: f64,
+    pub guidanceSolveRateHz: f64,
+    pub lostTargetBehavior: String,
+    pub lostTargetArrivalRadius: f64,
     pub media: ShotLocomotionMedia,
     pub transitions: ShotLocomotionTransitions,
     pub terminal: ShotLocomotionTerminalPolicy,
@@ -347,6 +350,9 @@ pub struct ShotTurningBlueprint {
     pub turnRate: f64,
     pub guidanceDelayMs: f64,
     pub guidanceRampMs: f64,
+    pub guidanceSolveRateHz: f64,
+    pub lostTargetBehavior: String,
+    pub lostTargetArrivalRadius: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]

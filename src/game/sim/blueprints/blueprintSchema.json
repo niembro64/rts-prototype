@@ -475,6 +475,9 @@
         "gravityForceMultiplier",
         "guidanceDelayMs",
         "guidanceRampMs",
+        "guidanceSolveRateHz",
+        "lostTargetBehavior",
+        "lostTargetArrivalRadius",
         "media",
         "transitions",
         "terminal"
@@ -503,6 +506,18 @@
           "type": "number"
         },
         "guidanceRampMs": {
+          "type": "number"
+        },
+        "guidanceSolveRateHz": {
+          "type": "number"
+        },
+        "lostTargetBehavior": {
+          "enum": [
+            "continueCurrentVector",
+            "flyToLastInterceptPoint"
+          ]
+        },
+        "lostTargetArrivalRadius": {
           "type": "number"
         },
         "media": {
@@ -871,11 +886,14 @@
     },
     "ShotTurningBlueprint": {
       "type": "object",
-      "description": "Blueprint-owned guided turning controls. turnRate is radians per second.",
+      "description": "Blueprint-owned guided turning controls. turnRate is radians per second and guidanceSolveRateHz controls expensive intercept refreshes, not per-tick steering.",
       "required": [
         "turnRate",
         "guidanceDelayMs",
-        "guidanceRampMs"
+        "guidanceRampMs",
+        "guidanceSolveRateHz",
+        "lostTargetBehavior",
+        "lostTargetArrivalRadius"
       ],
       "properties": {
         "turnRate": {
@@ -885,6 +903,18 @@
           "type": "number"
         },
         "guidanceRampMs": {
+          "type": "number"
+        },
+        "guidanceSolveRateHz": {
+          "type": "number"
+        },
+        "lostTargetBehavior": {
+          "enum": [
+            "continueCurrentVector",
+            "flyToLastInterceptPoint"
+          ]
+        },
+        "lostTargetArrivalRadius": {
           "type": "number"
         }
       },

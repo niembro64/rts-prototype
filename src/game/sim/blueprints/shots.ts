@@ -117,8 +117,18 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
       'turnRate',
       'guidanceDelayMs',
       'guidanceRampMs',
+      'guidanceSolveRateHz',
+      'lostTargetBehavior',
+      'lostTargetArrivalRadius',
     ]);
-    const expectedTurningFields = new Set(['turnRate', 'guidanceDelayMs', 'guidanceRampMs']);
+    const expectedTurningFields = new Set([
+      'turnRate',
+      'guidanceDelayMs',
+      'guidanceRampMs',
+      'guidanceSolveRateHz',
+      'lostTargetBehavior',
+      'lostTargetArrivalRadius',
+    ]);
     for (const key of Object.keys(turning)) {
       if (!expectedTurningFields.has(key)) {
         throw new Error(`Invalid shot blueprint ${id}.turning.${key}: unexpected field`);
@@ -135,6 +145,35 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
           `Invalid shot blueprint ${id}.turning.${field}: expected finite milliseconds >= 0`,
         );
       }
+    }
+    if (!Number.isFinite(turning.guidanceSolveRateHz) || !(turning.guidanceSolveRateHz > 0)) {
+      throw new Error(
+        `Invalid shot blueprint ${id}.turning.guidanceSolveRateHz: expected finite hertz > 0`,
+      );
+    }
+    if (
+      turning.lostTargetBehavior !== 'continueCurrentVector' &&
+      turning.lostTargetBehavior !== 'flyToLastInterceptPoint'
+    ) {
+      throw new Error(
+        `Invalid shot blueprint ${id}.turning.lostTargetBehavior: expected supported policy`,
+      );
+    }
+    if (
+      !Number.isFinite(turning.lostTargetArrivalRadius) ||
+      turning.lostTargetArrivalRadius < 0
+    ) {
+      throw new Error(
+        `Invalid shot blueprint ${id}.turning.lostTargetArrivalRadius: expected finite radius >= 0`,
+      );
+    }
+    if (
+      turning.lostTargetBehavior === 'flyToLastInterceptPoint' &&
+      !(turning.lostTargetArrivalRadius > 0)
+    ) {
+      throw new Error(
+        `Invalid shot blueprint ${id}.turning.lostTargetArrivalRadius: fly-to-point guidance requires radius > 0`,
+      );
     }
   }
   const routes = blueprint.mediumTrajectory;

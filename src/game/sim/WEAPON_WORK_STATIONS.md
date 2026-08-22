@@ -37,9 +37,10 @@ validation.
 - `emissionSockets` are the QueryWeapon muzzle lanes. The shot never falls
   back to the entity center when an authored socket exists.
 - Guided-shot behavior belongs to `blueprints/shots.json`: `turning.turnRate`,
-  `guidanceDelayMs`, and `guidanceRampMs`. Projectile life belongs there as
-  `maxLifespanMs`. Locomotion presets provide medium physics, not per-shot
-  guidance or lifetime overrides.
+  `guidanceDelayMs`, `guidanceRampMs`, `guidanceSolveRateHz`,
+  `lostTargetBehavior`, and `lostTargetArrivalRadius`. Projectile life belongs
+  there as `maxLifespanMs`. Locomotion presets provide medium physics, not
+  per-shot guidance or lifetime overrides.
 - Build/repair/reclaim/resurrect origins use the unit/building `workEmitter`.
   Moving QueryWork tools author the same actuator/articulation contract as a
   weapon; fixed factory emitters explicitly use null joints.

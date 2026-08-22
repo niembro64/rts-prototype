@@ -1014,16 +1014,24 @@
         velocity. The munition&rsquo;s current velocity is <em>not</em> also supplied
         as moving-origin velocity; doing both counts its motion twice and creates
         a false intercept. Non-vertical launchers use the same zero-gravity,
-        zero-drag solve to point ahead before firing. In flight, guidance resolves
-        it again every fixed tick, so target manoeuvres become bounded course
-        corrections rather than accumulated prediction error.
+        zero-drag solve to point ahead before firing. In flight, an exact
+        constant-velocity quadratic refreshes that speculative intercept at an
+        authored deterministic cadence: 10 Hz for missiles and 5 Hz for the
+        light vertical rocket, capped at the current simulation tick rate and
+        staggered by projectile ID. The inexpensive bounded turn toward the
+        cached intercept, ordinary integration, arming, collision, and lifetime
+        remain fixed-tick work. Target manoeuvres therefore become smooth bounded
+        course corrections without paying for a full prediction on every tick.
       </p>
       <p>
         The light vertical-launch rocket preserves its authored launch signature:
         it travels straight upward at constant cruise speed for three seconds,
-        then smoothly engages its turn authority and begins resolving the same
-        velocity intercept as every other airborne guided munition. The delay is
-        a guidance phase, never an acceleration phase or a speed exception.
+        then smoothly engages its turn authority and begins steering toward the
+        same velocity intercept as every other airborne guided munition. Its 5 Hz
+        prediction refresh remains active during the straight-up delay, so the
+        rocket already owns a speculative future intercept if its inherited
+        entity disappears before turning begins. The delay is a guidance phase,
+        never an acceleration phase or a speed exception.
       </p>
       <h3>Shot locomotion owns movement domains and terminal decisions</h3>
       <p>
@@ -1421,10 +1429,14 @@
         Thrust-guided policies still answer gravity inside their real-time
         guidance equation: lateral steering and vertical counter-gravity share
         one bounded acceleration budget. Constant-speed guidance does neither;
-        it rotates velocity and preserves magnitude. Losing a seeker therefore
-        makes a constant-speed munition continue on its current vector, while a
-        thrust-guided body naturally returns to ballistic motion when its engine
-        authority ends.
+        it rotates velocity and preserves magnitude. Losing a missile seeker
+        therefore makes that missile continue on its current vector. The light
+        vertical rocket instead finishes its bounded turn toward its last
+        successfully solved speculative intercept; once its velocity points at
+        that point, it leaves the guidance batch and coasts without repeating
+        steering math. A reflection or other discontinuous velocity change
+        invalidates that aligned state. A thrust-guided body naturally returns to
+        ballistic motion when its engine authority ends.
       </p>
       <ul class="rule-list">
         <li>Gravity is applied to every force-integrated mass body every tick. Constant-speed guidance is the explicit validated kinematic policy; there is no generic <code>ignoresGravity</code> flag or projectile-family exemption.</li>
@@ -3241,9 +3253,13 @@
         A turret is the only piece that acquires a lock-on target. A rocket or missile can inherit the exact
         entity the spawning turret was locked onto at launch, and it can home toward that inherited
         target while the target remains alive in the sim. The guided shot must not run its own target
-        acquisition pass, scan for replacements, or choose a new victim after launch. If the
-        inherited target no longer exists, it loses guidance and continues on its current
-        flight path under normal projectile physics until it hits something or expires.
+        acquisition pass, scan for replacements, or choose a new victim after launch. Lock-loss
+        behavior is explicit shot data. Missiles and torpedoes clear the dead inherited lock and
+        continue on their current vector. The light vertical rocket retains the inherited entity ID
+        as provenance and flies toward the last <em>solver-produced speculative future intercept</em>.
+        That cache is never replaced by the entity&rsquo;s actual last-known position. It turns only until
+        aligned, then coasts; a swept authored arrival sphere at the intercept uses the shot&rsquo;s normal
+        expiry outcome so a fast rocket cannot step across the point. Neither policy reacquires.
       </p>
       <h3>Host intent is not turret lock-on</h3>
       <p>
@@ -5096,7 +5112,7 @@
         <li>Give every positive-<code>constructionRate</code> host exactly one restrained yellow-and-black construction marking authored in shared config. Generate every band at exactly 45 degrees in physical surface coordinates; use open sleeves, side plates where physically appropriate, and perimeter-mounted clamp boxes on circular factory hardware, never floating decals, coloured radial caps, ring sectors, wedges, or sunbursts. Preserve both colours at every geometry tier, make clamp-box geometry strictly decrease from High chamfers/latch/fasteners to Medium box/latch to Low essential box, keep team colour dominant, and derive coverage tests from blueprint capabilities so a new constructor cannot ship unmarked.</li>
         <li>Make the selection action panel uniform per host kind and capability. Units expose movement plus their mounted combat, builder, cloak, transport, commander, and manual capabilities. Buildings expose the same standardized combat controls when armed, production when they own a factory workflow, ON/OFF when they own active state, and self-destruct. Mixed unit/building selections degrade to the intersection. A bespoke button on an arbitrary blueprint subset with no sanctioned capability behind it is not allowed.</li>
         <li>Keep sight, radar, sonar, and detection as turret-owned capability sources aggregated per player/team into four exhaustive, orthogonal target-knowledge facts: <code>team-air-sight</code>, <code>team-water-sight</code>, <code>team-air-radar</code>, and <code>team-water-sonar</code>. The turret&rsquo;s mounted world point selects the source medium. Unit and building targets use exact positive volume occupancy and may occupy both media; shot and turret targets are points and occupy exactly one. Full sight identifies and also supplies contact-level location in its target medium, radar/sonar-only coverage locates through its authored sensor lane, detectors uncloak within an active full-sight lane, and weapon fire consumes the team-unified knowledge tier independently from the emission&rsquo;s exhaustively authored four-cell trajectory matrix. Weapon range and ammunition never create or scale vision.</li>
-        <li>Keep lock-on acquisition in turret blueprints and targeting kernels, and author lock-on eligibility as an additive inclusion object carried by turrets, units, and buildings alike. Rockets and missiles inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; eligibility is <strong>off by default</strong> &mdash; a locker with no inclusions locks onto nothing &mdash; and broadened only by addition: level-0 friend/enemy and entity-family inclusions (<code>units</code>, <code>buildings</code>, <code>turrets</code>, <code>shots</code>), then optional level-1 named blueprint inclusions that narrow an included family. Including only one family is how a turret specializes &mdash; point-defense includes only <code>shots</code>, a disarmer includes only <code>turrets</code>. There is no <code>locomotions</code> family: a unit&rsquo;s movement is part of its body, not a targetable entity.</li>
+        <li>Keep lock-on acquisition in turret blueprints and targeting kernels, and author lock-on eligibility as an additive inclusion object carried by turrets, units, and buildings alike. Rockets and missiles inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets. Missiles coast after lock loss; the light vertical rocket retains only the last solver-produced speculative future intercept, finishes aligning to it, and then leaves the steering batch. Expensive intercept refresh is deterministic blueprint data (currently 10 Hz missiles, 5 Hz light rocket), while cached-point steering and motion stay fixed-tick. Eligibility is <strong>off by default</strong> &mdash; a locker with no inclusions locks onto nothing &mdash; and broadened only by addition: level-0 friend/enemy and entity-family inclusions (<code>units</code>, <code>buildings</code>, <code>turrets</code>, <code>shots</code>), then optional level-1 named blueprint inclusions that narrow an included family. Including only one family is how a turret specializes &mdash; point-defense includes only <code>shots</code>, a disarmer includes only <code>turrets</code>. There is no <code>locomotions</code> family: a unit&rsquo;s movement is part of its body, not a targetable entity.</li>
         <li>Keep specialist targeting behavior explicit. If a turret ever needs behavior beyond additive lock-on eligibility, give it a validated secondary lock-on profile and tests rather than a special case buried in the shared targeting kernel.</li>
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. A frozen pond and a cuboid ice block are the exact same material &mdash; they differ only in geometry.</li>
         <li>Texture every face of every unit, building, turret, locomotion part, and ornament at one world texel density &mdash; the same texels per world unit, on both axes, on every entity, with no per-blueprint override. Draw every repeated unit band against ONE reference unit whose charts are exactly one wrap, then mount those same bands on other units repeated by the host&rsquo;s own size, so a plate is the same physical size on a scout and on a Queen. Repeat only the axes carrying material; an axis carrying a placed feature (a pitch slot, a bore, an end collar, a piped edge) holds one wrap and scales with the part. Surfaces with no natural parameterization take a projected substance grain in the object&rsquo;s own scale-corrected frame, drawn from the same vocabulary at the same plate size, so &ldquo;untextured&rdquo; is unreachable. Accept the consequence that a big entity at range reads as more detailed than a small entity up close. Dress units in the reference rail-and-rib kit, buildings in blueprint-specific functional ornamentation, and every turret in a collar sized from its head radius.</li>

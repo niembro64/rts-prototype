@@ -200,6 +200,9 @@ function validatePreset(presetId: string, value: unknown): ShotLocomotion {
     gravityForceMultiplier: value.gravityForceMultiplier as number,
     guidanceDelayMs: 0,
     guidanceRampMs: 0,
+    guidanceSolveRateHz: 0,
+    lostTargetBehavior: 'continueCurrentVector',
+    lostTargetArrivalRadius: 0,
     media: {
       air: { ...media.air, turnRate: 0 },
       water: { ...media.water, turnRate: 0 },
@@ -258,6 +261,9 @@ export function applyShotBlueprintFlightControls(
   expanded.maxLifespanMs = maxLifespanMs;
   expanded.guidanceDelayMs = turning?.guidanceDelayMs ?? 0;
   expanded.guidanceRampMs = turning?.guidanceRampMs ?? 0;
+  expanded.guidanceSolveRateHz = turning?.guidanceSolveRateHz ?? 0;
+  expanded.lostTargetBehavior = turning?.lostTargetBehavior ?? 'continueCurrentVector';
+  expanded.lostTargetArrivalRadius = turning?.lostTargetArrivalRadius ?? 0;
   expanded.media.air.turnRate = expanded.media.air.operational ? turnRate : 0;
   expanded.media.water.turnRate = expanded.media.water.operational ? turnRate : 0;
   return expanded;

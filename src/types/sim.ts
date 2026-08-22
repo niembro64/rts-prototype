@@ -782,6 +782,16 @@ export type BeamPulsePlan = {
   lastCollisionSampleMs: number;
 };
 
+export const PROJECTILE_GUIDANCE_NONE = 0 as const;
+export const PROJECTILE_GUIDANCE_TRACKING_ENTITY = 1 as const;
+export const PROJECTILE_GUIDANCE_LOST_INTERCEPT_TURNING = 2 as const;
+export const PROJECTILE_GUIDANCE_LOST_INTERCEPT_ALIGNED = 3 as const;
+export type ProjectileGuidanceMode =
+  | typeof PROJECTILE_GUIDANCE_NONE
+  | typeof PROJECTILE_GUIDANCE_TRACKING_ENTITY
+  | typeof PROJECTILE_GUIDANCE_LOST_INTERCEPT_TURNING
+  | typeof PROJECTILE_GUIDANCE_LOST_INTERCEPT_ALIGNED;
+
 // Projectile component. Fully 3D: velocity + prev/start/end points
 // all carry altitude. Projectile gravity is applied in the sim's
 // projectile system each tick (ballistic arc); beams and lasers
@@ -897,6 +907,20 @@ export type Projectile = {
   /** Sentinel `NO_ENTITY_ID` means this projectile is not homing. */
   homingTargetId: EntityId;
   homingTurnRate: number | null;
+  /** Authoritative guidance lifecycle. Lost-intercept modes deliberately
+   * retain homingTargetId as immutable launch-target provenance without
+   * attempting to resolve or reacquire that entity. */
+  guidanceMode: ProjectileGuidanceMode;
+  /** Last successful speculative future intercept from the solver. This is
+   * never a copy of the target's last observed physical position. */
+  guidanceInterceptValid: boolean;
+  guidanceInterceptX: number;
+  guidanceInterceptY: number;
+  guidanceInterceptZ: number;
+  /** Simulation tick of the last attempted expensive intercept refresh. */
+  guidanceLastSolveTick: number;
+  /** Set by swept point-arrival integration for the lost-target rocket. */
+  guidancePointReached: boolean;
   /** Client-only one-shot: exact shield / shield-panel contact
    *  point from the most recent reflection, sourced from the
    *  unquantized shieldImpact audio event. Consumed by the
@@ -936,6 +960,13 @@ type ProjectileAbsenceSlots = Pick<Projectile,
   | 'obstructionTick'
   | 'hasExploded'
   | 'homingTurnRate'
+  | 'guidanceMode'
+  | 'guidanceInterceptValid'
+  | 'guidanceInterceptX'
+  | 'guidanceInterceptY'
+  | 'guidanceInterceptZ'
+  | 'guidanceLastSolveTick'
+  | 'guidancePointReached'
   | 'pendingReflectionX'
   | 'pendingReflectionY'
   | 'pendingReflectionZ'
@@ -970,6 +1001,13 @@ export const PROJECTILE_ABSENCE_SLOTS: Readonly<ProjectileAbsenceSlots> = {
   obstructionTick: -1,
   hasExploded: false,
   homingTurnRate: null,
+  guidanceMode: PROJECTILE_GUIDANCE_NONE,
+  guidanceInterceptValid: false,
+  guidanceInterceptX: 0,
+  guidanceInterceptY: 0,
+  guidanceInterceptZ: 0,
+  guidanceLastSolveTick: -1,
+  guidancePointReached: false,
   pendingReflectionX: null,
   pendingReflectionY: null,
   pendingReflectionZ: null,
