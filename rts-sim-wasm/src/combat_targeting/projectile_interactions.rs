@@ -35,6 +35,14 @@ pub(crate) struct ShieldSurfacePool {
     axis_end_z: Vec<f64>,
     radius: Vec<f64>,
     field_shape: Vec<u8>,
+    // P3 precompute: union bound of the prev+current pose, built once per
+    // shield per tick in `shield_pool_set_field`. The per-pair reject used
+    // to rebuild both pose bounds (plus a sqrt) for every
+    // (projectile, shield) pair. Base radius excludes the projectile pad.
+    union_center_x: Vec<f64>,
+    union_center_y: Vec<f64>,
+    union_center_z: Vec<f64>,
+    union_base_radius: Vec<f64>,
     field_reflection_mode_plasma: Vec<u8>,
     field_reflection_mode_rocket: Vec<u8>,
     field_reflection_mode_beam: Vec<u8>,
@@ -53,6 +61,13 @@ pub(crate) struct ShieldSurfacePool {
     unit_broad_radius: Vec<f32>,
     mirror_yaw: Vec<f32>,
     mirror_pitch: Vec<f32>,
+    // P3 precompute: per-unit mirror trig, built once per unit per tick in
+    // `shield_panel_pool_set_unit` (was recomputed per surviving
+    // projectile x unit pair in two kernels).
+    mirror_cos_yaw: Vec<f64>,
+    mirror_sin_yaw: Vec<f64>,
+    mirror_cos_pitch: Vec<f64>,
+    mirror_sin_pitch: Vec<f64>,
     pivot_x: Vec<f64>,
     pivot_y: Vec<f64>,
     pivot_z: Vec<f64>,
@@ -94,6 +109,10 @@ impl ShieldSurfacePool {
             axis_end_z: Vec::new(),
             radius: Vec::new(),
             field_shape: Vec::new(),
+            union_center_x: Vec::new(),
+            union_center_y: Vec::new(),
+            union_center_z: Vec::new(),
+            union_base_radius: Vec::new(),
             field_reflection_mode_plasma: Vec::new(),
             field_reflection_mode_rocket: Vec::new(),
             field_reflection_mode_beam: Vec::new(),
@@ -108,6 +127,10 @@ impl ShieldSurfacePool {
             unit_broad_radius: Vec::new(),
             mirror_yaw: Vec::new(),
             mirror_pitch: Vec::new(),
+            mirror_cos_yaw: Vec::new(),
+            mirror_sin_yaw: Vec::new(),
+            mirror_cos_pitch: Vec::new(),
+            mirror_sin_pitch: Vec::new(),
             pivot_x: Vec::new(),
             pivot_y: Vec::new(),
             pivot_z: Vec::new(),
@@ -147,6 +170,10 @@ impl ShieldSurfacePool {
             self.axis_end_z.resize(needed, 0.0);
             self.radius.resize(needed, 0.0);
             self.field_shape.resize(needed, SHIELD_FIELD_SHAPE_SPHERE);
+            self.union_center_x.resize(needed, 0.0);
+            self.union_center_y.resize(needed, 0.0);
+            self.union_center_z.resize(needed, 0.0);
+            self.union_base_radius.resize(needed, 0.0);
             self.field_reflection_mode_plasma
                 .resize(needed, SHIELD_REFLECTION_MODE_NONE);
             self.field_reflection_mode_rocket
@@ -168,6 +195,10 @@ impl ShieldSurfacePool {
             self.unit_ground_z.resize(needed, 0.0);
             self.unit_broad_radius.resize(needed, 0.0);
             self.mirror_yaw.resize(needed, 0.0);
+            self.mirror_cos_yaw.resize(needed, 0.0);
+            self.mirror_sin_yaw.resize(needed, 0.0);
+            self.mirror_cos_pitch.resize(needed, 0.0);
+            self.mirror_sin_pitch.resize(needed, 0.0);
             self.mirror_pitch.resize(needed, 0.0);
             self.pivot_x.resize(needed, 0.0);
             self.pivot_y.resize(needed, 0.0);
@@ -281,6 +312,38 @@ pub fn shield_pool_set_field(
         reflection_mode_beam,
         reflection_mode_laser,
     );
+    if shape == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER {
+        let ux = (prev_center_x + center_x) * 0.5;
+        let uy = (prev_center_y + center_y) * 0.5;
+        let dcx = center_x - prev_center_x;
+        let dcy = center_y - prev_center_y;
+        pool.union_center_x[i] = ux;
+        pool.union_center_y[i] = uy;
+        pool.union_center_z[i] = 0.0;
+        pool.union_base_radius[i] = 0.5 * (dcx * dcx + dcy * dcy).sqrt() + radius;
+    } else {
+        let (b0x, b0y, b0z, r0) = shield_field_pose_bound(
+            shape,
+            radius,
+            prev_center_x,
+            prev_center_y,
+            prev_center_z,
+            prev_axis_end_x,
+            prev_axis_end_y,
+            prev_axis_end_z,
+        );
+        let (b1x, b1y, b1z, r1) = shield_field_pose_bound(
+            shape, radius, center_x, center_y, center_z, axis_end_x, axis_end_y, axis_end_z,
+        );
+        let dcx = b1x - b0x;
+        let dcy = b1y - b0y;
+        let dcz = b1z - b0z;
+        pool.union_center_x[i] = (b0x + b1x) * 0.5;
+        pool.union_center_y[i] = (b0y + b1y) * 0.5;
+        pool.union_center_z[i] = (b0z + b1z) * 0.5;
+        pool.union_base_radius[i] =
+            0.5 * (dcx * dcx + dcy * dcy + dcz * dcz).sqrt() + r0.max(r1);
+    }
 }
 
 macro_rules! shield_pool_ptr_export {
@@ -1586,52 +1649,29 @@ fn shield_field_segment_near_pair(
     end_z: f64,
     projectile_radius: f64,
 ) -> bool {
-    let shape = pool.field_shape[i];
-    let radius = pool.radius[i];
     let pad = projectile_radius.max(0.0) + SHIELD_BROADPHASE_PAD;
-
-    if shape == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER {
-        let b0x = pool.prev_center_x[i];
-        let b0y = pool.prev_center_y[i];
-        let b1x = pool.center_x[i];
-        let b1y = pool.center_y[i];
-        let ux = (b0x + b1x) * 0.5;
-        let uy = (b0y + b1y) * 0.5;
-        let dcx = b1x - b0x;
-        let dcy = b1y - b0y;
-        let ur = 0.5 * (dcx * dcx + dcy * dcy).sqrt() + radius + pad;
-        return segment_point_dist_sq_2d(start_x, start_y, end_x, end_y, ux, uy) <= ur * ur;
+    let ur = pool.union_base_radius[i] + pad;
+    if pool.field_shape[i] == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER {
+        return segment_point_dist_sq_2d(
+            start_x,
+            start_y,
+            end_x,
+            end_y,
+            pool.union_center_x[i],
+            pool.union_center_y[i],
+        ) <= ur * ur;
     }
-
-    let (b0x, b0y, b0z, r0) = shield_field_pose_bound(
-        shape,
-        radius,
-        pool.prev_center_x[i],
-        pool.prev_center_y[i],
-        pool.prev_center_z[i],
-        pool.prev_axis_end_x[i],
-        pool.prev_axis_end_y[i],
-        pool.prev_axis_end_z[i],
-    );
-    let (b1x, b1y, b1z, r1) = shield_field_pose_bound(
-        shape,
-        radius,
-        pool.center_x[i],
-        pool.center_y[i],
-        pool.center_z[i],
-        pool.axis_end_x[i],
-        pool.axis_end_y[i],
-        pool.axis_end_z[i],
-    );
-    let ux = (b0x + b1x) * 0.5;
-    let uy = (b0y + b1y) * 0.5;
-    let uz = (b0z + b1z) * 0.5;
-    let dcx = b1x - b0x;
-    let dcy = b1y - b0y;
-    let dcz = b1z - b0z;
-    let ur = 0.5 * (dcx * dcx + dcy * dcy + dcz * dcz).sqrt() + r0.max(r1) + pad;
-    segment_point_dist_sq_3d(start_x, start_y, start_z, end_x, end_y, end_z, ux, uy, uz)
-        <= ur * ur
+    segment_point_dist_sq_3d(
+        start_x,
+        start_y,
+        start_z,
+        end_x,
+        end_y,
+        end_z,
+        pool.union_center_x[i],
+        pool.union_center_y[i],
+        pool.union_center_z[i],
+    ) <= ur * ur
 }
 
 #[inline]
@@ -1989,11 +2029,10 @@ fn shield_panel_crossings_for_segment(
         }
 
         let mirror_yaw = pool.mirror_yaw[u] as f64;
-        let mirror_pitch = pool.mirror_pitch[u] as f64;
-        let cos_yaw = mirror_yaw.cos();
-        let sin_yaw = mirror_yaw.sin();
-        let cos_pitch = mirror_pitch.cos();
-        let sin_pitch = mirror_pitch.sin();
+        let cos_yaw = pool.mirror_cos_yaw[u];
+        let sin_yaw = pool.mirror_sin_yaw[u];
+        let cos_pitch = pool.mirror_cos_pitch[u];
+        let sin_pitch = pool.mirror_sin_pitch[u];
 
         let pivot_x = pool.pivot_x[u];
         let pivot_y = pool.pivot_y[u];
@@ -2279,6 +2318,12 @@ pub fn shield_panel_pool_set_unit(
     pool.unit_broad_radius[i] = unit_broad_radius;
     pool.mirror_yaw[i] = mirror_yaw;
     pool.mirror_pitch[i] = mirror_pitch;
+    let yaw = mirror_yaw as f64;
+    let pitch = mirror_pitch as f64;
+    pool.mirror_cos_yaw[i] = yaw.cos();
+    pool.mirror_sin_yaw[i] = yaw.sin();
+    pool.mirror_cos_pitch[i] = pitch.cos();
+    pool.mirror_sin_pitch[i] = pitch.sin();
     pool.pivot_x[i] = pivot_x;
     pool.pivot_y[i] = pivot_y;
     pool.pivot_z[i] = pivot_z;
@@ -2487,11 +2532,10 @@ pub(crate) fn shield_panel_projectile_intersection(
         }
 
         let mirror_yaw = pool.mirror_yaw[u] as f64;
-        let mirror_pitch = pool.mirror_pitch[u] as f64;
-        let cos_yaw = mirror_yaw.cos();
-        let sin_yaw = mirror_yaw.sin();
-        let cos_pitch = mirror_pitch.cos();
-        let sin_pitch = mirror_pitch.sin();
+        let cos_yaw = pool.mirror_cos_yaw[u];
+        let sin_yaw = pool.mirror_sin_yaw[u];
+        let cos_pitch = pool.mirror_cos_pitch[u];
+        let sin_pitch = pool.mirror_sin_pitch[u];
         let perp_x = -sin_yaw;
         let perp_y = cos_yaw;
         let pivot_x = pool.pivot_x[u];
