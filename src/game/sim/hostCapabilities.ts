@@ -2,19 +2,20 @@ import type { UnitBlueprint } from './blueprints/types';
 import { getUnitBlueprint } from './blueprints';
 import type { Entity, StructureBlueprintId } from './types';
 import type { ConstructionCapability } from '../../types/constructionTypes';
-import { buildingBlueprintIdsWithoutWaterOnly } from './mapRoster';
-import { mapHasWater } from './mapWater';
+import { buildingBlueprintIdsForMediumKey } from './mapRoster';
+import { installedMapMediumKey, MEDIUM_KEY_BOTH } from './mapSurface';
 
 type UnitHostCapabilities = {
   construction: ConstructionCapability | null;
   /** Shared build-power ceiling owned by the host, not a mounted emitter. */
   constructionRate: number;
   allowedBuildBlueprintIds: readonly StructureBlueprintId[];
-  /** The same roster minus the structures that only stand on water. Compiled
-   *  beside the authored one — not swapped in — because which of the two
-   *  applies is a property of the MAP, and this table is compiled once for the
-   *  life of the process. `allowedBuildBlueprintIdsForMap` picks. */
-  allowedBuildBlueprintIdsWithoutWater: readonly StructureBlueprintId[];
+  /** Lazily-filled narrowed variants of the authored roster, one slot per
+   *  medium key — water-only structures gone on a dry map, land-only ones
+   *  gone on an all-sea map. Compiled beside the authored list — not swapped
+   *  in — because which variant applies is a property of the MAP, and the
+   *  per-tick authorization path must stay allocation-free. */
+  narrowedBuildRosters: (readonly StructureBlueprintId[] | undefined)[];
 };
 
 type SelectedBuilderTypeInfo = {
@@ -50,9 +51,7 @@ function compileUnitHostCapabilities(unitBlueprint: UnitBlueprint): UnitHostCapa
     construction,
     constructionRate,
     allowedBuildBlueprintIds: Object.freeze([...allowedBuildBlueprintIds]),
-    allowedBuildBlueprintIdsWithoutWater: Object.freeze(
-      [...buildingBlueprintIdsWithoutWaterOnly(allowedBuildBlueprintIds)],
-    ),
+    narrowedBuildRosters: [],
   });
 }
 
@@ -63,9 +62,11 @@ function compileUnitHostCapabilities(unitBlueprint: UnitBlueprint): UnitHostCapa
 function allowedBuildBlueprintIdsForMap(
   capabilities: UnitHostCapabilities,
 ): readonly StructureBlueprintId[] {
-  return mapHasWater()
-    ? capabilities.allowedBuildBlueprintIds
-    : capabilities.allowedBuildBlueprintIdsWithoutWater;
+  const mediumKey = installedMapMediumKey();
+  if (mediumKey === MEDIUM_KEY_BOTH) return capabilities.allowedBuildBlueprintIds;
+  return (capabilities.narrowedBuildRosters[mediumKey] ??= Object.freeze([
+    ...buildingBlueprintIdsForMediumKey(capabilities.allowedBuildBlueprintIds, mediumKey),
+  ]));
 }
 
 function getUnitHostCapabilities(unitBlueprint: UnitBlueprint): UnitHostCapabilities {

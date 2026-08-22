@@ -174,6 +174,11 @@ function openGameControls(): void {
   sendAppSurface('openGameControls');
 }
 
+function openGameInfo(): void {
+  stopContinuous();
+  sendAppSurface('openGameInfo');
+}
+
 function playRawSynth(name: string): void {
   ensureAudio();
   audioManager.playSynth(name, 1, 1);
@@ -269,6 +274,7 @@ function degreesToRadians(value: number): number {
           <button @click="openHome">Home</button>
           <button class="active" aria-current="page">Entity Lab</button>
           <button @click="openGameControls">Game Controls</button>
+          <button @click="openGameInfo">Game Info</button>
           <!-- No "Game Room" here on purpose: a match needs a host or a
                code, and the lab has neither. The road runs through home,
                and the surface machine declares no other edge. -->

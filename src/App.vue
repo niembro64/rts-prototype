@@ -5,13 +5,14 @@ import { appSurface } from './appSurfaceMachine';
 const GameCanvas = defineAsyncComponent(() => import('./components/GameCanvas.vue'));
 const EntityLabPage = defineAsyncComponent(() => import('./components/EntityLabPage.vue'));
 const GameControlsPage = defineAsyncComponent(() => import('./components/GameControlsPage.vue'));
+const GameInfoPage = defineAsyncComponent(() => import('./components/GameInfoPage.vue'));
 
 // The high-level surface lives in the app surface machine
 // (src/appSurfaceMachine.ts): init, home, and the game room's sub-states
 // are all hosted by GameCanvas; entityLab and gameControls each have their
 // own page. This component renders the state and holds no navigation logic
 // of its own — the components that own the gestures send the events.
-const PAGE_SURFACES = new Set(['entityLab', 'gameControls']);
+const PAGE_SURFACES = new Set(['entityLab', 'gameControls', 'gameInfo']);
 const gameCanvasKey = ref(0);
 watch(appSurface, (surface, previous) => {
   // Remount the canvas fresh each time a side page hands control back;
@@ -40,6 +41,7 @@ if (after !== '' && after !== '/') {
 <template>
   <EntityLabPage v-if="appSurface === 'entityLab'" />
   <GameControlsPage v-else-if="appSurface === 'gameControls'" />
+  <GameInfoPage v-else-if="appSurface === 'gameInfo'" />
   <GameCanvas v-else :key="gameCanvasKey" />
 </template>
 

@@ -68,7 +68,15 @@ const props = defineProps<{
   hotkeyPreset: CommandHotkeyPresetId;
   hotkeyRevision: number;
   playableBottomInsetPx: number;
+  /** False for a WATCHER. Selection stays a full inspection surface —
+   *  header, control groups, entity info — but every COMMAND section
+   *  (orders, build, factory, combat, waypoint modes) folds away: a
+   *  spectator's clicks were already refused at the lockstep doorway, and
+   *  a surface that only pretends is worse than none. */
+  canCommand?: boolean;
 }>();
+
+const canCommand = computed(() => props.canCommand !== false);
 
 // Per budget_design_philosophy.html "Selection Menus Are Uniform Per Host
 // Kind", units and buildings carry uniform base actions while mounted
@@ -88,9 +96,10 @@ const hasMixedEntityTypes = computed(() => selectedEntityTypeCount.value > 1);
 // stay visible whenever that kind is present; execution capability-filters the
 // entity list instead of hiding every command because a building and unit are
 // selected together.
-const showUnitActions = computed(() => props.selection.unitCount > 0);
-const showBuildingActions = computed(() => props.selection.buildingCount > 0);
+const showUnitActions = computed(() => canCommand.value && props.selection.unitCount > 0);
+const showBuildingActions = computed(() => canCommand.value && props.selection.buildingCount > 0);
 const showFactoryActions = computed(() =>
+  canCommand.value &&
   props.selection.hasFactory &&
   props.selection.factoryId !== undefined &&
   (
@@ -98,7 +107,7 @@ const showFactoryActions = computed(() =>
     (props.selection.factoryHostKind === 'building' && showBuildingActions.value)
   ),
 );
-const showCombatActions = computed(() => props.selection.hasFireControl);
+const showCombatActions = computed(() => canCommand.value && props.selection.hasFireControl);
 const isBarHotkeyPreset = computed(() => isBarCommandHotkeyPreset(props.hotkeyPreset));
 const showBarGridBuildCategories = computed(() => isBarGridCommandHotkeyPreset(props.hotkeyPreset));
 const showBarClassicBuildMenu = computed(() => isBarLegacyCommandHotkeyPreset(props.hotkeyPreset));
@@ -108,7 +117,7 @@ const showAttackCommand = computed(() =>
 );
 const showAttackLineCommand = computed(() => !isBarHotkeyPreset.value);
 const showAttackGroundCommand = computed(() => !isBarHotkeyPreset.value);
-const showPrototypeOnlyCommandButtons = computed(() => !isBarHotkeyPreset.value);
+const showPrototypeOnlyCommandButtons = computed(() => canCommand.value && !isBarHotkeyPreset.value);
 const showAttackAreaCommand = computed(() => props.selection.hasBarAreaAttackControl);
 // BAR's order menu hides CMD.GATHERWAIT, settargetnoground, and CMD.SELFD even
 // though several remain hotkey-accessible. Keep those as prototype-only visible
@@ -118,7 +127,7 @@ const showTowerTargetNoGroundButton = computed(() => showPrototypeOnlyCommandBut
 const showSelfDestructButton = computed(() =>
   showPrototypeOnlyCommandButtons.value && props.selection.hasSelfDestructable,
 );
-const showFactoryQueueModeButton = computed(() => props.selection.hasFactory);
+const showFactoryQueueModeButton = computed(() => canCommand.value && props.selection.hasFactory);
 const showBuildUtilityGrid = computed(() =>
   showPrototypeOnlyCommandButtons.value &&
   (props.selection.canUpgradeMetalExtractors || props.selection.isBuildMode),
@@ -514,7 +523,8 @@ const factoryStatusTitle = computed(() =>
   `Factory production: ${factoryStatusLabel.value} - ${factoryProgressPercent.value}%${factoryQueueSummary.value ? ` - queued: ${factoryQueueSummary.value}` : ''}`,
 );
 const showCancelHint = computed(() =>
-  props.selection.isBuildMode
+  canCommand.value &&
+  (props.selection.isBuildMode
   || props.selection.isDGunMode
   || props.selection.isRepairAreaMode
   || props.selection.isRestoreAreaMode
@@ -532,7 +542,7 @@ const showCancelHint = computed(() =>
   || props.selection.isMexUpgradeMode
   || props.selection.isPingMode
   || props.selection.isTowerTargetMode
-  || props.selection.isTowerTargetNoGroundMode,
+  || props.selection.isTowerTargetNoGroundMode),
 );
 type WaypointModeOption = {
   mode: WaypointType;

@@ -7,7 +7,7 @@ import { aimTurretsToward } from './turretInit';
 import { setUnitFacingYaw } from './unitOrientation';
 import { getBuildingConfig } from './buildConfigs';
 import { getStructureFactoryAllowedUnitBlueprintIds } from './factoryProductionRoster';
-import { mapHasWater } from './mapWater';
+import { mapHasWater } from './mapSurface';
 import { DEMO_CONFIG } from '../../demoConfig';
 import type { WaypointType } from '../../types/commandTypes';
 import {

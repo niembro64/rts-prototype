@@ -1027,6 +1027,10 @@ export class RtsScene3D {
 
   public updateEconomyInfo(): void {
     if (!this.onEconomyChange) return;
+    // A watcher has no economy: the per-team spectator overlay reports every
+    // side's stocks instead, so a "your metal/energy" bar would only be the
+    // watched seat's numbers wearing the wrong pronoun.
+    if (this.isSpectator) return;
     const serverMeta = this.clientViewState.getServerMeta();
     const maxTotal = serverMeta?.units.max ?? 120;
     // Same split the sim uses (WorldState.getTeamEntityCountCap): the cap is
@@ -1045,6 +1049,10 @@ export class RtsScene3D {
    *  publish only when it changed since the last publish. */
   public updateIdleBuildersInfo(): void {
     if (!this.onIdleBuildersChange) return;
+    // "Idle" is a to-do list for the player who can put those builders to
+    // work. A watcher can't, so the concept does not exist for them — the
+    // panel self-hides on the empty list.
+    if (this.isSpectator) return;
     const groups = buildIdleBuilderGroups(this.entitySourceAdapter, this.localPlayerId);
     let signature = '';
     for (let i = 0; i < groups.length; i++) {
