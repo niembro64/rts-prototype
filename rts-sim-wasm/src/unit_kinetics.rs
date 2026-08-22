@@ -724,7 +724,7 @@ fn unit_force_air_water_surface_inverse_distance_response(
 /// shared angular-speed ceiling. Large bodies remain slow because the same
 /// edge force must rotate a moment of inertia proportional to m*r^2.
 #[inline]
-fn unit_force_attitude_control_force(body_mass: f64, available_force: f64) -> f64 {
+pub(crate) fn unit_force_attitude_control_force(body_mass: f64, available_force: f64) -> f64 {
     if !body_mass.is_finite() || body_mass <= 0.0 || !available_force.is_finite() {
         return 0.0;
     }
@@ -733,7 +733,7 @@ fn unit_force_attitude_control_force(body_mass: f64, available_force: f64) -> f6
 }
 
 #[inline]
-fn unit_force_attitude_max_angular_acceleration(
+pub(crate) fn unit_force_attitude_max_angular_acceleration(
     body_mass: f64,
     radius: f64,
     control_force: f64,
@@ -753,7 +753,7 @@ fn unit_force_attitude_max_angular_acceleration(
 }
 
 #[inline]
-fn unit_force_attitude_spring_gain(max_alpha: f64) -> f64 {
+pub(crate) fn unit_force_attitude_spring_gain(max_alpha: f64) -> f64 {
     max_alpha.max(0.0)
         / (core::f64::consts::PI
             * UNIT_ATTITUDE_RESPONSE_TIME_SCALE

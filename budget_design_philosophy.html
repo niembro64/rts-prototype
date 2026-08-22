@@ -1184,22 +1184,22 @@
         <li>A forward-flight chassis cannot hold a point. Its satisfied anchor becomes the center of the airborne loiter circle &mdash; the same deliberate orbit an uncommanded cruise unit flies &mdash; and the loiter&rsquo;s radial correction is its wind counter. A cruise unit&rsquo;s anchor is never drift-cleared; the orbit is the hold.</li>
       </ul>
 
-      <h3>Forward-flight units approach waypoints from outside their turning circle</h3>
+      <h3>Forward-flight units turn back only from outside the escape ring</h3>
       <p>
-        A body that must keep moving forward has a minimum turning circle: at speed <code>v</code>
-        with horizontal drive acceleration <code>a</code>, roughly <code>R = v&sup2;/a</code>. A
-        goal inside either of the two circles tangent to the current velocity is mathematically
-        unreachable by steering toward it &mdash; greedy pursuit decays into a constant-speed,
-        constant-turn orbit that never crosses the point and never completes the order, which also
-        freezes every queued waypoint behind it. Cruise locomotion (plane, aerosub) therefore runs
-        a declared two-state waypoint controller per movement leg, with asymmetric hysteresis
-        edges:
+        A body that must keep moving forward has a minimum turning circle. A goal inside either of
+        the two circles tangent to its current heading is mathematically unreachable by steering
+        toward it &mdash; greedy pursuit decays into a constant-speed, constant-turn orbit that
+        never crosses the point and never completes the order, which also freezes every queued
+        waypoint behind it. Cruise locomotion (plane, aerosub) therefore steers every waypoint leg
+        through one stateless per-tick interlock, the <em>no-turn escape ring</em>:
       </p>
       <ul class="rule-list">
-        <li><strong>Approach</strong> steers straight at the goal. It exits to egress when the reachability check finds the goal inside either estimated turning circle, or when measured closing progress stalls across consecutive checks &mdash; the behavioral backstop that catches any turn-radius modeling error.</li>
-        <li><strong>Egress</strong> latches the velocity heading at entry and holds it, flying outbound. It exits only once the goal is a full committed turn-around away (a fixed ratio of the committed turn radius), so the return leg is a straight run that actually crosses the point.</li>
-        <li>Capture is radius-appropriate. A non-final waypoint captures at the standard arrival radius on the aligned pass, so queues and patrol loops always advance. The final waypoint captures at the loiter radius and hands the unit to the loiter circle around its anchor.</li>
-        <li>The reachability geometry runs on a deterministic tick stagger keyed by entity id; steering between checks rides the latched state, and the whole cruise population evaluates in one WASM batch. Controller state is derived simulation scratch &mdash; never serialized, never on the wire, reconstructed by replay.</li>
+        <li><strong>The escape ring</strong> around the current waypoint has radius <code>E = 1.25 &times; orbit diameter</code>, where the orbit diameter is <code>2R</code> and <code>R = speed / maxYawRate</code>. The yaw-rate ceiling is derived from the <em>same</em> torque-limited attitude-servo spring the sim integrates &mdash; a critically damped servo tracking a turn at rate <code>&Omega;</code> lags by <code>2&Omega;/&radic;k</code>, and forward-only power stalls at a 90&deg; lag, so <code>maxYawRate = &pi;&radic;k/4</code>. Kernel parity: the interlock calls the servo&rsquo;s own gain functions, never a re-derivation.</li>
+        <li><strong>Inside the ring and heading away from the waypoint, the unit may not turn at all.</strong> Thrust is pinned straight along the current nose; the escape is a dead-straight line out of the ring.</li>
+        <li><strong>Heading toward the waypoint, steering is free at any distance.</strong> Outside the ring, steering is free regardless of facing &mdash; that is where the turn-back happens, and from <code>&ge; 2R</code> away the waypoint lies outside both turning circles for every possible heading, so the turn always completes into a straight pass through the point.</li>
+        <li><strong>Why circling cannot persist:</strong> any orbit around the waypoint spends half of every revolution heading away. The interlock forbids that half from turning, which straightens the circle into an outbound line that leaves the ring. The rule is a pure function of position, heading, waypoint, and <code>R</code> each tick &mdash; no latched state, no hysteresis, nothing to dither.</li>
+        <li><strong>The lock applies only while actually moving.</strong> A plane pinned against the map boundary at near-zero speed releases the lock and steers freely; at near-zero speed its turning circle is tiny anyway.</li>
+        <li>The interlock covers every waypoint leg, the terminal one included. Capture radii are unchanged: a non-final waypoint captures at the standard arrival radius on the pass, so queues and patrol loops always advance; the final waypoint captures at the loiter radius and hands the unit to the loiter circle around its anchor. The whole cruise population evaluates in one WASM batch per tick.</li>
       </ul>
 
       <h3>Terrain pathfinding is directional around slopes and cliffs</h3>

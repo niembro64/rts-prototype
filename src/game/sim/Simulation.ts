@@ -117,7 +117,7 @@ import {
 import {
   SimulationAirborneLoiterController,
 } from './SimulationAirborneLoiterController';
-import { SimulationAirborneReturnController } from './SimulationAirborneReturnController';
+import { SimulationAirborneWaypointController } from './SimulationAirborneWaypointController';
 import { SimulationCombatHaltController } from './SimulationCombatHaltController';
 import {
   replanCooldownFor,
@@ -270,7 +270,7 @@ export class Simulation {
   private arrivalController: SimulationArrivalController;
   private combatHaltController: SimulationCombatHaltController;
   private airborneLoiter: SimulationAirborneLoiterController;
-  private airborneReturn: SimulationAirborneReturnController;
+  private airborneWaypoint: SimulationAirborneWaypointController;
   private stuckReplanController: SimulationStuckReplanController;
   private unitActionPlanner: SimulationUnitActionPlanner = new SimulationUnitActionPlanner();
   private unitActionMovementPlanner: SimulationUnitActionMovementPlanner = new SimulationUnitActionMovementPlanner();
@@ -391,7 +391,7 @@ export class Simulation {
     });
     this.combatHaltController = new SimulationCombatHaltController(this.world);
     this.airborneLoiter = new SimulationAirborneLoiterController(this.world);
-    this.airborneReturn = new SimulationAirborneReturnController(this.world, {
+    this.airborneWaypoint = new SimulationAirborneWaypointController({
       advanceAction: (entity) => this.advanceAction(entity),
       advanceActivePathPoint: (entity) => this.advanceActivePathPoint(entity),
       queueAirborneLoiter: (entity) => this.airborneLoiter.queue(entity),
@@ -1497,16 +1497,14 @@ export class Simulation {
     dy: number,
   ): void {
     // Cruise locomotion (plane, aerosub) resolves waypoint legs through the
-    // turn-circle reachability controller: flight-appropriate capture radii
-    // plus the egress/return FSM that keeps a forward-flight body from
-    // orbiting a point it can no longer steer to.
+    // no-turn escape ring: flight-appropriate capture radii plus the per-tick
+    // steering interlock that keeps a forward-flight body from orbiting a
+    // point it can no longer steer to.
     const unit = entity.unit;
     if (unit !== null && unit.locomotion.motionControl.cruiseWhenUncommanded) {
-      this.airborneReturn.queue(
+      this.airborneWaypoint.queue(
         entity,
         action,
-        target.x,
-        target.y,
         target.isFinalActionPoint,
         dx,
         dy,
@@ -2478,7 +2476,7 @@ export class Simulation {
     }
 
     this.arrivalController.flushCompletion();
-    this.airborneReturn.flush(movingUnits);
+    this.airborneWaypoint.flush(movingUnits);
     this.airborneLoiter.flush(movingUnits);
     this.arrivalController.flushThrust(movingUnits, dtSec);
 
@@ -2665,7 +2663,7 @@ export class Simulation {
     this.deadEntityCleanup.reset();
     this.arrivalController.reset();
     this.airborneLoiter.reset();
-    this.airborneReturn.reset();
+    this.airborneWaypoint.reset();
     this.stuckReplanController.reset();
     cancelAllPathPlanSlices();
     this.activePathPlanJobs.clear();
