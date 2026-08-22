@@ -93,6 +93,10 @@ type LabelSlot = CanvasSpriteSlot<LabelState>;
 type ActionDisplayPoint = {
   x: number;
   y: number;
+  /** The live target's 3D anchor height (transform.z for units, visual
+   *  top for buildings), so entity-targeted legs can stem up off the
+   *  ground route to where the target actually is. */
+  z?: number;
   target?: Entity;
 };
 
@@ -517,7 +521,7 @@ export class Waypoint3D {
         const target = this.getEntity(targetId);
         if (target !== undefined) {
           const point = getEntityTargetPoint(target);
-          return { x: point.x, y: point.y, target };
+          return { x: point.x, y: point.y, z: point.z, target };
         }
       }
     }
@@ -641,6 +645,13 @@ export class Waypoint3D {
             color,
             STYLE.lineAlpha,
           );
+        } else if (p.target !== undefined && p.z !== undefined) {
+          // Any other LIVE entity target (guard, attack, repair, ...):
+          // join the ground route endpoint up to the target's actual 3D
+          // position, so guarding or attacking a flyer doesn't terminate
+          // at the dirt below it. pushGroundStem already no-ops when the
+          // target sits at ground level.
+          this.pushGroundStem(p.x, p.y, p.z, color, STYLE.lineAlpha);
         }
         // User waypoint marker + queue-order label.
         if (a.type === 'build' || a.type === 'repair') {
