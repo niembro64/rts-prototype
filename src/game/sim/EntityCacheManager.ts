@@ -48,6 +48,16 @@ export class EntityCacheManager {
    *  just to find this subset. */
   private cachedFactoryBuildings: Entity[] = [];
   private cachedFactoryUnits: Entity[] = [];
+  /** Transport-capable units. updateTransportActions runs every tick for a
+   *  working set that is usually ~0; it walks only this list. */
+  private cachedTransportUnits: Entity[] = [];
+  /** Entities still carrying a live (incomplete) buildable component —
+   *  nanoframes under construction. The construction lifecycle walks only
+   *  these instead of every unit + building. Maintained on add/remove;
+   *  completion nulls entity.buildable and the lifecycle walk lazily
+   *  prunes such stale rows, so freshness is sim-side by construction. */
+  private cachedIncompleteBuildableUnits: Entity[] = [];
+  private cachedIncompleteBuildableBuildings: Entity[] = [];
   private cachedFactoriesByPlayer: Map<PlayerId, Entity[]> = new Map();
   /** Hosts running a FIELD barrier (sphere / cylinder). This is the
    *  barrier-geometry list: `updateShieldState` derives `_activeShields`
@@ -160,6 +170,9 @@ export class EntityCacheManager {
     this.cachedActiveStateBuildings.length = 0;
     this.cachedFactoryBuildings.length = 0;
     this.cachedFactoryUnits.length = 0;
+    this.cachedTransportUnits.length = 0;
+    this.cachedIncompleteBuildableUnits.length = 0;
+    this.cachedIncompleteBuildableBuildings.length = 0;
     this.cachedShieldUnits.length = 0;
     this.cachedShieldEquipmentUnits.length = 0;
     this.cachedCommanderUnits.length = 0;
@@ -284,6 +297,12 @@ export class EntityCacheManager {
             addEntityToList(this.getOrCreateFactoriesByPlayer(ownership.playerId), entity, sortedInsert);
           }
         }
+        if (entity.transport !== null) {
+          addEntityToList(this.cachedTransportUnits, entity, sortedInsert);
+        }
+        if (entity.buildable !== null && !entity.buildable.isComplete) {
+          addEntityToList(this.cachedIncompleteBuildableUnits, entity, sortedInsert);
+        }
         break;
       case 'building':
         // All static hosts share the building caches. Mounted turret
@@ -312,6 +331,9 @@ export class EntityCacheManager {
         ) {
           addEntityToList(this.cachedHealthBarBuildings, entity, sortedInsert);
           addEntityToList(this.cachedHudEntities, entity, sortedInsert);
+        }
+        if (entity.buildable !== null && !entity.buildable.isComplete) {
+          addEntityToList(this.cachedIncompleteBuildableBuildings, entity, sortedInsert);
         }
         if (entity.buildingBlueprintId === 'buildingWind') {
           addEntityToList(this.cachedWindBuildings, entity, sortedInsert);
@@ -367,6 +389,9 @@ export class EntityCacheManager {
     removeEntityFromList(this.cachedActiveStateBuildings, entity);
     removeEntityFromList(this.cachedFactoryBuildings, entity);
     removeEntityFromList(this.cachedFactoryUnits, entity);
+    removeEntityFromList(this.cachedTransportUnits, entity);
+    removeEntityFromList(this.cachedIncompleteBuildableUnits, entity);
+    removeEntityFromList(this.cachedIncompleteBuildableBuildings, entity);
     removeEntityFromList(this.cachedShieldUnits, entity);
     removeEntityFromList(this.cachedShieldEquipmentUnits, entity);
     removeEntityFromList(this.cachedCommanderUnits, entity);
@@ -476,6 +501,28 @@ export class EntityCacheManager {
 
   getDamagedUnits(): Entity[] {
     return this.cachedDamagedUnits;
+  }
+
+  getTransportUnits(): Entity[] {
+    return this.cachedTransportUnits;
+  }
+
+  getIncompleteBuildableUnits(): Entity[] {
+    return this.cachedIncompleteBuildableUnits;
+  }
+
+  getIncompleteBuildableBuildings(): Entity[] {
+    return this.cachedIncompleteBuildableBuildings;
+  }
+
+  /** Lazily drop a row whose buildable completed (completion nulls the
+   *  component rather than emitting a cache event). */
+  pruneIncompleteBuildable(entity: Entity): void {
+    if (entity.unit !== null) {
+      removeEntityFromList(this.cachedIncompleteBuildableUnits, entity);
+    } else if (entity.building !== null) {
+      removeEntityFromList(this.cachedIncompleteBuildableBuildings, entity);
+    }
   }
 
   getHealthBarBuildings(): Entity[] {

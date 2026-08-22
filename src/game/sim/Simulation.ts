@@ -1572,10 +1572,22 @@ export class Simulation {
       const dy = target.transform.y - builder.transform.y;
       offer(makeEntityReclaimTarget(target), dx * dx + dy * dy);
     };
-    const units = this.world.getUnits();
-    for (let i = 0; i < units.length; i++) consider(units[i]);
-    const buildings = this.world.getBuildings();
-    for (let i = 0; i < buildings.length; i++) consider(buildings[i]);
+    // Spatial candidates instead of walking EVERY unit and building per
+    // patrolling builder per tick (the vegetation half below already did
+    // this). The query is a strict superset of the range test: 2D circle,
+    // unit tests padded by target hitbox, buildings by AABB distance, and
+    // maxVisibilityPadding bounds any target's collision/footprint extent.
+    // The (distanceSq, id) reduction in offer() is order-independent, so
+    // the different candidate order cannot change the winner.
+    const candidateRange =
+      (builder.builder?.buildRange ?? 0) + this.world.getMaxVisibilityPadding();
+    const candidates = spatialGrid.queryEnemyEntitiesInCircle2D(
+      builder.transform.x,
+      builder.transform.y,
+      candidateRange,
+      playerId,
+    );
+    for (let i = 0; i < candidates.length; i++) consider(candidates[i]);
 
     const buildRange = builder.builder?.buildRange ?? 0;
     if (buildRange > 0) {
@@ -2108,7 +2120,7 @@ export class Simulation {
         const guardOwnerId = entity.ownership?.playerId;
         const isFriendlyGuard =
           guardOwnerId !== undefined &&
-          isFriendlyGuardTarget(guardTarget, guardOwnerId, (a, b) => this.world.arePlayersAllied(a, b));
+          isFriendlyGuardTarget(guardTarget, guardOwnerId, this.arePlayersAlliedFn);
         if (isFriendlyGuard) {
           flags |= UNIT_ACTION_FLAG_GUARD_FRIENDLY;
 
@@ -2331,7 +2343,7 @@ export class Simulation {
             !isFriendlyGuardTarget(
               guardTarget,
               entity.ownership.playerId,
-              (a, b) => this.world.arePlayersAllied(a, b),
+              this.arePlayersAlliedFn,
             )
           ) {
             this.advanceAction(entity);
@@ -2446,7 +2458,7 @@ export class Simulation {
             !isFriendlyGuardTarget(
               guardTarget,
               entity.ownership.playerId,
-              (a, b) => this.world.arePlayersAllied(a, b),
+              this.arePlayersAlliedFn,
             )
           ) {
             this.advanceAction(entity);
@@ -2545,15 +2557,35 @@ export class Simulation {
     return true;
   }
 
+  /** Memoized per (blueprint, mass, support offset, liquid mode): the
+   *  filter is a pure function of those inputs, and the old shape
+   *  allocated 3-4 nested objects >= 2x per MOVING unit per tick (it sits
+   *  inside the waypoint-consume loop). Consumers only read the filter. */
+  private readonly pathTerrainFilterMemo = new Map<string, PathTerrainFilter | null>();
+
+  /** Hoisted alliance predicate — the inline arrow allocated a closure per
+   *  guarding unit per tick at three call sites. */
+  private readonly arePlayersAlliedFn = (a: PlayerId, b: PlayerId): boolean =>
+    this.world.arePlayersAllied(a, b);
+
   private pathTerrainFilterForUnit(entity: Entity): PathTerrainFilter | null {
-    const physicalFilter = entity.unit === null
-      ? null
-      : pathTerrainFilterForLocomotion(
-          entity.unit.locomotion,
-          entity.unit.mass,
-          entity.unit.supportPointOffsetZ,
-        );
-    return applyLiquidHazardPathPolicy(physicalFilter, this.world.liquidSurfaceMode);
+    const unit = entity.unit;
+    if (unit === null) {
+      return applyLiquidHazardPathPolicy(null, this.world.liquidSurfaceMode);
+    }
+    const key = `${unit.unitBlueprintId}:${unit.mass}:${unit.supportPointOffsetZ}:${this.world.liquidSurfaceMode}`;
+    const cached = this.pathTerrainFilterMemo.get(key);
+    if (cached !== undefined) return cached;
+    const filter = applyLiquidHazardPathPolicy(
+      pathTerrainFilterForLocomotion(
+        unit.locomotion,
+        unit.mass,
+        unit.supportPointOffsetZ,
+      ),
+      this.world.liquidSurfaceMode,
+    );
+    this.pathTerrainFilterMemo.set(key, filter);
+    return filter;
   }
 
   // Get force accumulator for external force application (used by RtsScene)

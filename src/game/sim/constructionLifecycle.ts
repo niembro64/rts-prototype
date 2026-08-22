@@ -520,17 +520,27 @@ export function updateConstructionLifecycle(
     completedBuildings: [],
     decayedBuildings: [],
   };
+  // Walk only the live nanoframes (same units-then-buildings, id-sorted
+  // order the full walk produced) instead of EVERY unit and building.
+  // Completion nulls entity.buildable rather than emitting a cache event,
+  // so stale rows are pruned here, on the walk that notices them.
   const sources: ReadonlyArray<readonly Entity[]> = [
-    world.getUnits(),
-    world.getBuildings(),
+    world.getIncompleteBuildableUnits(),
+    world.getIncompleteBuildableBuildings(),
   ];
   const attendance = collectConstructionAttendance(world);
   const dtSec = dtMs / 1000;
 
   for (const list of sources) {
-    for (const entity of list) {
+    for (let sourceIndex = 0; sourceIndex < list.length; sourceIndex++) {
+      const entity = list[sourceIndex];
       const buildable = entity.buildable;
-      if (!buildable || buildable.isComplete) continue;
+      if (!buildable || buildable.isComplete) {
+        world.pruneIncompleteBuildable(entity);
+        // The prune removed THIS index from the live list; re-visit it.
+        sourceIndex--;
+        continue;
+      }
       // An unfinished building nobody is answering for rots and is gone at
       // zero. Attendance is BAR's: landed build power always protects, the
       // builder's active head order protects (stalls and the walk into range

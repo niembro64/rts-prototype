@@ -1062,6 +1062,29 @@ export class WorldState {
     return this.cache.getDamagedUnits();
   }
 
+  // Transport-capable units (superset predicate: entity.transport present).
+  getTransportUnits(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getTransportUnits();
+  }
+
+  // Entities still carrying a live buildable (nanoframes). Completion nulls
+  // the component; the construction lifecycle prunes stale rows lazily via
+  // pruneIncompleteBuildable, so only the sim-side walk may rely on this.
+  getIncompleteBuildableUnits(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getIncompleteBuildableUnits();
+  }
+
+  getIncompleteBuildableBuildings(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getIncompleteBuildableBuildings();
+  }
+
+  pruneIncompleteBuildable(entity: Entity): void {
+    this.cache.pruneIncompleteBuildable(entity);
+  }
+
   // Get every building that uses the shared BuildingActiveState fortify
   // mechanic — solar + wind + extractor.
   getActiveStateBuildings(): Entity[] {

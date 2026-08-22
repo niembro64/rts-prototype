@@ -178,7 +178,9 @@ function unloadTransportCargo(
 
 export function updateTransportActions(world: WorldState): TransportActionUpdateResult {
   const unloadedUnits: Entity[] = [];
-  const units = world.getUnits();
+  // Only transport-capable units (cached, id-sorted like getUnits was) —
+  // the full-unit walk paid O(all units) per tick for a ~zero working set.
+  const units = world.getTransportUnits();
 
   for (let i = 0; i < units.length; i++) {
     const transport = units[i];

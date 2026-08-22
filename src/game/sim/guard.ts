@@ -93,23 +93,31 @@ function resolveUnitBuilderJob(world: WorldState, target: Entity): GuardService 
  *  ally is itself guarding, follow that link, and so on until a job is found
  *  or the chain ends. Cycle- and depth-protected. Used by both movement
  *  (approach the serviced thing) and funding (route to the right consumer). */
+const _guardVisited: number[] = [];
+
 export function resolveGuardServiceTarget(
   world: WorldState,
   guard: Entity,
 ): GuardService | null {
   const unit = guard.unit;
   if (unit === null || guard.builder === null || guard.ownership === null) return null;
-  const playerId = guard.ownership.playerId;
-  const visited = new Set<number>([guard.id]);
-
   let action: UnitAction | undefined = unit.actions[0];
+  // Early-out BEFORE any allocation: this runs for every builder in the
+  // energy pass whether or not it is guarding.
+  if (action === undefined || action.type !== 'guard' || action.targetId === undefined) return null;
+  const playerId = guard.ownership.playerId;
+  // Chain depth is <= MAX_GUARD_CHAIN_DEPTH, so a reused flat array beats a
+  // fresh Set allocation per call for cycle detection.
+  _guardVisited.length = 0;
+  _guardVisited.push(guard.id);
+
   for (let depth = 0; depth < MAX_GUARD_CHAIN_DEPTH; depth++) {
     if (action === undefined || action.type !== 'guard' || action.targetId === undefined) return null;
     const target = world.getEntity(action.targetId);
     if (target === undefined || target.ownership === null) return null;
     if (!world.arePlayersAllied(playerId, target.ownership.playerId)) return null;
-    if (visited.has(target.id)) return null; // cycle
-    visited.add(target.id);
+    if (_guardVisited.includes(target.id)) return null; // cycle
+    _guardVisited.push(target.id);
 
     // Join the directly-guarded ally's own job if it has one (heal it if it
     // is the damaged one; assist what it is building/producing).
