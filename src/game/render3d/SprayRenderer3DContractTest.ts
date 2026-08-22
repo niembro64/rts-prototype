@@ -20,7 +20,6 @@ type SprayParticleDebugState = {
   pR: Float32Array;
   pG: Float32Array;
   pB: Float32Array;
-  pSpinRate: Float32Array;
 };
 
 function makeDirectSpray(inverse: boolean): SprayTarget {
@@ -77,14 +76,16 @@ export function runSprayRenderer3DContractTest(): void {
     assertNear(state.pEndY[1], 30, 'inverse spray must converge on builder z/height');
     assertNear(state.pEndZ[1], 20, 'inverse spray must converge on builder ground y');
 
-    // Build spray is the authored nanolathe green for every player, and it
-    // tumbles. Both are presentation facts, so the renderer owns them.
+    // Build spray is the authored nanolathe green for every player — a
+    // presentation fact the renderer owns. (Particles are untextured
+    // spheres, so the old per-particle tumble was deliberately removed:
+    // it spent a quaternion + matrix compose per particle per frame on a
+    // rotation nobody could see.)
     const [buildR, buildG, buildB] = RESOURCE_CONFIG.spray.buildRgb01;
     for (let i = 0; i < 2; i++) {
       assertNear(state.pR[i], buildR, 'build spray must use the authored green, not a team color');
       assertNear(state.pG[i], buildG, 'build spray must use the authored green, not a team color');
       assertNear(state.pB[i], buildB, 'build spray must use the authored green, not a team color');
-      assertContract(state.pSpinRate[i] > 0, 'build spray particles must tumble');
     }
 
     const otherTeamSpray = makeDirectSpray(false);
@@ -102,7 +103,6 @@ export function runSprayRenderer3DContractTest(): void {
     renderer.update([], 0, [pylonSpray]);
     state = renderer as unknown as SprayParticleDebugState;
     assertNear(state.pR[3], 0.9, 'an explicit spray color must win over the build green');
-    assertContract(state.pSpinRate[3] === 0, 'pylon resource balls must not tumble');
 
     // A building target arrives as its HIT box: `dim` is the FULL x/y
     // extents, `radius` the vertical half-extent, and the center already

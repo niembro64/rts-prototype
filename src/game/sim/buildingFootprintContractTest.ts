@@ -60,16 +60,16 @@ export function runBuildingFootprintContractTest(): void {
   const solarRows = BUILDING_BLUEPRINTS.buildingSolar.footprintMask;
   assertContract(
     solarRows.join('/') ===
-      '.....+...../....+++..../...+++++.../..++###++../.++#####++./+++#####+++/.++#####++./..++###++../...+++++.../....+++..../.....+.....',
-    'solar must reserve the authored 11x11 diamond, extending two cells beyond every side of its prior footprint',
+      '++++...++++/+++++++++++/+++++++++++/+++#####+++/.++#####++./.++#####++./.++#####++./+++#####+++/+++++++++++/+++++++++++/++++...++++',
+    'solar must reserve the authored 11x11 square with a three-cell notch centered on every side (the X-folded panels leave those areas empty)',
   );
   const solar = getBuildingConfig('buildingSolar').placementFootprint;
   assertContract(
     solar.gridWidth === 11 && solar.gridHeight === 11 &&
-      solar.cells.length === 61 &&
-      solar.cells.filter((cell) => cell.kind === 'structure').length === 21 &&
-      solar.cells.filter((cell) => cell.kind === 'clearance').length === 40,
-    'solar diamond must keep 21 structural cells and add a 40-cell construction-clearance perimeter',
+      solar.cells.length === 109 &&
+      solar.cells.filter((cell) => cell.kind === 'structure').length === 25 &&
+      solar.cells.filter((cell) => cell.kind === 'clearance').length === 84,
+    'solar square must keep its 25-cell structural core inside an 84-cell construction-clearance ring',
   );
 
   const fabricator = getBuildingConfig('towerFabricator').placementFootprint;
@@ -97,9 +97,9 @@ export function runBuildingFootprintContractTest(): void {
     true,
     20,
   );
-  assertContract(grid.getCell(10, 10) === undefined, 'empty diamond corners must remain buildable');
+  assertContract(grid.getCell(14, 10) === undefined, 'side-notch cells must remain buildable');
   assertContract(
-    grid.getCell(15, 10)?.blocksMovement === false,
+    grid.getCell(11, 10)?.blocksMovement === false,
     'outer solar clearance must reserve construction without blocking locomotion',
   );
   assertContract(
@@ -107,8 +107,8 @@ export function runBuildingFootprintContractTest(): void {
     'solar structural core must block grounded locomotion',
   );
   assertContract(
-    grid.canPlaceFootprint(10, 10, parseBuildingPlacementFootprint(['#'], 'contract probe')),
-    'a shaped mask must allow another footprint in an unused bounding-box corner',
+    grid.canPlaceFootprint(14, 10, parseBuildingPlacementFootprint(['#'], 'contract probe')),
+    'a shaped mask must allow another footprint in an unused notch cell',
   );
 
   const primaryMat = new THREE.MeshLambertMaterial();

@@ -4,6 +4,7 @@ import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import {
   ensurePathfinderTerrain,
   getPathfindingCellConsolidationMultiplier,
+  getRegisteredBuildingOccupancyVersion,
 } from './pathfinderTerrainCache';
 import {
   computeLocomotionClimbProfile,
@@ -36,6 +37,7 @@ type UnitPathTraversabilityGrid = Readonly<{
 
 let cachedSim: ReturnType<typeof getSimWasm> | null = null;
 let cachedTerrainVersion = -1;
+let cachedBuildingOccupancyVersion = -1;
 let cachedMapWidth = 0;
 let cachedMapHeight = 0;
 let cachedConsolidationMultiplier = 0;
@@ -44,6 +46,11 @@ let cachedGrids = new Map<string, UnitPathTraversabilityGrid>();
 function cacheMatches(mapWidth: number, mapHeight: number): boolean {
   return cachedSim === getSimWasm() &&
     cachedTerrainVersion === getTerrainVersion() &&
+    // The bake folds building_blocked cells into the masks, so a building
+    // placed, completed elsewhere, or destroyed must invalidate — without
+    // this the overlay showed pre-placement (or a previous match's)
+    // buildings as open squares forever.
+    cachedBuildingOccupancyVersion === getRegisteredBuildingOccupancyVersion() &&
     cachedMapWidth === mapWidth &&
     cachedMapHeight === mapHeight &&
     cachedConsolidationMultiplier === getPathfindingCellConsolidationMultiplier() &&
@@ -76,6 +83,9 @@ export function precomputeAllUnitPathTraversabilityGrids(
   }
 
   ensurePathfinderTerrain(mapWidth, mapHeight);
+  // Recorded before the bake: ensurePathfinderTerrain just synced the WASM
+  // occupancy to exactly this version, so the masks below reflect it.
+  const bakedBuildingOccupancyVersion = getRegisteredBuildingOccupancyVersion();
   const cellsX = sim.pathfinder.gridWidth();
   const cellsY = sim.pathfinder.gridHeight();
   const consolidationMultiplier = getPathfindingCellConsolidationMultiplier();
@@ -140,6 +150,7 @@ export function precomputeAllUnitPathTraversabilityGrids(
 
   cachedSim = sim;
   cachedTerrainVersion = getTerrainVersion();
+  cachedBuildingOccupancyVersion = bakedBuildingOccupancyVersion;
   cachedMapWidth = mapWidth;
   cachedMapHeight = mapHeight;
   cachedConsolidationMultiplier = consolidationMultiplier;

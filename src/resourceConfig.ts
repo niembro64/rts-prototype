@@ -141,13 +141,6 @@ export const RESOURCE_CONFIG = {
      *  the team colour — see budget_design_philosophy.html, "Build spray is
      *  bright green". */
     buildRgb01: rgb01Tuple('spray.buildRgb01', rawConfig.spray.buildRgb01),
-    /** Per-particle tumble rate. Each build particle spins on its own seeded
-     *  axis at this many turns per second so the stream reads as thrown
-     *  material; it rides the instance matrix the renderer already uploads. */
-    buildParticleSpinTurnsPerSecond: posNum(
-      'spray.buildParticleSpinTurnsPerSecond',
-      rawConfig.spray.buildParticleSpinTurnsPerSecond,
-    ),
     particleAlpha: frac01('spray.particleAlpha', rawConfig.spray.particleAlpha),
     healParticleSpeed: posNum('spray.healParticleSpeed', rawConfig.spray.healParticleSpeed),
     healMaxFlightSec: posNum('spray.healMaxFlightSec', rawConfig.spray.healMaxFlightSec),
