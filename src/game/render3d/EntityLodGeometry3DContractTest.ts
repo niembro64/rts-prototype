@@ -202,7 +202,9 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   buildingRadar: { close: 1500, mid: 700, far: 350 },
   buildingSonar: { close: 1500, mid: 700, far: 350 },
   buildingResourceConverter: { close: 1500, mid: 750, far: 420 },
-  towerFabricator: { close: 1700, mid: 850, far: 420 },
+  // Eight construction clamp stations since the hazard-marking round
+  // (boxCount 4 -> 8) — the budgets carry the doubled housing count.
+  towerFabricator: { close: 2600, mid: 1300, far: 640 },
   // Heavy carries a cross-yoke and two emitter heads instead of one.
   towerBeamMega: { close: 1400, mid: 780, far: 400 },
   towerBeamLight: { close: 900, mid: 500, far: 260 },
@@ -2144,18 +2146,22 @@ function runConstructionHostMarkingContracts(): void {
   );
 
   for (const entityId of configuredHostIds) {
-    const profile = CONSTRUCTION_HOST_MARKING_PROFILES[entityId];
-    assertContract(profile !== undefined, `${entityId} construction marking profile resolves`);
+    const profiles = CONSTRUCTION_HOST_MARKING_PROFILES[entityId];
+    assertContract(
+      profiles !== undefined && profiles.length > 0,
+      `${entityId} construction marking profiles resolve`,
+    );
+    const unitBlueprint = UNIT_BLUEPRINT_IDS.includes(entityId as UnitBlueprintId)
+      ? getUnitBlueprint(entityId as UnitBlueprintId)
+      : null;
+    const scale = unitBlueprint?.radius.other ?? 100;
+    for (const profile of profiles) {
     assertContract(
       (profile as { kind: string }).kind !== 'torus' &&
         (profile as { kind: string }).kind !== 'collar' &&
         (profile as { kind: string }).kind !== 'ringPanels',
       `${entityId} does not use legacy radial/twist marking geometry`,
     );
-    const unitBlueprint = UNIT_BLUEPRINT_IDS.includes(entityId as UnitBlueprintId)
-      ? getUnitBlueprint(entityId as UnitBlueprintId)
-      : null;
-    const scale = unitBlueprint?.radius.other ?? 100;
     const ringBoxTierVertexCounts: number[] = [];
     for (const tier of TIERS) {
       const marking = buildConstructionHostMarking(profile, scale, tier);
@@ -2279,6 +2285,7 @@ function runConstructionHostMarkingContracts(): void {
           ringBoxTierVertexCounts[1] > ringBoxTierVertexCounts[2],
         `${entityId} clamp-box vertices must strictly decrease close > mid > far; got ${ringBoxTierVertexCounts.join(' > ')}`,
       );
+    }
     }
   }
 

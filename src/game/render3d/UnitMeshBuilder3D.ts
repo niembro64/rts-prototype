@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getConstructionHostMarkingProfile } from '@/constructionVisualConfig';
+import { getConstructionHostMarkingProfiles } from '@/constructionVisualConfig';
 import type { UnitBodyShape } from '@/types/blueprints';
 import type { GraphicsConfig } from '@/types/graphics';
 import { getUnitBodyShapeKey } from '../math/BodyDimensions';
@@ -249,10 +249,13 @@ export class UnitMeshBuilder3D {
       chassis.add(commanderKit);
     }
 
-    const markingProfile = blueprint === undefined
-      ? null
-      : getConstructionHostMarkingProfile(blueprint.unitBlueprintId);
-    if (markingProfile !== null && blueprint?.unitBlueprintId !== 'unitCommander') {
+    const markingProfiles = blueprint === undefined
+      ? []
+      : getConstructionHostMarkingProfiles(blueprint.unitBlueprintId);
+    for (const markingProfile of markingProfiles) {
+      // Arm-attached markings (the commander's construction-tool sleeve)
+      // are built by the bot rig in arm-local space, not here.
+      if (markingProfile.attach === 'constructionArm') continue;
       // Chassis children live in unit-radius-1 space; the renderer scales
       // the chassis group by the unit's render radius every frame. Marking
       // profiles are authored in body-radius units, so build at scale 1 —

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { getConstructionHostMarkingProfile } from '@/constructionVisualConfig';
+import { getConstructionHostMarkingProfiles } from '@/constructionVisualConfig';
 import { getBuildingBlueprint, getUnitBlueprint } from '@/game/sim/blueprints';
 import type { StructureBlueprintId, UnitBlueprintId } from '@/types/blueprintIds';
 import type { GraphicsConfig } from '@/types/graphics';
@@ -664,8 +664,9 @@ function buildPreviewUnitModel(
 
   const productionRing = getPreviewProductionRing(blueprint, radius, chassisLift);
   buildPreviewBody(liftGroup, blueprint, materials, geometryTier);
-  const markingProfile = getConstructionHostMarkingProfile(unitBlueprintId);
-  if (markingProfile !== null && unitBlueprintId !== 'unitCommander') {
+  for (const markingProfile of getConstructionHostMarkingProfiles(unitBlueprintId)) {
+    // Arm-attached markings ride the bot rig's construction arm.
+    if (markingProfile.attach === 'constructionArm') continue;
     liftGroup.add(buildConstructionHostMarking(markingProfile, radius, geometryTier));
   }
   buildPreviewProductionRing(liftGroup, productionRing, materials.primary, geometryTier);
