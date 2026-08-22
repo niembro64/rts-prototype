@@ -10,7 +10,14 @@ import {
   SHIELD_REFLECTION_ENTITY_ROCKET,
   SHIELD_PANEL_PROJECTILE_QUERY_PAD,
 } from './reflectorBatch';
-import { getEmissionBlueprintId, isRayType, isProjectileShot, isRocketLikeShot } from '../types';
+import {
+  getEmissionBlueprintId,
+  isRayType,
+  isProjectileShot,
+  isRocketLikeShot,
+  PROJECTILE_GUIDANCE_LOST_INTERCEPT_ALIGNED,
+  PROJECTILE_GUIDANCE_LOST_INTERCEPT_TURNING,
+} from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type {
@@ -1184,6 +1191,10 @@ function classifyAndPlanProjectileTerminal(
   }
   if (runtimeProfile.hasExplosion) bits |= TERMINAL_IN_HAS_EXPLOSION;
   if (runtimeProfile.hasSubmunitions) bits |= TERMINAL_IN_HAS_SUBMUNITIONS;
+  const effectiveMaxLifespanMs = projectileEffectiveMaxLifespanMs(proj);
+  const effectiveTimeAliveMs = proj.guidancePointReached
+    ? effectiveMaxLifespanMs
+    : proj.timeAlive;
 
   const sim = getSimWasm();
   if (sim === undefined) {
@@ -1196,8 +1207,8 @@ function classifyAndPlanProjectileTerminal(
     z,
     groundZ,
     proj.hp,
-    proj.timeAlive,
-    projectileEffectiveMaxLifespanMs(proj),
+    effectiveTimeAliveMs,
+    effectiveMaxLifespanMs,
     world.mapWidth,
     world.mapHeight,
     PROJECTILE_OUT_OF_BOUNDS_MARGIN,
@@ -1331,6 +1342,11 @@ export function checkProjectileCollisions(
           proj.velocityX = reflectedX;
           proj.velocityY = reflectedY;
           proj.velocityZ = reflectedZ;
+          if (proj.guidanceMode === PROJECTILE_GUIDANCE_LOST_INTERCEPT_ALIGNED) {
+            // Reflection is a discrete velocity change, so a previously
+            // aligned lost-point rocket must spend steering work again.
+            proj.guidanceMode = PROJECTILE_GUIDANCE_LOST_INTERCEPT_TURNING;
+          }
           projEntity.transform.x = _reflectorResponsePosX[projectileOrdinal];
           projEntity.transform.y = _reflectorResponsePosY[projectileOrdinal];
           projEntity.transform.z = _reflectorResponsePosZ[projectileOrdinal];
@@ -1374,7 +1390,8 @@ export function checkProjectileCollisions(
     // sample integrate its remaining damage window before the normal terminal
     // classifier removes the beam later in this same pass.
     const expiredBeforeDamage =
-      proj.timeAlive >= projectileEffectiveMaxLifespanMs(proj) &&
+      (proj.guidancePointReached ||
+        proj.timeAlive >= projectileEffectiveMaxLifespanMs(proj)) &&
       !hasCommittedPulseSample;
     const healthZeroBeforeDamage = proj.projectileType === 'projectile' && proj.hp <= 0;
     let directHitThisTick = false;

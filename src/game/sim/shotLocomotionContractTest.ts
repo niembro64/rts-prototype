@@ -16,6 +16,7 @@ import {
 } from './shotLocomotion';
 import { WATER_LEVEL } from './Terrain';
 import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
+import { shouldRefreshProjectileIntercept } from './combat/projectileSystem';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) throw new Error(`[projectile motion contract] ${message}`);
@@ -26,6 +27,30 @@ function assertNear(actual: number, expected: number, message: string, epsilon =
 }
 
 export function runShotLocomotionContractTest(): void {
+  const countRefreshes = (simulationHz: number, solveHz: number): number => {
+    let lastSolveTick = 0;
+    let count = 0;
+    for (let tick = 1; tick <= simulationHz; tick++) {
+      if (shouldRefreshProjectileIntercept(tick, 41, simulationHz, solveHz, lastSolveTick)) {
+        lastSolveTick = tick;
+        count++;
+      }
+    }
+    return count;
+  };
+  assertContract(
+    countRefreshes(20, 5) === 5,
+    'rocket intercept scheduler must refresh exactly 5 times per second at the default 20 Hz',
+  );
+  assertContract(
+    countRefreshes(20, 10) === 10,
+    'missile intercept scheduler must refresh exactly 10 times per second at the default 20 Hz',
+  );
+  assertContract(
+    countRefreshes(1, 5) === 1,
+    'guidance cadence must cap at one refresh per simulation tick at low custom tick rates',
+  );
+
   for (const blueprint of Object.values(SHOT_BLUEPRINTS)) {
     const locomotion = getShotLocomotionPreset(blueprint.shotLocomotionPresetId);
     assertContract(
@@ -36,6 +61,9 @@ export function runShotLocomotionContractTest(): void {
       locomotion.maxLifespanMs === null &&
         locomotion.guidanceDelayMs === 0 &&
         locomotion.guidanceRampMs === 0 &&
+        locomotion.guidanceSolveRateHz === 0 &&
+        locomotion.lostTargetBehavior === 'continueCurrentVector' &&
+        locomotion.lostTargetArrivalRadius === 0 &&
         locomotion.media.air.turnRate === 0 &&
         locomotion.media.water.turnRate === 0,
       `${blueprint.shotBlueprintId} locomotion preset must not own blueprint lifetime/turning controls`,
@@ -138,7 +166,10 @@ export function runShotLocomotionContractTest(): void {
     );
     assertContract(
       locomotion.guidanceDelayMs === turning.guidanceDelayMs &&
-        locomotion.guidanceRampMs === turning.guidanceRampMs,
+        locomotion.guidanceRampMs === turning.guidanceRampMs &&
+        locomotion.guidanceSolveRateHz === turning.guidanceSolveRateHz &&
+        locomotion.lostTargetBehavior === turning.lostTargetBehavior &&
+        locomotion.lostTargetArrivalRadius === turning.lostTargetArrivalRadius,
       `${shotBlueprintId} must expand its blueprint-authored guidance phase`,
     );
     assertContract(
@@ -146,6 +177,12 @@ export function runShotLocomotionContractTest(): void {
       `${shotBlueprintId} must expand its blueprint-authored in-flight turn authority`,
     );
   }
+  assertContract(
+    rocketLocomotion.guidanceSolveRateHz === 5 &&
+      rocketLocomotion.lostTargetBehavior === 'flyToLastInterceptPoint' &&
+      rocketLocomotion.lostTargetArrivalRadius === 3,
+    'light rocket must refresh prediction at 5 Hz and retain a swept speculative intercept',
+  );
 
   const torpedoEmission = buildProjectileShotConfig('shotTorpedo');
   if (!isProjectileShot(torpedoEmission)) {

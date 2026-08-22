@@ -1756,7 +1756,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runTerrainWallWear3DContractTest();
         const { runVegetationWeathering3DContractTest } = await import('../render3d/VegetationWeathering3DContractTest');
         runVegetationWeathering3DContractTest();
-        const { runTurretHostIntegrationContractTest } = await import('../sim/turretHostIntegrationTest');
+        const { runProjectileGuidanceCadenceContractTest, runTurretHostIntegrationContractTest } = await import('../sim/turretHostIntegrationTest');
+        runProjectileGuidanceCadenceContractTest();
         runTurretHostIntegrationContractTest();
         const { runPrecisionFireContractTest } = await import('../sim/combat/precisionFireContractTest');
         runPrecisionFireContractTest();

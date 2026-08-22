@@ -3,7 +3,17 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 
 import type { WorldState } from '../WorldState';
 import type { BeamPoint, BeamPulsePlan, Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShotSource, Turret, TurretConfig } from '../types';
-import { getEmissionBlueprintId, isRayConfig, isRayType, isProjectileShot, NO_ENTITY_ID } from '../types';
+import {
+  getEmissionBlueprintId,
+  isRayConfig,
+  isRayType,
+  isProjectileShot,
+  NO_ENTITY_ID,
+  PROJECTILE_GUIDANCE_LOST_INTERCEPT_ALIGNED,
+  PROJECTILE_GUIDANCE_LOST_INTERCEPT_TURNING,
+  PROJECTILE_GUIDANCE_NONE,
+  PROJECTILE_GUIDANCE_TRACKING_ENTITY,
+} from '../types';
 import { isAttackEmitterConfig } from '../emitterKinds';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
@@ -107,6 +117,7 @@ import {
   emissionCanTargetEntity,
 } from './emissionTargeting';
 import { emissionMediumAtZ } from '../emissionMedium';
+import { SIM_TICK_INSTRUMENTATION } from '../../perf/SimTickInstrumentation';
 
 export { checkProjectileCollisions } from './ProjectileCollisionHandler';
 
@@ -1490,6 +1501,7 @@ export function fireTurrets(
             targetingTargetId !== -1
           ) {
             projectileComponent.homingTargetId = targetingTargetId;
+            projectileComponent.guidanceMode = PROJECTILE_GUIDANCE_TRACKING_ENTITY;
           }
           const maxLifespan = projectileComponent !== null ? projectileComponent.maxLifespan : undefined;
 
@@ -1585,10 +1597,16 @@ let _travelingProjectileGravity = new Float64Array(0);
 let _travelingProjectileTerrainTargetZ = new Float64Array(0);
 let _travelingProjectilePolicyFlags = new Uint8Array(0);
 let _travelingProjectileHomingTargetId = new Int32Array(0);
+let _travelingProjectileGuidanceArrivalEnabled = new Uint8Array(0);
+let _travelingProjectileGuidanceArrivalX = new Float64Array(0);
+let _travelingProjectileGuidanceArrivalY = new Float64Array(0);
+let _travelingProjectileGuidanceArrivalZ = new Float64Array(0);
+let _travelingProjectileGuidanceArrivalRadius = new Float64Array(0);
+let _travelingProjectileGuidanceArrivalReached = new Uint8Array(0);
 
 const TRAVELING_PROJECTILE_FLAG_DGUN_TERRAIN_FOLLOW = 1;
 
-const HOMING_GUIDANCE_BATCH_STRIDE = 37;
+const HOMING_GUIDANCE_BATCH_STRIDE = 41;
 const HG_ROW_VEL_X = 0;
 const HG_ROW_VEL_Y = 1;
 const HG_ROW_VEL_Z = 2;
@@ -1619,6 +1637,35 @@ const HG_ROW_SOLVE_INTERCEPT = 26;
 const HG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME = 27;
 const HG_ROW_PROJECTILE_MASS = 28;
 const HG_ROW_CONSTANT_SPEED_MODE = 29;
+const HG_ROW_OUT_INTERCEPT_FOUND = 33;
+const HG_ROW_OUT_STEER_X = 37;
+const HG_ROW_OUT_STEER_Y = 38;
+const HG_ROW_OUT_STEER_Z = 39;
+const HG_ROW_OUT_ALIGNED = 40;
+
+/** Deterministic, entity-staggered intercept refresh cadence. Steering and
+ * integration remain per tick; this only gates the expensive prediction.
+ * Rates above the simulation frequency naturally refresh once per tick. */
+export function shouldRefreshProjectileIntercept(
+  currentTick: number,
+  projectileId: EntityId,
+  simulationTickRateHz: number,
+  guidanceSolveRateHz: number,
+  lastSolveTick: number,
+): boolean {
+  if (lastSolveTick < 0) return true;
+  if (lastSolveTick === currentTick || guidanceSolveRateHz <= 0) return false;
+  if (guidanceSolveRateHz >= simulationTickRateHz) return true;
+  const phase = ((projectileId % simulationTickRateHz) + simulationTickRateHz) %
+    simulationTickRateHz;
+  const nowBucket = Math.floor(
+    ((currentTick + phase) * guidanceSolveRateHz) / simulationTickRateHz,
+  );
+  const priorBucket = Math.floor(
+    ((currentTick - 1 + phase) * guidanceSolveRateHz) / simulationTickRateHz,
+  );
+  return nowBucket !== priorBucket;
+}
 
 let _homingGuidanceBatchCapacity = 0;
 let _homingGuidanceRows = new Float64Array(0);
@@ -1642,6 +1689,12 @@ function trimTravelingProjectileBatchBuffers(maxRetained = DEFAULT_TRAVELING_PRO
   _travelingProjectileTerrainTargetZ = new Float64Array(maxRetained);
   _travelingProjectilePolicyFlags = new Uint8Array(maxRetained);
   _travelingProjectileHomingTargetId = new Int32Array(maxRetained);
+  _travelingProjectileGuidanceArrivalEnabled = new Uint8Array(maxRetained);
+  _travelingProjectileGuidanceArrivalX = new Float64Array(maxRetained);
+  _travelingProjectileGuidanceArrivalY = new Float64Array(maxRetained);
+  _travelingProjectileGuidanceArrivalZ = new Float64Array(maxRetained);
+  _travelingProjectileGuidanceArrivalRadius = new Float64Array(maxRetained);
+  _travelingProjectileGuidanceArrivalReached = new Uint8Array(maxRetained);
 }
 
 function trimHomingGuidanceBuffers(maxRetained = DEFAULT_HOMING_GUIDANCE_BATCH_CAPACITY): void {
@@ -1725,6 +1778,24 @@ function ensureTravelingProjectileBatchCapacity(required: number): void {
   homingTargetId.set(_travelingProjectileHomingTargetId);
   _travelingProjectileHomingTargetId = homingTargetId;
 
+  const guidanceArrivalEnabled = new Uint8Array(next);
+  guidanceArrivalEnabled.set(_travelingProjectileGuidanceArrivalEnabled);
+  _travelingProjectileGuidanceArrivalEnabled = guidanceArrivalEnabled;
+  const guidanceArrivalX = new Float64Array(next);
+  guidanceArrivalX.set(_travelingProjectileGuidanceArrivalX);
+  _travelingProjectileGuidanceArrivalX = guidanceArrivalX;
+  const guidanceArrivalY = new Float64Array(next);
+  guidanceArrivalY.set(_travelingProjectileGuidanceArrivalY);
+  _travelingProjectileGuidanceArrivalY = guidanceArrivalY;
+  const guidanceArrivalZ = new Float64Array(next);
+  guidanceArrivalZ.set(_travelingProjectileGuidanceArrivalZ);
+  _travelingProjectileGuidanceArrivalZ = guidanceArrivalZ;
+  const guidanceArrivalRadius = new Float64Array(next);
+  guidanceArrivalRadius.set(_travelingProjectileGuidanceArrivalRadius);
+  _travelingProjectileGuidanceArrivalRadius = guidanceArrivalRadius;
+  const guidanceArrivalReached = new Uint8Array(next);
+  guidanceArrivalReached.set(_travelingProjectileGuidanceArrivalReached);
+  _travelingProjectileGuidanceArrivalReached = guidanceArrivalReached;
 }
 
 // 3D projectile integration: exact constant-acceleration advance on
@@ -1931,6 +2002,8 @@ function _updateTravelingProjectilesJS(
     _travelingProjectileTerrainTargetZ[index] = 0;
     _travelingProjectilePolicyFlags[index] = policyFlags;
     _travelingProjectileHomingTargetId[index] = NO_ENTITY_ID;
+    _travelingProjectileGuidanceArrivalEnabled[index] = 0;
+    _travelingProjectileGuidanceArrivalReached[index] = 0;
 
     const homingEngagementScale = getProjectileHomingEngagementScale(
       shotConfig,
@@ -1941,50 +2014,71 @@ function _updateTravelingProjectilesJS(
       shotConfig,
       mediumPhysics,
     );
-    const canCarryRocketCounterGravity =
-      shotLocomotion.motionModel === 'thrustGuided' &&
-      maxHomingThrustAccel > 0 &&
-      projectileGravity > 0;
     let guidedTargetCarriesGravity = false;
-    const previousHomingTargetId = proj.homingTargetId;
-    let homingTarget = previousHomingTargetId !== NO_ENTITY_ID
-      ? world.getEntity(previousHomingTargetId)
-      : undefined;
-    // Lock validity is independent of whether guidance happens to be
-    // operational in the projectile's current medium this tick. A missile
-    // pushed underwater or delayed before motor ignition must still discard a
-    // dead/illegal inherited lock immediately; it never scans for a new one.
-    if (homingTarget !== undefined && !isLiveHomingTarget(homingTarget)) {
-      homingTarget = undefined;
-    }
+    let homingTarget: Entity | undefined;
+
+    // Only the tracking state resolves an entity id. Lost-point rockets keep
+    // the launch target id as provenance and never use it for reacquisition.
     if (
-      homingTarget !== undefined &&
-      !emissionCanTargetEntity(
-        shotConfig.mediumTrajectory,
-        emissionSourceMedium,
-        homingTarget,
-      )
+      proj.guidanceMode === PROJECTILE_GUIDANCE_TRACKING_ENTITY &&
+      proj.homingTargetId !== NO_ENTITY_ID
     ) {
-      homingTarget = undefined;
+      homingTarget = world.getEntity(proj.homingTargetId);
+      if (homingTarget !== undefined && !isLiveHomingTarget(homingTarget)) {
+        homingTarget = undefined;
+      }
+      if (
+        homingTarget !== undefined &&
+        !emissionCanTargetEntity(
+          shotConfig.mediumTrajectory,
+          emissionSourceMedium,
+          homingTarget,
+        )
+      ) {
+        homingTarget = undefined;
+      }
+      if (homingTarget === undefined) {
+        if (
+          shotLocomotion.lostTargetBehavior === 'flyToLastInterceptPoint' &&
+          proj.guidanceInterceptValid
+        ) {
+          proj.guidanceMode = PROJECTILE_GUIDANCE_LOST_INTERCEPT_TURNING;
+        } else {
+          // Missiles and torpedoes deliberately coast. They do not retain a
+          // point target and do no further guidance work after lock loss.
+          if (shotLocomotion.lostTargetBehavior === 'continueCurrentVector') {
+            proj.homingTargetId = NO_ENTITY_ID;
+          }
+          proj.guidanceMode = PROJECTILE_GUIDANCE_NONE;
+          proj.guidanceInterceptValid = false;
+          proj.guidancePointReached = false;
+        }
+      }
     }
-    const resolvedHomingTargetId = homingTarget !== undefined ? homingTarget.id : NO_ENTITY_ID;
-    if (resolvedHomingTargetId !== previousHomingTargetId) {
-      proj.homingTargetId = resolvedHomingTargetId;
-    }
+
     if (
       mediumPhysicsActive &&
       !isDGunWave &&
-      mediumPhysics.turnRate > 0 &&
-      (homingEngagementScale > 0 || canCarryRocketCounterGravity)
+      mediumPhysics.turnRate > 0
     ) {
-      // Lock-on policy lives on turrets, not guided shots. A rocket/missile
-      // homes only toward the exact entity it inherited at launch, and only
-      // while that target is still live. It never runs its own acquisition
-      // pass or scans for a replacement victim — once the inherited target is
-      // gone it loses guidance, drops to NO_ENTITY_ID, and continues on its
-      // current flight path under normal projectile physics (the steering
-      // block below is skipped). See budget_design_philosophy.html
-      // "Lock-on policy lives on turrets, not guided shots".
+      let steerX = proj.guidanceInterceptX;
+      let steerY = proj.guidanceInterceptY;
+      let steerZ = proj.guidanceInterceptZ;
+      let targetVelocityX = 0;
+      let targetVelocityY = 0;
+      let targetVelocityZ = 0;
+      let targetAccelerationX = 0;
+      let targetAccelerationY = 0;
+      let targetAccelerationZ = 0;
+      let originVelocityX = 0;
+      let originVelocityY = 0;
+      let originVelocityZ = 0;
+      let originAccelerationX = 0;
+      let originAccelerationY = 0;
+      let originAccelerationZ = 0;
+      let solveIntercept = false;
+      let enqueueGuidance = false;
+
       if (homingTarget !== undefined) {
         guidedTargetCarriesGravity = true;
         aNetZ += getProjectileRocketCounterGravityCarryAcceleration(
@@ -1993,8 +2087,15 @@ function _updateTravelingProjectilesJS(
           homingEngagementScale,
           projectileGravity,
         );
-        if (homingEngagementScale > 0) {
-          _travelingProjectileHomingTargetId[index] = homingTarget.id;
+        _travelingProjectileHomingTargetId[index] = homingTarget.id;
+        const refreshIntercept = shouldRefreshProjectileIntercept(
+          world.getTick(),
+          entity.id,
+          world.simulationTickRateHz,
+          shotLocomotion.guidanceSolveRateHz,
+          proj.guidanceLastSolveTick,
+        );
+        if (refreshIntercept) {
           const aimPoint = resolveTargetAimPoint(
             homingTarget,
             position.x, position.y, position.z,
@@ -2006,85 +2107,103 @@ function _updateTravelingProjectilesJS(
             homingTarget,
             aimPoint,
           );
-          let steerX = aimPoint.x;
-          let steerY = aimPoint.y;
-          let steerZ = aimPoint.z;
+          steerX = aimPoint.x;
+          steerY = aimPoint.y;
+          steerZ = aimPoint.z;
           const targetVelocity = getEntityVelocity3d(homingTarget, _homingTargetVelocity);
           const targetAcceleration = getEntityAcceleration3d(
             homingTarget,
             _homingTargetAcceleration,
           );
-          const targetSpeedSq =
-            targetVelocity.x * targetVelocity.x +
-            targetVelocity.y * targetVelocity.y +
-            targetVelocity.z * targetVelocity.z;
-          const targetAccelSq =
-            targetAcceleration.x * targetAcceleration.x +
-            targetAcceleration.y * targetAcceleration.y +
-            targetAcceleration.z * targetAcceleration.z;
-          const projectileSpeed = DMath.hypot(proj.velocityX, proj.velocityY, proj.velocityZ);
-          let solveIntercept = false;
-          let originVelocityX = 0;
-          let originVelocityY = 0;
-          let originVelocityZ = 0;
-          let originAccelerationX = 0;
-          let originAccelerationY = 0;
-          let originAccelerationZ = 0;
-          if ((targetSpeedSq > 1e-6 || targetAccelSq > 1e-6) && projectileSpeed > 1e-6) {
-            solveIntercept = true;
-            const originVelocity = getEntityVelocity3d(entity, _homingOriginVelocity);
-            const originAcceleration = getEntityAcceleration3d(entity, _homingOriginAcceleration);
-            originVelocityX = originVelocity.x;
-            originVelocityY = originVelocity.y;
-            originVelocityZ = originVelocity.z;
-            originAccelerationX = originAcceleration.x;
-            originAccelerationY = originAcceleration.y;
-            originAccelerationZ = originAcceleration.z;
-          }
-          const shot = proj.config.shot as ProjectileShot;
-          const remainingSec = Number.isFinite(proj.maxLifespan)
-            ? Math.max(0, (proj.maxLifespan - proj.timeAlive) / 1000)
-            : 0;
-          const homingIndex = homingGuidanceCount++;
-          ensureHomingGuidanceBatchCapacity(homingGuidanceCount);
-          _homingGuidanceProjectileIndex[homingIndex] = index;
-          const base = homingIndex * HOMING_GUIDANCE_BATCH_STRIDE;
-          _homingGuidanceRows[base + HG_ROW_VEL_X] = proj.velocityX;
-          _homingGuidanceRows[base + HG_ROW_VEL_Y] = proj.velocityY;
-          _homingGuidanceRows[base + HG_ROW_VEL_Z] = proj.velocityZ;
-          _homingGuidanceRows[base + HG_ROW_STEER_X] = steerX;
-          _homingGuidanceRows[base + HG_ROW_STEER_Y] = steerY;
-          _homingGuidanceRows[base + HG_ROW_STEER_Z] = steerZ;
-          _homingGuidanceRows[base + HG_ROW_CURRENT_X] = position.x;
-          _homingGuidanceRows[base + HG_ROW_CURRENT_Y] = position.y;
-          _homingGuidanceRows[base + HG_ROW_CURRENT_Z] = position.z;
-          _homingGuidanceRows[base + HG_ROW_TARGET_VEL_X] = targetVelocity.x;
-          _homingGuidanceRows[base + HG_ROW_TARGET_VEL_Y] = targetVelocity.y;
-          _homingGuidanceRows[base + HG_ROW_TARGET_VEL_Z] = targetVelocity.z;
-          _homingGuidanceRows[base + HG_ROW_TARGET_ACCEL_X] = targetAcceleration.x;
-          _homingGuidanceRows[base + HG_ROW_TARGET_ACCEL_Y] = targetAcceleration.y;
-          _homingGuidanceRows[base + HG_ROW_TARGET_ACCEL_Z] = targetAcceleration.z;
-          _homingGuidanceRows[base + HG_ROW_ORIGIN_VEL_X] = originVelocityX;
-          _homingGuidanceRows[base + HG_ROW_ORIGIN_VEL_Y] = originVelocityY;
-          _homingGuidanceRows[base + HG_ROW_ORIGIN_VEL_Z] = originVelocityZ;
-          _homingGuidanceRows[base + HG_ROW_ORIGIN_ACCEL_X] = originAccelerationX;
-          _homingGuidanceRows[base + HG_ROW_ORIGIN_ACCEL_Y] = originAccelerationY;
-          _homingGuidanceRows[base + HG_ROW_ORIGIN_ACCEL_Z] = originAccelerationZ;
-          _homingGuidanceRows[base + HG_ROW_PROJECTILE_SPEED] = projectileSpeed;
-          _homingGuidanceRows[base + HG_ROW_PROJECTILE_GRAVITY] = _travelingProjectileGravity[index];
-          _homingGuidanceRows[base + HG_ROW_MAX_TIME_SEC] = remainingSec;
-          _homingGuidanceRows[base + HG_ROW_HOMING_TURN_RATE] =
-            mediumPhysics.turnRate * homingEngagementScale;
-          _homingGuidanceRows[base + HG_ROW_MAX_THRUST_ACCEL] =
-            maxHomingThrustAccel * homingEngagementScale;
-          _homingGuidanceRows[base + HG_ROW_SOLVE_INTERCEPT] = solveIntercept ? 1 : 0;
-          _homingGuidanceRows[base + HG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME] =
-            getProjectileMediumFrictionPer60HzFrame(mediumPhysics);
-          _homingGuidanceRows[base + HG_ROW_PROJECTILE_MASS] = shot.mass;
-          _homingGuidanceRows[base + HG_ROW_CONSTANT_SPEED_MODE] =
-            shotLocomotion.motionModel === 'constantSpeedGuided' ? 1 : 0;
+          targetVelocityX = targetVelocity.x;
+          targetVelocityY = targetVelocity.y;
+          targetVelocityZ = targetVelocity.z;
+          targetAccelerationX = targetAcceleration.x;
+          targetAccelerationY = targetAcceleration.y;
+          targetAccelerationZ = targetAcceleration.z;
+          const originVelocity = getEntityVelocity3d(entity, _homingOriginVelocity);
+          const originAcceleration = getEntityAcceleration3d(entity, _homingOriginAcceleration);
+          originVelocityX = originVelocity.x;
+          originVelocityY = originVelocity.y;
+          originVelocityZ = originVelocity.z;
+          originAccelerationX = originAcceleration.x;
+          originAccelerationY = originAcceleration.y;
+          originAccelerationZ = originAcceleration.z;
+          solveIntercept = true;
+          proj.guidanceLastSolveTick = world.getTick();
+          enqueueGuidance = true;
+        } else if (proj.guidanceInterceptValid && homingEngagementScale > 0) {
+          enqueueGuidance = true;
         }
+      } else if (
+        proj.guidanceMode === PROJECTILE_GUIDANCE_LOST_INTERCEPT_TURNING &&
+        proj.guidanceInterceptValid &&
+        homingEngagementScale > 0
+      ) {
+        // This cheap bounded turn is the only post-lock guidance work. The
+        // Rust result promotes the rocket to ALIGNED once this step can point
+        // exactly at the cached speculative intercept.
+        enqueueGuidance = true;
       }
+
+      if (enqueueGuidance) {
+        const projectileSpeed = DMath.hypot(proj.velocityX, proj.velocityY, proj.velocityZ);
+        const remainingSec = Number.isFinite(proj.maxLifespan)
+          ? Math.max(0, (proj.maxLifespan - proj.timeAlive) / 1000)
+          : 0;
+        const homingIndex = homingGuidanceCount++;
+        ensureHomingGuidanceBatchCapacity(homingGuidanceCount);
+        _homingGuidanceProjectileIndex[homingIndex] = index;
+        const base = homingIndex * HOMING_GUIDANCE_BATCH_STRIDE;
+        _homingGuidanceRows[base + HG_ROW_VEL_X] = proj.velocityX;
+        _homingGuidanceRows[base + HG_ROW_VEL_Y] = proj.velocityY;
+        _homingGuidanceRows[base + HG_ROW_VEL_Z] = proj.velocityZ;
+        _homingGuidanceRows[base + HG_ROW_STEER_X] = steerX;
+        _homingGuidanceRows[base + HG_ROW_STEER_Y] = steerY;
+        _homingGuidanceRows[base + HG_ROW_STEER_Z] = steerZ;
+        _homingGuidanceRows[base + HG_ROW_CURRENT_X] = position.x;
+        _homingGuidanceRows[base + HG_ROW_CURRENT_Y] = position.y;
+        _homingGuidanceRows[base + HG_ROW_CURRENT_Z] = position.z;
+        _homingGuidanceRows[base + HG_ROW_TARGET_VEL_X] = targetVelocityX;
+        _homingGuidanceRows[base + HG_ROW_TARGET_VEL_Y] = targetVelocityY;
+        _homingGuidanceRows[base + HG_ROW_TARGET_VEL_Z] = targetVelocityZ;
+        _homingGuidanceRows[base + HG_ROW_TARGET_ACCEL_X] = targetAccelerationX;
+        _homingGuidanceRows[base + HG_ROW_TARGET_ACCEL_Y] = targetAccelerationY;
+        _homingGuidanceRows[base + HG_ROW_TARGET_ACCEL_Z] = targetAccelerationZ;
+        _homingGuidanceRows[base + HG_ROW_ORIGIN_VEL_X] = originVelocityX;
+        _homingGuidanceRows[base + HG_ROW_ORIGIN_VEL_Y] = originVelocityY;
+        _homingGuidanceRows[base + HG_ROW_ORIGIN_VEL_Z] = originVelocityZ;
+        _homingGuidanceRows[base + HG_ROW_ORIGIN_ACCEL_X] = originAccelerationX;
+        _homingGuidanceRows[base + HG_ROW_ORIGIN_ACCEL_Y] = originAccelerationY;
+        _homingGuidanceRows[base + HG_ROW_ORIGIN_ACCEL_Z] = originAccelerationZ;
+        _homingGuidanceRows[base + HG_ROW_PROJECTILE_SPEED] = projectileSpeed;
+        _homingGuidanceRows[base + HG_ROW_PROJECTILE_GRAVITY] = _travelingProjectileGravity[index];
+        _homingGuidanceRows[base + HG_ROW_MAX_TIME_SEC] = remainingSec;
+        _homingGuidanceRows[base + HG_ROW_HOMING_TURN_RATE] =
+          mediumPhysics.turnRate * homingEngagementScale;
+        _homingGuidanceRows[base + HG_ROW_MAX_THRUST_ACCEL] =
+          maxHomingThrustAccel * homingEngagementScale;
+        _homingGuidanceRows[base + HG_ROW_SOLVE_INTERCEPT] = solveIntercept ? 1 : 0;
+        _homingGuidanceRows[base + HG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME] =
+          getProjectileMediumFrictionPer60HzFrame(mediumPhysics);
+        _homingGuidanceRows[base + HG_ROW_PROJECTILE_MASS] = shotConfig.mass;
+        _homingGuidanceRows[base + HG_ROW_CONSTANT_SPEED_MODE] =
+          shotLocomotion.motionModel === 'constantSpeedGuided' ? 1 : 0;
+      }
+    }
+    if (
+      (proj.guidanceMode === PROJECTILE_GUIDANCE_LOST_INTERCEPT_TURNING ||
+        proj.guidanceMode === PROJECTILE_GUIDANCE_LOST_INTERCEPT_ALIGNED) &&
+      proj.guidanceInterceptValid &&
+      !proj.guidancePointReached &&
+      shotLocomotion.lostTargetArrivalRadius > 0
+    ) {
+      _travelingProjectileGuidanceArrivalEnabled[index] = 1;
+      _travelingProjectileGuidanceArrivalX[index] = proj.guidanceInterceptX;
+      _travelingProjectileGuidanceArrivalY[index] = proj.guidanceInterceptY;
+      _travelingProjectileGuidanceArrivalZ[index] = proj.guidanceInterceptZ;
+      _travelingProjectileGuidanceArrivalRadius[index] =
+        shotLocomotion.lostTargetArrivalRadius;
     }
     aNetZ += getProjectileMediumHoldCounterGravityAcceleration(
       shotConfig,
@@ -2125,7 +2244,13 @@ function _updateTravelingProjectilesJS(
     _travelingProjectileAccelZ[index] = aNetZ;
   }
 
-  if (batchCount === 0) return;
+  SIM_TICK_INSTRUMENTATION.phase('combat.proj.guidancePrepare');
+  if (batchCount === 0) {
+    SIM_TICK_INSTRUMENTATION.phase('combat.proj.guidance');
+    SIM_TICK_INSTRUMENTATION.phase('combat.proj.integrate');
+    SIM_TICK_INSTRUMENTATION.phase('combat.proj.scatter');
+    return;
+  }
   if (sim === undefined) {
     throw new Error('Projectile integration requires initialized sim-wasm');
   }
@@ -2148,7 +2273,30 @@ function _updateTravelingProjectilesJS(
     if (guided !== homingGuidanceCount) {
       throw new Error(`Projectile homing guidance batch failed: ${guided}/${homingGuidanceCount}`);
     }
+    for (let rowIndex = 0; rowIndex < homingGuidanceCount; rowIndex++) {
+      const projectileIndex = _homingGuidanceProjectileIndex[rowIndex];
+      const entity = _travelingProjectileBatchEntities[projectileIndex];
+      const proj = entity?.projectile ?? null;
+      if (proj === null) continue;
+      const base = rowIndex * HOMING_GUIDANCE_BATCH_STRIDE;
+      if (
+        _homingGuidanceRows[base + HG_ROW_SOLVE_INTERCEPT] !== 0 &&
+        _homingGuidanceRows[base + HG_ROW_OUT_INTERCEPT_FOUND] !== 0
+      ) {
+        proj.guidanceInterceptX = _homingGuidanceRows[base + HG_ROW_OUT_STEER_X];
+        proj.guidanceInterceptY = _homingGuidanceRows[base + HG_ROW_OUT_STEER_Y];
+        proj.guidanceInterceptZ = _homingGuidanceRows[base + HG_ROW_OUT_STEER_Z];
+        proj.guidanceInterceptValid = true;
+      }
+      if (
+        proj.guidanceMode === PROJECTILE_GUIDANCE_LOST_INTERCEPT_TURNING &&
+        _homingGuidanceRows[base + HG_ROW_OUT_ALIGNED] !== 0
+      ) {
+        proj.guidanceMode = PROJECTILE_GUIDANCE_LOST_INTERCEPT_ALIGNED;
+      }
+    }
   }
+  SIM_TICK_INSTRUMENTATION.phase('combat.proj.guidance');
   const integrated = sim.projectileIntegrateStepBatch(
     batchCount,
     _travelingProjectilePosX.subarray(0, batchCount),
@@ -2162,6 +2310,12 @@ function _updateTravelingProjectilesJS(
     _travelingProjectileAccelZ.subarray(0, batchCount),
     _travelingProjectileAirDragCoefficient.subarray(0, batchCount),
     _travelingProjectileInvMass.subarray(0, batchCount),
+    _travelingProjectileGuidanceArrivalEnabled.subarray(0, batchCount),
+    _travelingProjectileGuidanceArrivalX.subarray(0, batchCount),
+    _travelingProjectileGuidanceArrivalY.subarray(0, batchCount),
+    _travelingProjectileGuidanceArrivalZ.subarray(0, batchCount),
+    _travelingProjectileGuidanceArrivalRadius.subarray(0, batchCount),
+    _travelingProjectileGuidanceArrivalReached.subarray(0, batchCount),
     Number.isFinite(wind.x) ? wind.x : 0,
     Number.isFinite(wind.y) ? wind.y : 0,
     Number.isFinite(wind.z) ? wind.z : 0,
@@ -2170,6 +2324,7 @@ function _updateTravelingProjectilesJS(
   if (integrated !== batchCount) {
     throw new Error(`Projectile integration batch failed: ${integrated}/${batchCount}`);
   }
+  SIM_TICK_INSTRUMENTATION.phase('combat.proj.integrate');
 
   for (let i = 0; i < batchCount; i++) {
     const entity = _travelingProjectileBatchEntities[i];
@@ -2192,6 +2347,9 @@ function _updateTravelingProjectilesJS(
     proj.velocityX = vx;
     proj.velocityY = vy;
     proj.velocityZ = vz;
+    if (_travelingProjectileGuidanceArrivalReached[i] !== 0) {
+      proj.guidancePointReached = true;
+    }
 
     // Armed shots (the steady state) early-out inside updateProjectileArming
     // before touching the host — don't pay the entity lookup for them.
@@ -2221,6 +2379,7 @@ function _updateTravelingProjectilesJS(
       : 0;
     _travelingProjectileBatchEntities[i] = undefined as unknown as Entity;
   }
+  SIM_TICK_INSTRUMENTATION.phase('combat.proj.scatter');
 }
 
 // Packed ballistic shots and non-packed guided/D-gun shots now both

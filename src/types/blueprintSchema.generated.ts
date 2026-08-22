@@ -113,6 +113,9 @@ export type ShotLocomotion = {
   gravityForceMultiplier: number;
   guidanceDelayMs: number;
   guidanceRampMs: number;
+  guidanceSolveRateHz: number;
+  lostTargetBehavior: 'continueCurrentVector' | 'flyToLastInterceptPoint';
+  lostTargetArrivalRadius: number;
   media: ShotLocomotionMedia;
   transitions: ShotLocomotionTransitions;
   terminal: ShotLocomotionTerminalPolicy;
@@ -221,6 +224,9 @@ export type ShotTurningBlueprint = {
   turnRate: number;
   guidanceDelayMs: number;
   guidanceRampMs: number;
+  guidanceSolveRateHz: number;
+  lostTargetBehavior: 'continueCurrentVector' | 'flyToLastInterceptPoint';
+  lostTargetArrivalRadius: number;
 };
 
 export type ProjectileShotBlueprint = {

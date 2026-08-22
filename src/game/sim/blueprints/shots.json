@@ -136,7 +136,10 @@
     "turning": {
       "turnRate": 1,
       "guidanceDelayMs": 3000,
-      "guidanceRampMs": 700
+      "guidanceRampMs": 700,
+      "guidanceSolveRateHz": 5,
+      "lostTargetBehavior": "flyToLastInterceptPoint",
+      "lostTargetArrivalRadius": 3
     },
     "shotBlueprintId": "shotRocketLight",
     "name": "Light Rocket",
@@ -182,7 +185,10 @@
     "turning": {
       "turnRate": 2,
       "guidanceDelayMs": 0,
-      "guidanceRampMs": 0
+      "guidanceRampMs": 0,
+      "guidanceSolveRateHz": 10,
+      "lostTargetBehavior": "continueCurrentVector",
+      "lostTargetArrivalRadius": 0
     },
     "shotBlueprintId": "shotMissileFast",
     "name": "Fast Missile",
@@ -228,7 +234,10 @@
     "turning": {
       "turnRate": 1,
       "guidanceDelayMs": 0,
-      "guidanceRampMs": 0
+      "guidanceRampMs": 0,
+      "guidanceSolveRateHz": 10,
+      "lostTargetBehavior": "continueCurrentVector",
+      "lostTargetArrivalRadius": 0
     },
     "shotBlueprintId": "shotMissileLong",
     "name": "Long Missile",
@@ -454,7 +463,10 @@
     "turning": {
       "turnRate": 4,
       "guidanceDelayMs": 0,
-      "guidanceRampMs": 0
+      "guidanceRampMs": 0,
+      "guidanceSolveRateHz": 10,
+      "lostTargetBehavior": "continueCurrentVector",
+      "lostTargetArrivalRadius": 0
     },
     "shotBlueprintId": "shotTorpedo",
     "name": "Torpedo",

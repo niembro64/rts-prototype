@@ -93,7 +93,21 @@ export type {
   Entity,
 } from '@/types/sim';
 
-export { isRayConfig, isRayType, isShieldConfig, isProjectileShot, isRocketLikeShot,  getEmissionBlueprintId, getShotMaxLifespan, NO_ENTITY_ID, PROJECTILE_ABSENCE_SLOTS } from '@/types/sim';
+export {
+  isRayConfig,
+  isRayType,
+  isShieldConfig,
+  isProjectileShot,
+  isRocketLikeShot,
+  getEmissionBlueprintId,
+  getShotMaxLifespan,
+  NO_ENTITY_ID,
+  PROJECTILE_ABSENCE_SLOTS,
+  PROJECTILE_GUIDANCE_NONE,
+  PROJECTILE_GUIDANCE_TRACKING_ENTITY,
+  PROJECTILE_GUIDANCE_LOST_INTERCEPT_TURNING,
+  PROJECTILE_GUIDANCE_LOST_INTERCEPT_ALIGNED,
+} from '@/types/sim';
 export { createCombatComponent, createEmptyEntityComponentSlots, createTransform } from '@/types/sim';
 
 import type { PlayerId } from '@/types/sim';
@@ -367,4 +381,3 @@ export function getPlayerPrimaryColor(playerId: PlayerId | undefined): number {
   if (playerId === undefined) return NEUTRAL_PLAYER_COLOR;
   return getPlayerColors(playerId).primary;
 }
-

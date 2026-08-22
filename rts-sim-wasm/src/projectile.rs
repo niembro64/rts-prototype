@@ -898,7 +898,78 @@ pub fn compute_constant_speed_homing_velocity(
     out_buf[2] = out_z;
 }
 
-pub const PROJECTILE_HOMING_GUIDANCE_STRIDE: usize = 37;
+/// Exact constant-speed interception for a target with constant velocity.
+/// This is the hot path for missiles and rockets; the sampled damped solver
+/// remains available for thrust-guided projectiles with acceleration/drag.
+#[inline]
+fn solve_constant_speed_intercept_inline(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    target_x: f64,
+    target_y: f64,
+    target_z: f64,
+    target_vel_x: f64,
+    target_vel_y: f64,
+    target_vel_z: f64,
+    projectile_speed: f64,
+    max_time_sec: f64,
+) -> Option<(f64, f64, f64, f64)> {
+    if !projectile_speed.is_finite() || projectile_speed <= 1e-6 {
+        return None;
+    }
+    let rx = target_x - origin_x;
+    let ry = target_y - origin_y;
+    let rz = target_z - origin_z;
+    let c = rx * rx + ry * ry + rz * rz;
+    if !c.is_finite() {
+        return None;
+    }
+    if c <= 1e-12 {
+        return Some((0.0, target_x, target_y, target_z));
+    }
+
+    let speed_sq = projectile_speed * projectile_speed;
+    let a = target_vel_x * target_vel_x + target_vel_y * target_vel_y + target_vel_z * target_vel_z
+        - speed_sq;
+    let b = 2.0 * (rx * target_vel_x + ry * target_vel_y + rz * target_vel_z);
+    let mut intercept_time = f64::INFINITY;
+    if a.abs() <= 1e-12 {
+        if b.abs() > 1e-12 {
+            let candidate = -c / b;
+            if candidate >= 0.0 {
+                intercept_time = candidate;
+            }
+        }
+    } else {
+        let discriminant = b * b - 4.0 * a * c;
+        if discriminant >= 0.0 && discriminant.is_finite() {
+            let sqrt_discriminant = discriminant.sqrt();
+            let denominator = 2.0 * a;
+            let first = (-b - sqrt_discriminant) / denominator;
+            let second = (-b + sqrt_discriminant) / denominator;
+            if first >= 0.0 {
+                intercept_time = first;
+            }
+            if second >= 0.0 && second < intercept_time {
+                intercept_time = second;
+            }
+        }
+    }
+    if !intercept_time.is_finite()
+        || (max_time_sec.is_finite() && max_time_sec > 0.0 && intercept_time > max_time_sec)
+    {
+        return None;
+    }
+    Some((
+        intercept_time,
+        target_x + target_vel_x * intercept_time,
+        target_y + target_vel_y * intercept_time,
+        target_z + target_vel_z * intercept_time,
+    ))
+}
+
+pub const PROJECTILE_HOMING_GUIDANCE_STRIDE: usize = 41;
 
 pub(crate) const PHG_ROW_VEL_X: usize = 0;
 pub(crate) const PHG_ROW_VEL_Y: usize = 1;
@@ -937,6 +1008,10 @@ pub(crate) const PHG_ROW_OUT_INTERCEPT_FOUND: usize = 33;
 pub(crate) const PHG_ROW_OUT_VEL_X: usize = 34;
 pub(crate) const PHG_ROW_OUT_VEL_Y: usize = 35;
 pub(crate) const PHG_ROW_OUT_VEL_Z: usize = 36;
+pub(crate) const PHG_ROW_OUT_STEER_X: usize = 37;
+pub(crate) const PHG_ROW_OUT_STEER_Y: usize = 38;
+pub(crate) const PHG_ROW_OUT_STEER_Z: usize = 39;
+pub(crate) const PHG_ROW_OUT_ALIGNED: usize = 40;
 
 #[wasm_bindgen]
 pub fn projectile_homing_guidance_batch(
@@ -965,6 +1040,7 @@ pub fn projectile_homing_guidance_batch(
         rows[base + PHG_ROW_OUT_VEL_X] = rows[base + PHG_ROW_VEL_X];
         rows[base + PHG_ROW_OUT_VEL_Y] = rows[base + PHG_ROW_VEL_Y];
         rows[base + PHG_ROW_OUT_VEL_Z] = rows[base + PHG_ROW_VEL_Z];
+        rows[base + PHG_ROW_OUT_ALIGNED] = 0.0;
 
         let mut steer_x = rows[base + PHG_ROW_STEER_X];
         let mut steer_y = rows[base + PHG_ROW_STEER_Y];
@@ -978,9 +1054,9 @@ pub fn projectile_homing_guidance_batch(
             // magnitude IS the complete travel budget from its current
             // position. Feeding current velocity as origin velocity here
             // double-counted that motion and produced a false lead point.
-            // Re-solve the ordinary velocity intercept every guidance tick;
-            // target acceleration remains a reactive turn input on later
-            // ticks rather than an unbounded trajectory prediction.
+            // Refresh the ordinary velocity intercept only when the row's
+            // deterministic scheduler requests it; target acceleration remains
+            // a reactive input for the thrust-guided fallback solver.
             let origin_vel_x = if constant_speed_mode {
                 0.0
             } else {
@@ -1026,52 +1102,75 @@ pub fn projectile_homing_guidance_batch(
             } else {
                 rows[base + PHG_ROW_TARGET_ACCEL_Z]
             };
-            let input = [
-                rows[base + PHG_ROW_CURRENT_X],
-                rows[base + PHG_ROW_CURRENT_Y],
-                rows[base + PHG_ROW_CURRENT_Z],
-                origin_vel_x,
-                origin_vel_y,
-                origin_vel_z,
-                origin_accel_x,
-                origin_accel_y,
-                origin_accel_z,
-                steer_x,
-                steer_y,
-                steer_z,
-                rows[base + PHG_ROW_TARGET_VEL_X],
-                rows[base + PHG_ROW_TARGET_VEL_Y],
-                rows[base + PHG_ROW_TARGET_VEL_Z],
-                target_accel_x,
-                target_accel_y,
-                target_accel_z,
-                0.0,
-                0.0,
-                if constant_speed_mode { 0.0 } else { -gravity },
-                rows[base + PHG_ROW_PROJECTILE_SPEED],
-            ];
-            let mut intercept_out = [0.0_f64; 7];
-            if solve_damped_kinematic_intercept_inline(
-                &input,
-                &mut intercept_out,
-                0,
-                rows[base + PHG_ROW_MAX_TIME_SEC],
-                if constant_speed_mode {
-                    0.0
-                } else {
-                    rows[base + PHG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME]
-                },
-                rows[base + PHG_ROW_PROJECTILE_MASS],
-                wind_x,
-                wind_y,
-                wind_z,
-            ) {
-                steer_x = intercept_out[1];
-                steer_y = intercept_out[2];
-                steer_z = intercept_out[3];
-                rows[base + PHG_ROW_OUT_INTERCEPT_FOUND] = 1.0;
+            if constant_speed_mode {
+                if let Some((_, intercept_x, intercept_y, intercept_z)) =
+                    solve_constant_speed_intercept_inline(
+                        rows[base + PHG_ROW_CURRENT_X],
+                        rows[base + PHG_ROW_CURRENT_Y],
+                        rows[base + PHG_ROW_CURRENT_Z],
+                        steer_x,
+                        steer_y,
+                        steer_z,
+                        rows[base + PHG_ROW_TARGET_VEL_X],
+                        rows[base + PHG_ROW_TARGET_VEL_Y],
+                        rows[base + PHG_ROW_TARGET_VEL_Z],
+                        rows[base + PHG_ROW_PROJECTILE_SPEED],
+                        rows[base + PHG_ROW_MAX_TIME_SEC],
+                    )
+                {
+                    steer_x = intercept_x;
+                    steer_y = intercept_y;
+                    steer_z = intercept_z;
+                    rows[base + PHG_ROW_OUT_INTERCEPT_FOUND] = 1.0;
+                }
+            } else {
+                let input = [
+                    rows[base + PHG_ROW_CURRENT_X],
+                    rows[base + PHG_ROW_CURRENT_Y],
+                    rows[base + PHG_ROW_CURRENT_Z],
+                    origin_vel_x,
+                    origin_vel_y,
+                    origin_vel_z,
+                    origin_accel_x,
+                    origin_accel_y,
+                    origin_accel_z,
+                    steer_x,
+                    steer_y,
+                    steer_z,
+                    rows[base + PHG_ROW_TARGET_VEL_X],
+                    rows[base + PHG_ROW_TARGET_VEL_Y],
+                    rows[base + PHG_ROW_TARGET_VEL_Z],
+                    target_accel_x,
+                    target_accel_y,
+                    target_accel_z,
+                    0.0,
+                    0.0,
+                    -gravity,
+                    rows[base + PHG_ROW_PROJECTILE_SPEED],
+                ];
+                let mut intercept_out = [0.0_f64; 7];
+                if solve_damped_kinematic_intercept_inline(
+                    &input,
+                    &mut intercept_out,
+                    0,
+                    rows[base + PHG_ROW_MAX_TIME_SEC],
+                    rows[base + PHG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME],
+                    rows[base + PHG_ROW_PROJECTILE_MASS],
+                    wind_x,
+                    wind_y,
+                    wind_z,
+                ) {
+                    steer_x = intercept_out[1];
+                    steer_y = intercept_out[2];
+                    steer_z = intercept_out[3];
+                    rows[base + PHG_ROW_OUT_INTERCEPT_FOUND] = 1.0;
+                }
             }
         }
+
+        rows[base + PHG_ROW_OUT_STEER_X] = steer_x;
+        rows[base + PHG_ROW_OUT_STEER_Y] = steer_y;
+        rows[base + PHG_ROW_OUT_STEER_Z] = steer_z;
 
         if constant_speed_mode {
             let (vel_x, vel_y, vel_z) = compute_constant_speed_homing_velocity_inline(
@@ -1090,6 +1189,17 @@ pub fn projectile_homing_guidance_batch(
             rows[base + PHG_ROW_OUT_VEL_X] = vel_x;
             rows[base + PHG_ROW_OUT_VEL_Y] = vel_y;
             rows[base + PHG_ROW_OUT_VEL_Z] = vel_z;
+            let dx = steer_x - rows[base + PHG_ROW_CURRENT_X];
+            let dy = steer_y - rows[base + PHG_ROW_CURRENT_Y];
+            let dz = steer_z - rows[base + PHG_ROW_CURRENT_Z];
+            let distance = (dx * dx + dy * dy + dz * dz).sqrt();
+            let speed = (vel_x * vel_x + vel_y * vel_y + vel_z * vel_z).sqrt();
+            if distance.is_finite() && distance > 1e-6 && speed.is_finite() && speed > 1e-6 {
+                let cosine = (vel_x * dx + vel_y * dy + vel_z * dz) / (speed * distance);
+                if cosine >= 1.0 - 1e-12 {
+                    rows[base + PHG_ROW_OUT_ALIGNED] = 1.0;
+                }
+            }
         } else {
             let (thrust_x, thrust_y, thrust_z) = compute_homing_thrust_inline(
                 rows[base + PHG_ROW_VEL_X],
@@ -1439,6 +1549,12 @@ pub fn projectile_integrate_step_batch(
     accel_z: &[f64],
     air_drag_coefficient: &[f64],
     inv_mass: &[f64],
+    guidance_arrival_enabled: &[u8],
+    guidance_arrival_x: &[f64],
+    guidance_arrival_y: &[f64],
+    guidance_arrival_z: &[f64],
+    guidance_arrival_radius: &[f64],
+    guidance_arrival_reached: &mut [u8],
     wind_x: f64,
     wind_y: f64,
     wind_z: f64,
@@ -1456,6 +1572,12 @@ pub fn projectile_integrate_step_batch(
         || accel_z.len() < n
         || air_drag_coefficient.len() < n
         || inv_mass.len() < n
+        || guidance_arrival_enabled.len() < n
+        || guidance_arrival_x.len() < n
+        || guidance_arrival_y.len() < n
+        || guidance_arrival_z.len() < n
+        || guidance_arrival_radius.len() < n
+        || guidance_arrival_reached.len() < n
         || !dt_sec.is_finite()
         || !wind_x.is_finite()
         || !wind_y.is_finite()
@@ -1465,6 +1587,10 @@ pub fn projectile_integrate_step_batch(
     }
 
     for i in 0..n {
+        let start_x = pos_x[i];
+        let start_y = pos_y[i];
+        let start_z = pos_z[i];
+        guidance_arrival_reached[i] = 0;
         let drag_rate = drag_rate_from_coefficient(air_drag_coefficient[i], inv_mass[i]);
         integrate_linear_damped_axis(
             &mut pos_x[i],
@@ -1490,6 +1616,56 @@ pub fn projectile_integrate_step_batch(
             drag_rate,
             wind_z,
         );
+
+        // Lost-target rockets terminate on a swept sphere around their cached
+        // speculative intercept. Sweeping prevents a fast projectile from
+        // stepping across the point between simulation ticks.
+        if guidance_arrival_enabled[i] != 0 {
+            let radius = guidance_arrival_radius[i];
+            let center_x = guidance_arrival_x[i];
+            let center_y = guidance_arrival_y[i];
+            let center_z = guidance_arrival_z[i];
+            if radius.is_finite()
+                && radius > 0.0
+                && center_x.is_finite()
+                && center_y.is_finite()
+                && center_z.is_finite()
+            {
+                let mx = start_x - center_x;
+                let my = start_y - center_y;
+                let mz = start_z - center_z;
+                let radius_sq = radius * radius;
+                let start_distance_sq = mx * mx + my * my + mz * mz;
+                let mut hit_t = if start_distance_sq <= radius_sq {
+                    Some(0.0)
+                } else {
+                    None
+                };
+                if hit_t.is_none() {
+                    let dx = pos_x[i] - start_x;
+                    let dy = pos_y[i] - start_y;
+                    let dz = pos_z[i] - start_z;
+                    let a = dx * dx + dy * dy + dz * dz;
+                    if a > 1e-12 && a.is_finite() {
+                        let b = mx * dx + my * dy + mz * dz;
+                        let c = start_distance_sq - radius_sq;
+                        let discriminant = b * b - a * c;
+                        if discriminant >= 0.0 && discriminant.is_finite() {
+                            let candidate = (-b - discriminant.sqrt()) / a;
+                            if (0.0..=1.0).contains(&candidate) {
+                                hit_t = Some(candidate);
+                            }
+                        }
+                    }
+                }
+                if let Some(t) = hit_t {
+                    pos_x[i] = start_x + (pos_x[i] - start_x) * t;
+                    pos_y[i] = start_y + (pos_y[i] - start_y) * t;
+                    pos_z[i] = start_z + (pos_z[i] - start_z) * t;
+                    guidance_arrival_reached[i] = 1;
+                }
+            }
+        }
     }
     count
 }
@@ -1567,11 +1743,17 @@ mod tests {
         let accel_z = vec![-9.0];
         let air_drag = vec![0.0];
         let inv_mass = vec![0.25];
+        let arrival_enabled = vec![0];
+        let arrival_point = vec![0.0];
+        let arrival_radius = vec![0.0];
+        let mut arrival_reached = vec![0];
         let dt = 0.25;
 
         let processed = projectile_integrate_step_batch(
             1, &mut pos_x, &mut pos_y, &mut pos_z, &mut vel_x, &mut vel_y, &mut vel_z, &accel_x,
-            &accel_y, &accel_z, &air_drag, &inv_mass, 1000.0, -500.0, 250.0, dt,
+            &accel_y, &accel_z, &air_drag, &inv_mass, &arrival_enabled, &arrival_point,
+            &arrival_point, &arrival_point, &arrival_radius, &mut arrival_reached,
+            1000.0, -500.0, 250.0, dt,
         );
 
         assert_eq!(processed, 1);
@@ -1581,6 +1763,38 @@ mod tests {
         assert_close(vel_x[0], 10.0 + 3.0 * dt);
         assert_close(vel_y[0], -6.0 + 5.0 * dt);
         assert_close(vel_z[0], 4.0 - 9.0 * dt);
+    }
+
+    #[test]
+    fn projectile_guidance_arrival_sweep_clamps_at_entry() {
+        let mut pos_x = vec![0.0];
+        let mut pos_y = vec![0.0];
+        let mut pos_z = vec![0.0];
+        let mut vel_x = vec![100.0];
+        let mut vel_y = vec![0.0];
+        let mut vel_z = vec![0.0];
+        let acceleration = vec![0.0];
+        let air_drag = vec![0.0];
+        let inv_mass = vec![1.0];
+        let arrival_enabled = vec![1];
+        let arrival_x = vec![5.0];
+        let arrival_y = vec![0.0];
+        let arrival_z = vec![0.0];
+        let arrival_radius = vec![1.0];
+        let mut arrival_reached = vec![0];
+
+        let processed = projectile_integrate_step_batch(
+            1, &mut pos_x, &mut pos_y, &mut pos_z, &mut vel_x, &mut vel_y, &mut vel_z,
+            &acceleration, &acceleration, &acceleration, &air_drag, &inv_mass,
+            &arrival_enabled, &arrival_x, &arrival_y, &arrival_z, &arrival_radius,
+            &mut arrival_reached, 0.0, 0.0, 0.0, 0.1,
+        );
+
+        assert_eq!(processed, 1);
+        assert_eq!(arrival_reached[0], 1);
+        assert_close(pos_x[0], 4.0);
+        assert_close(pos_y[0], 0.0);
+        assert_close(pos_z[0], 0.0);
     }
 
     #[test]
@@ -1627,6 +1841,8 @@ mod tests {
 
         assert_eq!(processed, 1);
         assert_eq!(rows[PHG_ROW_OUT_INTERCEPT_FOUND], 1.0);
+        assert!((rows[PHG_ROW_OUT_STEER_X] - 1000.0).abs() < 1e-6);
+        assert!((rows[PHG_ROW_OUT_STEER_Y] - 577.3502691896258).abs() < 1e-3);
         // |(1000, 50t)| = 100t gives direction (sqrt(3)/2, 1/2).
         assert!((rows[PHG_ROW_OUT_VEL_X] - 86.60254037844386).abs() < 1e-3);
         assert!((rows[PHG_ROW_OUT_VEL_Y] - 50.0).abs() < 1e-3);
@@ -1638,6 +1854,30 @@ mod tests {
                 .sqrt(),
             100.0,
         );
+    }
+
+    #[test]
+    fn constant_speed_guidance_reports_when_bounded_turn_finishes_alignment() {
+        let mut rows = vec![0.0_f64; PROJECTILE_HOMING_GUIDANCE_STRIDE * 2];
+        rows[PHG_ROW_VEL_X] = 100.0;
+        rows[PHG_ROW_STEER_X] = 1000.0;
+        rows[PHG_ROW_STEER_Y] = 1.0;
+        rows[PHG_ROW_PROJECTILE_SPEED] = 100.0;
+        rows[PHG_ROW_HOMING_TURN_RATE] = 1.0;
+        rows[PHG_ROW_CONSTANT_SPEED_MODE] = 1.0;
+
+        let second = PROJECTILE_HOMING_GUIDANCE_STRIDE;
+        rows[second + PHG_ROW_VEL_X] = 100.0;
+        rows[second + PHG_ROW_STEER_Y] = 1000.0;
+        rows[second + PHG_ROW_PROJECTILE_SPEED] = 100.0;
+        rows[second + PHG_ROW_HOMING_TURN_RATE] = 1.0;
+        rows[second + PHG_ROW_CONSTANT_SPEED_MODE] = 1.0;
+
+        let processed = projectile_homing_guidance_batch(&mut rows, 2, 0.05, 0.0, 0.0, 0.0);
+
+        assert_eq!(processed, 2);
+        assert_eq!(rows[PHG_ROW_OUT_ALIGNED], 1.0);
+        assert_eq!(rows[second + PHG_ROW_OUT_ALIGNED], 0.0);
     }
 
     #[test]
