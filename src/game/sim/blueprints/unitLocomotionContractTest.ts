@@ -480,7 +480,7 @@ export function runUnitLocomotionContractTest(): void {
   const commander = getUnitLocomotion('unitCommander');
   assertContract(
     commander.physicsPresetId === 'bot' &&
-      commander.actuator.propulsionAxis === 'bodyForwardOnly' &&
+      commander.actuator.propulsionAxis === 'waypointForwardOnly' &&
       commander.navigation.waypoint.allowOnGround &&
       commander.navigation.waypoint.allowInWater &&
       !commander.navigation.waypoint.allowInAir &&
@@ -490,7 +490,7 @@ export function runUnitLocomotionContractTest(): void {
   );
   for (const unitBlueprintId of ['unitHuman', 'unitCommander', 'unitRex'] as const) {
     assertContract(
-      getUnitLocomotion(unitBlueprintId).actuator.propulsionAxis === 'bodyForwardOnly',
+      getUnitLocomotion(unitBlueprintId).actuator.propulsionAxis === 'waypointForwardOnly',
       `${unitBlueprintId} bot locomotion cannot apply powered reverse thrust`,
     );
   }
@@ -561,6 +561,10 @@ export function runUnitLocomotionContractTest(): void {
       assertContract(
         maintainFullThrustAtWaypoints && cruiseWhenUncommanded && !alwaysBrakeAtFinalWaypoint,
         `${blueprint.unitBlueprintId} is forward-flight: full thrust plus cruise loiter, never the final brake`,
+      );
+      assertContract(
+        locomotion.actuator.propulsionAxis === 'alwaysForward',
+        `${blueprint.unitBlueprintId} is forward-flight: the gas is always on along the nose (alwaysForward)`,
       );
       const deadzone = locomotion.motionControl.waypointDeadzone;
       assertContract(

@@ -271,11 +271,16 @@ pub(crate) const UF_FLAG_HAS_ORIENTATION: u32 = 1 << 7;
 pub(crate) const UF_FLAG_PROPULSION_BODY_FORWARD: u32 = 1 << 8;
 pub(crate) const UF_FLAG_PROPULSION_FORWARD_ONLY: u32 = 1 << 9;
 pub(crate) const UF_FLAG_ON_GROUND: u32 = 1 << 10;
+/// `alwaysForward` actuator (plane, aerosub): full throttle along the nose
+/// every tick — the request only aims the yaw servo. Forward flight may
+/// turn, but it may never stop accelerating forward.
+pub(crate) const UF_FLAG_PROPULSION_ALWAYS_FORWARD: u32 = 1 << 11;
 pub(crate) const UF_FLAG_HAS_AIR_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE: u32 = 1 << 14;
 pub(crate) const UF_FLAG_HAS_WATER_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE: u32 = 1 << 15;
 pub(crate) const UF_FLAG_HAS_WATER_SURFACE_FOLLOWING_PROPORTIONAL_PROPOSED_FORCE: u32 = 1 << 17;
-pub(crate) const UF_PROFILE_KERNEL_FLAG_MASK: u32 =
-    UF_FLAG_PROPULSION_BODY_FORWARD | UF_FLAG_PROPULSION_FORWARD_ONLY;
+pub(crate) const UF_PROFILE_KERNEL_FLAG_MASK: u32 = UF_FLAG_PROPULSION_BODY_FORWARD
+    | UF_FLAG_PROPULSION_FORWARD_ONLY
+    | UF_FLAG_PROPULSION_ALWAYS_FORWARD;
 
 pub(crate) const UF_PROFILE_FLAG_CRUISE_WHEN_UNCOMMANDED: u32 = 1 << 16;
 
@@ -1303,6 +1308,7 @@ fn unit_force_step_batch_core(
         let has_orientation = flag & UF_FLAG_HAS_ORIENTATION != 0;
         let propulsion_body_forward = flag & UF_FLAG_PROPULSION_BODY_FORWARD != 0;
         let propulsion_forward_only = flag & UF_FLAG_PROPULSION_FORWARD_ONLY != 0;
+        let propulsion_always_forward = flag & UF_FLAG_PROPULSION_ALWAYS_FORWARD != 0;
         let omega_sq = if has_orientation {
             rows[base + UF_ROW_OMEGA_X] * rows[base + UF_ROW_OMEGA_X]
                 + rows[base + UF_ROW_OMEGA_Y] * rows[base + UF_ROW_OMEGA_Y]
@@ -1370,7 +1376,13 @@ fn unit_force_step_batch_core(
         };
         let (drive_dir_x, drive_dir_y, has_drive_dir, drive_thrust_scale) =
             if has_thrust && thrust_input_mag > 0.0 {
-                if propulsion_body_forward {
+                if propulsion_always_forward {
+                    // The gas is always on along the nose: the requested
+                    // direction only aims the yaw servo, never modulates
+                    // throttle. A turning plane keeps full forward drive
+                    // instead of bleeding speed by the off-nose projection.
+                    (forward_x, forward_y, true, thrust_scale)
+                } else if propulsion_body_forward {
                     let (body_forward_has_drive, body_forward_throttle) =
                         unit_force_body_forward_drive_request(
                             requested_dir_x,
