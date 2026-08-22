@@ -3,7 +3,7 @@
 // angular-speed, angular-acceleration, traverse, and restore limits.
 
 import type { WorldState } from '../WorldState';
-import type { CombatComponent, Entity, Turret } from '../types';
+import type { Entity, Turret } from '../types';
 import {
   turretMaskIncludes,
   writeTurretArticulationParentYaw,
@@ -12,7 +12,7 @@ import {
 import { normalizeAngle } from '../../math';
 import {
   dropTurretLockMidTick,
-  refreshSlabActivityMasksForUnit,
+  refreshSlabActivityMasksForUnits,
 } from './combatActivitySlab';
 import { isBuildBlockingActivation } from '../buildableHelpers';
 import {
@@ -466,11 +466,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
   }
 
   flushTurretRotationBatch(dtSec);
-  for (let i = 0; i < _turretRotationRefreshUnits.length; i++) {
-    const unit = _turretRotationRefreshUnits[i];
-    const combat: CombatComponent | null = unit.combat;
-    if (combat !== null) refreshSlabActivityMasksForUnit(unit, combat);
-  }
+  refreshSlabActivityMasksForUnits(_turretRotationRefreshUnits);
   _turretRotationWeapons.length = 0;
   _turretRotationRefreshUnits.length = 0;
 }

@@ -29,14 +29,26 @@ export function refreshSlabActivityMasksForUnit(
 ): void {
   const sim = getSimWasm();
   if (sim === undefined) return;
-  const slot = spatialGrid.getEntitySlot(unit);
+  const slot = writeSlabTurretPose(sim, unit, combat);
   if (slot < 0) return;
-  const targeting = sim.combatTargeting;
-  const turretCount = Math.min(targeting.turretCount(slot), combat.turrets.length);
-  if (turretCount <= 0) return;
+  sim.combatTargeting.refreshActivityMasksForEntity(slot);
+}
+
+/** Pose write half of the activity refresh: pure typed-array memory, zero
+ *  boundary crossings (the counts come from the slab views, which mirror
+ *  the exact pool arrays the old turretCount/maxTurretsPerEntity crossings
+ *  read). Returns the entity's slot, or -1 when it has no slab presence. */
+function writeSlabTurretPose(
+  sim: NonNullable<ReturnType<typeof getSimWasm>>,
+  unit: Entity,
+  combat: CombatComponent,
+): number {
+  const slot = spatialGrid.getEntitySlot(unit);
+  if (slot < 0) return -1;
   const views = getCombatTargetingStateViews(sim);
-  const maxTurrets = targeting.maxTurretsPerEntity();
-  const turretBase = slot * maxTurrets;
+  const turretCount = Math.min(views.turretCountPerEntity[slot], combat.turrets.length);
+  if (turretCount <= 0) return -1;
+  const turretBase = slot * views.maxTurretsPerEntity;
   for (let i = 0; i < turretCount; i++) {
     const turret = combat.turrets[i];
     const idx = turretBase + i;
@@ -45,7 +57,37 @@ export function refreshSlabActivityMasksForUnit(
     views.angularVelocity[idx] = turret.angularVelocity;
     views.pitchVelocity[idx] = turret.pitchVelocity;
   }
-  targeting.refreshActivityMasksForEntity(slot);
+  return slot;
+}
+
+let _activityMaskSlotScratch = new Uint32Array(0);
+
+/** Batched activity refresh for the whole armed population: writes every
+ *  unit's turret pose through the views, then ONE
+ *  refreshActivityMasksBatch crossing (the Rust batch runs the identical
+ *  per-entity refresh in the same order the per-unit loop did). The old
+ *  shape paid ~3 crossings per armed entity per tick. */
+export function refreshSlabActivityMasksForUnits(units: readonly Entity[]): void {
+  const sim = getSimWasm();
+  if (sim === undefined) return;
+  if (_activityMaskSlotScratch.length < units.length) {
+    let next = Math.max(64, _activityMaskSlotScratch.length * 2);
+    while (next < units.length) next *= 2;
+    _activityMaskSlotScratch = new Uint32Array(next);
+  }
+  let count = 0;
+  for (let i = 0; i < units.length; i++) {
+    const unit = units[i];
+    const combat = unit.combat;
+    if (combat === null) continue;
+    const slot = writeSlabTurretPose(sim, unit, combat);
+    if (slot >= 0) _activityMaskSlotScratch[count++] = slot;
+  }
+  if (count > 0) {
+    sim.combatTargeting.refreshActivityMasksBatch(
+      _activityMaskSlotScratch.subarray(0, count),
+    );
+  }
 }
 
 /** Slab-side mid-tick lock clear. Mirrors the JS
@@ -97,9 +139,12 @@ function combatTargetingTurretSlabIndex(
   if (sim === undefined) return -1;
   const slot = spatialGrid.getEntitySlot(unit);
   if (slot < 0) return -1;
-  const targeting = sim.combatTargeting;
-  if (weaponIndex >= targeting.turretCount(slot)) return -1;
-  return slot * targeting.maxTurretsPerEntity() + weaponIndex;
+  // Views mirror the exact pool arrays the old turretCount /
+  // maxTurretsPerEntity crossings read — this is called up to 3x per
+  // engaged turret in fireTurrets, so it stays crossing-free.
+  const views = getCombatTargetingStateViews(sim);
+  if (weaponIndex >= views.turretCountPerEntity[slot]) return -1;
+  return slot * views.maxTurretsPerEntity + weaponIndex;
 }
 
 /** Slab read of one turret's cooldown timer. The scheduled Rust batch
