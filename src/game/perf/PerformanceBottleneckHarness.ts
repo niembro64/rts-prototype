@@ -29,6 +29,7 @@ import {
   SIM_TICK_INSTRUMENTATION,
   type SimTickInstrumentationReport,
 } from './SimTickInstrumentation';
+import { RENDER_PHASE_PROXY_ROW_TELEMETRY } from '../scenes/helpers/RtsScene3DRenderPhase';
 
 type NumericSummary = {
   readonly avg: number;
@@ -1447,12 +1448,14 @@ function beginWasmBoundaryTracking(): void {
   WASM_BOUNDARY_INSTRUMENTATION.setEnabled(true);
   SIM_TICK_INSTRUMENTATION.reset();
   SIM_TICK_INSTRUMENTATION.setEnabled(true);
+  RENDER_PHASE_PROXY_ROW_TELEMETRY.enabled = true;
 }
 
 function finishWasmBoundaryTracking(): WasmBoundaryInstrumentationReport {
   const report = WASM_BOUNDARY_INSTRUMENTATION.report();
   WASM_BOUNDARY_INSTRUMENTATION.setEnabled(false);
   SIM_TICK_INSTRUMENTATION.setEnabled(false);
+  RENDER_PHASE_PROXY_ROW_TELEMETRY.enabled = false;
   return report;
 }
 

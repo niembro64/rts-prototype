@@ -388,6 +388,14 @@ export class GameServer {
     this.emitSnapshot();
   }
 
+  /** Snapshot serialization is deliberately deferred to its own macrotask
+   *  (setTimeout 0) instead of running inside the sim's setInterval callback:
+   *  a catch-up burst can step the sim several times per interval, and
+   *  serializing after each step would turn a brief stall into a long
+   *  render-blocking callback. The single pending timer also coalesces those
+   *  burst requests into one emission, with a full snapshot superseding any
+   *  queued projectile delta. Same thread either way — this trades snapshot
+   *  latency (microtask-scale) for tick-callback length. */
   private queuePresentationSnapshot(): void {
     if (this.pendingProjectileDeltaSnapshotTimer !== null) {
       clearTimeout(this.pendingProjectileDeltaSnapshotTimer);

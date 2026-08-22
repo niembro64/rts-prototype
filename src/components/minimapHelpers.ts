@@ -58,6 +58,13 @@ export function applyMinimapContentData(
   target.wind = cloneWind(source.wind);
 }
 
+/** Last-applied camera pose per minimap target: 8 quad coords, yaw, pitch,
+ *  and the 9 view-basis components. The scene calls the quad update every
+ *  render frame with an identity-stable, mutated-in-place array, so without
+ *  this compare the directionVersion bump wakes the direction-HUD watcher
+ *  every frame even with a motionless camera. */
+const cameraQuadSignatures = new WeakMap<MinimapData, Float64Array>();
+
 export function applyMinimapCameraQuad(
   target: MinimapData,
   cameraQuad: MinimapData['cameraQuad'],
@@ -65,6 +72,31 @@ export function applyMinimapCameraQuad(
   cameraPitch?: number,
   cameraView?: CameraViewBasis,
 ): void {
+  let sig = cameraQuadSignatures.get(target);
+  if (sig === undefined) {
+    sig = new Float64Array(19).fill(Number.NaN);
+    cameraQuadSignatures.set(target, sig);
+  }
+  let changed = target.cameraQuad !== cameraQuad;
+  for (let p = 0; p < 4; p++) {
+    const point = cameraQuad[p];
+    const base = p * 2;
+    if (sig[base] !== point.x) { sig[base] = point.x; changed = true; }
+    if (sig[base + 1] !== point.y) { sig[base + 1] = point.y; changed = true; }
+  }
+  if (cameraYaw !== undefined && sig[8] !== cameraYaw) { sig[8] = cameraYaw; changed = true; }
+  if (cameraPitch !== undefined && sig[9] !== cameraPitch) { sig[9] = cameraPitch; changed = true; }
+  if (cameraView !== undefined) {
+    const b = [
+      cameraView.right.x, cameraView.right.y, cameraView.right.z,
+      cameraView.up.x, cameraView.up.y, cameraView.up.z,
+      cameraView.towardCamera.x, cameraView.towardCamera.y, cameraView.towardCamera.z,
+    ];
+    for (let i = 0; i < 9; i++) {
+      if (sig[10 + i] !== b[i]) { sig[10 + i] = b[i]; changed = true; }
+    }
+  }
+  if (!changed) return;
   target.cameraQuad = markRaw(cameraQuad);
   if (cameraYaw !== undefined) target.cameraYaw = cameraYaw;
   if (cameraPitch !== undefined) target.cameraPitch = cameraPitch;

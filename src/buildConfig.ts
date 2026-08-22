@@ -30,11 +30,21 @@ function decayFractionPerSecond(value: number): number {
   return value;
 }
 
+function positiveFinite(value: number, label: string): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`buildConfig.${label} must be finite and > 0; received ${value}`);
+  }
+  return value;
+}
+
 export const BUILD_CONFIG = {
   maxBuildableSlopeAngleDegrees,
   /** Unfinished shells rot when nobody is paying for them: after the delay
-   *  they lose a constant fraction of their OWN full cost per second, and the
-   *  frame is removed outright at zero progress. */
+   *  they lose a fraction of their OWN full cost per second, and the frame is
+   *  removed outright at zero progress. Mirroring BAR's modrules (decay rate
+   *  "inversely proportional to the buildtime"), the fraction is scaled by
+   *  referenceCostTotal / frame total cost, clamped to [costScaleMin,
+   *  costScaleMax] — a cheap frame rots fast, an expensive one lingers. */
   unfinishedBuildDecay: {
     unfundedDelaySeconds: nonNegativeSeconds(
       rawConfig.unfinishedBuildDecay.unfundedDelaySeconds,
@@ -42,6 +52,18 @@ export const BUILD_CONFIG = {
     ),
     fractionPerSecond: decayFractionPerSecond(
       rawConfig.unfinishedBuildDecay.fractionPerSecond,
+    ),
+    referenceCostTotal: positiveFinite(
+      rawConfig.unfinishedBuildDecay.referenceCostTotal,
+      'unfinishedBuildDecay.referenceCostTotal',
+    ),
+    costScaleMin: positiveFinite(
+      rawConfig.unfinishedBuildDecay.costScaleMin,
+      'unfinishedBuildDecay.costScaleMin',
+    ),
+    costScaleMax: positiveFinite(
+      rawConfig.unfinishedBuildDecay.costScaleMax,
+      'unfinishedBuildDecay.costScaleMax',
     ),
   },
 } as const;

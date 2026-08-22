@@ -1,5 +1,8 @@
-// Contract: an unfinished building nobody is answering for rots at a constant
-// rate and is removed at zero progress; an attended one never rots.
+// Contract: an unfinished building nobody is answering for rots and is
+// removed at zero progress. Attendance follows BAR's model: landed build
+// power protects, the builder's ACTIVE head order protects, and queue
+// intent protects only zero-invested frames (the queued-ghost stand-in) —
+// an invested frame left for later in a queue rots.
 //
 // See budget_design_philosophy.html — "An unattended build site rots away".
 
@@ -95,22 +98,22 @@ export function runUnfinishedBuildDecayContractTest(): void {
     'health must ride the progress the shell lost',
   );
 
-  // 2. A shell still queued in a builder's order list is attended, so it never
-  //    starts the clock even though no work is landing on it.
+  // 2. A shell that is the builder's ACTIVE head order never decays — an
+  //    economy stall, or the walk into range, must not rot the frame being
+  //    worked (BAR's builder-priority token-build-speed rule).
   const attendedWorld = new WorldState(92, 512, 512);
-  const queuedShell = createHalfBuiltShell(attendedWorld, playerId, 'buildingSolar', 220, 220);
+  const activeShell = createHalfBuiltShell(attendedWorld, playerId, 'buildingSolar', 220, 220);
   const builder = attendedWorld.createUnitFromBlueprint(120, 120, playerId, 'unitCommander', {
     allocateSubEntityIds: false,
   });
   assertContract(builder.unit !== null, 'attended-shell test builder must have a unit component');
   setUnitActions(builder.unit, [
-    { type: 'move', x: 400, y: 400, z: 0 },
     {
       type: 'build',
-      x: queuedShell.transform.x,
-      y: queuedShell.transform.y,
-      z: queuedShell.transform.z,
-      buildingId: queuedShell.id,
+      x: activeShell.transform.x,
+      y: activeShell.transform.y,
+      z: activeShell.transform.z,
+      buildingId: activeShell.id,
     },
   ]);
   attendedWorld.addEntity(builder);
@@ -120,11 +123,65 @@ export function runUnfinishedBuildDecayContractTest(): void {
     const result = updateConstructionLifecycle(attendedWorld, stepMs);
     assertContract(
       result.decayedBuildings.length === 0,
-      'a shell a builder still has queued must never decay away',
+      "a builder's active build target must never decay away",
     );
   }
   assertContract(
-    queuedShell.buildable !== null && queuedShell.buildable.healthBuildFraction === 0.5,
-    'a queued shell must keep every point of progress it had',
+    activeShell.buildable !== null && activeShell.buildable.healthBuildFraction === 0.5,
+    'an active build target must keep every point of progress it had',
+  );
+
+  // 3. A ZERO-invested shell queued deeper in the list is the queued-ghost
+  //    stand-in: it holds forever. An INVESTED shell in the same position
+  //    rots — queue intent alone does not protect paid-for progress (BAR:
+  //    only landed build power does).
+  const queuedWorld = new WorldState(93, 512, 512);
+  const ghostShell = createHalfBuiltShell(queuedWorld, playerId, 'buildingSolar', 220, 220);
+  ghostShell.buildable!.paid.energy = 0;
+  ghostShell.buildable!.paid.metal = 0;
+  ghostShell.buildable!.healthBuildFraction = 0;
+  ghostShell.building!.hp = 1;
+  const investedShell = createHalfBuiltShell(queuedWorld, playerId, 'buildingSolar', 300, 300);
+  const queueBuilder = queuedWorld.createUnitFromBlueprint(120, 120, playerId, 'unitCommander', {
+    allocateSubEntityIds: false,
+  });
+  assertContract(queueBuilder.unit !== null, 'queued-shell test builder must have a unit component');
+  setUnitActions(queueBuilder.unit, [
+    { type: 'move', x: 400, y: 400, z: 0 },
+    {
+      type: 'build',
+      x: ghostShell.transform.x,
+      y: ghostShell.transform.y,
+      z: ghostShell.transform.z,
+      buildingId: ghostShell.id,
+    },
+    {
+      type: 'build',
+      x: investedShell.transform.x,
+      y: investedShell.transform.y,
+      z: investedShell.transform.z,
+      buildingId: investedShell.id,
+    },
+  ]);
+  queuedWorld.addEntity(queueBuilder);
+
+  let investedRemoved = false;
+  for (let step = 0; step < attendedSteps; step++) {
+    const result = updateConstructionLifecycle(queuedWorld, stepMs);
+    for (const removedShell of result.decayedBuildings) {
+      assertContract(
+        removedShell.id !== ghostShell.id,
+        'a zero-invested queued shell must never decay away',
+      );
+      if (removedShell.id === investedShell.id) investedRemoved = true;
+    }
+  }
+  assertContract(
+    ghostShell.buildable !== null && ghostShell.buildable.healthBuildFraction === 0,
+    'a zero-invested queued shell must hold at zero, untouched',
+  );
+  assertContract(
+    investedRemoved,
+    'an invested shell protected only by queue intent must rot away — landed build power, not intent, protects progress',
   );
 }

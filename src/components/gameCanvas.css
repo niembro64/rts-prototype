@@ -290,9 +290,9 @@
 .map-details-panel {
   position: absolute;
   top: 0;
-  left: calc(var(--hud-minimap-max, 320px) + 16px);
+  left: calc(var(--hud-minimap-max, 272px) + 16px);
   z-index: 1001;
-  width: min(300px, calc(100vw - var(--hud-minimap-max, 320px) - 36px));
+  width: min(300px, calc(100vw - var(--hud-minimap-max, 272px) - 36px));
   max-width: 300px;
   border: 1px solid #4f6074;
   border-radius: 6px;
@@ -349,12 +349,12 @@
 .options-menu-panel {
   position: absolute;
   top: 0;
-  left: calc(var(--hud-minimap-max, 320px) + 332px);
+  left: calc(var(--hud-minimap-max, 272px) + 332px);
   /* Above the communication panel (1002): the two overlap on narrow
    * viewports, and an options menu the player just opened must not have
    * its lower rows (PAUSE, LEAVE) buried under an open chat panel. */
   z-index: 1003;
-  width: min(244px, calc(100vw - var(--hud-minimap-max, 320px) - 352px));
+  width: min(244px, calc(100vw - var(--hud-minimap-max, 272px) - 352px));
   max-width: 244px;
   border: 1px solid #4f6074;
   border-radius: 6px;
@@ -449,13 +449,13 @@
   }
 
   .map-details-panel {
-    top: var(--hud-minimap-follow-top, 326px);
+    top: var(--hud-minimap-follow-top, 278px);
     left: 0;
     width: min(300px, 100vw);
   }
 
   .options-menu-panel {
-    top: var(--hud-minimap-follow-top, 326px);
+    top: var(--hud-minimap-follow-top, 278px);
     left: 0;
     width: min(244px, 100vw);
   }

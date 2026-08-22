@@ -184,7 +184,10 @@ export class ClientViewState extends ClientViewStateBase {
       this.activeEntityPredictionIds.clear();
       this.projectileStore.activeProjectileMotionIds.clear();
       const stats = this.supplementalPresentation.apply(deltaMs);
-      const updated = this.lockstepPresentation.apply(this.entities.values());
+      const updated = this.lockstepPresentation.apply(
+        this.entities.values(),
+        this.getEntitySetVersion(),
+      );
       for (let i = 0; i < updated.length; i++) {
         const entity = updated[i];
         if (entity.unit !== null || entity.building !== null) {

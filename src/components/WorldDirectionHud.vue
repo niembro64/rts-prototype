@@ -11,6 +11,8 @@ import {
   createPrimitiveConeGeometry,
   createPrimitiveCylinderGeometry,
 } from '@/game/render3d/PrimitiveGeometryQuality3D';
+import { SUN_DIRECTION_SIM } from '@/game/render3d/SunLighting';
+import { SUN_RENDER_CONFIG } from '@/config';
 
 const props = withDefaults(defineProps<{
   data: Pick<MinimapData, 'cameraView' | 'directionVersion' | 'wind'>;
@@ -21,6 +23,15 @@ const props = withDefaults(defineProps<{
 
 const compassCanvasRef = ref<HTMLCanvasElement | null>(null);
 const windCanvasRef = ref<HTMLCanvasElement | null>(null);
+const sunCanvasRef = ref<HTMLCanvasElement | null>(null);
+/** SUN_DIRECTION_SIM points from the world toward the sun; the HUD arrow
+ *  shows the direction the light travels, so it is negated. */
+const SUN_LIGHT_TRAVEL_SIM = Object.freeze({
+  x: -SUN_DIRECTION_SIM.x,
+  y: -SUN_DIRECTION_SIM.y,
+  z: -SUN_DIRECTION_SIM.z,
+});
+const sunElevationLabel = `${Math.round((SUN_RENDER_CONFIG.elevationRad * 180) / Math.PI)}°`;
 const windSpeedLabel = computed(() => {
   void props.data.directionVersion;
   return (props.data.wind?.speed ?? 0).toFixed(2);
@@ -54,8 +65,10 @@ type HudView = {
 
 let compassView: HudView | null = null;
 let windView: HudView | null = null;
+let sunView: HudView | null = null;
 let compassRig: THREE.Group | null = null;
 let windArrow: THREE.Group | null = null;
+let sunArrow: THREE.Group | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let rafId = 0;
 let throttleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -82,6 +95,7 @@ const hudUp = new THREE.Vector3();
 const hudTowardCamera = new THREE.Vector3();
 const lowMemoryCompassDirection = new THREE.Vector3();
 const lowMemoryWindDirection = new THREE.Vector3();
+const lowMemorySunDirection = new THREE.Vector3();
 
 function fmtWindComponent(value: number): string {
   const rounded = Math.abs(value) < 0.05 ? 0 : value;
@@ -222,27 +236,33 @@ function createHudView(
 function buildScene(): void {
   const compassCanvas = compassCanvasRef.value;
   const windCanvas = windCanvasRef.value;
-  if (!compassCanvas || !windCanvas) return;
+  const sunCanvas = sunCanvasRef.value;
+  if (!compassCanvas || !windCanvas || !sunCanvas) return;
 
   const compassToken = acquireAuxiliaryRendererContext('world-direction-hud:compass', compassCanvas);
   const windToken = acquireAuxiliaryRendererContext('world-direction-hud:wind', windCanvas);
-  if (compassToken === null || windToken === null) {
+  const sunToken = acquireAuxiliaryRendererContext('world-direction-hud:sun', sunCanvas);
+  if (compassToken === null || windToken === null || sunToken === null) {
     compassToken?.release();
     windToken?.release();
-    enableLowMemoryHud(compassCanvas, windCanvas);
+    sunToken?.release();
+    enableLowMemoryHud(compassCanvas, windCanvas, sunCanvas);
     return;
   }
 
   const northMat = makeHudMaterial(HUD_COLORS.materials.north);
   const windMat = makeHudMaterial(HUD_COLORS.materials.wind);
+  const sunMat = makeHudMaterial(HUD_COLORS.materials.sun);
 
   compassRig = makeArrow(northMat);
   windArrow = makeArrow(windMat);
   windArrow.visible = false;
+  sunArrow = makeArrow(sunMat);
 
   try {
     compassView = createHudView(compassCanvas, compassRig, compassToken);
     windView = createHudView(windCanvas, windArrow, windToken);
+    sunView = createHudView(sunCanvas, sunArrow, sunToken);
   } catch (error) {
     if (compassView) {
       disposeHudView(compassView);
@@ -258,9 +278,17 @@ function buildScene(): void {
       disposeObjectResources(windArrow);
       windToken.release();
     }
+    if (sunView) {
+      disposeHudView(sunView);
+      sunView = null;
+    } else {
+      disposeObjectResources(sunArrow);
+      sunToken.release();
+    }
     compassRig = null;
     windArrow = null;
-    enableLowMemoryHud(compassCanvas, windCanvas);
+    sunArrow = null;
+    enableLowMemoryHud(compassCanvas, windCanvas, sunCanvas);
     console.warn('WorldDirectionHud: falling back after WebGL HUD init failed.', error);
     return;
   }
@@ -268,14 +296,20 @@ function buildScene(): void {
   resizeObserver = new ResizeObserver(resize);
   resizeObserver.observe(compassCanvas);
   resizeObserver.observe(windCanvas);
+  resizeObserver.observe(sunCanvas);
   resize();
 }
 
-function enableLowMemoryHud(compassCanvas: HTMLCanvasElement, windCanvas: HTMLCanvasElement): void {
+function enableLowMemoryHud(
+  compassCanvas: HTMLCanvasElement,
+  windCanvas: HTMLCanvasElement,
+  sunCanvas: HTMLCanvasElement,
+): void {
   lowMemoryHud = true;
   resizeObserver = new ResizeObserver(resize);
   resizeObserver.observe(compassCanvas);
   resizeObserver.observe(windCanvas);
+  resizeObserver.observe(sunCanvas);
   resize();
 }
 
@@ -307,12 +341,14 @@ function resize(): void {
   if (lowMemoryHud) {
     resizeLowMemoryCanvas(compassCanvasRef.value);
     resizeLowMemoryCanvas(windCanvasRef.value);
+    resizeLowMemoryCanvas(sunCanvasRef.value);
     requestHudRender();
     return;
   }
   let resized = false;
   if (compassView) resized = resizeHudView(compassView) || resized;
   if (windView) resized = resizeHudView(windView) || resized;
+  if (sunView) resized = resizeHudView(sunView) || resized;
   if (resized) requestHudRender();
 }
 
@@ -332,11 +368,12 @@ function renderHud(now: number): void {
   if (lowMemoryHud) {
     resizeLowMemoryCanvas(compassCanvasRef.value);
     resizeLowMemoryCanvas(windCanvasRef.value);
+    resizeLowMemoryCanvas(sunCanvasRef.value);
     renderLowMemoryHud();
     needsRender = false;
     return;
   }
-  if (!compassView || !windView || !compassRig || !windArrow) return;
+  if (!compassView || !windView || !sunView || !compassRig || !windArrow || !sunArrow) return;
   if (typeof document !== 'undefined' && document.hidden) {
     needsRender = true;
     return;
@@ -356,6 +393,14 @@ function renderHud(now: number): void {
   let changed = needsRender;
   writeWorldVectorInView(0, -1, 0, viewDirection);
   applyViewArrowDirection(compassView, compassRig, viewDirection.x, viewDirection.y, 0);
+
+  writeWorldVectorInView(
+    SUN_LIGHT_TRAVEL_SIM.x,
+    SUN_LIGHT_TRAVEL_SIM.y,
+    SUN_LIGHT_TRAVEL_SIM.z,
+    viewDirection,
+  );
+  applyViewArrowDirection(sunView, sunArrow, viewDirection.x, viewDirection.y, viewDirection.z);
 
   const wind = props.data.wind;
   if (wind && wind.speed > 1e-6) {
@@ -381,6 +426,7 @@ function renderHud(now: number): void {
   if (changed) {
     compassView.renderer.render(compassView.scene, compassView.camera);
     windView.renderer.render(windView.scene, windView.camera);
+    sunView.renderer.render(sunView.scene, sunView.camera);
     needsRender = false;
   }
 }
@@ -476,6 +522,19 @@ function renderLowMemoryHud(): void {
       false,
     );
   }
+
+  writeWorldVectorInView(
+    SUN_LIGHT_TRAVEL_SIM.x,
+    SUN_LIGHT_TRAVEL_SIM.y,
+    SUN_LIGHT_TRAVEL_SIM.z,
+    lowMemorySunDirection,
+  );
+  drawLowMemoryArrow(
+    sunCanvasRef.value,
+    lowMemorySunDirection,
+    `#${HUD_COLORS.materials.sun.colorHex.toString(16).padStart(6, '0')}`,
+    true,
+  );
 }
 
 function requestHudRender(): void {
@@ -545,10 +604,15 @@ onUnmounted(() => {
   if (windView) {
     disposeHudView(windView);
   }
+  if (sunView) {
+    disposeHudView(sunView);
+  }
   compassView = null;
   windView = null;
+  sunView = null;
   compassRig = null;
   windArrow = null;
+  sunArrow = null;
 });
 
 watch(
@@ -578,13 +642,20 @@ watch(
     class="world-direction-hud"
     :class="{ compact }"
     :style="hudStyle"
-    aria-label="Compass and wind direction"
+    aria-label="Compass, sunlight, and wind direction"
   >
     <div class="direction-item">
       <canvas ref="compassCanvasRef" class="direction-canvas"></canvas>
       <div class="direction-label">
         <span>Compass</span>
         <strong>N</strong>
+      </div>
+    </div>
+    <div class="direction-item sun-item">
+      <canvas ref="sunCanvasRef" class="direction-canvas"></canvas>
+      <div class="direction-label">
+        <span>Sunlight</span>
+        <strong>{{ sunElevationLabel }}</strong>
       </div>
     </div>
     <div class="direction-item wind-item">
@@ -607,7 +678,7 @@ watch(
   display: flex;
   align-items: stretch;
   gap: 10px;
-  width: 330px;
+  width: 450px;
   height: 118px;
   min-height: 0;
   padding: 0;
@@ -619,7 +690,7 @@ watch(
 }
 
 .world-direction-hud.compact {
-  width: 320px;
+  width: 430px;
   height: 100%;
 }
 

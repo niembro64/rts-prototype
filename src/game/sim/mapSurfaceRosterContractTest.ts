@@ -29,7 +29,17 @@ import {
   getUnitAuthoredBuildBlueprintIds,
   getUnitBuilderAllowedBuildBlueprintIds,
 } from './hostCapabilities';
-import { mapHasLand, mapHasLandForSetup, mapHasWater, mapHasWaterForSetup } from './mapSurface';
+import {
+  MEDIUM_KEY_WATER,
+  mapHasLand,
+  mapHasLandForSetup,
+  mapHasWater,
+  mapHasWaterForSetup,
+} from './mapSurface';
+import {
+  buildingBlueprintIdsForMediumKey,
+  unitBlueprintIdsForMediumKey,
+} from './mapRoster';
 import { applyTerrainRuntimeConfig } from './terrain/terrainConfig';
 import { getTerrainRuntimeConfig } from './terrain/terrainState';
 import { getLiquidSurfaceMode, setLiquidSurfaceMode } from './worldSurfaceState';
@@ -132,20 +142,24 @@ function assertWaterQuestion(): void {
 }
 
 function assertLandQuestion(): void {
-  // Land is the mirror minus the liquid: any magnitude at or above datum.
+  // The generation pipeline's baseline surface sits at the datum, so land
+  // survives EVERY authored bar combination — including a map whose four
+  // bars all dig. (An earlier rule declared all-negative bars "landless",
+  // which wrongly emptied fabricator build lists on dug-everywhere maps
+  // that are mostly dry ground between the basins.)
   assertContract(
     mapHasLandForSetup({ ...DRY_MAGNITUDES, liquidSurfaceMode: 'water' }),
     'a map whose magnitudes sit at datum must have land',
   );
   assertContract(
-    !mapHasLandForSetup({
+    mapHasLandForSetup({
       centerMagnitude: -400,
       ringMagnitude: -400,
       dividersMagnitude: -400,
       perimeterMagnitude: -400,
       liquidSurfaceMode: 'water',
     }),
-    'a map whose every magnitude digs must be declared landless',
+    'even a map whose every bar digs keeps its baseline ground — the bars carve features, they cannot flood the map',
   );
   // The liquid is irrelevant to the land question — lava fills basins.
   assertContract(
@@ -153,26 +167,6 @@ function assertLandQuestion(): void {
       mapHasLandForSetup({ ...WET_MAGNITUDES, liquidSurfaceMode: 'water' }),
     'the land answer must ignore what fills the basins',
   );
-  // Any single magnitude at datum restores land on its own.
-  const magnitudeKeys = [
-    'centerMagnitude',
-    'ringMagnitude',
-    'dividersMagnitude',
-    'perimeterMagnitude',
-  ] as const;
-  for (const key of magnitudeKeys) {
-    assertContract(
-      mapHasLandForSetup({
-        centerMagnitude: -400,
-        ringMagnitude: -400,
-        dividersMagnitude: -400,
-        perimeterMagnitude: -400,
-        [key]: 0,
-        liquidSurfaceMode: 'water',
-      }),
-      `a datum ${key} alone must leave standing ground`,
-    );
-  }
   for (const preset of BATTLE_PRESETS) {
     // No authored preset may be landless — the commander swims, but a map
     // with no ground at all fields no factories and no economy. Pinned so an
@@ -356,15 +350,16 @@ function assertRostersNarrowWithTheMap(): void {
   });
 
   // The LAND mirror: an all-sea map fields no pure ground hull and no
-  // ground-only structure, while everything that swims or flies stays.
-  const LANDLESS_MAGNITUDES = {
-    centerMagnitude: -400,
-    ringMagnitude: -400,
-    dividersMagnitude: -400,
-    perimeterMagnitude: -400,
-  };
-  withMapSetup(LANDLESS_MAGNITUDES, 'water', () => {
-    const factoryRoster = getStructureFactoryAllowedUnitBlueprintIds('towerFabricator');
+  // ground-only structure, while everything that swims or flies stays. No
+  // AUTHORED setup is landless — the pipeline's baseline surface is ground —
+  // so the landless narrowing is exercised through the medium-key primitive
+  // an authorable all-sea map would resolve to. The wet BOTH-key setup keeps
+  // the ambient rosters unnarrowed as the baseline.
+  withMapSetup(WET_MAGNITUDES, 'water', () => {
+    const factoryRoster = unitBlueprintIdsForMediumKey(
+      getStructureFactoryAllowedUnitBlueprintIds('towerFabricator'),
+      MEDIUM_KEY_WATER,
+    );
     for (const unitBlueprintId of factoryRoster) {
       assertContract(
         !isLandOnlyUnitBlueprintId(unitBlueprintId),
@@ -377,7 +372,7 @@ function assertRostersNarrowWithTheMap(): void {
         factoryRoster.includes('unitDuck'),
       'a map with no land must keep every hull that swims or flies',
     );
-    // Anti-vacuous: the wet pass must actually have been narrowing something.
+    // Anti-vacuous: the pass must actually have been narrowing something.
     const offersLandOnly = builderBlueprints().some((blueprint) =>
       getUnitAuthoredBuildBlueprintIds(blueprint).some(isLandOnlyBuildingBlueprintId));
     assertContract(
@@ -385,7 +380,10 @@ function assertRostersNarrowWithTheMap(): void {
       'the authored rosters must contain land-only structures for this pass to exercise',
     );
     for (const blueprint of builderBlueprints()) {
-      const builderRoster = getUnitBuilderAllowedBuildBlueprintIds(blueprint);
+      const builderRoster = buildingBlueprintIdsForMediumKey(
+        getUnitBuilderAllowedBuildBlueprintIds(blueprint),
+        MEDIUM_KEY_WATER,
+      );
       for (const buildingBlueprintId of builderRoster) {
         assertContract(
           !isLandOnlyBuildingBlueprintId(buildingBlueprintId),
@@ -393,12 +391,35 @@ function assertRostersNarrowWithTheMap(): void {
         );
       }
     }
-    const commanderRoster = getUnitBuilderAllowedBuildBlueprintIds(UNIT_BLUEPRINTS['unitCommander']);
+    const commanderRoster = buildingBlueprintIdsForMediumKey(
+      getUnitBuilderAllowedBuildBlueprintIds(UNIT_BLUEPRINTS['unitCommander']),
+      MEDIUM_KEY_WATER,
+    );
     assertContract(
       commanderRoster.includes('buildingExtractor') && commanderRoster.includes('towerFabricator'),
       'a map with no land must keep every structure that still has a square',
     );
   });
+
+  // THE REGRESSION THAT SHIPPED: a dug-everywhere map (all four bars
+  // negative) is mostly dry ground, and its fabricators must still offer
+  // ground hulls. The old "all-negative = landless" rule emptied them.
+  withMapSetup(
+    {
+      centerMagnitude: -400,
+      ringMagnitude: -400,
+      dividersMagnitude: -400,
+      perimeterMagnitude: -400,
+    },
+    'water',
+    () => {
+      const factoryRoster = getStructureFactoryAllowedUnitBlueprintIds('towerFabricator');
+      assertContract(
+        factoryRoster.includes('unitLynx'),
+        'a dug-everywhere map still has ground — fabricators must keep their tanks',
+      );
+    },
+  );
 }
 
 export function runMapSurfaceRosterContractTest(): void {

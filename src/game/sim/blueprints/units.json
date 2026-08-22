@@ -4113,7 +4113,19 @@
         }
       },
       "config": {
-        "wing": null,
+        "wing": {
+          "offset": {
+            "xUnitRadiusRatio": -0.08,
+            "yUnitRadiusRatio": 0,
+            "zUnitRadiusRatio": 0.22
+          },
+          "span": 2.7,
+          "chord": 0.8,
+          "thickness": 0.07,
+          "dihedralDeg": 4,
+          "sweepFrac": 0.45,
+          "mirrorX": false
+        },
         "tailWing": {
           "offset": {
             "xUnitRadiusRatio": -0.86,

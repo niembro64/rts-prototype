@@ -1,6 +1,6 @@
 .bar-menu-group {
   position: fixed;
-  top: var(--hud-minimap-follow-top, 326px);
+  top: var(--hud-minimap-follow-top, 278px);
   left: 0;
   bottom: auto;
   z-index: 1001;

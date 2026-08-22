@@ -62,6 +62,10 @@ pub(crate) struct EntityStateSlab {
     pub(crate) build_paid_metal: Vec<f64>,
     pub(crate) build_flags: Vec<u32>,
     pub(crate) dirty_mask: Vec<u32>,
+    /// One past the highest slot that ever hosted an entity (set_lifecycle is
+    /// the only registration point). Lets per-tick full-slab copies bound to
+    /// the populated prefix instead of the pre-seeded capacity.
+    pub(crate) used_slots: usize,
 }
 
 impl EntityStateSlab {
@@ -113,6 +117,7 @@ impl EntityStateSlab {
             build_paid_metal: Vec::new(),
             build_flags: Vec::new(),
             dirty_mask: Vec::new(),
+            used_slots: 0,
         }
     }
 
@@ -286,6 +291,9 @@ pub fn entity_state_set_lifecycle(
     let slab = entity_state();
     let s = slot as usize;
     slab.ensure_capacity(slot);
+    if s + 1 > slab.used_slots {
+        slab.used_slots = s + 1;
+    }
     slab.entity_id[s] = entity_id;
     slab.kind[s] = kind;
     slab.owner_player_id[s] = owner_player_id;

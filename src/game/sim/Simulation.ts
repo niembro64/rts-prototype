@@ -101,7 +101,7 @@ import {
   SimulationArrivalController,
 } from './SimulationArrivalController';
 import { createSelfDestructEvent } from './selfDestructEvent';
-import { isBuildRadiusTargetInRange, isBuildTargetInRange } from './builderRange';
+import { getBuildApproachMeasure, isBuildRadiusTargetInRange, isBuildTargetInRange } from './builderRange';
 import { SIM_TICK_INSTRUMENTATION } from '../perf/SimTickInstrumentation';
 import {
   isReclaimableTarget,
@@ -1011,6 +1011,75 @@ export class Simulation {
     return null;
   }
 
+  /** Navigation goal for the current action — usually the action point
+   *  itself. Build-family orders on a BUILDING target instead aim at a
+   *  stand-off inside build range along the builder→site line: the site's
+   *  center cell is building-blocked, so a center goal always fails
+   *  validation and gets clearance-snapped to open ground that can land far
+   *  from the site — the classic "builder walks the long way around to a
+   *  mex it could already reach" detour. The stand-off keeps the goal both
+   *  passable and local. The STORED plan goal stays the action point (hard
+   *  validity compares them); only where the route is computed toward moves. */
+  private resolveNavigationGoal(
+    entity: Entity,
+    action: UnitAction,
+  ): { x: number; y: number } | null {
+    // Attack orders approach to WEAPON range, not to the target's center —
+    // BAR's move-goal-with-radius semantics. Without this a unit whose gun
+    // is reloading or out of arc keeps walking into the target, and an
+    // attack on a building paths at a building-blocked cell.
+    if (action.type === 'attack') {
+      if (action.targetId === undefined) return null;
+      const target = this.world.getEntity(action.targetId);
+      if (target === undefined) return null;
+      const combat = entity.combat;
+      if (combat === null || combat.turrets.length === 0) return null;
+      let weaponRange = 0;
+      for (let i = 0; i < combat.turrets.length; i++) {
+        const fireMax = combat.turrets[i].ranges.fire.max.acquire;
+        if (fireMax > weaponRange) weaponRange = fireMax;
+      }
+      if (weaponRange <= 0) return null;
+      const dx = entity.transform.x - action.x;
+      const dy = entity.transform.y - action.y;
+      const dCenter = magnitude(dx, dy);
+      if (dCenter <= 1e-6) return null;
+      const targetExtent = target.building !== null
+        ? Math.min(target.building.width, target.building.height) * 0.5
+        : target.unit?.radius.collision ?? 0;
+      const standOff = Math.min(dCenter, targetExtent + weaponRange * 0.8);
+      return {
+        x: action.x + dx * (standOff / dCenter),
+        y: action.y + dy * (standOff / dCenter),
+      };
+    }
+    if (
+      action.type !== 'build' &&
+      action.type !== 'repair' &&
+      action.type !== 'reclaim' &&
+      action.type !== 'capture' &&
+      action.type !== 'resurrect'
+    ) {
+      return null;
+    }
+    const targetId = action.type === 'build' ? action.buildingId : action.targetId;
+    if (targetId === undefined) return null;
+    const target = this.world.getEntity(targetId);
+    if (target === undefined || target.building === null) return null;
+    const measure = getBuildApproachMeasure(entity, target);
+    if (measure === null) return null;
+    const dx = entity.transform.x - action.x;
+    const dy = entity.transform.y - action.y;
+    const dCenter = magnitude(dx, dy);
+    if (dCenter <= 1e-6) return null;
+    // Distance from the site center to the footprint surface along this
+    // approach direction, then half the build range of margin past it.
+    const surfaceOffset = Math.max(0, dCenter - measure.surfaceDistance);
+    const standOff = Math.min(dCenter, surfaceOffset + measure.range * 0.5);
+    const scale = standOff / dCenter;
+    return { x: action.x + dx * scale, y: action.y + dy * scale };
+  }
+
   /** Try to complete the plan as one validated straight segment. The WASM
    *  validator runs the exact traversal rules the planner uses (move-domain
    *  edges, waypoint-domain endpoint), so a passing segment IS the finished
@@ -1022,15 +1091,20 @@ export class Simulation {
     action: UnitAction,
     terrainVersion: number,
   ): Unit['activePath'] {
+    const navGoal = this.resolveNavigationGoal(entity, action);
+    const goalX = navGoal?.x ?? action.x;
+    const goalY = navGoal?.y ?? action.y;
     const directDistance = magnitude(
-      action.x - entity.transform.x,
-      action.y - entity.transform.y,
+      goalX - entity.transform.x,
+      goalY - entity.transform.y,
     );
     if (directDistance > PATHFINDING_DIRECT_PLAN_MAX_DISTANCE_WU) return null;
     const direct: UnitPathPoint = {
-      x: action.x,
-      y: action.y,
-      z: action.z ?? this.world.getTerrainBedZ(action.x, action.y),
+      x: goalX,
+      y: goalY,
+      z: navGoal !== null
+        ? this.world.getTerrainBedZ(goalX, goalY)
+        : action.z ?? this.world.getTerrainBedZ(goalX, goalY),
     };
     if (
       !isPathSegmentTraversable(
@@ -1144,6 +1218,9 @@ export class Simulation {
       }
     }
 
+    const navGoal = formationRoute === null
+      ? this.resolveNavigationGoal(entity, action)
+      : null;
     this.activePathPlanJobs.set(teamId, {
       entityId,
       lane,
@@ -1154,9 +1231,9 @@ export class Simulation {
       buildingGridVersion: this.constructionSystem.getGrid().getVersion(),
       startX: formationRoute?.startX ?? entity.transform.x,
       startY: formationRoute?.startY ?? entity.transform.y,
-      goalX: formationRoute?.goalX ?? action.x,
-      goalY: formationRoute?.goalY ?? action.y,
-      goalZ: action.z ?? null,
+      goalX: formationRoute?.goalX ?? navGoal?.x ?? action.x,
+      goalY: formationRoute?.goalY ?? navGoal?.y ?? action.y,
+      goalZ: navGoal !== null ? null : action.z ?? null,
       terrainFilter,
       unitRadius: formationRoute?.radius ?? unit.radius.collision,
       symmetricSlope: this.world.slopePathMode === 'symmetric',

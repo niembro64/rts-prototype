@@ -40,6 +40,7 @@ import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import { UNIT_DEATH_FADE_MS } from '@/visionConfig';
 import { NANOFRAME_VISUAL_CONFIG } from '@/constructionVisualConfig';
 import { getBuildAlphaForFraction } from '../sim/buildableHelpers';
+import { SUN_DIRECTION_SIM } from './SunLighting';
 
 /** Shared death-out fade duration (ms). Build-in is driven by the sim's
  *  build fraction, so only the cosmetic death fade needs a clock. Sourced
@@ -164,10 +165,11 @@ export function patchInstancedFadeMaterial(material: THREE.Material): void {
 const NF = NANOFRAME_VISUAL_CONFIG;
 const glslFloat = (v: number): string => (Number.isInteger(v) ? `${v}.0` : `${v}`);
 
-/** The shared directional light comes from due south at 45 degrees
- *  elevation (see the design doc's shadow rules); the flat team-color
- *  band shades against the same sun so a nanoframe reads as lit. */
-const BUILD_SUN_DIR = 'vec3(0.0, 0.70710678, -0.70710678)';
+/** The flat team-color band shades against the SAME sun the scene's
+ *  directional light uses, so a nanoframe reads as lit from the direction
+ *  everything else is. Derived from SUN_DIRECTION_SIM (sim x/y/z → three
+ *  x/z/y) instead of a hand-copied literal that drifts from the config. */
+const BUILD_SUN_DIR = `vec3(${SUN_DIRECTION_SIM.x.toFixed(8)}, ${SUN_DIRECTION_SIM.z.toFixed(8)}, ${SUN_DIRECTION_SIM.y.toFixed(8)})`;
 
 const BUILD_VERTEX_COMMON = [
   'varying vec3 vBuildWorldPos;',

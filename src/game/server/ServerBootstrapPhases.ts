@@ -331,9 +331,11 @@ function normalizeSeatSubset(
 }
 
 /** Phase 9a — the full-base spawn for every seat whose INITIAL STATE is
- *  'base'. The base MODE (demo patrol loops and initially-off switches vs
- *  the real battle's waypoint policy) follows the battle kind, not the
- *  seat: a base seat in a real battle plays by real-battle rules. */
+ *  'base'. The base MODE (initially-off switches, fight-leg distance)
+ *  follows the battle kind, not the seat: a base seat in a real battle
+ *  plays by real-battle rules. Game-start factories get the full patrol
+ *  route in BOTH modes — the complex-vs-simple waypoint split is game-init
+ *  vs built-in-play, decided in spawn.ts/construction.ts. */
 export function spawnBootstrapDemoBases(
   world: WorldState,
   simulation: Simulation,

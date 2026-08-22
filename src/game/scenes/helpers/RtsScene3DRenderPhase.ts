@@ -92,6 +92,11 @@ import type { RtsScene3DCameraFootprintSystem } from './RtsScene3DCameraFootprin
 import type { RtsScene3DSelectionSystem } from './RtsScene3DSelectionSystem';
 import { EntityLodState3D } from '../../render3d/EntityLod3D';
 
+/** LOD proxy-row counts are telemetry only the performance harness reads —
+ *  two full row walks per frame otherwise consumed by nobody. The harness
+ *  flips this on for the duration of a capture. */
+export const RENDER_PHASE_PROXY_ROW_TELEMETRY = { enabled: false };
+
 type RtsScene3DRenderPhaseResources = {
   entityRenderer: Render3DEntities;
   beamRenderer: BeamRenderer3D;
@@ -270,6 +275,7 @@ export class RtsScene3DRenderPhase {
     fogShade: this.terrainFogShadeScratch,
     entityShadows: this.entityShadowPacket,
     visibleBounds: null as unknown as FootprintBounds,
+    updateWorldShadeCoverage: true,
   };
   /** Camera-distance fade shared by HP/build bars + name labels so
    *  both fade + cull together as the camera zooms out (BAR style). */
@@ -566,6 +572,7 @@ export class RtsScene3DRenderPhase {
     this.terrainUpdateOptions.localPlayerId = this.getLocalPlayerId();
     this.terrainUpdateOptions.entityShadows = entityLists.entityShadows;
     this.terrainUpdateOptions.visibleBounds = this.renderScope.getBounds();
+    this.terrainUpdateOptions.updateWorldShadeCoverage = updateEffectsThisFrame;
     terrainTileRenderer.update(
       graphicsConfig,
       renderFrameState,
@@ -755,8 +762,13 @@ export class RtsScene3DRenderPhase {
     timings.totalMs = renderEnd - renderStart;
     timings.unitRows = entityLists.unitRows.count;
     timings.buildingRows = entityLists.buildingRows.count;
-    timings.unitLodProxyRows = this.countLodProxyRows(entityLists.unitRows);
-    timings.buildingLodProxyRows = this.countLodProxyRows(entityLists.buildingRows);
+    if (RENDER_PHASE_PROXY_ROW_TELEMETRY.enabled) {
+      timings.unitLodProxyRows = this.countLodProxyRows(entityLists.unitRows);
+      timings.buildingLodProxyRows = this.countLodProxyRows(entityLists.buildingRows);
+    } else {
+      timings.unitLodProxyRows = 0;
+      timings.buildingLodProxyRows = 0;
+    }
     timings.projectileRows = projectileLists.traveling.length;
     timings.lineProjectileRows = lineProjectiles.length;
     return {
