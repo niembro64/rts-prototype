@@ -205,6 +205,32 @@ export function getBuildingAuthoredContactSightRadius(
   return max;
 }
 
+/** Authored FULL-SIGHT reach of a building blueprint, before any instance
+ *  exists — the placement-preview counterpart of the contact helper above. */
+export function getBuildingAuthoredFullSightRadius(
+  buildingBlueprintId: BuildingBlueprintId | null,
+  sourceMedium: SensorMedium,
+  targetMedium: SensorMedium,
+): number {
+  let max = 0;
+  for (const sensors of getBuildingAuthoredSensors(buildingBlueprintId)) {
+    max = Math.max(max, targetRadius(sensors.fullSight, sourceMedium, targetMedium));
+  }
+  return max;
+}
+
+/** Authored jammer reach of a building blueprint (radar and sonar jam lanes
+ *  reduced to one display radius for the placement preview). */
+export function getBuildingAuthoredJammerRadius(
+  buildingBlueprintId: BuildingBlueprintId | null,
+): number {
+  let max = 0;
+  for (const sensors of getBuildingAuthoredSensors(buildingBlueprintId)) {
+    max = Math.max(max, sensors.radarJamRadius, sensors.sonarJamRadius);
+  }
+  return max;
+}
+
 export function getBuildingAuthoredRadarRadius(
   buildingBlueprintId: BuildingBlueprintId | null,
 ): number {

@@ -262,7 +262,10 @@ export class RtsScene3DRenderPhase {
     shieldVisibilityTeamMask: 0,
     scoped: false,
   };
-  private readonly entityRendererOverlayModes = { reclaimTargets: false };
+  private readonly entityRendererOverlayModes = {
+    reclaimTargets: false,
+    hoveredEntityId: null as EntityId | null,
+  };
   private readonly terrainFogShadeScratch = {
     unseenDarkness: 0,
     radarDarkness: 0,
@@ -540,6 +543,7 @@ export class RtsScene3DRenderPhase {
       (inputManager?.isInCaptureMode() ?? false) ||
       (inputManager?.isInResurrectMode() ?? false) ||
       (inputManager?.isInResurrectAreaMode() ?? false);
+    this.entityRendererOverlayModes.hoveredEntityId = hoveredEntity?.id ?? null;
     entityRenderer.update(
       renderFrameState,
       (serverMeta?.turretShieldPanelsEnabled ?? true) && forceFieldsVisible,
