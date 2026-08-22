@@ -766,6 +766,313 @@ pub fn airborne_loiter_step_batch(
     active_count
 }
 
+pub(crate) const AIRBORNE_RETURN_STATE_APPROACH: u8 = 0;
+pub(crate) const AIRBORNE_RETURN_STATE_EGRESS: u8 = 1;
+pub(crate) const AIRBORNE_RETURN_FLAG_CHECK_DUE: u8 = 1 << 0;
+
+/// One step of the cruise-locomotion waypoint controller (plane/aerosub).
+///
+/// A forward-flight body has a minimum turning circle R ~= v^2 / a. A goal
+/// inside either circle tangent to the current velocity cannot be reached by
+/// steering toward it — greedy pursuit decays into a constant-radius orbit
+/// that never crosses the point. The controller is a declared two-state
+/// machine: APPROACH steers at the goal; EGRESS latches the velocity heading
+/// and flies outbound until the goal is a full committed turn-around away,
+/// so the return leg is a straight run through the point. The reachability
+/// geometry only runs on check-due ticks (deterministically staggered by the
+/// caller); between checks steering rides the latched state.
+#[inline]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn compute_airborne_return_step(
+    dx: f64,
+    dy: f64,
+    distance: f64,
+    rotation: f64,
+    velocity_x: f64,
+    velocity_y: f64,
+    drive_accel: f64,
+    state: u8,
+    heading_x: f64,
+    heading_y: f64,
+    committed_radius: f64,
+    flags: u8,
+    last_check_distance: f64,
+    stall_checks: u8,
+    min_turn_radius: f64,
+    max_turn_radius: f64,
+    enter_margin: f64,
+    exit_radius_ratio: f64,
+    progress_epsilon: f64,
+    stall_check_limit: u8,
+    stall_align_dot_max: f64,
+) -> (f64, f64, u8, f64, f64, f64, f64, u8) {
+    let forward_x = rotation.cos();
+    let forward_y = rotation.sin();
+    if !distance.is_finite() || distance <= 0.0001 {
+        return (
+            forward_x,
+            forward_y,
+            AIRBORNE_RETURN_STATE_APPROACH,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0,
+        );
+    }
+
+    let inv_distance = 1.0 / distance;
+    let goal_dir_x = dx * inv_distance;
+    let goal_dir_y = dy * inv_distance;
+
+    let vx = if velocity_x.is_finite() { velocity_x } else { 0.0 };
+    let vy = if velocity_y.is_finite() { velocity_y } else { 0.0 };
+    let speed_sq = vx * vx + vy * vy;
+    let speed = speed_sq.sqrt();
+    let (vel_dir_x, vel_dir_y) = if speed > 1.0e-6 {
+        (vx / speed, vy / speed)
+    } else {
+        (forward_x, forward_y)
+    };
+
+    if state == AIRBORNE_RETURN_STATE_EGRESS {
+        let heading_mag = (heading_x * heading_x + heading_y * heading_y).sqrt();
+        let (held_x, held_y) = if heading_mag > 1.0e-6 && heading_mag.is_finite() {
+            (heading_x / heading_mag, heading_y / heading_mag)
+        } else {
+            (vel_dir_x, vel_dir_y)
+        };
+        if flags & AIRBORNE_RETURN_FLAG_CHECK_DUE != 0 {
+            let exit_distance = (committed_radius * exit_radius_ratio).max(min_turn_radius);
+            if distance >= exit_distance {
+                return (
+                    goal_dir_x,
+                    goal_dir_y,
+                    AIRBORNE_RETURN_STATE_APPROACH,
+                    0.0,
+                    0.0,
+                    0.0,
+                    distance,
+                    0,
+                );
+            }
+            return (
+                held_x,
+                held_y,
+                AIRBORNE_RETURN_STATE_EGRESS,
+                held_x,
+                held_y,
+                committed_radius,
+                distance,
+                0,
+            );
+        }
+        return (
+            held_x,
+            held_y,
+            AIRBORNE_RETURN_STATE_EGRESS,
+            held_x,
+            held_y,
+            committed_radius,
+            last_check_distance,
+            stall_checks,
+        );
+    }
+
+    if flags & AIRBORNE_RETURN_FLAG_CHECK_DUE == 0 {
+        return (
+            goal_dir_x,
+            goal_dir_y,
+            AIRBORNE_RETURN_STATE_APPROACH,
+            0.0,
+            0.0,
+            0.0,
+            last_check_distance,
+            stall_checks,
+        );
+    }
+
+    // Estimated minimum turning circle at the current speed. Drive accel is
+    // the ceiling on centripetal authority, so this under-estimates the true
+    // orbit radius; the stall backstop below covers the remainder.
+    let turn_radius = if drive_accel > 1.0e-9 && drive_accel.is_finite() {
+        (speed_sq / drive_accel).clamp(min_turn_radius, max_turn_radius)
+    } else {
+        min_turn_radius
+    };
+    let perp_x = -vel_dir_y;
+    let perp_y = vel_dir_x;
+    let enter_radius = turn_radius * enter_margin;
+    let enter_radius_sq = enter_radius * enter_radius;
+    let left_dx = dx - perp_x * turn_radius;
+    let left_dy = dy - perp_y * turn_radius;
+    let right_dx = dx + perp_x * turn_radius;
+    let right_dy = dy + perp_y * turn_radius;
+    let inside_turn_circle = left_dx * left_dx + left_dy * left_dy < enter_radius_sq
+        || right_dx * right_dx + right_dy * right_dy < enter_radius_sq;
+
+    // Behavioral backstop: circling shows as no closing progress while the
+    // velocity stays near-tangential to the goal direction. A post-egress
+    // turnaround also fails to close, but its velocity points away from the
+    // goal, not sideways, so the alignment gate keeps it from counting.
+    let align_dot = vel_dir_x * goal_dir_x + vel_dir_y * goal_dir_y;
+    let stalled = last_check_distance > 0.0
+        && distance > last_check_distance - progress_epsilon
+        && align_dot.abs() < stall_align_dot_max;
+    let next_stall = if stalled {
+        stall_checks.saturating_add(1)
+    } else {
+        0
+    };
+    if inside_turn_circle || next_stall >= stall_check_limit {
+        return (
+            vel_dir_x,
+            vel_dir_y,
+            AIRBORNE_RETURN_STATE_EGRESS,
+            vel_dir_x,
+            vel_dir_y,
+            turn_radius,
+            distance,
+            0,
+        );
+    }
+    (
+        goal_dir_x,
+        goal_dir_y,
+        AIRBORNE_RETURN_STATE_APPROACH,
+        0.0,
+        0.0,
+        0.0,
+        distance,
+        next_stall,
+    )
+}
+
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn airborne_return_step_batch(
+    slots: &[u32],
+    dx: &[f64],
+    dy: &[f64],
+    distance: &[f64],
+    rotation: &[f64],
+    state: &[u8],
+    heading_x: &[f64],
+    heading_y: &[f64],
+    committed_radius: &[f64],
+    flags: &[u8],
+    last_check_distance: &[f64],
+    stall_checks: &[u8],
+    fallback_velocity_x: &[f64],
+    fallback_velocity_y: &[f64],
+    out_thrust_x: &mut [f64],
+    out_thrust_y: &mut [f64],
+    out_state: &mut [u8],
+    out_heading_x: &mut [f64],
+    out_heading_y: &mut [f64],
+    out_radius: &mut [f64],
+    out_check_distance: &mut [f64],
+    out_stall_checks: &mut [u8],
+    min_turn_radius: f64,
+    max_turn_radius: f64,
+    enter_margin: f64,
+    exit_radius_ratio: f64,
+    progress_epsilon: f64,
+    stall_check_limit: u8,
+    stall_align_dot_max: f64,
+) -> u32 {
+    let count = slots.len();
+    debug_assert!(dx.len() >= count);
+    debug_assert!(dy.len() >= count);
+    debug_assert!(distance.len() >= count);
+    debug_assert!(rotation.len() >= count);
+    debug_assert!(state.len() >= count);
+    debug_assert!(heading_x.len() >= count);
+    debug_assert!(heading_y.len() >= count);
+    debug_assert!(committed_radius.len() >= count);
+    debug_assert!(flags.len() >= count);
+    debug_assert!(last_check_distance.len() >= count);
+    debug_assert!(stall_checks.len() >= count);
+    debug_assert!(fallback_velocity_x.len() >= count);
+    debug_assert!(fallback_velocity_y.len() >= count);
+    debug_assert!(out_thrust_x.len() >= count);
+    debug_assert!(out_thrust_y.len() >= count);
+    debug_assert!(out_state.len() >= count);
+    debug_assert!(out_heading_x.len() >= count);
+    debug_assert!(out_heading_y.len() >= count);
+    debug_assert!(out_radius.len() >= count);
+    debug_assert!(out_check_distance.len() >= count);
+    debug_assert!(out_stall_checks.len() >= count);
+
+    let p = pool();
+    let es = entity_state();
+    let profile = unit_force_profile_table();
+    let runtime = unit_force_runtime_table();
+    let mut egress_count = 0_u32;
+    for i in 0..count {
+        let slot = slots[i] as usize;
+        let has_pool_velocity = slot < p.vel_x.len() && p.flags[slot] & BODY_FLAG_OCCUPIED != 0;
+        let velocity_x = if has_pool_velocity {
+            p.vel_x[slot]
+        } else {
+            fallback_velocity_x[i]
+        };
+        let velocity_y = if has_pool_velocity {
+            p.vel_y[slot]
+        } else {
+            fallback_velocity_y[i]
+        };
+        let drive_accel = match unit_effective_max_propulsive_force(p, es, profile, runtime, slot) {
+            Some((max_propulsive_force, physics_mass)) => {
+                arrival_horizontal_drive_accel(max_propulsive_force, physics_mass)
+            }
+            None => 0.0,
+        };
+        let (
+            thrust_x,
+            thrust_y,
+            next_state,
+            next_heading_x,
+            next_heading_y,
+            next_radius,
+            next_check_distance,
+            next_stall,
+        ) = compute_airborne_return_step(
+            dx[i],
+            dy[i],
+            distance[i],
+            rotation[i],
+            velocity_x,
+            velocity_y,
+            drive_accel,
+            state[i],
+            heading_x[i],
+            heading_y[i],
+            committed_radius[i],
+            flags[i],
+            last_check_distance[i],
+            stall_checks[i],
+            min_turn_radius,
+            max_turn_radius,
+            enter_margin,
+            exit_radius_ratio,
+            progress_epsilon,
+            stall_check_limit,
+            stall_align_dot_max,
+        );
+        out_thrust_x[i] = thrust_x;
+        out_thrust_y[i] = thrust_y;
+        out_state[i] = next_state;
+        out_heading_x[i] = next_heading_x;
+        out_heading_y[i] = next_heading_y;
+        out_radius[i] = next_radius;
+        out_check_distance[i] = next_check_distance;
+        out_stall_checks[i] = next_stall;
+        egress_count += (next_state == AIRBORNE_RETURN_STATE_EGRESS) as u32;
+    }
+    egress_count
+}
+
 pub(crate) const STUCK_REPLAN_FLAG_SETTLING_CHECK: u8 = 1 << 0;
 
 #[inline]
@@ -2821,6 +3128,219 @@ pub fn pool_resolve_sphere_cuboid_full(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const RETURN_MIN_R: f64 = 40.0;
+    const RETURN_MAX_R: f64 = 600.0;
+    // Strict containment: any margin above 1 makes a dead-ahead goal closer
+    // than R*sqrt(margin^2 - 1) read as "inside" and preempts clean capture.
+    // Under-estimated orbit radii are the stall backstop's job instead.
+    const RETURN_ENTER_MARGIN: f64 = 1.0;
+    const RETURN_EXIT_RATIO: f64 = 2.5;
+    const RETURN_PROGRESS_EPS: f64 = 1.0;
+    const RETURN_STALL_LIMIT: u8 = 2;
+    const RETURN_STALL_ALIGN_MAX: f64 = 0.5;
+
+    #[allow(clippy::too_many_arguments)]
+    fn return_step(
+        dx: f64,
+        dy: f64,
+        vx: f64,
+        vy: f64,
+        drive_accel: f64,
+        state: u8,
+        heading: (f64, f64),
+        committed_radius: f64,
+        check_due: bool,
+        last_check_distance: f64,
+        stall_checks: u8,
+    ) -> (f64, f64, u8, f64, f64, f64, f64, u8) {
+        compute_airborne_return_step(
+            dx,
+            dy,
+            (dx * dx + dy * dy).sqrt(),
+            0.0,
+            vx,
+            vy,
+            drive_accel,
+            state,
+            heading.0,
+            heading.1,
+            committed_radius,
+            if check_due {
+                AIRBORNE_RETURN_FLAG_CHECK_DUE
+            } else {
+                0
+            },
+            last_check_distance,
+            stall_checks,
+            RETURN_MIN_R,
+            RETURN_MAX_R,
+            RETURN_ENTER_MARGIN,
+            RETURN_EXIT_RATIO,
+            RETURN_PROGRESS_EPS,
+            RETURN_STALL_LIMIT,
+            RETURN_STALL_ALIGN_MAX,
+        )
+    }
+
+    #[test]
+    fn airborne_return_orbit_goal_at_turn_circle_center_enters_egress() {
+        // Speed 200 with drive accel 200 -> turn radius 200. Flying +x with
+        // the goal 200 to the left is the exact degenerate-orbit geometry:
+        // the goal sits on the left turning-circle center, deeply inside.
+        let (tx, ty, state, hx, hy, radius, _, _) =
+            return_step(0.0, 200.0, 200.0, 0.0, 200.0, AIRBORNE_RETURN_STATE_APPROACH, (0.0, 0.0), 0.0, true, 0.0, 0);
+        assert_eq!(state, AIRBORNE_RETURN_STATE_EGRESS);
+        // Egress latches the velocity heading (+x) instead of steering at the goal.
+        assert!(tx > 0.99 && ty.abs() < 1e-9);
+        assert!(hx > 0.99 && hy.abs() < 1e-9);
+        assert!((radius - 200.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn airborne_return_dead_ahead_goal_stays_in_approach() {
+        // A goal on the velocity axis is never inside either turning circle;
+        // even a close one must not preempt capture with a spurious egress.
+        let (tx, _, state, _, _, _, last, stall) =
+            return_step(60.0, 0.0, 200.0, 0.0, 200.0, AIRBORNE_RETURN_STATE_APPROACH, (0.0, 0.0), 0.0, true, 0.0, 0);
+        assert_eq!(state, AIRBORNE_RETURN_STATE_APPROACH);
+        assert!(tx > 0.99);
+        assert!((last - 60.0).abs() < 1e-9);
+        assert_eq!(stall, 0);
+    }
+
+    #[test]
+    fn airborne_return_egress_holds_heading_and_exits_past_turnaround_distance() {
+        // Still inside the committed turn-around distance: keep flying out.
+        let (tx, ty, state, _, _, _, _, _) = return_step(
+            -300.0,
+            0.0,
+            200.0,
+            0.0,
+            200.0,
+            AIRBORNE_RETURN_STATE_EGRESS,
+            (1.0, 0.0),
+            200.0,
+            true,
+            0.0,
+            0,
+        );
+        assert_eq!(state, AIRBORNE_RETURN_STATE_EGRESS);
+        assert!(tx > 0.99 && ty.abs() < 1e-9);
+
+        // Beyond exit_ratio * committed radius: turn back toward the goal.
+        let (tx, _, state, _, _, radius, _, _) = return_step(
+            -520.0,
+            0.0,
+            200.0,
+            0.0,
+            200.0,
+            AIRBORNE_RETURN_STATE_EGRESS,
+            (1.0, 0.0),
+            200.0,
+            true,
+            0.0,
+            0,
+        );
+        assert_eq!(state, AIRBORNE_RETURN_STATE_APPROACH);
+        assert!(tx < -0.99);
+        assert_eq!(radius, 0.0);
+    }
+
+    #[test]
+    fn airborne_return_stall_backstop_counts_tangential_but_not_outbound_motion() {
+        // Tangential, non-closing: an orbit wider than the estimate. The goal
+        // is ahead-left outside the estimated circles (radius estimate 40 at
+        // this slow speed), velocity near-perpendicular to the goal direction.
+        let (_, _, state, _, _, _, _, stall) = return_step(
+            10.0,
+            400.0,
+            60.0,
+            0.0,
+            200.0,
+            AIRBORNE_RETURN_STATE_APPROACH,
+            (0.0, 0.0),
+            0.0,
+            true,
+            400.0,
+            0,
+        );
+        assert_eq!(state, AIRBORNE_RETURN_STATE_APPROACH);
+        assert_eq!(stall, 1);
+
+        // Second consecutive stalled check crosses the limit: egress.
+        let (_, _, state, _, _, _, _, _) = return_step(
+            10.0,
+            400.0,
+            60.0,
+            0.0,
+            200.0,
+            AIRBORNE_RETURN_STATE_APPROACH,
+            (0.0, 0.0),
+            0.0,
+            true,
+            400.0,
+            1,
+        );
+        assert_eq!(state, AIRBORNE_RETURN_STATE_EGRESS);
+
+        // Flying straight away (post-turnaround) is not an orbit signature:
+        // the alignment gate keeps the stall counter at zero.
+        let (_, _, state, _, _, _, _, stall) = return_step(
+            -400.0,
+            0.0,
+            200.0,
+            0.0,
+            200.0,
+            AIRBORNE_RETURN_STATE_APPROACH,
+            (0.0, 0.0),
+            0.0,
+            true,
+            395.0,
+            0,
+        );
+        assert_eq!(state, AIRBORNE_RETURN_STATE_APPROACH);
+        assert_eq!(stall, 0);
+    }
+
+    #[test]
+    fn airborne_return_non_check_ticks_ride_the_latched_state() {
+        // Approach without a due check steers at the goal and keeps counters.
+        let (tx, ty, state, _, _, _, last, stall) = return_step(
+            0.0,
+            200.0,
+            200.0,
+            0.0,
+            200.0,
+            AIRBORNE_RETURN_STATE_APPROACH,
+            (0.0, 0.0),
+            0.0,
+            false,
+            123.0,
+            1,
+        );
+        assert_eq!(state, AIRBORNE_RETURN_STATE_APPROACH);
+        assert!(tx.abs() < 1e-9 && ty > 0.99);
+        assert!((last - 123.0).abs() < 1e-9);
+        assert_eq!(stall, 1);
+
+        // Egress without a due check holds the latched heading.
+        let (tx, ty, state, _, _, _, _, _) = return_step(
+            -520.0,
+            0.0,
+            200.0,
+            0.0,
+            200.0,
+            AIRBORNE_RETURN_STATE_EGRESS,
+            (1.0, 0.0),
+            200.0,
+            false,
+            0.0,
+            0,
+        );
+        assert_eq!(state, AIRBORNE_RETURN_STATE_EGRESS);
+        assert!(tx > 0.99 && ty.abs() < 1e-9);
+    }
 
     #[test]
     fn iterative_sphere_resolve_keeps_candidates_that_leave_their_original_cell() {

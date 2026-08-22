@@ -258,6 +258,23 @@ export type Unit = {
   airborneLoiterTargetZ: number | null;
   /** Airborne-cruising orbit direction around the loiter center. */
   airborneLoiterTurnSign: number | null;
+  /** Cruise-locomotion waypoint controller (turn-circle reachability FSM).
+   *  0 = approach (steer at the goal), 1 = egress (hold the latched heading
+   *  outbound until the goal is a committed turn-around away). Derived
+   *  controller scratch: deterministic, never serialized, replay-rebuilt. */
+  airborneReturnState: number;
+  /** Latched world-planar egress heading (unit vector) while state is 1. */
+  airborneReturnHeadingX: number;
+  airborneReturnHeadingY: number;
+  /** Turn radius committed at egress entry; scales the exit distance. */
+  airborneReturnRadius: number;
+  /** Goal identity for FSM reset: a new goal point restarts at approach. */
+  airborneReturnGoalX: number | null;
+  airborneReturnGoalY: number | null;
+  /** Distance to goal at the last staggered reachability check, plus how many
+   *  consecutive checks failed to close on it (the behavioral backstop). */
+  airborneReturnCheckDistance: number;
+  airborneReturnStallChecks: number;
   velocityX: number;
   velocityY: number;
   velocityZ: number;

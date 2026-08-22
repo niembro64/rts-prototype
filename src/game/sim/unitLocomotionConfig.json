@@ -26,6 +26,7 @@
       },
       "motionControl": {
         "maintainFullThrustAtWaypoints": false,
+        "alwaysBrakeAtFinalWaypoint": false,
         "cruiseWhenUncommanded": false
       },
       "surfaceFollowing": {
@@ -62,6 +63,7 @@
       },
       "motionControl": {
         "maintainFullThrustAtWaypoints": false,
+        "alwaysBrakeAtFinalWaypoint": false,
         "cruiseWhenUncommanded": false
       },
       "surfaceFollowing": {
@@ -98,6 +100,7 @@
       },
       "motionControl": {
         "maintainFullThrustAtWaypoints": false,
+        "alwaysBrakeAtFinalWaypoint": false,
         "cruiseWhenUncommanded": false
       },
       "surfaceFollowing": {
@@ -136,6 +139,7 @@
       },
       "motionControl": {
         "maintainFullThrustAtWaypoints": false,
+        "alwaysBrakeAtFinalWaypoint": false,
         "cruiseWhenUncommanded": false
       },
       "surfaceFollowing": {
@@ -174,6 +178,7 @@
       },
       "motionControl": {
         "maintainFullThrustAtWaypoints": false,
+        "alwaysBrakeAtFinalWaypoint": false,
         "cruiseWhenUncommanded": false
       },
       "surfaceFollowing": {
@@ -212,6 +217,7 @@
       },
       "motionControl": {
         "maintainFullThrustAtWaypoints": false,
+        "alwaysBrakeAtFinalWaypoint": false,
         "cruiseWhenUncommanded": false
       },
       "surfaceFollowing": {
@@ -248,6 +254,7 @@
       },
       "motionControl": {
         "maintainFullThrustAtWaypoints": false,
+        "alwaysBrakeAtFinalWaypoint": false,
         "cruiseWhenUncommanded": false
       },
       "surfaceFollowing": {
@@ -286,6 +293,7 @@
       },
       "motionControl": {
         "maintainFullThrustAtWaypoints": false,
+        "alwaysBrakeAtFinalWaypoint": false,
         "cruiseWhenUncommanded": false
       },
       "surfaceFollowing": {
@@ -324,6 +332,7 @@
       },
       "motionControl": {
         "maintainFullThrustAtWaypoints": false,
+        "alwaysBrakeAtFinalWaypoint": true,
         "cruiseWhenUncommanded": false
       },
       "surfaceFollowing": {
@@ -362,6 +371,7 @@
       },
       "motionControl": {
         "maintainFullThrustAtWaypoints": true,
+        "alwaysBrakeAtFinalWaypoint": false,
         "cruiseWhenUncommanded": true
       },
       "surfaceFollowing": {
@@ -401,6 +411,7 @@
       },
       "motionControl": {
         "maintainFullThrustAtWaypoints": true,
+        "alwaysBrakeAtFinalWaypoint": false,
         "cruiseWhenUncommanded": true
       },
       "surfaceFollowing": {

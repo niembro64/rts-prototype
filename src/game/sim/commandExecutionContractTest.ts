@@ -343,6 +343,29 @@ export function runCommandExecutionContractTest(): void {
     'queued commands after a satisfied movement anchor must not sit behind the completed anchor',
   );
 
+  // A cruise chassis (plane/aerosub) can never hold a point, so its satisfied
+  // anchor is never drift-cleared: displacement resolves through the loiter
+  // circle around the anchor instead of re-arming the approach.
+  const cruiseAnchorUnit = anchorWorld.createUnitFromBlueprint(64, 96, 1, 'unitEagle', {
+    allocateSubEntityIds: false,
+  });
+  anchorWorld.addEntity(cruiseAnchorUnit);
+  setUnitActions(cruiseAnchorUnit.unit!, [
+    { type: 'move', x: 128, y: 96, z: anchorWorld.getGroundZ(128, 96) },
+  ]);
+  anchorSim.advanceAction(cruiseAnchorUnit);
+  cruiseAnchorUnit.transform.x = 320;
+  assertContract(
+    anchorSim.handleSatisfiedMovementAnchor(
+      cruiseAnchorUnit,
+      cruiseAnchorUnit.unit!.actions[0],
+    ) === true &&
+      cruiseAnchorUnit.unit!.actions[0].movementAnchorSatisfied === true &&
+      cruiseAnchorUnit.unit!.airborneLoiterTargetX === 128 &&
+      cruiseAnchorUnit.unit!.airborneLoiterTargetY === 96,
+    'a displaced cruise anchor must stay satisfied and loiter around the anchor point',
+  );
+
   const patrolWorld = new WorldState(1, 512, 512);
   const patrolConstruction = new ConstructionSystem(patrolWorld.mapWidth, patrolWorld.mapHeight);
   const patrolCtx: CommandContext = {
@@ -1731,20 +1754,24 @@ export function runCommandExecutionContractTest(): void {
     'scheduled final-waypoint slowdown setting must update world truth',
   );
   assertContract(
-    shouldBypassFinalWaypointSlowdown(false, true, false),
+    shouldBypassFinalWaypointSlowdown(false, false, true, false),
     'the off default must bypass braking at the final point of the final action',
   );
   assertContract(
-    !shouldBypassFinalWaypointSlowdown(false, true, true),
+    !shouldBypassFinalWaypointSlowdown(false, false, true, true),
     'the enabled setting must preserve final-action arrival braking',
   );
   assertContract(
-    !shouldBypassFinalWaypointSlowdown(false, false, false),
+    !shouldBypassFinalWaypointSlowdown(false, false, false, false),
     'the global toggle must not bypass intermediate-waypoint corner shaping',
   );
   assertContract(
-    shouldBypassFinalWaypointSlowdown(true, false, true),
+    shouldBypassFinalWaypointSlowdown(true, false, false, true),
     'authored full-thrust locomotion must retain its existing priority',
+  );
+  assertContract(
+    !shouldBypassFinalWaypointSlowdown(false, true, true, false),
+    'authored hover braking must survive the global full-speed-arrival default',
   );
   setUnitGroundNormalEmaMode('fast');
   executeCommand(queueCtx, { type: 'setUnitGroundNormalEmaMode', tick: 0, mode: 'slow' });

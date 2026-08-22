@@ -28,18 +28,22 @@ const ARRIVAL_BATCH_FLAG_LAST_ACTION = 1 << 1;
 const ARRIVAL_COMPLETION_BATCH_FLAG_MAINTAIN_FULL_THRUST = 1 << 2;
 
 /** Resolve the one policy shared by arrival thrust and arrival completion.
- * Authored full-thrust locomotion always wins. The global BATTLE setting only
- * changes the final point of the final non-patrol action, leaving path corners
- * and intermediate waypoints under the normal corner-speed controller. */
+ * Authored locomotion always wins over the global BATTLE setting: full-thrust
+ * chassis (plane, aerosub) always bypass the final brake, hover chassis
+ * (drone) always keep it — a hover unit that cannot settle at its anchor has
+ * no station-keeping at all. The global setting only changes the final point
+ * of the final non-patrol action for the remaining ground/sea locomotion,
+ * leaving path corners and intermediate waypoints under the normal
+ * corner-speed controller. */
 export function shouldBypassFinalWaypointSlowdown(
   maintainFullThrustAtWaypoints: boolean,
+  alwaysBrakeAtFinalWaypoint: boolean,
   isLastAction: boolean,
   slowDownAtFinalWaypoint: boolean,
 ): boolean {
-  return (
-    maintainFullThrustAtWaypoints ||
-    (isLastAction && !slowDownAtFinalWaypoint)
-  );
+  if (maintainFullThrustAtWaypoints) return true;
+  if (alwaysBrakeAtFinalWaypoint) return false;
+  return isLastAction && !slowDownAtFinalWaypoint;
 }
 
 export class SimulationArrivalController {
@@ -116,6 +120,7 @@ export class SimulationArrivalController {
     if (
       shouldBypassFinalWaypointSlowdown(
         unit.locomotion.motionControl.maintainFullThrustAtWaypoints,
+        unit.locomotion.motionControl.alwaysBrakeAtFinalWaypoint,
         isLastAction,
         this.world.slowDownAtFinalWaypoint,
       )
@@ -206,6 +211,7 @@ export class SimulationArrivalController {
     const isLastAction = isFinalActionPoint && unit.actions.length <= 1 && action.type !== 'patrol';
     const bypassFinalWaypointSlowdown = shouldBypassFinalWaypointSlowdown(
       maintainFullThrustAtWaypoints,
+      unit.locomotion.motionControl.alwaysBrakeAtFinalWaypoint,
       isLastAction,
       this.world.slowDownAtFinalWaypoint,
     );

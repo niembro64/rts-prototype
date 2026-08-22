@@ -117,6 +117,7 @@ import {
 import {
   SimulationAirborneLoiterController,
 } from './SimulationAirborneLoiterController';
+import { SimulationAirborneReturnController } from './SimulationAirborneReturnController';
 import { SimulationCombatHaltController } from './SimulationCombatHaltController';
 import {
   replanCooldownFor,
@@ -269,6 +270,7 @@ export class Simulation {
   private arrivalController: SimulationArrivalController;
   private combatHaltController: SimulationCombatHaltController;
   private airborneLoiter: SimulationAirborneLoiterController;
+  private airborneReturn: SimulationAirborneReturnController;
   private stuckReplanController: SimulationStuckReplanController;
   private unitActionPlanner: SimulationUnitActionPlanner = new SimulationUnitActionPlanner();
   private unitActionMovementPlanner: SimulationUnitActionMovementPlanner = new SimulationUnitActionMovementPlanner();
@@ -389,6 +391,11 @@ export class Simulation {
     });
     this.combatHaltController = new SimulationCombatHaltController(this.world);
     this.airborneLoiter = new SimulationAirborneLoiterController(this.world);
+    this.airborneReturn = new SimulationAirborneReturnController(this.world, {
+      advanceAction: (entity) => this.advanceAction(entity),
+      advanceActivePathPoint: (entity) => this.advanceActivePathPoint(entity),
+      queueAirborneLoiter: (entity) => this.airborneLoiter.queue(entity),
+    });
     this.stuckReplanController = new SimulationStuckReplanController(
       this.world,
       (entity) => this.pathPlanScheduler.requestFresh(entity, true),
@@ -1489,6 +1496,23 @@ export class Simulation {
     dx: number,
     dy: number,
   ): void {
+    // Cruise locomotion (plane, aerosub) resolves waypoint legs through the
+    // turn-circle reachability controller: flight-appropriate capture radii
+    // plus the egress/return FSM that keeps a forward-flight body from
+    // orbiting a point it can no longer steer to.
+    const unit = entity.unit;
+    if (unit !== null && unit.locomotion.motionControl.cruiseWhenUncommanded) {
+      this.airborneReturn.queue(
+        entity,
+        action,
+        target.x,
+        target.y,
+        target.isFinalActionPoint,
+        dx,
+        dy,
+      );
+      return;
+    }
     if (!target.isFinalActionPoint && target.pathAdvanceRadius < ARRIVAL_RADIUS) {
       const distance = magnitude(dx, dy);
       if (distance <= target.pathAdvanceRadius) {
@@ -1584,6 +1608,18 @@ export class Simulation {
       shiftUnitAction(unit);
       this.refreshPatrolStartIndex(unit);
       this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+      return true;
+    }
+
+    // A cruise chassis cannot hold a point: its satisfied anchor is the
+    // center of the deliberate loiter circle instead, and the loiter's
+    // radial correction is its wind counter. Never drift-clear the anchor —
+    // the orbit radius exceeds the arrival radius by design.
+    if (unit.locomotion.motionControl.cruiseWhenUncommanded) {
+      unit.activePath = null;
+      unit.stuckTicks = 0;
+      this.airborneLoiter.rememberTarget(unit, currentAction);
+      this.airborneLoiter.queue(entity);
       return true;
     }
 
@@ -2442,6 +2478,7 @@ export class Simulation {
     }
 
     this.arrivalController.flushCompletion();
+    this.airborneReturn.flush(movingUnits);
     this.airborneLoiter.flush(movingUnits);
     this.arrivalController.flushThrust(movingUnits, dtSec);
 
@@ -2628,6 +2665,7 @@ export class Simulation {
     this.deadEntityCleanup.reset();
     this.arrivalController.reset();
     this.airborneLoiter.reset();
+    this.airborneReturn.reset();
     this.stuckReplanController.reset();
     cancelAllPathPlanSlices();
     this.activePathPlanJobs.clear();

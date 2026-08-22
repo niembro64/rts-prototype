@@ -11,6 +11,16 @@ const AIRBORNE_LOITER_RADIUS_MULT = 8;
 const AIRBORNE_LOITER_MIN_RADIUS = 80;
 const AIRBORNE_LOITER_RADIAL_GAIN = 0.65;
 
+/** The deliberate orbit radius around a loiter center — also the capture
+ *  radius for a cruise unit's final waypoint, so capture hands the unit to
+ *  the loiter circle exactly at the ring it will fly. */
+export function airborneLoiterRadius(unit: Unit): number {
+  return Math.max(
+    AIRBORNE_LOITER_MIN_RADIUS,
+    unit.radius.collision * AIRBORNE_LOITER_RADIUS_MULT,
+  );
+}
+
 export class SimulationAirborneLoiterController {
   private readonly world: WorldState;
   private readonly entities: Entity[] = [];

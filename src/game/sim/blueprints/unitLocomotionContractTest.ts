@@ -540,6 +540,31 @@ export function runUnitLocomotionContractTest(): void {
     'Orca is water-navigable and brakes to stop at a waypoint',
   );
 
+  // Final-approach classes: hover always brakes (the anchor hold is the
+  // chassis identity), forward flight never brakes (the loiter circle is the
+  // hold), and no preset may author both policies at once.
+  for (const blueprint of getAllUnitBlueprints()) {
+    const locomotion = getUnitLocomotion(blueprint.unitBlueprintId);
+    const { maintainFullThrustAtWaypoints, alwaysBrakeAtFinalWaypoint, cruiseWhenUncommanded } =
+      locomotion.motionControl;
+    assertContract(
+      !(maintainFullThrustAtWaypoints && alwaysBrakeAtFinalWaypoint),
+      `${blueprint.unitBlueprintId} authors both full-thrust and always-brake final approach`,
+    );
+    if (locomotion.type === 'drone') {
+      assertContract(
+        alwaysBrakeAtFinalWaypoint && !cruiseWhenUncommanded,
+        `${blueprint.unitBlueprintId} is a drone: hover braking at the final waypoint is its chassis identity`,
+      );
+    }
+    if (locomotion.type === 'plane' || locomotion.type === 'aerosub') {
+      assertContract(
+        maintainFullThrustAtWaypoints && cruiseWhenUncommanded && !alwaysBrakeAtFinalWaypoint,
+        `${blueprint.unitBlueprintId} is forward-flight: full thrust plus cruise loiter, never the final brake`,
+      );
+    }
+  }
+
   const incompleteAirLift = cloneBlueprint(getUnitBlueprint('unitEagle').unitLocomotion);
   delete (incompleteAirLift.physics.air.lift as {
     surfaceFollowingInverseForceFromWater?: number;

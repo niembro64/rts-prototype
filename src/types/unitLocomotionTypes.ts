@@ -104,6 +104,11 @@ export type UnitLocomotion = {
     /** True when waypoint arrival keeps full directed thrust instead of
      * braking/slowing at final waypoints or honoring action speed limits. */
     maintainFullThrustAtWaypoints: boolean;
+    /** True when the final-waypoint brake is part of the chassis identity
+     * (hover locomotion): the global slowDownAtFinalWaypoint BATTLE setting
+     * may never strip it. Mutually exclusive with
+     * maintainFullThrustAtWaypoints. */
+    alwaysBrakeAtFinalWaypoint: boolean;
   };
   surfaceFollowing: {
     /** Named sampling layout used for air and water support forces. */

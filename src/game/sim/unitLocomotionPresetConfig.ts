@@ -45,6 +45,7 @@ export type UnitLocomotionPresetConfig = {
   };
   motionControl: {
     maintainFullThrustAtWaypoints: boolean;
+    alwaysBrakeAtFinalWaypoint: boolean;
     cruiseWhenUncommanded: boolean;
   };
   surfaceFollowing: {
@@ -163,6 +164,7 @@ function assertPreset(
   assertObject(`presets.${presetId}.motionControl`, preset.motionControl);
   assertExactKeys(`presets.${presetId}.motionControl`, preset.motionControl, [
     'maintainFullThrustAtWaypoints',
+    'alwaysBrakeAtFinalWaypoint',
     'cruiseWhenUncommanded',
   ]);
   assertUnitLocomotionBoolean(
@@ -170,9 +172,21 @@ function assertPreset(
     preset.motionControl.maintainFullThrustAtWaypoints,
   );
   assertUnitLocomotionBoolean(
+    `presets.${presetId}.motionControl.alwaysBrakeAtFinalWaypoint`,
+    preset.motionControl.alwaysBrakeAtFinalWaypoint,
+  );
+  assertUnitLocomotionBoolean(
     `presets.${presetId}.motionControl.cruiseWhenUncommanded`,
     preset.motionControl.cruiseWhenUncommanded,
   );
+  if (
+    preset.motionControl.maintainFullThrustAtWaypoints &&
+    preset.motionControl.alwaysBrakeAtFinalWaypoint
+  ) {
+    throw new Error(
+      `Invalid unitLocomotionConfig.json: presets.${presetId}.motionControl authors both maintainFullThrustAtWaypoints and alwaysBrakeAtFinalWaypoint`,
+    );
+  }
   assertObject(`presets.${presetId}.surfaceFollowing`, preset.surfaceFollowing);
   assertExactKeys(`presets.${presetId}.surfaceFollowing`, preset.surfaceFollowing, [
     'altitudeProbeSetId',

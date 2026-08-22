@@ -1161,9 +1161,45 @@
       <ul class="rule-list">
         <li>Pathfinding chooses where the body should go; locomotion chooses how the body physically arrives there.</li>
         <li>Waypoints are desired motion states, not magnets. They carry an intended position and, when useful, an intended pass-through velocity.</li>
-        <li>Final command points should use braking-aware arrival so the body settles without orbiting, bouncing, or springing back across the destination.</li>
+        <li>Final command points resolve per final-approach class: units that can stop use braking-aware arrival so the body settles without orbiting, bouncing, or springing back across the destination; forward-flight units resolve their final point into the loiter circle instead.</li>
         <li>Hovercraft, ground units, and air units use the same high-level arrival controller; they differ only by mass, thrust, friction, damping, turn authority, contact model, and vertical constraints.</li>
         <li>Hovercraft should remain slippery because their physical limits say so, not because the controller ignores velocity until after overshoot has happened.</li>
+        <li>The global BATTLE arrival setting (<code>slowDownAtFinalWaypoint</code>, default BAR-style full-speed arrival) tunes only the middle class. Authored <code>maintainFullThrustAtWaypoints</code> always bypasses the final brake (plane, aerosub); authored <code>alwaysBrakeAtFinalWaypoint</code> always keeps it (drone and every hover chassis); the global setting decides the remaining ground and sea locomotion.</li>
+      </ul>
+
+      <h3>The last waypoint is an anchor, not a consumed order</h3>
+      <p>
+        Completing a movement order does not delete its point. The final move/fight point of a
+        unit&rsquo;s queue survives as a <em>satisfied movement anchor</em>: arrival marks it
+        satisfied and cuts drive, and the point stays at the head of the queue as the unit&rsquo;s
+        standing goal. This is deliberate wind policy. Bodies here live under continuous external
+        force &mdash; wind, blast pressure, collision shoves &mdash; and a unit whose queue empties
+        on arrival has nothing left to hold; hovering units used to be blown across the whole map
+        exactly this way. Every unit therefore always owns at least one durable goal: the satisfied
+        anchor, a lock-on target, or a loiter center.
+      </p>
+      <ul class="rule-list">
+        <li>Ground and hover units re-engage ordinary approach when displaced beyond the arrival radius, then settle and hold again. Only new orders replace the anchor.</li>
+        <li>A hover chassis authors <code>alwaysBrakeAtFinalWaypoint</code>: braking-aware arrival and a standing hold at the point are what make it a hover unit, so the global full-speed-arrival setting never strips its final brake.</li>
+        <li>A forward-flight chassis cannot hold a point. Its satisfied anchor becomes the center of the airborne loiter circle &mdash; the same deliberate orbit an uncommanded cruise unit flies &mdash; and the loiter&rsquo;s radial correction is its wind counter. A cruise unit&rsquo;s anchor is never drift-cleared; the orbit is the hold.</li>
+      </ul>
+
+      <h3>Forward-flight units approach waypoints from outside their turning circle</h3>
+      <p>
+        A body that must keep moving forward has a minimum turning circle: at speed <code>v</code>
+        with horizontal drive acceleration <code>a</code>, roughly <code>R = v&sup2;/a</code>. A
+        goal inside either of the two circles tangent to the current velocity is mathematically
+        unreachable by steering toward it &mdash; greedy pursuit decays into a constant-speed,
+        constant-turn orbit that never crosses the point and never completes the order, which also
+        freezes every queued waypoint behind it. Cruise locomotion (plane, aerosub) therefore runs
+        a declared two-state waypoint controller per movement leg, with asymmetric hysteresis
+        edges:
+      </p>
+      <ul class="rule-list">
+        <li><strong>Approach</strong> steers straight at the goal. It exits to egress when the reachability check finds the goal inside either estimated turning circle, or when measured closing progress stalls across consecutive checks &mdash; the behavioral backstop that catches any turn-radius modeling error.</li>
+        <li><strong>Egress</strong> latches the velocity heading at entry and holds it, flying outbound. It exits only once the goal is a full committed turn-around away (a fixed ratio of the committed turn radius), so the return leg is a straight run that actually crosses the point.</li>
+        <li>Capture is radius-appropriate. A non-final waypoint captures at the standard arrival radius on the aligned pass, so queues and patrol loops always advance. The final waypoint captures at the loiter radius and hands the unit to the loiter circle around its anchor.</li>
+        <li>The reachability geometry runs on a deterministic tick stagger keyed by entity id; steering between checks rides the latched state, and the whole cruise population evaluates in one WASM batch. Controller state is derived simulation scratch &mdash; never serialized, never on the wire, reconstructed by replay.</li>
       </ul>
 
       <h3>Terrain pathfinding is directional around slopes and cliffs</h3>
