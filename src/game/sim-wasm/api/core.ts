@@ -280,13 +280,14 @@ export interface SimWasm {
     dy: Float64Array,
     distance: Float64Array,
     rotation: Float64Array,
+    deadzoneTurnRadiusMultiplier: Float64Array,
+    frontSliceDegrees: Float64Array,
     fallbackVelocityX: Float64Array,
     fallbackVelocityY: Float64Array,
     outThrustX: Float64Array,
     outThrustY: Float64Array,
     minTurnRadius: number,
     maxTurnRadius: number,
-    escapeRadiusRatio: number,
     lockSpeedFloor: number,
   ) => number;
   readonly stuckReplanStepBatch: (

@@ -562,6 +562,15 @@ export function runUnitLocomotionContractTest(): void {
         maintainFullThrustAtWaypoints && cruiseWhenUncommanded && !alwaysBrakeAtFinalWaypoint,
         `${blueprint.unitBlueprintId} is forward-flight: full thrust plus cruise loiter, never the final brake`,
       );
+      const deadzone = locomotion.motionControl.waypointDeadzone;
+      assertContract(
+        deadzone !== undefined &&
+          Number.isFinite(deadzone.turnRadiusMultiplier) &&
+          deadzone.turnRadiusMultiplier >= 1 &&
+          deadzone.frontSliceDegrees > 0 &&
+          deadzone.frontSliceDegrees < 90,
+        `${blueprint.unitBlueprintId} is forward-flight: it must author the waypoint no-turn deadzone (multiplier >= 1, front slice inside (0, 90) degrees)`,
+      );
     }
   }
 

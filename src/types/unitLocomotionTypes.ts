@@ -109,6 +109,16 @@ export type UnitLocomotion = {
      * may never strip it. Mutually exclusive with
      * maintainFullThrustAtWaypoints. */
     alwaysBrakeAtFinalWaypoint: boolean;
+    /** Cruise (forward-flight) presets only. Inside the deadzone —
+     * `turnRadiusMultiplier x the natural turn radius` around the current
+     * waypoint — the unit may only keep turning while that waypoint sits
+     * within `frontSliceDegrees` left or right of its nose; anywhere else in
+     * the deadzone it may not turn at all, so a miss is a large straight
+     * miss that clears the deadzone before the free turn-back. */
+    waypointDeadzone?: {
+      turnRadiusMultiplier: number;
+      frontSliceDegrees: number;
+    };
   };
   surfaceFollowing: {
     /** Named sampling layout used for air and water support forces. */
