@@ -625,33 +625,57 @@ function resetProjectileHitboxSweepHit(out: typeof _projectileHitboxSweepHit): v
   out.normalZ = 1;
 }
 
-function packProjectileSweepExcludes(excludeEntities: Set<EntityId>): number {
-  const required =
-    excludeEntities.size +
-    _collisionUnitsToRemove.size +
-    _collisionBuildingsToRemove.size +
-    _collisionProjectileRemoveIds.size;
+// The removal-set PREFIX of the sweep exclude staging is shared by every
+// sweep in the pass and re-packed (and re-committed to the Rust stamp
+// membership) only when a removal set grew — the old per-projectile
+// rebuild-and-SORT was an O(projectiles x removals log removals) term that
+// worsened exactly as a battle escalated. Nothing ever consumed the order:
+// the kernel only membership-tests.
+let _sweepPrefixUnitsSize = -1;
+let _sweepPrefixBuildingsSize = -1;
+let _sweepPrefixProjectilesSize = -1;
+let _sweepPrefixCount = 0;
+let _sweepRemovedCount = 0;
+
+/** Reset at the top of each collision pass so the first sweep re-packs. */
+function beginProjectileSweepPass(): void {
+  _sweepPrefixUnitsSize = -1;
+  _sweepPrefixBuildingsSize = -1;
+  _sweepPrefixProjectilesSize = -1;
+  _sweepPrefixCount = 0;
+  _sweepRemovedCount = 0;
+}
+
+function syncSweepRemovalPrefix(
+  sim: NonNullable<ReturnType<typeof getSimWasm>>,
+  tailMax: number,
+): void {
+  const unitCount = _collisionUnitsToRemove.size;
+  const buildingCount = _collisionBuildingsToRemove.size;
+  const projectileCount = _collisionProjectileRemoveIds.size;
+  const prefixDirty =
+    unitCount !== _sweepPrefixUnitsSize ||
+    buildingCount !== _sweepPrefixBuildingsSize ||
+    projectileCount !== _sweepPrefixProjectilesSize;
   ensureHitboxSweepCapacity(
-    Math.max(1, required),
-    Math.max(1, _collisionProjectileRemoveIds.size),
+    Math.max(1, unitCount + buildingCount + projectileCount + tailMax),
+    Math.max(1, projectileCount),
   );
+  if (!prefixDirty) return;
+  _sweepPrefixUnitsSize = unitCount;
+  _sweepPrefixBuildingsSize = buildingCount;
+  _sweepPrefixProjectilesSize = projectileCount;
   let count = 0;
-  for (const id of excludeEntities) _hitboxSweepExcludeIds[count++] = id;
   for (const id of _collisionUnitsToRemove) _hitboxSweepExcludeIds[count++] = id;
   for (const id of _collisionBuildingsToRemove) _hitboxSweepExcludeIds[count++] = id;
   for (const id of _collisionProjectileRemoveIds) _hitboxSweepExcludeIds[count++] = id;
-  _hitboxSweepExcludeIds.subarray(0, count).sort();
-  return count;
-}
-
-function packRemovedProjectileSweepExcludes(): number {
-  // Capacity already ensured by packProjectileSweepExcludes this call.
-  let count = 0;
+  _sweepPrefixCount = count;
+  sim.projectileHitboxSweepPrefixCommit(count);
+  let removed = 0;
   for (const id of _collisionProjectileRemoveIds) {
-    _hitboxSweepRemovedProjectileIds[count++] = id;
+    _hitboxSweepRemovedProjectileIds[removed++] = id;
   }
-  _hitboxSweepRemovedProjectileIds.subarray(0, count).sort();
-  return count;
+  _sweepRemovedCount = removed;
 }
 
 function isValidSpatialSweepTarget(kind: number, entity: Entity | undefined): entity is Entity {
@@ -688,12 +712,14 @@ function findProjectileHitboxSweepHit(
 ): ProjectileHitboxSweepHit | null {
   resetProjectileHitboxSweepHit(_projectileHitboxSweepHit);
 
-  const excludeCount = packProjectileSweepExcludes(excludeEntities);
-  const removedProjectileCount = packRemovedProjectileSweepExcludes();
-
   const sim = getSimWasm();
   if (sim === undefined) {
     throw new Error('Projectile hitbox sweep requires initialized sim-wasm');
+  }
+  syncSweepRemovalPrefix(sim, excludeEntities.size);
+  let tailCount = 0;
+  for (const id of excludeEntities) {
+    _hitboxSweepExcludeIds[_sweepPrefixCount + tailCount++] = id;
   }
   const processed = sim.projectileHitboxSweepSingle(
     prevX,
@@ -703,8 +729,8 @@ function findProjectileHitboxSweepHit(
     currentY,
     currentZ,
     projectileHitboxRadius,
-    excludeCount,
-    removedProjectileCount,
+    tailCount,
+    _sweepRemovedCount,
     world.getMaxTargetableRadius(),
     PROJECTILE_HITBOX_SWEEP_QUERY_EXTRA,
     world.getTick(),
@@ -1224,6 +1250,7 @@ export function checkProjectileCollisions(
   let reflectorImpactEvents = 0;
   const collisionDtMs = dtMs;
   const projectileEntities = world.getProjectiles();
+  beginProjectileSweepPass();
   refreshProjectileCollisionTurretMounts(world, dtMs);
   clipTerminalWaterTransitions(world, projectileEntities);
   computeProjectileReflectorHits(world, projectileEntities, collisionDtMs);

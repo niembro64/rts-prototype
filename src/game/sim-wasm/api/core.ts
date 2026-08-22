@@ -885,31 +885,10 @@ export interface SimWasm {
    *  reads unit/building/projectile colliders from the spatial slab,
    *  includes current-tick turret sub-hitboxes from the combat-targeting
    *  slab, and writes one nearest hit per row. */
-  readonly projectileHitboxSweepBatch: (
-    count: number,
-    enabled: Uint8Array,
-    startX: Float64Array,
-    startY: Float64Array,
-    startZ: Float64Array,
-    endX: Float64Array,
-    endY: Float64Array,
-    endZ: Float64Array,
-    projectileRadius: Float64Array,
-    excludeOffsets: Uint32Array,
-    excludeCounts: Uint32Array,
-    excludeEntityIds: Int32Array,
-    removedProjectileEntityIds: Int32Array,
-    maxTargetableRadius: number,
-    queryExtra: number,
-    currentTick: number,
-    outKind: Uint8Array,
-    outSlot: Uint32Array,
-    outEntityId: Int32Array,
-    outT: Float64Array,
-    outNormalX: Float64Array,
-    outNormalY: Float64Array,
-    outNormalZ: Float64Array,
-  ) => number;
+  /** Commit the accumulated removal-id PREFIX (written into the exclude
+   *  staging by JS) into the Rust epoch-stamp membership. Called only when
+   *  a removal set changed; every sweep of the pass then reuses it. */
+  readonly projectileHitboxSweepPrefixCommit: (prefixCount: number) => void;
   /** Grow (never shrink) the single-sweep staging id arrays; growth may
    *  move them, so re-fetch the pointers afterwards. */
   readonly projectileHitboxSweepStagingEnsure: (
@@ -936,7 +915,7 @@ export interface SimWasm {
     ey: number,
     ez: number,
     projectileRadius: number,
-    excludeCount: number,
+    tailCount: number,
     removedCount: number,
     maxTargetableRadius: number,
     queryExtra: number,

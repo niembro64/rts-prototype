@@ -1700,6 +1700,52 @@ pub(crate) fn projectile_sweep_hit_normal(
 // projectile battle. The staged variant takes the eight floats as
 // plain scalars (scalars never marshal) and reads exclude ids from /
 // writes the hit into WASM-resident staging that JS views directly.
+/// O(1) exclude membership for the swept-hitbox kernel. Two epoch-stamped
+/// id-indexed arrays replace per-candidate linear scans of the exclude list:
+/// the PREFIX (accumulated removal ids, shared by every sweep of the pass,
+/// re-stamped only when the removal sets grow) and the TAIL (this sweep's
+/// own hit-entity ids, re-stamped per sweep). An id is excluded when either
+/// stamp matches its current epoch. Epochs start at 1 so zero-initialized
+/// entries never match; on u32 wrap the arrays reset to keep that true.
+pub(crate) struct SweepExcludeStamps {
+    prefix_stamp_by_id: Vec<u32>,
+    tail_stamp_by_id: Vec<u32>,
+    prefix_stamp: u32,
+    tail_stamp: u32,
+}
+
+impl SweepExcludeStamps {
+    #[inline]
+    pub(crate) fn contains(&self, id: i32) -> bool {
+        if id < 0 {
+            return false;
+        }
+        let idx = id as usize;
+        (idx < self.prefix_stamp_by_id.len()
+            && self.prefix_stamp_by_id[idx] == self.prefix_stamp)
+            || (idx < self.tail_stamp_by_id.len()
+                && self.tail_stamp_by_id[idx] == self.tail_stamp)
+    }
+
+    fn stamp_ids(stamp_by_id: &mut Vec<u32>, stamp: &mut u32, ids: &[i32]) {
+        *stamp = stamp.wrapping_add(1);
+        if *stamp == 0 {
+            stamp_by_id.fill(0);
+            *stamp = 1;
+        }
+        for &id in ids {
+            if id < 0 {
+                continue;
+            }
+            let idx = id as usize;
+            if idx >= stamp_by_id.len() {
+                stamp_by_id.resize(idx + 1, 0);
+            }
+            stamp_by_id[idx] = *stamp;
+        }
+    }
+}
+
 pub(crate) struct HitboxSweepStaging {
     enabled: Vec<u8>,
     start_x: Vec<f64>,
@@ -1709,10 +1755,10 @@ pub(crate) struct HitboxSweepStaging {
     end_y: Vec<f64>,
     end_z: Vec<f64>,
     projectile_radius: Vec<f64>,
-    exclude_offsets: Vec<u32>,
-    exclude_counts: Vec<u32>,
     exclude_entity_ids: Vec<i32>,
     removed_projectile_entity_ids: Vec<i32>,
+    stamps: SweepExcludeStamps,
+    prefix_count: u32,
     out_kind: Vec<u8>,
     out_slot: Vec<u32>,
     out_entity_id: Vec<i32>,
@@ -1732,16 +1778,37 @@ fn hitbox_sweep_staging() -> &'static mut HitboxSweepStaging {
         end_y: vec![0.0],
         end_z: vec![0.0],
         projectile_radius: vec![0.0],
-        exclude_offsets: vec![0],
-        exclude_counts: vec![0],
         exclude_entity_ids: Vec::new(),
         removed_projectile_entity_ids: Vec::new(),
+        stamps: SweepExcludeStamps {
+            prefix_stamp_by_id: Vec::new(),
+            tail_stamp_by_id: Vec::new(),
+            prefix_stamp: 0,
+            tail_stamp: 0,
+        },
+        prefix_count: 0,
         out_kind: vec![0],
         out_slot: vec![0],
         out_entity_id: vec![0],
         out_t: vec![0.0],
         out_normal: vec![0.0; 3],
     })
+}
+
+/// Commit the accumulated removal-id PREFIX (already written into the
+/// exclude staging array by JS) for the sweeps that follow. Called only
+/// when the removal sets changed — every subsequent sweep of the pass
+/// reuses these stamps for free.
+#[wasm_bindgen]
+pub fn projectile_hitbox_sweep_prefix_commit(prefix_count: u32) {
+    let staging = hitbox_sweep_staging();
+    let count = (prefix_count as usize).min(staging.exclude_entity_ids.len());
+    staging.prefix_count = count as u32;
+    SweepExcludeStamps::stamp_ids(
+        &mut staging.stamps.prefix_stamp_by_id,
+        &mut staging.stamps.prefix_stamp,
+        &staging.exclude_entity_ids[..count],
+    );
 }
 
 /// Grow (never shrink) the exclude-id staging arrays. Growth may move
@@ -1797,8 +1864,10 @@ pub fn projectile_hitbox_sweep_out_normal_ptr() -> *const f64 {
 }
 
 /// One swept-hitbox query with scalar geometry and staged id lists.
-/// Exactly `projectile_hitbox_sweep_batch` with count 1 — both call the
-/// same kernel — minus the per-call slice marshalling.
+/// The removal-id PREFIX is committed separately (and rarely) via
+/// `projectile_hitbox_sweep_prefix_commit`; this call stamps only the
+/// sweep's own TAIL ids (written by JS at `prefix_count..prefix_count +
+/// tail_count`) and runs the kernel with O(1) stamp membership.
 #[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
 pub fn projectile_hitbox_sweep_single(
@@ -1809,14 +1878,17 @@ pub fn projectile_hitbox_sweep_single(
     ey: f64,
     ez: f64,
     projectile_radius: f64,
-    exclude_count: u32,
+    tail_count: u32,
     removed_count: u32,
     max_targetable_radius: f64,
     query_extra: f64,
     current_tick: i32,
 ) -> u32 {
     let staging = hitbox_sweep_staging();
-    let exclude_count = (exclude_count as usize).min(staging.exclude_entity_ids.len());
+    let prefix_count = staging.prefix_count as usize;
+    let tail_start = prefix_count.min(staging.exclude_entity_ids.len());
+    let tail_end =
+        (prefix_count + tail_count as usize).min(staging.exclude_entity_ids.len());
     let removed_count =
         (removed_count as usize).min(staging.removed_projectile_entity_ids.len());
     staging.start_x[0] = sx;
@@ -1826,7 +1898,6 @@ pub fn projectile_hitbox_sweep_single(
     staging.end_y[0] = ey;
     staging.end_z[0] = ez;
     staging.projectile_radius[0] = projectile_radius;
-    staging.exclude_counts[0] = exclude_count as u32;
     let HitboxSweepStaging {
         enabled,
         start_x,
@@ -1836,19 +1907,24 @@ pub fn projectile_hitbox_sweep_single(
         end_y,
         end_z,
         projectile_radius: radius,
-        exclude_offsets,
-        exclude_counts,
         exclude_entity_ids,
         removed_projectile_entity_ids,
+        stamps,
         out_kind,
         out_slot,
         out_entity_id,
         out_t,
         out_normal,
+        ..
     } = staging;
+    SweepExcludeStamps::stamp_ids(
+        &mut stamps.tail_stamp_by_id,
+        &mut stamps.tail_stamp,
+        &exclude_entity_ids[tail_start..tail_end],
+    );
     let (normal_x, rest) = out_normal.split_at_mut(1);
     let (normal_y, normal_z) = rest.split_at_mut(1);
-    projectile_hitbox_sweep_batch(
+    projectile_hitbox_sweep_kernel(
         1,
         enabled,
         start_x,
@@ -1858,9 +1934,7 @@ pub fn projectile_hitbox_sweep_single(
         end_y,
         end_z,
         radius,
-        exclude_offsets,
-        exclude_counts,
-        &exclude_entity_ids[..exclude_count],
+        stamps,
         &removed_projectile_entity_ids[..removed_count],
         max_targetable_radius,
         query_extra,
@@ -1878,9 +1952,12 @@ pub fn projectile_hitbox_sweep_single(
 /// C1 projectile migration — nearest swept hitbox contact for traveling
 /// projectile bodies. The kernel reads the WASM spatial slab directly,
 /// includes current-tick turret sub-hitboxes from the combat-targeting
-/// slab, and writes one nearest hit per input sweep.
-#[wasm_bindgen]
-pub fn projectile_hitbox_sweep_batch(
+/// slab, and writes one nearest hit per input sweep. Exclude membership
+/// is the epoch-stamped `SweepExcludeStamps` (O(1) per candidate) rather
+/// than a per-row id slice; the removed-projectile list stays a small
+/// linear slice (it is a subset only consulted for projectile targets).
+#[allow(clippy::too_many_arguments)]
+fn projectile_hitbox_sweep_kernel(
     count: u32,
     enabled: &[u8],
     start_x: &[f64],
@@ -1890,9 +1967,7 @@ pub fn projectile_hitbox_sweep_batch(
     end_y: &[f64],
     end_z: &[f64],
     projectile_radius: &[f64],
-    exclude_offsets: &[u32],
-    exclude_counts: &[u32],
-    exclude_entity_ids: &[i32],
+    excludes: &SweepExcludeStamps,
     removed_projectile_entity_ids: &[i32],
     max_targetable_radius: f64,
     query_extra: f64,
@@ -1914,8 +1989,6 @@ pub fn projectile_hitbox_sweep_batch(
         || end_y.len() < n
         || end_z.len() < n
         || projectile_radius.len() < n
-        || exclude_offsets.len() < n
-        || exclude_counts.len() < n
         || out_kind.len() < n
         || out_slot.len() < n
         || out_entity_id.len() < n
@@ -1960,14 +2033,6 @@ pub fn projectile_hitbox_sweep_batch(
             continue;
         }
 
-        let exclude_start = exclude_offsets[i] as usize;
-        let exclude_len = exclude_counts[i] as usize;
-        let exclude_end = exclude_start.saturating_add(exclude_len);
-        if exclude_end > exclude_entity_ids.len() {
-            continue;
-        }
-        let row_excludes = &exclude_entity_ids[exclude_start..exclude_end];
-
         let source_radius = projectile_radius[i].max(0.0);
         let query_width =
             (source_radius + max_targetable_radius.max(0.0) + query_extra.max(0.0)) * 2.0;
@@ -2003,7 +2068,7 @@ pub fn projectile_hitbox_sweep_batch(
                         continue;
                     }
                     let entity_id = state.slot_entity_id[s];
-                    if entity_id_in_slice(row_excludes, entity_id) {
+                    if excludes.contains(entity_id) {
                         continue;
                     }
                     let radius = source_radius + state.slot_radius_hitbox[s];
@@ -2068,7 +2133,7 @@ pub fn projectile_hitbox_sweep_batch(
                                 || (targeting.turret_config_flags[idx]
                                     & CT_TURRET_CFG_NON_ATTACK_EMITTER)
                                     != 0
-                                || entity_id_in_slice(row_excludes, turret_entity_id)
+                                || excludes.contains(turret_entity_id)
                             {
                                 continue;
                             }
@@ -2133,7 +2198,7 @@ pub fn projectile_hitbox_sweep_batch(
                         continue;
                     }
                     let entity_id = state.slot_entity_id[s];
-                    if entity_id_in_slice(row_excludes, entity_id) {
+                    if excludes.contains(entity_id) {
                         continue;
                     }
                     let hx = state.slot_aabb_hx[s] + source_radius;
@@ -2195,7 +2260,7 @@ pub fn projectile_hitbox_sweep_batch(
                         continue;
                     }
                     let entity_id = state.slot_entity_id[s];
-                    if entity_id_in_slice(row_excludes, entity_id)
+                    if excludes.contains(entity_id)
                         || entity_id_in_slice(removed_projectile_entity_ids, entity_id)
                     {
                         continue;
