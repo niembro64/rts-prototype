@@ -4119,12 +4119,13 @@
     "unitLocomotion": {
       "type": "plane",
       "physicsPresetId": "plane",
+      "turnRateDegreesPerSecond": 20,
       "physics": {
         "ground": {
           "maxPropulsiveForce": 0
         },
         "air": {
-          "maxPropulsiveForce": 320,
+          "maxPropulsiveForce": 160,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 40000,
             "surfaceFollowingInverseForceFromWater": 20000

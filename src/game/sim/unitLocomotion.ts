@@ -199,6 +199,24 @@ export function createUnitLocomotion(
   }
   const preset = getUnitLocomotionPreset(physicsPresetId);
   const physics = createRuntimeLocomotionPhysics(physicsPresetId, preset, locomotion.physics);
+  // A unit blueprint may override the preset's constant-rate yaw slew: a
+  // heavy airframe (Albatros) authors a far lower rate — and so a far wider
+  // turning circle — than the preset it shares with light fighters.
+  const turnRateOverride = 'turnRateDegreesPerSecond' in locomotion
+    ? locomotion.turnRateDegreesPerSecond
+    : undefined;
+  if (turnRateOverride !== undefined) {
+    if (preset.actuator.propulsionAxis !== 'alwaysForward') {
+      throw new Error(
+        `Invalid unit locomotion ${physicsPresetId}: turnRateDegreesPerSecond override requires the alwaysForward actuator`,
+      );
+    }
+    if (!Number.isFinite(turnRateOverride) || turnRateOverride <= 0 || turnRateOverride > 720) {
+      throw new Error(
+        `Invalid unit locomotion ${physicsPresetId}: turnRateDegreesPerSecond override must be a finite number in (0, 720]`,
+      );
+    }
+  }
   const runtime: UnitLocomotion = {
     type,
     physicsPresetId,
@@ -206,7 +224,7 @@ export function createUnitLocomotion(
     environmentalHazards: { ...environmentalHazards },
     actuator: {
       propulsionAxis: preset.actuator.propulsionAxis,
-      turnRateDegreesPerSecond: preset.actuator.turnRateDegreesPerSecond,
+      turnRateDegreesPerSecond: turnRateOverride ?? preset.actuator.turnRateDegreesPerSecond,
     },
     motionControl: cloneMotionControl(preset.motionControl),
     surfaceFollowing: { ...preset.surfaceFollowing },

@@ -10,7 +10,10 @@ import { growTypedArrays, nextDoublingCapacity } from '../memory/typedArrayGrowt
 /** Turn-radius clamp for R = speed / maxYawRate (the yaw ceiling comes from
  *  the sim's own attitude-servo spring inside the kernel). */
 const AIRBORNE_STEER_MIN_TURN_RADIUS = 40;
-const AIRBORNE_STEER_MAX_TURN_RADIUS = 600;
+/** Wide enough for the slowest-slewing airframe (Albatros at 20 deg/s): if
+ *  the clamp sat below a unit's real turning circle, its deadzone could end
+ *  up smaller than the orbit it is meant to forbid. */
+const AIRBORNE_STEER_MAX_TURN_RADIUS = 1200;
 /** The no-turn lock applies only while actually moving; below this speed a
  *  boundary-pinned or freshly launched unit steers freely. */
 const AIRBORNE_STEER_LOCK_SPEED_FLOOR = 5;

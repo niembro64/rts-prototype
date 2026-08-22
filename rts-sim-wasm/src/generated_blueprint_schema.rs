@@ -1090,6 +1090,7 @@ pub struct UnitLocomotionBlueprintPlane {
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
     pub config: AirframeConfig,
+    pub turnRateDegreesPerSecond: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1108,6 +1109,7 @@ pub struct UnitLocomotionBlueprintAerosub {
     pub physics: UnitUnitLocomotionBlueprintPhysics,
     pub environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy,
     pub config: AirframeConfig,
+    pub turnRateDegreesPerSecond: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

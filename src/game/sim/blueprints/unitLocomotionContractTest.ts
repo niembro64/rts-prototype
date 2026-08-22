@@ -503,15 +503,23 @@ export function runUnitLocomotionContractTest(): void {
   const eagleMass = getUnitBlueprint('unitEagle').base.mass;
   const bee = getUnitLocomotion('unitBee');
   const beeMass = getUnitBlueprint('unitBee').base.mass;
-  for (const unitBlueprintId of ['unitAlbatros'] as const) {
-    const heavyFlyer = getUnitLocomotion(unitBlueprintId);
-    const heavyFlyerMass = getUnitBlueprint(unitBlueprintId).base.mass;
-    assertContract(
-      heavyFlyer.physics.air.maxPropulsiveForce / heavyFlyerMass >=
-        eagle.physics.air.maxPropulsiveForce / eagleMass,
-      `${unitBlueprintId} authors enough air propulsion for at least Eagle-class acceleration`,
-    );
-  }
+  // The Albatros is the lumbering heavy: half Eagle-class acceleration (so
+  // half the cruise speed under the same air drag) and an authored yaw slew
+  // far below the plane preset's, so its turning circle is much wider.
+  const albatros = getUnitLocomotion('unitAlbatros');
+  const albatrosMass = getUnitBlueprint('unitAlbatros').base.mass;
+  const eagleAirAccel = eagle.physics.air.maxPropulsiveForce / eagleMass;
+  const albatrosAirAccel = albatros.physics.air.maxPropulsiveForce / albatrosMass;
+  assertContract(
+    Math.abs(albatrosAirAccel - eagleAirAccel * 0.5) < eagleAirAccel * 0.05,
+    'Albatros authors half Eagle-class air acceleration',
+  );
+  assertContract(
+    typeof albatros.actuator.turnRateDegreesPerSecond === 'number' &&
+      typeof eagle.actuator.turnRateDegreesPerSecond === 'number' &&
+      albatros.actuator.turnRateDegreesPerSecond <= eagle.actuator.turnRateDegreesPerSecond * 0.35,
+    'Albatros overrides the preset yaw slew to a fraction of the Eagle rate for a much wider turning circle',
+  );
   const queenTick = getUnitLocomotion('unitQueenTick');
   assertContract(
     queenTick.physicsPresetId === 'crawler' &&
