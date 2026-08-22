@@ -1,0 +1,237 @@
+PERFORMANCE BOTTLENECK AUDIT — 2026-08-22
+Baseline (this machine, loaded; rankings matter, absolutes vary ~2x):
+  harness cap=1024 (~407 units, ~395 projectiles): SIM-ONLY p95 50.2ms = 100.4% of the
+  20Hz fixed-step budget. Phase ranking: combat.projectiles 10.6ms, combat.targetingFsm
+  5.6ms, sim.pathfinding 4.8ms (already budgeted — the model), combat.targetingStamp
+  4.4ms, core.physics 2.6ms (poolResolveSphereSphere 1.9ms/tick boundary), core.unitForces
+  1.9ms, combat.fireTurrets 1.5ms. Render: per-object rig meshes dominate draw calls.
+
+BAR reference idioms adopted (from ../Beyond-All-Reason survey): unitID%N==tick%N
+sharding; sliding-index work queues with chunk = clamp(len/interval, 32, 1024);
+timer wheels for computable due-times; watch-lists never scans; expensive call always
+INSIDE the cadence guard; distinct phase offsets per system; when a tick is coarsened,
+rescale the effect so gameplay is cadence-invariant.
+
+Verification rules for every item: cargo test + tsc + targeted contract tests; for
+RESULT-IDENTICAL claims, A/B the harness against SAME-HEAD and confirm identical
+live-unit counts / replay hashes; behavior-change items land as their own commits.
+
+Legend: [RI] = result-identical (bit-identical replay). [BC] = deterministic behavior
+change (lockstep-safe, replay hashes move).
+
+================ GROUP P — combat.projectiles (top rock, 10.6ms) ================
+
+P0  [RI] No sub-phase visibility inside combat.projectiles. Add sub-phases
+    (integrate/reflector/sweep/terminal/presentation) around the five blocks in
+    SimulationCombatController.updateProjectileCombat.
+
+P1  [RI] Terminal classify+plan = ~35 wasm malloc/copy/free triplets PER PROJECTILE
+    PER TICK (projectileTerminalConsequenceBatch count=1 with 25 in-slices + 4 out +
+    4 heap objects; then projectileTerminalEffectPlanBatch 5+1+1). ~45k allocations/
+    tick at 1300 projectiles. Rewrite both kernels as one scalar+staged single
+    (flags packed in u32, outputs in a WASM-resident staging block), same call order.
+    Largest single structural item in the pipeline.
+
+P2  [RI] Sweep exclude lists: packProjectileSweepExcludes rebuilds + SORTS the
+    removed-entity union per projectile (O(P x R log R), grows with battle
+    intensity); Rust then linear-scans it (entity_id_in_slice per candidate AND per
+    turret sub-hitbox). Fix: append-only removals prefix kept resident in staging +
+    per-projectile tail; drop both sorts (nothing consumes order); Rust-side bitset
+    membership.
+
+P3  [RI] Shield gates recompute per-pair invariants: shield_field_pose_bound (prev+
+    curr pose + sqrt) per (projectile x shield) pair, and mirror-panel cos/sin yaw/
+    pitch per (projectile x unit x panel). Stamp union bounds per shield and trig
+    per unit/panel once per tick at stamp time.
+
+P4  [RI] Sweep internals: 3 separate cells.get passes per cell (units/buildings/
+    projectiles — ~81 probes per projectile, most misses); dedup is an FxHashSet
+    with a capacity-sized clear() per sweep. Fix: one key->bucket resolve pass, then
+    epoch-stamp Vec<u32> dedup. Keep kind-priority order (tie behavior unchanged).
+
+P5  [RI] No per-cell max-radius/AABB rejection in SpatialCellBucket, and the query
+    band is sized by world-global monotone getMaxTargetableRadius (one big building
+    permanently widens every projectile's corridor). Add per-cell maxima maintained
+    on insert; conservative cell pre-reject.
+
+P6  [RI] Reflector batch: 31+24 JS-owned arrays marshalled per tick — and the BEAM
+    tracer calls the same kernel count=1 PER SEGMENT (31 mallocs x up to 6 segments
+    per beam). Move to WASM-resident ReflectorStaging with ptr views + detach
+    discipline; beam path reuses row 0.
+
+P7  [RI] terrainSurface polls sim.terrainIsInstalled() on EVERY sample (2 crossings
+    per getGroundZ/isWaterAt) — ~2600 wasted crossings/tick in terminal classify
+    alone, ~18 per beam segment. Cache in a module boolean invalidated on install.
+    Also: move findGroundSegmentT's 12+6 sample loop into one Rust call.
+
+P8  [RI] presentation_capture_tick copies a used_slots PREFIX that is a monotone
+    high-water mark with no shrink path — after a 2500-projectile peak, every tick
+    copies 2500 rows (~380KB) forever, plus an O(used) id-mismatch pass. Decay
+    used_slots on trailing-slot release; fold the mismatch pass into capture().
+
+P9  [BC] spatial_fill_occupied_cells_in_bounds emits cells in FxHashMap bucket
+    order — deterministic today but load-bearing on cell insert/remove history,
+    which BLOCKS grid-cell persistence. sort_unstable() the packed keys (one-time
+    replay-hash move; own commit).
+
+P10 [RI after P9] Grid-cell persistence: stop pruning empty cells on remove (3 hash
+    probes + remove/insert pair per boundary crossing, grid rebuilt twice/tick).
+    The known ~5% HashMap-churn fix. MUST land after P9.
+
+P11 [BC] beamConfig collisionSampleIntervalTicks is 1 — the entire hashed tick-ring
+    amortization + damage-window accumulator machinery exists and is a no-op.
+    Raise to 2 (DPS preserved by the window accumulator; hit timing coarsens).
+
+P12 [RI] Small: world.getEntity(sourceHost) fetched unconditionally for arming when
+    isArmed already early-outs (~1300 wasted Map.gets/tick); motion-event drain
+    allocates its sort comparator per tick.
+
+================ GROUP T — combat.targetingFsm + targetingStamp (10ms combined) ====
+
+T1  [RI] Targeting broadphase walks 512-wu observation cells with NO cap on
+    candidates — a 200-wu turret pays for everything in ~4 cells of 512^2. Add a
+    per-cell candidate AABB / finer secondary index so whole cells reject.
+
+T2  [RI] The SAME (turret -> target) LOS is computed twice per tick: lock validation
+    (fsm) + candidate gating (scheduler top-K). Add a per-tick memo keyed
+    (turret_global_idx, target_slot) for the LOS result only. Also hoist the
+    duplicated may_lock/view-mask tests and the per-candidate mirror-DPS walk into
+    per-tick per-slot memos.
+
+T3  [RI] refreshSlabActivityMasksForUnit = 3 crossings x every armed entity x every
+    tick; a batch kernel (combat_targeting_refresh_activity_masks_batch) EXISTS,
+    is wired, and has zero sim call sites. Restructure turretSystem's loop to
+    write views then call the batch once.
+
+T4  [RI] Cooldown reads/writes in fireTurrets each pay 2 crossings for
+    combatTargetingTurretSlabIndex when _fireTargetingContext already holds
+    views+turretBase — read views.cooldown[turretBase+i] directly.
+
+T5  [RI] entity_has_enabled_weapon + reset_disabled_weapons run for every entity
+    BEFORE the 16-tick cadence gate. Hoist below the gate (stamped flag; only run
+    reset when the stamped disabled mask is nonzero).
+
+T6  [BC] has_active_work counts a turret merely slewing back to rest, keeping its
+    host on the every-tick path after every fight. Split fsm-work vs rotation-work;
+    rotation-only hosts take the 16-tick phased probe.
+
+T7  [BC] Priority-target / attack-ground hosts bypass the cadence entirely AND run
+    the priority FSM plus a full trailing auto-scan every tick. Keep the priority
+    FSM per-tick (owns aim); phase the trailing fallback scan on the 16-tick wheel.
+
+T8  [BC] There is no global acquisition budget (the pathfinding model). Add a
+    per-tick cap on serviced needs_spatial_query entities, round-robin by ally
+    team with a deterministic carry queue — bounds worst-case targetingFsm.
+
+T9  [RI] Small: stamp an entity_has_slaved_mount bit to skip apply_slaved_mount_
+    targets; idle/host-unchanged early-outs for mount kinematics and the JS
+    turret-rotation queue (skip settled joints whose parent yaw is unchanged);
+    gate turretSnapshotRowsChangedSinceLastSample on activity mask/host motion;
+    cache the hostAttachment entity subset (blueprint filter runs 2x/tick/host).
+
+================ GROUP S — sim.* systems (economy, construction, movement) ========
+
+S1  [RI] findPatrolReclaimTarget walks ALL units + ALL buildings per patrolling
+    builder per tick (worst complexity found; the vegetation half already uses the
+    spatial grid). Use queryUnitsAndBuildingsInRadius with a correct radius upper
+    bound; keep the nearest/id-tiebreak reduction (order-independent).
+
+S2  [RI] updateConstructionLifecycle walks every unit+building to find a handful of
+    incomplete nanoframes. Add EntityCacheManager.getIncompleteBuildables() (two
+    id-sorted lists, units then buildings, to preserve order).
+
+S3  [RI] pathTerrainFilterForUnit allocates 3-4 nested objects >=2x per moving unit
+    per tick (inside the waypoint-consume loop). Memoize on (unitBlueprintId,
+    supportPointOffsetZ), invalidated on liquidSurfaceMode change.
+
+S4  [RI] findAutoAssistTarget / findNearestDamagedUnit are linear scans over
+    nanoframes / all damaged units per idle builder per tick. Use the spatial grid
+    with radius = buildRange + max target radius; tiebreak already order-safe.
+
+S5  [RI] updateTransportActions walks every unit to find ~0 transports. Add
+    cachedTransportUnits to EntityCacheManager.
+
+S6  [RI] Unit spatial sync = one JS->WASM crossing PER UNIT per tick (projectiles
+    already batch). Add setUnitsBatch mirroring setProjectilesBatch.
+
+S7  [RI] distributeEnergy walks getBuilderUnits() 4x per tick (7x across the whole
+    tick). Fuse passes 3/4/5 into one walk appending into pre-sized sub-arrays
+    concatenated in pass order (preserves consumer append order = bit-identical).
+
+S8  [RI] collectConstructionAttendance walks every builder's whole action queue per
+    tick (O(B x Q)). Maintain queued/active sets incrementally from the unitActions
+    mutation chokepoints; funded stays per-tick.
+
+S9  [RI] Guard resolution allocates a Set per builder per tick BEFORE the guard
+    early-out, plus a fresh arePlayersAllied closure at 3 sites. Move allocation
+    after the early-out (or fixed-depth array), hoist the closures.
+
+S10 [RI] Wind turbines walked twice per tick (WindPowerTracker + income credits);
+    solar/extractor income rows recomputed at 20Hz for ~0.5Hz values. Cache the
+    compacted (player, resource, rate) rows behind producer-list/active-state/wind
+    epochs; keep applying credits every tick from the cached rows.
+
+S11 [RI] Small allocs: getEntityTargetPoint fresh {x,y,z} per call (out-param);
+    resolveActiveMovementTarget fresh record per moving unit (scratch);
+    factory-entity list refill + unconditional zeroing loop (cache + boolean gate).
+
+S12 [RI] Support-surface index rebuilds building proxies every positions-epoch
+    though buildings never move. Split static (membership-gated) vs dynamic
+    partitions; keep merged scan order id-sorted (or prove reducer order-free).
+
+================ GROUP R — renderer (draw-call ceiling) ==========================
+
+R1  Rig instancing [BIG, the [31]/[34b] ledger item]: rover wheels, tank belt+cleat
+    meshes (up to 44/unit), bot limbs (~25-35 draws/unit AT EVERY RUNG), drone
+    fans, fins/panels are one-mesh-per-part. Crawler legs/chassis/turrets/trim are
+    already instanced (0 draws) — the template (LegInstancedRenderer + a
+    WasmPoseBatch3D matrix batch) exists. ~6k far-camera draws -> ~24 pooled.
+    Attack order: bot limbs, tank cleats, wheels, fans. TOO LARGE FOR THIS ROUND —
+    recorded as the next dedicated work item.
+
+R2  HUD batching [BIG]: every health bar and name label is its own Sprite +
+    SpriteMaterial + CanvasTexture = 1 draw + texture bind each (~2-3k draws at the
+    DEFAULT camera). Batch bars as untextured instanced quads (ratio as attribute);
+    labels via a shared glyph atlas. Recorded as next work with R1.
+
+R3  [config, free] lod.json featureMinRung.treadCleats "medium" -> "high": a MED
+    Mammoth keeps 18 sub-pixel cleat draws today (-16/-22 draws per heavy tank).
+
+R4  [RI] getBodyGeom string-key lookup per unit per frame (JSON-ish key concat +
+    Map hash) — cache the entry on EntityMesh at build.
+
+R5  [RI] layoutTreadCleat + wheel-spin transform writes run for SETTLED tracks
+    (predicate already computed for the activity queue, unused for gating);
+    LOW-rung treads sample terrain 3x per side where 1 suffices.
+
+R6  Shield panel frames per-mesh at every tier and the slab falls OFF the instanced
+    pool below CLOSE (regression). Extend pool tiers. (With R1.)
+
+NON-LEVERS (verified; do not spend time): water passes (6 constant draws, no entity
+re-render); observation-mask sweep + snapshot visibility memos (already optimally
+gated, consumed every tick); crawler legs; chassis/turret/trim/glyph pools; guard
+approach refresh (correctly change-gated); presentation capture bounding (prefix
+copy is the remaining issue = P8).
+
+================ IMPLEMENTATION PLAN (this round, in order) ======================
+ 1. P0 sub-phases + P7 terrainIsInstalled cache          (measure first)
+ 2. P12, S11-lite quick allocs
+ 3. P1 terminal staged single                            (biggest projectile item)
+ 4. P2 exclude staging + bitset
+ 5. P4 sweep cell resolve + epoch dedup
+ 6. P3 shield/panel invariant stamping
+ 7. P5 per-cell max-radius rejection
+ 8. P6 reflector staging (incl. beam path)
+ 9. P8 used_slots decay
+10. T3 activity-mask batch, T4 cooldown context reads, T5 gate hoist, T9 smalls
+11. T2 LOS memo
+12. S1, S2, S3, S4, S5, S6, S9 (economy/movement result-identicals)
+13. S7 fused builder walks, S8 attendance, S10 producer rows, S12 support split
+14. P9 nearby_cells sort [BC own commit] then P10 cell persistence
+15. P11 beam interval 1->2 [BC own commit]
+16. T6 rotation-work split, T7 priority-host fallback phasing [BC own commits]
+17. T8 acquisition budget (round-robin, pathfinding model) [BC]
+18. R3 config, R4, R5 render cheapies
+19. T1 targeting broadphase narrowing (if time)
+R1/R2/R6 recorded for the next dedicated round (multi-day renderer work).
+Re-run harness + refresh optimization:gate baseline at the end.
