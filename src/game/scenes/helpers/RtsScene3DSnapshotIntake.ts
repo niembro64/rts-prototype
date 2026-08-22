@@ -249,7 +249,11 @@ export class RtsScene3DSnapshotIntake {
     return {
       appliedSnapshot: true,
       startupReleased,
-      serverMeta: this.clientViewState.getServerMeta(),
+      // Only a rich presentation snapshot carries fresh meta. Projectile
+      // deltas arrive at sim tick rate between them, and republishing the
+      // retained meta on each one made Vue re-clone ~10 objects and re-run
+      // every serverMeta computed at up to 20 Hz for no new information.
+      serverMeta: kind === 'rich' ? this.clientViewState.getServerMeta() : null,
       gameOverWinnerId: this.clientViewState.getGameOverWinnerId(),
     };
   }

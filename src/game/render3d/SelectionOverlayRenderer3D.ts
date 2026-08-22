@@ -9,6 +9,7 @@ import {
 import { COLORS } from '@/colorsConfig';
 import { LAND_CELL_SIZE } from '../../config';
 import type { Entity } from '../sim/types';
+import type { EntityId } from '@/types/entityTypes';
 import { isConstructionPieceMaterialized } from '../sim/buildableHelpers';
 import { isAttackEmitter } from '../sim/emitterKinds';
 import type { ClientViewState } from '../network/ClientViewState';
@@ -195,6 +196,9 @@ export class SelectionOverlayRenderer3D {
   /** Scratch volumes reused by the per-entity overlay writers. */
   private readonly scratchVolume = createEntityVolume();
   private selectedCount = 0;
+  /** BAR cursor_unit_range: the hovered entity shows its range rings without
+   *  being selected. Null when nothing (or clean-capture) is hovered. */
+  private hoveredEntityId: EntityId | null = null;
   private rangeStateMask = -1;
   private rangeStateVersion = 0;
   private unitOverlayStateMask = -1;
@@ -257,7 +261,16 @@ export class SelectionOverlayRenderer3D {
     this.beginFrame();
   }
 
-  beginFrame(options: { reclaimTargets?: boolean } = {}): void {
+  beginFrame(
+    options: { reclaimTargets?: boolean; hoveredEntityId?: EntityId | null } = {},
+  ): void {
+    const nextHoveredEntityId = options.hoveredEntityId ?? null;
+    if (nextHoveredEntityId !== this.hoveredEntityId) {
+      this.hoveredEntityId = nextHoveredEntityId;
+      // Buildings cache their overlays behind this version; a hover change
+      // must re-evaluate them so rings appear and disappear with the cursor.
+      this.rangeStateVersion++;
+    }
     this.showTrackAcquire = getRangeToggle('trackAcquire');
     this.showTrackRelease = getRangeToggle('trackRelease');
     this.showEngageAcquire = getRangeToggle('engageAcquire');
@@ -326,12 +339,17 @@ export class SelectionOverlayRenderer3D {
     );
   }
 
-  unitRangeOverlaysNeedUpdate(m: OverlayEntityMesh, selected: boolean): boolean {
+  unitRangeOverlaysNeedUpdate(
+    m: OverlayEntityMesh,
+    selected: boolean,
+    entity: Entity,
+  ): boolean {
     return (
       this.showAnyRange ||
       this.showTurretLockOnVolumes ||
       this.showReclaimTargets ||
       m.rangeRingsVisible === true ||
+      entity.id === this.hoveredEntityId ||
       (selected && this.selectedCount === 1)
     );
   }
@@ -346,6 +364,8 @@ export class SelectionOverlayRenderer3D {
       this.showReclaimTargets ||
       this.showAnyRange ||
       this.showTurretLockOnVolumes ||
+      entity.id === this.hoveredEntityId ||
+      (selected && this.selectedCount === 1) ||
       (selected && Math.max(
         getEntityRadarRadius(entity),
         getEntitySonarRadius(entity),
@@ -451,12 +471,15 @@ export class SelectionOverlayRenderer3D {
     const showTrackAcquire = this.showTrackAcquire;
     const showTrackRelease = this.showTrackRelease;
     const showEngageAcquire = this.showEngageAcquire;
-    const showSingleSelectedUnitTurretCircle =
-      entity.unit !== null &&
+    // Units AND buildings alike: a lone selection shows its weapon reach
+    // (the old unit-only gate left towers ringless), and BAR's
+    // cursor_unit_range hover shows the same rings without selecting.
+    const isHovered = entity.id === this.hoveredEntityId;
+    const showSingleSelectedTurretCircle =
       entity.selectable?.selected === true &&
       this.selectedCount === 1;
     const showEngageRelease =
-      this.showEngageRelease || showSingleSelectedUnitTurretCircle;
+      this.showEngageRelease || showSingleSelectedTurretCircle || isHovered;
     const showEngageMinAcquire = this.showEngageMinAcquire;
     const showEngageMinRelease = this.showEngageMinRelease;
     const showBuild = this.showBuild;
@@ -464,7 +487,8 @@ export class SelectionOverlayRenderer3D {
       getEntityRadarRadius(entity),
       getEntitySonarRadius(entity),
     );
-    const showRadar = radarRadius > 0 && entity.selectable?.selected === true;
+    const showRadar = radarRadius > 0 &&
+      (entity.selectable?.selected === true || isHovered);
     const showReclaim = this.showReclaimTargets && isReclaimableTarget(entity);
     const showAnyTurretCircle =
       showTrackAcquire || showTrackRelease

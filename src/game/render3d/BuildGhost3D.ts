@@ -23,8 +23,14 @@ import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import {
   getBuildingAuthoredContactSightRadius,
+  getBuildingAuthoredFullSightRadius,
+  getBuildingAuthoredJammerRadius,
   getSensorMediumAtZ,
 } from '../sim/sensorCoverage';
+import {
+  getBuildingAuthoredShieldBarrierRadius,
+  getBuildingAuthoredWeaponRangeRadius,
+} from '../sim/buildingBlueprintRanges';
 import {
   type BuildPlacementCellDiagnostic,
   type BuildPlacementDiagnostics,
@@ -91,6 +97,13 @@ export class BuildGhost3D {
   private readonly buildRing: GroundRing3D;
   /** Contact-sensor footprint preview shown while placing radar/sonar. */
   private readonly radarRing: GroundRing3D;
+  /** Blueprint-authored radii shown while choosing a site (BAR shows the
+   *  same set during placement): weapon reach, full sight, jammer reach,
+   *  and the shield-sphere barrier. Each hides itself at radius 0. */
+  private readonly weaponRing: GroundRing3D;
+  private readonly sightRing: GroundRing3D;
+  private readonly jammerRing: GroundRing3D;
+  private readonly shieldRing: GroundRing3D;
   /** Warning line from builder to ghost, shown only when out of range. */
   private readonly rangeLineBatch: GroundLineBatch3D;
   private readonly rangeLineWidthPx: number;
@@ -124,6 +137,10 @@ export class BuildGhost3D {
     this.getGroundHeight = getGroundHeight;
     this.buildRing = new GroundRing3D(overlayLines, 'build', 64);
     this.radarRing = new GroundRing3D(overlayLines, 'radar', 96);
+    this.weaponRing = new GroundRing3D(overlayLines, 'rangeEngage', 96);
+    this.sightRing = new GroundRing3D(overlayLines, 'sight', 96);
+    this.jammerRing = new GroundRing3D(overlayLines, 'radar', 96);
+    this.shieldRing = new GroundRing3D(overlayLines, 'rangeEngage', 96);
     this.rangeLineWidthPx = overlayLines.style('build').widthPx;
     this.rangeLineBatch = overlayLines.createBatch('build', 2);
     const outOfRange = COLORS.effects.buildGhost.outOfRangeLine;
@@ -164,6 +181,10 @@ export class BuildGhost3D {
     // group (so build-mode exit hides them with the group).
     this.group.add(this.buildRing.mesh);
     this.group.add(this.radarRing.mesh);
+    this.group.add(this.weaponRing.mesh);
+    this.group.add(this.sightRing.mesh);
+    this.group.add(this.jammerRing.mesh);
+    this.group.add(this.shieldRing.mesh);
     this.group.add(this.rangeLineBatch.mesh);
     this.cellGeom = new THREE.PlaneGeometry(BUILD_GRID_CELL_SIZE, BUILD_GRID_CELL_SIZE);
     this.cellBorderGeom = BuildGhost3D.makeCellBorderGeometry();
@@ -235,16 +256,37 @@ export class BuildGhost3D {
         'underwater',
       ),
     );
-    if (contactRadius > 0) {
-      const c = hexToRgb01(COLORS.effects.buildGhost.radarRangeRing.colorHex);
-      this.radarRing.set(
-        snapped.x, 0, snapped.y, contactRadius,
-        c.r, c.g, c.b, COLORS.effects.buildGhost.radarRangeRing.opacity,
-        this.getGroundHeight,
-      );
-    } else {
-      this.radarRing.hide();
-    }
+    this.setBlueprintRing(
+      this.radarRing, snapped.x, snapped.y, contactRadius,
+      COLORS.effects.buildGhost.radarRangeRing,
+    );
+
+    // The rest of the blueprint's authored radii, so a placement decision can
+    // see everything the site would cover (BAR shows the same set while
+    // placing: weapon range, LOS, jammer, shield).
+    this.setBlueprintRing(
+      this.weaponRing, snapped.x, snapped.y,
+      getBuildingAuthoredWeaponRangeRadius(buildingBlueprintId),
+      COLORS.effects.buildGhost.weaponRangeRing,
+    );
+    const sightRadius = Math.max(
+      getBuildingAuthoredFullSightRadius(buildingBlueprintId, sourceMedium, 'aboveWater'),
+      getBuildingAuthoredFullSightRadius(buildingBlueprintId, sourceMedium, 'underwater'),
+    );
+    this.setBlueprintRing(
+      this.sightRing, snapped.x, snapped.y, sightRadius,
+      COLORS.effects.buildGhost.sightRangeRing,
+    );
+    this.setBlueprintRing(
+      this.jammerRing, snapped.x, snapped.y,
+      getBuildingAuthoredJammerRadius(buildingBlueprintId),
+      COLORS.effects.buildGhost.jammerRangeRing,
+    );
+    this.setBlueprintRing(
+      this.shieldRing, snapped.x, snapped.y,
+      getBuildingAuthoredShieldBarrierRadius(buildingBlueprintId),
+      COLORS.effects.buildGhost.shieldRangeRing,
+    );
 
     this.rangeLineBatch.begin();
     if (builder?.builder) {
@@ -275,6 +317,22 @@ export class BuildGhost3D {
     this.group.visible = false;
     this.lastTargetKey = '';
     this.lastDiagnostics = undefined;
+  }
+
+  /** Terrain-draped ring at the snapped ghost site; radius 0 hides it. */
+  private setBlueprintRing(
+    ring: GroundRing3D,
+    worldX: number,
+    worldY: number,
+    radius: number,
+    color: { colorHex: number; opacity: number },
+  ): void {
+    if (radius <= 0) {
+      ring.hide();
+      return;
+    }
+    const c = hexToRgb01(color.colorHex);
+    ring.set(worldX, 0, worldY, radius, c.r, c.g, c.b, color.opacity, this.getGroundHeight);
   }
 
   private static makeCellBorderGeometry(): THREE.BufferGeometry {
@@ -356,6 +414,10 @@ export class BuildGhost3D {
     (this.footprint.geometry as THREE.BufferGeometry).dispose();
     this.buildRing.dispose();
     this.radarRing.dispose();
+    this.weaponRing.dispose();
+    this.sightRing.dispose();
+    this.jammerRing.dispose();
+    this.shieldRing.dispose();
     this.rangeLineBatch.dispose();
     this.cellGeom.dispose();
     this.cellBorderGeom.dispose();

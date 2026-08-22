@@ -110,6 +110,7 @@ type BuildPreviewTarget = {
 type BuildShapePlacementPlanner = (
   buildingBlueprintId: BuildingBlueprintId,
   entitySource: ModeClickEntitySource,
+  capableBuilders: readonly Entity[],
 ) => ReadonlyArray<{ gridX: number; gridY: number }>;
 
 type BuildQueuePlacement = {
@@ -486,9 +487,14 @@ export class Input3DModeClickController {
     const targetFilter = this.resolveAreaDragTargetFilter(drag, releaseEvent);
     const areaQueueMode = this.resolveAreaCommandQueueMode(drag, releaseEvent);
     const selectedAreaUnits = this.config.getEntitySource().getSelectedUnits();
-    const areaExpansionContext = isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId())
-      ? this.resolveBarAreaExpansionContext(selectedAreaUnits, areaQueueMode.splitTargets)
-      : null;
+    // The ordering origin is supplied for EVERY hotkey preset: without it the
+    // sim falls back to distance-from-drag-center ordering, which reads as a
+    // random visit sequence. Only splitTargets stays BAR-preset-gated (via
+    // resolveAreaCommandQueueMode).
+    const areaExpansionContext = this.resolveBarAreaExpansionContext(
+      selectedAreaUnits,
+      areaQueueMode.splitTargets,
+    );
     if (drag.kind === 'repairArea') {
       const builders = this.getSelectedBuilders();
       for (let i = 0; i < builders.length; i++) {
@@ -747,12 +753,31 @@ export class Input3DModeClickController {
     this.commitBuildShapePlacements(
       drag,
       AREA_MEX_BLUEPRINT_ID,
-      (_buildingBlueprintId, entitySource) => this.buildPlacement.planMetalExtractorPlacementsInArea(
-        drag.start.x,
-        drag.start.y,
-        radius,
-        entitySource,
-      ),
+      (_buildingBlueprintId, entitySource, capableBuilders) => {
+        // BAR cmd_area_mex seeds the chained placement path from the average
+        // position of the builders that will do the work; an empty roster
+        // never reaches the planner, but the drag center is a safe fallback.
+        let seedX = drag.start.x;
+        let seedY = drag.start.y;
+        if (capableBuilders.length > 0) {
+          seedX = 0;
+          seedY = 0;
+          for (let i = 0; i < capableBuilders.length; i++) {
+            seedX += capableBuilders[i].transform.x;
+            seedY += capableBuilders[i].transform.y;
+          }
+          seedX /= capableBuilders.length;
+          seedY /= capableBuilders.length;
+        }
+        return this.buildPlacement.planMetalExtractorPlacementsInArea(
+          drag.start.x,
+          drag.start.y,
+          radius,
+          entitySource,
+          seedX,
+          seedY,
+        );
+      },
     );
   }
 
@@ -827,7 +852,7 @@ export class Input3DModeClickController {
     }
 
     const entitySource = this.config.getEntitySource();
-    const placements = planner(buildingBlueprintId, entitySource);
+    const placements = planner(buildingBlueprintId, entitySource, roster.capableBuilders);
     if (placements.length === 0) {
       this.config.applyCursor('blocked');
       return;

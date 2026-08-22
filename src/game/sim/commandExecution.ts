@@ -84,6 +84,8 @@ import { factoryCanProduceUnit } from './factoryProductionRoster';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_COMBAT_MODE, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../types/network';
 import { setBuildingActiveOpen } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';
+import { orderAreaTargetsByChainedNearest } from './areaTargetOrdering';
+import { getBuilderConstructionRate } from './hostCapabilities';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getUnitBlueprint } from './blueprints';
 import { setUnitGroundNormalEmaMode } from './unitGroundNormal';
@@ -1048,6 +1050,11 @@ function executeUpgradeMetalExtractorAreaCommand(
   if (builders.length === 0) return;
   const playerId = builders[0].ownership?.playerId;
   if (playerId === undefined) return;
+  const eligibleBuilders: Entity[] = [];
+  for (let i = 0; i < builders.length; i++) {
+    if (playerIdByBuilderId.get(builders[i].id) === playerId) eligibleBuilders.push(builders[i]);
+  }
+  if (eligibleBuilders.length === 0) return;
   const targets = findMetalExtractorUpgradeTargetsInArea(
     ctx,
     playerId,
@@ -1057,35 +1064,82 @@ function executeUpgradeMetalExtractorAreaCommand(
   );
   if (targets.length === 0) return;
 
-  const perBuilderCounts = new Map<EntityId, number>();
-  for (let i = 0; i < targets.length; i++) {
-    const builder = builders[i % builders.length];
-    if (playerIdByBuilderId.get(builder.id) !== playerId) continue;
-    const assignedCount = perBuilderCounts.get(builder.id) ?? 0;
-    perBuilderCounts.set(builder.id, assignedCount + 1);
-    const queue = assignedCount === 0 ? command.queue : true;
-    const queueFront = assignedCount === 0 ? commandQueuesInFront(command) : false;
-    const queueInsertIndex = commandQueueInsertIndex(command);
-    const building = ctx.constructionSystem.startMetalExtractorUpgrade(
-      ctx.world,
-      targets[i].id,
-      playerId,
-      builder.id,
-    );
-    if (!building || building.buildingBlueprintId === null) continue;
-    const grid = ctx.constructionSystem.getBuildingGridPosition(building);
-    if (grid === null) continue;
-    enqueueBuildActionForBuilding(
-      ctx,
-      builder,
-      building,
-      building.buildingBlueprintId,
-      grid.gridX,
-      grid.gridY,
-      queue,
-      queueFront,
-      offsetQueueInsertIndex(queueInsertIndex, assignedCount),
-    );
+  // BAR cmd_area_mex ordering: one chained nearest-neighbour path seeded
+  // from the average position of the ordering builders, then contiguous
+  // build-power-proportional slices per builder (api_build_orders) so each
+  // builder walks a coherent sub-path instead of round-robin zig-zagging.
+  let seedX = 0;
+  let seedY = 0;
+  for (let i = 0; i < eligibleBuilders.length; i++) {
+    seedX += eligibleBuilders[i].transform.x;
+    seedY += eligibleBuilders[i].transform.y;
+  }
+  seedX /= eligibleBuilders.length;
+  seedY /= eligibleBuilders.length;
+  orderAreaTargetsByChainedNearest(
+    targets,
+    seedX,
+    seedY,
+    (target) => target.transform.x,
+    (target) => target.transform.y,
+    (target) => target.id,
+  );
+
+  let remainingPower = 0;
+  for (let i = 0; i < eligibleBuilders.length; i++) {
+    remainingPower += Math.max(1, getBuilderConstructionRate(eligibleBuilders[i]));
+  }
+  const queueInsertIndex = commandQueueInsertIndex(command);
+  let nextTargetIndex = 0;
+  let remainingTargets = targets.length;
+  for (
+    let builderIndex = 0;
+    builderIndex < eligibleBuilders.length && nextTargetIndex < targets.length;
+    builderIndex++
+  ) {
+    const builder = eligibleBuilders[builderIndex];
+    const power = Math.max(1, getBuilderConstructionRate(builder));
+    const isLastBuilder = builderIndex === eligibleBuilders.length - 1;
+    const targetShare = remainingPower > 0 ? remainingTargets * (power / remainingPower) : remainingTargets;
+    let sliceSize = remainingTargets;
+    if (!isLastBuilder) {
+      sliceSize = 1;
+      while (
+        sliceSize < remainingTargets &&
+        Math.abs(sliceSize + 1 - targetShare) <= Math.abs(sliceSize - targetShare)
+      ) {
+        sliceSize++;
+      }
+    }
+    let assignedCount = 0;
+    for (let s = 0; s < sliceSize && nextTargetIndex < targets.length; s++) {
+      const queue = assignedCount === 0 ? command.queue : true;
+      const queueFront = assignedCount === 0 ? commandQueuesInFront(command) : false;
+      const building = ctx.constructionSystem.startMetalExtractorUpgrade(
+        ctx.world,
+        targets[nextTargetIndex].id,
+        playerId,
+        builder.id,
+      );
+      nextTargetIndex++;
+      if (!building || building.buildingBlueprintId === null) continue;
+      const grid = ctx.constructionSystem.getBuildingGridPosition(building);
+      if (grid === null) continue;
+      enqueueBuildActionForBuilding(
+        ctx,
+        builder,
+        building,
+        building.buildingBlueprintId,
+        grid.gridX,
+        grid.gridY,
+        queue,
+        queueFront,
+        offsetQueueInsertIndex(queueInsertIndex, assignedCount),
+      );
+      assignedCount++;
+    }
+    remainingPower -= power;
+    remainingTargets = targets.length - nextTargetIndex;
   }
 }
 
@@ -2067,20 +2121,25 @@ function prepareBarEntityAreaTargets(
         splitTargets.push(targets[i]);
       }
     }
-    splitTargets.sort((a, b) =>
-      pointDistanceSq(a.transform.x, a.transform.y, commandSource.transform.x, commandSource.transform.y) -
-        pointDistanceSq(b.transform.x, b.transform.y, commandSource.transform.x, commandSource.transform.y) ||
-      a.id - b.id,
+    return orderAreaTargetsByChainedNearest(
+      splitTargets,
+      commandSource.transform.x,
+      commandSource.transform.y,
+      (target) => target.transform.x,
+      (target) => target.transform.y,
+      (target) => target.id,
     );
-    return splitTargets;
   }
   const originX = command.targetOrderOriginX;
   const originY = command.targetOrderOriginY;
   if (originX !== undefined && originY !== undefined) {
-    targets.sort((a, b) =>
-      pointDistanceSq(a.transform.x, a.transform.y, originX, originY) -
-        pointDistanceSq(b.transform.x, b.transform.y, originX, originY) ||
-      a.id - b.id,
+    orderAreaTargetsByChainedNearest(
+      targets,
+      originX,
+      originY,
+      (target) => target.transform.x,
+      (target) => target.transform.y,
+      (target) => target.id,
     );
   }
   return targets;
@@ -2101,28 +2160,28 @@ function prepareBarReclaimAreaTargets(
         splitTargets.push(targets[i]);
       }
     }
-    splitTargets.sort((a, b) =>
-      pointDistanceSq(a.x, a.y, commandSource.transform.x, commandSource.transform.y) -
-        pointDistanceSq(b.x, b.y, commandSource.transform.x, commandSource.transform.y) ||
-      a.id - b.id,
+    return orderAreaTargetsByChainedNearest(
+      splitTargets,
+      commandSource.transform.x,
+      commandSource.transform.y,
+      (target) => target.x,
+      (target) => target.y,
+      (target) => target.id,
     );
-    return splitTargets;
   }
   const originX = command.targetOrderOriginX;
   const originY = command.targetOrderOriginY;
   if (originX !== undefined && originY !== undefined) {
-    targets.sort((a, b) =>
-      pointDistanceSq(a.x, a.y, originX, originY) - pointDistanceSq(b.x, b.y, originX, originY) ||
-      a.id - b.id,
+    orderAreaTargetsByChainedNearest(
+      targets,
+      originX,
+      originY,
+      (target) => target.x,
+      (target) => target.y,
+      (target) => target.id,
     );
   }
   return targets;
-}
-
-function pointDistanceSq(ax: number, ay: number, bx: number, by: number): number {
-  const dx = ax - bx;
-  const dy = ay - by;
-  return dx * dx + dy * dy;
 }
 
 function enqueueAreaTargetActionsInOrder<T>(

@@ -26,6 +26,11 @@ function createControlGroupSlotSnapshots(): ControlGroupSlotSnapshot[] {
   return slots;
 }
 
+/** Steady-state (snapshot-driven / producing-factory) selection-panel
+ *  publishes are capped to this interval; player-input marks still publish
+ *  on the next frame. Matches the economy UI cadence. */
+const SELECTION_INFO_PUBLISH_INTERVAL_MS = 100;
+
 export class RtsScene3DSelectionSystem {
   private selectedUnits: Entity[] = [];
   private selectedBuildings: Entity[] = [];
@@ -33,6 +38,9 @@ export class RtsScene3DSelectionSystem {
   private controlGroupSlots: ControlGroupSlotSnapshot[] = createControlGroupSlotSnapshots();
   private selectedEntityCacheDirty = true;
   private selectionInfoDirty = true;
+  /** Snapshot-intake refresh requests; honored on the publish interval. */
+  private selectionInfoThrottledDirty = false;
+  private lastSelectionInfoEmitMs = 0;
   /** The hovered entity the last emitted info described. The panel reads hover
    *  first (BAR-style), so a new entity under the cursor is a real change to
    *  what it shows — but only when the ENTITY changes, not every frame the
@@ -88,8 +96,14 @@ export class RtsScene3DSelectionSystem {
     return this.selectedBuildings;
   }
 
-  markSelectionDirty(): void {
-    this.selectionInfoDirty = true;
+  /** Urgent marks (the default — selection clicks, waypoint mode, control
+   *  groups) republish on the next frame. Non-urgent marks (steady snapshot
+   *  intake) wait out the UI publish interval, because rebuilding the whole
+   *  selection panel payload at snapshot rate was the single largest sim→Vue
+   *  cost in the profile. */
+  markSelectionDirty(urgent = true): void {
+    if (urgent) this.selectionInfoDirty = true;
+    else this.selectionInfoThrottledDirty = true;
     this.selectedEntityCacheDirty = true;
   }
 
@@ -308,19 +322,25 @@ export class RtsScene3DSelectionSystem {
       this.lastHoveredEntityId = hoveredEntityId;
       this.selectionInfoDirty = true;
     }
-    if (!this.selectionInfoDirty) {
-      let hasProducingFactory = false;
+    if (!this.selectionInfoDirty && !this.selectionInfoThrottledDirty) {
+      // A producing factory keeps its progress bar live — on the UI publish
+      // interval below, no longer at full render framerate.
       for (let i = 0; i < this.selectedBuildings.length; i++) {
         if (this.selectedBuildings[i].factory?.isProducing !== true) continue;
-        hasProducingFactory = true;
+        this.selectionInfoThrottledDirty = true;
         break;
       }
-      if (hasProducingFactory) this.selectionInfoDirty = true;
     }
-    if (!this.selectionInfoDirty) return;
+    const nowMs = performance.now();
+    if (!this.selectionInfoDirty) {
+      if (!this.selectionInfoThrottledDirty) return;
+      if (nowMs - this.lastSelectionInfoEmitMs < SELECTION_INFO_PUBLISH_INTERVAL_MS) return;
+    }
 
     this.emitSelectionInfo(entitySource, onSelectionChange);
     this.selectionInfoDirty = false;
+    this.selectionInfoThrottledDirty = false;
+    this.lastSelectionInfoEmitMs = nowMs;
   }
 
   emitSelectionInfo(

@@ -809,7 +809,9 @@ export class RtsScene3D {
         this.clientViewState.getUnits(),
       );
 
-      this.selectionSystem.markSelectionDirty();
+      // Steady snapshot intake is a throttled refresh: the selection panel
+      // republishes on the UI interval, not at snapshot/tick rate.
+      this.selectionSystem.markSelectionDirty(false);
     }
 
     // Process local commands — select/clearSelection apply to ClientViewState,

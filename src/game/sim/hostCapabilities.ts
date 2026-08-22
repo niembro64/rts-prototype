@@ -169,7 +169,9 @@ function getSelectedBuilderTypeInfos(
   }
 
   return Array.from(byUnitBlueprintId.values())
-    .sort((a, b) => a.unitBlueprintId.localeCompare(b.unitBlueprintId));
+    .sort((a, b) => (
+      a.unitBlueprintId < b.unitBlueprintId ? -1 : a.unitBlueprintId > b.unitBlueprintId ? 1 : 0
+    ));
 }
 
 export function getBarVisibleSelectedBuilderTypeInfos(
@@ -178,11 +180,12 @@ export function getBarVisibleSelectedBuilderTypeInfos(
   return getSelectedBuilderTypeInfos(selectedUnits).slice(0, BAR_MAX_SELECTED_BUILDER_TYPES);
 }
 
-export function getActiveSelectedBuilderTypeInfo(
-  selectedUnits: readonly Entity[],
+/** Pick the active builder type from an ALREADY-GATHERED visible list, so a
+ *  caller that holds the list does not pay the selection walk twice. */
+export function selectActiveBuilderTypeInfo(
+  builderTypes: readonly SelectedBuilderTypeInfo[],
   activeBuilderUnitBlueprintId: string | null | undefined,
 ): SelectedBuilderTypeInfo | null {
-  const builderTypes = getBarVisibleSelectedBuilderTypeInfos(selectedUnits);
   if (builderTypes.length === 0) return null;
   if (activeBuilderUnitBlueprintId !== null && activeBuilderUnitBlueprintId !== undefined) {
     for (let i = 0; i < builderTypes.length; i++) {
@@ -190,6 +193,16 @@ export function getActiveSelectedBuilderTypeInfo(
     }
   }
   return builderTypes[0];
+}
+
+export function getActiveSelectedBuilderTypeInfo(
+  selectedUnits: readonly Entity[],
+  activeBuilderUnitBlueprintId: string | null | undefined,
+): SelectedBuilderTypeInfo | null {
+  return selectActiveBuilderTypeInfo(
+    getBarVisibleSelectedBuilderTypeInfos(selectedUnits),
+    activeBuilderUnitBlueprintId,
+  );
 }
 
 export function getActiveSelectedBuilderAllowedBuildBlueprintIds(

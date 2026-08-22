@@ -504,7 +504,7 @@ export class Render3DEntities {
     frameStateOverride?: RenderFrameState3D,
     turretShieldPanelsEnabled: boolean = true,
     entityPacket?: RenderEntityUpdatePacket3D,
-    overlayModes: { reclaimTargets?: boolean } = {},
+    overlayModes: { reclaimTargets?: boolean; hoveredEntityId?: EntityId | null } = {},
   ): void {
     // Refresh the single render-detail snapshot once per frame.
     const newFrameState = frameStateOverride
@@ -537,7 +537,10 @@ export class Render3DEntities {
     this.syncSmokeTrailsQueue();
     this.syncLegsRadiusToggleQueue();
     this.syncLegsReachToggleQueue();
-    this.selectionOverlays.beginFrame({ reclaimTargets: overlayModes.reclaimTargets === true });
+    this.selectionOverlays.beginFrame({
+      reclaimTargets: overlayModes.reclaimTargets === true,
+      hoveredEntityId: overlayModes.hoveredEntityId ?? null,
+    });
     this.lodProxyRenderer.beginFrame();
     this.updateUnits(entityPacket?.unitRows, entityPacket?.scoped === true);
     this.buildingRenderer.update(
@@ -1075,7 +1078,7 @@ export class Render3DEntities {
         this.selectionOverlays.updateSelectionRing(m, selected, radius * 1.35);
         this.selectionOverlays.updateHostVolumes(m, e);
       }
-      if (this.selectionOverlays.unitRangeOverlaysNeedUpdate(m, selected)) {
+      if (this.selectionOverlays.unitRangeOverlaysNeedUpdate(m, selected, e)) {
         this.selectionOverlays.updateRangeRings(m, e);
       }
       if (unitOverlayVersionDirty) m.unitOverlayVersion = unitOverlayStateVersion;

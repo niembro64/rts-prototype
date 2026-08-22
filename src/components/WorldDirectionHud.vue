@@ -14,12 +14,9 @@ import {
 import { SUN_DIRECTION_SIM } from '@/game/render3d/SunLighting';
 import { SUN_RENDER_CONFIG } from '@/config';
 
-const props = withDefaults(defineProps<{
+const props = defineProps<{
   data: Pick<MinimapData, 'cameraView' | 'directionVersion' | 'wind'>;
-  compact?: boolean;
-}>(), {
-  compact: false,
-});
+}>();
 
 const compassCanvasRef = ref<HTMLCanvasElement | null>(null);
 const windCanvasRef = ref<HTMLCanvasElement | null>(null);
@@ -36,14 +33,6 @@ const windSpeedLabel = computed(() => {
   void props.data.directionVersion;
   return (props.data.wind?.speed ?? 0).toFixed(2);
 });
-const windComponentLabels = computed(() => {
-  void props.data.directionVersion;
-  return {
-    x: fmtWindComponent(props.data.wind?.x ?? 0),
-    y: fmtWindComponent(props.data.wind?.y ?? 0),
-    z: fmtWindComponent(props.data.wind?.z ?? 0),
-  };
-});
 const HUD_COLORS = COLORS.ui.worldDirectionHud;
 const hudStyle = {
   '--world-direction-text': HUD_COLORS.label.text,
@@ -59,7 +48,6 @@ type HudView = {
   camera: THREE.PerspectiveCamera;
   width: number;
   height: number;
-  compact: boolean;
   contextToken: RendererContextToken;
 };
 
@@ -80,12 +68,10 @@ let lowMemoryHud = false;
 
 const RENDER_INTERVAL_MS = 1000 / 30;
 const SCALE_EPS = 0.001;
-const COMPACT_CAMERA_FOV = 20;
-const DEFAULT_CAMERA_FOV = 24;
-const COMPACT_CAMERA_Y = 3.0;
-const COMPACT_CAMERA_Z = 4.1;
-const DEFAULT_CAMERA_Y = 4.5;
-const DEFAULT_CAMERA_Z = 5.9;
+const CAMERA_FOV = 20;
+const CAMERA_Y = 3.0;
+const CAMERA_Z = 4.1;
+const HUD_PIXEL_RATIO_CAP = 1.5;
 
 const viewDirection = new THREE.Vector3();
 const hudDirection = new THREE.Vector3();
@@ -96,12 +82,6 @@ const hudTowardCamera = new THREE.Vector3();
 const lowMemoryCompassDirection = new THREE.Vector3();
 const lowMemoryWindDirection = new THREE.Vector3();
 const lowMemorySunDirection = new THREE.Vector3();
-
-function fmtWindComponent(value: number): string {
-  const rounded = Math.abs(value) < 0.05 ? 0 : value;
-  const sign = rounded < 0 ? '-' : '+';
-  return `${sign}${Math.abs(rounded).toFixed(1)}`;
-}
 
 function writeWorldVectorInView(
   x: number,
@@ -186,12 +166,15 @@ function addHudLights(scene: THREE.Scene): void {
 }
 
 function frameHudCamera(camera: THREE.PerspectiveCamera): void {
-  camera.fov = props.compact ? COMPACT_CAMERA_FOV : DEFAULT_CAMERA_FOV;
-  camera.position.set(
-    0,
-    props.compact ? COMPACT_CAMERA_Y : DEFAULT_CAMERA_Y,
-    props.compact ? COMPACT_CAMERA_Z : DEFAULT_CAMERA_Z,
-  );
+  // The bar slot is taller than the canvas is wide; on a narrow canvas the
+  // authored fov must widen so a horizontally-pointing arrow keeps the same
+  // on-screen margin a square canvas gives it vertically.
+  const fovRad = (CAMERA_FOV * Math.PI) / 180;
+  const aspect = camera.aspect > 0 ? camera.aspect : 1;
+  camera.fov = aspect < 1
+    ? (2 * Math.atan(Math.tan(fovRad / 2) / aspect) * 180) / Math.PI
+    : CAMERA_FOV;
+  camera.position.set(0, CAMERA_Y, CAMERA_Z);
   camera.lookAt(0, 0, 0);
   camera.updateProjectionMatrix();
 }
@@ -207,18 +190,13 @@ function createHudView(
     alpha: true,
   });
   renderer.setClearColor(HUD_COLORS.clear.colorHex, HUD_COLORS.clear.alpha);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, props.compact ? 1.5 : 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, HUD_PIXEL_RATIO_CAP));
 
   const scene = new THREE.Scene();
   addHudLights(scene);
   scene.add(root);
 
-  const camera = new THREE.PerspectiveCamera(
-    props.compact ? COMPACT_CAMERA_FOV : DEFAULT_CAMERA_FOV,
-    1,
-    0.1,
-    30,
-  );
+  const camera = new THREE.PerspectiveCamera(CAMERA_FOV, 1, 0.1, 30);
   frameHudCamera(camera);
 
   return {
@@ -228,7 +206,6 @@ function createHudView(
     camera,
     width: 0,
     height: 0,
-    compact: props.compact,
     contextToken,
   };
 }
@@ -324,13 +301,12 @@ function makeHudMaterial(config: typeof HUD_COLORS.materials.compass): THREE.Mes
 function resizeHudView(view: HudView): boolean {
   const width = Math.max(1, view.canvas.clientWidth);
   const height = Math.max(1, view.canvas.clientHeight);
-  if (width === view.width && height === view.height && props.compact === view.compact) {
+  if (width === view.width && height === view.height) {
     return false;
   }
   view.width = width;
   view.height = height;
-  view.compact = props.compact;
-  view.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, props.compact ? 1.5 : 2));
+  view.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, HUD_PIXEL_RATIO_CAP));
   view.renderer.setSize(width, height, false);
   view.camera.aspect = width / height;
   frameHudCamera(view.camera);
@@ -354,7 +330,7 @@ function resize(): void {
 
 function resizeLowMemoryCanvas(canvas: HTMLCanvasElement | null): void {
   if (!canvas) return;
-  const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, props.compact ? 1.5 : 2));
+  const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, HUD_PIXEL_RATIO_CAP));
   const width = Math.max(1, Math.round(canvas.clientWidth));
   const height = Math.max(1, Math.round(canvas.clientHeight));
   canvas.width = Math.max(1, Math.round(width * dpr));
@@ -631,7 +607,6 @@ watch(
     props.data.wind?.z ?? 0,
     props.data.wind?.speed ?? 0,
     props.data.directionVersion,
-    props.compact ? 1 : 0,
   ],
   requestHudRender,
 );
@@ -640,7 +615,6 @@ watch(
 <template>
   <div
     class="world-direction-hud"
-    :class="{ compact }"
     :style="hudStyle"
     aria-label="Compass, sunlight, and wind direction"
   >
@@ -651,23 +625,18 @@ watch(
         <strong>N</strong>
       </div>
     </div>
-    <div class="direction-item sun-item">
+    <div class="direction-item">
       <canvas ref="sunCanvasRef" class="direction-canvas"></canvas>
       <div class="direction-label">
         <span>Sunlight</span>
         <strong>{{ sunElevationLabel }}</strong>
       </div>
     </div>
-    <div class="direction-item wind-item">
+    <div class="direction-item">
       <canvas ref="windCanvasRef" class="direction-canvas"></canvas>
-      <div class="direction-label wind-label">
-        <span>Wind Speed</span>
+      <div class="direction-label">
+        <span>Wind</span>
         <strong>{{ windSpeedLabel }}</strong>
-        <div class="wind-components" aria-label="Wind speed components">
-          <span><b>X</b>{{ windComponentLabels.x }}</span>
-          <span><b>Y</b>{{ windComponentLabels.y }}</span>
-          <span><b>Z</b>{{ windComponentLabels.z }}</span>
-        </div>
       </div>
     </div>
   </div>
@@ -677,9 +646,9 @@ watch(
 .world-direction-hud {
   display: flex;
   align-items: stretch;
-  gap: 10px;
-  width: 450px;
-  height: 118px;
+  gap: 6px;
+  width: max-content;
+  height: 100%;
   min-height: 0;
   padding: 0;
   background: transparent;
@@ -689,28 +658,17 @@ watch(
   pointer-events: none;
 }
 
-.world-direction-hud.compact {
-  width: 430px;
-  height: 100%;
-}
-
 .direction-item {
   display: flex;
   align-items: stretch;
-  gap: 5px;
-  min-width: 0;
-  flex: 1 1 0;
+  gap: 4px;
+  flex: 0 0 auto;
   height: 100%;
-}
-
-.wind-item {
-  flex: 1.45 1 0;
 }
 
 .direction-label {
   display: grid;
   align-self: center;
-  min-width: 0;
   gap: 1px;
   line-height: 1.05;
   text-align: left;
@@ -718,76 +676,25 @@ watch(
 
 .direction-canvas {
   display: block;
-  flex: 0 0 48px;
-  width: 48px;
+  flex: 0 0 34px;
+  width: 34px;
   height: 100%;
   min-height: 0;
 }
 
-.world-direction-hud.compact .direction-canvas {
-  flex-basis: 48px;
-  width: 48px;
-}
-
 .direction-label span {
-  overflow: hidden;
   color: var(--world-direction-text);
-  font-size: 9px;
+  font-size: 8px;
   text-shadow: 0 1px 4px var(--world-direction-shadow);
-  text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
-.world-direction-hud.compact .direction-label span {
-  font-size: 8px;
-}
-
 .direction-label strong {
-  overflow: hidden;
   color: var(--world-direction-strong);
-  font-size: 12px;
-  font-weight: 700;
-  text-shadow: 0 1px 5px var(--world-direction-strong-shadow);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.world-direction-hud.compact .direction-label strong {
   font-size: 10px;
-}
-
-.wind-components {
-  display: grid;
-  grid-template-columns: repeat(3, max-content);
-  gap: 4px;
-  min-width: 0;
-  margin-top: 1px;
-  color: var(--world-direction-strong);
-  font-size: 9px;
   font-weight: 700;
-  line-height: 1;
   text-shadow: 0 1px 5px var(--world-direction-strong-shadow);
   white-space: nowrap;
-}
-
-.wind-components span {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 2px;
-}
-
-.wind-components b {
-  color: var(--world-direction-text);
-  font-size: 8px;
-}
-
-.world-direction-hud.compact .wind-components {
-  gap: 3px;
-  font-size: 9px;
-}
-
-.world-direction-hud.compact .wind-components b {
-  font-size: 8px;
 }
 </style>

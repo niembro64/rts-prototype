@@ -939,6 +939,22 @@
       "outOfRangeLine": {
         "colorHex": "#ff4444",
         "opacity": 0.6
+      },
+      "weaponRangeRing": {
+        "colorHex": "#ff2e0a",
+        "opacity": 0.5
+      },
+      "sightRangeRing": {
+        "colorHex": "#e6e6e6",
+        "opacity": 0.28
+      },
+      "jammerRangeRing": {
+        "colorHex": "#ff5900",
+        "opacity": 0.4
+      },
+      "shieldRangeRing": {
+        "colorHex": "#cccc4d",
+        "opacity": 0.4
       }
     },
     "inputSelectionMarquee": {

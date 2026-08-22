@@ -112,7 +112,7 @@ export function runAreaMexPlacementContractTest(): void {
   // A circle drawn around the far deposit plans that deposit...
   const radius = 300;
   const plan = state.planMetalExtractorPlacementsInArea(
-    farDeposit.x, farDeposit.y, radius, entitySource,
+    farDeposit.x, farDeposit.y, radius, entitySource, farDeposit.x, farDeposit.y,
   );
   assertContract(plan.length >= 1, 'a circle around a free deposit must plan an extractor on it');
   for (const placement of plan) {
@@ -130,8 +130,10 @@ export function runAreaMexPlacementContractTest(): void {
   // A small circle over empty ground plans nothing at all. Before the fix
   // the center deposit's map-wide growth cap put it inside EVERY circle, so
   // this exact drag planned an extractor at dead center.
+  const emptyDragX = 150 * BUILD_GRID_CELL_SIZE;
+  const emptyDragY = 150 * BUILD_GRID_CELL_SIZE;
   const emptyPlan = state.planMetalExtractorPlacementsInArea(
-    150 * BUILD_GRID_CELL_SIZE, 150 * BUILD_GRID_CELL_SIZE, 120, entitySource,
+    emptyDragX, emptyDragY, 120, entitySource, emptyDragX, emptyDragY,
   );
   assertContract(
     emptyPlan.length === 0,
@@ -141,12 +143,37 @@ export function runAreaMexPlacementContractTest(): void {
   // And the giant deposit is still perfectly reachable the honest way: put
   // the drag ON it and its origin is inside the circle.
   const centerPlan = state.planMetalExtractorPlacementsInArea(
-    centerDeposit.x, centerDeposit.y, radius, entitySource,
+    centerDeposit.x, centerDeposit.y, radius, entitySource, centerDeposit.x, centerDeposit.y,
   );
   assertContract(
     centerPlan.length >= 1,
     'a circle drawn over the center deposit itself must still plan it',
   );
+
+  // BAR cmd_area_mex ordering: placements come out as a chained
+  // nearest-neighbour path from the ordering seed, not in generator order.
+  // Three deposits in a row, listed farthest-first; a seed at the near end
+  // must reverse them.
+  const rowDeposits = [
+    makeDeposit(0, 60, 100, 90),
+    makeDeposit(1, 50, 100, 90),
+    makeDeposit(2, 40, 100, 90),
+  ];
+  const rowState = new Input3DBuildPlacementState();
+  rowState.setMapBounds(MAP_SIZE, MAP_SIZE, 2, rowDeposits);
+  const rowCenterX = 50 * BUILD_GRID_CELL_SIZE;
+  const rowCenterY = 100 * BUILD_GRID_CELL_SIZE;
+  const seedX = 30 * BUILD_GRID_CELL_SIZE;
+  const rowPlan = rowState.planMetalExtractorPlacementsInArea(
+    rowCenterX, rowCenterY, 15 * BUILD_GRID_CELL_SIZE, entitySource, seedX, rowCenterY,
+  );
+  assertContract(rowPlan.length === 3, 'the row drag must plan all three deposits');
+  for (let i = 1; i < rowPlan.length; i++) {
+    assertContract(
+      rowPlan[i].x > rowPlan[i - 1].x,
+      'area-mex placements must walk the chained nearest path from the builder seed',
+    );
+  }
 
   console.log('[contract] area mex placement OK');
 }
