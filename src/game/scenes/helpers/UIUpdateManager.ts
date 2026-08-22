@@ -46,8 +46,8 @@ import {
   buildingBlueprintHasActiveState,
 } from '../../sim/buildingActiveState';
 import {
-  getActiveSelectedBuilderTypeInfo,
   getBarVisibleSelectedBuilderTypeInfos,
+  selectActiveBuilderTypeInfo,
 } from '../../sim/hostCapabilities';
 import { getFactoryAllowedUnitBlueprintIds } from '../../sim/factoryProductionRoster';
 import { isReclaimableTarget } from '../../sim/reclaim';
@@ -782,8 +782,8 @@ export function buildSelectionInfo(
     }
   }
   const builderTypeInfos = getBarVisibleSelectedBuilderTypeInfos(selectedUnits);
-  const activeBuilderType = getActiveSelectedBuilderTypeInfo(
-    selectedUnits,
+  const activeBuilderType = selectActiveBuilderTypeInfo(
+    builderTypeInfos,
     inputState?.activeBuilderUnitBlueprintId,
   );
   const activeBuilderUnitBlueprintId = activeBuilderType?.unitBlueprintId ?? null;
