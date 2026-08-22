@@ -99,6 +99,10 @@ pub(crate) struct SpatialGridState {
     pub(crate) nearby_cells: Vec<u64>,
     pub(crate) dedup: HashSet<u32>,
     pub(crate) scratch_u32: Vec<u32>,
+    /// Sweep-kernel slot dedup: epoch stamps indexed by slot replace a
+    /// HashSet whose capacity-wide clear() ran once per sweep (1300x/tick).
+    pub(crate) sweep_seen_epoch_by_slot: Vec<u32>,
+    pub(crate) sweep_seen_epoch: u32,
 }
 
 impl SpatialGridState {
@@ -129,6 +133,8 @@ impl SpatialGridState {
             nearby_cells: Vec::new(),
             dedup: HashSet::default(),
             scratch_u32: Vec::new(),
+            sweep_seen_epoch_by_slot: Vec::new(),
+            sweep_seen_epoch: 0,
         }
     }
 }
@@ -2043,9 +2049,25 @@ fn projectile_hitbox_sweep_kernel(
         let segment_dx = tx - sx;
         let segment_dy = ty - sy;
         let segment_dz = tz - sz;
-        state.dedup.clear();
-        let nearby = std::mem::take(&mut state.nearby_cells);
-        let mut dedup = std::mem::take(&mut state.dedup);
+        // One prune pass resolves cell existence once; the three kind
+        // passes below then probe only occupied keys (air corridors are
+        // mostly misses, and each key used to be probed three times).
+        let mut nearby = std::mem::take(&mut state.nearby_cells);
+        nearby.retain(|key| state.cells.contains_key(key));
+        // Epoch-stamped slot dedup: same first-visit-wins semantics as the
+        // old HashSet, without a capacity-wide clear() per sweep.
+        state.sweep_seen_epoch = state.sweep_seen_epoch.wrapping_add(1);
+        if state.sweep_seen_epoch == 0 {
+            state.sweep_seen_epoch_by_slot.fill(0);
+            state.sweep_seen_epoch = 1;
+        }
+        if state.sweep_seen_epoch_by_slot.len() < state.slot_kind.len() {
+            state
+                .sweep_seen_epoch_by_slot
+                .resize(state.slot_kind.len(), 0);
+        }
+        let sweep_epoch = state.sweep_seen_epoch;
+        let mut seen = std::mem::take(&mut state.sweep_seen_epoch_by_slot);
         let mut best_t = f64::INFINITY;
         let mut best_kind = PROJECTILE_SWEEP_HIT_KIND_NONE;
         let mut best_slot = u32::MAX;
@@ -2057,9 +2079,11 @@ fn projectile_hitbox_sweep_kernel(
         for key in &nearby {
             if let Some(bucket) = state.cells.get(key) {
                 for &slot in &bucket.units {
-                    if !dedup.insert(slot) {
+                    let seen_idx = slot as usize;
+                    if seen_idx >= seen.len() || seen[seen_idx] == sweep_epoch {
                         continue;
                     }
+                    seen[seen_idx] = sweep_epoch;
                     let s = slot as usize;
                     if s >= state.slot_kind.len()
                         || state.slot_kind[s] != SPATIAL_KIND_UNIT
@@ -2187,9 +2211,11 @@ fn projectile_hitbox_sweep_kernel(
         for key in &nearby {
             if let Some(bucket) = state.cells.get(key) {
                 for &slot in &bucket.buildings {
-                    if !dedup.insert(slot) {
+                    let seen_idx = slot as usize;
+                    if seen_idx >= seen.len() || seen[seen_idx] == sweep_epoch {
                         continue;
                     }
+                    seen[seen_idx] = sweep_epoch;
                     let s = slot as usize;
                     if s >= state.slot_kind.len()
                         || state.slot_kind[s] != SPATIAL_KIND_BUILDING
@@ -2249,9 +2275,11 @@ fn projectile_hitbox_sweep_kernel(
         for key in &nearby {
             if let Some(bucket) = state.cells.get(key) {
                 for &slot in &bucket.projectiles {
-                    if !dedup.insert(slot) {
+                    let seen_idx = slot as usize;
+                    if seen_idx >= seen.len() || seen[seen_idx] == sweep_epoch {
                         continue;
                     }
+                    seen[seen_idx] = sweep_epoch;
                     let s = slot as usize;
                     if s >= state.slot_kind.len()
                         || state.slot_kind[s] != SPATIAL_KIND_PROJECTILE
@@ -2310,7 +2338,7 @@ fn projectile_hitbox_sweep_kernel(
         }
 
         state.nearby_cells = nearby;
-        state.dedup = dedup;
+        state.sweep_seen_epoch_by_slot = seen;
 
         if best_kind != PROJECTILE_SWEEP_HIT_KIND_NONE {
             out_kind[i] = best_kind;
