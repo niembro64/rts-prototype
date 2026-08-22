@@ -279,11 +279,13 @@
 }
 
 .hud-chat {
-  /* BAR's corner console: bottom-left, above the control bars, never over
-     the minimap column. */
+  /* BAR's corner console: bottom-left, lifted ABOVE the selection info
+     panel's 14vh rectangle — chat and the selection portrait previously
+     shared the same corner and the console drew over the portrait and
+     the options grid whenever anything was selected. */
   position: absolute;
   left: 10px;
-  bottom: calc(var(--bottom-controls-height, 0px) + 10px);
+  bottom: calc(var(--bottom-controls-height, 0px) + 14vh + 16px);
   z-index: 1002;
 }
 

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getConstructionHostMarkingProfile } from '@/constructionVisualConfig';
+import { getConstructionHostMarkingProfiles } from '@/constructionVisualConfig';
 import {
   DEFAULT_BUILDING_VISUAL_HEIGHT,
   getBuildingBlueprint,
@@ -72,22 +72,24 @@ export function buildFactoryMesh(
     details.push(teamOrnamentDetail(clamp, 'fabricatorClamps'));
   }
 
-  const markingProfile = getConstructionHostMarkingProfile('towerFabricator');
-  if (markingProfile === null || markingProfile.kind !== 'ringBoxes') {
+  const markingProfiles = getConstructionHostMarkingProfiles('towerFabricator');
+  if (!markingProfiles.some((profile) => profile.kind === 'ringBoxes')) {
     throw new Error('towerFabricator requires perimeter-mounted construction clamp boxes');
   }
-  const marking = buildConstructionHostMarking(
-    markingProfile,
-    ringRadius,
-    getActiveBuildingGeometryTier(),
-  );
-  marking.position.y += hoverHeight;
-  marking.updateMatrix();
-  for (const child of [...marking.children]) {
-    if (!(child instanceof THREE.Mesh)) continue;
-    marking.remove(child);
-    child.applyMatrix4(marking.matrix);
-    details.push(detail(child, 'medium', undefined, 'constructionMarking'));
+  for (const markingProfile of markingProfiles) {
+    const marking = buildConstructionHostMarking(
+      markingProfile,
+      ringRadius,
+      getActiveBuildingGeometryTier(),
+    );
+    marking.position.y += hoverHeight;
+    marking.updateMatrix();
+    for (const child of [...marking.children]) {
+      if (!(child instanceof THREE.Mesh)) continue;
+      marking.remove(child);
+      child.applyMatrix4(marking.matrix);
+      details.push(detail(child, 'medium', undefined, 'constructionMarking'));
+    }
   }
 
   // The forming-unit ghost orbs that used to sit at the ground-level build

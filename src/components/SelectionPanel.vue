@@ -84,7 +84,11 @@ const canCommand = computed(() => props.canCommand !== false);
 const showPanel = computed(() =>
   props.selection.unitCount > 0
   || props.selection.buildingCount > 0
-  || props.selection.hasFactory,
+  || props.selection.hasFactory
+  // BAR's info panel is hover-first: reading any unit on the field —
+  // including an enemy's — must not require holding a selection. Every
+  // command block below still gates on the selection itself.
+  || props.selection.selectedEntityInfo !== null,
 );
 const AREA_MEX_BLUEPRINT_ID: StructureBlueprintId = 'buildingExtractor';
 const selectedEntityTypeCount = computed(() =>
@@ -1599,6 +1603,13 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           </div>
         </div>
         <div class="selection-info-subtitle">{{ selection.selectedEntityInfo.subtitle }}</div>
+        <div
+          v-if="selection.selectedEntityInfo.ownerLabel !== null"
+          class="selection-info-owner"
+          :class="selection.selectedEntityInfo.relationship ?? 'neutral'"
+        >
+          {{ selection.selectedEntityInfo.ownerLabel }}
+        </div>
         <div
           v-if="selectedEntityHealthLabel"
           class="selection-info-meter health"

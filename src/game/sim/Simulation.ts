@@ -567,7 +567,8 @@ export class Simulation {
     // Distribute energy equally among all active consumers (factories, construction, commander)
     distributeEnergy(this.world, dtMs, this.energyBuffers);
 
-    // Resource converters are one-way energy -> metal makers. Run after
+    // Resource converters move whichever resource sits above its player's
+    // auto-conversion slider point toward the other resource. Run after
     // construction/factory energy distribution so converters consume the
     // leftover post-construction stockpile instead of deepening stalls.
     economyManager.processConverters(this.world, dtMs);

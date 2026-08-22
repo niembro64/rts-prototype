@@ -13,7 +13,7 @@
  *   - Enter sends and keeps focus; Escape blurs out of the input so game
  *     hotkeys work again.
  */
-import { nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { ChatChannelOption, ChatConsoleMessage } from './chatConsoleTypes';
 
 const props = defineProps<{
@@ -22,6 +22,14 @@ const props = defineProps<{
   channels: readonly ChatChannelOption[];
   activeChannelId: string;
   placeholder: string;
+  /** BAR-style transient mode for gameplay surfaces (the battle HUD):
+   *  lines expire after CHAT_LINE_TTL_MS (BAR gui_chat lineTTL = 40s),
+   *  the input row exists only while chat is OPEN (Enter / focusInput,
+   *  closed again on send or Escape), and hovering the log — or having
+   *  the input open — reveals the full history, so an idle battle shows
+   *  no chat chrome at all. Persistent mode (the default) keeps log and
+   *  input visible: HOME and the lobby are social surfaces. */
+  transient?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -29,11 +37,63 @@ const emit = defineEmits<{
   (e: 'update:activeChannelId', id: string): void;
 }>();
 
+/** BAR gui_chat lineTTL: a line simply stops drawing after 40 seconds. */
+const CHAT_LINE_TTL_MS = 40_000;
+/** BAR shows at most ~5 unexpired chat lines outside history mode. */
+const CHAT_FRESH_LINE_LIMIT = 6;
+
 const draft = ref('');
 const logRef = ref<HTMLElement | null>(null);
 const inputRef = ref<HTMLInputElement | null>(null);
 /** False while the player has scrolled up to read history. */
 const stickToBottom = ref(true);
+/** Transient mode: whether the input row is open. */
+const inputOpen = ref(false);
+/** Transient mode: hovering the log holds expired lines on screen. */
+const hovering = ref(false);
+const nowMs = ref(Date.now());
+const firstSeenById = new Map<string, number>();
+let ttlTimer: number | null = null;
+
+watch(
+  () => props.messages,
+  (messages) => {
+    const now = Date.now();
+    const liveIds = new Set<string>();
+    for (const message of messages) {
+      liveIds.add(message.id);
+      if (!firstSeenById.has(message.id)) firstSeenById.set(message.id, now);
+    }
+    for (const id of firstSeenById.keys()) {
+      if (!liveIds.has(id)) firstSeenById.delete(id);
+    }
+  },
+  { immediate: true },
+);
+
+onMounted(() => {
+  if (props.transient !== true) return;
+  ttlTimer = window.setInterval(() => {
+    nowMs.value = Date.now();
+  }, 1000);
+});
+
+onBeforeUnmount(() => {
+  if (ttlTimer !== null) window.clearInterval(ttlTimer);
+});
+
+const visibleMessages = computed<readonly ChatConsoleMessage[]>(() => {
+  if (props.transient !== true || inputOpen.value || hovering.value) {
+    return props.messages;
+  }
+  const cutoff = nowMs.value - CHAT_LINE_TTL_MS;
+  const fresh = props.messages.filter(
+    (message) => (firstSeenById.get(message.id) ?? 0) >= cutoff,
+  );
+  return fresh.slice(-CHAT_FRESH_LINE_LIMIT);
+});
+
+const showInputRow = computed(() => props.transient !== true || inputOpen.value);
 
 function handleLogScroll(): void {
   const log = logRef.value;
@@ -55,9 +115,26 @@ watch(
 
 function submit(): void {
   const text = draft.value.trim();
-  if (text.length === 0) return;
+  if (text.length === 0) {
+    // BAR sends-or-closes on Enter: an empty submit in transient mode
+    // just puts the console away.
+    if (props.transient === true) closeInput();
+    return;
+  }
   emit('send', text);
   draft.value = '';
+  // BAR's cancelChatInput after "say": a battle send closes the console
+  // so gameplay hotkeys return immediately. Persistent rooms keep focus.
+  if (props.transient === true) closeInput();
+}
+
+function closeInput(): void {
+  inputRef.value?.blur();
+  inputOpen.value = false;
+}
+
+function handleInputBlur(): void {
+  if (props.transient === true) inputOpen.value = false;
 }
 
 function handleInputKeydown(event: KeyboardEvent): void {
@@ -65,11 +142,16 @@ function handleInputKeydown(event: KeyboardEvent): void {
   // propagation anyway so nothing above reinterprets typing.
   event.stopPropagation();
   if (event.key === 'Escape') {
-    inputRef.value?.blur();
+    closeInput();
   }
 }
 
 function focusInput(): void {
+  if (props.transient === true && !inputOpen.value) {
+    inputOpen.value = true;
+    void nextTick(() => inputRef.value?.focus());
+    return;
+  }
   inputRef.value?.focus();
 }
 
@@ -77,14 +159,19 @@ defineExpose({ focusInput });
 </script>
 
 <template>
-  <section class="chat-console" aria-label="Chat">
+  <section
+    class="chat-console"
+    aria-label="Chat"
+    @mouseenter="hovering = true"
+    @mouseleave="hovering = false"
+  >
     <div
       ref="logRef"
       class="chat-log"
       aria-live="polite"
       @scroll="handleLogScroll"
     >
-      <div v-for="message in messages" :key="message.id" class="chat-line">
+      <div v-for="message in visibleMessages" :key="message.id" class="chat-line">
         <span
           v-if="message.channelTag !== ''"
           class="chat-channel"
@@ -98,7 +185,7 @@ defineExpose({ focusInput });
       </div>
     </div>
 
-    <form class="chat-input-row" @submit.prevent="submit">
+    <form v-if="showInputRow" class="chat-input-row" @submit.prevent="submit">
       <button
         v-for="channel in channels.length > 1 ? channels : []"
         :key="channel.id"
@@ -117,6 +204,7 @@ defineExpose({ focusInput });
         :placeholder="placeholder"
         aria-label="Chat message"
         @keydown="handleInputKeydown"
+        @blur="handleInputBlur"
       />
     </form>
   </section>

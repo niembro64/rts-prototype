@@ -1,3 +1,4 @@
+import { clampAutoConversionThreshold } from '../../types/autoConversion';
 import type {
   ResignCommand,
   AreaCommandFilterCategory,
@@ -256,6 +257,25 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
         break;
       }
       return matched !== undefined ? { ...command, tick, tax: matched } : null;
+    }
+    case 'setAutoConversionThresholds': {
+      if (typeof command.playerId !== 'number' || !Number.isFinite(command.playerId)) {
+        return null;
+      }
+      if (
+        typeof command.energyConvertAt !== 'number' ||
+        !Number.isFinite(command.energyConvertAt) ||
+        typeof command.metalConvertAt !== 'number' ||
+        !Number.isFinite(command.metalConvertAt)
+      ) {
+        return null;
+      }
+      return {
+        ...command,
+        tick,
+        energyConvertAt: clampAutoConversionThreshold(command.energyConvertAt),
+        metalConvertAt: clampAutoConversionThreshold(command.metalConvertAt),
+      };
     }
     default: {
       // Compile-time exhaustiveness over the Command union. At runtime a
@@ -898,8 +918,9 @@ function sanitizeGuardCommand(command: GuardCommand, tick: number): GuardCommand
 }
 
 function sanitizeStartBuildCommand(command: StartBuildCommand, tick: number): StartBuildCommand | null {
+  const builderIds = sanitizeEntityIdArray(command.builderIds);
   if (
-    !isEntityId(command.builderId) ||
+    builderIds === null ||
     !isStructureBlueprintId(command.buildingBlueprintId) ||
     !Number.isFinite(command.gridX) ||
     !Number.isFinite(command.gridY) ||
@@ -916,7 +937,7 @@ function sanitizeStartBuildCommand(command: StartBuildCommand, tick: number): St
   return {
     type: 'startBuild',
     tick,
-    builderId: command.builderId,
+    builderIds,
     buildingBlueprintId: command.buildingBlueprintId,
     gridX: Math.floor(command.gridX),
     gridY: Math.floor(command.gridY),

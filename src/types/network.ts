@@ -985,6 +985,15 @@ export type NetworkServerSnapshotMeta = {
    *  per-tick output. Authoritative on the host; mirrored to clients
    *  so the DEMO BATTLE bar can show the active value. */
   converterTax: number | undefined;
+  /** Per-player auto-conversion slider points (fractions of storage),
+   *  parallel arrays indexed together. Players absent from playerIds are
+   *  at the defaults in types/autoConversion. Mirrored so every client's
+   *  economy-bar sliders render the sim's authoritative values. */
+  autoConversionThresholds: {
+    playerIds: number[];
+    energyAt: number[];
+    metalAt: number[];
+  } | undefined;
   /** Host CPU load as a percent of the per-tick budget (1000/tickRate ms).
    *  `avg` = EMA-smoothed steady-state load; `hi` = EMA spike, climbs fast
    *  on spikes and decays slowly. Both can exceed 100 when the server is

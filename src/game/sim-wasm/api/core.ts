@@ -128,6 +128,8 @@ export interface SimWasm {
     totalRatePerSec: number,
     dtSec: number,
     tax: number,
+    energyConvertAt: number,
+    metalConvertAt: number,
     out: Float64Array,
   ) => number;
   readonly economyCreditStockpile: (
@@ -229,6 +231,8 @@ export interface SimWasm {
     count: number,
     dtSec: number,
     tax: number,
+    energyConvertAtByPlayer: Float64Array,
+    metalConvertAtByPlayer: Float64Array,
     energyCurrByPlayer: Float64Array,
     energyMaxByPlayer: Float64Array,
     metalCurrByPlayer: Float64Array,

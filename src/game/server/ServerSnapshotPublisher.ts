@@ -175,6 +175,24 @@ type DrainedSimulationFrame = {
  *  make exactly this set of calls exactly once per tick: skip one and its
  *  events leak into the next snapshot, make one twice and they are lost. The
  *  sequence lives here so the full-emit and dirty-delta paths cannot diverge. */
+/** Both threshold maps are written together by the
+ *  setAutoConversionThresholds command, so the energy map's key set is
+ *  the full set of players with non-default slider points. */
+function buildAutoConversionThresholdsMeta(
+  world: WorldState,
+): NetworkServerSnapshotMeta['autoConversionThresholds'] {
+  if (world.autoConversionEnergyAt.size === 0) return undefined;
+  const playerIds: number[] = [];
+  const energyAt: number[] = [];
+  const metalAt: number[] = [];
+  for (const playerId of world.autoConversionEnergyAt.keys()) {
+    playerIds.push(playerId);
+    energyAt.push(world.getAutoConversionEnergyAt(playerId));
+    metalAt.push(world.getAutoConversionMetalAt(playerId));
+  }
+  return { playerIds, energyAt, metalAt };
+}
+
 function drainSimulationFrame(simulation: Simulation): DrainedSimulationFrame {
   const gamePhase = simulation.getGamePhase();
   return {
@@ -359,6 +377,7 @@ export class ServerSnapshotPublisher {
       shieldReflectionMode: input.world.shieldReflectionMode,
       fogOfWarEnabled: input.world.fogOfWarEnabled,
       converterTax: input.world.converterTax,
+      autoConversionThresholds: buildAutoConversionThresholdsMeta(input.world),
       tickMsAvg: input.tickMsAvg,
       tickMsHi: input.tickMsHi,
       tickMsInitialized: input.tickMsInitialized,

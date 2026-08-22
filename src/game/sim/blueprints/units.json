@@ -3512,9 +3512,9 @@
     "shortName": "CDR",
     "hp": 260,
     "radius": {
-      "other": 15,
-      "hitbox": 14,
-      "collision": 19
+      "other": 24,
+      "hitbox": 22.4,
+      "collision": 30.4
     },
     "supportSurface": {
       "kind": "none"
@@ -3604,7 +3604,7 @@
       "frontY": 1.0
     },
     "hud": {
-      "barsOffsetAboveTop": 12
+      "barsOffsetAboveTop": 19.2
     },
     "suspension": null,
     "builder": {
@@ -3678,16 +3678,16 @@
         "damage": 140
       },
       "radius": {
-        "other": 15,
-        "hitbox": 14,
-        "collision": 19
+        "other": 24,
+        "hitbox": 22.4,
+        "collision": 30.4
       },
       "signature": {
         "radarStealth": false,
         "sonarStealth": false
       }
     },
-    "supportPointOffsetZ": 4.5
+    "supportPointOffsetZ": 7.2
   },
   "unitEagle": {
     "unitBlueprintId": "unitEagle",
@@ -3859,7 +3859,7 @@
     "radius": {
       "other": 16,
       "hitbox": 13,
-      "collision": 19
+      "collision": 30.4
     },
     "supportSurface": {
       "kind": "none"
@@ -3998,7 +3998,7 @@
       "radius": {
         "other": 16,
         "hitbox": 13,
-        "collision": 19
+        "collision": 30.4
       },
       "signature": {
         "radarStealth": false,
@@ -4964,13 +4964,13 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretBeam",
+        "turretBlueprintId": "turretBeamMega",
         "presentation": {
-          "headRadius": 7.8,
+          "headRadius": 8,
           "headOnly": false,
           "barrel": {
             "type": "singleConeBarrel",
-            "barrelLength": 1.2
+            "barrelLength": 1.1
           }
         },
         "sensorTurretBlueprintId": "turretSensorUnitCommander",
@@ -5273,9 +5273,9 @@
     "shortName": "CSUB",
     "hp": 700,
     "radius": {
-      "other": 28,
-      "hitbox": 24,
-      "collision": 36
+      "other": 44.8,
+      "hitbox": 38.4,
+      "collision": 57.6
     },
     "supportSurface": {
       "kind": "none"
@@ -5361,7 +5361,7 @@
       "frontY": 1.0
     },
     "hud": {
-      "barsOffsetAboveTop": 14
+      "barsOffsetAboveTop": 22.4
     },
     "suspension": null,
     "builder": {
@@ -5444,9 +5444,9 @@
         "damage": 480
       },
       "radius": {
-        "other": 28,
-        "hitbox": 24,
-        "collision": 36
+        "other": 44.8,
+        "hitbox": 38.4,
+        "collision": 57.6
       },
       "signature": {
         "radarStealth": false,
@@ -5454,6 +5454,6 @@
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
-    "supportPointOffsetZ": 9
+    "supportPointOffsetZ": 14.4
   }
 }

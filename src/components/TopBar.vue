@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { COLORS, RESOURCE_COLOR_CSS } from '@/colorsConfig';
 import WorldDirectionHud from './WorldDirectionHud.vue';
 import { closeCurrentTauriWindow, isTauriRuntime } from '@/browserRuntime';
@@ -18,7 +18,90 @@ const props = defineProps<{
    *  is their economy view. The shell keeps NET, compass/wind and the
    *  desktop EXIT either way. */
   showEconomy?: boolean;
+  /** The seat's auto-conversion slider points (fractions of storage) as
+   *  the SIM knows them. null/undefined hides the sliders (watchers). */
+  autoConversion?: { energyAt: number; metalAt: number } | null;
 }>();
+
+const emit = defineEmits<{
+  (e: 'set-auto-conversion', payload: { energyAt: number; metalAt: number }): void;
+}>();
+
+// BAR-style storage sliders: dragging previews locally, pointer-up sends
+// ONE command, and the dragged value keeps rendering until the sim echoes
+// it back through serverMeta (rich-snapshot cadence) so the marker never
+// snaps back to the stale value in between.
+type SliderKind = 'energy' | 'metal';
+const sliderDragging = ref<SliderKind | null>(null);
+const sliderDragValue = ref(0);
+const sliderPending = ref<{ energyAt: number; metalAt: number } | null>(null);
+
+watch(
+  () => props.autoConversion,
+  (incoming) => {
+    const pending = sliderPending.value;
+    if (incoming == null || pending === null) return;
+    if (
+      Math.abs(incoming.energyAt - pending.energyAt) < 0.005 &&
+      Math.abs(incoming.metalAt - pending.metalAt) < 0.005
+    ) {
+      sliderPending.value = null;
+    }
+  },
+);
+
+function displayedSliderValue(kind: SliderKind): number {
+  if (sliderDragging.value === kind) return sliderDragValue.value;
+  const source = sliderPending.value ?? props.autoConversion;
+  if (source == null) return 1;
+  return kind === 'energy' ? source.energyAt : source.metalAt;
+}
+
+const energySliderStyle = computed(() => ({
+  left: (displayedSliderValue('energy') * 100).toFixed(1) + '%',
+}));
+const metalSliderStyle = computed(() => ({
+  left: (displayedSliderValue('metal') * 100).toFixed(1) + '%',
+}));
+
+function sliderFractionFromEvent(event: PointerEvent): number {
+  const el = event.currentTarget as HTMLElement;
+  const rect = el.getBoundingClientRect();
+  if (rect.width <= 0) return 0;
+  return Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+}
+
+function beginSliderDrag(kind: SliderKind, event: PointerEvent): void {
+  if (props.autoConversion == null) return;
+  sliderDragging.value = kind;
+  sliderDragValue.value = sliderFractionFromEvent(event);
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+}
+
+function updateSliderDrag(event: PointerEvent): void {
+  if (sliderDragging.value === null) return;
+  sliderDragValue.value = sliderFractionFromEvent(event);
+}
+
+function endSliderDrag(): void {
+  const kind = sliderDragging.value;
+  const current = sliderPending.value ?? props.autoConversion;
+  if (kind === null || current == null) {
+    sliderDragging.value = null;
+    return;
+  }
+  const payload = {
+    energyAt: kind === 'energy' ? sliderDragValue.value : current.energyAt,
+    metalAt: kind === 'metal' ? sliderDragValue.value : current.metalAt,
+  };
+  sliderDragging.value = null;
+  sliderPending.value = payload;
+  emit('set-auto-conversion', payload);
+}
+
+function cancelSliderDrag(): void {
+  sliderDragging.value = null;
+}
 
 const TOP_BAR = COLORS.ui.topBar;
 
@@ -132,8 +215,23 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
           <span class="resource-max">{{ economy.stockpile.max }}</span>
         </div>
       </div>
-      <div class="resource-bar">
-        <div class="resource-bar-fill energy-fill" :style="energyBarStyle"></div>
+      <div
+        class="resource-bar-slider"
+        :class="{ 'slider-enabled': autoConversion != null }"
+        title="Auto-conversion point: energy above this line converts to metal"
+        @pointerdown="beginSliderDrag('energy', $event)"
+        @pointermove="updateSliderDrag"
+        @pointerup="endSliderDrag"
+        @pointercancel="cancelSliderDrag"
+      >
+        <div class="resource-bar">
+          <div class="resource-bar-fill energy-fill" :style="energyBarStyle"></div>
+        </div>
+        <div
+          v-if="autoConversion != null"
+          class="slider-marker"
+          :style="energySliderStyle"
+        ></div>
       </div>
       <div class="resource-flows">
         <span class="resource-flow">
@@ -164,8 +262,23 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
           <span class="resource-max">{{ economy.metal.stockpile.max }}</span>
         </div>
       </div>
-      <div class="resource-bar">
-        <div class="resource-bar-fill metal-fill" :style="metalBarStyle"></div>
+      <div
+        class="resource-bar-slider"
+        :class="{ 'slider-enabled': autoConversion != null }"
+        title="Auto-conversion point: metal above this line converts to energy"
+        @pointerdown="beginSliderDrag('metal', $event)"
+        @pointermove="updateSliderDrag"
+        @pointerup="endSliderDrag"
+        @pointercancel="cancelSliderDrag"
+      >
+        <div class="resource-bar">
+          <div class="resource-bar-fill metal-fill" :style="metalBarStyle"></div>
+        </div>
+        <div
+          v-if="autoConversion != null"
+          class="slider-marker"
+          :style="metalSliderStyle"
+        ></div>
       </div>
       <div class="resource-flows">
         <span class="resource-flow">
@@ -333,6 +446,29 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
   color: var(--topbar-subtle-text);
   font-size: 11px;
   font-weight: normal;
+}
+
+.resource-bar-slider {
+  position: relative;
+  width: 100%;
+  padding: 2px 0;
+}
+
+.slider-enabled {
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.slider-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 1px;
+  background: var(--topbar-text);
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
 }
 
 .resource-bar {

@@ -2125,38 +2125,56 @@ pub(crate) const CONSTRUCTION_CONSUMER_HEAL_CODE: u8 = 2;
 pub(crate) const CONSTRUCTION_CONSUMER_CHANGED_BUILD_CODE: u8 = 1;
 pub(crate) const CONSTRUCTION_CONSUMER_CHANGED_HP_CODE: u8 = 2;
 
+/// Slider fractions arrive over the wire; a non-finite value must fail
+/// CLOSED (1.0 = "never convert this resource away"), not open.
+#[inline]
+pub(crate) fn economy_normalized_fraction(value: f64) -> f64 {
+    if value.is_finite() {
+        value.clamp(0.0, 1.0)
+    } else {
+        1.0
+    }
+}
+
+/// Bidirectional converter transfer. Each resource has ONE slider point
+/// (a fraction of its storage): the level above which it converts away,
+/// AND the ceiling conversion may fill it to. A direction therefore only
+/// runs while its source sits above the source's own point and its
+/// destination sits below the destination's point — the two directions
+/// are mutually exclusive by construction, and conversion can never hand
+/// a resource convert-away excess, so no tick-to-tick ping-pong can burn
+/// tax. (energy_convert_at = 0, metal_convert_at = 1) degenerates to the
+/// historical one-way energy -> metal behavior.
 #[inline]
 pub(crate) fn economy_compute_converter_transfer_value(
     energy_curr: f64,
-    _energy_max: f64,
+    energy_max: f64,
     metal_curr: f64,
     metal_max: f64,
     total_rate_per_sec: f64,
     dt_sec: f64,
     tax: f64,
+    energy_convert_at: f64,
+    metal_convert_at: f64,
 ) -> (f64, f64, u32, u32) {
+    const NONE: (f64, f64, u32, u32) = (
+        0.0,
+        0.0,
+        ECONOMY_RESOURCE_NONE_CODE,
+        ECONOMY_RESOURCE_NONE_CODE,
+    );
     if !energy_curr.is_finite()
-        || !_energy_max.is_finite()
+        || !energy_max.is_finite()
         || !metal_curr.is_finite()
         || !metal_max.is_finite()
     {
-        return (
-            0.0,
-            0.0,
-            ECONOMY_RESOURCE_NONE_CODE,
-            ECONOMY_RESOURCE_NONE_CODE,
-        );
+        return NONE;
     }
 
     let source_target =
         economy_normalized_amount(total_rate_per_sec) * economy_normalized_amount(dt_sec);
     if source_target <= 0.0 {
-        return (
-            0.0,
-            0.0,
-            ECONOMY_RESOURCE_NONE_CODE,
-            ECONOMY_RESOURCE_NONE_CODE,
-        );
+        return NONE;
     }
 
     let yield_factor = if tax.is_finite() {
@@ -2165,50 +2183,54 @@ pub(crate) fn economy_compute_converter_transfer_value(
         0.0
     };
     if yield_factor <= 0.0 {
-        return (
-            0.0,
-            0.0,
-            ECONOMY_RESOURCE_NONE_CODE,
-            ECONOMY_RESOURCE_NONE_CODE,
-        );
+        return NONE;
     }
 
-    let source_available = source_target.min(energy_curr.max(0.0));
+    let energy_point = economy_normalized_fraction(energy_convert_at)
+        * economy_normalized_cap(energy_max);
+    let metal_point =
+        economy_normalized_fraction(metal_convert_at) * economy_normalized_cap(metal_max);
+    let energy_now = energy_curr.max(0.0);
+    let metal_now = metal_curr.max(0.0);
+
+    let e2m_source = (energy_now - energy_point).max(0.0);
+    let e2m_headroom = (metal_point - metal_now).max(0.0);
+    let m2e_source = (metal_now - metal_point).max(0.0);
+    let m2e_headroom = (energy_point - energy_now).max(0.0);
+
+    let (source_available, headroom, consumed_resource, output_resource) =
+        if e2m_source > 0.0 && e2m_headroom > 0.0 {
+            (
+                source_target.min(e2m_source),
+                e2m_headroom,
+                ECONOMY_RESOURCE_ENERGY_CODE,
+                ECONOMY_RESOURCE_METAL_CODE,
+            )
+        } else if m2e_source > 0.0 && m2e_headroom > 0.0 {
+            (
+                source_target.min(m2e_source),
+                m2e_headroom,
+                ECONOMY_RESOURCE_METAL_CODE,
+                ECONOMY_RESOURCE_ENERGY_CODE,
+            )
+        } else {
+            return NONE;
+        };
     if source_available <= 0.0 {
-        return (
-            0.0,
-            0.0,
-            ECONOMY_RESOURCE_NONE_CODE,
-            ECONOMY_RESOURCE_NONE_CODE,
-        );
-    }
-
-    let headroom = (metal_max - metal_curr).max(0.0);
-    if headroom <= 0.0 {
-        return (
-            0.0,
-            0.0,
-            ECONOMY_RESOURCE_NONE_CODE,
-            ECONOMY_RESOURCE_NONE_CODE,
-        );
+        return NONE;
     }
 
     let wanted_output = source_available * yield_factor;
     let accepted_output = wanted_output.min(headroom);
     if accepted_output <= 0.0 {
-        return (
-            0.0,
-            0.0,
-            ECONOMY_RESOURCE_NONE_CODE,
-            ECONOMY_RESOURCE_NONE_CODE,
-        );
+        return NONE;
     }
 
     (
         source_available * (accepted_output / wanted_output),
         accepted_output,
-        ECONOMY_RESOURCE_ENERGY_CODE,
-        ECONOMY_RESOURCE_METAL_CODE,
+        consumed_resource,
+        output_resource,
     )
 }
 
@@ -2221,6 +2243,8 @@ pub fn economy_compute_converter_transfer(
     total_rate_per_sec: f64,
     dt_sec: f64,
     tax: f64,
+    energy_convert_at: f64,
+    metal_convert_at: f64,
     out: &mut [f64],
 ) -> u32 {
     if out.len() < 4 {
@@ -2241,6 +2265,8 @@ pub fn economy_compute_converter_transfer(
             total_rate_per_sec,
             dt_sec,
             tax,
+            energy_convert_at,
+            metal_convert_at,
         );
     out[0] = consumed;
     out[1] = accepted_output;
@@ -2820,6 +2846,8 @@ pub fn economy_apply_converter_transfers(
     count: u32,
     dt_sec: f64,
     tax: f64,
+    energy_convert_at_by_player: &[f64],
+    metal_convert_at_by_player: &[f64],
     energy_curr_by_player: &mut [f64],
     energy_max_by_player: &[f64],
     metal_curr_by_player: &mut [f64],
@@ -2882,6 +2910,8 @@ pub fn economy_apply_converter_transfers(
             || player_id >= energy_max_by_player.len()
             || player_id >= metal_curr_by_player.len()
             || player_id >= metal_max_by_player.len()
+            || player_id >= energy_convert_at_by_player.len()
+            || player_id >= metal_convert_at_by_player.len()
             || player_id >= consumed_by_player.len()
             || player_id >= output_by_player.len()
             || player_id >= consumed_resource_by_player.len()
@@ -2911,6 +2941,8 @@ pub fn economy_apply_converter_transfers(
                 total_rate,
                 dt,
                 tax,
+                energy_convert_at_by_player[player_id],
+                metal_convert_at_by_player[player_id],
             );
         if consumed <= 0.0 || accepted_output <= 0.0 {
             continue;

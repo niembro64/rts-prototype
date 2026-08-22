@@ -404,6 +404,22 @@ kbd {
   white-space: nowrap;
 }
 
+/* BAR-style owner line: the owning player's name, shown for any entity
+   the viewer does not own, tinted by allegiance. */
+.selection-info-owner {
+  min-width: 0;
+  overflow: hidden;
+  font-size: clamp(8px, 1.08vh, 11px);
+  font-weight: 800;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selection-info-owner.enemy { color: #ff6f61; }
+.selection-info-owner.ally { color: #5fc98d; }
+.selection-info-owner.neutral { color: var(--selection-panel-label); }
+
 .selection-info-meter {
   position: relative;
   height: clamp(12px, 1.7vh, 18px);

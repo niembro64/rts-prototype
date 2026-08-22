@@ -45,7 +45,7 @@ import {
 } from './LocomotionRigShared3D';
 import { getLocomotionMatByCache } from './RenderUtils';
 import { COLORS } from '@/colorsConfig';
-import { getConstructionHostMarkingProfile } from '@/constructionVisualConfig';
+import { getConstructionHostMarkingProfiles } from '@/constructionVisualConfig';
 import { buildConstructionHostMarking } from './ConstructionHostMarking3D';
 import type { ClientRenderTurretHostRows } from './ClientRenderTurretStateSlab';
 import {
@@ -476,10 +476,10 @@ function addCommanderConstructionTool(
   toolHead.position.y = unitRadius * 0.10;
   toolHead.userData.botConstructionTool = true;
 
-  const profile = getConstructionHostMarkingProfile('unitCommander');
-  if (profile !== null) attachment.add(
-    buildConstructionHostMarking(profile, unitRadius, geometryTier),
-  );
+  for (const profile of getConstructionHostMarkingProfiles('unitCommander')) {
+    if (profile.attach !== 'constructionArm') continue;
+    attachment.add(buildConstructionHostMarking(profile, unitRadius, geometryTier));
+  }
 
   // Two bright nano nozzles make the construction side readable even when
   // the hazard sleeve is edge-on. They are a tool, not a second weapon.

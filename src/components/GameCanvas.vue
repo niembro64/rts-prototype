@@ -6,6 +6,11 @@ import type { PlayerId } from '../game/sim/types';
 import type { BackgroundBattleState } from '../game/lobby/LobbyManager';
 import SelectionPanel from './SelectionPanel.vue';
 import TopBar from './TopBar.vue';
+import {
+  DEFAULT_AUTO_CONVERSION_ENERGY_AT,
+  DEFAULT_AUTO_CONVERSION_METAL_AT,
+  clampAutoConversionThreshold,
+} from '@/types/autoConversion';
 import Minimap from './Minimap.vue';
 import IdleBuildersPanel from './IdleBuildersPanel.vue';
 import UnitStatsOverlay from './UnitStatsOverlay.vue';
@@ -636,6 +641,32 @@ const BAR_VOLUME_MAX_PERCENT = 200;
 
 function setGamePaused(paused: boolean): void {
   activeConnection?.sendCommand({ type: 'setPaused', tick: 0, paused });
+}
+
+/** The seat's auto-conversion slider points as the sim last published
+ *  them; seats absent from the meta are at the defaults. */
+const autoConversionInfo = computed(() => {
+  const meta = serverMetaFromSnapshot.value?.autoConversionThresholds;
+  if (meta) {
+    const index = meta.playerIds.indexOf(activePlayer.value);
+    if (index >= 0) {
+      return { energyAt: meta.energyAt[index], metalAt: meta.metalAt[index] };
+    }
+  }
+  return {
+    energyAt: DEFAULT_AUTO_CONVERSION_ENERGY_AT,
+    metalAt: DEFAULT_AUTO_CONVERSION_METAL_AT,
+  };
+});
+
+function setAutoConversionThresholds(payload: { energyAt: number; metalAt: number }): void {
+  activeConnection?.sendCommand({
+    type: 'setAutoConversionThresholds',
+    tick: 0,
+    playerId: activePlayer.value,
+    energyConvertAt: clampAutoConversionThreshold(payload.energyAt),
+    metalConvertAt: clampAutoConversionThreshold(payload.metalAt),
+  });
 }
 
 function adjustGameSpeed(direction: 1 | -1): void {
@@ -2638,6 +2669,8 @@ watchEffect(() => {
         :network-status="networkStatus"
         :network-warning="networkNotice"
         :show-economy="!isSpectating"
+        :auto-conversion="isSpectating ? null : autoConversionInfo"
+        @set-auto-conversion="setAutoConversionThresholds"
       />
     </div>
 
@@ -2797,6 +2830,7 @@ watchEffect(() => {
           :channels="battleChatChannels"
           :active-channel-id="chatChannelId"
           placeholder="Enter to chat"
+          transient
           @send="sendBattleChat"
           @update:active-channel-id="(id: string) => (chatChannelId = id === 'all' ? 'all' : 'team')"
         />

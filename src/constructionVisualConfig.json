@@ -3,7 +3,12 @@
     "ghostAlpha": 0.24,
     "ghostTeamMix": 0.5,
     "topAlphaFloor": 0.4,
-    "bandExponents": [3.0, 1.5, 0.7, 0.35],
+    "bandExponents": [
+      3.0,
+      1.5,
+      0.7,
+      0.35
+    ],
     "pulseRadPerSec": 4.5,
     "pulseMaxGain": 1.78,
     "scanLineHalfWidth": 0.01,
@@ -19,107 +24,309 @@
     "pylonStripeCount": 8
   },
   "hostMarkings": {
-    "unitCommander": {
-      "kind": "sleeve",
-      "center": {
-        "forward": 0,
-        "up": -0.17,
-        "lateral": 0
-      },
-      "axis": "up",
-      "radius": 0.18,
-      "length": 0.42,
-      "stripeCount": 10
-    },
-    "unitConstructionDrone": {
-      "kind": "sleeve",
-      "center": {
-        "forward": -0.8,
-        "up": 0.22,
-        "lateral": 0
-      },
-      "axis": "forward",
-      "radius": 0.13,
-      "length": 0.14,
-      "stripeCount": 12
-    },
-    "unitConstructionSubmarine": {
-      "kind": "panel",
-      "center": {
-        "forward": -1.08,
-        "up": 0,
-        "lateral": 0.3
-      },
-      "axis": "lateral",
-      "width": 0.18,
-      "height": 0.13,
-      "stripeCount": 4,
-      "mirrored": true
-    },
-    "unitQueenBee": {
-      "kind": "sleeve",
-      "center": {
-        "forward": 0.43,
-        "up": 0.24,
-        "lateral": 0
-      },
-      "axis": "forward",
-      "radius": 0.23,
-      "length": 0.12,
-      "stripeCount": 16
-    },
-    "unitQueenTick": {
-      "kind": "sleeve",
-      "center": {
-        "forward": 0.45,
-        "up": 0.2,
-        "lateral": 0
-      },
-      "axis": "forward",
-      "radius": 0.205,
-      "length": 0.12,
-      "stripeCount": 16
-    },
-    "towerFabricator": {
-      "kind": "ringBoxes",
-      "center": {
-        "forward": 0,
-        "up": 0,
-        "lateral": 0
-      },
-      "axis": "up",
-      "ringRadius": 1,
-      "tubeRadius": 0.225,
-      "boxCount": 4,
-      "boxWidth": 0.32,
-      "boxHeight": 0.24,
-      "boxDepth": 0.18,
-      "mountInset": 0.065,
-      "cornerChamfer": 0.035,
-      "faceWidth": 0.23,
-      "faceHeight": 0.145,
-      "faceLift": 0.003,
-      "latchWidth": 0.14,
-      "latchHeight": 0.035,
-      "latchDepth": 0.1,
-      "lod": {
-        "high": {
-          "chamferedHousing": true,
-          "topLatch": true,
-          "cornerFasteners": true
+    "unitCommander": [
+      {
+        "kind": "sleeve",
+        "attach": "constructionArm",
+        "center": {
+          "forward": 0,
+          "up": -0.17,
+          "lateral": 0
         },
-        "medium": {
-          "chamferedHousing": false,
-          "topLatch": true,
-          "cornerFasteners": false
-        },
-        "low": {
-          "chamferedHousing": false,
-          "topLatch": false,
-          "cornerFasteners": false
-        }
+        "axis": "up",
+        "radius": 0.18,
+        "length": 0.42,
+        "stripeCount": 10
       },
-      "stripeCount": 4
-    }
+      {
+        "kind": "panel",
+        "center": {
+          "forward": 0.5,
+          "up": 2.25,
+          "lateral": 0
+        },
+        "axis": "forward",
+        "width": 0.46,
+        "height": 0.28,
+        "stripeCount": 8,
+        "mirrored": false
+      },
+      {
+        "kind": "sleeve",
+        "center": {
+          "forward": -0.05,
+          "up": 2.46,
+          "lateral": 0.55
+        },
+        "axis": "lateral",
+        "radius": 0.17,
+        "length": 0.2,
+        "stripeCount": 8
+      },
+      {
+        "kind": "sleeve",
+        "center": {
+          "forward": -0.05,
+          "up": 2.46,
+          "lateral": -0.55
+        },
+        "axis": "lateral",
+        "radius": 0.17,
+        "length": 0.2,
+        "stripeCount": 8
+      },
+      {
+        "kind": "sleeve",
+        "center": {
+          "forward": -0.1,
+          "up": 2.32,
+          "lateral": 0
+        },
+        "axis": "up",
+        "radius": 0.52,
+        "length": 0.22,
+        "stripeCount": 16
+      }
+    ],
+    "unitConstructionDrone": [
+      {
+        "kind": "sleeve",
+        "center": {
+          "forward": -0.62,
+          "up": 0.22,
+          "lateral": 0
+        },
+        "axis": "forward",
+        "radius": 0.14,
+        "length": 0.44,
+        "stripeCount": 16
+      },
+      {
+        "kind": "panel",
+        "center": {
+          "forward": 0,
+          "up": 0.02,
+          "lateral": 0.44
+        },
+        "axis": "lateral",
+        "width": 0.5,
+        "height": 0.18,
+        "stripeCount": 10,
+        "mirrored": true
+      },
+      {
+        "kind": "panel",
+        "center": {
+          "forward": 0.1,
+          "up": 0.26,
+          "lateral": 0
+        },
+        "axis": "up",
+        "width": 0.36,
+        "height": 0.3,
+        "stripeCount": 8,
+        "mirrored": false
+      }
+    ],
+    "unitConstructionSubmarine": [
+      {
+        "kind": "panel",
+        "center": {
+          "forward": -0.08,
+          "up": 0.05,
+          "lateral": 0.42
+        },
+        "axis": "lateral",
+        "width": 0.6,
+        "height": 0.24,
+        "stripeCount": 12,
+        "mirrored": true
+      },
+      {
+        "kind": "panel",
+        "center": {
+          "forward": -0.08,
+          "up": 0.42,
+          "lateral": 0
+        },
+        "axis": "up",
+        "width": 0.5,
+        "height": 0.3,
+        "stripeCount": 10,
+        "mirrored": false
+      },
+      {
+        "kind": "sleeve",
+        "center": {
+          "forward": -0.2,
+          "up": 0.27,
+          "lateral": 0
+        },
+        "axis": "forward",
+        "radius": 0.1,
+        "length": 0.3,
+        "stripeCount": 8
+      },
+      {
+        "kind": "panel",
+        "center": {
+          "forward": -1.08,
+          "up": 0,
+          "lateral": 0.3
+        },
+        "axis": "lateral",
+        "width": 0.26,
+        "height": 0.18,
+        "stripeCount": 8,
+        "mirrored": true
+      }
+    ],
+    "unitQueenBee": [
+      {
+        "kind": "sleeve",
+        "center": {
+          "forward": -0.45,
+          "up": 0,
+          "lateral": 0
+        },
+        "axis": "forward",
+        "radius": 0.3,
+        "length": 0.2,
+        "stripeCount": 12
+      },
+      {
+        "kind": "sleeve",
+        "center": {
+          "forward": -0.12,
+          "up": 0.02,
+          "lateral": 0
+        },
+        "axis": "forward",
+        "radius": 0.34,
+        "length": 0.16,
+        "stripeCount": 12
+      },
+      {
+        "kind": "panel",
+        "center": {
+          "forward": -0.18,
+          "up": 0.37,
+          "lateral": 0
+        },
+        "axis": "up",
+        "width": 0.52,
+        "height": 0.32,
+        "stripeCount": 12,
+        "mirrored": false
+      },
+      {
+        "kind": "panel",
+        "center": {
+          "forward": -0.1,
+          "up": 0.05,
+          "lateral": 0.33
+        },
+        "axis": "lateral",
+        "width": 0.44,
+        "height": 0.2,
+        "stripeCount": 10,
+        "mirrored": true
+      }
+    ],
+    "unitQueenTick": [
+      {
+        "kind": "sleeve",
+        "center": {
+          "forward": -0.52,
+          "up": 0,
+          "lateral": 0
+        },
+        "axis": "forward",
+        "radius": 0.28,
+        "length": 0.2,
+        "stripeCount": 12
+      },
+      {
+        "kind": "sleeve",
+        "center": {
+          "forward": -0.05,
+          "up": 0.02,
+          "lateral": 0
+        },
+        "axis": "forward",
+        "radius": 0.3,
+        "length": 0.16,
+        "stripeCount": 12
+      },
+      {
+        "kind": "panel",
+        "center": {
+          "forward": -0.2,
+          "up": 0.41,
+          "lateral": 0
+        },
+        "axis": "up",
+        "width": 0.54,
+        "height": 0.3,
+        "stripeCount": 12,
+        "mirrored": false
+      },
+      {
+        "kind": "panel",
+        "center": {
+          "forward": -0.15,
+          "up": 0.05,
+          "lateral": 0.31
+        },
+        "axis": "lateral",
+        "width": 0.5,
+        "height": 0.22,
+        "stripeCount": 10,
+        "mirrored": true
+      }
+    ],
+    "towerFabricator": [
+      {
+        "kind": "ringBoxes",
+        "center": {
+          "forward": 0,
+          "up": 0,
+          "lateral": 0
+        },
+        "axis": "up",
+        "ringRadius": 1,
+        "tubeRadius": 0.225,
+        "boxCount": 8,
+        "boxWidth": 0.32,
+        "boxHeight": 0.24,
+        "boxDepth": 0.18,
+        "mountInset": 0.065,
+        "cornerChamfer": 0.035,
+        "faceWidth": 0.23,
+        "faceHeight": 0.145,
+        "faceLift": 0.003,
+        "latchWidth": 0.14,
+        "latchHeight": 0.035,
+        "latchDepth": 0.1,
+        "lod": {
+          "high": {
+            "chamferedHousing": true,
+            "topLatch": true,
+            "cornerFasteners": true
+          },
+          "medium": {
+            "chamferedHousing": false,
+            "topLatch": true,
+            "cornerFasteners": false
+          },
+          "low": {
+            "chamferedHousing": false,
+            "topLatch": false,
+            "cornerFasteners": false
+          }
+        },
+        "stripeCount": 8
+      }
+    ]
   }
 }

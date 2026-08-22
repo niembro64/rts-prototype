@@ -53,6 +53,10 @@ import {
   type MetalCoverage,
 } from '../../types/worldSurfaceMode';
 import {
+  DEFAULT_AUTO_CONVERSION_ENERGY_AT,
+  DEFAULT_AUTO_CONVERSION_METAL_AT,
+} from '../../types/autoConversion';
+import {
   DEFAULT_SIMULATION_TICK_RATE_HZ,
   simulationTicksForDefaultTicks,
   simulationTicksForSeconds,
@@ -280,6 +284,23 @@ export class WorldState {
    *  output. 0 = lossless; 0.5 = lose half of the source resource on
    *  every conversion. Read by economy.update each tick. */
   public converterTax: number = 0;
+  /** Per-player auto-conversion slider points (fractions of storage).
+   *  Each resource has ONE point: the level above which converters send
+   *  it toward the other resource, and the ceiling conversion may fill it
+   *  to. Absent players use the defaults. Set by the
+   *  setAutoConversionThresholds command; read by processConverters. */
+  public autoConversionEnergyAt = new Map<PlayerId, number>();
+  public autoConversionMetalAt = new Map<PlayerId, number>();
+
+  getAutoConversionEnergyAt(playerId: PlayerId): number {
+    return this.autoConversionEnergyAt.get(playerId)
+      ?? DEFAULT_AUTO_CONVERSION_ENERGY_AT;
+  }
+
+  getAutoConversionMetalAt(playerId: PlayerId): number {
+    return this.autoConversionMetalAt.get(playerId)
+      ?? DEFAULT_AUTO_CONVERSION_METAL_AT;
+  }
   /** Per-tick resource movement records. Cleared at the start of each
    *  simulation tick and filled by the resource movement system so
    *  accounting and renderer-facing pylon flow read one channel. */

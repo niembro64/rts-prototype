@@ -15,6 +15,7 @@ import type {
 } from '../../sim/types';
 import { getPlayerPrimaryColor } from '../../sim/types';
 import { getMinimapCssColor } from '../../minimapColor';
+import { getDefaultPlayerName } from '@/playerNamesConfig';
 import { economyManager } from '../../sim/economy';
 import {
   getRayBlueprint,
@@ -440,6 +441,65 @@ function addMultiSelectionStateDetails(
   }
 }
 
+/** BAR's detail rows follow whatever the header shows: the hovered
+ *  entity when one is under the cursor, the selection otherwise. A
+ *  hovered FOREIGN entity gets blueprint facts and live HP only — its
+ *  orders, fire/cloak states, and queue are the owner's business
+ *  (BAR shows name/health/owner for enemies, never orders). */
+function buildHoverAwareDetails(
+  selectedUnits: readonly Entity[],
+  selectedBuildings: readonly Entity[],
+  hoveredEntity: Entity | null,
+  viewer: SelectionViewerContext | undefined,
+): SelectionInfo['details'] {
+  if (hoveredEntity !== null && (hoveredEntity.unit !== null || hoveredEntity.building !== null)) {
+    const relationship = entityViewerRelationship(hoveredEntity, viewer);
+    if (relationship === 'ally' || relationship === 'enemy') {
+      return buildForeignEntityDetails(hoveredEntity);
+    }
+    return buildSingleSelectionDetails(hoveredEntity);
+  }
+  return buildSelectionDetails(selectedUnits, selectedBuildings);
+}
+
+function buildForeignEntityDetails(entity: Entity): SelectionInfo['details'] {
+  if (entity.unit !== null) {
+    try {
+      const bp = getUnitBlueprint(entity.unit.unitBlueprintId);
+      const details: SelectionInfo['details'] = [
+        { label: 'Name', value: bp.name },
+        { label: 'HP', value: `${fmtStat(entity.unit.hp)}/${fmtStat(entity.unit.maxHp)}` },
+        { label: 'Cost', value: fmtTotalCost(bp.cost) },
+        { label: 'Mass', value: fmtStat(bp.mass) },
+        { label: 'Move', value: bp.unitLocomotion.type },
+      ];
+      const range = maxWeaponRange(entity);
+      if (range !== null) details.push({ label: 'Range', value: fmtStat(range) });
+      return details;
+    } catch {
+      return [
+        { label: 'Name', value: entity.unit.unitBlueprintId },
+        { label: 'HP', value: `${fmtStat(entity.unit.hp)}/${fmtStat(entity.unit.maxHp)}` },
+      ];
+    }
+  }
+  if (entity.building !== null && entity.buildingBlueprintId !== null) {
+    try {
+      const bp = getBuildingConfig(entity.buildingBlueprintId);
+      const details: SelectionInfo['details'] = [
+        { label: 'Name', value: bp.name },
+        { label: 'HP', value: `${fmtStat(entity.building.hp)}/${fmtStat(entity.building.maxHp)}` },
+        { label: 'Cost', value: fmtTotalCost(bp.cost) },
+      ];
+      if (bp.energyProduction !== null) details.push({ label: 'Energy', value: `+${fmtStat(bp.energyProduction)}/s` });
+      return details;
+    } catch {
+      return [{ label: 'Name', value: entity.buildingBlueprintId }];
+    }
+  }
+  return [];
+}
+
 function buildSelectionDetails(
   selectedUnits: readonly Entity[],
   selectedBuildings: readonly Entity[],
@@ -589,12 +649,49 @@ function buildSelectedEntityStats(entity: Entity): SelectedEntityStat[] {
   return stats;
 }
 
+/** How the viewing seat relates to an entity, for the BAR-style owner
+ *  line and the foreign-intel gate. A seatless spectator has no
+ *  allegiance, so relationship stays null and every owner is named. */
+export type SelectionViewerContext = {
+  activePlayerId: PlayerId | undefined;
+  arePlayersAllied(a: PlayerId, b: PlayerId): boolean;
+  lookupPlayerName(playerId: PlayerId): string | null;
+};
+
+function entityViewerRelationship(
+  entity: Entity,
+  viewer: SelectionViewerContext | undefined,
+): 'own' | 'ally' | 'enemy' | null {
+  const ownerId = entity.ownership?.playerId;
+  if (ownerId === undefined || viewer === undefined) return null;
+  const viewerId = viewer.activePlayerId;
+  if (viewerId === undefined) return null;
+  if (ownerId === viewerId) return 'own';
+  return viewer.arePlayersAllied(viewerId, ownerId) ? 'ally' : 'enemy';
+}
+
+/** BAR shows the owner's name exactly when the viewer is a spectator or
+ *  the unit belongs to a different team (gui_info.lua). */
+function entityOwnerLabel(
+  entity: Entity,
+  viewer: SelectionViewerContext | undefined,
+  relationship: 'own' | 'ally' | 'enemy' | null,
+): string | null {
+  const ownerId = entity.ownership?.playerId;
+  if (ownerId === undefined || viewer === undefined) return null;
+  if (relationship === 'own') return null;
+  return viewer.lookupPlayerName(ownerId) ?? getDefaultPlayerName(ownerId);
+}
+
 function buildEntitySelectionInfo(
   entity: Entity,
   kind: 'unit' | 'building',
   hovered: boolean,
+  viewer: SelectionViewerContext | undefined,
 ): SelectionInfo['selectedEntityInfo'] {
   const stats = buildSelectedEntityStats(entity);
+  const relationship = entityViewerRelationship(entity, viewer);
+  const ownerLabel = entityOwnerLabel(entity, viewer, relationship);
   if (entity.unit !== null) {
     let label = entity.unit.unitBlueprintId;
     let shortLabel = getUnitDisplayShortName(entity.unit.unitBlueprintId);
@@ -618,6 +715,8 @@ function buildEntitySelectionInfo(
       maxHp: entity.unit.maxHp,
       buildProgress: entity.buildable === null ? null : getBuildFraction(entity.buildable),
       hovered,
+      ownerLabel,
+      relationship,
       stats,
     };
   }
@@ -645,6 +744,8 @@ function buildEntitySelectionInfo(
       maxHp: entity.building.maxHp,
       buildProgress: entity.buildable === null ? null : getBuildFraction(entity.buildable),
       hovered,
+      ownerLabel,
+      relationship,
       stats,
     };
   }
@@ -662,6 +763,8 @@ function buildEntitySelectionInfo(
     maxHp: null,
     buildProgress: null,
     hovered,
+    ownerLabel,
+    relationship,
     stats,
   };
 }
@@ -670,25 +773,28 @@ function buildSelectionEntityInfo(
   selectedUnits: Entity[],
   selectedBuildings: Entity[],
   hoveredEntity: Entity | null,
+  viewer: SelectionViewerContext | undefined,
 ): SelectionInfo['selectedEntityInfo'] {
   // Hover wins, the way BAR's does: the panel reads whatever is under the
   // cursor — any owner, selected or not — and falls back to the selection when
   // the cursor is over empty ground. Reading a unit never changes what you
   // have selected.
   if (hoveredEntity !== null) {
-    if (hoveredEntity.unit !== null) return buildEntitySelectionInfo(hoveredEntity, 'unit', true);
+    if (hoveredEntity.unit !== null) {
+      return buildEntitySelectionInfo(hoveredEntity, 'unit', true, viewer);
+    }
     if (hoveredEntity.building !== null) {
-      return buildEntitySelectionInfo(hoveredEntity, 'building', true);
+      return buildEntitySelectionInfo(hoveredEntity, 'building', true, viewer);
     }
   }
   const totalSelected = selectedUnits.length + selectedBuildings.length;
   if (totalSelected === 0) return null;
   if (totalSelected === 1) {
     if (selectedUnits[0] !== undefined) {
-      return buildEntitySelectionInfo(selectedUnits[0], 'unit', false);
+      return buildEntitySelectionInfo(selectedUnits[0], 'unit', false, viewer);
     }
     if (selectedBuildings[0] !== undefined) {
-      return buildEntitySelectionInfo(selectedBuildings[0], 'building', false);
+      return buildEntitySelectionInfo(selectedBuildings[0], 'building', false, viewer);
     }
   }
 
@@ -711,6 +817,8 @@ function buildSelectionEntityInfo(
     maxHp: maxHp > 0 ? maxHp : null,
     buildProgress: null,
     hovered: false,
+    ownerLabel: null,
+    relationship: null,
     stats: [],
   };
 }
@@ -762,11 +870,13 @@ const DEFAULT_CAMERA_VIEW_BASIS: CameraViewBasis = {
 // Build selection info from entity source and input state
 export function buildSelectionInfo(
   entitySource: UIEntitySource,
-  inputState: InputState | undefined
+  inputState: InputState | undefined,
+  viewer?: SelectionViewerContext,
 ): SelectionInfo {
   const selectedUnits = entitySource.getSelectedUnits();
   const selectedBuildings = entitySource.getSelectedBuildings();
   const selectedStatic = selectedBuildings;
+  const hoveredEntity = entitySource.getHoveredEntity?.() ?? null;
 
   // Check for capabilities. Every commander has a d-gun, so the
   // commander unit IS the dgunner — no second find call needed.
@@ -1176,7 +1286,8 @@ export function buildSelectionInfo(
     selectedEntityInfo: buildSelectionEntityInfo(
       selectedUnits,
       selectedBuildings,
-      entitySource.getHoveredEntity?.() ?? null,
+      hoveredEntity,
+      viewer,
     ),
     hasFactory: factory !== undefined,
     factoryHostKind,
@@ -1225,7 +1336,7 @@ export function buildSelectionInfo(
     hasFactoryGuardControl,
     factoryGuardTargetId,
     controlGroups: inputState?.controlGroups ?? [],
-    details: buildSelectionDetails(selectedUnits, selectedBuildings),
+    details: buildHoverAwareDetails(selectedUnits, selectedBuildings, hoveredEntity, viewer),
   };
 }
 

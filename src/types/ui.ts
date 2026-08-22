@@ -61,6 +61,13 @@ export type SelectedEntityInfo = {
    *  current selection. BAR reads the hovered unit first and keeps the
    *  selection untouched; the panel marks which one it is showing. */
   hovered: boolean;
+  /** Owner line, BAR-style: the owning player's name, present exactly when
+   *  the viewer does NOT own the entity (every entity, for a seatless
+   *  spectator). null for the viewer's own entities. */
+  ownerLabel: string | null;
+  /** The owner's allegiance relative to the viewing seat. null when the
+   *  entity is ownerless or a seatless spectator is viewing. */
+  relationship: 'own' | 'ally' | 'enemy' | null;
   /** Free-form BAR-style stat rows for a single entity: cost, speed, weapon
    *  range and damage, sight. Empty for a multi-entity selection. */
   stats: readonly SelectedEntityStat[];

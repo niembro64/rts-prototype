@@ -9,6 +9,12 @@ import { COLORS, readRgbTuple } from './colorsConfig';
 
 export type ConstructionHostMarkingAxis = 'up' | 'forward' | 'lateral';
 
+/** Where a marking's coordinates live: 'chassis' profiles are in the
+ *  host's body (radius-1) space and built by the chassis assemblers;
+ *  'constructionArm' profiles are in the commander's construction-arm
+ *  local space and built by the bot rig's tool assembler. */
+export type ConstructionHostMarkingAttach = 'chassis' | 'constructionArm';
+
 type ConstructionHostMarkingCenter = Readonly<{
   forward: number;
   up: number;
@@ -17,6 +23,7 @@ type ConstructionHostMarkingCenter = Readonly<{
 
 type ConstructionHostSleeveMarking = Readonly<{
   kind: 'sleeve';
+  attach: ConstructionHostMarkingAttach;
   center: ConstructionHostMarkingCenter;
   axis: ConstructionHostMarkingAxis;
   radius: number;
@@ -26,6 +33,7 @@ type ConstructionHostSleeveMarking = Readonly<{
 
 type ConstructionHostPanelMarking = Readonly<{
   kind: 'panel';
+  attach: ConstructionHostMarkingAttach;
   center: ConstructionHostMarkingCenter;
   axis: ConstructionHostMarkingAxis;
   width: number;
@@ -42,6 +50,7 @@ type ConstructionHostRingBoxLod = Readonly<{
 
 type ConstructionHostRingBoxesMarking = Readonly<{
   kind: 'ringBoxes';
+  attach: ConstructionHostMarkingAttach;
   center: ConstructionHostMarkingCenter;
   axis: ConstructionHostMarkingAxis;
   ringRadius: number;
@@ -136,21 +145,35 @@ function ringBoxLod(value: unknown, label: string): ConstructionHostRingBoxLod {
   });
 }
 
+function markingAttach(
+  value: unknown,
+  label: string,
+): ConstructionHostMarkingAttach {
+  if (value === undefined) return 'chassis';
+  if (value !== 'chassis' && value !== 'constructionArm') {
+    throw new Error(`${label} must be "chassis" or "constructionArm"`);
+  }
+  return value;
+}
+
 function markingProfile(
   entityId: string,
   value: unknown,
+  index: number,
 ): ConstructionHostMarkingProfile {
   if (typeof value !== 'object' || value === null) {
-    throw new Error(`constructionVisualConfig.hostMarkings.${entityId} must be an object`);
+    throw new Error(`constructionVisualConfig.hostMarkings.${entityId}[${index}] must be an object`);
   }
   const raw = value as Record<string, unknown>;
-  const label = `constructionVisualConfig.hostMarkings.${entityId}`;
+  const label = `constructionVisualConfig.hostMarkings.${entityId}[${index}]`;
+  const attach = markingAttach(raw.attach, `${label}.attach`);
   const center = markingCenter(raw.center, `${label}.center`);
   const axis = markingAxis(raw.axis, `${label}.axis`);
   const stripeCount = positiveEvenInteger(raw.stripeCount, `${label}.stripeCount`);
   if (raw.kind === 'sleeve') {
     return Object.freeze({
       kind: 'sleeve',
+      attach,
       center,
       axis,
       radius: positiveNumber(raw.radius, `${label}.radius`),
@@ -168,6 +191,7 @@ function markingProfile(
     }
     return Object.freeze({
       kind: 'panel',
+      attach,
       center,
       axis,
       width: positiveNumber(raw.width, `${label}.width`),
@@ -241,6 +265,7 @@ function markingProfile(
     }
     return Object.freeze({
       kind: 'ringBoxes',
+      attach,
       center,
       axis,
       ringRadius: positiveNumber(raw.ringRadius, `${label}.ringRadius`),
@@ -290,23 +315,32 @@ export const CONSTRUCTION_HAZARD_MARKING_STYLE = Object.freeze({
 });
 
 /** Permanent yellow/black identity markings for every host that owns build
- * power. Unit dimensions are in body-radius units. The Fabricator torus uses
- * its live ring radius as the unit scale, so the same authored clamp-box
- * profile drives the browser and native renderer without restating placement
- * numbers. */
+ * power — each host authors an ARRAY of markings so stripes can sit in
+ * several interesting spots at once. Unit dimensions are in body-radius
+ * units ('chassis' attach) or arm-local units ('constructionArm'). The
+ * Fabricator torus uses its live ring radius as the unit scale, so the
+ * same authored clamp-box profile drives the browser and native renderer
+ * without restating placement numbers. */
 export const CONSTRUCTION_HOST_MARKING_PROFILES: Readonly<
-  Record<string, ConstructionHostMarkingProfile>
+  Record<string, readonly ConstructionHostMarkingProfile[]>
 > = Object.freeze(Object.fromEntries(
-  Object.entries(rawHostMarkings).map(([entityId, value]) => [
-    entityId,
-    markingProfile(entityId, value),
-  ]),
+  Object.entries(rawHostMarkings).map(([entityId, value]) => {
+    if (!Array.isArray(value) || value.length === 0) {
+      throw new Error(
+        `constructionVisualConfig.hostMarkings.${entityId} must be a non-empty array of markings`,
+      );
+    }
+    return [
+      entityId,
+      Object.freeze(value.map((entry, index) => markingProfile(entityId, entry, index))),
+    ];
+  }),
 ));
 
-export function getConstructionHostMarkingProfile(
+export function getConstructionHostMarkingProfiles(
   entityId: string,
-): ConstructionHostMarkingProfile | null {
-  return CONSTRUCTION_HOST_MARKING_PROFILES[entityId] ?? null;
+): readonly ConstructionHostMarkingProfile[] {
+  return CONSTRUCTION_HOST_MARKING_PROFILES[entityId] ?? [];
 }
 
 /** Standard construction hazard stripe palette. These are the same

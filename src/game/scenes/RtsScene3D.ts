@@ -431,6 +431,11 @@ export class RtsScene3D {
       // A spectator's caches are owner-blind: the seat it "views as" is a
       // fog/economy lens, never a selection allegiance.
       () => (this.isSpectator ? undefined : this.localPlayerId),
+      () => ({
+        activePlayerId: this.isSpectator ? undefined : this.localPlayerId,
+        arePlayersAllied: (a, b) => this.arePlayersAlliedForInput(a, b),
+        lookupPlayerName: (playerId) => this.lookupPlayerName(playerId),
+      }),
     );
     this.snapshotIntake = new RtsScene3DSnapshotIntake(
       this.clientViewState,

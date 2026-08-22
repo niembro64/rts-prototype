@@ -82,7 +82,8 @@ type CommandType =
   | 'setSlopePathMode'
   | 'setMetalCoverage'
   | 'setLiquidSurfaceMode'
-  | 'setConverterTax';
+  | 'setConverterTax'
+  | 'setAutoConversionThresholds';
 
 export type BaseCommand = {
   type: CommandType;
@@ -207,7 +208,10 @@ export type ScanCommand = BaseCommand & {
 
 export type StartBuildCommand = BaseCommand & {
   type: 'startBuild';
-  builderId: EntityId;
+  /** Every selected capable builder, leader (active builder) first. The
+   *  first id that resolves seeds the nanoframe; every id gets the build
+   *  order, so the crew cooperates on one shared queue (BAR default). */
+  builderIds: EntityId[];
   buildingBlueprintId: BuildingBlueprintId;
   gridX: number;
   gridY: number;
@@ -677,6 +681,16 @@ export type SetConverterTaxCommand = BaseCommand & {
   tax: number;
 };
 
+/** Per-player auto-conversion slider points (fractions of storage; see
+ *  types/autoConversion). Like `resign`, `playerId` names the SUBJECT
+ *  seat and the authorizer requires it to be the issuing seat. */
+export type SetAutoConversionThresholdsCommand = BaseCommand & {
+  type: 'setAutoConversionThresholds';
+  playerId: PlayerId;
+  energyConvertAt: number;
+  metalConvertAt: number;
+};
+
 export type Command =
   | SelectCommand
   | MoveCommand
@@ -742,4 +756,5 @@ export type Command =
   | SetSlopePathModeCommand
   | SetMetalCoverageCommand
   | SetLiquidSurfaceModeCommand
-  | SetConverterTaxCommand;
+  | SetConverterTaxCommand
+  | SetAutoConversionThresholdsCommand;

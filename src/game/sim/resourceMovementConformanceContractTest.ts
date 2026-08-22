@@ -362,6 +362,10 @@ export function runResourceMovementConformanceContractTest(): void {
   });
   world.resourceMovements.length = 0;
   world.converterTax = 0.5;
+  // Legacy one-way slider points so the pylon-flow assertions below stay
+  // about movement conformance, not about the default thresholds.
+  world.autoConversionEnergyAt.set(playerId, 0);
+  world.autoConversionMetalAt.set(playerId, 1);
   const converterConfig = getBuildingConfig('buildingResourceConverter');
   const converter = world.createBuilding(
     100,
@@ -393,6 +397,38 @@ export function runResourceMovementConformanceContractTest(): void {
     (converterConfig.conversionRate ?? 0) * (1 - world.converterTax),
     'converter produced flow rate after tax',
   );
+
+  // Bidirectional check: metal above its slider point while energy sits
+  // below its own point converts the other way — the direction the old
+  // one-way kernel refused (it returned zeros whenever metal was capped).
+  economyManager.setEconomyState(playerId, {
+    ...createEconomyState(),
+    stockpile: { curr: 0, max: 200 },
+    metal: {
+      ...createEconomyState().metal,
+      stockpile: { curr: 200, max: 200 },
+    },
+  });
+  world.autoConversionEnergyAt.set(playerId, 1);
+  world.autoConversionMetalAt.set(playerId, 0.5);
+  world.resourceMovements.length = 0;
+  resourceMovementSystem.beginTick(world);
+  economyManager.processConverters(world, 1000);
+  const reverseMovements = world.resourceMovements.filter((movement) => movement.reason === 'conversion');
+  const reverseConsumed = reverseMovements.find((movement) => movement.direction === 'outbound');
+  const reverseProduced = reverseMovements.find((movement) => movement.direction === 'inbound');
+  assertContract(
+    reverseConsumed?.resource === 'metal',
+    'metal above its slider point must become the consumed converter resource',
+  );
+  assertContract(
+    reverseProduced?.resource === 'energy',
+    'energy below its slider point must be the produced converter resource',
+  );
+  // Restore the legacy one-way points for the closed-converter check.
+  world.autoConversionEnergyAt.set(playerId, 0);
+  world.autoConversionMetalAt.set(playerId, 1);
+
   economyManager.setEconomyState(playerId, {
     ...createEconomyState(),
     stockpile: { curr: 100, max: 200 },

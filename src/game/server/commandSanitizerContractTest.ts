@@ -733,7 +733,7 @@ export function runCommandSanitizerContractTest(): void {
   const rotatedBuild = sanitizeRequired<StartBuildCommand>(world, {
     type: 'startBuild',
     tick: 9,
-    builderId: 9,
+    builderIds: [9],
     buildingBlueprintId: 'buildingSolar',
     gridX: 4.8,
     gridY: 5.2,
@@ -750,7 +750,7 @@ export function runCommandSanitizerContractTest(): void {
   const wireNullQueueBuild = sanitizeRequired<StartBuildCommand>(world, {
     type: 'startBuild',
     tick: 12,
-    builderId: 9,
+    builderIds: [9],
     buildingBlueprintId: 'buildingSolar',
     gridX: 12,
     gridY: 13,
