@@ -844,7 +844,12 @@ pub(crate) fn compute_airborne_return_step(
         };
         if flags & AIRBORNE_RETURN_FLAG_CHECK_DUE != 0 {
             let exit_distance = (committed_radius * exit_radius_ratio).max(min_turn_radius);
-            if distance >= exit_distance {
+            // A blocked egress (map boundary, collision pin) stops gaining
+            // distance; abandon it rather than thrusting into the wall
+            // forever — the next approach check re-derives a fresh heading.
+            let outbound_blocked = last_check_distance > 0.0
+                && distance <= last_check_distance + progress_epsilon;
+            if distance >= exit_distance || outbound_blocked {
                 return (
                     goal_dir_x,
                     goal_dir_y,
@@ -3245,6 +3250,27 @@ mod tests {
         assert_eq!(state, AIRBORNE_RETURN_STATE_APPROACH);
         assert!(tx < -0.99);
         assert_eq!(radius, 0.0);
+    }
+
+    #[test]
+    fn airborne_return_blocked_egress_abandons_the_outbound_leg() {
+        // Pinned against a map boundary: two checks at the same distance mean
+        // the outbound leg is not progressing — return to approach instead of
+        // thrusting into the wall forever.
+        let (_, _, state, _, _, _, _, _) = return_step(
+            -300.0,
+            0.0,
+            200.0,
+            0.0,
+            200.0,
+            AIRBORNE_RETURN_STATE_EGRESS,
+            (1.0, 0.0),
+            200.0,
+            true,
+            300.0,
+            0,
+        );
+        assert_eq!(state, AIRBORNE_RETURN_STATE_APPROACH);
     }
 
     #[test]
