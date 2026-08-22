@@ -1,0 +1,5 @@
+1. WHen we do batch building of metal deposits or other buildings or do batch "energy reclaim of trees/grass" it seems the order that we do them is totally radom. Look at how "Beyond-All-Reason" does the ordering of things like this and implement it here. 
+
+2. When we are holding shift it should not have any effects on the camera. 
+
+3. When we are deciding where to place a building, we need to see the various radiuses that it has, so we can make a good decision about where to place it. 
