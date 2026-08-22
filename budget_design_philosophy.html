@@ -1185,6 +1185,21 @@
       </ul>
 
       <h3>Forward-flight waypoints have a no-turn deadzone with a front slice</h3>
+      <div class="callout">
+        <p>
+          <strong>The settled forward-flight waypoint contract</strong> (locked 2026-08-22,
+          after every softer variant failed). A plane or aerosub always accelerates forward
+          and turns at one constant authored rate &mdash; the same turn-ness every tick until
+          its nose is perfectly in line with its goal, never easing off as the angle closes.
+          A <em>non-terminating</em> waypoint has a no-turn deadzone: inside it the plane may
+          not turn at all unless that waypoint sits within 45&deg; left or right of the
+          direction it is facing, so if it is going to miss, it misses large and straight.
+          A <em>terminating</em> waypoint has no deadzone and never completes: the plane just
+          always turns toward it &mdash; through, back around, through again &mdash; and that
+          perpetual pursuit is the hold. No loiter circle ever substitutes for a waypoint the
+          player placed; loitering exists only for a plane with an empty order queue.
+        </p>
+      </div>
       <p>
         A body that must keep moving forward has a minimum turning circle. A goal inside that
         circle is unreachable by steering toward it &mdash; pursuit decays into a constant-speed,
