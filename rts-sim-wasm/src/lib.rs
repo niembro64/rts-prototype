@@ -86,6 +86,26 @@ pub fn deterministic_math_pow(base: f64, exponent: f64) -> f64 {
     base.powf(exponent)
 }
 
+#[wasm_bindgen]
+pub fn deterministic_math_ln(value: f64) -> f64 {
+    value.ln()
+}
+
+#[wasm_bindgen]
+pub fn deterministic_math_log2(value: f64) -> f64 {
+    value.log2()
+}
+
+#[wasm_bindgen]
+pub fn deterministic_math_tan(value: f64) -> f64 {
+    value.tan()
+}
+
+#[wasm_bindgen]
+pub fn deterministic_math_asin(value: f64) -> f64 {
+    value.asin()
+}
+
 /// Module init. wasm-bindgen calls this automatically when the
 /// JS side imports the module (because of the #[wasm_bindgen(start)]
 /// attribute). Installs the panic hook before any other code runs.

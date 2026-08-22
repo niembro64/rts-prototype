@@ -54,4 +54,20 @@ export const deterministicMath = {
   pow(base: number, exponent: number): number {
     return requireKernel('pow')(base, exponent);
   },
+
+  ln(value: number): number {
+    return requireKernel('ln')(value);
+  },
+
+  log2(value: number): number {
+    return requireKernel('log2')(value);
+  },
+
+  tan(value: number): number {
+    return requireKernel('tan')(value);
+  },
+
+  asin(value: number): number {
+    return requireKernel('asin')(value);
+  },
 } as const;

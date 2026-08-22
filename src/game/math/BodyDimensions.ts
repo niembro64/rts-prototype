@@ -10,6 +10,7 @@
 // directly in unit blueprints as 3D mount points.
 
 import type { UnitBlueprint, UnitBodyShape, UnitBodyShapePart } from '@/types/blueprints';
+import { deterministicMath as DMath } from '../sim/deterministicMath';
 
 function circleYFrac(radiusFrac: number, yFrac?: number): number {
   return yFrac ?? radiusFrac;
@@ -205,14 +206,14 @@ export function getCylinderSegmentPose(part: {
     const sinPitch = Math.max(-1, Math.min(1, (startYFrac - endYFrac) / length));
     return {
       centerYFrac: (startYFrac + endYFrac) / 2,
-      pitchRad: Math.asin(sinPitch),
+      pitchRad: DMath.asin(sinPitch),
       startYFrac,
       endYFrac,
     };
   }
   const centerYFrac = part.centerYFrac ?? part.radiusFrac;
   const pitchRad = part.pitchRad ?? 0;
-  const rise = Math.sin(pitchRad) * length * 0.5;
+  const rise = DMath.sin(pitchRad) * length * 0.5;
   return {
     centerYFrac,
     pitchRad,

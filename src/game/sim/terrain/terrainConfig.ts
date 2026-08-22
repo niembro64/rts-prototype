@@ -66,10 +66,19 @@ export const TERRAIN_TRIANGLE_MAX_SURFACE_ERROR =
  *  within the positional error tolerance. */
 const TERRAIN_TRIANGLE_MAX_NORMAL_ANGLE_DEGREES =
   terrainConfig.mesh.collapse.maxNormalAngleDegrees;
-export const TERRAIN_TRIANGLE_MIN_NORMAL_DOT = Math.cos(
-  Math.max(0, Math.min(180, TERRAIN_TRIANGLE_MAX_NORMAL_ANGLE_DEGREES)) *
-    Math.PI / 180,
-);
+/** Lazily computed through the WASM libm cos kernel: this dot threshold
+ *  decides which triangles collapse, which shapes the pathfinding surface —
+ *  gameplay truth, so it may not ride a browser's own Math.cos. Lazy
+ *  because module evaluation runs before the sim WASM has initialized;
+ *  every consumer runs during server bootstrap, when it has. */
+let _terrainTriangleMinNormalDot: number | null = null;
+export function terrainTriangleMinNormalDot(): number {
+  _terrainTriangleMinNormalDot ??= DMath.cos(
+    Math.max(0, Math.min(180, TERRAIN_TRIANGLE_MAX_NORMAL_ANGLE_DEGREES)) *
+      Math.PI / 180,
+  );
+  return _terrainTriangleMinNormalDot;
+}
 
 /** Maximum hierarchy-level delta allowed across touching triangle edges.
  *  `1` gives a 2:1 balanced transition band around high-detail terrain. */

@@ -1,3 +1,5 @@
+import { deterministicMath as DMath } from '../sim/deterministicMath';
+
 
 
 
@@ -62,7 +64,7 @@ export function smoothstep01(t: number): number {
  * Absolute wrapped difference between two angles in radians.
  */
 export function angleDeltaAbs(a: number, b: number): number {
-  return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+  return Math.abs(DMath.atan2(DMath.sin(a - b), DMath.cos(a - b)));
 }
 
 /**
@@ -97,8 +99,8 @@ export function lerpAngle(a: number, b: number, t: number): number {
  *  call in between — silently corrupts the first read. */
 const _csOut = { cos: 0, sin: 0 };
 export function getTransformCosSin(t: { rotation: number; rotCos: number | null; rotSin: number | null }): { cos: number; sin: number } {
-  _csOut.cos = t.rotCos ?? Math.cos(t.rotation);
-  _csOut.sin = t.rotSin ?? Math.sin(t.rotation);
+  _csOut.cos = t.rotCos ?? DMath.cos(t.rotation);
+  _csOut.sin = t.rotSin ?? DMath.sin(t.rotation);
   return _csOut;
 }
 

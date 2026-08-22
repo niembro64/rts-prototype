@@ -33,6 +33,10 @@ export interface SimWasm {
     readonly hypot2: (x: number, y: number) => number;
     readonly hypot3: (x: number, y: number, z: number) => number;
     readonly pow: (base: number, exponent: number) => number;
+    readonly ln: (value: number) => number;
+    readonly log2: (value: number) => number;
+    readonly tan: (value: number) => number;
+    readonly asin: (value: number) => number;
   };
   readonly windSampleState: (nowMs: number, out: Float64Array) => number;
   readonly buildTargetHorizontalDistance: (

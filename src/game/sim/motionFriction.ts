@@ -1,3 +1,5 @@
+import { deterministicMath as DMath } from './deterministicMath';
+
 function hasVelocityAirFriction(frictionPer60HzFrame: number): boolean {
   return Number.isFinite(frictionPer60HzFrame) &&
     frictionPer60HzFrame > 0 &&
@@ -27,7 +29,10 @@ export function dragRateFromVelocityFrictionPer60HzFrame(
     return 0;
   }
   if (frictionPer60HzFrame >= 1) return Number.POSITIVE_INFINITY;
-  return -Math.log(1 - frictionPer60HzFrame) * 60 * scale;
+  // WASM libm ln, not Math.log: this coefficient feeds shot drag, and JS
+  // transcendentals are implementation-defined — the exact cross-engine
+  // divergence deterministic lockstep cannot carry.
+  return -DMath.ln(1 - frictionPer60HzFrame) * 60 * scale;
 }
 
 export function dragCoefficientFromVelocityFrictionPer60HzFrame(

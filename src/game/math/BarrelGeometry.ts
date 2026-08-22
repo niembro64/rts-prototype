@@ -7,6 +7,7 @@
 // TurretMesh3D, so barrelIndex remains meaningful visual cadence metadata.
 
 import type { BarrelShape } from '@/types/blueprints';
+import { deterministicMath as DMath } from '../sim/deterministicMath';
 import type { ActiveProjectileShot, EmissionConfig } from '../sim/types';
 import { isProjectileShot, isRayConfig, isRocketLikeShot } from '../sim/types';
 
@@ -121,7 +122,7 @@ export function getConeBarrelTipOrbitRadius(
   }
   return Math.min(
     getConeBarrelBaseOrbitRadius(barrel, turretBodyRadius)
-      + barrelLen * Math.tan((spreadAngle ?? Math.PI / 5) / 2),
+      + barrelLen * DMath.tan((spreadAngle ?? Math.PI / 5) / 2),
     turretBodyRadius * BARREL_ORBIT_CLAMP_FRAC.coneTip,
   );
 }

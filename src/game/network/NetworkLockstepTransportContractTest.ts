@@ -207,6 +207,23 @@ export function runNetworkLockstepTransportContractTest(): void {
     'latest ack must be retained for coordinator resend decisions',
   );
 
+  // Acks carry EXECUTED progress, which never regresses; a stale ack
+  // overtaken in flight must not shrink the coordinator's view of a peer.
+  // The regression tripped spurious flow-control pauses during resend
+  // bursts — the pause/resume cycle behind a real field desync.
+  transport.handleMessage({
+    ...baseMessage(),
+    type: 'lockstepAck',
+    playerId: 2 as PlayerId,
+    ackFrame: 10,
+    ackFrameSequence: 2,
+    receivedPeerSequences: [],
+  }, 2 as PlayerId);
+  assertContract(
+    transport.latestAckForPlayer(2 as PlayerId)?.ackFrame === 12,
+    'a stale ack must not regress the stored executed progress',
+  );
+
   transport.handleMessage({
     ...baseMessage(),
     type: 'lockstepAck',

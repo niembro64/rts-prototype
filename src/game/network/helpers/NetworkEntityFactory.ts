@@ -1,6 +1,7 @@
 // Network entity creation helpers
 
 import { readWireWorkStationInto } from '../wireFieldDecoders';
+import { deterministicMath as DMath } from '../../sim/deterministicMath';
 import type {
   Entity,
   BuildingBlueprintId,
@@ -142,7 +143,7 @@ function createRuntimeFactoryFromNetwork(
 
 function orientationFromYaw(yaw: number): { x: number; y: number; z: number; w: number } {
   const half = (Number.isFinite(yaw) ? yaw : 0) * 0.5;
-  return { x: 0, y: 0, z: Math.sin(half), w: Math.cos(half) };
+  return { x: 0, y: 0, z: DMath.sin(half), w: DMath.cos(half) };
 }
 
 function decodeNetworkBuildingBlueprintId(buildingBlueprintCode: unknown): BuildingBlueprintId | null {

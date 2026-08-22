@@ -108,7 +108,9 @@ function formationUnitMass(unit: Entity): number {
 }
 
 function formationPlacementWeight(radius: number, mass: number): number {
-  return radius * 4 + Math.log2(Math.max(1, mass) + 1);
+  // WASM libm log2: placement weight orders and spaces group-move targets —
+  // gameplay truth, so it may not ride a browser's own Math.log2.
+  return radius * 4 + DMath.log2(Math.max(1, mass) + 1);
 }
 
 function compareFormationUnits(a: FormationLayoutUnit, b: FormationLayoutUnit): number {

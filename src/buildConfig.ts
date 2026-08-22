@@ -1,4 +1,5 @@
 import rawConfig from './buildConfig.json';
+import { deterministicMath as DMath } from './game/sim/deterministicMath';
 
 function validSlopeAngleDegrees(value: number): number {
   if (!Number.isFinite(value) || value < 0 || value >= 90) {
@@ -31,9 +32,6 @@ function decayFractionPerSecond(value: number): number {
 
 export const BUILD_CONFIG = {
   maxBuildableSlopeAngleDegrees,
-  minBuildableSurfaceNormalUp: Math.cos(
-    maxBuildableSlopeAngleDegrees * Math.PI / 180,
-  ),
   /** Unfinished shells rot when nobody is paying for them: after the delay
    *  they lose a constant fraction of their OWN full cost per second, and the
    *  frame is removed outright at zero progress. */
@@ -47,3 +45,18 @@ export const BUILD_CONFIG = {
     ),
   },
 } as const;
+
+
+/** Lazily computed through the WASM libm cos kernel: this threshold decides
+ *  what counts as buildable ground — gameplay truth that shapes extractor
+ *  auto-placement from frame 0, so it may not ride a browser's own
+ *  Math.cos. Lazy because module evaluation can run before the sim WASM
+ *  initializes; every consumer runs during terrain/buildability baking,
+ *  when it has. */
+let _minBuildableSurfaceNormalUp: number | null = null;
+export function minBuildableSurfaceNormalUp(): number {
+  _minBuildableSurfaceNormalUp ??= DMath.cos(
+    maxBuildableSlopeAngleDegrees * Math.PI / 180,
+  );
+  return _minBuildableSurfaceNormalUp;
+}

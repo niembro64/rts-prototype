@@ -89,7 +89,7 @@ import type {
 import type { NetworkLockstepTransportDiagnostics } from '../game/network/NetworkLockstepTransport';
 import type { GameConnection } from '../game/server/GameConnection';
 import type { Command } from '../game/sim/commands';
-import type { PlayerId } from '../game/sim/types';
+import type { EntityId, PlayerId } from '../game/sim/types';
 import type { MemberId } from '../types/network';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
 import { presentationSnapshotRateIntervalMs } from '../presentationSnapshotConfig';
@@ -779,6 +779,26 @@ async function createDeterministicLockstepBackendRuntime({
     onLoadingProgress,
   });
   const lockstepCore = server.getLockstepSimulationCore();
+  if (import.meta.env.DEV) {
+    // Desync forensics: while the match is HALTED (lockstep pause stops every
+    // peer on the same frame), pages can be asked for a full state hash and
+    // compared offline. Dev-only window hook; never part of gameplay.
+    (window as unknown as Record<string, unknown>).__baFullStateHash = () => ({
+      frame: scheduler.getDiagnostics().lastAdvancedFrame,
+      full: lockstepCore.getCanonicalStateHashFull(),
+    });
+    (window as unknown as Record<string, unknown>).__baEntityCanonical = (ids: number[]) => {
+      const out: Record<number, unknown> = {};
+      for (const id of ids) {
+        const entity = lockstepCore.world.getEntity(id as EntityId);
+        out[id] = entity === undefined ? null : {
+          transform: entity.transform,
+          body: entity.body?.physicsBody ?? null,
+        };
+      }
+      return JSON.parse(JSON.stringify(out));
+    };
+  }
   const pendingCommandsByFrame = new Map<number, LockstepCommandEnvelope[]>();
   const isOnlineLockstep = networkRole !== null && network !== undefined;
   const isFrameCoordinator = networkRole !== 'client';
@@ -1354,7 +1374,18 @@ async function createDeterministicLockstepBackendRuntime({
             message.frameSequence,
             message.commands,
           );
-          network?.getLockstepTransport().sendAck(message.frame, message.frameSequence);
+          // Ack EXECUTED progress, not receipt. Acking the received frame's
+          // number told the coordinator "caught up" the moment bytes landed,
+          // which (a) made the flow-control pause measure the wrong thing
+          // and (b) let a resend burst of OLD frames regress the
+          // coordinator's view of a healthy peer and trip a spurious pause —
+          // the pause/resume cycle that used to skip frames. Duplicate
+          // deliveries deliberately still ack: they are the refresh that
+          // shrinks the coordinator's resend window as execution advances.
+          network?.getLockstepTransport().sendAck(
+            scheduler.getDiagnostics().lastAdvancedFrame ?? -1,
+            message.frameSequence,
+          );
         }
         break;
       case 'lockstepCommandFrameBatch':
@@ -1372,7 +1403,11 @@ async function createDeterministicLockstepBackendRuntime({
             lastFrameSequence = frame.frameSequence;
           }
           if (lastFrame !== null && lastFrameSequence !== null) {
-            network?.getLockstepTransport().sendAck(lastFrame, lastFrameSequence);
+            // Same executed-progress rule as the single-frame ack above.
+            network?.getLockstepTransport().sendAck(
+              scheduler.getDiagnostics().lastAdvancedFrame ?? -1,
+              lastFrameSequence,
+            );
           }
         }
         break;

@@ -517,8 +517,16 @@ export class NetworkLockstepTransport {
         return this.acceptCommandFrameBatch(message);
       case 'lockstepAck':
         if (fromPlayerId === undefined) return true;
-        this.latestAckByPlayer.set(fromPlayerId, message);
-        this.pruneOutboundCommandFrames();
+        {
+          // Monotonic: acks carry EXECUTED progress, which never regresses.
+          // A stale ack overtaken in flight (or replayed during a resend
+          // burst) must not shrink the coordinator's view of a peer — that
+          // regression is what used to trip spurious flow-control pauses.
+          const stored = this.latestAckByPlayer.get(fromPlayerId);
+          if (stored !== undefined && message.ackFrame <= stored.ackFrame) return true;
+          this.latestAckByPlayer.set(fromPlayerId, message);
+          this.pruneOutboundCommandFrames();
+        }
         return true;
       default:
         return true;

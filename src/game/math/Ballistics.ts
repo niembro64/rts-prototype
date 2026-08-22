@@ -6,6 +6,7 @@
 // Zero state, pure functions.
 
 import { getSimWasm } from '../sim-wasm/init';
+import { deterministicMath as DMath } from '../sim/deterministicMath';
 import {
   dragRateFromVelocityFrictionPer60HzFrame,
   windVelocityForAirFriction,
@@ -76,7 +77,7 @@ function defaultInterceptMaxTime(input: KinematicInterceptInput): number {
   const dx = input.targetPosition.x - input.myPosition.x;
   const dy = input.targetPosition.y - input.myPosition.y;
   const dz = input.targetPosition.z - input.myPosition.z;
-  const dist = Math.hypot(dx, dy, dz);
+  const dist = DMath.hypot(dx, dy, dz);
   const speed = input.projectileSpeed;
   const baseTime = speed > 1e-6 ? dist / speed : 0;
   const myAccel = input.myAcceleration;
@@ -89,7 +90,7 @@ function defaultInterceptMaxTime(input: KinematicInterceptInput): number {
   const relAz =
     (input.targetAcceleration.z - myAccel.z) -
     (-input.gravity - myAccel.z);
-  const relAccel = Math.hypot(relAx, relAy, relAz);
+  const relAccel = DMath.hypot(relAx, relAy, relAz);
   const accelTime = relAccel > 1e-6 ? (2 * speed) / relAccel : 0;
   return clampTime(Math.max(2, baseTime * 8 + 4, accelTime * 2 + 1));
 }
@@ -136,7 +137,7 @@ function interceptFunction(input: KinematicInterceptInput, t: number): number {
     (targetVel.z - myVel.z) * t +
     0.5 * (relTargetAz - relProjectileAz) * t * t;
 
-  return Math.hypot(relX, relY, relZ) - input.projectileSpeed * t;
+  return DMath.hypot(relX, relY, relZ) - input.projectileSpeed * t;
 }
 
 function dampedRequiredWorldVelocityAxis(
@@ -145,7 +146,7 @@ function dampedRequiredWorldVelocityAxis(
   time: number,
   dragK: number,
 ): number {
-  const damp = Math.exp(-dragK * time);
+  const damp = DMath.exp(-dragK * time);
   const retentionLoss = 1 - damp;
   if (!Number.isFinite(retentionLoss) || retentionLoss <= 1e-12) return Number.NaN;
   const terminal = acceleration / dragK;
@@ -193,7 +194,7 @@ function dampedInterceptFunction(
     return Number.POSITIVE_INFINITY;
   }
 
-  return Math.hypot(
+  return DMath.hypot(
     worldVx - input.myVelocity.x,
     worldVy - input.myVelocity.y,
     worldVz - input.myVelocity.z,

@@ -1,5 +1,5 @@
 import { LAND_CELL_SIZE } from '../../../config';
-import { BUILD_CONFIG } from '../../../buildConfig';
+import { BUILD_CONFIG, minBuildableSurfaceNormalUp } from '../../../buildConfig';
 import { assertCanonicalLandCellSize } from '../../landGrid';
 import { BUILD_GRID_CELL_SIZE } from '../buildGrid';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
@@ -291,7 +291,7 @@ function evaluateBuildabilityFootprintWithSampler(
     } else if (sample.water !== footprintWater) {
       return { terrainBuildable: false, level: null, squareType: null };
     }
-    if (sample.normalUp < BUILD_CONFIG.minBuildableSurfaceNormalUp) {
+    if (sample.normalUp < minBuildableSurfaceNormalUp()) {
       return {
         terrainBuildable: false,
         level: null,
@@ -356,7 +356,7 @@ export function evaluateBuildabilityFootprint(
   if (exact === null) return sampled;
   const terrainBuildable =
     exact.squareType !== null &&
-    exact.minNormalUp >= BUILD_CONFIG.minBuildableSurfaceNormalUp &&
+    exact.minNormalUp >= minBuildableSurfaceNormalUp() &&
     sampled.terrainBuildable;
   return {
     terrainBuildable,
@@ -473,7 +473,7 @@ function buildTerrainBuildabilityGridFromWasm(
     cellSize,
     TERRAIN_D_TERRAIN,
     TERRAIN_PLATEAU_CONFIG.buildableShelfHeightTolerance,
-    BUILD_CONFIG.minBuildableSurfaceNormalUp,
+    minBuildableSurfaceNormalUp(),
     packTerrainFlatZoneRowsForWasm(),
     flags,
     levels,

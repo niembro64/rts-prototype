@@ -52,6 +52,7 @@
 // `depositCluster: { count: 1, radius: 0, angleOffset: 0 }`.
 
 import { MAP_GENERATION_EXTENT_FRACTION } from './mapSizeConfig';
+import { deterministicMath as DMath } from './game/sim/deterministicMath';
 import {
   METAL_DEPOSIT_STEP,
   setMetalDepositFlatZones,
@@ -744,8 +745,8 @@ function expandMetalDepositClusterPlacements(
     // Every origin (each player's copy of the ring) becomes its OWN
     // terrain group — groups smooth internally, never across players.
     const groupId = groupIdAllocator.next++;
-    const cosA = Math.cos(radialAngle);
-    const sinA = Math.sin(radialAngle);
+    const cosA = DMath.cos(radialAngle);
+    const sinA = DMath.sin(radialAngle);
     for (const spot of cluster.spots) {
       // Spot offsets live in the origin's radial frame (+x away from
       // map center) so every player's slice keeps the same local shape.
@@ -792,8 +793,8 @@ function expandMetalDepositClusterPlacements(
   for (let i = 0; i < cluster.count; i++) {
     const angle =
       radialAngle + cluster.angleOffset + (i / cluster.count) * Math.PI * 2;
-    const rawX = origin.placement.x + Math.cos(angle) * cluster.radius;
-    const rawY = origin.placement.y + Math.sin(angle) * cluster.radius;
+    const rawX = origin.placement.x + DMath.cos(angle) * cluster.radius;
+    const rawY = origin.placement.y + DMath.sin(angle) * cluster.radius;
     out.push({
       placement: makeMetalDepositPlacementFromRawPoint(
         rawX,
@@ -820,7 +821,7 @@ function metalDepositRadialAngleFromMapCenter(
   const dx = x - mapWidth * 0.5;
   const dy = y - mapHeight * 0.5;
   if (Math.abs(dx) <= 1e-6 && Math.abs(dy) <= 1e-6) return 0;
-  return Math.atan2(dy, dx);
+  return DMath.atan2(dy, dx);
 }
 
 function makeMetalDepositPlacementFromRawPoint(

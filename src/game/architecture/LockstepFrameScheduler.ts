@@ -217,7 +217,15 @@ export class LockstepFrameScheduler {
 
   resume(resumeFrame: number): void {
     this.assertFrameInteger(resumeFrame, 'resumeFrame');
-    if (resumeFrame > this.nextFrame) this.nextFrame = resumeFrame;
+    // `resumeFrame` is the COORDINATOR's frame at resume time — informational
+    // only. It must NEVER move `nextFrame`: every client is naturally a few
+    // frames behind the coordinator, and jumping `nextFrame` forward SKIPS
+    // the sim ticks in between, silently and by a different amount per peer.
+    // That was a real desync (proven by a paused pair sitting 30 frames
+    // apart): a spurious flow-control pause/resume left every client's world
+    // permanently short of ticks while sharing the host's frame numbering.
+    // A peer behind at resume simply steps through its queued/resent frames
+    // and catches up — that is what deterministic lockstep is FOR.
     this.status = 'running';
     this.pausedFrame = null;
     this.pauseReason = null;

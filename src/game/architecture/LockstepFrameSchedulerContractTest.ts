@@ -100,6 +100,17 @@ export function runLockstepFrameSchedulerContractTest(): void {
   result = scheduler.advanceReadyFrames();
   assertContract(result.advancedFrames === 1, 'resume must allow ready frames to advance again');
 
+  // The resume-skip desync, pinned: a resume frame AHEAD of this peer must
+  // never move nextFrame. Every client is naturally behind the coordinator,
+  // and jumping forward silently skipped sim ticks by a different amount per
+  // peer — a peer behind at resume catches up by STEPPING, never skipping.
+  scheduler.pause(4, 'skip probe');
+  scheduler.resume(99);
+  assertContract(
+    scheduler.getDiagnostics().nextFrame === 4,
+    'a resume frame ahead of this peer must never move nextFrame',
+  );
+
   scheduler.receiveCommandFrame(createFrame(4, [createEnvelope(1 as PlayerId, 4, 4)]));
   scheduler.receiveCommandFrame(createFrame(5, [createEnvelope(1 as PlayerId, 5, 5)]));
   scheduler.receiveCommandFrame(createFrame(6, [createEnvelope(1 as PlayerId, 6, 6)]));
