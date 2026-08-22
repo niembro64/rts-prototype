@@ -19,3 +19,5 @@
 10. The build squares of the solar collectors are 45-degrees offset from what they should be. They should realyly just be a square 11x11. Let's have it actually be an 11x11 standard square but let's remove the three middle squares from the very center three squares from the middle of the sides. This should look right as our panels fold out in an X, and the three missing squares I can see there wouldn't be any visible panel in that area. 
 
 11. On our home screen, let's remove "https://niemo.io" and "niemeyer.eric@gmail.com" and only show that in our "Game Info" page. 
+
+12. We have "BENCH" use an "X" instead for removing the user from the game and putting them back into the spectators list. 
