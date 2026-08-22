@@ -633,7 +633,7 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
       factoryQueueModeIndex > factoryGuardIndex &&
       factoryWaitIndex > factoryQueueModeIndex &&
       factoryStopIndex > factoryWaitIndex &&
-      /const showFactoryActions = computed\(\(\) =>\s*props\.selection\.hasFactory &&\s*props\.selection\.factoryId !== undefined &&\s*\(\s*\(props\.selection\.factoryHostKind === 'unit' && showUnitActions\.value\) \|\|\s*\(props\.selection\.factoryHostKind === 'building' && showBuildingActions\.value\)\s*\),\s*\);/.test(selectionPanelSource) &&
+      /const showFactoryActions = computed\(\(\) =>\s*canCommand\.value &&\s*props\.selection\.hasFactory &&\s*props\.selection\.factoryId !== undefined &&\s*\(\s*\(props\.selection\.factoryHostKind === 'unit' && showUnitActions\.value\) \|\|\s*\(props\.selection\.factoryHostKind === 'building' && showBuildingActions\.value\)\s*\),\s*\);/.test(selectionPanelSource) &&
       /<div v-if="showFactoryActions" class="button-group">/.test(selectionPanelSource) &&
       !/selection\.hasFactory && selection\.factoryId && showBuildingActions/.test(selectionPanelSource) &&
       /private getSelectedFactory\(\): Entity \| null \{\s*const selectedUnits = this\.entitySource\.getSelectedUnits\(\);[\s\S]{0,500}const selectedStatic = this\.entitySource\.getSelectedBuildings\(\);/.test(input3DManagerSource) &&
@@ -673,7 +673,7 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
     'fire/trajectory and on/off state buttons must route through the BAR neutral state-color helper',
   );
   assertContract(
-    /const showFactoryQueueModeButton = computed\(\(\) => props\.selection\.hasFactory\);/.test(selectionPanelSource) &&
+    /const showFactoryQueueModeButton = computed\(\(\) => canCommand\.value && props\.selection\.hasFactory\);/.test(selectionPanelSource) &&
       /'factory\.queueMode': 'Queue: Build each queued unit once\\nQuota: Maintain a minimum quota of each unit on the battlefield',/.test(selectionPanelSource),
     'BAR presets must show the factory Queue/Quota state button because unit_factory_quota.lua inserts the factoryqueuemode ICON_MODE command on factories',
   );

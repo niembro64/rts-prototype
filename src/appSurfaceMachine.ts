@@ -25,6 +25,9 @@
  *                 home: same surface, same lockstep, one seat.
  *   entityLab     The inspection lab. No network, no battle.
  *   gameControls  The controls reference — hotkey presets and bindings.
+ *   gameInfo      The about page — what the game is, how a match works,
+ *                 and where it comes from. Same side-room rules as the
+ *                 other two.
  *
  * The StateMachine primitive is flat, so the hierarchy is encoded in the
  * state ids (`gameRoomLobby`, `gameRoomBattleLoading`, ...) and read through
@@ -33,9 +36,9 @@
  *
  * The asymmetries are the point of writing this down:
  *
- *   - Neither the lab nor the controls screen can start a battle or enter a
- *     game room. A match needs a host or a code, and only home has either —
- *     the road always runs through home.
+ *   - None of the side rooms (lab, controls, info) can start a battle or
+ *     enter a game room. A match needs a host or a code, and only home has
+ *     either — the road always runs through home.
  *   - Nothing leaves the game room except `exitGameRoom` (and the lobby's
  *     own cancel). Leaving has network consequences — a seat resigns, a host
  *     ejects everyone — so it is an explicit act on the match's own exits:
@@ -66,13 +69,15 @@ export type AppSurface =
   | 'gameRoomBattleLoading'
   | 'gameRoomBattlePlaying'
   | 'entityLab'
-  | 'gameControls';
+  | 'gameControls'
+  | 'gameInfo';
 
 export type AppSurfaceEvent =
   | 'boot'
   | 'openHome'
   | 'openEntityLab'
   | 'openGameControls'
+  | 'openGameInfo'
   | 'enterLobby'
   | 'leaveLobby'
   | 'startBattle'
@@ -109,6 +114,7 @@ export function createAppSurfaceMachine(
       home: {
         openEntityLab: 'entityLab',
         openGameControls: 'gameControls',
+        openGameInfo: 'gameInfo',
         // Hosting or joining lands you in the game room's seating screen...
         enterLobby: 'gameRoomLobby',
         // ...while a solo real battle skips it: no seats to negotiate.
@@ -138,10 +144,17 @@ export function createAppSurfaceMachine(
       entityLab: {
         openHome: 'home',
         openGameControls: 'gameControls',
+        openGameInfo: 'gameInfo',
       },
       gameControls: {
         openHome: 'home',
         openEntityLab: 'entityLab',
+        openGameInfo: 'gameInfo',
+      },
+      gameInfo: {
+        openHome: 'home',
+        openEntityLab: 'entityLab',
+        openGameControls: 'gameControls',
       },
     },
     onTransition: (change) => onTransition?.(change.to),

@@ -1779,8 +1779,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runQueenFactoryProductionContractTest();
         const { runWaterSurfaceBuildingContractTest } = await import('../sim/waterSurfaceBuildingContractTest');
         runWaterSurfaceBuildingContractTest();
-        const { runMapWaterRosterContractTest } = await import('../sim/mapWaterRosterContractTest');
-        runMapWaterRosterContractTest();
+        const { runMapSurfaceRosterContractTest } = await import('../sim/mapSurfaceRosterContractTest');
+        runMapSurfaceRosterContractTest();
         const { runBuildingUtilityStructuresContractTest } = await import('../sim/buildingUtilityStructuresContractTest');
         runBuildingUtilityStructuresContractTest();
         const { runDemoMetalExtractorSpawnContractTest } = await import('../sim/demoMetalExtractorSpawnContractTest');

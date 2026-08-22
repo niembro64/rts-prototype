@@ -32,7 +32,8 @@ export function runAppSurfaceMachineContractTest(): void {
   // is no state pair to toggle between any more, so no such event exists on
   // the table at all. Home is home with the sidebar in either position.
 
-  // Both side rooms are reachable from home, from each other, and lead back.
+  // All three side rooms are reachable from home, from each other, and
+  // lead back — and none of them can start a battle or enter a game room.
   assert(machine.send('openEntityLab') === true, 'home can open the entity lab');
   assert(machine.state === 'entityLab', 'and lands in it');
   assert(machine.send('startBattle') === false, 'the lab can NEVER start a battle');
@@ -41,6 +42,15 @@ export function runAppSurfaceMachineContractTest(): void {
   assert(machine.state === 'gameControls', 'and lands in it');
   assert(machine.send('startBattle') === false, 'the controls screen can NEVER start a battle');
   assert(machine.send('enterLobby') === false, 'nor enter a game room');
+  assert(machine.send('openGameInfo') === true, 'the controls screen reaches the info page');
+  assert(machine.state === 'gameInfo', 'and lands in it');
+  assert(machine.send('startBattle') === false, 'the info page can NEVER start a battle');
+  assert(machine.send('enterLobby') === false, 'nor enter a game room');
+  assert(machine.send('openEntityLab') === true, 'the info page reaches the lab');
+  assert(machine.send('openGameInfo') === true, 'the lab reaches the info page');
+  assert(machine.send('openHome') === true, 'the info page returns home');
+  assert(machine.send('openGameInfo') === true, 'home can open the info page');
+  assert(machine.send('openGameControls') === true, 'the info page reaches the controls screen');
   assert(machine.send('openEntityLab') === true, 'the controls screen reaches the lab');
   assert(machine.send('openHome') === true, 'the lab returns home');
   assert(machine.send('openGameControls') === true, 'home can open the controls screen');

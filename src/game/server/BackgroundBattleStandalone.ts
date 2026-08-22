@@ -18,7 +18,7 @@ import type { MultiLegWaypoint } from '../sim/Pathfinder';
 import { setUnitActions } from '../sim/unitActions';
 import { setUnitFacingYaw } from '../sim/unitOrientation';
 import { createPhysicsBodyForUnit } from './unitPhysicsBody';
-import { mapHasWater } from '../sim/mapWater';
+import { mapHasWater } from '../sim/mapSurface';
 
 // Available unit blueprints for background spawning (excludes commander)
 export const BACKGROUND_UNIT_BLUEPRINT_IDS = [...BUILDABLE_UNIT_BLUEPRINT_IDS];

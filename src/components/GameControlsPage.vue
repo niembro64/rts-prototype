@@ -83,6 +83,10 @@ function openHome(): void {
 function openEntityLab(): void {
   sendAppSurface('openEntityLab');
 }
+
+function openGameInfo(): void {
+  sendAppSurface('openGameInfo');
+}
 </script>
 
 <template>
@@ -97,6 +101,7 @@ function openEntityLab(): void {
           <button @click="openHome">Home</button>
           <button @click="openEntityLab">Entity Lab</button>
           <button class="active" aria-current="page">Game Controls</button>
+          <button @click="openGameInfo">Game Info</button>
           <!-- No "Game Room" here on purpose: a match needs a host or a
                code, and this screen has neither. The road runs through
                home, and the surface machine declares no other edge. -->

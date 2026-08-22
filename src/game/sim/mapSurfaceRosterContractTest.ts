@@ -1,30 +1,35 @@
-// "Is there water on this map?" and what follows from the answer.
+// "Is there water on this map? Is there land?" and what follows from the
+// answers.
 //
 // Pins three things that must never drift apart:
-//   1. The water question itself — the two authored facts it reads and the
-//      answer it gives for every authored preset.
-//   2. That the water-only sets stay DERIVED. The expectations here are written
-//      as blueprint PROPERTIES ("no waypoint domain outside water", "no ground
-//      placement set"), then compared against the classifier, so a hand-written
-//      id list can never quietly replace the derivation.
+//   1. The surface questions themselves — the authored facts they read and
+//      the answers they give for every authored preset.
+//   2. That the single-medium sets stay DERIVED. The expectations here are
+//      written as blueprint PROPERTIES ("no waypoint domain outside water",
+//      "no ground placement set" — and their land mirrors), then compared
+//      against the classifier, so a hand-written id list can never quietly
+//      replace the derivation.
 //   3. That the roster surfaces narrow through that classification: a factory
-//      offers no water-only hull and a builder offers no water-only structure
-//      on a map with no water, and both come back when the water does.
+//      offers no water-only hull on a dry map and no land-only hull on an
+//      all-sea one, builders likewise for structures — and everything comes
+//      back when the medium does.
 
 import { getUnitLocomotion } from './blueprints';
 import { UNIT_BLUEPRINTS } from './blueprints/units';
 import { BUILDING_BLUEPRINTS } from './blueprints/buildings';
 import {
+  isLandOnlyBuildingBlueprintId,
+  isLandOnlyUnitBlueprintId,
   isWaterOnlyBuildingBlueprintId,
   isWaterOnlyUnitBlueprintId,
-} from './blueprints/waterOnlyRoster';
+} from './blueprints/mediumOnlyRoster';
 import { getBuildingPlacementSetSquareType } from '../../types/buildingTypes';
 import { getStructureFactoryAllowedUnitBlueprintIds } from './factoryProductionRoster';
 import {
   getUnitAuthoredBuildBlueprintIds,
   getUnitBuilderAllowedBuildBlueprintIds,
 } from './hostCapabilities';
-import { mapHasWater, mapHasWaterForSetup } from './mapWater';
+import { mapHasLand, mapHasLandForSetup, mapHasWater, mapHasWaterForSetup } from './mapSurface';
 import { applyTerrainRuntimeConfig } from './terrain/terrainConfig';
 import { getTerrainRuntimeConfig } from './terrain/terrainState';
 import { getLiquidSurfaceMode, setLiquidSurfaceMode } from './worldSurfaceState';
@@ -33,7 +38,7 @@ import type { LiquidSurfaceMode } from '../../types/worldSurfaceMode';
 import type { UnitBlueprint } from './blueprints/types';
 
 function assertContract(condition: unknown, message: string): asserts condition {
-  if (!condition) throw new Error(`[map water roster] ${message}`);
+  if (!condition) throw new Error(`[map surface roster] ${message}`);
 }
 
 /** Install a map setup, run `body`, and always put the previous one back —
@@ -126,6 +131,66 @@ function assertWaterQuestion(): void {
   }
 }
 
+function assertLandQuestion(): void {
+  // Land is the mirror minus the liquid: any magnitude at or above datum.
+  assertContract(
+    mapHasLandForSetup({ ...DRY_MAGNITUDES, liquidSurfaceMode: 'water' }),
+    'a map whose magnitudes sit at datum must have land',
+  );
+  assertContract(
+    !mapHasLandForSetup({
+      centerMagnitude: -400,
+      ringMagnitude: -400,
+      dividersMagnitude: -400,
+      perimeterMagnitude: -400,
+      liquidSurfaceMode: 'water',
+    }),
+    'a map whose every magnitude digs must be declared landless',
+  );
+  // The liquid is irrelevant to the land question — lava fills basins.
+  assertContract(
+    mapHasLandForSetup({ ...WET_MAGNITUDES, liquidSurfaceMode: 'lava' }) &&
+      mapHasLandForSetup({ ...WET_MAGNITUDES, liquidSurfaceMode: 'water' }),
+    'the land answer must ignore what fills the basins',
+  );
+  // Any single magnitude at datum restores land on its own.
+  const magnitudeKeys = [
+    'centerMagnitude',
+    'ringMagnitude',
+    'dividersMagnitude',
+    'perimeterMagnitude',
+  ] as const;
+  for (const key of magnitudeKeys) {
+    assertContract(
+      mapHasLandForSetup({
+        centerMagnitude: -400,
+        ringMagnitude: -400,
+        dividersMagnitude: -400,
+        perimeterMagnitude: -400,
+        [key]: 0,
+        liquidSurfaceMode: 'water',
+      }),
+      `a datum ${key} alone must leave standing ground`,
+    );
+  }
+  for (const preset of BATTLE_PRESETS) {
+    // No authored preset may be landless — the commander swims, but a map
+    // with no ground at all fields no factories and no economy. Pinned so an
+    // all-sea preset is a deliberate act, not an accident of bar values.
+    assertContract(
+      mapHasLandForSetup(preset),
+      `preset ${preset.name} must have land`,
+    );
+    const expected = mapHasLandForSetup(preset);
+    withMapSetup(preset, preset.liquidSurfaceMode, () => {
+      assertContract(
+        mapHasLand() === expected,
+        `preset ${preset.name}: installed-map and explicit-setup land answers must agree`,
+      );
+    });
+  }
+}
+
 function assertWaterOnlyClassificationIsDerived(): void {
   for (const blueprint of Object.values(UNIT_BLUEPRINTS)) {
     const waypoint = getUnitLocomotion(blueprint.unitBlueprintId).navigation.waypoint;
@@ -177,6 +242,50 @@ function assertWaterOnlyClassificationIsDerived(): void {
       isWaterOnlyBuildingBlueprintId('buildingSonarJammer') &&
       isWaterOnlyBuildingBlueprintId('towerTorpedo'),
     'sea-only structures must be classified water-only',
+  );
+
+  // The LAND mirror, restated from the same properties.
+  for (const blueprint of Object.values(UNIT_BLUEPRINTS)) {
+    const waypoint = getUnitLocomotion(blueprint.unitBlueprintId).navigation.waypoint;
+    const expected = waypoint.allowOnGround && !waypoint.allowInWater && !waypoint.allowInAir;
+    assertContract(
+      isLandOnlyUnitBlueprintId(blueprint.unitBlueprintId) === expected,
+      `${blueprint.unitBlueprintId} land-only classification must follow its waypoint domain`,
+    );
+  }
+  for (const blueprint of Object.values(BUILDING_BLUEPRINTS)) {
+    const expected = !blueprint.placementSets.some(
+      (placementSet) => getBuildingPlacementSetSquareType(placementSet) !== 'ground',
+    );
+    assertContract(
+      isLandOnlyBuildingBlueprintId(blueprint.buildingBlueprintId) === expected,
+      `${blueprint.buildingBlueprintId} land-only classification must follow its placement sets`,
+    );
+  }
+  assertContract(
+    isLandOnlyUnitBlueprintId('unitLynx') && isLandOnlyUnitBlueprintId('unitMammoth'),
+    'pure ground hulls must be classified land-only',
+  );
+  assertContract(
+    !isLandOnlyUnitBlueprintId('unitCommander'),
+    'the commander swims — it must survive a landless map, which keeps such a map playable at all',
+  );
+  assertContract(
+    !isLandOnlyUnitBlueprintId('unitSeaTurtle') && !isLandOnlyUnitBlueprintId('unitHippo'),
+    'amphibious hulls must survive a map with no land',
+  );
+  assertContract(
+    !isLandOnlyUnitBlueprintId('unitEagle') && !isLandOnlyUnitBlueprintId('unitDuck'),
+    'flyers are neither land-only nor water-only',
+  );
+  assertContract(
+    isLandOnlyBuildingBlueprintId('buildingSolar') && isLandOnlyBuildingBlueprintId('buildingWind'),
+    'ground-only structures must be classified land-only',
+  );
+  assertContract(
+    !isLandOnlyBuildingBlueprintId('towerFabricator') &&
+      !isLandOnlyBuildingBlueprintId('buildingExtractor'),
+    'structures with a water placement set must survive a map with no land',
   );
 }
 
@@ -245,10 +354,56 @@ function assertRostersNarrowWithTheMap(): void {
       'a lava map must not offer submarines despite its excavated basins',
     );
   });
+
+  // The LAND mirror: an all-sea map fields no pure ground hull and no
+  // ground-only structure, while everything that swims or flies stays.
+  const LANDLESS_MAGNITUDES = {
+    centerMagnitude: -400,
+    ringMagnitude: -400,
+    dividersMagnitude: -400,
+    perimeterMagnitude: -400,
+  };
+  withMapSetup(LANDLESS_MAGNITUDES, 'water', () => {
+    const factoryRoster = getStructureFactoryAllowedUnitBlueprintIds('towerFabricator');
+    for (const unitBlueprintId of factoryRoster) {
+      assertContract(
+        !isLandOnlyUnitBlueprintId(unitBlueprintId),
+        `a map with no land must not offer ${unitBlueprintId}`,
+      );
+    }
+    assertContract(
+      factoryRoster.includes('unitOrca') &&
+        factoryRoster.includes('unitSeaTurtle') &&
+        factoryRoster.includes('unitDuck'),
+      'a map with no land must keep every hull that swims or flies',
+    );
+    // Anti-vacuous: the wet pass must actually have been narrowing something.
+    const offersLandOnly = builderBlueprints().some((blueprint) =>
+      getUnitAuthoredBuildBlueprintIds(blueprint).some(isLandOnlyBuildingBlueprintId));
+    assertContract(
+      offersLandOnly,
+      'the authored rosters must contain land-only structures for this pass to exercise',
+    );
+    for (const blueprint of builderBlueprints()) {
+      const builderRoster = getUnitBuilderAllowedBuildBlueprintIds(blueprint);
+      for (const buildingBlueprintId of builderRoster) {
+        assertContract(
+          !isLandOnlyBuildingBlueprintId(buildingBlueprintId),
+          `a map with no land must not let ${blueprint.unitBlueprintId} build ${buildingBlueprintId}`,
+        );
+      }
+    }
+    const commanderRoster = getUnitBuilderAllowedBuildBlueprintIds(UNIT_BLUEPRINTS['unitCommander']);
+    assertContract(
+      commanderRoster.includes('buildingExtractor') && commanderRoster.includes('towerFabricator'),
+      'a map with no land must keep every structure that still has a square',
+    );
+  });
 }
 
-export function runMapWaterRosterContractTest(): void {
+export function runMapSurfaceRosterContractTest(): void {
   assertWaterQuestion();
+  assertLandQuestion();
   assertWaterOnlyClassificationIsDerived();
   assertRostersNarrowWithTheMap();
 }

@@ -12,6 +12,8 @@ import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
 import LoadingEmblem from './LoadingEmblem.vue';
 import ChevronIcon from './ChevronIcon.vue';
+import SeatStateIcon from './SeatStateIcon.vue';
+import TrashIcon from './TrashIcon.vue';
 import {
   getUnitDisplayShortName,
   getBuildingDisplayShortName,
@@ -20,7 +22,7 @@ import type { MapLandCellDimensions } from '../mapSizeConfig';
 import type { BattlePreset } from './battlePresets';
 import type { TerrainPrecedence } from '../types/terrainPrecedence';
 import type { LiquidSurfaceMode } from '../types/worldSurfaceMode';
-import { mapHasWaterForSetup } from '../game/sim/mapWater';
+import { mapHasLandForSetup, mapHasWaterForSetup } from '../game/sim/mapSurface';
 import {
   buildingBlueprintIdsForMapSetup,
   unitBlueprintIdsForMapSetup,
@@ -108,6 +110,7 @@ const emit = defineEmits<{
   (e: 'cancel'): void;
   (e: 'entityLab'): void;
   (e: 'gameControls'): void;
+  (e: 'gameInfo'): void;
   (e: 'chatSend', text: string): void;
   (e: 'addBotSeat', allyTeamId: number): void;
   (e: 'removeBotSeat', playerId: PlayerId): void;
@@ -195,6 +198,7 @@ const mapSetup = computed(() => ({
   liquidSurfaceMode: props.liquidSurfaceMode,
 }));
 const mapHasWater = computed(() => mapHasWaterForSetup(mapSetup.value));
+const mapHasLand = computed(() => mapHasLandForSetup(mapSetup.value));
 // The roster grids list what this map can actually field: a hull or a structure
 // that only exists for water has no place on a map with none.
 const rosterUnitBlueprintIds = computed(() =>
@@ -561,6 +565,10 @@ function handleEntityLab() {
   emit('entityLab');
 }
 
+function handleGameInfo() {
+  emit('gameInfo');
+}
+
 function handleGameControls() {
   emit('gameControls');
 }
@@ -757,88 +765,95 @@ const terrainSectionVars = computed(() =>
               @click="handleJoinSubmit"
             >Join</button>
           </div>
-        </section>
-      </div>
 
-      <!-- The open-lobby directory. Every row is a one-click join: the
-           room code is already known, so nobody has to be told one. Running
-           games take no new SEATS, but they take watchers freely — so those
-           rows are one-click WATCH buttons, styled to say so. -->
-      <div class="lobby-list">
-        <div class="lobby-list-header">
-          <span class="lobby-list-label">OPEN LOBBIES</span>
-          <span v-if="openLobbies.length > 0" class="lobby-list-count">{{ openLobbies.length }}</span>
-        </div>
-
-        <ul v-if="openLobbies.length > 0" class="lobby-rows">
-          <li v-for="lobby in openLobbies" :key="lobby.roomCode">
-            <button
-              class="lobby-row"
-              :title="`Join ${lobby.name || lobby.roomCode}`"
-              @click="handleJoinListed(lobby)"
-            >
-              <span class="lobby-row-main">
-                <span class="lobby-row-name">{{ lobby.name || lobby.hostName || 'Open lobby' }}</span>
-                <span class="lobby-row-meta">
-                  <span class="lobby-row-code">{{ lobby.roomCode }}</span>
-                  <span v-if="lobby.mapName" class="lobby-row-map">{{ lobby.mapName }}</span>
-                  <span v-if="formatLobbyAge(lobby)" class="lobby-row-age">{{ formatLobbyAge(lobby) }}</span>
-                </span>
-              </span>
-              <span class="lobby-row-players">
-                {{ lobby.playerCount }}/{{ lobby.maxPlayers }}
-                <span v-if="lobby.spectatorCount > 0" class="lobby-row-watch">
-                  +{{ lobby.spectatorCount }} watching
-                </span>
-              </span>
-            </button>
-          </li>
-        </ul>
-
-        <p v-else-if="!directoryLoaded" class="lobby-list-hint">Looking for open lobbies…</p>
-        <p v-else class="lobby-list-hint">
-          No open lobbies — host a game, or join with a code.
-        </p>
-
-        <template v-if="runningGames.length > 0">
+        <!-- The open-lobby directory. Every row is a one-click join: the
+             room code is already known, so nobody has to be told one. Running
+             games take no new SEATS, but they take watchers freely — so those
+             rows are one-click WATCH buttons, styled to say so. -->
+        <div class="lobby-list">
           <div class="lobby-list-header">
-            <span class="lobby-list-label">IN PROGRESS</span>
-            <span class="lobby-list-count">{{ runningGames.length }}</span>
+            <span class="lobby-list-label">OPEN LOBBIES</span>
+            <span v-if="openLobbies.length > 0" class="lobby-list-count">{{ openLobbies.length }}</span>
           </div>
-          <!-- A running battle takes no new SEATS — the frame-0 roster is
-               hashed and cannot grow — but it takes watchers freely, so the
-               row is a WATCH button rather than a dead entry. -->
-          <ul class="lobby-rows">
-            <li v-for="game in runningGames" :key="game.roomCode">
+
+          <ul v-if="openLobbies.length > 0" class="lobby-rows">
+            <li v-for="lobby in openLobbies" :key="lobby.roomCode">
               <button
-                class="lobby-row lobby-row-running"
-                :disabled="game.spectatorCount >= game.maxSpectators"
-                :title="game.spectatorCount >= game.maxSpectators
-                  ? 'This battle has no room left to watch'
-                  : `Watch ${game.name || game.roomCode} — join as a spectator`"
-                @click="handleJoinListed(game)"
+                class="lobby-row"
+                :title="`Join ${lobby.name || lobby.roomCode}`"
+                @click="handleJoinListed(lobby)"
               >
                 <span class="lobby-row-main">
-                  <span class="lobby-row-name">{{ game.name || game.hostName || 'Battle' }}</span>
+                  <span class="lobby-row-name">{{ lobby.name || lobby.hostName || 'Open lobby' }}</span>
                   <span class="lobby-row-meta">
-                    <span v-if="game.mapName" class="lobby-row-map">{{ game.mapName }}</span>
-                    <span v-if="formatLobbyAge(game)" class="lobby-row-age">started {{ formatLobbyAge(game) }}</span>
+                    <span class="lobby-row-code">{{ lobby.roomCode }}</span>
+                    <span v-if="lobby.mapName" class="lobby-row-map">{{ lobby.mapName }}</span>
+                    <span v-if="formatLobbyAge(lobby)" class="lobby-row-age">{{ formatLobbyAge(lobby) }}</span>
                   </span>
                 </span>
                 <span class="lobby-row-players">
-                  {{ game.playerCount }}/{{ game.maxPlayers }}
-                  <span class="lobby-row-watch lobby-row-watch-cta">▶ WATCH {{ game.spectatorCount }}/{{ game.maxSpectators }}</span>
+                  {{ lobby.playerCount }}/{{ lobby.maxPlayers }}
+                  <span v-if="lobby.spectatorCount > 0" class="lobby-row-watch">
+                    +{{ lobby.spectatorCount }} watching
+                  </span>
                 </span>
               </button>
             </li>
           </ul>
-        </template>
+
+          <p v-else-if="!directoryLoaded" class="lobby-list-hint">Looking for open lobbies…</p>
+          <p v-else class="lobby-list-hint">
+            No open lobbies — host a game, or join with a code.
+          </p>
+
+          <template v-if="runningGames.length > 0">
+            <div class="lobby-list-header">
+              <span class="lobby-list-label">IN PROGRESS</span>
+              <span class="lobby-list-count">{{ runningGames.length }}</span>
+            </div>
+            <!-- A running battle takes no new SEATS — the frame-0 roster is
+                 hashed and cannot grow — but it takes watchers freely, so the
+                 row is a WATCH button rather than a dead entry. -->
+            <ul class="lobby-rows">
+              <li v-for="game in runningGames" :key="game.roomCode">
+                <button
+                  class="lobby-row lobby-row-running"
+                  :disabled="game.spectatorCount >= game.maxSpectators"
+                  :title="game.spectatorCount >= game.maxSpectators
+                    ? 'This battle has no room left to watch'
+                    : `Watch ${game.name || game.roomCode} — join as a spectator`"
+                  @click="handleJoinListed(game)"
+                >
+                  <span class="lobby-row-main">
+                    <span class="lobby-row-name">{{ game.name || game.hostName || 'Battle' }}</span>
+                    <span class="lobby-row-meta">
+                      <span v-if="game.mapName" class="lobby-row-map">{{ game.mapName }}</span>
+                      <span v-if="formatLobbyAge(game)" class="lobby-row-age">started {{ formatLobbyAge(game) }}</span>
+                    </span>
+                  </span>
+                  <span class="lobby-row-players">
+                    {{ game.playerCount }}/{{ game.maxPlayers }}
+                    <span class="lobby-row-watch lobby-row-watch-cta">▶ WATCH {{ game.spectatorCount }}/{{ game.maxSpectators }}</span>
+                  </span>
+                </button>
+              </li>
+            </ul>
+          </template>
+        </div>
+        </section>
       </div>
 
-      <div class="surface-actions">
-        <button class="secondary-surface-btn" @click="handleEntityLab">Entity Lab</button>
-        <button class="secondary-surface-btn" @click="handleGameControls">Game Controls</button>
-      </div>
+
+      <!-- The reference side rooms, boxed like the play sections above so
+           the bottom of the sidebar reads as its own grouping. -->
+      <section class="action-section pages-section">
+        <span class="action-section-label">REFERENCE</span>
+        <div class="pages-buttons">
+          <button class="page-btn" @click="handleEntityLab">Entity Lab</button>
+          <button class="page-btn" @click="handleGameControls">Game Controls</button>
+          <button class="page-btn" @click="handleGameInfo">Game Info</button>
+        </div>
+      </section>
 
       <div v-if="error" class="error-message">{{ error }}</div>
 
@@ -898,6 +913,12 @@ const terrainSectionVars = computed(() =>
           role="note"
           title="No part of this map lies below the water line, or its liquid is lava — so water-only units and structures are out of the roster."
         >NO WATER UNITS</div>
+        <div
+          v-if="!mapHasLand && !previewLoading"
+          class="preview-note"
+          role="note"
+          title="No part of this map rises to dry ground — so land-only units and structures are out of the roster."
+        >NO LAND UNITS</div>
       </div>
 
       <!-- Connecting screen -->
@@ -1043,12 +1064,17 @@ const terrainSectionVars = computed(() =>
                       Edit
                     </button>
                   </div>
-                  <span v-if="seat.player.location" class="player-location">{{ seat.player.location }}</span>
-                  <span v-if="seat.player.ipAddress" class="player-ip">{{ seat.player.ipAddress }}</span>
-                  <span
-                    v-if="seat.player.localTime"
-                    class="player-time"
-                  >{{ seat.player.localTime }}</span>
+                  <!-- Location / IP / local time only surface while the
+                       name is hovered — a floating card, so revealing them
+                       never reflows the tight roster rows. -->
+                  <div
+                    v-if="seat.player.location || seat.player.ipAddress || seat.player.localTime"
+                    class="player-meta"
+                  >
+                    <span v-if="seat.player.location" class="player-location">{{ seat.player.location }}</span>
+                    <span v-if="seat.player.ipAddress" class="player-ip">{{ seat.player.ipAddress }}</span>
+                    <span v-if="seat.player.localTime" class="player-time">{{ seat.player.localTime }}</span>
+                  </div>
                 </div>
                 <!-- The host's controls for this seat. No TEAM label here:
                      the row already sits inside its side's band, so printing
@@ -1058,10 +1084,11 @@ const terrainSectionVars = computed(() =>
                     class="player-control-btn"
                     type="button"
                     :title="`Move ${seat.player.name} to the next team`"
+                    :aria-label="`Move ${seat.player.name} to the next team`"
                     @click="seat.player.isBot
                       ? emit('cycleBotAllyTeam', seat.player.playerId)
                       : emit('cycleMemberAllyTeam', memberIdForSeat(seat.player.playerId))"
-                  >MOVE</button>
+                  ><ChevronIcon direction="down" /></button>
                   <!-- The host's own seat has no bench button: a lobby with
                        nobody in it is not a lobby. A bot has no bench to go
                        to — removing it is the whole gesture. -->
@@ -1077,8 +1104,9 @@ const terrainSectionVars = computed(() =>
                     class="player-control-btn"
                     type="button"
                     :title="`Remove ${seat.player.name}`"
+                    :aria-label="`Remove ${seat.player.name}`"
                     @click="emit('removeBotSeat', seat.player.playerId)"
-                  >REMOVE</button>
+                  ><TrashIcon /></button>
                   <!-- The seat's INITIAL STATE axis: a lone commander, or
                        the authored full base. Independent of WHO drives the
                        seat — the demo is base seats with one human on one. -->
@@ -1090,7 +1118,7 @@ const terrainSectionVars = computed(() =>
                       : `${seat.player.name} opens as a lone commander — click for a full base`"
                     @click="emit('setSeatInitialState', seat.player.playerId,
                       (seat.player.initialState ?? 'commander') === 'base' ? 'commander' : 'base')"
-                  >{{ (seat.player.initialState ?? 'commander') === 'base' ? 'BASE' : 'CMDR' }}</button>
+                  ><SeatStateIcon :state="seat.player.initialState ?? 'commander'" /></button>
                 </div>
                 <!-- Badges pinned to the right edge of the row. HOST anchors
                      top-right, YOU bottom-right, whether or not the other is
@@ -1105,7 +1133,7 @@ const terrainSectionVars = computed(() =>
                     :title="(seat.player.initialState ?? 'commander') === 'base'
                       ? 'Opens with a full base'
                       : 'Opens as a lone commander'"
-                  >{{ (seat.player.initialState ?? 'commander') === 'base' ? 'BASE' : 'CMDR' }}</span>
+                  ><SeatStateIcon :state="seat.player.initialState ?? 'commander'" /></span>
                 </div>
               </li>
                   <!-- A declared side with nobody on it. It is not a gap in
@@ -1135,9 +1163,10 @@ const terrainSectionVars = computed(() =>
                  onto a team, which is why there is no control on this list
                  for anyone else. -->
             <div class="spectator-section">
-              <div class="spectator-heading">
-                WATCHING
-                <span class="spectator-count">{{ spectators.length }}</span>
+              <!-- Same header shape and styling as Players above: two lists,
+                   one aesthetic. -->
+              <div class="players-header">
+                <h2 class="players-title">Spectators ({{ spectators.length }})</h2>
               </div>
               <ul v-if="spectators.length > 0" class="player-list">
                 <li
@@ -1160,8 +1189,13 @@ const terrainSectionVars = computed(() =>
                         Edit
                       </button>
                     </div>
-                    <span v-if="member.location" class="player-location">{{ member.location }}</span>
-                    <span v-if="member.localTime" class="player-time">{{ member.localTime }}</span>
+                    <div
+                      v-if="member.location || member.localTime"
+                      class="player-meta"
+                    >
+                      <span v-if="member.location" class="player-location">{{ member.location }}</span>
+                      <span v-if="member.localTime" class="player-time">{{ member.localTime }}</span>
+                    </div>
                   </div>
                   <div class="player-badges">
                     <button
@@ -1169,8 +1203,9 @@ const terrainSectionVars = computed(() =>
                       class="seat-toggle-btn seat-toggle-btn-add"
                       type="button"
                       :title="`Put ${member.name} on a team`"
+                      :aria-label="`Put ${member.name} on a team`"
                       @click="emit('toggleMemberSeated', member.memberId)"
-                    >SEAT</button>
+                    >+</button>
                     <span v-if="member.memberId === localMemberId" class="you-badge">YOU</span>
                   </div>
                 </li>
@@ -1691,6 +1726,25 @@ const terrainSectionVars = computed(() =>
   margin-top: 10px;
 }
 
+/* The conversation may take AT MOST a fifth of the left column: the
+ * roster is the seating screen's subject and always keeps the room. The
+ * console's own scoped log cap yields to this flex box via :deep. */
+.lobby-modal.in-lobby .lobby-chat {
+  flex: 0 1 auto;
+  max-height: 20%;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.lobby-modal.in-lobby .lobby-chat :deep(.chat-log) {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+}
+
 /* The add-a-bot LINE ITEM: one more row in the side's own list, drawn as
  * the ghost of the row it will become rather than a control on the band. */
 .player-item.add-bot-item {
@@ -2194,6 +2248,49 @@ const terrainSectionVars = computed(() =>
   color: #8fc2ff;
 }
 
+.pages-section {
+  background: rgba(150, 170, 195, 0.08);
+  border: 1px solid rgba(150, 170, 195, 0.35);
+}
+
+.pages-section .action-section-label {
+  color: #aeb9c8;
+}
+
+.pages-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.page-btn {
+  padding: 8px 12px;
+  border: 1px solid rgba(150, 170, 195, 0.3);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  color: #c8d6de;
+  font: 700 13px/1.4 monospace;
+  letter-spacing: 0.04em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.page-btn:hover {
+  background: rgba(150, 170, 195, 0.16);
+  color: #edf4f7;
+}
+
+/* Nested inside the ONLINE section box now — its own card chrome would
+ * double-frame it, so it flattens to a divider-topped list. */
+.internet-section .lobby-list {
+  background: none;
+  border: none;
+  border-top: 1px solid rgba(74, 158, 255, 0.35);
+  border-radius: 0;
+  padding: 10px 0 0;
+  margin-top: 2px;
+}
+
 .action-divider {
   height: 1px;
   background: rgba(150, 170, 195, 0.35);
@@ -2504,7 +2601,12 @@ const terrainSectionVars = computed(() =>
 }
 
 .player-control-btn {
-  padding: 2px 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  min-height: 18px;
+  padding: 2px 5px;
   font-family: monospace;
   font-size: 10px;
   font-weight: 700;
@@ -2755,20 +2857,6 @@ const terrainSectionVars = computed(() =>
   padding-top: 8px;
 }
 
-.spectator-heading {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  opacity: 0.7;
-  margin-bottom: 4px;
-}
-
-.spectator-count {
-  opacity: 0.6;
-}
-
 .spectator-empty {
   font-size: 11px;
   opacity: 0.45;
@@ -2780,9 +2868,15 @@ const terrainSectionVars = computed(() =>
 }
 
 .seat-toggle-btn {
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  padding: 2px 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  min-height: 20px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0 5px;
   border-radius: 3px;
   border: 1px solid rgba(255, 255, 255, 0.35);
   background: transparent;
@@ -2879,15 +2973,38 @@ const terrainSectionVars = computed(() =>
   border: 1px solid rgba(68, 68, 170, 0.4);
 }
 
+/* Location / IP / local-time reveal: hidden until the NAME is hovered,
+ * then a floating card below the name — absolute, so the tight rows never
+ * grow or reflow under the pointer. */
+.player-meta {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  z-index: 5;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 9px;
+  background: rgba(12, 16, 22, 0.97);
+  border: 1px solid rgba(150, 170, 195, 0.4);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.player-info:hover .player-meta {
+  display: flex;
+}
+
 .player-info {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 2px;
   flex: 1;
   min-width: 0;
   font-family: monospace;
-  /* Keep rows tight so name + connection diagnostics fit
-   * comfortably in the row's 60px min-height. */
 }
 
 .player-name-row {

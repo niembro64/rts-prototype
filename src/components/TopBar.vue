@@ -13,6 +13,11 @@ const props = defineProps<{
   directionData: Pick<MinimapData, 'cameraView' | 'directionVersion' | 'wind'>;
   networkStatus?: string;
   networkWarning?: string | null;
+  /** False for a WATCHER: the metal/energy blocks describe a seat's
+   *  economy, and a watcher holds no seat — the per-team spectator overlay
+   *  is their economy view. The shell keeps NET, compass/wind and the
+   *  desktop EXIT either way. */
+  showEconomy?: boolean;
 }>();
 
 const TOP_BAR = COLORS.ui.topBar;
@@ -168,6 +173,7 @@ const metalTempoDisplay = computed(() => resourceTempoLabel(
 
     <!-- Energy block -->
     <div
+      v-if="props.showEconomy !== false"
       class="resource-block energy-block"
       :class="{ 'resource-empty': isStockEmpty(economy.stockpile.curr) }"
     >
@@ -203,6 +209,7 @@ const metalTempoDisplay = computed(() => resourceTempoLabel(
 
     <!-- Metal block -->
     <div
+      v-if="props.showEconomy !== false"
       class="resource-block metal-block"
       :class="{ 'resource-empty': isStockEmpty(economy.metal.stockpile.curr) }"
     >

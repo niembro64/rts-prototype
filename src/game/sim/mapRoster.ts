@@ -1,34 +1,54 @@
 // What this map can field.
 //
-// Joins the two halves that are deliberately kept apart: `mapWater` knows
-// whether a map has water, `waterOnlyRoster` knows which blueprints exist only
-// for water. Neither knows about the other; this is the one place the two facts
-// meet, so every roster surface — factory menus, builder build lists, the demo
-// layout, the lobby grids — narrows in exactly the same way.
+// Joins the two halves that are deliberately kept apart: `mapSurface` knows
+// whether a map has water and whether it has land, `mediumOnlyRoster` knows
+// which blueprints exist only for one medium. Neither knows about the other;
+// this is the one place the facts meet, so every roster surface — factory
+// menus, builder build lists, the demo layout, the lobby grids — narrows in
+// exactly the same way.
 //
-// A map WITH water returns the caller's own array untouched, so the common case
-// costs one boolean and allocates nothing.
+// A map with BOTH mediums returns the caller's own array untouched, so the
+// common case costs one comparison and allocates nothing.
 
-import { mapHasWaterForSetup, type MapWaterSetup } from './mapWater';
 import {
+  MEDIUM_KEY_BOTH,
+  MEDIUM_KEY_LAND,
+  MEDIUM_KEY_WATER,
+  mapMediumKeyForSetup,
+  type MapSurfaceSetup,
+} from './mapSurface';
+import {
+  isLandOnlyBuildingBlueprintId,
+  isLandOnlyUnitBlueprintId,
   isWaterOnlyBuildingBlueprintId,
   isWaterOnlyUnitBlueprintId,
-} from './blueprints/waterOnlyRoster';
+} from './blueprints/mediumOnlyRoster';
 
-/** Strip the units that only exist for water, unconditionally. Callers that
- *  have already decided the map is dry — and want to cache the result rather
- *  than re-filter every tick — use this directly. */
-export function unitBlueprintIdsWithoutWaterOnly<T extends string>(
+/** The units a map with these mediums can field. `mediumKey` is the 2-bit
+ *  pack from mapSurface (`installedMapMediumKey` / `mapMediumKeyForSetup`). */
+export function unitBlueprintIdsForMediumKey<T extends string>(
   unitBlueprintIds: readonly T[],
+  mediumKey: number,
 ): readonly T[] {
-  return unitBlueprintIds.filter((id) => !isWaterOnlyUnitBlueprintId(id));
+  if (mediumKey === MEDIUM_KEY_BOTH) return unitBlueprintIds;
+  return unitBlueprintIds.filter((id) => {
+    if ((mediumKey & MEDIUM_KEY_WATER) === 0 && isWaterOnlyUnitBlueprintId(id)) return false;
+    if ((mediumKey & MEDIUM_KEY_LAND) === 0 && isLandOnlyUnitBlueprintId(id)) return false;
+    return true;
+  });
 }
 
-/** Strip the structures that only exist for water, unconditionally. */
-export function buildingBlueprintIdsWithoutWaterOnly<T extends string>(
+/** The structures a map with these mediums can host. */
+export function buildingBlueprintIdsForMediumKey<T extends string>(
   buildingBlueprintIds: readonly T[],
+  mediumKey: number,
 ): readonly T[] {
-  return buildingBlueprintIds.filter((id) => !isWaterOnlyBuildingBlueprintId(id));
+  if (mediumKey === MEDIUM_KEY_BOTH) return buildingBlueprintIds;
+  return buildingBlueprintIds.filter((id) => {
+    if ((mediumKey & MEDIUM_KEY_WATER) === 0 && isWaterOnlyBuildingBlueprintId(id)) return false;
+    if ((mediumKey & MEDIUM_KEY_LAND) === 0 && isLandOnlyBuildingBlueprintId(id)) return false;
+    return true;
+  });
 }
 
 /** The units a map with THIS setup could field. The lobby edits a map nothing
@@ -36,17 +56,15 @@ export function buildingBlueprintIdsWithoutWaterOnly<T extends string>(
  *  one; the narrowing itself is the same. */
 export function unitBlueprintIdsForMapSetup<T extends string>(
   unitBlueprintIds: readonly T[],
-  setup: MapWaterSetup,
+  setup: MapSurfaceSetup,
 ): readonly T[] {
-  if (mapHasWaterForSetup(setup)) return unitBlueprintIds;
-  return unitBlueprintIdsWithoutWaterOnly(unitBlueprintIds);
+  return unitBlueprintIdsForMediumKey(unitBlueprintIds, mapMediumKeyForSetup(setup));
 }
 
 /** The structures a map with THIS setup could host. See above. */
 export function buildingBlueprintIdsForMapSetup<T extends string>(
   buildingBlueprintIds: readonly T[],
-  setup: MapWaterSetup,
+  setup: MapSurfaceSetup,
 ): readonly T[] {
-  if (mapHasWaterForSetup(setup)) return buildingBlueprintIds;
-  return buildingBlueprintIdsWithoutWaterOnly(buildingBlueprintIds);
+  return buildingBlueprintIdsForMediumKey(buildingBlueprintIds, mapMediumKeyForSetup(setup));
 }

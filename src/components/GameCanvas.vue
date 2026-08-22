@@ -532,6 +532,10 @@ const chromeVisibility = computed(() =>
   }),
 );
 const topChromeVisible = computed(() => chromeVisibility.value.topBar);
+/** Watching a real match without a seat. The gameStarted term matters:
+ *  localRole DEFAULTS to 'spectator' outside a session, and the home demo
+ *  must keep its full HUD. */
+const isSpectating = computed(() => gameStarted.value && localRole.value === 'spectator');
 const bottomChromeVisible = computed(() => chromeVisibility.value.bottomBars);
 const gameplayHudVisible = computed(() => chromeVisibility.value.gameplayHud);
 const overlayControlsVisible = computed(() => chromeVisibility.value.overlayControls);
@@ -887,6 +891,8 @@ function handleMinimapInteraction(x: number, y: number): void {
 }
 
 function handleMinimapCommandInteraction(x: number, y: number, queue: boolean): void {
+  // A watcher's minimap is a camera, never an order surface.
+  if (isSpectating.value) return;
   issueMinimapCommand(x, y, queue);
 }
 
@@ -1320,6 +1326,10 @@ function openEntityLab(): void {
 function openGameControls(): void {
   // Same refusal shape as the lab: a side room, reachable from home only.
   sendAppSurface('openGameControls');
+}
+
+function openGameInfo(): void {
+  sendAppSurface('openGameInfo');
 }
 
 useGameCanvasEntityLabHotkey(openEntityLab);
@@ -2627,6 +2637,7 @@ watchEffect(() => {
         :direction-data="minimapData"
         :network-status="networkStatus"
         :network-warning="networkNotice"
+        :show-economy="!isSpectating"
       />
     </div>
 
@@ -2748,6 +2759,7 @@ watchEffect(() => {
           :hotkey-preset="commandHotkeyPreset"
           :hotkey-revision="commandHotkeyRevision"
           :playable-bottom-inset-px="playableBottomInsetPx"
+          :can-command="!isSpectating"
         />
 
         <!-- Idle builders (bottom-center, BAR gui_idle_builders) -->
@@ -2873,6 +2885,7 @@ watchEffect(() => {
               @click="toggleUiChrome"
             >UI</button>
             <button
+              v-if="!isSpectating"
               type="button"
               :class="{ active: gamePhase === 'paused' }"
               :title="gamePhase === 'paused' ? 'Resume the game' : 'Pause the game'"
@@ -3030,6 +3043,7 @@ watchEffect(() => {
       @host-local="handleHostLocal"
       @entity-lab="openEntityLab"
       @game-controls="openGameControls"
+      @game-info="openGameInfo"
       @chat-send="sendLobbyChat"
       @add-bot-seat="(teamId: number) => networkManager.addBotSeat(teamId)"
       @remove-bot-seat="(pid: PlayerId) => networkManager.removeBotSeat(pid)"

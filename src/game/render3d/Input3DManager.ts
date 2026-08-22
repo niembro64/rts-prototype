@@ -1229,6 +1229,9 @@ export class Input3DManager {
   }
 
   selectIdleBuilders(): void {
+    // "Idle" is a player's to-do list; the concept does not exist for a
+    // seatless watcher (the chips panel is gated the same way).
+    if (this.context.isSpectator) return;
     const idleBuilders = this.collectIdleBuilders();
     const entityIds: EntityId[] = [];
     for (let i = 0; i < idleBuilders.length; i++) entityIds.push(idleBuilders[i].id);
@@ -1285,6 +1288,7 @@ export class Input3DManager {
   }
 
   selectIdleTransports(): void {
+    if (this.context.isSpectator) return;
     const entityIds: EntityId[] = [];
     const units = this.entitySource.getUnitsByPlayer(this.context.activePlayerId);
     for (let i = 0; i < units.length; i++) {
@@ -1297,6 +1301,7 @@ export class Input3DManager {
   }
 
   selectWaitingUnits(): void {
+    if (this.context.isSpectator) return;
     const entityIds: EntityId[] = [];
     const units = this.entitySource.getUnitsByPlayer(this.context.activePlayerId);
     for (let i = 0; i < units.length; i++) {
