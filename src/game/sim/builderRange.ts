@@ -36,6 +36,22 @@ export function isBuildTargetInRange(builder: Entity, target: Entity): boolean {
   return getBuildTargetHorizontalDistance(builder, target) <= range;
 }
 
+/** The builder's surface-to-surface distance to the target, and its build
+ *  range, for callers that aim a NAVIGATION goal at a stand-off inside the
+ *  range instead of the (building-blocked) target center. Returns null when
+ *  the builder has no range. */
+export function getBuildApproachMeasure(
+  builder: Entity,
+  target: Entity,
+): { surfaceDistance: number; range: number } | null {
+  const range = getBuildRange(builder);
+  if (range <= 0) return null;
+  return {
+    surfaceDistance: getBuildTargetHorizontalDistance(builder, target),
+    range,
+  };
+}
+
 /** Build-range test against a world point with a circular footprint —
  *  the same surface-to-surface measure entity targets get, for work
  *  targets that are not entities (vegetation props). */

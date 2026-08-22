@@ -1066,8 +1066,9 @@ export class PhysicsEngine3D {
     // resolver's HashMap, static broadphase per-cell Vecs, etc.)
     // can trigger memory.grow(), which detaches every existing
     // typed-array view JS holds — and writing through a detached
-    // view crashes the renderer. Cheap to refresh (~22 typed-array
-    // constructions) and idempotent when nothing actually grew.
+    // view crashes the renderer. refreshViews() checks buffer
+    // identity first, so in steady state this is two comparisons,
+    // not a rebuild.
     getSimWasm()!.pool.refreshViews();
     this.beginStepSyncBodySlotFrame();
     this.stepSupportIgnoredStaticSlots.clear();

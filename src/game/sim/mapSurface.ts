@@ -21,15 +21,16 @@
 //      cannot swim through and a sonar cannot listen through, so for every
 //      question this module answers it is not water.
 //
-// THE LAND QUESTION is the mirror, minus the liquid: land exists when any
-// authored magnitude sits AT or ABOVE datum. The liquid mode is deliberately
-// ignored — a lava map is all land as far as a tank is concerned. Note the
-// honest asymmetry: this is a DECLARED rule over the authored bars, like the
-// water rule. Geometrically the current generation pipeline always leaves a
-// hand-off annulus near datum even when every bar digs, so a truly landless
-// mesh is not reachable from today's options; if an all-sea map is ever
-// authored (a flood control, an all-water preset), this rule is already the
-// one place that decides what it means.
+// THE LAND QUESTION is the mirror, minus the liquid — and under the current
+// generation pipeline its answer is ALWAYS yes. The four bars shape features
+// on top of a baseline surface that sits at the datum, and even when every
+// bar digs, the ground between the basins (and the hand-off annulus around
+// each) stays at ground level. A tank always has somewhere to stand, so no
+// authored setup may ever strip the ground roster. (An earlier rule declared
+// "all four bars negative = landless", which wrongly emptied fabricator
+// build lists on dug-everywhere maps that are mostly dry ground.) If an
+// all-sea map ever becomes authorable — a flood control, a true ocean
+// preset — this function is the one place that decides what landless means.
 //
 // Deliberately questions about the map's SETUP, not about the baked mesh. The
 // answers have to exist in the lobby, before any terrain is generated, so the
@@ -85,20 +86,19 @@ function liquidBelowDatumIsWater(
   );
 }
 
-/** THE land rule: any authored magnitude at or above datum leaves standing
- *  ground. The liquid is irrelevant — lava fills basins, not plateaus. */
-function anyMagnitudeAtOrAboveDatum(
-  centerMagnitude: number,
-  ringMagnitude: number,
-  dividersMagnitude: number,
-  perimeterMagnitude: number,
+/** THE land rule: the generation pipeline's baseline surface sits at the
+ *  datum, so standing ground survives every authored bar combination — the
+ *  bars carve features INTO ground level, they cannot flood the whole map.
+ *  The liquid is irrelevant — lava fills basins, not plateaus. The unused
+ *  magnitude parameters keep the seam: an authorable all-sea map would
+ *  decide its answer from them, right here. */
+function baselineLeavesStandingGround(
+  _centerMagnitude: number,
+  _ringMagnitude: number,
+  _dividersMagnitude: number,
+  _perimeterMagnitude: number,
 ): boolean {
-  return (
-    centerMagnitude >= 0 ||
-    ringMagnitude >= 0 ||
-    dividersMagnitude >= 0 ||
-    perimeterMagnitude >= 0
-  );
+  return true;
 }
 
 /** Is there water on the map this setup describes?
@@ -118,7 +118,7 @@ export function mapHasWaterForSetup(setup: MapSurfaceSetup): boolean {
 
 /** Is there dry ground on the map this setup describes? */
 export function mapHasLandForSetup(setup: MapSurfaceSetup): boolean {
-  return anyMagnitudeAtOrAboveDatum(
+  return baselineLeavesStandingGround(
     setup.centerMagnitude,
     setup.ringMagnitude,
     setup.dividersMagnitude,
@@ -144,7 +144,7 @@ export function mapHasWater(): boolean {
 
 /** Is there dry ground on the map that is installed right now? */
 export function mapHasLand(): boolean {
-  return anyMagnitudeAtOrAboveDatum(
+  return baselineLeavesStandingGround(
     TERRAIN_CENTER_MAGNITUDE,
     TERRAIN_RING_MAGNITUDE,
     TERRAIN_DIVIDERS_MAGNITUDE,

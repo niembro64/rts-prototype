@@ -93,7 +93,7 @@
       "gravityForceMultiplier": 1,
       "media": {
         "air": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "velocityFrictionPer60HzFrame": 0 },
-        "water": { "operational": true, "propulsionForce": 2400, "guidanceThrust": 10000, "velocityFrictionPer60HzFrame": 0 },
+        "water": { "operational": true, "propulsionForce": 2400, "guidanceThrust": 10000, "velocityFrictionPer60HzFrame": 0.008 },
         "ground": { "mode": "impact" }
       },
       "transitions": { "enterWater": "continue", "exitWater": "continueBallistic" },

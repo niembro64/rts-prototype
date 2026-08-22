@@ -46,46 +46,122 @@ struct PoseFrame {
     turret_host_piece_yaw_velocity: Vec<f32>,
 }
 
+fn copy_prefix<T: Copy>(dst: &mut Vec<T>, src: &[T], used: usize) {
+    let used = used.min(src.len());
+    dst.clear();
+    dst.extend_from_slice(&src[..used]);
+}
+
 impl PoseFrame {
     fn capture(&mut self) {
         let state = entity_state();
-        self.entity_id.clone_from(&state.entity_id);
-        self.pos_x.clone_from(&state.pos_x);
-        self.pos_y.clone_from(&state.pos_y);
-        self.pos_z.clone_from(&state.pos_z);
-        self.rotation.clone_from(&state.rotation);
-        self.vel_x.clone_from(&state.vel_x);
-        self.vel_y.clone_from(&state.vel_y);
-        self.vel_z.clone_from(&state.vel_z);
-        self.normal_x.clone_from(&state.surface_normal_x);
-        self.normal_y.clone_from(&state.surface_normal_y);
-        self.normal_z.clone_from(&state.surface_normal_z);
-        self.orientation_x.clone_from(&state.orientation_x);
-        self.orientation_y.clone_from(&state.orientation_y);
-        self.orientation_z.clone_from(&state.orientation_z);
-        self.orientation_w.clone_from(&state.orientation_w);
-        self.angular_x.clone_from(&state.angular_velocity_x);
-        self.angular_y.clone_from(&state.angular_velocity_y);
-        self.angular_z.clone_from(&state.angular_velocity_z);
-        self.motion_flags.clone_from(&state.unit_motion_flags);
+        // Copy only the populated slot prefix (the lifecycle high-water mark),
+        // not the pre-seeded slab capacity. The interpolate reader takes its
+        // slots from the live registry, so it never asks for a row past this
+        // bound, and it already bounds-checks against the captured length.
+        let used = state.used_slots.min(state.entity_id.len());
+        copy_prefix(&mut self.entity_id, &state.entity_id, used);
+        copy_prefix(&mut self.pos_x, &state.pos_x, used);
+        copy_prefix(&mut self.pos_y, &state.pos_y, used);
+        copy_prefix(&mut self.pos_z, &state.pos_z, used);
+        copy_prefix(&mut self.rotation, &state.rotation, used);
+        copy_prefix(&mut self.vel_x, &state.vel_x, used);
+        copy_prefix(&mut self.vel_y, &state.vel_y, used);
+        copy_prefix(&mut self.vel_z, &state.vel_z, used);
+        copy_prefix(&mut self.normal_x, &state.surface_normal_x, used);
+        copy_prefix(&mut self.normal_y, &state.surface_normal_y, used);
+        copy_prefix(&mut self.normal_z, &state.surface_normal_z, used);
+        copy_prefix(&mut self.orientation_x, &state.orientation_x, used);
+        copy_prefix(&mut self.orientation_y, &state.orientation_y, used);
+        copy_prefix(&mut self.orientation_z, &state.orientation_z, used);
+        copy_prefix(&mut self.orientation_w, &state.orientation_w, used);
+        copy_prefix(&mut self.angular_x, &state.angular_velocity_x, used);
+        copy_prefix(&mut self.angular_y, &state.angular_velocity_y, used);
+        copy_prefix(&mut self.angular_z, &state.angular_velocity_z, used);
+        copy_prefix(&mut self.motion_flags, &state.unit_motion_flags, used);
 
         // CombatTargetingPool is the live production turret source. The
         // entity-meta TurretPool is snapshot-era compatibility storage and is
         // not populated by the simulation tick.
         let turrets = combat_targeting_pool();
-        self.turret_count
-            .clone_from(&turrets.turret_count_per_entity);
-        self.turret_entity_id.clone_from(&turrets.turret_entity_id);
-        self.turret_rotation.clone_from(&turrets.turret_rotation);
-        self.turret_angular_velocity
-            .clone_from(&turrets.turret_angular_velocity);
-        self.turret_pitch.clone_from(&turrets.turret_pitch);
-        self.turret_pitch_velocity
-            .clone_from(&turrets.turret_pitch_velocity);
-        self.turret_host_piece_yaw
-            .clone_from(&turrets.turret_host_piece_yaw);
-        self.turret_host_piece_yaw_velocity
-            .clone_from(&turrets.turret_host_piece_yaw_velocity);
+        let turret_entities = used.min(turrets.turret_count_per_entity.len());
+        let turret_rows = (turret_entities
+            * COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
+            .min(turrets.turret_entity_id.len());
+        copy_prefix(
+            &mut self.turret_count,
+            &turrets.turret_count_per_entity,
+            turret_entities,
+        );
+        copy_prefix(
+            &mut self.turret_entity_id,
+            &turrets.turret_entity_id,
+            turret_rows,
+        );
+        copy_prefix(&mut self.turret_rotation, &turrets.turret_rotation, turret_rows);
+        copy_prefix(
+            &mut self.turret_angular_velocity,
+            &turrets.turret_angular_velocity,
+            turret_rows,
+        );
+        copy_prefix(&mut self.turret_pitch, &turrets.turret_pitch, turret_rows);
+        copy_prefix(
+            &mut self.turret_pitch_velocity,
+            &turrets.turret_pitch_velocity,
+            turret_rows,
+        );
+        copy_prefix(
+            &mut self.turret_host_piece_yaw,
+            &turrets.turret_host_piece_yaw,
+            turret_rows,
+        );
+        copy_prefix(
+            &mut self.turret_host_piece_yaw_velocity,
+            &turrets.turret_host_piece_yaw_velocity,
+            turret_rows,
+        );
+    }
+
+    /// Grow this frame's vecs to the other frame's lengths so slot reads on
+    /// the [0, other.len) range never go out of bounds. New entity slots are
+    /// seeded with the no-entity id so the capture driver's mismatch pass
+    /// copies the fresh pose over them.
+    fn match_len_of(&mut self, other: &PoseFrame) {
+        let used = other.entity_id.len();
+        if self.entity_id.len() < used {
+            self.entity_id.resize(used, ENTITY_STATE_NO_ENTITY_ID);
+            self.pos_x.resize(used, 0.0);
+            self.pos_y.resize(used, 0.0);
+            self.pos_z.resize(used, 0.0);
+            self.rotation.resize(used, 0.0);
+            self.vel_x.resize(used, 0.0);
+            self.vel_y.resize(used, 0.0);
+            self.vel_z.resize(used, 0.0);
+            self.normal_x.resize(used, 0.0);
+            self.normal_y.resize(used, 0.0);
+            self.normal_z.resize(used, 1.0);
+            self.orientation_x.resize(used, 0.0);
+            self.orientation_y.resize(used, 0.0);
+            self.orientation_z.resize(used, 0.0);
+            self.orientation_w.resize(used, 1.0);
+            self.angular_x.resize(used, 0.0);
+            self.angular_y.resize(used, 0.0);
+            self.angular_z.resize(used, 0.0);
+            self.motion_flags.resize(used, 0);
+        }
+        if self.turret_count.len() < other.turret_count.len() {
+            self.turret_count.resize(other.turret_count.len(), 0);
+        }
+        let rows = other.turret_entity_id.len();
+        if self.turret_entity_id.len() < rows {
+            self.turret_entity_id.resize(rows, 0);
+            self.turret_rotation.resize(rows, 0.0);
+            self.turret_angular_velocity.resize(rows, 0.0);
+            self.turret_pitch.resize(rows, 0.0);
+            self.turret_pitch_velocity.resize(rows, 0.0);
+            self.turret_host_piece_yaw.resize(rows, 0.0);
+            self.turret_host_piece_yaw_velocity.resize(rows, 0.0);
+        }
     }
 
     fn copy_slot_from(&mut self, source: &PoseFrame, slot: usize) {
@@ -240,6 +316,9 @@ pub fn presentation_capture_tick(tick: u32) {
     if history.initialized {
         core::mem::swap(&mut history.previous, &mut history.current);
         history.current.capture();
+        // Slots allocated this tick exist only in the new frame; grow the old
+        // frame to match so interpolation reads stay in bounds.
+        history.previous.match_len_of(&history.current);
         // A recycled stable slot is a new object, not a teleport from the old
         // occupant. Seed both endpoints from the new state.
         for slot in 0..history.current.entity_id.len() {

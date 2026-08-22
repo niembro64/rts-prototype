@@ -183,7 +183,11 @@ function getDemoSupplementalBuildingBlueprintIds(
 type InitialBasePolicy = {
   fightType: WaypointType;
   fightDistance: number;
-  addDemoCenterPatrolLoop: boolean;
+  /** Game-start factories in EVERY battle kind ship the full three-leg
+   *  route (fight leg + the two cross-map patrol legs); a factory built in
+   *  play gets only the simple rally (construction.ts). The split is
+   *  game-init vs game-built, not demo vs real. */
+  addCenterPatrolLoop: boolean;
   /** Pre-placed hosts that come up with their ON/OFF switch already OFF.
    *  Only the demo's opening base authors any; a normally constructed
    *  building always completes with its switch ON. */
@@ -200,7 +204,7 @@ function getInitialBasePolicy(
     return {
       fightType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
       fightDistance: REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
-      addDemoCenterPatrolLoop: false,
+      addCenterPatrolLoop: true,
       initiallyOffBuildingBlueprintIds: EMPTY_INITIALLY_OFF_BUILDING_BLUEPRINT_IDS,
       commanderBuildingExclusions,
     };
@@ -208,7 +212,7 @@ function getInitialBasePolicy(
   return {
     fightType: 'fight',
     fightDistance: DEMO_CONFIG.factoryFightWaypointDistance,
-    addDemoCenterPatrolLoop: true,
+    addCenterPatrolLoop: true,
     initiallyOffBuildingBlueprintIds: DEMO_CONFIG.initiallyOffBuildingBlueprintIds,
     commanderBuildingExclusions,
   };
@@ -275,7 +279,7 @@ function computeFactoryDefaultWaypoints(
     mapHeight,
     basePolicy.fightDistance,
   );
-  if (!basePolicy.addDemoCenterPatrolLoop) {
+  if (!basePolicy.addCenterPatrolLoop) {
     return [{ x: fight.x, y: fight.y, z: null, type: basePolicy.fightType }];
   }
 

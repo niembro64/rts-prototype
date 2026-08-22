@@ -42,6 +42,14 @@ export function registerPathfinderBuildingOccupancy(
   };
 }
 
+/** The registered occupancy source's live version, so downstream bakes that
+ *  fold building cells into their masks (the traversability overlay grids)
+ *  can key their caches on it instead of silently keeping pre-placement —
+ *  or a previous match's — buildings forever. */
+export function getRegisteredBuildingOccupancyVersion(): number {
+  return occupancySource?.getVersion() ?? 0;
+}
+
 export function configurePathfindingCellConsolidationMultiplier(
   value: number,
 ): void {

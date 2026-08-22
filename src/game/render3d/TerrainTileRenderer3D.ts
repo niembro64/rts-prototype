@@ -246,6 +246,10 @@ type TerrainTileRendererUpdateOptions = {
   fogShade: WorldShadeSettings3D;
   entityShadows: EntityShadowRenderPacket3D;
   visibleBounds: FootprintBounds;
+  /** False on effect-stride frames under render-budget pressure: the fog
+   *  coverage render-target pass is skipped and the previous texture (with
+   *  its matching bounds) is reused. */
+  updateWorldShadeCoverage: boolean;
 };
 
 // Pass an sRGB hex into the terrain shader as a raw vec3. The rest of the
@@ -2927,6 +2931,7 @@ export class TerrainTileRenderer3D {
       options.fogShade,
       options.entityShadows,
       options.visibleBounds,
+      options.updateWorldShadeCoverage,
     );
     this.rebuildGeometryIfNeeded(
       cellSize,

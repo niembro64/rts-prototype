@@ -14,6 +14,7 @@ import LoadingEmblem from './LoadingEmblem.vue';
 import ChevronIcon from './ChevronIcon.vue';
 import SeatStateIcon from './SeatStateIcon.vue';
 import TrashIcon from './TrashIcon.vue';
+import XIcon from './XIcon.vue';
 import {
   getUnitDisplayShortName,
   getBuildingDisplayShortName,
@@ -36,7 +37,6 @@ import {
 import { MAX_ALLY_TEAM_COUNT } from '../game/sim/teamRoster';
 import { getMapPresetThumbnailUrl } from './mapPresetThumbnails';
 import { readableInkOn } from './uiUtils';
-import { AUTHOR_BYLINE } from '@/authorBylineConfig';
 import { closeCurrentTauriWindow, isTauriRuntime } from '@/browserRuntime';
 import { LOBBY_LIST_POLL_INTERVAL_MS } from '../game/network/LobbyDirectory';
 import { getMultiplayerBackend } from '../game/network/multiplayer/multiplayerBackendRegistry';
@@ -861,21 +861,8 @@ const terrainSectionVars = computed(() =>
         <button class="lobby-btn exit-btn" @click="closeCurrentTauriWindow">Exit</button>
       </div>
 
-      <!-- Whose game this is. It belongs to the panel's chrome, not to the
-           map: carried on the terrain sign it read as one more map
-           statistic beside the cell counts and the terrain magnitudes. -->
-      <div class="menu-byline">
-        <a
-          class="menu-byline-link"
-          :href="AUTHOR_BYLINE.siteUrl"
-          target="_blank"
-          rel="noopener noreferrer"
-        >{{ AUTHOR_BYLINE.siteUrl }}</a>
-        <a
-          class="menu-byline-link"
-          :href="`mailto:${AUTHOR_BYLINE.email}`"
-        >{{ AUTHOR_BYLINE.email }}</a>
-      </div>
+      <!-- Whose game this is lives on the Game Info page, not here — the
+           home sidebar stays pure navigation. -->
     </div>
   </aside>
 
@@ -1097,8 +1084,9 @@ const terrainSectionVars = computed(() =>
                     class="player-control-btn"
                     type="button"
                     :title="`Move ${seat.player.name} back to the watchers`"
+                    :aria-label="`Move ${seat.player.name} back to the watchers`"
                     @click="emit('toggleMemberSeated', memberIdForSeat(seat.player.playerId))"
-                  >BENCH</button>
+                  ><XIcon /></button>
                   <button
                     v-if="seat.player.isBot"
                     class="player-control-btn"
@@ -1994,33 +1982,6 @@ const terrainSectionVars = computed(() =>
   justify-content: flex-start;
 }
 
-/* The byline sits under everything else, at the foot of the column. It is
- * the quietest thing in the panel on purpose — it is authorship, not an
- * action, and it must not compete with the join controls above it. */
-.menu-byline {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  /* Only claims the leftover space when no Exit row is there to claim it,
-   * so it is at the bottom of the column either way. */
-  margin-top: auto;
-  font-family: monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  color: #667180;
-}
-
-.menu-byline-link {
-  color: inherit;
-  text-decoration: none;
-  width: fit-content;
-}
-
-.menu-byline-link:hover,
-.menu-byline-link:focus-visible {
-  color: #b9c4d2;
-  text-decoration: underline;
-}
 
 /* Open-lobby directory. Solid border rather than the old dashed
  * placeholder — this is real content now, not a reserved slot. */

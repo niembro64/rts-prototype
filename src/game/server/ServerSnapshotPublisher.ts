@@ -590,6 +590,11 @@ export class ServerSnapshotPublisher {
           sharedGlobalStaticSnapshots[representationIndex] = sharedGlobalStaticSnapshot;
         } else {
           this.markListenerStaticMapSent(listener, input);
+          // The reuse branch skips serializeForListener, which is where the
+          // flag is normally cleared — without this, a second player-less
+          // listener stays needs-full forever and forces a full emit every
+          // frame.
+          listener.needsFullState = false;
           this.updateListenerVisibleBaseline(
             listener,
             input.world,
@@ -607,6 +612,9 @@ export class ServerSnapshotPublisher {
           sharedGlobalDynamicSnapshot = serializeForListener(listener);
           sharedGlobalDynamicSnapshots[representationIndex] = sharedGlobalDynamicSnapshot;
         } else {
+          // Same clear as the static branch: reuse must not leave the
+          // listener permanently needs-full.
+          listener.needsFullState = false;
           this.updateListenerVisibleBaseline(
             listener,
             input.world,

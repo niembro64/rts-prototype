@@ -256,6 +256,12 @@ export class WorldShade3D {
   private readonly coverageMesh: THREE.Mesh;
   private readonly regions: RegionBuffers;
   private regionCount = 0;
+  /** True once at least one coverage pass has drawn at the current size —
+   *  the effect-stride gate may only reuse a texture that exists. */
+  private hasRenderedCoverage = false;
+  /** True while the coverage target holds a zero-region empty clear, so a
+   *  string of empty frames costs nothing after the first. */
+  private coverageClearIsEmpty = false;
   private coverageMinX = 0;
   private coverageMinY = 0;
   private coverageMaxX = 1;
@@ -422,14 +428,22 @@ void main() {
     settings: WorldShadeSettings3D,
     entityShadows: EntityShadowRenderPacket3D,
     visibleBounds: FootprintBounds,
+    updateCoverage = true,
   ): void {
     this.fogEnabledUniform.value = settings.enabled ? 1 : 0;
     this.unseenDarknessUniform.value = clamp01(settings.unseenDarkness);
     this.radarDarknessUniform.value = clamp01(settings.radarDarkness);
     this.unseenDesaturationUniform.value = clamp01(settings.unseenDesaturation);
     this.radarDesaturationUniform.value = clamp01(settings.radarDesaturation);
+    const resized = this.syncCoverageTargetSize();
+    if (!updateCoverage && !resized && this.hasRenderedCoverage) {
+      // Effect-stride frame under render-budget pressure: keep the previous
+      // coverage texture AND its matching bounds uniforms. The bounds map the
+      // texture onto the world, so re-aiming them at a texture rendered for
+      // the old bounds would make the fog swim during pans.
+      return;
+    }
     this.setCoverageBounds(visibleBounds);
-    this.syncCoverageTargetSize();
 
     this.regionCount = 0;
     if (settings.enabled) {
@@ -440,6 +454,7 @@ void main() {
     }
     this.uploadRegions();
     this.renderCoverage();
+    this.hasRenderedCoverage = true;
   }
 
   assignUniforms(shader: WorldShadeShader): void {
@@ -596,7 +611,7 @@ void main() {
    * The target tracks the renderer's physical drawing buffer and supersamples
    * it when the GPU limit permits. Boundary width is authored separately in
    * world space, so resizing this texture cannot change edge softness. */
-  private syncCoverageTargetSize(): void {
+  private syncCoverageTargetSize(): boolean {
     this.renderer.getDrawingBufferSize(this.drawingBufferSize);
     const drawingWidth = Math.max(1, Math.round(this.drawingBufferSize.x));
     const drawingHeight = Math.max(1, Math.round(this.drawingBufferSize.y));
@@ -622,7 +637,11 @@ void main() {
       this.coverageTextureWidth = targetWidth;
       this.coverageTextureHeight = targetHeight;
       this.renderTarget.setSize(targetWidth, targetHeight);
+      // Fresh storage: the empty-clear skip must not trust old contents.
+      this.coverageClearIsEmpty = false;
+      return true;
     }
+    return false;
   }
 
   private collectFogRegions(
@@ -853,6 +872,10 @@ void main() {
   }
 
   private renderCoverage(): void {
+    // With zero regions the pass is just a clear; once the target already
+    // holds an empty clear there is nothing to redo, so skip the target
+    // bind + full supersampled clear entirely.
+    if (this.regionCount === 0 && this.coverageClearIsEmpty) return;
     const previousTarget = this.renderer.getRenderTarget();
     const previousAlpha = this.renderer.getClearAlpha();
     this.renderer.getClearColor(this.previousClearColor);
@@ -870,5 +893,6 @@ void main() {
       this.renderer.setClearColor(this.previousClearColor, previousAlpha);
       this.renderer.autoClear = previousAutoClear;
     }
+    this.coverageClearIsEmpty = this.regionCount === 0;
   }
 }

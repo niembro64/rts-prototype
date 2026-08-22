@@ -1139,6 +1139,11 @@
           "specularHex": "#ffffff",
           "shininess": 70
         },
+        "sun": {
+          "colorHex": "#ffd257",
+          "specularHex": "#fff6d8",
+          "shininess": 74
+        },
         "windAccent": {
           "colorHex": "#246b86",
           "specularHex": "#bbefff",

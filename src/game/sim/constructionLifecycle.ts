@@ -391,26 +391,46 @@ function completeConstruction(
   world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
 }
 
-const _attendedConstructionTargets = new Set<number>();
+const _fundedConstructionTargets = new Set<number>();
+const _activeConstructionTargets = new Set<number>();
+const _queuedConstructionTargets = new Set<number>();
 const _decayOut = new Float64Array(4);
 
-/** Every shell somebody is still answering for this tick: one that received
- *  construction work during resource distribution, plus one that any living
- *  builder still carries in its order queue.
- *
- *  `distributeEnergy` clears and refills `workMovements` immediately before
- *  this pass, so it is the authoritative "somebody is paying for this frame"
- *  record. The queue scan covers the gap the work ledger cannot see: a
- *  shift-queued site is placed the moment the order is issued and stands there
- *  unfunded while the builder finishes the sites ahead of it. Intent counts as
- *  attendance; only an abandoned or cancelled frame rots. */
-function collectAttendedConstructionTargets(world: WorldState): ReadonlySet<number> {
-  const attended = _attendedConstructionTargets;
-  attended.clear();
+type ConstructionAttendance = {
+  /** Shells that received construct work during resource distribution —
+   *  `distributeEnergy` clears and refills `workMovements` immediately
+   *  before this pass, so it is the authoritative "build power landed
+   *  here" record. */
+  readonly funded: ReadonlySet<number>;
+  /** Shells that are some living builder's ACTIVE (head) build order. */
+  readonly active: ReadonlySet<number>;
+  /** Shells referenced anywhere in a living builder's order queue. */
+  readonly queued: ReadonlySet<number>;
+};
+
+/** Who answers for each unfinished shell this tick — three strengths of
+ *  attendance, matching BAR's model (modrules constructionDecay): build
+ *  power landing protects a frame, an assigned builder protects the frame
+ *  it is actively on (BAR's builder-priority gadget grants one such
+ *  builder a token build speed for exactly this reason — an economy stall
+ *  or the walk into range must not rot the frame being worked), but mere
+ *  QUEUE intent does not protect an invested frame — a half-built shell
+ *  left for later in a queue rots like BAR's do. Zero-invested frames are
+ *  this engine's stand-in for BAR's queued ghost shapes (not world objects
+ *  there, so nothing can decay): queue intent keeps them, and losing that
+ *  intent — the order cancelled — puts them on the same decay clock, which
+ *  removes an uninvested frame at its first decay step. */
+function collectConstructionAttendance(world: WorldState): ConstructionAttendance {
+  const funded = _fundedConstructionTargets;
+  const active = _activeConstructionTargets;
+  const queued = _queuedConstructionTargets;
+  funded.clear();
+  active.clear();
+  queued.clear();
   const movements = world.workMovements;
   for (let i = 0; i < movements.length; i++) {
     const movement = movements[i];
-    if (movement.operation === 'construct') attended.add(movement.targetEntityId);
+    if (movement.operation === 'construct') funded.add(movement.targetEntityId);
   }
   const builders = world.getBuilderUnits();
   for (let i = 0; i < builders.length; i++) {
@@ -421,10 +441,20 @@ function collectAttendedConstructionTargets(world: WorldState): ReadonlySet<numb
       const action = actions[a];
       if (action.type !== 'build') continue;
       const buildingId = action.buildingId;
-      if (buildingId !== undefined) attended.add(buildingId);
+      if (buildingId === undefined) continue;
+      queued.add(buildingId);
+      if (a === 0) active.add(buildingId);
     }
   }
-  return attended;
+  return { funded, active, queued };
+}
+
+function isConstructionInvested(buildable: NonNullable<Entity['buildable']>): boolean {
+  return (
+    buildable.paid.energy > 0 ||
+    buildable.paid.metal > 0 ||
+    buildable.healthBuildFraction > 0
+  );
 }
 
 /** Decay one unfunded shell. Returns true once the frame has rotted back to
@@ -444,6 +474,16 @@ function decayUnfundedConstruction(
 
   const hpState = entity.building ?? entity.unit;
   if (hpState === null) return false;
+  // BAR's decay rate is inversely proportional to build time; the closest
+  // authored stand-in here is total cost — a cheap frame rots fast, an
+  // expensive one lingers. Clamped so no frame is immortal or instant.
+  const totalCost = buildable.required.energy + buildable.required.metal;
+  const costScale = totalCost > 0
+    ? Math.min(
+        decay.costScaleMax,
+        Math.max(decay.costScaleMin, decay.referenceCostTotal / totalCost),
+      )
+    : 1;
   const sim = requireConstructionSim();
   if (sim.constructionDecayStep(
     buildable.paid.energy,
@@ -453,7 +493,7 @@ function decayUnfundedConstruction(
     buildable.healthBuildFraction,
     hpState.hp,
     hpState.maxHp,
-    decay.fractionPerSecond,
+    decay.fractionPerSecond * costScale,
     decaySeconds,
     _decayOut,
   ) === 0) {
@@ -484,22 +524,33 @@ export function updateConstructionLifecycle(
     world.getUnits(),
     world.getBuildings(),
   ];
-  const attended = collectAttendedConstructionTargets(world);
+  const attendance = collectConstructionAttendance(world);
   const dtSec = dtMs / 1000;
 
   for (const list of sources) {
     for (const entity of list) {
       const buildable = entity.buildable;
       if (!buildable || buildable.isComplete) continue;
-      // An unfinished building nobody is answering for rots at a constant rate
-      // and is gone at zero. Cancelled (interrupted) frames rot too — that is
-      // the only way a partial assembly ever leaves the map on its own.
-      // Factory unit shells are exempt: their factory owns their lifecycle.
-      if (entity.building !== null && !attended.has(entity.id)) {
-        if (decayUnfundedConstruction(world, entity, dtSec)) {
-          result.decayedBuildings.push(entity);
+      // An unfinished building nobody is answering for rots and is gone at
+      // zero. Attendance is BAR's: landed build power always protects, the
+      // builder's active head order protects (stalls and the walk into range
+      // must not rot the frame being worked), and queue intent protects only
+      // ZERO-invested frames (the queued-ghost stand-in). An invested frame
+      // left for later in a queue, and a cancelled (interrupted) frame, both
+      // rot — that is the only way a partial assembly ever leaves the map on
+      // its own. Factory unit shells are exempt: their factory owns their
+      // lifecycle.
+      if (entity.building !== null) {
+        const attended =
+          attendance.funded.has(entity.id) ||
+          attendance.active.has(entity.id) ||
+          (!isConstructionInvested(buildable) && attendance.queued.has(entity.id));
+        if (!attended) {
+          if (decayUnfundedConstruction(world, entity, dtSec)) {
+            result.decayedBuildings.push(entity);
+          }
+          continue;
         }
-        continue;
       }
       world.unfundedBuildSeconds.delete(entity.id);
       if (buildable.isInterrupted) continue;

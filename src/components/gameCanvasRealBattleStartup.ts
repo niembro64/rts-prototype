@@ -1797,11 +1797,10 @@ async function createDeterministicLockstepBackendRuntime({
         ? advanceResult.advancedFrames * lockstepFixedDtMs
         : Math.max(0.001, nowMs - lastLockstepTelemetryPumpMs);
       lastLockstepTelemetryPumpMs = nowMs;
-      const postAdvanceDiagnostics = scheduler.getDiagnostics();
       server.recordExternalSimulationTelemetry({
         elapsedMs,
         stepsRun: advanceResult.advancedFrames,
-        workMs: postAdvanceDiagnostics.performance.simStepMsAvg,
+        workMs: advanceResult.simStepMsAvg,
         tickRateHz: simulationTickRateHz,
       });
 

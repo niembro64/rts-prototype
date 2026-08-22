@@ -122,7 +122,11 @@ export class ServerSimulationCore {
     }
 
     const dtSec = dtMs / 1000;
-    this.repairInvalidEntityPoses();
+    // No pose-repair walk here: the post-physics repairInvalidEntityPoses()
+    // below sweeps ALL units every tick, and the only pose writers between
+    // it and the next tick's start (syncFromPhysics and its hold-pose
+    // branch) write values they just proved finite. Tick start therefore
+    // inherits the previous tick's repaired state.
     phases.phase('core.prepare');
     this.simulation.update(dtMs); // emits sim.* / combat.* phases itself
     this.unitForceSystem.applyForces(dtSec);

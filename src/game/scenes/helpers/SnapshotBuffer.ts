@@ -1272,6 +1272,19 @@ export class SnapshotBuffer {
       // ride only bootstrap/recovery packets, so preserve the latest copy.
       const previousTerrain = this.pendingSnapshot?.terrain;
       const previousBuildability = this.pendingSnapshot?.buildability;
+      // A pending ENTITY DELTA the client never consumed is REPLACED here,
+      // not merged. Its motion rows are transient (dirty entities re-emit
+      // next delta) but its removal ids never repeat — dropping them pins
+      // dead entities in the client store, permanently for the unfiltered
+      // (spectator) listener, which has no server-side visible-baseline
+      // prune to re-emit removals. Carry them into the replacement delta.
+      const carriedRemovedEntityIds =
+        state.entityDeltaOnly === true &&
+        this.pendingSnapshot?.entityDeltaOnly === true &&
+        this.pendingSnapshot.removedEntityIds !== undefined &&
+        this.pendingSnapshot.removedEntityIds.length > 0
+          ? [...this.pendingSnapshot.removedEntityIds]
+          : null;
       this.releasePendingSnapshot();
       const cloneStart = performance.now();
       const cloneState = consumedDirectProjectileRows
@@ -1291,6 +1304,15 @@ export class SnapshotBuffer {
         previousBuildability !== undefined
       ) {
         pending.buildability = previousBuildability;
+      }
+      if (carriedRemovedEntityIds !== null) {
+        if (pending.removedEntityIds === undefined || pending.removedEntityIds.length === 0) {
+          pending.removedEntityIds = carriedRemovedEntityIds;
+        } else {
+          const union = new Set<number>(carriedRemovedEntityIds);
+          for (const id of pending.removedEntityIds) union.add(id);
+          pending.removedEntityIds = [...union];
+        }
       }
       this.pendingSnapshot = pending;
       this.pendingSnapshotRelease = null;

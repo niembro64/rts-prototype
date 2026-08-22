@@ -12,6 +12,13 @@ import { reuseTypedArrayView } from '../memory/typedArrayView';
  */
 export class ClientLockstepPresentation {
   private readonly entities: Entity[] = [];
+  /** Entities that take presentation interpolation, with their stable slots,
+   *  cached against the client store's entity-set version so the per-frame
+   *  walk over EVERY client entity (plus a Map slot lookup each) only runs
+   *  when the entity set actually changed. */
+  private readonly filtered: Entity[] = [];
+  private readonly filteredSlots: number[] = [];
+  private filteredSetVersion = -1;
   private slotInput = new Uint32Array(0);
   private poseOutput = new Float32Array(0);
   private turretOutput = new Float32Array(0);
@@ -30,6 +37,9 @@ export class ClientLockstepPresentation {
 
   reset(): void {
     this.entities.length = 0;
+    this.filtered.length = 0;
+    this.filteredSlots.length = 0;
+    this.filteredSetVersion = -1;
     this.slotInput = new Uint32Array(0);
     this.poseOutput = new Float32Array(0);
     this.turretOutput = new Float32Array(0);
@@ -39,27 +49,39 @@ export class ClientLockstepPresentation {
     this.fixedStepMs = 1000 / DEFAULT_SIMULATION_TICK_RATE_HZ;
   }
 
-  apply(visibleEntities: Iterable<Entity>, nowMs = performance.now()): readonly Entity[] {
+  apply(
+    visibleEntities: Iterable<Entity>,
+    entitySetVersion: number,
+    nowMs = performance.now(),
+  ): readonly Entity[] {
     const wasm = getSimWasm() ?? null;
     if (wasm === null || !wasm.presentation.hasHistory()) {
       this.entities.length = 0;
       return this.entities;
     }
 
+    const filtered = this.filtered;
+    const filteredSlots = this.filteredSlots;
+    if (entitySetVersion !== this.filteredSetVersion) {
+      filtered.length = 0;
+      filteredSlots.length = 0;
+      for (const entity of visibleEntities) {
+        const hasMovingRoot = entity.unit !== null || entity.projectile !== null;
+        const hasInterpolatedTurrets = (entity.combat?.turrets.length ?? 0) > 0;
+        if (!hasMovingRoot && !hasInterpolatedTurrets) continue;
+        // Beams/lasers are piecewise paths rather than root-body motion. Their
+        // endpoint topology remains on the dedicated beam presentation path.
+        if (entity.projectile !== null && entity.projectile.projectileType !== 'projectile') continue;
+        const slot = entitySlotRegistry.getSlot(entity.id);
+        if (slot < 0) continue;
+        filtered.push(entity);
+        filteredSlots.push(slot);
+      }
+      this.filteredSetVersion = entitySetVersion;
+    }
+    const count = filtered.length;
     const entities = this.entities;
     entities.length = 0;
-    for (const entity of visibleEntities) {
-      const hasMovingRoot = entity.unit !== null || entity.projectile !== null;
-      const hasInterpolatedTurrets = (entity.combat?.turrets.length ?? 0) > 0;
-      if (!hasMovingRoot && !hasInterpolatedTurrets) continue;
-      // Beams/lasers are piecewise paths rather than root-body motion. Their
-      // endpoint topology remains on the dedicated beam presentation path.
-      if (entity.projectile !== null && entity.projectile.projectileType !== 'projectile') continue;
-      const slot = entitySlotRegistry.getSlot(entity.id);
-      if (slot < 0) continue;
-      entities.push(entity);
-    }
-    const count = entities.length;
     if (count === 0) return entities;
 
     const presentation = wasm.presentation;
@@ -72,7 +94,7 @@ export class ClientLockstepPresentation {
       Uint32Array,
     );
     for (let i = 0; i < count; i++) {
-      this.slotInput[i] = entitySlotRegistry.getSlot(entities[i].id);
+      this.slotInput[i] = filteredSlots[i];
     }
 
     const elapsedMs = Math.max(0, nowMs - this.capturedAtMs);
@@ -101,9 +123,8 @@ export class ClientLockstepPresentation {
       Float32Array,
     );
 
-    let writeCount = 0;
     for (let row = 0; row < count; row++) {
-      const entity = entities[row];
+      const entity = filtered[row];
       const base = row * poseStride;
       if (this.poseOutput[base] === 0) continue;
 
@@ -164,9 +185,8 @@ export class ClientLockstepPresentation {
         }
       }
 
-      entities[writeCount++] = entity;
+      entities.push(entity);
     }
-    entities.length = writeCount;
     return entities;
   }
 }

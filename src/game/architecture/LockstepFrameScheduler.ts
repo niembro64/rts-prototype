@@ -53,11 +53,6 @@ export type LockstepFrameSchedulerDiagnostics = {
   readonly pausedFrame: number | null;
   readonly pauseReason: string | null;
   readonly missingReadyPeerIds: readonly PlayerId[];
-  readonly pendingCommandFrames: readonly {
-    readonly frame: number;
-    readonly frameSequence: number;
-    readonly commandCount: number;
-  }[];
   readonly performance: {
     readonly framesAdvancedTotal: number;
     readonly lastPumpAdvancedFrames: number;
@@ -76,6 +71,9 @@ type LockstepFrameSchedulerAdvanceResult = {
   readonly nextFrame: number;
   readonly status: LockstepFrameSchedulerStatus;
   readonly stalled: boolean;
+  /** EMA of stepFixedTick cost, so the pump's telemetry needs no second
+   *  getDiagnostics() allocation after an advance. */
+  readonly simStepMsAvg: number;
 };
 
 export type LockstepFrameSchedulerOptions = {
@@ -337,7 +335,6 @@ export class LockstepFrameScheduler {
       pausedFrame: this.pausedFrame,
       pauseReason: this.pauseReason,
       missingReadyPeerIds,
-      pendingCommandFrames: this.getQueuedCommandFrameSummaries(),
       performance: {
         framesAdvancedTotal: this.framesAdvancedTotal,
         lastPumpAdvancedFrames: this.lastPumpAdvancedFrames,
@@ -440,6 +437,7 @@ export class LockstepFrameScheduler {
       nextFrame: this.nextFrame,
       status: this.status,
       stalled: this.status === 'stalled',
+      simStepMsAvg: this.simStepMsAvg,
     };
   }
 
@@ -466,21 +464,6 @@ export class LockstepFrameScheduler {
       if (!this.readyPeerIds.has(playerId)) missingPeerIds.push(playerId);
     }
     return missingPeerIds;
-  }
-
-  private getQueuedCommandFrameSummaries(): LockstepFrameSchedulerDiagnostics['pendingCommandFrames'] {
-    const frames = [...this.queuedFrames.values()]
-      .sort((a, b) => a.frame - b.frame || a.frameSequence - b.frameSequence);
-    const summaries = new Array<LockstepFrameSchedulerDiagnostics['pendingCommandFrames'][number]>(frames.length);
-    for (let i = 0; i < frames.length; i++) {
-      const frame = frames[i];
-      summaries[i] = {
-        frame: frame.frame,
-        frameSequence: frame.frameSequence,
-        commandCount: frame.commands.length,
-      };
-    }
-    return summaries;
   }
 
   private statusMessage(missingReadyPeerIds: readonly PlayerId[]): string {

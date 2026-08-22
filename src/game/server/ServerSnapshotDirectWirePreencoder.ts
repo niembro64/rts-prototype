@@ -345,6 +345,14 @@ export class ServerSnapshotDirectWirePreencoder {
     state.removedEntityIds = this.removedEntityIds.length > 0
       ? this.removedEntityIds
       : undefined;
+    // `state` is reused across emissions, and the delta paths stamp these
+    // flags. A full snapshot MUST clear them (the DTO serializer does the
+    // same): a leaked `entityDeltaOnly: true` disables the client's
+    // absence-based full-snapshot reconcile, which is the unfiltered
+    // (spectator) listener's ONLY way to shed entities whose removal
+    // records were lost — dead units would stay on its screen forever.
+    state.entityDeltaOnly = undefined;
+    state.projectileDeltaOnly = undefined;
     state.visibilityFiltered = input.visibility.isFiltered ? true : undefined;
     state.visionPlayerMask = input.visibility.hasRecipient
       ? input.visibility.getVisionPlayerMask()
