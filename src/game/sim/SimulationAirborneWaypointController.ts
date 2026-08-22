@@ -1,10 +1,8 @@
 import { magnitude } from '../math';
 import { getSimWasm } from '../sim-wasm/init';
 import type { Entity, UnitAction } from './types';
-import {
-  SIMULATION_INVALID_BODY_SLOT,
-  airborneLoiterRadius,
-} from './SimulationAirborneLoiterController';
+import { SIMULATION_INVALID_BODY_SLOT } from './SimulationAirborneLoiterController';
+import { isMovementAnchorAction } from './unitActions';
 import { PATHFINDING_ARRIVAL_RADIUS } from './pathfindingTuning';
 import { entitySlotRegistry } from './EntitySlotRegistry';
 import { growTypedArrays, nextDoublingCapacity } from '../memory/typedArrayGrowth';
@@ -21,21 +19,20 @@ const AIRBORNE_STEER_LOCK_SPEED_FLOOR = 5;
 const AIRBORNE_STEER_DEFAULT_DEADZONE_TURN_RADIUS_MULTIPLIER = 2.5;
 const AIRBORNE_STEER_DEFAULT_FRONT_SLICE_DEGREES = 45;
 
-/** Waypoint steering for cruise locomotion (plane, aerosub). A forward-
- *  flight body cannot brake at a point, and a goal inside its turning circle
- *  cannot be reached by steering toward it — pursuit decays into a
- *  constant-radius orbit that never completes the order. This controller
- *  captures waypoints at flight-appropriate radii (the arrival radius for
- *  intermediate/queued points, the loiter radius for the final point) and
- *  steers every remaining approach through the authored no-turn deadzone:
- *  inside `turnRadiusMultiplier x turn radius` of the waypoint, the unit may
- *  keep turning only while the waypoint sits within `frontSliceDegrees` of
- *  its nose — a stateless per-tick interlock, evaluated for the whole cruise
- *  population in one WASM batch. */
+/** Waypoint steering for cruise locomotion (plane, aerosub). Two rules:
+ *  a NON-TERMINATING waypoint has the authored no-turn deadzone — inside
+ *  `turnRadiusMultiplier x turn radius` of it, the unit may keep turning
+ *  only while the waypoint sits within `frontSliceDegrees` of its nose, so
+ *  a miss is a large straight miss — and captures at the standard arrival
+ *  radius so the queue advances. The TERMINATING (move/fight anchor)
+ *  waypoint has no deadzone and never captures: the unit always turns
+ *  toward it at its constant rate, passing through, turning back, and
+ *  passing again — the perpetual pursuit is the hold, and it counters wind
+ *  by construction. Stateless per tick, one WASM batch for the whole cruise
+ *  population. */
 export class SimulationAirborneWaypointController {
   private readonly advanceAction: (entity: Entity) => void;
   private readonly advanceActivePathPoint: (entity: Entity) => void;
-  private readonly queueAirborneLoiter: (entity: Entity) => void;
   private readonly entities: Entity[] = [];
   private entitySlots = new Int32Array(0);
   private slots = new Uint32Array(0);
@@ -55,12 +52,10 @@ export class SimulationAirborneWaypointController {
     callbacks: {
       advanceAction: (entity: Entity) => void;
       advanceActivePathPoint: (entity: Entity) => void;
-      queueAirborneLoiter: (entity: Entity) => void;
     },
   ) {
     this.advanceAction = callbacks.advanceAction;
     this.advanceActivePathPoint = callbacks.advanceActivePathPoint;
-    this.queueAirborneLoiter = callbacks.queueAirborneLoiter;
   }
 
   /** Route one cruise-unit movement leg: capture the point when inside its
@@ -79,17 +74,14 @@ export class SimulationAirborneWaypointController {
     if (!Number.isFinite(distance)) return;
     const isLastAction =
       isFinalActionPoint && unit.actions.length <= 1 && action.type !== 'patrol';
-    const captureRadius = isLastAction
-      ? airborneLoiterRadius(unit)
-      : PATHFINDING_ARRIVAL_RADIUS;
-    if (distance <= captureRadius) {
+    const terminalPursuit = isLastAction && isMovementAnchorAction(action);
+    if (!terminalPursuit && distance <= PATHFINDING_ARRIVAL_RADIUS) {
       if (isFinalActionPoint) {
         this.advanceAction(entity);
       } else {
         this.advanceActivePathPoint(entity);
       }
       unit.stuckTicks = 0;
-      if (unit.actions.length === 0) this.queueAirborneLoiter(entity);
       return;
     }
 
@@ -106,8 +98,12 @@ export class SimulationAirborneWaypointController {
     this.distance[index] = distance;
     this.rotation[index] = entity.transform.rotation;
     const deadzone = unit.locomotion.motionControl.waypointDeadzone;
-    this.deadzoneMultiplier[index] = deadzone?.turnRadiusMultiplier
-      ?? AIRBORNE_STEER_DEFAULT_DEADZONE_TURN_RADIUS_MULTIPLIER;
+    // Multiplier 0 disables the deadzone in the kernel: the terminating
+    // waypoint is always turned toward, from any angle and any distance.
+    this.deadzoneMultiplier[index] = terminalPursuit
+      ? 0
+      : deadzone?.turnRadiusMultiplier
+        ?? AIRBORNE_STEER_DEFAULT_DEADZONE_TURN_RADIUS_MULTIPLIER;
     this.frontSliceDegrees[index] = deadzone?.frontSliceDegrees
       ?? AIRBORNE_STEER_DEFAULT_FRONT_SLICE_DEGREES;
     this.fallbackVx[index] = unit.velocityX;

@@ -817,12 +817,19 @@ pub(crate) fn compute_airborne_waypoint_steer(
         return (goal_dir_x, goal_dir_y, 0);
     }
 
+    // A terminating waypoint has no deadzone (multiplier 0): the unit always
+    // turns toward it at its constant rate, passing through, turning back,
+    // and passing again — the perpetual pursuit is the hold.
+    if deadzone_turn_radius_multiplier <= 0.0 {
+        return (goal_dir_x, goal_dir_y, 0);
+    }
+
     let turn_radius = if max_yaw_rate > 1.0e-9 && max_yaw_rate.is_finite() {
         (speed / max_yaw_rate).clamp(min_turn_radius, max_turn_radius)
     } else {
         max_turn_radius
     };
-    let deadzone_radius = turn_radius * deadzone_turn_radius_multiplier.max(1.0);
+    let deadzone_radius = turn_radius * deadzone_turn_radius_multiplier;
     if distance >= deadzone_radius {
         return (goal_dir_x, goal_dir_y, 0);
     }
@@ -3038,6 +3045,28 @@ mod tests {
     }
 
     // Speed 200 / yaw ceiling 1 rad/s -> turn radius 200, deadzone 500.
+
+    #[test]
+    fn airborne_steer_terminating_waypoint_always_turns_toward_the_goal() {
+        // Multiplier 0 = terminating waypoint: no deadzone, no lock — the
+        // unit steers at the waypoint from any angle and any distance.
+        let (tx, ty, locked) = compute_airborne_waypoint_steer(
+            -200.0,
+            50.0,
+            (200.0f64 * 200.0 + 50.0 * 50.0).sqrt(),
+            0.0,
+            200.0,
+            0.0,
+            1.0,
+            0.0,
+            STEER_FRONT_SLICE_DEG,
+            STEER_MIN_R,
+            STEER_MAX_R,
+            STEER_SPEED_FLOOR,
+        );
+        assert_eq!(locked, 0);
+        assert!(tx < 0.0 && ty > 0.0);
+    }
 
     #[test]
     fn airborne_steer_waypoint_in_the_front_slice_keeps_turning() {

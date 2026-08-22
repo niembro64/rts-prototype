@@ -1161,7 +1161,7 @@
       <ul class="rule-list">
         <li>Pathfinding chooses where the body should go; locomotion chooses how the body physically arrives there.</li>
         <li>Waypoints are desired motion states, not magnets. They carry an intended position and, when useful, an intended pass-through velocity.</li>
-        <li>Final command points resolve per final-approach class: units that can stop use braking-aware arrival so the body settles without orbiting, bouncing, or springing back across the destination; forward-flight units resolve their final point into the loiter circle instead.</li>
+        <li>Final command points resolve per final-approach class: units that can stop use braking-aware arrival so the body settles without orbiting, bouncing, or springing back across the destination; forward-flight units keep their final point as a permanently active pursuit goal, always turning toward it at their constant rate.</li>
         <li>Hovercraft, ground units, and air units use the same high-level arrival controller; they differ only by mass, thrust, friction, damping, turn authority, contact model, and vertical constraints.</li>
         <li>Hovercraft should remain slippery because their physical limits say so, not because the controller ignores velocity until after overshoot has happened.</li>
         <li>The global BATTLE arrival setting (<code>slowDownAtFinalWaypoint</code>, default BAR-style full-speed arrival) tunes only the middle class. Authored <code>maintainFullThrustAtWaypoints</code> always bypasses the final brake (plane, aerosub); authored <code>alwaysBrakeAtFinalWaypoint</code> always keeps it (drone and every hover chassis); the global setting decides the remaining ground and sea locomotion.</li>
@@ -1181,7 +1181,7 @@
       <ul class="rule-list">
         <li>Ground and hover units re-engage ordinary approach when displaced beyond the arrival radius, then settle and hold again. Only new orders replace the anchor.</li>
         <li>A hover chassis authors <code>alwaysBrakeAtFinalWaypoint</code>: braking-aware arrival and a standing hold at the point are what make it a hover unit, so the global full-speed-arrival setting never strips its final brake.</li>
-        <li>A forward-flight chassis cannot hold a point. Its satisfied anchor becomes the center of the airborne loiter circle &mdash; the same deliberate orbit an uncommanded cruise unit flies &mdash; and the loiter&rsquo;s radial correction is its wind counter. A cruise unit&rsquo;s anchor is never drift-cleared; the orbit is the hold.</li>
+        <li>A forward-flight chassis can neither stop on a point nor hover over one, so its terminating waypoint is never marked satisfied: the plane always turns toward it at its constant turn rate, passing through, turning back, and passing again. The perpetual pursuit is the hold, and it counters wind by construction. The loiter circle exists only for a cruise unit with an <em>empty</em> queue &mdash; never as a substitute for a waypoint the player placed.</li>
       </ul>
 
       <h3>Forward-flight waypoints have a no-turn deadzone with a front slice</h3>
@@ -1195,9 +1195,9 @@
         never fires inside the orbit. The turn permission must be a slice <em>narrower</em> than
         the orbit&rsquo;s lag angle. Cruise locomotion (plane, aerosub) rides the
         <code>alwaysForward</code> actuator, so the orbit cannot even rely on off-nose throttle
-        loss to shrink itself; the interlock is the one thing that breaks it. Every waypoint leg
-        steers through one stateless per-tick interlock, authored per preset in
-        <code>motionControl.waypointDeadzone</code>:
+        loss to shrink itself; the interlock is the one thing that breaks it. Every
+        <em>non-terminating</em> waypoint leg steers through one stateless per-tick interlock,
+        authored per preset in <code>motionControl.waypointDeadzone</code>:
       </p>
       <ul class="rule-list">
         <li><strong>The deadzone</strong> around the current waypoint has radius <code>turnRadiusMultiplier &times; R</code> (authored, <code>2.5</code> on plane and aerosub), where <code>R = speed / turnRate</code> is the natural turn radius. For <code>alwaysForward</code> chassis the turn rate is the authored <code>actuator.turnRateDegreesPerSecond</code> constant-rate slew, so the geometry is exact &mdash; the interlock and the yaw actuator read the same number. Only a chassis without an authored rate falls back to the servo-derived estimate (<code>&pi;&radic;k/4</code> from the damped spring&rsquo;s 90&deg;-lag stall).</li>
@@ -1205,7 +1205,7 @@
         <li><strong>Outside the deadzone steering is free at any angle.</strong> That is where the turn-back happens, with a full deadzone of room to complete the turn and line up a straight pass through the point.</li>
         <li><strong>Why circling cannot persist:</strong> a sustained powered orbit needs enough off-nose thrust to hold speed against drag, and the servo lag of tracking the rotating center direction pushes the nose far off the waypoint &mdash; well outside a 45&deg; slice. The interlock therefore forbids the orbit configuration itself from turning, straightening it into an outbound line. The slice must stay below 90&deg;: at 90&deg; it degenerates into the half-plane a powered orbit never leaves, which is the failure the config validator refuses.</li>
         <li><strong>The lock applies only while actually moving.</strong> A plane pinned against the map boundary at near-zero speed releases the lock and steers freely; at near-zero speed its turning circle is tiny anyway.</li>
-        <li>The interlock covers every pre-capture waypoint leg, the terminal one included &mdash; without it, a wide-turning plane could never reach the terminal capture ring at all. Capture radii are unchanged: a non-final waypoint captures at the standard arrival radius on the pass, so queues and patrol loops always advance; the final waypoint captures at the loiter radius and hands the unit to the loiter circle around its anchor, where turning is again free. The rule is a pure function of position, nose, waypoint, and <code>R</code> each tick &mdash; no latched state, no hysteresis &mdash; and the whole cruise population evaluates in one WASM batch per tick.</li>
+        <li><strong>The terminating waypoint is exempt.</strong> It has no deadzone and never captures: the plane simply always turns toward it, from any angle at any distance, at its constant rate. Non-terminating waypoints capture at the standard arrival radius on the pass, so queues and patrol loops always advance. The rule is a pure function of position, nose, waypoint, and <code>R</code> each tick &mdash; no latched state, no hysteresis &mdash; and the whole cruise population evaluates in one WASM batch per tick.</li>
       </ul>
 
       <h3>Terrain pathfinding is directional around slopes and cliffs</h3>

@@ -394,7 +394,6 @@ export class Simulation {
     this.airborneWaypoint = new SimulationAirborneWaypointController({
       advanceAction: (entity) => this.advanceAction(entity),
       advanceActivePathPoint: (entity) => this.advanceActivePathPoint(entity),
-      queueAirborneLoiter: (entity) => this.airborneLoiter.queue(entity),
     });
     this.stuckReplanController = new SimulationStuckReplanController(
       this.world,
@@ -1609,16 +1608,15 @@ export class Simulation {
       return true;
     }
 
-    // A cruise chassis cannot hold a point: its satisfied anchor is the
-    // center of the deliberate loiter circle instead, and the loiter's
-    // radial correction is its wind counter. Never drift-clear the anchor —
-    // the orbit radius exceeds the arrival radius by design.
+    // A cruise chassis never holds a satisfied anchor: its terminating
+    // waypoint stays a permanently active pursuit goal (the plane always
+    // turns toward it), so clear the flag and fall through to the ordinary
+    // action handling that steers at it.
     if (unit.locomotion.motionControl.cruiseWhenUncommanded) {
+      clearMovementAnchorSatisfied(currentAction);
       unit.activePath = null;
-      unit.stuckTicks = 0;
-      this.airborneLoiter.rememberTarget(unit, currentAction);
-      this.airborneLoiter.queue(entity);
-      return true;
+      this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+      return false;
     }
 
     const dx = currentAction.x - entity.transform.x;
