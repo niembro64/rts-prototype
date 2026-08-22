@@ -343,9 +343,9 @@ export function runCommandExecutionContractTest(): void {
     'queued commands after a satisfied movement anchor must not sit behind the completed anchor',
   );
 
-  // A cruise chassis (plane/aerosub) can never hold a point, so its satisfied
-  // anchor is never drift-cleared: displacement resolves through the loiter
-  // circle around the anchor instead of re-arming the approach.
+  // A cruise chassis (plane/aerosub) never holds a satisfied anchor: its
+  // terminating waypoint stays a permanently active pursuit goal, so a
+  // satisfied flag is cleared on sight and ordinary steering resumes.
   const cruiseAnchorUnit = anchorWorld.createUnitFromBlueprint(64, 96, 1, 'unitEagle', {
     allocateSubEntityIds: false,
   });
@@ -354,16 +354,15 @@ export function runCommandExecutionContractTest(): void {
     { type: 'move', x: 128, y: 96, z: anchorWorld.getGroundZ(128, 96) },
   ]);
   anchorSim.advanceAction(cruiseAnchorUnit);
-  cruiseAnchorUnit.transform.x = 320;
   assertContract(
     anchorSim.handleSatisfiedMovementAnchor(
       cruiseAnchorUnit,
       cruiseAnchorUnit.unit!.actions[0],
-    ) === true &&
-      cruiseAnchorUnit.unit!.actions[0].movementAnchorSatisfied === true &&
-      cruiseAnchorUnit.unit!.airborneLoiterTargetX === 128 &&
-      cruiseAnchorUnit.unit!.airborneLoiterTargetY === 96,
-    'a displaced cruise anchor must stay satisfied and loiter around the anchor point',
+    ) === false &&
+      cruiseAnchorUnit.unit?.actions.length === 1 &&
+      cruiseAnchorUnit.unit.actions[0].type === 'move' &&
+      cruiseAnchorUnit.unit.actions[0].movementAnchorSatisfied !== true,
+    'a cruise anchor must clear its satisfied flag and stay a permanently active pursuit goal',
   );
 
   const patrolWorld = new WorldState(1, 512, 512);
