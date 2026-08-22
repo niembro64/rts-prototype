@@ -27,3 +27,5 @@
 14. Maybe the build spray doesn't need to spin, that's probably an unnecessary computation that is only hurting performance. 
 
 15. Our torpedos that the "orca" unit fires seem to not work well. I think they are configured incorrectly for being released and travelling under water. 
+
+16. I'm not really sure how all of this should work, so you'll have to do a deep dive to see how "Beyond-All-Reason" works in this regard, but for "fighter" plane units how does BAR handle what units it is allowed to lock on to? player initiated "lock on" or "fight move" lock on or "patrol "lock on"? I think our current strategy for defining which units (or weapons on units) can attack what other units. Basically we have to make sure that if a unit can attack another unit, that the player should be able to tell the unit to do so, and vice versa if a player should be able to tell a unit to attack something then it should be able to actually attack it. This is not just for units but also for buildings etc. Essentially we have to make sure that our commands make sense regarding lock on stuff. Be sure not to break functionality like that of our "loris" unit. 
