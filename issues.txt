@@ -21,3 +21,5 @@
 11. On our home screen, let's remove "https://niemo.io" and "niemeyer.eric@gmail.com" and only show that in our "Game Info" page. 
 
 12. We have "BENCH" use an "X" instead for removing the user from the game and putting them back into the spectators list. 
+
+13. Our "spectator" seems to have as much accurate information as the players. The spectators can see some units still alive that the real players actually do not consider alive. It seems that the "spectator" does not actually have fully accurate information about the game. 
