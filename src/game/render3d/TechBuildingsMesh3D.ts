@@ -159,6 +159,25 @@ function createLabFoundationGeometry(
   return geometry;
 }
 
+/** The spire's hyperboloid flank profile in unit-box space: two quadratic
+ *  arcs meeting at the waist keep the flank visibly concave the whole way
+ *  up. Shared by the shaft geometry AND the helical ribbons, so the coil
+ *  winds against the actual flank instead of floating in the air beside the
+ *  pinched waist. */
+const SPIRE_BOTTOM_RADIUS = 0.46;
+const SPIRE_WAIST_RADIUS = 0.25;
+const SPIRE_TOP_RADIUS = 0.32;
+const SPIRE_WAIST_T = 0.58;
+function spireRadiusProfileAt(t: number): number {
+  const clamped = Math.min(1, Math.max(0, t));
+  if (clamped < SPIRE_WAIST_T) {
+    const u = clamped / SPIRE_WAIST_T;
+    return SPIRE_BOTTOM_RADIUS + (SPIRE_WAIST_RADIUS - SPIRE_BOTTOM_RADIUS) * u * (2 - u);
+  }
+  const u = (clamped - SPIRE_WAIST_T) / (1 - SPIRE_WAIST_T);
+  return SPIRE_WAIST_RADIUS + (SPIRE_TOP_RADIUS - SPIRE_WAIST_RADIUS) * u * u;
+}
+
 /** Twisted hyperboloid pylon, normalized to the unit box the caller scales
  *  by (span, height, span): Y spans [-0.5, 0.5]; the radius pinches to a
  *  waist and re-flares while the cross-section rotates. The waist is kept
@@ -169,22 +188,9 @@ function createTwistedSpireGeometry(
   heightSegments: number,
   twistRad: number,
 ): THREE.BufferGeometry {
-  const bottomRadius = 0.46;
-  const waistRadius = 0.25;
-  const topRadius = 0.32;
-  const waistT = 0.58;
   const positions: number[] = [];
   const ringStart: number[] = [];
-  const radiusAt = (t: number): number => {
-    // Two quadratic arcs meeting at the waist keep the flank visibly
-    // concave the whole way up — the hyperboloid silhouette.
-    if (t < waistT) {
-      const u = t / waistT;
-      return bottomRadius + (waistRadius - bottomRadius) * u * (2 - u);
-    }
-    const u = (t - waistT) / (1 - waistT);
-    return waistRadius + (topRadius - waistRadius) * u * u;
-  };
+  const radiusAt = spireRadiusProfileAt;
   for (let h = 0; h <= heightSegments; h++) {
     const t = h / heightSegments;
     const radius = radiusAt(t);
@@ -231,13 +237,18 @@ function getSpireShaftGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometr
       : createTwistedSpireGeometry(5, 2, 2.4));
 }
 
-/** Helical ribbon in world units, spiralling around the spire between
- *  yBottom and yTop while its orbit radius eases inward. */
+/** Helical ribbon in world units, winding around the spire between yBottom
+ *  and yTop. The orbit radius tracks the spire's own hyperboloid flank plus
+ *  a small clearance — a straight-line taper left the coil's upper windings
+ *  floating in open air around the pinched waist, which from the top-down
+ *  battle camera read as a massive detached spiral hovering over the lab. */
 function createHelixRibbonGeometry(
   yBottom: number,
   yTop: number,
-  radiusBottom: number,
-  radiusTop: number,
+  spireBaseY: number,
+  spireHeight: number,
+  spireSpan: number,
+  clearance: number,
   turns: number,
   phase: number,
   tubularSegments: number,
@@ -247,11 +258,13 @@ function createHelixRibbonGeometry(
   const points: THREE.Vector3[] = [];
   for (let i = 0; i <= tubularSegments; i++) {
     const t = i / tubularSegments;
+    const y = yBottom + (yTop - yBottom) * t;
+    const spireT = spireHeight > 0 ? (y - spireBaseY) / spireHeight : 0;
+    const radius = spireRadiusProfileAt(spireT) * spireSpan + clearance;
     const angle = phase + t * turns * Math.PI * 2;
-    const radius = radiusBottom + (radiusTop - radiusBottom) * t;
     points.push(new THREE.Vector3(
       Math.cos(angle) * radius,
-      yBottom + (yTop - yBottom) * t,
+      y,
       Math.sin(angle) * radius,
     ));
   }
@@ -262,8 +275,10 @@ function createHelixRibbonGeometry(
 type RibbonSpec = Readonly<{
   yBottom: number;
   yTop: number;
-  radiusBottom: number;
-  radiusTop: number;
+  spireBaseY: number;
+  spireHeight: number;
+  spireSpan: number;
+  clearance: number;
   tubeRadius: number;
   phase: number;
 }>;
@@ -273,12 +288,15 @@ function getSpireRibbonGeometry(
   spec: RibbonSpec,
 ): THREE.BufferGeometry {
   const key = `${tier}:${spec.phase}:${spec.yBottom}:${spec.yTop}:`
-    + `${spec.radiusBottom}:${spec.radiusTop}:${spec.tubeRadius}`;
+    + `${spec.spireBaseY}:${spec.spireHeight}:${spec.spireSpan}:`
+    + `${spec.clearance}:${spec.tubeRadius}`;
   return getOrCreate(spireRibbonGeomByKey, key, () => createHelixRibbonGeometry(
     spec.yBottom,
     spec.yTop,
-    spec.radiusBottom,
-    spec.radiusTop,
+    spec.spireBaseY,
+    spec.spireHeight,
+    spec.spireSpan,
+    spec.clearance,
     2.4,
     spec.phase,
     tier === 'close' ? 20 : tier === 'mid' ? 10 : 5,
@@ -388,12 +406,15 @@ export function buildShieldTargetingTechMesh(
   // tier (the LOD anchor contract); only the tube tessellation simplifies.
   // The second ribbon is tagged tinyTrim so the runtime detail-level gate
   // can drop it first.
+  const ribbonTubeRadius = minDim * 0.018;
   const ribbonBase: Omit<RibbonSpec, 'phase'> = {
     yBottom: spireBaseY + minDim * 0.02,
     yTop: height * 0.71,
-    radiusBottom: minDim * 0.245,
-    radiusTop: minDim * 0.145,
-    tubeRadius: minDim * 0.018,
+    spireBaseY,
+    spireHeight,
+    spireSpan,
+    clearance: ribbonTubeRadius * 1.5,
+    tubeRadius: ribbonTubeRadius,
   };
   details.push(detail(
     new THREE.Mesh(getSpireRibbonGeometry(tier, { ...ribbonBase, phase: 0 }), techCoilMat),
