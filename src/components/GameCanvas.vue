@@ -2830,6 +2830,7 @@ watchEffect(() => {
           :channels="battleChatChannels"
           :active-channel-id="chatChannelId"
           placeholder="Enter to chat"
+          transient
           @send="sendBattleChat"
           @update:active-channel-id="(id: string) => (chatChannelId = id === 'all' ? 'all' : 'team')"
         />
