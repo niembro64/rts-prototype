@@ -1,0 +1,5 @@
+1. Give the commander a more powerful version of the beam turret that it has now.
+
+2. If I hover an enemy unit should it show its radiuses? Should it show info in the info box (bottom left box?)? Currently it only shows info on enemy units if I have one of my own units (entities) selected. Do a deep dive in what info should be shown in different conditions when we hover or select my units, team units, enemy units etc. Look at "Beyond-All-Reason" for the right way to do all o this then implement that here. 
+
+3. Describe where our chat windows should be in our three locations, where the size they should be, when they should appear or disappear (if at all), then implement it. Make good UX/UI decisions, and also base it off of "Beyond-All-Reason" chat in general. 

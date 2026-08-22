@@ -60,29 +60,29 @@ uniform float uFogOfWarRadarDesaturation;
 uniform float uEntityShadowEnabled;
 uniform float uEntityShadowDarkness;
 
-// Read a MAX-composited coverage field written by the region pass.
+// Read a UNION-composited coverage field written by the region pass
+// (src + dst * (1 - src) per channel — overlapping rings reinforce and the
+// field is smooth across their seam; see the region material's blend state).
 //
 // The region pass already applied the authored penumbra (1 - smoothstep across
 // the soft edge) before compositing, so this is a lookup plus a TAIL CLAMP and
 // deliberately not a second curve. The clamp is what the old
 // smoothstep(0.02, 0.98) was actually needed for — snapping the near-zero tail
 // to zero so a faint haze does not cover the whole map, and the near-one tail
-// to one — and it does that without reshaping.
-//
-// Reshaping mattered because MAX leaves a gradient CREASE wherever two regions
-// are equally strong: the field is continuous, its slope is not. A second
-// S-curve steepens the middle and amplifies that fold into a visible seam,
-// whose position depends on the two sources' relative distance — so it swept
-// across the ground as they moved. Shaping once leaves the fold where it
-// belongs, below the threshold of visibility.
+// to one — and it does that without reshaping. Reshaping redistributes the
+// authored penumbra, and under the earlier MAX compositing a second S-curve
+// also amplified MAX's gradient crease into a seam that swept across the
+// ground as sources moved — which is why this stays a clamp even now that the
+// union has removed the crease itself.
 float worldShadeField(float composited) {
   return clamp((composited - 0.02) / 0.96, 0.0, 1.0);
 }
 `;
 
 /** Applies full-sight, radar, unseen, and optional entity-shadow coverage from
- * one map sample. Darkness is a max-union, so overlapping regions never stack
- * darker than their authored tier. */
+ * one map sample. Coverage is a probabilistic union, so overlapping regions
+ * reinforce each other — never darker than either alone, saturating at full
+ * coverage. */
 export function worldShadeFragment(
   worldPosition: string,
   receiveEntityShadows: boolean,
@@ -242,7 +242,8 @@ type RegionBuffers = {
 /** One viewport-local GPU coverage draw. The first MRT attachment stores
  * above-water full/contact and underwater full/contact coverage in RGBA; the
  * second stores entity shadows. Every region is rasterized in one instanced
- * MAX-blended draw. */
+ * union-blended draw (screen blend — overlapping coverage reinforces and
+ * saturates at 1). */
 export class WorldShade3D {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly mapWidth: number;
@@ -409,10 +410,22 @@ void main() {
 `,
       glslVersion: THREE.GLSL3,
       transparent: true,
+      // Regions composite as a probabilistic union: src + dst * (1 - src)
+      // = 1 - (1-src)(1-dst) per channel. MAX sat here before, and it drew a
+      // dark streak between every pair of overlapping rings: max leaves the
+      // crossing of two half-strength penumbras at half strength — a darkness
+      // valley connecting the circles — and folds the field's gradient along
+      // the equal-coverage locus, a slope kink Mach banding renders as a
+      // line. The union reinforces overlaps, is smooth across the seam, stays
+      // in [0,1], and is order-independent. A region's unwritten channels are
+      // 0, which the union passes through untouched, exactly as MAX did.
+      // WebGL applies one blend state to every MRT attachment, so entity
+      // shadows union too: overlapping shadows deepen toward saturation
+      // instead of flat-maxing, and lose the same seam crease.
       blending: THREE.CustomBlending,
-      blendEquation: THREE.MaxEquation,
+      blendEquation: THREE.AddEquation,
       blendSrc: THREE.OneFactor,
-      blendDst: THREE.OneFactor,
+      blendDst: THREE.OneMinusSrcColorFactor,
       depthTest: false,
       depthWrite: false,
       toneMapped: false,
