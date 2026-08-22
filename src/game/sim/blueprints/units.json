@@ -4964,7 +4964,7 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretBeam",
+        "turretBlueprintId": "turretBeamMega",
         "presentation": {
           "headRadius": 7.8,
           "headOnly": false,
