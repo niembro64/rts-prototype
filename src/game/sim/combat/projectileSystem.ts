@@ -1822,15 +1822,19 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
       ? normalizeAngle(rotation - previousRotation) / dtSec
       : 0;
 
-    updateProjectileArming(
-      proj,
-      world.getEntity(proj.shotSource.sourceHostEntityId),
-      proj.prevX ?? x,
-      proj.prevY ?? y,
-      proj.prevZ ?? z,
-      x, y, z,
-      proj.config.shotProfile.runtime.radius.hitbox,
-    );
+    // Armed shots (the steady state) early-out inside updateProjectileArming
+    // before touching the host — don't pay the entity lookup for them.
+    if (!proj.isArmed && proj.projectileType === 'projectile') {
+      updateProjectileArming(
+        proj,
+        world.getEntity(proj.shotSource.sourceHostEntityId),
+        proj.prevX ?? x,
+        proj.prevY ?? y,
+        proj.prevZ ?? z,
+        x, y, z,
+        proj.config.shotProfile.runtime.radius.hitbox,
+      );
+    }
   }
 }
 
@@ -2189,15 +2193,19 @@ function _updateTravelingProjectilesJS(
     proj.velocityY = vy;
     proj.velocityZ = vz;
 
-    updateProjectileArming(
-      proj,
-      world.getEntity(proj.shotSource.sourceHostEntityId),
-      proj.prevX ?? x,
-      proj.prevY ?? y,
-      proj.prevZ ?? z,
-      x, y, z,
-      proj.config.shotProfile.runtime.radius.hitbox,
-    );
+    // Armed shots (the steady state) early-out inside updateProjectileArming
+    // before touching the host — don't pay the entity lookup for them.
+    if (!proj.isArmed && proj.projectileType === 'projectile') {
+      updateProjectileArming(
+        proj,
+        world.getEntity(proj.shotSource.sourceHostEntityId),
+        proj.prevX ?? x,
+        proj.prevY ?? y,
+        proj.prevZ ?? z,
+        x, y, z,
+        proj.config.shotProfile.runtime.radius.hitbox,
+      );
+    }
 
     // Rotation is authoritative simulation state for every traveling shot.
     // Purely vertical launch phases retain their authored yaw until horizontal

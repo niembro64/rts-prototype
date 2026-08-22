@@ -6,6 +6,7 @@ import type {
 } from './combat';
 
 const EMPTY_MOTION_UPDATES: ProjectileMotionUpdateEvent[] = [];
+const byNumberAscendingComparator = (a: number, b: number): number => a - b;
 
 export class SimulationEventQueues {
   private readonly audioA: SimEvent[] = [];
@@ -55,8 +56,17 @@ export class SimulationEventQueues {
     buf.length = 0;
     const ids = this.motionUpdateIds;
     ids.length = 0;
-    for (const id of map.keys()) ids.push(id);
-    ids.sort((a, b) => a - b);
+    let sorted = true;
+    let prev = -Infinity;
+    for (const id of map.keys()) {
+      ids.push(id);
+      if (id < prev) sorted = false;
+      prev = id;
+    }
+    // Map iteration is insertion order, which is ascending-id in steady
+    // state (projectiles register in spawn order); skip the O(n log n)
+    // sort — and its per-call comparator closure — when already sorted.
+    if (!sorted) ids.sort(byNumberAscendingComparator);
     for (let i = 0; i < ids.length; i++) {
       const event = map.get(ids[i]);
       if (event !== undefined) buf.push(event);

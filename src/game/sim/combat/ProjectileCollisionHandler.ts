@@ -1,4 +1,5 @@
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
+import { SIM_TICK_INSTRUMENTATION } from '@/game/perf/SimTickInstrumentation';
 // Projectile collision detection and damage application
 
 import type { WorldState } from '../WorldState';
@@ -1296,6 +1297,7 @@ export function checkProjectileCollisions(
   refreshProjectileCollisionTurretMounts(world, dtMs);
   clipTerminalWaterTransitions(world, projectileEntities);
   computeProjectileReflectorHits(world, projectileEntities, collisionDtMs);
+  SIM_TICK_INSTRUMENTATION.phase('combat.proj.reflector');
 
   for (let projectileOrdinal = 0; projectileOrdinal < projectileEntities.length; projectileOrdinal++) {
     const projEntity = projectileEntities[projectileOrdinal];
@@ -1954,6 +1956,7 @@ export function checkProjectileCollisions(
     }
     world.removeEntity(id);
   }
+  SIM_TICK_INSTRUMENTATION.phase('combat.proj.sweepTerminal');
 
   return {
     deadUnitIds: unitsToRemove,

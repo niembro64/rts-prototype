@@ -3,6 +3,7 @@ import {
 } from '@/types/terrain';
 import { getTerrainDividerTeamCount } from '../playerLayout';
 import { getSimWasm } from '../../sim-wasm/init';
+import { markTerrainInstallStateDirty } from './terrainSurface';
 import type { TerrainPrecedence } from '@/types/terrainPrecedence';
 import {
   applyTerrainRuntimeConfig,
@@ -45,6 +46,7 @@ export function resetTerrainStateForDeterministicReplay(): void {
     sim.terrainClear();
     sim.vegetationClear();
   }
+  markTerrainInstallStateDirty();
 }
 
 export function invalidateTerrainConfig(): void {
@@ -59,6 +61,7 @@ export function invalidateTerrainConfig(): void {
     sim.terrainClear();
     sim.vegetationClear();
   }
+  markTerrainInstallStateDirty();
 }
 
 /** Copy the just-installed TerrainTileMap into WASM linear memory so

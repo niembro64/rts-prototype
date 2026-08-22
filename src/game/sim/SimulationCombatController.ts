@@ -241,11 +241,13 @@ export class SimulationCombatController {
       this.eventQueues.projectileDespawns.push(event);
       this.projectileMotionEvents.delete(event.id);
     }
+    SIM_TICK_INSTRUMENTATION.phase('combat.proj.integrate');
 
     // Refresh projectile broadphase after integration. The frame-level
     // spatial update ran before combat, so projectile-vs-projectile
     // hitbox checks need the post-move positions here.
     spatialGrid.updateProjectiles(this.world.getTravelingProjectiles());
+    SIM_TICK_INSTRUMENTATION.phase('combat.proj.broadphase');
 
     // Check projectile collisions and get dead units
     const collisionResult = checkProjectileCollisions(
@@ -308,6 +310,7 @@ export class SimulationCombatController {
       event.ownerId = projectile.ownerId;
       this.eventQueues.projectileMotionUpdates.set(entity.id, event);
     }
+    SIM_TICK_INSTRUMENTATION.phase('combat.proj.spawnPresentation');
 
     this.deathExplosionPlanner.detonate(
       collisionResult.deadUnitIds,

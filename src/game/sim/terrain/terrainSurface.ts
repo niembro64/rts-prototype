@@ -19,6 +19,29 @@ import {
 const _normalWasmScratch = new Float64Array(3);
 const _bedNormalWasmScratch = new Float64Array(3);
 
+/** Cached "WASM mesh installed" answer. Polling `terrainIsInstalled()` is a
+ * boundary crossing and this module's samplers run thousands of times per
+ * tick (every projectile terminal classify, every beam ground sample). A
+ * POSITIVE answer is cached against the sim instance and cleared explicitly
+ * by terrainState on `terrainClear`; a NEGATIVE answer is re-polled on every
+ * call, so the cache can never miss a later install. A momentarily stale
+ * positive (between clear and the dirty mark) degrades gracefully: the Rust
+ * samplers return their NaN/0 sentinels and callers take the JS fallback. */
+let _terrainInstalledSim: object | null = null;
+
+export function markTerrainInstallStateDirty(): void {
+  _terrainInstalledSim = null;
+}
+
+function isTerrainInstalled(sim: NonNullable<ReturnType<typeof getSimWasm>>): boolean {
+  if ((sim as unknown as object) === _terrainInstalledSim) return true;
+  if (sim.terrainIsInstalled() !== 0) {
+    _terrainInstalledSim = sim as unknown as object;
+    return true;
+  }
+  return false;
+}
+
 export function getSurfaceNormal(
   x: number,
   z: number,
@@ -28,7 +51,7 @@ export function getSurfaceNormal(
   out?: { nx: number; ny: number; nz: number },
 ): { nx: number; ny: number; nz: number } {
   const sim = getSimWasm();
-  if (sim !== undefined && sim.terrainIsInstalled() !== 0) {
+  if (sim !== undefined && isTerrainInstalled(sim)) {
     const ok = sim.terrainGetSurfaceNormal(x, z, _normalWasmScratch);
     if (ok !== 0) {
       if (out !== undefined) {
@@ -104,7 +127,7 @@ export function getSurfaceHeight(
   cellSize: number = LAND_CELL_SIZE,
 ): number {
   const sim = getSimWasm();
-  if (sim !== undefined && sim.terrainIsInstalled() !== 0) {
+  if (sim !== undefined && isTerrainInstalled(sim)) {
     const h = sim.terrainGetSurfaceHeight(x, z);
     if (!Number.isNaN(h)) return h;
     // Fall through to TS path on NaN sentinel — degenerate triangle
@@ -124,7 +147,7 @@ export function getTerrainBedHeight(
   cellSize: number = LAND_CELL_SIZE,
 ): number {
   const sim = getSimWasm();
-  if (sim !== undefined && sim.terrainIsInstalled() !== 0) {
+  if (sim !== undefined && isTerrainInstalled(sim)) {
     const h = sim.terrainGetBedHeight(x, z);
     if (!Number.isNaN(h)) return h;
   }
@@ -140,7 +163,7 @@ export function getTerrainBedNormal(
   out?: { nx: number; ny: number; nz: number },
 ): { nx: number; ny: number; nz: number } {
   const sim = getSimWasm();
-  if (sim !== undefined && sim.terrainIsInstalled() !== 0) {
+  if (sim !== undefined && isTerrainInstalled(sim)) {
     const ok = sim.terrainGetBedNormal(x, z, _bedNormalWasmScratch);
     if (ok !== 0) {
       if (out !== undefined) {
