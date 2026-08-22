@@ -69,6 +69,13 @@ function cloneServerMeta(meta: NetworkServerSnapshotMeta): NetworkServerSnapshot
     shieldReflectionMode: meta.shieldReflectionMode,
     fogOfWarEnabled: meta.fogOfWarEnabled,
     converterTax: meta.converterTax,
+    autoConversionThresholds: meta.autoConversionThresholds
+      ? {
+          playerIds: [...meta.autoConversionThresholds.playerIds],
+          energyAt: [...meta.autoConversionThresholds.energyAt],
+          metalAt: [...meta.autoConversionThresholds.metalAt],
+        }
+      : undefined,
     cpu: meta.cpu ? { ...meta.cpu } : undefined,
     wind: meta.wind ? { ...meta.wind } : undefined,
     unitGroundNormalEma: meta.unitGroundNormalEma,

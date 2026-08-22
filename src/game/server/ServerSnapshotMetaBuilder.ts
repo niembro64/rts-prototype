@@ -21,6 +21,7 @@ type ServerSnapshotMetaInput = {
   shieldReflectionMode: ShieldReflectionMode | undefined;
   fogOfWarEnabled: boolean | undefined;
   converterTax: number | undefined;
+  autoConversionThresholds: NetworkServerSnapshotMeta['autoConversionThresholds'];
   tickMsAvg: number;
   tickMsHi: number;
   tickMsInitialized: boolean;
@@ -71,6 +72,7 @@ export class ServerSnapshotMetaBuilder {
       shieldReflectionMode: input.shieldReflectionMode,
       fogOfWarEnabled: input.fogOfWarEnabled,
       converterTax: input.converterTax,
+      autoConversionThresholds: input.autoConversionThresholds,
       cpu: { avg: cpuAvg, hi: cpuHi },
       wind: {
         x: input.wind.x,

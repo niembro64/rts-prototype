@@ -88,6 +88,8 @@ class EconomyManager {
   private converterPlayerIds = new Uint32Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
   private converterEntityIds = new Float64Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
   private converterRates = new Float64Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
+  private converterEnergyConvertAtByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+  private converterMetalConvertAtByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
   private converterEnergyCurrByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
   private converterEnergyMaxByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
   private converterMetalCurrByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
@@ -520,9 +522,13 @@ class EconomyManager {
   }
 
   /** Per-tick conversion pass for resource converter buildings. Each
-   *  completed converter consumes energy at its blueprint conversionRate
-   *  and credits metal at `consumed * (1 - tax)`, clamped by current
-   *  energy and metal stockpile headroom. */
+   *  completed converter moves whichever resource sits above its player's
+   *  auto-conversion slider point toward the other resource at the
+   *  blueprint conversionRate, crediting `consumed * (1 - tax)`.
+   *  Conversion never drains a source below its own point nor fills a
+   *  destination past the destination's point, so the two directions are
+   *  mutually exclusive each tick (see rust
+   *  economy_compute_converter_transfer_value). */
   processConverters(world: WorldState, dtMs: number): void {
     const dtSec = dtMs / 1000;
     if (dtSec <= 0) return;
@@ -561,12 +567,18 @@ class EconomyManager {
         this.converterEnergyMaxByPlayer[playerId] = 0;
         this.converterMetalCurrByPlayer[playerId] = 0;
         this.converterMetalMaxByPlayer[playerId] = 0;
+        this.converterEnergyConvertAtByPlayer[playerId] = 1;
+        this.converterMetalConvertAtByPlayer[playerId] = 1;
         continue;
       }
       this.converterEnergyCurrByPlayer[playerId] = economy.stockpile.curr;
       this.converterEnergyMaxByPlayer[playerId] = economy.stockpile.max;
       this.converterMetalCurrByPlayer[playerId] = economy.metal.stockpile.curr;
       this.converterMetalMaxByPlayer[playerId] = economy.metal.stockpile.max;
+      this.converterEnergyConvertAtByPlayer[playerId] =
+        world.getAutoConversionEnergyAt(playerId as PlayerId);
+      this.converterMetalConvertAtByPlayer[playerId] =
+        world.getAutoConversionMetalAt(playerId as PlayerId);
     }
 
     const sim = getSimWasm();
@@ -579,6 +591,8 @@ class EconomyManager {
       converterCount,
       dtSec,
       tax,
+      this.converterEnergyConvertAtByPlayer,
+      this.converterMetalConvertAtByPlayer,
       this.converterEnergyCurrByPlayer,
       this.converterEnergyMaxByPlayer,
       this.converterMetalCurrByPlayer,
@@ -705,6 +719,8 @@ class EconomyManager {
       playerId + 1,
     );
     this.converterRatesByPlayer = new Float64Array(nextCapacity);
+    this.converterEnergyConvertAtByPlayer = new Float64Array(nextCapacity);
+    this.converterMetalConvertAtByPlayer = new Float64Array(nextCapacity);
     this.converterEnergyCurrByPlayer = new Float64Array(nextCapacity);
     this.converterEnergyMaxByPlayer = new Float64Array(nextCapacity);
     this.converterMetalCurrByPlayer = new Float64Array(nextCapacity);

@@ -82,7 +82,8 @@ type CommandType =
   | 'setSlopePathMode'
   | 'setMetalCoverage'
   | 'setLiquidSurfaceMode'
-  | 'setConverterTax';
+  | 'setConverterTax'
+  | 'setAutoConversionThresholds';
 
 export type BaseCommand = {
   type: CommandType;
@@ -677,6 +678,16 @@ export type SetConverterTaxCommand = BaseCommand & {
   tax: number;
 };
 
+/** Per-player auto-conversion slider points (fractions of storage; see
+ *  types/autoConversion). Like `resign`, `playerId` names the SUBJECT
+ *  seat and the authorizer requires it to be the issuing seat. */
+export type SetAutoConversionThresholdsCommand = BaseCommand & {
+  type: 'setAutoConversionThresholds';
+  playerId: PlayerId;
+  energyConvertAt: number;
+  metalConvertAt: number;
+};
+
 export type Command =
   | SelectCommand
   | MoveCommand
@@ -742,4 +753,5 @@ export type Command =
   | SetSlopePathModeCommand
   | SetMetalCoverageCommand
   | SetLiquidSurfaceModeCommand
-  | SetConverterTaxCommand;
+  | SetConverterTaxCommand
+  | SetAutoConversionThresholdsCommand;

@@ -466,6 +466,10 @@ export function applyGameplaySettingCommand(
     case 'setConverterTax':
       world.converterTax = command.tax;
       return;
+    case 'setAutoConversionThresholds':
+      world.autoConversionEnergyAt.set(command.playerId, command.energyConvertAt);
+      world.autoConversionMetalAt.set(command.playerId, command.metalConvertAt);
+      return;
     default:
       return;
   }

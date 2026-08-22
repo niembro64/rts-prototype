@@ -170,6 +170,11 @@ export function authorizeGameServerGameplayCommand(
     case 'resign':
       return command.playerId === playerId ? command : null;
 
+    // Same SUBJECT-is-the-seat shape as resign: a player may only move
+    // their own auto-conversion slider points.
+    case 'setAutoConversionThresholds':
+      return command.playerId === playerId ? command : null;
+
     case 'setTowerTarget':
       return authorizeSetTowerTargetCommand(world, command, playerId);
 

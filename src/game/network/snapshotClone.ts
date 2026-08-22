@@ -2,6 +2,7 @@ import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotEconomy,
   NetworkServerSnapshotEntity,
+  NetworkServerSnapshotMeta,
   NetworkServerSnapshotMinimapEntity,
   NetworkServerSnapshotProjectileDespawn,
   NetworkServerSnapshotProjectileSpawn,
@@ -443,12 +444,16 @@ export class ReusableNetworkSnapshotCloner {
     shieldReflectionMode: undefined,
     fogOfWarEnabled: undefined,
     converterTax: undefined,
+    autoConversionThresholds: undefined,
     cpu: undefined,
     wind: undefined,
     retainedPools: undefined,
     unitGroundNormalEma: undefined,
   };
   private serverMetaUnitsAllowed: string[] = [];
+  private serverMetaAutoConversion: NonNullable<
+    NetworkServerSnapshotMeta['autoConversionThresholds']
+  > = { playerIds: [], energyAt: [], metalAt: [] };
   private serverMetaCpu = { avg: 0, hi: 0 };
   private serverMetaWind = { x: 0, y: 0, z: 0, speed: 0, angle: 0 };
   private serverMetaRetainedPools = {
@@ -634,6 +639,17 @@ export class ReusableNetworkSnapshotCloner {
       dsm.shieldPowerPlayerMask = sm.shieldPowerPlayerMask;
       dsm.shieldReflectionMode = sm.shieldReflectionMode;
       dsm.fogOfWarEnabled = sm.fogOfWarEnabled;
+      dsm.converterTax = sm.converterTax;
+      if (sm.autoConversionThresholds) {
+        const sac = sm.autoConversionThresholds;
+        const dac = this.serverMetaAutoConversion;
+        dac.playerIds = copyScalarArrayInto(sac.playerIds, dac.playerIds);
+        dac.energyAt = copyScalarArrayInto(sac.energyAt, dac.energyAt);
+        dac.metalAt = copyScalarArrayInto(sac.metalAt, dac.metalAt);
+        dsm.autoConversionThresholds = dac;
+      } else {
+        dsm.autoConversionThresholds = undefined;
+      }
       if (sm.cpu) {
         this.serverMetaCpu.avg = sm.cpu.avg;
         this.serverMetaCpu.hi = sm.cpu.hi;

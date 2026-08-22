@@ -3515,8 +3515,12 @@ mod sim_kernel_tests {
     pub(crate) fn economy_converter_transfer_consumes_energy_and_caps_by_metal_headroom() {
         let mut out = [0.0; 4];
 
+        // (energy_convert_at = 0, metal_convert_at = 1) is the historical
+        // one-way energy -> metal behavior; these are the legacy vectors.
         assert_eq!(
-            economy_compute_converter_transfer(10.0, 100.0, 80.0, 100.0, 25.0, 1.0, 0.2, &mut out),
+            economy_compute_converter_transfer(
+                10.0, 100.0, 80.0, 100.0, 25.0, 1.0, 0.2, 0.0, 1.0, &mut out
+            ),
             1
         );
         assert!((out[0] - 10.0).abs() < 1e-12);
@@ -3525,7 +3529,9 @@ mod sim_kernel_tests {
         assert_eq!(out[3], ECONOMY_RESOURCE_METAL_CODE as f64);
 
         assert_eq!(
-            economy_compute_converter_transfer(80.0, 100.0, 10.0, 25.0, 50.0, 1.0, 0.5, &mut out),
+            economy_compute_converter_transfer(
+                80.0, 100.0, 10.0, 25.0, 50.0, 1.0, 0.5, 0.0, 1.0, &mut out
+            ),
             1
         );
         assert!((out[0] - 30.0).abs() < 1e-12);
@@ -3534,7 +3540,9 @@ mod sim_kernel_tests {
         assert_eq!(out[3], ECONOMY_RESOURCE_METAL_CODE as f64);
 
         assert_eq!(
-            economy_compute_converter_transfer(50.0, 100.0, 50.0, 100.0, 25.0, 1.0, 0.2, &mut out),
+            economy_compute_converter_transfer(
+                50.0, 100.0, 50.0, 100.0, 25.0, 1.0, 0.2, 0.0, 1.0, &mut out
+            ),
             1
         );
         assert!((out[0] - 25.0).abs() < 1e-12);
@@ -3545,10 +3553,97 @@ mod sim_kernel_tests {
         let mut short = [0.0; 3];
         assert_eq!(
             economy_compute_converter_transfer(
-                10.0, 100.0, 80.0, 100.0, 25.0, 1.0, 0.2, &mut short
+                10.0, 100.0, 80.0, 100.0, 25.0, 1.0, 0.2, 0.0, 1.0, &mut short
             ),
             0
         );
+    }
+
+    #[test]
+    pub(crate) fn economy_converter_transfer_is_bidirectional_around_slider_points() {
+        let mut out = [0.0; 4];
+
+        // Energy above its point, metal below its point: energy -> metal.
+        // Source excess = 90 - 0.75*100 = 15 caps the transfer under the
+        // rate; output = 15 * (1 - 0.2) = 12 fits under metal's point.
+        assert_eq!(
+            economy_compute_converter_transfer(
+                90.0, 100.0, 10.0, 100.0, 25.0, 1.0, 0.2, 0.75, 0.75, &mut out
+            ),
+            1
+        );
+        assert!((out[0] - 15.0).abs() < 1e-12);
+        assert!((out[1] - 12.0).abs() < 1e-12);
+        assert_eq!(out[2], ECONOMY_RESOURCE_ENERGY_CODE as f64);
+        assert_eq!(out[3], ECONOMY_RESOURCE_METAL_CODE as f64);
+
+        // Metal maxed, energy low: metal -> energy (the direction the old
+        // kernel could never take — it returned zeros here).
+        assert_eq!(
+            economy_compute_converter_transfer(
+                10.0, 100.0, 100.0, 100.0, 20.0, 1.0, 0.2, 0.75, 0.75, &mut out
+            ),
+            1
+        );
+        assert!((out[0] - 20.0).abs() < 1e-12);
+        assert!((out[1] - 16.0).abs() < 1e-12);
+        assert_eq!(out[2], ECONOMY_RESOURCE_METAL_CODE as f64);
+        assert_eq!(out[3], ECONOMY_RESOURCE_ENERGY_CODE as f64);
+
+        // Destination fills only to ITS slider point, never to storage max:
+        // energy 100/100 -> metal 70/100 with metal point 0.75 accepts 5.
+        assert_eq!(
+            economy_compute_converter_transfer(
+                100.0, 100.0, 70.0, 100.0, 50.0, 1.0, 0.2, 0.5, 0.75, &mut out
+            ),
+            1
+        );
+        assert!((out[1] - 5.0).abs() < 1e-12);
+        assert!((out[0] - 6.25).abs() < 1e-12);
+        assert_eq!(out[2], ECONOMY_RESOURCE_ENERGY_CODE as f64);
+        assert_eq!(out[3], ECONOMY_RESOURCE_METAL_CODE as f64);
+
+        // Both resources above their points: each destination is at or past
+        // its own convert-away point, so NEITHER direction runs (no churn).
+        assert_eq!(
+            economy_compute_converter_transfer(
+                90.0, 100.0, 90.0, 100.0, 25.0, 1.0, 0.2, 0.75, 0.75, &mut out
+            ),
+            1
+        );
+        assert_eq!(out[0], 0.0);
+        assert_eq!(out[1], 0.0);
+        assert_eq!(out[2], ECONOMY_RESOURCE_NONE_CODE as f64);
+        assert_eq!(out[3], ECONOMY_RESOURCE_NONE_CODE as f64);
+
+        // Both below their points: nothing is in surplus, nothing converts.
+        assert_eq!(
+            economy_compute_converter_transfer(
+                50.0, 100.0, 50.0, 100.0, 25.0, 1.0, 0.2, 0.75, 0.75, &mut out
+            ),
+            1
+        );
+        assert_eq!(out[2], ECONOMY_RESOURCE_NONE_CODE as f64);
+        assert_eq!(out[3], ECONOMY_RESOURCE_NONE_CODE as f64);
+
+        // Non-finite slider input fails CLOSED (treated as 1.0 = never).
+        assert_eq!(
+            economy_compute_converter_transfer(
+                100.0,
+                100.0,
+                10.0,
+                100.0,
+                25.0,
+                1.0,
+                0.2,
+                f64::NAN,
+                0.75,
+                &mut out
+            ),
+            1
+        );
+        assert_eq!(out[2], ECONOMY_RESOURCE_NONE_CODE as f64);
+        assert_eq!(out[3], ECONOMY_RESOURCE_NONE_CODE as f64);
     }
 
     #[test]
@@ -3568,6 +3663,10 @@ mod sim_kernel_tests {
         let mut out_output = [99.0; 5];
         let mut out_consumed_resource = [9; 5];
         let mut out_output_resource = [9; 5];
+        // Legacy one-way thresholds: convert energy away from any level,
+        // fill metal to storage max.
+        let energy_convert_at = [0.0; 3];
+        let metal_convert_at = [1.0; 3];
 
         assert_eq!(
             economy_apply_converter_transfers(
@@ -3576,6 +3675,8 @@ mod sim_kernel_tests {
                 5,
                 1.0,
                 0.2,
+                &energy_convert_at,
+                &metal_convert_at,
                 &mut energy_curr,
                 &energy_max,
                 &mut metal_curr,
@@ -3626,6 +3727,8 @@ mod sim_kernel_tests {
                 5,
                 1.0,
                 0.2,
+                &energy_convert_at,
+                &metal_convert_at,
                 &mut energy_curr,
                 &energy_max,
                 &mut metal_curr,
