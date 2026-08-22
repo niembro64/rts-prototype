@@ -1132,7 +1132,6 @@ pub fn combat_targeting_schedule_and_tick_batch(
             entity_ready,
             fire_enabled,
             source_view_mask,
-            has_enabled_weapon,
             priority_target_id,
             priority_point_present_val,
             priority_point_x,
@@ -1151,7 +1150,6 @@ pub fn combat_targeting_schedule_and_tick_batch(
                     false,
                     false,
                     0u32,
-                    false,
                     -1i32,
                     0u8,
                     0.0,
@@ -1169,7 +1167,6 @@ pub fn combat_targeting_schedule_and_tick_batch(
                         false,
                         false,
                         0u32,
-                        false,
                         -1i32,
                         0u8,
                         0.0,
@@ -1184,19 +1181,12 @@ pub fn combat_targeting_schedule_and_tick_batch(
                         && (flags & CT_ENTITY_FLAG_ALIVE) != 0
                         && (flags & CT_ENTITY_FLAG_BUILDABLE_COMPLETE) != 0;
                     let enabled = (flags & CT_ENTITY_FLAG_FIRE_ENABLED) != 0;
-                    let has_weapon = combat_targeting_entity_has_enabled_weapon(
-                        pool,
-                        entity_slot,
-                        turret_shield_panels_enabled,
-                        turret_shield_spheres_enabled,
-                    );
                     (
                         source_entity_id,
                         entity_slot,
                         ready,
                         enabled,
                         pool.entity_view_mask[entity_idx],
-                        has_weapon,
                         pool.entity_priority_target_id[entity_idx],
                         pool.entity_priority_point_present[entity_idx],
                         pool.entity_priority_point_x[entity_idx],
@@ -1224,17 +1214,16 @@ pub fn combat_targeting_schedule_and_tick_batch(
                 0
             };
 
-        {
-            let pool = combat_targeting_pool();
-            combat_targeting_reset_disabled_weapons_for_entity(
-                pool,
-                entity_slot,
-                turret_shield_panels_enabled,
-                turret_shield_spheres_enabled,
-            );
-        }
-
         if !fire_enabled {
+            {
+                let pool = combat_targeting_pool();
+                combat_targeting_reset_disabled_weapons_for_entity(
+                    pool,
+                    entity_slot,
+                    turret_shield_panels_enabled,
+                    turret_shield_spheres_enabled,
+                );
+            }
             combat_targeting_update_mount_kinematics(
                 entity_slot,
                 current_tick,
@@ -1256,8 +1245,27 @@ pub fn combat_targeting_schedule_and_tick_batch(
 
         let has_priority_point = priority_point_present_val != 0;
         if priority_target_id < 0 && !has_priority_point && scheduled_probe_tick > current_tick {
+            // A skipped entity carries no cooldown (a ticked cooldown forces
+            // probe_tick = tick + 1) and its disabled weapons are already
+            // idle, so the hoisted reset below is a provable no-op here.
             continue;
         }
+
+        let has_enabled_weapon = {
+            let pool = combat_targeting_pool();
+            combat_targeting_reset_disabled_weapons_for_entity(
+                pool,
+                entity_slot,
+                turret_shield_panels_enabled,
+                turret_shield_spheres_enabled,
+            );
+            combat_targeting_entity_has_enabled_weapon(
+                pool,
+                entity_slot,
+                turret_shield_panels_enabled,
+                turret_shield_spheres_enabled,
+            )
+        };
 
         combat_targeting_update_mount_kinematics(
             entity_slot,
