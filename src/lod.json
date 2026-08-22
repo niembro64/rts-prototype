@@ -59,7 +59,7 @@
       "barrelSecondary": "low",
       "projectileGlow": "medium",
       "locomotionAnimated": "low",
-      "treadCleats": "medium",
+      "treadCleats": "high",
       "muzzleDetail": "low"
     },
     "visualFeatureMinRung": {

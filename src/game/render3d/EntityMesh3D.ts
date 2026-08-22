@@ -104,6 +104,10 @@ export type EntityMesh = {
    *  the trim into the new tier's pool. */
   geometryTier?: PrimitiveGeometryTier;
   bodyShape?: UnitBodyShape | null;
+  /** Cached close-tier getBodyGeom entry for bodyShape — the lookup keys
+   *  on a JSON-ish string of the whole body spec, which is too hot for a
+   *  per-unit per-frame call. Invalidate alongside bodyShape. */
+  bodyGeomEntryCache?: import('./BodyShape3D').BodyGeomEntry | null;
   turrets: TurretMesh[];
   mirrors?: ShieldPanelMesh;
   locomotion?: Locomotion3DMesh;

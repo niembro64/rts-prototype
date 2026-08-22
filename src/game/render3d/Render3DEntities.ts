@@ -1025,7 +1025,11 @@ export class Render3DEntities {
       // scale by the same factor — so a sphere part at (x=0.3, y=0.55,
       // z=0) with scale (0.55, 0.55, 0.55) lands at the right place and
       // the right size automatically.
-      const bodyEntry = getBodyGeom(m.bodyShape ?? null);
+      let bodyEntry = m.bodyGeomEntryCache ?? null;
+      if (bodyEntry === null) {
+        bodyEntry = getBodyGeom(m.bodyShape ?? null);
+        m.bodyGeomEntryCache = bodyEntry;
+      }
       setVector3IfChanged(m.chassis.position, 0, 0, 0);
       // Full size at all times; the build-in reveal is opacity, not scale.
       const bodyRadius = radius;

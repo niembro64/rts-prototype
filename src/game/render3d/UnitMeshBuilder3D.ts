@@ -295,6 +295,9 @@ export class UnitMeshBuilder3D {
       bodyShapeKey,
       geometryTier,
       bodyShape,
+      // Seed the per-frame body-geom lookup cache with the CLOSE-tier entry
+      // the pose loop reads (its call site omits the tier argument).
+      bodyGeomEntryCache: getBodyGeom(bodyShape),
       turrets: turretMeshes,
       geometryKey: unitRenderKey,
       unitRenderFrameKey: unitFrameKey,

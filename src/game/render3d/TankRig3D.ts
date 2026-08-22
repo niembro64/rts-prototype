@@ -274,6 +274,10 @@ type TreadSide = {
   /** Logical internal-wheel phase. Kept even at Low, where the internal
    * wheel meshes are absent, so changing LOD cannot reset their rotation. */
   wheelRotation: number;
+  /** Wrapped phase the cleats were last laid out at. A settled belt (see
+   *  the velocity snap below) keeps an unchanged phase, so the whole
+   *  per-cleat transform pass — up to 44 meshes on a heavy tank — skips. */
+  lastCleatLayoutPhase: number;
 };
 
 export type TankMesh = {
@@ -411,6 +415,7 @@ export function buildTank(
       lift: 0,
       targetLift: 0,
       beltPhase: 0,
+      lastCleatLayoutPhase: Number.NaN,
       beltVelocity: 0,
       wheelRotation: 0,
     });
@@ -555,6 +560,12 @@ export function updateTank(
         : 0;
       const targetBeltVelocity = signedDistance / dtSec;
       sideEntry.beltVelocity += (targetBeltVelocity - sideEntry.beltVelocity) * beltAlpha;
+      // Snap the EMA tail to a full stop: otherwise the phase creeps by
+      // sub-visible amounts forever and the settled-cleat skip below can
+      // never engage. Same epsilon the frame-gating predicate uses.
+      if (Math.abs(sideEntry.beltVelocity) <= TREAD_BELT_SETTLED_EPSILON) {
+        sideEntry.beltVelocity = 0;
+      }
 
       // ── Rotation-position channel: beltPhase ───────────────────
       // Integrate from the velocity channel. Wraps modulo
@@ -573,6 +584,8 @@ export function updateTank(
     for (let s = 0; s < 2; s++) {
       const sideEntry = mesh.sides[s];
       const phaseOff = wrappedRollingPhase(sideEntry.beltPhase, mesh.cleatLoopLength);
+      if (phaseOff === sideEntry.lastCleatLayoutPhase) continue;
+      sideEntry.lastCleatLayoutPhase = phaseOff;
       const baseIdx = s * cleatsPerSide;
       for (let i = 0; i < cleatsPerSide; i++) {
         layoutTreadCleat(
