@@ -1,6 +1,6 @@
 import type { ClientViewState } from '../../network/ClientViewState';
 import type { Command } from '../../sim/commands';
-import { buildSelectionInfo } from './UIUpdateManager';
+import { buildSelectionInfo, type SelectionViewerContext } from './UIUpdateManager';
 import type {
   BuildingBlueprintId,
   Entity,
@@ -84,6 +84,9 @@ export class RtsScene3DSelectionSystem {
      *  owner filter below is skipped then, so a watcher's selection caches
      *  (panel, cursor, control groups) see foreign entities too. */
     private readonly getLocalPlayerId: () => PlayerId | undefined,
+    /** Allegiance + owner-name lens for the info panel's BAR-style owner
+     *  line and foreign-intel gate. Optional so fixtures need not care. */
+    private readonly getViewerContext?: () => SelectionViewerContext,
   ) {}
 
   getSelectedUnits(): Entity[] {
@@ -348,7 +351,11 @@ export class RtsScene3DSelectionSystem {
     onSelectionChange: SelectionChangeHandler,
   ): void {
     if (!onSelectionChange) return;
-    onSelectionChange(buildSelectionInfo(entitySource, this.getInputState()));
+    onSelectionChange(buildSelectionInfo(
+      entitySource,
+      this.getInputState(),
+      this.getViewerContext?.(),
+    ));
   }
 
   private getInputState(): UIInputState {
