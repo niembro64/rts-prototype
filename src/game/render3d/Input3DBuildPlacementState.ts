@@ -9,6 +9,7 @@ import {
   type MetalDeposit,
 } from '../../metalDepositConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
+import { orderAreaTargetsByChainedNearest } from '../sim/areaTargetOrdering';
 import {
   BUILD_GRID_CELL_SIZE,
   getRotatedBuildingPlacementFootprint,
@@ -190,11 +191,14 @@ export class Input3DBuildPlacementState {
     worldY: number,
     radius: number,
     entitySource: BuildPlacementEntitySource,
+    orderSeedX: number,
+    orderSeedY: number,
   ): BuildAreaPlacementPlan[] {
     const buildingBlueprintId: BuildingBlueprintId = 'buildingExtractor';
     const context = this.createPlannedBuildPlacementContext(buildingBlueprintId, entitySource);
     const safeRadius = Math.max(1, radius);
 
+    const depositsInArea: MetalDeposit[] = [];
     for (const deposit of this.metalDeposits) {
       const dx = deposit.x - worldX;
       const dy = deposit.y - worldY;
@@ -204,8 +208,26 @@ export class Input3DBuildPlacementState {
       // center deposit's cap exceeds the whole playable map, which made every
       // area-mex drag anywhere select the deposit at dead center.
       if (dx * dx + dy * dy > safeRadius * safeRadius) continue;
+      depositsInArea.push(deposit);
+    }
 
-      this.tryAddPlannedBuildPlacement(context, deposit.x, deposit.y, true);
+    // BAR cmd_area_mex ordering: chained nearest-neighbour path seeded from
+    // the ordering builders, worth-weighted so a slightly farther deposit
+    // with more metal cells outranks a near poor one. Without this the
+    // placements ride raw generator order (ring/spot/player-major), which is
+    // the "totally random" build sequence players see.
+    orderAreaTargetsByChainedNearest(
+      depositsInArea,
+      orderSeedX,
+      orderSeedY,
+      (deposit) => deposit.x,
+      (deposit) => deposit.y,
+      (deposit) => deposit.id,
+      (deposit) => deposit.metalCellCount,
+    );
+
+    for (let i = 0; i < depositsInArea.length; i++) {
+      this.tryAddPlannedBuildPlacement(context, depositsInArea[i].x, depositsInArea[i].y, true);
     }
     return context.placements;
   }
