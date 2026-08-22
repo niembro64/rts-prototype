@@ -145,8 +145,25 @@ function flushTargetingBatch(
       combat.priorityTargetPoint = null;
       combat.manualLaunchActive = false;
     }
-    if (_targetingBatchHasActiveWork[i] !== 0) {
-      combat.nextCombatProbeTick = -1;
+    const activity = _targetingBatchHasActiveWork[i];
+    if (activity !== 0) {
+      // 1 = FSM work (target / non-idle state): every-tick path. 2 =
+      // ROTATION-ONLY (servo slewing back to rest): the JS articulation
+      // batch keeps stepping the joint each tick regardless, so only the
+      // SCAN takes the phased reacquire cadence — otherwise every armed
+      // unit stayed on the every-tick scheduler path for the whole
+      // spin-down after a fight.
+      if (activity === 2 && mode === CT_TARGETING_TICK_MODE_AUTO) {
+        combat.nextCombatProbeTick = _targetingBatchHasCooldown[i] !== 0
+          ? tick + 1
+          : nextTargetingReacquireTick(
+              tick,
+              unit.id,
+              world.ticksForDefaultTicks(TARGETING_REACQUIRE_PERIOD_TICKS),
+            );
+      } else {
+        combat.nextCombatProbeTick = -1;
+      }
       _activeCombatUnits.push(unit);
     } else if (mode === CT_TARGETING_TICK_MODE_AUTO) {
       combat.nextCombatProbeTick = _targetingBatchHasCooldown[i] !== 0

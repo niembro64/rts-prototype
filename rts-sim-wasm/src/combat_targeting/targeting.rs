@@ -3043,13 +3043,31 @@ pub(crate) fn combat_targeting_refresh_activity_masks_for_entity_and_read_active
     let pool = combat_targeting_pool();
     combat_targeting_refresh_activity_masks_for_entity_inner(pool, entity_slot);
     let entity_idx = entity_slot as usize;
-    if entity_idx < pool.entity_active_turret_mask.len()
-        && pool.entity_active_turret_mask[entity_idx] != 0
+    if entity_idx >= pool.entity_active_turret_mask.len()
+        || pool.entity_active_turret_mask[entity_idx] == 0
     {
-        1
-    } else {
-        0
+        return 0;
     }
+    // Classify the active work: 1 = FSM work (a target or a non-idle state —
+    // must stay on the every-tick path), 2 = ROTATION-ONLY work (a servo
+    // merely slewing back to rest). A rotation-only host's joints keep
+    // stepping in the JS articulation batch every tick regardless; only its
+    // SCAN may take the phased reacquire cadence, so a fight's aftermath
+    // does not pin the whole army to the every-tick scheduler path.
+    let count = (pool.turret_count_per_entity[entity_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+    for turret_idx in 0..count {
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        if (pool.turret_config_flags[idx] & CT_TURRET_CFG_NON_ATTACK_EMITTER) != 0 {
+            continue;
+        }
+        if pool.turret_target_id[idx] >= 0
+            || pool.turret_state[idx] != CT_TURRET_STATE_IDLE
+        {
+            return 1;
+        }
+    }
+    2
 }
 
 /// AIM-08.5 — single-entity activity mask refresh entry point. JS
