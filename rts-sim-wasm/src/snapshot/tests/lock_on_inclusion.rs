@@ -602,6 +602,9 @@ mod lock_on_inclusion_tests {
             0.0,
             9.81,
             2,
+            // Reacquire period 1: the lock-on semantics under test must not
+            // depend on the trailing-scan phase wheel.
+            1,
             &mut cached_fire_ranks,
             &mut cached_fire_dist_sqs,
             4.0,

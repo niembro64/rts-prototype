@@ -119,6 +119,7 @@ function flushTargetingBatch(
     COMBAT_LOS_ENTITY_QUERY_WIDTH,
     GRAVITY,
     world.ticksForDefaultTicks(SIGHT_DROP_GRACE_TICKS),
+    world.ticksForDefaultTicks(TARGETING_REACQUIRE_PERIOD_TICKS),
     _targetingBatchCachedFireRanks.subarray(0, turretValueCount),
     _targetingBatchCachedFireDistSqs.subarray(0, turretValueCount),
     world.getMaxTargetableRadius(),

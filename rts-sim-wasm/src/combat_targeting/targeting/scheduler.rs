@@ -1101,6 +1101,7 @@ pub fn combat_targeting_schedule_and_tick_batch(
     entity_line_width: f64,
     gravity: f64,
     los_drop_grace_ticks: u16,
+    reacquire_period_ticks: u32,
     cached_fire_ranks: &mut [u8],
     cached_fire_dist_sqs: &mut [f64],
     max_targetable_radius: f64,
@@ -1115,6 +1116,11 @@ pub fn combat_targeting_schedule_and_tick_batch(
         .min(out_modes.len())
         .min(out_has_active_work.len());
 
+    // Priority hosts bypass the probe-tick gate (their FSM owns the aim
+    // every tick), but the TRAILING fallback scan — which only serves
+    // sibling mounts that rejected the ordered target — takes the same
+    // phased cadence idle hosts use, sharded by entity id.
+    let reacq = reacquire_period_ticks.max(1);
     for entity_i in 0..count {
         out_modes[entity_i] = CT_TARGETING_TICK_MODE_SKIP;
         out_had_cooldown[entity_i] = 0;
@@ -1321,20 +1327,22 @@ pub fn combat_targeting_schedule_and_tick_batch(
                 entity_line_width,
                 gravity,
             );
-            combat_targeting_auto_scan_from_slab(
-                entity_slot,
-                source_entity_id,
-                current_tick,
-                turret_shield_panels_enabled,
-                turret_shield_spheres_enabled,
-                shield_obstruction_active,
-                terrain_step_len,
-                entity_line_width,
-                gravity,
-                &mut cached_fire_ranks[start..end],
-                &mut cached_fire_dist_sqs[start..end],
-                max_targetable_radius,
-            );
+            if (source_entity_id as u32) % reacq == (current_tick as u32) % reacq {
+                combat_targeting_auto_scan_from_slab(
+                    entity_slot,
+                    source_entity_id,
+                    current_tick,
+                    turret_shield_panels_enabled,
+                    turret_shield_spheres_enabled,
+                    shield_obstruction_active,
+                    terrain_step_len,
+                    entity_line_width,
+                    gravity,
+                    &mut cached_fire_ranks[start..end],
+                    &mut cached_fire_dist_sqs[start..end],
+                    max_targetable_radius,
+                );
+            }
             out_modes[entity_i] = CT_TARGETING_TICK_MODE_PRIORITY_POINT;
             out_has_active_work[entity_i] =
                 combat_targeting_refresh_activity_masks_for_entity_and_read_active(entity_slot);

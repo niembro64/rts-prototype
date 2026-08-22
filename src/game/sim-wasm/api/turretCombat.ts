@@ -795,6 +795,9 @@ export interface CombatTargetingApi {
     entityLineWidth: number,
     gravity: number,
     losDropGraceTicks: number,
+    /** Phase period for priority hosts' TRAILING fallback scans (the same
+     *  reacquire cadence idle hosts use), sharded by entity id. */
+    reacquirePeriodTicks: number,
     cachedFireRanks: Uint8Array,
     cachedFireDistSqs: Float64Array,
     maxTargetableRadius: number,
