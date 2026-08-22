@@ -112,7 +112,6 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
       <WorldDirectionHud
         class="top-direction-widget"
         :data="directionData"
-        compact
       />
     </div>
 

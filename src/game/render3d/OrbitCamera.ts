@@ -89,8 +89,6 @@ const WHEEL_MOMENTUM_FALLBACK_DT_MS = 120;
 // notch. These DOM-unit scales are retained only for the configurable
 // continuous-delta path. Canonical BAR discrete input ignores accelerated
 // browser magnitude and maps each event to one signed controller unit.
-const BAR_FAST_POINTER_MULTIPLIER = 4;
-const BAR_FAST_WHEEL_MULTIPLIER = 2;
 const BAR_TILT_RADIANS_PER_WHEEL_TICK = 0.125;
 /** Rate-limited "camera invariant violated" diagnostics. */
 const MAX_INVARIANT_WARNINGS = 8;
@@ -585,12 +583,14 @@ export class OrbitCamera {
       //   scroll down (delta > 0)  → zoom out
       //
       // Browsers commonly remap Shift + wheel into horizontal deltaX
-      // scrolling. It is still BAR's movefast wheel gesture. WITHOUT Shift,
-      // horizontal deltas are a sideways trackpad swipe and must not zoom.
+      // scrolling. Shift is the order-queue modifier and must not change the
+      // camera, so the remapped axis still zooms exactly like a plain wheel.
+      // WITHOUT Shift, horizontal deltas are a sideways trackpad swipe and
+      // must not zoom.
       const wheelDelta = e.deltaY !== 0 ? e.deltaY : (e.shiftKey ? e.deltaX : 0);
       if (wheelDelta === 0) return;
 
-      let signedTicks = barCameraWheelTicks(
+      const signedTicks = barCameraWheelTicks(
         wheelDelta,
         e.deltaMode,
         this.movementConfig.wheelInputMode,
@@ -600,9 +600,6 @@ export class OrbitCamera {
         ),
       );
       if (signedTicks === 0) return;
-      // BAR binds Shift to movefast. SpringController scales wheel input by
-      // 2x and pointer movement by 4x with the engine defaults.
-      if (e.shiftKey) signedTicks *= BAR_FAST_WHEEL_MULTIPLIER;
 
       // Wheel tilt lives on Alt so it shares the camera-angle modifier with
       // Alt+drag orbit. BAR's Ctrl+wheel tilt is deliberately not used:
@@ -688,14 +685,15 @@ export class OrbitCamera {
       const dx = e.clientX - this.lastMouseX;
       const dy = e.clientY - this.lastMouseY;
       const momentum = this.pointerMomentumForDragMode(this.dragMode);
-      let inputGain = this.mouseMomentumGain(
+      // BAR's Shift movefast multipliers are deliberately absent: Shift is
+      // the order-queue modifier here and never changes camera speed.
+      const inputGain = this.mouseMomentumGain(
         dx,
         dy,
         e.timeStamp,
         this.lastMouseTimeMs,
         momentum,
       );
-      if (e.shiftKey) inputGain *= BAR_FAST_POINTER_MULTIPLIER;
       this.lastMouseX = e.clientX;
       this.lastMouseY = e.clientY;
       this.lastMouseTimeMs = e.timeStamp;
