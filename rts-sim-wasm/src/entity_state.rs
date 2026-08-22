@@ -236,6 +236,18 @@ impl EntityStateSlab {
         self.build_paid_metal[s] = 0.0;
         self.build_flags[s] = 0;
         self.dirty_mask[s] = 0;
+        // Decay the populated-prefix high-water mark when the top slot(s)
+        // free. Without this, one projectile-count peak made every later
+        // presentation_capture_tick copy the peak-sized prefix of all 27
+        // SoA vectors forever. Amortized O(1): each slot is walked over at
+        // most once per occupy/release cycle.
+        if s + 1 == self.used_slots {
+            let mut used = self.used_slots;
+            while used > 0 && self.entity_id[used - 1] == ENTITY_STATE_NO_ENTITY_ID {
+                used -= 1;
+            }
+            self.used_slots = used;
+        }
     }
 }
 
