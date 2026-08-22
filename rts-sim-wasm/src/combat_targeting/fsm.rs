@@ -164,18 +164,47 @@ pub(crate) fn compute_turret_gates_for_aim_point(
     gravity: f64,
 ) -> (u8, u8, u8) {
     let los_clear: u8 = if (flags & CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS) != 0 {
-        combat_has_line_of_sight(
-            mount_x,
-            mount_y,
-            mount_z,
-            raw_aim_x,
-            raw_aim_y,
-            raw_aim_z,
-            terrain_step_len,
-            entity_line_width,
-            source_entity_id,
-            target_entity_id,
-        ) as u8
+        // Full-input memo: existing-lock validation and candidate gating ask
+        // the identical line for the same turret in the same tick. A hit is
+        // provably the same computation (every input compared), so this can
+        // never change a result — only skip a repeated terrain march.
+        if pool.turret_los_memo_epoch[idx] == pool.los_memo_epoch
+            && target_entity_id >= 0
+            && pool.turret_los_memo_target[idx] == target_entity_id
+            && pool.turret_los_memo_mx[idx] == mount_x
+            && pool.turret_los_memo_my[idx] == mount_y
+            && pool.turret_los_memo_mz[idx] == mount_z
+            && pool.turret_los_memo_ax[idx] == raw_aim_x
+            && pool.turret_los_memo_ay[idx] == raw_aim_y
+            && pool.turret_los_memo_az[idx] == raw_aim_z
+        {
+            pool.turret_los_memo_result[idx]
+        } else {
+            let result = combat_has_line_of_sight(
+                mount_x,
+                mount_y,
+                mount_z,
+                raw_aim_x,
+                raw_aim_y,
+                raw_aim_z,
+                terrain_step_len,
+                entity_line_width,
+                source_entity_id,
+                target_entity_id,
+            ) as u8;
+            if target_entity_id >= 0 {
+                pool.turret_los_memo_epoch[idx] = pool.los_memo_epoch;
+                pool.turret_los_memo_target[idx] = target_entity_id;
+                pool.turret_los_memo_mx[idx] = mount_x;
+                pool.turret_los_memo_my[idx] = mount_y;
+                pool.turret_los_memo_mz[idx] = mount_z;
+                pool.turret_los_memo_ax[idx] = raw_aim_x;
+                pool.turret_los_memo_ay[idx] = raw_aim_y;
+                pool.turret_los_memo_az[idx] = raw_aim_z;
+                pool.turret_los_memo_result[idx] = result;
+            }
+            result
+        }
     } else {
         1
     };

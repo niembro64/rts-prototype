@@ -424,6 +424,20 @@ pub(crate) struct CombatTargetingPool {
     pub(crate) turret_under_only: Vec<u8>,
     pub(crate) turret_blueprint_code: Vec<u8>,
     pub(crate) turret_los_blocked_ticks: Vec<u16>,
+    // Per-tick LOS memo: the SAME (mount, aim, target) line is asked for a
+    // turret up to twice per tick (existing-lock validation + candidate
+    // gating). A hit replaces the terrain march + blocker walk with float
+    // compares; keyed on the FULL inputs, it can never change a result.
+    pub(crate) turret_los_memo_epoch: Vec<u32>,
+    pub(crate) turret_los_memo_target: Vec<i32>,
+    pub(crate) turret_los_memo_mx: Vec<f64>,
+    pub(crate) turret_los_memo_my: Vec<f64>,
+    pub(crate) turret_los_memo_mz: Vec<f64>,
+    pub(crate) turret_los_memo_ax: Vec<f64>,
+    pub(crate) turret_los_memo_ay: Vec<f64>,
+    pub(crate) turret_los_memo_az: Vec<f64>,
+    pub(crate) turret_los_memo_result: Vec<u8>,
+    pub(crate) los_memo_epoch: u32,
     pub(crate) turret_config_flags: Vec<u32>,
     // Optional deterministic cadence for a specialist profile to compare a
     // still-valid current target against newly eligible candidates. Zero
@@ -613,6 +627,16 @@ impl CombatTargetingPool {
             turret_under_only: Vec::new(),
             turret_blueprint_code: Vec::new(),
             turret_los_blocked_ticks: Vec::new(),
+            turret_los_memo_epoch: Vec::new(),
+            turret_los_memo_target: Vec::new(),
+            turret_los_memo_mx: Vec::new(),
+            turret_los_memo_my: Vec::new(),
+            turret_los_memo_mz: Vec::new(),
+            turret_los_memo_ax: Vec::new(),
+            turret_los_memo_ay: Vec::new(),
+            turret_los_memo_az: Vec::new(),
+            turret_los_memo_result: Vec::new(),
+            los_memo_epoch: 0,
             turret_config_flags: Vec::new(),
             turret_target_rescore_period_ticks: Vec::new(),
             turret_lockon_relationship_mask: Vec::new(),
@@ -790,6 +814,15 @@ impl CombatTargetingPool {
             self.turret_blueprint_code
                 .resize(turret_needed, CT_BLUEPRINT_CODE_NONE);
             self.turret_los_blocked_ticks.resize(turret_needed, 0);
+            self.turret_los_memo_epoch.resize(turret_needed, 0);
+            self.turret_los_memo_target.resize(turret_needed, -1);
+            self.turret_los_memo_mx.resize(turret_needed, 0.0);
+            self.turret_los_memo_my.resize(turret_needed, 0.0);
+            self.turret_los_memo_mz.resize(turret_needed, 0.0);
+            self.turret_los_memo_ax.resize(turret_needed, 0.0);
+            self.turret_los_memo_ay.resize(turret_needed, 0.0);
+            self.turret_los_memo_az.resize(turret_needed, 0.0);
+            self.turret_los_memo_result.resize(turret_needed, 0);
             self.turret_config_flags.resize(turret_needed, 0);
             self.turret_target_rescore_period_ticks
                 .resize(turret_needed, 0);
@@ -819,6 +852,13 @@ impl CombatTargetingPool {
     }
 
     pub(crate) fn begin_stamp(&mut self) {
+        // New tick, new LOS-memo epoch (wrap resets the stamps so a stale
+        // epoch can never false-hit).
+        self.los_memo_epoch = self.los_memo_epoch.wrapping_add(1);
+        if self.los_memo_epoch == 0 {
+            self.turret_los_memo_epoch.fill(0);
+            self.los_memo_epoch = 1;
+        }
         let max_turrets = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize;
         let active_len = self.active_entity_slots.len();
         for i in 0..active_len {
