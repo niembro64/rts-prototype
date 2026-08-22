@@ -3148,6 +3148,264 @@ pub(crate) const PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_EXPIRE_EVENT: u32 = 1 << 5
 pub(crate) const PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_WATER_SPLASH_EVENT: u32 = 1 << 6;
 pub(crate) const PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_REFLECTOR_IMPACT_EVENT: u32 = 1 << 7;
 
+// Input bit layout for `projectile_terminal_single` — mirrored by name in
+// ProjectileCollisionHandler.ts (TERMINAL_IN_*). Append-only.
+pub(crate) const TERMINAL_IN_IS_PROJECTILE_TYPE: u32 = 1 << 0;
+pub(crate) const TERMINAL_IN_IS_ARMED: u32 = 1 << 1;
+pub(crate) const TERMINAL_IN_HAS_EXPLODED: u32 = 1 << 2;
+pub(crate) const TERMINAL_IN_DETONATE_ON_ENTITY_IMPACT: u32 = 1 << 3;
+pub(crate) const TERMINAL_IN_DETONATE_ON_GROUND_CONTACT: u32 = 1 << 4;
+pub(crate) const TERMINAL_IN_DETONATE_ON_EXPIRY: u32 = 1 << 5;
+pub(crate) const TERMINAL_IN_DETONATE_ON_DESTROYED: u32 = 1 << 6;
+pub(crate) const TERMINAL_IN_DETONATE_ON_REFLECTOR_IMPACT: u32 = 1 << 7;
+pub(crate) const TERMINAL_IN_DETONATE_ON_WATER_TRANSITION: u32 = 1 << 8;
+pub(crate) const TERMINAL_IN_HAS_DETONATION_PAYLOAD: u32 = 1 << 9;
+pub(crate) const TERMINAL_IN_DIRECT_HIT_THIS_TICK: u32 = 1 << 10;
+pub(crate) const TERMINAL_IN_REFLECTED_PROJECTILE: u32 = 1 << 11;
+pub(crate) const TERMINAL_IN_HIT_SHIELD: u32 = 1 << 12;
+pub(crate) const TERMINAL_IN_TERMINAL_REFLECTOR_HIT: u32 = 1 << 13;
+pub(crate) const TERMINAL_IN_WATER_AT_IMPACT: u32 = 1 << 14;
+pub(crate) const TERMINAL_IN_WATER_SURFACE_IMPACT: u32 = 1 << 15;
+pub(crate) const TERMINAL_IN_WATER_COMPATIBLE: u32 = 1 << 16;
+pub(crate) const TERMINAL_IN_HAS_EXPLOSION: u32 = 1 << 17;
+pub(crate) const TERMINAL_IN_HAS_SUBMUNITIONS: u32 = 1 << 18;
+
+/// The ONE implementation of terminal-consequence classification. The batch
+/// export and the scalar single both call this; out_z/out_hp are implied by
+/// the returned flags (CLAMP_Z -> ground_z, SET_HP_ZERO -> 0.0), which is why
+/// the scalar path needs no out slices. Returns (reason, terminal flags).
+#[allow(clippy::too_many_arguments)]
+#[inline]
+fn projectile_terminal_consequence_row(
+    is_projectile_type: bool,
+    is_armed: bool,
+    has_exploded: bool,
+    detonate_on_entity_impact: bool,
+    detonate_on_ground_contact: bool,
+    detonate_on_expiry: bool,
+    detonate_on_destroyed: bool,
+    detonate_on_reflector_impact: bool,
+    detonate_on_water_transition: bool,
+    has_detonation_payload: bool,
+    direct_hit_this_tick: bool,
+    reflected_projectile: bool,
+    hit_shield: bool,
+    terminal_reflector_hit: bool,
+    water_at_impact: bool,
+    water_surface_impact: bool,
+    water_compatible: bool,
+    pos_x: f64,
+    pos_y: f64,
+    pos_z: f64,
+    ground_z: f64,
+    hp: f64,
+    time_alive_ms: f64,
+    max_lifespan_ms: f64,
+    map_width: f64,
+    map_height: f64,
+    bounds_margin: f64,
+) -> (u8, u32) {
+    let expired = time_alive_ms >= max_lifespan_ms;
+
+    if is_projectile_type {
+        let terminal_reflector = terminal_reflector_hit;
+        let hit_ground = !direct_hit_this_tick
+            && !reflected_projectile
+            && !hit_shield
+            && is_armed
+            && pos_z <= ground_z;
+
+        let mut next_hp = hp;
+        let mut flags = 0_u32;
+        let terminal_water_entry = water_surface_impact;
+        if terminal_water_entry && !detonate_on_water_transition {
+            flags |= PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO
+                | PROJECTILE_TERMINAL_FLAG_REMOVE
+                | PROJECTILE_TERMINAL_FLAG_WATER_SPLASH;
+            return (PROJECTILE_TERMINAL_REASON_WATER, flags);
+        }
+        if terminal_water_entry {
+            next_hp = 0.0;
+            flags |= PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO;
+        }
+        if hit_ground {
+            next_hp = 0.0;
+            flags |= PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO | PROJECTILE_TERMINAL_FLAG_CLAMP_Z;
+        }
+        if terminal_reflector || (expired && detonate_on_expiry) {
+            next_hp = 0.0;
+            flags |= PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO;
+        }
+        let health_zero = next_hp <= 0.0;
+
+        if hit_ground && water_at_impact && !water_compatible && !detonate_on_water_transition {
+            flags |= PROJECTILE_TERMINAL_FLAG_REMOVE | PROJECTILE_TERMINAL_FLAG_WATER_SPLASH;
+            return (PROJECTILE_TERMINAL_REASON_WATER, flags);
+        }
+
+        if expired || hit_ground || terminal_reflector || terminal_water_entry || health_zero {
+            flags |= PROJECTILE_TERMINAL_FLAG_REMOVE;
+            let reason = if terminal_water_entry {
+                PROJECTILE_TERMINAL_REASON_WATER
+            } else if terminal_reflector {
+                PROJECTILE_TERMINAL_REASON_REFLECTOR
+            } else if hit_ground {
+                PROJECTILE_TERMINAL_REASON_GROUND
+            } else if expired {
+                PROJECTILE_TERMINAL_REASON_EXPIRED
+            } else {
+                PROJECTILE_TERMINAL_REASON_HEALTH_ZERO
+            };
+
+            let policy_detonates = if terminal_water_entry {
+                detonate_on_water_transition
+            } else if terminal_reflector {
+                detonate_on_reflector_impact
+            } else if hit_ground {
+                detonate_on_ground_contact
+            } else if expired {
+                detonate_on_expiry
+            } else if direct_hit_this_tick {
+                detonate_on_entity_impact
+            } else {
+                detonate_on_destroyed
+            };
+            let will_detonate = health_zero
+                && policy_detonates
+                && is_armed
+                && !has_exploded
+                && has_detonation_payload;
+            if will_detonate {
+                flags |= PROJECTILE_TERMINAL_FLAG_DETONATE;
+            } else if is_armed && !has_exploded {
+                flags |= PROJECTILE_TERMINAL_FLAG_EXPIRE_EVENT;
+            }
+
+            return (reason, flags);
+        }
+    } else if expired {
+        return (
+            PROJECTILE_TERMINAL_REASON_EXPIRED,
+            PROJECTILE_TERMINAL_FLAG_REMOVE,
+        );
+    }
+
+    if pos_x < -bounds_margin
+        || pos_x > map_width + bounds_margin
+        || pos_y < -bounds_margin
+        || pos_y > map_height + bounds_margin
+    {
+        return (
+            PROJECTILE_TERMINAL_REASON_OUT_OF_BOUNDS,
+            PROJECTILE_TERMINAL_FLAG_REMOVE,
+        );
+    }
+
+    (PROJECTILE_TERMINAL_REASON_NONE, 0)
+}
+
+/// The ONE implementation of terminal effect planning (see batch doc below).
+#[inline]
+fn projectile_terminal_effect_plan_row(
+    terminal_flags: u32,
+    terminal_reflector_hit: bool,
+    has_explosion: bool,
+    has_submunitions: bool,
+) -> u32 {
+    if terminal_flags & PROJECTILE_TERMINAL_FLAG_REMOVE == 0 {
+        return 0;
+    }
+    let mut effects = PROJECTILE_TERMINAL_EFFECT_FLAG_QUEUE_DESPAWN;
+    if terminal_flags & PROJECTILE_TERMINAL_FLAG_WATER_SPLASH != 0 {
+        effects |= PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_WATER_SPLASH_EVENT;
+        return effects;
+    }
+    if terminal_reflector_hit {
+        effects |= PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_REFLECTOR_IMPACT_EVENT;
+    }
+    if terminal_flags & PROJECTILE_TERMINAL_FLAG_DETONATE != 0 {
+        let splash = has_explosion;
+        let submunitions = has_submunitions;
+        if splash || submunitions {
+            effects |= PROJECTILE_TERMINAL_EFFECT_FLAG_SET_EXPLODED
+                | PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_HIT_EVENT;
+            if splash {
+                effects |= PROJECTILE_TERMINAL_EFFECT_FLAG_APPLY_SPLASH;
+            }
+            if submunitions {
+                effects |= PROJECTILE_TERMINAL_EFFECT_FLAG_SPAWN_SUBMUNITIONS;
+            }
+        }
+    }
+    if terminal_flags & PROJECTILE_TERMINAL_FLAG_EXPIRE_EVENT != 0 {
+        effects |= PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_EXPIRE_EVENT;
+    }
+    effects
+}
+
+/// Scalar merged classify+plan for ONE projectile. The count=1 "batch" calls
+/// this replaces marshalled ~35 slices (malloc + copy + free each) per
+/// projectile per tick; this takes one packed input bitfield (TERMINAL_IN_*)
+/// plus scalars and returns reason (bits 0..2) | terminal flags << 3 |
+/// effect flags << 9 — out_z/out_hp are implied by CLAMP_Z/SET_HP_ZERO.
+#[wasm_bindgen]
+pub fn projectile_terminal_single(
+    input_bits: u32,
+    pos_x: f64,
+    pos_y: f64,
+    pos_z: f64,
+    ground_z: f64,
+    hp: f64,
+    time_alive_ms: f64,
+    max_lifespan_ms: f64,
+    map_width: f64,
+    map_height: f64,
+    margin: f64,
+) -> u32 {
+    let bit = |mask: u32| input_bits & mask != 0;
+    let bounds_margin = if margin.is_finite() {
+        margin.max(0.0)
+    } else {
+        0.0
+    };
+    let (reason, terminal_flags) = projectile_terminal_consequence_row(
+        bit(TERMINAL_IN_IS_PROJECTILE_TYPE),
+        bit(TERMINAL_IN_IS_ARMED),
+        bit(TERMINAL_IN_HAS_EXPLODED),
+        bit(TERMINAL_IN_DETONATE_ON_ENTITY_IMPACT),
+        bit(TERMINAL_IN_DETONATE_ON_GROUND_CONTACT),
+        bit(TERMINAL_IN_DETONATE_ON_EXPIRY),
+        bit(TERMINAL_IN_DETONATE_ON_DESTROYED),
+        bit(TERMINAL_IN_DETONATE_ON_REFLECTOR_IMPACT),
+        bit(TERMINAL_IN_DETONATE_ON_WATER_TRANSITION),
+        bit(TERMINAL_IN_HAS_DETONATION_PAYLOAD),
+        bit(TERMINAL_IN_DIRECT_HIT_THIS_TICK),
+        bit(TERMINAL_IN_REFLECTED_PROJECTILE),
+        bit(TERMINAL_IN_HIT_SHIELD),
+        bit(TERMINAL_IN_TERMINAL_REFLECTOR_HIT),
+        bit(TERMINAL_IN_WATER_AT_IMPACT),
+        bit(TERMINAL_IN_WATER_SURFACE_IMPACT),
+        bit(TERMINAL_IN_WATER_COMPATIBLE),
+        pos_x,
+        pos_y,
+        pos_z,
+        ground_z,
+        hp,
+        time_alive_ms,
+        max_lifespan_ms,
+        map_width,
+        map_height,
+        bounds_margin,
+    );
+    let effect_flags = projectile_terminal_effect_plan_row(
+        terminal_flags,
+        bit(TERMINAL_IN_TERMINAL_REFLECTOR_HIT),
+        bit(TERMINAL_IN_HAS_EXPLOSION),
+        bit(TERMINAL_IN_HAS_SUBMUNITIONS),
+    );
+    (reason as u32) | (terminal_flags << 3) | (effect_flags << 9)
+}
+
 /// C1 projectile migration — classify terminal projectile consequences.
 ///
 /// TypeScript still samples terrain/water inputs and applies returned entity,
@@ -3240,122 +3498,45 @@ pub fn projectile_terminal_consequence_batch(
             continue;
         }
 
-        let projectile_body = is_projectile_type[i] != 0;
-        let armed = is_armed[i] != 0;
-        let already_exploded = has_exploded[i] != 0;
-        let expired = time_alive_ms[i] >= max_lifespan_ms[i];
-
-        if projectile_body {
-            let terminal_reflector = terminal_reflector_hit[i] != 0;
-            let hit_ground = direct_hit_this_tick[i] == 0
-                && reflected_projectile[i] == 0
-                && hit_shield[i] == 0
-                && armed
-                && pos_z[i] <= ground_z[i];
-
-            let mut next_hp = hp[i];
-            let mut flags = 0_u32;
-            let mut next_z = pos_z[i];
-            let terminal_water_entry = water_surface_impact[i] != 0;
-            if terminal_water_entry && detonate_on_water_transition[i] == 0 {
-                next_hp = 0.0;
-                flags |= PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO
-                    | PROJECTILE_TERMINAL_FLAG_REMOVE
-                    | PROJECTILE_TERMINAL_FLAG_WATER_SPLASH;
-                out_hp[i] = next_hp;
-                out_reason[i] = PROJECTILE_TERMINAL_REASON_WATER;
-                out_flags[i] = flags;
-                processed += 1;
-                continue;
-            }
-            if terminal_water_entry {
-                next_hp = 0.0;
-                flags |= PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO;
-            }
-            if hit_ground {
-                next_hp = 0.0;
-                next_z = ground_z[i];
-                flags |= PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO | PROJECTILE_TERMINAL_FLAG_CLAMP_Z;
-            }
-            if terminal_reflector || (expired && detonate_on_expiry[i] != 0) {
-                next_hp = 0.0;
-                flags |= PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO;
-            }
-            let health_zero = next_hp <= 0.0;
-
-            out_hp[i] = next_hp;
-            out_z[i] = next_z;
-
-            if hit_ground
-                && water_at_impact[i] != 0
-                && water_compatible[i] == 0
-                && detonate_on_water_transition[i] == 0
-            {
-                flags |= PROJECTILE_TERMINAL_FLAG_REMOVE | PROJECTILE_TERMINAL_FLAG_WATER_SPLASH;
-                out_reason[i] = PROJECTILE_TERMINAL_REASON_WATER;
-                out_flags[i] = flags;
-                processed += 1;
-                continue;
-            }
-
-            if expired || hit_ground || terminal_reflector || terminal_water_entry || health_zero {
-                flags |= PROJECTILE_TERMINAL_FLAG_REMOVE;
-                out_reason[i] = if terminal_water_entry {
-                    PROJECTILE_TERMINAL_REASON_WATER
-                } else if terminal_reflector {
-                    PROJECTILE_TERMINAL_REASON_REFLECTOR
-                } else if hit_ground {
-                    PROJECTILE_TERMINAL_REASON_GROUND
-                } else if expired {
-                    PROJECTILE_TERMINAL_REASON_EXPIRED
-                } else {
-                    PROJECTILE_TERMINAL_REASON_HEALTH_ZERO
-                };
-
-                let policy_detonates = if terminal_water_entry {
-                    detonate_on_water_transition[i] != 0
-                } else if terminal_reflector {
-                    detonate_on_reflector_impact[i] != 0
-                } else if hit_ground {
-                    detonate_on_ground_contact[i] != 0
-                } else if expired {
-                    detonate_on_expiry[i] != 0
-                } else if direct_hit_this_tick[i] != 0 {
-                    detonate_on_entity_impact[i] != 0
-                } else {
-                    detonate_on_destroyed[i] != 0
-                };
-                let will_detonate = health_zero
-                    && policy_detonates
-                    && armed
-                    && !already_exploded
-                    && has_detonation_payload[i] != 0;
-                if will_detonate {
-                    flags |= PROJECTILE_TERMINAL_FLAG_DETONATE;
-                } else if armed && !already_exploded {
-                    flags |= PROJECTILE_TERMINAL_FLAG_EXPIRE_EVENT;
-                }
-
-                out_flags[i] = flags;
-                processed += 1;
-                continue;
-            }
-        } else if expired {
-            out_reason[i] = PROJECTILE_TERMINAL_REASON_EXPIRED;
-            out_flags[i] = PROJECTILE_TERMINAL_FLAG_REMOVE;
-            processed += 1;
-            continue;
+        let (reason, flags) = projectile_terminal_consequence_row(
+            is_projectile_type[i] != 0,
+            is_armed[i] != 0,
+            has_exploded[i] != 0,
+            detonate_on_entity_impact[i] != 0,
+            detonate_on_ground_contact[i] != 0,
+            detonate_on_expiry[i] != 0,
+            detonate_on_destroyed[i] != 0,
+            detonate_on_reflector_impact[i] != 0,
+            detonate_on_water_transition[i] != 0,
+            has_detonation_payload[i] != 0,
+            direct_hit_this_tick[i] != 0,
+            reflected_projectile[i] != 0,
+            hit_shield[i] != 0,
+            terminal_reflector_hit[i] != 0,
+            water_at_impact[i] != 0,
+            water_surface_impact[i] != 0,
+            water_compatible[i] != 0,
+            pos_x[i],
+            pos_y[i],
+            pos_z[i],
+            ground_z[i],
+            hp[i],
+            time_alive_ms[i],
+            max_lifespan_ms[i],
+            map_width,
+            map_height,
+            bounds_margin,
+        );
+        out_reason[i] = reason;
+        out_flags[i] = flags;
+        // out_z / out_hp are implied by the flags (see the row fn doc).
+        if flags & PROJECTILE_TERMINAL_FLAG_CLAMP_Z != 0 {
+            out_z[i] = ground_z[i];
         }
-
-        let x = pos_x[i];
-        let y = pos_y[i];
-        if x < -bounds_margin
-            || x > map_width + bounds_margin
-            || y < -bounds_margin
-            || y > map_height + bounds_margin
-        {
-            out_reason[i] = PROJECTILE_TERMINAL_REASON_OUT_OF_BOUNDS;
-            out_flags[i] = PROJECTILE_TERMINAL_FLAG_REMOVE;
+        if flags & PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO != 0 {
+            out_hp[i] = 0.0;
+        }
+        if reason != PROJECTILE_TERMINAL_REASON_NONE {
             processed += 1;
         }
     }
@@ -3397,45 +3578,12 @@ pub fn projectile_terminal_effect_plan_batch(
         if enabled[i] == 0 {
             continue;
         }
-
-        let terminal = terminal_flags[i];
-        if terminal & PROJECTILE_TERMINAL_FLAG_REMOVE == 0 {
-            processed += 1;
-            continue;
-        }
-
-        let mut effects = PROJECTILE_TERMINAL_EFFECT_FLAG_QUEUE_DESPAWN;
-        if terminal & PROJECTILE_TERMINAL_FLAG_WATER_SPLASH != 0 {
-            effects |= PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_WATER_SPLASH_EVENT;
-            out_effect_flags[i] = effects;
-            processed += 1;
-            continue;
-        }
-
-        if terminal_reflector_hit[i] != 0 {
-            effects |= PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_REFLECTOR_IMPACT_EVENT;
-        }
-
-        if terminal & PROJECTILE_TERMINAL_FLAG_DETONATE != 0 {
-            let splash = has_explosion[i] != 0;
-            let submunitions = has_submunitions[i] != 0;
-            if splash || submunitions {
-                effects |= PROJECTILE_TERMINAL_EFFECT_FLAG_SET_EXPLODED
-                    | PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_HIT_EVENT;
-                if splash {
-                    effects |= PROJECTILE_TERMINAL_EFFECT_FLAG_APPLY_SPLASH;
-                }
-                if submunitions {
-                    effects |= PROJECTILE_TERMINAL_EFFECT_FLAG_SPAWN_SUBMUNITIONS;
-                }
-            }
-        }
-
-        if terminal & PROJECTILE_TERMINAL_FLAG_EXPIRE_EVENT != 0 {
-            effects |= PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_EXPIRE_EVENT;
-        }
-
-        out_effect_flags[i] = effects;
+        out_effect_flags[i] = projectile_terminal_effect_plan_row(
+            terminal_flags[i],
+            terminal_reflector_hit[i] != 0,
+            has_explosion[i] != 0,
+            has_submunitions[i] != 0,
+        );
         processed += 1;
     }
 

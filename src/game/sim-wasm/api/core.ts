@@ -862,56 +862,24 @@ export interface SimWasm {
     outVelocityY: Float64Array,
     outVelocityZ: Float64Array,
   ) => number;
-  /** C1 — terminal projectile consequence classifier. Rust decides
-   *  timeout, ground/water impact, terminal reflector, HP-zero,
-   *  detonation/expire-FX eligibility, and out-of-bounds removal;
-   *  TypeScript applies the compact returned flags and event diffs. */
-  readonly projectileTerminalConsequenceBatch: (
-    count: number,
-    enabled: Uint8Array,
-    isProjectileType: Uint8Array,
-    isArmed: Uint8Array,
-    hasExploded: Uint8Array,
-    detonateOnEntityImpact: Uint8Array,
-    detonateOnGroundContact: Uint8Array,
-    detonateOnExpiry: Uint8Array,
-    detonateOnDestroyed: Uint8Array,
-    detonateOnReflectorImpact: Uint8Array,
-    detonateOnWaterTransition: Uint8Array,
-    hasDetonationPayload: Uint8Array,
-    directHitThisTick: Uint8Array,
-    reflectedProjectile: Uint8Array,
-    hitShield: Uint8Array,
-    terminalReflectorHit: Uint8Array,
-    waterAtImpact: Uint8Array,
-    waterSurfaceImpact: Uint8Array,
-    waterCompatible: Uint8Array,
-    posX: Float64Array,
-    posY: Float64Array,
-    posZ: Float64Array,
-    groundZ: Float64Array,
-    hp: Float64Array,
-    timeAliveMs: Float64Array,
-    maxLifespanMs: Float64Array,
+  /** C1 — merged terminal classify + effect plan for ONE projectile.
+   *  Booleans pack into `inputBits` (TERMINAL_IN_* in Rust, mirrored in
+   *  ProjectileCollisionHandler.ts); the return packs
+   *  reason (bits 0..2) | terminalFlags << 3 | effectFlags << 9. outZ/outHp
+   *  are implied by the CLAMP_Z / SET_HP_ZERO flags, so the call carries
+   *  zero slices — the count=1 batch pair it replaced marshalled ~35. */
+  readonly projectileTerminalSingle: (
+    inputBits: number,
+    posX: number,
+    posY: number,
+    posZ: number,
+    groundZ: number,
+    hp: number,
+    timeAliveMs: number,
+    maxLifespanMs: number,
     mapWidth: number,
     mapHeight: number,
     margin: number,
-    outReason: Uint8Array,
-    outFlags: Uint32Array,
-    outZ: Float64Array,
-    outHp: Float64Array,
-  ) => number;
-  /** C1 — terminal projectile effect planner. Rust maps classified
-   *  terminal flags plus authored payload booleans to compact side-effect
-   *  flags; TypeScript applies those event/entity diffs to JS-owned stores. */
-  readonly projectileTerminalEffectPlanBatch: (
-    count: number,
-    enabled: Uint8Array,
-    terminalFlags: Uint32Array,
-    terminalReflectorHit: Uint8Array,
-    hasExplosion: Uint8Array,
-    hasSubmunitions: Uint8Array,
-    outEffectFlags: Uint32Array,
   ) => number;
   /** C1 — nearest swept hitbox contact for projectile bodies. Rust
    *  reads unit/building/projectile colliders from the spatial slab,

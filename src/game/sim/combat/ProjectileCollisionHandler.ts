@@ -195,41 +195,32 @@ const PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_EXPIRE_EVENT = 1 << 5;
 const PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_WATER_SPLASH_EVENT = 1 << 6;
 const PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_REFLECTOR_IMPACT_EVENT = 1 << 7;
 const PROJECTILE_OUT_OF_BOUNDS_MARGIN = 100;
-const _terminalEnabled = new Uint8Array(1);
-const _terminalIsProjectileType = new Uint8Array(1);
-const _terminalIsArmed = new Uint8Array(1);
-const _terminalHasExploded = new Uint8Array(1);
-const _terminalDetonateOnEntityImpact = new Uint8Array(1);
-const _terminalDetonateOnGroundContact = new Uint8Array(1);
-const _terminalDetonateOnExpiry = new Uint8Array(1);
-const _terminalDetonateOnDestroyed = new Uint8Array(1);
-const _terminalDetonateOnReflectorImpact = new Uint8Array(1);
-const _terminalDetonateOnWaterTransition = new Uint8Array(1);
-const _terminalHasDetonationPayload = new Uint8Array(1);
-const _terminalDirectHitThisTick = new Uint8Array(1);
-const _terminalReflectedProjectile = new Uint8Array(1);
-const _terminalHitShield = new Uint8Array(1);
-const _terminalTerminalReflectorHit = new Uint8Array(1);
-const _terminalWaterAtImpact = new Uint8Array(1);
-const _terminalWaterSurfaceImpact = new Uint8Array(1);
-const _terminalWaterCompatible = new Uint8Array(1);
-const _terminalPosX = new Float64Array(1);
-const _terminalPosY = new Float64Array(1);
-const _terminalPosZ = new Float64Array(1);
-const _terminalGroundZ = new Float64Array(1);
-const _terminalHp = new Float64Array(1);
-const _terminalTimeAliveMs = new Float64Array(1);
-const _terminalMaxLifespanMs = new Float64Array(1);
-const _terminalOutReason = new Uint8Array(1);
-const _terminalOutFlags = new Uint32Array(1);
-const _terminalOutZ = new Float64Array(1);
-const _terminalOutHp = new Float64Array(1);
-const _terminalEffectEnabled = new Uint8Array(1);
-const _terminalEffectTerminalFlags = new Uint32Array(1);
-const _terminalEffectReflectorHit = new Uint8Array(1);
-const _terminalEffectHasExplosion = new Uint8Array(1);
-const _terminalEffectHasSubmunitions = new Uint8Array(1);
-const _terminalEffectOutFlags = new Uint32Array(1);
+
+// Input bits for projectileTerminalSingle — mirror of TERMINAL_IN_* in
+// rts-sim-wasm/src/combat_targeting/projectile_interactions.rs. Append-only.
+const TERMINAL_IN_IS_PROJECTILE_TYPE = 1 << 0;
+const TERMINAL_IN_IS_ARMED = 1 << 1;
+const TERMINAL_IN_HAS_EXPLODED = 1 << 2;
+const TERMINAL_IN_DETONATE_ON_ENTITY_IMPACT = 1 << 3;
+const TERMINAL_IN_DETONATE_ON_GROUND_CONTACT = 1 << 4;
+const TERMINAL_IN_DETONATE_ON_EXPIRY = 1 << 5;
+const TERMINAL_IN_DETONATE_ON_DESTROYED = 1 << 6;
+const TERMINAL_IN_DETONATE_ON_REFLECTOR_IMPACT = 1 << 7;
+const TERMINAL_IN_DETONATE_ON_WATER_TRANSITION = 1 << 8;
+const TERMINAL_IN_HAS_DETONATION_PAYLOAD = 1 << 9;
+const TERMINAL_IN_DIRECT_HIT_THIS_TICK = 1 << 10;
+const TERMINAL_IN_REFLECTED_PROJECTILE = 1 << 11;
+const TERMINAL_IN_HIT_SHIELD = 1 << 12;
+const TERMINAL_IN_TERMINAL_REFLECTOR_HIT = 1 << 13;
+const TERMINAL_IN_WATER_AT_IMPACT = 1 << 14;
+const TERMINAL_IN_WATER_SURFACE_IMPACT = 1 << 15;
+const TERMINAL_IN_WATER_COMPATIBLE = 1 << 16;
+const TERMINAL_IN_HAS_EXPLOSION = 1 << 17;
+const TERMINAL_IN_HAS_SUBMUNITIONS = 1 << 18;
+
+/** Reused unpack target for the merged classify+plan single call. Consumed
+ *  synchronously by the caller before the next projectile's call. */
+const _terminalResult = { reason: 0, terminalFlags: 0, effectFlags: 0 };
 
 function queueProjectileRemoval(
   id: EntityId,
@@ -987,24 +978,18 @@ function detonateKilledProjectileShot(
   }
 
   proj.hp = 0;
-  const terminalFlags = classifyProjectileTerminalConsequence(
+  const terminalEffectFlags = classifyAndPlanProjectileTerminal(
     world,
     projEntity,
     false,
     true,
     false,
     false,
-  );
+  ).effectFlags;
 
   const config = proj.config;
   const projShot = shot;
   const runtimeProfile = config.shotProfile.runtime;
-  const terminalEffectFlags = planProjectileTerminalEffects(
-    terminalFlags,
-    false,
-    runtimeProfile.hasExplosion,
-    runtimeProfile.hasSubmunitions,
-  );
   const shotBlueprintId = projShot.shotBlueprintId;
   const damageSourceKey = proj.sourceTurretBlueprintId ?? shotBlueprintId;
   const damageSourceType: SimEventSourceType = proj.sourceTurretBlueprintId ? 'turret' : 'system';
@@ -1118,7 +1103,12 @@ function pushProjectileExpireEvent(
   });
 }
 
-function classifyProjectileTerminalConsequence(
+/** Merged terminal classify + effect plan: ONE scalar WASM call per
+ *  projectile (the count=1 batch pair it replaced marshalled ~35 slices).
+ *  Applies the CLAMP_Z / SET_HP_ZERO side effects exactly as the batch
+ *  wrapper did (out_z/out_hp are implied by those flags) and returns the
+ *  shared `_terminalResult` scratch. */
+function classifyAndPlanProjectileTerminal(
   world: WorldState,
   projEntity: Entity,
   terminalReflectorHit: boolean,
@@ -1126,9 +1116,12 @@ function classifyProjectileTerminalConsequence(
   reflectedProjectile: boolean,
   hitShield: boolean,
   waterSurfaceImpact = false,
-): number {
+): typeof _terminalResult {
+  _terminalResult.reason = 0;
+  _terminalResult.terminalFlags = 0;
+  _terminalResult.effectFlags = 0;
   const proj = projEntity.projectile;
-  if (proj === null) return 0;
+  if (proj === null) return _terminalResult;
 
   const config = proj.config;
   const runtimeProfile = config.shotProfile.runtime;
@@ -1136,127 +1129,64 @@ function classifyProjectileTerminalConsequence(
   const y = projEntity.transform.y;
   const z = projEntity.transform.z;
   const groundZ = world.getGroundZ(x, y);
-
-  _terminalEnabled[0] = 1;
-  _terminalIsProjectileType[0] = proj.projectileType === 'projectile' ? 1 : 0;
-  _terminalIsArmed[0] = proj.isArmed ? 1 : 0;
-  _terminalHasExploded[0] = proj.hasExploded ? 1 : 0;
   const shotLocomotion = isProjectileShot(config.shot)
     ? config.shot.shotLocomotion
     : null;
-  _terminalDetonateOnEntityImpact[0] =
-    shotLocomotion?.terminal.entityImpact === 'detonate' ? 1 : 0;
-  _terminalDetonateOnGroundContact[0] =
-    shotLocomotion?.terminal.groundContact === 'detonate' ? 1 : 0;
-  _terminalDetonateOnExpiry[0] =
-    shotLocomotion?.terminal.expiry === 'detonate' ? 1 : 0;
-  _terminalDetonateOnDestroyed[0] =
-    shotLocomotion?.terminal.destroyed === 'detonate' ? 1 : 0;
-  _terminalDetonateOnReflectorImpact[0] =
-    shotLocomotion?.terminal.reflectorImpact === 'detonate' ? 1 : 0;
-  _terminalDetonateOnWaterTransition[0] =
-    _collisionWaterSurfaceDetonateIds.has(projEntity.id) ? 1 : 0;
-  _terminalHasDetonationPayload[0] =
-    runtimeProfile.hasExplosion || runtimeProfile.hasSubmunitions ? 1 : 0;
-  _terminalDirectHitThisTick[0] = directHitThisTick ? 1 : 0;
-  _terminalReflectedProjectile[0] = reflectedProjectile ? 1 : 0;
-  _terminalHitShield[0] = hitShield ? 1 : 0;
-  _terminalTerminalReflectorHit[0] = terminalReflectorHit ? 1 : 0;
-  _terminalWaterAtImpact[0] = isWaterAt(x, y, world.mapWidth, world.mapHeight) ? 1 : 0;
-  _terminalWaterSurfaceImpact[0] = waterSurfaceImpact ? 1 : 0;
-  _terminalWaterCompatible[0] =
+
+  let bits = 0;
+  if (proj.projectileType === 'projectile') bits |= TERMINAL_IN_IS_PROJECTILE_TYPE;
+  if (proj.isArmed) bits |= TERMINAL_IN_IS_ARMED;
+  if (proj.hasExploded) bits |= TERMINAL_IN_HAS_EXPLODED;
+  if (shotLocomotion?.terminal.entityImpact === 'detonate') bits |= TERMINAL_IN_DETONATE_ON_ENTITY_IMPACT;
+  if (shotLocomotion?.terminal.groundContact === 'detonate') bits |= TERMINAL_IN_DETONATE_ON_GROUND_CONTACT;
+  if (shotLocomotion?.terminal.expiry === 'detonate') bits |= TERMINAL_IN_DETONATE_ON_EXPIRY;
+  if (shotLocomotion?.terminal.destroyed === 'detonate') bits |= TERMINAL_IN_DETONATE_ON_DESTROYED;
+  if (shotLocomotion?.terminal.reflectorImpact === 'detonate') bits |= TERMINAL_IN_DETONATE_ON_REFLECTOR_IMPACT;
+  if (_collisionWaterSurfaceDetonateIds.has(projEntity.id)) bits |= TERMINAL_IN_DETONATE_ON_WATER_TRANSITION;
+  if (runtimeProfile.hasExplosion || runtimeProfile.hasSubmunitions) bits |= TERMINAL_IN_HAS_DETONATION_PAYLOAD;
+  if (directHitThisTick) bits |= TERMINAL_IN_DIRECT_HIT_THIS_TICK;
+  if (reflectedProjectile) bits |= TERMINAL_IN_REFLECTED_PROJECTILE;
+  if (hitShield) bits |= TERMINAL_IN_HIT_SHIELD;
+  if (terminalReflectorHit) bits |= TERMINAL_IN_TERMINAL_REFLECTOR_HIT;
+  if (isWaterAt(x, y, world.mapWidth, world.mapHeight)) bits |= TERMINAL_IN_WATER_AT_IMPACT;
+  if (waterSurfaceImpact) bits |= TERMINAL_IN_WATER_SURFACE_IMPACT;
+  if (
     isProjectileShot(config.shot) &&
-      shotLocomotionCanOperateInWater(config.shot.shotLocomotion)
-      ? 1
-      : 0;
-  _terminalPosX[0] = x;
-  _terminalPosY[0] = y;
-  _terminalPosZ[0] = z;
-  _terminalGroundZ[0] = groundZ;
-  _terminalHp[0] = proj.hp;
-  _terminalTimeAliveMs[0] = proj.timeAlive;
-  _terminalMaxLifespanMs[0] = projectileEffectiveMaxLifespanMs(proj);
+    shotLocomotionCanOperateInWater(config.shot.shotLocomotion)
+  ) {
+    bits |= TERMINAL_IN_WATER_COMPATIBLE;
+  }
+  if (runtimeProfile.hasExplosion) bits |= TERMINAL_IN_HAS_EXPLOSION;
+  if (runtimeProfile.hasSubmunitions) bits |= TERMINAL_IN_HAS_SUBMUNITIONS;
 
   const sim = getSimWasm();
   if (sim === undefined) {
-    throw new Error('Projectile terminal consequence classification requires initialized sim-wasm');
+    throw new Error('Projectile terminal classification requires initialized sim-wasm');
   }
-  sim.projectileTerminalConsequenceBatch(
-    1,
-    _terminalEnabled,
-    _terminalIsProjectileType,
-    _terminalIsArmed,
-    _terminalHasExploded,
-    _terminalDetonateOnEntityImpact,
-    _terminalDetonateOnGroundContact,
-    _terminalDetonateOnExpiry,
-    _terminalDetonateOnDestroyed,
-    _terminalDetonateOnReflectorImpact,
-    _terminalDetonateOnWaterTransition,
-    _terminalHasDetonationPayload,
-    _terminalDirectHitThisTick,
-    _terminalReflectedProjectile,
-    _terminalHitShield,
-    _terminalTerminalReflectorHit,
-    _terminalWaterAtImpact,
-    _terminalWaterSurfaceImpact,
-    _terminalWaterCompatible,
-    _terminalPosX,
-    _terminalPosY,
-    _terminalPosZ,
-    _terminalGroundZ,
-    _terminalHp,
-    _terminalTimeAliveMs,
-    _terminalMaxLifespanMs,
+  const packed = sim.projectileTerminalSingle(
+    bits,
+    x,
+    y,
+    z,
+    groundZ,
+    proj.hp,
+    proj.timeAlive,
+    projectileEffectiveMaxLifespanMs(proj),
     world.mapWidth,
     world.mapHeight,
     PROJECTILE_OUT_OF_BOUNDS_MARGIN,
-    _terminalOutReason,
-    _terminalOutFlags,
-    _terminalOutZ,
-    _terminalOutHp,
   );
-
-  const flags = _terminalOutFlags[0];
+  const flags = (packed >>> 3) & 0x3f;
   if ((flags & PROJECTILE_TERMINAL_FLAG_CLAMP_Z) !== 0) {
-    projEntity.transform.z = _terminalOutZ[0];
+    projEntity.transform.z = groundZ;
   }
   if ((flags & PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO) !== 0) {
-    proj.hp = _terminalOutHp[0];
+    proj.hp = 0;
   }
-  return flags;
-}
-
-function planProjectileTerminalEffects(
-  terminalFlags: number,
-  terminalReflectorHit: boolean,
-  hasExplosion: boolean,
-  hasSubmunitions: boolean,
-): number {
-  _terminalEffectEnabled[0] = 1;
-  _terminalEffectTerminalFlags[0] = terminalFlags;
-  _terminalEffectReflectorHit[0] = terminalReflectorHit ? 1 : 0;
-  _terminalEffectHasExplosion[0] = hasExplosion ? 1 : 0;
-  _terminalEffectHasSubmunitions[0] = hasSubmunitions ? 1 : 0;
-  _terminalEffectOutFlags[0] = 0;
-
-  const sim = getSimWasm();
-  if (sim === undefined) {
-    throw new Error('Projectile terminal effect planning requires initialized sim-wasm');
-  }
-  const processed = sim.projectileTerminalEffectPlanBatch(
-    1,
-    _terminalEffectEnabled,
-    _terminalEffectTerminalFlags,
-    _terminalEffectReflectorHit,
-    _terminalEffectHasExplosion,
-    _terminalEffectHasSubmunitions,
-    _terminalEffectOutFlags,
-  );
-  if (processed !== 1) {
-    throw new Error(`Projectile terminal effect planning failed: ${processed}/1`);
-  }
-  return _terminalEffectOutFlags[0];
+  _terminalResult.reason = packed & 0x7;
+  _terminalResult.terminalFlags = flags;
+  _terminalResult.effectFlags = (packed >>> 9) & 0xff;
+  return _terminalResult;
 }
 
 // Check projectile collisions and apply damage.
@@ -1735,7 +1665,7 @@ export function checkProjectileCollisions(
       }
     }
 
-    const terminalFlags = classifyProjectileTerminalConsequence(
+    const terminal = classifyAndPlanProjectileTerminal(
       world,
       projEntity,
       terminalReflectorHit,
@@ -1745,13 +1675,8 @@ export function checkProjectileCollisions(
       waterSurfaceImpact,
     );
     const terminalGroundImpact =
-      _terminalOutReason[0] === PROJECTILE_TERMINAL_REASON_GROUND;
-    const terminalEffectFlags = planProjectileTerminalEffects(
-      terminalFlags,
-      terminalReflectorHit,
-      runtimeProfile.hasExplosion,
-      runtimeProfile.hasSubmunitions,
-    );
+      terminal.reason === PROJECTILE_TERMINAL_REASON_GROUND;
+    const terminalEffectFlags = terminal.effectFlags;
 
     // Water hit — Rust classifies this as a silent terminal (no
     // explosion, no submunitions, no damage) and plans only the
