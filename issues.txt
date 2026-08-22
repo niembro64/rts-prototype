@@ -25,3 +25,5 @@
 13. Our "spectator" seems to have as much accurate information as the players. The spectators can see some units still alive that the real players actually do not consider alive. It seems that the "spectator" does not actually have fully accurate information about the game. 
 
 14. Maybe the build spray doesn't need to spin, that's probably an unnecessary computation that is only hurting performance. 
+
+15. Our torpedos that the "orca" unit fires seem to not work well. I think they are configured incorrectly for being released and travelling under water. 
