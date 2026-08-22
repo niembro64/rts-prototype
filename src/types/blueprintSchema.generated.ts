@@ -800,6 +800,7 @@ export type UnitLocomotionBlueprintPlane = {
   physics: UnitUnitLocomotionBlueprintPhysics;
   environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
   config: AirframeConfig;
+  turnRateDegreesPerSecond?: number;
 };
 
 export type UnitLocomotionBlueprintSubmarine = {
@@ -816,6 +817,7 @@ export type UnitLocomotionBlueprintAerosub = {
   physics: UnitUnitLocomotionBlueprintPhysics;
   environmentalHazards: UnitLocomotionEnvironmentalHazardPolicy;
   config: AirframeConfig;
+  turnRateDegreesPerSecond?: number;
 };
 
 export type UnitLocomotionBlueprint = UnitLocomotionBlueprintRover | UnitLocomotionBlueprintTank | UnitLocomotionBlueprintAmphibiousTank | UnitLocomotionBlueprintCrawler | UnitLocomotionBlueprintBot | UnitLocomotionBlueprintAmphibian | UnitLocomotionBlueprintDrone | UnitLocomotionBlueprintPlane | UnitLocomotionBlueprintSubmarine | UnitLocomotionBlueprintAerosub;

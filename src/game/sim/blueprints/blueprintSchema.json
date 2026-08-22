@@ -3263,6 +3263,10 @@
         },
         "config": {
           "$ref": "#/$defs/AirframeConfig"
+        },
+        "turnRateDegreesPerSecond": {
+          "type": "number",
+          "description": "Optional per-unit override of the preset constant-rate yaw slew (deg/s). Lower = wider turning circle."
         }
       },
       "additionalProperties": false
@@ -3319,6 +3323,10 @@
         },
         "config": {
           "$ref": "#/$defs/AirframeConfig"
+        },
+        "turnRateDegreesPerSecond": {
+          "type": "number",
+          "description": "Optional per-unit override of the preset constant-rate yaw slew (deg/s). Lower = wider turning circle."
         }
       },
       "additionalProperties": false
