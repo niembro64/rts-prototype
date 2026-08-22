@@ -36,6 +36,8 @@ type UnitLocomotionPresetFluidPhysics = UnitLocomotionResistancePhysics & {
 export type UnitLocomotionPresetConfig = {
   actuator: {
     propulsionAxis: 'waypointForward' | 'waypointForwardOnly' | 'worldPlanar' | 'alwaysForward';
+    /** alwaysForward chassis only: constant-rate yaw slew in deg/s. */
+    turnRateDegreesPerSecond?: number;
     ground: {
       staticFrictionCoefficient: number;
       tangentialDampingRate: number;
@@ -156,12 +158,6 @@ function assertPreset(
     'navigation',
   ]);
   assertObject(`presets.${presetId}.actuator`, preset.actuator);
-  assertExactKeys(`presets.${presetId}.actuator`, preset.actuator, [
-    'propulsionAxis',
-    'ground',
-    'air',
-    'water',
-  ]);
   if (
     preset.actuator.propulsionAxis !== 'waypointForward' &&
     preset.actuator.propulsionAxis !== 'waypointForwardOnly' &&
@@ -169,6 +165,22 @@ function assertPreset(
     preset.actuator.propulsionAxis !== 'alwaysForward'
   ) {
     throw new Error(`Invalid unit locomotion presets.${presetId}.actuator.propulsionAxis`);
+  }
+  const alwaysForward = preset.actuator.propulsionAxis === 'alwaysForward';
+  assertExactKeys(
+    `presets.${presetId}.actuator`,
+    preset.actuator,
+    alwaysForward
+      ? ['propulsionAxis', 'turnRateDegreesPerSecond', 'ground', 'air', 'water']
+      : ['propulsionAxis', 'ground', 'air', 'water'],
+  );
+  if (alwaysForward) {
+    const turnRate = preset.actuator.turnRateDegreesPerSecond;
+    if (typeof turnRate !== 'number' || !Number.isFinite(turnRate) || turnRate <= 0 || turnRate > 720) {
+      throw new Error(
+        `Invalid unitLocomotionConfig.json: presets.${presetId}.actuator.turnRateDegreesPerSecond must be a finite number in (0, 720]`,
+      );
+    }
   }
   assertObject(`presets.${presetId}.motionControl`, preset.motionControl);
   const cruiseWhenUncommanded = preset.motionControl.cruiseWhenUncommanded === true;

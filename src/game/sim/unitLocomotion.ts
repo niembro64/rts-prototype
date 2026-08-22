@@ -206,6 +206,7 @@ export function createUnitLocomotion(
     environmentalHazards: { ...environmentalHazards },
     actuator: {
       propulsionAxis: preset.actuator.propulsionAxis,
+      turnRateDegreesPerSecond: preset.actuator.turnRateDegreesPerSecond,
     },
     motionControl: cloneMotionControl(preset.motionControl),
     surfaceFollowing: { ...preset.surfaceFollowing },

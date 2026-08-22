@@ -348,6 +348,7 @@
     "aerosub": {
       "actuator": {
         "propulsionAxis": "alwaysForward",
+        "turnRateDegreesPerSecond": 90,
         "ground": {
           "staticFrictionCoefficient": 0.1,
           "tangentialDampingRate": 0.151906847906
@@ -392,6 +393,7 @@
     "plane": {
       "actuator": {
         "propulsionAxis": "alwaysForward",
+        "turnRateDegreesPerSecond": 90,
         "ground": {
           "staticFrictionCoefficient": 0.1,
           "tangentialDampingRate": 0.151906847906

@@ -192,7 +192,7 @@ function ensureForceBatchCapacity(sim: SimWasm, count: number): void {
 }
 
 /** Slot order kept in lockstep with UF_PROFILE_* in unit_kinetics.rs. */
-const UF_PROFILE_STRIDE = 14;
+const UF_PROFILE_STRIDE = 15;
 
 let _unitForceProfileTableUploaded = false;
 let _unitForceProfileCodeCount = 0;
@@ -232,6 +232,7 @@ function buildUnitForceProfileSignature(): UnitForceProfileSignature {
         water.resistance.angularDampingRate,
         loco.environmentalHazards.waterDamagePerSecond,
         loco.actuator.propulsionAxis,
+        loco.actuator.turnRateDegreesPerSecond ?? 0,
         loco.motionControl.cruiseWhenUncommanded ? 1 : 0,
       ].join(':') + '|';
     }
@@ -295,6 +296,12 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
     values[base + 11] = water.resistance.linearDampingRate;
     values[base + 12] = water.resistance.angularDampingRate;
     values[base + 13] = loco.environmentalHazards.waterDamagePerSecond;
+    // Authored constant-rate yaw slew, degrees -> radians. Zero for every
+    // actuator other than alwaysForward, which keeps the damped servo.
+    values[base + 14] =
+      loco.actuator.propulsionAxis === 'alwaysForward'
+        ? (loco.actuator.turnRateDegreesPerSecond ?? 0) * (Math.PI / 180)
+        : 0;
     flags[code] =
       (loco.actuator.propulsionAxis !== 'worldPlanar' ? UF_FLAG_PROPULSION_BODY_FORWARD : 0) |
       (loco.actuator.propulsionAxis === 'waypointForwardOnly' ? UF_FLAG_PROPULSION_FORWARD_ONLY : 0) |

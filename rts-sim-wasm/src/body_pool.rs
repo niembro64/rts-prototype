@@ -840,11 +840,13 @@ pub(crate) fn compute_airborne_waypoint_steer(
     }
 }
 
-/// Max sustainable yaw rate for the body in `slot`, derived from the exact
-/// attitude-servo spring the sim integrates. A critically damped servo
-/// tracking a target rotating at rate W settles into a steady lag of
-/// 2W/sqrt(k); forward-only power stalls once the nose lags the thrust
-/// request by 90 degrees, so the sustainable ceiling is W = pi*sqrt(k)/4.
+/// Max yaw rate for the body in `slot`. An `alwaysForward` chassis authors
+/// its constant-rate slew directly (UF_PROFILE_TURN_RATE_RAD_PER_SEC), so
+/// the deadzone's turn-radius geometry is exact — R = v / authoredRate. Any
+/// other chassis falls back to the servo-derived estimate: a critically
+/// damped servo tracking a target rotating at rate W settles into a steady
+/// lag of 2W/sqrt(k), and power stalls past a 90-degree lag, so the
+/// sustainable ceiling is W = pi*sqrt(k)/4.
 #[inline]
 fn airborne_max_yaw_rate(
     p: &BodyPool,
@@ -853,6 +855,16 @@ fn airborne_max_yaw_rate(
     runtime: &UnitForceRuntimeTable,
     slot: usize,
 ) -> f64 {
+    if let Some(entity_slot) = unit_force_entity_slot_for_body(es, p, slot) {
+        let code = es.unit_blueprint_code[entity_slot] as usize;
+        if code < profile.count {
+            let authored =
+                profile.values[code * UF_PROFILE_STRIDE + UF_PROFILE_TURN_RATE_RAD_PER_SEC];
+            if authored > 0.0 && authored.is_finite() {
+                return authored;
+            }
+        }
+    }
     let Some((max_propulsive_force, physics_mass)) =
         unit_effective_max_propulsive_force(p, es, profile, runtime, slot)
     else {
