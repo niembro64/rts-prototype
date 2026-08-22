@@ -1,0 +1,15 @@
+1. Albatros unit is missing wings, add massive wings to it. 
+
+2. Our "CMDR" vs "BASE" states should also control our fabricator's default waypoints. Currently it seems that the "demo battle" vs "game room battle" is the thing deciding that, but this is wrong. We want "CMDR"/"BASE" setting to control this ---- ACTUALLY no, what we actually want is any "game-start initialized" unit to continue acting as they do now, but any "game-start initialized building" to have the complex waypoints on initialization, but any "normally built building" to have the simpler waypoint assigned to it. So it will not be based on "CMDR" or "BASE" directly, these things should be assigned base don "game-init" vs "game-built". That should be clear after thinking about it. 
+
+3. Also in "skirmish" mode in the curently deployed prod code my fabricators don't seem to be able to create units. 
+
+4. Our "attack this unit" commands don't seem to be just right. Look at how "Beyond-All-Reason" implements this attack and implement it elegantly in "rts-prototype". 
+
+5. When I tell my commander to build metal extractors on the three metal deposits around him, he builds one, but then decides to walk a weird super long way around to build the other two, he seems to not know that the second one is in range with no problem. Figure out this general issue (it seems more general than just this case) and fix it. 
+
+6. We don't need the "FULL" summary piece of the "METAL" and "ENERGY top bar statuses, just show what we have, the capacity, produce and consume as we are showing. Remove that last "summary" piece. While you're working on the top bar, let's also include a "sunlight" arrow, that points in the direction that our light is coming in (it should be directional light I believe).
+
+7. Make our mini-map 85% the size it curently is.
+
+8. There are still a few strange things going on with the flows of our buildings being built. Go look at "Beyond-All-Reason" at how buildings should look and act when they are in a future command in the queue, also look at what happens when they are "abandoned" (I believe they should immediately start decaying and then if they reach zero health they disappear). Consider all situations that buildings might face, look at how "BAR" does it, then implement that here as well. 
