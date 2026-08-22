@@ -318,7 +318,7 @@ export const LOCOMOTION_FAR_FRAME_STRIDE = Math.max(
   1, Math.floor(finitePositiveOr(detailConfig.animation?.locomotionFarFrameStride, 4)));
 
 function effectSpawnScaleConfig(
-  key: 'smoke' | 'explosion',
+  key: 'smoke',
   mid: number,
   far: number,
 ): EffectSpawnScaleConfig {
@@ -333,7 +333,6 @@ function effectSpawnScaleConfig(
 }
 
 const SMOKE_SPAWN_SCALE = effectSpawnScaleConfig('smoke', 0.65, 0.3);
-const EXPLOSION_SPAWN_SCALE = effectSpawnScaleConfig('explosion', 0.7, 0.35);
 
 // ── Screen-coverage math ────────────────────────────────────────────
 
@@ -622,10 +621,6 @@ function effectSpawnScale(config: EffectSpawnScaleConfig, level: number): number
 
 export function smokeSpawnScaleForDetail(level: number): number {
   return effectSpawnScale(SMOKE_SPAWN_SCALE, level);
-}
-
-export function explosionSpawnScaleForDetail(level: number): number {
-  return effectSpawnScale(EXPLOSION_SPAWN_SCALE, level);
 }
 
 // ── Unit rebuild band + graphics ceiling ────────────────────────────

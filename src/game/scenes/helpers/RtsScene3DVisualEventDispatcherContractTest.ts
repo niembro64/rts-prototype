@@ -10,7 +10,16 @@ import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
 import {
   DamageImpact3D,
   type DamageImpactRequest,
+  explosionBaseChunkGroupCount,
+  explosionChunkPatternForDetail,
 } from '../../render3d/BeamImpact3D';
+import {
+  DETAIL_LEVEL_FULL,
+  DETAIL_LEVEL_GLYPH,
+  DETAIL_RUNG_FAR,
+  DETAIL_RUNG_MID,
+  detailLevelForRung,
+} from '../../render3d/EntityDetailLevel3D';
 import type { BeamRenderer3D } from '../../render3d/BeamRenderer3D';
 import type { Render3DEntities } from '../../render3d/Render3DEntities';
 import type { ShieldImpactRenderer3D } from '../../render3d/ShieldImpactRenderer3D';
@@ -22,6 +31,71 @@ import { DEATH_EXPLOSION_HITBOX_RADIUS_MULT } from '../../sim/blueprints/entityB
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[damage impact routing contract] ${message}`);
+}
+
+function chunkClassCount(
+  pattern: ReturnType<typeof explosionChunkPatternForDetail>,
+  motionClass: 0 | 1 | 2,
+  renderSizeClass: 0 | 1 | 2,
+): number {
+  let count = 0;
+  for (let i = 0; i < pattern.length; i++) {
+    const chunk = pattern[i];
+    if (
+      chunk.motionClass === motionClass &&
+      chunk.renderSizeClass === renderSizeClass
+    ) count++;
+  }
+  return count;
+}
+
+type ExplosionLodProbe = {
+  birthCount: number;
+  firstBandMotion: Float32Array;
+  firstBandScale: readonly [number, number, number];
+};
+
+function probeExplosionLod(detailLevel: number): ExplosionLodProbe {
+  const parent = new THREE.Group();
+  const renderer = new DamageImpact3D(
+    parent,
+    { inScope: () => true } as unknown as ViewportFootprint,
+    { getTerrainZ: () => 0, waterLevel: 0 },
+  );
+  const internals = renderer as unknown as {
+    particleMesh: THREE.InstancedMesh;
+    particleMotion: Float32Array;
+    spawnSerial: number;
+  };
+  try {
+    renderer.spawnDamageImpact({
+      x: 24,
+      y: 24,
+      z: 20,
+      damageRadius: 18,
+      damage: 60,
+      surface: 'blast',
+      detailLevel,
+    });
+    renderer.update([], 16);
+    const matrix = new THREE.Matrix4();
+    const position = new THREE.Vector3();
+    const rotation = new THREE.Quaternion();
+    const scale = new THREE.Vector3();
+    const firstBandScale: [number, number, number] = [0, 0, 0];
+    for (let slot = 0; slot < 3; slot++) {
+      internals.particleMesh.getMatrixAt(slot, matrix);
+      matrix.decompose(position, rotation, scale);
+      firstBandScale[slot] = scale.length();
+    }
+    return {
+      birthCount: internals.spawnSerial,
+      firstBandMotion: internals.particleMotion.slice(0, 12),
+      firstBandScale,
+    };
+  } finally {
+    renderer.destroy();
+  }
 }
 
 function event(
@@ -60,6 +134,70 @@ function event(
 }
 
 export function runRtsScene3DVisualEventDispatcherContractTest(): void {
+  const highPattern = explosionChunkPatternForDetail(DETAIL_LEVEL_FULL);
+  const mediumPattern = explosionChunkPatternForDetail(
+    detailLevelForRung(DETAIL_RUNG_MID),
+  );
+  const lowPattern = explosionChunkPatternForDetail(
+    detailLevelForRung(DETAIL_RUNG_FAR),
+  );
+  assertContract(
+    highPattern.length === 13 &&
+      chunkClassCount(highPattern, 2, 2) === 1 &&
+      chunkClassCount(highPattern, 1, 1) === 3 &&
+      chunkClassCount(highPattern, 0, 0) === 9,
+    'HIGH explosions must resolve each N to 1 large-slow, 3 medium, and 9 small-fast chunks',
+  );
+  assertContract(
+    mediumPattern.length === 7 &&
+      chunkClassCount(mediumPattern, 2, 2) === 1 &&
+      chunkClassCount(mediumPattern, 1, 1) === 3 &&
+      chunkClassCount(mediumPattern, 0, 1) === 3,
+    'MED explosions must collapse small-fast chunks 3:1 into medium-fast chunks',
+  );
+  assertContract(
+    lowPattern.length === 3 &&
+      chunkClassCount(lowPattern, 2, 2) === 1 &&
+      chunkClassCount(lowPattern, 1, 2) === 1 &&
+      chunkClassCount(lowPattern, 0, 2) === 1,
+    'LOW explosions must render one large representative from each motion band',
+  );
+  assertContract(
+    explosionChunkPatternForDetail(DETAIL_LEVEL_GLYPH).length === 0,
+    'OFF/GLYPH must suppress explosion chunk geometry',
+  );
+  assertContract(
+    explosionBaseChunkGroupCount(18, 60) === 1 &&
+      explosionBaseChunkGroupCount(18, 200) === 2 &&
+      explosionBaseChunkGroupCount(18, 10000) === 7,
+    'explosion damage must deterministically floor and cap the base N group count',
+  );
+
+  const highProbe = probeExplosionLod(DETAIL_LEVEL_FULL);
+  const mediumProbe = probeExplosionLod(detailLevelForRung(DETAIL_RUNG_MID));
+  const lowProbe = probeExplosionLod(detailLevelForRung(DETAIL_RUNG_FAR));
+  assertContract(
+    highProbe.birthCount === 13 &&
+      mediumProbe.birthCount === 7 &&
+      lowProbe.birthCount === 3,
+    'the renderer must emit the exact HIGH/MED/LOW chunk totals for N=1',
+  );
+  for (let i = 0; i < highProbe.firstBandMotion.length; i++) {
+    assertContract(
+      highProbe.firstBandMotion[i] === mediumProbe.firstBandMotion[i] &&
+        highProbe.firstBandMotion[i] === lowProbe.firstBandMotion[i],
+      'LOD collapse must retain the deterministic velocity of each source motion band',
+    );
+  }
+  assertContract(
+    Math.abs(highProbe.firstBandScale[0] - mediumProbe.firstBandScale[0]) < 1e-6 &&
+      Math.abs(highProbe.firstBandScale[0] - lowProbe.firstBandScale[0]) < 1e-6 &&
+      highProbe.firstBandScale[1] < lowProbe.firstBandScale[1] &&
+      highProbe.firstBandScale[2] < mediumProbe.firstBandScale[2] &&
+      mediumProbe.firstBandScale[2] < lowProbe.firstBandScale[2],
+    'LOD collapse must promote rendered size independently of retained motion',
+  );
+
   const impacts: DamageImpactRequest[] = [];
   const killed: Array<{ id: number; blast: unknown }> = [];
   const context = {
@@ -75,7 +213,7 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
     shieldImpactRenderer: {} as ShieldImpactRenderer3D,
     waterSplashRenderer: {} as WaterSplash3D,
     isPositionLowLod: () => false,
-    positionVisualDetailLevel: () => 0,
+    positionVisualDetailLevel: () => DETAIL_LEVEL_FULL,
   };
 
   const previousMaterialExplosions = getMaterialExplosions();
@@ -84,6 +222,10 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
   assertContract(impacts.length === 1, 'a shot hit must enter the shared damage-impact pipeline');
   assertContract(impacts[0].damageRadius === 24, 'hit presentation must use the actual splash radius');
   assertContract(impacts[0].hitEntity === true, 'a confirmed body hit must retain body-impact response');
+  assertContract(
+    impacts[0].detailLevel === DETAIL_LEVEL_FULL,
+    'impact requests must carry the exact shared LOD level into the chunk renderer',
+  );
   assertContract(
     impacts[0].incomingX === 129 &&
       Math.abs((impacts[0].incomingY ?? 0) + 3.6) < 1e-9,

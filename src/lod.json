@@ -85,10 +85,9 @@
       "buildingAnimationMinRung": "medium"
     },
     "effectSpawnScale": {
-      "comment": "Per-authored-rung spawn scales. AUTO resolves to exactly one of these three values; glyph/removal spawns no effect geometry.",
-      "whatItScales": "A multiplier on how many particles/quads an effect emits, applied at spawn time by the rung of the emitting entity. It thins the effect rather than shrinking it, so a distant explosion still reads at the right size and duration, just with fewer pieces. Values are clamped to [0,1]; close is normally 1 (author the effect for close range, then thin it out).",
-      "smoke": { "close": 1, "mid": 0.5, "far": 0.2 },
-      "explosion": { "close": 1, "mid": 0.5, "far": 0.2 }
+      "comment": "Per-authored-rung smoke spawn scales. AUTO resolves to exactly one of these three values; glyph/removal spawns no effect geometry.",
+      "whatItScales": "A multiplier on how many smoke particles/quads an effect emits, applied at spawn time by the rung of the emitting entity. It thins smoke rather than shrinking it. Explosion tetrahedrons use structural 1:3:9 chunk collapse instead: HIGH has large-slow, medium, and small-fast geometry; MEDIUM collapses every three small-fast chunks into one medium-fast chunk; LOW also collapses every three medium chunks into one large chunk. Collapse promotes rendered size without changing the source motion class.",
+      "smoke": { "close": 1, "mid": 0.5, "far": 0.2 }
     }
   }
 }

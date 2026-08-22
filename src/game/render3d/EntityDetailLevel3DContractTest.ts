@@ -19,7 +19,6 @@ import {
   detailRungForViewPosition,
   detailRungMinLevel,
   detailScreenRadiusPx,
-  explosionSpawnScaleForDetail,
   featureVisibleAtDetail,
   geometryTierForDetail,
   legStyleForDetail,
@@ -423,25 +422,24 @@ export function runEntityDetailLevel3DContractTest(): void {
   assertContract(unitShapeForDetail(DETAIL_LEVEL_FULL, 'full') === 'full', 'full keeps unit shape ceiling');
   assertContract(unitShapeForDetail(DETAIL_LEVEL_GLYPH, 'full') === 'full', 'unit low geometry keeps authored bodies');
 
-  // ── Effect spawn scales: one value per H/M/L rung ──────────────────
+  // ── Smoke spawn scale: one value per H/M/L rung ────────────────────
   assertContract(smokeSpawnScaleForDetail(DETAIL_LEVEL_FULL) === 1, 'full smoke is full scale');
   assertContract(smokeSpawnScaleForDetail(DETAIL_LEVEL_GLYPH) === 0, 'glyph smoke is suppressed');
-  assertContract(explosionSpawnScaleForDetail(DETAIL_LEVEL_FULL) === 1, 'full explosions are full scale');
-  assertContract(explosionSpawnScaleForDetail(DETAIL_LEVEL_GLYPH) === 0, 'glyph explosions are suppressed');
-  for (const scale of [smokeSpawnScaleForDetail, explosionSpawnScaleForDetail]) {
-    const low = scale(detailLevelForRung(DETAIL_RUNG_FAR));
-    const medium = scale(detailLevelForRung(DETAIL_RUNG_MID));
-    assertContract(low > 0 && medium >= low, 'each effect has ordered Low/Medium spawn scales');
-    assertContract(
-      scale(0.001) === low && scale(detailLevelForRung(DETAIL_RUNG_FAR)) === low,
-      'effect output is constant throughout the Low rung',
-    );
-    assertContract(
-      scale(detailLevelForRung(DETAIL_RUNG_MID)) === medium &&
-        scale(detailRungMinLevel(DETAIL_RUNG_CLOSE) - 0.001) === medium,
-      'effect output is constant throughout the Medium rung',
-    );
-  }
+  const lowSmokeScale = smokeSpawnScaleForDetail(detailLevelForRung(DETAIL_RUNG_FAR));
+  const mediumSmokeScale = smokeSpawnScaleForDetail(detailLevelForRung(DETAIL_RUNG_MID));
+  assertContract(
+    lowSmokeScale > 0 && mediumSmokeScale >= lowSmokeScale,
+    'smoke has ordered Low/Medium spawn scales',
+  );
+  assertContract(
+    smokeSpawnScaleForDetail(0.001) === lowSmokeScale,
+    'smoke output is constant throughout the Low rung',
+  );
+  assertContract(
+    smokeSpawnScaleForDetail(detailRungMinLevel(DETAIL_RUNG_CLOSE) - 0.001) ===
+      mediumSmokeScale,
+    'smoke output is constant throughout the Medium rung',
+  );
 
   // ── Rebuild band + graphics ceiling ───────────────────────────────
   const bands = new Set<number>();

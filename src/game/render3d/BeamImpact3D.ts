@@ -20,6 +20,13 @@ import {
   createPrimitiveTetrahedronGeometry,
 } from './PrimitiveGeometryQuality3D';
 import {
+  DETAIL_LEVEL_FULL,
+  DETAIL_RUNG_CLOSE,
+  DETAIL_RUNG_FAR,
+  DETAIL_RUNG_MID,
+  detailRungForLevel,
+} from './EntityDetailLevel3D';
+import {
   clearDirtySlotSpan,
   createDirtySlotSpan,
   markDirtySlot,
@@ -63,8 +70,9 @@ export type DamageImpactRequest = {
    *  known. Entity deaths are free-space fire blasts even when their centre
    *  happens to lie within the terrain endpoint tolerance. */
   surface?: DamageImpactSurface;
-  /** Presentation density selected by the shared effect LOD policy. */
-  detailScale?: number;
+  /** Shared screen-coverage detail level at the detonation point. Explosion
+   *  chunks resolve this to an exact HIGH/MED/LOW collapse pattern. */
+  detailLevel?: number;
   /** Thermal deposit strength; derived from radius when omitted. */
   energy?: number;
   /** Stable provenance used only to vary the consolidated site's shape. */
@@ -81,6 +89,95 @@ const MAX_QUEUED_DAMAGE_IMPACTS = 512;
 const TERRAIN_ENDPOINT_TOLERANCE = 4;
 const EJECTA_SIZE_SCALE = [0.55, 1, 1.55] as const;
 const EJECTA_SPEED_SCALE = [1.55, 1, 0.62] as const;
+type EjectaChunkClass = 0 | 1 | 2;
+export type ExplosionChunkSpec = Readonly<{
+  /** Source mass/motion band: small-fast (0), medium (1), large-slow (2). */
+  motionClass: EjectaChunkClass;
+  /** Geometry band after LOD collapse: small (0), medium (1), large (2). */
+  renderSizeClass: EjectaChunkClass;
+}>;
+
+const SMALL_FAST: EjectaChunkClass = 0;
+const MEDIUM: EjectaChunkClass = 1;
+const LARGE_SLOW: EjectaChunkClass = 2;
+
+/** One complete explosion group at HIGH: one large-slow, three medium, and
+ *  nine small-fast chunks. The first three entries are the same three motion
+ *  representatives used by every rung, which keeps their deterministic
+ *  trajectories identical while only their rendered size changes. */
+const EXPLOSION_PATTERN_HIGH: readonly ExplosionChunkSpec[] = Object.freeze([
+  { motionClass: LARGE_SLOW, renderSizeClass: LARGE_SLOW },
+  { motionClass: MEDIUM, renderSizeClass: MEDIUM },
+  { motionClass: SMALL_FAST, renderSizeClass: SMALL_FAST },
+  { motionClass: MEDIUM, renderSizeClass: MEDIUM },
+  { motionClass: MEDIUM, renderSizeClass: MEDIUM },
+  { motionClass: SMALL_FAST, renderSizeClass: SMALL_FAST },
+  { motionClass: SMALL_FAST, renderSizeClass: SMALL_FAST },
+  { motionClass: SMALL_FAST, renderSizeClass: SMALL_FAST },
+  { motionClass: SMALL_FAST, renderSizeClass: SMALL_FAST },
+  { motionClass: SMALL_FAST, renderSizeClass: SMALL_FAST },
+  { motionClass: SMALL_FAST, renderSizeClass: SMALL_FAST },
+  { motionClass: SMALL_FAST, renderSizeClass: SMALL_FAST },
+  { motionClass: SMALL_FAST, renderSizeClass: SMALL_FAST },
+]);
+
+/** MEDIUM keeps the large and medium bands. Each three-small group becomes
+ *  one medium-sized representative but retains the small-fast motion class. */
+const EXPLOSION_PATTERN_MEDIUM: readonly ExplosionChunkSpec[] = Object.freeze([
+  { motionClass: LARGE_SLOW, renderSizeClass: LARGE_SLOW },
+  { motionClass: MEDIUM, renderSizeClass: MEDIUM },
+  { motionClass: SMALL_FAST, renderSizeClass: MEDIUM },
+  { motionClass: MEDIUM, renderSizeClass: MEDIUM },
+  { motionClass: MEDIUM, renderSizeClass: MEDIUM },
+  { motionClass: SMALL_FAST, renderSizeClass: MEDIUM },
+  { motionClass: SMALL_FAST, renderSizeClass: MEDIUM },
+]);
+
+/** LOW renders one large representative from each motion band. Medium chunks
+ *  collapse 3:1 and small chunks collapse 9:1, but neither changes speed. */
+const EXPLOSION_PATTERN_LOW: readonly ExplosionChunkSpec[] = Object.freeze([
+  { motionClass: LARGE_SLOW, renderSizeClass: LARGE_SLOW },
+  { motionClass: MEDIUM, renderSizeClass: LARGE_SLOW },
+  { motionClass: SMALL_FAST, renderSizeClass: LARGE_SLOW },
+]);
+
+const NO_EXPLOSION_CHUNKS: readonly ExplosionChunkSpec[] = Object.freeze([]);
+const MAX_EXPLOSION_BASE_GROUPS = Math.floor(
+  MAX_EJECTA_BIRTHS_PER_UPDATE / EXPLOSION_PATTERN_HIGH.length,
+);
+
+/** Exact explosion chunk pattern for one base magnitude group at a visual LOD
+ *  rung. OFF/GLYPH produces no effect geometry. */
+export function explosionChunkPatternForDetail(
+  detailLevel: number,
+): readonly ExplosionChunkSpec[] {
+  switch (detailRungForLevel(detailLevel)) {
+    case DETAIL_RUNG_CLOSE: return EXPLOSION_PATTERN_HIGH;
+    case DETAIL_RUNG_MID: return EXPLOSION_PATTERN_MEDIUM;
+    case DETAIL_RUNG_FAR: return EXPLOSION_PATTERN_LOW;
+    default: return NO_EXPLOSION_CHUNKS;
+  }
+}
+
+/** Converts authored explosion strength into N complete 1:3:9 groups. This
+ *  preserves the former damage/radius-driven density curve, quantized into
+ *  whole groups so every LOD can collapse without fractional bands. */
+export function explosionBaseChunkGroupCount(
+  damageRadius: number,
+  damage?: number,
+): number {
+  const finiteDamageRadius = Number.isFinite(damageRadius)
+    ? Math.max(0, damageRadius)
+    : 0;
+  const highDetailChunkBudget =
+    damage !== undefined && Number.isFinite(damage) && damage > 0
+      ? 4 + damage * 0.15
+      : 5 + Math.sqrt(finiteDamageRadius) * 2.4;
+  return Math.min(
+    MAX_EXPLOSION_BASE_GROUPS,
+    Math.max(1, Math.floor(highDetailChunkBudget / EXPLOSION_PATTERN_HIGH.length)),
+  );
+}
 const ENDPOINT_EJECTA_FORWARD_SPEED = 0.85 * 3;
 const ENDPOINT_EJECTA_RANDOM_SPREAD = 0.65;
 
@@ -713,28 +810,31 @@ export class DamageImpact3D {
         );
       }
 
-      const detailScale = Math.max(0, Math.min(1, impact.detailScale ?? 1));
-      // Particle count is proportional to the DAMAGE the blast deals, not
-      // its size — a commander's 700-damage farewell throws far more matter
-      // than a scout's 60. Calibrated so typical small blasts keep roughly
-      // their old density; MAX_EJECTA_BIRTHS_PER_UPDATE still caps the
-      // colossal ones. Radius-derived fallback covers events that carry no
-      // damage (beam rays, legacy contexts).
-      const impactDamage = impact.damage;
-      const requestedBirths = Math.max(
-        1,
-        Math.round(
-          (impactDamage !== undefined && Number.isFinite(impactDamage) && impactDamage > 0
-            ? 4 + impactDamage * 0.15
-            : 5 + Math.sqrt(damageRadius) * 2.4) * detailScale,
-        ),
+      const chunkPattern = explosionChunkPatternForDetail(
+        impact.detailLevel ?? DETAIL_LEVEL_FULL,
+      );
+      // N remains proportional to the DAMAGE the blast deals, not its size —
+      // a commander's farewell throws more matter than a scout's. The radius
+      // fallback covers beam/ray and legacy events without authored damage.
+      // Quantizing to complete groups guarantees exact 1:3:9 collapse ratios.
+      const requestedGroups = explosionBaseChunkGroupCount(
+        damageRadius,
+        impact.damage,
       );
       const availableBirths = Math.max(
         0,
         MAX_EJECTA_BIRTHS_PER_UPDATE - this.particleBirthsThisUpdate,
       );
-      const birthCount = Math.min(requestedBirths, availableBirths);
-      for (let birth = 0; birth < birthCount; birth++) this.spawnParticle(site);
+      const birthGroups = chunkPattern.length > 0
+        ? Math.min(requestedGroups, Math.floor(availableBirths / chunkPattern.length))
+        : 0;
+      const birthCount = birthGroups * chunkPattern.length;
+      for (let group = 0; group < birthGroups; group++) {
+        for (let chunk = 0; chunk < chunkPattern.length; chunk++) {
+          const spec = chunkPattern[chunk];
+          this.spawnParticle(site, spec.motionClass, spec.renderSizeClass);
+        }
+      }
       this.particleBirthsThisUpdate += birthCount;
     }
     pending.length = 0;
@@ -874,7 +974,11 @@ export class DamageImpact3D {
     }
   }
 
-  private spawnParticle(site: ImpactSite): void {
+  private spawnParticle(
+    site: ImpactSite,
+    authoredMotionClass?: EjectaChunkClass,
+    authoredRenderSizeClass?: EjectaChunkClass,
+  ): void {
     const slot = this.particleCursor;
     this.particleCursor = (this.particleCursor + 1) % EJECTA_CAP;
     this.particleHighWater = Math.max(this.particleHighWater, slot + 1);
@@ -884,12 +988,14 @@ export class DamageImpact3D {
     const r2 = hash01(serial, 47);
     const r3 = hash01(serial, 71);
     const sizeRoll = hash01(serial, 97);
-    // Most fragments are light chips, with fewer medium pieces and occasional
-    // heavy chunks. The inverse speed relationship reads as different mass:
-    // small pieces accept more acceleration while large pieces retain inertia.
-    const sizeClass = sizeRoll < 0.48 ? 0 : sizeRoll < 0.83 ? 1 : 2;
-    const sizeScale = EJECTA_SIZE_SCALE[sizeClass];
-    const speedScale = EJECTA_SPEED_SCALE[sizeClass];
+    // Continuous beam ejecta retains its established random class mixture.
+    // Explosion bursts author motion and rendered size independently so LOD
+    // can promote geometry without slowing the representative chunk.
+    const randomClass: EjectaChunkClass = sizeRoll < 0.48 ? 0 : sizeRoll < 0.83 ? 1 : 2;
+    const motionClass = authoredMotionClass ?? randomClass;
+    const renderSizeClass = authoredRenderSizeClass ?? motionClass;
+    const sizeScale = EJECTA_SIZE_SCALE[renderSizeClass];
+    const speedScale = EJECTA_SPEED_SCALE[motionClass];
     // Particle speed is proportional to the blast's own damage radius:
     // matter from a bigger explosion flies faster and farther, so the
     // debris cloud reads at the scale of the sphere that got hurt. The
@@ -1030,4 +1136,3 @@ export class DamageImpact3D {
     this.root.parent?.remove(this.root);
   }
 }
-

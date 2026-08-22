@@ -5,7 +5,6 @@ import type { BeamRenderer3D } from '../../render3d/BeamRenderer3D';
 import type { Render3DEntities } from '../../render3d/Render3DEntities';
 import type { ShieldImpactRenderer3D } from '../../render3d/ShieldImpactRenderer3D';
 import type { WaterSplash3D } from '../../render3d/WaterSplash3D';
-import { explosionSpawnScaleForDetail } from '../../render3d/EntityDetailLevel3D';
 import { entityDeathBlastFromContext3D } from '../../render3d/EntityDeathDisassembly3D';
 import { finiteOr } from '../../math';
 import { DEATH_EXPLOSION_HITBOX_RADIUS_MULT } from '../../sim/blueprints/entityBaseLedger';
@@ -93,8 +92,10 @@ export function dispatchSimEvent3DVisual(
       event.pos.y,
       event.pos.z,
     )) return;
-    const detailScale = explosionSpawnScaleForDetail(
-      context.positionVisualDetailLevel(event.pos.x, event.pos.y, event.pos.z),
+    const detailLevel = context.positionVisualDetailLevel(
+      event.pos.x,
+      event.pos.y,
+      event.pos.z,
     );
     let mx = 0, mz = 0;
     if (ctx) {
@@ -117,7 +118,7 @@ export function dispatchSimEvent3DVisual(
       incomingY: mz,
       incomingZ: 0,
       hitEntity: (ctx?.entity.radiusCollision ?? 0) > 0,
-      detailScale,
+      detailLevel,
       seedSource: event.entityId ?? undefined,
     });
   } else if (event.type === 'waterSplash') {
@@ -173,12 +174,10 @@ export function dispatchSimEvent3DVisual(
       incomingX: ctx ? finiteOr(ctx.projectile.vel.x, 0) : 0,
       incomingY: ctx ? finiteOr(ctx.projectile.vel.y, 0) : 0,
       incomingZ: 0,
-      detailScale: explosionSpawnScaleForDetail(
-        context.positionVisualDetailLevel(
-          event.pos.x,
-          event.pos.y,
-          event.pos.z,
-        ),
+      detailLevel: context.positionVisualDetailLevel(
+        event.pos.x,
+        event.pos.y,
+        event.pos.z,
       ),
       seedSource: event.entityId ?? undefined,
     });
@@ -249,7 +248,7 @@ export function dispatchSimEvent3DVisual(
       incomingY: mz,
       incomingZ: 0,
       surface: 'blast',
-      detailScale: explosionSpawnScaleForDetail(eventDetailLevel),
+      detailLevel: eventDetailLevel,
       seedSource: event.entityId ?? undefined,
     });
   }
