@@ -107,6 +107,39 @@ function createPlasmaGeometrySpec(
   };
 }
 
+/** Tip-to-tail heat ramp for plasma shots — the same palette the blast
+ *  tetrahedra fade through (see BeamImpact3D's blast colors): white-hot
+ *  at the ball tip, through yellow and red, to a dark-red ember tail. */
+function writePlasmaHeatRampColor(
+  colors: Float32Array,
+  vertex: number,
+  axial01: number,
+): void {
+  let r: number;
+  let g: number;
+  let b: number;
+  if (axial01 <= 0.22) {
+    const t = axial01 / 0.22;
+    r = 1;
+    g = 1 + (0.82 - 1) * t;
+    b = 1 + (0.06 - 1) * t;
+  } else if (axial01 <= 0.58) {
+    const t = (axial01 - 0.22) / 0.36;
+    r = 1;
+    g = 0.82 + (0.2 - 0.82) * t;
+    b = 0.06 + (0.008 - 0.06) * t;
+  } else {
+    const t = (axial01 - 0.58) / 0.42;
+    r = 1 + (0.11 - 1) * t;
+    g = 0.2 + (0.025 - 0.2) * t;
+    b = 0.008;
+  }
+  const out = vertex * 3;
+  colors[out] = r;
+  colors[out + 1] = g;
+  colors[out + 2] = b;
+}
+
 const PLASMA_HIGH_SPEC = createPlasmaGeometrySpec(
   PLASMA_HIGH_CURVE_SEGMENTS,
   PLASMA_HIGH_RADIAL_SEGMENTS,
@@ -278,8 +311,12 @@ export class ProjectileRenderer3D {
   });
   // Plasma stays exactly white under every terrain/sun light: the body and
   // tail are one unlit surface instead of two differently shaded meshes.
+  // Vertex colors carry the white-tip -> ember-tail heat ramp; the base
+  // color multiplies it, so it must stay pure white for the ramp to read
+  // exactly (see writePlasmaHeatRampColor).
   private readonly plasmaMat = new THREE.MeshBasicMaterial({
-    color: COLORS.effects.projectile.curvedCone.colorHex,
+    color: 0xffffff,
+    vertexColors: true,
     side: THREE.DoubleSide,
   });
   private readonly projectileFinMat = new THREE.MeshLambertMaterial({
@@ -1424,10 +1461,26 @@ function createDynamicPlasmaGeometry(
   spec: PlasmaGeometrySpec,
 ): DynamicPlasmaGeometry {
   const positions = new Float32Array(capacity * spec.verticesPerShot * 3);
+  // STATIC per-vertex heat ramp: the slot topology (nose, head-to-tail
+  // rings, tail point) never changes, so tip-white -> ember-tail colors
+  // are written once and cost nothing per frame.
+  const colors = new Float32Array(capacity * spec.verticesPerShot * 3);
   const indices = new Uint32Array(capacity * spec.indicesPerShot);
   for (let slot = 0; slot < capacity; slot++) {
     const vertexBase = slot * spec.verticesPerShot;
     const nose = vertexBase;
+    writePlasmaHeatRampColor(colors, nose, 0);
+    for (let ring = 0; ring < spec.ringCount; ring++) {
+      const axial = (ring + 1) / (spec.ringCount + 1);
+      for (let radial = 0; radial < spec.radialSegments; radial++) {
+        writePlasmaHeatRampColor(
+          colors,
+          vertexBase + 1 + ring * spec.radialSegments + radial,
+          axial,
+        );
+      }
+    }
+    writePlasmaHeatRampColor(colors, vertexBase + spec.verticesPerShot - 1, 1);
     const firstRing = vertexBase + 1;
     const tail = vertexBase + spec.verticesPerShot - 1;
     let indexOut = slot * spec.indicesPerShot;
@@ -1466,6 +1519,7 @@ function createDynamicPlasmaGeometry(
   const geometry = new THREE.BufferGeometry();
   const positionAttr = new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage);
   geometry.setAttribute('position', positionAttr);
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
   geometry.setDrawRange(0, 0);
   return { spec, geometry, positions, positionAttr };
@@ -1487,6 +1541,15 @@ function createLowResolutionPlasmaGeometry(): THREE.BufferGeometry {
   const indices = new Uint16Array(PLASMA_LOW_INDICES);
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  // The instance matrix spans head -> tail along +Y, so the base
+  // triangle is the fat white-hot head and the apex is the ember tail
+  // tip — the same two ends the high mesh ramps between.
+  const colors = new Float32Array(4 * 3);
+  writePlasmaHeatRampColor(colors, 0, 0.1);
+  writePlasmaHeatRampColor(colors, 1, 0.1);
+  writePlasmaHeatRampColor(colors, 2, 0.1);
+  writePlasmaHeatRampColor(colors, 3, 1);
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
   return geometry;
 }

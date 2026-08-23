@@ -108,6 +108,10 @@ export const RESOURCE_CONFIG = {
       'metalExtractor.rotorSpinMultiplier',
       rawConfig.metalExtractor.rotorSpinMultiplier,
     ),
+    rotorMaxVisualRadPerSec: posNum(
+      'metalExtractor.rotorMaxVisualRadPerSec',
+      rawConfig.metalExtractor.rotorMaxVisualRadPerSec,
+    ),
     rotorSpinReflectsActualProduction:
       rawConfig.metalExtractor.rotorSpinReflectsActualProduction !== false,
     rotorPotentialRadPerSec: posNum(
@@ -172,6 +176,16 @@ export const EXTRACTOR_ROTOR_SPIN_REFLECTS_ACTUAL_PRODUCTION =
   RESOURCE_CONFIG.metalExtractor.rotorSpinReflectsActualProduction;
 export const EXTRACTOR_ROTOR_POTENTIAL_RAD_PER_SEC =
   RESOURCE_CONFIG.metalExtractor.rotorPotentialRadPerSec;
+
+/** Hard ceiling on the VISUAL rotor speed. The rotor is six-fold
+ *  symmetric, so once it turns more than 30 degrees per rendered frame
+ *  the wagon-wheel effect makes it read as spinning BACKWARD — fast
+ *  extractors appeared to pick clockwise or counter-clockwise at
+ *  random. 7 rad/s stays under the reversal threshold down to ~13 fps
+ *  while still reading as fast; throughput above the cap no longer adds
+ *  visual speed. */
+export const EXTRACTOR_ROTOR_MAX_VISUAL_RAD_PER_SEC =
+  RESOURCE_CONFIG.metalExtractor.rotorMaxVisualRadPerSec;
 
 /** Spray-cone half-angle (radians), keyed by economy building blueprint id. */
 const PYLON_ECONOMY_CONE_HALF_ANGLE_RAD_BY_BUILDING =
