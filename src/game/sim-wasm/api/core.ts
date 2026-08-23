@@ -501,6 +501,8 @@ export interface SimWasm {
     dx: Float64Array,
     dy: Float64Array,
     distance: Float64Array,
+    desiredVelocityX: Float64Array,
+    desiredVelocityY: Float64Array,
     radiusCollision: Float64Array,
     driveScale: Float64Array,
     flags: Uint8Array,

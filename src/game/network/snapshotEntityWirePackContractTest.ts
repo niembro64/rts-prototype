@@ -1347,6 +1347,7 @@ export function runSnapshotEntityWirePackContractTest(): void {
               buildingId: null,
               waitGather: true,
               waitGroupId: 456,
+              guardReturnTargetId: 789,
             },
           ],
           turrets: null,
@@ -1422,7 +1423,8 @@ export function runSnapshotEntityWirePackContractTest(): void {
   );
   assertContract(
     decodedRoamUnit?.unit?.actions?.[0]?.waitGather === true &&
-      decodedRoamUnit.unit.actions[0].waitGroupId === 456,
-    'unit gather-wait action metadata must survive compact entity wire round trip',
+      decodedRoamUnit.unit.actions[0].waitGroupId === 456 &&
+      decodedRoamUnit.unit.actions[0].guardReturnTargetId === 789,
+    'unit gather-wait and Guard-return action metadata must survive compact entity wire round trip',
   );
 }

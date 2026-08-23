@@ -70,8 +70,15 @@ import { getUnitLocomotionTraversalCapabilities } from './unitLocomotion';
 import { updateBuildingActiveStates } from './buildingActiveState';
 import { applyLavaSurfaceDamage } from './lavaSurfaceDamage';
 import { getEntityTargetPoint } from './buildingAnchors';
-import { getGuardFollowRadius, isFriendlyGuardTarget, resolveGuardServiceTarget } from './guard';
-import { getRecentHostileAttacker } from './aggression';
+import {
+  buildGuardRetaliationAttack,
+  calculateGuardFollowPlan,
+  isFriendlyGuardTarget,
+  isGuardRetaliationAttackAction,
+  isValidGuardRetaliationAttack,
+  resolveGuardServiceTarget,
+  shouldRefreshGuardFollowGoal,
+} from './guard';
 import { updateTransportActions } from './transports';
 import { WindPowerTracker, sampleWindState, sampleWindStateInto, type WindState } from './wind';
 import { entitySlotRegistry } from './EntitySlotRegistry';
@@ -107,6 +114,7 @@ import {
   isReclaimableTarget,
   makeEntityReclaimTarget,
   makeVegetationReclaimTarget,
+  isReclaimTargetInBuildRange,
   type ReclaimTarget,
 } from './reclaim';
 import {
@@ -129,6 +137,7 @@ import {
   UNIT_ACTION_FLAG_COMBAT_STOP_FIGHT,
   UNIT_ACTION_FLAG_GUARD_FRIENDLY,
   UNIT_ACTION_FLAG_GUARD_SERVICE,
+  UNIT_ACTION_FLAG_GUARD_SERVICE_IN_RANGE,
   UNIT_ACTION_FLAG_MOVE_STATE_HOLD,
   UNIT_ACTION_FLAG_MOVE_STATE_ROAM,
   UNIT_ACTION_FLAG_TARGET_IN_BUILD_RANGE,
@@ -1989,7 +1998,16 @@ export class Simulation {
       // needs work. The action queue holds durable command waypoints;
       // transient pathfinding points live in unit.activePath and are
       // discarded automatically when the queue changes.
+      const preSweepHead = unit.actions[0];
       if (this.actionQueueMaintenance.sweepInvalidTargetActions(entity)) {
+        const combat = entity.combat;
+        if (
+          isGuardRetaliationAttackAction(preSweepHead) &&
+          combat !== null &&
+          combat.priorityTargetId === preSweepHead.targetId
+        ) {
+          combat.priorityTargetId = null;
+        }
         this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
       }
 
@@ -2035,6 +2053,26 @@ export class Simulation {
           this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
         }
       }
+      if (currentAction.type === 'guard') {
+        const retaliation = buildGuardRetaliationAttack(this.world, entity, currentAction);
+        if (retaliation !== null) {
+          unshiftUnitAction(unit, retaliation);
+          currentAction = retaliation;
+          this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+        }
+      }
+      if (
+        isGuardRetaliationAttackAction(currentAction) &&
+        !isValidGuardRetaliationAttack(this.world, entity, currentAction)
+      ) {
+        const combat = entity.combat;
+        if (combat !== null && combat.priorityTargetId === currentAction.targetId) {
+          combat.priorityTargetId = null;
+        }
+        this.advanceAction(entity);
+        unit.stuckTicks = 0;
+        continue;
+      }
       if (currentAction.type === 'selfDestruct') {
         this.activateQueuedSelfDestructAction(entity);
         continue;
@@ -2045,7 +2083,7 @@ export class Simulation {
       this.airborneLoiter.rememberTarget(unit, currentAction);
 
       let flags = 0;
-      let serviceTarget: Entity | null = null;
+      let serviceTarget: UnitPathPoint | null = null;
       // In-range checks resolve natively inside the plan batch from the
       // entity-state slab; Phase 1 only names the target slot and range.
       let rangeKind: number = UNIT_ACTION_RANGE_KIND_NONE;
@@ -2145,31 +2183,35 @@ export class Simulation {
         if (isFriendlyGuard) {
           flags |= UNIT_ACTION_FLAG_GUARD_FRIENDLY;
 
-          // Active defend (BAR): retaliate against the hostile root host that
-          // recently damaged the protected ally. Do not copy the ally's own
-          // attack order: guarding and focus-firing are distinct intents.
-          if (entity.combat !== null && !entity.combat.manualLaunchActive) {
-            entity.combat.priorityTargetId = getRecentHostileAttacker(
-              this.world,
-              guardTarget,
-              guardOwnerId,
-              this.world.getTick(),
-            )?.id ?? null;
-          }
-
           // BAR: a guarding builder continuously services its target — assist
-          // its construction, assist a guarded factory's production, or repair
-          // a damaged ally. Approach the serviced thing within build range so
-          // the energy pass can fund it (the funding itself happens there);
-          // otherwise fall through to plain follow.
+          // its construction/production, repair it, or join the guarded
+          // builder's reclaim/resurrection. Approach that same work point
+          // within build range; otherwise fall through to plain follow.
           if (entity.builder !== null) {
             const service = resolveGuardServiceTarget(this.world, entity);
             if (service !== null) {
               flags |= UNIT_ACTION_FLAG_GUARD_SERVICE;
-              serviceTarget = service.target;
-              rangeKind = UNIT_ACTION_RANGE_KIND_GUARD_SERVICE;
-              rangeTargetSlot = entitySlotRegistry.getSlot(service.target.id);
-              rangeParam = entity.builder.buildRange;
+              if (service.kind === 'reclaim') {
+                serviceTarget = {
+                  x: service.target.x,
+                  y: service.target.y,
+                  z: service.target.z,
+                };
+                if (service.target.kind === 'vegetation') {
+                  if (isReclaimTargetInBuildRange(entity, service.target)) {
+                    flags |= UNIT_ACTION_FLAG_GUARD_SERVICE_IN_RANGE;
+                  }
+                } else {
+                  rangeKind = UNIT_ACTION_RANGE_KIND_GUARD_SERVICE;
+                  rangeTargetSlot = entitySlotRegistry.getSlot(service.target.entity.id);
+                  rangeParam = entity.builder.buildRange;
+                }
+              } else {
+                serviceTarget = getEntityTargetPoint(service.target);
+                rangeKind = UNIT_ACTION_RANGE_KIND_GUARD_SERVICE;
+                rangeTargetSlot = entitySlotRegistry.getSlot(service.target.id);
+                rangeParam = entity.builder.buildRange;
+              }
             }
           }
         }
@@ -2342,14 +2384,16 @@ export class Simulation {
             unit.stuckTicks = 0;
             break;
           }
-          const sp = getEntityTargetPoint(target);
+          const servicePoint = 'transform' in target
+            ? getEntityTargetPoint(target)
+            : target;
           movementPlanner.queue(
             entity,
             currentAction,
             UNIT_ACTION_PLAN_GUARD_SERVICE_MOVE,
             entitySlot,
-            sp.x,
-            sp.y,
+            servicePoint.x,
+            servicePoint.y,
             15,
             true,
           );
@@ -2371,20 +2415,15 @@ export class Simulation {
             unit.stuckTicks = 0;
             break;
           }
-          const targetPoint = getEntityTargetPoint(guardTarget);
-          const targetDx = targetPoint.x - transform.x;
-          const targetDy = targetPoint.y - transform.y;
-          const targetDistance = magnitude(targetDx, targetDy);
-          if (targetDistance <= getGuardFollowRadius(entity, guardTarget)) {
+          const followPlan = calculateGuardFollowPlan(entity, guardTarget);
+          if (followPlan.mode === 'hold') {
             unit.stuckTicks = 0;
             break;
           }
 
-          // Pin the path goal to the guarded ally's LIVE position every tick so
-          // the guard tracks a moving target continuously, instead of walking to
-          // where the ally was and only re-pathing on arrival. sameActionApproachTarget
-          // no-ops when the ally hasn't moved, so a stationary guard never thrashes pathing.
-          this.tryRefreshGuardApproach(entity, currentAction, targetPoint);
+          if (shouldRefreshGuardFollowGoal(entity, currentAction, followPlan)) {
+            this.tryRefreshGuardApproach(entity, currentAction, followPlan);
+          }
 
           const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
           movementPlanner.queue(
@@ -2396,6 +2435,8 @@ export class Simulation {
             movementTarget.y,
             Math.min(15, movementTarget.pathAdvanceRadius),
             movementTarget.isFinalActionPoint,
+            followPlan.desiredVelocityX,
+            followPlan.desiredVelocityY,
           );
           break;
         }
@@ -2438,6 +2479,9 @@ export class Simulation {
           movementPlanner.dyAt(i),
           movementPlanner.distanceAt(i),
           movementPlanner.isFinalActionPointAt(i),
+          1,
+          movementPlanner.desiredVelocityXAt(i),
+          movementPlanner.desiredVelocityYAt(i),
         );
         continue;
       }
@@ -2486,19 +2530,30 @@ export class Simulation {
             unit.stuckTicks = 0;
             continue;
           }
-          const targetPoint = getEntityTargetPoint(guardTarget);
-          if (this.tryRefreshGuardApproach(entity, action, targetPoint)) {
+          const followPlan = calculateGuardFollowPlan(entity, guardTarget);
+          if (followPlan.mode === 'hold') {
             unit.stuckTicks = 0;
             continue;
           }
-          const targetDx = targetPoint.x - entity.transform.x;
-          const targetDy = targetPoint.y - entity.transform.y;
+          if (
+            shouldRefreshGuardFollowGoal(entity, action, followPlan) &&
+            this.tryRefreshGuardApproach(entity, action, followPlan)
+          ) {
+            unit.stuckTicks = 0;
+            continue;
+          }
+          const targetDx = followPlan.x - entity.transform.x;
+          const targetDy = followPlan.y - entity.transform.y;
           this.arrivalController.queueThrust(
             entity,
             action,
             targetDx,
             targetDy,
             magnitude(targetDx, targetDy),
+            true,
+            1,
+            followPlan.desiredVelocityX,
+            followPlan.desiredVelocityY,
           );
           continue;
         }
@@ -2656,7 +2711,11 @@ export class Simulation {
     if (completedAction.type === 'patrol' && unit.patrolStartIndex !== null) {
       // Move completed patrol action to end of queue (after all patrol actions)
       rotateFirstUnitActionToEnd(unit);
-    } else if (unit.repeatQueue && hasQueuedActionIntents(unit.actions)) {
+    } else if (
+      !isGuardRetaliationAttackAction(completedAction) &&
+      unit.repeatQueue &&
+      hasQueuedActionIntents(unit.actions)
+    ) {
       const activeIntentEnd = getFirstActionIntentEnd(unit.actions);
       const actions = unit.actions;
       const repeatCount = activeIntentEnd + 1;

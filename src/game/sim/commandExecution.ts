@@ -3238,7 +3238,11 @@ function removeBuilderBlockingGuardActions(entity: Entity, nextAction: UnitActio
   const keptActions: UnitAction[] = [];
   for (let i = 0; i < unit.actions.length; i++) {
     const action = unit.actions[i];
-    if (action.type === 'guard' || (action.type === 'patrol' && !keepPatrolChain)) {
+    if (
+      action.type === 'guard' ||
+      action.guardReturnTargetId !== undefined ||
+      (action.type === 'patrol' && !keepPatrolChain)
+    ) {
       removed = true;
       continue;
     }

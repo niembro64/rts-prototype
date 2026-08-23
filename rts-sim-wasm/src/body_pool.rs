@@ -319,6 +319,8 @@ pub(crate) fn compute_arrival_control_thrust(
     distance: f64,
     body_vx: f64,
     body_vy: f64,
+    desired_vx: f64,
+    desired_vy: f64,
     radius_collision: f64,
     max_propulsive_force: f64,
     physics_mass: f64,
@@ -389,8 +391,8 @@ pub(crate) fn compute_arrival_control_thrust(
     };
     let damping_gain = velocity_gain.max(response_gain);
 
-    let accel_x = dx * position_gain - body_vx * damping_gain;
-    let accel_y = dy * position_gain - body_vy * damping_gain;
+    let accel_x = dx * position_gain + (desired_vx - body_vx) * damping_gain;
+    let accel_y = dy * position_gain + (desired_vy - body_vy) * damping_gain;
     if !accel_x.is_finite() || !accel_y.is_finite() {
         return (0.0, 0.0, 0);
     }
@@ -475,6 +477,8 @@ pub fn arrival_control_step_batch(
     dx: &[f64],
     dy: &[f64],
     distance: &[f64],
+    desired_vx: &[f64],
+    desired_vy: &[f64],
     radius_collision: &[f64],
     drive_scale: &[f64],
     flags: &[u8],
@@ -492,6 +496,8 @@ pub fn arrival_control_step_batch(
     debug_assert!(dx.len() >= count);
     debug_assert!(dy.len() >= count);
     debug_assert!(distance.len() >= count);
+    debug_assert!(desired_vx.len() >= count);
+    debug_assert!(desired_vy.len() >= count);
     debug_assert!(radius_collision.len() >= count);
     debug_assert!(drive_scale.len() >= count);
     debug_assert!(flags.len() >= count);
@@ -517,6 +523,8 @@ pub fn arrival_control_step_batch(
             distance[i],
             p.vel_x[slot],
             p.vel_y[slot],
+            desired_vx[i],
+            desired_vy[i],
             radius_collision[i],
             max_propulsive_force,
             physics_mass,

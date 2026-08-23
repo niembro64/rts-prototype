@@ -96,7 +96,7 @@ import {
 } from '../network/snapshotStaticWirePack';
 
 const TURRET_SCRATCH_STRIDE = 13;
-const ACTION_SCRATCH_STRIDE = 19;
+const ACTION_SCRATCH_STRIDE = 21;
 
 const _utf8 = new TextEncoder();
 
@@ -158,6 +158,7 @@ type ActionFixture = {
   buildingBlueprintId?: string;
   grid?: { x: number; y: number };
   buildingId?: number;
+  guardReturnTargetId?: number;
 };
 
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
@@ -329,6 +330,8 @@ function packActionsIntoScratch(
     view[base + 13] = a.grid?.y ?? 0;
     view[base + 14] = a.buildingId !== undefined ? 1 : 0;
     view[base + 15] = a.buildingId ?? 0;
+    view[base + 19] = a.guardReturnTargetId !== undefined ? 1 : 0;
+    view[base + 20] = a.guardReturnTargetId ?? 0;
   }
 }
 
@@ -821,6 +824,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
             buildingBlueprintId: 'turret_defender',
             grid: { x: 50, y: 100 },
             buildingId: 88888,
+            guardReturnTargetId: 77777,
           },
         ],
       },

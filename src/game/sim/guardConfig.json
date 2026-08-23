@@ -1,0 +1,11 @@
+{
+  "recoilSimulationFramesPerSecond": 30,
+  "retaliationMemoryFrames": 40,
+  "recalculateDistanceWu": 100,
+  "stoppedProximityGoalWu": 50,
+  "stoppedExtraDistanceWu": 100,
+  "movingProximityGoalWu": 200,
+  "movingIntervalSeconds": 2.13,
+  "interceptionLimitFrames": 128,
+  "stoppedSpeedWuPerSecond": 1
+}

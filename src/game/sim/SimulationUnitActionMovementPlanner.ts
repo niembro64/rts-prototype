@@ -19,6 +19,8 @@ export class SimulationUnitActionMovementPlanner {
   private slots = new Uint32Array(0);
   private targetX = new Float64Array(0);
   private targetY = new Float64Array(0);
+  private desiredVelocityX = new Float64Array(0);
+  private desiredVelocityY = new Float64Array(0);
   private threshold = new Float64Array(0);
   private finalPoint = new Uint8Array(0);
   private dx = new Float64Array(0);
@@ -41,6 +43,8 @@ export class SimulationUnitActionMovementPlanner {
     targetY: number,
     threshold: number,
     isFinalActionPoint: boolean,
+    desiredVelocityX = 0,
+    desiredVelocityY = 0,
   ): number {
     const index = this.count++;
     this.ensureCapacity(this.count);
@@ -50,6 +54,8 @@ export class SimulationUnitActionMovementPlanner {
     this.slots[index] = slot >= 0 ? slot : 0xffffffff;
     this.targetX[index] = targetX;
     this.targetY[index] = targetY;
+    this.desiredVelocityX[index] = desiredVelocityX;
+    this.desiredVelocityY[index] = desiredVelocityY;
     this.threshold[index] = threshold;
     this.finalPoint[index] = isFinalActionPoint ? 1 : 0;
     return index;
@@ -107,6 +113,14 @@ export class SimulationUnitActionMovementPlanner {
     return this.finalPoint[index] !== 0;
   }
 
+  desiredVelocityXAt(index: number): number {
+    return this.desiredVelocityX[index];
+  }
+
+  desiredVelocityYAt(index: number): number {
+    return this.desiredVelocityY[index];
+  }
+
   decisionAt(index: number): UnitActionMovementDecision {
     return this.decision[index] as UnitActionMovementDecision;
   }
@@ -125,6 +139,8 @@ export class SimulationUnitActionMovementPlanner {
       this.slots,
       this.targetX,
       this.targetY,
+      this.desiredVelocityX,
+      this.desiredVelocityY,
       this.threshold,
       this.finalPoint,
       this.dx,
@@ -136,6 +152,8 @@ export class SimulationUnitActionMovementPlanner {
       this.slots,
       this.targetX,
       this.targetY,
+      this.desiredVelocityX,
+      this.desiredVelocityY,
       this.threshold,
       this.finalPoint,
       this.dx,

@@ -251,6 +251,7 @@ export function createActionDto(): NetworkServerSnapshotAction {
     buildingId: null,
     waitGather: null,
     waitGroupId: null,
+    guardReturnTargetId: null,
   };
 }
 
@@ -280,6 +281,7 @@ export function copyActionInto(
   dst.buildingId = src.buildingId;
   dst.waitGather = src.waitGather;
   dst.waitGroupId = src.waitGroupId;
+  dst.guardReturnTargetId = src.guardReturnTargetId;
   return dst;
 }
 

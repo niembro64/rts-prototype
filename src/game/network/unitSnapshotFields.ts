@@ -127,6 +127,7 @@ function decodeNetworkUnitAction(action: NetworkServerSnapshotAction): UnitActio
     buildingId: action.buildingId ?? undefined,
     waitGather: action.waitGather === true ? true : undefined,
     waitGroupId: action.waitGroupId ?? undefined,
+    guardReturnTargetId: action.guardReturnTargetId ?? undefined,
   };
 }
 
@@ -241,6 +242,7 @@ export function applyNetworkUnitActionWireRows(
         buildingId: values[base + 14] !== 0 ? values[base + 15] : undefined,
         waitGather: values[base + 16] !== 0 ? true : undefined,
         waitGroupId: values[base + 17] !== 0 ? values[base + 18] : undefined,
+        guardReturnTargetId: values[base + 19] !== 0 ? values[base + 20] : undefined,
       };
       if (action.isPathExpansion === true) {
         (previewPoints ??= []).push({ x: action.x, y: action.y, z: action.z });
@@ -507,6 +509,7 @@ export function writeNetworkUnitActions(
       action.buildingId = null;
       action.waitGather = null;
       action.waitGroupId = null;
+      action.guardReturnTargetId = null;
     }
   }
 
@@ -539,6 +542,9 @@ export function writeNetworkUnitActions(
       : src.buildingId ?? null;
     action.waitGather = src.waitGather === true ? true : null;
     action.waitGroupId = src.waitGroupId ?? null;
+    action.guardReturnTargetId = canReferenceEntityId !== undefined && canReferenceEntityId(src.guardReturnTargetId) === false
+      ? null
+      : src.guardReturnTargetId ?? null;
   }
   dst.actions = actionPool;
 }

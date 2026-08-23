@@ -135,7 +135,7 @@ snapshot_scratch_pool!(
     snapshot_encode_action_scratch_ensure,
     f64,
     0.0,
-    SNAPSHOT_ENCODE_ACTION_STRIDE = 19,
+    SNAPSHOT_ENCODE_ACTION_STRIDE = 21,
     init 16,
     ensure(action_count)
 );
@@ -631,6 +631,8 @@ pub fn snapshot_encode_entity_unit(
             let grid_y = scratch.buf[base + 13];
             let has_building_id = scratch.buf[base + 14] != 0.0;
             let building_id = scratch.buf[base + 15];
+            let has_guard_return_target_id = scratch.buf[base + 19] != 0.0;
+            let guard_return_target_id = scratch.buf[base + 20];
 
             // Insertion order in createActionDto: type, pos, posZ,
             // pathExp, targetId, buildingBlueprintId, grid, buildingId.
@@ -655,6 +657,9 @@ pub fn snapshot_encode_entity_unit(
                 action_field_count += 1;
             }
             if has_building_id {
+                action_field_count += 1;
+            }
+            if has_guard_return_target_id {
                 action_field_count += 1;
             }
             w.write_map_header(action_field_count);
@@ -697,6 +702,10 @@ pub fn snapshot_encode_entity_unit(
             if has_building_id {
                 w.write_str("buildingId");
                 w.write_number(building_id);
+            }
+            if has_guard_return_target_id {
+                w.write_str("guardReturnTargetId");
+                w.write_number(guard_return_target_id);
             }
         }
     }

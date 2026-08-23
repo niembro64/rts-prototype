@@ -157,7 +157,7 @@ function resolveWorkTarget(
       out.z = reclaim.z;
       return out;
     }
-    if (action.type === 'guard') {
+    if (action.type === 'guard' || action.guardReturnTargetId !== undefined) {
       const service = resolveGuardServiceTarget(world, host);
       if (service === null) return null;
       if (service.kind === 'factory') {
@@ -165,6 +165,14 @@ function resolveWorkTarget(
         const shell = shellId === null ? undefined : world.getEntity(shellId);
         if (shell !== undefined) return writeEntityTarget(shell, out);
       }
+      if (service.kind === 'reclaim') {
+        out.id = service.target.id;
+        out.x = service.target.x;
+        out.y = service.target.y;
+        out.z = service.target.z;
+        return out;
+      }
+      if (service.kind === 'ready') return null;
       return writeEntityTarget(service.target, out);
     }
     // Only idle/fight/patrol builders participate in the automatic local

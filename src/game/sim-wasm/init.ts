@@ -1387,7 +1387,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           turretScratchStride: 13,
           actionScratchPtr: snapshot_encode_action_scratch_ptr,
           actionScratchEnsure: snapshot_encode_action_scratch_ensure,
-          actionScratchStride: 19,
+          actionScratchStride: 21,
           stringScratchBytesPtr: snapshot_encode_string_scratch_bytes_ptr,
           stringScratchTablePtr: snapshot_encode_string_scratch_table_ptr,
           stringScratchEnsureBytes: snapshot_encode_string_scratch_ensure_bytes,
@@ -1646,6 +1646,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runBarDefaultPointerActionContractTest();
         const { runGuardFollowContractTest } = await import('../sim/guardFollowContractTest');
         runGuardFollowContractTest();
+        const { runGuardParityContractTest } = await import('../sim/guardParityContractTest');
+        runGuardParityContractTest();
         const { runCommandExecutionContractTest } = await import('../sim/commandExecutionContractTest');
         runCommandExecutionContractTest();
         const { runCommandCoverageContractTest } = await import('../sim/commandCoverageContractTest');

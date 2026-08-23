@@ -499,6 +499,8 @@ function packActionsIntoScratch(
     view[base + 16] = action.waitGather === true ? 1 : 0;
     view[base + 17] = action.waitGroupId !== null && action.waitGroupId !== undefined ? 1 : 0;
     view[base + 18] = action.waitGroupId ?? 0;
+    view[base + 19] = action.guardReturnTargetId !== null && action.guardReturnTargetId !== undefined ? 1 : 0;
+    view[base + 20] = action.guardReturnTargetId ?? 0;
   }
 }
 
@@ -999,6 +1001,8 @@ function copyEntityActionRowsIntoScratch(
     view[dstRow + 16] = rows[srcRow + 16];
     view[dstRow + 17] = rows[srcRow + 17];
     view[dstRow + 18] = rows[srcRow + 18];
+    view[dstRow + 19] = rows[srcRow + 19];
+    view[dstRow + 20] = rows[srcRow + 20];
   }
   return true;
 }

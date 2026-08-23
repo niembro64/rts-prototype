@@ -1,6 +1,6 @@
 import { actionTypeToCode } from '@/types/network';
 import { getSimWasm } from '../sim-wasm/init';
-import type { Entity, UnitAction } from './types';
+import type { Entity, UnitAction, UnitPathPoint } from './types';
 import { growTypedArrays, nextDoublingCapacity } from '../memory/typedArrayGrowth';
 
 const ACTION_TYPE_NONE = 255;
@@ -66,7 +66,7 @@ export type UnitActionPlanCode =
 export class SimulationUnitActionPlanner {
   private readonly entities: Entity[] = [];
   private readonly actions: (UnitAction | undefined)[] = [];
-  private readonly serviceTargets: (Entity | null)[] = [];
+  private readonly serviceTargets: (Entity | UnitPathPoint | null)[] = [];
   private actionTypes = new Uint8Array(0);
   private flags = new Uint32Array(0);
   private slots = new Uint32Array(0);
@@ -85,7 +85,7 @@ export class SimulationUnitActionPlanner {
     entity: Entity,
     action: UnitAction | undefined,
     flags: number,
-    serviceTarget: Entity | null = null,
+    serviceTarget: Entity | UnitPathPoint | null = null,
     rangeKind: number = UNIT_ACTION_RANGE_KIND_NONE,
     targetSlot: number = -1,
     rangeParam: number = 0,
@@ -142,7 +142,7 @@ export class SimulationUnitActionPlanner {
     return this.actions[index];
   }
 
-  serviceTargetAt(index: number): Entity | null {
+  serviceTargetAt(index: number): Entity | UnitPathPoint | null {
     return this.serviceTargets[index] ?? null;
   }
 

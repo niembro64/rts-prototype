@@ -1,9 +1,12 @@
 import type { Entity, EntityId, PlayerId, RecentAggression } from './types';
 import type { WorldState } from './WorldState';
+import { GUARD_RETALIATION_MEMORY_SECONDS } from './guardConfig';
 
-/** BAR's default guard retaliation memory is roughly 40 simulation frames.
- * Keep this as gameplay policy instead of baking it into damage or targeting. */
-const GUARD_RETALIATION_MEMORY_TICKS = 40;
+/** BAR authors this timeout as 40 Recoil frames (30 Hz), so convert the
+ * duration directly instead of scaling 40 prototype-default ticks. */
+export function guardRetaliationMemoryTicks(world: WorldState): number {
+  return world.ticksForSeconds(GUARD_RETALIATION_MEMORY_SECONDS);
+}
 
 type ResolvedAttacker = {
   rootHost: Entity;
@@ -69,8 +72,7 @@ export function getRecentHostileAttacker(
   const aggression = protectedEntity.recentAggression;
   if (aggression === null) return null;
   if (
-    currentTick - aggression.hitTick >
-      world.ticksForDefaultTicks(GUARD_RETALIATION_MEMORY_TICKS)
+    currentTick - aggression.hitTick >= guardRetaliationMemoryTicks(world)
   ) {
     protectedEntity.recentAggression = null;
     return null;
