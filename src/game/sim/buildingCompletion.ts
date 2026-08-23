@@ -18,6 +18,9 @@ import {
 const completedStorageOwnerByEntity = new WeakMap<Entity, PlayerId>();
 
 export function applyCompletedBuildingEffects(world: WorldState, entity: Entity): void {
+  // P1-20: completion changes producer eligibility without a lifecycle
+  // add/remove; bump the open-state version so membership caches rebuild.
+  world.buildingOpenStateVersion++;
   applyCompletedBuildingStorageCapacity(entity);
 
   if (isMetalExtractorBlueprintId(entity.buildingBlueprintId) && entity.ownership) {

@@ -23,6 +23,10 @@ type ClientMinimapOverrideStoreOptions = {
 export type ContactSnapshotSampling = Readonly<{
   sequence: number;
   alpha: number;
+  /** Measured gap between the last two contact snapshots. Blip velocity is
+   *  derived from it: (to - from) / intervalMs, the drift a fading contact
+   *  keeps, exactly like a unit leaving vision. */
+  intervalMs: number;
 }>;
 
 const NOMINAL_SNAPSHOT_INTERVAL_MS = 1000 / PRESENTATION_SNAPSHOT_RATE_DEFAULT;
@@ -36,7 +40,11 @@ export class ClientMinimapOverrideStore {
   private sequence = 0;
   private updatedAtMs = 0;
   private intervalMs = NOMINAL_SNAPSHOT_INTERVAL_MS;
-  private readonly sampling = { sequence: 0, alpha: 1 };
+  private readonly sampling = {
+    sequence: 0,
+    alpha: 1,
+    intervalMs: NOMINAL_SNAPSHOT_INTERVAL_MS,
+  };
 
   constructor(private readonly options: ClientMinimapOverrideStoreOptions) {}
 
@@ -65,6 +73,7 @@ export class ClientMinimapOverrideStore {
     sampling.alpha = this.updatedAtMs === 0
       ? 1
       : Math.min(1, Math.max(0, (nowMs - this.updatedAtMs) / this.intervalMs));
+    sampling.intervalMs = this.intervalMs;
     return sampling;
   }
 

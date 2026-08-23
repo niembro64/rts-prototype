@@ -38,6 +38,11 @@ export class RtsScene3DMinimapSystem {
     private readonly mapHeight: number,
   ) {}
 
+  private lastEmittedTick = -1;
+  private lastCameraYaw = Number.NaN;
+  private lastCameraQuadX = Number.NaN;
+  private lastCameraQuadY = Number.NaN;
+
   tick(
     deltaMs: number,
     graphicsConfig: GraphicsConfig,
@@ -51,6 +56,20 @@ export class RtsScene3DMinimapSystem {
     this.updateTimer += deltaMs;
     const minimapInterval = this.getUpdateInterval(graphicsConfig);
     if (this.updateTimer < minimapInterval) return;
+
+    // P1-31: past the interval, only emit when something can have changed —
+    // world rows move with the authoritative tick, the overlay with the
+    // camera. An idle scene stops recopying identical rows entirely.
+    const tick = this.clientViewState.getTick();
+    const cameraMoved =
+      cameraYaw !== this.lastCameraYaw ||
+      cameraQuad[0].x !== this.lastCameraQuadX ||
+      cameraQuad[0].y !== this.lastCameraQuadY;
+    if (tick === this.lastEmittedTick && !cameraMoved) return;
+    this.lastEmittedTick = tick;
+    this.lastCameraYaw = cameraYaw;
+    this.lastCameraQuadX = cameraQuad[0].x;
+    this.lastCameraQuadY = cameraQuad[0].y;
 
     this.updateTimer = 0;
     this.emit(entitySource, cameraQuad, cameraYaw, cameraPitch, cameraView, onMinimapUpdate);

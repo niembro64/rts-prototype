@@ -44,7 +44,7 @@ let initialTargetX = 0;
 let initialTargetZ = 0;
 let initialYaw = 0;
 let initialized = false;
-let rafId: number | null = null;
+let pollId: number | null = null;
 
 function angleDelta(a: number, b: number): number {
   let d = a - b;
@@ -54,7 +54,6 @@ function angleDelta(a: number, b: number): number {
 }
 
 function tick(): void {
-  rafId = requestAnimationFrame(tick);
   const orbit = props.getOrbit();
   if (!orbit) return;
   if (!initialized) {
@@ -79,19 +78,21 @@ function tick(): void {
     rotateDone.value = true;
   }
   if (zoomDone.value && panDone.value && rotateDone.value) {
-    if (rafId !== null) cancelAnimationFrame(rafId);
-    rafId = null;
+    if (pollId !== null) window.clearInterval(pollId);
+    pollId = null;
     emit('done');
   }
 }
 
 onMounted(() => {
-  rafId = requestAnimationFrame(tick);
+  // P2-04: gesture thresholds don't need display-rate sampling — 10 Hz
+  // detects a zoom/pan/rotate within a frame of human perception.
+  pollId = window.setInterval(tick, 100);
 });
 
 onBeforeUnmount(() => {
-  if (rafId !== null) cancelAnimationFrame(rafId);
-  rafId = null;
+  if (pollId !== null) window.clearInterval(pollId);
+  pollId = null;
 });
 </script>
 

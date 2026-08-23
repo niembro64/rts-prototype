@@ -12,7 +12,7 @@ import {
 import { spatialGrid } from '../sim/SpatialGrid';
 import type { Simulation } from '../sim/Simulation';
 import {
-  collectBeamCarriedEntityIds,
+  getBeamCarriedEntityIds,
   releaseAllTransportCargo,
 } from '../sim/transports';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
@@ -82,8 +82,9 @@ export class ServerSimulationCore {
   readonly terrainBuildabilityGrid: TerrainBuildabilityGrid;
 
   private readonly unitForceSystem: UnitForceSystem;
-  /** Reused scratch for the per-tick beam-carried collision exemption. */
-  private readonly _beamCarriedIds = new Set<EntityId>();
+  /** P1-15 scratch for the Rust non-finite body audit. */
+  private _nonfiniteBodyIdsOut = new Int32Array(0);
+  private readonly _nonfiniteBodyIdSet = new Set<EntityId>();
   private physicsSyncEntitySlotsBuf = new Uint32Array(1024);
   private readonly onGameOver: ((winnerId: PlayerId) => void) | undefined;
   /** Set by the host so a lockstep command frame is recorded exactly like a
@@ -139,9 +140,9 @@ export class ServerSimulationCore {
     phases.phase('core.unitForces');
     // Beam-carried passengers sit inside their carrier's collision
     // sphere on purpose; exclude them from this step's contact passes.
-    this.physics.setCollisionExemptEntities(
-      collectBeamCarriedEntityIds(this.world, this._beamCarriedIds),
-    );
+    // P1-07: the carried set is maintained at load/release instead of
+    // being rediscovered from every transport before each physics step.
+    this.physics.setCollisionExemptEntities(getBeamCarriedEntityIds());
     this.physics.step(dtSec, this.simulation.getWindState());
     phases.phase('core.physics');
     this.repairInvalidEntityPoses();
@@ -479,16 +480,39 @@ export class ServerSimulationCore {
   }
 
   private repairInvalidEntityPoses(): void {
+    // P1-15: the every-tick safety invariant stands (tick start inherits a
+    // repaired state), but the body half of the audit is one Rust batch
+    // scan over the pool instead of six slab-backed getters per unit. The
+    // JS half below only reads plain transform fields per unit.
+    const sim = getSimWasm();
     const units = this.world.getUnits();
+    let nonfiniteBodyIds: Set<EntityId> | null = null;
+    if (sim !== undefined) {
+      if (this._nonfiniteBodyIdsOut.length < 256) {
+        this._nonfiniteBodyIdsOut = new Int32Array(256);
+      }
+      const count = sim.bodyPoolCollectNonfiniteKinematics(this._nonfiniteBodyIdsOut);
+      if (count > 0) {
+        nonfiniteBodyIds = this._nonfiniteBodyIdSet;
+        nonfiniteBodyIds.clear();
+        const seen = Math.min(count, this._nonfiniteBodyIdsOut.length);
+        for (let i = 0; i < seen; i++) {
+          nonfiniteBodyIds.add(this._nonfiniteBodyIdsOut[i] as EntityId);
+        }
+      }
+    }
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
       const body = entity.body?.physicsBody;
-      if (body !== undefined && !hasFiniteBodyKinematics(body)) {
+      const bodyNonfinite = sim !== undefined
+        ? nonfiniteBodyIds !== null && nonfiniteBodyIds.has(entity.id)
+        : body !== undefined && !hasFiniteBodyKinematics(body);
+      if (body !== undefined && bodyNonfinite) {
         this.repairInvalidUnitBody(entity);
         continue;
       }
       if (hasFiniteEntityPose(entity)) continue;
-      if (body !== undefined && hasFiniteBodyKinematics(body)) {
+      if (body !== undefined && !bodyNonfinite) {
         this.syncUnitPoseFromBody(entity, body);
       } else {
         this.repairInvalidUnitTransform(entity);

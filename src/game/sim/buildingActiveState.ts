@@ -289,9 +289,27 @@ export function updateBuildingActiveStates(world: WorldState, dtMs: number): voi
     const state = ensureBuildingActiveState(entity);
     if (!state) continue;
 
+    // P1-05: skip rows the kernel provably leaves untouched. Fixed points
+    // of building_active_state_step_batch:
+    //   - running normally (active, switch on, open, no damage grace),
+    //   - player-switched off and already closed (timers parked
+    //     idempotently every tick, so the parked values are preserved),
+    //   - inactive and already closed.
+    // Everything else (grace countdown, reopen countdown, any mismatch)
+    // stays exact 20 Hz work.
+    const active = isEntityActive(entity) && entity.building.hp > 0;
+    const stable = active
+      ? (state.wantOpen
+          ? state.open && state.damageDelayMs <= 0
+          : !state.open &&
+            state.damageDelayMs === 0 &&
+            state.reopenDelayMs === BUILDING_REOPEN_DELAY_MS)
+      : !state.open;
+    if (stable) continue;
+
     activeStateRows[count] = entity;
     activeStateOpen[count] = state.open ? 1 : 0;
-    activeStateActive[count] = isEntityActive(entity) && entity.building.hp > 0 ? 1 : 0;
+    activeStateActive[count] = active ? 1 : 0;
     activeStateWantOpen[count] = state.wantOpen ? 1 : 0;
     activeStateDamageDelayMs[count] = state.damageDelayMs;
     activeStateReopenDelayMs[count] = state.reopenDelayMs;
@@ -330,6 +348,7 @@ export function updateBuildingActiveStates(world: WorldState, dtMs: number): voi
     // the rate delta fires exactly once per transition.
     if (activeStateOpenChanged[i] !== 0) {
       applyProducerRateDelta(entity, nextOpen);
+      world.buildingOpenStateVersion++;
       world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
     }
   }

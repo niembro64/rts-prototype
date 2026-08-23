@@ -272,6 +272,8 @@ export class RtsScene3D {
 
   // UI update throttling (mirror RtsScene)
   private economyUpdateTimer = 0;
+  private _lastEconomyUiTick = -1;
+  private _lastEconomyUiSetVersion = -1;
   private readonly ECONOMY_UPDATE_INTERVAL = 100;
   // Entity source adapter, kept shape-compatible with RtsScene's for UI helpers
   private entitySourceAdapter!: {
@@ -906,8 +908,20 @@ export class RtsScene3D {
     this.economyUpdateTimer += delta;
     if (this.economyUpdateTimer >= this.ECONOMY_UPDATE_INTERVAL) {
       this.economyUpdateTimer = 0;
-      this.updateEconomyInfo();
-      this.updateIdleBuildersInfo();
+      // P1-32: both builders derive purely from authoritative snapshot
+      // state — with no new tick and no lifecycle change there is nothing
+      // new to scan or publish.
+      const economyTick = this.clientViewState.getTick();
+      const economySetVersion = this.clientViewState.getEntitySetVersion();
+      if (
+        economyTick !== this._lastEconomyUiTick ||
+        economySetVersion !== this._lastEconomyUiSetVersion
+      ) {
+        this._lastEconomyUiTick = economyTick;
+        this._lastEconomyUiSetVersion = economySetVersion;
+        this.updateEconomyInfo();
+        this.updateIdleBuildersInfo();
+      }
     }
 
     this.minimapSystem.tick(
@@ -1625,10 +1639,18 @@ export class RtsScene3D {
   public showMapOverview(): void {
     const centerX = this.mapWidth / 2;
     const centerY = this.mapHeight / 2;
+    // The map-preview capture script (scripts/captureMapPresetThumbnails.mjs)
+    // photographs the lobby tiles through this same overview control; it
+    // injects this flag to get the 45-degrees-down-from-the-east framing
+    // without changing what Tab/OVR does for players.
+    const previewFraming = (window as unknown as {
+      __BA_MAP_PREVIEW_FRAMING__?: 'obliqueEast';
+    }).__BA_MAP_PREVIEW_FRAMING__;
     this.cameraControl.showMapOverview(
       this.mapWidth,
       this.mapHeight,
       getTerrainMeshHeight(centerX, centerY, this.mapWidth, this.mapHeight),
+      previewFraming === 'obliqueEast' ? 'obliqueEast' : 'overhead',
     );
   }
 

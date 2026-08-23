@@ -19,14 +19,29 @@ export class ClientSelectionState {
   }
 
   set(ids: Set<EntityId>): void {
-    this.selectedIds.clear();
-    for (const id of ids) this.selectedIds.add(id);
-    for (const entity of this.entities.values()) {
-      if (!entity.selectable) continue;
-      const selected = this.selectedIds.has(entity.id);
-      if (entity.selectable.selected !== selected) this.markRenderDirty(entity);
-      entity.selectable.selected = selected;
-      if (selected) this.markPredictionActive(entity);
+    // P1-23: touch only the entities whose membership changes. The old
+    // full-world walk re-tested every entity's selectable flag on every
+    // selection replacement.
+    for (const id of this.selectedIds) {
+      if (ids.has(id)) continue;
+      const entity = this.entities.get(id);
+      if (entity === undefined || entity.selectable === null) continue;
+      if (entity.selectable.selected) this.markRenderDirty(entity);
+      entity.selectable.selected = false;
+    }
+    const hadPrevious = this.selectedIds;
+    for (const id of ids) {
+      const wasSelected = hadPrevious.has(id);
+      const entity = this.entities.get(id);
+      if (entity !== undefined && entity.selectable !== null) {
+        if (!wasSelected && !entity.selectable.selected) this.markRenderDirty(entity);
+        entity.selectable.selected = true;
+        this.markPredictionActive(entity);
+      }
+    }
+    if (ids !== this.selectedIds) {
+      this.selectedIds.clear();
+      for (const id of ids) this.selectedIds.add(id);
     }
   }
 

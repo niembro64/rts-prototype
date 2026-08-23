@@ -360,7 +360,10 @@ export function useGameCanvasTelemetry({
   }
 
   onMounted(() => {
-    updateInterval = setInterval(update, 100);
+    // P2-02: diagnostics aggregation + Vue-ref fanout at 4 Hz — readable
+    // for a stats readout, a fraction of the old 10 Hz polling cost. The
+    // high-frequency counters keep accumulating internally regardless.
+    updateInterval = setInterval(update, 250);
     if (typeof window !== 'undefined') {
       renderProfileApi = { sample: sampleRenderProfile };
       (window as unknown as { __BA_RENDER_PROFILE__?: RenderProfileApi })

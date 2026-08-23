@@ -33,7 +33,6 @@ import {
   beamWaveFlowPhase,
   beamWaveFlowRepeats,
   createBeamSegmentFragmentShader,
-  tickBeamWaveTime,
   type BeamVisualConfig,
 } from './BeamWaveVisual3D';
 import {
@@ -634,7 +633,10 @@ export class BeamRenderer3D {
     ) {
       return;
     }
-    tickBeamWaveTime();
+    // P2-06: the shared beam wave clock is advanced once per frame by
+    // Render3DEntities (which runs earlier in the render phase, even on
+    // beam-less frames); ticking it again here read performance.now and
+    // rewrote the same uniform twice per frame.
     this.beamUpdateFrameIndex = (this.beamUpdateFrameIndex + 1) & 0x3fffffff;
     const activeUpdateBucket =
       this.beamUpdateFrameIndex % BEAM_UPDATE_BUCKET_COUNT;

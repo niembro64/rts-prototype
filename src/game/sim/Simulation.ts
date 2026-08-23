@@ -16,7 +16,6 @@ import {
   type DeathContext,
   type ProjectileSpawnEvent,
   type ProjectileDespawnEvent,
-  type ProjectileMotionUpdateEvent,
 } from './combat';
 import { DamageSystem } from './damage';
 import { economyManager } from './economy';
@@ -79,7 +78,7 @@ import {
   resolveGuardServiceTarget,
   shouldRefreshGuardFollowGoal,
 } from './guard';
-import { updateTransportActions } from './transports';
+import { resetTransportModuleState, updateTransportActions } from './transports';
 import { WindPowerTracker, sampleWindState, sampleWindStateInto, type WindState } from './wind';
 import { entitySlotRegistry } from './EntitySlotRegistry';
 import {
@@ -310,6 +309,9 @@ export class Simulation {
 
   // Track if game is over
   private gameOverWinnerId: PlayerId | null = null;
+  /** P1-13: last observed commander-list length; a change means someone's
+   *  commander left the world and victory must be re-evaluated now. */
+  private lastGameOverCommanderCount = -1;
 
   // Game phase FSM
   private gamePhase: GamePhase = 'init';
@@ -479,11 +481,6 @@ export class Simulation {
   // Get and clear pending projectile despawn events (double-buffer swap)
   getAndClearProjectileDespawns(): ProjectileDespawnEvent[] {
     return this.eventQueues.getAndClearProjectileDespawns();
-  }
-
-  // Get and clear pending projectile motion update events (double-buffered)
-  getAndClearProjectileMotionUpdates(): ProjectileMotionUpdateEvent[] {
-    return this.eventQueues.getAndClearProjectileMotionUpdates();
   }
 
   hasPendingProjectilePresentationEvents(): boolean {
@@ -708,14 +705,26 @@ export class Simulation {
       this.spatialGridBuildingVersion = buildingVersion;
     }
 
-    // Update traveling projectile positions for projectile broadphase
-    // queries. Beam/laser line shots are handled by beam pathing.
-    spatialGrid.updateProjectiles(this.world.getTravelingProjectiles());
+    // P0-03: traveling projectiles are NOT restamped here. The post-
+    // integration batch in SimulationCombatController is the sole full
+    // stamp — its tick-N output is exactly the correct pre-combat state at
+    // tick N+1, spawns register through their launch-finalization path, and
+    // reflections restamp individually. The old pre-combat full restamp
+    // repeated all of that work every tick.
   }
 
   // Check for game over - last commander standing wins
   private checkGameOver(): boolean {
     if (this.gameOverWinnerId !== null) return false; // Already over
+    // P1-13: victory can only change when a commander leaves the world
+    // (death cleanup runs just before this and shrinks the cached
+    // commander list the same tick the hp hits zero) — plus a 1 Hz
+    // defensive scrub. Both signals are pure functions of lockstep state,
+    // so every peer takes the same branch.
+    const commanderCount = this.world.getCommanderUnits().length;
+    const scrubDue = this.world.getTick() % 20 === 0;
+    if (commanderCount === this.lastGameOverCommanderCount && !scrubDue) return false;
+    this.lastGameOverCommanderCount = commanderCount;
     const winnerId = resolveCommanderGameOverWinner(this.world, this.playerIds);
     if (winnerId === null) return false;
 
@@ -1715,6 +1724,10 @@ export class Simulation {
   }
 
   private releaseReadyGatherWaits(): void {
+    // P1-08: the full unit/queue sweep only runs while a gather wait can
+    // exist. The flag arms at the single creation site and clears when a
+    // sweep proves the world empty of groups.
+    if (!this.world.gatherWaitsMayExist) return;
     const groups = this._gatherWaitGroups;
     const sortedGroups = this._gatherWaitGroupList;
     groups.clear();
@@ -1758,6 +1771,7 @@ export class Simulation {
         this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
       }
     }
+    if (sortedGroups.length === 0) this.world.gatherWaitsMayExist = false;
     groups.clear();
     this.releaseGatherWaitGroups(sortedGroups);
   }
@@ -1999,7 +2013,13 @@ export class Simulation {
       // transient pathfinding points live in unit.activePath and are
       // discarded automatically when the queue changes.
       const preSweepHead = unit.actions[0];
-      if (this.actionQueueMaintenance.sweepInvalidTargetActions(entity)) {
+      if (this.actionQueueMaintenance.sweepInvalidTargetActions(
+        entity,
+        // P1-09: the executing head is validated every tick; the rest of
+        // the queue heals on a 2.5 Hz stagger (offset from the P1-11
+        // patrol stagger so the two full passes don't stack on one tick).
+        ((this.world.getTick() + entity.id) & 7) !== 4,
+      )) {
         const combat = entity.combat;
         if (
           isGuardRetaliationAttackAction(preSweepHead) &&
@@ -2023,7 +2043,12 @@ export class Simulation {
         continue;
       }
 
-      this.actionQueueMaintenance.promoteReachableBuildAction(entity);
+      // P1-10: the reachable-service promotion is a linear queue scan with
+      // range/target lookups; 10 Hz staggered by entity id keeps the
+      // promotion within 50ms of eligibility at half the scan volume.
+      if (((this.world.getTick() + entity.id) & 1) === 0) {
+        this.actionQueueMaintenance.promoteReachableBuildAction(entity);
+      }
 
       // BAR constructor Patrol services nearby allies first (the energy pass
       // marks that above), then temporarily reclaims a nearby non-allied
@@ -2033,7 +2058,11 @@ export class Simulation {
       if (
         currentAction.type === 'patrol' &&
         entity.builder !== null &&
-        !this.energyBuffers.sweepServicingBuilderIds.has(entity.id)
+        !this.energyBuffers.sweepServicingBuilderIds.has(entity.id) &&
+        // P1-11: patrol reclaim acquisition runs two spatial queries plus
+        // candidate range tests; 2.5 Hz staggered by entity id bounds a
+        // fresh acquisition at 400ms while approach/work stay fixed-tick.
+        ((this.world.getTick() + entity.id) & 7) === 0
       ) {
         const reclaimTarget = this.findPatrolReclaimTarget(entity);
         if (reclaimTarget !== null) {
@@ -2785,6 +2814,7 @@ export class Simulation {
     this.unitActionMovementPlanner.reset();
     this.world.clearPendingDeathCheckIds();
     resetEnergyBuffers(this.energyBuffers);
+    resetTransportModuleState();
     this.spatialGridBuildingVersion = -1;
   }
 }

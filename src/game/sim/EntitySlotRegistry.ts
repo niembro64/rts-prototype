@@ -155,6 +155,17 @@ class EntitySlotRegistry {
   private readonly slotByEntityId = new Map<EntityId, number>();
   private readonly entityBySlot: (Entity | undefined)[] = [];
   private spatialKindBySlot = new Uint8Array(INITIAL_KIND_CAPACITY);
+  // P0-04: last-stamped unit spatial row per slot, keyed by the entity id
+  // that wrote it. An unchanged row (idle army standing still) skips the
+  // TS->WASM spatial write entirely; slot reuse is caught by the id key.
+  private spatialUnitStampEntityId = new Float64Array(INITIAL_KIND_CAPACITY).fill(-1);
+  private spatialUnitStampX = new Float64Array(INITIAL_KIND_CAPACITY);
+  private spatialUnitStampY = new Float64Array(INITIAL_KIND_CAPACITY);
+  private spatialUnitStampZ = new Float64Array(INITIAL_KIND_CAPACITY);
+  private spatialUnitStampRc = new Float64Array(INITIAL_KIND_CAPACITY);
+  private spatialUnitStampRh = new Float64Array(INITIAL_KIND_CAPACITY);
+  private spatialUnitStampPid = new Float64Array(INITIAL_KIND_CAPACITY);
+  private spatialUnitStampAlive = new Uint8Array(INITIAL_KIND_CAPACITY);
   private readonly unitSlots = new Set<EntityId>();
   private readonly buildingSlots = new Set<EntityId>();
   private readonly projectileSlots = new Set<EntityId>();
@@ -219,6 +230,22 @@ class EntitySlotRegistry {
     const next = new Uint8Array(capacity);
     next.set(this.spatialKindBySlot);
     this.spatialKindBySlot = next;
+    const growF64 = (prev: Float64Array, fill = 0): Float64Array<ArrayBuffer> => {
+      const out = new Float64Array(capacity);
+      if (fill !== 0) out.fill(fill);
+      out.set(prev);
+      return out;
+    };
+    this.spatialUnitStampEntityId = growF64(this.spatialUnitStampEntityId, -1);
+    this.spatialUnitStampX = growF64(this.spatialUnitStampX);
+    this.spatialUnitStampY = growF64(this.spatialUnitStampY);
+    this.spatialUnitStampZ = growF64(this.spatialUnitStampZ);
+    this.spatialUnitStampRc = growF64(this.spatialUnitStampRc);
+    this.spatialUnitStampRh = growF64(this.spatialUnitStampRh);
+    this.spatialUnitStampPid = growF64(this.spatialUnitStampPid);
+    const nextAlive = new Uint8Array(capacity);
+    nextAlive.set(this.spatialUnitStampAlive);
+    this.spatialUnitStampAlive = nextAlive;
   }
 
   private ensureStateCapacity(sim: SimWasm, slot: number): void {
@@ -280,6 +307,7 @@ class EntitySlotRegistry {
     this.slotByEntityId.clear();
     this.entityBySlot.length = 0;
     this.spatialKindBySlot.fill(0);
+    this.spatialUnitStampEntityId.fill(-1);
     this.unitSlots.clear();
     this.buildingSlots.clear();
     this.projectileSlots.clear();
@@ -301,6 +329,9 @@ class EntitySlotRegistry {
     if (entity !== undefined && entity.id === entityId) entity.entitySlotId = -1;
     this.entityBySlot[slot] = undefined;
     if (slot < this.spatialKindBySlot.length) this.spatialKindBySlot[slot] = 0;
+    if (slot < this.spatialUnitStampEntityId.length) {
+      this.spatialUnitStampEntityId[slot] = -1;
+    }
     this.unitSlots.delete(entityId);
     this.buildingSlots.delete(entityId);
     this.projectileSlots.delete(entityId);
@@ -328,6 +359,10 @@ class EntitySlotRegistry {
     const sim = this.sim();
     if (sim !== undefined) sim.spatial.unsetSlot(slot);
     this.spatialKindBySlot[slot] = 0;
+    // The WASM row is gone; the next stamp must write unconditionally.
+    if (slot < this.spatialUnitStampEntityId.length) {
+      this.spatialUnitStampEntityId[slot] = -1;
+    }
   }
 
   setUnit(entity: Entity, teamId?: number): number {
@@ -341,13 +376,26 @@ class EntitySlotRegistry {
     this.spatialKindBySlot[slot] = SPATIAL_KIND_UNIT;
     this.unitSlots.add(entity.id);
     const playerId = entity.ownership !== null ? entity.ownership.playerId : 0;
+    const alive = entity.unit.hp > 0 ? 1 : 0;
     sim.spatial.setUnit(
       slot,
       entity.transform.x, entity.transform.y, entity.transform.z,
       entity.unit.radius.collision, entity.unit.radius.hitbox,
       playerId,
-      entity.unit.hp > 0 ? 1 : 0,
+      alive,
     );
+    // Keep the P0-04 stamp cache coherent with EVERY spatial-row writer,
+    // or a value that returns float-exactly to a previously cached pose
+    // could false-skip a later stamp.
+    this.ensureLocalCapacity(slot);
+    this.spatialUnitStampEntityId[slot] = entity.id;
+    this.spatialUnitStampX[slot] = entity.transform.x;
+    this.spatialUnitStampY[slot] = entity.transform.y;
+    this.spatialUnitStampZ[slot] = entity.transform.z;
+    this.spatialUnitStampRc[slot] = entity.unit.radius.collision;
+    this.spatialUnitStampRh[slot] = entity.unit.radius.hitbox;
+    this.spatialUnitStampPid[slot] = playerId;
+    this.spatialUnitStampAlive[slot] = alive;
     return slot;
   }
 
@@ -373,12 +421,33 @@ class EntitySlotRegistry {
       this.unitSlots.add(entity.id);
     }
     const playerId = entity.ownership !== null ? entity.ownership.playerId : 0;
+    const alive = unit.hp > 0 ? 1 : 0;
+    if (
+      this.spatialUnitStampEntityId[slot] === entity.id &&
+      this.spatialUnitStampX[slot] === entity.transform.x &&
+      this.spatialUnitStampY[slot] === entity.transform.y &&
+      this.spatialUnitStampZ[slot] === entity.transform.z &&
+      this.spatialUnitStampRc[slot] === unit.radius.collision &&
+      this.spatialUnitStampRh[slot] === unit.radius.hitbox &&
+      this.spatialUnitStampPid[slot] === playerId &&
+      this.spatialUnitStampAlive[slot] === alive
+    ) {
+      return slot;
+    }
+    this.spatialUnitStampEntityId[slot] = entity.id;
+    this.spatialUnitStampX[slot] = entity.transform.x;
+    this.spatialUnitStampY[slot] = entity.transform.y;
+    this.spatialUnitStampZ[slot] = entity.transform.z;
+    this.spatialUnitStampRc[slot] = unit.radius.collision;
+    this.spatialUnitStampRh[slot] = unit.radius.hitbox;
+    this.spatialUnitStampPid[slot] = playerId;
+    this.spatialUnitStampAlive[slot] = alive;
     sim.spatial.setUnit(
       slot,
       entity.transform.x, entity.transform.y, entity.transform.z,
       unit.radius.collision, unit.radius.hitbox,
       playerId,
-      unit.hp > 0 ? 1 : 0,
+      alive,
     );
     return slot;
   }

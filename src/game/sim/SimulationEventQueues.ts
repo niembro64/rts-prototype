@@ -1,12 +1,8 @@
 import type {
   ProjectileDespawnEvent,
   ProjectileSpawnEvent,
-  ProjectileMotionUpdateEvent,
   SimEvent,
 } from './combat';
-
-const EMPTY_MOTION_UPDATES: ProjectileMotionUpdateEvent[] = [];
-const byNumberAscendingComparator = (a: number, b: number): number => a - b;
 
 export class SimulationEventQueues {
   private readonly audioA: SimEvent[] = [];
@@ -20,12 +16,6 @@ export class SimulationEventQueues {
   private readonly despawnsA: ProjectileDespawnEvent[] = [];
   private readonly despawnsB: ProjectileDespawnEvent[] = [];
   projectileDespawns: ProjectileDespawnEvent[] = this.despawnsA;
-
-  projectileMotionUpdates = new Map<number, ProjectileMotionUpdateEvent>();
-  private readonly motionUpdateBufA: ProjectileMotionUpdateEvent[] = [];
-  private readonly motionUpdateBufB: ProjectileMotionUpdateEvent[] = [];
-  private readonly motionUpdateIds: number[] = [];
-  private motionUpdateToggle = false;
 
   getAndClearEvents(): SimEvent[] {
     const events = this.simEvents;
@@ -48,38 +38,10 @@ export class SimulationEventQueues {
     return events;
   }
 
-  getAndClearProjectileMotionUpdates(): ProjectileMotionUpdateEvent[] {
-    const map = this.projectileMotionUpdates;
-    if (map.size === 0) return EMPTY_MOTION_UPDATES;
-    const buf = this.motionUpdateToggle ? this.motionUpdateBufB : this.motionUpdateBufA;
-    this.motionUpdateToggle = !this.motionUpdateToggle;
-    buf.length = 0;
-    const ids = this.motionUpdateIds;
-    ids.length = 0;
-    let sorted = true;
-    let prev = -Infinity;
-    for (const id of map.keys()) {
-      ids.push(id);
-      if (id < prev) sorted = false;
-      prev = id;
-    }
-    // Map iteration is insertion order, which is ascending-id in steady
-    // state (projectiles register in spawn order); skip the O(n log n)
-    // sort — and its per-call comparator closure — when already sorted.
-    if (!sorted) ids.sort(byNumberAscendingComparator);
-    for (let i = 0; i < ids.length; i++) {
-      const event = map.get(ids[i]);
-      if (event !== undefined) buf.push(event);
-    }
-    map.clear();
-    return buf;
-  }
-
   hasPendingProjectilePresentationEvents(): boolean {
     return (
       this.projectileSpawns.length > 0 ||
-      this.projectileDespawns.length > 0 ||
-      this.projectileMotionUpdates.size > 0
+      this.projectileDespawns.length > 0
     );
   }
 
@@ -93,10 +55,5 @@ export class SimulationEventQueues {
     this.despawnsA.length = 0;
     this.despawnsB.length = 0;
     this.projectileDespawns = this.despawnsA;
-    this.projectileMotionUpdates.clear();
-    this.motionUpdateBufA.length = 0;
-    this.motionUpdateBufB.length = 0;
-    this.motionUpdateIds.length = 0;
-    this.motionUpdateToggle = false;
   }
 }

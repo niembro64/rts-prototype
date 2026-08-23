@@ -64,7 +64,9 @@ const TIER_CONFIGS: readonly RenderBudgetTierConfig[] = [
   },
 ];
 
-const RECOVERY_SAMPLE_COUNT = 90;
+// P2-01: recovery hysteresis is elapsed-time based (the old 90-frame count
+// meant 0.6s at 144 Hz and 3s at 30 Hz for the same intent).
+const RECOVERY_HOLD_MS = 1500;
 
 function finiteNonNegative(value: number, fallback: number): number {
   return Number.isFinite(value) && value >= 0 ? value : fallback;
@@ -93,7 +95,9 @@ export class RtsScene3DRenderBudget {
   private readonly effectiveGraphicsConfig: GraphicsConfig;
   private tierIndex = 0;
   private unitCount = 0;
-  private recoverySamples = 0;
+  private recoveryHoldStartMs: number | null = null;
+  private writtenTierIndex = -1;
+  private writtenBaseConfig: GraphicsConfig | null = null;
 
   constructor(seedGraphicsConfig: GraphicsConfig) {
     this.effectiveGraphicsConfig = { ...seedGraphicsConfig };
@@ -106,21 +110,35 @@ export class RtsScene3DRenderBudget {
       tierIndexForRenderTps(options.renderTpsAvg, options.renderTpsWorst),
     );
 
+    // Downward quality response stays immediate; recovery holds for a
+    // fixed elapsed time regardless of display refresh (P2-01).
     if (requestedTier > this.tierIndex) {
       this.tierIndex = requestedTier;
-      this.recoverySamples = 0;
+      this.recoveryHoldStartMs = null;
     } else if (requestedTier < this.tierIndex) {
-      this.recoverySamples++;
-      if (this.recoverySamples >= RECOVERY_SAMPLE_COUNT) {
+      const nowMs = performance.now();
+      if (this.recoveryHoldStartMs === null) {
+        this.recoveryHoldStartMs = nowMs;
+      } else if (nowMs - this.recoveryHoldStartMs >= RECOVERY_HOLD_MS) {
         this.tierIndex--;
-        this.recoverySamples = 0;
+        this.recoveryHoldStartMs = null;
       }
     } else {
-      this.recoverySamples = 0;
+      this.recoveryHoldStartMs = null;
     }
 
     const tier = TIER_CONFIGS[this.tierIndex] ?? TIER_CONFIGS[0];
-    this.writeEffectiveGraphicsConfig(options.baseGraphicsConfig, tier);
+    // P2-01: the full config copy only happens when the tier or the base
+    // config object actually changed; steady frames return the retained
+    // effective config untouched.
+    if (
+      this.writtenTierIndex !== this.tierIndex ||
+      this.writtenBaseConfig !== options.baseGraphicsConfig
+    ) {
+      this.writeEffectiveGraphicsConfig(options.baseGraphicsConfig, tier);
+      this.writtenTierIndex = this.tierIndex;
+      this.writtenBaseConfig = options.baseGraphicsConfig;
+    }
     return {
       graphicsConfig: this.effectiveGraphicsConfig,
       tier: tier.tier,

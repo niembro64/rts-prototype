@@ -69,6 +69,12 @@ pub(crate) struct BodyPool {
     pub(crate) surface_normal_x: Vec<f64>,
     pub(crate) surface_normal_y: Vec<f64>,
     pub(crate) surface_normal_z: Vec<f64>,
+    // P1-16: the ground-normal EMA's convergence gate. A slot whose body
+    // has not moved since its last sample and whose EMA already snapped to
+    // the raw terrain normal skips terrain sampling entirely.
+    pub(crate) normal_sample_x: Vec<f64>,
+    pub(crate) normal_sample_y: Vec<f64>,
+    pub(crate) normal_converged: Vec<u8>,
 
     // Geometry / mass — set at body creation, rarely changed after.
     pub(crate) radius: Vec<f64>,
@@ -123,6 +129,9 @@ impl BodyPool {
             surface_normal_x: vec![0.0; cap],
             surface_normal_y: vec![0.0; cap],
             surface_normal_z: vec![1.0; cap],
+            normal_sample_x: vec![f64::NAN; cap],
+            normal_sample_y: vec![f64::NAN; cap],
+            normal_converged: vec![0; cap],
             radius: vec![0.0; cap],
             half_x: vec![0.0; cap],
             half_y: vec![0.0; cap],
@@ -172,6 +181,9 @@ impl BodyPool {
         self.surface_normal_x[i] = 0.0;
         self.surface_normal_y[i] = 0.0;
         self.surface_normal_z[i] = 1.0;
+        self.normal_sample_x[i] = f64::NAN;
+        self.normal_sample_y[i] = f64::NAN;
+        self.normal_converged[i] = 0;
         self.radius[i] = 0.0;
         self.half_x[i] = 0.0;
         self.half_y[i] = 0.0;
@@ -1082,6 +1094,41 @@ pub(crate) fn compute_unit_ground_normal_step(
     }
 }
 
+/// P1-15: batch finiteness audit over every occupied dynamic body. Returns
+/// the entity ids whose position or velocity holds a non-finite value; the
+/// JS pose-repair pass then touches only those rows instead of reading six
+/// slab-backed getters per unit per tick. Zero is the steady-state result.
+#[wasm_bindgen]
+pub fn body_pool_collect_nonfinite_kinematics(out_entity_ids: &mut [i32]) -> u32 {
+    let p = pool();
+    let end = p.next_unused_slot as usize;
+    let mut count = 0_u32;
+    for slot in 0..end {
+        let flags = p.flags[slot];
+        if flags & BODY_FLAG_OCCUPIED == 0 || flags & BODY_FLAG_IS_STATIC != 0 {
+            continue;
+        }
+        let entity_id = p.entity_id[slot];
+        if entity_id < 0 {
+            continue;
+        }
+        let sum = p.pos_x[slot]
+            + p.pos_y[slot]
+            + p.pos_z[slot]
+            + p.vel_x[slot]
+            + p.vel_y[slot]
+            + p.vel_z[slot];
+        if sum.is_finite() {
+            continue;
+        }
+        if (count as usize) < out_entity_ids.len() {
+            out_entity_ids[count as usize] = entity_id;
+        }
+        count += 1;
+    }
+    count
+}
+
 #[wasm_bindgen]
 pub fn unit_ground_normal_step_pool(
     out_dirty_entity_ids: &mut [u32],
@@ -1108,17 +1155,44 @@ pub fn unit_ground_normal_step_pool(
         if entity_id < 0 {
             continue;
         }
+        // P1-16: an unmoved body whose EMA already snapped onto the raw
+        // terrain normal cannot produce a different sample — skip the
+        // terrain lookup and the EMA math. Terrain is static after bake,
+        // so position identity is the whole invalidation story; every peer
+        // takes the same branch from the same lockstep state.
+        let moved = p.normal_sample_x[slot] != p.pos_x[slot]
+            || p.normal_sample_y[slot] != p.pos_y[slot];
+        if !moved && p.normal_converged[slot] != 0 {
+            continue;
+        }
         let (raw_x, raw_y, raw_z) =
             match terrain_surface_normal_at(terrain, p.pos_x[slot], p.pos_y[slot]) {
                 Some(normal) => normal,
                 None => continue,
             };
+        p.normal_sample_x[slot] = p.pos_x[slot];
+        p.normal_sample_y[slot] = p.pos_y[slot];
         let before_x = p.surface_normal_x[slot];
         let before_y = p.surface_normal_y[slot];
         let before_z = p.surface_normal_z[slot];
-        let (nx, ny, nz) = compute_unit_ground_normal_step(
+        let (mut nx, mut ny, mut nz) = compute_unit_ground_normal_step(
             before_x, before_y, before_z, raw_x, raw_y, raw_z, alpha,
         );
+        // Convergence snap: once the EMA is within a hair of the raw
+        // normal on an unmoved body, land exactly on the raw normal and
+        // mark the slot converged so it does no work until it moves.
+        const NORMAL_CONVERGENCE_EPS: f64 = 1e-4;
+        let close = (nx - raw_x).abs() < NORMAL_CONVERGENCE_EPS
+            && (ny - raw_y).abs() < NORMAL_CONVERGENCE_EPS
+            && (nz - raw_z).abs() < NORMAL_CONVERGENCE_EPS;
+        if close && !moved {
+            nx = raw_x;
+            ny = raw_y;
+            nz = raw_z;
+            p.normal_converged[slot] = 1;
+        } else {
+            p.normal_converged[slot] = 0;
+        }
         p.surface_normal_x[slot] = nx;
         p.surface_normal_y[slot] = ny;
         p.surface_normal_z[slot] = nz;

@@ -57,7 +57,6 @@ function createQuietSimulation(): Simulation {
     getAndClearEvents: () => [],
     getAndClearProjectileSpawns: () => [],
     getAndClearProjectileDespawns: () => [],
-    getAndClearProjectileMotionUpdates: () => [],
     getGamePhase: () => 'battle',
     getWinnerId: () => null,
     getSprayTargets: () => [],

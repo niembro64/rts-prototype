@@ -386,7 +386,11 @@ export function runSnapshotVisibilityContractTest(): void {
     1 as PlayerId,
     'buildingRadar',
   );
-  underwaterRadarBuilding.transform.z = WATER_LEVEL;
+  // The radar's sensor eye sits at the top of its 150-unit mast (mount z
+  // 145) — sink the building deep enough that the DISH is underwater, not
+  // merely the foundation, or the mast pokes above the surface and
+  // legitimately radiates on the above-water row.
+  underwaterRadarBuilding.transform.z = WATER_LEVEL - 250;
   const underwaterRadarRejectedTarget = createUnit(
     mediumWorld,
     7300,

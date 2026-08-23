@@ -23,13 +23,17 @@ export class SimulationActionQueueMaintenance {
     this.advanceAction = advanceAction;
   }
 
-  sweepInvalidTargetActions(entity: Entity): boolean {
+  /** P1-09: `headOnly` limits the walk to the executing action. The full
+   *  queue is defensively swept at a staggered 2.5 Hz by the caller —
+   *  targets die through discrete events, and a queued entry aimed at a
+   *  vanished target heals within 400ms while the head stays exact. */
+  sweepInvalidTargetActions(entity: Entity, headOnly = false): boolean {
     const unit = entity.unit;
     if (!unit) return false;
 
     let changed = false;
     const actions = unit.actions;
-    for (let i = 0; i < actions.length; i++) {
+    for (let i = 0; i < (headOnly ? Math.min(1, actions.length) : actions.length); i++) {
       const action = actions[i];
       if (!this.isTargetedActionInvalid(entity, action)) continue;
 

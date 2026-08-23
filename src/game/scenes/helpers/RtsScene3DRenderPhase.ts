@@ -78,6 +78,7 @@ import {
 import {
   getTurretHudNameY,
   getShotHudNameY,
+  getShotHudBarsY,
 } from '../../render3d/HudAnchor';
 import {
   ENTITY_HUD_FADE_START_DISTANCE_FRAC,
@@ -178,6 +179,8 @@ export class RtsScene3DRenderPhase {
   private renderFrameIndex = 0;
   private lastEffectsTickMs = 0;
   private burnMarkAccumMs = 0;
+  private shieldImpactAccumMs = 0;
+  private waterSplashAccumMs = 0;
   private groundPrintAccumMs = 0;
   private smokeTrailAccumMs = 0;
   private sprayAccumMs = 0;
@@ -275,6 +278,8 @@ export class RtsScene3DRenderPhase {
     /** transport id -> passenger id, for the gravity-beam blob volume. */
     beamPairsByTransportId: null as ReadonlyMap<EntityId, EntityId> | null,
   };
+  private _sprayRelationTick = -1;
+  private _sprayRelationSetVersion = -1;
   private readonly _carryExpansionScratch = new Map<EntityId, number>();
   private readonly _beamCarriedScratch = new Set<EntityId>();
   private readonly _beamPairsScratch = new Map<EntityId, EntityId>();
@@ -526,8 +531,13 @@ export class RtsScene3DRenderPhase {
         getEntityHudToggle('tower', 'healthBar') ||
         getEntityHudToggle('building', 'healthBar')
       );
+    // Rocket-class travelling shots carry real HP (they can be shot down),
+    // so they get body health bars too. Their rows are appended by this
+    // phase directly — shots never enter the entity render-state slabs.
+    const shotBarsEnabled = updateBodyHudThisFrame &&
+      getEntityHudToggle('shot', 'healthBar');
     const entityLists = this.prepareEntityLists({
-      includeBodyHud: bodyHudEnabled,
+      includeBodyHud: bodyHudEnabled || shotBarsEnabled,
       includeBodyNames: bodyNamesEnabled,
       includeShields: turretShieldSpheresEnabled && forceFieldsVisible,
       shieldVisibilityTeamMask,
@@ -561,17 +571,29 @@ export class RtsScene3DRenderPhase {
     // A spray SOURCED from a transport is always its attraction beam
     // (transports own no build power), so the beam list doubles as the
     // carry-expansion channel with no extra wire state.
-    this._carryExpansionScratch.clear();
-    this._beamCarriedScratch.clear();
-    this._beamPairsScratch.clear();
-    const beamSprays = this.clientViewState.getSprayTargets();
-    for (let i = 0; i < beamSprays.length; i++) {
-      const spray = beamSprays[i];
-      const source = this.clientViewState.getEntity(spray.source.id);
-      if (!isClientTransportUnit(source)) continue;
-      this._carryExpansionScratch.set(spray.source.id, spray.target.radius ?? 0);
-      this._beamCarriedScratch.add(spray.target.id);
-      this._beamPairsScratch.set(spray.source.id, spray.target.id);
+    // P1-28: spray topology only changes when authoritative state lands
+    // (snapshot/tick) or entities come and go — rebuild the relation maps
+    // on those signals rather than every display frame.
+    const sprayRelationTick = this.clientViewState.getTick();
+    const sprayRelationSetVersion = this.clientViewState.getEntitySetVersion();
+    if (
+      sprayRelationTick !== this._sprayRelationTick ||
+      sprayRelationSetVersion !== this._sprayRelationSetVersion
+    ) {
+      this._sprayRelationTick = sprayRelationTick;
+      this._sprayRelationSetVersion = sprayRelationSetVersion;
+      this._carryExpansionScratch.clear();
+      this._beamCarriedScratch.clear();
+      this._beamPairsScratch.clear();
+      const beamSprays = this.clientViewState.getSprayTargets();
+      for (let i = 0; i < beamSprays.length; i++) {
+        const spray = beamSprays[i];
+        const source = this.clientViewState.getEntity(spray.source.id);
+        if (!isClientTransportUnit(source)) continue;
+        this._carryExpansionScratch.set(spray.source.id, spray.target.radius ?? 0);
+        this._beamCarriedScratch.add(spray.target.id);
+        this._beamPairsScratch.set(spray.source.id, spray.target.id);
+      }
     }
     this.entityRendererOverlayModes.carryExpansionBySourceId =
       this._carryExpansionScratch.size > 0 ? this._carryExpansionScratch : null;
@@ -597,6 +619,9 @@ export class RtsScene3DRenderPhase {
         projectileLists.traveling,
         selectionHudMode,
       );
+    }
+    if (shotBarsEnabled) {
+      this.populateShotHealthBarPacket(projectileLists.traveling, entityLists.bodyHud);
     }
     if (turretNamesEnabled) {
       this.populateRenderListTurretNamePacket(entityLists, selectionHudMode);
@@ -640,11 +665,24 @@ export class RtsScene3DRenderPhase {
       graphicsConfig,
       renderFrameState,
     );
+    // P1-30: both CPU particle pools honor the effect-frame stride like the
+    // neighboring burn/print/spray/smoke effects — they accumulate dt on
+    // skipped frames and integrate once on effect frames.
     shieldImpactRenderer.setVisible(forceFieldsVisible);
-    if (forceFieldsVisible) {
-      shieldImpactRenderer.update(effectDtMs, lineProjectiles, renderFrameState.view);
+    this.shieldImpactAccumMs += effectDtMs;
+    this.waterSplashAccumMs += effectDtMs;
+    if (updateEffectsThisFrame) {
+      if (forceFieldsVisible) {
+        shieldImpactRenderer.update(
+          this.shieldImpactAccumMs,
+          lineProjectiles,
+          renderFrameState.view,
+        );
+      }
+      this.shieldImpactAccumMs = 0;
+      waterSplashRenderer.update(this.waterSplashAccumMs, renderFrameState.view);
+      this.waterSplashAccumMs = 0;
     }
-    waterSplashRenderer.update(effectDtMs, renderFrameState.view);
     this.burnMarkAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
       burnMarkRenderer.update(
@@ -746,7 +784,7 @@ export class RtsScene3DRenderPhase {
     }
 
     let hudFrustum: THREE.Frustum | undefined;
-    if (bodyHudEnabled || bodyNamesEnabled || turretNamesEnabled || shotNamesEnabled) {
+    if (bodyHudEnabled || shotBarsEnabled || bodyNamesEnabled || turretNamesEnabled || shotNamesEnabled) {
       const cam = this.threeApp.camera;
       if (this.renderScope.getMode() !== 'all') {
         this.frustumMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
@@ -778,9 +816,9 @@ export class RtsScene3DRenderPhase {
       shieldRenderer.clear();
     }
 
-    if (bodyHudEnabled || bodyNamesEnabled || turretNamesEnabled || shotNamesEnabled) {
+    if (bodyHudEnabled || shotBarsEnabled || bodyNamesEnabled || turretNamesEnabled || shotNamesEnabled) {
       this.drawEntityHud(
-        bodyHudEnabled ? healthBar3D : null,
+        bodyHudEnabled || shotBarsEnabled ? healthBar3D : null,
         bodyNamesEnabled || turretNamesEnabled || shotNamesEnabled ? nameLabel3D : null,
         hudFrustum,
         entityLists,
@@ -1066,6 +1104,34 @@ export class RtsScene3DRenderPhase {
         getShotHudNameY(shot),
         shot.transform.y,
         name,
+      );
+    }
+  }
+
+  /** Rocket-class shots get the same body health bar every damaged entity
+   *  gets: hidden at full health, drawn while hp is down. Missiles and
+   *  plasma stay bare — their hp is a collision detail, not a story the
+   *  player follows across the sky. */
+  private populateShotHealthBarPacket(
+    projectiles: readonly Entity[],
+    packet: BodyHudRenderPacket3D,
+  ): void {
+    const scope = this.renderScope;
+    for (let i = 0; i < projectiles.length; i++) {
+      const shot = projectiles[i];
+      if (this.entityEmissionUsesFarLod(shot)) continue;
+      if (!scope.inScope(shot.transform.x, shot.transform.y, 100)) continue;
+      const proj = shot.projectile;
+      if (!proj || proj.projectileType !== 'projectile' || proj.maxHp <= 0) continue;
+      if (proj.config.shotProfile.runtime.type !== 'rocket') continue;
+      if (proj.hp >= proj.maxHp || proj.hp <= 0) continue;
+      packet.pushRow(
+        shot.id,
+        shot.transform.x,
+        getShotHudBarsY(shot),
+        shot.transform.y,
+        proj.config.shotProfile.runtime.radius.other * 2,
+        proj.hp / proj.maxHp,
       );
     }
   }

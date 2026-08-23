@@ -8,7 +8,16 @@
 import terrainConfig from './terrain/terrainConfig.json';
 import { WATER_LEVEL } from './terrain/terrainConfig';
 import { ENTITY_CHANGED_HP } from '../../types/network';
+import type { Entity } from './types';
 import type { WorldState } from './WorldState';
+
+/** P1-18: buildings never move, so which ones sit at or below the lava
+ *  surface is a pure function of the building roster. Rebuilt only when the
+ *  world's building version moves. */
+const submergedBuildingCache = new WeakMap<WorldState, {
+  version: number;
+  list: Entity[];
+}>();
 
 /** Drain health from every entity whose body reaches the lava surface.
  *  A no-op unless the battle is running with LIQUID = LAVA. */
@@ -31,12 +40,27 @@ export function applyLavaSurfaceDamage(world: WorldState, dtMs: number): void {
 
   // Buildings sit on the ground they were placed on; a footprint flooded by
   // lava (an underwater extractor, say) cooks along with everything else.
-  const buildings = world.getBuildings();
-  for (let i = 0; i < buildings.length; i++) {
-    const entity = buildings[i];
+  // Static placement means the submerged subset only changes with the
+  // building roster (P1-18).
+  const buildingVersion = world.getBuildingVersion();
+  let cache = submergedBuildingCache.get(world);
+  if (cache === undefined || cache.version !== buildingVersion) {
+    const list: Entity[] = [];
+    const buildings = world.getBuildings();
+    for (let i = 0; i < buildings.length; i++) {
+      const entity = buildings[i];
+      if (entity.building === null) continue;
+      if (entity.transform.z > WATER_LEVEL) continue;
+      list.push(entity);
+    }
+    cache = { version: buildingVersion, list };
+    submergedBuildingCache.set(world, cache);
+  }
+  const submerged = cache.list;
+  for (let i = 0; i < submerged.length; i++) {
+    const entity = submerged[i];
     const building = entity.building;
     if (building === null || building.hp <= 0) continue;
-    if (entity.transform.z > WATER_LEVEL) continue;
     building.hp = Math.max(0, building.hp - damage);
     world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
   }

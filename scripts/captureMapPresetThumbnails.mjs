@@ -203,6 +203,10 @@ try {
       value: undefined,
       configurable: true,
     });
+    // Lobby tiles are photographed from 45 degrees down on the east side of
+    // the map; the in-game overview control reads this flag and swaps its
+    // straight-down framing for the oblique one.
+    window.__BA_MAP_PREVIEW_FRAMING__ = 'obliqueEast';
   });
 
   if (convertOnly) {
@@ -232,7 +236,7 @@ try {
       .communication-panel, .communication-toggle, .fullscreen-game-toggle,
       .ui-chrome-restore, .map-details-panel, .options-menu-panel,
       .capture-control-grid, .idle-builders-panel,
-      .camera-tutorial { display: none !important; }
+      .camera-tutorial, .chat-console { display: none !important; }
     `,
   });
 

@@ -413,6 +413,7 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
    *  terrain that may not be baked yet. */
   private settledDepth = 0;
   private destroyed = false;
+  private updateStride = 0;
 
   constructor(parent: THREE.Object3D, mapWidth: number, mapHeight: number) {
     this.mapWidth = mapWidth;
@@ -472,6 +473,11 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
    *  whatever height the analytic fallback guessed before the bake landed. */
   update(): void {
     if (this.destroyed || this.lastKey === null) return;
+    // P2-06: the altitude only moves once, when the terrain bake lands.
+    // Sampling every ~half second keeps the sign re-seating within a blink
+    // of the bake without paying a terrain sample per display frame forever.
+    if (++this.updateStride < 30) return;
+    this.updateStride = 0;
     const surfaceY = this.annexSurfaceY();
     if (Math.abs(surfaceY - this.lastAnnexSurfaceY) <= ANNEX_ALTITUDE_EPSILON) return;
     // The altitude moved, so the coast under the seam did too: the block's

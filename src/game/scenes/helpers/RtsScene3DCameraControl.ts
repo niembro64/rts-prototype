@@ -96,20 +96,30 @@ export class RtsScene3DCameraControl {
     this.threeApp.orbit.rotateYawBy(Math.PI);
   }
 
-  showMapOverview(mapWidth: number, mapHeight: number, targetY = 0): void {
+  showMapOverview(
+    mapWidth: number,
+    mapHeight: number,
+    targetY = 0,
+    framing: 'overhead' | 'obliqueEast' = 'overhead',
+  ): void {
     const orbit = this.threeApp.orbit;
     const camera = this.threeApp.camera;
     const aspect = Math.max(camera.aspect, 0.1);
     const halfFovTan = Math.tan((camera.fov * Math.PI) / 360);
     const fitHeight = mapHeight / (2 * halfFovTan);
     const fitWidth = mapWidth / (2 * halfFovTan * aspect);
+    const oblique = framing === 'obliqueEast';
     orbit.setState({
       targetX: mapWidth / 2,
       targetY,
       targetZ: mapHeight / 2,
-      distance: Math.max(this.baseDistance, fitHeight, fitWidth) * 1.12,
-      yaw: orbit.yaw,
-      pitch: Math.PI * 0.04,
+      // The oblique framing foreshortens the map's depth axis, so it needs
+      // more standoff than the straight-down fit to keep the far edge in
+      // frame (the orbit max-distance clamp still has the final word).
+      distance: Math.max(this.baseDistance, fitHeight, fitWidth) * (oblique ? 1.35 : 1.12),
+      // East is +X: sin(yaw)=1 puts the eye on the east side looking west.
+      yaw: oblique ? Math.PI / 2 : orbit.yaw,
+      pitch: oblique ? Math.PI / 4 : Math.PI * 0.04,
     });
   }
 

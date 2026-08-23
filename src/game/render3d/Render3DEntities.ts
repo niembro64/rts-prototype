@@ -531,7 +531,10 @@ export class Render3DEntities {
     this.entityLodProxyFadeAlpha = entityPacket?.entityLodProxyFadeAlpha;
     this.unitRebuildBudgetLeft = DETAIL_REBUILD_BUDGET_UNITS;
     this.renderFrameCounter++;
-    this.beamPilotLights.update(entityPacket?.lineProjectiles ?? EMPTY_PROJECTILES);
+    this.beamPilotLights.update(
+      entityPacket?.lineProjectiles ?? EMPTY_PROJECTILES,
+      this.clientViewState.getLineProjectileRenderVersion(),
+    );
 
     const frameSpin = this.barrelSpinState.beginFrame();
     this._currentDtMs = frameSpin.currentDtMs;
@@ -546,7 +549,20 @@ export class Render3DEntities {
     tickBeamWaveTime();
     this.turretMountCache.reset(this._currentDtMs);
     this.resourcePylonFlows.beginFrame();
-    refreshLocomotionSupportSurfaces(this.clientViewState.getLocomotionSupportSurfaceEntities());
+    // P0-09: the support index only changes when the entity set changes
+    // (lifecycle) or a fixed tick lands a new authoritative pose for a
+    // mobile support host. Rebuilding it per display frame repeated the
+    // same bucket work 3-7x between ticks for identical inputs.
+    const supportEntitySetVersion = this.clientViewState.getEntitySetVersion();
+    const supportTick = this.clientViewState.getTick();
+    if (
+      supportEntitySetVersion !== this._supportIndexEntitySetVersion ||
+      supportTick !== this._supportIndexTick
+    ) {
+      this._supportIndexEntitySetVersion = supportEntitySetVersion;
+      this._supportIndexTick = supportTick;
+      refreshLocomotionSupportSurfaces(this.clientViewState.getLocomotionSupportSurfaceEntities());
+    }
     this.syncSmokeTrailsQueue();
     this.syncLegsRadiusToggleQueue();
     this.syncLegsReachToggleQueue();
@@ -587,6 +603,10 @@ export class Render3DEntities {
   private _spinDt = 0;
 
   private _currentDtMs = 0;
+  /** P0-09 cache keys: the support index rebuilds only when one of these
+   *  moves — entity lifecycle or a new fixed-tick pose. */
+  private _supportIndexEntitySetVersion = -1;
+  private _supportIndexTick = -1;
   /** transport id -> carried volume radius (see overlayModes). */
   private _carryExpansionBySourceId: ReadonlyMap<EntityId, number> | null = null;
   /** Passenger ids currently held in a tractor beam (see overlayModes). */
