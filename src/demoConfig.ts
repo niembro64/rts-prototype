@@ -142,6 +142,7 @@ export const DEMO_CONFIG = {
 
   /** Number of cannon defense towers per player on the cannon tower ring. */
   towerCannonCount: demoConfig.towerCannonCount,
+  towerHeliosCount: demoConfig.towerHeliosCount,
 
   /** Number of anti-air defense towers per player on the anti-air tower ring. */
   towerAntiAirCount: demoConfig.towerAntiAirCount,

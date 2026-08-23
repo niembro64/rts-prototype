@@ -689,6 +689,7 @@ function assertAuthoredRosterCoverageForPreset(
     ['buildingResourceConverter', DEMO_CONFIG.buildingResourceConverterCount],
     ['buildingSolar', DEMO_CONFIG.buildingSolarCount],
     ['towerCannon', DEMO_CONFIG.towerCannonCount],
+    ['towerHelios', DEMO_CONFIG.towerHeliosCount],
     ['towerBeamMega', DEMO_CONFIG.towerBeamMegaCount],
   ];
   for (const [bandBlueprintId, expectedCount] of expectedBandCounts) {

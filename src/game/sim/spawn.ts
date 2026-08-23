@@ -133,6 +133,7 @@ const DEMO_BESPOKE_BASE_BUILDING_BLUEPRINT_IDS = new Set<BuildingBlueprintId>([
   'towerFabricator',
   'towerBeamMega',
   'towerCannon',
+  'towerHelios',
   'buildingRadar',
   'buildingResourceConverter',
   'towerAntiAir',
@@ -1033,6 +1034,10 @@ export function spawnInitialBases(
     spawnRadius,
     DEMO_CONFIG.baseRings.towerCannon.radiusFraction,
   );
+  const heliosTowerRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.baseRings.towerHelios.radiusFraction,
+  );
   const antiAirTowerRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
     DEMO_CONFIG.baseRings.towerAntiAir.radiusFraction,
@@ -1178,6 +1183,13 @@ export function spawnInitialBases(
       entities.push(...placeArcRow(
         world, construction, 'towerCannon', DEMO_CONFIG.towerCannonCount,
         oval, cannonTowerRadius, baseAngle, sectorAngle, playerId, basePolicy,
+        FACTORY_PLACEMENT_SEARCH_OFFSETS,
+      ));
+    }
+    if (isBuildingEnabled('towerHelios')) {
+      entities.push(...placeArcRow(
+        world, construction, 'towerHelios', DEMO_CONFIG.towerHeliosCount,
+        oval, heliosTowerRadius, baseAngle, sectorAngle, playerId, basePolicy,
         FACTORY_PLACEMENT_SEARCH_OFFSETS,
       ));
     }

@@ -4075,18 +4075,18 @@
       {
         "turretBlueprintId": "turretAlbatrosSiegeCannon",
         "presentation": {
-          "headRadius": 18,
+          "headRadius": 13,
           "headOnly": false,
           "barrel": {
             "type": "singleCylinderBarrel",
-            "barrelLength": 2.2
+            "barrelLength": 2.8
           }
         },
         "sensorTurretBlueprintId": "turretSensorUnitAlbatros",
         "mount": {
           "x": 0.05,
           "y": 0.67,
-          "z": 0
+          "z": 0.24
         },
         "requiredEngagedForFightStop": true,
         "mountId": "albatrosSiegeCannon1",
@@ -4095,18 +4095,18 @@
       {
         "turretBlueprintId": "turretAlbatrosSiegeCannon",
         "presentation": {
-          "headRadius": 18,
+          "headRadius": 13,
           "headOnly": false,
           "barrel": {
             "type": "singleCylinderBarrel",
-            "barrelLength": 2.2
+            "barrelLength": 2.8
           }
         },
         "sensorTurretBlueprintId": "turretSensorUnitAlbatros",
         "mount": {
           "x": 0.05,
           "y": -0.67,
-          "z": 0
+          "z": 0.24
         },
         "requiredEngagedForFightStop": true,
         "mountId": "albatrosSiegeCannon3",
@@ -4932,6 +4932,7 @@
       "buildingEnergyStorage",
       "towerFabricator",
       "towerCannon",
+      "towerHelios",
       "towerAntiAir",
       "buildingShieldTargetingTech",
       "buildingShieldTech",

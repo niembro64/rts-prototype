@@ -944,7 +944,16 @@ export class Render3DEntities {
       // bank. Everything else about the pose — position, yaw, lift — is
       // unchanged, so its turrets and mounts still ride where they were built.
       const upright = m.uprightPose === true;
-      const visualBankAllowed = !upright && unitTurretsAllowVisualBank3D(turrets);
+      // The albatros carries its cannons ON the wings and is explicitly
+      // allowed to bank anyway (user decision): its turret meshes are
+      // liftGroup children so they roll with the hull, and the transient
+      // divergence between the banked barrels and the sim's level shot
+      // origins during a turn is accepted. Every other off-axis-mount
+      // host keeps the conservative no-bank policy.
+      const visualBankAllowed = !upright && (
+        e.unit.unitBlueprintId === 'unitAlbatros' ||
+        unitTurretsAllowVisualBank3D(turrets)
+      );
       this.unitRenderPose.writeUnit(
         poseCount,
         tx,

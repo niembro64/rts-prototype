@@ -134,6 +134,20 @@ export function buildAlbatrosChassis(
       createPrimitiveSphereGeometry('unitBody', geometryTier)),
     primaryMat, entityId, [-0.08, 0.18, 0], [0.52, 0.07, 0.13],
   );
+  // Wing cannon nacelles: a forward-axis housing at each wing mount so
+  // the guns read as built into the airframe rather than bolted-on
+  // spheres. The turret head sits half-sunk in the open rear of the
+  // housing; the nose cap matches the fuselage vocabulary.
+  for (const side of [-1, 1]) {
+    addCylinderBetween(
+      parent, meshes, primaryMat, entityId,
+      -0.16, 0.24, side * 0.67, 0.26, 0.24, side * 0.67, 0.095, geometryTier,
+    );
+    addMesh(
+      parent, meshes, detailSphereGeom, primaryMat, entityId,
+      [0.26, 0.24, side * 0.67], [0.13, 0.095, 0.095],
+    );
+  }
   // Swept vertical stabilizer over the tail cone.
   addMesh(parent, meshes, finGeom, primaryMat, entityId, [-0.76, 0.50, 0], [0.22, 0.26, 0.03], [0, 0, 0.45]);
 

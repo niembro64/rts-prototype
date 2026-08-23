@@ -48,6 +48,9 @@
     "towerCannon": {
       "radiusFraction": 0.4357
     },
+    "towerHelios": {
+      "radiusFraction": 0.415
+    },
     "towerBeamMega": {
       "radiusFraction": 0.4
     },
@@ -75,6 +78,7 @@
   "buildingWindCount": 2,
   "towerBeamMegaCount": 1,
   "towerCannonCount": 1,
+  "towerHeliosCount": 1,
   "towerAntiAirCount": 1,
   "buildingRadarCount": 1,
   "buildingSonarCount": 1,

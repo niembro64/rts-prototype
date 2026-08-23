@@ -510,8 +510,8 @@ export function runRosterCommandSurfaceContractTest(): void {
   assertContract(
     commanderHomeCells[1]?.buildingBlueprintId === 'towerCannon' &&
       commanderHomeCells[5]?.buildingBlueprintId === 'towerAntiAir' &&
-      commanderHomeCells[9] === null,
-    'commander BAR home Combat column must stack cannon then anti-air when the beam-tower analogue is unavailable',
+      commanderHomeCells[9]?.buildingBlueprintId === 'towerHelios',
+    'commander BAR home Combat column stacks cannon, anti-air, then the prototype Helios (deliberate widening past armcom)',
   );
   assertContract(
     commanderHomeCells[2]?.buildingBlueprintId === 'buildingRadar' &&
