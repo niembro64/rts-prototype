@@ -5483,6 +5483,8 @@
   },
   "unitHedgehog": {
     "unitBlueprintId": "unitHedgehog",
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 12.4,
     "tinyName": "HDG",
     "name": "Hedgehog",
     "shortName": "HDG",
@@ -5512,10 +5514,10 @@
             "barrelLength": 1.6,
             "orbitRadius": 0.5,
             "spin": {
-              "idle": 0,
-              "max": 0,
-              "accel": 0,
-              "decel": 0
+              "idle": 1.5,
+              "max": 9,
+              "accel": 18,
+              "decel": 8
             }
           }
         },

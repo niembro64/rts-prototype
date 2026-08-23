@@ -416,7 +416,7 @@
         "mount": {
           "x": 0,
           "y": 0,
-          "z": 0
+          "z": 145
         },
         "mountId": "sensor",
         "controlMode": "autonomous"
@@ -1722,7 +1722,7 @@
         "mount": {
           "x": 0,
           "y": 0,
-          "z": 0
+          "z": 145
         },
         "mountId": "sensor",
         "controlMode": "autonomous"
