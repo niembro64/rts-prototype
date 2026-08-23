@@ -120,6 +120,7 @@ import {
   setScaleScalarIfChanged,
   setVector3IfChanged,
 } from './threeTransformWriteUtils';
+import { TractorBeamVisual3D, type TractorBeamAnchor } from './TractorBeamVisual3D';
 import { EntityLodProxyRenderer3D } from './EntityLodProxyRenderer3D';
 import {
   createPrimitiveCylinderGeometry,
@@ -510,10 +511,14 @@ export class Render3DEntities {
       hoveredEntityId?: EntityId | null;
       carryExpansionBySourceId?: ReadonlyMap<EntityId, number> | null;
       beamCarriedEntityIds?: ReadonlySet<EntityId> | null;
+      beamPairsByTransportId?: ReadonlyMap<EntityId, EntityId> | null;
     } = {},
   ): void {
     this._carryExpansionBySourceId = overlayModes.carryExpansionBySourceId ?? null;
     this._beamCarriedEntityIds = overlayModes.beamCarriedEntityIds ?? null;
+    this._beamPairsByTransportId = overlayModes.beamPairsByTransportId ?? null;
+    this._beamRingScratch.clear();
+    this._beamHeldScratch.clear();
     // Refresh the single render-detail snapshot once per frame.
     const newFrameState = frameStateOverride
       ?? snapshotRenderFrameState(this.camera, this.getViewportHeight(), this.frameState);
@@ -551,6 +556,7 @@ export class Render3DEntities {
     });
     this.lodProxyRenderer.beginFrame();
     this.updateUnits(entityPacket?.unitRows, entityPacket?.scoped === true);
+    this.updateTractorBeams();
     this.buildingRenderer.update(
       entityPacket?.buildingRows,
       this.frameState,
@@ -585,6 +591,12 @@ export class Render3DEntities {
   private _carryExpansionBySourceId: ReadonlyMap<EntityId, number> | null = null;
   /** Passenger ids currently held in a tractor beam (see overlayModes). */
   private _beamCarriedEntityIds: ReadonlySet<EntityId> | null = null;
+  /** transport id -> passenger id for the gravity-beam volume. */
+  private _beamPairsByTransportId: ReadonlyMap<EntityId, EntityId> | null = null;
+  private tractorBeams: TractorBeamVisual3D | null = null;
+  private readonly _beamRingScratch = new Map<EntityId, { x: number; y: number; z: number; inner: number }>();
+  private readonly _beamHeldScratch = new Map<EntityId, { x: number; y: number; z: number; r: number }>();
+  private readonly _beamAnchorScratch = new Map<EntityId, TractorBeamAnchor>();
   private _currentTimeMs = 0;
 
   /** Remove every overlay mesh that lives in the world group (not the
@@ -1028,6 +1040,15 @@ export class Render3DEntities {
           m.carryScale = next;
           setScaleScalarIfChanged(m.group.scale, next);
         }
+        if (carriedRadius !== undefined) {
+          const carry = m.carryScale ?? 1;
+          this._beamRingScratch.set(e.id, {
+            x: tx,
+            y: groundZ + 0.16 * radius * carry,
+            z: ty,
+            inner: 0.75 * radius * carry,
+          });
+        }
       }
       setQuaternionIfChanged(
         m.group.quaternion,
@@ -1165,6 +1186,14 @@ export class Render3DEntities {
           locomotionPose.waterFraction = poseOutput[poseBase + 33];
           locomotionPose.maxContinuousDistance = Math.max(1, radius * 4);
           locomotionPose.carried = this._beamCarriedEntityIds?.has(e.id) === true;
+          if (locomotionPose.carried) {
+            this._beamHeldScratch.set(e.id, {
+              x: this._smoothLiftedPos.x,
+              y: this._smoothLiftedPos.y,
+              z: this._smoothLiftedPos.z,
+              r: radius,
+            });
+          }
           const keepLocomotionActive = updateLocomotion(
             locomotion, e, locomotionPose, locomotionDtMs,
             mapWidth,
@@ -1492,7 +1521,41 @@ export class Render3DEntities {
     return this.scopedMeshRetention.getTelemetry();
   }
 
+  /** Join this frame's ring + held anchors into gravity-beam volumes.
+   *  Pairs whose ends were not both posed this frame (off-scope) simply
+   *  ease shut inside the visual. */
+  private updateTractorBeams(): void {
+    const pairs = this._beamPairsByTransportId;
+    this._beamAnchorScratch.clear();
+    if (pairs !== null) {
+      for (const [transportId, passengerId] of pairs) {
+        const ring = this._beamRingScratch.get(transportId);
+        const held = this._beamHeldScratch.get(passengerId);
+        if (ring === undefined || held === undefined) continue;
+        this._beamAnchorScratch.set(transportId, {
+          topX: ring.x,
+          topY: ring.y,
+          topZ: ring.z,
+          ringRadius: ring.inner,
+          bottomX: held.x,
+          bottomY: held.y,
+          bottomZ: held.z,
+          holdRadius: held.r * 1.15,
+        });
+      }
+    }
+    if (this._beamAnchorScratch.size === 0 && this.tractorBeams === null) return;
+    if (this.tractorBeams === null) {
+      this.tractorBeams = new TractorBeamVisual3D(this.world);
+    }
+    this.tractorBeams.update(
+      this._beamAnchorScratch.size > 0 ? this._beamAnchorScratch : null,
+      this._currentDtMs,
+    );
+  }
+
   destroy(): void {
+    this.tractorBeams?.destroy();
     // TURR CIR / BLD overlays are world-parented so they stay flat on
     // the terrain regardless of unit rotation; release those explicitly.
     // UNIT SPH overlays are parented to m.group and leave with it.
