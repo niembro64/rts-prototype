@@ -272,6 +272,8 @@ export class RtsScene3D {
 
   // UI update throttling (mirror RtsScene)
   private economyUpdateTimer = 0;
+  private _lastEconomyUiTick = -1;
+  private _lastEconomyUiSetVersion = -1;
   private readonly ECONOMY_UPDATE_INTERVAL = 100;
   // Entity source adapter, kept shape-compatible with RtsScene's for UI helpers
   private entitySourceAdapter!: {
@@ -906,8 +908,20 @@ export class RtsScene3D {
     this.economyUpdateTimer += delta;
     if (this.economyUpdateTimer >= this.ECONOMY_UPDATE_INTERVAL) {
       this.economyUpdateTimer = 0;
-      this.updateEconomyInfo();
-      this.updateIdleBuildersInfo();
+      // P1-32: both builders derive purely from authoritative snapshot
+      // state — with no new tick and no lifecycle change there is nothing
+      // new to scan or publish.
+      const economyTick = this.clientViewState.getTick();
+      const economySetVersion = this.clientViewState.getEntitySetVersion();
+      if (
+        economyTick !== this._lastEconomyUiTick ||
+        economySetVersion !== this._lastEconomyUiSetVersion
+      ) {
+        this._lastEconomyUiTick = economyTick;
+        this._lastEconomyUiSetVersion = economySetVersion;
+        this.updateEconomyInfo();
+        this.updateIdleBuildersInfo();
+      }
     }
 
     this.minimapSystem.tick(

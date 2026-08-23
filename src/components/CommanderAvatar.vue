@@ -94,11 +94,20 @@ function start(): void {
   sun.position.set(2, 3, 2);
   scene.add(sun);
 
-  function tick() {
+  // P2-03: a small UI icon does not deserve display-rate renders on its own
+  // WebGL context. ~24 fps keeps the spin smooth; document-hidden frames
+  // skip the render entirely (rAF is already throttled there, the guard
+  // keeps the GPU idle too).
+  let lastAvatarFrameMs = 0;
+  function tick(nowMs = 0) {
     if (!mesh || !renderer || !scene || !camera) return;
-    mesh.rotation.y += 0.02;
-    renderer.render(scene, camera);
     rafId = requestAnimationFrame(tick);
+    if (document.hidden) return;
+    if (nowMs - lastAvatarFrameMs < 1000 / 24) return;
+    const elapsed = lastAvatarFrameMs > 0 ? nowMs - lastAvatarFrameMs : 1000 / 24;
+    lastAvatarFrameMs = nowMs;
+    mesh.rotation.y += 0.02 * (elapsed / (1000 / 60));
+    renderer.render(scene, camera);
   }
   tick();
 }

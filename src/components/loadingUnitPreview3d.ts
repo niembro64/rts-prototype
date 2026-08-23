@@ -294,17 +294,23 @@ async function createMainThreadFallbackDriver(
     hooks.onReady();
   };
 
+  // P2-05: same 30 fps cap as the worker path; the first frame renders
+  // immediately so onReady is not delayed.
+  let lastPreviewFrameMs = -Infinity;
   const tick = (now: number): void => {
     if (destroyed) return;
-    try {
-      previewScene.render(now);
-    } catch {
-      fail();
-      return;
-    }
-    if (!readyFired) {
-      readyFired = true;
-      hooks.onReady();
+    if (now - lastPreviewFrameMs >= 1000 / 30 || !readyFired) {
+      lastPreviewFrameMs = now;
+      try {
+        previewScene.render(now);
+      } catch {
+        fail();
+        return;
+      }
+      if (!readyFired) {
+        readyFired = true;
+        hooks.onReady();
+      }
     }
     rafId = requestAnimationFrame(tick);
   };

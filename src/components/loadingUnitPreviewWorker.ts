@@ -98,14 +98,21 @@ function destroyPreview(): void {
   preview = null;
 }
 
+// P2-05: decorative loading previews cap at 30 fps — the first frame
+// always renders so 'ready' fires without delay.
+let lastPreviewFrameMs = -Infinity;
+
 function tick(now: number): void {
   frameHandle = null;
   timeoutHandle = null;
   if (!running) return;
-  preview?.render(now);
-  if (!readySent && preview !== null) {
-    readySent = true;
-    self.postMessage({ type: 'ready' } satisfies ReadyMessage);
+  if (now - lastPreviewFrameMs >= 1000 / 30 || !readySent) {
+    lastPreviewFrameMs = now;
+    preview?.render(now);
+    if (!readySent && preview !== null) {
+      readySent = true;
+      self.postMessage({ type: 'ready' } satisfies ReadyMessage);
+    }
   }
   scheduleFrame();
 }
