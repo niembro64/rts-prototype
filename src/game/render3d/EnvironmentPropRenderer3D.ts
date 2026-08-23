@@ -416,30 +416,37 @@ export class EnvironmentPropRenderer3D {
     const scopeVersion = this.renderScope.getVersion();
     const lodMode = getLodMode();
     const hasView = view !== undefined;
+    // P1-24: the exact-equality gate missed on every smoothly moving frame.
+    // Camera position is quantized to buckets well inside the 120-unit
+    // culling pad (so a sub-bucket pan can never pop a prop at the screen
+    // edge) and fov/viewport to thresholds below visual relevance; a
+    // smooth pan now repacks static matrices per bucket crossing instead
+    // of per frame.
+    const camBucketX = view === undefined ? 0 : Math.round(view.cameraX / 48);
+    const camBucketY = view === undefined ? 0 : Math.round(view.cameraY / 24);
+    const camBucketZ = view === undefined ? 0 : Math.round(view.cameraZ / 48);
+    const fovBucket = view === undefined ? 0 : Math.round(view.fovYRad * 200);
+    const viewportBucket = view === undefined ? 0 : Math.round(view.viewportHeightPx / 8);
     if (
       scopeVersion === this.lastScopeVersion &&
       lodMode === this.lastLodMode &&
       hasView === this.lastHasView &&
-      (!view || (
-        view.cameraX === this.lastCameraX &&
-        view.cameraY === this.lastCameraY &&
-        view.cameraZ === this.lastCameraZ &&
-        view.fovYRad === this.lastFovYRad &&
-        view.viewportHeightPx === this.lastViewportHeightPx
-      ))
+      camBucketX === this.lastCameraX &&
+      camBucketY === this.lastCameraY &&
+      camBucketZ === this.lastCameraZ &&
+      fovBucket === this.lastFovYRad &&
+      viewportBucket === this.lastViewportHeightPx
     ) {
       return;
     }
     this.lastScopeVersion = scopeVersion;
     this.lastLodMode = lodMode;
     this.lastHasView = hasView;
-    if (view) {
-      this.lastCameraX = view.cameraX;
-      this.lastCameraY = view.cameraY;
-      this.lastCameraZ = view.cameraZ;
-      this.lastFovYRad = view.fovYRad;
-      this.lastViewportHeightPx = view.viewportHeightPx;
-    }
+    this.lastCameraX = camBucketX;
+    this.lastCameraY = camBucketY;
+    this.lastCameraZ = camBucketZ;
+    this.lastFovYRad = fovBucket;
+    this.lastViewportHeightPx = viewportBucket;
     for (const batch of this.propBatches.values()) {
       batch.counts.close = 0;
       batch.counts.mid = 0;

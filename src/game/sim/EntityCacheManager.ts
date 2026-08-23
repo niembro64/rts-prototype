@@ -372,6 +372,20 @@ export class EntityCacheManager {
   }
 
   private removeEntityFromCaches(entity: Entity): void {
+    // P0-11: shots join exactly the projectile lists (see
+    // addProjectileEntity — includeAll is false, so not even cachedAll).
+    // Projectile churn is the highest-frequency lifecycle in the game;
+    // probing the twenty-plus unit/building lists and every per-player
+    // list for each despawn paid a linear scan per list for guaranteed
+    // misses.
+    if (entity.type === 'shot') {
+      removeEntityFromList(this.cachedProjectiles, entity);
+      removeEntityFromList(this.cachedTravelingProjectiles, entity);
+      removeEntityFromList(this.cachedSmokeTrailProjectiles, entity);
+      removeEntityFromList(this.cachedLineProjectiles, entity);
+      removeEntityFromList(this.cachedCombatTargetEntities, entity);
+      return;
+    }
     removeEntityFromList(this.cachedAll, entity);
     removeEntityFromList(this.cachedUnits, entity);
     removeEntityFromList(this.cachedBuildings, entity);
