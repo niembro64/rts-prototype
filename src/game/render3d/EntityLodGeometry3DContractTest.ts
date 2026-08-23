@@ -209,6 +209,7 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   towerBeamMega: { close: 1400, mid: 780, far: 400 },
   towerBeamLight: { close: 900, mid: 500, far: 260 },
   towerCannon: { close: 1000, mid: 600, far: 320 },
+  towerHelios: { close: 1000, mid: 600, far: 320 },
   towerAntiAir: { close: 1200, mid: 750, far: 440 },
   towerTorpedo: { close: 1100, mid: 650, far: 360 },
   // Re-baselined 2026-08-16 when the two shield labs got their curve
@@ -2310,7 +2311,7 @@ function runConstructionHostMarkingContracts(): void {
 
 export function runEntityLodGeometry3DContractTest(): void {
   assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 27, 'visual roster covers all 27 units');
-  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 20, 'visual roster covers all 20 buildings');
+  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 21, 'visual roster covers all 21 buildings');
   const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
   try {
     runEnvironmentLodMaterialContracts();

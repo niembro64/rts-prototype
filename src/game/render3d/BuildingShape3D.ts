@@ -298,7 +298,9 @@ export function buildBuildingShape(
       case 'towerCannon':
         return buildCannonTowerMesh(
           primaryMat,
-          buildingBlueprintId === 'towerTorpedo' ? 'torpedo' : 'cannon',
+          buildingBlueprintId === 'towerTorpedo'
+            ? 'torpedo'
+            : buildingBlueprintId === 'towerHelios' ? 'helios' : 'cannon',
         );
       case 'towerAntiAir':
         return buildAntiAirTowerMesh(primaryMat);

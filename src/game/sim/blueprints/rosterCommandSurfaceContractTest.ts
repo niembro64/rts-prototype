@@ -130,6 +130,7 @@ const BAR_EQUIVALENT_CLASSIC_BUILD_ORDER: readonly StructureBlueprintId[] = [
   'buildingShieldTech',
   'buildingPrecisionTargetingTech',
   'towerCannon',
+  'towerHelios',
   'towerTorpedo',
   'towerBeamMega',
   'towerAntiAir',

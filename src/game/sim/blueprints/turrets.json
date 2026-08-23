@@ -1521,6 +1521,100 @@
       "requiredIntel": "fullSight"
     }
   },
+  "turretHelios": {
+    "turretBlueprintId": "turretHelios",
+    "name": "Helios Cannon",
+    "cooldown": {
+      "duration": 5000,
+      "durationRandomness": 0.05
+    },
+    "launchForce": 52000,
+    "addTurretVelocityToEmissionLaunch": true,
+    "angularActuator": {
+      "yaw": {
+        "maxSpeed": 0.22,
+        "maxAcceleration": 0.4
+      },
+      "pitch": {
+        "maxSpeed": 0.18,
+        "maxAcceleration": 0.32
+      }
+    },
+    "emissionLaneCount": 1,
+    "passive": false,
+    "requiresNonObstructedLineOfSight": false,
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": {
+      "angle": 0,
+      "pelletCount": 1
+    },
+    "burst": null,
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.turretCannon"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "aimMotionSnapshotVisible": true,
+    "aimStyle": {
+      "angleType": "ballisticArcLow"
+    },
+    "kind": "attack",
+    "emissionKind": "shot",
+    "emissionBlueprintId": "shotPlasmaHeavy",
+    "targeting": {
+      "engagement": {
+        "range": 2400,
+        "rangeVolume": "turret-range-top-and-bottom-unbounded",
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": {
+            "acquire": 0.95,
+            "release": 1
+          },
+          "engageRangeMin": {
+            "acquire": 0.5,
+            "release": 0.45
+          },
+          "trackingRange": null
+        }
+      },
+      "observation": {
+        "rangeVolume": "turret-range-sphere",
+        "sensors": {
+          "fullSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
+          },
+          "contactSight": {
+            "aboveWater": {
+              "aboveWater": 0,
+              "underwater": 0
+            },
+            "underwater": {
+              "aboveWater": 0,
+              "underwater": 0
+            }
+          },
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
+        }
+      },
+      "effect": {
+        "rangeSource": "engagement"
+      },
+      "requiredIntel": "fullSight"
+    }
+  },
   "turretAlbatrosSiegeCannon": {
     "turretBlueprintId": "turretAlbatrosSiegeCannon",
     "name": "Albatros Siege Cannon",

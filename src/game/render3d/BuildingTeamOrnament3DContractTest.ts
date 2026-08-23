@@ -25,6 +25,7 @@ const EXPECTED_KIND: Record<StructureBlueprintId, BuildingTeamOrnamentKind> = {
   towerBeamMega: 'beamPairedCrowns',
   towerBeamLight: 'beamEmitterCrown',
   towerCannon: 'cannonYoke',
+  towerHelios: 'heliosYoke',
   buildingRadar: 'radarDishRim',
   buildingResourceConverter: 'converterPylonBridge',
   towerAntiAir: 'antiAirPedestalBrace',

@@ -23,6 +23,7 @@ export type BuildingTeamOrnamentKind =
   | 'beamEmitterCrown'
   | 'beamPairedCrowns'
   | 'cannonYoke'
+  | 'heliosYoke'
   | 'antiAirPedestalBrace'
   | 'torpedoWaterlineBand'
   | 'targetingSpireHalo'

@@ -3539,6 +3539,7 @@
       "buildingEnergyStorage",
       "towerFabricator",
       "towerCannon",
+      "towerHelios",
       "towerBeamMega",
       "towerAntiAir",
       "buildingShieldTargetingTech",
