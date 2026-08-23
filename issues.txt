@@ -1,3 +1,3 @@
 1. The albatros isn't banking like other flying units are. You will have to update things regarding turret math etc, but please do so. Also make the albatros turrets look like they are more of a part of the plane. 
 
-2. I asked for a change in color of the plasma shots in a previous "issues.txt". Please implement that.
+3. Earlier I asked for a long range plasma cannon but I can't see it in our options. I asked for it in "issues.txt" i believe in a previous one? in the demo battle? I also can't see it initialized like other buildings in the demo battle. 
