@@ -2865,7 +2865,7 @@
         "water": {
           "maxPropulsiveForce": 20,
           "lift": {
-            "surfaceFollowingInverseForceFromGround": 100,
+            "surfaceFollowingInverseForceFromGround": 27,
             "surfaceFollowingProportionalForceFromWater": 0.01
           }
         }
@@ -2930,7 +2930,7 @@
         "sonarStealth": true
       }
     },
-    "preventLockOnIfMyTeamIsAboveMe": true,
+    "preventLockOnIfMyTeamIsAboveMe": false,
     "supportPointOffsetZ": 10
   },
   "unitTarantula": {
@@ -5412,7 +5412,7 @@
         "water": {
           "maxPropulsiveForce": 14,
           "lift": {
-            "surfaceFollowingInverseForceFromGround": 100,
+            "surfaceFollowingInverseForceFromGround": 14,
             "surfaceFollowingProportionalForceFromWater": 0.01
           }
         }
