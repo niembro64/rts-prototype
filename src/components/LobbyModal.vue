@@ -844,15 +844,45 @@ const terrainSectionVars = computed(() =>
       </div>
 
 
-      <!-- The reference side rooms, boxed like the play sections above so
-           the bottom of the sidebar reads as its own grouping. -->
-      <section class="action-section pages-section">
-        <span class="action-section-label">REFERENCE</span>
-        <div class="pages-buttons">
-          <button class="page-btn" @click="handleEntityLab">Entity Lab</button>
-          <button class="page-btn" @click="handleGameControls">Game Controls</button>
-          <button class="page-btn" @click="handleGameInfo">Game Info</button>
-        </div>
+      <!-- The reference side rooms as a compact icon row STUCK to the
+           sidebar's bottom edge — the Open Lobbies list above is the only
+           part of this column that scrolls. -->
+      <section class="pages-icon-row" aria-label="Reference pages">
+        <button
+          class="page-icon-btn"
+          title="Entity Lab"
+          aria-label="Entity Lab"
+          @click="handleEntityLab"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 3h4M11 3v6l-5.2 8.1A2 2 0 0 0 7.5 20h9a2 2 0 0 0 1.7-2.9L13 9V3" />
+            <path d="M8.2 15h7.6" />
+          </svg>
+        </button>
+        <button
+          class="page-icon-btn"
+          title="Game Controls"
+          aria-label="Game Controls"
+          @click="handleGameControls"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 8h16M4 16h16" />
+            <circle cx="9" cy="8" r="2.2" fill="#0f1218" />
+            <circle cx="15" cy="16" r="2.2" fill="#0f1218" />
+          </svg>
+        </button>
+        <button
+          class="page-icon-btn"
+          title="Game Info"
+          aria-label="Game Info"
+          @click="handleGameInfo"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 11v5" />
+            <path d="M12 7.6v.2" />
+          </svg>
+        </button>
       </section>
 
       <div v-if="error" class="error-message">{{ error }}</div>
@@ -1932,7 +1962,10 @@ const terrainSectionVars = computed(() =>
   height: 100%;
   box-sizing: border-box;
   padding: 30px 26px;
-  overflow-y: auto;
+  /* The column itself never scrolls: the Open Lobbies list inside is the
+   * single scrolling region, and the reference icon row below stays stuck
+   * to the bottom edge. */
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 22px;
@@ -1969,6 +2002,29 @@ const terrainSectionVars = computed(() =>
   margin: 0;
 }
 
+/* The chain that lets the lobby directory own all remaining height and be
+ * the ONLY scrolling region: every flex ancestor between the panel and the
+ * list must pass min-height:0 down or the list refuses to shrink. */
+.menu-sidebar-panel .main-actions {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-sidebar-panel .internet-section {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-sidebar-panel .lobby-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+
 .menu-sidebar-panel .surface-actions {
   justify-content: flex-start;
 }
@@ -1978,8 +2034,39 @@ const terrainSectionVars = computed(() =>
 }
 
 .menu-sidebar-panel .footer-row {
-  margin-top: auto;
   justify-content: flex-start;
+}
+
+/* Bottom-stuck reference icons: Entity Lab / Game Controls / Game Info. */
+.pages-icon-row {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-start;
+  flex: 0 0 auto;
+}
+
+.page-icon-btn {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border: 1px solid rgba(150, 170, 195, 0.3);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  color: #c8d6de;
+  cursor: pointer;
+}
+
+.page-icon-btn svg {
+  width: 100%;
+  height: 100%;
+}
+
+.page-icon-btn:hover {
+  background: rgba(150, 170, 195, 0.16);
+  color: #edf4f7;
 }
 
 
@@ -2207,38 +2294,6 @@ const terrainSectionVars = computed(() =>
 
 .internet-section .action-section-label {
   color: #8fc2ff;
-}
-
-.pages-section {
-  background: rgba(150, 170, 195, 0.08);
-  border: 1px solid rgba(150, 170, 195, 0.35);
-}
-
-.pages-section .action-section-label {
-  color: #aeb9c8;
-}
-
-.pages-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.page-btn {
-  padding: 8px 12px;
-  border: 1px solid rgba(150, 170, 195, 0.3);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.25);
-  color: #c8d6de;
-  font: 700 13px/1.4 monospace;
-  letter-spacing: 0.04em;
-  text-align: left;
-  cursor: pointer;
-}
-
-.page-btn:hover {
-  background: rgba(150, 170, 195, 0.16);
-  color: #edf4f7;
 }
 
 /* Nested inside the ONLINE section box now — its own card chrome would
