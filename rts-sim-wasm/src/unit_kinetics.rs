@@ -198,11 +198,15 @@ pub fn unit_water_damage_step_pool(dt_sec: f64) -> u32 {
         let water_fraction = unit_force_water_fraction(p.pos_z[body_slot], p.radius[body_slot]);
         runtime.water_fraction[runtime_slot] = water_fraction;
         runtime.air_fraction[runtime_slot] = 1.0 - water_fraction;
-        let damage = unit_water_damage_for_step(
-            p.pos_z[body_slot],
-            profile.values[pbase + UF_PROFILE_WATER_DAMAGE_PER_SECOND],
-            dt_sec,
-        );
+        // P1-17: the immersion fractions above are load-bearing side outputs
+        // (buoyancy reads them), so every live unit keeps its fraction
+        // write — but water-safe profiles (zero authored rate) skip the
+        // damage math entirely.
+        let rate = profile.values[pbase + UF_PROFILE_WATER_DAMAGE_PER_SECOND];
+        if rate <= 0.0 {
+            continue;
+        }
+        let damage = unit_water_damage_for_step(p.pos_z[body_slot], rate, dt_sec);
         if damage > 0.0 {
             es.hp[entity_slot] = (es.hp[entity_slot] - damage).max(0.0);
             es.dirty_mask[entity_slot] |= ENTITY_CHANGED_HP;
