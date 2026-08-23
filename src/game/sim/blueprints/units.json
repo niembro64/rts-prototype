@@ -414,15 +414,29 @@
         "leftSide": [
           {
             "attachmentPoint": {
-              "xUnitRadiusRatio": 0.5,
-              "yUnitRadiusRatio": -0.5,
+              "xUnitRadiusRatio": 0.62,
+              "yUnitRadiusRatio": -0.45,
               "zUnitRadiusRatio": 3.769230769231
             }
           },
           {
             "attachmentPoint": {
-              "xUnitRadiusRatio": -0.5,
-              "yUnitRadiusRatio": -0.5,
+              "xUnitRadiusRatio": 0.22,
+              "yUnitRadiusRatio": -0.55,
+              "zUnitRadiusRatio": 3.769230769231
+            }
+          },
+          {
+            "attachmentPoint": {
+              "xUnitRadiusRatio": -0.22,
+              "yUnitRadiusRatio": -0.55,
+              "zUnitRadiusRatio": 3.769230769231
+            }
+          },
+          {
+            "attachmentPoint": {
+              "xUnitRadiusRatio": -0.62,
+              "yUnitRadiusRatio": -0.45,
               "zUnitRadiusRatio": 3.769230769231
             }
           }
@@ -2321,14 +2335,28 @@
         "leftSide": [
           {
             "attachmentPoint": {
-              "xUnitRadiusRatio": 0.1,
-              "yUnitRadiusRatio": 1,
+              "xUnitRadiusRatio": 0.5,
+              "yUnitRadiusRatio": 0.95,
               "zUnitRadiusRatio": 0.8
             }
           },
           {
             "attachmentPoint": {
-              "xUnitRadiusRatio": -0.8,
+              "xUnitRadiusRatio": 0.12,
+              "yUnitRadiusRatio": 1.1,
+              "zUnitRadiusRatio": 0.8
+            }
+          },
+          {
+            "attachmentPoint": {
+              "xUnitRadiusRatio": -0.35,
+              "yUnitRadiusRatio": 1.2,
+              "zUnitRadiusRatio": 0.8
+            }
+          },
+          {
+            "attachmentPoint": {
+              "xUnitRadiusRatio": -0.85,
               "yUnitRadiusRatio": 1.3,
               "zUnitRadiusRatio": 0.8
             }
@@ -3807,19 +3835,12 @@
           {
             "offset": {
               "xUnitRadiusRatio": -1.5,
-              "yUnitRadiusRatio": -0.264,
-              "zUnitRadiusRatio": 0.32
-            }
-          },
-          {
-            "offset": {
-              "xUnitRadiusRatio": -1.5,
-              "yUnitRadiusRatio": 0.264,
+              "yUnitRadiusRatio": 0,
               "zUnitRadiusRatio": 0.32
             }
           }
         ],
-        "jetRadius": 0.22,
+        "jetRadius": 0.28,
         "jetLength": 0.6
       },
       "environmentalHazards": {
@@ -3858,9 +3879,9 @@
     "shortName": "DUK",
     "hp": 300,
     "radius": {
-      "other": 16,
-      "hitbox": 13,
-      "collision": 30.4
+      "other": 20,
+      "hitbox": 16,
+      "collision": 38
     },
     "supportSurface": {
       "kind": "none"
@@ -3872,13 +3893,13 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretBeamMega",
+        "turretBlueprintId": "turretBeam",
         "presentation": {
-          "headRadius": 8,
+          "headRadius": 9,
           "headOnly": false,
           "barrel": {
             "type": "singleConeBarrel",
-            "barrelLength": 1.1
+            "barrelLength": 1.6
           }
         },
         "sensorTurretBlueprintId": "turretSensorUnitDuck",
@@ -3901,6 +3922,28 @@
           "xFrac": 0.7,
           "yFrac": 0.3,
           "zFrac": 0.28
+        },
+        {
+          "kind": "oval",
+          "offsetForward": 0.05,
+          "centerYFrac": 0.24,
+          "xFrac": 0.3,
+          "yFrac": 0.16,
+          "zFrac": 0.18
+        },
+        {
+          "kind": "cone",
+          "offsetForward": 0.52,
+          "lengthFrac": 0.34,
+          "radiusFrac": 0.2,
+          "pitchRad": 0
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": -0.78,
+          "lengthFrac": 0.42,
+          "radiusFrac": 0.09,
+          "centerYFrac": 0.06
         }
       ]
     },
@@ -3997,9 +4040,9 @@
         "damage": 190
       },
       "radius": {
-        "other": 16,
-        "hitbox": 13,
-        "collision": 30.4
+        "other": 20,
+        "hitbox": 16,
+        "collision": 38
       },
       "signature": {
         "radarStealth": false,
@@ -4007,7 +4050,7 @@
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
-    "supportPointOffsetZ": 6
+    "supportPointOffsetZ": 7.5
   },
   "unitAlbatros": {
     "unitBlueprintId": "unitAlbatros",
@@ -4652,7 +4695,7 @@
         }
       },
       "config": {
-        "radius": 12,
+        "radius": 30,
         "kneeRadius": 13,
         "hasFeet": true,
         "lerpDuration": 420,
@@ -4677,23 +4720,16 @@
         "leftSide": [
           {
             "attachmentPoint": {
-              "xUnitRadiusRatio": 0.46,
-              "yUnitRadiusRatio": 0.45,
-              "zUnitRadiusRatio": 0.44446808510638297
+              "xUnitRadiusRatio": 0.42,
+              "yUnitRadiusRatio": 0.48,
+              "zUnitRadiusRatio": 0.5
             }
           },
           {
             "attachmentPoint": {
-              "xUnitRadiusRatio": 0,
-              "yUnitRadiusRatio": 0.55,
-              "zUnitRadiusRatio": 0.574468085106383
-            }
-          },
-          {
-            "attachmentPoint": {
-              "xUnitRadiusRatio": -0.5,
-              "yUnitRadiusRatio": 0.6,
-              "zUnitRadiusRatio": 0.574468085106383
+              "xUnitRadiusRatio": -0.46,
+              "yUnitRadiusRatio": 0.56,
+              "zUnitRadiusRatio": 0.56
             }
           }
         ]

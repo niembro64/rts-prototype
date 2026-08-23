@@ -260,7 +260,7 @@ const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
   unitConstructionDrone: { close: 2200, mid: 1000, far: 420 },
   unitConstructionSubmarine: { close: 1500, mid: 760, far: 320 },
   unitEagle: { close: 600, mid: 420, far: 220 },
-  unitDuck: { close: 600, mid: 420, far: 220 },
+  unitDuck: { close: 1100, mid: 720, far: 400 },
   unitAlbatros: { close: 1350, mid: 850, far: 420 },
   unitQueenBee: { close: 2920, mid: 1220, far: 580 },
   unitQueenTick: { close: 2290, mid: 780, far: 340 },
