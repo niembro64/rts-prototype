@@ -2700,9 +2700,14 @@
         physical presentation must all have a coherent contract first.
       </p>
       <p>
-        Transports, capture, resurrection, cloak/detection, manual launch, and
+        Transports, capture, cloak/detection, manual launch, and
         unit-specific special-fire commands therefore appear only on entities
         whose authoritative mechanics and BAR-equivalent capability exist.
+        Resurrection is the standing example of the rule&rsquo;s other edge: the
+        prototype deliberately has no wreck state &mdash; every death is an
+        explosion and that is the end of the body &mdash; so Resurrect has no
+        command surface anywhere (see <strong>Dormant capability is removal
+        work, not a content prompt</strong>).
         Metal-extractor upgrades follow the same rule: a T1-to-T2 or area-upgrade
         command requires an authored upgraded extractor blueprint,
         resource/economy behavior, construction lifecycle, replacement rules,
@@ -2722,10 +2727,10 @@
       <ul class="rule-list">
         <li><strong>Movement and queues:</strong> Move, Patrol, Fight, Stop, Wait, Guard, Repeat, Move State, and queue insertion/removal. Durable player waypoints remain separate from private pathfinder expansion.</li>
         <li><strong>Combat:</strong> Attack Unit, Attack Point (the map form of Recoil&rsquo;s unit-or-map Attack), capability-authored Area Attack, Fire State, Trajectory, Set Target / Set Target No Ground / Cancel Target, D-Gun or other manual fire, and weapon stockpile/manual launch when an authored weapon actually provides it.</li>
-        <li><strong>Builders:</strong> negative build commands, Repair, Reclaim, Capture, Resurrect, Area Mex, Builder Priority, and Morph/Upgrade. Area-capable commands may fan out into deterministic nearest-first entity orders while preserving queue modifiers.</li>
+        <li><strong>Builders:</strong> negative build commands, Repair, Reclaim, Capture, Area Mex, Builder Priority, and Morph/Upgrade. Area-capable commands may fan out into deterministic nearest-first entity orders while preserving queue modifiers. Resurrect is deliberately outside the inventory: with no wreck state in the game there is nothing to resurrect, and the command surface does not exist.</li>
         <li><strong>Factories:</strong> unit production, finite queue editing, Repeat, Wait, Stop Production, a produced-unit Move/Fight/Patrol/Guard command queue, Factory Guard, Move State, aircraft idle/land-at state, production quota, and Builder Priority where the factory supports it. The produced-unit command queue is not Factory Guard: Factory Guard is a persistent policy that assigns an otherwise-unordered eligible builder output to guard its producing factory.</li>
         <li><strong>Transports and host state:</strong> player-facing Load and Unload Unit/Area, ON/OFF, Cloak, and Self Destruct, each visible only when the selected host owns the corresponding system. Recoil&rsquo;s internal/order-menu-hidden Load Onto descriptor is not a second button promise.</li>
-        <li><strong>Conditional custom commands:</strong> carrier spawning, sell, blueprint placement, area ground attack, stockpile, resurrection, and similar BAR gadget commands are roster/capability commands rather than universal promises. They appear when a local analogue and its authoritative behavior exist, and stay absent otherwise.</li>
+        <li><strong>Conditional custom commands:</strong> carrier spawning, sell, blueprint placement, area ground attack, stockpile, and similar BAR gadget commands are roster/capability commands rather than universal promises. They appear when a local analogue and its authoritative behavior exist, and stay absent otherwise.</li>
       </ul>
       <p>
         Restore illustrates the rule. Recoil adds <code>CMD_RESTORE</code> only
@@ -2742,7 +2747,7 @@
         <li><strong>Attack Point</strong> stores a world-space priority point and never silently degrades into Fight. Units whose BAR weapon cannot attack ground are filtered out at input, server authorization, and execution.</li>
         <li><strong>Explicit Attack overrides autonomous stances.</strong> Hold Position constrains autonomous chasing, not a newly issued Attack approach. Entering Hold Fire cancels existing attack intents and locks, but a new player-authored Attack, Attack Point, or Set Target remains executable while Hold Fire stays selected. The host owns this exception; compatible host-controlled turrets consume the host priority.</li>
         <li><strong>Area Attack</strong> is exposed only for BAR-equivalent <code>canareaattack</code> units; per ordered unit it queues every compatible enemy in deterministic nearest-first order and becomes Fight when that unit has no compatible target in the area.</li>
-        <li><strong>Guard</strong> is a durable allied-host intent. An ordinary mobile guard uses BAR&rsquo;s collision-aware stopped standoff, nearby moving-formation velocity match, and bounded distant interception; a non-builder aircraft follows the guardee&rsquo;s live position. When the guardee took effective hostile damage within BAR&rsquo;s 40 Recoil-frame window (40/30 seconds, converted to the selected lockstep rate), an armed compatible guard inserts a real sim-authored Attack immediately ahead of Guard. That Attack targets the attacker&rsquo;s root host, persists until that target dies or becomes invalid, and then pops so Guard resumes; it never copies the guardee&rsquo;s own target. Builder Guard simultaneously stays ready within build range and joins eligible construction, factory production, repair, reclaim, or resurrection work.</li>
+        <li><strong>Guard</strong> is a durable allied-host intent. An ordinary mobile guard uses BAR&rsquo;s collision-aware stopped standoff, nearby moving-formation velocity match, and bounded distant interception; a non-builder aircraft follows the guardee&rsquo;s live position. When the guardee took effective hostile damage within BAR&rsquo;s 40 Recoil-frame window (40/30 seconds, converted to the selected lockstep rate), an armed compatible guard inserts a real sim-authored Attack immediately ahead of Guard. That Attack targets the attacker&rsquo;s root host, persists until that target dies or becomes invalid, and then pops so Guard resumes; it never copies the guardee&rsquo;s own target. Builder Guard simultaneously stays ready within build range and joins eligible construction, factory production, repair, or reclaim work.</li>
         <li><strong>Builder work</strong> applies Repair and Reclaim to every selected capable constructor, including area and minimap forms. Repair consumes no energy or metal; its HP rate derives from builder power and the target&rsquo;s original construction duration, stacks across builders, services allied units/buildings, and restores completed static HP as well as finishing nanoframes. Constructor Patrol temporarily repairs/assists nearby allies or reclaims nearby non-allied entities, then resumes its durable patrol loop. Capture may target enemies only and never an ally.</li>
         <li><strong>Factory output orders</strong> are durable host intent copied to each subsequently produced unit as one ordered Move/Fight/Patrol/Guard queue. Shift appends and command-front insertion prepends. Authoring output orders never changes the separate Factory Guard toggle; it merely means those outputs are not &ldquo;otherwise unordered&rdquo; and therefore do not receive the automatic self-guard assignment.</li>
         <li><strong>Idle constructor factory handoff</strong> follows BAR&rsquo;s enabled Guard-after-build policy: an assisting mobile constructor that completes a factory and has no later queued intent receives a durable Guard on that factory. A real later command wins; mobile factories are not reassigned this way.</li>
@@ -2839,7 +2844,7 @@
           </ul>
           A turret is addressable and lockable through its own <code>EntityId</code>, but it is never a separable body: no independent cost, no independent mass, no independent health, no death explosion, and no detached life after the host. It does not own task provenance; <code>host</code>, <code>autonomous</code>, or <code>manual</code> is set per mount. Emitter capabilities never change the host&rsquo;s entity family.</li>
         <li><code>shot</code> is a <em>travelling munition</em> a turret fires: a plasma bolt, rocket, or missile that leaves the barrel and persists as a physical body with its own <code>EntityId</code>, mass, health, and a death explosion. It owns its travel behavior, inherited homing target, recoil, damage, impulse, lifetime, submunition payload, and collision behavior, and &mdash; per <strong>Shots are destructible bodies too</strong> &mdash; detonates the instant its tiny health reaches zero. <code>plasma</code>, <code>rocket</code>, and <code>missile</code> are its variants. Shots are authored in their own blueprint family (<code>shots.json</code>).</li>
-        <li><code>ray</code> is a <em>sustained line emission</em> &mdash; a continuous beam or a timed laser &mdash; traced from the turret to its target, recomputed every tick from the turret&rsquo;s aim and bound to the turret&rsquo;s lifetime. A ray is <em>not</em> a body: it has no mass, no health, and no <code>EntityId</code> of its own, and is attributed through its emitting turret (see <strong>Universal Runtime Entity IDs</strong>). It owns its line behavior, damage-per-second, recoil, and duration. <code>beam</code> (continuous) and <code>laser</code> (timed) are its variants. Rays are authored in their own blueprint family (<code>rays.json</code>).</li>
+        <li><code>ray</code> is a <em>sustained line emission</em> &mdash; a continuous beam &mdash; traced from the turret to its target, recomputed every tick from the turret&rsquo;s aim and bound to the turret&rsquo;s lifetime. A ray is <em>not</em> a body: it has no mass, no health, and no <code>EntityId</code> of its own, and is attributed through its emitting turret (see <strong>Universal Runtime Entity IDs</strong>). It owns its line behavior, damage-per-second, recoil, and duration. <code>beam</code> (continuous) is the single shipped variant; the timed &ldquo;laser&rdquo; pulse variant was deleted as dormant capability rather than kept as a second contract no blueprint authors (see <strong>Dormant capability is removal work, not a content prompt</strong>). Rays are authored in their own blueprint family (<code>rays.json</code>).</li>
       </ul>
       <p>
         Keeping <code>shot</code> and <code>ray</code> as two separate kinds
@@ -2868,7 +2873,7 @@
         constructor capability, so a plain right-click on a prop with
         builders selected harvests it &mdash; no mode, no modifier &mdash;
         and Reclaim mode, area reclaim, and constructor Patrol all reach
-        props exactly as they reach units, buildings, and wrecks.
+        props exactly as they reach units and buildings.
       </p>
       <p>
         <strong>Seaweed</strong> is this project&rsquo;s addition beyond the
@@ -3286,7 +3291,7 @@
         provenance through action hashing and snapshots, never participates in Repeat rotation,
         and is removed when its attack target dies or becomes invalid so the Guard beneath it
         resumes. Builder work remains a separate lane: while the weapon lane retaliates, an
-        in-range builder may still construct, assist production, repair, reclaim, or resurrect for
+        in-range builder may still construct, assist production, repair, or reclaim for
         the guarded workflow. The 40-frame eligibility window is authored in Recoil&rsquo;s 30 Hz time
         domain and converted to the match cadence, rather than treated as 40 prototype ticks.
       </p>
@@ -3572,7 +3577,7 @@
         how the incoming fire travels:
       </p>
       <ul class="rule-list">
-        <li><strong>Line-of-flight weapons</strong> (beams, lasers, and any other threat whose fire
+        <li><strong>Line-of-flight weapons</strong> (beams and any other threat whose fire
         travels the straight ray from its barrel) use the <strong>straight-line bisector</strong>:
         the panel faces the bisector of the ray to the threat turret&rsquo;s mount and the ray to the
         threat host&rsquo;s body, so the specular bounce returns the beam from the turret onto its
@@ -3595,6 +3600,163 @@
         the panel falls back to the straight-line bisector rather than going idle &mdash; a
         best-effort mirror is still a mirror. Constant-speed guided munitions and vertical
         launchers are not ballistic threats under this rule; they keep the straight bisector.
+      </p>
+    </section>
+
+    <section>
+      <h2>Roster Coverage And The Fabricator Matrix</h2>
+      <p>
+        The engine supports more gameplay than any particular roster size implies, and the roster
+        goal is written accordingly: <strong>a compact roster in which every important movement
+        medium, information tier, weapon family, counter, economy system, and work command has a
+        clear host and a deliberate showcase.</strong> Beyond All Reason is a coverage check for
+        that sentence &mdash; do we have the counters, the intelligence loop, the naval economy,
+        the connective air roles? &mdash; never a target unit count. Before the roster grows
+        substantially in any direction, the existing content is reworked into explicit tech tiers
+        with costs and firepower that respect them; growth without tiers just adds more of what is
+        already over-represented (ground direct-fire bodies, capstone giants that bundle weapons,
+        detection, shields, and production, and continuous beams relative to rockets, clusters,
+        point defense, and underwater counters).
+      </p>
+
+      <h3>Every unit authors one tier and its production domains</h3>
+      <p>
+        Production identity is unit-authored data, exactly like locomotion and sensors: every
+        producible unit blueprint authors one <code>production</code> fact &mdash; a
+        <code>techLevel</code> (1 or 2) and one or more production <code>domains</code> from
+        <code>bot</code>, <code>vehicle</code>, <code>aircraft</code>, and <code>naval</code>.
+        A pure tank is <code>vehicle</code> only; a pure walker or crawler is <code>bot</code>
+        only; a pure plane is <code>aircraft</code> only; surface ships and submarines are
+        <code>naval</code> only. Cross-medium units author every domain they genuinely serve
+        &mdash; an amphibious tank is <code>vehicle</code> + <code>naval</code>, a torpedo
+        gunship is <code>aircraft</code> + <code>naval</code>, a water-striding crawler is
+        <code>bot</code> + <code>naval</code>. A unit that only a mobile factory may emit (a
+        queen&rsquo;s swarm product) or that is never produced at all (the Commander) authors
+        <code>null</code> and appears in no fabricator menu.
+      </p>
+      <p>
+        Tier is a role statement, not a price bracket: tier 1 is the opening army and its
+        constructors, tier 2 is the escalation &mdash; the capstones, the queens, and the
+        specialist tech. The Loris and the Daddy are tier 1; the Widow is tier 2. Costs and
+        firepower follow from the assignment rather than defining it.
+      </p>
+
+      <h3>Five Fabricators per tier; menus are derived, never authored</h3>
+      <p>
+        Production has exactly five fabricator buildings at tier 1 and the same five at tier 2:
+        a <strong>Universal Fabricator</strong> plus <strong>Bot</strong>, <strong>Vehicle</strong>,
+        <strong>Aircraft</strong>, and <strong>Naval</strong> specialists, and their Advanced
+        counterparts. A fabricator blueprint authors only its own <code>factory</code> identity
+        &mdash; a tier and a domain (one of the four, or <code>universal</code>). Its production
+        menu is <em>computed</em>: a specialist&rsquo;s roster is every unit whose authored
+        production facts match its tier and domain, and a Universal&rsquo;s roster is the
+        deduplicated union of its tier&rsquo;s four specialist rosters. Neither Universal may
+        produce units from the other tier. Because the union is derived, a cross-domain unit can
+        sit in two specialist menus without ever creating a duplicate Universal entry, and adding
+        a unit to the game <em>is</em> adding it to the right menus &mdash; there is no second
+        list to update and therefore no list to drift.
+      </p>
+      <ul class="rule-list">
+        <li><strong>Cost rule.</strong> The four specialists at a tier start at comparable cost and
+        build power. A same-tier Universal costs about <strong>3&times;</strong> its tier&rsquo;s
+        specialist baseline in energy, metal, and (through the shared build-power model) build
+        time. The Universal pays for flexibility, not throughput: it stays near a specialist in
+        build power, durability, and footprint efficiency. Tier 2 has its own higher specialist
+        baseline, and the Advanced Universal is 3&times; <em>that</em> baseline, not 3&times; the
+        tier-1 Universal.</li>
+        <li><strong>Placement rule.</strong> Both Universal tiers keep the hovering
+        ground-or-water placement. Naval fabricators are water-surface structures. Bot and
+        Vehicle fabricators are ordinary grounded structures. Aircraft fabricators carry the
+        hovering building type and place anywhere, exactly like the Universal.</li>
+        <li><strong>Menu-size target.</strong> About five entries per specialist per tier &mdash;
+        twenty specialist menu entries per tier, counted as entries rather than unique units,
+        since cross-domain units legitimately appear in each domain they author.</li>
+        <li><strong>Demo rule.</strong> The demo&rsquo;s one-factory-per-unit showcase arc places
+        each unit&rsquo;s own specialist fabricator, not a row of identical Universals. The
+        duplication of a single fabricator blueprint across the whole arc was the problem; the
+        Universal itself is not.</li>
+      </ul>
+
+      <h3>Construction crafts start the advanced tier</h3>
+      <p>
+        Each domain has a tier-1 construction craft &mdash; the construction bot and construction
+        rover on the ground, the construction drone in the air, the construction submarine at sea
+        &mdash; and the gate on tier 2 production runs through them. A tier-1 construction craft
+        authors, in its ordinary builder roster, its own domain&rsquo;s fabricator at both tiers
+        plus both Universal Fabricators; an Advanced fabricator therefore can only be
+        <em>started</em> by the tier-1 construction craft of its type. The Commander starts the
+        five tier-1 fabricators and nothing Advanced. Assist needs no rule at all: construction
+        assistance has never consulted the assisting builder&rsquo;s roster, so any builder can
+        keep an advanced frame growing once it exists &mdash; starting is gated, finishing is
+        communal, which is exactly the BAR-parity behavior. The construction crafts themselves are
+        ordinary tier-1 units of their domains, so every Universal Fabricator produces its
+        tier&rsquo;s construction crafts by derivation, with no special case; a future tier-2
+        construction craft would land in the Advanced menus the same way, by authoring its facts.
+      </p>
+
+      <h3>Transports carry one visible passenger, friend or foe</h3>
+      <p>
+        Every transport carries <strong>exactly one</strong> unit. Transport identity, cargo
+        eligibility, and tuning are generalized blueprint data, but capacity is a design constant:
+        one visible passenger, never a hidden six-pack. The passenger never disappears into cargo
+        state &mdash; it stays in the world, fully visible, fully targetable, taking damage, and
+        free to fire its own weapons the whole time it hangs in the beam. Eligibility is
+        categorical, not diplomatic: a transport may lift <em>any</em> unit, friend or foe, and a
+        hostile passenger keeps every combat right it had on the ground &mdash; including shooting
+        the transport that is carrying it. Kidnapping a unit is paying for the privilege of a
+        live, angry payload.
+      </p>
+
+      <h3>Sensing and attacking stay independent</h3>
+      <p>
+        A unit being able to detect a target must never imply it can attack it, and a weapon
+        reaching a medium must never imply its host can see into that medium alone. The Hippo and
+        Sea Turtle hear underwater without owning an underwater weapon; a torpedo aircraft may
+        attack submarines while leaning on allied sonar for its targets; long-range artillery
+        consumes team radar knowledge without owning a long-range sensor. The sensor matrices,
+        emission trajectory matrices, lock-on masks, and team intelligence tiers stay separate
+        authored facts (see <strong>Sight, radar, sonar, and contacts are separate information
+        tiers</strong>); this separation is one of the project&rsquo;s strongest features and no
+        convenience coupling may erode it.
+      </p>
+      <p>
+        The information-counter loop deserves mobile hosts on both sides: mobile radar (a
+        dedicated scout, not a repurposed gunship), a fragile radar-stealth/cloak scout, a
+        detector with modest ordinary sight and no radar, and a mobile jammer with weak combat
+        value &mdash; three narrow roles rather than another all-purpose super-unit &mdash;
+        alongside the static Radar, Sonar, and jammer buildings and the existing stealth hulls.
+        Narrow hosts teach systems; capstones hide them.
+      </p>
+
+      <h3>Dormant capability is removal work, not a content prompt</h3>
+      <p>
+        A system nothing authors is not an invitation to invent a unit that justifies it; it is a
+        second contract rotting next to the live one, and the rule for it is <strong>Delete The
+        Old Path</strong>. Units are never added merely to exercise dormant functionality.
+        Standing applications of the rule:
+      </p>
+      <ul class="rule-list">
+        <li><strong>The timed &ldquo;laser&rdquo; ray variant is gone.</strong> The four
+        continuous-beam families are the entire ray catalog. No blueprint ever authored a timed
+        laser, so the variant&rsquo;s branches, wire code, and material-response lane were deleted
+        rather than answered with a Pulse Laser unit.</li>
+        <li><strong>The cylindrical shield shapes are gone.</strong> The infinite vertical
+        cylinder and aimed cylinder barriers had no host; the shapes that remain are the ones
+        with meaningful hosts &mdash; the Daddy and Widow spheres and the Loris&rsquo;s aimed
+        reflective panel. Shared force-material code that spheres and panels still use is
+        untouched.</li>
+        <li><strong>Resurrection is gone, wrecks and all.</strong> Death is an explosion and the
+        end of the body: no wreck entity, no resurrect command, no resurrect UI, no wreck branch
+        in reclaim. The battlefield lifecycle runs on construction, repair, reclaim of live
+        entities and vegetation, and decay of unattended frames.</li>
+      </ul>
+      <p>
+        The mirror rule also holds: capability that <em>is</em> exercised somewhere must be
+        showcased deliberately. Projectile health and interception get a dedicated point-defense
+        host instead of staying incidental on general AA; the submunition path gets one readable
+        cluster weapon; the unguided-rocket class stands beside the controlled rocket so aim,
+        guidance, and point defense read as a contrast. One clear host per system beats three
+        accidental ones.
       </p>
     </section>
 
@@ -3699,7 +3861,7 @@
         <li><strong>Player</strong> &mdash; a client seat. A human or an AI holding a connection and
         issuing commands. Players are who talks; they are not who owns.</li>
         <li><strong>Team</strong> &mdash; the owner of units and of an economy. Every unit, building,
-        shot, and wreck belongs to exactly one team, and metal and energy are pooled per team. A team
+        shot belongs to exactly one team, and metal and energy are pooled per team. A team
         normally has exactly one player, which is why the two are so easily confused &mdash; but the
         engine allows several players to share one team (BAR calls this comshare), and when they do
         they drive the same units out of the same bank. Team is the unit-ownership answer.</li>
@@ -3766,7 +3928,7 @@
       <h3>Shots carry immutable source provenance</h3>
       <p>
         A shot is not contained by its turret after launch, but it must retain exactly where it
-        came from. Every shot, beam, laser, projectile, submunition, and
+        came from. Every shot, beam, projectile, submunition, and
         spawned child effect carries a source record:
       </p>
 <pre><code>ShotSource {
@@ -4005,11 +4167,16 @@
         A blueprint never adds a bespoke button outside that capability vocabulary.
       </p>
       <p>
-        Uniformity applies to the <em>command categories</em>, not to the authored contents
-        of a build or production menu. Builder and factory rosters follow the BAR
-        <code>buildoptions</code> model: each builder/fabricator exposes the units or buildings
-        that its own blueprint is allowed to make, and the panel displays that
-        authored roster without broadening it to every player-buildable option.
+        Uniformity applies to the <em>command categories</em>, not to the contents
+        of a build or production menu. Builder rosters follow the BAR
+        <code>buildoptions</code> model: each builder exposes the structures its own
+        blueprint authors, and the panel displays that roster without broadening it
+        to every player-buildable option. Fabricator production rosters are the one
+        deliberate departure: they are <em>derived</em>, never authored per building
+        &mdash; a fabricator&rsquo;s menu is computed from its authored tier and domain
+        against the units&rsquo; own authored production facts (see <strong>Roster
+        Coverage And The Fabricator Matrix</strong>), so a roster change can never
+        drift a menu.
       </p>
       <p>
         Mixed selections (units + buildings) reduce to the intersection of the per-kind
