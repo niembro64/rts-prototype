@@ -13,6 +13,10 @@
 
 import * as THREE from 'three';
 import type { EntityId } from '../sim/types';
+import {
+  getSharedPrimitiveCylinderGeometry,
+  getSharedPrimitiveSphereGeometry,
+} from './PrimitiveGeometryQuality3D';
 
 const BEAM_COLOR = 0x7fd6ff;
 const BEAM_OPACITY = 0.22;
@@ -30,8 +34,8 @@ const beamMaterial = new THREE.MeshBasicMaterial({
   side: THREE.DoubleSide,
 });
 
-const unitCylinder = new THREE.CylinderGeometry(1, 1, 1, 20, 1, true);
-const unitSphere = new THREE.SphereGeometry(1, 20, 14);
+const unitCylinder = getSharedPrimitiveCylinderGeometry('beam', 'close', 1, 1, 1, 1, true);
+const unitSphere = getSharedPrimitiveSphereGeometry('beam', 'close');
 
 export type TractorBeamAnchor = {
   topX: number;
