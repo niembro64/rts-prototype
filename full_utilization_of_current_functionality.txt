@@ -4,1769 +4,305 @@ FULL UTILIZATION OF CURRENT FUNCTIONALITY
 Date: 2026-08-23
 Project: Budget Annihilation / rts-prototype
 
-Scope:
 
-* Audit the implemented simulation, blueprints, demo spawning, command surface,
-  visibility rules, movement media, economy, construction, factories, weapons,
-  shields, and support systems.
-* Map the current unit and building roster onto those capabilities.
-* Identify functionality that exists in code but has no entity, only one
-  obscure host, or no reliable demonstration.
-* Identify roster categories that are over-represented.
-* Compare the result with Beyond All Reason (BAR), which
-  budget_design_philosophy.html names as the fallback for ordinary player-facing
-  RTS behavior.
-* Propose a deliberately small set of entities and showcase encounters that
-  expose the maximum amount of the existing engine.
+PURPOSE
+========
 
-This is a static content/capability audit. It does not claim that every dormant
-schema field is production-ready merely because it exists. Recommendations are
-therefore marked as one of:
+The engine supports more gameplay than the roster currently communicates. The
+goal is not a BAR-sized unit count. The goal is a compact roster in which every
+important movement medium, information tier, weapon family, counter, economy
+system, and work command has a clear host and a deliberate showcase.
 
-* CONTENT-FIRST: primarily blueprint, art, tuning, build-menu, and demo work.
-* SMALL GENERALIZATION: the underlying mechanic works, but command eligibility,
-  locomotion naming, UI exposure, or a hard-coded capability list must be made
-  data-driven or extended.
-* NEW SYSTEM: BAR has an important role, but this project does not yet have the
-  simulation mechanic required to reproduce it honestly.
+Current scale: 27 units, 21 buildings, 11 travelling-shot blueprints, four
+continuous-beam rays, five shield blueprints, and 72 turret configurations.
+The main imbalance is many ground direct-fire/capstone units versus few
+intelligence, support, naval-surface, anti-sub, construction, and counter units.
 
 
-EXECUTIVE CONCLUSION
-====================
+DECISIONS
+=========
 
-The project has considerably more gameplay functionality than its current
-roster communicates. The problem is not a lack of raw unit count. It is a lack
-of orthogonal hosts and authored situations.
+1. Keep the Universal Fabricator
+--------------------------------
 
-The simulation already distinguishes:
+Production should have five Fabricators at T1 and the same five at T2:
 
-* ground, air, water, and cross-medium locomotion;
-* stopping hover/planar flight from always-forward aircraft;
-* above-water and underwater source/target lanes independently for both
-  sensors and weapons;
-* full sight from contact-only radar/sonar knowledge;
-* radar stealth, sonar stealth, radar jamming, sonar jamming, cloak, and
-  detector coverage;
-* exact-sight fire from contact-enabled indirect fire;
-* ballistics, beams, guided rockets, guided missiles, torpedoes, shields,
-  reflection, projectile health, and projectile interception;
-* construction, repair, reclaim, capture, resurrection, wrecks, factories,
-  transport, mobile factories, resource conversion, storage, and fortified
-  ON/OFF buildings;
-* sophisticated queues, patrol/fight/guard behavior, area commands, repeat
-  production, trajectory modes, scan pulses, and several specialist toggles.
+T1:
 
-But many of those systems are exposed by only the Commander, Rex, one unusual
-unit, one static building, or a command path that no current entity is allowed
-to show. Meanwhile the demo floods the map with all 26 non-Commander unit types
-and one universal Fabricator production line per type. That proves that content
-can spawn; it does not prove that the content's distinguishing interactions are
-visible or understandable.
+* Universal Fabricator
+* Bot Fabricator
+* Vehicle Fabricator
+* Aircraft Fabricator
+* Naval Fabricator
 
-The highest-value action is to build a compact specialist layer and a
-deterministic capability exhibition:
+T2:
 
-1. Add mobile radar/AWACS, dedicated cloak/stealth, dedicated detector, and
-   mobile jammer roles so the visibility model becomes an actual counter
-   ecosystem.
-2. Add a ground constructor and dedicated resurrection bot/sub so construction,
-   wreck recovery, and area work are not buried in the Commander.
-3. Add affordable mobile ground AA, an anti-sub air/surface unit, and a proper
-   surface naval combatant so medium separation has complete counters.
-4. Keep the Universal Fabricator and add Bot, Vehicle, Aircraft, and Naval
-   Fabricators beside it at both T1 and T2. At each tier the Universal roster is
-   the union of all four specialist rosters, but that flexibility costs roughly
-   three times as much as one specialist Fabricator.
-5. Delete the unused pulsed laser, cylindrical shield.
-6. Mount the already-supported but unused, cluster/submunition, and straight unguided rocket
-   behaviors on readable specialist entities.
-7. Add a water-placeable energy producer so a naval base can close its own
-   economy loop.
-8. Replace the random all-roster spectacle with small scripted demonstration
-   lanes where each mechanic is forced to happen and is labeled to the player.
+* Advanced Universal Fabricator
+* Advanced Bot Fabricator
+* Advanced Vehicle Fabricator
+* Advanced Aircraft Fabricator
+* Advanced Naval Fabricator
 
-BAR's useful lesson is not “copy hundreds of units.” It is that each production
-domain has a recognizable identity and each information or attack tool has a
-counter. Budget Annihilation can demonstrate comparable systemic breadth with
-roughly 10-14 carefully chosen unit-role additions/reassignments, the modular
-ten-Fabricator T1/T2 matrix, and 6-8 authored showcase encounters.
+The T1 Universal roster is the deduplicated union of all four T1 specialist
+rosters. The Advanced Universal roster is the deduplicated union of all four T2
+specialist rosters. Neither Universal may produce units from the other tier.
 
+Target about five menu entries per specialist Fabricator per tier, with equal
+counts across Bot, Vehicle, Aircraft, and Naval. This is 20 specialist menu
+entries per tier, not necessarily 20 unique units: cross-domain units count in
+each appropriate specialist roster.
 
-CURRENT CONTENT SNAPSHOT
-========================
+Examples:
 
-Authoritative blueprint counts
-------------------------------
+* Hippo: Vehicle + Naval.
+* Duck: Aircraft + Naval.
+* Water Strider: Bot + Naval.
+* Torpedo gunship: Aircraft + Naval.
+* Pure tanks: Vehicle only.
+* Pure bots/crawlers: Bot only.
+* Pure planes: Aircraft only.
+* Surface ships and submarines: Naval only.
 
-* 27 units total: the Commander plus 26 Fabricator-buildable units.
-* 21 buildings.
-* 11 travelling-shot blueprints.
-* 4 ray blueprints, all currently continuous beams.
-* 5 actual shield blueprints plus the shields file's shared configuration row.
-* 72 turret configurations, including sensors, weapons, work emitters, factory
-  emitters, shield emitters, and attachment/utility configurations.
+Data rule: every unit should author one tech level and one or more production
+domains. Specialist menus are derived from those fields; Universal menus are
+derived from the four same-tier specialist sets. Validate this so overlap never
+creates duplicate Universal entries and roster changes cannot drift.
 
-Mobile chassis distribution
-----------------------------
+Cost rule:
 
-  aerosub               1   Duck
-  amphibian             1   Sea Turtle
-  amphibious tank       1   Hippo
-  bot                    3   Human, Rex, Commander
-  crawler                6   Daddy, Tick, Formik, Widow, Tarantula, Queen Tick
-  drone                  5   Bee, Dragonfly, Construction Drone, Queen Bee,
-                              Transport
-  plane                  2   Eagle, Albatross
-  rover                  2   Jackal, Mongoose
-  submarine              2   Orca, Construction Submarine
-  tank                   4   Lynx, Badger, Mammoth, Loris
+* Start all four specialists at a tier with comparable cost and build power.
+* A same-tier Universal initially costs about 3x a specialist in energy, metal,
+  and build time.
+* The Universal pays for flexibility, not throughput. It should remain near a
+  specialist in build power, durability, and footprint efficiency.
+* T2 has its own higher specialist baseline; Advanced Universal is 3x that T2
+  baseline, not 3x the T1 Universal.
 
-This distribution immediately exposes the main content imbalance: there are
-many ground direct-fire bodies and several enormous multi-weapon showcase
-units, but no true surface ship, no surface hovercraft, no ordinary ground
-constructor, no dedicated resurrection unit, no mobile ground AA, no mobile
-radar scout, no dedicated cloak scout, and no dedicated detector.
+Placement and access:
 
-Building distribution
----------------------
+* Preserve ground-or-water placement for both Universal tiers.
+* Naval Fabricators must support water placement.
+* Bot and Vehicle Fabricators default to ground placement.
+* Aircraft Fabricator can have the "building hover" type, where they are built anywhere.
+* Advanced Fabricators require a construction craft of that T1 level to create it. Any construction bot can continue building something, but an advanced fabricator can only be started by the T1 construction craft of that type. 
 
-Economy:
+Let's have the "t1 universal fabricator" create any t1 construction craft and a "t2 universal fabricator" create any t2 construction craft.
 
-* Solar, Wind, Extractor, Advanced Extractor, Converter, Metal Storage, and
-  Energy Storage.
+A t1 construction craft can create a t1 or t2 fabricator of its type and can create a t1 or t2 universal fabricator (again 3x more expensive).
 
-Intelligence and technology:
 
-* Radar, Sonar, Radar Jammer, Sonar Jammer, Shield Detection Lab, Shield
-  Generator, and Precision Targeting Lab.
 
-Production:
 
-* One universal Fabricator, placeable on ground or water, which can produce all
-  26 non-Commander units.
 
-Defense:
-
-* Light Beam Tower, Heavy Beam Tower, Cannon Tower, Helios Long-Range Cannon,
-  Anti-Air Tower, and Torpedo Tower.
-
-This is a good mechanics test set but a weak strategic taxonomy. In particular,
-having only one all-domain factory suppresses the meaning of
-bot/vehicle/air/naval choices. The Universal Fabricator should remain as a
-premium flexibility option beside cheaper specialists rather than being the
-only production identity. The water building set also cannot produce its own
-energy.
-
-
-CAPABILITY-TO-CONTENT COVERAGE
-==============================
-
-1. Movement and physical-medium coverage
-----------------------------------------
-
-Implemented capability:
-
-* Ordinary ground movement with different mass, force, friction, turn, and
-  suspension profiles.
-* Airborne planar/hover movement for drones.
-* Always-forward flight and loiter behavior for planes.
-* Water-only movement for submarines.
-* Ground/water amphibious movement for Hippo and Sea Turtle.
-* Always-forward air/water operation for Duck.
-* Emergency water propulsion and water damage for displaced land units.
-* Continuous body-volume medium occupancy at the water surface rather than a
-  center-point category switch.
-* Transport attraction, carried-body visibility/targetability, load, and
-  unload.
-* Units can physically use building roofs as support surfaces.
-
-Current hosts:
-
-* Ground: 16 conventional bots/crawlers/rovers/tanks including Commander.
-* Hovering air: Bee, Dragonfly, Construction Drone, Queen Bee, Transport.
-* Forward air: Eagle and Albatross.
-* Water: Orca and Construction Submarine.
-* Amphibious: Hippo and Sea Turtle.
-* Air/water: Duck.
-
-Gaps:
-
-* No true surface ship. The roster jumps from an amphibious ground body to a
-  submarine and an aerosub, leaving surface displacement, visible hulls,
-  above-water naval weapons, and partially submerged targeting underused.
-* No surface hovercraft despite the physics philosophy explicitly identifying
-  hovercraft as a revealing arrival-control case.
-* The configured amphibious-crawler preset is present in locomotion data but is
-  not accepted as a unit locomotion type, so it is not yet a safe content slot. I think a "water skimmer' type unit would actualy be the best type of "amphibious-crawler" - a "bug that walks on water" or "water srider" maybe it is called. This should be able to make happen within our current systems by having very high upward force come from both types of water upward forces. 
-
-Recommendations:
-
-* CONTENT-FIRST / SMALL GENERALIZATION: add a Skimmer hovercraft with useful
-  ground and water propulsion and a stopping/holding final waypoint. This is
-  the best single body for showing force blending, shore crossings, drift,
-  braking, and medium-volume transitions.
-* SMALL GENERALIZATION: add a true ship/surface-vessel locomotion identity and a
-  Patrol Corvette. It should have sonar, an above-water gun, and a torpedo or
-  depth-weapon path so one hull demonstrates partial medium occupancy and two
-  target lanes.
-* CONTENT-FIRST: add an amphibious constructor after the ground constructor is
-  proven. It can reuse the current construction and build-roster model.
-* TRANSPORT GENERALIZATION: Transports should only ever hold one unit at a time, and they should never "hide" that unit. 
-
-Assessment: ground is over-represented; air has two physically distinct flight
-styles but thin role coverage; water has strong engine semantics but incomplete
-surface content. Generalize each "specialized fabricator" at each level (i.e. T1 "tech 1" and T2 "tech 2") to have an equal number of units, probably 5 units per tech level per specialized fabricator (and there can be crossover units between specialized fabricators as noted elsewhere)
-
-
-2. Air/ground/water combat separation
--------------------------------------
-
-Implemented capability:
-
-* Each directed weapon explicitly authors a two-by-two source-medium to
-  target-medium trajectory matrix.
-* Target medium uses occupied body volume, so a surface-straddling target may
-  be eligible to above-water and underwater weapons at the same time.
-* Turrets can independently mask units, buildings, turrets, and selected shot
-  families.
-* The Eagle is an air-only fighter.
-* The Anti-Air Tower is air-only and can also intercept selected rockets and
-  mortar shells.
-* Rex carries fast anti-air missiles among several other weapons.
-* Orca and the Torpedo Tower demonstrate underwater-to-underwater attack.
-* Contact-enabled indirect weapons can use team radar/sonar knowledge when the
-  weapon's physical route is valid.
-
-Gaps:
-
-* There is no affordable mobile ground AA. Air defense is a fixed tower, a
-  fighter, or one subsystem on the huge Rex.
-* There is no naval AA.
-* There is no surface or airborne anti-sub unit. Hippo and Sea Turtle can sense
-  underwater targets, but their current guns do not provide the missing
-  above-water-to-underwater attack route - not all units that can sense things should be able to attack (and vice versa). 
-* There is no surface naval gun combatant.
-* There is no dedicated point-defense entity even though some existing turrets
-  can target projectiles. Interception is incidental and easy to miss.
-* Most attacks remain above-water direct fire, so the four-cell medium matrix
-  is more sophisticated than the fights the roster normally produces.
-
-Recommendations:
-
-* CONTENT-FIRST: add a Shrike mobile AA rover using the fast missile and an
-  air-only target mask. Give it short ordinary sight so it benefits from team
-  scouting.
-* SMALL GENERALIZATION: add a Petrel torpedo gunship or aerosub with
-  sonar/contact sensing and weak/no ground attack. The current Torpedo shot is
-  authored underwater-to-underwater and its guidedTorpedo profile is not
-  operational in air, so this needs a new air-launch/enter-water torpedo profile
-  assembled from the existing medium-transition and guidance machinery rather
-  than simply mounting shotTorpedo unchanged.
-* SMALL GENERALIZATION: add a surface Patrol Corvette with light cannon,
-  sonar, and anti-sub capability; follow with a naval AA variant only if one
-  hull cannot remain readable.
-* CONTENT-FIRST: add a dedicated Interceptor Tower whose only job is to shoot
-  down targetable rockets and mortar shells. This makes projectile health and
-  interception obvious instead of accidental.
-* Author one medium-counter exhibition: bomber versus mobile AA, submarine
-  versus surface target, torpedo gunship versus submarine, and surface gun
-  versus a breaching/straddling hull.
-
-
-3. Sight, radar, sonar, stealth, jamming, cloak, and detection
--------------------------------------------------------------
-
-Implemented capability:
-
-* Full sight and contact sight are independent source-medium by target-medium
-  matrices.
-* Radar is the above-water contact lane; sonar is the underwater contact lane.
-* Team knowledge is shared and distinguishes full identity from contact-only
-  location.
-* Radar and sonar contacts are not supposed to become full enemy entities.
-* Jamming denies the relevant enemy contact lane.
-* Radar stealth and sonar stealth are target signatures.
-* Detector radius can reveal a cloaked unit but does not locate an otherwise
-  unknown target by itself.
-* Temporary scan pulses grant full vision.
-* Fog transitions, last-known movement, boundary overlays, and recipient-
-  filtered snapshots are implemented.
-* Completed powered-intelligence buildings keep ordinary local sight while
-  their contact electronics go offline when fortified/OFF.
-
-Current hosts:
-
-* Radar building: 4,200 above-water contact radius.
-* Sonar building: 4,200 underwater contact radius.
-* Radar Jammer: 3,000 above-water jamming radius.
-* Sonar Jammer: 3,000 underwater jamming radius.
-* Mongoose: the only radar-stealth unit.
-* Orca: the only sonar-stealth unit.
-* Duck: a mobile sonar jammer with underwater sensing.
-* Commander: cloak, 600 detector radius, and 900 radar-jam radius.
-* Rex: 700 detector radius and very large ordinary sight.
-* Hippo, Sea Turtle, Orca, Duck, and Construction Submarine provide different
-  cross-medium/underwater sight and contact matrices.
-
-Gaps and weaknesses:
-
-* There is no dedicated mobile radar scout or AWACS. The nominal Bee scout has
-  ordinary sight but no contact radar, so mobile spotting does not advertise
-  the radar tier.
-* There is no dedicated mobile ground radar or mobile sonar picket.
-* There is no dedicated mobile radar jammer; jamming is a static building or
-  one overloaded Commander subsystem.
-* There is no dedicated cloaked spy/recon unit. Only the Commander can issue the
-  cloak command.
-* There is no dedicated detector or counter-intelligence unit/building. Rex and
-  Commander carry detection incidentally.
-* With only one radar-stealth and one sonar-stealth target, the two stealth
-  lanes rarely become a legible strategic choice.
-* Cloak is currently a simple explicit toggle that forces hold-fire and restores
-  the prior fire state. It does not yet represent BAR's full energy-upkeep and
-  automatic decloak ecosystem, so a new cloak host should be described honestly
-  as the current prototype cloak, not as complete BAR parity.
-* The open issue in issues.txt reports a correctness problem: full units can
-  appear where only contact blips should be visible, and blips do not yet have
-  the desired fade/last-velocity behavior. A showcase should not present radar
-  until this is corrected.
-
-Recommendations:
-
-* SMALL GENERALIZATION: add a Ghost scout/spy that exposes the existing cloak
-  command and radar-stealth signature. Keep it weak and give it a narrow job.
-* CONTENT-FIRST / SMALL GENERALIZATION: add a Watchman detector rover or tower
-  with short full sight, no radar, and a meaningful detector radius. Detection
-  should be separable from contact sensing.
-* CONTENT-FIRST: repurpose one crawler into a mobile radar jammer so the jammer
-  can advance with an army and must be hunted by sight.
-* CONTENT-FIRST: give the proposed Patrol Corvette sonar and consider a later
-  naval jammer variant. This creates a fleet information screen rather than a
-  static coastline bubble.
-* Preserve the four-way distinction in entity/UI language: sight identifies,
-  radar/sonar locates, stealth avoids contact, jamming denies contact, detector
-  defeats cloak. Do not collapse these into a generic “vision range” stat.
-
-Showcase proof:
-
-1. Put a Mongoose outside full sight but inside friendly radar; let it fire a
-   contact-capable mortar at a target.
-2. Move the target into a Radar Jammer bubble; the contact and supporting fire
-   should disappear.
-3. Send a full-sight scout into the bubble; exact identity and fire return.
-4. Send a cloaked Ghost past normal sight; a Watchman detector reveals it only
-   while the target is otherwise in sight/contact as required by the model.
-5. Repeat underwater with Orca, Sonar, Sonar Jammer, and a sonar picket.
-6. Trigger a scan pulse to show temporary full information overriding the
-   absence of a standing sight source.
-
-
-4. Projectile and ray families
-------------------------------
-
-Implemented travelling shots:
-
-* Light, medium, heavy, and “other” plasma.
-* Medium and heavy mortar.
-* Disruptor plasma.
-* Delayed-guidance light rocket.
-* Fast and long guided missiles.
-* Torpedo.
-
-Implemented ray/shield machinery:
-
-* Four strengths of continuous beam.
-* Runtime ray support for a pulsed-duration laser family.
-* Spherical shields, small spherical shields, an aimed panel, infinite
-  cylindrical shields, and an aimed infinite cylinder.
-* Reflection policies covering plasma, rockets, missiles, beams, and lasers.
-* Projectile health and turrets that can target selected projectile families.
-* Ballistic high/low trajectory selection for Mongoose.
-* Area force/damage, recoil, impact impulses, line-of-fire, guidance,
-  interception, and submunition fields.
-
-Unexposed or weakly exposed branches:
-
-* No laser ray blueprint is mounted. All current rays are continuous beams, so
-  the pulsed ray lifecycle and laser-specific shield policy have no visible
-  host.
-* shotPlasmaOther is not mounted by a current turret.
-* shotMortarHeavy is not mounted by a current turret.
-* Mortar submunition support exists but current submunition counts are zero.
-  There is no real cluster weapon.
-* Spread and burst structures exist, but current pellet and burst counts do not
-  create a readable shotgun or multi-shot burst weapon.
-* The only rocket is delayed-guidance. There is no straight, never-turning
-  dumb rocket; issues.txt already requests one and a dedicated firing unit.
-* Projectile interception is shared with general AA/beam configurations rather
-  than embodied by a clear point-defense specialist.
-* The shieldCylinderInfinite and shieldCylinderInfiniteAimed blueprints are not
-  mounted.
-
-Recommendations:
-
-* CONTENT-FIRST: add a Rocketeer using a straight unguided rocket. Its authored
-  turning authority should be absent/zero, and its role should depend on aim,
-  target motion, and projectile collision rather than guidance.
-* CONTENT-FIRST: add a Prism laser skirmisher or Pulse Laser Tower using the
-  supported pulsed laser ray. Put it opposite a laser-reflecting shield in the
-  showcase.
-* CONTENT-FIRST: add a cluster artillery unit or bomber by enabling the existing
-  mortar submunition path. Use one of the dormant heavy-mortar definitions
-  after validating its envelope and cost.
-* CONTENT-FIRST: add a close-range scatter unit with real pelletCount greater
-  than one, or a burst unit with a genuine multi-shot cadence. Choose one first;
-  both exist to demonstrate the same otherwise-unused firing-shape data.
-* CONTENT-FIRST: add a dedicated Interceptor Tower and give targetable rockets
-  visible health bars as already requested in issues.txt. Script a controlled
-  rocket salvo so interception is guaranteed to happen.
-* CONTENT-FIRST: add a Shield Wall/Picket that mounts the dormant cylindrical
-  shield. A building is the simplest readable host; an aimed mobile version can
-  follow only if it produces a distinct tactical job.
-
-
-5. Shields and targeting technology
------------------------------------
-
-Current coverage:
-
-* Daddy carries a small spherical shield.
-* Widow carries a larger spherical shield.
-* Loris carries an aimed reflective panel with reciprocal threat lock-on. It
-  aims against incoming hostile turrets rather than behaving like ordinary
-  armor.
-* Shield Generator enables team shield emitters.
-* Shield Detection Lab enables shield-aware target choice.
-* Precision Targeting Lab removes authored/randomized weapon imprecision.
-* Shields interact with projectile and beam families, apply forces, and can
-  reflect eligible attacks.
-
-The Loris is one of the strongest examples of genuinely distinctive project
-functionality, but a random battle may never present it at the right angle
-against a compatible incoming threat. The three supporting technology
-buildings are pre-placed in demo mode but deliberately start OFF. Therefore the
-default spectacle hides shield production, shield-aware targeting, and
-precision targeting until somebody manually discovers and enables them.
-
-Gaps:
-
-* The cylinder shield variants have no host.
-* There is no static shield wall/dome role that makes an army visibly fight
-  around a protected region.
-* There is no controlled A/B encounter showing naive shield targeting versus
-  shield-aware targeting.
-* The precision technology's effect is statistical and hard to perceive amid
-  an uncontrolled fight.
-
-Recommendations:
-
-* Enable the three technology buildings in the automatic exhibition, or script
-  an explicit OFF-to-ON transition with narration. Do not merely leave them
-  present but inert.
-* Add a cylindrical Shield Picket using an existing shield blueprint.
-* Create a two-stage shield lane: first disable Shield Detection and show fire
-  wasting into the wrong protection; then enable it and show target selection
-  change. Separately toggle Precision Targeting against a fixed distant target
-  and visualize dispersion.
-* Give Loris a scripted incoming controlled-rocket/beam threat from the side so
-  its panel slews, catches, and reflects. That one 10-second sequence will show
-  more than many minutes of random combat.
-
-
-6. Construction, repair, reclaim, capture, resurrection, and wrecks
-------------------------------------------------------------------
-
-Implemented capability:
-
-* Nanoframe construction funded by coupled energy and metal.
-* Repair, reclaim, capture, resurrection, and area variants where applicable.
-* Wreck creation and resource recovery.
-* Idle-builder auto-repair and fight/patrol work discovery.
-* Shared construction power, work emitters, build ranges, guard/assist, queue
-  priorities, and unfinished-frame decay.
-* Terrain and medium-aware placement.
-* Commander D-Gun and special command surface.
-
-Current hosts:
-
-* Commander: ground builder plus capture, resurrection, cloak, D-Gun, detector,
-  jammer, and direct combat.
-* Construction Drone: airborne builder with a broad 19-building build list.
-* Construction Submarine: water builder with a 7-building list.
-
-Gaps:
-
-* There is no ordinary ground construction unit. After the Commander, players
-  must use an air constructor, which bypasses terrain and weakens the meaning
-  of ground logistics.
-* There is no dedicated resurrection bot or resurrection submarine even though
-  the resurrection engine and UI exist. BAR makes both recognizable roles.
-* Capture is effectively a Commander-only curiosity.
-* The Commander is overloaded with too many unique systems; it technically
-  checks capability boxes but makes them risky, obscure, and difficult to
-  demonstrate independently.
-* Construction Submarine can list a ground-only Converter, which is of little
-  use in open water. The build list should be narrowed or a naval converter
-  provided.
-* There is no static repair/assist construction tower. This is lower priority
-  because a proper host may need building-side construction UI/generalization.
-
-Recommendations:
-
-* CONTENT-FIRST: turn Human into, or add, a Mule ground constructor. A cheap
-  conventional builder immediately demonstrates terrain routing, placement,
-  guard, assist, repair, reclaim, and factory expansion without risking the
-  Commander.
-* SMALL GENERALIZATION: add a Lazarus resurrection bot. The construction/work
-  channel already includes resurrection; the BAR/prototype command eligibility
-  list must admit the new blueprint.
-* SMALL GENERALIZATION: add a dedicated resurrection submarine using the same
-  pattern. This makes underwater wreck recovery a real naval layer.
-* Consider a dedicated Captor/Boarding bot only after capture proves fun. The
-  first exhibition can safely demonstrate capture with the Commander.
-* Script a wreck field with one wreck to reclaim, one to resurrect, one damaged
-  ally to repair, and one enemy to capture. Label resource flow and ownership
-  changes.
-
-
-7. Factories, mobile production, transport, and command depth
--------------------------------------------------------------
-
-Implemented capability:
-
-* Unit-producing structures with per-building allowed-unit rosters.
-* Finite queues, queue editing, repeat, target quotas, production cancellation,
-  rally routes, output guard/fight behavior, and build-priority controls.
-* Produced nanoframe shells held and launched through a factory lifecycle.
-* Air idle land/fly state and movement-state inheritance.
-* Queen Bee and Queen Tick mobile factories.
-* A carrier-spawn enabled/disabled state in the mobile factory component and a
-  command path for toggling it.
-* Transport load/unload and physical attraction of a visible, targetable
-  passenger.
-* Manual-launch targeting and execution plumbing.
-
-Gaps:
-
-* The Universal Fabricator is currently the only structural production
-  identity and can build every non-Commander unit. The problem is not that a
-  universal option exists; it is that there are no cheaper specialist choices
-  and no T1/T2 roster boundary.
-* Demo spawning attempts one Fabricator per enabled unit per player. With the
-  default roster this can mean 26 production buildings per player before the
-  battle has demonstrated any meaningful factory choice.
-* Carrier spawning is not exposed by any current BAR-equivalent host; Queen Bee
-  and Queen Tick are mobile factories, but the toggle remains hidden.
-* Manual launch is implemented as a command path, but no current unit is in the
-  manual-launch capability set.
-* The Transport Drone holds one passenger and is the only transport host. A
-  background patrol battle is unlikely to load and unload it intentionally.
-
-Recommended ten-Fabricator plan:
-
-Tech level 1:
-
-* Universal Fabricator -- produces the complete union of every T1 unit offered
-  by the four T1 specialist Fabricators.
-* Bot Fabricator -- produces T1 bots and crawler-style ground units assigned to
-  the bot domain.
-* Vehicle Fabricator -- produces T1 rovers, tanks, ground vehicles, and
-  appropriate amphibious/hover vehicles.
-* Aircraft Fabricator -- produces T1 drones, planes, and appropriate
-  air/water-crossing aircraft.
-* Naval Fabricator -- produces T1 submarines, surface vessels, and appropriate
-  amphibious, hover, and air/water-crossing units.
-
-Tech level 2:
-
-* Advanced Universal Fabricator -- produces the complete union of every T2
-  unit offered by the four advanced specialist Fabricators.
-* Advanced Bot Fabricator -- produces T2 bot/crawler units.
-* Advanced Vehicle Fabricator -- produces T2 rover/tank/vehicle units.
-* Advanced Aircraft Fabricator -- produces T2 drone/plane/aerosub units.
-* Advanced Naval Fabricator -- produces T2 submarine/ship/amphibious/naval-air
-  units.
-
-Roster invariants:
-
-* Universal T1 roster = union(Bot T1, Vehicle T1, Aircraft T1, Naval T1).
-* Advanced Universal roster = union(Advanced Bot, Advanced Vehicle, Advanced
-  Aircraft, Advanced Naval).
-* The two universal rosters do not grant units from the other tech level.
-* Specialist rosters are deliberately allowed to overlap. Production domain is
-  a useful way to reach a unit, not an exclusive taxonomy.
-* Hippo belongs in both the Vehicle and Naval Fabricators at its assigned tech
-  level.
-* Duck belongs in both the Aircraft and Naval Fabricators at its assigned tech
-  level.
-* A hovercraft should normally overlap Vehicle and Naval. An anti-sub torpedo
-  gunship should normally overlap Aircraft and Naval. Other cross-domain units
-  should follow the same player-readable rule.
-* Pure surface ships and submarines stay Naval; pure planes stay Aircraft;
-  ordinary tanks stay Vehicle; ordinary bots stay Bot unless a unit has a real
-  cross-domain identity.
-
-Cost and balance rules:
-
-* At each tech level, use one specialist Fabricator as the cost baseline.
-* The same-tier Universal Fabricator should initially cost about 3x a
-  specialist in both energy and metal. Its build time should also start near 3x
-  so the flexibility premium cannot be bypassed with cheap construction time.
-* The universal is paying for strategic flexibility, not buying three times
-  the production throughput. Its build power, footprint efficiency, hit points,
-  and queue speed should remain near a specialist unless playtesting finds a
-  specific reason to change them.
-* Advanced specialists establish their own T2 baseline; the Advanced Universal
-  then costs about 3x that T2 specialist baseline. Do not calculate its cost
-  from the T1 universal.
-* If specialist costs differ by domain, calculate the universal target from a
-  representative/median specialist or roughly 3x the most common specialist,
-  then tune for strategy. The invariant is “large flexibility surcharge,” not
-  a brittle exact integer ratio.
-
-Implementation notes:
-
-* CONTENT-FIRST: all ten identities can use the existing per-building
-  allowedUnitBlueprintIds system. Assign every produced unit an explicit T1 or
-  T2 roster placement before authoring the unions.
-* Generate or validate each universal roster from the four specialist rosters
-  so it cannot silently omit an overlap unit or accidentally include the wrong
-  tier.
-* Initial art may share modular factory pieces. Tier, domain, placement medium,
-  silhouette, and build-menu label must still be immediately readable.
-* Preserve the current Universal Fabricator's ground-or-water placement for both
-  universal tiers so its flexibility applies to deployment as well as roster.
-  Naval Fabricators should use water-valid placement. Bot and Vehicle
-  Fabricators should default to ground placement; Aircraft placement should be
-  an explicit design choice rather than inheriting the universal hover setting.
-* Author an explicit factory tech level and validate that every allowed unit is
-  in the same tier. For real progression, Advanced Fabricators should be
-  reachable through an advanced constructor or explicit technology unlock, not
-  merely appear in the opening T1 builder menu. The exhibition may pre-place
-  all ten factories for comparison without weakening that real-match rule.
-* Reduce the automatic demo to one representative T1 factory set and a compact
-  T2 comparison, not one Fabricator per unit. Demonstrate queue, repeat, rally,
-  quotas, specialist overlap, and the universal cost tradeoff inside those
-  factories.
-* SMALL GENERALIZATION: expose carrierSpawnEnabled on one Queen or introduce a
-  dedicated light carrier. Do not keep two giant mobile factories solely to
-  prove the same mechanic.
-* SMALL GENERALIZATION: create a modest manual-launch battery only if the
-  current command can release a normal prepared volley without inventing
-  stockpile semantics. A true strategic missile stockpile/nuke system is NEW
-  SYSTEM work and should not be faked by a cooldown weapon.
-* Script the Transport Drone to pick up a ground unit, carry it across water or
-  a cliff, survive being targetable with cargo visible, unload it, and have the
-  passenger resume an order.
-
-
-8. Economy, storage, resource transfer, and active/fortified buildings
----------------------------------------------------------------------
-
-Implemented capability:
-
-* Shared player energy and metal stockpiles.
-* Solar and wind energy production.
-* T1 and T2 metal extraction on deposits, including seabed placement.
-* Separate energy and metal storage.
-* Bidirectional surplus resource conversion with tax.
-* Visible resource movement/pylon effects.
-* Construction and repair spending from both resources.
-* A shared active/fortified lifecycle for producer, technology, and intel
-  buildings: ON operates normally and takes normal damage; OFF is disabled and
-  takes 0.1x damage. Sustained damage can close an ON building after a grace
-  period, and it reopens after a quiet interval if the player's durable switch
-  still wants it ON.
-
-Gaps:
-
-* A naval base can place seabed extractors, Sonar, Sonar Jammer, Torpedo Tower,
-  Fabricator, and a Construction Submarine, but it cannot place water-native
-  energy production. Pure water expansion cannot close its economy loop.
-* There is no water-native storage or converter. These are less urgent than
-  water energy, but they make a genuinely isolated naval base incomplete.
-* Solar and Wind cover similar early energy roles while more distinctive naval
-  or high-output energy roles are absent.
-* The active/fortify lifecycle is sophisticated but not intentionally shown.
-  In random combat, a player may interpret a closed building as merely broken.
-
-Recommendations:
-
-* CONTENT-FIRST: add a Tidal/Floating Generator using water placement and the
-  existing energyProduction field. This is the most important missing naval
-  building because it makes water expansion self-sufficient.
-* CONTENT-FIRST: add water-placeable Energy Storage next. Add Metal Storage or
-  a naval Converter only if map design creates isolated fleets long enough to
-  justify them.
-* Script a Converter lane with an energy surplus, a metal shortage, visible
-  taxed conversion, then reverse the imbalance so bidirectional behavior is
-  apparent.
-* Script damage against a Radar or Converter: show its grace period, automatic
-  fortification, 0.1x incoming damage, disabled output/contact coverage, quiet
-  reopening, and a manual OFF state that does not reopen by itself.
-
-
-9. Command and control functionality that content does not advertise
---------------------------------------------------------------------
-
-The command layer includes:
-
-* Move, fight, patrol, guard, stop, wait, and queued/spatially inserted orders.
-* Fire state, movement state, trajectory state, air idle state, repeat, and
-  build priority.
-* Attack, attack ground, area attack, priority target, and self-destruct.
-* Build, repair, reclaim, capture, resurrect, and area forms.
-* Factory queue editing, quotas, rally routes, and production presets.
-* Cloak, scan, transport load/unload, building active state, carrier spawning,
-  and manual launch.
-
-The command surface is broader than the roster's visible jobs. Several commands
-are capability-gated to empty sets or a single entity. This is good authority
-discipline but poor exhibition. The solution is not to show disabled buttons
-on everything; it is to give each important command one readable specialist
-host and one scenario where it matters.
-
-Recommended command-gallery sequence:
-
-* Mongoose toggles high/low trajectory over a ridge.
-* Ground constructor receives a patrol/fight route and auto-repairs/reclaims.
-* Factory demonstrates repeat, quota preemption, rally route, and guard output.
-* Ghost toggles cloak and stops firing while cloaked.
-* Queen/carrier toggles subordinate spawning.
-* Transport performs load and unload.
-* Manual-launch host fires only on explicit target command.
-* Radar/Converter toggles ON/OFF and automatically fortifies under damage.
-
-
-OVER-REPRESENTED CONTENT
-========================
-
-1. Ground direct-fire and continuous-beam bruisers
---------------------------------------------------
-
-Six of 27 units are crawlers, and several crawler identities revolve around
-mini/mega continuous beams or scaling the same general direct-fire idea:
-Daddy, Tick, Tarantula, Widow, and Queen Tick all live near this visual/mechanical
-cluster, though shields and mobile production distinguish some of them.
-
-There are also four tanks and multiple other above-water direct-fire units.
-This is not inherently too many models, but it is too much roster share while
-basic support/counter roles are empty.
-
-Recommendation: do not delete finished art reflexively. Reassign one small
-crawler to mobile radar jamming or detection, and make one cheap humanoid/bot a
-ground constructor or spy. Preserve Daddy/Widow/Loris where their shields make
-them mechanically distinct.
-
-
-2. Giant all-in-one showcase units
-----------------------------------
-
-Rex carries a mega beam, dual gatlings, fast AA missiles, slow rockets, large
-sight, and detection. Queen Bee and Queen Tick combine major weapons with
-mobile production. Widow combines multiple beams with a large shield. These
-are visually useful capstones, but they absorb systems that would be more
-readable on specialists.
-
-Recommendation: keep one or two “everything is happening” late-game monsters,
-but stop using them as the only evidence for AA, detection, or mobile
-production. A system is not effectively represented when the player cannot
-separate it from five simultaneous effects.
-
-
-3. Per-unit factory duplication in the demo
--------------------------------------------
-
-One Fabricator per unit line is the single clearest over-representation. It
-inflates entity count, visual repetition, and production throughput while
-hiding factory queue breadth and domain choice.
-
-Recommendation: keep Universal Fabricators as premium strategic choices, add
-the four specialist Fabricators at both T1 and T2, and demonstrate each factory
-as a multi-unit roster rather than cloning one building for every unit line.
-The over-representation is the demo duplication, not the universal concept.
-
-
-4. Ordinary full sight versus specialist intelligence
+2. Use a Water Strider for amphibious-crawler coverage
 -----------------------------------------------------
 
-Most hosts repeat ordinary full sight. Radar, sonar, detector, stealth, cloak,
-and jamming are much rarer and often static or attached to a super-unit.
+The unused amphibious-crawler idea should become an insect-like Water Strider:
+a crawler that walks on land and skims across the water surface. Use the current
+force model with strong upward support from both water-related surface-following
+lift channels. It should stop and hold position rather than fly like a plane.
 
-Recommendation: trade two redundant direct-fire slots for intelligence
-specialists before adding more guns.
+This is a better demonstration of the physics architecture than a conventional
+hovercraft because its behavior visibly comes from forces, support, water
+contact, momentum, and arrival control. Put it in both Vehicle and Naval
+Fabricators at its assigned tier.
 
-
-5. Above-water offense versus naval infrastructure
----------------------------------------------------
-
-The projectile, sensor, and physics systems have first-class underwater
-semantics, but the roster offers only one combat submarine, amphibious units,
-one aerosub, a construction sub, and two static naval utility/defense pairs.
-
-Recommendation: a surface patrol ship, torpedo gunship, resurrection sub, and
-tidal generator will reveal more engine breadth than four additional land
-tanks.
+the "ampbibious tank" thing should be an under-water seabed type movement (I think it is now) and the "ampbibious-crawler" is an "above water walking/crawling" type.
 
 
-6. Beam/plasma family versus firing-shape variety
--------------------------------------------------
+3. Keep transports single-passenger and visible
+-----------------------------------------------
 
-Continuous beams and ordinary plasma are well represented. Pulsed laser,
-cluster/submunition, true scatter/burst, and dumb rocket behavior have no
-host.
+All transports should carry exactly one unit. Generalize transport identity,
+allowed cargo, and tuning if needed, but do not add multi-unit capacity.
 
-Recommendation: use the next weapon-bearing entities to cover those missing
-branches rather than adding another beam scale.
+The passenger must never disappear into hidden cargo state. It remains visibly
+attached and targetable while carried. A transporter can carry any unit, friend or foe. A passenger can also attack its transport if for example it is on an opposing team.
 
 
-ROLE GAPS RANKED BY VALUE
+4. Keep sensing and attacking independent
+-----------------------------------------
+
+A unit being able to detect a target must not imply that it can attack it, and
+a weapon being able to reach a medium must not imply that its host can detect
+that medium alone.
+
+Examples:
+
+* Hippo and Sea Turtle may sense underwater targets without receiving an
+  underwater weapon.
+* A Petrel torpedo gunship may attack submarines but should still benefit from
+  allied sonar instead of having every intelligence tool built in.
+* Long-range artillery may consume team radar/sonar knowledge without owning a
+  long-range sensor.
+
+Preserve separate sensor matrices, weapon trajectory matrices, target masks,
+and team intelligence. This separation is one of the project's strongest
+features.
+
+
+5. Remove unused pulsed-laser and cylindrical-shield branches
+------------------------------------------------------------
+
+Do not add units merely to justify dormant functionality.
+
+* Delete the unused pulsed-laser content/path instead of adding a Pulse Laser
+  unit or tower. Keep the four existing continuous-beam families.
+* Delete the unused infinite cylindrical and aimed-cylindrical shield
+  blueprints/path instead of adding a Shield Picket.
+* Keep the shield shapes that already have meaningful hosts: Daddy/Widow
+  spheres and Loris's aimed reflective panel.
+* Remove associated dead configuration and tests when implementation work is
+  scheduled, while preserving shared code still used by beams or existing
+  shields.
+
+  The things we are removing (above) are either redundant or hurt performance. 
+
+
+HIGHEST-VALUE ROSTER GAPS
 =========================
 
-Tier A: add or repurpose first
------------------------------
-
-A1. Surveyor / AWACS scout -- CONTENT-FIRST
-
-Role: fast unarmed air scout with mobile above-water contact radar and modest
-full sight.
-
-Why first: it turns radar from a building aura into an army relationship,
-enables contact artillery, creates a target for AA and radar stealth, and gives
-the Bee a clearer job than a nominally unarmed scout with a hidden auto-weapon.
-
-
-A2. Mule ground constructor -- CONTENT-FIRST
-
-Role: cheap ground builder/repair/reclaim unit with a deliberately limited
-early build list.
-
-Why first: it exposes the construction engine without risking the Commander and
-restores terrain/logistics meaning that an air constructor bypasses.
-
-
-A3. Lazarus resurrection bot -- SMALL GENERALIZATION
-
-Role: lightly armed or unarmed specialist that repairs, reclaims, and resurrects
-wrecks but cannot build a whole base.
-
-Why first: resurrection is already deep, visible functionality with no proper
-host. Restricting the build menu also prevents it from duplicating the ground
-constructor.
-
-
-A4. Shrike mobile AA -- CONTENT-FIRST
-
-Role: affordable land vehicle with fast air-only missiles, short sight, and no
-meaningful ground weapon.
-
-Why first: completes the basic air/ground counter triangle without requiring a
-Rex or static base.
-
-
-A5. Ghost cloak/stealth recon -- SMALL GENERALIZATION
-
-Role: fragile scout exposing current cloak and radar stealth, perhaps with no
-weapon or a very short-range utility weapon.
-
-Why first: gives detectors, sight, radar, and jamming something to distinguish.
-Document that current cloak lacks BAR's full energy/upkeep behavior.
-
-
-A6. Watchman detector -- CONTENT-FIRST / SMALL GENERALIZATION
-
-Role: detector rover or tower with modest ordinary sight and no contact radar.
-
-Why first: proves that detection and location are orthogonal. It counters the
-Ghost without replacing Radar.
-
-
-A7. Petrel torpedo gunship -- SMALL GENERALIZATION
-
-Role: air or aerosub anti-sub specialist with sonar/contact sensing and a new
-legal above-water-to-underwater torpedo profile. The engine already supports
-explicit medium transitions, but the current Torpedo blueprint itself is
-underwater-launch only.
-
-Why first: fills the most obvious missing cell in the medium combat matrix.
-
-
-A8. Tidal Generator -- CONTENT-FIRST
-
-Role: water-placeable energy producer.
-
-Why first: closes the naval economy loop using an existing building mechanic.
-
-
-A9. Tiered Universal/Bot/Vehicle/Aircraft/Naval Fabricators -- CONTENT-FIRST
-
-Role: five T1 and five T2 roster-filtered factory identities built on the
-existing factory system. Each universal roster is the same-tier union of the
-four specialist rosters and costs about 3x one same-tier specialist.
-
-Why first: this is the largest improvement to roster readability and production
-strategy while preserving the Universal Fabricator's flexibility. It should
-replace the 26-line demo layout, not the universal factory itself.
-
-
-A10. Interceptor Tower -- CONTENT-FIRST
-
-Role: dedicated point defense against targetable controlled/dumb rockets and
-mortar shells.
-
-Why first: gives projectile health and shot-targeting a visible purpose.
-
-
-Tier B: high-value breadth after Tier A
----------------------------------------
-
-B1. Skimmer hovercraft -- CONTENT-FIRST / SMALL GENERALIZATION
-
-Role: fast littoral raider with stopping hover behavior, land/water propulsion,
-and a light weapon.
-
-Value: directly demonstrates the project's force/arrival philosophy and fills
-the BAR-style hovercraft production domain without needing a large roster.
-
-
-B2. Patrol Corvette -- SMALL GENERALIZATION
-
-Role: true surface vessel with light above-water gun, sonar, and anti-sub tool.
-
-Value: completes the missing water-surface body and creates targets that can be
-partially eligible to above-water and underwater weapons.
-
-
-B3. Resurrection Submarine -- SMALL GENERALIZATION
-
-Role: underwater wreck recovery/support.
-
-Value: BAR treats this as an important naval support identity, and the local
-resurrection/work machinery already exists.
-
-
-B4. Mobile radar jammer -- CONTENT-FIRST
-
-Role: weak crawler/rover that moves an above-water jam bubble with the army.
-
-Value: turns jamming from a static defense into maneuver and gives full-sight
-scouts a counter-intelligence job.
-
-
-B5. Shield Picket -- CONTENT-FIRST
-
-Role: building or slow unit mounting shieldCylinderInfinite.
-
-Value: exercises an unused shield shape and makes protected frontage readable.
-
-
-B6. Rocketeer -- CONTENT-FIRST
-
-Role: slow-firing straight dumb rocket.
-
-Value: requested in issues.txt; contrasts guidance with physical aim and creates
-a clean point-defense target.
-
-
-B7. Pulse laser unit/tower -- CONTENT-FIRST
-
-Role: uses the supported duration-based laser ray rather than another continuous
-beam.
-
-Value: exercises the unused ray family and laser reflection policy.
-
-
-B8. Cluster artillery/bomber -- CONTENT-FIRST
-
-Role: heavy mortar that releases actual submunitions.
-
-Value: activates otherwise dormant shot content and provides a visually obvious
-area weapon.
-
-
-Tier C: useful, but do not block the core showcase
---------------------------------------------------
-
-* Naval AA ship/tower if the Corvette cannot carry a readable AA role.
-* Amphibious constructor.
-* Water-native storage and converter.
-* Static construction/repair tower.
-* Larger or naval transport after transport capacity becomes data-driven.
-* Dedicated carrier if neither Queen cleanly exposes carrier spawn control.
-* Manual-launch tactical battery if it can be honest without a stockpile.
-* Advanced radar/sonar only after ordinary radar/sonar contacts work correctly
-  and the mobile/basic counter loop is visible.
-
-
-MINIMAL ADDITION PLAN WITHOUT ROSTER BLOAT
-==========================================
-
-The following plan covers most gaps while reusing current models/slots where
-possible.
-
-Repurpose or specialize existing units:
-
-1. Bee -> Surveyor/AWACS. Remove/disable its combat identity and add contact
-   radar.
-2. Human -> Mule ground constructor, or Ghost if a separate builder model is
-   cheaper to add.
-3. Tarantula -> mobile Radar Jammer or Watchman detector.
-4. Keep Mongoose as stealth contact-fire artillery and make it the intelligence
-   showcase beneficiary.
-5. Keep Loris as the aimed-reflection showcase.
-6. Keep one Queen as the mobile factory/carrier showcase; simplify or strongly
-   differentiate the other Queen.
-
-New mobile entities worth unique slots:
-
-7. Lazarus resurrection bot.
-8. Shrike mobile AA.
-9. Ghost cloak scout or Watchman detector, whichever was not created by
-   repurposing.
-10. Petrel torpedo gunship.
-11. Skimmer hovercraft.
-12. Patrol Corvette.
-13. Resurrection Submarine.
-14. Rocketeer or pulse-laser specialist.
-
-New buildings/factory variants:
-
-15. T1 Universal, Bot, Vehicle, Aircraft, and Naval Fabricators plus their five
-   T2 Advanced counterparts. Reuse the existing factory implementation, allow
-   intentional specialist roster overlap, and make each universal the validated
-   union of its four same-tier specialists at about 3x specialist cost.
-16. Tidal Generator.
-17. Interceptor Tower.
-18. Shield Picket.
-
-This does not require every listed role or factory identity to be wholly new
-art. Fabricator variants can share a modular base; the detector/jammer may
-reuse a crawler chassis; the AWACS may reuse Bee; and a naval support hull can
-be a visual variant of the Corvette. The important thing is mechanical and
-silhouette readability.
-
-
-BEYOND ALL REASON COMPARISON
-============================
-
-Why BAR is relevant
--------------------
-
-budget_design_philosophy.html explicitly makes BAR the fallback for ordinary
-player-facing gameplay and command expectations. This audit therefore checked
-both BAR's official documentation and the local ../Beyond-All-Reason checkout
-(commit d706b5c6aec9, dated 2026-07-28). The local BAR repository organizes each
-major faction into Bots, Vehicles, Aircraft, Ships, Hovercraft, Seaplanes,
-Buildings, and advanced/Gantry content. That structure is a useful coverage
-check, not a target unit count.
-
-The current project already contains barAnalogueCapabilities.json and BAR
-command-surface contract tests. Those are strong evidence that command parity
-is being taken seriously. They also reveal intentional empty analogue slots:
-several commands and production roles are not exposed because no current
-blueprint is a truthful host.
-
-
-BAR lesson 1: factories define movement-domain identity
--------------------------------------------------------
-
-BAR's starting guidance centers the opening around metal, energy, a factory,
-and intelligence. Its factory families separate bots, vehicles, aircraft,
-ships, hovercraft, amphibious units, and seaplanes. The strategic purpose is not
-merely menu organization:
-
-* bots navigate difficult terrain and provide flexible utility;
-* vehicles concentrate speed/firepower on suitable ground;
-* aircraft provide reach and surprise but need air control;
-* ships dominate water at high investment;
-* hovercraft and amphibious units cross boundaries;
-* seaplanes expand air roles over water.
-
-Budget Annihilation already has physically distinct movement profiles and
-medium-aware pathing. A cheap universal-only production system flattens these
-identities, but the Universal Fabricator itself is worth preserving as a
-premium flexibility choice. Adding four specialist rosters beside a roughly
-3x-cost universal at both T1 and T2 captures BAR's readable production-domain
-lesson without requiring every unit to belong to exactly one domain.
-
-Unlike a rigid class tree, the proposed specialist rosters overlap wherever a
-unit genuinely spans domains: Hippo is Vehicle + Naval, Duck is Aircraft +
-Naval, hovercraft are Vehicle + Naval, and torpedo gunships are Aircraft +
-Naval. The universal at a tier is the validated union of those four overlapping
-sets, so overlap never duplicates or excludes the unit from the universal
-menu.
-
-Official references:
-
-* https://www.beyondallreason.info/guide/how-to-start-manage-your-economy
-* https://www.beyondallreason.info/unit-type/factory
-
-
-BAR lesson 2: naval warfare is a complete ecosystem
----------------------------------------------------
-
-BAR's sea roster includes surface scouts/patrol craft, AA ships, sonar ships,
-construction ships, submarines, resurrection submarines, jammer ships,
-destroyers, missile ships, carriers, battleships, hovercraft, amphibious units,
-seaplanes, torpedo bombers, and torpedo gunships. Not every one belongs in this
-prototype, but several ecosystem links are important:
-
-* surface combat exists between land and submarine domains;
-* sonar contact has mobile sources and mobile jamming;
-* fleets have AA and anti-sub protection;
-* naval construction and resurrection keep the wreck/economy loop alive;
-* water bases have their own energy and utility infrastructure.
-
-The current project has excellent underlying medium rules but only fragments of
-this ecosystem. The minimal local answer is Patrol Corvette + Petrel torpedo
-gunship + resurrection sub + Tidal Generator, not a dozen ship classes.
-
-Official references:
-
-* https://www.beyondallreason.info/guide/basics-on-sea-warfare
-* https://www.beyondallreason.info/units/armada-ships
-* https://www.beyondallreason.info/unit/armrecl
-
-
-BAR lesson 3: intelligence is a layered counter game
-----------------------------------------------------
-
-BAR separates radar/sonar contacts, stealth, cloak, jamming, detection/ICS,
-perimeter cameras, and special anti-intelligence tools such as Juno. Radar
-contacts are deliberately less precise than sight, and mobile reconnaissance
-keeps long-range weapons from being self-sufficient.
-
-Budget Annihilation already implements the conceptual core more cleanly than
-many prototypes: sight/contact tiers, distinct source and target media, stealth
-signatures, jamming, detection, team sharing, scan pulses, and contact-enabled
-fire. The missing piece is content density and reliable presentation. A mobile
-radar scout, cloak scout, detector, and mobile jammer would unlock most of the
-existing system before Juno/cameras/mines are attempted.
-
-Official references:
-
-* https://www.beyondallreason.info/guide/important-knowledge-on-advanced-mechanics
-* https://www.beyondallreason.info/guide/radar
-* https://www.beyondallreason.info/unit/armsjam
-
-
-BAR lesson 4: air is roles plus flight behavior, not one category
-----------------------------------------------------------------
-
-BAR distinguishes scouts/radar aircraft, fighters, bombers, torpedo bombers,
-gunships, torpedo gunships, transports, constructors, seaplanes, stealth
-fighters, EMP bombers, and multiple AA forms. It also differentiates planes
-from hovering gunships and exposes landing/idle behavior.
-
-Budget Annihilation already has the difficult physical distinction between
-always-forward planes and stopping drones, plus an air/water aerosub. What it
-lacks are the connective roles: AWACS/radar, affordable mobile AA, and an
-airborne anti-sub unit. Those three additions exploit more current code than
-another general attack aircraft.
-
-Official references:
-
-* https://www.beyondallreason.info/guide/basics-of-air-warfare
-* https://www.beyondallreason.info/unit-type/aircraft
-
-
-BAR lesson 5: support units make lifecycle systems part of the game
-------------------------------------------------------------------
-
-BAR gives repair/reclaim/resurrection to recognizable constructors and
-resurrection specialists, including a resurrection submarine. Minelayers,
-spies, and support vehicles have narrow jobs. The result is that wrecks,
-salvage, and information warfare are routine play rather than Commander-only
-novelties.
-
-Budget Annihilation already has repair, reclaim, resurrection, capture, area
-work, work visuals, and wrecks. Ground and naval resurrection specialists are
-therefore high-return content additions.
-
-Official references:
-
-* https://www.beyondallreason.info/guide/reclaim-resurrect-repair
-* https://www.beyondallreason.info/unit/armrecl
-
-
-BAR lesson 6: defenses cover threats and information, not only damage scales
-----------------------------------------------------------------------------
-
-BAR defense families include beams, plasma, artillery, missiles, flak, coastal
-torpedoes, floating AA, mines, pop-up/fortified defenses, shields, long-range
-weapons, and strategic interception. Budget Annihilation covers beam, cannon,
-long-range artillery, AA missile, torpedo, and fortified utility buildings, but
-lacks dedicated point defense, an unused shield shape host, floating/naval AA,
-mines, and strategic interception.
-
-The first two are current-system wins: Interceptor Tower and Shield Picket.
-Mines and strategic interception are later new systems.
-
-Official reference:
-
-* https://www.beyondallreason.info/unit-type/defense
-
-
-BAR lesson 7: weapon/status taxonomy creates counters
------------------------------------------------------
-
-BAR visibly differentiates plasma, guided and unguided rockets, lasers, AA,
-flak, fire, lightning, bombs, EMP, and torpedoes. Budget Annihilation already
-has strong physical variety in projectiles, beams, guidance, reflection, and
-media, but no gameplay status system for EMP/paralyze, burning/napalm, or chain
-lightning.
-
-Use current systems first: dumb rocket, pulsed laser, cluster mortar, scatter or
-burst, and point defense. Add status families only as true new simulation
-features, not as differently colored ordinary damage.
-
-Official reference:
-
-* https://www.beyondallreason.info/guide/strategic-icons
-
-
-IMPORTANT BAR-STYLE GAPS THAT REQUIRE NEW SYSTEMS
-=================================================
-
-These are important in BAR or in a mature large-scale RTS, but they are not
-honest “add a blueprint” recommendations for the current project.
-
-1. EMP/paralyze/stun
---------------------
-
-No general timed disable/paralysis state was found. Implementing an EMP bomber
-or lightning tank as ordinary damage would miss the role. A new deterministic
-status lifecycle, resistance rules, serialization, UI feedback, AI valuation,
-and repair/recovery rules are needed.
-
-Priority: medium-high after the current visibility and medium roles are filled.
-
-
-2. Fire/napalm/damage over time
--------------------------------
-
-The project has impact marks and lava surface damage, but not a general weapon-
-applied burn status or persistent burning area. This needs owned duration,
-stacking, attribution, visibility, area persistence, and deterministic tick
-processing.
-
-Priority: medium. It is visually valuable, but less important than finishing
-the existing air/water/intelligence matrix.
-
-
-3. Chain lightning
-------------------
-
-No chaining target-selection/damage mechanic was found. This would need a
-deterministic ordered chain, repeat-target policy, range falloff, visuals, and
-shield interaction rules.
-
-Priority: low-medium.
-
-
-4. Mines, minelayers, walls, and perimeter cameras
---------------------------------------------------
-
-There are no dedicated mine entities/trigger rules, wall-placement system, or
-low-cost persistent perimeter contact cameras. BAR uses these to make terrain
-and information denial legible.
-
-Priority: medium after mobile visibility specialists. Walls in a fully physical
-pathing game require particularly careful congestion, placement, collision, and
-replanning behavior.
-
-
-5. True strategic stockpile weapons and anti-nuke
--------------------------------------------------
-
-Manual-launch command plumbing exists, but BAR-style stockpiled missiles,
-strategic launchers, anti-nuke coverage, interceptor ammunition, and strategic
-warning/UI do not. This needs an ammo/stockpile economy, explicit manual-fire
-authority, counter-interception, team information, and game-ending balance.
-
-Priority: later. Do not let an exciting nuke distract from the incomplete basic
-counter matrix.
-
-
-6. Richer radar uncertainty and terrain occlusion
--------------------------------------------------
-
-The design philosophy requires coarse contact information and explicitly
-separates it from full entities. BAR additionally teaches terrain-shadowed
-radar and targeting-facility accuracy behavior. The current project should
-first fix contact/full-entity correctness and fade/coasting. Terrain occlusion,
-contact uncertainty, identification memory, and targeting-facility stacking
-would then be separate NEW SYSTEM decisions consistent with the project's own
-contact model.
-
-Priority: correctness first, richer uncertainty second.
-
-
-7. Full cloak economy and decloak rules
----------------------------------------
-
-Current cloak is a useful simple toggle, but BAR-style cloak includes resource
-costs and contextual decloak rules. Implement those only after a dedicated
-cloak host proves the base information interaction is worthwhile.
-
-Priority: medium.
-
-
-8. Damage/armor classes and richer target modifiers
----------------------------------------------------
-
-The current target masks separate entity/media families well, but no broad BAR-
-style armor/damage-class ecosystem was found. Adding one affects every weapon,
-unit, tooltip, AI choice, and balance table.
-
-Priority: low until the roster has clear physical/medium counters. Do not use
-damage classes to compensate for unclear roles that better target masks and
-movement restrictions can express.
-
-
-9. Larger technology/economy escalation
-----------------------------------------
-
-BAR has multiple factory tiers, advanced power, geothermal/fusion-scale
-economy, advanced radar/sonar, strategic weapons, and expensive capstones.
-Budget Annihilation has T1/T2 extraction plus technology gates and giant units,
-but not a complete tiered economy.
-
-Priority: later. First make every current mechanic visible at one coherent
-power scale; then add escalation based on match pacing rather than checklist
-parity.
-
-
-10. Decoys and specialist deception
-------------------------------------
-
-No decoy identity/contact spoofing system was found. It would need strict
-recipient-specific information rules so deterministic truth remains clean while
-enemy presentation receives the intended false identity.
-
-Priority: low, but potentially distinctive once radar contacts are correct.
-
-
-PROPOSED FUNCTIONALITY SHOWCASE
-===============================
-
-Why the current demo is insufficient
-------------------------------------
-
-The current demo makes a heroic effort to include everything: enabled units are
-seeded, Fabricators are created for unit production, initial bases include
-economy/intel/defense rows, and supplemental rows catch non-bespoke buildings.
-This is useful as a soak test and spectacle.
-
-It is not a capability demonstration because:
-
-* all-unit presence does not force specialist interactions;
-* 26 factory lines make the scene visually repetitive;
-* many units die before their unique behavior is legible;
-* transport, capture, resurrection, trajectory changes, active-state
-  fortification, scan, jamming, detection, and shield-aware targeting require
-  deliberate orders;
-* three key technology buildings begin OFF;
-* giant units can visually drown out smaller mechanics;
-* radar presentation is currently called out as incorrect in issues.txt.
-
-Keep the background battle as a stress/spectacle mode. Add a separate
-“Capability Exhibition” preset or deterministic attract-mode sequence.
-
-
-Exhibition design rules
------------------------
-
-* One mechanic question per zone.
-* Use controlled starting ranges and scripted orders, not probabilistic AI
-  behavior.
-* Pause or slow between phases and display a short label naming what changed.
-* Repeat each critical interaction on a loop after resetting only that zone.
-* Keep unrelated long-range weapons from leaking into neighboring zones.
-* Use terrain, water, and fog boundaries as part of the explanation.
-* Show both the tool and its counter.
-* Show state in the HUD: current visibility tier, source/target medium, shield
-  tech status, building active state, transport cargo, and work type.
-* Make a success condition observable. “Unit existed” is not success;
-  “contact degraded to a blip under radar and disappeared under jamming” is.
-
-
-Zone 1: locomotion and physics proving ground
----------------------------------------------
-
-Setup:
-
-* One ordinary tank, one bot/crawler, one hover/drone, one forward-flight
-  plane, one amphibian, one Skimmer hovercraft, one submarine, and Duck.
-* Sloped terrain, a narrow path, a cliff, shoreline shallows, deep water, and a
-  strong wind/blast impulse source.
-
-Sequence:
-
-1. Issue the same polyline route to the ground units and compare physical
-   acceleration, turning, slope routing, suspension, and arrival.
-2. Displace stopped units and show durable waypoint anchors pulling them back.
-3. Send plane and drone to the same final point: drone stops; plane overshoots,
-   turns, and continues its forward-flight pursuit/loiter behavior.
-4. Cross the shoreline with Hippo/Sea Turtle/Skimmer and display live medium
-   occupancy.
-5. Send Duck from air into water and back.
-6. Knock a land unit into water and show emergency recovery propulsion plus
-   water damage rather than presenting water as an invisible wall.
-
-Functionality proven: force-derived motion, mass, arrival, forward flight,
-hover, amphibious movement, aerosub transition, emergency recovery, pathing,
-and medium occupancy.
-
-
-Zone 2: intelligence and fog laboratory
----------------------------------------
-
-Setup:
-
-* Radar, Sonar, Surveyor/AWACS, Radar Jammer, Sonar Jammer, mobile jammer,
-  Mongoose, Orca, Ghost, Watchman, and an enemy target route crossing sight,
-  contact, jammed, and hidden regions.
-
-Sequence:
-
-1. Target moves from no information to radar contact to full sight.
-2. Mongoose fires through contact information and becomes exact under sight.
-3. Radar jammer removes contact; scout sight restores exact observation.
-4. Ghost crosses ordinary sight cloaked; Watchman detection reveals it.
-5. Orca repeats the contact/stealth/jam cycle underwater.
-6. Scan pulse temporarily identifies targets beyond standing sight.
-
-Functionality proven: recipient fog filtering, full versus contact knowledge,
-radar/sonar medium lanes, contact fire, stealth, jamming, cloak, detection, scan,
-team-shared intelligence, and transition presentation.
-
-Blocker: fix the full-entity-through-radar and blip fade/coasting issues before
-using this as a public showcase.
-
-
-Zone 3: weapon physics and projectile defense
----------------------------------------------
-
-Setup:
-
-* Plasma gun, mortar, controlled rocket, dumb rocket, fast missile, torpedo,
-  continuous beam, pulsed laser, cluster mortar, Interceptor Tower, and targets
-  of contrasting mass.
-
-Sequence:
-
-1. Fire controlled and dumb rockets at a laterally moving target to show
-   guidance versus straight flight.
-2. Let Interceptor Tower destroy some targetable rockets in flight; display
-   rocket health.
-3. Toggle Mongoose trajectory over and under an obstacle.
-4. Fire cluster mortar and show submunition release.
-5. Compare beam and pulsed laser duration/impact.
-6. Hit light and heavy bodies with the same impulse/explosion to show mass.
-7. Fire torpedo at a straddling surface hull and show the legal underwater hit
-   point/route.
-
-Functionality proven: projectile locomotion, guidance, ballistics, trajectory,
-projectile targeting/health, cluster shots, rays, line-of-fire, explosion
-forces, mass, and medium attack matrices.
-
-
-Zone 4: shield and reflection range
------------------------------------
-
-Setup:
-
-* Daddy, Widow, Loris, Shield Picket, Shield Generator, Shield Detection Lab,
-  Precision Targeting Lab, and compatible plasma/rocket/beam/laser attackers.
-
-Sequence:
-
-1. Begin with shield technology OFF; enable it and show emitters activating.
-2. Send controlled threats toward Loris from a known angle so its reciprocal
-   threat lock and aimed panel visibly respond.
-3. Reflect at least one travelling projectile and one ray family.
-4. Attack a formation behind the cylindrical shield.
-5. Compare target choice with Shield Detection Lab OFF and ON.
-6. Compare distant dispersion with Precision Targeting Lab OFF and ON.
-
-Functionality proven: team technology gates, multiple shield shapes, aimed
-shield logic, reflection, shield-aware targeting, precision targeting, and
-building ON/OFF state.
-
-
-Zone 5: construction, salvage, capture, and logistics
-----------------------------------------------------
-
-Setup:
-
-* Commander, Mule constructor, Construction Drone, Construction Submarine,
-  Lazarus bot, resurrection submarine, Transport Drone, damaged allies, enemy
-  capturable unit/building, wrecks on land and seabed, and reclaimable props.
-
-Sequence:
-
-1. Ground constructor builds a structure; air constructor assists from over an
-   obstacle; construction sub builds offshore.
-2. Fight/patrol route discovers a damaged ally and repairs it.
-3. Reclaim one wreck and prop, showing energy/metal/resource movement.
-4. Resurrect one land wreck and one underwater wreck.
-5. Commander captures an enemy and the ownership/color/command authority
-   changes.
-6. Transport loads a passenger, crosses otherwise impassable terrain, unloads,
-   and the passenger resumes its route.
-
-Functionality proven: building placement, nanoframes, assist, work discovery,
-repair, reclaim, resurrection, capture, ownership, wrecks, transport, and
-cross-medium construction.
-
-
-Zone 6: tiered factory and command laboratory
-----------------------------------------------
-
-Setup:
-
-* T1 Universal, Bot, Vehicle, Aircraft, and Naval Fabricators.
-* Advanced Universal, Advanced Bot, Advanced Vehicle, Advanced Aircraft, and
-  Advanced Naval Fabricators.
-* Hippo and Duck as visible overlap examples, one Queen/carrier, and rally
-  routes appropriate to each output medium.
-
-Sequence:
-
-1. Show that T1 Universal contains exactly the union of the four T1 specialist
-   menus, then repeat for the five advanced factories at T2.
-2. Select Hippo in both Vehicle and Naval; select Duck in both Aircraft and
-   Naval. Show that each appears only once in the same-tier Universal menu.
-3. Compare construction prices: the Universal at each tier is roughly 3x one
-   same-tier specialist while retaining ordinary factory throughput.
-4. Queue several unit types and edit the queue.
-5. Enable repeat and show the queue cycle.
-6. Set a target quota and show quota production preempting/resuming the finite
-   queue.
-7. Set rally/fight route; produced units inherit high-level waypoints but plan
-   with their own locomotion profiles.
-8. Demonstrate factory move/fire/air-idle/build-priority controls.
-9. Toggle carrier subordinate spawning on the mobile factory.
-
-Functionality proven: tech tiers, specialist and union rosters, deliberate
-cross-domain overlap, universal flexibility pricing, production shells, queue
-semantics, repeat, quotas, rally inheritance, per-output locomotion, guard, and
-mobile factory state.
-
-
-Zone 7: economy and fortified utility buildings
+Priority A: expose systems that mostly exist now
 ------------------------------------------------
 
-Setup:
+1. Mobile radar scout/AWACS
 
-* Solar, Wind, Tidal Generator, T1/T2 extractors, storage, Converter, Radar, and
-  one technology building with controlled attackers.
+Add a dedicated, lightly armed or unarmed mobile radar unit. Do not assume the
+Bee must be repurposed. This makes contact-only information, mobile spotting,
+radar stealth, jamming, AA escort, and contact-fire artillery routine gameplay.
 
-Sequence:
+2. Ground constructor
 
-1. Show energy/metal income and both storage ceilings.
-2. Upgrade a deposit from T1 to T2.
-3. Create energy surplus/metal shortage and show taxed conversion; reverse the
-   imbalance.
-4. Damage an ON Radar/Converter through its grace period until it closes,
-   fortifies, stops operating, and later reopens.
-5. Switch it manually OFF and prove it remains fortified after the quiet timer.
-6. Establish an isolated water base with extractor + Tidal + storage + sonar +
-   Naval Fabricator to prove naval economic closure.
+Add a cheap ground builder with a limited T1 build menu. The Commander should
+not be the only ground host for build, repair, reclaim, guard, and assist.
 
-Functionality proven: dual-resource economy, deposits/upgrades, storage,
-conversion, pylon visuals, active-state production, damage fortification, and
-water-native expansion.
+3. Resurrection bot and resurrection submarine
 
+Let's remove resurrection capabilities now - it's too complex. Currently units just explode and that's the end of it. 
 
-Zone 8: final combined-arms vignette
-------------------------------------
+4. Cloaked scout, detector, and mobile jammer
 
-After the laboratories teach individual rules, run a small 60-90 second battle
-with only roles the player has seen:
+Add three narrow roles rather than another all-purpose super-unit:
 
-* Surveyor supplies contact to Mongoose.
-* Mobile jammer denies it until a direct-sight scout advances.
-* Fighter attacks Surveyor and Shrike protects it.
-* Orca threatens a surface expansion and Petrel hunts it.
-* Rocketeer attacks a shielded position while Interceptor Tower removes some
-  rockets and Loris reflects one.
-* Constructor repairs; Lazarus resurrects a wreck; Transport makes one flank.
+* fragile cloak/radar-stealth scout;
+* detector with modest ordinary sight but no radar;
+* mobile radar jammer with weak combat capability.
 
-This is the “everything works together” payoff. It should follow the isolated
-proofs, not replace them.
+Together with Mongoose radar stealth, Orca sonar stealth, Duck's sonar jammer,
+Radar, Sonar, and the static jammers, these form a complete information-counter
+loop.
 
+5. Mobile ground AA
 
-IMPLEMENTATION ORDER
-====================
+Add an affordable air-only missile rover. Current mobile AA is effectively an
+Eagle fighter or one subsystem on Rex; neither provides ordinary ground-army
+air defense.
 
-Phase 0: presentation correctness
----------------------------------
+6. Dedicated point defense
 
-* Fix contact-only radar/sonar recipients receiving full entities.
-* Add correct blip fade/coasting behavior from last known velocity.
-* Verify contact, cloak, stealth, jammer, detector, and scan transitions with
-  recipient-specific tests.
+Add an Interceptor Tower that attacks targetable rockets and mortar shells.
+Show projectile health and interception deliberately rather than leaving the
+behavior incidental on general AA/beam turrets.
 
-Reason: intelligence specialists will magnify any information leak.
+7. Dumb-rocket unit
 
+Add the requested straight, never-turning rocket beside the current controlled
+rocket. The contrast demonstrates aim, target motion, guidance, collision, and
+point defense with existing projectile machinery.
 
-Phase 1: expose existing systems with minimal content
------------------------------------------------------
+8. Cluster artillery or bomber
 
-* Surveyor/AWACS.
-* Mule ground constructor.
-* Lazarus resurrection bot.
-* Shrike mobile AA.
-* Ghost and Watchman.
-* Tidal Generator.
-* Interceptor Tower.
-* Dumb-rocket unit.
-* Five T1 and five T2 Universal/specialist Fabricators with validated union and
-  overlap rules.
+Enable the existing submunition path on one readable weapon. The heavy mortar
+and submunition configuration are otherwise unused. Do not add another beam or
+ordinary plasma unit first.
 
-Reason: these additions close the largest gaps with minimal simulation work.
+9. Tidal/Floating Generator
+
+Add a water-placeable energy producer so a naval expansion can close its own
+economy loop with seabed extraction, energy, Sonar, defense, and production.
 
 
-Phase 2: complete water and dormant weapon/shield coverage
----------------------------------------------------------
+Priority B: complete movement-medium coverage
+---------------------------------------------
 
-* Petrel torpedo gunship.
-* Skimmer hovercraft.
-* Patrol Corvette.
-* Resurrection submarine.
-* Mobile jammer/naval jammer.
-* Pulse laser.
-* Cluster weapon.
-* Shield Picket.
+10. Water Strider
 
-Reason: this completes the medium matrix and mounts most dormant emission
-branches.
+Implement the amphibious-crawler described above. It should be a visible
+force/medium showcase and appear in both Vehicle and Naval rosters.
 
+11. Patrol Corvette
 
-Phase 3: build the authored exhibition
----------------------------------------
+Add a true surface vessel with an above-water gun and sonar. A submerged mount
+or separate anti-sub weapon is optional; sensing does not require attacking.
+This provides the missing partially submerged surface hull.
 
-* Add zones 1-7 as deterministic resettable laboratories.
-* Add HUD labels and a short automatic sequence for each.
-* Add the combined-arms finale.
-* Keep the existing all-roster background battle as a separate soak/spectacle
-  preset.
+12. Petrel torpedo gunship/aerosub
 
+Add an anti-sub aircraft. The current Torpedo is underwater-launch only, so it
+needs a small new air-launch/enter-water locomotion profile built from the
+existing medium-transition and guidance machinery.
 
-Phase 4: choose new systems from observed game needs
-----------------------------------------------------
+13. Naval AA or jammer vessel
 
-Only after the current capabilities are understandable should the project pick
-among EMP, fire, chain lightning, mines/walls/cameras, strategic stockpiles,
-anti-nuke, deeper radar uncertainty, richer cloak rules, and a tiered economy.
-Measured player comprehension and tactical gaps should decide the order.
+Add only if the Corvette cannot carry one of these roles without becoming
+unclear. Prefer a specialist over another multi-weapon capstone.
 
 
-ACCEPTANCE CHECKLIST
-====================
+WHAT IS OVER-REPRESENTED 
+========================
 
-Movement/media:
+* Ground direct-fire bodies, especially crawler/beam variants.
+* Giant units that combine weapons, detection, shields, and/or production. Rex,
+  the Queens, and Widow are impressive but poor teachers of individual systems.
+* Continuous beams and ordinary above-water plasma relative to dumb rockets,
+  clusters, point defense, and underwater counters.
+* Static intelligence relative to mobile radar, detectors, and jammers.
+* Demo factories: one Universal Fabricator per unit line can produce 26 factory
+  buildings per player. The problem is this duplication, not Universal itself.
 
-[ ] A stopping flyer and an always-forward plane visibly behave differently.
-[ ] At least one unit transitions land/water and one transitions air/water.
-[ ] A true surface hull participates in both above-water and underwater
-    target-medium tests while straddling the surface.
-[ ] A hovercraft demonstrates momentum, braking, and shoreline movement.
+Before increasing total roster size substantially, rework curent roster into t1 and t2 splits, and rework costs and firepower etc. 
 
-Information:
-
-[ ] Contact-only information never exposes a full enemy entity.
-[ ] Radar and sonar blips fade/coast correctly when contact is lost.
-[ ] Radar stealth, sonar stealth, radar jamming, sonar jamming, cloak, and
-    detection each have a named host and visible counterexample.
-[ ] Contact-enabled artillery fires with team contact and stops when contact is
-    denied.
-[ ] Scan pulse visibly grants temporary full information.
-
-Weapons/shields:
-
-[ ] Ground AA, fighter AA, and naval/air anti-sub each have a readable role.
-[ ] Controlled and dumb rockets visibly diverge.
-[ ] Projectile health and interception are shown deliberately.
-[ ] Continuous beam and pulsed laser are both mounted.
-[ ] A real multi-pellet/burst or cluster/submunition weapon is mounted.
-[ ] Sphere, aimed panel, and cylinder shield shapes are all used.
-[ ] Shield-aware and precision technologies have controlled A/B proofs.
-
-Economy/construction:
-
-[ ] Ground, air, and water constructors each have a meaningful domain.
-[ ] Repair, reclaim, land resurrection, underwater resurrection, and capture
-    are shown intentionally.
-[ ] A pure water expansion can produce energy and metal and construct units.
-[ ] Converter direction/tax and both storage types are visible.
-[ ] Automatic and manual building fortification are demonstrated.
-
-Production/control:
-
-[ ] Bot, Vehicle, Aircraft, and Naval Fabricators have distinct but intentionally
-    overlapping rosters at both T1 and T2.
-[ ] T1 Universal equals exactly the union of the four T1 specialist rosters;
-    Advanced Universal equals exactly the union of the four T2 specialist
-    rosters.
-[ ] Each Universal costs roughly 3x a same-tier specialist without also
-    receiving roughly 3x throughput, health, or footprint efficiency.
-[ ] Hippo is available from Vehicle and Naval at its tier, and Duck is available
-    from Aircraft and Naval at its tier.
-[ ] Repeat, quotas, queue edits, rally routes, and factory guard are shown.
-[ ] Mobile factory/carrier spawning is shown and controllable.
-[ ] Transport load/unload happens in the authored demo.
-[ ] Trajectory mode, cloak, scan, active state, and priority target each have a
-    discoverable entity and encounter.
-
-Roster discipline:
-
-[ ] No new direct-fire unit is approved without naming the currently uncovered
-    engine branch or counter-role it demonstrates.
-[ ] Specialists do not acquire extra weapons merely to look expensive.
-[ ] At least two current redundant ground units are repurposed before the roster
-    grows substantially.
-[ ] The public showcase uses the compact ten-Fabricator tier/domain matrix, not
-    26 one-unit Universal Fabricator lines.
+- Let's have "loris" and "daddy" be t1, "widow" be t2
 
 
-FINAL RECOMMENDATION
-====================
+BAR COMPARISON: IMPORTANT LESSONS
+=================================
 
-Budget Annihilation should optimize for capability coverage per entity, but not
-for capability count per entity.
+BAR is useful as a coverage check, not as a target unit count.
 
-That distinction matters. Rex is capability-dense, yet it is a poor teacher
-because AA, detection, direct fire, rockets, and beams all happen at once. A
-Surveyor with radar and no gun is a far better demonstration of radar. A
-Watchman with detection and no radar is a far better demonstration of detection.
-A Shrike with only air attack is a far better demonstration of medium targeting.
-A Lazarus with resurrection but no full build menu is a far better
-demonstration of wreck recovery.
+* Production domains: bots, vehicles, aircraft, ships, hovercraft,
+  amphibious units, and seaplanes create readable strategic identities. The
+  proposed specialist-plus-premium-Universal matrix captures this while
+  permitting overlap.
+* Naval ecosystem: surface combat, mobile sonar/jamming, AA, anti-sub,
+  construction, resurrection, and water economy matter more than many tiers of
+  battleships.
+* Air ecosystem: radar scouts, fighters, bombers/gunships, torpedo aircraft,
+  transports, constructors, and mobile/static AA create counters. The project
+  already has distinct plane and drone movement; it needs connective roles.
+* Intelligence: sight, contacts, stealth, cloak, jamming, and detection should
+  have separate hosts and counters.
+* Battlefield lifecycle: dedicated repair/reclaim/resurrection units make
+  wrecks and salvage ordinary strategy rather than Commander-only novelty.
 
-The desired roster is therefore not the largest possible roster and not a set
-of all-purpose super-units. It is a compact orthogonal vocabulary:
+Useful later BAR-style systems that require genuinely new engine work:
 
-* one clear host for every important movement domain;
-* one clear host and counter for every information tier;
-* one clear host for every implemented weapon/shield branch;
-* one clear worker for every lifecycle interaction;
-* one specialist factory identity per production domain at T1 and T2, plus a
-  premium same-tier Universal Fabricator whose roster is their union;
-* one deterministic scene that proves each relationship.
+* EMP/paralyze and other timed status effects;
+* fire/napalm and persistent damage areas;
+* mines, walls, and perimeter cameras;
+* strategic stockpiles, manual missiles, nukes, and anti-nuke interception;
+* richer radar uncertainty/terrain occlusion;
+* energy-consuming cloak and automatic decloak rules;
+* deeper tech/economy escalation.
 
-If the Tier A list and the seven laboratory zones are completed, the game will
-show substantially more of its sophistication with fewer simultaneous entities
-than the current all-roster demo. BAR can continue to guide ordinary RTS
-expectations, while Budget Annihilation's own physics, explicit media, lockstep
-authority, shield behavior, and information model remain the distinctive
-center of the showcase.
+Do not begin those by disguising ordinary damage or cooldown weapons. First
+finish the counters supported by current systems.
 
 
-PRIMARY LOCAL EVIDENCE INSPECTED
-================================
+PRIMARY SOURCES
+===============
+
+Local:
 
 * budget_design_philosophy.html
 * src/game/sim/blueprints/units.json
@@ -1774,50 +310,17 @@ PRIMARY LOCAL EVIDENCE INSPECTED
 * src/game/sim/blueprints/shots.json
 * src/game/sim/blueprints/rays.json
 * src/game/sim/blueprints/shields.json
-* src/game/sim/blueprints/turrets.json
 * src/game/sim/unitLocomotionConfig.json
-* src/game/sim/blueprints/barAnalogueCapabilities.json
-* src/game/sim/blueprints/barCommandParityContractTest.ts
-* src/game/sim/blueprints/rosterCommandSurfaceContractTest.ts
 * src/game/sim/unitCommandCapabilities.ts
 * src/game/sim/sensorCoverage.ts
-* src/game/sim/commandExecution.ts
-* src/game/sim/hostCapabilities.ts
-* src/game/sim/spawn.ts
-* src/game/sim/buildingActiveState.ts
 * src/demoConfig.json
-* issues.txt
-* ../Beyond-All-Reason/units and the official BAR references listed above
+* ../Beyond-All-Reason/units
 
+Official BAR references:
 
-OFFICIAL BAR SOURCES
-====================
-
-* Main repository:
-  https://github.com/beyond-all-reason/Beyond-All-Reason
-* Starting economy and production choices:
-  https://www.beyondallreason.info/guide/how-to-start-manage-your-economy
-* Factory family comparison:
-  https://www.beyondallreason.info/unit-type/factory
-* Air warfare:
-  https://www.beyondallreason.info/guide/basics-of-air-warfare
-* Aircraft roles:
-  https://www.beyondallreason.info/unit-type/aircraft
-* Sea warfare:
-  https://www.beyondallreason.info/guide/basics-on-sea-warfare
-* Armada ships:
-  https://www.beyondallreason.info/units/armada-ships
-* Radar behavior:
-  https://www.beyondallreason.info/guide/radar
-* Advanced radar/sonar, jamming, cloak, detection, Juno, cameras, and mines:
-  https://www.beyondallreason.info/guide/important-knowledge-on-advanced-mechanics
-* Reclaim, repair, and resurrection:
-  https://www.beyondallreason.info/guide/reclaim-resurrect-repair
-* Resurrection submarine example:
-  https://www.beyondallreason.info/unit/armrecl
-* Defense family comparison:
-  https://www.beyondallreason.info/unit-type/defense
-* Strategic icon/weapon taxonomy:
-  https://www.beyondallreason.info/guide/strategic-icons
-* Mobile naval jammer example:
-  https://www.beyondallreason.info/unit/armsjam
+* https://www.beyondallreason.info/unit-type/factory
+* https://www.beyondallreason.info/guide/basics-of-air-warfare
+* https://www.beyondallreason.info/guide/basics-on-sea-warfare
+* https://www.beyondallreason.info/guide/radar
+* https://www.beyondallreason.info/guide/important-knowledge-on-advanced-mechanics
+* https://www.beyondallreason.info/guide/reclaim-resurrect-repair
