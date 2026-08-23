@@ -227,7 +227,7 @@ export function buildHeavyBeamTowerMesh(primaryMat: THREE.Material): BuildingSha
  *  dark braces and a larger top socket for the cannon turret. */
 export function buildCannonTowerMesh(
   primaryMat: THREE.Material,
-  variant: 'cannon' | 'torpedo' = 'cannon',
+  variant: 'cannon' | 'torpedo' | 'helios' = 'cannon',
 ): BuildingShape {
   return buildDefenseTowerMesh(
     primaryMat,
@@ -252,7 +252,7 @@ function buildDefenseTowerMesh(
   primaryMat: THREE.Material,
   bodyGeom: THREE.BufferGeometry,
   profile: DefenseTowerMeshProfile,
-  variant: 'beam' | 'beamHeavy' | 'cannon' | 'antiAir' | 'torpedo',
+  variant: 'beam' | 'beamHeavy' | 'cannon' | 'antiAir' | 'torpedo' | 'helios',
 ): BuildingShape {
   const primary = new THREE.Mesh(bodyGeom, primaryMat);
 
@@ -410,7 +410,7 @@ function addDefenseTowerTeamOrnament(
   details: BuildingShape['details'],
   primaryMat: THREE.Material,
   profile: DefenseTowerMeshProfile,
-  variant: 'beam' | 'beamHeavy' | 'cannon' | 'antiAir' | 'torpedo',
+  variant: 'beam' | 'beamHeavy' | 'cannon' | 'antiAir' | 'torpedo' | 'helios',
 ): void {
   const foot = profile.foot;
   if (variant === 'beam') {
@@ -456,6 +456,36 @@ function addDefenseTowerTeamOrnament(
         hostPieceId: HEAVY_BEAM_HEAD_PIECE_ID,
       });
     }
+    return;
+  }
+
+  if (variant === 'helios') {
+    // The Helios siege gun wears a taller two-tier collar: the long slow
+    // barrel needs a visibly heavier cradle than the standard cannon yoke,
+    // and the distinct ornament kind keeps the per-building team-colour
+    // vocabulary unique.
+    details.push(teamOrnamentDetail(
+      makeCylinder(
+        primaryMat,
+        foot * 0.47,
+        3.4,
+        0,
+        profile.height - 3.0,
+        0,
+      ),
+      'heliosYoke',
+    ));
+    details.push(teamOrnamentDetail(
+      makeCylinder(
+        primaryMat,
+        foot * 0.40,
+        3.0,
+        0,
+        profile.height - 7.2,
+        0,
+      ),
+      'heliosYoke',
+    ));
     return;
   }
 

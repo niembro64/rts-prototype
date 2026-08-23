@@ -345,6 +345,7 @@ export function barLegacyBuildKeyForStructureBlueprintId(
     case 'buildingRadarJammer':
     case 'buildingSonarJammer':
     case 'towerCannon':
+    case 'towerHelios':
     case 'towerBeamLight':
     case 'towerBeamMega':
     case 'towerAntiAir':
@@ -438,6 +439,8 @@ function barClassicBuildSortIndex(id: BuildingBlueprintId): number {
       return 103130;
     case 'towerCannon':
       return 106100;
+    case 'towerHelios':
+      return 106150;
     case 'towerBeamLight':
       return 106200;
     case 'towerBeamMega':
@@ -513,6 +516,7 @@ const BAR_HOME_BUILD_ORDER = [
     'towerBeamLight',
     'towerBeamMega',
     'towerAntiAir',
+    'towerHelios',
   ],
   [
     'buildingRadar',
@@ -621,6 +625,8 @@ function preferredStructureBuildGridSlotIndex(id: BuildingBlueprintId): number {
       return 0;
     case 'towerBeamMega':
       return 1;
+    case 'towerHelios':
+      return 5;
     case 'towerTorpedo':
       return 2;
     case 'towerAntiAir':

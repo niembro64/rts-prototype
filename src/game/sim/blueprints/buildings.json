@@ -1073,6 +1073,93 @@
       }
     }
   },
+  "towerHelios": {
+    "buildingBlueprintId": "towerHelios",
+    "tinyName": "HEL",
+    "shortName": "HELIOS",
+    "name": "Helios Long-Range Cannon",
+    "gridWidth": 5,
+    "gridHeight": 5,
+    "footprintMask": [
+      ".###.",
+      "#####",
+      "#####",
+      "#####",
+      ".###."
+    ],
+    "gridDepth": 4,
+    "hp": 5200,
+    "cost": {
+      "energy": 9000,
+      "metal": 9000
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "energyStorage": null,
+    "metalStorage": null,
+    "constructionRate": null,
+    "conversionRate": null,
+    "allowedUnitBlueprintIds": null,
+    "renderProfile": "towerCannon",
+    "visualHeight": 42,
+    "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 84,
+      "width": 100,
+      "height": 100
+    },
+    "placementSets": [
+      "ground-build-squares-surface"
+    ],
+    "hoveringType": null,
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretHelios",
+        "presentation": {
+          "headRadius": 20,
+          "headOnly": false,
+          "barrel": {
+            "type": "singleCylinderBarrel",
+            "barrelLength": 3
+          }
+        },
+        "sensorTurretBlueprintId": "turretSensorBuildingCannon",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 84
+        },
+        "mountId": "helios",
+        "controlMode": "hostPreferred"
+      }
+    ],
+    "base": {
+      "cost": {
+        "energy": 9000,
+        "metal": 9000
+      },
+      "mass": 8000,
+      "health": 5200,
+      "deathExplosion": {
+        "radius": 99,
+        "force": 350000,
+        "damage": 2600
+      },
+      "radius": {
+        "other": 70.711,
+        "hitbox": 70.711,
+        "collision": 70.711
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    }
+  },
   "towerAntiAir": {
     "buildingBlueprintId": "towerAntiAir",
     "tinyName": "AAT",

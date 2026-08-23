@@ -60,6 +60,7 @@ export function runRollingLocomotionContractTest(): void {
     yawRate: 0,
     waterFraction: 0,
     maxContinuousDistance: 100,
+  carried: false,
   }, contact);
   assertEqual(contact.worldX, 12, 'static Low contact still tracks world X');
   assertEqual(contact.worldZ, 33, 'static Low contact still tracks world Z');
@@ -83,6 +84,7 @@ export function runRollingLocomotionContractTest(): void {
     yawRate: 0,
     waterFraction: 0,
     maxContinuousDistance: 100,
+  carried: false,
   }, rootPoint);
   assertEqual(rootPoint.x, 11, 'world-space attachments use the batched chassis root X');
   assertEqual(rootPoint.y, 22, 'world-space attachments use the batched chassis root Y');

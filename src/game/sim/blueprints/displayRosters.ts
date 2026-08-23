@@ -146,6 +146,7 @@ export function structureBuildCategory(buildingBlueprintId: BuildingBlueprintId)
     case 'towerBeamLight':
     case 'towerBeamMega':
     case 'towerCannon':
+    case 'towerHelios':
     case 'towerAntiAir':
     case 'towerTorpedo':
       return 'Defense';

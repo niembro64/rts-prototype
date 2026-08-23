@@ -269,8 +269,16 @@ export class RtsScene3DRenderPhase {
     /** transport id -> carried unit's volume radius, from the live beam
      *  sprays; drives the ring's presentation-only carry expansion. */
     carryExpansionBySourceId: null as ReadonlyMap<EntityId, number> | null,
+    /** Passenger ids held in a tractor beam — locomotion rigs must hang,
+     *  not walk, while the carrier drags them. */
+    beamCarriedEntityIds: null as ReadonlySet<EntityId> | null,
+    /** transport id -> passenger id, for the gravity-beam blob volume. */
+    beamPairsByTransportId: null as ReadonlyMap<EntityId, EntityId> | null,
   };
   private readonly _carryExpansionScratch = new Map<EntityId, number>();
+  private readonly _beamCarriedScratch = new Set<EntityId>();
+  private readonly _beamPairsScratch = new Map<EntityId, EntityId>();
+  private readonly _spraysSansBeams: SprayTarget[] = [];
   private readonly terrainFogShadeScratch = {
     unseenDarkness: 0,
     radarDarkness: 0,
@@ -505,6 +513,7 @@ export class RtsScene3DRenderPhase {
       this.clientViewState.getMinimapEntitiesOverride(),
       this.clientViewState.getMinimapContactSampling(performance.now()),
       this.renderScope,
+      effectDtMs,
     );
     const inputManager = this.getInputManager();
     // Resolved once per frame and handed to BOTH force-material renderers.
@@ -553,15 +562,23 @@ export class RtsScene3DRenderPhase {
     // (transports own no build power), so the beam list doubles as the
     // carry-expansion channel with no extra wire state.
     this._carryExpansionScratch.clear();
+    this._beamCarriedScratch.clear();
+    this._beamPairsScratch.clear();
     const beamSprays = this.clientViewState.getSprayTargets();
     for (let i = 0; i < beamSprays.length; i++) {
       const spray = beamSprays[i];
       const source = this.clientViewState.getEntity(spray.source.id);
       if (!isClientTransportUnit(source)) continue;
       this._carryExpansionScratch.set(spray.source.id, spray.target.radius ?? 0);
+      this._beamCarriedScratch.add(spray.target.id);
+      this._beamPairsScratch.set(spray.source.id, spray.target.id);
     }
     this.entityRendererOverlayModes.carryExpansionBySourceId =
       this._carryExpansionScratch.size > 0 ? this._carryExpansionScratch : null;
+    this.entityRendererOverlayModes.beamCarriedEntityIds =
+      this._beamCarriedScratch.size > 0 ? this._beamCarriedScratch : null;
+    this.entityRendererOverlayModes.beamPairsByTransportId =
+      this._beamPairsScratch.size > 0 ? this._beamPairsScratch : null;
     entityRenderer.update(
       renderFrameState,
       (serverMeta?.turretShieldPanelsEnabled ?? true) && forceFieldsVisible,
@@ -660,8 +677,14 @@ export class RtsScene3DRenderPhase {
         ),
         this.nearPylonFreeLegSprays,
       );
+      this._spraysSansBeams.length = 0;
+      const allSprays = this.clientViewState.getSprayTargets();
+      for (let i = 0; i < allSprays.length; i++) {
+        if (this._beamPairsScratch.has(allSprays[i].source.id)) continue;
+        this._spraysSansBeams.push(allSprays[i]);
+      }
       const commanderSprays = this.filterNearLodSprays(
-        this.clientViewState.getSprayTargets(),
+        this._spraysSansBeams,
         this.nearCommanderSprays,
       );
       const resourcePylonSprays = this.filterNearLodSprays(

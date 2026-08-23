@@ -2503,6 +2503,7 @@ export class Input3DManager {
   private inferCursorKind(): CommandCursorKind {
     const activeModeCursor = this.modeClicks.cursorKindForActiveMode();
     if (activeModeCursor !== null) return activeModeCursor;
+    if (this.quickBuildMex?.canPlace === true) return 'build';
     if (this.leftDown) return 'select';
     if (this.rightDrag.active) return this.waypointCursorKind();
 
@@ -2939,6 +2940,33 @@ export class Input3DManager {
     );
   }
 
+  /** BAR quick-build-mex proposal under the cursor (no mode active). */
+  private quickBuildMex:
+    | { gridX: number; gridY: number; canPlace: boolean; worldX: number; worldY: number }
+    | null = null;
+  private quickBuildMexGhostShown = false;
+  private quickBuildMexClickConsumed = false;
+
+  /** Recompute the hover-mex proposal for this pointer position and
+   *  drive/hide the shared build ghost accordingly. */
+  private updateQuickBuildMex(clientX: number, clientY: number): void {
+    let next: typeof this.quickBuildMex = null;
+    if (!this.leftDown && !this.rightDrag.active && !this.modeClicks.active) {
+      const world = this.picker.raycastTerrainBed(clientX, clientY);
+      if (world) {
+        next = this.modeClicks.findQuickBuildMexTarget(world.x, world.y);
+      }
+    }
+    this.quickBuildMex = next;
+    if (next !== null) {
+      this.modeClicks.showQuickBuildMexGhost(next);
+      this.quickBuildMexGhostShown = true;
+    } else if (this.quickBuildMexGhostShown) {
+      this.modeClicks.hideQuickBuildMexGhost();
+      this.quickBuildMexGhostShown = false;
+    }
+  }
+
   private handleMouseDown(e: MouseEvent): void {
     // Button 0 = left (select / mode-click), Button 2 = right
     // (command / cancel), Button 1 (middle) is handled by OrbitCamera.
@@ -2967,6 +2995,15 @@ export class Input3DManager {
       this.applyCursor('select');
     } else if (e.button === 2) {
       e.preventDefault();
+      // BAR quick-build: right-click on a proposed mex builds it and
+      // swallows the default command on BOTH edges (our move order is
+      // issued on mouse-up).
+      const quickMex = this.quickBuildMex;
+      if (quickMex !== null && quickMex.canPlace) {
+        this.modeClicks.commitQuickBuildMex(quickMex, e);
+        this.quickBuildMexClickConsumed = true;
+        return;
+      }
       this.rightDrag.handleMouseDown(e);
     }
   }
@@ -2995,10 +3032,15 @@ export class Input3DManager {
       return;
     }
 
+    this.updateQuickBuildMex(e.clientX, e.clientY);
     this.refreshCursor();
   }
 
   private handleMouseUp(e: MouseEvent): void {
+    if (e.button === 2 && this.quickBuildMexClickConsumed) {
+      this.quickBuildMexClickConsumed = false;
+      return;
+    }
     if (this.modeClicks.handleMouseUp(e)) return;
     if (e.button === 2 && this.rightDrag.active) {
       this.rightDrag.handleMouseUp(e);

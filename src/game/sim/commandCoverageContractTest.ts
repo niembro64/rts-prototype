@@ -22,6 +22,7 @@
 // updateUnits skips body-less entities, so both are set up explicitly.
 
 import { UNIT_BLUEPRINT_IDS, STRUCTURE_BLUEPRINT_IDS } from '../../types/blueprintIds';
+import { WATER_LEVEL } from './Terrain';
 import type { StructureBlueprintId, UnitBlueprintId } from '../../types/blueprintIds';
 import type { Command } from './commands';
 import { executeCommand, type CommandContext } from './commandExecution';
@@ -103,6 +104,7 @@ type Scenario = {
    *  onlytargetcategory=VTOL, so an air-only host must be probed against an
    *  air target or the authorizer correctly refuses the order. */
   enemyAir: Entity;
+  enemySubmerged: Entity;
   /** Damaged friendly unit owned by player 1, for repair/guard/load. */
   ally: Entity;
   /** Player-2 wreck for reclaim/resurrect. */
@@ -230,6 +232,11 @@ function buildScenario(blueprintId: string, kind: 'unit' | 'building'): Scenario
     if (getStructureFactoryAllowedUnitBlueprintIds('towerFabricator').length > 0 && subject.factory !== null) {
       // Mobile factories (queens) arrive with their own factory component.
     }
+    // Underwater-only hosts fight from below the surface; the flat land
+    // spawn would put their whole weapon chain in the wrong medium.
+    if (blueprintId === 'unitOrca' || blueprintId === 'unitConstructionSubmarine') {
+      subject.transform.z = WATER_LEVEL - 40;
+    }
   } else {
     const config = getBuildingConfig(blueprintId as StructureBlueprintId);
     subject = world.createBuilding(
@@ -259,6 +266,15 @@ function buildScenario(blueprintId: string, kind: 'unit' | 'building'): Scenario
   });
   world.addEntity(enemyAir);
   createPhysicsBodyForUnit(world, physics, enemyAir);
+
+  // A submerged enemy so underwater-only weapons (torpedoes) have a
+  // legal probe target — land units and flyers are outside their routes.
+  const enemySubmerged = world.createUnitFromBlueprint(240, 200, 2 as PlayerId, 'unitOrca', {
+    allocateSubEntityIds: false,
+  });
+  world.addEntity(enemySubmerged);
+  createPhysicsBodyForUnit(world, physics, enemySubmerged);
+  enemySubmerged.transform.z = WATER_LEVEL - 40;
 
   const ally = world.createUnitFromBlueprint(220, 240, 1 as PlayerId, 'unitJackal', {
     allocateSubEntityIds: false,
@@ -297,6 +313,7 @@ function buildScenario(blueprintId: string, kind: 'unit' | 'building'): Scenario
     subject,
     enemy,
     enemyAir,
+    enemySubmerged,
     ally,
     wreck,
     extractor,
@@ -313,7 +330,9 @@ const subjectIds = (s: Scenario): number[] => [s.subject.id];
 /** The enemy this host is actually allowed to shoot. Air-only fighters and
  *  ground-only bombers each refuse the other's target category. */
 function legalAttackTarget(s: Scenario): Entity {
-  return entityCanBarAttackTarget(s.subject, s.enemy) ? s.enemy : s.enemyAir;
+  if (entityCanBarAttackTarget(s.subject, s.enemy)) return s.enemy;
+  if (entityCanBarAttackTarget(s.subject, s.enemyAir)) return s.enemyAir;
+  return s.enemySubmerged;
 }
 
 /** Every reachable command, its gate, and its observable. The gates are the

@@ -32,6 +32,7 @@
     "towerBeamMega",
     "towerBeamLight",
     "towerCannon",
+    "towerHelios",
     "towerAntiAir",
     "towerTorpedo",
     "buildingRadarJammer",
@@ -85,6 +86,7 @@
     "turretShieldSphereSmall",
     "turretBeamLong",
     "turretCannonLong",
+    "turretHelios",
     "turretAlbatrosSiegeCannon",
     "turretRocketSlow",
     "turretRocketFast",
@@ -576,6 +578,14 @@
     }
    }
   },
+  "turretHelios": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
   "turretAlbatrosSiegeCannon": {
    "targets": {
     "enemy": {
@@ -849,6 +859,14 @@
    }
   },
   "towerCannon": {
+   "targets": {
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "towerHelios": {
    "targets": {
     "enemy": {
      "buildings": "all",

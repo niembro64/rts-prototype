@@ -209,6 +209,7 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   towerBeamMega: { close: 1400, mid: 780, far: 400 },
   towerBeamLight: { close: 900, mid: 500, far: 260 },
   towerCannon: { close: 1000, mid: 600, far: 320 },
+  towerHelios: { close: 1000, mid: 600, far: 320 },
   towerAntiAir: { close: 1200, mid: 750, far: 440 },
   towerTorpedo: { close: 1100, mid: 650, far: 360 },
   // Re-baselined 2026-08-16 when the two shield labs got their curve
@@ -259,7 +260,7 @@ const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
   unitConstructionDrone: { close: 2200, mid: 1000, far: 420 },
   unitConstructionSubmarine: { close: 1500, mid: 760, far: 320 },
   unitEagle: { close: 600, mid: 420, far: 220 },
-  unitDuck: { close: 600, mid: 420, far: 220 },
+  unitDuck: { close: 1100, mid: 720, far: 400 },
   unitAlbatros: { close: 1350, mid: 850, far: 420 },
   unitQueenBee: { close: 2920, mid: 1220, far: 580 },
   unitQueenTick: { close: 2290, mid: 780, far: 340 },
@@ -2310,7 +2311,7 @@ function runConstructionHostMarkingContracts(): void {
 
 export function runEntityLodGeometry3DContractTest(): void {
   assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 27, 'visual roster covers all 27 units');
-  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 20, 'visual roster covers all 20 buildings');
+  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 21, 'visual roster covers all 21 buildings');
   const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
   try {
     runEnvironmentLodMaterialContracts();

@@ -554,7 +554,7 @@ export function updateTank(
     // a sudden body velocity change doesn't manifest as a cleat-scroll
     // discontinuity.
     const contact = mesh.treadContacts[s];
-    if (mesh.rotationAnimated) {
+    if (mesh.rotationAnimated && !pose.carried) {
       const signedDistance = contact !== undefined
         ? sampleRollingContactDistance(pose, contact)
         : 0;

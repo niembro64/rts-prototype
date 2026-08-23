@@ -299,7 +299,7 @@ export function updateRover(
     // chassis-local distance with the no-slip contact sign. Reverse motion comes for free because
     // signedDistance is signed; pivots show opposite spin on opposite
     // wheels because each tire has its own contact and target.
-    if (mesh.rotationAnimated) {
+    if (mesh.rotationAnimated && !pose.carried) {
       const signedDistance = sampleRollingContactDistance(pose, mesh.wheelContacts[i]);
       const targetOmega = rollingWheelAngularVelocity(
         signedDistance / dtSec,

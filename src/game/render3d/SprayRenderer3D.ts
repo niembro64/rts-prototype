@@ -168,6 +168,13 @@ export class SprayRenderer3D {
     );
     this.root = poolSet.root;
     this.mat = poolSet.material;
+    // Nano spray is player knowledge like contact blips, not scenery: it
+    // must stay readable when the work happens under the water surface,
+    // so it opts out of the depth test the water plane's depth write
+    // would otherwise use to clip it (same choice as
+    // LodProxyPointBatchRenderer3D). Render order 5 still draws it after
+    // the water, so it composites over the surface tint.
+    this.mat.depthTest = false;
     this.pools = poolSet.pools;
   }
 

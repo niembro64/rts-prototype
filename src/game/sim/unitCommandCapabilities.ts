@@ -13,6 +13,8 @@ import {
 } from '../sim-wasm/init';
 import { buildingBlueprintIdToCode, unitBlueprintIdToCode } from '../../types/network';
 import { emissionMediumAtZ } from './emissionMedium';
+import { getEntityMediumOccupancy } from './entityMediumOccupancy';
+import { getBuildingCombatCenterZ } from './buildingAnchors';
 import { WATER_LEVEL } from './Terrain';
 
 type BarTrajectoryCommandKind = 'standardHighLow' | 'smartAutoLowHigh';
@@ -321,8 +323,22 @@ export function entityCanBarAttackTarget(source: Entity, target: Entity | null |
   }
   const hostMasks = getHostLockOnMasksForEntity(source);
   if (hostMasks === null || !lockOnMasksAllowBodyTarget(hostMasks, target)) return false;
-  const sourceMedium = emissionMediumAtZ(source.transform.z, WATER_LEVEL);
-  const targetMedium = emissionMediumAtZ(target.transform.z, WATER_LEVEL);
+  // Buildings' transform.z is the ground-centered box (it can sit below
+  // the waterline on shore ground); combat consumers must read the
+  // combat center, per the building z-model.
+  const sourceZ = source.building !== null
+    ? getBuildingCombatCenterZ(source)
+    : source.transform.z;
+  const sourceMedium = emissionMediumAtZ(sourceZ, WATER_LEVEL);
+  // KERNEL PARITY: the auto-targeting kernel tests the target's BODY
+  // VOLUME against the water plane (top above / bottom below), never its
+  // center point — a floating ship's submerged hull is a legal torpedo
+  // target and a surfaced conning tower is a legal cannon target. Using
+  // the center here refused explicit orders the kernel happily
+  // auto-engaged (the orca could fire at a ship but not be TOLD to).
+  const targetOccupancy = getEntityMediumOccupancy(target);
+  const targetAbove = targetOccupancy.aboveWater > 0;
+  const targetUnder = targetOccupancy.underwater > 0;
   const turrets = source.combat?.turrets ?? [];
   for (let i = 0; i < turrets.length; i++) {
     const config = turrets[i].config;
@@ -339,7 +355,10 @@ export function entityCanBarAttackTarget(source: Entity, target: Entity | null |
     };
     if (!lockOnMasksAllowBodyTarget(turretMasks, target)) continue;
     const matrix = config.shot?.mediumTrajectory;
-    if (matrix !== undefined && matrix !== null && !matrix[sourceMedium][targetMedium]) continue;
+    if (matrix !== undefined && matrix !== null) {
+      const row = matrix[sourceMedium];
+      if (!((targetAbove && row.aboveWater) || (targetUnder && row.underwater))) continue;
+    }
     return true;
   }
   return false;

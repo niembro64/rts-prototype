@@ -31,6 +31,7 @@ export function runWaterSurfaceBuildingContractTest(): void {
     towerBeamMega: ['ground-build-squares-surface'],
     towerBeamLight: ['ground-build-squares-surface'],
     towerCannon: ['ground-build-squares-surface'],
+    towerHelios: ['ground-build-squares-surface'],
     towerAntiAir: ['ground-build-squares-surface'],
     towerTorpedo: ['water-build-squares-sea-on-surface'],
     buildingShieldTargetingTech: ['ground-build-squares-surface'],
