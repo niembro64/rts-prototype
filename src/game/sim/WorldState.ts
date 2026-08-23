@@ -270,6 +270,11 @@ export class WorldState {
    *  so a copy can never appear under a cleared flag. Deterministic:
    *  driven purely by lockstep commands and lockstep sweeps. */
   public gatherWaitsMayExist = false;
+  /** P1-20: bumped whenever a building's producing eligibility can have
+   *  changed outside lifecycle — an active-state open/close flip or a
+   *  completion. Consumers pair it with getBuildingVersion() to cache
+   *  per-player producer membership. */
+  public buildingOpenStateVersion = 0;
   /** Whether ordinary final actions use velocity-aware braking before their
    *  last waypoint. Off preserves full thrust until the tight arrival gate. */
   public slowDownAtFinalWaypoint: boolean = DEFAULT_SLOW_DOWN_AT_FINAL_WAYPOINT;

@@ -78,7 +78,7 @@ import {
   resolveGuardServiceTarget,
   shouldRefreshGuardFollowGoal,
 } from './guard';
-import { updateTransportActions } from './transports';
+import { resetTransportModuleState, updateTransportActions } from './transports';
 import { WindPowerTracker, sampleWindState, sampleWindStateInto, type WindState } from './wind';
 import { entitySlotRegistry } from './EntitySlotRegistry';
 import {
@@ -2814,6 +2814,7 @@ export class Simulation {
     this.unitActionMovementPlanner.reset();
     this.world.clearPendingDeathCheckIds();
     resetEnergyBuffers(this.energyBuffers);
+    resetTransportModuleState();
     this.spatialGridBuildingVersion = -1;
   }
 }

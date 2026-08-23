@@ -4,7 +4,7 @@ import { getBuildingConfig } from './buildConfigs';
 import { isEntityActive } from './buildableHelpers';
 import { economyManager } from './economy';
 import { getSimWasm } from '../sim-wasm/init';
-import { growTypedArrays, nextGeometricCapacity } from '../memory/typedArrayGrowth';
+import { nextGeometricCapacity } from '../memory/typedArrayGrowth';
 
 export type WindState = {
   x: number;
@@ -38,47 +38,62 @@ export function sampleWindStateInto(target: WindState, nowMs: number): WindState
 
 export class WindPowerTracker {
   private appliedProductionByPlayer = new Map<PlayerId, number>();
-  private producerPlayerIds = new Uint32Array(32);
-  private producerRates = new Float64Array(32);
   private ratesByPlayer = new Float64Array(8);
+
+  /** P1-20: per-player ACTIVE turbine counts, cached against building
+   *  lifecycle + open-state versions. Every producing turbine contributes
+   *  the identical ratePerTurbine, so the per-tick math collapses to
+   *  count * rate per player with no turbine scan. */
+  private cachedTurbineCounts = new Float64Array(8);
+  private cachedTurbineMaxExclusive = 0;
+  private cachedBuildingVersion = -1;
+  private cachedOpenStateVersion = -1;
+
+  private refreshTurbineCounts(world: WorldState): void {
+    const buildingVersion = world.getBuildingVersion();
+    const openVersion = world.buildingOpenStateVersion;
+    if (
+      buildingVersion === this.cachedBuildingVersion &&
+      openVersion === this.cachedOpenStateVersion
+    ) {
+      return;
+    }
+    this.cachedBuildingVersion = buildingVersion;
+    this.cachedOpenStateVersion = openVersion;
+    this.cachedTurbineCounts.fill(0);
+    let maxPlayerId = 0;
+    const windBuildings = world.getWindBuildings();
+    for (let i = 0; i < windBuildings.length; i++) {
+      const entity = windBuildings[i];
+      if (!entity.ownership || !entity.building || entity.building.hp <= 0) continue;
+      if (!isEntityActive(entity)) continue;
+      // OFF (closed) wind turbines stop producing — they're in their
+      // stowed pose with blades folded against the pole.
+      const activeState = entity.building.activeState;
+      if (activeState !== null && activeState.open === false) continue;
+      const pid = entity.ownership.playerId;
+      if (pid >= this.cachedTurbineCounts.length) {
+        const next = new Float64Array(Math.max(pid + 1, this.cachedTurbineCounts.length * 2));
+        next.set(this.cachedTurbineCounts);
+        this.cachedTurbineCounts = next;
+      }
+      this.cachedTurbineCounts[pid] += 1;
+      if (pid > maxPlayerId) maxPlayerId = pid;
+    }
+    this.cachedTurbineMaxExclusive = maxPlayerId + 1;
+  }
 
   update(world: WorldState, wind: WindState): void {
     const baseProduction = getBuildingConfig('buildingWind').energyProduction ?? 0;
     const ratePerTurbine = Math.max(0, baseProduction * wind.speed);
-    let count = 0;
-    let maxPlayerId = 0;
+    this.refreshTurbineCounts(world);
 
-    if (ratePerTurbine > 0) {
-      const windBuildings = world.getWindBuildings();
-      for (let i = 0; i < windBuildings.length; i++) {
-        const entity = windBuildings[i];
-        if (!entity.ownership || !entity.building || entity.building.hp <= 0) continue;
-        if (!isEntityActive(entity)) continue;
-        // OFF (closed) wind turbines stop producing — they're in their
-        // stowed pose with blades folded against the pole.
-        const activeState = entity.building.activeState;
-        if (activeState !== null && activeState.open === false) continue;
-        const pid = entity.ownership.playerId;
-        this.ensureProducerCapacity(count + 1);
-        this.producerPlayerIds[count] = pid;
-        this.producerRates[count] = ratePerTurbine;
-        count++;
-        if (pid > maxPlayerId) maxPlayerId = pid;
-      }
+    const maxExclusive = ratePerTurbine > 0 ? this.cachedTurbineMaxExclusive : 0;
+    this.ensurePlayerRateCapacity(Math.max(0, maxExclusive - 1));
+    for (let pid = 0; pid < this.ratesByPlayer.length; pid++) this.ratesByPlayer[pid] = 0;
+    for (let pid = 1; pid < maxExclusive; pid++) {
+      this.ratesByPlayer[pid] = this.cachedTurbineCounts[pid] * ratePerTurbine;
     }
-
-    this.ensurePlayerRateCapacity(maxPlayerId);
-    const sim = getSimWasm();
-    if (sim === undefined) {
-      throw new Error('WindPowerTracker.update: sim-wasm is not initialized');
-    }
-
-    const maxExclusive = sim.economyAccumulatePlayerRates(
-      this.producerPlayerIds,
-      this.producerRates,
-      count,
-      this.ratesByPlayer,
-    );
 
     for (let playerId = 1; playerId < maxExclusive; playerId++) {
       const next = this.ratesByPlayer[playerId];
@@ -95,15 +110,6 @@ export class WindPowerTracker {
       this.applyDelta(pid, -prev);
       this.appliedProductionByPlayer.delete(pid);
     }
-  }
-
-  private ensureProducerCapacity(count: number): void {
-    if (count <= this.producerPlayerIds.length) return;
-    const nextCapacity = nextGeometricCapacity(this.producerPlayerIds.length, count);
-    [this.producerPlayerIds, this.producerRates] = growTypedArrays([
-      this.producerPlayerIds,
-      this.producerRates,
-    ] as const, nextCapacity);
   }
 
   private ensurePlayerRateCapacity(playerId: number): void {

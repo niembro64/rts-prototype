@@ -348,6 +348,7 @@ export function updateBuildingActiveStates(world: WorldState, dtMs: number): voi
     // the rate delta fires exactly once per transition.
     if (activeStateOpenChanged[i] !== 0) {
       applyProducerRateDelta(entity, nextOpen);
+      world.buildingOpenStateVersion++;
       world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
     }
   }

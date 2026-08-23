@@ -35,6 +35,22 @@ const TRANSPORT_BEAM_SNAP_EPSILON = 0.5;
 
 type BeamSpringState = { vx: number; vy: number; vz: number };
 const _beamSpringByEntityId = new Map<EntityId, BeamSpringState>();
+/** P1-07: persistent carried-id set, mutated at exactly the same points as
+ *  the spring map (load / release). The physics collision-exemption pass
+ *  reads it directly instead of rediscovering cargo from every transport
+ *  each tick. */
+const _beamCarriedIds = new Set<EntityId>();
+
+export function getBeamCarriedEntityIds(): ReadonlySet<EntityId> {
+  return _beamCarriedIds;
+}
+
+/** Session reset: entity ids restart per world, so the persistent module
+ *  maps must not leak carried/spring rows across matches. */
+export function resetTransportModuleState(): void {
+  _beamSpringByEntityId.clear();
+  _beamCarriedIds.clear();
+}
 
 type TransportActionUpdateResult = {
   unloadedUnits: Entity[];
@@ -146,6 +162,7 @@ function loadUnitIntoTransport(
     inheritHolderVelocity: true,
   });
   _beamSpringByEntityId.set(target.id, { vx: 0, vy: 0, vz: 0 });
+  _beamCarriedIds.add(target.id);
 
   transport.transport.loadedUnits.push(target);
   return true;
@@ -158,6 +175,7 @@ function releaseTransportPassenger(passenger: Entity): void {
   passenger.transported = null;
   releaseEntityHold(passenger);
   _beamSpringByEntityId.delete(passenger.id);
+  _beamCarriedIds.delete(passenger.id);
   const unit = passenger.unit;
   if (unit === null) return;
   entitySlotRegistry.setUnitDriveInput(passenger, 0, 0, 0, 0, passenger.entitySlotId);
@@ -284,6 +302,7 @@ function updateTransportBeam(
         releaseTransportPassenger(passenger);
       } else {
         _beamSpringByEntityId.delete(passenger.id);
+        _beamCarriedIds.delete(passenger.id);
       }
       cargo.splice(i, 1);
       continue;

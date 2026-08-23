@@ -12,7 +12,7 @@ import {
 import { spatialGrid } from '../sim/SpatialGrid';
 import type { Simulation } from '../sim/Simulation';
 import {
-  collectBeamCarriedEntityIds,
+  getBeamCarriedEntityIds,
   releaseAllTransportCargo,
 } from '../sim/transports';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
@@ -82,8 +82,6 @@ export class ServerSimulationCore {
   readonly terrainBuildabilityGrid: TerrainBuildabilityGrid;
 
   private readonly unitForceSystem: UnitForceSystem;
-  /** Reused scratch for the per-tick beam-carried collision exemption. */
-  private readonly _beamCarriedIds = new Set<EntityId>();
   /** P1-15 scratch for the Rust non-finite body audit. */
   private _nonfiniteBodyIdsOut = new Int32Array(0);
   private readonly _nonfiniteBodyIdSet = new Set<EntityId>();
@@ -142,9 +140,9 @@ export class ServerSimulationCore {
     phases.phase('core.unitForces');
     // Beam-carried passengers sit inside their carrier's collision
     // sphere on purpose; exclude them from this step's contact passes.
-    this.physics.setCollisionExemptEntities(
-      collectBeamCarriedEntityIds(this.world, this._beamCarriedIds),
-    );
+    // P1-07: the carried set is maintained at load/release instead of
+    // being rediscovered from every transport before each physics step.
+    this.physics.setCollisionExemptEntities(getBeamCarriedEntityIds());
     this.physics.step(dtSec, this.simulation.getWindState());
     phases.phase('core.physics');
     this.repairInvalidEntityPoses();
