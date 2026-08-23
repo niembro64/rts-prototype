@@ -57,16 +57,38 @@ function pickRandomUnit(
   return weights[weights.length - 1].id;
 }
 
+/** P1-06: the roster intersection is a pure function of the factory's
+ *  authored roster and the global toggle set; cache it per entity against
+ *  both identities so a tick recomputes nothing while neither changed. */
+const factoryAllowedCache = new WeakMap<Entity, {
+  roster: readonly string[];
+  global: ReadonlySet<string> | null;
+  allowed: ReadonlySet<string>;
+}>();
+
 function allowedUnitsForFactory(
-  factory: Parameters<typeof getFactoryAllowedUnitBlueprintIds>[0],
+  entity: Entity,
   globalAllowedUnitBlueprintIds: ReadonlySet<string> | null,
 ): ReadonlySet<string> {
-  const factoryRoster = getFactoryAllowedUnitBlueprintIds(factory);
+  const factoryRoster = getFactoryAllowedUnitBlueprintIds(entity);
+  const cached = factoryAllowedCache.get(entity);
+  if (
+    cached !== undefined &&
+    cached.roster === factoryRoster &&
+    cached.global === globalAllowedUnitBlueprintIds
+  ) {
+    return cached.allowed;
+  }
   const allowed = new Set<string>();
   for (const unitBlueprintId of factoryRoster) {
     if (globalAllowedUnitBlueprintIds !== null && !globalAllowedUnitBlueprintIds.has(unitBlueprintId)) continue;
     allowed.add(unitBlueprintId);
   }
+  factoryAllowedCache.set(entity, {
+    roster: factoryRoster,
+    global: globalAllowedUnitBlueprintIds,
+    allowed,
+  });
   return allowed;
 }
 
@@ -76,23 +98,22 @@ function updateAiFactoryProduction(
   aiPlayerIds: ReadonlySet<PlayerId>,
   allowedUnitBlueprintIds: ReadonlySet<string> | null,
 ): void {
-  if (!entity.factory || !isEntityActive(entity)) return;
-  if (!entity.ownership) return;
+  if (!entity.factory || !entity.ownership) return;
+  // P1-06: a factory already producing needs no roster work at all — the
+  // cheap idle test runs before discovery instead of after it.
+  if (entity.factory.selectedUnitBlueprintId !== null) return;
   if (!aiPlayerIds.has(entity.ownership.playerId)) return;
+  if (!isEntityActive(entity)) return;
+  if (!world.canPlayerQueueEntity(entity.ownership.playerId)) return;
   const factoryAllowedUnitBlueprintIds = allowedUnitsForFactory(entity, allowedUnitBlueprintIds);
   if (factoryAllowedUnitBlueprintIds.size === 0) return;
 
-  if (
-    entity.factory.selectedUnitBlueprintId === null &&
-    world.canPlayerQueueEntity(entity.ownership.playerId)
-  ) {
-    if (factoryProductionSystem.selectUnit(
-      entity,
-      pickRandomUnit(world, entity.ownership.playerId, factoryAllowedUnitBlueprintIds),
-      world,
-    )) {
-      world.markSnapshotDirty(entity.id, ENTITY_CHANGED_FACTORY);
-    }
+  if (factoryProductionSystem.selectUnit(
+    entity,
+    pickRandomUnit(world, entity.ownership.playerId, factoryAllowedUnitBlueprintIds),
+    world,
+  )) {
+    world.markSnapshotDirty(entity.id, ENTITY_CHANGED_FACTORY);
   }
 }
 

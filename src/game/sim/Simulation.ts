@@ -1724,6 +1724,10 @@ export class Simulation {
   }
 
   private releaseReadyGatherWaits(): void {
+    // P1-08: the full unit/queue sweep only runs while a gather wait can
+    // exist. The flag arms at the single creation site and clears when a
+    // sweep proves the world empty of groups.
+    if (!this.world.gatherWaitsMayExist) return;
     const groups = this._gatherWaitGroups;
     const sortedGroups = this._gatherWaitGroupList;
     groups.clear();
@@ -1767,6 +1771,7 @@ export class Simulation {
         this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
       }
     }
+    if (sortedGroups.length === 0) this.world.gatherWaitsMayExist = false;
     groups.clear();
     this.releaseGatherWaitGroups(sortedGroups);
   }
@@ -2008,7 +2013,13 @@ export class Simulation {
       // transient pathfinding points live in unit.activePath and are
       // discarded automatically when the queue changes.
       const preSweepHead = unit.actions[0];
-      if (this.actionQueueMaintenance.sweepInvalidTargetActions(entity)) {
+      if (this.actionQueueMaintenance.sweepInvalidTargetActions(
+        entity,
+        // P1-09: the executing head is validated every tick; the rest of
+        // the queue heals on a 2.5 Hz stagger (offset from the P1-11
+        // patrol stagger so the two full passes don't stack on one tick).
+        ((this.world.getTick() + entity.id) & 7) !== 4,
+      )) {
         const combat = entity.combat;
         if (
           isGuardRetaliationAttackAction(preSweepHead) &&
@@ -2032,7 +2043,12 @@ export class Simulation {
         continue;
       }
 
-      this.actionQueueMaintenance.promoteReachableBuildAction(entity);
+      // P1-10: the reachable-service promotion is a linear queue scan with
+      // range/target lookups; 10 Hz staggered by entity id keeps the
+      // promotion within 50ms of eligibility at half the scan volume.
+      if (((this.world.getTick() + entity.id) & 1) === 0) {
+        this.actionQueueMaintenance.promoteReachableBuildAction(entity);
+      }
 
       // BAR constructor Patrol services nearby allies first (the energy pass
       // marks that above), then temporarily reclaims a nearby non-allied
@@ -2042,7 +2058,11 @@ export class Simulation {
       if (
         currentAction.type === 'patrol' &&
         entity.builder !== null &&
-        !this.energyBuffers.sweepServicingBuilderIds.has(entity.id)
+        !this.energyBuffers.sweepServicingBuilderIds.has(entity.id) &&
+        // P1-11: patrol reclaim acquisition runs two spatial queries plus
+        // candidate range tests; 2.5 Hz staggered by entity id bounds a
+        // fresh acquisition at 400ms while approach/work stay fixed-tick.
+        ((this.world.getTick() + entity.id) & 7) === 0
       ) {
         const reclaimTarget = this.findPatrolReclaimTarget(entity);
         if (reclaimTarget !== null) {

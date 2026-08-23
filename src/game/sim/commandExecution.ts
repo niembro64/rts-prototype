@@ -924,6 +924,7 @@ function executeWaitCommand(ctx: CommandContext, command: WaitCommand): void {
     if (gatherWait) {
       action.waitGather = true;
       action.waitGroupId = waitGroupId;
+      ctx.world.gatherWaitsMayExist = true;
     }
 
     if (command.queue) {
