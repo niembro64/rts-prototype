@@ -33,6 +33,10 @@ export type LocomotionRenderPose = {
   yawRate: number;
   waterFraction: number;
   maxContinuousDistance: number;
+  /** True while the transport's tractor beam holds this unit: rigs must
+   *  not walk-cycle or scroll treads from the dragged-along world motion
+   *  — the body hangs, it does not locomote. */
+  carried: boolean;
 };
 
 /** Per-rig common header. Every locomotion mesh kind carries the

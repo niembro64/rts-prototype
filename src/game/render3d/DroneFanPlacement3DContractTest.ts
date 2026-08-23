@@ -108,6 +108,7 @@ function checkSubmergedFanHostLock(): void {
     yawRate: 0,
     waterFraction: 1,
     maxContinuousDistance: 0,
+  carried: false,
   } satisfies LocomotionRenderPose;
 
   updateDroneFans(mesh, submergedPose, 0);

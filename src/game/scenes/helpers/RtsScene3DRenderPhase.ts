@@ -269,8 +269,12 @@ export class RtsScene3DRenderPhase {
     /** transport id -> carried unit's volume radius, from the live beam
      *  sprays; drives the ring's presentation-only carry expansion. */
     carryExpansionBySourceId: null as ReadonlyMap<EntityId, number> | null,
+    /** Passenger ids held in a tractor beam — locomotion rigs must hang,
+     *  not walk, while the carrier drags them. */
+    beamCarriedEntityIds: null as ReadonlySet<EntityId> | null,
   };
   private readonly _carryExpansionScratch = new Map<EntityId, number>();
+  private readonly _beamCarriedScratch = new Set<EntityId>();
   private readonly terrainFogShadeScratch = {
     unseenDarkness: 0,
     radarDarkness: 0,
@@ -554,15 +558,19 @@ export class RtsScene3DRenderPhase {
     // (transports own no build power), so the beam list doubles as the
     // carry-expansion channel with no extra wire state.
     this._carryExpansionScratch.clear();
+    this._beamCarriedScratch.clear();
     const beamSprays = this.clientViewState.getSprayTargets();
     for (let i = 0; i < beamSprays.length; i++) {
       const spray = beamSprays[i];
       const source = this.clientViewState.getEntity(spray.source.id);
       if (!isClientTransportUnit(source)) continue;
       this._carryExpansionScratch.set(spray.source.id, spray.target.radius ?? 0);
+      this._beamCarriedScratch.add(spray.target.id);
     }
     this.entityRendererOverlayModes.carryExpansionBySourceId =
       this._carryExpansionScratch.size > 0 ? this._carryExpansionScratch : null;
+    this.entityRendererOverlayModes.beamCarriedEntityIds =
+      this._beamCarriedScratch.size > 0 ? this._beamCarriedScratch : null;
     entityRenderer.update(
       renderFrameState,
       (serverMeta?.turretShieldPanelsEnabled ?? true) && forceFieldsVisible,

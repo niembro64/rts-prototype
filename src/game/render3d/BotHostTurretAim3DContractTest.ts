@@ -626,6 +626,7 @@ function movingBotPose(
     yawRate: 0,
     waterFraction: 0,
     maxContinuousDistance: 10_000,
+  carried: false,
   };
 }
 

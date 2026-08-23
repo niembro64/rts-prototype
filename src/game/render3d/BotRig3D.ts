@@ -1304,8 +1304,12 @@ export function updateBotRig(
   const planarSpeed = Math.hypot(pose.velocityX, pose.velocityZ);
   const turningSpeed = Math.abs(pose.yawRate) * mesh.unitRadius;
   const locomotionSpeed = Math.max(planarSpeed, turningSpeed);
-  const moving = planarSpeed > IDLE_SPEED ||
-    Math.abs(pose.yawRate) > IDLE_YAW_RATE;
+  // A beam-carried bot hangs in the tractor field: the carrier drags its
+  // world position (and its velocity mirrors the carrier's), so both the
+  // speed gate and the travel-distance sampler would fake a full walk
+  // cycle in mid-air.
+  const moving = !pose.carried && (planarSpeed > IDLE_SPEED ||
+    Math.abs(pose.yawRate) > IDLE_YAW_RATE);
   mesh.hips.rotation.y = -mesh.upperBodyYaw;
 
   const gaitEase = dt <= 0 ? 1 : 1 - Math.exp(-dt / GAIT_EASE_SECONDS);

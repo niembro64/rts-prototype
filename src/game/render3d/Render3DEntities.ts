@@ -260,6 +260,7 @@ export class Render3DEntities {
     yawRate: 0,
     waterFraction: 0,
     maxContinuousDistance: 1,
+  carried: false,
   };
   private readonly fallbackUnitRenderRows = new UnitRenderPacket3D();
   private readonly _poseUnitRows: number[] = [];
@@ -508,9 +509,11 @@ export class Render3DEntities {
       reclaimTargets?: boolean;
       hoveredEntityId?: EntityId | null;
       carryExpansionBySourceId?: ReadonlyMap<EntityId, number> | null;
+      beamCarriedEntityIds?: ReadonlySet<EntityId> | null;
     } = {},
   ): void {
     this._carryExpansionBySourceId = overlayModes.carryExpansionBySourceId ?? null;
+    this._beamCarriedEntityIds = overlayModes.beamCarriedEntityIds ?? null;
     // Refresh the single render-detail snapshot once per frame.
     const newFrameState = frameStateOverride
       ?? snapshotRenderFrameState(this.camera, this.getViewportHeight(), this.frameState);
@@ -580,6 +583,8 @@ export class Render3DEntities {
   private _currentDtMs = 0;
   /** transport id -> carried volume radius (see overlayModes). */
   private _carryExpansionBySourceId: ReadonlyMap<EntityId, number> | null = null;
+  /** Passenger ids currently held in a tractor beam (see overlayModes). */
+  private _beamCarriedEntityIds: ReadonlySet<EntityId> | null = null;
   private _currentTimeMs = 0;
 
   /** Remove every overlay mesh that lives in the world group (not the
@@ -1159,6 +1164,7 @@ export class Render3DEntities {
           locomotionPose.yawRate = unitRows.yawRate[row];
           locomotionPose.waterFraction = poseOutput[poseBase + 33];
           locomotionPose.maxContinuousDistance = Math.max(1, radius * 4);
+          locomotionPose.carried = this._beamCarriedEntityIds?.has(e.id) === true;
           const keepLocomotionActive = updateLocomotion(
             locomotion, e, locomotionPose, locomotionDtMs,
             mapWidth,
