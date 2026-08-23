@@ -245,6 +245,9 @@ export class ClientViewState extends ClientViewStateBase {
     return this.entitySetVersion;
   }
 
+  /** P1-23 scratch: ids whose selection membership changed this call. */
+  private readonly _selectionRefreshScratch: EntityId[] = [];
+
   getTerrainBuildabilityGrid(): TerrainBuildabilityGrid | null {
     return this.terrainBuildabilityGrid;
   }
@@ -1464,8 +1467,21 @@ export class ClientViewState extends ClientViewStateBase {
   // === Selection management ===
 
   setSelectedIds(ids: Set<EntityId>): void {
+    // P1-23: refresh only the symmetric difference. Box-select and
+    // control-group swaps are O(changed selection); the old full-world
+    // refresh walked every renderable entity per selection change.
+    const previous = this.selectionState.get();
+    for (const id of previous) {
+      if (!ids.has(id)) this._selectionRefreshScratch.push(id);
+    }
+    for (const id of ids) {
+      if (!previous.has(id)) this._selectionRefreshScratch.push(id);
+    }
     this.selectionState.set(ids);
-    this.refreshAllRenderableEntityStates();
+    for (let i = 0; i < this._selectionRefreshScratch.length; i++) {
+      this.refreshRenderEntityStateById(this._selectionRefreshScratch[i]);
+    }
+    this._selectionRefreshScratch.length = 0;
   }
 
   getSelectedIds(): Set<EntityId> {
@@ -1483,9 +1499,17 @@ export class ClientViewState extends ClientViewStateBase {
   }
 
   clearSelection(): void {
-    const hadSelection = this.selectionState.get().size > 0;
+    const previous = this.selectionState.get();
+    if (previous.size === 0) {
+      this.selectionState.clear();
+      return;
+    }
+    for (const id of previous) this._selectionRefreshScratch.push(id);
     this.selectionState.clear();
-    if (hadSelection) this.refreshAllRenderableEntityStates();
+    for (let i = 0; i < this._selectionRefreshScratch.length; i++) {
+      this.refreshRenderEntityStateById(this._selectionRefreshScratch[i]);
+    }
+    this._selectionRefreshScratch.length = 0;
   }
 
   getServerMeta(): NetworkServerSnapshotMeta | null {

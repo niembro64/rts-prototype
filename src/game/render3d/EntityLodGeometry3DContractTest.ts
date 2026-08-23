@@ -1721,12 +1721,12 @@ function runEmissionPoseContracts(): void {
     pilotLights.isVisible(47, 2),
     'a beam pilot light is visible while its turret has no live ray',
   );
-  pilotLights.update(beamFixture);
+  pilotLights.update(beamFixture, 1);
   assertContract(
     !pilotLights.isVisible(47, 2) && pilotLights.isVisible(47, 1),
     'a live ray hides only its own turret pilot light',
   );
-  pilotLights.update([]);
+  pilotLights.update([], 2);
   assertContract(
     pilotLights.isVisible(47, 2),
     'the pilot light returns when its live ray leaves presentation',

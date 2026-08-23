@@ -21,12 +21,16 @@ const RECOMPUTE_FRAMES = 6;
 
 type EnvelopeRing = {
   // World-space [x,y,z, …] of the draped reach outline; cached between
-  // recomputes so the (expensive) per-direction ballistic solve only reruns
-  // every RECOMPUTE_FRAMES, while the batch re-pushes the cached points each
-  // frame.
+  // recomputes so the (expensive) per-direction ballistic solve reruns only
+  // when the weapon config changes or its mount actually moved (P2-06) —
+  // and at most every RECOMPUTE_FRAMES while the host is in motion. The
+  // batch re-pushes the cached points each frame.
   points: Float32Array;
   cacheKey: string;
   framesUntilRecompute: number;
+  mountX: number;
+  mountY: number;
+  mountZ: number;
 };
 
 export class ProjectileRangeEnvelope3D {
@@ -100,12 +104,18 @@ export class ProjectileRangeEnvelope3D {
       const key = `${entity.id}:${turretIndex}:${shot.shotBlueprintId}:${shot.launchForce}:${shot.mass}:`
         + `${isRocketLikeShot(shot) ? 1 : 0}:`
         + `${mapWidth}:${mapHeight}`;
-      if (ring.cacheKey !== key || ring.framesUntilRecompute <= 0) {
+      const mountMoved =
+        Math.abs(mount.x - ring.mountX) > 0.25 ||
+        Math.abs(mount.y - ring.mountY) > 0.25 ||
+        Math.abs(mount.z - ring.mountZ) > 0.25;
+      if (ring.framesUntilRecompute > 0) ring.framesUntilRecompute--;
+      if (ring.cacheKey !== key || (mountMoved && ring.framesUntilRecompute <= 0)) {
         this.computeEnvelopePoints(ring, mount.x, mount.y, mount.z, shot, speed, mapWidth, mapHeight);
         ring.cacheKey = key;
         ring.framesUntilRecompute = RECOMPUTE_FRAMES;
-      } else {
-        ring.framesUntilRecompute--;
+        ring.mountX = mount.x;
+        ring.mountY = mount.y;
+        ring.mountZ = mount.z;
       }
 
       this.batch.pushPolyline(ring.points, ENVELOPE_SLICES, r, g, b, this.alpha, this.widthPx, true);
@@ -153,6 +163,9 @@ export class ProjectileRangeEnvelope3D {
       points: new Float32Array(ENVELOPE_SLICES * 3),
       cacheKey: '',
       framesUntilRecompute: 0,
+      mountX: Number.NaN,
+      mountY: Number.NaN,
+      mountZ: Number.NaN,
     };
     this.rings[index] = ring;
     return ring;
@@ -198,6 +211,9 @@ export class ProjectileRangeEnvelope3D {
     for (const ring of this.rings) {
       ring.cacheKey = '';
       ring.framesUntilRecompute = 0;
+      ring.mountX = Number.NaN;
+      ring.mountY = Number.NaN;
+      ring.mountZ = Number.NaN;
     }
   }
 }

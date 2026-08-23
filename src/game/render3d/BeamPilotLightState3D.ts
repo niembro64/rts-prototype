@@ -15,11 +15,17 @@ function turretKey(entityId: EntityId, turretIndex: number): TurretKey {
   return `${entityId}:${turretIndex}`;
 }
 
-/** Per-frame presentation state for the idle cone on beam turrets. */
+/** Presentation state for the idle cone on beam turrets. Firing keys are a
+ *  pure function of line-projectile topology, so the set is rebuilt only
+ *  when the caller's line render version moves (P1-29) instead of on every
+ *  display frame. */
 export class BeamPilotLightState3D {
   private readonly firingTurrets = new Set<TurretKey>();
+  private lastLineVersion = -1;
 
-  update(lineProjectiles: readonly Entity[]): void {
+  update(lineProjectiles: readonly Entity[], lineRenderVersion: number): void {
+    if (lineRenderVersion === this.lastLineVersion) return;
+    this.lastLineVersion = lineRenderVersion;
     this.firingTurrets.clear();
     for (let i = 0; i < lineProjectiles.length; i++) {
       const projectile = lineProjectiles[i].projectile;
@@ -37,5 +43,6 @@ export class BeamPilotLightState3D {
 
   clear(): void {
     this.firingTurrets.clear();
+    this.lastLineVersion = -1;
   }
 }
