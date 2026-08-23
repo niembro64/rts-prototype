@@ -113,8 +113,10 @@ export class SimulationCombatController {
     const activeCombatUnits = updateTargetingAndFiringState(this.world, dtMs);
     SIM_TICK_INSTRUMENTATION.phase('combat.targetingFsm');
 
-    // Update laser sounds based on targeting state (every frame)
-    if (this.world.getBeamUnits().length > 0) {
+    // P1-04: laser hum state is a transition detector over beam turrets;
+    // a 10 Hz scan halves the equipment walk and shifts a hum start/stop
+    // by at most 50ms (the fire crack itself is a separate one-shot event).
+    if (this.world.getTick() % 2 === 0 && this.world.getBeamUnits().length > 0) {
       this.emitSimEvents(updateLaserSounds(this.world), onSimEvent);
     }
     SIM_TICK_INSTRUMENTATION.phase('combat.laserSounds');
@@ -163,7 +165,8 @@ export class SimulationCombatController {
     const shieldFieldUnits = this.world.turretShieldSpheresEnabled
       ? this.world.getShieldUnits()
       : undefined;
-    if (shieldFieldUnits && shieldFieldUnits.length > 0) {
+    // P1-04: same 10 Hz cadence as the laser hum scan.
+    if (shieldFieldUnits && shieldFieldUnits.length > 0 && this.world.getTick() % 2 === 0) {
       this.emitSimEvents(updateShieldSounds(this.world, shieldFieldUnits), onSimEvent);
     }
     SIM_TICK_INSTRUMENTATION.phase('combat.shields');
@@ -194,9 +197,16 @@ export class SimulationCombatController {
     // Host-piece servos keep settling after their weapon FSM goes idle, so
     // snapshot dirtiness must sample every armed host rather than only the
     // subset whose logical turret aim was active this tick.
-    for (const unit of armedUnits) {
-      if (turretSnapshotRowsChangedSinceLastSample(unit)) {
-        this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
+    // P1-03: rich snapshots publish at ~5 Hz, and live turret pose rides
+    // the fixed-tick presentation channel — so the 12-field signature
+    // compare runs at snapshot cadence (every 4th tick) instead of 20 Hz.
+    // The compare-with-last-sample semantics make the lower rate lossless:
+    // any net change since the previous sample still flips the signature.
+    if (this.world.getTick() % 4 === 0) {
+      for (const unit of armedUnits) {
+        if (turretSnapshotRowsChangedSinceLastSample(unit)) {
+          this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
+        }
       }
     }
     SIM_TICK_INSTRUMENTATION.phase('combat.fireTurrets');
