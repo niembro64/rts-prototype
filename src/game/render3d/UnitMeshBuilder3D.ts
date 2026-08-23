@@ -16,6 +16,7 @@ import {
 } from './Locomotion3D';
 import { getFactoryProductionHoldVisual } from '../sim/factoryProductionHold';
 import { buildAlbatrosChassis } from './AlbatrosMesh3D';
+import { buildTransportChassis } from './TransportMesh3D';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import { getBodyGeom } from './BodyShape3D';
 import type { CommanderVisualKit3D } from './CommanderVisualKit3D';
@@ -133,6 +134,9 @@ export class UnitMeshBuilder3D {
     const group = new THREE.Group();
     const blueprint = this.getUnitBlueprint(entity);
     const isAlbatros = blueprint?.unitBlueprintId === 'unitAlbatros';
+    // The beam-carry transport draws a bespoke open ring instead of its
+    // authored body lobes — see TransportMesh3D.
+    const isTransport = blueprint?.unitBlueprintId === 'unitTransport';
     const bodyIsShieldEmitter = blueprint?.bodyShape === null && turrets.some(
       (turret) => turret.config.shot?.type === 'shield' &&
         turret.config.shot.barrier !== undefined,
@@ -169,7 +173,7 @@ export class UnitMeshBuilder3D {
     chassis.userData.entityId = entity.id;
     const chassisMeshes: THREE.Mesh[] = [];
     const useDetailedUnitInstancing = USE_DETAILED_UNIT_INSTANCING;
-    const useInstancedChassis = useDetailedUnitInstancing && !isAlbatros;
+    const useInstancedChassis = useDetailedUnitInstancing && !isAlbatros && !isTransport;
     let smoothChassisSlots: number[] | undefined;
     let polyChassisSlot: number | undefined;
 
@@ -225,6 +229,10 @@ export class UnitMeshBuilder3D {
     if (isAlbatros) {
       chassisMeshes.push(
         ...buildAlbatrosChassis(chassis, primaryMat, entity.id, geometryTier),
+      );
+    } else if (isTransport) {
+      chassisMeshes.push(
+        ...buildTransportChassis(chassis, primaryMat, entity.id, geometryTier),
       );
     } else if (!smoothChassisSlots && polyChassisSlot === undefined) {
       for (const part of bodyEntry.parts) {

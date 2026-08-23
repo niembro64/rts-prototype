@@ -463,6 +463,13 @@ export class PhysicsEngine3D {
   // clear, ignore-pair purge). Sparse — undefined entries are slots
   // not owned by this engine instance.
   private bodyBySlot: (Body3D | undefined)[] = [];
+  /** Entities excluded from BOTH contact passes this step — beam-carried
+   *  transport passengers, which the tractor spring deliberately holds
+   *  overlapping their carrier's collision sphere. They still integrate
+   *  (gravity, drag, external forces) — only contacts are skipped. */
+  private collisionExemptEntityIds: ReadonlySet<EntityId> | null = null;
+  private _collisionFilterScratchA = new Uint32Array(0);
+  private _collisionFilterScratchB = new Uint32Array(0);
   private awakeDynamicBodyCount = 0;
   private stepSyncBodySlots = new Uint32Array(1024);
   private stepSyncBodySlotCount = 0;
@@ -1083,10 +1090,44 @@ export class PhysicsEngine3D {
     // Bodies touched this step still need final contact cleanup even
     // if integration just put the last awake body to sleep.
     const stepSlots = _integrateAwakeSlots.subarray(0, integrateCount);
-    this.resolveSphereCuboidContacts(stepSlots);
+    const contactStepSlots = this.filterCollisionExemptSlots(stepSlots, 0);
+    this.resolveSphereCuboidContacts(contactStepSlots);
     const sphereIterations = this.getSphereIterationBudget();
-    this.resolveSphereSphereContacts(sphereIterations, stepSlots, dynamicSlots);
+    this.resolveSphereSphereContacts(
+      sphereIterations,
+      contactStepSlots,
+      this.filterCollisionExemptSlots(dynamicSlots, 1),
+    );
     this.collectFinalStepSyncEntitiesAndClearForces(dynamicSlots);
+  }
+
+  /** See collisionExemptEntityIds. Pass null or an empty set to clear. */
+  setCollisionExemptEntities(ids: ReadonlySet<EntityId> | null): void {
+    this.collisionExemptEntityIds = ids !== null && ids.size > 0 ? ids : null;
+  }
+
+  private filterCollisionExemptSlots(
+    slots: Uint32Array,
+    scratchIndex: 0 | 1,
+  ): Uint32Array {
+    const exempt = this.collisionExemptEntityIds;
+    if (exempt === null) return slots;
+    let scratch = scratchIndex === 0
+      ? this._collisionFilterScratchA
+      : this._collisionFilterScratchB;
+    if (scratch.length < slots.length) {
+      scratch = new Uint32Array(Math.max(64, slots.length * 2));
+      if (scratchIndex === 0) this._collisionFilterScratchA = scratch;
+      else this._collisionFilterScratchB = scratch;
+    }
+    let count = 0;
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i];
+      const entityId = this.bodyBySlot[slot]?.entityId;
+      if (entityId !== undefined && exempt.has(entityId)) continue;
+      scratch[count++] = slot;
+    }
+    return count === slots.length ? slots : scratch.subarray(0, count);
   }
 
   private ensureIntegrationScratch(maxCount: number): void {

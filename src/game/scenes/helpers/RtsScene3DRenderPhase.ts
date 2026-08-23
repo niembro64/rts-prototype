@@ -13,6 +13,7 @@ import {
 import type { SelectionHudMode } from '@/clientBarConfig';
 import { areCaptureInstrumentsHidden } from '@/game/capture/captureInstrumentGate';
 import { isAttackEmitter } from '@/game/sim/emitterKinds';
+import { isClientTransportUnit } from '@/game/sim/transports';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { CameraViewBasis, SprayTarget } from '@/types/ui';
 import type { ClientViewState } from '../../network/ClientViewState';
@@ -265,7 +266,11 @@ export class RtsScene3DRenderPhase {
   private readonly entityRendererOverlayModes = {
     reclaimTargets: false,
     hoveredEntityId: null as EntityId | null,
+    /** transport id -> carried unit's volume radius, from the live beam
+     *  sprays; drives the ring's presentation-only carry expansion. */
+    carryExpansionBySourceId: null as ReadonlyMap<EntityId, number> | null,
   };
+  private readonly _carryExpansionScratch = new Map<EntityId, number>();
   private readonly terrainFogShadeScratch = {
     unseenDarkness: 0,
     radarDarkness: 0,
@@ -544,6 +549,19 @@ export class RtsScene3DRenderPhase {
       (inputManager?.isInResurrectMode() ?? false) ||
       (inputManager?.isInResurrectAreaMode() ?? false);
     this.entityRendererOverlayModes.hoveredEntityId = hoveredEntity?.id ?? null;
+    // A spray SOURCED from a transport is always its attraction beam
+    // (transports own no build power), so the beam list doubles as the
+    // carry-expansion channel with no extra wire state.
+    this._carryExpansionScratch.clear();
+    const beamSprays = this.clientViewState.getSprayTargets();
+    for (let i = 0; i < beamSprays.length; i++) {
+      const spray = beamSprays[i];
+      const source = this.clientViewState.getEntity(spray.source.id);
+      if (!isClientTransportUnit(source)) continue;
+      this._carryExpansionScratch.set(spray.source.id, spray.target.radius ?? 0);
+    }
+    this.entityRendererOverlayModes.carryExpansionBySourceId =
+      this._carryExpansionScratch.size > 0 ? this._carryExpansionScratch : null;
     entityRenderer.update(
       renderFrameState,
       (serverMeta?.turretShieldPanelsEnabled ?? true) && forceFieldsVisible,

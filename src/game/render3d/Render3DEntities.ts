@@ -504,8 +504,13 @@ export class Render3DEntities {
     frameStateOverride?: RenderFrameState3D,
     turretShieldPanelsEnabled: boolean = true,
     entityPacket?: RenderEntityUpdatePacket3D,
-    overlayModes: { reclaimTargets?: boolean; hoveredEntityId?: EntityId | null } = {},
+    overlayModes: {
+      reclaimTargets?: boolean;
+      hoveredEntityId?: EntityId | null;
+      carryExpansionBySourceId?: ReadonlyMap<EntityId, number> | null;
+    } = {},
   ): void {
+    this._carryExpansionBySourceId = overlayModes.carryExpansionBySourceId ?? null;
     // Refresh the single render-detail snapshot once per frame.
     const newFrameState = frameStateOverride
       ?? snapshotRenderFrameState(this.camera, this.getViewportHeight(), this.frameState);
@@ -573,6 +578,8 @@ export class Render3DEntities {
   private _spinDt = 0;
 
   private _currentDtMs = 0;
+  /** transport id -> carried volume radius (see overlayModes). */
+  private _carryExpansionBySourceId: ReadonlyMap<EntityId, number> | null = null;
   private _currentTimeMs = 0;
 
   /** Remove every overlay mesh that lives in the world group (not the
@@ -998,6 +1005,25 @@ export class Render3DEntities {
       // terrain + supportPointOffsetZ, so the group sits at the terrain
       // surface and the chassis/turret meshes stack from there.
       setVector3IfChanged(m.group.position, tx, groundZ, ty);
+      // Transport carry-expansion: while its beam holds a unit, the ring
+      // smoothly grows so the open center comfortably fits the carried
+      // volume, and eases back to 1 after release. Presentation only —
+      // sim volumes, HUD anchors, and selection rings stay at authored
+      // size.
+      {
+        const carriedRadius = this._carryExpansionBySourceId?.get(e.id);
+        const currentCarry = m.carryScale ?? 1;
+        if (carriedRadius !== undefined || currentCarry !== 1) {
+          const goal = carriedRadius !== undefined
+            ? Math.max(1, (carriedRadius * 1.35) / Math.max(1, radius * 0.72))
+            : 1;
+          const blend = Math.min(1, this._currentDtMs * 0.005);
+          let next = currentCarry + (goal - currentCarry) * blend;
+          if (Math.abs(next - goal) < 0.003) next = goal;
+          m.carryScale = next;
+          setScaleScalarIfChanged(m.group.scale, next);
+        }
+      }
       setQuaternionIfChanged(
         m.group.quaternion,
         poseOutput[poseBase],

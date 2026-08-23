@@ -2526,9 +2526,12 @@ export function runCommandExecutionContractTest(): void {
 
   const transportSim = new Simulation(transportWorld, new CommandQueue());
   transportSim.update(16);
+  // The beam-carry model: the passenger STAYS in the world as a physical
+  // body — the transport's tractor spring holds it, its own propulsion
+  // is dark, and it is marked `transported` instead of being removed.
   assertContract(
-    transportWorld.getEntity(passenger.id) === undefined,
-    'transport load action should remove the passenger entity from the world',
+    transportWorld.getEntity(passenger.id) === passenger,
+    'transport load action must keep the passenger entity in the world (beam-carried)',
   );
   assertContract(
     transport.transport?.loadedUnits.length === 1 &&
@@ -2536,16 +2539,19 @@ export function runCommandExecutionContractTest(): void {
     'transport load action should store the passenger in cargo',
   );
   assertContract(
-    passenger.heldBy !== null &&
-      passenger.heldBy.kind === 'transportCargo' &&
-      passenger.heldBy.holderId === transport.id,
-    'transport load action should hold the passenger through the generic hold relation',
+    passenger.transported !== null &&
+      passenger.transported.transportId === transport.id,
+    'transport load action should mark the passenger transported by this carrier',
+  );
+  assertContract(
+    passenger.heldBy === null,
+    'beam carry must not pose-slave the passenger through the hold relation',
+  );
+  assertContract(
+    passenger.unit !== null && passenger.unit.actions.length === 0,
+    'transport load action should clear the passenger action queue',
   );
 
-  const spawnedByUnload: Entity[] = [];
-  transportSim.onUnitSpawn = (newUnits) => {
-    spawnedByUnload.push(...newUnits);
-  };
   executeCommand(transportCtx, {
     type: 'unloadTransport',
     tick: 7,
@@ -2562,19 +2568,15 @@ export function runCommandExecutionContractTest(): void {
   transportSim.update(16);
   assertContract(
     transportWorld.getEntity(passenger.id) === passenger,
-    'transport unload action should re-add the passenger entity to the world',
+    'transport unload keeps the passenger entity in the world',
   );
   assertContract(
     transportCargoLength(transport) === 0,
     'transport unload action should empty cargo',
   );
   assertContract(
-    passenger.heldBy === null,
-    'transport unload action should release the generic cargo hold',
-  );
-  assertContract(
-    spawnedByUnload.some((entity) => entity.id === passenger.id),
-    'transport unload action should notify the server unit-spawn hook',
+    passenger.transported === null,
+    'transport unload action should clear the transported marker (beam off)',
   );
 
   const areaUnloadWorld = new WorldState(1, 512, 512);
@@ -2677,20 +2679,24 @@ export function runCommandExecutionContractTest(): void {
     radius: 64,
     queue: false,
   });
+  // Capacity is ONE under the beam-carry model, so an area load spreads
+  // passengers across the selected transports instead of stacking the
+  // first: closest valid passenger to the first transport, next to the
+  // second, enemies excluded.
   assertContract(
-    areaTransport.unit?.actions.length === 2 &&
-      secondAreaTransport.unit?.actions.length === 0,
-    'BAR area loadTransport command should fill the first selected transport before using the next transport',
+    areaTransport.unit?.actions.length === 1 &&
+      secondAreaTransport.unit?.actions.length === 1,
+    'BAR area loadTransport command should hand each capacity-one transport one passenger',
   );
   assertActionTargetIds(
     areaTransport.unit?.actions ?? [],
-    [nearPassenger.id, farPassenger.id],
-    'BAR area loadTransport command should assign closest valid passengers to each transport in cmd_area_commands_filter.lua order and exclude enemies',
+    [nearPassenger.id],
+    'BAR area loadTransport command should assign the closest valid passenger to the first transport and exclude enemies',
   );
   assertActionTargetIds(
     secondAreaTransport.unit?.actions ?? [],
-    [],
-    'BAR area loadTransport command should leave later selected transports unused while an earlier transport still has capacity',
+    [farPassenger.id],
+    'BAR area loadTransport command should hand the next passenger to the next selected transport',
   );
 
   const upgradeWorld = new WorldState(1, 512, 512);

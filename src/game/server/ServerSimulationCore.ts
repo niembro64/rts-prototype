@@ -11,6 +11,10 @@ import {
 } from '../sim/EntitySlotRegistry';
 import { spatialGrid } from '../sim/SpatialGrid';
 import type { Simulation } from '../sim/Simulation';
+import {
+  collectBeamCarriedEntityIds,
+  releaseAllTransportCargo,
+} from '../sim/transports';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';
 import {
@@ -78,6 +82,8 @@ export class ServerSimulationCore {
   readonly terrainBuildabilityGrid: TerrainBuildabilityGrid;
 
   private readonly unitForceSystem: UnitForceSystem;
+  /** Reused scratch for the per-tick beam-carried collision exemption. */
+  private readonly _beamCarriedIds = new Set<EntityId>();
   private physicsSyncEntitySlotsBuf = new Uint32Array(1024);
   private readonly onGameOver: ((winnerId: PlayerId) => void) | undefined;
   /** Set by the host so a lockstep command frame is recorded exactly like a
@@ -131,6 +137,11 @@ export class ServerSimulationCore {
     this.simulation.update(dtMs); // emits sim.* / combat.* phases itself
     this.unitForceSystem.applyForces(dtSec);
     phases.phase('core.unitForces');
+    // Beam-carried passengers sit inside their carrier's collision
+    // sphere on purpose; exclude them from this step's contact passes.
+    this.physics.setCollisionExemptEntities(
+      collectBeamCarriedEntityIds(this.world, this._beamCarriedIds),
+    );
     this.physics.step(dtSec, this.simulation.getWindState());
     phases.phase('core.physics');
     this.repairInvalidEntityPoses();
@@ -216,6 +227,10 @@ export class ServerSimulationCore {
 
   private setupSimulationCallbacks(): void {
     this.world.onEntityRemoving = (entity: Entity) => {
+      // A dying transport switches its beam off: every passenger it
+      // still holds becomes an ordinary falling unit, never a unit
+      // stuck `transported` to a ghost.
+      releaseAllTransportCargo(entity);
       const bodySlot = entity.body;
       if (bodySlot === null) return;
       const body = bodySlot.physicsBody;

@@ -288,6 +288,9 @@ export class Simulation {
 
   // Current spray targets for rendering (build/heal effects)
   private currentSprayTargets: SprayTarget[] = [];
+  /** Commander sprays + transport beam sprays for ticks where both
+   *  exist; reused so the merge never allocates. */
+  private readonly _combinedSprayTargets: SprayTarget[] = [];
 
   // Player IDs participating in this game
   private playerIds: PlayerId[] = [1, 2];
@@ -618,10 +621,19 @@ export class Simulation {
     }
     SIM_TICK_INSTRUMENTATION.phase('sim.commanderAbilities');
 
-    const transportResult = updateTransportActions(this.world);
-    if (transportResult.unloadedUnits.length > 0) {
-      const onUnitSpawn = this.onUnitSpawn;
-      if (onUnitSpawn !== null) onUnitSpawn(transportResult.unloadedUnits);
+    // Transport beams: passengers never leave the world now, so a
+    // release needs no spawn hook — the unit already has its body. The
+    // beams' nano streams join the commander sprays for this tick.
+    const transportResult = updateTransportActions(this.world, this.forceAccumulator);
+    if (transportResult.sprayTargets.length > 0) {
+      this._combinedSprayTargets.length = 0;
+      for (let i = 0; i < commanderResult.sprayTargets.length; i++) {
+        this._combinedSprayTargets.push(commanderResult.sprayTargets[i]);
+      }
+      for (let i = 0; i < transportResult.sprayTargets.length; i++) {
+        this._combinedSprayTargets.push(transportResult.sprayTargets[i]);
+      }
+      this.currentSprayTargets = this._combinedSprayTargets;
     }
 
     // Handle completed build/repair actions - advance commander action queues
@@ -1951,6 +1963,14 @@ export class Simulation {
           entity.combat.priorityTargetPoint = null;
           entity.combat.manualLaunchActive = false;
         }
+        continue;
+      }
+
+      // A BEAM-CARRIED passenger executes no actions and drives nothing —
+      // the transport's tractor spring owns its motion until release. Any
+      // orders issued while carried stay parked for the drop.
+      if (entity.transported !== null) {
+        entitySlotRegistry.setUnitDriveInput(entity, 0, 0, 0, 0, entitySlot);
         continue;
       }
 

@@ -566,7 +566,11 @@ export class UnitForceSystem {
 
       if (locomotionGroundContact) flags |= UF_FLAG_ON_GROUND;
 
-      const mediumLiftActive = !buildInProgress;
+      // A BEAM-CARRIED passenger (transported) must not fight the
+      // transport's tractor spring with its own hover lift or cruise —
+      // the same self-motion kill switch factory-held shells use. Drag,
+      // gravity, and the accumulated beam force still apply.
+      const mediumLiftActive = !buildInProgress && entity.transported === null;
       if (cruiseWhenUncommanded && mediumLiftActive) flags |= UF_FLAG_IS_AIRBORNE_CRUISING;
       if (mediumLiftActive) flags |= UF_FLAG_IS_AIRBORNE;
 

@@ -40,6 +40,7 @@ import {
   type SubmarineMesh,
 } from '@/game/render3d/SubmarineRig3D';
 import { buildAlbatrosChassis } from '@/game/render3d/AlbatrosMesh3D';
+import { buildTransportChassis } from '@/game/render3d/TransportMesh3D';
 import { buildShieldPanelMesh3D } from '@/game/render3d/ShieldPanelMesh3D';
 import {
   kneeFromIK,
@@ -737,6 +738,8 @@ function buildPreviewBody(
   const bodyEntry = getBodyGeom(blueprint.bodyShape, geometryTier);
   if (blueprint.unitBlueprintId === 'unitAlbatros') {
     buildAlbatrosChassis(chassis, bodyMaterial, SHELL_ENTITY_ID, geometryTier);
+  } else if (blueprint.unitBlueprintId === 'unitTransport') {
+    buildTransportChassis(chassis, bodyMaterial, SHELL_ENTITY_ID, geometryTier);
   } else if (blueprint.bodyShape !== null) {
     for (const part of bodyEntry.parts) {
       const mesh = new THREE.Mesh(part.geometry, bodyMaterial);

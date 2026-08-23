@@ -108,6 +108,9 @@ export type EntityMesh = {
    *  on a JSON-ish string of the whole body spec, which is too hot for a
    *  per-unit per-frame call. Invalidate alongside bodyShape. */
   bodyGeomEntryCache?: import('./BodyShape3D').BodyGeomEntry | null;
+  /** Transport carry-expansion factor (1 = at rest); smoothed by the
+   *  pose loop while the beam holds or releases a unit. */
+  carryScale?: number;
   turrets: TurretMesh[];
   mirrors?: ShieldPanelMesh;
   locomotion?: Locomotion3DMesh;

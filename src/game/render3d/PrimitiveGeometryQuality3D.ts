@@ -788,6 +788,7 @@ export function createPrimitiveTorusGeometry(
   tier: PrimitiveGeometryTier = 'close',
   radius = 1,
   tube = 0.1,
+  arc = Math.PI * 2,
 ): THREE.TorusGeometry {
   const q = quality(role).torus[tier];
   const geometry = new THREE.TorusGeometry(
@@ -795,6 +796,7 @@ export function createPrimitiveTorusGeometry(
     tube,
     SQUARE_TORUS_CROSS_SECTION_SEGMENTS,
     q.radialSegments,
+    arc,
   );
   const position = geometry.getAttribute('position');
   const rotationCos = Math.cos(SQUARE_TORUS_CROSS_SECTION_ROTATION_RAD);
@@ -821,8 +823,11 @@ export function createPrimitiveTorusGeometry(
   // Correct both the square tube's smaller inscribed area and the polygonal
   // major path in one pass. Moving each vertex away from its major-ring
   // center changes tube area without inflating the torus hole or ring radius.
-  const actualVolume = geometryEnclosedVolume(geometry);
-  const targetVolume = Math.PI * 2 * Math.PI * radius * tube * tube;
+  // A partial arc is an OPEN surface — its enclosed volume is
+  // ill-defined, so the tube correction only runs on full rings and a
+  // partial ring keeps its authored tube size.
+  const actualVolume = arc >= Math.PI * 2 - 1e-6 ? geometryEnclosedVolume(geometry) : 0;
+  const targetVolume = arc * radius * Math.PI * tube * tube;
   if (actualVolume > 1e-12 && targetVolume > 0) {
     const tubeScale = Math.sqrt(targetVolume / actualVolume);
     for (let i = 0; i < position.count; i++) {
