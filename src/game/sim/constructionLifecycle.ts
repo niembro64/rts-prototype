@@ -396,6 +396,12 @@ const _activeConstructionTargets = new Set<number>();
 const _queuedConstructionTargets = new Set<number>();
 const _decayOut = new Float64Array(4);
 
+const EMPTY_CONSTRUCTION_ATTENDANCE: ConstructionAttendance = {
+  funded: new Set<number>(),
+  active: new Set<number>(),
+  queued: new Set<number>(),
+};
+
 type ConstructionAttendance = {
   /** Shells that received construct work during resource distribution —
    *  `distributeEnergy` clears and refills `workMovements` immediately
@@ -528,7 +534,13 @@ export function updateConstructionLifecycle(
     world.getIncompleteBuildableUnits(),
     world.getIncompleteBuildableBuildings(),
   ];
-  const attendance = collectConstructionAttendance(world);
+  // P1-12: attendance exists solely to referee decay for incomplete
+  // BUILDING shells. With no incomplete shell anywhere there is nothing
+  // to attend — skip the builder/queue walk entirely (the common steady
+  // state of a developed base).
+  const attendance = sources[0].length > 0 || sources[1].length > 0
+    ? collectConstructionAttendance(world)
+    : EMPTY_CONSTRUCTION_ATTENDANCE;
   const dtSec = dtMs / 1000;
 
   for (const list of sources) {

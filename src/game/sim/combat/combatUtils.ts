@@ -1166,6 +1166,35 @@ function updateSharedHostPieceArticulation(
  * `postAim` folds final child rotation into socket velocity and overwrites the
  * targeting slab before firing.
  */
+/** P1-02: whether an entity can own attached host pieces is pure blueprint
+ *  data (bot locomotion or building, with at least one hostAttachment
+ *  turret). Memoized per entity so the per-tick phases skip the blueprint
+ *  lookup and turret scan for the (large) majority of armed hosts. */
+const _hostAttachmentEligibility = new WeakMap<Entity, boolean>();
+
+function hostHasAttachedPieces(host: Entity): boolean {
+  const cached = _hostAttachmentEligibility.get(host);
+  if (cached !== undefined) return cached;
+  let eligible = false;
+  const combat = host.combat;
+  if (combat !== null) {
+    const sourceUnit = host.unit;
+    const kindEligible = sourceUnit !== null
+      ? getUnitBlueprint(sourceUnit.unitBlueprintId).unitLocomotion.type === 'bot'
+      : host.building !== null;
+    if (kindEligible) {
+      for (let i = 0; i < combat.turrets.length; i++) {
+        if (combat.turrets[i].config.hostAttachment !== null) {
+          eligible = true;
+          break;
+        }
+      }
+    }
+  }
+  _hostAttachmentEligibility.set(host, eligible);
+  return eligible;
+}
+
 export function updateAuthoritativeHostAttachmentKinematics(
   hosts: readonly Entity[],
   currentTick: number,
@@ -1178,15 +1207,10 @@ export function updateAuthoritativeHostAttachmentKinematics(
     return;
   }
   for (const host of hosts) {
+    if (!hostHasAttachedPieces(host)) continue;
     const combat = host.combat;
     if (combat === null) continue;
     const sourceUnit = host.unit;
-    if (sourceUnit !== null) {
-      const blueprint = getUnitBlueprint(sourceUnit.unitBlueprintId);
-      if (blueprint.unitLocomotion.type !== 'bot') continue;
-    } else if (host.building === null) {
-      continue;
-    }
     const { cos, sin } = getTransformCosSin(host.transform);
     const unitGroundZ = getUnitGroundZ(host);
     const surfaceN = sourceUnit?.surfaceNormal ?? FLAT_SURFACE_NORMAL;
