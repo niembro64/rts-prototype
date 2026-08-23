@@ -8,3 +8,5 @@
 
 
 5. Our "helios" should be much taller, much more interesting looking, and let's have its ballistics use the "high arc". Make it at least 3x taller than it is now. 
+
+6. Our "Entity Lab", "Game Controls", and "Game Info" let's have as icon buttons, and have them at the bottom of that side bar stuck. The "Open Lobbies" should be the list that scrolls, nothinig else should scroll on that side bar. 
