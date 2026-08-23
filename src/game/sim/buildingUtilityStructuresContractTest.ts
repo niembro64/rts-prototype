@@ -73,6 +73,27 @@ export function runBuildingUtilityStructuresContractTest(): void {
 
   const metalStorage = getBuildingConfig('buildingMetalStorage');
   const energyStorage = getBuildingConfig('buildingEnergyStorage');
+  for (const storage of [metalStorage, energyStorage]) {
+    assertContract(
+      storage.gridWidth === 12 && storage.gridHeight === 12 && storage.gridDepth === 12,
+      `${storage.name} must be 3x its original 4x4x4 linear dimensions (27x volume)`,
+    );
+    assertContract(
+      storage.supportSurface.kind === 'boxTop'
+        && storage.supportSurface.topZ === 240
+        && storage.supportSurface.width === 240
+        && storage.supportSurface.height === 240,
+      `${storage.name} support surface must cover the complete 240x240 footprint`,
+    );
+    assertContract(
+      Math.abs(storage.radius.collision - 169.706) < 1e-6,
+      `${storage.name} collision radius must cover its 3x footprint`,
+    );
+  }
+  assertContract(
+    metalStorage.visualHeight === 240 && energyStorage.visualHeight === 270,
+    'storage visual heights must scale by the same 3x linear factor',
+  );
   assertContract(
     metalStorage.metalStorage === 3000 && metalStorage.energyStorage === null,
     'Metal Storage must add only 3000 metal capacity',

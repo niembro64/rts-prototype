@@ -11,6 +11,7 @@ import { STRUCTURE_BLUEPRINT_IDS } from '@/types/blueprintIds';
 import { buildBuildingShape, type BuildingShape } from './BuildingShape3D';
 import { applyBuildingOperationalPose } from './BuildingOperationalRig3D';
 import { applySolarCollectorPetalPose } from './SolarCollectorMesh3D';
+import { clockwiseExtractorRotorYaw } from './BuildingAnimationController3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[building operational visual contract] ${message}`);
@@ -157,6 +158,12 @@ export function runBuildingOperationalVisual3DContractTest(): void {
   assertContract(
     BUILDING_CLOSED_DAMAGE_MULTIPLIER > 0 && BUILDING_CLOSED_DAMAGE_MULTIPLIER < 1,
     'the shared OFF damage multiplier must reduce incoming damage',
+  );
+  const extractorStartYaw = clockwiseExtractorRotorYaw(0.37);
+  const extractorLaterYaw = clockwiseExtractorRotorYaw(0.91);
+  assertContract(
+    extractorLaterYaw < extractorStartYaw && extractorLaterYaw < 0,
+    'every advancing extractor phase must rotate clockwise when viewed from above',
   );
 
   const placeholderMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });

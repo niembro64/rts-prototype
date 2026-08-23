@@ -134,6 +134,15 @@ function assertUtilityDetailsEscapePrimaryShell(
 
   const detailBounds = new THREE.Box3();
   for (const entry of shape.details) detailBounds.expandByObject(entry.mesh);
+  const expectedStorageHeight = buildingBlueprintId === 'buildingMetalStorage' ? 240 : 270;
+  assertContract(
+    shape.height === expectedStorageHeight,
+    `${buildingBlueprintId}/${tier} chassis must use its 3x visual height`,
+  );
+  assertContract(
+    detailBounds.max.y > expectedStorageHeight * 0.7,
+    `${buildingBlueprintId}/${tier} exposed hardware must scale into the 3x-taller volume`,
+  );
   const detailSpanX = detailBounds.max.x - detailBounds.min.x;
   const detailSpanZ = detailBounds.max.z - detailBounds.min.z;
   assertContract(

@@ -315,8 +315,9 @@ export function buildMetalStorageMesh(
   depth: number,
   primaryMat: THREE.Material,
 ): BuildingShape {
-  const height = 80;
   const minDim = Math.min(width, depth);
+  const linearScale = minDim / 80;
+  const height = 80 * linearScale;
   const primary = new THREE.Mesh(metalVaultBodyGeom, primaryMat);
   const details: BuildingShape['details'] = [];
   const rackWidth = width * 0.72;
@@ -327,15 +328,15 @@ export function buildMetalStorageMesh(
   details.push(detail(makeBox(
     structureDarkMat,
     rackWidth,
-    10,
+    10 * linearScale,
     rackDepth,
     0,
-    10,
+    10 * linearScale,
     0,
   ), 'min'));
   for (const face of [-1, 1]) {
     const faceZ = face * rackFaceZ;
-    for (const y of [23, 40, 57]) {
+    for (const y of [23, 40, 57].map((value) => value * linearScale)) {
       details.push(detail(makeHorizontalRod(
         metalCargoMat,
         billetRadius,
@@ -360,35 +361,51 @@ export function buildMetalStorageMesh(
     details.push(detail(makeRodBetween(
       structureDarkMat,
       Math.max(1.8, minDim * 0.025),
-      new THREE.Vector3(-rackWidth * 0.39, 15, faceZ + face * billetRadius * 0.75),
-      new THREE.Vector3(rackWidth * 0.39, 68, faceZ + face * billetRadius * 0.75),
+      new THREE.Vector3(
+        -rackWidth * 0.39,
+        15 * linearScale,
+        faceZ + face * billetRadius * 0.75,
+      ),
+      new THREE.Vector3(
+        rackWidth * 0.39,
+        68 * linearScale,
+        faceZ + face * billetRadius * 0.75,
+      ),
       hexCylinderGeom,
     ), 'low'));
     details.push(detail(makeRodBetween(
       structureDarkMat,
       Math.max(1.8, minDim * 0.025),
-      new THREE.Vector3(rackWidth * 0.39, 15, faceZ + face * billetRadius * 0.75),
-      new THREE.Vector3(-rackWidth * 0.39, 68, faceZ + face * billetRadius * 0.75),
+      new THREE.Vector3(
+        rackWidth * 0.39,
+        15 * linearScale,
+        faceZ + face * billetRadius * 0.75,
+      ),
+      new THREE.Vector3(
+        -rackWidth * 0.39,
+        68 * linearScale,
+        faceZ + face * billetRadius * 0.75,
+      ),
       hexCylinderGeom,
     ), 'low'));
   }
   details.push(detail(makeBox(
     structureLightMat,
     rackWidth * 0.9,
-    6,
+    6 * linearScale,
     rackDepth * 0.86,
     0,
-    height - 7,
+    height - 7 * linearScale,
     0,
   ), 'low'));
   for (const x of [-rackWidth * 0.3, rackWidth * 0.3]) {
     details.push(detail(makeBox(
       structureDarkMat,
       Math.max(4, minDim * 0.05),
-      7,
+      7 * linearScale,
       depth * 0.9,
       x,
-      height - 2,
+      height - 2 * linearScale,
       0,
     ), 'low'));
   }
@@ -401,8 +418,9 @@ export function buildEnergyStorageMesh(
   depth: number,
   primaryMat: THREE.Material,
 ): BuildingShape {
-  const height = 90;
   const minDim = Math.min(width, depth);
+  const linearScale = minDim / 80;
+  const height = 90 * linearScale;
   const primary = new THREE.Mesh(energyCoreGeom, primaryMat);
   const details: BuildingShape['details'] = [];
   const offsetX = width * 0.31;
@@ -413,9 +431,9 @@ export function buildEnergyStorageMesh(
   details.push(detail(makeCylinder(
     structureDarkMat,
     Math.max(24, minDim * 0.38),
-    10,
+    10 * linearScale,
     0,
-    7,
+    7 * linearScale,
     0,
     hexCylinderGeom,
   ), 'min'));
@@ -426,14 +444,14 @@ export function buildEnergyStorageMesh(
         cellRadius,
         cellHeight,
         x,
-        13 + cellHeight * 0.5,
+        13 * linearScale + cellHeight * 0.5,
         z,
       ), 'low'));
       details.push(detail(makeSphere(
         energyGlowMat,
         cellRadius * 0.54,
         x,
-        14 + cellHeight,
+        14 * linearScale + cellHeight,
         z,
       ), 'low'));
     }
@@ -461,7 +479,7 @@ export function buildEnergyStorageMesh(
     energyGlowMat,
     Math.max(7, minDim * 0.1),
     0,
-    busY + 4,
+    busY + 4 * linearScale,
     0,
   ), 'low'));
   return { primary, details, height };

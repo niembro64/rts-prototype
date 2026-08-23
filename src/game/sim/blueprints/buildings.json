@@ -1742,15 +1742,23 @@
     "tinyName": "MST",
     "shortName": "MSTORE",
     "name": "Metal Storage",
-    "gridWidth": 4,
-    "gridHeight": 4,
+    "gridWidth": 12,
+    "gridHeight": 12,
     "footprintMask": [
-      ".##.",
-      "####",
-      "####",
-      ".##."
+      "...######...",
+      "...######...",
+      "...######...",
+      "############",
+      "############",
+      "############",
+      "############",
+      "############",
+      "############",
+      "...######...",
+      "...######...",
+      "...######..."
     ],
-    "gridDepth": 4,
+    "gridDepth": 12,
     "hp": 1000,
     "cost": {
       "energy": 250,
@@ -1764,13 +1772,13 @@
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
     "renderProfile": "buildingMetalStorage",
-    "visualHeight": 80,
+    "visualHeight": 240,
     "anchorProfile": "constantVisualTop",
     "supportSurface": {
       "kind": "boxTop",
-      "topZ": 80,
-      "width": 80,
-      "height": 80
+      "topZ": 240,
+      "width": 240,
+      "height": 240
     },
     "placementSets": [
       "ground-build-squares-surface"
@@ -1805,9 +1813,9 @@
         "damage": 280
       },
       "radius": {
-        "other": 56.569,
-        "hitbox": 56.569,
-        "collision": 56.569
+        "other": 169.706,
+        "hitbox": 169.706,
+        "collision": 169.706
       },
       "signature": {
         "radarStealth": false,
@@ -1820,15 +1828,23 @@
     "tinyName": "EST",
     "shortName": "ESTORE",
     "name": "Energy Storage",
-    "gridWidth": 4,
-    "gridHeight": 4,
+    "gridWidth": 12,
+    "gridHeight": 12,
     "footprintMask": [
-      ".##.",
-      "####",
-      "####",
-      ".##."
+      "...######...",
+      "...######...",
+      "...######...",
+      "############",
+      "############",
+      "############",
+      "############",
+      "############",
+      "############",
+      "...######...",
+      "...######...",
+      "...######..."
     ],
-    "gridDepth": 4,
+    "gridDepth": 12,
     "hp": 800,
     "cost": {
       "energy": 500,
@@ -1842,13 +1858,13 @@
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
     "renderProfile": "buildingEnergyStorage",
-    "visualHeight": 90,
+    "visualHeight": 270,
     "anchorProfile": "constantVisualTop",
     "supportSurface": {
       "kind": "boxTop",
-      "topZ": 80,
-      "width": 80,
-      "height": 80
+      "topZ": 240,
+      "width": 240,
+      "height": 240
     },
     "placementSets": [
       "ground-build-squares-surface"
@@ -1883,9 +1899,9 @@
         "damage": 320
       },
       "radius": {
-        "other": 56.569,
-        "hitbox": 56.569,
-        "collision": 56.569
+        "other": 169.706,
+        "hitbox": 169.706,
+        "collision": 169.706
       },
       "signature": {
         "radarStealth": false,

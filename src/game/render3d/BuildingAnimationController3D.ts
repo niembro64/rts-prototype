@@ -101,9 +101,9 @@ export class BuildingAnimationController3D {
    *  spinning open, 1 = folded flat against the pyramid). Smoothed
    *  toward the server's open flag with BUILDING_FORTIFY_ANIM_ALPHA. */
   private extractorCloseAmounts = new IndexedEntityIdMap<number>();
-  /** Last applied extractor rotor yaw. Kept monotonic in the negative
-   *  spin direction so open/close transitions can pause at an aligned
-   *  pose, but never visibly reverse. */
+  /** Last applied extractor rotor yaw. Seen from above, negative local-Y
+   *  yaw is clockwise. Keeping it monotonic guarantees every extractor
+   *  shares that direction through spin-up, parking, and reopening. */
   private extractorRotorYaws = new IndexedEntityIdMap<number>();
   /** Per-entity "closed amount" for the wind turbine's stowed pose
    *  (nacelle tilts skyward + blades fold against the pole). */
@@ -399,13 +399,14 @@ export class BuildingAnimationController3D {
 
   private updateActiveExtractorAnimations(spinDt: number): void {
     if (this.activeExtractorBuildings.length === 0) return;
+    const clockwiseDt = Math.max(0, spinDt);
     const rotorSpeedAlpha = halfLifeBlend(
-      spinDt,
+      clockwiseDt,
       EXTRACTOR_ROTOR_SPEED_RESPONSE_HALF_LIFE_SEC,
     );
     for (let i = 0; i < this.activeExtractorBuildings.length;) {
       const entry = this.activeExtractorBuildings[i];
-      if (this.updateExtractorAnimationEntry(entry, spinDt, rotorSpeedAlpha)) {
+      if (this.updateExtractorAnimationEntry(entry, clockwiseDt, rotorSpeedAlpha)) {
         i++;
       } else {
         removeAnimatedBuildingEntry(
@@ -460,8 +461,8 @@ export class BuildingAnimationController3D {
         EXTRACTOR_ROTOR_RAD_PER_SEC_PER_METAL_RATE *
         METAL_EXTRACTOR_ROTOR_SPIN_MULTIPLIER
       : (actualRate > 0 ? EXTRACTOR_ROTOR_POTENTIAL_RAD_PER_SEC : 0);
-    const targetSpeed = baseSpeed * (1 - easedClose);
-    let speed = this.extractorRotorSpeeds.get(id) ?? 0;
+    const targetSpeed = Math.abs(baseSpeed) * (1 - easedClose);
+    let speed = Math.abs(this.extractorRotorSpeeds.get(id) ?? 0);
     speed = lerp(speed, targetSpeed, rotorSpeedAlpha);
     if (targetSpeed === 0 && speed < BUILDING_RIG_IDLE_EPSILON) speed = 0;
     phase += spinDt * speed;
@@ -470,8 +471,8 @@ export class BuildingAnimationController3D {
     const detailsReady = mesh.buildingCachedDetailsReady === true;
     if (rig && detailsReady) {
       const alignedPhase = getNextExtractorAlignedPhase(phase, Math.PI * 2);
-      const openYaw = -phase;
-      const closedYaw = -alignedPhase;
+      const openYaw = clockwiseExtractorRotorYaw(phase);
+      const closedYaw = clockwiseExtractorRotorYaw(alignedPhase);
       let yaw: number;
       if (open) {
         yaw = openYaw;
@@ -761,4 +762,12 @@ function getNextExtractorAlignedPhase(phase: number, twoPi: number): number {
   if (!Number.isFinite(phase) || phase <= 0) return 0;
   const alignedTurn = Math.ceil((phase - 1e-6) / twoPi);
   return alignedTurn * twoPi;
+}
+
+/** Three.js negative local-Y rotation is clockwise when the rotor is viewed
+ *  from above. Centralizing the sign prevents individual extractor variants
+ *  or runtime rates from accidentally choosing opposite directions. */
+export function clockwiseExtractorRotorYaw(phase: number): number {
+  if (!Number.isFinite(phase) || phase <= 0) return 0;
+  return -phase;
 }
