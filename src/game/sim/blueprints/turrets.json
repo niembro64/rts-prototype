@@ -1536,9 +1536,9 @@
         "maxAcceleration": 0.4
       },
       "pitch": {
-        "maxSpeed": 0.18,
-        "maxAcceleration": 0.32
-      }
+    "maxSpeed": 0.5,
+    "maxAcceleration": 0.9
+   }
     },
     "emissionLaneCount": 1,
     "passive": false,
@@ -1557,10 +1557,10 @@
     },
     "verticalLauncher": false,
     "idlePitch": 0,
-    "groundAimFraction": null,
+    "groundAimFraction": 1,
     "aimMotionSnapshotVisible": true,
     "aimStyle": {
-      "angleType": "ballisticArcLow"
+      "angleType": "ballisticArcHigh"
     },
     "kind": "attack",
     "emissionKind": "shot",

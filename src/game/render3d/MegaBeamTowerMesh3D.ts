@@ -4,6 +4,7 @@ import {
   ANTI_AIR_TOWER_VISUAL_HEIGHT,
   CANNON_TOWER_VISUAL_HEIGHT,
   HEAVY_BEAM_TOWER_EMITTER_LAYOUT,
+  HELIOS_TOWER_VISUAL_HEIGHT,
   LIGHT_BEAM_TOWER_VISUAL_HEIGHT,
   MEGA_BEAM_TOWER_VISUAL_HEIGHT,
 } from '../sim/blueprints';
@@ -21,6 +22,9 @@ import {
 const megaBeamTowerBodyGeom = createHexFrustumGeometry(0.18, 0.3);
 const heavyBeamTowerBodyGeom = createHexFrustumGeometry(0.26, 0.42);
 const cannonTowerBodyGeom = createHexFrustumGeometry(0.44, 0.54);
+// The Helios siege spire tapers hard: a wide anchored base narrowing to a
+// slender mast that carries the gun platform at 210 world units.
+const heliosTowerBodyGeom = createHexFrustumGeometry(0.24, 0.55);
 const antiAirTowerBodyGeom = createHexFrustumGeometry(0.32, 0.46);
 const beamTowerTrimMat = new THREE.MeshStandardMaterial({
   color: COLORS.buildings.materials.towerBeamMegaTrim.colorHex,
@@ -167,6 +171,33 @@ const cannonTowerProfile: DefenseTowerMeshProfile = {
   emitterYoke: null,
 };
 
+// Bespoke Helios profile: the siege gun is the tallest defense structure by
+// far (210-unit spire vs the cannon's 30-unit bunker), so it stops borrowing
+// the cannon's squat proportions. Eight long spars follow the taper, the
+// neck runs the last stretch to the elevated gun platform, and the two
+// heliosYoke collars ride near the top through profile.height.
+const heliosTowerProfile: DefenseTowerMeshProfile = {
+  height: HELIOS_TOWER_VISUAL_HEIGHT,
+  foot: 100,
+  baseHeight: 18,
+  baseRadiusFactor: 0.58,
+  lowerBandRadiusFactor: 0.5,
+  strutCount: 8,
+  strutAngleOffset: Math.PI / 8,
+  strutBottomRadiusFactor: 0.5,
+  strutTopRadiusFactor: 0.2,
+  strutBottomY: 20,
+  strutTopY: HELIOS_TOWER_VISUAL_HEIGHT - 16,
+  strutRadius: 2.6,
+  neckRadiusFactor: 0.2,
+  neckHeight: 22,
+  socketRadiusFactor: 0.3,
+  socketHeight: 8,
+  socketY: HELIOS_TOWER_VISUAL_HEIGHT + 4,
+  trimMaterial: towerCannonTrimMat,
+  emitterYoke: null,
+};
+
 const antiAirTowerProfile: DefenseTowerMeshProfile = {
   height: ANTI_AIR_TOWER_VISUAL_HEIGHT,
   foot: 42,
@@ -229,12 +260,58 @@ export function buildCannonTowerMesh(
   primaryMat: THREE.Material,
   variant: 'cannon' | 'torpedo' | 'helios' = 'cannon',
 ): BuildingShape {
+  if (variant === 'helios') return buildHeliosTowerMesh(primaryMat);
   return buildDefenseTowerMesh(
     primaryMat,
     cannonTowerBodyGeom,
     cannonTowerProfile,
     variant,
   );
+}
+
+/** Static Helios siege spire — the tall bespoke profile plus mast dressing
+ *  the shared builder does not know about: two service platforms breaking
+ *  the long climb, a counterweight ring under the gun deck, and a beacon
+ *  mast rising past the muzzle. */
+export function buildHeliosTowerMesh(primaryMat: THREE.Material): BuildingShape {
+  const shape = buildDefenseTowerMesh(
+    primaryMat,
+    heliosTowerBodyGeom,
+    heliosTowerProfile,
+    'helios',
+  );
+  const profile = heliosTowerProfile;
+  const foot = profile.foot;
+  const h = profile.height;
+  // Service platforms at one and two thirds of the climb: thin wide discs
+  // with a darker rim band each, sized to overhang the taper at that height.
+  for (const frac of [1 / 3, 2 / 3] as const) {
+    const y = h * frac;
+    const taper = 0.55 - (0.55 - 0.24) * frac;
+    const deck = makeCylinder(primaryMat, foot * taper * 0.72, 3.2, 0, y, 0);
+    shape.details.push(detail(deck, 'min', undefined, 'static'));
+    const rim = makeCylinder(
+      profile.trimMaterial,
+      foot * taper * 0.76,
+      1.6,
+      0,
+      y - 2.2,
+      0,
+    );
+    shape.details.push(detail(rim, 'min', undefined, 'static'));
+  }
+  // Counterweight ring just under the gun deck: the visual answer to the
+  // recoil of a high-arc siege round.
+  const counterweight = makeCylinder(
+    profile.trimMaterial,
+    foot * 0.34,
+    10,
+    0,
+    h - profile.neckHeight - 8,
+    0,
+  );
+  shape.details.push(detail(counterweight, 'min', undefined, 'static'));
+  return shape;
 }
 
 /** Static anti-air tower — compact missile-defense mast with a bright
@@ -463,14 +540,15 @@ function addDefenseTowerTeamOrnament(
     // The Helios siege gun wears a taller two-tier collar: the long slow
     // barrel needs a visibly heavier cradle than the standard cannon yoke,
     // and the distinct ornament kind keeps the per-building team-colour
-    // vocabulary unique.
+    // vocabulary unique. Sized against the slender spire top rather than
+    // the old bunker silhouette.
     details.push(teamOrnamentDetail(
       makeCylinder(
         primaryMat,
-        foot * 0.47,
-        3.4,
+        foot * 0.30,
+        5.0,
         0,
-        profile.height - 3.0,
+        profile.height - 4.0,
         0,
       ),
       'heliosYoke',
@@ -478,10 +556,10 @@ function addDefenseTowerTeamOrnament(
     details.push(teamOrnamentDetail(
       makeCylinder(
         primaryMat,
-        foot * 0.40,
-        3.0,
+        foot * 0.26,
+        4.0,
         0,
-        profile.height - 7.2,
+        profile.height - 12.0,
         0,
       ),
       'heliosYoke',

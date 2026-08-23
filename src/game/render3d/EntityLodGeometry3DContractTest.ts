@@ -210,7 +210,10 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   towerBeamMega: { close: 1400, mid: 780, far: 400 },
   towerBeamLight: { close: 900, mid: 500, far: 260 },
   towerCannon: { close: 1000, mid: 600, far: 320 },
-  towerHelios: { close: 1000, mid: 600, far: 320 },
+  // Re-baselined 2026-08-23: the Helios grew from the shared cannon bunker
+  // into a bespoke 210-unit siege spire (service platforms, counterweight
+  // ring, extra spars).
+  towerHelios: { close: 1300, mid: 720, far: 360 },
   towerAntiAir: { close: 1200, mid: 750, far: 440 },
   towerTorpedo: { close: 1100, mid: 650, far: 360 },
   // Re-baselined 2026-08-16 when the two shield labs got their curve

@@ -1088,7 +1088,7 @@
       "#####",
       ".###."
     ],
-    "gridDepth": 4,
+    "gridDepth": 12,
     "hp": 5200,
     "cost": {
       "energy": 9000,
@@ -1102,11 +1102,11 @@
     "conversionRate": null,
     "allowedUnitBlueprintIds": null,
     "renderProfile": "towerCannon",
-    "visualHeight": 42,
+    "visualHeight": 210,
     "anchorProfile": "constantVisualTop",
     "supportSurface": {
       "kind": "boxTop",
-      "topZ": 84,
+      "topZ": 210,
       "width": 100,
       "height": 100
     },
@@ -1132,7 +1132,7 @@
         "mount": {
           "x": 0,
           "y": 0,
-          "z": 84
+          "z": 250
         },
         "mountId": "helios",
         "controlMode": "hostPreferred"
