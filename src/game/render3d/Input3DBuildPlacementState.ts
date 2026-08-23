@@ -133,6 +133,30 @@ export class Input3DBuildPlacementState {
     this.metalDeposits = metalDeposits ?? generateMetalDeposits(width, height, playerCount);
   }
 
+  /** BAR quick-build (cmd_quick_build_extractor): nearest deposit whose
+   *  ORIGIN lies within `radius` of the point. Same membership rule as
+   *  the area planner — never widened by placementRadius (see the
+   *  warning on planMetalExtractorPlacementsInArea). */
+  findNearestMetalDepositWithin(
+    worldX: number,
+    worldY: number,
+    radius: number,
+  ): MetalDeposit | null {
+    let best: MetalDeposit | null = null;
+    let bestSq = radius * radius;
+    for (let i = 0; i < this.metalDeposits.length; i++) {
+      const deposit = this.metalDeposits[i];
+      const dx = deposit.x - worldX;
+      const dy = deposit.y - worldY;
+      const dSq = dx * dx + dy * dy;
+      if (dSq <= bestSq) {
+        bestSq = dSq;
+        best = deposit;
+      }
+    }
+    return best;
+  }
+
   reset(): void {
     this.validationKey = '';
     this.canPlace = false;

@@ -76,6 +76,10 @@ const UNLOAD_TRANSPORT_AREA_MIN_RADIUS = 64;
 const ATTACK_AREA_RADIUS = 300;
 const MEX_UPGRADE_AREA_RADIUS = 220;
 const AREA_MEX_BLUEPRINT_ID: BuildingBlueprintId = 'buildingExtractor';
+// BAR's cmd_quick_build_extractor accepts a spot within a fixed radius
+// of the cursor (never the mex's own placementRadius). Two build cells
+// of slack feels equivalent at our scale.
+const QUICK_BUILD_MEX_HOVER_RADIUS = 90;
 
 type AreaDrag = {
   kind: Input3DAreaDragKind;
@@ -1268,6 +1272,84 @@ export class Input3DModeClickController {
       diagnostics.canPlace,
       diagnostics,
       this.buildPlacement.facingInfo.rotation,
+    );
+  }
+
+  /** BAR cmd_quick_build_extractor parity: with a capable builder
+   *  selected and NO command mode active, hovering near a metal deposit
+   *  proposes the extractor at its snapped spot. Returns null whenever
+   *  the proposal should not exist (mode active, no capable builder, no
+   *  deposit in reach). */
+  findQuickBuildMexTarget(
+    worldX: number,
+    worldY: number,
+  ): { gridX: number; gridY: number; canPlace: boolean; worldX: number; worldY: number } | null {
+    if (this.active) return null;
+    const builder = this.config.getSelectedBuilder();
+    if (!builder || !entityCanBuild(builder, AREA_MEX_BLUEPRINT_ID)) return null;
+    const deposit = this.buildPlacement.findNearestMetalDepositWithin(
+      worldX,
+      worldY,
+      QUICK_BUILD_MEX_HOVER_RADIUS,
+    );
+    if (deposit === null) return null;
+    const diagnostics = this.validateBuildPlacement(AREA_MEX_BLUEPRINT_ID, deposit.x, deposit.y);
+    return {
+      gridX: diagnostics.gridX,
+      gridY: diagnostics.gridY,
+      canPlace: diagnostics.canPlace,
+      worldX: deposit.x,
+      worldY: deposit.y,
+    };
+  }
+
+  /** Drive/hide the shared build ghost for the quick-build proposal.
+   *  Only legal while no mode is active, so it never fights the build
+   *  preview's own ghost driver. */
+  showQuickBuildMexGhost(target: { worldX: number; worldY: number; canPlace: boolean }): void {
+    if (this.active) return;
+    const builder = this.config.getSelectedBuilder();
+    if (!builder) return;
+    const diagnostics = this.validateBuildPlacement(AREA_MEX_BLUEPRINT_ID, target.worldX, target.worldY);
+    this.buildGhost?.setTarget(
+      AREA_MEX_BLUEPRINT_ID,
+      target.worldX,
+      target.worldY,
+      builder,
+      diagnostics.canPlace,
+      diagnostics,
+      this.buildPlacement.facingInfo.rotation,
+    );
+  }
+
+  hideQuickBuildMexGhost(): void {
+    if (this.active) return;
+    this.buildGhost?.hide();
+  }
+
+  /** Commit the quick-build proposal — same crew semantics as an
+   *  ordinary placement click (every capable selected builder rides the
+   *  startBuild; shift queues). */
+  commitQuickBuildMex(
+    target: { gridX: number; gridY: number; worldX: number; worldY: number },
+    e: MouseEvent,
+  ): void {
+    const queueMode = this.resolveClickQueueMode(e);
+    this.commitBuildShapePlacements(
+      {
+        kind: 'buildLine',
+        button: 2,
+        start: { x: target.worldX, y: target.worldY, z: 0 },
+        current: { x: target.worldX, y: target.worldY, z: 0 },
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        queue: queueMode.queue,
+        queueFront: queueMode.queueFront,
+        queueInsertIndex: queueMode.queueInsertIndex,
+        anchorEntityId: null,
+      },
+      AREA_MEX_BLUEPRINT_ID,
+      () => [{ gridX: target.gridX, gridY: target.gridY }],
     );
   }
 
