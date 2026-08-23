@@ -530,6 +530,12 @@ export interface SimWasm {
     alpha: number,
     dirtyEpsilon: number,
   ) => number;
+  /** P1-15 — batch finiteness audit over occupied dynamic bodies. Fills
+   *  out with the entity ids whose position/velocity went non-finite and
+   *  returns the count (0 in every healthy tick). */
+  readonly bodyPoolCollectNonfiniteKinematics: (
+    outEntityIds: Int32Array,
+  ) => number;
   /** Server authoritative unit-force batch. TypeScript gathers active
    *  unit rows, pre-sampled terrain/water data, and external force
    *  inputs; Rust computes drive/lift/brake/water-wall force outputs,

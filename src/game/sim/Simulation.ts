@@ -309,6 +309,9 @@ export class Simulation {
 
   // Track if game is over
   private gameOverWinnerId: PlayerId | null = null;
+  /** P1-13: last observed commander-list length; a change means someone's
+   *  commander left the world and victory must be re-evaluated now. */
+  private lastGameOverCommanderCount = -1;
 
   // Game phase FSM
   private gamePhase: GamePhase = 'init';
@@ -713,6 +716,15 @@ export class Simulation {
   // Check for game over - last commander standing wins
   private checkGameOver(): boolean {
     if (this.gameOverWinnerId !== null) return false; // Already over
+    // P1-13: victory can only change when a commander leaves the world
+    // (death cleanup runs just before this and shrinks the cached
+    // commander list the same tick the hp hits zero) — plus a 1 Hz
+    // defensive scrub. Both signals are pure functions of lockstep state,
+    // so every peer takes the same branch.
+    const commanderCount = this.world.getCommanderUnits().length;
+    const scrubDue = this.world.getTick() % 20 === 0;
+    if (commanderCount === this.lastGameOverCommanderCount && !scrubDue) return false;
+    this.lastGameOverCommanderCount = commanderCount;
     const winnerId = resolveCommanderGameOverWinner(this.world, this.playerIds);
     if (winnerId === null) return false;
 

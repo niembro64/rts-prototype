@@ -1082,6 +1082,41 @@ pub(crate) fn compute_unit_ground_normal_step(
     }
 }
 
+/// P1-15: batch finiteness audit over every occupied dynamic body. Returns
+/// the entity ids whose position or velocity holds a non-finite value; the
+/// JS pose-repair pass then touches only those rows instead of reading six
+/// slab-backed getters per unit per tick. Zero is the steady-state result.
+#[wasm_bindgen]
+pub fn body_pool_collect_nonfinite_kinematics(out_entity_ids: &mut [i32]) -> u32 {
+    let p = pool();
+    let end = p.next_unused_slot as usize;
+    let mut count = 0_u32;
+    for slot in 0..end {
+        let flags = p.flags[slot];
+        if flags & BODY_FLAG_OCCUPIED == 0 || flags & BODY_FLAG_IS_STATIC != 0 {
+            continue;
+        }
+        let entity_id = p.entity_id[slot];
+        if entity_id < 0 {
+            continue;
+        }
+        let sum = p.pos_x[slot]
+            + p.pos_y[slot]
+            + p.pos_z[slot]
+            + p.vel_x[slot]
+            + p.vel_y[slot]
+            + p.vel_z[slot];
+        if sum.is_finite() {
+            continue;
+        }
+        if (count as usize) < out_entity_ids.len() {
+            out_entity_ids[count as usize] = entity_id;
+        }
+        count += 1;
+    }
+    count
+}
+
 #[wasm_bindgen]
 pub fn unit_ground_normal_step_pool(
     out_dirty_entity_ids: &mut [u32],
