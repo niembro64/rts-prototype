@@ -24,6 +24,10 @@ export type WorldShadeSettings3D = {
 type WorldShadeShader = THREE.WebGLProgramParametersWithUniforms;
 
 const SHADE_COLOR = new THREE.Color(FOG_CONFIG.presentation.shade.colorHex);
+/** P0-07: coverage bounds are padded and snapped to this bucket so the
+ *  retained coverage texture survives small camera pans. */
+const WORLD_SHADE_COVERAGE_BUCKET = 256;
+const WORLD_SHADE_COVERAGE_MIN_PAD = 256;
 const FULL_SIGHT_ABOVE_WATER_R = 1;
 const CONTACT_SIGHT_ABOVE_WATER_G = 1;
 const FULL_SIGHT_UNDERWATER_B = 1;
@@ -260,6 +264,16 @@ export class WorldShade3D {
   /** True once at least one coverage pass has drawn at the current size —
    *  the effect-stride gate may only reuse a texture that exists. */
   private hasRenderedCoverage = false;
+  private readonly _paddedCoverageBounds: FootprintBounds = {
+    minX: 0, minY: 0, maxX: 0, maxY: 0,
+  };
+  private readonly _lastCoverageBounds: FootprintBounds = {
+    minX: NaN, minY: NaN, maxX: NaN, maxY: NaN,
+  };
+  private _lastCoverageTick = -1;
+  private _lastCoverageEntitySetVersion = -1;
+  private _lastCoverageEnabled: boolean | null = null;
+  private _lastCoveragePlayerId: PlayerId | null = null;
   /** True while the coverage target holds a zero-region empty clear, so a
    *  string of empty frames costs nothing after the first. */
   private coverageClearIsEmpty = false;
@@ -456,7 +470,45 @@ void main() {
       // the old bounds would make the fog swim during pans.
       return;
     }
-    this.setCoverageBounds(visibleBounds);
+
+    // P0-07: sensor/shadow truth changes at fixed-tick cadence, not per
+    // display frame. The coverage texture is rendered over PADDED,
+    // QUANTIZED bounds, so small camera pans keep sampling the retained
+    // texture; a redraw happens when the padded bucket shifts, the world
+    // ticks (or lifecycle changes), settings flip, or the target resizes.
+    const spanX = visibleBounds.maxX - visibleBounds.minX;
+    const spanY = visibleBounds.maxY - visibleBounds.minY;
+    const pad = Math.max(WORLD_SHADE_COVERAGE_MIN_PAD, spanX * 0.12, spanY * 0.12);
+    const q = WORLD_SHADE_COVERAGE_BUCKET;
+    const paddedBounds = this._paddedCoverageBounds;
+    paddedBounds.minX = Math.floor((visibleBounds.minX - pad) / q) * q;
+    paddedBounds.minY = Math.floor((visibleBounds.minY - pad) / q) * q;
+    paddedBounds.maxX = Math.ceil((visibleBounds.maxX + pad) / q) * q;
+    paddedBounds.maxY = Math.ceil((visibleBounds.maxY + pad) / q) * q;
+    const tick = clientViewState.getTick();
+    const entitySetVersion = clientViewState.getEntitySetVersion();
+    const boundsMoved =
+      paddedBounds.minX !== this._lastCoverageBounds.minX ||
+      paddedBounds.minY !== this._lastCoverageBounds.minY ||
+      paddedBounds.maxX !== this._lastCoverageBounds.maxX ||
+      paddedBounds.maxY !== this._lastCoverageBounds.maxY;
+    const truthMoved =
+      tick !== this._lastCoverageTick ||
+      entitySetVersion !== this._lastCoverageEntitySetVersion ||
+      settings.enabled !== this._lastCoverageEnabled ||
+      localPlayerId !== this._lastCoveragePlayerId;
+    if (!boundsMoved && !truthMoved && !resized && this.hasRenderedCoverage) {
+      return;
+    }
+    this._lastCoverageBounds.minX = paddedBounds.minX;
+    this._lastCoverageBounds.minY = paddedBounds.minY;
+    this._lastCoverageBounds.maxX = paddedBounds.maxX;
+    this._lastCoverageBounds.maxY = paddedBounds.maxY;
+    this._lastCoverageTick = tick;
+    this._lastCoverageEntitySetVersion = entitySetVersion;
+    this._lastCoverageEnabled = settings.enabled;
+    this._lastCoveragePlayerId = localPlayerId;
+    this.setCoverageBounds(paddedBounds);
 
     this.regionCount = 0;
     if (settings.enabled) {
