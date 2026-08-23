@@ -191,7 +191,7 @@ export const ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE = 9;
 // state that used to force a RAW entity fallback.
 export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 77;
 export const ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE = 50;
-export const ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE = 19;
+export const ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE = 21;
 // Turret row layout: rot, vel, pitch, pitchVel, id, state, hasTarget,
 // targetId, hasShieldRange, shieldRange, inactive, hostPieceYaw,
 // hostPieceYawVelocity. Stride shrank from
@@ -951,6 +951,8 @@ function appendDirectActionWireRows(
       values[base + 16] = 0;
       values[base + 17] = 0;
       values[base + 18] = 0;
+      values[base + 19] = 0;
+      values[base + 20] = 0;
     }
   }
 
@@ -983,6 +985,15 @@ function appendDirectActionWireRows(
     values[base + 16] = action.waitGather === true ? 1 : 0;
     values[base + 17] = action.waitGroupId !== undefined ? 1 : 0;
     values[base + 18] = action.waitGroupId ?? 0;
+    const guardReturnTargetId = canReferenceSnapshotEntityId(
+      world,
+      visibility,
+      action.guardReturnTargetId,
+    )
+      ? action.guardReturnTargetId
+      : undefined;
+    values[base + 19] = guardReturnTargetId !== undefined ? 1 : 0;
+    values[base + 20] = guardReturnTargetId ?? 0;
   }
   return { offset, count };
 }

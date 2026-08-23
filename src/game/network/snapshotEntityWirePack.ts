@@ -264,6 +264,8 @@ function appendDecodedActionWireRows(
     values[base + 16] = action.waitGather === true ? 1 : 0;
     values[base + 17] = action.waitGroupId !== null && action.waitGroupId !== undefined ? 1 : 0;
     values[base + 18] = action.waitGroupId ?? 0;
+    values[base + 19] = action.guardReturnTargetId !== null && action.guardReturnTargetId !== undefined ? 1 : 0;
+    values[base + 20] = action.guardReturnTargetId ?? 0;
   }
   return { offset, count };
 }
@@ -598,6 +600,7 @@ const ACTION_FLAG_GRID = 1 << 5;
 const ACTION_FLAG_BUILDING_ID = 1 << 6;
 const ACTION_FLAG_WAIT_GATHER = 1 << 7;
 const ACTION_FLAG_WAIT_GROUP_ID = 1 << 8;
+const ACTION_FLAG_GUARD_RETURN_TARGET_ID = 1 << 9;
 
 const TURRET_FLAG_TARGET_ID = 1 << 0;
 const TURRET_FLAG_SHIELD_RANGE = 1 << 1;
@@ -1858,6 +1861,7 @@ function unpackAction(row: unknown[]): NetworkServerSnapshotAction {
     buildingId: null,
     waitGather: null,
     waitGroupId: null,
+    guardReturnTargetId: null,
   };
   if ((flags & ACTION_FLAG_POS) !== 0) {
     const x = row[i++] as number;
@@ -1876,6 +1880,9 @@ function unpackAction(row: unknown[]): NetworkServerSnapshotAction {
   if ((flags & ACTION_FLAG_BUILDING_ID) !== 0) action.buildingId = row[i++] as number;
   if ((flags & ACTION_FLAG_WAIT_GATHER) !== 0) action.waitGather = true;
   if ((flags & ACTION_FLAG_WAIT_GROUP_ID) !== 0) action.waitGroupId = row[i++] as number;
+  if ((flags & ACTION_FLAG_GUARD_RETURN_TARGET_ID) !== 0) {
+    action.guardReturnTargetId = row[i++] as number;
+  }
   return action;
 }
 

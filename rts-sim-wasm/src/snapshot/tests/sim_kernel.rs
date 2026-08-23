@@ -4186,6 +4186,8 @@ mod sim_kernel_tests {
             5.0,
             100.0,
             0.0,
+            0.0,
+            0.0,
             10.0,
             100.0,
             1_000_000.0,
@@ -4203,6 +4205,38 @@ mod sim_kernel_tests {
     }
 
     #[test]
+    pub(crate) fn final_waypoint_pd_tracks_a_nonzero_guard_velocity() {
+        let (x, y, active) = compute_arrival_control_thrust(
+            10.0,
+            0.0,
+            10.0,
+            0.0,
+            10.0,
+            0.0,
+            10.0,
+            10.0,
+            100.0,
+            1_000_000.0,
+            ARRIVAL_FLAG_LAST_ACTION,
+            1.0 / 30.0,
+            20.0,
+            0.22,
+            0.001,
+            1.0,
+            10.0,
+        );
+        assert_eq!(active, 1);
+        assert!(
+            x > 0.0,
+            "position error must still pull toward the moving formation goal"
+        );
+        assert!(
+            y.abs() < 1e-12,
+            "matching the target velocity must not brake that velocity"
+        );
+    }
+
+    #[test]
     pub(crate) fn sharp_corner_brakes_an_overspeed_approach() {
         // 90° bend (cos 0), corridor 10, max_accel = 100·1e6/1e6 = 100:
         // corner speed = sqrt(2·100·10/1) ≈ 44.7; allowed at distance 5 is
@@ -4212,6 +4246,8 @@ mod sim_kernel_tests {
             0.0,
             5.0,
             200.0,
+            0.0,
+            0.0,
             0.0,
             10.0,
             100.0,
@@ -4238,6 +4274,8 @@ mod sim_kernel_tests {
             5.0,
             30.0,
             0.0,
+            0.0,
+            0.0,
             10.0,
             100.0,
             1_000_000.0,
@@ -4263,6 +4301,8 @@ mod sim_kernel_tests {
             0.0,
             5.0,
             500.0,
+            0.0,
+            0.0,
             0.0,
             10.0,
             100.0,

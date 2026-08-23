@@ -198,6 +198,7 @@ function serializeEntity(entity: Entity): CanonicalValue {
     unit: serializeUnit(entity.unit),
     building: toCanonicalValue(entity.building),
     combat: toCanonicalValue(entity.combat),
+    recentAggression: toCanonicalValue(entity.recentAggression),
     projectile: serializeProjectile(entity.projectile),
     buildable: toCanonicalValue(entity.buildable),
     builder: toCanonicalValue(entity.builder),

@@ -35,6 +35,10 @@ export type UnitAction = {
   gridY?: number;
   buildingId?: EntityId;
   targetId?: EntityId;
+  /** Sim-authored BAR Guard retaliation provenance. An Attack carrying this
+   *  field was temporarily inserted ahead of the matching Guard and must
+   *  return to that Guard without participating in Repeat rotation. */
+  guardReturnTargetId?: EntityId;
   isPathExpansion?: boolean;
   /** Sim-local marker for a final move/fight command whose destination has
    *  been reached. The waypoint remains durable so displacement can rearm it. */

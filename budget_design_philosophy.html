@@ -2742,9 +2742,10 @@
         <li><strong>Attack Point</strong> stores a world-space priority point and never silently degrades into Fight. Units whose BAR weapon cannot attack ground are filtered out at input, server authorization, and execution.</li>
         <li><strong>Explicit Attack overrides autonomous stances.</strong> Hold Position constrains autonomous chasing, not a newly issued Attack approach. Entering Hold Fire cancels existing attack intents and locks, but a new player-authored Attack, Attack Point, or Set Target remains executable while Hold Fire stays selected. The host owns this exception; compatible host-controlled turrets consume the host priority.</li>
         <li><strong>Area Attack</strong> is exposed only for BAR-equivalent <code>canareaattack</code> units; per ordered unit it queues every compatible enemy in deterministic nearest-first order and becomes Fight when that unit has no compatible target in the area.</li>
-        <li><strong>Guard</strong> follows the ally&rsquo;s live center. Armed guards retaliate against the recent hostile attacker; builders additionally assist construction/production or repair damage without copying the guarded ally&rsquo;s own attack target.</li>
+        <li><strong>Guard</strong> is a durable allied-host intent. An ordinary mobile guard uses BAR&rsquo;s collision-aware stopped standoff, nearby moving-formation velocity match, and bounded distant interception; a non-builder aircraft follows the guardee&rsquo;s live position. When the guardee took effective hostile damage within BAR&rsquo;s 40 Recoil-frame window (40/30 seconds, converted to the selected lockstep rate), an armed compatible guard inserts a real sim-authored Attack immediately ahead of Guard. That Attack targets the attacker&rsquo;s root host, persists until that target dies or becomes invalid, and then pops so Guard resumes; it never copies the guardee&rsquo;s own target. Builder Guard simultaneously stays ready within build range and joins eligible construction, factory production, repair, reclaim, or resurrection work.</li>
         <li><strong>Builder work</strong> applies Repair and Reclaim to every selected capable constructor, including area and minimap forms. Repair consumes no energy or metal; its HP rate derives from builder power and the target&rsquo;s original construction duration, stacks across builders, services allied units/buildings, and restores completed static HP as well as finishing nanoframes. Constructor Patrol temporarily repairs/assists nearby allies or reclaims nearby non-allied entities, then resumes its durable patrol loop. Capture may target enemies only and never an ally.</li>
         <li><strong>Factory output orders</strong> are durable host intent copied to each subsequently produced unit as one ordered Move/Fight/Patrol/Guard queue. Shift appends and command-front insertion prepends. Authoring output orders never changes the separate Factory Guard toggle; it merely means those outputs are not &ldquo;otherwise unordered&rdquo; and therefore do not receive the automatic self-guard assignment.</li>
+        <li><strong>Idle constructor factory handoff</strong> follows BAR&rsquo;s enabled Guard-after-build policy: an assisting mobile constructor that completes a factory and has no later queued intent receives a durable Guard on that factory. A real later command wins; mobile factories are not reassigned this way.</li>
       </ul>
     </section>
 
@@ -3279,9 +3280,15 @@
       </p>
       <p>
         Guard is likewise host intent. The guarded ally remains the movement/service anchor. When
-        that ally takes effective hostile damage, the guard&rsquo;s attack lane temporarily prioritizes
-        the attacker&rsquo;s root host; it does not copy whatever target the ally happened to be
-        attacking. Builder lanes may simultaneously construct or repair the guarded entity.
+        that ally takes effective hostile damage, the sim inserts an actual Attack order in front
+        of the durable Guard, aimed at the attacker&rsquo;s root host; it does not copy whatever target
+        the ally happened to be attacking. The temporary order carries stable Guard-return
+        provenance through action hashing and snapshots, never participates in Repeat rotation,
+        and is removed when its attack target dies or becomes invalid so the Guard beneath it
+        resumes. Builder work remains a separate lane: while the weapon lane retaliates, an
+        in-range builder may still construct, assist production, repair, reclaim, or resurrect for
+        the guarded workflow. The 40-frame eligibility window is authored in Recoil&rsquo;s 30 Hz time
+        domain and converted to the match cadence, rather than treated as 40 prototype ticks.
       </p>
       <h3>Mount control mode is explicit</h3>
       <p>

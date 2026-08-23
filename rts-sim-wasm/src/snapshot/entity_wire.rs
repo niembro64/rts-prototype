@@ -91,6 +91,7 @@ pub(crate) const V6_ACTION_FLAG_GRID: u32 = 1 << 5;
 pub(crate) const V6_ACTION_FLAG_BUILDING_ID: u32 = 1 << 6;
 pub(crate) const V6_ACTION_FLAG_WAIT_GATHER: u32 = 1 << 7;
 pub(crate) const V6_ACTION_FLAG_WAIT_GROUP_ID: u32 = 1 << 8;
+pub(crate) const V6_ACTION_FLAG_GUARD_RETURN_TARGET_ID: u32 = 1 << 9;
 
 pub(crate) const V6_TURRET_FLAG_TARGET_ID: u32 = 1 << 0;
 pub(crate) const V6_TURRET_FLAG_SHIELD_RANGE: u32 = 1 << 1;
@@ -805,6 +806,7 @@ pub(crate) fn v6_write_detail_action(w: &mut MessagePackWriter, action_buf: &[f6
     let has_building_id = action_buf[base + 14] != 0.0;
     let wait_gather = action_buf[base + 16] != 0.0;
     let has_wait_group_id = action_buf[base + 17] != 0.0;
+    let has_guard_return_target_id = action_buf[base + 19] != 0.0;
     let mut flags = 0u32;
     if has_pos {
         flags |= V6_ACTION_FLAG_POS;
@@ -833,6 +835,9 @@ pub(crate) fn v6_write_detail_action(w: &mut MessagePackWriter, action_buf: &[f6
     if has_wait_group_id {
         flags |= V6_ACTION_FLAG_WAIT_GROUP_ID;
     }
+    if has_guard_return_target_id {
+        flags |= V6_ACTION_FLAG_GUARD_RETURN_TARGET_ID;
+    }
     let mut len = 2usize; // flags, type
     if has_pos {
         len += 2;
@@ -853,6 +858,9 @@ pub(crate) fn v6_write_detail_action(w: &mut MessagePackWriter, action_buf: &[f6
         len += 1;
     }
     if has_wait_group_id {
+        len += 1;
+    }
+    if has_guard_return_target_id {
         len += 1;
     }
     w.write_array_header(len);
@@ -880,6 +888,9 @@ pub(crate) fn v6_write_detail_action(w: &mut MessagePackWriter, action_buf: &[f6
     }
     if has_wait_group_id {
         w.write_number(action_buf[base + 18]);
+    }
+    if has_guard_return_target_id {
+        w.write_number(action_buf[base + 20]);
     }
 }
 

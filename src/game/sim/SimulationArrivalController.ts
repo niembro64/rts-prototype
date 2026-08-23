@@ -56,6 +56,8 @@ export class SimulationArrivalController {
   private dx = new Float64Array(0);
   private dy = new Float64Array(0);
   private distance = new Float64Array(0);
+  private desiredVelocityX = new Float64Array(0);
+  private desiredVelocityY = new Float64Array(0);
   private radiusPush = new Float64Array(0);
   private speedLimitFactor = new Float64Array(0);
   private cornerBendCos = new Float64Array(0);
@@ -192,6 +194,8 @@ export class SimulationArrivalController {
     distance: number,
     isFinalActionPoint = true,
     cornerBendCos = 1,
+    desiredVelocityX = 0,
+    desiredVelocityY = 0,
   ): void {
     const unit = entity.unit;
     const body = entity.body;
@@ -208,7 +212,10 @@ export class SimulationArrivalController {
     entitySlotRegistry.setUnitDriveInput(entity, 0, 0, dx * invDistance, dy * invDistance, entitySlot);
 
     const maintainFullThrustAtWaypoints = unit.locomotion.motionControl.maintainFullThrustAtWaypoints;
-    const isLastAction = isFinalActionPoint && unit.actions.length <= 1 && action.type !== 'patrol';
+    const isLastAction = isFinalActionPoint && (
+      action.type === 'guard' ||
+      (unit.actions.length <= 1 && action.type !== 'patrol')
+    );
     const bypassFinalWaypointSlowdown = shouldBypassFinalWaypointSlowdown(
       maintainFullThrustAtWaypoints,
       unit.locomotion.motionControl.alwaysBrakeAtFinalWaypoint,
@@ -229,6 +236,8 @@ export class SimulationArrivalController {
     this.dx[index] = dx;
     this.dy[index] = dy;
     this.distance[index] = distance;
+    this.desiredVelocityX[index] = desiredVelocityX;
+    this.desiredVelocityY[index] = desiredVelocityY;
     this.radiusPush[index] = unit.radius.collision;
     this.speedLimitFactor[index] = speedLimitFactor;
     this.cornerBendCos[index] = cornerBendCos;
@@ -250,6 +259,8 @@ export class SimulationArrivalController {
       this.dx.subarray(0, count),
       this.dy.subarray(0, count),
       this.distance.subarray(0, count),
+      this.desiredVelocityX.subarray(0, count),
+      this.desiredVelocityY.subarray(0, count),
       this.radiusPush.subarray(0, count),
       this.speedLimitFactor.subarray(0, count),
       this.flags.subarray(0, count),
@@ -302,6 +313,8 @@ export class SimulationArrivalController {
       this.dx,
       this.dy,
       this.distance,
+      this.desiredVelocityX,
+      this.desiredVelocityY,
       this.radiusPush,
       this.speedLimitFactor,
       this.cornerBendCos,
@@ -312,6 +325,8 @@ export class SimulationArrivalController {
       this.dx,
       this.dy,
       this.distance,
+      this.desiredVelocityX,
+      this.desiredVelocityY,
       this.radiusPush,
       this.speedLimitFactor,
       this.cornerBendCos,

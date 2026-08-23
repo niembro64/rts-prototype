@@ -25,6 +25,7 @@ import { requestBuilderWorkStation } from './workStationSystem';
 import { getWorkEmitterSpec, writeWorkEmitterOriginWorld } from './workEmitterOrigin';
 import { transferCompletedBuildingStorageCapacity } from './buildingCompletion';
 import { createEntityVolume, writeHitVolume } from './entityVolumes';
+import { resolveGuardServiceTarget } from './guard';
 
 export type { SprayTarget,  } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
@@ -159,6 +160,40 @@ class CommanderAbilitiesSystem {
           this.reclaimTarget(world, playerId, commander, reclaimTarget, dtMs)
         ) {
           this.pushCompletedBuilding(commander.id, reclaimTarget.id);
+        }
+        continue;
+      }
+
+      // Builder Guard joins the guarded constructor's current reclaim or
+      // resurrection without replacing the durable Guard. This also remains
+      // active under an armed builder's temporary retaliation Attack.
+      const guardService = resolveGuardServiceTarget(world, commander);
+      if (guardService?.kind === 'reclaim') {
+        const reclaimTarget = guardService.target;
+        if (
+          isReclaimTargetInBuildRange(commander, reclaimTarget) &&
+          requestBuilderWorkStation(commander, reclaimTarget.id)
+        ) {
+          this.reclaimTarget(world, playerId, commander, reclaimTarget, dtMs);
+        }
+        continue;
+      }
+      if (guardService?.kind === 'resurrect') {
+        const wreck = guardService.target;
+        if (
+          isBuildTargetInRange(commander, wreck) &&
+          requestBuilderWorkStation(commander, wreck.id)
+        ) {
+          this.resurrectTarget(
+            world,
+            playerId,
+            commander,
+            wreck,
+            dtMs,
+            commanderSprayX,
+            commanderSprayY,
+            commanderSprayZ,
+          );
         }
         continue;
       }

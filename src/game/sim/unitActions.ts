@@ -27,6 +27,17 @@ export function computeUnitActionHash(actions: readonly UnitAction[]): number {
     hash = (hash * 31 + (action.speedLimitFactor !== undefined ? action.speedLimitFactor * 1000 : 1000)) | 0;
     hash = (hash * 31 + (action.waitGather === true ? 1 : 0)) | 0;
     hash = (hash * 31 + (action.waitGroupId !== undefined ? action.waitGroupId : 0)) | 0;
+    hash = (hash * 31 + (action.targetId !== undefined ? action.targetId : 0)) | 0;
+    hash = (hash * 31 + (action.buildingId !== undefined ? action.buildingId : 0)) | 0;
+    hash = (hash * 31 + (action.guardReturnTargetId !== undefined ? action.guardReturnTargetId : 0)) | 0;
+    hash = (hash * 31 + (action.gridX !== undefined ? action.gridX : 0)) | 0;
+    hash = (hash * 31 + (action.gridY !== undefined ? action.gridY : 0)) | 0;
+    hash = (hash * 31 + (action.isPathExpansion === true ? 1 : 0)) | 0;
+    hash = (hash * 31 + (action.movementAnchorSatisfied === true ? 1 : 0)) | 0;
+    const buildingBlueprintId = action.buildingBlueprintId ?? '';
+    for (let j = 0; j < buildingBlueprintId.length; j++) {
+      hash = (hash * 31 + buildingBlueprintId.charCodeAt(j)) | 0;
+    }
     hash = (hash * 31 + action.type.length) | 0;
     for (let j = 0; j < action.type.length; j++) {
       hash = (hash * 31 + action.type.charCodeAt(j)) | 0;

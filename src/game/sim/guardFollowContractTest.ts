@@ -18,10 +18,10 @@ function assertContract(condition: unknown, message: string): asserts condition 
  * independent. Planless safety is covered by pathPlanSafetyContractTest. */
 export function runGuardFollowContractTest(): void {
   const world = new WorldState(17, 512, 512);
-  const seaTurtle = world.createUnitFromBlueprint(80, 180, 1, 'unitSeaTurtle', {
+  const seaTurtle = world.createUnitFromBlueprint(20, 180, 1, 'unitSeaTurtle', {
     allocateSubEntityIds: false,
   });
-  const commander = world.createUnitFromBlueprint(190, 180, 1, 'unitCommander', {
+  const commander = world.createUnitFromBlueprint(300, 180, 1, 'unitCommander', {
     allocateSubEntityIds: false,
   });
   world.addEntity(seaTurtle);
@@ -49,7 +49,7 @@ export function runGuardFollowContractTest(): void {
     type: 'move',
     tick: 1,
     entityIds: [commander.id],
-    targetX: 400,
+    targetX: 450,
     targetY: 180,
     waypointType: 'move',
     queue: false,

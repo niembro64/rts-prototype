@@ -1137,6 +1137,8 @@ export type NetworkServerSnapshotAction = {
   buildingId: number | null;
   waitGather?: boolean | null;
   waitGroupId?: number | null;
+  /** Guard target resumed after this sim-authored retaliation Attack. */
+  guardReturnTargetId?: number | null;
 };
 
 export type NetworkServerSnapshotTurret = {

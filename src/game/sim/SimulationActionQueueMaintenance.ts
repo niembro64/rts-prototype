@@ -10,7 +10,7 @@ import {
 import { isResurrectableWreck } from './wrecks';
 import { canLoadTransport } from './transports';
 import { getActionIntentStart, getUnitActionTargetId } from './unitActionIntents';
-import { spliceUnitActions } from './unitActions';
+import { setUnitActions, spliceUnitActions } from './unitActions';
 import type { Entity, UnitAction } from './types';
 import type { WorldState } from './WorldState';
 
@@ -96,6 +96,30 @@ export class SimulationActionQueueMaintenance {
             : undefined;
         if (targetId === completedId) {
           this.advanceAction(entity);
+          // BAR Idle Constructor Guard After Build: when a mobile assisting
+          // constructor finishes a factory and truly has no later intent, it
+          // stays useful by guarding that factory. This is deterministic sim
+          // policy here rather than a local-player widget.
+          if (
+            completed.factory !== null &&
+            entity.factory === null &&
+            unit.actions.length === 0 &&
+            entity.ownership !== null &&
+            completed.ownership !== null &&
+            this.world.arePlayersAllied(
+              entity.ownership.playerId,
+              completed.ownership.playerId,
+            )
+          ) {
+            setUnitActions(unit, [{
+              type: 'guard',
+              x: completed.transform.x,
+              y: completed.transform.y,
+              z: completed.transform.z,
+              targetId: completed.id,
+            }]);
+            this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+          }
         }
       }
     }

@@ -608,9 +608,9 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     // assist) — not any stale direct build target; otherwise it funds the
     // site named by its head build order.
     let targetId = NO_ENTITY_ID;
-    if (entity.unit !== null && entity.unit.actions[0]?.type === 'guard') {
-      const svc = resolveGuardServiceTarget(world, entity);
-      if (svc === null) continue;
+    const guardService = resolveGuardServiceTarget(world, entity);
+    if (guardService !== null) {
+      const svc = guardService;
       if (svc.kind === 'build') {
         targetId = svc.target.id;
       } else if (svc.kind === 'factory') {
