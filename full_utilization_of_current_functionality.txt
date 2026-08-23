@@ -73,22 +73,23 @@ deterministic capability exhibition:
    wreck recovery, and area work are not buried in the Commander.
 3. Add affordable mobile ground AA, an anti-sub air/surface unit, and a proper
    surface naval combatant so medium separation has complete counters.
-4. Split the universal Fabricator into bot, vehicle, air, and naval production
-   identities. Keep the universal one only as a sandbox/debug or late-game
-   convenience.
-5. Mount the already-supported but unused pulsed laser, cluster/submunition,
-   cylindrical shield, projectile-interception, and straight unguided rocket
+4. Keep the Universal Fabricator and add Bot, Vehicle, Aircraft, and Naval
+   Fabricators beside it at both T1 and T2. At each tier the Universal roster is
+   the union of all four specialist rosters, but that flexibility costs roughly
+   three times as much as one specialist Fabricator.
+5. Delete the unused pulsed laser, cylindrical shield.
+6. Mount the already-supported but unused, cluster/submunition, and straight unguided rocket
    behaviors on readable specialist entities.
-6. Add a water-placeable energy producer so a naval base can close its own
+7. Add a water-placeable energy producer so a naval base can close its own
    economy loop.
-7. Replace the random all-roster spectacle with small scripted demonstration
+8. Replace the random all-roster spectacle with small scripted demonstration
    lanes where each mechanic is forced to happen and is labeled to the player.
 
 BAR's useful lesson is not “copy hundreds of units.” It is that each production
 domain has a recognizable identity and each information or attack tool has a
 counter. Budget Annihilation can demonstrate comparable systemic breadth with
-roughly 10-14 carefully chosen additions/reassignments and 6-8 authored showcase
-encounters.
+roughly 10-14 carefully chosen unit-role additions/reassignments, the modular
+ten-Fabricator T1/T2 matrix, and 6-8 authored showcase encounters.
 
 
 CURRENT CONTENT SNAPSHOT
@@ -150,8 +151,11 @@ Defense:
   Anti-Air Tower, and Torpedo Tower.
 
 This is a good mechanics test set but a weak strategic taxonomy. In particular,
-one all-domain factory suppresses the meaning of bot/vehicle/air/naval choices,
-and the water building set cannot produce its own energy.
+having only one all-domain factory suppresses the meaning of
+bot/vehicle/air/naval choices. The Universal Fabricator should remain as a
+premium flexibility option beside cheaper specialists rather than being the
+only production identity. The water building set also cannot produce its own
+energy.
 
 
 CAPABILITY-TO-CONTENT COVERAGE
@@ -192,11 +196,8 @@ Gaps:
   above-water naval weapons, and partially submerged targeting underused.
 * No surface hovercraft despite the physics philosophy explicitly identifying
   hovercraft as a revealing arrival-control case.
-* No naval transport.
-* No amphibious or hover constructor.
-* No heavier multi-passenger transport classes.
 * The configured amphibious-crawler preset is present in locomotion data but is
-  not accepted as a unit locomotion type, so it is not yet a safe content slot.
+  not accepted as a unit locomotion type, so it is not yet a safe content slot. I think a "water skimmer' type unit would actualy be the best type of "amphibious-crawler" - a "bug that walks on water" or "water srider" maybe it is called. This should be able to make happen within our current systems by having very high upward force come from both types of water upward forces. 
 
 Recommendations:
 
@@ -210,14 +211,11 @@ Recommendations:
   target lanes.
 * CONTENT-FIRST: add an amphibious constructor after the ground constructor is
   proven. It can reuse the current construction and build-roster model.
-* NEW SYSTEM / GENERALIZATION: if more transports are desired, make capacity,
-  permitted cargo classes, and transport identity data-driven. The current
-  command path is intentionally tied to the single Transport Drone and one
-  passenger.
+* TRANSPORT GENERALIZATION: Transports should only ever hold one unit at a time, and they should never "hide" that unit. 
 
 Assessment: ground is over-represented; air has two physically distinct flight
 styles but thin role coverage; water has strong engine semantics but incomplete
-surface content.
+surface content. Generalize each "specialized fabricator" at each level (i.e. T1 "tech 1" and T2 "tech 2") to have an equal number of units, probably 5 units per tech level per specialized fabricator (and there can be crossover units between specialized fabricators as noted elsewhere)
 
 
 2. Air/ground/water combat separation
@@ -246,7 +244,7 @@ Gaps:
 * There is no naval AA.
 * There is no surface or airborne anti-sub unit. Hippo and Sea Turtle can sense
   underwater targets, but their current guns do not provide the missing
-  above-water-to-underwater attack route.
+  above-water-to-underwater attack route - not all units that can sense things should be able to attack (and vice versa). 
 * There is no surface naval gun combatant.
 * There is no dedicated point-defense entity even though some existing turrets
   can target projectiles. Interception is incidental and easy to miss.
@@ -335,9 +333,6 @@ Gaps and weaknesses:
 
 Recommendations:
 
-* CONTENT-FIRST: convert Bee into a true unarmed Surveyor/AWACS with mobile
-  above-water contact radar, modest full sight, no detector, and no player-
-  orderable weapon. This gives artillery and fighters a mobile contact source.
 * SMALL GENERALIZATION: add a Ghost scout/spy that exposes the existing cloak
   command and radar-stealth signature. Keep it weak and give it a narrow job.
 * CONTENT-FIRST / SMALL GENERALIZATION: add a Watchman detector rover or tower
@@ -553,9 +548,10 @@ Implemented capability:
 
 Gaps:
 
-* The universal Fabricator can build every non-Commander unit. It erases
-  production-domain identity and makes build-menu breadth look like a debug
-  list rather than a strategic roster.
+* The Universal Fabricator is currently the only structural production
+  identity and can build every non-Commander unit. The problem is not that a
+  universal option exists; it is that there are no cheaper specialist choices
+  and no T1/T2 roster boundary.
 * Demo spawning attempts one Fabricator per enabled unit per player. With the
   default roster this can mean 26 production buildings per player before the
   battle has demonstrated any meaningful factory choice.
@@ -566,17 +562,92 @@ Gaps:
 * The Transport Drone holds one passenger and is the only transport host. A
   background patrol battle is unlikely to load and unload it intentionally.
 
-Recommendations:
+Recommended ten-Fabricator plan:
 
-* CONTENT-FIRST: split production into Bot Lab, Vehicle Plant, Air Plant, and
-  Naval Yard/Amphibious Complex using the existing allowedUnitBlueprintIds
-  mechanism. Initial art may share modular factory pieces; the build rosters
-  and placement domains matter first.
-* Retain the universal Fabricator only in sandbox/entity-lab mode or as a
-  clearly expensive late-game universal assembler.
-* Reduce the automatic demo to one factory per production domain, not one
-  factory per unit. Demonstrate queue, repeat, rally, and quota controls inside
-  those factories.
+Tech level 1:
+
+* Universal Fabricator -- produces the complete union of every T1 unit offered
+  by the four T1 specialist Fabricators.
+* Bot Fabricator -- produces T1 bots and crawler-style ground units assigned to
+  the bot domain.
+* Vehicle Fabricator -- produces T1 rovers, tanks, ground vehicles, and
+  appropriate amphibious/hover vehicles.
+* Aircraft Fabricator -- produces T1 drones, planes, and appropriate
+  air/water-crossing aircraft.
+* Naval Fabricator -- produces T1 submarines, surface vessels, and appropriate
+  amphibious, hover, and air/water-crossing units.
+
+Tech level 2:
+
+* Advanced Universal Fabricator -- produces the complete union of every T2
+  unit offered by the four advanced specialist Fabricators.
+* Advanced Bot Fabricator -- produces T2 bot/crawler units.
+* Advanced Vehicle Fabricator -- produces T2 rover/tank/vehicle units.
+* Advanced Aircraft Fabricator -- produces T2 drone/plane/aerosub units.
+* Advanced Naval Fabricator -- produces T2 submarine/ship/amphibious/naval-air
+  units.
+
+Roster invariants:
+
+* Universal T1 roster = union(Bot T1, Vehicle T1, Aircraft T1, Naval T1).
+* Advanced Universal roster = union(Advanced Bot, Advanced Vehicle, Advanced
+  Aircraft, Advanced Naval).
+* The two universal rosters do not grant units from the other tech level.
+* Specialist rosters are deliberately allowed to overlap. Production domain is
+  a useful way to reach a unit, not an exclusive taxonomy.
+* Hippo belongs in both the Vehicle and Naval Fabricators at its assigned tech
+  level.
+* Duck belongs in both the Aircraft and Naval Fabricators at its assigned tech
+  level.
+* A hovercraft should normally overlap Vehicle and Naval. An anti-sub torpedo
+  gunship should normally overlap Aircraft and Naval. Other cross-domain units
+  should follow the same player-readable rule.
+* Pure surface ships and submarines stay Naval; pure planes stay Aircraft;
+  ordinary tanks stay Vehicle; ordinary bots stay Bot unless a unit has a real
+  cross-domain identity.
+
+Cost and balance rules:
+
+* At each tech level, use one specialist Fabricator as the cost baseline.
+* The same-tier Universal Fabricator should initially cost about 3x a
+  specialist in both energy and metal. Its build time should also start near 3x
+  so the flexibility premium cannot be bypassed with cheap construction time.
+* The universal is paying for strategic flexibility, not buying three times
+  the production throughput. Its build power, footprint efficiency, hit points,
+  and queue speed should remain near a specialist unless playtesting finds a
+  specific reason to change them.
+* Advanced specialists establish their own T2 baseline; the Advanced Universal
+  then costs about 3x that T2 specialist baseline. Do not calculate its cost
+  from the T1 universal.
+* If specialist costs differ by domain, calculate the universal target from a
+  representative/median specialist or roughly 3x the most common specialist,
+  then tune for strategy. The invariant is “large flexibility surcharge,” not
+  a brittle exact integer ratio.
+
+Implementation notes:
+
+* CONTENT-FIRST: all ten identities can use the existing per-building
+  allowedUnitBlueprintIds system. Assign every produced unit an explicit T1 or
+  T2 roster placement before authoring the unions.
+* Generate or validate each universal roster from the four specialist rosters
+  so it cannot silently omit an overlap unit or accidentally include the wrong
+  tier.
+* Initial art may share modular factory pieces. Tier, domain, placement medium,
+  silhouette, and build-menu label must still be immediately readable.
+* Preserve the current Universal Fabricator's ground-or-water placement for both
+  universal tiers so its flexibility applies to deployment as well as roster.
+  Naval Fabricators should use water-valid placement. Bot and Vehicle
+  Fabricators should default to ground placement; Aircraft placement should be
+  an explicit design choice rather than inheriting the universal hover setting.
+* Author an explicit factory tech level and validate that every allowed unit is
+  in the same tier. For real progression, Advanced Fabricators should be
+  reachable through an advanced constructor or explicit technology unlock, not
+  merely appear in the opening T1 builder menu. The exhibition may pre-place
+  all ten factories for comparison without weakening that real-match rule.
+* Reduce the automatic demo to one representative T1 factory set and a compact
+  T2 comparison, not one Fabricator per unit. Demonstrate queue, repeat, rally,
+  quotas, specialist overlap, and the universal cost tradeoff inside those
+  factories.
 * SMALL GENERALIZATION: expose carrierSpawnEnabled on one Queen or introduce a
   dedicated light carrier. Do not keep two giant mobile factories solely to
   prove the same mechanic.
@@ -703,16 +774,17 @@ production. A system is not effectively represented when the player cannot
 separate it from five simultaneous effects.
 
 
-3. Universal factories in the demo
-----------------------------------
+3. Per-unit factory duplication in the demo
+-------------------------------------------
 
 One Fabricator per unit line is the single clearest over-representation. It
 inflates entity count, visual repetition, and production throughput while
 hiding factory queue breadth and domain choice.
 
-Recommendation: one domain factory per player, with several unit options per
-factory, is both a better game and a stronger demonstration of the implemented
-factory UI.
+Recommendation: keep Universal Fabricators as premium strategic choices, add
+the four specialist Fabricators at both T1 and T2, and demonstrate each factory
+as a multi-unit roster rather than cloning one building for every unit line.
+The over-representation is the demo duplication, not the universal concept.
 
 
 4. Ordinary full sight versus specialist intelligence
@@ -826,14 +898,15 @@ Role: water-placeable energy producer.
 Why first: closes the naval economy loop using an existing building mechanic.
 
 
-A9. Bot/Vehicle/Air/Naval factories -- CONTENT-FIRST
+A9. Tiered Universal/Bot/Vehicle/Aircraft/Naval Fabricators -- CONTENT-FIRST
 
-Role: four roster-filtered factory identities built on the existing factory
-system.
+Role: five T1 and five T2 roster-filtered factory identities built on the
+existing factory system. Each universal roster is the same-tier union of the
+four specialist rosters and costs about 3x one same-tier specialist.
 
 Why first: this is the largest improvement to roster readability and production
-strategy. It should replace, not multiply alongside, the 26-line Fabricator
-demo layout.
+strategy while preserving the Universal Fabricator's flexibility. It should
+replace the 26-line demo layout, not the universal factory itself.
 
 
 A10. Interceptor Tower -- CONTENT-FIRST
@@ -958,16 +1031,19 @@ New mobile entities worth unique slots:
 
 New buildings/factory variants:
 
-15. Bot Lab, Vehicle Plant, Air Plant, and Naval Yard as filtered variants of
-   the existing factory implementation.
+15. T1 Universal, Bot, Vehicle, Aircraft, and Naval Fabricators plus their five
+   T2 Advanced counterparts. Reuse the existing factory implementation, allow
+   intentional specialist roster overlap, and make each universal the validated
+   union of its four same-tier specialists at about 3x specialist cost.
 16. Tidal Generator.
 17. Interceptor Tower.
 18. Shield Picket.
 
-This does not require all 18 to be wholly new art assets. Factory variants can
-share a modular base; the detector/jammer may reuse a crawler chassis; the
-AWACS may reuse Bee; and a naval support hull can be a visual variant of the
-Corvette. The important thing is mechanical and silhouette readability.
+This does not require every listed role or factory identity to be wholly new
+art. Fabricator variants can share a modular base; the detector/jammer may
+reuse a crawler chassis; the AWACS may reuse Bee; and a naval support hull can
+be a visual variant of the Corvette. The important thing is mechanical and
+silhouette readability.
 
 
 BEYOND ALL REASON COMPARISON
@@ -1007,9 +1083,18 @@ merely menu organization:
 * seaplanes expand air roles over water.
 
 Budget Annihilation already has physically distinct movement profiles and
-medium-aware pathing, but the universal Fabricator flattens these identities.
-Splitting factory rosters is therefore the most BAR-consistent change that also
-shows off local functionality.
+medium-aware pathing. A cheap universal-only production system flattens these
+identities, but the Universal Fabricator itself is worth preserving as a
+premium flexibility choice. Adding four specialist rosters beside a roughly
+3x-cost universal at both T1 and T2 captures BAR's readable production-domain
+lesson without requiring every unit to belong to exactly one domain.
+
+Unlike a rigid class tree, the proposed specialist rosters overlap wherever a
+unit genuinely spans domains: Hippo is Vehicle + Naval, Duck is Aircraft +
+Naval, hovercraft are Vehicle + Naval, and torpedo gunships are Aircraft +
+Naval. The universal at a tier is the validated union of those four overlapping
+sets, so overlap never duplicates or excludes the unit from the universal
+menu.
 
 Official references:
 
@@ -1436,28 +1521,38 @@ repair, reclaim, resurrection, capture, ownership, wrecks, transport, and
 cross-medium construction.
 
 
-Zone 6: factory and command laboratory
---------------------------------------
+Zone 6: tiered factory and command laboratory
+----------------------------------------------
 
 Setup:
 
-* Bot Lab, Vehicle Plant, Air Plant, Naval Yard, one Queen/carrier, and rally
+* T1 Universal, Bot, Vehicle, Aircraft, and Naval Fabricators.
+* Advanced Universal, Advanced Bot, Advanced Vehicle, Advanced Aircraft, and
+  Advanced Naval Fabricators.
+* Hippo and Duck as visible overlap examples, one Queen/carrier, and rally
   routes appropriate to each output medium.
 
 Sequence:
 
-1. Queue several unit types and edit the queue.
-2. Enable repeat and show the queue cycle.
-3. Set a target quota and show quota production preempting/resuming the finite
+1. Show that T1 Universal contains exactly the union of the four T1 specialist
+   menus, then repeat for the five advanced factories at T2.
+2. Select Hippo in both Vehicle and Naval; select Duck in both Aircraft and
+   Naval. Show that each appears only once in the same-tier Universal menu.
+3. Compare construction prices: the Universal at each tier is roughly 3x one
+   same-tier specialist while retaining ordinary factory throughput.
+4. Queue several unit types and edit the queue.
+5. Enable repeat and show the queue cycle.
+6. Set a target quota and show quota production preempting/resuming the finite
    queue.
-4. Set rally/fight route; produced units inherit high-level waypoints but plan
+7. Set rally/fight route; produced units inherit high-level waypoints but plan
    with their own locomotion profiles.
-5. Demonstrate factory move/fire/air-idle/build-priority controls.
-6. Toggle carrier subordinate spawning on the mobile factory.
+8. Demonstrate factory move/fire/air-idle/build-priority controls.
+9. Toggle carrier subordinate spawning on the mobile factory.
 
-Functionality proven: filtered rosters, production shells, queue semantics,
-repeat, quotas, rally inheritance, per-output locomotion, guard, and mobile
-factory state.
+Functionality proven: tech tiers, specialist and union rosters, deliberate
+cross-domain overlap, universal flexibility pricing, production shells, queue
+semantics, repeat, quotas, rally inheritance, per-output locomotion, guard, and
+mobile factory state.
 
 
 Zone 7: economy and fortified utility buildings
@@ -1478,7 +1573,7 @@ Sequence:
    fortifies, stops operating, and later reopens.
 5. Switch it manually OFF and prove it remains fortified after the quiet timer.
 6. Establish an isolated water base with extractor + Tidal + storage + sonar +
-   Naval Yard to prove naval economic closure.
+   Naval Fabricator to prove naval economic closure.
 
 Functionality proven: dual-resource economy, deposits/upgrades, storage,
 conversion, pylon visuals, active-state production, damage fortification, and
@@ -1528,7 +1623,8 @@ Phase 1: expose existing systems with minimal content
 * Tidal Generator.
 * Interceptor Tower.
 * Dumb-rocket unit.
-* Domain-filtered factories.
+* Five T1 and five T2 Universal/specialist Fabricators with validated union and
+  overlap rules.
 
 Reason: these additions close the largest gaps with minimal simulation work.
 
@@ -1610,7 +1706,15 @@ Economy/construction:
 
 Production/control:
 
-[ ] Bot, vehicle, air, and naval production have distinct rosters.
+[ ] Bot, Vehicle, Aircraft, and Naval Fabricators have distinct but intentionally
+    overlapping rosters at both T1 and T2.
+[ ] T1 Universal equals exactly the union of the four T1 specialist rosters;
+    Advanced Universal equals exactly the union of the four T2 specialist
+    rosters.
+[ ] Each Universal costs roughly 3x a same-tier specialist without also
+    receiving roughly 3x throughput, health, or footprint efficiency.
+[ ] Hippo is available from Vehicle and Naval at its tier, and Duck is available
+    from Aircraft and Naval at its tier.
 [ ] Repeat, quotas, queue edits, rally routes, and factory guard are shown.
 [ ] Mobile factory/carrier spawning is shown and controllable.
 [ ] Transport load/unload happens in the authored demo.
@@ -1624,7 +1728,8 @@ Roster discipline:
 [ ] Specialists do not acquire extra weapons merely to look expensive.
 [ ] At least two current redundant ground units are repurposed before the roster
     grows substantially.
-[ ] The public showcase uses domain factories, not 26 universal factory lines.
+[ ] The public showcase uses the compact ten-Fabricator tier/domain matrix, not
+    26 one-unit Universal Fabricator lines.
 
 
 FINAL RECOMMENDATION
@@ -1648,7 +1753,8 @@ of all-purpose super-units. It is a compact orthogonal vocabulary:
 * one clear host and counter for every information tier;
 * one clear host for every implemented weapon/shield branch;
 * one clear worker for every lifecycle interaction;
-* one factory identity per production domain;
+* one specialist factory identity per production domain at T1 and T2, plus a
+  premium same-tier Universal Fabricator whose roster is their union;
 * one deterministic scene that proves each relationship.
 
 If the Tier A list and the seven laboratory zones are completed, the game will
