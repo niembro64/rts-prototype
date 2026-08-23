@@ -70,7 +70,6 @@ export type GameCanvasBattleControlBarModel = {
   readonly terrainDetail: number;
   readonly pathfindingCellConsolidation: number;
   readonly simulationTickRateHz: number;
-  readonly displayUnitCount: number;
   /** Live per-player upgrade readout: the LOCAL player owns at least one
    *  completed Shield-Aware Targeting Tech building. */
   readonly localPlayerShieldAwareTargeting: boolean;
@@ -125,6 +124,8 @@ export type GameCanvasServerControlBarModel = {
   readonly displayServerCpuAvg: number;
   readonly displayServerCpuHi: number;
   readonly displayTickRate: TickRate;
+  readonly displayUnitCount: number;
+  readonly displayUnitCap: number;
 };
 
 export type GameCanvasClientControlBarModel = {

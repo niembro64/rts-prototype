@@ -1591,6 +1591,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runClientEntityIdSetContractTest();
         const { runClientServerTargetStoreContractTest } = await import('../network/ClientServerTargetStoreContractTest');
         runClientServerTargetStoreContractTest();
+        const { runChatPolicyContractTest } = await import('../network/ChatPolicyContractTest');
+        runChatPolicyContractTest();
         const { runSnapshotVisibilityContractTest } = await import('../network/SnapshotVisibilityContractTest');
         runSnapshotVisibilityContractTest();
         const { runSensorSharingContractTest } = await import('../network/sensorSharingContractTest');

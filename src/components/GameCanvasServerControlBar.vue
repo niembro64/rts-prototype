@@ -123,6 +123,24 @@ function cpuTitle(rateHz: number): string {
           </div>
         </div>
       </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel title="Entities alive match-wide (units + buildings) / entity count cap">ENTITIES:</BarLabel>
+        <div class="stat-bar-group">
+          <div class="stat-bar">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ model.displayUnitCount }}</span>
+              <span class="fps-label">/ {{ model.displayUnitCap }}</span>
+            </div>
+            <div class="stat-bar-track">
+              <div
+                class="stat-bar-fill"
+                :style="statBarStyle(model.displayUnitCount, model.displayUnitCap)"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </BarControlGroup>
     </div>
   </div>
 </template>

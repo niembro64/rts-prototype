@@ -85,6 +85,10 @@ import type {
 import ChatConsole from './ChatConsole.vue';
 import type { ChatChannelOption, ChatConsoleMessage } from './chatConsoleTypes';
 import { GlobalChatClient, type GlobalChatMessage } from '../game/network/GlobalChatClient';
+import {
+  appendRecentChatMessages,
+  sanitizeChatMessageText,
+} from '../game/network/chatPolicy';
 import { getInitialLocalUsername } from '../playerNamesConfig';
 import {
   SERVER_CONFIG,
@@ -814,23 +818,34 @@ function createLocalCommunicationEvent(
     channel: 'all',
     senderPlayerId,
     createdAtMs: Date.now(),
-    text: draft.text.trim().slice(0, 220),
+    text: draft.text,
   };
 }
 
 function applyCommunicationEvent(event: NetworkCommunicationEvent): void {
+  const text = sanitizeChatMessageText(event.text);
+  if (text === null) return;
+  const sanitizedEvent: NetworkCommunicationEvent = text === event.text
+    ? event
+    : { ...event, text };
   // The console renders whatever is here and sticks to the bottom on its
   // own; nothing force-opens, BAR-style.
-  communicationMessages.value = [...communicationMessages.value.slice(-79), event];
+  communicationMessages.value = appendRecentChatMessages(
+    communicationMessages.value,
+    [sanitizedEvent],
+  );
 }
 
 function sendCommunicationDraft(draft: NetworkCommunicationDraft): void {
+  const text = sanitizeChatMessageText(draft.text);
+  if (text === null) return;
+  const sanitizedDraft: NetworkCommunicationDraft = { ...draft, text };
   const role = networkManager.getRole();
   if (role === 'host' || role === 'client') {
-    networkManager.sendCommunication(draft);
+    networkManager.sendCommunication(sanitizedDraft);
     return;
   }
-  applyCommunicationEvent(createLocalCommunicationEvent(draft, activePlayer.value));
+  applyCommunicationEvent(createLocalCommunicationEvent(sanitizedDraft, activePlayer.value));
 }
 
 function sendBattleChat(text: string): void {
@@ -901,7 +916,7 @@ watch(
   (onHome) => {
     if (onHome) {
       globalChat.start((incoming) => {
-        globalChatMessages.value = [...globalChatMessages.value, ...incoming].slice(-100);
+        globalChatMessages.value = appendRecentChatMessages(globalChatMessages.value, incoming);
       });
     } else {
       globalChat.stop();
@@ -2118,7 +2133,6 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   terrainDetail: terrainDetail.value,
   pathfindingCellConsolidation: pathfindingCellConsolidation.value,
   simulationTickRateHz: simulationTickRateHz.value,
-  displayUnitCount: displayUnitCount.value,
   localPlayerShieldAwareTargeting: localPlayerShieldAwareTargeting.value,
   localPlayerShieldsPowered: localPlayerShieldsPowered.value,
   currentFogOfWarEnabled: currentFogOfWarEnabled.value,
@@ -2186,7 +2200,6 @@ watchEffect(() => {
   m.terrainDetail = terrainDetail.value;
   m.pathfindingCellConsolidation = pathfindingCellConsolidation.value;
   m.simulationTickRateHz = simulationTickRateHz.value;
-  m.displayUnitCount = displayUnitCount.value;
   m.localPlayerShieldAwareTargeting = localPlayerShieldAwareTargeting.value;
   m.localPlayerShieldsPowered = localPlayerShieldsPowered.value;
   m.currentFogOfWarEnabled = currentFogOfWarEnabled.value;
@@ -2238,6 +2251,8 @@ const serverControlBarModel = reactive<GameCanvasServerControlBarModel>({
   displayServerCpuAvg: displayServerCpuAvg.value,
   displayServerCpuHi: displayServerCpuHi.value,
   displayTickRate: displayTickRate.value,
+  displayUnitCount: displayUnitCount.value,
+  displayUnitCap: displayUnitCap.value,
 });
 watchEffect(() => {
   const m = serverControlBarModel as {
@@ -2253,6 +2268,8 @@ watchEffect(() => {
   m.displayServerCpuAvg = displayServerCpuAvg.value;
   m.displayServerCpuHi = displayServerCpuHi.value;
   m.displayTickRate = displayTickRate.value;
+  m.displayUnitCount = displayUnitCount.value;
+  m.displayUnitCap = displayUnitCap.value;
 });
 
 // Same reactive() pattern as the other two bar models. This one is

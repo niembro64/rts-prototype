@@ -567,6 +567,7 @@
         <li>Sides the host declares and leaves EMPTY survive into the match. An empty side still carves its terrain slice, deposits and spawn arc; it simply has no commander on it. The declared count is authored data and is hashed.</li>
         <li>A watcher may select and inspect but authors no gameplay truth. That is refused at the command doorway, not downstream: a command that never enters the stream cannot be executed by mistake.</li>
         <li>Chat is one room in the lobby and splits when the battle starts — allies to allies, watchers to watchers. A watcher sees the whole map, so a live channel from the bench is a coaching channel.</li>
+        <li>Every chat room is a bounded conversation, not a log: clients and the HOME backend retain and display only the newest 10 messages, and every input plus every authority independently enforces a 220-character message ceiling.</li>
       </ul>
 
       <h3>The match runs at the speed of its slowest seated player</h3>
