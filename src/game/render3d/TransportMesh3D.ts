@@ -27,14 +27,22 @@ const TRANSPORT_RING_HEIGHT = 0.16;
 /** The end caps grow slightly past the tube so the cut reads sealed. */
 const TRANSPORT_END_CAP_SCALE = 1.12;
 
-const torusByTier = new Map<string, THREE.TorusGeometry>();
+// ONE fixed geometry tier for the whole chassis. The ring IS the
+// transport's silhouette and it is a tiny mesh: per-tier variants made
+// the drone visibly change shape while zooming — the shared sphere
+// factory volume-compensates coarse tessellation by INFLATING radius
+// (the far-tier end caps grew the chassis height ~63%), and the arc's
+// major path turned polygonal. Constant geometry costs a few hundred
+// triangles at worst and keeps the silhouette identical at every rung.
+const TRANSPORT_GEOMETRY_TIER: PrimitiveGeometryTier = 'close';
 
-function getTransportRingGeometry(tier: PrimitiveGeometryTier): THREE.TorusGeometry {
-  let geometry = torusByTier.get(tier);
-  if (geometry === undefined) {
-    geometry = createPrimitiveTorusGeometry(
+let transportRingGeometry: THREE.TorusGeometry | null = null;
+
+function getTransportRingGeometry(): THREE.TorusGeometry {
+  if (transportRingGeometry === null) {
+    transportRingGeometry = createPrimitiveTorusGeometry(
       'locomotion',
-      tier,
+      TRANSPORT_GEOMETRY_TIER,
       TRANSPORT_RING_RADIUS,
       TRANSPORT_RING_TUBE,
       TRANSPORT_RING_ARC,
@@ -42,10 +50,9 @@ function getTransportRingGeometry(tier: PrimitiveGeometryTier): THREE.TorusGeome
     // TorusGeometry draws its arc from angle 0; rotating by the gap half
     // angle centers the MISSING quarter on local +X, which the horizontal
     // lay-down below maps onto the unit's forward axis.
-    geometry.rotateZ(TRANSPORT_RING_GAP_HALF);
-    torusByTier.set(tier, geometry);
+    transportRingGeometry.rotateZ(TRANSPORT_RING_GAP_HALF);
   }
-  return geometry;
+  return transportRingGeometry;
 }
 
 /** Build the open-ring chassis. Returns the meshes that carry the team
@@ -54,11 +61,13 @@ export function buildTransportChassis(
   chassis: THREE.Group,
   primaryMat: THREE.Material,
   entityId: number,
-  tier: PrimitiveGeometryTier,
+  // Accepted for call-site symmetry with the other bespoke chassis
+  // builders, but deliberately unused: see TRANSPORT_GEOMETRY_TIER.
+  _tier: PrimitiveGeometryTier,
 ): THREE.Mesh[] {
   const meshes: THREE.Mesh[] = [];
 
-  const ring = new THREE.Mesh(getTransportRingGeometry(tier), primaryMat);
+  const ring = new THREE.Mesh(getTransportRingGeometry(), primaryMat);
   // Torus local XY plane -> chassis XZ plane (horizontal), ring axis up.
   ring.rotation.x = Math.PI / 2;
   ring.position.y = TRANSPORT_RING_HEIGHT;
@@ -67,7 +76,7 @@ export function buildTransportChassis(
   meshes.push(ring);
 
   // Smoothed end caps at the two cut faces of the missing quarter.
-  const capGeometry = getSharedPrimitiveSphereGeometry('locomotion', tier);
+  const capGeometry = getSharedPrimitiveSphereGeometry('locomotion', TRANSPORT_GEOMETRY_TIER);
   for (const side of [-1, 1] as const) {
     const angle = side * TRANSPORT_RING_GAP_HALF;
     const cap = new THREE.Mesh(capGeometry, primaryMat);
