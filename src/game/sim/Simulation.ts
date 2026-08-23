@@ -16,7 +16,6 @@ import {
   type DeathContext,
   type ProjectileSpawnEvent,
   type ProjectileDespawnEvent,
-  type ProjectileMotionUpdateEvent,
 } from './combat';
 import { DamageSystem } from './damage';
 import { economyManager } from './economy';
@@ -481,11 +480,6 @@ export class Simulation {
     return this.eventQueues.getAndClearProjectileDespawns();
   }
 
-  // Get and clear pending projectile motion update events (double-buffered)
-  getAndClearProjectileMotionUpdates(): ProjectileMotionUpdateEvent[] {
-    return this.eventQueues.getAndClearProjectileMotionUpdates();
-  }
-
   hasPendingProjectilePresentationEvents(): boolean {
     return this.eventQueues.hasPendingProjectilePresentationEvents();
   }
@@ -708,9 +702,12 @@ export class Simulation {
       this.spatialGridBuildingVersion = buildingVersion;
     }
 
-    // Update traveling projectile positions for projectile broadphase
-    // queries. Beam/laser line shots are handled by beam pathing.
-    spatialGrid.updateProjectiles(this.world.getTravelingProjectiles());
+    // P0-03: traveling projectiles are NOT restamped here. The post-
+    // integration batch in SimulationCombatController is the sole full
+    // stamp — its tick-N output is exactly the correct pre-combat state at
+    // tick N+1, spawns register through their launch-finalization path, and
+    // reflections restamp individually. The old pre-combat full restamp
+    // repeated all of that work every tick.
   }
 
   // Check for game over - last commander standing wins

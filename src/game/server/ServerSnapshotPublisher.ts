@@ -166,7 +166,6 @@ type DrainedSimulationFrame = {
   audioEvents: ReturnType<Simulation['getAndClearEvents']>;
   projectileSpawns: ReturnType<Simulation['getAndClearProjectileSpawns']>;
   projectileDespawns: ReturnType<Simulation['getAndClearProjectileDespawns']>;
-  projectileMotionUpdates: ReturnType<Simulation['getAndClearProjectileMotionUpdates']>;
 };
 
 /** Take this tick's phase, winner, and queued events off the simulation.
@@ -202,7 +201,6 @@ function drainSimulationFrame(simulation: Simulation): DrainedSimulationFrame {
     audioEvents: simulation.getAndClearEvents(),
     projectileSpawns: simulation.getAndClearProjectileSpawns(),
     projectileDespawns: simulation.getAndClearProjectileDespawns(),
-    projectileMotionUpdates: simulation.getAndClearProjectileMotionUpdates(),
   };
 }
 
@@ -403,8 +401,11 @@ export class ServerSnapshotPublisher {
       audioEvents,
       projectileSpawns,
       projectileDespawns,
-      projectileMotionUpdates,
     } = drainSimulationFrame(input.simulation);
+    // P0-01: motion updates are gone; adjacent Rust fixed-tick poses own
+    // travelling-shot motion. Serializer/apply plumbing stays as the
+    // recovery-format path but is never fed from live ticks.
+    const projectileMotionUpdates = undefined;
 
     // Pairs with meta.units.max, which is the ENTITY count cap — so this
     // counts buildings too, or the readout reads under its own ceiling.
@@ -682,8 +683,11 @@ export class ServerSnapshotPublisher {
       audioEvents,
       projectileSpawns,
       projectileDespawns,
-      projectileMotionUpdates,
     } = drainSimulationFrame(input.simulation);
+    // P0-01: motion updates are gone; adjacent Rust fixed-tick poses own
+    // travelling-shot motion. Serializer/apply plumbing stays as the
+    // recovery-format path but is never fed from live ticks.
+    const projectileMotionUpdates = undefined;
     const hasLiveLineProjectiles = input.world.getLineProjectiles().length > 0;
 
     this.dirtyIdsBuf.length = 0;
@@ -699,7 +703,6 @@ export class ServerSnapshotPublisher {
     const hasProjectileEvents =
       projectileSpawns.length > 0 ||
       projectileDespawns.length > 0 ||
-      projectileMotionUpdates.length > 0 ||
       hasLiveLineProjectiles;
     addMaterializationStage(emitBaseStages, 'lifecycleDrain', lifecycleStart);
 
@@ -1149,11 +1152,7 @@ export class ServerSnapshotPublisher {
     const projectileDespawns = hasProjectilePresentationEvents
       ? input.simulation.getAndClearProjectileDespawns()
       : undefined;
-    if (hasProjectilePresentationEvents) {
-      // Root and ordinary projectile motion are presented from adjacent Rust
-      // fixed-tick poses. Drain the legacy event queue without serializing it.
-      input.simulation.getAndClearProjectileMotionUpdates();
-    }
+
     const hasProjectileEventsAfterDrain =
       (projectileSpawns?.length ?? 0) > 0 ||
       (projectileDespawns?.length ?? 0) > 0;
