@@ -327,8 +327,12 @@ export class GameServer {
 
   emitLockstepProjectileDeltaSnapshotIfNeeded(): boolean {
     if (this.stopped) return false;
+    // Live beams re-trace their paths every fixed tick, so their topology
+    // is fresh sparse content even with no spawn/despawn this tick — the
+    // beam channel must not wait for the next 5 Hz rich snapshot.
     const hasProjectilePresentationEvents =
-      this.simulation.hasPendingProjectilePresentationEvents();
+      this.simulation.hasPendingProjectilePresentationEvents() ||
+      this.world.getLineProjectiles().length > 0;
     if (!hasProjectilePresentationEvents) return false;
     // Adjacent fixed-tick motion is already shared through the Rust
     // presentation history. Delta packets now carry projectile lifecycle and
@@ -368,7 +372,8 @@ export class GameServer {
         this.queuePresentationSnapshot();
       } else {
         const hasProjectilePresentationEvents =
-          this.simulation.hasPendingProjectilePresentationEvents();
+          this.simulation.hasPendingProjectilePresentationEvents() ||
+          this.world.getLineProjectiles().length > 0;
         if (hasProjectilePresentationEvents) {
           this.queueProjectileDeltaSnapshot();
         }

@@ -450,18 +450,16 @@ export class ServerSnapshotDirectWirePreencoder {
     });
 
     const hasLiveLineProjectiles = input.world.getLineProjectiles().length > 0;
+    // Each event stream is independent. The old form required ALL THREE
+    // arrays to be present before looking at any length, so retiring the
+    // motion-update stream (P0-01) silently dropped the whole projectile
+    // section — spawns and despawns included — from every direct rich
+    // delta, freezing shots on clients.
     const hasProjectileEvents =
       hasLiveLineProjectiles ||
-      (
-        input.projectileSpawns !== undefined &&
-        input.projectileDespawns !== undefined &&
-        input.projectileMotionUpdates !== undefined &&
-        (
-          input.projectileSpawns.length > 0 ||
-          input.projectileDespawns.length > 0 ||
-          input.projectileMotionUpdates.length > 0
-        )
-      );
+      (input.projectileSpawns?.length ?? 0) > 0 ||
+      (input.projectileDespawns?.length ?? 0) > 0 ||
+      (input.projectileMotionUpdates?.length ?? 0) > 0;
     const netProjectiles = hasProjectileEvents
       ? (() => {
           stageStart = performance.now();

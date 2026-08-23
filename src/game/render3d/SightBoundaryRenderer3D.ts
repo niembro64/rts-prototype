@@ -23,7 +23,6 @@ const TAU = Math.PI * 2;
 const EPSILON = 1e-5;
 /** P0-06: culling pad AND camera-bucket size for the retained rebuild. */
 const BOUNDARY_SCOPE_PAD = 512;
-const BOUNDARY_REBUILD_MIN_INTERVAL_MS = 100;
 const STYLE = {
   initialLineCap: 4096,
   maxSegmentLength: 28,
@@ -105,7 +104,6 @@ export class SightBoundaryRenderer3D {
   private lastEntitySetVersion = -1;
   private lastBoundsKey = '';
   private lastTick = -1;
-  private lastRebuildMs = -Infinity;
   private readonly sourceXs: number[] = [];
   private readonly sourceYs: number[] = [];
   private readonly sourceRadii: number[] = [];
@@ -181,14 +179,11 @@ export class SightBoundaryRenderer3D {
     renderScope: ViewportFootprint,
   ): void {
     // P0-06: the O(S^2) union + terrain resample rebuild is gated on its
-    // actual inputs. Sensor truth moves at fixed-tick cadence (and is
-    // throttled to ~10 Hz here — a ring trailing a scout by 100ms is
-    // invisible); lifecycle/mode/seat changes rebuild immediately; camera
-    // motion only forces a rebuild when it crosses a padded 512-unit
-    // bucket, because source culling below is padded by the same margin.
-    // Between rebuilds the retained line batch keeps drawing — its points
-    // are world-space and reproject under the moving camera for free.
-    const nowMs = performance.now();
+    // actual inputs — every new fixed tick (sensor truth), lifecycle/mode/
+    // seat changes, or the camera crossing a padded 512-unit bucket (the
+    // source culling below is padded by the same margin). Between rebuilds
+    // the retained line batch keeps drawing — its points are world-space
+    // and reproject under the moving camera for free.
     const tick = clientViewState.getTick();
     const entitySetVersion = clientViewState.getEntitySetVersion();
     const bounds = renderScope.getBounds(BOUNDARY_SCOPE_PAD);
@@ -201,15 +196,17 @@ export class SightBoundaryRenderer3D {
       localPlayerId !== this.lastPlayerId ||
       entitySetVersion !== this.lastEntitySetVersion ||
       boundsKey !== this.lastBoundsKey;
-    const tickDue =
-      tick !== this.lastTick && nowMs - this.lastRebuildMs >= BOUNDARY_REBUILD_MIN_INTERVAL_MS;
+    // Sensor truth changes at fixed-tick cadence; rebuild on every new
+    // tick (20 Hz) so rings track their movers as tightly as the fog shade
+    // does, while idle scenes and pure camera pans keep the retained
+    // world-space batch.
+    const tickDue = tick !== this.lastTick;
     if (!inputsChanged && !tickDue) return;
     this.lastEnabled = enabled;
     this.lastPlayerId = localPlayerId;
     this.lastEntitySetVersion = entitySetVersion;
     this.lastBoundsKey = boundsKey;
     this.lastTick = tick;
-    this.lastRebuildMs = nowMs;
 
     this.batch.begin();
     if (!enabled) {
