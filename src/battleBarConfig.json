@@ -66,6 +66,7 @@
     "demoBuildingsKnownIds": "demo-battle-buildings-known-ids",
     "demoUnitsKnownIds": "demo-battle-units-known-ids",
     "demoUnitsAllEnabledRevision": "demo-battle-units-all-enabled-v1",
+    "demoBuildingsHeliosRevision": "demo-battle-buildings-helios-v1",
     "demoCap": "demo-battle-cap",
     "realCap": "real-battle-cap",
     "demoPathfindingCellConsolidation": "demo-battle-pathfinding-cell-consolidation",

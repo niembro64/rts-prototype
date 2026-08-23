@@ -311,6 +311,7 @@ const STORAGE_DEMO_UNITS = sk.demoUnits;
 const STORAGE_REAL_UNITS = sk.realUnits;
 const STORAGE_DEMO_UNITS_KNOWN_IDS = sk.demoUnitsKnownIds;
 const STORAGE_DEMO_UNITS_ALL_ENABLED_REVISION = sk.demoUnitsAllEnabledRevision;
+const STORAGE_DEMO_BUILDINGS_HELIOS_REVISION = sk.demoBuildingsHeliosRevision;
 const STORAGE_DEMO_BUILDINGS = sk.demoBuildings;
 const STORAGE_REAL_BUILDINGS = sk.realBuildings;
 const STORAGE_DEMO_BUILDINGS_KNOWN_IDS = sk.demoBuildingsKnownIds;
@@ -384,7 +385,35 @@ function refreshDemoRosterLedgers(): void {
   if (_demoRosterRefreshRun) return;
   _demoRosterRefreshRun = true;
   migrateDemoUnitsToAllEnabledDefault();
+  migrateDemoBuildingsHeliosDefault();
   adoptNewDemoBlueprints();
+}
+
+/** One-time healing migration for towerHelios (same pattern as the queen
+ * units migration above). The generic new-blueprint adoption persists its
+ * known-ids ledger BEFORE merging the stored roster, so a profile that hit
+ * any early-return on that path (malformed roster snapshot, an old build's
+ * partial ledger) has towerHelios marked "known" while its saved BUILDINGS
+ * roster still lacks it — and the adoption never fires again. Force-enable
+ * it once; a player who later switches it off keeps their choice. */
+export function migrateDemoBuildingsHeliosDefault(): void {
+  if (readPersisted(STORAGE_DEMO_BUILDINGS_HELIOS_REVISION) !== null) return;
+  persistJson(STORAGE_DEMO_BUILDINGS_HELIOS_REVISION, true);
+  const storedRoster = readPersisted(STORAGE_DEMO_BUILDINGS);
+  if (storedRoster === null) return;
+  let roster: string[] | null = null;
+  try {
+    roster = sanitizeDemoBuildingIds(JSON.parse(storedRoster));
+  } catch {
+    return;
+  }
+  if (roster === null) return;
+  const selected = new Set(roster);
+  selected.add('towerHelios');
+  persistJson(
+    STORAGE_DEMO_BUILDINGS,
+    BUILDING_BLUEPRINT_IDS.filter((id) => selected.has(id)),
+  );
 }
 
 /** One-time policy migration for profiles saved while Queen Bee and Queen
