@@ -158,7 +158,11 @@ export class ContactBlipRenderer3D {
     const sequence = sampling.sequence;
     const alpha = sampling.alpha;
 
-    if (contacts !== null) {
+    // P1-26: the input array only carries new information when a snapshot
+    // lands (its sequence moves). Membership and glide endpoints are
+    // consumed once per sequence; between sequences only the retained
+    // tracks interpolate/fade below.
+    if (contacts !== null && this.prunedSequence !== sequence) {
       for (let i = 0; i < contacts.length; i++) {
         const contact = contacts[i];
         if (contact.radarOnly !== true) continue;
@@ -174,13 +178,10 @@ export class ContactBlipRenderer3D {
           sampling.intervalMs,
         );
         track.dying = false;
-        track.fadeAlpha = Math.min(1, track.fadeAlpha + dtMs / VISION_FADE_IN_MS);
       }
-      if (this.prunedSequence !== sequence) {
-        this.dropUnheardContacts(sequence);
-        this.prunedSequence = sequence;
-      }
-    } else {
+      this.dropUnheardContacts(sequence);
+      this.prunedSequence = sequence;
+    } else if (contacts === null) {
       // Coverage collapsed entirely: everything on screen fades away.
       for (const track of this.tracks.values()) track.dying = true;
     }
@@ -198,6 +199,11 @@ export class ContactBlipRenderer3D {
         track.x += track.velX * dtMs;
         track.y += track.velY * dtMs;
         track.z += track.velZ * dtMs;
+      } else {
+        track.fadeAlpha = Math.min(1, track.fadeAlpha + dtMs / VISION_FADE_IN_MS);
+        track.x = track.fromX + (track.toX - track.fromX) * alpha;
+        track.y = track.fromY + (track.toY - track.fromY) * alpha;
+        track.z = track.fromZ + (track.toZ - track.fromZ) * alpha;
       }
       if (renderScope !== undefined && !renderScope.inScope(track.x, track.y, STYLE.radius)) {
         continue;
