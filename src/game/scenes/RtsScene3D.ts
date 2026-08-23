@@ -1625,10 +1625,18 @@ export class RtsScene3D {
   public showMapOverview(): void {
     const centerX = this.mapWidth / 2;
     const centerY = this.mapHeight / 2;
+    // The map-preview capture script (scripts/captureMapPresetThumbnails.mjs)
+    // photographs the lobby tiles through this same overview control; it
+    // injects this flag to get the 45-degrees-down-from-the-east framing
+    // without changing what Tab/OVR does for players.
+    const previewFraming = (window as unknown as {
+      __BA_MAP_PREVIEW_FRAMING__?: 'obliqueEast';
+    }).__BA_MAP_PREVIEW_FRAMING__;
     this.cameraControl.showMapOverview(
       this.mapWidth,
       this.mapHeight,
       getTerrainMeshHeight(centerX, centerY, this.mapWidth, this.mapHeight),
+      previewFraming === 'obliqueEast' ? 'obliqueEast' : 'overhead',
     );
   }
 

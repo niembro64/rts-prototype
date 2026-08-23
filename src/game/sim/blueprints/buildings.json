@@ -675,7 +675,8 @@
       "unitTransport",
       "unitConstructionDrone",
       "unitConstructionSubmarine",
-      "unitRex"
+      "unitRex",
+      "unitHedgehog"
     ],
     "renderProfile": "towerFabricator",
     "visualHeight": 30,

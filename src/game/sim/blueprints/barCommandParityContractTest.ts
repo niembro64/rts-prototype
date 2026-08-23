@@ -97,7 +97,7 @@ const ANALOGUES = barAnalogueCapabilities as Record<string, BarAnalogue>;
 const PROTOTYPE_ONLY_BLUEPRINTS: ReadonlySet<string> = new Set([
   'unitMammoth', 'unitDaddy', 'unitWidow', 'unitFormik', 'unitHippo', 'unitLoris',
   'unitSeaTurtle', 'unitOrca', 'unitDuck', 'unitConstructionSubmarine',
-  'unitQueenBee', 'unitQueenTick', 'unitHuman', 'unitRex',
+  'unitQueenBee', 'unitQueenTick', 'unitHuman', 'unitRex', 'unitHedgehog',
   'buildingShieldTargetingTech', 'buildingShieldTech',
   'buildingPrecisionTargetingTech', 'buildingRadarJammer', 'buildingSonarJammer',
   'buildingMetalStorage', 'buildingEnergyStorage',

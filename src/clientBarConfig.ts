@@ -140,7 +140,9 @@ function isEntityHudElementSupported(
   type: EntityHudType,
   element: EntityHudElement,
 ): boolean {
-  if (type === 'shot') return element === 'name';
+  // Shots expose names plus health bars (drawn for rocket-class rounds,
+  // which are interceptable and carry real HP), never selection outlines.
+  if (type === 'shot') return element === 'name' || element === 'healthBar';
   return true;
 }
 

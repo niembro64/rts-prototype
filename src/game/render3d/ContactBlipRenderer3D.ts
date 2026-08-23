@@ -16,7 +16,10 @@
 // they arrive only on presentation snapshots, far slower than the render loop.
 // The blip is therefore interpolated between its last two received positions,
 // the same clamped glide the fixed-tick presentation history gives everything
-// else, and is never extrapolated past the newest sample.
+// else, and is never extrapolated past the newest sample while it is heard.
+// A contact that stops being heard fades out coasting on its last measured
+// drift — the exact treatment a fully-visible unit gets when it leaves
+// vision — so the player's last knowledge of a mover stays a mover.
 //
 // The extension is the medium and the third spatial coordinate. Each contact
 // carries the lane that earned it plus its observed world-space altitude, so an
@@ -113,6 +116,14 @@ type ContactTrack = {
   x: number;
   y: number;
   z: number;
+  /** Last observed drift in units per millisecond, measured between the two
+   *  newest samples. While the contact is heard the glide between samples
+   *  owns motion; once it goes unheard the fading blip keeps coasting on
+   *  this velocity, the same way a unit leaving vision keeps its last
+   *  velocity while it fades. */
+  velX: number;
+  velY: number;
+  velZ: number;
   /** Same ramp enemy entities use entering/leaving vision: 0..1, rising
    *  over VISION_FADE_IN_MS while heard, falling over VISION_FADE_OUT_MS
    *  once the newest snapshot stops carrying the contact. A re-heard
@@ -160,6 +171,7 @@ export class ContactBlipRenderer3D {
           requireContactBlipZ(contact.contactZ),
           sequence,
           alpha,
+          sampling.intervalMs,
         );
         track.dying = false;
         track.fadeAlpha = Math.min(1, track.fadeAlpha + dtMs / VISION_FADE_IN_MS);
@@ -180,6 +192,12 @@ export class ContactBlipRenderer3D {
           this.tracks.delete(contactId);
           continue;
         }
+        // Coast on the last measured drift while fading, mirroring
+        // VanishingUnitMotion3D for real meshes: a contact that was moving
+        // keeps moving as it dissolves; a stopped one fades in place.
+        track.x += track.velX * dtMs;
+        track.y += track.velY * dtMs;
+        track.z += track.velZ * dtMs;
       }
       if (renderScope !== undefined && !renderScope.inScope(track.x, track.y, STYLE.radius)) {
         continue;
@@ -217,6 +235,7 @@ export class ContactBlipRenderer3D {
     z: number,
     sequence: number,
     alpha: number,
+    intervalMs: number,
   ): ContactTrack {
     let track = this.tracks.get(contactId);
     if (track === undefined) {
@@ -225,6 +244,7 @@ export class ContactBlipRenderer3D {
         fromX: x, fromY: y, fromZ: z,
         toX: x, toY: y, toZ: z,
         x, y, z,
+        velX: 0, velY: 0, velZ: 0,
         fadeAlpha: 0,
         dying: false,
       };
@@ -239,6 +259,11 @@ export class ContactBlipRenderer3D {
       track.toX = x;
       track.toY = y;
       track.toZ = z;
+      if (intervalMs > 0) {
+        track.velX = (track.toX - track.fromX) / intervalMs;
+        track.velY = (track.toY - track.fromY) / intervalMs;
+        track.velZ = (track.toZ - track.fromZ) / intervalMs;
+      }
     }
     track.x = track.fromX + (track.toX - track.fromX) * alpha;
     track.y = track.fromY + (track.toY - track.fromY) * alpha;

@@ -94,9 +94,16 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
   const usesGuidance =
     locomotion.motionModel === 'constantSpeedGuided' ||
     locomotion.motionModel === 'thrustGuided';
-  if (isRocketOrMissile && turning === null) {
+  // A missile is guided by definition. A rocket may be a dumb-fire round:
+  // aimed at launch, no turning, on a non-guided locomotion preset.
+  if (blueprint.type === 'missile' && turning === null) {
     throw new Error(
-      `Invalid shot blueprint ${id}.turning: rocket/missile shots must author turning controls`,
+      `Invalid shot blueprint ${id}.turning: missile shots must author turning controls`,
+    );
+  }
+  if (blueprint.type === 'rocket' && turning === null && usesGuidance) {
+    throw new Error(
+      `Invalid shot blueprint ${id}.turning: guided rocket presets must author turning controls`,
     );
   }
   if (!isRocketOrMissile && turning !== null) {

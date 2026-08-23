@@ -98,6 +98,38 @@
       },
       "transitions": { "enterWater": "continue", "exitWater": "continueBallistic" },
       "terminal": { "entityImpact": "detonate", "groundContact": "detonate", "expiry": "detonate", "destroyed": "detonate", "reflectorImpact": "detonate" }
+    },
+    "straightRocketDumb": {
+      "motionModel": "ballistic",
+      "gravityForceMultiplier": 0,
+      "media": {
+        "air": {
+          "operational": true,
+          "propulsionForce": 0,
+          "guidanceThrust": 0,
+          "velocityFrictionPer60HzFrame": 0
+        },
+        "water": {
+          "operational": false,
+          "propulsionForce": 0,
+          "guidanceThrust": 0,
+          "velocityFrictionPer60HzFrame": 0
+        },
+        "ground": {
+          "mode": "impact"
+        }
+      },
+      "transitions": {
+        "enterWater": "despawn",
+        "exitWater": "continue"
+      },
+      "terminal": {
+        "entityImpact": "detonate",
+        "groundContact": "detonate",
+        "expiry": "detonate",
+        "destroyed": "detonate",
+        "reflectorImpact": "detonate"
+      }
     }
   }
 }

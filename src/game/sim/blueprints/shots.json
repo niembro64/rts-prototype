@@ -142,7 +142,7 @@
       "lostTargetArrivalRadius": 3
     },
     "shotBlueprintId": "shotRocketLight",
-    "name": "Light Rocket",
+    "name": "Controlled Rocket",
     "mass": 6,
     "health": 8,
     "radius": {
@@ -498,6 +498,48 @@
         "other": 3.5,
         "hitbox": 2.4,
         "collision": 3.5
+      }
+    }
+  },
+  "shotRocketDumb": {
+    "type": "rocket",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": true, "underwater": false },
+      "underwater": { "aboveWater": false, "underwater": false }
+    },
+    "shotLocomotionPresetId": "straightRocketDumb",
+    "maxLifespanMs": 6000,
+    "turning": null,
+    "shotBlueprintId": "shotRocketDumb",
+    "name": "Dumb Rocket",
+    "mass": 6,
+    "health": 10,
+    "radius": {
+      "other": 3,
+      "hitbox": 1.6,
+      "collision": 2
+    },
+    "hitSound": {
+      "$audio": "event.hit.shotRocketLight"
+    },
+    "submunitions": null,
+    "smokeTrail": null,
+    "base": {
+      "cost": {
+        "energy": 0,
+        "metal": 0
+      },
+      "mass": 6,
+      "health": 10,
+      "deathExplosion": {
+        "radius": 85,
+        "force": 3500,
+        "damage": 90
+      },
+      "radius": {
+        "other": 3,
+        "hitbox": 1.6,
+        "collision": 2
       }
     }
   }

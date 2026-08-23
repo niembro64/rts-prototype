@@ -5480,5 +5480,143 @@
     },
     "preventLockOnIfMyTeamIsAboveMe": true,
     "supportPointOffsetZ": 14.4
+  },
+  "unitHedgehog": {
+    "unitBlueprintId": "unitHedgehog",
+    "tinyName": "HDG",
+    "name": "Hedgehog",
+    "shortName": "HDG",
+    "hp": 460,
+    "radius": {
+      "other": 16,
+      "hitbox": 13,
+      "collision": 22.4
+    },
+    "supportSurface": {
+      "kind": "none"
+    },
+    "mass": 400,
+    "cost": {
+      "energy": 380,
+      "metal": 380
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretRocketDumb",
+        "presentation": {
+          "headRadius": 8,
+          "headOnly": false,
+          "barrel": {
+            "type": "simpleMultiBarrel",
+            "barrelCount": 4,
+            "barrelLength": 1.6,
+            "orbitRadius": 0.5,
+            "spin": {
+              "idle": 0,
+              "max": 0,
+              "accel": 0,
+              "decel": 0
+            }
+          }
+        },
+        "sensorTurretBlueprintId": "turretSensorUnitHedgehog",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 1.5
+        },
+        "requiredEngagedForFightStop": true,
+        "mountId": "rocketDumb",
+        "controlMode": "hostPreferred"
+      }
+    ],
+    "bodyShape": {
+      "kind": "polygon",
+      "sides": 6,
+      "radiusFrac": 0.82,
+      "heightFrac": 0.34,
+      "rotation": 0
+    },
+    "teamOrnament": {
+      "backX": 0.82,
+      "frontX": 0.79,
+      "backY": 1.0,
+      "frontY": 1.0
+    },
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitBadger"
+    },
+    "unitLocomotion": {
+      "type": "tank",
+      "physicsPresetId": "tank",
+      "physics": {
+        "ground": {
+          "maxPropulsiveForce": 42
+        },
+        "air": {
+          "maxPropulsiveForce": 0,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 0.4,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
+          }
+        }
+      },
+      "config": {
+        "mounts": [
+          {
+            "xUnitRadiusRatio": 0,
+            "yUnitRadiusRatio": -1.195,
+            "zUnitRadiusRatio": 0.3125
+          },
+          {
+            "xUnitRadiusRatio": 0,
+            "yUnitRadiusRatio": 1.195,
+            "zUnitRadiusRatio": 0.3125
+          }
+        ],
+        "treadLength": 1.7,
+        "treadWidth": 0.55,
+        "wheelRadius": 0.12,
+        "rotationSpeed": 1
+      },
+      "environmentalHazards": {
+        "waterDamagePerSecond": 260
+      }
+    },
+    "base": {
+      "cost": {
+        "energy": 380,
+        "metal": 380
+      },
+      "mass": 400,
+      "health": 460,
+      "deathExplosion": {
+        "radius": 25.76,
+        "force": 34400,
+        "damage": 280
+      },
+      "radius": {
+        "other": 16,
+        "hitbox": 13,
+        "collision": 22.4
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    }
   }
 }

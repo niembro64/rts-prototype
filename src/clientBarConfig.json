@@ -613,7 +613,7 @@
       },
       "shot": {
         "name": false,
-        "healthBar": false
+        "healthBar": true
       }
     },
     "realDefault": {
@@ -635,7 +635,7 @@
       },
       "shot": {
         "name": false,
-        "healthBar": false
+        "healthBar": true
       }
     }
   },

@@ -174,7 +174,7 @@ export function getTurretHudNameY(mountWorldZ: number, presentation: Turret['pre
 }
 
 
-function getShotHudBarsY(shot: Entity): number {
+export function getShotHudBarsY(shot: Entity): number {
   return shot.transform.z + PIECE_BAR_GAP;
 }
 

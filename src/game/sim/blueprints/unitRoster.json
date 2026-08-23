@@ -25,6 +25,7 @@
     "unitTransport",
     "unitConstructionDrone",
     "unitConstructionSubmarine",
-    "unitRex"
+    "unitRex",
+    "unitHedgehog"
   ]
 }

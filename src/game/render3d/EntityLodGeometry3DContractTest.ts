@@ -245,6 +245,7 @@ const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
   unitLynx: { close: 1150, mid: 580, far: 210 },
   unitDaddy: { close: 2380, mid: 954, far: 306 },
   unitBadger: { close: 1150, mid: 600, far: 230 },
+  unitHedgehog: { close: 1150, mid: 600, far: 230 },
   unitMongoose: { close: 500, mid: 280, far: 140 },
   unitTick: { close: 2230, mid: 854, far: 246 },
   unitHuman: { close: 2550, mid: 950, far: 430 },
@@ -2331,7 +2332,7 @@ function runConstructionHostMarkingContracts(): void {
 }
 
 export function runEntityLodGeometry3DContractTest(): void {
-  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 27, 'visual roster covers all 27 units');
+  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 28, 'visual roster covers all 28 units');
   assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 21, 'visual roster covers all 21 buildings');
   const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
   try {

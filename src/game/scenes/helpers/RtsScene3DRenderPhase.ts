@@ -78,6 +78,7 @@ import {
 import {
   getTurretHudNameY,
   getShotHudNameY,
+  getShotHudBarsY,
 } from '../../render3d/HudAnchor';
 import {
   ENTITY_HUD_FADE_START_DISTANCE_FRAC,
@@ -526,8 +527,13 @@ export class RtsScene3DRenderPhase {
         getEntityHudToggle('tower', 'healthBar') ||
         getEntityHudToggle('building', 'healthBar')
       );
+    // Rocket-class travelling shots carry real HP (they can be shot down),
+    // so they get body health bars too. Their rows are appended by this
+    // phase directly — shots never enter the entity render-state slabs.
+    const shotBarsEnabled = updateBodyHudThisFrame &&
+      getEntityHudToggle('shot', 'healthBar');
     const entityLists = this.prepareEntityLists({
-      includeBodyHud: bodyHudEnabled,
+      includeBodyHud: bodyHudEnabled || shotBarsEnabled,
       includeBodyNames: bodyNamesEnabled,
       includeShields: turretShieldSpheresEnabled && forceFieldsVisible,
       shieldVisibilityTeamMask,
@@ -597,6 +603,9 @@ export class RtsScene3DRenderPhase {
         projectileLists.traveling,
         selectionHudMode,
       );
+    }
+    if (shotBarsEnabled) {
+      this.populateShotHealthBarPacket(projectileLists.traveling, entityLists.bodyHud);
     }
     if (turretNamesEnabled) {
       this.populateRenderListTurretNamePacket(entityLists, selectionHudMode);
@@ -746,7 +755,7 @@ export class RtsScene3DRenderPhase {
     }
 
     let hudFrustum: THREE.Frustum | undefined;
-    if (bodyHudEnabled || bodyNamesEnabled || turretNamesEnabled || shotNamesEnabled) {
+    if (bodyHudEnabled || shotBarsEnabled || bodyNamesEnabled || turretNamesEnabled || shotNamesEnabled) {
       const cam = this.threeApp.camera;
       if (this.renderScope.getMode() !== 'all') {
         this.frustumMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
@@ -778,9 +787,9 @@ export class RtsScene3DRenderPhase {
       shieldRenderer.clear();
     }
 
-    if (bodyHudEnabled || bodyNamesEnabled || turretNamesEnabled || shotNamesEnabled) {
+    if (bodyHudEnabled || shotBarsEnabled || bodyNamesEnabled || turretNamesEnabled || shotNamesEnabled) {
       this.drawEntityHud(
-        bodyHudEnabled ? healthBar3D : null,
+        bodyHudEnabled || shotBarsEnabled ? healthBar3D : null,
         bodyNamesEnabled || turretNamesEnabled || shotNamesEnabled ? nameLabel3D : null,
         hudFrustum,
         entityLists,
@@ -1066,6 +1075,34 @@ export class RtsScene3DRenderPhase {
         getShotHudNameY(shot),
         shot.transform.y,
         name,
+      );
+    }
+  }
+
+  /** Rocket-class shots get the same body health bar every damaged entity
+   *  gets: hidden at full health, drawn while hp is down. Missiles and
+   *  plasma stay bare — their hp is a collision detail, not a story the
+   *  player follows across the sky. */
+  private populateShotHealthBarPacket(
+    projectiles: readonly Entity[],
+    packet: BodyHudRenderPacket3D,
+  ): void {
+    const scope = this.renderScope;
+    for (let i = 0; i < projectiles.length; i++) {
+      const shot = projectiles[i];
+      if (this.entityEmissionUsesFarLod(shot)) continue;
+      if (!scope.inScope(shot.transform.x, shot.transform.y, 100)) continue;
+      const proj = shot.projectile;
+      if (!proj || proj.projectileType !== 'projectile' || proj.maxHp <= 0) continue;
+      if (proj.config.shotProfile.runtime.type !== 'rocket') continue;
+      if (proj.hp >= proj.maxHp || proj.hp <= 0) continue;
+      packet.pushRow(
+        shot.id,
+        shot.transform.x,
+        getShotHudBarsY(shot),
+        shot.transform.y,
+        proj.config.shotProfile.runtime.radius.other * 2,
+        proj.hp / proj.maxHp,
       );
     }
   }
