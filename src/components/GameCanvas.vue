@@ -2836,9 +2836,8 @@ watchEffect(() => {
           />
         </div>
 
-        <!-- BAR-style corner console. In a battle it is the session's rooms
-             (ALL public / TEAM-or-SPEC); at home it is the games.niemo.io
-             global room, since the player is connected to nobody yet. -->
+        <!-- BAR-style battle console. HOME's games.niemo.io room lives in the
+             menu sidebar below so it reads as part of that surface. -->
         <ChatConsole
           v-if="gameStarted"
           ref="battleChatRef"
@@ -2851,8 +2850,10 @@ watchEffect(() => {
           @send="sendBattleChat"
           @update:active-channel-id="(id: string) => (chatChannelId = id === 'all' ? 'all' : 'team')"
         />
+        <!-- Mobile has no menu sidebar, so it keeps the prior corner-console
+             fallback instead of losing access to HOME chat altogether. -->
         <ChatConsole
-          v-else
+          v-else-if="isMobile"
           ref="homeChatRef"
           class="hud-chat"
           :messages="globalChatConsoleMessages"
@@ -3128,7 +3129,18 @@ watchEffect(() => {
       @set-converter-tax="(v) => setConverterTax(v)"
       @set-player-name="onPlayerNameChange"
       @reset-defaults="resetBattleDefaultsWithGroundNormal"
-    />
+    >
+      <template #home-chat>
+        <ChatConsole
+          ref="homeChatRef"
+          :messages="globalChatConsoleMessages"
+          :channels="GLOBAL_CHAT_CHANNELS"
+          active-channel-id="global"
+          placeholder="Enter to chat with everyone online"
+          @send="sendGlobalChat"
+        />
+      </template>
+    </LobbyModal>
 
     <NetworkPeerLagIndicator
       v-if="gameStarted && networkRole !== null && matchHold === null"
