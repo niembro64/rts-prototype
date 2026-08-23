@@ -6,6 +6,7 @@
     "rotorRadPerSecPerMetalRate": 0.048,
     "rotorSpinMultiplier": 1.0,
     "rotorSpinReflectsActualProduction": true,
+    "rotorMaxVisualRadPerSec": 7,
     "rotorPotentialRadPerSec": 1.5
   },
   "cone": {

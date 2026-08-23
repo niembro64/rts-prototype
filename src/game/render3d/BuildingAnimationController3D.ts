@@ -9,6 +9,7 @@ import {
   EXTRACTOR_ROTOR_RAD_PER_SEC_PER_METAL_RATE,
   METAL_EXTRACTOR_ROTOR_SPIN_MULTIPLIER,
   EXTRACTOR_ROTOR_SPIN_REFLECTS_ACTUAL_PRODUCTION,
+  EXTRACTOR_ROTOR_MAX_VISUAL_RAD_PER_SEC,
   EXTRACTOR_ROTOR_POTENTIAL_RAD_PER_SEC,
 } from '@/resourceConfig';
 import type { MetalDeposit } from '../../metalDepositConfig';
@@ -461,7 +462,11 @@ export class BuildingAnimationController3D {
         EXTRACTOR_ROTOR_RAD_PER_SEC_PER_METAL_RATE *
         METAL_EXTRACTOR_ROTOR_SPIN_MULTIPLIER
       : (actualRate > 0 ? EXTRACTOR_ROTOR_POTENTIAL_RAD_PER_SEC : 0);
-    const targetSpeed = Math.abs(baseSpeed) * (1 - easedClose);
+    // Clamp below the six-fold wagon-wheel reversal threshold — see
+    // EXTRACTOR_ROTOR_MAX_VISUAL_RAD_PER_SEC.
+    const targetSpeed =
+      Math.min(Math.abs(baseSpeed), EXTRACTOR_ROTOR_MAX_VISUAL_RAD_PER_SEC) *
+      (1 - easedClose);
     let speed = Math.abs(this.extractorRotorSpeeds.get(id) ?? 0);
     speed = lerp(speed, targetSpeed, rotorSpeedAlpha);
     if (targetSpeed === 0 && speed < BUILDING_RIG_IDLE_EPSILON) speed = 0;
