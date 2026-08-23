@@ -70,6 +70,7 @@ const BASE_REAL_CONFIG: GameServerConfig = {
   converterTax: 0,
 };
 
+
 const CASES: readonly DeterministicReplayCase[] = [
   {
     id: 'real-idle-2p-80t',

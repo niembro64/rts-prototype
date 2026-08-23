@@ -2544,8 +2544,10 @@ export function runCommandExecutionContractTest(): void {
     'transport load action should mark the passenger transported by this carrier',
   );
   assertContract(
-    passenger.heldBy === null,
-    'beam carry must not pose-slave the passenger through the hold relation',
+    passenger.heldBy !== null &&
+      passenger.heldBy.kind === 'transportCargo' &&
+      passenger.heldBy.holderId === transport.id,
+    'beam carry rides the hold-pose channel (ground units are terrain-following; forces cannot lift them)',
   );
   assertContract(
     passenger.unit !== null && passenger.unit.actions.length === 0,
@@ -2575,8 +2577,8 @@ export function runCommandExecutionContractTest(): void {
     'transport unload action should empty cargo',
   );
   assertContract(
-    passenger.transported === null,
-    'transport unload action should clear the transported marker (beam off)',
+    passenger.transported === null && passenger.heldBy === null,
+    'transport unload action should clear the transported marker and the hold (beam off)',
   );
 
   const areaUnloadWorld = new WorldState(1, 512, 512);

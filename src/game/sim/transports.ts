@@ -1,14 +1,12 @@
-import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import { ENTITY_CHANGED_ACTIONS } from '@/types/network';
 import type { SprayTarget } from '@/types/ui';
-import { GRAVITY } from '../../config';
 import type { Entity, EntityId, Transport } from './types';
 import { NO_ENTITY_ID } from './types';
 import type { WorldState } from './WorldState';
-import type { ForceAccumulator } from './ForceAccumulator';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { entitySlotRegistry } from './EntitySlotRegistry';
-import { getUnitBlueprint } from './blueprints';
+import { holdEntity, releaseEntityHold } from './entityHolds';
+import { getUnitGroundZ, getUnitSupportPointOffsetZ } from './unitGeometry';
 import { writeHitVolume, type EntityVolume } from './entityVolumes';
 import { shiftUnitAction, setUnitActions } from './unitActions';
 
@@ -22,19 +20,21 @@ const TRANSPORT_LOAD_RANGE_PADDING = 24;
 const TRANSPORT_UNLOAD_ARRIVAL_RADIUS = 15;
 
 // ── Attraction beam ────────────────────────────────────────────────────
-// The carried unit STAYS IN THE WORLD as a physical body. A critically
-// damped spring (natural frequency OMEGA, damping 2*OMEGA against the
-// velocity error toward the transport's own velocity) pulls it to the
-// ring's center point and holds it there; gravity is fed forward after
-// the clamp so the hold point never sags. The unit's own propulsion,
-// medium lift, and cruise are off while carried (see UnitForceSystem's
-// transported gate); drag and every other world force still apply.
+// The carried unit STAYS IN THE WORLD, fully visible and targetable. It
+// rides the generic hold-pose channel (the same machinery that floats
+// forming units at the fabricator's torus center) because ground units
+// are terrain-following — no external force can lift them — so the beam
+// drives the HOLD OFFSET instead: a critically damped spring pulls the
+// passenger's offset from the ring center to zero and holds it there,
+// while the hold pose tracks the transport's live position, altitude,
+// and velocity. The passenger's own propulsion and actions are dark
+// while carried (updateUnits transported skip + the force system's
+// heldBy velocity pin).
 const TRANSPORT_BEAM_OMEGA_RAD_PER_SEC = 3.0;
-const TRANSPORT_BEAM_MAX_ACCEL = 600;
-// The force kernel converts an external force F to acceleration as
-// F / 3600 * 1e6 / mass (see unit_kinetics.rs), so a commanded
-// acceleration `a` on mass `m` is authored as a * m * 3600 / 1e6.
-const TRANSPORT_BEAM_FORCE_PER_MASS_ACCEL = 3600 / 1_000_000;
+const TRANSPORT_BEAM_SNAP_EPSILON = 0.5;
+
+type BeamSpringState = { vx: number; vy: number; vz: number };
+const _beamSpringByEntityId = new Map<EntityId, BeamSpringState>();
 
 type TransportActionUpdateResult = {
   unloadedUnits: Entity[];
@@ -130,6 +130,22 @@ function loadUnitIntoTransport(
     transportId: transport.id,
     slotIndex,
   };
+  // World-frame hold seeded at the passenger's CURRENT pose, so the
+  // beam pass's spring visibly reels it in from where it stood.
+  holdEntity(transport, target, {
+    kind: 'transportCargo',
+    slotIndex,
+    localOffsetX: target.transform.x - transport.transform.x,
+    localOffsetY: target.transform.y - transport.transform.y,
+    localBaseZ:
+      target.transform.z -
+      getUnitGroundZ(transport) -
+      getUnitSupportPointOffsetZ(target.unit),
+    rotateWithHolder: false,
+    inheritHolderRotation: false,
+    inheritHolderVelocity: true,
+  });
+  _beamSpringByEntityId.set(target.id, { vx: 0, vy: 0, vz: 0 });
 
   transport.transport.loadedUnits.push(target);
   return true;
@@ -140,6 +156,8 @@ function loadUnitIntoTransport(
  *  its own physics; nothing teleports. */
 function releaseTransportPassenger(passenger: Entity): void {
   passenger.transported = null;
+  releaseEntityHold(passenger);
+  _beamSpringByEntityId.delete(passenger.id);
   const unit = passenger.unit;
   if (unit === null) return;
   entitySlotRegistry.setUnitDriveInput(passenger, 0, 0, 0, 0, passenger.entitySlotId);
@@ -241,13 +259,13 @@ function acquireBeamSpray(): SprayTarget {
 }
 
 /** Per-tick beam pass for one carrying transport: sweep out passengers
- *  that died, keep the survivors' own propulsion dark, apply the
- *  critically damped spring toward the ring center, and publish the
- *  visible nano stream from the center onto the passenger's volume. */
+ *  that died, keep the survivors' own propulsion dark, ease the hold
+ *  offset to the ring center with the critically damped spring, and
+ *  publish the visible nano stream onto the passenger's volume. */
 function updateTransportBeam(
   world: WorldState,
   transport: Entity,
-  forceAccumulator: ForceAccumulator,
+  dtSec: number,
 ): void {
   const transportComponent = transport.transport;
   const transportUnit = transport.unit;
@@ -264,46 +282,48 @@ function updateTransportBeam(
     ) {
       if (passenger.transported?.transportId === transport.id) {
         releaseTransportPassenger(passenger);
+      } else {
+        _beamSpringByEntityId.delete(passenger.id);
       }
       cargo.splice(i, 1);
       continue;
     }
 
     // Orders issued to a carried unit may have re-armed its drive this
-    // tick; the beam owns propulsion while it is on.
+    // tick; the beam owns the passenger while it is on.
     entitySlotRegistry.setUnitDriveInput(passenger, 0, 0, 0, 0, passenger.entitySlotId);
 
-    const omega = TRANSPORT_BEAM_OMEGA_RAD_PER_SEC;
-    const dx = transport.transform.x - passenger.transform.x;
-    const dy = transport.transform.y - passenger.transform.y;
-    const dz = transport.transform.z - passenger.transform.z;
-    const dvx = (transportUnit.velocityX ?? 0) - (unit.velocityX ?? 0);
-    const dvy = (transportUnit.velocityY ?? 0) - (unit.velocityY ?? 0);
-    const dvz = (transportUnit.velocityZ ?? 0) - (unit.velocityZ ?? 0);
-    let ax = omega * omega * dx + 2 * omega * dvx;
-    let ay = omega * omega * dy + 2 * omega * dvy;
-    let az = omega * omega * dz + 2 * omega * dvz;
-    const accelSq = ax * ax + ay * ay + az * az;
-    if (accelSq > TRANSPORT_BEAM_MAX_ACCEL * TRANSPORT_BEAM_MAX_ACCEL) {
-      const scale = TRANSPORT_BEAM_MAX_ACCEL / DMath.sqrt(accelSq);
-      ax *= scale;
-      ay *= scale;
-      az *= scale;
+    // Critically damped spring on the hold offset: the passenger's
+    // world-frame displacement from the ring center eases to zero and
+    // stays there, riding the transport's own motion for free because
+    // the hold pose is anchored to the carrier.
+    const hold = passenger.heldBy;
+    const spring = _beamSpringByEntityId.get(passenger.id);
+    if (hold !== null && hold.kind === 'transportCargo' && spring !== undefined) {
+      const omega = TRANSPORT_BEAM_OMEGA_RAD_PER_SEC;
+      const damp = 2 * omega;
+      spring.vx += (-omega * omega * hold.localOffsetX - damp * spring.vx) * dtSec;
+      spring.vy += (-omega * omega * hold.localOffsetY - damp * spring.vy) * dtSec;
+      spring.vz += (-omega * omega * hold.localBaseZ - damp * spring.vz) * dtSec;
+      hold.localOffsetX += spring.vx * dtSec;
+      hold.localOffsetY += spring.vy * dtSec;
+      hold.localBaseZ += spring.vz * dtSec;
+      const settled =
+        hold.localOffsetX * hold.localOffsetX +
+          hold.localOffsetY * hold.localOffsetY +
+          hold.localBaseZ * hold.localBaseZ <
+          TRANSPORT_BEAM_SNAP_EPSILON * TRANSPORT_BEAM_SNAP_EPSILON &&
+        spring.vx * spring.vx + spring.vy * spring.vy + spring.vz * spring.vz <
+          TRANSPORT_BEAM_SNAP_EPSILON * TRANSPORT_BEAM_SNAP_EPSILON;
+      if (settled) {
+        hold.localOffsetX = 0;
+        hold.localOffsetY = 0;
+        hold.localBaseZ = 0;
+        spring.vx = 0;
+        spring.vy = 0;
+        spring.vz = 0;
+      }
     }
-    // Gravity feedforward AFTER the clamp: the hold never sags, even
-    // when the corrective spring itself is saturated.
-    az += GRAVITY;
-
-    const mass = Math.max(1, getUnitBlueprint(unit.unitBlueprintId).mass);
-    const forceScale = mass * TRANSPORT_BEAM_FORCE_PER_MASS_ACCEL;
-    forceAccumulator.addForce(
-      passenger.id,
-      ax * forceScale,
-      ay * forceScale,
-      'transportBeam',
-      az * forceScale,
-      passenger.entitySlotId,
-    );
 
     const spray = acquireBeamSpray();
     spray.source.id = transport.id;
@@ -335,8 +355,9 @@ function updateTransportBeam(
 
 export function updateTransportActions(
   world: WorldState,
-  forceAccumulator: ForceAccumulator,
+  dtMs: number,
 ): TransportActionUpdateResult {
+  const dtSec = dtMs / 1000;
   const unloadedUnits: Entity[] = [];
   _beamSprayTargets.length = 0;
   // Only transport-capable units (cached, id-sorted like getUnits was) —
@@ -373,7 +394,7 @@ export function updateTransportActions(
       }
     }
 
-    updateTransportBeam(world, transport, forceAccumulator);
+    updateTransportBeam(world, transport, dtSec);
   }
 
   return { unloadedUnits, sprayTargets: _beamSprayTargets };

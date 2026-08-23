@@ -624,7 +624,7 @@ export class Simulation {
     // Transport beams: passengers never leave the world now, so a
     // release needs no spawn hook — the unit already has its body. The
     // beams' nano streams join the commander sprays for this tick.
-    const transportResult = updateTransportActions(this.world, this.forceAccumulator);
+    const transportResult = updateTransportActions(this.world, dtMs);
     if (transportResult.sprayTargets.length > 0) {
       this._combinedSprayTargets.length = 0;
       for (let i = 0; i < commanderResult.sprayTargets.length; i++) {
