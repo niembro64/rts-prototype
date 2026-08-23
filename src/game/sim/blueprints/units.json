@@ -4084,8 +4084,8 @@
         },
         "sensorTurretBlueprintId": "turretSensorUnitAlbatros",
         "mount": {
-          "x": 0.8,
-          "y": 0,
+          "x": 0.05,
+          "y": 0.67,
           "z": 0
         },
         "requiredEngagedForFightStop": true,
@@ -4104,28 +4104,8 @@
         },
         "sensorTurretBlueprintId": "turretSensorUnitAlbatros",
         "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 0
-        },
-        "requiredEngagedForFightStop": true,
-        "mountId": "albatrosSiegeCannon2",
-        "controlMode": "autonomous"
-      },
-      {
-        "turretBlueprintId": "turretAlbatrosSiegeCannon",
-        "presentation": {
-          "headRadius": 18,
-          "headOnly": false,
-          "barrel": {
-            "type": "singleCylinderBarrel",
-            "barrelLength": 2.2
-          }
-        },
-        "sensorTurretBlueprintId": "turretSensorUnitAlbatros",
-        "mount": {
-          "x": -0.8,
-          "y": 0,
+          "x": 0.05,
+          "y": -0.67,
           "z": 0
         },
         "requiredEngagedForFightStop": true,
@@ -4213,8 +4193,15 @@
         "jets": [
           {
             "offset": {
-              "xUnitRadiusRatio": -0.9,
-              "yUnitRadiusRatio": 0.0,
+              "xUnitRadiusRatio": -0.38,
+              "yUnitRadiusRatio": 0.67,
+              "zUnitRadiusRatio": 0.24
+            }
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": -0.38,
+              "yUnitRadiusRatio": -0.67,
               "zUnitRadiusRatio": 0.24
             }
           }
