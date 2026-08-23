@@ -5595,7 +5595,7 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 260
+        "waterDamagePerSecond": 230
       }
     },
     "base": {

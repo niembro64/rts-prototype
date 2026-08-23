@@ -55,6 +55,7 @@ const EXPECTED_ROSTER_LOCOMOTION: Readonly<Record<string, ExpectedLocomotionDoma
   unitLynx: { type: 'tank', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
   unitDaddy: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
   unitBadger: { type: 'tank', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitHedgehog: { type: 'tank', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
   unitMongoose: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
   unitTick: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
   unitMammoth: { type: 'tank', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
