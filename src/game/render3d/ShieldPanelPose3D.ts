@@ -34,6 +34,20 @@ function shieldFadeForProgress(progress: number): number {
   return Math.min(progress * 3, 1);
 }
 
+/** Apply shield-state visibility to panels rendered as ordinary child meshes.
+ *  Allocated close-detail panels use instance alpha instead; medium/low and
+ *  pool-fallback panels must not inherit visibility merely from the LOD root. */
+export function applyPerMeshShieldPanelForceVisibility3D(
+  mirrors: Pick<ShieldPanelMesh, 'panels' | 'panelSlots'>,
+  shieldFade: number,
+): void {
+  if (mirrors.panelSlots) return;
+  const visible = shieldFade > 0;
+  for (const panel of mirrors.panels) {
+    setObjectVisibleIfChanged(panel, visible);
+  }
+}
+
 export class ShieldPanelPose3D {
   private readonly aimBatch = new UnitTurretAimBatch3D();
   private readonly aimBuffers = createTurretAimBuffers(256);
@@ -185,7 +199,10 @@ export class ShieldPanelPose3D {
     parentQuaternion: THREE.Quaternion,
     shieldFade: number,
   ): void {
-    if (!mirrors.panelSlots) return;
+    if (!mirrors.panelSlots) {
+      applyPerMeshShieldPanelForceVisibility3D(mirrors, shieldFade);
+      return;
+    }
 
     // A lowered plate is force material that is not there. Release its
     // instance slots and leave the arms and grabbers posed: the emitter

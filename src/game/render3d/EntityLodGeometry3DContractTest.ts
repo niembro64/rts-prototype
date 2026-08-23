@@ -100,6 +100,7 @@ import {
 import { buildCrawler, freeLegSlots } from './CrawlerRig3D';
 import { LegInstancedRenderer } from './LegInstancedRenderer';
 import { buildShieldPanelMesh3D } from './ShieldPanelMesh3D';
+import { applyPerMeshShieldPanelForceVisibility3D } from './ShieldPanelPose3D';
 import {
   SHIELD_SPHERE_SPIN_RADIANS_PER_SECOND,
   setShieldSphereVisualRotation3D,
@@ -1409,6 +1410,7 @@ function runShieldPanelContract(material: THREE.Material): TierCounts {
       panel, arm, support, material, material, false, tier,
     );
     return {
+      mesh,
       count: objectTriangleCount(mesh.root),
       signature: {
         root: transformTuple(mesh.root),
@@ -1421,6 +1423,25 @@ function runShieldPanelContract(material: THREE.Material): TierCounts {
   assertSame('Loris panel High/Medium pose', builds[0].signature, builds[1].signature);
   assertSame('Loris panel Medium/Low pose', builds[1].signature, builds[2].signature);
   assertDescending('Loris shield panel assembly', builds.map((build) => build.count));
+  for (const tierIndex of [1, 2]) {
+    const tier = TIERS[tierIndex];
+    const mesh = builds[tierIndex].mesh;
+    applyPerMeshShieldPanelForceVisibility3D(mesh, 0);
+    assertContract(
+      mesh.panels.every((panelMesh) => !panelMesh.visible),
+      `Loris ${tier} force plate is hidden when the shield is lowered`,
+    );
+    assertContract(
+      mesh.arms.every((armMesh) => armMesh.visible) &&
+        mesh.frames.every((frameMesh) => frameMesh.visible),
+      `Loris ${tier} shield hardware remains visible when the shield is lowered`,
+    );
+    applyPerMeshShieldPanelForceVisibility3D(mesh, 1);
+    assertContract(
+      mesh.panels.every((panelMesh) => panelMesh.visible),
+      `Loris ${tier} force plate is visible when the shield is raised`,
+    );
+  }
   panel.dispose();
   arm.dispose();
   support.dispose();
