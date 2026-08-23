@@ -38,6 +38,7 @@ import {
 import type { ContactSnapshotSampling } from '../network/ClientMinimapOverrideStore';
 import { ENTITY_LOD_PROXY_GLYPH_CIRCLE } from './EntityLod3D';
 import { LodProxyPointBatchRenderer3D } from './EntityLodProxyRenderer3D';
+import { VISION_FADE_IN_MS, VISION_FADE_OUT_MS } from '../../visionConfig';
 
 const STYLE = COLORS.effects.contactBlip;
 
@@ -112,7 +113,17 @@ type ContactTrack = {
   x: number;
   y: number;
   z: number;
+  /** Same ramp enemy entities use entering/leaving vision: 0..1, rising
+   *  over VISION_FADE_IN_MS while heard, falling over VISION_FADE_OUT_MS
+   *  once the newest snapshot stops carrying the contact. A re-heard
+   *  contact resumes rising from wherever the fall left it. */
+  fadeAlpha: number;
+  dying: boolean;
 };
+
+/** Blips are anonymous knowledge, not bodies: pure black ring with a
+ *  white core dot, one look for every lane. */
+const CONTACT_BLIP_OUTLINE_COLOR = 0x000000;
 
 export class ContactBlipRenderer3D {
   private readonly proxyRenderer: LodProxyPointBatchRenderer3D;
@@ -130,29 +141,46 @@ export class ContactBlipRenderer3D {
     contacts: readonly MinimapEntity[] | null,
     sampling: ContactSnapshotSampling,
     renderScope: ViewportFootprint | undefined,
+    dtMs: number,
   ): void {
     this.proxyRenderer.beginFrame();
-    if (contacts === null || contacts.length === 0) {
-      this.tracks.clear();
-      this.proxyRenderer.flush();
-      return;
-    }
-
     const sequence = sampling.sequence;
     const alpha = sampling.alpha;
-    for (let i = 0; i < contacts.length; i++) {
-      const contact = contacts[i];
-      if (contact.radarOnly !== true) continue;
-      // Tracked before the scope test so a contact that leaves and re-enters the
-      // view resumes its glide instead of popping to the newest sample.
-      const track = this.advance(
-        requireContactBlipId(contact.contactId),
-        contact.pos.x,
-        contact.pos.y,
-        requireContactBlipZ(contact.contactZ),
-        sequence,
-        alpha,
-      );
+
+    if (contacts !== null) {
+      for (let i = 0; i < contacts.length; i++) {
+        const contact = contacts[i];
+        if (contact.radarOnly !== true) continue;
+        // Tracked before the scope test so a contact that leaves and re-enters the
+        // view resumes its glide instead of popping to the newest sample.
+        const track = this.advance(
+          requireContactBlipId(contact.contactId),
+          contact.pos.x,
+          contact.pos.y,
+          requireContactBlipZ(contact.contactZ),
+          sequence,
+          alpha,
+        );
+        track.dying = false;
+        track.fadeAlpha = Math.min(1, track.fadeAlpha + dtMs / VISION_FADE_IN_MS);
+      }
+      if (this.prunedSequence !== sequence) {
+        this.dropUnheardContacts(sequence);
+        this.prunedSequence = sequence;
+      }
+    } else {
+      // Coverage collapsed entirely: everything on screen fades away.
+      for (const track of this.tracks.values()) track.dying = true;
+    }
+
+    for (const [contactId, track] of this.tracks) {
+      if (track.dying) {
+        track.fadeAlpha -= dtMs / VISION_FADE_OUT_MS;
+        if (track.fadeAlpha <= 0) {
+          this.tracks.delete(contactId);
+          continue;
+        }
+      }
       if (renderScope !== undefined && !renderScope.inScope(track.x, track.y, STYLE.radius)) {
         continue;
       }
@@ -162,13 +190,10 @@ export class ContactBlipRenderer3D {
         track.z + STYLE.surfaceLift,
         CONTACT_BLIP_RADIUS,
         CONTACT_BLIP_GLYPH,
-        getContactBlipPresentation(contact.contactMediumMask).colorHex,
-        STYLE.opacity,
+        CONTACT_BLIP_OUTLINE_COLOR,
+        STYLE.opacity * track.fadeAlpha,
+        CONTACT_BLIP_OUTLINE_COLOR,
       );
-    }
-    if (this.prunedSequence !== sequence) {
-      this.dropUnheardContacts(sequence);
-      this.prunedSequence = sequence;
     }
     this.proxyRenderer.flush();
   }
@@ -200,6 +225,8 @@ export class ContactBlipRenderer3D {
         fromX: x, fromY: y, fromZ: z,
         toX: x, toY: y, toZ: z,
         x, y, z,
+        fadeAlpha: 0,
+        dying: false,
       };
       this.tracks.set(contactId, track);
       return track;
@@ -219,10 +246,12 @@ export class ContactBlipRenderer3D {
     return track;
   }
 
-  /** Anything the newest snapshot did not carry has left contact coverage. */
+  /** Anything the newest snapshot did not carry has left contact
+   *  coverage — it starts fading out from its current alpha instead of
+   *  vanishing (the removal happens when the fade reaches zero). */
   private dropUnheardContacts(sequence: number): void {
-    for (const [contactId, track] of this.tracks) {
-      if (track.sequence !== sequence) this.tracks.delete(contactId);
+    for (const track of this.tracks.values()) {
+      if (track.sequence !== sequence) track.dying = true;
     }
   }
 }

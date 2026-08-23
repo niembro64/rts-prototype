@@ -505,6 +505,7 @@ export class RtsScene3DRenderPhase {
       this.clientViewState.getMinimapEntitiesOverride(),
       this.clientViewState.getMinimapContactSampling(performance.now()),
       this.renderScope,
+      effectDtMs,
     );
     const inputManager = this.getInputManager();
     // Resolved once per frame and handed to BOTH force-material renderers.
