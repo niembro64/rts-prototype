@@ -742,14 +742,14 @@ const terrainSectionVars = computed(() =>
             class="lobby-btn skirmish-btn"
             title="A sealed lobby for this machine alone: no listing, no joiners, add bots and play — works with no internet"
             @click="emit('hostLocal')"
-          >Play Local Skirmish</button>
+          >Skirmish</button>
         </section>
 
         <div class="action-divider" role="presentation"></div>
 
         <section class="action-section internet-section">
           <span class="action-section-label">ONLINE</span>
-          <button class="lobby-btn host-btn" @click="handleHost">Host Internet Game</button>
+          <button class="lobby-btn host-btn" @click="handleHost">Host</button>
           <div class="join-row">
             <input
               v-model="joinCode"

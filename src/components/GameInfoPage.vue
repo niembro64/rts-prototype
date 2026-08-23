@@ -50,12 +50,12 @@ function openGameControls(): void {
           <h3>Ways to play</h3>
           <ul>
             <li>
-              <strong>Play Local Skirmish</strong> — a sealed room on this
+              <strong>Skirmish</strong> — a sealed room on this
               machine alone: add bots, pick a map, press Start. Works with no
               internet.
             </li>
             <li>
-              <strong>Host Internet Game</strong> — opens a room with a
+              <strong>Host</strong> — opens a room with a
               four-letter code and lists it in the lobby directory. Friends
               join by code or by clicking the listing.
             </li>
