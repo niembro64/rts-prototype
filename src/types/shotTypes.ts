@@ -24,7 +24,6 @@ export type {
   
   ShieldConfig,
   EmissionConfig,
-  LaserRay,
 
   ProjectileShot,
   
@@ -46,7 +45,7 @@ export type {
 /** Predicate on raw emission `type` strings, used at network / projectile
  *  layer boundaries where we have a string but not the full config. */
 export function isRayType(t: string): t is RayType {
-  return t === 'beam' || t === 'laser';
+  return t === 'beam';
 }
 
 export const SHIELD_SURFACE_RESPONSES = ['reflect', 'absorb', 'passThrough'] as const;
@@ -58,7 +57,6 @@ export const SHIELD_REFLECTION_ENTITIES = [
   'rocket',
   'missile',
   'beam',
-  'laser',
 ] as const;
 
 export function isShieldReflectionMode(value: unknown): value is ShieldReflectionMode {
@@ -87,7 +85,7 @@ export function isProjectileShot(emission: EmissionConfig): emission is Projecti
 }
 
 export function getEmissionBlueprintId(emission: EmissionConfig | ActiveProjectileShot): string {
-  if (emission.type === 'beam' || emission.type === 'laser') return emission.rayBlueprintId;
+  if (emission.type === 'beam') return emission.rayBlueprintId;
   if (emission.type === 'shield') return emission.shieldBlueprintId;
   return emission.shotBlueprintId;
 }
@@ -102,7 +100,6 @@ export function isRocketLikeShot(emission: EmissionConfig): boolean {
  *  through collision/ground physics. */
 export function getShotMaxLifespan(emission: EmissionConfig, fallbackLifespan: number = 2000): number {
   if (emission.type === 'beam') return Infinity;
-  if (emission.type === 'laser') return emission.duration;
   if (emission.type === 'plasma' || emission.type === 'rocket' || emission.type === 'missile') {
     const maxLifespanMs = emission.shotLocomotion.maxLifespanMs;
     return Number.isFinite(maxLifespanMs) ? maxLifespanMs! : Infinity;

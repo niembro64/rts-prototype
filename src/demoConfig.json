@@ -15,6 +15,9 @@
     "towerFabricator": {
       "radiusFraction": 0.8
     },
+    "universalFabricator": {
+      "radiusFraction": 0.84
+    },
     "buildingWind": {
       "radiusFraction": 0.75
     },
@@ -59,14 +62,21 @@
     }
   },
   "waterFabricators": {
+    "innerRadiusFraction": 0.88,
     "radiusFraction": 0.96,
     "sonarRadiusFraction": 0.97,
     "arcSectorFraction": 0.9,
     "unitBlueprintIds": [
       "unitSeaTurtle",
-      "unitOrca",
       "unitDuck",
-      "unitConstructionSubmarine"
+      "unitWaterStrider",
+      "unitConstructionSubmarine",
+      "unitPatrolCorvette",
+      "unitHippo",
+      "unitOrca",
+      "unitPetrel",
+      "unitStealthScout",
+      "unitRadarJammer"
     ]
   },
   "initialUnitWaypointType": "patrol",

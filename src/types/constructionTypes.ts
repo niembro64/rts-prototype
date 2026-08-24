@@ -35,8 +35,7 @@ export type WorkEmitterSpec = {
 export type ConstructionChannelKind =
   | 'build'
   | 'repair'
-  | 'reclaim'
-  | 'resurrect';
+  | 'reclaim';
 
 /** Host-owned work capability. Resource payment remains a coupled metal +
  * energy economy transaction; channels describe legal work, not separate

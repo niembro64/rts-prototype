@@ -14,8 +14,6 @@ import type {
   ReclaimAreaCommand,
   RepairAreaCommand,
   RepairCommand,
-  ResurrectAreaCommand,
-  ResurrectCommand,
   SetFactoryOutputGuardCommand,
   SetFactoryGuardCommand,
   SetRallyPointCommand,
@@ -319,67 +317,6 @@ export function buildCaptureCommandForTarget(
     queue,
     queueFront,
     queueInsertIndex,
-  };
-}
-
-function isClientResurrectableWreck(target: Entity | null | undefined): target is Entity {
-  if (target === null || target === undefined || target.building === null) return false;
-  return target.wreck !== null && target.building.hp > 0;
-}
-
-export function buildResurrectCommandForTarget(
-  target: Entity | null | undefined,
-  commander: Entity | null,
-  tick: number,
-  queue: boolean,
-  queueFront = false,
-  queueInsertIndex?: number,
-): ResurrectCommand | null {
-  const playerId = commander?.ownership?.playerId;
-  if (commander === null || commander === undefined || playerId === undefined || commander.builder === null) return null;
-  if (commander.id === target?.id || !isClientResurrectableWreck(target)) return null;
-  return {
-    type: 'resurrect',
-    tick,
-    commanderId: commander.id,
-    targetId: target.id,
-    queue,
-    queueFront,
-    queueInsertIndex,
-  };
-}
-
-export function buildResurrectAreaCommand(
-  commander: Entity | null,
-  worldX: number,
-  worldY: number,
-  radius: number,
-  tick: number,
-  queue: boolean,
-  worldZ?: number,
-  queueFront = false,
-  queueInsertIndex?: number,
-  targetFilter?: AreaCommandTargetFilter,
-  expansion?: BarAreaCommandExpansion,
-): ResurrectAreaCommand | null {
-  if (!commander?.ownership || commander.builder === null) return null;
-  return {
-    type: 'resurrectArea',
-    tick,
-    commanderId: commander.id,
-    targetX: worldX,
-    targetY: worldY,
-    targetZ: worldZ,
-    radius,
-    queue,
-    queueFront,
-    queueInsertIndex,
-    filterCategory: targetFilter?.filterCategory,
-    filterBlueprintId: targetFilter?.filterBlueprintId,
-    targetOrderOriginX: expansion?.targetOrderOriginX,
-    targetOrderOriginY: expansion?.targetOrderOriginY,
-    targetSplitIndex: expansion?.targetSplitIndex,
-    targetSplitCount: expansion?.targetSplitCount,
   };
 }
 

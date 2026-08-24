@@ -16,6 +16,11 @@ import { getBuildingConfig } from './buildConfigs';
 import { ConstructionSystem } from './construction';
 import { getStructureFactoryAllowedUnitBlueprintIds } from './factoryProductionRoster';
 import { isWaterOnlyUnitBlueprintId } from './blueprints/mediumOnlyRoster';
+import {
+  FABRICATOR_BLUEPRINT_IDS,
+  getBuildingBlueprint,
+  getUnitBlueprint,
+} from './blueprints';
 import { mapHasWater } from './mapSurface';
 import { getLiquidSurfaceMode, setLiquidSurfaceMode } from './worldSurfaceState';
 import { spawnInitialBases, spawnMetalExtractorsOnDeposits } from './spawn';
@@ -25,10 +30,16 @@ import { BUILDING_BLUEPRINT_IDS } from '../../types/blueprintIds';
 import { WorldState } from './WorldState';
 import {
   getTerrainRuntimeConfig,
+  getTerrainTeamCount,
   isWaterAt,
+  setAuthoritativeTerrainTileMap,
+  setMetalDepositFlatZones,
   setTerrainPerimeterMagnitude,
   setTerrainRuntimeConfig,
+  setTerrainTeamCount,
 } from './Terrain';
+import { getAuthoritativeTerrainTileMap } from './terrain/terrainState';
+import { getMetalDepositFlatZones } from './terrain/terrainFlatZones';
 import {
   GROUND_BUILD_SQUARE_FLAG,
   TERRAIN_BUILDABLE_FLAG,
@@ -53,6 +64,47 @@ const CONTRACT_NEGATIVE_METAL_DEPOSIT_STEPS = [-100, -200, -400] as const;
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[demo metal extractor spawn contract] ${message}`);
+}
+
+const FABRICATOR_BLUEPRINT_ID_SET = new Set<string>(FABRICATOR_BLUEPRINT_IDS);
+
+function isFabricatorEntity(entity: Entity): boolean {
+  return entity.buildingBlueprintId !== null &&
+    FABRICATOR_BLUEPRINT_ID_SET.has(entity.buildingBlueprintId);
+}
+
+function isSeededDemoFabricator(entity: Entity): boolean {
+  return isFabricatorEntity(entity) &&
+    entity.factory?.repeatProduction === true &&
+    entity.factory.selectedUnitBlueprintId !== null;
+}
+
+function allStructureFactoryUnitBlueprintIds(): string[] {
+  return [...new Set(
+    FABRICATOR_BLUEPRINT_IDS.flatMap((buildingBlueprintId) =>
+      getStructureFactoryAllowedUnitBlueprintIds(buildingBlueprintId)),
+  )];
+}
+
+function assertSeededByMatchingSpecialist(
+  entity: Entity,
+  allowUniversalFallback = false,
+): void {
+  const buildingBlueprintId = entity.buildingBlueprintId;
+  const unitBlueprintId = entity.factory?.selectedUnitBlueprintId;
+  assertContract(
+    buildingBlueprintId !== null && unitBlueprintId !== null && unitBlueprintId !== undefined,
+    `demo Fabricator ${entity.id} must identify its host and selected unit`,
+  );
+  const factory = getBuildingBlueprint(buildingBlueprintId).factory;
+  const production = getUnitBlueprint(unitBlueprintId).production;
+  assertContract(
+    factory !== null && production !== null && factory.techLevel === production.techLevel && (
+      (factory.domain !== 'universal' && production.domains.includes(factory.domain)) ||
+      (allowUniversalFallback && factory.domain === 'universal')
+    ),
+    `demo Fabricator ${buildingBlueprintId} must be the same-tier specialist for ${unitBlueprintId}`,
+  );
 }
 
 function assertDemoCommanderBuildingExclusions(
@@ -188,7 +240,7 @@ function createNoBuildableTerrainGrid(
   };
 }
 
-function assertDryPerimeterFactoryFallback(
+function assertDryPerimeterNavalFabricatorsStayOnWater(
   mapWidth: number,
   mapHeight: number,
   playerIds: readonly PlayerId[],
@@ -197,25 +249,33 @@ function assertDryPerimeterFactoryFallback(
   const waterUnitBlueprintIds = new Set<string>(
     DEMO_CONFIG.waterFabricators.unitBlueprintIds,
   );
-  const factoryBuildingBlueprintIds = new Set<string>(['towerFabricator']);
-  const noBuildableTerrainGrid = createNoBuildableTerrainGrid(
-    mapWidth,
-    mapHeight,
-  );
+  const factoryBuildingBlueprintIds = new Set<string>(FABRICATOR_BLUEPRINT_IDS);
 
   try {
-    // A dry OUTER RING on a map that still has water somewhere. The CENTER dish
-    // is what supplies the sea here, so `mapHasWater()` is true and the offshore
-    // installation is authored — but the ring it wants to sit on is above the
-    // waterline, which is precisely the fallback under test. Raising the
+    // A dry OUTER RING on a map that still has water somewhere. Negative
+    // divider channels run through the otherwise dry perimeter, so
+    // `mapHasWater()` is true and the offshore installation is authored — but
+    // most of the ring it wants to sit on is above the waterline, which
+    // exercises the naval specialist's hard medium constraint. Raising the
     // perimeter alone would instead produce a map with no water at all, where
-    // there is correctly no offshore arc to fall back FROM.
+    // there is correctly no offshore arc at all.
     setTerrainRuntimeConfig({
       ...previousRuntimeConfig,
-      centerMagnitude: CONTRACT_WATER_PERIMETER_MAGNITUDE,
+      centerMagnitude: 0,
+      dividersMagnitude: CONTRACT_WATER_PERIMETER_MAGNITUDE,
+      terrainPrecedence: 'dividers-precedence',
     });
     for (const perimeterMagnitude of [0, 800]) {
       setTerrainPerimeterMagnitude(perimeterMagnitude);
+      // Placement-square medium flags must describe this iteration's terrain,
+      // not the wet-perimeter setup that was active before the loop. Keeping a
+      // single precomputed grid made its outer cells claim water after the
+      // perimeter had become dry while its real center-dish water still
+      // claimed ground.
+      const noBuildableTerrainGrid = createNoBuildableTerrainGrid(
+        mapWidth,
+        mapHeight,
+      );
       const world = new WorldState(
         1243 + perimeterMagnitude,
         mapWidth,
@@ -235,11 +295,12 @@ function assertDryPerimeterFactoryFallback(
         factoryBuildingBlueprintIds,
       );
       let factoryCount = 0;
-      let dryFactoryCount = 0;
+      let waterFactoryCount = 0;
       for (let i = 0; i < entities.length; i++) {
         const entity = entities[i];
-        if (entity.buildingBlueprintId !== 'towerFabricator') continue;
+        if (!isSeededDemoFabricator(entity)) continue;
         factoryCount++;
+        assertSeededByMatchingSpecialist(entity);
         const factory = entity.factory;
         assertContract(
           factory !== null &&
@@ -247,12 +308,8 @@ function assertDryPerimeterFactoryFallback(
             waterUnitBlueprintIds.has(factory.selectedUnitBlueprintId),
           `dry perimeter ${perimeterMagnitude} Fabricator must retain its water-unit repeat line`,
         );
-        // The outer ring is MIXED at these magnitudes, not uniformly dry, so a
-        // per-Fabricator dryness demand is simply false: one that found water
-        // took the primary offshore path and belongs there. What must hold is
-        // that the dry-arc fallback works at all, asserted over the set below.
-        if (!isWaterAt(entity.transform.x, entity.transform.y, mapWidth, mapHeight)) {
-          dryFactoryCount++;
+        if (isWaterAt(entity.transform.x, entity.transform.y, mapWidth, mapHeight)) {
+          waterFactoryCount++;
         }
         assertContract(
           factory.defaultWaypoints?.length === 2 &&
@@ -263,13 +320,12 @@ function assertDryPerimeterFactoryFallback(
         );
       }
       assertContract(
-        factoryCount === playerIds.length * waterUnitBlueprintIds.size,
-        `dry perimeter ${perimeterMagnitude} must spawn one Fabricator per water unit per player`,
+        factoryCount > 0,
+        `dry perimeter ${perimeterMagnitude} must retain every naval production line that finds water`,
       );
       assertContract(
-        dryFactoryCount > 0,
-        `dry perimeter ${perimeterMagnitude} must place at least one Fabricator on the authored dry outer arc, ` +
-          'proving the fallback that bypasses terrain suitability still runs',
+        waterFactoryCount === factoryCount,
+        `dry perimeter ${perimeterMagnitude} must never move a naval-only Fabricator onto dry land`,
       );
     }
   } finally {
@@ -292,7 +348,7 @@ function assertDryMapDropsOnlyWaterOnlyFactoryLines(
   const expectedLines = offshoreUnitBlueprintIds.filter(
     (unitBlueprintId) => !isWaterOnlyUnitBlueprintId(unitBlueprintId),
   );
-  const factoryBuildingBlueprintIds = new Set<string>(['towerFabricator']);
+  const factoryBuildingBlueprintIds = new Set<string>(FABRICATOR_BLUEPRINT_IDS);
   try {
     setTerrainRuntimeConfig({
       ...previousRuntimeConfig,
@@ -328,8 +384,9 @@ function assertDryMapDropsOnlyWaterOnlyFactoryLines(
     let factoryCount = 0;
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
-      if (entity.buildingBlueprintId !== 'towerFabricator') continue;
+      if (!isSeededDemoFabricator(entity)) continue;
       factoryCount++;
+      assertSeededByMatchingSpecialist(entity, true);
       const selected = entity.factory?.selectedUnitBlueprintId ?? null;
       assertContract(
         selected !== null && !isWaterOnlyUnitBlueprintId(selected),
@@ -388,8 +445,7 @@ function assertLavaWorldSpawnExcludesWaterRoster(
     );
     // Already narrowed by the map: the two submarines are gone from this list,
     // and everything left has somewhere to be on a lava world's land.
-    const expectedLandUnitBlueprintIds =
-      getStructureFactoryAllowedUnitBlueprintIds('towerFabricator');
+    const expectedLandUnitBlueprintIds = allStructureFactoryUnitBlueprintIds();
     assertContract(
       !expectedLandUnitBlueprintIds.some(isWaterOnlyUnitBlueprintId),
       'LIQUID = LAVA must leave no water-only hull in the Fabricator roster',
@@ -401,7 +457,13 @@ function assertLavaWorldSpawnExcludesWaterRoster(
         entity.buildingBlueprintId !== 'buildingSonar',
         'LIQUID = LAVA demo must not spawn the water-surface Sonar ring',
       );
-      if (entity.buildingBlueprintId !== 'towerFabricator') continue;
+      if (!isFabricatorEntity(entity)) continue;
+      assertContract(
+        !isWaterAt(entity.transform.x, entity.transform.y, mapWidth, mapHeight),
+        `LIQUID = LAVA demo Fabricator ${entity.id} must be placed over land`,
+      );
+      if (!isSeededDemoFabricator(entity)) continue;
+      assertSeededByMatchingSpecialist(entity, true);
       const playerId = entity.ownership?.playerId;
       const selected = entity.factory?.selectedUnitBlueprintId;
       assertContract(playerId !== undefined, 'lava demo Fabricator must have an owner');
@@ -409,10 +471,6 @@ function assertLavaWorldSpawnExcludesWaterRoster(
         selected !== null && selected !== undefined &&
           !isWaterOnlyUnitBlueprintId(selected),
         `LIQUID = LAVA demo must not seed water-only production line ${selected}`,
-      );
-      assertContract(
-        !isWaterAt(entity.transform.x, entity.transform.y, mapWidth, mapHeight),
-        `LIQUID = LAVA demo Fabricator ${entity.id} must be placed over land`,
       );
       let selections = selectionsByPlayer.get(playerId);
       if (selections === undefined) {
@@ -610,13 +668,13 @@ function assertAuthoredRosterCoverageForPreset(
   ));
   assertDemoCommanderBuildingExclusions(entities, construction);
   assertDemoCommandersHavePathEgress(world, entities, construction);
-  const expectedUnitBlueprintIds =
-    getStructureFactoryAllowedUnitBlueprintIds('towerFabricator');
+  const expectedUnitBlueprintIds = allStructureFactoryUnitBlueprintIds();
   const expectedUnitBlueprintIdSet = new Set<string>(expectedUnitBlueprintIds);
   const coverage = new Map<PlayerId, Set<string>>();
   for (let i = 0; i < entities.length; i++) {
     const entity = entities[i];
-    if (entity.buildingBlueprintId !== 'towerFabricator') continue;
+    if (!isSeededDemoFabricator(entity)) continue;
+    assertSeededByMatchingSpecialist(entity);
     const playerId = entity.ownership?.playerId;
     const factory = entity.factory;
     const selected = factory?.selectedUnitBlueprintId;
@@ -642,10 +700,15 @@ function assertAuthoredRosterCoverageForPreset(
   }
   for (let i = 0; i < playerIds.length; i++) {
     const playerId = playerIds[i];
+    const selectedByPlayer = coverage.get(playerId) ?? new Set<string>();
+    const missing = expectedUnitBlueprintIds.filter(
+      (unitBlueprintId) => !selectedByPlayer.has(unitBlueprintId),
+    );
     assertContract(
-      coverage.get(playerId)?.size === expectedUnitBlueprintIds.length,
+      selectedByPlayer.size === expectedUnitBlueprintIds.length,
       `${compactPreset.name} player ${playerId} must retain all ` +
-        `${expectedUnitBlueprintIds.length} repeat Fabricator lines`,
+        `${expectedUnitBlueprintIds.length} repeat Fabricator lines; got ` +
+        `${selectedByPlayer.size}, missing ${missing.join(', ') || 'none'}`,
     );
   }
 
@@ -732,10 +795,10 @@ function assertConstrainedFactoryPlacementIsNonFatal(): void {
     playerIds,
     'demo',
     new Set<string>(['unitBadger']),
-    new Set<string>(['towerFabricator']),
+    new Set<string>(['buildingAdvancedVehicleFabricator']),
   );
   const factories = entities.filter(
-    (entity) => entity.buildingBlueprintId === 'towerFabricator',
+    isSeededDemoFabricator,
   );
   assertContract(
     factories.length < playerIds.length,
@@ -769,8 +832,7 @@ function runDemoMetalExtractorSpawnContractTestForPreset(
     playerIds,
     'demo',
   );
-  const expectedFactoryUnitBlueprintIds =
-    getStructureFactoryAllowedUnitBlueprintIds('towerFabricator');
+  const expectedFactoryUnitBlueprintIds = allStructureFactoryUnitBlueprintIds();
   const expectedFactoryUnitBlueprintIdSet =
     new Set<string>(expectedFactoryUnitBlueprintIds);
   const waterFactoryUnitBlueprintIdSet =
@@ -783,7 +845,8 @@ function runDemoMetalExtractorSpawnContractTestForPreset(
   const sonarByPlayer = new Map<PlayerId, number>();
   for (let i = 0; i < baseEntities.length; i++) {
     const entity = baseEntities[i];
-    if (entity.buildingBlueprintId === 'towerFabricator') {
+    if (isSeededDemoFabricator(entity)) {
+      assertSeededByMatchingSpecialist(entity);
       const playerId = entity.ownership?.playerId;
       const factory = entity.factory;
       assertContract(playerId !== undefined, 'demo Fabricator must have an owning player');
@@ -848,7 +911,7 @@ function runDemoMetalExtractorSpawnContractTestForPreset(
       `demo base must spawn ${DEMO_CONFIG.buildingSonarCount} Sonar for player ${playerId}`,
     );
   }
-  assertDryPerimeterFactoryFallback(mapWidth, mapHeight, playerIds);
+  assertDryPerimeterNavalFabricatorsStayOnWater(mapWidth, mapHeight, playerIds);
   assertDryMapDropsOnlyWaterOnlyFactoryLines(mapWidth, mapHeight, playerIds);
   assertLavaWorldSpawnExcludesWaterRoster(mapWidth, mapHeight, playerIds);
   assertNegativeMetalDepositStepDemoSpawn(mapWidth, mapHeight, playerIds);
@@ -1211,6 +1274,22 @@ function assertDemoTechLabsSpawnOnCurrentTerrain(preset: BattlePreset): void {
 export function runDemoMetalExtractorSpawnContractTest(): void {
   const preset = getModeDefaultPreset('demo');
   const previousRuntimeConfig = getTerrainRuntimeConfig();
+  const previousTeamCount = getTerrainTeamCount();
+  const previousTerrain = getAuthoritativeTerrainTileMap();
+  const previousLiquidSurfaceMode = getLiquidSurfaceMode();
+  const previousMetalDepositFlatZones = getMetalDepositFlatZones();
+  // Procedural test fixtures must not inherit the live/background battle's
+  // installed terrain mesh or divider count. An authoritative tile map wins
+  // over runtime magnitudes, which otherwise makes this contract depend on
+  // whichever map-oriented test happened to run immediately before it.
+  setAuthoritativeTerrainTileMap(null);
+  // Deposit pads are another process-wide layer of terrain truth. The lobby's
+  // long-running background battle may have installed pads for a different
+  // map by the time this late contract starts; those pads must not flatten the
+  // procedural water search used by these fixtures.
+  setMetalDepositFlatZones([], false);
+  setTerrainTeamCount(DEMO_CONFIG.allyTeamSeats.length);
+  setLiquidSurfaceMode(preset.liquidSurfaceMode);
   setTerrainRuntimeConfig({
     centerMagnitude: preset.centerMagnitude,
     ringMagnitude: preset.ringMagnitude,
@@ -1230,6 +1309,10 @@ export function runDemoMetalExtractorSpawnContractTest(): void {
     assertDemoTechLabsSpawnForEverySeat(preset);
     assertConstrainedFactoryPlacementIsNonFatal();
   } finally {
+    setMetalDepositFlatZones(previousMetalDepositFlatZones, false);
     setTerrainRuntimeConfig(previousRuntimeConfig);
+    setTerrainTeamCount(previousTeamCount);
+    setAuthoritativeTerrainTileMap(previousTerrain);
+    setLiquidSurfaceMode(previousLiquidSurfaceMode);
   }
 }

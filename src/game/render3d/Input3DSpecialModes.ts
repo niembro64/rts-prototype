@@ -10,8 +10,6 @@ export type Input3DSpecialMode =
   | 'guard'
   | 'reclaim'
   | 'capture'
-  | 'resurrect'
-  | 'resurrectArea'
   | 'loadTransport'
   | 'unloadTransport'
   | 'mexUpgrade'
@@ -31,8 +29,6 @@ type Input3DSpecialModeCallbacks = {
   onGuardModeChange: (active: boolean) => void;
   onReclaimModeChange: (active: boolean) => void;
   onCaptureModeChange: (active: boolean) => void;
-  onResurrectModeChange: (active: boolean) => void;
-  onResurrectAreaModeChange: (active: boolean) => void;
   onLoadTransportModeChange: (active: boolean) => void;
   onUnloadTransportModeChange: (active: boolean) => void;
   onMexUpgradeModeChange: (active: boolean) => void;
@@ -57,8 +53,6 @@ const SPECIAL_MODE_ORDER: readonly Input3DSpecialMode[] = [
   'guard',
   'reclaim',
   'capture',
-  'resurrect',
-  'resurrectArea',
   'loadTransport',
   'unloadTransport',
   'mexUpgrade',
@@ -80,8 +74,6 @@ export class Input3DSpecialModes {
     guard: false,
     reclaim: false,
     capture: false,
-    resurrect: false,
-    resurrectArea: false,
     loadTransport: false,
     unloadTransport: false,
     mexUpgrade: false,
@@ -151,12 +143,6 @@ export class Input3DSpecialModes {
         break;
       case 'capture':
         this.options.onCaptureModeChange(active);
-        break;
-      case 'resurrect':
-        this.options.onResurrectModeChange(active);
-        break;
-      case 'resurrectArea':
-        this.options.onResurrectAreaModeChange(active);
         break;
       case 'loadTransport':
         this.options.onLoadTransportModeChange(active);

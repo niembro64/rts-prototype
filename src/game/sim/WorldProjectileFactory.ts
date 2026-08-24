@@ -94,9 +94,8 @@ export class WorldProjectileFactory {
     // Calculate rotation from velocity.
     const rotation = DMath.atan2(velocityY, velocityX);
 
-    // Traveling projectile shots do not carry authored time-to-live values; they
-    // terminate through collision/ground physics. Line shots still use
-    // this runtime timeout for laser pulse duration.
+    // Traveling projectile shots normally terminate through collision/ground
+    // physics. The runtime timeout also bounds a committed beam pulse.
     const maxLifespan = config.shotProfile.runtime.maxLifespan;
     const shotHealth = isProjectileShot(config.shot) ? config.shot.health : 0;
     const homingTurnRate = isProjectileShot(config.shot)
@@ -160,7 +159,7 @@ export class WorldProjectileFactory {
     };
   }
 
-  // Create a beam / laser projectile. Beams are instantaneous line
+  // Create a beam projectile. Beams are instantaneous line
   // weapons — the z coord is the launch-origin altitude at the moment
   // of firing (same altitude for start and end; beams don't droop under
   // gravity). Passing z lets the renderer draw the beam at the right
@@ -175,7 +174,7 @@ export class WorldProjectileFactory {
     ownerId: PlayerId,
     sourceEntityId: EntityId,
     config: ProjectileConfig,
-    projectileType: 'beam' | 'laser' = 'beam',
+    projectileType: 'beam' = 'beam',
     provenance: CreateProjectileProvenance | null = null,
   ): Entity {
     const entity = this.createProjectile(startX, startY, 0, 0, ownerId, sourceEntityId, config, projectileType, provenance);

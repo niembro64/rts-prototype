@@ -208,7 +208,7 @@ export function selectEntitiesInScreenRect(
     if (!canIncludeUnit(u, sameTypeFilters, options)) continue;
     if (!isInsideRect(u)) continue;
     unitIds.push(u.id);
-    // Ordinary BAR Smart Select treats constructors/resurrectors as a lower
+    // Ordinary BAR Smart Select treats constructors as a lower
     // preference when combat/mobile units share a box. Shift/selectbox_any
     // bypasses this; Alt already applied the stricter combat filter above.
     if (u.builder === null) preferredUnitIds.push(u.id);

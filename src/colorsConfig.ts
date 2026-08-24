@@ -124,7 +124,6 @@ export const ACTION_COLOR_HEX: Record<ActionType, number> = {
   repair: COLORS.ui.actionColors.repair.colorHex,
   reclaim: COLORS.ui.actionColors.reclaim.colorHex,
   capture: COLORS.ui.actionColors.capture.colorHex,
-  resurrect: COLORS.ui.actionColors.resurrect.colorHex,
   loadTransport: COLORS.ui.actionColors.loadTransport.colorHex,
   unloadTransport: COLORS.ui.actionColors.unloadTransport.colorHex,
   wait: COLORS.ui.actionColors.wait.colorHex,

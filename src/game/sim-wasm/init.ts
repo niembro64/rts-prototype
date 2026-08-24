@@ -1591,6 +1591,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runClientEntityIdSetContractTest();
         const { runClientServerTargetStoreContractTest } = await import('../network/ClientServerTargetStoreContractTest');
         runClientServerTargetStoreContractTest();
+        const { runChatPolicyContractTest } = await import('../network/ChatPolicyContractTest');
+        runChatPolicyContractTest();
         const { runSnapshotVisibilityContractTest } = await import('../network/SnapshotVisibilityContractTest');
         runSnapshotVisibilityContractTest();
         const { runSensorSharingContractTest } = await import('../network/sensorSharingContractTest');
@@ -1601,6 +1603,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runCommandHotkeysContractTest();
         const { runRosterCommandSurfaceContractTest } = await import('../sim/blueprints/rosterCommandSurfaceContractTest');
         runRosterCommandSurfaceContractTest();
+        const { runFullUtilizationRosterContractTest } = await import('../sim/blueprints/fullUtilizationRosterContractTest');
+        runFullUtilizationRosterContractTest();
         const { runBarCommandParityContractTest } = await import('../sim/blueprints/barCommandParityContractTest');
         runBarCommandParityContractTest();
         // Command-surface gates. These enforce that every button, hotkey, and

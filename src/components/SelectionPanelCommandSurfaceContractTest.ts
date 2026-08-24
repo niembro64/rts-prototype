@@ -150,7 +150,6 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
       COLORS.ui.selectionPanel.buttons.reclaim === '#dbffdb' &&
       COLORS.ui.selectionPanel.buttons.restore === '#c4ffc4' &&
       COLORS.ui.selectionPanel.buttons.capture === '#ffd936' &&
-      COLORS.ui.selectionPanel.buttons.resurrect === '#ffbfff' &&
       COLORS.ui.selectionPanel.buttons.build === '#ededed' &&
       COLORS.ui.selectionPanel.buttons.setTarget === '#ffa859' &&
       COLORS.ui.selectionPanel.buttons.cancelTarget === '#cc8c33' &&
@@ -180,9 +179,9 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
     'BAR transport order buttons must use interface.json ui.orderMenu loadunits/unloadunits labels and tooltip text while preserving prototype labels for non-BAR presets',
   );
   assertContract(
-    /const BAR_ORDER_TOOLTIP_BY_COMMAND_ID: Partial<Record<CommandHotkeyId, string>> = \{[\s\S]{0,400}'combat\.attackArea': 'Area attack everything within a circle \(click-drag\)',/.test(selectionPanelSource) &&
+      /const BAR_ORDER_TOOLTIP_BY_COMMAND_ID: Partial<Record<CommandHotkeyId, string>> = \{[\s\S]{0,400}'combat\.attackArea': 'Area attack everything within a circle \(click-drag\)',/.test(selectionPanelSource) &&
       /'command\.wait': 'Pause a unit\/factory on processing command\/build queues',/.test(selectionPanelSource) &&
-      /'combat\.reclaim': 'Suck metal\/energy from wrecks or features \(trees\/stones\)',/.test(selectionPanelSource) &&
+      /'combat\.reclaim': 'Suck metal\/energy from reclaimable units or features \(trees\/stones\)',/.test(selectionPanelSource) &&
       /'factory\.stopProduction': 'Clear build queue and quotas for all units on selected factories',/.test(selectionPanelSource) &&
       /'factory\.airIdleState': 'Sets what aircraft do when leaving air factory',/.test(selectionPanelSource) &&
       /'factory\.queueMode': 'Queue: Build each queued unit once\\nQuota: Maintain a minimum quota of each unit on the battlefield',/.test(selectionPanelSource) &&
@@ -227,7 +226,7 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
       barUnitWaypointIndex > barUnitWaitIndex &&
       /if \(isBarHotkeyPreset\.value\) \{\s*if \(showCombatActions\.value\) count \+= 1; \/\/ fire state\s*if \(showTrajectoryButton\.value\) count \+= 1;\s*if \(showBuilderPriorityButton\.value\) count \+= 1;\s*if \(showCarrierSpawnButton\.value\) count \+= 1;\s*\}/.test(selectionPanelSource) &&
       /if \(showCombatActions\.value && \(!isBarHotkeyPreset\.value \|\| !showUnitActions\.value\)\) \{\s*count \+= 1; \/\/ fire state/.test(selectionPanelSource) &&
-      /showUnitActions\.value &&\s*\(\s*props\.selection\.hasDGun \|\|\s*props\.selection\.hasBuilder \|\|\s*showCaptureButton\.value \|\|\s*showResurrectButton\.value \|\|\s*props\.selection\.hasCommander \|\|\s*props\.selection\.hasTransport\s*\)\s*\)\s*\{\s*if \(props\.selection\.hasDGun\) count \+= 1;/.test(selectionPanelSource) &&
+      /showUnitActions\.value &&\s*\(\s*props\.selection\.hasDGun \|\|\s*props\.selection\.hasBuilder \|\|\s*showCaptureButton\.value \|\|\s*props\.selection\.hasCommander \|\|\s*props\.selection\.hasTransport\s*\)\s*\)\s*\{\s*if \(props\.selection\.hasDGun\) count \+= 1;/.test(selectionPanelSource) &&
       /<div v-if="showCombatActions && \(!isBarHotkeyPreset \|\| !showUnitActions\)" class="button-group">/.test(selectionPanelSource) &&
       !/\(selection\.hasDGun \|\| selection\.hasBuilder \|\| selection\.hasCommander \|\| showCaptureButton \|\| selection\.hasTransport \|\| showBuilderPriorityButton\) && showUnitActions/.test(selectionPanelSource) &&
       /v-if="!isBarHotkeyPreset"[\s\S]{0,140}class="action-btn bar-order-wait"/.test(selectionPanelSource) &&
@@ -286,11 +285,6 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
       buildingStopIndex > buildingPowerIndex &&
       /v-if="showBuildingStopButton"[\s\S]{0,420}:title="actionTitle\('Stop', 'command\.stop'\)"[\s\S]{0,180}@click="actions\.stopSelectedUnits\(\)"/.test(selectionPanelSource),
     'BAR buildingExtractorT2/armamex selections must show Stop after ON/OFF because armamex removes Wait but keeps Stop',
-  );
-  assertContract(
-    /const showResurrectButton = computed\(\(\) =>\s*isBarHotkeyPreset\.value\s*\?\s*props\.selection\.hasBarResurrectControl\s*:\s*showPrototypeOnlyCommandButtons\.value && props\.selection\.hasCommander,\s*\);/.test(selectionPanelSource) &&
-      /getSelectedResurrectSourceForActivePreset\(\): Entity \| null \{[\s\S]{0,260}entityHasBarResurrectCommand/.test(input3DManagerSource),
-    'BAR Resurrect must be driven only by BAR-equivalent resurrectors, while prototype presets keep commander-only resurrect',
   );
   assertContract(
     /--bar-grid-queue-font-size:\s*calc\(var\(--bar-grid-cell-inner-size\) \* 0\.29\);/.test(selectionPanelSource) &&

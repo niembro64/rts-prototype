@@ -127,21 +127,20 @@ export type ShieldReflectionMode = 'outside-in' | 'inside-out' | 'both';
 
 export type ShieldReflectionDirection = 'reflect-none' | 'reflect-outside' | 'reflect-inside' | 'reflect-both';
 
-export type ShieldReflectionEntity = 'plasma' | 'rocket' | 'missile' | 'beam' | 'laser';
+export type ShieldReflectionEntity = 'plasma' | 'rocket' | 'missile' | 'beam';
 
 export type ShieldReflectionEntityDirections = {
   plasma?: ShieldReflectionDirection;
   rocket?: ShieldReflectionDirection;
   missile?: ShieldReflectionDirection;
   beam?: ShieldReflectionDirection;
-  laser?: ShieldReflectionDirection;
 };
 
 export type ShieldReflectionPolicy = {
   entities: ShieldReflectionEntityDirections;
 };
 
-export type ShieldBarrierShape = 'sphere' | 'infiniteVerticalCylinder' | 'aimedCylinder';
+export type ShieldBarrierShape = 'sphere';
 
 export type ShieldBarrierRatioConfig = {
   shape: ShieldBarrierShape;
@@ -172,7 +171,6 @@ export type ShieldMaterialProjectileResponseConfig = {
   plasma: ShieldSurfaceResponse;
   rocket: ShieldSurfaceResponse;
   beam: ShieldSurfaceResponse;
-  laser: ShieldSurfaceResponse;
 };
 
 export type ShieldMaterialHitReactionConfig = {
@@ -276,11 +274,11 @@ export type ProjectileShot = {
   smokeTrail?: SmokeTrailSpec;
 };
 
-export type ActiveProjectileShot = ProjectileShot | BeamRay | LaserRay;
+export type ActiveProjectileShot = ProjectileShot | BeamRay;
 
 export type ShotConfig = ProjectileShot;
 
-export type ProjectileType = 'projectile' | 'beam' | 'laser';
+export type ProjectileType = 'projectile' | 'beam';
 
 export type BeamReflectorKind = 'shield';
 
@@ -299,7 +297,7 @@ export type BeamPoint = {
   normalZ: number | null;
 };
 
-export type ShotRuntimeType = 'plasma' | 'rocket' | 'missile' | 'beam' | 'laser';
+export type ShotRuntimeType = 'plasma' | 'rocket' | 'missile' | 'beam';
 
 export type ShotRuntimeProfile = {
   shotBlueprintId: string;
@@ -957,6 +955,13 @@ export type UnitSupportSurfaceDiscTop = {
 
 export type UnitSupportSurface = UnitSupportSurfaceNone | UnitSupportSurfaceDiscTop;
 
+export type UnitProductionDomain = 'bot' | 'vehicle' | 'aircraft' | 'naval';
+
+export type UnitProduction = {
+  techLevel: 1 | 2;
+  domains: UnitProductionDomain[];
+};
+
 export type UnitBlueprint = {
   unitBlueprintId: UnitBlueprintId;
   name: string;
@@ -973,6 +978,7 @@ export type UnitBlueprint = {
   teamOrnament: TeamOrnamentFit;
   hud: EntityHudBlueprint;
   unitLocomotion: UnitLocomotionBlueprint;
+  production: UnitProduction | null;
   suspension: UnitSuspensionConfig | null;
   builder: UnitBuilderConfig | null;
   constructionRate?: number | null;
@@ -992,7 +998,7 @@ export type UnitBlueprint = {
   supportPointOffsetZ: number;
 };
 
-export type RayType = 'beam' | 'laser';
+export type RayType = 'beam';
 
 export type EmissionKind = 'shot' | 'ray' | 'shield';
 
@@ -1015,21 +1021,6 @@ export type BeamContinuousSoundConfig = {
   harmonicSeriesIndex: number;
 };
 
-export type LaserRayBlueprint = {
-  type: 'laser';
-  dps: number;
-  force: number;
-  recoil: number;
-  radius: number;
-  width: number;
-  damageSphere: ShotCollision;
-  duration: number;
-  gravityForceMultiplier: number;
-  mediumTrajectory: EmissionMediumTrajectoryMatrix;
-  hitSound: SoundEntry | null;
-  rayBlueprintId: RayBlueprintId;
-};
-
 export type ShieldBlueprint = {
   type: 'shield';
   materialId: ShieldMaterialId;
@@ -1042,7 +1033,7 @@ export type ShieldBlueprint = {
   shieldBlueprintId: ShieldBlueprintId;
 };
 
-export type RayBlueprint = BeamRayBlueprint | LaserRayBlueprint;
+export type RayBlueprint = BeamRayBlueprint;
 
 export type BeamRay = {
   type: 'beam';
@@ -1057,21 +1048,7 @@ export type BeamRay = {
   rayBlueprintId: RayBlueprintId;
 };
 
-export type LaserRay = {
-  type: 'laser';
-  dps: number;
-  force: number;
-  recoil: number;
-  radius: number;
-  width: number;
-  damageSphere: ShotCollision;
-  duration: number;
-  gravityForceMultiplier: number;
-  mediumTrajectory: EmissionMediumTrajectoryMatrix;
-  rayBlueprintId: RayBlueprintId;
-};
-
-export type RayConfig = BeamRay | LaserRay;
+export type RayConfig = BeamRay;
 
 export type ShieldConfig = {
   type: 'shield';
@@ -1084,7 +1061,7 @@ export type ShieldConfig = {
   shieldBlueprintId: ShieldBlueprintId;
 };
 
-export type EmissionConfig = ProjectileShot | BeamRay | LaserRay | ShieldConfig;
+export type EmissionConfig = ProjectileShot | BeamRay | ShieldConfig;
 
 export type LocomotionMount = {
   xUnitRadiusRatio: number;

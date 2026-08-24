@@ -173,7 +173,7 @@ export const EMA_INITIAL_VALUES = emaConfigJson.initialValues;
 // SERVER TICK
 // =============================================================================
 
-/** Maximum authoritative beam/laser path segments traced per re-path.
+/** Maximum authoritative beam path segments traced per re-path.
  *  Segment 1 is launch origin -> first hit/trace limit, segment 2 is after the
  *  first reflector, and so on. If the final allowed segment ends on a
  *  reflector, the beam terminates there and does not get endpoint

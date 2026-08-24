@@ -84,7 +84,11 @@ import {
   getOrCreate,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
-import { markBuildingTeamOrnament } from './BuildingTeamOrnament3D';
+import {
+  buildingTeamOrnamentKind,
+  markBuildingTeamOrnament,
+  type BuildingTeamOrnamentKind,
+} from './BuildingTeamOrnament3D';
 import type { BuildingOperationalRig } from './BuildingOperationalRig3D';
 import {
   createBuildingOperationalPosePart,
@@ -180,6 +184,22 @@ export type ResourceConverterRig = {
   metalPylon: ResourcePylonRig;
 };
 
+function retagBuildingShapeOrnaments(
+  shape: BuildingShape,
+  kind: BuildingTeamOrnamentKind,
+): BuildingShape {
+  const retag = (root: THREE.Object3D): void => {
+    root.traverse((object) => {
+      if (object instanceof THREE.Mesh && buildingTeamOrnamentKind(object) !== null) {
+        markBuildingTeamOrnament(object, kind);
+      }
+    });
+  };
+  retag(shape.primary);
+  for (const entry of shape.details) retag(entry.mesh);
+  return shape;
+}
+
 // ── Standard dimensions ────────────────────────────────────────────────
 /** Default fallback block height for unknown buildings. */
 const DEFAULT_HEIGHT = DEFAULT_BUILDING_VISUAL_HEIGHT;
@@ -268,10 +288,19 @@ export function buildBuildingShape(
     switch (type) {
       case 'buildingSolar':
         return buildSolarCollector(width, depth, primaryMat);
-      case 'buildingWind':
-        return buildWindTurbineMesh(width, depth, primaryMat);
+      case 'buildingWind': {
+        const shape = buildWindTurbineMesh(width, depth, primaryMat);
+        return buildingBlueprintId === 'buildingTidalGenerator'
+          ? retagBuildingShapeOrnaments(shape, 'tidalGeneratorBand')
+          : shape;
+      }
       case 'towerFabricator':
-        return buildFactoryMesh(width, depth, primaryMat);
+        return buildFactoryMesh(
+          width,
+          depth,
+          primaryMat,
+          buildingBlueprintId ?? 'towerFabricator',
+        );
       case 'buildingExtractor':
         return buildMetalExtractorMesh(
           width,
@@ -302,8 +331,12 @@ export function buildBuildingShape(
             ? 'torpedo'
             : buildingBlueprintId === 'towerHelios' ? 'helios' : 'cannon',
         );
-      case 'towerAntiAir':
-        return buildAntiAirTowerMesh(primaryMat);
+      case 'towerAntiAir': {
+        const shape = buildAntiAirTowerMesh(primaryMat);
+        return buildingBlueprintId === 'towerInterceptor'
+          ? retagBuildingShapeOrnaments(shape, 'interceptorGuidanceBrace')
+          : shape;
+      }
       case 'buildingResourceConverter':
         return buildResourceConverterMesh(width, depth, primaryMat);
       case 'buildingShieldTargetingTech':

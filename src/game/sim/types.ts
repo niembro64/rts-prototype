@@ -46,7 +46,6 @@ export type {
   UtilityMountCapability,
   ProjectileShot,
   BeamRay,
-  LaserRay,
   
   ActiveProjectileShot,
   ShieldConfig,

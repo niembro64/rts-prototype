@@ -108,10 +108,9 @@ export function runUIUpdateManagerContractTest(): void {
   );
   assertContract(
     constructionDroneSelection.hasBuilder &&
-      !constructionDroneSelection.hasBarResurrectControl &&
       !constructionDroneSelection.hasBarAttackControl &&
       !constructionDroneSelection.hasFireControl,
-    'construction-drone/armcv constructor analogue must not expose BAR Resurrect, Attack, or Fire State controls',
+    'construction-drone/armcv constructor analogue must not expose BAR Attack or Fire State controls',
   );
 
   const jackalSelection = buildSelectionInfo(

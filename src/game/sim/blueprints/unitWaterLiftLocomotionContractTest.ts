@@ -18,7 +18,7 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
     'air surface lift may recover a partly immersed body only while its origin remains above water',
   );
 
-  for (const presetId of ['amphibian', 'submarine']) {
+  for (const presetId of ['amphibian', 'amphibious-crawler', 'submarine']) {
     const preset = getUnitLocomotionPreset(presetId);
     assertContract(
       preset.actuator.ground.staticFrictionCoefficient >= 0,
@@ -68,6 +68,33 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
     getUnitBlueprint('unitSeaTurtle').radius.collision <
       getUnitBlueprint('unitSeaTurtle').radius.other * 1.5,
     'Sea Turtle collision envelope stays close to its physical body envelope',
+  );
+
+  const waterStrider = getUnitLocomotion('unitWaterStrider');
+  assertContract(
+    waterStrider.type === 'crawler' &&
+      waterStrider.physics.air.lift.surfaceFollowingInverseForceFromWater > 0 &&
+      waterStrider.physics.water.lift.surfaceFollowingProportionalForceFromWater > 0 &&
+      waterStrider.physics.water.maxPropulsiveForce > 0 &&
+      waterStrider.navigation.waypoint.allowOnGround &&
+      waterStrider.navigation.waypoint.allowInWater &&
+      !waterStrider.navigation.waypoint.allowInAir &&
+      !waterStrider.motionControl.cruiseWhenUncommanded &&
+      !waterStrider.motionControl.maintainFullThrustAtWaypoints,
+    'Water Strider uses both water-support channels, routes on land and water, and stops at its destination',
+  );
+
+  const patrolCorvette = getUnitLocomotion('unitPatrolCorvette');
+  assertContract(
+    patrolCorvette.physics.ground.maxPropulsiveForce === 0 &&
+      patrolCorvette.physics.air.lift.surfaceFollowingInverseForceFromWater > 0 &&
+      patrolCorvette.physics.water.lift.surfaceFollowingProportionalForceFromWater > 0 &&
+      patrolCorvette.physics.water.lift.surfaceFollowingInverseForceFromGround === 0 &&
+      !patrolCorvette.navigation.waypoint.allowOnGround &&
+      patrolCorvette.navigation.waypoint.allowInWater &&
+      !patrolCorvette.navigation.waypoint.allowInAir &&
+      !patrolCorvette.motionControl.cruiseWhenUncommanded,
+    'Patrol Corvette is a water-only surface hull supported by both water-surface lift channels',
   );
 
   const orca = getUnitLocomotion('unitOrca');

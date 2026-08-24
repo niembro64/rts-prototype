@@ -205,7 +205,6 @@ function serializeEntity(entity: Entity): CanonicalValue {
     factory: toCanonicalValue(entity.factory),
     commander: toCanonicalValue(entity.commander),
     dgunProjectile: toCanonicalValue(entity.dgunProjectile),
-    wreck: toCanonicalValue(entity.wreck),
     transport: serializeTransport(entity.transport),
     transported: toCanonicalValue(entity.transported),
     heldBy: toCanonicalValue(entity.heldBy),

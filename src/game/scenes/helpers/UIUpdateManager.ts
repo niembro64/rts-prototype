@@ -37,6 +37,7 @@ import {
 } from '../../sim/sensorCoverage';
 import { isIdleBuilderUnit } from '../../sim/idleBuilders';
 import { isMetalExtractorBlueprintId } from '../../../types/buildingTypes';
+import { isFabricatorBuildingBlueprintId } from '../../sim/blueprints/buildings';
 import { isBallisticArcWeapon, isCommander } from '../../sim/combat/combatUtils';
 import {
   getFirstActionIntentEnd,
@@ -72,7 +73,6 @@ import {
   entityHasBarTrajectoryCommand,
   entityHasBarCarrierSpawnCommand,
   entityHasBarCaptureCommand,
-  entityHasBarResurrectCommand,
   entityHasBarBuilderPriorityCommand,
   entityHasBarFactoryGuardCommand,
   entityHasBarSetTargetCommand,
@@ -158,7 +158,6 @@ function unitActionLabel(action: UnitAction): string {
     case 'repair': return 'Repair';
     case 'reclaim': return 'Reclaim';
     case 'capture': return 'Capture';
-    case 'resurrect': return 'Resurrect';
     case 'loadTransport': return 'Load';
     case 'unloadTransport': return 'Unload';
     case 'wait': return action.waitGather === true ? 'Gather Wait' : 'Wait';
@@ -937,7 +936,6 @@ export function buildSelectionInfo(
   let manualLaunchControlCount = 0;
   let barAttackControlCount = 0;
   let barCaptureControlCount = 0;
-  let barResurrectControlCount = 0;
   let barAreaAttackControlCount = 0;
   let fireAtWillCount = 0;
   let returnFireCount = 0;
@@ -978,7 +976,6 @@ export function buildSelectionInfo(
     }
     if (entityHasBarAreaAttackCommand(selectedUnit)) barAreaAttackControlCount++;
     if (entityHasBarCaptureCommand(selectedUnit)) barCaptureControlCount++;
-    if (entityHasBarResurrectCommand(selectedUnit)) barResurrectControlCount++;
     if (entityHasCloakCommand(selectedUnit)) {
       cloakControlCount++;
       if (selectedUnit.unit?.wantCloak === true) wantCloakCount++;
@@ -1216,7 +1213,6 @@ export function buildSelectionInfo(
     hasDGun: dgunner !== undefined,
     hasBarAttackControl: barAttackControlCount > 0,
     hasBarCaptureControl: barCaptureControlCount > 0,
-    hasBarResurrectControl: barResurrectControlCount > 0,
     hasBarAreaAttackControl: barAreaAttackControlCount > 0,
     hasMoveStateControl: moveStateControlCount > 0,
     hasFireControl:
@@ -1317,8 +1313,6 @@ export function buildSelectionInfo(
     isGuardMode: inputState?.isGuardMode ?? false,
     isReclaimMode: inputState?.isReclaimMode ?? false,
     isCaptureMode: inputState?.isCaptureMode ?? false,
-    isResurrectMode: inputState?.isResurrectMode ?? false,
-    isResurrectAreaMode: inputState?.isResurrectAreaMode ?? false,
     isLoadTransportMode: inputState?.isLoadTransportMode ?? false,
     isUnloadTransportMode: inputState?.isUnloadTransportMode ?? false,
     isMexUpgradeMode: inputState?.isMexUpgradeMode ?? false,
@@ -1364,10 +1358,13 @@ export function buildEconomyInfo(
       extractorCount++;
       continue;
     }
+    if (isFabricatorBuildingBlueprintId(buildingBlueprintId)) {
+      factoryCount++;
+      continue;
+    }
     switch (buildingBlueprintId) {
       case 'buildingSolar': solarCount++; break;
       case 'buildingWind': windCount++; break;
-      case 'towerFabricator': factoryCount++; break;
     }
   }
 
@@ -1517,15 +1514,8 @@ function buildUnitStatsWeaponInfo(config: TurretConfig): UnitStatsWeaponInfo {
     } else if (turretBp.emissionKind === 'ray' && emissionBlueprintId !== null) {
       const rayBp = getRayBlueprint(emissionBlueprintId);
       emission = rayBp.type;
-      if (rayBp.type === 'laser') {
-        volleyDamage = rayBp.dps * (rayBp.duration / 1000);
-        dps = cooldownMs !== null && cooldownMs > 0
-          ? volleyDamage / (cooldownMs / 1000)
-          : rayBp.dps;
-      } else {
-        // Continuous beam: dps applies for as long as the beam holds.
-        dps = rayBp.dps;
-      }
+      // Continuous beam: dps applies for as long as the beam holds.
+      dps = rayBp.dps;
     }
   } catch {
     // Unknown turret blueprint: fall back to the raw runtime config values.

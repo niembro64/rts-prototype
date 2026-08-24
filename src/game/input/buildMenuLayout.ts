@@ -90,7 +90,7 @@ const BAR_GRID_FACTORY_UNIT_SLOT_INDEX = new Map<string, number>([
   ['unitSeaTurtle', 8],
   ['unitOrca', 9],
   // Page 2 follows BAR's final labGrids["armlab"] bot-lab slots:
-  // empty constructor/resurrect/peewee slots, armflea,
+  // empty constructor/support/Peewee slots, armflea,
   // empty armrock/armham analogue slots, armwar.
   ['unitTick', BAR_GRID_SLOT_COUNT + 3],
   ['unitTarantula', BAR_GRID_SLOT_COUNT + 6],
@@ -339,6 +339,15 @@ export function barLegacyBuildKeyForStructureBlueprintId(
     case 'buildingEnergyStorage':
       return 'X';
     case 'towerFabricator':
+    case 'buildingBotFabricator':
+    case 'buildingVehicleFabricator':
+    case 'buildingAircraftFabricator':
+    case 'buildingNavalFabricator':
+    case 'buildingAdvancedUniversalFabricator':
+    case 'buildingAdvancedBotFabricator':
+    case 'buildingAdvancedVehicleFabricator':
+    case 'buildingAdvancedAircraftFabricator':
+    case 'buildingAdvancedNavalFabricator':
       return 'V';
     case 'buildingRadar':
     case 'buildingSonar':
@@ -425,10 +434,30 @@ function barClassicBuildSortIndex(id: BuildingBlueprintId): number {
       return 100500;
     case 'buildingWind':
       return 101000;
+    case 'buildingTidalGenerator':
+      return 101005;
     case 'buildingSolar':
       return 101070;
+    case 'buildingBotFabricator':
+      return 102000;
+    case 'buildingVehicleFabricator':
+      return 102010;
     case 'towerFabricator':
-      return 102200;
+      return 102020;
+    case 'buildingAircraftFabricator':
+      return 102030;
+    case 'buildingNavalFabricator':
+      return 102040;
+    case 'buildingAdvancedBotFabricator':
+      return 102100;
+    case 'buildingAdvancedVehicleFabricator':
+      return 102110;
+    case 'buildingAdvancedUniversalFabricator':
+      return 102120;
+    case 'buildingAdvancedAircraftFabricator':
+      return 102130;
+    case 'buildingAdvancedNavalFabricator':
+      return 102140;
     case 'buildingRadar':
       return 103100;
     case 'buildingSonar':
@@ -447,6 +476,8 @@ function barClassicBuildSortIndex(id: BuildingBlueprintId): number {
       return 106300;
     case 'towerAntiAir':
       return 130100;
+    case 'towerInterceptor':
+      return 130105;
     case 'towerTorpedo':
       return 130110;
     // Prototype-only tech structures sort after the BAR-analogue intel
@@ -529,6 +560,15 @@ const BAR_HOME_BUILD_ORDER = [
   ],
   [
     'towerFabricator',
+    'buildingBotFabricator',
+    'buildingVehicleFabricator',
+    'buildingAircraftFabricator',
+    'buildingNavalFabricator',
+    'buildingAdvancedUniversalFabricator',
+    'buildingAdvancedBotFabricator',
+    'buildingAdvancedVehicleFabricator',
+    'buildingAdvancedAircraftFabricator',
+    'buildingAdvancedNavalFabricator',
   ],
 ] as const satisfies readonly (readonly StructureBlueprintId[])[];
 
@@ -613,11 +653,28 @@ function preferredStructureBuildGridSlotIndex(id: BuildingBlueprintId): number {
       return 3;
     case 'buildingPrecisionTargetingTech':
       return 4;
-    // Local towerFabricator is the ARM air-plant analogue (armap), so
-    // keep the armlab/armvp production slots empty and place it in the
-    // bottom-row third cell like BAR's unitGrids["armcom"]["armap"].
-    case 'towerFabricator':
+    // Production follows one compact two-tier matrix: four T1 specialists,
+    // T1/T2 Universal, then the four advanced specialists.
+    case 'buildingBotFabricator':
+      return 0;
+    case 'buildingVehicleFabricator':
+      return 1;
+    case 'buildingAircraftFabricator':
       return 2;
+    case 'buildingNavalFabricator':
+      return 3;
+    case 'towerFabricator':
+      return 4;
+    case 'buildingAdvancedUniversalFabricator':
+      return 5;
+    case 'buildingAdvancedBotFabricator':
+      return 6;
+    case 'buildingAdvancedVehicleFabricator':
+      return 7;
+    case 'buildingAdvancedAircraftFabricator':
+      return 8;
+    case 'buildingAdvancedNavalFabricator':
+      return 9;
     // BAR T1 constructor combat pages put light ground/beam defenses on
     // the bottom row and basic AA at the middle-left slot. The ARM
     // commander omits armbeamer, while ARM T1 constructors include it.
@@ -629,6 +686,8 @@ function preferredStructureBuildGridSlotIndex(id: BuildingBlueprintId): number {
       return 5;
     case 'towerTorpedo':
       return 2;
+    case 'towerInterceptor':
+      return 3;
     case 'towerAntiAir':
       return 4;
     default:

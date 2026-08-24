@@ -11,10 +11,10 @@ import type { UnitBlueprint } from './types';
 import type { UnitLocomotion } from '../types';
 import { createUnitLocomotion } from '../unitLocomotion';
 export { BUILDABLE_UNIT_BLUEPRINT_IDS,  } from './unitRoster';
-import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
+import { BUILDABLE_UNIT_BLUEPRINT_IDS, isBuildableUnitBlueprintId } from './unitRoster';
 import { TURRET_BLUEPRINTS } from './turrets';
 import rawUnitBlueprints from './units.json';
-import { resolveBlueprintRefs } from './jsonRefs';
+import { resolveBlueprintRecordInheritance, resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
 import type { LockOnInclusionObject, UnitLocomotionBlueprint } from './types';
 import type {
@@ -42,10 +42,12 @@ import {
 } from './stationArticulation';
 
 type JsonUnitBlueprint = Omit<UnitBlueprint, keyof LockOnInclusionObject>;
+type InheritableJsonUnitBlueprint = Partial<JsonUnitBlueprint> & { $extends?: string };
 
 const UNIT_EXPLICIT_FIELDS = [
   'base',
   'supportSurface',
+  'production',
   'suspension',
   'builder',
   'dgun',
@@ -78,9 +80,13 @@ function resolveInlineLocomotion(
 }
 
 function buildUnitBlueprints(): Record<string, UnitBlueprint> {
-  const resolved = resolveBlueprintRefs(
+  const withRefs = resolveBlueprintRefs(
     rawUnitBlueprints,
-  ) as unknown as Record<string, JsonUnitBlueprint>;
+  ) as unknown as Record<string, InheritableJsonUnitBlueprint>;
+  const resolved = resolveBlueprintRecordInheritance<JsonUnitBlueprint>(
+    withRefs as unknown as Record<string, Record<string, unknown> & { $extends?: string }>,
+    'unit blueprint',
+  );
   assertUnitLockOnInclusionConfigIds(Object.keys(resolved));
   const blueprints: Record<string, UnitBlueprint> = {};
 
@@ -245,6 +251,40 @@ function validateUnitWorkCapability(bp: UnitBlueprint): void {
     throw new Error(
       `Invalid constructor config for ${bp.unitBlueprintId}: builders must author constructionRate and allowedBuildBlueprintIds on the host`,
     );
+  }
+}
+
+const PRODUCTION_DOMAIN_ORDER = ['bot', 'vehicle', 'aircraft', 'naval'] as const;
+const NON_FABRICATOR_UNIT_IDS = new Set(['unitCommander', 'unitBee', 'unitTick']);
+
+function validateUnitProductionIdentity(bp: UnitBlueprint): void {
+  const production = bp.production;
+  if (production === null) {
+    if (!NON_FABRICATOR_UNIT_IDS.has(bp.unitBlueprintId)) {
+      throw new Error(
+        `Invalid production identity for ${bp.unitBlueprintId}: only Commander and mobile-factory products may author null`,
+      );
+    }
+    return;
+  }
+  if (NON_FABRICATOR_UNIT_IDS.has(bp.unitBlueprintId)) {
+    throw new Error(`Invalid production identity for ${bp.unitBlueprintId}: expected null`);
+  }
+  if (!isBuildableUnitBlueprintId(bp.unitBlueprintId)) {
+    throw new Error(`Invalid production identity for ${bp.unitBlueprintId}: unit is not buildable`);
+  }
+  if (production.techLevel !== 1 && production.techLevel !== 2) {
+    throw new Error(`Invalid production identity for ${bp.unitBlueprintId}: techLevel must be 1 or 2`);
+  }
+  let previousIndex = -1;
+  for (const domain of production.domains) {
+    const index = PRODUCTION_DOMAIN_ORDER.indexOf(domain);
+    if (index < 0 || index <= previousIndex) {
+      throw new Error(
+        `Invalid production identity for ${bp.unitBlueprintId}: domains must be unique and canonical`,
+      );
+    }
+    previousIndex = index;
   }
 }
 
@@ -505,6 +545,7 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   }
 
   validateUnitWorkCapability(bp);
+  validateUnitProductionIdentity(bp);
 
   if (!bp.hud || !Number.isFinite(bp.hud.barsOffsetAboveTop)) {
     throw new Error(

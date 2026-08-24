@@ -7,7 +7,7 @@ import type { EntityMesh } from './EntityMesh3D';
  * The render-side form of the force that killed an entity.  It deliberately
  * uses the same three force inputs as combat knockback / impact effects: the
  * penetration direction, the attack magnitude, and the projectile velocity.
- * The victim's velocity is inherited separately so a moving wreck keeps its
+ * The victim's velocity is inherited separately so moving debris keeps its
  * momentum instead of stopping dead at the moment it breaks apart. `seed`
  * makes the presentation-only per-piece variation replay-stable.
  */

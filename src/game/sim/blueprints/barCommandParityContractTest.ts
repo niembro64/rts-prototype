@@ -8,7 +8,7 @@
 //     from ../Beyond-All-Reason's unitDefs (canmove AND speed -- BAR factories
 //     set canmove=true while standing still, so a yardmap plus zero speed is
 //     what makes a host a building -- workertime, buildoptions,
-//     onoffable, cancloak, cancapture, canresurrect, canmanualfire,
+//     onoffable, cancloak, cancapture, canmanualfire,
 //     transportcapacity, hightrajectory, canareaattack, stockpile, removestop,
 //     removewait, weapons, canattackground, AircraftBomb weapons) plus the
 //     class each def lives in.
@@ -55,7 +55,6 @@ import {
   entityHasBarSetTargetCommand,
   entityHasBarStopCommand,
   entityHasBarTrajectoryCommand,
-  entityCanIssueResurrectCommand,
   entityHasCloakCommand,
 } from '../unitCommandCapabilities';
 
@@ -77,7 +76,6 @@ type BarAnalogue = {
   onOffable: boolean | null;
   canCloak: boolean;
   canCapture: boolean;
-  canResurrect: boolean;
   canManualFire: boolean;
   transportCapacity: number;
   highTrajectory: boolean;
@@ -98,9 +96,17 @@ const PROTOTYPE_ONLY_BLUEPRINTS: ReadonlySet<string> = new Set([
   'unitMammoth', 'unitDaddy', 'unitWidow', 'unitFormik', 'unitHippo', 'unitLoris',
   'unitSeaTurtle', 'unitOrca', 'unitDuck', 'unitConstructionSubmarine',
   'unitQueenBee', 'unitQueenTick', 'unitHuman', 'unitRex', 'unitHedgehog',
+  'unitRadarScout', 'unitConstructionBot', 'unitConstructionRover',
+  'unitStealthScout', 'unitDetector', 'unitRadarJammer', 'unitMissileRover',
+  'unitClusterArtillery', 'unitWaterStrider', 'unitPatrolCorvette', 'unitPetrel',
   'buildingShieldTargetingTech', 'buildingShieldTech',
   'buildingPrecisionTargetingTech', 'buildingRadarJammer', 'buildingSonarJammer',
   'buildingMetalStorage', 'buildingEnergyStorage',
+  'buildingBotFabricator', 'buildingVehicleFabricator',
+  'buildingAircraftFabricator', 'buildingNavalFabricator',
+  'buildingAdvancedUniversalFabricator', 'buildingAdvancedBotFabricator',
+  'buildingAdvancedVehicleFabricator', 'buildingAdvancedAircraftFabricator',
+  'buildingAdvancedNavalFabricator', 'towerInterceptor', 'buildingTidalGenerator',
 ]);
 
 /** Categories a host can expose. Same vocabulary as the audit's matrix and the
@@ -108,7 +114,7 @@ const PROTOTYPE_ONLY_BLUEPRINTS: ReadonlySet<string> = new Set([
 type CommandCategory =
   | 'move' | 'fight' | 'patrol' | 'guard' | 'stop' | 'wait' | 'moveState'
   | 'attack' | 'attackGround' | 'areaAttack' | 'fireState' | 'trajectory' | 'setTarget'
-  | 'dgun' | 'cloak' | 'capture' | 'resurrect' | 'stockpile'
+  | 'dgun' | 'cloak' | 'capture' | 'stockpile'
   | 'buildMenu' | 'repairReclaim' | 'builderPriority'
   | 'productionMenu' | 'factoryGuard'
   | 'transport' | 'onOff' | 'selfDestruct';
@@ -142,7 +148,6 @@ function barRequiredCommands(bar: BarAnalogue): Set<CommandCategory> {
   if (bar.highTrajectory) required.add('trajectory');
   if (bar.canCloak) required.add('cloak');
   if (bar.canCapture) required.add('capture');
-  if (bar.canResurrect) required.add('resurrect');
   if (bar.canManualFire) required.add('dgun');
   if (bar.stockpile) required.add('stockpile');
   if (bar.transportCapacity > 0) required.add('transport');
@@ -185,7 +190,6 @@ function actualCommands(entity: Entity, blueprintId: string, kind: 'unit' | 'bui
   if (entityHasBarTrajectoryCommand(entity)) actual.add('trajectory');
   if (entityHasCloakCommand(entity)) actual.add('cloak');
   if (entityHasBarCaptureCommand(entity)) actual.add('capture');
-  if (entityCanIssueResurrectCommand(entity)) actual.add('resurrect');
   if (entity.commander !== null) actual.add('dgun');
   if (entityHasBarBuilderPriorityCommand(entity)) actual.add('builderPriority');
   if (entityHasBarFactoryGuardCommand(entity)) actual.add('factoryGuard');
@@ -230,10 +234,6 @@ const DOCUMENTED_DIVERGENCES: Readonly<Record<string, {
   buildingResourceConverter: {
     extra: ['onOff'],
     reason: 'armmakr has no onoffable; our converter gates the energy-to-metal swap on the same active state',
-  },
-  unitCommander: {
-    extra: ['resurrect'],
-    reason: 'armcom has no canresurrect, but wreck resurrection is a real authoritative system here and the commander is its host; BAR presets still hide the button',
   },
   towerFabricator: {
     missing: ['stop'],

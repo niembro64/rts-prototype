@@ -2,7 +2,7 @@
 //
 // High-arc shells lob over hills, and shield-only emitters maintain
 // area effects through their own force material. Everything else
-// (cannons, beams, lasers, gatlings, and shield emitters with offensive
+// (cannons, beams, gatlings, and shield emitters with offensive
 // submunitions) needs a clear sightline from its turret head to the
 // target aim point before it can lock on or keep firing. Cross-shield
 // sight obstruction is a separate targeting gate.

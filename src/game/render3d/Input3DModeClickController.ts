@@ -17,8 +17,6 @@ import {
   buildReclaimCommandForTargetId,
   buildRepairAreaCommand,
   buildRepairCommandForTarget,
-  buildResurrectAreaCommand,
-  buildResurrectCommandForTarget,
   buildUnloadTransportCommand,
   getSelectedClientTransports,
   type CommanderModeController,
@@ -70,7 +68,6 @@ import type { BarAreaCommandExpansion } from '../sim/commands';
 
 const REPAIR_AREA_RADIUS = 220;
 const RECLAIM_AREA_RADIUS = 220;
-const RESURRECT_AREA_RADIUS = 220;
 const LOAD_TRANSPORT_AREA_RADIUS = 220;
 const UNLOAD_TRANSPORT_AREA_MIN_RADIUS = 64;
 const ATTACK_AREA_RADIUS = 300;
@@ -157,10 +154,8 @@ type Input3DModeClickControllerConfig = Input3DCommandModeControls & {
   getQueueInsertIndex: () => number | null;
   getSelectedCommander: () => Entity | null;
   getSelectedBuilder: () => Entity | null;
-  getSelectedResurrectSource: () => Entity | null;
   onBuildCommandIssued: (queued: boolean) => void;
   applyCursor: (kind: CommandCursorKind) => void;
-  isResurrectModeAreaCapable: () => boolean;
   /** BAR cmd_buildsplit parity: true while the build-split modifier
    *  (held Space, BAR's `bind Any+space buildsplit`) is active. */
   isBuildSplitModifierHeld: () => boolean;
@@ -192,8 +187,6 @@ export class Input3DModeClickController {
       this.config.isGuardMode() ||
       this.config.isReclaimMode() ||
       this.config.isCaptureMode() ||
-      this.config.isResurrectMode() ||
-      this.config.isResurrectAreaMode() ||
       this.config.isLoadTransportMode() ||
       this.config.isUnloadTransportMode() ||
       this.config.isMexUpgradeMode() ||
@@ -278,8 +271,6 @@ export class Input3DModeClickController {
     if (this.config.isGuardMode()) return 'guard';
     if (this.config.isReclaimMode()) return 'reclaim';
     if (this.config.isCaptureMode()) return 'reclaim';
-    if (this.config.isResurrectMode()) return 'repair';
-    if (this.config.isResurrectAreaMode()) return 'repair';
     if (this.config.isLoadTransportMode()) return 'guard';
     if (this.config.isUnloadTransportMode()) return 'move';
     if (this.config.isMexUpgradeMode()) return 'build';
@@ -458,8 +449,6 @@ export class Input3DModeClickController {
     if (this.config.isRestoreAreaMode()) return null;
     if (this.config.isAttackAreaMode()) return 'attackArea';
     if (this.config.isReclaimMode()) return 'reclaimArea';
-    if (this.config.isResurrectMode() && this.config.isResurrectModeAreaCapable()) return 'resurrectArea';
-    if (this.config.isResurrectAreaMode()) return 'resurrectArea';
     if (this.config.isLoadTransportMode()) return 'loadTransportArea';
     if (this.config.isUnloadTransportMode()) return 'unloadTransportArea';
     if (this.config.isMexUpgradeMode()) return 'upgradeMexArea';
@@ -548,29 +537,6 @@ export class Input3DModeClickController {
       if (!areaQueueMode.queue) this.config.exitAttackAreaMode();
       return;
     }
-    if (drag.kind === 'resurrectArea') {
-      const cmd = buildResurrectAreaCommand(
-        this.config.getSelectedResurrectSource(),
-        drag.start.x,
-        drag.start.y,
-        radius,
-        this.config.getTick(),
-        areaQueueMode.queue,
-        drag.start.z,
-        areaQueueMode.queueFront,
-        areaQueueMode.queueInsertIndex,
-        targetFilter,
-        this.resolveBarAreaCommandExpansion(
-          areaExpansionContext,
-          this.config.getSelectedResurrectSource(),
-          areaQueueMode.splitTargets,
-        ),
-      );
-      if (cmd) this.config.commandQueue.enqueue(cmd);
-      this.config.applyCursor('repair');
-      if (!areaQueueMode.queue) this.exitActiveResurrectMode();
-      return;
-    }
     if (drag.kind === 'loadTransportArea') {
       const transports = getSelectedClientTransports(this.config.getEntitySource().getSelectedUnits());
       const cmd = buildLoadTransportAreaCommand(
@@ -655,10 +621,8 @@ export class Input3DModeClickController {
   }
 
   /** BAR cmd_area_commands_filter parity. Ctrl at release keeps only
-   *  targets in the anchor entity's broad category (BAR: "all units in
-   *  the area" / same-tech wrecks — our blueprints have no tech levels,
-   *  so all wrecks); Alt keeps only targets with its exact blueprint
-   *  (BAR: same unitDefId / featureDefId). No anchor entity or no
+   *  targets in the anchor entity's broad category; Alt keeps only targets
+   *  with its exact blueprint (BAR: same unitDefId / featureDefId). No anchor entity or no
    *  modifier = unfiltered. Meta is deliberately not a Ctrl alias: BAR
    *  reserves it for front/split target distribution. */
   private resolveAreaDragTargetFilter(
@@ -1170,8 +1134,6 @@ export class Input3DModeClickController {
     else if (this.config.isGuardMode()) this.handleGuardClick(e);
     else if (this.config.isReclaimMode()) this.handleReclaimClick(e);
     else if (this.config.isCaptureMode()) this.handleCaptureClick(e);
-    else if (this.config.isResurrectMode()) this.handleResurrectClick(e);
-    else if (this.config.isResurrectAreaMode()) this.handleResurrectAreaClick(e);
     else if (this.config.isLoadTransportMode()) this.handleLoadTransportClick(e);
     else if (this.config.isUnloadTransportMode()) this.handleUnloadTransportClick(e);
     else if (this.config.isMexUpgradeMode()) this.handleMexUpgradeClick(e);
@@ -1192,8 +1154,6 @@ export class Input3DModeClickController {
     else if (this.config.isGuardMode()) this.config.exitGuardMode();
     else if (this.config.isReclaimMode()) this.config.exitReclaimMode();
     else if (this.config.isCaptureMode()) this.config.exitCaptureMode();
-    else if (this.config.isResurrectMode()) this.config.exitResurrectMode();
-    else if (this.config.isResurrectAreaMode()) this.config.exitResurrectAreaMode();
     else if (this.config.isLoadTransportMode()) this.config.exitLoadTransportMode();
     else if (this.config.isUnloadTransportMode()) this.config.exitUnloadTransportMode();
     else if (this.config.isMexUpgradeMode()) this.config.exitMexUpgradeMode();
@@ -1897,70 +1857,6 @@ export class Input3DModeClickController {
     if (!queueMode.queue) this.config.exitCaptureMode();
   }
 
-  private handleResurrectClick(e: MouseEvent): void {
-    const resurrectSource = this.config.getSelectedResurrectSource();
-    if (!resurrectSource) {
-      this.config.exitResurrectMode();
-      return;
-    }
-    const tick = this.config.getTick();
-    const entityHitId = this.config.picker.raycastEntity(e.clientX, e.clientY);
-    const entityHit = entityHitId !== null
-      ? this.config.getEntitySource().getEntity(entityHitId)
-      : null;
-    const queueMode = this.resolveClickQueueMode(e);
-
-    const resurrectCmd = buildResurrectCommandForTarget(
-      entityHit,
-      resurrectSource,
-      tick,
-      queueMode.queue,
-      queueMode.queueFront,
-      queueMode.queueInsertIndex,
-    );
-    if (!resurrectCmd) {
-      this.config.applyCursor('blocked');
-      return;
-    }
-    this.config.commandQueue.enqueue(resurrectCmd);
-    this.config.applyCursor('repair');
-    if (!queueMode.queue) this.config.exitResurrectMode();
-  }
-
-  private handleResurrectAreaClick(e: MouseEvent): void {
-    const resurrectSource = this.config.getSelectedResurrectSource();
-    if (!resurrectSource) {
-      this.config.exitResurrectAreaMode();
-      return;
-    }
-    const world = this.config.picker.raycastGround(e.clientX, e.clientY);
-    if (!world) return;
-    const queueMode = this.resolveClickQueueMode(e);
-    const cmd = buildResurrectAreaCommand(
-      resurrectSource,
-      world.x,
-      world.y,
-      RESURRECT_AREA_RADIUS,
-      this.config.getTick(),
-      queueMode.queue,
-      world.z,
-      queueMode.queueFront,
-      queueMode.queueInsertIndex,
-    );
-    if (!cmd) return;
-    this.config.commandQueue.enqueue(cmd);
-    this.config.applyCursor('repair');
-    if (!queueMode.queue) this.config.exitResurrectAreaMode();
-  }
-
-  private exitActiveResurrectMode(): void {
-    if (this.config.isResurrectMode()) {
-      this.config.exitResurrectMode();
-      return;
-    }
-    this.config.exitResurrectAreaMode();
-  }
-
   private handleLoadTransportClick(e: MouseEvent): void {
     const transports = getSelectedClientTransports(this.config.getEntitySource().getSelectedUnits());
     if (transports.length === 0) {
@@ -2113,7 +2009,7 @@ function isBuildShapeDragKind(kind: Input3DAreaDragKind): boolean {
 }
 
 function isFilterableAreaDragKind(kind: Input3DAreaDragKind): boolean {
-  return kind === 'repairArea' || kind === 'reclaimArea' || kind === 'resurrectArea';
+  return kind === 'repairArea' || kind === 'reclaimArea';
 }
 
 function areaDragRadius(drag: AreaDrag): number {
@@ -2126,7 +2022,6 @@ function defaultAreaRadius(kind: Input3DAreaDragKind): number {
   switch (kind) {
     case 'repairArea': return REPAIR_AREA_RADIUS;
     case 'reclaimArea': return RECLAIM_AREA_RADIUS;
-    case 'resurrectArea': return RESURRECT_AREA_RADIUS;
     case 'loadTransportArea': return LOAD_TRANSPORT_AREA_RADIUS;
     case 'unloadTransportArea': return UNLOAD_TRANSPORT_AREA_MIN_RADIUS;
     case 'attackArea': return ATTACK_AREA_RADIUS;

@@ -507,7 +507,7 @@ function writeTurretsToPool(
     const t = dst.turret;
     t.turretBlueprintCode = turretBlueprintIdToCode(src.config.turretBlueprintId);
     // Head-only turrets render a sphere only, so the client doesn't orient
-    // anything from these values. Beam/laser presentation travels as beam
+    // anything from these values. Beam presentation travels as beam
     // endpoint updates instead of turret yaw/pitch on the entity row.
     if (!turretAimMotionIsSnapshotVisible(src)) {
       t.angular.rot = 0;

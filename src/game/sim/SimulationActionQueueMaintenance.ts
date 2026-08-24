@@ -7,7 +7,6 @@ import {
   isReclaimTargetInBuildRange,
   resolveReclaimTarget,
 } from './reclaim';
-import { isResurrectableWreck } from './wrecks';
 import { canLoadTransport } from './transports';
 import { getActionIntentStart, getUnitActionTargetId } from './unitActionIntents';
 import { setUnitActions, spliceUnitActions } from './unitActions';
@@ -61,8 +60,7 @@ export class SimulationActionQueueMaintenance {
         action.type !== 'build' &&
         action.type !== 'repair' &&
         action.type !== 'reclaim' &&
-        action.type !== 'capture' &&
-        action.type !== 'resurrect'
+        action.type !== 'capture'
       ) {
         if (!action.isPathExpansion) return;
         continue;
@@ -136,7 +134,6 @@ export class SimulationActionQueueMaintenance {
       action.type !== 'repair' &&
       action.type !== 'reclaim' &&
       action.type !== 'capture' &&
-      action.type !== 'resurrect' &&
       action.type !== 'loadTransport' &&
       action.type !== 'guard'
     ) {
@@ -170,10 +167,6 @@ export class SimulationActionQueueMaintenance {
       const playerId = entity.ownership?.playerId;
       return playerId === undefined ||
         !isCapturableTarget(target, playerId, (a, b) => this.world.arePlayersAllied(a, b));
-    }
-
-    if (action.type === 'resurrect') {
-      return !isResurrectableWreck(target);
     }
 
     if (action.type === 'loadTransport') {

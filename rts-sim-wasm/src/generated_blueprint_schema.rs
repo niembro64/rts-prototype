@@ -233,7 +233,6 @@ pub enum ShieldReflectionEntity {
     Rocket,
     Missile,
     Beam,
-    Laser,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -242,7 +241,6 @@ pub struct ShieldReflectionEntityDirections {
     pub rocket: Option<ShieldReflectionDirection>,
     pub missile: Option<ShieldReflectionDirection>,
     pub beam: Option<ShieldReflectionDirection>,
-    pub laser: Option<ShieldReflectionDirection>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -253,8 +251,6 @@ pub struct ShieldReflectionPolicy {
 #[derive(Clone, Debug, PartialEq)]
 pub enum ShieldBarrierShape {
     Sphere,
-    InfiniteVerticalCylinder,
-    AimedCylinder,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -291,7 +287,6 @@ pub struct ShieldMaterialProjectileResponseConfig {
     pub plasma: ShieldSurfaceResponse,
     pub rocket: ShieldSurfaceResponse,
     pub beam: ShieldSurfaceResponse,
-    pub laser: ShieldSurfaceResponse,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -417,7 +412,6 @@ pub struct ProjectileShot {
 pub enum ActiveProjectileShot {
     ProjectileShot(ProjectileShot),
     BeamRay(BeamRay),
-    LaserRay(LaserRay),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -429,7 +423,6 @@ pub enum ShotConfig {
 pub enum ProjectileType {
     Projectile,
     Beam,
-    Laser,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -459,7 +452,6 @@ pub enum ShotRuntimeType {
     Rocket,
     Missile,
     Beam,
-    Laser,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1298,6 +1290,20 @@ pub enum UnitSupportSurface {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum UnitProductionDomain {
+    Bot,
+    Vehicle,
+    Aircraft,
+    Naval,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnitProduction {
+    pub techLevel: i32,
+    pub domains: Vec<UnitProductionDomain>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct UnitBlueprint {
     pub unitBlueprintId: String,
     pub name: String,
@@ -1314,6 +1320,7 @@ pub struct UnitBlueprint {
     pub teamOrnament: TeamOrnamentFit,
     pub hud: EntityHudBlueprint,
     pub unitLocomotion: UnitLocomotionBlueprint,
+    pub production: Option<UnitProduction>,
     pub suspension: Option<BlueprintJsonValue>,
     pub builder: Option<UnitBuilderConfig>,
     pub constructionRate: Option<f64>,
@@ -1340,7 +1347,6 @@ pub type ShieldBlueprintId = String;
 #[derive(Clone, Debug, PartialEq)]
 pub enum RayType {
     Beam,
-    Laser,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1372,22 +1378,6 @@ pub struct BeamContinuousSoundConfig {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LaserRayBlueprint {
-    pub r#type: String,
-    pub dps: f64,
-    pub force: f64,
-    pub recoil: f64,
-    pub radius: f64,
-    pub width: f64,
-    pub damageSphere: ShotCollision,
-    pub duration: f64,
-    pub gravityForceMultiplier: f64,
-    pub mediumTrajectory: EmissionMediumTrajectoryMatrix,
-    pub hitSound: Option<BlueprintJsonValue>,
-    pub rayBlueprintId: String,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct ShieldBlueprint {
     pub r#type: String,
     pub materialId: String,
@@ -1403,7 +1393,6 @@ pub struct ShieldBlueprint {
 #[derive(Clone, Debug, PartialEq)]
 pub enum RayBlueprint {
     BeamRayBlueprint(BeamRayBlueprint),
-    LaserRayBlueprint(LaserRayBlueprint),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1421,24 +1410,8 @@ pub struct BeamRay {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LaserRay {
-    pub r#type: String,
-    pub dps: f64,
-    pub force: f64,
-    pub recoil: f64,
-    pub radius: f64,
-    pub width: f64,
-    pub damageSphere: ShotCollision,
-    pub duration: f64,
-    pub gravityForceMultiplier: f64,
-    pub mediumTrajectory: EmissionMediumTrajectoryMatrix,
-    pub rayBlueprintId: String,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub enum RayConfig {
     BeamRay(BeamRay),
-    LaserRay(LaserRay),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1457,7 +1430,6 @@ pub struct ShieldConfig {
 pub enum EmissionConfig {
     ProjectileShot(ProjectileShot),
     BeamRay(BeamRay),
-    LaserRay(LaserRay),
     ShieldConfig(ShieldConfig),
 }
 

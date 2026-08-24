@@ -41,7 +41,7 @@ validation.
   `lostTargetBehavior`, and `lostTargetArrivalRadius`. Projectile life belongs
   there as `maxLifespanMs`. Locomotion presets provide medium physics, not
   per-shot guidance or lifetime overrides.
-- Build/repair/reclaim/resurrect origins use the unit/building `workEmitter`.
+- Build/repair/reclaim origins use the unit/building `workEmitter`.
   Moving QueryWork tools author the same actuator/articulation contract as a
   weapon; fixed factory emitters explicitly use null joints.
 

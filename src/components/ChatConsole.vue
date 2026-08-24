@@ -14,6 +14,11 @@
  *     hotkeys work again.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import {
+  CHAT_MESSAGE_MAX_LENGTH,
+  CHAT_MESSAGES_PER_ROOM,
+  sanitizeChatMessageText,
+} from '../game/network/chatPolicy';
 import type { ChatChannelOption, ChatConsoleMessage } from './chatConsoleTypes';
 
 const props = defineProps<{
@@ -83,11 +88,12 @@ onBeforeUnmount(() => {
 });
 
 const visibleMessages = computed<readonly ChatConsoleMessage[]>(() => {
+  const recentMessages = props.messages.slice(-CHAT_MESSAGES_PER_ROOM);
   if (props.transient !== true || inputOpen.value || hovering.value) {
-    return props.messages;
+    return recentMessages;
   }
   const cutoff = nowMs.value - CHAT_LINE_TTL_MS;
-  const fresh = props.messages.filter(
+  const fresh = recentMessages.filter(
     (message) => (firstSeenById.get(message.id) ?? 0) >= cutoff,
   );
   return fresh.slice(-CHAT_FRESH_LINE_LIMIT);
@@ -114,8 +120,8 @@ watch(
 );
 
 function submit(): void {
-  const text = draft.value.trim();
-  if (text.length === 0) {
+  const text = sanitizeChatMessageText(draft.value);
+  if (text === null) {
     // BAR sends-or-closes on Enter: an empty submit in transient mode
     // just puts the console away.
     if (props.transient === true) closeInput();
@@ -199,7 +205,7 @@ defineExpose({ focusInput });
         v-model="draft"
         class="chat-input"
         type="text"
-        maxlength="220"
+        :maxlength="CHAT_MESSAGE_MAX_LENGTH"
         autocomplete="off"
         :placeholder="placeholder"
         aria-label="Chat message"

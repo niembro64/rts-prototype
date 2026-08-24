@@ -1085,7 +1085,6 @@
         "reclaim": "#dbffdb",
         "restore": "#c4ffc4",
         "capture": "#ffd936",
-        "resurrect": "#ffbfff",
         "build": "#ededed",
         "dgun": "#ffb3b3",
         "manualFire": "#ffb3b3",
@@ -1247,10 +1246,6 @@
       "capture": {
         "colorHex": "#ffd936",
         "cssColor": "#ffd936"
-      },
-      "resurrect": {
-        "colorHex": "#ffbfff",
-        "cssColor": "#ffbfff"
       },
       "loadTransport": {
         "colorHex": "#1ab3ff",

@@ -59,11 +59,11 @@ const ACTION_TYPE_RECLAIM = 7;
 const ACTION_TYPE_ATTACK_GROUND = 8;
 export const ACTION_TYPE_WAIT = 9;
 const ACTION_TYPE_CAPTURE = 10;
-const ACTION_TYPE_RESURRECT = 11;
+// code 11 retired; kept as a gap so later codes stay aligned.
 const ACTION_TYPE_LOAD_TRANSPORT = 12;
 const ACTION_TYPE_UNLOAD_TRANSPORT = 13;
 const ACTION_TYPE_SELF_DESTRUCT = 14;
-export type ActionTypeCode = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
+export type ActionTypeCode = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 12 | 13 | 14;
 
 const _ACTION_TO_CODE: Record<string, ActionTypeCode> = {
   move: ACTION_TYPE_MOVE,
@@ -73,7 +73,6 @@ const _ACTION_TO_CODE: Record<string, ActionTypeCode> = {
   repair: ACTION_TYPE_REPAIR,
   reclaim: ACTION_TYPE_RECLAIM,
   capture: ACTION_TYPE_CAPTURE,
-  resurrect: ACTION_TYPE_RESURRECT,
   wait: ACTION_TYPE_WAIT,
   attack: ACTION_TYPE_ATTACK,
   attackGround: ACTION_TYPE_ATTACK_GROUND,
@@ -94,7 +93,7 @@ const _CODE_TO_ACTION: string[] = [
   'attackGround',
   'wait',
   'capture',
-  'resurrect',
+  'move', // code 11 retired; positional gap keeps later codes aligned
   'loadTransport',
   'unloadTransport',
   'selfDestruct',
@@ -159,30 +158,27 @@ export function codeToBuildingBlueprintId(c: number): StructureBlueprintId | nul
 // ── Projectile type codes ──────────────────────────────────────────
 export const PROJECTILE_TYPE_PROJECTILE = 0;
 const PROJECTILE_TYPE_BEAM = 1;
-const PROJECTILE_TYPE_LASER = 2;
+// Wire code 2 was the retired timed-laser path. Keep the gap so recorded
+// snapshots cannot silently reinterpret it as another projectile family.
 export const PROJECTILE_TYPE_UNKNOWN = 0xff;
 export type ProjectileTypeCode = number;
 const _PROJECTILE_TYPE_TO_CODE: Record<string, ProjectileTypeCode> = {
   projectile: PROJECTILE_TYPE_PROJECTILE,
   beam: PROJECTILE_TYPE_BEAM,
-  laser: PROJECTILE_TYPE_LASER,
 };
-const _CODE_TO_PROJECTILE_TYPE: ('projectile' | 'beam' | 'laser')[] = [
-  'projectile', 'beam', 'laser',
+const _CODE_TO_PROJECTILE_TYPE: (('projectile' | 'beam') | null)[] = [
+  'projectile', 'beam', null,
 ];
 export function projectileTypeToCode(s: string): ProjectileTypeCode {
   return _PROJECTILE_TYPE_TO_CODE[s] ?? PROJECTILE_TYPE_UNKNOWN;
 }
-export function codeToProjectileType(c: number): 'projectile' | 'beam' | 'laser' | null {
+export function codeToProjectileType(c: number): 'projectile' | 'beam' | null {
   return _CODE_TO_PROJECTILE_TYPE[c] ?? null;
 }
 
-/** Code-form sibling of `isRayType` from types/sim.ts — true for
- *  the projectile-type codes that correspond to line shots (beam +
- *  laser). Adding a new line-shot type means extending both
- *  RAY_TYPES (string side) and this code list. */
+/** Code-form sibling of `isRayType` from types/sim.ts. */
 export function isLineProjectileTypeCode(code: ProjectileTypeCode): boolean {
-  return code === PROJECTILE_TYPE_BEAM || code === PROJECTILE_TYPE_LASER;
+  return code === PROJECTILE_TYPE_BEAM;
 }
 
 // ── Shot blueprint codes ───────────────────────────────────────────
@@ -906,7 +902,7 @@ export type NetworkServerSnapshotMotionUpdate = {
   angularVelocity: number;
 };
 
-/** Wire-format vertex of a beam/laser polyline. The full beam is
+/** Wire-format vertex of a beam polyline. The full beam is
  *  `points = [start, ...reflections, end]`. Each vertex carries its
  *  own instantaneous 3D velocity in the world frame. The client applies
  *  the movement position and velocity EMA channels to these authoritative
@@ -1027,7 +1023,7 @@ export type NetworkServerSnapshotProjectiles = {
   spawns: NetworkServerSnapshotProjectileSpawn[] | undefined;
   despawns: NetworkServerSnapshotProjectileDespawn[] | undefined;
   motionUpdates: NetworkServerSnapshotMotionUpdate[] | undefined;
-  /** Authoritative live beam/laser paths. Sent every snapshot so
+  /** Authoritative live beam paths. Sent every snapshot so
    *  clients draw reflected segments directly instead of re-tracing
    *  reflector/unit/building intersections in the render frame. */
   beamUpdates: NetworkServerSnapshotBeamUpdate[] | undefined;

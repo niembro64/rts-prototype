@@ -14,8 +14,6 @@ import type {
   PingCommand,
   QueueUnitCommand,
   RemoveLastQueuedOrderCommand,
-  ResurrectAreaCommand,
-  ResurrectCommand,
   ScanCommand,
   SkipCurrentOrderCommand,
   SelfDestructCommand,
@@ -51,7 +49,6 @@ import {
   canBuilderUpgradeMetalExtractor,
   isUpgradeableMetalExtractorTarget,
 } from '../sim/metalExtractorUpgrade';
-import { isResurrectableWreck } from '../sim/wrecks';
 import { canLoadTransport, isTransportUnit } from '../sim/transports';
 import {
   entityHasBarAttackCommand,
@@ -65,7 +62,6 @@ import {
   entityHasBarMoveStateCommand,
   entityHasBarSetTargetCommand,
   entityHasBarStopCommand,
-  entityCanIssueResurrectCommand,
   entityCanBarAttackGround,
   entityCanBarAttackTarget,
   entityHasCloakCommand,
@@ -240,12 +236,6 @@ export function authorizeGameServerGameplayCommand(
     case 'capture':
       return authorizeCaptureCommand(world, command, playerId);
 
-    case 'resurrect':
-      return authorizeResurrectCommand(world, command, playerId);
-
-    case 'resurrectArea':
-      return authorizeResurrectAreaCommand(world, command, playerId);
-
     case 'loadTransport':
       return authorizeLoadTransportCommand(world, command, playerId);
 
@@ -327,33 +317,6 @@ function authorizeCaptureCommand(
     world.arePlayersAllied(target.ownership.playerId, playerId)
   ) return null;
   return command;
-}
-
-function authorizeResurrectCommand(
-  world: WorldState,
-  command: ResurrectCommand,
-  playerId: PlayerId,
-): ResurrectCommand | null {
-  const commander = world.getEntity(command.commanderId);
-  if (
-    commander === undefined ||
-    commander.ownership?.playerId !== playerId ||
-    !entityCanIssueResurrectCommand(commander)
-  ) return null;
-  return isResurrectableWreck(world.getEntity(command.targetId)) ? command : null;
-}
-
-function authorizeResurrectAreaCommand(
-  world: WorldState,
-  command: ResurrectAreaCommand,
-  playerId: PlayerId,
-): ResurrectAreaCommand | null {
-  const commander = world.getEntity(command.commanderId);
-  return commander !== undefined &&
-    commander.ownership?.playerId === playerId &&
-    entityCanIssueResurrectCommand(commander)
-    ? command
-    : null;
 }
 
 function authorizeStartBuildCommand(
@@ -628,11 +591,15 @@ function authorizeSetTowerTargetCommand(
   const isClearTarget = command.targetId === null &&
     command.targetX === undefined &&
     command.targetY === undefined;
+  const isGroundTarget = command.targetId === null && !isClearTarget;
   return authorizeEntityIds(command, (id) => {
     const entity = world.getEntity(id);
     return entity !== undefined
       && entityHasBarSetTargetCommand(entity)
-      && (isClearTarget || entityCanBarAttackTarget(entity, target))
+      && (
+        isClearTarget ||
+        (isGroundTarget ? entityCanBarAttackGround(entity) : entityCanBarAttackTarget(entity, target))
+      )
       && entity.ownership !== null
       && entity.ownership.playerId === playerId;
   });

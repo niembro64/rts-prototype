@@ -69,8 +69,6 @@ export class RtsScene3DSelectionSystem {
   private guardActive = false;
   private reclaimActive = false;
   private captureActive = false;
-  private resurrectActive = false;
-  private resurrectAreaActive = false;
   private loadTransportActive = false;
   private unloadTransportActive = false;
   private mexUpgradeActive = false;
@@ -225,16 +223,6 @@ export class RtsScene3DSelectionSystem {
     this.selectionInfoDirty = true;
   }
 
-  setResurrectMode(active: boolean): void {
-    this.resurrectActive = active;
-    this.selectionInfoDirty = true;
-  }
-
-  setResurrectAreaMode(active: boolean): void {
-    this.resurrectAreaActive = active;
-    this.selectionInfoDirty = true;
-  }
-
   setLoadTransportMode(active: boolean): void {
     this.loadTransportActive = active;
     this.selectionInfoDirty = true;
@@ -384,8 +372,6 @@ export class RtsScene3DSelectionSystem {
       isGuardMode: this.guardActive,
       isReclaimMode: this.reclaimActive,
       isCaptureMode: this.captureActive,
-      isResurrectMode: this.resurrectActive,
-      isResurrectAreaMode: this.resurrectAreaActive,
       isLoadTransportMode: this.loadTransportActive,
       isUnloadTransportMode: this.unloadTransportActive,
       isMexUpgradeMode: this.mexUpgradeActive,

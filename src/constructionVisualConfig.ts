@@ -6,6 +6,7 @@
  */
 import constructionVisualConfig from './constructionVisualConfig.json';
 import { COLORS, readRgbTuple } from './colorsConfig';
+import { BUILDING_BLUEPRINT_IDS } from './types/blueprintIds';
 
 export type ConstructionHostMarkingAxis = 'up' | 'forward' | 'lateral';
 
@@ -321,10 +322,11 @@ export const CONSTRUCTION_HAZARD_MARKING_STYLE = Object.freeze({
  * Fabricator torus uses its live ring radius as the unit scale, so the
  * same authored clamp-box profile drives the browser and native renderer
  * without restating placement numbers. */
-export const CONSTRUCTION_HOST_MARKING_PROFILES: Readonly<
+function buildConstructionHostMarkingProfiles(): Readonly<
   Record<string, readonly ConstructionHostMarkingProfile[]>
-> = Object.freeze(Object.fromEntries(
-  Object.entries(rawHostMarkings).map(([entityId, value]) => {
+> {
+  const profiles = Object.fromEntries(
+    Object.entries(rawHostMarkings).map(([entityId, value]) => {
     if (!Array.isArray(value) || value.length === 0) {
       throw new Error(
         `constructionVisualConfig.hostMarkings.${entityId} must be a non-empty array of markings`,
@@ -334,13 +336,32 @@ export const CONSTRUCTION_HOST_MARKING_PROFILES: Readonly<
       entityId,
       Object.freeze(value.map((entry, index) => markingProfile(entityId, entry, index))),
     ];
-  }),
-));
+    }),
+  ) as Record<string, readonly ConstructionHostMarkingProfile[]>;
+  const inherit = (targetId: string, sourceId: string): void => {
+    const source = profiles[sourceId];
+    if (source === undefined) {
+      throw new Error(`construction marking source ${sourceId} is missing`);
+    }
+    profiles[targetId] = source;
+  };
+  for (const buildingBlueprintId of BUILDING_BLUEPRINT_IDS) {
+    if (buildingBlueprintId.endsWith('Fabricator')) {
+      inherit(buildingBlueprintId, 'towerFabricator');
+    }
+  }
+  inherit('unitConstructionBot', 'unitCommander');
+  inherit('unitConstructionRover', 'unitConstructionDrone');
+  return Object.freeze(profiles);
+}
+
+export const CONSTRUCTION_HOST_MARKING_PROFILES = buildConstructionHostMarkingProfiles();
 
 export function getConstructionHostMarkingProfiles(
   entityId: string,
 ): readonly ConstructionHostMarkingProfile[] {
-  return CONSTRUCTION_HOST_MARKING_PROFILES[entityId] ?? [];
+  const authored = CONSTRUCTION_HOST_MARKING_PROFILES[entityId];
+  return authored ?? [];
 }
 
 /** Standard construction hazard stripe palette. These are the same

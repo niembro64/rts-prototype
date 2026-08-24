@@ -2724,37 +2724,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn cylinder_sight_obstruction_is_outside_in_only() {
-        let lo = 1e-6;
-        let hi = 1.0 - 1e-6;
-        assert!(
-            shield_segment_enters_infinite_vertical_cylinder(
-                -10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, lo, hi
-            ),
-            "a sightline entering the column must be blocked",
-        );
-        assert!(
-            !shield_segment_enters_infinite_vertical_cylinder(
-                0.0, 0.0, -10.0, 0.0, 0.0, 0.0, 5.0, lo, hi
-            ),
-            "a sightline leaving the column must be clear",
-        );
-        // Aimed tube along +X, radius 2, spanning the origin.
-        assert!(
-            shield_segment_enters_aimed_cylinder(
-                0.0, -10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 2.0, lo, hi
-            ),
-            "a sightline entering the aimed tube must be blocked",
-        );
-        assert!(
-            !shield_segment_enters_aimed_cylinder(
-                0.0, 0.0, 0.0, 0.0, -10.0, 0.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 2.0, lo, hi
-            ),
-            "a sightline leaving the aimed tube must be clear",
-        );
-    }
-
     /// The rule the sight gate now follows is the one the projectile gate
     /// already followed. If a barrier's authored policy ever stops being
     /// outside-in, these two stop agreeing and the sight kernel needs to read
@@ -2808,7 +2777,6 @@ mod tests {
             SHIELD_REFLECTION_MODE_OUTSIDE_IN,
             SHIELD_REFLECTION_MODE_BOTH,
             SHIELD_REFLECTION_MODE_BOTH,
-            SHIELD_REFLECTION_MODE_BOTH,
         );
         assert!(shield_reflection_mode_allows_crossing(plasma_mode, -1.0));
         assert!(!shield_reflection_mode_allows_crossing(plasma_mode, 1.0));
@@ -2816,7 +2784,6 @@ mod tests {
         let beam_mode = shield_reflection_mode_for_entity(
             SHIELD_REFLECTION_ENTITY_BEAM,
             SHIELD_REFLECTION_MODE_OUTSIDE_IN,
-            SHIELD_REFLECTION_MODE_BOTH,
             SHIELD_REFLECTION_MODE_BOTH,
             SHIELD_REFLECTION_MODE_BOTH,
         );
@@ -2830,24 +2797,21 @@ mod tests {
             SHIELD_REFLECTION_MODE_OUTSIDE_IN,
             SHIELD_REFLECTION_MODE_NONE,
             SHIELD_REFLECTION_MODE_BOTH,
-            SHIELD_REFLECTION_MODE_NONE,
         );
         assert_ne!(mask & SHIELD_REFLECTION_ENTITY_BIT_PLASMA, 0);
         assert_eq!(mask & SHIELD_REFLECTION_ENTITY_BIT_ROCKET, 0);
         assert_ne!(mask & SHIELD_REFLECTION_ENTITY_BIT_BEAM, 0);
-        assert_eq!(mask & SHIELD_REFLECTION_ENTITY_BIT_LASER, 0);
     }
 
     #[test]
     fn reflect_none_disables_field_contact_for_selected_entity() {
-        let laser_mode = shield_reflection_mode_for_entity(
-            SHIELD_REFLECTION_ENTITY_LASER,
-            SHIELD_REFLECTION_MODE_OUTSIDE_IN,
+        let blocked_beam_mode = shield_reflection_mode_for_entity(
+            SHIELD_REFLECTION_ENTITY_BEAM,
             SHIELD_REFLECTION_MODE_OUTSIDE_IN,
             SHIELD_REFLECTION_MODE_OUTSIDE_IN,
             SHIELD_REFLECTION_MODE_NONE,
         );
-        let laser_hit = shield_projectile_intersection_contact(
+        let blocked_beam_hit = shield_projectile_intersection_contact(
             -10.0,
             0.0,
             0.0,
@@ -2857,22 +2821,17 @@ mod tests {
             0.0,
             0.0,
             0.0,
-            0.0,
-            0.0,
-            1.0,
             5.0,
             0.0,
-            SHIELD_FIELD_SHAPE_SPHERE,
-            laser_mode,
+            blocked_beam_mode,
         );
-        assert!(laser_hit.is_none());
+        assert!(blocked_beam_hit.is_none());
 
         let beam_mode = shield_reflection_mode_for_entity(
             SHIELD_REFLECTION_ENTITY_BEAM,
             SHIELD_REFLECTION_MODE_NONE,
             SHIELD_REFLECTION_MODE_NONE,
             SHIELD_REFLECTION_MODE_OUTSIDE_IN,
-            SHIELD_REFLECTION_MODE_NONE,
         );
         let beam_hit = shield_projectile_intersection_contact(
             -10.0,
@@ -2884,12 +2843,8 @@ mod tests {
             0.0,
             0.0,
             0.0,
-            0.0,
-            0.0,
-            1.0,
             5.0,
             0.0,
-            SHIELD_FIELD_SHAPE_SPHERE,
             beam_mode,
         )
         .unwrap();

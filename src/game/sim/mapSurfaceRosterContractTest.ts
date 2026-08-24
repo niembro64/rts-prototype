@@ -16,7 +16,7 @@
 
 import { getUnitLocomotion } from './blueprints';
 import { UNIT_BLUEPRINTS } from './blueprints/units';
-import { BUILDING_BLUEPRINTS } from './blueprints/buildings';
+import { BUILDING_BLUEPRINTS, FABRICATOR_BLUEPRINT_IDS } from './blueprints/buildings';
 import {
   isLandOnlyBuildingBlueprintId,
   isLandOnlyUnitBlueprintId,
@@ -293,11 +293,18 @@ function builderBlueprints(): readonly UnitBlueprint[] {
   );
 }
 
+function allStructureFactoryUnitBlueprintIds(): string[] {
+  return [...new Set(
+    FABRICATOR_BLUEPRINT_IDS.flatMap((buildingBlueprintId) =>
+      getStructureFactoryAllowedUnitBlueprintIds(buildingBlueprintId)),
+  )];
+}
+
 function assertRostersNarrowWithTheMap(): void {
   withMapSetup(WET_MAGNITUDES, 'water', () => {
     const builders = builderBlueprints();
     assertContract(builders.length > 0, 'the roster must contain at least one builder');
-    const factoryRoster = getStructureFactoryAllowedUnitBlueprintIds('towerFabricator');
+    const factoryRoster = allStructureFactoryUnitBlueprintIds();
     assertContract(
       factoryRoster.includes('unitOrca') && factoryRoster.includes('unitConstructionSubmarine'),
       'a map with water must offer its submarines',
@@ -313,7 +320,7 @@ function assertRostersNarrowWithTheMap(): void {
   });
 
   withMapSetup(DRY_MAGNITUDES, 'water', () => {
-    const factoryRoster = getStructureFactoryAllowedUnitBlueprintIds('towerFabricator');
+    const factoryRoster = allStructureFactoryUnitBlueprintIds();
     for (const unitBlueprintId of factoryRoster) {
       assertContract(
         !isWaterOnlyUnitBlueprintId(unitBlueprintId),
@@ -342,7 +349,7 @@ function assertRostersNarrowWithTheMap(): void {
 
   // Same narrowing when the basin is there but the liquid burns.
   withMapSetup(WET_MAGNITUDES, 'lava', () => {
-    const factoryRoster = getStructureFactoryAllowedUnitBlueprintIds('towerFabricator');
+    const factoryRoster = allStructureFactoryUnitBlueprintIds();
     assertContract(
       !factoryRoster.includes('unitOrca'),
       'a lava map must not offer submarines despite its excavated basins',
@@ -357,7 +364,7 @@ function assertRostersNarrowWithTheMap(): void {
   // the ambient rosters unnarrowed as the baseline.
   withMapSetup(WET_MAGNITUDES, 'water', () => {
     const factoryRoster = unitBlueprintIdsForMediumKey(
-      getStructureFactoryAllowedUnitBlueprintIds('towerFabricator'),
+      allStructureFactoryUnitBlueprintIds(),
       MEDIUM_KEY_WATER,
     );
     for (const unitBlueprintId of factoryRoster) {
@@ -413,7 +420,7 @@ function assertRostersNarrowWithTheMap(): void {
     },
     'water',
     () => {
-      const factoryRoster = getStructureFactoryAllowedUnitBlueprintIds('towerFabricator');
+      const factoryRoster = allStructureFactoryUnitBlueprintIds();
       assertContract(
         factoryRoster.includes('unitLynx'),
         'a dug-everywhere map still has ground — fabricators must keep their tanks',

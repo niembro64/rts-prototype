@@ -8,8 +8,6 @@ import type {
   GuardCommand,
   LoadTransportCommand,
   QueueUnitCommand,
-  ResurrectAreaCommand,
-  ResurrectCommand,
   SetBuilderPriorityCommand,
   SetCarrierSpawnCommand,
   SetCloakStateCommand,
@@ -29,6 +27,7 @@ import { authorizeGameServerGameplayCommand } from './ServerCommandAuthorizer';
 import { LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES } from '../architecture/LockstepCommandProtocol';
 import gameServerSource from './GameServer.ts?raw';
 import commandExecutionSource from '../sim/commandExecution.ts?raw';
+import { getTurretConfig } from '../sim/turretConfigs';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -65,18 +64,6 @@ function assertServerControlSwitchCoversEveryGameplaySetting(): void {
       `${commandType} must stay host-only: the ownership authorizer must not hand it to an arbitrary player`,
     );
   }
-}
-
-function createResurrectableWreck(world: WorldState): Entity {
-  const wreck = world.createBuilding(320, 80, 24, 24, 12, 1);
-  wreck.wreck = {
-    source: { kind: 'unit', unitBlueprintId: 'unitJackal' },
-    originalOwnerId: 2,
-    resurrectProgressMs: 0,
-    resurrectRequiredMs: 1000,
-  } as NonNullable<Entity['wreck']>;
-  world.addEntity(wreck);
-  return wreck;
 }
 
 export function runServerCommandAuthorizerContractTest(): void {
@@ -133,36 +120,31 @@ export function runServerCommandAuthorizerContractTest(): void {
   fabricator.buildingBlueprintId = 'towerFabricator';
   fabricator.factory = { guardTargetId: null, moveState: 'holdPosition', airIdleState: 'land' } as typeof fabricator.factory;
   const cannonTower = world.createBuilding(300, 80, 80, 80, 40, 1);
+  cannonTower.transform.z = 20;
   cannonTower.type = 'building';
   cannonTower.buildingBlueprintId = 'towerCannon';
   cannonTower.combat = {
     turrets: [
       {
-        config: {
-          kind: 'attack',
-          passive: false,
-          targeting: { engagement: { range: 160 } },
-          shot: { type: 'plasma' },
-        },
+        config: getTurretConfig('turretCannonLong'),
       },
     ],
   } as unknown as NonNullable<Entity['combat']>;
   const enemyCannonTower = world.createBuilding(340, 80, 80, 80, 40, 2);
+  enemyCannonTower.transform.z = 20;
   enemyCannonTower.type = 'building';
   enemyCannonTower.buildingBlueprintId = 'towerCannon';
   enemyCannonTower.combat = cannonTower.combat;
   const antiAirTower = world.createBuilding(380, 80, 80, 80, 40, 1);
+  // The bare contract world uses a -400 terrain bed; this is explicitly a
+  // land-defense fixture, so place its center on the normal z=0 surface.
+  antiAirTower.transform.z = 20;
   antiAirTower.type = 'building';
   antiAirTower.buildingBlueprintId = 'towerAntiAir';
   antiAirTower.combat = {
     turrets: [
       {
-        config: {
-          kind: 'attack',
-          passive: false,
-          targeting: { engagement: { range: 240 } },
-          shot: { type: 'rocket' },
-        },
+        config: getTurretConfig('turretAntiAir'),
       },
     ],
   } as unknown as NonNullable<Entity['combat']>;
@@ -769,92 +751,6 @@ export function runServerCommandAuthorizerContractTest(): void {
     'capture must reject owned units without a BAR-equivalent capture command',
   );
 
-  const resurrectableWreck = createResurrectableWreck(world);
-  const resurrectCommand: ResurrectCommand = {
-    type: 'resurrect',
-    tick: 1,
-    commanderId: constructionDrone.id,
-    targetId: resurrectableWreck.id,
-    queue: false,
-  };
-  const authorizedResurrect = authorizeGameServerGameplayCommand(world, resurrectCommand, {
-    mode: 'player',
-    playerId: 1,
-  });
-  assertContract(
-    authorizedResurrect === null,
-    'resurrect must reject unitConstructionDrone because it maps to BAR armcv constructor slots, not armrectr',
-  );
-
-  const commanderResurrectCommand: ResurrectCommand = {
-    type: 'resurrect',
-    tick: 1,
-    commanderId: commander.id,
-    targetId: resurrectableWreck.id,
-    queue: false,
-  };
-  const authorizedCommanderResurrect = authorizeGameServerGameplayCommand(world, commanderResurrectCommand, {
-    mode: 'player',
-    playerId: 1,
-  });
-  assertContract(
-    authorizedCommanderResurrect?.type === 'resurrect' &&
-      authorizedCommanderResurrect.commanderId === commander.id,
-    'resurrect must preserve the prototype commander resurrect command outside BAR presets',
-  );
-
-  const rejectedNonResurrectSource = authorizeGameServerGameplayCommand(world, {
-    type: 'resurrect',
-    tick: 1,
-    commanderId: jackal.id,
-    targetId: resurrectableWreck.id,
-    queue: false,
-  }, {
-    mode: 'player',
-    playerId: 1,
-  });
-  assertContract(
-    rejectedNonResurrectSource === null,
-    'resurrect must reject owned units without prototype or BAR-equivalent resurrect capability',
-  );
-
-  const resurrectAreaCommand: ResurrectAreaCommand = {
-    type: 'resurrectArea',
-    tick: 1,
-    commanderId: constructionDrone.id,
-    targetX: 320,
-    targetY: 80,
-    radius: 96,
-    queue: false,
-  };
-  const authorizedResurrectArea = authorizeGameServerGameplayCommand(world, resurrectAreaCommand, {
-    mode: 'player',
-    playerId: 1,
-  });
-  assertContract(
-    authorizedResurrectArea === null,
-    'resurrectArea must reject unitConstructionDrone because the current BAR-equivalent roster has no armrectr analogue',
-  );
-
-  const commanderResurrectAreaCommand: ResurrectAreaCommand = {
-    type: 'resurrectArea',
-    tick: 1,
-    commanderId: commander.id,
-    targetX: 320,
-    targetY: 80,
-    radius: 96,
-    queue: false,
-  };
-  const authorizedCommanderResurrectArea = authorizeGameServerGameplayCommand(world, commanderResurrectAreaCommand, {
-    mode: 'player',
-    playerId: 1,
-  });
-  assertContract(
-    authorizedCommanderResurrectArea?.type === 'resurrectArea' &&
-      authorizedCommanderResurrectArea.commanderId === commander.id,
-    'resurrectArea must preserve the prototype commander resurrect command outside BAR presets',
-  );
-
   const loadTransportCommand: LoadTransportCommand = {
     type: 'loadTransport',
     tick: 1,
@@ -872,6 +768,19 @@ export function runServerCommandAuthorizerContractTest(): void {
       authorizedLoadTransport.transportId === transport.id &&
       authorizedLoadTransport.targetId === jackal.id,
     'owned transport must authorize targeted Load units for a loadable friendly passenger',
+  );
+  const authorizedEnemyLoadTransport = authorizeGameServerGameplayCommand(world, {
+    ...loadTransportCommand,
+    targetId: enemyCommander.id,
+  }, {
+    mode: 'player',
+    playerId: 1,
+  });
+  assertContract(
+    authorizedEnemyLoadTransport?.type === 'loadTransport' &&
+      'targetId' in authorizedEnemyLoadTransport &&
+      authorizedEnemyLoadTransport.targetId === enemyCommander.id,
+    'an owned transport must authorize loading an otherwise valid enemy unit',
   );
 
   const loadTransportAreaCommand: LoadTransportCommand = {

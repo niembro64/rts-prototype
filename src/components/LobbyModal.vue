@@ -843,10 +843,16 @@ const terrainSectionVars = computed(() =>
         </section>
       </div>
 
+      <!-- Global HOME chat is owned by GameCanvas and projected here so its
+           polling lifecycle and Enter-to-focus ref remain single-owner. -->
+      <section class="action-section sidebar-chat-section" aria-label="Global chat">
+        <span class="action-section-label">GLOBAL CHAT</span>
+        <slot name="home-chat"></slot>
+      </section>
 
       <!-- The reference side rooms as a compact icon row STUCK to the
-           sidebar's bottom edge — the Open Lobbies list above is the only
-           part of this column that scrolls. -->
+           sidebar's bottom edge, immediately below global chat. The Open
+           Lobbies list above is the only part of this column that scrolls. -->
       <section class="pages-icon-row" aria-label="Reference pages">
         <button
           class="page-icon-btn"
@@ -1236,6 +1242,7 @@ const terrainSectionVars = computed(() =>
                attached is part of, watchers included — the split into
                team/spectator rooms happens only when the battle starts. -->
           <ChatConsole
+            ref="chatConsoleRef"
             class="lobby-chat"
             :messages="chatMessages"
             :channels="[{ id: 'all', label: 'LOBBY' }]"
@@ -1961,14 +1968,14 @@ const terrainSectionVars = computed(() =>
   width: 100%;
   height: 100%;
   box-sizing: border-box;
-  padding: 30px 26px;
+  padding: 18px 16px 12px;
   /* The column itself never scrolls: the Open Lobbies list inside is the
    * single scrolling region, and the reference icon row below stays stuck
    * to the bottom edge. */
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 12px;
   text-align: left;
   /* Fully opaque so no demo gameplay shows through behind the panel. */
   background: #0f1218;
@@ -1988,11 +1995,12 @@ const terrainSectionVars = computed(() =>
 /* Layout overrides for elements shared with the old centered modal,
  * re-flowed for the vertical left-aligned sidebar column. */
 .menu-sidebar-panel .title {
-  font-size: 26px;
+  font-size: 24px;
+  line-height: 1.1;
 }
 
 .menu-sidebar-panel .subtitle {
-  margin: 6px 0 0;
+  margin: 3px 0 0;
 }
 
 .menu-sidebar-panel .main-actions,
@@ -2010,6 +2018,7 @@ const terrainSectionVars = computed(() =>
   min-height: 0;
   display: flex;
   flex-direction: column;
+  gap: 6px;
 }
 
 .menu-sidebar-panel .internet-section {
@@ -2025,6 +2034,16 @@ const terrainSectionVars = computed(() =>
   max-height: none;
 }
 
+.menu-sidebar-panel .action-section {
+  gap: 6px;
+  padding: 7px 9px 9px;
+}
+
+.menu-sidebar-panel .internet-section .lobby-list {
+  padding-top: 7px;
+  margin-top: 0;
+}
+
 .menu-sidebar-panel .surface-actions {
   justify-content: flex-start;
 }
@@ -2035,6 +2054,26 @@ const terrainSectionVars = computed(() =>
 
 .menu-sidebar-panel .footer-row {
   justify-content: flex-start;
+}
+
+.sidebar-chat-section {
+  flex: 0 0 auto;
+  min-width: 0;
+  background: rgba(150, 170, 195, 0.07);
+  border: 1px solid rgba(150, 170, 195, 0.3);
+}
+
+.sidebar-chat-section .action-section-label {
+  color: #9fb2c8;
+}
+
+.sidebar-chat-section :deep(.chat-console) {
+  width: 100%;
+  min-width: 0;
+}
+
+.sidebar-chat-section :deep(.chat-log) {
+  max-height: 104px;
 }
 
 /* Bottom-stuck reference icons: Entity Lab / Game Controls / Game Info. */
@@ -2075,8 +2114,8 @@ const terrainSectionVars = computed(() =>
 .lobby-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 14px;
+  gap: 6px;
+  padding: 10px;
   background: rgba(0, 0, 0, 0.25);
   border: 1px solid #3a4452;
   border-radius: 10px;
@@ -2267,8 +2306,8 @@ const terrainSectionVars = computed(() =>
 .action-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px 12px;
+  gap: 6px;
+  padding: 7px 9px 9px;
   border-radius: 10px;
 }
 

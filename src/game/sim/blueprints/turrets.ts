@@ -15,7 +15,7 @@ import {
   TURRET_EMITTER_KINDS,
 } from '../../../types/blueprints';
 import rawTurretBlueprints from './turrets.json';
-import { resolveBlueprintRefs } from './jsonRefs';
+import { resolveBlueprintRecordInheritance, resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields, isObject } from './jsonValidation';
 import type { LockOnInclusionObject, TurretBlueprint } from './types';
 import { assertNoInlineLockOnInclusionFields } from './lockOnValidation';
@@ -49,6 +49,7 @@ const TURRET_EXPLICIT_FIELDS = [
 const TURRET_EMITTER_KIND_SET: ReadonlySet<string> = new Set(TURRET_EMITTER_KINDS);
 
 type JsonTurretBlueprint = Omit<TurretBlueprint, keyof LockOnInclusionObject>;
+type InheritableJsonTurretBlueprint = Partial<JsonTurretBlueprint> & { $extends?: string };
 
 const TURRET_COOLDOWN_FIELDS = ['duration', 'durationRandomness'] as const;
 const TURRET_SUBMUNITION_EXPLICIT_FIELDS = [
@@ -144,9 +145,13 @@ function validateAngularActuator(label: string, value: TurretBlueprint['angularA
   }
 }
 
-const RESOLVED_TURRET_BLUEPRINTS = resolveBlueprintRefs(
+const TURRET_BLUEPRINTS_WITH_REFS = resolveBlueprintRefs(
   rawTurretBlueprints,
-) as unknown as Record<TurretBlueprintId, JsonTurretBlueprint>;
+) as unknown as Record<string, InheritableJsonTurretBlueprint>;
+const RESOLVED_TURRET_BLUEPRINTS = resolveBlueprintRecordInheritance<JsonTurretBlueprint>(
+  TURRET_BLUEPRINTS_WITH_REFS as unknown as Record<string, Record<string, unknown> & { $extends?: string }>,
+  'turret blueprint',
+) as Record<TurretBlueprintId, JsonTurretBlueprint>;
 
 assertTurretLockOnInclusionConfigIds(Object.keys(RESOLVED_TURRET_BLUEPRINTS));
 

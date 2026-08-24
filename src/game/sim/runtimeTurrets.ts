@@ -320,10 +320,6 @@ function computeTurretSustainedDps(config: TurretConfig): number {
   if (!shot) return 0;
   if (shot.type === 'beam') return shot.dps;
   const cooldownDuration = getTurretCooldownDuration(config.cooldown);
-  if (shot.type === 'laser') {
-    const period = Math.max(shot.duration, cooldownDuration);
-    return period > 0 ? (shot.dps * shot.duration) / period : 0;
-  }
   if (isProjectileShot(shot)) {
     const damage = shot.explosion !== undefined ? shot.explosion.damage : 0;
     return cooldownDuration > 0 ? (damage * 1000) / cooldownDuration : 0;

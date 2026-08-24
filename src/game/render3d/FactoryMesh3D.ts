@@ -13,7 +13,8 @@ import {
   makeBox,
   teamOrnamentDetail,
 } from './BuildingMeshPrimitives3D';
-import { fabricatorTorusHoverHeight, fabricatorTorusRingRadius } from '../sim/blueprints';
+import { fabricatorProductionPlaneHeight, fabricatorTorusRingRadius } from '../sim/blueprints';
+import type { BuildingBlueprintId } from '../sim/types';
 import {
   buildProductionHoldRingMesh,
   disposeProductionHoldRingGeom,
@@ -22,6 +23,24 @@ import {
   buildConstructionHostMarking,
   disposeConstructionHostMarkingGeometries,
 } from './ConstructionHostMarking3D';
+import type { BuildingTeamOrnamentKind } from './BuildingTeamOrnament3D';
+
+function fabricatorOrnamentKind(
+  buildingBlueprintId: BuildingBlueprintId,
+): BuildingTeamOrnamentKind {
+  switch (buildingBlueprintId) {
+    case 'buildingBotFabricator': return 'botFabricatorClamps';
+    case 'buildingVehicleFabricator': return 'vehicleFabricatorClamps';
+    case 'buildingAircraftFabricator': return 'aircraftFabricatorClamps';
+    case 'buildingNavalFabricator': return 'navalFabricatorClamps';
+    case 'buildingAdvancedUniversalFabricator': return 'advancedUniversalFabricatorClamps';
+    case 'buildingAdvancedBotFabricator': return 'advancedBotFabricatorClamps';
+    case 'buildingAdvancedVehicleFabricator': return 'advancedVehicleFabricatorClamps';
+    case 'buildingAdvancedAircraftFabricator': return 'advancedAircraftFabricatorClamps';
+    case 'buildingAdvancedNavalFabricator': return 'advancedNavalFabricatorClamps';
+    default: return 'fabricatorClamps';
+  }
+}
 
 /** Factory chassis: the player-colored hovering torus body. Realized
  *  construction work emits from the factory's host-authored work point. */
@@ -29,18 +48,19 @@ export function buildFactoryMesh(
   width: number,
   depth: number,
   primaryMat: THREE.Material,
+  buildingBlueprintId: BuildingBlueprintId,
 ): BuildingShape {
   // The fabricator is a hovering TORUS, not a body shell — render bodyless and
   // hang the ring in the air.
   const primary = new THREE.Mesh(getBuildingCylinderGeometry(), primaryMat);
   const details: BuildingShape['details'] = [];
-  const blueprint = getBuildingBlueprint('towerFabricator');
+  const blueprint = getBuildingBlueprint(buildingBlueprintId);
 
   // Hovering torus body: a flat (horizontal) player-colored ring at the spawn
   // height, sized to the footprint. The unit shell is held in its center while
   // the factory applies build power.
   const ringRadius = fabricatorTorusRingRadius(width, depth);
-  const hoverHeight = fabricatorTorusHoverHeight();
+  const hoverHeight = fabricatorProductionPlaneHeight(buildingBlueprintId);
   const torus = buildProductionHoldRingMesh(
     ringRadius,
     primaryMat,
@@ -57,6 +77,7 @@ export function buildFactoryMesh(
   const clampWidth = Math.max(8, ringRadius * 0.2);
   const clampHeight = Math.max(3, ringRadius * 0.045);
   const clampDepth = Math.max(5, ringRadius * 0.085);
+  const ornamentKind = fabricatorOrnamentKind(buildingBlueprintId);
   for (let i = 0; i < 6; i++) {
     const angle = (i / 6) * Math.PI * 2;
     const clamp = makeBox(
@@ -69,12 +90,12 @@ export function buildFactoryMesh(
       Math.sin(angle) * ringRadius,
     );
     clamp.rotation.y = angle + Math.PI / 2;
-    details.push(teamOrnamentDetail(clamp, 'fabricatorClamps'));
+    details.push(teamOrnamentDetail(clamp, ornamentKind));
   }
 
-  const markingProfiles = getConstructionHostMarkingProfiles('towerFabricator');
+  const markingProfiles = getConstructionHostMarkingProfiles(buildingBlueprintId);
   if (!markingProfiles.some((profile) => profile.kind === 'ringBoxes')) {
-    throw new Error('towerFabricator requires perimeter-mounted construction clamp boxes');
+    throw new Error(`${buildingBlueprintId} requires perimeter-mounted construction clamp boxes`);
   }
   for (const markingProfile of markingProfiles) {
     const marking = buildConstructionHostMarking(

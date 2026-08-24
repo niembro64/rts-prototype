@@ -26,7 +26,7 @@ type ConstructionLifecycleResult = {
   completedBuildings: Entity[];
   /** Shells that rotted all the way back to zero progress this tick. The
    *  caller removes them; a decayed frame is not a death, so it produces no
-   *  explosion, wreck, or death event. */
+   *  explosion or death event. */
   decayedBuildings: Entity[];
 };
 

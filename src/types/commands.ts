@@ -57,8 +57,6 @@ type CommandType =
   | 'reclaim'
   | 'reclaimArea'
   | 'capture'
-  | 'resurrect'
-  | 'resurrectArea'
   | 'loadTransport'
   | 'unloadTransport'
   | 'wait'
@@ -401,19 +399,18 @@ export type RepairCommand = BaseCommand & {
 
 /** Broad target buckets for BAR-style area-command filters
  *  (cmd_area_commands_filter.lua). BAR distinguishes units from
- *  features (wrecks); ours adds buildings since our area commands
+ *  features; ours adds buildings since our area commands
  *  can target them too. */
-export type AreaCommandFilterCategory = 'unit' | 'building' | 'wreck' | 'vegetation';
+export type AreaCommandFilterCategory = 'unit' | 'building' | 'vegetation';
 
 /** Optional BAR cmd_area_commands_filter parity fields shared by the
- *  area repair/reclaim/resurrect commands. Both derive from the entity
+ *  area repair/reclaim commands. Both derive from the entity
  *  hovered at the area-drag anchor; absent = unfiltered (default).
- *  - Ctrl (BAR: "targets all units in the area / all wrecks of the same
- *    tech level"): `filterCategory` keeps only targets in the hovered
- *    target's broad category.
+ *  - Ctrl (BAR: "targets all units in the area"): `filterCategory`
+ *    keeps only targets in the hovered target's broad category.
  *  - Alt (BAR: "targets all units that share the same unitDefId"):
  *    `filterBlueprintId` keeps only targets with the hovered target's
- *    exact blueprint (wrecks match on their source blueprint). */
+ *    exact blueprint. */
 export type BarAreaTargetOrder = {
   targetOrderOriginX?: number;
   targetOrderOriginY?: number;
@@ -469,27 +466,6 @@ export type CaptureCommand = BaseCommand & {
   type: 'capture';
   commanderId: EntityId;
   targetId: EntityId;
-  queue: boolean;
-  queueFront?: boolean;
-  queueInsertIndex?: number;
-};
-
-export type ResurrectCommand = BaseCommand & {
-  type: 'resurrect';
-  commanderId: EntityId;
-  targetId: EntityId;
-  queue: boolean;
-  queueFront?: boolean;
-  queueInsertIndex?: number;
-};
-
-export type ResurrectAreaCommand = BaseCommand & AreaCommandFilterFields & {
-  type: 'resurrectArea';
-  commanderId: EntityId;
-  targetX: number;
-  targetY: number;
-  targetZ?: number;
-  radius: number;
   queue: boolean;
   queueFront?: boolean;
   queueInsertIndex?: number;
@@ -731,8 +707,6 @@ export type Command =
   | ReclaimCommand
   | ReclaimAreaCommand
   | CaptureCommand
-  | ResurrectCommand
-  | ResurrectAreaCommand
   | LoadTransportCommand
   | UnloadTransportCommand
   | WaitCommand

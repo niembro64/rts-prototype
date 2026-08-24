@@ -5,7 +5,7 @@ export interface ShieldSurfacePoolApi {
   clear: () => void;
   /** Number of field surfaces currently stamped. */
   count: () => number;
-  /** ── Spherical / infinite-cylinder fields ── */
+  /** ── Spherical fields ── */
   setFieldCount: (count: number) => void;
   setField: (
     idx: number,
@@ -14,21 +14,13 @@ export interface ShieldSurfacePoolApi {
     prevCenterX: number,
     prevCenterY: number,
     prevCenterZ: number,
-    prevAxisEndX: number,
-    prevAxisEndY: number,
-    prevAxisEndZ: number,
     centerX: number,
     centerY: number,
     centerZ: number,
-    axisEndX: number,
-    axisEndY: number,
-    axisEndZ: number,
     radius: number,
-    shape: number,
     plasmaReflectionMode: number,
     rocketReflectionMode: number,
     beamReflectionMode: number,
-    laserReflectionMode: number,
   ) => void;
   readonly idPtr: () => number;
   readonly ownerEntityIdPtr: () => number;
@@ -70,7 +62,6 @@ export interface ShieldSurfacePoolApi {
     plasmaReflectionMode: number,
     rocketReflectionMode: number,
     beamReflectionMode: number,
-    laserReflectionMode: number,
   ) => void;
   setPanelMaterialMode: (reflectionMode: number) => void;
   /** AIM-08.2 — direct-segment shield clearance. Returns 1 if the

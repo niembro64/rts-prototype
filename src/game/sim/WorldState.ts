@@ -1526,7 +1526,7 @@ export class WorldState {
     );
   }
 
-  // Create a beam / laser projectile. Beams are instantaneous line
+  // Create a beam projectile. Beams are line
   // weapons — the z coord is the launch-origin altitude at the moment
   // of firing (same altitude for start and end; beams don't droop under
   // gravity). Passing z lets the renderer draw the beam at the right
@@ -1541,7 +1541,7 @@ export class WorldState {
     ownerId: PlayerId,
     sourceEntityId: EntityId,
     config: ProjectileConfig,
-    projectileType: 'beam' | 'laser' = 'beam',
+    projectileType: 'beam' = 'beam',
     provenance: CreateProjectileProvenance | null = null,
   ): Entity {
     return this.projectileFactory.createBeam(

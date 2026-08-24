@@ -8,7 +8,7 @@
 
 import { isShotBlueprintId, type ShotBlueprintId } from '../../../types/blueprintIds';
 import rawShotBlueprints from './shots.json';
-import { resolveBlueprintRefs } from './jsonRefs';
+import { resolveBlueprintRecordInheritance, resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields, isObject } from './jsonValidation';
 import type { ShotBlueprint } from './types';
 import {
@@ -31,9 +31,13 @@ const PROJECTILE_EXPLICIT_FIELDS = [
   'smokeTrail',
 ] as const;
 
-export const SHOT_BLUEPRINTS = resolveBlueprintRefs(
+const SHOT_BLUEPRINTS_WITH_REFS = resolveBlueprintRefs(
   rawShotBlueprints,
-) as unknown as Record<ShotBlueprintId, ShotBlueprint>;
+) as unknown as Record<string, Record<string, unknown> & { $extends?: string }>;
+export const SHOT_BLUEPRINTS = resolveBlueprintRecordInheritance<ShotBlueprint>(
+  SHOT_BLUEPRINTS_WITH_REFS,
+  'shot blueprint',
+) as Record<ShotBlueprintId, ShotBlueprint>;
 
 export function getShotBlueprint(id: string): ShotBlueprint {
   if (!isShotBlueprintId(id)) throw new Error(`Unknown shot blueprint: ${id}`);

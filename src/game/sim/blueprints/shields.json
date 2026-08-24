@@ -16,8 +16,7 @@
         "plasma": "reflect-outside",
         "rocket": "reflect-outside",
         "missile": "reflect-outside",
-        "beam": "reflect-outside",
-        "laser": "reflect-outside"
+        "beam": "reflect-outside"
       }
     },
     "barrier": {
@@ -43,8 +42,7 @@
         "plasma": "reflect-outside",
         "rocket": "reflect-outside",
         "missile": "reflect-outside",
-        "beam": "reflect-outside",
-        "laser": "reflect-outside"
+        "beam": "reflect-outside"
       }
     },
     "barrier": {
@@ -55,60 +53,6 @@
     },
     "hitSound": null,
     "shieldBlueprintId": "shieldSphereSmall"
-  },
-  "shieldCylinderInfinite": {
-    "type": "shield",
-    "mediumTrajectory": {
-      "aboveWater": { "aboveWater": false, "underwater": false },
-      "underwater": { "aboveWater": false, "underwater": false }
-    },
-    "materialId": "reflectiveShield",
-    "angle": 6.283185307179586,
-    "transitionTime": 500,
-    "reflection": {
-      "entities": {
-        "plasma": "reflect-outside",
-        "rocket": "reflect-outside",
-        "missile": "reflect-outside",
-        "beam": "reflect-outside",
-        "laser": "reflect-outside"
-      }
-    },
-    "barrier": {
-      "shape": "infiniteVerticalCylinder",
-      "outerRatio": 1.0,
-      "originOffsetRadiusRatio": 0.0,
-      "rimWidth": null
-    },
-    "hitSound": null,
-    "shieldBlueprintId": "shieldCylinderInfinite"
-  },
-  "shieldCylinderInfiniteAimed": {
-    "type": "shield",
-    "mediumTrajectory": {
-      "aboveWater": { "aboveWater": false, "underwater": false },
-      "underwater": { "aboveWater": false, "underwater": false }
-    },
-    "materialId": "reflectiveShield",
-    "angle": 6.283185307179586,
-    "transitionTime": 500,
-    "reflection": {
-      "entities": {
-        "plasma": "reflect-outside",
-        "rocket": "reflect-outside",
-        "missile": "reflect-outside",
-        "beam": "reflect-outside",
-        "laser": "reflect-outside"
-      }
-    },
-    "barrier": {
-      "shape": "aimedCylinder",
-      "outerRatio": 0.1,
-      "originOffsetRadiusRatio": 0,
-      "rimWidth": null
-    },
-    "hitSound": null,
-    "shieldBlueprintId": "shieldCylinderInfiniteAimed"
   },
   "shieldPanel": {
     "type": "shield",
@@ -124,8 +68,7 @@
         "plasma": "reflect-both",
         "rocket": "reflect-both",
         "missile": "reflect-both",
-        "beam": "reflect-both",
-        "laser": "reflect-both"
+        "beam": "reflect-both"
       }
     },
     "barrier": null,

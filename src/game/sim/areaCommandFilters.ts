@@ -1,13 +1,12 @@
 // BAR cmd_area_commands_filter.lua parity helpers, shared by the area
 // command executors (sim), the command sanitizer (server), and the
-// area-drag controller (client). BAR filters area repair/reclaim/
-// resurrect targets by the thing hovered at the area center:
-//   - Ctrl: all units in the area (for wrecks: same tech level). Our
-//     blueprints have no tech levels, so Ctrl maps to the hovered
-//     target's broad category ('unit' | 'building' | 'wreck').
+// area-drag controller (client). BAR filters area repair/reclaim
+// targets by the thing hovered at the area center:
+//   - Ctrl: all units in the area. Our blueprints have no tech levels,
+//     so Ctrl maps to the hovered target's broad category
+//     ('unit' | 'building').
 //   - Alt: only targets sharing the hovered target's unitDefId /
-//     featureDefId. Ours maps that to the exact blueprint id (wrecks
-//     match on their source blueprint).
+//     featureDefId. Ours maps that to the exact blueprint id.
 // Category and blueprint checks are both applied when both fields are
 // present (the client only ever sets one; a blueprint match implies its
 // category anyway, so the conjunction stays deterministic and safe).
@@ -17,17 +16,15 @@ import type { Entity } from './types';
 import type { VegetationProp } from './vegetation';
 
 const AREA_COMMAND_FILTER_CATEGORIES: readonly AreaCommandFilterCategory[] =
-  ['unit', 'building', 'wreck', 'vegetation'];
+  ['unit', 'building', 'vegetation'];
 
 export function isAreaCommandFilterCategory(value: unknown): value is AreaCommandFilterCategory {
   return typeof value === 'string' &&
     AREA_COMMAND_FILTER_CATEGORIES.includes(value as AreaCommandFilterCategory);
 }
 
-/** Broad filter bucket for an area-command target. Wreck entities are
- *  buildings with a wreck component, so the wreck check runs first. */
+/** Broad filter bucket for an area-command target. */
 function areaCommandFilterCategoryOf(entity: Entity): AreaCommandFilterCategory {
-  if (entity.wreck !== null) return 'wreck';
   if (entity.unit !== null) return 'unit';
   return 'building';
 }
@@ -41,18 +38,10 @@ export function isEntityAreaCommandFilterCategory(
   return category !== 'vegetation';
 }
 
-/** Blueprint identity used by the same-type (Alt) filter. Wrecks match
- *  on the blueprint of what they were before dying — BAR's same
- *  featureDefId behaves identically because each wreck featureDef is
- *  derived from its source unitDef. Returns null for entities without
- *  any blueprint identity (they never match a blueprint filter). */
+/** Blueprint identity used by the same-type (Alt) filter. Returns null
+ *  for entities without any blueprint identity (they never match a
+ *  blueprint filter). */
 function areaCommandFilterBlueprintIdOf(entity: Entity): string | null {
-  const wreck = entity.wreck;
-  if (wreck !== null) {
-    return wreck.source.kind === 'unit'
-      ? wreck.source.unitBlueprintId
-      : wreck.source.buildingBlueprintId;
-  }
   if (entity.unit !== null) return entity.unit.unitBlueprintId;
   if (entity.buildingBlueprintId !== null) return entity.buildingBlueprintId;
   return null;

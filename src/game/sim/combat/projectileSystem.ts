@@ -2,7 +2,7 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Projectile system - firing, movement, and beam updates
 
 import type { WorldState } from '../WorldState';
-import type { BeamPoint, BeamPulsePlan, Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShotSource, Turret, TurretConfig } from '../types';
+import type { BeamPoint, BeamPulsePlan, Entity, EntityId, ProjectileShot, ShotSource, Turret, TurretConfig } from '../types';
 import {
   getEmissionBlueprintId,
   isRayConfig,
@@ -35,10 +35,7 @@ import {
   BEAM_MAX_SEGMENTS,
   BEAM_MIN_ON_TIME_MS,
 } from '../../../config';
-import {
-  SHIELD_REFLECTION_ENTITY_BEAM,
-  SHIELD_REFLECTION_ENTITY_LASER,
-} from './reflectorBatch';
+import { SHIELD_REFLECTION_ENTITY_BEAM } from './reflectorBatch';
 import {
   getEntityAcceleration3d,
   getEntityPosition3d,
@@ -912,25 +909,6 @@ export function fireTurrets(
       // exploit a coincidentally aligned shared pose to begin a second pulse.
       if (!turretOwnsSharedAimPieceClaim(unit, weaponIndex)) continue;
 
-      // Legacy laser recoil remains per-tick here. Committed attack-beam
-      // recoil is integrated from its coarse authoritative collision windows
-      // so it continues for the full fired pulse even if the lock disappears.
-      if (shot.type === 'laser' && forceAccumulator && shot.recoil && hasActiveWeaponBeam(world, unit.id, weaponIndex)) {
-        const dtSec = dtMs / 1000;
-        const knockBackPerTick = (shot as BeamRay | LaserRay).recoil * PROJECTILE_MASS_MULTIPLIER * dtSec;
-        const turretAngle = weapon.rotation;
-        const dirX = DMath.cos(turretAngle);
-        const dirY = DMath.sin(turretAngle);
-        forceAccumulator.addForce(
-          unit.id,
-          -dirX * knockBackPerTick,
-          -dirY * knockBackPerTick,
-          'recoil',
-          0,
-          unit.entitySlotId,
-        );
-      }
-
       const groundTargetPoint = combat.priorityTargetPoint;
       let lockedTarget: Entity | undefined;
       if (targetingTargetId !== -1) {
@@ -1136,12 +1114,10 @@ export function fireTurrets(
 
         if (!canFire && !canBurstFire) continue;
 
-        if (shot.type === 'laser' && hasActiveWeaponBeam(world, unit.id, weaponIndex)) continue;
       }
 
-      // Handle cooldowns. For laser shots, cooldown is set when the beam
-      // expires (not at fire time), so the gap between shots =
-      // beamDuration + cooldown.
+      // Handle cooldowns for discrete projectile shots. Beams own their
+      // continuous/pulsed timing through the beam plan.
       if (shot.type !== 'beam') {
         const activeBurst = weapon.burst;
         if (canBurstFire && activeBurst !== null) {
@@ -1152,7 +1128,7 @@ export function fireTurrets(
           if (activeBurst.remaining <= 0) {
             weapon.burst = null;
           }
-        } else if (canFire && shot.type !== 'laser') {
+        } else if (canFire) {
           writeTurretCooldownToSlab(
             unit,
             weaponIndex,
@@ -1347,7 +1323,7 @@ export function fireTurrets(
             );
           }
 
-          const beamProjectileType = shot.type === 'laser' ? 'laser' as const : 'beam' as const;
+          const beamProjectileType = 'beam' as const;
           const projectileConfig = createProjectileConfigFromTurret(config, weaponIndex);
           const collisionRadius = projectileConfig.shotProfile.runtime.radius.collision;
           const initialPath = damageSystem.findBeamPath(
@@ -1359,9 +1335,7 @@ export function fireTurrets(
             writeBeamRangeEnvelope(config, beamStartX, beamStartY, beamStartZ),
             0,
             true,
-            beamProjectileType === 'laser'
-              ? SHIELD_REFLECTION_ENTITY_LASER
-              : SHIELD_REFLECTION_ENTITY_BEAM,
+            SHIELD_REFLECTION_ENTITY_BEAM,
             shot.mediumTrajectory,
           );
           // A selected-entity pulse is committed only once its real barrel ray
@@ -1457,8 +1431,8 @@ export function fireTurrets(
               },
             },
           });
-          // Recoil is integrated by the collision pass for committed attack
-          // beams and above for legacy laser pulses.
+          // Recoil is integrated by the collision pass for the committed
+          // attack-beam pulse.
           manualLaunchFired = true;
         } else {
           // Create traveling projectile with 3D launch velocity using
@@ -2409,7 +2383,7 @@ export function updateProjectiles(
 
     const proj = entity.projectile;
 
-    // Update beam/laser positions to follow turret direction
+    // Update beam positions to follow turret direction.
     if (isRayType(proj.projectileType)) {
       proj.timeAlive += dtMs;
       const source = world.getEntity(proj.sourceEntityId);
@@ -2438,16 +2412,13 @@ export function updateProjectiles(
           continue;
         }
 
-        // Legacy laser pulses still use engagement-gated termination. Attack
-        // beam pulses do not: once fired they remain committed to their
+        // Continuous beams use engagement-gated termination. Attack beam
+        // pulses do not: once fired they remain committed to their
         // captured trajectory for the full one-second on window.
-        const shotType = proj.config.shot.type;
-        const isContinuous = shotType === 'beam';
-        const isLaser = shotType === 'laser';
         const pulsePlan = proj.beamPulsePlan;
         let targetingTargetId = weapon.target ?? -1;
         let engaged = weapon.state === 'engaged';
-        if ((isContinuous && pulsePlan === null) || isLaser) {
+        if (pulsePlan === null) {
           if (readCombatTargetingTurretFsmInto(source, weaponIndex, _fireFsm)) {
             targetingTargetId = _fireFsm.targetId;
             engaged = _fireFsm.stateCode === CT_TURRET_STATE_ENGAGED;
@@ -2605,9 +2576,7 @@ export function updateProjectiles(
           ),
           traceDtMs,
           true,
-          proj.projectileType === 'laser'
-            ? SHIELD_REFLECTION_ENTITY_LASER
-            : SHIELD_REFLECTION_ENTITY_BEAM,
+          SHIELD_REFLECTION_ENTITY_BEAM,
           weapon.config.shot?.mediumTrajectory,
         );
 

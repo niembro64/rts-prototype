@@ -3728,6 +3728,30 @@
         Narrow hosts teach systems; capstones hide them.
       </p>
 
+      <h3>The compact roster names one readable host per gap</h3>
+      <ul class="rule-list">
+        <li><strong>Information and work:</strong> the tier-1 Kestrel AWACS is an unarmed
+        mobile-radar aircraft; Construction Bot, Construction Rover, Construction Drone, and
+        Construction Submarine are the four tier-1 domain constructors. Tier 2 carries the
+        fragile cloaked/radar-stealth Shade Scout, the modest-sight/no-radar Owl Detector, and
+        the Murk Jammer with a deliberately weak light gun.</li>
+        <li><strong>Weapon and counter showcases:</strong> the tier-1 Swift SAM Rover is
+        air-only mobile defense; the Hedgehog owns the straight, never-turning dumb rocket; the
+        tier-2 Bramble fires the heavy mortar whose split produces medium-mortar submunitions.
+        The Interceptor Tower is the <em>only</em> host permitted to target travelling shots, and
+        it targets exactly controlled rockets, dumb rockets, and medium/heavy mortar shells.
+        Ordinary beams and anti-air weapons no longer provide incidental point defense.</li>
+        <li><strong>Water and cross-medium coverage:</strong> the tier-1 Water Strider is a
+        crawler-domain + naval-domain body, supported at the water surface by both water-related
+        lift channels while retaining stop-and-hold arrival behavior on land and water. The
+        Patrol Corvette is a water-only surface hull with an above-water gun and sonar. The
+        tier-2 Petrel is aircraft + naval: its air-launched torpedo enters the water and attacks
+        underwater, while its own sensors deliberately provide no sonar contact.</li>
+        <li><strong>Naval economy:</strong> the Tidal Generator is a water-only energy producer,
+        buildable by the Construction Submarine, so a naval expansion has extraction, energy,
+        sonar, defense, construction, and production without a land dependency.</li>
+      </ul>
+
       <h3>Dormant capability is removal work, not a content prompt</h3>
       <p>
         A system nothing authors is not an invitation to invent a unit that justifies it; it is a
@@ -3757,6 +3781,34 @@
         cluster weapon; the unguided-rocket class stands beside the controlled rocket so aim,
         guidance, and point defense read as a contrast. One clear host per system beats three
         accidental ones.
+      </p>
+    </section>
+
+    <section>
+      <h2>Chat Is A Bounded Room, Not A Log</h2>
+      <p>
+        Every chat room retains and displays only its newest <strong>10 messages</strong>. Every
+        message is normalized to one readable line, empty results are rejected, and text is
+        capped at <strong>220 characters</strong>. The browser enforces those limits for immediate
+        feedback and bounded local state; the network authority and the HOME chat backend enforce
+        them again at their own trust boundaries. A client-supplied long history or oversized
+        message can therefore never turn a room into an unbounded log.
+      </p>
+      <h3>The HOME conversation belongs to the sidebar</h3>
+      <p>
+        HOME chat is part of navigation, not battlefield chrome. It sits at the bottom of the
+        sidebar&rsquo;s content sections, immediately above the three permanent reference buttons
+        (Entity Lab, Game Controls, Game Info). The title and section boxes use compact padding so
+        the conversation remains visible without displacing the lobby directory. The Enter chat
+        shortcut opens the sidebar when necessary and focuses that same input. Lobby chat remains
+        the lobby&rsquo;s shared room, while battle ALL and TEAM/SPEC communication remains in the
+        battle console.
+      </p>
+      <h3>A diagnostic belongs to the system it describes</h3>
+      <p>
+        Match-wide live entity count and its cap are server/simulation capacity telemetry, so the
+        <strong>ENTITIES</strong> meter lives in the SERVER bottom bar. The BATTLE bar owns game
+        rules and player-facing battle controls; it does not duplicate server health metrics.
       </p>
     </section>
 

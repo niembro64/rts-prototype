@@ -24,8 +24,6 @@ import type {
   RepairCommand,
   RemoveFactoryUnitProductionCommand,
   RemoveLastQueuedOrderCommand,
-  ResurrectAreaCommand,
-  ResurrectCommand,
   ScanCommand,
   SkipCurrentOrderCommand,
   StopFactoryProductionCommand,
@@ -188,14 +186,11 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
     case 'repair':
     case 'reclaim':
     case 'capture':
-    case 'resurrect':
       return sanitizeCommanderTargetCommand(command, tick);
     case 'repairArea':
       return sanitizeRepairAreaCommand(command, world, tick);
     case 'reclaimArea':
       return sanitizeReclaimAreaCommand(command, world, tick);
-    case 'resurrectArea':
-      return sanitizeResurrectAreaCommand(command, world, tick);
     case 'loadTransport':
       return sanitizeLoadTransportCommand(command, world, tick);
     case 'unloadTransport':
@@ -416,7 +411,7 @@ function sanitizeAreaCommandRadius(radius: unknown, maxRadius: number): number {
 }
 
 // Shared BAR-style area target filter sanitization used by the area
-// repair/reclaim/resurrect commands. Both fields are optional and default
+// repair/reclaim commands. Both fields are optional and default
 // to absent (unfiltered); a present field must be a known category /
 // blueprint id or the whole command is rejected.
 function sanitizeAreaCommandFilterFields(
@@ -439,13 +434,13 @@ function sanitizeAreaCommandFilterFields(
   };
 }
 
-// The commander target-command family (repair / reclaim / capture /
-// resurrect) shares one shape — commanderId + targetId + queue fields —
+// The commander target-command family (repair / reclaim / capture)
+// shares one shape — commanderId + targetId + queue fields —
 // and one sanitization; the spread preserves each command's type literal.
 function sanitizeCommanderTargetCommand(
-  command: RepairCommand | ReclaimCommand | CaptureCommand | ResurrectCommand,
+  command: RepairCommand | ReclaimCommand | CaptureCommand,
   tick: number,
-): RepairCommand | ReclaimCommand | CaptureCommand | ResurrectCommand | null {
+): RepairCommand | ReclaimCommand | CaptureCommand | null {
   if (
     !isEntityId(command.commanderId) ||
     !isEntityId(command.targetId) ||
@@ -467,12 +462,12 @@ function sanitizeCommanderTargetCommand(
       };
 }
 
-// The commander area-command family (repairArea / resurrectArea /
-// reclaimArea) is identical except for the command type literal and the
-// max-radius constant; sanitize the shared fields once and let each
-// command's thin wrapper re-attach its type literal.
+// The commander area-command family (repairArea / reclaimArea) is
+// identical except for the command type literal and the max-radius
+// constant; sanitize the shared fields once and let each command's thin
+// wrapper re-attach its type literal.
 function sanitizeCommanderAreaCommandFields(
-  command: RepairAreaCommand | ResurrectAreaCommand | ReclaimAreaCommand,
+  command: RepairAreaCommand | ReclaimAreaCommand,
   world: WorldState,
   tick: number,
   maxRadius: number,
@@ -1225,15 +1220,6 @@ function sanitizeRepairAreaCommand(
 ): RepairAreaCommand | null {
   const fields = sanitizeCommanderAreaCommandFields(command, world, tick, REPAIR_AREA_MAX_RADIUS);
   return fields === null ? null : { type: 'repairArea', ...fields };
-}
-
-function sanitizeResurrectAreaCommand(
-  command: ResurrectAreaCommand,
-  world: WorldState,
-  tick: number,
-): ResurrectAreaCommand | null {
-  const fields = sanitizeCommanderAreaCommandFields(command, world, tick, REPAIR_AREA_MAX_RADIUS);
-  return fields === null ? null : { type: 'resurrectArea', ...fields };
 }
 
 function sanitizeLoadTransportCommand(

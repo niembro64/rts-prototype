@@ -6,8 +6,8 @@ import { economyManager } from './economy';
 import { aimTurretsToward } from './turretInit';
 import { setUnitFacingYaw } from './unitOrientation';
 import { getBuildingConfig } from './buildConfigs';
-import { getStructureFactoryAllowedUnitBlueprintIds } from './factoryProductionRoster';
-import { mapHasWater } from './mapSurface';
+import { installedMapMediumKey, mapHasWater } from './mapSurface';
+import { unitBlueprintIdsForMediumKey } from './mapRoster';
 import { DEMO_CONFIG } from '../../demoConfig';
 import type { WaypointType } from '../../types/commandTypes';
 import {
@@ -31,12 +31,22 @@ import {
 } from './mapOval';
 import { angleDeltaAbs } from '../math';
 import { isWaterAt } from './Terrain';
-import { fabricatorTorusOuterRadius } from './blueprints';
+import {
+  FABRICATOR_BLUEPRINT_IDS,
+  fabricatorTorusOuterRadius,
+  getBuildingBlueprint,
+  getFabricatorBuildingBlueprintId,
+  getUnitBlueprint,
+} from './blueprints';
 import {
   BUILD_GRID_CELL_SIZE,
   getRotatedBuildingPlacementFootprint,
 } from './buildGrid';
-import { BUILDING_BLUEPRINT_IDS } from '../../types/blueprintIds';
+import {
+  BUILDING_BLUEPRINT_IDS,
+  UNIT_BLUEPRINT_IDS,
+  type UnitBlueprintId,
+} from '../../types/blueprintIds';
 import { getBuildingPlacementSetSquareType } from '../../types/buildingTypes';
 
 export { getSeatBaseAngle } from './playerLayout';
@@ -105,16 +115,21 @@ const INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(
 // A complete demo roster can be much denser than the shared structure arcs,
 // especially on rectangular maps. Fabricators may fan across nearby free grid
 // cells while remaining inside their team's dedicated production sector.
-// 48 cells left the last seat of the tightest preset (Spikey Lake) one line
-// short: eight of nine seats fit all 26 demo production lines and the ninth
-// found no free cell for its last Fabricator. The ring is deterministic and
-// ordered nearest-first, so a wider radius only lets a crowded seat reach one
-// ring further out; it never moves a placement that already succeeded.
+// The tightest preset (Spikey Lake) needs an 80-cell fan to retain all 36
+// repeat lines beside the two one-per-tier Universal showcases. The ring is
+// deterministic and ordered nearest-first, so the wider budget only lets a
+// crowded seat reach another free ring; it never moves a placement that
+// already succeeded.
 // A Fabricator reserves a 14x14-cell pixel-circle. Half-footprint search
 // steps cover dense packing while avoiding tens of thousands of near-identical
 // probes whose rectangles overlap the same occupied cells.
-const FACTORY_PLACEMENT_SEARCH_OFFSETS = buildStridedPlacementSearchOffsets(64, 7);
-const WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS = buildStridedPlacementSearchOffsets(36, 7);
+const FACTORY_PLACEMENT_SEARCH_OFFSETS = buildStridedPlacementSearchOffsets(80, 7);
+const UNIVERSAL_FACTORY_SHOWCASE_SEARCH_OFFSETS =
+  buildStridedPlacementSearchOffsets(22, 7);
+// The offshore showcase now carries both tech tiers across ten naval-domain
+// lines. Give it the same deterministic fan-out budget as the land roster so
+// edge-of-sector footprints and neighboring seats can still pack completely.
+const WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS = buildStridedPlacementSearchOffsets(64, 7);
 // Authored demo extractors belong on their deposit's own snapped footprint.
 // Do not fan outward like generic base placement: a nearby extractor with
 // partial coverage is not the authored deposit/extractor pair.
@@ -130,7 +145,7 @@ const METAL_EXTRACTOR_PLACEMENT_SEARCH_OFFSETS: readonly GridOffset[] = [
 const DEMO_BESPOKE_BASE_BUILDING_BLUEPRINT_IDS = new Set<BuildingBlueprintId>([
   'buildingSolar',
   'buildingWind',
-  'towerFabricator',
+  ...FABRICATOR_BLUEPRINT_IDS,
   'towerBeamMega',
   'towerCannon',
   'towerHelios',
@@ -687,16 +702,41 @@ function placeMixedBlueprintArcRow(
 function getAvailableDemoFactoryUnitBlueprintIds(
   availableUnitBlueprintIds: ReadonlySet<string> | undefined = undefined,
   excludedUnitBlueprintIds: ReadonlySet<string> | undefined = undefined,
-): string[] {
-  const unitBlueprintIds: string[] = [];
-  const factoryRoster = getStructureFactoryAllowedUnitBlueprintIds('towerFabricator');
-  for (let i = 0; i < factoryRoster.length; i++) {
-    const unitBlueprintId = factoryRoster[i];
+): UnitBlueprintId[] {
+  const unitBlueprintIds: UnitBlueprintId[] = [];
+  const mapRoster = unitBlueprintIdsForMediumKey(
+    UNIT_BLUEPRINT_IDS,
+    installedMapMediumKey(),
+  );
+  for (let i = 0; i < mapRoster.length; i++) {
+    const unitBlueprintId = mapRoster[i];
+    if (getUnitBlueprint(unitBlueprintId).production === null) continue;
     if (availableUnitBlueprintIds !== undefined && !availableUnitBlueprintIds.has(unitBlueprintId)) continue;
     if (excludedUnitBlueprintIds?.has(unitBlueprintId)) continue;
     unitBlueprintIds.push(unitBlueprintId);
   }
   return unitBlueprintIds;
+}
+
+function fabricatorForDemoUnitArea(
+  unitBlueprintId: UnitBlueprintId,
+  area: 'ground' | 'water',
+): BuildingBlueprintId {
+  const production = getUnitBlueprint(unitBlueprintId).production;
+  if (production === null) {
+    throw new Error(`Demo production unit ${unitBlueprintId} has no production identity`);
+  }
+  const domain = area === 'water'
+    ? production.domains.find((candidate) => candidate === 'naval')
+    : production.domains.find((candidate) => candidate !== 'naval');
+  if (domain === undefined) {
+    // A medium-capable hull can outlive its specialist's placement medium
+    // (for example, the amphibious Sea Turtle on a map with no water). The
+    // same-tier Universal is the only truthful fallback: it owns the complete
+    // tier union and can stand on either surface.
+    return getFabricatorBuildingBlueprintId(production.techLevel, 'universal');
+  }
+  return getFabricatorBuildingBlueprintId(production.techLevel, domain);
 }
 
 function seedFactoryRepeatBuild(factory: Entity, unitBlueprintId: string): void {
@@ -725,7 +765,7 @@ function assertPlacedFactoriesRepeat(
 function placeFactoryArcRowForUnitBlueprintIds(
   world: WorldState,
   construction: ConstructionSystem,
-  unitBlueprintIds: readonly string[],
+  unitBlueprintIds: readonly UnitBlueprintId[],
   oval: MapOvalMetrics,
   radius: number,
   baseAngle: number,
@@ -736,6 +776,8 @@ function placeFactoryArcRowForUnitBlueprintIds(
   acceptCompleted: ((entity: Entity) => boolean) | null = null,
   acceptCandidate: ((x: number, y: number) => boolean) | null = null,
   fallbackToAuthoredArea = false,
+  area: 'ground' | 'water' = 'ground',
+  availableBuildingBlueprintIds: ReadonlySet<string> | undefined = undefined,
 ): Entity[] {
   const count = unitBlueprintIds.length;
   if (count <= 0) return [];
@@ -744,12 +786,20 @@ function placeFactoryArcRowForUnitBlueprintIds(
   const angularStep = count > 1 ? sectorAngle / (count - 1) : 0;
 
   for (let j = 0; j < count; j++) {
+    const factoryBuildingBlueprintId = fabricatorForDemoUnitArea(
+      unitBlueprintIds[j],
+      area,
+    );
+    if (
+      availableBuildingBlueprintIds !== undefined &&
+      !availableBuildingBlueprintIds.has(factoryBuildingBlueprintId)
+    ) continue;
     const a = count > 1 ? startAngle + j * angularStep : baseAngle;
     const point = mapOvalPointAt(oval, a, radius);
     let factory = placeCompleteBuilding(
       world,
       construction,
-      'towerFabricator',
+      factoryBuildingBlueprintId,
       point.x,
       point.y,
       playerId,
@@ -759,15 +809,14 @@ function placeFactoryArcRowForUnitBlueprintIds(
       acceptCandidate,
     );
     if (factory === null && fallbackToAuthoredArea) {
-      // Terrain can invalidate an entire search patch (dry outer-water rings,
-      // steep divider shoulders, or a highly deformed land arc), but the demo
-      // contract requires one production line per enabled unit. Retry on the
-      // same authored arc while bypassing only terrain suitability; map bounds
-      // and occupied grid cells remain enforced.
+      // Flatness can invalidate an entire search patch on divider shoulders
+      // or highly deformed arcs. Retry while bypassing that suitability bit;
+      // the blueprint's ground/water domain, map bounds, and occupied cells
+      // remain hard requirements.
       factory = placeCompleteBuilding(
         world,
         construction,
-        'towerFabricator',
+        factoryBuildingBlueprintId,
         point.x,
         point.y,
         playerId,
@@ -967,14 +1016,24 @@ export function spawnInitialBases(
     )
     : [];
   const waterFactoryUnitBlueprintIds = hasWater
-    ? DEMO_CONFIG.waterFabricators.unitBlueprintIds.filter(
+    ? (DEMO_CONFIG.waterFabricators.unitBlueprintIds as readonly UnitBlueprintId[]).filter(
       (id) => availableUnitBlueprintIds === undefined || availableUnitBlueprintIds.has(id),
     )
     : [];
+  const innerWaterFactoryUnitBlueprintIds = waterFactoryUnitBlueprintIds.filter(
+    (id) => getUnitBlueprint(id).production?.techLevel === 1,
+  );
+  const outerWaterFactoryUnitBlueprintIds = waterFactoryUnitBlueprintIds.filter(
+    (id) => getUnitBlueprint(id).production?.techLevel === 2,
+  );
   const factoryUnitBlueprintIds = getAvailableDemoFactoryUnitBlueprintIds(
     availableUnitBlueprintIds,
     landFactoryExclusions,
   );
+  const universalFabricatorBlueprintIds = FABRICATOR_BLUEPRINT_IDS.filter((id) => {
+    if (!isBuildingEnabled(id)) return false;
+    return getBuildingBlueprint(id).factory?.domain === 'universal';
+  });
   const fabricatorConfig = getBuildingConfig('towerFabricator');
   const fabricatorWidth = fabricatorConfig.gridWidth * BUILD_GRID_CELL_SIZE;
   const fabricatorHeight = fabricatorConfig.gridHeight * BUILD_GRID_CELL_SIZE;
@@ -1010,9 +1069,17 @@ export function spawnInitialBases(
     spawnRadius,
     DEMO_CONFIG.baseRings.towerFabricator.radiusFraction,
   );
+  const universalFactoryRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.baseRings.universalFabricator.radiusFraction,
+  );
   const waterFactoryRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
     DEMO_CONFIG.waterFabricators.radiusFraction,
+  );
+  const innerWaterFactoryRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.waterFabricators.innerRadiusFraction,
   );
   const radarRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
@@ -1096,6 +1163,23 @@ export function spawnInitialBases(
         oval, windRadius, baseAngle, sectorAngle, playerId, basePolicy,
       ));
     }
+
+    // Universals appear exactly once per tier as unseeded showcases. Their
+    // narrow dedicated ring keeps those two hosts from stealing the exact
+    // center cells used by the Bot repeat lines on compact maps.
+    entities.push(...placeMixedBlueprintArcRow(
+      world,
+      construction,
+      universalFabricatorBlueprintIds,
+      oval,
+      universalFactoryRadius,
+      baseAngle,
+      factorySectorAngle * 0.6,
+      playerId,
+      basePolicy,
+      UNIVERSAL_FACTORY_SHOWCASE_SEARCH_OFFSETS,
+      'ground',
+    ));
 
     entities.push(...placeMixedBlueprintArcRow(
       world,
@@ -1201,53 +1285,66 @@ export function spawnInitialBases(
       ));
     }
 
-    // Fabricator arcs — attempt one Fabricator per available demo unit.
+    // Fabricator arcs — attempt one specialist Fabricator per available demo unit.
     // Water-capable lines use the outer-water ring; every other line uses the
     // land ring inside this seat's part of the team sector. Each successfully
     // placed factory begins repeat production of its assigned unit.
     // Each fabricator starts with a repeat-build selection matching
     // its unit blueprint, so the base layout and AI production inventory
-    // stay tied to the same unit roster. Disabling the towerFabricator
-    // building id removes the demo's whole factory ring.
+    // stay tied to the same unit roster. Per-building demo toggles suppress
+    // only the matching specialist production lines.
     let waterFactories: Entity[] = [];
-    if (isBuildingEnabled('towerFabricator')) {
+    if (FABRICATOR_BLUEPRINT_IDS.some((id) => isBuildingEnabled(id))) {
       // Offshore factories are inserted first so the deterministic factory
       // update order is stable across every one-per-unit production line.
-      waterFactories = placeFactoryArcRowForUnitBlueprintIds(
-        world,
-        construction,
-        waterFactoryUnitBlueprintIds,
-        oval,
-        waterFactoryRadius,
-        baseAngle,
-        getSeatBuildArcAngle(
-          world.teamRoster,
-          playerId,
-          DEMO_CONFIG.waterFabricators.arcSectorFraction,
-        ),
-        playerId,
-        basePolicy,
-        WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS,
-        (entity) => isFabricatorOverWater(world, entity),
-        (x, y) => isFabricatorFootprintOverWater(
+      const waterFactoryRows: ReadonlyArray<readonly [
+        readonly UnitBlueprintId[],
+        number,
+      ]> = [
+        [innerWaterFactoryUnitBlueprintIds, innerWaterFactoryRadius],
+        [outerWaterFactoryUnitBlueprintIds, waterFactoryRadius],
+      ];
+      for (let rowIndex = 0; rowIndex < waterFactoryRows.length; rowIndex++) {
+        const [rowUnitBlueprintIds, rowRadius] = waterFactoryRows[rowIndex];
+        const rowFactories = placeFactoryArcRowForUnitBlueprintIds(
           world,
-          x,
-          y,
-          fabricatorWidth,
-          fabricatorHeight,
-        ),
-        true,
-      );
-      for (let j = 0; j < waterFactories.length; j++) {
-        const factory = waterFactories[j];
-        if (factory.factory !== null) {
-          configureOuterWaterFactoryWaypoints(
+          construction,
+          rowUnitBlueprintIds,
+          oval,
+          rowRadius,
+          baseAngle,
+          getSeatBuildArcAngle(
+            world.teamRoster,
+            playerId,
+            DEMO_CONFIG.waterFabricators.arcSectorFraction,
+          ),
+          playerId,
+          basePolicy,
+          WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS,
+          (entity) => isFabricatorOverWater(world, entity),
+          (x, y) => isFabricatorFootprintOverWater(
             world,
-            factory,
-            oval,
-            waterFactoryRadius,
-          );
+            x,
+            y,
+            fabricatorWidth,
+            fabricatorHeight,
+          ),
+          true,
+          'water',
+          availableBuildingBlueprintIds,
+        );
+        for (let j = 0; j < rowFactories.length; j++) {
+          const factory = rowFactories[j];
+          if (factory.factory !== null) {
+            configureOuterWaterFactoryWaypoints(
+              world,
+              factory,
+              oval,
+              rowRadius,
+            );
+          }
         }
+        waterFactories.push(...rowFactories);
       }
       const landFactories = placeFactoryArcRowForUnitBlueprintIds(
         world, construction, factoryUnitBlueprintIds,
@@ -1269,6 +1366,8 @@ export function spawnInitialBases(
           )
           : null,
         true,
+        'ground',
+        availableBuildingBlueprintIds,
       );
       // Placement remains best-effort: unusually small maps or dense custom
       // rosters may not have room for every decorative demo production line.

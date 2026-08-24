@@ -3,7 +3,7 @@ import { SIM_TICK_INSTRUMENTATION } from '@/game/perf/SimTickInstrumentation';
 // Projectile collision detection and damage application
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, PlayerId, Projectile, ProjectileShot, BeamRay, LaserRay, ShotSource } from '../types';
+import type { Entity, EntityId, PlayerId, Projectile, ProjectileShot, BeamRay, ShotSource } from '../types';
 import {
   REFLECTOR_HIT_KIND_NONE,
   SHIELD_REFLECTION_ENTITY_PLASMA,
@@ -1275,7 +1275,7 @@ export function checkProjectileCollisions(
     const proj = projEntity.projectile;
     const config = proj.config;
     // Projectile entities always use projectile/ray emission types (never shields).
-    const shotBlueprintId = getEmissionBlueprintId(config.shot as ProjectileShot | BeamRay | LaserRay);
+    const shotBlueprintId = getEmissionBlueprintId(config.shot as ProjectileShot | BeamRay);
     const damageSourceKey = proj.sourceTurretBlueprintId ?? shotBlueprintId;
     const damageSourceType: SimEventSourceType = proj.sourceTurretBlueprintId ? 'turret' : 'system';
     const dgunProjectile = projEntity.dgunProjectile;
@@ -1298,7 +1298,7 @@ export function checkProjectileCollisions(
     // Reflector contacts — shield panels and shield spheres are the
     // same reflector material. Normal traveling projectiles skip off the
     // surface with the same vector reflection math beams use; per-shot-type
-    // behavior comes from the shield material. Beams/lasers are handled
+    // behavior comes from the shield material. Beams are handled
     // by their own line path.
     let hitShield = false;
     let reflectedProjectile = false;
@@ -1419,8 +1419,8 @@ export function checkProjectileCollisions(
         // provisional max-range visual endpoint.
         continue;
       }
-      // Beam/laser damage: single area zone at truncated endpoint
-      const beamShot = config.shot as BeamRay | LaserRay;
+      // Beam damage: single area zone at truncated endpoint
+      const beamShot = config.shot as BeamRay;
       const points = proj.points;
       const lastPoint = points && points.length >= 2 ? points[points.length - 1] : undefined;
       const impactX = lastPoint !== undefined ? lastPoint.x : projEntity.transform.x;
@@ -1549,8 +1549,8 @@ export function checkProjectileCollisions(
         );
       }
 
-      // Legacy laser recoil remains in fireTurrets(); committed attack-beam
-      // recoil is integrated above from the sampled pulse path.
+      // Committed attack-beam recoil is integrated above from the sampled
+      // pulse path.
     } else if (canApplyDamageThisTick) {
       if (reflectedProjectile) {
         // Reflection already consumed this tick's swept segment. Start

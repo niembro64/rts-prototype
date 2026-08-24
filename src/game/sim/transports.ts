@@ -8,7 +8,7 @@ import { entitySlotRegistry } from './EntitySlotRegistry';
 import { holdEntity, releaseEntityHold } from './entityHolds';
 import { getUnitGroundZ, getUnitSupportPointOffsetZ } from './unitGeometry';
 import { writeHitVolume, type EntityVolume } from './entityVolumes';
-import { shiftUnitAction, setUnitActions } from './unitActions';
+import { shiftUnitAction } from './unitActions';
 
 const TRANSPORT_UNIT_BLUEPRINT_ID = 'unitTransport';
 
@@ -27,9 +27,9 @@ const TRANSPORT_UNLOAD_ARRIVAL_RADIUS = 15;
 // drives the HOLD OFFSET instead: a critically damped spring pulls the
 // passenger's offset from the ring center to zero and holds it there,
 // while the hold pose tracks the transport's live position, altitude,
-// and velocity. The passenger's own propulsion and actions are dark
-// while carried (updateUnits transported skip + the force system's
-// heldBy velocity pin).
+// and velocity. Its propulsion stays dark while carried, but its combat
+// intent and weapons stay live — an enemy passenger can shoot the carrier
+// holding it.
 const TRANSPORT_BEAM_OMEGA_RAD_PER_SEC = 3.0;
 const TRANSPORT_BEAM_SNAP_EPSILON = 0.5;
 
@@ -89,7 +89,7 @@ export function isClientTransportUnit(entity: Entity | null | undefined): entity
   );
 }
 
-function isTransportableUnit(target: Entity | null | undefined, playerId: number): target is Entity {
+function isTransportableUnit(target: Entity | null | undefined): target is Entity {
   return !!(
     target !== null &&
     target !== undefined &&
@@ -97,8 +97,6 @@ function isTransportableUnit(target: Entity | null | undefined, playerId: number
     target.unit !== null &&
     target.unit.hp > 0 &&
     target.ownership !== null &&
-    target.ownership.playerId === playerId &&
-    target.commander === null &&
     target.transport === null &&
     target.transported === null &&
     target.heldBy === null &&
@@ -108,7 +106,7 @@ function isTransportableUnit(target: Entity | null | undefined, playerId: number
 
 export function canLoadTransport(transport: Entity | null | undefined, target: Entity | null | undefined): boolean {
   if (!isTransportUnit(transport) || transport.ownership === null) return false;
-  if (!isTransportableUnit(target, transport.ownership.playerId)) return false;
+  if (!isTransportableUnit(target)) return false;
   if (target.id === transport.id) return false;
   const transportComponent = transport.transport;
   return transportComponent !== null &&
@@ -136,7 +134,6 @@ function loadUnitIntoTransport(
   if (target.unit === null || transport.transport === null) return false;
 
   const slotIndex = transport.transport.loadedUnits.length;
-  setUnitActions(target.unit, []);
   target.unit.patrolStartIndex = null;
   target.unit.stuckTicks = 0;
   target.unit.activePath = null;

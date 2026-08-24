@@ -83,7 +83,6 @@ export type {
   ShieldBarrierConfig,
   ShieldConfig,
   EmissionConfig,
-  LaserRay,
   
   ProjectileShot,
   ProjectileType,
@@ -794,8 +793,8 @@ export type ProjectileGuidanceMode =
 
 // Projectile component. Fully 3D: velocity + prev/start/end points
 // all carry altitude. Projectile gravity is applied in the sim's
-// projectile system each tick (ballistic arc); beams and lasers
-// ignore vz and gravity (they're instantaneous line weapons).
+// projectile system each tick (ballistic arc); beams ignore vz and gravity
+// because they are instantaneous line weapons.
 // Beam polylines (start → reflections → end) live in `points`; each
 // point carries its own (vx, vy, vz) for diagnostics/wire compatibility.
 // Presentation copies each sampled topology atomically because endpoints and
@@ -806,7 +805,7 @@ export type Projectile = {
   sourceEntityId: EntityId;
   config: ProjectileConfig;
   /** Actual emission blueprint id. For travelling shots this is the
-   *  shot blueprint id; for active beams/lasers it is the ray blueprint id. */
+   *  shot blueprint id; for active beams it is the ray blueprint id. */
   shotBlueprintId: string;
   /** Immutable launch provenance, inherited by submunitions with parentShotEntityId updated. */
   shotSource: ShotSource;
@@ -817,7 +816,7 @@ export type Projectile = {
    *  spawn point on its first authoritative update. */
   emissionSourceMedium: 'aboveWater' | 'underwater' | null;
   projectileType: ProjectileType;
-  /** Travelling shot health. Beams/lasers are sustained emissions and
+  /** Travelling shot health. Beams are sustained emissions and
    *  keep this at 0 so they are not damageable shot bodies. */
   hp: number;
   maxHp: number;
@@ -833,10 +832,10 @@ export type Projectile = {
   collisionStartY: number | null;
   collisionStartZ: number | null;
   timeAlive: number;
-  /** Finite runtime timeout for lasers and special projectile classes;
+  /** Finite runtime timeout for beam pulses and special projectile classes;
    *  Infinity for ordinary traveling shot bodies. */
   maxLifespan: number;
-  /** Beam/laser polyline. Index 0 = selected QueryWeapon origin, last = end
+  /** Beam polyline. Index 0 = selected QueryWeapon origin, last = end
    *  (range/hit/ground/terminal reflector), middles = reflections.
    *  Reflection vertices carry reflector metadata via the legacy
    *  reflectorEntityId field plus reflectorKind/normal*. Null on
@@ -1105,26 +1104,6 @@ export type BuilderWorkStationRuntime = {
   worldPosTick: number;
 };
 
-type WreckSource =
-  | {
-      kind: 'unit';
-      unitBlueprintId: string;
-    }
-  | {
-      kind: 'building';
-      buildingBlueprintId: BuildingBlueprintId;
-      width: number;
-      height: number;
-      depth: number;
-    };
-
-type Wreck = {
-  source: WreckSource;
-  originalOwnerId: PlayerId | null;
-  resurrectProgressMs: number;
-  resurrectRequiredMs: number;
-};
-
 export type Transport = {
   capacity: number;
   loadedUnits: Entity[];
@@ -1386,7 +1365,6 @@ export type EntityComponentSlots = {
   factory: Factory | null;
   commander: Commander | null;
   dgunProjectile: DGunProjectile | null;
-  wreck: Wreck | null;
   transport: Transport | null;
   transported: Transported | null;
   heldBy: EntityHold | null;
@@ -1425,7 +1403,6 @@ export function createEmptyEntityComponentSlots(): EntityComponentSlots {
     factory: null,
     commander: null,
     dgunProjectile: null,
-    wreck: null,
     transport: null,
     transported: null,
     heldBy: null,

@@ -22,6 +22,7 @@ type BarTrajectoryCommandKind = 'standardHighLow' | 'smartAutoLowHigh';
 const BAR_GROUND_AREA_ATTACK_UNIT_BLUEPRINT_IDS = new Set<string>([
   // BAR ARM parity: current ground analogue with customParams.canareaattack is armart.
   'unitMongoose',
+  'unitClusterArtillery',
 ]);
 const BAR_BOMBER_MOVE_STATE_HIDDEN_UNIT_BLUEPRINT_IDS = new Set<string>([
   // BAR hides CMD.MOVE_STATE on AircraftBomb bombers. Dragonfly is the current
@@ -42,6 +43,7 @@ const BAR_DEFAULT_HOLD_POSITION_UNIT_BLUEPRINT_IDS = new Set<string>([
   'unitTick',
   'unitJackal',
   'unitMongoose',
+  'unitClusterArtillery',
   'unitBadger',
   'unitDragonfly',
 ]);
@@ -53,6 +55,7 @@ const BAR_BOMBER_NO_AIR_TARGET_UNIT_BLUEPRINT_IDS = new Set<string>([
   // onlytargetcategory="SURFACE"; their local analogues must not accept air
   // targets even though prototype projectile data still has VTOL damage.
   'unitMongoose',
+  'unitClusterArtillery',
   'unitBadger',
   // armkam has onlytargetcategory="SURFACE"; the local Albatross is the
   // current BAR T1 gunship analogue in the armap production slot.
@@ -66,10 +69,12 @@ const BAR_BOMBER_ATTACK_BUILDING_GROUND_UNIT_BLUEPRINT_IDS = new Set<string>([
 const BAR_FIGHTER_AIR_TARGET_ONLY_UNIT_BLUEPRINT_IDS = new Set<string>([
   // armfig weapons have canattackground=false and onlytargetcategory="VTOL".
   'unitEagle',
+  'unitMissileRover',
 ]);
 const BAR_AIR_TARGET_ONLY_STRUCTURE_BLUEPRINT_IDS = new Set<BuildingBlueprintId>([
   // armrl has canattackground=false and targets VTOL-only categories.
   'towerAntiAir',
+  'towerInterceptor',
 ]);
 const BAR_STOP_STRUCTURE_BLUEPRINT_IDS = new Set<BuildingBlueprintId>([
   // armamex sets removewait=true but does not set removestop, so BAR keeps
@@ -93,6 +98,9 @@ const BAR_AIR_TARGET_UNIT_BLUEPRINT_IDS = new Set<string>([
   // Local drone-factory aircraft outside the T1 BAR production page still
   // count as air targets for BAR command restrictions when present in a scenario.
   'unitQueenBee',
+  'unitRadarScout',
+  'unitDetector',
+  'unitPetrel',
 ]);
 const BAR_MANUAL_LAUNCH_UNIT_BLUEPRINT_IDS = new Set<string>();
 const BAR_CARRIER_SPAWN_UNIT_BLUEPRINT_IDS = new Set<string>();
@@ -100,28 +108,55 @@ const BAR_BUILDER_PRIORITY_UNIT_BLUEPRINT_IDS = new Set<string>([
   'unitCommander',
   'unitConstructionDrone',
   'unitConstructionSubmarine',
+  'unitConstructionBot',
+  'unitConstructionRover',
 ]);
 const BAR_BUILDER_PRIORITY_STRUCTURE_BLUEPRINT_IDS = new Set<string>([
   'towerFabricator',
+  'buildingBotFabricator',
+  'buildingVehicleFabricator',
+  'buildingAircraftFabricator',
+  'buildingNavalFabricator',
+  'buildingAdvancedUniversalFabricator',
+  'buildingAdvancedBotFabricator',
+  'buildingAdvancedVehicleFabricator',
+  'buildingAdvancedAircraftFabricator',
+  'buildingAdvancedNavalFabricator',
 ]);
 const BAR_FACTORY_GUARD_STRUCTURE_BLUEPRINT_IDS = new Set<string>([
   'towerFabricator',
+  'buildingBotFabricator',
+  'buildingVehicleFabricator',
+  'buildingAircraftFabricator',
+  'buildingNavalFabricator',
+  'buildingAdvancedUniversalFabricator',
+  'buildingAdvancedBotFabricator',
+  'buildingAdvancedVehicleFabricator',
+  'buildingAdvancedAircraftFabricator',
+  'buildingAdvancedNavalFabricator',
 ]);
 const BAR_AIR_PLANT_LAND_AT_STRUCTURE_BLUEPRINT_IDS = new Set<string>([
   'towerFabricator',
+  'buildingAircraftFabricator',
+  'buildingAdvancedUniversalFabricator',
+  'buildingAdvancedAircraftFabricator',
 ]);
 const BAR_FACTORY_MOVE_STATE_STRUCTURE_BLUEPRINT_IDS = new Set<string>([
   'towerFabricator',
+  'buildingBotFabricator',
+  'buildingVehicleFabricator',
+  'buildingAircraftFabricator',
+  'buildingNavalFabricator',
+  'buildingAdvancedUniversalFabricator',
+  'buildingAdvancedBotFabricator',
+  'buildingAdvancedVehicleFabricator',
+  'buildingAdvancedAircraftFabricator',
+  'buildingAdvancedNavalFabricator',
 ]);
 const BAR_CAPTURE_UNIT_BLUEPRINT_IDS = new Set<string>([
   // BAR ARM parity: armcom has cancapture=true; current T1 constructors do not.
   'unitCommander',
 ]);
-// BAR ARM parity: armrectr is the T1 bot-lab resurrector, but the current
-// local roster has no armrectr analogue. unitConstructionDrone maps to the
-// build-option constructor slots instead.
-const BAR_RESURRECT_UNIT_BLUEPRINT_IDS = new Set<string>();
-
 /** BAR's category rule, restated over this repo's authored lock-on data:
  *  a level-1 `only` mask of 0 admits the whole family; otherwise the target
  *  blueprint's wire code must be inside the 32-bit mask. Mirrors
@@ -185,12 +220,13 @@ export function entityHasBarSetTargetCommand(entity: Entity): boolean {
   ) {
     return false;
   }
-  // A host whose own lock-on masks include nothing (authored
-  // `targets: "none"` — the queens) never honors an explicit target in the
-  // kernel, so it gets no Attack/Set Target surface either: showing the
-  // button would accept orders the sim silently drops.
+  // A host whose own lock-on masks admit no body targets never honors an
+  // explicit player target in the kernel. That covers both `targets: "none"`
+  // hosts (the queens) and projectile-only point defense (the Interceptor):
+  // neither should expose an Attack/Set Target button that can only no-op.
   const hostMasks = getHostLockOnMasksForEntity(entity);
-  if (hostMasks === null || hostMasks.entityFamily === 0) return false;
+  const bodyFamilyMask = CT_LOCK_ON_FAM_INCLUDE_UNITS | CT_LOCK_ON_FAM_INCLUDE_BUILDINGS;
+  if (hostMasks === null || (hostMasks.entityFamily & bodyFamilyMask) === 0) return false;
   const turrets = entity.combat?.turrets ?? [];
   for (let i = 0; i < turrets.length; i++) {
     if (isPlayerOrderableAttackTurretConfig(turrets[i].config)) return true;
@@ -380,8 +416,7 @@ export function entityHasBarMoveStateCommand(entity: Entity): boolean {
 }
 
 export function unitBlueprintHasCloakCommand(unitBlueprintId: string): boolean {
-  // BAR ARM parity: among the current prototype analogues, only armcom has cancloak=true.
-  return unitBlueprintId === 'unitCommander';
+  return unitBlueprintId === 'unitCommander' || unitBlueprintId === 'unitStealthScout';
 }
 
 export function entityHasCloakCommand(entity: Entity): boolean {
@@ -390,8 +425,7 @@ export function entityHasCloakCommand(entity: Entity): boolean {
 }
 
 export function unitBlueprintHasBarTrajectoryCommand(unitBlueprintId: string): boolean {
-  // BAR ARM parity: current buildable analogue with hightrajectory is armart.
-  return unitBlueprintId === 'unitMongoose';
+  return unitBlueprintId === 'unitMongoose' || unitBlueprintId === 'unitClusterArtillery';
 }
 
 export function buildingBlueprintHasBarTrajectoryCommand(
@@ -482,20 +516,6 @@ export function unitBlueprintHasBarCaptureCommand(unitBlueprintId: string): bool
 export function entityHasBarCaptureCommand(entity: Entity): boolean {
   const unit = entity.unit ?? null;
   return unit !== null && unitBlueprintHasBarCaptureCommand(unit.unitBlueprintId);
-}
-
-export function unitBlueprintHasBarResurrectCommand(unitBlueprintId: string): boolean {
-  return BAR_RESURRECT_UNIT_BLUEPRINT_IDS.has(unitBlueprintId);
-}
-
-export function entityHasBarResurrectCommand(entity: Entity): boolean {
-  const unit = entity.unit ?? null;
-  return unit !== null && unitBlueprintHasBarResurrectCommand(unit.unitBlueprintId);
-}
-
-export function entityCanIssueResurrectCommand(entity: Entity | null | undefined): entity is Entity {
-  if (entity === null || entity === undefined || entity.unit === null || entity.builder === null) return false;
-  return entity.commander !== null || entityHasBarResurrectCommand(entity);
 }
 
 export function unitBlueprintHasBarBuilderPriorityCommand(unitBlueprintId: string): boolean {

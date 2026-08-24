@@ -1,4 +1,5 @@
 import type { Entity, EntityId, PlayerId, UnitAction } from '../../sim/types';
+import { getTurretConfig } from '../../sim/turretConfigs';
 import type { SelectionEntitySource } from './SelectionHelper';
 import {
   entityMatchesScreenRectSelectionOptions,
@@ -82,21 +83,16 @@ function selectIds(
 }
 
 export function runBoxSelectionContractTest(): void {
-  const tank = unit(1, 5, 5, 'tank');
+  const tank = unit(1, 5, 5, 'unitJackal');
   tank.combat = {
     turrets: [{
-      config: {
-        kind: 'attack',
-        passive: false,
-        shot: { type: 'projectile' },
-        targeting: { engagement: { range: 100 } },
-      },
+      config: getTurretConfig('turretGunLight'),
     }],
   } as unknown as Entity['combat'];
-  const scout = unit(2, 6, 5, 'scout');
-  const busyBuilder = unit(3, 7, 5, 'builder', [{} as UnitAction]);
+  const scout = unit(2, 6, 5, 'unitRadarScout');
+  const busyBuilder = unit(3, 7, 5, 'unitConstructionBot', [{} as UnitAction]);
   busyBuilder.builder = {} as Entity['builder'];
-  const idleBuilder = unit(4, 7.5, 5, 'builder');
+  const idleBuilder = unit(4, 7.5, 5, 'unitConstructionBot');
   idleBuilder.builder = {} as Entity['builder'];
   const lab = building(10, 8, 5, 'vehicleLab');
 

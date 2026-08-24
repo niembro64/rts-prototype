@@ -5,11 +5,7 @@ import { getTurretHeadRadius } from '../math';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { turretStateToCode } from '../../types/network';
 import { isAttackEmitter } from '../sim/emitterKinds';
-import {
-  SHIELD_FIELD_SHAPE_AIMED_CYLINDER,
-  SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER,
-  SHIELD_FIELD_SHAPE_SPHERE,
-} from './ShieldFieldShape3D';
+import { SHIELD_FIELD_SHAPE_SPHERE } from './ShieldFieldShape3D';
 
 const INITIAL_RENDER_TURRET_HOST_CAP = 4096;
 const CLIENT_RENDER_TURRET_MAX_PER_HOST = 16;
@@ -66,9 +62,7 @@ function assertNear(label: string, actual: number, expected: number, tolerance =
   );
 }
 
-function barrierShapeCode(shape: string | undefined): number {
-  if (shape === 'infiniteVerticalCylinder') return SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER;
-  if (shape === 'aimedCylinder') return SHIELD_FIELD_SHAPE_AIMED_CYLINDER;
+function barrierShapeCode(_shape: string | undefined): number {
   return SHIELD_FIELD_SHAPE_SPHERE;
 }
 

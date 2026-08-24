@@ -39,6 +39,17 @@ const EXPECTED_KIND: Record<StructureBlueprintId, BuildingTeamOrnamentKind> = {
   buildingSonarJammer: 'sonarJammerBaffle',
   buildingMetalStorage: 'metalStorageBrace',
   buildingEnergyStorage: 'energyStorageBusbar',
+  buildingBotFabricator: 'botFabricatorClamps',
+  buildingVehicleFabricator: 'vehicleFabricatorClamps',
+  buildingAircraftFabricator: 'aircraftFabricatorClamps',
+  buildingNavalFabricator: 'navalFabricatorClamps',
+  buildingAdvancedUniversalFabricator: 'advancedUniversalFabricatorClamps',
+  buildingAdvancedBotFabricator: 'advancedBotFabricatorClamps',
+  buildingAdvancedVehicleFabricator: 'advancedVehicleFabricatorClamps',
+  buildingAdvancedAircraftFabricator: 'advancedAircraftFabricatorClamps',
+  buildingAdvancedNavalFabricator: 'advancedNavalFabricatorClamps',
+  towerInterceptor: 'interceptorGuidanceBrace',
+  buildingTidalGenerator: 'tidalGeneratorBand',
 };
 
 const TIERS: readonly PrimitiveGeometryTier[] = ['close', 'mid', 'far'];

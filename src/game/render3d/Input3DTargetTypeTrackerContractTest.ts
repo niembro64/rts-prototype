@@ -4,6 +4,8 @@ import {
   type Entity,
 } from '@/types/sim';
 import type { Command } from '../sim/commands';
+import { getUnitBlueprint } from '../sim/blueprints/units';
+import { getTurretConfig } from '../sim/turretConfigs';
 import { Input3DTargetTypeTracker } from './Input3DTargetTypeTracker';
 
 function assertContract(condition: boolean, message: string): void {
@@ -13,13 +15,19 @@ function assertContract(condition: boolean, message: string): void {
 }
 
 function host(id: number, x: number, y: number, priorityTargetId: number | null = null): Entity {
+  const blueprint = getUnitBlueprint('unitMongoose');
   return {
     ...createEmptyEntityComponentSlots(),
     id,
     type: 'unit',
     transform: createTransform(x, y, 0, 0),
     ownership: { playerId: 1 },
-    unit: { unitBlueprintId: 'unitMongoose', hp: 100, maxHp: 100 } as Entity['unit'],
+    unit: {
+      unitBlueprintId: 'unitMongoose',
+      hp: 100,
+      maxHp: 100,
+      radius: blueprint.radius,
+    } as Entity['unit'],
     combat: {
       fireState: 'fireAtWill',
       trajectoryMode: 'auto',
@@ -29,12 +37,7 @@ function host(id: number, x: number, y: number, priorityTargetId: number | null 
       priorityTargetPoint: null,
       turrets: [
         {
-          config: {
-            kind: 'attack',
-            passive: false,
-            targeting: { engagement: { range: 100 } },
-            shot: { type: 'projectile' },
-          },
+          config: getTurretConfig('turretMortarSlow'),
         },
       ],
     } as unknown as Entity['combat'],
@@ -42,13 +45,19 @@ function host(id: number, x: number, y: number, priorityTargetId: number | null 
 }
 
 function unit(id: number, playerId: number, unitBlueprintId: string, x: number, y: number): Entity {
+  const blueprint = getUnitBlueprint(unitBlueprintId);
   return {
     ...createEmptyEntityComponentSlots(),
     id,
     type: 'unit',
     transform: createTransform(x, y, 0, 0),
     ownership: { playerId },
-    unit: { unitBlueprintId, hp: 100, maxHp: 100 } as Entity['unit'],
+    unit: {
+      unitBlueprintId,
+      hp: 100,
+      maxHp: 100,
+      radius: blueprint.radius,
+    } as Entity['unit'],
   };
 }
 

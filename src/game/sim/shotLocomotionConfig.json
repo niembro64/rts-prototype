@@ -99,6 +99,17 @@
       "transitions": { "enterWater": "continue", "exitWater": "continueBallistic" },
       "terminal": { "entityImpact": "detonate", "groundContact": "detonate", "expiry": "detonate", "destroyed": "detonate", "reflectorImpact": "detonate" }
     },
+    "airLaunchTorpedo": {
+      "motionModel": "thrustGuided",
+      "gravityForceMultiplier": 1,
+      "media": {
+        "air": { "operational": true, "propulsionForce": 300, "guidanceThrust": 1800, "velocityFrictionPer60HzFrame": 0.002 },
+        "water": { "operational": true, "propulsionForce": 2400, "guidanceThrust": 10000, "velocityFrictionPer60HzFrame": 0.008 },
+        "ground": { "mode": "impact" }
+      },
+      "transitions": { "enterWater": "continue", "exitWater": "continueBallistic" },
+      "terminal": { "entityImpact": "detonate", "groundContact": "detonate", "expiry": "detonate", "destroyed": "detonate", "reflectorImpact": "detonate" }
+    },
     "straightRocketDumb": {
       "motionModel": "ballistic",
       "gravityForceMultiplier": 0,

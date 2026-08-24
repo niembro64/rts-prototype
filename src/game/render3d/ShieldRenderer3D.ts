@@ -23,7 +23,6 @@ import {
   resolveShieldSurfaceColorForOwner,
 } from './ShieldReflectorVisual3D';
 import {
-  createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
@@ -38,11 +37,7 @@ import {
   CLIENT_RENDER_TURRET_FLAG_SHIELD_FIELD,
   type ClientRenderTurretHostRows,
 } from './ClientRenderTurretStateSlab';
-import {
-  SHIELD_FIELD_SHAPE_AIMED_CYLINDER,
-  SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER,
-  SHIELD_FIELD_SHAPE_SPHERE,
-} from './ShieldFieldShape3D';
+import { SHIELD_FIELD_SHAPE_SPHERE } from './ShieldFieldShape3D';
 import {
   clearDirtySlotSpan as clearDirtySpan,
   createDirtySlotSpan as createDirtySpan,
@@ -59,7 +54,6 @@ import type { HostRenderPoseStore3D } from './HostRenderPoseStore3D';
 // barrier.alpha (from shieldMaterials.json visual.alpha) is the rendered
 // surface alpha directly — no renderer-side boost, so the authored knob
 // and the on-screen result agree and both shield shapes match.
-const FINITE_CYLINDER_INFINITY_VISUAL_MIN_HALF_HEIGHT = 12000;
 const IMPLICIT_FIELD_CAP = 96;
 
 const IMPLICIT_SHIELD_SURFACE_VS = `
@@ -118,42 +112,6 @@ bool intersectSphere(
   return false;
 }
 
-bool intersectInfiniteVerticalCylinder(
-  vec3 ro,
-  vec3 rd,
-  vec4 field,
-  out float hitT
-) {
-  vec2 center = field.xz;
-  float radius = abs(field.w);
-  vec2 rel = ro.xz - center;
-  vec2 dir = rd.xz;
-  float a = dot(dir, dir);
-  if (a <= 1e-9) return false;
-
-  float b = 2.0 * dot(rel, dir);
-  float c = dot(rel, rel) - radius * radius;
-  float disc = b * b - 4.0 * a * c;
-  if (disc < 0.0) return false;
-
-  float sqrtDisc = sqrt(disc);
-  float invDenom = 1.0 / (2.0 * a);
-  float t0 = (-b - sqrtDisc) * invDenom;
-  float t1 = (-b + sqrtDisc) * invDenom;
-  float firstT = min(t0, t1);
-  float secondT = max(t0, t1);
-
-  if (firstT > 0.0) {
-    hitT = firstT;
-    return true;
-  }
-  if (secondT > 0.0) {
-    hitT = secondT;
-    return true;
-  }
-  return false;
-}
-
 void main() {
   vec4 farView = uInvProjectionMatrix * vec4(vNdc, 1.0, 1.0);
   farView /= farView.w;
@@ -167,12 +125,7 @@ void main() {
   for (int i = 0; i < FIELD_CAP; i++) {
     if (i >= uFieldCount) break;
     float t = 0.0;
-    bool hit = false;
-    if (uFieldData[i].w > 0.0) {
-      hit = intersectSphere(uCameraPosition, rayDir, uFieldData[i], t);
-    } else {
-      hit = intersectInfiniteVerticalCylinder(uCameraPosition, rayDir, uFieldData[i], t);
-    }
+    bool hit = intersectSphere(uCameraPosition, rayDir, uFieldData[i], t);
     if (!hit) continue;
     if (t >= bestT) continue;
     bestT = t;
@@ -281,16 +234,6 @@ export class ShieldRenderPacket3D {
       const originX = unitEntity.transform.x + turret.mount.x * cos - turret.mount.y * sin;
       const originY = unitEntity.transform.y + turret.mount.x * sin + turret.mount.y * cos;
       const originZ = unitEntity.transform.z - unit.supportPointOffsetZ + turret.mount.z;
-      let targetX = unitEntity.transform.x;
-      let targetY = unitEntity.transform.y;
-      let targetZ = unitEntity.transform.z;
-      if (barrier.shape === 'aimedCylinder') {
-        const pitchSin = Math.sin(turret.pitch);
-        const pitchCos = Math.cos(turret.pitch);
-        targetX = originX + Math.cos(turret.rotation) * pitchCos * turret.config.targeting.effect.range;
-        targetY = originY + Math.sin(turret.rotation) * pitchCos * turret.config.targeting.effect.range;
-        targetZ = originZ + pitchSin * turret.config.targeting.effect.range;
-      }
       if (!scope.inScope(unitEntity.transform.x, unitEntity.transform.y, Math.max(300, barrier.outerRange))) continue;
       this.pushRow({
         hostId: unitEntity.id,
@@ -301,9 +244,9 @@ export class ShieldRenderPacket3D {
         localX: turret.mount.x,
         localY: turret.mount.z - unitMountLiftY,
         localZ: turret.mount.y,
-        targetX,
-        targetY,
-        targetZ,
+        targetX: unitEntity.transform.x,
+        targetY: unitEntity.transform.y,
+        targetZ: unitEntity.transform.z,
         originX,
         originY,
         originZ,
@@ -312,11 +255,7 @@ export class ShieldRenderPacket3D {
         originOffsetZ: barrier.originOffsetZ,
         barrierAlpha: barrier.alpha,
         color: fieldColor,
-        shape: barrier.shape === 'infiniteVerticalCylinder'
-          ? SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER
-          : barrier.shape === 'aimedCylinder'
-            ? SHIELD_FIELD_SHAPE_AIMED_CYLINDER
-          : SHIELD_FIELD_SHAPE_SPHERE,
+        shape: SHIELD_FIELD_SHAPE_SPHERE,
       });
     }
   }
@@ -349,16 +288,6 @@ export class ShieldRenderPacket3D {
       const originX = hostX + turret.mount.x * cos - turret.mount.y * sin;
       const originY = hostY + turret.mount.x * sin + turret.mount.y * cos;
       const originZ = hostZ - supportPointOffsetZ + turret.mount.z;
-      let targetX = hostX;
-      let targetY = hostY;
-      let targetZ = hostZ;
-      if (barrier.shape === 'aimedCylinder') {
-        const pitchSin = Math.sin(turret.pitch);
-        const pitchCos = Math.cos(turret.pitch);
-        targetX = originX + Math.cos(turret.rotation) * pitchCos * turret.config.targeting.effect.range;
-        targetY = originY + Math.sin(turret.rotation) * pitchCos * turret.config.targeting.effect.range;
-        targetZ = originZ + pitchSin * turret.config.targeting.effect.range;
-      }
       if (!scope.inScope(hostX, hostY, Math.max(300, barrier.outerRange))) continue;
       this.pushRow({
         hostId: state.entityIds[slot],
@@ -369,9 +298,9 @@ export class ShieldRenderPacket3D {
         localX: turret.mount.x,
         localY: turret.mount.z - unitMountLiftY,
         localZ: turret.mount.y,
-        targetX,
-        targetY,
-        targetZ,
+        targetX: hostX,
+        targetY: hostY,
+        targetZ: hostZ,
         originX,
         originY,
         originZ,
@@ -380,11 +309,7 @@ export class ShieldRenderPacket3D {
         originOffsetZ: barrier.originOffsetZ,
         barrierAlpha: barrier.alpha,
         color: fieldColor,
-        shape: barrier.shape === 'infiniteVerticalCylinder'
-          ? SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER
-          : barrier.shape === 'aimedCylinder'
-            ? SHIELD_FIELD_SHAPE_AIMED_CYLINDER
-          : SHIELD_FIELD_SHAPE_SPHERE,
+        shape: SHIELD_FIELD_SHAPE_SPHERE,
       });
     }
   }
@@ -423,19 +348,6 @@ export class ShieldRenderPacket3D {
       const originX = hostX + mountX * cos - mountY * sin;
       const originY = hostY + mountX * sin + mountY * cos;
       const originZ = hostZ - supportPointOffsetZ + turretViews.mountZ[row];
-      let targetX = hostX;
-      let targetY = hostY;
-      let targetZ = hostZ;
-      if (turretViews.barrierShape[row] === SHIELD_FIELD_SHAPE_AIMED_CYLINDER) {
-        const pitch = turretViews.pitch[row];
-        const pitchSin = Math.sin(pitch);
-        const pitchCos = Math.cos(pitch);
-        const turretRotation = turretViews.rotation[row];
-        const range = turretViews.range[row];
-        targetX = originX + Math.cos(turretRotation) * pitchCos * range;
-        targetY = originY + Math.sin(turretRotation) * pitchCos * range;
-        targetZ = originZ + pitchSin * range;
-      }
 
       this.pushRow({
         hostId: state.entityIds[slot],
@@ -446,9 +358,9 @@ export class ShieldRenderPacket3D {
         localX: mountX,
         localY: turretViews.mountZ[row] - turretViews.mountLiftY[row],
         localZ: mountY,
-        targetX,
-        targetY,
-        targetZ,
+        targetX: hostX,
+        targetY: hostY,
+        targetZ: hostZ,
         originX,
         originY,
         originZ,
@@ -659,7 +571,6 @@ export class ShieldRenderer3D {
   private implicitFieldGeom = new THREE.PlaneGeometry(2, 2);
   private fields = new Map<FieldKey, FieldMesh>();
   private readonly spherePools = new Map<PrimitiveGeometryTier, ShieldSurfacePool>();
-  private readonly finiteCylinderPools = new Map<PrimitiveGeometryTier, ShieldSurfacePool>();
   private implicitFieldMesh: THREE.Mesh;
   private implicitFieldMat: THREE.ShaderMaterial;
   private implicitFieldData: THREE.Vector4[] = createVector4ScratchArray(IMPLICIT_FIELD_CAP);
@@ -679,14 +590,8 @@ export class ShieldRenderer3D {
   private _sphereScratchMat = new THREE.Matrix4();
   private _sphereScratchPos = new THREE.Vector3();
   private _sphereScratchScale = new THREE.Vector3();
-  private _cylinderTargetPos = new THREE.Vector3();
-  private _cylinderMidPos = new THREE.Vector3();
-  private _cylinderDir = new THREE.Vector3();
-  private _cylinderQuat = new THREE.Quaternion();
   private _sphereSpinEuler = new THREE.Euler(0, 0, 0, 'XYZ');
   private _sphereSpinQuat = new THREE.Quaternion();
-  private static readonly _SPHERE_UP = new THREE.Vector3(0, 1, 0);
-  private static readonly _IDENTITY_QUAT = new THREE.Quaternion();
   /** Reused across frames to track which fields are still active this
    *  frame; everything not in here gets pruned in endFrame. */
   private _seenFieldKeys = new Set<FieldKey>();
@@ -716,13 +621,6 @@ export class ShieldRenderer3D {
         createShieldSurfacePool(
           this.root,
           createPrimitiveSphereGeometry('shield', tier),
-        ),
-      );
-      this.finiteCylinderPools.set(
-        tier,
-        createShieldSurfacePool(
-          this.root,
-          createPrimitiveCylinderGeometry('shield', tier, 1, 1, 1, 1, true),
         ),
       );
     }
@@ -804,7 +702,6 @@ export class ShieldRenderer3D {
     this._seenFieldKeys.clear();
     this.currentView = view;
     for (const pool of this.spherePools.values()) pool.cursor = 0;
-    for (const pool of this.finiteCylinderPools.values()) pool.cursor = 0;
     this._implicitFieldCursor = 0;
     // One quaternion per frame, shared by every sphere instance. This keeps
     // the three-axis motion effectively free even with many active shields.
@@ -826,22 +723,16 @@ export class ShieldRenderer3D {
    *  visited (unit despawned, shield disabled, off-scope). */
   endFrame(): void {
     let sphereCursor = 0;
-    let finiteCylinderCursor = 0;
     for (const pool of this.spherePools.values()) sphereCursor += pool.cursor;
-    for (const pool of this.finiteCylinderPools.values()) {
-      finiteCylinderCursor += pool.cursor;
-    }
     const implicitFieldCursor = this._implicitFieldCursor;
     const nextDrawStateClear =
       sphereCursor === 0 &&
-      finiteCylinderCursor === 0 &&
       implicitFieldCursor === 0 &&
       this.fields.size === 0;
 
     if (nextDrawStateClear && this.drawStateClear) return;
 
     for (const pool of this.spherePools.values()) flushShieldSurfacePool(pool);
-    for (const pool of this.finiteCylinderPools.values()) flushShieldSurfacePool(pool);
     this.updateImplicitFieldUniforms();
     const seen = this._seenFieldKeys;
     for (const [key] of this.fields) {
@@ -850,7 +741,6 @@ export class ShieldRenderer3D {
     }
     this.drawStateClear =
       sphereCursor === 0 &&
-      finiteCylinderCursor === 0 &&
       implicitFieldCursor === 0 &&
       this.fields.size === 0;
   }
@@ -861,7 +751,6 @@ export class ShieldRenderer3D {
     this._implicitFieldCursor = 0;
     if (this.drawStateClear) return;
     for (const pool of this.spherePools.values()) clearShieldSurfacePool(pool);
-    for (const pool of this.finiteCylinderPools.values()) clearShieldSurfacePool(pool);
     if (this.implicitFieldMesh.visible) this.implicitFieldMesh.visible = false;
     if (this.implicitFieldMat.uniforms.uFieldCount.value !== 0) {
       this.implicitFieldMat.uniforms.uFieldCount.value = 0;
@@ -893,22 +782,6 @@ export class ShieldRenderer3D {
     );
     this.implicitFieldCameraPosition.setFromMatrixPosition(this.camera.matrixWorld);
     this.implicitFieldMat.uniforms.uCameraFar.value = this.camera.far;
-  }
-
-  private finiteCylinderInfinityVisualHeight(outer: number): number {
-    // Same strategy as BeamRenderer3D's open-ended beam visual: finite
-    // geometry is stretched past the visible world. The gameplay shield
-    // stays mathematically infinite in the sim; this only prevents the
-    // fallback mesh from visibly ending in the sky or below the world.
-    const cameraFar = Number.isFinite(this.camera.far) && this.camera.far > 0
-      ? this.camera.far
-      : FINITE_CYLINDER_INFINITY_VISUAL_MIN_HALF_HEIGHT;
-    const halfHeight = Math.max(
-      FINITE_CYLINDER_INFINITY_VISUAL_MIN_HALF_HEIGHT,
-      cameraFar,
-      outer * 10,
-    );
-    return halfHeight * 2;
   }
 
   /** Internal packet-row body. Writes the active field surface instance. */
@@ -979,18 +852,14 @@ export class ShieldRenderer3D {
     const fieldCenterY = this._sphereScratchPos.y - packet.originOffsetZ[row];
     this._sphereScratchPos.y = fieldCenterY;
     const alpha = packet.barrierAlpha[row] * fadeIn;
-    const shape = packet.shape[row];
-    if (
-      SHIELD_SURFACE_RENDER_MODE === 'screen-space-analytic-shader' &&
-      shape !== SHIELD_FIELD_SHAPE_AIMED_CYLINDER
-    ) {
+    if (SHIELD_SURFACE_RENDER_MODE === 'screen-space-analytic-shader') {
       if (this._implicitFieldCursor < IMPLICIT_FIELD_CAP) {
         const cursor = this._implicitFieldCursor;
         this.implicitFieldData[cursor].set(
           this._sphereScratchPos.x,
           this._sphereScratchPos.y,
           this._sphereScratchPos.z,
-          shape === SHIELD_FIELD_SHAPE_SPHERE ? outer : -outer,
+          outer,
         );
         writeHexAlphaToVector4(packet.color[row], alpha, this.implicitFieldStyle[cursor]);
         this._implicitFieldCursor++;
@@ -999,96 +868,6 @@ export class ShieldRenderer3D {
       // Uniform capacity is an optimization ceiling, never a visibility
       // ceiling. Overflow fields continue below into their physical geometry
       // path (already tiered down to Low at distance) instead of disappearing.
-    }
-
-    if (shape === SHIELD_FIELD_SHAPE_AIMED_CYLINDER) {
-      const pool = this.finiteCylinderPools.get(geometryTier)!;
-      if (pool.cursor < SPHERE_INSTANCED_CAP) {
-        this._cylinderTargetPos.set(
-          packet.targetX[row],
-          packet.targetZ[row],
-          packet.targetY[row],
-        );
-        this._cylinderDir
-          .copy(this._cylinderTargetPos)
-          .sub(this._sphereScratchPos);
-        const axisLength = this._cylinderDir.length();
-        if (axisLength <= 1e-3) return;
-        this._cylinderDir.multiplyScalar(1 / axisLength);
-        this._cylinderMidPos.copy(this._sphereScratchPos);
-        this._cylinderQuat.setFromUnitVectors(
-          ShieldRenderer3D._SPHERE_UP,
-          this._cylinderDir,
-        );
-        this._sphereScratchScale.set(
-          outer,
-          this.finiteCylinderInfinityVisualHeight(outer),
-          outer,
-        );
-        this._sphereScratchMat.compose(
-          this._cylinderMidPos,
-          this._cylinderQuat,
-          this._sphereScratchScale,
-        );
-        const cursor = pool.cursor;
-        writeMatrixAt(
-          pool.mesh,
-          cursor,
-          this._sphereScratchMat,
-          pool.matrixDirty,
-        );
-        writeAlphaAt(
-          pool.alpha,
-          cursor,
-          alpha,
-          pool.alphaDirty,
-        );
-        writeHexColorAt(
-          packet.color[row],
-          pool.color,
-          cursor,
-          pool.colorDirty,
-        );
-        pool.cursor++;
-      }
-      return;
-    }
-
-    if (shape === SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER) {
-      const pool = this.finiteCylinderPools.get(geometryTier)!;
-      if (pool.cursor < SPHERE_INSTANCED_CAP) {
-        this._sphereScratchScale.set(
-          outer,
-          this.finiteCylinderInfinityVisualHeight(outer),
-          outer,
-        );
-        this._sphereScratchMat.compose(
-          this._sphereScratchPos,
-          ShieldRenderer3D._IDENTITY_QUAT,
-          this._sphereScratchScale,
-        );
-        const cursor = pool.cursor;
-        writeMatrixAt(
-          pool.mesh,
-          cursor,
-          this._sphereScratchMat,
-          pool.matrixDirty,
-        );
-        writeAlphaAt(
-          pool.alpha,
-          cursor,
-          alpha,
-          pool.alphaDirty,
-        );
-        writeHexColorAt(
-          packet.color[row],
-          pool.color,
-          cursor,
-          pool.colorDirty,
-        );
-        pool.cursor++;
-      }
-      return;
     }
 
     const spherePool = this.spherePools.get(geometryTier)!;
@@ -1125,14 +904,7 @@ export class ShieldRenderer3D {
       pool.material.dispose();
       pool.geometry.dispose();
     }
-    for (const pool of this.finiteCylinderPools.values()) {
-      this.root.remove(pool.mesh);
-      pool.mesh.dispose();
-      pool.material.dispose();
-      pool.geometry.dispose();
-    }
     this.spherePools.clear();
-    this.finiteCylinderPools.clear();
     this.root.remove(this.implicitFieldMesh);
     this.implicitFieldMesh.geometry.dispose();
     this.implicitFieldMat.dispose();

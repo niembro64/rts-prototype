@@ -162,7 +162,7 @@ export function getTurretBarrelDiameter(
     const width = shot.radius.other * 2 * (isRocketLikeShot(shot) ? 1.5 : 1);
     return Math.max(width, TURRET_BARREL_MIN_DIAMETER);
   }
-  // Rays (beams/lasers): width comes from the ray emission, or an explicit
+  // Rays (beams): width comes from the ray emission, or an explicit
   // `barrelThickness` override on the cone barrel.
   const lineShotWidth = shot !== null && shot !== undefined && isRayConfig(shot) ? shot.width : undefined;
   const diameter = barrel.barrelThickness ?? lineShotWidth ?? TURRET_BARREL_MIN_DIAMETER;

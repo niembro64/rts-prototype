@@ -30,8 +30,6 @@ import type {
   RepairCommand,
   RemoveFactoryUnitProductionCommand,
   RemoveLastQueuedOrderCommand,
-  ResurrectAreaCommand,
-  ResurrectCommand,
   SelectCommand,
   SkipCurrentOrderCommand,
   SetFireEnabledCommand,
@@ -129,7 +127,6 @@ const BAR_UNLOAD_AREA_MIN_RADIUS = 64;
 // browser performance harness bootstrap).
 const BAR_UNLOAD_AREA_PHI = 1.618033988749895;
 import { isCapturableTarget } from './capture';
-import { isResurrectableWreck } from './wrecks';
 import { canLoadTransport, isTransportUnit } from './transports';
 import { isBuildInProgress } from './buildableHelpers';
 import {
@@ -154,7 +151,6 @@ import {
   entityHasBarFireControlCommand,
   entityHasBarMoveStateCommand,
   entityHasBarSetTargetCommand,
-  entityCanIssueResurrectCommand,
   entityHasCloakCommand,
   unitBlueprintHasBarBomberAttackBuildingGroundRule,
 } from './unitCommandCapabilities';
@@ -356,12 +352,6 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'capture':
       executeCaptureCommand(ctx, command);
-      break;
-    case 'resurrect':
-      executeResurrectCommand(ctx, command);
-      break;
-    case 'resurrectArea':
-      executeResurrectAreaCommand(ctx, command);
       break;
     case 'loadTransport':
       executeLoadTransportCommand(ctx, command);
@@ -1713,12 +1703,16 @@ function executeSetTowerTargetCommand(
     ? { x: targetX, y: targetY, z: targetZ }
     : null;
   const isClearTarget = command.targetId === null && resolvedTargetPoint === null;
+  const isGroundTarget = command.targetId === null && resolvedTargetPoint !== null;
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
     if (entity === undefined) continue;
     const combat = entity.combat;
     if (combat === null || !entityHasBarSetTargetCommand(entity)) continue;
-    if (!isClearTarget && !entityCanBarAttackTarget(entity, target)) continue;
+    if (
+      !isClearTarget &&
+      !(isGroundTarget ? entityCanBarAttackGround(entity) : entityCanBarAttackTarget(entity, target))
+    ) continue;
     combat.priorityTargetId = resolvedTargetId;
     combat.priorityTargetPoint = resolvedTargetPoint === null
       ? null
@@ -1799,7 +1793,7 @@ function executeSelfDestructCommand(ctx: CommandContext, command: SelfDestructCo
  * countdown like self-destruct: a resign is not a tactical choice with a
  * window to cancel, it is a seat leaving. Setting hp to zero rather than
  * deleting rows keeps the ordinary per-tick death pass in charge of
- * explosions, wreckage, kill attribution and the victory check, so a resign
+ * explosions, kill attribution and the victory check, so a resign
  * ends a match exactly the way losing a commander does.
  *
  * This is the ONLY path by which a player leaves the simulation. A dropped
@@ -1891,34 +1885,6 @@ function executeReclaimAreaCommand(ctx: CommandContext, command: ReclaimAreaComm
     commandQueuesInFront(command),
     commandQueueInsertIndex(command),
     (target, queue, queueFront, queueInsertIndex) => enqueueReclaimAction(ctx, commander, target, queue, queueFront, queueInsertIndex),
-  );
-}
-
-function executeResurrectCommand(ctx: CommandContext, command: ResurrectCommand): void {
-  const commander = ctx.world.getEntity(command.commanderId);
-  const target = ctx.world.getEntity(command.targetId);
-  enqueueResurrectAction(ctx, commander, target, command.queue, commandQueuesInFront(command), commandQueueInsertIndex(command));
-}
-
-function executeResurrectAreaCommand(ctx: CommandContext, command: ResurrectAreaCommand): void {
-  const commander = ctx.world.getEntity(command.commanderId);
-  if (!entityCanIssueResurrectCommand(commander)) return;
-
-  const radius = clampRepairAreaRadius(command.radius);
-  const targets = prepareBarEntityAreaTargets(findResurrectAreaTargets(
-    ctx,
-    command.targetX,
-    command.targetY,
-    radius,
-    command.filterCategory,
-    command.filterBlueprintId,
-  ), command, commander);
-  enqueueAreaTargetActionsInOrder(
-    targets,
-    command.queue,
-    commandQueuesInFront(command),
-    commandQueueInsertIndex(command),
-    (target, queue, queueFront, queueInsertIndex) => enqueueResurrectAction(ctx, commander, target, queue, queueFront, queueInsertIndex),
   );
 }
 
@@ -2475,31 +2441,6 @@ function appendVegetationAreaReclaimTargets(
   }
 }
 
-function findResurrectAreaTargets(
-  ctx: CommandContext,
-  x: number,
-  y: number,
-  radius: number,
-  filterCategory: AreaCommandFilterCategory | undefined,
-  filterBlueprintId: string | undefined,
-): Entity[] {
-  const radiusSq = radius * radius;
-  const targets: AreaTarget[] = [];
-
-  const buildings = ctx.world.getBuildings();
-  for (let i = 0; i < buildings.length; i++) {
-    const target = buildings[i];
-    if (!isResurrectableWreck(target)) continue;
-    if (!areaTargetMatchesCommandFilter(target, filterCategory, filterBlueprintId)) continue;
-    const distSq = entityAreaDistanceSq(target, x, y);
-    if (distSq > radiusSq) continue;
-    targets.push({ entity: target, distanceSq: distSq });
-  }
-
-  targets.sort(compareAreaTargets);
-  return sortedAreaTargetEntities(targets);
-}
-
 function sortedAreaTargetEntities(targets: readonly AreaTarget[]): Entity[] {
   const entities = new Array<Entity>(targets.length);
   for (let i = 0; i < targets.length; i++) entities[i] = targets[i].entity;
@@ -2566,29 +2507,6 @@ function enqueueReclaimAction(
     : target;
   const action: UnitAction = {
     type: 'reclaim',
-    x: targetPoint.x,
-    y: targetPoint.y,
-    z: targetPoint.z,
-    targetId: target.id,
-  };
-
-  addPathActionsWithFinal(commander, action, queue, ctx, queueFront, queueInsertIndex);
-}
-
-function enqueueResurrectAction(
-  ctx: CommandContext,
-  commander: Entity | undefined,
-  target: Entity | undefined,
-  queue: boolean,
-  queueFront: boolean,
-  queueInsertIndex?: number,
-): void {
-  if (!entityCanIssueResurrectCommand(commander)) return;
-  if (!isResurrectableWreck(target)) return;
-
-  const targetPoint = getEntityTargetPoint(target);
-  const action: UnitAction = {
-    type: 'resurrect',
     x: targetPoint.x,
     y: targetPoint.y,
     z: targetPoint.z,
@@ -2999,7 +2917,6 @@ function isBarSpatialQueueAction(action: UnitAction): boolean {
     case 'build':
     case 'repair':
     case 'reclaim':
-    case 'resurrect':
     case 'attack':
     case 'attackGround':
     case 'guard':

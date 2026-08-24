@@ -750,7 +750,7 @@ export class ClientProjectileStore {
         hasLeftSource: false,
         homingTargetId: NO_ENTITY_ID,
         homingTurnRate,
-        endpointDamageable: projectileType !== 'beam' && projectileType !== 'laser',
+        endpointDamageable: projectileType !== 'beam',
         segmentLimitReached: false,
         points: spawn.beam ? [
           createBeamEndpoint(
@@ -870,7 +870,7 @@ export class ClientProjectileStore {
         hasLeftSource: false,
         homingTargetId: NO_ENTITY_ID,
         homingTurnRate,
-        endpointDamageable: projectileType !== 'beam' && projectileType !== 'laser',
+        endpointDamageable: projectileType !== 'beam',
         segmentLimitReached: false,
         points: hasBeam ? [
           createBeamEndpoint(

@@ -3,7 +3,7 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Extracted from projectileSystem.ts to reduce duplication
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, BeamRay, LaserRay, PlayerId } from '../types';
+import type { Entity, EntityId, PlayerId } from '../types';
 import { getEmissionBlueprintId, getPlayerPrimaryColor } from '../types';
 import { getBuildingCombatCenterZ } from '../buildingAnchors';
 import type { SimEvent, ImpactContext, SimEventSourceType } from './types';
@@ -399,7 +399,7 @@ export function emitBeamHitAudio(
       const entity = world.getEntity(hitId);
       if (entity) {
         audioEvents.push({
-          type: 'hit', turretBlueprintId: getEmissionBlueprintId(config.shot as BeamRay | LaserRay),
+          type: 'hit', turretBlueprintId: getEmissionBlueprintId(config.shot),
           pos: { x: entity.transform.x, y: entity.transform.y, z: entity.transform.z },
           playerId: proj.ownerId,
           entityId: proj.sourceEntityId,

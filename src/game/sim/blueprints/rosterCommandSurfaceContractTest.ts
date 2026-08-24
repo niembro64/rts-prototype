@@ -13,7 +13,6 @@ import {
 import {
   BAR_GRID_SLOT_COUNT,
   buildBarClassicBuildMenuItems,
-  buildBarClassicFactoryUnitBlueprintIds,
   buildBarGridFactoryUnitBlueprintCells,
   buildFactoryUnitBlueprintIdsForPreset,
   buildBarHomeBuildMenuCells,
@@ -25,7 +24,7 @@ import { getStructureFactoryAllowedUnitBlueprintIds } from '../factoryProduction
 import { getUnitAuthoredBuildBlueprintIds } from '../hostCapabilities';
 import { createTransportComponentForUnitBlueprint } from '../transports';
 import { buildingBlueprintHasActiveState } from '../buildingActiveState';
-import { BUILDING_BLUEPRINTS } from './buildings';
+import { BUILDING_BLUEPRINTS, FABRICATOR_BLUEPRINT_IDS } from './buildings';
 import {
   structureRosterDisplay,
   unitRosterDisplay,
@@ -50,7 +49,6 @@ import {
   unitBlueprintBarTrajectoryDefaultMode,
   unitBlueprintHasBarCarrierSpawnCommand,
   unitBlueprintHasBarCaptureCommand,
-  unitBlueprintHasBarResurrectCommand,
   unitBlueprintHasBarBuilderPriorityCommand,
   unitBlueprintHasCloakCommand,
   buildingBlueprintHasBarAirTargetOnlyRule,
@@ -67,8 +65,6 @@ const REQUIRED_SPECIAL_COMMAND_IDS = [
   'combat.loadTransport',
   'combat.unloadTransport',
   'combat.manualLaunch',
-  'combat.resurrect',
-  'combat.resurrectArea',
   'combat.towerTargetSet',
   'combat.towerTargetSetNoGround',
   'combat.towerTargetClear',
@@ -94,7 +90,16 @@ const BAR_EQUIVALENT_BUILD_CATEGORY_SLOT_INDEX = new Map<StructureBlueprintId, n
   ['buildingSonar', 1],
   ['buildingRadarJammer', 5],
   ['buildingSonarJammer', 6],
-  ['towerFabricator', 2],
+  ['buildingBotFabricator', 0],
+  ['buildingVehicleFabricator', 1],
+  ['buildingAircraftFabricator', 2],
+  ['buildingNavalFabricator', 3],
+  ['towerFabricator', 4],
+  ['buildingAdvancedUniversalFabricator', 5],
+  ['buildingAdvancedBotFabricator', 6],
+  ['buildingAdvancedVehicleFabricator', 7],
+  ['buildingAdvancedAircraftFabricator', 8],
+  ['buildingAdvancedNavalFabricator', 9],
   ['towerCannon', 0],
   ['towerBeamMega', 1],
   ['towerAntiAir', 4],
@@ -118,8 +123,18 @@ const BAR_EQUIVALENT_CLASSIC_BUILD_ORDER: readonly StructureBlueprintId[] = [
   'buildingEnergyStorage',
   'buildingResourceConverter',
   'buildingWind',
+  'buildingTidalGenerator',
   'buildingSolar',
+  'buildingBotFabricator',
+  'buildingVehicleFabricator',
   'towerFabricator',
+  'buildingAircraftFabricator',
+  'buildingNavalFabricator',
+  'buildingAdvancedBotFabricator',
+  'buildingAdvancedVehicleFabricator',
+  'buildingAdvancedUniversalFabricator',
+  'buildingAdvancedAircraftFabricator',
+  'buildingAdvancedNavalFabricator',
   'buildingRadar',
   'buildingSonar',
   'buildingRadarJammer',
@@ -134,6 +149,7 @@ const BAR_EQUIVALENT_CLASSIC_BUILD_ORDER: readonly StructureBlueprintId[] = [
   'towerTorpedo',
   'towerBeamMega',
   'towerAntiAir',
+  'towerInterceptor',
 ];
 
 const BAR_STRUCTURE_UNITDEF_BY_LOCAL_ID = new Map<StructureBlueprintId, string>([
@@ -149,21 +165,6 @@ const BAR_STRUCTURE_UNITDEF_BY_LOCAL_ID = new Map<StructureBlueprintId, string>(
   ['towerCannon', 'armllt'],
   ['towerBeamMega', 'armbeamer'],
   ['towerAntiAir', 'armrl'],
-]);
-
-const BAR_FACTORY_UNITDEF_BY_LOCAL_ID = new Map<UnitBlueprintId, string>([
-  ['unitConstructionDrone', 'armca'],
-  ['unitBee', 'armpeep'],
-  ['unitEagle', 'armfig'],
-  ['unitAlbatros', 'armkam'],
-  ['unitDragonfly', 'armthund'],
-  ['unitTransport', 'armatlas'],
-  ['unitLynx', 'armflash'],
-  ['unitJackal', 'armfav'],
-  ['unitMongoose', 'armart'],
-  ['unitBadger', 'armjanus'],
-  ['unitTick', 'armflea'],
-  ['unitTarantula', 'armwar'],
 ]);
 
 const BAR_ARMCOM_BUILDOPTIONS = new Set<string>([
@@ -229,116 +230,6 @@ const BAR_ARMCA_BUILDOPTIONS = new Set<string>([
   'armuwgeo',
 ]);
 
-const BAR_ARMAP_BUILDOPTIONS = new Set<string>([
-  'armca',
-  'armpeep',
-  'armfig',
-  'armthund',
-  'armatlas',
-  'armkam',
-  'armhvytrans',
-]);
-
-const BAR_ARMVP_BUILDOPTIONS = new Set<string>([
-  'armcv',
-  'armbeaver',
-  'armmlv',
-  'armfav',
-  'armflash',
-  'armpincer',
-  'armstump',
-  'armart',
-  'armjanus',
-  'armsam',
-]);
-
-const BAR_ARMLAB_BUILDOPTIONS = new Set<string>([
-  'armck',
-  'armpw',
-  'armrectr',
-  'armrock',
-  'armham',
-  'armjeth',
-  'armwar',
-  'armflea',
-]);
-
-const BAR_T1_FACTORY_BUILDOPTION_SETS: readonly {
-  name: string;
-  buildoptions: ReadonlySet<string>;
-}[] = [
-  { name: 'armvp', buildoptions: BAR_ARMVP_BUILDOPTIONS },
-  { name: 'armlab', buildoptions: BAR_ARMLAB_BUILDOPTIONS },
-  { name: 'armap', buildoptions: BAR_ARMAP_BUILDOPTIONS },
-];
-
-const BAR_EQUIVALENT_FACTORY_SLOT_INDEX = new Map<UnitBlueprintId, number>([
-  ['unitLynx', 2],
-  ['unitJackal', 3],
-  ['unitBadger', 5],
-  ['unitMongoose', 6],
-  ['unitSeaTurtle', 8],
-  ['unitOrca', 9],
-  ['unitTick', BAR_GRID_SLOT_COUNT + 3],
-  ['unitTarantula', BAR_GRID_SLOT_COUNT + 6],
-  ['unitConstructionDrone', BAR_GRID_SLOT_COUNT * 2],
-  ['unitEagle', (BAR_GRID_SLOT_COUNT * 2) + 1],
-  ['unitDuck', (BAR_GRID_SLOT_COUNT * 2) + 6],
-  ['unitAlbatros', (BAR_GRID_SLOT_COUNT * 2) + 2],
-  ['unitDragonfly', (BAR_GRID_SLOT_COUNT * 2) + 3],
-  ['unitBee', (BAR_GRID_SLOT_COUNT * 2) + 4],
-  ['unitTransport', (BAR_GRID_SLOT_COUNT * 2) + 5],
-]);
-
-const BAR_EQUIVALENT_GRID_FACTORY_UNIT_ORDER: readonly UnitBlueprintId[] = [
-  'unitLynx',
-  'unitJackal',
-  'unitBadger',
-  'unitMongoose',
-  'unitSeaTurtle',
-  'unitOrca',
-  'unitTick',
-  'unitTarantula',
-  'unitConstructionDrone',
-  'unitEagle',
-  'unitAlbatros',
-  'unitDragonfly',
-  'unitBee',
-  'unitTransport',
-  'unitDuck',
-];
-
-const BAR_EQUIVALENT_CLASSIC_FACTORY_UNIT_ORDER: readonly UnitBlueprintId[] = [
-  'unitConstructionDrone',
-  'unitBee',
-  'unitEagle',
-  'unitDuck',
-  'unitAlbatros',
-  'unitDragonfly',
-  'unitTick',
-  'unitJackal',
-  'unitLynx',
-  'unitBadger',
-  'unitMongoose',
-  'unitSeaTurtle',
-  'unitOrca',
-  'unitTarantula',
-  'unitTransport',
-];
-
-function isIntentionallyHiddenSpecialCommand(
-  commandId: CommandHotkeyId,
-  presetId: string,
-): boolean {
-  if (commandId === 'combat.resurrectArea') return (
-    presetId === 'bar-grid' ||
-    presetId === 'bar-grid-60pct' ||
-    presetId === 'bar-legacy' ||
-    presetId === 'bar-legacy-60pct'
-  );
-  return false;
-}
-
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
     throw new Error(`[roster command surface contract] ${message}`);
@@ -388,23 +279,6 @@ function assertBarStructureMembershipMatchesUnitdef(
     assertContract(
       actual === expected,
       `${localUnitBlueprintId}.${structureBlueprintId} BAR build-option membership must mirror ${barUnitdefName}.${barUnitdef}; expected ${expected ? 'present' : 'absent'}`,
-    );
-  }
-}
-
-function assertBarFactoryMembershipMatchesUnitdefs(
-  localFactoryBlueprintId: StructureBlueprintId,
-  allowedUnitBlueprintIds: readonly UnitBlueprintId[],
-): void {
-  for (const [unitBlueprintId, barUnitdef] of BAR_FACTORY_UNITDEF_BY_LOCAL_ID) {
-    const containingFactories = BAR_T1_FACTORY_BUILDOPTION_SETS
-      .filter((factory) => factory.buildoptions.has(barUnitdef))
-      .map((factory) => factory.name);
-    const expected = containingFactories.length > 0;
-    const actual = allowedUnitBlueprintIds.includes(unitBlueprintId);
-    assertContract(
-      actual === expected,
-      `${localFactoryBlueprintId}.${unitBlueprintId} BAR factory membership must mirror ${barUnitdef} in BAR T1 factories; expected ${expected ? 'present' : 'absent'} from [${containingFactories.join(', ')}]`,
     );
   }
 }
@@ -492,13 +366,15 @@ export function runRosterCommandSurfaceContractTest(): void {
     'commander BAR Utility slot 1 must build radar',
   );
   assertContract(
-    getBarCategoryBuildMenuStructureBlueprintIdBySlotIndex('Production', 0, commanderBuildBlueprintIds) === null &&
-      getBarCategoryBuildMenuStructureBlueprintIdBySlotIndex('Production', 1, commanderBuildBlueprintIds) === null,
-    'commander BAR Build slots 1-2 must stay empty because local towerFabricator maps to BAR armap, not armlab/armvp',
+    getBarCategoryBuildMenuStructureBlueprintIdBySlotIndex('Production', 0, commanderBuildBlueprintIds) === 'buildingBotFabricator' &&
+      getBarCategoryBuildMenuStructureBlueprintIdBySlotIndex('Production', 1, commanderBuildBlueprintIds) === 'buildingVehicleFabricator' &&
+      getBarCategoryBuildMenuStructureBlueprintIdBySlotIndex('Production', 2, commanderBuildBlueprintIds) === 'buildingAircraftFabricator' &&
+      getBarCategoryBuildMenuStructureBlueprintIdBySlotIndex('Production', 3, commanderBuildBlueprintIds) === 'buildingNavalFabricator',
+    'commander Production slots 1-4 must expose the four T1 specialist Fabricators',
   );
   assertContract(
-    getBarCategoryBuildMenuStructureBlueprintIdBySlotIndex('Production', 2, commanderBuildBlueprintIds) === 'towerFabricator',
-    'commander BAR Build slot 3 must build the fabricator in the BAR armap air-plant position',
+    getBarCategoryBuildMenuStructureBlueprintIdBySlotIndex('Production', 4, commanderBuildBlueprintIds) === 'towerFabricator',
+    'commander Production slot 5 must expose the premium T1 Universal Fabricator',
   );
   const commanderHomeCells = buildBarHomeBuildMenuCells(commanderBuildBlueprintIds);
   assertContract(
@@ -515,8 +391,10 @@ export function runRosterCommandSurfaceContractTest(): void {
   );
   assertContract(
     commanderHomeCells[2]?.buildingBlueprintId === 'buildingRadar' &&
-      commanderHomeCells[3]?.buildingBlueprintId === 'towerFabricator',
-    'commander BAR home Utility/Build columns must expose radar and fabricator in the bottom row',
+      commanderHomeCells[3]?.buildingBlueprintId === 'towerFabricator' &&
+      commanderHomeCells[7]?.buildingBlueprintId === 'buildingBotFabricator' &&
+      commanderHomeCells[11]?.buildingBlueprintId === 'buildingVehicleFabricator',
+    'commander home Utility/Build columns must expose radar and the leading T1 production choices',
   );
 
   const constructionDroneBuildBlueprintIds = getUnitAuthoredBuildBlueprintIds(UNIT_BLUEPRINTS['unitConstructionDrone']);
@@ -562,6 +440,10 @@ export function runRosterCommandSurfaceContractTest(): void {
       'buildingSonar',
       'buildingSonarJammer',
       'towerFabricator',
+      'buildingAdvancedUniversalFabricator',
+      'buildingNavalFabricator',
+      'buildingAdvancedNavalFabricator',
+      'buildingTidalGenerator',
       'towerTorpedo',
     ],
   );
@@ -576,9 +458,18 @@ export function runRosterCommandSurfaceContractTest(): void {
     (structureBlueprintId) =>
       getStructureFactoryAllowedUnitBlueprintIds(structureBlueprintId).length > 0,
   );
-  assertSameMembers('authored unit-producing structures', factoryStructureBlueprintIds, ['towerFabricator']);
+  assertSameMembers(
+    'derived unit-producing structures',
+    factoryStructureBlueprintIds,
+    FABRICATOR_BLUEPRINT_IDS,
+  );
   for (const structureBlueprintId of factoryStructureBlueprintIds) {
     const allowedUnitBlueprintIds = getStructureFactoryAllowedUnitBlueprintIds(structureBlueprintId);
+    const factoryIdentity = BUILDING_BLUEPRINTS[structureBlueprintId].factory;
+    assertContract(
+      factoryIdentity !== null,
+      `${structureBlueprintId} must carry a factory identity`,
+    );
     assertContract(
       allowedUnitBlueprintIds.length > 0,
       `${structureBlueprintId} factory roster must author at least one production option`,
@@ -597,113 +488,36 @@ export function runRosterCommandSurfaceContractTest(): void {
         .map((unit) => unit.unitBlueprintId),
       allowedUnitBlueprintIds,
     );
-    if (structureBlueprintId === 'towerFabricator') {
-      assertSameMembers(
-        'towerFabricator demo repeat-production roster',
-        allowedUnitBlueprintIds,
-        BUILDABLE_UNIT_BLUEPRINT_IDS,
-      );
-      assertBarFactoryMembershipMatchesUnitdefs(
-        'towerFabricator',
-        allowedUnitBlueprintIds,
-      );
-      assertSameMembers(
-        'towerFabricator authored BAR-equivalent factory roster',
-        allowedUnitBlueprintIds.filter((unitBlueprintId) =>
-          BAR_EQUIVALENT_FACTORY_SLOT_INDEX.has(unitBlueprintId),
-        ),
-        BAR_EQUIVALENT_GRID_FACTORY_UNIT_ORDER,
-      );
-      const barGridFactoryUnitCells = buildBarGridFactoryUnitBlueprintCells(allowedUnitBlueprintIds);
-      const barGridFactoryUnitBlueprintIds = buildFactoryUnitBlueprintIdsForPreset(
-        allowedUnitBlueprintIds,
-        'bar-grid',
-      );
-      const additionalFactoryUnitBlueprintIds = allowedUnitBlueprintIds.filter(
-        (unitBlueprintId) => !BAR_EQUIVALENT_FACTORY_SLOT_INDEX.has(unitBlueprintId),
-      );
-      for (const [unitBlueprintId, slotIndex] of BAR_EQUIVALENT_FACTORY_SLOT_INDEX) {
+    const identity = factoryIdentity!;
+    const expectedRoster = UNIT_BLUEPRINT_IDS.filter((unitBlueprintId) => {
+      const production = UNIT_BLUEPRINTS[unitBlueprintId].production;
+      return production !== null &&
+        production.techLevel === identity.techLevel &&
+        (identity.domain === 'universal' || production.domains.includes(identity.domain));
+    });
+    assertSameMembers(`${structureBlueprintId} metadata-derived roster`, allowedUnitBlueprintIds, expectedRoster);
+    assertContract(
+      allowedUnitBlueprintIds.length === (identity.domain === 'universal' ? 18 : 5),
+      `${structureBlueprintId} must expose ${identity.domain === 'universal' ? 18 : 5} same-tier production options`,
+    );
+    const barGridCells = buildBarGridFactoryUnitBlueprintCells(allowedUnitBlueprintIds);
+    assertContract(
+      barGridCells.length >= BAR_GRID_SLOT_COUNT && barGridCells.length % BAR_GRID_SLOT_COUNT === 0,
+      `${structureBlueprintId} BAR grid must contain complete pages`,
+    );
+    for (const presetId of ['prototype', 'bar-grid', 'bar-legacy'] as const) {
+      const displayed = buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, presetId);
+      assertSameMembers(`${structureBlueprintId} ${presetId} menu`, displayed, allowedUnitBlueprintIds);
+      for (const unitBlueprintId of allowedUnitBlueprintIds) {
         assertContract(
-          barGridFactoryUnitCells[slotIndex] === unitBlueprintId,
-          `towerFabricator.${unitBlueprintId} must use BAR-equivalent factory slot ${slotIndex + 1}; got ${barGridFactoryUnitCells[slotIndex] ?? 'empty'}`,
+          resolveFactoryProductionPresetReplay({
+            selectedUnitBlueprintId: unitBlueprintId,
+            repeatProduction: true,
+            productionQueue: [],
+          }, new Set(displayed)) !== null,
+          `${structureBlueprintId} ${presetId} preset must accept ${unitBlueprintId}`,
         );
       }
-      assertContract(
-        barGridFactoryUnitCells.length === BAR_GRID_SLOT_COUNT * (
-          3 + Math.ceil(additionalFactoryUnitBlueprintIds.length / BAR_GRID_SLOT_COUNT)
-        ),
-        'towerFabricator BAR-grid factory cells must preserve three BAR pages and append pages for every additional unit',
-      );
-      assertContract(
-        UNIT_BLUEPRINTS.unitConstructionDrone.unitLocomotion.type === 'drone' &&
-          barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT * 2] === 'unitConstructionDrone',
-        'towerFabricator BAR-grid factory cells must place the airborne construction drone in the armap/armca air-constructor slot',
-      );
-      assertContract(
-        barGridFactoryUnitCells[0] === null &&
-          barGridFactoryUnitCells[1] === null &&
-          barGridFactoryUnitCells[4] === null &&
-          barGridFactoryUnitCells[7] === null &&
-          barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT] === null &&
-          barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT + 1] === null &&
-          barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT + 2] === null &&
-          barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT + 4] === null &&
-          barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT + 5] === null,
-        'towerFabricator BAR-grid factory cells must keep empty BAR final labGrids vehicle/bot/air slots instead of compacting options',
-      );
-      for (const additionalUnitBlueprintId of additionalFactoryUnitBlueprintIds) {
-        assertContract(
-          buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'prototype').includes(additionalUnitBlueprintId),
-          `towerFabricator prototype factory menu must expose additional option ${additionalUnitBlueprintId}`,
-        );
-        assertContract(
-          barGridFactoryUnitBlueprintIds.includes(additionalUnitBlueprintId),
-          `towerFabricator BAR-grid factory menu must expose additional option ${additionalUnitBlueprintId}`,
-        );
-        assertContract(
-          resolveFactoryProductionPresetReplay({
-            selectedUnitBlueprintId: additionalUnitBlueprintId,
-            repeatProduction: true,
-            productionQueue: [],
-          }, new Set(buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'prototype'))) !== null,
-          `towerFabricator prototype factory presets must accept ${additionalUnitBlueprintId}`,
-        );
-        assertContract(
-          resolveFactoryProductionPresetReplay({
-            selectedUnitBlueprintId: additionalUnitBlueprintId,
-            repeatProduction: true,
-            productionQueue: [],
-          }, new Set(barGridFactoryUnitBlueprintIds)) !== null,
-          `towerFabricator BAR-grid factory presets must accept ${additionalUnitBlueprintId}`,
-        );
-        assertContract(
-          resolveFactoryProductionPresetReplay({
-            selectedUnitBlueprintId: additionalUnitBlueprintId,
-            repeatProduction: true,
-            productionQueue: [],
-          }, new Set(buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'bar-legacy'))) !== null,
-          `towerFabricator BAR-legacy factory presets must accept ${additionalUnitBlueprintId}`,
-        );
-      }
-      assertContract(
-        buildBarClassicFactoryUnitBlueprintIds(allowedUnitBlueprintIds).join('|') ===
-          [...BAR_EQUIVALENT_CLASSIC_FACTORY_UNIT_ORDER, ...additionalFactoryUnitBlueprintIds].join('|'),
-        'towerFabricator BAR-legacy classic factory menu must preserve BAR sorting and append every additional unit',
-      );
-      assertContract(
-        buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'bar-grid').join('|') ===
-          [...BAR_EQUIVALENT_GRID_FACTORY_UNIT_ORDER, ...additionalFactoryUnitBlueprintIds].join('|'),
-        'towerFabricator BAR-grid factory keyboard slots must match the complete displayed grid order',
-      );
-      assertContract(
-        buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'bar-legacy').join('|') ===
-          [...BAR_EQUIVALENT_CLASSIC_FACTORY_UNIT_ORDER, ...additionalFactoryUnitBlueprintIds].join('|'),
-        'towerFabricator BAR-legacy factory keyboard slots must match the complete classic menu order',
-      );
-      assertContract(
-        barGridFactoryUnitBlueprintIds.includes('unitDaddy'),
-        'towerFabricator BAR-grid factory menu must expose Daddy',
-      );
     }
   }
 
@@ -785,7 +599,7 @@ export function runRosterCommandSurfaceContractTest(): void {
   assertSameMembers('authored dgun units', dgunUnitIds, ['unitCommander']);
 
   const barCloakUnitIds = UNIT_BLUEPRINT_IDS.filter(unitBlueprintHasCloakCommand);
-  assertSameMembers('BAR-equivalent WANT_CLOAK command units', barCloakUnitIds, ['unitCommander']);
+  assertSameMembers('cloak command units', barCloakUnitIds, ['unitCommander', 'unitStealthScout']);
 
   const transportUnitIds = UNIT_BLUEPRINT_IDS.filter(
     (unitBlueprintId) => createTransportComponentForUnitBlueprint(unitBlueprintId) !== null,
@@ -793,7 +607,7 @@ export function runRosterCommandSurfaceContractTest(): void {
   assertSameMembers('authored transport units', transportUnitIds, ['unitTransport']);
 
   const barTrajectoryUnitIds = UNIT_BLUEPRINT_IDS.filter(unitBlueprintHasBarTrajectoryCommand);
-  assertSameMembers('BAR-equivalent trajectory command units', barTrajectoryUnitIds, ['unitMongoose']);
+  assertSameMembers('trajectory command units', barTrajectoryUnitIds, ['unitMongoose', 'unitClusterArtillery']);
   assertContract(
     unitBlueprintBarTrajectoryDefaultMode('unitMongoose') === 'high',
     'BAR-equivalent Mongoose trajectory command must default to the armart hightrajectory state',
@@ -802,7 +616,7 @@ export function runRosterCommandSurfaceContractTest(): void {
   assertSameMembers('BAR-equivalent smart trajectory command structures', barTrajectoryStructureIds, []);
 
   const barGroundAreaAttackUnitIds = UNIT_BLUEPRINT_IDS.filter(unitBlueprintHasBarAreaAttackCommand);
-  assertSameMembers('BAR-equivalent ground area-attack command units', barGroundAreaAttackUnitIds, ['unitMongoose']);
+  assertSameMembers('ground area-attack command units', barGroundAreaAttackUnitIds, ['unitMongoose', 'unitClusterArtillery']);
   const capabilityWorld = new WorldState(9501, 512, 512);
   const mongooseEntity = capabilityWorld.createUnitFromBlueprint(80, 80, 1, 'unitMongoose', {
     allocateSubEntityIds: false,
@@ -840,6 +654,7 @@ export function runRosterCommandSurfaceContractTest(): void {
     'unitJackal',
     'unitBadger',
     'unitMongoose',
+    'unitClusterArtillery',
     'unitDragonfly',
   ]);
   assertContract(
@@ -856,11 +671,12 @@ export function runRosterCommandSurfaceContractTest(): void {
     'unitBadger',
     'unitDragonfly',
     'unitMongoose',
+    'unitClusterArtillery',
   ]);
   const barFighterAirTargetOnlyUnitIds = UNIT_BLUEPRINT_IDS.filter(unitBlueprintHasBarFighterAirTargetOnlyRule);
-  assertSameMembers('BAR-equivalent fighter air-target-only units', barFighterAirTargetOnlyUnitIds, ['unitEagle']);
+  assertSameMembers('air-target-only units', barFighterAirTargetOnlyUnitIds, ['unitEagle', 'unitMissileRover']);
   const barAirTargetOnlyStructureIds = STRUCTURE_BLUEPRINT_IDS.filter(buildingBlueprintHasBarAirTargetOnlyRule);
-  assertSameMembers('BAR-equivalent air-target-only structures', barAirTargetOnlyStructureIds, ['towerAntiAir']);
+  assertSameMembers('no-ground-target structures', barAirTargetOnlyStructureIds, ['towerAntiAir', 'towerInterceptor']);
   const barStopStructureIds = STRUCTURE_BLUEPRINT_IDS.filter(buildingBlueprintHasBarStopCommand);
   assertSameMembers('BAR-equivalent pure-building Stop command structures', barStopStructureIds, [
     'buildingExtractorT2',
@@ -875,6 +691,9 @@ export function runRosterCommandSurfaceContractTest(): void {
     'unitAlbatros',
     'unitQueenBee',
     'unitTransport',
+    'unitRadarScout',
+    'unitDetector',
+    'unitPetrel',
   ]);
   assertContract(
     !entityHasBarAttackCommand(beeEntity) &&
@@ -902,9 +721,6 @@ export function runRosterCommandSurfaceContractTest(): void {
   const barCaptureUnitIds = UNIT_BLUEPRINT_IDS.filter(unitBlueprintHasBarCaptureCommand);
   assertSameMembers('BAR-equivalent capture command units', barCaptureUnitIds, ['unitCommander']);
 
-  const barResurrectUnitIds = UNIT_BLUEPRINT_IDS.filter(unitBlueprintHasBarResurrectCommand);
-  assertSameMembers('BAR-equivalent resurrect command units', barResurrectUnitIds, []);
-
   const barCarrierSpawnUnitIds = UNIT_BLUEPRINT_IDS.filter(unitBlueprintHasBarCarrierSpawnCommand);
   assertSameMembers('BAR-equivalent carrier-spawn command units', barCarrierSpawnUnitIds, []);
 
@@ -913,20 +729,43 @@ export function runRosterCommandSurfaceContractTest(): void {
     'unitCommander',
     'unitConstructionDrone',
     'unitConstructionSubmarine',
+    'unitConstructionBot',
+    'unitConstructionRover',
   ]);
   const barBuilderPriorityStructureIds = STRUCTURE_BLUEPRINT_IDS.filter(buildingBlueprintHasBarBuilderPriorityCommand);
   assertSameMembers('BAR-equivalent builder-priority command structures', barBuilderPriorityStructureIds, [
     'towerFabricator',
+    'buildingBotFabricator',
+    'buildingVehicleFabricator',
+    'buildingAircraftFabricator',
+    'buildingNavalFabricator',
+    'buildingAdvancedUniversalFabricator',
+    'buildingAdvancedBotFabricator',
+    'buildingAdvancedVehicleFabricator',
+    'buildingAdvancedAircraftFabricator',
+    'buildingAdvancedNavalFabricator',
   ]);
 
   const barFactoryGuardStructureIds = STRUCTURE_BLUEPRINT_IDS.filter(buildingBlueprintHasBarFactoryGuardCommand);
   assertSameMembers('BAR-equivalent factory-guard command structures', barFactoryGuardStructureIds, [
     'towerFabricator',
+    'buildingBotFabricator',
+    'buildingVehicleFabricator',
+    'buildingAircraftFabricator',
+    'buildingNavalFabricator',
+    'buildingAdvancedUniversalFabricator',
+    'buildingAdvancedBotFabricator',
+    'buildingAdvancedVehicleFabricator',
+    'buildingAdvancedAircraftFabricator',
+    'buildingAdvancedNavalFabricator',
   ]);
 
   const barAirPlantLandAtStructureIds = STRUCTURE_BLUEPRINT_IDS.filter(buildingBlueprintHasBarAirPlantLandAtCommand);
   assertSameMembers('BAR-equivalent air-plant LAND_AT command structures', barAirPlantLandAtStructureIds, [
     'towerFabricator',
+    'buildingAircraftFabricator',
+    'buildingAdvancedUniversalFabricator',
+    'buildingAdvancedAircraftFabricator',
   ]);
 
   // Three-letter codes are an identifier the player reads in fixed-width slots,
@@ -994,13 +833,6 @@ export function runRosterCommandSurfaceContractTest(): void {
       `${commandId} must be registered in the shared command-hotkey surface`,
     );
     for (const presetId of COMMAND_HOTKEY_PRESET_IDS) {
-      if (isIntentionallyHiddenSpecialCommand(commandId, presetId)) {
-        assertContract(
-          commandHotkeyLabel(commandId, presetId) === '',
-          `${presetId}.${commandId} must stay hidden because BAR resurrect is area-capable without a separate button`,
-        );
-        continue;
-      }
       assertContract(
         commandHotkeyLabel(commandId, presetId).length > 0,
         `${presetId}.${commandId} must have a visible hotkey label`,

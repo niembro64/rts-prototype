@@ -69,7 +69,7 @@ export class ClientLockstepPresentation {
         const hasMovingRoot = entity.unit !== null || entity.projectile !== null;
         const hasInterpolatedTurrets = (entity.combat?.turrets.length ?? 0) > 0;
         if (!hasMovingRoot && !hasInterpolatedTurrets) continue;
-        // Beams/lasers are piecewise paths rather than root-body motion. Their
+        // Beams are piecewise paths rather than root-body motion. Their
         // endpoint topology remains on the dedicated beam presentation path.
         if (entity.projectile !== null && entity.projectile.projectileType !== 'projectile') continue;
         const slot = entitySlotRegistry.getSlot(entity.id);

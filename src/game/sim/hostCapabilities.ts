@@ -41,7 +41,6 @@ function compileUnitHostCapabilities(unitBlueprint: UnitBlueprint): UnitHostCapa
         'build',
         'repair',
         'reclaim',
-        'resurrect',
       ] as const),
       workEmitter: unitBlueprint.workEmitter ?? null,
     })

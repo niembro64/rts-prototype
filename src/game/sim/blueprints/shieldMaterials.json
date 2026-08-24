@@ -8,8 +8,7 @@
     "projectileResponse": {
       "plasma": "reflect",
       "rocket": "reflect",
-      "beam": "reflect",
-      "laser": "reflect"
+      "beam": "reflect"
     },
     "hitReaction": {
       "impactEvent": "shieldImpact",

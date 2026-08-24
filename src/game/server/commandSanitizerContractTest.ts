@@ -12,8 +12,6 @@ import type {
   QueueUnitCommand,
   RemoveFactoryUnitProductionCommand,
   RepairAreaCommand,
-  ResurrectAreaCommand,
-  ResurrectCommand,
   SetFactoryGuardCommand,
   SetFactoryOutputGuardCommand,
   SetFactoryRepeatProductionCommand,
@@ -449,51 +447,6 @@ export function runCommandSanitizerContractTest(): void {
     'capture command must preserve target and queue-front insertion',
   );
 
-  const resurrect = sanitizeRequired<ResurrectCommand>(world, {
-    type: 'resurrect',
-    tick: 7,
-    commanderId: 7,
-    targetId: 9,
-    queue: true,
-    queueFront: true,
-  });
-  assertContract(
-    resurrect.tick === 9001 && resurrect.queueFront === true && resurrect.targetId === 9,
-    'resurrect command must preserve target and queue-front insertion',
-  );
-
-  const resurrectArea = sanitizeRequired<ResurrectAreaCommand>(world, {
-    type: 'resurrectArea',
-    tick: 7,
-    commanderId: 7,
-    targetX: 24.5,
-    targetY: 32.25,
-    targetZ: 999,
-    radius: 999999,
-    queue: true,
-    queueInsertIndex: 4,
-    targetOrderOriginX: 11,
-    targetOrderOriginY: 22,
-    targetSplitIndex: 0,
-    targetSplitCount: 2,
-  });
-  assertContract(
-      resurrectArea.tick === 9001 &&
-      resurrectArea.targetZ === world.getGroundZ(24.5, 32.25) &&
-      resurrectArea.radius === 500 &&
-      resurrectArea.queueInsertIndex === 4 &&
-      resurrectArea.targetOrderOriginX === 11 &&
-      resurrectArea.targetOrderOriginY === 22 &&
-      resurrectArea.targetSplitIndex === 0 &&
-      resurrectArea.targetSplitCount === 2,
-    'resurrect-area command must normalize terrain/queue fields and preserve BAR target expansion',
-  );
-  assertContract(
-    resurrectArea.filterCategory === undefined &&
-      resurrectArea.filterBlueprintId === undefined,
-    'area commands without filter fields must stay unfiltered',
-  );
-
   // BAR cmd_area_commands_filter fields: known categories/blueprints pass
   // through unchanged; unknown values reject the whole command.
   const filteredRepairArea = sanitizeRequired<RepairAreaCommand>(world, {
@@ -570,21 +523,6 @@ export function runCommandSanitizerContractTest(): void {
   assertContract(
     invalidFilterCategory === null,
     'reclaim-area command with an unknown filter category must be rejected',
-  );
-
-  const invalidFilterBlueprint = sanitizeCommand({
-    type: 'resurrectArea',
-    tick: 7,
-    commanderId: 7,
-    targetX: 24.5,
-    targetY: 32.25,
-    radius: 100,
-    queue: false,
-    filterBlueprintId: 'unitDoesNotExist',
-  } as unknown as Command, world);
-  assertContract(
-    invalidFilterBlueprint === null,
-    'resurrect-area command with an unknown filter blueprint must be rejected',
   );
 
   const loadTransport = sanitizeRequired<LoadTransportCommand>(world, {

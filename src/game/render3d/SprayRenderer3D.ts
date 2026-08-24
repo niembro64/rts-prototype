@@ -592,7 +592,7 @@ export class SprayRenderer3D {
       endY = ty + (this.random() * 2 - 1) * Math.min(healSpread * 0.4, 5);
     }
     if (spray.inverse === true && spray.flow === 'direct') {
-      // BAR reclaim/resurrection return particles are emitted over the
+      // BAR reclaim return particles are emitted over the
       // target volume, then travel backward and converge exactly on the
       // builder's nano emitter. The logical source/target pair stays
       // unchanged so ownership, visibility and wire identity do too.

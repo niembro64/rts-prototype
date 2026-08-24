@@ -262,7 +262,6 @@ const PATH_PLAN_SERVE_ACTION_TYPES: ReadonlySet<UnitAction['type']> = new Set([
   'repair',
   'reclaim',
   'capture',
-  'resurrect',
 ]);
 
 export class Simulation {
@@ -621,10 +620,6 @@ export class Simulation {
     // Update commander auto-build and auto-heal
     const commanderResult = commanderAbilitiesSystem.update(this.world, dtMs);
     this.currentSprayTargets = commanderResult.sprayTargets;
-    if (commanderResult.resurrectedUnits.length > 0) {
-      const onUnitSpawn = this.onUnitSpawn;
-      if (onUnitSpawn !== null) onUnitSpawn(commanderResult.resurrectedUnits);
-    }
     SIM_TICK_INSTRUMENTATION.phase('sim.commanderAbilities');
 
     // Transport beams: passengers never leave the world now, so a
@@ -677,7 +672,7 @@ export class Simulation {
     // Safety cleanup - remove any dead entities that slipped through.
     // WorldState records ids whose HP changed, so this drains only
     // those candidates instead of walking every unit/building.
-    this.deadEntityCleanup.run(this.onUnitDeath, this.onBuildingDeath, this.onBuildingSpawn);
+    this.deadEntityCleanup.run(this.onUnitDeath, this.onBuildingDeath);
     SIM_TICK_INSTRUMENTATION.phase('sim.deadCleanup');
 
     // Check for game over (commander death)
@@ -1094,8 +1089,7 @@ export class Simulation {
       action.type !== 'build' &&
       action.type !== 'repair' &&
       action.type !== 'reclaim' &&
-      action.type !== 'capture' &&
-      action.type !== 'resurrect'
+      action.type !== 'capture'
     ) {
       return null;
     }
@@ -1806,8 +1800,7 @@ export class Simulation {
   // target.
   /** Hand every building added since the last drain to the host so it can
    *  build the static collision body. Entities that already have one (the
-   *  bootstrap pass builds its own, wrecks are handed over directly) are
-   *  skipped, so this is idempotent. */
+   *  bootstrap pass builds its own) are skipped, so this is idempotent. */
   private flushPendingBuildingBodies(): void {
     const pending = this.world.pendingBuildingBodySpawns;
     if (pending.length === 0) return;
@@ -1989,11 +1982,28 @@ export class Simulation {
         continue;
       }
 
-      // A BEAM-CARRIED passenger executes no actions and drives nothing —
-      // the transport's tractor spring owns its motion until release. Any
-      // orders issued while carried stay parked for the drop.
+      // A BEAM-CARRIED passenger drives nothing — the transport's tractor
+      // spring owns its motion until release — but its weapons and combat
+      // intent remain live. This matters when an enemy transport abducts an
+      // armed unit: the visible, targetable passenger can shoot its carrier.
+      // Non-combat orders stay parked for the drop.
       if (entity.transported !== null) {
         entitySlotRegistry.setUnitDriveInput(entity, 0, 0, 0, 0, entitySlot);
+        const combat = entity.combat;
+        if (combat !== null && !combat.manualLaunchActive) {
+          combat.priorityTargetId = null;
+          combat.priorityTargetPoint = null;
+          const carriedAction = unit.actions[0];
+          if (carriedAction?.type === 'attack' && carriedAction.targetId !== undefined) {
+            combat.priorityTargetId = carriedAction.targetId;
+          } else if (carriedAction?.type === 'attackGround') {
+            combat.priorityTargetPoint = {
+              x: carriedAction.x,
+              y: carriedAction.y,
+              z: carriedAction.z ?? this.world.getGroundZ(carriedAction.x, carriedAction.y),
+            };
+          }
+        }
         continue;
       }
 
@@ -2134,8 +2144,7 @@ export class Simulation {
         currentAction.type === 'build' ||
         currentAction.type === 'repair' ||
         currentAction.type === 'reclaim' ||
-        currentAction.type === 'capture' ||
-        currentAction.type === 'resurrect'
+        currentAction.type === 'capture'
       ) {
         const targetId = currentAction.type === 'build'
           ? currentAction.buildingId
@@ -2214,7 +2223,7 @@ export class Simulation {
 
           // BAR: a guarding builder continuously services its target — assist
           // its construction/production, repair it, or join the guarded
-          // builder's reclaim/resurrection. Approach that same work point
+          // builder's reclaim. Approach that same work point
           // within build range; otherwise fall through to plain follow.
           if (entity.builder !== null) {
             const service = resolveGuardServiceTarget(this.world, entity);
@@ -2721,8 +2730,7 @@ export class Simulation {
       completedAction.type === 'build' ||
       completedAction.type === 'repair' ||
       completedAction.type === 'reclaim' ||
-      completedAction.type === 'capture' ||
-      completedAction.type === 'resurrect'
+      completedAction.type === 'capture'
     ) {
       releaseBuilderWorkStation(this.world, entity);
     }

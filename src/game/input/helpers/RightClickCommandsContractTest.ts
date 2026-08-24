@@ -1,5 +1,6 @@
 import { createEmptyEntityComponentSlots, createTransform, NO_ENTITY_ID } from '@/types/sim';
 import type { Entity, UnitAction } from '../../sim/types';
+import { getTurretConfig } from '../../sim/turretConfigs';
 import { LinePathAccumulator } from './LinePathAccumulator';
 import {
   buildAttackCommandForTarget,
@@ -493,12 +494,7 @@ function combatant(
     combat: {
       turrets: [
         {
-          config: {
-            kind: 'attack',
-            passive: false,
-            targeting: { engagement: { range: 160 } },
-            shot: { type: 'plasma' },
-          },
+          config: getTurretConfig('turretGunLight'),
         },
       ],
     } as unknown as Entity['combat'],

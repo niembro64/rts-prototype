@@ -395,7 +395,6 @@ function describeEmission(shot: EmissionConfig, blueprintId: string | null): Loa
       stat('Force', fmt(shot.force)),
       stat('Recoil', fmt(shot.recoil)),
     );
-    if (shot.type === 'laser') children.push(stat('Duration', ms(shot.duration)));
   } else {
     const shotLocomotion = shot.shotLocomotion;
     const maxLifespanMs = shotLocomotion.maxLifespanMs;
@@ -531,14 +530,6 @@ function computeTurretFirepower(config: TurretConfig): Firepower {
     return { alphaDamage: shot.dps, sustainedDps: shot.dps };
   }
   const cooldownDuration = getTurretCooldownDuration(config.cooldown);
-  if (shot.type === 'laser') {
-    const alphaDamage = shot.dps * (shot.duration / 1000) * pelletCount * burstCount;
-    const cycleMs = Math.max(shot.duration, cooldownDuration, (burstCount - 1) * burstDelay + shot.duration);
-    return {
-      alphaDamage,
-      sustainedDps: cycleMs > 0 ? (alphaDamage * 1000) / cycleMs : 0,
-    };
-  }
   if (isProjectileShot(shot)) {
     const alphaDamage = projectileDamageWithSubmunitions(shot) * pelletCount * burstCount;
     const cycleMs = Math.max(cooldownDuration, (burstCount - 1) * burstDelay + 1);

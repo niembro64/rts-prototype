@@ -38,7 +38,18 @@
     "buildingRadarJammer",
     "buildingSonarJammer",
     "buildingMetalStorage",
-    "buildingEnergyStorage"
+    "buildingEnergyStorage",
+    "buildingBotFabricator",
+    "buildingVehicleFabricator",
+    "buildingAircraftFabricator",
+    "buildingNavalFabricator",
+    "buildingAdvancedUniversalFabricator",
+    "buildingAdvancedBotFabricator",
+    "buildingAdvancedVehicleFabricator",
+    "buildingAdvancedAircraftFabricator",
+    "buildingAdvancedNavalFabricator",
+    "towerInterceptor",
+    "buildingTidalGenerator"
    ],
    "units": [
     "unitJackal",
@@ -68,7 +79,18 @@
     "unitCommander",
     "unitConstructionSubmarine",
     "unitRex",
-    "unitHedgehog"
+    "unitHedgehog",
+    "unitRadarScout",
+    "unitConstructionBot",
+    "unitConstructionRover",
+    "unitStealthScout",
+    "unitDetector",
+    "unitRadarJammer",
+    "unitMissileRover",
+    "unitClusterArtillery",
+    "unitWaterStrider",
+    "unitPatrolCorvette",
+    "unitPetrel"
    ],
    "turrets": [
     "turretGunLight",
@@ -139,7 +161,15 @@
     "turretSensorBuildingSonarJammer",
     "turretSensorBuildingStorage",
     "turretRocketDumb",
-    "turretSensorUnitHedgehog"
+    "turretSensorUnitHedgehog",
+    "turretSensorUnitRadarScout",
+    "turretSensorUnitStealthScout",
+    "turretSensorUnitDetector",
+    "turretSensorUnitRadarJammer",
+    "turretMortarCluster",
+    "turretTorpedoAirLaunch",
+    "turretInterceptor",
+    "turretMissileRover"
    ],
    "shots": [
     "shotPlasmaLight",
@@ -153,7 +183,8 @@
     "shotMortarHeavy",
     "shotPlasmaDisruptor",
     "shotTorpedo",
-    "shotRocketDumb"
+    "shotRocketDumb",
+    "shotTorpedoAirLaunch"
    ]
   }
  },
@@ -240,6 +271,39 @@
      "units": "all"
     }
    }
+  },
+  "unitRadarScout": { "targets": "none" },
+  "unitConstructionBot": { "targets": "none" },
+  "unitConstructionRover": { "targets": "none" },
+  "unitStealthScout": { "targets": "none" },
+  "unitDetector": { "targets": "none" },
+  "unitRadarJammer": {
+   "targets": { "enemy": { "buildings": "all", "units": "all" } }
+  },
+  "unitMissileRover": {
+   "targets": {
+    "enemy": {
+     "units": {
+      "only": [
+       "unitBee", "unitConstructionDrone", "unitDragonfly", "unitEagle",
+       "unitDuck", "unitAlbatros", "unitQueenBee", "unitTransport",
+       "unitRadarScout", "unitDetector", "unitPetrel"
+      ]
+     }
+    }
+   }
+  },
+  "unitClusterArtillery": {
+   "targets": { "enemy": { "buildings": "all", "units": "all" } }
+  },
+  "unitWaterStrider": {
+   "targets": { "enemy": { "buildings": "all", "units": "all" } }
+  },
+  "unitPatrolCorvette": {
+   "targets": { "enemy": { "buildings": "all", "units": "all" } }
+  },
+  "unitPetrel": {
+   "targets": { "enemy": { "units": "all" } }
   },
   "unitMammoth": {
    "targets": {
@@ -368,7 +432,11 @@
        "unitDuck",
        "unitAlbatros",
        "unitQueenBee",
-       "unitQueenTick"
+       "unitQueenTick",
+       "unitTransport",
+       "unitRadarScout",
+       "unitDetector",
+       "unitPetrel"
       ]
      }
     }
@@ -510,15 +578,7 @@
    "targets": {
     "enemy": {
      "buildings": "all",
-     "units": "all",
-     "shots": {
-      "only": [
-       "shotRocketLight",
-       "shotRocketDumb",
-       "shotMortarMedium",
-       "shotMortarHeavy"
-      ]
-     }
+     "units": "all"
     }
    }
   },
@@ -526,15 +586,7 @@
    "targets": {
     "enemy": {
      "buildings": "all",
-     "units": "all",
-     "shots": {
-      "only": [
-       "shotRocketLight",
-       "shotRocketDumb",
-       "shotMortarMedium",
-       "shotMortarHeavy"
-      ]
-     }
+     "units": "all"
     }
    }
   },
@@ -542,15 +594,7 @@
    "targets": {
     "enemy": {
      "buildings": "all",
-     "units": "all",
-     "shots": {
-      "only": [
-       "shotRocketLight",
-       "shotRocketDumb",
-       "shotMortarMedium",
-       "shotMortarHeavy"
-      ]
-     }
+     "units": "all"
     }
    }
   },
@@ -574,15 +618,7 @@
    "targets": {
     "enemy": {
      "buildings": "all",
-     "units": "all",
-     "shots": {
-      "only": [
-       "shotRocketLight",
-       "shotRocketDumb",
-       "shotMortarMedium",
-       "shotMortarHeavy"
-      ]
-     }
+     "units": "all"
     }
    }
   },
@@ -627,6 +663,38 @@
    }
   },
    "turretSensorUnitHedgehog": {"targets": "none"},
+  "turretSensorUnitRadarScout": { "targets": "none" },
+  "turretSensorUnitStealthScout": { "targets": "none" },
+  "turretSensorUnitDetector": { "targets": "none" },
+  "turretSensorUnitRadarJammer": { "targets": "none" },
+  "turretMortarCluster": {
+   "targets": { "enemy": { "buildings": "all", "units": "all" } }
+  },
+  "turretTorpedoAirLaunch": {
+   "targets": { "enemy": { "units": "all" } }
+  },
+  "turretInterceptor": {
+   "targets": {
+    "enemy": {
+     "shots": {
+      "only": ["shotRocketLight", "shotRocketDumb", "shotMortarMedium", "shotMortarHeavy"]
+     }
+    }
+   }
+  },
+  "turretMissileRover": {
+   "targets": {
+    "enemy": {
+     "units": {
+      "only": [
+       "unitBee", "unitConstructionDrone", "unitDragonfly", "unitEagle",
+       "unitDuck", "unitAlbatros", "unitQueenBee", "unitTransport",
+       "unitRadarScout", "unitDetector", "unitPetrel"
+      ]
+     }
+    }
+   }
+  },
   "turretRocketFast": {
    "targets": {
     "enemy": {
@@ -639,15 +707,11 @@
        "unitDuck",
        "unitAlbatros",
        "unitQueenBee",
-       "unitQueenTick"
-      ]
-     },
-     "shots": {
-      "only": [
-       "shotRocketLight",
-       "shotRocketDumb",
-       "shotMortarMedium",
-       "shotMortarHeavy"
+       "unitQueenTick",
+       "unitTransport",
+       "unitRadarScout",
+       "unitDetector",
+       "unitPetrel"
       ]
      }
     }
@@ -673,15 +737,11 @@
        "unitDuck",
        "unitAlbatros",
        "unitQueenBee",
-       "unitQueenTick"
-      ]
-     },
-     "shots": {
-      "only": [
-       "shotRocketLight",
-       "shotRocketDumb",
-       "shotMortarMedium",
-       "shotMortarHeavy"
+       "unitQueenTick",
+       "unitTransport",
+       "unitRadarScout",
+       "unitDetector",
+       "unitPetrel"
       ]
      }
     }
@@ -913,7 +973,11 @@
        "unitDuck",
        "unitAlbatros",
        "unitQueenBee",
-       "unitQueenTick"
+       "unitQueenTick",
+       "unitTransport",
+       "unitRadarScout",
+       "unitDetector",
+       "unitPetrel"
       ]
      }
     }
@@ -947,6 +1011,25 @@
   },
   "buildingEnergyStorage": {
    "targets": "none"
-  }
+  },
+  "buildingBotFabricator": { "targets": "none" },
+  "buildingVehicleFabricator": { "targets": "none" },
+  "buildingAircraftFabricator": { "targets": "none" },
+  "buildingNavalFabricator": { "targets": "none" },
+  "buildingAdvancedUniversalFabricator": { "targets": "none" },
+  "buildingAdvancedBotFabricator": { "targets": "none" },
+  "buildingAdvancedVehicleFabricator": { "targets": "none" },
+  "buildingAdvancedAircraftFabricator": { "targets": "none" },
+  "buildingAdvancedNavalFabricator": { "targets": "none" },
+  "towerInterceptor": {
+   "targets": {
+    "enemy": {
+     "shots": {
+      "only": ["shotRocketLight", "shotRocketDumb", "shotMortarMedium", "shotMortarHeavy"]
+     }
+    }
+   }
+  },
+  "buildingTidalGenerator": { "targets": "none" }
  }
 }

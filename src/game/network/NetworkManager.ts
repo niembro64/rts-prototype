@@ -96,6 +96,7 @@ import {
   sessionStatusFor,
   type SessionLifecycle,
 } from './multiplayer/MultiplayerBackend';
+import { sanitizeChatMessageText } from './chatPolicy';
 
 // Player-name policy lives in @/playerNamesConfig — single source of
 // truth for both seeding (random funny name keyed by playerId) and the
@@ -247,7 +248,6 @@ async function resolvePeerServerTarget(): Promise<PeerServerTarget | null> {
 
 const SIGNALING_RECONNECT_INITIAL_DELAY_MS = 1000;
 const SIGNALING_RECONNECT_MAX_DELAY_MS = 10000;
-const COMMUNICATION_CHAT_MAX_LENGTH = 220;
 const LOCKSTEP_PENDING_MESSAGE_QUEUE_MAX = 512;
 /**
  * Who a lockstep message came from, at both levels.
@@ -275,13 +275,6 @@ type QueuedLockstepMessage = {
   readonly message: NetworkLockstepMessage;
   readonly from: LockstepMessageSource;
 };
-
-function sanitizeCommunicationText(value: string, maxLength: number): string | null {
-  if (typeof value !== 'string') return null;
-  const compact = value.replace(/\s+/g, ' ').trim();
-  if (compact.length === 0) return null;
-  return compact.slice(0, maxLength);
-}
 
 function shiftQueuedLockstepMessage(queue: QueuedLockstepMessage[]): QueuedLockstepMessage | undefined {
   if (queue.length === 0) return undefined;
@@ -1537,7 +1530,7 @@ export class NetworkManager {
       ? data.clientEventId.slice(0, 64)
       : 'event';
     const id = this.nextCommunicationEventId(fromPlayerId, clientEventId);
-    const text = sanitizeCommunicationText(data.text, COMMUNICATION_CHAT_MAX_LENGTH);
+    const text = sanitizeChatMessageText(data.text);
     if (text === null) return null;
     return {
       kind: 'chat',

@@ -1,7 +1,7 @@
 // ShieldImpactRenderer3D - tangent-plane reflector hit flashes.
 //
 // Force-field projectile impacts are authored by the server at the exact
-// sphere intersection point. Continuous beam/laser reflection contacts
+// sphere intersection point. Continuous beam reflection contacts
 // come from live beam polyline vertices. In both cases the supplied
 // normal is in sim coordinates; this renderer draws rings in the plane
 // perpendicular to that normal, so the pulse lies tangent to the

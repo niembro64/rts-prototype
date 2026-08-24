@@ -15,6 +15,7 @@ import type {
   ResourceCost,
 } from '../types';
 import type { UnitBlueprintId } from '../../../types/blueprintIds';
+import type { UnitProductionDomain } from '../../../types/blueprintSchema.generated';
 import type {
   BuildingTurretMount,
   EntityBaseLedger,
@@ -23,6 +24,8 @@ import type {
   WorkEmitterSpec,
 } from '../../../types/blueprints';
 import rawBuildingBlueprints from './buildings.json';
+import rawFabricatorBlueprints from './fabricators.json';
+import { resolveBlueprintRecordInheritance, resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
 import {
   LOCK_ON_INCLUSION_FIELDS,
@@ -37,6 +40,7 @@ import {
 import {
   isUnitBlueprintId,
   STRUCTURE_BLUEPRINT_IDS,
+  UNIT_BLUEPRINT_IDS,
 } from '../../../types/blueprintIds';
 import { TURRET_BLUEPRINTS } from './turrets';
 import { UNIT_BLUEPRINTS } from './units';
@@ -105,8 +109,11 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
    *  any non-converter building. */
   conversionRate: number | null;
   /** Unit production roster for static factories. This is BAR-style
-   *  `buildoptions` data owned directly by the factory host. */
+   *  `buildoptions` data derived from the fabricator and unit production
+   *  identities. It is never authored as a second roster. */
   allowedUnitBlueprintIds: readonly UnitBlueprintId[] | null;
+  /** Static factory identity. Null means this structure produces no units. */
+  factory: FabricatorIdentity | null;
   renderProfile: BuildingRenderProfile;
   /** Primary visual/anchor height above ground, in world units. */
   visualHeight: number;
@@ -125,20 +132,77 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   turrets: BuildingTurretMount[];
 };
 
-type JsonBuildingBlueprint = Omit<BuildingBlueprint, keyof LockOnInclusionObject>;
+export type FabricatorDomain = UnitProductionDomain | 'universal';
+export type FabricatorIdentity = Readonly<{
+  techLevel: 1 | 2;
+  domain: FabricatorDomain;
+}>;
 
-const RAW_BUILDING_BLUEPRINTS =
-  rawBuildingBlueprints as unknown as Partial<Record<BuildingBlueprintId, JsonBuildingBlueprint>>;
+type JsonBuildingBlueprint = Omit<BuildingBlueprint, keyof LockOnInclusionObject>;
+type InheritableJsonBuildingBlueprint = Partial<JsonBuildingBlueprint> & { $extends?: string };
+
+const RAW_FABRICATOR_BLUEPRINTS = rawFabricatorBlueprints as unknown as Record<
+  string,
+  InheritableJsonBuildingBlueprint
+>;
+const RAW_BUILDING_BLUEPRINTS_WITH_VARIANTS: Record<
+  string,
+  Record<string, unknown> & { $extends?: string }
+> = {
+  ...(rawBuildingBlueprints as unknown as Record<string, Record<string, unknown> & { $extends?: string }>),
+};
+for (const [id, variant] of Object.entries(RAW_FABRICATOR_BLUEPRINTS)) {
+  RAW_BUILDING_BLUEPRINTS_WITH_VARIANTS[id] = {
+    $extends: 'towerFabricator',
+    ...variant,
+    allowedUnitBlueprintIds: null,
+    base: {
+      cost: variant.cost,
+      health: variant.hp,
+    },
+  };
+}
+const RAW_BUILDING_BLUEPRINTS = resolveBlueprintRecordInheritance<JsonBuildingBlueprint>(
+  resolveBlueprintRefs(RAW_BUILDING_BLUEPRINTS_WITH_VARIANTS),
+  'building blueprint',
+) as Partial<Record<BuildingBlueprintId, JsonBuildingBlueprint>>;
 
 assertBuildingLockOnInclusionConfigIds(Object.keys(RAW_BUILDING_BLUEPRINTS));
+
+function deriveFabricatorRoster(
+  factory: FabricatorIdentity | null,
+): readonly UnitBlueprintId[] | null {
+  if (factory === null) return null;
+  const roster: UnitBlueprintId[] = [];
+  for (const unitBlueprintId of UNIT_BLUEPRINT_IDS) {
+    const production = UNIT_BLUEPRINTS[unitBlueprintId]?.production ?? null;
+    if (production === null || production.techLevel !== factory.techLevel) continue;
+    if (factory.domain !== 'universal' && !production.domains.includes(factory.domain)) continue;
+    if (!isBuildableUnitBlueprintId(unitBlueprintId)) {
+      throw new Error(
+        `Invalid production identity for ${unitBlueprintId}: fabricator units must be buildable`,
+      );
+    }
+    roster.push(unitBlueprintId);
+  }
+  return Object.freeze(roster);
+}
 
 const STATIC_BLUEPRINTS_BY_ID: Partial<Record<BuildingBlueprintId, BuildingBlueprint>> = {};
 for (const id of Object.keys(RAW_BUILDING_BLUEPRINTS) as BuildingBlueprintId[]) {
   const blueprint = RAW_BUILDING_BLUEPRINTS[id];
   if (blueprint === undefined) continue;
   assertNoInlineLockOnInclusionFields(`building blueprint ${id}`, blueprint);
+  if (blueprint.allowedUnitBlueprintIds !== null) {
+    throw new Error(
+      `Invalid building blueprint ${id}: allowedUnitBlueprintIds is derived and must be authored null`,
+    );
+  }
+  const factory = blueprint.factory ?? null;
   STATIC_BLUEPRINTS_BY_ID[id] = {
     ...blueprint,
+    factory,
+    allowedUnitBlueprintIds: deriveFabricatorRoster(factory),
     ...getBuildingLockOnInclusions(id),
   };
 }
@@ -167,6 +231,7 @@ const BUILDING_EXPLICIT_FIELDS = [
   'energyStorage',
   'metalStorage',
   'constructionRate',
+  'factory',
   'conversionRate',
   'allowedUnitBlueprintIds',
   'footprintMask',
@@ -315,14 +380,15 @@ function validateBuildingPlacementSets(
       `Invalid building blueprint ${id}: unknown hoveringType "${String(hoveringType)}"`,
     );
   }
-  if (id === 'towerFabricator') {
-    if (hoveringType !== 'fabricator') {
-      throw new Error('Invalid building blueprint towerFabricator: hoveringType must be "fabricator"');
-    }
-  } else if (hoveringType !== null) {
+  const factoryDomain = blueprint.factory?.domain ?? null;
+  const factoryShouldHover = factoryDomain === 'universal' || factoryDomain === 'aircraft';
+  if (factoryShouldHover && hoveringType !== 'fabricator') {
     throw new Error(
-      `Invalid building blueprint ${id}: only towerFabricator may currently author a hoveringType`,
+      `Invalid building blueprint ${id}: ${factoryDomain} fabricators must hover`,
     );
+  }
+  if (!factoryShouldHover && hoveringType !== null) {
+    throw new Error(`Invalid building blueprint ${id}: only universal and aircraft fabricators hover`);
   }
   if (hoveringType !== null && blueprint.supportSurface.kind !== 'none') {
     throw new Error(
@@ -348,7 +414,7 @@ function validateFabricatorTorusTargetRadius(
   id: string,
   blueprint: BuildingBlueprint,
 ): void {
-  if (id !== 'towerFabricator') return;
+  if (blueprint.hoveringType !== 'fabricator') return;
   const width = blueprint.gridWidth * BUILD_GRID_CELL_SIZE;
   const depth = blueprint.gridHeight * BUILD_GRID_CELL_SIZE;
   const expected = fabricatorTorusOuterRadius(width, depth);
@@ -467,14 +533,28 @@ function validateFactoryUnitRoster(
   blueprint: BuildingBlueprint,
 ): void {
   const roster = blueprint.allowedUnitBlueprintIds;
-  const isFactory = blueprint.constructionRate !== null;
-  if (!isFactory) {
+  const factory = blueprint.factory;
+  if (factory === null) {
+    if (blueprint.constructionRate !== null) {
+      throw new Error(
+        `Invalid building blueprint ${id}: constructionRate requires a factory identity`,
+      );
+    }
     if (roster !== null) {
       throw new Error(
         `Invalid building blueprint ${id}: allowedUnitBlueprintIds must be null on non-factories`,
       );
     }
     return;
+  }
+  if (blueprint.constructionRate === null || blueprint.constructionRate <= 0) {
+    throw new Error(`Invalid building blueprint ${id}: fabricators require positive constructionRate`);
+  }
+  if (
+    (factory.techLevel !== 1 && factory.techLevel !== 2) ||
+    !['universal', 'bot', 'vehicle', 'aircraft', 'naval'].includes(factory.domain)
+  ) {
+    throw new Error(`Invalid building blueprint ${id}: malformed factory identity`);
   }
   if (!Array.isArray(roster) || roster.length === 0) {
     throw new Error(
@@ -494,6 +574,13 @@ function validateFactoryUnitRoster(
       );
     }
     seen.add(unitBlueprintId);
+  }
+  const expected = deriveFabricatorRoster(factory) ?? [];
+  if (
+    expected.length !== roster.length ||
+    expected.some((unitBlueprintId, index) => roster[index] !== unitBlueprintId)
+  ) {
+    throw new Error(`Invalid building blueprint ${id}: derived fabricator roster drifted`);
   }
 }
 
@@ -755,6 +842,96 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   }
 }
 
+export const FABRICATOR_BLUEPRINT_IDS = Object.freeze(
+  STRUCTURE_BLUEPRINT_IDS.filter(
+    (buildingBlueprintId) => BUILDING_BLUEPRINTS[buildingBlueprintId].factory !== null,
+  ),
+);
+
+export function isFabricatorBuildingBlueprintId(
+  buildingBlueprintId: string | null | undefined,
+): boolean {
+  return buildingBlueprintId !== null &&
+    buildingBlueprintId !== undefined &&
+    FABRICATOR_BLUEPRINT_IDS.includes(buildingBlueprintId as BuildingBlueprintId);
+}
+
+export function getFabricatorBuildingBlueprintId(
+  techLevel: 1 | 2,
+  domain: FabricatorDomain,
+): BuildingBlueprintId {
+  for (const buildingBlueprintId of FABRICATOR_BLUEPRINT_IDS) {
+    const factory = BUILDING_BLUEPRINTS[buildingBlueprintId].factory;
+    if (factory?.techLevel === techLevel && factory.domain === domain) {
+      return buildingBlueprintId;
+    }
+  }
+  throw new Error(`Missing T${techLevel} ${domain} fabricator`);
+}
+
+function validateFabricatorMatrix(): void {
+  const domains: readonly FabricatorDomain[] = [
+    'universal', 'bot', 'vehicle', 'aircraft', 'naval',
+  ];
+  if (FABRICATOR_BLUEPRINT_IDS.length !== 10) {
+    throw new Error(`Fabricator matrix must contain exactly ten buildings`);
+  }
+  for (const techLevel of [1, 2] as const) {
+    const byDomain = new Map<FabricatorDomain, BuildingBlueprint>();
+    for (const buildingBlueprintId of FABRICATOR_BLUEPRINT_IDS) {
+      const blueprint = BUILDING_BLUEPRINTS[buildingBlueprintId];
+      if (blueprint.factory?.techLevel === techLevel) {
+        if (byDomain.has(blueprint.factory.domain)) {
+          throw new Error(`Fabricator matrix has duplicate T${techLevel} ${blueprint.factory.domain}`);
+        }
+        byDomain.set(blueprint.factory.domain, blueprint);
+      }
+    }
+    for (const domain of domains) {
+      if (!byDomain.has(domain)) {
+        throw new Error(`Fabricator matrix is missing T${techLevel} ${domain}`);
+      }
+    }
+    const specialist = domains.slice(1).map((domain) => byDomain.get(domain)!);
+    for (const blueprint of specialist) {
+      if (blueprint.allowedUnitBlueprintIds?.length !== 5) {
+        throw new Error(
+          `${blueprint.buildingBlueprintId} must derive exactly five same-tier specialist entries`,
+        );
+      }
+    }
+    const union = new Set(specialist.flatMap((blueprint) => blueprint.allowedUnitBlueprintIds ?? []));
+    const universal = byDomain.get('universal')!;
+    if (
+      universal.allowedUnitBlueprintIds?.length !== union.size ||
+      universal.allowedUnitBlueprintIds.some((unitBlueprintId) => !union.has(unitBlueprintId))
+    ) {
+      throw new Error(`T${techLevel} Universal roster must be the deduplicated specialist union`);
+    }
+    const specialistCost = specialist[0].cost;
+    for (const blueprint of specialist) {
+      if (
+        blueprint.cost.energy !== specialistCost.energy ||
+        blueprint.cost.metal !== specialistCost.metal ||
+        blueprint.constructionRate !== specialist[0].constructionRate ||
+        blueprint.hp !== specialist[0].hp
+      ) {
+        throw new Error(`T${techLevel} specialist fabricators must share cost, power, and durability`);
+      }
+    }
+    if (
+      universal.cost.energy !== specialistCost.energy * 3 ||
+      universal.cost.metal !== specialistCost.metal * 3 ||
+      universal.constructionRate !== specialist[0].constructionRate ||
+      universal.hp !== specialist[0].hp
+    ) {
+      throw new Error(`T${techLevel} Universal must cost 3x without extra throughput or durability`);
+    }
+  }
+}
+
+validateFabricatorMatrix();
+
 export function getBuildingBlueprint(buildingBlueprintId: BuildingBlueprintId): BuildingBlueprint {
   return BUILDING_BLUEPRINTS[buildingBlueprintId];
 }
@@ -787,6 +964,18 @@ export function maxUnitCollisionRadius(): number {
  *  diameter. */
 export function fabricatorTorusHoverHeight(): number {
   return 1.2 * (2 * MAX_UNIT_COLLISION_RADIUS);
+}
+
+/** World height of a fabricator's production ring above its placement base.
+ * Universal and aircraft plants keep the high hover lane; grounded and naval
+ * specialists rest their ring at the center of their physical structure. */
+export function fabricatorProductionPlaneHeight(
+  buildingBlueprintId: BuildingBlueprintId,
+): number {
+  const blueprint = BUILDING_BLUEPRINTS[buildingBlueprintId];
+  return blueprint.hoveringType === 'fabricator'
+    ? fabricatorTorusHoverHeight()
+    : blueprint.gridDepth * BUILD_GRID_CELL_SIZE * 0.5;
 }
 
 /** Radius of the torus ring — the circle the construction pylons hang on. */

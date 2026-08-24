@@ -678,7 +678,7 @@ export class DamageImpact3D {
         visual.lineDamageSphereRadius,
       );
       const shot = projectile.config.shot;
-      const dps = shot.type === 'beam' || shot.type === 'laser'
+      const dps = shot.type === 'beam'
         ? Math.max(0, shot.dps)
         : 0;
       if (site.kind === 'entity' || site.kind === 'endpoint') {

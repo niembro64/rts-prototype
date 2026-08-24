@@ -315,9 +315,8 @@ export function runEntityDetailLevel3DContractTest(): void {
   }
   assertContract(
     projectileDetailLadder('beam') === null &&
-      projectileDetailLadder('laser') === null &&
       projectileDetailLadder('shield') === null,
-    'rays and shields have no projectile ladder — beams keep the radius floor',
+    'beams and shields have no projectile ladder — beams keep the radius floor',
   );
 
   // ── Strategic glyph: bands and floor ──────────────────────────────

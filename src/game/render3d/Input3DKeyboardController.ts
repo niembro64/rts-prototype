@@ -67,7 +67,6 @@ type Input3DKeyboardControllerConfig = Input3DCommandModeControls & {
   hasSelectedCommander: () => boolean;
   hasSelectedManualLaunchEntities: () => boolean;
   hasSelectedCaptureControl: () => boolean;
-  hasSelectedResurrectControl: () => boolean;
   hasSelectedMoveStateControl: () => boolean;
   hasSelectedTrajectoryControl: () => boolean;
   hasSelectedCloakControl: () => boolean;
@@ -131,8 +130,6 @@ type Input3DKeyboardControllerConfig = Input3DCommandModeControls & {
   toggleGuardMode: () => void;
   toggleReclaimMode: () => void;
   toggleCaptureMode: () => void;
-  toggleResurrectMode: () => void;
-  toggleResurrectAreaMode: () => void;
   toggleLoadTransportMode: () => void;
   toggleUnloadTransportMode: () => void;
   toggleMexUpgradeMode: () => void;
@@ -239,9 +236,7 @@ type BarSupportKeyEvent = Pick<
 type BarSupportSelectionContext = {
   presetId: CommandHotkeyPresetId;
   hasSelectedCaptureControl: boolean;
-  hasSelectedResurrectControl: boolean;
   isCaptureMode: boolean;
-  isResurrectMode: boolean;
 };
 
 export function barSupportCommandForKey(
@@ -250,9 +245,6 @@ export function barSupportCommandForKey(
 ): CommandHotkeyId | null {
   if (!isBarGridCommandHotkeyPreset(context.presetId)) return null;
   if (e.code !== 'KeyW' || e.ctrlKey || e.metaKey || e.altKey) return null;
-  if (context.isResurrectMode) {
-    return context.hasSelectedResurrectControl ? 'combat.resurrect' : null;
-  }
   if (context.isCaptureMode) return 'combat.capture';
   return context.hasSelectedCaptureControl ? 'combat.capture' : null;
 }
@@ -835,9 +827,7 @@ export class Input3DKeyboardController {
     const supportCommandId = barSupportCommandForKey(e, {
       presetId: activeCommandPresetId,
       hasSelectedCaptureControl: this.config.hasSelectedCaptureControl(),
-      hasSelectedResurrectControl: this.config.hasSelectedResurrectControl(),
       isCaptureMode: this.config.isCaptureMode(),
-      isResurrectMode: this.config.isResurrectMode(),
     });
     if (supportCommandId !== null) {
       e.preventDefault();
@@ -1058,12 +1048,6 @@ export class Input3DKeyboardController {
         break;
       case 'combat.capture':
         this.config.toggleCaptureMode();
-        break;
-      case 'combat.resurrect':
-        this.config.toggleResurrectMode();
-        break;
-      case 'combat.resurrectArea':
-        this.config.toggleResurrectAreaMode();
         break;
       case 'combat.loadTransport':
         this.config.toggleLoadTransportMode();
@@ -1392,8 +1376,6 @@ export class Input3DKeyboardController {
         { isActive: this.config.isGuardMode, cancel: this.config.exitGuardMode },
         { isActive: this.config.isReclaimMode, cancel: this.config.exitReclaimMode },
         { isActive: this.config.isCaptureMode, cancel: this.config.exitCaptureMode },
-        { isActive: this.config.isResurrectMode, cancel: this.config.exitResurrectMode },
-        { isActive: this.config.isResurrectAreaMode, cancel: this.config.exitResurrectAreaMode },
         { isActive: this.config.isLoadTransportMode, cancel: this.config.exitLoadTransportMode },
         { isActive: this.config.isUnloadTransportMode, cancel: this.config.exitUnloadTransportMode },
         { isActive: this.config.isMexUpgradeMode, cancel: this.config.exitMexUpgradeMode },

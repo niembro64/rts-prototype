@@ -14,7 +14,7 @@ const ACTION_TYPE_RECLAIM: u8 = 7;
 const ACTION_TYPE_ATTACK_GROUND: u8 = 8;
 const ACTION_TYPE_WAIT: u8 = 9;
 const ACTION_TYPE_CAPTURE: u8 = 10;
-const ACTION_TYPE_RESURRECT: u8 = 11;
+// code 11 retired; kept as a gap so later codes stay aligned.
 const ACTION_TYPE_LOAD_TRANSPORT: u8 = 12;
 const ACTION_TYPE_UNLOAD_TRANSPORT: u8 = 13;
 const ACTION_TYPE_NONE: u8 = 255;
@@ -78,7 +78,6 @@ fn is_build_like(action: u8) -> bool {
         || action == ACTION_TYPE_REPAIR
         || action == ACTION_TYPE_RECLAIM
         || action == ACTION_TYPE_CAPTURE
-        || action == ACTION_TYPE_RESURRECT
 }
 
 #[inline]

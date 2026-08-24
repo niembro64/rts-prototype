@@ -234,6 +234,17 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   buildingSonarJammer: { close: 900, mid: 600, far: 360 },
   buildingMetalStorage: { close: 700, mid: 500, far: 320 },
   buildingEnergyStorage: { close: 1620, mid: 825, far: 380 },
+  buildingBotFabricator: { close: 2600, mid: 1300, far: 640 },
+  buildingVehicleFabricator: { close: 2600, mid: 1300, far: 640 },
+  buildingAircraftFabricator: { close: 2600, mid: 1300, far: 640 },
+  buildingNavalFabricator: { close: 2600, mid: 1300, far: 640 },
+  buildingAdvancedUniversalFabricator: { close: 2600, mid: 1300, far: 640 },
+  buildingAdvancedBotFabricator: { close: 2600, mid: 1300, far: 640 },
+  buildingAdvancedVehicleFabricator: { close: 2600, mid: 1300, far: 640 },
+  buildingAdvancedAircraftFabricator: { close: 2600, mid: 1300, far: 640 },
+  buildingAdvancedNavalFabricator: { close: 2600, mid: 1300, far: 640 },
+  towerInterceptor: { close: 1200, mid: 750, far: 440 },
+  buildingTidalGenerator: { close: 1100, mid: 550, far: 300 },
 };
 
 /** Full visible unit ceilings: body + locomotion + physical turrets + unique kit/panel art. */
@@ -276,6 +287,17 @@ const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
   // racks are included here. Measured at 2140/1380/810; each
   // ceiling retains roughly 5% regression headroom.
   unitRex: { close: 2240, mid: 1440, far: 850 },
+  unitRadarScout: { close: 1250, mid: 650, far: 240 },
+  unitDetector: { close: 1250, mid: 650, far: 240 },
+  unitPetrel: { close: 1250, mid: 780, far: 440 },
+  unitConstructionBot: { close: 3000, mid: 1200, far: 550 },
+  unitConstructionRover: { close: 700, mid: 350, far: 180 },
+  unitStealthScout: { close: 1250, mid: 700, far: 320 },
+  unitRadarJammer: { close: 1400, mid: 780, far: 380 },
+  unitMissileRover: { close: 1400, mid: 800, far: 460 },
+  unitClusterArtillery: { close: 1100, mid: 650, far: 340 },
+  unitWaterStrider: { close: 3000, mid: 1250, far: 400 },
+  unitPatrolCorvette: { close: 1400, mid: 780, far: 380 },
 };
 
 const INTENTIONAL_ZERO_TURRETS = new Set<string>(['turretDisruptor']);
@@ -2335,8 +2357,8 @@ function runConstructionHostMarkingContracts(): void {
 }
 
 export function runEntityLodGeometry3DContractTest(): void {
-  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 28, 'visual roster covers all 28 units');
-  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 21, 'visual roster covers all 21 buildings');
+  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 39, 'visual roster covers all 39 units');
+  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 32, 'visual roster covers all 32 buildings');
   const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
   try {
     runEnvironmentLodMaterialContracts();

@@ -599,8 +599,8 @@
   "towerFabricator": {
     "buildingBlueprintId": "towerFabricator",
     "tinyName": "FAB",
-    "shortName": "FAB",
-    "name": "Fabricator",
+    "shortName": "UNIV FAB",
+    "name": "Universal Fabricator",
     "gridWidth": 12,
     "gridHeight": 12,
     "footprintMask": [
@@ -630,6 +630,7 @@
     "energyStorage": null,
     "metalStorage": null,
     "constructionRate": 100,
+    "factory": { "techLevel": 1, "domain": "universal" },
     "workEmitter": {
       "points": [
         {
@@ -649,35 +650,7 @@
       "alignmentToleranceRadians": 0.12
     },
     "conversionRate": null,
-    "allowedUnitBlueprintIds": [
-      "unitJackal",
-      "unitLynx",
-      "unitTarantula",
-      "unitBadger",
-      "unitMongoose",
-      "unitMammoth",
-      "unitTick",
-      "unitHuman",
-      "unitLoris",
-      "unitDaddy",
-      "unitWidow",
-      "unitFormik",
-      "unitHippo",
-      "unitSeaTurtle",
-      "unitOrca",
-      "unitBee",
-      "unitDragonfly",
-      "unitEagle",
-      "unitDuck",
-      "unitAlbatros",
-      "unitQueenBee",
-      "unitQueenTick",
-      "unitTransport",
-      "unitConstructionDrone",
-      "unitConstructionSubmarine",
-      "unitRex",
-      "unitHedgehog"
-    ],
+    "allowedUnitBlueprintIds": null,
     "renderProfile": "towerFabricator",
     "visualHeight": 30,
     "anchorProfile": "fabricator",
@@ -1995,6 +1968,54 @@
         "radarStealth": false,
         "sonarStealth": false
       }
+    }
+  },
+  "towerInterceptor": {
+    "$extends": "towerAntiAir",
+    "buildingBlueprintId": "towerInterceptor",
+    "tinyName": "INT",
+    "shortName": "INTERCEPT",
+    "name": "Interceptor Tower",
+    "hp": 720,
+    "cost": { "energy": 680, "metal": 620 },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretInterceptor",
+        "presentation": {
+          "headRadius": 10,
+          "headOnly": false,
+          "barrel": { "type": "singleCylinderBarrel", "barrelLength": 1.4 }
+        },
+        "sensorTurretBlueprintId": "turretSensorBuildingAntiAir",
+        "mount": { "x": 0, "y": 0, "z": 116 },
+        "mountId": "interceptor",
+        "controlMode": "hostPreferred"
+      }
+    ],
+    "base": {
+      "cost": { "energy": 680, "metal": 620 },
+      "health": 720,
+      "deathExplosion": { "radius": 44, "force": 28000, "damage": 240 }
+    }
+  },
+  "buildingTidalGenerator": {
+    "$extends": "buildingWind",
+    "buildingBlueprintId": "buildingTidalGenerator",
+    "tinyName": "TDG",
+    "shortName": "TIDAL",
+    "name": "Tidal Generator",
+    "hp": 520,
+    "cost": { "energy": 260, "metal": 320 },
+    "energyProduction": 24,
+    "renderProfile": "buildingWind",
+    "anchorProfile": "collisionDepth",
+    "supportSurface": { "kind": "none" },
+    "placementSets": ["water-build-squares-sea-on-surface"],
+    "hoveringType": null,
+    "base": {
+      "cost": { "energy": 260, "metal": 320 },
+      "health": 520,
+      "deathExplosion": { "radius": 36, "force": 18000, "damage": 160 }
     }
   }
 }

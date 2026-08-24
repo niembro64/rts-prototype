@@ -3246,7 +3246,7 @@ export class ClientViewStateBase {
         projectileSubstageStart,
       );
 
-      // Server-authored live beam/laser paths. These carry current
+      // Server-authored live beam paths. These carry current
       // start/end/reflection points so the client can draw beams without
       // running local mirror/unit/building beam traces in applyPrediction.
       const appliedDirectBeamUpdates = directProjectileRows

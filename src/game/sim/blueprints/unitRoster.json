@@ -26,6 +26,17 @@
     "unitConstructionDrone",
     "unitConstructionSubmarine",
     "unitRex",
-    "unitHedgehog"
+    "unitHedgehog",
+    "unitRadarScout",
+    "unitConstructionBot",
+    "unitConstructionRover",
+    "unitStealthScout",
+    "unitDetector",
+    "unitRadarJammer",
+    "unitMissileRover",
+    "unitClusterArtillery",
+    "unitWaterStrider",
+    "unitPatrolCorvette",
+    "unitPetrel"
   ]
 }

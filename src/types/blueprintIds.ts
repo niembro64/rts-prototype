@@ -9,6 +9,10 @@ export const UNIT_BLUEPRINT_IDS = [
   'unitQueenBee', 'unitQueenTick', 'unitSeaTurtle',
   'unitOrca', 'unitDuck', 'unitConstructionSubmarine',
   'unitHuman', 'unitRex', 'unitHedgehog',
+  'unitRadarScout', 'unitDetector', 'unitPetrel',
+  'unitConstructionBot', 'unitConstructionRover', 'unitStealthScout',
+  'unitRadarJammer', 'unitMissileRover', 'unitClusterArtillery',
+  'unitWaterStrider', 'unitPatrolCorvette',
 ] as const;
 export type UnitBlueprintId = typeof UNIT_BLUEPRINT_IDS[number];
 
@@ -21,6 +25,11 @@ export const BUILDING_BLUEPRINT_IDS = [
   'buildingPrecisionTargetingTech',
   'buildingRadarJammer', 'buildingSonarJammer',
   'buildingMetalStorage', 'buildingEnergyStorage',
+  'buildingBotFabricator', 'buildingVehicleFabricator',
+  'buildingAircraftFabricator', 'buildingNavalFabricator',
+  'buildingAdvancedUniversalFabricator', 'buildingAdvancedBotFabricator',
+  'buildingAdvancedVehicleFabricator', 'buildingAdvancedAircraftFabricator',
+  'buildingAdvancedNavalFabricator', 'towerInterceptor', 'buildingTidalGenerator',
 ] as const;
 export type BuildingBlueprintId = typeof BUILDING_BLUEPRINT_IDS[number];
 
@@ -42,6 +51,7 @@ export const SHOT_BLUEPRINT_IDS = [
   'shotPlasmaOther',
   'shotTorpedo',
   'shotRocketDumb',
+  'shotTorpedoAirLaunch',
 ] as const;
 export type ShotBlueprintId = typeof SHOT_BLUEPRINT_IDS[number];
 
@@ -57,8 +67,6 @@ export const SHIELD_BLUEPRINT_IDS = [
   'shieldSphere',
   'shieldPanel',
   'shieldSphereSmall',
-  'shieldCylinderInfinite',
-  'shieldCylinderInfiniteAimed',
 ] as const;
 export type ShieldBlueprintId = typeof SHIELD_BLUEPRINT_IDS[number];
 
@@ -142,6 +150,14 @@ export const TURRET_BLUEPRINT_IDS = [
   'turretSensorBuildingStorage',
   'turretRocketDumb',
   'turretSensorUnitHedgehog',
+  'turretSensorUnitRadarScout',
+  'turretSensorUnitStealthScout',
+  'turretSensorUnitDetector',
+  'turretSensorUnitRadarJammer',
+  'turretMortarCluster',
+  'turretTorpedoAirLaunch',
+  'turretInterceptor',
+  'turretMissileRover',
 ] as const;
 export type TurretBlueprintId = typeof TURRET_BLUEPRINT_IDS[number];
 

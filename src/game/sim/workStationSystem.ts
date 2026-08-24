@@ -142,7 +142,7 @@ function resolveWorkTarget(
       return entity === undefined ? null : writeEntityTarget(entity, out);
     }
     if (
-      (action.type === 'repair' || action.type === 'capture' || action.type === 'resurrect') &&
+      (action.type === 'repair' || action.type === 'capture') &&
       action.targetId !== undefined
     ) {
       const entity = world.getEntity(action.targetId);

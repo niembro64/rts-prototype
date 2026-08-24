@@ -42,10 +42,7 @@ import {
   resolveWeaponEmissionSocket,
   resolveWeaponWorldMount,
 } from './combat/combatUtils';
-import {
-  SIGHT_DROP_GRACE_TICKS,
-  turretIgnoresForceMaterialSightObstruction,
-} from './combat/lineOfSight';
+import { SIGHT_DROP_GRACE_TICKS, turretIgnoresForceMaterialSightObstruction } from './combat/lineOfSight';
 import { buildFreeForAllRoster } from './teamRoster';
 import { resetProjectileBuffers } from './combat/projectileSystem';
 import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
@@ -162,9 +159,9 @@ function assertLogicalTurretPresentationOwnership(): void {
   assertContract(
     // Head radius is absolute world units, so it tracks the host's authored
     // scale; barrelLength is a fraction of it and therefore does not.
-    commanderBeam?.headRadius === 7.8 &&
+    commanderBeam?.headRadius === 8 &&
       commanderBeam.barrel?.type === 'singleConeBarrel' &&
-      commanderBeam.barrel.barrelLength === 1.2,
+      commanderBeam.barrel.barrelLength === 1.1,
     'Commander keeps the pre-migration beam physical representation on its host mount',
   );
   assertContract(
@@ -986,8 +983,12 @@ function assertOrcaTargetsEnemyOrca(manualTarget: boolean): void {
   world.playerCount = 2;
   const source = world.createUnitFromBlueprint(160, 160, 1 as PlayerId, 'unitOrca');
   const target = world.createUnitFromBlueprint(360, 160, 2 as PlayerId, 'unitOrca');
-  source.transform.z = WATER_LEVEL - 10;
-  target.transform.z = WATER_LEVEL - 10;
+  const submergedOrcaZ = WATER_LEVEL - getUnitBlueprint('unitOrca').radius.hitbox - 1;
+  source.transform.z = submergedOrcaZ;
+  // Orca's fixed-pitch launcher sits on the support plane. Align the target's
+  // body center with that plane so this fixture tests targeting/medium policy,
+  // rather than correctly failing on an unreachable station pitch.
+  target.transform.z = getUnitGroundZ(source);
   world.addEntity(source);
   world.addEntity(target);
   spatialGrid.updateUnit(source);
@@ -1121,7 +1122,7 @@ function assertOrcaRejectsEnemyAboveWater(manualTarget: boolean): void {
   world.playerCount = 2;
   const source = world.createUnitFromBlueprint(160, 160, 1 as PlayerId, 'unitOrca');
   const target = world.createUnitFromBlueprint(360, 160, 2 as PlayerId, 'unitOrca');
-  source.transform.z = WATER_LEVEL - 10;
+  source.transform.z = WATER_LEVEL - getUnitBlueprint('unitOrca').radius.hitbox - 1;
   target.transform.z = WATER_LEVEL + getUnitBlueprint('unitOrca').radius.hitbox + 1;
   world.addEntity(source);
   world.addEntity(target);

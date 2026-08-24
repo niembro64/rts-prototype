@@ -9,17 +9,10 @@
 // avoiding a whole-capacity scan while keeping one authoritative target
 // source.
 //
-// ONLY `shot.type === 'beam'` is reported — not the broader line-shot
-// family (beam + laser). Beams are the only weapon type with a
-// CONTINUOUS visual+audio link to a specific target that needs to be
-// explicitly stopped when the target dies; the other types don't need
-// the index because:
-//   - laser: pulsed line shot. Auto-expires after `duration`, so a
-//     dead target just means the pulse hits empty space and despawns.
-//   - plasma / rocket: fire-and-forget. No persistent owner-target
-//     relationship to clean up.
-//   - force: spherical barrier around the firing turret with no
-//     specific target.
+// ONLY `shot.type === 'beam'` is reported. Beams are the only weapon type
+// with a continuous visual+audio link to a specific target that needs to be
+// explicitly stopped when the target dies. Traveling projectiles are
+// fire-and-forget, and force emitters have no specific target.
 
 import { getSimWasm } from '../../sim-wasm/init';
 import { entitySlotRegistry } from '../EntitySlotRegistry';

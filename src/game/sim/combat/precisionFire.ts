@@ -70,7 +70,7 @@ export function resolveFiringSpreadAngle(
   //   - a VERTICAL LAUNCHER has no solved aim line to scatter. Its pose is
   //     pinned straight up and the missile aims itself after clearing the tube,
   //     so deflecting the tube scatters the wrong thing.
-  //   - a BEAM or LASER is a traced ray whose drawn line IS its aim. Deflecting
+  //   - a BEAM is a traced ray whose drawn line IS its aim. Deflecting
   //     it does not read as a weapon that missed, it reads as a renderer
   //     pointing the beam somewhere the turret is not.
   if (!carriesBaselineScatter) return authored;

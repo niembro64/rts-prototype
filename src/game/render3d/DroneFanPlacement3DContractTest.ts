@@ -20,10 +20,12 @@ type ExpectedDroneArray = {
 
 const EXPECTED_DRONE_ARRAYS: Readonly<Record<string, ExpectedDroneArray>> = Object.freeze({
   unitBee: { logicalZ: -0.04444, fans: 2 },
+  unitRadarScout: { logicalZ: -0.04444, fans: 2 },
   unitDragonfly: { logicalZ: -0.09, fans: 2 },
   unitConstructionDrone: { logicalZ: -0.0315, fans: 3 },
   unitQueenBee: { logicalZ: -0.036, fans: 6 },
   unitTransport: { logicalZ: -0.036, fans: 4 },
+  unitDetector: { logicalZ: -0.04444, fans: 2 },
 });
 
 function assertContract(condition: unknown, message: string): asserts condition {

@@ -83,16 +83,13 @@ for (const [id, material] of Object.entries(SHIELD_MATERIALS)) {
   assertSurfaceResponse(id, 'plasma', material.projectileResponse.plasma);
   assertSurfaceResponse(id, 'rocket', material.projectileResponse.rocket);
   assertSurfaceResponse(id, 'beam', material.projectileResponse.beam);
-  assertSurfaceResponse(id, 'laser', material.projectileResponse.laser);
   // Materials describe what happens after a shield policy accepts a ray
   // hit. Per-shield reflection.entities may still opt a ray family out
   // before the material response is reached.
-  for (const rayShotType of ['beam', 'laser'] as const) {
-    if (material.projectileResponse[rayShotType] !== 'reflect') {
-      throw new Error(
-        `Force-field material ${id} must use 'reflect' for ${rayShotType}: accepted ray shield hits are reflective; use shield reflection.entities to opt a ray family out`,
-      );
-    }
+  if (material.projectileResponse.beam !== 'reflect') {
+    throw new Error(
+      `Force-field material ${id} must use 'reflect' for beam: accepted ray shield hits are reflective; use shield reflection.entities to opt the ray family out`,
+    );
   }
   if (material.hitReaction.impactEvent !== 'shieldImpact') {
     throw new Error(

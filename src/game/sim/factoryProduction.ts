@@ -36,6 +36,7 @@ import { applyEntityHoldPose, holdEntity, releaseEntityHold } from './entityHold
 import {
   createFactoryProductionHoldSpec,
 } from './factoryProductionHold';
+import { isFabricatorBuildingBlueprintId } from './blueprints/buildings';
 import {
   applyFactoryProductionLaunch,
   updateFactoryProductionHoldLaunchPose,
@@ -63,6 +64,9 @@ const BAR_AIR_FACTORY_OUTPUT_UNIT_BLUEPRINT_IDS = new Set<string>([
   'unitDuck',
   'unitAlbatros',
   'unitTransport',
+  'unitRadarScout',
+  'unitDetector',
+  'unitPetrel',
 ]);
 
 type SpawnedFactoryProduct = {
@@ -71,7 +75,7 @@ type SpawnedFactoryProduct = {
 };
 
 function producedUnitInheritsBarFactoryMoveState(factory: Entity, unit: Entity): boolean {
-  if (factory.buildingBlueprintId !== 'towerFabricator') return false;
+  if (!isFabricatorBuildingBlueprintId(factory.buildingBlueprintId)) return false;
   const unitBlueprintId = unit.unit?.unitBlueprintId;
   if (unitBlueprintId === undefined) return false;
   return !BAR_AIR_FACTORY_OUTPUT_UNIT_BLUEPRINT_IDS.has(unitBlueprintId);

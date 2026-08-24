@@ -90,8 +90,6 @@ export type CommandHotkeyId =
   | 'combat.guard'
   | 'combat.reclaim'
   | 'combat.capture'
-  | 'combat.resurrect'
-  | 'combat.resurrectArea'
   | 'combat.loadTransport'
   | 'combat.unloadTransport'
   | 'combat.manualLaunch'
@@ -273,8 +271,6 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'combat.guard',
   'combat.reclaim',
   'combat.capture',
-  'combat.resurrect',
-  'combat.resurrectArea',
   'combat.loadTransport',
   'combat.unloadTransport',
   'combat.manualLaunch',
@@ -443,8 +439,6 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'combat.guard': 'Guard',
   'combat.reclaim': 'Reclaim',
   'combat.capture': 'Capture',
-  'combat.resurrect': 'Resurrect',
-  'combat.resurrectArea': 'Resurrect Area',
   'combat.loadTransport': 'Load Transport',
   'combat.unloadTransport': 'Unload Transport',
   'combat.manualLaunch': 'Manual Launch',
@@ -664,8 +658,6 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'combat.guard': [key('G', 'g', { shift: 'any' })],
     'combat.reclaim': [key('C', 'c', { shift: 'any' })],
     'combat.capture': [key('Alt+E', 'e', { alt: true })],
-    'combat.resurrect': [code('Alt+Shift+E', 'KeyE', { alt: true, shift: true })],
-    'combat.resurrectArea': [code('Ctrl+Alt+Shift+E', 'KeyE', { ctrl: true, alt: true, shift: true })],
     'combat.loadTransport': [code('Ctrl+Alt+Q', 'KeyQ', { ctrl: true, alt: true })],
     'combat.unloadTransport': [code('Ctrl+Alt+Shift+Q', 'KeyQ', { ctrl: true, alt: true, shift: true })],
     'combat.manualLaunch': [code('Alt+D', 'KeyD', { alt: true, shift: 'any' })],
@@ -811,8 +803,6 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'combat.guard': [code('O', 'KeyO', { shift: 'any' })],
     'combat.reclaim': [code('E', 'KeyE', { shift: 'any' })],
     'combat.capture': [code('W', 'KeyW', { shift: 'any' })],
-    'combat.resurrect': [code('W', 'KeyW', { shift: 'any' })],
-    'combat.resurrectArea': [],
     'combat.loadTransport': [code('J', 'KeyJ', { shift: 'any' })],
     'combat.unloadTransport': [code('U', 'KeyU', { shift: 'any' })],
     'combat.manualLaunch': [code('D', 'KeyD', { shift: 'any' })],
@@ -981,8 +971,6 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'combat.guard': [code('G', 'KeyG', { shift: 'any' })],
     'combat.reclaim': [code('E', 'KeyE', { shift: 'any' })],
     'combat.capture': [],
-    'combat.resurrect': [code('Ctrl+R', 'KeyR', { ctrl: true, shift: 'any' })],
-    'combat.resurrectArea': [],
     'combat.loadTransport': [code('L', 'KeyL', { shift: 'any' })],
     'combat.unloadTransport': [code('U', 'KeyU', { shift: 'any' })],
     'combat.manualLaunch': [code('D', 'KeyD', { shift: 'any' })],
@@ -1354,8 +1342,7 @@ export function getCommandHotkeyConflicts(
     if (
       uniqueCommandIds.length > 1 &&
       !isAllowedContextualCommandHotkeyConflict(presetId, signature, uniqueCommandIds) &&
-      !isAllowedContextualStateHotkeyConflict(presetId, signature, uniqueCommandIds) &&
-      !isAllowedContextualSupportHotkeyConflict(presetId, signature, uniqueCommandIds)
+      !isAllowedContextualStateHotkeyConflict(presetId, signature, uniqueCommandIds)
     ) {
       conflicts.push({ presetId, signature, commandIds: uniqueCommandIds });
     }
@@ -1385,18 +1372,6 @@ function isAllowedContextualStateHotkeyConflict(
   return commandIds.length === 2 &&
     commandIds.includes('command.trajectoryToggle') &&
     commandIds.includes('command.buildingActive');
-}
-
-function isAllowedContextualSupportHotkeyConflict(
-  presetId: CommandHotkeyPresetId,
-  signature: string,
-  commandIds: readonly CommandHotkeyId[],
-): boolean {
-  if (!isBarGridCommandHotkeyPreset(presetId)) return false;
-  if (signature !== 'ctrl:0+shift:any+alt:0+meta:0+keyw') return false;
-  return commandIds.length === 2 &&
-    commandIds.includes('combat.capture') &&
-    commandIds.includes('combat.resurrect');
 }
 
 function loadCustomCommandHotkeyOverrides(): CustomCommandHotkeyOverrides {

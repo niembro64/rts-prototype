@@ -5711,5 +5711,163 @@
     "kind": "sensor",
     "emissionKind": null,
     "emissionBlueprintId": null
+  },
+  "turretSensorUnitRadarScout": {
+    "$extends": "turretSensorUnitBee",
+    "turretBlueprintId": "turretSensorUnitRadarScout",
+    "name": "Kestrel Mobile Radar",
+    "targeting": {
+      "observation": {
+        "sensors": {
+          "fullSight": {
+            "aboveWater": { "aboveWater": 850, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 0 }
+          },
+          "contactSight": {
+            "aboveWater": { "aboveWater": 3200, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 0 }
+          },
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
+        }
+      }
+    }
+  },
+  "turretSensorUnitStealthScout": {
+    "$extends": "turretSensorUnitSeaTurtle",
+    "turretBlueprintId": "turretSensorUnitStealthScout",
+    "name": "Shade Passive Sensors",
+    "targeting": {
+      "observation": {
+        "sensors": {
+          "fullSight": {
+            "aboveWater": { "aboveWater": 1500, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 900 }
+          },
+          "contactSight": {
+            "aboveWater": { "aboveWater": 0, "underwater": 900 },
+            "underwater": { "aboveWater": 0, "underwater": 900 }
+          },
+          "detectorRadius": 0,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
+        }
+      }
+    }
+  },
+  "turretSensorUnitDetector": {
+    "$extends": "turretSensorUnitBee",
+    "turretBlueprintId": "turretSensorUnitDetector",
+    "name": "Owl Detector Array",
+    "targeting": {
+      "observation": {
+        "sensors": {
+          "fullSight": {
+            "aboveWater": { "aboveWater": 1000, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 0 }
+          },
+          "contactSight": {
+            "aboveWater": { "aboveWater": 0, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 0 }
+          },
+          "detectorRadius": 900,
+          "radarJamRadius": 0,
+          "sonarJamRadius": 0
+        }
+      }
+    }
+  },
+  "turretSensorUnitRadarJammer": {
+    "$extends": "turretSensorUnitSeaTurtle",
+    "turretBlueprintId": "turretSensorUnitRadarJammer",
+    "name": "Murk Radar Jammer",
+    "targeting": {
+      "observation": {
+        "sensors": {
+          "fullSight": {
+            "aboveWater": { "aboveWater": 850, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 0 }
+          },
+          "contactSight": {
+            "aboveWater": { "aboveWater": 0, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 0 }
+          },
+          "detectorRadius": 0,
+          "radarJamRadius": 2200,
+          "sonarJamRadius": 0
+        }
+      }
+    }
+  },
+  "turretMortarCluster": {
+    "$extends": "turretMortarFast",
+    "turretBlueprintId": "turretMortarCluster",
+    "name": "Cluster Mortar",
+    "cooldown": { "duration": 3600, "durationRandomness": 0.08 },
+    "launchForce": 82000,
+    "emissionLaneCount": 1,
+    "emissionBlueprintId": "shotMortarHeavy",
+    "targeting": {
+      "engagement": {
+        "range": 2600,
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": { "acquire": 0.95, "release": 1 },
+          "engageRangeMin": { "acquire": 0.35, "release": 0.3 },
+          "trackingRange": null
+        }
+      }
+    }
+  },
+  "turretTorpedoAirLaunch": {
+    "$extends": "turretTorpedo",
+    "turretBlueprintId": "turretTorpedoAirLaunch",
+    "name": "Air-Launched Torpedo",
+    "cooldown": { "duration": 2400, "durationRandomness": 0.08 },
+    "launchForce": 950,
+    "emissionBlueprintId": "shotTorpedoAirLaunch",
+    "targeting": {
+      "engagement": {
+        "range": 1200,
+        "rangeVolume": "turret-range-top-and-bottom-unbounded"
+      }
+    }
+  },
+  "turretInterceptor": {
+    "$extends": "turretAntiAir",
+    "turretBlueprintId": "turretInterceptor",
+    "name": "Projectile Interceptor",
+    "cooldown": { "duration": 180, "durationRandomness": 0.03 },
+    "launchForce": 26000,
+    "emissionLaneCount": 2,
+    "emissionBlueprintId": "shotMissileFast",
+    "targeting": {
+      "engagement": {
+        "range": 900,
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": { "acquire": 0.95, "release": 1 },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
+      }
+    }
+  },
+  "turretMissileRover": {
+    "$extends": "turretAntiAir",
+    "turretBlueprintId": "turretMissileRover",
+    "name": "Mobile SAM Launcher",
+    "cooldown": { "duration": 900, "durationRandomness": 0.08 },
+    "launchForce": 16000,
+    "emissionLaneCount": 1,
+    "targeting": {
+      "engagement": {
+        "range": 1050,
+        "rangeMultiplierOverrides": {
+          "engageRangeMax": { "acquire": 0.95, "release": 1 },
+          "engageRangeMin": null,
+          "trackingRange": null
+        }
+      }
+    }
   }
 }

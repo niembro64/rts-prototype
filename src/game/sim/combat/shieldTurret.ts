@@ -1,10 +1,8 @@
-import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Shield weapon system - projectile shield boundaries
 
 import type { WorldState } from '../WorldState';
 import type { ShieldConfig } from '../types';
 import type {
-  ShieldBarrierShape,
   ShieldReflectionDirection,
   ShieldReflectionPolicy,
 } from '../../../types/shotTypes';
@@ -23,19 +21,12 @@ const _shieldMount = { x: 0, y: 0, z: 0 };
 // updateShieldState() and consumed by projectile collision and the
 // targeting LOS clearance check.
 type ActiveShieldRef = {
-  shape: ShieldBarrierShape;
   prevCenterX: number;
   prevCenterY: number;
   prevCenterZ: number;
-  prevAxisEndX: number;
-  prevAxisEndY: number;
-  prevAxisEndZ: number;
   centerX: number;
   centerY: number;
   centerZ: number;
-  axisEndX: number;
-  axisEndY: number;
-  axisEndZ: number;
   radius: number;
   reflection: ShieldReflectionPolicy;
   playerId: number;
@@ -46,9 +37,6 @@ type ShieldPose = {
   centerX: number;
   centerY: number;
   centerZ: number;
-  axisEndX: number;
-  axisEndY: number;
-  axisEndZ: number;
 };
 let _previousShieldPoses = new Map<string, ShieldPose>();
 let _nextShieldPoses = new Map<string, ShieldPose>();
@@ -160,43 +148,21 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
         const centerX = mount.x;
         const centerY = mount.y;
         const centerZ = mount.z - originOffsetZ;
-        let axisEndX = centerX;
-        let axisEndY = centerY;
-        let axisEndZ = centerZ;
-        if (barrier.shape === 'aimedCylinder') {
-          const pitchCos = DMath.cos(weapon.pitch);
-          axisEndX = centerX + DMath.cos(weapon.rotation) * pitchCos * config.targeting.effect.range;
-          axisEndY = centerY + DMath.sin(weapon.rotation) * pitchCos * config.targeting.effect.range;
-          axisEndZ = centerZ + DMath.sin(weapon.pitch) * config.targeting.effect.range;
-          if (DMath.hypot(axisEndX - centerX, axisEndY - centerY, axisEndZ - centerZ) <= 1e-6) {
-            continue;
-          }
-        }
         const poseKey = `${unit.id}:${weapon.id}:${weaponIndex}`;
         const previousPose = _previousShieldPoses.get(poseKey);
         _nextShieldPoses.set(poseKey, {
           centerX,
           centerY,
           centerZ,
-          axisEndX,
-          axisEndY,
-          axisEndZ,
         });
         const playerId = unit.ownership !== null ? unit.ownership.playerId : 0;
         _activeShields.push({
-          shape: barrier.shape,
           prevCenterX: previousPose?.centerX ?? centerX,
           prevCenterY: previousPose?.centerY ?? centerY,
           prevCenterZ: previousPose?.centerZ ?? centerZ,
-          prevAxisEndX: previousPose?.axisEndX ?? axisEndX,
-          prevAxisEndY: previousPose?.axisEndY ?? axisEndY,
-          prevAxisEndZ: previousPose?.axisEndZ ?? axisEndZ,
           centerX,
           centerY,
           centerZ,
-          axisEndX,
-          axisEndY,
-          axisEndZ,
           radius,
           reflection: fieldShot.reflection,
           playerId,
@@ -240,16 +206,4 @@ export function encodeShieldRocketLikeReflectionPolicy(
   return encodeShieldReflectionDirection(
     policy.entities.rocket ?? policy.entities.missile,
   );
-}
-
-export function encodeShieldBarrierShape(shape: ShieldBarrierShape): number {
-  switch (shape) {
-    case 'sphere':
-      return 0;
-    case 'infiniteVerticalCylinder':
-      return 1;
-    case 'aimedCylinder':
-      return 2;
-  }
-  return 0;
 }

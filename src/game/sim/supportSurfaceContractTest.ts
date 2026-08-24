@@ -34,6 +34,10 @@ import {
   getFactoryShellSpawnClearanceAboveSurface,
 } from './factoryProduction';
 import {
+  factoryCanProduceUnit,
+  getFactoryAllowedUnitBlueprintIds,
+} from './factoryProductionRoster';
+import {
   getFactoryProductionHoldVisual,
   productionHoldRingRadiusForProducedUnit,
 } from './factoryProductionHold';
@@ -572,8 +576,15 @@ function assertFactoryShellContract(): void {
   const world = new WorldState(1238, 1024, 1024);
   world.playerCount = 2;
   const dry = findSurfacePoint(world, 'solid', 220);
-  const droneUnitBlueprintId = firstBlueprintIdByLocomotionType().get('drone');
-  assertContract(droneUnitBlueprintId !== undefined, 'missing drone unit blueprint for factory shell contract');
+  const droneUnitBlueprintId = getAllUnitBlueprints().find(
+    (blueprint) =>
+      blueprint.unitLocomotion.type === 'drone' &&
+      blueprint.production?.techLevel === 1,
+  )?.unitBlueprintId;
+  assertContract(
+    droneUnitBlueprintId !== undefined,
+    'missing buildable T1 drone unit blueprint for factory shell contract',
+  );
   const factoryConfig = getBuildingConfig('towerFabricator');
   assertContract(factoryConfig.hoveringType === 'fabricator', 'fabricator config must author hoveringType');
   assertContract(factoryConfig.hovering === true, 'fabricator hover boolean must derive from hoveringType');
@@ -630,6 +641,16 @@ function assertFactoryShellContract(): void {
     metalRateFraction: 0,
   };
   world.addEntity(factory);
+
+  assertContract(
+    factoryCanProduceUnit(factory, droneUnitBlueprintId),
+    `Universal Fabricator must admit ${droneUnitBlueprintId}; roster is ` +
+      getFactoryAllowedUnitBlueprintIds(factory).join(', '),
+  );
+  assertContract(
+    world.getRemainingTeamEntityCapacity(TEST_PLAYER_ID) > 0,
+    'factory fixture must retain entity-cap room for its shell',
+  );
 
   const forceAccumulator = new ForceAccumulator();
   const originalRoute = factory.factory.defaultWaypoints;
@@ -809,7 +830,7 @@ function assertFactoryShellContract(): void {
     'BAR armap/armca air-constructor output must keep the normal maneuver move state instead of inheriting the land-factory MOVE_STATE',
   );
 
-  factory.factory.selectedUnitBlueprintId = 'unitBee';
+  factory.factory.selectedUnitBlueprintId = 'unitEagle';
   factory.factory.repeatProduction = false;
   factory.factory.guardTargetId = null;
   factory.factory.defaultWaypoints = [{

@@ -42,6 +42,7 @@ import { getUnitAuthoredBuildBlueprintIds } from './hostCapabilities';
 import { UNIT_BLUEPRINTS } from './blueprints/units';
 import { createTransportComponentForUnitBlueprint } from './transports';
 import { buildingBlueprintHasActiveState } from './buildingActiveState';
+import { createEconomyState, economyManager } from './economy';
 import { isBallisticArcWeapon } from './combat/combatUtils';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import { getBuildingPlacementDiagnosticsForGrid } from './buildPlacementValidation';
@@ -60,7 +61,6 @@ import {
   entityHasCloakCommand,
   entityCanBarAttackGround,
   entityCanBarAttackTarget,
-  entityCanIssueResurrectCommand,
 } from './unitCommandCapabilities';
 
 function assertContract(condition: boolean, message: string): void {
@@ -107,8 +107,8 @@ type Scenario = {
   enemySubmerged: Entity;
   /** Damaged friendly unit owned by player 1, for repair/guard/load. */
   ally: Entity;
-  /** Player-2 wreck for reclaim/resurrect. */
-  wreck: Entity;
+  /** Player-2 structure for reclaim. */
+  reclaimTarget: Entity;
   /** Player-1 metal extractor, for the ON/OFF and mex-upgrade probes. */
   extractor: Entity;
   blueprintId: string;
@@ -138,16 +138,10 @@ function keepMatchLive(world: WorldState, physics: PhysicsEngine3D, playerIds: r
   }
 }
 
-function createWreck(world: WorldState, x: number, y: number): Entity {
-  const wreck = world.createBuilding(x, y, 24, 24, 12, 1 as PlayerId);
-  wreck.wreck = {
-    source: { kind: 'unit', unitBlueprintId: 'unitJackal' },
-    originalOwnerId: 2 as PlayerId,
-    resurrectProgressMs: 0,
-    resurrectRequiredMs: 1000,
-  } as NonNullable<Entity['wreck']>;
-  world.addEntity(wreck);
-  return wreck;
+function createReclaimTarget(world: WorldState, x: number, y: number): Entity {
+  const target = world.createBuilding(x, y, 24, 24, 12, 2 as PlayerId);
+  world.addEntity(target);
+  return target;
 }
 
 function createFactoryComponent(entity: Entity, rallyX: number, rallyY: number): void {
@@ -214,6 +208,11 @@ function findPlaceableBuildCell(
 
 function buildScenario(blueprintId: string, kind: 'unit' | 'building'): Scenario {
   const world = new WorldState(7331, 1024, 1024);
+  // EconomyManager is process-global, while each coverage row is a fresh
+  // world. Reset both players so earlier contracts or a prior D-gun probe
+  // cannot make a later command appear inert merely by draining its energy.
+  economyManager.setEconomyState(1 as PlayerId, createEconomyState());
+  economyManager.setEconomyState(2 as PlayerId, createEconomyState());
   const construction = new ConstructionSystem(world.mapWidth, world.mapHeight);
   const physics = new PhysicsEngine3D(world.mapWidth, world.mapHeight);
   physics.setGroundLookup(
@@ -227,8 +226,6 @@ function buildScenario(blueprintId: string, kind: 'unit' | 'building'): Scenario
     subject = world.createUnitFromBlueprint(200, 200, 1 as PlayerId, blueprintId as UnitBlueprintId, {
       allocateSubEntityIds: false,
     });
-    world.addEntity(subject);
-    createPhysicsBodyForUnit(world, physics, subject);
     if (getStructureFactoryAllowedUnitBlueprintIds('towerFabricator').length > 0 && subject.factory !== null) {
       // Mobile factories (queens) arrive with their own factory component.
     }
@@ -236,7 +233,11 @@ function buildScenario(blueprintId: string, kind: 'unit' | 'building'): Scenario
     // spawn would put their whole weapon chain in the wrong medium.
     if (blueprintId === 'unitOrca' || blueprintId === 'unitConstructionSubmarine') {
       subject.transform.z = WATER_LEVEL - 40;
+    } else if (subject.unit !== null) {
+      subject.transform.z = WATER_LEVEL + subject.unit.radius.hitbox + 10;
     }
+    world.addEntity(subject);
+    createPhysicsBodyForUnit(world, physics, subject);
   } else {
     const config = getBuildingConfig(blueprintId as StructureBlueprintId);
     subject = world.createBuilding(
@@ -249,6 +250,16 @@ function buildScenario(blueprintId: string, kind: 'unit' | 'building'): Scenario
       0,
     );
     applyBuildingBlueprintRuntime(subject, blueprintId as StructureBlueprintId);
+    // Command coverage is about capability routing, not whichever terrain the
+    // app's background battle happened to install. Put ground-capable hosts
+    // wholly above water and water-only hosts below it so each weapon starts
+    // in an authored emission medium.
+    if (subject.building !== null) {
+      const supportsGround = config.placementSets.some((set) => set.startsWith('ground-'));
+      subject.transform.z = supportsGround
+        ? WATER_LEVEL + subject.building.depth / 2 + 10
+        : WATER_LEVEL - subject.building.depth / 2;
+    }
     if (getStructureFactoryAllowedUnitBlueprintIds(blueprintId as StructureBlueprintId).length > 0) {
       createFactoryComponent(subject, 240, 240);
     }
@@ -258,12 +269,14 @@ function buildScenario(blueprintId: string, kind: 'unit' | 'building'): Scenario
   const enemy = world.createUnitFromBlueprint(260, 200, 2 as PlayerId, 'unitJackal', {
     allocateSubEntityIds: false,
   });
+  if (enemy.unit !== null) enemy.transform.z = WATER_LEVEL + enemy.unit.radius.hitbox + 10;
   world.addEntity(enemy);
   createPhysicsBodyForUnit(world, physics, enemy);
 
   const enemyAir = world.createUnitFromBlueprint(260, 240, 2 as PlayerId, 'unitBee', {
     allocateSubEntityIds: false,
   });
+  if (enemyAir.unit !== null) enemyAir.transform.z = WATER_LEVEL + enemyAir.unit.radius.hitbox + 40;
   world.addEntity(enemyAir);
   createPhysicsBodyForUnit(world, physics, enemyAir);
 
@@ -272,18 +285,19 @@ function buildScenario(blueprintId: string, kind: 'unit' | 'building'): Scenario
   const enemySubmerged = world.createUnitFromBlueprint(240, 200, 2 as PlayerId, 'unitOrca', {
     allocateSubEntityIds: false,
   });
+  enemySubmerged.transform.z = WATER_LEVEL - 40;
   world.addEntity(enemySubmerged);
   createPhysicsBodyForUnit(world, physics, enemySubmerged);
-  enemySubmerged.transform.z = WATER_LEVEL - 40;
 
   const ally = world.createUnitFromBlueprint(220, 240, 1 as PlayerId, 'unitJackal', {
     allocateSubEntityIds: false,
   });
+  if (ally.unit !== null) ally.transform.z = WATER_LEVEL + ally.unit.radius.hitbox + 10;
   world.addEntity(ally);
   createPhysicsBodyForUnit(world, physics, ally);
   if (ally.unit !== null) ally.unit.hp = Math.floor(ally.unit.maxHp / 2);
 
-  const wreck = createWreck(world, 180, 260);
+  const reclaimTarget = createReclaimTarget(world, 180, 260);
 
   const extractorConfig = getBuildingConfig('buildingExtractor');
   const extractor = world.createBuilding(
@@ -315,7 +329,7 @@ function buildScenario(blueprintId: string, kind: 'unit' | 'building'): Scenario
     enemyAir,
     enemySubmerged,
     ally,
-    wreck,
+    reclaimTarget,
     extractor,
     blueprintId,
     kind,
@@ -500,19 +514,13 @@ const PROBES: readonly CommandProbe[] = [
   {
     name: 'reclaim',
     applies: isBuilder,
-    command: (s) => ({ type: 'reclaim', tick: 0, commanderId: s.subject.id, targetId: s.wreck.id, queue: false }),
+    command: (s) => ({ type: 'reclaim', tick: 0, commanderId: s.subject.id, targetId: s.reclaimTarget.id, queue: false }),
     observe: (s) => s.subject.unit?.actions[0]?.type,
   },
   {
     name: 'capture',
     applies: (s) => entityHasBarCaptureCommand(s.subject),
     command: (s) => ({ type: 'capture', tick: 0, commanderId: s.subject.id, targetId: s.enemy.id, queue: false }),
-    observe: (s) => s.subject.unit?.actions[0]?.type,
-  },
-  {
-    name: 'resurrect',
-    applies: (s) => entityCanIssueResurrectCommand(s.subject),
-    command: (s) => ({ type: 'resurrect', tick: 0, commanderId: s.subject.id, targetId: s.wreck.id, queue: false }),
     observe: (s) => s.subject.unit?.actions[0]?.type,
   },
   {

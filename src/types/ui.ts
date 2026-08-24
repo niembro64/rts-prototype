@@ -97,8 +97,6 @@ export type SelectionInfo = {
   hasBarAttackControl: boolean;
   /** True when the selection contains a unit that BAR would expose Capture for. */
   hasBarCaptureControl: boolean;
-  /** True when the selection contains a unit that BAR would expose Resurrect for. */
-  hasBarResurrectControl: boolean;
   /** True when the selection contains a unit that BAR would expose Area Attack for. */
   hasBarAreaAttackControl: boolean;
   /** True when the selection contains a unit that BAR would expose Move State for. */
@@ -188,8 +186,6 @@ export type SelectionInfo = {
   isGuardMode: boolean;
   isReclaimMode: boolean;
   isCaptureMode: boolean;
-  isResurrectMode: boolean;
-  isResurrectAreaMode: boolean;
   isLoadTransportMode: boolean;
   isUnloadTransportMode: boolean;
   isMexUpgradeMode: boolean;
@@ -266,8 +262,6 @@ export type SelectionActions = {
   toggleGuard: () => void;
   toggleReclaim: () => void;
   toggleCapture: () => void;
-  toggleResurrect: () => void;
-  toggleResurrectArea: () => void;
   toggleLoadTransport: () => void;
   toggleUnloadTransport: () => void;
   reclaimSelected: () => void;
@@ -445,8 +439,6 @@ export type UIInputState = {
   isGuardMode: boolean;
   isReclaimMode: boolean;
   isCaptureMode: boolean;
-  isResurrectMode: boolean;
-  isResurrectAreaMode: boolean;
   isLoadTransportMode: boolean;
   isUnloadTransportMode: boolean;
   isMexUpgradeMode: boolean;
@@ -507,8 +499,7 @@ export type SprayTarget = {
   flow: SprayFlowMode;
   /** BAR nano-particle inverse mode. For a direct spray, particles are
    *  born throughout the target volume and converge on the source
-   *  emitter. Reclaim uses one inverse spray; resurrection emits one
-   *  normal spray and one inverse spray at the same time. */
+   *  emitter. Reclaim uses one inverse spray. */
   inverse?: boolean;
   flowRadius: number;
   /** Standardized "ray to a lock-on spot + cone" dispersion. When both
@@ -612,8 +603,6 @@ export type PylonTubeFlow = {
 export type CommanderAbilitiesResult = {
   sprayTargets: SprayTarget[];
   completedBuildings: { commanderId: EntityId; buildingId: EntityId }[];
-  resurrectedUnits: Entity[];
-  resurrectedBuildings: Entity[];
 };
 
 // Factory production result

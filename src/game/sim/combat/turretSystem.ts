@@ -224,8 +224,7 @@ function weaponUsesRotationAim(weapon: Turret): boolean {
   if (
     shot !== null &&
     shot.type === 'shield' &&
-    config.aimStyle.angleType !== 'rayBisectTurretAndBody' &&
-    shot.barrier?.shape !== 'aimedCylinder'
+    config.aimStyle.angleType !== 'rayBisectTurretAndBody'
   ) {
     return false;
   }

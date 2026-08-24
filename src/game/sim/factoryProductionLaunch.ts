@@ -7,6 +7,7 @@ import { rayDistanceToMapEdge } from '../math/rayMapBounds';
 import { deterministicMath as DMath } from './deterministicMath';
 import type { Entity } from './types';
 import type { WorldState } from './WorldState';
+import { isFabricatorBuildingBlueprintId } from './blueprints/buildings';
 
 export const MOBILE_FACTORY_VERTICAL_LAUNCH_SPEED = 520;
 const PRODUCTION_LAUNCH_SPEED = MOBILE_FACTORY_VERTICAL_LAUNCH_SPEED;
@@ -43,7 +44,7 @@ function entityIsAlive(entity: Entity | undefined): entity is Entity {
 }
 
 function productionLaunchSpeedForFactory(factory: Entity): number {
-  if (factory.buildingBlueprintId === 'towerFabricator') return 0;
+  if (isFabricatorBuildingBlueprintId(factory.buildingBlueprintId)) return 0;
   return PRODUCTION_LAUNCH_SPEED;
 }
 

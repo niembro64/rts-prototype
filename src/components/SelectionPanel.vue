@@ -159,11 +159,6 @@ const showFactoryAirIdleButton = computed(() =>
 const showTowerTargetClearButton = computed(() =>
   showPrototypeOnlyCommandButtons.value || props.selection.hasTowerTargetActive,
 );
-const showResurrectButton = computed(() =>
-  isBarHotkeyPreset.value
-    ? props.selection.hasBarResurrectControl
-    : showPrototypeOnlyCommandButtons.value && props.selection.hasCommander,
-);
 const showCaptureButton = computed(() =>
   isBarHotkeyPreset.value ? props.selection.hasBarCaptureControl : props.selection.hasCommander,
 );
@@ -339,7 +334,6 @@ const barOrderCommandCellCount = computed(() => {
       props.selection.hasDGun ||
       props.selection.hasBuilder ||
       showCaptureButton.value ||
-      showResurrectButton.value ||
       props.selection.hasCommander ||
       props.selection.hasTransport
     )
@@ -348,8 +342,6 @@ const barOrderCommandCellCount = computed(() => {
     if (props.selection.hasBuilder) count += 2; // repair, reclaim
     if (showAreaMexButton.value) count += 1;
     if (showCaptureButton.value) count += 1; // capture
-    if (showResurrectButton.value) count += 1;
-    if (props.selection.hasCommander && showPrototypeOnly) count += 1; // resurrect area
     if (props.selection.hasBuilder && showPrototypeOnly) count += 1; // reclaim selected
     if (props.selection.hasTransport) count += 2; // load, unload
   }
@@ -538,8 +530,6 @@ const showCancelHint = computed(() =>
   || props.selection.isGuardMode
   || props.selection.isReclaimMode
   || props.selection.isCaptureMode
-  || props.selection.isResurrectMode
-  || props.selection.isResurrectAreaMode
   || props.selection.isLoadTransportMode
   || props.selection.isUnloadTransportMode
   || props.selection.isManualLaunchMode
@@ -746,9 +736,8 @@ const BAR_ORDER_TOOLTIP_BY_COMMAND_ID: Partial<Record<CommandHotkeyId, string>> 
   'command.dgun': 'Fire the powerful commander Disintegrator-gun',
   'combat.manualLaunch': 'Launch a missile at a target',
   'combat.repair': 'Repair a damaged unit',
-  'combat.reclaim': 'Suck metal/energy from wrecks or features (trees/stones)',
+  'combat.reclaim': 'Suck metal/energy from reclaimable units or features (trees/stones)',
   'combat.capture': 'Convert units that belong to the enemy (or ally)',
-  'combat.resurrect': 'Revive wrecks to become units again (click-drag for area)',
   'command.areaMex': 'Click-drag an area to auto queue metal extractors for all available metal spots',
   'command.builderPriority': 'Assigns resources to use for this builder when not having enough for all',
   'command.carrierSpawn': 'Sets the spawning state of the carrier',
@@ -2509,7 +2498,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
     </div>
 
     <!-- Unit specials -->
-    <div v-if="(selection.hasDGun || selection.hasBuilder || selection.hasCommander || showCaptureButton || showResurrectButton || selection.hasTransport) && showUnitActions" class="button-group">
+    <div v-if="(selection.hasDGun || selection.hasBuilder || selection.hasCommander || showCaptureButton || selection.hasTransport) && showUnitActions" class="button-group">
       <div class="group-label">Special</div>
       <div class="buttons bar-command-grid">
         <button
@@ -2571,30 +2560,6 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
         >
           <span class="btn-label">Capture</span>
           <span class="btn-key">{{ hotkey('combat.capture') }}</span>
-        </button>
-        <button
-          v-if="showResurrectButton"
-          type="button"
-          class="action-btn"
-          :class="{ active: selection.isResurrectMode }"
-          :style="{ '--btn-color': BUTTON_COLORS.resurrect }"
-          :title="actionTitle('Resurrect', 'combat.resurrect')"
-          @click="actions.toggleResurrect()"
-        >
-          <span class="btn-label">Resurrect</span>
-          <span class="btn-key">{{ hotkey('combat.resurrect') }}</span>
-        </button>
-        <button
-          v-if="selection.hasCommander && showPrototypeOnlyCommandButtons"
-          type="button"
-          class="action-btn"
-          :class="{ active: selection.isResurrectAreaMode }"
-          :style="{ '--btn-color': BUTTON_COLORS.resurrect }"
-          :title="actionTitle('Resurrect area', 'combat.resurrectArea')"
-          @click="actions.toggleResurrectArea()"
-        >
-          <span class="btn-label">Res Area</span>
-          <span class="btn-key">{{ hotkey('combat.resurrectArea') }}</span>
         </button>
         <button
           v-if="selection.hasBuilder && showPrototypeOnlyCommandButtons"

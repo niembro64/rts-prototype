@@ -34,6 +34,7 @@ import {
 } from './buildingPlacementPolicy';
 import { createFactoryComponent } from './factoryComponent';
 import { getBuildingPlacementAnchor } from '../../types/buildingTypes';
+import { isFabricatorBuildingBlueprintId } from './blueprints/buildings';
 
 type StartBuildingOptions = {
   skipBuilderAuthorization: boolean;
@@ -197,7 +198,7 @@ export class ConstructionSystem {
     }
 
     // Add factory component if it's a factory
-    if (buildingBlueprintId === 'towerFabricator') {
+    if (isFabricatorBuildingBlueprintId(buildingBlueprintId)) {
       const wp = computeFactoryWaypoint(
         worldPos.x,
         worldPos.y,

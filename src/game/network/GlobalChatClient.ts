@@ -10,6 +10,7 @@
  */
 
 import { lobbyApiBaseUrl } from './LobbyDirectory';
+import { sanitizeChatMessageText } from './chatPolicy';
 
 const GLOBAL_CHAT_GAME_ID = 'budget-annihilation';
 
@@ -37,8 +38,8 @@ function readMessage(raw: unknown): GlobalChatMessage | null {
   const seq = Math.floor(Number(value.seq));
   if (!Number.isFinite(seq) || seq <= 0) return null;
   const name = typeof value.name === 'string' ? value.name : '';
-  const text = typeof value.text === 'string' ? value.text : '';
-  if (name === '' || text === '') return null;
+  const text = sanitizeChatMessageText(value.text);
+  if (name === '' || text === null) return null;
   const atMs = Math.floor(Number(value.atMs));
   return { seq, name, text, atMs: Number.isFinite(atMs) ? atMs : 0 };
 }
@@ -102,9 +103,11 @@ export class GlobalChatClient {
   /** Say something. Resolves false when the backend refused or was away;
    *  the message simply does not appear, which is honest. */
   async send(name: string, text: string): Promise<boolean> {
+    const sanitizedText = sanitizeChatMessageText(text);
+    if (sanitizedText === null) return false;
     const body = await requestJson(`/chat/${encodeURIComponent(GLOBAL_CHAT_GAME_ID)}`, {
       method: 'POST',
-      body: JSON.stringify({ name, text }),
+      body: JSON.stringify({ name, text: sanitizedText }),
     });
     if (body === null) return false;
     // Show the room immediately rather than waiting out the poll timer.

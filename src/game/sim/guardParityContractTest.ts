@@ -199,35 +199,15 @@ function runBuilderWorkflowContract(): void {
     'a guarding builder must join the guarded builder\'s entity/feature Reclaim workflow',
   );
 
-  const wreck = world.createBuilding(170, 140, 24, 24, 12, 1);
-  wreck.wreck = {
-    source: { kind: 'unit', unitBlueprintId: 'unitJackal' },
-    originalOwnerId: 2,
-    resurrectProgressMs: 0,
-    resurrectRequiredMs: 1000,
-  } as NonNullable<Entity['wreck']>;
-  world.addEntity(wreck);
-  setUnitActions(guardedBuilder.unit!, [{
-    type: 'resurrect',
-    x: wreck.transform.x,
-    y: wreck.transform.y,
-    z: wreck.transform.z,
-    targetId: wreck.id,
-  }]);
-  const resurrect = resolveGuardServiceTarget(world, guarder);
-  assertContract(
-    resurrect?.kind === 'resurrect' && resurrect.target.id === wreck.id,
-    'a resurrection-capable guarding builder must join the guarded builder\'s Resurrect workflow',
-  );
-
   const ordinaryConstructor = world.createUnitFromBlueprint(100, 160, 1, 'unitConstructionDrone', {
     allocateSubEntityIds: false,
   });
   world.addEntity(ordinaryConstructor);
+  setUnitActions(guardedBuilder.unit!, []);
   setUnitActions(ordinaryConstructor.unit!, [guardAction(guardedBuilder)]);
   assertContract(
     resolveGuardServiceTarget(world, ordinaryConstructor)?.kind === 'ready',
-    'a guard without Resurrect capability must stay ready by its ally without acquiring the wreck workflow',
+    'a guarding builder without a serviceable allied job must stay ready by its ally',
   );
 
   const completedFactory = world.createBuilding(220, 160, 80, 80, 40, 1);

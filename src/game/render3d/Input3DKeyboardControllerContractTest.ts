@@ -1398,9 +1398,7 @@ export function runInput3DKeyboardControllerContractTest(): void {
       {
         presetId: 'bar-grid',
         hasSelectedCaptureControl: true,
-        hasSelectedResurrectControl: false,
         isCaptureMode: false,
-        isResurrectMode: false,
       },
     ) === 'combat.capture',
     'BAR support W must default to capture for BAR capture-capable selections',
@@ -1411,38 +1409,10 @@ export function runInput3DKeyboardControllerContractTest(): void {
       {
         presetId: 'bar-grid',
         hasSelectedCaptureControl: false,
-        hasSelectedResurrectControl: false,
         isCaptureMode: false,
-        isResurrectMode: false,
       },
     ) === null,
     'BAR support W must not default to capture without a BAR capture command',
-  );
-  assertContract(
-    barSupportCommandForKey(
-      makeKey({ code: 'KeyW' }),
-      {
-        presetId: 'bar-grid',
-        hasSelectedCaptureControl: true,
-        hasSelectedResurrectControl: false,
-        isCaptureMode: false,
-        isResurrectMode: true,
-      },
-    ) === null,
-    'BAR support W must not resurrect when the selection lacks a BAR-equivalent resurrect command',
-  );
-  assertContract(
-    barSupportCommandForKey(
-      makeKey({ code: 'KeyW' }),
-      {
-        presetId: 'bar-grid',
-        hasSelectedCaptureControl: true,
-        hasSelectedResurrectControl: true,
-        isCaptureMode: false,
-        isResurrectMode: true,
-      },
-    ) === 'combat.resurrect',
-    'BAR support W may toggle active resurrect mode for a BAR-equivalent resurrect-capable selection',
   );
   assertContract(
     barSupportCommandForKey(
@@ -1450,12 +1420,10 @@ export function runInput3DKeyboardControllerContractTest(): void {
       {
         presetId: 'bar-grid',
         hasSelectedCaptureControl: true,
-        hasSelectedResurrectControl: true,
         isCaptureMode: false,
-        isResurrectMode: true,
       },
     ) === null,
-    'BAR support W must not consume modified resurrect-area chords',
+    'BAR support W must not consume modified chords',
   );
   assertContract(
     barSupportCommandForKey(
@@ -1463,9 +1431,7 @@ export function runInput3DKeyboardControllerContractTest(): void {
       {
         presetId: 'prototype',
         hasSelectedCaptureControl: true,
-        hasSelectedResurrectControl: true,
         isCaptureMode: false,
-        isResurrectMode: true,
       },
     ) === null,
     'BAR support W must not override non-BAR presets',

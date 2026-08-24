@@ -564,9 +564,7 @@ export class RtsScene3DRenderPhase {
     rendererPacket.shieldVisibilityTeamMask = shieldVisibilityTeamMask;
     this.entityRendererOverlayModes.reclaimTargets =
       (inputManager?.isInReclaimMode() ?? false) ||
-      (inputManager?.isInCaptureMode() ?? false) ||
-      (inputManager?.isInResurrectMode() ?? false) ||
-      (inputManager?.isInResurrectAreaMode() ?? false);
+      (inputManager?.isInCaptureMode() ?? false);
     this.entityRendererOverlayModes.hoveredEntityId = hoveredEntity?.id ?? null;
     // A spray SOURCED from a transport is always its attraction beam
     // (transports own no build power), so the beam list doubles as the

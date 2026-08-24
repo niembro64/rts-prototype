@@ -511,7 +511,7 @@ export class Waypoint3D {
 
   private actionDisplayPoint(a: UnitAction): ActionDisplayPoint {
     // Entity-targeting orders (attack / guard / repair / reclaim / capture /
-    // resurrect / build) draw to the target's LIVE position so a queued line
+    // repair / reclaim / build) draw to the target's LIVE position so a queued line
     // follows a moving target (e.g. guarding or attacking a moving unit),
     // not the stale point captured when the order was issued. Falls back to
     // the stored point for ground orders or a vanished target.

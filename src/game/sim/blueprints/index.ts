@@ -18,7 +18,6 @@ import type {
   ShieldBarrierConfig,
   ShieldConfig,
   EmissionConfig,
-  LaserRay,
   ActiveProjectileShot,
   ShotConfig,
   TurretConfig,
@@ -572,23 +571,9 @@ function buildShotConfig(
   };
 }
 
-function buildRayConfig(rayBlueprint: RayBlueprint): BeamRay | LaserRay {
-  if (rayBlueprint.type === 'beam') {
-    return {
-      type: 'beam',
-      rayBlueprintId: rayBlueprint.rayBlueprintId,
-      dps: rayBlueprint.dps,
-      force: rayBlueprint.force,
-      recoil: rayBlueprint.recoil,
-      radius: rayBlueprint.radius,
-      width: rayBlueprint.width,
-      damageSphere: { radius: rayBlueprint.damageSphere.radius },
-      gravityForceMultiplier: rayBlueprint.gravityForceMultiplier,
-      mediumTrajectory: cloneEmissionMediumTrajectoryMatrix(rayBlueprint.mediumTrajectory),
-    };
-  }
+function buildRayConfig(rayBlueprint: RayBlueprint): BeamRay {
   return {
-    type: 'laser',
+    type: 'beam',
     rayBlueprintId: rayBlueprint.rayBlueprintId,
     dps: rayBlueprint.dps,
     force: rayBlueprint.force,
@@ -596,7 +581,6 @@ function buildRayConfig(rayBlueprint: RayBlueprint): BeamRay | LaserRay {
     radius: rayBlueprint.radius,
     width: rayBlueprint.width,
     damageSphere: { radius: rayBlueprint.damageSphere.radius },
-    duration: rayBlueprint.duration,
     gravityForceMultiplier: rayBlueprint.gravityForceMultiplier,
     mediumTrajectory: cloneEmissionMediumTrajectoryMatrix(rayBlueprint.mediumTrajectory),
   };

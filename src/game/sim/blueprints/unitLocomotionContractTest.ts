@@ -78,6 +78,17 @@ const EXPECTED_ROSTER_LOCOMOTION: Readonly<Record<string, ExpectedLocomotionDoma
   unitTransport: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
   unitCommander: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
   unitRex: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
+  unitRadarScout: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
+  unitConstructionBot: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
+  unitConstructionRover: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitStealthScout: { type: 'amphibian', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
+  unitDetector: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
+  unitRadarJammer: { type: 'amphibian', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
+  unitMissileRover: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitClusterArtillery: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitWaterStrider: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
+  unitPatrolCorvette: { type: 'amphibian', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false },
+  unitPetrel: { type: 'aerosub', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
 };
 
 

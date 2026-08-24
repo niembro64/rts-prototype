@@ -25,11 +25,11 @@ import { setUnitActions, shiftUnitAction } from './unitActions';
 import { WorldState } from './WorldState';
 import { PhysicsEngine3D } from '../server/PhysicsEngine3D';
 import { createPhysicsBodyForUnit } from '../server/unitPhysicsBody';
-import { createWreckFromDeadUnit } from './wrecks';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { deterministicMath as DMath } from './deterministicMath';
 import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
 import { FLAT_GROUND_BUILD_SQUARE_FLAGS } from './terrain/terrainBuildability';
+import { getTurretConfig } from './turretConfigs';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -49,23 +49,6 @@ function damageUnit(entity: Entity, damage = 10): Entity {
   assertContract(entity.unit !== null, 'test target must be a unit');
   entity.unit.hp = Math.max(1, entity.unit.maxHp - damage);
   return entity;
-}
-
-function createResurrectableWreck(
-  world: WorldState,
-  x: number,
-  y: number,
-  resurrectRequiredMs = 1000,
-): Entity {
-  const wreck = world.createBuilding(x, y, 24, 24, 12, 1);
-  wreck.wreck = {
-    source: { kind: 'unit', unitBlueprintId: 'unitJackal' },
-    originalOwnerId: 2,
-    resurrectProgressMs: 0,
-    resurrectRequiredMs,
-  } as NonNullable<Entity['wreck']>;
-  world.addEntity(wreck);
-  return wreck;
 }
 
 function assertActionTargetIds(actions: readonly { targetId?: number }[], expected: readonly number[], message: string): void {
@@ -193,9 +176,10 @@ function keepContractMatchLive(world: WorldState, playerIds: readonly number[]):
   return commanders;
 }
 
-/** updateUnits skips body-less entities (a transported passenger has no body),
- *  so any assertion that drives real unit actions through Simulation.update
- *  needs physics bodies attached or the whole case silently no-ops. */
+/** updateUnits skips body-less entities, so any assertion that drives real
+ *  unit actions through Simulation.update needs physics bodies attached or
+ *  the whole case silently no-ops. Transport passengers deliberately retain
+ *  those bodies so they remain visible, targetable, and combat-capable. */
 function attachContractPhysicsBodies(world: WorldState, units: readonly Entity[]): void {
   const physics = new PhysicsEngine3D(world.mapWidth, world.mapHeight);
   physics.setGroundLookup(
@@ -846,17 +830,16 @@ export function runCommandExecutionContractTest(): void {
     'setTowerTarget command should set a durable ground lock-on point',
   );
   const antiAirTower = world.createBuilding(220, 260, 80, 80, 40, 1);
+  // The bare contract world has a -400 terrain bed. Put this land-defense
+  // fixture on the ordinary z=0 surface so medium routing tests the intended
+  // above-water launcher rather than an impossible submerged AA tower.
+  antiAirTower.transform.z = 20;
   antiAirTower.type = 'building';
   antiAirTower.buildingBlueprintId = 'towerAntiAir';
   antiAirTower.combat = {
     turrets: [
       {
-        config: {
-          kind: 'attack',
-          passive: false,
-          targeting: { engagement: { range: 240 } },
-          shot: { type: 'rocket' },
-        },
+        config: getTurretConfig('turretAntiAir'),
       },
     ],
     fireState: 'fireAtWill',
@@ -924,17 +907,13 @@ export function runCommandExecutionContractTest(): void {
     'towerAntiAir/armrl Set Target must still lock air targets',
   );
   const stopTower = world.createBuilding(180, 260, 80, 80, 40, 1);
+  stopTower.transform.z = 20;
   stopTower.type = 'building';
   stopTower.buildingBlueprintId = 'towerCannon';
   stopTower.combat = {
     turrets: [
       {
-        config: {
-          kind: 'attack',
-          passive: false,
-          targeting: { engagement: { range: 180 } },
-          shot: { type: 'plasma' },
-        },
+        config: getTurretConfig('turretCannonLong'),
       },
     ],
     fireState: 'fireAtWill',
@@ -1228,6 +1207,7 @@ export function runCommandExecutionContractTest(): void {
     'BAR armjanus/unitBadger attack execution must still allow direct attacks against ground units',
   );
   const buildingTarget = bomberTargetWorld.createBuilding(180, 160, 64, 64, 100, 2);
+  buildingTarget.transform.z = 50;
   buildingTarget.buildingBlueprintId = 'buildingSolar';
   bomberTargetWorld.addEntity(buildingTarget);
   executeCommand(bomberTargetCtx, {
@@ -1650,6 +1630,9 @@ export function runCommandExecutionContractTest(): void {
     { type: 'wait', x: 60, y: 40, waitGather: true, waitGroupId: 77 },
     { type: 'move', x: 90, y: 40 },
   ]);
+  // These actions are injected directly rather than through executeCommand,
+  // so arm the same world-level fast-path flag that a real gather command sets.
+  gatherReleaseWorld.gatherWaitsMayExist = true;
   gatherReleaseSim.update(16);
   assertContract(
     firstActionType(readyUnit) === 'wait' && firstActionType(delayedUnit) === 'move',
@@ -2069,118 +2052,6 @@ export function runCommandExecutionContractTest(): void {
     'capture command should enqueue a target capture action on the commander',
   );
 
-  const wreckSource = queueWorld.createUnitFromBlueprint(92, 100, 2, 'unitJackal', {
-    allocateSubEntityIds: false,
-  });
-  queueWorld.addEntity(wreckSource);
-  const wreck = createWreckFromDeadUnit(queueWorld, wreckSource);
-  assertContract(wreck === null, 'dead unit should not create a blueprint-backed wreck');
-
-  setUnitActions(commander.unit, []);
-  executeCommand(queueCtx, {
-    type: 'resurrect',
-    tick: 5,
-    commanderId: commander.id,
-    targetId: wreckSource.id,
-    queue: false,
-  });
-  assertContract(
-    firstActionType(commander) === undefined,
-    'resurrect command should not enqueue without a resurrectable wreck target',
-  );
-  queueWorld.removeEntity(wreckSource.id);
-
-  const secondWreckSource = queueWorld.createUnitFromBlueprint(118, 100, 2, 'unitJackal', {
-    allocateSubEntityIds: false,
-  });
-  queueWorld.addEntity(secondWreckSource);
-  const secondWreck = createWreckFromDeadUnit(queueWorld, secondWreckSource);
-  assertContract(secondWreck === null, 'second dead unit should not create a blueprint-backed wreck');
-  queueWorld.removeEntity(secondWreckSource.id);
-  setUnitActions(commander.unit, []);
-  executeCommand(queueCtx, {
-    type: 'resurrectArea',
-    tick: 6,
-    commanderId: commander.id,
-    targetX: 90,
-    targetY: 100,
-    radius: 60,
-    queue: false,
-  });
-  assertContract(
-    firstActionType(commander) === undefined,
-    'resurrect-area command should not enqueue when no resurrectable wrecks exist',
-  );
-
-  const constructionDroneNonResurrector = queueWorld.createUnitFromBlueprint(70, 132, 1, 'unitConstructionDrone', {
-    allocateSubEntityIds: false,
-  });
-  queueWorld.addEntity(constructionDroneNonResurrector);
-  assertContract(
-    constructionDroneNonResurrector.unit !== null,
-    'construction-drone non-resurrect test source must have a unit component',
-  );
-  const resurrectableWreck = createResurrectableWreck(queueWorld, 92, 132);
-  setUnitActions(constructionDroneNonResurrector.unit, []);
-  executeCommand(queueCtx, {
-    type: 'resurrect',
-    tick: 7,
-    commanderId: constructionDroneNonResurrector.id,
-    targetId: resurrectableWreck.id,
-    queue: false,
-  });
-  assertContract(
-    constructionDroneNonResurrector.unit.actions.length === 0,
-    'BAR-equivalent unitConstructionDrone constructor must not enqueue direct resurrect actions',
-  );
-  setUnitActions(commander.unit, []);
-  executeCommand(queueCtx, {
-    type: 'resurrect',
-    tick: 7,
-    commanderId: commander.id,
-    targetId: resurrectableWreck.id,
-    queue: false,
-  });
-  const commanderResurrectActions: readonly UnitAction[] = commander.unit.actions;
-  assertContract(
-    commanderResurrectActions[0]?.type === 'resurrect' &&
-      commanderResurrectActions[0]?.targetId === resurrectableWreck.id,
-    'prototype commander resurrect command must still enqueue direct resurrect actions',
-  );
-  queueWorld.removeEntity(resurrectableWreck.id);
-
-  const nearWreck = createResurrectableWreck(queueWorld, 90, 150);
-  const farWreck = createResurrectableWreck(queueWorld, 118, 150);
-  setUnitActions(constructionDroneNonResurrector.unit, []);
-  executeCommand(queueCtx, {
-    type: 'resurrectArea',
-    tick: 8,
-    commanderId: constructionDroneNonResurrector.id,
-    targetX: 90,
-    targetY: 150,
-    radius: 40,
-    queue: false,
-  });
-  assertContract(
-    constructionDroneNonResurrector.unit.actions.length === 0,
-    'BAR-equivalent unitConstructionDrone constructor must not enqueue resurrect-area actions',
-  );
-  setUnitActions(commander.unit, []);
-  executeCommand(queueCtx, {
-    type: 'resurrectArea',
-    tick: 8,
-    commanderId: commander.id,
-    targetX: 90,
-    targetY: 150,
-    radius: 40,
-    queue: false,
-  });
-  assertActionTargetIds(
-    commander.unit.actions,
-    [nearWreck.id, farWreck.id],
-    'prototype commander resurrect-area command must enqueue wrecks nearest to farthest',
-  );
-
   const captureWorld = new WorldState(1, 512, 512);
   const captureQueue = new CommandQueue();
   const captureSim = new Simulation(captureWorld, captureQueue);
@@ -2214,37 +2085,6 @@ export function runCommandExecutionContractTest(): void {
   assertContract(
     enemy.ownership?.playerId === 1,
     'capture ability should transfer ownership once progress completes',
-  );
-
-  const resurrectWorld = new WorldState(2, 512, 512);
-  const resurrectQueue = new CommandQueue();
-  const resurrectSim = new Simulation(resurrectWorld, resurrectQueue);
-  const simResurrector = resurrectWorld.createUnitFromBlueprint(40, 80, 1, 'unitCommander', {
-    allocateSubEntityIds: false,
-  });
-  const simWreck = createResurrectableWreck(resurrectWorld, 70, 80, 10);
-  resurrectWorld.addEntity(simResurrector);
-  attachContractPhysicsBodies(resurrectWorld, [simResurrector]);
-  assertContract(simResurrector.unit !== null, 'sim resurrector must have a unit component');
-  setUnitActions(simResurrector.unit, [
-    {
-      type: 'resurrect',
-      x: simWreck.transform.x,
-      y: simWreck.transform.y,
-      z: simWreck.transform.z,
-      targetId: simWreck.id,
-    },
-  ]);
-  for (let resurrectStep = 0; resurrectStep < 4 && resurrectWorld.getEntity(simWreck.id) !== undefined; resurrectStep++) {
-    resurrectSim.update(1000);
-  }
-  assertContract(
-    resurrectWorld.getEntity(simWreck.id) === undefined &&
-    resurrectWorld.getUnits().some((entity) =>
-        entity.unit?.unitBlueprintId === 'unitJackal' &&
-        entity.ownership?.playerId === 1
-      ),
-    'prototype commander resurrect actions must progress in the ability system and restore a unit',
   );
 
   // BAR area attack queues every target inside the circle, nearest to
@@ -2306,12 +2146,12 @@ export function runCommandExecutionContractTest(): void {
   });
   assertActionTargetIds(
     areaAttacker.unit.actions.filter((action) => action.type === 'attack'),
-    [midFoe.id, farFoe.id, nearFoe.id],
+    [midFoe.id, nearFoe.id, farFoe.id],
     'BAR area attack must share selection-centroid target order across compatible attackers',
   );
   assertActionTargetIds(
     areaAttacker2.unit.actions.filter((action) => action.type === 'attack'),
-    [midFoe.id, farFoe.id, nearFoe.id],
+    [midFoe.id, nearFoe.id, farFoe.id],
     'every compatible attacker must receive the shared centroid-ordered target list',
   );
 
@@ -2506,11 +2346,18 @@ export function runCommandExecutionContractTest(): void {
   const transport = transportWorld.createUnitFromBlueprint(80, 80, 1, 'unitTransport', {
     allocateSubEntityIds: false,
   });
-  const passenger = transportWorld.createUnitFromBlueprint(92, 80, 1, 'unitJackal', {
+  const passenger = transportWorld.createUnitFromBlueprint(92, 80, 2, 'unitJackal', {
     allocateSubEntityIds: false,
   });
+  // A bare WorldState has an exposed-water surface at z=0 and a deep bed.
+  // Keep this fixture in the above-water row so the Jackal's authored plasma
+  // route can legally engage the airborne carrier.
+  transport.transform.z = 60;
+  passenger.transform.z = 20;
   transportWorld.addEntity(transport);
   transportWorld.addEntity(passenger);
+  keepContractMatchLive(transportWorld, [1, 2]);
+  attachContractPhysicsBodies(transportWorld, [transport, passenger]);
   executeCommand(transportCtx, {
     type: 'loadTransport',
     tick: 6,
@@ -2551,12 +2398,30 @@ export function runCommandExecutionContractTest(): void {
   );
   assertContract(
     passenger.unit !== null && passenger.unit.actions.length === 0,
-    'transport load action should clear the passenger action queue',
+    'an idle passenger should remain idle when an opposing transport loads it',
+  );
+  executeCommand(transportCtx, {
+    type: 'attack',
+    tick: 7,
+    entityIds: [passenger.id],
+    targetId: transport.id,
+    queue: false,
+  });
+  assertContract(
+    passenger.unit?.actions[0]?.type === 'attack',
+    'a carried enemy passenger must retain an attack order against its transport',
+  );
+  transportSim.update(16);
+  assertContract(
+    passenger.unit?.actions[0]?.type === 'attack' &&
+      passenger.combat?.priorityTargetId === transport.id,
+    `a carried enemy passenger must project its retained combat intent onto its transport; ` +
+      `priority target is ${String(passenger.combat?.priorityTargetId)}`,
   );
 
   executeCommand(transportCtx, {
     type: 'unloadTransport',
-    tick: 7,
+    tick: 8,
     transportIds: [transport.id],
     targetX: transport.transform.x,
     targetY: transport.transform.y,
@@ -2683,8 +2548,8 @@ export function runCommandExecutionContractTest(): void {
   });
   // Capacity is ONE under the beam-carry model, so an area load spreads
   // passengers across the selected transports instead of stacking the
-  // first: closest valid passenger to the first transport, next to the
-  // second, enemies excluded.
+  // first. Ownership is irrelevant: the nearest valid friendly or enemy
+  // passenger is assigned to each capacity-one carrier.
   assertContract(
     areaTransport.unit?.actions.length === 1 &&
       secondAreaTransport.unit?.actions.length === 1,
@@ -2693,12 +2558,12 @@ export function runCommandExecutionContractTest(): void {
   assertActionTargetIds(
     areaTransport.unit?.actions ?? [],
     [nearPassenger.id],
-    'BAR area loadTransport command should assign the closest valid passenger to the first transport and exclude enemies',
+    'BAR area loadTransport command should assign the closest valid passenger to the first transport',
   );
   assertActionTargetIds(
     secondAreaTransport.unit?.actions ?? [],
-    [farPassenger.id],
-    'BAR area loadTransport command should hand the next passenger to the next selected transport',
+    [enemyPassenger.id],
+    'BAR area loadTransport command should allow the next carrier to take the nearest enemy passenger',
   );
 
   const upgradeWorld = new WorldState(1, 512, 512);

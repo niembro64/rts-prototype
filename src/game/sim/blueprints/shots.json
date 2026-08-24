@@ -385,7 +385,7 @@
     },
     "submunitions": {
       "shotBlueprintId": "shotMortarMedium",
-      "count": 0,
+      "count": 8,
       "randomSpreadSpeedHorizontal": 160,
       "randomSpreadSpeedVertical": 50,
       "reflectedVelocityDamper": 0.3
@@ -541,6 +541,32 @@
         "hitbox": 1.6,
         "collision": 2
       }
+    }
+  },
+  "shotTorpedoAirLaunch": {
+    "$extends": "shotTorpedo",
+    "shotBlueprintId": "shotTorpedoAirLaunch",
+    "name": "Air-Launched Torpedo",
+    "mediumTrajectory": {
+      "aboveWater": { "aboveWater": false, "underwater": true },
+      "underwater": { "aboveWater": false, "underwater": true }
+    },
+    "shotLocomotionPresetId": "airLaunchTorpedo",
+    "maxLifespanMs": 12000,
+    "turning": {
+      "turnRate": 3.5,
+      "guidanceDelayMs": 240,
+      "guidanceRampMs": 420,
+      "guidanceSolveRateHz": 10,
+      "lostTargetBehavior": "continueCurrentVector",
+      "lostTargetArrivalRadius": 0
+    },
+    "mass": 14,
+    "health": 14,
+    "base": {
+      "mass": 14,
+      "health": 14,
+      "deathExplosion": { "radius": 60, "force": 22000, "damage": 230 }
     }
   }
 }

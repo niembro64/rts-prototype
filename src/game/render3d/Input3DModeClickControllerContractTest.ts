@@ -143,9 +143,6 @@ function allModesInactive() {
     isGuardMode: () => false,
     isReclaimMode: () => false,
     isCaptureMode: () => false,
-    isResurrectMode: () => false,
-    isResurrectAreaMode: () => false,
-    isResurrectModeAreaCapable: () => false,
     isLoadTransportMode: () => false,
     isUnloadTransportMode: () => false,
     isMexUpgradeMode: () => false,
@@ -161,8 +158,6 @@ function allModesInactive() {
     exitGuardMode: () => {},
     exitReclaimMode: () => {},
     exitCaptureMode: () => {},
-    exitResurrectMode: () => {},
-    exitResurrectAreaMode: () => {},
     exitLoadTransportMode: () => {},
     exitUnloadTransportMode: () => {},
     exitMexUpgradeMode: () => {},
@@ -197,7 +192,6 @@ function makeController(
     getQueueInsertIndex: () => null,
     getSelectedCommander: () => null,
     getSelectedBuilder: () => builders[0],
-    getSelectedResurrectSource: () => builders[0],
     onBuildCommandIssued: (queued) => buildCommandQueuedStates.push(queued),
     applyCursor: () => {},
     ...allModesInactive(),
@@ -528,7 +522,6 @@ export function runInput3DModeClickControllerContractTest(): void {
     getQueueInsertIndex: () => null,
     getSelectedCommander: () => dgunCommander,
     getSelectedBuilder: () => null,
-    getSelectedResurrectSource: () => null,
     onBuildCommandIssued: () => {},
     applyCursor: () => {},
     ...allModesInactive(),
@@ -576,7 +569,6 @@ export function runInput3DModeClickControllerContractTest(): void {
     getQueueInsertIndex: () => null,
     getSelectedCommander: () => null,
     getSelectedBuilder: () => null,
-    getSelectedResurrectSource: () => null,
     onBuildCommandIssued: () => {},
     applyCursor: () => {},
     ...allModesInactive(),
@@ -607,51 +599,6 @@ export function runInput3DModeClickControllerContractTest(): void {
     'BAR Attack on empty ground must issue Attack Point rather than degrading to Fight',
   );
 
-  const resurrector = makeCommanderBuilder(303);
-  const resurrectCommands: Command[] = [];
-  let exitResurrectModeCount = 0;
-  const resurrectController = new Input3DModeClickController({
-    getEntitySource: () => ({
-      getUnits: () => [resurrector],
-      getBuildings: () => [],
-      getEntity: () => undefined,
-      getSelectedUnits: () => [resurrector],
-    }),
-    commandQueue: { enqueue: (command) => resurrectCommands.push(command) },
-    picker: {
-      raycastEntity: () => null,
-      raycastGround: (clientX: number, clientY: number) => ({ x: clientX, y: clientY, z: 0 }),
-    } as never,
-    mode: new CommanderModeController(),
-    selectedCommands: {} as never,
-    getTick: () => 456,
-    getActivePlayerId: () => 1,
-    getQueueInsertIndex: () => null,
-    getSelectedCommander: () => null,
-    getSelectedBuilder: () => resurrector,
-    getSelectedResurrectSource: () => resurrector,
-    onBuildCommandIssued: () => {},
-    applyCursor: () => {},
-    ...allModesInactive(),
-    isResurrectMode: () => true,
-    isResurrectModeAreaCapable: () => true,
-    exitResurrectMode: () => { exitResurrectModeCount++; },
-    isBuildSplitModifierHeld: () => false,
-  });
-  resurrectController.handleMouseDown(mouseEvent({ button: 0, clientX: 0, clientY: 0 }));
-  resurrectController.handleMouseUp(mouseEvent({ button: 0, clientX: 24, clientY: 0 }));
-  assertContract(resurrectCommands.length === 1, 'area-capable resurrect drag must enqueue one area resurrect command');
-  const resurrectDragCommand = resurrectCommands[0];
-  assertContract(
-    resurrectDragCommand.type === 'resurrectArea' &&
-      resurrectDragCommand.commanderId === resurrector.id &&
-      resurrectDragCommand.targetX === 0 &&
-      resurrectDragCommand.targetY === 0 &&
-      resurrectDragCommand.radius === 24,
-    'regular Resurrect mode must use the area command path when click-dragged while area-capable',
-  );
-  assertContract(exitResurrectModeCount === 1, 'unqueued resurrect drag must exit regular resurrect mode');
-
   const transport = makeTransport(401, 1);
   const loadTransportCommands: Command[] = [];
   let exitLoadTransportModeCount = 0;
@@ -674,7 +621,6 @@ export function runInput3DModeClickControllerContractTest(): void {
     getQueueInsertIndex: () => null,
     getSelectedCommander: () => null,
     getSelectedBuilder: () => null,
-    getSelectedResurrectSource: () => null,
     onBuildCommandIssued: () => {},
     applyCursor: () => {},
     ...allModesInactive(),
@@ -720,7 +666,6 @@ export function runInput3DModeClickControllerContractTest(): void {
     getQueueInsertIndex: () => null,
     getSelectedCommander: () => null,
     getSelectedBuilder: () => null,
-    getSelectedResurrectSource: () => null,
     onBuildCommandIssued: () => {},
     applyCursor: () => {},
     ...allModesInactive(),
@@ -773,7 +718,6 @@ export function runInput3DModeClickControllerContractTest(): void {
     getQueueInsertIndex: () => null,
     getSelectedCommander: () => null,
     getSelectedBuilder: () => null,
-    getSelectedResurrectSource: () => null,
     onBuildCommandIssued: () => {},
     applyCursor: () => {},
     ...allModesInactive(),

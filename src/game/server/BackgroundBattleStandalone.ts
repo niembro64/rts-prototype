@@ -19,6 +19,7 @@ import { setUnitActions } from '../sim/unitActions';
 import { setUnitFacingYaw } from '../sim/unitOrientation';
 import { createPhysicsBodyForUnit } from './unitPhysicsBody';
 import { mapHasWater } from '../sim/mapSurface';
+import { isFabricatorBuildingBlueprintId } from '../sim/blueprints/buildings';
 
 // Available unit blueprints for background spawning (excludes commander)
 export const BACKGROUND_UNIT_BLUEPRINT_IDS = [...BUILDABLE_UNIT_BLUEPRINT_IDS];
@@ -231,7 +232,7 @@ function seededFabricatorProductionReserveForTeam(
 function seededFabricatorProductionReserve(world: WorldState, playerId: PlayerId): number {
   let count = 0;
   for (const factory of world.getFactoriesByPlayer(playerId)) {
-    if (factory.buildingBlueprintId !== 'towerFabricator') continue;
+    if (!isFabricatorBuildingBlueprintId(factory.buildingBlueprintId)) continue;
     const factoryComponent = factory.factory;
     if (factoryComponent === null) continue;
     const selected = factoryComponent.selectedUnitBlueprintId;

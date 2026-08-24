@@ -13,7 +13,6 @@ export type ActionType =
   | 'repair'
   | 'reclaim'
   | 'capture'
-  | 'resurrect'
   | 'wait'
   | 'selfDestruct'
   | 'attack'

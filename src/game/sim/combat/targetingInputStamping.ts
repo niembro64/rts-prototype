@@ -23,7 +23,6 @@ import type { WorldState } from '../WorldState';
 import type { WindState } from '../wind';
 import { entitySlotRegistry } from '../EntitySlotRegistry';
 import {
-  encodeShieldBarrierShape,
   encodeShieldReflectionPolicy,
   encodeShieldRocketLikeReflectionPolicy,
   getActiveShields,
@@ -1372,7 +1371,7 @@ export function stampShieldSurfacePool(world: WorldState): void {
   if (sim === undefined) return;
   const pool = sim.shieldSurfacePool;
 
-  // ── Spherical / infinite-cylinder field surfaces ──
+  // ── Spherical field surfaces ──
   if (!world.turretShieldSpheresEnabled) {
     pool.setFieldCount(0);
   } else {
@@ -1385,15 +1384,11 @@ export function stampShieldSurfacePool(world: WorldState): void {
         f.entityId,
         f.entityId,
         f.prevCenterX, f.prevCenterY, f.prevCenterZ,
-        f.prevAxisEndX, f.prevAxisEndY, f.prevAxisEndZ,
         f.centerX, f.centerY, f.centerZ,
-        f.axisEndX, f.axisEndY, f.axisEndZ,
         f.radius,
-        encodeShieldBarrierShape(f.shape),
         encodeShieldReflectionPolicy(f.reflection, 'plasma'),
         encodeShieldRocketLikeReflectionPolicy(f.reflection),
         encodeShieldReflectionPolicy(f.reflection, 'beam'),
-        encodeShieldReflectionPolicy(f.reflection, 'laser'),
       );
     }
   }
@@ -1438,7 +1433,6 @@ export function stampShieldSurfacePool(world: WorldState): void {
     const plasmaReflection = encodeShieldReflectionPolicy(panelShot.reflection, 'plasma');
     const rocketReflection = encodeShieldRocketLikeReflectionPolicy(panelShot.reflection);
     const beamReflection = encodeShieldReflectionPolicy(panelShot.reflection, 'beam');
-    const laserReflection = encodeShieldReflectionPolicy(panelShot.reflection, 'laser');
     const shieldPanelRot = shieldPanelTurret.rotation;
     const shieldPanelPitch = shieldPanelTurret.pitch;
     const unitGroundZ = getUnitGroundZ(unit);
@@ -1472,7 +1466,6 @@ export function stampShieldSurfacePool(world: WorldState): void {
         plasmaReflection,
         rocketReflection,
         beamReflection,
-        laserReflection,
       );
       panelIdx++;
     }

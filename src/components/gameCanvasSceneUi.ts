@@ -103,7 +103,6 @@ export function useGameCanvasSceneUi({
     hasDGun: false,
     hasBarAttackControl: false,
     hasBarCaptureControl: false,
-    hasBarResurrectControl: false,
     hasBarAreaAttackControl: false,
     hasMoveStateControl: false,
     hasFireControl: false,
@@ -167,8 +166,6 @@ export function useGameCanvasSceneUi({
     isGuardMode: false,
     isReclaimMode: false,
     isCaptureMode: false,
-    isResurrectMode: false,
-    isResurrectAreaMode: false,
     isLoadTransportMode: false,
     isUnloadTransportMode: false,
     isMexUpgradeMode: false,
@@ -416,12 +413,6 @@ export function useGameCanvasSceneUi({
     },
     toggleCapture: () => {
       getActiveBattleScene()?.toggleCaptureMode();
-    },
-    toggleResurrect: () => {
-      getActiveBattleScene()?.toggleResurrectMode();
-    },
-    toggleResurrectArea: () => {
-      getActiveBattleScene()?.toggleResurrectAreaMode();
     },
     toggleLoadTransport: () => {
       getActiveBattleScene()?.toggleLoadTransportMode();

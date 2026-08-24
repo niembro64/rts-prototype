@@ -4,10 +4,11 @@ import {
 import { deterministicMath as DMath } from './deterministicMath';
 import type { UnitBlueprint } from './blueprints/types';
 import {
-  fabricatorTorusHoverHeight,
+  fabricatorProductionPlaneHeight,
   fabricatorTorusRingRadius,
   getUnitBlueprint,
 } from './blueprints';
+import { isFabricatorBuildingBlueprintId } from './blueprints/buildings';
 import type { Entity } from './types';
 import type { EntityHoldSpec } from './entityHolds';
 import { productionHoldRingRadiusForUnitRadius } from './productionHoldGeometry';
@@ -67,7 +68,7 @@ export function writeFabricatorProductionSprayOrigin(
   out: { x: number; y: number; z: number },
 ): { x: number; y: number; z: number } {
   const building = factory.building;
-  if (building === null || factory.buildingBlueprintId !== 'towerFabricator') {
+  if (building === null || !isFabricatorBuildingBlueprintId(factory.buildingBlueprintId)) {
     out.x = factory.transform.x;
     out.y = factory.transform.y;
     out.z = factory.transform.z;
@@ -85,7 +86,7 @@ export function writeFabricatorProductionSprayOrigin(
   const ringRadius = fabricatorTorusRingRadius(building.width, building.height);
   out.x = factory.transform.x + DMath.cos(angle) * ringRadius;
   out.y = factory.transform.y + DMath.sin(angle) * ringRadius;
-  out.z = getUnitGroundZ(factory) + fabricatorTorusHoverHeight();
+  out.z = getUnitGroundZ(factory) + fabricatorProductionPlaneHeight(factory.buildingBlueprintId!);
   return out;
 }
 
@@ -94,11 +95,11 @@ function productionHoldLocalBaseZ(
   produced: UnitBlueprint,
   hostOffsetZ: number,
 ): number {
-  if (factory.buildingBlueprintId === 'towerFabricator') {
+  if (isFabricatorBuildingBlueprintId(factory.buildingBlueprintId)) {
     // EntityHold adds the produced unit's support-point offset when resolving
     // its transform. Subtract it here so the unit's actual body center, not
     // its footprint/support plane, is pinned to the torus center plane.
-    return fabricatorTorusHoverHeight() - produced.supportPointOffsetZ;
+    return fabricatorProductionPlaneHeight(factory.buildingBlueprintId!) - produced.supportPointOffsetZ;
   }
   if (factory.unit !== null) {
     return factory.unit.supportPointOffsetZ + hostOffsetZ;

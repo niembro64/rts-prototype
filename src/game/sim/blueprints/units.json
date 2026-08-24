@@ -1,6 +1,7 @@
 {
   "unitJackal": {
     "unitBlueprintId": "unitJackal",
+    "production": { "techLevel": 1, "domains": ["vehicle"] },
     "tinyName": "JKL",
     "name": "Jackal",
     "shortName": "JKL",
@@ -142,6 +143,7 @@
   },
   "unitLynx": {
     "unitBlueprintId": "unitLynx",
+    "production": { "techLevel": 1, "domains": ["vehicle"] },
     "tinyName": "LNX",
     "name": "Lynx",
     "shortName": "LNX",
@@ -282,6 +284,7 @@
   },
   "unitDaddy": {
     "unitBlueprintId": "unitDaddy",
+    "production": { "techLevel": 1, "domains": ["bot"] },
     "tinyName": "DDY",
     "name": "Daddy",
     "shortName": "DDY",
@@ -473,6 +476,7 @@
   },
   "unitBadger": {
     "unitBlueprintId": "unitBadger",
+    "production": { "techLevel": 2, "domains": ["vehicle"] },
     "tinyName": "BDG",
     "name": "Badger",
     "shortName": "BDG",
@@ -613,6 +617,7 @@
   },
   "unitMongoose": {
     "unitBlueprintId": "unitMongoose",
+    "production": { "techLevel": 2, "domains": ["vehicle"] },
     "tinyName": "MGS",
     "name": "Mongoose",
     "shortName": "MGS",
@@ -754,6 +759,7 @@
   },
   "unitTick": {
     "unitBlueprintId": "unitTick",
+    "production": null,
     "tinyName": "TCK",
     "name": "Tick",
     "shortName": "TCK",
@@ -906,6 +912,7 @@
   },
   "unitHuman": {
     "unitBlueprintId": "unitHuman",
+    "production": { "techLevel": 1, "domains": ["bot"] },
     "tinyName": "HUM",
     "name": "Human",
     "shortName": "HUM",
@@ -1179,6 +1186,7 @@
   },
   "unitRex": {
     "unitBlueprintId": "unitRex",
+    "production": { "techLevel": 2, "domains": ["bot"] },
     "tinyName": "REX",
     "name": "Rex",
     "shortName": "REX",
@@ -1764,6 +1772,7 @@
   },
   "unitMammoth": {
     "unitBlueprintId": "unitMammoth",
+    "production": { "techLevel": 2, "domains": ["vehicle"] },
     "tinyName": "MMT",
     "name": "Mammoth",
     "shortName": "MMT",
@@ -1896,6 +1905,7 @@
   },
   "unitFormik": {
     "unitBlueprintId": "unitFormik",
+    "production": { "techLevel": 2, "domains": ["bot"] },
     "tinyName": "FMK",
     "name": "Formik",
     "shortName": "FMK",
@@ -2083,6 +2093,7 @@
   },
   "unitWidow": {
     "unitBlueprintId": "unitWidow",
+    "production": { "techLevel": 2, "domains": ["bot"] },
     "tinyName": "WDW",
     "name": "Widow",
     "shortName": "WDW",
@@ -2394,6 +2405,7 @@
   },
   "unitHippo": {
     "unitBlueprintId": "unitHippo",
+    "production": { "techLevel": 2, "domains": ["vehicle", "naval"] },
     "tinyName": "HPO",
     "name": "Hippo",
     "shortName": "HPO",
@@ -2537,6 +2549,7 @@
   },
   "unitSeaTurtle": {
     "unitBlueprintId": "unitSeaTurtle",
+    "production": { "techLevel": 1, "domains": ["naval"] },
     "tinyName": "TRT",
     "name": "Sea Turtle",
     "shortName": "TURT",
@@ -2735,6 +2748,7 @@
   },
   "unitOrca": {
     "unitBlueprintId": "unitOrca",
+    "production": { "techLevel": 2, "domains": ["naval"] },
     "tinyName": "ORC",
     "name": "Orca",
     "shortName": "ORCA",
@@ -2935,6 +2949,7 @@
   },
   "unitTarantula": {
     "unitBlueprintId": "unitTarantula",
+    "production": { "techLevel": 2, "domains": ["bot"] },
     "tinyName": "TRN",
     "name": "Tarantula",
     "shortName": "TRN",
@@ -3100,6 +3115,7 @@
   },
   "unitLoris": {
     "unitBlueprintId": "unitLoris",
+    "production": { "techLevel": 1, "domains": ["bot"] },
     "tinyName": "LRS",
     "name": "Loris",
     "shortName": "LRS",
@@ -3246,6 +3262,7 @@
   },
   "unitBee": {
     "unitBlueprintId": "unitBee",
+    "production": null,
     "tinyName": "BEE",
     "name": "Bee",
     "shortName": "BEE",
@@ -3373,6 +3390,7 @@
   },
   "unitDragonfly": {
     "unitBlueprintId": "unitDragonfly",
+    "production": { "techLevel": 1, "domains": ["aircraft"] },
     "tinyName": "DRF",
     "name": "Dragonfly",
     "shortName": "DRF",
@@ -3535,6 +3553,7 @@
   },
   "unitConstructionDrone": {
     "unitBlueprintId": "unitConstructionDrone",
+    "production": { "techLevel": 1, "domains": ["aircraft"] },
     "tinyName": "CDR",
     "name": "Construction Drone",
     "shortName": "CDR",
@@ -3566,6 +3585,9 @@
       "buildingMetalStorage",
       "buildingEnergyStorage",
       "towerFabricator",
+      "buildingAdvancedUniversalFabricator",
+      "buildingAircraftFabricator",
+      "buildingAdvancedAircraftFabricator",
       "towerCannon",
       "towerHelios",
       "towerBeamMega",
@@ -3720,6 +3742,7 @@
   },
   "unitEagle": {
     "unitBlueprintId": "unitEagle",
+    "production": { "techLevel": 1, "domains": ["aircraft"] },
     "tinyName": "EGL",
     "name": "Eagle",
     "shortName": "EGL",
@@ -3874,6 +3897,7 @@
   },
   "unitDuck": {
     "unitBlueprintId": "unitDuck",
+    "production": { "techLevel": 1, "domains": ["aircraft", "naval"] },
     "tinyName": "DUK",
     "name": "Duck",
     "shortName": "DUK",
@@ -4054,6 +4078,7 @@
   },
   "unitAlbatros": {
     "unitBlueprintId": "unitAlbatros",
+    "production": { "techLevel": 2, "domains": ["aircraft"] },
     "tinyName": "ALB",
     "name": "Albatross",
     "shortName": "ALB",
@@ -4240,6 +4265,7 @@
   },
   "unitQueenBee": {
     "unitBlueprintId": "unitQueenBee",
+    "production": { "techLevel": 2, "domains": ["aircraft"] },
     "tinyName": "QBE",
     "name": "Queen Bee",
     "shortName": "QBE",
@@ -4493,6 +4519,7 @@
   },
   "unitQueenTick": {
     "unitBlueprintId": "unitQueenTick",
+    "production": { "techLevel": 2, "domains": ["bot"] },
     "tinyName": "QTK",
     "name": "Queen Tick",
     "shortName": "QTK",
@@ -4751,6 +4778,7 @@
   },
   "unitTransport": {
     "unitBlueprintId": "unitTransport",
+    "production": { "techLevel": 2, "domains": ["aircraft"] },
     "tinyName": "TDR",
     "name": "Transport Drone",
     "shortName": "TDR",
@@ -4901,6 +4929,7 @@
   },
   "unitCommander": {
     "unitBlueprintId": "unitCommander",
+    "production": null,
     "tinyName": "CMD",
     "name": "Commander",
     "shortName": "CMD",
@@ -4931,6 +4960,10 @@
       "buildingMetalStorage",
       "buildingEnergyStorage",
       "towerFabricator",
+      "buildingBotFabricator",
+      "buildingVehicleFabricator",
+      "buildingAircraftFabricator",
+      "buildingNavalFabricator",
       "towerCannon",
       "towerHelios",
       "towerAntiAir",
@@ -5293,6 +5326,7 @@
   },
   "unitConstructionSubmarine": {
     "unitBlueprintId": "unitConstructionSubmarine",
+    "production": { "techLevel": 1, "domains": ["naval"] },
     "tinyName": "CSB",
     "name": "Construction Submarine",
     "shortName": "CSUB",
@@ -5318,6 +5352,10 @@
       "buildingSonar",
       "buildingSonarJammer",
       "towerFabricator",
+      "buildingAdvancedUniversalFabricator",
+      "buildingNavalFabricator",
+      "buildingAdvancedNavalFabricator",
+      "buildingTidalGenerator",
       "towerTorpedo"
     ],
     "workEmitter": {
@@ -5483,6 +5521,7 @@
   },
   "unitHedgehog": {
     "unitBlueprintId": "unitHedgehog",
+    "production": { "techLevel": 1, "domains": ["vehicle"] },
     "preventLockOnIfMyTeamIsAboveMe": true,
     "supportPointOffsetZ": 12.4,
     "tinyName": "HDG",
@@ -5619,6 +5658,434 @@
         "radarStealth": false,
         "sonarStealth": false
       }
+    }
+  },
+  "unitRadarScout": {
+    "$extends": "unitBee",
+    "unitBlueprintId": "unitRadarScout",
+    "production": { "techLevel": 1, "domains": ["aircraft"] },
+    "tinyName": "AWC",
+    "name": "Kestrel AWACS",
+    "shortName": "AWACS",
+    "hp": 160,
+    "mass": 90,
+    "cost": { "energy": 220, "metal": 180 },
+    "unitLocomotion": { "environmentalHazards": { "waterDamagePerSecond": 80 } },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitRadarScout",
+        "presentation": null,
+        "mount": { "x": 0, "y": 0, "z": 0 },
+        "requiredEngagedForFightStop": false,
+        "mountId": "radar",
+        "controlMode": "autonomous"
+      }
+    ],
+    "base": {
+      "cost": { "energy": 220, "metal": 180 },
+      "mass": 90,
+      "health": 160,
+      "deathExplosion": { "radius": 18, "force": 9000, "damage": 70 },
+      "signature": { "radarStealth": false, "sonarStealth": false }
+    }
+  },
+  "unitConstructionBot": {
+    "$extends": "unitHuman",
+    "unitBlueprintId": "unitConstructionBot",
+    "production": { "techLevel": 1, "domains": ["bot"] },
+    "tinyName": "CBT",
+    "name": "Construction Bot",
+    "shortName": "C-BOT",
+    "hp": 240,
+    "mass": 180,
+    "cost": { "energy": 230, "metal": 210 },
+    "builder": { "buildRange": 150 },
+    "constructionRate": 32,
+    "allowedBuildBlueprintIds": [
+      "buildingSolar", "buildingWind", "buildingExtractor", "buildingRadar",
+      "towerCannon", "towerAntiAir", "towerInterceptor",
+      "towerFabricator", "buildingAdvancedUniversalFabricator",
+      "buildingBotFabricator", "buildingAdvancedBotFabricator"
+    ],
+    "workEmitter": {
+      "points": [{ "x": 0.04, "y": 0, "z": 0 }],
+      "particleTravelSpeed": 170,
+      "particleRadius": 1.45,
+      "attachment": {
+        "kind": "botArm",
+        "arm": "rightArm",
+        "socketOffset": { "x": 0.02, "y": 0, "z": 0 }
+      },
+      "angularActuator": {
+        "yaw": { "maxSpeed": 1.4, "maxAcceleration": 2.8 },
+        "pitch": { "maxSpeed": 1.6, "maxAcceleration": 3.2 }
+      },
+      "articulation": {
+        "yaw": { "continuous": false, "minAngle": -0.9, "maxAngle": 0.9 },
+        "pitch": { "minAngle": -1.55, "maxAngle": 1.55 },
+        "restYaw": 0,
+        "restPitch": 0.25,
+        "restoreDelayMs": 3000,
+        "hostAssist": "requestYaw",
+        "claimGroup": "botUpperBody",
+        "claimPriority": 110
+      },
+      "requiresAlignmentForWork": true,
+      "alignmentToleranceRadians": 0.12
+    },
+    "base": {
+      "cost": { "energy": 230, "metal": 210 },
+      "mass": 180,
+      "health": 240,
+      "deathExplosion": { "radius": 24, "force": 12000, "damage": 100 },
+      "signature": { "radarStealth": false, "sonarStealth": false }
+    }
+  },
+  "unitConstructionRover": {
+    "$extends": "unitJackal",
+    "unitBlueprintId": "unitConstructionRover",
+    "production": { "techLevel": 1, "domains": ["vehicle"] },
+    "tinyName": "CTR",
+    "name": "Construction Rover",
+    "shortName": "C-ROVER",
+    "hp": 260,
+    "mass": 200,
+    "cost": { "energy": 240, "metal": 220 },
+    "unitLocomotion": { "environmentalHazards": { "waterDamagePerSecond": 130 } },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitJackal",
+        "presentation": null,
+        "mount": { "x": 0, "y": 0, "z": 2 },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      }
+    ],
+    "builder": { "buildRange": 155 },
+    "constructionRate": 34,
+    "allowedBuildBlueprintIds": [
+      "buildingSolar", "buildingWind", "buildingExtractor", "buildingRadar",
+      "towerCannon", "towerAntiAir", "towerInterceptor",
+      "towerFabricator", "buildingAdvancedUniversalFabricator",
+      "buildingVehicleFabricator", "buildingAdvancedVehicleFabricator"
+    ],
+    "workEmitter": {
+      "points": [{ "x": 0.75, "y": 0, "z": 0.55 }],
+      "particleTravelSpeed": 170,
+      "particleRadius": 1.45,
+      "attachment": { "kind": "host" },
+      "angularActuator": null,
+      "articulation": null,
+      "requiresAlignmentForWork": false,
+      "alignmentToleranceRadians": 0.12
+    },
+    "base": {
+      "cost": { "energy": 240, "metal": 220 },
+      "mass": 200,
+      "health": 260,
+      "deathExplosion": { "radius": 24, "force": 13000, "damage": 110 },
+      "signature": { "radarStealth": false, "sonarStealth": false }
+    }
+  },
+  "unitStealthScout": {
+    "$extends": "unitSeaTurtle",
+    "unitBlueprintId": "unitStealthScout",
+    "production": { "techLevel": 2, "domains": ["naval"] },
+    "tinyName": "SHD",
+    "name": "Shade Scout",
+    "shortName": "SHADE",
+    "hp": 180,
+    "mass": 130,
+    "cost": { "energy": 720, "metal": 520 },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitStealthScout",
+        "presentation": null,
+        "mount": { "x": 0, "y": 0, "z": 0 },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      }
+    ],
+    "base": {
+      "cost": { "energy": 720, "metal": 520 },
+      "mass": 130,
+      "health": 180,
+      "deathExplosion": { "radius": 24, "force": 10000, "damage": 90 },
+      "signature": { "radarStealth": true, "sonarStealth": true }
+    }
+  },
+  "unitDetector": {
+    "$extends": "unitBee",
+    "unitBlueprintId": "unitDetector",
+    "production": { "techLevel": 2, "domains": ["aircraft"] },
+    "tinyName": "OWL",
+    "name": "Owl Detector",
+    "shortName": "OWL",
+    "hp": 260,
+    "mass": 140,
+    "cost": { "energy": 780, "metal": 620 },
+    "unitLocomotion": { "environmentalHazards": { "waterDamagePerSecond": 130 } },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitDetector",
+        "presentation": null,
+        "mount": { "x": 0, "y": 0, "z": 0 },
+        "requiredEngagedForFightStop": false,
+        "mountId": "detector",
+        "controlMode": "autonomous"
+      }
+    ],
+    "base": {
+      "cost": { "energy": 780, "metal": 620 },
+      "mass": 140,
+      "health": 260,
+      "deathExplosion": { "radius": 25, "force": 12000, "damage": 110 },
+      "signature": { "radarStealth": false, "sonarStealth": false }
+    }
+  },
+  "unitRadarJammer": {
+    "$extends": "unitSeaTurtle",
+    "unitBlueprintId": "unitRadarJammer",
+    "production": { "techLevel": 2, "domains": ["naval"] },
+    "tinyName": "JMR",
+    "name": "Murk Jammer",
+    "shortName": "JAMMER",
+    "hp": 520,
+    "mass": 460,
+    "cost": { "energy": 1100, "metal": 850 },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretGunLight",
+        "presentation": {
+          "headRadius": 3,
+          "headOnly": false,
+          "barrel": { "type": "singleCylinderBarrel", "barrelLength": 1.4 }
+        },
+        "sensorTurretBlueprintId": "turretSensorUnitRadarJammer",
+        "mount": { "x": 0.2, "y": 0, "z": 1.1 },
+        "requiredEngagedForFightStop": true,
+        "mountId": "lightGun",
+        "controlMode": "hostPreferred"
+      }
+    ],
+    "base": {
+      "cost": { "energy": 1100, "metal": 850 },
+      "mass": 460,
+      "health": 520,
+      "deathExplosion": { "radius": 34, "force": 22000, "damage": 180 },
+      "signature": { "radarStealth": false, "sonarStealth": false }
+    }
+  },
+  "unitMissileRover": {
+    "$extends": "unitJackal",
+    "unitBlueprintId": "unitMissileRover",
+    "production": { "techLevel": 1, "domains": ["vehicle"] },
+    "tinyName": "SAM",
+    "name": "Swift SAM Rover",
+    "shortName": "SAM",
+    "hp": 340,
+    "mass": 260,
+    "cost": { "energy": 420, "metal": 360 },
+    "unitLocomotion": { "environmentalHazards": { "waterDamagePerSecond": 170 } },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretMissileRover",
+        "presentation": {
+          "headRadius": 5,
+          "headOnly": false,
+          "barrel": { "type": "singleCylinderBarrel", "barrelLength": 1.1 }
+        },
+        "sensorTurretBlueprintId": "turretSensorUnitJackal",
+        "mount": { "x": 0, "y": 0, "z": 1.4 },
+        "requiredEngagedForFightStop": true,
+        "mountId": "antiAir",
+        "controlMode": "hostPreferred"
+      }
+    ],
+    "base": {
+      "cost": { "energy": 420, "metal": 360 },
+      "mass": 260,
+      "health": 340,
+      "deathExplosion": { "radius": 27, "force": 16000, "damage": 130 },
+      "signature": { "radarStealth": false, "sonarStealth": false }
+    }
+  },
+  "unitClusterArtillery": {
+    "$extends": "unitMongoose",
+    "unitBlueprintId": "unitClusterArtillery",
+    "production": { "techLevel": 2, "domains": ["vehicle"] },
+    "tinyName": "CLU",
+    "name": "Bramble Cluster Artillery",
+    "shortName": "CLUSTER",
+    "hp": 820,
+    "mass": 920,
+    "cost": { "energy": 1900, "metal": 1600 },
+    "unitLocomotion": { "environmentalHazards": { "waterDamagePerSecond": 410 } },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretMortarCluster",
+        "presentation": {
+          "headRadius": 8,
+          "headOnly": false,
+          "barrel": { "type": "singleCylinderBarrel", "barrelLength": 2.2 }
+        },
+        "sensorTurretBlueprintId": "turretSensorUnitMongoose",
+        "mount": { "x": 0, "y": 0, "z": 2 },
+        "requiredEngagedForFightStop": true,
+        "mountId": "clusterMortar",
+        "controlMode": "hostPreferred"
+      }
+    ],
+    "base": {
+      "cost": { "energy": 1900, "metal": 1600 },
+      "mass": 920,
+      "health": 820,
+      "deathExplosion": { "radius": 42, "force": 36000, "damage": 300 },
+      "signature": { "radarStealth": false, "sonarStealth": false }
+    }
+  },
+  "unitWaterStrider": {
+    "$extends": "unitTarantula",
+    "unitBlueprintId": "unitWaterStrider",
+    "production": { "techLevel": 1, "domains": ["bot", "naval"] },
+    "tinyName": "WST",
+    "name": "Water Strider",
+    "shortName": "STRIDER",
+    "hp": 620,
+    "mass": 420,
+    "cost": { "energy": 720, "metal": 620 },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretGunBurst",
+        "presentation": {
+          "headRadius": 4,
+          "headOnly": false,
+          "barrel": { "type": "singleCylinderBarrel", "barrelLength": 1.7 }
+        },
+        "sensorTurretBlueprintId": "turretSensorUnitSeaTurtle",
+        "mount": { "x": 0.4, "y": 0, "z": 1.2 },
+        "requiredEngagedForFightStop": true,
+        "mountId": "surfaceGun",
+        "controlMode": "hostPreferred"
+      }
+    ],
+    "unitLocomotion": {
+      "physicsPresetId": "amphibious-crawler",
+      "physics": {
+        "ground": { "maxPropulsiveForce": 30 },
+        "air": {
+          "maxPropulsiveForce": 0,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 260
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 24,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 18
+          }
+        }
+      },
+      "environmentalHazards": { "waterDamagePerSecond": 0 }
+    },
+    "base": {
+      "cost": { "energy": 720, "metal": 620 },
+      "mass": 420,
+      "health": 620,
+      "deathExplosion": { "radius": 34, "force": 24000, "damage": 200 },
+      "signature": { "radarStealth": false, "sonarStealth": false }
+    }
+  },
+  "unitPatrolCorvette": {
+    "$extends": "unitSeaTurtle",
+    "unitBlueprintId": "unitPatrolCorvette",
+    "production": { "techLevel": 1, "domains": ["naval"] },
+    "tinyName": "PCV",
+    "name": "Patrol Corvette",
+    "shortName": "CORVETTE",
+    "hp": 900,
+    "mass": 760,
+    "cost": { "energy": 880, "metal": 760 },
+    "unitLocomotion": {
+      "type": "amphibian",
+      "physicsPresetId": "submarine",
+      "physics": {
+        "ground": { "maxPropulsiveForce": 0 },
+        "air": {
+          "maxPropulsiveForce": 0,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 420
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 28,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 22
+          }
+        }
+      },
+      "environmentalHazards": { "waterDamagePerSecond": 0 }
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretGunBurst",
+        "presentation": {
+          "headRadius": 6,
+          "headOnly": false,
+          "barrel": { "type": "singleCylinderBarrel", "barrelLength": 2.1 }
+        },
+        "sensorTurretBlueprintId": "turretSensorUnitSeaTurtle",
+        "mount": { "x": 0.45, "y": 0, "z": 1.4 },
+        "requiredEngagedForFightStop": true,
+        "mountId": "deckGun",
+        "controlMode": "hostPreferred"
+      }
+    ],
+    "base": {
+      "cost": { "energy": 880, "metal": 760 },
+      "mass": 760,
+      "health": 900,
+      "deathExplosion": { "radius": 45, "force": 42000, "damage": 340 },
+      "signature": { "radarStealth": false, "sonarStealth": false }
+    }
+  },
+  "unitPetrel": {
+    "$extends": "unitDuck",
+    "unitBlueprintId": "unitPetrel",
+    "production": { "techLevel": 2, "domains": ["aircraft", "naval"] },
+    "tinyName": "PET",
+    "name": "Petrel Torpedo Gunship",
+    "shortName": "PETREL",
+    "hp": 720,
+    "mass": 560,
+    "cost": { "energy": 1700, "metal": 1450 },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretTorpedoAirLaunch",
+        "presentation": {
+          "headRadius": 3,
+          "headOnly": false,
+          "barrel": { "type": "singleCylinderBarrel", "barrelLength": 1.3 }
+        },
+        "sensorTurretBlueprintId": "turretSensorUnitEagle",
+        "mount": { "x": 0.3, "y": 0, "z": -0.2 },
+        "requiredEngagedForFightStop": true,
+        "mountId": "airTorpedo",
+        "controlMode": "hostPreferred"
+      }
+    ],
+    "base": {
+      "cost": { "energy": 1700, "metal": 1450 },
+      "mass": 560,
+      "health": 720,
+      "deathExplosion": { "radius": 38, "force": 30000, "damage": 260 },
+      "signature": { "radarStealth": false, "sonarStealth": false }
     }
   }
 }

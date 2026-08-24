@@ -6,9 +6,15 @@ export type DemoBattleWaypointType = 'move' | 'fight' | 'patrol';
 
 const REQUIRED_WATER_FACTORY_UNIT_BLUEPRINT_IDS = [
   'unitSeaTurtle',
-  'unitOrca',
   'unitDuck',
+  'unitWaterStrider',
   'unitConstructionSubmarine',
+  'unitPatrolCorvette',
+  'unitHippo',
+  'unitOrca',
+  'unitPetrel',
+  'unitStealthScout',
+  'unitRadarJammer',
 ] as const;
 
 function validatedWaterFabricatorConfig(): typeof demoConfig.waterFabricators {
@@ -24,12 +30,15 @@ function validatedWaterFabricatorConfig(): typeof demoConfig.waterFabricators {
     );
   }
   if (
+    !Number.isFinite(config.innerRadiusFraction) ||
+    config.innerRadiusFraction <= 0 ||
+    config.innerRadiusFraction >= config.radiusFraction ||
     !Number.isFinite(config.sonarRadiusFraction) ||
     config.sonarRadiusFraction <= config.radiusFraction
   ) {
     throw new Error(
-      'demoConfig.waterFabricators.sonarRadiusFraction must be finite and ' +
-        'greater than waterFabricators.radiusFraction',
+      'demoConfig.waterFabricators radii must be finite and ordered as ' +
+        '0 < innerRadiusFraction < radiusFraction < sonarRadiusFraction',
     );
   }
   return config;

@@ -10,31 +10,20 @@ use super::*;
 // is the entity that emits the field (sentinel -1 if not tied to one).
 // ─────────────────────────────────────────────────────────────────
 
-// Materials Are Independent Of Shape: a single shield surface pool holds
-// every active piece of shield material in the world, regardless of the
-// geometry that carries it. Spheres and infinite cylinders live in the flat
-// per-field arrays; flat panels live in the per-unit + per-panel arrays. One
-// material, multiple shapes — the clearance and projectile kernels read both
-// groups and apply the same reflection / occlusion policy.
+// A single shield surface pool holds the authored sphere fields and flat
+// panels. Both shapes share the same reflection and occlusion policy.
 pub(crate) struct ShieldSurfacePool {
-    // ── Sphere / infinite-cylinder shapes (flat per-field) ──
+    // ── Sphere fields (flat per-field) ──
     count: u32,
     id: Vec<i32>,
     owner_entity_id: Vec<i32>,
     prev_center_x: Vec<f64>,
     prev_center_y: Vec<f64>,
     prev_center_z: Vec<f64>,
-    prev_axis_end_x: Vec<f64>,
-    prev_axis_end_y: Vec<f64>,
-    prev_axis_end_z: Vec<f64>,
     center_x: Vec<f64>,
     center_y: Vec<f64>,
     center_z: Vec<f64>,
-    axis_end_x: Vec<f64>,
-    axis_end_y: Vec<f64>,
-    axis_end_z: Vec<f64>,
     radius: Vec<f64>,
-    field_shape: Vec<u8>,
     // P3 precompute: union bound of the prev+current pose, built once per
     // shield per tick in `shield_pool_set_field`. The per-pair reject used
     // to rebuild both pose bounds (plus a sqrt) for every
@@ -46,7 +35,6 @@ pub(crate) struct ShieldSurfacePool {
     field_reflection_mode_plasma: Vec<u8>,
     field_reflection_mode_rocket: Vec<u8>,
     field_reflection_mode_beam: Vec<u8>,
-    field_reflection_mode_laser: Vec<u8>,
     field_reflection_entity_mask: u8,
 
     // ── Rect-panel shape (per-unit) ──
@@ -85,7 +73,6 @@ pub(crate) struct ShieldSurfacePool {
     panel_reflection_mode_plasma: Vec<u8>,
     panel_reflection_mode_rocket: Vec<u8>,
     panel_reflection_mode_beam: Vec<u8>,
-    panel_reflection_mode_laser: Vec<u8>,
     panel_reflection_entity_mask: u8,
 }
 
@@ -98,17 +85,10 @@ impl ShieldSurfacePool {
             prev_center_x: Vec::new(),
             prev_center_y: Vec::new(),
             prev_center_z: Vec::new(),
-            prev_axis_end_x: Vec::new(),
-            prev_axis_end_y: Vec::new(),
-            prev_axis_end_z: Vec::new(),
             center_x: Vec::new(),
             center_y: Vec::new(),
             center_z: Vec::new(),
-            axis_end_x: Vec::new(),
-            axis_end_y: Vec::new(),
-            axis_end_z: Vec::new(),
             radius: Vec::new(),
-            field_shape: Vec::new(),
             union_center_x: Vec::new(),
             union_center_y: Vec::new(),
             union_center_z: Vec::new(),
@@ -116,7 +96,6 @@ impl ShieldSurfacePool {
             field_reflection_mode_plasma: Vec::new(),
             field_reflection_mode_rocket: Vec::new(),
             field_reflection_mode_beam: Vec::new(),
-            field_reflection_mode_laser: Vec::new(),
             field_reflection_entity_mask: 0,
             unit_count: 0,
             unit_id: Vec::new(),
@@ -146,7 +125,6 @@ impl ShieldSurfacePool {
             panel_reflection_mode_plasma: Vec::new(),
             panel_reflection_mode_rocket: Vec::new(),
             panel_reflection_mode_beam: Vec::new(),
-            panel_reflection_mode_laser: Vec::new(),
             panel_reflection_entity_mask: 0,
         }
     }
@@ -159,17 +137,10 @@ impl ShieldSurfacePool {
             self.prev_center_x.resize(needed, 0.0);
             self.prev_center_y.resize(needed, 0.0);
             self.prev_center_z.resize(needed, 0.0);
-            self.prev_axis_end_x.resize(needed, 0.0);
-            self.prev_axis_end_y.resize(needed, 0.0);
-            self.prev_axis_end_z.resize(needed, 0.0);
             self.center_x.resize(needed, 0.0);
             self.center_y.resize(needed, 0.0);
             self.center_z.resize(needed, 0.0);
-            self.axis_end_x.resize(needed, 0.0);
-            self.axis_end_y.resize(needed, 0.0);
-            self.axis_end_z.resize(needed, 0.0);
             self.radius.resize(needed, 0.0);
-            self.field_shape.resize(needed, SHIELD_FIELD_SHAPE_SPHERE);
             self.union_center_x.resize(needed, 0.0);
             self.union_center_y.resize(needed, 0.0);
             self.union_center_z.resize(needed, 0.0);
@@ -179,8 +150,6 @@ impl ShieldSurfacePool {
             self.field_reflection_mode_rocket
                 .resize(needed, SHIELD_REFLECTION_MODE_NONE);
             self.field_reflection_mode_beam
-                .resize(needed, SHIELD_REFLECTION_MODE_NONE);
-            self.field_reflection_mode_laser
                 .resize(needed, SHIELD_REFLECTION_MODE_NONE);
         }
     }
@@ -222,8 +191,6 @@ impl ShieldSurfacePool {
             self.panel_reflection_mode_rocket
                 .resize(needed, SHIELD_REFLECTION_MODE_NONE);
             self.panel_reflection_mode_beam
-                .resize(needed, SHIELD_REFLECTION_MODE_NONE);
-            self.panel_reflection_mode_laser
                 .resize(needed, SHIELD_REFLECTION_MODE_NONE);
         }
     }
@@ -267,21 +234,13 @@ pub fn shield_pool_set_field(
     prev_center_x: f64,
     prev_center_y: f64,
     prev_center_z: f64,
-    prev_axis_end_x: f64,
-    prev_axis_end_y: f64,
-    prev_axis_end_z: f64,
     center_x: f64,
     center_y: f64,
     center_z: f64,
-    axis_end_x: f64,
-    axis_end_y: f64,
-    axis_end_z: f64,
     radius: f64,
-    shape: u8,
     reflection_mode_plasma: u8,
     reflection_mode_rocket: u8,
     reflection_mode_beam: u8,
-    reflection_mode_laser: u8,
 ) {
     let pool = shield_pool();
     pool.ensure_capacity(idx + 1);
@@ -291,59 +250,26 @@ pub fn shield_pool_set_field(
     pool.prev_center_x[i] = prev_center_x;
     pool.prev_center_y[i] = prev_center_y;
     pool.prev_center_z[i] = prev_center_z;
-    pool.prev_axis_end_x[i] = prev_axis_end_x;
-    pool.prev_axis_end_y[i] = prev_axis_end_y;
-    pool.prev_axis_end_z[i] = prev_axis_end_z;
     pool.center_x[i] = center_x;
     pool.center_y[i] = center_y;
     pool.center_z[i] = center_z;
-    pool.axis_end_x[i] = axis_end_x;
-    pool.axis_end_y[i] = axis_end_y;
-    pool.axis_end_z[i] = axis_end_z;
     pool.radius[i] = radius;
-    pool.field_shape[i] = shape;
     pool.field_reflection_mode_plasma[i] = reflection_mode_plasma;
     pool.field_reflection_mode_rocket[i] = reflection_mode_rocket;
     pool.field_reflection_mode_beam[i] = reflection_mode_beam;
-    pool.field_reflection_mode_laser[i] = reflection_mode_laser;
     pool.field_reflection_entity_mask |= shield_reflection_entity_mask_from_modes(
         reflection_mode_plasma,
         reflection_mode_rocket,
         reflection_mode_beam,
-        reflection_mode_laser,
     );
-    if shape == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER {
-        let ux = (prev_center_x + center_x) * 0.5;
-        let uy = (prev_center_y + center_y) * 0.5;
-        let dcx = center_x - prev_center_x;
-        let dcy = center_y - prev_center_y;
-        pool.union_center_x[i] = ux;
-        pool.union_center_y[i] = uy;
-        pool.union_center_z[i] = 0.0;
-        pool.union_base_radius[i] = 0.5 * (dcx * dcx + dcy * dcy).sqrt() + radius;
-    } else {
-        let (b0x, b0y, b0z, r0) = shield_field_pose_bound(
-            shape,
-            radius,
-            prev_center_x,
-            prev_center_y,
-            prev_center_z,
-            prev_axis_end_x,
-            prev_axis_end_y,
-            prev_axis_end_z,
-        );
-        let (b1x, b1y, b1z, r1) = shield_field_pose_bound(
-            shape, radius, center_x, center_y, center_z, axis_end_x, axis_end_y, axis_end_z,
-        );
-        let dcx = b1x - b0x;
-        let dcy = b1y - b0y;
-        let dcz = b1z - b0z;
-        pool.union_center_x[i] = (b0x + b1x) * 0.5;
-        pool.union_center_y[i] = (b0y + b1y) * 0.5;
-        pool.union_center_z[i] = (b0z + b1z) * 0.5;
-        pool.union_base_radius[i] =
-            0.5 * (dcx * dcx + dcy * dcy + dcz * dcz).sqrt() + r0.max(r1);
-    }
+    let dcx = center_x - prev_center_x;
+    let dcy = center_y - prev_center_y;
+    let dcz = center_z - prev_center_z;
+    pool.union_center_x[i] = (prev_center_x + center_x) * 0.5;
+    pool.union_center_y[i] = (prev_center_y + center_y) * 0.5;
+    pool.union_center_z[i] = (prev_center_z + center_z) * 0.5;
+    pool.union_base_radius[i] =
+        0.5 * (dcx * dcx + dcy * dcy + dcz * dcz).sqrt() + radius;
 }
 
 macro_rules! shield_pool_ptr_export {
@@ -390,14 +316,9 @@ pub(crate) const SHIELD_REFLECTION_MODE_NONE: u8 = 3;
 pub(crate) const SHIELD_REFLECTION_ENTITY_PLASMA: u8 = 0;
 pub(crate) const SHIELD_REFLECTION_ENTITY_ROCKET: u8 = 1;
 pub(crate) const SHIELD_REFLECTION_ENTITY_BEAM: u8 = 2;
-pub(crate) const SHIELD_REFLECTION_ENTITY_LASER: u8 = 3;
 pub(crate) const SHIELD_REFLECTION_ENTITY_BIT_PLASMA: u8 = 1 << SHIELD_REFLECTION_ENTITY_PLASMA;
 pub(crate) const SHIELD_REFLECTION_ENTITY_BIT_ROCKET: u8 = 1 << SHIELD_REFLECTION_ENTITY_ROCKET;
 pub(crate) const SHIELD_REFLECTION_ENTITY_BIT_BEAM: u8 = 1 << SHIELD_REFLECTION_ENTITY_BEAM;
-pub(crate) const SHIELD_REFLECTION_ENTITY_BIT_LASER: u8 = 1 << SHIELD_REFLECTION_ENTITY_LASER;
-pub(crate) const SHIELD_FIELD_SHAPE_SPHERE: u8 = 0;
-pub(crate) const SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER: u8 = 1;
-pub(crate) const SHIELD_FIELD_SHAPE_AIMED_CYLINDER: u8 = 2;
 pub(crate) const REFLECTOR_HIT_KIND_NONE: u8 = 0;
 // Materials Are Independent Of Shape: the shield-panel's flat panels and
 // the shield-sphere's sphere are the EXACT SAME material. A projectile
@@ -409,7 +330,7 @@ pub(crate) struct ProjectileReflectorHit {
     kind: u8,
     entity_id: i32,
     /// Panel index within the mirror unit's panel array; -1 for
-    /// field (sphere/cylinder) surfaces.
+    /// sphere-field surfaces.
     panel_index: i32,
     t: f64,
     x: f64,
@@ -465,13 +386,11 @@ pub(crate) fn shield_reflection_mode_for_entity(
     plasma_mode: u8,
     rocket_mode: u8,
     beam_mode: u8,
-    laser_mode: u8,
 ) -> u8 {
     match reflection_entity {
         SHIELD_REFLECTION_ENTITY_PLASMA => plasma_mode,
         SHIELD_REFLECTION_ENTITY_ROCKET => rocket_mode,
         SHIELD_REFLECTION_ENTITY_BEAM => beam_mode,
-        SHIELD_REFLECTION_ENTITY_LASER => laser_mode,
         _ => SHIELD_REFLECTION_MODE_NONE,
     }
 }
@@ -482,7 +401,6 @@ pub(crate) fn shield_reflection_entity_bit(reflection_entity: u8) -> u8 {
         SHIELD_REFLECTION_ENTITY_PLASMA => SHIELD_REFLECTION_ENTITY_BIT_PLASMA,
         SHIELD_REFLECTION_ENTITY_ROCKET => SHIELD_REFLECTION_ENTITY_BIT_ROCKET,
         SHIELD_REFLECTION_ENTITY_BEAM => SHIELD_REFLECTION_ENTITY_BIT_BEAM,
-        SHIELD_REFLECTION_ENTITY_LASER => SHIELD_REFLECTION_ENTITY_BIT_LASER,
         _ => 0,
     }
 }
@@ -492,7 +410,6 @@ pub(crate) fn shield_reflection_entity_mask_from_modes(
     plasma_mode: u8,
     rocket_mode: u8,
     beam_mode: u8,
-    laser_mode: u8,
 ) -> u8 {
     let mut mask = 0;
     if plasma_mode != SHIELD_REFLECTION_MODE_NONE {
@@ -503,9 +420,6 @@ pub(crate) fn shield_reflection_entity_mask_from_modes(
     }
     if beam_mode != SHIELD_REFLECTION_MODE_NONE {
         mask |= SHIELD_REFLECTION_ENTITY_BIT_BEAM;
-    }
-    if laser_mode != SHIELD_REFLECTION_MODE_NONE {
-        mask |= SHIELD_REFLECTION_ENTITY_BIT_LASER;
     }
     mask
 }
@@ -585,122 +499,6 @@ pub(crate) fn shield_segment_enters_sphere(
 }
 
 #[inline]
-pub(crate) fn shield_segment_enters_infinite_vertical_cylinder(
-    sx: f64,
-    sy: f64,
-    tx: f64,
-    ty: f64,
-    cx: f64,
-    cy: f64,
-    r: f64,
-    lo: f64,
-    hi: f64,
-) -> bool {
-    if sx.max(tx) < cx - r || sx.min(tx) > cx + r {
-        return false;
-    }
-    if sy.max(ty) < cy - r || sy.min(ty) > cy + r {
-        return false;
-    }
-    let dx = tx - sx;
-    let dy = ty - sy;
-    let a = dx * dx + dy * dy;
-    if a < 1e-9 {
-        return false;
-    }
-    let fx = sx - cx;
-    let fy = sy - cy;
-    let b = 2.0 * (fx * dx + fy * dy);
-    let c = fx * fx + fy * fy - r * r;
-    // Inside the column: the only crossing ahead is outward. See the
-    // outside-in note above shield_segment_enters_sphere.
-    if c < 0.0 {
-        return false;
-    }
-    let disc = b * b - 4.0 * a * c;
-    if disc < 0.0 {
-        return false;
-    }
-    let sqrt_disc = disc.sqrt();
-    let inv_denom = 1.0 / (2.0 * a);
-    let t1 = (-b - sqrt_disc) * inv_denom;
-    let t2 = (-b + sqrt_disc) * inv_denom;
-    (t1 > lo && t1 < hi) || (t2 > lo && t2 < hi)
-}
-
-#[inline]
-pub(crate) fn shield_segment_enters_aimed_cylinder(
-    sx: f64,
-    sy: f64,
-    sz: f64,
-    tx: f64,
-    ty: f64,
-    tz: f64,
-    ax: f64,
-    ay: f64,
-    az: f64,
-    bx: f64,
-    by: f64,
-    bz: f64,
-    r: f64,
-    lo: f64,
-    hi: f64,
-) -> bool {
-    let axis_x = bx - ax;
-    let axis_y = by - ay;
-    let axis_z = bz - az;
-    let axis_len = (axis_x * axis_x + axis_y * axis_y + axis_z * axis_z).sqrt();
-    if axis_len <= 1e-6 || r <= 0.0 {
-        return false;
-    }
-
-    let ux = axis_x / axis_len;
-    let uy = axis_y / axis_len;
-    let uz = axis_z / axis_len;
-    let dx = tx - sx;
-    let dy = ty - sy;
-    let dz = tz - sz;
-    let wx = sx - ax;
-    let wy = sy - ay;
-    let wz = sz - az;
-    let d_dot_axis = dx * ux + dy * uy + dz * uz;
-    let w_dot_axis = wx * ux + wy * uy + wz * uz;
-    let mx = dx - ux * d_dot_axis;
-    let my = dy - uy * d_dot_axis;
-    let mz = dz - uz * d_dot_axis;
-    let nx = wx - ux * w_dot_axis;
-    let ny = wy - uy * w_dot_axis;
-    let nz = wz - uz * w_dot_axis;
-    let qa = mx * mx + my * my + mz * mz;
-    if qa <= 1e-9 {
-        return false;
-    }
-    let qb = 2.0 * (nx * mx + ny * my + nz * mz);
-    let qc = nx * nx + ny * ny + nz * nz - r * r;
-    // Inside the tube radially: the only crossing ahead is outward. See the
-    // outside-in note above shield_segment_enters_sphere.
-    if qc < 0.0 {
-        return false;
-    }
-    let disc = qb * qb - 4.0 * qa * qc;
-    if disc < 0.0 {
-        return false;
-    }
-    let sqrt_disc = disc.sqrt();
-    let inv_denom = 1.0 / (2.0 * qa);
-    let t1 = (-qb - sqrt_disc) * inv_denom;
-    let t2 = (-qb + sqrt_disc) * inv_denom;
-
-    let crosses_at = |t: f64| -> bool {
-        if t <= lo || t >= hi {
-            return false;
-        }
-        true
-    };
-    crosses_at(t1) || crosses_at(t2)
-}
-
-#[inline]
 pub(crate) fn shield_segment_enters_field(
     sx: f64,
     sy: f64,
@@ -711,24 +509,10 @@ pub(crate) fn shield_segment_enters_field(
     cx: f64,
     cy: f64,
     cz: f64,
-    axis_end_x: f64,
-    axis_end_y: f64,
-    axis_end_z: f64,
     r: f64,
-    shape: u8,
     lo: f64,
     hi: f64,
 ) -> bool {
-    if shape == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER {
-        return shield_segment_enters_infinite_vertical_cylinder(
-            sx, sy, tx, ty, cx, cy, r, lo, hi,
-        );
-    }
-    if shape == SHIELD_FIELD_SHAPE_AIMED_CYLINDER {
-        return shield_segment_enters_aimed_cylinder(
-            sx, sy, sz, tx, ty, tz, cx, cy, cz, axis_end_x, axis_end_y, axis_end_z, r, lo, hi,
-        );
-    }
     shield_segment_enters_sphere(sx, sy, sz, tx, ty, tz, cx, cy, cz, r, lo, hi)
 }
 
@@ -748,150 +532,6 @@ pub(crate) fn shield_reflection_mode_allows_crossing(mode: u8, radial_velocity: 
 }
 
 #[inline]
-pub(crate) fn shield_projectile_intersection_t_infinite_vertical_cylinder(
-    start_x: f64,
-    start_y: f64,
-    end_x: f64,
-    end_y: f64,
-    center_x: f64,
-    center_y: f64,
-    radius: f64,
-    reflection_mode: u8,
-) -> Option<f64> {
-    let sx = start_x - center_x;
-    let sy = start_y - center_y;
-    if start_x.max(end_x) < center_x - radius || start_x.min(end_x) > center_x + radius {
-        return None;
-    }
-    if start_y.max(end_y) < center_y - radius || start_y.min(end_y) > center_y + radius {
-        return None;
-    }
-
-    let dx = end_x - start_x;
-    let dy = end_y - start_y;
-    let a = dx * dx + dy * dy;
-    if a <= 1e-9 {
-        return None;
-    }
-
-    let radius_sq = radius * radius;
-    let start_dist_sq = sx * sx + sy * sy;
-    let start_dot_velocity = sx * dx + sy * dy;
-    let b = 2.0 * start_dot_velocity;
-    let c = start_dist_sq - radius_sq;
-    let disc = b * b - 4.0 * a * c;
-    if disc < 0.0 {
-        return None;
-    }
-
-    let sqrt_disc = disc.sqrt();
-    let inv_denom = 1.0 / (2.0 * a);
-    let t0 = (-b - sqrt_disc) * inv_denom;
-    let t1 = (-b + sqrt_disc) * inv_denom;
-    let first_t = t0.min(t1);
-    let second_t = t0.max(t1);
-
-    if first_t > SHIELD_GRAZE_EPS && first_t <= 1.0 {
-        let hit_x = start_x + dx * first_t - center_x;
-        let hit_y = start_y + dy * first_t - center_y;
-        let radial_velocity = dx * hit_x + dy * hit_y;
-        if shield_reflection_mode_allows_crossing(reflection_mode, radial_velocity) {
-            return Some(first_t);
-        }
-    }
-
-    if second_t > SHIELD_GRAZE_EPS && second_t <= 1.0 && second_t != first_t {
-        let hit_x = start_x + dx * second_t - center_x;
-        let hit_y = start_y + dy * second_t - center_y;
-        let radial_velocity = dx * hit_x + dy * hit_y;
-        if shield_reflection_mode_allows_crossing(reflection_mode, radial_velocity) {
-            return Some(second_t);
-        }
-    }
-
-    None
-}
-
-#[inline]
-pub(crate) fn shield_projectile_intersection_t_aimed_cylinder(
-    start_x: f64,
-    start_y: f64,
-    start_z: f64,
-    end_x: f64,
-    end_y: f64,
-    end_z: f64,
-    axis_start_x: f64,
-    axis_start_y: f64,
-    axis_start_z: f64,
-    axis_end_x: f64,
-    axis_end_y: f64,
-    axis_end_z: f64,
-    radius: f64,
-    reflection_mode: u8,
-) -> Option<f64> {
-    let axis_x = axis_end_x - axis_start_x;
-    let axis_y = axis_end_y - axis_start_y;
-    let axis_z = axis_end_z - axis_start_z;
-    let axis_len = (axis_x * axis_x + axis_y * axis_y + axis_z * axis_z).sqrt();
-    if axis_len <= 1e-6 || radius <= 0.0 {
-        return None;
-    }
-
-    let ux = axis_x / axis_len;
-    let uy = axis_y / axis_len;
-    let uz = axis_z / axis_len;
-    let dx = end_x - start_x;
-    let dy = end_y - start_y;
-    let dz = end_z - start_z;
-    let wx = start_x - axis_start_x;
-    let wy = start_y - axis_start_y;
-    let wz = start_z - axis_start_z;
-    let d_dot_axis = dx * ux + dy * uy + dz * uz;
-    let w_dot_axis = wx * ux + wy * uy + wz * uz;
-    let mx = dx - ux * d_dot_axis;
-    let my = dy - uy * d_dot_axis;
-    let mz = dz - uz * d_dot_axis;
-    let nx = wx - ux * w_dot_axis;
-    let ny = wy - uy * w_dot_axis;
-    let nz = wz - uz * w_dot_axis;
-    let qa = mx * mx + my * my + mz * mz;
-    if qa <= 1e-9 {
-        return None;
-    }
-    let qb = 2.0 * (nx * mx + ny * my + nz * mz);
-    let qc = nx * nx + ny * ny + nz * nz - radius * radius;
-    let disc = qb * qb - 4.0 * qa * qc;
-    if disc < 0.0 {
-        return None;
-    }
-    let sqrt_disc = disc.sqrt();
-    let inv_denom = 1.0 / (2.0 * qa);
-    let t0 = (-qb - sqrt_disc) * inv_denom;
-    let t1 = (-qb + sqrt_disc) * inv_denom;
-    let first_t = t0.min(t1);
-    let second_t = t0.max(t1);
-
-    let accepts = |t: f64| -> bool {
-        if t <= SHIELD_GRAZE_EPS || t > 1.0 {
-            return false;
-        }
-        let hit_perp_x = nx + mx * t;
-        let hit_perp_y = ny + my * t;
-        let hit_perp_z = nz + mz * t;
-        let radial_velocity = mx * hit_perp_x + my * hit_perp_y + mz * hit_perp_z;
-        shield_reflection_mode_allows_crossing(reflection_mode, radial_velocity)
-    };
-
-    if accepts(first_t) {
-        return Some(first_t);
-    }
-    if second_t != first_t && accepts(second_t) {
-        return Some(second_t);
-    }
-    None
-}
-
-#[inline]
 pub(crate) fn shield_projectile_intersection_t(
     start_x: f64,
     start_y: f64,
@@ -902,44 +542,9 @@ pub(crate) fn shield_projectile_intersection_t(
     center_x: f64,
     center_y: f64,
     center_z: f64,
-    axis_end_x: f64,
-    axis_end_y: f64,
-    axis_end_z: f64,
     radius: f64,
-    shape: u8,
     reflection_mode: u8,
 ) -> Option<f64> {
-    if shape == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER {
-        return shield_projectile_intersection_t_infinite_vertical_cylinder(
-            start_x,
-            start_y,
-            end_x,
-            end_y,
-            center_x,
-            center_y,
-            radius,
-            reflection_mode,
-        );
-    }
-    if shape == SHIELD_FIELD_SHAPE_AIMED_CYLINDER {
-        return shield_projectile_intersection_t_aimed_cylinder(
-            start_x,
-            start_y,
-            start_z,
-            end_x,
-            end_y,
-            end_z,
-            center_x,
-            center_y,
-            center_z,
-            axis_end_x,
-            axis_end_y,
-            axis_end_z,
-            radius,
-            reflection_mode,
-        );
-    }
-
     let sx = start_x - center_x;
     let sy = start_y - center_y;
     let sz = start_z - center_z;
@@ -1012,12 +617,8 @@ pub(crate) fn shield_projectile_intersection_contact(
     center_x: f64,
     center_y: f64,
     center_z: f64,
-    axis_end_x: f64,
-    axis_end_y: f64,
-    axis_end_z: f64,
     radius: f64,
     projectile_radius: f64,
-    shape: u8,
     reflection_mode: u8,
 ) -> Option<ShieldFieldContact> {
     let projectile_radius = projectile_radius.max(0.0);
@@ -1037,11 +638,7 @@ pub(crate) fn shield_projectile_intersection_contact(
             center_x,
             center_y,
             center_z,
-            axis_end_x,
-            axis_end_y,
-            axis_end_z,
             effective_radius,
-            shape,
             reflection_mode,
         ) else {
             return;
@@ -1069,63 +666,11 @@ pub(crate) fn shield_field_signed_distance_and_normal(
     center_x: f64,
     center_y: f64,
     center_z: f64,
-    axis_end_x: f64,
-    axis_end_y: f64,
-    axis_end_z: f64,
     radius: f64,
-    shape: u8,
 ) -> Option<(f64, f64, f64, f64)> {
     if radius <= 0.0 {
         return None;
     }
-    if shape == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER {
-        let dx = px - center_x;
-        let dy = py - center_y;
-        let len = (dx * dx + dy * dy).sqrt();
-        if len <= 1e-9 {
-            return Some((-radius, 1.0, 0.0, 0.0));
-        }
-        let inv_len = 1.0 / len;
-        return Some((len - radius, dx * inv_len, dy * inv_len, 0.0));
-    }
-    if shape == SHIELD_FIELD_SHAPE_AIMED_CYLINDER {
-        let axis_x = axis_end_x - center_x;
-        let axis_y = axis_end_y - center_y;
-        let axis_z = axis_end_z - center_z;
-        let axis_len = (axis_x * axis_x + axis_y * axis_y + axis_z * axis_z).sqrt();
-        if axis_len <= 1e-6 {
-            return None;
-        }
-        let ux = axis_x / axis_len;
-        let uy = axis_y / axis_len;
-        let uz = axis_z / axis_len;
-        let rel_x = px - center_x;
-        let rel_y = py - center_y;
-        let rel_z = pz - center_z;
-        let axial = rel_x * ux + rel_y * uy + rel_z * uz;
-        let perp_x = rel_x - ux * axial;
-        let perp_y = rel_y - uy * axial;
-        let perp_z = rel_z - uz * axial;
-        let len = (perp_x * perp_x + perp_y * perp_y + perp_z * perp_z).sqrt();
-        if len <= 1e-9 {
-            let fallback_x = -uy;
-            let fallback_y = ux;
-            let fallback_len = (fallback_x * fallback_x + fallback_y * fallback_y).sqrt();
-            if fallback_len > 1e-9 {
-                let inv = 1.0 / fallback_len;
-                return Some((-radius, fallback_x * inv, fallback_y * inv, 0.0));
-            }
-            return Some((-radius, 1.0, 0.0, 0.0));
-        }
-        let inv_len = 1.0 / len;
-        return Some((
-            len - radius,
-            perp_x * inv_len,
-            perp_y * inv_len,
-            perp_z * inv_len,
-        ));
-    }
-
     let dx = px - center_x;
     let dy = py - center_y;
     let dz = pz - center_z;
@@ -1153,17 +698,10 @@ pub(crate) fn shield_field_sample_at_t(
     prev_center_x: f64,
     prev_center_y: f64,
     prev_center_z: f64,
-    prev_axis_end_x: f64,
-    prev_axis_end_y: f64,
-    prev_axis_end_z: f64,
     center_x: f64,
     center_y: f64,
     center_z: f64,
-    axis_end_x: f64,
-    axis_end_y: f64,
-    axis_end_z: f64,
     radius: f64,
-    shape: u8,
     t: f64,
 ) -> Option<(f64, f64, f64, f64, f64, f64, f64)> {
     let px = lerp_f64(start_x, end_x, t);
@@ -1172,19 +710,16 @@ pub(crate) fn shield_field_sample_at_t(
     let cx = lerp_f64(prev_center_x, center_x, t);
     let cy = lerp_f64(prev_center_y, center_y, t);
     let cz = lerp_f64(prev_center_z, center_z, t);
-    let ax = lerp_f64(prev_axis_end_x, axis_end_x, t);
-    let ay = lerp_f64(prev_axis_end_y, axis_end_y, t);
-    let az = lerp_f64(prev_axis_end_z, axis_end_z, t);
     let (dist, nx, ny, nz) =
-        shield_field_signed_distance_and_normal(px, py, pz, cx, cy, cz, ax, ay, az, radius, shape)?;
+        shield_field_signed_distance_and_normal(px, py, pz, cx, cy, cz, radius)?;
     Some((dist, nx, ny, nz, px, py, pz))
 }
 
 #[inline]
 pub(crate) fn shield_field_surface_velocity(
-    hit_x: f64,
-    hit_y: f64,
-    hit_z: f64,
+    _hit_x: f64,
+    _hit_y: f64,
+    _hit_z: f64,
     normal_x: f64,
     normal_y: f64,
     normal_z: f64,
@@ -1192,92 +727,24 @@ pub(crate) fn shield_field_surface_velocity(
     prev_center_x: f64,
     prev_center_y: f64,
     prev_center_z: f64,
-    prev_axis_end_x: f64,
-    prev_axis_end_y: f64,
-    prev_axis_end_z: f64,
     center_x: f64,
     center_y: f64,
     center_z: f64,
-    axis_end_x: f64,
-    axis_end_y: f64,
-    axis_end_z: f64,
     radius: f64,
-    shape: u8,
     dt_sec: f64,
 ) -> (f64, f64, f64) {
     if dt_sec <= 1e-9 || !dt_sec.is_finite() {
         return (0.0, 0.0, 0.0);
     }
     let effective_radius = (radius + threshold).max(0.0);
-    let (prev_x, prev_y, prev_z, curr_x, curr_y, curr_z) = if shape
-        == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER
-    {
-        (
-            prev_center_x + normal_x * effective_radius,
-            prev_center_y + normal_y * effective_radius,
-            hit_z,
-            center_x + normal_x * effective_radius,
-            center_y + normal_y * effective_radius,
-            hit_z,
-        )
-    } else if shape == SHIELD_FIELD_SHAPE_AIMED_CYLINDER {
-        let cur_axis_x = axis_end_x - center_x;
-        let cur_axis_y = axis_end_y - center_y;
-        let cur_axis_z = axis_end_z - center_z;
-        let prev_axis_x = prev_axis_end_x - prev_center_x;
-        let prev_axis_y = prev_axis_end_y - prev_center_y;
-        let prev_axis_z = prev_axis_end_z - prev_center_z;
-        let cur_axis_len =
-            (cur_axis_x * cur_axis_x + cur_axis_y * cur_axis_y + cur_axis_z * cur_axis_z).sqrt();
-        let prev_axis_len =
-            (prev_axis_x * prev_axis_x + prev_axis_y * prev_axis_y + prev_axis_z * prev_axis_z)
-                .sqrt();
-        if cur_axis_len <= 1e-9 || prev_axis_len <= 1e-9 {
-            return (0.0, 0.0, 0.0);
-        }
-        let cux = cur_axis_x / cur_axis_len;
-        let cuy = cur_axis_y / cur_axis_len;
-        let cuz = cur_axis_z / cur_axis_len;
-        let pux = prev_axis_x / prev_axis_len;
-        let puy = prev_axis_y / prev_axis_len;
-        let puz = prev_axis_z / prev_axis_len;
-        let rel_x = hit_x - center_x;
-        let rel_y = hit_y - center_y;
-        let rel_z = hit_z - center_z;
-        let axial = rel_x * cux + rel_y * cuy + rel_z * cuz;
-        let prev_normal_dot = normal_x * pux + normal_y * puy + normal_z * puz;
-        let mut pnx = normal_x - pux * prev_normal_dot;
-        let mut pny = normal_y - puy * prev_normal_dot;
-        let mut pnz = normal_z - puz * prev_normal_dot;
-        let prev_normal_len = (pnx * pnx + pny * pny + pnz * pnz).sqrt();
-        if prev_normal_len <= 1e-9 {
-            pnx = normal_x;
-            pny = normal_y;
-            pnz = normal_z;
-        } else {
-            let inv = 1.0 / prev_normal_len;
-            pnx *= inv;
-            pny *= inv;
-            pnz *= inv;
-        }
-        (
-            prev_center_x + pux * axial + pnx * effective_radius,
-            prev_center_y + puy * axial + pny * effective_radius,
-            prev_center_z + puz * axial + pnz * effective_radius,
-            center_x + cux * axial + normal_x * effective_radius,
-            center_y + cuy * axial + normal_y * effective_radius,
-            center_z + cuz * axial + normal_z * effective_radius,
-        )
-    } else {
-        (
-            prev_center_x + normal_x * effective_radius,
-            prev_center_y + normal_y * effective_radius,
-            prev_center_z + normal_z * effective_radius,
-            center_x + normal_x * effective_radius,
-            center_y + normal_y * effective_radius,
-            center_z + normal_z * effective_radius,
-        )
-    };
+    let (prev_x, prev_y, prev_z, curr_x, curr_y, curr_z) = (
+        prev_center_x + normal_x * effective_radius,
+        prev_center_y + normal_y * effective_radius,
+        prev_center_z + normal_z * effective_radius,
+        center_x + normal_x * effective_radius,
+        center_y + normal_y * effective_radius,
+        center_z + normal_z * effective_radius,
+    );
 
     (
         (curr_x - prev_x) / dt_sec,
@@ -1297,18 +764,11 @@ pub(crate) fn shield_projectile_moving_field_hit(
     prev_center_x: f64,
     prev_center_y: f64,
     prev_center_z: f64,
-    prev_axis_end_x: f64,
-    prev_axis_end_y: f64,
-    prev_axis_end_z: f64,
     center_x: f64,
     center_y: f64,
     center_z: f64,
-    axis_end_x: f64,
-    axis_end_y: f64,
-    axis_end_z: f64,
     radius: f64,
     projectile_radius: f64,
-    shape: u8,
     reflection_mode: u8,
     owner_entity_id: i32,
     dt_sec: f64,
@@ -1337,17 +797,10 @@ pub(crate) fn shield_projectile_moving_field_hit(
             prev_center_x,
             prev_center_y,
             prev_center_z,
-            prev_axis_end_x,
-            prev_axis_end_y,
-            prev_axis_end_z,
             center_x,
             center_y,
             center_z,
-            axis_end_x,
-            axis_end_y,
-            axis_end_z,
             radius,
-            shape,
             lo_t,
         ) else {
             return;
@@ -1366,17 +819,10 @@ pub(crate) fn shield_projectile_moving_field_hit(
                 prev_center_x,
                 prev_center_y,
                 prev_center_z,
-                prev_axis_end_x,
-                prev_axis_end_y,
-                prev_axis_end_z,
                 center_x,
                 center_y,
                 center_z,
-                axis_end_x,
-                axis_end_y,
-                axis_end_z,
                 radius,
-                shape,
                 sample_t,
             ) else {
                 return;
@@ -1415,17 +861,10 @@ pub(crate) fn shield_projectile_moving_field_hit(
                         prev_center_x,
                         prev_center_y,
                         prev_center_z,
-                        prev_axis_end_x,
-                        prev_axis_end_y,
-                        prev_axis_end_z,
                         center_x,
                         center_y,
                         center_z,
-                        axis_end_x,
-                        axis_end_y,
-                        axis_end_z,
                         radius,
-                        shape,
                         mid,
                     ) else {
                         return;
@@ -1484,17 +923,10 @@ pub(crate) fn shield_projectile_moving_field_hit(
         prev_center_x,
         prev_center_y,
         prev_center_z,
-        prev_axis_end_x,
-        prev_axis_end_y,
-        prev_axis_end_z,
         center_x,
         center_y,
         center_z,
-        axis_end_x,
-        axis_end_y,
-        axis_end_z,
         radius,
-        shape,
         t,
     ) else {
         return None;
@@ -1511,17 +943,10 @@ pub(crate) fn shield_projectile_moving_field_hit(
             prev_center_x,
             prev_center_y,
             prev_center_z,
-            prev_axis_end_x,
-            prev_axis_end_y,
-            prev_axis_end_z,
             center_x,
             center_y,
             center_z,
-            axis_end_x,
-            axis_end_y,
-            axis_end_z,
             radius,
-            shape,
             dt_sec,
         );
 
@@ -1548,29 +973,6 @@ pub(crate) fn shield_projectile_moving_field_hit(
 // the rejection conservative against every epsilon in the solvers while
 // still discarding the overwhelmingly common far-apart pairs.
 const SHIELD_BROADPHASE_PAD: f64 = 1.0;
-
-#[inline]
-fn segment_point_dist_sq_2d(
-    sx: f64,
-    sy: f64,
-    tx: f64,
-    ty: f64,
-    px: f64,
-    py: f64,
-) -> f64 {
-    let dx = tx - sx;
-    let dy = ty - sy;
-    let len_sq = dx * dx + dy * dy;
-    let mut t = if len_sq > 0.0 {
-        ((px - sx) * dx + (py - sy) * dy) / len_sq
-    } else {
-        0.0
-    };
-    t = t.clamp(0.0, 1.0);
-    let ex = px - (sx + dx * t);
-    let ey = py - (sy + dy * t);
-    ex * ex + ey * ey
-}
 
 #[inline]
 fn segment_point_dist_sq_3d(
@@ -1600,43 +1002,12 @@ fn segment_point_dist_sq_3d(
     ex * ex + ey * ey + ez * ez
 }
 
-/// One pose's bounding sphere: the sphere shape is bounded by itself;
-/// the aimed cylinder (center → axis_end, radius, with or without caps)
-/// is bounded by the sphere at the axis midpoint with radius
-/// half-axis-length + field radius.
-#[inline]
-fn shield_field_pose_bound(
-    shape: u8,
-    radius: f64,
-    center_x: f64,
-    center_y: f64,
-    center_z: f64,
-    axis_end_x: f64,
-    axis_end_y: f64,
-    axis_end_z: f64,
-) -> (f64, f64, f64, f64) {
-    if shape == SHIELD_FIELD_SHAPE_AIMED_CYLINDER {
-        let mx = (center_x + axis_end_x) * 0.5;
-        let my = (center_y + axis_end_y) * 0.5;
-        let mz = (center_z + axis_end_z) * 0.5;
-        let hx = axis_end_x - mx;
-        let hy = axis_end_y - my;
-        let hz = axis_end_z - mz;
-        let half_len = (hx * hx + hy * hy + hz * hz).sqrt();
-        return (mx, my, mz, half_len + radius);
-    }
-    (center_x, center_y, center_z, radius)
-}
-
 /// Conservative pair rejection for the per-(segment, shield-field)
 /// solvers. Builds one sphere covering the shield surface at its
 /// previous AND current pose: the moving-field solver evaluates the pose
-/// lerped between the two, and every lerped surface point is a lerp of a
-/// point inside each pose's bound, so the sphere through both bounds'
-/// convex hull covers the whole sweep. Returns false only when the
-/// segment stays strictly outside that sphere padded by the projectile
-/// radius — a pair neither solver can hit. The infinite vertical
-/// cylinder is unbounded in z, so its test runs in the ground plane.
+/// lerped between the two. Returns false only when the segment stays
+/// strictly outside that swept-sphere bound padded by the projectile
+/// radius — a pair neither solver can hit.
 #[inline]
 fn shield_field_segment_near_pair(
     pool: &ShieldSurfacePool,
@@ -1651,16 +1022,6 @@ fn shield_field_segment_near_pair(
 ) -> bool {
     let pad = projectile_radius.max(0.0) + SHIELD_BROADPHASE_PAD;
     let ur = pool.union_base_radius[i] + pad;
-    if pool.field_shape[i] == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER {
-        return segment_point_dist_sq_2d(
-            start_x,
-            start_y,
-            end_x,
-            end_y,
-            pool.union_center_x[i],
-            pool.union_center_y[i],
-        ) <= ur * ur;
-    }
     segment_point_dist_sq_3d(
         start_x,
         start_y,
@@ -1715,7 +1076,6 @@ pub(crate) fn shield_projectile_intersection(
             pool.field_reflection_mode_plasma[i],
             pool.field_reflection_mode_rocket[i],
             pool.field_reflection_mode_beam[i],
-            pool.field_reflection_mode_laser[i],
         );
         // Every crossing acceptance in both solvers routes through
         // shield_reflection_mode_allows_crossing, which is always false
@@ -1750,12 +1110,8 @@ pub(crate) fn shield_projectile_intersection(
             pool.center_x[i],
             pool.center_y[i],
             pool.center_z[i],
-            pool.axis_end_x[i],
-            pool.axis_end_y[i],
-            pool.axis_end_z[i],
             pool.radius[i],
             projectile_radius,
-            pool.field_shape[i],
             reflection_mode,
         );
         let candidate = if let Some(contact) = static_contact {
@@ -1771,30 +1127,7 @@ pub(crate) fn shield_projectile_intersection(
                 let hit_z = start_z + dz * t;
                 let mut normal_x = hit_x - pool.center_x[i];
                 let mut normal_y = hit_y - pool.center_y[i];
-                let mut normal_z =
-                    if pool.field_shape[i] == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER {
-                        0.0
-                    } else {
-                        hit_z - pool.center_z[i]
-                    };
-                if pool.field_shape[i] == SHIELD_FIELD_SHAPE_AIMED_CYLINDER {
-                    let axis_x = pool.axis_end_x[i] - pool.center_x[i];
-                    let axis_y = pool.axis_end_y[i] - pool.center_y[i];
-                    let axis_z = pool.axis_end_z[i] - pool.center_z[i];
-                    let axis_len = (axis_x * axis_x + axis_y * axis_y + axis_z * axis_z).sqrt();
-                    if axis_len > 1e-9 {
-                        let ux = axis_x / axis_len;
-                        let uy = axis_y / axis_len;
-                        let uz = axis_z / axis_len;
-                        let rel_x = hit_x - pool.center_x[i];
-                        let rel_y = hit_y - pool.center_y[i];
-                        let rel_z = hit_z - pool.center_z[i];
-                        let axial = rel_x * ux + rel_y * uy + rel_z * uz;
-                        normal_x = rel_x - ux * axial;
-                        normal_y = rel_y - uy * axial;
-                        normal_z = rel_z - uz * axial;
-                    }
-                }
+                let mut normal_z = hit_z - pool.center_z[i];
                 let normal_len =
                     (normal_x * normal_x + normal_y * normal_y + normal_z * normal_z).sqrt();
                 let inv_normal_len = if normal_len > 1e-9 {
@@ -1817,17 +1150,10 @@ pub(crate) fn shield_projectile_intersection(
                         pool.prev_center_x[i],
                         pool.prev_center_y[i],
                         pool.prev_center_z[i],
-                        pool.prev_axis_end_x[i],
-                        pool.prev_axis_end_y[i],
-                        pool.prev_axis_end_z[i],
                         pool.center_x[i],
                         pool.center_y[i],
                         pool.center_z[i],
-                        pool.axis_end_x[i],
-                        pool.axis_end_y[i],
-                        pool.axis_end_z[i],
                         pool.radius[i],
-                        pool.field_shape[i],
                         dt_sec,
                     );
                 Some(ProjectileReflectorHit {
@@ -1847,7 +1173,7 @@ pub(crate) fn shield_projectile_intersection(
                 })
             }
         } else if instantaneous {
-            // Instantaneous rays (beams/lasers) resolve against the
+            // Instantaneous beam rays resolve against the
             // current pose only. The swept prev->cur fallback below
             // exists for traveling projectiles that cross the tick; for
             // a ray it would evaluate the shield at last tick's pose
@@ -1867,18 +1193,11 @@ pub(crate) fn shield_projectile_intersection(
                 pool.prev_center_x[i],
                 pool.prev_center_y[i],
                 pool.prev_center_z[i],
-                pool.prev_axis_end_x[i],
-                pool.prev_axis_end_y[i],
-                pool.prev_axis_end_z[i],
                 pool.center_x[i],
                 pool.center_y[i],
                 pool.center_z[i],
-                pool.axis_end_x[i],
-                pool.axis_end_y[i],
-                pool.axis_end_z[i],
                 pool.radius[i],
                 projectile_radius,
-                pool.field_shape[i],
                 reflection_mode,
                 pool.owner_entity_id[i],
                 dt_sec,
@@ -1949,11 +1268,7 @@ pub fn shield_clearance_segment(
                 pool.center_x[i],
                 pool.center_y[i],
                 pool.center_z[i],
-                pool.axis_end_x[i],
-                pool.axis_end_y[i],
-                pool.axis_end_z[i],
                 pool.radius[i],
-                pool.field_shape[i],
                 lo,
                 hi,
             ) {
@@ -2183,11 +1498,7 @@ pub fn shield_clearance_arc(
                 cx,
                 cy,
                 cz,
-                pool.axis_end_x[f],
-                pool.axis_end_y[f],
-                pool.axis_end_z[f],
                 r,
-                pool.field_shape[f],
                 lo,
                 hi,
             ) {
@@ -2343,7 +1654,6 @@ pub fn shield_panel_pool_set_panel(
     reflection_mode_plasma: u8,
     reflection_mode_rocket: u8,
     reflection_mode_beam: u8,
-    reflection_mode_laser: u8,
 ) {
     let pool = shield_pool();
     pool.ensure_panel_capacity(idx + 1);
@@ -2357,12 +1667,10 @@ pub fn shield_panel_pool_set_panel(
     pool.panel_reflection_mode_plasma[i] = reflection_mode_plasma;
     pool.panel_reflection_mode_rocket[i] = reflection_mode_rocket;
     pool.panel_reflection_mode_beam[i] = reflection_mode_beam;
-    pool.panel_reflection_mode_laser[i] = reflection_mode_laser;
     pool.panel_reflection_entity_mask |= shield_reflection_entity_mask_from_modes(
         reflection_mode_plasma,
         reflection_mode_rocket,
         reflection_mode_beam,
-        reflection_mode_laser,
     );
 }
 
@@ -2376,13 +1684,11 @@ pub fn shield_panel_pool_set_material_mode(reflection_mode: u8) {
         SHIELD_REFLECTION_ENTITY_BIT_PLASMA
             | SHIELD_REFLECTION_ENTITY_BIT_ROCKET
             | SHIELD_REFLECTION_ENTITY_BIT_BEAM
-            | SHIELD_REFLECTION_ENTITY_BIT_LASER
     };
     for i in 0..count {
         pool.panel_reflection_mode_plasma[i] = reflection_mode;
         pool.panel_reflection_mode_rocket[i] = reflection_mode;
         pool.panel_reflection_mode_beam[i] = reflection_mode;
-        pool.panel_reflection_mode_laser[i] = reflection_mode;
     }
 }
 
@@ -2581,7 +1887,6 @@ pub(crate) fn shield_panel_projectile_intersection(
                 pool.panel_reflection_mode_plasma[pi],
                 pool.panel_reflection_mode_rocket[pi],
                 pool.panel_reflection_mode_beam[pi],
-                pool.panel_reflection_mode_laser[pi],
             );
             if !shield_reflection_mode_allows_crossing(reflection_mode, normal_velocity) {
                 continue;

@@ -61,8 +61,6 @@ export {
   buildReclaimCommandForTarget,
   buildReclaimCommandForTargetId,
   buildCaptureCommandForTarget,
-  buildResurrectAreaCommand,
-  buildResurrectCommandForTarget,
   buildLoadTransportAreaCommand,
   buildLoadTransportCommandForTarget,
   buildUnloadTransportCommand,

@@ -96,7 +96,6 @@ import {
   entityHasBarAreaAttackCommand,
   entityHasBarManualLaunchCommand,
   entityHasBarMoveStateCommand,
-  entityHasBarResurrectCommand,
   entityHasBarTrajectoryCommand,
   entityBarTrajectoryCommandKind,
   entityEffectiveBarTrajectoryMode,
@@ -226,8 +225,6 @@ export class Input3DManager {
   public onGuardModeChange?: (active: boolean) => void;
   public onReclaimModeChange?: (active: boolean) => void;
   public onCaptureModeChange?: (active: boolean) => void;
-  public onResurrectModeChange?: (active: boolean) => void;
-  public onResurrectAreaModeChange?: (active: boolean) => void;
   public onLoadTransportModeChange?: (active: boolean) => void;
   public onUnloadTransportModeChange?: (active: boolean) => void;
   public onMexUpgradeModeChange?: (active: boolean) => void;
@@ -355,11 +352,9 @@ export class Input3DManager {
       getQueueInsertIndex: () => this.queueInsertIndex,
       getSelectedCommander: () => this.getSelectedCommander(),
       getSelectedBuilder: () => this.getSelectedBuilder(),
-      getSelectedResurrectSource: () => this.getSelectedResurrectSourceForActivePreset(),
       onBuildCommandIssued: (queued) => this.handleBuildCommandIssued(queued),
       applyCursor: (kind) => this.applyCursor(kind),
       ...this.specialModeAccessors(),
-      isResurrectModeAreaCapable: () => isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId()),
       registerBarTargetTypeTracking: (targetId) => this.targetTypeTracker.trackSelectedTargetType(targetId),
       registerNearestBarTargetTypeTracking: (point) => this.targetTypeTracker.trackNearestEnemyTypeAt(point),
       clearBarTargetTypeTrackingForSelected: () => this.targetTypeTracker.clearSelected(),
@@ -407,7 +402,6 @@ export class Input3DManager {
       hasSelectedCommander: () => this.hasSelectedCommander(),
       hasSelectedManualLaunchEntities: () => this.hasSelectedManualLaunchEntitiesForActivePreset(),
       hasSelectedCaptureControl: () => this.hasSelectedCaptureControlForActivePreset(),
-      hasSelectedResurrectControl: () => this.hasSelectedResurrectControlForActivePreset(),
       hasSelectedMoveStateControl: () => this.hasSelectedMoveStateControl(),
       hasSelectedTrajectoryControl: () => this.hasSelectedTrajectoryControl(),
       hasSelectedCloakControl: () => this.hasSelectedCloakControl(),
@@ -471,8 +465,6 @@ export class Input3DManager {
       toggleGuardMode: () => this.toggleGuardMode(),
       toggleReclaimMode: () => this.toggleReclaimMode(),
       toggleCaptureMode: () => this.toggleCaptureMode(),
-      toggleResurrectMode: () => this.toggleResurrectMode(),
-      toggleResurrectAreaMode: () => this.toggleResurrectAreaMode(),
       toggleLoadTransportMode: () => this.toggleLoadTransportMode(),
       toggleUnloadTransportMode: () => this.toggleUnloadTransportMode(),
       toggleMexUpgradeMode: () => this.toggleMexUpgradeMode(),
@@ -516,8 +508,6 @@ export class Input3DManager {
       onGuardModeChange: (active) => this.onGuardModeChange?.(active),
       onReclaimModeChange: (active) => this.onReclaimModeChange?.(active),
       onCaptureModeChange: (active) => this.onCaptureModeChange?.(active),
-      onResurrectModeChange: (active) => this.onResurrectModeChange?.(active),
-      onResurrectAreaModeChange: (active) => this.onResurrectAreaModeChange?.(active),
       onLoadTransportModeChange: (active) => this.onLoadTransportModeChange?.(active),
       onUnloadTransportModeChange: (active) => this.onUnloadTransportModeChange?.(active),
       onMexUpgradeModeChange: (active) => this.onMexUpgradeModeChange?.(active),
@@ -638,14 +628,6 @@ export class Input3DManager {
 
   private get captureMode(): boolean {
     return this.specialModes.isActive('capture');
-  }
-
-  private get resurrectMode(): boolean {
-    return this.specialModes.isActive('resurrect');
-  }
-
-  private get resurrectAreaMode(): boolean {
-    return this.specialModes.isActive('resurrectArea');
   }
 
   private get loadTransportMode(): boolean {
@@ -1627,30 +1609,6 @@ export class Input3DManager {
     this.enterSpecialMode('capture');
   }
 
-  toggleResurrectMode(): void {
-    if (this.resurrectMode) {
-      this.exitResurrectMode();
-      return;
-    }
-    if (!this.hasSelectedResurrectControlForActivePreset()) return;
-    this.mode.exitBuildMode();
-    this.mode.exitDGunMode();
-    this.exitSpecialModes(false);
-    this.enterSpecialMode('resurrect');
-  }
-
-  toggleResurrectAreaMode(): void {
-    if (this.resurrectAreaMode) {
-      this.exitResurrectAreaMode();
-      return;
-    }
-    if (!this.hasSelectedResurrectControlForActivePreset()) return;
-    this.mode.exitBuildMode();
-    this.mode.exitDGunMode();
-    this.exitSpecialModes(false);
-    this.enterSpecialMode('resurrectArea');
-  }
-
   toggleLoadTransportMode(): void {
     if (this.loadTransportMode) {
       this.exitLoadTransportMode();
@@ -1821,16 +1779,6 @@ export class Input3DManager {
     return this.captureMode;
   }
 
-  /** True while the next left-click will issue a resurrect command. */
-  isInResurrectMode(): boolean {
-    return this.resurrectMode;
-  }
-
-  /** True while the next left-click/drag will issue a resurrect-area command. */
-  isInResurrectAreaMode(): boolean {
-    return this.resurrectAreaMode;
-  }
-
   /** True while the next left-click will load a friendly unit into a transport. */
   isInLoadTransportMode(): boolean {
     return this.loadTransportMode;
@@ -1898,14 +1846,6 @@ export class Input3DManager {
 
   private exitCaptureMode(): void {
     this.specialModes.exit('capture');
-  }
-
-  private exitResurrectMode(): void {
-    this.specialModes.exit('resurrect');
-  }
-
-  private exitResurrectAreaMode(): void {
-    this.specialModes.exit('resurrectArea');
   }
 
   private exitLoadTransportMode(): void {
@@ -2049,21 +1989,6 @@ export class Input3DManager {
     return isBarCommandHotkeyPreset(presetId)
       ? this.hasSelectedBarManualLaunchEntities()
       : this.hasSelectedManualLaunchEntities();
-  }
-
-  private hasSelectedResurrectControlForActivePreset(): boolean {
-    return this.getSelectedResurrectSourceForActivePreset() !== null;
-  }
-
-  private getSelectedResurrectSourceForActivePreset(): Entity | null {
-    if (!isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId())) {
-      return this.getSelectedCommander();
-    }
-    const selectedUnits = this.entitySource.getSelectedUnits();
-    for (let i = 0; i < selectedUnits.length; i++) {
-      if (entityHasBarResurrectCommand(selectedUnits[i])) return selectedUnits[i];
-    }
-    return null;
   }
 
   private hasSelectedCaptureControlForActivePreset(): boolean {
@@ -2434,8 +2359,6 @@ export class Input3DManager {
       isGuardMode: () => this.guardMode,
       isReclaimMode: () => this.reclaimMode,
       isCaptureMode: () => this.captureMode,
-      isResurrectMode: () => this.resurrectMode,
-      isResurrectAreaMode: () => this.resurrectAreaMode,
       isLoadTransportMode: () => this.loadTransportMode,
       isUnloadTransportMode: () => this.unloadTransportMode,
       isMexUpgradeMode: () => this.mexUpgradeMode,
@@ -2451,8 +2374,6 @@ export class Input3DManager {
       exitGuardMode: () => this.exitGuardMode(),
       exitReclaimMode: () => this.exitReclaimMode(),
       exitCaptureMode: () => this.exitCaptureMode(),
-      exitResurrectMode: () => this.exitResurrectMode(),
-      exitResurrectAreaMode: () => this.exitResurrectAreaMode(),
       exitLoadTransportMode: () => this.exitLoadTransportMode(),
       exitUnloadTransportMode: () => this.exitUnloadTransportMode(),
       exitMexUpgradeMode: () => this.exitMexUpgradeMode(),
@@ -2624,12 +2545,6 @@ export class Input3DManager {
     }
     if (this.captureMode && !this.hasSelectedCaptureControlForActivePreset()) {
       this.exitCaptureMode();
-    }
-    if (this.resurrectMode && !this.hasSelectedResurrectControlForActivePreset()) {
-      this.exitResurrectMode();
-    }
-    if (this.resurrectAreaMode && !this.hasSelectedResurrectControlForActivePreset()) {
-      this.exitResurrectAreaMode();
     }
     if (this.loadTransportMode && !this.hasSelectedTransports()) {
       this.exitLoadTransportMode();
@@ -3178,8 +3093,6 @@ export class Input3DManager {
     this.onGuardModeChange = undefined;
     this.onReclaimModeChange = undefined;
     this.onCaptureModeChange = undefined;
-    this.onResurrectModeChange = undefined;
-    this.onResurrectAreaModeChange = undefined;
     this.onMexUpgradeModeChange = undefined;
     this.onPingModeChange = undefined;
     this.onTowerTargetModeChange = undefined;

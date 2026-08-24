@@ -4,6 +4,7 @@ import type { BuildingBlueprintId } from '../types';
 import { getAllBuildings } from '../buildConfigs';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
 import { UNIT_BLUEPRINTS } from './units';
+import { isFabricatorBuildingBlueprintId } from './buildings';
 
 type UnitRosterDisplay = {
   unitBlueprintId: string;
@@ -132,6 +133,7 @@ function buildStructureRosterDisplay(
 }
 
 export function structureBuildCategory(buildingBlueprintId: BuildingBlueprintId): BuildMenuCategory {
+  if (isFabricatorBuildingBlueprintId(buildingBlueprintId)) return 'Production';
   switch (buildingBlueprintId) {
     case 'buildingRadar':
     case 'buildingSonar':
@@ -141,14 +143,13 @@ export function structureBuildCategory(buildingBlueprintId: BuildingBlueprintId)
     case 'buildingShieldTech':
     case 'buildingPrecisionTargetingTech':
       return 'Intel';
-    case 'towerFabricator':
-      return 'Production';
     case 'towerBeamLight':
     case 'towerBeamMega':
     case 'towerCannon':
     case 'towerHelios':
     case 'towerAntiAir':
     case 'towerTorpedo':
+    case 'towerInterceptor':
       return 'Defense';
     default:
       return 'Economy';

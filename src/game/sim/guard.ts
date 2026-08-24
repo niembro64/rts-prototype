@@ -4,12 +4,8 @@ import type { WorldState } from './WorldState';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { deterministicMath as DMath } from './deterministicMath';
 import { getRecentHostileAttacker } from './aggression';
-import {
-  entityCanBarAttackTarget,
-  entityCanIssueResurrectCommand,
-} from './unitCommandCapabilities';
+import { entityCanBarAttackTarget } from './unitCommandCapabilities';
 import { resolveReclaimTarget, type ReclaimTarget } from './reclaim';
-import { isResurrectableWreck } from './wrecks';
 import {
   GUARD_INTERCEPTION_LIMIT_SECONDS,
   GUARD_MOVING_INTERVAL_SECONDS,
@@ -276,13 +272,11 @@ export function shouldRefreshGuardFollowGoal(
  *                 production (speed up the shell it is building).
  *   - `heal`    — a damaged, completed guarded unit/building/tower to repair.
  *   - `reclaim` — the unit/structure/vegetation the guarded builder reclaims.
- *   - `resurrect` — the wreck the guarded builder resurrects, when this guard
- *                   owns the same capability.
  *   - `ready`   — no work right now; stay within build range of the directly
  *                 guarded ally so a new job can begin without a catch-up lap.
  *  Returns null only when there is no valid builder Guard relationship. */
 export type GuardService =
-  | { target: Entity; kind: 'build' | 'factory' | 'heal' | 'resurrect' | 'ready' }
+  | { target: Entity; kind: 'build' | 'factory' | 'heal' | 'ready' }
   | { target: ReclaimTarget; kind: 'reclaim' };
 
 /** Max guard-chain depth walked when resolving what a guard should service —
@@ -292,10 +286,9 @@ const MAX_GUARD_CHAIN_DEPTH = 24;
 /** The job a single unit is doing that a builder guarding it should join:
  *  finish an in-progress building it (or its build order) is constructing,
  *  assist a factory it is producing from, heal it if damaged, or join its
- *  reclaim/resurrect workflow. Null if it has no serviceable job of its own. */
+ *  reclaim workflow. Null if it has no serviceable job of its own. */
 function resolveUnitBuilderJob(
   world: WorldState,
-  guard: Entity,
   target: Entity,
 ): GuardService | null {
   // (a) The unit is itself an in-progress building/tower shell -> finish it.
@@ -310,14 +303,6 @@ function resolveUnitBuilderJob(
   if (targetAction?.type === 'reclaim') {
     const reclaimTarget = resolveReclaimTarget(world, targetAction.targetId);
     if (reclaimTarget !== null) return { target: reclaimTarget, kind: 'reclaim' };
-  }
-  if (
-    targetAction?.type === 'resurrect' &&
-    targetAction.targetId !== undefined &&
-    entityCanIssueResurrectCommand(guard)
-  ) {
-    const wreck = world.getEntity(targetAction.targetId);
-    if (isResurrectableWreck(wreck)) return { target: wreck, kind: 'resurrect' };
   }
   if (targetAction !== undefined && (targetAction.type === 'build' || targetAction.type === 'repair')) {
     const siteId = targetAction.type === 'build' ? targetAction.buildingId : targetAction.targetId;
@@ -385,7 +370,7 @@ export function resolveGuardServiceTarget(
 
     // Join the directly-guarded ally's own job if it has one (heal it if it
     // is the damaged one; assist what it is building/producing).
-    const job = resolveUnitBuilderJob(world, guard, target);
+    const job = resolveUnitBuilderJob(world, target);
     if (job !== null) return job;
 
     // No job of its own — if it is itself guarding, follow the chain.

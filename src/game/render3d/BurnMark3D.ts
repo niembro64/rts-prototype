@@ -306,7 +306,7 @@ export class BurnMark3D {
       if (!projectile) continue;
       const isDGun = entity.dgunProjectile?.isDGun === true &&
         projectile.projectileType === 'projectile';
-      const isRay = projectile.projectileType === 'beam' || projectile.projectileType === 'laser';
+      const isRay = projectile.projectileType === 'beam';
       if (!isDGun && !isRay) continue;
       if (isRay && projectile.endpointDamageable === false) continue;
 
@@ -337,7 +337,7 @@ export class BurnMark3D {
       const width = Math.max(4, visual.burnMarkWidth || visual.lineRadius * 2);
       const damageRadius = Math.max(width, visual.lineDamageSphereRadius);
       const shot = projectile.config.shot;
-      const dps = isRay && (shot.type === 'beam' || shot.type === 'laser')
+      const dps = isRay && shot.type === 'beam'
         ? Math.max(0, shot.dps)
         : 180;
       const deposit = Math.max(0.012, dps * dtSec / Math.max(6, damageRadius));

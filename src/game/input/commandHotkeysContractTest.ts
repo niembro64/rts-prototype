@@ -118,8 +118,7 @@ function isIntentionallyUnboundCommand(presetId: string, commandId: string): boo
       commandId === 'combat.ping' ||
       (isBarLegacyPreset && commandId === 'combat.capture') ||
       commandId === 'combat.attackLine' ||
-      commandId === 'combat.attackGround' ||
-      commandId === 'combat.resurrectArea'
+      commandId === 'combat.attackGround'
     )
   ) {
     return true;
@@ -211,8 +210,6 @@ export function runCommandHotkeysContractTest(): void {
             ? 'BAR uses map-draw/map-label commands for pings, not a separate Ping order button'
           : commandId === 'combat.capture'
             ? 'BAR legacy does not bind Capture; C is used by legacy build bindings'
-          : commandId === 'combat.resurrectArea'
-            ? 'BAR resurrect is area-capable without a separate resurrect-area button'
           : commandId === 'ui.capturePicHud' ||
             commandId === 'ui.captureVidRaw' ||
             commandId === 'ui.captureVidHud'
@@ -619,16 +616,8 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid W should resolve capture',
   );
   assertContract(
-    commandHotkeyLabel('combat.resurrect', 'bar-grid') === 'W',
-    'bar-grid resurrect should display the BAR W key',
-  );
-  assertContract(
     resolveCommandHotkey(keyEvent('w', 'KeyW', { ctrlKey: true, altKey: true }), 'bar-grid') === null,
-    'bar-grid Ctrl+Alt+W must not expose a separate resurrect-area hotkey',
-  );
-  assertContract(
-    commandHotkeyLabel('combat.resurrectArea', 'bar-grid') === '',
-    'bar-grid resurrect-area command must display no extra BAR order-menu hotkey',
+    'bar-grid Ctrl+Alt+W must remain unbound',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('d', 'KeyD'), 'bar-grid') === 'command.dgun',
@@ -1215,14 +1204,6 @@ export function runCommandHotkeysContractTest(): void {
   assertContract(
     commandHotkeyLabel('combat.capture', 'bar-legacy') === '',
     'bar-legacy capture should display no fake C hotkey',
-  );
-  assertContract(
-    resolveCommandHotkey(keyEvent('r', 'KeyR', { ctrlKey: true }), 'bar-legacy') === 'combat.resurrect',
-    'bar-legacy Ctrl+R should resolve resurrect',
-  );
-  assertContract(
-    commandHotkeyLabel('combat.resurrect', 'bar-legacy') === 'Ctrl+R',
-    'bar-legacy resurrect should display the BAR Ctrl+R key',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('e', 'KeyE', { altKey: true }), 'prototype') === 'combat.capture',

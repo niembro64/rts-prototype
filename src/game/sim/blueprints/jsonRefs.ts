@@ -38,3 +38,46 @@ export function resolveBlueprintRefs<T>(value: T): T {
   }
   return resolved as T;
 }
+
+type InheritableBlueprint = Record<string, unknown> & { $extends?: string };
+
+function mergeBlueprintObjects(base: unknown, override: unknown): unknown {
+  if (!isObject(base) || !isObject(override)) return override;
+  const merged: JsonObject = { ...base };
+  for (const [key, value] of Object.entries(override)) {
+    if (key === '$extends') continue;
+    merged[key] = isObject(value) && isObject(base[key])
+      ? mergeBlueprintObjects(base[key], value)
+      : value;
+  }
+  return merged;
+}
+
+/** Materialize explicitly inherited blueprint variants. Arrays replace while
+ * nested objects merge, then the owning loader applies its normal exhaustive
+ * validation to the fully expanded record. */
+export function resolveBlueprintRecordInheritance<T>(
+  source: Record<string, InheritableBlueprint>,
+  blueprintLabel: string,
+): Record<string, T> {
+  const resolved: Record<string, T> = {};
+  const resolving = new Set<string>();
+
+  const resolveOne = (id: string): T => {
+    const cached = resolved[id];
+    if (cached !== undefined) return cached;
+    const own = source[id];
+    if (own === undefined) throw new Error(`Unknown inherited ${blueprintLabel} "${id}"`);
+    if (resolving.has(id)) throw new Error(`Cyclic ${blueprintLabel} inheritance at "${id}"`);
+    resolving.add(id);
+    const materialized = own.$extends === undefined
+      ? mergeBlueprintObjects({}, own)
+      : mergeBlueprintObjects(resolveOne(own.$extends), own);
+    resolving.delete(id);
+    resolved[id] = materialized as T;
+    return resolved[id];
+  };
+
+  for (const id of Object.keys(source)) resolveOne(id);
+  return resolved;
+}

@@ -559,8 +559,7 @@
         "plasma",
         "rocket",
         "missile",
-        "beam",
-        "laser"
+        "beam"
       ]
     },
     "ShieldReflectionEntityDirections": {
@@ -576,9 +575,6 @@
           "$ref": "#/$defs/ShieldReflectionDirection"
         },
         "beam": {
-          "$ref": "#/$defs/ShieldReflectionDirection"
-        },
-        "laser": {
           "$ref": "#/$defs/ShieldReflectionDirection"
         }
       },
@@ -598,9 +594,7 @@
     },
     "ShieldBarrierShape": {
       "enum": [
-        "sphere",
-        "infiniteVerticalCylinder",
-        "aimedCylinder"
+        "sphere"
       ]
     },
     "ShieldBarrierRatioConfig": {
@@ -710,8 +704,7 @@
       "required": [
         "plasma",
         "rocket",
-        "beam",
-        "laser"
+        "beam"
       ],
       "properties": {
         "plasma": {
@@ -721,9 +714,6 @@
           "$ref": "#/$defs/ShieldSurfaceResponse"
         },
         "beam": {
-          "$ref": "#/$defs/ShieldSurfaceResponse"
-        },
-        "laser": {
           "$ref": "#/$defs/ShieldSurfaceResponse"
         }
       },
@@ -1132,9 +1122,6 @@
         },
         {
           "$ref": "#/$defs/BeamRay"
-        },
-        {
-          "$ref": "#/$defs/LaserRay"
         }
       ]
     },
@@ -1148,8 +1135,7 @@
     "ProjectileType": {
       "enum": [
         "projectile",
-        "beam",
-        "laser"
+        "beam"
       ]
     },
     "BeamReflectorKind": {
@@ -1248,8 +1234,7 @@
         "plasma",
         "rocket",
         "missile",
-        "beam",
-        "laser"
+        "beam"
       ]
     },
     "ShotRuntimeProfile": {
@@ -3866,6 +3851,37 @@
         }
       ]
     },
+    "UnitProductionDomain": {
+      "type": "string",
+      "enum": [
+        "bot",
+        "vehicle",
+        "aircraft",
+        "naval"
+      ]
+    },
+    "UnitProduction": {
+      "type": "object",
+      "required": [
+        "techLevel",
+        "domains"
+      ],
+      "properties": {
+        "techLevel": {
+          "type": "integer",
+          "enum": [1, 2]
+        },
+        "domains": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/UnitProductionDomain"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "UnitBlueprint": {
       "type": "object",
       "required": [
@@ -3885,6 +3901,7 @@
         "teamOrnament",
         "hud",
         "unitLocomotion",
+        "production",
         "suspension",
         "builder",
         "dgun",
@@ -3955,6 +3972,16 @@
         },
         "unitLocomotion": {
           "$ref": "#/$defs/UnitLocomotionBlueprint"
+        },
+        "production": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/UnitProduction"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "suspension": {
           "oneOf": [
@@ -4110,8 +4137,7 @@
     },
     "RayType": {
       "enum": [
-        "beam",
-        "laser"
+        "beam"
       ]
     },
     "EmissionKind": {
@@ -4198,69 +4224,6 @@
       },
       "additionalProperties": false
     },
-    "LaserRayBlueprint": {
-      "type": "object",
-      "required": [
-        "type",
-        "rayBlueprintId",
-        "dps",
-        "force",
-        "recoil",
-        "radius",
-        "width",
-        "damageSphere",
-        "duration",
-        "gravityForceMultiplier",
-        "mediumTrajectory",
-        "hitSound"
-      ],
-      "properties": {
-        "type": {
-          "const": "laser"
-        },
-        "dps": {
-          "type": "number"
-        },
-        "force": {
-          "type": "number"
-        },
-        "recoil": {
-          "type": "number"
-        },
-        "radius": {
-          "type": "number"
-        },
-        "width": {
-          "type": "number"
-        },
-        "damageSphere": {
-          "$ref": "#/$defs/ShotCollision"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "gravityForceMultiplier": {
-          "type": "number"
-        },
-        "mediumTrajectory": {
-          "$ref": "#/$defs/EmissionMediumTrajectoryMatrix"
-        },
-        "hitSound": {
-          "oneOf": [
-            {
-              "$ref": "#/$defs/SoundEntry"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "rayBlueprintId": {
-          "$ref": "#/$defs/RayBlueprintId"
-        }
-      },
-      "additionalProperties": false
-    },
     "ShieldBlueprint": {
       "type": "object",
       "required": [
@@ -4323,9 +4286,6 @@
       "oneOf": [
         {
           "$ref": "#/$defs/BeamRayBlueprint"
-        },
-        {
-          "$ref": "#/$defs/LaserRayBlueprint"
         }
       ]
     },
@@ -4377,65 +4337,10 @@
       },
       "additionalProperties": false
     },
-    "LaserRay": {
-      "type": "object",
-      "required": [
-        "type",
-        "rayBlueprintId",
-        "dps",
-        "force",
-        "recoil",
-        "radius",
-        "width",
-        "damageSphere",
-        "duration",
-        "gravityForceMultiplier",
-        "mediumTrajectory"
-      ],
-      "properties": {
-        "type": {
-          "const": "laser"
-        },
-        "dps": {
-          "type": "number"
-        },
-        "force": {
-          "type": "number"
-        },
-        "recoil": {
-          "type": "number"
-        },
-        "radius": {
-          "type": "number"
-        },
-        "width": {
-          "type": "number"
-        },
-        "damageSphere": {
-          "$ref": "#/$defs/ShotCollision"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "gravityForceMultiplier": {
-          "type": "number"
-        },
-        "mediumTrajectory": {
-          "$ref": "#/$defs/EmissionMediumTrajectoryMatrix"
-        },
-        "rayBlueprintId": {
-          "$ref": "#/$defs/RayBlueprintId"
-        }
-      },
-      "additionalProperties": false
-    },
     "RayConfig": {
       "oneOf": [
         {
           "$ref": "#/$defs/BeamRay"
-        },
-        {
-          "$ref": "#/$defs/LaserRay"
         }
       ]
     },
@@ -4485,9 +4390,6 @@
         },
         {
           "$ref": "#/$defs/BeamRay"
-        },
-        {
-          "$ref": "#/$defs/LaserRay"
         },
         {
           "$ref": "#/$defs/ShieldConfig"

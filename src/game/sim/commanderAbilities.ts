@@ -18,14 +18,13 @@ import { isBuildInProgress } from './buildableHelpers';
 import { setUnitActions } from './unitActions';
 import { ballSpawnRateForWorkRate } from '@/resourceConfig';
 import { getSimWasm } from '../sim-wasm/init';
-import { isResurrectableWreck, restoreUnitFromWreck } from './wrecks';
-import { entityCanIssueResurrectCommand } from './unitCommandCapabilities';
 import { writeFabricatorProductionSprayOrigin } from './factoryProductionHold';
 import { requestBuilderWorkStation } from './workStationSystem';
 import { getWorkEmitterSpec, writeWorkEmitterOriginWorld } from './workEmitterOrigin';
 import { transferCompletedBuildingStorageCapacity } from './buildingCompletion';
 import { createEntityVolume, writeHitVolume } from './entityVolumes';
 import { resolveGuardServiceTarget } from './guard';
+import { isFabricatorBuildingBlueprintId } from './blueprints/buildings';
 
 export type { SprayTarget,  } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
@@ -68,7 +67,7 @@ function writeSprayTargetVolume(spray: SprayTarget, target: Entity): void {
     }
     return;
   }
-  // Wrecks and anything else without a hit volume keep the old sphere.
+  // Anything without a hit volume keeps the old sphere.
   endpoint.pos.x = target.transform.x;
   endpoint.pos.y = target.transform.y;
   endpoint.z = target.transform.z;
@@ -114,13 +113,9 @@ class CommanderAbilitiesSystem {
   private readonly sprayTargetPool: SprayTarget[] = [];
   private readonly completedBuildings: CompletedBuilding[] = [];
   private readonly completedBuildingPool: CompletedBuilding[] = [];
-  private readonly resurrectedUnits: Entity[] = [];
-  private readonly resurrectedBuildings: Entity[] = [];
   private readonly result: CommanderAbilitiesResult = {
     sprayTargets: this.sprayTargets,
     completedBuildings: this.completedBuildings,
-    resurrectedUnits: this.resurrectedUnits,
-    resurrectedBuildings: this.resurrectedBuildings,
   };
   private readonly captureProgressByPair = new Map<number, { playerId: PlayerId; progress: number }>();
   private readonly activeCaptureKeys = new Set<number>();
@@ -129,13 +124,11 @@ class CommanderAbilitiesSystem {
   update(world: WorldState, dtMs: number): CommanderAbilitiesResult {
     this.sprayTargets.length = 0;
     this.completedBuildings.length = 0;
-    this.resurrectedUnits.length = 0;
-    this.resurrectedBuildings.length = 0;
     this.activeCaptureKeys.clear();
 
     // Walk every builder (commanders + plain construction units). `commander`
     // below is "the acting builder"; reclaim + build/heal sprays apply to all
-    // of them, while capture and resurrect have narrower command capabilities.
+    // of them, while capture has narrower command capabilities.
     for (const commander of world.getBuilderUnits()) {
       if (!commander.builder || !commander.ownership) continue;
       if (!commander.unit || commander.unit.hp <= 0) continue;
@@ -164,8 +157,8 @@ class CommanderAbilitiesSystem {
         continue;
       }
 
-      // Builder Guard joins the guarded constructor's current reclaim or
-      // resurrection without replacing the durable Guard. This also remains
+      // Builder Guard joins the guarded constructor's current reclaim
+      // without replacing the durable Guard. This also remains
       // active under an armed builder's temporary retaliation Attack.
       const guardService = resolveGuardServiceTarget(world, commander);
       if (guardService?.kind === 'reclaim') {
@@ -178,26 +171,6 @@ class CommanderAbilitiesSystem {
         }
         continue;
       }
-      if (guardService?.kind === 'resurrect') {
-        const wreck = guardService.target;
-        if (
-          isBuildTargetInRange(commander, wreck) &&
-          requestBuilderWorkStation(commander, wreck.id)
-        ) {
-          this.resurrectTarget(
-            world,
-            playerId,
-            commander,
-            wreck,
-            dtMs,
-            commanderSprayX,
-            commanderSprayY,
-            commanderSprayZ,
-          );
-        }
-        continue;
-      }
-
       // Get current target from queue (only work on ONE thing at a time)
       const currentTarget = this.getCurrentTarget(world, commander);
       if (!currentTarget) continue;
@@ -225,24 +198,6 @@ class CommanderAbilitiesSystem {
         continue;
       }
 
-      if (currentAction !== undefined && currentAction.type === 'resurrect' && entityCanIssueResurrectCommand(commander)) {
-        if (!requestBuilderWorkStation(commander, currentTarget.id)) continue;
-        if (
-          this.resurrectTarget(
-            world,
-            playerId,
-            commander,
-            currentTarget,
-            dtMs,
-            commanderSprayX,
-            commanderSprayY,
-            commanderSprayZ,
-          )
-        ) {
-          this.pushCompletedBuilding(commander.id, currentTarget.id);
-        }
-        continue;
-      }
 
     }
 
@@ -272,7 +227,7 @@ class CommanderAbilitiesSystem {
       for (let pointIndex = 0; pointIndex < pointCount; pointIndex++) {
         const fabricatorProductionWork =
           movement.operation === 'construct' &&
-          source.buildingBlueprintId === 'towerFabricator' &&
+          isFabricatorBuildingBlueprintId(source.buildingBlueprintId) &&
           source.factory?.currentShellId === movement.targetEntityId;
         const origin = fabricatorProductionWork
           ? writeFabricatorProductionSprayOrigin(
@@ -385,13 +340,12 @@ class CommanderAbilitiesSystem {
     // Get the first action
     const currentAction = actions[0];
 
-    // Only process build/repair/capture/resurrection actions. Reclaim is
+    // Only process build/repair/capture actions. Reclaim is
     // resolved by the caller because its targets span two stores.
     if (
       currentAction.type !== 'build' &&
       currentAction.type !== 'repair' &&
-      currentAction.type !== 'capture' &&
-      currentAction.type !== 'resurrect'
+      currentAction.type !== 'capture'
     ) {
       return null;
     }
@@ -408,12 +362,6 @@ class CommanderAbilitiesSystem {
       return playerId !== undefined &&
         isCapturableTarget(target, playerId, (a, b) => world.arePlayersAllied(a, b)) &&
         isBuildTargetInRange(commander, target)
-        ? target
-        : null;
-    }
-
-    if (currentAction.type === 'resurrect') {
-      return entityCanIssueResurrectCommand(commander) && isResurrectableWreck(target) && isBuildTargetInRange(commander, target)
         ? target
         : null;
     }
@@ -634,55 +582,6 @@ class CommanderAbilitiesSystem {
       target.factory.guardTargetId = null;
     }
     return true;
-  }
-
-  private resurrectTarget(
-    world: WorldState,
-    playerId: PlayerId,
-    commander: Entity,
-    target: Entity,
-    dtMs: number,
-    sourceX: number,
-    sourceY: number,
-    sourceZ: number,
-  ): boolean {
-    if (!entityCanIssueResurrectCommand(commander) || !isResurrectableWreck(target)) return false;
-    const wreck = target.wreck;
-    if (wreck === null || wreck.resurrectRequiredMs <= 0) return false;
-
-    wreck.resurrectProgressMs = Math.min(
-      wreck.resurrectRequiredMs,
-      wreck.resurrectProgressMs + dtMs * Math.max(0.1, getBuilderConstructionRate(commander) / 100),
-    );
-    const progress = wreck.resurrectProgressMs / wreck.resurrectRequiredMs;
-
-    const emitResurrectionLeg = (inverse: boolean, channel: number): void => {
-      const spray = this.acquireSprayTarget();
-      spray.source.id = commander.id;
-      spray.source.pos.x = sourceX;
-      spray.source.pos.y = sourceY;
-      spray.source.z = sourceZ;
-      spray.source.playerId = playerId;
-      spray.target.id = target.id;
-      writeSprayTargetVolume(spray, target);
-      spray.type = 'build';
-      spray.intensity = Math.max(0.2, progress);
-      spray.channel = channel;
-      spray.flow = 'direct';
-      spray.inverse = inverse;
-      spray.flowRadius = 0;
-      spray.ballSpawnRate = 10;
-    };
-    // BAR resurrection emits both the ordinary builder -> wreck stream
-    // and the inverse wreck-volume -> builder return stream.
-    emitResurrectionLeg(false, 2);
-    emitResurrectionLeg(true, 3);
-
-    if (wreck.resurrectProgressMs < wreck.resurrectRequiredMs) return false;
-
-    const restored = restoreUnitFromWreck(world, target, playerId);
-    if (restored !== null) this.resurrectedUnits.push(restored);
-    return restored !== null;
   }
 }
 
