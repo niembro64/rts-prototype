@@ -14,7 +14,10 @@ import {
   BUILD_GRID_CELL_SIZE,
   getRotatedBuildingPlacementFootprint,
 } from '../sim/buildGrid';
-import { normalizeAngle } from '../math';
+import {
+  BUILDING_ROTATION_STEP_RAD,
+  snapBuildingRotation,
+} from '../sim/buildingRotation';
 import {
   getBuildingPlacementDiagnostics,
   getOccupiedBuildingCells,
@@ -58,7 +61,6 @@ type BuildPlacementEntitySource = {
 const BUILD_LINE_SPACING_STEP = 0.5;
 const BUILD_LINE_SPACING_MIN_STEPS = 0;
 const BUILD_LINE_SPACING_MAX_STEPS = 8;
-const BUILD_FACING_STEP_RAD = Math.PI / 2;
 
 export class Input3DBuildPlacementState {
   private mapWidth = Infinity;
@@ -113,12 +115,16 @@ export class Input3DBuildPlacementState {
   }
 
   rotateBuildFacingClockwise(): BuildFacingInfo {
-    this.buildFacingRotation = normalizeAngle(this.buildFacingRotation - BUILD_FACING_STEP_RAD);
+    this.buildFacingRotation = snapBuildingRotation(
+      this.buildFacingRotation - BUILDING_ROTATION_STEP_RAD,
+    );
     return this.facingInfo;
   }
 
   rotateBuildFacingCounterClockwise(): BuildFacingInfo {
-    this.buildFacingRotation = normalizeAngle(this.buildFacingRotation + BUILD_FACING_STEP_RAD);
+    this.buildFacingRotation = snapBuildingRotation(
+      this.buildFacingRotation + BUILDING_ROTATION_STEP_RAD,
+    );
     return this.facingInfo;
   }
 

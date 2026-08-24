@@ -43,9 +43,17 @@ type InheritableBlueprint = Record<string, unknown> & { $extends?: string };
 
 function mergeBlueprintObjects(base: unknown, override: unknown): unknown {
   if (!isObject(base) || !isObject(override)) return override;
+  if (override.$replace === true) {
+    const replacement: JsonObject = {};
+    for (const [key, value] of Object.entries(override)) {
+      if (key === '$replace' || key === '$extends') continue;
+      replacement[key] = value;
+    }
+    return replacement;
+  }
   const merged: JsonObject = { ...base };
   for (const [key, value] of Object.entries(override)) {
-    if (key === '$extends') continue;
+    if (key === '$extends' || key === '$replace') continue;
     merged[key] = isObject(value) && isObject(base[key])
       ? mergeBlueprintObjects(base[key], value)
       : value;
@@ -54,8 +62,10 @@ function mergeBlueprintObjects(base: unknown, override: unknown): unknown {
 }
 
 /** Materialize explicitly inherited blueprint variants. Arrays replace while
- * nested objects merge, then the owning loader applies its normal exhaustive
- * validation to the fully expanded record. */
+ * nested objects merge. An object with `$replace: true` replaces its inherited
+ * object wholesale (the marker itself is stripped), which keeps discriminated
+ * unions such as bodyShape from retaining fields from the old variant. The
+ * owning loader then applies its normal exhaustive validation. */
 export function resolveBlueprintRecordInheritance<T>(
   source: Record<string, InheritableBlueprint>,
   blueprintLabel: string,

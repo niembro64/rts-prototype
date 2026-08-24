@@ -4,6 +4,7 @@
     "production": { "techLevel": 1, "domains": ["vehicle"] },
     "tinyName": "JKL",
     "name": "Jackal",
+    "identity": { "kind": "animal", "animalClass": "mammal" },
     "shortName": "JKL",
     "hp": 110,
     "radius": {
@@ -146,6 +147,7 @@
     "production": { "techLevel": 1, "domains": ["vehicle"] },
     "tinyName": "LNX",
     "name": "Lynx",
+    "identity": { "kind": "animal", "animalClass": "mammal" },
     "shortName": "LNX",
     "hp": 170,
     "radius": {
@@ -285,9 +287,10 @@
   "unitDaddy": {
     "unitBlueprintId": "unitDaddy",
     "production": { "techLevel": 1, "domains": ["bot"] },
-    "tinyName": "DDY",
-    "name": "Daddy",
-    "shortName": "DDY",
+    "tinyName": "HRV",
+    "name": "Harvestman",
+    "identity": { "kind": "animal", "animalClass": "arachnid" },
+    "shortName": "HARV",
     "hp": 480,
     "radius": {
       "other": 13,
@@ -479,6 +482,7 @@
     "production": { "techLevel": 2, "domains": ["vehicle"] },
     "tinyName": "BDG",
     "name": "Badger",
+    "identity": { "kind": "animal", "animalClass": "mammal" },
     "shortName": "BDG",
     "hp": 520,
     "radius": {
@@ -620,6 +624,7 @@
     "production": { "techLevel": 2, "domains": ["vehicle"] },
     "tinyName": "MGS",
     "name": "Mongoose",
+    "identity": { "kind": "animal", "animalClass": "mammal" },
     "shortName": "MGS",
     "hp": 400,
     "radius": {
@@ -762,6 +767,7 @@
     "production": null,
     "tinyName": "TCK",
     "name": "Tick",
+    "identity": { "kind": "animal", "animalClass": "arachnid" },
     "shortName": "TCK",
     "hp": 98.25,
     "radius": {
@@ -800,9 +806,12 @@
       }
     ],
     "bodyShape": {
-      "kind": "circle",
-      "radiusFrac": 0.12,
-      "yFrac": 0.12
+      "kind": "composite",
+      "parts": [
+        { "kind": "oval", "offsetForward": -0.16, "xFrac": 0.24, "yFrac": 0.11, "zFrac": 0.18 },
+        { "kind": "circle", "offsetForward": 0.18, "radiusFrac": 0.1, "yFrac": 0.09 },
+        { "kind": "cone", "offsetForward": -0.4, "lengthFrac": 0.22, "radiusFrac": 0.07 }
+      ]
     },
     "teamOrnament": {
       "backX": 0.82,
@@ -913,9 +922,10 @@
   "unitHuman": {
     "unitBlueprintId": "unitHuman",
     "production": { "techLevel": 1, "domains": ["bot"] },
-    "tinyName": "HUM",
-    "name": "Human",
-    "shortName": "HUM",
+    "tinyName": "MAC",
+    "name": "Macaque",
+    "identity": { "kind": "animal", "animalClass": "mammal" },
+    "shortName": "MAC",
     "hp": 340.0,
     "radius": {
       "other": 11.0,
@@ -1188,8 +1198,9 @@
     "unitBlueprintId": "unitRex",
     "production": { "techLevel": 2, "domains": ["bot"] },
     "tinyName": "REX",
-    "name": "Rex",
-    "shortName": "REX",
+    "name": "Tyrannosaurus",
+    "identity": { "kind": "animal", "animalClass": "dinosaur" },
+    "shortName": "T-REX",
     "hp": 26000,
     "radius": {
       "other": 110.0,
@@ -1775,6 +1786,7 @@
     "production": { "techLevel": 2, "domains": ["vehicle"] },
     "tinyName": "MMT",
     "name": "Mammoth",
+    "identity": { "kind": "animal", "animalClass": "mammal" },
     "shortName": "MMT",
     "hp": 1500,
     "radius": {
@@ -1906,9 +1918,10 @@
   "unitFormik": {
     "unitBlueprintId": "unitFormik",
     "production": { "techLevel": 2, "domains": ["bot"] },
-    "tinyName": "FMK",
-    "name": "Formik",
-    "shortName": "FMK",
+    "tinyName": "ALN",
+    "name": "Antlion",
+    "identity": { "kind": "animal", "animalClass": "insect" },
+    "shortName": "ANT",
     "hp": 4800,
     "radius": {
       "other": 40,
@@ -2095,8 +2108,9 @@
     "unitBlueprintId": "unitWidow",
     "production": { "techLevel": 2, "domains": ["bot"] },
     "tinyName": "WDW",
-    "name": "Widow",
-    "shortName": "WDW",
+    "name": "Black Widow",
+    "identity": { "kind": "animal", "animalClass": "arachnid" },
+    "shortName": "WIDOW",
     "hp": 4200,
     "radius": {
       "other": 30,
@@ -2408,6 +2422,7 @@
     "production": { "techLevel": 2, "domains": ["vehicle", "naval"] },
     "tinyName": "HPO",
     "name": "Hippo",
+    "identity": { "kind": "animal", "animalClass": "mammal" },
     "shortName": "HPO",
     "hp": 2400,
     "radius": {
@@ -2552,6 +2567,7 @@
     "production": { "techLevel": 1, "domains": ["naval"] },
     "tinyName": "TRT",
     "name": "Sea Turtle",
+    "identity": { "kind": "animal", "animalClass": "reptile" },
     "shortName": "TURT",
     "hp": 1800,
     "radius": {
@@ -2751,6 +2767,7 @@
     "production": { "techLevel": 2, "domains": ["naval"] },
     "tinyName": "ORC",
     "name": "Orca",
+    "identity": { "kind": "animal", "animalClass": "mammal" },
     "shortName": "ORCA",
     "hp": 1450,
     "radius": {
@@ -2952,6 +2969,7 @@
     "production": { "techLevel": 2, "domains": ["bot"] },
     "tinyName": "TRN",
     "name": "Tarantula",
+    "identity": { "kind": "animal", "animalClass": "arachnid" },
     "shortName": "TRN",
     "hp": 210,
     "radius": {
@@ -3118,6 +3136,7 @@
     "production": { "techLevel": 1, "domains": ["bot"] },
     "tinyName": "LRS",
     "name": "Loris",
+    "identity": { "kind": "animal", "animalClass": "mammal" },
     "shortName": "LRS",
     "hp": 420,
     "radius": {
@@ -3173,9 +3192,12 @@
       }
     ],
     "bodyShape": {
-      "kind": "circle",
-      "radiusFrac": 0.12,
-      "yFrac": 0.12
+      "kind": "composite",
+      "parts": [
+        { "kind": "oval", "offsetForward": -0.08, "xFrac": 0.64, "yFrac": 0.2, "zFrac": 0.48 },
+        { "kind": "circle", "offsetForward": 0.5, "radiusFrac": 0.18, "yFrac": 0.16 },
+        { "kind": "box", "offsetForward": -0.34, "lengthFrac": 0.24, "widthFrac": 0.86, "heightFrac": 0.1, "centerYFrac": 0.16 }
+      ]
     },
     "teamOrnament": {
       "backX": 0.82,
@@ -3265,6 +3287,7 @@
     "production": null,
     "tinyName": "BEE",
     "name": "Bee",
+    "identity": { "kind": "animal", "animalClass": "insect" },
     "shortName": "BEE",
     "hp": 120,
     "radius": {
@@ -3303,9 +3326,13 @@
       }
     ],
     "bodyShape": {
-      "kind": "circle",
-      "radiusFrac": 0.12,
-      "yFrac": 0.12
+      "kind": "composite",
+      "parts": [
+        { "kind": "oval", "offsetForward": -0.08, "xFrac": 0.4, "yFrac": 0.18, "zFrac": 0.2, "centerYFrac": 0.32 },
+        { "kind": "oval", "offsetForward": -0.08, "offsetLateral": -0.3, "xFrac": 0.3, "yFrac": 0.055, "zFrac": 0.34, "centerYFrac": 0.34 },
+        { "kind": "oval", "offsetForward": -0.08, "offsetLateral": 0.3, "xFrac": 0.3, "yFrac": 0.055, "zFrac": 0.34, "centerYFrac": 0.34 },
+        { "kind": "circle", "offsetForward": 0.32, "radiusFrac": 0.13, "yFrac": 0.12, "centerYFrac": 0.31 }
+      ]
     },
     "teamOrnament": {
       "backX": 0.82,
@@ -3393,6 +3420,7 @@
     "production": { "techLevel": 1, "domains": ["aircraft"] },
     "tinyName": "DRF",
     "name": "Dragonfly",
+    "identity": { "kind": "animal", "animalClass": "insect" },
     "shortName": "DRF",
     "hp": 460,
     "radius": {
@@ -3556,6 +3584,7 @@
     "production": { "techLevel": 1, "domains": ["aircraft"] },
     "tinyName": "CDR",
     "name": "Construction Drone",
+    "identity": { "kind": "constructionCraft" },
     "shortName": "CDR",
     "hp": 260,
     "radius": {
@@ -3745,6 +3774,7 @@
     "production": { "techLevel": 1, "domains": ["aircraft"] },
     "tinyName": "EGL",
     "name": "Eagle",
+    "identity": { "kind": "animal", "animalClass": "bird" },
     "shortName": "EGL",
     "hp": 360,
     "radius": {
@@ -3900,6 +3930,7 @@
     "production": { "techLevel": 1, "domains": ["aircraft", "naval"] },
     "tinyName": "DUK",
     "name": "Duck",
+    "identity": { "kind": "animal", "animalClass": "bird" },
     "shortName": "DUK",
     "hp": 300,
     "radius": {
@@ -4081,6 +4112,7 @@
     "production": { "techLevel": 2, "domains": ["aircraft"] },
     "tinyName": "ALB",
     "name": "Albatross",
+    "identity": { "kind": "animal", "animalClass": "bird" },
     "shortName": "ALB",
     "hp": 7600,
     "radius": {
@@ -4268,6 +4300,7 @@
     "production": { "techLevel": 2, "domains": ["aircraft"] },
     "tinyName": "QBE",
     "name": "Queen Bee",
+    "identity": { "kind": "animal", "animalClass": "insect" },
     "shortName": "QBE",
     "hp": 9000,
     "radius": {
@@ -4522,6 +4555,7 @@
     "production": { "techLevel": 2, "domains": ["bot"] },
     "tinyName": "QTK",
     "name": "Queen Tick",
+    "identity": { "kind": "animal", "animalClass": "arachnid" },
     "shortName": "QTK",
     "hp": 9400,
     "radius": {
@@ -4779,9 +4813,10 @@
   "unitTransport": {
     "unitBlueprintId": "unitTransport",
     "production": { "techLevel": 2, "domains": ["aircraft"] },
-    "tinyName": "TDR",
-    "name": "Transport Drone",
-    "shortName": "TDR",
+    "tinyName": "PLC",
+    "name": "Pelican",
+    "identity": { "kind": "animal", "animalClass": "bird" },
+    "shortName": "PEL",
     "hp": 560,
     "radius": {
       "other": 22,
@@ -4930,9 +4965,10 @@
   "unitCommander": {
     "unitBlueprintId": "unitCommander",
     "production": null,
-    "tinyName": "CMD",
-    "name": "Commander",
-    "shortName": "CMD",
+    "tinyName": "SVB",
+    "name": "Silverback",
+    "identity": { "kind": "animal", "animalClass": "mammal" },
+    "shortName": "SILV",
     "hp": 1200,
     "radius": {
       "other": 41.6,
@@ -5329,6 +5365,7 @@
     "production": { "techLevel": 1, "domains": ["naval"] },
     "tinyName": "CSB",
     "name": "Construction Submarine",
+    "identity": { "kind": "constructionCraft" },
     "shortName": "CSUB",
     "hp": 700,
     "radius": {
@@ -5526,6 +5563,7 @@
     "supportPointOffsetZ": 12.4,
     "tinyName": "HDG",
     "name": "Hedgehog",
+    "identity": { "kind": "animal", "animalClass": "mammal" },
     "shortName": "HDG",
     "hp": 460,
     "radius": {
@@ -5664,9 +5702,10 @@
     "$extends": "unitBee",
     "unitBlueprintId": "unitRadarScout",
     "production": { "techLevel": 1, "domains": ["aircraft"] },
-    "tinyName": "AWC",
-    "name": "Kestrel AWACS",
-    "shortName": "AWACS",
+    "tinyName": "KES",
+    "name": "Kestrel",
+    "identity": { "kind": "animal", "animalClass": "bird" },
+    "shortName": "KESTREL",
     "hp": 160,
     "mass": 90,
     "cost": { "energy": 220, "metal": 180 },
@@ -5681,6 +5720,17 @@
         "controlMode": "autonomous"
       }
     ],
+    "bodyShape": {
+      "$replace": true,
+      "kind": "composite",
+      "parts": [
+        { "kind": "oval", "offsetForward": 0.02, "xFrac": 0.5, "yFrac": 0.13, "zFrac": 0.13, "centerYFrac": 0.28 },
+        { "kind": "oval", "offsetForward": -0.06, "offsetLateral": -0.34, "xFrac": 0.3, "yFrac": 0.045, "zFrac": 0.36, "centerYFrac": 0.28 },
+        { "kind": "oval", "offsetForward": -0.06, "offsetLateral": 0.34, "xFrac": 0.3, "yFrac": 0.045, "zFrac": 0.36, "centerYFrac": 0.28 },
+        { "kind": "cone", "offsetForward": 0.5, "lengthFrac": 0.24, "radiusFrac": 0.09, "centerYFrac": 0.28 },
+        { "kind": "circle", "offsetForward": -0.1, "radiusFrac": 0.2, "yFrac": 0.055, "centerYFrac": 0.45 }
+      ]
+    },
     "base": {
       "cost": { "energy": 220, "metal": 180 },
       "mass": 90,
@@ -5695,6 +5745,7 @@
     "production": { "techLevel": 1, "domains": ["bot"] },
     "tinyName": "CBT",
     "name": "Construction Bot",
+    "identity": { "kind": "constructionCraft" },
     "shortName": "C-BOT",
     "hp": 240,
     "mass": 180,
@@ -5733,6 +5784,17 @@
       "requiresAlignmentForWork": true,
       "alignmentToleranceRadians": 0.12
     },
+    "bodyShape": {
+      "$replace": true,
+      "kind": "composite",
+      "parts": [
+        { "kind": "box", "offsetForward": -0.05, "lengthFrac": 0.62, "widthFrac": 0.76, "heightFrac": 0.52, "centerYFrac": 0.54 },
+        { "kind": "box", "offsetForward": 0.08, "lengthFrac": 0.3, "widthFrac": 1.02, "heightFrac": 0.18, "centerYFrac": 0.72 },
+        { "kind": "circle", "offsetForward": 0.25, "radiusFrac": 0.18, "yFrac": 0.14, "centerYFrac": 0.92 },
+        { "kind": "cylinder", "offsetForward": 0.36, "offsetLateral": -0.42, "lengthFrac": 0.42, "radiusFrac": 0.075, "centerYFrac": 0.68, "pitchRad": 0.34 },
+        { "kind": "cylinder", "offsetForward": 0.36, "offsetLateral": 0.42, "lengthFrac": 0.42, "radiusFrac": 0.075, "centerYFrac": 0.68, "pitchRad": 0.34 }
+      ]
+    },
     "base": {
       "cost": { "energy": 230, "metal": 210 },
       "mass": 180,
@@ -5747,6 +5809,7 @@
     "production": { "techLevel": 1, "domains": ["vehicle"] },
     "tinyName": "CTR",
     "name": "Construction Rover",
+    "identity": { "kind": "constructionCraft" },
     "shortName": "C-ROVER",
     "hp": 260,
     "mass": 200,
@@ -5780,6 +5843,16 @@
       "requiresAlignmentForWork": false,
       "alignmentToleranceRadians": 0.12
     },
+    "bodyShape": {
+      "$replace": true,
+      "kind": "composite",
+      "parts": [
+        { "kind": "box", "offsetForward": -0.08, "lengthFrac": 1.18, "widthFrac": 0.76, "heightFrac": 0.3, "centerYFrac": 0.25 },
+        { "kind": "box", "offsetForward": -0.26, "lengthFrac": 0.46, "widthFrac": 0.62, "heightFrac": 0.22, "centerYFrac": 0.5 },
+        { "kind": "cylinder", "offsetForward": 0.3, "lengthFrac": 0.64, "radiusFrac": 0.08, "centerYFrac": 0.57, "pitchRad": 0.42 },
+        { "kind": "box", "offsetForward": 0.62, "lengthFrac": 0.22, "widthFrac": 0.56, "heightFrac": 0.18, "centerYFrac": 0.71 }
+      ]
+    },
     "base": {
       "cost": { "energy": 240, "metal": 220 },
       "mass": 200,
@@ -5792,9 +5865,10 @@
     "$extends": "unitSeaTurtle",
     "unitBlueprintId": "unitStealthScout",
     "production": { "techLevel": 2, "domains": ["naval"] },
-    "tinyName": "SHD",
-    "name": "Shade Scout",
-    "shortName": "SHADE",
+    "tinyName": "CUT",
+    "name": "Cuttlefish",
+    "identity": { "kind": "animal", "animalClass": "mollusk" },
+    "shortName": "CUTTLE",
     "hp": 180,
     "mass": 130,
     "cost": { "energy": 720, "metal": 520 },
@@ -5808,6 +5882,17 @@
         "controlMode": "autonomous"
       }
     ],
+    "bodyShape": {
+      "$replace": true,
+      "kind": "composite",
+      "parts": [
+        { "kind": "oval", "offsetForward": 0.03, "xFrac": 0.72, "yFrac": 0.23, "zFrac": 0.35 },
+        { "kind": "oval", "offsetForward": -0.03, "offsetLateral": -0.31, "xFrac": 0.56, "yFrac": 0.055, "zFrac": 0.18, "centerYFrac": 0.2 },
+        { "kind": "oval", "offsetForward": -0.03, "offsetLateral": 0.31, "xFrac": 0.56, "yFrac": 0.055, "zFrac": 0.18, "centerYFrac": 0.2 },
+        { "kind": "cone", "offsetForward": -0.72, "offsetLateral": -0.18, "lengthFrac": 0.48, "radiusFrac": 0.07, "centerYFrac": 0.16 },
+        { "kind": "cone", "offsetForward": -0.72, "offsetLateral": 0.18, "lengthFrac": 0.48, "radiusFrac": 0.07, "centerYFrac": 0.16 }
+      ]
+    },
     "base": {
       "cost": { "energy": 720, "metal": 520 },
       "mass": 130,
@@ -5821,7 +5906,8 @@
     "unitBlueprintId": "unitDetector",
     "production": { "techLevel": 2, "domains": ["aircraft"] },
     "tinyName": "OWL",
-    "name": "Owl Detector",
+    "name": "Owl",
+    "identity": { "kind": "animal", "animalClass": "bird" },
     "shortName": "OWL",
     "hp": 260,
     "mass": 140,
@@ -5837,6 +5923,17 @@
         "controlMode": "autonomous"
       }
     ],
+    "bodyShape": {
+      "$replace": true,
+      "kind": "composite",
+      "parts": [
+        { "kind": "oval", "offsetForward": -0.04, "xFrac": 0.42, "yFrac": 0.17, "zFrac": 0.28, "centerYFrac": 0.3 },
+        { "kind": "circle", "offsetForward": 0.31, "offsetLateral": -0.18, "radiusFrac": 0.17, "yFrac": 0.09, "centerYFrac": 0.35 },
+        { "kind": "circle", "offsetForward": 0.31, "offsetLateral": 0.18, "radiusFrac": 0.17, "yFrac": 0.09, "centerYFrac": 0.35 },
+        { "kind": "oval", "offsetForward": -0.08, "offsetLateral": -0.37, "xFrac": 0.28, "yFrac": 0.05, "zFrac": 0.27, "centerYFrac": 0.29 },
+        { "kind": "oval", "offsetForward": -0.08, "offsetLateral": 0.37, "xFrac": 0.28, "yFrac": 0.05, "zFrac": 0.27, "centerYFrac": 0.29 }
+      ]
+    },
     "base": {
       "cost": { "energy": 780, "metal": 620 },
       "mass": 140,
@@ -5849,9 +5946,10 @@
     "$extends": "unitSeaTurtle",
     "unitBlueprintId": "unitRadarJammer",
     "production": { "techLevel": 2, "domains": ["naval"] },
-    "tinyName": "JMR",
-    "name": "Murk Jammer",
-    "shortName": "JAMMER",
+    "tinyName": "MNT",
+    "name": "Manta Ray",
+    "identity": { "kind": "animal", "animalClass": "fish" },
+    "shortName": "MANTA",
     "hp": 520,
     "mass": 460,
     "cost": { "energy": 1100, "metal": 850 },
@@ -5870,6 +5968,17 @@
         "controlMode": "hostPreferred"
       }
     ],
+    "bodyShape": {
+      "$replace": true,
+      "kind": "composite",
+      "parts": [
+        { "kind": "oval", "offsetForward": 0.02, "xFrac": 0.54, "yFrac": 0.2, "zFrac": 0.28 },
+        { "kind": "oval", "offsetForward": -0.04, "offsetLateral": -0.44, "xFrac": 0.55, "yFrac": 0.075, "zFrac": 0.4, "centerYFrac": 0.17 },
+        { "kind": "oval", "offsetForward": -0.04, "offsetLateral": 0.44, "xFrac": 0.55, "yFrac": 0.075, "zFrac": 0.4, "centerYFrac": 0.17 },
+        { "kind": "cone", "offsetForward": -0.62, "lengthFrac": 0.58, "radiusFrac": 0.055, "centerYFrac": 0.15 },
+        { "kind": "circle", "offsetForward": 0.45, "radiusFrac": 0.13, "yFrac": 0.08, "centerYFrac": 0.25 }
+      ]
+    },
     "base": {
       "cost": { "energy": 1100, "metal": 850 },
       "mass": 460,
@@ -5882,9 +5991,10 @@
     "$extends": "unitJackal",
     "unitBlueprintId": "unitMissileRover",
     "production": { "techLevel": 1, "domains": ["vehicle"] },
-    "tinyName": "SAM",
-    "name": "Swift SAM Rover",
-    "shortName": "SAM",
+    "tinyName": "SWF",
+    "name": "Swift",
+    "identity": { "kind": "animal", "animalClass": "bird" },
+    "shortName": "SWIFT",
     "hp": 340,
     "mass": 260,
     "cost": { "energy": 420, "metal": 360 },
@@ -5904,6 +6014,17 @@
         "controlMode": "hostPreferred"
       }
     ],
+    "bodyShape": {
+      "$replace": true,
+      "kind": "composite",
+      "parts": [
+        { "kind": "box", "offsetForward": -0.04, "lengthFrac": 1.28, "widthFrac": 0.58, "heightFrac": 0.26, "centerYFrac": 0.24 },
+        { "kind": "cone", "offsetForward": 0.64, "lengthFrac": 0.34, "radiusFrac": 0.2, "centerYFrac": 0.25 },
+        { "kind": "cylinder", "offsetForward": 0.08, "offsetLateral": -0.28, "lengthFrac": 0.72, "radiusFrac": 0.09, "centerYFrac": 0.49, "pitchRad": 0.12 },
+        { "kind": "cylinder", "offsetForward": 0.08, "offsetLateral": 0.28, "lengthFrac": 0.72, "radiusFrac": 0.09, "centerYFrac": 0.49, "pitchRad": 0.12 },
+        { "kind": "box", "offsetForward": -0.49, "lengthFrac": 0.24, "widthFrac": 0.92, "heightFrac": 0.08, "centerYFrac": 0.42 }
+      ]
+    },
     "base": {
       "cost": { "energy": 420, "metal": 360 },
       "mass": 260,
@@ -5916,9 +6037,10 @@
     "$extends": "unitMongoose",
     "unitBlueprintId": "unitClusterArtillery",
     "production": { "techLevel": 2, "domains": ["vehicle"] },
-    "tinyName": "CLU",
-    "name": "Bramble Cluster Artillery",
-    "shortName": "CLUSTER",
+    "tinyName": "BBT",
+    "name": "Bombardier Beetle",
+    "identity": { "kind": "animal", "animalClass": "insect" },
+    "shortName": "BOMBARD",
     "hp": 820,
     "mass": 920,
     "cost": { "energy": 1900, "metal": 1600 },
@@ -5938,6 +6060,17 @@
         "controlMode": "hostPreferred"
       }
     ],
+    "bodyShape": {
+      "$replace": true,
+      "kind": "composite",
+      "parts": [
+        { "kind": "oval", "offsetForward": 0.34, "xFrac": 0.44, "yFrac": 0.25, "zFrac": 0.39 },
+        { "kind": "oval", "offsetForward": -0.35, "xFrac": 0.56, "yFrac": 0.31, "zFrac": 0.48 },
+        { "kind": "circle", "offsetForward": 0.74, "radiusFrac": 0.22, "yFrac": 0.16 },
+        { "kind": "cylinder", "offsetForward": -0.21, "lengthFrac": 0.82, "radiusFrac": 0.13, "centerYFrac": 0.61, "pitchRad": 0.72 },
+        { "kind": "box", "offsetForward": -0.48, "lengthFrac": 0.3, "widthFrac": 1.04, "heightFrac": 0.09, "centerYFrac": 0.26 }
+      ]
+    },
     "base": {
       "cost": { "energy": 1900, "metal": 1600 },
       "mass": 920,
@@ -5952,6 +6085,7 @@
     "production": { "techLevel": 1, "domains": ["bot", "naval"] },
     "tinyName": "WST",
     "name": "Water Strider",
+    "identity": { "kind": "animal", "animalClass": "insect" },
     "shortName": "STRIDER",
     "hp": 620,
     "mass": 420,
@@ -5992,6 +6126,17 @@
       },
       "environmentalHazards": { "waterDamagePerSecond": 0 }
     },
+    "bodyShape": {
+      "$replace": true,
+      "kind": "composite",
+      "parts": [
+        { "kind": "oval", "offsetForward": -0.06, "xFrac": 0.82, "yFrac": 0.14, "zFrac": 0.19, "centerYFrac": 0.3 },
+        { "kind": "circle", "offsetForward": 0.72, "radiusFrac": 0.19, "yFrac": 0.12, "centerYFrac": 0.3 },
+        { "kind": "cylinder", "offsetForward": 0.08, "offsetLateral": -0.39, "lengthFrac": 0.66, "radiusFrac": 0.055, "centerYFrac": 0.23, "pitchRad": -0.08 },
+        { "kind": "cylinder", "offsetForward": 0.08, "offsetLateral": 0.39, "lengthFrac": 0.66, "radiusFrac": 0.055, "centerYFrac": 0.23, "pitchRad": -0.08 },
+        { "kind": "cone", "offsetForward": -0.82, "lengthFrac": 0.34, "radiusFrac": 0.08, "centerYFrac": 0.29 }
+      ]
+    },
     "base": {
       "cost": { "energy": 720, "metal": 620 },
       "mass": 420,
@@ -6004,9 +6149,10 @@
     "$extends": "unitSeaTurtle",
     "unitBlueprintId": "unitPatrolCorvette",
     "production": { "techLevel": 1, "domains": ["naval"] },
-    "tinyName": "PCV",
-    "name": "Patrol Corvette",
-    "shortName": "CORVETTE",
+    "tinyName": "BRD",
+    "name": "Barracuda",
+    "identity": { "kind": "animal", "animalClass": "fish" },
+    "shortName": "BARRA",
     "hp": 900,
     "mass": 760,
     "cost": { "energy": 880, "metal": 760 },
@@ -6047,6 +6193,17 @@
         "controlMode": "hostPreferred"
       }
     ],
+    "bodyShape": {
+      "$replace": true,
+      "kind": "composite",
+      "parts": [
+        { "kind": "oval", "offsetForward": -0.06, "xFrac": 0.94, "yFrac": 0.22, "zFrac": 0.28 },
+        { "kind": "cone", "offsetForward": 0.89, "lengthFrac": 0.42, "radiusFrac": 0.23, "centerYFrac": 0.22 },
+        { "kind": "box", "offsetForward": -0.23, "lengthFrac": 0.5, "widthFrac": 0.34, "heightFrac": 0.18, "centerYFrac": 0.42 },
+        { "kind": "box", "offsetForward": -0.73, "lengthFrac": 0.28, "widthFrac": 0.82, "heightFrac": 0.08, "centerYFrac": 0.24 },
+        { "kind": "cone", "offsetForward": -0.92, "lengthFrac": 0.36, "radiusFrac": 0.12, "centerYFrac": 0.2 }
+      ]
+    },
     "base": {
       "cost": { "energy": 880, "metal": 760 },
       "mass": 760,
@@ -6060,7 +6217,8 @@
     "unitBlueprintId": "unitPetrel",
     "production": { "techLevel": 2, "domains": ["aircraft", "naval"] },
     "tinyName": "PET",
-    "name": "Petrel Torpedo Gunship",
+    "name": "Petrel",
+    "identity": { "kind": "animal", "animalClass": "bird" },
     "shortName": "PETREL",
     "hp": 720,
     "mass": 560,
@@ -6080,6 +6238,18 @@
         "controlMode": "hostPreferred"
       }
     ],
+    "bodyShape": {
+      "$replace": true,
+      "kind": "composite",
+      "parts": [
+        { "kind": "oval", "offsetForward": 0.04, "xFrac": 0.74, "yFrac": 0.16, "zFrac": 0.18, "centerYFrac": 0.31 },
+        { "kind": "oval", "offsetForward": -0.08, "offsetLateral": -0.45, "xFrac": 0.47, "yFrac": 0.055, "zFrac": 0.45, "centerYFrac": 0.31 },
+        { "kind": "oval", "offsetForward": -0.08, "offsetLateral": 0.45, "xFrac": 0.47, "yFrac": 0.055, "zFrac": 0.45, "centerYFrac": 0.31 },
+        { "kind": "cone", "offsetForward": 0.72, "lengthFrac": 0.34, "radiusFrac": 0.13, "centerYFrac": 0.31 },
+        { "kind": "cylinder", "offsetForward": -0.03, "lengthFrac": 0.82, "radiusFrac": 0.105, "centerYFrac": 0.14, "pitchRad": -0.08 },
+        { "kind": "box", "offsetForward": -0.61, "lengthFrac": 0.24, "widthFrac": 0.7, "heightFrac": 0.07, "centerYFrac": 0.3 }
+      ]
+    },
     "base": {
       "cost": { "energy": 1700, "metal": 1450 },
       "mass": 560,

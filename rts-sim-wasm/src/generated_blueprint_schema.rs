@@ -1304,9 +1304,27 @@ pub struct UnitProduction {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct UnitAnimalIdentity {
+    pub kind: String,
+    pub animalClass: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnitConstructionCraftIdentity {
+    pub kind: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum UnitIdentity {
+    UnitAnimalIdentity(UnitAnimalIdentity),
+    UnitConstructionCraftIdentity(UnitConstructionCraftIdentity),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct UnitBlueprint {
     pub unitBlueprintId: String,
     pub name: String,
+    pub identity: UnitIdentity,
     pub shortName: String,
     pub tinyName: String,
     pub base: EntityBaseLedger,

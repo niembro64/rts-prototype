@@ -285,6 +285,21 @@
         "mirrored": true
       }
     ],
+    "directionalFabricator": [
+      {
+        "kind": "panel",
+        "center": {
+          "forward": 0.19,
+          "up": 0.024,
+          "lateral": 0
+        },
+        "axis": "up",
+        "width": 0.46,
+        "height": 0.42,
+        "stripeCount": 12,
+        "mirrored": false
+      }
+    ],
     "towerFabricator": [
       {
         "kind": "ringBoxes",

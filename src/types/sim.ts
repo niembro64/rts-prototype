@@ -438,11 +438,10 @@ type Building = {
    *  collision cuboid so a building can block one shape while exposing
    *  a different walkable top, pad, or no top support at all. */
   supportSurface: BuildingSupportSurface;
-  /** Hovering structures (the fabricator torus) are intangible at ground
-   *  level: no collision body, no support surface, and excluded from path-
-   *  finding — units move under them freely and falling units pass through to
-   *  the ground. They still reserve their footprint so nothing can be built on
-   *  top of them. */
+  /** Hovering structures are intangible at ground level and excluded from
+   *  pathfinding. Their visible radial ring or directional flight deck owns a
+   *  floating collision body; the ground footprint remains a build-only
+   *  reservation. */
   hoveringType: BuildingHoveringType;
   hovering: boolean;
   hp: number;

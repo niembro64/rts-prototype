@@ -5,6 +5,7 @@ import type {
   PlayerId,
 } from './types';
 import { magnitude } from '../math';
+import { getBuildingRotationQuarterTurns } from './buildingRotation';
 
 // Fine building footprint grid. This intentionally subdivides the
 // canonical LAND_CELL_SIZE terrain cells.
@@ -86,17 +87,12 @@ export function parseBuildingPlacementFootprint(
   };
 }
 
-function getGridQuarterTurns(rotation: number): number {
-  if (!Number.isFinite(rotation)) return 0;
-  return ((Math.round(rotation / (Math.PI / 2)) % 4) + 4) % 4;
-}
-
 /** Rotate an authored cell mask in exact build-grid quarter turns. */
 export function getRotatedBuildingPlacementFootprint(
   footprint: BuildingPlacementFootprint,
   rotation = 0,
 ): BuildingPlacementFootprint {
-  const quarterTurns = getGridQuarterTurns(rotation);
+  const quarterTurns = getBuildingRotationQuarterTurns(rotation);
   if (quarterTurns === 0) return footprint;
   const rotatedWidth = quarterTurns % 2 === 1
     ? footprint.gridHeight
@@ -129,7 +125,7 @@ export function getRotatedBuildingPlacementFootprint(
 }
 
 export function isOddQuarterTurnGridRotation(rotation: number): boolean {
-  return getGridQuarterTurns(rotation) % 2 === 1;
+  return getBuildingRotationQuarterTurns(rotation) % 2 === 1;
 }
 
 export function getRotatedGridFootprint(

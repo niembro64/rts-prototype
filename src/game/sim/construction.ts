@@ -35,6 +35,7 @@ import {
 import { createFactoryComponent } from './factoryComponent';
 import { getBuildingPlacementAnchor } from '../../types/buildingTypes';
 import { isFabricatorBuildingBlueprintId } from './blueprints/buildings';
+import { snapBuildingRotation } from './buildingRotation';
 
 type StartBuildingOptions = {
   skipBuilderAuthorization: boolean;
@@ -91,11 +92,16 @@ export class ConstructionSystem {
     const builderEntity = world.getEntity(builderId);
     if (!options.skipBuilderAuthorization && !entityCanBuild(builderEntity, buildingBlueprintId)) return null;
     const producesNanoframe = true;
+    const canonicalRotation = snapBuildingRotation(rotation);
     const config = getBuildingConfig(buildingBlueprintId);
-    const footprint = getRotatedGridFootprint(config.gridWidth, config.gridHeight, rotation);
+    const footprint = getRotatedGridFootprint(
+      config.gridWidth,
+      config.gridHeight,
+      canonicalRotation,
+    );
     const placementFootprint = getRotatedBuildingPlacementFootprint(
       config.placementFootprint,
-      rotation,
+      canonicalRotation,
     );
 
     const diagnostics = getBuildingPlacementDiagnosticsForGrid(
@@ -107,7 +113,7 @@ export class ConstructionSystem {
       world.metalDeposits,
       (gx, gy) => this.isCellOccupied(gx, gy),
       this.terrainBuildabilityGrid,
-      rotation,
+      canonicalRotation,
       {
         includeMetalDiagnostics: false,
         ignoreTerrain: options.ignoreTerrainForPlacement,
@@ -148,7 +154,7 @@ export class ConstructionSystem {
       physicalSize.height,
       physicalSize.depth,
       playerId,
-      rotation,
+      canonicalRotation,
     );
     entity.transform.z = baseZ + physicalSize.depth / 2;
     if (getBuildingPlacementAnchor(config.placementSets) === 'hover-surface') {

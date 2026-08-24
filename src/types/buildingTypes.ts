@@ -56,7 +56,7 @@ export function getBuildingPlacementAnchor(
   if (first === undefined) throw new Error('Building placementSets must not be empty');
   return getBuildingPlacementSetAnchor(first);
 }
-export type BuildingHoveringType = 'fabricator' | null;
+export type BuildingHoveringType = 'fabricator' | 'directionalFabricator' | null;
 export type BuildingSupportSurface =
   | { kind: 'none' }
   | {

@@ -206,6 +206,11 @@ export type EntityMesh = {
   buildingRenderFrameKey?: string;
   buildingRenderBlueprintId?: string | null;
   buildingRenderTurretCount?: number;
+  /** Authored local footprint dimensions. Runtime collision dimensions are
+   * world-axis-aligned and swap on odd quarter turns; meshes rotate these
+   * unswapped dimensions instead. */
+  buildingLocalWidth?: number;
+  buildingLocalDepth?: number;
   /** Native plan-view yaw supplied by BuildingShape3D. */
   buildingAuthoredYaw?: number;
   buildingRenderDetailBand?: number;
