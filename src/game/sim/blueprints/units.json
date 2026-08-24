@@ -1299,7 +1299,6 @@
             }
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitRex",
         "mount": {
           "x": 0.42,
           "y": -0.86,
@@ -1353,7 +1352,6 @@
             }
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitRex",
         "mount": {
           "x": 0.42,
           "y": 0.86,
@@ -1407,7 +1405,6 @@
             }
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitRex",
         "mount": {
           "x": 0.48,
           "y": -1.17,
@@ -1461,7 +1458,6 @@
             }
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitRex",
         "mount": {
           "x": 0.48,
           "y": 1.17,
@@ -1515,7 +1511,6 @@
             }
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitRex",
         "mount": {
           "x": -0.69,
           "y": -0.28,
@@ -1569,7 +1564,6 @@
             }
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitRex",
         "mount": {
           "x": -0.69,
           "y": 0.28,
@@ -2182,7 +2176,6 @@
             "barrelLength": 1.5
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitWidow",
         "mount": {
           "x": -1.913172798365,
           "y": 0.813172798365,
@@ -2206,7 +2199,6 @@
             "barrelLength": 1.5
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitWidow",
         "mount": {
           "x": -1.913172798365,
           "y": -0.813172798365,
@@ -2230,7 +2222,6 @@
             "barrelLength": 1.5
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitWidow",
         "mount": {
           "x": -0.286827201635,
           "y": -0.813172798365,
@@ -2254,7 +2245,6 @@
             "barrelLength": 1.1
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitWidow",
         "mount": {
           "x": -1.1,
           "y": 0,
@@ -3503,7 +3493,6 @@
             "barrelLength": 2
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitDragonfly",
         "mount": {
           "x": -4.5910824533024215,
           "y": 0,
@@ -4203,7 +4192,6 @@
             "barrelLength": 2.8
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitAlbatros",
         "mount": {
           "x": 0.05,
           "y": -0.67,
@@ -4413,7 +4401,6 @@
             "barrelLength": 1.5
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitQueenBee",
         "mount": {
           "x": 0.12,
           "y": 0.35,
@@ -4433,7 +4420,6 @@
             "barrelLength": 1.5
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitQueenBee",
         "mount": {
           "x": -0.48,
           "y": 0.35,
@@ -4453,7 +4439,6 @@
             "barrelLength": 1.5
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitQueenBee",
         "mount": {
           "x": 0.12,
           "y": -0.35,
@@ -4473,7 +4458,6 @@
             "barrelLength": 1.5
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitQueenBee",
         "mount": {
           "x": -0.48,
           "y": -0.35,
@@ -4670,7 +4654,6 @@
             "barrelLength": 1.5
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitQueenTick",
         "mount": {
           "x": 0.12,
           "y": 0.385,
@@ -4690,7 +4673,6 @@
             "barrelLength": 1.5
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitQueenTick",
         "mount": {
           "x": -0.5,
           "y": 0.385,
@@ -4710,7 +4692,6 @@
             "barrelLength": 1.5
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitQueenTick",
         "mount": {
           "x": 0.12,
           "y": -0.385,
@@ -4730,7 +4711,6 @@
             "barrelLength": 1.5
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitQueenTick",
         "mount": {
           "x": -0.5,
           "y": -0.385,
@@ -5174,7 +5154,6 @@
             "barrelLength": 1
           }
         },
-        "sensorTurretBlueprintId": "turretSensorUnitCommander",
         "mount": {
           "x": 0.32,
           "y": 0,

@@ -18,13 +18,17 @@ import { getStructureFactoryAllowedUnitBlueprintIds } from './factoryProductionR
 import {
   FABRICATOR_BLUEPRINT_IDS,
   getBuildingBlueprint,
+  getFabricatorBuildingBlueprintId,
   getUnitBlueprint,
 } from './blueprints';
 import { getLiquidSurfaceMode, setLiquidSurfaceMode } from './worldSurfaceState';
 import { spawnInitialBases, spawnMetalExtractorsOnDeposits } from './spawn';
 import { buildTeamRosterFromSeatCounts } from './teamRoster';
 import type { Entity, PlayerId } from './types';
-import { BUILDING_BLUEPRINT_IDS } from '../../types/blueprintIds';
+import {
+  BUILDING_BLUEPRINT_IDS,
+  type UnitBlueprintId,
+} from '../../types/blueprintIds';
 import { WorldState } from './WorldState';
 import {
   getTerrainRuntimeConfig,
@@ -72,7 +76,8 @@ function isFabricatorEntity(entity: Entity): boolean {
 
 function isSeededDemoFabricator(entity: Entity): boolean {
   return isFabricatorEntity(entity) &&
-    Object.keys(entity.factory?.productionQuotas ?? {}).length > 0;
+    entity.factory?.repeatProduction === true &&
+    entity.factory.selectedUnitBlueprintId !== null;
 }
 
 function allStructureFactoryUnitBlueprintIds(): string[] {
@@ -82,7 +87,7 @@ function allStructureFactoryUnitBlueprintIds(): string[] {
   )];
 }
 
-function assertSeededUniversalTierRoster(entity: Entity): void {
+function assertSeededUniversalRepeatLine(entity: Entity): string {
   const buildingBlueprintId = entity.buildingBlueprintId;
   assertContract(
     buildingBlueprintId !== null && entity.factory !== null,
@@ -93,14 +98,36 @@ function assertSeededUniversalTierRoster(entity: Entity): void {
     factory !== null && factory.domain === 'universal',
     `demo Fabricator ${buildingBlueprintId} must be radial Universal production`,
   );
-  const quotas = entity.factory.productionQuotas;
-  for (const [unitBlueprintId, quota] of Object.entries(quotas)) {
-    const production = getUnitBlueprint(unitBlueprintId).production;
-    assertContract(
-      quota === 1 && production?.techLevel === factory.techLevel,
-      `${buildingBlueprintId} quota ${unitBlueprintId} must be one same-tier unit`,
-    );
-  }
+  const unitBlueprintId = entity.factory.selectedUnitBlueprintId;
+  assertContract(
+    entity.factory.repeatProduction === true && unitBlueprintId !== null,
+    `demo Fabricator ${buildingBlueprintId} must repeat one selected unit`,
+  );
+  const production = getUnitBlueprint(unitBlueprintId).production;
+  assertContract(
+    production !== null &&
+      buildingBlueprintId === getFabricatorBuildingBlueprintId(
+        production.techLevel,
+        'universal',
+      ),
+    `${buildingBlueprintId} must be the same-tier Universal required by ${unitBlueprintId}`,
+  );
+  assertContract(
+    entity.factory.productionQueue.length === 0,
+    `${buildingBlueprintId} repeat line must begin with an empty production queue`,
+  );
+  assertContract(
+    Object.keys(entity.factory.productionQuotas).length === 0 &&
+      Object.keys(entity.factory.productionQuotaCounts).length === 0,
+    `${buildingBlueprintId} repeat line must not retain quota production state`,
+  );
+  assertContract(
+    getStructureFactoryAllowedUnitBlueprintIds(buildingBlueprintId).includes(
+      unitBlueprintId as UnitBlueprintId,
+    ),
+    `${buildingBlueprintId} must be allowed to produce ${unitBlueprintId}`,
+  );
+  return unitBlueprintId;
 }
 
 function assertDemoCommanderBuildingExclusions(
@@ -392,7 +419,7 @@ function assertUniversalFactoryCoverageByPlayer(
   const factoriesByPlayer = new Map<PlayerId, Entity[]>();
   for (const entity of entities) {
     if (!isFabricatorEntity(entity)) continue;
-    assertSeededUniversalTierRoster(entity);
+    assertSeededUniversalRepeatLine(entity);
     assertContract(
       entity.buildingBlueprintId === 'towerFabricator' ||
         entity.buildingBlueprintId === 'buildingAdvancedUniversalFabricator',
@@ -411,31 +438,19 @@ function assertUniversalFactoryCoverageByPlayer(
   for (const playerId of playerIds) {
     const factories = factoriesByPlayer.get(playerId) ?? [];
     assertContract(
-      factories.length === 2,
-      `${label} player ${playerId} must have exactly one T1 and one T2 Universal; got ${factories.length}`,
+      factories.length === expectedUnitBlueprintIds.length,
+      `${label} player ${playerId} must have one Universal per active unit; ` +
+        `expected ${expectedUnitBlueprintIds.length}, got ${factories.length}`,
     );
     const coverage = new Set<string>();
-    const tiers = new Set<number>();
     for (const factoryEntity of factories) {
-      const identity = getBuildingBlueprint(factoryEntity.buildingBlueprintId!).factory;
-      assertContract(identity !== null, `${label} Universal must have a factory identity`);
-      tiers.add(identity.techLevel);
+      const unitBlueprintId = assertSeededUniversalRepeatLine(factoryEntity);
       assertContract(
-        factoryEntity.factory?.repeatProduction === false,
-        `${label} Universal roster must be quota-driven rather than repeating one unit`,
+        !coverage.has(unitBlueprintId),
+        `${label} must not duplicate repeat line ${unitBlueprintId}`,
       );
-      for (const [unitBlueprintId, quota] of Object.entries(
-        factoryEntity.factory?.productionQuotas ?? {},
-      )) {
-        assertContract(quota === 1, `${label} quota ${unitBlueprintId} must be exactly one`);
-        assertContract(!coverage.has(unitBlueprintId), `${label} must not duplicate quota ${unitBlueprintId}`);
-        coverage.add(unitBlueprintId);
-      }
+      coverage.add(unitBlueprintId);
     }
-    assertContract(
-      tiers.has(1) && tiers.has(2),
-      `${label} player ${playerId} must have both Universal tech tiers`,
-    );
     const missing = expectedUnitBlueprintIds.filter((id) => !coverage.has(id));
     const unexpected = [...coverage].filter((id) => !expected.has(id));
     assertContract(
@@ -592,10 +607,12 @@ function assertConstrainedFactoryPlacementIsNonFatal(): void {
     factories.every(
       (entity) =>
         entity.buildingBlueprintId === 'buildingAdvancedUniversalFabricator' &&
-        entity.factory?.repeatProduction === false &&
-        entity.factory.productionQuotas.unitBadger === 1,
+        entity.factory?.repeatProduction === true &&
+        entity.factory.selectedUnitBlueprintId === 'unitBadger' &&
+        Object.keys(entity.factory.productionQuotas).length === 0 &&
+        Object.keys(entity.factory.productionQuotaCounts).length === 0,
     ),
-    'every constrained-map Universal that fits must quota-produce unitBadger',
+    'every constrained-map Universal that fits must repeat-build unitBadger',
   );
 }
 

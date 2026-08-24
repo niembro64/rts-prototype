@@ -6,7 +6,7 @@ import {
 import { TURRET_CONFIGS } from '../turretConfigs';
 import { CT_LOCK_ON_FAM_INCLUDE_SHOTS } from '../../sim-wasm/api/turretCombat';
 import { shotBlueprintIdToCode } from '../../../types/network';
-import type { TurretConfig } from '../types';
+import type { BuildingBlueprintId, TurretConfig } from '../types';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[full-utilization roster contract] ${message}`);
@@ -31,6 +31,18 @@ function unitSensorConfigs(unitBlueprintId: string): TurretConfig[] {
   return unitTurretConfigs(unitBlueprintId).filter((config) => config.kind === 'sensor');
 }
 
+function buildingSensorConfigs(buildingBlueprintId: BuildingBlueprintId): TurretConfig[] {
+  const configs: TurretConfig[] = [];
+  for (const mount of BUILDING_BLUEPRINTS[buildingBlueprintId].turrets) {
+    const primary = TURRET_CONFIGS[mount.turretBlueprintId];
+    if (primary.kind === 'sensor') configs.push(primary);
+    if (mount.sensorTurretBlueprintId !== undefined) {
+      configs.push(TURRET_CONFIGS[mount.sensorTurretBlueprintId]);
+    }
+  }
+  return configs;
+}
+
 function underwaterContactRange(config: TurretConfig): number {
   const contact = config.targeting.observation.sensors.contactSight;
   return Math.max(contact.aboveWater.underwater, contact.underwater.underwater);
@@ -45,6 +57,22 @@ function hasUnderwaterWeapon(unitBlueprintId: string): boolean {
 }
 
 export function runFullUtilizationRosterContractTest(): void {
+  for (const unitBlueprintId of Object.keys(UNIT_BLUEPRINTS)) {
+    const sensors = unitSensorConfigs(unitBlueprintId);
+    assertContract(
+      sensors.length === 1,
+      `${unitBlueprintId} must have exactly one mounted sensor source; got ${sensors.length}`,
+    );
+  }
+  for (const blueprint of Object.values(BUILDING_BLUEPRINTS)) {
+    const buildingBlueprintId = blueprint.buildingBlueprintId;
+    const sensors = buildingSensorConfigs(buildingBlueprintId);
+    assertContract(
+      sensors.length === 1,
+      `${buildingBlueprintId} must have exactly one mounted sensor source; got ${sensors.length}`,
+    );
+  }
+
   const radarScoutSensors = unitSensorConfigs('unitRadarScout');
   assertContract(
     unitAttackConfigs('unitRadarScout').length === 0 &&

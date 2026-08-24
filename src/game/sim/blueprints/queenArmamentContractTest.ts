@@ -47,8 +47,9 @@ function assertQueenArmament(
     `${unitBlueprintId} old body-geometry head must be removed instead of hidden under the beam turret`,
   );
   assertContract(
-    turrets.every((turret) => turret.sensorTurretBlueprintId === sensorTurretBlueprintId),
-    `${unitBlueprintId} weapons must retain the queen's long-range sensor package`,
+    large[0].sensorTurretBlueprintId === sensorTurretBlueprintId &&
+      minis.every((turret) => turret.sensorTurretBlueprintId === undefined),
+    `${unitBlueprintId} must carry its long-range sensor package on exactly one mounted origin`,
   );
   assertContract(
     minis.every((turret) =>

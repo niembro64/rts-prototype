@@ -33,7 +33,7 @@ import { angleDeltaAbs } from '../math';
 import { isWaterAt } from './Terrain';
 import {
   FABRICATOR_BLUEPRINT_IDS,
-  getBuildingBlueprint,
+  getFabricatorBuildingBlueprintId,
   getUnitBlueprint,
 } from './blueprints';
 import {
@@ -114,7 +114,7 @@ const INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(
 // especially on rectangular maps. Fabricators may fan across nearby free grid
 // cells while remaining inside their team's dedicated production sector.
 // The tightest preset (Spikey Lake) needs an 80-cell fan to retain all 36
-// repeat lines beside the two one-per-tier Universal showcases. The ring is
+// repeat lines. The ring is
 // deterministic and ordered nearest-first, so the wider budget only lets a
 // crowded seat reach another free ring; it never moves a placement that
 // already succeeded.
@@ -122,8 +122,6 @@ const INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(
 // steps cover dense packing while avoiding tens of thousands of near-identical
 // probes whose rectangles overlap the same occupied cells.
 const FACTORY_PLACEMENT_SEARCH_OFFSETS = buildStridedPlacementSearchOffsets(80, 7);
-const UNIVERSAL_FACTORY_SHOWCASE_SEARCH_OFFSETS =
-  buildStridedPlacementSearchOffsets(22, 7);
 // The offshore showcase now carries both tech tiers across ten naval-domain
 // lines. Give it the same deterministic fan-out budget as the land roster so
 // edge-of-sector footprints and neighboring seats can still pack completely.
@@ -716,29 +714,82 @@ function getAvailableDemoFactoryUnitBlueprintIds(
   return unitBlueprintIds;
 }
 
-/** Demo factories exercise their entire tier without multiplying static
- * production buildings. A one-per-unit quota makes the Universal advance
- * through every enabled roster entry, then replace casualties indefinitely. */
-function seedUniversalFactoryQuotaRoster(
+function getUniversalFabricatorForDemoUnit(
+  unitBlueprintId: UnitBlueprintId,
+): BuildingBlueprintId {
+  const production = getUnitBlueprint(unitBlueprintId).production;
+  if (production === null) {
+    throw new Error(`Demo production unit ${unitBlueprintId} has no production identity`);
+  }
+  return getFabricatorBuildingBlueprintId(production.techLevel, 'universal');
+}
+
+/** Every authored full-base production line owns exactly one unit. Keeping
+ * this as ordinary repeat production makes the prebuilt base behave exactly
+ * like a player who selected that unit and enabled Repeat. */
+function seedFactoryRepeatBuild(
   factory: Entity,
-  unitBlueprintIds: readonly UnitBlueprintId[],
+  unitBlueprintId: UnitBlueprintId,
 ): void {
   const factoryState = factory.factory;
-  const buildingBlueprintId = factory.buildingBlueprintId;
-  if (factoryState === null || buildingBlueprintId === null) return;
-  const allowed = new Set(
-    getBuildingBlueprint(buildingBlueprintId).allowedUnitBlueprintIds ?? [],
-  );
-  const roster = unitBlueprintIds.filter((unitBlueprintId) => allowed.has(unitBlueprintId));
+  if (factoryState === null) return;
+  factoryState.selectedUnitBlueprintId = unitBlueprintId;
   factoryState.productionQueue.length = 0;
   factoryState.productionQuotas = {};
   factoryState.productionQuotaCounts = {};
-  factoryState.repeatProduction = false;
-  factoryState.selectedUnitBlueprintId = roster[0] ?? null;
-  for (let i = 0; i < roster.length; i++) {
-    factoryState.productionQuotas[roster[i]] = 1;
-    factoryState.productionQuotaCounts[roster[i]] = 0;
+  factoryState.repeatProduction = true;
+}
+
+/** Place one radial Universal per active unit, choosing T1 or T2 from the
+ * unit's canonical production identity. A disabled host tier suppresses only
+ * the lines that require that tier. */
+function placeUniversalFactoryLines(
+  world: WorldState,
+  construction: ConstructionSystem,
+  unitBlueprintIds: readonly UnitBlueprintId[],
+  oval: MapOvalMetrics,
+  radius: number,
+  baseAngle: number,
+  sectorAngle: number,
+  playerId: PlayerId,
+  basePolicy: InitialBasePolicy,
+  availableBuildingBlueprintIds: ReadonlySet<string> | undefined,
+): Entity[] {
+  const count = unitBlueprintIds.length;
+  if (count === 0) return [];
+  const entities: Entity[] = [];
+  const startAngle = baseAngle - sectorAngle / 2;
+  const angularStep = count > 1 ? sectorAngle / (count - 1) : 0;
+  for (let i = 0; i < count; i++) {
+    const unitBlueprintId = unitBlueprintIds[i];
+    const buildingBlueprintId = getUniversalFabricatorForDemoUnit(unitBlueprintId);
+    if (
+      availableBuildingBlueprintIds !== undefined &&
+      !availableBuildingBlueprintIds.has(buildingBlueprintId)
+    ) continue;
+    const angle = count > 1 ? startAngle + i * angularStep : baseAngle;
+    const point = mapOvalPointAt(oval, angle, radius);
+    const config = getBuildingConfig(buildingBlueprintId);
+    const width = config.placementGridWidth * BUILD_GRID_CELL_SIZE;
+    const height = config.placementGridHeight * BUILD_GRID_CELL_SIZE;
+    const factory = placeCompleteBuilding(
+      world,
+      construction,
+      buildingBlueprintId,
+      point.x,
+      point.y,
+      playerId,
+      basePolicy,
+      FACTORY_PLACEMENT_SEARCH_OFFSETS,
+      null,
+      (x, y) => isRectFootprintOverLand(world, x, y, width, height),
+      true,
+    );
+    if (factory === null) continue;
+    seedFactoryRepeatBuild(factory, unitBlueprintId);
+    entities.push(factory);
   }
+  return entities;
 }
 
 function isRectFootprintOverWater(
@@ -787,9 +838,8 @@ function isRectFootprintOverLand(
  *
  * Each arc spans the same angular sector for the player, and every
  * building faces the map center. Structure counts and oval radius
- * fractions are controlled by DEMO_CONFIG. Production is deliberately
- * concentrated into the rotationally symmetric T1/T2 Universal pair; their
- * per-unit quotas cycle the complete enabled roster.
+ * fractions are controlled by DEMO_CONFIG. Every active unit receives one
+ * same-tier Universal Fabricator, preselected to repeat-build that unit.
  */
 export function spawnInitialBases(
   world: WorldState,
@@ -836,10 +886,6 @@ export function spawnInitialBases(
   const factoryUnitBlueprintIds = getAvailableDemoFactoryUnitBlueprintIds(
     availableUnitBlueprintIds,
   );
-  const universalFabricatorBlueprintIds = FABRICATOR_BLUEPRINT_IDS.filter((id) => {
-    if (!isBuildingEnabled(id)) return false;
-    return getBuildingBlueprint(id).factory?.domain === 'universal';
-  });
 
   // Concentric radii — each ring is explicit so the demo layout can be
   // tuned the same way metal deposit rings are tuned.
@@ -955,28 +1001,21 @@ export function spawnInitialBases(
       ));
     }
 
-    // Exactly one radial Universal per tier owns all initialized production.
-    // Quotas make the pair cycle every enabled unit in their respective tiers
-    // while specialist factories remain player-built, directional choices.
-    const universalFactories = placeMixedBlueprintArcRow(
+    // One radial Universal per active unit, with its tech level derived from
+    // that unit's canonical production identity. Each line repeats only its
+    // assigned unit, just as if the player configured it by hand.
+    const universalFactories = placeUniversalFactoryLines(
       world,
       construction,
-      universalFabricatorBlueprintIds,
+      factoryUnitBlueprintIds,
       oval,
       universalFactoryRadius,
       baseAngle,
-      factorySectorAngle * 0.6,
+      factorySectorAngle,
       playerId,
       basePolicy,
-      UNIVERSAL_FACTORY_SHOWCASE_SEARCH_OFFSETS,
-      'ground',
+      availableBuildingBlueprintIds,
     );
-    for (let factoryIndex = 0; factoryIndex < universalFactories.length; factoryIndex++) {
-      seedUniversalFactoryQuotaRoster(
-        universalFactories[factoryIndex],
-        factoryUnitBlueprintIds,
-      );
-    }
     entities.push(...universalFactories);
 
     entities.push(...placeMixedBlueprintArcRow(

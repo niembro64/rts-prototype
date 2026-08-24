@@ -931,9 +931,10 @@ function validateActiveSensorSources(
   for (const mount of mounts) {
     activeSourceCount += mountedSensorBlueprints(mount).length;
   }
-  if (activeSourceCount < 1) {
+  if (activeSourceCount !== 1) {
     throw new Error(
-      `Invalid ${hostLabel} ${hostId}: every host requires at least one mounted sensor source`,
+      `Invalid ${hostLabel} ${hostId}: every host requires exactly one mounted sensor source ` +
+        `(got ${activeSourceCount})`,
     );
   }
 }

@@ -1358,7 +1358,6 @@
             "barrelLength": 1.8
           }
         },
-        "sensorTurretBlueprintId": "turretSensorBuildingSonar",
         "mount": {
           "x": 0,
           "y": 0,
