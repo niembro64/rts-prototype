@@ -22,6 +22,7 @@ import type {
   BotArms,
   BotLegs,
   UnitBodyShape,
+  UnitProductionDomain,
 } from '@/types/blueprintSchema.generated';
 import {
   assertNoInlineLockOnInclusionFields,
@@ -41,11 +42,15 @@ import {
   validateWorkEmitter,
 } from './stationArticulation';
 import { getUnitBodyShapeKey } from '../../math/BodyDimensions';
+import { validateEntityDescription } from './entityDescriptionValidation';
 
 type JsonUnitBlueprint = Omit<UnitBlueprint, keyof LockOnInclusionObject>;
 type InheritableJsonUnitBlueprint = Partial<JsonUnitBlueprint> & { $extends?: string };
 
 const UNIT_EXPLICIT_FIELDS = [
+  'name',
+  'shortDescription',
+  'longDescription',
   'base',
   'supportSurface',
   'production',
@@ -258,6 +263,28 @@ function validateUnitWorkCapability(bp: UnitBlueprint): void {
 const PRODUCTION_DOMAIN_ORDER = ['bot', 'vehicle', 'aircraft', 'naval'] as const;
 const NON_FABRICATOR_UNIT_IDS = new Set(['unitCommander', 'unitBee', 'unitTick']);
 
+/** The specialist fabricator that matches a unit's primary chassis. Extra
+ *  authored domains remain legal for real crossovers (amphibious and
+ *  aero-naval craft), but a treaded tank can never silently become a bot. */
+const PRIMARY_PRODUCTION_DOMAIN_BY_LOCOMOTION = {
+  rover: 'vehicle',
+  tank: 'vehicle',
+  'amphibious-tank': 'vehicle',
+  crawler: 'bot',
+  bot: 'bot',
+  amphibian: 'naval',
+  drone: 'aircraft',
+  plane: 'aircraft',
+  submarine: 'naval',
+  aerosub: 'aircraft',
+} as const satisfies Readonly<Record<UnitLocomotionBlueprint['type'], UnitProductionDomain>>;
+
+export function getPrimaryProductionDomainForLocomotion(
+  type: UnitLocomotionBlueprint['type'],
+): UnitProductionDomain {
+  return PRIMARY_PRODUCTION_DOMAIN_BY_LOCOMOTION[type];
+}
+
 function validateUnitProductionIdentity(bp: UnitBlueprint): void {
   const production = bp.production;
   if (production === null) {
@@ -286,6 +313,13 @@ function validateUnitProductionIdentity(bp: UnitBlueprint): void {
       );
     }
     previousIndex = index;
+  }
+  const primaryDomain = getPrimaryProductionDomainForLocomotion(bp.unitLocomotion.type);
+  if (!production.domains.includes(primaryDomain)) {
+    throw new Error(
+      `Invalid production identity for ${bp.unitBlueprintId}: ${bp.unitLocomotion.type} ` +
+      `locomotion requires the ${primaryDomain} fabricator domain`,
+    );
   }
 }
 
@@ -608,6 +642,7 @@ function validateBodyShapeSegments(
 }
 
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
+  validateEntityDescription(`unit blueprint ${bp.unitBlueprintId}`, bp);
   validateBodyShapeSegments(bp.unitBlueprintId, bp.bodyShape);
   validateUnitSupportSurface(bp.unitBlueprintId, bp.supportSurface);
   assertValidEntityRadius(`unit blueprint ${bp.unitBlueprintId}`, bp.radius);

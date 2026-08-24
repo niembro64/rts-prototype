@@ -42,6 +42,7 @@ import {
   STRUCTURE_BLUEPRINT_IDS,
   UNIT_BLUEPRINT_IDS,
 } from '../../../types/blueprintIds';
+import { validateEntityDescription } from './entityDescriptionValidation';
 import { TURRET_BLUEPRINTS } from './turrets';
 import { UNIT_BLUEPRINTS } from './units';
 import { isBuildableUnitBlueprintId } from './unitRoster';
@@ -68,6 +69,8 @@ import {
 export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   buildingBlueprintId: BuildingBlueprintId;
   name: string;
+  shortDescription: string;
+  longDescription: string;
   /** Authored abbreviation for surfaces with no room for the full name: the
    *  selection info panel, build-menu thumb fallbacks, factory preset chips.
    *  Derived abbreviations used to be built by stripping words off the label,
@@ -240,6 +243,9 @@ function buildBuildingBlueprints(): Record<BuildingBlueprintId, BuildingBlueprin
 export const BUILDING_BLUEPRINTS = buildBuildingBlueprints();
 
 const BUILDING_EXPLICIT_FIELDS = [
+  'name',
+  'shortDescription',
+  'longDescription',
   'base',
   'energyProduction',
   'metalProduction',
@@ -605,6 +611,7 @@ function validateFactoryUnitRoster(
 
 for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   assertExplicitFields(`building blueprint ${id}`, blueprint, BUILDING_EXPLICIT_FIELDS);
+  validateEntityDescription(`building blueprint ${id}`, blueprint);
   assertExplicitFields(`building blueprint ${id}`, blueprint, LOCK_ON_INCLUSION_FIELDS);
   validateLockOnInclusionObject(
     `building blueprint ${id}`,
@@ -929,13 +936,6 @@ function validateFabricatorMatrix(): void {
       }
     }
     const specialist = domains.slice(1).map((domain) => byDomain.get(domain)!);
-    for (const blueprint of specialist) {
-      if (blueprint.allowedUnitBlueprintIds?.length !== 5) {
-        throw new Error(
-          `${blueprint.buildingBlueprintId} must derive exactly five same-tier specialist entries`,
-        );
-      }
-    }
     const union = new Set(specialist.flatMap((blueprint) => blueprint.allowedUnitBlueprintIds ?? []));
     const universal = byDomain.get('universal')!;
     if (

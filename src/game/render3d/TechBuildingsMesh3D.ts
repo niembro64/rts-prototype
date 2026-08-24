@@ -2,9 +2,8 @@
 //
 //   buildingShieldTargetingTech — "the oracle calibration lab": an
 //     octagonal test-court foundation carrying four domed experiment pods
-//     and a twisted hyperboloid spire wrapped by counter-rotating helical
-//     ribbons, crowned with a floating targeting oculus inside tilted halo
-//     rings and three down-swept antenna petals.
+//     and a twisted hyperboloid spire, crowned with a floating targeting
+//     oculus inside tilted halo rings and three down-swept antenna petals.
 //   buildingShieldTech — "the aegis containment lab": a pointed shield
 //     foundation under a bulky S-curved lathe dome, hugged by staggered
 //     nautilus shell plates, flanked by three research wings and two
@@ -71,29 +70,6 @@ const techBubbleMat = new THREE.MeshBasicMaterial({
   side: THREE.DoubleSide,
 });
 
-/** The calibration coil's own material. It is shared across every targeting
- *  lab on the map, so the pulse below runs on ONE clock rather than a
- *  per-entity phase: buildings keep the codebase's shared-material model
- *  (nothing disposes a per-instance clone when a building dies), and the labs
- *  read as one powered network rather than a field of unsynchronised blinkers. */
-const techCoilMat = new THREE.MeshStandardMaterial({
-  ...SHINY_GRAY_METAL_MATERIAL,
-  side: THREE.DoubleSide,
-});
-const TECH_COIL_PULSE_HZ = 0.42;
-const techCoilRestColor = new THREE.Color(SHINY_GRAY_METAL_MATERIAL.color);
-const techCoilPulseColor = new THREE.Color(0xffffff);
-
-/** Sinusoidal white pulse for the targeting lab's coil, driven once per frame
- *  from the building animation tick's wall clock. */
-export function updateTechBuildingCoilPulse(timeMs: number): void {
-  const time = Number.isFinite(timeMs) ? timeMs : 0;
-  const amount = 0.5 - 0.5 * Math.cos(time * 0.001 * TECH_COIL_PULSE_HZ * Math.PI * 2);
-  techCoilMat.color.copy(techCoilRestColor).lerp(techCoilPulseColor, amount);
-  techCoilMat.emissive.copy(techCoilPulseColor);
-  techCoilMat.emissiveIntensity = amount * 0.55;
-}
-
 /** Extrusion depth of an authored foundation polygon, as a fraction of the
  *  host's visual height. Everything that stands on the deck derives its base
  *  from this, so a taller lab keeps its superstructure above the slab. */
@@ -102,7 +78,6 @@ const LAB_FOUNDATION_DEPTH = 0.12;
 // ── Tiered curved geometry caches ──────────────────────────────────────
 const spirePrimaryGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
 const spireShaftGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
-const spireRibbonGeomByKey = new Map<string, THREE.BufferGeometry>();
 const spirePetalGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
 const spireHaloGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
 const podDomeGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
@@ -161,9 +136,7 @@ function createLabFoundationGeometry(
 
 /** The spire's hyperboloid flank profile in unit-box space: two quadratic
  *  arcs meeting at the waist keep the flank visibly concave the whole way
- *  up. Shared by the shaft geometry AND the helical ribbons, so the coil
- *  winds against the actual flank instead of floating in the air beside the
- *  pinched waist. */
+ *  up. */
 const SPIRE_BOTTOM_RADIUS = 0.46;
 const SPIRE_WAIST_RADIUS = 0.25;
 const SPIRE_TOP_RADIUS = 0.32;
@@ -235,74 +208,6 @@ function getSpireShaftGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometr
     : tier === 'mid'
       ? createTwistedSpireGeometry(8, 4, 2.4)
       : createTwistedSpireGeometry(5, 2, 2.4));
-}
-
-/** Helical ribbon in world units, winding around the spire between yBottom
- *  and yTop. The orbit radius tracks the spire's own hyperboloid flank plus
- *  a small clearance — a straight-line taper left the coil's upper windings
- *  floating in open air around the pinched waist, which from the top-down
- *  battle camera read as a massive detached spiral hovering over the lab. */
-function createHelixRibbonGeometry(
-  yBottom: number,
-  yTop: number,
-  spireBaseY: number,
-  spireHeight: number,
-  spireSpan: number,
-  clearance: number,
-  turns: number,
-  phase: number,
-  tubularSegments: number,
-  radialSegments: number,
-  tubeRadius: number,
-): THREE.BufferGeometry {
-  const points: THREE.Vector3[] = [];
-  for (let i = 0; i <= tubularSegments; i++) {
-    const t = i / tubularSegments;
-    const y = yBottom + (yTop - yBottom) * t;
-    const spireT = spireHeight > 0 ? (y - spireBaseY) / spireHeight : 0;
-    const radius = spireRadiusProfileAt(spireT) * spireSpan + clearance;
-    const angle = phase + t * turns * Math.PI * 2;
-    points.push(new THREE.Vector3(
-      Math.cos(angle) * radius,
-      y,
-      Math.sin(angle) * radius,
-    ));
-  }
-  const curve = new THREE.CatmullRomCurve3(points);
-  return new THREE.TubeGeometry(curve, tubularSegments, tubeRadius, radialSegments, false);
-}
-
-type RibbonSpec = Readonly<{
-  yBottom: number;
-  yTop: number;
-  spireBaseY: number;
-  spireHeight: number;
-  spireSpan: number;
-  clearance: number;
-  tubeRadius: number;
-  phase: number;
-}>;
-
-function getSpireRibbonGeometry(
-  tier: PrimitiveGeometryTier,
-  spec: RibbonSpec,
-): THREE.BufferGeometry {
-  const key = `${tier}:${spec.phase}:${spec.yBottom}:${spec.yTop}:`
-    + `${spec.spireBaseY}:${spec.spireHeight}:${spec.spireSpan}:`
-    + `${spec.clearance}:${spec.tubeRadius}`;
-  return getOrCreate(spireRibbonGeomByKey, key, () => createHelixRibbonGeometry(
-    spec.yBottom,
-    spec.yTop,
-    spec.spireBaseY,
-    spec.spireHeight,
-    spec.spireSpan,
-    spec.clearance,
-    2.4,
-    spec.phase,
-    tier === 'close' ? 20 : tier === 'mid' ? 10 : 5,
-    3,
-    spec.tubeRadius,
-  ));
 }
 
 /** One antenna petal arcing outward and down from the crown. Built along
@@ -401,31 +306,6 @@ export function buildShieldTargetingTechMesh(
   spire.position.y = spireBaseY + spireHeight / 2;
   spire.scale.set(spireSpan, spireHeight, spireSpan);
   details.push(detail(spire, 'min'));
-
-  // Counter-rotating helical ribbons. The detail list is identical at every
-  // tier (the LOD anchor contract); only the tube tessellation simplifies.
-  // The second ribbon is tagged tinyTrim so the runtime detail-level gate
-  // can drop it first.
-  const ribbonTubeRadius = minDim * 0.018;
-  const ribbonBase: Omit<RibbonSpec, 'phase'> = {
-    yBottom: spireBaseY + minDim * 0.02,
-    yTop: height * 0.71,
-    spireBaseY,
-    spireHeight,
-    spireSpan,
-    clearance: ribbonTubeRadius * 1.5,
-    tubeRadius: ribbonTubeRadius,
-  };
-  details.push(detail(
-    new THREE.Mesh(getSpireRibbonGeometry(tier, { ...ribbonBase, phase: 0 }), techCoilMat),
-    'low',
-  ));
-  details.push(detail(
-    new THREE.Mesh(getSpireRibbonGeometry(tier, { ...ribbonBase, phase: Math.PI }), techCoilMat),
-    'low',
-    undefined,
-    'tinyTrim',
-  ));
 
   // Crown: the floating oculus above a narrow neck, ringed by tilted halos.
   const neckHeight = height * 0.14;
@@ -1008,7 +888,7 @@ export function disposeTechBuildingsMeshGeoms(): void {
     for (const geometry of map.values()) geometry.dispose();
     map.clear();
   }
-  for (const map of [spireRibbonGeomByKey, forgeHornGeomByKey, precisionStrutGeomByKey]) {
+  for (const map of [forgeHornGeomByKey, precisionStrutGeomByKey]) {
     for (const geometry of map.values()) geometry.dispose();
     map.clear();
   }
@@ -1016,7 +896,6 @@ export function disposeTechBuildingsMeshGeoms(): void {
   techFrameMat.dispose();
   techDarkMat.dispose();
   techShellMat.dispose();
-  techCoilMat.dispose();
   techGlowMat.dispose();
   techBubbleMat.dispose();
 }

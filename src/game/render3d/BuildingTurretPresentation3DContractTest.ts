@@ -126,7 +126,6 @@ export function runBuildingTurretPresentation3DContractTest(): void {
       frameState,
       0,
       10_000,
-      0,
       false,
       () => DETAIL_RUNG_CLOSE,
     );
@@ -262,7 +261,6 @@ export function runBuildingTurretPresentation3DContractTest(): void {
       rows,
       frameState,
       0,
-      16,
       16,
       false,
       () => DETAIL_RUNG_CLOSE,

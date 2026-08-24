@@ -3923,6 +3923,8 @@
       "required": [
         "unitBlueprintId",
         "name",
+        "shortDescription",
+        "longDescription",
         "identity",
         "shortName",
         "tinyName",
@@ -3957,6 +3959,15 @@
         },
         "name": {
           "type": "string"
+        },
+        "shortDescription": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?:\\S+\\s+){0,4}\\S+$"
+        },
+        "longDescription": {
+          "type": "string",
+          "minLength": 1
         },
         "identity": {
           "$ref": "#/$defs/UnitIdentity"
