@@ -25,6 +25,9 @@ type PylonState = Readonly<{
 /** Presentation-only state transferred when an entity changes geometry tier. */
 export type EntityLodVisualState3D = Readonly<{
   visualBankRoll?: number;
+  /** Transport ring expansion is event-driven presentation state: changing
+   *  geometry tier must not replay the grab/release size transition. */
+  carryScale?: number;
   solarOpenAmount?: number;
   buildingOperationalAmount?: number;
   buildingOperationalMotionTime?: number;
@@ -117,6 +120,7 @@ function applyPylonState(pylon: ResourcePylonRig, state: PylonState | undefined)
 export function captureEntityLodVisualState3D(mesh: EntityMesh): EntityLodVisualState3D {
   return {
     visualBankRoll: mesh.visualBankRoll,
+    carryScale: mesh.carryScale,
     solarOpenAmount: mesh.solarOpenAmount,
     buildingOperationalAmount: mesh.buildingOperationalAmount,
     buildingOperationalMotionTime: mesh.buildingOperationalMotionTime,
@@ -132,6 +136,8 @@ export function applyEntityLodVisualState3D(
 ): void {
   if (state === undefined) return;
   mesh.visualBankRoll = state.visualBankRoll;
+  mesh.carryScale = state.carryScale;
+  if (state.carryScale !== undefined) mesh.group.scale.setScalar(state.carryScale);
   mesh.solarOpenAmount = state.solarOpenAmount;
   mesh.solarPetalPoseAmount = undefined;
   mesh.buildingOperationalAmount = state.buildingOperationalAmount;

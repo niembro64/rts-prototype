@@ -1597,6 +1597,26 @@ function seedPylonVisualState(
 
 /** A geometry-tier rebuild must be a presentation swap, never an animation reset. */
 function runVisualStateTransferContracts(material: THREE.Material): void {
+  const transportSourceGroup = new THREE.Group();
+  const transportTargetGroup = new THREE.Group();
+  transportSourceGroup.scale.setScalar(2.25);
+  const transportSource = visualStateMesh({
+    group: transportSourceGroup,
+    carryScale: 2.25,
+  });
+  const transportTarget = visualStateMesh({ group: transportTargetGroup });
+  applyEntityLodVisualState3D(
+    transportTarget,
+    captureEntityLodVisualState3D(transportSource),
+  );
+  assertContract(
+    transportTarget.carryScale === 2.25 &&
+      transportTarget.group.scale.x === 2.25 &&
+      transportTarget.group.scale.y === 2.25 &&
+      transportTarget.group.scale.z === 2.25,
+    'transport carry size survives High-to-Low rebuild without replaying its grab animation',
+  );
+
   for (const structureId of [
     'buildingWind',
     'buildingRadar',
