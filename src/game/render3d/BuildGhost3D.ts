@@ -60,6 +60,10 @@ import { hexToRgb01 } from './colorUtils';
 import { buildBuildingShape } from './BuildingShape3D';
 import { buildTurretMesh3D } from './TurretMesh3D';
 import { getGraphicsConfig } from '@/clientBarConfig';
+import {
+  getSharedPrimitiveCylinderGeometry,
+  getSharedPrimitiveSphereGeometry,
+} from './PrimitiveGeometryQuality3D';
 
 const GHOST_Y = 1; // hover a hair above the ground so it doesn't z-fight tiles
 const CELL_FILL_LIFT = 1.25;
@@ -166,9 +170,14 @@ export class BuildGhost3D {
   private cellBorderMatWarn: THREE.LineBasicMaterial;
   private readonly outOfRangeColor: { r: number; g: number; b: number };
   private readonly outOfRangeAlpha: number;
-  private readonly turretHeadGeom = new THREE.SphereGeometry(1, 16, 10);
-  private readonly turretBarrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10, 1, false);
-  private readonly turretConeBarrelGeom = new THREE.CylinderGeometry(0, 1, 1, 10, 1, false);
+  private readonly turretHeadGeom = getSharedPrimitiveSphereGeometry('turret', 'close');
+  private readonly turretBarrelGeom = getSharedPrimitiveCylinderGeometry('turret', 'close');
+  private readonly turretConeBarrelGeom = getSharedPrimitiveCylinderGeometry(
+    'turret',
+    'close',
+    0,
+    1,
+  );
 
   constructor(
     world: THREE.Group,
@@ -628,9 +637,6 @@ export class BuildGhost3D {
     this.rangeLineBatch.dispose();
     this.cellGeom.dispose();
     this.cellBorderGeom.dispose();
-    this.turretHeadGeom.dispose();
-    this.turretBarrelGeom.dispose();
-    this.turretConeBarrelGeom.dispose();
     this.footMatOk.dispose();
     this.footMatBad.dispose();
     this.buildingMatOk.dispose();
