@@ -71,17 +71,30 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
   );
 
   const waterStrider = getUnitLocomotion('unitWaterStrider');
+  const waterStriderForwardForces = [
+    waterStrider.physics.ground.maxPropulsiveForce,
+    waterStrider.physics.air.maxPropulsiveForce,
+    waterStrider.physics.water.maxPropulsiveForce,
+  ];
+  const weakestForwardForce = Math.min(...waterStriderForwardForces);
+  const strongestForwardForce = Math.max(...waterStriderForwardForces);
+  const weakestWaterLift = Math.min(
+    waterStrider.physics.water.lift.surfaceFollowingInverseForceFromGround,
+    waterStrider.physics.water.lift.surfaceFollowingProportionalForceFromWater,
+  );
   assertContract(
     waterStrider.type === 'crawler' &&
-      waterStrider.physics.air.lift.surfaceFollowingInverseForceFromWater > 0 &&
-      waterStrider.physics.water.lift.surfaceFollowingProportionalForceFromWater > 0 &&
-      waterStrider.physics.water.maxPropulsiveForce > 0 &&
+      waterStrider.physics.air.lift.surfaceFollowingInverseForceFromGround === 0 &&
+      waterStrider.physics.air.lift.surfaceFollowingInverseForceFromWater === 0 &&
+      weakestForwardForce > 0 &&
+      strongestForwardForce / weakestForwardForce <= 1.5 &&
+      weakestWaterLift >= strongestForwardForce * 3 &&
       waterStrider.navigation.waypoint.allowOnGround &&
       waterStrider.navigation.waypoint.allowInWater &&
       !waterStrider.navigation.waypoint.allowInAir &&
       !waterStrider.motionControl.cruiseWhenUncommanded &&
       !waterStrider.motionControl.maintainFullThrustAtWaypoints,
-    'Water Strider uses both water-support channels, routes on land and water, and stops at its destination',
+    'Water Strider has no air lift, high water lift, balanced per-medium propulsion, and no airborne routing',
   );
 
   const patrolCorvette = getUnitLocomotion('unitPatrolCorvette');
