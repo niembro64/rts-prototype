@@ -2841,8 +2841,8 @@ watchEffect(() => {
           />
         </div>
 
-        <!-- BAR-style battle corner console (ALL public / TEAM-or-SPEC).
-             The HOME global room lives inside the menu sidebar below. -->
+        <!-- BAR-style battle console. HOME's games.niemo.io room lives in the
+             menu sidebar below so it reads as part of that surface. -->
         <ChatConsole
           v-if="gameStarted"
           ref="battleChatRef"
@@ -2855,8 +2855,8 @@ watchEffect(() => {
           @send="sendBattleChat"
           @update:active-channel-id="(id: string) => (chatChannelId = id === 'all' ? 'all' : 'team')"
         />
-        <!-- Mobile has no menu sidebar, so retain the corner-console access
-             path for HOME instead of dropping global chat on small screens. -->
+        <!-- Mobile has no menu sidebar, so it keeps the prior corner-console
+             fallback instead of losing access to HOME chat altogether. -->
         <ChatConsole
           v-else-if="isMobile"
           ref="homeChatRef"

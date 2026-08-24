@@ -843,8 +843,8 @@ const terrainSectionVars = computed(() =>
         </section>
       </div>
 
-      <!-- Global HOME chat is owned by GameCanvas and projected here so its
-           polling lifecycle and Enter-to-focus ref remain single-owner. -->
+      <!-- Global HOME chat is kept by GameCanvas and projected here so its
+           network lifecycle and Enter-to-focus ref remain single-owner. -->
       <section class="action-section sidebar-chat-section" aria-label="Global chat">
         <span class="action-section-label">GLOBAL CHAT</span>
         <slot name="home-chat"></slot>
