@@ -19,7 +19,6 @@ import {
   getTotalRemainingCost,
   isEntityActive,
   isBuildInProgress,
-  isBuildBlockingActivation,
 } from './buildableHelpers';
 import { resourceMovementSystem, type ResourceKind } from './resourceMovement';
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
@@ -756,7 +755,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   //    fund the damaged allied unit.
   for (const entity of world.getBuilderUnits()) {
     if (entity.builder === null || entity.unit === null || entity.ownership === null) continue;
-    if (entity.unit.hp <= 0 || isBuildBlockingActivation(entity.buildable)) continue;
+    if (entity.unit.hp <= 0 || isBuildInProgress(entity.buildable)) continue;
     const action = entity.unit.actions[0];
     if (action === undefined || action.type !== 'repair' || action.targetId === undefined) continue;
     const target = world.getEntity(action.targetId);
@@ -812,7 +811,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   for (const entity of world.getBuilderUnits()) {
     const builder = entity.builder;
     if (builder === null || entity.unit === null || entity.ownership === null) continue;
-    if (entity.unit.hp <= 0 || isBuildBlockingActivation(entity.buildable)) continue;
+    if (entity.unit.hp <= 0 || isBuildInProgress(entity.buildable)) continue;
     const svc = resolveGuardServiceTarget(world, entity);
     if (svc === null || svc.kind !== 'heal') continue; // build/factory assist handled above
     const target = svc.target;
@@ -848,7 +847,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     for (const entity of world.getBuilderUnits()) {
       const builder = entity.builder;
       if (builder === null || entity.unit === null || entity.ownership === null) continue;
-      if (entity.unit.hp <= 0 || isBuildBlockingActivation(entity.buildable)) continue;
+      if (entity.unit.hp <= 0 || isBuildInProgress(entity.buildable)) continue;
       const head = entity.unit.actions[0];
       const sweepHeal = head !== undefined && (head.type === 'fight' || head.type === 'patrol');
       if (entity.unit.actions.length !== 0 && !sweepHeal) continue;

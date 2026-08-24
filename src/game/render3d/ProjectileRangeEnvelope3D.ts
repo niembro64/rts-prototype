@@ -6,7 +6,7 @@ import type { Entity, EntityId, ProjectileShot, Turret } from '../sim/types';
 import { isProjectileShot, isRocketLikeShot } from '../sim/types';
 import { getSurfaceHeight } from '../sim/Terrain';
 import { getProjectileLaunchSpeed } from '../sim/combat/combatUtils';
-import { isBuildBlockingActivation } from '../sim/buildableHelpers';
+import { isBuildInProgress } from '../sim/buildableHelpers';
 import { isAttackEmitter } from '../sim/emitterKinds';
 import type { OverlayLineSystem } from './OverlayLineSystem';
 import type { GroundLineBatch3D } from './GroundLineBatch3D';
@@ -143,7 +143,7 @@ export class ProjectileRangeEnvelope3D {
     if (entity.selectable?.selected !== true) return false;
     const hp = entity.unit?.hp ?? entity.building?.hp ?? 0;
     if (hp <= 0) return false;
-    if (isBuildBlockingActivation(entity.buildable)) return false;
+    if (isBuildInProgress(entity.buildable)) return false;
     return true;
   }
 

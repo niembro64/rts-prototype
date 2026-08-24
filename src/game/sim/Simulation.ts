@@ -22,7 +22,7 @@ import { economyManager } from './economy';
 import { ConstructionSystem } from './construction';
 import { factoryProductionSystem } from './factoryProduction';
 import { updateConstructionLifecycle } from './constructionLifecycle';
-import { isBuildBlockingActivation } from './buildableHelpers';
+import { isBuildInProgress } from './buildableHelpers';
 import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities';
 import { updateUnitGroundNormal } from './unitGroundNormal';
 import { ForceAccumulator } from './ForceAccumulator';
@@ -1948,7 +1948,7 @@ export class Simulation {
       if (!entity.body) {
         if (
           unit.hp > 0 &&
-          !isBuildBlockingActivation(entity.buildable) &&
+          !isBuildInProgress(entity.buildable) &&
           unit.actions[0]?.type === 'selfDestruct'
         ) {
           this.activateQueuedSelfDestructAction(entity);
@@ -1961,7 +1961,7 @@ export class Simulation {
       // live. UnitForceSystem still applies contact locomotion/friction
       // so shells can fall, collide, and settle like ordinary units
       // before activation.
-      if (isBuildBlockingActivation(entity.buildable)) {
+      if (isBuildInProgress(entity.buildable)) {
         entitySlotRegistry.setUnitDriveInput(entity, 0, 0, 0, 0, entitySlot);
         if (entity.combat) {
           entity.combat.priorityTargetId = null;

@@ -7,6 +7,7 @@ import { TURRET_CONFIGS } from '../turretConfigs';
 import { CT_LOCK_ON_FAM_INCLUDE_SHOTS } from '../../sim-wasm/api/turretCombat';
 import { shotBlueprintIdToCode, unitBlueprintIdToCode } from '../../../types/network';
 import type { BuildingBlueprintId, TurretConfig } from '../types';
+import { lockOnLevel1MaskFromCodes } from '../lockOnLevel1Mask';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[full-utilization roster contract] ${message}`);
@@ -208,14 +209,13 @@ export function runFullUtilizationRosterContractTest(): void {
     'only the dedicated Interceptor turret may target travelling shots',
   );
 
-  const expectedInterceptMask = [
-    'shotRocketLight',
-    'shotRocketDumb',
-    'shotMortarMedium',
-    'shotMortarHeavy',
-  ].reduce(
-    (mask, shotBlueprintId) => mask | (1n << BigInt(shotBlueprintIdToCode(shotBlueprintId))),
-    0n,
+  const expectedInterceptMask = lockOnLevel1MaskFromCodes(
+    [
+      'shotRocketLight',
+      'shotRocketDumb',
+      'shotMortarMedium',
+      'shotMortarHeavy',
+    ].map(shotBlueprintIdToCode),
   );
   assertContract(
     TURRET_CONFIGS.turretInterceptor.lockOnShotIncludeMask === expectedInterceptMask,

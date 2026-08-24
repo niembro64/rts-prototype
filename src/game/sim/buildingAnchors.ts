@@ -2,23 +2,11 @@ import type { Entity } from './types';
 import {
   DEFAULT_BUILDING_VISUAL_HEIGHT,
   fabricatorTorusHoverHeight,
-  getFactoryBuildingVisualMetrics,
+  getFactoryBuildingVisualTop,
   getBuildingBlueprint,
 } from './blueprints';
-
-function factoryVisualTopAboveGround(
-  width: number,
-  depth: number,
-  buildingBlueprintId: NonNullable<Entity['buildingBlueprintId']>,
-): number {
-  return getFactoryBuildingVisualMetrics(width, depth, buildingBlueprintId).visualTop;
-}
-
-function getBuildingBaseZ(entity: Entity): number {
-  const building = entity.building;
-  if (building === null) return entity.transform.z;
-  return entity.transform.z - building.depth / 2;
-}
+import { radialFabricatorBlueprintIdOrDefault } from './fabricatorGeometry';
+import { getUnitGroundZ } from './unitGeometry';
 
 function getBuildingVisualTopAboveGround(entity: Entity): number {
   const building = entity.building;
@@ -32,7 +20,7 @@ function getBuildingVisualTopAboveGround(entity: Entity): number {
     case 'constantVisualTop':
       return blueprint.visualHeight;
     case 'fabricator':
-      return factoryVisualTopAboveGround(width, depth, entity.buildingBlueprintId);
+      return getFactoryBuildingVisualTop(width, depth, entity.buildingBlueprintId);
     case 'collisionDepth':
       return building === null ? blueprint.visualHeight : building.depth;
     default:
@@ -41,7 +29,20 @@ function getBuildingVisualTopAboveGround(entity: Entity): number {
 }
 
 export function getBuildingVisualTopZ(entity: Entity): number {
-  return getBuildingBaseZ(entity) + getBuildingVisualTopAboveGround(entity);
+  return getUnitGroundZ(entity) + getBuildingVisualTopAboveGround(entity);
+}
+
+function getHoveringBuildingCenterZ(entity: Entity): number | null {
+  const baseZ = getUnitGroundZ(entity);
+  if (entity.building?.hoveringType === 'fabricator') {
+    return baseZ + fabricatorTorusHoverHeight(
+      radialFabricatorBlueprintIdOrDefault(entity.buildingBlueprintId),
+    );
+  }
+  if (entity.building?.hoveringType === 'directionalFabricator') {
+    return baseZ + getBuildingVisualTopAboveGround(entity) * 0.62;
+  }
+  return null;
 }
 
 export function getBuildingVisualCenterZ(entity: Entity): number {
@@ -49,15 +50,9 @@ export function getBuildingVisualCenterZ(entity: Entity): number {
   // so its visual/hitbox center is the floating body itself — NOT the ground-to-
   // top midpoint a grounded building uses. This is what selection/picking and
   // the selection overlay center on, so they sit on the torus, not mid-air.
-  if (entity.building?.hoveringType === 'fabricator') {
-    return getBuildingBaseZ(entity) + fabricatorTorusHoverHeight(
-      entity.buildingBlueprintId ?? 'towerFabricator',
-    );
-  }
-  if (entity.building?.hoveringType === 'directionalFabricator') {
-    return getBuildingBaseZ(entity) + getBuildingVisualTopAboveGround(entity) * 0.62;
-  }
-  return getBuildingBaseZ(entity) + getBuildingVisualTopAboveGround(entity) * 0.5;
+  const hoveringCenterZ = getHoveringBuildingCenterZ(entity);
+  if (hoveringCenterZ !== null) return hoveringCenterZ;
+  return getUnitGroundZ(entity) + getBuildingVisualTopAboveGround(entity) * 0.5;
 }
 
 /**
@@ -68,15 +63,7 @@ export function getBuildingVisualCenterZ(entity: Entity): number {
  * ground-centered), so their behavior is unchanged.
  */
 export function getBuildingCombatCenterZ(entity: Entity): number {
-  if (entity.building?.hoveringType === 'fabricator') {
-    return getBuildingBaseZ(entity) + fabricatorTorusHoverHeight(
-      entity.buildingBlueprintId ?? 'towerFabricator',
-    );
-  }
-  if (entity.building?.hoveringType === 'directionalFabricator') {
-    return getBuildingBaseZ(entity) + getBuildingVisualTopAboveGround(entity) * 0.62;
-  }
-  return entity.transform.z;
+  return getHoveringBuildingCenterZ(entity) ?? entity.transform.z;
 }
 
 export function getEntityTargetPoint(entity: Entity): { x: number; y: number; z: number } {

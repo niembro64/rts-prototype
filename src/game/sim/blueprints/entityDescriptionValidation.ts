@@ -6,10 +6,10 @@ export type EntityDescriptionFields = Readonly<{
   longDescription: unknown;
 }>;
 
-export const ENTITY_SHORT_DESCRIPTION_MAX_WORDS = 5;
-export const ENTITY_LONG_DESCRIPTION_MIN_WORDS = 6;
+const ENTITY_SHORT_DESCRIPTION_MAX_WORDS = 5;
+const ENTITY_LONG_DESCRIPTION_MIN_WORDS = 6;
 
-export function entityDescriptionWordCount(value: string): number {
+function entityDescriptionWordCount(value: string): number {
   const normalized = value.trim();
   return normalized.length === 0 ? 0 : normalized.split(/\s+/u).length;
 }

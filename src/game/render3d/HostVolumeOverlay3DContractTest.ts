@@ -24,7 +24,8 @@ import {
   rayVolumeT,
   writeSelectionVolume,
 } from '../sim/entityVolumes';
-import { getBuildingVisualTopZ } from '../sim/buildingAnchors';
+import { getBuildingCombatCenterZ, getBuildingVisualTopZ } from '../sim/buildingAnchors';
+import { getUnitGroundZ } from '../sim/unitGeometry';
 import { readNetworkUnitRadius } from '../network/unitSnapshotFields';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { EntityMesh } from './EntityMesh3D';
@@ -53,7 +54,10 @@ function makeOverlayMesh(): EntityMesh {
 
 /** Configure a WorldState building the way the network entity factory does:
  *  blueprint-config dims, hovering classification, and target radius. */
-function makeBuildingHost(world: WorldState, blueprintId: 'towerFabricator' | 'buildingSolar'): Entity {
+function makeBuildingHost(
+  world: WorldState,
+  blueprintId: 'towerFabricator' | 'buildingAircraftFabricator' | 'buildingSolar',
+): Entity {
   const config = getBuildingConfig(blueprintId);
   const entity = world.createBuilding(
     200,
@@ -267,6 +271,27 @@ export function runHostVolumeOverlay3DContractTest(): void {
       ),
       'a ray straight down the middle of the fabricator ring must NOT pick it',
     );
+
+    // ── Directional hovering factory: every box shares one center ───
+    const aircraftFactory = makeBuildingHost(world, 'buildingAircraftFabricator');
+    const aircraftMesh = makeOverlayMesh();
+    renderer.updateHostVolumes(aircraftMesh, aircraftFactory);
+    const aircraftRings = aircraftMesh.radiusRings;
+    assertContract(aircraftRings !== undefined, 'aircraft factory volumes must exist');
+    const expectedAircraftCenterY =
+      getBuildingCombatCenterZ(aircraftFactory) - getUnitGroundZ(aircraftFactory);
+    for (const [name, volume] of [
+      ['selection', aircraftRings.selection],
+      ['hit', aircraftRings.hit],
+      ['collision', aircraftRings.collision],
+    ] as const) {
+      assertContract(volume !== undefined && volume.visible, `aircraft factory ${name} must exist`);
+      assertNear(
+        volume.position.y,
+        expectedAircraftCenterY,
+        `aircraft factory ${name} shares the authoritative hovering center`,
+      );
+    }
   } finally {
     for (const type of VOLUME_TYPES) setVolumeToggle(type, previous.get(type) ?? false);
     renderer.dispose();

@@ -123,8 +123,8 @@ const INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(
 // probes whose rectangles overlap the same occupied cells.
 const FACTORY_PLACEMENT_SEARCH_OFFSETS = buildStridedPlacementSearchOffsets(140, 7);
 // The offshore showcase now carries both tech tiers across ten naval-domain
-// lines. Give it the same deterministic fan-out budget as the land roster so
-// edge-of-sector footprints and neighboring seats can still pack completely.
+// lines. Give it a dedicated wide deterministic fan-out so edge-of-sector
+// footprints and neighboring seats can still pack completely.
 const WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS = buildStridedPlacementSearchOffsets(64, 7);
 // Authored demo extractors belong on their deposit's own snapped footprint.
 // Do not fan outward like generic base placement: a nearby extractor with
@@ -154,13 +154,18 @@ const DEMO_BESPOKE_BASE_BUILDING_BLUEPRINT_IDS = new Set<BuildingBlueprintId>([
   'buildingPrecisionTargetingTech',
 ]);
 
+function isBlueprintAvailable(
+  blueprintId: string,
+  availableBlueprintIds: ReadonlySet<string> | undefined,
+): boolean {
+  return availableBlueprintIds === undefined || availableBlueprintIds.has(blueprintId);
+}
+
 function getDemoExtractorBlueprintIds(
   availableBuildingBlueprintIds: ReadonlySet<string> | undefined,
 ): BuildingBlueprintId[] {
   return BUILDING_BLUEPRINT_IDS.filter((id) => {
-    if (availableBuildingBlueprintIds !== undefined && !availableBuildingBlueprintIds.has(id)) {
-      return false;
-    }
+    if (!isBlueprintAvailable(id, availableBuildingBlueprintIds)) return false;
     return getBuildingConfig(id).metalProduction !== null;
   });
 }
@@ -170,9 +175,7 @@ function getDemoSupplementalBuildingBlueprintIds(
   availableBuildingBlueprintIds: ReadonlySet<string> | undefined,
 ): BuildingBlueprintId[] {
   return BUILDING_BLUEPRINT_IDS.filter((id) => {
-    if (availableBuildingBlueprintIds !== undefined && !availableBuildingBlueprintIds.has(id)) {
-      return false;
-    }
+    if (!isBlueprintAvailable(id, availableBuildingBlueprintIds)) return false;
     if (DEMO_BESPOKE_BASE_BUILDING_BLUEPRINT_IDS.has(id)) return false;
     const config = getBuildingConfig(id);
     if (config.metalProduction !== null) return false;
@@ -682,9 +685,7 @@ function placeMixedBlueprintArcRow(
       basePolicy,
       searchOffsets,
       null,
-      squareType === 'water'
-        ? (x, y) => isRectFootprintOverWater(world, x, y, width, height)
-        : (x, y) => isRectFootprintOverLand(world, x, y, width, height),
+      (x, y) => isRectFootprintOnSurface(world, x, y, width, height, squareType),
       // These are prebuilt authored showcase rows. The medium preflight above,
       // map bounds, and occupancy remain hard requirements; terrain slope and
       // ordinary player-build restrictions must not silently omit a roster id.
@@ -707,7 +708,7 @@ function getAvailableDemoFactoryUnitBlueprintIds(
   for (let i = 0; i < mapRoster.length; i++) {
     const unitBlueprintId = mapRoster[i];
     if (getUnitBlueprint(unitBlueprintId).production === null) continue;
-    if (availableUnitBlueprintIds !== undefined && !availableUnitBlueprintIds.has(unitBlueprintId)) continue;
+    if (!isBlueprintAvailable(unitBlueprintId, availableUnitBlueprintIds)) continue;
     if (excludedUnitBlueprintIds?.has(unitBlueprintId)) continue;
     unitBlueprintIds.push(unitBlueprintId);
   }
@@ -763,10 +764,7 @@ function placeUniversalFactoryLines(
   for (let i = 0; i < count; i++) {
     const unitBlueprintId = unitBlueprintIds[i];
     const buildingBlueprintId = getUniversalFabricatorForDemoUnit(unitBlueprintId);
-    if (
-      availableBuildingBlueprintIds !== undefined &&
-      !availableBuildingBlueprintIds.has(buildingBlueprintId)
-    ) continue;
+    if (!isBlueprintAvailable(buildingBlueprintId, availableBuildingBlueprintIds)) continue;
     const angle = count > 1 ? startAngle + i * angularStep : baseAngle;
     const point = mapOvalPointAt(oval, angle, radius);
     const config = getBuildingConfig(buildingBlueprintId);
@@ -782,7 +780,7 @@ function placeUniversalFactoryLines(
       basePolicy,
       FACTORY_PLACEMENT_SEARCH_OFFSETS,
       null,
-      (x, y) => isRectFootprintOverLand(world, x, y, width, height),
+      (x, y) => isRectFootprintOnSurface(world, x, y, width, height, 'ground'),
       true,
     );
     if (factory === null) continue;
@@ -792,36 +790,29 @@ function placeUniversalFactoryLines(
   return entities;
 }
 
-function isRectFootprintOverWater(
+function isRectFootprintOnSurface(
   world: WorldState,
   x: number,
   y: number,
   width: number,
   height: number,
+  surface: 'ground' | 'water',
 ): boolean {
   const halfWidth = width * 0.5;
   const halfHeight = height * 0.5;
-  return isWaterAt(x, y, world.mapWidth, world.mapHeight) &&
-    isWaterAt(x - halfWidth, y - halfHeight, world.mapWidth, world.mapHeight) &&
-    isWaterAt(x + halfWidth, y - halfHeight, world.mapWidth, world.mapHeight) &&
-    isWaterAt(x - halfWidth, y + halfHeight, world.mapWidth, world.mapHeight) &&
-    isWaterAt(x + halfWidth, y + halfHeight, world.mapWidth, world.mapHeight);
-}
-
-function isRectFootprintOverLand(
-  world: WorldState,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-): boolean {
-  const halfWidth = width * 0.5;
-  const halfHeight = height * 0.5;
-  return !isWaterAt(x, y, world.mapWidth, world.mapHeight) &&
-    !isWaterAt(x - halfWidth, y - halfHeight, world.mapWidth, world.mapHeight) &&
-    !isWaterAt(x + halfWidth, y - halfHeight, world.mapWidth, world.mapHeight) &&
-    !isWaterAt(x - halfWidth, y + halfHeight, world.mapWidth, world.mapHeight) &&
-    !isWaterAt(x + halfWidth, y + halfHeight, world.mapWidth, world.mapHeight);
+  const expectsWater = surface === 'water';
+  for (const [offsetX, offsetY] of [
+    [0, 0],
+    [-halfWidth, -halfHeight],
+    [halfWidth, -halfHeight],
+    [-halfWidth, halfHeight],
+    [halfWidth, halfHeight],
+  ] as const) {
+    if (
+      isWaterAt(x + offsetX, y + offsetY, world.mapWidth, world.mapHeight) !== expectsWater
+    ) return false;
+  }
+  return true;
 }
 
 /**
@@ -853,9 +844,6 @@ export function spawnInitialBases(
 
   // Demo BUILDINGS toggles: an undefined set means "place every building"
   // (unrestricted callers / real games). A defined set skips disabled ids.
-  const isBuildingEnabled = (id: string): boolean =>
-    availableBuildingBlueprintIds === undefined || availableBuildingBlueprintIds.has(id);
-
   const normalizedPlayerIds = normalizePlayerIds(playerIds);
 
   // Raise, never lower — bootstrap may pass only the 'base' seats of a
@@ -962,6 +950,62 @@ export function spawnInitialBases(
     spawnRadius,
     DEMO_CONFIG.baseRings.buildingPrecisionTargetingTech.radiusFraction,
   );
+  const wideSearchArcRows: ReadonlyArray<{
+    buildingBlueprintId: BuildingBlueprintId;
+    count: number;
+    radius: number;
+  }> = [
+    {
+      buildingBlueprintId: 'buildingPrecisionTargetingTech',
+      count: DEMO_CONFIG.buildingPrecisionTargetingTechCount,
+      radius: precisionTargetingTechRadius,
+    },
+    {
+      buildingBlueprintId: 'buildingRadar',
+      count: DEMO_CONFIG.buildingRadarCount,
+      radius: radarRadius,
+    },
+    {
+      buildingBlueprintId: 'buildingShieldTargetingTech',
+      count: DEMO_CONFIG.buildingShieldTargetingTechCount,
+      radius: shieldTargetingTechRadius,
+    },
+    {
+      buildingBlueprintId: 'buildingShieldTech',
+      count: DEMO_CONFIG.buildingShieldTechCount,
+      radius: shieldTechRadius,
+    },
+    {
+      buildingBlueprintId: 'towerAntiAir',
+      count: DEMO_CONFIG.towerAntiAirCount,
+      radius: antiAirTowerRadius,
+    },
+    {
+      buildingBlueprintId: 'buildingResourceConverter',
+      count: DEMO_CONFIG.buildingResourceConverterCount,
+      radius: resourceConverterRadius,
+    },
+    {
+      buildingBlueprintId: 'buildingSolar',
+      count: DEMO_CONFIG.buildingSolarCount,
+      radius: solarRadius,
+    },
+    {
+      buildingBlueprintId: 'towerCannon',
+      count: DEMO_CONFIG.towerCannonCount,
+      radius: cannonTowerRadius,
+    },
+    {
+      buildingBlueprintId: 'towerHelios',
+      count: DEMO_CONFIG.towerHeliosCount,
+      radius: heliosTowerRadius,
+    },
+    {
+      buildingBlueprintId: 'towerBeamMega',
+      count: DEMO_CONFIG.towerBeamMegaCount,
+      radius: megaBeamTowerRadius,
+    },
+  ];
 
   for (let i = 0; i < playerCount; i++) {
     const playerId = normalizedPlayerIds[i];
@@ -994,7 +1038,7 @@ export function spawnInitialBases(
 
     // Wind turbine arc — independent radius so its silhouette reads on
     // its own ring, not interleaved with the solars.
-    if (isBuildingEnabled('buildingWind')) {
+    if (isBlueprintAvailable('buildingWind', availableBuildingBlueprintIds)) {
       entities.push(...placeArcRow(
         world, construction, 'buildingWind', DEMO_CONFIG.buildingWindCount,
         oval, windRadius, baseAngle, sectorAngle, playerId, basePolicy,
@@ -1032,13 +1076,10 @@ export function spawnInitialBases(
       'ground',
     ));
 
-    // ── The radar↔beam band ─────────────────────────────────────────
-    // The radar (0.65) and beam-tower (0.40) rings are fixed endpoints;
-    // between them six rows — targeting-tech spire, shield forge,
-    // anti-air, converter, solar, cannon — sit on evenly spaced rings
-    // (steps of 0.25/7). The tech pair grants the seat shield-aware
-    // targeting and shielded production, so the demo exercises both
-    // upgrades live. Two rules keep the tightened band stable:
+    // Precision targeting and the radar↔beam band place in the configured
+    // outer-to-inner order above. The tech pair grants the seat shield-aware
+    // targeting and shielded production, so the demo exercises both upgrades
+    // live. Two rules keep the tightened band stable:
     //   1. Rows place in STRICT outer→inner radial order, so a row's
     //      preferred cells are claimed before its inner neighbour's
     //      search can squat on them.
@@ -1046,85 +1087,28 @@ export function spawnInitialBases(
     //      cell lost to a deposit pad or cramped terrain slides to the
     //      nearest free cells instead of silently failing best-effort
     //      placement.
-    // Outside the radar↔beam band on its own ring, so the band's strict
-    // outer→inner claim order is untouched.
-    if (isBuildingEnabled('buildingPrecisionTargetingTech')) {
+    for (const row of wideSearchArcRows) {
+      if (!isBlueprintAvailable(row.buildingBlueprintId, availableBuildingBlueprintIds)) {
+        continue;
+      }
       entities.push(...placeArcRow(
-        world, construction, 'buildingPrecisionTargetingTech',
-        DEMO_CONFIG.buildingPrecisionTargetingTechCount,
-        oval, precisionTargetingTechRadius, baseAngle, sectorAngle, playerId, basePolicy,
-        FACTORY_PLACEMENT_SEARCH_OFFSETS,
-      ));
-    }
-    if (isBuildingEnabled('buildingRadar')) {
-      entities.push(...placeArcRow(
-        world, construction, 'buildingRadar', DEMO_CONFIG.buildingRadarCount,
-        oval, radarRadius, baseAngle, sectorAngle, playerId, basePolicy,
-        FACTORY_PLACEMENT_SEARCH_OFFSETS,
-      ));
-    }
-    if (isBuildingEnabled('buildingShieldTargetingTech')) {
-      entities.push(...placeArcRow(
-        world, construction, 'buildingShieldTargetingTech',
-        DEMO_CONFIG.buildingShieldTargetingTechCount,
-        oval, shieldTargetingTechRadius, baseAngle, sectorAngle, playerId, basePolicy,
-        FACTORY_PLACEMENT_SEARCH_OFFSETS,
-      ));
-    }
-    if (isBuildingEnabled('buildingShieldTech')) {
-      entities.push(...placeArcRow(
-        world, construction, 'buildingShieldTech',
-        DEMO_CONFIG.buildingShieldTechCount,
-        oval, shieldTechRadius, baseAngle, sectorAngle, playerId, basePolicy,
-        FACTORY_PLACEMENT_SEARCH_OFFSETS,
-      ));
-    }
-    if (isBuildingEnabled('towerAntiAir')) {
-      entities.push(...placeArcRow(
-        world, construction, 'towerAntiAir', DEMO_CONFIG.towerAntiAirCount,
-        oval, antiAirTowerRadius, baseAngle, sectorAngle, playerId, basePolicy,
-        FACTORY_PLACEMENT_SEARCH_OFFSETS,
-      ));
-    }
-    if (isBuildingEnabled('buildingResourceConverter')) {
-      entities.push(...placeArcRow(
-        world, construction, 'buildingResourceConverter', DEMO_CONFIG.buildingResourceConverterCount,
-        oval, resourceConverterRadius, baseAngle, sectorAngle, playerId, basePolicy,
-        FACTORY_PLACEMENT_SEARCH_OFFSETS,
-      ));
-    }
-    if (isBuildingEnabled('buildingSolar')) {
-      entities.push(...placeArcRow(
-        world, construction, 'buildingSolar', DEMO_CONFIG.buildingSolarCount,
-        oval, solarRadius, baseAngle, sectorAngle, playerId, basePolicy,
-        FACTORY_PLACEMENT_SEARCH_OFFSETS,
-      ));
-    }
-    if (isBuildingEnabled('towerCannon')) {
-      entities.push(...placeArcRow(
-        world, construction, 'towerCannon', DEMO_CONFIG.towerCannonCount,
-        oval, cannonTowerRadius, baseAngle, sectorAngle, playerId, basePolicy,
-        FACTORY_PLACEMENT_SEARCH_OFFSETS,
-      ));
-    }
-    if (isBuildingEnabled('towerHelios')) {
-      entities.push(...placeArcRow(
-        world, construction, 'towerHelios', DEMO_CONFIG.towerHeliosCount,
-        oval, heliosTowerRadius, baseAngle, sectorAngle, playerId, basePolicy,
-        FACTORY_PLACEMENT_SEARCH_OFFSETS,
-      ));
-    }
-    if (isBuildingEnabled('towerBeamMega')) {
-      entities.push(...placeArcRow(
-        world, construction, 'towerBeamMega', DEMO_CONFIG.towerBeamMegaCount,
-        oval, megaBeamTowerRadius, baseAngle, sectorAngle, playerId, basePolicy,
+        world,
+        construction,
+        row.buildingBlueprintId,
+        row.count,
+        oval,
+        row.radius,
+        baseAngle,
+        sectorAngle,
+        playerId,
+        basePolicy,
         FACTORY_PLACEMENT_SEARCH_OFFSETS,
       ));
     }
 
     // Sonar remains an offshore utility showcase, independent of unit
     // production. A map with no water places none.
-    if (hasWater && isBuildingEnabled('buildingSonar')) {
+    if (hasWater && isBlueprintAvailable('buildingSonar', availableBuildingBlueprintIds)) {
       const sonarConfig = getBuildingConfig('buildingSonar');
       const sonarWidth = sonarConfig.gridWidth * BUILD_GRID_CELL_SIZE;
       const sonarHeight = sonarConfig.gridHeight * BUILD_GRID_CELL_SIZE;
@@ -1134,7 +1118,7 @@ export function spawnInitialBases(
         WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS,
         (x, y) =>
           sampleMapOvalAt(oval, x, y).distance >= authoredSonarRadius &&
-          isRectFootprintOverWater(world, x, y, sonarWidth, sonarHeight),
+          isRectFootprintOnSurface(world, x, y, sonarWidth, sonarHeight, 'water'),
         true,
       ));
     }

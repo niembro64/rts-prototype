@@ -18,9 +18,9 @@ import {
 } from './BuildingMeshPrimitives3D';
 import {
   fabricatorProductionPlaneHeight,
-  fabricatorTorusRingRadius,
   isRadialFabricatorBuildingBlueprintId,
 } from '../sim/blueprints';
+import { fabricatorTorusRingRadius } from '../sim/fabricatorGeometry';
 import type { BuildingBlueprintId } from '../sim/types';
 import {
   buildProductionHoldRingMesh,

@@ -77,7 +77,6 @@ import {
   CT_LOCK_ON_FAM_INCLUDE_UNITS,
   CT_LOCK_ON_FAM_INCLUDE_TURRETS,
   CT_LOCK_ON_FAM_INCLUDE_SHOTS,
-  CT_LOCK_ON_LEVEL1_MASK_CAPACITY,
   CT_LOCK_ON_RECIPROCAL_IGNORE,
   CT_LOCK_ON_RECIPROCAL_PREFER_HOLD,
   CT_LOCK_ON_RECIPROCAL_PREFER_REACQUIRE,
@@ -86,6 +85,7 @@ import {
 import { getSecondaryLockOnProfile } from './lockOnConfig';
 import { cloneSensorCapabilityConfig, hasAnySensorRadius } from '../sensorConfig';
 import { cloneEmissionMediumTrajectoryMatrix } from '../emissionMedium';
+import { compileLockOnLevel1Mask } from '../lockOnLevel1Mask';
 
 export type LockOnMasks = {
   relationship: number;
@@ -97,33 +97,6 @@ export type LockOnMasks = {
   shot: bigint;
   reciprocal: number;
 };
-
-function lockOnLevel1Mask(
-  label: string,
-  field: string,
-  names: readonly string[],
-  toCode: (s: string) => number,
-  unknownCode: number,
-  kindLabel: string,
-): bigint {
-  let mask = 0n;
-  for (let i = 0; i < names.length; i++) {
-    const name = names[i];
-    const code = toCode(name);
-    if (code === unknownCode) {
-      throw new Error(
-        `Invalid ${label}: ${field}[${i}] = "${name}" has no network ${kindLabel} code`,
-      );
-    }
-    if (code >= CT_LOCK_ON_LEVEL1_MASK_CAPACITY) {
-      throw new Error(
-        `Invalid ${label}: ${field}[${i}] = "${name}" has ${kindLabel} wire code ${code} >= bitmask capacity ${CT_LOCK_ON_LEVEL1_MASK_CAPACITY}; widen the lockon level-1 masks before adding more ${kindLabel} blueprints`,
-      );
-    }
-    mask |= 1n << BigInt(code);
-  }
-  return mask;
-}
 
 function compileLockOnMasks(label: string, policy: LockOnInclusionObject): LockOnMasks {
   let relationship = 0;
@@ -148,38 +121,38 @@ function compileLockOnMasks(label: string, policy: LockOnInclusionObject): LockO
       );
     }
   }
-  const building = lockOnLevel1Mask(
+  const building = compileLockOnLevel1Mask({
     label,
-    'includeLockOnLevel1Buildings',
-    policy.includeLockOnLevel1Buildings,
-    buildingBlueprintIdToCode,
-    BUILDING_BLUEPRINT_CODE_UNKNOWN,
-    'building',
-  );
-  const unit = lockOnLevel1Mask(
+    field: 'includeLockOnLevel1Buildings',
+    names: policy.includeLockOnLevel1Buildings,
+    toCode: buildingBlueprintIdToCode,
+    unknownCode: BUILDING_BLUEPRINT_CODE_UNKNOWN,
+    kindLabel: 'building',
+  });
+  const unit = compileLockOnLevel1Mask({
     label,
-    'includeLockOnLevel1Units',
-    policy.includeLockOnLevel1Units,
-    unitBlueprintIdToCode,
-    UNIT_BLUEPRINT_CODE_UNKNOWN,
-    'unit',
-  );
-  const turret = lockOnLevel1Mask(
+    field: 'includeLockOnLevel1Units',
+    names: policy.includeLockOnLevel1Units,
+    toCode: unitBlueprintIdToCode,
+    unknownCode: UNIT_BLUEPRINT_CODE_UNKNOWN,
+    kindLabel: 'unit',
+  });
+  const turret = compileLockOnLevel1Mask({
     label,
-    'includeLockOnLevel1Turrets',
-    policy.includeLockOnLevel1Turrets,
-    turretBlueprintIdToCode,
-    TURRET_BLUEPRINT_CODE_UNKNOWN,
-    'turret',
-  );
-  const shot = lockOnLevel1Mask(
+    field: 'includeLockOnLevel1Turrets',
+    names: policy.includeLockOnLevel1Turrets,
+    toCode: turretBlueprintIdToCode,
+    unknownCode: TURRET_BLUEPRINT_CODE_UNKNOWN,
+    kindLabel: 'turret',
+  });
+  const shot = compileLockOnLevel1Mask({
     label,
-    'includeLockOnLevel1Shots',
-    policy.includeLockOnLevel1Shots,
-    shotBlueprintIdToCode,
-    SHOT_BLUEPRINT_CODE_UNKNOWN,
-    'shot',
-  );
+    field: 'includeLockOnLevel1Shots',
+    names: policy.includeLockOnLevel1Shots,
+    toCode: shotBlueprintIdToCode,
+    unknownCode: SHOT_BLUEPRINT_CODE_UNKNOWN,
+    kindLabel: 'shot',
+  });
   let reciprocal = CT_LOCK_ON_RECIPROCAL_IGNORE;
   if (policy.lockOnRequiresTargetLockedOntoSelf === 'require') {
     reciprocal = CT_LOCK_ON_RECIPROCAL_REQUIRE;

@@ -41,5 +41,3 @@ export {
 } from './Ballistics';
 
 export { getTurretWorldMount } from './MountGeometry';
-
-export { linearToSrgbByte } from './ColorMath';

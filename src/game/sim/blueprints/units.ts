@@ -10,7 +10,7 @@ import { isStructureBlueprintId } from '../../../types/blueprintIds';
 import type { UnitBlueprint } from './types';
 import type { UnitLocomotion } from '../types';
 import { createUnitLocomotion } from '../unitLocomotion';
-export { BUILDABLE_UNIT_BLUEPRINT_IDS,  } from './unitRoster';
+export { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS, isBuildableUnitBlueprintId } from './unitRoster';
 import { TURRET_BLUEPRINTS } from './turrets';
 import rawUnitBlueprints from './units.json';
@@ -43,6 +43,12 @@ import {
 } from './stationArticulation';
 import { getUnitBodyShapeKey } from '../../math/BodyDimensions';
 import { validateEntityDescription } from './entityDescriptionValidation';
+import { isFabricatorTechLevel } from './fabricatorIdentity';
+import {
+  validateEmissionSocketLayout,
+  validateFiniteVector3,
+  validatePositiveAngularActuator,
+} from './mountValidation';
 
 type JsonUnitBlueprint = Omit<UnitBlueprint, keyof LockOnInclusionObject>;
 type InheritableJsonUnitBlueprint = Partial<JsonUnitBlueprint> & { $extends?: string };
@@ -301,7 +307,7 @@ function validateUnitProductionIdentity(bp: UnitBlueprint): void {
   if (!isBuildableUnitBlueprintId(bp.unitBlueprintId)) {
     throw new Error(`Invalid production identity for ${bp.unitBlueprintId}: unit is not buildable`);
   }
-  if (production.techLevel !== 1 && production.techLevel !== 2 && production.techLevel !== 3) {
+  if (!isFabricatorTechLevel(production.techLevel)) {
     throw new Error(`Invalid production identity for ${bp.unitBlueprintId}: techLevel must be 1, 2, or 3`);
   }
   let previousIndex = -1;
@@ -679,16 +685,11 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
       validateBotArms(bp.unitBlueprintId, bp.unitLocomotion.config.upperArms);
     }
     const upperBodyActuator = bp.unitLocomotion.config.upperBodyActuator;
-    if (
-      !Number.isFinite(upperBodyActuator.maxSpeed) || upperBodyActuator.maxSpeed <= 0 ||
-      !Number.isFinite(upperBodyActuator.maxAcceleration) ||
-      upperBodyActuator.maxAcceleration <= 0
-    ) {
-      throw new Error(
-        `Invalid bot upper-body actuator for ${bp.unitBlueprintId}: ` +
-        'maxSpeed and maxAcceleration must be finite positive radians-per-second limits',
-      );
-    }
+    validatePositiveAngularActuator(
+      `bot upper-body actuator for ${bp.unitBlueprintId}`,
+      upperBodyActuator,
+      'radians-per-second limits',
+    );
     if (
       !Number.isFinite(bp.unitLocomotion.config.upperBodyRestoreDelayMs) ||
       bp.unitLocomotion.config.upperBodyRestoreDelayMs < 0
@@ -699,9 +700,8 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
     }
   }
 
-  // Mount-finiteness only — cross-blueprint turret-ID validation runs
-  // in blueprints/index.ts where both UNIT_BLUEPRINTS and
-  // TURRET_BLUEPRINTS are visible.
+  // Per-mount geometry and attachment validation. Cross-mount control/slaving
+  // contracts still run in blueprints/index.ts after every registry is built.
   for (let i = 0; i < bp.turrets.length; i++) {
     const turret = bp.turrets[i];
     validateStationArticulation(
@@ -713,15 +713,12 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
       turret.presentation,
     );
     const mount = turret.mount;
-    if (
-      !Number.isFinite(mount.x) ||
-      !Number.isFinite(mount.y) ||
-      !Number.isFinite(mount.z)
-    ) {
-      throw new Error(
-        `Invalid turret mount for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: mount x/y/z must be finite`,
-      );
-    }
+    validateFiniteVector3(
+      `turret mount for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}`,
+      'mount',
+      mount,
+      '',
+    );
     const botHost = bp.unitLocomotion.type === 'bot';
     if (botHost && turret.hostAttachment === undefined) {
       throw new Error(
@@ -748,52 +745,26 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
           `${turret.hostAttachment.arm} requires an authored upperArms pair`,
         );
       }
-      const offset = turret.hostAttachment.socketOffset;
-      if (
-        !Number.isFinite(offset.x) ||
-        !Number.isFinite(offset.y) ||
-        !Number.isFinite(offset.z)
-      ) {
-        throw new Error(
-          `Invalid bot arm socket for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: ` +
-          'socketOffset x/y/z must be finite unit-radius ratios',
-        );
-      }
+      validateFiniteVector3(
+        `bot arm socket for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}`,
+        'socketOffset',
+        turret.hostAttachment.socketOffset,
+        'unit-radius ratios',
+      );
     }
     if (turret.hostAttachment?.kind === 'botPiece') {
-      const offset = turret.hostAttachment.socketOffset;
-      if (
-        !Number.isFinite(offset.x) ||
-        !Number.isFinite(offset.y) ||
-        !Number.isFinite(offset.z)
-      ) {
-        throw new Error(
-          `Invalid bot piece socket for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: ` +
-          'socketOffset x/y/z must be finite unit-radius ratios',
-        );
-      }
+      validateFiniteVector3(
+        `bot piece socket for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}`,
+        'socketOffset',
+        turret.hostAttachment.socketOffset,
+        'unit-radius ratios',
+      );
     }
-    if (turret.emissionSockets !== undefined) {
-      const laneCount = TURRET_BLUEPRINTS[turret.turretBlueprintId]?.emissionLaneCount;
-      if (turret.emissionSockets.length !== laneCount) {
-        throw new Error(
-          `Invalid emission sockets for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: ` +
-          `expected exactly ${String(laneCount)} QueryWeapon lane(s)`,
-        );
-      }
-      for (const socket of turret.emissionSockets) {
-        if (
-          !Number.isFinite(socket.offset.x) ||
-          !Number.isFinite(socket.offset.y) ||
-          !Number.isFinite(socket.offset.z)
-        ) {
-          throw new Error(
-            `Invalid emission socket for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: ` +
-            'offset x/y/z must be finite world units',
-          );
-        }
-      }
-    }
+    validateEmissionSocketLayout(
+      `${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}`,
+      turret.emissionSockets,
+      TURRET_BLUEPRINTS[turret.turretBlueprintId]?.emissionLaneCount,
+    );
     // Airborne mounts may use all three axes. Presentation banking is
     // disabled for a host with any off-axis combat mount, so visual-only
     // roll can never move its rendered turret away from combat truth.

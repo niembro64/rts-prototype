@@ -5,9 +5,9 @@ import { deterministicMath as DMath } from './deterministicMath';
 import type { UnitBlueprint } from './blueprints/types';
 import {
   fabricatorProductionPlaneHeight,
-  fabricatorTorusRingRadius,
   getUnitBlueprint,
 } from './blueprints';
+import { fabricatorTorusRingRadius } from './fabricatorGeometry';
 import {
   isDirectionalFabricatorBuildingBlueprintId,
   isFabricatorBuildingBlueprintId,

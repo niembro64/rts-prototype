@@ -16,6 +16,7 @@ import { emissionMediumAtZ } from './emissionMedium';
 import { getEntityMediumOccupancy } from './entityMediumOccupancy';
 import { getBuildingCombatCenterZ } from './buildingAnchors';
 import { WATER_LEVEL } from './Terrain';
+import { lockOnLevel1MaskAllows } from './lockOnLevel1Mask';
 
 type BarTrajectoryCommandKind = 'standardHighLow' | 'smartAutoLowHigh';
 
@@ -166,16 +167,6 @@ const BAR_CAPTURE_UNIT_BLUEPRINT_IDS = new Set<string>([
   // BAR ARM parity: armcom has cancapture=true; current T1 constructors do not.
   'unitCommander',
 ]);
-/** BAR's category rule, restated over this repo's authored lock-on data:
- *  a level-1 `only` mask of 0 admits the whole family; otherwise the target
- *  blueprint's wire code must be inside the 64-bit mask. Mirrors
- *  `combat_targeting_level1_mask_allows` in Rust — the command layer and the
- *  targeting kernel must give the same answer. */
-function lockOnLevel1MaskAllows(mask: bigint, code: number): boolean {
-  if (mask === 0n) return true;
-  return code >= 0 && code < 64 && (mask & (1n << BigInt(code))) !== 0n;
-}
-
 /** TS mirror of `combat_targeting_lockon_masks_allow_body_entity` for the
  *  two target families a player can name in an attack order. Towers stamp
  *  as BUILDING family, exactly as the kernel sees them. */

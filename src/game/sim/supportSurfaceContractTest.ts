@@ -19,12 +19,14 @@ import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import {
   fabricatorTorusHoverHeight,
-  fabricatorTorusOuterRadius,
-  fabricatorTorusRingRadius,
   getAllUnitBlueprints,
   getBuildingBlueprint,
   getUnitBlueprint,
 } from './blueprints';
+import {
+  fabricatorTorusOuterRadius,
+  fabricatorTorusRingRadius,
+} from './fabricatorGeometry';
 import { getBuildingCombatCenterZ } from './buildingAnchors';
 import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
 import { getBuildingConfig } from './buildConfigs';

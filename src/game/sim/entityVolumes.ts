@@ -26,12 +26,13 @@
 
 import type { Entity } from './types';
 import { deterministicMath as DMath } from './deterministicMath';
+import { fabricatorTorusHoverHeight } from './blueprints';
 import {
-  fabricatorTorusHoverHeight,
   fabricatorTorusOuterRadius,
   fabricatorTorusRingRadius,
-} from './blueprints';
-import { getBuildingVisualTopZ } from './buildingAnchors';
+  radialFabricatorBlueprintIdOrDefault,
+} from './fabricatorGeometry';
+import { getBuildingCombatCenterZ, getBuildingVisualTopZ } from './buildingAnchors';
 import { getUnitGroundZ } from './unitGeometry';
 
 type VolumeShape = 'sphere' | 'box' | 'cylinder' | 'annulus';
@@ -157,7 +158,7 @@ function writeFabricatorTorusVolume(
     entity.transform.x,
     entity.transform.y,
     getUnitGroundZ(entity) + fabricatorTorusHoverHeight(
-      entity.buildingBlueprintId ?? 'towerFabricator',
+      radialFabricatorBlueprintIdOrDefault(entity.buildingBlueprintId),
     ),
     outerRadius + pad,
     ringRadius - tubeHalfHeight - pad,
@@ -195,7 +196,7 @@ export function writeSelectionVolume(entity: Entity, out: EntityVolume): boolean
         out,
         entity.transform.x,
         entity.transform.y,
-        buildingCombatCenterZ(entity),
+        getBuildingCombatCenterZ(entity),
         Math.max(
           MIN_BUILDING_SELECTION_HALF_EXTENT,
           building.width * 0.5 * BUILDING_SELECTION_VOLUME_SCALE,
@@ -276,7 +277,7 @@ export function writeHitVolume(entity: Entity, out: EntityVolume): boolean {
       out,
       entity.transform.x,
       entity.transform.y,
-      buildingCombatCenterZ(entity),
+      getBuildingCombatCenterZ(entity),
       building.width * 0.5,
       building.height * 0.5,
       building.depth * 0.5,
@@ -314,7 +315,7 @@ export function writeCollisionVolume(entity: Entity, out: EntityVolume): boolean
       out,
       entity.transform.x,
       entity.transform.y,
-      buildingCombatCenterZ(entity),
+      getBuildingCombatCenterZ(entity),
       building.width * 0.5,
       building.height * 0.5,
       building.depth * 0.5,
@@ -356,17 +357,6 @@ export function writeExplosionVolume(entity: Entity, out: EntityVolume): boolean
     entity.transform.z,
     projectile.config.shotProfile.runtime.deathExplosionRadius,
   );
-}
-
-/** Combat/physics box center. Grounded buildings keep transform.z (their
- *  box is ground-centered); the hovering torus engages in the air. */
-function buildingCombatCenterZ(entity: Entity): number {
-  if (isHoveringFabricator(entity)) {
-    return getUnitGroundZ(entity) + fabricatorTorusHoverHeight(
-      entity.buildingBlueprintId ?? 'towerFabricator',
-    );
-  }
-  return entity.transform.z;
 }
 
 // ── Ray tests ───────────────────────────────────────────────────────────

@@ -14,7 +14,7 @@ import {
   dropTurretLockMidTick,
   refreshSlabActivityMasksForUnits,
 } from './combatActivitySlab';
-import { isBuildBlockingActivation } from '../buildableHelpers';
+import { isBuildInProgress } from '../buildableHelpers';
 import {
   getCombatTargetingEntityReadContext,
   readCombatTargetingTurretAimFromContextInto,
@@ -263,7 +263,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
     if (hostHp <= 0) continue;
     // Inert shells (in-progress buildable) skip combat entirely until
     // every resource bar tops up.
-    if (isBuildBlockingActivation(unit.buildable)) continue;
+    if (isBuildInProgress(unit.buildable)) continue;
     _turretRotationRefreshUnits.push(unit);
 
     const hasTargetingContext = getCombatTargetingEntityReadContext(unit, _turretTargetingContext);

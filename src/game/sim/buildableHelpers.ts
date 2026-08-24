@@ -34,34 +34,33 @@ export function createBuildable(required: ResourceCost, state: BuildableState | 
   };
 }
 
-/** Per-resource fill ratio of a Buildable (0..1). A required value of
- *  0 reads as "full" so a free-on-that-axis blueprint doesn't stall. */
-export function getResourceFillRatio(b: Buildable, kind: ResourceKind): number {
-  const req = b.required[kind];
+/** Per-resource fill ratio (0..1). A zero required value reads as full so a
+ * free-on-that-axis blueprint or construction piece never stalls. */
+function getResourceFillRatio(
+  paid: ResourceCost,
+  required: ResourceCost,
+  kind: ResourceKind,
+): number {
+  const req = required[kind];
   if (req <= 0) return 1;
-  return Math.min(1, Math.max(0, b.paid[kind] / req));
+  return Math.min(1, Math.max(0, paid[kind] / req));
 }
 
 /** Coupled construction progress. Both resources must fund the same work
  *  step, so the less-complete lane is authoritative. */
 export function getBuildFraction(b: Buildable): number {
   let fraction = 1;
-  for (const k of RESOURCE_KINDS) fraction = Math.min(fraction, getResourceFillRatio(b, k));
+  for (const k of RESOURCE_KINDS) {
+    fraction = Math.min(fraction, getResourceFillRatio(b.paid, b.required, k));
+  }
   return fraction;
-}
-
-function getPieceFillRatio(
-  piece: Buildable['pieces'][number],
-  kind: ResourceKind,
-): number {
-  const req = piece.required[kind];
-  if (req <= 0) return 1;
-  return Math.min(1, Math.max(0, piece.paid[kind] / req));
 }
 
 function getPieceBuildFraction(piece: Buildable['pieces'][number]): number {
   let fraction = 1;
-  for (const k of RESOURCE_KINDS) fraction = Math.min(fraction, getPieceFillRatio(piece, k));
+  for (const k of RESOURCE_KINDS) {
+    fraction = Math.min(fraction, getResourceFillRatio(piece.paid, piece.required, k));
+  }
   return fraction;
 }
 
@@ -195,10 +194,6 @@ export function isShell(entity: Entity): boolean {
 }
 
 export function isBuildInProgress(buildable: Buildable | null | undefined): buildable is Buildable {
-  return !!buildable && !buildable.isComplete && !buildable.isInterrupted;
-}
-
-export function isBuildBlockingActivation(buildable: Buildable | null | undefined): boolean {
   return !!buildable && !buildable.isComplete && !buildable.isInterrupted;
 }
 

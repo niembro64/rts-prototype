@@ -57,24 +57,19 @@ for (const buildingBlueprintId in BUILDING_BLUEPRINTS) {
   ALL_STRUCTURE_CONFIGS.push(config);
 }
 
-const BUILDING_CONFIGS = {} as Record<BuildingBlueprintId, BuildingConfig>;
 const ALL_BUILDING_CONFIGS = new Array<BuildingConfig>(BUILDING_BLUEPRINT_IDS.length);
 for (let i = 0; i < BUILDING_BLUEPRINT_IDS.length; i++) {
   const buildingBlueprintId = BUILDING_BLUEPRINT_IDS[i];
   const config = STRUCTURE_CONFIGS[buildingBlueprintId as BuildingBlueprintId];
-  BUILDING_CONFIGS[buildingBlueprintId] = config;
   ALL_BUILDING_CONFIGS[i] = config;
 }
 
 export function getBuildingConfig(buildingBlueprintId: BuildingBlueprintId): BuildingConfig {
   return STRUCTURE_CONFIGS[buildingBlueprintId];
 }
-
-
 // Derived build-cost view used by reclaim and construction accounting.
-export function getUnitBuildConfig(unitBlueprintId: string): UnitBuildConfig | undefined {
+export function getUnitBuildConfig(unitBlueprintId: string): UnitBuildConfig {
   const bp = getUnitBlueprint(unitBlueprintId);
-  if (!bp) return undefined;
   return {
     unitBlueprintId: bp.unitBlueprintId,
     fullName: bp.fullName,
@@ -92,8 +87,6 @@ export function getUnitBuildConfig(unitBlueprintId: string): UnitBuildConfig | u
     fireRange: undefined,
   };
 }
-
-
 // Get list of all buildings
 export function getAllBuildings(): BuildingConfig[] {
   return copyBuildingConfigArray(ALL_BUILDING_CONFIGS);

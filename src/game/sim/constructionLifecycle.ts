@@ -460,7 +460,7 @@ function decayUnfundedConstruction(
   // BAR's decay rate is inversely proportional to build time; the closest
   // authored stand-in here is total cost — a cheap frame rots fast, an
   // expensive one lingers. Clamped so no frame is immortal or instant.
-  const totalCost = buildable.required.energy + buildable.required.metal;
+  const totalCost = resourceCostTotal(buildable.required);
   const costScale = totalCost > 0
     ? Math.min(
         decay.costScaleMax,
@@ -512,10 +512,10 @@ export function updateConstructionLifecycle(
     world.getIncompleteBuildableBuildings(),
   ];
   // P1-12: attendance exists solely to referee decay for incomplete
-  // BUILDING shells. With no incomplete shell anywhere there is nothing
-  // to attend — skip the builder/queue walk entirely (the common steady
-  // state of a developed base).
-  const attendance = sources[0].length > 0 || sources[1].length > 0
+  // BUILDING shells. Incomplete factory-produced units are decay-exempt, so
+  // without an incomplete building there is nothing to attend — skip the
+  // builder/queue walk entirely (the common steady state of a developed base).
+  const attendance = sources[1].length > 0
     ? collectConstructionAttendance(world)
     : EMPTY_CONSTRUCTION_ATTENDANCE;
   const dtSec = dtMs / 1000;

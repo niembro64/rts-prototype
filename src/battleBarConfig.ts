@@ -396,7 +396,7 @@ function refreshDemoRosterLedgers(): void {
  * partial ledger) has towerHelios marked "known" while its saved BUILDINGS
  * roster still lacks it — and the adoption never fires again. Force-enable
  * it once; a player who later switches it off keeps their choice. */
-export function migrateDemoBuildingsHeliosDefault(): void {
+function migrateDemoBuildingsHeliosDefault(): void {
   if (readPersisted(STORAGE_DEMO_BUILDINGS_HELIOS_REVISION) !== null) return;
   persistJson(STORAGE_DEMO_BUILDINGS_HELIOS_REVISION, true);
   const storedRoster = readPersisted(STORAGE_DEMO_BUILDINGS);

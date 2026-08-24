@@ -1,5 +1,5 @@
 import { ENTITY_CHANGED_ACTIONS } from '@/types/network';
-import { isBuildBlockingActivation, isBuildInProgress } from './buildableHelpers';
+import { isBuildInProgress } from './buildableHelpers';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { setUnitActions } from './unitActions';
 import type { Entity, EntityId, UnitAction } from './types';
@@ -265,7 +265,7 @@ export class SimulationIdleBuilderAutoRepair {
       entity.factory === null &&
       entity.ownership !== null &&
       entity.unit.hp > 0 &&
-      !isBuildBlockingActivation(entity.buildable)
+      !isBuildInProgress(entity.buildable)
     );
   }
 }

@@ -23,7 +23,7 @@ function positive(label: keyof GuardConfig): number {
 }
 
 /** Recoil/BAR authors retaliation in 30 Hz simulation frames. */
-export const GUARD_RECOIL_SIMULATION_FRAMES_PER_SECOND = positive(
+const GUARD_RECOIL_SIMULATION_FRAMES_PER_SECOND = positive(
   'recoilSimulationFramesPerSecond',
 );
 export const GUARD_RETALIATION_MEMORY_SECONDS =

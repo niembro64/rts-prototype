@@ -194,7 +194,7 @@ export function selectActiveBuilderTypeInfo(
   return builderTypes[0];
 }
 
-export function getActiveSelectedBuilderTypeInfo(
+function getActiveSelectedBuilderTypeInfo(
   selectedUnits: readonly Entity[],
   activeBuilderUnitBlueprintId: string | null | undefined,
 ): SelectedBuilderTypeInfo | null {
@@ -223,4 +223,3 @@ export function getActiveSelectedBuilder(
     activeBuilderUnitBlueprintId,
   )?.firstEntity ?? null;
 }
-

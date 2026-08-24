@@ -176,7 +176,3 @@ export const appSurface: Readonly<Ref<AppSurface>> = surfaceRef;
 export function sendAppSurface(event: AppSurfaceEvent): boolean {
   return machine.send(event);
 }
-
-export function getAppSurface(): AppSurface {
-  return machine.state;
-}

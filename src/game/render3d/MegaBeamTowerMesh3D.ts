@@ -273,7 +273,7 @@ export function buildCannonTowerMesh(
  *  the shared builder does not know about: two service platforms breaking
  *  the long climb, a counterweight ring under the gun deck, and a beacon
  *  mast rising past the muzzle. */
-export function buildHeliosTowerMesh(primaryMat: THREE.Material): BuildingShape {
+function buildHeliosTowerMesh(primaryMat: THREE.Material): BuildingShape {
   const shape = buildDefenseTowerMesh(
     primaryMat,
     heliosTowerBodyGeom,

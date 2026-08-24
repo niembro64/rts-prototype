@@ -194,7 +194,7 @@ export function buildBarClassicBuildMenuItems(
   );
 }
 
-export function buildBarClassicFactoryUnitBlueprintIds(
+function buildBarClassicFactoryUnitBlueprintIds(
   allowedUnitBlueprintIds: readonly string[],
 ): string[] {
   return allowedUnitBlueprintIds

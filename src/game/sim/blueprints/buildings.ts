@@ -15,7 +15,6 @@ import type {
   ResourceCost,
 } from '../types';
 import type { UnitBlueprintId } from '../../../types/blueprintIds';
-import type { UnitProductionDomain } from '../../../types/blueprintSchema.generated';
 import type {
   BuildingTurretMount,
   EntityBaseLedger,
@@ -32,7 +31,11 @@ import {
   assertNoInlineLockOnInclusionFields,
   validateLockOnInclusionObject,
 } from './lockOnValidation';
-import { productionHoldRingOuterRadius } from '../productionHoldGeometry';
+import {
+  fabricatorHoverHeightForMaxCollisionRadius,
+  fabricatorTorusOuterRadius,
+  fabricatorTorusRingRadius,
+} from '../fabricatorGeometry';
 import {
   assertBuildingLockOnInclusionConfigIds,
   getBuildingLockOnInclusions,
@@ -65,6 +68,20 @@ import {
   getBuildingPlacementSetSquareType,
   isBuildingPlacementSet,
 } from '../../../types/buildingTypes';
+import {
+  FABRICATOR_DOMAINS,
+  fabricatorIdentityKey,
+  isFabricatorDomain,
+  isFabricatorTechLevel,
+  type FabricatorDomain,
+  type FabricatorIdentity,
+  type FabricatorTechLevel,
+} from './fabricatorIdentity';
+import {
+  validateEmissionSocketLayout,
+  validateFiniteVector3,
+  validatePositiveAngularActuator,
+} from './mountValidation';
 
 export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   buildingBlueprintId: BuildingBlueprintId;
@@ -90,7 +107,7 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   footprintMask: string[];
   base: EntityBaseLedger;
   hp: number;
-  /** Authored construction cost. BUILDING_CONFIGS applies COST_MULTIPLIER.
+  /** Authored construction cost. Runtime build configs apply COST_MULTIPLIER.
    *  Metal and energy are paid together for each realized work step. */
   cost: ResourceCost;
   energyProduction: number | null;
@@ -136,13 +153,6 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   turrets: BuildingTurretMount[];
 };
 
-export type FabricatorDomain = UnitProductionDomain | 'universal';
-export type FabricatorTechLevel = 1 | 2 | 3;
-export type FabricatorIdentity = Readonly<{
-  techLevel: FabricatorTechLevel;
-  domain: FabricatorDomain;
-}>;
-
 type JsonBuildingBlueprint = Omit<BuildingBlueprint, keyof LockOnInclusionObject>;
 type InheritableJsonBuildingBlueprint = Partial<JsonBuildingBlueprint> & { $extends?: string };
 
@@ -164,8 +174,9 @@ for (const [id, variant] of Object.entries(RAW_FABRICATOR_BLUEPRINTS)) {
     gridWidth * BUILD_GRID_CELL_SIZE,
     gridHeight * BUILD_GRID_CELL_SIZE,
   ) * 0.5;
-  const radialRadius = productionHoldRingOuterRadius(
-    Math.max(gridWidth, gridHeight) * BUILD_GRID_CELL_SIZE * 0.46,
+  const radialRadius = fabricatorTorusOuterRadius(
+    gridWidth * BUILD_GRID_CELL_SIZE,
+    gridHeight * BUILD_GRID_CELL_SIZE,
   );
   RAW_BUILDING_BLUEPRINTS_WITH_VARIANTS[id] = {
     $extends: 'towerFabricator',
@@ -317,21 +328,14 @@ export const HELIOS_TOWER_VISUAL_HEIGHT =
 export const ANTI_AIR_TOWER_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.towerAntiAir.visualHeight;
 
-type FactoryBuildingVisualMetrics = {
-  visualTop: number;
-};
-
 /** Authoritative top of the hovering factory ring for HUD/target anchors. */
-export function getFactoryBuildingVisualMetrics(
+export function getFactoryBuildingVisualTop(
   width: number,
   depth: number,
   buildingBlueprintId: BuildingBlueprintId,
-): FactoryBuildingVisualMetrics {
-  return {
-    visualTop:
-      fabricatorTorusHoverHeight(buildingBlueprintId) +
-      fabricatorTorusRingRadius(width, depth) * 0.22,
-  };
+): number {
+  return fabricatorTorusHoverHeight(buildingBlueprintId) +
+    fabricatorTorusRingRadius(width, depth) * 0.22;
 }
 
 function validateBuildingSupportSurface(
@@ -581,8 +585,8 @@ function validateFactoryUnitRoster(
     throw new Error(`Invalid building blueprint ${id}: fabricators require positive constructionRate`);
   }
   if (
-    (factory.techLevel !== 1 && factory.techLevel !== 2 && factory.techLevel !== 3) ||
-    !['universal', 'bot', 'vehicle', 'aircraft', 'naval'].includes(factory.domain)
+    !isFabricatorTechLevel(factory.techLevel) ||
+    !isFabricatorDomain(factory.domain)
   ) {
     throw new Error(`Invalid building blueprint ${id}: malformed factory identity`);
   }
@@ -673,30 +677,20 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
         ['yaw', mount.angularActuator.yaw],
         ['pitch', mount.angularActuator.pitch],
       ] as const) {
-        if (
-          !Number.isFinite(actuator.maxSpeed) || actuator.maxSpeed <= 0 ||
-          !Number.isFinite(actuator.maxAcceleration) || actuator.maxAcceleration <= 0
-        ) {
-          throw new Error(
-            `Invalid building actuator override ${id} ${mount.mountId}.${axis}: ` +
-            'maxSpeed and maxAcceleration must be finite and positive',
-          );
-        }
+        validatePositiveAngularActuator(
+          `building actuator override ${id} ${mount.mountId}.${axis}`,
+          actuator,
+        );
       }
     }
     const attachment = mount.hostAttachment;
     if (attachment !== undefined) {
-      const socket = attachment.socketOffset;
-      if (
-        !Number.isFinite(socket.x) ||
-        !Number.isFinite(socket.y) ||
-        !Number.isFinite(socket.z)
-      ) {
-        throw new Error(
-          `Invalid building host attachment ${id} ${mount.mountId}: ` +
-          'socketOffset x/y/z must be finite world units',
-        );
-      }
+      validateFiniteVector3(
+        `building host attachment ${id} ${mount.mountId}`,
+        'socketOffset',
+        attachment.socketOffset,
+        'world units',
+      );
       if (
         mount.articulation === undefined ||
         mount.articulation.hostAssist !== (
@@ -760,26 +754,11 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
         );
       }
     }
-    if (mount.emissionSockets !== undefined) {
-      if (mount.emissionSockets.length !== turretBlueprint.emissionLaneCount) {
-        throw new Error(
-          `Invalid emission sockets for building ${id} ${mount.mountId}: ` +
-          `expected exactly ${turretBlueprint.emissionLaneCount} QueryWeapon lane(s)`,
-        );
-      }
-      for (const socket of mount.emissionSockets) {
-        if (
-          !Number.isFinite(socket.offset.x) ||
-          !Number.isFinite(socket.offset.y) ||
-          !Number.isFinite(socket.offset.z)
-        ) {
-          throw new Error(
-            `Invalid emission socket for building ${id} ${mount.mountId}: ` +
-            'offset x/y/z must be finite world units',
-          );
-        }
-      }
-    }
+    validateEmissionSocketLayout(
+      `building ${id} ${mount.mountId}`,
+      mount.emissionSockets,
+      turretBlueprint.emissionLaneCount,
+    );
   }
   if (blueprint.workEmitter !== null && blueprint.workEmitter !== undefined) {
     validateWorkEmitter(`work emitter ${id}`, blueprint.workEmitter);
@@ -878,13 +857,28 @@ export const FABRICATOR_BLUEPRINT_IDS = Object.freeze(
     (buildingBlueprintId) => BUILDING_BLUEPRINTS[buildingBlueprintId].factory !== null,
   ),
 );
+const FABRICATOR_BLUEPRINT_ID_SET = new Set<string>(FABRICATOR_BLUEPRINT_IDS);
+const FABRICATOR_BLUEPRINT_ID_BY_IDENTITY = new Map<string, BuildingBlueprintId>();
+for (const buildingBlueprintId of FABRICATOR_BLUEPRINT_IDS) {
+  const identity = BUILDING_BLUEPRINTS[buildingBlueprintId].factory;
+  if (identity === null) continue;
+  const key = fabricatorIdentityKey(identity);
+  const duplicate = FABRICATOR_BLUEPRINT_ID_BY_IDENTITY.get(key);
+  if (duplicate !== undefined) {
+    throw new Error(
+      `Fabricator matrix has duplicate T${identity.techLevel} ${identity.domain}: ` +
+      `${duplicate} and ${buildingBlueprintId}`,
+    );
+  }
+  FABRICATOR_BLUEPRINT_ID_BY_IDENTITY.set(key, buildingBlueprintId);
+}
 
 export function isFabricatorBuildingBlueprintId(
   buildingBlueprintId: string | null | undefined,
 ): boolean {
   return buildingBlueprintId !== null &&
     buildingBlueprintId !== undefined &&
-    FABRICATOR_BLUEPRINT_IDS.includes(buildingBlueprintId as BuildingBlueprintId);
+    FABRICATOR_BLUEPRINT_ID_SET.has(buildingBlueprintId);
 }
 
 /** Universal factories are the only rotationally symmetric, center-drop
@@ -900,47 +894,35 @@ export function isRadialFabricatorBuildingBlueprintId(
 export function isDirectionalFabricatorBuildingBlueprintId(
   buildingBlueprintId: string | null | undefined,
 ): boolean {
-  return isFabricatorBuildingBlueprintId(buildingBlueprintId) &&
-    !isRadialFabricatorBuildingBlueprintId(buildingBlueprintId);
+  if (!isFabricatorBuildingBlueprintId(buildingBlueprintId)) return false;
+  return BUILDING_BLUEPRINTS[buildingBlueprintId as BuildingBlueprintId]
+    .factory?.domain !== 'universal';
 }
 
 export function getFabricatorBuildingBlueprintId(
   techLevel: FabricatorTechLevel,
   domain: FabricatorDomain,
 ): BuildingBlueprintId {
-  for (const buildingBlueprintId of FABRICATOR_BLUEPRINT_IDS) {
-    const factory = BUILDING_BLUEPRINTS[buildingBlueprintId].factory;
-    if (factory?.techLevel === techLevel && factory.domain === domain) {
-      return buildingBlueprintId;
-    }
-  }
+  const buildingBlueprintId = FABRICATOR_BLUEPRINT_ID_BY_IDENTITY.get(
+    fabricatorIdentityKey({ techLevel, domain }),
+  );
+  if (buildingBlueprintId !== undefined) return buildingBlueprintId;
   throw new Error(`Missing T${techLevel} ${domain} fabricator`);
 }
 
 function validateFabricatorMatrix(): void {
-  const domains: readonly FabricatorDomain[] = [
-    'universal', 'bot', 'vehicle', 'aircraft', 'naval',
-  ];
   if (FABRICATOR_BLUEPRINT_IDS.length !== 11) {
     throw new Error(`Fabricator matrix must contain ten T1/T2 buildings and one T3 building`);
   }
   for (const techLevel of [1, 2] as const) {
     const byDomain = new Map<FabricatorDomain, BuildingBlueprint>();
-    for (const buildingBlueprintId of FABRICATOR_BLUEPRINT_IDS) {
-      const blueprint = BUILDING_BLUEPRINTS[buildingBlueprintId];
-      if (blueprint.factory?.techLevel === techLevel) {
-        if (byDomain.has(blueprint.factory.domain)) {
-          throw new Error(`Fabricator matrix has duplicate T${techLevel} ${blueprint.factory.domain}`);
-        }
-        byDomain.set(blueprint.factory.domain, blueprint);
-      }
+    for (const domain of FABRICATOR_DOMAINS) {
+      byDomain.set(
+        domain,
+        BUILDING_BLUEPRINTS[getFabricatorBuildingBlueprintId(techLevel, domain)],
+      );
     }
-    for (const domain of domains) {
-      if (!byDomain.has(domain)) {
-        throw new Error(`Fabricator matrix is missing T${techLevel} ${domain}`);
-      }
-    }
-    const specialist = domains.slice(1).map((domain) => byDomain.get(domain)!);
+    const specialist = FABRICATOR_DOMAINS.slice(1).map((domain) => byDomain.get(domain)!);
     const union = new Set(specialist.flatMap((blueprint) => blueprint.allowedUnitBlueprintIds ?? []));
     const universal = byDomain.get('universal')!;
     if (
@@ -970,7 +952,7 @@ function validateFabricatorMatrix(): void {
     }
   }
 
-  for (const domain of domains) {
+  for (const domain of FABRICATOR_DOMAINS) {
     const tierOne = BUILDING_BLUEPRINTS[getFabricatorBuildingBlueprintId(1, domain)];
     const tierTwo = BUILDING_BLUEPRINTS[getFabricatorBuildingBlueprintId(2, domain)];
     if (
@@ -1056,7 +1038,7 @@ export function fabricatorTorusHoverHeight(
   if (maxRadius <= 0) {
     throw new Error(`T${factory.techLevel} Universal has no collision envelope to clear`);
   }
-  return 1.2 * (2 * maxRadius);
+  return fabricatorHoverHeightForMaxCollisionRadius(maxRadius);
 }
 
 /** World height of a factory's assembly plane above its placement base.
@@ -1074,15 +1056,6 @@ export function fabricatorProductionPlaneHeight(
     return blueprint.visualHeight * 0.62;
   }
   return Math.min(8, blueprint.gridDepth * BUILD_GRID_CELL_SIZE * 0.12);
-}
-
-/** Radius of the torus ring — the circle the construction pylons hang on. */
-export function fabricatorTorusRingRadius(width: number, depth: number): number {
-  return Math.max(width, depth) * 0.46;
-}
-
-export function fabricatorTorusOuterRadius(width: number, depth: number): number {
-  return productionHoldRingOuterRadius(fabricatorTorusRingRadius(width, depth));
 }
 
 function validateFabricatorProgressionGeometry(): void {

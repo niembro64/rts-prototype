@@ -29,6 +29,7 @@ import {
   SONAR_BUILDING_VISUAL_HEIGHT,
 } from '../sim/blueprints';
 import type { BuildingRenderProfile } from '../sim/types';
+import { radialFabricatorBlueprintIdOrDefault } from '../sim/fabricatorGeometry';
 import {
   buildSolarCollector,
   disposeSolarCollectorGeoms,
@@ -299,7 +300,7 @@ export function buildBuildingShape(
           width,
           depth,
           primaryMat,
-          buildingBlueprintId ?? 'towerFabricator',
+          radialFabricatorBlueprintIdOrDefault(buildingBlueprintId),
         );
       case 'buildingExtractor':
         return buildMetalExtractorMesh(

@@ -198,24 +198,6 @@ function unloadTransportCargo(transport: Entity): Entity[] {
   return released;
 }
 
-/** Beam-carried units must never collide while inside the carrier's
- *  ring — the spring holds them overlapping the transport's own
- *  collision sphere, and contact resolution would fight it violently.
- *  The physics engine excludes these ids from its contact passes. */
-export function collectBeamCarriedEntityIds(
-  world: WorldState,
-  out: Set<EntityId>,
-): Set<EntityId> {
-  out.clear();
-  const transports = world.getTransportUnits();
-  for (let i = 0; i < transports.length; i++) {
-    const cargo = transports[i].transport?.loadedUnits;
-    if (cargo === undefined) continue;
-    for (let j = 0; j < cargo.length; j++) out.add(cargo[j].id);
-  }
-  return out;
-}
-
 /** Release every passenger a dying/removed transport still holds, so no
  *  unit is left `transported` forever. Wired into the world's
  *  entity-removal hook by the server core. */

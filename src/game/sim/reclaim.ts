@@ -39,7 +39,7 @@ export function getReclaimResourceValue(target: Entity): ResourceCost {
 
   if (target.unit !== null) {
     const config = getUnitBuildConfig(target.unit.unitBlueprintId);
-    if (config) return { energy: 0, metal: config.cost.metal };
+    return { energy: 0, metal: config.cost.metal };
   }
 
   return makeZeroResourceCost();
