@@ -578,7 +578,6 @@ export class Render3DEntities {
       this.frameState,
       this._spinDt,
       this._currentDtMs,
-      frameSpin.timeMs,
       entityPacket?.scoped === true,
       this.entityDetailRung,
       this.entityLodProxyFadeAlpha,

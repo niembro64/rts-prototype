@@ -607,7 +607,6 @@ export class BuildingEntityRenderer3D {
     frameState: RenderFrameState3D,
     spinDt: number,
     currentDtMs: number,
-    timeMs: number,
     scopedRender: boolean = false,
     entityDetailRung?: (entity: Entity) => DetailRung,
     entityLodProxyFadeAlpha?: (entity: Entity) => number,
@@ -772,7 +771,7 @@ export class BuildingEntityRenderer3D {
     this.flushTurretAimRecords();
     if (pruneBuildings) this.pruneUnseenBuildingMeshes(pruneToken, scopedRender);
     this.updateBuildingTurretSpinQueue(spinDt);
-    this.animations.update(spinDt, timeMs);
+    this.animations.update(spinDt);
     this.updateBuildingSpawnFades(currentDtMs);
     // Advance any in-progress death-out fades every frame (independent of
     // the entity-set prune cadence below).

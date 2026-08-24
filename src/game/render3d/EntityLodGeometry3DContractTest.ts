@@ -217,7 +217,7 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   towerAntiAir: { close: 1200, mid: 750, far: 440 },
   towerTorpedo: { close: 1100, mid: 650, far: 360 },
   // Re-baselined 2026-08-16 when the two shield labs got their curve
-  // sculpture back (twisted spire + helical ribbons; S-curve dome + nautilus
+  // sculpture back (twisted spire and crown halos; S-curve dome + nautilus
   // shells + horns) on top of taller, bulkier massing. These are the only two
   // structures a player builds one or two of, so the Medium/Low rungs buy
   // silhouette rather than mass-instance throughput. Measured value plus ~5%
@@ -227,7 +227,9 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   // ring is 48 triangles and vanishes to a hairline edge-on; the shared torus
   // is 224 at close and actually reads as a ring turning in three dimensions,
   // which is the whole point of a gimbal and a crown halo.
-  buildingShieldTargetingTech: { close: 2100, mid: 1045, far: 500 },
+  // The detached helical ribbons were removed on 2026-08-24. Keep the tighter
+  // ceilings so that oversized sky geometry cannot quietly return as LOD art.
+  buildingShieldTargetingTech: { close: 1860, mid: 925, far: 440 },
   buildingShieldTech: { close: 1445, mid: 695, far: 245 },
   buildingPrecisionTargetingTech: { close: 1615, mid: 790, far: 300 },
   buildingRadarJammer: { close: 900, mid: 600, far: 360 },

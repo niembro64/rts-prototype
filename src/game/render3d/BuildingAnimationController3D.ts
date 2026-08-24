@@ -36,7 +36,6 @@ import {
   BuildingResourcePylonAnimator3D,
 } from './BuildingResourcePylonAnimator3D';
 import { windRotorAngularSpeed } from './WindKinematics3D';
-import { updateTechBuildingCoilPulse } from './TechBuildingsMesh3D';
 import { applyBuildingOperationalPose } from './BuildingOperationalRig3D';
 import {
   BUILDING_RIG_IDLE_EPSILON,
@@ -225,15 +224,7 @@ export class BuildingAnimationController3D {
     this.radarSweepSpeeds.delete(id);
   }
 
-  update(
-    spinDt: number,
-    // Wall-clock animation time, for animators driven by a clock rather than
-    // by per-entity state.
-    timeMs: number,
-  ): void {
-    // The targeting lab's coil shares one material across every instance, so
-    // its pulse runs off the wall clock here rather than per entity.
-    updateTechBuildingCoilPulse(timeMs);
+  update(spinDt: number): void {
     this.resourcePylonAnimator.refreshActiveQueue();
     this.updateActiveSolarAnimations(spinDt);
 
