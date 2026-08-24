@@ -608,18 +608,26 @@ function assertNegativeMetalDepositStepDemoSpawn(
   }
 }
 
-/** The smallest stock map with the authored [1,2,0,3] roster is the packing
- * stress case. It must retain exact coverage even though genuinely constrained
- * custom maps use best-effort placement. The MODE DEFAULT preset is asserted
- * too: it is the map the demo actually boots, so a base row that only fits in
- * an idealized world is caught here. Both runs install the generated metal
- * deposits BEFORE the base spawn, mirroring ServerBootstrap — deposit pads
- * block non-extractor placement, and a deposit-free test world quietly passes
- * layouts that fail in the real demo. */
+/** The smallest stock map with an authored outer-water ring is the offshore
+ * packing stress case. A dry-perimeter preset can still contain a small lake,
+ * but its demo placement is deliberately best-effort: it must not be forced to
+ * pack all fifty naval production lines into that shared interior pocket. The
+ * MODE DEFAULT preset is asserted too: it is the map the demo actually boots,
+ * so a base row that only fits in an idealized world is caught here. Both runs
+ * install the generated metal deposits BEFORE the base spawn, mirroring
+ * ServerBootstrap — deposit pads block non-extractor placement, and a
+ * deposit-free test world quietly passes layouts that fail in the real demo. */
 function assertCompactAuthoredRosterFactoryCoverage(): void {
-  let compactPreset = BATTLE_PRESETS[0];
-  for (let i = 1; i < BATTLE_PRESETS.length; i++) {
-    const candidate = BATTLE_PRESETS[i];
+  const offshorePresets = BATTLE_PRESETS.filter(
+    (preset) => preset.liquidSurfaceMode === 'water' && preset.perimeterMagnitude < 0,
+  );
+  assertContract(
+    offshorePresets.length > 0,
+    'stock presets must retain at least one authored outer-water showcase',
+  );
+  let compactPreset = offshorePresets[0]!;
+  for (let i = 1; i < offshorePresets.length; i++) {
+    const candidate = offshorePresets[i];
     if (
       candidate.mapWidthLandCells * candidate.mapLengthLandCells <
       compactPreset.mapWidthLandCells * compactPreset.mapLengthLandCells
