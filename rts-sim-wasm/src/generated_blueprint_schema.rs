@@ -1324,6 +1324,8 @@ pub enum UnitIdentity {
 pub struct UnitBlueprint {
     pub unitBlueprintId: String,
     pub name: String,
+    pub shortDescription: String,
+    pub longDescription: String,
     pub identity: UnitIdentity,
     pub shortName: String,
     pub tinyName: String,

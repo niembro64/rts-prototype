@@ -41,11 +41,15 @@ import {
   validateWorkEmitter,
 } from './stationArticulation';
 import { getUnitBodyShapeKey } from '../../math/BodyDimensions';
+import { validateEntityDescription } from './entityDescriptionValidation';
 
 type JsonUnitBlueprint = Omit<UnitBlueprint, keyof LockOnInclusionObject>;
 type InheritableJsonUnitBlueprint = Partial<JsonUnitBlueprint> & { $extends?: string };
 
 const UNIT_EXPLICIT_FIELDS = [
+  'name',
+  'shortDescription',
+  'longDescription',
   'base',
   'supportSurface',
   'production',
@@ -608,6 +612,7 @@ function validateBodyShapeSegments(
 }
 
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
+  validateEntityDescription(`unit blueprint ${bp.unitBlueprintId}`, bp);
   validateBodyShapeSegments(bp.unitBlueprintId, bp.bodyShape);
   validateUnitSupportSurface(bp.unitBlueprintId, bp.supportSurface);
   assertValidEntityRadius(`unit blueprint ${bp.unitBlueprintId}`, bp.radius);

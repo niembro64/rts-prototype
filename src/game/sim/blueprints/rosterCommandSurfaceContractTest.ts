@@ -31,6 +31,7 @@ import {
 } from './displayRosters';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
 import { UNIT_BLUEPRINTS } from './units';
+import { validateEntityDescription } from './entityDescriptionValidation';
 import {
   entityHasBarAreaAttackCommand,
   entityHasBarAttackCommand,
@@ -767,6 +768,22 @@ export function runRosterCommandSurfaceContractTest(): void {
     'buildingAdvancedUniversalFabricator',
     'buildingAdvancedAircraftFabricator',
   ]);
+
+  // Names and descriptions are blueprint identity, not UI copy. Validate the
+  // complete catalogs (including non-fabricator units) so every frontend and
+  // future native consumer receives the same bounded metadata.
+  for (const unitBlueprintId of UNIT_BLUEPRINT_IDS) {
+    validateEntityDescription(
+      `unit blueprint ${unitBlueprintId}`,
+      UNIT_BLUEPRINTS[unitBlueprintId],
+    );
+  }
+  for (const buildingBlueprintId of STRUCTURE_BLUEPRINT_IDS) {
+    validateEntityDescription(
+      `building blueprint ${buildingBlueprintId}`,
+      BUILDING_BLUEPRINTS[buildingBlueprintId],
+    );
+  }
 
   // Three-letter codes are an identifier the player reads in fixed-width slots,
   // so they must actually be three letters and must not collide — including

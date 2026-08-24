@@ -976,6 +976,8 @@ export type UnitIdentity = UnitAnimalIdentity | UnitConstructionCraftIdentity;
 export type UnitBlueprint = {
   unitBlueprintId: UnitBlueprintId;
   name: string;
+  shortDescription: string;
+  longDescription: string;
   identity: UnitIdentity;
   shortName: string;
   tinyName: string;

@@ -2,6 +2,8 @@
   "buildingBotFabricator": {
     "buildingBlueprintId": "buildingBotFabricator",
     "name": "Bot Fabricator",
+    "shortDescription": "Tier-one bot factory",
+    "longDescription": "A directional tier-one factory that builds the complete opening bot-domain roster through its front yard.",
     "shortName": "BOT FAB",
     "tinyName": "BFB",
     "gridWidth": 10,
@@ -43,6 +45,8 @@
   "buildingVehicleFabricator": {
     "buildingBlueprintId": "buildingVehicleFabricator",
     "name": "Vehicle Fabricator",
+    "shortDescription": "Tier-one vehicle factory",
+    "longDescription": "A directional tier-one factory that builds the complete opening vehicle-domain roster through its front yard.",
     "shortName": "VEH FAB",
     "tinyName": "VFB",
     "gridWidth": 14,
@@ -82,6 +86,8 @@
   "buildingAircraftFabricator": {
     "buildingBlueprintId": "buildingAircraftFabricator",
     "name": "Aircraft Fabricator",
+    "shortDescription": "Tier-one aircraft factory",
+    "longDescription": "A hovering directional tier-one factory that builds the complete opening aircraft-domain roster through its front yard.",
     "shortName": "AIR FAB",
     "tinyName": "AFB",
     "gridWidth": 16,
@@ -121,6 +127,8 @@
   "buildingNavalFabricator": {
     "buildingBlueprintId": "buildingNavalFabricator",
     "name": "Naval Fabricator",
+    "shortDescription": "Tier-one naval factory",
+    "longDescription": "A water-surface directional tier-one factory that builds the complete opening naval-domain roster through its front yard.",
     "shortName": "NAV FAB",
     "tinyName": "NFB",
     "gridWidth": 16,
@@ -160,6 +168,8 @@
   "buildingAdvancedUniversalFabricator": {
     "buildingBlueprintId": "buildingAdvancedUniversalFabricator",
     "name": "Advanced Universal Fabricator",
+    "shortDescription": "Flexible tier-two unit factory",
+    "longDescription": "An expensive radial factory that produces every tier-two domain roster from a centered construction bay.",
     "shortName": "ADV UNIV",
     "tinyName": "AUF",
     "factory": { "techLevel": 2, "domain": "universal" },
@@ -173,6 +183,8 @@
   "buildingAdvancedBotFabricator": {
     "buildingBlueprintId": "buildingAdvancedBotFabricator",
     "name": "Advanced Bot Fabricator",
+    "shortDescription": "Tier-two bot factory",
+    "longDescription": "A directional advanced factory that builds the complete tier-two bot-domain roster through its front yard.",
     "shortName": "ADV BOT",
     "tinyName": "ABF",
     "gridWidth": 14,
@@ -218,6 +230,8 @@
   "buildingAdvancedVehicleFabricator": {
     "buildingBlueprintId": "buildingAdvancedVehicleFabricator",
     "name": "Advanced Vehicle Fabricator",
+    "shortDescription": "Tier-two vehicle factory",
+    "longDescription": "A directional advanced factory that builds the complete tier-two vehicle-domain roster through its front yard.",
     "shortName": "ADV VEH",
     "tinyName": "AVF",
     "gridWidth": 18,
@@ -261,6 +275,8 @@
   "buildingAdvancedAircraftFabricator": {
     "buildingBlueprintId": "buildingAdvancedAircraftFabricator",
     "name": "Advanced Aircraft Fabricator",
+    "shortDescription": "Tier-two aircraft factory",
+    "longDescription": "A hovering directional advanced factory that builds the complete tier-two aircraft-domain roster through its front yard.",
     "shortName": "ADV AIR",
     "tinyName": "AAF",
     "gridWidth": 20,
@@ -304,6 +320,8 @@
   "buildingAdvancedNavalFabricator": {
     "buildingBlueprintId": "buildingAdvancedNavalFabricator",
     "name": "Advanced Naval Fabricator",
+    "shortDescription": "Tier-two naval factory",
+    "longDescription": "A water-surface directional advanced factory that builds the complete tier-two naval-domain roster through its front yard.",
     "shortName": "ADV NAV",
     "tinyName": "ANF",
     "gridWidth": 20,
