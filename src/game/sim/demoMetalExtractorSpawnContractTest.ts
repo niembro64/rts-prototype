@@ -422,7 +422,8 @@ function assertUniversalFactoryCoverageByPlayer(
     assertSeededUniversalRepeatLine(entity);
     assertContract(
       entity.buildingBlueprintId === 'towerFabricator' ||
-        entity.buildingBlueprintId === 'buildingAdvancedUniversalFabricator',
+        entity.buildingBlueprintId === 'buildingAdvancedUniversalFabricator' ||
+        entity.buildingBlueprintId === 'buildingExperimentalUniversalFabricator',
       `${label} initialized production must never use directional specialist ${entity.buildingBlueprintId}`,
     );
     assertContract(
@@ -437,11 +438,6 @@ function assertUniversalFactoryCoverageByPlayer(
   }
   for (const playerId of playerIds) {
     const factories = factoriesByPlayer.get(playerId) ?? [];
-    assertContract(
-      factories.length === expectedUnitBlueprintIds.length,
-      `${label} player ${playerId} must have one Universal per active unit; ` +
-        `expected ${expectedUnitBlueprintIds.length}, got ${factories.length}`,
-    );
     const coverage = new Set<string>();
     for (const factoryEntity of factories) {
       const unitBlueprintId = assertSeededUniversalRepeatLine(factoryEntity);
@@ -453,6 +449,12 @@ function assertUniversalFactoryCoverageByPlayer(
     }
     const missing = expectedUnitBlueprintIds.filter((id) => !coverage.has(id));
     const unexpected = [...coverage].filter((id) => !expected.has(id));
+    assertContract(
+      factories.length === expectedUnitBlueprintIds.length,
+      `${label} player ${playerId} must have one Universal per active unit; ` +
+        `expected ${expectedUnitBlueprintIds.length}, got ${factories.length}; ` +
+        `missing ${missing.join(', ') || 'none'}`,
+    );
     assertContract(
       coverage.size === expected.size && missing.length === 0 && unexpected.length === 0,
       `${label} player ${playerId} Universal quotas must cover the full roster; ` +
@@ -527,8 +529,7 @@ function assertAuthoredRosterCoverageForPreset(
     const missing = BUILDING_BLUEPRINT_IDS.filter((id) =>
       !coverage.has(id) && !(
         FABRICATOR_BLUEPRINT_ID_SET.has(id) &&
-        id !== 'towerFabricator' &&
-        id !== 'buildingAdvancedUniversalFabricator'
+        getBuildingBlueprint(id).factory?.domain !== 'universal'
       ));
     assertContract(
       missing.length === 0,

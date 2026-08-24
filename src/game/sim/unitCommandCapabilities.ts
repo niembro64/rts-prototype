@@ -90,6 +90,7 @@ const BAR_AIR_TARGET_UNIT_BLUEPRINT_IDS = new Set<string>([
   // BAR air-plant analogues in the current local roster.
   'unitBee',
   'unitConstructionDrone',
+  'unitAdvancedConstructionDrone',
   'unitDragonfly',
   'unitEagle',
   'unitDuck',
@@ -110,6 +111,10 @@ const BAR_BUILDER_PRIORITY_UNIT_BLUEPRINT_IDS = new Set<string>([
   'unitConstructionSubmarine',
   'unitConstructionBot',
   'unitConstructionRover',
+  'unitAdvancedConstructionBot',
+  'unitAdvancedConstructionRover',
+  'unitAdvancedConstructionDrone',
+  'unitAdvancedConstructionSubmarine',
 ]);
 const BAR_BUILDER_PRIORITY_STRUCTURE_BLUEPRINT_IDS = new Set<string>([
   'towerFabricator',
@@ -122,6 +127,7 @@ const BAR_BUILDER_PRIORITY_STRUCTURE_BLUEPRINT_IDS = new Set<string>([
   'buildingAdvancedVehicleFabricator',
   'buildingAdvancedAircraftFabricator',
   'buildingAdvancedNavalFabricator',
+  'buildingExperimentalUniversalFabricator',
 ]);
 const BAR_FACTORY_GUARD_STRUCTURE_BLUEPRINT_IDS = new Set<string>([
   'towerFabricator',
@@ -134,12 +140,14 @@ const BAR_FACTORY_GUARD_STRUCTURE_BLUEPRINT_IDS = new Set<string>([
   'buildingAdvancedVehicleFabricator',
   'buildingAdvancedAircraftFabricator',
   'buildingAdvancedNavalFabricator',
+  'buildingExperimentalUniversalFabricator',
 ]);
 const BAR_AIR_PLANT_LAND_AT_STRUCTURE_BLUEPRINT_IDS = new Set<string>([
   'towerFabricator',
   'buildingAircraftFabricator',
   'buildingAdvancedUniversalFabricator',
   'buildingAdvancedAircraftFabricator',
+  'buildingExperimentalUniversalFabricator',
 ]);
 const BAR_FACTORY_MOVE_STATE_STRUCTURE_BLUEPRINT_IDS = new Set<string>([
   'towerFabricator',
@@ -152,6 +160,7 @@ const BAR_FACTORY_MOVE_STATE_STRUCTURE_BLUEPRINT_IDS = new Set<string>([
   'buildingAdvancedVehicleFabricator',
   'buildingAdvancedAircraftFabricator',
   'buildingAdvancedNavalFabricator',
+  'buildingExperimentalUniversalFabricator',
 ]);
 const BAR_CAPTURE_UNIT_BLUEPRINT_IDS = new Set<string>([
   // BAR ARM parity: armcom has cancapture=true; current T1 constructors do not.
@@ -159,12 +168,12 @@ const BAR_CAPTURE_UNIT_BLUEPRINT_IDS = new Set<string>([
 ]);
 /** BAR's category rule, restated over this repo's authored lock-on data:
  *  a level-1 `only` mask of 0 admits the whole family; otherwise the target
- *  blueprint's wire code must be inside the 32-bit mask. Mirrors
+ *  blueprint's wire code must be inside the 64-bit mask. Mirrors
  *  `combat_targeting_level1_mask_allows` in Rust — the command layer and the
  *  targeting kernel must give the same answer. */
-function lockOnLevel1MaskAllows(mask: number, code: number): boolean {
-  if (mask === 0) return true;
-  return code >= 0 && code < 32 && (mask & (1 << code)) !== 0;
+function lockOnLevel1MaskAllows(mask: bigint, code: number): boolean {
+  if (mask === 0n) return true;
+  return code >= 0 && code < 64 && (mask & (1n << BigInt(code))) !== 0n;
 }
 
 /** TS mirror of `combat_targeting_lockon_masks_allow_body_entity` for the

@@ -228,7 +228,7 @@ export function runHostVolumeOverlay3DContractTest(): void {
     renderer.updateHostVolumes(fabricatorMesh, fabricator);
     const fabricatorRings = fabricatorMesh.radiusRings;
     assertContract(fabricatorRings !== undefined, 'fabricator volumes must exist');
-    const hoverY = fabricatorTorusHoverHeight();
+    const hoverY = fabricatorTorusHoverHeight('towerFabricator');
     const fabricatorHit = fabricatorRings.hit;
     assertContract(
       fabricatorHit !== undefined && fabricatorHit.visible

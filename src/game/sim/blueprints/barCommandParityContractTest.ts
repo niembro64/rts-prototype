@@ -99,6 +99,8 @@ const PROTOTYPE_ONLY_BLUEPRINTS: ReadonlySet<string> = new Set([
   'unitRadarScout', 'unitConstructionBot', 'unitConstructionRover',
   'unitStealthScout', 'unitDetector', 'unitRadarJammer', 'unitMissileRover',
   'unitClusterArtillery', 'unitWaterStrider', 'unitPatrolCorvette', 'unitPetrel',
+  'unitAdvancedConstructionBot', 'unitAdvancedConstructionRover',
+  'unitAdvancedConstructionDrone', 'unitAdvancedConstructionSubmarine',
   'buildingShieldTargetingTech', 'buildingShieldTech',
   'buildingPrecisionTargetingTech', 'buildingRadarJammer', 'buildingSonarJammer',
   'buildingMetalStorage', 'buildingEnergyStorage',
@@ -106,7 +108,8 @@ const PROTOTYPE_ONLY_BLUEPRINTS: ReadonlySet<string> = new Set([
   'buildingAircraftFabricator', 'buildingNavalFabricator',
   'buildingAdvancedUniversalFabricator', 'buildingAdvancedBotFabricator',
   'buildingAdvancedVehicleFabricator', 'buildingAdvancedAircraftFabricator',
-  'buildingAdvancedNavalFabricator', 'towerInterceptor', 'buildingTidalGenerator',
+  'buildingAdvancedNavalFabricator', 'buildingExperimentalUniversalFabricator',
+  'towerInterceptor', 'buildingTidalGenerator',
 ]);
 
 /** Categories a host can expose. Same vocabulary as the audit's matrix and the

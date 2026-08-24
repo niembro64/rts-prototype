@@ -3,7 +3,7 @@
     "buildingBlueprintId": "buildingSolar",
     "tinyName": "SOL",
     "shortName": "SOLAR",
-    "name": "Solar",
+    "fullName": "Solar",
     "shortDescription": "Deployable solar energy producer",
     "longDescription": "An opening energy structure whose panels deploy while active and fold into a fortified offline state.",
     "gridWidth": 5,
@@ -100,8 +100,8 @@
   "buildingWind": {
     "buildingBlueprintId": "buildingWind",
     "tinyName": "WND",
-    "shortName": "WIND",
-    "name": "Wind",
+    "shortName": "WINDY",
+    "fullName": "Wind",
     "shortDescription": "Wind-driven energy producer",
     "longDescription": "An opening energy structure whose rotor output follows wind while its closed state trades production for durability.",
     "gridWidth": 2,
@@ -193,8 +193,8 @@
   "buildingExtractor": {
     "buildingBlueprintId": "buildingExtractor",
     "tinyName": "MEX",
-    "shortName": "MEX",
-    "name": "Extractor",
+    "shortName": "MEX-1",
+    "fullName": "Extractor",
     "shortDescription": "Basic metal extraction structure",
     "longDescription": "A basic extractor that produces metal from covered deposits on dry ground or the underwater bed.",
     "gridWidth": 5,
@@ -286,8 +286,8 @@
   "buildingExtractorT2": {
     "buildingBlueprintId": "buildingExtractorT2",
     "tinyName": "AMX",
-    "shortName": "MEX2",
-    "name": "Advanced Extractor",
+    "shortName": "MEX-2",
+    "fullName": "Advanced Extractor",
     "shortDescription": "High-output metal extraction structure",
     "longDescription": "An advanced extractor that converts the same deposit footprint into substantially greater metal income.",
     "gridWidth": 5,
@@ -380,7 +380,7 @@
     "buildingBlueprintId": "buildingRadar",
     "tinyName": "RDR",
     "shortName": "RADAR",
-    "name": "Radar",
+    "fullName": "Radar",
     "shortDescription": "Long-range above-water contact sensor",
     "longDescription": "An above-water contact station that locates distant airborne and surface targets without identifying them.",
     "gridWidth": 3,
@@ -458,8 +458,8 @@
   "buildingResourceConverter": {
     "buildingBlueprintId": "buildingResourceConverter",
     "tinyName": "CNV",
-    "shortName": "CONV",
-    "name": "Converter",
+    "shortName": "CONVR",
+    "fullName": "Converter",
     "shortDescription": "Taxed resource conversion plant",
     "longDescription": "A powered economy structure that exchanges surplus resources through one taxed conversion channel.",
     "gridWidth": 3,
@@ -538,7 +538,7 @@
     "buildingBlueprintId": "buildingSonar",
     "tinyName": "SNR",
     "shortName": "SONAR",
-    "name": "Sonar",
+    "fullName": "Sonar",
     "shortDescription": "Long-range underwater contact sensor",
     "longDescription": "An underwater contact station that locates submerged targets without revealing their full identity.",
     "gridWidth": 3,
@@ -613,8 +613,8 @@
   "towerFabricator": {
     "buildingBlueprintId": "towerFabricator",
     "tinyName": "FAB",
-    "shortName": "UNIV FAB",
-    "name": "Universal Fabricator",
+    "shortName": "UFB-1",
+    "fullName": "Universal Fabricator",
     "shortDescription": "Flexible tier-one unit factory",
     "longDescription": "An expensive radial factory that produces every tier-one domain roster from a centered construction bay.",
     "gridWidth": 12,
@@ -649,10 +649,10 @@
     "factory": { "techLevel": 1, "domain": "universal" },
     "workEmitter": {
       "points": [
-        {
-          "x": 0,
-          "y": 0,
-          "z": 274
+      {
+        "x": 0,
+        "y": 0,
+        "z": 138.24
         }
       ],
       "particleTravelSpeed": 200,
@@ -685,10 +685,10 @@
       {
         "turretBlueprintId": "turretSensorBuildingFabricator",
         "presentation": null,
-        "mount": {
-          "x": -110,
-          "y": 0,
-          "z": 274
+      "mount": {
+        "x": -110,
+        "y": 0,
+        "z": 138.24
         },
         "mountId": "sensor",
         "controlMode": "autonomous"
@@ -721,7 +721,7 @@
     "buildingBlueprintId": "towerBeamMega",
     "tinyName": "HBM",
     "shortName": "HBEAM",
-    "name": "Heavy Beam Tower",
+    "fullName": "Heavy Beam Tower",
     "shortDescription": "Twin long-range beam defense",
     "longDescription": "A twin-emitter defensive tower that projects sustained long-range beams when allied intelligence supplies valid targets.",
     "gridWidth": 3,
@@ -897,8 +897,8 @@
   "towerBeamLight": {
     "buildingBlueprintId": "towerBeamLight",
     "tinyName": "LBM",
-    "shortName": "BEAM",
-    "name": "Light Beam Tower",
+    "shortName": "LBEAM",
+    "fullName": "Light Beam Tower",
     "shortDescription": "Compact direct-fire beam defense",
     "longDescription": "A compact beam emplacement for reliable direct defense against nearby visible attackers.",
     "gridWidth": 3,
@@ -984,8 +984,8 @@
   "towerCannon": {
     "buildingBlueprintId": "towerCannon",
     "tinyName": "CAN",
-    "shortName": "CANNON",
-    "name": "Cannon Tower",
+    "shortName": "CANON",
+    "fullName": "Cannon Tower",
     "shortDescription": "Long-range ballistic defense",
     "longDescription": "A ballistic defense that uses long cannon fire to punish distant ground targets.",
     "gridWidth": 4,
@@ -1072,8 +1072,8 @@
   "towerHelios": {
     "buildingBlueprintId": "towerHelios",
     "tinyName": "HEL",
-    "shortName": "HELIOS",
-    "name": "Helios Long-Range Cannon",
+    "shortName": "HELIO",
+    "fullName": "Helios Long-Range Cannon",
     "shortDescription": "Extreme-range siege cannon",
     "longDescription": "An extreme-range siege emplacement whose massive cannon delivers slow, punishing ballistic fire across the battlefield.",
     "gridWidth": 5,
@@ -1161,8 +1161,8 @@
   "towerAntiAir": {
     "buildingBlueprintId": "towerAntiAir",
     "tinyName": "AAT",
-    "shortName": "AA",
-    "name": "Anti-Air Tower",
+    "shortName": "AATWR",
+    "fullName": "Anti-Air Tower",
     "shortDescription": "Dedicated anti-air missile defense",
     "longDescription": "A dedicated missile emplacement that acquires airborne targets and protects fixed positions from air attack.",
     "gridWidth": 3,
@@ -1256,8 +1256,8 @@
   "towerTorpedo": {
     "buildingBlueprintId": "towerTorpedo",
     "tinyName": "TRP",
-    "shortName": "TORP",
-    "name": "Torpedo Tower",
+    "shortName": "TORPD",
+    "fullName": "Torpedo Tower",
     "shortDescription": "Paired underwater torpedo defense",
     "longDescription": "A seabed defense with paired torpedo launchers for engaging underwater threats.",
     "gridWidth": 3,
@@ -1428,8 +1428,8 @@
   "buildingShieldTargetingTech": {
     "buildingBlueprintId": "buildingShieldTargetingTech",
     "tinyName": "SDL",
-    "shortName": "S-DET",
-    "name": "Shield Detection Lab",
+    "shortName": "SDETC",
+    "fullName": "Shield Detection Lab",
     "shortDescription": "Enables shield-aware targeting",
     "longDescription": "A powered technology structure that enables its owner's turrets to avoid obstructed targets and read enemy force material.",
     "gridWidth": 12,
@@ -1513,8 +1513,8 @@
   "buildingShieldTech": {
     "buildingBlueprintId": "buildingShieldTech",
     "tinyName": "SHG",
-    "shortName": "S-GEN",
-    "name": "Shield Generator",
+    "shortName": "SHGEN",
+    "fullName": "Shield Generator",
     "shortDescription": "Powers allied shield equipment",
     "longDescription": "A powered technology structure that raises every allied shield sphere and reflector panel while active.",
     "gridWidth": 12,
@@ -1598,8 +1598,8 @@
   "buildingPrecisionTargetingTech": {
     "buildingBlueprintId": "buildingPrecisionTargetingTech",
     "tinyName": "PTL",
-    "shortName": "PRECIS",
-    "name": "Precision Targeting Lab",
+    "shortName": "PTARG",
+    "fullName": "Precision Targeting Lab",
     "shortDescription": "Eliminates allied weapon spread",
     "longDescription": "A powered technology structure that removes authored weapon spread for its owning side while active.",
     "gridWidth": 12,
@@ -1683,8 +1683,8 @@
   "buildingRadarJammer": {
     "buildingBlueprintId": "buildingRadarJammer",
     "tinyName": "RJM",
-    "shortName": "RADJAM",
-    "name": "Radar Jammer",
+    "shortName": "R-JAM",
+    "fullName": "Radar Jammer",
     "shortDescription": "Suppresses enemy radar contacts",
     "longDescription": "A ground-based electronic warfare structure that suppresses enemy above-water radar contacts throughout its radius.",
     "gridWidth": 3,
@@ -1762,8 +1762,8 @@
   "buildingSonarJammer": {
     "buildingBlueprintId": "buildingSonarJammer",
     "tinyName": "SJM",
-    "shortName": "SONJAM",
-    "name": "Sonar Jammer",
+    "shortName": "S-JAM",
+    "fullName": "Sonar Jammer",
     "shortDescription": "Suppresses enemy sonar contacts",
     "longDescription": "A water-surface electronic warfare structure that suppresses enemy underwater sonar contacts throughout its radius.",
     "gridWidth": 3,
@@ -1838,8 +1838,8 @@
   "buildingMetalStorage": {
     "buildingBlueprintId": "buildingMetalStorage",
     "tinyName": "MST",
-    "shortName": "MSTORE",
-    "name": "Metal Storage",
+    "shortName": "M-STO",
+    "fullName": "Metal Storage",
     "shortDescription": "Expands team metal capacity",
     "longDescription": "A static economy structure that increases the owning team's maximum metal stockpile.",
     "gridWidth": 12,
@@ -1926,8 +1926,8 @@
   "buildingEnergyStorage": {
     "buildingBlueprintId": "buildingEnergyStorage",
     "tinyName": "EST",
-    "shortName": "ESTORE",
-    "name": "Energy Storage",
+    "shortName": "E-STO",
+    "fullName": "Energy Storage",
     "shortDescription": "Expands team energy capacity",
     "longDescription": "A static economy structure that increases the owning team's maximum energy stockpile.",
     "gridWidth": 12,
@@ -2015,8 +2015,8 @@
     "$extends": "towerAntiAir",
     "buildingBlueprintId": "towerInterceptor",
     "tinyName": "INT",
-    "shortName": "INTERCEPT",
-    "name": "Interceptor Tower",
+    "shortName": "INTRC",
+    "fullName": "Interceptor Tower",
     "shortDescription": "Specialized projectile point defense",
     "longDescription": "A specialized point-defense tower that destroys controlled rockets and medium or heavy mortar shells in flight.",
     "hp": 720,
@@ -2046,7 +2046,7 @@
     "buildingBlueprintId": "buildingTidalGenerator",
     "tinyName": "TDG",
     "shortName": "TIDAL",
-    "name": "Tidal Generator",
+    "fullName": "Tidal Generator",
     "shortDescription": "Water-only energy producer",
     "longDescription": "A water-only generator that produces steady energy from a surface-mounted tidal machine.",
     "hp": 520,

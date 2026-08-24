@@ -68,14 +68,14 @@ import {
 
 export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   buildingBlueprintId: BuildingBlueprintId;
-  name: string;
+  fullName: string;
   shortDescription: string;
   longDescription: string;
   /** Authored abbreviation for surfaces with no room for the full name: the
    *  selection info panel, build-menu thumb fallbacks, factory preset chips.
    *  Derived abbreviations used to be built by stripping words off the label,
    *  which produced things like "SHIELD DETECTION LAB" in a slot sized for
-   *  six characters. */
+   *  exactly five characters. */
   shortName: string;
   /** Exactly three uppercase letters, unique across the whole roster. This is
    *  the code for a fixed-width slot — a portrait fallback, an icon badge —
@@ -137,8 +137,9 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
 };
 
 export type FabricatorDomain = UnitProductionDomain | 'universal';
+export type FabricatorTechLevel = 1 | 2 | 3;
 export type FabricatorIdentity = Readonly<{
-  techLevel: 1 | 2;
+  techLevel: FabricatorTechLevel;
   domain: FabricatorDomain;
 }>;
 
@@ -163,6 +164,9 @@ for (const [id, variant] of Object.entries(RAW_FABRICATOR_BLUEPRINTS)) {
     gridWidth * BUILD_GRID_CELL_SIZE,
     gridHeight * BUILD_GRID_CELL_SIZE,
   ) * 0.5;
+  const radialRadius = productionHoldRingOuterRadius(
+    Math.max(gridWidth, gridHeight) * BUILD_GRID_CELL_SIZE * 0.46,
+  );
   RAW_BUILDING_BLUEPRINTS_WITH_VARIANTS[id] = {
     $extends: 'towerFabricator',
     ...variant,
@@ -170,13 +174,11 @@ for (const [id, variant] of Object.entries(RAW_FABRICATOR_BLUEPRINTS)) {
     base: {
       cost: variant.cost,
       health: variant.hp,
-      ...(directional ? {
-        radius: {
-          other: directionalRadius,
-          hitbox: directionalRadius,
-          collision: directionalRadius,
-        },
-      } : {}),
+      radius: {
+        other: directional ? directionalRadius : radialRadius,
+        hitbox: directional ? directionalRadius : radialRadius,
+        collision: directional ? directionalRadius : radialRadius,
+      },
     },
   };
 }
@@ -243,7 +245,7 @@ function buildBuildingBlueprints(): Record<BuildingBlueprintId, BuildingBlueprin
 export const BUILDING_BLUEPRINTS = buildBuildingBlueprints();
 
 const BUILDING_EXPLICIT_FIELDS = [
-  'name',
+  'fullName',
   'shortDescription',
   'longDescription',
   'base',
@@ -323,9 +325,12 @@ type FactoryBuildingVisualMetrics = {
 export function getFactoryBuildingVisualMetrics(
   width: number,
   depth: number,
+  buildingBlueprintId: BuildingBlueprintId,
 ): FactoryBuildingVisualMetrics {
   return {
-    visualTop: fabricatorTorusHoverHeight() + fabricatorTorusRingRadius(width, depth) * 0.22,
+    visualTop:
+      fabricatorTorusHoverHeight(buildingBlueprintId) +
+      fabricatorTorusRingRadius(width, depth) * 0.22,
   };
 }
 
@@ -576,7 +581,7 @@ function validateFactoryUnitRoster(
     throw new Error(`Invalid building blueprint ${id}: fabricators require positive constructionRate`);
   }
   if (
-    (factory.techLevel !== 1 && factory.techLevel !== 2) ||
+    (factory.techLevel !== 1 && factory.techLevel !== 2 && factory.techLevel !== 3) ||
     !['universal', 'bot', 'vehicle', 'aircraft', 'naval'].includes(factory.domain)
   ) {
     throw new Error(`Invalid building blueprint ${id}: malformed factory identity`);
@@ -900,7 +905,7 @@ export function isDirectionalFabricatorBuildingBlueprintId(
 }
 
 export function getFabricatorBuildingBlueprintId(
-  techLevel: 1 | 2,
+  techLevel: FabricatorTechLevel,
   domain: FabricatorDomain,
 ): BuildingBlueprintId {
   for (const buildingBlueprintId of FABRICATOR_BLUEPRINT_IDS) {
@@ -916,8 +921,8 @@ function validateFabricatorMatrix(): void {
   const domains: readonly FabricatorDomain[] = [
     'universal', 'bot', 'vehicle', 'aircraft', 'naval',
   ];
-  if (FABRICATOR_BLUEPRINT_IDS.length !== 10) {
-    throw new Error(`Fabricator matrix must contain exactly ten buildings`);
+  if (FABRICATOR_BLUEPRINT_IDS.length !== 11) {
+    throw new Error(`Fabricator matrix must contain ten T1/T2 buildings and one T3 building`);
   }
   for (const techLevel of [1, 2] as const) {
     const byDomain = new Map<FabricatorDomain, BuildingBlueprint>();
@@ -964,9 +969,42 @@ function validateFabricatorMatrix(): void {
       throw new Error(`T${techLevel} Universal must cost 3x without extra throughput or durability`);
     }
   }
-}
 
-validateFabricatorMatrix();
+  for (const domain of domains) {
+    const tierOne = BUILDING_BLUEPRINTS[getFabricatorBuildingBlueprintId(1, domain)];
+    const tierTwo = BUILDING_BLUEPRINTS[getFabricatorBuildingBlueprintId(2, domain)];
+    if (
+      tierTwo.gridWidth <= tierOne.gridWidth ||
+      tierTwo.gridHeight <= tierOne.gridHeight ||
+      tierTwo.visualHeight <= tierOne.visualHeight
+    ) {
+      throw new Error(`T2 ${domain} fabricator must be wider, deeper, and taller than T1`);
+    }
+  }
+
+  const tierThree = FABRICATOR_BLUEPRINT_IDS.filter(
+    (buildingBlueprintId) =>
+      BUILDING_BLUEPRINTS[buildingBlueprintId].factory?.techLevel === 3,
+  );
+  if (tierThree.length !== 1) {
+    throw new Error(`Fabricator matrix must contain exactly one T3 fabricator`);
+  }
+  const experimental = BUILDING_BLUEPRINTS[tierThree[0]];
+  if (experimental.factory?.domain !== 'universal') {
+    throw new Error(`The sole T3 fabricator must be universal`);
+  }
+  const advancedUniversal = BUILDING_BLUEPRINTS[
+    getFabricatorBuildingBlueprintId(2, 'universal')
+  ];
+  if (
+    experimental.gridWidth <= advancedUniversal.gridWidth ||
+    experimental.gridHeight <= advancedUniversal.gridHeight ||
+    experimental.visualHeight <= advancedUniversal.visualHeight ||
+    (experimental.allowedUnitBlueprintIds?.length ?? 0) === 0
+  ) {
+    throw new Error(`T3 Universal must be larger than T2 Universal and own a non-empty roster`);
+  }
+}
 
 export function getBuildingBlueprint(buildingBlueprintId: BuildingBlueprintId): BuildingBlueprint {
   return BUILDING_BLUEPRINTS[buildingBlueprintId];
@@ -979,9 +1017,12 @@ export function getBuildingBlueprint(buildingBlueprintId: BuildingBlueprintId): 
 // spawn height, and the turret mounts all read this geometry, so they can never
 // drift apart.
 //
-function computeMaxUnitCollisionRadius(): number {
+function computeMaxUnitCollisionRadius(
+  techLevel?: FabricatorTechLevel,
+): number {
   let max = 0;
   for (const bp of Object.values(UNIT_BLUEPRINTS)) {
+    if (techLevel !== undefined && bp.production?.techLevel !== techLevel) continue;
     if (bp.radius.collision > max) max = bp.radius.collision;
   }
   return max;
@@ -991,15 +1032,31 @@ function computeMaxUnitCollisionRadius(): number {
 // maximum once instead of allocating/scanning Object.values() in hot geometry
 // helpers and line-of-sight setup.
 const MAX_UNIT_COLLISION_RADIUS = computeMaxUnitCollisionRadius();
+const MAX_UNIT_COLLISION_RADIUS_BY_TECH_LEVEL = Object.freeze({
+  1: computeMaxUnitCollisionRadius(1),
+  2: computeMaxUnitCollisionRadius(2),
+  3: computeMaxUnitCollisionRadius(3),
+} satisfies Record<FabricatorTechLevel, number>);
 
 export function maxUnitCollisionRadius(): number {
   return MAX_UNIT_COLLISION_RADIUS;
 }
 
-/** Height of the fabricator torus body = 1.2 x the largest unit's collision
- *  diameter. */
-export function fabricatorTorusHoverHeight(): number {
-  return 1.2 * (2 * MAX_UNIT_COLLISION_RADIUS);
+/** Height of a radial fabricator torus body = 1.2 x the largest collision
+ * diameter in that fabricator's own production tier. Tier-local clearance
+ * keeps every produced shell safe while making progression visibly higher. */
+export function fabricatorTorusHoverHeight(
+  buildingBlueprintId: BuildingBlueprintId,
+): number {
+  const factory = BUILDING_BLUEPRINTS[buildingBlueprintId].factory;
+  if (factory === null || factory.domain !== 'universal') {
+    throw new Error(`${buildingBlueprintId} is not a radial universal fabricator`);
+  }
+  const maxRadius = MAX_UNIT_COLLISION_RADIUS_BY_TECH_LEVEL[factory.techLevel];
+  if (maxRadius <= 0) {
+    throw new Error(`T${factory.techLevel} Universal has no collision envelope to clear`);
+  }
+  return 1.2 * (2 * maxRadius);
 }
 
 /** World height of a factory's assembly plane above its placement base.
@@ -1010,7 +1067,9 @@ export function fabricatorProductionPlaneHeight(
   buildingBlueprintId: BuildingBlueprintId,
 ): number {
   const blueprint = BUILDING_BLUEPRINTS[buildingBlueprintId];
-  if (blueprint.hoveringType === 'fabricator') return fabricatorTorusHoverHeight();
+  if (blueprint.hoveringType === 'fabricator') {
+    return fabricatorTorusHoverHeight(buildingBlueprintId);
+  }
   if (blueprint.hoveringType === 'directionalFabricator') {
     return blueprint.visualHeight * 0.62;
   }
@@ -1025,3 +1084,48 @@ export function fabricatorTorusRingRadius(width: number, depth: number): number 
 export function fabricatorTorusOuterRadius(width: number, depth: number): number {
   return productionHoldRingOuterRadius(fabricatorTorusRingRadius(width, depth));
 }
+
+function validateFabricatorProgressionGeometry(): void {
+  const tierOneUniversal = getFabricatorBuildingBlueprintId(1, 'universal');
+  const tierTwoUniversal = getFabricatorBuildingBlueprintId(2, 'universal');
+  const tierThreeUniversal = getFabricatorBuildingBlueprintId(3, 'universal');
+  if (
+    fabricatorProductionPlaneHeight(tierTwoUniversal) <=
+      fabricatorProductionPlaneHeight(tierOneUniversal) ||
+    fabricatorProductionPlaneHeight(tierThreeUniversal) <=
+      fabricatorProductionPlaneHeight(tierTwoUniversal)
+  ) {
+    throw new Error(`Universal fabricator hover heights must rise strictly from T1 to T3`);
+  }
+
+  const tierOneAircraft = getFabricatorBuildingBlueprintId(1, 'aircraft');
+  const tierTwoAircraft = getFabricatorBuildingBlueprintId(2, 'aircraft');
+  if (
+    fabricatorProductionPlaneHeight(tierTwoAircraft) <=
+    fabricatorProductionPlaneHeight(tierOneAircraft)
+  ) {
+    throw new Error(`T2 Aircraft Fabricator must hover higher than T1`);
+  }
+
+  for (const buildingBlueprintId of [
+    tierOneUniversal,
+    tierTwoUniversal,
+    tierThreeUniversal,
+  ] as const) {
+    const blueprint = BUILDING_BLUEPRINTS[buildingBlueprintId];
+    const hoverHeight = fabricatorProductionPlaneHeight(buildingBlueprintId);
+    if (
+      blueprint.workEmitter === null ||
+      blueprint.workEmitter === undefined ||
+      blueprint.workEmitter.points.some((point) => Math.abs(point.z - hoverHeight) > 1e-3)
+    ) {
+      throw new Error(`${buildingBlueprintId} work emitters must sit on its production plane`);
+    }
+    if (blueprint.turrets.some((mount) => Math.abs(mount.mount.z - hoverHeight) > 1e-3)) {
+      throw new Error(`${buildingBlueprintId} turret mounts must sit on its production plane`);
+    }
+  }
+}
+
+validateFabricatorMatrix();
+validateFabricatorProgressionGeometry();

@@ -1,8 +1,8 @@
 {
   "maxBuildableSlopeAngleDegrees": 10,
   "unfinishedBuildDecay": {
-    "unfundedDelaySeconds": 9,
-    "fractionPerSecond": 0.05,
+    "unfundedDelaySeconds": 0,
+    "fractionPerSecond": 0.03,
     "referenceCostTotal": 240,
     "costScaleMin": 0.2,
     "costScaleMax": 2

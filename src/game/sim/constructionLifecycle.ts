@@ -392,13 +392,11 @@ function completeConstruction(
 }
 
 const _fundedConstructionTargets = new Set<number>();
-const _activeConstructionTargets = new Set<number>();
 const _queuedConstructionTargets = new Set<number>();
 const _decayOut = new Float64Array(4);
 
 const EMPTY_CONSTRUCTION_ATTENDANCE: ConstructionAttendance = {
   funded: new Set<number>(),
-  active: new Set<number>(),
   queued: new Set<number>(),
 };
 
@@ -408,30 +406,18 @@ type ConstructionAttendance = {
    *  before this pass, so it is the authoritative "build power landed
    *  here" record. */
   readonly funded: ReadonlySet<number>;
-  /** Shells that are some living builder's ACTIVE (head) build order. */
-  readonly active: ReadonlySet<number>;
   /** Shells referenced anywhere in a living builder's order queue. */
   readonly queued: ReadonlySet<number>;
 };
 
-/** Who answers for each unfinished shell this tick — three strengths of
- *  attendance, matching BAR's model (modrules constructionDecay): build
- *  power landing protects a frame, an assigned builder protects the frame
- *  it is actively on (BAR's builder-priority gadget grants one such
- *  builder a token build speed for exactly this reason — an economy stall
- *  or the walk into range must not rot the frame being worked), but mere
- *  QUEUE intent does not protect an invested frame — a half-built shell
- *  left for later in a queue rots like BAR's do. Zero-invested frames are
- *  this engine's stand-in for BAR's queued ghost shapes (not world objects
- *  there, so nothing can decay): queue intent keeps them, and losing that
- *  intent — the order cancelled — puts them on the same decay clock, which
- *  removes an uninvested frame at its first decay step. */
+/** Who answers for each unfinished shell this tick. Landed construction work
+ *  protects an auto-assisted frame, and any live build order protects its
+ *  target regardless of queue depth or current investment. Once the last
+ *  reference disappears, decay begins in this same lifecycle tick. */
 function collectConstructionAttendance(world: WorldState): ConstructionAttendance {
   const funded = _fundedConstructionTargets;
-  const active = _activeConstructionTargets;
   const queued = _queuedConstructionTargets;
   funded.clear();
-  active.clear();
   queued.clear();
   const movements = world.workMovements;
   for (let i = 0; i < movements.length; i++) {
@@ -449,18 +435,9 @@ function collectConstructionAttendance(world: WorldState): ConstructionAttendanc
       const buildingId = action.buildingId;
       if (buildingId === undefined) continue;
       queued.add(buildingId);
-      if (a === 0) active.add(buildingId);
     }
   }
-  return { funded, active, queued };
-}
-
-function isConstructionInvested(buildable: NonNullable<Entity['buildable']>): boolean {
-  return (
-    buildable.paid.energy > 0 ||
-    buildable.paid.metal > 0 ||
-    buildable.healthBuildFraction > 0
-  );
+  return { funded, queued };
 }
 
 /** Decay one unfunded shell. Returns true once the frame has rotted back to
@@ -554,19 +531,14 @@ export function updateConstructionLifecycle(
         continue;
       }
       // An unfinished building nobody is answering for rots and is gone at
-      // zero. Attendance is BAR's: landed build power always protects, the
-      // builder's active head order protects (stalls and the walk into range
-      // must not rot the frame being worked), and queue intent protects only
-      // ZERO-invested frames (the queued-ghost stand-in). An invested frame
-      // left for later in a queue, and a cancelled (interrupted) frame, both
-      // rot — that is the only way a partial assembly ever leaves the map on
-      // its own. Factory unit shells are exempt: their factory owns their
-      // lifecycle.
+      // zero. Landed build power or a build order anywhere in a living
+      // builder's queue protects it; removing the last order starts decay on
+      // this tick. Factory unit shells are exempt because their factory owns
+      // their lifecycle.
       if (entity.building !== null) {
         const attended =
           attendance.funded.has(entity.id) ||
-          attendance.active.has(entity.id) ||
-          (!isConstructionInvested(buildable) && attendance.queued.has(entity.id));
+          attendance.queued.has(entity.id);
         if (!attended) {
           if (decayUnfundedConstruction(world, entity, dtSec)) {
             result.decayedBuildings.push(entity);

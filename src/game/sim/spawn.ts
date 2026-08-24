@@ -113,15 +113,15 @@ const INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(
 // A complete demo roster can be much denser than the shared structure arcs,
 // especially on rectangular maps. Fabricators may fan across nearby free grid
 // cells while remaining inside their team's dedicated production sector.
-// The tightest preset (Spikey Lake) needs an 80-cell fan to retain all 36
-// repeat lines. The ring is
+// The tightest presets need a 140-cell fan to retain all current repeat lines,
+// including the larger T2/T3 hosts. The ring is
 // deterministic and ordered nearest-first, so the wider budget only lets a
 // crowded seat reach another free ring; it never moves a placement that
 // already succeeded.
 // A Fabricator reserves a 14x14-cell pixel-circle. Half-footprint search
 // steps cover dense packing while avoiding tens of thousands of near-identical
 // probes whose rectangles overlap the same occupied cells.
-const FACTORY_PLACEMENT_SEARCH_OFFSETS = buildStridedPlacementSearchOffsets(80, 7);
+const FACTORY_PLACEMENT_SEARCH_OFFSETS = buildStridedPlacementSearchOffsets(140, 7);
 // The offshore showcase now carries both tech tiers across ten naval-domain
 // lines. Give it the same deterministic fan-out budget as the land roster so
 // edge-of-sector footprints and neighboring seats can still pack completely.
@@ -740,7 +740,7 @@ function seedFactoryRepeatBuild(
   factoryState.repeatProduction = true;
 }
 
-/** Place one radial Universal per active unit, choosing T1 or T2 from the
+/** Place one radial Universal per active unit, choosing T1, T2, or T3 from the
  * unit's canonical production identity. A disabled host tier suppresses only
  * the lines that require that tier. */
 function placeUniversalFactoryLines(

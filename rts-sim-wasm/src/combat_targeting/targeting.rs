@@ -1358,14 +1358,14 @@ pub(crate) fn combat_targeting_player_observes_entity_id(
 }
 
 #[inline]
-pub(crate) fn combat_targeting_level1_mask_allows(mask: u32, code: u8) -> bool {
+pub(crate) fn combat_targeting_level1_mask_allows(mask: u64, code: u8) -> bool {
     // Level-1 is a whitelist within an already-included family. An empty
     // mask applies no name restriction (every blueprint in the family is
     // allowed); a non-empty mask admits only the named wire codes.
     if mask == 0 {
         return true;
     }
-    code != CT_BLUEPRINT_CODE_NONE && code < 32 && (mask & (1u32 << code)) != 0
+    code != CT_BLUEPRINT_CODE_NONE && code < 64 && (mask & (1u64 << code)) != 0
 }
 
 #[inline]
@@ -1430,7 +1430,7 @@ pub(crate) fn combat_targeting_turret_owner_relationship_allowed(
 #[inline]
 pub(crate) fn combat_targeting_lockon_masks_allow_target_turret(
     entity_family_mask: u8,
-    turret_mask: u32,
+    turret_mask: u64,
     target_turret_code: u8,
 ) -> bool {
     if (entity_family_mask & CT_LOCK_ON_FAM_INCLUDE_TURRETS) == 0 {
@@ -1443,10 +1443,10 @@ pub(crate) fn combat_targeting_lockon_masks_allow_target_turret(
 pub(crate) fn combat_targeting_lockon_masks_allow_body_entity(
     pool: &CombatTargetingPool,
     entity_family_mask: u8,
-    building_mask: u32,
-    tower_mask: u32,
-    unit_mask: u32,
-    shot_mask: u32,
+    building_mask: u64,
+    tower_mask: u64,
+    unit_mask: u64,
+    shot_mask: u64,
     target_entity_slot: usize,
 ) -> bool {
     match pool.entity_family[target_entity_slot] {

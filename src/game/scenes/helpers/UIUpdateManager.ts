@@ -85,7 +85,7 @@ const MAX_QUEUE_INSERT_OPTIONS = 24;
 
 function unitLabel(unitBlueprintId: string): string {
   try {
-    return getUnitBlueprint(unitBlueprintId).name;
+    return getUnitBlueprint(unitBlueprintId).fullName;
   } catch {
     return unitBlueprintId;
   }
@@ -466,7 +466,7 @@ function buildForeignEntityDetails(entity: Entity): SelectionInfo['details'] {
     try {
       const bp = getUnitBlueprint(entity.unit.unitBlueprintId);
       const details: SelectionInfo['details'] = [
-        { label: 'Name', value: bp.name },
+        { label: 'Name', value: bp.fullName },
         { label: 'HP', value: `${fmtStat(entity.unit.hp)}/${fmtStat(entity.unit.maxHp)}` },
         { label: 'Cost', value: fmtTotalCost(bp.cost) },
         { label: 'Mass', value: fmtStat(bp.mass) },
@@ -486,7 +486,7 @@ function buildForeignEntityDetails(entity: Entity): SelectionInfo['details'] {
     try {
       const bp = getBuildingConfig(entity.buildingBlueprintId);
       const details: SelectionInfo['details'] = [
-        { label: 'Name', value: bp.name },
+        { label: 'Name', value: bp.fullName },
         { label: 'HP', value: `${fmtStat(entity.building.hp)}/${fmtStat(entity.building.maxHp)}` },
         { label: 'Cost', value: fmtTotalCost(bp.cost) },
       ];
@@ -531,7 +531,7 @@ function buildSingleSelectionDetails(entity: Entity): SelectionInfo['details'] {
     try {
       const bp = getUnitBlueprint(entity.unit.unitBlueprintId);
       const details: SelectionInfo['details'] = [
-        { label: 'Name', value: bp.name },
+        { label: 'Name', value: bp.fullName },
         { label: 'HP', value: `${fmtStat(entity.unit.hp)}/${fmtStat(entity.unit.maxHp)}` },
         { label: 'Cost', value: fmtTotalCost(bp.cost) },
         { label: 'Mass', value: fmtStat(bp.mass) },
@@ -569,7 +569,7 @@ function buildSingleSelectionDetails(entity: Entity): SelectionInfo['details'] {
     try {
       const bp = getBuildingConfig(entity.buildingBlueprintId);
       const details: SelectionInfo['details'] = [
-        { label: 'Name', value: bp.name },
+        { label: 'Name', value: bp.fullName },
         { label: 'HP', value: `${fmtStat(entity.building.hp)}/${fmtStat(entity.building.maxHp)}` },
         { label: 'Cost', value: fmtTotalCost(bp.cost) },
       ];
@@ -696,7 +696,7 @@ function buildEntitySelectionInfo(
     let shortLabel = getUnitDisplayShortName(entity.unit.unitBlueprintId);
     const tinyLabel = getUnitDisplayTinyName(entity.unit.unitBlueprintId);
     try {
-      label = getUnitBlueprint(entity.unit.unitBlueprintId).name;
+      label = getUnitBlueprint(entity.unit.unitBlueprintId).fullName;
     } catch {
       // Keep the authored id when a display roster entry is missing.
       shortLabel = label;
@@ -725,7 +725,7 @@ function buildEntitySelectionInfo(
     let shortLabel = getBuildingDisplayShortName(entity.buildingBlueprintId);
     const tinyLabel = getBuildingDisplayTinyName(entity.buildingBlueprintId);
     try {
-      label = getBuildingConfig(entity.buildingBlueprintId).name;
+      label = getBuildingConfig(entity.buildingBlueprintId).fullName;
     } catch {
       // Keep the authored id when a display roster entry is missing.
       shortLabel = label;
@@ -1581,7 +1581,7 @@ export function buildUnitStatsOverlayInfo(
     let locomotion: UnitStatsOverlayInfo['locomotion'] = null;
     try {
       const bp = getUnitBlueprint(unitBlueprintId);
-      name = bp.name;
+      name = bp.fullName;
       mass = bp.mass;
       costEnergy = bp.cost.energy * COST_MULTIPLIER;
       costMetal = bp.cost.metal * COST_MULTIPLIER;
@@ -1617,7 +1617,7 @@ export function buildUnitStatsOverlayInfo(
     let costMetal: number | null = null;
     try {
       const bp = getBuildingConfig(entity.buildingBlueprintId);
-      name = bp.name;
+      name = bp.fullName;
       // BuildingConfig cost is already COST_MULTIPLIER-scaled.
       costEnergy = bp.cost.energy;
       costMetal = bp.cost.metal;

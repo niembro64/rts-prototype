@@ -544,17 +544,17 @@ export type TurretConfig = {
    *  slab without re-walking blueprint strings. Mirror
    *  `CT_LOCK_ON_REL_INCLUDE_*` / `CT_LOCK_ON_FAM_INCLUDE_*` for the
    *  level-0 fields; lock-on is off by default, so an empty level-0
-   *  mask locks onto nothing. Level-1 fields set bit `1 << wire_code`
-   *  for each included blueprint id (current capacity = 32 ids per
+   *  mask locks onto nothing. Level-1 fields set bit `1n << wire_code`
+   *  for each included blueprint id (current capacity = 64 ids per
    *  family); an empty level-1 mask applies no name restriction within
    *  an included family. */
   lockOnRelationshipIncludeMask: number;
   lockOnEntityFamilyIncludeMask: number;
-  lockOnBuildingIncludeMask: number;
-  lockOnTowerIncludeMask: number;
-  lockOnUnitIncludeMask: number;
-  lockOnTurretIncludeMask: number;
-  lockOnShotIncludeMask: number;
+  lockOnBuildingIncludeMask: bigint;
+  lockOnTowerIncludeMask: bigint;
+  lockOnUnitIncludeMask: bigint;
+  lockOnTurretIncludeMask: bigint;
+  lockOnShotIncludeMask: bigint;
   /** Compiled `lockOnRequiresTargetLockedOntoSelf` enum. Mirrors
    *  `CT_LOCK_ON_RECIPROCAL_*` in Rust/wasm. */
   lockOnRequiresTargetLockedOntoSelfMode: number;
@@ -1138,7 +1138,7 @@ export type EntityHold = {
 // first-class property of the shape, not a render-only detail.
 export type BuildingConfig = {
   buildingBlueprintId: BuildingBlueprintId;
-  name: string;
+  fullName: string;
   /** Authored abbreviation for surfaces with no room for the full name. */
   shortName: string;
   /** Exactly three uppercase letters, unique across the whole roster. */
@@ -1200,7 +1200,9 @@ export type BuildingPlacementFootprint = {
 // Unit build configuration
 export type UnitBuildConfig = {
   unitBlueprintId: string;
-  name: string;
+  fullName: string;
+  /** Authored fixed-width five-character player-facing name. */
+  shortName: string;
   cost: ResourceCost;
   radius: EntityRadii;
   supportPointOffsetZ: number;

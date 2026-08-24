@@ -1,8 +1,6 @@
-// Contract: an unfinished building nobody is answering for rots and is
-// removed at zero progress. Attendance follows BAR's model: landed build
-// power protects, the builder's ACTIVE head order protects, and queue
-// intent protects only zero-invested frames (the queued-ghost stand-in) —
-// an invested frame left for later in a queue rots.
+// Contract: an unfinished building nobody is answering for starts rotting on
+// the first lifecycle tick and is removed at zero progress. A build order at
+// any queue depth protects both empty ghosts and invested frames.
 //
 // See budget_design_philosophy.html — "An unattended build site rots away".
 
@@ -51,26 +49,21 @@ export function runUnfinishedBuildDecayContractTest(): void {
   const playerId = 1 as PlayerId;
   const decay = BUILD_CONFIG.unfinishedBuildDecay;
   const stepMs = 1000;
+  assertContract(decay.unfundedDelaySeconds === 0, 'unfinished-building decay must have no grace period');
 
-  // 1. An abandoned shell holds still through the delay, then rots and is
-  //    reported for removal exactly once it reaches zero progress.
+  // 1. An invested abandoned shell rots on its first tick and is reported for
+  //    removal exactly once it reaches zero progress.
   const world = new WorldState(91, 512, 512);
   const shell = createHalfBuiltShell(world, playerId, 'buildingSolar', 200, 200);
   const startProgress = shell.buildable!.healthBuildFraction;
 
-  for (let elapsedMs = 0; elapsedMs < decay.unfundedDelaySeconds * 1000; elapsedMs += stepMs) {
-    const result = updateConstructionLifecycle(world, stepMs);
-    assertContract(
-      result.decayedBuildings.length === 0,
-      'a shell inside its grace delay must not be removed',
-    );
-  }
-  assertContract(
-    shell.buildable !== null && shell.buildable.healthBuildFraction === startProgress,
-    'a shell inside its grace delay must not lose progress',
+  const totalCost = shell.buildable!.required.energy + shell.buildable!.required.metal;
+  const costScale = Math.min(
+    decay.costScaleMax,
+    Math.max(decay.costScaleMin, decay.referenceCostTotal / totalCost),
   );
-
-  const stepsToZero = Math.ceil(startProgress / decay.fractionPerSecond) + 2;
+  const expectedFirstLoss = decay.fractionPerSecond * costScale;
+  const stepsToZero = Math.ceil(startProgress / expectedFirstLoss) + 2;
   let removed: Entity | null = null;
   let progressAfterFirstDecayStep = startProgress;
   for (let step = 0; step < stepsToZero && removed === null; step++) {
@@ -82,10 +75,10 @@ export function runUnfinishedBuildDecayContractTest(): void {
   }
   assertContract(
     progressAfterFirstDecayStep < startProgress,
-    'an unattended shell must lose progress once the delay expires',
+    'an unattended invested shell must lose progress on its first lifecycle tick',
   );
   assertContract(
-    Math.abs((startProgress - progressAfterFirstDecayStep) - decay.fractionPerSecond) < 1e-6,
+    Math.abs((startProgress - progressAfterFirstDecayStep) - expectedFirstLoss) < 1e-6,
     `decay must be the authored constant rate per second, lost ${startProgress - progressAfterFirstDecayStep}`,
   );
   assertContract(removed !== null && removed.id === shell.id, 'a fully decayed shell must be reported for removal');
@@ -98,9 +91,8 @@ export function runUnfinishedBuildDecayContractTest(): void {
     'health must ride the progress the shell lost',
   );
 
-  // 2. A shell that is the builder's ACTIVE head order never decays — an
-  //    economy stall, or the walk into range, must not rot the frame being
-  //    worked (BAR's builder-priority token-build-speed rule).
+  // 2. A shell that remains in a builder queue never decays during an economy
+  //    stall or the walk into range.
   const attendedWorld = new WorldState(92, 512, 512);
   const activeShell = createHalfBuiltShell(attendedWorld, playerId, 'buildingSolar', 220, 220);
   const builder = attendedWorld.createUnitFromBlueprint(120, 120, playerId, 'unitCommander', {
@@ -118,23 +110,22 @@ export function runUnfinishedBuildDecayContractTest(): void {
   ]);
   attendedWorld.addEntity(builder);
 
-  const attendedSteps = Math.ceil(decay.unfundedDelaySeconds + 1 / decay.fractionPerSecond) + 4;
+  const attendedSteps = Math.ceil(1 / decay.fractionPerSecond) + 4;
   for (let step = 0; step < attendedSteps; step++) {
     const result = updateConstructionLifecycle(attendedWorld, stepMs);
     assertContract(
       result.decayedBuildings.length === 0,
-      "a builder's active build target must never decay away",
+      "a builder's queued build target must never decay away",
     );
   }
   assertContract(
     activeShell.buildable !== null && activeShell.buildable.healthBuildFraction === 0.5,
-    'an active build target must keep every point of progress it had',
+    'a queued build target must keep every point of progress it had',
   );
 
-  // 3. A ZERO-invested shell queued deeper in the list is the queued-ghost
-  //    stand-in: it holds forever. An INVESTED shell in the same position
-  //    rots — queue intent alone does not protect paid-for progress (BAR:
-  //    only landed build power does).
+  // 3. Both zero-invested and invested shells queued behind another order
+  //    hold forever. Cancelling the queue removes the empty ghost immediately
+  //    and starts the invested frame's slow decay immediately.
   const queuedWorld = new WorldState(93, 512, 512);
   const ghostShell = createHalfBuiltShell(queuedWorld, playerId, 'buildingSolar', 220, 220);
   ghostShell.buildable!.paid.energy = 0;
@@ -165,23 +156,27 @@ export function runUnfinishedBuildDecayContractTest(): void {
   ]);
   queuedWorld.addEntity(queueBuilder);
 
-  let investedRemoved = false;
   for (let step = 0; step < attendedSteps; step++) {
     const result = updateConstructionLifecycle(queuedWorld, stepMs);
-    for (const removedShell of result.decayedBuildings) {
-      assertContract(
-        removedShell.id !== ghostShell.id,
-        'a zero-invested queued shell must never decay away',
-      );
-      if (removedShell.id === investedShell.id) investedRemoved = true;
-    }
+    assertContract(result.decayedBuildings.length === 0, 'queued shells must never decay away');
   }
   assertContract(
     ghostShell.buildable !== null && ghostShell.buildable.healthBuildFraction === 0,
     'a zero-invested queued shell must hold at zero, untouched',
   );
   assertContract(
-    investedRemoved,
-    'an invested shell protected only by queue intent must rot away — landed build power, not intent, protects progress',
+    investedShell.buildable?.healthBuildFraction === 0.5,
+    'an invested shell at deeper queue depth must keep every point of progress',
+  );
+
+  setUnitActions(queueBuilder.unit, []);
+  const cancelledResult = updateConstructionLifecycle(queuedWorld, stepMs);
+  assertContract(
+    cancelledResult.decayedBuildings.some((entity) => entity.id === ghostShell.id),
+    'a cancelled zero-progress ghost must disappear on the first orphan tick',
+  );
+  assertContract(
+    investedShell.buildable !== null && investedShell.buildable.healthBuildFraction < 0.5,
+    'a cancelled invested frame must start slow decay on the first orphan tick',
   );
 }

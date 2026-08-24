@@ -241,6 +241,7 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   buildingAircraftFabricator: { close: 2600, mid: 1300, far: 640 },
   buildingNavalFabricator: { close: 2600, mid: 1300, far: 640 },
   buildingAdvancedUniversalFabricator: { close: 2600, mid: 1300, far: 640 },
+  buildingExperimentalUniversalFabricator: { close: 2600, mid: 1300, far: 640 },
   buildingAdvancedBotFabricator: { close: 2600, mid: 1300, far: 640 },
   buildingAdvancedVehicleFabricator: { close: 2600, mid: 1300, far: 640 },
   buildingAdvancedAircraftFabricator: { close: 2600, mid: 1300, far: 640 },
@@ -278,7 +279,9 @@ const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
   unitBee: { close: 1510, mid: 650, far: 240 },
   unitDragonfly: { close: 1500, mid: 780, far: 330 },
   unitConstructionDrone: { close: 2200, mid: 1000, far: 420 },
+  unitAdvancedConstructionDrone: { close: 2200, mid: 1000, far: 420 },
   unitConstructionSubmarine: { close: 1500, mid: 760, far: 320 },
+  unitAdvancedConstructionSubmarine: { close: 1500, mid: 760, far: 320 },
   unitEagle: { close: 600, mid: 420, far: 220 },
   unitDuck: { close: 1100, mid: 720, far: 400 },
   unitAlbatros: { close: 1350, mid: 850, far: 420 },
@@ -297,7 +300,9 @@ const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
   unitDetector: { close: 1525, mid: 650, far: 240 },
   unitPetrel: { close: 1250, mid: 780, far: 440 },
   unitConstructionBot: { close: 3000, mid: 1200, far: 550 },
+  unitAdvancedConstructionBot: { close: 3000, mid: 1200, far: 550 },
   unitConstructionRover: { close: 700, mid: 350, far: 180 },
+  unitAdvancedConstructionRover: { close: 700, mid: 350, far: 180 },
   unitStealthScout: { close: 1250, mid: 700, far: 320 },
   unitRadarJammer: { close: 1400, mid: 780, far: 380 },
   unitMissileRover: { close: 1400, mid: 800, far: 460 },
@@ -2383,8 +2388,8 @@ function runConstructionHostMarkingContracts(): void {
 }
 
 export function runEntityLodGeometry3DContractTest(): void {
-  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 39, 'visual roster covers all 39 units');
-  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 32, 'visual roster covers all 32 buildings');
+  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.units.length === 43, 'visual roster covers all 43 units');
+  assertContract(ENTITY_LOD_VISUAL_REGRESSION_ROSTER.buildings.length === 33, 'visual roster covers all 33 buildings');
   const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
   try {
     runEnvironmentLodMaterialContracts();

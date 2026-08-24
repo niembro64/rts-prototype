@@ -13,6 +13,7 @@ mod lock_on_inclusion_tests {
     const SOURCE_UNIT_CODE: u8 = 1;
     const BODY_UNIT_CODE_A: u8 = 3;
     const BODY_UNIT_CODE_B: u8 = 4;
+    const BODY_UNIT_CODE_HIGH: u8 = 41;
     const BODY_BUILDING_CODE_A: u8 = 5;
     const BODY_BUILDING_CODE_B: u8 = 6;
     const TURRET_CODE_A: u8 = 7;
@@ -43,10 +44,10 @@ mod lock_on_inclusion_tests {
         blueprint_code: u8,
         relationship_mask: u8,
         family_mask: u8,
-        building_mask: u32,
-        unit_mask: u32,
-        turret_mask: u32,
-        shot_mask: u32,
+        building_mask: u64,
+        unit_mask: u64,
+        turret_mask: u64,
+        shot_mask: u64,
         reciprocal_mode: u8,
         slaved_to_mount_index: i32,
     }
@@ -106,11 +107,11 @@ mod lock_on_inclusion_tests {
         priority_target_id: i32,
         lockon_relationship_mask: u8,
         lockon_entity_family_mask: u8,
-        lockon_building_mask: u32,
-        lockon_tower_mask: u32,
-        lockon_unit_mask: u32,
-        lockon_turret_mask: u32,
-        lockon_shot_mask: u32,
+        lockon_building_mask: u64,
+        lockon_tower_mask: u64,
+        lockon_unit_mask: u64,
+        lockon_turret_mask: u64,
+        lockon_shot_mask: u64,
     ) {
         let radius = 2.0;
         let (hx, hy, hz) = if family == CT_ENTITY_FAMILY_BUILDING {
@@ -382,11 +383,11 @@ mod lock_on_inclusion_tests {
         priority_target_id: i32,
         lockon_relationship_mask: u8,
         lockon_entity_family_mask: u8,
-        lockon_building_mask: u32,
-        lockon_tower_mask: u32,
-        lockon_unit_mask: u32,
-        lockon_turret_mask: u32,
-        lockon_shot_mask: u32,
+        lockon_building_mask: u64,
+        lockon_tower_mask: u64,
+        lockon_unit_mask: u64,
+        lockon_turret_mask: u64,
+        lockon_shot_mask: u64,
     ) {
         stamp_entity_with_host_lockon_at_z(
             slot,
@@ -1835,7 +1836,7 @@ mod lock_on_inclusion_tests {
                 target_rescore_period_ticks: 16,
                 relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 family_mask: CT_LOCK_ON_FAM_INCLUDE_TURRETS,
-                turret_mask: 1u32 << TURRET_CODE_A,
+                turret_mask: 1u64 << TURRET_CODE_A,
                 reciprocal_mode: CT_LOCK_ON_RECIPROCAL_REQUIRE,
                 ..TurretSpec::default()
             },
@@ -2110,7 +2111,7 @@ mod lock_on_inclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
-                unit_mask: 1u32 << BODY_UNIT_CODE_A,
+                unit_mask: 1u64 << BODY_UNIT_CODE_A,
                 relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 ..TurretSpec::default()
             },
@@ -2137,13 +2138,48 @@ mod lock_on_inclusion_tests {
             "unit named inclusion should allow only code A"
         );
 
+        // The unit roster now extends past wire code 31. Prove the u64 lane
+        // is applied by the kernel, not merely compiled correctly in JS.
         reset_pools();
         stamp_source(-1);
         stamp_turret(
             SOURCE_SLOT,
             0,
             TurretSpec {
-                building_mask: 1u32 << BODY_BUILDING_CODE_A,
+                unit_mask: 1u64 << BODY_UNIT_CODE_HIGH,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target(
+            1,
+            205,
+            PLAYER_2,
+            10.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        stamp_body_target(
+            2,
+            206,
+            PLAYER_2,
+            20.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_HIGH,
+        );
+        let (target_id, _, _) = run_schedule_tick(1);
+        assert_eq!(
+            target_id, 206,
+            "unit named inclusion must address wire codes above 31"
+        );
+
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                building_mask: 1u64 << BODY_BUILDING_CODE_A,
                 relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 ..TurretSpec::default()
             },
@@ -2176,7 +2212,7 @@ mod lock_on_inclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
-                shot_mask: 1u32 << SHOT_CODE_A,
+                shot_mask: 1u64 << SHOT_CODE_A,
                 relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 ..TurretSpec::default()
             },
@@ -2202,7 +2238,7 @@ mod lock_on_inclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
-                turret_mask: 1u32 << TURRET_CODE_B,
+                turret_mask: 1u64 << TURRET_CODE_B,
                 relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 family_mask: CT_LOCK_ON_FAM_INCLUDE_TURRETS,
                 ..TurretSpec::default()

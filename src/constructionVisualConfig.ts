@@ -350,7 +350,8 @@ function buildConstructionHostMarkingProfiles(): Readonly<
       inherit(
         buildingBlueprintId,
         buildingBlueprintId === 'towerFabricator' ||
-        buildingBlueprintId === 'buildingAdvancedUniversalFabricator'
+        buildingBlueprintId === 'buildingAdvancedUniversalFabricator' ||
+        buildingBlueprintId === 'buildingExperimentalUniversalFabricator'
           ? 'towerFabricator'
           : 'directionalFabricator',
       );
@@ -362,6 +363,10 @@ function buildConstructionHostMarkingProfiles(): Readonly<
   delete profiles.directionalFabricator;
   inherit('unitConstructionBot', 'unitCommander');
   inherit('unitConstructionRover', 'unitConstructionDrone');
+  inherit('unitAdvancedConstructionBot', 'unitConstructionBot');
+  inherit('unitAdvancedConstructionRover', 'unitConstructionRover');
+  inherit('unitAdvancedConstructionDrone', 'unitConstructionDrone');
+  inherit('unitAdvancedConstructionSubmarine', 'unitConstructionSubmarine');
   return Object.freeze(profiles);
 }
 

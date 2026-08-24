@@ -37,6 +37,10 @@
     "unitClusterArtillery",
     "unitWaterStrider",
     "unitPatrolCorvette",
-    "unitPetrel"
+    "unitPetrel",
+    "unitAdvancedConstructionBot",
+    "unitAdvancedConstructionRover",
+    "unitAdvancedConstructionDrone",
+    "unitAdvancedConstructionSubmarine"
   ]
 }

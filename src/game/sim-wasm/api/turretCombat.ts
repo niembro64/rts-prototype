@@ -144,10 +144,8 @@ export const CT_ENTITY_FAMILY_SHOT = 4;
 export const CT_BLUEPRINT_CODE_NONE = 0xff;
 
 /** LOCK-ON-03 — Maximum blueprint count that can be addressed by the
- *  per-turret level-1 bitmask (one bit per blueprint code). Widening
- *  this requires upgrading the masks to u64 / multi-word arrays on
- *  both sides. */
-export const CT_LOCK_ON_LEVEL1_MASK_CAPACITY = 32;
+ *  per-turret level-1 u64 bitmask (one bit per blueprint code). */
+export const CT_LOCK_ON_LEVEL1_MASK_CAPACITY = 64;
 
 /** AIM-08.5 — `out_modes` byte the scheduler writes per queued entity.
  *  Mirrors `CT_TARGETING_TICK_MODE_*` in Rust. The writeback path uses
@@ -205,11 +203,11 @@ export interface CombatTargetingApi {
     blueprintCode: number,
     lockOnRelationshipIncludeMask: number,
     lockOnEntityFamilyIncludeMask: number,
-    lockOnBuildingIncludeMask: number,
-    lockOnTowerIncludeMask: number,
-    lockOnUnitIncludeMask: number,
-    lockOnTurretIncludeMask: number,
-    lockOnShotIncludeMask: number,
+    lockOnBuildingIncludeMask: bigint,
+    lockOnTowerIncludeMask: bigint,
+    lockOnUnitIncludeMask: bigint,
+    lockOnTurretIncludeMask: bigint,
+    lockOnShotIncludeMask: bigint,
     sensorSourceX: number,
     sensorSourceY: number,
     sensorSourceZ: number,
@@ -315,11 +313,11 @@ export interface CombatTargetingApi {
     turretBlueprintCode: number,
     lockonRelationshipMask: number,
     lockonEntityFamilyMask: number,
-    lockonBuildingMask: number,
-    lockonTowerMask: number,
-    lockonUnitMask: number,
-    lockonTurretMask: number,
-    lockonShotMask: number,
+    lockonBuildingMask: bigint,
+    lockonTowerMask: bigint,
+    lockonUnitMask: bigint,
+    lockonTurretMask: bigint,
+    lockonShotMask: bigint,
     lockonReciprocalMode: number,
     taskTargetId: number,
     taskPointActive: number,

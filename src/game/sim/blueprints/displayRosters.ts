@@ -47,7 +47,7 @@ function scaledCostPart(value: number): number {
 }
 
 function fallbackShortName(id: string): string {
-  return id.toUpperCase().slice(0, 3);
+  return id.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 5).padEnd(5, 'X');
 }
 
 function buildUnitRosterDisplay(): UnitRosterDisplay[] {
@@ -70,7 +70,7 @@ function buildUnitRosterDisplay(): UnitRosterDisplay[] {
     }
     display[i] = {
       unitBlueprintId: bp.unitBlueprintId,
-      label: bp.name,
+      label: bp.fullName,
       shortName: bp.shortName,
       tinyName: bp.tinyName,
       cost: scaledTotalCost(bp.cost),
@@ -107,7 +107,7 @@ export function getUnitRosterDisplay(unitBlueprintId: string): UnitRosterDisplay
 function buildStructureRosterDisplay(
   configs: readonly {
     buildingBlueprintId: BuildingBlueprintId;
-    name: string;
+    fullName: string;
     shortName: string;
     tinyName: string;
     cost: ResourceCost;
@@ -119,7 +119,7 @@ function buildStructureRosterDisplay(
     const bp = configs[i];
     display[i] = {
       buildingBlueprintId: bp.buildingBlueprintId,
-      label: bp.name,
+      label: bp.fullName,
       shortName: bp.shortName,
       tinyName: bp.tinyName,
       key: `${keyOffset + i + 1}`,
@@ -165,10 +165,8 @@ const buildingRosterDisplay: BuildingRosterDisplay[] = buildStructureRosterDispl
 export const structureRosterDisplay: BuildingRosterDisplay[] = buildingRosterDisplay;
 
 // Short button labels for the BUILDINGS battle-bar toggle group — the
-// structure analogue of getUnitDisplayShortName. Buildings carry no authored
-// shortName, so we derive a compact label
-// from the display name (dropping a trailing " Tower"): Solar -> SOLAR,
-// "Beam Tower" -> BEAM, "Anti-Air Tower" -> ANTI-AIR.
+// structure analogue of getUnitDisplayShortName. Every structure authors its
+// exact five-character form; the fallback is only for an invalid unknown ID.
 function buildStructureRosterDisplayById(
   display: readonly BuildingRosterDisplay[],
 ): Map<string, BuildingRosterDisplay> {
@@ -182,7 +180,7 @@ function buildStructureRosterDisplayById(
 const buildingRosterDisplayById = buildStructureRosterDisplayById(buildingRosterDisplay);
 
 /** The authored abbreviation. Deriving one by stripping words off the label
- *  produced "SHIELD DETECTION LAB" for a slot sized for six characters, so the
+ *  produced "SHIELD DETECTION LAB" for a fixed-width slot, so the
  *  blueprint names its own short form the way units already do. */
 export function getBuildingDisplayShortName(buildingBlueprintId: string): string {
   const row = buildingRosterDisplayById.get(buildingBlueprintId);

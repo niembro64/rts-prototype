@@ -90,11 +90,11 @@ import { cloneEmissionMediumTrajectoryMatrix } from '../emissionMedium';
 export type LockOnMasks = {
   relationship: number;
   entityFamily: number;
-  building: number;
-  tower: number;
-  unit: number;
-  turret: number;
-  shot: number;
+  building: bigint;
+  tower: bigint;
+  unit: bigint;
+  turret: bigint;
+  shot: bigint;
   reciprocal: number;
 };
 
@@ -105,8 +105,8 @@ function lockOnLevel1Mask(
   toCode: (s: string) => number,
   unknownCode: number,
   kindLabel: string,
-): number {
-  let mask = 0;
+): bigint {
+  let mask = 0n;
   for (let i = 0; i < names.length; i++) {
     const name = names[i];
     const code = toCode(name);
@@ -120,9 +120,9 @@ function lockOnLevel1Mask(
         `Invalid ${label}: ${field}[${i}] = "${name}" has ${kindLabel} wire code ${code} >= bitmask capacity ${CT_LOCK_ON_LEVEL1_MASK_CAPACITY}; widen the lockon level-1 masks before adding more ${kindLabel} blueprints`,
       );
     }
-    mask |= 1 << code;
+    mask |= 1n << BigInt(code);
   }
-  return mask >>> 0;
+  return mask;
 }
 
 function compileLockOnMasks(label: string, policy: LockOnInclusionObject): LockOnMasks {
@@ -194,7 +194,7 @@ function compileLockOnMasks(label: string, policy: LockOnInclusionObject): LockO
   }
   // Keep the reserved internal tower lane zero while old snapshot/targeting
   // wire constants remain readable. Authored static targets use buildings.
-  return { relationship, entityFamily, building, tower: 0, unit, turret, shot, reciprocal };
+  return { relationship, entityFamily, building, tower: 0n, unit, turret, shot, reciprocal };
 }
 
 function compileTurretLockOnMasks(turretBlueprint: TurretBlueprint): LockOnMasks {
@@ -208,11 +208,11 @@ function compileTurretLockOnMasks(turretBlueprint: TurretBlueprint): LockOnMasks
 export const EMPTY_LOCK_ON_MASKS: LockOnMasks = Object.freeze({
   relationship: 0,
   entityFamily: 0,
-  building: 0,
-  tower: 0,
-  unit: 0,
-  turret: 0,
-  shot: 0,
+  building: 0n,
+  tower: 0n,
+  unit: 0n,
+  turret: 0n,
+  shot: 0n,
   reciprocal: CT_LOCK_ON_RECIPROCAL_IGNORE,
 });
 

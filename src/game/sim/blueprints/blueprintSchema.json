@@ -3869,7 +3869,7 @@
       "properties": {
         "techLevel": {
           "type": "integer",
-          "enum": [1, 2]
+          "enum": [1, 2, 3]
         },
         "domains": {
           "type": "array",
@@ -3922,7 +3922,7 @@
       "type": "object",
       "required": [
         "unitBlueprintId",
-        "name",
+        "fullName",
         "shortDescription",
         "longDescription",
         "identity",
@@ -3957,7 +3957,7 @@
         "unitBlueprintId": {
           "$ref": "#/$defs/UnitBlueprintId"
         },
-        "name": {
+        "fullName": {
           "type": "string"
         },
         "shortDescription": {
@@ -3973,7 +3973,10 @@
           "$ref": "#/$defs/UnitIdentity"
         },
         "shortName": {
-          "type": "string"
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 5,
+          "pattern": "^[A-Z0-9-]{5}$"
         },
         "tinyName": {
           "type": "string",

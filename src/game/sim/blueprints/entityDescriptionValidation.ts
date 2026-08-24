@@ -1,6 +1,7 @@
 /** Shared player-facing metadata contract for every unit and building. */
 export type EntityDescriptionFields = Readonly<{
-  name: unknown;
+  fullName: unknown;
+  shortName: unknown;
   shortDescription: unknown;
   longDescription: unknown;
 }>;
@@ -24,7 +25,13 @@ export function validateEntityDescription(
   label: string,
   fields: EntityDescriptionFields,
 ): void {
-  requireTrimmedText(label, 'name', fields.name);
+  requireTrimmedText(label, 'fullName', fields.fullName);
+  const shortName = requireTrimmedText(label, 'shortName', fields.shortName);
+  if (!/^[A-Z0-9-]{5}$/.test(shortName)) {
+    throw new Error(
+      `Invalid ${label}: shortName must be exactly five uppercase letters, digits, or hyphens`,
+    );
+  }
   const shortDescription = requireTrimmedText(
     label,
     'shortDescription',

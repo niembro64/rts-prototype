@@ -49,7 +49,8 @@
     "buildingAdvancedAircraftFabricator",
     "buildingAdvancedNavalFabricator",
     "towerInterceptor",
-    "buildingTidalGenerator"
+    "buildingTidalGenerator",
+    "buildingExperimentalUniversalFabricator"
    ],
    "units": [
     "unitJackal",
@@ -90,7 +91,11 @@
     "unitClusterArtillery",
     "unitWaterStrider",
     "unitPatrolCorvette",
-    "unitPetrel"
+    "unitPetrel",
+    "unitAdvancedConstructionBot",
+    "unitAdvancedConstructionRover",
+    "unitAdvancedConstructionDrone",
+    "unitAdvancedConstructionSubmarine"
    ],
    "turrets": [
     "turretGunLight",
@@ -285,7 +290,7 @@
     "enemy": {
      "units": {
       "only": [
-       "unitBee", "unitConstructionDrone", "unitDragonfly", "unitEagle",
+       "unitBee", "unitConstructionDrone", "unitAdvancedConstructionDrone", "unitDragonfly", "unitEagle",
        "unitDuck", "unitAlbatros", "unitQueenBee", "unitTransport",
        "unitRadarScout", "unitDetector", "unitPetrel"
       ]
@@ -420,6 +425,32 @@
     }
    }
   },
+  "unitAdvancedConstructionBot": { "targets": "none" },
+  "unitAdvancedConstructionRover": { "targets": "none" },
+  "unitAdvancedConstructionDrone": {
+   "targets": {
+    "friendly": {
+     "buildings": "all",
+     "units": "all"
+    },
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
+  "unitAdvancedConstructionSubmarine": {
+   "targets": {
+    "friendly": {
+     "buildings": "all",
+     "units": "all"
+    },
+    "enemy": {
+     "buildings": "all",
+     "units": "all"
+    }
+   }
+  },
   "unitEagle": {
    "targets": {
     "enemy": {
@@ -428,6 +459,7 @@
        "unitBee",
        "unitDragonfly",
        "unitConstructionDrone",
+       "unitAdvancedConstructionDrone",
        "unitEagle",
        "unitDuck",
        "unitAlbatros",
@@ -687,7 +719,7 @@
     "enemy": {
      "units": {
       "only": [
-       "unitBee", "unitConstructionDrone", "unitDragonfly", "unitEagle",
+       "unitBee", "unitConstructionDrone", "unitAdvancedConstructionDrone", "unitDragonfly", "unitEagle",
        "unitDuck", "unitAlbatros", "unitQueenBee", "unitTransport",
        "unitRadarScout", "unitDetector", "unitPetrel"
       ]
@@ -703,6 +735,7 @@
        "unitBee",
        "unitDragonfly",
        "unitConstructionDrone",
+       "unitAdvancedConstructionDrone",
        "unitEagle",
        "unitDuck",
        "unitAlbatros",
@@ -732,6 +765,7 @@
       "only": [
        "unitBee",
        "unitConstructionDrone",
+       "unitAdvancedConstructionDrone",
        "unitDragonfly",
        "unitEagle",
        "unitDuck",
@@ -968,6 +1002,7 @@
       "only": [
        "unitBee",
        "unitConstructionDrone",
+       "unitAdvancedConstructionDrone",
        "unitDragonfly",
        "unitEagle",
        "unitDuck",
@@ -1021,6 +1056,7 @@
   "buildingAdvancedVehicleFabricator": { "targets": "none" },
   "buildingAdvancedAircraftFabricator": { "targets": "none" },
   "buildingAdvancedNavalFabricator": { "targets": "none" },
+  "buildingExperimentalUniversalFabricator": { "targets": "none" },
   "towerInterceptor": {
    "targets": {
     "enemy": {

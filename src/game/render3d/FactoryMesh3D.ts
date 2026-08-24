@@ -41,6 +41,7 @@ function fabricatorOrnamentKind(
     case 'buildingAircraftFabricator': return 'aircraftFabricatorClamps';
     case 'buildingNavalFabricator': return 'navalFabricatorClamps';
     case 'buildingAdvancedUniversalFabricator': return 'advancedUniversalFabricatorClamps';
+    case 'buildingExperimentalUniversalFabricator': return 'experimentalUniversalFabricatorClamps';
     case 'buildingAdvancedBotFabricator': return 'advancedBotFabricatorClamps';
     case 'buildingAdvancedVehicleFabricator': return 'advancedVehicleFabricatorClamps';
     case 'buildingAdvancedAircraftFabricator': return 'advancedAircraftFabricatorClamps';

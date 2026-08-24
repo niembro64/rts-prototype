@@ -612,7 +612,7 @@ function assertFactoryShellContract(): void {
   );
   assertNear(
     getBuildingCombatCenterZ(factory),
-    factory.transform.z - factoryBuilding.depth / 2 + fabricatorTorusHoverHeight(),
+    factory.transform.z - factoryBuilding.depth / 2 + fabricatorTorusHoverHeight('towerFabricator'),
     'fabricator combat/hitbox center must float above its reserved footprint',
   );
   factory.factory = {
@@ -682,7 +682,7 @@ function assertFactoryShellContract(): void {
   const shell = spawned[0];
   const shellSupport = world.sampleSupportSurface(factory.transform.x, factory.transform.y);
   const fabricatorSpawnClearance = (unitShell: Entity) =>
-    fabricatorTorusHoverHeight() - unitShell.unit!.supportPointOffsetZ;
+    fabricatorTorusHoverHeight('towerFabricator') - unitShell.unit!.supportPointOffsetZ;
   assertFactoryShellSpawnedAboveSupport(
     shell,
     shellSupport.groundZ,
@@ -700,7 +700,7 @@ function assertFactoryShellContract(): void {
   assertUnitActionCount(shell, 0, 'incomplete shell must not inherit movement actions');
   assertNear(
     shell.transform.z,
-    factory.transform.z - factory.building!.depth / 2 + fabricatorTorusHoverHeight(),
+    factory.transform.z - factory.building!.depth / 2 + fabricatorTorusHoverHeight('towerFabricator'),
     'fabricator must hold the unit body center in the torus center plane',
   );
 
@@ -718,7 +718,7 @@ function assertFactoryShellContract(): void {
   assertNear(shell.transform.y, factory.transform.y, 'fabricator hold must restore exact center y');
   assertNear(
     shell.transform.z,
-    factory.transform.z - factory.building!.depth / 2 + fabricatorTorusHoverHeight(),
+    factory.transform.z - factory.building!.depth / 2 + fabricatorTorusHoverHeight('towerFabricator'),
     'fabricator hold must restore exact center z',
   );
   assertNear(shell.unit!.velocityX, 0, 'fabricator hold must zero shell velocity x');

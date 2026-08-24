@@ -20,6 +20,7 @@ export type BuildingTeamOrnamentKind =
   | 'aircraftFabricatorClamps'
   | 'navalFabricatorClamps'
   | 'advancedUniversalFabricatorClamps'
+  | 'experimentalUniversalFabricatorClamps'
   | 'advancedBotFabricatorClamps'
   | 'advancedVehicleFabricatorClamps'
   | 'advancedAircraftFabricatorClamps'

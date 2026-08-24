@@ -104,6 +104,7 @@ const BAR_EQUIVALENT_BUILD_CATEGORY_SLOT_INDEX = new Map<StructureBlueprintId, n
   ['buildingAdvancedVehicleFabricator', 7],
   ['buildingAdvancedAircraftFabricator', 8],
   ['buildingAdvancedNavalFabricator', 9],
+  ['buildingExperimentalUniversalFabricator', 10],
   ['towerCannon', 0],
   ['towerBeamMega', 1],
   ['towerAntiAir', 4],
@@ -139,6 +140,7 @@ const BAR_EQUIVALENT_CLASSIC_BUILD_ORDER: readonly StructureBlueprintId[] = [
   'buildingAdvancedUniversalFabricator',
   'buildingAdvancedAircraftFabricator',
   'buildingAdvancedNavalFabricator',
+  'buildingExperimentalUniversalFabricator',
   'buildingRadar',
   'buildingSonar',
   'buildingRadarJammer',
@@ -718,6 +720,7 @@ export function runRosterCommandSurfaceContractTest(): void {
     'unitRadarScout',
     'unitDetector',
     'unitPetrel',
+    'unitAdvancedConstructionDrone',
   ]);
   assertContract(
     !entityHasBarAttackCommand(beeEntity) &&
@@ -755,6 +758,10 @@ export function runRosterCommandSurfaceContractTest(): void {
     'unitConstructionSubmarine',
     'unitConstructionBot',
     'unitConstructionRover',
+    'unitAdvancedConstructionBot',
+    'unitAdvancedConstructionRover',
+    'unitAdvancedConstructionDrone',
+    'unitAdvancedConstructionSubmarine',
   ]);
   const barBuilderPriorityStructureIds = STRUCTURE_BLUEPRINT_IDS.filter(buildingBlueprintHasBarBuilderPriorityCommand);
   assertSameMembers('BAR-equivalent builder-priority command structures', barBuilderPriorityStructureIds, [
@@ -768,6 +775,7 @@ export function runRosterCommandSurfaceContractTest(): void {
     'buildingAdvancedVehicleFabricator',
     'buildingAdvancedAircraftFabricator',
     'buildingAdvancedNavalFabricator',
+    'buildingExperimentalUniversalFabricator',
   ]);
 
   const barFactoryGuardStructureIds = STRUCTURE_BLUEPRINT_IDS.filter(buildingBlueprintHasBarFactoryGuardCommand);
@@ -782,6 +790,7 @@ export function runRosterCommandSurfaceContractTest(): void {
     'buildingAdvancedVehicleFabricator',
     'buildingAdvancedAircraftFabricator',
     'buildingAdvancedNavalFabricator',
+    'buildingExperimentalUniversalFabricator',
   ]);
 
   const barAirPlantLandAtStructureIds = STRUCTURE_BLUEPRINT_IDS.filter(buildingBlueprintHasBarAirPlantLandAtCommand);
@@ -790,6 +799,7 @@ export function runRosterCommandSurfaceContractTest(): void {
     'buildingAircraftFabricator',
     'buildingAdvancedUniversalFabricator',
     'buildingAdvancedAircraftFabricator',
+    'buildingExperimentalUniversalFabricator',
   ]);
 
   // Names and descriptions are blueprint identity, not UI copy. Validate the
@@ -808,7 +818,37 @@ export function runRosterCommandSurfaceContractTest(): void {
     );
   }
 
-  // Three-letter codes are an identifier the player reads in fixed-width slots,
+  const daddy = UNIT_BLUEPRINTS.unitDaddy;
+  assertContract(
+    daddy.fullName === 'Daddy Longlegs' &&
+      daddy.shortName === 'DADDY' &&
+      daddy.identity.kind === 'animal' &&
+      daddy.identity.animalClass === 'arachnid',
+    'Daddy must explicitly represent a daddy longlegs arachnid',
+  );
+
+  // Full names own prose surfaces; short names own every five-character slot.
+  // They are exact and unique across the mixed unit/building catalog.
+  const shortNames = new Map<string, string>();
+  for (const [entityId, shortName] of [
+    ...UNIT_BLUEPRINT_IDS.map((unitBlueprintId) =>
+      [unitBlueprintId, UNIT_BLUEPRINTS[unitBlueprintId].shortName] as const),
+    ...STRUCTURE_BLUEPRINT_IDS.map((buildingBlueprintId) =>
+      [buildingBlueprintId, BUILDING_BLUEPRINTS[buildingBlueprintId].shortName] as const),
+  ]) {
+    assertContract(
+      /^[A-Z0-9-]{5}$/.test(shortName),
+      `${entityId} must author exactly five uppercase letters, digits, or hyphens; got "${shortName}"`,
+    );
+    const owner = shortNames.get(shortName);
+    assertContract(
+      owner === undefined,
+      `${entityId} and ${owner} both claim the five-character name ${shortName}`,
+    );
+    shortNames.set(shortName, entityId);
+  }
+
+  // Three-letter codes are an internal identifier for narrower fixed-width slots,
   // so they must actually be three letters and must not collide — including
   // across the unit/building line, since lists mix them.
   const tinyNames = new Map<string, string>();
