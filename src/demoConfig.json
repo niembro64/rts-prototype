@@ -65,19 +65,7 @@
     "innerRadiusFraction": 0.88,
     "radiusFraction": 0.96,
     "sonarRadiusFraction": 0.97,
-    "arcSectorFraction": 0.9,
-    "unitBlueprintIds": [
-      "unitSeaTurtle",
-      "unitDuck",
-      "unitWaterStrider",
-      "unitConstructionSubmarine",
-      "unitPatrolCorvette",
-      "unitHippo",
-      "unitOrca",
-      "unitPetrel",
-      "unitStealthScout",
-      "unitRadarJammer"
-    ]
+    "arcSectorFraction": 0.9
   },
   "initialUnitWaypointType": "patrol",
   "factoryFightWaypointDistance": 0.4,

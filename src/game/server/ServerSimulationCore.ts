@@ -26,7 +26,11 @@ import type { Body3D, PhysicsEngine3D } from './PhysicsEngine3D';
 import { createPhysicsBodyForBuilding } from './buildingPhysicsBody';
 import type { BootstrappedServerWorld } from './ServerBootstrap';
 import { UnitForceSystem } from './UnitForceSystem';
-import { computeHostEffectiveMass, createPhysicsBodyForUnit } from './unitPhysicsBody';
+import {
+  computeHostEffectiveMass,
+  createPhysicsBodyForUnit,
+  wakeReleasedUnitPhysicsBody,
+} from './unitPhysicsBody';
 import { finalizePendingProjectileLaunchVelocities } from '../sim/combat/projectileSystem';
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import { getSimWasm, type BodyPoolViews } from '../sim-wasm/init';
@@ -271,6 +275,7 @@ export class ServerSimulationCore {
           ignoreOverlappingBuildings: true,
           overlapPadding: undefined,
         });
+        wakeReleasedUnitPhysicsBody(this.physics, entity);
       }
     };
 

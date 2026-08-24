@@ -273,7 +273,7 @@ export function spawnBackgroundUnitsStandalone(
   const sourceUnitBlueprintIds = allowedUnitBlueprintIds ?? BACKGROUND_UNIT_BLUEPRINT_IDS;
   const centerBattleAllowedUnitBlueprintIds = new Set<string>();
   for (const unitBlueprintId of sourceUnitBlueprintIds) {
-    if (DEMO_CONFIG.waterFabricators.unitBlueprintIds.includes(unitBlueprintId)) continue;
+    if (getUnitBlueprint(unitBlueprintId).requiresWater) continue;
     centerBattleAllowedUnitBlueprintIds.add(unitBlueprintId);
   }
   // A map with no water turns the demo's water roster off entirely: the

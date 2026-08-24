@@ -975,6 +975,8 @@ export type UnitIdentity = UnitAnimalIdentity | UnitConstructionCraftIdentity;
 
 export type UnitBlueprint = {
   unitBlueprintId: UnitBlueprintId;
+  requiresWater: boolean;
+  requiresLand: boolean;
   fullName: string;
   shortDescription: string;
   longDescription: string;

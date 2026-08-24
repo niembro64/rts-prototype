@@ -410,6 +410,7 @@ function assertCompactAuthoredRosterFactoryCoverage(): void {
 }
 
 function assertUniversalFactoryCoverageByPlayer(
+  world: WorldState,
   entities: readonly Entity[],
   playerIds: readonly PlayerId[],
   expectedUnitBlueprintIds: readonly string[],
@@ -441,6 +442,39 @@ function assertUniversalFactoryCoverageByPlayer(
     const coverage = new Set<string>();
     for (const factoryEntity of factories) {
       const unitBlueprintId = assertSeededUniversalRepeatLine(factoryEntity);
+      const unitBlueprint = getUnitBlueprint(unitBlueprintId);
+      const buildingBlueprintId = factoryEntity.buildingBlueprintId;
+      assertContract(
+        buildingBlueprintId !== null,
+        `${label} initialized Universal ${factoryEntity.id} must identify its blueprint`,
+      );
+      const config = getBuildingConfig(buildingBlueprintId);
+      const halfWidth = config.placementGridWidth * BUILD_GRID_CELL_SIZE * 0.5;
+      const halfHeight = config.placementGridHeight * BUILD_GRID_CELL_SIZE * 0.5;
+      const waterSamples = [
+        [0, 0],
+        [-halfWidth, -halfHeight],
+        [halfWidth, -halfHeight],
+        [-halfWidth, halfHeight],
+        [halfWidth, halfHeight],
+      ].map(([dx, dy]) => isWaterAt(
+        factoryEntity.transform.x + dx,
+        factoryEntity.transform.y + dy,
+        world.mapWidth,
+        world.mapHeight,
+      ));
+      if (unitBlueprint.requiresWater) {
+        assertContract(
+          waterSamples.every(Boolean),
+          `${label} ${unitBlueprintId} Universal ${factoryEntity.id} must sit fully over water`,
+        );
+      }
+      if (unitBlueprint.requiresLand) {
+        assertContract(
+          waterSamples.every((isWater) => !isWater),
+          `${label} ${unitBlueprintId} Universal ${factoryEntity.id} must sit fully over land`,
+        );
+      }
       assertContract(
         !coverage.has(unitBlueprintId),
         `${label} must not duplicate repeat line ${unitBlueprintId}`,
@@ -502,6 +536,7 @@ function assertAuthoredRosterCoverageForPreset(
   assertDemoCommandersHavePathEgress(world, entities, construction);
   const expectedUnitBlueprintIds = allStructureFactoryUnitBlueprintIds();
   assertUniversalFactoryCoverageByPlayer(
+    world,
     entities,
     playerIds,
     expectedUnitBlueprintIds,
@@ -637,6 +672,7 @@ function runDemoMetalExtractorSpawnContractTestForPreset(
   );
   const expectedFactoryUnitBlueprintIds = allStructureFactoryUnitBlueprintIds();
   assertUniversalFactoryCoverageByPlayer(
+    baseWorld,
     baseEntities,
     playerIds,
     expectedFactoryUnitBlueprintIds,

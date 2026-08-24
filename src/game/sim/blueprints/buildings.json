@@ -1,6 +1,8 @@
 {
   "buildingSolar": {
     "buildingBlueprintId": "buildingSolar",
+    "requiresWater": false,
+    "requiresLand": true,
     "tinyName": "SOL",
     "shortName": "SOLAR",
     "fullName": "Solar",
@@ -99,6 +101,8 @@
   },
   "buildingWind": {
     "buildingBlueprintId": "buildingWind",
+    "requiresWater": false,
+    "requiresLand": true,
     "tinyName": "WND",
     "shortName": "WINDY",
     "fullName": "Wind",
@@ -192,6 +196,8 @@
   },
   "buildingExtractor": {
     "buildingBlueprintId": "buildingExtractor",
+    "requiresWater": false,
+    "requiresLand": false,
     "tinyName": "MEX",
     "shortName": "MEX-1",
     "fullName": "Extractor",
@@ -285,6 +291,8 @@
   },
   "buildingExtractorT2": {
     "buildingBlueprintId": "buildingExtractorT2",
+    "requiresWater": false,
+    "requiresLand": false,
     "tinyName": "AMX",
     "shortName": "MEX-2",
     "fullName": "Advanced Extractor",
@@ -378,6 +386,8 @@
   },
   "buildingRadar": {
     "buildingBlueprintId": "buildingRadar",
+    "requiresWater": false,
+    "requiresLand": true,
     "tinyName": "RDR",
     "shortName": "RADAR",
     "fullName": "Radar",
@@ -457,6 +467,8 @@
   },
   "buildingResourceConverter": {
     "buildingBlueprintId": "buildingResourceConverter",
+    "requiresWater": false,
+    "requiresLand": true,
     "tinyName": "CNV",
     "shortName": "CONVR",
     "fullName": "Converter",
@@ -536,6 +548,8 @@
   },
   "buildingSonar": {
     "buildingBlueprintId": "buildingSonar",
+    "requiresWater": true,
+    "requiresLand": false,
     "tinyName": "SNR",
     "shortName": "SONAR",
     "fullName": "Sonar",
@@ -612,6 +626,8 @@
   },
   "towerFabricator": {
     "buildingBlueprintId": "towerFabricator",
+    "requiresWater": false,
+    "requiresLand": false,
     "tinyName": "FAB",
     "shortName": "UFB-1",
     "fullName": "Universal Fabricator",
@@ -719,6 +735,8 @@
   },
   "towerBeamMega": {
     "buildingBlueprintId": "towerBeamMega",
+    "requiresWater": false,
+    "requiresLand": true,
     "tinyName": "HBM",
     "shortName": "HBEAM",
     "fullName": "Heavy Beam Tower",
@@ -896,6 +914,8 @@
   },
   "towerBeamLight": {
     "buildingBlueprintId": "towerBeamLight",
+    "requiresWater": false,
+    "requiresLand": true,
     "tinyName": "LBM",
     "shortName": "LBEAM",
     "fullName": "Light Beam Tower",
@@ -983,6 +1003,8 @@
   },
   "towerCannon": {
     "buildingBlueprintId": "towerCannon",
+    "requiresWater": false,
+    "requiresLand": true,
     "tinyName": "CAN",
     "shortName": "CANON",
     "fullName": "Cannon Tower",
@@ -1071,6 +1093,8 @@
   },
   "towerHelios": {
     "buildingBlueprintId": "towerHelios",
+    "requiresWater": false,
+    "requiresLand": true,
     "tinyName": "HEL",
     "shortName": "HELIO",
     "fullName": "Helios Long-Range Cannon",
@@ -1160,6 +1184,8 @@
   },
   "towerAntiAir": {
     "buildingBlueprintId": "towerAntiAir",
+    "requiresWater": false,
+    "requiresLand": true,
     "tinyName": "AAT",
     "shortName": "AATWR",
     "fullName": "Anti-Air Tower",
@@ -1255,6 +1281,8 @@
   },
   "towerTorpedo": {
     "buildingBlueprintId": "towerTorpedo",
+    "requiresWater": true,
+    "requiresLand": false,
     "tinyName": "TRP",
     "shortName": "TORPD",
     "fullName": "Torpedo Tower",
@@ -1427,6 +1455,8 @@
   },
   "buildingShieldTargetingTech": {
     "buildingBlueprintId": "buildingShieldTargetingTech",
+    "requiresWater": false,
+    "requiresLand": true,
     "tinyName": "SDL",
     "shortName": "SDETC",
     "fullName": "Shield Detection Lab",
@@ -1512,6 +1542,8 @@
   },
   "buildingShieldTech": {
     "buildingBlueprintId": "buildingShieldTech",
+    "requiresWater": false,
+    "requiresLand": true,
     "tinyName": "SHG",
     "shortName": "SHGEN",
     "fullName": "Shield Generator",
@@ -1597,6 +1629,8 @@
   },
   "buildingPrecisionTargetingTech": {
     "buildingBlueprintId": "buildingPrecisionTargetingTech",
+    "requiresWater": false,
+    "requiresLand": true,
     "tinyName": "PTL",
     "shortName": "PTARG",
     "fullName": "Precision Targeting Lab",
@@ -1682,6 +1716,8 @@
   },
   "buildingRadarJammer": {
     "buildingBlueprintId": "buildingRadarJammer",
+    "requiresWater": false,
+    "requiresLand": true,
     "tinyName": "RJM",
     "shortName": "R-JAM",
     "fullName": "Radar Jammer",
@@ -1761,6 +1797,8 @@
   },
   "buildingSonarJammer": {
     "buildingBlueprintId": "buildingSonarJammer",
+    "requiresWater": true,
+    "requiresLand": false,
     "tinyName": "SJM",
     "shortName": "S-JAM",
     "fullName": "Sonar Jammer",
@@ -1837,6 +1875,8 @@
   },
   "buildingMetalStorage": {
     "buildingBlueprintId": "buildingMetalStorage",
+    "requiresWater": false,
+    "requiresLand": true,
     "tinyName": "MST",
     "shortName": "M-STO",
     "fullName": "Metal Storage",
@@ -1925,6 +1965,8 @@
   },
   "buildingEnergyStorage": {
     "buildingBlueprintId": "buildingEnergyStorage",
+    "requiresWater": false,
+    "requiresLand": true,
     "tinyName": "EST",
     "shortName": "E-STO",
     "fullName": "Energy Storage",
@@ -2014,6 +2056,8 @@
   "towerInterceptor": {
     "$extends": "towerAntiAir",
     "buildingBlueprintId": "towerInterceptor",
+    "requiresWater": false,
+    "requiresLand": true,
     "tinyName": "INT",
     "shortName": "INTRC",
     "fullName": "Interceptor Tower",
@@ -2044,6 +2088,8 @@
   "buildingTidalGenerator": {
     "$extends": "buildingWind",
     "buildingBlueprintId": "buildingTidalGenerator",
+    "requiresWater": true,
+    "requiresLand": false,
     "tinyName": "TDG",
     "shortName": "TIDAL",
     "fullName": "Tidal Generator",

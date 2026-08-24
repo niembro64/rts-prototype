@@ -1,6 +1,8 @@
 {
   "buildingBotFabricator": {
     "buildingBlueprintId": "buildingBotFabricator",
+    "requiresWater": false,
+    "requiresLand": true,
     "fullName": "Bot Fabricator",
     "shortDescription": "Tier-one bot factory",
     "longDescription": "A directional tier-one factory that builds the complete opening bot-domain roster through its front yard.",
@@ -44,6 +46,8 @@
   },
   "buildingVehicleFabricator": {
     "buildingBlueprintId": "buildingVehicleFabricator",
+    "requiresWater": false,
+    "requiresLand": true,
     "fullName": "Vehicle Fabricator",
     "shortDescription": "Tier-one vehicle factory",
     "longDescription": "A directional tier-one factory that builds the complete opening vehicle-domain roster through its front yard.",
@@ -85,6 +89,8 @@
   },
   "buildingAircraftFabricator": {
     "buildingBlueprintId": "buildingAircraftFabricator",
+    "requiresWater": false,
+    "requiresLand": false,
     "fullName": "Aircraft Fabricator",
     "shortDescription": "Tier-one aircraft factory",
     "longDescription": "A hovering directional tier-one factory that builds the complete opening aircraft-domain roster through its front yard.",
@@ -126,6 +132,8 @@
   },
   "buildingNavalFabricator": {
     "buildingBlueprintId": "buildingNavalFabricator",
+    "requiresWater": true,
+    "requiresLand": false,
     "fullName": "Naval Fabricator",
     "shortDescription": "Tier-one naval factory",
     "longDescription": "A water-surface directional tier-one factory that builds the complete opening naval-domain roster through its front yard.",
@@ -167,6 +175,8 @@
   },
   "buildingAdvancedUniversalFabricator": {
     "buildingBlueprintId": "buildingAdvancedUniversalFabricator",
+    "requiresWater": false,
+    "requiresLand": false,
     "fullName": "Advanced Universal Fabricator",
     "shortDescription": "Flexible tier-two unit factory",
     "longDescription": "An expensive radial factory that produces every tier-two domain roster from a centered construction bay.",
@@ -227,6 +237,8 @@
   },
   "buildingAdvancedBotFabricator": {
     "buildingBlueprintId": "buildingAdvancedBotFabricator",
+    "requiresWater": false,
+    "requiresLand": true,
     "fullName": "Advanced Bot Fabricator",
     "shortDescription": "Tier-two bot factory",
     "longDescription": "A directional advanced factory that builds the complete tier-two bot-domain roster through its front yard.",
@@ -274,6 +286,8 @@
   },
   "buildingAdvancedVehicleFabricator": {
     "buildingBlueprintId": "buildingAdvancedVehicleFabricator",
+    "requiresWater": false,
+    "requiresLand": true,
     "fullName": "Advanced Vehicle Fabricator",
     "shortDescription": "Tier-two vehicle factory",
     "longDescription": "A directional advanced factory that builds the complete tier-two vehicle-domain roster through its front yard.",
@@ -319,6 +333,8 @@
   },
   "buildingAdvancedAircraftFabricator": {
     "buildingBlueprintId": "buildingAdvancedAircraftFabricator",
+    "requiresWater": false,
+    "requiresLand": false,
     "fullName": "Advanced Aircraft Fabricator",
     "shortDescription": "Tier-two aircraft factory",
     "longDescription": "A hovering directional advanced factory that builds the complete tier-two aircraft-domain roster through its front yard.",
@@ -364,6 +380,8 @@
   },
   "buildingAdvancedNavalFabricator": {
     "buildingBlueprintId": "buildingAdvancedNavalFabricator",
+    "requiresWater": true,
+    "requiresLand": false,
     "fullName": "Advanced Naval Fabricator",
     "shortDescription": "Tier-two naval factory",
     "longDescription": "A water-surface directional advanced factory that builds the complete tier-two naval-domain roster through its front yard.",
@@ -410,6 +428,8 @@
   "buildingExperimentalUniversalFabricator": {
     "$extends": "buildingAdvancedUniversalFabricator",
     "buildingBlueprintId": "buildingExperimentalUniversalFabricator",
+    "requiresWater": false,
+    "requiresLand": false,
     "fullName": "Experimental Universal Fabricator",
     "shortDescription": "Universal tier-three unit factory",
     "longDescription": "The sole tier-three fabricator, a vast radial gantry that produces every experimental capstone from its elevated center bay.",

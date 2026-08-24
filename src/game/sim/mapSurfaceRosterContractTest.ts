@@ -4,17 +4,14 @@
 // Pins three things that must never drift apart:
 //   1. The surface questions themselves — the authored facts they read and
 //      the answers they give for every authored preset.
-//   2. That the single-medium sets stay DERIVED. The expectations here are
-//      written as blueprint PROPERTIES ("no waypoint domain outside water",
-//      "no ground placement set" — and their land mirrors), then compared
-//      against the classifier, so a hand-written id list can never quietly
-//      replace the derivation.
+//   2. That every unit and structure authors two explicit, mutually-exclusive
+//      terrain requirements. Availability is a design fact, not inferred from
+//      locomotion recovery or placement mechanics.
 //   3. That the roster surfaces narrow through that classification: a factory
 //      offers no water-only hull on a dry map and no land-only hull on an
 //      all-sea one, builders likewise for structures — and everything comes
 //      back when the medium does.
 
-import { getUnitLocomotion } from './blueprints';
 import { UNIT_BLUEPRINTS } from './blueprints/units';
 import { BUILDING_BLUEPRINTS, FABRICATOR_BLUEPRINT_IDS } from './blueprints/buildings';
 import {
@@ -23,7 +20,6 @@ import {
   isWaterOnlyBuildingBlueprintId,
   isWaterOnlyUnitBlueprintId,
 } from './blueprints/mediumOnlyRoster';
-import { getBuildingPlacementSetSquareType } from '../../types/buildingTypes';
 import { getStructureFactoryAllowedUnitBlueprintIds } from './factoryProductionRoster';
 import {
   getUnitAuthoredBuildBlueprintIds,
@@ -185,29 +181,43 @@ function assertLandQuestion(): void {
   }
 }
 
-function assertWaterOnlyClassificationIsDerived(): void {
+function assertTerrainRequirementsAreExplicit(): void {
   for (const blueprint of Object.values(UNIT_BLUEPRINTS)) {
-    const waypoint = getUnitLocomotion(blueprint.unitBlueprintId).navigation.waypoint;
-    // Restated from the locomotion model, not from a list of names: a hull is
-    // water-only exactly when water is the ONLY medium a player may send it to.
-    const expected = waypoint.allowInWater && !waypoint.allowOnGround && !waypoint.allowInAir;
     assertContract(
-      isWaterOnlyUnitBlueprintId(blueprint.unitBlueprintId) === expected,
-      `${blueprint.unitBlueprintId} water-only classification must follow its waypoint domain`,
+      typeof blueprint.requiresWater === 'boolean' &&
+        typeof blueprint.requiresLand === 'boolean',
+      `${blueprint.unitBlueprintId} must explicitly author both terrain requirements`,
+    );
+    assertContract(
+      !(blueprint.requiresWater && blueprint.requiresLand),
+      `${blueprint.unitBlueprintId} must not require both water and land`,
+    );
+    assertContract(
+      isWaterOnlyUnitBlueprintId(blueprint.unitBlueprintId) === blueprint.requiresWater &&
+        isLandOnlyUnitBlueprintId(blueprint.unitBlueprintId) === blueprint.requiresLand,
+      `${blueprint.unitBlueprintId} roster classification must use its authored requirements`,
     );
   }
   for (const blueprint of Object.values(BUILDING_BLUEPRINTS)) {
-    const expected = !blueprint.placementSets.some(
-      (placementSet) => getBuildingPlacementSetSquareType(placementSet) === 'ground',
+    assertContract(
+      typeof blueprint.requiresWater === 'boolean' &&
+        typeof blueprint.requiresLand === 'boolean',
+      `${blueprint.buildingBlueprintId} must explicitly author both terrain requirements`,
     );
     assertContract(
-      isWaterOnlyBuildingBlueprintId(blueprint.buildingBlueprintId) === expected,
-      `${blueprint.buildingBlueprintId} water-only classification must follow its placement sets`,
+      !(blueprint.requiresWater && blueprint.requiresLand),
+      `${blueprint.buildingBlueprintId} must not require both water and land`,
+    );
+    assertContract(
+      isWaterOnlyBuildingBlueprintId(blueprint.buildingBlueprintId) ===
+        blueprint.requiresWater &&
+        isLandOnlyBuildingBlueprintId(blueprint.buildingBlueprintId) ===
+        blueprint.requiresLand,
+      `${blueprint.buildingBlueprintId} roster classification must use its authored requirements`,
     );
   }
 
-  // The emergency water drive every unit authors, so a body shoved into a lake
-  // can swim out, must never read as aquatic intent.
+  // Availability stays independent from incidental movement capabilities.
   assertContract(
     !isWaterOnlyUnitBlueprintId('unitLynx'),
     'a tank must not be classified water-only by its recovery water drive',
@@ -222,42 +232,28 @@ function assertWaterOnlyClassificationIsDerived(): void {
     'an aerosub must survive a map with no water — it still flies',
   );
   assertContract(
-    isWaterOnlyUnitBlueprintId('unitOrca') && isWaterOnlyUnitBlueprintId('unitConstructionSubmarine'),
-    'submarines must be classified water-only',
+    isWaterOnlyUnitBlueprintId('unitOrca') &&
+      isWaterOnlyUnitBlueprintId('unitConstructionSubmarine') &&
+      isWaterOnlyUnitBlueprintId('unitPatrolCorvette'),
+    'submarines and water-only surface combatants must require water',
   );
-  // Dual-domain structures author a ground set; the sea-only three do not.
   assertContract(
     !isWaterOnlyBuildingBlueprintId('buildingExtractor') &&
       !isWaterOnlyBuildingBlueprintId('towerFabricator'),
-    'structures with a ground placement set must survive a map with no water',
+    'terrain-neutral structures must survive a map with no water',
   );
   assertContract(
     isWaterOnlyBuildingBlueprintId('buildingSonar') &&
       isWaterOnlyBuildingBlueprintId('buildingSonarJammer') &&
-      isWaterOnlyBuildingBlueprintId('towerTorpedo'),
+      isWaterOnlyBuildingBlueprintId('towerTorpedo') &&
+      isWaterOnlyBuildingBlueprintId('buildingNavalFabricator'),
     'sea-only structures must be classified water-only',
   );
 
-  // The LAND mirror, restated from the same properties.
-  for (const blueprint of Object.values(UNIT_BLUEPRINTS)) {
-    const waypoint = getUnitLocomotion(blueprint.unitBlueprintId).navigation.waypoint;
-    const expected = waypoint.allowOnGround && !waypoint.allowInWater && !waypoint.allowInAir;
-    assertContract(
-      isLandOnlyUnitBlueprintId(blueprint.unitBlueprintId) === expected,
-      `${blueprint.unitBlueprintId} land-only classification must follow its waypoint domain`,
-    );
-  }
-  for (const blueprint of Object.values(BUILDING_BLUEPRINTS)) {
-    const expected = !blueprint.placementSets.some(
-      (placementSet) => getBuildingPlacementSetSquareType(placementSet) !== 'ground',
-    );
-    assertContract(
-      isLandOnlyBuildingBlueprintId(blueprint.buildingBlueprintId) === expected,
-      `${blueprint.buildingBlueprintId} land-only classification must follow its placement sets`,
-    );
-  }
   assertContract(
-    isLandOnlyUnitBlueprintId('unitLynx') && isLandOnlyUnitBlueprintId('unitMammoth'),
+    isLandOnlyUnitBlueprintId('unitLynx') &&
+      isLandOnlyUnitBlueprintId('unitTick') &&
+      isLandOnlyUnitBlueprintId('unitMammoth'),
     'pure ground hulls must be classified land-only',
   );
   assertContract(
@@ -273,13 +269,15 @@ function assertWaterOnlyClassificationIsDerived(): void {
     'flyers are neither land-only nor water-only',
   );
   assertContract(
-    isLandOnlyBuildingBlueprintId('buildingSolar') && isLandOnlyBuildingBlueprintId('buildingWind'),
+    isLandOnlyBuildingBlueprintId('buildingSolar') &&
+      isLandOnlyBuildingBlueprintId('buildingRadar') &&
+      isLandOnlyBuildingBlueprintId('towerCannon'),
     'ground-only structures must be classified land-only',
   );
   assertContract(
     !isLandOnlyBuildingBlueprintId('towerFabricator') &&
       !isLandOnlyBuildingBlueprintId('buildingExtractor'),
-    'structures with a water placement set must survive a map with no land',
+    'terrain-neutral structures must survive a map with no land',
   );
 }
 
@@ -432,6 +430,6 @@ function assertRostersNarrowWithTheMap(): void {
 export function runMapSurfaceRosterContractTest(): void {
   assertWaterQuestion();
   assertLandQuestion();
-  assertWaterOnlyClassificationIsDerived();
+  assertTerrainRequirementsAreExplicit();
   assertRostersNarrowWithTheMap();
 }

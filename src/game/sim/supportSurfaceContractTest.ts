@@ -6,7 +6,10 @@ import {
   sampleLocomotionSupportSurface,
 } from '../render3d/LocomotionTerrainSampler';
 import { PhysicsEngine3D } from '../server/PhysicsEngine3D';
-import { createPhysicsBodyForUnit } from '../server/unitPhysicsBody';
+import {
+  createPhysicsBodyForUnit,
+  wakeReleasedUnitPhysicsBody,
+} from '../server/unitPhysicsBody';
 import {
   getTerrainRuntimeConfig,
   getTerrainTeamCount,
@@ -783,6 +786,23 @@ function assertFactoryShellContract(): void {
     'reclaim work spray must use BAR target-volume-to-builder inverse mode',
   );
 
+  // The held nanoframe can sleep after spending its entire construction cycle
+  // at one pinned pose. Completion reuses this body and gives radial
+  // Fabricators no launch impulse, so the server's completion notification
+  // must explicitly wake it for gravity.
+  const releasePhysics = new PhysicsEngine3D(world.mapWidth, world.mapHeight);
+  releasePhysics.setGroundLookup(
+    (x, y) => world.getGroundZ(x, y),
+    (x, y) => world.getCachedSurfaceNormal(x, y),
+  );
+  const releaseBody = createPhysicsBodyForUnit(world, releasePhysics, shell);
+  assertContract(releaseBody !== undefined, 'held factory shell must retain a physics body');
+  releaseBody.sleeping = true;
+  assertContract(
+    !wakeReleasedUnitPhysicsBody(releasePhysics, shell) && releaseBody.sleeping,
+    'initial held-shell spawn notification must not wake a pinned nanoframe',
+  );
+
   shell.buildable.isComplete = true;
   const completed = factoryProductionSystem.update(world, 16, forceAccumulator).completedUnits;
   assertContract(completed.length === 1 && completed[0] === shell, 'factory must complete the funded shell');
@@ -795,6 +815,21 @@ function assertFactoryShellContract(): void {
       Math.abs(shell.unit.velocityZ) <= CONTRACT_EPSILON,
     'fabricator must release the completed shell with zero launch velocity',
   );
+  assertContract(
+    releaseBody.sleeping,
+    'zero-impulse completion must reproduce the sleeping held-body precondition',
+  );
+  assertContract(
+    wakeReleasedUnitPhysicsBody(releasePhysics, shell) && !releaseBody.sleeping,
+    'completed factory shell notification must wake its reused physics body',
+  );
+  releasePhysics.step(0.016);
+  assertContract(
+    releaseBody.vz < 0,
+    'a woken zero-impulse Fabricator output must begin falling under gravity',
+  );
+  shell.body = null;
+  releasePhysics.dispose();
   assertContract(factory.factory.selectedUnitBlueprintId === droneUnitBlueprintId, 'repeat factory must keep its selected unit');
   assertContract(factory.factory.repeatProduction === true, 'repeat factory must keep repeat mode after activation');
   const completedUnit = assertUnitActionCount(shell, 2, 'completed shell must receive high-level rally actions');

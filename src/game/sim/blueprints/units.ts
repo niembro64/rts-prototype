@@ -49,11 +49,14 @@ import {
   validateFiniteVector3,
   validatePositiveAngularActuator,
 } from './mountValidation';
+import { validateEntityTerrainRequirements } from './entityTerrainRequirements';
 
 type JsonUnitBlueprint = Omit<UnitBlueprint, keyof LockOnInclusionObject>;
 type InheritableJsonUnitBlueprint = Partial<JsonUnitBlueprint> & { $extends?: string };
 
 const UNIT_EXPLICIT_FIELDS = [
+  'requiresWater',
+  'requiresLand',
   'fullName',
   'shortDescription',
   'longDescription',
@@ -653,6 +656,7 @@ function validateBodyShapeSegments(
 }
 
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
+  validateEntityTerrainRequirements(`unit blueprint ${bp.unitBlueprintId}`, bp);
   validateEntityDescription(`unit blueprint ${bp.unitBlueprintId}`, bp);
   validateBodyShapeSegments(bp.unitBlueprintId, bp.bodyShape);
   validateUnitSupportSurface(bp.unitBlueprintId, bp.supportSurface);

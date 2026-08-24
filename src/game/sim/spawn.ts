@@ -6,8 +6,11 @@ import { economyManager } from './economy';
 import { aimTurretsToward } from './turretInit';
 import { setUnitFacingYaw } from './unitOrientation';
 import { getBuildingConfig } from './buildConfigs';
-import { installedMapMediumKey, mapHasWater } from './mapSurface';
-import { unitBlueprintIdsForMediumKey } from './mapRoster';
+import { installedMapMediumKey, mapHasLand, mapHasWater } from './mapSurface';
+import {
+  buildingBlueprintIdsForMediumKey,
+  unitBlueprintIdsForMediumKey,
+} from './mapRoster';
 import { DEMO_CONFIG } from '../../demoConfig';
 import type { WaypointType } from '../../types/commandTypes';
 import {
@@ -122,8 +125,7 @@ const INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(
 // steps cover dense packing while avoiding tens of thousands of near-identical
 // probes whose rectangles overlap the same occupied cells.
 const FACTORY_PLACEMENT_SEARCH_OFFSETS = buildStridedPlacementSearchOffsets(140, 7);
-// The offshore showcase now carries both tech tiers across ten naval-domain
-// lines. Give it a dedicated wide deterministic fan-out so edge-of-sector
+// Water-required lines use a dedicated deterministic fan-out so shoreline
 // footprints and neighboring seats can still pack completely.
 const WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS = buildStridedPlacementSearchOffsets(64, 7);
 // Authored demo extractors belong on their deposit's own snapped footprint.
@@ -159,6 +161,21 @@ function isBlueprintAvailable(
   availableBlueprintIds: ReadonlySet<string> | undefined,
 ): boolean {
   return availableBlueprintIds === undefined || availableBlueprintIds.has(blueprintId);
+}
+
+/** Intersect caller-authored building toggles with what the installed map can
+ * host. Initial-base placement bypasses builder authorization by design, so it
+ * must apply the same terrain-requirement roster gate explicitly. */
+function availableBuildingBlueprintIdsForInstalledMap(
+  availableBuildingBlueprintIds: ReadonlySet<string> | undefined,
+): ReadonlySet<string> {
+  const enabled = availableBuildingBlueprintIds === undefined
+    ? BUILDING_BLUEPRINT_IDS
+    : BUILDING_BLUEPRINT_IDS.filter((id) => availableBuildingBlueprintIds.has(id));
+  return new Set(buildingBlueprintIdsForMediumKey(
+    enabled,
+    installedMapMediumKey(),
+  ));
 }
 
 function getDemoExtractorBlueprintIds(
@@ -698,7 +715,6 @@ function placeMixedBlueprintArcRow(
 
 function getAvailableDemoFactoryUnitBlueprintIds(
   availableUnitBlueprintIds: ReadonlySet<string> | undefined = undefined,
-  excludedUnitBlueprintIds: ReadonlySet<string> | undefined = undefined,
 ): UnitBlueprintId[] {
   const unitBlueprintIds: UnitBlueprintId[] = [];
   const mapRoster = unitBlueprintIdsForMediumKey(
@@ -709,7 +725,6 @@ function getAvailableDemoFactoryUnitBlueprintIds(
     const unitBlueprintId = mapRoster[i];
     if (getUnitBlueprint(unitBlueprintId).production === null) continue;
     if (!isBlueprintAvailable(unitBlueprintId, availableUnitBlueprintIds)) continue;
-    if (excludedUnitBlueprintIds?.has(unitBlueprintId)) continue;
     unitBlueprintIds.push(unitBlueprintId);
   }
   return unitBlueprintIds;
@@ -755,6 +770,8 @@ function placeUniversalFactoryLines(
   playerId: PlayerId,
   basePolicy: InitialBasePolicy,
   availableBuildingBlueprintIds: ReadonlySet<string> | undefined,
+  surface: 'ground' | 'water',
+  searchOffsets: readonly GridOffset[],
 ): Entity[] {
   const count = unitBlueprintIds.length;
   if (count === 0) return [];
@@ -778,9 +795,9 @@ function placeUniversalFactoryLines(
       point.y,
       playerId,
       basePolicy,
-      FACTORY_PLACEMENT_SEARCH_OFFSETS,
+      searchOffsets,
       null,
-      (x, y) => isRectFootprintOnSurface(world, x, y, width, height, 'ground'),
+      (x, y) => isRectFootprintOnSurface(world, x, y, width, height, surface),
       true,
     );
     if (factory === null) continue;
@@ -788,6 +805,29 @@ function placeUniversalFactoryLines(
     entities.push(factory);
   }
   return entities;
+}
+
+/** Keep water-line output on the offshore ring instead of sending it through
+ * the land base toward map center. */
+function configureWaterFactoryWaypoints(
+  world: WorldState,
+  factory: Entity,
+  oval: MapOvalMetrics,
+  radius: number,
+): void {
+  const angle = mapOvalAngleAt(
+    world.mapWidth,
+    world.mapHeight,
+    factory.transform.x,
+    factory.transform.y,
+  );
+  const patrolArc = Math.PI / Math.max(2, world.playerCount);
+  const forward = mapOvalPointAt(oval, angle + patrolArc, radius);
+  const backward = mapOvalPointAt(oval, angle - patrolArc, radius);
+  setFactoryDefaultWaypoints(factory, [
+    { x: forward.x, y: forward.y, z: null, type: 'patrol' },
+    { x: backward.x, y: backward.y, z: null, type: 'patrol' },
+  ]);
 }
 
 function isRectFootprintOnSurface(
@@ -857,22 +897,42 @@ export function spawnInitialBases(
   const playerCount = normalizedPlayerIds.length;
   const { oval, radius: spawnRadius } = getDemoOval(world);
   const { cx, cy } = oval;
-  // Water controls only the offshore utility showcase now. Demo unit
-  // production itself lives in the two land/water-capable Universal rings.
   const hasWater = mapHasWater();
+  const hasLand = mapHasLand();
+  const enabledBuildingBlueprintIds =
+    availableBuildingBlueprintIdsForInstalledMap(availableBuildingBlueprintIds);
   const supplementalGroundBuildingBlueprintIds =
     getDemoSupplementalBuildingBlueprintIds(
       'ground',
-      availableBuildingBlueprintIds,
+      enabledBuildingBlueprintIds,
     );
   const supplementalWaterBuildingBlueprintIds = hasWater
     ? getDemoSupplementalBuildingBlueprintIds(
       'water',
-      availableBuildingBlueprintIds,
+      enabledBuildingBlueprintIds,
     )
     : [];
   const factoryUnitBlueprintIds = getAvailableDemoFactoryUnitBlueprintIds(
     availableUnitBlueprintIds,
+  );
+  // Water-required lines always live offshore. Terrain-neutral lines prefer
+  // the ordinary ground ring, but remain available on a future all-sea map by
+  // joining the water rows there. Land-required units have already been
+  // removed from that map by the shared roster filter above.
+  const waterFactoryUnitBlueprintIds = factoryUnitBlueprintIds.filter((id) => {
+    const blueprint = getUnitBlueprint(id);
+    return blueprint.requiresWater ||
+      (!hasLand && hasWater && !blueprint.requiresLand);
+  });
+  const waterFactoryUnitBlueprintIdSet = new Set(waterFactoryUnitBlueprintIds);
+  const groundFactoryUnitBlueprintIds = factoryUnitBlueprintIds.filter(
+    (id) => !waterFactoryUnitBlueprintIdSet.has(id),
+  );
+  const innerWaterFactoryUnitBlueprintIds = waterFactoryUnitBlueprintIds.filter(
+    (id) => getUnitBlueprint(id).production?.techLevel === 1,
+  );
+  const outerWaterFactoryUnitBlueprintIds = waterFactoryUnitBlueprintIds.filter(
+    (id) => getUnitBlueprint(id).production?.techLevel !== 1,
   );
 
   // Concentric radii — each ring is explicit so the demo layout can be
@@ -905,6 +965,14 @@ export function spawnInitialBases(
   const universalFactoryRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
     DEMO_CONFIG.baseRings.universalFabricator.radiusFraction,
+  );
+  const innerWaterFactoryRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.waterFabricators.innerRadiusFraction,
+  );
+  const waterFactoryRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.waterFabricators.radiusFraction,
   );
   const radarRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
@@ -1038,27 +1106,65 @@ export function spawnInitialBases(
 
     // Wind turbine arc — independent radius so its silhouette reads on
     // its own ring, not interleaved with the solars.
-    if (isBlueprintAvailable('buildingWind', availableBuildingBlueprintIds)) {
+    if (isBlueprintAvailable('buildingWind', enabledBuildingBlueprintIds)) {
       entities.push(...placeArcRow(
         world, construction, 'buildingWind', DEMO_CONFIG.buildingWindCount,
         oval, windRadius, baseAngle, sectorAngle, playerId, basePolicy,
       ));
     }
 
-    // One radial Universal per active unit, with its tech level derived from
-    // that unit's canonical production identity. Each line repeats only its
-    // assigned unit, just as if the player configured it by hand.
+    // Offshore rows go first so water-required units are never assigned a
+    // land factory merely because Universal hosts can stand on both mediums.
+    const waterFactories: Entity[] = [];
+    const waterFactoryRows: ReadonlyArray<readonly [
+      readonly UnitBlueprintId[],
+      number,
+    ]> = [
+      [innerWaterFactoryUnitBlueprintIds, innerWaterFactoryRadius],
+      [outerWaterFactoryUnitBlueprintIds, waterFactoryRadius],
+    ];
+    for (let rowIndex = 0; rowIndex < waterFactoryRows.length; rowIndex++) {
+      const [rowUnitBlueprintIds, rowRadius] = waterFactoryRows[rowIndex];
+      const rowFactories = placeUniversalFactoryLines(
+        world,
+        construction,
+        rowUnitBlueprintIds,
+        oval,
+        rowRadius,
+        baseAngle,
+        getSeatBuildArcAngle(
+          world.teamRoster,
+          playerId,
+          DEMO_CONFIG.waterFabricators.arcSectorFraction,
+        ),
+        playerId,
+        basePolicy,
+        enabledBuildingBlueprintIds,
+        'water',
+        WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS,
+      );
+      for (let factoryIndex = 0; factoryIndex < rowFactories.length; factoryIndex++) {
+        configureWaterFactoryWaypoints(world, rowFactories[factoryIndex], oval, rowRadius);
+      }
+      waterFactories.push(...rowFactories);
+    }
+    entities.push(...waterFactories);
+
+    // Every remaining active unit receives one same-tier Universal on the
+    // ordinary base ring and begins repeat-building that unit.
     const universalFactories = placeUniversalFactoryLines(
       world,
       construction,
-      factoryUnitBlueprintIds,
+      groundFactoryUnitBlueprintIds,
       oval,
       universalFactoryRadius,
       baseAngle,
       factorySectorAngle,
       playerId,
       basePolicy,
-      availableBuildingBlueprintIds,
+      enabledBuildingBlueprintIds,
+      'ground',
+      FACTORY_PLACEMENT_SEARCH_OFFSETS,
     );
     entities.push(...universalFactories);
 
@@ -1088,7 +1194,7 @@ export function spawnInitialBases(
     //      nearest free cells instead of silently failing best-effort
     //      placement.
     for (const row of wideSearchArcRows) {
-      if (!isBlueprintAvailable(row.buildingBlueprintId, availableBuildingBlueprintIds)) {
+      if (!isBlueprintAvailable(row.buildingBlueprintId, enabledBuildingBlueprintIds)) {
         continue;
       }
       entities.push(...placeArcRow(
@@ -1108,7 +1214,7 @@ export function spawnInitialBases(
 
     // Sonar remains an offshore utility showcase, independent of unit
     // production. A map with no water places none.
-    if (hasWater && isBlueprintAvailable('buildingSonar', availableBuildingBlueprintIds)) {
+    if (hasWater && isBlueprintAvailable('buildingSonar', enabledBuildingBlueprintIds)) {
       const sonarConfig = getBuildingConfig('buildingSonar');
       const sonarWidth = sonarConfig.gridWidth * BUILD_GRID_CELL_SIZE;
       const sonarHeight = sonarConfig.gridHeight * BUILD_GRID_CELL_SIZE;
@@ -1180,7 +1286,7 @@ export function spawnMetalExtractorsOnDeposits(
     ? [...ownerCandidatePlayerIds]
     : playerIds;
   const extractorBlueprintIds = getDemoExtractorBlueprintIds(
-    availableBuildingBlueprintIds,
+    availableBuildingBlueprintIdsForInstalledMap(availableBuildingBlueprintIds),
   );
   if (extractorBlueprintIds.length === 0) return [];
   const entities: Entity[] = [];

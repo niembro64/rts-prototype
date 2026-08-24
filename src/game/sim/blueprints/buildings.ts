@@ -82,8 +82,12 @@ import {
   validateFiniteVector3,
   validatePositiveAngularActuator,
 } from './mountValidation';
+import {
+  type EntityTerrainRequirements,
+  validateEntityTerrainRequirements,
+} from './entityTerrainRequirements';
 
-export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
+export type BuildingBlueprint = Partial<LockOnInclusionObject> & EntityTerrainRequirements & {
   buildingBlueprintId: BuildingBlueprintId;
   fullName: string;
   shortDescription: string;
@@ -256,6 +260,8 @@ function buildBuildingBlueprints(): Record<BuildingBlueprintId, BuildingBlueprin
 export const BUILDING_BLUEPRINTS = buildBuildingBlueprints();
 
 const BUILDING_EXPLICIT_FIELDS = [
+  'requiresWater',
+  'requiresLand',
   'fullName',
   'shortDescription',
   'longDescription',
@@ -620,6 +626,7 @@ function validateFactoryUnitRoster(
 
 for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   assertExplicitFields(`building blueprint ${id}`, blueprint, BUILDING_EXPLICIT_FIELDS);
+  validateEntityTerrainRequirements(`building blueprint ${id}`, blueprint);
   validateEntityDescription(`building blueprint ${id}`, blueprint);
   assertExplicitFields(`building blueprint ${id}`, blueprint, LOCK_ON_INCLUSION_FIELDS);
   validateLockOnInclusionObject(

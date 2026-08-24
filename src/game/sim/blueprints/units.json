@@ -1,6 +1,8 @@
 {
   "unitJackal": {
     "unitBlueprintId": "unitJackal",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 1, "domains": ["vehicle"] },
     "tinyName": "JKL",
     "fullName": "Jackal",
@@ -146,6 +148,8 @@
   },
   "unitLynx": {
     "unitBlueprintId": "unitLynx",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 1, "domains": ["vehicle"] },
     "tinyName": "LNX",
     "fullName": "Lynx",
@@ -290,6 +294,8 @@
   },
   "unitDaddy": {
     "unitBlueprintId": "unitDaddy",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 1, "domains": ["bot"] },
     "tinyName": "DAD",
     "fullName": "Daddy Longlegs",
@@ -485,6 +491,8 @@
   },
   "unitBadger": {
     "unitBlueprintId": "unitBadger",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 2, "domains": ["vehicle"] },
     "tinyName": "BDG",
     "fullName": "Badger",
@@ -629,6 +637,8 @@
   },
   "unitMongoose": {
     "unitBlueprintId": "unitMongoose",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 2, "domains": ["vehicle"] },
     "tinyName": "MGS",
     "fullName": "Mongoose",
@@ -774,6 +784,8 @@
   },
   "unitTick": {
     "unitBlueprintId": "unitTick",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": null,
     "tinyName": "TCK",
     "fullName": "Tick",
@@ -933,6 +945,8 @@
   },
   "unitHuman": {
     "unitBlueprintId": "unitHuman",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 1, "domains": ["bot"] },
     "tinyName": "MAC",
     "fullName": "Macaque",
@@ -1210,6 +1224,8 @@
   },
   "unitRex": {
     "unitBlueprintId": "unitRex",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 3, "domains": ["bot"] },
     "tinyName": "REX",
     "fullName": "Tyrannosaurus",
@@ -1793,6 +1809,8 @@
   },
   "unitMammoth": {
     "unitBlueprintId": "unitMammoth",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 2, "domains": ["vehicle"] },
     "tinyName": "MMT",
     "fullName": "Mammoth",
@@ -1929,6 +1947,8 @@
   },
   "unitFormik": {
     "unitBlueprintId": "unitFormik",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 2, "domains": ["bot"] },
     "tinyName": "ALN",
     "fullName": "Antlion",
@@ -2120,6 +2140,8 @@
   },
   "unitWidow": {
     "unitBlueprintId": "unitWidow",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 2, "domains": ["bot"] },
     "tinyName": "WDW",
     "fullName": "Black Widow",
@@ -2431,6 +2453,8 @@
   },
   "unitHippo": {
     "unitBlueprintId": "unitHippo",
+    "requiresWater": false,
+    "requiresLand": false,
     "production": { "techLevel": 2, "domains": ["vehicle", "naval"] },
     "tinyName": "HPO",
     "fullName": "Hippo",
@@ -2578,6 +2602,8 @@
   },
   "unitSeaTurtle": {
     "unitBlueprintId": "unitSeaTurtle",
+    "requiresWater": false,
+    "requiresLand": false,
     "production": { "techLevel": 1, "domains": ["naval"] },
     "tinyName": "TRT",
     "fullName": "Sea Turtle",
@@ -2780,6 +2806,8 @@
   },
   "unitOrca": {
     "unitBlueprintId": "unitOrca",
+    "requiresWater": true,
+    "requiresLand": false,
     "production": { "techLevel": 2, "domains": ["naval"] },
     "tinyName": "ORC",
     "fullName": "Orca",
@@ -2984,6 +3012,8 @@
   },
   "unitTarantula": {
     "unitBlueprintId": "unitTarantula",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 2, "domains": ["bot"] },
     "tinyName": "TRN",
     "fullName": "Tarantula",
@@ -3153,6 +3183,8 @@
   },
   "unitLoris": {
     "unitBlueprintId": "unitLoris",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 1, "domains": ["vehicle"] },
     "tinyName": "LRS",
     "fullName": "Loris",
@@ -3306,6 +3338,8 @@
   },
   "unitBee": {
     "unitBlueprintId": "unitBee",
+    "requiresWater": false,
+    "requiresLand": false,
     "production": null,
     "tinyName": "BEE",
     "fullName": "Bee",
@@ -3441,6 +3475,8 @@
   },
   "unitDragonfly": {
     "unitBlueprintId": "unitDragonfly",
+    "requiresWater": false,
+    "requiresLand": false,
     "production": { "techLevel": 1, "domains": ["aircraft"] },
     "tinyName": "DRF",
     "fullName": "Dragonfly",
@@ -3606,6 +3642,8 @@
   },
   "unitConstructionDrone": {
     "unitBlueprintId": "unitConstructionDrone",
+    "requiresWater": false,
+    "requiresLand": false,
     "production": { "techLevel": 1, "domains": ["aircraft"] },
     "tinyName": "CDR",
     "fullName": "Construction Drone",
@@ -3798,6 +3836,8 @@
   },
   "unitEagle": {
     "unitBlueprintId": "unitEagle",
+    "requiresWater": false,
+    "requiresLand": false,
     "production": { "techLevel": 1, "domains": ["aircraft"] },
     "tinyName": "EGL",
     "fullName": "Eagle",
@@ -3956,6 +3996,8 @@
   },
   "unitDuck": {
     "unitBlueprintId": "unitDuck",
+    "requiresWater": false,
+    "requiresLand": false,
     "production": { "techLevel": 1, "domains": ["aircraft", "naval"] },
     "tinyName": "DUK",
     "fullName": "Duck",
@@ -4140,6 +4182,8 @@
   },
   "unitAlbatros": {
     "unitBlueprintId": "unitAlbatros",
+    "requiresWater": false,
+    "requiresLand": false,
     "production": { "techLevel": 3, "domains": ["aircraft"] },
     "tinyName": "ALB",
     "fullName": "Albatross",
@@ -4329,6 +4373,8 @@
   },
   "unitQueenBee": {
     "unitBlueprintId": "unitQueenBee",
+    "requiresWater": false,
+    "requiresLand": false,
     "production": { "techLevel": 3, "domains": ["aircraft"] },
     "tinyName": "QBE",
     "fullName": "Queen Bee",
@@ -4582,6 +4628,8 @@
   },
   "unitQueenTick": {
     "unitBlueprintId": "unitQueenTick",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 3, "domains": ["bot"] },
     "tinyName": "QTK",
     "fullName": "Queen Tick",
@@ -4840,6 +4888,8 @@
   },
   "unitTransport": {
     "unitBlueprintId": "unitTransport",
+    "requiresWater": false,
+    "requiresLand": false,
     "production": { "techLevel": 2, "domains": ["aircraft"] },
     "tinyName": "PLC",
     "fullName": "Pelican",
@@ -4994,6 +5044,8 @@
   },
   "unitCommander": {
     "unitBlueprintId": "unitCommander",
+    "requiresWater": false,
+    "requiresLand": false,
     "production": null,
     "tinyName": "SVB",
     "fullName": "Silverback",
@@ -5393,6 +5445,8 @@
   },
   "unitConstructionSubmarine": {
     "unitBlueprintId": "unitConstructionSubmarine",
+    "requiresWater": true,
+    "requiresLand": false,
     "production": { "techLevel": 1, "domains": ["naval"] },
     "tinyName": "CSB",
     "fullName": "Construction Submarine",
@@ -5591,6 +5645,8 @@
   },
   "unitHedgehog": {
     "unitBlueprintId": "unitHedgehog",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 1, "domains": ["vehicle"] },
     "preventLockOnIfMyTeamIsAboveMe": true,
     "supportPointOffsetZ": 12.4,
@@ -5736,6 +5792,8 @@
   "unitRadarScout": {
     "$extends": "unitBee",
     "unitBlueprintId": "unitRadarScout",
+    "requiresWater": false,
+    "requiresLand": false,
     "production": { "techLevel": 1, "domains": ["aircraft"] },
     "tinyName": "KES",
     "fullName": "Kestrel",
@@ -5779,6 +5837,8 @@
   "unitConstructionBot": {
     "$extends": "unitHuman",
     "unitBlueprintId": "unitConstructionBot",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 1, "domains": ["bot"] },
     "tinyName": "CBT",
     "fullName": "Construction Bot",
@@ -5845,6 +5905,8 @@
   "unitConstructionRover": {
     "$extends": "unitJackal",
     "unitBlueprintId": "unitConstructionRover",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 1, "domains": ["vehicle"] },
     "tinyName": "CTR",
     "fullName": "Construction Rover",
@@ -5905,6 +5967,8 @@
   "unitStealthScout": {
     "$extends": "unitSeaTurtle",
     "unitBlueprintId": "unitStealthScout",
+    "requiresWater": false,
+    "requiresLand": false,
     "production": { "techLevel": 2, "domains": ["naval"] },
     "tinyName": "CUT",
     "fullName": "Cuttlefish",
@@ -5947,6 +6011,8 @@
   "unitDetector": {
     "$extends": "unitBee",
     "unitBlueprintId": "unitDetector",
+    "requiresWater": false,
+    "requiresLand": false,
     "production": { "techLevel": 2, "domains": ["aircraft"] },
     "tinyName": "OWL",
     "fullName": "Owl",
@@ -5990,6 +6056,8 @@
   "unitRadarJammer": {
     "$extends": "unitSeaTurtle",
     "unitBlueprintId": "unitRadarJammer",
+    "requiresWater": false,
+    "requiresLand": false,
     "production": { "techLevel": 2, "domains": ["naval"] },
     "tinyName": "MNT",
     "fullName": "Manta Ray",
@@ -6037,6 +6105,8 @@
   "unitMissileRover": {
     "$extends": "unitJackal",
     "unitBlueprintId": "unitMissileRover",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 1, "domains": ["vehicle"] },
     "tinyName": "SWF",
     "fullName": "Swift",
@@ -6085,6 +6155,8 @@
   "unitClusterArtillery": {
     "$extends": "unitMongoose",
     "unitBlueprintId": "unitClusterArtillery",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 2, "domains": ["vehicle"] },
     "tinyName": "BBT",
     "fullName": "Bombardier Beetle",
@@ -6133,6 +6205,8 @@
   "unitWaterStrider": {
     "$extends": "unitTarantula",
     "unitBlueprintId": "unitWaterStrider",
+    "requiresWater": false,
+    "requiresLand": false,
     "production": { "techLevel": 1, "domains": ["bot", "naval"] },
     "tinyName": "WST",
     "fullName": "Water Strider",
@@ -6201,6 +6275,8 @@
   "unitPatrolCorvette": {
     "$extends": "unitSeaTurtle",
     "unitBlueprintId": "unitPatrolCorvette",
+    "requiresWater": true,
+    "requiresLand": false,
     "production": { "techLevel": 1, "domains": ["naval"] },
     "tinyName": "BRD",
     "fullName": "Barracuda",
@@ -6270,6 +6346,8 @@
   "unitPetrel": {
     "$extends": "unitDuck",
     "unitBlueprintId": "unitPetrel",
+    "requiresWater": false,
+    "requiresLand": false,
     "production": { "techLevel": 2, "domains": ["aircraft", "naval"] },
     "tinyName": "PET",
     "fullName": "Petrel",
@@ -6318,6 +6396,8 @@
   "unitAdvancedConstructionBot": {
     "$extends": "unitConstructionBot",
     "unitBlueprintId": "unitAdvancedConstructionBot",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 2, "domains": ["bot"] },
     "tinyName": "ABT",
     "fullName": "Advanced Construction Bot",
@@ -6362,6 +6442,8 @@
   "unitAdvancedConstructionRover": {
     "$extends": "unitConstructionRover",
     "unitBlueprintId": "unitAdvancedConstructionRover",
+    "requiresWater": false,
+    "requiresLand": true,
     "production": { "techLevel": 2, "domains": ["vehicle"] },
     "tinyName": "ARV",
     "fullName": "Advanced Construction Rover",
@@ -6409,6 +6491,8 @@
   "unitAdvancedConstructionDrone": {
     "$extends": "unitConstructionDrone",
     "unitBlueprintId": "unitAdvancedConstructionDrone",
+    "requiresWater": false,
+    "requiresLand": false,
     "production": { "techLevel": 2, "domains": ["aircraft"] },
     "tinyName": "ADN",
     "fullName": "Advanced Construction Drone",
@@ -6458,6 +6542,8 @@
   "unitAdvancedConstructionSubmarine": {
     "$extends": "unitConstructionSubmarine",
     "unitBlueprintId": "unitAdvancedConstructionSubmarine",
+    "requiresWater": true,
+    "requiresLand": false,
     "production": { "techLevel": 2, "domains": ["naval"] },
     "tinyName": "ASB",
     "fullName": "Advanced Construction Submarine",

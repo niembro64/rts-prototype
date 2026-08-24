@@ -91,3 +91,18 @@ export function createPhysicsBodyForUnit(
 
   return body;
 }
+
+/** A factory completion reuses the nanoframe's existing body. That body may
+ * have gone to sleep while the hold pose pinned it inside the Fabricator, so a
+ * zero-impulse release must wake it explicitly or gravity will never get a
+ * chance to make the completed unit fall. Newly spawned held shells stay
+ * asleep-eligible until their completion notification. */
+export function wakeReleasedUnitPhysicsBody(
+  physics: Pick<PhysicsEngine3D, 'wakeBody'>,
+  entity: Entity,
+): boolean {
+  const body = entity.body?.physicsBody;
+  if (body === undefined || entity.heldBy !== null) return false;
+  physics.wakeBody(body);
+  return true;
+}

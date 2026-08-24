@@ -4,41 +4,21 @@ import demoConfig from './demoConfig.json';
 
 export type DemoBattleWaypointType = 'move' | 'fight' | 'patrol';
 
-const REQUIRED_WATER_FACTORY_UNIT_BLUEPRINT_IDS = [
-  'unitSeaTurtle',
-  'unitDuck',
-  'unitWaterStrider',
-  'unitConstructionSubmarine',
-  'unitPatrolCorvette',
-  'unitHippo',
-  'unitOrca',
-  'unitPetrel',
-  'unitStealthScout',
-  'unitRadarJammer',
-] as const;
-
 function validatedWaterFabricatorConfig(): typeof demoConfig.waterFabricators {
   const config = demoConfig.waterFabricators;
-  const ids = config.unitBlueprintIds;
-  if (
-    ids.length !== REQUIRED_WATER_FACTORY_UNIT_BLUEPRINT_IDS.length ||
-    REQUIRED_WATER_FACTORY_UNIT_BLUEPRINT_IDS.some((id) => !ids.includes(id))
-  ) {
-    throw new Error(
-      'demoConfig.waterFabricators.unitBlueprintIds must contain exactly ' +
-        REQUIRED_WATER_FACTORY_UNIT_BLUEPRINT_IDS.join(', '),
-    );
-  }
   if (
     !Number.isFinite(config.innerRadiusFraction) ||
     config.innerRadiusFraction <= 0 ||
     config.innerRadiusFraction >= config.radiusFraction ||
     !Number.isFinite(config.sonarRadiusFraction) ||
-    config.sonarRadiusFraction <= config.radiusFraction
+    config.sonarRadiusFraction <= config.radiusFraction ||
+    !Number.isFinite(config.arcSectorFraction) ||
+    config.arcSectorFraction <= 0 ||
+    config.arcSectorFraction > 1
   ) {
     throw new Error(
-      'demoConfig.waterFabricators radii must be finite and ordered as ' +
-        '0 < innerRadiusFraction < radiusFraction < sonarRadiusFraction',
+      'demoConfig.waterFabricators must have ordered positive radii and an ' +
+        'arcSectorFraction in (0, 1]',
     );
   }
   return config;
@@ -209,10 +189,9 @@ export const DEMO_CONFIG = {
   baseRings: demoConfig.baseRings,
 
   /**
-   * Demo-only outer-water installation. These are ordinary Fabricators using
-   * the universal unit roster and drop pipeline; this section controls their
-   * initial placement, repeat-build seed, and the Sonar ring immediately
-   * outside them.
+   * Demo-only outer-water installation geometry. Which units need this ring
+   * comes from each unit blueprint's requiresWater/requiresLand facts; this
+   * section controls only placement and the Sonar ring immediately outside.
    */
   waterFabricators: validatedWaterFabricatorConfig(),
 
