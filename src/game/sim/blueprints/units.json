@@ -6110,17 +6110,17 @@
       "physics": {
         "ground": { "maxPropulsiveForce": 30 },
         "air": {
-          "maxPropulsiveForce": 0,
+          "maxPropulsiveForce": 20,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
-            "surfaceFollowingInverseForceFromWater": 260
+            "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
           "maxPropulsiveForce": 24,
           "lift": {
-            "surfaceFollowingInverseForceFromGround": 0,
-            "surfaceFollowingProportionalForceFromWater": 18
+            "surfaceFollowingInverseForceFromGround": 100,
+            "surfaceFollowingProportionalForceFromWater": 100
           }
         }
       },
