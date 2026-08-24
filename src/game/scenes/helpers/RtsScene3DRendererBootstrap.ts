@@ -35,6 +35,7 @@ import {
   TERRAIN_MAX_RENDER_Y,
   TILE_FLOOR_Y,
   WATER_LEVEL,
+  getSurfaceHeight,
   getTerrainMeshHeight,
   getTerrainMeshMaximumHeight,
   getTerrainMeshNormal,
@@ -250,6 +251,7 @@ export function bootstrapRtsScene3DRenderers(
     threeApp.world,
     overlayLineSystem,
     (x, y) => getTerrainMeshHeight(x, y, mapWidth, mapHeight),
+    (x, y) => getSurfaceHeight(x, y, mapWidth, mapHeight),
   );
   const sprayRenderer = new SprayRenderer3D(threeApp.world);
   const pylonTubeFlowRenderer = new PylonTubeFlowRenderer(threeApp.world);
