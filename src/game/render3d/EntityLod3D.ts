@@ -199,7 +199,7 @@ export function entityLodProxyGlyph3D(entity: Entity): EntityLodProxyGlyph3D {
  * coverage through; a manual HIGH/MED/LOW pin replaces it with that rung's
  * level, except where the coverage already reached GLYPH — a pin chooses the
  * geometry of a DRAWN model, it never keeps a sub-pixel model on screen in
- * place of the strategic icon. OFF resolves to GLYPH everywhere.
+ * place of the strategic icon. MIN resolves to GLYPH everywhere.
  */
 function detailLevelForMode(coverageLevel: number): number {
   return pinnedRungForLodMode() === null
@@ -345,12 +345,12 @@ export class EntityLodState3D {
    * GLYPH rung: 0 outside the fade band, ramping to 1 as the projected
    * screen radius approaches the glyph threshold. Computed from the raw
    * (unlatched) screen radius so the fade is continuous; only the model
-   * cut itself rides the hysteresis-latched rung. OFF has no band — it
+   * cut itself rides the hysteresis-latched rung. MIN has no band — it
    * shows the fully opaque glyph outright — but HIGH/MED/LOW keep AUTO's,
    * because they keep AUTO's glyph flip.
    */
   entityLodProxyFadeAlphaForView(view: RenderViewState3D, entity: Entity): number {
-    if (getLodMode() === 'off') return 0;
+    if (getLodMode() === 'min') return 0;
     if (!entityLodEnabled()) return 0;
     return lodProxyFadeAlphaForScreenRadius(entityDetailScreenRadiusPx(
       entity,
@@ -368,7 +368,7 @@ export class EntityLodState3D {
    * mode.
    */
   entityDetailRungForView(view: RenderViewState3D, entity: Entity): DetailRung {
-    // OFF is the glyph end state, so it never needs the coverage rung at all.
+    // MIN is the glyph end state, so it never needs the coverage rung at all.
     if (pinnedRungForLodMode() === DETAIL_RUNG_GLYPH) return DETAIL_RUNG_GLYPH;
     return detailRungForMode(this.entityCoverageDetailRungForView(view, entity));
   }
@@ -462,7 +462,7 @@ export class EntityLodState3D {
    *  they keep AUTO's glyph flip and only pin the drawn model's rung. */
   private channelProxyModeGate(channel: string, entity: Entity): boolean | null {
     const lodMode = getLodMode();
-    if (lodMode === 'off') {
+    if (lodMode === 'min') {
       const proxyIds = this.proxyIdsForChannel(channel);
       this.lastSeenForChannel(channel).set(entity.id, this.frame);
       proxyIds.add(entity.id);

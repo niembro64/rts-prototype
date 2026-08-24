@@ -4,7 +4,7 @@
 // screen radii in px — highToMedPx / medToLowPx / lowToOffPx, named for the bar
 // controls they switch between — measured at a fixed reference viewport height
 // so the choice is resolution/DPR invariant. Internally those px thresholds are
-// normalised into a coverage metric L in [0,1] (L = 0 at the OFF threshold),
+// normalised into a coverage metric L in [0,1] (L = 0 at the MIN threshold),
 // purely so a single scalar can be passed around; L only selects one discrete
 // authored RUNG and is never a visual level itself:
 //
@@ -16,7 +16,7 @@
 //   CLOSE (3)  high-poly geometry, full authored unit silhouette and rig
 //
 // AUTO and the manual controls therefore resolve to the same authored rungs,
-// including OFF/GLYPH. A manual HIGH/MED/LOW pin selects the geometry rung of a
+// including MIN/GLYPH. A manual HIGH/MED/LOW pin selects the geometry rung of a
 // DRAWN model only — it is not a visibility policy, so GLYPH stays the floor in
 // every mode (detailRungWithGlyphFloor) and a strategic zoom keeps its icons
 // instead of showing sub-pixel models. Features snap to rung boundaries on
@@ -87,12 +87,12 @@ type EffectSpawnScaleConfig = Record<
   number
 >;
 
-/** lod.json spells rungs in the bar's HIGH/MED/LOW/OFF vocabulary; the older
+/** lod.json spells rungs in the bar's HIGH/MED/LOW/MIN vocabulary; the older
  *  geometry-tier spellings (close/mid/far/glyph) still resolve to the same
  *  rungs so nothing that predates the rename has to be re-authored. */
 function rungFromName(name: unknown, fallback: DetailRung): DetailRung {
   switch (name) {
-    case 'off': case 'glyph': return DETAIL_RUNG_GLYPH;
+    case 'min': case 'off': case 'glyph': return DETAIL_RUNG_GLYPH;
     case 'low': case 'far': return DETAIL_RUNG_FAR;
     case 'medium': case 'med': case 'mid': return DETAIL_RUNG_MID;
     case 'high': return DETAIL_RUNG_CLOSE;
@@ -121,7 +121,7 @@ export const THRESHOLD_HIGH_TO_MED_PX = Math.max(
 );
 // Internal coverage level L: a normalised restatement of the px thresholds
 // above, kept only because packets and the effect/tier helpers pass a single
-// scalar around. L = 0 at the OFF threshold and 1 at the HIGH threshold, so
+// scalar around. L = 0 at the MIN threshold and 1 at the HIGH threshold, so
 // every comparison below is exactly the px comparison it looks like.
 const LEVEL_RAMP_SPAN_PX = THRESHOLD_HIGH_TO_MED_PX - THRESHOLD_LOW_TO_OFF_PX;
 const MID_RUNG_MIN_LEVEL = clamp01(
@@ -145,7 +145,7 @@ export const GLYPH_PLAYER_RING_FRACTION = clamp01(Math.max(
 ));
 /**
  * Screen radius, in px at the reference viewport, below which a strategic
- * glyph stops shrinking. It is the OFF threshold itself: past the flip the
+ * glyph stops shrinking. It is the MIN threshold itself: past the flip the
  * glyph is no longer a picture of the entity but a symbol saying one is
  * there, and a symbol too small to see says nothing. Derived rather than
  * authored — a second knob here could only ever disagree with the flip.
@@ -161,7 +161,7 @@ export function glyphMinScreenRadiusPxForViewport(viewportHeightPx: number): num
 // BAR-style icon cross-fade band: DERIVED, not authored. The proxy glyph is
 // fully transparent while the entity is HIGH, starts fading in the moment
 // geometry drops off HIGH, and covers the whole MED and LOW span — reaching
-// full opacity exactly at the OFF threshold, where the model hard-cuts. The
+// full opacity exactly at the MIN threshold, where the model hard-cuts. The
 // MODEL never fades: it stays opaque underneath, and the glyph is drawn on the
 // far shell of the entity sphere, so it reads as a backdrop behind the model
 // rather than an overlay on top of it.
@@ -475,7 +475,7 @@ export function detailRungForViewPosition(
   simZ: number,
   radiusWorld: number = DETAIL_RADIUS_FLOOR_EFFECT,
 ): DetailRung {
-  // OFF is the glyph end state, so it never needs the coverage rung at all.
+  // MIN is the glyph end state, so it never needs the coverage rung at all.
   if (pinnedRungForLodMode() === DETAIL_RUNG_GLYPH) return DETAIL_RUNG_GLYPH;
   return detailRungForMode(coverageRungForViewPosition(
     view, simX, simY, simZ, radiusWorld));
@@ -487,7 +487,7 @@ export function pinnedRungForLodMode(): DetailRung | null {
     case 'high': return DETAIL_RUNG_CLOSE;
     case 'medium': return DETAIL_RUNG_MID;
     case 'low': return DETAIL_RUNG_FAR;
-    case 'off': return DETAIL_RUNG_GLYPH;
+    case 'min': return DETAIL_RUNG_GLYPH;
     default: return null;
   }
 }
@@ -503,7 +503,7 @@ export function detailRungForMode(coverageRung: DetailRung): DetailRung {
  * DRAWN model uses; they do NOT decide whether the entity is drawn at all. An
  * entity whose projected coverage already reached GLYPH stays a strategic glyph
  * in every mode (BAR behaviour), so pinning HIGH can never trade a readable
- * icon for a sub-pixel model. OFF pins GLYPH and is the end state.
+ * icon for a sub-pixel model. MIN pins GLYPH and is the end state.
  */
 function detailRungWithGlyphFloor(
   pinnedRung: DetailRung,

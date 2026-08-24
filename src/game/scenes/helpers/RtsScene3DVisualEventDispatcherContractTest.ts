@@ -163,8 +163,23 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
     'LOW explosions must render one large representative from each motion band',
   );
   assertContract(
-    explosionChunkPatternForDetail(DETAIL_LEVEL_GLYPH).length === 0,
-    'OFF/GLYPH must suppress explosion chunk geometry',
+    explosionChunkPatternForDetail(DETAIL_LEVEL_GLYPH).length === 3 &&
+      chunkClassCount(
+        explosionChunkPatternForDetail(DETAIL_LEVEL_GLYPH),
+        2,
+        2,
+      ) === 1 &&
+      chunkClassCount(
+        explosionChunkPatternForDetail(DETAIL_LEVEL_GLYPH),
+        1,
+        2,
+      ) === 1 &&
+      chunkClassCount(
+        explosionChunkPatternForDetail(DETAIL_LEVEL_GLYPH),
+        0,
+        2,
+      ) === 1,
+    'MIN/GLYPH explosions must retain the LOW three-representative pattern',
   );
   assertContract(
     explosionBaseChunkGroupCount(18, 60) === 1 &&
@@ -176,11 +191,13 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
   const highProbe = probeExplosionLod(DETAIL_LEVEL_FULL);
   const mediumProbe = probeExplosionLod(detailLevelForRung(DETAIL_RUNG_MID));
   const lowProbe = probeExplosionLod(detailLevelForRung(DETAIL_RUNG_FAR));
+  const minimumProbe = probeExplosionLod(DETAIL_LEVEL_GLYPH);
   assertContract(
     highProbe.birthCount === 13 &&
       mediumProbe.birthCount === 7 &&
-      lowProbe.birthCount === 3,
-    'the renderer must emit the exact HIGH/MED/LOW chunk totals for N=1',
+      lowProbe.birthCount === 3 &&
+      minimumProbe.birthCount === 3,
+    'the renderer must emit the exact HIGH/MED/LOW/MIN chunk totals for N=1',
   );
   for (let i = 0; i < highProbe.firstBandMotion.length; i++) {
     assertContract(
@@ -212,7 +229,7 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
     } as unknown as BeamRenderer3D,
     shieldImpactRenderer: {} as ShieldImpactRenderer3D,
     waterSplashRenderer: {} as WaterSplash3D,
-    isPositionLowLod: () => false,
+    isPositionMinimumLod: () => false,
     positionVisualDetailLevel: () => DETAIL_LEVEL_FULL,
   };
 
@@ -251,6 +268,26 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
   assertContract(
     killed.length === 1 && killed[0].id === 73 && killed[0].blast !== undefined,
     'death must arm material disassembly before the render-removal queue runs',
+  );
+
+  impacts.length = 0;
+  killed.length = 0;
+  const minimumContext = {
+    ...context,
+    isPositionMinimumLod: () => true,
+    positionVisualDetailLevel: () => DETAIL_LEVEL_GLYPH,
+  };
+  dispatchSimEvent3DVisual(event('hit', 81), minimumContext);
+  dispatchSimEvent3DVisual(event('projectileExpire', 82), minimumContext);
+  dispatchSimEvent3DVisual(event('death', 83), minimumContext);
+  assertContract(
+    impacts.length === 3 &&
+      impacts.every((impact) => impact.detailLevel === DETAIL_LEVEL_GLYPH),
+    'hit, expiry, and death explosions must all reach the renderer at MIN',
+  );
+  assertContract(
+    killed.length === 1 && Number(killed[0].id) === 83,
+    'MIN must retain entity death disassembly routing as well as its fire blast',
   );
   setMaterialExplosions(previousMaterialExplosions);
 

@@ -2005,7 +2005,7 @@ function runEnvironmentLodMaterialContracts(): void {
   assertContract(
     !environmentPropVisibleAtDetailRung(DETAIL_RUNG_GLYPH) &&
       environmentPropVisibleAtDetailRung(DETAIL_RUNG_FAR),
-    'trees, grass, and seaweed disappear at OFF/GLYPH but remain visible at LOW',
+    'trees, grass, and seaweed disappear at MIN/GLYPH but remain visible at LOW',
   );
   assertContract(
     environmentPropUsesGrassPresentation('grass') &&

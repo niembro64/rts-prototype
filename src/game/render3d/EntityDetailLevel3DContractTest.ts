@@ -36,7 +36,7 @@ import {
   unitShapeForDetail,
   visualFeatureVisibleAtDetail,
 } from './EntityDetailLevel3D';
-import { getLodMode, setLodMode } from '@/clientBarConfig';
+import { getLodMode, LOD_MODE_OPTIONS, setLodMode } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { DetailFeature, DetailRung } from './EntityDetailLevel3D';
 
@@ -97,6 +97,12 @@ const ALL_RUNGS: readonly DetailRung[] = [
 ];
 
 export function runEntityDetailLevel3DContractTest(): void {
+  assertContract(
+    LOD_MODE_OPTIONS.map((option) => option.label).join(',') ===
+      'AUTO,HIGH,MED,LOW,MIN' &&
+      LOD_MODE_OPTIONS[LOD_MODE_OPTIONS.length - 1]?.value === 'min',
+    'the client LOD ladder must expose MIN—not the former OFF name—as its floor',
+  );
   const previousLodMode = getLodMode();
   try {
     const view = {
@@ -139,11 +145,11 @@ export function runEntityDetailLevel3DContractTest(): void {
       detailLevelForViewPosition(view, 0, -10, 0) === detailLevelForRung(DETAIL_RUNG_FAR),
       'LOW freezes bare-position effects at the far rung',
     );
-    setLodMode('off');
+    setLodMode('min');
     assertContract(
       detailLevelForViewPosition(view, 0, -10, 0) === DETAIL_LEVEL_GLYPH &&
         detailRungForViewPosition(view, 0, -10, 0) === DETAIL_RUNG_GLYPH,
-      'OFF freezes world visuals at the glyph/removal end state',
+      'MIN freezes world visuals at the glyph/removal end state',
     );
     setLodMode('auto');
     assertContract(
@@ -329,7 +335,7 @@ export function runEntityDetailLevel3DContractTest(): void {
   );
   assertContract(
     GLYPH_MIN_SCREEN_RADIUS_PX === THRESHOLD_LOW_TO_OFF_PX,
-    'the glyph floor is the size the glyph had at the OFF flip',
+    'the glyph floor is the size the glyph had at the MIN flip',
   );
   assertContract(
     glyphMinScreenRadiusPxForViewport(2160) === GLYPH_MIN_SCREEN_RADIUS_PX * 2 &&

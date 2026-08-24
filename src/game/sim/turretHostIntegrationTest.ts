@@ -236,6 +236,19 @@ function assertMultiBarrelClustersRotate(): void {
   assertContract(refused, 'a dead multi-barrel spin envelope is refused at the loader boundary');
 }
 
+function assertAntiAirLaunchCadenceLeavesAFreeTick(): void {
+  const antiAir = TURRET_BLUEPRINTS.turretAntiAir;
+  const fixedStepMs = 1000 / ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
+  const shortestCooldownMs = rollTurretCooldownDuration(
+    antiAir.cooldown,
+    () => 0,
+  );
+  assertContract(
+    shortestCooldownMs > fixedStepMs,
+    'anti-air cooldown must leave at least one launch-free fixed tick so its physical missiles do not form a self-colliding train',
+  );
+}
+
 let nextTestWorldEntityIdFloor = 64;
 
 function createIsolatedTestWorld(
@@ -1651,6 +1664,7 @@ export function runTurretHostIntegrationContractTest(): void {
   try {
     assertLogicalTurretPresentationOwnership();
     assertMultiBarrelClustersRotate();
+    assertAntiAirLaunchCadenceLeavesAFreeTick();
     const world = createIsolatedTestWorld(1234, 512, 512);
     world.playerCount = 2;
     const host = world.createUnitFromBlueprint(

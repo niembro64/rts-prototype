@@ -343,7 +343,7 @@ export const MAP_BG_COLOR = COLORS.world.map.inBounds.colorHex; // in-bounds bac
 export const HORIZON_RENDER_EXTEND = worldRenderConfigJson.horizonRenderExtend;
 
 // Shared detail ladder switch. Every visual follows the same screen-coverage-
-// selected HIGH/MED/LOW/OFF rungs; there is no separate distance-only LOD.
+// selected HIGH/MED/LOW/MIN rungs; there is no separate distance-only LOD.
 export const ENTITY_LOD_ENABLED = lodConfigJson.entity.enabled;
 
 // Screen-coverage-selected detail ladder: three authored geometry rungs plus

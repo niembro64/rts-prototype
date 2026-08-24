@@ -994,7 +994,7 @@ export class RtsScene3D {
       beamRenderer: this.beamRenderer,
       shieldImpactRenderer: this.shieldImpactRenderer,
       waterSplashRenderer: this.waterSplashRenderer,
-      isPositionLowLod: (simX, simY, simZ) =>
+      isPositionMinimumLod: (simX, simY, simZ) =>
         detailRungForLevel(this.positionVisualDetailLevel(simX, simY, simZ)) ===
           DETAIL_RUNG_GLYPH,
       positionVisualDetailLevel: (simX, simY, simZ) =>

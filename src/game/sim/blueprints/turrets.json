@@ -1989,7 +1989,7 @@
     "turretBlueprintId": "turretAntiAir",
     "name": "Anti-Air Launcher",
     "cooldown": {
-      "duration": 30,
+      "duration": 100,
       "durationRandomness": 0.05
     },
     "launchForce": 20000,

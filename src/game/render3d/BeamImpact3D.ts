@@ -141,13 +141,13 @@ const EXPLOSION_PATTERN_LOW: readonly ExplosionChunkSpec[] = Object.freeze([
   { motionClass: SMALL_FAST, renderSizeClass: LARGE_SLOW },
 ]);
 
-const NO_EXPLOSION_CHUNKS: readonly ExplosionChunkSpec[] = Object.freeze([]);
 const MAX_EXPLOSION_BASE_GROUPS = Math.floor(
   MAX_EJECTA_BIRTHS_PER_UPDATE / EXPLOSION_PATTERN_HIGH.length,
 );
 
 /** Exact explosion chunk pattern for one base magnitude group at a visual LOD
- *  rung. OFF/GLYPH produces no effect geometry. */
+ *  rung. MIN/GLYPH retains the LOW three-representative pattern: minimum
+ *  entity geometry must never make a gameplay explosion disappear. */
 export function explosionChunkPatternForDetail(
   detailLevel: number,
 ): readonly ExplosionChunkSpec[] {
@@ -155,7 +155,7 @@ export function explosionChunkPatternForDetail(
     case DETAIL_RUNG_CLOSE: return EXPLOSION_PATTERN_HIGH;
     case DETAIL_RUNG_MID: return EXPLOSION_PATTERN_MEDIUM;
     case DETAIL_RUNG_FAR: return EXPLOSION_PATTERN_LOW;
-    default: return NO_EXPLOSION_CHUNKS;
+    default: return EXPLOSION_PATTERN_LOW;
   }
 }
 

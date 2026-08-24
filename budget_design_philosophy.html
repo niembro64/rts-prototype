@@ -1834,17 +1834,18 @@
       <p>
         Entity detail is a single presentation contract, not a collection of
         subsystem-specific quality switches. The CLIENT LOD control exposes
-        exactly three authored levels: <strong>HIGH</strong>,
-        <strong>MED</strong>, and <strong>LOW</strong>. In AUTO, projected
-        screen coverage chooses between those same three complete levels. AUTO
-        never invents an in-between mesh, a plasma-only rung, or a separate
-        distance cutoff for emissions, HUD, or animation.
+        exactly three authored geometry levels: <strong>HIGH</strong>,
+        <strong>MED</strong>, and <strong>LOW</strong>, plus the
+        <strong>MIN</strong> strategic-glyph floor. In AUTO, projected screen
+        coverage chooses between those same presentations. AUTO never invents
+        an in-between mesh, a plasma-only rung, or a separate distance cutoff
+        for emissions, HUD, or animation.
       </p>
       <ul class="rule-list">
         <li><strong>HIGH</strong> is the close rung: the complete authored visual and its high geometry tier.</li>
         <li><strong>MED</strong> is the middle rung: the same authored assembly at its medium geometry and feature budget.</li>
         <li><strong>LOW</strong> is the far rung: the same authored assembly at its low geometry and feature budget. LOW is still real geometry; it is not an implicit removal rule, and it is deliberately the widest band of the three. An entity leaves LOW only when it has become too small on screen to be worth rendering at all &mdash; a handful of pixels across &mdash; not merely when it is far away.</li>
-        <li>The only fourth state is removal: once AUTO takes an entity below the glyph threshold, its strategic collision-shape glyph fades in over the still-opaque LOW model and then replaces it. The fade is a transition to removal, not another detail level.</li>
+        <li><strong>MIN</strong> is the entity-geometry floor: once AUTO takes an entity below the glyph threshold, its strategic collision-shape glyph fades in over the still-opaque LOW model and then replaces it. MIN removes unreadable entity and vegetation geometry, not gameplay events.</li>
       </ul>
       <p>
         This ladder applies to every visual part of an entity together:
@@ -1855,6 +1856,12 @@
         and name presentation, and static resource/environment visuals. A
         part may be intentionally absent at a named rung, but it may not use
         a private fourth mesh budget or a different AUTO threshold system.
+      </p>
+      <p>
+        Explosions are never removed. At MIN, hit, projectile-expiry, and death
+        events retain the LOW explosion pattern: one large representative from
+        each motion band. Minimum detail reduces their chunk count; it never
+        makes a detonation disappear.
       </p>
       <p>
         AUTO&rsquo;s choice is a pure function of projected size: the same entity
@@ -1875,7 +1882,7 @@
       <h3>A strategic glyph never shrinks below its flip size</h3>
       <p>
         Once an entity has become its glyph, the glyph stops shrinking. It is
-        drawn at whatever screen size it had at the OFF threshold and holds
+        drawn at whatever screen size it had at the MIN threshold and holds
         that size no matter how far the camera pulls back, so a strategic zoom
         produces a readable constellation of markers rather than a dust of
         sub-pixel dots that dissolves into the terrain. This is the one place
@@ -1906,7 +1913,7 @@
       </p>
       <h3>Strategic glyphs carry the four colors in a fixed order</h3>
       <p>
-        The LOD:OFF glyph is the smallest an entity ever gets and therefore the
+        The LOD:MIN glyph is the smallest an entity ever gets and therefore the
         strictest test of the rule above, so its layout is fixed rather than
         per-shape. Every glyph, for every entity type, is drawn as concentric
         bands of the same silhouette, from the middle outward: a small
@@ -1969,7 +1976,7 @@
         what the glyph rung does to a model that has become too small to read;
         it is not a statement about a barrier that still fills a quarter of the
         screen. If a field is raised and its barrier is in view, it is drawn
-        &mdash; at every rung, in every LOD mode, including OFF, and including
+        &mdash; at every rung, in every LOD mode, including MIN, and including
         the case where the host itself sits outside the render scope while its
         barrier overlaps it. A field whose host drew no chassis this frame
         anchors to the mount origin resolved from the host's authoritative

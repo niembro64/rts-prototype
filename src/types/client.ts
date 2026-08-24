@@ -30,8 +30,8 @@ export type CameraFollowMode = 'free' | 'follow' | 'follow-behind';
  *  the configured value in 5-degree steps at runtime. */
 export type CameraFovDegrees = number;
 /** Renderer visual LOD policy. AUTO uses projected screen coverage to select
- *  the same HIGH, MEDIUM, LOW, or OFF presentation as the manual modes. */
-export type LodMode = 'auto' | 'high' | 'medium' | 'low' | 'off';
+ *  the same HIGH, MEDIUM, LOW, or MIN presentation as the manual modes. */
+export type LodMode = 'auto' | 'high' | 'medium' | 'low' | 'min';
 /** Geometric antialiasing pipeline.
  *    default — draw straight into the canvas; MSAA is whatever the browser
  *              granted the context's `antialias: true` hint (usually 4×).

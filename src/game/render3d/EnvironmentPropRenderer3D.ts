@@ -183,7 +183,7 @@ export function environmentLodFlatMaterialSpec(
 }
 
 /** Vegetation has no strategic glyph: it stops drawing at the shared
- * OFF/GLYPH rung used by entities. */
+ * MIN/GLYPH rung used by entities. */
 export function environmentPropVisibleAtDetailRung(rung: DetailRung): boolean {
   return rung !== DETAIL_RUNG_GLYPH;
 }

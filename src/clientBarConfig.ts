@@ -1093,11 +1093,13 @@ export const LOD_MODE_OPTIONS: OptionList<LodMode> = [
   { value: 'high', label: 'HIGH' },
   { value: 'medium', label: 'MED' },
   { value: 'low', label: 'LOW' },
-  { value: 'off', label: 'OFF' },
+  { value: 'min', label: 'MIN' },
 ];
 
 function parseStoredLodMode(raw: string | null): LodMode {
-  if (raw === 'off') return 'off';
+  // `off` was the old name for the glyph-only minimum. Accept it so an
+  // existing browser profile migrates in place, but only expose/persist MIN.
+  if (raw === 'min' || raw === 'off') return 'min';
   if (raw === 'low') return 'low';
   if (raw === 'medium') return 'medium';
   if (raw === 'high') return 'high';

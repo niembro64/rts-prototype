@@ -1,3 +1,0 @@
-1. Our anti air defense tower shoots but its missiles are exploding prematurely, like within a few world units of them being fired. Fix this. Some missles go far, but majority explode just after they are fired.
-
-2. It seem that our explosions aren't visible happen at the "OFF" level of detail. Let's rename our "OFF" level of detail to "MIN" (minimum). Then let's make sure we do have explosions also visible at that all times, including during our "MIN" level of detail.  

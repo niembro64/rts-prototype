@@ -26,7 +26,7 @@ type RtsScene3DVisualEventDispatchContext = {
   beamRenderer: BeamRenderer3D;
   shieldImpactRenderer: ShieldImpactRenderer3D;
   waterSplashRenderer: WaterSplash3D;
-  isPositionLowLod: (
+  isPositionMinimumLod: (
     simX: number,
     simY: number,
     simZ: number,
@@ -87,11 +87,6 @@ export function dispatchSimEvent3DVisual(
         ctx.deathExplosionRadius,
       )
       : EFFECT_RADIUS_FALLBACKS.hitImpact;
-    if (context.isPositionLowLod(
-      event.pos.x,
-      event.pos.y,
-      event.pos.z,
-    )) return;
     const detailLevel = context.positionVisualDetailLevel(
       event.pos.x,
       event.pos.y,
@@ -124,7 +119,7 @@ export function dispatchSimEvent3DVisual(
   } else if (event.type === 'waterSplash') {
     const splash = event.waterSplash;
     const ctx = event.impactContext;
-    if (context.isPositionLowLod(
+    if (context.isPositionMinimumLod(
       event.pos.x,
       event.pos.y,
       event.pos.z,
@@ -152,11 +147,6 @@ export function dispatchSimEvent3DVisual(
       event.playerId ?? undefined,
     );
   } else if (event.type === 'projectileExpire') {
-    if (context.isPositionLowLod(
-      event.pos.x,
-      event.pos.y,
-      event.pos.z,
-    )) return;
     const ctx = event.impactContext;
     const radius = ctx
       ? maxFiniteNonNegativeOr(
@@ -184,7 +174,7 @@ export function dispatchSimEvent3DVisual(
   } else if (event.type === 'shieldImpact') {
     const ctx = event.shieldImpact;
     if (ctx) {
-      if (context.isPositionLowLod(
+      if (context.isPositionMinimumLod(
         event.pos.x,
         event.pos.y,
         event.pos.z,
@@ -212,11 +202,6 @@ export function dispatchSimEvent3DVisual(
       );
     }
     if (!materialExplosionEnabled) return;
-    if (context.isPositionLowLod(
-      event.pos.x,
-      event.pos.y,
-      event.pos.z,
-    )) return;
     const attackPush = Math.min(ctx.attackMagnitude * 2, 200);
     // The fire blast draws at the death explosion's DAMAGE sphere — the
     // same derived radius the sim detonates (hitbox × the shared multiple)

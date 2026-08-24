@@ -60,7 +60,7 @@ void main() {
   float viewDistance = max(1.0, -mvPosition.z);
   // Glyphs are bounded by the entity's true collision radius in world space:
   // project that radius straight to pixels, so the marker tracks the collision
-  // volume at every zoom level — until it reaches the floor. Past the OFF flip
+  // volume at every zoom level — until it reaches the floor. Past the MIN flip
   // the glyph IS the entity rather than a picture of it, and a symbol shrinking
   // into a sub-pixel dot stops saying anything, so the size stops tracking
   // distance there. Position and depth still do.
@@ -639,7 +639,7 @@ export class EntityLodProxyRenderer3D implements EntityLodProxyRendererBackend3D
   }
 }
 
-/** Reusable single-batch form of the LOD:OFF proxy pipeline. Fog contacts use
+/** Reusable single-batch form of the LOD:MIN proxy pipeline. Fog contacts use
  * this instead of physical sphere meshes, while supplying their own fixed
  * radius, neutral color, and non-identifying glyph. */
 export class LodProxyPointBatchRenderer3D {
