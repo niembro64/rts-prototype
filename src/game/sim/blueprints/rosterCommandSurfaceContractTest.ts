@@ -30,7 +30,10 @@ import {
   unitRosterDisplay,
 } from './displayRosters';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
-import { UNIT_BLUEPRINTS } from './units';
+import {
+  getPrimaryProductionDomainForLocomotion,
+  UNIT_BLUEPRINTS,
+} from './units';
 import { validateEntityDescription } from './entityDescriptionValidation';
 import {
   entityHasBarAreaAttackCommand,
@@ -497,10 +500,6 @@ export function runRosterCommandSurfaceContractTest(): void {
         (identity.domain === 'universal' || production.domains.includes(identity.domain));
     });
     assertSameMembers(`${structureBlueprintId} metadata-derived roster`, allowedUnitBlueprintIds, expectedRoster);
-    assertContract(
-      allowedUnitBlueprintIds.length === (identity.domain === 'universal' ? 18 : 5),
-      `${structureBlueprintId} must expose ${identity.domain === 'universal' ? 18 : 5} same-tier production options`,
-    );
     const barGridCells = buildBarGridFactoryUnitBlueprintCells(allowedUnitBlueprintIds);
     assertContract(
       barGridCells.length >= BAR_GRID_SLOT_COUNT && barGridCells.length % BAR_GRID_SLOT_COUNT === 0,
@@ -521,6 +520,30 @@ export function runRosterCommandSurfaceContractTest(): void {
       }
     }
   }
+
+  // Specialist rosters are data-derived and need not be artificially balanced
+  // to the same count. Every specialist-fabricated unit must include the
+  // domain matching its primary chassis; extra domains are crossover only.
+  for (const unitBlueprintId of BUILDABLE_UNIT_BLUEPRINT_IDS) {
+    const blueprint = UNIT_BLUEPRINTS[unitBlueprintId];
+    const production = blueprint.production;
+    if (production === null) continue;
+    const primaryDomain = getPrimaryProductionDomainForLocomotion(
+      blueprint.unitLocomotion.type,
+    );
+    assertContract(
+      production.domains.includes(primaryDomain),
+      `${unitBlueprintId} ${blueprint.unitLocomotion.type} chassis must include ${primaryDomain}`,
+    );
+  }
+  assertContract(
+    !getStructureFactoryAllowedUnitBlueprintIds('buildingBotFabricator').includes('unitLoris'),
+    'Loris is a tracked tank and must not appear in the Bot Fabricator',
+  );
+  assertContract(
+    getStructureFactoryAllowedUnitBlueprintIds('buildingVehicleFabricator').includes('unitLoris'),
+    'Loris is a tracked tank and must appear in the Vehicle Fabricator',
+  );
 
   for (const unitBlueprintId of UNIT_BLUEPRINT_IDS) {
     const unitBlueprint = UNIT_BLUEPRINTS[unitBlueprintId];

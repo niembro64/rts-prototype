@@ -936,13 +936,6 @@ function validateFabricatorMatrix(): void {
       }
     }
     const specialist = domains.slice(1).map((domain) => byDomain.get(domain)!);
-    for (const blueprint of specialist) {
-      if (blueprint.allowedUnitBlueprintIds?.length !== 5) {
-        throw new Error(
-          `${blueprint.buildingBlueprintId} must derive exactly five same-tier specialist entries`,
-        );
-      }
-    }
     const union = new Set(specialist.flatMap((blueprint) => blueprint.allowedUnitBlueprintIds ?? []));
     const universal = byDomain.get('universal')!;
     if (

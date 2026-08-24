@@ -3163,7 +3163,7 @@
   },
   "unitLoris": {
     "unitBlueprintId": "unitLoris",
-    "production": { "techLevel": 1, "domains": ["bot"] },
+    "production": { "techLevel": 1, "domains": ["vehicle"] },
     "tinyName": "LRS",
     "name": "Loris",
     "shortDescription": "Reflective shield tank",
