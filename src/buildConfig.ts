@@ -39,12 +39,11 @@ function positiveFinite(value: number, label: string): number {
 
 export const BUILD_CONFIG = {
   maxBuildableSlopeAngleDegrees,
-  /** Unfinished shells rot when nobody is paying for them: after the delay
-   *  they lose a fraction of their OWN full cost per second, and the frame is
-   *  removed outright at zero progress. Mirroring BAR's modrules (decay rate
-   *  "inversely proportional to the buildtime"), the fraction is scaled by
-   *  referenceCostTotal / frame total cost, clamped to [costScaleMin,
-   *  costScaleMax] — a cheap frame rots fast, an expensive one lingers. */
+  /** Unfinished shells rot as soon as neither landed build work nor any live
+   *  builder queue answers for them. They lose a fraction of their own full
+   *  cost per second and disappear at zero progress. BAR enables the same
+   *  inverse-build-time decay with a nine-second grace period; this project
+   *  deliberately authors zero delay so cancelled frames react immediately. */
   unfinishedBuildDecay: {
     unfundedDelaySeconds: nonNegativeSeconds(
       rawConfig.unfinishedBuildDecay.unfundedDelaySeconds,

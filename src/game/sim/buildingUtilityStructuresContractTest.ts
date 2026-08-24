@@ -76,18 +76,18 @@ export function runBuildingUtilityStructuresContractTest(): void {
   for (const storage of [metalStorage, energyStorage]) {
     assertContract(
       storage.gridWidth === 12 && storage.gridHeight === 12 && storage.gridDepth === 12,
-      `${storage.name} must be 3x its original 4x4x4 linear dimensions (27x volume)`,
+      `${storage.fullName} must be 3x its original 4x4x4 linear dimensions (27x volume)`,
     );
     assertContract(
       storage.supportSurface.kind === 'boxTop'
         && storage.supportSurface.topZ === 240
         && storage.supportSurface.width === 240
         && storage.supportSurface.height === 240,
-      `${storage.name} support surface must cover the complete 240x240 footprint`,
+      `${storage.fullName} support surface must cover the complete 240x240 footprint`,
     );
     assertContract(
       Math.abs(storage.radius.collision - 169.706) < 1e-6,
-      `${storage.name} collision radius must cover its 3x footprint`,
+      `${storage.fullName} collision radius must cover its 3x footprint`,
     );
   }
   assertContract(

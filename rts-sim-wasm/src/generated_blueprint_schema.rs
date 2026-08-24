@@ -1323,7 +1323,7 @@ pub enum UnitIdentity {
 #[derive(Clone, Debug, PartialEq)]
 pub struct UnitBlueprint {
     pub unitBlueprintId: String,
-    pub name: String,
+    pub fullName: String,
     pub shortDescription: String,
     pub longDescription: String,
     pub identity: UnitIdentity,

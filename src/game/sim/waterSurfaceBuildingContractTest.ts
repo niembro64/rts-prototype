@@ -33,6 +33,7 @@ export function runWaterSurfaceBuildingContractTest(): void {
     buildingAircraftFabricator: ['ground-build-squares-hover', 'water-build-squares-hover-surface'],
     buildingNavalFabricator: ['water-build-squares-sea-on-surface'],
     buildingAdvancedUniversalFabricator: ['ground-build-squares-hover', 'water-build-squares-hover-surface'],
+    buildingExperimentalUniversalFabricator: ['ground-build-squares-hover', 'water-build-squares-hover-surface'],
     buildingAdvancedBotFabricator: ['ground-build-squares-surface'],
     buildingAdvancedVehicleFabricator: ['ground-build-squares-surface'],
     buildingAdvancedAircraftFabricator: ['ground-build-squares-hover', 'water-build-squares-hover-surface'],

@@ -235,11 +235,11 @@ pub(crate) struct CombatTargetingPool {
     // host-controlled turrets apply their own per-turret policy.
     pub(crate) entity_lockon_relationship_mask: Vec<u8>,
     pub(crate) entity_lockon_entity_family_mask: Vec<u8>,
-    pub(crate) entity_lockon_building_mask: Vec<u32>,
-    pub(crate) entity_lockon_tower_mask: Vec<u32>,
-    pub(crate) entity_lockon_unit_mask: Vec<u32>,
-    pub(crate) entity_lockon_turret_mask: Vec<u32>,
-    pub(crate) entity_lockon_shot_mask: Vec<u32>,
+    pub(crate) entity_lockon_building_mask: Vec<u64>,
+    pub(crate) entity_lockon_tower_mask: Vec<u64>,
+    pub(crate) entity_lockon_unit_mask: Vec<u64>,
+    pub(crate) entity_lockon_turret_mask: Vec<u64>,
+    pub(crate) entity_lockon_shot_mask: Vec<u64>,
     // Per-host mounted sensor origin plus full-sight/contact radii. The source
     // point is the owning turret mount, never the host body center.
     pub(crate) entity_sensor_source_x: Vec<f64>,
@@ -451,20 +451,20 @@ pub(crate) struct CombatTargetingPool {
     //   building / tower / unit / turret named masks: bit (1 << wire_code)
     //     set means "include only the named blueprints with these wire
     //     codes within an already-included family"; an empty named mask
-    //     applies no name restriction. With u32 bitmasks the per-family
-    //     blueprint table is capped at 32 ids; the JS loader rejects new
+    //     applies no name restriction. With u64 bitmasks the per-family
+    //     blueprint table is capped at 64 ids; the JS loader rejects new
     //     ids past that limit at startup.
     pub(crate) turret_lockon_relationship_mask: Vec<u8>,
     pub(crate) turret_lockon_entity_family_mask: Vec<u8>,
-    pub(crate) turret_lockon_building_mask: Vec<u32>,
+    pub(crate) turret_lockon_building_mask: Vec<u64>,
     // Towers share the static-structure wire-code space with buildings,
     // so the tower mask uses the same `entity_blueprint_code` lookup.
     // The kernel picks which mask to consult based on the candidate's
     // `entity_family`.
-    pub(crate) turret_lockon_tower_mask: Vec<u32>,
-    pub(crate) turret_lockon_unit_mask: Vec<u32>,
-    pub(crate) turret_lockon_turret_mask: Vec<u32>,
-    pub(crate) turret_lockon_shot_mask: Vec<u32>,
+    pub(crate) turret_lockon_tower_mask: Vec<u64>,
+    pub(crate) turret_lockon_unit_mask: Vec<u64>,
+    pub(crate) turret_lockon_turret_mask: Vec<u64>,
+    pub(crate) turret_lockon_shot_mask: Vec<u64>,
     pub(crate) turret_lockon_reciprocal_mode: Vec<u8>,
     // AIM-08.4 ballistic solver outputs. Written by the Rust solver
     // using turret mount data from the slab; JS reads these outputs
@@ -1235,11 +1235,11 @@ pub fn combat_targeting_set_entity(
     blueprint_code: u8,
     lockon_relationship_mask: u8,
     lockon_entity_family_mask: u8,
-    lockon_building_mask: u32,
-    lockon_tower_mask: u32,
-    lockon_unit_mask: u32,
-    lockon_turret_mask: u32,
-    lockon_shot_mask: u32,
+    lockon_building_mask: u64,
+    lockon_tower_mask: u64,
+    lockon_unit_mask: u64,
+    lockon_turret_mask: u64,
+    lockon_shot_mask: u64,
     sensor_source_x: f64,
     sensor_source_y: f64,
     sensor_source_z: f64,
@@ -1428,11 +1428,11 @@ pub fn combat_targeting_set_turret(
     turret_blueprint_code: u8,
     lockon_relationship_mask: u8,
     lockon_entity_family_mask: u8,
-    lockon_building_mask: u32,
-    lockon_tower_mask: u32,
-    lockon_unit_mask: u32,
-    lockon_turret_mask: u32,
-    lockon_shot_mask: u32,
+    lockon_building_mask: u64,
+    lockon_tower_mask: u64,
+    lockon_unit_mask: u64,
+    lockon_turret_mask: u64,
+    lockon_shot_mask: u64,
     lockon_reciprocal_mode: u8,
     task_target_id: i32,
     task_point_active: u8,

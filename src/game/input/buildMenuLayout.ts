@@ -348,6 +348,7 @@ export function barLegacyBuildKeyForStructureBlueprintId(
     case 'buildingAdvancedVehicleFabricator':
     case 'buildingAdvancedAircraftFabricator':
     case 'buildingAdvancedNavalFabricator':
+    case 'buildingExperimentalUniversalFabricator':
       return 'V';
     case 'buildingRadar':
     case 'buildingSonar':
@@ -458,6 +459,8 @@ function barClassicBuildSortIndex(id: BuildingBlueprintId): number {
       return 102130;
     case 'buildingAdvancedNavalFabricator':
       return 102140;
+    case 'buildingExperimentalUniversalFabricator':
+      return 102150;
     case 'buildingRadar':
       return 103100;
     case 'buildingSonar':
@@ -569,6 +572,7 @@ const BAR_HOME_BUILD_ORDER = [
     'buildingAdvancedVehicleFabricator',
     'buildingAdvancedAircraftFabricator',
     'buildingAdvancedNavalFabricator',
+    'buildingExperimentalUniversalFabricator',
   ],
 ] as const satisfies readonly (readonly StructureBlueprintId[])[];
 
@@ -653,8 +657,8 @@ function preferredStructureBuildGridSlotIndex(id: BuildingBlueprintId): number {
       return 3;
     case 'buildingPrecisionTargetingTech':
       return 4;
-    // Production follows one compact two-tier matrix: four T1 specialists,
-    // T1/T2 Universal, then the four advanced specialists.
+    // Production follows one compact progression: four T1 specialists,
+    // T1/T2 Universal, four advanced specialists, then the sole T3 Universal.
     case 'buildingBotFabricator':
       return 0;
     case 'buildingVehicleFabricator':
@@ -675,6 +679,8 @@ function preferredStructureBuildGridSlotIndex(id: BuildingBlueprintId): number {
       return 8;
     case 'buildingAdvancedNavalFabricator':
       return 9;
+    case 'buildingExperimentalUniversalFabricator':
+      return 10;
     // BAR T1 constructor combat pages put light ground/beam defenses on
     // the bottom row and basic AA at the middle-left slot. The ARM
     // commander omits armbeamer, while ARM T1 constructors include it.

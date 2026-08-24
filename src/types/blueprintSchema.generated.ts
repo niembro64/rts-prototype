@@ -958,7 +958,7 @@ export type UnitSupportSurface = UnitSupportSurfaceNone | UnitSupportSurfaceDisc
 export type UnitProductionDomain = 'bot' | 'vehicle' | 'aircraft' | 'naval';
 
 export type UnitProduction = {
-  techLevel: 1 | 2;
+  techLevel: 1 | 2 | 3;
   domains: UnitProductionDomain[];
 };
 
@@ -975,7 +975,7 @@ export type UnitIdentity = UnitAnimalIdentity | UnitConstructionCraftIdentity;
 
 export type UnitBlueprint = {
   unitBlueprintId: UnitBlueprintId;
-  name: string;
+  fullName: string;
   shortDescription: string;
   longDescription: string;
   identity: UnitIdentity;

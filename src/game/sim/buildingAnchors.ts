@@ -6,8 +6,12 @@ import {
   getBuildingBlueprint,
 } from './blueprints';
 
-function factoryVisualTopAboveGround(width: number, depth: number): number {
-  return getFactoryBuildingVisualMetrics(width, depth).visualTop;
+function factoryVisualTopAboveGround(
+  width: number,
+  depth: number,
+  buildingBlueprintId: NonNullable<Entity['buildingBlueprintId']>,
+): number {
+  return getFactoryBuildingVisualMetrics(width, depth, buildingBlueprintId).visualTop;
 }
 
 function getBuildingBaseZ(entity: Entity): number {
@@ -28,7 +32,7 @@ function getBuildingVisualTopAboveGround(entity: Entity): number {
     case 'constantVisualTop':
       return blueprint.visualHeight;
     case 'fabricator':
-      return factoryVisualTopAboveGround(width, depth);
+      return factoryVisualTopAboveGround(width, depth, entity.buildingBlueprintId);
     case 'collisionDepth':
       return building === null ? blueprint.visualHeight : building.depth;
     default:
@@ -46,7 +50,9 @@ export function getBuildingVisualCenterZ(entity: Entity): number {
   // top midpoint a grounded building uses. This is what selection/picking and
   // the selection overlay center on, so they sit on the torus, not mid-air.
   if (entity.building?.hoveringType === 'fabricator') {
-    return getBuildingBaseZ(entity) + fabricatorTorusHoverHeight();
+    return getBuildingBaseZ(entity) + fabricatorTorusHoverHeight(
+      entity.buildingBlueprintId ?? 'towerFabricator',
+    );
   }
   if (entity.building?.hoveringType === 'directionalFabricator') {
     return getBuildingBaseZ(entity) + getBuildingVisualTopAboveGround(entity) * 0.62;
@@ -63,7 +69,9 @@ export function getBuildingVisualCenterZ(entity: Entity): number {
  */
 export function getBuildingCombatCenterZ(entity: Entity): number {
   if (entity.building?.hoveringType === 'fabricator') {
-    return getBuildingBaseZ(entity) + fabricatorTorusHoverHeight();
+    return getBuildingBaseZ(entity) + fabricatorTorusHoverHeight(
+      entity.buildingBlueprintId ?? 'towerFabricator',
+    );
   }
   if (entity.building?.hoveringType === 'directionalFabricator') {
     return getBuildingBaseZ(entity) + getBuildingVisualTopAboveGround(entity) * 0.62;

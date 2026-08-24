@@ -1,10 +1,10 @@
 {
   "buildingBotFabricator": {
     "buildingBlueprintId": "buildingBotFabricator",
-    "name": "Bot Fabricator",
+    "fullName": "Bot Fabricator",
     "shortDescription": "Tier-one bot factory",
     "longDescription": "A directional tier-one factory that builds the complete opening bot-domain roster through its front yard.",
-    "shortName": "BOT FAB",
+    "shortName": "BFB-1",
     "tinyName": "BFB",
     "gridWidth": 10,
     "gridHeight": 12,
@@ -44,10 +44,10 @@
   },
   "buildingVehicleFabricator": {
     "buildingBlueprintId": "buildingVehicleFabricator",
-    "name": "Vehicle Fabricator",
+    "fullName": "Vehicle Fabricator",
     "shortDescription": "Tier-one vehicle factory",
     "longDescription": "A directional tier-one factory that builds the complete opening vehicle-domain roster through its front yard.",
-    "shortName": "VEH FAB",
+    "shortName": "VFB-1",
     "tinyName": "VFB",
     "gridWidth": 14,
     "gridHeight": 10,
@@ -85,10 +85,10 @@
   },
   "buildingAircraftFabricator": {
     "buildingBlueprintId": "buildingAircraftFabricator",
-    "name": "Aircraft Fabricator",
+    "fullName": "Aircraft Fabricator",
     "shortDescription": "Tier-one aircraft factory",
     "longDescription": "A hovering directional tier-one factory that builds the complete opening aircraft-domain roster through its front yard.",
-    "shortName": "AIR FAB",
+    "shortName": "AFB-1",
     "tinyName": "AFB",
     "gridWidth": 16,
     "gridHeight": 10,
@@ -126,10 +126,10 @@
   },
   "buildingNavalFabricator": {
     "buildingBlueprintId": "buildingNavalFabricator",
-    "name": "Naval Fabricator",
+    "fullName": "Naval Fabricator",
     "shortDescription": "Tier-one naval factory",
     "longDescription": "A water-surface directional tier-one factory that builds the complete opening naval-domain roster through its front yard.",
-    "shortName": "NAV FAB",
+    "shortName": "NFB-1",
     "tinyName": "NFB",
     "gridWidth": 16,
     "gridHeight": 10,
@@ -167,25 +167,70 @@
   },
   "buildingAdvancedUniversalFabricator": {
     "buildingBlueprintId": "buildingAdvancedUniversalFabricator",
-    "name": "Advanced Universal Fabricator",
+    "fullName": "Advanced Universal Fabricator",
     "shortDescription": "Flexible tier-two unit factory",
     "longDescription": "An expensive radial factory that produces every tier-two domain roster from a centered construction bay.",
-    "shortName": "ADV UNIV",
+    "shortName": "UFB-2",
     "tinyName": "AUF",
+    "gridWidth": 16,
+    "gridHeight": 16,
+    "gridDepth": 4,
+    "footprintMask": [
+      "....++++++++++....",
+      "...############...",
+      "..##############..",
+      ".################.",
+      "+################+",
+      "+################+",
+      "+################+",
+      "+################+",
+      "+################+",
+      "+################+",
+      "+################+",
+      "+################+",
+      "+################+",
+      "+################+",
+      ".################.",
+      "..##############..",
+      "...############...",
+      "....++++++++++...."
+    ],
     "factory": { "techLevel": 2, "domain": "universal" },
     "cost": { "energy": 3600, "metal": 3600 },
     "hp": 2400,
     "constructionRate": 200,
+    "workEmitter": {
+      "points": [
+        { "x": 0, "y": 0, "z": 172.8 }
+      ],
+      "particleTravelSpeed": 200,
+      "particleRadius": 1.9,
+      "attachment": { "kind": "host" },
+      "angularActuator": null,
+      "articulation": null,
+      "requiresAlignmentForWork": false,
+      "alignmentToleranceRadians": 0.12
+    },
+    "visualHeight": 42,
     "placementSets": ["ground-build-squares-hover", "water-build-squares-hover-surface"],
     "hoveringType": "fabricator",
-    "anchorProfile": "fabricator"
+    "anchorProfile": "fabricator",
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingFabricator",
+        "presentation": null,
+        "mount": { "x": -147.2, "y": 0, "z": 172.8 },
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      }
+    ]
   },
   "buildingAdvancedBotFabricator": {
     "buildingBlueprintId": "buildingAdvancedBotFabricator",
-    "name": "Advanced Bot Fabricator",
+    "fullName": "Advanced Bot Fabricator",
     "shortDescription": "Tier-two bot factory",
     "longDescription": "A directional advanced factory that builds the complete tier-two bot-domain roster through its front yard.",
-    "shortName": "ADV BOT",
+    "shortName": "BFB-2",
     "tinyName": "ABF",
     "gridWidth": 14,
     "gridHeight": 16,
@@ -229,10 +274,10 @@
   },
   "buildingAdvancedVehicleFabricator": {
     "buildingBlueprintId": "buildingAdvancedVehicleFabricator",
-    "name": "Advanced Vehicle Fabricator",
+    "fullName": "Advanced Vehicle Fabricator",
     "shortDescription": "Tier-two vehicle factory",
     "longDescription": "A directional advanced factory that builds the complete tier-two vehicle-domain roster through its front yard.",
-    "shortName": "ADV VEH",
+    "shortName": "VFB-2",
     "tinyName": "AVF",
     "gridWidth": 18,
     "gridHeight": 14,
@@ -274,10 +319,10 @@
   },
   "buildingAdvancedAircraftFabricator": {
     "buildingBlueprintId": "buildingAdvancedAircraftFabricator",
-    "name": "Advanced Aircraft Fabricator",
+    "fullName": "Advanced Aircraft Fabricator",
     "shortDescription": "Tier-two aircraft factory",
     "longDescription": "A hovering directional advanced factory that builds the complete tier-two aircraft-domain roster through its front yard.",
-    "shortName": "ADV AIR",
+    "shortName": "AFB-2",
     "tinyName": "AAF",
     "gridWidth": 20,
     "gridHeight": 14,
@@ -319,10 +364,10 @@
   },
   "buildingAdvancedNavalFabricator": {
     "buildingBlueprintId": "buildingAdvancedNavalFabricator",
-    "name": "Advanced Naval Fabricator",
+    "fullName": "Advanced Naval Fabricator",
     "shortDescription": "Tier-two naval factory",
     "longDescription": "A water-surface directional advanced factory that builds the complete tier-two naval-domain roster through its front yard.",
-    "shortName": "ADV NAV",
+    "shortName": "NFB-2",
     "tinyName": "ANF",
     "gridWidth": 20,
     "gridHeight": 14,
@@ -361,5 +406,79 @@
     "placementSets": ["water-build-squares-sea-on-surface"],
     "hoveringType": null,
     "anchorProfile": "collisionDepth"
+  },
+  "buildingExperimentalUniversalFabricator": {
+    "$extends": "buildingAdvancedUniversalFabricator",
+    "buildingBlueprintId": "buildingExperimentalUniversalFabricator",
+    "fullName": "Experimental Universal Fabricator",
+    "shortDescription": "Universal tier-three unit factory",
+    "longDescription": "The sole tier-three fabricator, a vast radial gantry that produces every experimental capstone from its elevated center bay.",
+    "shortName": "UFB-3",
+    "tinyName": "EUF",
+    "gridWidth": 20,
+    "gridHeight": 20,
+    "gridDepth": 6,
+    "footprintMask": [
+      ".....++++++++++++.....",
+      "....##############....",
+      "...################...",
+      "..##################..",
+      ".####################.",
+      "+####################+",
+      "+####################+",
+      "+####################+",
+      "+####################+",
+      "+####################+",
+      "+####################+",
+      "+####################+",
+      "+####################+",
+      "+####################+",
+      "+####################+",
+      "+####################+",
+      "+####################+",
+      ".####################.",
+      "..##################..",
+      "...################...",
+      "....##############....",
+      ".....++++++++++++....."
+    ],
+    "factory": {
+      "techLevel": 3,
+      "domain": "universal"
+    },
+    "cost": {
+      "energy": 10800,
+      "metal": 10800
+    },
+    "hp": 4800,
+    "constructionRate": 400,
+    "workEmitter": {
+      "points": [
+        { "x": 0, "y": 0, "z": 307.2 }
+      ],
+      "particleTravelSpeed": 200,
+      "particleRadius": 2.2,
+      "attachment": { "kind": "host" },
+      "angularActuator": null,
+      "articulation": null,
+      "requiresAlignmentForWork": false,
+      "alignmentToleranceRadians": 0.12
+    },
+    "visualHeight": 60,
+    "placementSets": [
+      "ground-build-squares-hover",
+      "water-build-squares-hover-surface"
+    ],
+    "hoveringType": "fabricator",
+    "anchorProfile": "fabricator",
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorBuildingFabricator",
+        "presentation": null,
+        "mount": { "x": -184, "y": 0, "z": 307.2 },
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      }
+    ]
   }
 }

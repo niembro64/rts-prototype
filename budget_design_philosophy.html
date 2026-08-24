@@ -3213,17 +3213,17 @@
       <h3>An unattended build site rots away</h3>
       <p>
         An unfinished structure is not permanent scenery. A shell that nobody is answering for
-        loses a constant fraction of its own full cost per second and is removed outright when it
-        reaches zero progress. The rate is a fraction of that shell&rsquo;s cost rather than an
-        absolute resource rate, so a bunker and a factory both take the same authored wall-clock
-        time to rot away from full, and health falls with the progress it loses.
+        starts losing progress on that same lifecycle tick and is removed outright when it reaches
+        zero. The rate begins at 3% of its own full progress per second and follows BAR&rsquo;s
+        inverse-build-time idea through a bounded reference-cost scale: cheap frames rot faster,
+        expensive frames linger, and health falls with progress.
       </p>
       <ul class="rule-list">
         <li>Attendance, not funding, starts the clock. A site is attended while construction work lands on it and while any living builder still carries it in an order queue &mdash; a shift-queued site is placed the instant the order is issued and must be allowed to stand until its turn.</li>
-        <li>Abandoned and cancelled frames both rot. Decay is the only way a partial assembly leaves the map on its own; an interrupted shell has no other exit.</li>
+        <li>Abandoned and cancelled invested frames both decay immediately and slowly. A zero-progress frame with no remaining queue reference disappears on the first orphan tick. Decay is the only way a partial assembly leaves the map on its own; an interrupted shell has no other exit.</li>
         <li>Reaching zero is a removal, not a death: no explosion, no wreck, no death event. Nothing that was never funded should detonate.</li>
         <li>Factory unit shells are exempt. A factory owns its shell&rsquo;s whole lifecycle, including pauses, so a second timer would be a second authority over it.</li>
-        <li>The delay before decay begins and the decay rate are authored in <code>buildConfig.json</code> and hashed into match initialization like every other gameplay constant.</li>
+        <li>The delay and rate are authored in <code>buildConfig.json</code> and hashed into match initialization like every other gameplay constant. BAR enables construction decay with a 9-second grace period and a 0.03 base speed; this game deliberately sets the grace period to <strong>0 seconds</strong> while retaining the slow 0.03 rate.</li>
       </ul>
 
       <h3>Sensor coverage belongs to turret origins</h3>
@@ -3624,7 +3624,7 @@
       <p>
         Production identity is unit-authored data, exactly like locomotion and sensors: every
         producible unit blueprint authors one <code>production</code> fact &mdash; a
-        <code>techLevel</code> (1 or 2) and one or more production <code>domains</code> from
+        <code>techLevel</code> (1, 2, or 3) and one or more production <code>domains</code> from
         <code>bot</code>, <code>vehicle</code>, <code>aircraft</code>, and <code>naval</code>.
         A pure tank is <code>vehicle</code> only; a pure walker or crawler is <code>bot</code>
         only; a pure plane is <code>aircraft</code> only; surface ships and submarines are
@@ -3637,12 +3637,13 @@
       </p>
       <p>
         Tier is a role statement, not a price bracket: tier 1 is the opening army and its
-        constructors, tier 2 is the escalation &mdash; the capstones, the queens, and the
-        specialist tech. The Loris and the Daddy are tier 1; the Widow is tier 2. Costs and
-        firepower follow from the assignment rather than defining it.
+        constructors; tier 2 is the advanced army, specialist tech, and the four Advanced
+        Construction crafts; tier 3 is the small experimental capstone set. The Loris and
+        Daddy Longlegs are tier 1; the Widow is tier 2; Rex, Albatross, Queen Bee, and Queen
+        Tick are tier 3. Costs and firepower follow from the assignment rather than defining it.
       </p>
 
-      <h3>Five Fabricators per tier; menus are derived, never authored</h3>
+      <h3>Five Fabricators at T1/T2, one Universal at T3; menus are derived</h3>
       <p>
         Production has exactly five fabricator buildings at tier 1 and the same five at tier 2:
         a <strong>Universal Fabricator</strong> plus <strong>Bot</strong>, <strong>Vehicle</strong>,
@@ -3650,9 +3651,11 @@
         counterparts. A fabricator blueprint authors only its own <code>factory</code> identity
         &mdash; a tier and a domain (one of the four, or <code>universal</code>). Its production
         menu is <em>computed</em>: a specialist&rsquo;s roster is every unit whose authored
-        production facts match its tier and domain, and a Universal&rsquo;s roster is the
-        deduplicated union of its tier&rsquo;s four specialist rosters. Neither Universal may
-        produce units from the other tier. Because the union is derived, a cross-domain unit can
+        production facts match its tier and domain, and a T1/T2 Universal&rsquo;s roster is the
+        deduplicated union of its tier&rsquo;s four specialist rosters. Tier 3 has exactly one
+        fabricator, the <strong>Experimental Universal Fabricator</strong>, and no T3 specialists;
+        its roster is every authored T3 unit. No fabricator may produce units from another tier.
+        Because each roster is derived, a cross-domain unit can
         sit in two specialist menus without ever creating a duplicate Universal entry, and adding
         a unit to the game <em>is</em> adding it to the right menus &mdash; there is no second
         list to update and therefore no list to drift.
@@ -3665,14 +3668,24 @@
         build power, durability, and footprint efficiency. Tier 2 has its own higher specialist
         baseline, and the Advanced Universal is 3&times; <em>that</em> baseline, not 3&times; the
         tier-1 Universal.</li>
-        <li><strong>Placement rule.</strong> Both Universal tiers keep the hovering
+        <li><strong>T3 cost rule.</strong> The Experimental Universal costs 3&times; the Advanced
+        Universal, doubles its build power and durability, and pays for access to the capstone
+        roster rather than adding a second T3 production path.</li>
+        <li><strong>Placement rule.</strong> All three Universal tiers keep the hovering
         ground-or-water placement. Naval fabricators are water-surface structures. Bot and
         Vehicle fabricators are ordinary grounded structures. Aircraft fabricators carry the
         hovering building type and place anywhere, exactly like the Universal.</li>
-        <li><strong>Menu-size target.</strong> About five entries per specialist per tier &mdash;
-        twenty specialist menu entries per tier, counted as entries rather than unique units,
+        <li><strong>Progression silhouette rule.</strong> BAR&rsquo;s representative 6&times;6 T1,
+        9&times;9 T2, and 12&times;12 T3 factory footprints establish the progression grammar,
+        while this game keeps domain-specific proportions: every T2 fabricator is wider, deeper,
+        and taller than its T1 peer, and the sole T3 Universal is wider, deeper, and taller than
+        the T2 Universal. Radial Universal hover height is derived from the largest collision
+        diameter in its own production tier, so T1 &lt; T2 &lt; T3 and every held product clears
+        the ring. The T2 Aircraft Fabricator&rsquo;s flight deck also sits higher than the T1 deck.</li>
+        <li><strong>Menu-size target.</strong> About five entries per T1/T2 specialist &mdash;
+        twenty specialist menu entries at each of those tiers, counted as entries rather than unique units,
         since cross-domain units legitimately appear in each domain they author.</li>
-        <li><strong>Form and output rule.</strong> The two Universals are the only radial,
+        <li><strong>Form and output rule.</strong> The three Universals are the only radial,
         quarter-turn-invariant fabricators: they keep the annular body, hold a nanoframe at its
         exact center, and release it there. Every specialist has a BAR-informed directional
         machine hall with a U-shaped build yard, side-mounted nano arms, and an open local
@@ -3680,28 +3693,29 @@
         exit lane. On completion the product receives a mandatory move beyond that mouth before
         any rally route or factory-guard order, so a rally behind the building cannot turn the
         unit through the machinery.</li>
-        <li><strong>Demo rule.</strong> Each initialized demo base contains exactly one tier-1
-        Universal and one Advanced Universal, both in their authored radial pose, and no
-        specialist fabricator. Each Universal is seeded with a quota of one for every enabled
-        unit in its own tier, so the pair demonstrates the whole roster without placing any
-        facing-sensitive structure in the initial layout.</li>
+        <li><strong>Demo/full-base rule.</strong> Each initialized full base places one same-tier
+        Universal per enabled producible unit, never a specialist. Each factory repeat-builds
+        exactly that unit with an otherwise empty queue and quota state. T1, T2, and T3 units
+        therefore receive T1, Advanced, and Experimental Universal hosts respectively, and no
+        active unit can silently lose its production line.</li>
       </ul>
 
       <h3>Construction crafts start the advanced tier</h3>
       <p>
-        Each domain has a tier-1 construction craft &mdash; the construction bot and construction
-        rover on the ground, the construction drone in the air, the construction submarine at sea
-        &mdash; and the gate on tier 2 production runs through them. A tier-1 construction craft
-        authors, in its ordinary builder roster, its own domain&rsquo;s fabricator at both tiers
-        plus both Universal Fabricators; an Advanced fabricator therefore can only be
-        <em>started</em> by the tier-1 construction craft of its type. The Commander starts the
-        five tier-1 fabricators and nothing Advanced. Assist needs no rule at all: construction
+        Each domain has a tier-1 construction craft &mdash; the Construction Bot and Construction
+        Rover on the ground, the Construction Drone in the air, the Construction Submarine at sea
+        &mdash; and a corresponding tier-2 Advanced Construction craft. The gate on tier 2
+        production runs through the T1 craft: each authors its own domain&rsquo;s fabricator at both
+        tiers plus the T1 and Advanced Universals. The gate on tier 3 runs through <em>every</em>
+        T2 construction craft: Bot, Rover, Drone, and Submarine all author the sole Experimental
+        Universal Fabricator in their ordinary build roster. There is no animal-named constructor
+        and no domain-specific T3 fabricator. The Commander starts the five T1 fabricators and
+        nothing Advanced or Experimental. Assist needs no rule at all: construction
         assistance has never consulted the assisting builder&rsquo;s roster, so any builder can
         keep an advanced frame growing once it exists &mdash; starting is gated, finishing is
         communal, which is exactly the BAR-parity behavior. The construction crafts themselves are
-        ordinary tier-1 units of their domains, so every Universal Fabricator produces its
-        tier&rsquo;s construction crafts by derivation, with no special case; a future tier-2
-        construction craft would land in the Advanced menus the same way, by authoring its facts.
+        ordinary units of their domains, so each same-tier Universal produces its construction
+        crafts by derivation, with no special case.
         Construction craft are the deliberate naming exception to the animal roster: a tier-1
         builder is named <strong>Construction &lt;X&gt;</strong>, while a tier-2 builder is named
         <strong>Advanced Construction &lt;X&gt;</strong>. The functional name does not exempt its
@@ -3710,13 +3724,23 @@
 
       <h3>Unit identity is visible, unique, and animal-led</h3>
       <p>
+        Every unit and building authors two player-facing identity fields:
+        <code>fullName</code> for prose and roomy UI, and an exactly five-character
+        <code>shortName</code> using uppercase letters, digits, or hyphens for fixed-width UI.
+        Short names are unique across the combined unit/building catalog. A narrower internal
+        three-letter <code>tinyName</code> may remain for portrait fallbacks, but it never replaces
+        either player-facing field.
+      </p>
+      <p>
         Every non-construction unit has one explicit animal identity and a unique player-facing
         animal name. Titans are the dinosaur subset; a titan with a non-dinosaur identity, or a
         dinosaur assigned to an ordinary chassis, is invalid. Every display name is unique, and
         every unit authors a distinct body shape even when locomotion, weapons, or a parent
         blueprint are shared. Inheritance may share behavior, never the visible chassis. The
         blueprint loader rejects duplicate names and duplicate body-shape geometry, turning roster
-        identity into a contract instead of a review convention.
+        identity into a contract instead of a review convention. The support crawler&rsquo;s complete
+        identity is <strong>Daddy Longlegs</strong>; shortening it to a different animal name is
+        invalid even though its fixed-width code remains <code>DADDY</code>.
       </p>
 
       <h3>Transports carry one visible passenger, friend or foe</h3>
@@ -3791,7 +3815,7 @@
         rather than answered with a Pulse Laser unit.</li>
         <li><strong>The cylindrical shield shapes are gone.</strong> The infinite vertical
         cylinder and aimed cylinder barriers had no host; the shapes that remain are the ones
-        with meaningful hosts &mdash; the Daddy and Widow spheres and the Loris&rsquo;s aimed
+        with meaningful hosts &mdash; the Daddy Longlegs and Widow spheres and the Loris&rsquo;s aimed
         reflective panel. Shared force-material code that spheres and panels still use is
         untouched.</li>
         <li><strong>Resurrection is gone, wrecks and all.</strong> Death is an explosion and the
@@ -4081,8 +4105,9 @@
         no consumer may preserve a noisy near-quarter angle or rotate an already-swapped mesh.
       </p>
       <p>
-        Footprint silhouette follows visible plan-view silhouette. Each Universal Fabricator reserves
-        a filled 14-by-14 pixel circle around its annular body. Specialist fabricators instead
+        Footprint silhouette follows visible plan-view silhouette. The three Universal Fabricators
+        reserve progressively larger 14-by-14, 18-by-18, and 22-by-22 pixel-circle masks around
+        their T1, T2, and T3 annular bodies. Specialist fabricators instead
         reserve authored rectangular U-shaped yards whose construction-clearance channel opens at
         local <code>+X</code>; a quarter turn swaps their width and height and therefore has real
         gameplay meaning. Extractors and radial defenses use

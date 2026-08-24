@@ -44,6 +44,7 @@ const EXPECTED_KIND: Record<StructureBlueprintId, BuildingTeamOrnamentKind> = {
   buildingAircraftFabricator: 'aircraftFabricatorClamps',
   buildingNavalFabricator: 'navalFabricatorClamps',
   buildingAdvancedUniversalFabricator: 'advancedUniversalFabricatorClamps',
+  buildingExperimentalUniversalFabricator: 'experimentalUniversalFabricatorClamps',
   buildingAdvancedBotFabricator: 'advancedBotFabricatorClamps',
   buildingAdvancedVehicleFabricator: 'advancedVehicleFabricatorClamps',
   buildingAdvancedAircraftFabricator: 'advancedAircraftFabricatorClamps',

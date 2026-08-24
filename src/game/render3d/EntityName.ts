@@ -49,7 +49,7 @@ function nameAllowed(
 function unitBlueprintName(entity: Entity): string | null {
   if (!entity.unit) return null;
   try {
-    return getUnitBlueprint(entity.unit.unitBlueprintId).name;
+    return getUnitBlueprint(entity.unit.unitBlueprintId).fullName;
   } catch {
     return UNKNOWN_UNIT_NAME;
   }
@@ -58,7 +58,7 @@ function unitBlueprintName(entity: Entity): string | null {
 function buildingBlueprintName(entity: Entity): string | null {
   if (!entity.building || !entity.buildingBlueprintId) return null;
   try {
-    return getBuildingBlueprint(entity.buildingBlueprintId).name;
+    return getBuildingBlueprint(entity.buildingBlueprintId).fullName;
   } catch {
     return UNKNOWN_BUILDING_NAME;
   }

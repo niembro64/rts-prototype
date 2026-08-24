@@ -16,7 +16,7 @@ function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): Building
   );
   return {
     buildingBlueprintId: bp.buildingBlueprintId,
-    name: bp.name,
+    fullName: bp.fullName,
     shortName: bp.shortName,
     tinyName: bp.tinyName,
     gridWidth: bp.gridWidth,
@@ -77,7 +77,8 @@ export function getUnitBuildConfig(unitBlueprintId: string): UnitBuildConfig | u
   if (!bp) return undefined;
   return {
     unitBlueprintId: bp.unitBlueprintId,
-    name: bp.name,
+    fullName: bp.fullName,
+    shortName: bp.shortName,
     cost: {
       energy: bp.cost.energy * COST_MULTIPLIER,
       metal: bp.cost.metal * COST_MULTIPLIER,

@@ -48,7 +48,7 @@ type JsonUnitBlueprint = Omit<UnitBlueprint, keyof LockOnInclusionObject>;
 type InheritableJsonUnitBlueprint = Partial<JsonUnitBlueprint> & { $extends?: string };
 
 const UNIT_EXPLICIT_FIELDS = [
-  'name',
+  'fullName',
   'shortDescription',
   'longDescription',
   'base',
@@ -301,8 +301,8 @@ function validateUnitProductionIdentity(bp: UnitBlueprint): void {
   if (!isBuildableUnitBlueprintId(bp.unitBlueprintId)) {
     throw new Error(`Invalid production identity for ${bp.unitBlueprintId}: unit is not buildable`);
   }
-  if (production.techLevel !== 1 && production.techLevel !== 2) {
-    throw new Error(`Invalid production identity for ${bp.unitBlueprintId}: techLevel must be 1 or 2`);
+  if (production.techLevel !== 1 && production.techLevel !== 2 && production.techLevel !== 3) {
+    throw new Error(`Invalid production identity for ${bp.unitBlueprintId}: techLevel must be 1, 2, or 3`);
   }
   let previousIndex = -1;
   for (const domain of production.domains) {
@@ -339,7 +339,7 @@ function validateUnitPresentationIdentities(
   const unitIdByBodyShape = new Map<string, string>();
 
   for (const bp of Object.values(blueprints)) {
-    const normalizedName = bp.name.trim().toLocaleLowerCase('en-US');
+    const normalizedName = bp.fullName.trim().toLocaleLowerCase('en-US');
     if (normalizedName.length === 0) {
       throw new Error(`Invalid unit identity for ${bp.unitBlueprintId}: name must not be empty`);
     }
@@ -358,12 +358,17 @@ function validateUnitPresentationIdentities(
           `Invalid unit identity for ${bp.unitBlueprintId}: dedicated builders must use constructionCraft`,
         );
       }
+      if (production.techLevel === 3) {
+        throw new Error(
+          `Invalid unit identity for ${bp.unitBlueprintId}: tier 3 construction craft are not part of the roster`,
+        );
+      }
       const expectedPrefix = production.techLevel === 2
         ? 'Advanced Construction '
         : 'Construction ';
-      const craftName = bp.name.slice(expectedPrefix.length);
+      const craftName = bp.fullName.slice(expectedPrefix.length);
       if (
-        !bp.name.startsWith(expectedPrefix) ||
+        !bp.fullName.startsWith(expectedPrefix) ||
         !/^[A-Z][A-Za-z]*(?: [A-Z][A-Za-z]*)*$/.test(craftName)
       ) {
         throw new Error(

@@ -89,6 +89,10 @@ const EXPECTED_ROSTER_LOCOMOTION: Readonly<Record<string, ExpectedLocomotionDoma
   unitWaterStrider: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
   unitPatrolCorvette: { type: 'amphibian', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false },
   unitPetrel: { type: 'aerosub', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
+  unitAdvancedConstructionBot: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
+  unitAdvancedConstructionRover: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
+  unitAdvancedConstructionDrone: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
+  unitAdvancedConstructionSubmarine: { type: 'submarine', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false },
 };
 
 

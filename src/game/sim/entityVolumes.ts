@@ -156,7 +156,9 @@ function writeFabricatorTorusVolume(
     out,
     entity.transform.x,
     entity.transform.y,
-    getUnitGroundZ(entity) + fabricatorTorusHoverHeight(),
+    getUnitGroundZ(entity) + fabricatorTorusHoverHeight(
+      entity.buildingBlueprintId ?? 'towerFabricator',
+    ),
     outerRadius + pad,
     ringRadius - tubeHalfHeight - pad,
     tubeHalfHeight + pad,
@@ -360,7 +362,9 @@ export function writeExplosionVolume(entity: Entity, out: EntityVolume): boolean
  *  box is ground-centered); the hovering torus engages in the air. */
 function buildingCombatCenterZ(entity: Entity): number {
   if (isHoveringFabricator(entity)) {
-    return getUnitGroundZ(entity) + fabricatorTorusHoverHeight();
+    return getUnitGroundZ(entity) + fabricatorTorusHoverHeight(
+      entity.buildingBlueprintId ?? 'towerFabricator',
+    );
   }
   return entity.transform.z;
 }

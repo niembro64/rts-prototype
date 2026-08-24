@@ -34,6 +34,6 @@ export function getLoadingEntityName(
   id: LoadingEntityBlueprintId,
 ): string {
   return kind === 'unit'
-    ? getUnitBlueprint(id as UnitBlueprintId).name
-    : getBuildingBlueprint(id as StructureBlueprintId).name;
+    ? getUnitBlueprint(id as UnitBlueprintId).fullName
+    : getBuildingBlueprint(id as StructureBlueprintId).fullName;
 }

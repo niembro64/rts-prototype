@@ -5,7 +5,7 @@ import {
 } from './index';
 import { TURRET_CONFIGS } from '../turretConfigs';
 import { CT_LOCK_ON_FAM_INCLUDE_SHOTS } from '../../sim-wasm/api/turretCombat';
-import { shotBlueprintIdToCode } from '../../../types/network';
+import { shotBlueprintIdToCode, unitBlueprintIdToCode } from '../../../types/network';
 import type { BuildingBlueprintId, TurretConfig } from '../types';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -93,10 +93,38 @@ export function runFullUtilizationRosterContractTest(): void {
       roster.includes('towerFabricator') &&
         roster.includes('buildingAdvancedUniversalFabricator') &&
         roster.includes(`building${domain}Fabricator`) &&
-        roster.includes(`buildingAdvanced${domain}Fabricator`),
+        roster.includes(`buildingAdvanced${domain}Fabricator`) &&
+        !roster.includes('buildingExperimentalUniversalFabricator'),
       `${unitBlueprintId} must start both Universal tiers and both ${domain} fabricator tiers`,
     );
   }
+
+  const tierTwoConstructors = Object.values(UNIT_BLUEPRINTS).filter(
+    (blueprint) => blueprint.builder !== null && blueprint.production?.techLevel === 2,
+  );
+  assertContract(
+    tierTwoConstructors.length === 4,
+    `the roster must contain one T2 construction unit per domain; got ${tierTwoConstructors.length}`,
+  );
+  for (const blueprint of tierTwoConstructors) {
+    assertContract(
+      blueprint.allowedBuildBlueprintIds?.includes(
+        'buildingExperimentalUniversalFabricator',
+      ) === true,
+      `${blueprint.unitBlueprintId} must build the sole T3 Universal Fabricator`,
+    );
+  }
+
+  const tierThreeFabricators = Object.values(BUILDING_BLUEPRINTS).filter(
+    (blueprint) => blueprint.factory?.techLevel === 3,
+  );
+  assertContract(
+    tierThreeFabricators.length === 1 &&
+      tierThreeFabricators[0].buildingBlueprintId ===
+        'buildingExperimentalUniversalFabricator' &&
+      tierThreeFabricators[0].factory?.domain === 'universal',
+    'T3 must contain exactly one fabricator and it must be Universal',
+  );
 
   const shade = UNIT_BLUEPRINTS.unitStealthScout;
   assertContract(
@@ -185,10 +213,21 @@ export function runFullUtilizationRosterContractTest(): void {
     'shotRocketDumb',
     'shotMortarMedium',
     'shotMortarHeavy',
-  ].reduce((mask, shotBlueprintId) => mask | (1 << shotBlueprintIdToCode(shotBlueprintId)), 0) >>> 0;
+  ].reduce(
+    (mask, shotBlueprintId) => mask | (1n << BigInt(shotBlueprintIdToCode(shotBlueprintId))),
+    0n,
+  );
   assertContract(
     TURRET_CONFIGS.turretInterceptor.lockOnShotIncludeMask === expectedInterceptMask,
     'Interceptor must target exactly controlled rockets, dumb rockets, and medium/heavy mortars',
+  );
+
+  const advancedDroneCode = unitBlueprintIdToCode('unitAdvancedConstructionDrone');
+  assertContract(
+    advancedDroneCode >= 32 &&
+      (TURRET_CONFIGS.turretAntiAir.lockOnUnitIncludeMask &
+        (1n << BigInt(advancedDroneCode))) !== 0n,
+    '64-bit level-1 masks must let anti-air target the advanced construction drone beyond wire code 31',
   );
 
   const shotTargetingBuildings = Object.values(BUILDING_BLUEPRINTS)
