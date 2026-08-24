@@ -31,7 +31,7 @@ export function createPhysicsBodyForBuilding(
 ): void {
   if (entity.building === null || entity.body !== null) return;
 
-  if (entity.building.hovering) {
+  if (entity.building.hoveringType === 'fabricator') {
     const width = entity.building.width;
     const height = entity.building.height;
     const ringRadius = fabricatorTorusRingRadius(width, height);
@@ -45,6 +45,27 @@ export function createPhysicsBodyForBuilding(
       outerRadius,
       innerRadius,
       tubeHalfHeight,
+      `building_${entity.id}`,
+      entity.id,
+    );
+    entity.body = { physicsBody: body };
+    world.refreshEntitySlotState(entity);
+    return;
+  }
+
+  if (entity.building.hoveringType === 'directionalFabricator') {
+    // Aircraft specialists are floating, directional flight decks rather
+    // than annuli. Their cuboid follows the visible deck in the air while the
+    // ground-level placement reservation stays non-blocking.
+    const centerZ = getBuildingCombatCenterZ(entity);
+    const body = physics.createBuildingBody(
+      entity.transform.x,
+      entity.transform.y,
+      entity.building.width,
+      entity.building.height,
+      entity.building.depth,
+      centerZ - entity.building.depth / 2,
+      entity.building.supportSurface,
       `building_${entity.id}`,
       entity.id,
     );

@@ -675,14 +675,14 @@ export function runCommandSanitizerContractTest(): void {
     buildingBlueprintId: 'buildingSolar',
     gridX: 4.8,
     gridY: 5.2,
-    rotation: Math.PI * 3,
+    rotation: Math.PI * 0.74,
     queue: true,
   });
   assertContract(
     rotatedBuild.gridX === 4
     && rotatedBuild.gridY === 5
-    && Math.abs((rotatedBuild.rotation ?? 0) - Math.PI) < 1e-9,
-    'startBuild must floor grid cells and normalize optional build facing',
+    && Math.abs((rotatedBuild.rotation ?? 0) - Math.PI / 2) < 1e-9,
+    'startBuild must floor grid cells and snap optional build facing to an exact quarter turn',
   );
 
   const wireNullQueueBuild = sanitizeRequired<StartBuildCommand>(world, {

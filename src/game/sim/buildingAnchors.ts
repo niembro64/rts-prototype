@@ -48,6 +48,9 @@ export function getBuildingVisualCenterZ(entity: Entity): number {
   if (entity.building?.hoveringType === 'fabricator') {
     return getBuildingBaseZ(entity) + fabricatorTorusHoverHeight();
   }
+  if (entity.building?.hoveringType === 'directionalFabricator') {
+    return getBuildingBaseZ(entity) + getBuildingVisualTopAboveGround(entity) * 0.62;
+  }
   return getBuildingBaseZ(entity) + getBuildingVisualTopAboveGround(entity) * 0.5;
 }
 
@@ -61,6 +64,9 @@ export function getBuildingVisualCenterZ(entity: Entity): number {
 export function getBuildingCombatCenterZ(entity: Entity): number {
   if (entity.building?.hoveringType === 'fabricator') {
     return getBuildingBaseZ(entity) + fabricatorTorusHoverHeight();
+  }
+  if (entity.building?.hoveringType === 'directionalFabricator') {
+    return getBuildingBaseZ(entity) + getBuildingVisualTopAboveGround(entity) * 0.62;
   }
   return entity.transform.z;
 }

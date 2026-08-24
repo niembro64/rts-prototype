@@ -35,6 +35,7 @@ import { factoryCanProduceUnit } from './factoryProductionRoster';
 import { applyEntityHoldPose, holdEntity, releaseEntityHold } from './entityHolds';
 import {
   createFactoryProductionHoldSpec,
+  getDirectionalFactoryExitPoint,
 } from './factoryProductionHold';
 import { isFabricatorBuildingBlueprintId } from './blueprints/buildings';
 import {
@@ -179,6 +180,7 @@ function assignProducedUnitGuardOrder(
   world: WorldState,
   factory: Entity,
   unit: Entity,
+  exitPoint: { x: number; y: number; z: number } | null = null,
 ): void {
   if (
     unit.unit === null ||
@@ -189,13 +191,23 @@ function assignProducedUnitGuardOrder(
     return;
   }
   const targetPoint = getEntityTargetPoint(factory);
-  setUnitActions(unit.unit, [{
+  const actions: UnitAction[] = [];
+  if (exitPoint !== null) {
+    actions.push({
+      type: 'move',
+      x: exitPoint.x,
+      y: exitPoint.y,
+      z: exitPoint.z,
+    });
+  }
+  actions.push({
     type: 'guard',
     x: targetPoint.x,
     y: targetPoint.y,
     z: targetPoint.z,
     targetId: factory.id,
-  }]);
+  });
+  setUnitActions(unit.unit, actions);
   unit.unit.patrolStartIndex = null;
 }
 
@@ -574,13 +586,25 @@ class FactoryProductionSystem {
       }
 
       const isQueenProducedUnit = factory.unit !== null;
+      const directionalExitPoint = getDirectionalFactoryExitPoint(
+        factory,
+        unit,
+        world.mapWidth,
+        world.mapHeight,
+      );
+      const exitPoint = directionalExitPoint === null
+        ? null
+        : {
+            ...directionalExitPoint,
+            z: world.getTerrainBedZ(directionalExitPoint.x, directionalExitPoint.y),
+          };
       const hasOutputOrders = (factoryComp.defaultWaypoints?.length ?? 0) > 0;
       const factoryGuardEnabled = factoryComp.guardTargetId === factory.id;
       if (
         isQueenProducedUnit ||
         (!hasOutputOrders && factoryGuardEnabled && unit.builder !== null)
       ) {
-        assignProducedUnitGuardOrder(world, factory, unit);
+        assignProducedUnitGuardOrder(world, factory, unit, exitPoint);
       } else {
         const route = factoryComp.defaultWaypoints !== null
           ? factoryComp.defaultWaypoints
@@ -590,12 +614,23 @@ class FactoryProductionSystem {
               z: factoryComp.rallyZ,
               type: factoryComp.rallyType,
             }];
-        const { actions, patrolStartIndex } = directFactoryRallyActions(
+        const routePlan = directFactoryRallyActions(
           world,
           route,
-          factory.transform.x,
-          factory.transform.y,
+          exitPoint?.x ?? factory.transform.x,
+          exitPoint?.y ?? factory.transform.y,
         );
+        let patrolStartIndex = routePlan.patrolStartIndex;
+        if (exitPoint !== null) {
+          routePlan.actions.unshift({
+            type: 'move',
+            x: exitPoint.x,
+            y: exitPoint.y,
+            z: exitPoint.z,
+          });
+          if (patrolStartIndex !== null) patrolStartIndex++;
+        }
+        const actions = routePlan.actions;
         setUnitActions(unit.unit, actions);
         if (patrolStartIndex !== null) {
           unit.unit.patrolStartIndex = patrolStartIndex;

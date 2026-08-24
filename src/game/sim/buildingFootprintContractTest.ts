@@ -1,14 +1,30 @@
 import * as THREE from 'three';
 import { STRUCTURE_BLUEPRINT_IDS } from '../../types/blueprintIds';
 import { buildSolarCollector } from '../render3d/SolarCollectorMesh3D';
-import { BUILDING_BLUEPRINTS } from './blueprints/buildings';
+import {
+  BUILDING_BLUEPRINTS,
+  FABRICATOR_BLUEPRINT_IDS,
+  isDirectionalFabricatorBuildingBlueprintId,
+  isRadialFabricatorBuildingBlueprintId,
+} from './blueprints/buildings';
+import { getUnitBlueprint } from './blueprints';
 import { getBuildingConfig } from './buildConfigs';
 import {
+  BUILD_GRID_CELL_SIZE,
   BuildingGrid,
   getRotatedBuildingPlacementFootprint,
   parseBuildingPlacementFootprint,
 } from './buildGrid';
-import type { EntityId, PlayerId } from './types';
+import type { Entity, EntityId, PlayerId } from './types';
+import {
+  BUILDING_ROTATION_STEP_RAD,
+  getBuildingRotationQuarterTurns,
+  snapBuildingRotation,
+} from './buildingRotation';
+import {
+  createFactoryProductionHoldSpec,
+  getDirectionalFactoryExitPoint,
+} from './factoryProductionHold';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[building footprint] ${message}`);
@@ -31,7 +47,53 @@ function assertConnected(id: string): void {
   assertContract(remaining.size === 0, `${id} mask must be one four-connected reservation`);
 }
 
+function footprintSignature(
+  footprint: ReturnType<typeof getBuildingConfig>['placementFootprint'],
+): string {
+  return footprint.cells
+    .map((cell) => `${cell.dx},${cell.dy},${cell.kind}`)
+    .sort()
+    .join('|');
+}
+
+function factoryFixture(buildingBlueprintId: keyof typeof BUILDING_BLUEPRINTS): Entity {
+  const blueprint = BUILDING_BLUEPRINTS[buildingBlueprintId];
+  const depth = blueprint.gridDepth * BUILD_GRID_CELL_SIZE;
+  return {
+    id: 9001 as EntityId,
+    buildingBlueprintId,
+    unit: null,
+    building: {
+      depth,
+      hoveringType: blueprint.hoveringType,
+    },
+    transform: {
+      x: 2000,
+      y: 2000,
+      z: depth * 0.5,
+      rotation: 0,
+      rotCos: 1,
+      rotSin: 0,
+    },
+  } as unknown as Entity;
+}
+
 export function runBuildingFootprintContractTest(): void {
+  const canonicalRotations = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+  for (let quarterTurn = 0; quarterTurn < canonicalRotations.length; quarterTurn++) {
+    const noisyRotation = quarterTurn * BUILDING_ROTATION_STEP_RAD + 0.17;
+    assertContract(
+      getBuildingRotationQuarterTurns(noisyRotation) === quarterTurn &&
+      snapBuildingRotation(noisyRotation) === canonicalRotations[quarterTurn],
+      `building facing ${quarterTurn} must resolve to one exact canonical quarter turn`,
+    );
+  }
+  assertContract(
+    snapBuildingRotation(-Math.PI / 2) === -Math.PI / 2 &&
+    snapBuildingRotation(Math.PI * 8) === 0,
+    'negative and wrapped build facings must remain one of the four canonical states',
+  );
+
   for (const id of STRUCTURE_BLUEPRINT_IDS) {
     const blueprint = BUILDING_BLUEPRINTS[id];
     const config = getBuildingConfig(id);
@@ -78,6 +140,92 @@ export function runBuildingFootprintContractTest(): void {
     fabricator.cells.length === 156,
     'Fabricator must use the 14x14 pixel-circle reservation',
   );
+
+  for (const id of FABRICATOR_BLUEPRINT_IDS) {
+    const blueprint = BUILDING_BLUEPRINTS[id];
+    const config = getBuildingConfig(id);
+    const quarterTurn = getRotatedBuildingPlacementFootprint(
+      config.placementFootprint,
+      Math.PI / 2,
+    );
+    if (isRadialFabricatorBuildingBlueprintId(id)) {
+      assertContract(
+        config.placementGridWidth === config.placementGridHeight &&
+        footprintSignature(quarterTurn) === footprintSignature(config.placementFootprint),
+        `${id} must remain a square, quarter-turn-invariant Universal footprint`,
+      );
+      assertContract(
+        blueprint.hoveringType === 'fabricator',
+        `${id} must retain the radial center-drop fabricator body`,
+      );
+      continue;
+    }
+
+    assertContract(
+      isDirectionalFabricatorBuildingBlueprintId(id) &&
+      config.placementGridWidth !== config.placementGridHeight &&
+      quarterTurn.gridWidth === config.placementGridHeight &&
+      quarterTurn.gridHeight === config.placementGridWidth,
+      `${id} must own a rectangular footprint whose facing changes by quarter turn`,
+    );
+    const mask = blueprint.footprintMask;
+    const yardRows = mask.filter((row) => row.includes('+'));
+    assertContract(
+      mask[0].split('').every((cell) => cell === '#') &&
+      mask[mask.length - 1].split('').every((cell) => cell === '#') &&
+      yardRows.length >= Math.floor(mask.length * 0.5) &&
+      yardRows.every((row) => row[0] === '#' && row[row.length - 1] === '+'),
+      `${id} must be a U-shaped specialist yard with its reserved open mouth at local +X`,
+    );
+    const expectedEmitterCount = blueprint.factory?.techLevel === 2 ? 4 : 2;
+    assertContract(
+      blueprint.workEmitter?.points.length === expectedEmitterCount,
+      `${id} must author ${expectedEmitterCount} directional nano-arm sockets`,
+    );
+  }
+
+  const universalHold = createFactoryProductionHoldSpec(
+    factoryFixture('towerFabricator'),
+    'unitJackal',
+  );
+  assertContract(
+    universalHold.localOffsetX === 0 && !universalHold.rotateWithHolder,
+    'Universal production must remain an orientation-independent center drop',
+  );
+  const directionalFactory = factoryFixture('buildingVehicleFabricator');
+  const directionalHold = createFactoryProductionHoldSpec(directionalFactory, 'unitJackal');
+  assertContract(
+    directionalHold.localOffsetX > 0 &&
+    directionalHold.rotateWithHolder &&
+    directionalHold.inheritHolderRotation,
+    'specialist production must be held forward in the authored, rotating bay',
+  );
+  const producedBlueprint = getUnitBlueprint('unitJackal');
+  const produced = {
+    unit: { radius: producedBlueprint.radius },
+    transform: { x: 2000, y: 2000, z: producedBlueprint.supportPointOffsetZ },
+  } as unknown as Entity;
+  for (const rotation of canonicalRotations) {
+    directionalFactory.transform.rotation = rotation;
+    directionalFactory.transform.rotCos = Math.cos(rotation);
+    directionalFactory.transform.rotSin = Math.sin(rotation);
+    const exit = getDirectionalFactoryExitPoint(
+      directionalFactory,
+      produced,
+      4000,
+      4000,
+    );
+    assertContract(exit !== null, 'specialist must produce an exit point');
+    const deltaX = exit.x - directionalFactory.transform.x;
+    const deltaY = exit.y - directionalFactory.transform.y;
+    const forward = deltaX * Math.cos(rotation) + deltaY * Math.sin(rotation);
+    const lateral = -deltaX * Math.sin(rotation) + deltaY * Math.cos(rotation);
+    assertContract(
+      forward > producedBlueprint.radius.collision && Math.abs(lateral) <= 1e-8,
+      `specialist exit must rotate exactly with facing ${rotation}`,
+    );
+  }
+
   const targetingLab = getBuildingConfig('buildingShieldTargetingTech').placementFootprint;
   const shieldLab = getBuildingConfig('buildingShieldTech').placementFootprint;
   assertContract(

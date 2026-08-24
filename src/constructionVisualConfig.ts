@@ -347,9 +347,19 @@ function buildConstructionHostMarkingProfiles(): Readonly<
   };
   for (const buildingBlueprintId of BUILDING_BLUEPRINT_IDS) {
     if (buildingBlueprintId.endsWith('Fabricator')) {
-      inherit(buildingBlueprintId, 'towerFabricator');
+      inherit(
+        buildingBlueprintId,
+        buildingBlueprintId === 'towerFabricator' ||
+        buildingBlueprintId === 'buildingAdvancedUniversalFabricator'
+          ? 'towerFabricator'
+          : 'directionalFabricator',
+      );
     }
   }
+  // The directional profile is a shared authoring template, not a runtime
+  // host. Its arrays have already been assigned to every specialist factory;
+  // keep the exported registry an exact capability-derived host map.
+  delete profiles.directionalFabricator;
   inherit('unitConstructionBot', 'unitCommander');
   inherit('unitConstructionRover', 'unitConstructionDrone');
   return Object.freeze(profiles);

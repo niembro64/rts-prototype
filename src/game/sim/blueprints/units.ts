@@ -40,6 +40,7 @@ import {
   validateTurretBarrelPresentation,
   validateWorkEmitter,
 } from './stationArticulation';
+import { getUnitBodyShapeKey } from '../../math/BodyDimensions';
 
 type JsonUnitBlueprint = Omit<UnitBlueprint, keyof LockOnInclusionObject>;
 type InheritableJsonUnitBlueprint = Partial<JsonUnitBlueprint> & { $extends?: string };
@@ -287,6 +288,82 @@ function validateUnitProductionIdentity(bp: UnitBlueprint): void {
     previousIndex = index;
   }
 }
+
+const TITAN_UNIT_BLUEPRINT_IDS = new Set(['unitRex']);
+
+/**
+ * Player-facing identity is authored alongside the chassis, not inferred from
+ * an ID or renderer special case. That makes the roster rules executable:
+ * combat craft use animal names, titan animals are dinosaurs, dedicated
+ * constructors use the deliberately functional Construction <X> exception,
+ * and no two units can silently collapse onto the same visible chassis.
+ */
+function validateUnitPresentationIdentities(
+  blueprints: Readonly<Record<string, UnitBlueprint>>,
+): void {
+  const unitIdByDisplayName = new Map<string, string>();
+  const unitIdByBodyShape = new Map<string, string>();
+
+  for (const bp of Object.values(blueprints)) {
+    const normalizedName = bp.name.trim().toLocaleLowerCase('en-US');
+    if (normalizedName.length === 0) {
+      throw new Error(`Invalid unit identity for ${bp.unitBlueprintId}: name must not be empty`);
+    }
+    const duplicateNameId = unitIdByDisplayName.get(normalizedName);
+    if (duplicateNameId !== undefined) {
+      throw new Error(
+        `Invalid unit identity for ${bp.unitBlueprintId}: display name duplicates ${duplicateNameId}`,
+      );
+    }
+    unitIdByDisplayName.set(normalizedName, bp.unitBlueprintId);
+
+    if (bp.builder !== null && bp.production !== null) {
+      const production = bp.production;
+      if (bp.identity.kind !== 'constructionCraft') {
+        throw new Error(
+          `Invalid unit identity for ${bp.unitBlueprintId}: dedicated builders must use constructionCraft`,
+        );
+      }
+      const expectedPrefix = production.techLevel === 2
+        ? 'Advanced Construction '
+        : 'Construction ';
+      const craftName = bp.name.slice(expectedPrefix.length);
+      if (
+        !bp.name.startsWith(expectedPrefix) ||
+        !/^[A-Z][A-Za-z]*(?: [A-Z][A-Za-z]*)*$/.test(craftName)
+      ) {
+        throw new Error(
+          `Invalid unit identity for ${bp.unitBlueprintId}: tier ${production.techLevel} ` +
+          `builders must be named "${expectedPrefix}<X>"`,
+        );
+      }
+    } else {
+      if (bp.identity.kind !== 'animal') {
+        throw new Error(
+          `Invalid unit identity for ${bp.unitBlueprintId}: non-construction units must use animal identities`,
+        );
+      }
+      const isTitan = TITAN_UNIT_BLUEPRINT_IDS.has(bp.unitBlueprintId);
+      const isDinosaur = bp.identity.animalClass === 'dinosaur';
+      if (isTitan !== isDinosaur) {
+        throw new Error(
+          `Invalid unit identity for ${bp.unitBlueprintId}: titan units and dinosaur identities must match`,
+        );
+      }
+    }
+
+    const bodyShapeKey = getUnitBodyShapeKey(bp.bodyShape);
+    const duplicateBodyId = unitIdByBodyShape.get(bodyShapeKey);
+    if (duplicateBodyId !== undefined) {
+      throw new Error(
+        `Invalid unit visual for ${bp.unitBlueprintId}: bodyShape duplicates ${duplicateBodyId}`,
+      );
+    }
+    unitIdByBodyShape.set(bodyShapeKey, bp.unitBlueprintId);
+  }
+}
+
+validateUnitPresentationIdentities(UNIT_BLUEPRINTS);
 
 /** A crawler authors its mirrored world-space leg layout directly on the
  *  locomotion config, with one shared envelope for every limb. */

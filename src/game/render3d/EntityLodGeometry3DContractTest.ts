@@ -271,7 +271,9 @@ const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
   unitOrca: { close: 1200, mid: 620, far: 280 },
   unitTarantula: { close: 2750, mid: 1100, far: 320 },
   unitLoris: { close: 1450, mid: 720, far: 280 },
-  unitBee: { close: 1250, mid: 650, far: 240 },
+  // The Bee's authored thorax, paired wings, and head replace the old shared
+  // one-piece drone body. Measured close composite 1436 + ~5% headroom.
+  unitBee: { close: 1510, mid: 650, far: 240 },
   unitDragonfly: { close: 1500, mid: 780, far: 330 },
   unitConstructionDrone: { close: 2200, mid: 1000, far: 420 },
   unitConstructionSubmarine: { close: 1500, mid: 760, far: 320 },
@@ -287,8 +289,10 @@ const UNIT_TRIANGLE_BUDGETS: Record<UnitBlueprintId, TierCounts> = {
   // racks are included here. Measured at 2140/1380/810; each
   // ceiling retains roughly 5% regression headroom.
   unitRex: { close: 2240, mid: 1440, far: 850 },
-  unitRadarScout: { close: 1250, mid: 650, far: 240 },
-  unitDetector: { close: 1250, mid: 650, far: 240 },
+  // Kestrel and Owl now own distinct multi-part airframes rather than
+  // inheriting Bee geometry. Measured close composites 1300/1448 + ~5%.
+  unitRadarScout: { close: 1365, mid: 650, far: 240 },
+  unitDetector: { close: 1525, mid: 650, far: 240 },
   unitPetrel: { close: 1250, mid: 780, far: 440 },
   unitConstructionBot: { close: 3000, mid: 1200, far: 550 },
   unitConstructionRover: { close: 700, mid: 350, far: 180 },

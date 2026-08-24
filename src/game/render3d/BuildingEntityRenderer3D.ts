@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId, Turret } from '../sim/types';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
+import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { getGraphicsConfig, getTeamTrim } from '@/clientBarConfig';
 import type { ClientViewState } from '../network/ClientViewState';
 import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
@@ -252,14 +253,23 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
   const shapeType: BuildingShapeType = entity.buildingBlueprintId
     ? getBuildingConfig(entity.buildingBlueprintId).renderProfile
     : 'unknown';
+  const buildingConfig = entity.buildingBlueprintId
+    ? getBuildingConfig(entity.buildingBlueprintId)
+    : null;
+  const localWidth = buildingConfig === null
+    ? width
+    : buildingConfig.gridWidth * BUILD_GRID_CELL_SIZE;
+  const localDepth = buildingConfig === null
+    ? depth
+    : buildingConfig.gridHeight * BUILD_GRID_CELL_SIZE;
   const group = new THREE.Group();
   group.matrixAutoUpdate = false;
   group.userData.entityId = entity.id;
 
   const shape = buildBuildingShape(
     shapeType,
-    width,
-    depth,
+    localWidth,
+    localDepth,
     getPrimaryMat(ownerId),
     entity.buildingBlueprintId,
     geometryTierForDetail(detailLevel),
@@ -415,6 +425,8 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     buildingRenderFrameKey: geometryKey,
     buildingRenderBlueprintId: entity.buildingBlueprintId,
     buildingRenderTurretCount: buildingTurrets?.length ?? 0,
+    buildingLocalWidth: localWidth,
+    buildingLocalDepth: localDepth,
     buildingAuthoredYaw: shape.authoredYaw,
     buildingHasPerFrameTurretWork:
       entityHasPerFrameBuildingTurretWork(entity) &&
@@ -1234,9 +1246,9 @@ export class BuildingEntityRenderer3D {
       y,
       buildingBaseY,
       rotation,
-      width,
+      mesh.buildingLocalWidth ?? width,
       height,
-      depth,
+      mesh.buildingLocalDepth ?? depth,
       mesh.buildingBodyless === true,
     );
     // Construction appearance is now the shared materialization fade

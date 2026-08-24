@@ -8,11 +8,18 @@ import {
   fabricatorTorusRingRadius,
   getUnitBlueprint,
 } from './blueprints';
-import { isFabricatorBuildingBlueprintId } from './blueprints/buildings';
+import {
+  isDirectionalFabricatorBuildingBlueprintId,
+  isFabricatorBuildingBlueprintId,
+  isRadialFabricatorBuildingBlueprintId,
+} from './blueprints/buildings';
 import type { Entity } from './types';
 import type { EntityHoldSpec } from './entityHolds';
 import { productionHoldRingRadiusForUnitRadius } from './productionHoldGeometry';
 import { getUnitGroundZ } from './unitGeometry';
+import { writeWorkEmitterOriginWorld } from './workEmitterOrigin';
+import { getBuildingConfig } from './buildConfigs';
+import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 
 const FACTORY_SHELL_MIN_HOLD_CLEARANCE = 36;
 
@@ -74,6 +81,12 @@ export function writeFabricatorProductionSprayOrigin(
     out.z = factory.transform.z;
     return out;
   }
+  if (isDirectionalFabricatorBuildingBlueprintId(factory.buildingBlueprintId)) {
+    // Specialists own paired (or advanced four-point) nano arms on the two
+    // sides of their open bay. Unlike a Universal ring, their work origin is
+    // a real authored socket that rotates with the building facing.
+    return writeWorkEmitterOriginWorld(factory, pointIndex, out);
+  }
   const seed = mixFactorySpraySeed(
     Math.imul(factory.id, 0x45d9f3b) ^
       Math.imul(targetId, 0x27d4eb2d) ^
@@ -95,11 +108,17 @@ function productionHoldLocalBaseZ(
   produced: UnitBlueprint,
   hostOffsetZ: number,
 ): number {
-  if (isFabricatorBuildingBlueprintId(factory.buildingBlueprintId)) {
+  if (isRadialFabricatorBuildingBlueprintId(factory.buildingBlueprintId)) {
     // EntityHold adds the produced unit's support-point offset when resolving
     // its transform. Subtract it here so the unit's actual body center, not
     // its footprint/support plane, is pinned to the torus center plane.
     return fabricatorProductionPlaneHeight(factory.buildingBlueprintId!) - produced.supportPointOffsetZ;
+  }
+  if (isDirectionalFabricatorBuildingBlueprintId(factory.buildingBlueprintId)) {
+    const planeHeight = fabricatorProductionPlaneHeight(factory.buildingBlueprintId!);
+    return factory.building?.hoveringType === 'directionalFabricator'
+      ? planeHeight - produced.supportPointOffsetZ
+      : planeHeight;
   }
   if (factory.unit !== null) {
     return factory.unit.supportPointOffsetZ + hostOffsetZ;
@@ -119,7 +138,19 @@ function productionHoldLocalOffset(factory: Entity, producedUnitBlueprintId: str
   hostAnchored: boolean;
 } {
   const hostUnit = factory.unit;
-  if (hostUnit === null) return { x: 0, y: 0, z: 0, slotIndex: 0, hostAnchored: false };
+  if (hostUnit === null) {
+    if (isDirectionalFabricatorBuildingBlueprintId(factory.buildingBlueprintId)) {
+      const config = getBuildingConfig(factory.buildingBlueprintId!);
+      return {
+        x: config.gridWidth * BUILD_GRID_CELL_SIZE * 0.08,
+        y: 0,
+        z: 0,
+        slotIndex: 0,
+        hostAnchored: true,
+      };
+    }
+    return { x: 0, y: 0, z: 0, slotIndex: 0, hostAnchored: false };
+  }
   const hostBp = getUnitBlueprint(hostUnit.unitBlueprintId);
   if (hostBp.factoryProducedUnitBlueprintId !== producedUnitBlueprintId) {
     return { x: 0, y: 0, z: 0, slotIndex: 0, hostAnchored: false };
@@ -141,17 +172,45 @@ export function createFactoryProductionHoldSpec(
 ): EntityHoldSpec {
   const produced = getUnitBlueprint(producedUnitBlueprintId);
   const localOffset = productionHoldLocalOffset(factory, producedUnitBlueprintId);
-  const isMobileFactory = factory.unit !== null && localOffset.hostAnchored;
+  const rotatesWithFactory = localOffset.hostAnchored;
+  const isMobileFactory = factory.unit !== null && rotatesWithFactory;
   return {
     kind: 'production',
     slotIndex: localOffset.slotIndex,
     localOffsetX: localOffset.x,
     localOffsetY: localOffset.y,
     localBaseZ: productionHoldLocalBaseZ(factory, produced, localOffset.z),
-    rotateWithHolder: isMobileFactory,
-    inheritHolderRotation: isMobileFactory,
+    rotateWithHolder: rotatesWithFactory,
+    inheritHolderRotation: rotatesWithFactory,
     inheritHolderVelocity: isMobileFactory,
   };
+}
+
+/** First safe point beyond a specialist's open +X mouth. The held shell can
+ * overlap its static factory while being built (the physics spawn path owns a
+ * temporary ignore pair), then this point makes it leave that body before
+ * following the player-authored rally route. */
+export function getDirectionalFactoryExitPoint(
+  factory: Entity,
+  produced: Entity,
+  mapWidth: number,
+  mapHeight: number,
+): { x: number; y: number; z: number } | null {
+  const buildingBlueprintId = factory.buildingBlueprintId;
+  const unit = produced.unit;
+  if (
+    unit === null ||
+    !isDirectionalFabricatorBuildingBlueprintId(buildingBlueprintId)
+  ) return null;
+  const config = getBuildingConfig(buildingBlueprintId!);
+  const localHalfWidth = config.gridWidth * BUILD_GRID_CELL_SIZE * 0.5;
+  const distance = localHalfWidth + unit.radius.collision + BUILD_GRID_CELL_SIZE;
+  const cos = factory.transform.rotCos ?? DMath.cos(factory.transform.rotation);
+  const sin = factory.transform.rotSin ?? DMath.sin(factory.transform.rotation);
+  const margin = Math.max(BUILD_GRID_CELL_SIZE, unit.radius.collision);
+  const x = Math.max(margin, Math.min(mapWidth - margin, factory.transform.x + cos * distance));
+  const y = Math.max(margin, Math.min(mapHeight - margin, factory.transform.y + sin * distance));
+  return { x, y, z: getUnitGroundZ(factory) };
 }
 
 export function getFactoryProductionHoldVisual(

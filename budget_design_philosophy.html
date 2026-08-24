@@ -3672,10 +3672,19 @@
         <li><strong>Menu-size target.</strong> About five entries per specialist per tier &mdash;
         twenty specialist menu entries per tier, counted as entries rather than unique units,
         since cross-domain units legitimately appear in each domain they author.</li>
-        <li><strong>Demo rule.</strong> The demo&rsquo;s one-factory-per-unit showcase arc places
-        each unit&rsquo;s own specialist fabricator, not a row of identical Universals. The
-        duplication of a single fabricator blueprint across the whole arc was the problem; the
-        Universal itself is not.</li>
+        <li><strong>Form and output rule.</strong> The two Universals are the only radial,
+        quarter-turn-invariant fabricators: they keep the annular body, hold a nanoframe at its
+        exact center, and release it there. Every specialist has a BAR-informed directional
+        machine hall with a U-shaped build yard, side-mounted nano arms, and an open local
+        <code>+X</code> mouth. Its facing rotates the complete yard, sockets, held product, and
+        exit lane. On completion the product receives a mandatory move beyond that mouth before
+        any rally route or factory-guard order, so a rally behind the building cannot turn the
+        unit through the machinery.</li>
+        <li><strong>Demo rule.</strong> Each initialized demo base contains exactly one tier-1
+        Universal and one Advanced Universal, both in their authored radial pose, and no
+        specialist fabricator. Each Universal is seeded with a quota of one for every enabled
+        unit in its own tier, so the pair demonstrates the whole roster without placing any
+        facing-sensitive structure in the initial layout.</li>
       </ul>
 
       <h3>Construction crafts start the advanced tier</h3>
@@ -3693,6 +3702,21 @@
         ordinary tier-1 units of their domains, so every Universal Fabricator produces its
         tier&rsquo;s construction crafts by derivation, with no special case; a future tier-2
         construction craft would land in the Advanced menus the same way, by authoring its facts.
+        Construction craft are the deliberate naming exception to the animal roster: a tier-1
+        builder is named <strong>Construction &lt;X&gt;</strong>, while a tier-2 builder is named
+        <strong>Advanced Construction &lt;X&gt;</strong>. The functional name does not exempt its
+        visual design &mdash; each construction craft still owns a unique chassis silhouette.
+      </p>
+
+      <h3>Unit identity is visible, unique, and animal-led</h3>
+      <p>
+        Every non-construction unit has one explicit animal identity and a unique player-facing
+        animal name. Titans are the dinosaur subset; a titan with a non-dinosaur identity, or a
+        dinosaur assigned to an ordinary chassis, is invalid. Every display name is unique, and
+        every unit authors a distinct body shape even when locomotion, weapons, or a parent
+        blueprint are shared. Inheritance may share behavior, never the visible chassis. The
+        blueprint loader rejects duplicate names and duplicate body-shape geometry, turning roster
+        identity into a contract instead of a review convention.
       </p>
 
       <h3>Transports carry one visible passenger, friend or foe</h3>
@@ -4050,10 +4074,18 @@
         build ghosts, queued build planning, demo placement, construction occupancy, and pathfinder
         sync must all iterate the same authored cells. The bounding width and height exist only for
         centered snapping and quarter-turn rotation; treating them as a filled rectangle is a bug.
+        A building rotation is always normalized to exactly one of four canonical yaw values
+        (<code>0</code>, <code>&pi;/2</code>, <code>&pi;</code>, <code>-&pi;/2</code>) at input,
+        command sanitization, simulation construction, footprint lookup, and rendering. Rectangular
+        local render dimensions rotate with that yaw while authoritative world-axis bounds swap;
+        no consumer may preserve a noisy near-quarter angle or rotate an already-swapped mesh.
       </p>
       <p>
-        Footprint silhouette follows visible plan-view silhouette. The hovering Fabricator reserves
-        a filled 14-by-14 pixel circle around its annular body. Extractors and radial defenses use
+        Footprint silhouette follows visible plan-view silhouette. Each Universal Fabricator reserves
+        a filled 14-by-14 pixel circle around its annular body. Specialist fabricators instead
+        reserve authored rectangular U-shaped yards whose construction-clearance channel opens at
+        local <code>+X</code>; a quarter turn swaps their width and height and therefore has real
+        gameplay meaning. Extractors and radial defenses use
         chamfered or round masks; the converter uses its diagonal hex-like mask. The two shield
         research labs use distinct 12-by-12 campus masks and polygonal foundations, making them
         nearly Fabricator-scale without hiding a square visual base underneath either one. The
@@ -4106,7 +4138,8 @@
         hover sets. Radar, sonar, and torpedo placement additionally verifies that the operative
         mount is in its required sensor medium, preventing a legal-looking but inert completed
         structure in shallow water. <code>hoveringType</code> remains a separate physical/body
-        classification (<code>fabricator</code> is currently the only one), not a placement policy.
+        classification (<code>fabricator</code> for the radial Universal body and
+        <code>directionalFabricator</code> for a specialist flight deck), not a placement policy.
       </p>
       <p>
         A hovering building keeps the shared z-model &mdash; <code>transform.z</code> remains the
@@ -4201,13 +4234,15 @@
         with positive construction rate, with one profile per host and no decorative extras.
       </p>
       <p>
-        <strong>Fabricator production has one non-negotiable spatial invariant:</strong> from
-        the instant a unit nanoframe exists until construction completes, it is frozen at the
-        exact horizontal and vertical center of the fabricator ring, with zero velocity. Physics,
-        locomotion, collision response, wind, and partial construction may never pull it away
-        from that center. Completion releases the hold. While the hold is active, each work-spray
-        emission starts at a deterministic random point on the ring circumference and travels
-        inward to the centered nanoframe; it does not originate from the ring center.
+        <strong>Fabricator production has one non-negotiable host-relative invariant:</strong> from
+        the instant a unit nanoframe exists until construction completes, its authored hold pose is
+        immune to physics, locomotion, collision response, wind, and partial construction. For a
+        Universal that pose is the exact horizontal and vertical center of the ring, independent
+        of facing, with zero velocity; each work-spray emission begins at a deterministic point on
+        the ring circumference and travels inward. For a specialist the hold sits in the visible
+        build yard, rotates with the building, and receives spray from the authored side nano-arm
+        sockets. Completion releases the hold and routes specialist output through the rotated
+        local-<code>+X</code> exit before applying subsequent factory intent.
       </p>
     </section>
 

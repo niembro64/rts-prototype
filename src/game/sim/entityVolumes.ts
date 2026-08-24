@@ -135,6 +135,10 @@ function isHoveringFabricator(entity: Entity): boolean {
   return entity.building?.hoveringType === 'fabricator';
 }
 
+function isDirectionalHoveringFabricator(entity: Entity): boolean {
+  return entity.building?.hoveringType === 'directionalFabricator';
+}
+
 /** The fabricator torus body: a ring floating at hover height. Its tube
  *  half-height is the gap between the ring circle and the outer radius,
  *  the same numbers the collision annulus and its wireframe use. */
@@ -183,6 +187,26 @@ export function writeSelectionVolume(entity: Entity, out: EntityVolume): boolean
   if (building !== null) {
     if (isHoveringFabricator(entity)) {
       return writeFabricatorTorusVolume(entity, out, 0);
+    }
+    if (isDirectionalHoveringFabricator(entity)) {
+      return writeBox(
+        out,
+        entity.transform.x,
+        entity.transform.y,
+        buildingCombatCenterZ(entity),
+        Math.max(
+          MIN_BUILDING_SELECTION_HALF_EXTENT,
+          building.width * 0.5 * BUILDING_SELECTION_VOLUME_SCALE,
+        ),
+        Math.max(
+          MIN_BUILDING_SELECTION_HALF_EXTENT,
+          building.height * 0.5 * BUILDING_SELECTION_VOLUME_SCALE,
+        ),
+        Math.max(
+          MIN_BUILDING_SELECTION_HALF_EXTENT,
+          building.depth * 0.5 * BUILDING_SELECTION_VOLUME_SCALE,
+        ),
+      );
     }
     const baseZ = getUnitGroundZ(entity);
     const topZ = getBuildingVisualTopZ(entity);

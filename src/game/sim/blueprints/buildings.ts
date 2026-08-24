@@ -122,8 +122,9 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   supportSurface: BuildingSupportSurface;
   /** Exhaustive square domains on which this structure may be placed. */
   placementSets: readonly BuildingPlacementSet[];
-  /** Hovering structure classification. Null means grounded. The fabricator
-   *  torus is currently the only hovering structure type. */
+  /** Hovering structure classification. Null means grounded. Universal
+   *  fabricators use the radial torus body; specialist aircraft factories use
+   *  the directional flight-deck body. */
   hoveringType: BuildingHoveringType;
   hud: EntityHudBlueprint;
   /** Optional reusable turret hardpoints mounted on this building.
@@ -152,6 +153,13 @@ const RAW_BUILDING_BLUEPRINTS_WITH_VARIANTS: Record<
   ...(rawBuildingBlueprints as unknown as Record<string, Record<string, unknown> & { $extends?: string }>),
 };
 for (const [id, variant] of Object.entries(RAW_FABRICATOR_BLUEPRINTS)) {
+  const directional = variant.factory?.domain !== 'universal';
+  const gridWidth = variant.gridWidth ?? 12;
+  const gridHeight = variant.gridHeight ?? 12;
+  const directionalRadius = Math.hypot(
+    gridWidth * BUILD_GRID_CELL_SIZE,
+    gridHeight * BUILD_GRID_CELL_SIZE,
+  ) * 0.5;
   RAW_BUILDING_BLUEPRINTS_WITH_VARIANTS[id] = {
     $extends: 'towerFabricator',
     ...variant,
@@ -159,6 +167,13 @@ for (const [id, variant] of Object.entries(RAW_FABRICATOR_BLUEPRINTS)) {
     base: {
       cost: variant.cost,
       health: variant.hp,
+      ...(directional ? {
+        radius: {
+          other: directionalRadius,
+          hitbox: directionalRadius,
+          collision: directionalRadius,
+        },
+      } : {}),
     },
   };
 }
@@ -375,20 +390,24 @@ function validateBuildingPlacementSets(
     anchor = placementAnchor;
   }
   const hoveringType = blueprint.hoveringType;
-  if (hoveringType !== null && hoveringType !== 'fabricator') {
+  if (
+    hoveringType !== null &&
+    hoveringType !== 'fabricator' &&
+    hoveringType !== 'directionalFabricator'
+  ) {
     throw new Error(
       `Invalid building blueprint ${id}: unknown hoveringType "${String(hoveringType)}"`,
     );
   }
   const factoryDomain = blueprint.factory?.domain ?? null;
-  const factoryShouldHover = factoryDomain === 'universal' || factoryDomain === 'aircraft';
-  if (factoryShouldHover && hoveringType !== 'fabricator') {
+  const expectedHoveringType = factoryDomain === 'universal'
+    ? 'fabricator'
+    : factoryDomain === 'aircraft' ? 'directionalFabricator' : null;
+  if (hoveringType !== expectedHoveringType) {
     throw new Error(
-      `Invalid building blueprint ${id}: ${factoryDomain} fabricators must hover`,
+      `Invalid building blueprint ${id}: ${String(factoryDomain)} factory domain requires ` +
+      `hoveringType ${String(expectedHoveringType)}`,
     );
-  }
-  if (!factoryShouldHover && hoveringType !== null) {
-    throw new Error(`Invalid building blueprint ${id}: only universal and aircraft fabricators hover`);
   }
   if (hoveringType !== null && blueprint.supportSurface.kind !== 'none') {
     throw new Error(
@@ -856,6 +875,23 @@ export function isFabricatorBuildingBlueprintId(
     FABRICATOR_BLUEPRINT_IDS.includes(buildingBlueprintId as BuildingBlueprintId);
 }
 
+/** Universal factories are the only rotationally symmetric, center-drop
+ * fabricators. Every specialist has a meaningful authored front (+X). */
+export function isRadialFabricatorBuildingBlueprintId(
+  buildingBlueprintId: string | null | undefined,
+): boolean {
+  if (!isFabricatorBuildingBlueprintId(buildingBlueprintId)) return false;
+  return BUILDING_BLUEPRINTS[buildingBlueprintId as BuildingBlueprintId]
+    .factory?.domain === 'universal';
+}
+
+export function isDirectionalFabricatorBuildingBlueprintId(
+  buildingBlueprintId: string | null | undefined,
+): boolean {
+  return isFabricatorBuildingBlueprintId(buildingBlueprintId) &&
+    !isRadialFabricatorBuildingBlueprintId(buildingBlueprintId);
+}
+
 export function getFabricatorBuildingBlueprintId(
   techLevel: 1 | 2,
   domain: FabricatorDomain,
@@ -966,16 +1002,19 @@ export function fabricatorTorusHoverHeight(): number {
   return 1.2 * (2 * MAX_UNIT_COLLISION_RADIUS);
 }
 
-/** World height of a fabricator's production ring above its placement base.
- * Universal and aircraft plants keep the high hover lane; grounded and naval
- * specialists rest their ring at the center of their physical structure. */
+/** World height of a factory's assembly plane above its placement base.
+ * Universals retain their high radial center-drop lane. Directional aircraft
+ * plants use a lower floating flight deck; grounded specialists assemble on
+ * their open build-yard floor. */
 export function fabricatorProductionPlaneHeight(
   buildingBlueprintId: BuildingBlueprintId,
 ): number {
   const blueprint = BUILDING_BLUEPRINTS[buildingBlueprintId];
-  return blueprint.hoveringType === 'fabricator'
-    ? fabricatorTorusHoverHeight()
-    : blueprint.gridDepth * BUILD_GRID_CELL_SIZE * 0.5;
+  if (blueprint.hoveringType === 'fabricator') return fabricatorTorusHoverHeight();
+  if (blueprint.hoveringType === 'directionalFabricator') {
+    return blueprint.visualHeight * 0.62;
+  }
+  return Math.min(8, blueprint.gridDepth * BUILD_GRID_CELL_SIZE * 0.12);
 }
 
 /** Radius of the torus ring — the circle the construction pylons hang on. */

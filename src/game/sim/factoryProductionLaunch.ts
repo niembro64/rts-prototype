@@ -7,7 +7,10 @@ import { rayDistanceToMapEdge } from '../math/rayMapBounds';
 import { deterministicMath as DMath } from './deterministicMath';
 import type { Entity } from './types';
 import type { WorldState } from './WorldState';
-import { isFabricatorBuildingBlueprintId } from './blueprints/buildings';
+import {
+  isDirectionalFabricatorBuildingBlueprintId,
+  isFabricatorBuildingBlueprintId,
+} from './blueprints/buildings';
 
 export const MOBILE_FACTORY_VERTICAL_LAUNCH_SPEED = 520;
 const PRODUCTION_LAUNCH_SPEED = MOBILE_FACTORY_VERTICAL_LAUNCH_SPEED;
@@ -163,6 +166,18 @@ function resolveFactoryProductionLaunchPlan(
       targetY: heldUnit.transform.y,
       targetZ: heldUnit.transform.z + MOBILE_FACTORY_VERTICAL_LAUNCH_SPEED,
     };
+  }
+  if (isDirectionalFabricatorBuildingBlueprintId(factory.buildingBlueprintId)) {
+    // A specialist's facing owns its exit lane. Rally points are applied only
+    // after the shell clears the mouth, so a rally behind the factory cannot
+    // make a new unit turn through the rear machine block.
+    const yaw = factory.transform.rotation;
+    return stationaryDropPlan(
+      heldUnit,
+      DMath.cos(yaw),
+      DMath.sin(yaw),
+      yaw,
+    );
   }
   const target = resolveLaunchDirectionTarget(world, factory);
   let dx = target.x - heldUnit.transform.x;

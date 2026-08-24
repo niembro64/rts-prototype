@@ -22,6 +22,7 @@ import {
   fabricatorTorusOuterRadius,
   fabricatorTorusRingRadius,
   getAllUnitBlueprints,
+  getBuildingBlueprint,
   getUnitBlueprint,
 } from './blueprints';
 import { getBuildingCombatCenterZ } from './buildingAnchors';
@@ -33,6 +34,7 @@ import {
   factoryProductionSystem,
   getFactoryShellSpawnClearanceAboveSurface,
 } from './factoryProduction';
+import { createFactoryComponent } from './factoryComponent';
 import {
   factoryCanProduceUnit,
   getFactoryAllowedUnitBlueprintIds,
@@ -1073,6 +1075,148 @@ function assertFactoryShellContract(): void {
   );
 }
 
+function assertDirectionalFactoryProductionContract(): void {
+  const world = new WorldState(1261, 1024, 1024);
+  world.playerCount = 2;
+  const dry = findSurfacePoint(world, 'solid', 300);
+  const buildingBlueprintId = 'buildingVehicleFabricator' as const;
+  const producedUnitBlueprintId = 'unitJackal' as const;
+  const config = getBuildingConfig(buildingBlueprintId);
+  const blueprint = getBuildingBlueprint(buildingBlueprintId);
+  const factory = world.createBuilding(
+    dry.x,
+    dry.y,
+    config.gridWidth * BUILD_GRID_CELL_SIZE,
+    config.gridHeight * BUILD_GRID_CELL_SIZE,
+    config.gridDepth * BUILD_GRID_CELL_SIZE,
+    TEST_PLAYER_ID,
+  );
+  factory.transform.rotation = Math.PI / 2;
+  factory.transform.rotCos = 0;
+  factory.transform.rotSin = 1;
+  applyBuildingBlueprintRuntime(factory, buildingBlueprintId, {
+    allocateEntityId: () => world.generateEntityId(),
+  });
+  factory.factory = createFactoryComponent({
+    selectedUnitBlueprintId: producedUnitBlueprintId,
+    repeatProduction: false,
+    rallyX: dry.x,
+    rallyY: dry.y - 180,
+    rallyZ: null,
+    rallyType: 'patrol',
+  });
+  factory.factory.defaultWaypoints = [{
+    x: dry.x,
+    y: dry.y - 180,
+    z: null,
+    type: 'patrol',
+  }];
+  world.addEntity(factory);
+
+  const holdVisual = getFactoryProductionHoldVisual(
+    factory,
+    producedUnitBlueprintId,
+  );
+  assertContract(holdVisual !== null, 'directional specialist must expose its production hold');
+  assertContract(
+    holdVisual.localOffsetX > 0 && holdVisual.localOffsetY === 0,
+    'directional specialist hold must sit forward in local +X',
+  );
+
+  const forceAccumulator = new ForceAccumulator();
+  const spawned = factoryProductionSystem.update(world, 16, forceAccumulator).spawnedUnits;
+  assertContract(spawned.length === 1, 'directional specialist must spawn exactly one shell');
+  const shell = spawned[0];
+  assertContract(
+    shell.heldBy?.kind === 'production' && shell.heldBy.holderId === factory.id,
+    'directional specialist shell must remain held while incomplete',
+  );
+  assertNear(shell.transform.x, factory.transform.x, 'quarter-turned specialist hold x');
+  assertNear(
+    shell.transform.y,
+    factory.transform.y + holdVisual.localOffsetX,
+    'quarter-turned specialist hold must rotate local +X into world +Y',
+  );
+  assertNear(
+    shell.transform.rotation,
+    factory.transform.rotation,
+    'directional specialist shell must inherit its factory facing',
+  );
+
+  world.beginWorkMovementTick();
+  world.recordWorkMovement(factory.id, shell.id, 'construct', 25);
+  const sprays = commanderAbilitiesSystem.update(world, 16).sprayTargets.filter(
+    (spray) => spray.source.id === factory.id && spray.target.id === shell.id,
+  );
+  assertContract(
+    sprays.length === blueprint.workEmitter?.points.length,
+    'directional specialist must emit from every authored nano-arm socket',
+  );
+  const firstEmitter = blueprint.workEmitter?.points[0];
+  assertContract(firstEmitter !== undefined, 'directional specialist must author its first nano arm');
+  assertNear(
+    sprays[0].source.pos.x,
+    factory.transform.x - firstEmitter.y,
+    'directional nano-arm x must rotate with the factory',
+  );
+  assertNear(
+    sprays[0].source.pos.y,
+    factory.transform.y + firstEmitter.x,
+    'directional nano-arm y must rotate with the factory',
+  );
+  assertNear(
+    sprays[0].source.z ?? Number.NaN,
+    factory.transform.z + firstEmitter.z,
+    'directional nano-arm z must remain attached to the factory body',
+  );
+
+  assertContract(shell.buildable !== null, 'directional specialist shell must be buildable');
+  shell.buildable.isComplete = true;
+  const completed = factoryProductionSystem.update(world, 16, forceAccumulator).completedUnits;
+  assertContract(
+    completed.length === 1 && completed[0] === shell,
+    'directional specialist must activate its completed shell',
+  );
+  const unit = assertUnitActionCount(
+    shell,
+    3,
+    'directional specialist must prepend one exit to a preserved one-point patrol loop',
+  );
+  const [exitMove, patrolStart, patrolDestination] = unit.actions;
+  assertContract(
+    exitMove.type === 'move' &&
+      patrolStart.type === 'patrol' &&
+      patrolDestination.type === 'patrol' &&
+      unit.patrolStartIndex === 1,
+    'specialist exit must remain outside the patrol cycle',
+  );
+  assertContract(
+    exitMove.y > factory.transform.y + config.gridWidth * BUILD_GRID_CELL_SIZE * 0.5 &&
+      Math.abs(exitMove.x - factory.transform.x) <= CONTRACT_EPSILON,
+    'quarter-turned specialist exit must clear the open world +Y mouth',
+  );
+  assertNear(patrolStart.x, exitMove.x, 'patrol loop must begin at exit x');
+  assertNear(patrolStart.y, exitMove.y, 'patrol loop must begin at exit y');
+  assertNear(
+    exitMove.z ?? Number.NaN,
+    world.getTerrainBedZ(exitMove.x, exitMove.y),
+    'specialist exit move must sample terrain at the exit point',
+  );
+  assertNear(
+    patrolDestination.y,
+    dry.y - 180,
+    'authored patrol destination behind the factory must remain after the exit',
+  );
+  assertNear(
+    shell.transform.rotation,
+    factory.transform.rotation,
+    'released specialist output must face through its open mouth',
+  );
+  assertNear(unit.velocityX, 0, 'specialist output release velocity x');
+  assertNear(unit.velocityY, 0, 'specialist output release velocity y');
+  assertNear(unit.velocityZ, 0, 'specialist output release velocity z');
+}
+
 function assertQueenProductionRingMountContract(): void {
   const cases: readonly [string, string][] = [
     ['unitQueenBee', 'unitBee'],
@@ -1383,6 +1527,7 @@ export function runSupportSurfaceContractTest(): void {
     assertUnitSupportContract();
     assertRenderLocomotionContract();
     assertFactoryShellContract();
+    assertDirectionalFactoryProductionContract();
     assertQueenFactoryProductionContract();
     assertQueenProductionRingMountContract();
     assertFactoryGuardDefaultContract();
@@ -1392,7 +1537,10 @@ export function runSupportSurfaceContractTest(): void {
 }
 
 export function runFabricatorProductionRingContractTest(): void {
-  withKnownSupportSurfaceTerrain(assertFactoryShellContract);
+  withKnownSupportSurfaceTerrain(() => {
+    assertFactoryShellContract();
+    assertDirectionalFactoryProductionContract();
+  });
 }
 
 export function runQueenFactoryProductionContractTest(): void {

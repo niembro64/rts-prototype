@@ -72,7 +72,7 @@ import {
   isLiquidSurfaceMode,
   isMetalCoverage,
 } from '../../types/worldSurfaceMode';
-import { normalizeAngle } from '../math';
+import { snapBuildingRotation } from '../sim/buildingRotation';
 
 const WAYPOINT_TYPES: readonly WaypointType[] = ['move', 'fight', 'patrol'];
 const UNIT_MOVE_STATES: readonly string[] = ['maneuver', 'holdPosition', 'roam'];
@@ -927,7 +927,7 @@ function sanitizeStartBuildCommand(command: StartBuildCommand, tick: number): St
   if (queued === null) return null;
   const rotation = command.rotation === undefined
     ? 0
-    : Number.isFinite(command.rotation) ? normalizeAngle(command.rotation) : null;
+    : Number.isFinite(command.rotation) ? snapBuildingRotation(command.rotation) : null;
   if (rotation === null) return null;
   return {
     type: 'startBuild',
