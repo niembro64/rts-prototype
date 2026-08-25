@@ -91,14 +91,15 @@ export type BattleBarConfig = {
    *  attribute. 0 disables extra smoothing; higher values diffuse the
    *  value across neighboring rendered terrain vertices. */
   readonly terrainTextureSmoothing: OptionsConfig<number>;
-  /** Renderer-side smoothing pass count for baked terrain light. */
+  /** Renderer-side smoothing pass count used when the precomputed terrain
+   *  light attribute is regenerated. */
   readonly terrainLightSmoothing: OptionsConfig<number>;
   /** Whether texture smoothing may cross D-PLATEAU wall/non-wall
    *  triangle boundaries. False keeps the two triangle classes
    *  separated at shared edge vertices. */
   readonly terrainTextureSmoothAcrossWallBoundary: BooleanSetting;
-  /** Whether baked-light smoothing may cross D-PLATEAU wall/non-wall
-   *  triangle boundaries. */
+  /** Whether precomputed-light smoothing may cross D-PLATEAU wall/non-wall
+   *  triangle boundaries when the terrain is regenerated. */
   readonly terrainLightSmoothAcrossWallBoundary: BooleanSetting;
   /** Whether the renderer duplicates D-PLATEAU wall-edge vertices so
    *  wall and non-wall triangles bake normals/light/texture masks from

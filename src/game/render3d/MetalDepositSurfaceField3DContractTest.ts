@@ -295,10 +295,10 @@ function checkMetalLayerContract(): void {
 }
 
 /** The terrain is drawn by its back faces, so three inverts the authored
- *  upward normal before lighting. Ore is lit THROUGH that normal, so the
- *  correction below is the difference between ore that catches the sun on its
- *  sunward slope and ore that catches it on the shadowed one. Both failure
- *  modes here are silent: they compile. */
+ *  upward normal before lighting. All terrain layers are lit through that
+ *  normal; the correction below keeps grass and ore under the same live sun
+ *  and directional-shadow contract. These failure modes are silent: they
+ *  compile, but can make one terrain layer appear not to receive shadows. */
 function checkOutwardNormalContract(): void {
   const declaration = terrainOutwardNormalUniformDeclaration();
   const fragment = terrainOutwardNormalFragment();

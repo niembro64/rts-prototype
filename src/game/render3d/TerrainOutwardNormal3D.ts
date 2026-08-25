@@ -7,13 +7,13 @@
 // vertex normals all point up, so three's DOUBLE_SIDED `normal *= faceDirection`
 // hands the lighting an inverted, downward normal.
 //
-// Ordinary ground hid that for years: its relief comes from the baked
-// `terrainShade`, computed at build time from the TRUE normal, and the direct
-// lights are a small share of an environment-dominated scene. Metal ore does
-// not hide it — ore is lit through its metalness/roughness reflection, which
-// reads the normal directly, so with the flip a north-facing ore slope
-// reflected and shaded as though it faced the southern sun while the
-// south-facing slope went dark.
+// Ordinary ground hid that while its relief came from the baked `terrainShade`,
+// computed at build time from the TRUE normal. The former ore-only correction
+// then produced a sharper failure: ore received the live directional sun and
+// its shadow map, while biome grass kept the flipped normal and received no
+// direct sun for a unit silhouette to occlude. The production scope therefore
+// restores the authored normal across the whole terrain; the narrower scopes
+// remain useful only as diagnostic bisects.
 //
 // faceDirection squared is 1, so multiplying by it a second time restores the
 // authored outward normal. Side-wall fragments are front-facing and therefore

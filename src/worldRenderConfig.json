@@ -1,8 +1,8 @@
 {
   "landTileGroundLift": 0,
   "terrainOutwardNormal": {
-    "scope": "ore",
-    "detail": "The authoritative terrain mesh is drawn by its BACK faces (set the material to FrontSide and the ground vanishes, leaving only the world-box side walls). three's DOUBLE_SIDED therefore flips the authored upward vertex normal and lights the ground through a downward one, which inverts every slope-dependent term. Ordinary ground hides it, because its relief comes from the baked terrainShade computed from the TRUE normal and the direct lights are a small share of an environment-dominated scene. Metal ore does not hide it: its metalness/roughness reflection is lit entirely through the normal, so a north-facing ore slope reflected and shaded as if it faced the southern sun. 'ore' restores the authored outward normal only where the ore region covers, fixing that and leaving every other pixel byte-identical. 'terrain' applies it to the whole surface - more physically correct, and a large change: the ground starts taking sky irradiance instead of floor irradiance and brightens substantially, so the biome palette and RenderLighting3D scales would want retuning. 'off' keeps the historical flipped normal for bisecting."
+    "scope": "terrain",
+    "detail": "The authoritative terrain mesh is drawn by its BACK faces (set the material to FrontSide and the ground vanishes, leaving only the world-box side walls). three's DOUBLE_SIDED therefore flips the authored upward vertex normal and would light the ground through a downward one, inverting every slope-dependent term. That historical flip is also why directional unit shadows appeared over ore but disappeared over biome grass: the former received the ore-only correction and live sun while the latter received essentially no direct sun for the shadow map to remove. 'terrain' restores the authored outward normal across every terrain fragment so grass, rock, and ore share the same live sun and shadow contract. 'ore' and 'off' remain diagnostic bisects only."
   },
   "waypointGroundLift": 18,
   "worldBox": {

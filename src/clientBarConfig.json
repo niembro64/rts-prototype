@@ -58,24 +58,28 @@
     }
   ],
   "environmentLight": {
-    "demoDefault": 15,
-    "realDefault": 15
+    "demoDefault": 150,
+    "realDefault": 150
   },
   "ambientLight": {
-    "demoDefault": 0,
-    "realDefault": 0
-  },
-  "directionalLight": {
     "demoDefault": 1500,
     "realDefault": 1500
   },
+  "directionalLight": {
+    "demoDefault": 15000,
+    "realDefault": 15000
+  },
   "skyLight": {
-    "demoDefault": 15,
-    "realDefault": 15
+    "demoDefault": 1500,
+    "realDefault": 1500
   },
   "exposure": {
     "demoDefault": 15,
     "realDefault": 15
+  },
+  "terrainBakedLighting": {
+    "demoDefault": false,
+    "realDefault": false
   },
   "masterVolume": {
     "demoDefault": 100,
@@ -514,6 +518,7 @@
     "skyLight": "sky-light",
     "exposure": "exposure",
     "directionalLight": "directional-light",
+    "terrainBakedLighting": "terrain-baked-lighting",
     "audioSmoothing": "audio-smoothing",
     "burnMarks": "burn-marks-v2",
     "windParticles": "wind-particles",

@@ -10,6 +10,16 @@ import {
 } from './GroundSilhouetteShadow3D';
 import { GroundSilhouetteSunShadow3D } from './SunLighting';
 import { worldShadeFragment } from './WorldShade3D';
+import {
+  getTerrainBakedLightingUniform,
+  setTerrainBakedLightingEnabled,
+  TERRAIN_BAKED_LIGHTING_UNIFORM,
+  terrainBakedLightingShadeExpression,
+} from './RenderLighting3D';
+import {
+  TERRAIN_OUTWARD_NORMAL_LEVELS,
+  terrainOutwardNormalScopeLevel,
+} from './TerrainOutwardNormal3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[ground silhouette shadow contract] ${message}`);
@@ -27,12 +37,16 @@ export function runGroundSilhouetteShadow3DContractTest(): void {
   for (const mode of ['demo', 'real'] as const) {
     const config = getClientConfig(mode);
     assertContract(
-      config.environmentLight.default === 15 &&
-        config.ambientLight.default === 0 &&
-        config.directionalLight.default === 1500 &&
-        config.skyLight.default === 15 &&
+      config.environmentLight.default === 150 &&
+        config.ambientLight.default === 1500 &&
+        config.directionalLight.default === 15000 &&
+        config.skyLight.default === 1500 &&
         config.exposure.default === 15,
-      `${mode} lighting must default to ENV 15, AMB 0, SUN 1500, SKY 15, EXPO 15`,
+      `${mode} lighting must default to ENV 150, AMB 1500, SUN 15000, SKY 1500, EXPO 15`,
+    );
+    assertContract(
+      !config.terrainBakedLighting.default,
+      `${mode} must default the optional baked terrain lighting off`,
     );
     for (const setting of [
       config.environmentLight,
@@ -63,6 +77,26 @@ export function runGroundSilhouetteShadow3DContractTest(): void {
       `${mode} must enable physical ground silhouettes by default`,
     );
   }
+
+  const bakedUniform = getTerrainBakedLightingUniform();
+  setTerrainBakedLightingEnabled(false);
+  assertContract(
+    bakedUniform.value === 0 &&
+      terrainBakedLightingShadeExpression('vTerrainShade') ===
+        `mix(1.0, vTerrainShade, ${TERRAIN_BAKED_LIGHTING_UNIFORM})`,
+    'baked terrain lighting off must select neutral shade through one live uniform',
+  );
+  setTerrainBakedLightingEnabled(true);
+  assertContract(
+    Number(bakedUniform.value) === 1,
+    'baked terrain lighting must enable live without replacing the shared uniform',
+  );
+  setTerrainBakedLightingEnabled(false);
+
+  assertContract(
+    terrainOutwardNormalScopeLevel() === TERRAIN_OUTWARD_NORMAL_LEVELS.terrain,
+    'all terrain fragments must restore their authored outward normal so live sun and silhouette shadows reach biome grass as well as ore',
+  );
 
   const root = new THREE.Group();
   const solid = new THREE.Mesh(

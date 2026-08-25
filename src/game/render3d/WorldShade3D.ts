@@ -83,10 +83,11 @@ float worldShadeField(float composited) {
 }
 `;
 
-/** Applies full-sight, radar, unseen, and optional entity-shadow coverage from
- * one map sample. Coverage is a probabilistic union, so overlapping regions
- * reinforce each other — never darker than either alone, saturating at full
- * coverage. */
+/** Applies full-sight, radar, and unseen coverage from one map sample. The
+ * optional entity-shadow branch is retained only for the disabled legacy
+ * coverage-ellipse path; live silhouettes use the directional depth map.
+ * Coverage is a probabilistic union, so overlapping regions reinforce each
+ * other — never darker than either alone, saturating at full coverage. */
 export function worldShadeFragment(
   worldPosition: string,
   receiveEntityShadows: boolean,
@@ -244,10 +245,11 @@ type RegionBuffers = {
 };
 
 /** One viewport-local GPU coverage draw. The first MRT attachment stores
- * above-water full/contact and underwater full/contact coverage in RGBA; the
- * second stores entity shadows. Every region is rasterized in one instanced
- * union-blended draw (screen blend — overlapping coverage reinforces and
- * saturates at 1). */
+ * above-water full/contact and underwater full/contact coverage in RGBA. The
+ * second remains allocated for the disabled legacy ellipse-shadow path; live
+ * silhouette shadows do not use this target. Every active region is rasterized
+ * in one instanced union-blended draw (screen blend — overlapping coverage
+ * reinforces and saturates at 1). */
 export class WorldShade3D {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly mapWidth: number;
@@ -471,8 +473,8 @@ void main() {
       return;
     }
 
-    // P0-07: sensor/shadow truth changes at fixed-tick cadence, not per
-    // display frame. The coverage texture is rendered over PADDED,
+    // P0-07: sensor truth changes at fixed-tick cadence, not per display
+    // frame. The coverage texture is rendered over PADDED,
     // QUANTIZED bounds, so small camera pans keep sampling the retained
     // texture; a redraw happens when the padded bucket shifts, the world
     // ticks (or lifecycle changes), settings flip, or the target resizes.

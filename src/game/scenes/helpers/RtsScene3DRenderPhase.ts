@@ -632,6 +632,8 @@ export class RtsScene3DRenderPhase {
     writeFogShadePresentationSettings(this.terrainFogShadeScratch);
     this.terrainFogShadeScratch.enabled = fogOfWarEnabled && getFogShade();
     this.terrainUpdateOptions.localPlayerId = this.getLocalPlayerId();
+    // Compatibility input for WorldShade3D's disabled ellipse-shadow channel;
+    // active unit silhouettes are rendered by the directional depth pass.
     this.terrainUpdateOptions.entityShadows = entityLists.entityShadows;
     this.terrainUpdateOptions.visibleBounds = this.renderScope.getBounds();
     this.terrainUpdateOptions.updateWorldShadeCoverage = updateEffectsThisFrame;

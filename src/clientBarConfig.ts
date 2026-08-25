@@ -74,6 +74,7 @@ type ClientDefaults = {
   readonly skyLight: LightIntensityPercent;
   readonly exposure: LightIntensityPercent;
   readonly directionalLight: LightIntensityPercent;
+  readonly terrainBakedLighting: boolean;
   readonly audioSmoothing: boolean;
   readonly burnMarks: boolean;
   readonly windParticles: boolean;
@@ -160,6 +161,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     exposure: pickDefault(clientBarConfig.exposure, mode) as LightIntensityPercent,
     directionalLight:
       pickDefault(clientBarConfig.directionalLight, mode) as LightIntensityPercent,
+    terrainBakedLighting: pickDefault(clientBarConfig.terrainBakedLighting, mode),
     audioSmoothing: pickDefault(clientBarConfig.audioSmoothing, mode),
     burnMarks: pickDefault(clientBarConfig.burnMarks, mode),
     windParticles: pickDefault(clientBarConfig.windParticles, mode),
@@ -266,6 +268,7 @@ export const CLIENT_CONFIG = {
     default: DEMO_CLIENT_DEFAULTS.directionalLight,
     options: LIGHT_INTENSITY_OPTIONS,
   },
+  terrainBakedLighting: { default: DEMO_CLIENT_DEFAULTS.terrainBakedLighting },
   audioSmoothing: { default: DEMO_CLIENT_DEFAULTS.audioSmoothing },
   burnMarks: { default: DEMO_CLIENT_DEFAULTS.burnMarks },
   windParticles: { default: DEMO_CLIENT_DEFAULTS.windParticles },
@@ -363,6 +366,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
       ...CLIENT_CONFIG.directionalLight,
       default: defaults.directionalLight,
     },
+    terrainBakedLighting: { default: defaults.terrainBakedLighting },
     audioSmoothing: { default: defaults.audioSmoothing },
     burnMarks: { default: defaults.burnMarks },
     windParticles: { default: defaults.windParticles },
@@ -433,6 +437,7 @@ type ClientStorageKeyName =
   | 'skyLight'
   | 'exposure'
   | 'directionalLight'
+  | 'terrainBakedLighting'
   | 'audioSmoothing'
   | 'burnMarks'
   | 'windParticles'
@@ -486,6 +491,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'skyLight',
   'exposure',
   'directionalLight',
+  'terrainBakedLighting',
   'audioSmoothing',
   'burnMarks',
   'windParticles',
@@ -588,6 +594,7 @@ let currentAmbientLight: LightIntensityPercent = _cd.ambientLight.default;
 let currentSkyLight: LightIntensityPercent = _cd.skyLight.default;
 let currentExposure: LightIntensityPercent = _cd.exposure.default;
 let currentDirectionalLight: LightIntensityPercent = _cd.directionalLight.default;
+let currentTerrainBakedLighting: boolean = _cd.terrainBakedLighting.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentBurnMarks: boolean = _cd.burnMarks.default;
 let currentWindParticles: boolean = _cd.windParticles.default;
@@ -717,6 +724,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentSkyLight = cd.skyLight.default;
   currentExposure = cd.exposure.default;
   currentDirectionalLight = cd.directionalLight.default;
+  currentTerrainBakedLighting = cd.terrainBakedLighting.default;
   currentAudioSmoothing = cd.audioSmoothing.default;
   currentBurnMarks = cd.burnMarks.default;
   currentWindParticles = cd.windParticles.default;
@@ -826,6 +834,10 @@ function loadFromStorage(mode: ClientMode): void {
     keys.exposure,
     (value) => { currentExposure = value; },
   );
+  const storedTerrainBakedLighting = readPersisted(keys.terrainBakedLighting);
+  if (storedTerrainBakedLighting !== null) {
+    currentTerrainBakedLighting = storedTerrainBakedLighting === 'true';
+  }
   const storedBurnMarks = readPersisted(keys.burnMarks);
   if (storedBurnMarks !== null) {
     currentBurnMarks = storedBurnMarks === 'true';
@@ -1324,6 +1336,18 @@ export function setDirectionalLight(percent: LightIntensityPercent): void {
   persist(activeStorageKeys().directionalLight, String(currentDirectionalLight));
 }
 
+/** Optional build-time terrain shade. The per-vertex field is already part of
+ *  the terrain geometry, so selecting whether it participates is a live,
+ *  client-only shader uniform and does not rebuild the scene. */
+export function getTerrainBakedLighting(): boolean {
+  return currentTerrainBakedLighting;
+}
+
+export function setTerrainBakedLighting(enabled: boolean): void {
+  currentTerrainBakedLighting = enabled;
+  persist(activeStorageKeys().terrainBakedLighting, String(enabled));
+}
+
 export function getAudioSmoothing(): boolean {
   return currentAudioSmoothing;
 }
@@ -1420,8 +1444,8 @@ export function setSmokeSoftEdges(enabled: boolean): void {
   persist(activeStorageKeys().smokeSoftEdges, String(enabled));
 }
 
-/** Entity-shadow toggle: presentation-only grounding shadows written into
- *  the shared world coverage field. Turning this off also skips packet work. */
+/** Directional silhouette-shadow toggle. Presentation only; disabling it
+ *  turns off the sun's shadow pass without changing any gameplay visibility. */
 export function getEntityShadows(): boolean {
   return currentEntityShadows;
 }

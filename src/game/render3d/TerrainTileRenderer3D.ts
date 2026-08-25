@@ -122,6 +122,11 @@ import {
   terrainPrecomputedShadow,
   terrainSunShade,
 } from './SunLighting';
+import {
+  getTerrainBakedLightingUniform,
+  TERRAIN_BAKED_LIGHTING_UNIFORM,
+  terrainBakedLightingShadeExpression,
+} from './RenderLighting3D';
 import { WATER_SURFACE_LINEAR_COLOR, LAVA_SURFACE_LINEAR_COLOR } from './WaterColor3D';
 import { isLavaLiquidSurface, isMetalTerrainSurface } from '../sim/worldSurfaceState';
 import {
@@ -832,9 +837,9 @@ export class TerrainTileRenderer3D {
       this.oreEdgeUniforms.enabled.value > 0 || this.wallWearUniforms.enabled.value > 0,
     );
   // 0 = keep three's DOUBLE_SIDED flip, 1 = restore the authored outward
-  // normal inside ore only, 2 = restore it across the whole surface. A runtime
-  // knob because this is a shading term whose fault only shows on sloped
-  // ground, and the machine that shows it should be able to bisect it.
+  // normal inside ore only, 2 = restore it across the whole surface. Production
+  // uses 2 so live SUN and its shadow map reach every terrain material; the
+  // narrower values remain config-level diagnostic bisects.
   private terrainOutwardNormalUniform = { value: terrainOutwardNormalScopeLevel() };
   private readonly worldShade: WorldShade3D;
 
@@ -1005,6 +1010,8 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uMetalSurfaceRoughness = this.metalSurfaceRoughnessUniform;
       shader.uniforms.uTerrainHorizonWaterBlendEnabled =
         this.terrainHorizonWaterBlendEnabledUniform;
+      shader.uniforms[TERRAIN_BAKED_LIGHTING_UNIFORM] =
+        getTerrainBakedLightingUniform();
       shader.uniforms[TERRAIN_OUTWARD_NORMAL_UNIFORM] = this.terrainOutwardNormalUniform;
       assignMetalDepositSurfaceFieldUniforms(shader, this.metalRegionField.uniforms);
       assignOreEdgeBlendUniforms(shader, this.oreEdgeUniforms);
@@ -1066,6 +1073,7 @@ export class TerrainTileRenderer3D {
             'uniform vec3 uTerrainHorizonColor;',
             'uniform vec3 uTerrainHorizonWaterColor;',
             'uniform float uTerrainHorizonShade;',
+            `uniform float ${TERRAIN_BAKED_LIGHTING_UNIFORM};`,
             'uniform float uElevationMapEnabled;',
             buildGridOverlayUniformDeclarations(),
             pathfindingHierarchyOverlayUniformDeclarations(),
@@ -1281,8 +1289,8 @@ export class TerrainTileRenderer3D {
             // Where there is ore the biome ramp and the ground/rock detail
             // overlays above are replaced by srgbToLinear(ore base) * the
             // rock detail map, sampled triplanar so cliff walls get real
-            // rock instead of a vertical smear. The baked shade below still
-            // supplies the relief.
+            // rock instead of a vertical smear. The optional baked shade
+            // below is shared with the ground beneath this deposit.
             'vec3 metalDetail = vec3(1.0);',
             'if (metalCoverage > 0.0) {',
             '  metalDetail = weatherSampleSubstance(',
@@ -1320,13 +1328,14 @@ export class TerrainTileRenderer3D {
             `metalPbrCoverage = ${terrainWallWearMatteCoverage('metalPbrCoverage')};`,
             'float horizonBlend = uTerrainHorizonBlendEnabled * smoothstep(uTerrainHorizonFadeStart, uTerrainHorizonFadeEnd, vTerrainHorizonFade);',
             'terrainRgb = mix(terrainRgb, uTerrainHorizonColor, horizonBlend);',
-            'float terrainFinalShade = mix(vTerrainShade, uTerrainHorizonShade, horizonBlend);',
-            '// A metal WORLD takes no baked sun/AO shade — it is lit entirely',
-            '// through the standard material and its own normals. Keyed to the',
-            '// world flag and deliberately NOT to coverage: an ore patch on an',
-            '// ordinary map keeps the baked shade of the ground it sits in, so',
-            '// it reads as part of that ground rather than as a lit-differently',
-            '// decal pasted on top of it.',
+            `float terrainBakedShade = ${terrainBakedLightingShadeExpression('vTerrainShade')};`,
+            'float terrainFinalShade = mix(terrainBakedShade, uTerrainHorizonShade, horizonBlend);',
+            '// A metal WORLD never takes the optional baked sun/AO shade — it',
+            '// is lit entirely through the standard material and its normals.',
+            '// Keyed to the world flag and deliberately NOT to coverage: an ore',
+            '// patch on an ordinary map follows the same CLIENT bake selection',
+            '// as the ground beneath it, so it never reads as a separately lit',
+            '// decal pasted on top of the biome.',
             'if (uMetalSurfaceEnabled > 0.0) terrainFinalShade = 1.0;',
             // The 0.02 floor keeps biome ground from crushing to black. Ore has
             // a legitimately near-black albedo — its look comes from the
@@ -1389,13 +1398,11 @@ export class TerrainTileRenderer3D {
         // all point up, so three's DOUBLE_SIDED `normal *= faceDirection`
         // hands the lighting an inverted, downward normal.
         //
-        // That was survivable while nothing lit through it: relief comes from
-        // the baked `terrainShade`, which is computed at build time from the
-        // TRUE normal, and the direct lights are only a few percent of a scene
-        // the environment dominates. An inverted normal still inverts what it
-        // touches, though — and ore's metalness/roughness reflection is lit
-        // entirely through it, so a north-facing ore slope reflected and shaded
-        // as if it faced the sun while the south face went dark.
+        // That was hidden while ordinary ground relied on the baked
+        // `terrainShade`, computed from the TRUE normal, but it made live SUN
+        // and its shadow map reach ore while missing biome grass. Every terrain
+        // fragment now restores the authored normal, so grass, rock, and ore
+        // share one direct-light and shadow contract.
         //
         // faceDirection squared is 1, so multiplying by it again restores the
         // authored outward normal. Side-wall fragments are front-facing and
@@ -1449,7 +1456,7 @@ export class TerrainTileRenderer3D {
         );
     };
     this.terrainMaterial.customProgramCacheKey = () =>
-      'authoritative-terrain-weathering-wallwear-v52';
+      'authoritative-terrain-weathering-wallwear-v53';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {

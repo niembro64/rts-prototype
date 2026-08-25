@@ -701,14 +701,14 @@ function resetEveryCustomHotkey(): void {
             :key="opt"
             :active="model.terrainLightSmoothing === opt"
             :title="opt === 0
-              ? 'Disable extra baked terrain light smoothing'
-              : `Baked terrain light smoothing passes: ${opt}`"
+              ? 'Disable extra smoothing when regenerating the precomputed terrain-light field. The field is displayed only when CLIENT BAKED LIGHT is on.'
+              : `Precomputed terrain-light smoothing passes on rebuild: ${opt}. The field is displayed only when CLIENT BAKED LIGHT is on.`"
             @click="model.applyTerrainLightSmoothing(opt)"
           >{{ opt }}</BarButton>
         </BarButtonGroup>
         <BarButton
           :active="model.terrainLightSmoothAcrossWallBoundary"
-          title="Allow baked terrain light smoothing to cross D-PLATEAU wall/non-wall triangle boundaries. Off keeps the two triangle classes separate."
+          title="Allow precomputed terrain-light smoothing to cross D-PLATEAU wall/non-wall triangle boundaries when rebuilding. Off keeps the two triangle classes separate; CLIENT BAKED LIGHT controls whether the resulting field is displayed."
           @click="model.toggleTerrainLightSmoothAcrossWallBoundary"
         >CROSS WALL</BarButton>
       </BarControlGroup>
@@ -898,13 +898,22 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
+        <BarLabel>BAKED:</BarLabel>
+        <BarButton
+          :active="model.terrainBakedLighting"
+          title="Apply the optional terrain-only sun/self-occlusion shade computed when terrain geometry was built. The data is already resident, so this toggles live without rebuilding the scene."
+          @click="model.toggleTerrainBakedLighting"
+        >LIGHT</BarButton>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
         <BarLabel>ENV:</BarLabel>
         <BarButtonGroup>
           <BarButton
             v-for="opt in CLIENT_CONFIG.environmentLight.options"
             :key="opt.value"
             :active="model.environmentLight === opt.value"
-            :title="`Image-based light from the RoomEnvironment cube, at ${opt.value}% of default. THE DOMINANT TERM: with this at 0 and the other lights off, lit surfaces including terrain go black.`"
+            :title="`RoomEnvironment image-based fill at ${opt.value}% of its authored intensity. Reaches Three lit materials, including terrain and vegetation, and is not removed by directional shadows.`"
             @click="model.changeEnvironmentLight(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
@@ -917,7 +926,7 @@ function resetEveryCustomHotkey(): void {
             v-for="opt in CLIENT_CONFIG.ambientLight.options"
             :key="opt.value"
             :active="model.ambientLight === opt.value"
-            :title="`AmbientLight at ${opt.value}% of the authored intensity. Flat fill — raising it flattens shading, lowering it deepens contrast. A trim on top of ENV, not a main light.`"
+            :title="`AmbientLight at ${opt.value}% of the authored intensity. Flat, unshadowed fill — raising it reduces directional contrast.`"
             @click="model.changeAmbientLight(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
@@ -930,7 +939,7 @@ function resetEveryCustomHotkey(): void {
             v-for="opt in CLIENT_CONFIG.directionalLight.options"
             :key="opt.value"
             :active="model.directionalLight === opt.value"
-            :title="`DirectionalLight at ${opt.value}% of the authored intensity. Only reaches LIT materials — unit bodies, turret heads, buildings. Terrain bakes the sun in at build time and legs/effects are unlit, so zoom in on a unit to judge this one.`"
+            :title="`Live DirectionalLight at ${opt.value}% of the authored intensity. Reaches correctly oriented lit materials, including terrain, units, and buildings; this is the only lighting term removed by the directional silhouette shadow map. Unlit effects ignore it.`"
             @click="model.changeDirectionalLight(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
@@ -956,7 +965,7 @@ function resetEveryCustomHotkey(): void {
             v-for="opt in CLIENT_CONFIG.exposure.options"
             :key="opt.value"
             :active="model.exposure === opt.value"
-            :title="`Tone-mapping exposure at ${opt.value}%. Scales everything in the 3D view, including the custom shaders that cannot tone-map themselves and are handed the scale by hand — so at 0 the screen is black with no exceptions. Inert on mobile-class runtime profiles, which disable tone mapping entirely.`"
+            :title="`Tone-mapping exposure at ${opt.value}%. Built-in materials respond when the runtime enables tone mapping; explicitly wired raw shaders use the same value directly. Mobile-class profiles disable Three's tone-mapping stage.`"
             @click="model.changeExposure(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>

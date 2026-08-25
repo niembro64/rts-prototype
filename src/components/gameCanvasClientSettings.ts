@@ -41,6 +41,7 @@ import {
   getSkyLight,
   getExposure,
   getDirectionalLight,
+  getTerrainBakedLighting,
   getSurfaceTexture,
   getMasterVolume,
   getMetalMap,
@@ -93,6 +94,7 @@ import {
   setSkyLight,
   setExposure,
   setDirectionalLight,
+  setTerrainBakedLighting,
   setSurfaceTexture,
   setMasterVolume,
   setMetalMap,
@@ -153,6 +155,7 @@ import {
   setDirectionalIntensityScale,
   setEnvironmentIntensityScale,
   setExposureScale,
+  setTerrainBakedLightingEnabled,
 } from '@/game/render3d/RenderLighting3D';
 
 type UseGameCanvasClientSettingsOptions = {
@@ -173,6 +176,7 @@ export function useGameCanvasClientSettings({
   const directionalLight = ref<LightIntensityPercent>(getDirectionalLight());
   const skyLight = ref<LightIntensityPercent>(getSkyLight());
   const exposure = ref<LightIntensityPercent>(getExposure());
+  const terrainBakedLighting = ref<boolean>(getTerrainBakedLighting());
   const audioSmoothing = ref<boolean>(getAudioSmoothing());
   const burnMarks = ref<boolean>(getBurnMarks());
   const windParticles = ref<boolean>(getWindParticles());
@@ -259,6 +263,7 @@ export function useGameCanvasClientSettings({
     setDirectionalIntensityScale(directionalLight.value / 100);
     setBackgroundIntensityScale(skyLight.value / 100);
     setExposureScale(exposure.value / 100);
+    setTerrainBakedLightingEnabled(terrainBakedLighting.value);
   }
 
   function applyAudioRuntimeState(): void {
@@ -282,6 +287,7 @@ export function useGameCanvasClientSettings({
     directionalLight.value = getDirectionalLight();
     skyLight.value = getSkyLight();
     exposure.value = getExposure();
+    terrainBakedLighting.value = getTerrainBakedLighting();
     applyLightRuntimeState();
     audioSmoothing.value = getAudioSmoothing();
     burnMarks.value = getBurnMarks();
@@ -388,6 +394,13 @@ export function useGameCanvasClientSettings({
     setExposure(percent);
     exposure.value = percent;
     setExposureScale(percent / 100);
+  }
+
+  function toggleTerrainBakedLighting(): void {
+    const enabled = !terrainBakedLighting.value;
+    setTerrainBakedLighting(enabled);
+    terrainBakedLighting.value = enabled;
+    setTerrainBakedLightingEnabled(enabled);
   }
 
   function toggleRange(type: RangeType): void {
@@ -725,6 +738,9 @@ export function useGameCanvasClientSettings({
     changeDirectionalLight(cd.directionalLight.default);
     changeSkyLight(cd.skyLight.default);
     changeExposure(cd.exposure.default);
+    setTerrainBakedLighting(cd.terrainBakedLighting.default);
+    terrainBakedLighting.value = cd.terrainBakedLighting.default;
+    setTerrainBakedLightingEnabled(cd.terrainBakedLighting.default);
     setAudioSmoothing(cd.audioSmoothing.default);
     audioSmoothing.value = cd.audioSmoothing.default;
     setBurnMarks(cd.burnMarks.default);
@@ -837,6 +853,7 @@ export function useGameCanvasClientSettings({
     directionalLight,
     skyLight,
     exposure,
+    terrainBakedLighting,
     audioSmoothing,
     burnMarks,
     windParticles,
@@ -899,6 +916,7 @@ export function useGameCanvasClientSettings({
     changeDirectionalLight,
     changeSkyLight,
     changeExposure,
+    toggleTerrainBakedLighting,
     toggleRange,
     cycleAttackRangeDisplay,
     toggleVolume,

@@ -1253,6 +1253,7 @@ const {
   directionalLight,
   skyLight,
   exposure,
+  terrainBakedLighting,
   audioSmoothing,
   burnMarks,
   windParticles,
@@ -1313,6 +1314,7 @@ const {
   changeDirectionalLight,
   changeSkyLight,
   changeExposure,
+  toggleTerrainBakedLighting,
   toggleRange,
   cycleAttackRangeDisplay,
   toggleVolume,
@@ -2419,6 +2421,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   directionalLight: directionalLight.value,
   skyLight: skyLight.value,
   exposure: exposure.value,
+  terrainBakedLighting: terrainBakedLighting.value,
   allSoundsActive: allSoundsActive.value,
   soundToggles,
   sfxCategories: SFX_CATEGORIES,
@@ -2487,6 +2490,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   changeDirectionalLight,
   changeSkyLight,
   changeExposure,
+  toggleTerrainBakedLighting,
   setGamePaused,
   toggleAllSounds,
   toggleSoundCategory,
@@ -2654,6 +2658,7 @@ watchEffect(() => {
   m.directionalLight = directionalLight.value;
   m.skyLight = skyLight.value;
   m.exposure = exposure.value;
+  m.terrainBakedLighting = terrainBakedLighting.value;
   m.allSoundsActive = allSoundsActive.value;
   m.allRangesActive = allRangesActive.value;
   m.allVolumesActive = allVolumesActive.value;

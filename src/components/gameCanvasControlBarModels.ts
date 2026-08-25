@@ -265,6 +265,7 @@ export type GameCanvasClientControlBarModel = {
   readonly directionalLight: LightIntensityPercent;
   readonly skyLight: LightIntensityPercent;
   readonly exposure: LightIntensityPercent;
+  readonly terrainBakedLighting: boolean;
   readonly allSoundsActive: boolean;
   readonly soundToggles: Readonly<Record<SoundCategory, boolean>>;
   readonly sfxCategories: readonly SoundCategory[];
@@ -333,6 +334,7 @@ export type GameCanvasClientControlBarModel = {
   changeDirectionalLight(percent: LightIntensityPercent): void;
   changeSkyLight(percent: LightIntensityPercent): void;
   changeExposure(percent: LightIntensityPercent): void;
+  toggleTerrainBakedLighting(): void;
   setGamePaused(paused: boolean): void;
   toggleAllSounds(): void;
   toggleSoundCategory(category: SoundCategory): void;

@@ -151,6 +151,10 @@ export type ClientBarConfig = {
   readonly skyLight: LabeledOptionsConfig<LightIntensityPercent>;
   readonly exposure: LabeledOptionsConfig<LightIntensityPercent>;
   readonly directionalLight: LabeledOptionsConfig<LightIntensityPercent>;
+  /** Optional terrain-only shade baked from terrain normals and terrain
+   *  self-occlusion when the terrain geometry is built. The generated data
+   *  remains resident, so this presentation toggle is live. */
+  readonly terrainBakedLighting: BooleanSetting;
   readonly audioSmoothing: BooleanSetting;
   /** Beam, laser, and dgun scorch trails drawn by BurnMark3D.
    *  Default off — scorches accumulate fast in long fights and the

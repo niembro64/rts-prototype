@@ -255,13 +255,11 @@ export class ThreeApp {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     parent.appendChild(this.renderer.domElement);
 
-    // Prebuilt environment map for any PBR (MeshStandardMaterial) meshes in
-    // the scene — shield panels use a chrome variant and metal
-    // extractor blades use shiny-gray metal; `scene.environment` is
-    // the cube they reflect. RoomEnvironment ships
-    // with three.js and gives a varied lights-and-walls IBL cube; PMREM
-    // preprocesses it for the renderer. One-shot cost at scene init; zero
-    // per-frame overhead.
+    // Prebuilt RoomEnvironment image-based light for Three's lit Lambert,
+    // Phong, and Standard materials. Diffuse terrain/vegetation take its broad
+    // irradiance while PBR metal and shield surfaces also take its reflection;
+    // unlike the live directional sun, neither path is removed by the shadow
+    // map. PMREM preprocesses the cube once at scene init.
     // Mobile WebKit has limited GPU-process headroom during startup, so
     // avoid the PMREM render-target burst on mobile-like browsers.
     if (this._runtimeProfile.environmentLighting) {

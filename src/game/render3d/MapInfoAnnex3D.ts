@@ -559,17 +559,14 @@ type MapInfoAnnexEmitOptions = {
  * silhouette for free — which is why the walls take their outward normal from
  * each segment's direction instead of carrying one authored per side.
  *
- * THE TOP IS WOUND THE WAY THE AUTHORITATIVE TERRAIN MESH IS WOUND, which is
- * clockwise seen from above — its triangles present their BACK face to a
- * camera over the map. That is not a bug to route around: the terrain
- * material is DoubleSide, and three.js negates the shading normal on a back
- * face, so every square metre of this map is lit through a downward normal
- * and its daylight comes from the baked `terrainShade` instead. An annex
- * wound the other way is lit by the sun and the environment on top of that
- * same baked shade and comes out several times brighter than the seabed it
- * is welded to — which is exactly the "that is not the map" tell the annex
- * exists to remove. Matching the map's winding is therefore load-bearing,
- * and is asserted by MapInfoAnnex3DContractTest.
+ * THE TOP IS WOUND THE WAY THE AUTHORITATIVE TERRAIN MESH IS WOUND: clockwise
+ * seen from above, so its triangles present their BACK face to a camera over
+ * the map. The terrain shader now restores the authored outward normal for
+ * every fragment, so live sun and environment lighting no longer depend on
+ * that front/back status. Matching the core mesh is still intentional: it
+ * preserves one geometry convention across the welded surface and keeps
+ * face-sensitive diagnostics and any future side policy coherent. The shared
+ * winding is asserted by MapInfoAnnex3DContractTest.
  */
 export function emitMapInfoAnnexGeometry(
   footprint: MapInfoAnnexFootprint,

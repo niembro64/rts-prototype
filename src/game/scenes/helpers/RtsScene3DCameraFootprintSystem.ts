@@ -104,7 +104,9 @@ export class RtsScene3DCameraFootprintSystem {
     // can produce visible fragments outside these bounds. Fragments outside
     // the bounds receive NO fog-of-war shade and no entity shadows (the
     // world-shade shader gates on the coverage window), so the eye's ground
-    // projection must always be part of the scope AABB.
+    // projection must always be part of the scope AABB. "Entity shadows" here
+    // refers only to the disabled legacy coverage-ellipse attachment; active
+    // directional silhouette shadows have their own camera bounds.
     const eye = this.raycaster.ray.origin;
     if (eye.x < bounds.minX) bounds.minX = eye.x;
     if (eye.x > bounds.maxX) bounds.maxX = eye.x;

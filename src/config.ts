@@ -78,8 +78,8 @@ export const LAND_TILE_GROUND_LIFT = worldRenderConfigJson.landTileGroundLift;
 
 /** Where to light the terrain through its authored outward (upward) vertex
  *  normal instead of the one three flips for a back-facing DOUBLE_SIDED
- *  fragment. See worldRenderConfig.json for why the terrain is back-facing at
- *  all, and why metal ore was the only thing that visibly cared.
+ *  fragment. Production uses the whole-terrain scope so biome ground and ore
+ *  receive the same live directional light and shadow map.
  *
  *  Encoded for the shader as a scope level, not a boolean, because 'ore' and
  *  'terrain' are genuinely different blast radii and the difference is worth
@@ -406,12 +406,13 @@ export const SUN_RENDER_CONFIG = {
   },
 } as const;
 
-// Static terrain shading is baked into terrain vertices when the mesh
-// is rebuilt. It is not a real-time shadow map; it is a cheap, stable
-// directional shade plus short terrain self-shadow probes along the
-// sun ray. JSON stores `sampleDistance` as a LAND_CELL_SIZE
-// multiplier so the absolute value is recomputed if the map's cell
-// size ever changes.
+// Static terrain shading is generated into terrain vertices when the mesh is
+// rebuilt. It is not a real-time shadow map; it is a cheap, stable directional
+// shade plus short terrain self-shadow probes along the sun ray. The CLIENT
+// BAKED LIGHT toggle selects the already-resident attribute live; changing the
+// generation settings here still requires a rebuild. JSON stores
+// `sampleDistance` as a LAND_CELL_SIZE multiplier so the absolute value is
+// recomputed if the map's cell size ever changes.
 export const TERRAIN_SHADOW_RENDER_CONFIG = {
   ...worldRenderConfigJson.terrainShadow,
   precomputed: {
@@ -1009,12 +1010,10 @@ export const TREE_TRUNK_DETAIL_CONTRAST = worldRenderConfigJson.tree.trunk.detai
 // Stable render layering for ground-adjacent systems.
 export const GROUND_RENDER_ORDER = worldRenderConfigJson.groundRenderOrder;
 
-// Entity shadows share WorldShade3D's GPU coverage field with full-sight and
-// radar regions. Unit footprints use two times radiusHitbox, then retain the
-// shared sun-axis stretch. All three coverage channels use the same historical
-// 192-world-unit half-width and smoothstep curve. Altitude translates the
-// footprint opposite the shared directional light without changing size,
-// softness, or strength.
+// Compatibility settings for the retired coverage-ellipse entity-shadow path.
+// The active silhouette system below uses Three's directional depth map; this
+// object remains readable only by dormant packet/coverage code and must stay
+// disabled in worldRenderConfig.
 export const ENTITY_SHADOW_RENDER_CONFIG = worldRenderConfigJson.entityShadow;
 
 /** Directional depth-map shadows cast from the rendered silhouettes of solid

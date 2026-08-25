@@ -1,38 +1,23 @@
-// RenderLighting3D — every runtime lighting knob, in one place.
+// RenderLighting3D — every live CLIENT lighting knob, in one place.
 //
-// The scene's brightness is the sum of five independent terms, and they are NOT
-// equal partners. Measured on a wide demo frame, turning the ambient and
-// directional lights fully off moves mean frame luma from 59.4 to 57.1 — a 4%
-// change — because the RoomEnvironment IBL supplies almost everything. Setting
-// `scene.environment = null` with those two lights already at zero drops the
-// terrain to black, which is what identified the IBL as the dominant term.
+// These controls are separate render terms, not interchangeable brightness
+// multipliers:
 //
-// So a bar group for "ambient light" on its own is misleading: it is a trim on
-// top of the real light source. All five are exposed together for that reason.
-//
-//   environment  IBL irradiance from the RoomEnvironment cube. The dominant
-//                term for lit surfaces, including terrain.
-//   ambient      Flat fill from the AmbientLight. Raising it flattens shading;
-//                lowering it deepens contrast.
-//   directional  The sun. Only reaches LIT materials — unit bodies, turret
-//                heads, buildings. Terrain bakes the sun into per-vertex
-//                shading at build time and legs/effects are unlit, so this
-//                moves ~1.5% of a wide frame while being the main shaper of
-//                the surfaces the texturing work targets.
-//   background   Sky brightness, covering BOTH paths: three's own
-//                scene.background AND the parallax preset-panorama layers, which
-//                are separate meshes with their own shader. They are alternative
-//                implementations of the same visual — which one you see depends
-//                on the preset — so they share one control rather than two that
-//                are never both meaningful at once. Pixels only, no light.
-//   exposure     Tone-mapping exposure. Scales the final image, so it is the
-//                one knob that can reach true black on its own.
-//                CAVEAT: `toneMappingExposure` only does anything when tone
-//                mapping is enabled, and the runtime profile turns it off on
-//                mobile-class browsers (browserRuntime's
-//                `highQualityToneMapping`). On those profiles this knob is
-//                inert — it is not broken, there is simply no tone-mapping
-//                stage for it to scale.
+//   environment  RoomEnvironment image-based fill for Three's lit materials.
+//                It is not occluded by the directional shadow map.
+//   ambient      Flat AmbientLight fill. It is also not shadowed.
+//   directional  The live sun. It reaches every correctly oriented lit
+//                material, including the terrain, and is the ONLY term the
+//                directional shadow map removes.
+//   background   Sky pixels across both the scene background and parallax
+//                panorama implementations. It contributes no surface light.
+//   exposure     Tone-mapping exposure for built-in materials plus an explicit
+//                brightness uniform for raw shaders. On mobile-class profiles
+//                Three's tone-mapping stage is disabled, so only the explicitly
+//                wired raw shaders respond.
+//   baked terrain  Optional terrain-only albedo shade computed from the true
+//                terrain normal and terrain self-occlusion when geometry is
+//                built. Its data is static, but enabling it is a live uniform.
 //
 // SHADERS THAT WRITE gl_FragColor DIRECTLY DO NOT TONE-MAP. three only injects
 // the tone-mapping chunk where a shader includes it, so `material.toneMapped`
@@ -42,19 +27,9 @@
 // site adds a `uBrightness` uniform bound to the SHARED exposure object and
 // multiplies it into the shader's output.
 //
-// With every one of them wired, EXPO alone reaches the whole 3D view: at 0 the
-// screen is black with no exceptions. That is what let the separate master
-// dimmer be removed rather than kept as a second control doing the same job.
-//
-// EVERY ONE OF THESE IS LIVE. They are scene/renderer properties, so a change
-// takes effect on the next frame with no scene rebuild and no material touch —
-// which is what puts them on the CLIENT bar rather than the battle bar.
-//
-// NOT covered here, deliberately: the terrain's baked sun shading
-// (TERRAIN_SHADOW_RENDER_CONFIG). That is ray-marched per vertex when the
-// terrain mesh is built — `getTerrainShadowCacheKey` exists precisely because
-// changing it invalidates the built terrain — so it cannot join this group
-// without dragging all of them onto a rebuild.
+// Every setter below takes effect on the next frame without rebuilding the
+// scene. Changing HOW the baked terrain field is generated still requires a
+// rebuild; selecting whether the already-resident field participates does not.
 
 import type * as THREE from 'three';
 import { SUN_RENDER_CONFIG } from '../../config';
@@ -81,6 +56,10 @@ const scales: LightingScales = {
 // leak when materials churn.
 const exposureBrightnessUniform = { value: 1 };
 const backdropBrightnessUniform = { value: 1 };
+const terrainBakedLightingUniform = { value: 0 };
+
+export const TERRAIN_BAKED_LIGHTING_UNIFORM =
+  'uTerrainBakedLightingEnabled';
 
 /** Bind into a raw shader that should follow the tone-mapping exposure. */
 export function getExposureBrightnessUniform(): { value: number } {
@@ -90,6 +69,19 @@ export function getExposureBrightnessUniform(): { value: number } {
 /** Bind into the parallax backdrop layers: sky brightness times exposure. */
 export function getBackdropBrightnessUniform(): { value: number } {
   return backdropBrightnessUniform;
+}
+
+/** Bind the terrain shader to the live baked-lighting selection. */
+export function getTerrainBakedLightingUniform(): { value: number } {
+  return terrainBakedLightingUniform;
+}
+
+/** GLSL expression shared with the contract test. Off resolves to neutral 1,
+ *  on resolves to the precomputed terrain shade. */
+export function terrainBakedLightingShadeExpression(
+  bakedShade: string,
+): string {
+  return `mix(1.0, ${bakedShade}, ${TERRAIN_BAKED_LIGHTING_UNIFORM})`;
 }
 
 /**
@@ -198,6 +190,10 @@ export function setBackgroundIntensityScale(scale: number): void {
 export function setExposureScale(scale: number): void {
   scales.exposure = Math.max(0, scale);
   apply();
+}
+
+export function setTerrainBakedLightingEnabled(enabled: boolean): void {
+  terrainBakedLightingUniform.value = enabled ? 1 : 0;
 }
 
 // Dev-only handle on the registered scene. Reaching the world scene is
