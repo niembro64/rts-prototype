@@ -299,19 +299,6 @@ const METAL_COVERAGE_TITLE: Record<MetalCoverage, string> = {
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
-        <BarLabel title="Build squares consolidated along each axis into one conservative pathfinding square">PATH CELL:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in BATTLE_CONFIG.pathfindingCellConsolidation.options"
-            :key="opt"
-            :active="model.pathfindingCellConsolidation === opt"
-            :title="`${opt}×${opt} build squares per pathfinding square`"
-            @click="model.applyPathfindingCellConsolidation(opt)"
-          >{{ opt }}×{{ opt }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup v-if="!model.gameStarted">
-        <BarDivider />
         <BarLabel title="Authoritative server simulation steps per second; rendering remains independent">SIM TICK (HZ):</BarLabel>
         <BarButtonGroup>
           <BarButton

@@ -271,9 +271,6 @@ export type GameServerConfig = {
    *  battle-bar selections feed this so each new battle starts with
    *  the configured tax instead of the WorldState default 0.0. */
   converterTax?: number;
-  /** Number of build-grid cells consolidated into one authoritative path cell
-   *  along each axis. Match-static and included in lockstep initialization. */
-  pathfindingCellConsolidationMultiplier?: number;
   /** Authoritative fixed simulation cadence for this match. */
   simulationTickRateHz?: number;
 };

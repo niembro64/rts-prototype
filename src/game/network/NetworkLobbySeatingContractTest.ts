@@ -38,7 +38,6 @@ const HANDOFF_SETTINGS: LobbySettings = {
   mapLengthLandCells: 9,
   entityCountCap: 128,
   allyTeamCount: 3,
-  pathfindingCellConsolidationMultiplier: 3,
   simulationTickRateHz: 20,
   converterTax: 0,
   slowDownAtFinalWaypoint: false,

@@ -33,7 +33,9 @@ import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
 import {
   advancePathPlanSlice,
-  cancelAllPathPlanSlices,
+  decayPathfindingTrafficHeat,
+  resetPathfinderMatchState,
+  type PathSearchStrategy,
   cancelPathPlanSlice,
   isPathPlanSuffixTraversable,
   isPathPlanTraversable,
@@ -55,6 +57,10 @@ import {
   PATHFINDING_INTERMEDIATE_CORRIDOR_WU,
   PATHFINDING_PARTIAL_PLAN_RETRY_TICKS,
   PATHFINDING_A_STAR_EXPANSIONS_PER_TICK,
+  PATHFINDING_TRAFFIC_HEAT_DECAY_TICKS,
+  PATHFINDING_PATH_FAILURE_BACKOFF_TICKS,
+  PATHFINDING_PATH_FAILURE_BACKOFF_MAX_TICKS,
+  PATHFINDING_PATH_FAILURE_GIVE_UP_COUNT,
 } from './pathfindingTuning';
 import {
   PATH_REQUEST_FRESH,
@@ -292,6 +298,7 @@ export class Simulation {
   private readonly formationRouteCache = new Map<string, ExpandedPathPlan>();
   private readonly pathPlanScheduler: SimulationPathPlanScheduler;
   private readonly activePathPlanJobs = new Map<AllyTeamId, ActivePathPlanJob>();
+  private readonly pathQueryOutcomes: PathQueryOutcomeStats = createEmptyPathQueryOutcomeStats();
   private windState: WindState = sampleWindState(0);
   private windPowerTracker = new WindPowerTracker();
   // Accumulated sim time (ms). Drives deterministic systems like wind
@@ -382,6 +389,8 @@ export class Simulation {
         }
       },
     });
+    // A new simulation is a new match: every peer starts the planner cold.
+    resetPathfinderMatchState();
     this.damageSystem = new DamageSystem(world);
     this.deathExplosionPlanner = new SimulationDeathExplosionPlanner(
       this.world,
@@ -1052,8 +1061,68 @@ export class Simulation {
     const direct = this.tryInstallDirectPathPlan(entity, unit, action, terrainVersion);
     if (direct !== null) return direct;
 
+    if (unit.pathFailureActionHash !== unit.actionHash) {
+      unit.pathFailureStreak = 0;
+      unit.pathRetryAtTick = 0;
+      unit.pathFailureActionHash = unit.actionHash;
+    }
+    if (unit.pathRetryAtTick > this.world.getTick()) return null;
     this.pathPlanScheduler.requestFresh(entity, false);
     return null;
+  }
+
+  private recordPathFailure(entity: Entity, unit: Unit): void {
+    if (unit.pathFailureActionHash !== unit.actionHash) {
+      unit.pathFailureStreak = 0;
+      unit.pathFailureActionHash = unit.actionHash;
+    }
+    unit.pathFailureStreak += 1;
+    this.pathQueryOutcomes.failures += 1;
+    if (unit.pathFailureStreak >= PATHFINDING_PATH_FAILURE_GIVE_UP_COUNT) {
+      this.pathQueryOutcomes.giveUps += 1;
+      unit.pathFailureStreak = 0;
+      unit.pathRetryAtTick = 0;
+      unit.activePath = null;
+      unit.stuckTicks = 0;
+      shiftUnitAction(unit);
+      const patrolStartIndex = unit.actions.findIndex((action) => action.type === 'patrol');
+      unit.patrolStartIndex = patrolStartIndex >= 0 ? patrolStartIndex : null;
+      this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+      return;
+    }
+    const exponent = Math.min(unit.pathFailureStreak - 1, 16);
+    const delay = Math.min(
+      PATHFINDING_PATH_FAILURE_BACKOFF_TICKS * 2 ** exponent,
+      PATHFINDING_PATH_FAILURE_BACKOFF_MAX_TICKS,
+    );
+    unit.pathRetryAtTick = this.world.getTick() + delay;
+  }
+
+  private recordPathQueryOutcome(
+    unit: Unit,
+    resolution: 'complete' | 'snapped' | 'partial' | 'unreachable',
+    strategy: PathSearchStrategy,
+  ): void {
+    const stats = this.pathQueryOutcomes;
+    stats[resolution] += 1;
+    if (strategy === 'direct') stats.direct += 1;
+    else if (strategy === 'hierarchical') stats.hierarchical += 1;
+    if (resolution === 'unreachable') {
+      const key = unit.unitBlueprintId;
+      const counts = stats.unreachableByBlueprint;
+      if (counts.has(key) || counts.size < 64) {
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+    }
+  }
+
+  /** Deterministic route-outcome counters (diagnostics, never hashed). */
+  getPathQueryOutcomeStats(): PathQueryOutcomeStats {
+    const stats = this.pathQueryOutcomes;
+    return {
+      ...stats,
+      unreachableByBlueprint: new Map(stats.unreachableByBlueprint),
+    };
   }
 
   /** Navigation goal for the current action — usually the action point
@@ -1183,6 +1252,8 @@ export class Simulation {
     pathPlan: ExpandedPathPlan,
     terrainVersion: number,
   ): NonNullable<Unit['activePath']> {
+    unit.pathFailureStreak = 0;
+    unit.pathRetryAtTick = 0;
     unit.activePath = {
       points: pathPlan.points,
       resolution: pathPlan.resolution,
@@ -1351,6 +1422,15 @@ export class Simulation {
     this.activePathPlanJobs.delete(teamId);
     unit.pathRequestLane = PATH_REQUEST_NONE;
     unit.pathRequestForceLocal = false;
+    this.recordPathQueryOutcome(unit, result.plan.resolution, result.strategy);
+    if (result.plan.resolution === 'unreachable') {
+      // The body cannot leave where it stands (or nothing reachable exists).
+      // Retrying next tick recomputes identical inputs; back off
+      // exponentially and, past the give-up count, drop the order — BAR:
+      // a unit that cannot get there stops instead of grinding forever.
+      this.recordPathFailure(entity, unit);
+      return { status: 'complete', expansionsUsed: result.expansionsUsed };
+    }
     if (job.formationRoute !== null && job.formationCacheKey !== null) {
       if (this.formationRouteCache.size > 256) this.formationRouteCache.clear();
       this.formationRouteCache.set(job.formationCacheKey, result.plan);
@@ -1930,6 +2010,11 @@ export class Simulation {
     const roster = this.world.teamRoster;
     const scheduler = this.pathPlanScheduler;
     const activeJobs = this.activePathPlanJobs;
+    // Traffic heat decays on a fixed cadence so spread-out routes relax back
+    // to the shortest lane once traffic passes.
+    if (this.world.getTick() % PATHFINDING_TRAFFIC_HEAT_DECAY_TICKS === 0) {
+      decayPathfindingTrafficHeat();
+    }
     let expansionsRemaining = PATHFINDING_A_STAR_EXPANSIONS_PER_TICK;
     let frontierPending = false;
     scheduler.beginTick(this.world.getTick(), roster, activeJobs);
@@ -2734,9 +2819,11 @@ export class Simulation {
   private pathTerrainFilterForUnit(entity: Entity): PathTerrainFilter | null {
     const unit = entity.unit;
     if (unit === null) {
-      return applyLiquidHazardPathPolicy(null, this.world.liquidSurfaceMode);
+      return applyLiquidHazardPathPolicy(null, this.world.liquidSurfaceMode, 0);
     }
-    const key = `${unit.unitBlueprintId}:${unit.mass}:${unit.supportPointOffsetZ}:${this.world.liquidSurfaceMode}`;
+    const waterDamagePerSecond =
+      unit.locomotion?.environmentalHazards?.waterDamagePerSecond ?? 0;
+    const key = `${unit.unitBlueprintId}:${unit.mass}:${unit.supportPointOffsetZ}:${this.world.liquidSurfaceMode}:${waterDamagePerSecond}`;
     const cached = this.pathTerrainFilterMemo.get(key);
     if (cached !== undefined) return cached;
     const filter = applyLiquidHazardPathPolicy(
@@ -2746,6 +2833,7 @@ export class Simulation {
         unit.supportPointOffsetZ,
       ),
       this.world.liquidSurfaceMode,
+      waterDamagePerSecond,
     );
     this.pathTerrainFilterMemo.set(key, filter);
     return filter;
@@ -2861,8 +2949,9 @@ export class Simulation {
     this.airborneLoiter.reset();
     this.waypointOrbit.reset();
     this.stuckReplanController.reset();
-    cancelAllPathPlanSlices();
+    resetPathfinderMatchState();
     this.activePathPlanJobs.clear();
+    Object.assign(this.pathQueryOutcomes, createEmptyPathQueryOutcomeStats());
     this.formationRouteCache.clear();
     this.pathPlanScheduler.reset();
     this.combatHaltController.reset();
@@ -2874,4 +2963,33 @@ export class Simulation {
     resetTransportModuleState();
     this.spatialGridBuildingVersion = -1;
   }
+}
+
+/** Always-on, deterministic route-outcome counters. */
+export type PathQueryOutcomeStats = {
+  complete: number;
+  snapped: number;
+  partial: number;
+  unreachable: number;
+  direct: number;
+  hierarchical: number;
+  /** Unreachable/terminal results that entered retry backoff. */
+  failures: number;
+  /** Orders dropped after the give-up count. */
+  giveUps: number;
+  unreachableByBlueprint: Map<string, number>;
+};
+
+function createEmptyPathQueryOutcomeStats(): PathQueryOutcomeStats {
+  return {
+    complete: 0,
+    snapped: 0,
+    partial: 0,
+    unreachable: 0,
+    direct: 0,
+    hierarchical: 0,
+    failures: 0,
+    giveUps: 0,
+    unreachableByBlueprint: new Map(),
+  };
 }

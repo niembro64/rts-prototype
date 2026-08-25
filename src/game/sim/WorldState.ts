@@ -43,10 +43,6 @@ import type { BuildingBlueprintId } from '../../types/blueprintIds';
 import type { ShieldReflectionMode } from '../../types/shotTypes';
 import { DEFAULT_SLOPE_PATH_MODE, type SlopePathMode } from '../../types/slopePathMode';
 import {
-  DEFAULT_PATHFINDING_CELL_CONSOLIDATION_MULTIPLIER,
-  type PathfindingCellConsolidationMultiplier,
-} from '../../types/pathfinding';
-import {
   DEFAULT_LIQUID_SURFACE_MODE,
   DEFAULT_METAL_COVERAGE,
   type LiquidSurfaceMode,
@@ -281,10 +277,6 @@ export class WorldState {
   // Slope-traversal policy for ground pathfinding. `directional` lets units
   // descend/fall any slope and only gates uphill; `symmetric` gates both.
   public slopePathMode: SlopePathMode = DEFAULT_SLOPE_PATH_MODE;
-  /** Match-static path-grid resolution: one cell spans multiplier² build cells. */
-  public pathfindingCellConsolidationMultiplier:
-    PathfindingCellConsolidationMultiplier =
-      DEFAULT_PATHFINDING_CELL_CONSOLIDATION_MULTIPLIER;
   // Ground material policy. `metal` treats every build-grid cell as metal ore
   // and suppresses the discrete deposit crowns; the deposits still shaped the
   // terrain. See types/worldSurfaceMode.

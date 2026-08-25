@@ -51,14 +51,7 @@ import {
   applyLiquidHazardPathPolicy,
   pathTerrainFilterForLocomotion,
 } from './pathfindingTraversal';
-import {
-  configurePathfindingCellConsolidationMultiplier,
-  getPathfindingCellConsolidationMultiplier,
-  registerPathfinderBuildingOccupancy,
-} from './pathfinderTerrainCache';
-import {
-  DEFAULT_PATHFINDING_CELL_CONSOLIDATION_MULTIPLIER,
-} from '../../types/pathfinding';
+import { registerPathfinderBuildingOccupancy } from './pathfinderTerrainCache';
 
 const CONTRACT_WATER_PERIMETER_MAGNITUDE = -800;
 const CONTRACT_NEGATIVE_METAL_DEPOSIT_STEPS = [-100, -200, -400] as const;
@@ -182,11 +175,7 @@ function assertDemoCommandersHavePathEgress(
   entities: readonly Entity[],
   construction: ConstructionSystem,
 ): void {
-  const previousMultiplier = getPathfindingCellConsolidationMultiplier();
   const grid = construction.getGrid();
-  configurePathfindingCellConsolidationMultiplier(
-    DEFAULT_PATHFINDING_CELL_CONSOLIDATION_MULTIPLIER,
-  );
   const restoreBuildingOccupancy = registerPathfinderBuildingOccupancy({
     getVersion: () => grid.getVersion(),
     forEachBlockedCell: (visit) => {
@@ -206,6 +195,7 @@ function assertDemoCommandersHavePathEgress(
           unit.supportPointOffsetZ,
         ),
         world.liquidSurfaceMode,
+        0,
       );
       const plan = expandPathPlan(
         commander.transform.x,
@@ -225,12 +215,11 @@ function assertDemoCommandersHavePathEgress(
             point.x - commander.transform.x,
             point.y - commander.transform.y,
           ) > unit.radius.collision),
-        `default consolidated path grid must provide egress for commander ${commander.id}`,
+        `path grid must provide egress for commander ${commander.id}`,
       );
     }
   } finally {
     restoreBuildingOccupancy();
-    configurePathfindingCellConsolidationMultiplier(previousMultiplier);
   }
 }
 

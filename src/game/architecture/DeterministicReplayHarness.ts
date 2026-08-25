@@ -11,8 +11,10 @@ import { spatialGrid } from '../sim/SpatialGrid';
 import { resetTerrainStateForDeterministicReplay } from '../sim/Terrain';
 import { clearVegetation } from '../sim/vegetation';
 import { getSimWasm } from '../sim-wasm/init';
+import { resetPathfinderMatchState } from '../sim/Pathfinder';
 import type { GameServerConfig } from '@/types/game';
 import type { PathPlanSchedulerStats } from '@/game/sim/SimulationPathPlanScheduler';
+import type { PathQueryOutcomeStats } from '@/game/sim/Simulation';
 import type { Command } from '../sim/commands';
 import type { BuildingBlueprintId, Entity, PlayerId } from '../sim/types';
 import { ServerBootstrap } from '../server/ServerBootstrap';
@@ -51,6 +53,7 @@ type DeterministicReplayCaseReport = {
   /** Path-plan admission counters for the run (derived lockstep state:
    *  identical across the two replays, but never part of the hash). */
   readonly pathPlanScheduler: PathPlanSchedulerStats;
+  readonly pathQueryOutcomes: PathQueryOutcomeStats;
 };
 
 type DeterministicReplayHarnessReport = {
@@ -408,6 +411,7 @@ export async function runDeterministicReplayHarness(): Promise<DeterministicRepl
         .sort(([a], [b]) => a - b)
         .map(([, entity]) => entity),
       pathPlanScheduler: first.pathPlanScheduler,
+      pathQueryOutcomes: first.pathQueryOutcomes,
     });
   }
   return {
@@ -429,6 +433,7 @@ type ReplayRun = {
   readonly entitiesById: ReadonlyMap<number, unknown>;
   readonly checkpoints: readonly string[];
   readonly pathPlanScheduler: PathPlanSchedulerStats;
+  readonly pathQueryOutcomes: PathQueryOutcomeStats;
 };
 
 type ReplayRunStats = {
@@ -466,6 +471,7 @@ function runReplayCaseOnce(replayCase: DeterministicReplayCase): ReplayRun {
       entitiesById: collectEntitiesById(finalState.entities),
       checkpoints,
       pathPlanScheduler: core.simulation.getPathPlanSchedulerStats(),
+      pathQueryOutcomes: core.simulation.getPathQueryOutcomeStats(),
     };
   } finally {
     core.clearPendingCommandsAndStepBuffers();
@@ -562,8 +568,12 @@ function assertMatchingReplayRuns(
   }
   // Scheduler counters are derived from lockstep state only, so two replays
   // of the same commands must agree on every one of them.
-  const firstStats = JSON.stringify(first.pathPlanScheduler);
-  const secondStats = JSON.stringify(second.pathPlanScheduler);
+  const firstStats = JSON.stringify(first.pathPlanScheduler) +
+    JSON.stringify([...first.pathQueryOutcomes.unreachableByBlueprint]) +
+    JSON.stringify({ ...first.pathQueryOutcomes, unreachableByBlueprint: undefined });
+  const secondStats = JSON.stringify(second.pathPlanScheduler) +
+    JSON.stringify([...second.pathQueryOutcomes.unreachableByBlueprint]) +
+    JSON.stringify({ ...second.pathQueryOutcomes, unreachableByBlueprint: undefined });
   if (firstStats !== secondStats) {
     throw new Error(
       `[deterministic replay] ${caseId} path scheduler stats mismatch: ` +
@@ -818,6 +828,7 @@ export function resetReusableSimulationStateForDeterministicReplay(): void {
   // alongside it — a stale forest would carry consumed props (and their
   // spent energy) into the replayed match.
   clearVegetation();
+  resetPathfinderMatchState();
   const sim = getSimWasm();
   if (sim !== undefined) {
     sim.combatTargeting.clear();

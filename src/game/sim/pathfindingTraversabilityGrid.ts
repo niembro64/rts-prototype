@@ -3,7 +3,6 @@ import { getAllUnitBlueprints, getUnitLocomotion } from './blueprints';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import {
   ensurePathfinderTerrain,
-  getPathfindingCellConsolidationMultiplier,
   getRegisteredBuildingOccupancyVersion,
 } from './pathfinderTerrainCache';
 import {
@@ -40,7 +39,6 @@ let cachedTerrainVersion = -1;
 let cachedBuildingOccupancyVersion = -1;
 let cachedMapWidth = 0;
 let cachedMapHeight = 0;
-let cachedConsolidationMultiplier = 0;
 let cachedGrids = new Map<string, UnitPathTraversabilityGrid>();
 
 function cacheMatches(mapWidth: number, mapHeight: number): boolean {
@@ -53,7 +51,6 @@ function cacheMatches(mapWidth: number, mapHeight: number): boolean {
     cachedBuildingOccupancyVersion === getRegisteredBuildingOccupancyVersion() &&
     cachedMapWidth === mapWidth &&
     cachedMapHeight === mapHeight &&
-    cachedConsolidationMultiplier === getPathfindingCellConsolidationMultiplier() &&
     cachedGrids.size === getAllUnitBlueprints().length;
 }
 
@@ -88,13 +85,12 @@ export function precomputeAllUnitPathTraversabilityGrids(
   const bakedBuildingOccupancyVersion = getRegisteredBuildingOccupancyVersion();
   const cellsX = sim.pathfinder.gridWidth();
   const cellsY = sim.pathfinder.gridHeight();
-  const consolidationMultiplier = getPathfindingCellConsolidationMultiplier();
-  const cellSize = BUILD_GRID_CELL_SIZE * consolidationMultiplier;
+  const cellSize = BUILD_GRID_CELL_SIZE;
   const expectedCellsX = Math.max(1, Math.ceil(mapWidth / cellSize));
   const expectedCellsY = Math.max(1, Math.ceil(mapHeight / cellSize));
   if (cellsX !== expectedCellsX || cellsY !== expectedCellsY) {
     throw new Error(
-      `Pathfinder consolidated-grid resolution mismatch: ${cellsX}x${cellsY} vs ${expectedCellsX}x${expectedCellsY}`,
+      `Pathfinder grid resolution mismatch: ${cellsX}x${cellsY} vs ${expectedCellsX}x${expectedCellsY}`,
     );
   }
 
@@ -153,7 +149,6 @@ export function precomputeAllUnitPathTraversabilityGrids(
   cachedBuildingOccupancyVersion = bakedBuildingOccupancyVersion;
   cachedMapWidth = mapWidth;
   cachedMapHeight = mapHeight;
-  cachedConsolidationMultiplier = consolidationMultiplier;
   cachedGrids = next;
   return cachedGrids;
 }

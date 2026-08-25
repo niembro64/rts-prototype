@@ -747,8 +747,6 @@ export type LobbySettings = {
    *  a terrain slice, deposits and a spawn arc. Every client needs the number
    *  to render the same empty teams the host sees. */
   allyTeamCount: number;
-  /** Number of build squares represented by one path square per axis. */
-  pathfindingCellConsolidationMultiplier: number;
   /** Authoritative fixed simulation steps per real-time second. */
   simulationTickRateHz: number;
   converterTax: number;

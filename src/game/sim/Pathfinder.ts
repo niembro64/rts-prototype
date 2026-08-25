@@ -47,6 +47,7 @@ import {
 type Vec2 = { x: number; y: number };
 
 type PathResolution = 'complete' | 'snapped' | 'partial' | 'unreachable';
+export type PathSearchStrategy = 'none' | 'direct' | 'hierarchical';
 
 type PathQueryResult =
   | { status: 'pending'; expansionsUsed: number }
@@ -54,6 +55,7 @@ type PathQueryResult =
       status: 'complete';
       points: Vec2[];
       resolution: PathResolution;
+      strategy: PathSearchStrategy;
       expansionsUsed: number;
     };
 
@@ -64,7 +66,12 @@ export type ExpandedPathPlan = {
 
 type PathPlanSliceResult =
   | { status: 'pending'; expansionsUsed: number }
-  | { status: 'complete'; plan: ExpandedPathPlan; expansionsUsed: number };
+  | {
+      status: 'complete';
+      plan: ExpandedPathPlan;
+      strategy: PathSearchStrategy;
+      expansionsUsed: number;
+    };
 
 /** When true, every path produced by `expandPathActions` is walked
  *  segment-by-segment and any world-space sample outside its exclusive
@@ -86,11 +93,10 @@ function decodePathResolution(code: number): PathResolution {
   }
 }
 
-function decodePathSearchStrategy(code: number): string {
+function decodePathSearchStrategy(code: number): PathSearchStrategy {
   switch (code) {
     case 1: return 'direct';
     case 2: return 'hierarchical';
-    case 3: return 'fine-a-star';
     default: return 'none';
   }
 }
@@ -159,16 +165,15 @@ function findPath(
   const expansionsUsed = sim.pathfinder.lastFineExpandedNodesThisSlice();
   const pending = resultStatus === 4;
   const resolution = decodePathResolution(resultStatus);
+  const strategy = decodePathSearchStrategy(sim.pathfinder.lastSearchStrategy());
   debugLog(GAME_DIAGNOSTICS.pathfindingSearch, '[pathfinding-search]', {
-    strategy: decodePathSearchStrategy(sim.pathfinder.lastSearchStrategy()),
+    strategy,
     resolution: pending ? 'pending' : resolution,
     directCostRatio: sim.pathfinder.lastDirectCostRatio(),
-    coarseExpandedNodes: sim.pathfinder.lastCoarseExpandedNodes(),
-    coarseRefinementPasses: sim.pathfinder.lastCoarseRefinementPasses(),
-    coarseExactEdgeChecks: sim.pathfinder.lastCoarseExactEdgeChecks(),
-    coarseFullClusterScans: sim.pathfinder.lastCoarseFullClusterScans(),
+    abstractExpandedNodes: sim.pathfinder.lastCoarseExpandedNodes(),
+    hierarchyWork: sim.pathfinder.lastHpaWork(),
+    corridorClusters: sim.pathfinder.lastCorridorClusters(),
     fineExpandedNodes: sim.pathfinder.lastFineExpandedNodes(),
-    fineHitNodeLimit: sim.pathfinder.lastFineHitNodeLimit() !== 0,
     smoothingLineChecks: sim.pathfinder.lastSmoothingLineChecks(),
     waypointCount: count,
     start: { x: startX, y: startY },
@@ -180,6 +185,7 @@ function findPath(
       status: 'complete',
       points: [{ x: startX, y: startY }],
       resolution: 'unreachable',
+      strategy,
       expansionsUsed,
     };
   }
@@ -188,7 +194,13 @@ function findPath(
   for (let i = 0; i < count; i++) {
     result[i] = { x: view[i * 2], y: view[i * 2 + 1] };
   }
-  return { status: 'complete', points: result, resolution, expansionsUsed };
+  return { status: 'complete', points: result, resolution, strategy, expansionsUsed };
+}
+
+/** Decay the WASM traffic-heat layer by a quarter. Called on a fixed tick
+ *  cadence by the simulation (lockstep constant), never from presentation. */
+export function decayPathfindingTrafficHeat(): void {
+  getSimWasm()?.pathfinder.decayTrafficHeat();
 }
 
 // ── Path validator (developer self-check) ────────────────────────
@@ -368,6 +380,7 @@ export function advancePathPlanSlice(
   if (result.status === 'pending') return result;
   return {
     status: 'complete',
+    strategy: result.strategy,
     plan: materializeExpandedPathPlan(
       result,
       startX,
@@ -387,8 +400,12 @@ export function cancelPathPlanSlice(continuationOwner: number): void {
   getSimWasm()?.pathfinder.cancelPathSlice(continuationOwner);
 }
 
-export function cancelAllPathPlanSlices(): void {
-  getSimWasm()?.pathfinder.cancelAllPathSlices();
+/** Reset every query-derived pathfinder cache (heat, class graphs, retained
+ *  frontiers). Called at match start and on simulation reset so lockstep
+ *  peers — and a rejoiner replaying from frame 0 — begin from the same cold
+ *  state; a warm cache would change WHEN routes complete. */
+export function resetPathfinderMatchState(): void {
+  getSimWasm()?.pathfinder.resetMatchState();
 }
 
 function materializeExpandedPathPlan(

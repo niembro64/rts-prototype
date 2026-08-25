@@ -1,4 +1,5 @@
 import { getSimWasm } from '../sim-wasm/init';
+import { applyLocalAvoidance } from './localAvoidance';
 import type { Entity, UnitAction } from './types';
 import type { WorldState } from './WorldState';
 import { SIMULATION_INVALID_BODY_SLOT } from './SimulationAirborneLoiterController';
@@ -208,6 +209,11 @@ export class SimulationArrivalController {
       return;
     }
 
+    // Local avoidance nudges the drive vector around bodies ahead; the
+    // waypoint, the plan and the braking distance are untouched.
+    const avoided = applyLocalAvoidance(entity, dx, dy, distance);
+    dx = avoided.x;
+    dy = avoided.y;
     const invDistance = 1 / distance;
     entitySlotRegistry.setUnitDriveInput(entity, 0, 0, dx * invDistance, dy * invDistance, entitySlot);
 

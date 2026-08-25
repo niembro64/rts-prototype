@@ -197,8 +197,8 @@ export const DEMO_CONFIG = {
   spawnMarginPx: demoConfig.spawnMarginPx,
 
   /** Demo-only no-building radius around every commander spawn. The opening
-   *  base and auto-extractors both honor this circle so conservative path-grid
-   *  consolidation cannot seal the commander inside its own infrastructure. */
+   *  base and auto-extractors both honor this circle so the 20 wu path grid
+   *  cannot seal the commander inside its own infrastructure. */
   commanderBuildingExclusionRadius:
     validatedCommanderBuildingExclusionRadius(),
 

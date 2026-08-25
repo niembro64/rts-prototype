@@ -17,7 +17,6 @@ const CURRENT_SETTINGS: LobbySettings = {
   mapLengthLandCells: 20,
   entityCountCap: 729,
   allyTeamCount: 2,
-  pathfindingCellConsolidationMultiplier: 3,
   simulationTickRateHz: 20,
   converterTax: 0.1,
   slowDownAtFinalWaypoint: true,
@@ -74,10 +73,6 @@ export function runLobbySettingsContractTest(): void {
   assertRejected(
     { ...CURRENT_SETTINGS, terrainPrecedence: 'perimeter' },
     'an unsupported terrainPrecedence',
-  );
-  assertRejected(
-    { ...CURRENT_SETTINGS, pathfindingCellConsolidationMultiplier: 6 },
-    'an unsupported pathfinding-cell multiplier',
   );
   assertRejected(
     { ...CURRENT_SETTINGS, simulationTickRateHz: 25 },

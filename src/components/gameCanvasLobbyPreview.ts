@@ -10,7 +10,6 @@ import {
   loadStoredTerrainPrecedence,
   loadStoredTerrainDTerrain,
   loadStoredTerrainDetail,
-  loadStoredPathfindingCellConsolidation,
   loadStoredSimulationTickRate,
   type BattleMode,
 } from '../battleBarConfig';
@@ -35,7 +34,6 @@ type GameCanvasLobbyPreviewOptions = {
   plateauWallSlopeDegrees: Ref<number>;
   metalDepositStep: Ref<number>;
   terrainDetail: Ref<number>;
-  pathfindingCellConsolidation: Ref<number>;
   simulationTickRateHz: Ref<number>;
   mapWidthLandCells: Ref<number>;
   mapLengthLandCells: Ref<number>;
@@ -61,7 +59,6 @@ export function useGameCanvasLobbyPreview({
   plateauWallSlopeDegrees,
   metalDepositStep,
   terrainDetail,
-  pathfindingCellConsolidation,
   simulationTickRateHz,
   mapWidthLandCells,
   mapLengthLandCells,
@@ -91,8 +88,6 @@ export function useGameCanvasLobbyPreview({
     plateauWallSlopeDegrees.value = loadStoredPlateauWallSlopeDegrees(mode);
     metalDepositStep.value = loadStoredMetalDepositStep(mode);
     terrainDetail.value = loadStoredTerrainDetail(mode);
-    pathfindingCellConsolidation.value =
-      loadStoredPathfindingCellConsolidation(mode);
     simulationTickRateHz.value = loadStoredSimulationTickRate(mode);
     const mapDimensions = loadStoredMapLandDimensions(mode);
     mapWidthLandCells.value = mapDimensions.widthLandCells;

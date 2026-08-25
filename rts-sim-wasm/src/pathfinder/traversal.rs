@@ -123,20 +123,31 @@ pub(crate) fn pathfinder_is_cell_passable(
     idx: usize,
     traversal: PathfinderTraversal,
 ) -> bool {
-    pathfinder_is_cell_passable_impl(state, idx, traversal, true)
+    pathfinder_is_cell_passable_impl(state, idx, traversal, true, true)
 }
 
 /// Building-blind passability, used only to classify a blocked START as an
 /// escape start: a unit standing where a building just went up may route out
-/// of the footprint (`can_step_between` rejects every step INTO a building
-/// cell, so escape is inherently one-way).
+/// of the footprint (every step INTO a building cell is illegal, so escape is
+/// inherently one-way). Clearance is ignored too: the body is already there.
 #[inline]
 pub(crate) fn pathfinder_is_cell_passable_ignoring_buildings(
     state: &PathfinderState,
     idx: usize,
     traversal: PathfinderTraversal,
 ) -> bool {
-    pathfinder_is_cell_passable_impl(state, idx, traversal, false)
+    pathfinder_is_cell_passable_impl(state, idx, traversal, false, false)
+}
+
+/// Clearance-blind passability: the physical medium/slope rules only. Used
+/// for the body's own cell and for the escape-gradient rule.
+#[inline]
+pub(crate) fn pathfinder_is_cell_passable_ignoring_clearance(
+    state: &PathfinderState,
+    idx: usize,
+    traversal: PathfinderTraversal,
+) -> bool {
+    pathfinder_is_cell_passable_impl(state, idx, traversal, true, false)
 }
 
 #[inline]
@@ -145,6 +156,7 @@ pub(crate) fn pathfinder_is_cell_passable_impl(
     idx: usize,
     traversal: PathfinderTraversal,
     honor_buildings: bool,
+    honor_clearance: bool,
 ) -> bool {
     if !traversal.allow_air && state.terrain_edge_blocked[idx] != 0 {
         return false;
@@ -160,8 +172,7 @@ pub(crate) fn pathfinder_is_cell_passable_impl(
     // Fording: a ground mover whose body origin stays above the water plane
     // (cell depth <= resting center height) takes no water damage and keeps
     // its full bed traction, so shallow shoreline water is part of its
-    // physical ground domain — as a route AND as a place to stand — not a
-    // foreign medium. Radius-less queries keep the legacy binary water gate.
+    // physical ground domain. Radius-less queries keep the binary water gate.
     let fords_shallow_water = has_water
         && traversal.allow_ground
         && !traversal.allow_air
@@ -169,9 +180,7 @@ pub(crate) fn pathfinder_is_cell_passable_impl(
         && state.cur_unit_radius > 0.0
         && (TERRAIN_WATER_LEVEL - state.terrain_height[idx] as f64)
             <= pathfinder_query_body_center_height(state);
-    // Every medium present in the square must be valid. A mixed shoreline
-    // square therefore intersects its exposed and water permissions instead
-    // of receiving a special shoreline class or buffer.
+    // Every medium present in the square must be valid.
     let passable_by_medium = (!has_exposed || allows_exposed)
         && (!has_water || pathfinder_allows_water_case(traversal) || fords_shallow_water);
     if !passable_by_medium {
@@ -181,32 +190,40 @@ pub(crate) fn pathfinder_is_cell_passable_impl(
     if state.terrain_normal_z[idx] < required_normal_z {
         return false;
     }
-    // Collision-clearance gate: keep a unit of the current query's footprint
-    // out of cells whose nearest blocker is closer than the body can fit.
-    // cur_required_clearance is 0 during start/goal snapping and for point-size
-    // units, so this is inert there (every open cell has clearance >= 1).
-    let clearance = if traversal.allow_water && !allows_exposed {
-        state.water_clearance[idx]
-    } else if traversal.allow_water && allows_exposed {
-        state.medium_clearance[idx]
-    } else if traversal.allow_ground && !traversal.allow_air && state.cur_unit_radius > 0.0 {
-        // A fording body's disk may overhang water — only dual-medium
-        // obstacles bound it. Its CENTER cell is still depth-gated above,
-        // and the soft-clearance cost still reads the dry field, so routes
-        // prefer dry land and pay for hugging the waterline.
-        state.medium_clearance[idx]
-    } else {
-        state.clearance[idx]
-    };
-    let required_clearance = if traversal.allow_air {
-        0
-    } else {
-        state.cur_required_clearance
-    };
-    if (clearance as i32) < required_clearance {
-        return false;
+    // Collision-clearance gate: the body's disk must fit. Euclidean distance
+    // to the nearest obstacle of the query's medium class, squared cells,
+    // against the body's required centre distance.
+    if honor_clearance && !traversal.allow_air && state.cur_required_d_sq > 0.0 {
+        let edt = pathfinder_edt_sq_at(state, idx, traversal) as f32;
+        if edt < state.cur_required_d_sq {
+            return false;
+        }
     }
     true
+}
+
+/// Squared Euclidean cell distance to the nearest obstacle that bounds this
+/// traversal class: water-only bodies see exposed terrain as an obstacle,
+/// dual-medium and fording bodies see only edges and buildings, dry-only
+/// bodies see water as well.
+#[inline]
+pub(crate) fn pathfinder_edt_sq_at(
+    state: &PathfinderState,
+    idx: usize,
+    traversal: PathfinderTraversal,
+) -> u16 {
+    let allows_exposed = pathfinder_allows_exposed_case(traversal);
+    if traversal.allow_water && !allows_exposed {
+        state.edt_water_sq[idx]
+    } else if traversal.allow_water && allows_exposed {
+        state.edt_medium_sq[idx]
+    } else if traversal.allow_ground && !traversal.allow_air && state.cur_unit_radius > 0.0 {
+        // A fording body's disk may overhang water — only dual-medium
+        // obstacles bound it. Its CENTER cell is still depth-gated above.
+        state.edt_medium_sq[idx]
+    } else {
+        state.edt_ground_sq[idx]
+    }
 }
 
 pub(crate) fn pathfinder_begin_query_transition_cache(state: &mut PathfinderState) {
@@ -295,32 +312,22 @@ pub(crate) fn pathfinder_required_cell_normal_z(
     required.max(traversal.wet_contact_required_normal_z)
 }
 
-/// Hard configuration-space clearance for the unit's physical collision disk.
-/// Arrival tolerance is controller behavior and must never make the planner
-/// pretend the body is larger than it is. The nearest blocked cell's near edge
-/// sits ~(c - 0.5) cells from the cell centre, so
-/// `c >= radius/cell + 0.5` keeps the disk out of the blocker. Returns 0 for
-/// point-size / non-finite radii (gate becomes a no-op, e.g. airborne).
+/// Required centre-to-obstacle distance for the body's collision disk, in
+/// cells: the nearest obstacle cell's near edge sits ~0.5 cells inside its
+/// centre, so `d >= radius/cell + 0.5` keeps the disk out of it. Real-valued
+/// — no whole-cell rounding. 0 for point-size / non-finite radii.
 #[inline]
-#[cfg(test)]
-pub(crate) fn pathfinder_hard_clearance_cells_for_radius(radius: f64) -> i32 {
-    pathfinder_hard_clearance_cells_for_radius_and_size(radius, PATHFINDER_BUILD_GRID_CELL_SIZE)
-}
-
-#[inline]
-pub(crate) fn pathfinder_hard_clearance_cells_for_state(
-    state: &PathfinderState,
-    radius: f64,
-) -> i32 {
-    pathfinder_hard_clearance_cells_for_radius_and_size(radius, state.cell_size)
-}
-
-#[inline]
-fn pathfinder_hard_clearance_cells_for_radius_and_size(radius: f64, cell_size: f64) -> i32 {
+pub(crate) fn pathfinder_required_d_for_radius_and_size(radius: f64, cell_size: f64) -> f32 {
     if !radius.is_finite() || radius <= 0.0 {
-        return 0;
+        return 0.0;
     }
-    ((radius / cell_size) + 0.5).ceil() as i32
+    ((radius / cell_size) + 0.5) as f32
+}
+
+#[inline]
+pub(crate) fn pathfinder_required_d_sq_for_state(state: &PathfinderState, radius: f64) -> f32 {
+    let d = pathfinder_required_d_for_radius_and_size(radius, state.cell_size);
+    d * d
 }
 
 #[inline]
@@ -693,10 +700,42 @@ pub(crate) fn pathfinder_can_step_between(
     {
         return false;
     }
-    if !pathfinder_is_cell_passable(state, to_idx, traversal) {
+    if !pathfinder_is_cell_passable(state, to_idx, traversal)
+        && !pathfinder_escape_step_allowed(state, from_idx, to_idx, traversal)
+    {
         return false;
     }
     pathfinder_can_step_height_delta(state, from_idx, to_idx, traversal)
+}
+
+/// Escape by clearance gradient. A body standing in a pocket tighter than
+/// its own collision disk (a structure went up beside it, it was pushed
+/// there) must be able to walk OUT, but never deeper in and never into
+/// another tight pocket once on open ground. So a clearance-deficient cell
+/// is enterable only from a cell that is at least as deficient, and only
+/// while the physical (medium/slope) rules pass. Every path from the start
+/// is therefore monotone non-decreasing in clearance until it reaches a cell
+/// the body fully fits in, after which the full gate applies again. The
+/// planner, the line walker and the validator all share this rule.
+#[inline]
+pub(crate) fn pathfinder_escape_step_allowed(
+    state: &PathfinderState,
+    from_idx: usize,
+    to_idx: usize,
+    traversal: PathfinderTraversal,
+) -> bool {
+    if traversal.allow_air || state.cur_required_d_sq <= 0.0 {
+        return false;
+    }
+    let from_edt = pathfinder_edt_sq_at(state, from_idx, traversal) as f32;
+    if from_edt >= state.cur_required_d_sq {
+        return false;
+    }
+    let to_edt = pathfinder_edt_sq_at(state, to_idx, traversal) as f32;
+    if to_edt < from_edt || to_edt <= 0.0 {
+        return false;
+    }
+    pathfinder_is_cell_passable_ignoring_clearance(state, to_idx, traversal)
 }
 
 #[inline]
@@ -717,7 +756,9 @@ pub(crate) fn pathfinder_step_between_cached_forces(
             return None;
         }
     }
-    if !pathfinder_cached_cell_passable(state, to_idx, traversal, false) {
+    if !pathfinder_cached_cell_passable(state, to_idx, traversal, false)
+        && !pathfinder_escape_step_allowed(state, from_idx, to_idx, traversal)
+    {
         return None;
     }
     pathfinder_step_height_forces(state, from_idx, to_idx, traversal, eagerly_compute_forces)
@@ -731,31 +772,6 @@ pub(crate) fn pathfinder_can_step_between_cached(
     traversal: PathfinderTraversal,
 ) -> bool {
     pathfinder_step_between_cached_forces(state, from_idx, to_idx, traversal, false).is_some()
-}
-
-#[inline]
-pub(crate) fn pathfinder_can_step_neighbor_cached(
-    state: &mut PathfinderState,
-    from_gx: i32,
-    from_gy: i32,
-    to_gx: i32,
-    to_gy: i32,
-    traversal: PathfinderTraversal,
-) -> bool {
-    let from_idx = (from_gy * state.grid_w + from_gx) as usize;
-    let to_idx = (to_gy * state.grid_w + to_gx) as usize;
-    if !pathfinder_can_step_between_cached(state, from_idx, to_idx, traversal) {
-        return false;
-    }
-    let dx = to_gx - from_gx;
-    let dy = to_gy - from_gy;
-    if dx == 0 || dy == 0 {
-        return true;
-    }
-    let side_x_idx = (from_gy * state.grid_w + to_gx) as usize;
-    let side_y_idx = (to_gy * state.grid_w + from_gx) as usize;
-    pathfinder_can_step_between_cached(state, from_idx, side_x_idx, traversal)
-        && pathfinder_can_step_between_cached(state, from_idx, side_y_idx, traversal)
 }
 
 #[inline]
@@ -788,20 +804,25 @@ pub(crate) fn pathfinder_can_step_neighbor(
         && pathfinder_can_step_between(state, from_idx, side_y_idx, traversal)
 }
 
+/// Euclidean cell distance from this cell's centre to the nearest obstacle
+/// of the class, for the soft-clearance cost gradient. Soft clearance
+/// intentionally reads the DRY field for fording bodies so routes prefer dry
+/// land while the hard gate lets the disk overhang shallow water.
 #[inline]
 pub(crate) fn pathfinder_clearance_at(
     state: &PathfinderState,
     idx: usize,
     traversal: PathfinderTraversal,
-) -> i32 {
+) -> f32 {
     let allows_exposed = pathfinder_allows_exposed_case(traversal);
-    if traversal.allow_water && !allows_exposed {
-        state.water_clearance[idx] as i32
+    let sq = if traversal.allow_water && !allows_exposed {
+        state.edt_water_sq[idx]
     } else if traversal.allow_water && allows_exposed {
-        state.medium_clearance[idx] as i32
+        state.edt_medium_sq[idx]
     } else {
-        state.clearance[idx] as i32
-    }
+        state.edt_ground_sq[idx]
+    };
+    (sq as f32).sqrt()
 }
 
 #[derive(Clone, Copy)]
@@ -930,18 +951,24 @@ pub(crate) fn pathfinder_edge_cost_from_forces(
     }
 
     if !traversal.allow_air
-        && cost_profile.soft_clearance_cells > 0
+        && cost_profile.soft_clearance_cells > 0.0
         && cost_profile.soft_clearance_penalty_per_cell > 0.0
     {
-        let preferred = cost_profile
-            .hard_clearance_cells
-            .saturating_add(cost_profile.soft_clearance_cells);
-        let shortfall = (preferred - pathfinder_clearance_at(state, to_idx, traversal)).max(0);
-        if shortfall > 0 {
-            let shortfall = shortfall as f32;
+        let preferred = cost_profile.required_d_cells + cost_profile.soft_clearance_cells;
+        let shortfall = (preferred - pathfinder_clearance_at(state, to_idx, traversal)).max(0.0);
+        if shortfall > 0.0 {
             let multiplier =
                 1.0 + cost_profile.soft_clearance_penalty_per_cell * shortfall * shortfall;
             travel_cost *= multiplier as f64;
+        }
+    }
+    // Traffic heat: recently planned routes make their cells dearer so the
+    // next routes spread across parallel lanes. Never applied to cached
+    // hierarchy costs or to validation (see cur_heat_enabled).
+    if state.cur_heat_enabled && !traversal.allow_air {
+        let heat = state.traffic_heat[to_idx];
+        if heat != 0 {
+            travel_cost *= 1.0 + PATHFINDING_TRAFFIC_HEAT_PENALTY as f64 * (heat as f64 / 255.0);
         }
     }
     travel_cost.min(f32::MAX as f64) as f32
