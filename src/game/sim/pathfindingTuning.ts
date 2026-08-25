@@ -15,8 +15,16 @@ type PathfindingTuningConfig = {
   partialPlanRetryTicks: number;
   directPlanMaxDistanceWu: number;
   directPathMaxCostRatio: number;
-  hierarchicalMinDistanceCells: number;
   hierarchicalClusterSizeCells: number;
+  corridorHeuristicWeight: number;
+  trafficHeatPenalty: number;
+  trafficHeatDecayTicks: number;
+  pathFailureBackoffTicks: number;
+  pathFailureBackoffMaxTicks: number;
+  pathFailureGiveUpCount: number;
+  avoidanceLookaheadWu: number;
+  avoidanceLateralMarginWu: number;
+  avoidanceStrength: number;
 };
 
 const config = rawPathfindingTuningConfig as PathfindingTuningConfig;
@@ -159,4 +167,52 @@ export const PATHFINDING_DIRECT_PLAN_MAX_DISTANCE_WU = requireNonNegativeNumber(
 export const PATHFINDING_HIERARCHICAL_CLUSTER_SIZE_CELLS = requirePositiveInteger(
   'hierarchicalClusterSizeCells',
   config.hierarchicalClusterSizeCells,
+);
+/** Weighted-A* factor for the corridor refinement (WASM consumer): the
+ *  hierarchy fixes the route's shape, so a bounded-suboptimal refinement
+ *  keeps expansions low on sloped/heated terrain. */
+export const PATHFINDING_CORRIDOR_HEURISTIC_WEIGHT = requireNonNegativeNumber(
+  'corridorHeuristicWeight',
+  config.corridorHeuristicWeight,
+);
+/** Cost multiplier ceiling for a fully heated cell (WASM consumer). */
+export const PATHFINDING_TRAFFIC_HEAT_PENALTY = requireNonNegativeNumber(
+  'trafficHeatPenalty',
+  config.trafficHeatPenalty,
+);
+/** Fixed-tick cadence at which the traffic-heat layer decays by a quarter. */
+export const PATHFINDING_TRAFFIC_HEAT_DECAY_TICKS = requirePositiveInteger(
+  'trafficHeatDecayTicks',
+  config.trafficHeatDecayTicks,
+);
+/** First retry delay after a route request resolves unreachable/terminal;
+ *  doubles per consecutive failure up to the max, then the order is dropped
+ *  after the give-up count (BAR: a unit that cannot get there stops). */
+export const PATHFINDING_PATH_FAILURE_BACKOFF_TICKS = requirePositiveInteger(
+  'pathFailureBackoffTicks',
+  config.pathFailureBackoffTicks,
+);
+export const PATHFINDING_PATH_FAILURE_BACKOFF_MAX_TICKS = requirePositiveInteger(
+  'pathFailureBackoffMaxTicks',
+  config.pathFailureBackoffMaxTicks,
+);
+export const PATHFINDING_PATH_FAILURE_GIVE_UP_COUNT = requirePositiveInteger(
+  'pathFailureGiveUpCount',
+  config.pathFailureGiveUpCount,
+);
+
+/** Local avoidance: how far ahead (plus both radii) a ground mover looks for
+ *  bodies in its lane, the extra lateral clearance it wants past touching,
+ *  and the maximum sideways drive fraction it will apply. */
+export const PATHFINDING_AVOIDANCE_LOOKAHEAD_WU = requireNonNegativeNumber(
+  'avoidanceLookaheadWu',
+  config.avoidanceLookaheadWu,
+);
+export const PATHFINDING_AVOIDANCE_LATERAL_MARGIN_WU = requireNonNegativeNumber(
+  'avoidanceLateralMarginWu',
+  config.avoidanceLateralMarginWu,
+);
+export const PATHFINDING_AVOIDANCE_STRENGTH = requireUnitIntervalRatio(
+  'avoidanceStrength',
+  config.avoidanceStrength,
 );

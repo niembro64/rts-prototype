@@ -199,7 +199,6 @@ function assertInitializationHashMismatch(): void {
       mapLengthLandCells: 9,
       entityCountCap: 128,
       allyTeamCount: 2,
-      pathfindingCellConsolidationMultiplier: 3,
       simulationTickRateHz: 20,
       converterTax: 0,
       slowDownAtFinalWaypoint: false,
@@ -244,33 +243,22 @@ function assertInitializationHashMismatch(): void {
     first !== fourth,
     'canonical initialization hash must include WORLD material modes',
   );
-  const fifth = hashCanonicalMatchInitialization(buildCanonicalMatchInitialization({
-    ...base,
-    settings: {
-      ...base.settings,
-      pathfindingCellConsolidationMultiplier: 4,
-    },
-  }));
-  assertContract(
-    first !== fifth,
-    'canonical initialization hash must include pathfinding-cell resolution',
-  );
-  const sixthInitialization = buildCanonicalMatchInitialization({
+  const fifthInitialization = buildCanonicalMatchInitialization({
     ...base,
     settings: {
       ...base.settings,
       simulationTickRateHz: 60,
     },
   });
-  const sixth = hashCanonicalMatchInitialization(sixthInitialization);
+  const fifth = hashCanonicalMatchInitialization(fifthInitialization);
   assertContract(
-    first !== sixth,
+    first !== fifth,
     'canonical initialization hash must include simulation tick rate',
   );
   assertContract(
-    sixthInitialization.lockstep.fixedStepHz === 60 &&
-      sixthInitialization.lockstep.inputDelayTicks === 45 &&
-      sixthInitialization.lockstep.checksumIntervalTicks === 540,
+    fifthInitialization.lockstep.fixedStepHz === 60 &&
+      fifthInitialization.lockstep.inputDelayTicks === 45 &&
+      fifthInitialization.lockstep.checksumIntervalTicks === 540,
     'canonical initialization must scale fixed-step tick policies with the selected rate',
   );
 }
@@ -310,7 +298,6 @@ function createLobbySettings(
     ...realBattleTerrainWorldFields(terrain),
     entityCountCap: 128,
     allyTeamCount: 2,
-    pathfindingCellConsolidationMultiplier: 3,
     simulationTickRateHz,
     converterTax: 0,
     slowDownAtFinalWaypoint: false,

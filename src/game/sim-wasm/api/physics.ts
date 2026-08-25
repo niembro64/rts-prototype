@@ -16,13 +16,9 @@ export interface PathfinderApi {
     waterSurfaceSupported: boolean,
     out: Float64Array,
   ) => number;
-  /** Allocate the per-cell SoA arrays for the given map dimensions and
-   *  build-square consolidation multiplier (1..5). */
-  init: (
-    mapWidth: number,
-    mapHeight: number,
-    consolidationMultiplier: number,
-  ) => void;
+  /** Allocate the per-cell SoA arrays for the given map dimensions. The
+   *  locomotion grid is always the 20 wu build grid. */
+  init: (mapWidth: number, mapHeight: number) => void;
   /** Rebuild the terrain-only locomotion mask and connected components.
    *  Resets the building occupancy layer (version 0) so the caller resyncs
    *  it afterward. */
@@ -119,6 +115,9 @@ export interface PathfinderApi {
   cancelPathSlice: (continuationOwner: number) => void;
   /** Discard every retained team frontier at match teardown/invalidation. */
   cancelAllPathSlices: () => void;
+  /** Drop traffic heat, per-class hierarchy graphs and retained frontiers so a
+   *  match starts from identical caches on every peer. */
+  resetMatchState: () => void;
   /** Resolution code for the most recent findPath call:
    *  0 unreachable, 1 complete, 2 snapped, 3 partial, 4 pending. */
   lastResultStatus: () => number;
@@ -127,11 +126,19 @@ export interface PathfinderApi {
   lastFineExpandedNodes: () => number;
   /** Fine-grid nodes closed by the most recent call, excluding prior slices. */
   lastFineExpandedNodesThisSlice: () => number;
+  /** Abstract (cluster-graph) expansions of the most recent query. */
   lastCoarseExpandedNodes: () => number;
-  lastCoarseRefinementPasses: () => number;
-  lastCoarseExactEdgeChecks: () => number;
-  lastCoarseFullClusterScans: () => number;
-  lastFineHitNodeLimit: () => number;
+  /** Hierarchy work charged by the most recent query: cluster-build cells
+   *  plus abstract expansions, in fine-expansion units. */
+  lastHpaWork: () => number;
+  /** Clusters in the corridor the fine search was restricted to. */
+  lastCorridorClusters: () => number;
+  /** Per-class hierarchy graphs currently cached. */
+  classGraphCount: () => number;
+  /** Decay the traffic-heat layer by a quarter (fixed tick cadence). */
+  decayTrafficHeat: () => void;
+  /** Base pointer of the per-cell traffic-heat bytes (grid order). */
+  trafficHeatPtr: () => number;
   lastSmoothingLineChecks: () => number;
   lastDirectCostRatio: () => number;
   /** Validate an interleaved x/y polyline (including its start point) against

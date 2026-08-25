@@ -3,7 +3,6 @@ import { ARCHITECTURE_CONFIG } from '../architectureConfig';
 import {
   BATTLE_CONFIG,
   loadStoredConverterTax,
-  loadStoredPathfindingCellConsolidation,
   loadStoredSimulationTickRate,
   loadStoredMapLandDimensions,
   loadStoredLiquidSurfaceMode,
@@ -120,7 +119,6 @@ type CreateRealBattleServerOptions = {
   gameGenerationSeed: number;
   terrain: RealBattleStartupTerrain;
   converterTax?: number;
-  pathfindingCellConsolidationMultiplier?: number;
   simulationTickRateHz?: number;
   onLoadingProgress?: (progress: number, phase?: string) => void | Promise<void>;
 };
@@ -383,8 +381,6 @@ function buildRealBattleLobbySettingsFromTerrain(
     ...realBattleTerrainWorldFields(terrain),
     entityCountCap: getUnitCap('real'),
     allyTeamCount: BATTLE_CONFIG.allyTeamCount.default,
-    pathfindingCellConsolidationMultiplier:
-      loadStoredPathfindingCellConsolidation('real'),
     simulationTickRateHz: loadStoredSimulationTickRate('real'),
     converterTax: loadStoredConverterTax('real'),
     slowDownAtFinalWaypoint: loadStoredSlowDownAtFinalWaypoint('real'),
@@ -682,7 +678,6 @@ async function createRealBattleServer({
   gameGenerationSeed,
   terrain,
   converterTax,
-  pathfindingCellConsolidationMultiplier,
   simulationTickRateHz,
   onLoadingProgress,
 }: CreateRealBattleServerOptions): Promise<GameServer> {
@@ -698,9 +693,6 @@ async function createRealBattleServer({
       metalCoverage: terrain.metalCoverage,
       liquidSurfaceMode: terrain.liquidSurfaceMode,
       converterTax: converterTax ?? loadStoredConverterTax('real'),
-      pathfindingCellConsolidationMultiplier:
-        pathfindingCellConsolidationMultiplier ??
-        loadStoredPathfindingCellConsolidation('real'),
       simulationTickRateHz: simulationTickRateHz ??
         loadStoredSimulationTickRate('real'),
     },
@@ -773,8 +765,6 @@ async function createDeterministicLockstepBackendRuntime({
     gameGenerationSeed: matchContext.gameGenerationSeed,
     terrain,
     converterTax: matchContext.settings.converterTax,
-    pathfindingCellConsolidationMultiplier:
-      matchContext.settings.pathfindingCellConsolidationMultiplier,
     simulationTickRateHz: matchContext.settings.simulationTickRateHz,
     onLoadingProgress,
   });

@@ -48,9 +48,10 @@ export function resolvePathfinderTraversalInput(
     waypoint: { allowOnGround: true, allowInWater: false, allowInAir: false },
     move: { allowOnGround: true, allowInWater: false, allowInAir: false },
   };
-  const minGroundNormalZ = navigation.move.allowInAir
-    ? 0
-    : finiteNormalOrZero(filter?.minGroundNormalZ);
+  // Air-capable bodies overfly slopes inside the WASM kernel itself
+  // (`allow_air` zeroes the required normal); the filter carries the honest
+  // dry envelope for every body.
+  const minGroundNormalZ = finiteNormalOrZero(filter?.minGroundNormalZ);
   const flatDriveAccel = filter?.cost.flatDriveAccel;
   const flatWaterContactAccel = filter?.cost.flatWaterContactAccel;
   return {
@@ -111,16 +112,31 @@ export function pathTerrainFilterForLocomotion(
 /** Traversability describes physical capability; this layer applies match
  *  hazard policy. Lava is never an intentional or recovery water domain for
  *  non-air bodies, even when their propulsion could physically swim through
- *  it. Air remains legal because allowInAir independently overflies liquid. */
+ *  it. Likewise a body that TAKES DAMAGE in water (every land preset authors
+ *  a token water thrust, so `move.allowInWater` is physically true) must not
+ *  plan through deep water it cannot survive: the water MOVE domain is
+ *  stripped unless water is one of its intentional (waypoint) media. Shallow
+ *  fording stays available through the kernel's depth rule, which is exactly
+ *  the zero-damage regime. Air remains legal because allowInAir independently
+ *  overflies liquid. */
 export function applyLiquidHazardPathPolicy(
   filter: PathTerrainFilter | null,
   liquidSurfaceMode: LiquidSurfaceMode,
+  waterDamagePerSecond: number,
 ): PathTerrainFilter | null {
-  if (filter === null || liquidSurfaceMode !== 'lava') return filter;
+  if (filter === null) return filter;
+  const lava = liquidSurfaceMode === 'lava';
+  const lethalWater = Number.isFinite(waterDamagePerSecond) &&
+    waterDamagePerSecond > 0 &&
+    !filter.navigation.waypoint.allowInWater;
+  if (!lava && !lethalWater) return filter;
   return {
     ...filter,
     navigation: {
-      waypoint: { ...filter.navigation.waypoint, allowInWater: false },
+      waypoint: {
+        ...filter.navigation.waypoint,
+        allowInWater: lava ? false : filter.navigation.waypoint.allowInWater,
+      },
       move: { ...filter.navigation.move, allowInWater: false },
     },
   };

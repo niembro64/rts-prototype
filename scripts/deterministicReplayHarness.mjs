@@ -46,6 +46,20 @@ try {
         `starved ticks ${s.ticksEndedWithBudgetLeftAndDemand}, deferred requeues ${s.deferredRequests}` +
         (ages.length > 0 ? `, admission age ticks {${ages}}` : ''),
     );
+    const o = replayCase.pathQueryOutcomes;
+    if (o) {
+      const byBp = [...(o.unreachableByBlueprint?.entries?.() ?? [])]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6)
+        .map(([k, v]) => `${k}:${v}`)
+        .join(' ');
+      console.log(
+        `  route outcomes: complete ${o.complete}, snapped ${o.snapped}, partial ${o.partial}, ` +
+          `unreachable ${o.unreachable} (direct ${o.direct}, hierarchical ${o.hierarchical}), ` +
+          `failures ${o.failures}, give-ups ${o.giveUps}` +
+          (byBp.length > 0 ? `, unreachable by blueprint {${byBp}}` : ''),
+      );
+    }
   }
   console.log(`Deterministic replay harness passed (${report.cases.length} cases).`);
 } finally {

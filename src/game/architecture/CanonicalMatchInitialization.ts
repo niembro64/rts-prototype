@@ -43,7 +43,6 @@ import {
   isTerrainPrecedence,
   type TerrainPrecedence,
 } from '@/types/terrainPrecedence';
-import { isPathfindingCellConsolidationMultiplier } from '@/types/pathfinding';
 import {
   normalizeSimulationTickRateHz,
   simulationTicksForDefaultTicks,
@@ -106,7 +105,6 @@ export type CanonicalMatchInitialization = {
   };
   readonly gameplay: {
     readonly entityCountCap: number | null;
-    readonly pathfindingCellConsolidationMultiplier: number | null;
     readonly converterTax: number | null;
     readonly fogOfWarEnabled: true;
     readonly slowDownAtFinalWaypoint: boolean;
@@ -231,12 +229,6 @@ export function buildCanonicalMatchInitialization({
     },
     gameplay: {
       entityCountCap: finiteOrNull(settings?.entityCountCap),
-      pathfindingCellConsolidationMultiplier:
-        isPathfindingCellConsolidationMultiplier(
-          settings?.pathfindingCellConsolidationMultiplier,
-        )
-          ? settings.pathfindingCellConsolidationMultiplier
-          : null,
       converterTax: finiteOrNull(settings?.converterTax),
       fogOfWarEnabled: true,
       slowDownAtFinalWaypoint: settings?.slowDownAtFinalWaypoint === true,

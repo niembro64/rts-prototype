@@ -5,7 +5,7 @@
   "intermediateCorridorWu": 10,
   "softClearanceCells": 2,
   "softClearancePenaltyPerCell": 0.35,
-  "aStarExpansionBudgetPerTick": 4096,
+  "aStarExpansionBudgetPerTick": 12288,
   "refreshServiceIntervalTicks": 8,
   "chaseRepathCooldownTicks": 7,
   "chaseRepathDriftMinWu": 150,
@@ -13,6 +13,14 @@
   "partialPlanRetryTicks": 60,
   "directPlanMaxDistanceWu": 800,
   "directPathMaxCostRatio": 1.1,
-  "hierarchicalMinDistanceCells": 64,
-  "hierarchicalClusterSizeCells": 32
+  "hierarchicalClusterSizeCells": 16,
+  "corridorHeuristicWeight": 1.2,
+  "trafficHeatPenalty": 0.6,
+  "trafficHeatDecayTicks": 8,
+  "pathFailureBackoffTicks": 20,
+  "pathFailureBackoffMaxTicks": 400,
+  "pathFailureGiveUpCount": 6,
+  "avoidanceLookaheadWu": 140,
+  "avoidanceLateralMarginWu": 8,
+  "avoidanceStrength": 0.7
 }

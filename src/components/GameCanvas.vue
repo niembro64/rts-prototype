@@ -58,7 +58,6 @@ import {
   loadStoredMetalDepositStep,
   loadStoredPlateauWallSlopeDegrees,
   loadStoredTerrainDetail,
-  loadStoredPathfindingCellConsolidation,
   loadStoredSimulationTickRate,
   loadStoredPerimeterMagnitude,
   loadStoredRingMagnitude,
@@ -1201,9 +1200,6 @@ const plateauWallSlopeDegrees = ref<number>(
 );
 const metalDepositStep = ref<number>(loadStoredMetalDepositStep('demo'));
 const terrainDetail = ref<number>(loadStoredTerrainDetail('demo'));
-const pathfindingCellConsolidation = ref<number>(
-  loadStoredPathfindingCellConsolidation('demo'),
-);
 const simulationTickRateHz = ref<number>(
   loadStoredSimulationTickRate('demo'),
 );
@@ -1503,7 +1499,6 @@ useGameCanvasLobbyPreview({
   plateauWallSlopeDegrees,
   metalDepositStep,
   terrainDetail,
-  pathfindingCellConsolidation,
   simulationTickRateHz,
   mapWidthLandCells,
   mapLengthLandCells,
@@ -1698,7 +1693,6 @@ const {
   applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
   applyTerrainDetail,
-  applyPathfindingCellConsolidation,
   applySimulationTickRate,
   applyMetalCoverage,
   applyLiquidSurfaceMode,
@@ -1719,7 +1713,6 @@ const {
   plateauWallSlopeDegrees,
   metalDepositStep,
   terrainDetail,
-  pathfindingCellConsolidation,
   simulationTickRateHz,
   mapWidthLandCells,
   mapLengthLandCells,
@@ -1862,9 +1855,6 @@ function resetTerrainRenderSmoothingDefaults(): void {
 
 function resetBattleDefaultsWithGroundNormal(): void {
   resetDemoDefaults();
-  applyPathfindingCellConsolidation(
-    BATTLE_CONFIG.pathfindingCellConsolidation.default,
-  );
   applySimulationTickRate(BATTLE_CONFIG.simulationTickRate.default);
   resetUnitGroundNormalEmaDefault();
 }
@@ -2140,7 +2130,6 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   plateauWallSlopeDegrees: plateauWallSlopeDegrees.value,
   metalDepositStep: metalDepositStep.value,
   terrainDetail: terrainDetail.value,
-  pathfindingCellConsolidation: pathfindingCellConsolidation.value,
   simulationTickRateHz: simulationTickRateHz.value,
   localPlayerShieldAwareTargeting: localPlayerShieldAwareTargeting.value,
   localPlayerShieldsPowered: localPlayerShieldsPowered.value,
@@ -2170,7 +2159,6 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
   applyTerrainDetail,
-  applyPathfindingCellConsolidation,
   applySimulationTickRate,
   setFogOfWarEnabled,
   setSlowDownAtFinalWaypoint,
@@ -2207,7 +2195,6 @@ watchEffect(() => {
   m.plateauWallSlopeDegrees = plateauWallSlopeDegrees.value;
   m.metalDepositStep = metalDepositStep.value;
   m.terrainDetail = terrainDetail.value;
-  m.pathfindingCellConsolidation = pathfindingCellConsolidation.value;
   m.simulationTickRateHz = simulationTickRateHz.value;
   m.localPlayerShieldAwareTargeting = localPlayerShieldAwareTargeting.value;
   m.localPlayerShieldsPowered = localPlayerShieldsPowered.value;
@@ -3085,7 +3072,6 @@ watchEffect(() => {
       :plateau-wall-slope-degrees="plateauWallSlopeDegrees"
       :metal-deposit-step="metalDepositStep"
       :terrain-detail="terrainDetail"
-      :pathfinding-cell-consolidation="pathfindingCellConsolidation"
       :simulation-tick-rate-hz="simulationTickRateHz"
       :map-width-land-cells="mapWidthLandCells"
       :map-length-land-cells="mapLengthLandCells"
@@ -3125,7 +3111,6 @@ watchEffect(() => {
       @set-plateau-wall-slope-degrees="(v) => applyPlateauWallSlopeDegrees(v)"
       @set-metal-deposit-step="(v) => applyMetalDepositStep(v)"
       @set-terrain-detail="(v) => applyTerrainDetail(v)"
-      @set-pathfinding-cell-consolidation="(v) => applyPathfindingCellConsolidation(v)"
       @set-simulation-tick-rate="(v) => applySimulationTickRate(v)"
       @set-preset="(p) => applyPreset(p)"
       @set-map-land-dimensions="(dimensions) => applyMapLandDimensions(dimensions)"

@@ -30,6 +30,7 @@ import {
   type SimTickInstrumentationReport,
 } from './SimTickInstrumentation';
 import type { PathPlanSchedulerStats } from '../sim/SimulationPathPlanScheduler';
+import type { PathQueryOutcomeStats } from '../sim/Simulation';
 import { RENDER_PHASE_PROXY_ROW_TELEMETRY } from '../scenes/helpers/RtsScene3DRenderPhase';
 
 type NumericSummary = {
@@ -119,7 +120,19 @@ export type SimOnlyReport = {
   readonly simTickPhases: SimTickInstrumentationReport;
   /** Deterministic path-plan admission counters for the measured ticks. */
   readonly pathPlanScheduler: PathPlanSchedulerStats;
+  readonly pathQueryOutcomes: PathQueryOutcomeReport;
 };
+
+type PathQueryOutcomeReport = Omit<PathQueryOutcomeStats, 'unreachableByBlueprint'> & {
+  readonly unreachableByBlueprint: readonly (readonly [string, number])[];
+};
+
+function reportPathQueryOutcomes(stats: PathQueryOutcomeStats): PathQueryOutcomeReport {
+  return {
+    ...stats,
+    unreachableByBlueprint: [...stats.unreachableByBlueprint.entries()].sort((a, b) => b[1] - a[1]),
+  };
+}
 
 type SimSnapshotReport = {
   readonly units: number;
@@ -137,6 +150,7 @@ type SimSnapshotReport = {
   readonly wasmBoundary: WasmBoundaryInstrumentationReport;
   readonly simTickPhases: SimTickInstrumentationReport;
   readonly pathPlanScheduler: PathPlanSchedulerStats;
+  readonly pathQueryOutcomes: PathQueryOutcomeReport;
   readonly snapshotMaterializationStats?: SnapshotMaterializationStatsReport;
   readonly snapshotWireStats?: SnapshotWireStatsReport;
 };
@@ -522,6 +536,7 @@ async function runSimOnly(
       wasmBoundary,
       simTickPhases,
       pathPlanScheduler: core.simulation.getPathPlanSchedulerStats(),
+      pathQueryOutcomes: reportPathQueryOutcomes(core.simulation.getPathQueryOutcomeStats()),
     };
   } finally {
     finishWasmBoundaryTracking();
@@ -611,6 +626,7 @@ async function runSimSnapshot(
       wasmBoundary,
       simTickPhases,
       pathPlanScheduler: core.simulation.getPathPlanSchedulerStats(),
+      pathQueryOutcomes: reportPathQueryOutcomes(core.simulation.getPathQueryOutcomeStats()),
       snapshotMaterializationStats,
       snapshotWireStats,
     };

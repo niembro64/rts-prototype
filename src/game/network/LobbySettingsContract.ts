@@ -2,7 +2,6 @@ import type { LobbySettings } from '@/types/network';
 import { MAX_ALLY_TEAM_COUNT } from '../sim/teamRoster';
 import { isLiquidSurfaceMode, isMetalCoverage } from '@/types/worldSurfaceMode';
 import { isTerrainPrecedence } from '@/types/terrainPrecedence';
-import { isPathfindingCellConsolidationMultiplier } from '@/types/pathfinding';
 import { isSimulationTickRateHz } from '@/types/simulationTickRate';
 import { MAX_LOBBY_NAME_LENGTH } from './lobbyName';
 
@@ -19,7 +18,6 @@ const NUMERIC_FIELDS = [
   'mapLengthLandCells',
   'entityCountCap',
   'allyTeamCount',
-  'pathfindingCellConsolidationMultiplier',
   'simulationTickRateHz',
   'converterTax',
 ] as const satisfies readonly (keyof LobbySettings)[];
@@ -54,13 +52,6 @@ export function assertCurrentLobbySettings(
   ) {
     throw new Error(
       `[${context}] allyTeamCount must be an integer in 1..${MAX_ALLY_TEAM_COUNT}`,
-    );
-  }
-  if (!isPathfindingCellConsolidationMultiplier(
-    settings.pathfindingCellConsolidationMultiplier,
-  )) {
-    throw new Error(
-      `[${context}] pathfindingCellConsolidationMultiplier must be one of 1, 2, 3, 4, 5`,
     );
   }
   if (!isSimulationTickRateHz(settings.simulationTickRateHz)) {

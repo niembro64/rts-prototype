@@ -18,7 +18,6 @@ import { BACKGROUND_UNIT_BLUEPRINT_IDS } from '../server/BackgroundBattleStandal
 import { BUILDING_BLUEPRINT_IDS } from '../../types/blueprintIds';
 import {
   loadStoredConverterTax,
-  loadStoredPathfindingCellConsolidation,
   loadStoredSimulationTickRate,
   loadBattleUnitRoster,
   loadBattleBuildingRoster,
@@ -235,8 +234,6 @@ export async function createBackgroundBattle(
       initialAllowedBuildingBlueprintIds,
       initialEntityCountCap: getUnitCap(mode),
       converterTax: loadStoredConverterTax(mode),
-      pathfindingCellConsolidationMultiplier:
-        loadStoredPathfindingCellConsolidation(mode),
       simulationTickRateHz: loadStoredSimulationTickRate(mode),
       aiPlayerIds,
       // The two seat axes, spelled out (src/game/sim/agentSeat.ts): the DEMO

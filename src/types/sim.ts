@@ -249,6 +249,15 @@ export type Unit = {
   /** Serve the queued request from the unit's live position and skip the
    *  shared formation corridor (stuck-replan semantics). */
   pathRequestForceLocal: boolean;
+  /** Consecutive route requests for the current order that resolved
+   *  unreachable/terminal. Drives exponential retry backoff and, past the
+   *  give-up count, drops the order (a unit that cannot get there stops).
+   *  Sim-only state, reset when the order changes or a route installs. */
+  pathFailureStreak: number;
+  /** Earliest tick a fresh route request may be queued again (0 = now). */
+  pathRetryAtTick: number;
+  /** actionHash the failure streak belongs to; a different hash resets it. */
+  pathFailureActionHash: number;
   /** Airborne-cruising loiter center. When a cruising unit exhausts its action
    *  queue, it keeps steering around this last destination instead of
    *  dropping thrust and drifting off-map. */

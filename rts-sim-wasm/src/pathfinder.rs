@@ -1,42 +1,43 @@
-// pathfinder — extracted from lib.rs (pure code motion).
+// pathfinder — A* over the terrain locomotion grid, in WASM.
 
 #[allow(unused_imports)]
 use crate::*;
 #[allow(unused_imports)]
 use wasm_bindgen::prelude::*;
 
+mod edt;
 mod hierarchy;
-use hierarchy::pathfinder_hierarchical_a_star;
 mod traversal;
+#[allow(unused_imports)]
+pub(crate) use edt::*;
+#[allow(unused_imports)]
+pub(crate) use hierarchy::*;
 #[allow(unused_imports)]
 pub(crate) use traversal::*;
 
 // ─────────────────────────────────────────────────────────────────
-//  Phase 9 — Pathfinder: A* over the terrain locomotion grid in WASM
+//  Pathfinder — per-class hierarchical A* over the fine 20 wu grid
 //
-//  Mirrors src/game/sim/Pathfinder.ts. The synchronous compatibility pipeline
-//  still runs inside one WASM call for tools/tests. Authoritative movement
-//  retains fine-A* state and advances it through bounded WASM slices; JS stays
-//  a thin wrapper that forwards traversal inputs and reads final waypoints.
-//  Construction-grid reservations and hovering building footprints are not
-//  terrain cells and never change locomotion routing.
+//  The fine grid is the single legality truth: every cell carries exact
+//  clipped-triangle terrain classification, and every body is gated by an
+//  exact Euclidean distance transform against its own collision radius.
+//  Three layers sit on top of it:
 //
-//  Mask + CC are cached internally by terrain version.
+//   * a per-class HPA* graph (hierarchy.rs) that answers reachability and
+//     yields a CORRIDOR of clusters for a query;
+//   * a corridor-restricted, resumable fine A* that finds the actual route
+//     inside that corridor and never touches the rest of the map;
+//   * cost-aware string pulling and a traffic-heat layer that spreads
+//     repeated routes across parallel lanes.
 //
-//  Terrain sampling reads directly from the in-WASM TerrainGrid
-//  (Phase 8) — no boundary crossings during a rebuild. ~9 k cells in
-//  a typical map; each one previously required 2 WASM dispatches
-//  (height + normal), now it's all-in-Rust.
+//  Authoritative movement advances a query through bounded slices: cluster
+//  builds, abstract expansions and fine expansions are all charged to the
+//  same deterministic per-tick budget, and one unfinished search is retained
+//  per ally team.
 // ─────────────────────────────────────────────────────────────────
 
-// Constants — grid/search constants live here; tuning constants are generated
-// from src/game/sim/pathfindingTuningConfig.json.
 pub(crate) const PATHFINDER_BUILD_GRID_CELL_SIZE: f64 = 20.0;
 pub(crate) const PATHFINDER_SNAP_RADIUS_WU: f64 = 640.0;
-/// Resumable fine-grid A* has no artificial total-node ceiling. Authoritative
-/// callers advance it with a deterministic per-tick expansion budget, so a
-/// difficult route can take as many fixed ticks as it needs without turning
-/// one simulation tick into a map-sized search.
 pub(crate) const PATHFINDER_SQRT2_MINUS_1: f32 = 0.41421356237309515;
 pub(crate) const PATHFINDER_RESULT_UNREACHABLE: u32 = 0;
 pub(crate) const PATHFINDER_RESULT_COMPLETE: u32 = 1;
@@ -46,37 +47,27 @@ pub(crate) const PATHFINDER_RESULT_PENDING: u32 = 4;
 pub(crate) const PATHFINDER_SEARCH_NONE: u32 = 0;
 pub(crate) const PATHFINDER_SEARCH_DIRECT: u32 = 1;
 pub(crate) const PATHFINDER_SEARCH_HIERARCHICAL: u32 = 2;
-pub(crate) const PATHFINDER_SEARCH_FINE_A_STAR: u32 = 3;
-pub(crate) const PATHFINDER_HIERARCHY_MAX_REFINEMENTS: u32 = 4;
-/// Independent of shoreline classification. Terrain-bound unit centers stay
-/// out of the outer map guard cells even for point-size developer queries.
+/// Terrain-bound unit centers stay out of the outer map guard cells.
 pub(crate) const PATHFINDER_MAP_EDGE_BUFFER_WU: f64 = 40.0;
 const PATHFINDER_SYNC_CONTINUATION_OWNER: u32 = u32::MAX;
+/// Heat stamped on every cell of a completed authoritative route.
+pub(crate) const PATHFINDER_TRAFFIC_HEAT_PER_ROUTE: u8 = 48;
 
-struct FineAStarArena {
+/// A resumable fine search over one corridor. Node storage is CORRIDOR-LOCAL
+/// (cluster rank × cells per cluster), so a retained frontier costs kilobytes
+/// instead of a map-sized arena per ally team.
+#[derive(Default)]
+pub(crate) struct FineArena {
+    corridor: Vec<u32>,
+    rank_of_cluster: Vec<u32>,
     g_score: Vec<f32>,
     f_score: Vec<f32>,
-    parent: Vec<i32>,
+    parent: Vec<u32>,
     closed: Vec<u8>,
     visited_gen: Vec<u32>,
     current_gen: u32,
     heap: Vec<u32>,
     pending: Option<PendingFineAStar>,
-}
-
-impl FineAStarArena {
-    fn new(n: usize) -> Self {
-        Self {
-            g_score: vec![f32::INFINITY; n],
-            f_score: vec![f32::INFINITY; n],
-            parent: vec![-1; n],
-            closed: vec![0; n],
-            visited_gen: vec![0; n],
-            current_gen: 1,
-            heap: Vec::new(),
-            pending: None,
-        }
-    }
 }
 
 pub(crate) struct PathfinderState {
@@ -86,146 +77,87 @@ pub(crate) struct PathfinderState {
     map_width: f64,
     map_height: f64,
     cell_size: f64,
-    consolidation_multiplier: u32,
 
     blocked: Vec<u8>,
     terrain_blocked: Vec<u8>,
-    /// A cell is set when any positive interior portion lies below water.
     terrain_water: Vec<u8>,
-    /// A cell is set only when no positive interior portion is exposed above
-    /// water. Together with `terrain_water`, this yields the exact binary
-    /// medium cases: dry/exposed, water, or both.
     terrain_submerged: Vec<u8>,
     terrain_edge_blocked: Vec<u8>,
-    /// Dynamic obstacle layer: grounded building footprint cells, synced
-    /// from the TS BuildingGrid (see pathfinder_sync_building_occupancy).
-    /// Hovering structures never appear here.
     building_blocked: Vec<u8>,
-    /// BuildingGrid version of the installed layer; 0 = not synced.
     building_occupancy_version: u32,
     terrain_height: Vec<f32>,
     terrain_normal_z: Vec<f32>,
-    /// Minimum normal of the terrain transition between neighboring cell
-    /// interiors. Four canonical forward edges (E, SE, S, SW) per cell retain
-    /// cliffs as blocked transitions without making either flat neighbor an
-    /// invalid square.
     terrain_transition_normal_z: Vec<f32>,
-    cc_labels: Vec<i16>,
-    /// Chebyshev cell-distance from each open cell to the nearest blocked
-    /// cell (0 for blocked cells). Rebuilt with the mask and consumed as a
-    /// per-unit collision-clearance gate, so a body of collision radius r is
-    /// not routed through gaps narrower than it can fit. Independent of unit
-    /// size, so it is cached once per mask rather than per radius.
-    clearance: Vec<u16>,
-    /// Clearance from map edges only. Traversals valid in both exposed and
-    /// water cases use this because neither medium is an obstacle.
-    medium_clearance: Vec<u16>,
-    /// Clearance from cells containing any exposed terrain and map edges.
-    /// Water-only navigation uses this so the collision disk remains inside
-    /// cells whose water case is exclusively applicable.
-    water_clearance: Vec<u16>,
+    /// Squared Euclidean cell distance to the nearest obstacle (clamped) for
+    /// the three obstacle sets: ground (water ∪ edge ∪ building), dual-medium
+    /// (edge ∪ building), water-only (exposed ∪ edge ∪ building).
+    edt_ground_sq: Vec<u16>,
+    edt_medium_sq: Vec<u16>,
+    edt_water_sq: Vec<u16>,
+    edt_scratch: EdtScratch,
+    /// Traffic heat: recently planned routes raise the cost of their cells so
+    /// later routes spread across parallel lanes. Decayed by the caller.
+    traffic_heat: Vec<u8>,
 
-    // A* scratch (reused per query)
-    g_score: Vec<f32>,
-    f_score: Vec<f32>,
-    parent: Vec<i32>,
-    closed: Vec<u8>,
-    visited_gen: Vec<u32>,
-    current_gen: u32,
-    heap: Vec<u32>,
-    /// Fine-grid search retained between sliced pathfinder calls. The dense
-    /// scores/parents above remain the one shared arena; this small record is
-    /// the continuation cursor that makes the arena resumable without
-    /// duplicating map-sized memory for every queued unit.
-    pending_fine_a_star: Option<PendingFineAStar>,
-    /// One dense search arena per ally team. Only the selected team's arena
-    /// is installed in the hot fields above; switching owners swaps vectors
-    /// without copying them, so every side may retain one unfinished search.
+    fine_arena: FineArena,
     active_fine_a_star_owner: u32,
-    saved_fine_a_star_arenas: HashMap<u32, FineAStarArena>,
-    // Level-1 hierarchy scratch. One abstract node represents a square cluster
-    // of fine navigation cells. Abstract edges are never assumed passable:
-    // every edge is validated and priced by the exact fine-grid line tracer.
-    hierarchy_grid_w: i32,
-    hierarchy_grid_h: i32,
-    hierarchy_node_cell: Vec<i32>,
-    hierarchy_g_score: Vec<f32>,
-    hierarchy_f_score: Vec<f32>,
-    hierarchy_parent: Vec<i32>,
-    hierarchy_closed: Vec<u8>,
-    hierarchy_heap: Vec<u32>,
-    hierarchy_edge_cost: Vec<f32>,
-    hierarchy_edge_from_cell: Vec<i32>,
-    hierarchy_edge_to_cell: Vec<i32>,
-    hierarchy_path: Vec<u32>,
-    // Query-local transition caches. Cell passability is revisited from many
-    // incoming edges, especially for diagonal neighbors; 0 = unknown,
-    // 1 = blocked, 2 = passable. Touched lists let each query clear only the
-    // cells it actually inspected instead of sweeping a huge open map.
+    saved_fine_arenas: HashMap<u32, FineArena>,
+
+    // Hierarchy (see hierarchy.rs).
+    pub(crate) hpa_cluster_w: i32,
+    pub(crate) hpa_cluster_h: i32,
+    pub(crate) hpa_cluster_change_stamp: Vec<u32>,
+    pub(crate) hpa_stamp_counter: u32,
+    pub(crate) hpa_classes: Vec<HpaClassGraph>,
+    pub(crate) hpa_class_use_counter: u32,
+    pub(crate) hpa_g: Vec<f32>,
+    pub(crate) hpa_parent: Vec<u32>,
+    pub(crate) hpa_gen: Vec<u32>,
+    pub(crate) hpa_closed_gen: Vec<u32>,
+    pub(crate) hpa_cur_gen: u32,
+    pub(crate) hpa_heap: Vec<(f32, u32)>,
+    pub(crate) hpa_work: u32,
+    /// Reach set of the start cluster after an unreachable search (g per
+    /// cluster-local cell, INFINITY = unreachable) and which cluster it is.
+    pub(crate) hpa_start_reach: Vec<f32>,
+    pub(crate) hpa_start_reach_cluster: u32,
+    /// Last query's start/goal insertion, reused when the identical query
+    /// re-enters after a Budget slice. (class, start, goal, dirty stamp).
+    pub(crate) hpa_insertion_key: Option<(u32, u32, u32, u32)>,
+    pub(crate) hpa_insertion_start_costs: Vec<f32>,
+    pub(crate) hpa_insertion_goal_costs: Vec<f32>,
+    pub(crate) cl_g: Vec<f32>,
+    pub(crate) cl_gen: Vec<u32>,
+    pub(crate) cl_cur_gen: u32,
+    pub(crate) cl_heap: Vec<(f32, u32)>,
+
+    // Query-local passability / transition caches.
     move_passability_cache: Vec<u8>,
     move_passability_touched: Vec<u32>,
     waypoint_passability_cache: Vec<u8>,
     waypoint_passability_touched: Vec<u32>,
-    // Exact directed-neighbor costs traced by direct LOS, hierarchy
-    // refinement, and string pulling. Fine A* evaluates its mostly-unique
-    // outgoing edges directly, avoiding a hash lookup on every expansion.
     line_transition_cost_cache: HashMap<u64, f32>,
     line_transition_cache_enabled: bool,
     line_transition_cache_hits: u32,
     line_transition_cache_misses: u32,
-    // BFS scratch
-    bfs_queue: Vec<u32>,
 
-    // Per-query traversal params, set at pathfinder_find_path entry (one query
-    // runs at a time). `cur_required_clearance` gates cells by the unit's
-    // collision footprint in cells. Every ground direction must satisfy the
-    // medium-specific local force envelope; `cur_symmetric_slope` additionally
-    // makes the inter-cell climb gate apply downhill (SYMMETRIC mode).
-    cur_required_clearance: i32,
+    // Per-query traversal params.
+    /// Squared required centre-to-obstacle distance (cells²) for the body.
+    /// 0 for point-size/airborne queries and during start classification.
+    cur_required_d_sq: f32,
     cur_symmetric_slope: bool,
-    /// Collision radius of the querying body. Declares that the query has a
-    /// physical body (enabling fording and immersion scaling) and sizes the
-    /// displaced-volume sphere; 0 = radius-less query with legacy
-    /// binary-water behavior.
     cur_unit_radius: f64,
-    /// Height of the body origin above its support point — the runtime rests
-    /// bodies at bed + supportPointOffsetZ, and water damage keys off the
-    /// origin, so this is the honest fording depth and immersion center.
-    /// 0 falls back to the collision radius (sphere resting tangent).
     cur_support_point_offset_z: f64,
-    /// The querying body's start cell when that cell is blocked ONLY by a
-    /// building footprint (an escape start), else `usize::MAX`. Set by every
-    /// query entry from the same classification; `pathfinder_line_cost`
-    /// exempts exactly this cell, and only as the first cell of a line.
     cur_escape_start_idx: usize,
-    /// Per-query fast path for the lateral-hold legality gate: at or above
-    /// this min-cell-normal even a fully lateral hold provably fits the dry
-    /// tangent budget (and the wet budget is never smaller), so the edge
-    /// force helper can be skipped with one comparison. 0 = always skip
-    /// (zero-envelope queries keep legacy unconstrained legality).
     cur_lateral_skip_normal_z: f64,
-    /// Per-query descent envelope cos(atan μ), precomputed so the downhill
-    /// gate costs a lookup and comparison instead of per-edge trig.
-    /// 0 = unconstrained descent (no authored grip).
     cur_descent_hold_normal_z: f64,
-    /// Intentional destination/entry domain for the current query. Physical
-    /// passability uses the traversal passed to the kernels; this second
-    /// domain only prevents a body that is already in its intended medium
-    /// from voluntarily entering a recovery-only medium.
     cur_waypoint_traversal: PathfinderTraversal,
-    /// True when MOVE and WAYPOINT classify every cell identically. Ordinary
-    /// ground/air/water units take this path and avoid two redundant waypoint
-    /// passability evaluations for every directed edge. Recovery-only medium
-    /// transitions keep the full directed-domain rule.
     cur_waypoint_matches_move_domain: bool,
+    pub(crate) cur_heat_enabled: bool,
 
-    // Cache key — invalidated on terrain/grid-dimension change.
-    terrain_only_key: u64, // = (tVer as u64) << 32 | (gridW as u64) << 16 | gridH
-
-    // Sorted snap offsets — populated once per grid-dim change.
+    terrain_only_key: u64,
     snap_offsets: Vec<(i16, i16)>,
 
-    // Output: smoothed waypoints as (x, y) f64 pairs.
     waypoint_scratch: Vec<f64>,
     path_scratch: Vec<u32>,
     last_result_status: u32,
@@ -233,23 +165,15 @@ pub(crate) struct PathfinderState {
     last_fine_expanded_nodes: u32,
     last_fine_expanded_nodes_this_slice: u32,
     last_coarse_expanded_nodes: u32,
-    last_coarse_refinement_passes: u32,
-    last_coarse_exact_edge_checks: u32,
-    last_coarse_full_cluster_scans: u32,
-    last_fine_hit_node_limit: bool,
+    last_hpa_work: u32,
+    last_corridor_clusters: u32,
     last_smoothing_line_checks: u32,
     last_direct_cost_ratio: f32,
 }
 
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) struct PathfinderTraversal {
-    /// Minimum terrain normal supported by the unit's dry-contact force
-    /// budget. This is derived from propulsion, mass, gravity, and Coulomb
-    /// grip; there is no global angle ceiling.
     min_ground_normal_z: f32,
-    /// Equivalent threshold while water covers the terrain. Fluid-supported
-    /// bodies ignore the bed. Any water-containing cell applies the same full
-    /// water force case; a mixed cell then intersects it with the dry case.
     safe_ground_accel: f64,
     safe_water_drive_accel: f64,
     static_friction_coefficient: f64,
@@ -258,20 +182,10 @@ pub(crate) struct PathfinderTraversal {
     allow_ground: bool,
     allow_water: bool,
     allow_air: bool,
-    /// Cached wet-contact slope gate (see `derived()`). Every literal
-    /// construction site must finish with `.derived()` so this field is
-    /// populated; a stale 0.0 weakens the wet slope gate.
     wet_contact_required_normal_z: f32,
 }
 
 impl PathfinderTraversal {
-    /// Precompute the wet-contact required-normal gate once per traversal.
-    /// Its inputs are query constants, but it used to be derived inside
-    /// `pathfinder_required_cell_normal_z` — running the ~64-iteration
-    /// sin/cos bisection of `pathfinder_max_contact_slope_rad` for every
-    /// wet cell-passability test, which put libm trig at the top of the
-    /// whole-app CPU profile. The expression sequence below is byte-moved
-    /// from that function so the cached value is bit-identical.
     #[inline]
     fn derived(mut self) -> Self {
         self.wet_contact_required_normal_z = self.compute_wet_contact_required_normal_z();
@@ -290,14 +204,8 @@ impl PathfinderTraversal {
             && self.safe_water_drive_accel <= 0.0
             && self.static_friction_coefficient <= 0.0
         {
-            // Explicitly unfiltered developer/test queries keep slope gates off.
             return 0.0;
         }
-
-        // Wet contact propulsion is weighted by the sphere volume actually below
-        // the water plane. Use the highest terrain belonging to the conservative
-        // path cell, so every point represented by a green square has at least
-        // this much water authority at its ground-resting body height.
         let max_move_slope = pathfinder_max_contact_slope_rad(
             self.safe_ground_accel,
             self.safe_water_drive_accel,
@@ -306,8 +214,6 @@ impl PathfinderTraversal {
         );
         let mut water_required = max_move_slope.cos();
         if self.water_waypoint_hold {
-            // A destination must both be actively reachable and remain held after
-            // commanded water thrust ends. Passive Coulomb grip supplies the hold.
             let hold_normal = self.static_friction_coefficient.max(0.0).atan().cos();
             water_required = water_required.max(hold_normal);
         }
@@ -320,9 +226,6 @@ fn pathfinder_traversal_cell_domain_equivalent(
     left: PathfinderTraversal,
     right: PathfinderTraversal,
 ) -> bool {
-    // These are precisely the traversal fields consumed by cell passability.
-    // Compare normalized ground requirements so two unfiltered NaN inputs are
-    // still recognized as the same effective domain.
     left.allow_ground == right.allow_ground
         && left.allow_water == right.allow_water
         && left.allow_air == right.allow_air
@@ -331,9 +234,9 @@ fn pathfinder_traversal_cell_domain_equivalent(
         && left.wet_contact_required_normal_z == right.wet_contact_required_normal_z
 }
 
-/// Query-local route objective, deliberately independent of locomotion rig
-/// names. The wrapper reduces force/mass/grip physics to flat acceleration;
-/// A* only knows how that capability changes travel time over terrain.
+/// Query-local route objective. The wrapper reduces force/mass/grip physics
+/// to flat acceleration; A* only knows how that capability changes travel
+/// time over terrain.
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) struct PathfinderCostProfile {
     flat_drive_accel: f64,
@@ -341,8 +244,9 @@ pub(crate) struct PathfinderCostProfile {
     flat_water_contact_accel: f64,
     safe_water_drive_accel: f64,
     static_friction_coefficient: f64,
-    hard_clearance_cells: i32,
-    soft_clearance_cells: i32,
+    /// Required centre-to-obstacle distance in cells (radius/cell + 0.5).
+    required_d_cells: f32,
+    soft_clearance_cells: f32,
     soft_clearance_penalty_per_cell: f32,
 }
 
@@ -354,42 +258,17 @@ impl PathfinderCostProfile {
         flat_water_contact_accel: f64,
         safe_water_drive_accel: f64,
         static_friction_coefficient: f64,
-        hard_clearance_cells: i32,
+        required_d_cells: f32,
     ) -> Self {
+        let positive = |v: f64| if v.is_finite() && v > 0.0 { v } else { 0.0 };
         Self {
-            flat_drive_accel: if flat_drive_accel.is_finite() && flat_drive_accel > 0.0 {
-                flat_drive_accel
-            } else {
-                0.0
-            },
-            safe_drive_accel: if safe_drive_accel.is_finite() && safe_drive_accel > 0.0 {
-                safe_drive_accel
-            } else {
-                0.0
-            },
-            flat_water_contact_accel: if flat_water_contact_accel.is_finite()
-                && flat_water_contact_accel > 0.0
-            {
-                flat_water_contact_accel
-            } else {
-                0.0
-            },
-            safe_water_drive_accel: if safe_water_drive_accel.is_finite()
-                && safe_water_drive_accel > 0.0
-            {
-                safe_water_drive_accel
-            } else {
-                0.0
-            },
-            static_friction_coefficient: if static_friction_coefficient.is_finite()
-                && static_friction_coefficient > 0.0
-            {
-                static_friction_coefficient
-            } else {
-                0.0
-            },
-            hard_clearance_cells,
-            soft_clearance_cells: PATHFINDING_SOFT_CLEARANCE_CELLS.max(0),
+            flat_drive_accel: positive(flat_drive_accel),
+            safe_drive_accel: positive(safe_drive_accel),
+            flat_water_contact_accel: positive(flat_water_contact_accel),
+            safe_water_drive_accel: positive(safe_water_drive_accel),
+            static_friction_coefficient: positive(static_friction_coefficient),
+            required_d_cells,
+            soft_clearance_cells: PATHFINDING_SOFT_CLEARANCE_CELLS.max(0) as f32,
             soft_clearance_penalty_per_cell: PATHFINDING_SOFT_CLEARANCE_PENALTY_PER_CELL.max(0.0),
         }
     }
@@ -402,8 +281,8 @@ impl PathfinderCostProfile {
             flat_water_contact_accel: 0.0,
             safe_water_drive_accel: 0.0,
             static_friction_coefficient: 0.0,
-            hard_clearance_cells: 0,
-            soft_clearance_cells: 0,
+            required_d_cells: 0.0,
+            soft_clearance_cells: 0.0,
             soft_clearance_penalty_per_cell: 0.0,
         }
     }
@@ -418,7 +297,6 @@ impl PathfinderState {
             map_width: 0.0,
             map_height: 0.0,
             cell_size: PATHFINDER_BUILD_GRID_CELL_SIZE,
-            consolidation_multiplier: 1,
             blocked: Vec::new(),
             terrain_blocked: Vec::new(),
             terrain_water: Vec::new(),
@@ -429,32 +307,36 @@ impl PathfinderState {
             terrain_height: Vec::new(),
             terrain_normal_z: Vec::new(),
             terrain_transition_normal_z: Vec::new(),
-            cc_labels: Vec::new(),
-            clearance: Vec::new(),
-            medium_clearance: Vec::new(),
-            water_clearance: Vec::new(),
-            g_score: Vec::new(),
-            f_score: Vec::new(),
-            parent: Vec::new(),
-            closed: Vec::new(),
-            visited_gen: Vec::new(),
-            current_gen: 1,
-            heap: Vec::new(),
-            pending_fine_a_star: None,
+            edt_ground_sq: Vec::new(),
+            edt_medium_sq: Vec::new(),
+            edt_water_sq: Vec::new(),
+            edt_scratch: EdtScratch::default(),
+            traffic_heat: Vec::new(),
+            fine_arena: FineArena::default(),
             active_fine_a_star_owner: PATHFINDER_SYNC_CONTINUATION_OWNER,
-            saved_fine_a_star_arenas: HashMap::default(),
-            hierarchy_grid_w: 0,
-            hierarchy_grid_h: 0,
-            hierarchy_node_cell: Vec::new(),
-            hierarchy_g_score: Vec::new(),
-            hierarchy_f_score: Vec::new(),
-            hierarchy_parent: Vec::new(),
-            hierarchy_closed: Vec::new(),
-            hierarchy_heap: Vec::new(),
-            hierarchy_edge_cost: Vec::new(),
-            hierarchy_edge_from_cell: Vec::new(),
-            hierarchy_edge_to_cell: Vec::new(),
-            hierarchy_path: Vec::new(),
+            saved_fine_arenas: HashMap::default(),
+            hpa_cluster_w: 0,
+            hpa_cluster_h: 0,
+            hpa_cluster_change_stamp: Vec::new(),
+            hpa_stamp_counter: 0,
+            hpa_classes: Vec::new(),
+            hpa_class_use_counter: 0,
+            hpa_g: Vec::new(),
+            hpa_parent: Vec::new(),
+            hpa_gen: Vec::new(),
+            hpa_closed_gen: Vec::new(),
+            hpa_cur_gen: 0,
+            hpa_heap: Vec::new(),
+            hpa_work: 0,
+            hpa_start_reach: Vec::new(),
+            hpa_start_reach_cluster: u32::MAX,
+            hpa_insertion_key: None,
+            hpa_insertion_start_costs: Vec::new(),
+            hpa_insertion_goal_costs: Vec::new(),
+            cl_g: Vec::new(),
+            cl_gen: Vec::new(),
+            cl_cur_gen: 0,
+            cl_heap: Vec::new(),
             move_passability_cache: Vec::new(),
             move_passability_touched: Vec::new(),
             waypoint_passability_cache: Vec::new(),
@@ -463,8 +345,7 @@ impl PathfinderState {
             line_transition_cache_enabled: false,
             line_transition_cache_hits: 0,
             line_transition_cache_misses: 0,
-            bfs_queue: Vec::new(),
-            cur_required_clearance: 0,
+            cur_required_d_sq: 0.0,
             cur_symmetric_slope: false,
             cur_unit_radius: 0.0,
             cur_support_point_offset_z: 0.0,
@@ -485,6 +366,7 @@ impl PathfinderState {
             }
             .derived(),
             cur_waypoint_matches_move_domain: false,
+            cur_heat_enabled: false,
             terrain_only_key: u64::MAX,
             snap_offsets: Vec::new(),
             waypoint_scratch: Vec::new(),
@@ -494,10 +376,8 @@ impl PathfinderState {
             last_fine_expanded_nodes: 0,
             last_fine_expanded_nodes_this_slice: 0,
             last_coarse_expanded_nodes: 0,
-            last_coarse_refinement_passes: 0,
-            last_coarse_exact_edge_checks: 0,
-            last_coarse_full_cluster_scans: 0,
-            last_fine_hit_node_limit: false,
+            last_hpa_work: 0,
+            last_corridor_clusters: 0,
             last_smoothing_line_checks: 0,
             last_direct_cost_ratio: f32::NAN,
         }
@@ -511,48 +391,21 @@ pub(crate) fn pathfinder_state() -> &'static mut PathfinderState {
     PATHFINDER.get_or_init(PathfinderState::empty)
 }
 
-fn pathfinder_take_active_fine_arena(state: &mut PathfinderState) -> FineAStarArena {
-    FineAStarArena {
-        g_score: std::mem::take(&mut state.g_score),
-        f_score: std::mem::take(&mut state.f_score),
-        parent: std::mem::take(&mut state.parent),
-        closed: std::mem::take(&mut state.closed),
-        visited_gen: std::mem::take(&mut state.visited_gen),
-        current_gen: state.current_gen,
-        heap: std::mem::take(&mut state.heap),
-        pending: state.pending_fine_a_star.take(),
-    }
-}
-
-fn pathfinder_install_fine_arena(state: &mut PathfinderState, arena: FineAStarArena) {
-    state.g_score = arena.g_score;
-    state.f_score = arena.f_score;
-    state.parent = arena.parent;
-    state.closed = arena.closed;
-    state.visited_gen = arena.visited_gen;
-    state.current_gen = arena.current_gen;
-    state.heap = arena.heap;
-    state.pending_fine_a_star = arena.pending;
-}
-
 fn pathfinder_switch_fine_arena(state: &mut PathfinderState, owner: u32) {
     if state.active_fine_a_star_owner == owner {
         return;
     }
     let previous_owner = state.active_fine_a_star_owner;
-    let previous = pathfinder_take_active_fine_arena(state);
-    state.saved_fine_a_star_arenas.insert(previous_owner, previous);
-    let next = state
-        .saved_fine_a_star_arenas
-        .remove(&owner)
-        .unwrap_or_else(|| FineAStarArena::new(state.n));
-    pathfinder_install_fine_arena(state, next);
+    let previous = std::mem::take(&mut state.fine_arena);
+    state.saved_fine_arenas.insert(previous_owner, previous);
+    let next = state.saved_fine_arenas.remove(&owner).unwrap_or_default();
+    state.fine_arena = next;
     state.active_fine_a_star_owner = owner;
 }
 
 fn pathfinder_invalidate_all_fine_arenas(state: &mut PathfinderState) {
-    state.pending_fine_a_star = None;
-    state.saved_fine_a_star_arenas.clear();
+    state.fine_arena.pending = None;
+    state.saved_fine_arenas.clear();
 }
 
 pub(crate) fn pathfinder_build_snap_offsets(state: &mut PathfinderState) {
@@ -579,20 +432,14 @@ pub(crate) fn pathfinder_build_snap_offsets(state: &mut PathfinderState) {
 }
 
 #[wasm_bindgen]
-pub fn pathfinder_init(map_width: f64, map_height: f64, consolidation_multiplier: u32) {
+pub fn pathfinder_init(map_width: f64, map_height: f64) {
     let state = pathfinder_state();
     pathfinder_invalidate_all_fine_arenas(state);
-    let consolidation_multiplier = consolidation_multiplier.clamp(1, 5);
-    let cell_size = PATHFINDER_BUILD_GRID_CELL_SIZE * consolidation_multiplier as f64;
+    let cell_size = PATHFINDER_BUILD_GRID_CELL_SIZE;
     let grid_w = (map_width / cell_size).ceil() as i32;
     let grid_h = (map_height / cell_size).ceil() as i32;
     let n = (grid_w * grid_h) as usize;
-    if state.grid_w == grid_w
-        && state.grid_h == grid_h
-        && state.n == n
-        && state.consolidation_multiplier == consolidation_multiplier
-    {
-        // Same dims — just invalidate caches so the next rebuild fires.
+    if state.grid_w == grid_w && state.grid_h == grid_h && state.n == n {
         state.terrain_only_key = u64::MAX;
         state.map_width = map_width;
         state.map_height = map_height;
@@ -604,85 +451,49 @@ pub fn pathfinder_init(map_width: f64, map_height: f64, consolidation_multiplier
     state.map_width = map_width;
     state.map_height = map_height;
     state.cell_size = cell_size;
-    state.consolidation_multiplier = consolidation_multiplier;
-    state.blocked.clear();
-    state.blocked.resize(n, 0);
-    state.terrain_blocked.clear();
-    state.terrain_blocked.resize(n, 0);
-    state.terrain_water.clear();
-    state.terrain_water.resize(n, 0);
-    state.terrain_submerged.clear();
-    state.terrain_submerged.resize(n, 0);
-    state.terrain_edge_blocked.clear();
-    state.terrain_edge_blocked.resize(n, 0);
-    state.building_blocked.clear();
-    state.building_blocked.resize(n, 0);
+    for layer in [
+        &mut state.blocked,
+        &mut state.terrain_blocked,
+        &mut state.terrain_water,
+        &mut state.terrain_submerged,
+        &mut state.terrain_edge_blocked,
+        &mut state.building_blocked,
+        &mut state.traffic_heat,
+        &mut state.move_passability_cache,
+        &mut state.waypoint_passability_cache,
+    ] {
+        layer.clear();
+        layer.resize(n, 0);
+    }
     state.building_occupancy_version = 0;
     state.terrain_height.clear();
-    state
-        .terrain_height
-        .resize(n, TERRAIN_WATER_LEVEL as f32 + 1.0);
+    state.terrain_height.resize(n, TERRAIN_WATER_LEVEL as f32 + 1.0);
     state.terrain_normal_z.clear();
     state.terrain_normal_z.resize(n, 1.0);
     state.terrain_transition_normal_z.clear();
     state.terrain_transition_normal_z.resize(n * 4, 1.0);
-    state.cc_labels.clear();
-    state.cc_labels.resize(n, 0);
-    state.clearance.clear();
-    state.clearance.resize(n, 0);
-    state.medium_clearance.clear();
-    state.medium_clearance.resize(n, 0);
-    state.water_clearance.clear();
-    state.water_clearance.resize(n, 0);
-    state.g_score.clear();
-    state.g_score.resize(n, f32::INFINITY);
-    state.f_score.clear();
-    state.f_score.resize(n, f32::INFINITY);
-    state.parent.clear();
-    state.parent.resize(n, -1);
-    state.closed.clear();
-    state.closed.resize(n, 0);
-    state.visited_gen.clear();
-    state.visited_gen.resize(n, 0);
-    state.current_gen = 1;
-    state.heap.clear();
+    for edt in [
+        &mut state.edt_ground_sq,
+        &mut state.edt_medium_sq,
+        &mut state.edt_water_sq,
+    ] {
+        edt.clear();
+        edt.resize(n, EDT_CLAMP_SQ);
+    }
+    state.fine_arena = FineArena::default();
     state.active_fine_a_star_owner = PATHFINDER_SYNC_CONTINUATION_OWNER;
-    state.saved_fine_a_star_arenas.clear();
-    state.hierarchy_grid_w = 0;
-    state.hierarchy_grid_h = 0;
-    state.hierarchy_node_cell.clear();
-    state.hierarchy_g_score.clear();
-    state.hierarchy_f_score.clear();
-    state.hierarchy_parent.clear();
-    state.hierarchy_closed.clear();
-    state.hierarchy_heap.clear();
-    state.hierarchy_edge_cost.clear();
-    state.hierarchy_edge_from_cell.clear();
-    state.hierarchy_edge_to_cell.clear();
-    state.hierarchy_path.clear();
-    state.move_passability_cache.clear();
-    state.move_passability_cache.resize(n, 0);
+    state.saved_fine_arenas.clear();
     state.move_passability_touched.clear();
-    state.waypoint_passability_cache.clear();
-    state.waypoint_passability_cache.resize(n, 0);
     state.waypoint_passability_touched.clear();
     state.line_transition_cost_cache.clear();
     state.line_transition_cache_enabled = false;
-    state.line_transition_cache_hits = 0;
-    state.line_transition_cache_misses = 0;
     state.path_scratch.clear();
-    state.bfs_queue.clear();
-    state.bfs_queue.resize(n, 0);
     state.terrain_only_key = u64::MAX;
+    hpa_reset_layout(state);
     pathfinder_build_snap_offsets(state);
 }
 
 /// Sample raw terrain mesh height + surface normal nz at world (x, y).
-/// Mirrors getTerrainMeshHeight + getSurfaceNormal.nz used in
-/// Pathfinder.ts ensureTerrainBlocked. Returns (height, nz). If the
-/// terrain isn't installed or the sample degenerates, returns
-/// (water_level + 1, 1.0) so the cell is treated as flat dry land
-/// (best-effort — caller is responsible for terrain bootstrap order).
 #[inline]
 pub(crate) fn pathfinder_sample_terrain(x: f64, y: f64) -> (f64, f32) {
     let t = terrain_grid();
@@ -696,23 +507,18 @@ pub(crate) fn pathfinder_sample_terrain(x: f64, y: f64) -> (f64, f32) {
     };
     let (wa, wb, wc, ax, az, ah, bx, bz, bh, cx, cz, ch) = sample;
     let h = wa * ah + wb * bh + wc * ch;
-    // Triangle normal — same math as terrain_get_surface_normal.
     let ux = bx - ax;
     let uy = bh - ah;
     let uz = bz - az;
     let vx_ = cx - ax;
     let vy = ch - ah;
     let vz = cz - az;
-    let mut nx = uy * vz - uz * vy;
+    let nx = uy * vz - uz * vy;
     let mut vertical = uz * vx_ - ux * vz;
-    let mut nz = ux * vy - uy * vx_;
+    let nz = ux * vy - uy * vx_;
     if vertical < 0.0 {
-        nx = -nx;
         vertical = -vertical;
-        nz = -nz;
     }
-    let _ = nx;
-    let _ = nz;
     let len_sq = nx * nx + vertical * vertical + nz * nz;
     let len = if len_sq > 0.0 { len_sq.sqrt() } else { 1.0 };
     let normal_z = (vertical / len) as f32;
@@ -773,9 +579,6 @@ pub(crate) fn pathfinder_sample_cell_terrain(
         &mut has_air,
         &mut min_normal_z,
     );
-    // Both medium flags use the inset cell interior. A triangle that merely
-    // shares a boundary contributes to the transition edge, not to either
-    // cell's medium cases.
     let fully_submerged = has_water && !has_air;
     (
         has_water,
@@ -796,10 +599,7 @@ fn pathfinder_transition_normal_z(from_height: f32, to_height: f32, horizontal: 
 }
 
 pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terrain_version: u32) {
-    let key = ((terrain_version as u64) << 32)
-        ^ ((state.consolidation_multiplier as u64) << 28)
-        ^ ((state.grid_w as u64) << 14)
-        ^ state.grid_h as u64;
+    let key = ((terrain_version as u64) << 32) ^ ((state.grid_w as u64) << 14) ^ state.grid_h as u64;
     if key == state.terrain_only_key {
         return;
     }
@@ -808,10 +608,6 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
     let n = state.n;
-    // Step 1 - classify water and the steepest terrain touching each cell.
-    // The per-cell normal is retained so each query can enforce its derived
-    // medium-specific force envelope in every cell and the matching rise gate
-    // on applicable directed edges.
     let mut water_mask: Vec<u8> = vec![0u8; n];
     let mut submerged_mask: Vec<u8> = vec![0u8; n];
     let mut boundary_heights: Vec<[f32; 8]> = vec![[0.0; 8]; n];
@@ -870,15 +666,11 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
         }
     }
 
-    // Step 2 — retain the exact per-cell water domain. There is no synthetic
-    // shoreline dilation: a dry-only traversal is blocked by a cell iff that
-    // cell itself contains water.
     state.terrain_blocked.copy_from_slice(&water_mask);
+    let edge_buffer_cells = (PATHFINDER_MAP_EDGE_BUFFER_WU / state.cell_size).ceil().max(1.0) as i32;
     for gy in 0..grid_h {
         for gx in 0..grid_w {
             let idx = (gy * grid_w + gx) as usize;
-            let edge_buffer_cells =
-                (PATHFINDER_MAP_EDGE_BUFFER_WU / state.cell_size).ceil().max(1.0) as i32;
             let edge_blocked = gx < edge_buffer_cells
                 || gy < edge_buffer_cells
                 || gx >= grid_w - edge_buffer_cells
@@ -888,264 +680,184 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
     }
 
     // A terrain rebuild invalidates the building occupancy layer: TS resyncs
-    // it immediately afterward (version 0 never matches a live BuildingGrid
-    // version, which starts at 1).
+    // it immediately afterward.
     state.building_blocked.fill(0);
     state.building_occupancy_version = 0;
+    state.traffic_heat.fill(0);
 
-    pathfinder_rebuild_blocked_clearance_and_components(state);
-
+    pathfinder_rebuild_blocked_and_edt_full(state);
+    hpa_invalidate_all(state);
     state.terrain_only_key = key;
 }
 
-/// Rebuild the aggregate blocked mask, the three clearance distance fields,
-/// and the connected-component labels from the current terrain masks plus
-/// the building occupancy layer. Shared by the terrain rebuild and by
-/// building-occupancy sync — building churn re-runs ONLY these O(n) sweeps,
-/// never the far more expensive per-cell terrain sampling above.
-fn pathfinder_rebuild_blocked_clearance_and_components(state: &mut PathfinderState) {
-    let grid_w = state.grid_w;
-    let grid_h = state.grid_h;
+/// Full rebuild of the aggregate blocked mask and all three distance
+/// transforms. Used after terrain changes; building churn takes the
+/// incremental path below.
+fn pathfinder_rebuild_blocked_and_edt_full(state: &mut PathfinderState) {
     let n = state.n;
-
-    // Terrain is the base locomotion surface; building occupancy is a
-    // dynamic obstacle layer on top of it. Hovering structures never enter
-    // the layer, so units path freely under them.
     state.blocked.copy_from_slice(&state.terrain_blocked);
     for idx in 0..n {
         if state.terrain_edge_blocked[idx] != 0 || state.building_blocked[idx] != 0 {
             state.blocked[idx] = 1;
         }
     }
-
-    // Clearance distance fields: Chebyshev cell-distance from each invalid
-    // medium cell. Ground/air-only traversal treats every water-containing
-    // cell as an obstacle; water-only traversal treats every cell containing
-    // exposed terrain as an obstacle. Dual-medium traversal has no terrain
-    // medium obstacle. Buildings obstruct every non-air medium. All three
-    // fields are then clamped by exact map-edge distance so physical body
-    // radius still remains in bounds.
-    for idx in 0..n {
-        let building = state.building_blocked[idx] != 0;
-        state.clearance[idx] = if state.blocked[idx] == 1 { 0 } else { u16::MAX };
-        state.medium_clearance[idx] = if state.terrain_edge_blocked[idx] != 0 || building {
-            0
-        } else {
-            u16::MAX
-        };
-        state.water_clearance[idx] = if state.terrain_submerged[idx] == 0
-            || state.terrain_edge_blocked[idx] != 0
-            || building
-        {
-            0
-        } else {
-            u16::MAX
-        };
-    }
-    pathfinder_rebuild_clearance_distance(&mut state.clearance, grid_w, grid_h);
-    pathfinder_rebuild_clearance_distance(&mut state.medium_clearance, grid_w, grid_h);
-    pathfinder_rebuild_clearance_distance(&mut state.water_clearance, grid_w, grid_h);
-    for gy in 0..grid_h {
-        for gx in 0..grid_w {
-            let idx = (gy * grid_w + gx) as usize;
-            let edge_clearance = (gx + 1)
-                .min(gy + 1)
-                .min(grid_w - gx)
-                .min(grid_h - gy)
-                .max(0) as u16;
-            state.clearance[idx] = state.clearance[idx].min(edge_clearance);
-            state.medium_clearance[idx] = state.medium_clearance[idx].min(edge_clearance);
-            state.water_clearance[idx] = state.water_clearance[idx].min(edge_clearance);
-        }
-    }
-
-    // CC labelling is an obstacle pre-flight only: slope capability is
-    // query-specific and directional, so it cannot be encoded in one shared
-    // undirected label.
-    state.cc_labels.fill(0);
-    let mut next_label: i16 = 1;
-    for seed in 0..state.n {
-        if state.blocked[seed] == 1 || state.cc_labels[seed] != 0 {
-            continue;
-        }
-        if next_label > 32_000 {
-            break;
-        }
-        state.cc_labels[seed] = next_label;
-        let mut q_head = 0usize;
-        let mut q_tail = 0usize;
-        state.bfs_queue[q_tail] = seed as u32;
-        q_tail += 1;
-        while q_head < q_tail {
-            let idx = state.bfs_queue[q_head] as i32;
-            q_head += 1;
-            let cgx = idx % grid_w;
-            let cgy = (idx - cgx) / grid_w;
-            for dy in -1..=1 {
-                let ny = cgy + dy;
-                if ny < 0 || ny >= grid_h {
-                    continue;
-                }
-                let row = ny * grid_w;
-                for dx in -1..=1 {
-                    if dx == 0 && dy == 0 {
-                        continue;
-                    }
-                    if dx != 0 && dy != 0 && !PATHFINDING_ALLOW_DIAGONAL_NEIGHBORS {
-                        continue;
-                    }
-                    let nx = cgx + dx;
-                    if nx < 0 || nx >= grid_w {
-                        continue;
-                    }
-                    let nidx = (row + nx) as usize;
-                    if state.blocked[nidx] == 1 || state.cc_labels[nidx] != 0 {
-                        continue;
-                    }
-                    if dx != 0 && dy != 0 {
-                        let side_x = (cgy * grid_w + nx) as usize;
-                        let side_y = (ny * grid_w + cgx) as usize;
-                        if state.blocked[side_x] == 1 || state.blocked[side_y] == 1 {
-                            continue;
-                        }
-                    }
-                    state.cc_labels[nidx] = next_label;
-                    state.bfs_queue[q_tail] = nidx as u32;
-                    q_tail += 1;
-                }
-            }
-        }
-        next_label += 1;
-    }
+    let grid_w = state.grid_w;
+    let grid_h = state.grid_h;
+    let blocked = std::mem::take(&mut state.blocked);
+    let edge = std::mem::take(&mut state.terrain_edge_blocked);
+    let building = std::mem::take(&mut state.building_blocked);
+    let submerged = std::mem::take(&mut state.terrain_submerged);
+    let mut scratch = std::mem::take(&mut state.edt_scratch);
+    edt_build_full(&|i| blocked[i] != 0, grid_w, grid_h, &mut state.edt_ground_sq, &mut scratch);
+    edt_build_full(
+        &|i| edge[i] != 0 || building[i] != 0,
+        grid_w,
+        grid_h,
+        &mut state.edt_medium_sq,
+        &mut scratch,
+    );
+    edt_build_full(
+        &|i| submerged[i] == 0 || edge[i] != 0 || building[i] != 0,
+        grid_w,
+        grid_h,
+        &mut state.edt_water_sq,
+        &mut scratch,
+    );
+    state.blocked = blocked;
+    state.terrain_edge_blocked = edge;
+    state.building_blocked = building;
+    state.terrain_submerged = submerged;
+    state.edt_scratch = scratch;
 }
 
-fn pathfinder_mark_consolidated_building_cells(
+/// Replace the building occupancy layer with the given grounded 20 wu build
+/// cells. Cells are diffed against the installed layer so the distance
+/// transforms and hierarchy update LOCALLY; hovering structures are never
+/// submitted.
+#[wasm_bindgen]
+pub fn pathfinder_sync_building_occupancy(cell_gx: &[i32], cell_gy: &[i32], version: u32) -> u32 {
+    pathfinder_apply_building_occupancy(pathfinder_state(), cell_gx, cell_gy, version)
+}
+
+pub(crate) fn pathfinder_apply_building_occupancy(
     state: &mut PathfinderState,
     cell_gx: &[i32],
     cell_gy: &[i32],
-) {
-    let count = cell_gx.len().min(cell_gy.len());
-    for i in 0..count {
-        // Inputs are canonical 20-wu build cells. Any occupied build square
-        // rejects its entire conservative path cell; negative build indices
-        // must be rejected before Rust's truncating integer division.
-        if cell_gx[i] < 0 || cell_gy[i] < 0 {
-            continue;
-        }
-        let gx = cell_gx[i] / state.consolidation_multiplier as i32;
-        let gy = cell_gy[i] / state.consolidation_multiplier as i32;
-        if gx >= state.grid_w || gy >= state.grid_h {
-            continue;
-        }
-        state.building_blocked[(gy * state.grid_w + gx) as usize] = 1;
-    }
-}
-
-/// Replace the building occupancy layer with the given footprint cells and
-/// re-run the O(n) blocked/clearance/component sweeps. Inputs are grounded
-/// 20-wu BUILD cells; every occupied build cell rejects the larger path cell
-/// containing it (hovering structures are never submitted). Full replacement keeps the
-/// layer stateless against terrain rebuilds and desync-proof: the caller
-/// owns the authoritative cell set and the version.
-#[wasm_bindgen]
-pub fn pathfinder_sync_building_occupancy(cell_gx: &[i32], cell_gy: &[i32], version: u32) -> u32 {
-    let state = pathfinder_state();
+    version: u32,
+) -> u32 {
     if state.n == 0 {
         return 0;
     }
     pathfinder_invalidate_all_fine_arenas(state);
-    debug_assert!(cell_gy.len() >= cell_gx.len());
-    state.building_blocked.fill(0);
-    pathfinder_mark_consolidated_building_cells(state, cell_gx, cell_gy);
+    let count = cell_gx.len().min(cell_gy.len());
+    let mut next: Vec<u8> = vec![0u8; state.n];
+    for i in 0..count {
+        if cell_gx[i] < 0 || cell_gy[i] < 0 || cell_gx[i] >= state.grid_w || cell_gy[i] >= state.grid_h {
+            continue;
+        }
+        next[(cell_gy[i] * state.grid_w + cell_gx[i]) as usize] = 1;
+    }
+    let mut added: Vec<u32> = Vec::new();
+    let mut removed: Vec<u32> = Vec::new();
+    for idx in 0..state.n {
+        let was = state.building_blocked[idx];
+        let now = next[idx];
+        if was == now {
+            continue;
+        }
+        if now != 0 {
+            added.push(idx as u32);
+        } else {
+            removed.push(idx as u32);
+        }
+    }
+    state.building_blocked = next;
     state.building_occupancy_version = version;
-    pathfinder_rebuild_blocked_clearance_and_components(state);
+    for &idx in &added {
+        state.blocked[idx as usize] = 1;
+    }
+    for &idx in &removed {
+        let i = idx as usize;
+        state.blocked[i] = if state.terrain_blocked[i] != 0 || state.terrain_edge_blocked[i] != 0 {
+            1
+        } else {
+            0
+        };
+    }
+    let grid_w = state.grid_w;
+    let grid_h = state.grid_h;
+    if !added.is_empty() {
+        edt_apply_new_obstacles(grid_w, grid_h, &added, &mut state.edt_ground_sq);
+        edt_apply_new_obstacles(grid_w, grid_h, &added, &mut state.edt_medium_sq);
+        edt_apply_new_obstacles(grid_w, grid_h, &added, &mut state.edt_water_sq);
+    }
+    if !removed.is_empty() {
+        let blocked = std::mem::take(&mut state.blocked);
+        let edge = std::mem::take(&mut state.terrain_edge_blocked);
+        let building = std::mem::take(&mut state.building_blocked);
+        let submerged = std::mem::take(&mut state.terrain_submerged);
+        let mut scratch = std::mem::take(&mut state.edt_scratch);
+        edt_apply_removed_obstacles(
+            &|i| blocked[i] != 0,
+            grid_w,
+            grid_h,
+            &removed,
+            &mut state.edt_ground_sq,
+            &mut scratch,
+        );
+        edt_apply_removed_obstacles(
+            &|i| edge[i] != 0 || building[i] != 0,
+            grid_w,
+            grid_h,
+            &removed,
+            &mut state.edt_medium_sq,
+            &mut scratch,
+        );
+        edt_apply_removed_obstacles(
+            &|i| submerged[i] == 0 || edge[i] != 0 || building[i] != 0,
+            grid_w,
+            grid_h,
+            &removed,
+            &mut state.edt_water_sq,
+            &mut scratch,
+        );
+        state.blocked = blocked;
+        state.terrain_edge_blocked = edge;
+        state.building_blocked = building;
+        state.terrain_submerged = submerged;
+        state.edt_scratch = scratch;
+    }
+    hpa_mark_dirty_cells(state, &added);
+    hpa_mark_dirty_cells(state, &removed);
     1
 }
 
-/// Version of the currently installed building occupancy layer. 0 after any
-/// terrain rebuild or init — never a live BuildingGrid version — so the TS
-/// cache resyncs exactly when its grid version differs.
 #[wasm_bindgen]
 pub fn pathfinder_building_occupancy_version() -> u32 {
     pathfinder_state().building_occupancy_version
 }
 
-pub(crate) fn pathfinder_rebuild_clearance_distance(
-    clearance: &mut [u16],
-    grid_w: i32,
-    grid_h: i32,
-) {
-    // Forward pass: top-left → bottom-right (W, N, NW, NE already settled).
-    for gy in 0..grid_h {
-        for gx in 0..grid_w {
-            let idx = (gy * grid_w + gx) as usize;
-            if clearance[idx] == 0 {
-                continue;
-            }
-            let mut m = clearance[idx];
-            if gx > 0 {
-                m = m.min(clearance[idx - 1].saturating_add(1));
-            }
-            if gy > 0 {
-                let up = idx - grid_w as usize;
-                m = m.min(clearance[up].saturating_add(1));
-                if gx > 0 {
-                    m = m.min(clearance[up - 1].saturating_add(1));
-                }
-                if gx < grid_w - 1 {
-                    m = m.min(clearance[up + 1].saturating_add(1));
-                }
-            }
-            clearance[idx] = m;
-        }
-    }
-    // Backward pass: bottom-right → top-left (E, S, SE, SW).
-    for gy in (0..grid_h).rev() {
-        for gx in (0..grid_w).rev() {
-            let idx = (gy * grid_w + gx) as usize;
-            if clearance[idx] == 0 {
-                continue;
-            }
-            let mut m = clearance[idx];
-            if gx < grid_w - 1 {
-                m = m.min(clearance[idx + 1].saturating_add(1));
-            }
-            if gy < grid_h - 1 {
-                let dn = idx + grid_w as usize;
-                m = m.min(clearance[dn].saturating_add(1));
-                if gx < grid_w - 1 {
-                    m = m.min(clearance[dn + 1].saturating_add(1));
-                }
-                if gx > 0 {
-                    m = m.min(clearance[dn - 1].saturating_add(1));
-                }
-            }
-            clearance[idx] = m;
-        }
-    }
-}
-
-/// Rebuilds the locomotion mask and CC labels from authoritative terrain.
-/// Construction-grid occupancy is intentionally excluded: build reservations
-/// and route surfaces are separate systems.
 #[wasm_bindgen]
 pub fn pathfinder_rebuild_terrain_mask_and_cc(terrain_version: u32) {
     let state = pathfinder_state();
     pathfinder_rebuild_terrain_mask(state, terrain_version);
 }
 
-/// Bake the complete per-build-square WAYPOINT and MOVE domains for one unit
-/// capability profile. This calls the same cell kernel used by A*, so the
-/// presentation grid is authoritative data rather than a second
-/// implementation of slope, medium, and clearance math.
-/// Build the move/waypoint traversal pair every pathfinder entry point needs.
-///
-/// The three entry points (bake, find-path, validate) all derive exactly this
-/// pair from the same locomotion inputs, differing only in `water_waypoint_hold`
-/// (false for movement, true for waypoints) and which allow-medium triple each
-/// half reads. Deriving them here keeps a new traversal field from reaching one
-/// entry point and not the others — which would make a unit path one way and
-/// validate another.
+/// Decay the traffic-heat layer: each call keeps 3/4 of every cell's heat.
+/// Called by the simulation on a fixed tick cadence (deterministic).
+#[wasm_bindgen]
+pub fn pathfinder_decay_traffic_heat() {
+    let state = pathfinder_state();
+    for h in state.traffic_heat.iter_mut() {
+        *h = (*h as u16 * 3 / 4) as u8;
+    }
+}
+
+#[wasm_bindgen]
+pub fn pathfinder_traffic_heat_ptr() -> *const u8 {
+    pathfinder_state().traffic_heat.as_ptr()
+}
+
 #[inline]
 #[allow(clippy::too_many_arguments)]
 fn pathfinder_traversal_pair(
@@ -1190,6 +902,8 @@ fn pathfinder_traversal_pair(
     (move_traversal, waypoint_traversal)
 }
 
+/// Bake the complete per-build-square WAYPOINT and MOVE domains for one unit
+/// capability profile (presentation overlay; same kernel as A*).
 #[wasm_bindgen]
 pub fn pathfinder_bake_traversability_grid(
     min_ground_normal_z: f32,
@@ -1225,13 +939,13 @@ pub fn pathfinder_bake_traversability_grid(
         waypoint_allow_water,
         waypoint_allow_air,
     );
-    let previous_clearance = state.cur_required_clearance;
+    let previous_required = state.cur_required_d_sq;
     let previous_unit_radius = state.cur_unit_radius;
     let previous_support_offset = state.cur_support_point_offset_z;
-    state.cur_required_clearance = if move_allow_air && waypoint_allow_air {
-        0
+    state.cur_required_d_sq = if move_allow_air && waypoint_allow_air {
+        0.0
     } else {
-        pathfinder_hard_clearance_cells_for_state(state, unit_radius)
+        pathfinder_required_d_sq_for_state(state, unit_radius)
     };
     state.cur_unit_radius = pathfinder_query_unit_radius(unit_radius);
     state.cur_support_point_offset_z = pathfinder_query_unit_radius(support_point_offset_z);
@@ -1247,14 +961,12 @@ pub fn pathfinder_bake_traversability_grid(
             0
         };
     }
-    state.cur_required_clearance = previous_clearance;
+    state.cur_required_d_sq = previous_required;
     state.cur_unit_radius = previous_unit_radius;
     state.cur_support_point_offset_z = previous_support_offset;
     1
 }
 
-/// Sanitized per-query body length (radius or support offset). Non-finite /
-/// non-positive values mean "not declared" and select legacy behavior.
 #[inline]
 pub(crate) fn pathfinder_find_nearest_open(
     state: &PathfinderState,
@@ -1275,53 +987,6 @@ pub(crate) fn pathfinder_find_nearest_open(
     None
 }
 
-pub(crate) fn pathfinder_find_nearest_in_component(
-    state: &PathfinderState,
-    gx: i32,
-    gy: i32,
-    component: i16,
-    traversal: PathfinderTraversal,
-) -> Option<(i32, i32)> {
-    if component <= 0 {
-        return None;
-    }
-    let grid_w = state.grid_w;
-    let grid_h = state.grid_h;
-    // Fast snap-radius scan first.
-    for &(dx, dy) in &state.snap_offsets {
-        let nx = gx + dx as i32;
-        let ny = gy + dy as i32;
-        if nx < 0 || ny < 0 || nx >= grid_w || ny >= grid_h {
-            continue;
-        }
-        let idx = (ny * grid_w + nx) as usize;
-        if state.cc_labels[idx] == component && pathfinder_is_cell_passable(state, idx, traversal) {
-            return Some((nx, ny));
-        }
-    }
-    // Full component scan fallback — for goals beyond snap radius.
-    let mut best: Option<(i32, i32, i32)> = None;
-    for ny in 0..grid_h {
-        let row = ny * grid_w;
-        let dy = ny - gy;
-        for nx in 0..grid_w {
-            let idx = (row + nx) as usize;
-            if state.cc_labels[idx] != component {
-                continue;
-            }
-            if !pathfinder_is_cell_passable(state, idx, traversal) {
-                continue;
-            }
-            let dx = nx - gx;
-            let d2 = dx * dx + dy * dy;
-            if best.map_or(true, |(_, _, bd)| d2 < bd) {
-                best = Some((nx, ny, d2));
-            }
-        }
-    }
-    best.map(|(x, y, _)| (x, y))
-}
-
 #[inline]
 pub(crate) fn pathfinder_octile(ax: i32, ay: i32, bx: i32, by: i32) -> f32 {
     let dx = (ax - bx).abs() as f32;
@@ -1335,66 +1000,6 @@ fn pathfinder_direct_cost_within_fast_path(direct_cost: Option<f32>, lower_bound
         .is_some_and(|cost| cost <= lower_bound * PATHFINDING_DIRECT_PATH_MAX_COST_RATIO + 1.0e-5)
 }
 
-#[inline]
-fn pathfinder_heap_precedes(state: &PathfinderState, left: u32, right: u32) -> bool {
-    let left_idx = left as usize;
-    let right_idx = right as usize;
-    let left_f = state.f_score[left_idx];
-    let right_f = state.f_score[right_idx];
-    if left_f != right_f {
-        return left_f < right_f;
-    }
-    // For equal f, prefer the node with more confirmed route cost (therefore
-    // less estimated distance remaining), then stable cell order.
-    let left_g = state.g_score[left_idx];
-    let right_g = state.g_score[right_idx];
-    if left_g != right_g {
-        return left_g > right_g;
-    }
-    left < right
-}
-
-pub(crate) fn pathfinder_heap_push(state: &mut PathfinderState, idx: u32) {
-    state.heap.push(idx);
-    let mut i = state.heap.len() - 1;
-    while i > 0 {
-        let p = (i - 1) >> 1;
-        if pathfinder_heap_precedes(state, state.heap[i], state.heap[p]) {
-            state.heap.swap(i, p);
-            i = p;
-        } else {
-            break;
-        }
-    }
-}
-
-pub(crate) fn pathfinder_heap_pop(state: &mut PathfinderState) -> u32 {
-    let top = state.heap[0];
-    let last = state.heap.pop().unwrap();
-    let len = state.heap.len();
-    if len > 0 {
-        state.heap[0] = last;
-        let mut i = 0usize;
-        loop {
-            let l = (i << 1) + 1;
-            let r = l + 1;
-            let mut s = i;
-            if l < len && pathfinder_heap_precedes(state, state.heap[l], state.heap[s]) {
-                s = l;
-            }
-            if r < len && pathfinder_heap_precedes(state, state.heap[r], state.heap[s]) {
-                s = r;
-            }
-            if s == i {
-                break;
-            }
-            state.heap.swap(i, s);
-            i = s;
-        }
-    }
-    top
-}
-
 pub(crate) const PATHFINDER_NEIGHBOR_DX: [i32; 8] = [1, -1, 0, 0, 1, 1, -1, -1];
 pub(crate) const PATHFINDER_NEIGHBOR_DY: [i32; 8] = [0, 0, 1, -1, 1, -1, 1, -1];
 
@@ -1403,31 +1008,23 @@ pub(crate) struct AStarResult {
     goal_gy: i32,
     reached_goal: bool,
     expanded_nodes: u32,
-    hit_node_limit: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
 struct FineAStarKey {
-    start_gx: i32,
-    start_gy: i32,
-    goal_gx: i32,
-    goal_gy: i32,
-    traversal: PathfinderTraversal,
-    waypoint_traversal: PathfinderTraversal,
-    cost_profile: PathfinderCostProfile,
-    symmetric_slope: bool,
-    unit_radius: f64,
-    support_point_offset_z: f64,
+    start_cell: u32,
+    goal_cell: u32,
+    class: HpaClassKey,
     terrain_only_key: u64,
     building_occupancy_version: u32,
 }
 
 #[derive(Clone, Copy)]
-struct PendingFineAStar {
+pub(crate) struct PendingFineAStar {
     key: FineAStarKey,
-    start_idx: u32,
-    goal_idx: u32,
-    best_idx: u32,
+    start_local: u32,
+    goal_local: u32,
+    best_local: u32,
     best_d2: i64,
     expanded_nodes: u32,
 }
@@ -1443,176 +1040,251 @@ enum AStarSliceOutcome {
     },
 }
 
+// ---- corridor-local arena helpers ------------------------------------------
+
 #[inline]
-fn pathfinder_begin_a_star_generation(state: &mut PathfinderState) {
-    state.current_gen = state.current_gen.wrapping_add(1);
-    if state.current_gen == 0 {
-        for gen in state.visited_gen.iter_mut() {
-            *gen = 0;
-        }
-        state.current_gen = 1;
+fn fine_local_of_cell(state: &PathfinderState, arena: &FineArena, cell: u32) -> Option<u32> {
+    let c = hpa_cluster_size();
+    let gx = (cell as i32) % state.grid_w;
+    let gy = (cell as i32) / state.grid_w;
+    let cluster = ((gy / c) * state.hpa_cluster_w + gx / c) as usize;
+    let rank = *arena.rank_of_cluster.get(cluster)?;
+    if rank == u32::MAX {
+        return None;
     }
+    Some(rank * (c * c) as u32 + ((gy % c) * c + (gx % c)) as u32)
 }
 
 #[inline]
-fn pathfinder_touch_a_star_cell(state: &mut PathfinderState, idx: usize) {
-    if state.visited_gen[idx] == state.current_gen {
+fn fine_cell_of_local(state: &PathfinderState, arena: &FineArena, local: u32) -> u32 {
+    let c = hpa_cluster_size();
+    let cc = (c * c) as u32;
+    let rank = (local / cc) as usize;
+    let off = (local % cc) as i32;
+    let cluster = arena.corridor[rank] as i32;
+    let cx = cluster % state.hpa_cluster_w;
+    let cy = cluster / state.hpa_cluster_w;
+    let gx = cx * c + off % c;
+    let gy = cy * c + off / c;
+    (gy * state.grid_w + gx) as u32
+}
+
+fn fine_arena_prepare(state: &PathfinderState, arena: &mut FineArena, corridor: &[u32]) {
+    let c = hpa_cluster_size();
+    let cluster_count = state.hpa_cluster_change_stamp.len();
+    if arena.rank_of_cluster.len() != cluster_count {
+        arena.rank_of_cluster.clear();
+        arena.rank_of_cluster.resize(cluster_count, u32::MAX);
+    } else {
+        for &cl in &arena.corridor {
+            if (cl as usize) < cluster_count {
+                arena.rank_of_cluster[cl as usize] = u32::MAX;
+            }
+        }
+    }
+    arena.corridor.clear();
+    arena.corridor.extend_from_slice(corridor);
+    for (rank, &cl) in arena.corridor.iter().enumerate() {
+        arena.rank_of_cluster[cl as usize] = rank as u32;
+    }
+    let slots = arena.corridor.len() * (c * c) as usize;
+    arena.g_score.clear();
+    arena.g_score.resize(slots, f32::INFINITY);
+    arena.f_score.clear();
+    arena.f_score.resize(slots, f32::INFINITY);
+    arena.parent.clear();
+    arena.parent.resize(slots, u32::MAX);
+    arena.closed.clear();
+    arena.closed.resize(slots, 0);
+    arena.visited_gen.clear();
+    arena.visited_gen.resize(slots, 0);
+    arena.current_gen = 1;
+    arena.heap.clear();
+}
+
+#[inline]
+fn fine_heap_precedes(arena: &FineArena, left: u32, right: u32) -> bool {
+    let lf = arena.f_score[left as usize];
+    let rf = arena.f_score[right as usize];
+    if lf != rf {
+        return lf < rf;
+    }
+    let lg = arena.g_score[left as usize];
+    let rg = arena.g_score[right as usize];
+    if lg != rg {
+        return lg > rg;
+    }
+    left < right
+}
+
+fn fine_heap_push(arena: &mut FineArena, idx: u32) {
+    arena.heap.push(idx);
+    let mut i = arena.heap.len() - 1;
+    while i > 0 {
+        let p = (i - 1) >> 1;
+        if fine_heap_precedes(arena, arena.heap[i], arena.heap[p]) {
+            arena.heap.swap(i, p);
+            i = p;
+        } else {
+            break;
+        }
+    }
+}
+
+fn fine_heap_pop(arena: &mut FineArena) -> u32 {
+    let top = arena.heap[0];
+    let last = arena.heap.pop().unwrap();
+    let len = arena.heap.len();
+    if len > 0 {
+        arena.heap[0] = last;
+        let mut i = 0usize;
+        loop {
+            let l = (i << 1) + 1;
+            let r = l + 1;
+            let mut s = i;
+            if l < len && fine_heap_precedes(arena, arena.heap[l], arena.heap[s]) {
+                s = l;
+            }
+            if r < len && fine_heap_precedes(arena, arena.heap[r], arena.heap[s]) {
+                s = r;
+            }
+            if s == i {
+                break;
+            }
+            arena.heap.swap(i, s);
+            i = s;
+        }
+    }
+    top
+}
+
+#[inline]
+fn fine_touch(arena: &mut FineArena, local: usize) {
+    if arena.visited_gen[local] == arena.current_gen {
         return;
     }
-    state.visited_gen[idx] = state.current_gen;
-    state.g_score[idx] = f32::INFINITY;
-    state.f_score[idx] = f32::INFINITY;
-    state.parent[idx] = -1;
-    state.closed[idx] = 0;
-}
-
-fn pathfinder_fine_a_star_key(
-    state: &PathfinderState,
-    start_gx: i32,
-    start_gy: i32,
-    goal_gx: i32,
-    goal_gy: i32,
-    traversal: PathfinderTraversal,
-    cost_profile: PathfinderCostProfile,
-) -> FineAStarKey {
-    FineAStarKey {
-        start_gx,
-        start_gy,
-        goal_gx,
-        goal_gy,
-        traversal,
-        waypoint_traversal: state.cur_waypoint_traversal,
-        cost_profile,
-        symmetric_slope: state.cur_symmetric_slope,
-        unit_radius: state.cur_unit_radius,
-        support_point_offset_z: state.cur_support_point_offset_z,
-        terrain_only_key: state.terrain_only_key,
-        building_occupancy_version: state.building_occupancy_version,
-    }
+    arena.visited_gen[local] = arena.current_gen;
+    arena.g_score[local] = f32::INFINITY;
+    arena.f_score[local] = f32::INFINITY;
+    arena.parent[local] = u32::MAX;
+    arena.closed[local] = 0;
 }
 
 fn pathfinder_reconstruct_a_star_path(
     state: &mut PathfinderState,
+    arena: &FineArena,
     pending: PendingFineAStar,
     found: bool,
 ) -> Option<AStarResult> {
     let target = if found {
-        pending.goal_idx
+        pending.goal_local
     } else {
-        pending.best_idx
+        pending.best_local
     };
     state.path_scratch.clear();
-    let mut walker = target as i32;
-    while walker != pending.start_idx as i32 && walker != -1 {
-        state.path_scratch.push(walker as u32);
-        walker = state.parent[walker as usize];
+    let mut walker = target;
+    while walker != pending.start_local && walker != u32::MAX {
+        state.path_scratch.push(fine_cell_of_local(state, arena, walker));
+        walker = arena.parent[walker as usize];
     }
-    if !state.path_scratch.is_empty()
-        && state.parent[*state.path_scratch.last().unwrap() as usize] == -1
-        && (*state.path_scratch.last().unwrap() as i32) != pending.start_idx as i32
-    {
+    if walker == u32::MAX {
         return None;
     }
     state.path_scratch.reverse();
-    let gx = (target as i32) % state.grid_w;
-    let gy = ((target as i32) - gx) / state.grid_w;
+    let cell = fine_cell_of_local(state, arena, target) as i32;
+    let gx = cell % state.grid_w;
+    let gy = cell / state.grid_w;
     Some(AStarResult {
         goal_gx: gx,
         goal_gy: gy,
         reached_goal: found,
         expanded_nodes: pending.expanded_nodes,
-        hit_node_limit: false,
     })
 }
 
-/// Advance one fine-grid A* continuation by at most `expansion_budget`
-/// closed nodes. Repeating the exact same query resumes the retained frontier;
-/// any changed physics profile, endpoints, or navigation-layer version starts
-/// a fresh generation deterministically.
+/// Advance one corridor-restricted fine A* by at most `expansion_budget`
+/// closed nodes. Repeating the exact same query resumes the retained
+/// frontier; a changed key starts fresh over the supplied corridor.
 fn pathfinder_a_star_slice(
     state: &mut PathfinderState,
-    start_gx: i32,
-    start_gy: i32,
-    goal_gx: i32,
-    goal_gy: i32,
+    key: FineAStarKey,
+    corridor: &[u32],
     traversal: PathfinderTraversal,
     cost_profile: PathfinderCostProfile,
     expansion_budget: u32,
 ) -> AStarSliceOutcome {
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
-    let key = pathfinder_fine_a_star_key(
-        state,
-        start_gx,
-        start_gy,
-        goal_gx,
-        goal_gy,
-        traversal,
-        cost_profile,
-    );
-    let mut pending = match state.pending_fine_a_star.take() {
+    let mut arena = std::mem::take(&mut state.fine_arena);
+    let mut pending = match arena.pending.take() {
         Some(pending) if pending.key == key => pending,
         _ => {
-            pathfinder_begin_a_star_generation(state);
-            state.heap.clear();
+            fine_arena_prepare(state, &mut arena, corridor);
             state.path_scratch.clear();
-            let start_idx = (start_gy * grid_w + start_gx) as usize;
-            let goal_idx = (goal_gy * grid_w + goal_gx) as u32;
-            pathfinder_touch_a_star_cell(state, start_idx);
-            state.g_score[start_idx] = 0.0;
-            state.f_score[start_idx] = pathfinder_octile(start_gx, start_gy, goal_gx, goal_gy);
-            pathfinder_heap_push(state, start_idx as u32);
-            let dx = i64::from(start_gx) - i64::from(goal_gx);
-            let dy = i64::from(start_gy) - i64::from(goal_gy);
+            let start_local = fine_local_of_cell(state, &arena, key.start_cell);
+            let goal_local = fine_local_of_cell(state, &arena, key.goal_cell);
+            let (Some(start_local), Some(goal_local)) = (start_local, goal_local) else {
+                state.fine_arena = arena;
+                return AStarSliceOutcome::Complete {
+                    result: None,
+                    expanded_this_slice: 0,
+                };
+            };
+            fine_touch(&mut arena, start_local as usize);
+            arena.g_score[start_local as usize] = 0.0;
+            let sgx = (key.start_cell as i32) % grid_w;
+            let sgy = (key.start_cell as i32) / grid_w;
+            let ggx = (key.goal_cell as i32) % grid_w;
+            let ggy = (key.goal_cell as i32) / grid_w;
+            arena.f_score[start_local as usize] =
+                pathfinder_octile(sgx, sgy, ggx, ggy) * PATHFINDING_CORRIDOR_HEURISTIC_WEIGHT;
+            fine_heap_push(&mut arena, start_local);
+            let dx = i64::from(sgx) - i64::from(ggx);
+            let dy = i64::from(sgy) - i64::from(ggy);
             PendingFineAStar {
                 key,
-                start_idx: start_idx as u32,
-                goal_idx,
-                best_idx: start_idx as u32,
+                start_local,
+                goal_local,
+                best_local: start_local,
                 best_d2: dx * dx + dy * dy,
                 expanded_nodes: 0,
             }
         }
     };
-
+    let ggx = (key.goal_cell as i32) % grid_w;
+    let ggy = (key.goal_cell as i32) / grid_w;
     let expansion_budget = expansion_budget.max(1);
     let mut expanded_this_slice = 0u32;
     let mut found = false;
-    while !state.heap.is_empty() && expanded_this_slice < expansion_budget {
-        let cur = pathfinder_heap_pop(state);
+    while !arena.heap.is_empty() && expanded_this_slice < expansion_budget {
+        let cur = fine_heap_pop(&mut arena);
         let cur_us = cur as usize;
-        if state.closed[cur_us] != 0 {
+        if arena.closed[cur_us] != 0 {
             continue;
         }
-        state.closed[cur_us] = 1;
+        arena.closed[cur_us] = 1;
         pending.expanded_nodes = pending.expanded_nodes.saturating_add(1);
         expanded_this_slice += 1;
-        if cur == pending.goal_idx {
+        if cur == pending.goal_local {
             found = true;
             break;
         }
-
-        let cur_i32 = cur as i32;
-        let cgx = cur_i32 % grid_w;
-        let cgy = (cur_i32 - cgx) / grid_w;
-        // Grid connectivity: the first four neighbour offsets are the edge-
-        // sharing (cardinal) cells, the last four are the corner-sharing
-        // (diagonal) cells. PATHFINDING_ALLOW_DIAGONAL_NEIGHBORS picks 8-way
-        // (edges + corners) vs 4-way (edges only) adjacency.
-        let neighbor_count = if PATHFINDING_ALLOW_DIAGONAL_NEIGHBORS {
-            8
-        } else {
-            4
-        };
+        let cell = fine_cell_of_local(state, &arena, cur) as i32;
+        let cgx = cell % grid_w;
+        let cgy = cell / grid_w;
+        let neighbor_count = if PATHFINDING_ALLOW_DIAGONAL_NEIGHBORS { 8 } else { 4 };
         for k in 0..neighbor_count {
             let nx = cgx + PATHFINDER_NEIGHBOR_DX[k];
             let ny = cgy + PATHFINDER_NEIGHBOR_DY[k];
             if nx < 0 || ny < 0 || nx >= grid_w || ny >= grid_h {
                 continue;
             }
-            let nidx = (ny * grid_w + nx) as usize;
-            pathfinder_touch_a_star_cell(state, nidx);
-            if state.closed[nidx] != 0 {
+            let ncell = (ny * grid_w + nx) as u32;
+            let Some(nlocal) = fine_local_of_cell(state, &arena, ncell) else {
+                continue;
+            };
+            fine_touch(&mut arena, nlocal as usize);
+            if arena.closed[nlocal as usize] != 0 {
                 continue;
             }
             let Some(step_cost) =
@@ -1620,75 +1292,49 @@ fn pathfinder_a_star_slice(
             else {
                 continue;
             };
-            let tentative = state.g_score[cur_us] + step_cost;
-            if tentative < state.g_score[nidx] {
-                state.parent[nidx] = cur as i32;
-                state.g_score[nidx] = tentative;
-                state.f_score[nidx] = tentative + pathfinder_octile(nx, ny, goal_gx, goal_gy);
-                let dx = i64::from(nx) - i64::from(goal_gx);
-                let dy = i64::from(ny) - i64::from(goal_gy);
+            let tentative = arena.g_score[cur_us] + step_cost;
+            if tentative < arena.g_score[nlocal as usize] {
+                arena.parent[nlocal as usize] = cur;
+                arena.g_score[nlocal as usize] = tentative;
+                // Weighted A* inside the corridor: the hierarchy already chose
+                // the route's shape, so a bounded-suboptimal (w × octile)
+                // refinement trades a few percent of route cost for far fewer
+                // expansions on sloped/heated terrain where octile alone is a
+                // weak bound.
+                arena.f_score[nlocal as usize] = tentative
+                    + pathfinder_octile(nx, ny, ggx, ggy) * PATHFINDING_CORRIDOR_HEURISTIC_WEIGHT;
+                let dx = i64::from(nx) - i64::from(ggx);
+                let dy = i64::from(ny) - i64::from(ggy);
                 let d2 = dx * dx + dy * dy;
                 if d2 < pending.best_d2 {
                     pending.best_d2 = d2;
-                    pending.best_idx = nidx as u32;
+                    pending.best_local = nlocal;
                 }
-                pathfinder_heap_push(state, nidx as u32);
+                fine_heap_push(&mut arena, nlocal);
             }
         }
     }
-
-    if !found && !state.heap.is_empty() {
+    if !found && !arena.heap.is_empty() {
         let total = pending.expanded_nodes;
-        state.pending_fine_a_star = Some(pending);
+        arena.pending = Some(pending);
+        state.fine_arena = arena;
         return AStarSliceOutcome::Pending {
             total_expanded: total,
             expanded_this_slice,
         };
     }
+    let result = pathfinder_reconstruct_a_star_path(state, &arena, pending, found);
+    state.fine_arena = arena;
     AStarSliceOutcome::Complete {
-        result: pathfinder_reconstruct_a_star_path(state, pending, found),
+        result,
         expanded_this_slice,
     }
 }
 
-#[cfg(test)]
-pub(crate) fn pathfinder_a_star(
-    state: &mut PathfinderState,
-    start_gx: i32,
-    start_gy: i32,
-    goal_gx: i32,
-    goal_gy: i32,
-    traversal: PathfinderTraversal,
-    cost_profile: PathfinderCostProfile,
-) -> Option<AStarResult> {
-    state.pending_fine_a_star = None;
-    match pathfinder_a_star_slice(
-        state,
-        start_gx,
-        start_gy,
-        goal_gx,
-        goal_gy,
-        traversal,
-        cost_profile,
-        u32::MAX,
-    ) {
-        AStarSliceOutcome::Complete { result, .. } => result,
-        AStarSliceOutcome::Pending { .. } => {
-            unreachable!("u32::MAX exhausts any installed grid")
-        }
-    }
-}
-
-/// Trace the same supercover Bresenham segment used by validation and
-/// smoothing. Returning its cost keeps path legality and route quality on one
-/// traversal primitive; `None` means the segment is illegal.
-/// Classify the querying body's start cell for this query. A start blocked
-/// ONLY by a building footprint is an escape start: the body was there before
-/// the building went up. The planner runs A* out of such a cell (every step
-/// INTO a building cell is illegal, so escape is one-way), and the validator
-/// must accept the first leg the planner produced from it — otherwise a
-/// builder that placed a structure over its own position is rejected forever
-/// and never walks out. Both entries call this so they agree by construction.
+/// Classify the querying body's start cell. A start blocked ONLY by a
+/// building footprint is an escape start: `pathfinder_line_cost` exempts
+/// exactly this cell as a line's first cell. Clearance-deficient starts are
+/// handled by the per-step gradient rule instead (see traversal.rs).
 pub(crate) fn pathfinder_set_escape_start(
     state: &mut PathfinderState,
     start_idx: usize,
@@ -1704,6 +1350,8 @@ pub(crate) fn pathfinder_set_escape_start(
     };
 }
 
+/// Trace the supercover Bresenham segment used by validation and smoothing;
+/// `None` means the segment is illegal.
 pub(crate) fn pathfinder_line_cost(
     state: &mut PathfinderState,
     x0: f64,
@@ -1730,20 +1378,21 @@ pub(crate) fn pathfinder_line_cost(
         if gx < 0 || gy < 0 || gx >= state.grid_w || gy >= state.grid_h {
             return None;
         }
-        // The body's own escape-start cell is legal only as the FIRST cell of
-        // a line: the body is already standing in it. Every later cell keeps
-        // the full rule, so a line may leave a fresh footprint but never
-        // cross or enter one.
         let idx = (gy * state.grid_w + gx) as usize;
-        let passable = if first_cell && idx == state.cur_escape_start_idx {
-            pathfinder_is_cell_passable_ignoring_buildings(state, idx, traversal)
-        } else {
-            pathfinder_is_cell_passable(state, idx, traversal)
-        };
-        first_cell = false;
-        if !passable {
-            return None;
+        if first_cell {
+            // The first cell is where the body stands: legal ignoring the
+            // clearance gate (the gradient rule governs leaving it) and, for
+            // an escape start, ignoring the building footprint too.
+            let passable = if idx == state.cur_escape_start_idx {
+                pathfinder_is_cell_passable_ignoring_buildings(state, idx, traversal)
+            } else {
+                pathfinder_is_cell_passable_ignoring_clearance(state, idx, traversal)
+            };
+            if !passable {
+                return None;
+            }
         }
+        first_cell = false;
         if gx == tgx && gy == tgy {
             return Some(cost);
         }
@@ -1833,21 +1482,34 @@ pub(crate) fn pathfinder_push_waypoint(state: &mut PathfinderState, x: f64, y: f
     state.waypoint_scratch.push(y);
 }
 
-/// Plan a path from (start_x, start_y) to (goal_x, goal_y).
-/// Dry contact receives one precomputed minimum normal. Wet contact derives
-/// its MOVE and WAYPOINT thresholds per cell from body immersion, safe force
-/// budgets, and whether lift makes the body independent of the lakebed. The
-/// waypoint_allow_* flags define intentional destinations and entries, while
-/// move_allow_* flags define physical traversal. Each cell independently
-/// reports whether exposed and/or water cases are present; mixed cells require
-/// both cases to pass. Physical lakebed contact does not by itself authorize
-/// an intentional water route.
-/// Smoothed waypoints land in `waypoint_scratch` as interleaved
-/// (x, y) f64 pairs; returns the waypoint count.
-///
-/// Note: caller must have run pathfinder_init +
-/// pathfinder_rebuild_terrain_mask_and_cc for the current terrain state
-/// before calling this.
+fn pathfinder_finish_direct(
+    state: &mut PathfinderState,
+    x: f64,
+    y: f64,
+    goal_was_snapped: bool,
+) -> u32 {
+    state.waypoint_scratch.push(x);
+    state.waypoint_scratch.push(y);
+    state.last_result_status = if goal_was_snapped {
+        PATHFINDER_RESULT_SNAPPED
+    } else {
+        PATHFINDER_RESULT_COMPLETE
+    };
+    state.last_search_strategy = PATHFINDER_SEARCH_DIRECT;
+    1
+}
+
+fn pathfinder_finish_unreachable(state: &mut PathfinderState, start_x: f64, start_y: f64) -> u32 {
+    state.waypoint_scratch.push(start_x);
+    state.waypoint_scratch.push(start_y);
+    state.last_result_status = PATHFINDER_RESULT_UNREACHABLE;
+    1
+}
+
+/// Plan a path from (start_x, start_y) to (goal_x, goal_y). Smoothed
+/// waypoints land in `waypoint_scratch` as interleaved (x, y) pairs; returns
+/// the waypoint count (0 with PENDING status when the slice budget ran out).
+#[allow(clippy::too_many_arguments)]
 fn pathfinder_find_path_with_expansion_budget(
     start_x: f64,
     start_y: f64,
@@ -1871,7 +1533,7 @@ fn pathfinder_find_path_with_expansion_budget(
     symmetric_slope: bool,
     expansion_budget: u32,
     continuation_owner: u32,
-    allow_hierarchy: bool,
+    authoritative: bool,
 ) -> u32 {
     let state = pathfinder_state();
     pathfinder_switch_fine_arena(state, continuation_owner);
@@ -1881,12 +1543,11 @@ fn pathfinder_find_path_with_expansion_budget(
     state.last_fine_expanded_nodes = 0;
     state.last_fine_expanded_nodes_this_slice = 0;
     state.last_coarse_expanded_nodes = 0;
-    state.last_coarse_refinement_passes = 0;
-    state.last_coarse_exact_edge_checks = 0;
-    state.last_coarse_full_cluster_scans = 0;
-    state.last_fine_hit_node_limit = false;
+    state.last_hpa_work = 0;
+    state.last_corridor_clusters = 0;
     state.last_smoothing_line_checks = 0;
     state.last_direct_cost_ratio = f32::NAN;
+    state.hpa_work = 0;
     let (traversal, waypoint_traversal) = pathfinder_traversal_pair(
         min_ground_normal_z,
         safe_drive_accel,
@@ -1904,23 +1565,20 @@ fn pathfinder_find_path_with_expansion_budget(
     state.cur_waypoint_matches_move_domain =
         pathfinder_traversal_cell_domain_equivalent(waypoint_traversal, traversal);
     pathfinder_begin_query_transition_cache(state);
-    // Per-query traversal params. The current cell must be physically
-    // move-valid, even when it is outside the intentional waypoint domain.
-    // Goals must be waypoint-valid and every segment must fit the body.
-    // Air traversal flies over footprints, so it carries no clearance.
     state.cur_symmetric_slope = symmetric_slope;
     state.cur_unit_radius = pathfinder_query_unit_radius(unit_radius);
     state.cur_support_point_offset_z = pathfinder_query_unit_radius(support_point_offset_z);
+    state.cur_heat_enabled = authoritative && !traversal.allow_air;
     pathfinder_apply_query_slope_gates(
         state,
         safe_drive_accel,
         static_friction_coefficient,
         safe_water_drive_accel,
     );
-    let hard_clearance = if traversal.allow_air {
-        0
+    let required_d_sq = if traversal.allow_air {
+        0.0
     } else {
-        pathfinder_hard_clearance_cells_for_state(state, unit_radius)
+        pathfinder_required_d_sq_for_state(state, unit_radius)
     };
     let cost_profile = PathfinderCostProfile::for_query(
         flat_drive_accel,
@@ -1928,13 +1586,11 @@ fn pathfinder_find_path_with_expansion_budget(
         flat_water_contact_accel,
         safe_water_drive_accel,
         static_friction_coefficient,
-        hard_clearance,
+        required_d_sq.sqrt(),
     );
-    state.cur_required_clearance = 0;
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
     if grid_w == 0 || grid_h == 0 {
-        // Not initialised — fall back to direct line.
         state.waypoint_scratch.push(start_x);
         state.waypoint_scratch.push(start_y);
         return 1;
@@ -1947,118 +1603,54 @@ fn pathfinder_find_path_with_expansion_budget(
     let ggy = ((goal_y / cs).floor() as i32).max(0).min(grid_h - 1);
     let start_idx = (sgy * grid_w + sgx) as usize;
 
-    // A physically blocked start is terminal. A waypoint-invalid but
-    // move-valid start is a recovery start and may route into its intended
-    // domain. A start blocked ONLY by a building footprint is an escape
-    // start: the unit was there before the building, and every step INTO a
-    // building cell is illegal anyway, so A* can only route it out.
-    let start_cell_gx = sgx;
-    let start_cell_gy = sgy;
+    // The start is where the body IS: it must be physically move-valid
+    // ignoring the clearance gate and ignoring a building footprint that
+    // went up under it (escape start). Anything else is terminal.
+    state.cur_required_d_sq = 0.0;
     if !pathfinder_position_is_in_navigation_domain(state, start_x, start_y, traversal)
         || !pathfinder_is_cell_passable_ignoring_buildings(state, start_idx, traversal)
     {
-        state.waypoint_scratch.push(start_x);
-        state.waypoint_scratch.push(start_y);
-        return 1;
+        return pathfinder_finish_unreachable(state, start_x, start_y);
     }
+    state.cur_required_d_sq = required_d_sq;
     pathfinder_set_escape_start(state, start_idx, traversal);
 
-    // Goals must fit the physical collision disk. Snapping a destination
-    // without hard clearance would knowingly route the body into overlap.
-    state.cur_required_clearance = hard_clearance;
+    // Goals must fit the physical collision disk and lie in the waypoint
+    // domain; otherwise snap to the nearest such cell. Reachability is the
+    // hierarchy's job below.
     let mut goal_cell_gx = ggx;
     let mut goal_cell_gy = ggy;
     let mut goal_was_snapped = false;
     let ggy_idx = (ggy * grid_w + ggx) as usize;
-    let start_is_waypoint_valid = pathfinder_is_cell_passable(state, start_idx, waypoint_traversal);
-    if waypoint_traversal.allow_air || waypoint_traversal.allow_water || !start_is_waypoint_valid {
-        if !pathfinder_position_is_in_navigation_domain(state, goal_x, goal_y, waypoint_traversal)
-            || !pathfinder_is_cell_passable(state, ggy_idx, waypoint_traversal)
-        {
-            match pathfinder_find_nearest_open(state, ggx, ggy, waypoint_traversal) {
-                Some((nx, ny)) => {
-                    goal_cell_gx = nx;
-                    goal_cell_gy = ny;
-                    goal_was_snapped = true;
-                }
-                None => {
-                    state.waypoint_scratch.push(start_x);
-                    state.waypoint_scratch.push(start_y);
-                    return 1;
-                }
+    if !pathfinder_position_is_in_navigation_domain(state, goal_x, goal_y, waypoint_traversal)
+        || !pathfinder_is_cell_passable(state, ggy_idx, waypoint_traversal)
+    {
+        match pathfinder_find_nearest_open(state, ggx, ggy, waypoint_traversal) {
+            Some((nx, ny)) => {
+                goal_cell_gx = nx;
+                goal_cell_gy = ny;
+                goal_was_snapped = true;
             }
-        }
-    } else {
-        // Snap goal to start's component for terrain-bound locomotion.
-        let start_label = state.cc_labels[(start_cell_gy * grid_w + start_cell_gx) as usize];
-        if state.cc_labels[ggy_idx] != start_label
-            || !pathfinder_is_cell_passable(state, ggy_idx, waypoint_traversal)
-        {
-            match pathfinder_find_nearest_in_component(
-                state,
-                ggx,
-                ggy,
-                start_label,
-                waypoint_traversal,
-            ) {
-                Some((nx, ny)) => {
-                    goal_cell_gx = nx;
-                    goal_cell_gy = ny;
-                    goal_was_snapped = true;
-                }
-                None => {
-                    state.waypoint_scratch.push(start_x);
-                    state.waypoint_scratch.push(start_y);
-                    return 1;
-                }
-            }
+            None => return pathfinder_finish_unreachable(state, start_x, start_y),
         }
     }
 
-    // Same cell after snapping — no A* needed.
-    if start_cell_gx == goal_cell_gx && start_cell_gy == goal_cell_gy {
-        if goal_was_snapped {
-            let (cx, cy) = pathfinder_cell_center_for_state(state, goal_cell_gx, goal_cell_gy);
-            state.waypoint_scratch.push(cx);
-            state.waypoint_scratch.push(cy);
+    if sgx == goal_cell_gx && sgy == goal_cell_gy {
+        let (x, y) = if goal_was_snapped {
+            pathfinder_cell_center_for_state(state, goal_cell_gx, goal_cell_gy)
         } else {
-            state.waypoint_scratch.push(goal_x);
-            state.waypoint_scratch.push(goal_y);
-        }
-        state.last_result_status = if goal_was_snapped {
-            PATHFINDER_RESULT_SNAPPED
-        } else {
-            PATHFINDER_RESULT_COMPLETE
+            (goal_x, goal_y)
         };
-        state.last_search_strategy = PATHFINDER_SEARCH_DIRECT;
-        return 1;
+        return pathfinder_finish_direct(state, x, y, goal_was_snapped);
     }
 
-    // Search and smoothing enforce only physical clearance. Extra stand-off is
-    // represented by the soft cost profile and can never make a route illegal.
-    //
-    // A body already standing in a pocket tighter than its own hard clearance
-    // — the ordinary case once a structure goes up beside it — must still be
-    // able to walk out. Demanding more room than the cell it currently
-    // occupies makes every neighbour illegal and strands it where it stands,
-    // so the search runs at the clearance the body actually has. This can only
-    // widen what is legal, and never below what the start already proves is
-    // occupiable; goal snapping above still demands the full hard clearance,
-    // so the destination is a place the body genuinely fits.
-    let start_clearance = pathfinder_clearance_at(state, start_idx, traversal).max(0);
-    let escape_clearance = hard_clearance.min(start_clearance);
-    state.cur_required_clearance = escape_clearance;
-
-    // BAR-style raw move: if the current leg has direct line-of-sight through
-    // passable cells, do not touch A*. This is the common case for open-field
-    // move/fight/formation orders and keeps the planner out of the tick path
-    // unless terrain or structures actually require a route.
-    let (raw_goal_x, raw_goal_y) = if goal_was_snapped {
+    // BAR-style raw move: a legal straight leg skips the planner entirely.
+    let (mut raw_goal_x, mut raw_goal_y) = if goal_was_snapped {
         pathfinder_cell_center_for_state(state, goal_cell_gx, goal_cell_gy)
     } else {
         (goal_x, goal_y)
     };
-    let direct_cost = pathfinder_line_cost(
+    let mut direct_cost = pathfinder_line_cost(
         state,
         start_x,
         start_y,
@@ -2067,170 +1659,179 @@ fn pathfinder_find_path_with_expansion_budget(
         traversal,
         cost_profile,
     );
-    let geometric_lower_bound =
-        pathfinder_octile(start_cell_gx, start_cell_gy, goal_cell_gx, goal_cell_gy);
+    let geometric_lower_bound = pathfinder_octile(sgx, sgy, goal_cell_gx, goal_cell_gy);
     if let Some(cost) = direct_cost {
         state.last_direct_cost_ratio = cost / geometric_lower_bound.max(1.0e-6);
     }
     if pathfinder_direct_cost_within_fast_path(direct_cost, geometric_lower_bound) {
-        state.waypoint_scratch.push(raw_goal_x);
-        state.waypoint_scratch.push(raw_goal_y);
-        state.last_result_status = if goal_was_snapped {
-            PATHFINDER_RESULT_SNAPPED
-        } else {
-            PATHFINDER_RESULT_COMPLETE
-        };
-        state.last_search_strategy = PATHFINDER_SEARCH_DIRECT;
-        return 1;
+        return pathfinder_finish_direct(state, raw_goal_x, raw_goal_y, goal_was_snapped);
     }
 
     state.line_transition_cache_enabled = true;
-    let fine_key = pathfinder_fine_a_star_key(
-        state,
-        start_cell_gx,
-        start_cell_gy,
-        goal_cell_gx,
-        goal_cell_gy,
+    let class = HpaClassKey {
         traversal,
+        waypoint_traversal,
         cost_profile,
-    );
-    let resuming_fine_search = state
-        .pending_fine_a_star
-        .is_some_and(|pending| pending.key == fine_key);
-    // Hierarchy is a one-time fast-path admission. Once a fine search has a
-    // retained frontier, repeating coarse refinement every fixed tick would
-    // waste work and make the slice cost depend on route length.
-    let hierarchical_result = if resuming_fine_search || !allow_hierarchy {
-        None
-    } else {
-        pathfinder_hierarchical_a_star(
-            state,
-            start_cell_gx,
-            start_cell_gy,
-            goal_cell_gx,
-            goal_cell_gy,
-            start_x,
-            start_y,
-            raw_goal_x,
-            raw_goal_y,
-            traversal,
-            cost_profile,
-        )
+        symmetric_slope,
+        unit_radius: state.cur_unit_radius,
+        support_point_offset_z: state.cur_support_point_offset_z,
     };
-    let a_star_result = if let Some(hierarchical) = hierarchical_result {
-        state.last_coarse_expanded_nodes = hierarchical.expanded_nodes;
-        // The legal direct segment remains a useful upper bound. If the sparse
-        // graph did not improve it, prefer the simpler exact route.
-        if direct_cost.is_some_and(|cost| cost <= hierarchical.route_cost + 1.0e-5) {
-            state.waypoint_scratch.push(raw_goal_x);
-            state.waypoint_scratch.push(raw_goal_y);
-            state.last_result_status = if goal_was_snapped {
-                PATHFINDER_RESULT_SNAPPED
-            } else {
-                PATHFINDER_RESULT_COMPLETE
-            };
-            state.last_search_strategy = PATHFINDER_SEARCH_DIRECT;
-            return 1;
-        }
-        state.last_search_strategy = PATHFINDER_SEARCH_HIERARCHICAL;
-        Some(AStarResult {
-            goal_gx: goal_cell_gx,
-            goal_gy: goal_cell_gy,
-            reached_goal: true,
-            expanded_nodes: 0,
-            hit_node_limit: false,
-        })
+    let make_key = |state: &PathfinderState, ggx: i32, ggy: i32| FineAStarKey {
+        start_cell: start_idx as u32,
+        goal_cell: (ggy * grid_w + ggx) as u32,
+        class,
+        terrain_only_key: state.terrain_only_key,
+        building_occupancy_version: state.building_occupancy_version,
+    };
+
+    // Resume a retained fine frontier for the identical query without
+    // touching the hierarchy again; otherwise ask the hierarchy for a
+    // corridor (and for reachability).
+    let mut fine_key = make_key(state, goal_cell_gx, goal_cell_gy);
+    let resuming = state
+        .fine_arena
+        .pending
+        .is_some_and(|pending| pending.key == fine_key);
+    let corridor: Vec<u32> = if resuming {
+        state.fine_arena.corridor.clone()
     } else {
-        state.last_search_strategy = PATHFINDER_SEARCH_FINE_A_STAR;
-        let result = match pathfinder_a_star_slice(
-            state,
-            start_cell_gx,
-            start_cell_gy,
-            goal_cell_gx,
-            goal_cell_gy,
-            traversal,
-            cost_profile,
-            expansion_budget,
-        ) {
-            AStarSliceOutcome::Pending {
-                total_expanded,
-                expanded_this_slice,
-            } => {
-                state.last_fine_expanded_nodes = total_expanded;
-                state.last_fine_expanded_nodes_this_slice = expanded_this_slice;
+        let class_idx = hpa_class_index(state, class);
+        let goal_cell = (goal_cell_gy * grid_w + goal_cell_gx) as u32;
+        let mut outcome = hpa_search(state, class_idx, start_idx as u32, goal_cell, expansion_budget);
+        if let HpaSearchOutcome::Unreachable = outcome {
+            // Snap to the nearest waypoint cell the start can actually reach
+            // and route there instead (BAR: move as close as possible).
+            match hpa_nearest_reachable_cell(
+                state,
+                class_idx,
+                goal_cell_gx,
+                goal_cell_gy,
+                waypoint_traversal,
+            ) {
+                Some((nx, ny)) if !(nx == sgx && ny == sgy) => {
+                    goal_cell_gx = nx;
+                    goal_cell_gy = ny;
+                    goal_was_snapped = true;
+                    let (rx, ry) = pathfinder_cell_center_for_state(state, nx, ny);
+                    raw_goal_x = rx;
+                    raw_goal_y = ry;
+                    fine_key = make_key(state, nx, ny);
+                    direct_cost = pathfinder_line_cost(
+                        state,
+                        start_x,
+                        start_y,
+                        raw_goal_x,
+                        raw_goal_y,
+                        traversal,
+                        cost_profile,
+                    );
+                    outcome = hpa_search(
+                        state,
+                        class_idx,
+                        start_idx as u32,
+                        (ny * grid_w + nx) as u32,
+                        expansion_budget,
+                    );
+                }
+                Some(_) => {
+                    // The nearest reachable cell is the one the body stands
+                    // in: it is already as close as it can get. Resolve the
+                    // order there (BAR semantics) instead of reporting a
+                    // terminal start that would be retried forever.
+                    state.last_hpa_work = state.hpa_work;
+                    return pathfinder_finish_direct(state, start_x, start_y, true);
+                }
+                None => {
+                    state.last_hpa_work = state.hpa_work;
+                    return pathfinder_finish_unreachable(state, start_x, start_y);
+                }
+            }
+        }
+        match outcome {
+            HpaSearchOutcome::Reached { corridor } => corridor,
+            HpaSearchOutcome::Budget => {
+                state.last_hpa_work = state.hpa_work;
+                state.last_fine_expanded_nodes_this_slice = state.hpa_work;
                 state.last_result_status = PATHFINDER_RESULT_PENDING;
+                state.last_search_strategy = PATHFINDER_SEARCH_HIERARCHICAL;
                 return 0;
             }
-            AStarSliceOutcome::Complete {
-                result,
-                expanded_this_slice,
-            } => {
-                state.last_fine_expanded_nodes_this_slice = expanded_this_slice;
-                result
+            HpaSearchOutcome::Unreachable => {
+                state.last_hpa_work = state.hpa_work;
+                return pathfinder_finish_unreachable(state, start_x, start_y);
             }
-        };
-        if let Some(result) = &result {
-            state.last_fine_expanded_nodes = result.expanded_nodes;
-            state.last_fine_hit_node_limit = result.hit_node_limit;
         }
-        result
     };
+    state.last_hpa_work = state.hpa_work;
+    state.last_corridor_clusters = corridor.len() as u32;
+    state.last_search_strategy = PATHFINDER_SEARCH_HIERARCHICAL;
+    let remaining_budget = expansion_budget.saturating_sub(state.hpa_work).max(1);
+    let a_star_result = match pathfinder_a_star_slice(
+        state,
+        fine_key,
+        &corridor,
+        traversal,
+        cost_profile,
+        remaining_budget,
+    ) {
+        AStarSliceOutcome::Pending {
+            total_expanded,
+            expanded_this_slice,
+        } => {
+            state.last_fine_expanded_nodes = total_expanded;
+            state.last_fine_expanded_nodes_this_slice = expanded_this_slice + state.hpa_work;
+            state.last_result_status = PATHFINDER_RESULT_PENDING;
+            return 0;
+        }
+        AStarSliceOutcome::Complete {
+            result,
+            expanded_this_slice,
+        } => {
+            state.last_fine_expanded_nodes_this_slice = expanded_this_slice + state.hpa_work;
+            result
+        }
+    };
+    if let Some(result) = &a_star_result {
+        state.last_fine_expanded_nodes = result.expanded_nodes;
+    }
     let a_star_result = match a_star_result {
         Some(r) => r,
         None => {
             if direct_cost.is_some() {
-                state.waypoint_scratch.push(raw_goal_x);
-                state.waypoint_scratch.push(raw_goal_y);
-                state.last_result_status = if goal_was_snapped {
-                    PATHFINDER_RESULT_SNAPPED
-                } else {
-                    PATHFINDER_RESULT_COMPLETE
-                };
-                state.last_search_strategy = PATHFINDER_SEARCH_DIRECT;
-                return 1;
+                return pathfinder_finish_direct(state, raw_goal_x, raw_goal_y, goal_was_snapped);
             }
-            state.waypoint_scratch.push(start_x);
-            state.waypoint_scratch.push(start_y);
-            return 1;
+            return pathfinder_finish_unreachable(state, start_x, start_y);
         }
     };
 
     if !a_star_result.reached_goal {
-        // An exhausted fine search may still provide the best physically
-        // reachable frontier, but never prefer it over a complete legal
-        // straight route already proven by the exact line tracer.
         if direct_cost.is_some() {
-            state.waypoint_scratch.push(raw_goal_x);
-            state.waypoint_scratch.push(raw_goal_y);
-            state.last_result_status = if goal_was_snapped {
-                PATHFINDER_RESULT_SNAPPED
-            } else {
-                PATHFINDER_RESULT_COMPLETE
-            };
-            state.last_search_strategy = PATHFINDER_SEARCH_DIRECT;
-            return 1;
+            return pathfinder_finish_direct(state, raw_goal_x, raw_goal_y, goal_was_snapped);
         }
         goal_cell_gx = a_star_result.goal_gx;
         goal_cell_gy = a_star_result.goal_gy;
         goal_was_snapped = true;
-        if start_cell_gx == goal_cell_gx && start_cell_gy == goal_cell_gy {
-            state.waypoint_scratch.push(start_x);
-            state.waypoint_scratch.push(start_y);
-            return 1;
+        if sgx == goal_cell_gx && sgy == goal_cell_gy {
+            return pathfinder_finish_unreachable(state, start_x, start_y);
         }
         state.last_result_status = PATHFINDER_RESULT_PARTIAL;
     }
-    // Cost-aware string pulling. A legal shortcut is accepted only when it is
-    // no more expensive than the A* chain it replaces, so smoothing cannot
-    // erase slope-time or soft-clearance decisions.
+    // Traffic heat: stamp the raw A* chain so the next routes prefer a
+    // parallel lane. Authoritative queries only.
+    if state.cur_heat_enabled {
+        for i in 0..state.path_scratch.len() {
+            let idx = state.path_scratch[i] as usize;
+            state.traffic_heat[idx] = state.traffic_heat[idx].saturating_add(PATHFINDER_TRAFFIC_HEAT_PER_ROUTE);
+        }
+    }
+    // Cost-aware string pulling.
     let mut anchor_x = start_x;
     let mut anchor_y = start_y;
     let path_len = state.path_scratch.len();
     if path_len > 1 {
         let first_idx = state.path_scratch[0] as i32;
-        let first_gx = first_idx % grid_w;
-        let first_gy = (first_idx - first_gx) / grid_w;
-        let (first_x, first_y) = pathfinder_cell_center_for_state(state, first_gx, first_gy);
+        let (first_x, first_y) =
+            pathfinder_cell_center_for_state(state, first_idx % grid_w, first_idx / grid_w);
         state.last_smoothing_line_checks += 1;
         let mut chain_cost = pathfinder_line_cost(
             state,
@@ -2245,12 +1846,10 @@ fn pathfinder_find_path_with_expansion_budget(
         for i in 0..path_len - 1 {
             let cand_idx = state.path_scratch[i] as i32;
             let next_idx = state.path_scratch[i + 1] as i32;
-            let cgx = cand_idx % grid_w;
-            let cgy = (cand_idx - cgx) / grid_w;
-            let ngx = next_idx % grid_w;
-            let ngy = (next_idx - ngx) / grid_w;
-            let (cand_x, cand_y) = pathfinder_cell_center_for_state(state, cgx, cgy);
-            let (next_x, next_y) = pathfinder_cell_center_for_state(state, ngx, ngy);
+            let (cand_x, cand_y) =
+                pathfinder_cell_center_for_state(state, cand_idx % grid_w, cand_idx / grid_w);
+            let (next_x, next_y) =
+                pathfinder_cell_center_for_state(state, next_idx % grid_w, next_idx / grid_w);
             state.last_smoothing_line_checks += 1;
             let raw_edge_cost = pathfinder_line_cost(
                 state,
@@ -2297,10 +1896,9 @@ fn pathfinder_find_path_with_expansion_budget(
     (state.waypoint_scratch.len() / 2) as u32
 }
 
-/// Compatibility entry point for tools and tests that explicitly want a
-/// synchronous route. Authoritative simulation movement uses the sliced API
-/// below so this function is never on the fixed-tick hot path.
+/// Synchronous route for tools/tests and the formation layout preview.
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
 pub fn pathfinder_find_path(
     start_x: f64,
     start_y: f64,
@@ -2325,7 +1923,7 @@ pub fn pathfinder_find_path(
 ) -> u32 {
     let state = pathfinder_state();
     pathfinder_switch_fine_arena(state, PATHFINDER_SYNC_CONTINUATION_OWNER);
-    state.pending_fine_a_star = None;
+    state.fine_arena.pending = None;
     pathfinder_find_path_with_expansion_budget(
         start_x,
         start_y,
@@ -2349,14 +1947,15 @@ pub fn pathfinder_find_path(
         symmetric_slope,
         u32::MAX,
         PATHFINDER_SYNC_CONTINUATION_OWNER,
-        true,
+        false,
     )
 }
 
-/// Start or resume the exact same fine-grid query, advancing no more than the
-/// supplied number of A* node expansions. A return count of zero with result
-/// status PENDING means the frontier is retained for the next fixed tick.
+/// Start or resume the exact same query, spending no more than the supplied
+/// work budget (cluster builds + abstract + fine expansions). A return count
+/// of zero with result status PENDING means the search is retained.
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
 pub fn pathfinder_find_path_slice(
     start_x: f64,
     start_y: f64,
@@ -2404,7 +2003,7 @@ pub fn pathfinder_find_path_slice(
         symmetric_slope,
         expansion_budget.max(1),
         continuation_owner,
-        false,
+        true,
     )
 }
 
@@ -2412,7 +2011,7 @@ pub fn pathfinder_find_path_slice(
 pub fn pathfinder_cancel_path_slice(continuation_owner: u32) {
     let state = pathfinder_state();
     pathfinder_switch_fine_arena(state, continuation_owner);
-    state.pending_fine_a_star = None;
+    state.fine_arena.pending = None;
 }
 
 #[wasm_bindgen]
@@ -2420,13 +2019,29 @@ pub fn pathfinder_cancel_all_path_slices() {
     pathfinder_invalidate_all_fine_arenas(pathfinder_state());
 }
 
+/// Drop every piece of QUERY-DERIVED state: traffic heat, the lazily built
+/// per-class hierarchy graphs, retained frontiers. Lockstep peers must start
+/// a match with identical caches — a warm hierarchy completes a route on an
+/// earlier tick than a cold one (builds are charged to the budget), and warm
+/// heat changes costs — so every match start and reset goes through here.
+/// Terrain and building layers are untouched; they are re-derived by version.
+#[wasm_bindgen]
+pub fn pathfinder_reset_match_state() {
+    let state = pathfinder_state();
+    pathfinder_invalidate_all_fine_arenas(state);
+    state.traffic_heat.fill(0);
+    state.hpa_classes.clear();
+    state.hpa_class_use_counter = 0;
+    state.hpa_insertion_key = None;
+    hpa_invalidate_all(state);
+}
+
 #[wasm_bindgen]
 pub fn pathfinder_last_result_status() -> u32 {
     pathfinder_state().last_result_status
 }
 
-/// Strategy code for the most recent query: 0 none/unreachable, 1 direct,
-/// 2 hierarchical, 3 full fine-grid A*.
+/// 0 none/unreachable, 1 direct, 2 hierarchical corridor search.
 #[wasm_bindgen]
 pub fn pathfinder_last_search_strategy() -> u32 {
     pathfinder_state().last_search_strategy
@@ -2437,6 +2052,8 @@ pub fn pathfinder_last_fine_expanded_nodes() -> u32 {
     pathfinder_state().last_fine_expanded_nodes
 }
 
+/// Work charged this slice: fine expansions + cluster-build cells + abstract
+/// expansions. This is what the per-tick budget bounds.
 #[wasm_bindgen]
 pub fn pathfinder_last_fine_expanded_nodes_this_slice() -> u32 {
     pathfinder_state().last_fine_expanded_nodes_this_slice
@@ -2448,23 +2065,13 @@ pub fn pathfinder_last_coarse_expanded_nodes() -> u32 {
 }
 
 #[wasm_bindgen]
-pub fn pathfinder_last_coarse_refinement_passes() -> u32 {
-    pathfinder_state().last_coarse_refinement_passes
+pub fn pathfinder_last_hpa_work() -> u32 {
+    pathfinder_state().last_hpa_work
 }
 
 #[wasm_bindgen]
-pub fn pathfinder_last_coarse_exact_edge_checks() -> u32 {
-    pathfinder_state().last_coarse_exact_edge_checks
-}
-
-#[wasm_bindgen]
-pub fn pathfinder_last_coarse_full_cluster_scans() -> u32 {
-    pathfinder_state().last_coarse_full_cluster_scans
-}
-
-#[wasm_bindgen]
-pub fn pathfinder_last_fine_hit_node_limit() -> u32 {
-    pathfinder_state().last_fine_hit_node_limit as u32
+pub fn pathfinder_last_corridor_clusters() -> u32 {
+    pathfinder_state().last_corridor_clusters
 }
 
 #[wasm_bindgen]
@@ -2477,13 +2084,16 @@ pub fn pathfinder_last_direct_cost_ratio() -> f32 {
     pathfinder_state().last_direct_cost_ratio
 }
 
-/// Validate a world-space polyline against the exact traversal rules consumed
-/// by direct LOS, A*, and string-pull smoothing. `points` is interleaved x/y
-/// and includes the unit's current position as its first point. Validation uses
-/// hard collision clearance only: a translated shared route may give up comfort
-/// margin, but it may never overlap an unsupported medium, map bounds, an
-/// unsupported local surface, or an illegal directed climb edge.
 #[wasm_bindgen]
+pub fn pathfinder_class_graph_count() -> u32 {
+    pathfinder_state().hpa_classes.len() as u32
+}
+
+/// Validate a world-space polyline against the exact traversal rules
+/// consumed by direct LOS, A*, and string-pull smoothing. `points` is
+/// interleaved x/y and starts at the unit's current position.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
 pub fn pathfinder_validate_path(
     points: &[f64],
     min_ground_normal_z: f32,
@@ -2529,6 +2139,7 @@ pub fn pathfinder_validate_path(
     state.cur_symmetric_slope = symmetric_slope;
     state.cur_unit_radius = pathfinder_query_unit_radius(unit_radius);
     state.cur_support_point_offset_z = pathfinder_query_unit_radius(support_point_offset_z);
+    state.cur_heat_enabled = false;
     pathfinder_apply_query_slope_gates(
         state,
         safe_drive_accel,
@@ -2542,18 +2153,14 @@ pub fn pathfinder_validate_path(
         .max(0)
         .min(state.grid_h - 1);
     let start_idx = (start_gy * state.grid_w + start_gx) as usize;
-    state.cur_required_clearance = if traversal.allow_air {
-        0
+    // Same rules as the planner: full hard clearance everywhere, the first
+    // cell exempt (the body stands there), leaving a tight pocket governed
+    // by the per-step gradient rule, escape starts building-exempt.
+    state.cur_required_d_sq = if traversal.allow_air {
+        0.0
     } else {
-        // Same escape rule as the planner: the polyline starts where the body
-        // already stands, so a route may not be rejected for the pocket the
-        // body is already occupying.
-        let hard = pathfinder_hard_clearance_cells_for_state(state, unit_radius);
-        hard.min(pathfinder_clearance_at(state, start_idx, traversal).max(0))
+        pathfinder_required_d_sq_for_state(state, unit_radius)
     };
-    // Same escape START as the planner: the first vertex is where the body
-    // stands, and a footprint-only block there must not reject the escape
-    // leg the planner itself produced.
     pathfinder_set_escape_start(state, start_idx, traversal);
     let last_x = points[points.len() - 2];
     let last_y = points[points.len() - 1];
@@ -2581,6 +2188,8 @@ pub fn pathfinder_validate_path(
         {
             return 0;
         }
+        // Only the polyline's very first cell is the body's own cell.
+        state.cur_escape_start_idx = usize::MAX;
         i += 2;
     }
     1
@@ -2600,7 +2209,6 @@ pub fn pathfinder_grid_size_w() -> i32 {
 pub fn pathfinder_grid_size_h() -> i32 {
     pathfinder_state().grid_h
 }
-
 
 #[cfg(test)]
 mod tests;

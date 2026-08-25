@@ -45,15 +45,12 @@ import {
   normalizeGameGenerationSeed,
 } from '../network/gameGenerationSeed';
 import { precomputeAllUnitPathTraversabilityGrids } from '../sim/pathfindingTraversabilityGrid';
-import { configurePathfindingCellConsolidationMultiplier } from '../sim/pathfinderTerrainCache';
 import { setLiquidSurfaceMode, setMetalCoverage } from '../sim/worldSurfaceState';
 import {
   DEFAULT_LIQUID_SURFACE_MODE,
   DEFAULT_METAL_COVERAGE,
 } from '../../types/worldSurfaceMode';
 import type { LiquidSurfaceMode, MetalCoverage } from '../../types/worldSurfaceMode';
-import { normalizePathfindingCellConsolidationMultiplier } from '../../types/pathfinding';
-import type { PathfindingCellConsolidationMultiplier } from '../../types/pathfinding';
 import { normalizeSimulationTickRateHz } from '../../types/simulationTickRate';
 import type { SimulationTickRateHz } from '../../types/simulationTickRate';
 
@@ -62,7 +59,6 @@ export type ResolvedBootstrapConfig = {
   teamRoster: TeamRoster;
   gameGenerationSeed: number;
   backgroundMode: boolean;
-  pathfindingCellConsolidationMultiplier: PathfindingCellConsolidationMultiplier;
   simulationTickRateHz: SimulationTickRateHz;
   metalCoverage: MetalCoverage;
   liquidSurfaceMode: LiquidSurfaceMode;
@@ -71,7 +67,7 @@ export type ResolvedBootstrapConfig = {
 };
 
 /** Phase 1 — normalize the caller's config and install the process-wide
- *  surface/pathfinding settings every later phase samples. */
+ *  surface settings every later phase samples. */
 export function resolveBootstrapConfig(config: GameServerConfig): ResolvedBootstrapConfig {
   const playerIds = normalizePlayerIds(config.playerIds);
   const teamRoster = resolveTeamRoster(playerIds, {
@@ -83,15 +79,8 @@ export function resolveBootstrapConfig(config: GameServerConfig): ResolvedBootst
     config.gameGenerationSeed ?? DEFAULT_GAME_GENERATION_SEED,
   );
   const backgroundMode = config.backgroundMode ?? false;
-  const pathfindingCellConsolidationMultiplier =
-    normalizePathfindingCellConsolidationMultiplier(
-      config.pathfindingCellConsolidationMultiplier,
-    );
   const simulationTickRateHz = normalizeSimulationTickRateHz(
     config.simulationTickRateHz,
-  );
-  configurePathfindingCellConsolidationMultiplier(
-    pathfindingCellConsolidationMultiplier,
   );
   const metalCoverage = config.metalCoverage ?? DEFAULT_METAL_COVERAGE;
   const liquidSurfaceMode = config.liquidSurfaceMode ?? DEFAULT_LIQUID_SURFACE_MODE;
@@ -109,7 +98,6 @@ export function resolveBootstrapConfig(config: GameServerConfig): ResolvedBootst
     teamRoster,
     gameGenerationSeed,
     backgroundMode,
-    pathfindingCellConsolidationMultiplier,
     simulationTickRateHz,
     metalCoverage,
     liquidSurfaceMode,
@@ -219,8 +207,6 @@ export function createBootstrapWorld(
   world.simulationTickRateHz = resolved.simulationTickRateHz;
   world.metalCoverage = resolved.metalCoverage;
   world.liquidSurfaceMode = resolved.liquidSurfaceMode;
-  world.pathfindingCellConsolidationMultiplier =
-    resolved.pathfindingCellConsolidationMultiplier;
   world.playerCount = resolved.playerIds.length;
   // One assignment drives alliances, terrain slices, and spawn angles.
   world.setTeamRoster(resolved.teamRoster);

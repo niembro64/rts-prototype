@@ -322,15 +322,17 @@ import __wbg_init, {
   pathfinder_find_path_slice,
   pathfinder_cancel_path_slice,
   pathfinder_cancel_all_path_slices,
+  pathfinder_reset_match_state,
   pathfinder_last_result_status,
   pathfinder_last_search_strategy,
   pathfinder_last_fine_expanded_nodes,
   pathfinder_last_fine_expanded_nodes_this_slice,
   pathfinder_last_coarse_expanded_nodes,
-  pathfinder_last_coarse_refinement_passes,
-  pathfinder_last_coarse_exact_edge_checks,
-  pathfinder_last_coarse_full_cluster_scans,
-  pathfinder_last_fine_hit_node_limit,
+  pathfinder_last_hpa_work,
+  pathfinder_last_corridor_clusters,
+  pathfinder_class_graph_count,
+  pathfinder_decay_traffic_heat,
+  pathfinder_traffic_heat_ptr,
   pathfinder_last_smoothing_line_checks,
   pathfinder_last_direct_cost_ratio,
   pathfinder_validate_path,
@@ -1067,15 +1069,17 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           findPathSlice: pathfinder_find_path_slice,
           cancelPathSlice: pathfinder_cancel_path_slice,
           cancelAllPathSlices: pathfinder_cancel_all_path_slices,
+          resetMatchState: pathfinder_reset_match_state,
           lastResultStatus: pathfinder_last_result_status,
           lastSearchStrategy: pathfinder_last_search_strategy,
           lastFineExpandedNodes: pathfinder_last_fine_expanded_nodes,
           lastFineExpandedNodesThisSlice: pathfinder_last_fine_expanded_nodes_this_slice,
           lastCoarseExpandedNodes: pathfinder_last_coarse_expanded_nodes,
-          lastCoarseRefinementPasses: pathfinder_last_coarse_refinement_passes,
-          lastCoarseExactEdgeChecks: pathfinder_last_coarse_exact_edge_checks,
-          lastCoarseFullClusterScans: pathfinder_last_coarse_full_cluster_scans,
-          lastFineHitNodeLimit: pathfinder_last_fine_hit_node_limit,
+          lastHpaWork: pathfinder_last_hpa_work,
+          lastCorridorClusters: pathfinder_last_corridor_clusters,
+          classGraphCount: pathfinder_class_graph_count,
+          decayTrafficHeat: pathfinder_decay_traffic_heat,
+          trafficHeatPtr: pathfinder_traffic_heat_ptr,
           lastSmoothingLineChecks: pathfinder_last_smoothing_line_checks,
           lastDirectCostRatio: pathfinder_last_direct_cost_ratio,
           validatePath: pathfinder_validate_path,
@@ -1821,6 +1825,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runSimulationPathPlanSchedulerContractTest();
         const { runPathfindingTraversalContractTest } = await import('../sim/pathfindingTraversalContractTest');
         runPathfindingTraversalContractTest();
+        const { runLocalAvoidanceContractTest } = await import('../sim/localAvoidanceContractTest');
+        runLocalAvoidanceContractTest();
         const { runPathPlanSafetyContractTest } = await import('../sim/pathPlanSafetyContractTest');
         runPathPlanSafetyContractTest();
         const { runTeamColorContractTest } = await import('../sim/teamColorContractTest');

@@ -373,6 +373,7 @@ function printSimulationReport(report) {
   printMemoryLine('  memory', report.memory);
   printSimTickPhases('  sim tick phases', report.simTickPhases, report.measuredTicks);
   printPathPlanScheduler('  path scheduler', report.pathPlanScheduler);
+  printPathQueryOutcomes('  route outcomes', report.pathQueryOutcomes);
   printWasmBoundaryLine('  JS/WASM boundary', report.wasmBoundary);
 }
 
@@ -390,6 +391,7 @@ function printReport(report) {
   printMemoryLine('  memory', report.simOnly.memory);
   printSimTickPhases('  sim tick phases', report.simOnly.simTickPhases, report.simOnly.measuredTicks);
   printPathPlanScheduler('  path scheduler', report.simOnly.pathPlanScheduler);
+  printPathQueryOutcomes('  route outcomes', report.simOnly.pathQueryOutcomes);
   printWasmBoundaryLine('  JS/WASM boundary', report.simOnly.wasmBoundary);
   console.log('');
   console.log('SIM + SNAPSHOT + CLIENT APPLY');
@@ -612,12 +614,14 @@ function printSimTickPhases(prefix, phases, measuredTicks) {
   }
 }
 
-const PATH_PLAN_AGE_LABELS = ['0', '1', '2-3', '4-7', '8-15', '16-31', '32-63', '64+'];
+function pathPlanAgeLabels() {
+  return ['0', '1', '2-3', '4-7', '8-15', '16-31', '32-63', '64+'];
+}
 
 function printPathPlanScheduler(prefix, stats) {
   if (!stats) return;
   const ages = (stats.admissionAgeBuckets ?? [])
-    .map((count, index) => (count > 0 ? `${PATH_PLAN_AGE_LABELS[index]}:${count}` : null))
+    .map((count, index) => (count > 0 ? `${pathPlanAgeLabels()[index]}:${count}` : null))
     .filter(Boolean)
     .join(' ');
   console.log(
@@ -629,6 +633,17 @@ function printPathPlanScheduler(prefix, stats) {
       `starved ticks ${stats.ticksEndedWithBudgetLeftAndDemand}, deferred requeues ${stats.deferredRequests}`,
   );
   if (ages.length > 0) console.log(`    admission age (ticks): ${ages}`);
+}
+
+function printPathQueryOutcomes(prefix, o) {
+  if (!o) return;
+  const byBp = (o.unreachableByBlueprint ?? []).slice(0, 6).map(([k, v]) => `${k}:${v}`).join(' ');
+  console.log(
+    `${prefix}: complete ${o.complete}, snapped ${o.snapped}, partial ${o.partial}, ` +
+      `unreachable ${o.unreachable} (direct ${o.direct}, hierarchical ${o.hierarchical}), ` +
+      `failures ${o.failures}, give-ups ${o.giveUps}` +
+      (byBp.length > 0 ? `, unreachable by blueprint {${byBp}}` : ''),
+  );
 }
 
 function printWasmBoundaryLine(prefix, boundary) {

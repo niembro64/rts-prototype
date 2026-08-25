@@ -333,18 +333,31 @@ fn generate_pathfinding_tuning(manifest_dir: &Path) {
             direct_path_max_cost_ratio
         );
     }
-    let hierarchical_min_distance_cells = read_number_field(&raw, "hierarchicalMinDistanceCells")
+    let corridor_heuristic_weight = read_number_field(&raw, "corridorHeuristicWeight")
         .unwrap_or_else(|| {
             panic!(
-                "missing numeric hierarchicalMinDistanceCells in {}",
+                "missing numeric corridorHeuristicWeight in {}",
                 config_path.display()
             )
         });
-    if hierarchical_min_distance_cells < 0.0 || hierarchical_min_distance_cells.fract() != 0.0 {
+    if !corridor_heuristic_weight.is_finite() || corridor_heuristic_weight < 1.0 {
         panic!(
-            "invalid hierarchicalMinDistanceCells in {}: expected non-negative integer, got {}",
+            "invalid corridorHeuristicWeight in {}: expected ratio >= 1, got {}",
             config_path.display(),
-            hierarchical_min_distance_cells
+            corridor_heuristic_weight
+        );
+    }
+    let traffic_heat_penalty = read_number_field(&raw, "trafficHeatPenalty").unwrap_or_else(|| {
+        panic!(
+            "missing numeric trafficHeatPenalty in {}",
+            config_path.display()
+        )
+    });
+    if !traffic_heat_penalty.is_finite() || traffic_heat_penalty < 0.0 {
+        panic!(
+            "invalid trafficHeatPenalty in {}: expected non-negative number, got {}",
+            config_path.display(),
+            traffic_heat_penalty
         );
     }
     let hierarchical_cluster_size_cells = read_number_field(&raw, "hierarchicalClusterSizeCells")
@@ -386,8 +399,12 @@ fn generate_pathfinding_tuning(manifest_dir: &Path) {
         direct_path_max_cost_ratio as f32
     ));
     generated.push_str(&format!(
-        "const PATHFINDING_HIERARCHICAL_MIN_DISTANCE_CELLS: f32 = {:?};\n",
-        hierarchical_min_distance_cells as f32
+        "const PATHFINDING_TRAFFIC_HEAT_PENALTY: f32 = {:?};\n",
+        traffic_heat_penalty as f32
+    ));
+    generated.push_str(&format!(
+        "const PATHFINDING_CORRIDOR_HEURISTIC_WEIGHT: f32 = {:?};\n",
+        corridor_heuristic_weight as f32
     ));
     generated.push_str(&format!(
         "const PATHFINDING_HIERARCHICAL_CLUSTER_SIZE_CELLS: i32 = {};\n",

@@ -4,7 +4,6 @@ import type { ShieldReflectionMode } from './shotTypes';
 import type { SlopePathMode } from './slopePathMode';
 import type { LiquidSurfaceMode, MetalCoverage } from './worldSurfaceMode';
 import type { TerrainPrecedence } from './terrainPrecedence';
-import type { PathfindingCellConsolidationMultiplier } from './pathfinding';
 import type { SimulationTickRateHz } from './simulationTickRate';
 
 export type UnitToggleConfig = {
@@ -22,8 +21,6 @@ export type BattleBarConfig = {
    *  seats-per-side in demoConfig.json, the only form that can seat sides
    *  unevenly or leave one empty on purpose. */
   readonly allyTeamCount: OptionsConfig<number>;
-  /** Number of 20×20 build cells represented by one path cell on each axis. */
-  readonly pathfindingCellConsolidation: OptionsConfig<PathfindingCellConsolidationMultiplier>;
   /** Authoritative fixed simulation steps per real-time second. */
   readonly simulationTickRate: OptionsConfig<SimulationTickRateHz>;
   readonly turretShieldPanelsEnabled: BooleanSetting;

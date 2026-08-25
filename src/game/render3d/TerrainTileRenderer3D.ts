@@ -747,7 +747,6 @@ export class TerrainTileRenderer3D {
   private buildGridOccupiedMask = new Uint8Array(1);
   private buildGridMetalMask = new Uint8Array(1);
   private buildGridWaterRawMask = new Uint8Array(1);
-  private buildGridWaterSubmergedMask = new Uint8Array(1);
   private pathingDebugGrid: PathfindingDebugGrid = createPathfindingDebugGrid(1);
   private pathingTerrainMaskKeyValid = false;
   private pathingTerrainMaskKeyCellsX = 0;
@@ -1501,9 +1500,6 @@ export class TerrainTileRenderer3D {
     if (this.buildGridWaterRawMask.length < safeCount) {
       this.buildGridWaterRawMask = new Uint8Array(safeCount);
     }
-    if (this.buildGridWaterSubmergedMask.length < safeCount) {
-      this.buildGridWaterSubmergedMask = new Uint8Array(safeCount);
-    }
     this.pathingDebugGrid = ensurePathfindingDebugGrid(this.pathingDebugGrid, safeCount);
   }
 
@@ -1639,7 +1635,6 @@ export class TerrainTileRenderer3D {
       cellsX,
       cellsY,
       terrainWater: this.buildGridWaterRawMask,
-      terrainSubmerged: this.buildGridWaterSubmergedMask,
     });
   }
 
@@ -1685,7 +1680,6 @@ export class TerrainTileRenderer3D {
 
     const cellCount = cellsX * cellsY;
     this.buildGridWaterRawMask.fill(0, 0, cellCount);
-    this.buildGridWaterSubmergedMask.fill(0, 0, cellCount);
 
     const terrainMap = getAuthoritativeTerrainTileMap();
     if (
@@ -1708,7 +1702,6 @@ export class TerrainTileRenderer3D {
             this.mapHeight,
           );
           this.buildGridWaterRawMask[cellIndex] = terrain.hasWater ? 1 : 0;
-          this.buildGridWaterSubmergedMask[cellIndex] = terrain.fullySubmerged ? 1 : 0;
         }
       }
       this.storePathingTerrainMaskCacheKey(cellsX, cellsY, buildCellSize, terrainVersion);
@@ -1747,8 +1740,6 @@ export class TerrainTileRenderer3D {
         const strictMinZ = minZ + strictInset;
         const strictMaxX = maxX - strictInset;
         const strictMaxZ = maxZ - strictInset;
-        let hasExposed = false;
-        let foundStrictTriangle = false;
         for (let terrainGy = minTerrainCellY; terrainGy <= maxTerrainCellY; terrainGy++) {
           for (let terrainGx = minTerrainCellX; terrainGx <= maxTerrainCellX; terrainGx++) {
             const terrainCellIndex = terrainGy * terrainMap.cellsX + terrainGx;
@@ -1790,15 +1781,11 @@ export class TerrainTileRenderer3D {
                 strictMaxZ,
               );
               if (heightRange === null) continue;
-              foundStrictTriangle = true;
               hasWater ||= heightRange.minHeight < WATER_LEVEL;
-              hasExposed ||= heightRange.maxHeight >= WATER_LEVEL;
             }
           }
         }
         this.buildGridWaterRawMask[cellIndex] = hasWater ? 1 : 0;
-        this.buildGridWaterSubmergedMask[cellIndex] =
-          hasWater && !hasExposed && foundStrictTriangle ? 1 : 0;
       }
     }
 

@@ -11,11 +11,6 @@
     "realDefault": 2,
     "options": [1, 2, 3, 4, 5, 6]
   },
-  "pathfindingCellConsolidation": {
-    "demoDefault": 3,
-    "realDefault": 3,
-    "options": [1, 2, 3, 4, 5]
-  },
   "simulationTickRate": {
     "demoDefault": 20,
     "realDefault": 20,
@@ -69,8 +64,6 @@
     "demoBuildingsHeliosRevision": "demo-battle-buildings-helios-v1",
     "demoCap": "demo-battle-cap",
     "realCap": "real-battle-cap",
-    "demoPathfindingCellConsolidation": "demo-battle-pathfinding-cell-consolidation",
-    "realPathfindingCellConsolidation": "real-battle-pathfinding-cell-consolidation",
     "demoSimulationTickRate": "demo-battle-simulation-tick-rate",
     "realSimulationTickRate": "real-battle-simulation-tick-rate",
     "demoTurretShieldPanelsEnabled": "demo-battle-turret-shield-panels-enabled",
