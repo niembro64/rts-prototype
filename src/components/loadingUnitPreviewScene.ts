@@ -102,6 +102,11 @@ import {
   type BotMesh,
 } from '@/game/render3d/BotRig3D';
 import { patchSurfaceChartSurface } from '@/game/render3d/SurfaceChartMaterial3D';
+import {
+  CANONICAL_ENTITY_PREVIEW_ELEVATION_RAD,
+  CANONICAL_ENTITY_PREVIEW_YAW_RAD,
+  getCanonicalEntityPreviewCameraFit,
+} from './entityPreviewCamera';
 
 type PreviewCanvas = HTMLCanvasElement | OffscreenCanvas;
 
@@ -178,7 +183,7 @@ const LEG_SEGMENT_COLOR = COLORS.units.locomotion.leg.segment.colorHex;
 const DEFAULT_CONTROLS: LoadingUnitPreviewControls = {
   rotate: true,
   rotationSpeed: 1,
-  yaw: 0,
+  yaw: CANONICAL_ENTITY_PREVIEW_YAW_RAD,
   pitch: 0,
   motion: false,
   motionSpeed: 1,
@@ -414,7 +419,6 @@ export class LoadingUnitPreviewScene {
   private readonly spinRoot = new THREE.Group();
   private readonly motionRoot = new THREE.Group();
   private readonly model: PreviewModel;
-  private readonly fullBleed: boolean;
   private controls: LoadingUnitPreviewControls = { ...DEFAULT_CONTROLS };
   private boundsRadius = 1;
   private fitHalfWidth = 1;
@@ -428,7 +432,6 @@ export class LoadingUnitPreviewScene {
   private disposed = false;
 
   constructor(options: LoadingUnitPreviewSceneOptions) {
-    this.fullBleed = options.fullBleed;
     this.ownsRendererHost = options.rendererHost === undefined;
     this.rendererHost = options.rendererHost ?? new LoadingUnitPreviewRendererHost(
       options.canvas,
@@ -532,17 +535,18 @@ export class LoadingUnitPreviewScene {
     const aspect = this.width / this.height;
     const verticalFov = THREE.MathUtils.degToRad(CAMERA_FOV_DEGREES);
     const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * aspect);
-    const margin = this.fullBleed ? 1.9 : 1.9;
-    const distance = Math.max(
-      (this.fitHalfHeight * margin) / Math.tan(verticalFov / 2),
-      (this.fitHalfWidth * margin) / Math.tan(horizontalFov / 2),
-      this.boundsRadius * 1.2,
+    const fit = getCanonicalEntityPreviewCameraFit(
+      this.fitHalfWidth,
+      this.fitHalfHeight,
+      verticalFov,
+      horizontalFov,
     );
-    const lift = this.fitHalfHeight * (this.fullBleed ? 0.18 : 0.32);
-    this.camera.position.set(0, lift, distance);
+    const distance = fit.distance;
+    const cameraAxis = Math.sin(CANONICAL_ENTITY_PREVIEW_ELEVATION_RAD);
+    this.camera.position.set(0, distance * cameraAxis, distance * cameraAxis);
     this.camera.near = Math.max(0.1, distance - this.boundsRadius * 3.4);
     this.camera.far = distance + this.boundsRadius * 3.4;
-    this.spinRoot.position.y = this.fullBleed ? this.fitHalfHeight * 0.28 : 0;
+    this.spinRoot.position.set(0, 0, 0);
     this.camera.lookAt(scratchTarget.set(0, 0, 0));
     this.camera.updateProjectionMatrix();
   }

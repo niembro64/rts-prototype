@@ -3,7 +3,12 @@ import {
   UNIT_LOCOMOTION_SURFACE_FOLLOWING_RESPONSE_FIELDS,
   getUnitLocomotionPreset,
 } from '../unitLocomotionPresetConfig';
-import { airSurfaceLiftMediumIsActive } from '../surfaceLiftDistanceResponse';
+import {
+  airSurfaceLiftMediumIsActive,
+  getLocomotionSupportPointZ,
+  getSurfaceLiftInverseDistanceToSurfaceWorld,
+  getSurfaceLiftWaterDepthWorld,
+} from '../surfaceLiftDistanceResponse';
 import { WATER_LEVEL } from '../Terrain';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -11,6 +16,13 @@ function assertContract(condition: unknown, message: string): asserts condition 
 }
 
 export function runUnitWaterLiftLocomotionContractTest(): void {
+  const supportZ = getLocomotionSupportPointZ(WATER_LEVEL + 32, 12);
+  assertContract(
+    supportZ === WATER_LEVEL + 20 &&
+      getSurfaceLiftInverseDistanceToSurfaceWorld(supportZ, WATER_LEVEL) === 20 &&
+      getSurfaceLiftWaterDepthWorld(getLocomotionSupportPointZ(WATER_LEVEL - 20, 12)) === 32,
+    'all surface distances use body center minus support-point offset as the locomotion datum',
+  );
   assertContract(
     airSurfaceLiftMediumIsActive(WATER_LEVEL + 1, 0.49, WATER_LEVEL) &&
       !airSurfaceLiftMediumIsActive(WATER_LEVEL, 0.5, WATER_LEVEL) &&
@@ -123,5 +135,22 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
         orca.physics.water.lift.surfaceFollowingInverseForceFromGround &&
       orca.physics.water.resistance.linearDampingRate >= 3,
     'Orca retains its inverse lakebed controller and enough water damping to settle at waypoints',
+  );
+
+  const cuttlefishBlueprint = getUnitBlueprint('unitStealthScout');
+  const cuttlefish = getUnitLocomotion('unitStealthScout');
+  assertContract(
+    cuttlefishBlueprint.requiresWater && !cuttlefishBlueprint.requiresLand &&
+      cuttlefish.physics.ground.maxPropulsiveForce === 0 &&
+      cuttlefish.physics.air.maxPropulsiveForce === 0 &&
+      cuttlefish.physics.air.lift.surfaceFollowingInverseForceFromGround === 0 &&
+      cuttlefish.physics.air.lift.surfaceFollowingInverseForceFromWater === 0 &&
+      cuttlefish.physics.water.maxPropulsiveForce > 0 &&
+      cuttlefish.physics.water.lift.surfaceFollowingInverseForceFromGround > 0 &&
+      cuttlefish.physics.water.lift.surfaceFollowingProportionalForceFromWater > 0 &&
+      !cuttlefish.navigation.waypoint.allowOnGround &&
+      cuttlefish.navigation.waypoint.allowInWater &&
+      !cuttlefish.navigation.waypoint.allowInAir,
+    'Cuttlefish must be a submerged water-only stealth scout, not a land-walking turtle variant',
   );
 }

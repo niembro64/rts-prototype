@@ -22,6 +22,7 @@ import {
   fabricatorTorusRingRadius,
   fabricatorTorusOuterRadius,
 } from '../sim/fabricatorGeometry';
+import { SUPPORT_SURFACE_CONTACT_EPSILON } from '../sim/supportSurface';
 
 /** Create and attach the physics body for a building entity. No-op when the
  *  entity already has a body or is not a building. */
@@ -92,4 +93,42 @@ export function createPhysicsBodyForBuilding(
   );
   entity.body = { physicsBody: body };
   world.refreshEntitySlotState(entity);
+}
+
+/** Runtime placement can create a static shell around the builder (or another
+ * unit) before pathing has moved it clear. Temporarily ignore that one new
+ * cuboid for every sphere genuinely starting inside it; PhysicsEngine3D
+ * removes each pair as soon as the sphere exits the expanded bounds. */
+export function ignoreNewBuildingBodyForOverlappingUnits(
+  world: WorldState,
+  physics: Pick<PhysicsEngine3D, 'setIgnoreStatic'>,
+  buildingEntity: Entity,
+): number {
+  const staticBody = buildingEntity.body?.physicsBody;
+  if (staticBody === undefined || staticBody.shape !== 'cuboid') return 0;
+  let ignoredCount = 0;
+  for (const unitEntity of world.getUnits()) {
+    const dynamicBody = unitEntity.body?.physicsBody;
+    if (dynamicBody === undefined || dynamicBody.shape !== 'sphere') continue;
+    // A unit already resting on or above the new top should keep ordinary
+    // support/collision. The escape ignore is only for a body enclosed by it.
+    if (
+      staticBody.supportTopZ !== null &&
+      dynamicBody.z - dynamicBody.groundOffset >=
+        staticBody.supportTopZ - SUPPORT_SURFACE_CONTACT_EPSILON
+    ) {
+      continue;
+    }
+    const clearance = dynamicBody.radius;
+    if (
+      Math.abs(dynamicBody.x - staticBody.x) > staticBody.halfX + clearance ||
+      Math.abs(dynamicBody.y - staticBody.y) > staticBody.halfY + clearance ||
+      Math.abs(dynamicBody.z - staticBody.z) > staticBody.halfZ + clearance
+    ) {
+      continue;
+    }
+    physics.setIgnoreStatic(dynamicBody, staticBody);
+    ignoredCount++;
+  }
+  return ignoredCount;
 }

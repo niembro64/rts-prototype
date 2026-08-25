@@ -13,6 +13,7 @@ import {
   BUILDING_BLUEPRINT_IDS,
   UNIT_BLUEPRINT_IDS,
 } from '@/types/blueprintIds';
+import { CANONICAL_ENTITY_PREVIEW_YAW_RAD } from './entityPreviewCamera';
 
 type EntityPreviewImageUse = 'grid' | 'panel' | 'loading';
 
@@ -30,8 +31,8 @@ const ENTITY_PREVIEW_IMAGE_SPECS = {
 } as const satisfies Record<EntityPreviewImageUse, EntityPreviewImageSpec>;
 
 const THUMBNAIL_MIME_TYPE = 'image/webp';
-const THUMBNAIL_YAW = -0.62;
-const THUMBNAIL_PITCH = -0.16;
+const THUMBNAIL_YAW = CANONICAL_ENTITY_PREVIEW_YAW_RAD;
+const THUMBNAIL_PITCH = 0;
 const THUMBNAIL_RETRY_DELAYS_MS = [120, 300, 700, 1500, 3000];
 const THUMBNAIL_DEFERRED_RETRY_MS = 5000;
 

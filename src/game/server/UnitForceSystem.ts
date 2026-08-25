@@ -4,6 +4,7 @@
 
 import {
   airSurfaceLiftMediumIsActive,
+  getLocomotionSupportPointZ,
   getSurfaceLiftInverseDistanceResponse,
   getSurfaceLiftInverseDistanceToSurfaceWorld,
   getSurfaceLiftWaterDepthWorld,
@@ -462,6 +463,7 @@ export class UnitForceSystem {
       const bodyY = bodyViews.posY[bodySlot];
       const bodyZ = bodyViews.posZ[bodySlot];
       const bodyGroundOffset = bodyViews.groundOffset[bodySlot];
+      const supportZ = getLocomotionSupportPointZ(bodyZ, bodyGroundOffset);
       const bodyRadius = bodyViews.radius[bodySlot] || 10;
       const base = count * UNIT_FORCE_BATCH_STRIDE;
       let profileFlags = 0;
@@ -497,7 +499,7 @@ export class UnitForceSystem {
       );
       const supportSurfaceContact =
         supportSurface.supportKind === 'building' || supportSurface.supportKind === 'unit';
-      const supportPenetration = supportSurface.groundZ - (bodyZ - bodyGroundOffset);
+      const supportPenetration = supportSurface.groundZ - supportZ;
       const locomotionGroundContact = isUnitGroundPenetrationInContact(
         supportPenetration,
         bodyRadius,
@@ -636,7 +638,7 @@ export class UnitForceSystem {
         this.sampleSurfaceLiftAggregatedProposedForces(
           entitySlot,
           unit.locomotion.surfaceFollowing.altitudeProbeSetId,
-          bodyZ,
+          supportZ,
           bodyX,
           bodyY,
           probeDirX,
@@ -984,16 +986,16 @@ export class UnitForceSystem {
   }
 
   private surfaceFollowingInverseResponseFromSurfaceZ(
-    bodyZ: number,
+    supportZ: number,
     surfaceZ: number,
   ): number {
     return getSurfaceLiftInverseDistanceResponse(
-      getSurfaceLiftInverseDistanceToSurfaceWorld(bodyZ, surfaceZ),
+      getSurfaceLiftInverseDistanceToSurfaceWorld(supportZ, surfaceZ),
     );
   }
 
-  private surfaceFollowingProportionalResponseFromWater(bodyZ: number): number {
-    return getSurfaceLiftWaterDepthWorld(bodyZ);
+  private surfaceFollowingProportionalResponseFromWater(supportZ: number): number {
+    return getSurfaceLiftWaterDepthWorld(supportZ);
   }
 
   private createSurfaceLiftProbeDebugFrame(entityId: EntityId): SurfaceLiftProbeDebugFrame {
@@ -1013,16 +1015,16 @@ export class UnitForceSystem {
    * a terrain-bed lookup plus a support-surface query per point — is the
    * expensive half, so it runs only on this unit's deterministic refresh
    * tick and is cached (see SurfaceLiftProbeSampleCache). AGGREGATING runs
-   * every tick against the unit's live altitude, so the response still
-   * tracks the body the instant it rises or falls. The centre point is
-   * never cached: it sits at the body, its support height is the contact
+   * every tick against the unit's live locomotion-point altitude, so the
+   * response still tracks the body the instant it rises or falls. The centre
+   * point is never cached: it sits below the body, its support height is the contact
    * surface this tick already resolved, and its medium is a single bed
    * lookup.
    */
   private sampleSurfaceLiftAggregatedProposedForces(
     entitySlot: number,
     probeSetId: SurfaceProbeSetId,
-    bodyZ: number,
+    supportZ: number,
     bodyX: number,
     bodyY: number,
     probeDirX: number,
@@ -1067,7 +1069,7 @@ export class UnitForceSystem {
     }
 
     const waterSurfaceDepth = waterSurfaceFollowingProportionalForceFromWater > 0
-      ? this.surfaceFollowingProportionalResponseFromWater(bodyZ)
+      ? this.surfaceFollowingProportionalResponseFromWater(supportZ)
       : 0;
     let airInverseProposedForceAggregate = 0;
     let waterInverseProposedForceAggregate = 0;
@@ -1093,12 +1095,12 @@ export class UnitForceSystem {
         debugFrame.samples.push({
           x,
           y,
-          bodyZ,
+          supportZ,
           isCenter,
-          groundInverseDistanceWorld: getSurfaceLiftInverseDistanceToSurfaceWorld(bodyZ, groundZ),
+          groundInverseDistanceWorld: getSurfaceLiftInverseDistanceToSurfaceWorld(supportZ, groundZ),
           usesGroundInverseDistance,
           waterSurfaceInverseDistanceWorld: waterCovered
-            ? getSurfaceLiftInverseDistanceToSurfaceWorld(bodyZ, WATER_LEVEL)
+            ? getSurfaceLiftInverseDistanceToSurfaceWorld(supportZ, WATER_LEVEL)
             : null,
           usesWaterSurfaceInverseDistance,
           waterSurfaceDepthWorld: waterCovered
@@ -1109,7 +1111,7 @@ export class UnitForceSystem {
       }
       if (!waterCovered && airSurfaceFollowingInverseForceFromGround > 0) {
         const forceMultiplier = this.surfaceFollowingInverseResponseFromSurfaceZ(
-          bodyZ,
+          supportZ,
           groundZ,
         );
         const proposedForce = airSurfaceFollowingInverseForceFromGround * forceMultiplier;
@@ -1121,7 +1123,7 @@ export class UnitForceSystem {
       }
       if (waterCovered && airSurfaceFollowingInverseForceFromWater > 0) {
         const forceMultiplier = this.surfaceFollowingInverseResponseFromSurfaceZ(
-          bodyZ,
+          supportZ,
           WATER_LEVEL,
         );
         const proposedForce = airSurfaceFollowingInverseForceFromWater * forceMultiplier;
@@ -1133,7 +1135,7 @@ export class UnitForceSystem {
       }
       if (waterCovered && waterSurfaceFollowingInverseForceFromGround > 0) {
         const forceMultiplier = this.surfaceFollowingInverseResponseFromSurfaceZ(
-          bodyZ,
+          supportZ,
           groundZ,
         );
         const proposedForce = waterSurfaceFollowingInverseForceFromGround * forceMultiplier;

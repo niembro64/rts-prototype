@@ -81,7 +81,7 @@ const EXPECTED_ROSTER_LOCOMOTION: Readonly<Record<string, ExpectedLocomotionDoma
   unitRadarScout: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
   unitConstructionBot: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
   unitConstructionRover: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitStealthScout: { type: 'amphibian', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
+  unitStealthScout: { type: 'amphibian', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false },
   unitDetector: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
   unitRadarJammer: { type: 'amphibian', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
   unitMissileRover: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },

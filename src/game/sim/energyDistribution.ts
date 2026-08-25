@@ -10,7 +10,7 @@ import { economyManager } from './economy';
 import { getBuildingConfig } from './buildConfigs';
 import { getUnitBlueprint } from './blueprints';
 import { ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP } from '../../types/network';
-import { isBuildTargetInRange } from './builderRange';
+import { canApplyConstructionWork, isBuildTargetInRange } from './builderRange';
 import { syncBuilderActiveBuildTarget } from './builderBuildTarget';
 import { requestBuilderWorkStation } from './workStationSystem';
 import { getBuilderConstructionRate } from './hostCapabilities';
@@ -132,7 +132,7 @@ function findAutoAssistTarget(builder: Entity, candidates: readonly Entity[]): E
     const candidate = candidates[i];
     if (candidate.id === builder.id) continue;
     if (candidate.ownership === null || candidate.ownership.playerId !== ownerId) continue;
-    if (!isBuildTargetInRange(builder, candidate)) continue;
+    if (!canApplyConstructionWork(builder, candidate)) continue;
     const dx = candidate.transform.x - bx;
     const dy = candidate.transform.y - by;
     const distSq = dx * dx + dy * dy;
@@ -653,7 +653,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       autoAssistedBuilderIds.add(entity.id);
     }
     const target = world.getEntity(targetId);
-    if (!target || !isBuildTargetInRange(entity, target)) continue;
+    if (!target || !canApplyConstructionWork(entity, target)) continue;
     if (!requestBuilderWorkStation(entity, targetId)) continue;
     if (sweepAssist) sweepServicingBuilderIds.add(entity.id);
     buildTargets.add(targetId);

@@ -29,6 +29,7 @@ const UNIT_ACTION_FLAG_GUARD_FRIENDLY: u32 = 1 << 7;
 const UNIT_ACTION_FLAG_GUARD_SERVICE: u32 = 1 << 8;
 const UNIT_ACTION_FLAG_GUARD_SERVICE_IN_RANGE: u32 = 1 << 9;
 const UNIT_ACTION_FLAG_TARGET_PRESENT: u32 = 1 << 10;
+const UNIT_ACTION_FLAG_BUILD_FOOTPRINT_CLEAR: u32 = 1 << 11;
 
 const UNIT_ACTION_PLAN_IDLE_LOITER: u8 = 0;
 const UNIT_ACTION_PLAN_WAIT_LOITER: u8 = 1;
@@ -237,7 +238,9 @@ pub fn unit_action_plan_batch(
                 UNIT_ACTION_PLAN_UNLOAD_MOVE
             }
         } else if is_build_like(action) {
-            if has(f, UNIT_ACTION_FLAG_TARGET_IN_BUILD_RANGE) {
+            let footprint_clear = action != ACTION_TYPE_BUILD
+                || has(f, UNIT_ACTION_FLAG_BUILD_FOOTPRINT_CLEAR);
+            if has(f, UNIT_ACTION_FLAG_TARGET_IN_BUILD_RANGE) && footprint_clear {
                 UNIT_ACTION_PLAN_BUILD_HOLD
             } else {
                 UNIT_ACTION_PLAN_BUILD_MOVE

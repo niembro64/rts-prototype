@@ -1559,6 +1559,17 @@
         deterministic and unfiltered, with no hidden temporal state.
       </p>
       <p>
+        Every surface-following distance is measured from the unit&rsquo;s one canonical
+        <strong>locomotion support point</strong>, never from the rigid body center:
+        <code>supportZ = bodyCenterZ - supportPointOffsetZ</code>. Ground contact already uses that
+        datum, and air-to-ground, air-to-water, water-to-bed, and water-to-surface responses use it
+        identically. The body center remains the center of mass and the reference for collision,
+        inertia, water damage, and displaced-volume air/water occupancy. In other words, the
+        support point answers &ldquo;where does this chassis meet or follow a surface?&rdquo;, while the
+        body answers &ldquo;where is its physical volume?&rdquo;. A visual rig, locomotion type, or named
+        unit may not select a different origin or force law.
+      </p>
+      <p>
         Presentation, motion control, navigation, hazards, and physical body properties remain
         separate contracts. The visual locomotion type chooses a rig; it never grants route
         permissions or changes a force law. This leaves one rigid body acted on by gravity,
@@ -3226,6 +3237,7 @@
         expensive frames linger, and health falls with progress.
       </p>
       <ul class="rule-list">
+        <li>Completion wins before attendance and decay are evaluated. A shell whose required cost has been fully paid becomes a completed building on that lifecycle tick even if its builder moved, its queue advanced, or attendance disappeared between payment and lifecycle processing. Decay applies only to incomplete investment; it can never undo a paid building.</li>
         <li>Attendance, not funding, starts the clock. A site is attended while construction work lands on it and while any living builder still carries it in an order queue &mdash; a shift-queued site is placed the instant the order is issued and must be allowed to stand until its turn.</li>
         <li>Abandoned and cancelled invested frames both decay immediately and slowly. A zero-progress frame with no remaining queue reference disappears on the first orphan tick. Decay is the only way a partial assembly leaves the map on its own; an interrupted shell has no other exit.</li>
         <li>Reaching zero is a removal, not a death: no explosion, no wreck, no death event. Nothing that was never funded should detonate.</li>
@@ -3728,6 +3740,14 @@
         <strong>Advanced Construction &lt;X&gt;</strong>. The functional name does not exempt its
         visual design &mdash; each construction craft still owns a unique chassis silhouette.
       </p>
+      <p>
+        Construction craft are workers, not combat hybrids. The Commander is the sole mobile unit
+        allowed to combine a structure-build roster with classical attack turrets. Every
+        Construction and Advanced Construction craft mounts sensors and a work emitter but no
+        attack turret; Reclaim remains its hostile economic tool. A mobile factory such as a Queen
+        may remain armed because producing its one unit is a factory workflow, not a structure-build
+        roster or construction-craft capability.
+      </p>
 
       <h3>Unit identity is visible, unique, and animal-led</h3>
       <p>
@@ -3742,12 +3762,30 @@
         Every non-construction unit has one explicit animal identity and a unique player-facing
         animal name. Titans are the dinosaur subset; a titan with a non-dinosaur identity, or a
         dinosaur assigned to an ordinary chassis, is invalid. Every display name is unique, and
-        every unit authors a distinct body shape even when locomotion, weapons, or a parent
-        blueprint are shared. Inheritance may share behavior, never the visible chassis. The
-        blueprint loader rejects duplicate names and duplicate body-shape geometry, turning roster
-        identity into a contract instead of a review convention. The support crawler&rsquo;s complete
+        every unit authors a distinct body shape and a distinct strategic niche. Unit blueprints
+        are complete, orthogonal records: a unit may not <code>$extends</code> another unit or rely
+        on a parent to supply locomotion, armament, cost, media traversal, construction authority,
+        or presentation. Shared implementation belongs in imported code and shared presets; shared
+        authored values remain explicit on every unit. Niche review considers the complete playable
+        combination &mdash; tier and domains, cost, mass, durability, propulsion and damping in each
+        medium, route permissions, sensors, weapons, work/factory capability, and special commands
+        &mdash; so a cosmetic rename or tiny stat delta cannot disguise a duplicate. The blueprint
+        loader rejects inheritance, duplicate names, and duplicate body-shape geometry, turning
+        roster identity into a contract instead of a review convention. The support crawler&rsquo;s complete
         identity is <strong>Daddy Longlegs</strong>; shortening it to a different animal name is
         invalid even though its fixed-width code remains <code>DADDY</code>.
+      </p>
+
+      <h3>Canonical entity images are tight three-quarter views</h3>
+      <p>
+        Every generated unit or building image consumed by build and production buttons, selection
+        portraits, loading screens, and other static entity cards uses one camera contract. The
+        camera views the entity from its <strong>front-right at 45 degrees horizontally</strong>
+        and looks downward at <strong>45 degrees</strong>. The complete rendered bounds are centered
+        and fitted with only a tiny safety margin: the image uses contain semantics, fills as much
+        of its square as possible, never crops any geometry, and never distorts aspect ratio. The
+        Entity Lab opens on that same canonical view even though its diagnostic controls may then
+        rotate or animate the model.
       </p>
 
       <h3>Transports carry one visible passenger, friend or foe</h3>
@@ -3782,6 +3820,15 @@
         value &mdash; three narrow roles rather than another all-purpose super-unit &mdash;
         alongside the static Radar, Sonar, and jammer buildings and the existing stealth hulls.
         Narrow hosts teach systems; capstones hide them.
+      </p>
+      <p>
+        The Cuttlefish occupies the biological version of that stealth niche: a water-required,
+        water-column scout with no land route, no ground propulsion, and no classical weapon. Its
+        camouflage/cloak, radar and sonar stealth, underwater sight/contact contribution, compact
+        body, and water propulsion let it approach and report from inside the naval medium. It may
+        use ordinary contact when physically resting on the bed, but it never walks ashore or rides
+        the water surface as a land gait. A marine animal name is not permission to inherit an
+        amphibious turtle&rsquo;s movement profile.
       </p>
 
       <h3>The compact roster names one readable host per gap</h3>
@@ -4125,6 +4172,15 @@
         a 7-by-7 diamond: twenty-one structural cells plus four construction-only tip cells beneath
         the fully opened panels.
         The wind turbine follows the same rule for its circular blade-sweep clearance.
+      </p>
+      <p>
+        A builder must remain completely outside the target&rsquo;s rotated structural and
+        construction-clearance cells before it can apply build work. If a build command creates a
+        shell around a builder, the builder first receives a deterministic escape point beyond the
+        reserved mask (including its own collision radius), and the new static body temporarily
+        ignores every dynamic body it initially overlaps until that body exits. This is an escape
+        guarantee, not permission to build through the footprint: work begins only after clearance.
+        Repair, reclaim, capture, and ordinary build-range checks retain their own range semantics.
       </p>
       <h3>Build-square classes and exhaustive placement sets</h3>
       <p>

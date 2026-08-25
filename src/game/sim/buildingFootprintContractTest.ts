@@ -25,6 +25,13 @@ import {
   createFactoryProductionHoldSpec,
   getDirectionalFactoryExitPoint,
 } from './factoryProductionHold';
+import {
+  getBuildFootprintClearanceApproachPoint,
+  isBuilderClearOfBuildFootprint,
+} from './builderRange';
+import { ignoreNewBuildingBodyForOverlappingUnits } from '../server/buildingPhysicsBody';
+import type { Body3D, PhysicsEngine3D } from '../server/PhysicsEngine3D';
+import type { WorldState } from './WorldState';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[building footprint] ${message}`);
@@ -257,6 +264,61 @@ export function runBuildingFootprintContractTest(): void {
   assertContract(
     grid.canPlaceFootprint(14, 10, parseBuildingPlacementFootprint(['#'], 'contract probe')),
     'a shaped mask must allow another footprint in an unused notch cell',
+  );
+
+  const buildTarget = {
+    buildingBlueprintId: 'buildingSolar',
+    building: { width: 100, height: 100 },
+    transform: { x: 400, y: 400, z: 0, rotation: 0, rotCos: 1, rotSin: 0 },
+  } as unknown as Entity;
+  const trappedBuilder = {
+    builder: { buildRange: 250 },
+    unit: { radius: { collision: 24 }, headingDirX: 1, headingDirY: 0 },
+    transform: { x: 400, y: 400, z: 0, rotation: 0, rotCos: 1, rotSin: 0 },
+  } as unknown as Entity;
+  assertContract(
+    !isBuilderClearOfBuildFootprint(trappedBuilder, buildTarget),
+    'a builder at the exact build center must not apply construction work',
+  );
+  const escape = getBuildFootprintClearanceApproachPoint(trappedBuilder, buildTarget);
+  assertContract(escape !== null && escape.x > buildTarget.transform.x && escape.y === 400,
+    'an exact-center builder must receive a deterministic forward escape point');
+  trappedBuilder.transform.x = escape!.x;
+  trappedBuilder.transform.y = escape!.y;
+  assertContract(
+    isBuilderClearOfBuildFootprint(trappedBuilder, buildTarget),
+    'the escape point must put the complete builder collision disc beyond the reservation',
+  );
+
+  const staticBody = {
+    shape: 'cuboid', x: 400, y: 400, z: 50,
+    halfX: 50, halfY: 50, halfZ: 50, supportTopZ: 100,
+  } as Body3D;
+  const trappedBody = {
+    shape: 'sphere', x: 400, y: 400, z: 20, radius: 24, groundOffset: 10,
+  } as Body3D;
+  const aboveBody = {
+    shape: 'sphere', x: 400, y: 400, z: 110, radius: 24, groundOffset: 10,
+  } as Body3D;
+  const outsideBody = {
+    shape: 'sphere', x: 700, y: 400, z: 20, radius: 24, groundOffset: 10,
+  } as Body3D;
+  const ignored: Array<[Body3D, Body3D]> = [];
+  const ignoredCount = ignoreNewBuildingBodyForOverlappingUnits(
+    { getUnits: () => [
+      { body: { physicsBody: trappedBody } },
+      { body: { physicsBody: aboveBody } },
+      { body: { physicsBody: outsideBody } },
+    ] } as unknown as WorldState,
+    { setIgnoreStatic: (dynamic, stat) => { ignored.push([dynamic, stat]); } } as Pick<
+      PhysicsEngine3D,
+      'setIgnoreStatic'
+    >,
+    { body: { physicsBody: staticBody } } as Entity,
+  );
+  assertContract(
+    ignoredCount === 1 && ignored[0]?.[0] === trappedBody && ignored[0]?.[1] === staticBody,
+    'a new static shell must ignore only units it initially encloses, not units above or outside it',
   );
 
   const primaryMat = new THREE.MeshLambertMaterial();
