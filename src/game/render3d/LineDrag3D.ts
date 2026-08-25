@@ -101,12 +101,14 @@ export class LineDrag3D {
       opacity: COLORS.effects.lineDrag.ring.opacity,
       side: THREE.DoubleSide,
       depthWrite: false,
+      toneMapped: false,
     });
     this.blockedMat = new THREE.MeshBasicMaterial({
       color: BALLISTIC_BLOCKED_COLOR,
       transparent: true,
       opacity: COLORS.effects.lineDrag.fillOpacity,
       depthWrite: false,
+      toneMapped: false,
     });
   }
 
@@ -208,6 +210,7 @@ export class LineDrag3D {
       // provides the outline separation that sells the "dot" shape.
       opacity: COLORS.effects.lineDrag.fillOpacity,
       depthWrite: false,
+      toneMapped: false,
     });
     this.fillMats.set(mode, mat);
     return mat;

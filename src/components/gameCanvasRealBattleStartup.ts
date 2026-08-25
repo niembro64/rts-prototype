@@ -304,9 +304,8 @@ const LOCKSTEP_HISTORY_CHUNK_FRAMES = 600;
 const LOCKSTEP_CATCH_UP_BUDGET_MS = 12;
 
 /** Sentinel the local checksums of an UNSEATED peer are filed under. Outside
- *  the seat range on purpose: a watcher verifies its own replay against the
- *  coordinator's hash, and must never join the desync comparison between
- *  seated players. */
+ *  the seat range on purpose: the monitor stores this local replay hash for
+ *  catch-up verification but excludes it from its comparison set. */
 const WATCHER_CHECKSUM_PLAYER_ID = 0;
 
 export function loadAndApplyRealBattleTerrain(): RealBattleStartupTerrain {
@@ -813,9 +812,9 @@ async function createDeterministicLockstepBackendRuntime({
    * Which id this peer's own checksums are filed under.
    *
    * A watcher has no seat but still hashes its state every checksum interval —
-   * that is the gate its replay is verified by. Filing those under a sentinel
-   * outside the seat range keeps them out of the desync comparison against
-   * real players, which a watcher must never be able to trigger.
+   * that is the gate its replay is verified by. The monitor below gives a
+   * watcher an EMPTY comparison set, so the sentinel is storage only and can
+   * never become a desync participant.
    */
   const checksumPlayerId: PlayerId = localPlayerId ?? (WATCHER_CHECKSUM_PLAYER_ID as PlayerId);
   let nextLocalPlayerSequence = 0;
@@ -966,7 +965,7 @@ async function createDeterministicLockstepBackendRuntime({
   });
   desyncMonitor = new LockstepDesyncMonitor({
     localPlayerId: checksumPlayerId,
-    peerIds: humanPlayerIds,
+    peerIds: localPlayerId === undefined ? [] : humanPlayerIds,
     initializationHash,
     getRecentCommandFrames: () => scheduler.getRecentCommandFrames(),
     nowMs: () => performance.now(),

@@ -64,6 +64,55 @@ export function runLockstepDesyncMonitorContractTest(): void {
 
   monitor.recordChecksum({ playerId: 2 as PlayerId, frame: 60, stateHash: hash('other') });
   assertContract(reports.length === 1, 'monitor must keep the first desync report stable');
+
+  const watcherReports: unknown[] = [];
+  const watcherMonitor = new LockstepDesyncMonitor({
+    localPlayerId: 0 as PlayerId,
+    peerIds: [],
+    initializationHash: 'watcher-init-hash',
+    getRecentCommandFrames: () => recentFrames,
+    onDesync: (watcherReport) => watcherReports.push(watcherReport),
+  });
+  assertContract(
+    watcherMonitor.recordChecksum({
+      playerId: 0 as PlayerId,
+      frame: 60,
+      stateHash: hash('watcher-replay'),
+    }) === null &&
+      watcherMonitor.recordChecksum({
+        playerId: 1 as PlayerId,
+        frame: 60,
+        stateHash: hash('seated-world'),
+      }) === null &&
+      watcherMonitor.recordChecksum({
+        playerId: 2 as PlayerId,
+        frame: 60,
+        stateHash: hash('another-seated-world'),
+      }) === null &&
+      watcherReports.length === 0,
+    'a spectator must store its replay checksum without entering or running the seated-player desync comparison',
+  );
+  assertContract(
+    watcherMonitor.getLatestLocalChecksum()?.stateHash.hash === 'watcher-replay' &&
+      watcherMonitor.getDiagnostics().lastAgreedChecksumFrame === null,
+    'spectator replay verification must remain available without claiming a seated checksum agreement',
+  );
+
+  const scopedReports: unknown[] = [];
+  const scopedMonitor = new LockstepDesyncMonitor({
+    localPlayerId: 1 as PlayerId,
+    peerIds: [1 as PlayerId, 2 as PlayerId],
+    initializationHash: 'scoped-init-hash',
+    getRecentCommandFrames: () => recentFrames,
+    onDesync: (scopedReport) => scopedReports.push(scopedReport),
+  });
+  scopedMonitor.recordChecksum({ playerId: 0 as PlayerId, frame: 90, stateHash: hash('stray') });
+  scopedMonitor.recordChecksum({ playerId: 1 as PlayerId, frame: 90, stateHash: hash('agreed') });
+  scopedMonitor.recordChecksum({ playerId: 2 as PlayerId, frame: 90, stateHash: hash('agreed') });
+  assertContract(
+    scopedReports.length === 0 && scopedMonitor.getDiagnostics().lastAgreedChecksumFrame === 90,
+    'checksums outside the explicit seated comparison set must not create false mismatches or block agreement',
+  );
 }
 
 function hash(value: string): CanonicalServerStateHash {

@@ -193,6 +193,7 @@ function makeSolarCellMaterial(
     color: COLORS.buildings.materials.solarCell.colorHex,
     metalness: COLORS.buildings.materials.solarCell.metalness,
     roughness: COLORS.buildings.materials.solarCell.roughness,
+    envMapIntensity: COLORS.buildings.materials.solarCell.envMapIntensity,
     side: THREE.DoubleSide,
     polygonOffset: true,
     polygonOffsetFactor,

@@ -93,15 +93,15 @@ export function runFullUtilizationRosterContractTest(): void {
     .sort();
   assertContract(
     tierThreeAnimalNames.join('|') === [
-      'Maiasaura',
+      'Queen Bee',
       'Microraptor',
-      'Spinosaurus',
+      'Queen Tick',
       'Tyrannosaurus',
     ].sort().join('|') &&
       Object.values(UNIT_BLUEPRINTS).every((blueprint) =>
         blueprint.production?.techLevel !== 3 ||
         (blueprint.identity.kind === 'animal' && blueprint.identity.animalClass === 'dinosaur')),
-    'every T3 entity must use an authored dinosaur name and dinosaur identity',
+    'every T3 entity must retain its authored capstone name and dinosaur-tier identity',
   );
 
   for (const unitBlueprintId of Object.keys(UNIT_BLUEPRINTS)) {

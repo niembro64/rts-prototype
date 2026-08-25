@@ -1029,9 +1029,16 @@ export type BeamRayBlueprint = {
   damageSphere: ShotCollision;
   gravityForceMultiplier: number;
   mediumTrajectory: EmissionMediumTrajectoryMatrix;
+  aimWiggle: BeamAimWiggleConfig;
   continuousSound: BeamContinuousSoundConfig;
   hitSound: SoundEntry | null;
   rayBlueprintId: RayBlueprintId;
+};
+
+export type BeamAimWiggleConfig = {
+  originRadius: number;
+  maxDirectionAngle: number;
+  periodTicks: number;
 };
 
 export type BeamContinuousSoundConfig = {
@@ -1062,6 +1069,7 @@ export type BeamRay = {
   damageSphere: ShotCollision;
   gravityForceMultiplier: number;
   mediumTrajectory: EmissionMediumTrajectoryMatrix;
+  aimWiggle: BeamAimWiggleConfig;
   rayBlueprintId: RayBlueprintId;
 };
 

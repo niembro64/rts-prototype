@@ -16,8 +16,47 @@ import { assertExplicitFields, isObject } from './jsonValidation';
 import type { RayBlueprint } from './types';
 import { validateEmissionMediumTrajectoryMatrix } from '../emissionMedium';
 
-const RAY_EXPLICIT_FIELDS = ['hitSound', 'gravityForceMultiplier', 'mediumTrajectory'] as const;
+const RAY_EXPLICIT_FIELDS = [
+  'hitSound',
+  'gravityForceMultiplier',
+  'mediumTrajectory',
+  'aimWiggle',
+] as const;
 const BEAM_CONTINUOUS_SOUND_EXPLICIT_FIELDS = ['harmonicSeriesIndex'] as const;
+const BEAM_AIM_WIGGLE_EXPLICIT_FIELDS = [
+  'originRadius',
+  'maxDirectionAngle',
+  'periodTicks',
+] as const;
+
+function validateBeamAimWiggle(label: string, value: unknown): void {
+  assertExplicitFields(label, value, BEAM_AIM_WIGGLE_EXPLICIT_FIELDS);
+  if (!isObject(value)) throw new Error(`Invalid ${label}: expected object`);
+  if (
+    typeof value.originRadius !== 'number' ||
+    !Number.isFinite(value.originRadius) ||
+    value.originRadius <= 0
+  ) {
+    throw new Error(`Invalid ${label}.originRadius: every beam must author a positive radius`);
+  }
+  if (
+    typeof value.maxDirectionAngle !== 'number' ||
+    !Number.isFinite(value.maxDirectionAngle) ||
+    value.maxDirectionAngle <= 0 ||
+    value.maxDirectionAngle >= Math.PI * 0.5
+  ) {
+    throw new Error(
+      `Invalid ${label}.maxDirectionAngle: every beam must author radians in (0, pi/2)`,
+    );
+  }
+  if (
+    typeof value.periodTicks !== 'number' ||
+    !Number.isInteger(value.periodTicks) ||
+    value.periodTicks < 1
+  ) {
+    throw new Error(`Invalid ${label}.periodTicks: expected positive integer`);
+  }
+}
 
 function validateBeamContinuousSound(label: string, value: unknown): void {
   assertExplicitFields(label, value, BEAM_CONTINUOUS_SOUND_EXPLICIT_FIELDS);
@@ -62,6 +101,10 @@ for (const [id, blueprint] of Object.entries(RAY_BLUEPRINTS)) {
     blueprint.mediumTrajectory,
   );
   if (blueprint.type === 'beam') {
+    validateBeamAimWiggle(
+      `ray blueprint ${id}.aimWiggle`,
+      blueprint.aimWiggle,
+    );
     validateBeamContinuousSound(
       `ray blueprint ${id}.continuousSound`,
       blueprint.continuousSound,

@@ -68,6 +68,10 @@ import {
   resolveFiringSpreadAngle,
 } from './precisionFire';
 import {
+  writeBeamAimWiggle,
+  type BeamAimWiggleOutput,
+} from './beamAimWiggle';
+import {
   getProjectileAirLinearDampingRate,
   getProjectileMediumLinearDampingRate,
   getProjectileHomingEngagementScale,
@@ -397,6 +401,22 @@ const _updateBeamAim: BeamAimScratch = {
   visualEndY: 0,
   visualEndZ: 0,
   targetEntityId: NO_ENTITY_ID,
+};
+const _fireBeamWiggle: BeamAimWiggleOutput = {
+  startX: 0,
+  startY: 0,
+  startZ: 0,
+  dirX: 1,
+  dirY: 0,
+  dirZ: 0,
+};
+const _updateBeamWiggle: BeamAimWiggleOutput = {
+  startX: 0,
+  startY: 0,
+  startZ: 0,
+  dirX: 1,
+  dirY: 0,
+  dirZ: 0,
 };
 
 function writeBeamRangeEnvelope(
@@ -1285,20 +1305,22 @@ export function fireTurrets(
         }
 
         if (isBeamWeapon) {
-          // Beam start is the selected QueryWeapon origin — the broad base of
-          // its pilot-light cone — in both simulation and rendering.
-          const beamStartX = spawnX;
-          const beamStartY = spawnY;
-          const beamStartZ = spawnZ;
+          if (!isRayConfig(shot)) continue;
+          // QueryWeapon supplies the nominal origin at the pilot-light base.
+          // Precision-free beams perturb the physical trace around that point;
+          // the turret pose itself remains the clean aiming reference.
+          const nominalBeamStartX = spawnX;
+          const nominalBeamStartY = spawnY;
+          const nominalBeamStartZ = spawnZ;
           let beamAim: BeamAimScratch;
           if (committedBeamPlan !== null) {
             // The captured fit commands the ordinary turret servo on later
             // ticks; emission itself always leaves along the physical barrel,
             // exactly like a projectile turret.
             writeBeamAimFromTurretPose(
-              beamStartX,
-              beamStartY,
-              beamStartZ,
+              nominalBeamStartX,
+              nominalBeamStartY,
+              nominalBeamStartZ,
               turretAngle,
               turretPitch,
               committedBeamPlan.traceDistance,
@@ -1309,9 +1331,9 @@ export function fireTurrets(
           } else {
             beamAim = resolveBeamAim(
               lockedTarget,
-              beamStartX,
-              beamStartY,
-              beamStartZ,
+              nominalBeamStartX,
+              nominalBeamStartY,
+              nominalBeamStartZ,
               turretAngle,
               turretPitch,
               getBeamTraceDistance(config),
@@ -1322,13 +1344,18 @@ export function fireTurrets(
           const beamProjectileType = 'beam' as const;
           const projectileConfig = createProjectileConfigFromTurret(config, weaponIndex);
           const collisionRadius = projectileConfig.shotProfile.runtime.radius.collision;
-          const initialPath = damageSystem.findBeamPath(
-            beamStartX, beamStartY, beamStartZ,
+          const cleanInitialPath = damageSystem.findBeamPath(
+            nominalBeamStartX, nominalBeamStartY, nominalBeamStartZ,
             beamAim.visualEndX, beamAim.visualEndY, beamAim.visualEndZ,
             unit.id,
             collisionRadius,
             BEAM_MAX_SEGMENTS,
-            writeBeamRangeEnvelope(config, beamStartX, beamStartY, beamStartZ),
+            writeBeamRangeEnvelope(
+              config,
+              nominalBeamStartX,
+              nominalBeamStartY,
+              nominalBeamStartZ,
+            ),
             0,
             true,
             SHIELD_REFLECTION_ENTITY_BEAM,
@@ -1338,9 +1365,9 @@ export function fireTurrets(
           // terminates on that entity. Attack-ground similarly waits for the
           // terrain contact instead of spawning a provisional line into air.
           if (
-            (lockedTarget !== undefined && initialPath.endEntityId !== lockedTarget.id) ||
+            (lockedTarget !== undefined && cleanInitialPath.endEntityId !== lockedTarget.id) ||
             (lockedTarget === undefined && groundTargetPoint !== null &&
-              initialPath.endEntityId !== BEAM_GROUND_ENTITY_ID)
+              cleanInitialPath.endEntityId !== BEAM_GROUND_ENTITY_ID)
           ) {
             continue;
           }
@@ -1359,6 +1386,56 @@ export function fireTurrets(
             : null;
           const emissionBlueprintId = getEmissionBlueprintId(shot);
           const shotSource = createTurretShotSource(world, unit, weapon, emissionBlueprintId, playerId);
+          const wiggle = writeBeamAimWiggle(
+            nominalBeamStartX,
+            nominalBeamStartY,
+            nominalBeamStartZ,
+            beamAim.dirX,
+            beamAim.dirY,
+            beamAim.dirZ,
+            shot.aimWiggle,
+            shotSource.sourceTurretEntityId ?? shotSource.sourceHostEntityId,
+            shotSource.spawnTick,
+            currentTick,
+            fireRandomness,
+            _fireBeamWiggle,
+          );
+          const beamStartX = wiggle.startX;
+          const beamStartY = wiggle.startY;
+          const beamStartZ = wiggle.startZ;
+          const wiggledEndpoint = resolveBeamTraceEndpoint(
+            beamStartX,
+            beamStartY,
+            beamStartZ,
+            wiggle.dirX,
+            wiggle.dirY,
+            wiggle.dirZ,
+            getBeamTraceDistance(config),
+            _beamTraceEnd,
+          );
+          const initialPath = fireRandomness
+            ? damageSystem.findBeamPath(
+                beamStartX,
+                beamStartY,
+                beamStartZ,
+                wiggledEndpoint.x,
+                wiggledEndpoint.y,
+                wiggledEndpoint.z,
+                unit.id,
+                collisionRadius,
+                BEAM_MAX_SEGMENTS,
+                writeBeamRangeEnvelope(
+                  config,
+                  nominalBeamStartX,
+                  nominalBeamStartY,
+                  nominalBeamStartZ,
+                ),
+                0,
+                true,
+                SHIELD_REFLECTION_ENTITY_BEAM,
+                shot.mediumTrajectory,
+              )
+            : cleanInitialPath;
           const beam = world.createBeam(
             beamStartX,
             beamStartY,
@@ -1394,8 +1471,8 @@ export function fireTurrets(
           // Register beam in index immediately (no need for full rebuild)
           beamIndex.addBeam(unit.id, weaponIndex, beam.id);
           newProjectiles.push(beam);
-          const beamFireYaw = DMath.hypot(beamAim.dirX, beamAim.dirY) > 1e-9
-            ? DMath.atan2(beamAim.dirY, beamAim.dirX)
+          const beamFireYaw = DMath.hypot(wiggle.dirX, wiggle.dirY) > 1e-9
+            ? DMath.atan2(wiggle.dirY, wiggle.dirX)
             : turretAngle;
           spawnEvents.push({
             id: beam.id,
@@ -2366,6 +2443,7 @@ export function updateProjectiles(
   // and D-gun shots pack acceleration rows for a second batch.
   _updatePackedProjectilesJS(world, dtMs, dtSec);
   _updateTravelingProjectilesJS(world, dtMs, dtSec, wind);
+  const precisionTargetingMask = world.getPrecisionTargetingPlayerMask();
 
   for (const entity of world.getLineProjectiles()) {
     if (!entity.projectile) continue;
@@ -2442,56 +2520,22 @@ export function updateProjectiles(
           },
           _beamEmissionSocket,
         );
-        const beamStartX = beamEmission.position.x;
-        const beamStartY = beamEmission.position.y;
-        const beamStartZ = beamEmission.position.z;
-        // Ensure points polyline exists (createBeam seeds 2-point line at
-        // spawn; defensive-init covers any path that forgot to).
-        const points = proj.points ?? (proj.points = [
-          createBeamPoint(beamStartX, beamStartY, beamStartZ),
-          createBeamPoint(beamStartX, beamStartY, beamStartZ),
-        ]);
-
-        // Start-point velocity = (current start − last tick's start) / dt.
-        // Updated every tick because the start follows the turret
-        // origin. On the FIRST tick the prevStart fields are
-        // null, so velocity resolves to 0.
-        const startPoint = points[0];
-        if (
-          dtSec > 0 &&
-          proj.prevStartX !== null &&
-          proj.prevStartY !== null &&
-          proj.prevStartZ !== null
-        ) {
-          const inv = 1 / dtSec;
-          const vx = (beamStartX - proj.prevStartX) * inv;
-          const vy = (beamStartY - proj.prevStartY) * inv;
-          const vz = (beamStartZ - proj.prevStartZ) * inv;
-          startPoint.vx = vx;
-          startPoint.vy = vy;
-          startPoint.vz = vz;
-        } else {
-          writeZeroBeamMotion(startPoint);
-        }
-        proj.prevStartX = beamStartX;
-        proj.prevStartY = beamStartY;
-        proj.prevStartZ = beamStartZ;
-        startPoint.x = beamStartX;
-        startPoint.y = beamStartY;
-        startPoint.z = beamStartZ;
-        clearBeamReflectorMetadata(startPoint);
+        const nominalBeamStartX = beamEmission.position.x;
+        const nominalBeamStartY = beamEmission.position.y;
+        const nominalBeamStartZ = beamEmission.position.z;
 
         proj.beamDamageWindowMs = 0;
         let targetChanged = false;
         let traceDtMs = dtMs;
         let traceDistance = getBeamTraceDistance(weapon.config);
+        let collisionSampleDue = true;
         let beamAim: BeamAimScratch;
         if (pulsePlan !== null) {
           traceDistance = pulsePlan.traceDistance;
           writeBeamAimFromTurretPose(
-            beamStartX,
-            beamStartY,
-            beamStartZ,
+            nominalBeamStartX,
+            nominalBeamStartY,
+            nominalBeamStartZ,
             turretAngle,
             turretPitch,
             traceDistance,
@@ -2504,28 +2548,28 @@ export function updateProjectiles(
           // evaluation for this fixed tick. The expensive world trace and
           // damage query occur only in this beam's hashed tick-ring phase
           // (plus a final partial sample at expiry).
-          if (!beamPulseNeedsCollisionSample(pulsePlan, currentTick, proj.timeAlive)) {
-            entity.transform.x = startPoint.x;
-            entity.transform.y = startPoint.y;
-            entity.transform.z = startPoint.z;
-            entity.transform.rotation = turretAngle;
-            continue;
-          }
-          proj.beamDamageWindowMs = consumeBeamPulseCollisionWindow(
+          collisionSampleDue = beamPulseNeedsCollisionSample(
             pulsePlan,
             currentTick,
             proj.timeAlive,
           );
-          traceDtMs = proj.beamDamageWindowMs;
+          if (collisionSampleDue) {
+            proj.beamDamageWindowMs = consumeBeamPulseCollisionWindow(
+              pulsePlan,
+              currentTick,
+              proj.timeAlive,
+            );
+            traceDtMs = proj.beamDamageWindowMs;
+          }
         } else {
           const lockedTarget = targetingTargetId !== -1
             ? world.getEntity(targetingTargetId)
             : undefined;
           beamAim = resolveBeamAim(
             lockedTarget,
-            beamStartX,
-            beamStartY,
-            beamStartZ,
+            nominalBeamStartX,
+            nominalBeamStartY,
+            nominalBeamStartZ,
             turretAngle,
             turretPitch,
             traceDistance,
@@ -2535,13 +2579,79 @@ export function updateProjectiles(
           proj.targetEntityId = beamAim.targetEntityId;
         }
 
+        const beamShot = proj.config.shot;
+        if (!isRayConfig(beamShot)) {
+          beamIndex.removeBeam(proj.sourceEntityId, weaponIndex);
+          projectilesToRemove.push(entity.id);
+          despawnEvents.push({ id: entity.id });
+          continue;
+        }
+        const wiggle = writeBeamAimWiggle(
+          nominalBeamStartX,
+          nominalBeamStartY,
+          nominalBeamStartZ,
+          beamAim.dirX,
+          beamAim.dirY,
+          beamAim.dirZ,
+          beamShot.aimWiggle,
+          proj.shotSource.sourceTurretEntityId ?? proj.shotSource.sourceHostEntityId,
+          proj.shotSource.spawnTick,
+          currentTick,
+          firingRandomnessEnabled(precisionTargetingMask, proj.ownerId),
+          _updateBeamWiggle,
+        );
+        const beamStartX = wiggle.startX;
+        const beamStartY = wiggle.startY;
+        const beamStartZ = wiggle.startZ;
+
+        // Ensure points polyline exists (createBeam seeds 2-point line at
+        // spawn; defensive-init covers any path that forgot to).
+        const points = proj.points ?? (proj.points = [
+          createBeamPoint(beamStartX, beamStartY, beamStartZ),
+          createBeamPoint(beamStartX, beamStartY, beamStartZ),
+        ]);
+
+        // Start-point velocity includes both mount motion and authored beam
+        // imprecision. Precision Targeting collapses the latter to zero.
+        const startPoint = points[0];
+        if (
+          dtSec > 0 &&
+          proj.prevStartX !== null &&
+          proj.prevStartY !== null &&
+          proj.prevStartZ !== null
+        ) {
+          const inv = 1 / dtSec;
+          startPoint.vx = (beamStartX - proj.prevStartX) * inv;
+          startPoint.vy = (beamStartY - proj.prevStartY) * inv;
+          startPoint.vz = (beamStartZ - proj.prevStartZ) * inv;
+        } else {
+          writeZeroBeamMotion(startPoint);
+        }
+        proj.prevStartX = beamStartX;
+        proj.prevStartY = beamStartY;
+        proj.prevStartZ = beamStartZ;
+        startPoint.x = beamStartX;
+        startPoint.y = beamStartY;
+        startPoint.z = beamStartZ;
+        clearBeamReflectorMetadata(startPoint);
+
+        if (!collisionSampleDue) {
+          entity.transform.x = startPoint.x;
+          entity.transform.y = startPoint.y;
+          entity.transform.z = startPoint.z;
+          entity.transform.rotation = DMath.hypot(wiggle.dirX, wiggle.dirY) > 1e-9
+            ? DMath.atan2(wiggle.dirY, wiggle.dirX)
+            : turretAngle;
+          continue;
+        }
+
         // Clip every direct/reflected segment to the turret's finite effect
         // envelope before broadphase. A miss therefore terminates locally at
         // ground or at the source-centered hard boundary; it can never turn
         // into a map-spanning collision query.
         const endpoint = resolveBeamTraceEndpoint(
           beamStartX, beamStartY, beamStartZ,
-          beamAim.dirX, beamAim.dirY, beamAim.dirZ,
+          wiggle.dirX, wiggle.dirY, wiggle.dirZ,
           traceDistance,
           _beamTraceEnd,
         );
@@ -2559,9 +2669,9 @@ export function updateProjectiles(
           BEAM_MAX_SEGMENTS,
           writeBeamRangeEnvelope(
             weapon.config,
-            beamStartX,
-            beamStartY,
-            beamStartZ,
+            nominalBeamStartX,
+            nominalBeamStartY,
+            nominalBeamStartZ,
           ),
           traceDtMs,
           true,
@@ -2702,8 +2812,8 @@ export function updateProjectiles(
         entity.transform.x = startPoint.x;
         entity.transform.y = startPoint.y;
         entity.transform.z = startPoint.z;
-        entity.transform.rotation = DMath.hypot(beamAim.dirX, beamAim.dirY) > 1e-9
-          ? DMath.atan2(beamAim.dirY, beamAim.dirX)
+        entity.transform.rotation = DMath.hypot(wiggle.dirX, wiggle.dirY) > 1e-9
+          ? DMath.atan2(wiggle.dirY, wiggle.dirX)
           : turretAngle;
       }
     }

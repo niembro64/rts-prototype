@@ -3,6 +3,7 @@ import {
   ENTITY_LOD_PROXY_FINAL_DEPTH_WRITE,
   ENTITY_LOD_PROXY_TRANSITION_DEPTH_WRITE,
   ENTITY_LOD_PROXY_TRANSITION_RENDER_ORDER,
+  createEntityLodProxyMaterial3D,
 } from './EntityLodProxyRenderer3D';
 
 function assertContract(condition: boolean, message: string): void {
@@ -10,6 +11,14 @@ function assertContract(condition: boolean, message: string): void {
 }
 
 export function runTransparentRenderOrder3DContractTest(): void {
+  const proxyMaterial = createEntityLodProxyMaterial3D(false);
+  assertContract(
+    proxyMaterial.toneMapped === false &&
+      proxyMaterial.uniforms.uBrightness === undefined &&
+      proxyMaterial.userData.renderLighting === 'self-lit',
+    'MIN entity glyphs must preserve their raw white/team/player/black colors independent of scene lighting and exposure',
+  );
+  proxyMaterial.dispose();
   assertContract(
     ENTITY_LOD_PROXY_FINAL_DEPTH_WRITE,
     'fully opaque replacement glyphs must write their physical proxy depth',

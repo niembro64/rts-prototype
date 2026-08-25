@@ -118,6 +118,7 @@ import {
 } from './EntityLodVisualState3D';
 import { applySolarCollectorPetalPose } from './SolarCollectorMesh3D';
 import { applyBuildingOperationalPose } from './BuildingOperationalRig3D';
+import { applyFabricatorConstructionRingPose } from './BuildingAnimationController3D';
 import {
   SEAWEED_ASSET_SCALE,
   getVegetationAssetOptions,
@@ -1745,6 +1746,49 @@ function runVisualStateTransferContracts(material: THREE.Material): void {
     solarPose(solarTarget.buildingDetails!),
     solarPose(solarSource.buildingDetails!),
   );
+
+  // The far radial-fabricator marking omits its top latch while mid/close
+  // include one. Generic index transfer used to shift every following mesh,
+  // copying the outer ring's ~100-240x scale onto the black hazard face. That
+  // face then rotated across most of the map. The rig is tick-derived, so none
+  // of its tier-varying children should participate in positional transfer.
+  for (const fabricatorId of [
+    'towerFabricator',
+    'buildingAdvancedUniversalFabricator',
+    'buildingExperimentalUniversalFabricator',
+  ] as const) {
+    const blueprint = getBuildingBlueprint(fabricatorId);
+    const width = blueprint.gridWidth * BUILD_GRID_CELL_SIZE;
+    const depth = blueprint.gridHeight * BUILD_GRID_CELL_SIZE;
+    const far = buildBuildingShape(
+      blueprint.renderProfile, width, depth, material, fabricatorId, 'far',
+    );
+    const mid = buildBuildingShape(
+      blueprint.renderProfile, width, depth, material, fabricatorId, 'mid',
+    );
+    const farRig = far.fabricatorConstructionRingRig;
+    const midRig = mid.fabricatorConstructionRingRig;
+    assertContract(
+      farRig !== undefined && midRig !== undefined,
+      `${fabricatorId} exposes its construction ring at far and mid geometry tiers`,
+    );
+    applyFabricatorConstructionRingPose(farRig, true, 40, 20, 17);
+    const midChildrenBefore = midRig.root.children.map(transformTuple);
+    const source = visualStateMesh({
+      buildingDetails: far.details,
+      fabricatorConstructionRingRig: farRig,
+    });
+    const target = visualStateMesh({
+      buildingDetails: mid.details,
+      fabricatorConstructionRingRig: midRig,
+    });
+    applyEntityLodVisualState3D(target, captureEntityLodVisualState3D(source));
+    assertSame(
+      `${fabricatorId} far-to-mid rebuild cannot transfer ring scale onto a different child`,
+      midRig.root.children.map(transformTuple),
+      midChildrenBefore,
+    );
+  }
 
 }
 

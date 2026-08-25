@@ -6,6 +6,7 @@ import type { OverlayLineSystem } from './OverlayLineSystem';
 import type { GroundLineBatch3D } from './GroundLineBatch3D';
 import { hexToRgb01 } from './colorUtils';
 import { createPrimitiveCircleGeometry } from './PrimitiveGeometryQuality3D';
+import { configureSelfLitEffectMaterial } from './RenderLighting3D';
 
 const RING_LIFT = WAYPOINT_GROUND_LIFT + 1;
 const LEGACY_Y = RING_LIFT;
@@ -161,13 +162,13 @@ export class AreaDrag3D {
     const key = materialKey(kind, ballisticReach);
     const cached = this.discMats.get(key);
     if (cached) return cached;
-    const mat = new THREE.MeshBasicMaterial({
+    const mat = configureSelfLitEffectMaterial(new THREE.MeshBasicMaterial({
       color: colorForState(kind, ballisticReach),
       transparent: true,
       opacity: ballisticReach === 'blocked' ? 0.22 : 0.12,
       depthWrite: false,
       side: THREE.DoubleSide,
-    });
+    }));
     this.discMats.set(key, mat);
     return mat;
   }
@@ -175,12 +176,12 @@ export class AreaDrag3D {
   private getRectFillMat(kind: Input3DAreaDragKind): THREE.MeshBasicMaterial {
     const cached = this.rectFillMats.get(kind);
     if (cached) return cached;
-    const mat = new THREE.MeshBasicMaterial({
+    const mat = configureSelfLitEffectMaterial(new THREE.MeshBasicMaterial({
       color: AREA_COLORS[kind],
       transparent: true,
       opacity: 0.1,
       depthWrite: false,
-    });
+    }));
     this.rectFillMats.set(kind, mat);
     return mat;
   }

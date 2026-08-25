@@ -629,8 +629,8 @@ export class NetworkManager {
   }
 
   /** The seat a connection speaks for, or undefined when it is watching. A
-   *  spectator's lockstep traffic is telemetry: it may ack and checksum, but
-   *  it can never carry a command or complete a frame. */
+   *  spectator receives the delivery stream but can never carry a command,
+   *  acknowledge/checksum a seat, or complete a frame. */
   private seatForMember(memberId: MemberId): PlayerId | undefined {
     return this.members.get(memberId)?.playerId;
   }

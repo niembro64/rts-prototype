@@ -49,6 +49,7 @@ import {
   setScaleScalarIfChanged,
   setVector3YIfChanged,
 } from './threeTransformWriteUtils';
+import { configureSelfLitEffectMaterial } from './RenderLighting3D';
 
 const RANGE_CIRCLE_SEGMENTS = 96;
 const RADIUS_SPHERE_RENDER_ORDER = 22;
@@ -206,34 +207,34 @@ export class SelectionOverlayRenderer3D {
   private unitOverlaySelectedCount = -1;
   private unitOverlayStateVersion = 0;
 
-  private readonly radiusMatSelection = new THREE.LineBasicMaterial({
+  private readonly radiusMatSelection = configureSelfLitEffectMaterial(new THREE.LineBasicMaterial({
     color: COLORS.effects.selectionOverlay.radiusOther.colorHex,
     transparent: true,
     opacity: COLORS.effects.selectionOverlay.radiusOther.opacity,
     depthWrite: false,
     depthTest: false,
-  });
-  private readonly radiusMatHit = new THREE.LineBasicMaterial({
+  }));
+  private readonly radiusMatHit = configureSelfLitEffectMaterial(new THREE.LineBasicMaterial({
     color: COLORS.effects.selectionOverlay.radiusHitbox.colorHex,
     transparent: true,
     opacity: COLORS.effects.selectionOverlay.radiusHitbox.opacity,
     depthWrite: false,
     depthTest: false,
-  });
-  private readonly radiusMatCollision = new THREE.LineBasicMaterial({
+  }));
+  private readonly radiusMatCollision = configureSelfLitEffectMaterial(new THREE.LineBasicMaterial({
     color: COLORS.effects.selectionOverlay.radiusCollision.colorHex,
     transparent: true,
     opacity: COLORS.effects.selectionOverlay.radiusCollision.opacity,
     depthWrite: false,
     depthTest: false,
-  });
-  private readonly radiusMatArming = new THREE.LineBasicMaterial({
+  }));
+  private readonly radiusMatArming = configureSelfLitEffectMaterial(new THREE.LineBasicMaterial({
     color: COLORS.effects.selectionOverlay.radiusShotArming.colorHex,
     transparent: true,
     opacity: COLORS.effects.selectionOverlay.radiusShotArming.opacity,
     depthWrite: false,
     depthTest: false,
-  });
+  }));
   private readonly overlayLines: OverlayLineSystem;
   /** Terrain sampler used to drape world-parented range rings over slopes
    *  (so they read as on-surface once depth occlusion is on). */

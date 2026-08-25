@@ -15,6 +15,8 @@ import { ensureBuildingActiveState, setBuildingActiveOpen } from '../buildingAct
 import { getTurretCooldownDuration, rollTurretCooldownDuration } from '../turretCooldown';
 import { rollBeamPulseOffTimeMs, rollBeamPulseOnTimeMs } from './beamPulse';
 import { firingRandomnessEnabled, resolveFiringSpreadAngle } from './precisionFire';
+import { writeBeamAimWiggle, type BeamAimWiggleOutput } from './beamAimWiggle';
+import { RAY_BLUEPRINTS } from '../blueprints/rays';
 import { stampCombatTargetingPool } from './targetingInputStamping';
 import {
   fireTurrets,
@@ -144,6 +146,82 @@ export function runPrecisionFireContractTest(): void {
   assertContract(
     resolveFiringSpreadAngle(0.5, false) === 0 && resolveFiringSpreadAngle(0.5, true) === 0.5,
     'precision fire must collapse the spread cone to zero and otherwise leave it alone',
+  );
+
+  const wiggleOutput: BeamAimWiggleOutput = {
+    startX: 0,
+    startY: 0,
+    startZ: 0,
+    dirX: 0,
+    dirY: 0,
+    dirZ: 0,
+  };
+  let weakestDirectionWiggle = Infinity;
+  let strongestDirectionWiggle = 0;
+  let weakestOriginWiggle = Infinity;
+  let strongestOriginWiggle = 0;
+  for (const ray of Object.values(RAY_BLUEPRINTS)) {
+    const config = ray.aimWiggle;
+    weakestDirectionWiggle = Math.min(weakestDirectionWiggle, config.maxDirectionAngle);
+    strongestDirectionWiggle = Math.max(strongestDirectionWiggle, config.maxDirectionAngle);
+    weakestOriginWiggle = Math.min(weakestOriginWiggle, config.originRadius);
+    strongestOriginWiggle = Math.max(strongestOriginWiggle, config.originRadius);
+    const preciseAim = writeBeamAimWiggle(
+      10, 20, 30,
+      1, 0, 0,
+      config,
+      91,
+      40,
+      47,
+      false,
+      wiggleOutput,
+    );
+    assertContract(
+      preciseAim.startX === 10 && preciseAim.startY === 20 && preciseAim.startZ === 30 &&
+        preciseAim.dirX === 1 && preciseAim.dirY === 0 && preciseAim.dirZ === 0,
+      `${ray.rayBlueprintId} precision targeting must remove origin and direction wiggle exactly`,
+    );
+
+    const samples = new Set<string>();
+    for (let tickOffset = 0; tickOffset <= config.periodTicks * 3; tickOffset++) {
+      const ordinaryAim = writeBeamAimWiggle(
+        10, 20, 30,
+        1, 0, 0,
+        config,
+        91,
+        40,
+        40 + tickOffset,
+        true,
+        wiggleOutput,
+      );
+      const originDistance = DMath.hypot(
+        ordinaryAim.startX - 10,
+        ordinaryAim.startY - 20,
+        ordinaryAim.startZ - 30,
+      );
+      const directionAngle = DMath.atan2(
+        DMath.hypot(ordinaryAim.dirY, ordinaryAim.dirZ),
+        ordinaryAim.dirX,
+      );
+      assertContract(
+        originDistance <= config.originRadius + 1e-9 &&
+          directionAngle <= config.maxDirectionAngle + 1e-9,
+        `${ray.rayBlueprintId} wiggle must remain inside its authored physical bounds`,
+      );
+      samples.add(
+        `${ordinaryAim.startY.toFixed(8)}|${ordinaryAim.startZ.toFixed(8)}|` +
+          `${ordinaryAim.dirY.toFixed(8)}|${ordinaryAim.dirZ.toFixed(8)}`,
+      );
+    }
+    assertContract(
+      samples.size > 2,
+      `${ray.rayBlueprintId} ordinary beam must move its start and direction during a pulse`,
+    );
+  }
+  assertContract(
+    strongestDirectionWiggle >= weakestDirectionWiggle * 4 &&
+      strongestOriginWiggle >= weakestOriginWiggle * 8,
+    'beam families must span restrained through deliberately severe unaided imprecision',
   );
 
   // Zeroing the randomness must not merely discard a rolled sample: the

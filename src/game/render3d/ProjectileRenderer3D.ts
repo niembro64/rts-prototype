@@ -330,18 +330,18 @@ export class ProjectileRenderer3D {
     color: COLORS.effects.projectile.fin.colorHex,
     side: THREE.DoubleSide,
   });
-  private readonly projMatCollision = new THREE.LineBasicMaterial({
+  private readonly projMatCollision = configureSelfLitEffectMaterial(new THREE.LineBasicMaterial({
     color: COLORS.effects.projectile.collisionRadius.colorHex,
     transparent: true,
     opacity: COLORS.effects.projectile.collisionRadius.opacity,
     depthWrite: false,
-  });
-  private readonly projMatExplosion = new THREE.LineBasicMaterial({
+  }));
+  private readonly projMatExplosion = configureSelfLitEffectMaterial(new THREE.LineBasicMaterial({
     color: COLORS.effects.projectile.explosionRadius.colorHex,
     transparent: true,
     opacity: COLORS.effects.projectile.explosionRadius.opacity,
     depthWrite: false,
-  });
+  }));
 
   private readonly sphereInstanced: THREE.InstancedMesh;
   private readonly sphereMatrices: Float32Array;

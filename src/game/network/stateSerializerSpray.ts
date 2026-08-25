@@ -34,6 +34,33 @@ export const SPRAY_TARGET_WIRE_STRIDE = 17;
 
 type SprayTargetWireSource = Float64WireRows;
 
+function isSprayEndpointVisible(
+  visibility: SnapshotVisibility,
+  endpoint: SprayTarget['source'] | SprayTarget['target'],
+): boolean {
+  const z = endpoint.z;
+  return z === undefined
+    ? visibility.isPointVisible(endpoint.pos.x, endpoint.pos.y)
+    : visibility.isPointVisibleAt(endpoint.pos.x, endpoint.pos.y, z);
+}
+
+/** Work/transport sprays carry exact endpoint ids and positions, so an enemy
+ * spray is safe to publish only when BOTH ends have been earned through full
+ * sight. The old either-end gate let a visible target disclose a hidden
+ * fabricator (and vice versa), including across terrain and sensor media.
+ *
+ * A recipient's own/allied sprays remain readable in full: team-owned orders
+ * and equipment are already private information that side is entitled to. */
+function canSerializeSpray(
+  spray: SprayTarget,
+  visibility: SnapshotVisibility | undefined,
+): boolean {
+  if (visibility === undefined || !visibility.isFiltered) return true;
+  if (visibility.isOwnedByRecipientOrAlly(spray.source.playerId)) return true;
+  return isSprayEndpointVisible(visibility, spray.source) &&
+    isSprayEndpointVisible(visibility, spray.target);
+}
+
 export function resetSprayPoolForKey(key: string | number | undefined): void {
   deleteSnapshotPoolForKey(sprayPools, key);
   if (key !== undefined) sprayWireSourcesByKey.delete(String(key));
@@ -115,13 +142,7 @@ export function writeSprayTargetWireRowsDirect(
 
   for (let i = 0; i < sprayTargets.length; i++) {
     const source = sprayTargets[i];
-    if (
-      visibility &&
-      !visibility.isPointVisible(source.source.pos.x, source.source.pos.y) &&
-      !visibility.isPointVisible(source.target.pos.x, source.target.pos.y)
-    ) {
-      continue;
-    }
+    if (!canSerializeSpray(source, visibility)) continue;
     appendDirectSprayWireRow(directSprayWireSource, source);
   }
 
@@ -145,13 +166,7 @@ export function serializeSprayTargets(
   sprayBuf.length = 0;
   for (let i = 0; i < sprayTargets.length; i++) {
     const source = sprayTargets[i];
-    if (
-      visibility &&
-      !visibility.isPointVisible(source.source.pos.x, source.source.pos.y) &&
-      !visibility.isPointVisible(source.target.pos.x, source.target.pos.y)
-    ) {
-      continue;
-    }
+    if (!canSerializeSpray(source, visibility)) continue;
     const out = getPooledItem(state, createSprayDto);
     out.source.id = source.source.id;
     out.source.pos.x = source.source.pos.x;

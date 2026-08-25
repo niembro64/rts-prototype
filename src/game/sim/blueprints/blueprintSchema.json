@@ -4228,6 +4228,7 @@
         "damageSphere",
         "gravityForceMultiplier",
         "mediumTrajectory",
+        "aimWiggle",
         "continuousSound",
         "hitSound"
       ],
@@ -4259,6 +4260,9 @@
         "mediumTrajectory": {
           "$ref": "#/$defs/EmissionMediumTrajectoryMatrix"
         },
+        "aimWiggle": {
+          "$ref": "#/$defs/BeamAimWiggleConfig"
+        },
         "continuousSound": {
           "$ref": "#/$defs/BeamContinuousSoundConfig"
         },
@@ -4274,6 +4278,30 @@
         },
         "rayBlueprintId": {
           "$ref": "#/$defs/RayBlueprintId"
+        }
+      },
+      "additionalProperties": false
+    },
+    "BeamAimWiggleConfig": {
+      "type": "object",
+      "required": [
+        "originRadius",
+        "maxDirectionAngle",
+        "periodTicks"
+      ],
+      "properties": {
+        "originRadius": {
+          "type": "number",
+          "minimum": 0
+        },
+        "maxDirectionAngle": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 1.5707963267948966
+        },
+        "periodTicks": {
+          "type": "integer",
+          "minimum": 1
         }
       },
       "additionalProperties": false
@@ -4369,7 +4397,8 @@
         "width",
         "damageSphere",
         "gravityForceMultiplier",
-        "mediumTrajectory"
+        "mediumTrajectory",
+        "aimWiggle"
       ],
       "properties": {
         "type": {
@@ -4398,6 +4427,9 @@
         },
         "mediumTrajectory": {
           "$ref": "#/$defs/EmissionMediumTrajectoryMatrix"
+        },
+        "aimWiggle": {
+          "$ref": "#/$defs/BeamAimWiggleConfig"
         },
         "rayBlueprintId": {
           "$ref": "#/$defs/RayBlueprintId"

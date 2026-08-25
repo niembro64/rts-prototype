@@ -7,12 +7,22 @@ import {
   getMinimapSnapshotWireSource,
   serializeMinimapSnapshotEntities,
 } from './stateSerializerMinimap';
+import {
+  serializeSprayTargets,
+  writeSprayTargetWireRowsDirect,
+} from './stateSerializerSpray';
+import {
+  serializeResourceMovements,
+  writeResourceMovementWireRowsDirect,
+} from './stateSerializerResourceMovements';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
 import { WorldState } from '../sim/WorldState';
 import { stampCombatTargetingPool } from '../sim/combat/targetingInputStamping';
 import { applyBuildingBlueprintRuntime } from '../sim/buildingEntityRuntime';
 import type { BuildingBlueprintId, Entity, EntityId, PlayerId } from '../sim/types';
+import type { SprayTarget } from '../sim/commanderAbilities';
+import type { ResourceMovement } from '../sim/resourceMovement';
 import { WATER_LEVEL } from '../sim/Terrain';
 import {
   getEntityFullVisionRadius,
@@ -169,6 +179,111 @@ export function runSnapshotVisibilityContractTest(): void {
     radarOnlyMinimap?.radarOnly === true,
     'native minimap serialization must preserve radar-only contacts from entity-state slots',
   );
+
+  const spray = (
+    source: Entity,
+    target: Entity,
+    sourcePlayerId: PlayerId,
+  ): SprayTarget => ({
+    source: {
+      id: source.id,
+      pos: { x: source.transform.x, y: source.transform.y },
+      z: source.transform.z,
+      playerId: sourcePlayerId,
+    },
+    target: {
+      id: target.id,
+      pos: { x: target.transform.x, y: target.transform.y },
+      z: target.transform.z,
+      radius: target.unit?.radius.hitbox ?? 1,
+    },
+    type: 'build',
+    intensity: 1,
+    channel: 0,
+    flow: 'direct',
+    flowRadius: 0,
+  });
+  const enemySprayAcrossFog = spray(fullSightEnemy, radarOnlyEnemy, 2 as PlayerId);
+  assertContract(
+    serializeSprayTargets(
+      [enemySprayAcrossFog],
+      nativeVisibility,
+      'visibility-hidden-spray-contract',
+    ) === undefined,
+    'a visible enemy spray endpoint must not disclose its hidden endpoint',
+  );
+  const directHiddenSprays: never[] = [];
+  assertContract(
+    writeSprayTargetWireRowsDirect(
+      [enemySprayAcrossFog],
+      nativeVisibility,
+      directHiddenSprays,
+    ) === undefined,
+    'direct spray rows must enforce the same both-endpoints-visible boundary',
+  );
+  assertContract(
+    serializeSprayTargets(
+      [spray(fullSightEnemy, detectedCloakedEnemy, 2 as PlayerId)],
+      nativeVisibility,
+      'visibility-visible-spray-contract',
+    )?.length === 1,
+    'an enemy spray remains visible when full sight covers both endpoints',
+  );
+  assertContract(
+    serializeSprayTargets(
+      [spray(observer, radarOnlyEnemy, 1 as PlayerId)],
+      nativeVisibility,
+      'visibility-team-spray-contract',
+    )?.length === 1,
+    'a team-owned spray remains readable as private team action state',
+  );
+
+  const resourceMovement = (
+    source: Entity,
+    target: Entity,
+    playerId: PlayerId,
+  ): ResourceMovement => ({
+    playerId,
+    sourceEntityId: source.id,
+    targetEntityId: target.id,
+    resource: 'energy',
+    amount: 1,
+    amountPerSecond: 20,
+    direction: 'outbound',
+    stockpileDelta: -1,
+    reason: 'construction',
+  });
+  world.resourceMovements.push(
+    resourceMovement(fullSightEnemy, radarOnlyEnemy, 2 as PlayerId),
+  );
+  assertContract(
+    serializeResourceMovements(world, nativeVisibility) === undefined,
+    'a visible enemy resource source must not disclose a hidden target id',
+  );
+  const directHiddenResourceMovements: never[] = [];
+  assertContract(
+    writeResourceMovementWireRowsDirect(
+      world,
+      nativeVisibility,
+      directHiddenResourceMovements,
+    ) === undefined,
+    'direct resource rows must enforce the same hidden-target reference boundary',
+  );
+  world.resourceMovements[0] = resourceMovement(
+    fullSightEnemy,
+    detectedCloakedEnemy,
+    2 as PlayerId,
+  );
+  assertContract(
+    serializeResourceMovements(world, nativeVisibility)?.length === 1,
+    'enemy resource movement remains visible when full sight covers both endpoints',
+  );
+  world.resourceMovements[0] = resourceMovement(observer, radarOnlyEnemy, 1 as PlayerId);
+  assertContract(
+    serializeResourceMovements(world, nativeVisibility)?.length === 1,
+    'team-owned resource movement remains readable as private team action state',
+  );
+  world.resourceMovements.length = 0;
 
   assertContract(legacyVisible.includes(observer.id), 'owned observer must be fully visible');
   assertContract(legacyVisible.includes(fullSightEnemy.id), 'enemy inside full sight must be visible');

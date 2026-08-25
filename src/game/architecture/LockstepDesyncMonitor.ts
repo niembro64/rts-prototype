@@ -52,6 +52,7 @@ export type LockstepChecksumDiagnostics = {
 export class LockstepDesyncMonitor {
   private readonly localPlayerId: PlayerId;
   private readonly peerIds: readonly PlayerId[];
+  private readonly peerIdSet: ReadonlySet<PlayerId>;
   private readonly initializationHash: string;
   private readonly getRecentCommandFrames: () => readonly LockstepCompleteCommandFrame[];
   private readonly nowMs: () => number;
@@ -65,6 +66,7 @@ export class LockstepDesyncMonitor {
   constructor(options: LockstepDesyncMonitorOptions) {
     this.localPlayerId = options.localPlayerId;
     this.peerIds = [...options.peerIds].sort((a, b) => a - b);
+    this.peerIdSet = new Set(this.peerIds);
     this.initializationHash = options.initializationHash;
     this.getRecentCommandFrames = options.getRecentCommandFrames;
     this.nowMs = options.nowMs ?? defaultNowMs;
@@ -113,7 +115,19 @@ export class LockstepDesyncMonitor {
     this.latestChecksumFrame = Math.max(this.latestChecksumFrame ?? record.frame, record.frame);
     this.latestChecksumFrameByPlayer.set(record.playerId, record.frame);
 
-    for (const [playerId, stateHash] of frameChecksums) {
+    // Keep non-participant checksums available for local replay verification
+    // and diagnostics, but never compare them. In particular, a spectator's
+    // sentinel id is deliberately outside peerIds: its independently replayed
+    // world cannot accuse the seated match of a desync or halt itself merely
+    // because it observed the players' checksums.
+    if (!this.peerIdSet.has(record.playerId)) {
+      frameChecksums.set(record.playerId, record.stateHash);
+      return null;
+    }
+
+    for (const playerId of this.peerIds) {
+      const stateHash = frameChecksums.get(playerId);
+      if (stateHash === undefined) continue;
       if (stateHash.hash === record.stateHash.hash) continue;
       const report = this.createReport(
         record.frame,
@@ -164,6 +178,7 @@ export class LockstepDesyncMonitor {
     frame: number,
     frameChecksums: ReadonlyMap<PlayerId, CanonicalServerStateHash>,
   ): void {
+    if (this.peerIds.length === 0) return;
     if (frameChecksums.size < this.peerIds.length) return;
     let agreedHash: string | null = null;
     for (const playerId of this.peerIds) {

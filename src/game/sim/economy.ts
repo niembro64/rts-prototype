@@ -103,6 +103,13 @@ class EconomyManager {
   private converterOutputOut = new Float64Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
   private converterConsumedResourceOut = new Uint32Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
   private converterOutputResourceOut = new Uint32Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
+  /** Actual accepted converter output rates currently folded into the two
+   * displayed PRODUCE totals. Kept separately so the next tick can replace
+   * (rather than accumulate) this directional contribution while ordinary
+   * solar/wind/extractor rates continue using their existing fields. */
+  private converterEnergyProductionRateByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+  private converterMetalProductionRateByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+  private converterDisplayMaxPlayerId = 0;
 
   // Initialize economy for a player
   initPlayer(playerId: PlayerId): void {
@@ -143,6 +150,12 @@ class EconomyManager {
     economy.metal.income.base = state.metal.income.base;
     economy.metal.income.extraction = state.metal.income.extraction;
     economy.metal.expenditure = state.metal.expenditure;
+    // A restored/network state already contains the complete published
+    // values. It is a new baseline, so no locally remembered converter
+    // contribution may be subtracted from it on a later simulation tick.
+    this.ensureConverterPlayerCapacity(playerId);
+    this.converterEnergyProductionRateByPlayer[playerId] = 0;
+    this.converterMetalProductionRateByPlayer[playerId] = 0;
   }
 
   // Set energy production (called when solar panels change)
@@ -530,6 +543,7 @@ class EconomyManager {
    *  mutually exclusive each tick (see rust
    *  economy_compute_converter_transfer_value). */
   processConverters(world: WorldState, dtMs: number): void {
+    this.clearConverterProductionRates();
     const dtSec = dtMs / 1000;
     if (dtSec <= 0) return;
     const tax = world.converterTax;
@@ -620,7 +634,8 @@ class EconomyManager {
 
     for (let i = 0; i < converterCount; i++) {
       const playerId = this.converterPlayerIds[i] as PlayerId;
-      if (!this.economies.has(playerId)) continue;
+      const economy = this.economies.get(playerId);
+      if (economy === undefined) continue;
       const consumedShare = this.converterConsumedOut[i];
       const outputShare = this.converterOutputOut[i];
       if (consumedShare > 0) {
@@ -638,6 +653,9 @@ class EconomyManager {
           direction: 'outbound',
           reason: 'conversion',
         }, consumedShare);
+        const consumedRate = consumedShare / dtSec;
+        if (consumedResource === 'energy') economy.expenditure += consumedRate;
+        else economy.metal.expenditure += consumedRate;
       }
       if (outputShare > 0) {
         const outputResource = economyResourceKindFromCode(this.converterOutputResourceOut[i]);
@@ -654,8 +672,42 @@ class EconomyManager {
           direction: 'inbound',
           reason: 'conversion',
         }, outputShare);
+        const outputRate = outputShare / dtSec;
+        if (outputResource === 'energy') {
+          economy.income.production += outputRate;
+          this.converterEnergyProductionRateByPlayer[playerId] += outputRate;
+        } else {
+          economy.metal.income.extraction += outputRate;
+          this.converterMetalProductionRateByPlayer[playerId] += outputRate;
+        }
+        if (playerId > this.converterDisplayMaxPlayerId) {
+          this.converterDisplayMaxPlayerId = playerId;
+        }
       }
     }
+  }
+
+  /** Remove last tick's converter-only contribution before recomputing the
+   * actual accepted transfer. This makes ON/OFF, direction changes, slider
+   * thresholds, storage caps, and tax visible in the next HUD snapshot while
+   * preserving the independently maintained producer totals. */
+  private clearConverterProductionRates(): void {
+    for (let playerId = 1; playerId <= this.converterDisplayMaxPlayerId; playerId++) {
+      const energyRate = this.converterEnergyProductionRateByPlayer[playerId] ?? 0;
+      const metalRate = this.converterMetalProductionRateByPlayer[playerId] ?? 0;
+      if (energyRate <= 0 && metalRate <= 0) continue;
+      const economy = this.economies.get(playerId as PlayerId);
+      if (economy !== undefined) {
+        economy.income.production = Math.max(0, economy.income.production - energyRate);
+        economy.metal.income.extraction = Math.max(
+          0,
+          economy.metal.income.extraction - metalRate,
+        );
+      }
+      this.converterEnergyProductionRateByPlayer[playerId] = 0;
+      this.converterMetalProductionRateByPlayer[playerId] = 0;
+    }
+    this.converterDisplayMaxPlayerId = 0;
   }
 
   private ensureConverterCapacity(count: number): void {
@@ -729,6 +781,12 @@ class EconomyManager {
     this.converterOutputByPlayer = new Float64Array(nextCapacity);
     this.converterConsumedResourceByPlayer = new Uint32Array(nextCapacity);
     this.converterOutputResourceByPlayer = new Uint32Array(nextCapacity);
+    const energyProductionRates = new Float64Array(nextCapacity);
+    energyProductionRates.set(this.converterEnergyProductionRateByPlayer);
+    this.converterEnergyProductionRateByPlayer = energyProductionRates;
+    const metalProductionRates = new Float64Array(nextCapacity);
+    metalProductionRates.set(this.converterMetalProductionRateByPlayer);
+    this.converterMetalProductionRateByPlayer = metalProductionRates;
   }
 
   private trimBatchBuffers(): void {
@@ -758,6 +816,9 @@ class EconomyManager {
     this.converterOutputOut = new Float64Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
     this.converterConsumedResourceOut = new Uint32Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
     this.converterOutputResourceOut = new Uint32Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
+    this.converterEnergyProductionRateByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+    this.converterMetalProductionRateByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+    this.converterDisplayMaxPlayerId = 0;
   }
 
   // Reset all state (call between game sessions)

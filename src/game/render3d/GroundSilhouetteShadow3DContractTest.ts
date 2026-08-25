@@ -28,6 +28,8 @@ import {
 import { TeamTrimRenderer3D } from './TeamTrimRenderer3D';
 import { REFERENCE_ORNAMENT_PROFILE } from './TeamOrnament3D';
 import { LegInstancedRenderer } from './LegInstancedRenderer';
+import { createScreenSpaceLineMaterial } from './ScreenSpaceLineMaterial';
+import { createCanvasHudSpriteMaterial } from './CanvasSpritePool';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[ground silhouette shadow contract] ${message}`);
@@ -206,6 +208,22 @@ function checkGrassAndMetalReceiveDirectionalSilhouettes(): void {
 }
 
 export function runGroundSilhouetteShadow3DContractTest(): void {
+  const canvasHudMaterial = createCanvasHudSpriteMaterial();
+  assertContract(
+    canvasHudMaterial.toneMapped === false &&
+      canvasHudMaterial.userData.renderLighting === 'self-lit',
+    'health bars, entity names, and waypoint sprites must retain authored HUD colors independent of scene lighting and exposure',
+  );
+  canvasHudMaterial.dispose();
+  const overlayLineMaterial = createScreenSpaceLineMaterial();
+  assertContract(
+    overlayLineMaterial.toneMapped === false &&
+      overlayLineMaterial.uniforms.uBrightness === undefined &&
+      overlayLineMaterial.userData.renderLighting === 'self-lit',
+    'waypoint lines, point boxes, and other ground HUD overlays must retain authored colors independent of scene lighting and exposure',
+  );
+  overlayLineMaterial.dispose();
+
   const expectedLightOptions = [0, 15, 150, 1500, 5000, 15000];
   assertContract(
     normalizeLightIntensitySelection(0) === 0 &&
@@ -217,12 +235,12 @@ export function runGroundSilhouetteShadow3DContractTest(): void {
   for (const mode of ['demo', 'real'] as const) {
     const config = getClientConfig(mode);
     assertContract(
-      config.environmentLight.default === 0 &&
+      config.environmentLight.default === 150 &&
         config.ambientLight.default === 1500 &&
         config.directionalLight.default === 1500 &&
         config.skyLight.default === 1500 &&
         config.exposure.default === 15,
-      `${mode} lighting must default to ENV 0, AMB 1500, SUN 1500, SKY 1500, EXPO 15`,
+      `${mode} lighting must default to ENV 150, AMB 1500, SUN 1500, SKY 1500, EXPO 15`,
     );
     assertContract(
       !config.terrainBakedLighting.default,

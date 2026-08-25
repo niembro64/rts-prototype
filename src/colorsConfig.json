@@ -592,7 +592,8 @@
       "solarCell": {
         "colorHex": "#123a58",
         "metalness": 1,
-        "roughness": 0.02
+        "roughness": 0.02,
+        "envMapIntensity": 1.45
       },
       "solarPetalBack": {
         "colorHex": "#26313a"

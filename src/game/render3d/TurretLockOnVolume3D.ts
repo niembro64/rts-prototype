@@ -4,6 +4,7 @@ import type { TurretRangeVolume } from '@/types/blueprints';
 import type { TurretRanges } from '@/types/combatTypes';
 import type { Vec3 } from '@/types/vec2';
 import { WATER_LEVEL } from '../sim/Terrain';
+import { configureSelfLitEffectMaterial } from './RenderLighting3D';
 
 export const TURRET_LOCK_ON_BOUNDARY_KEYS = [
   'trackAcquire',
@@ -87,13 +88,13 @@ const BOUNDARY_STYLES = {
 
 function makeBoundaryMaterial(key: TurretLockOnBoundaryKey): THREE.LineBasicMaterial {
   const style = BOUNDARY_STYLES[key];
-  return new THREE.LineBasicMaterial({
+  return configureSelfLitEffectMaterial(new THREE.LineBasicMaterial({
     color: style.colorHex,
     transparent: true,
     opacity: style.opacity,
     depthWrite: false,
     depthTest: false,
-  });
+  }));
 }
 
 function volumePose(

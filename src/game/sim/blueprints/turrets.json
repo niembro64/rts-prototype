@@ -4047,7 +4047,7 @@
   },
   "turretSensorUnitQueenBee": {
     "turretBlueprintId": "turretSensorUnitQueenBee",
-    "name": "Maiasaura Sensors",
+    "name": "Queen Bee Sensors",
     "targeting": {
       "engagement": {
         "range": 0,
@@ -4118,7 +4118,7 @@
   },
   "turretSensorUnitQueenTick": {
     "turretBlueprintId": "turretSensorUnitQueenTick",
-    "name": "Spinosaurus Sensors",
+    "name": "Queen Tick Sensors",
     "targeting": {
       "engagement": {
         "range": 0,

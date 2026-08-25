@@ -62,8 +62,8 @@
     }
   ],
   "environmentLight": {
-    "demoDefault": 0,
-    "realDefault": 0
+    "demoDefault": 150,
+    "realDefault": 150
   },
   "ambientLight": {
     "demoDefault": 1500,

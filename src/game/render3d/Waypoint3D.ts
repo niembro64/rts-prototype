@@ -212,6 +212,7 @@ export class Waypoint3D {
       shrinkCooldownFrames: WAYPOINT_FLAG_SHRINK_COOLDOWN_FRAMES,
       shrinkBatchSize: 16,
       renderOrder: this.renderOrder,
+      material: { toneMapped: false },
       makeState: () => ({ lastColor: -1 }),
       configureSprite: configureFlagSprite,
       repaint: repaintFlag,
@@ -229,7 +230,7 @@ export class Waypoint3D {
       makeState: () => ({ lastColor: -1, lastText: '' }),
       configureSprite: configureLabelSprite,
       repaint: repaintLabel,
-      material: { depthTest: true },
+      material: { depthTest: true, toneMapped: false },
     });
 
     // Dots.
@@ -256,6 +257,7 @@ export class Waypoint3D {
       sizeAttenuation: false,
       transparent: false,
       depthTest: true,
+      toneMapped: false,
     });
     this.dotMesh = new THREE.Points(this.dotGeom, dotMat);
     this.dotMesh.frustumCulled = false;

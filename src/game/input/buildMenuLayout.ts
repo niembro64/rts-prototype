@@ -220,17 +220,37 @@ export function buildBarGridFactoryUnitBlueprintCells(
     if (slotIndex !== undefined) maxSlotIndex = Math.max(maxSlotIndex, slotIndex);
   }
   const pageCount = Math.max(1, Math.ceil((maxSlotIndex + 1) / BAR_GRID_SLOT_COUNT));
-  const cells = new Array<string | null>(pageCount * BAR_GRID_SLOT_COUNT);
-  for (let i = 0; i < cells.length; i++) cells[i] = null;
+  const semanticCells = new Array<string | null>(pageCount * BAR_GRID_SLOT_COUNT);
+  for (let i = 0; i < semanticCells.length; i++) semanticCells[i] = null;
 
   for (const unitBlueprintId of allowedBarEquivalentUnitBlueprintIds) {
     const slotIndex = BAR_GRID_FACTORY_UNIT_SLOT_INDEX.get(unitBlueprintId);
-    if (slotIndex !== undefined && cells[slotIndex] === null) {
-      cells[slotIndex] = unitBlueprintId;
+    if (slotIndex !== undefined && semanticCells[slotIndex] === null) {
+      semanticCells[slotIndex] = unitBlueprintId;
       continue;
     }
-    const fallbackSlotIndex = nextAvailableFactoryGridCellIndex(cells);
-    cells[fallbackSlotIndex] = unitBlueprintId;
+    const fallbackSlotIndex = nextAvailableFactoryGridCellIndex(semanticCells);
+    semanticCells[fallbackSlotIndex] = unitBlueprintId;
+  }
+
+  // A specialist or mobile factory may expose only one of BAR's semantic
+  // factory pages. Keep the familiar slot inside that page, but remove pages
+  // that contain no option for this host. In particular, Queen Tick and Queen
+  // Bee must not inherit the empty vehicle/bot/air pages that precede their
+  // single product in the combined Universal layout.
+  const cells: (string | null)[] = [];
+  for (let pageStart = 0; pageStart < semanticCells.length; pageStart += BAR_GRID_SLOT_COUNT) {
+    let pageHasOption = false;
+    for (let slotIndex = pageStart; slotIndex < pageStart + BAR_GRID_SLOT_COUNT; slotIndex++) {
+      if (semanticCells[slotIndex] !== null) {
+        pageHasOption = true;
+        break;
+      }
+    }
+    if (!pageHasOption) continue;
+    for (let slotIndex = pageStart; slotIndex < pageStart + BAR_GRID_SLOT_COUNT; slotIndex++) {
+      cells.push(semanticCells[slotIndex] ?? null);
+    }
   }
 
   // Preserve the exact BAR-equivalent pages above, then append every locally
@@ -240,13 +260,17 @@ export function buildBarGridFactoryUnitBlueprintCells(
     !BAR_EQUIVALENT_FACTORY_UNIT_BLUEPRINT_IDS.has(unitBlueprintId),
   );
   if (additionalUnitBlueprintIds.length > 0) {
-    const additionalStartIndex = allowedBarEquivalentUnitBlueprintIds.length > 0 ? cells.length : 0;
+    const additionalStartIndex = cells.length;
     const requiredCellCount = additionalStartIndex + additionalUnitBlueprintIds.length;
     const totalCellCount = Math.ceil(requiredCellCount / BAR_GRID_SLOT_COUNT) * BAR_GRID_SLOT_COUNT;
     while (cells.length < totalCellCount) cells.push(null);
     for (let i = 0; i < additionalUnitBlueprintIds.length; i++) {
       cells[additionalStartIndex + i] = additionalUnitBlueprintIds[i];
     }
+  }
+
+  if (cells.length === 0) {
+    for (let i = 0; i < BAR_GRID_SLOT_COUNT; i++) cells.push(null);
   }
 
   return cells;

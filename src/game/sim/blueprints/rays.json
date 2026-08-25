@@ -5,6 +5,11 @@
       "aboveWater": { "aboveWater": true, "underwater": false },
       "underwater": { "aboveWater": false, "underwater": false }
     },
+    "aimWiggle": {
+      "originRadius": 0.5,
+      "maxDirectionAngle": 0.025,
+      "periodTicks": 5
+    },
     "hitSound": {
       "$audio": "event.hit.rayBeamMini"
     },
@@ -27,6 +32,11 @@
     "mediumTrajectory": {
       "aboveWater": { "aboveWater": true, "underwater": false },
       "underwater": { "aboveWater": false, "underwater": false }
+    },
+    "aimWiggle": {
+      "originRadius": 2,
+      "maxDirectionAngle": 0.08,
+      "periodTicks": 4
     },
     "hitSound": {
       "$audio": "event.hit.rayBeamMedium"
@@ -51,6 +61,11 @@
       "aboveWater": { "aboveWater": true, "underwater": false },
       "underwater": { "aboveWater": false, "underwater": false }
     },
+    "aimWiggle": {
+      "originRadius": 1.25,
+      "maxDirectionAngle": 0.04,
+      "periodTicks": 6
+    },
     "hitSound": {
       "$audio": "event.hit.rayBeamHeavy"
     },
@@ -73,6 +88,11 @@
     "mediumTrajectory": {
       "aboveWater": { "aboveWater": true, "underwater": false },
       "underwater": { "aboveWater": false, "underwater": false }
+    },
+    "aimWiggle": {
+      "originRadius": 4,
+      "maxDirectionAngle": 0.16,
+      "periodTicks": 3
     },
     "hitSound": {
       "$audio": "event.hit.rayBeamMega"

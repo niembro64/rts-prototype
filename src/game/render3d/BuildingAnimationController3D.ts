@@ -115,6 +115,10 @@ export class BuildingAnimationController3D {
   private activeOperationalBuildingIndexById = new IndexedEntityIdMap<number>();
   private fabricatorRingBuildings: AnimatedBuildingEntry[] = [];
   private fabricatorRingBuildingIndexById = new IndexedEntityIdMap<number>();
+  /** Fractional presentation tick per fabricator. Fixed snapshots advance at
+   * simulation cadence; this phase advances at display cadence. */
+  private fabricatorRingVisualTicks = new IndexedEntityIdMap<number>();
+  private fabricatorRingProducing = new IndexedEntityIdMap<number>();
   private windFanYaw: number | null = null;
   private windFanPitch: number | null = null;
   private windVisualSpeed: number | null = null;
@@ -278,6 +282,8 @@ export class BuildingAnimationController3D {
     this.radarSweepPhases.delete(id);
     this.radarHeadSpeeds.delete(id);
     this.radarSweepSpeeds.delete(id);
+    this.fabricatorRingVisualTicks.delete(id);
+    this.fabricatorRingProducing.delete(id);
   }
 
   update(spinDt: number): void {
@@ -290,7 +296,7 @@ export class BuildingAnimationController3D {
     this.resourcePylonAnimator.updateActive(spinDt);
 
     this.updateActiveRadarAnimations(spinDt);
-    this.updateFabricatorConstructionRings();
+    this.updateFabricatorConstructionRings(spinDt);
   }
 
   destroy(): void {
@@ -324,27 +330,47 @@ export class BuildingAnimationController3D {
     this.radarSweepPhases.clear();
     this.radarHeadSpeeds.clear();
     this.radarSweepSpeeds.clear();
+    this.fabricatorRingVisualTicks.clear();
+    this.fabricatorRingProducing.clear();
     this.windFanYaw = null;
     this.windFanPitch = null;
     this.windVisualSpeed = null;
     this.windAnimLastMs = 0;
   }
 
-  private updateFabricatorConstructionRings(): void {
+  private updateFabricatorConstructionRings(spinDt: number): void {
     for (let i = 0; i < this.fabricatorRingBuildings.length; i++) {
-      this.updateFabricatorConstructionRing(this.fabricatorRingBuildings[i]);
+      this.updateFabricatorConstructionRing(this.fabricatorRingBuildings[i], spinDt);
     }
   }
 
-  private updateFabricatorConstructionRing(entry: AnimatedBuildingEntry): void {
+  private updateFabricatorConstructionRing(
+    entry: AnimatedBuildingEntry,
+    spinDt = 0,
+  ): void {
     const rig = entry.mesh.fabricatorConstructionRingRig;
     if (rig === undefined) return;
     const producing = entry.entity.factory?.isProducing === true;
     const tickRate = Number(this.clientViewState.getServerMeta()?.ticks.rate ?? 20);
+    const authoritativeTick = this.clientViewState.getTick();
+    const wasProducing = this.fabricatorRingProducing.get(entry.id) === 1;
+    let visualTick = this.fabricatorRingVisualTicks.get(entry.id);
+    if (producing) {
+      // Re-anchor at the production edge so the tick-owned spray socket and
+      // visible construction box start together. Thereafter the shared,
+      // paused-aware frame delta gives this purely visual rotor smooth motion.
+      if (!wasProducing || visualTick === undefined) {
+        visualTick = authoritativeTick;
+      } else {
+        visualTick += Math.max(0, spinDt) * tickRate;
+      }
+      this.fabricatorRingVisualTicks.set(entry.id, visualTick);
+    }
+    this.fabricatorRingProducing.set(entry.id, producing ? 1 : 0);
     applyFabricatorConstructionRingPose(
       rig,
       producing,
-      this.clientViewState.getTick(),
+      visualTick ?? authoritativeTick,
       tickRate,
       entry.id,
     );

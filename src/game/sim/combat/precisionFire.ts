@@ -66,13 +66,13 @@ export function resolveFiringSpreadAngle(
 ): number {
   if (!randomnessEnabled) return 0;
   const authored = Number.isFinite(spreadAngle) && spreadAngle > 0 ? spreadAngle : 0;
-  // Two emitters keep only their authored spread:
+  // Two emitters keep only their authored projectile spread:
   //   - a VERTICAL LAUNCHER has no solved aim line to scatter. Its pose is
   //     pinned straight up and the missile aims itself after clearing the tube,
   //     so deflecting the tube scatters the wrong thing.
-  //   - a BEAM is a traced ray whose drawn line IS its aim. Deflecting
-  //     it does not read as a weapon that missed, it reads as a renderer
-  //     pointing the beam somewhere the turret is not.
+  //   - a BEAM owns its separate per-ray `aimWiggle`, applied to the physical
+  //     trace origin and direction throughout the pulse. It never borrows the
+  //     projectile cone or turns the authoritative turret pose into noise.
   if (!carriesBaselineScatter) return authored;
   return Math.max(authored, BASE_TURRET_AIM_SCATTER_RAD);
 }

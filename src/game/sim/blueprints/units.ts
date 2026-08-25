@@ -290,7 +290,7 @@ function validateUnitWorkCapability(bp: UnitBlueprint): void {
 }
 
 const PRODUCTION_DOMAIN_ORDER = ['bot', 'vehicle', 'aircraft', 'naval'] as const;
-const NON_FABRICATOR_UNIT_IDS = new Set(['unitCommander', 'unitBee', 'unitTick']);
+const NON_FABRICATOR_UNIT_IDS = new Set(['unitCommander']);
 
 /** The specialist fabricator that matches a unit's primary chassis. Extra
  *  authored domains remain legal for real crossovers (amphibious and
@@ -319,7 +319,7 @@ function validateUnitProductionIdentity(bp: UnitBlueprint): void {
   if (production === null) {
     if (!NON_FABRICATOR_UNIT_IDS.has(bp.unitBlueprintId)) {
       throw new Error(
-        `Invalid production identity for ${bp.unitBlueprintId}: only Commander and mobile-factory products may author null`,
+        `Invalid production identity for ${bp.unitBlueprintId}: only Commander may author null`,
       );
     }
     return;

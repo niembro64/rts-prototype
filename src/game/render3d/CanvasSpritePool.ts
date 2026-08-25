@@ -1,5 +1,13 @@
 import * as THREE from 'three';
 import { configureSpriteTexture, detachObject, disposeMaterial } from './threeUtils';
+import { configureSelfLitEffectMaterial } from './RenderLighting3D';
+
+/** Canvas sprites are screen-readable HUD ink placed in world space. */
+export function createCanvasHudSpriteMaterial(
+  parameters: THREE.SpriteMaterialParameters = {},
+): THREE.SpriteMaterial {
+  return configureSelfLitEffectMaterial(new THREE.SpriteMaterial(parameters));
+}
 
 type CanvasSpriteBaseSlot = {
   sprite: THREE.Sprite;
@@ -183,7 +191,7 @@ export class CanvasSpritePool<TState, TPaintArgs extends unknown[] = []> {
 
     const texture = new THREE.CanvasTexture(canvas);
     configureSpriteTexture(texture, this.options.textureFilter);
-    const material = new THREE.SpriteMaterial({
+    const material = createCanvasHudSpriteMaterial({
       transparent: true,
       depthTest: true,
       ...this.options.material,

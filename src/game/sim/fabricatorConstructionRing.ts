@@ -41,8 +41,10 @@ export function fabricatorConstructionEmitterHeight(
     fabricatorConstructionRingLift(ringRadius);
 }
 
-/** Tick-derived phase shared by the authoritative spray socket and the
- * frontend rig, so every emitted particle starts on a visible moving box. */
+/** Tick-derived phase shared by the authoritative spray socket and used to
+ * anchor the frontend rig whenever production begins. The frontend advances
+ * fractional presentation ticks between fixed snapshots, so the visual-only
+ * race stays smooth while each new work stream starts from the same box. */
 export function fabricatorConstructionRingPhase(
   tick: number,
   simulationTickRateHz: number,

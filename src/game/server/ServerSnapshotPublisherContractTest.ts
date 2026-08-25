@@ -15,11 +15,15 @@ import {
 } from '../network/stateSerializerEntities';
 import { IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
 import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
+import { spatialGrid } from '../sim/SpatialGrid';
 import { createProjectileConfigFromTurret } from '../sim/projectileConfigs';
 import type { Simulation } from '../sim/Simulation';
 import type { EntityId, PlayerId } from '../sim/types';
 import { getTurretConfig } from '../sim/turretConfigs';
 import { WorldState } from '../sim/WorldState';
+import { WATER_LEVEL } from '../sim/Terrain';
+import { buildTeamRosterFromSeatCounts } from '../sim/teamRoster';
+import { stampCombatTargetingPool } from '../sim/combat/targetingInputStamping';
 import { ServerSnapshotPublisher, type SnapshotListenerEntry } from './ServerSnapshotPublisher';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -100,12 +104,13 @@ function createListener(
   visibleIds: readonly EntityId[] = [],
   preencodeWire = false,
   directMaterialization = false,
+  playerId: PlayerId | undefined = undefined,
 ): SnapshotListenerEntry {
   const visibleEntityIds = new IndexedEntityIdSet();
   for (let i = 0; i < visibleIds.length; i++) visibleEntityIds.add(visibleIds[i]);
   return {
     callback,
-    playerId: undefined,
+    playerId,
     trackingKey: 'contract',
     cacheKey: 'contract',
     preencodeWire,
@@ -479,4 +484,116 @@ export function runServerSnapshotPublisherContractTest(): void {
     reflector.id,
     'live-beam rich delta',
   );
+
+  // Full entity state must be evicted on the exact sight -> radar boundary,
+  // while the wider team radar tier retains only an anonymous minimap row.
+  // Exercise the production direct-materialization path all the way through
+  // ClientViewState: lockstep peers hold the full sim locally, so this is the
+  // regression that prevents that authoritative slab from leaking into the
+  // presentation cache.
+  entitySlotRegistry.clear();
+  spatialGrid.clear();
+  const visibilityWorld = new WorldState(9905, 4096, 4096);
+  visibilityWorld.playerCount = 3;
+  visibilityWorld.fogOfWarEnabled = true;
+  visibilityWorld.setTeamRoster(buildTeamRosterFromSeatCounts(
+    [1 as PlayerId, 2 as PlayerId, 3 as PlayerId],
+    [2, 1],
+  ));
+  const alliedObserver = visibilityWorld.createUnitFromBlueprint(
+    600,
+    600,
+    2 as PlayerId,
+    'unitJackal',
+  );
+  alliedObserver.transform.z = WATER_LEVEL + 100;
+  const observerSensors = alliedObserver.combat!.turrets[0].config.targeting.observation.sensors;
+  observerSensors.fullSight.aboveWater.aboveWater = 500;
+  observerSensors.contactSight.aboveWater.aboveWater = 1_200;
+  visibilityWorld.addEntity(alliedObserver);
+  spatialGrid.updateUnit(alliedObserver);
+
+  const visibilityEnemy = visibilityWorld.createUnitFromBlueprint(
+    900,
+    600,
+    3 as PlayerId,
+    'unitJackal',
+  );
+  visibilityEnemy.transform.z = WATER_LEVEL + 100;
+  visibilityWorld.addEntity(visibilityEnemy);
+  spatialGrid.updateUnit(visibilityEnemy);
+  stampCombatTargetingPool(visibilityWorld);
+
+  const visibilityClient = new ClientViewState();
+  const capturedVisibility: { value: NetworkServerSnapshot | null } = { value: null };
+  const visibilityListener = createListener((state) => {
+    capturedVisibility.value = state;
+  }, [], false, true, 1 as PlayerId);
+  const visibilityPublisher = new ServerSnapshotPublisher();
+
+  visibilityPublisher.emitLockstepPresentation(
+    createPublisherInput(visibilityWorld, visibilityListener),
+  );
+  const sightSnapshot = capturedVisibility.value;
+  assertContract(sightSnapshot !== null, 'team-sight fixture must emit its initial snapshot');
+  visibilityClient.applyNetworkState(sightSnapshot, { syncEconomy: false });
+  assertContract(
+    visibilityClient.getEntity(alliedObserver.id) !== undefined &&
+      visibilityClient.getEntity(visibilityEnemy.id) !== undefined,
+    'recipient must receive allied sight sources and enemies inside their shared full sight',
+  );
+  assertContract(
+    visibilityListener.visibleEntityIds.has(alliedObserver.id) &&
+      visibilityListener.visibleEntityIds.has(visibilityEnemy.id),
+    'the initial direct lockstep presentation must seed the per-listener full-visibility baseline',
+  );
+
+  visibilityEnemy.transform.x = 1_500;
+  spatialGrid.updateUnit(visibilityEnemy);
+  visibilityWorld.refreshEntitySlotState(visibilityEnemy, ENTITY_CHANGED_POS);
+  stampCombatTargetingPool(visibilityWorld);
+  capturedVisibility.value = null;
+  visibilityPublisher.emitLockstepPresentation(
+    createPublisherInput(visibilityWorld, visibilityListener),
+  );
+  const radarSnapshot = capturedVisibility.value as NetworkServerSnapshot | null;
+  assertContract(radarSnapshot !== null, 'sight-to-radar transition must emit a snapshot');
+  assertContract(
+    radarSnapshot.removedEntityIds?.includes(visibilityEnemy.id) === true &&
+      !radarSnapshot.entities.some((entry) => entry?.id === visibilityEnemy.id) &&
+    radarSnapshot.minimapEntities?.some(
+        (entry) => entry.id === visibilityEnemy.id && entry.radarOnly === true,
+      ) === true,
+    'leaving team sight must evict the full enemy row and retain only an anonymous radar contact; ' +
+      `removed=${JSON.stringify(radarSnapshot.removedEntityIds)}, ` +
+      `entities=${JSON.stringify(radarSnapshot.entities.map((entry) => entry?.id))}, ` +
+      `minimap=${JSON.stringify(radarSnapshot.minimapEntities)}`,
+  );
+  visibilityClient.applyNetworkState(radarSnapshot, { syncEconomy: false });
+  assertContract(
+    visibilityClient.getEntity(visibilityEnemy.id) === undefined,
+    'the client presentation cache must not retain a full model for a radar-only enemy',
+  );
+
+  visibilityEnemy.transform.x = 2_500;
+  spatialGrid.updateUnit(visibilityEnemy);
+  visibilityWorld.refreshEntitySlotState(visibilityEnemy, ENTITY_CHANGED_POS);
+  stampCombatTargetingPool(visibilityWorld);
+  capturedVisibility.value = null;
+  visibilityPublisher.emitLockstepPresentation(
+    createPublisherInput(visibilityWorld, visibilityListener),
+  );
+  const hiddenSnapshot = capturedVisibility.value as NetworkServerSnapshot | null;
+  assertContract(hiddenSnapshot !== null, 'radar-to-hidden transition must emit a snapshot');
+  assertContract(
+    hiddenSnapshot.minimapEntities?.some((entry) => entry.id === visibilityEnemy.id) !== true,
+    'leaving team radar must remove even the anonymous enemy contact',
+  );
+  visibilityClient.applyNetworkState(hiddenSnapshot, { syncEconomy: false });
+  assertContract(
+    visibilityClient.getEntity(visibilityEnemy.id) === undefined,
+    'a fully hidden enemy must remain absent from the client presentation cache',
+  );
+  spatialGrid.clear();
+  entitySlotRegistry.clear();
 }

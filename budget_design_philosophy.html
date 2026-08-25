@@ -566,6 +566,7 @@
         <li>A seat is reserved by identity — an opaque token issued when it is granted — not handed out by a counter. A counter meant lobby churn exhausted a lobby, and made rejoin impossible: a returning player cannot be given back an incrementing number.</li>
         <li>Sides the host declares and leaves EMPTY survive into the match. An empty side still carves its terrain slice, deposits and spawn arc; it simply has no commander on it. The declared count is authored data and is hashed.</li>
         <li>A watcher may select and inspect but authors no gameplay truth. That is refused at the command doorway, not downstream: a command that never enters the stream cannot be executed by mistake.</li>
+        <li>A watcher computes local periodic hashes only to verify its own catch-up replay. Those hashes are filed outside the seat range and the watcher&rsquo;s desync comparison set is empty: it neither sends a checksum nor compares itself with seated players, so a spectator-only divergence cannot halt or accuse the match.</li>
         <li>Chat is one room in the lobby and splits when the battle starts — allies to allies, watchers to watchers. A watcher sees the whole map, so a live channel from the bench is a coaching channel.</li>
         <li>Every chat room is a bounded conversation, not a log: clients and the HOME backend retain and display only the newest 10 messages, and every input plus every authority independently enforces a 220-character message ceiling.</li>
       </ul>
@@ -1845,7 +1846,7 @@
         <li>Solid lit triangles from units, buildings, articulated locomotion parts, and environment objects cast one directional sun depth map onto terrain. The result follows the actual rendered silhouette and pose; a hitbox circle, footprint ellipse, or stretched coverage stamp is never an acceptable stand-in. Additive effects, debug geometry, water, and invisible rig helpers do not cast.</li>
         <li>The orthographic sun frustum follows the visible battle, expands in quantized steps, and snaps its focus to shadow texels so camera pans do not make outlines swim. The CLIENT <strong>SHADOWS</strong> toggle disables the directional depth pass rather than swapping in an approximation.</li>
         <li>The retired coverage-ellipse shadow path stays disabled. There is no standalone contact-shadow mesh and no CPU-stamped fog bitmap.</li>
-        <li>The canonical client lighting defaults are <strong>ENV 0, AMB 1500, SUN 1500, SKY 1500, EXPO 15</strong> in both battle modes. Every light/exposure bar shares the same logarithmic ladder: 0, 15, 150, 1500, 5000, and 15000 percent. The four decade values remain exact powers of ten; 5000 is the deliberate finer tuning stop between 1500 and 15000.</li>
+        <li>The canonical client lighting defaults are <strong>ENV 150, AMB 1500, SUN 1500, SKY 1500, EXPO 15</strong> in both battle modes. Every light/exposure bar shares the same logarithmic ladder: 0, 15, 150, 1500, 5000, and 15000 percent. The four decade values remain exact powers of ten; 5000 is the deliberate finer tuning stop between 1500 and 15000.</li>
       </ul>
     </section>
 
@@ -1955,6 +1956,12 @@
         first, and the ordering decides which question stops being answerable
         first. Widths are authored as fractions of the glyph radius, so every
         band scales together and none of them can vanish at the floor size.
+      </p>
+      <p>
+        Those bands are HUD identity, not lit world surfaces. Their white, team, player, and black
+        values are authored display colors and bypass environment light, ambient light, sun, and
+        exposure exactly like waypoint and selection overlays. Lighting controls may change the
+        model beneath a transition glyph; they must never dim or tint the strategic symbol itself.
       </p>
       <h3>Coverage is measured on the collision volume</h3>
       <p>
@@ -2654,15 +2661,34 @@
         directly into turret rotation.
       </p>
       <p>
-        A live beam is retraced from its selected QueryWeapon origin along that authoritative
-        yaw/pitch pose. It does not construct a second direction from the locked
+        A live beam starts from its selected QueryWeapon origin and takes that authoritative
+        yaw/pitch pose as its nominal line. It does not construct a second clean direction from the locked
         target&rsquo;s current center, and the renderer does not reconstruct turret
         orientation from the beam polyline. Once aligned, a ray still has no
         projectile travel time and therefore applies along its traced line
         immediately; what is removed is the ability to hit a target independently of
         where the shared turret servo is actually pointing.
       </p>
-      <h3>The beam cone is the beam pilot light and shares the live beam&rsquo;s origin</h3>
+      <h3>Beam imprecision is authored, physical, and removed by Precision Targeting</h3>
+      <p>
+        Every beam ray authors one <code>aimWiggle</code> profile: a maximum world-space
+        origin radius, a maximum angular direction error, and a fixed-tick period. Without a
+        completed, switched-ON Precision Targeting Lab, the authoritative trace moves smoothly
+        through deterministic random samples inside those bounds for the entire pulse. Both the
+        start point and the travel vector move, so an inaccurate beam visibly and physically
+        wanders off its clean barrel solution; damage, reflection, recoil, and the rendered
+        polyline all consume that same perturbed trace. The turret servo itself remains clean.
+      </p>
+      <p>
+        Precision Targeting collapses both offsets to exactly zero. The four beam families do not
+        share one generic error: some author restrained drift, while others are deliberately poor
+        without the lab and exceptional with it. Balance and purchase value are judged from the
+        average usefulness of those two live states &mdash; ordinary imprecise and powered precise
+        &mdash; rather than treating the precision state as a free baseline. The samples are hashes
+        of stable turret identity, launch tick, and fixed simulation tick, so every lockstep peer
+        follows the same wander and no renderer or wall clock can influence a hit.
+      </p>
+      <h3>The beam cone is the beam pilot light and marks the nominal origin</h3>
       <p>
         The cone centered in a beam turret&rsquo;s barrel assembly is its
         <strong>beam pilot light</strong>. It stays lit between beam shots, then hides for the
@@ -2670,12 +2696,13 @@
         beam replaces the pilot light along the same centerline instead of appearing in front of it.
       </p>
       <p>
-        The pilot light and live beam have one origin: the broad base of the tapered cone at the
+        The pilot light marks the nominal beam origin: the broad base of the tapered cone at the
         turret&rsquo;s authoritative AimFrom pivot. Beam QueryWeapon offsets therefore remain zero in
         turret-local space. The cone&rsquo;s pointed tip is only the end of the idle visual; it is not
-        a muzzle and must never push the live ray forward. Simulation tracing and rendered beam
-        interpolation both use the cone base, so firing fills the pilot-light span continuously
-        from the turret outward.
+        a muzzle and must never push the live ray forward. With Precision Targeting active,
+        simulation tracing and rendered beam interpolation use that base exactly. Without it, the
+        ray&rsquo;s authored origin wiggle moves around the base while the hidden pilot light remains the
+        readable nominal center; the live line never gains an unrelated cone-tip offset.
       </p>
       <p>
         Beam turrets are therefore ordinary full-barrel turrets rather than
@@ -3669,16 +3696,17 @@
         <code>naval</code> only. Cross-medium units author every domain they genuinely serve
         &mdash; an amphibious tank is <code>vehicle</code> + <code>naval</code>, a torpedo
         gunship is <code>aircraft</code> + <code>naval</code>, a water-striding crawler is
-        <code>bot</code> + <code>naval</code>. A unit that only a mobile factory may emit (a
-        queen&rsquo;s swarm product) or that is never produced at all (the Commander) authors
+        <code>bot</code> + <code>naval</code>. Tick and Bee are ordinary tier-1 products in the
+        <code>bot</code> and <code>aircraft</code> domains respectively, even though their Queen may
+        also emit them. Only a unit that is never produced at all (the Commander) authors
         <code>null</code> and appears in no fabricator menu.
       </p>
       <p>
         Tier is a role statement, not a price bracket: tier 1 is the opening army and its
         constructors; tier 2 is the advanced army, specialist tech, and the four Advanced
         Construction crafts; tier 3 is the small experimental capstone set. The Loris and
-        Daddy Longlegs are tier 1; Latrodectus is tier 2; Tyrannosaurus, Microraptor, Maiasaura,
-        and Spinosaurus are tier 3. Costs and firepower follow from the assignment rather than
+        Daddy Longlegs are tier 1; Latrodectus is tier 2; Tyrannosaurus, Microraptor, Queen Bee,
+        and Queen Tick are tier 3. Costs and firepower follow from the assignment rather than
         defining it.
       </p>
 

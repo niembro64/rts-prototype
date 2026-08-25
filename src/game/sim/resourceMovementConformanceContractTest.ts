@@ -397,6 +397,18 @@ export function runResourceMovementConformanceContractTest(): void {
     (converterConfig.conversionRate ?? 0) * (1 - world.converterTax),
     'converter produced flow rate after tax',
   );
+  const forwardConverterEconomy = economyManager.getEconomy(playerId);
+  assertContract(forwardConverterEconomy !== undefined, 'converter HUD-rate fixture must keep economy state');
+  assertNear(
+    forwardConverterEconomy.expenditure,
+    converterConfig.conversionRate ?? 0,
+    'energy CONSUME must include the active converter input rate',
+  );
+  assertNear(
+    forwardConverterEconomy.metal.income.extraction,
+    (converterConfig.conversionRate ?? 0) * (1 - world.converterTax),
+    'metal PRODUCE must include the active converter output after tax',
+  );
 
   // Bidirectional check: metal above its slider point while energy sits
   // below its own point converts the other way — the direction the old
@@ -425,6 +437,18 @@ export function runResourceMovementConformanceContractTest(): void {
     reverseProduced?.resource === 'energy',
     'energy below its slider point must be the produced converter resource',
   );
+  const reverseConverterEconomy = economyManager.getEconomy(playerId);
+  assertContract(reverseConverterEconomy !== undefined, 'reverse converter must keep economy state');
+  assertNear(
+    reverseConverterEconomy.metal.expenditure,
+    converterConfig.conversionRate ?? 0,
+    'metal CONSUME must follow a reversed active converter',
+  );
+  assertNear(
+    reverseConverterEconomy.income.production,
+    (converterConfig.conversionRate ?? 0) * (1 - world.converterTax),
+    'energy PRODUCE must follow a reversed active converter after tax',
+  );
   // Restore the legacy one-way points for the closed-converter check.
   world.autoConversionEnergyAt.set(playerId, 0);
   world.autoConversionMetalAt.set(playerId, 1);
@@ -449,6 +473,10 @@ export function runResourceMovementConformanceContractTest(): void {
   );
   assertNear(closedConverterEconomy.stockpile.curr, 100, 'OFF converter must not consume energy');
   assertNear(closedConverterEconomy.metal.stockpile.curr, 0, 'OFF converter must not produce metal');
+  assertNear(closedConverterEconomy.expenditure, 0, 'OFF converter must leave energy CONSUME unchanged');
+  assertNear(closedConverterEconomy.metal.expenditure, 0, 'OFF converter must leave metal CONSUME unchanged');
+  assertNear(closedConverterEconomy.income.production, 0, 'OFF converter must leave energy PRODUCE unchanged');
+  assertNear(closedConverterEconomy.metal.income.extraction, 0, 'OFF converter must leave metal PRODUCE unchanged');
 
   economyManager.reset();
 }

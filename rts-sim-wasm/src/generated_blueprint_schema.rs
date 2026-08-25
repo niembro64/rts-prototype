@@ -1390,9 +1390,17 @@ pub struct BeamRayBlueprint {
     pub damageSphere: ShotCollision,
     pub gravityForceMultiplier: f64,
     pub mediumTrajectory: EmissionMediumTrajectoryMatrix,
+    pub aimWiggle: BeamAimWiggleConfig,
     pub continuousSound: BeamContinuousSoundConfig,
     pub hitSound: Option<BlueprintJsonValue>,
     pub rayBlueprintId: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BeamAimWiggleConfig {
+    pub originRadius: f64,
+    pub maxDirectionAngle: f64,
+    pub periodTicks: i32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1429,6 +1437,7 @@ pub struct BeamRay {
     pub damageSphere: ShotCollision,
     pub gravityForceMultiplier: f64,
     pub mediumTrajectory: EmissionMediumTrajectoryMatrix,
+    pub aimWiggle: BeamAimWiggleConfig,
     pub rayBlueprintId: String,
 }
 

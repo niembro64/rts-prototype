@@ -57,6 +57,21 @@ function assertSpecializedOperationalRig(
 ): void {
   if (id === 'buildingSolar') {
     assertContract(shape.solarRig !== undefined, 'solar must retain its resource-flow rig');
+    const photovoltaicMaterial = shape.primary.material;
+    const petalCellMaterials = shape.details
+      .filter((entry) => entry.role === 'solarPanel')
+      .map((entry) => Array.isArray(entry.mesh.material)
+        ? entry.mesh.material[0]
+        : entry.mesh.material);
+    assertContract(
+      photovoltaicMaterial instanceof THREE.MeshStandardMaterial &&
+        photovoltaicMaterial.metalness === 1 &&
+        photovoltaicMaterial.roughness <= 0.02 &&
+        photovoltaicMaterial.envMapIntensity >= 1.45 &&
+        petalCellMaterials.length === 4 &&
+        petalCellMaterials.every((material) => material === photovoltaicMaterial),
+      'the four pyramid faces and four exposed petal faces must share the glossy environment-reflecting photovoltaic finish',
+    );
     const open = shape.details.map((entry) => transformSignature(entry.mesh));
     assertContract(
       applySolarCollectorPetalPose(shape.details, 0),
@@ -276,10 +291,19 @@ export function runBuildingOperationalVisual3DContractTest(): void {
         `${id} outer race must rotate in place while only its box heads telescope upward`,
       );
       const activeYaw = rig.root.rotation.y;
+      applyFabricatorConstructionRingPose(rig, true, 40.5, 20, 17);
+      assertContract(
+        Math.abs(
+          rig.root.rotation.y + fabricatorConstructionRingPhase(40.5, 20, 17),
+        ) <= 1e-9 &&
+          Math.abs(rig.root.rotation.y - activeYaw) > 1e-3,
+        `${id} outer race must accept fractional presentation ticks between fixed snapshots`,
+      );
+      const fractionalActiveYaw = rig.root.rotation.y;
       applyFabricatorConstructionRingPose(rig, false, 60, 20, 17);
       assertContract(
         Math.abs(rig.root.position.y - idleY) <= 1e-9 &&
-          rig.root.rotation.y === activeYaw &&
+          rig.root.rotation.y === fractionalActiveYaw &&
           rig.extensionHeads.every((head) =>
             Math.abs(head.position.y - idleHeadY) <= 1e-9) &&
           rig.extensionShafts.every((shaft) => !shaft.visible),

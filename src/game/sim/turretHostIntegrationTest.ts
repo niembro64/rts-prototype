@@ -657,15 +657,25 @@ function assertBeamUsesSharedSnappyTurretAim(): void {
   assertContract(beamSpawn !== undefined, 'mini beam turret must spawn a beam event');
   const beam = beamSpawn.beam;
   assertContract(beam !== undefined, 'beam spawn must carry start/end metadata');
-  assertNear(
-    DMath.atan2(beam.end.y - beam.start.y, beam.end.x - beam.start.x),
-    beamTurret.rotation,
-    'beam spawn line must follow the authoritative turret yaw',
+  const beamRay = beamTurret.config.shot;
+  assertContract(beamRay !== null && beamRay.type === 'beam', 'beam turret must carry a beam ray');
+  const physicalBeamYaw = DMath.atan2(
+    beam.end.y - beam.start.y,
+    beam.end.x - beam.start.x,
   );
   assertNear(
     beamSpawn.rotation,
-    beamTurret.rotation,
-    'beam spawn metadata must follow shared turret aim',
+    physicalBeamYaw,
+    'beam spawn metadata must follow the physical wiggled trace',
+  );
+  const beamYawDelta = Math.abs(DMath.atan2(
+    DMath.sin(physicalBeamYaw - beamTurret.rotation),
+    DMath.cos(physicalBeamYaw - beamTurret.rotation),
+  ));
+  assertContract(
+    beamYawDelta > 1e-6 &&
+      beamYawDelta <= beamRay.aimWiggle.maxDirectionAngle + 1e-6,
+    'ordinary beam trace must wiggle inside its authored angle while the shared turret remains exactly aimed',
   );
   const beamEntity = fireResult.projectiles.find((entity) => entity.id === beamSpawn.id);
   const pulsePlan = beamEntity?.projectile?.beamPulsePlan;
@@ -677,11 +687,10 @@ function assertBeamUsesSharedSnappyTurretAim(): void {
   const initialBeamPoints = beamEntity?.projectile?.points;
   const initialBeamEnd = initialBeamPoints?.[initialBeamPoints.length - 1];
   assertContract(
-    initialBeamPoints !== null && initialBeamPoints !== undefined &&
+      initialBeamPoints !== null && initialBeamPoints !== undefined &&
       initialBeamPoints.length >= 2 &&
-      initialBeamEnd !== undefined &&
-      beamEntity?.projectile?.prevEndEntityId === target.id,
-    'a committed beam pulse must be seeded by a real trace that terminates on its selected target',
+      initialBeamEnd !== undefined,
+    'a committed beam pulse must be seeded by its real bounded wiggled trace',
   );
   const initialBeamStart = initialBeamPoints![0];
   assertContract(
@@ -915,10 +924,13 @@ function assertBeamUsesSharedSnappyTurretAim(): void {
     updateProjectiles(world, 50, pulseDamageSystem, STILL_AIR);
     const liveBeam = world.getEntity(beamEntity!.id);
     if (liveBeam !== undefined) {
-      assertNear(
-        liveBeam.transform.rotation,
-        beamTurret.rotation,
-        'committed beam ray must always leave along the physical turret barrel pose',
+      const liveBeamYawDelta = Math.abs(DMath.atan2(
+        DMath.sin(liveBeam.transform.rotation - beamTurret.rotation),
+        DMath.cos(liveBeam.transform.rotation - beamTurret.rotation),
+      ));
+      assertContract(
+        liveBeamYawDelta <= beamRay.aimWiggle.maxDirectionAngle + 1e-6,
+        'committed beam ray must remain inside its authored wiggle around the physical turret barrel pose',
       );
     }
     checkProjectileCollisions(world, 50, pulseDamageSystem, pulseForces);

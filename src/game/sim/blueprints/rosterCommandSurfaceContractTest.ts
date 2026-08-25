@@ -523,6 +523,18 @@ export function runRosterCommandSurfaceContractTest(): void {
     }
   }
 
+  for (const [factoryLabel, productBlueprintId] of [
+    ['Queen Tick', 'unitTick'],
+    ['Queen Bee', 'unitBee'],
+  ] as const) {
+    const cells = buildBarGridFactoryUnitBlueprintCells([productBlueprintId]);
+    assertContract(
+      cells.length === BAR_GRID_SLOT_COUNT &&
+        cells.filter((unitBlueprintId) => unitBlueprintId !== null).join(',') === productBlueprintId,
+      `${factoryLabel} BAR grid must compact its single product onto one page`,
+    );
+  }
+
   // Specialist rosters are data-derived and need not be artificially balanced
   // to the same count. Every specialist-fabricated unit must include the
   // domain matching its primary chassis; extra domains are crossover only.
@@ -545,6 +557,16 @@ export function runRosterCommandSurfaceContractTest(): void {
   assertContract(
     getStructureFactoryAllowedUnitBlueprintIds('buildingVehicleFabricator').includes('unitLoris'),
     'Loris is a tracked tank and must appear in the Vehicle Fabricator',
+  );
+  assertContract(
+    getStructureFactoryAllowedUnitBlueprintIds('towerFabricator').includes('unitTick') &&
+      getStructureFactoryAllowedUnitBlueprintIds('buildingBotFabricator').includes('unitTick'),
+    'Tick must be buildable from both the universal and specialist Bot fabricators as well as Queen Tick',
+  );
+  assertContract(
+    getStructureFactoryAllowedUnitBlueprintIds('towerFabricator').includes('unitBee') &&
+      getStructureFactoryAllowedUnitBlueprintIds('buildingAircraftFabricator').includes('unitBee'),
+    'Bee must be buildable from both the universal and specialist Aircraft fabricators as well as Queen Bee',
   );
 
   for (const unitBlueprintId of UNIT_BLUEPRINT_IDS) {

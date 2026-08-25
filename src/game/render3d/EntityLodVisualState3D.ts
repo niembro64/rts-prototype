@@ -87,6 +87,22 @@ function applySubtree(root: THREE.Object3D, states: readonly TransformState[]): 
   });
 }
 
+/** The fabricator construction ring is regenerated from the current tick and
+ * production state as soon as a rebuilt mesh is registered with its animator.
+ * Its child list intentionally differs by geometry tier (the far tier omits
+ * the top latch), so copying those children by detail-array index can hand the
+ * outer ring's hundred-unit scale to a hazard-face mesh on a far -> mid/close
+ * transition. Keep analytically driven rig children out of the generic
+ * positional state transfer. */
+function transferableBuildingDetails(
+  mesh: EntityMesh,
+): NonNullable<EntityMesh['buildingDetails']> {
+  const details = mesh.buildingDetails ?? [];
+  const fabricatorRoot = mesh.fabricatorConstructionRingRig?.root;
+  if (fabricatorRoot === undefined) return details;
+  return details.filter((detail) => detail.mesh.parent !== fabricatorRoot);
+}
+
 function pylons(mesh: EntityMesh): ResourcePylonRig[] {
   const rigs: ResourcePylonRig[] = [];
   if (mesh.solarRig) rigs.push(mesh.solarRig.pylon);
@@ -125,7 +141,7 @@ export function captureEntityLodVisualState3D(mesh: EntityMesh): EntityLodVisual
     buildingOperationalAmount: mesh.buildingOperationalAmount,
     buildingOperationalMotionTime: mesh.buildingOperationalMotionTime,
     pylonStates: pylons(mesh).map(capturePylonState),
-    buildingDetailTransforms: mesh.buildingDetails?.map((detail) =>
+    buildingDetailTransforms: transferableBuildingDetails(mesh).map((detail) =>
       captureSubtree(detail.mesh)) ?? [],
   };
 }
@@ -148,9 +164,10 @@ export function applyEntityLodVisualState3D(
     applyPylonState(nextPylons[i], state.pylonStates[i]);
   }
   if (mesh.buildingDetails) {
-    for (let i = 0; i < mesh.buildingDetails.length; i++) {
+    const transferableDetails = transferableBuildingDetails(mesh);
+    for (let i = 0; i < transferableDetails.length; i++) {
       const transforms = state.buildingDetailTransforms[i];
-      if (transforms) applySubtree(mesh.buildingDetails[i].mesh, transforms);
+      if (transforms) applySubtree(transferableDetails[i].mesh, transforms);
     }
     // Building detail lists legitimately differ by LOD rung. Solar leaves
     // must never inherit a positional transform from a different detail role;

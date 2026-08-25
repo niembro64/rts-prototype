@@ -114,7 +114,14 @@ function shouldSendResourceMovement(
   if (movement.amountPerSecond <= 0 || !Number.isFinite(movement.amountPerSecond)) return false;
   if (!visibility.isFiltered) return true;
   const source = world.getEntity(movement.sourceEntityId);
-  return source !== undefined && visibility.isEntityVisible(source);
+  if (source === undefined || !visibility.isEntityVisible(source)) return false;
+  // Team-owned movement is private action state, just like construction
+  // spray. For a foreign source, however, never expose a target id the
+  // recipient could not otherwise reference: seeing an enemy builder or
+  // converter must not reveal a hidden endpoint through its HUD particles.
+  if (visibility.canSeePrivateEntityDetails(source)) return true;
+  return movement.targetEntityId === null ||
+    visibility.canReferenceEntityId(world, movement.targetEntityId);
 }
 
 export function writeResourceMovementWireRowsDirect(

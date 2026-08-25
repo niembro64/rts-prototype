@@ -21,7 +21,7 @@
 // overlays this replaces, so authored hex values render as-authored.
 
 import * as THREE from 'three';
-import { applyExposureToRawShader } from './RenderLighting3D';
+import { configureSelfLitEffectMaterial } from './RenderLighting3D';
 
 type ScreenSpaceLineMaterialOptions = {
   /** Initial viewport size in device pixels (kept in sync via setResolution). */
@@ -103,10 +103,10 @@ export function createScreenSpaceLineMaterial(
       }
     `,
   });
-  // Raw shader: it writes gl_FragColor itself, so it never tone-maps
-  // and is invisible to exposure without this.
-  applyExposureToRawShader(material);
-  return material;
+  // Ground overlays are HUD instruments embedded in world space. Preserve
+  // their authored RGBA independently of ENV/AMB/SUN and camera exposure;
+  // depth testing still lets terrain and world geometry occlude them.
+  return configureSelfLitEffectMaterial(material);
 }
 
 /** The unit segment quad shared by every instanced line geometry. position.x

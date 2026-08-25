@@ -556,6 +556,7 @@ function buildRayConfig(rayBlueprint: RayBlueprint): BeamRay {
     damageSphere: { radius: rayBlueprint.damageSphere.radius },
     gravityForceMultiplier: rayBlueprint.gravityForceMultiplier,
     mediumTrajectory: cloneEmissionMediumTrajectoryMatrix(rayBlueprint.mediumTrajectory),
+    aimWiggle: { ...rayBlueprint.aimWiggle },
   };
 }
 
