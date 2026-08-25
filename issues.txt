@@ -1,0 +1,7 @@
+1. Let's set the default lighting stuff to these values "ENV: 0", "AMB: 1500", "SUN: 1500" (actually i might want aanother higher value between 1500 and 15000), "SKY: 1500", "EXPO: 15"
+
+2. The "TURR CIR" and "VOLUMES" selections should only show on entities that are selected, not every entity.  
+
+3. Regarding our three "universal fabricators", let's reduce the number of spinning boxes to just 1 for the t1 version, 2 for the t2 version and 3 for the t3 version - let's have these boxes attached to a second ring that spins like the boxes spin now. So we will have a thinner inner ring that is stationary, then a larger ring that "slides" like it would have ball bearings or something around the inner ring. These "boxes" should be attached to the outside of that outer ring. By default they should be attached to the center of the outer region, but when we are actively constructing something the boxes should extend the top part upward into the air which is from where the "build spray" should come when building.  
+
+4. Our plasma shots, build spray tetrahedrons, and explosion tetrahedrons are very dark compared to everything else in the game. This is an issue, all of these things should be bright.  
