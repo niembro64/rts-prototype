@@ -54,14 +54,14 @@ import {
   PATHFINDING_DIRECT_PLAN_MAX_DISTANCE_WU,
   PATHFINDING_INTERMEDIATE_CORRIDOR_WU,
   PATHFINDING_PARTIAL_PLAN_RETRY_TICKS,
-  PATHFINDING_A_STAR_EXPANSIONS_PER_TEAM_TURN,
+  PATHFINDING_A_STAR_EXPANSIONS_PER_TICK,
 } from './pathfindingTuning';
 import {
   PATH_REQUEST_FRESH,
   PATH_REQUEST_NONE,
   PATH_REQUEST_REFRESH,
-  selectPathPlanTeamTurn,
   SimulationPathPlanScheduler,
+  type PathPlanSchedulerStats,
 } from './SimulationPathPlanScheduler';
 import { registerPathfinderBuildingOccupancy } from './pathfinderTerrainCache';
 import { getAllyTeamId, type AllyTeamId } from './teamRoster';
@@ -363,6 +363,7 @@ export class Simulation {
     this.commandQueue = commandQueue;
     this.pathPlanScheduler = new SimulationPathPlanScheduler(
       () => this.world.simulationTickRateHz,
+      () => this.world.getTick(),
     );
     this.constructionSystem = new ConstructionSystem(
       world.mapWidth,
@@ -465,6 +466,11 @@ export class Simulation {
   }
 
   // Get construction system (for placement validation)
+  /** Deterministic path-plan admission counters (diagnostics, never hashed). */
+  getPathPlanSchedulerStats(): PathPlanSchedulerStats {
+    return this.pathPlanScheduler.getStats();
+  }
+
   getConstructionSystem(): ConstructionSystem {
     return this.constructionSystem;
   }
@@ -1914,22 +1920,32 @@ export class Simulation {
     this.combatHaltController.prepare();
     this.releaseReadyGatherWaits();
 
-    // Exactly one ally team receives deterministic A* work in a fixed tick.
-    // It resumes its retained frontier first, then may spend unused expansions
-    // on more routes for that same team. Other teams wait for their turns.
+    // Every fixed tick funds one global A* expansion ceiling. Sides are
+    // served round-robin among the sides that have demand (a retained
+    // frontier or a queued request): an idle, unseated or defeated side never
+    // holds a turn, and a side that runs dry hands its leftover to the next
+    // side with work in the same tick. A served side resumes its retained
+    // frontier first, then may admit more of its own routes while budget
+    // remains. All selection state is derived lockstep state.
     const roster = this.world.teamRoster;
-    const selectedTeamTurn = selectPathPlanTeamTurn(this.world.getTick(), roster);
-    if (selectedTeamTurn !== null) {
-      const { teamId, teamTurn } = selectedTeamTurn;
-      let expansionsRemaining = PATHFINDING_A_STAR_EXPANSIONS_PER_TEAM_TURN;
+    const scheduler = this.pathPlanScheduler;
+    const activeJobs = this.activePathPlanJobs;
+    let expansionsRemaining = PATHFINDING_A_STAR_EXPANSIONS_PER_TICK;
+    let frontierPending = false;
+    scheduler.beginTick(this.world.getTick(), roster, activeJobs);
+    let turn = scheduler.nextTeamTurn(roster, activeJobs);
+    while (turn !== null) {
+      const { teamId, teamTurn } = turn;
       while (expansionsRemaining > 0) {
-        if (!this.activePathPlanJobs.has(teamId)) {
-          const admitted = this.pathPlanScheduler.drainTeam(
+        if (!activeJobs.has(teamId)) {
+          const admitted = scheduler.drainTeam(
             teamTurn,
             roster,
             teamId,
             (entityId, lane) => this.admitPathPlanRequest(teamId, entityId, lane),
           );
+          // The side ran dry (or held only free/stale entries): fall through
+          // to the next side with demand instead of discarding the leftover.
           if (!admitted) break;
         }
         const outcome = this.advanceActivePathPlanJob(teamId, expansionsRemaining);
@@ -1938,9 +1954,22 @@ export class Simulation {
         // nodes. Charge one deterministic admission unit so a pathological
         // stream of zero-expansion completions cannot monopolize the tick.
         expansionsRemaining -= Math.max(1, outcome.expansionsUsed);
-        if (outcome.status === 'pending') break;
+        if (outcome.status === 'pending') {
+          // The ceiling is spent; the frontier waits for this side's next turn.
+          frontierPending = true;
+          break;
+        }
       }
+      if (expansionsRemaining <= 0 || frontierPending) break;
+      turn = scheduler.nextTeamTurn(roster, activeJobs);
     }
+    scheduler.endTick(
+      roster,
+      activeJobs,
+      PATHFINDING_A_STAR_EXPANSIONS_PER_TICK - expansionsRemaining,
+      expansionsRemaining,
+      frontierPending,
+    );
     SIM_TICK_INSTRUMENTATION.phase('sim.pathfinding');
 
     const units = this.world.getUnits();

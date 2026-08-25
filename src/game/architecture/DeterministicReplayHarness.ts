@@ -12,6 +12,7 @@ import { resetTerrainStateForDeterministicReplay } from '../sim/Terrain';
 import { clearVegetation } from '../sim/vegetation';
 import { getSimWasm } from '../sim-wasm/init';
 import type { GameServerConfig } from '@/types/game';
+import type { PathPlanSchedulerStats } from '@/game/sim/SimulationPathPlanScheduler';
 import type { Command } from '../sim/commands';
 import type { BuildingBlueprintId, Entity, PlayerId } from '../sim/types';
 import { ServerBootstrap } from '../server/ServerBootstrap';
@@ -47,6 +48,9 @@ type DeterministicReplayCaseReport = {
   readonly finalHash: string;
   readonly finalSections: Record<string, string>;
   readonly finalEntities: readonly unknown[];
+  /** Path-plan admission counters for the run (derived lockstep state:
+   *  identical across the two replays, but never part of the hash). */
+  readonly pathPlanScheduler: PathPlanSchedulerStats;
 };
 
 type DeterministicReplayHarnessReport = {
@@ -403,6 +407,7 @@ export async function runDeterministicReplayHarness(): Promise<DeterministicRepl
       finalEntities: [...first.entitiesById.entries()]
         .sort(([a], [b]) => a - b)
         .map(([, entity]) => entity),
+      pathPlanScheduler: first.pathPlanScheduler,
     });
   }
   return {
@@ -423,6 +428,7 @@ type ReplayRun = {
   readonly entityHashes: readonly { readonly id: number; readonly hash: string }[];
   readonly entitiesById: ReadonlyMap<number, unknown>;
   readonly checkpoints: readonly string[];
+  readonly pathPlanScheduler: PathPlanSchedulerStats;
 };
 
 type ReplayRunStats = {
@@ -459,6 +465,7 @@ function runReplayCaseOnce(replayCase: DeterministicReplayCase): ReplayRun {
       entityHashes: collectEntityHashes(finalState.entities),
       entitiesById: collectEntitiesById(finalState.entities),
       checkpoints,
+      pathPlanScheduler: core.simulation.getPathPlanSchedulerStats(),
     };
   } finally {
     core.clearPendingCommandsAndStepBuffers();
@@ -552,6 +559,16 @@ function assertMatchingReplayRuns(
           `${first.checkpoints[i]} !== ${second.checkpoints[i]}`,
       );
     }
+  }
+  // Scheduler counters are derived from lockstep state only, so two replays
+  // of the same commands must agree on every one of them.
+  const firstStats = JSON.stringify(first.pathPlanScheduler);
+  const secondStats = JSON.stringify(second.pathPlanScheduler);
+  if (firstStats !== secondStats) {
+    throw new Error(
+      `[deterministic replay] ${caseId} path scheduler stats mismatch: ` +
+        `${firstStats} !== ${secondStats}`,
+    );
   }
 }
 

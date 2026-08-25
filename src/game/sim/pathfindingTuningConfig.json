@@ -5,7 +5,7 @@
   "intermediateCorridorWu": 10,
   "softClearanceCells": 2,
   "softClearancePenaltyPerCell": 0.35,
-  "aStarExpansionBudgetPerTeamTurn": 4096,
+  "aStarExpansionBudgetPerTick": 4096,
   "refreshServiceIntervalTicks": 8,
   "chaseRepathCooldownTicks": 7,
   "chaseRepathDriftMinWu": 150,

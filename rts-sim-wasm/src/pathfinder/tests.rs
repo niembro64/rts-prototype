@@ -362,6 +362,47 @@ fn building_escape_is_one_way() {
 }
 
 #[test]
+fn line_walker_exempts_only_the_escape_start_cell() {
+    // 3x1 grid; a building went up over cell 0 where the body stands.
+    let mut state = open_test_state(3, 1);
+    state.cell_size = PATHFINDER_BUILD_GRID_CELL_SIZE;
+    state.building_blocked[0] = 1;
+    state.cur_waypoint_traversal = ground_traversal();
+    state.cur_waypoint_matches_move_domain = true;
+    let ground = ground_traversal();
+    let (x0, y0) = pathfinder_cell_center(0, 0);
+    let (x2, y2) = pathfinder_cell_center(2, 0);
+
+    // Without classification the walker rejects the blocked first cell.
+    pathfinder_set_escape_start(&mut state, 2, ground);
+    assert_eq!(state.cur_escape_start_idx, usize::MAX, "an open start is not an escape start");
+    assert!(!pathfinder_has_los(&mut state, x0, y0, x2, y2, ground));
+
+    // Classified as the body's escape start, the SAME line is legal.
+    pathfinder_set_escape_start(&mut state, 0, ground);
+    assert_eq!(state.cur_escape_start_idx, 0);
+    assert!(
+        pathfinder_has_los(&mut state, x0, y0, x2, y2, ground),
+        "a body may leave its own fresh footprint along a straight first leg"
+    );
+    // Escape is one-way: a line INTO the footprint is still illegal, and so
+    // is one that merely crosses the escape cell later in its walk.
+    assert!(!pathfinder_has_los(&mut state, x2, y2, x0, y0, ground));
+    state.building_blocked[0] = 0;
+    state.building_blocked[1] = 1;
+    pathfinder_set_escape_start(&mut state, 1, ground);
+    assert!(
+        !pathfinder_has_los(&mut state, x0, y0, x2, y2, ground),
+        "the exemption never applies to a cell that is not the line's first cell"
+    );
+    // A start blocked by terrain (not only by a building) is never an escape.
+    state.building_blocked[1] = 0;
+    state.terrain_edge_blocked[0] = 1;
+    pathfinder_set_escape_start(&mut state, 0, ground);
+    assert_eq!(state.cur_escape_start_idx, usize::MAX);
+}
+
+#[test]
 fn building_sync_rebuilds_clearance_and_components() {
     let mut state = open_test_state(5, 3);
     // A full-height building wall down the middle column severs the map.

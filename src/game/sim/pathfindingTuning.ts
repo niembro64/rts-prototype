@@ -7,7 +7,7 @@ type PathfindingTuningConfig = {
   allowDiagonalNeighbors: boolean;
   softClearanceCells: number;
   softClearancePenaltyPerCell: number;
-  aStarExpansionBudgetPerTeamTurn: number;
+  aStarExpansionBudgetPerTick: number;
   refreshServiceIntervalTicks: number;
   chaseRepathCooldownTicks: number;
   chaseRepathDriftMinWu: number;
@@ -108,16 +108,20 @@ export const PATHFINDING_FORCE_SAFETY_RATIO = readForceSafetyRatio();
 // identical plan computations on the identical ticks, so none of them may
 // ever be derived from measured frame time.
 
-/** Exact maximum number of navigation nodes the selected ally team may close
- *  during one round-robin turn. Unused work may serve another route for that
- *  team; one unfinished frontier is retained for its next turn. */
-export const PATHFINDING_A_STAR_EXPANSIONS_PER_TEAM_TURN = requirePositiveInteger(
-  'aStarExpansionBudgetPerTeamTurn',
-  config.aStarExpansionBudgetPerTeamTurn,
+/** Exact maximum number of fine navigation nodes closed in one fixed tick —
+ *  the global ceiling. Sides with demand are admitted round-robin under it:
+ *  a served side resumes its retained frontier, may spend leftover on more of
+ *  its own routes, and hands any remainder to the next side with demand in
+ *  the same tick. One unfinished frontier per side is retained for that
+ *  side's next turn. */
+export const PATHFINDING_A_STAR_EXPANSIONS_PER_TICK = requirePositiveInteger(
+  'aStarExpansionBudgetPerTick',
+  config.aStarExpansionBudgetPerTick,
 );
-/** A pending refresh lane gets first choice on this deterministic team-turn
- *  cadence; fresh jobs win other admissions. Free/stale requests never
- *  consume A* work, so admission can continue in the same tick. */
+/** A pending refresh lane gets first choice every N served turns of a side
+ *  (a side's served-turn counter, not a tick count); fresh jobs win other
+ *  admissions. Free/stale requests never consume A* work, so admission can
+ *  continue in the same tick. */
 export const PATHFINDING_REFRESH_SERVICE_INTERVAL_TICKS = requirePositiveInteger(
   'refreshServiceIntervalTicks',
   config.refreshServiceIntervalTicks,

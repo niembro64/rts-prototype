@@ -193,6 +193,11 @@ pub(crate) struct PathfinderState {
     /// origin, so this is the honest fording depth and immersion center.
     /// 0 falls back to the collision radius (sphere resting tangent).
     cur_support_point_offset_z: f64,
+    /// The querying body's start cell when that cell is blocked ONLY by a
+    /// building footprint (an escape start), else `usize::MAX`. Set by every
+    /// query entry from the same classification; `pathfinder_line_cost`
+    /// exempts exactly this cell, and only as the first cell of a line.
+    cur_escape_start_idx: usize,
     /// Per-query fast path for the lateral-hold legality gate: at or above
     /// this min-cell-normal even a fully lateral hold provably fits the dry
     /// tangent budget (and the wet budget is never smaller), so the edge
@@ -463,6 +468,7 @@ impl PathfinderState {
             cur_symmetric_slope: false,
             cur_unit_radius: 0.0,
             cur_support_point_offset_z: 0.0,
+            cur_escape_start_idx: usize::MAX,
             cur_lateral_skip_normal_z: 0.0,
             cur_descent_hold_normal_z: 0.0,
             cur_waypoint_traversal: PathfinderTraversal {
@@ -1676,6 +1682,28 @@ pub(crate) fn pathfinder_a_star(
 /// Trace the same supercover Bresenham segment used by validation and
 /// smoothing. Returning its cost keeps path legality and route quality on one
 /// traversal primitive; `None` means the segment is illegal.
+/// Classify the querying body's start cell for this query. A start blocked
+/// ONLY by a building footprint is an escape start: the body was there before
+/// the building went up. The planner runs A* out of such a cell (every step
+/// INTO a building cell is illegal, so escape is one-way), and the validator
+/// must accept the first leg the planner produced from it — otherwise a
+/// builder that placed a structure over its own position is rejected forever
+/// and never walks out. Both entries call this so they agree by construction.
+pub(crate) fn pathfinder_set_escape_start(
+    state: &mut PathfinderState,
+    start_idx: usize,
+    traversal: PathfinderTraversal,
+) {
+    state.cur_escape_start_idx = if start_idx < state.n
+        && !pathfinder_is_cell_passable(state, start_idx, traversal)
+        && pathfinder_is_cell_passable_ignoring_buildings(state, start_idx, traversal)
+    {
+        start_idx
+    } else {
+        usize::MAX
+    };
+}
+
 pub(crate) fn pathfinder_line_cost(
     state: &mut PathfinderState,
     x0: f64,
@@ -1697,11 +1725,23 @@ pub(crate) fn pathfinder_line_cost(
     let mut err = dx - dy;
     let max_steps = dx + dy + 2;
     let mut cost = 0.0f32;
+    let mut first_cell = true;
     for _ in 0..max_steps {
         if gx < 0 || gy < 0 || gx >= state.grid_w || gy >= state.grid_h {
             return None;
         }
-        if !pathfinder_is_grid_cell_passable(state, gx, gy, traversal) {
+        // The body's own escape-start cell is legal only as the FIRST cell of
+        // a line: the body is already standing in it. Every later cell keeps
+        // the full rule, so a line may leave a fresh footprint but never
+        // cross or enter one.
+        let idx = (gy * state.grid_w + gx) as usize;
+        let passable = if first_cell && idx == state.cur_escape_start_idx {
+            pathfinder_is_cell_passable_ignoring_buildings(state, idx, traversal)
+        } else {
+            pathfinder_is_cell_passable(state, idx, traversal)
+        };
+        first_cell = false;
+        if !passable {
             return None;
         }
         if gx == tgx && gy == tgy {
@@ -1921,6 +1961,7 @@ fn pathfinder_find_path_with_expansion_budget(
         state.waypoint_scratch.push(start_y);
         return 1;
     }
+    pathfinder_set_escape_start(state, start_idx, traversal);
 
     // Goals must fit the physical collision disk. Snapping a destination
     // without hard clearance would knowingly route the body into overlap.
@@ -2494,6 +2535,13 @@ pub fn pathfinder_validate_path(
         static_friction_coefficient,
         safe_water_drive_accel,
     );
+    let start_gx = ((points[0] / state.cell_size).floor() as i32)
+        .max(0)
+        .min(state.grid_w - 1);
+    let start_gy = ((points[1] / state.cell_size).floor() as i32)
+        .max(0)
+        .min(state.grid_h - 1);
+    let start_idx = (start_gy * state.grid_w + start_gx) as usize;
     state.cur_required_clearance = if traversal.allow_air {
         0
     } else {
@@ -2501,15 +2549,12 @@ pub fn pathfinder_validate_path(
         // already stands, so a route may not be rejected for the pocket the
         // body is already occupying.
         let hard = pathfinder_hard_clearance_cells_for_state(state, unit_radius);
-        let start_gx = ((points[0] / state.cell_size).floor() as i32)
-            .max(0)
-            .min(state.grid_w - 1);
-        let start_gy = ((points[1] / state.cell_size).floor() as i32)
-            .max(0)
-            .min(state.grid_h - 1);
-        let start_idx = (start_gy * state.grid_w + start_gx) as usize;
         hard.min(pathfinder_clearance_at(state, start_idx, traversal).max(0))
     };
+    // Same escape START as the planner: the first vertex is where the body
+    // stands, and a footprint-only block there must not reject the escape
+    // leg the planner itself produced.
+    pathfinder_set_escape_start(state, start_idx, traversal);
     let last_x = points[points.len() - 2];
     let last_y = points[points.len() - 1];
     if !pathfinder_position_is_in_navigation_domain(state, last_x, last_y, waypoint_traversal) {
