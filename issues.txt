@@ -28,3 +28,7 @@
 
 11) We don't seem to be able to build our "tick" or "bee" units from the "universal fabricator" or their individual special fabricators. These units should be able to be built by fabricators as well as their "queen" units. Also let's rename the "queen tick" and "queen bee' back to those names. 
 
+12) Check on our "spectator" functionality, it seems that they are detecting "desync" possibly, where the players are not detecting desync. 
+
+
+
