@@ -76,6 +76,8 @@
     "realFogOfWarEnabled": "real-battle-fog-of-war-enabled",
     "demoSlowDownAtFinalWaypoint": "demo-battle-slow-down-at-final-waypoint",
     "realSlowDownAtFinalWaypoint": "real-battle-slow-down-at-final-waypoint",
+    "demoPathfindingConsidersUnits": "demo-battle-pathfinding-considers-units",
+    "realPathfindingConsidersUnits": "real-battle-pathfinding-considers-units",
     "demoShieldReflectionMode": "demo-battle-shield-reflection-mode",
     "realShieldReflectionMode": "real-battle-shield-reflection-mode",
     "demoSlopePathMode": "demo-battle-slope-path-mode",

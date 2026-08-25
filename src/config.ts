@@ -132,6 +132,8 @@ export const DEFAULT_SHIELD_REFLECTION_MODE =
   BATTLE_CONFIG.shieldReflectionMode.default;
 export const DEFAULT_SLOW_DOWN_AT_FINAL_WAYPOINT =
   BATTLE_CONFIG.slowDownAtFinalWaypoint.default;
+export const DEFAULT_PATHFINDING_CONSIDERS_UNITS =
+  BATTLE_CONFIG.pathfindingConsidersUnits.default;
 
 // =============================================================================
 // EMA (Exponential Moving Average) STATS TRACKING

@@ -78,6 +78,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly localPlayerShieldsPowered: boolean;
   readonly currentFogOfWarEnabled: boolean;
   readonly currentSlowDownAtFinalWaypoint: boolean;
+  readonly currentPathfindingConsidersUnits: boolean;
   readonly currentSlopePathMode: SlopePathMode;
   readonly currentMetalCoverage: MetalCoverage;
   readonly currentLiquidSurfaceMode: LiquidSurfaceMode;
@@ -105,6 +106,7 @@ export type GameCanvasBattleControlBarModel = {
   applySimulationTickRate(value: number): void;
   setFogOfWarEnabled(enabled: boolean): void;
   setSlowDownAtFinalWaypoint(enabled: boolean): void;
+  setPathfindingConsidersUnits(enabled: boolean): void;
   setSlopePathMode(mode: SlopePathMode): void;
   setMetalCoverage(mode: MetalCoverage): void;
   setLiquidSurfaceMode(mode: LiquidSurfaceMode): void;

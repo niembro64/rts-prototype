@@ -24,6 +24,8 @@ export type BattlePreset = {
   readonly fogOfWarEnabled: boolean;
   /** Apply velocity-aware braking near the last point of the last action. */
   readonly slowDownAtFinalWaypoint: boolean;
+  /** Whether pathfinding treats other units as obstacles (BATTLE bar toggle). */
+  readonly pathfindingConsidersUnits: boolean;
   /** Ground pathfinding slope policy (SLOPE LIMIT bar toggle). */
   readonly slopePathMode: SlopePathMode;
   /** Ground material policy (WORLD bar group). `metal` makes the whole map
@@ -89,6 +91,9 @@ const SUBSYSTEM_DEFAULTS = {
   // BAR-style full-speed arrival is the default; the BATTLE toggle opts into
   // the smoother velocity-aware final approach.
   slowDownAtFinalWaypoint: false,
+  // Off by default: ground paths ignore other units unless the BATTLE toggle
+  // opts into unit-aware planning.
+  pathfindingConsidersUnits: false,
   slopePathMode: 'directional' as SlopePathMode,
   // Every stock preset ships the authored world; only METAL HELL flips these.
   metalCoverage: 'more' as MetalCoverage,
@@ -277,6 +282,7 @@ function presetMatchesCurrent(
     p.metalCoverage === c.metalCoverage &&
     p.liquidSurfaceMode === c.liquidSurfaceMode &&
     p.slowDownAtFinalWaypoint === c.slowDownAtFinalWaypoint &&
+    p.pathfindingConsidersUnits === c.pathfindingConsidersUnits &&
     p.slopePathMode === c.slopePathMode &&
     Math.abs(p.converterTax - c.converterTax) < 1e-6 &&
     p.centerMagnitude === c.centerMagnitude &&

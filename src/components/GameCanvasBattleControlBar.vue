@@ -387,6 +387,20 @@ const METAL_COVERAGE_TITLE: Record<MetalCoverage, string> = {
           @click="model.setSlowDownAtFinalWaypoint(!model.currentSlowDownAtFinalWaypoint)"
         >FINAL WAYPOINT SLOWDOWN</BarButton>
         <BarDivider />
+        <BarLabel title="Whether ground pathfinding treats other units as obstacles when planning a route. OFF plans through units and leaves the encounter to local avoidance; ON routes around them.">PATHFINDING SHOULD CONSIDER UNITS:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            :active="!model.currentPathfindingConsidersUnits"
+            title="Plan paths through other units; local avoidance handles the encounter."
+            @click="model.setPathfindingConsidersUnits(false)"
+          >OFF</BarButton>
+          <BarButton
+            :active="model.currentPathfindingConsidersUnits"
+            title="Plan paths around other units."
+            @click="model.setPathfindingConsidersUnits(true)"
+          >ON</BarButton>
+        </BarButtonGroup>
+        <BarDivider />
       </BarControlGroup>
     </div>
   </div>

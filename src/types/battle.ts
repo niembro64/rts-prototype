@@ -32,6 +32,8 @@ export type BattleBarConfig = {
   readonly fogOfWarEnabled: BooleanSetting;
   /** Whether ordinary units use arrival braking near their final waypoint. */
   readonly slowDownAtFinalWaypoint: BooleanSetting;
+  /** Whether ground pathfinding treats other units as obstacles. */
+  readonly pathfindingConsidersUnits: BooleanSetting;
   readonly slopePathMode: {
     readonly default: SlopePathMode;
   };

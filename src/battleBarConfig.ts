@@ -167,6 +167,7 @@ export const BATTLE_CONFIG = {
   forceFieldsVisible: { default: _demoPreset.forceFieldsVisible },
   fogOfWarEnabled: { default: _demoPreset.fogOfWarEnabled },
   slowDownAtFinalWaypoint: { default: _demoPreset.slowDownAtFinalWaypoint },
+  pathfindingConsidersUnits: { default: _demoPreset.pathfindingConsidersUnits },
   shieldReflectionMode: {
     default: _demoPreset.shieldReflectionMode,
   },
@@ -307,6 +308,8 @@ const STORAGE_DEMO_FOG_OF_WAR_ENABLED = sk.demoFogOfWarEnabled;
 const STORAGE_REAL_FOG_OF_WAR_ENABLED = sk.realFogOfWarEnabled;
 const STORAGE_DEMO_SLOW_DOWN_AT_FINAL_WAYPOINT = sk.demoSlowDownAtFinalWaypoint;
 const STORAGE_REAL_SLOW_DOWN_AT_FINAL_WAYPOINT = sk.realSlowDownAtFinalWaypoint;
+const STORAGE_DEMO_PATHFINDING_CONSIDERS_UNITS = sk.demoPathfindingConsidersUnits;
+const STORAGE_REAL_PATHFINDING_CONSIDERS_UNITS = sk.realPathfindingConsidersUnits;
 const STORAGE_DEMO_SLOPE_PATH_MODE = sk.demoSlopePathMode;
 const STORAGE_REAL_SLOPE_PATH_MODE = sk.realSlopePathMode;
 const STORAGE_DEMO_METAL_COVERAGE = sk.demoMetalCoverage;
@@ -804,6 +807,19 @@ export function loadStoredSlowDownAtFinalWaypoint(mode: BattleMode): boolean {
 
 export function saveSlowDownAtFinalWaypoint(enabled: boolean, mode: BattleMode): void {
   writeModeSetting(mode, STORAGE_REAL_SLOW_DOWN_AT_FINAL_WAYPOINT, STORAGE_DEMO_SLOW_DOWN_AT_FINAL_WAYPOINT, String(enabled));
+}
+
+export function loadStoredPathfindingConsidersUnits(mode: BattleMode): boolean {
+  return loadModeBool(
+    mode,
+    STORAGE_REAL_PATHFINDING_CONSIDERS_UNITS,
+    STORAGE_DEMO_PATHFINDING_CONSIDERS_UNITS,
+    getModeDefaultPreset(mode).pathfindingConsidersUnits,
+  );
+}
+
+export function savePathfindingConsidersUnits(enabled: boolean, mode: BattleMode): void {
+  writeModeSetting(mode, STORAGE_REAL_PATHFINDING_CONSIDERS_UNITS, STORAGE_DEMO_PATHFINDING_CONSIDERS_UNITS, String(enabled));
 }
 
 export function loadStoredShieldReflectionMode(_mode: BattleMode): ShieldReflectionMode {

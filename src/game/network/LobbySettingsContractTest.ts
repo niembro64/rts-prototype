@@ -20,6 +20,7 @@ const CURRENT_SETTINGS: LobbySettings = {
   simulationTickRateHz: 20,
   converterTax: 0.1,
   slowDownAtFinalWaypoint: true,
+  pathfindingConsidersUnits: true,
   metalCoverage: 'more',
   liquidSurfaceMode: 'water',
 };
@@ -61,6 +62,10 @@ export function runLobbySettingsContractTest(): void {
   assertRejected(
     { ...CURRENT_SETTINGS, slowDownAtFinalWaypoint: undefined },
     'an obsolete packet without slowDownAtFinalWaypoint',
+  );
+  assertRejected(
+    { ...CURRENT_SETTINGS, pathfindingConsidersUnits: undefined },
+    'an obsolete packet without pathfindingConsidersUnits',
   );
   assertRejected(
     { ...CURRENT_SETTINGS, metalCoverage: 'unknown' },

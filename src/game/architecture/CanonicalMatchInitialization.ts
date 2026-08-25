@@ -108,6 +108,7 @@ export type CanonicalMatchInitialization = {
     readonly converterTax: number | null;
     readonly fogOfWarEnabled: true;
     readonly slowDownAtFinalWaypoint: boolean;
+    readonly pathfindingConsidersUnits: boolean;
   };
   readonly content: {
     readonly appSourceVersion: string;
@@ -232,6 +233,7 @@ export function buildCanonicalMatchInitialization({
       converterTax: finiteOrNull(settings?.converterTax),
       fogOfWarEnabled: true,
       slowDownAtFinalWaypoint: settings?.slowDownAtFinalWaypoint === true,
+      pathfindingConsidersUnits: settings?.pathfindingConsidersUnits === true,
     },
     content: {
       appSourceVersion: APP_SOURCE_VERSION,

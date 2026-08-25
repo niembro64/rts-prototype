@@ -5,6 +5,7 @@ import {
   loadStoredTurretShieldSpheresEnabled,
   loadStoredFogOfWarEnabled,
   loadStoredSlowDownAtFinalWaypoint,
+  loadStoredPathfindingConsidersUnits,
   loadStoredSlopePathMode,
   loadStoredMetalCoverage,
   loadStoredLiquidSurfaceMode,
@@ -32,6 +33,9 @@ type StoredBattleServerSettingsOptions = {
   /** Canonical handoff value for real battles. Demo/background callers omit
    *  it and use their mode's persisted BATTLE toggle. */
   slowDownAtFinalWaypoint?: boolean;
+  /** Canonical handoff value for real battles. Demo/background callers omit
+   *  it and use their mode's persisted BATTLE toggle. */
+  pathfindingConsidersUnits?: boolean;
   /** Canonical real-battle WORLD selections. Background/demo callers omit
    *  them and use the stored namespace. */
   metalCoverage?: MetalCoverage;
@@ -90,6 +94,13 @@ function buildStoredBattleServerSettingCommands(
       enabled:
         options.slowDownAtFinalWaypoint ??
         loadStoredSlowDownAtFinalWaypoint(mode),
+    },
+    {
+      type: 'setPathfindingConsidersUnits',
+      tick: 0,
+      enabled:
+        options.pathfindingConsidersUnits ??
+        loadStoredPathfindingConsidersUnits(mode),
     },
     {
       type: 'setSlopePathMode',

@@ -5,6 +5,7 @@ import {
   loadStoredForceFieldsVisible,
   loadStoredFogOfWarEnabled,
   loadStoredSlowDownAtFinalWaypoint,
+  loadStoredPathfindingConsidersUnits,
   normalizeConverterTax,
   saveConverterTax,
   loadBattleBuildingRoster,
@@ -13,6 +14,7 @@ import {
   saveForceFieldsVisible,
   saveFogOfWarEnabled,
   saveSlowDownAtFinalWaypoint,
+  savePathfindingConsidersUnits,
   loadStoredSlopePathMode,
   saveSlopePathMode,
   loadStoredMetalCoverage,
@@ -55,6 +57,7 @@ type GameCanvasBattleSettings = {
   localPlayerShieldsPowered: ComputedRef<boolean>;
   currentFogOfWarEnabled: ComputedRef<boolean>;
   currentSlowDownAtFinalWaypoint: ComputedRef<boolean>;
+  currentPathfindingConsidersUnits: ComputedRef<boolean>;
   currentSlopePathMode: ComputedRef<SlopePathMode>;
   currentMetalCoverage: ComputedRef<MetalCoverage>;
   currentLiquidSurfaceMode: ComputedRef<LiquidSurfaceMode>;
@@ -67,6 +70,7 @@ type GameCanvasBattleSettings = {
   setForceFieldsVisible(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;
   setSlowDownAtFinalWaypoint(enabled: boolean, broadcast?: boolean): void;
+  setPathfindingConsidersUnits(enabled: boolean, broadcast?: boolean): void;
   setSlopePathMode(mode: SlopePathMode): void;
   setMetalCoverage(mode: MetalCoverage, broadcast?: boolean): void;
   setLiquidSurfaceMode(mode: LiquidSurfaceMode, broadcast?: boolean): void;
@@ -82,6 +86,7 @@ type GameCanvasBattleSettingsOptions = {
   localPlayerId: Ref<number>;
   currentBattleMode: ComputedRef<BattleMode>;
   slowDownAtFinalWaypointStoreVersion: Ref<number>;
+  pathfindingConsidersUnitsStoreVersion: Ref<number>;
   worldSurfaceStoreVersion: Ref<number>;
   demoUnitBlueprintIds: readonly string[];
   demoBuildingBlueprintIds: readonly string[];
@@ -112,6 +117,7 @@ export function useGameCanvasBattleSettings({
   localPlayerId,
   currentBattleMode,
   slowDownAtFinalWaypointStoreVersion,
+  pathfindingConsidersUnitsStoreVersion,
   worldSurfaceStoreVersion,
   demoUnitBlueprintIds,
   demoBuildingBlueprintIds,
@@ -225,6 +231,10 @@ export function useGameCanvasBattleSettings({
   const currentSlowDownAtFinalWaypoint = computed(() => {
     void slowDownAtFinalWaypointStoreVersion.value;
     return loadStoredSlowDownAtFinalWaypoint(currentBattleMode.value);
+  });
+  const currentPathfindingConsidersUnits = computed(() => {
+    void pathfindingConsidersUnitsStoreVersion.value;
+    return loadStoredPathfindingConsidersUnits(currentBattleMode.value);
   });
   // Slope mode is not mirrored on the snapshot meta (it would only matter for a
   // second player, and the toggle is demo-only), so the bar reflects the stored
@@ -342,6 +352,22 @@ export function useGameCanvasBattleSettings({
     if (broadcast && mode === 'real') broadcastLobbySettingsIfHost();
   }
 
+  function setPathfindingConsidersUnits(enabled: boolean, broadcast = true): void {
+    const mode = currentBattleMode.value;
+    const changed = loadStoredPathfindingConsidersUnits(mode) !== enabled;
+    if (changed) {
+      getActiveConnection()?.sendCommand({
+        type: 'setPathfindingConsidersUnits',
+        tick: 0,
+        enabled,
+      });
+    }
+    savePathfindingConsidersUnits(enabled, mode);
+    if (!changed) return;
+    pathfindingConsidersUnitsStoreVersion.value++;
+    if (broadcast && mode === 'real') broadcastLobbySettingsIfHost();
+  }
+
   function setSlopePathMode(mode: SlopePathMode): void {
     // SLOPE LIMIT gates the DEMO battle only. The real lockstep game keeps the
     // default policy so every peer agrees without a per-peer stored value.
@@ -384,6 +410,7 @@ export function useGameCanvasBattleSettings({
   function applyPreset(preset: BattlePreset): void {
     setFogOfWarEnabled(preset.fogOfWarEnabled);
     setSlowDownAtFinalWaypoint(preset.slowDownAtFinalWaypoint, false);
+    setPathfindingConsidersUnits(preset.pathfindingConsidersUnits, false);
     setSlopePathMode(preset.slopePathMode);
     if (preset.metalCoverage !== currentMetalCoverage.value) {
       setMetalCoverage(preset.metalCoverage, false);
@@ -436,6 +463,7 @@ export function useGameCanvasBattleSettings({
     localPlayerShieldsPowered,
     currentFogOfWarEnabled,
     currentSlowDownAtFinalWaypoint,
+    currentPathfindingConsidersUnits,
     currentSlopePathMode,
     currentMetalCoverage,
     currentLiquidSurfaceMode,
@@ -448,6 +476,7 @@ export function useGameCanvasBattleSettings({
     setForceFieldsVisible,
     setFogOfWarEnabled,
     setSlowDownAtFinalWaypoint,
+    setPathfindingConsidersUnits,
     setSlopePathMode,
     setMetalCoverage,
     setLiquidSurfaceMode,

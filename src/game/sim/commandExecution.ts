@@ -382,6 +382,7 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
     case 'setShieldReflectionMode':
     case 'setFogOfWarEnabled':
     case 'setSlowDownAtFinalWaypoint':
+    case 'setPathfindingConsidersUnits':
     case 'setSlopePathMode':
     case 'setMetalCoverage':
     case 'setLiquidSurfaceMode':
@@ -432,6 +433,9 @@ export function applyGameplaySettingCommand(
       return;
     case 'setSlowDownAtFinalWaypoint':
       world.slowDownAtFinalWaypoint = command.enabled;
+      return;
+    case 'setPathfindingConsidersUnits':
+      world.pathfindingConsidersUnits = command.enabled;
       return;
     case 'setSlopePathMode':
       if (world.slopePathMode !== command.mode) {

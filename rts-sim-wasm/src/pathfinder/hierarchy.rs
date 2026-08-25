@@ -883,12 +883,24 @@ pub(crate) fn hpa_search(
         state.hpa_work += hpa_ensure_cluster(state, class_idx, cluster);
         let g_here = state.hpa_g[n];
         // Intra edges (this node's cost row is computed on first expansion).
+        // A row build is the expensive step of the whole search; like a
+        // cluster build it is gated by the slice budget. Everything built so
+        // far persists, so the next slice re-runs the cheap abstract
+        // expansion over finished rows and builds the next one — an
+        // exhaustive "unreachable" search spreads over as many ticks as it
+        // needs instead of freezing one.
         let (slot, k) = {
             let cl = &state.hpa_classes[class_idx].clusters[cluster as usize];
             let slot = cl.nodes.iter().position(|&x| x == node);
             (slot, cl.nodes.len())
         };
         if let Some(slot) = slot {
+            if !state.hpa_classes[class_idx].clusters[cluster as usize].intra_row_built[slot]
+                && state.hpa_work > budget
+            {
+                state.last_coarse_expanded_nodes = expanded;
+                return HpaSearchOutcome::Budget;
+            }
             state.hpa_work += hpa_ensure_intra_row(state, class_idx, cluster, slot);
             for j in 0..k {
                 let (other, cost) = {
@@ -1056,8 +1068,13 @@ pub(crate) fn hpa_nearest_reachable_cell(
             return Some((nx, ny));
         }
     }
+    // Reached clusters in ascending order of their nearest-corner distance
+    // to the goal; the first cluster whose bound cannot beat the best found
+    // ends the scan, so this touches one or two clusters in practice
+    // instead of every reached cluster on the map.
     let mut best: Option<(i32, i32, i64)> = None;
     let cluster_count = state.hpa_cluster_change_stamp.len() as u32;
+    let mut candidates: Vec<(i64, u32)> = Vec::new();
     for cluster in 0..cluster_count {
         let reached = cluster == state.hpa_start_reach_cluster
             || hpa_cluster_reached_in_last_search(state, class_idx, cluster);
@@ -1065,13 +1082,17 @@ pub(crate) fn hpa_nearest_reachable_cell(
             continue;
         }
         let (x0, y0, x1, y1) = hpa_cluster_bounds(state, cluster);
-        // Cheap reject: the cluster's nearest corner cannot beat the best.
         let cx = gx.clamp(x0, x1 - 1);
         let cy = gy.clamp(y0, y1 - 1);
         let bound = ((cx - gx) as i64).pow(2) + ((cy - gy) as i64).pow(2);
+        candidates.push((bound, cluster));
+    }
+    candidates.sort_unstable();
+    for &(bound, cluster) in &candidates {
         if best.is_some_and(|(_, _, d)| bound >= d) {
-            continue;
+            break;
         }
+        let (x0, y0, x1, y1) = hpa_cluster_bounds(state, cluster);
         for ny in y0..y1 {
             for nx in x0..x1 {
                 let idx = (ny * state.grid_w + nx) as usize;

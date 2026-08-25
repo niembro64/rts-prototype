@@ -118,6 +118,7 @@ function isGameplayResponseCommand(command: Command): boolean {
     case 'setShieldReflectionMode':
     case 'setFogOfWarEnabled':
     case 'setSlowDownAtFinalWaypoint':
+    case 'setPathfindingConsidersUnits':
       return false;
     default:
       return true;

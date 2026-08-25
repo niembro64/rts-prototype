@@ -46,10 +46,13 @@ export const PATH_REQUEST_FRESH = 1;
 export const PATH_REQUEST_REFRESH = 2;
 const FRESH_FIRST_LANES = [PATH_REQUEST_FRESH, PATH_REQUEST_REFRESH] as const;
 const REFRESH_FIRST_LANES = [PATH_REQUEST_REFRESH, PATH_REQUEST_FRESH] as const;
-// Internal queue selector. Units still expose PATH_REQUEST_FRESH in their
-// canonical state; commander priority changes latency inside a side's
-// served turn, never the amount of A* work that side receives.
+// Internal queue selectors. Units still expose PATH_REQUEST_FRESH/REFRESH in
+// their canonical state; commander priority changes latency inside a side's
+// served turn, never the amount of A* work that side receives. A commander's
+// request — fresh or refresh — always goes to the FRONT of its side's work:
+// it is the indispensable builder and the loss condition.
 const PATH_REQUEST_COMMANDER_FRESH = 3;
+const PATH_REQUEST_COMMANDER_REFRESH = 4;
 
 /** Upper bound (inclusive, in ticks) of each admission-age histogram bucket;
  *  the final bucket is open-ended. Age = ticks a request waited in a lane
@@ -108,6 +111,8 @@ type PathRequestLaneQueue = {
 type PlayerPathRequestLanes = {
   /** Commanders awaiting their first validated route. */
   commanderFresh: PathRequestLaneQueue;
+  /** Commanders refreshing a still-usable route. */
+  commanderRefresh: PathRequestLaneQueue;
   /** Planless units awaiting a validated direct segment or path job. */
   fresh: PathRequestLaneQueue;
   /** Units that may continue on a previously validated route while waiting. */
@@ -168,7 +173,11 @@ export class SimulationPathPlanScheduler {
   requestRefresh(entity: Entity): void {
     const unit = entity.unit;
     if (unit === null || unit.pathRequestLane !== PATH_REQUEST_NONE) return;
-    this.enqueue(this.lanesFor(pathPlanPlayerId(entity)).refresh, entity.id);
+    const lanes = this.lanesFor(pathPlanPlayerId(entity));
+    this.enqueue(
+      entity.commander !== null ? lanes.commanderRefresh : lanes.refresh,
+      entity.id,
+    );
     unit.pathRequestLane = PATH_REQUEST_REFRESH;
   }
 
@@ -275,6 +284,7 @@ export class SimulationPathPlanScheduler {
       if (lanes === undefined) continue;
       if (
         laneHasEligibleWork(lanes.commanderFresh, now) ||
+        laneHasEligibleWork(lanes.commanderRefresh, now) ||
         laneHasEligibleWork(lanes.fresh, now) ||
         laneHasEligibleWork(lanes.refresh, now)
       ) {
@@ -302,17 +312,13 @@ export class SimulationPathPlanScheduler {
       teamTurn % refreshServiceIntervalTicks === 0;
     const laneOrder = preferRefresh ? REFRESH_FIRST_LANES : FRESH_FIRST_LANES;
     // A commander is the player's indispensable builder and loss condition.
-    // Serve its already-budgeted fresh request before ordinary/refresh work,
-    // but still admit at most the jobs the selected side's quantum buys.
-    if (
-      this.drainTeamLane(
-        teamTurn,
-        roster,
-        teamId,
-        PATH_REQUEST_COMMANDER_FRESH,
-        serve,
-      )
-    ) {
+    // Its requests — fresh, then refresh — are served before any ordinary
+    // work, but still admit at most the jobs the selected side's quantum
+    // buys.
+    if (this.drainTeamLane(teamTurn, roster, teamId, PATH_REQUEST_COMMANDER_FRESH, serve)) {
+      return true;
+    }
+    if (this.drainTeamLane(teamTurn, roster, teamId, PATH_REQUEST_COMMANDER_REFRESH, serve)) {
       return true;
     }
     for (let laneIndex = 0; laneIndex < laneOrder.length; laneIndex++) {
@@ -367,12 +373,16 @@ export class SimulationPathPlanScheduler {
       if (lanes === undefined) continue;
       const queue = lane === PATH_REQUEST_COMMANDER_FRESH
         ? lanes.commanderFresh
-        : (lane === PATH_REQUEST_FRESH ? lanes.fresh : lanes.refresh);
+        : lane === PATH_REQUEST_COMMANDER_REFRESH
+          ? lanes.commanderRefresh
+          : (lane === PATH_REQUEST_FRESH ? lanes.fresh : lanes.refresh);
       // Invalid entries and free direct/cache results do not spend A* work.
       while (laneHasEligibleWork(queue, now)) {
         const servedLane = lane === PATH_REQUEST_COMMANDER_FRESH
           ? PATH_REQUEST_FRESH
-          : lane;
+          : lane === PATH_REQUEST_COMMANDER_REFRESH
+            ? PATH_REQUEST_REFRESH
+            : lane;
         const queuedTick = queue.queuedTicks[queue.head];
         if (serve(popLane(queue), servedLane)) {
           this.nextPlayerIndexByTeam.set(
@@ -403,6 +413,7 @@ export class SimulationPathPlanScheduler {
     if (lanes === undefined) {
       lanes = {
         commanderFresh: { ids: [], queuedTicks: [], eligibleTicks: [], head: 0 },
+        commanderRefresh: { ids: [], queuedTicks: [], eligibleTicks: [], head: 0 },
         fresh: { ids: [], queuedTicks: [], eligibleTicks: [], head: 0 },
         refresh: { ids: [], queuedTicks: [], eligibleTicks: [], head: 0 },
       };

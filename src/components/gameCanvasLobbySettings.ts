@@ -23,6 +23,7 @@ import {
   getDefaultMapLandDimensions,
   loadStoredConverterTax,
   loadStoredSlowDownAtFinalWaypoint,
+  loadStoredPathfindingConsidersUnits,
   getUnitCap,
   normalizeCenterMagnitude,
   normalizeRingMagnitude,
@@ -47,6 +48,7 @@ import {
   saveTerrainPrecedence,
   setUnitCap,
   saveSlowDownAtFinalWaypoint,
+  savePathfindingConsidersUnits,
   saveTerrainDTerrain,
   saveTerrainDetail,
   type BattleMode,
@@ -116,6 +118,7 @@ type GameCanvasLobbySettingsOptions = {
    *  place. */
   allyTeamCount: Ref<number>;
   slowDownAtFinalWaypointStoreVersion: Ref<number>;
+  pathfindingConsidersUnitsStoreVersion: Ref<number>;
   worldSurfaceStoreVersion: Ref<number>;
   stopBackgroundBattle: () => void;
   startBackgroundBattle: () => void;
@@ -152,6 +155,7 @@ export function useGameCanvasLobbySettings({
   lobbyName,
   allyTeamCount,
   slowDownAtFinalWaypointStoreVersion,
+  pathfindingConsidersUnitsStoreVersion,
   worldSurfaceStoreVersion,
   stopBackgroundBattle,
   startBackgroundBattle,
@@ -202,6 +206,7 @@ export function useGameCanvasLobbySettings({
       simulationTickRateHz: simulationTickRateHz.value,
       converterTax: loadStoredConverterTax('real'),
       slowDownAtFinalWaypoint: loadStoredSlowDownAtFinalWaypoint('real'),
+      pathfindingConsidersUnits: loadStoredPathfindingConsidersUnits('real'),
       metalCoverage: loadStoredMetalCoverage('real'),
       liquidSurfaceMode: loadStoredLiquidSurfaceMode('real'),
     };
@@ -455,6 +460,7 @@ export function useGameCanvasLobbySettings({
       'real',
     );
     const nextSlowDownAtFinalWaypoint = settings.slowDownAtFinalWaypoint;
+    const nextPathfindingConsidersUnits = settings.pathfindingConsidersUnits;
     if (!isMetalCoverage(settings.metalCoverage)) {
       throw new Error(`[lobby settings] invalid metalCoverage: ${String(settings.metalCoverage)}`);
     }
@@ -473,6 +479,9 @@ export function useGameCanvasLobbySettings({
     const slowDownAtFinalWaypointChanged =
       nextSlowDownAtFinalWaypoint !==
       loadStoredSlowDownAtFinalWaypoint('real');
+    const pathfindingConsidersUnitsChanged =
+      nextPathfindingConsidersUnits !==
+      loadStoredPathfindingConsidersUnits('real');
     const changed =
       nextCenterMagnitude !== centerMagnitude.value ||
       nextRingMagnitude !== ringMagnitude.value ||
@@ -487,6 +496,7 @@ export function useGameCanvasLobbySettings({
       settings.mapWidthLandCells !== mapWidthLandCells.value ||
       settings.mapLengthLandCells !== mapLengthLandCells.value ||
       slowDownAtFinalWaypointChanged ||
+      pathfindingConsidersUnitsChanged ||
       metalCoverageChanged ||
       liquidSurfaceModeChanged;
 
@@ -530,6 +540,10 @@ export function useGameCanvasLobbySettings({
     saveSlowDownAtFinalWaypoint(nextSlowDownAtFinalWaypoint, 'real');
     if (slowDownAtFinalWaypointChanged) {
       slowDownAtFinalWaypointStoreVersion.value++;
+    }
+    savePathfindingConsidersUnits(nextPathfindingConsidersUnits, 'real');
+    if (pathfindingConsidersUnitsChanged) {
+      pathfindingConsidersUnitsStoreVersion.value++;
     }
     setUnitCap('real', settings.entityCountCap);
     lobbyName.value = normalizeLobbyName(settings.lobbyName);
