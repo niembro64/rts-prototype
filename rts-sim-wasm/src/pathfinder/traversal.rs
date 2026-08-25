@@ -921,7 +921,7 @@ pub(crate) fn pathfinder_edge_cost_from_forces(
             // (The old sqrt() was an acceleration-time model that
             // systematically under-priced climbs against the integrator's
             // steady-state speeds.) Wet edges still share the dry damping
-            // assumption; water drag makes them slightly cheap, never
+            // assumption; water damping makes them slightly cheap, never
             // inadmissibly expensive.
             let terminal_velocity_time_scale = (flat_safe_accel / remaining_accel).max(1.0);
             travel_cost = forces.surface_distance / state.cell_size

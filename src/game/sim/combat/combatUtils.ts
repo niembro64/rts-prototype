@@ -1313,7 +1313,7 @@ export function getEntityAcceleration3d(
     // used to live here is only the per-tick thrust intent and
     // excludes the rest of the force budget the body actually feels
     // — terrain spring, ground / air damping, recoil, collision
-    // response, blast impulses, drag — so feeding it into a
+    // response, blast impulses, damping — so feeding it into a
     // `p + v·t + ½·a·t²` predictor produced "exact" intercepts
     // against an acceleration vector that wasn't the derivative of
     // the authoritative velocity. The client never received

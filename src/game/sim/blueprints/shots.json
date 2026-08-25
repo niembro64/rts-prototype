@@ -5,7 +5,7 @@
       "aboveWater": { "aboveWater": true, "underwater": false },
       "underwater": { "aboveWater": false, "underwater": false }
     },
-    "shotLocomotionPresetId": "ballisticDrag003",
+    "shotLocomotionPresetId": "ballisticLinearDamping0180PerSecond",
     "maxLifespanMs": null,
     "turning": null,
     "shotBlueprintId": "shotPlasmaOther",
@@ -47,7 +47,7 @@
       "aboveWater": { "aboveWater": true, "underwater": false },
       "underwater": { "aboveWater": false, "underwater": false }
     },
-    "shotLocomotionPresetId": "ballisticDrag002",
+    "shotLocomotionPresetId": "ballisticLinearDamping0120PerSecond",
     "maxLifespanMs": null,
     "turning": null,
     "shotBlueprintId": "shotPlasmaLight",
@@ -89,7 +89,7 @@
       "aboveWater": { "aboveWater": true, "underwater": false },
       "underwater": { "aboveWater": false, "underwater": false }
     },
-    "shotLocomotionPresetId": "ballisticDrag0025",
+    "shotLocomotionPresetId": "ballisticLinearDamping0150PerSecond",
     "maxLifespanMs": null,
     "turning": null,
     "shotBlueprintId": "shotPlasmaMedium",
@@ -278,7 +278,7 @@
       "aboveWater": { "aboveWater": true, "underwater": false },
       "underwater": { "aboveWater": false, "underwater": false }
     },
-    "shotLocomotionPresetId": "ballisticDrag003",
+    "shotLocomotionPresetId": "ballisticLinearDamping0180PerSecond",
     "maxLifespanMs": null,
     "turning": null,
     "shotBlueprintId": "shotPlasmaHeavy",
@@ -320,7 +320,7 @@
       "aboveWater": { "aboveWater": true, "underwater": false },
       "underwater": { "aboveWater": false, "underwater": false }
     },
-    "shotLocomotionPresetId": "ballisticDrag004",
+    "shotLocomotionPresetId": "ballisticLinearDamping0240PerSecond",
     "maxLifespanMs": null,
     "turning": null,
     "shotBlueprintId": "shotMortarMedium",
@@ -368,7 +368,7 @@
       "aboveWater": { "aboveWater": true, "underwater": false },
       "underwater": { "aboveWater": false, "underwater": false }
     },
-    "shotLocomotionPresetId": "ballisticDrag004",
+    "shotLocomotionPresetId": "ballisticLinearDamping0240PerSecond",
     "maxLifespanMs": null,
     "turning": null,
     "shotBlueprintId": "shotMortarHeavy",
@@ -416,7 +416,7 @@
       "aboveWater": { "aboveWater": true, "underwater": false },
       "underwater": { "aboveWater": false, "underwater": false }
     },
-    "shotLocomotionPresetId": "ballisticDrag006",
+    "shotLocomotionPresetId": "ballisticLinearDamping0361PerSecond",
     "maxLifespanMs": null,
     "turning": null,
     "shotBlueprintId": "shotPlasmaDisruptor",

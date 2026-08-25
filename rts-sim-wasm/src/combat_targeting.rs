@@ -87,7 +87,7 @@ pub const CT_TURRET_CFG_YAW_CONTINUOUS: u32 = 1 << 16;
 /// enter independent auto-acquisition when that task is absent or rejected.
 pub const CT_TURRET_CFG_NO_AUTO_ACQUIRE: u32 = 1 << 17;
 /// Constant-speed guided munitions solve a velocity intercept before launch.
-/// Unlike ballistic aim this uses no gravity or drag, but writes through the
+/// Unlike ballistic aim this uses no gravity or damping, but writes through the
 /// same reusable aim-pose fields consumed by turret rotation and firing.
 pub const CT_TURRET_CFG_CONSTANT_SPEED_LEAD: u32 = 1 << 18;
 /// A bounded local-yaw station may ask a mobile parent joint to absorb its
@@ -416,8 +416,8 @@ pub(crate) struct CombatTargetingPool {
     // the turret blueprint data. AIM-08.5 kernels read these from the
     // slab instead of accepting per-entity JS scratch arrays.
     pub(crate) turret_projectile_speed: Vec<f64>,
-    pub(crate) turret_projectile_mass: Vec<f64>,
-    pub(crate) turret_projectile_air_friction_per_60hz_frame: Vec<f64>,
+    pub(crate) turret_projectile_linear_damping_rate: Vec<f64>,
+    pub(crate) turret_projectile_uses_air_medium: Vec<u8>,
     pub(crate) turret_arc_preference: Vec<u8>,
     pub(crate) turret_max_time_sec: Vec<f64>,
     pub(crate) turret_ground_aim_fraction: Vec<f64>,
@@ -619,8 +619,8 @@ impl CombatTargetingPool {
             turret_mount_offset_2d: Vec::new(),
             turret_dps: Vec::new(),
             turret_projectile_speed: Vec::new(),
-            turret_projectile_mass: Vec::new(),
-            turret_projectile_air_friction_per_60hz_frame: Vec::new(),
+            turret_projectile_linear_damping_rate: Vec::new(),
+            turret_projectile_uses_air_medium: Vec::new(),
             turret_arc_preference: Vec::new(),
             turret_max_time_sec: Vec::new(),
             turret_ground_aim_fraction: Vec::new(),
@@ -804,9 +804,10 @@ impl CombatTargetingPool {
             self.turret_mount_offset_2d.resize(turret_needed, 0.0);
             self.turret_dps.resize(turret_needed, 0.0);
             self.turret_projectile_speed.resize(turret_needed, 0.0);
-            self.turret_projectile_mass.resize(turret_needed, 0.0);
-            self.turret_projectile_air_friction_per_60hz_frame
+            self.turret_projectile_linear_damping_rate
                 .resize(turret_needed, 0.0);
+            self.turret_projectile_uses_air_medium
+                .resize(turret_needed, 0);
             self.turret_arc_preference.resize(turret_needed, 0);
             self.turret_max_time_sec.resize(turret_needed, 0.0);
             self.turret_ground_aim_fraction.resize(turret_needed, 0.0);
@@ -1418,8 +1419,8 @@ pub fn combat_targeting_set_turret(
     target_rescore_period_ticks: u16,
     dps: f32,
     projectile_speed: f64,
-    projectile_mass: f64,
-    projectile_air_friction_per_60hz_frame: f64,
+    projectile_linear_damping_rate: f64,
+    projectile_uses_air_medium: u8,
     muzzle_forward_offset: f64,
     arc_preference: u8,
     max_time_sec: f64,
@@ -1503,10 +1504,10 @@ pub fn combat_targeting_set_turret(
     pool.turret_target_rescore_period_ticks[global_idx] = target_rescore_period_ticks;
     pool.turret_dps[global_idx] = dps;
     pool.turret_projectile_speed[global_idx] = projectile_speed;
-    pool.turret_projectile_mass[global_idx] = projectile_mass;
     pool.turret_muzzle_forward_offset[global_idx] = muzzle_forward_offset;
-    pool.turret_projectile_air_friction_per_60hz_frame[global_idx] =
-        projectile_air_friction_per_60hz_frame;
+    pool.turret_projectile_linear_damping_rate[global_idx] =
+        projectile_linear_damping_rate;
+    pool.turret_projectile_uses_air_medium[global_idx] = projectile_uses_air_medium;
     pool.turret_arc_preference[global_idx] = arc_preference;
     pool.turret_max_time_sec[global_idx] = max_time_sec;
     pool.turret_ground_aim_fraction[global_idx] = ground_aim_fraction;
@@ -2220,18 +2221,79 @@ mod tests {
         );
     }
 
+    #[test]
+    fn water_projectiles_damp_toward_still_water_not_atmospheric_wind() {
+        let mut pool = CombatTargetingPool::empty();
+        pool.wind_x = 35.0;
+        pool.wind_y = -18.0;
+        pool.wind_z = 4.0;
+
+        assert_eq!(
+            combat_targeting_projectile_medium_velocity(&pool, true),
+            (35.0, -18.0, 4.0),
+        );
+        assert_eq!(
+            combat_targeting_projectile_medium_velocity(&pool, false),
+            (0.0, 0.0, 0.0),
+        );
+    }
+
+    #[test]
+    fn ballistic_turret_aim_uses_velocity_only_prediction() {
+        let mut pool = CombatTargetingPool::empty();
+        pool.ensure_entity_capacity(0);
+        pool.turret_count_per_entity[0] = 1;
+        let idx = combat_targeting_turret_global_idx(0, 0);
+        pool.turret_mount_z[idx] = 100.0;
+        pool.turret_projectile_uses_air_medium[idx] = 1;
+        pool.wind_x = 17.0;
+        pool.wind_y = -9.0;
+        pool.wind_z = 3.0;
+
+        let solve = |pool: &mut CombatTargetingPool| {
+            combat_targeting_solve_ballistic_aim_inner(
+                pool,
+                0,
+                0,
+                500.0,
+                120.0,
+                80.0,
+                8.0,
+                -4.0,
+                2.0,
+                650.0,
+                0.180270541218,
+                400.0,
+                0,
+                0.0,
+                0.0,
+                0.0,
+            )
+        };
+
+        assert_eq!(solve(&mut pool), 1);
+        assert!(
+            pool.turret_ballistic_yaw[idx].is_finite()
+                && pool.turret_ballistic_pitch[idx].is_finite()
+                && pool.turret_ballistic_aim_x[idx].is_finite()
+                && pool.turret_ballistic_aim_y[idx].is_finite()
+                && pool.turret_ballistic_aim_z[idx].is_finite(),
+            "velocity-only prediction must write a finite aim solution",
+        );
+    }
+
     /// The mirror contract: reflecting the predicted incoming arrival
     /// velocity about the ballistic-mirror panel normal must yield
     /// exactly the return-arc launch velocity, and that launch velocity
     /// must land the shot on the turret/host midpoint under the same
-    /// flight model. Checked with and without drag.
-    fn assert_ballistic_mirror_round_trip(air_friction: f64, projectile_mass: f64) {
+    /// flight model. Checked with and without damping.
+    fn assert_ballistic_mirror_round_trip(linear_damping_rate: f64) {
         let mut pool = CombatTargetingPool::empty();
         pool.ensure_entity_capacity(0);
         let threat_idx = combat_targeting_turret_global_idx(0, 0);
         pool.turret_projectile_speed[threat_idx] = 600.0;
-        pool.turret_projectile_mass[threat_idx] = projectile_mass;
-        pool.turret_projectile_air_friction_per_60hz_frame[threat_idx] = air_friction;
+        pool.turret_projectile_linear_damping_rate[threat_idx] = linear_damping_rate;
+        pool.turret_projectile_uses_air_medium[threat_idx] = 1;
         pool.turret_arc_preference[threat_idx] = 0;
         pool.turret_max_time_sec[threat_idx] = 0.0;
 
@@ -2261,8 +2323,8 @@ mod tests {
             turret_point,
             (mount_x, mount_y, mount_z),
             600.0,
-            projectile_mass,
-            air_friction,
+            linear_damping_rate,
+            true,
             gravity,
             0,
             0.0,
@@ -2274,8 +2336,8 @@ mod tests {
             in_vy,
             in_vz,
             incoming_time,
-            projectile_mass,
-            air_friction,
+            linear_damping_rate,
+            true,
             gravity,
         );
         let arrival_speed = (arr_vx * arr_vx + arr_vy * arr_vy + arr_vz * arr_vz).sqrt();
@@ -2289,8 +2351,8 @@ mod tests {
             (mount_x, mount_y, mount_z),
             mid,
             arrival_speed,
-            projectile_mass,
-            air_friction,
+            linear_damping_rate,
+            true,
             gravity,
             0,
             0.0,
@@ -2313,13 +2375,11 @@ mod tests {
 
         // The return launch velocity really lands on the midpoint under
         // the same flight model the solver assumes.
-        let drag_k = projectile_air_drag_rate_from_friction_per_60hz_frame(
-            air_friction,
-            projectile_mass,
-        );
-        let (land_x, land_y, land_z) = if drag_k.is_finite() && drag_k > 1e-9 {
-            let retention = (1.0 - (-drag_k * return_time).exp()) / drag_k;
-            let terminal_z = -gravity / drag_k;
+        let damping_rate = linear_damping_rate;
+        let (land_x, land_y, land_z) = if damping_rate.is_finite() && damping_rate > 1e-9 {
+            let retention =
+                (1.0 - (-damping_rate * return_time).exp()) / damping_rate;
+            let terminal_z = -gravity / damping_rate;
             (
                 mount_x + out_vx * retention,
                 mount_y + out_vy * retention,
@@ -2343,12 +2403,12 @@ mod tests {
 
     #[test]
     fn ballistic_mirror_reflects_arrival_onto_return_arc() {
-        assert_ballistic_mirror_round_trip(0.0, 1.0);
+        assert_ballistic_mirror_round_trip(0.0);
     }
 
     #[test]
-    fn ballistic_mirror_reflects_arrival_onto_return_arc_with_drag() {
-        assert_ballistic_mirror_round_trip(0.002, 2.0);
+    fn ballistic_mirror_reflects_arrival_onto_return_arc_with_linear_damping() {
+        assert_ballistic_mirror_round_trip(0.12012016024);
     }
 
     #[test]
@@ -2381,7 +2441,6 @@ mod tests {
             0,
             0,
             100.0,
-            1.0,
             0.2,
             0,
             30.0,

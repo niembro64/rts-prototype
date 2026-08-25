@@ -5,7 +5,8 @@
         "propulsionAxis": "waypointForward",
         "ground": {
           "staticFrictionCoefficient": 0.55,
-          "tangentialDampingRate": 0.835487663482
+          "tangentialDampingRate": 0.835487663482,
+          "angularDampingRate": 0.835487663482
         },
         "air": {
           "linearDampingRate": 3.077597663253,
@@ -42,7 +43,8 @@
         "propulsionAxis": "waypointForward",
         "ground": {
           "staticFrictionCoefficient": 0.85,
-          "tangentialDampingRate": 1.291208207199
+          "tangentialDampingRate": 1.291208207199,
+          "angularDampingRate": 1.291208207199
         },
         "air": {
           "linearDampingRate": 3.077597663253,
@@ -79,7 +81,8 @@
         "propulsionAxis": "waypointForward",
         "ground": {
           "staticFrictionCoefficient": 0.85,
-          "tangentialDampingRate": 1.291208207199
+          "tangentialDampingRate": 1.291208207199,
+          "angularDampingRate": 1.291208207199
         },
         "air": {
           "linearDampingRate": 3.077597663253,
@@ -118,7 +121,8 @@
         "propulsionAxis": "waypointForward",
         "ground": {
           "staticFrictionCoefficient": 2,
-          "tangentialDampingRate": 7.595342395285
+          "tangentialDampingRate": 7.595342395285,
+          "angularDampingRate": 7.595342395285
         },
         "air": {
           "linearDampingRate": 3.077597663253,
@@ -157,7 +161,8 @@
         "propulsionAxis": "waypointForward",
         "ground": {
           "staticFrictionCoefficient": 0,
-          "tangentialDampingRate": 0
+          "tangentialDampingRate": 0,
+          "angularDampingRate": 0
         },
         "air": {
           "linearDampingRate": 0.55,
@@ -196,7 +201,8 @@
         "propulsionAxis": "worldPlanar",
         "ground": {
           "staticFrictionCoefficient": 1,
-          "tangentialDampingRate": 1.519068479057
+          "tangentialDampingRate": 1.519068479057,
+          "angularDampingRate": 1.519068479057
         },
         "air": {
           "linearDampingRate": 3.077597663253,
@@ -233,7 +239,8 @@
         "propulsionAxis": "worldPlanar",
         "ground": {
           "staticFrictionCoefficient": 1,
-          "tangentialDampingRate": 1.519068479057
+          "tangentialDampingRate": 1.519068479057,
+          "angularDampingRate": 1.519068479057
         },
         "air": {
           "linearDampingRate": 3.077597663253,
@@ -272,7 +279,8 @@
         "propulsionAxis": "waypointForwardOnly",
         "ground": {
           "staticFrictionCoefficient": 1,
-          "tangentialDampingRate": 1.519068479057
+          "tangentialDampingRate": 1.519068479057,
+          "angularDampingRate": 1.519068479057
         },
         "air": {
           "linearDampingRate": 3.077597663253,
@@ -311,7 +319,8 @@
         "propulsionAxis": "worldPlanar",
         "ground": {
           "staticFrictionCoefficient": 0.5,
-          "tangentialDampingRate": 0.759534239529
+          "tangentialDampingRate": 0.759534239529,
+          "angularDampingRate": 0.759534239529
         },
         "air": {
           "linearDampingRate": 1,
@@ -351,7 +360,8 @@
         "turnRateDegreesPerSecond": 90,
         "ground": {
           "staticFrictionCoefficient": 0.1,
-          "tangentialDampingRate": 0.151906847906
+          "tangentialDampingRate": 0.151906847906,
+          "angularDampingRate": 0.151906847906
         },
         "air": {
           "linearDampingRate": 1.65,
@@ -396,7 +406,8 @@
         "turnRateDegreesPerSecond": 90,
         "ground": {
           "staticFrictionCoefficient": 0.1,
-          "tangentialDampingRate": 0.151906847906
+          "tangentialDampingRate": 0.151906847906,
+          "angularDampingRate": 0.151906847906
         },
         "air": {
           "linearDampingRate": 1.65,

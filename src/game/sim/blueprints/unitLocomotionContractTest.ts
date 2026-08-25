@@ -397,7 +397,8 @@ export function runUnitLocomotionContractTest(): void {
     const ground = preset.actuator.ground;
     assertContract(
       ground.staticFrictionCoefficient >= 0 &&
-        ground.tangentialDampingRate >= 0,
+        ground.tangentialDampingRate >= 0 &&
+        ground.angularDampingRate >= 0,
       `${presetId}.ground owns contact physics`,
     );
     assertContract(
@@ -520,7 +521,7 @@ export function runUnitLocomotionContractTest(): void {
   const bee = getUnitLocomotion('unitBee');
   const beeMass = getUnitBlueprint('unitBee').base.mass;
   // The Albatros is the lumbering heavy: half Eagle-class acceleration (so
-  // half the cruise speed under the same air drag) and an authored yaw slew
+  // half the cruise speed under the same air damping) and an authored yaw slew
   // far below the plane preset's, so its turning circle is much wider.
   const albatros = getUnitLocomotion('unitAlbatros');
   const albatrosMass = getUnitBlueprint('unitAlbatros').base.mass;

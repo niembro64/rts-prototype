@@ -37,7 +37,6 @@ import {
 } from '../../../config';
 import { SHIELD_REFLECTION_ENTITY_BEAM } from './reflectorBatch';
 import {
-  getEntityAcceleration3d,
   getEntityPosition3d,
   getEntityVelocity3d,
   getProjectileLaunchSpeed,
@@ -69,9 +68,8 @@ import {
   resolveFiringSpreadAngle,
 } from './precisionFire';
 import {
-  getProjectileAirFrictionPer60HzFrame,
-  getProjectileMediumDragCoefficient,
-  getProjectileMediumFrictionPer60HzFrame,
+  getProjectileAirLinearDampingRate,
+  getProjectileMediumLinearDampingRate,
   getProjectileHomingEngagementScale,
   getProjectileHomingThrustAcceleration,
   getProjectileMediumHoldCounterGravityAcceleration,
@@ -377,10 +375,8 @@ const _fireFsm: CombatTargetingTurretFsmOut = {
 };
 const _projectilePositionScratch = { x: 0, y: 0, z: 0 };
 const _homingTargetVelocity = { x: 0, y: 0, z: 0 };
-const _homingTargetAcceleration = { x: 0, y: 0, z: 0 };
 const _homingAimPoint = { x: 0, y: 0, z: 0 };
 const _homingOriginVelocity = { x: 0, y: 0, z: 0 };
-const _homingOriginAcceleration = { x: 0, y: 0, z: 0 };
 const _beamPulseTargetPosition = { x: 0, y: 0, z: 0 };
 const _beamPulseTargetVelocity = { x: 0, y: 0, z: 0 };
 const _beamPulseStationaryVelocity = { x: 0, y: 0, z: 0 };
@@ -588,7 +584,7 @@ function isPackedProjectileEligible(entity: Entity): boolean {
   // Packed pool's batch kernel hardcodes GRAVITY; any shot that wants a
   // different gravity must run through the per-projectile JS path.
   if (shot.shotLocomotion.gravityForceMultiplier !== 1) return false;
-  if (getProjectileAirFrictionPer60HzFrame(shot) > 0) return false;
+  if (getProjectileAirLinearDampingRate(shot) > 0) return false;
   if (getProjectilePropulsionAcceleration(shot, shot.shotLocomotion.media.air) > 0) return false;
   return true;
 }
@@ -1565,8 +1561,10 @@ let _travelingProjectileVelZ = new Float64Array(0);
 let _travelingProjectileAccelX = new Float64Array(0);
 let _travelingProjectileAccelY = new Float64Array(0);
 let _travelingProjectileAccelZ = new Float64Array(0);
-let _travelingProjectileAirDragCoefficient = new Float64Array(0);
-let _travelingProjectileInvMass = new Float64Array(0);
+let _travelingProjectileLinearDampingRate = new Float64Array(0);
+let _travelingProjectileMediumVelocityX = new Float64Array(0);
+let _travelingProjectileMediumVelocityY = new Float64Array(0);
+let _travelingProjectileMediumVelocityZ = new Float64Array(0);
 let _travelingProjectileGravity = new Float64Array(0);
 let _travelingProjectileTerrainTargetZ = new Float64Array(0);
 let _travelingProjectilePolicyFlags = new Uint8Array(0);
@@ -1593,23 +1591,19 @@ const HG_ROW_CURRENT_Z = 8;
 const HG_ROW_TARGET_VEL_X = 9;
 const HG_ROW_TARGET_VEL_Y = 10;
 const HG_ROW_TARGET_VEL_Z = 11;
-const HG_ROW_TARGET_ACCEL_X = 12;
-const HG_ROW_TARGET_ACCEL_Y = 13;
-const HG_ROW_TARGET_ACCEL_Z = 14;
+const HG_ROW_MEDIUM_VEL_X = 12;
+const HG_ROW_MEDIUM_VEL_Y = 13;
+const HG_ROW_MEDIUM_VEL_Z = 14;
 const HG_ROW_ORIGIN_VEL_X = 15;
 const HG_ROW_ORIGIN_VEL_Y = 16;
 const HG_ROW_ORIGIN_VEL_Z = 17;
-const HG_ROW_ORIGIN_ACCEL_X = 18;
-const HG_ROW_ORIGIN_ACCEL_Y = 19;
-const HG_ROW_ORIGIN_ACCEL_Z = 20;
 const HG_ROW_PROJECTILE_SPEED = 21;
 const HG_ROW_PROJECTILE_GRAVITY = 22;
 const HG_ROW_MAX_TIME_SEC = 23;
 const HG_ROW_HOMING_TURN_RATE = 24;
 const HG_ROW_MAX_THRUST_ACCEL = 25;
 const HG_ROW_SOLVE_INTERCEPT = 26;
-const HG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME = 27;
-const HG_ROW_PROJECTILE_MASS = 28;
+const HG_ROW_PROJECTILE_LINEAR_DAMPING_RATE = 27;
 const HG_ROW_CONSTANT_SPEED_MODE = 29;
 const HG_ROW_OUT_INTERCEPT_FOUND = 33;
 const HG_ROW_OUT_STEER_X = 37;
@@ -1657,8 +1651,10 @@ function trimTravelingProjectileBatchBuffers(maxRetained = DEFAULT_TRAVELING_PRO
   _travelingProjectileAccelX = new Float64Array(maxRetained);
   _travelingProjectileAccelY = new Float64Array(maxRetained);
   _travelingProjectileAccelZ = new Float64Array(maxRetained);
-  _travelingProjectileAirDragCoefficient = new Float64Array(maxRetained);
-  _travelingProjectileInvMass = new Float64Array(maxRetained);
+  _travelingProjectileLinearDampingRate = new Float64Array(maxRetained);
+  _travelingProjectileMediumVelocityX = new Float64Array(maxRetained);
+  _travelingProjectileMediumVelocityY = new Float64Array(maxRetained);
+  _travelingProjectileMediumVelocityZ = new Float64Array(maxRetained);
   _travelingProjectileGravity = new Float64Array(maxRetained);
   _travelingProjectileTerrainTargetZ = new Float64Array(maxRetained);
   _travelingProjectilePolicyFlags = new Uint8Array(maxRetained);
@@ -1729,12 +1725,18 @@ function ensureTravelingProjectileBatchCapacity(required: number): void {
   accelZ.set(_travelingProjectileAccelZ);
   _travelingProjectileAccelZ = accelZ;
 
-  const airDragCoefficient = new Float64Array(next);
-  airDragCoefficient.set(_travelingProjectileAirDragCoefficient);
-  _travelingProjectileAirDragCoefficient = airDragCoefficient;
-  const invMass = new Float64Array(next);
-  invMass.set(_travelingProjectileInvMass);
-  _travelingProjectileInvMass = invMass;
+  const linearDampingRate = new Float64Array(next);
+  linearDampingRate.set(_travelingProjectileLinearDampingRate);
+  _travelingProjectileLinearDampingRate = linearDampingRate;
+  const mediumVelocityX = new Float64Array(next);
+  mediumVelocityX.set(_travelingProjectileMediumVelocityX);
+  _travelingProjectileMediumVelocityX = mediumVelocityX;
+  const mediumVelocityY = new Float64Array(next);
+  mediumVelocityY.set(_travelingProjectileMediumVelocityY);
+  _travelingProjectileMediumVelocityY = mediumVelocityY;
+  const mediumVelocityZ = new Float64Array(next);
+  mediumVelocityZ.set(_travelingProjectileMediumVelocityZ);
+  _travelingProjectileMediumVelocityZ = mediumVelocityZ;
 
   const gravity = new Float64Array(next);
   gravity.set(_travelingProjectileGravity);
@@ -1968,10 +1970,19 @@ function _updateTravelingProjectilesJS(
     _travelingProjectileAccelX[index] = 0;
     _travelingProjectileAccelY[index] = 0;
     _travelingProjectileAccelZ[index] = 0;
-    _travelingProjectileAirDragCoefficient[index] = mediumPhysicsActive
-      ? getProjectileMediumDragCoefficient(shotConfig, mediumPhysics)
+    _travelingProjectileLinearDampingRate[index] = mediumPhysicsActive
+      ? getProjectileMediumLinearDampingRate(mediumPhysics)
       : 0;
-    _travelingProjectileInvMass[index] = shotConfig.mass > 1e-6 ? 1 / shotConfig.mass : 0;
+    const airMedium = position.z > WATER_LEVEL;
+    _travelingProjectileMediumVelocityX[index] = airMedium && Number.isFinite(wind.x)
+      ? wind.x
+      : 0;
+    _travelingProjectileMediumVelocityY[index] = airMedium && Number.isFinite(wind.y)
+      ? wind.y
+      : 0;
+    _travelingProjectileMediumVelocityZ[index] = airMedium && Number.isFinite(wind.z)
+      ? wind.z
+      : 0;
     _travelingProjectileGravity[index] = projectileGravity;
     _travelingProjectileTerrainTargetZ[index] = 0;
     _travelingProjectilePolicyFlags[index] = policyFlags;
@@ -2041,15 +2052,9 @@ function _updateTravelingProjectilesJS(
       let targetVelocityX = 0;
       let targetVelocityY = 0;
       let targetVelocityZ = 0;
-      let targetAccelerationX = 0;
-      let targetAccelerationY = 0;
-      let targetAccelerationZ = 0;
       let originVelocityX = 0;
       let originVelocityY = 0;
       let originVelocityZ = 0;
-      let originAccelerationX = 0;
-      let originAccelerationY = 0;
-      let originAccelerationZ = 0;
       let solveIntercept = false;
       let enqueueGuidance = false;
 
@@ -2085,24 +2090,13 @@ function _updateTravelingProjectilesJS(
           steerY = aimPoint.y;
           steerZ = aimPoint.z;
           const targetVelocity = getEntityVelocity3d(homingTarget, _homingTargetVelocity);
-          const targetAcceleration = getEntityAcceleration3d(
-            homingTarget,
-            _homingTargetAcceleration,
-          );
           targetVelocityX = targetVelocity.x;
           targetVelocityY = targetVelocity.y;
           targetVelocityZ = targetVelocity.z;
-          targetAccelerationX = targetAcceleration.x;
-          targetAccelerationY = targetAcceleration.y;
-          targetAccelerationZ = targetAcceleration.z;
           const originVelocity = getEntityVelocity3d(entity, _homingOriginVelocity);
-          const originAcceleration = getEntityAcceleration3d(entity, _homingOriginAcceleration);
           originVelocityX = originVelocity.x;
           originVelocityY = originVelocity.y;
           originVelocityZ = originVelocity.z;
-          originAccelerationX = originAcceleration.x;
-          originAccelerationY = originAcceleration.y;
-          originAccelerationZ = originAcceleration.z;
           solveIntercept = true;
           proj.guidanceLastSolveTick = world.getTick();
           enqueueGuidance = true;
@@ -2141,15 +2135,15 @@ function _updateTravelingProjectilesJS(
         _homingGuidanceRows[base + HG_ROW_TARGET_VEL_X] = targetVelocityX;
         _homingGuidanceRows[base + HG_ROW_TARGET_VEL_Y] = targetVelocityY;
         _homingGuidanceRows[base + HG_ROW_TARGET_VEL_Z] = targetVelocityZ;
-        _homingGuidanceRows[base + HG_ROW_TARGET_ACCEL_X] = targetAccelerationX;
-        _homingGuidanceRows[base + HG_ROW_TARGET_ACCEL_Y] = targetAccelerationY;
-        _homingGuidanceRows[base + HG_ROW_TARGET_ACCEL_Z] = targetAccelerationZ;
+        _homingGuidanceRows[base + HG_ROW_MEDIUM_VEL_X] =
+          _travelingProjectileMediumVelocityX[index];
+        _homingGuidanceRows[base + HG_ROW_MEDIUM_VEL_Y] =
+          _travelingProjectileMediumVelocityY[index];
+        _homingGuidanceRows[base + HG_ROW_MEDIUM_VEL_Z] =
+          _travelingProjectileMediumVelocityZ[index];
         _homingGuidanceRows[base + HG_ROW_ORIGIN_VEL_X] = originVelocityX;
         _homingGuidanceRows[base + HG_ROW_ORIGIN_VEL_Y] = originVelocityY;
         _homingGuidanceRows[base + HG_ROW_ORIGIN_VEL_Z] = originVelocityZ;
-        _homingGuidanceRows[base + HG_ROW_ORIGIN_ACCEL_X] = originAccelerationX;
-        _homingGuidanceRows[base + HG_ROW_ORIGIN_ACCEL_Y] = originAccelerationY;
-        _homingGuidanceRows[base + HG_ROW_ORIGIN_ACCEL_Z] = originAccelerationZ;
         _homingGuidanceRows[base + HG_ROW_PROJECTILE_SPEED] = projectileSpeed;
         _homingGuidanceRows[base + HG_ROW_PROJECTILE_GRAVITY] = _travelingProjectileGravity[index];
         _homingGuidanceRows[base + HG_ROW_MAX_TIME_SEC] = remainingSec;
@@ -2158,9 +2152,8 @@ function _updateTravelingProjectilesJS(
         _homingGuidanceRows[base + HG_ROW_MAX_THRUST_ACCEL] =
           maxHomingThrustAccel * homingEngagementScale;
         _homingGuidanceRows[base + HG_ROW_SOLVE_INTERCEPT] = solveIntercept ? 1 : 0;
-        _homingGuidanceRows[base + HG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME] =
-          getProjectileMediumFrictionPer60HzFrame(mediumPhysics);
-        _homingGuidanceRows[base + HG_ROW_PROJECTILE_MASS] = shotConfig.mass;
+        _homingGuidanceRows[base + HG_ROW_PROJECTILE_LINEAR_DAMPING_RATE] =
+          getProjectileMediumLinearDampingRate(mediumPhysics);
         _homingGuidanceRows[base + HG_ROW_CONSTANT_SPEED_MODE] =
           shotLocomotion.motionModel === 'constantSpeedGuided' ? 1 : 0;
       }
@@ -2240,9 +2233,6 @@ function _updateTravelingProjectilesJS(
       _travelingProjectileVelZ.subarray(0, batchCount),
       homingGuidanceCount,
       dtSec,
-      Number.isFinite(wind.x) ? wind.x : 0,
-      Number.isFinite(wind.y) ? wind.y : 0,
-      Number.isFinite(wind.z) ? wind.z : 0,
     );
     if (guided !== homingGuidanceCount) {
       throw new Error(`Projectile homing guidance batch failed: ${guided}/${homingGuidanceCount}`);
@@ -2282,17 +2272,16 @@ function _updateTravelingProjectilesJS(
     _travelingProjectileAccelX.subarray(0, batchCount),
     _travelingProjectileAccelY.subarray(0, batchCount),
     _travelingProjectileAccelZ.subarray(0, batchCount),
-    _travelingProjectileAirDragCoefficient.subarray(0, batchCount),
-    _travelingProjectileInvMass.subarray(0, batchCount),
+    _travelingProjectileLinearDampingRate.subarray(0, batchCount),
+    _travelingProjectileMediumVelocityX.subarray(0, batchCount),
+    _travelingProjectileMediumVelocityY.subarray(0, batchCount),
+    _travelingProjectileMediumVelocityZ.subarray(0, batchCount),
     _travelingProjectileGuidanceArrivalEnabled.subarray(0, batchCount),
     _travelingProjectileGuidanceArrivalX.subarray(0, batchCount),
     _travelingProjectileGuidanceArrivalY.subarray(0, batchCount),
     _travelingProjectileGuidanceArrivalZ.subarray(0, batchCount),
     _travelingProjectileGuidanceArrivalRadius.subarray(0, batchCount),
     _travelingProjectileGuidanceArrivalReached.subarray(0, batchCount),
-    Number.isFinite(wind.x) ? wind.x : 0,
-    Number.isFinite(wind.y) ? wind.y : 0,
-    Number.isFinite(wind.z) ? wind.z : 0,
     dtSec,
   );
   if (integrated !== batchCount) {

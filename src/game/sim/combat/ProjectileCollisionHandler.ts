@@ -98,6 +98,7 @@ function projectileEffectiveMaxLifespanMs(proj: Projectile): number {
 // Reusable containers for checkProjectileCollisions (avoid per-frame allocations)
 const _collisionUnitsToRemove = new Set<EntityId>();
 const _collisionBuildingsToRemove = new Set<EntityId>();
+const _collisionDirectHitEntityIds = new Set<EntityId>();
 const _collisionDeathContexts = new Map<EntityId, DeathContext>();
 const _collisionProjectilesToRemove: EntityId[] = [];
 const _collisionProjectileRemoveIds = new Set<EntityId>();
@@ -771,6 +772,7 @@ function findProjectileHitboxSweepHit(
 export function resetCollisionBuffers(): void {
   _collisionUnitsToRemove.clear();
   _collisionBuildingsToRemove.clear();
+  _collisionDirectHitEntityIds.clear();
   _collisionDeathContexts.clear();
   _collisionProjectilesToRemove.length = 0;
   _collisionProjectileRemoveIds.clear();
@@ -1601,6 +1603,7 @@ export function checkProjectileCollisions(
               projEntity.transform.z = prevZ + clampedT * (currentZ - prevZ);
               proj.hp = 0;
               ensureProjectileHitEntities(proj).add(directHit.entity.id);
+              _collisionDirectHitEntityIds.add(directHit.entity.id);
 
               const hitProjectile = directHit.entity.projectile;
               const hitTravellingShot =
@@ -1661,6 +1664,7 @@ export function checkProjectileCollisions(
             // Track hits
             for (const hitId of result.hitEntityIds) {
               ensureProjectileHitEntities(proj).add(hitId);
+              _collisionDirectHitEntityIds.add(hitId);
 
               const entity = world.getEntity(hitId);
               if (entity === undefined) continue;
@@ -1928,6 +1932,7 @@ export function checkProjectileCollisions(
   SIM_TICK_INSTRUMENTATION.phase('combat.proj.sweepTerminal');
 
   return {
+    directHitEntityIds: _collisionDirectHitEntityIds,
     deadUnitIds: unitsToRemove,
     deadBuildingIds: buildingsToRemove,
     events: audioEvents,

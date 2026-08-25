@@ -94,11 +94,10 @@ pub(crate) const CT_UNDER_ONLY_LOCK_EPS: f64 = 1e-6;
 pub(crate) fn combat_targeting_slab_gate_config(
     pool: &CombatTargetingPool,
     idx: usize,
-) -> (f64, f64, f64, u8, f64, f64, bool) {
+) -> (f64, f64, u8, f64, f64, bool) {
     (
         pool.turret_projectile_speed[idx],
-        pool.turret_projectile_mass[idx],
-        pool.turret_projectile_air_friction_per_60hz_frame[idx],
+        pool.turret_projectile_linear_damping_rate[idx],
         pool.turret_arc_preference[idx],
         pool.turret_max_time_sec[idx],
         pool.turret_ground_aim_fraction[idx],
@@ -155,8 +154,7 @@ pub(crate) fn compute_turret_gates_for_aim_point(
     turret_shield_spheres_enabled: u8,
     shield_obstruction_active: u8,
     projectile_speed: f64,
-    projectile_mass: f64,
-    projectile_air_friction_per_60hz_frame: f64,
+    projectile_linear_damping_rate: f64,
     arc_preference: u8,
     max_time_sec: f64,
     ground_aim_fraction: f64,
@@ -249,17 +247,17 @@ pub(crate) fn compute_turret_gates_for_aim_point(
                 let fallback_yaw = pool.turret_rotation[idx] as f64;
                 let fallback_pitch = pool.turret_pitch[idx] as f64;
                 // Constant-speed guided shots use this shared kinematic
-                // solver as a zero-gravity, zero-drag velocity intercept.
-                // Ballistic shots retain their authored gravity/drag arc.
+                // solver as a zero-gravity, zero-damping velocity intercept.
+                // Ballistic shots retain their authored gravity/damping arc.
                 let solve_gravity = if needs_constant_speed_lead {
                     0.0
                 } else {
                     gravity
                 };
-                let solve_friction = if needs_constant_speed_lead {
+                let solve_damping_rate = if needs_constant_speed_lead {
                     0.0
                 } else {
-                    projectile_air_friction_per_60hz_frame
+                    projectile_linear_damping_rate
                 };
                 ballistic_clear = combat_targeting_solve_ballistic_aim_inner(
                     pool,
@@ -271,15 +269,8 @@ pub(crate) fn compute_turret_gates_for_aim_point(
                     ball_tvx,
                     ball_tvy,
                     ball_tvz,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
                     projectile_speed,
-                    projectile_mass,
-                    solve_friction,
+                    solve_damping_rate,
                     solve_gravity,
                     arc_preference,
                     max_time_sec,
@@ -502,8 +493,7 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
         let mount_z = pool.turret_mount_z[idx];
         let (
             projectile_speed,
-            projectile_mass,
-            projectile_air_friction_per_60hz_frame,
+            projectile_linear_damping_rate,
             arc_preference,
             max_time_sec,
             ground_aim_fraction,
@@ -533,8 +523,7 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
             turret_shield_spheres_enabled,
             shield_obstruction_active,
             projectile_speed,
-            projectile_mass,
-            projectile_air_friction_per_60hz_frame,
+            projectile_linear_damping_rate,
             arc_preference,
             max_time_sec,
             ground_aim_fraction,
@@ -887,8 +876,7 @@ pub(crate) fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner
         let mount_z = pool.turret_mount_z[idx];
         let (
             projectile_speed,
-            projectile_mass,
-            projectile_air_friction_per_60hz_frame,
+            projectile_linear_damping_rate,
             arc_preference,
             max_time_sec,
             ground_aim_fraction,
@@ -943,8 +931,7 @@ pub(crate) fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner
                     turret_shield_spheres_enabled,
                     shield_obstruction_active,
                     projectile_speed,
-                    projectile_mass,
-                    projectile_air_friction_per_60hz_frame,
+                    projectile_linear_damping_rate,
                     arc_preference,
                     max_time_sec,
                     ground_aim_fraction,
@@ -1125,8 +1112,7 @@ pub(crate) fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batc
         let mount_z = pool.turret_mount_z[idx];
         let (
             projectile_speed,
-            projectile_mass,
-            projectile_air_friction_per_60hz_frame,
+            projectile_linear_damping_rate,
             arc_preference,
             max_time_sec,
             ground_aim_fraction,
@@ -1179,8 +1165,7 @@ pub(crate) fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batc
                 turret_shield_spheres_enabled,
                 shield_obstruction_active,
                 projectile_speed,
-                projectile_mass,
-                projectile_air_friction_per_60hz_frame,
+                projectile_linear_damping_rate,
                 arc_preference,
                 max_time_sec,
                 ground_aim_fraction,

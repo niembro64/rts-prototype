@@ -159,7 +159,7 @@ pub struct ShotLocomotionMediumPhysics {
     pub propulsionForce: f64,
     pub guidanceThrust: f64,
     pub turnRate: f64,
-    pub velocityFrictionPer60HzFrame: f64,
+    pub linearDampingRate: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]

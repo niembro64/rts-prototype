@@ -35,7 +35,7 @@
 //
 //   1. Add map-edge boundary spring/damping acceleration.
 //   2. WASM integrates sphere bodies from accumulated acceleration,
-//      gravity, terrain spring contact, air drag, ground friction, and
+//      gravity, terrain spring contact, linear damping, ground friction, and
 //      fixed dt; it also emits sleep transitions.
 //   3. WASM resolves sphere-cuboid and sphere-sphere contacts.
 //   4. Clear per-step acceleration accumulators.
@@ -248,7 +248,7 @@ export class Body3D {
     halfZ: number | undefined;
     groundOffset: number | undefined;
     restitution: number;
-    airDragCoefficient?: number;
+    linearDragCoefficient?: number;
     groundTangentialDampingRate?: number;
     surfaceNormal: SurfaceNormal | null;
   }): Body3D {
@@ -279,7 +279,7 @@ export class Body3D {
     views.halfZ[slot] = args.halfZ ?? 0;
     views.invMass[slot] = args.mass > 0 ? 1 / args.mass : 0;
     views.restitution[slot] = args.restitution;
-    views.airDragCoefficient[slot] = args.airDragCoefficient ?? 0;
+    views.linearDragCoefficient[slot] = args.linearDragCoefficient ?? 0;
     views.groundTangentialDampingRate[slot] = args.groundTangentialDampingRate ?? 0;
     views.groundOffset[slot] = args.groundOffset ?? 0;
     views.entityId[slot] = args.entityId ?? -1;
@@ -358,10 +358,10 @@ export class Body3D {
   get invMass(): number { return pv().invMass[this.slot]; }
   get restitution(): number { return pv().restitution[this.slot]; }
   get groundOffset(): number { return pv().groundOffset[this.slot]; }
-  /** Per-body wind-relative air drag coefficient.
-   *  0 means this body has no wind/air coupling. */
-  get airDragCoefficient(): number { return pv().airDragCoefficient[this.slot]; }
-  set airDragCoefficient(v: number) { pv().airDragCoefficient[this.slot] = v; }
+  /** Per-body linear drag coefficient (mass / time), relative to the
+   *  integrator's supplied medium velocity. Zero disables coupling. */
+  get linearDragCoefficient(): number { return pv().linearDragCoefficient[this.slot]; }
+  set linearDragCoefficient(v: number) { pv().linearDragCoefficient[this.slot] = v; }
   /** Per-body solid-contact tangent-velocity damping rate, in s^-1. This is
    * separate from static friction and from fluid resistance. */
   get groundTangentialDampingRate(): number { return pv().groundTangentialDampingRate[this.slot]; }
@@ -466,7 +466,7 @@ export class PhysicsEngine3D {
   /** Entities excluded from BOTH contact passes this step — beam-carried
    *  transport passengers, which the tractor spring deliberately holds
    *  overlapping their carrier's collision sphere. They still integrate
-   *  (gravity, drag, external forces) — only contacts are skipped. */
+   *  (gravity, damping, external forces) — only contacts are skipped. */
   private collisionExemptEntityIds: ReadonlySet<EntityId> | null = null;
   private _collisionFilterScratchA = new Uint32Array(0);
   private _collisionFilterScratchB = new Uint32Array(0);
@@ -570,7 +570,7 @@ export class PhysicsEngine3D {
     entityId: EntityId | undefined = undefined,
     initialZ: number | undefined = undefined,
     surfaceNormal: SurfaceNormal | null = null,
-    airDragCoefficient: number = 0,
+    linearDragCoefficient: number = 0,
     groundTangentialDampingRate: number = 0,
   ): Body3D {
     refreshAndBindBody3DPool(getSimWasm()!.pool);
@@ -593,7 +593,7 @@ export class PhysicsEngine3D {
       halfZ: undefined,
       groundOffset: supportPointOffsetZ,
       restitution: 0.2,
-      airDragCoefficient,
+      linearDragCoefficient,
       groundTangentialDampingRate,
       surfaceNormal,
     });
@@ -652,7 +652,7 @@ export class PhysicsEngine3D {
       halfZ: depth / 2,
       groundOffset: undefined,
       restitution: 0.1,
-      airDragCoefficient: 0,
+      linearDragCoefficient: 0,
       groundTangentialDampingRate: 0,
       surfaceNormal: null,
       entityId,
@@ -698,7 +698,7 @@ export class PhysicsEngine3D {
       halfZ: tubeHalfHeight,
       groundOffset: undefined,
       restitution: 0.1,
-      airDragCoefficient: 0,
+      linearDragCoefficient: 0,
       groundTangentialDampingRate: 0,
       surfaceNormal: null,
       entityId,
@@ -1455,7 +1455,7 @@ export class PhysicsEngine3D {
    *      `groundOffset`.
    *   3. If that point is below terrain height, add a spring-damper
    *      acceleration along the terrain normal.
-   *   4. Integrate velocity under wind-relative air-drag force, then apply
+   *   4. Integrate velocity under medium-relative linear damping, then apply
    *      ground friction only to terrain-tangent velocity during
    *      contact.
    *   5. Integrate position.

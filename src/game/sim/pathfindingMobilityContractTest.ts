@@ -117,7 +117,7 @@ export function runPathfindingMobilityContractTest(): void {
   assertContract(
     seaTurtleLocomotion.physics.ground.tangentialDampingRate >
       seaTurtleLocomotion.physics.water.resistance.linearDampingRate,
-    'Sea Turtle has stronger dry-land damping than underwater drag, keeping its land pace slow',
+    'Sea Turtle has stronger dry-land damping than underwater damping, keeping its land pace slow',
   );
 
   const commanderBlueprint = getAllUnitBlueprints().find(

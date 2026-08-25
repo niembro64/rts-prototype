@@ -250,7 +250,7 @@ export interface BodyPoolViews {
   invMass: Float64Array;
   restitution: Float64Array;
   groundOffset: Float64Array;
-  airDragCoefficient: Float64Array;
+  linearDragCoefficient: Float64Array;
   groundTangentialDampingRate: Float64Array;
   sleepTicks: Float64Array;
   flags: Uint8Array;

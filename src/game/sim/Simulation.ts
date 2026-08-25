@@ -2007,7 +2007,7 @@ export class Simulation {
         continue;
       }
 
-      // Default: no thrust (contact braking/drag will slow or hold the unit)
+      // Default: no thrust (contact braking/damping will slow or hold the unit)
       entitySlotRegistry.setUnitDriveInput(entity, 0, 0, 0, 0, entitySlot);
 
       // Clear priority target — re-set below by attack / attack-ground actions.

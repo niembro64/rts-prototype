@@ -91,8 +91,8 @@ export function runShotLocomotionContractTest(): void {
     rocketLocomotion.gravityForceMultiplier === 0 &&
       rocketAir.propulsionForce === 0 &&
       rocketAir.guidanceThrust === 0 &&
-      rocketAir.velocityFrictionPer60HzFrame === 0,
-    'constant-speed light rocket cannot hide acceleration, gravity, or drag in its air profile',
+      rocketAir.linearDampingRate === 0,
+    'constant-speed light rocket cannot hide acceleration, gravity, or damping in its air profile',
   );
   assertContract(
     rocketAir.turnRate === rocketTurning.turnRate,

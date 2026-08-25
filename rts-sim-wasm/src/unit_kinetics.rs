@@ -33,7 +33,7 @@ pub const UNIT_FORCE_BATCH_STRIDE: usize = 59;
 
 /** Direct, SI-style values: force is converted to the simulator's mass scale
  * only at F = ma. There are no hidden force multipliers or coupling factors. */
-pub const UF_PROFILE_STRIDE: usize = 15;
+pub const UF_PROFILE_STRIDE: usize = 16;
 pub(crate) const UF_PROFILE_GROUND_MAX_PROPULSIVE_FORCE: usize = 0;
 pub(crate) const UF_PROFILE_GROUND_STATIC_FRICTION_COEFFICIENT: usize = 1;
 pub(crate) const UF_PROFILE_GROUND_TANGENTIAL_DAMPING_RATE: usize = 2;
@@ -51,6 +51,7 @@ pub(crate) const UF_PROFILE_WATER_DAMAGE_PER_SECOND: usize = 13;
 /// Authored constant-rate yaw slew (rad/s) for `alwaysForward` chassis; 0 for
 /// every other actuator, which keeps the critically damped attitude servo.
 pub(crate) const UF_PROFILE_TURN_RATE_RAD_PER_SEC: usize = 14;
+pub(crate) const UF_PROFILE_GROUND_ANGULAR_DAMPING_RATE: usize = 15;
 
 pub(crate) struct UnitForceProfileTable {
     pub(crate) values: Vec<f64>,
@@ -442,7 +443,7 @@ fn unit_water_damage_for_step(origin_z: f64, damage_per_second: f64, dt_sec: f64
 }
 
 #[inline]
-fn unit_force_fluid_drag(
+fn unit_force_fluid_damping_force(
     rel_vx: f64,
     rel_vy: f64,
     rel_vz: f64,
@@ -1022,7 +1023,7 @@ fn unit_force_attitude_step(
     //
     // The active servo owns a critically damped closed-loop response. Medium
     // damping governs unpowered spin in the branch above; while steering, the
-    // controller compensates that predictable resistance so air/water drag
+    // controller compensates that predictable resistance so air/water damping
     // cannot turn a conservative force budget into a minute-long yaw.
     let k = unit_force_attitude_spring_gain(max_alpha);
     let damping = 2.0 * k.sqrt();
@@ -1278,6 +1279,7 @@ fn unit_force_step_batch_core(
         let mut flag = flags[i];
         let mut profile_flags = 0_u32;
         let mut air_angular_damping_rate = 0.0;
+        let mut ground_angular_damping_rate = 0.0;
         let mut cruise_slew_yaw_rate = 0.0;
         let mut water_angular_damping_rate = 0.0;
         let mut authored_ground_tangential_damping_rate = 0.0;
@@ -1326,9 +1328,11 @@ fn unit_force_step_batch_core(
                         profile.values[pbase + UF_PROFILE_AIR_ANGULAR_DAMPING_RATE];
                     water_angular_damping_rate =
                         profile.values[pbase + UF_PROFILE_WATER_ANGULAR_DAMPING_RATE];
+                    ground_angular_damping_rate =
+                        profile.values[pbase + UF_PROFILE_GROUND_ANGULAR_DAMPING_RATE];
                     // Authored rate; the contact block below scales it by the
                     // load this contact actually carries so ground damping adds
-                    // to fluid drag instead of replacing it.
+                    // to fluid damping instead of replacing it.
                     authored_ground_tangential_damping_rate =
                         profile.values[pbase + UF_PROFILE_GROUND_TANGENTIAL_DAMPING_RATE].max(0.0);
                     cruise_slew_yaw_rate =
@@ -1555,10 +1559,10 @@ fn unit_force_step_batch_core(
             let air_linear_damping_rate = rows[base + UF_ROW_AIR_LINEAR_DAMPING_RATE];
             if air_linear_damping_rate > 0.0 && body_mass > 0.0 {
                 // Wind belongs exclusively to the occupied air volume. The
-                // drag helper weights this air-relative velocity by
+                // damping helper weights this air-relative velocity by
                 // air_fraction, so the wind contribution fades continuously
                 // at the waterline and is exactly zero when submerged.
-                let (fx, fy, fz) = unit_force_fluid_drag(
+                let (fx, fy, fz) = unit_force_fluid_damping_force(
                     p.vel_x[slot] - wind_x,
                     p.vel_y[slot] - wind_y,
                     p.vel_z[slot] - wind_z,
@@ -1646,7 +1650,7 @@ fn unit_force_step_batch_core(
                 // Water is currently a still medium. Never feed atmospheric
                 // wind into this relative velocity; future currents belong in
                 // a separate water-medium velocity field.
-                let (fx, fy, fz) = unit_force_fluid_drag(
+                let (fx, fy, fz) = unit_force_fluid_damping_force(
                     p.vel_x[slot],
                     p.vel_y[slot],
                     p.vel_z[slot],
@@ -1760,8 +1764,7 @@ fn unit_force_step_batch_core(
             );
             let mut angular_damping = 0.0;
             if ground_occupancy > 0.0 {
-                angular_damping += rows[base + UF_ROW_GROUND_STATIC_FRICTION_COEFFICIENT].max(0.0)
-                    * ground_occupancy;
+                angular_damping += ground_angular_damping_rate.max(0.0) * ground_occupancy;
             }
             angular_damping += unit_force_occupancy_weighted_positive_value(
                 air_angular_damping_rate,
@@ -2208,9 +2211,9 @@ mod tests {
     }
 
     #[test]
-    fn fluid_drag_is_isotropic_and_occupancy_weighted() {
-        let full = unit_force_fluid_drag(10.0, -5.0, 2.0, 3.0, 1.0, 1_000.0);
-        let half = unit_force_fluid_drag(10.0, -5.0, 2.0, 3.0, 0.5, 1_000.0);
+    fn fluid_damping_is_isotropic_and_occupancy_weighted() {
+        let full = unit_force_fluid_damping_force(10.0, -5.0, 2.0, 3.0, 1.0, 1_000.0);
+        let half = unit_force_fluid_damping_force(10.0, -5.0, 2.0, 3.0, 0.5, 1_000.0);
         assert_near(full.0, -0.03);
         assert_near(full.1, 0.015);
         assert_near(full.2, -0.006);

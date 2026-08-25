@@ -45,7 +45,7 @@ import {
   synchronizeHostCombatEmitterTasks,
 } from '../emitterCombatTasks';
 import { isAttackEmitter } from '../emitterKinds';
-import { getProjectileMediumFrictionPer60HzFrame } from '../shotLocomotionMotion';
+import { getProjectileMediumLinearDampingRate } from '../shotLocomotionMotion';
 import {
   getPoweredShotReachabilityDistance,
   getShotLocomotionMediumAtHeight,
@@ -1173,8 +1173,8 @@ function stampCombatTargetingEntityInto(
           WATER_LEVEL,
         )
       : undefined;
-    const projectileAirFrictionPer60HzFrame = launchMedium
-      ? getProjectileMediumFrictionPer60HzFrame(launchMedium)
+    const projectileLinearDampingRate = launchMedium
+      ? getProjectileMediumLinearDampingRate(launchMedium)
       : 0;
     // How far down the aim line the shot is actually released. The ballistic
     // solver launches from the turret pivot; the shell leaves the barrel tip,
@@ -1257,8 +1257,8 @@ function stampCombatTargetingEntityInto(
       rescorePeriodTicks,
       t.sustainedDps,
       projectileSpeed,
-      projectileMass,
-      projectileAirFrictionPer60HzFrame,
+      projectileLinearDampingRate,
+      launchSocket !== undefined && launchSocket.position.z > WATER_LEVEL ? 1 : 0,
       muzzleForwardOffset,
       ballisticArcPreference,
       maxTimeSec,

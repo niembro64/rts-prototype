@@ -32,6 +32,8 @@ export type UnitLocomotionGroundPhysics = {
   staticFrictionCoefficient: number;
   /** Passive tangent-velocity damping rate while supported, in s^-1. */
   tangentialDampingRate: number;
+  /** Passive angular damping rate while supported, in s^-1. */
+  angularDampingRate: number;
 };
 
 export type UnitLocomotionAirFluidPhysics = {

@@ -144,7 +144,7 @@ mod blueprint_tables {
     include!(concat!(env!("OUT_DIR"), "/blueprint_tables.rs"));
 }
 
-mod air_drag;
+mod linear_damping;
 mod articulation;
 mod generated_blueprint_schema;
 mod wasm_global;

@@ -1,16 +1,12 @@
-// Ballistic aim helpers. The core solver finds intercept time from raw
-// shooter ("my") and target kinematic vectors under constant acceleration;
-// projectile acceleration is gravity plus optional wind-relative linear
-// air-drag force.
+// Ballistic aim helpers. The core solver predicts entity velocity only;
+// control acceleration is deliberately absent because it is too noisy to
+// extrapolate. Projectile acceleration is
+// gravity plus optional medium-relative linear damping.
 // This file is imported by authoritative simulation and aim-preview callers.
 // Zero state, pure functions.
 
 import { getSimWasm } from '../sim-wasm/init';
 import { deterministicMath as DMath } from '../sim/deterministicMath';
-import {
-  dragRateFromVelocityFrictionPer60HzFrame,
-  windVelocityForAirFriction,
-} from '../sim/motionFriction';
 
 // Cached at module scope so the per-call dispatch in
 // solveKinematicIntercept doesn't pay the function-call cost
@@ -30,22 +26,18 @@ type KinematicVec3 = {
 export type KinematicState3 = {
   position: KinematicVec3;
   velocity: KinematicVec3;
-  acceleration: KinematicVec3;
 };
 
 type KinematicInterceptInput = {
   myPosition: KinematicVec3;
   myVelocity: KinematicVec3;
-  myAcceleration: KinematicVec3;
   targetPosition: KinematicVec3;
   targetVelocity: KinematicVec3;
-  targetAcceleration: KinematicVec3;
   projectileSpeed: number;
-  projectileMass?: number;
-  /** Per-shot velocity loss authored as friction per 60 Hz frame. */
-  projectileAirFrictionPer60HzFrame?: number;
-  /** Air velocity in world units/s. Used only by drag-aware projectile solves. */
-  windVelocity?: KinematicVec3;
+  /** Continuous linear damping rate in inverse seconds. */
+  projectileLinearDampingRate?: number;
+  /** Velocity of the surrounding medium in world units/s. */
+  mediumVelocity?: KinematicVec3;
   /** Universal gravity constant in world units/s^2. Projectile acceleration is (0, 0, -gravity). */
   gravity: number;
   preferLateSolution: boolean;
@@ -80,62 +72,34 @@ function defaultInterceptMaxTime(input: KinematicInterceptInput): number {
   const dist = DMath.hypot(dx, dy, dz);
   const speed = input.projectileSpeed;
   const baseTime = speed > 1e-6 ? dist / speed : 0;
-  const myAccel = input.myAcceleration;
-  const relAx =
-    (input.targetAcceleration.x - myAccel.x) -
-    (0 - myAccel.x);
-  const relAy =
-    (input.targetAcceleration.y - myAccel.y) -
-    (0 - myAccel.y);
-  const relAz =
-    (input.targetAcceleration.z - myAccel.z) -
-    (-input.gravity - myAccel.z);
-  const relAccel = DMath.hypot(relAx, relAy, relAz);
-  const accelTime = relAccel > 1e-6 ? (2 * speed) / relAccel : 0;
+  const accelTime = input.gravity > 1e-6 ? (2 * speed) / input.gravity : 0;
   return clampTime(Math.max(2, baseTime * 8 + 4, accelTime * 2 + 1));
 }
 
-function getAirFrictionPer60HzFrame(input: KinematicInterceptInput): number {
-  const friction = input.projectileAirFrictionPer60HzFrame ?? 0;
-  return Number.isFinite(friction) && friction > 0 ? friction : 0;
+function getLinearDampingRate(input: KinematicInterceptInput): number {
+  const rate = input.projectileLinearDampingRate ?? 0;
+  return Number.isFinite(rate) && rate > 0 ? rate : 0;
 }
 
-function getWindVelocity(input: KinematicInterceptInput): KinematicVec3 | null {
-  const wind = windVelocityForAirFriction(
-    input.windVelocity,
-    getAirFrictionPer60HzFrame(input),
-  );
-  return wind === undefined ? null : wind;
-}
-
-function getProjectileMass(input: KinematicInterceptInput): number {
-  const mass = input.projectileMass;
-  return Number.isFinite(mass) && mass !== undefined && mass > 1e-6 ? mass : 0;
+function getMediumVelocity(input: KinematicInterceptInput): KinematicVec3 | null {
+  return getLinearDampingRate(input) > 0 && input.mediumVelocity !== undefined
+    ? input.mediumVelocity
+    : null;
 }
 
 function interceptFunction(input: KinematicInterceptInput, t: number): number {
   const myPos = input.myPosition;
   const myVel = input.myVelocity;
-  const myAcc = input.myAcceleration;
   const targetPos = input.targetPosition;
   const targetVel = input.targetVelocity;
-  const targetAcc = input.targetAcceleration;
-  const relProjectileAx = 0 - myAcc.x;
-  const relProjectileAy = 0 - myAcc.y;
-  const relProjectileAz = -input.gravity - myAcc.z;
-  const relTargetAx = targetAcc.x - myAcc.x;
-  const relTargetAy = targetAcc.y - myAcc.y;
-  const relTargetAz = targetAcc.z - myAcc.z;
 
   const relX = targetPos.x - myPos.x +
-    (targetVel.x - myVel.x) * t +
-    0.5 * (relTargetAx - relProjectileAx) * t * t;
+    (targetVel.x - myVel.x) * t;
   const relY = targetPos.y - myPos.y +
-    (targetVel.y - myVel.y) * t +
-    0.5 * (relTargetAy - relProjectileAy) * t * t;
+    (targetVel.y - myVel.y) * t;
   const relZ = targetPos.z - myPos.z +
     (targetVel.z - myVel.z) * t +
-    0.5 * (relTargetAz - relProjectileAz) * t * t;
+    0.5 * input.gravity * t * t;
 
   return DMath.hypot(relX, relY, relZ) - input.projectileSpeed * t;
 }
@@ -144,52 +108,46 @@ function dampedRequiredWorldVelocityAxis(
   displacement: number,
   acceleration: number,
   time: number,
-  dragK: number,
+  dampingRate: number,
 ): number {
-  const damp = DMath.exp(-dragK * time);
+  const damp = DMath.exp(-dampingRate * time);
   const retentionLoss = 1 - damp;
   if (!Number.isFinite(retentionLoss) || retentionLoss <= 1e-12) return Number.NaN;
-  const terminal = acceleration / dragK;
-  return terminal + (displacement - terminal * time) * dragK / retentionLoss;
+  const terminal = acceleration / dampingRate;
+  return terminal + (displacement - terminal * time) * dampingRate / retentionLoss;
 }
 
 function dampedInterceptFunction(
   input: KinematicInterceptInput,
   t: number,
-  dragK: number,
+  dampingRate: number,
 ): number {
-  const aimX = input.targetPosition.x +
-    input.targetVelocity.x * t +
-    0.5 * input.targetAcceleration.x * t * t;
-  const aimY = input.targetPosition.y +
-    input.targetVelocity.y * t +
-    0.5 * input.targetAcceleration.y * t * t;
-  const aimZ = input.targetPosition.z +
-    input.targetVelocity.z * t +
-    0.5 * input.targetAcceleration.z * t * t;
-  const wind = getWindVelocity(input);
-  const windX = wind === null ? 0 : wind.x;
-  const windY = wind === null ? 0 : wind.y;
-  const windZ = wind === null ? 0 : wind.z;
+  const aimX = input.targetPosition.x + input.targetVelocity.x * t;
+  const aimY = input.targetPosition.y + input.targetVelocity.y * t;
+  const aimZ = input.targetPosition.z + input.targetVelocity.z * t;
+  const medium = getMediumVelocity(input);
+  const mediumX = medium === null ? 0 : medium.x;
+  const mediumY = medium === null ? 0 : medium.y;
+  const mediumZ = medium === null ? 0 : medium.z;
 
   const worldVx = dampedRequiredWorldVelocityAxis(
-    aimX - input.myPosition.x - windX * t,
+    aimX - input.myPosition.x - mediumX * t,
     0,
     t,
-    dragK,
-  ) + windX;
+    dampingRate,
+  ) + mediumX;
   const worldVy = dampedRequiredWorldVelocityAxis(
-    aimY - input.myPosition.y - windY * t,
+    aimY - input.myPosition.y - mediumY * t,
     0,
     t,
-    dragK,
-  ) + windY;
+    dampingRate,
+  ) + mediumY;
   const worldVz = dampedRequiredWorldVelocityAxis(
-    aimZ - input.myPosition.z - windZ * t,
+    aimZ - input.myPosition.z - mediumZ * t,
     -input.gravity,
     t,
-    dragK,
-  ) + windZ;
+    dampingRate,
+  ) + mediumZ;
   if (!Number.isFinite(worldVx) || !Number.isFinite(worldVy) || !Number.isFinite(worldVz)) {
     return Number.POSITIVE_INFINITY;
   }
@@ -225,16 +183,16 @@ function bisectInterceptRoot(
 
 function bisectDampedInterceptRoot(
   input: KinematicInterceptInput,
-  dragK: number,
+  dampingRate: number,
   loT: number,
   hiT: number,
 ): number {
   let lo = loT;
   let hi = hiT;
-  let loF = dampedInterceptFunction(input, lo, dragK);
+  let loF = dampedInterceptFunction(input, lo, dampingRate);
   for (let i = 0; i < INTERCEPT_BISECT_STEPS; i++) {
     const mid = (lo + hi) * 0.5;
-    const midF = dampedInterceptFunction(input, mid, dragK);
+    const midF = dampedInterceptFunction(input, mid, dampingRate);
     if (Math.abs(midF) <= INTERCEPT_ROOT_EPSILON) return mid;
     if ((loF <= 0 && midF <= 0) || (loF >= 0 && midF >= 0)) {
       lo = mid;
@@ -253,24 +211,15 @@ function writeInterceptSolution(
 ): KinematicInterceptSolution {
   const myPos = input.myPosition;
   const myVel = input.myVelocity;
-  const myAcc = input.myAcceleration;
-  out.aimPoint.x = input.targetPosition.x + input.targetVelocity.x * time + 0.5 * input.targetAcceleration.x * time * time;
-  out.aimPoint.y = input.targetPosition.y + input.targetVelocity.y * time + 0.5 * input.targetAcceleration.y * time * time;
-  out.aimPoint.z = input.targetPosition.z + input.targetVelocity.z * time + 0.5 * input.targetAcceleration.z * time * time;
+  out.aimPoint.x = input.targetPosition.x + input.targetVelocity.x * time;
+  out.aimPoint.y = input.targetPosition.y + input.targetVelocity.y * time;
+  out.aimPoint.z = input.targetPosition.z + input.targetVelocity.z * time;
 
-  const originX = myPos.x + myVel.x * time + 0.5 * myAcc.x * time * time;
-  const originY = myPos.y + myVel.y * time + 0.5 * myAcc.y * time * time;
-  const originZ = myPos.z + myVel.z * time + 0.5 * myAcc.z * time * time;
-  const projectileRelAx = 0 - myAcc.x;
-  const projectileRelAy = 0 - myAcc.y;
-  const projectileRelAz = -input.gravity - myAcc.z;
   const invT = 1 / time;
-  out.launchVelocity.x =
-    (out.aimPoint.x - originX - 0.5 * projectileRelAx * time * time) * invT;
-  out.launchVelocity.y =
-    (out.aimPoint.y - originY - 0.5 * projectileRelAy * time * time) * invT;
+  out.launchVelocity.x = (out.aimPoint.x - myPos.x) * invT - myVel.x;
+  out.launchVelocity.y = (out.aimPoint.y - myPos.y) * invT - myVel.y;
   out.launchVelocity.z =
-    (out.aimPoint.z - originZ - 0.5 * projectileRelAz * time * time) * invT;
+    (out.aimPoint.z - myPos.z) * invT - myVel.z + 0.5 * input.gravity * time;
   out.time = time;
   return out;
 }
@@ -278,35 +227,35 @@ function writeInterceptSolution(
 function writeDampedInterceptSolution(
   input: KinematicInterceptInput,
   time: number,
-  dragK: number,
+  dampingRate: number,
   out: KinematicInterceptSolution,
 ): KinematicInterceptSolution | null {
-  out.aimPoint.x = input.targetPosition.x + input.targetVelocity.x * time + 0.5 * input.targetAcceleration.x * time * time;
-  out.aimPoint.y = input.targetPosition.y + input.targetVelocity.y * time + 0.5 * input.targetAcceleration.y * time * time;
-  out.aimPoint.z = input.targetPosition.z + input.targetVelocity.z * time + 0.5 * input.targetAcceleration.z * time * time;
-  const wind = getWindVelocity(input);
-  const windX = wind === null ? 0 : wind.x;
-  const windY = wind === null ? 0 : wind.y;
-  const windZ = wind === null ? 0 : wind.z;
+  out.aimPoint.x = input.targetPosition.x + input.targetVelocity.x * time;
+  out.aimPoint.y = input.targetPosition.y + input.targetVelocity.y * time;
+  out.aimPoint.z = input.targetPosition.z + input.targetVelocity.z * time;
+  const medium = getMediumVelocity(input);
+  const mediumX = medium === null ? 0 : medium.x;
+  const mediumY = medium === null ? 0 : medium.y;
+  const mediumZ = medium === null ? 0 : medium.z;
 
   const worldVx = dampedRequiredWorldVelocityAxis(
-    out.aimPoint.x - input.myPosition.x - windX * time,
+    out.aimPoint.x - input.myPosition.x - mediumX * time,
     0,
     time,
-    dragK,
-  ) + windX;
+    dampingRate,
+  ) + mediumX;
   const worldVy = dampedRequiredWorldVelocityAxis(
-    out.aimPoint.y - input.myPosition.y - windY * time,
+    out.aimPoint.y - input.myPosition.y - mediumY * time,
     0,
     time,
-    dragK,
-  ) + windY;
+    dampingRate,
+  ) + mediumY;
   const worldVz = dampedRequiredWorldVelocityAxis(
-    out.aimPoint.z - input.myPosition.z - windZ * time,
+    out.aimPoint.z - input.myPosition.z - mediumZ * time,
     -input.gravity,
     time,
-    dragK,
-  ) + windZ;
+    dampingRate,
+  ) + mediumZ;
   if (!Number.isFinite(worldVx) || !Number.isFinite(worldVy) || !Number.isFinite(worldVz)) {
     return null;
   }
@@ -325,46 +274,39 @@ function writeDampedInterceptSolution(
 // window (initSimWasm hasn't resolved) and as a reference impl.
 const _interceptInputScratch = new Float64Array(22);
 const _interceptOutScratch = new Float64Array(7);
-const _noFrictionInterceptInput: KinematicInterceptInput = {
+const _noDampingInterceptInput: KinematicInterceptInput = {
   myPosition: { x: 0, y: 0, z: 0 },
   myVelocity: { x: 0, y: 0, z: 0 },
-  myAcceleration: { x: 0, y: 0, z: 0 },
   targetPosition: { x: 0, y: 0, z: 0 },
   targetVelocity: { x: 0, y: 0, z: 0 },
-  targetAcceleration: { x: 0, y: 0, z: 0 },
   projectileSpeed: 0,
-  projectileMass: 0,
-  projectileAirFrictionPer60HzFrame: 0,
-  windVelocity: undefined,
+  projectileLinearDampingRate: 0,
+  mediumVelocity: undefined,
   gravity: 0,
   preferLateSolution: false,
   maxTimeSec: 0,
 };
 
-function writeNoFrictionInterceptInput(input: KinematicInterceptInput): KinematicInterceptInput {
-  const noFrictionInput = _noFrictionInterceptInput;
-  noFrictionInput.myPosition = input.myPosition;
-  noFrictionInput.myVelocity = input.myVelocity;
-  noFrictionInput.myAcceleration = input.myAcceleration;
-  noFrictionInput.targetPosition = input.targetPosition;
-  noFrictionInput.targetVelocity = input.targetVelocity;
-  noFrictionInput.targetAcceleration = input.targetAcceleration;
-  noFrictionInput.projectileSpeed = input.projectileSpeed;
-  noFrictionInput.projectileMass = input.projectileMass;
-  noFrictionInput.projectileAirFrictionPer60HzFrame = 0;
-  noFrictionInput.windVelocity = undefined;
-  noFrictionInput.gravity = input.gravity;
-  noFrictionInput.preferLateSolution = input.preferLateSolution;
-  noFrictionInput.maxTimeSec = input.maxTimeSec;
-  return noFrictionInput;
+function writeNoDampingInterceptInput(input: KinematicInterceptInput): KinematicInterceptInput {
+  const noDampingInput = _noDampingInterceptInput;
+  noDampingInput.myPosition = input.myPosition;
+  noDampingInput.myVelocity = input.myVelocity;
+  noDampingInput.targetPosition = input.targetPosition;
+  noDampingInput.targetVelocity = input.targetVelocity;
+  noDampingInput.projectileSpeed = input.projectileSpeed;
+  noDampingInput.projectileLinearDampingRate = 0;
+  noDampingInput.mediumVelocity = undefined;
+  noDampingInput.gravity = input.gravity;
+  noDampingInput.preferLateSolution = input.preferLateSolution;
+  noDampingInput.maxTimeSec = input.maxTimeSec;
+  return noDampingInput;
 }
 
 /**
- * Constant-acceleration intercept solver. Callers pass only raw kinematic
- * vectors for the shooter ("my") and target states, plus the universal
- * gravity constant. When `projectileAirFrictionPer60HzFrame` is positive,
- * the solver inverts the same wind-relative linear drag-force model used by
- * projectile integration, with drag acceleration scaled by projectile mass.
+ * Velocity-only intercept solver. Callers pass shooter and target position/
+ * velocity plus the universal gravity constant. When
+ * `projectileLinearDampingRate` is positive, the solver inverts the same
+ * medium-relative linear damping model used by projectile integration.
  */
 export function solveKinematicIntercept(
   input: KinematicInterceptInput,
@@ -373,25 +315,16 @@ export function solveKinematicIntercept(
   if (
     !isFiniteVec3(input.myPosition) ||
     !isFiniteVec3(input.myVelocity) ||
-    !isFiniteVec3(input.myAcceleration) ||
     !isFiniteVec3(input.targetPosition) ||
     !isFiniteVec3(input.targetVelocity) ||
-    !isFiniteVec3(input.targetAcceleration) ||
     (
-      input.windVelocity !== undefined &&
-      !isFiniteVec3(input.windVelocity)
+      input.mediumVelocity !== undefined &&
+      !isFiniteVec3(input.mediumVelocity)
     ) ||
     !Number.isFinite(input.projectileSpeed) ||
     input.projectileSpeed <= 1e-6 ||
-    !Number.isFinite(input.projectileMass ?? 0) ||
-    (input.projectileMass ?? 0) < 0 ||
-    !Number.isFinite(input.projectileAirFrictionPer60HzFrame ?? 0) ||
-    (input.projectileAirFrictionPer60HzFrame ?? 0) < 0 ||
-    (input.projectileAirFrictionPer60HzFrame ?? 0) >= 1 ||
-    (
-      (input.projectileAirFrictionPer60HzFrame ?? 0) > 0 &&
-      (input.projectileMass ?? 0) <= 1e-6
-    ) ||
+    !Number.isFinite(input.projectileLinearDampingRate ?? 0) ||
+    (input.projectileLinearDampingRate ?? 0) < 0 ||
     !Number.isFinite(input.gravity) ||
     input.gravity < 0 ||
     !Number.isFinite(input.maxTimeSec) ||
@@ -400,19 +333,19 @@ export function solveKinematicIntercept(
     return null;
   }
 
-  const airFrictionPer60HzFrame = getAirFrictionPer60HzFrame(input);
-  if (airFrictionPer60HzFrame > 0) {
+  const linearDampingRate = getLinearDampingRate(input);
+  if (linearDampingRate > 0) {
     return solveKinematicInterceptTs(input, out);
   }
 
-  const noFrictionInput = input.windVelocity === undefined
+  const noDampingInput = input.mediumVelocity === undefined
     ? input
-    : writeNoFrictionInterceptInput(input);
+    : writeNoDampingInterceptInput(input);
   const sim = simHandle();
   if (sim !== undefined) {
-    return solveKinematicInterceptWasm(sim, noFrictionInput, out);
+    return solveKinematicInterceptWasm(sim, noDampingInput, out);
   }
-  return solveKinematicInterceptTs(noFrictionInput, out);
+  return solveKinematicInterceptTs(noDampingInput, out);
 }
 
 function solveKinematicInterceptWasm(
@@ -427,18 +360,18 @@ function solveKinematicInterceptWasm(
   buf[3] = input.myVelocity.x;
   buf[4] = input.myVelocity.y;
   buf[5] = input.myVelocity.z;
-  buf[6] = input.myAcceleration.x;
-  buf[7] = input.myAcceleration.y;
-  buf[8] = input.myAcceleration.z;
+  buf[6] = 0;
+  buf[7] = 0;
+  buf[8] = 0;
   buf[9] = input.targetPosition.x;
   buf[10] = input.targetPosition.y;
   buf[11] = input.targetPosition.z;
   buf[12] = input.targetVelocity.x;
   buf[13] = input.targetVelocity.y;
   buf[14] = input.targetVelocity.z;
-  buf[15] = input.targetAcceleration.x;
-  buf[16] = input.targetAcceleration.y;
-  buf[17] = input.targetAcceleration.z;
+  buf[15] = 0;
+  buf[16] = 0;
+  buf[17] = 0;
   buf[18] = 0;
   buf[19] = 0;
   buf[20] = -input.gravity;
@@ -465,9 +398,9 @@ function solveKinematicInterceptTs(
   input: KinematicInterceptInput,
   out: KinematicInterceptSolution,
 ): KinematicInterceptSolution | null {
-  const airFrictionPer60HzFrame = getAirFrictionPer60HzFrame(input);
-  if (airFrictionPer60HzFrame > 0) {
-    return solveDampedKinematicInterceptTs(input, out, airFrictionPer60HzFrame);
+  const linearDampingRate = getLinearDampingRate(input);
+  if (linearDampingRate > 0) {
+    return solveDampedKinematicInterceptTs(input, out, linearDampingRate);
   }
 
   const maxTime = input.maxTimeSec > 0
@@ -505,13 +438,11 @@ function solveKinematicInterceptTs(
 function solveDampedKinematicInterceptTs(
   input: KinematicInterceptInput,
   out: KinematicInterceptSolution,
-  airFrictionPer60HzFrame: number,
+  linearDampingRate: number,
 ): KinematicInterceptSolution | null {
-  const dragK = getProjectileMass(input) > 0
-    ? dragRateFromVelocityFrictionPer60HzFrame(airFrictionPer60HzFrame)
-    : 0;
-  if (!Number.isFinite(dragK) || dragK <= 1e-9) {
-    return solveKinematicInterceptTs(writeNoFrictionInterceptInput(input), out);
+  const dampingRate = linearDampingRate;
+  if (!Number.isFinite(dampingRate) || dampingRate <= 1e-9) {
+    return solveKinematicInterceptTs(writeNoDampingInterceptInput(input), out);
   }
 
   const maxTime = input.maxTimeSec > 0
@@ -521,7 +452,7 @@ function solveDampedKinematicInterceptTs(
 
   let selectedRoot = 0;
   let prevT = INTERCEPT_MIN_TIME;
-  let prevF = dampedInterceptFunction(input, prevT, dragK);
+  let prevF = dampedInterceptFunction(input, prevT, dampingRate);
   if (Math.abs(prevF) <= INTERCEPT_ROOT_EPSILON) {
     selectedRoot = prevT;
   }
@@ -529,7 +460,7 @@ function solveDampedKinematicInterceptTs(
   for (let i = 1; i <= INTERCEPT_SAMPLE_COUNT; i++) {
     const t = INTERCEPT_MIN_TIME +
       (maxTime - INTERCEPT_MIN_TIME) * i / INTERCEPT_SAMPLE_COUNT;
-    const f = dampedInterceptFunction(input, t, dragK);
+    const f = dampedInterceptFunction(input, t, dampingRate);
     if (!Number.isFinite(f) || !Number.isFinite(prevF)) {
       prevT = t;
       prevF = f;
@@ -540,7 +471,7 @@ function solveDampedKinematicInterceptTs(
     if (Math.abs(f) <= INTERCEPT_ROOT_EPSILON) {
       root = t;
     } else if ((prevF > 0 && f < 0) || (prevF < 0 && f > 0)) {
-      root = bisectDampedInterceptRoot(input, dragK, prevT, t);
+      root = bisectDampedInterceptRoot(input, dampingRate, prevT, t);
     }
 
     if (root > 0) {
@@ -553,5 +484,5 @@ function solveDampedKinematicInterceptTs(
   }
 
   if (selectedRoot <= INTERCEPT_MIN_TIME) return null;
-  return writeDampedInterceptSolution(input, selectedRoot, dragK, out);
+  return writeDampedInterceptSolution(input, selectedRoot, dampingRate, out);
 }

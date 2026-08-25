@@ -122,6 +122,6 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
       orca.physics.water.lift.surfaceFollowingProportionalForceFromWater * 1000 <
         orca.physics.water.lift.surfaceFollowingInverseForceFromGround &&
       orca.physics.water.resistance.linearDampingRate >= 3,
-    'Orca retains its inverse lakebed controller and enough water drag to settle at waypoints',
+    'Orca retains its inverse lakebed controller and enough water damping to settle at waypoints',
   );
 }

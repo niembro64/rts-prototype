@@ -62,7 +62,7 @@ function assertMedium(
     'operational',
     'propulsionForce',
     'guidanceThrust',
-    'velocityFrictionPer60HzFrame',
+    'linearDampingRate',
   ]);
   assertBoolean(value.operational, `shot locomotion ${label}.operational`);
   assertNonNegativeFiniteNumber(
@@ -74,18 +74,13 @@ function assertMedium(
     `shot locomotion ${label}.guidanceThrust`,
   );
   assertNonNegativeFiniteNumber(
-    value.velocityFrictionPer60HzFrame,
-    `shot locomotion ${label}.velocityFrictionPer60HzFrame`,
+    value.linearDampingRate,
+    `shot locomotion ${label}.linearDampingRate`,
   );
-  if ((value.velocityFrictionPer60HzFrame as number) >= 1) {
-    throw new Error(
-      `Invalid shot locomotion ${label}.velocityFrictionPer60HzFrame: expected < 1`,
-    );
-  }
   if (
     value.operational === false &&
     (value.propulsionForce !== 0 || value.guidanceThrust !== 0 ||
-      value.velocityFrictionPer60HzFrame !== 0)
+      value.linearDampingRate !== 0)
   ) {
     throw new Error(
       `Invalid shot locomotion ${label}: non-operational media must author zero motion authority`,
@@ -182,10 +177,10 @@ function validatePreset(presetId: string, value: unknown): ShotLocomotion {
     for (const medium of operationalMedia) {
       if (
         medium.propulsionForce !== 0 || medium.guidanceThrust !== 0 ||
-        medium.velocityFrictionPer60HzFrame !== 0
+        medium.linearDampingRate !== 0
       ) {
         throw new Error(
-          `Invalid shot locomotion ${label}: constant-speed guidance cannot author thrust or drag`,
+          `Invalid shot locomotion ${label}: constant-speed guidance cannot author thrust or damping`,
         );
       }
     }

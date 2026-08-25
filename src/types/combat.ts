@@ -198,6 +198,8 @@ export type FireTurretsResult = {
 };
 
 export type CollisionResult = {
+  /** Entities classified by the swept direct-impact path this tick. */
+  directHitEntityIds: Set<EntityId>;
   deadUnitIds: Set<EntityId>;
   deadBuildingIds: Set<EntityId>;
   events: SimEvent[];

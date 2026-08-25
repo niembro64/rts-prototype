@@ -41,6 +41,7 @@ export type UnitLocomotionPresetConfig = {
     ground: {
       staticFrictionCoefficient: number;
       tangentialDampingRate: number;
+      angularDampingRate: number;
     };
     air: UnitLocomotionPresetFluidPhysics;
     water: UnitLocomotionPresetFluidPhysics;
@@ -100,6 +101,7 @@ function assertGroundPhysics(presetId: string, value: unknown): void {
   assertExactKeys(label, value, [
     'staticFrictionCoefficient',
     'tangentialDampingRate',
+    'angularDampingRate',
   ]);
   assertUnitLocomotionNonNegativeFinite(
     `${label}.staticFrictionCoefficient`,
@@ -108,6 +110,10 @@ function assertGroundPhysics(presetId: string, value: unknown): void {
   assertUnitLocomotionNonNegativeFinite(
     `${label}.tangentialDampingRate`,
     value.tangentialDampingRate as number,
+  );
+  assertUnitLocomotionNonNegativeFinite(
+    `${label}.angularDampingRate`,
+    value.angularDampingRate as number,
   );
 }
 

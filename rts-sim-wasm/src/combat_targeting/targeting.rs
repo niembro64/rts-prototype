@@ -16,6 +16,20 @@ pub(crate) const CT_HIGH_ARC_MIN_TIME_SEPARATION: f64 = 1.0 / 120.0;
 pub(crate) const CT_SHOT_DIRECTION_EPSILON: f64 = 1e-6;
 
 #[inline]
+pub(crate) fn combat_targeting_projectile_medium_velocity(
+    pool: &CombatTargetingPool,
+    uses_air_medium: bool,
+) -> (f64, f64, f64) {
+    if uses_air_medium {
+        (pool.wind_x, pool.wind_y, pool.wind_z)
+    } else {
+        // Water currents are not modeled. Water-relative damping therefore
+        // converges toward still world-space water, never atmospheric wind.
+        (0.0, 0.0, 0.0)
+    }
+}
+
+#[inline]
 pub(crate) fn combat_targeting_ballistic_params_finite(values: &[f64]) -> bool {
     for v in values.iter() {
         if !v.is_finite() {
@@ -35,15 +49,8 @@ pub fn combat_targeting_solve_ballistic_aim(
     target_vx: f64,
     target_vy: f64,
     target_vz: f64,
-    target_ax: f64,
-    target_ay: f64,
-    target_az: f64,
-    origin_ax: f64,
-    origin_ay: f64,
-    origin_az: f64,
     projectile_speed: f64,
-    projectile_mass: f64,
-    projectile_air_friction_per_60hz_frame: f64,
+    projectile_linear_damping_rate: f64,
     gravity: f64,
     arc_preference: u8,
     max_time_sec_or_zero: f64,
@@ -61,15 +68,8 @@ pub fn combat_targeting_solve_ballistic_aim(
         target_vx,
         target_vy,
         target_vz,
-        target_ax,
-        target_ay,
-        target_az,
-        origin_ax,
-        origin_ay,
-        origin_az,
         projectile_speed,
-        projectile_mass,
-        projectile_air_friction_per_60hz_frame,
+        projectile_linear_damping_rate,
         gravity,
         arc_preference,
         max_time_sec_or_zero,
@@ -93,15 +93,8 @@ pub(crate) fn combat_targeting_solve_ballistic_aim_inner(
     target_vx: f64,
     target_vy: f64,
     target_vz: f64,
-    target_ax: f64,
-    target_ay: f64,
-    target_az: f64,
-    origin_ax: f64,
-    origin_ay: f64,
-    origin_az: f64,
     projectile_speed: f64,
-    projectile_mass: f64,
-    projectile_air_friction_per_60hz_frame: f64,
+    projectile_linear_damping_rate: f64,
     gravity: f64,
     arc_preference: u8,
     max_time_sec_or_zero: f64,
@@ -149,15 +142,8 @@ pub(crate) fn combat_targeting_solve_ballistic_aim_inner(
         target_vx,
         target_vy,
         target_vz,
-        target_ax,
-        target_ay,
-        target_az,
-        origin_ax,
-        origin_ay,
-        origin_az,
         projectile_speed,
-        projectile_mass,
-        projectile_air_friction_per_60hz_frame,
+        projectile_linear_damping_rate,
         gravity,
         max_time_sec_or_zero,
         fallback_yaw,
@@ -165,9 +151,7 @@ pub(crate) fn combat_targeting_solve_ballistic_aim_inner(
     ];
     if !combat_targeting_ballistic_params_finite(&finite_values)
         || projectile_speed <= 1e-6
-        || (projectile_air_friction_per_60hz_frame > 0.0 && projectile_mass <= 1e-6)
-        || projectile_air_friction_per_60hz_frame < 0.0
-        || projectile_air_friction_per_60hz_frame >= 1.0
+        || projectile_linear_damping_rate < 0.0
         || gravity < 0.0
         || max_time_sec_or_zero < 0.0
     {
@@ -183,6 +167,9 @@ pub(crate) fn combat_targeting_solve_ballistic_aim_inner(
         return 0;
     }
 
+    // Target and origin acceleration are intentionally not extrapolated.
+    // Acceleration is noisy control state; velocity-only prediction is the
+    // stable gameplay contract.
     let input = [
         mount_x,
         mount_y,
@@ -190,23 +177,28 @@ pub(crate) fn combat_targeting_solve_ballistic_aim_inner(
         mount_vx,
         mount_vy,
         mount_vz,
-        origin_ax,
-        origin_ay,
-        origin_az,
+        0.0,
+        0.0,
+        0.0,
         target_x,
         target_y,
         target_z,
         target_vx,
         target_vy,
         target_vz,
-        target_ax,
-        target_ay,
-        target_az,
+        0.0,
+        0.0,
+        0.0,
         0.0,
         0.0,
         -gravity,
         projectile_speed,
     ];
+    let (medium_velocity_x, medium_velocity_y, medium_velocity_z) =
+        combat_targeting_projectile_medium_velocity(
+            pool,
+            pool.turret_projectile_uses_air_medium[idx] != 0,
+        );
     let mut solution = [0.0_f64; 7];
     let found = if arc_preference == CT_BALLISTIC_ARC_HIGH {
         let mut low_solution = [0.0_f64; 7];
@@ -215,22 +207,20 @@ pub(crate) fn combat_targeting_solve_ballistic_aim_inner(
             &mut low_solution,
             0,
             max_time_sec_or_zero,
-            projectile_air_friction_per_60hz_frame,
-            projectile_mass,
-            pool.wind_x,
-            pool.wind_y,
-            pool.wind_z,
+            projectile_linear_damping_rate,
+            medium_velocity_x,
+            medium_velocity_y,
+            medium_velocity_z,
         );
         let high_found = solve_damped_kinematic_intercept_inline(
             &input,
             &mut solution,
             1,
             max_time_sec_or_zero,
-            projectile_air_friction_per_60hz_frame,
-            projectile_mass,
-            pool.wind_x,
-            pool.wind_y,
-            pool.wind_z,
+            projectile_linear_damping_rate,
+            medium_velocity_x,
+            medium_velocity_y,
+            medium_velocity_z,
         );
         high_found && low_found && solution[0] > low_solution[0] + CT_HIGH_ARC_MIN_TIME_SEPARATION
     } else {
@@ -239,11 +229,10 @@ pub(crate) fn combat_targeting_solve_ballistic_aim_inner(
             &mut solution,
             0,
             max_time_sec_or_zero,
-            projectile_air_friction_per_60hz_frame,
-            projectile_mass,
-            pool.wind_x,
-            pool.wind_y,
-            pool.wind_z,
+            projectile_linear_damping_rate,
+            medium_velocity_x,
+            medium_velocity_y,
+            medium_velocity_z,
         )
     };
 
@@ -291,11 +280,10 @@ pub(crate) fn combat_targeting_solve_ballistic_aim_inner(
                 &mut refined,
                 if arc_preference == CT_BALLISTIC_ARC_HIGH { 1 } else { 0 },
                 max_time_sec_or_zero,
-                projectile_air_friction_per_60hz_frame,
-                projectile_mass,
-                pool.wind_x,
-                pool.wind_y,
-                pool.wind_z,
+                projectile_linear_damping_rate,
+                medium_velocity_x,
+                medium_velocity_y,
+                medium_velocity_z,
             );
             if refined_found {
                 solution = refined;
@@ -2168,14 +2156,15 @@ pub(crate) fn combat_targeting_resolve_body_aim_point_from_slot(
 
 /// Pure static-endpoint ballistic solve (no slab writes): flight time
 /// and world launch velocity for a shot from `from` to `to` with the
-/// given shot parameters, under pool wind. None = no arc reaches.
+/// given shot parameters, relative to the applicable medium velocity.
+/// None = no arc reaches.
 pub(crate) fn combat_targeting_solve_static_arc(
     pool: &CombatTargetingPool,
     from: (f64, f64, f64),
     to: (f64, f64, f64),
     projectile_speed: f64,
-    projectile_mass: f64,
-    projectile_air_friction_per_60hz_frame: f64,
+    projectile_linear_damping_rate: f64,
+    uses_air_medium: bool,
     gravity: f64,
     prefer_late_solution: u8,
     max_time_sec_or_zero: f64,
@@ -2205,16 +2194,17 @@ pub(crate) fn combat_targeting_solve_static_arc(
         projectile_speed,
     ];
     let mut solution = [0.0_f64; 7];
+    let (medium_velocity_x, medium_velocity_y, medium_velocity_z) =
+        combat_targeting_projectile_medium_velocity(pool, uses_air_medium);
     let found = solve_damped_kinematic_intercept_inline(
         &input,
         &mut solution,
         prefer_late_solution,
         max_time_sec_or_zero,
-        projectile_air_friction_per_60hz_frame,
-        projectile_mass,
-        pool.wind_x,
-        pool.wind_y,
-        pool.wind_z,
+        projectile_linear_damping_rate,
+        medium_velocity_x,
+        medium_velocity_y,
+        medium_velocity_z,
     );
     if !found {
         return None;
@@ -2224,31 +2214,32 @@ pub(crate) fn combat_targeting_solve_static_arc(
 
 /// Closed-form world velocity of a shot `t` seconds after launch,
 /// matching solve_damped_kinematic_intercept_inline's flight model:
-/// exponential drag toward wind, constant gravity (undamped shots
-/// ignore wind, exactly like the solver's zero-friction path).
+/// exponential linear damping toward medium velocity plus constant gravity.
+/// Undamped shots ignore medium velocity, matching the solver.
 pub(crate) fn combat_targeting_arc_velocity_at_time(
     pool: &CombatTargetingPool,
     launch_vx: f64,
     launch_vy: f64,
     launch_vz: f64,
     t: f64,
-    projectile_mass: f64,
-    projectile_air_friction_per_60hz_frame: f64,
+    projectile_linear_damping_rate: f64,
+    uses_air_medium: bool,
     gravity: f64,
 ) -> (f64, f64, f64) {
-    let drag_k = projectile_air_drag_rate_from_friction_per_60hz_frame(
-        projectile_air_friction_per_60hz_frame,
-        projectile_mass,
-    );
-    if !drag_k.is_finite() || drag_k <= 1e-9 {
+    let damping_rate = projectile_linear_damping_rate;
+    if !damping_rate.is_finite() || damping_rate <= 1e-9 {
         return (launch_vx, launch_vy, launch_vz - gravity * t);
     }
-    let damp = (-drag_k * t).exp();
-    let terminal_z = -gravity / drag_k;
+    let (medium_velocity_x, medium_velocity_y, medium_velocity_z) =
+        combat_targeting_projectile_medium_velocity(pool, uses_air_medium);
+    let damp = (-damping_rate * t).exp();
+    let terminal_z = -gravity / damping_rate;
     (
-        pool.wind_x + (launch_vx - pool.wind_x) * damp,
-        pool.wind_y + (launch_vy - pool.wind_y) * damp,
-        pool.wind_z + terminal_z + (launch_vz - pool.wind_z - terminal_z) * damp,
+        medium_velocity_x + (launch_vx - medium_velocity_x) * damp,
+        medium_velocity_y + (launch_vy - medium_velocity_y) * damp,
+        medium_velocity_z
+            + terminal_z
+            + (launch_vz - medium_velocity_z - terminal_z) * damp,
     )
 }
 
@@ -2282,8 +2273,8 @@ pub(crate) fn combat_targeting_ballistic_mirror_panel_dir(
 ) -> Option<(f64, f64, f64)> {
     const MIRROR_EPSILON: f64 = 1e-6;
     let projectile_speed = pool.turret_projectile_speed[threat_idx];
-    let projectile_mass = pool.turret_projectile_mass[threat_idx];
-    let air_friction = pool.turret_projectile_air_friction_per_60hz_frame[threat_idx];
+    let linear_damping_rate = pool.turret_projectile_linear_damping_rate[threat_idx];
+    let uses_air_medium = pool.turret_projectile_uses_air_medium[threat_idx] != 0;
     let prefer_late: u8 = if pool.turret_arc_preference[threat_idx] == CT_BALLISTIC_ARC_HIGH {
         1
     } else {
@@ -2296,8 +2287,8 @@ pub(crate) fn combat_targeting_ballistic_mirror_panel_dir(
         turret_point,
         (mount_x, mount_y, mount_z),
         projectile_speed,
-        projectile_mass,
-        air_friction,
+        linear_damping_rate,
+        uses_air_medium,
         gravity,
         prefer_late,
         max_time,
@@ -2308,8 +2299,8 @@ pub(crate) fn combat_targeting_ballistic_mirror_panel_dir(
         in_vy,
         in_vz,
         incoming_time,
-        projectile_mass,
-        air_friction,
+        linear_damping_rate,
+        uses_air_medium,
         gravity,
     );
     let arrival_speed = (arr_vx * arr_vx + arr_vy * arr_vy + arr_vz * arr_vz).sqrt();
@@ -2327,8 +2318,8 @@ pub(crate) fn combat_targeting_ballistic_mirror_panel_dir(
         (mount_x, mount_y, mount_z),
         return_target,
         arrival_speed,
-        projectile_mass,
-        air_friction,
+        linear_damping_rate,
+        uses_air_medium,
         gravity,
         prefer_late,
         max_time,

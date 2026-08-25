@@ -366,7 +366,7 @@
         "propulsionForce",
         "guidanceThrust",
         "turnRate",
-        "velocityFrictionPer60HzFrame"
+        "linearDampingRate"
       ],
       "properties": {
         "operational": {
@@ -381,7 +381,7 @@
         "turnRate": {
           "type": "number"
         },
-        "velocityFrictionPer60HzFrame": {
+        "linearDampingRate": {
           "type": "number"
         }
       },

@@ -1,6 +1,6 @@
 // motion — extracted from lib.rs (pure code motion).
 
-use crate::air_drag::{drag_rate_from_coefficient, integrate_linear_drag_axis};
+use crate::linear_damping::{linear_damping_rate_from_coefficient, integrate_linear_damping_axis};
 #[allow(unused_imports)]
 use crate::*;
 #[allow(unused_imports)]
@@ -60,8 +60,8 @@ fn ground_contact_substep_count(dt_sec: f64) -> usize {
         .clamp(1, GROUND_SPRING_MAX_CONTACT_SUBSTEPS)
 }
 
-/// Internal math kernel: applies authored acceleration, wind-relative
-/// air-drag force, contact spring, and ground friction to a
+/// Internal math kernel: applies authored acceleration, medium-relative
+/// linear damping, contact spring, and ground friction to a
 /// single body's motion state. Operates on a fixed-size [6] slice
 /// without heap traffic.
 #[inline]
@@ -72,7 +72,7 @@ pub(crate) fn integrate_unit_motion_inline(
     ax_in: f64,
     ay_in: f64,
     az_in: f64,
-    air_drag_coefficient: f64,
+    linear_drag_coefficient: f64,
     inv_mass: f64,
     ground_damp: f64,
     wind_x: f64,
@@ -96,20 +96,20 @@ pub(crate) fn integrate_unit_motion_inline(
     let mut vy = motion[4];
     let mut vz = motion[5];
 
-    let drag_rate = drag_rate_from_coefficient(air_drag_coefficient, inv_mass);
+    let damping_rate = linear_damping_rate_from_coefficient(linear_drag_coefficient, inv_mass);
     // Airborne bodies that cannot reach the sampled support during this tick
-    // retain the single exact constant-acceleration/linear-drag step. Only a
+    // retain the single exact constant-acceleration/damping step. Only a
     // body already touching support, or whose free endpoint would cross it,
     // pays for contact safety substeps.
     let current_penetration = ground_z - (z - ground_offset);
     let mut free_end_z = z;
     let mut free_end_vz = vz;
-    integrate_linear_drag_axis(
+    integrate_linear_damping_axis(
         &mut free_end_z,
         &mut free_end_vz,
         az_in,
         dt_sec,
-        drag_rate,
+        damping_rate,
         wind_z,
     );
     let free_end_penetration = ground_z - (free_end_z - ground_offset);
@@ -147,9 +147,9 @@ pub(crate) fn integrate_unit_motion_inline(
             az_total += normal_z * spring;
         }
 
-        integrate_linear_drag_axis(&mut x, &mut vx, ax_total, sub_dt, drag_rate, wind_x);
-        integrate_linear_drag_axis(&mut y, &mut vy, ay_total, sub_dt, drag_rate, wind_y);
-        integrate_linear_drag_axis(&mut z, &mut vz, az_total, sub_dt, drag_rate, wind_z);
+        integrate_linear_damping_axis(&mut x, &mut vx, ax_total, sub_dt, damping_rate, wind_x);
+        integrate_linear_damping_axis(&mut y, &mut vy, ay_total, sub_dt, damping_rate, wind_y);
+        integrate_linear_damping_axis(&mut z, &mut vz, az_total, sub_dt, damping_rate, wind_z);
 
         if in_contact {
             let v_normal = vx * normal_x + vy * normal_y + vz * normal_z;

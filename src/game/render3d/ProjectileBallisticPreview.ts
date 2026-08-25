@@ -15,7 +15,7 @@ import {
   getProjectileLaunchSpeed,
   resolveWeaponEmissionSocket,
 } from '../sim/combat/combatUtils';
-import { getProjectileAirFrictionPer60HzFrame } from '../sim/shotLocomotionMotion';
+import { getProjectileAirLinearDampingRate } from '../sim/shotLocomotionMotion';
 
 const SEARCH_ITERATIONS = 14;
 const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
@@ -28,12 +28,10 @@ const _previewEmissionSocket = {
 const _originState: KinematicState3 = {
   position: { x: 0, y: 0, z: 0 },
   velocity: { x: 0, y: 0, z: 0 },
-  acceleration: { x: 0, y: 0, z: 0 },
 };
 const _targetState: KinematicState3 = {
   position: { x: 0, y: 0, z: 0 },
   velocity: { x: 0, y: 0, z: 0 },
-  acceleration: { x: 0, y: 0, z: 0 },
 };
 const _intercept: KinematicInterceptSolution = {
   time: 0,
@@ -206,28 +204,19 @@ function projectileShotCanReachGroundPoint(
   _originState.velocity.x = 0;
   _originState.velocity.y = 0;
   _originState.velocity.z = 0;
-  _originState.acceleration.x = 0;
-  _originState.acceleration.y = 0;
-  _originState.acceleration.z = 0;
   _targetState.position.x = targetX;
   _targetState.position.y = targetY;
   _targetState.position.z = targetZ;
   _targetState.velocity.x = 0;
   _targetState.velocity.y = 0;
   _targetState.velocity.z = 0;
-  _targetState.acceleration.x = 0;
-  _targetState.acceleration.y = 0;
-  _targetState.acceleration.z = 0;
   return solveKinematicIntercept({
     myPosition: _originState.position,
     myVelocity: _originState.velocity,
-    myAcceleration: _originState.acceleration,
     targetPosition: _targetState.position,
     targetVelocity: _targetState.velocity,
-    targetAcceleration: _targetState.acceleration,
     projectileSpeed: speed,
-    projectileMass: shot.mass,
-    projectileAirFrictionPer60HzFrame: getProjectileAirFrictionPer60HzFrame(shot),
+    projectileLinearDampingRate: getProjectileAirLinearDampingRate(shot),
     gravity: GRAVITY * shot.shotLocomotion.gravityForceMultiplier,
     preferLateSolution: false,
     maxTimeSec: Number.isFinite(lifeMs) ? lifeMs / 1000 : 0,

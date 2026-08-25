@@ -1,55 +1,55 @@
 {
   "presets": {
-    "ballisticDrag003": {
+    "ballisticLinearDamping0180PerSecond": {
       "motionModel": "ballistic",
       "gravityForceMultiplier": 1,
       "media": {
-        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "velocityFrictionPer60HzFrame": 0.003 },
-        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "velocityFrictionPer60HzFrame": 0 },
+        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "linearDampingRate": 0.180270541218 },
+        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "linearDampingRate": 0 },
         "ground": { "mode": "impact" }
       },
       "transitions": { "enterWater": "despawn", "exitWater": "continue" },
       "terminal": { "entityImpact": "detonate", "groundContact": "detonate", "expiry": "detonate", "destroyed": "detonate", "reflectorImpact": "detonate" }
     },
-    "ballisticDrag002": {
+    "ballisticLinearDamping0120PerSecond": {
       "motionModel": "ballistic",
       "gravityForceMultiplier": 1,
       "media": {
-        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "velocityFrictionPer60HzFrame": 0.002 },
-        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "velocityFrictionPer60HzFrame": 0 },
+        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "linearDampingRate": 0.12012016024 },
+        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "linearDampingRate": 0 },
         "ground": { "mode": "impact" }
       },
       "transitions": { "enterWater": "despawn", "exitWater": "continue" },
       "terminal": { "entityImpact": "detonate", "groundContact": "detonate", "expiry": "detonate", "destroyed": "detonate", "reflectorImpact": "detonate" }
     },
-    "ballisticDrag0025": {
+    "ballisticLinearDamping0150PerSecond": {
       "motionModel": "ballistic",
       "gravityForceMultiplier": 1,
       "media": {
-        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "velocityFrictionPer60HzFrame": 0.0025 },
-        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "velocityFrictionPer60HzFrame": 0 },
+        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "linearDampingRate": 0.150187813087 },
+        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "linearDampingRate": 0 },
         "ground": { "mode": "impact" }
       },
       "transitions": { "enterWater": "despawn", "exitWater": "continue" },
       "terminal": { "entityImpact": "detonate", "groundContact": "detonate", "expiry": "detonate", "destroyed": "detonate", "reflectorImpact": "detonate" }
     },
-    "ballisticDrag004": {
+    "ballisticLinearDamping0240PerSecond": {
       "motionModel": "ballistic",
       "gravityForceMultiplier": 1,
       "media": {
-        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "velocityFrictionPer60HzFrame": 0.004 },
-        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "velocityFrictionPer60HzFrame": 0 },
+        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "linearDampingRate": 0.240481283852 },
+        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "linearDampingRate": 0 },
         "ground": { "mode": "impact" }
       },
       "transitions": { "enterWater": "despawn", "exitWater": "continue" },
       "terminal": { "entityImpact": "detonate", "groundContact": "detonate", "expiry": "detonate", "destroyed": "detonate", "reflectorImpact": "detonate" }
     },
-    "ballisticDrag006": {
+    "ballisticLinearDamping0361PerSecond": {
       "motionModel": "ballistic",
       "gravityForceMultiplier": 1,
       "media": {
-        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "velocityFrictionPer60HzFrame": 0.006 },
-        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "velocityFrictionPer60HzFrame": 0 },
+        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "linearDampingRate": 0.361084339534 },
+        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "linearDampingRate": 0 },
         "ground": { "mode": "terrainFollowing" }
       },
       "transitions": { "enterWater": "despawn", "exitWater": "continue" },
@@ -59,8 +59,8 @@
       "motionModel": "constantSpeedGuided",
       "gravityForceMultiplier": 0,
       "media": {
-        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "velocityFrictionPer60HzFrame": 0 },
-        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "velocityFrictionPer60HzFrame": 0 },
+        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "linearDampingRate": 0 },
+        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "linearDampingRate": 0 },
         "ground": { "mode": "impact" }
       },
       "transitions": { "enterWater": "despawn", "exitWater": "continue" },
@@ -70,8 +70,8 @@
       "motionModel": "constantSpeedGuided",
       "gravityForceMultiplier": 0,
       "media": {
-        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "velocityFrictionPer60HzFrame": 0 },
-        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "velocityFrictionPer60HzFrame": 0 },
+        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "linearDampingRate": 0 },
+        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "linearDampingRate": 0 },
         "ground": { "mode": "impact" }
       },
       "transitions": { "enterWater": "despawn", "exitWater": "continue" },
@@ -81,8 +81,8 @@
       "motionModel": "constantSpeedGuided",
       "gravityForceMultiplier": 0,
       "media": {
-        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "velocityFrictionPer60HzFrame": 0 },
-        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "velocityFrictionPer60HzFrame": 0 },
+        "air": { "operational": true, "propulsionForce": 0, "guidanceThrust": 0, "linearDampingRate": 0 },
+        "water": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "linearDampingRate": 0 },
         "ground": { "mode": "impact" }
       },
       "transitions": { "enterWater": "despawn", "exitWater": "continue" },
@@ -92,8 +92,8 @@
       "motionModel": "thrustGuided",
       "gravityForceMultiplier": 1,
       "media": {
-        "air": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "velocityFrictionPer60HzFrame": 0 },
-        "water": { "operational": true, "propulsionForce": 2400, "guidanceThrust": 10000, "velocityFrictionPer60HzFrame": 0.008 },
+        "air": { "operational": false, "propulsionForce": 0, "guidanceThrust": 0, "linearDampingRate": 0 },
+        "water": { "operational": true, "propulsionForce": 2400, "guidanceThrust": 10000, "linearDampingRate": 0.481930301836 },
         "ground": { "mode": "impact" }
       },
       "transitions": { "enterWater": "continue", "exitWater": "continueBallistic" },
@@ -103,8 +103,8 @@
       "motionModel": "thrustGuided",
       "gravityForceMultiplier": 1,
       "media": {
-        "air": { "operational": true, "propulsionForce": 300, "guidanceThrust": 1800, "velocityFrictionPer60HzFrame": 0.002 },
-        "water": { "operational": true, "propulsionForce": 2400, "guidanceThrust": 10000, "velocityFrictionPer60HzFrame": 0.008 },
+        "air": { "operational": true, "propulsionForce": 300, "guidanceThrust": 1800, "linearDampingRate": 0.12012016024 },
+        "water": { "operational": true, "propulsionForce": 2400, "guidanceThrust": 10000, "linearDampingRate": 0.481930301836 },
         "ground": { "mode": "impact" }
       },
       "transitions": { "enterWater": "continue", "exitWater": "continueBallistic" },
@@ -118,13 +118,13 @@
           "operational": true,
           "propulsionForce": 0,
           "guidanceThrust": 0,
-          "velocityFrictionPer60HzFrame": 0
+          "linearDampingRate": 0
         },
         "water": {
           "operational": false,
           "propulsionForce": 0,
           "guidanceThrust": 0,
-          "velocityFrictionPer60HzFrame": 0
+          "linearDampingRate": 0
         },
         "ground": {
           "mode": "impact"

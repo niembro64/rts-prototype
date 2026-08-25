@@ -192,7 +192,7 @@ function ensureForceBatchCapacity(sim: SimWasm, count: number): void {
 }
 
 /** Slot order kept in lockstep with UF_PROFILE_* in unit_kinetics.rs. */
-const UF_PROFILE_STRIDE = 15;
+const UF_PROFILE_STRIDE = 16;
 
 let _unitForceProfileTableUploaded = false;
 let _unitForceProfileCodeCount = 0;
@@ -217,6 +217,7 @@ function buildUnitForceProfileSignature(): UnitForceProfileSignature {
         loco.navigation.move.allowOnGround ? ground.maxPropulsiveForce : 0,
         ground.staticFrictionCoefficient,
         ground.tangentialDampingRate,
+        ground.angularDampingRate,
         // Navigation permissions select legal route cells. They must not erase
         // a physical medium drive: a partly exposed amphibian still needs its
         // air force while crossing the waterline.
@@ -302,6 +303,7 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
       loco.actuator.propulsionAxis === 'alwaysForward'
         ? (loco.actuator.turnRateDegreesPerSecond ?? 0) * (Math.PI / 180)
         : 0;
+    values[base + 15] = ground.angularDampingRate;
     flags[code] =
       (loco.actuator.propulsionAxis !== 'worldPlanar' ? UF_FLAG_PROPULSION_BODY_FORWARD : 0) |
       (loco.actuator.propulsionAxis === 'waypointForwardOnly' ? UF_FLAG_PROPULSION_FORWARD_ONLY : 0) |
@@ -568,7 +570,7 @@ export class UnitForceSystem {
 
       // A BEAM-CARRIED passenger (transported) must not fight the
       // transport's tractor spring with its own hover lift or cruise —
-      // the same self-motion kill switch factory-held shells use. Drag,
+      // the same self-motion kill switch factory-held shells use. Damping,
       // gravity, and the accumulated beam force still apply.
       const mediumLiftActive = !buildInProgress && entity.transported === null;
       if (cruiseWhenUncommanded && mediumLiftActive) flags |= UF_FLAG_IS_AIRBORNE_CRUISING;

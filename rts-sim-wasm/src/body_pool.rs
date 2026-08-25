@@ -84,10 +84,11 @@ pub(crate) struct BodyPool {
     pub(crate) inv_mass: Vec<f64>,
     pub(crate) restitution: Vec<f64>,
     pub(crate) ground_offset: Vec<f64>,
-    // Integrator-level wind-relative air drag coefficient. Unit locomotion
-    // linear/quadratic air drag is applied by the unit-force kernel instead;
-    // unit bodies therefore leave this separate coefficient at zero.
-    pub(crate) air_drag_coefficient: Vec<f64>,
+    // Integrator-level linear drag coefficient (mass / time), relative to the
+    // supplied medium velocity. Unit locomotion applies its authored
+    // per-medium damping in the unit-force kernel, so unit bodies leave this
+    // separate coefficient at zero.
+    pub(crate) linear_drag_coefficient: Vec<f64>,
     // Per-body solid-contact tangent-velocity damping rate, in s^-1.
     // This is independent of static friction: it decays residual sliding,
     // whereas static friction caps actuator force.
@@ -139,7 +140,7 @@ impl BodyPool {
             inv_mass: vec![0.0; cap],
             restitution: vec![0.0; cap],
             ground_offset: vec![0.0; cap],
-            air_drag_coefficient: vec![0.0; cap],
+            linear_drag_coefficient: vec![0.0; cap],
             ground_tangential_damping_rate: vec![0.0; cap],
             sleep_ticks: vec![0.0; cap],
             flags: vec![0u8; cap],
@@ -191,7 +192,7 @@ impl BodyPool {
         self.inv_mass[i] = 0.0;
         self.restitution[i] = 0.0;
         self.ground_offset[i] = 0.0;
-        self.air_drag_coefficient[i] = 0.0;
+        self.linear_drag_coefficient[i] = 0.0;
         self.ground_tangential_damping_rate[i] = 0.0;
         self.sleep_ticks[i] = 0.0;
         self.flags[i] = BODY_FLAG_OCCUPIED;
@@ -293,7 +294,7 @@ pool_ptr_export!(pool_half_z_ptr, half_z, f64);
 pool_ptr_export!(pool_inv_mass_ptr, inv_mass, f64);
 pool_ptr_export!(pool_restitution_ptr, restitution, f64);
 pool_ptr_export!(pool_ground_offset_ptr, ground_offset, f64);
-pool_ptr_export!(pool_air_drag_coefficient_ptr, air_drag_coefficient, f64);
+pool_ptr_export!(pool_linear_drag_coefficient_ptr, linear_drag_coefficient, f64);
 pool_ptr_export!(
     pool_ground_tangential_damping_rate_ptr,
     ground_tangential_damping_rate,
@@ -1551,15 +1552,15 @@ pub fn pool_step_integrate(
         let launch_ay = p.launch_y[slot];
         let launch_az = p.launch_z[slot];
 
-        // Per-body air drag is a physical force:
-        //   F = drag_coefficient * (wind_velocity - body_velocity)
+        // Per-body linear drag is a physical force:
+        //   F = linear_drag_coefficient * (medium_velocity - body_velocity)
         // and acceleration comes from F / mass via the pool's inv_mass.
         // Ground contact retains a separate tangential damping term.
         let ground_tangential_damping_rate = p.ground_tangential_damping_rate[slot];
-        let air_drag_coefficient = p.air_drag_coefficient[slot];
-        let eff_air_drag_coefficient =
-            if air_drag_coefficient.is_finite() && air_drag_coefficient > 0.0 {
-                air_drag_coefficient
+        let linear_drag_coefficient = p.linear_drag_coefficient[slot];
+        let eff_linear_drag_coefficient =
+            if linear_drag_coefficient.is_finite() && linear_drag_coefficient > 0.0 {
+                linear_drag_coefficient
             } else {
                 0.0
             };
@@ -1587,7 +1588,7 @@ pub fn pool_step_integrate(
             authored_ax,
             authored_ay,
             authored_az - GRAVITY,
-            eff_air_drag_coefficient,
+            eff_linear_drag_coefficient,
             p.inv_mass[slot],
             eff_ground_damp,
             wind_x,

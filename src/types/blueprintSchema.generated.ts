@@ -80,7 +80,7 @@ export type ShotLocomotionMediumPhysics = {
   propulsionForce: number;
   guidanceThrust: number;
   turnRate: number;
-  velocityFrictionPer60HzFrame: number;
+  linearDampingRate: number;
 };
 
 export type ShotLocomotionGroundPhysics = {

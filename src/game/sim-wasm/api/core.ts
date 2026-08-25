@@ -938,8 +938,8 @@ export interface SimWasm {
    *  position integration and advances pool-owned lifetime in the same
    *  WASM pass. */
   readonly poolStepPackedProjectilesBatch: (count: number, dtSec: number, dtMs: number) => void;
-  /** C1 — non-packed projectile/body constant-acceleration integrator.
-   *  TypeScript packs guided/D-gun projectile state and acceleration,
+  /** C1 — non-packed projectile/body integrator. TypeScript packs
+   *  guided/D-gun state, acceleration, damping, and medium velocity;
    *  this kernel advances position and velocity in one batch. */
   readonly projectileIntegrateStepBatch: (
     count: number,
@@ -952,17 +952,16 @@ export interface SimWasm {
     accelX: Float64Array,
     accelY: Float64Array,
     accelZ: Float64Array,
-    airDragCoefficient: Float64Array,
-    invMass: Float64Array,
+    linearDampingRate: Float64Array,
+    mediumVelocityX: Float64Array,
+    mediumVelocityY: Float64Array,
+    mediumVelocityZ: Float64Array,
     guidanceArrivalEnabled: Uint8Array,
     guidanceArrivalX: Float64Array,
     guidanceArrivalY: Float64Array,
     guidanceArrivalZ: Float64Array,
     guidanceArrivalRadius: Float64Array,
     guidanceArrivalReached: Uint8Array,
-    windX: number,
-    windY: number,
-    windZ: number,
     dtSec: number,
   ) => number;
   /** C1 — batched server homing guidance for non-packed projectiles.
@@ -973,9 +972,6 @@ export interface SimWasm {
     rows: Float64Array,
     count: number,
     dtSec: number,
-    windX: number,
-    windY: number,
-    windZ: number,
   ) => number;
   /** C1 — batched homing guidance that writes thrust into projectile
    *  acceleration slabs before the Rust integrator runs. */
@@ -990,9 +986,6 @@ export interface SimWasm {
     velZ: Float64Array,
     count: number,
     dtSec: number,
-    windX: number,
-    windY: number,
-    windZ: number,
   ) => number;
   /** Beam/ray range-volume clipping. `rangeVolume` uses
    *  lineShotRange.ts string-to-code mapping. */
@@ -1041,15 +1034,15 @@ export interface SimWasm {
    *  `input` is a Float64Array of 22 elements:
    *    0..3   origin.position             (x, y, z)
    *    3..6   origin.velocity
-   *    6..9   origin.acceleration
+   *    6..9   reserved (origin acceleration is not predicted)
    *    9..12  target.position
    *    12..15 target.velocity
-   *    15..18 target.acceleration
+   *    15..18 reserved (target acceleration is not predicted)
    *    18..21 projectile_acceleration
    *    21     projectile_speed
    *  The public TypeScript targeting API derives projectile_acceleration
    *  from the required gravity parameter as (0, 0, -gravity); callers do
-   *  not pass air resistance or entity ids into the calculation.
+   *  not pass medium damping or entity ids into the calculation.
    *  `out` is a Float64Array of 7 elements:
    *    0      time
    *    1..4   aim_point

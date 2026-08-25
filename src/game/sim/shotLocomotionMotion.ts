@@ -1,37 +1,17 @@
 import type { ProjectileShot } from './types';
 import type { ShotLocomotionMediumPhysics } from '@/types/shotTypes';
-import { dragCoefficientFromVelocityFrictionPer60HzFrame } from './motionFriction';
 
 const MIN_PROPULSION_SPEED = 1e-6;
-let cachedAirFrictionPer60HzFrame = Number.NaN;
-let cachedMass = Number.NaN;
-let cachedAirDragCoefficient = 0;
 
-export function getProjectileAirFrictionPer60HzFrame(shot: ProjectileShot): number {
-  const friction = shot.shotLocomotion.media.air.velocityFrictionPer60HzFrame;
-  return Number.isFinite(friction) && friction > 0 ? friction : 0;
+export function getProjectileAirLinearDampingRate(shot: ProjectileShot): number {
+  return getProjectileMediumLinearDampingRate(shot.shotLocomotion.media.air);
 }
 
-export function getProjectileMediumFrictionPer60HzFrame(
+export function getProjectileMediumLinearDampingRate(
   medium: ShotLocomotionMediumPhysics,
 ): number {
-  const friction = medium.velocityFrictionPer60HzFrame;
-  return Number.isFinite(friction) && friction > 0 ? friction : 0;
-}
-
-export function getProjectileMediumDragCoefficient(
-  shot: ProjectileShot,
-  medium: ShotLocomotionMediumPhysics,
-): number {
-  const friction = getProjectileMediumFrictionPer60HzFrame(medium);
-  const mass = shot.mass;
-  if (friction === cachedAirFrictionPer60HzFrame && mass === cachedMass) {
-    return cachedAirDragCoefficient;
-  }
-  cachedAirFrictionPer60HzFrame = friction;
-  cachedMass = mass;
-  cachedAirDragCoefficient = dragCoefficientFromVelocityFrictionPer60HzFrame(friction, mass);
-  return cachedAirDragCoefficient;
+  const rate = medium.linearDampingRate;
+  return Number.isFinite(rate) && rate > 0 ? rate : 0;
 }
 
 export function getProjectilePropulsionAcceleration(

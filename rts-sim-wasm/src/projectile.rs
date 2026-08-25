@@ -1,6 +1,6 @@
 // projectile — extracted from lib.rs (pure code motion).
 
-use crate::air_drag::{drag_rate_from_coefficient, integrate_linear_drag_axis};
+use crate::linear_damping::integrate_linear_damping_axis;
 #[allow(unused_imports)]
 use crate::*;
 #[allow(unused_imports)]
@@ -151,16 +151,16 @@ projectile_pool_ptr_export!(
 //  scratch and passes by reference):
 //    0..3   origin.position                  (x, y, z)
 //    3..6   origin.velocity
-//    6..9   origin.acceleration
+//    6..9   reserved (origin acceleration is deliberately not predicted)
 //    9..12  target.position
 //    12..15 target.velocity
-//    15..18 target.acceleration
+//    15..18 reserved (target acceleration is deliberately not predicted)
 //    18..21 projectile_acceleration
 //    21     projectile_speed
 //
 //  The public TypeScript targeting API derives projectile_acceleration
 //  from its required gravity parameter as (0, 0, -gravity). It does not
-//  pass air resistance or entity ids into this calculation.
+//  pass medium damping or entity ids into this calculation.
 //
 //  Output buffer (7 f64s):
 //    0      time
@@ -201,9 +201,9 @@ pub(crate) fn intercept_default_max_time(input: &[f64; 22]) -> f64 {
     let dist = (dx * dx + dy * dy + dz * dz).sqrt();
     let speed = input[21];
     let base_time = if speed > 1e-6 { dist / speed } else { 0.0 };
-    let rel_ax = input[15] - input[18];
-    let rel_ay = input[16] - input[19];
-    let rel_az = input[17] - input[20];
+    let rel_ax = -input[18];
+    let rel_ay = -input[19];
+    let rel_az = -input[20];
     let rel_accel = (rel_ax * rel_ax + rel_ay * rel_ay + rel_az * rel_az).sqrt();
     let accel_time = if rel_accel > 1e-6 {
         2.0 * speed / rel_accel
@@ -220,11 +220,11 @@ pub(crate) fn intercept_default_max_time(input: &[f64; 22]) -> f64 {
 #[inline]
 pub(crate) fn intercept_function(input: &[f64; 22], t: f64) -> f64 {
     let rel_x =
-        input[9] - input[0] + (input[12] - input[3]) * t + 0.5 * (input[15] - input[18]) * t * t;
+        input[9] - input[0] + (input[12] - input[3]) * t - 0.5 * input[18] * t * t;
     let rel_y =
-        input[10] - input[1] + (input[13] - input[4]) * t + 0.5 * (input[16] - input[19]) * t * t;
+        input[10] - input[1] + (input[13] - input[4]) * t - 0.5 * input[19] * t * t;
     let rel_z =
-        input[11] - input[2] + (input[14] - input[5]) * t + 0.5 * (input[17] - input[20]) * t * t;
+        input[11] - input[2] + (input[14] - input[5]) * t - 0.5 * input[20] * t * t;
     (rel_x * rel_x + rel_y * rel_y + rel_z * rel_z).sqrt() - input[21] * t
 }
 
@@ -250,74 +250,54 @@ pub(crate) fn intercept_bisect_root(input: &[f64; 22], lo_t: f64, hi_t: f64) -> 
 }
 
 #[inline]
-pub(crate) fn projectile_air_drag_rate_from_friction_per_60hz_frame(
-    friction_per_60hz_frame: f64,
-    projectile_mass: f64,
-) -> f64 {
-    // Shot blueprints author velocity loss per 60 Hz frame. Keep that
-    // damping rate intact for projectile tuning; runtime integration derives
-    // the physical coefficient as rate * mass before applying F / mass.
-    if !projectile_mass.is_finite() || projectile_mass <= 1e-6 {
-        return 0.0;
-    }
-    if !friction_per_60hz_frame.is_finite() || friction_per_60hz_frame <= 0.0 {
-        return 0.0;
-    }
-    if friction_per_60hz_frame >= 1.0 {
-        return f64::INFINITY;
-    }
-    -(1.0 - friction_per_60hz_frame).ln() * 60.0
-}
-
-#[inline]
 fn damped_required_world_velocity_axis(
     displacement: f64,
     acceleration: f64,
     time: f64,
-    drag_k: f64,
+    damping_rate: f64,
 ) -> f64 {
-    let damp = (-drag_k * time).exp();
+    let damp = (-damping_rate * time).exp();
     let retention_loss = 1.0 - damp;
     if !retention_loss.is_finite() || retention_loss <= 1e-12 {
         return f64::NAN;
     }
-    let terminal = acceleration / drag_k;
-    terminal + (displacement - terminal * time) * drag_k / retention_loss
+    let terminal = acceleration / damping_rate;
+    terminal + (displacement - terminal * time) * damping_rate / retention_loss
 }
 
 #[inline]
 fn damped_intercept_function(
     input: &[f64; 22],
     time: f64,
-    drag_k: f64,
-    wind_x: f64,
-    wind_y: f64,
-    wind_z: f64,
+    damping_rate: f64,
+    medium_velocity_x: f64,
+    medium_velocity_y: f64,
+    medium_velocity_z: f64,
 ) -> f64 {
-    let aim_x = input[9] + input[12] * time + 0.5 * input[15] * time * time;
-    let aim_y = input[10] + input[13] * time + 0.5 * input[16] * time * time;
-    let aim_z = input[11] + input[14] * time + 0.5 * input[17] * time * time;
+    let aim_x = input[9] + input[12] * time;
+    let aim_y = input[10] + input[13] * time;
+    let aim_z = input[11] + input[14] * time;
 
-    let world_vx = wind_x
+    let world_vx = medium_velocity_x
         + damped_required_world_velocity_axis(
-            aim_x - input[0] - wind_x * time,
+            aim_x - input[0] - medium_velocity_x * time,
             input[18],
             time,
-            drag_k,
+            damping_rate,
         );
-    let world_vy = wind_y
+    let world_vy = medium_velocity_y
         + damped_required_world_velocity_axis(
-            aim_y - input[1] - wind_y * time,
+            aim_y - input[1] - medium_velocity_y * time,
             input[19],
             time,
-            drag_k,
+            damping_rate,
         );
-    let world_vz = wind_z
+    let world_vz = medium_velocity_z
         + damped_required_world_velocity_axis(
-            aim_z - input[2] - wind_z * time,
+            aim_z - input[2] - medium_velocity_z * time,
             input[20],
             time,
-            drag_k,
+            damping_rate,
         );
     if !world_vx.is_finite() || !world_vy.is_finite() || !world_vz.is_finite() {
         return f64::INFINITY;
@@ -332,19 +312,33 @@ fn damped_intercept_function(
 #[inline]
 fn damped_intercept_bisect_root(
     input: &[f64; 22],
-    drag_k: f64,
+    damping_rate: f64,
     lo_t: f64,
     hi_t: f64,
-    wind_x: f64,
-    wind_y: f64,
-    wind_z: f64,
+    medium_velocity_x: f64,
+    medium_velocity_y: f64,
+    medium_velocity_z: f64,
 ) -> f64 {
     let mut lo = lo_t;
     let mut hi = hi_t;
-    let mut lo_f = damped_intercept_function(input, lo, drag_k, wind_x, wind_y, wind_z);
+    let mut lo_f = damped_intercept_function(
+        input,
+        lo,
+        damping_rate,
+        medium_velocity_x,
+        medium_velocity_y,
+        medium_velocity_z,
+    );
     for _ in 0..INTERCEPT_BISECT_STEPS {
         let mid = (lo + hi) * 0.5;
-        let mid_f = damped_intercept_function(input, mid, drag_k, wind_x, wind_y, wind_z);
+        let mid_f = damped_intercept_function(
+            input,
+            mid,
+            damping_rate,
+            medium_velocity_x,
+            medium_velocity_y,
+            medium_velocity_z,
+        );
         if mid_f.abs() <= INTERCEPT_ROOT_EPSILON {
             return mid;
         }
@@ -362,35 +356,35 @@ fn damped_intercept_bisect_root(
 fn write_damped_intercept_solution(
     input: &[f64; 22],
     time: f64,
-    drag_k: f64,
-    wind_x: f64,
-    wind_y: f64,
-    wind_z: f64,
+    damping_rate: f64,
+    medium_velocity_x: f64,
+    medium_velocity_y: f64,
+    medium_velocity_z: f64,
     out_buf: &mut [f64],
 ) -> bool {
-    let aim_x = input[9] + input[12] * time + 0.5 * input[15] * time * time;
-    let aim_y = input[10] + input[13] * time + 0.5 * input[16] * time * time;
-    let aim_z = input[11] + input[14] * time + 0.5 * input[17] * time * time;
-    let world_vx = wind_x
+    let aim_x = input[9] + input[12] * time;
+    let aim_y = input[10] + input[13] * time;
+    let aim_z = input[11] + input[14] * time;
+    let world_vx = medium_velocity_x
         + damped_required_world_velocity_axis(
-            aim_x - input[0] - wind_x * time,
+            aim_x - input[0] - medium_velocity_x * time,
             input[18],
             time,
-            drag_k,
+            damping_rate,
         );
-    let world_vy = wind_y
+    let world_vy = medium_velocity_y
         + damped_required_world_velocity_axis(
-            aim_y - input[1] - wind_y * time,
+            aim_y - input[1] - medium_velocity_y * time,
             input[19],
             time,
-            drag_k,
+            damping_rate,
         );
-    let world_vz = wind_z
+    let world_vz = medium_velocity_z
         + damped_required_world_velocity_axis(
-            aim_z - input[2] - wind_z * time,
+            aim_z - input[2] - medium_velocity_z * time,
             input[20],
             time,
-            drag_k,
+            damping_rate,
         );
     if !world_vx.is_finite() || !world_vy.is_finite() || !world_vz.is_finite() {
         return false;
@@ -412,22 +406,20 @@ pub(crate) fn solve_damped_kinematic_intercept_inline(
     out_buf: &mut [f64],
     prefer_late_solution: u8,
     max_time_sec_or_zero: f64,
-    air_friction_per_60hz_frame: f64,
-    projectile_mass: f64,
-    wind_x: f64,
-    wind_y: f64,
-    wind_z: f64,
+    linear_damping_rate: f64,
+    medium_velocity_x: f64,
+    medium_velocity_y: f64,
+    medium_velocity_z: f64,
 ) -> bool {
     if !intercept_input_finite(inp)
-        || !air_friction_per_60hz_frame.is_finite()
-        || !projectile_mass.is_finite()
-        || !wind_x.is_finite()
-        || !wind_y.is_finite()
-        || !wind_z.is_finite()
+        || !linear_damping_rate.is_finite()
+        || !medium_velocity_x.is_finite()
+        || !medium_velocity_y.is_finite()
+        || !medium_velocity_z.is_finite()
     {
         return false;
     }
-    if air_friction_per_60hz_frame <= 0.0 {
+    if linear_damping_rate <= 0.0 {
         return solve_kinematic_intercept_inline(
             inp,
             out_buf,
@@ -435,17 +427,8 @@ pub(crate) fn solve_damped_kinematic_intercept_inline(
             max_time_sec_or_zero,
         );
     }
-    if air_friction_per_60hz_frame >= 1.0 {
-        return false;
-    }
-    if projectile_mass <= 1e-6 {
-        return false;
-    }
-    let drag_k = projectile_air_drag_rate_from_friction_per_60hz_frame(
-        air_friction_per_60hz_frame,
-        projectile_mass,
-    );
-    if !drag_k.is_finite() || drag_k <= 1e-9 {
+    let damping_rate = linear_damping_rate;
+    if !damping_rate.is_finite() || damping_rate <= 1e-9 {
         return solve_kinematic_intercept_inline(
             inp,
             out_buf,
@@ -465,7 +448,14 @@ pub(crate) fn solve_damped_kinematic_intercept_inline(
 
     let mut selected_root = 0.0_f64;
     let mut prev_t = INTERCEPT_MIN_TIME;
-    let mut prev_f = damped_intercept_function(inp, prev_t, drag_k, wind_x, wind_y, wind_z);
+    let mut prev_f = damped_intercept_function(
+        inp,
+        prev_t,
+        damping_rate,
+        medium_velocity_x,
+        medium_velocity_y,
+        medium_velocity_z,
+    );
     let want_late = prefer_late_solution != 0;
     if prev_f.abs() <= INTERCEPT_ROOT_EPSILON {
         selected_root = prev_t;
@@ -474,7 +464,14 @@ pub(crate) fn solve_damped_kinematic_intercept_inline(
     for i in 1..=INTERCEPT_SAMPLE_COUNT {
         let t = INTERCEPT_MIN_TIME
             + (max_time - INTERCEPT_MIN_TIME) * (i as f64) / (INTERCEPT_SAMPLE_COUNT as f64);
-        let f = damped_intercept_function(inp, t, drag_k, wind_x, wind_y, wind_z);
+        let f = damped_intercept_function(
+            inp,
+            t,
+            damping_rate,
+            medium_velocity_x,
+            medium_velocity_y,
+            medium_velocity_z,
+        );
         if !f.is_finite() || !prev_f.is_finite() {
             prev_t = t;
             prev_f = f;
@@ -485,7 +482,15 @@ pub(crate) fn solve_damped_kinematic_intercept_inline(
         if f.abs() <= INTERCEPT_ROOT_EPSILON {
             root = t;
         } else if (prev_f > 0.0 && f < 0.0) || (prev_f < 0.0 && f > 0.0) {
-            root = damped_intercept_bisect_root(inp, drag_k, prev_t, t, wind_x, wind_y, wind_z);
+            root = damped_intercept_bisect_root(
+                inp,
+                damping_rate,
+                prev_t,
+                t,
+                medium_velocity_x,
+                medium_velocity_y,
+                medium_velocity_z,
+            );
         }
         if root > 0.0 {
             selected_root = root;
@@ -500,7 +505,15 @@ pub(crate) fn solve_damped_kinematic_intercept_inline(
     if selected_root <= INTERCEPT_MIN_TIME {
         return false;
     }
-    write_damped_intercept_solution(inp, selected_root, drag_k, wind_x, wind_y, wind_z, out_buf)
+    write_damped_intercept_solution(
+        inp,
+        selected_root,
+        damping_rate,
+        medium_velocity_x,
+        medium_velocity_y,
+        medium_velocity_z,
+        out_buf,
+    )
 }
 
 #[inline]
@@ -549,21 +562,16 @@ pub(crate) fn solve_kinematic_intercept_inline(
 
     // Write solution. Aim point = target's position at intercept time.
     let t = selected_root;
-    let aim_x = inp[9] + inp[12] * t + 0.5 * inp[15] * t * t;
-    let aim_y = inp[10] + inp[13] * t + 0.5 * inp[16] * t * t;
-    let aim_z = inp[11] + inp[14] * t + 0.5 * inp[17] * t * t;
+    let aim_x = inp[9] + inp[12] * t;
+    let aim_y = inp[10] + inp[13] * t;
+    let aim_z = inp[11] + inp[14] * t;
 
-    // Origin at intercept time + projectile-relative acceleration → launch velocity.
-    let origin_at_t_x = inp[0] + inp[3] * t + 0.5 * inp[6] * t * t;
-    let origin_at_t_y = inp[1] + inp[4] * t + 0.5 * inp[7] * t * t;
-    let origin_at_t_z = inp[2] + inp[5] * t + 0.5 * inp[8] * t * t;
-    let proj_rel_ax = inp[18] - inp[6];
-    let proj_rel_ay = inp[19] - inp[7];
-    let proj_rel_az = inp[20] - inp[8];
+    // Launch velocity is relative to the origin's current world velocity.
+    // Entity acceleration is noisy control state and is not extrapolated.
     let inv_t = 1.0 / t;
-    let lv_x = (aim_x - origin_at_t_x - 0.5 * proj_rel_ax * t * t) * inv_t;
-    let lv_y = (aim_y - origin_at_t_y - 0.5 * proj_rel_ay * t * t) * inv_t;
-    let lv_z = (aim_z - origin_at_t_z - 0.5 * proj_rel_az * t * t) * inv_t;
+    let lv_x = (aim_x - inp[0] - 0.5 * inp[18] * t * t) * inv_t - inp[3];
+    let lv_y = (aim_y - inp[1] - 0.5 * inp[19] * t * t) * inv_t - inp[4];
+    let lv_z = (aim_z - inp[2] - 0.5 * inp[20] * t * t) * inv_t - inp[5];
 
     out_buf[0] = t;
     out_buf[1] = aim_x;
@@ -900,7 +908,7 @@ pub fn compute_constant_speed_homing_velocity(
 
 /// Exact constant-speed interception for a target with constant velocity.
 /// This is the hot path for missiles and rockets; the sampled damped solver
-/// remains available for thrust-guided projectiles with acceleration/drag.
+/// remains available for thrust-guided projectiles with acceleration/damping.
 #[inline]
 fn solve_constant_speed_intercept_inline(
     origin_x: f64,
@@ -983,23 +991,19 @@ pub(crate) const PHG_ROW_CURRENT_Z: usize = 8;
 pub(crate) const PHG_ROW_TARGET_VEL_X: usize = 9;
 pub(crate) const PHG_ROW_TARGET_VEL_Y: usize = 10;
 pub(crate) const PHG_ROW_TARGET_VEL_Z: usize = 11;
-pub(crate) const PHG_ROW_TARGET_ACCEL_X: usize = 12;
-pub(crate) const PHG_ROW_TARGET_ACCEL_Y: usize = 13;
-pub(crate) const PHG_ROW_TARGET_ACCEL_Z: usize = 14;
+pub(crate) const PHG_ROW_MEDIUM_VEL_X: usize = 12;
+pub(crate) const PHG_ROW_MEDIUM_VEL_Y: usize = 13;
+pub(crate) const PHG_ROW_MEDIUM_VEL_Z: usize = 14;
 pub(crate) const PHG_ROW_ORIGIN_VEL_X: usize = 15;
 pub(crate) const PHG_ROW_ORIGIN_VEL_Y: usize = 16;
 pub(crate) const PHG_ROW_ORIGIN_VEL_Z: usize = 17;
-pub(crate) const PHG_ROW_ORIGIN_ACCEL_X: usize = 18;
-pub(crate) const PHG_ROW_ORIGIN_ACCEL_Y: usize = 19;
-pub(crate) const PHG_ROW_ORIGIN_ACCEL_Z: usize = 20;
 pub(crate) const PHG_ROW_PROJECTILE_SPEED: usize = 21;
 pub(crate) const PHG_ROW_PROJECTILE_GRAVITY: usize = 22;
 pub(crate) const PHG_ROW_MAX_TIME_SEC: usize = 23;
 pub(crate) const PHG_ROW_HOMING_TURN_RATE: usize = 24;
 pub(crate) const PHG_ROW_MAX_THRUST_ACCEL: usize = 25;
 pub(crate) const PHG_ROW_SOLVE_INTERCEPT: usize = 26;
-pub(crate) const PHG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME: usize = 27;
-pub(crate) const PHG_ROW_PROJECTILE_MASS: usize = 28;
+pub(crate) const PHG_ROW_PROJECTILE_LINEAR_DAMPING_RATE: usize = 27;
 pub(crate) const PHG_ROW_CONSTANT_SPEED_MODE: usize = 29;
 pub(crate) const PHG_ROW_OUT_THRUST_X: usize = 30;
 pub(crate) const PHG_ROW_OUT_THRUST_Y: usize = 31;
@@ -1018,9 +1022,6 @@ pub fn projectile_homing_guidance_batch(
     rows: &mut [f64],
     count: usize,
     dt_sec: f64,
-    wind_x: f64,
-    wind_y: f64,
-    wind_z: f64,
 ) -> u32 {
     let required = match count.checked_mul(PROJECTILE_HOMING_GUIDANCE_STRIDE) {
         Some(value) => value,
@@ -1055,8 +1056,8 @@ pub fn projectile_homing_guidance_batch(
             // position. Feeding current velocity as origin velocity here
             // double-counted that motion and produced a false lead point.
             // Refresh the ordinary velocity intercept only when the row's
-            // deterministic scheduler requests it; target acceleration remains
-            // a reactive input for the thrust-guided fallback solver.
+            // deterministic scheduler requests it. Guidance deliberately
+            // predicts velocity, never target acceleration.
             let origin_vel_x = if constant_speed_mode {
                 0.0
             } else {
@@ -1071,36 +1072,6 @@ pub fn projectile_homing_guidance_batch(
                 0.0
             } else {
                 rows[base + PHG_ROW_ORIGIN_VEL_Z]
-            };
-            let origin_accel_x = if constant_speed_mode {
-                0.0
-            } else {
-                rows[base + PHG_ROW_ORIGIN_ACCEL_X]
-            };
-            let origin_accel_y = if constant_speed_mode {
-                0.0
-            } else {
-                rows[base + PHG_ROW_ORIGIN_ACCEL_Y]
-            };
-            let origin_accel_z = if constant_speed_mode {
-                0.0
-            } else {
-                rows[base + PHG_ROW_ORIGIN_ACCEL_Z]
-            };
-            let target_accel_x = if constant_speed_mode {
-                0.0
-            } else {
-                rows[base + PHG_ROW_TARGET_ACCEL_X]
-            };
-            let target_accel_y = if constant_speed_mode {
-                0.0
-            } else {
-                rows[base + PHG_ROW_TARGET_ACCEL_Y]
-            };
-            let target_accel_z = if constant_speed_mode {
-                0.0
-            } else {
-                rows[base + PHG_ROW_TARGET_ACCEL_Z]
             };
             if constant_speed_mode {
                 if let Some((_, intercept_x, intercept_y, intercept_z)) =
@@ -1131,18 +1102,18 @@ pub fn projectile_homing_guidance_batch(
                     origin_vel_x,
                     origin_vel_y,
                     origin_vel_z,
-                    origin_accel_x,
-                    origin_accel_y,
-                    origin_accel_z,
+                    0.0,
+                    0.0,
+                    0.0,
                     steer_x,
                     steer_y,
                     steer_z,
                     rows[base + PHG_ROW_TARGET_VEL_X],
                     rows[base + PHG_ROW_TARGET_VEL_Y],
                     rows[base + PHG_ROW_TARGET_VEL_Z],
-                    target_accel_x,
-                    target_accel_y,
-                    target_accel_z,
+                    0.0,
+                    0.0,
+                    0.0,
                     0.0,
                     0.0,
                     -gravity,
@@ -1154,11 +1125,10 @@ pub fn projectile_homing_guidance_batch(
                     &mut intercept_out,
                     0,
                     rows[base + PHG_ROW_MAX_TIME_SEC],
-                    rows[base + PHG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME],
-                    rows[base + PHG_ROW_PROJECTILE_MASS],
-                    wind_x,
-                    wind_y,
-                    wind_z,
+                    rows[base + PHG_ROW_PROJECTILE_LINEAR_DAMPING_RATE],
+                    rows[base + PHG_ROW_MEDIUM_VEL_X],
+                    rows[base + PHG_ROW_MEDIUM_VEL_Y],
+                    rows[base + PHG_ROW_MEDIUM_VEL_Z],
                 ) {
                     steer_x = intercept_out[1];
                     steer_y = intercept_out[2];
@@ -1238,9 +1208,6 @@ pub fn projectile_homing_guidance_apply_batch(
     vel_z: &mut [f64],
     count: usize,
     dt_sec: f64,
-    wind_x: f64,
-    wind_y: f64,
-    wind_z: f64,
 ) -> u32 {
     let required = match count.checked_mul(PROJECTILE_HOMING_GUIDANCE_STRIDE) {
         Some(value) => value,
@@ -1266,7 +1233,7 @@ pub fn projectile_homing_guidance_apply_batch(
         }
     }
 
-    let processed = projectile_homing_guidance_batch(rows, count, dt_sec, wind_x, wind_y, wind_z);
+    let processed = projectile_homing_guidance_batch(rows, count, dt_sec);
     if processed as usize != count {
         return processed;
     }
@@ -1524,14 +1491,13 @@ pub fn terrain_follow_vertical_thrust_accel(
 }
 
 /// Batched projectile/body integrator with constant authored acceleration
-/// and optional wind-relative linear air-drag force.
+/// and optional medium-relative linear damping.
 ///
-/// When drag coefficient or inverse mass is zero, this reduces to exact
+/// When the damping rate is zero, this reduces to exact
 /// constant-acceleration integration. Otherwise the kernel integrates the
 /// continuous force model
 /// matching the ballistic solver:
-///   F_drag = drag_coefficient * (wind_velocity - projectile_velocity)
-///   a_drag = F_drag / projectile_mass
+///   a_damping = rate * (medium_velocity - projectile_velocity)
 /// TypeScript still owns projectile lifecycle and target policy, but all
 /// non-packed guided/D-gun projectile integration now crosses this kernel in
 /// one batch per tick.
@@ -1547,17 +1513,16 @@ pub fn projectile_integrate_step_batch(
     accel_x: &[f64],
     accel_y: &[f64],
     accel_z: &[f64],
-    air_drag_coefficient: &[f64],
-    inv_mass: &[f64],
+    linear_damping_rate: &[f64],
+    medium_velocity_x: &[f64],
+    medium_velocity_y: &[f64],
+    medium_velocity_z: &[f64],
     guidance_arrival_enabled: &[u8],
     guidance_arrival_x: &[f64],
     guidance_arrival_y: &[f64],
     guidance_arrival_z: &[f64],
     guidance_arrival_radius: &[f64],
     guidance_arrival_reached: &mut [u8],
-    wind_x: f64,
-    wind_y: f64,
-    wind_z: f64,
     dt_sec: f64,
 ) -> u32 {
     let n = count as usize;
@@ -1570,8 +1535,10 @@ pub fn projectile_integrate_step_batch(
         || accel_x.len() < n
         || accel_y.len() < n
         || accel_z.len() < n
-        || air_drag_coefficient.len() < n
-        || inv_mass.len() < n
+        || linear_damping_rate.len() < n
+        || medium_velocity_x.len() < n
+        || medium_velocity_y.len() < n
+        || medium_velocity_z.len() < n
         || guidance_arrival_enabled.len() < n
         || guidance_arrival_x.len() < n
         || guidance_arrival_y.len() < n
@@ -1579,11 +1546,19 @@ pub fn projectile_integrate_step_batch(
         || guidance_arrival_radius.len() < n
         || guidance_arrival_reached.len() < n
         || !dt_sec.is_finite()
-        || !wind_x.is_finite()
-        || !wind_y.is_finite()
-        || !wind_z.is_finite()
     {
         return 0;
+    }
+
+    for i in 0..n {
+        if !linear_damping_rate[i].is_finite()
+            || linear_damping_rate[i] < 0.0
+            || !medium_velocity_x[i].is_finite()
+            || !medium_velocity_y[i].is_finite()
+            || !medium_velocity_z[i].is_finite()
+        {
+            return 0;
+        }
     }
 
     for i in 0..n {
@@ -1591,30 +1566,30 @@ pub fn projectile_integrate_step_batch(
         let start_y = pos_y[i];
         let start_z = pos_z[i];
         guidance_arrival_reached[i] = 0;
-        let drag_rate = drag_rate_from_coefficient(air_drag_coefficient[i], inv_mass[i]);
+        let damping_rate = linear_damping_rate[i];
         integrate_linear_damped_axis(
             &mut pos_x[i],
             &mut vel_x[i],
             accel_x[i],
             dt_sec,
-            drag_rate,
-            wind_x,
+            damping_rate,
+            medium_velocity_x[i],
         );
         integrate_linear_damped_axis(
             &mut pos_y[i],
             &mut vel_y[i],
             accel_y[i],
             dt_sec,
-            drag_rate,
-            wind_y,
+            damping_rate,
+            medium_velocity_y[i],
         );
         integrate_linear_damped_axis(
             &mut pos_z[i],
             &mut vel_z[i],
             accel_z[i],
             dt_sec,
-            drag_rate,
-            wind_z,
+            damping_rate,
+            medium_velocity_z[i],
         );
 
         // Lost-target rockets terminate on a swept sphere around their cached
@@ -1676,10 +1651,17 @@ pub(crate) fn integrate_linear_damped_axis(
     vel: &mut f64,
     accel: f64,
     dt_sec: f64,
-    drag_rate: f64,
-    wind_velocity: f64,
+    linear_damping_rate: f64,
+    medium_velocity: f64,
 ) {
-    integrate_linear_drag_axis(pos, vel, accel, dt_sec, drag_rate, wind_velocity);
+    integrate_linear_damping_axis(
+        pos,
+        vel,
+        accel,
+        dt_sec,
+        linear_damping_rate,
+        medium_velocity,
+    );
 }
 
 /// Per-tick ballistic integrator. For slots 0..count, advances with the
@@ -1718,20 +1700,7 @@ mod tests {
     }
 
     #[test]
-    fn projectile_air_drag_rate_preserves_authored_frame_friction() {
-        let expected = -(1.0_f64 - 0.02).ln() * 60.0;
-        assert_close(
-            projectile_air_drag_rate_from_friction_per_60hz_frame(0.02, 3.0),
-            expected,
-        );
-        assert_close(
-            projectile_air_drag_rate_from_friction_per_60hz_frame(0.02, 1000.0),
-            expected,
-        );
-    }
-
-    #[test]
-    fn projectile_zero_air_drag_ignores_wind() {
+    fn projectile_zero_damping_ignores_medium_velocity() {
         let mut pos_x = vec![1.0];
         let mut pos_y = vec![-2.0];
         let mut pos_z = vec![3.0];
@@ -1741,8 +1710,10 @@ mod tests {
         let accel_x = vec![3.0];
         let accel_y = vec![5.0];
         let accel_z = vec![-9.0];
-        let air_drag = vec![0.0];
-        let inv_mass = vec![0.25];
+        let linear_damping_rate = vec![0.0];
+        let medium_velocity_x = vec![1000.0];
+        let medium_velocity_y = vec![-500.0];
+        let medium_velocity_z = vec![250.0];
         let arrival_enabled = vec![0];
         let arrival_point = vec![0.0];
         let arrival_radius = vec![0.0];
@@ -1751,9 +1722,9 @@ mod tests {
 
         let processed = projectile_integrate_step_batch(
             1, &mut pos_x, &mut pos_y, &mut pos_z, &mut vel_x, &mut vel_y, &mut vel_z, &accel_x,
-            &accel_y, &accel_z, &air_drag, &inv_mass, &arrival_enabled, &arrival_point,
-            &arrival_point, &arrival_point, &arrival_radius, &mut arrival_reached,
-            1000.0, -500.0, 250.0, dt,
+            &accel_y, &accel_z, &linear_damping_rate, &medium_velocity_x,
+            &medium_velocity_y, &medium_velocity_z, &arrival_enabled, &arrival_point,
+            &arrival_point, &arrival_point, &arrival_radius, &mut arrival_reached, dt,
         );
 
         assert_eq!(processed, 1);
@@ -1766,6 +1737,317 @@ mod tests {
     }
 
     #[test]
+    fn projectile_linear_damping_pushes_velocity_toward_medium_velocity() {
+        let mut pos_x = vec![0.0];
+        let mut pos_y = vec![0.0];
+        let mut pos_z = vec![0.0];
+        let mut vel_x = vec![0.0];
+        let mut vel_y = vec![0.0];
+        let mut vel_z = vec![0.0];
+        let zero = vec![0.0];
+        let damping = vec![0.5];
+        let medium_x = vec![30.0];
+        let medium_y = vec![-20.0];
+        let medium_z = vec![10.0];
+        let arrival_enabled = vec![0];
+        let arrival_radius = vec![0.0];
+        let mut arrival_reached = vec![0];
+
+        let processed = projectile_integrate_step_batch(
+            1,
+            &mut pos_x,
+            &mut pos_y,
+            &mut pos_z,
+            &mut vel_x,
+            &mut vel_y,
+            &mut vel_z,
+            &zero,
+            &zero,
+            &zero,
+            &damping,
+            &medium_x,
+            &medium_y,
+            &medium_z,
+            &arrival_enabled,
+            &zero,
+            &zero,
+            &zero,
+            &arrival_radius,
+            &mut arrival_reached,
+            1.0,
+        );
+
+        assert_eq!(processed, 1);
+        let response = 1.0 - (-0.5_f64).exp();
+        assert_close(vel_x[0], medium_x[0] * response);
+        assert_close(vel_y[0], medium_y[0] * response);
+        assert_close(vel_z[0], medium_z[0] * response);
+    }
+
+    #[derive(Clone, Copy)]
+    struct BallisticContractCase {
+        origin: (f64, f64, f64),
+        origin_velocity: (f64, f64, f64),
+        target: (f64, f64, f64),
+        target_velocity: (f64, f64, f64),
+        projectile_speed: f64,
+        gravity: f64,
+        linear_damping_rate: f64,
+        medium_velocity: (f64, f64, f64),
+        prefer_late: u8,
+    }
+
+    fn solve_and_integrate_ballistic_case(case: BallisticContractCase) -> f64 {
+        let input = [
+            case.origin.0,
+            case.origin.1,
+            case.origin.2,
+            case.origin_velocity.0,
+            case.origin_velocity.1,
+            case.origin_velocity.2,
+            0.0,
+            0.0,
+            0.0,
+            case.target.0,
+            case.target.1,
+            case.target.2,
+            case.target_velocity.0,
+            case.target_velocity.1,
+            case.target_velocity.2,
+            // Gameplay deliberately does not predict target acceleration.
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -case.gravity,
+            case.projectile_speed,
+        ];
+        let mut solution = [0.0_f64; 7];
+        assert!(solve_damped_kinematic_intercept_inline(
+            &input,
+            &mut solution,
+            case.prefer_late,
+            0.0,
+            case.linear_damping_rate,
+            case.medium_velocity.0,
+            case.medium_velocity.1,
+            case.medium_velocity.2,
+        ));
+
+        let relative_launch_speed =
+            (solution[4] * solution[4] + solution[5] * solution[5] + solution[6] * solution[6])
+                .sqrt();
+        assert!(
+            (relative_launch_speed - case.projectile_speed).abs() <= 0.01,
+            "solver returned launch speed {relative_launch_speed}, expected {}",
+            case.projectile_speed,
+        );
+
+        let mut pos_x = vec![case.origin.0];
+        let mut pos_y = vec![case.origin.1];
+        let mut pos_z = vec![case.origin.2];
+        // The targeting system consumes yaw/pitch and the fire path authors
+        // the exact muzzle-speed magnitude, so reproduce that handoff rather
+        // than integrating the root finder's tiny speed residual.
+        let launch_scale = case.projectile_speed / relative_launch_speed;
+        let mut vel_x = vec![case.origin_velocity.0 + solution[4] * launch_scale];
+        let mut vel_y = vec![case.origin_velocity.1 + solution[5] * launch_scale];
+        let mut vel_z = vec![case.origin_velocity.2 + solution[6] * launch_scale];
+        let accel_x = vec![0.0];
+        let accel_y = vec![0.0];
+        let accel_z = vec![-case.gravity];
+        let damping = vec![case.linear_damping_rate];
+        let medium_x = vec![case.medium_velocity.0];
+        let medium_y = vec![case.medium_velocity.1];
+        let medium_z = vec![case.medium_velocity.2];
+        let arrival_enabled = vec![0];
+        let arrival_point = vec![0.0];
+        let arrival_radius = vec![0.0];
+        let mut arrival_reached = vec![0];
+
+        let mut remaining = solution[0];
+        while remaining > 1e-12 {
+            let dt = remaining.min(1.0 / 30.0);
+            assert_eq!(
+                projectile_integrate_step_batch(
+                    1,
+                    &mut pos_x,
+                    &mut pos_y,
+                    &mut pos_z,
+                    &mut vel_x,
+                    &mut vel_y,
+                    &mut vel_z,
+                    &accel_x,
+                    &accel_y,
+                    &accel_z,
+                    &damping,
+                    &medium_x,
+                    &medium_y,
+                    &medium_z,
+                    &arrival_enabled,
+                    &arrival_point,
+                    &arrival_point,
+                    &arrival_point,
+                    &arrival_radius,
+                    &mut arrival_reached,
+                    dt,
+                ),
+                1,
+            );
+            remaining -= dt;
+        }
+
+        let target_x = case.target.0 + case.target_velocity.0 * solution[0];
+        let target_y = case.target.1 + case.target_velocity.1 * solution[0];
+        let target_z = case.target.2 + case.target_velocity.2 * solution[0];
+        let dx = pos_x[0] - target_x;
+        let dy = pos_y[0] - target_y;
+        let dz = pos_z[0] - target_z;
+        (dx * dx + dy * dy + dz * dz).sqrt()
+    }
+
+    #[test]
+    fn ballistic_solver_hits_through_production_integrator_in_multiple_3d_winds() {
+        let cases = [
+            BallisticContractCase {
+                origin: (20.0, -40.0, 100.0),
+                origin_velocity: (12.0, -7.0, 3.0),
+                target: (760.0, 220.0, 75.0),
+                target_velocity: (-9.0, 14.0, 0.0),
+                projectile_speed: 700.0,
+                gravity: 400.0,
+                linear_damping_rate: 0.180270541218,
+                medium_velocity: (35.0, -18.0, 4.0),
+                prefer_late: 0,
+            },
+            BallisticContractCase {
+                origin: (-100.0, 50.0, 140.0),
+                origin_velocity: (-15.0, 8.0, -2.0),
+                target: (620.0, -430.0, 100.0),
+                target_velocity: (20.0, 12.0, 5.0),
+                projectile_speed: 780.0,
+                gravity: 400.0,
+                linear_damping_rate: 0.240481283852,
+                medium_velocity: (-42.0, 27.0, -9.0),
+                prefer_late: 0,
+            },
+            BallisticContractCase {
+                origin: (0.0, 0.0, 100.0),
+                origin_velocity: (6.0, -11.0, 1.0),
+                target: (450.0, 180.0, 70.0),
+                target_velocity: (-8.0, 6.0, -3.0),
+                projectile_speed: 700.0,
+                gravity: 400.0,
+                linear_damping_rate: 0.12012016024,
+                medium_velocity: (13.0, 44.0, 11.0),
+                prefer_late: 1,
+            },
+        ];
+
+        for case in cases {
+            let miss = solve_and_integrate_ballistic_case(case);
+            assert!(miss <= 0.01, "solver/integrator miss was {miss}");
+        }
+    }
+
+    #[test]
+    fn ballistic_contract_detects_omitted_damping() {
+        let case = BallisticContractCase {
+            origin: (0.0, 0.0, 100.0),
+            origin_velocity: (0.0, 0.0, 0.0),
+            target: (900.0, 0.0, 80.0),
+            target_velocity: (0.0, 0.0, 0.0),
+            projectile_speed: 750.0,
+            gravity: 400.0,
+            linear_damping_rate: 0.0,
+            medium_velocity: (0.0, 0.0, 0.0),
+            prefer_late: 0,
+        };
+        let input = [
+            case.origin.0,
+            case.origin.1,
+            case.origin.2,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            case.target.0,
+            case.target.1,
+            case.target.2,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -case.gravity,
+            case.projectile_speed,
+        ];
+        let mut undamped_solution = [0.0_f64; 7];
+        assert!(solve_damped_kinematic_intercept_inline(
+            &input,
+            &mut undamped_solution,
+            0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+        ));
+
+        let mismatched_case = BallisticContractCase {
+            linear_damping_rate: 0.240481283852,
+            medium_velocity: (35.0, -18.0, 4.0),
+            ..case
+        };
+        let mut pos = case.origin;
+        let mut vel = (
+            undamped_solution[4],
+            undamped_solution[5],
+            undamped_solution[6],
+        );
+        let mut remaining = undamped_solution[0];
+        while remaining > 1e-12 {
+            let dt = remaining.min(1.0 / 30.0);
+            integrate_linear_damped_axis(
+                &mut pos.0,
+                &mut vel.0,
+                0.0,
+                dt,
+                mismatched_case.linear_damping_rate,
+                mismatched_case.medium_velocity.0,
+            );
+            integrate_linear_damped_axis(
+                &mut pos.1,
+                &mut vel.1,
+                0.0,
+                dt,
+                mismatched_case.linear_damping_rate,
+                mismatched_case.medium_velocity.1,
+            );
+            integrate_linear_damped_axis(
+                &mut pos.2,
+                &mut vel.2,
+                -case.gravity,
+                dt,
+                mismatched_case.linear_damping_rate,
+                mismatched_case.medium_velocity.2,
+            );
+            remaining -= dt;
+        }
+        let dx = pos.0 - case.target.0;
+        let dy = pos.1 - case.target.1;
+        let dz = pos.2 - case.target.2;
+        let miss = (dx * dx + dy * dy + dz * dz).sqrt();
+        assert!(miss > 20.0, "negative control was too weak: miss={miss}");
+    }
+
+    #[test]
     fn projectile_guidance_arrival_sweep_clamps_at_entry() {
         let mut pos_x = vec![0.0];
         let mut pos_y = vec![0.0];
@@ -1774,8 +2056,8 @@ mod tests {
         let mut vel_y = vec![0.0];
         let mut vel_z = vec![0.0];
         let acceleration = vec![0.0];
-        let air_drag = vec![0.0];
-        let inv_mass = vec![1.0];
+        let linear_damping_rate = vec![0.0];
+        let medium_velocity = vec![0.0];
         let arrival_enabled = vec![1];
         let arrival_x = vec![5.0];
         let arrival_y = vec![0.0];
@@ -1785,9 +2067,9 @@ mod tests {
 
         let processed = projectile_integrate_step_batch(
             1, &mut pos_x, &mut pos_y, &mut pos_z, &mut vel_x, &mut vel_y, &mut vel_z,
-            &acceleration, &acceleration, &acceleration, &air_drag, &inv_mass,
-            &arrival_enabled, &arrival_x, &arrival_y, &arrival_z, &arrival_radius,
-            &mut arrival_reached, 0.0, 0.0, 0.0, 0.1,
+            &acceleration, &acceleration, &acceleration, &linear_damping_rate,
+            &medium_velocity, &medium_velocity, &medium_velocity, &arrival_enabled, &arrival_x,
+            &arrival_y, &arrival_z, &arrival_radius, &mut arrival_reached, 0.1,
         );
 
         assert_eq!(processed, 1);
@@ -1825,19 +2107,18 @@ mod tests {
         // These fields must not become a second copy of missile motion or an
         // acceleration extrapolation in constant-speed mode.
         rows[PHG_ROW_ORIGIN_VEL_X] = 100.0;
-        rows[PHG_ROW_ORIGIN_ACCEL_X] = 500.0;
-        rows[PHG_ROW_TARGET_ACCEL_Y] = 500.0;
+        rows[PHG_ROW_MEDIUM_VEL_X] = 200.0;
+        rows[PHG_ROW_MEDIUM_VEL_Y] = -100.0;
+        rows[PHG_ROW_MEDIUM_VEL_Z] = 50.0;
         rows[PHG_ROW_PROJECTILE_SPEED] = 100.0;
         rows[PHG_ROW_PROJECTILE_GRAVITY] = 9.81;
         rows[PHG_ROW_MAX_TIME_SEC] = 30.0;
         rows[PHG_ROW_HOMING_TURN_RATE] = 100.0;
         rows[PHG_ROW_SOLVE_INTERCEPT] = 1.0;
-        rows[PHG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME] = 0.2;
-        rows[PHG_ROW_PROJECTILE_MASS] = 1.0;
+        rows[PHG_ROW_PROJECTILE_LINEAR_DAMPING_RATE] = 0.2;
         rows[PHG_ROW_CONSTANT_SPEED_MODE] = 1.0;
 
-        let processed =
-            projectile_homing_guidance_batch(&mut rows, 1, 1.0 / 30.0, 200.0, -100.0, 50.0);
+        let processed = projectile_homing_guidance_batch(&mut rows, 1, 1.0 / 30.0);
 
         assert_eq!(processed, 1);
         assert_eq!(rows[PHG_ROW_OUT_INTERCEPT_FOUND], 1.0);
@@ -1873,7 +2154,7 @@ mod tests {
         rows[second + PHG_ROW_HOMING_TURN_RATE] = 1.0;
         rows[second + PHG_ROW_CONSTANT_SPEED_MODE] = 1.0;
 
-        let processed = projectile_homing_guidance_batch(&mut rows, 2, 0.05, 0.0, 0.0, 0.0);
+        let processed = projectile_homing_guidance_batch(&mut rows, 2, 0.05);
 
         assert_eq!(processed, 2);
         assert_eq!(rows[PHG_ROW_OUT_ALIGNED], 1.0);
@@ -1881,14 +2162,14 @@ mod tests {
     }
 
     #[test]
-    fn damped_intercept_zero_air_friction_ignores_wind() {
+    fn damped_intercept_zero_linear_damping_rate_ignores_wind() {
         let input = [
             0.0, 0.0, 0.0, // origin position
             0.0, 0.0, 0.0, // origin velocity
-            0.0, 0.0, 0.0, // origin acceleration
+            0.0, 0.0, 0.0, // reserved origin-acceleration slots
             100.0, 20.0, 5.0, // target position
             0.0, 0.0, 0.0, // target velocity
-            0.0, 0.0, 0.0, // target acceleration
+            0.0, 0.0, 0.0, // reserved target-acceleration slots
             0.0, 0.0, 0.0,  // projectile acceleration
             50.0, // projectile speed
         ];
@@ -1901,7 +2182,6 @@ mod tests {
             0,
             0.0,
             0.0,
-            5.0,
             0.0,
             0.0,
             0.0,
@@ -1912,7 +2192,6 @@ mod tests {
             0,
             0.0,
             0.0,
-            5.0,
             1000.0,
             -500.0,
             250.0,
@@ -1923,6 +2202,67 @@ mod tests {
         for i in 0..still_air.len() {
             assert_close(high_wind[i], still_air[i]);
         }
+    }
+
+    #[test]
+    fn intercept_solvers_ignore_reserved_entity_acceleration_slots() {
+        let base_input = [
+            10.0, -5.0, 20.0, // origin position
+            4.0, 2.0, -1.0, // origin velocity
+            0.0, 0.0, 0.0, // reserved origin-acceleration slots
+            180.0, 45.0, 30.0, // target position
+            -3.0, 6.0, 1.0, // target velocity
+            0.0, 0.0, 0.0, // reserved target-acceleration slots
+            0.0, 0.0, -9.81, // projectile acceleration
+            90.0, // projectile speed
+        ];
+        let mut noisy_input = base_input;
+        noisy_input[6] = -600.0;
+        noisy_input[7] = 325.0;
+        noisy_input[8] = -150.0;
+        noisy_input[15] = 800.0;
+        noisy_input[16] = -450.0;
+        noisy_input[17] = 275.0;
+
+        let mut base_ballistic = [0.0_f64; 7];
+        let mut noisy_ballistic = [0.0_f64; 7];
+        assert!(solve_kinematic_intercept_inline(
+            &base_input,
+            &mut base_ballistic,
+            0,
+            0.0,
+        ));
+        assert!(solve_kinematic_intercept_inline(
+            &noisy_input,
+            &mut noisy_ballistic,
+            0,
+            0.0,
+        ));
+        assert_eq!(base_ballistic, noisy_ballistic);
+
+        let mut base_damped = [0.0_f64; 7];
+        let mut noisy_damped = [0.0_f64; 7];
+        assert!(solve_damped_kinematic_intercept_inline(
+            &base_input,
+            &mut base_damped,
+            0,
+            0.0,
+            0.24,
+            25.0,
+            -12.0,
+            7.0,
+        ));
+        assert!(solve_damped_kinematic_intercept_inline(
+            &noisy_input,
+            &mut noisy_damped,
+            0,
+            0.0,
+            0.24,
+            25.0,
+            -12.0,
+            7.0,
+        ));
+        assert_eq!(base_damped, noisy_damped);
     }
 
     #[test]
