@@ -751,11 +751,6 @@ function resetEveryCustomHotkey(): void {
           @click="model.toggleSmokeSoftEdges"
         >SOFT</BarButton>
         <BarButton
-          :active="model.entityShadows"
-          title="Project the actual silhouettes of units, buildings, and environment objects onto the ground from the sun"
-          @click="model.toggleEntityShadows"
-        >SHADOWS</BarButton>
-        <BarButton
           :active="model.forceFieldsVisible"
           title="Show local force-field surfaces and impact flashes. Shield interception remains active when hidden."
           @click="model.toggleForceFieldsVisible"
@@ -893,6 +888,27 @@ function resetEveryCustomHotkey(): void {
                   : 'Use the square water cuboid and replace the sky/sun background with solid dark-blue sea'
             "
             @click="model.changeWaterBoundaryMode(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel>SHADOW:</BarLabel>
+        <BarButton
+          :active="model.entityShadows"
+          title="Project the actual silhouettes of units, buildings, and solid environment objects onto the terrain from the sun. Off skips the directional depth pass."
+          @click="model.toggleEntityShadows"
+        >ON</BarButton>
+        <BarLabel>DARK:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.entityShadowDarkness.options"
+            :key="opt.value"
+            :active="model.entityShadowDarkness === opt.value"
+            :title="opt.value === 0
+              ? 'Remove silhouette shadows and skip their directional depth pass while preserving the SHADOW toggle.'
+              : `Apply ${opt.value}% of the sampled directional silhouette shadow. This changes live and uses the same shadow-map term on biome grass and metal.`"
+            @click="model.changeEntityShadowDarkness(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>

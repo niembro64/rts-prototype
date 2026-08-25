@@ -170,7 +170,7 @@
     "bias": -0.00018,
     "normalBias": 1.25,
     "pcfRadius": 1.5,
-    "detail": "Camera-local directional shadow map for the exact rendered silhouettes of units, buildings, and solid environment props. The frustum follows and texel-snaps around the camera focus so useful resolution is spent on the visible battle instead of the full map. The CLIENT SHADOW toggle enables or disables the sun's shadow pass; the old WorldShade coverage ellipses remain disabled."
+    "detail": "Camera-local directional shadow map for the exact rendered silhouettes of units, buildings, and solid environment props. The frustum follows and texel-snaps around the camera focus so useful resolution is spent on the visible battle instead of the full map. CLIENT SHADOW enables the pass and CLIENT DARK selects its live intensity; zero darkness also skips the pass. The old WorldShade coverage ellipses remain disabled."
   },
   "overlayLines": {
     "feather": 0.16,

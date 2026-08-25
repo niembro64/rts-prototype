@@ -18,6 +18,7 @@ import {
   getClientUnitGroundNormalEmaMode,
   getDragPanEnabled,
   getElevationMap,
+  getEntityShadowDarkness,
   getEntityShadows,
   getForceFieldsVisible,
   getFogShade,
@@ -73,6 +74,7 @@ import {
   setClientUnitGroundNormalEmaMode,
   setDragPanEnabled,
   setElevationMap,
+  setEntityShadowDarkness,
   setEntityShadows,
   setForceFieldsVisible,
   setFogShade,
@@ -137,6 +139,7 @@ import type {
   EntityHudElement,
   EntityHudToggles,
   EntityHudType,
+  EntityShadowDarknessPercent,
   LightIntensityPercent,
   MasterVolumePercent,
   VolumeType,
@@ -186,6 +189,9 @@ export function useGameCanvasClientSettings({
   const smokeTrails = ref<boolean>(getSmokeTrails());
   const smokeSoftEdges = ref<boolean>(getSmokeSoftEdges());
   const entityShadows = ref<boolean>(getEntityShadows());
+  const entityShadowDarkness = ref<EntityShadowDarknessPercent>(
+    getEntityShadowDarkness(),
+  );
   const forceFieldsVisible = ref<boolean>(getForceFieldsVisible());
   const fogShade = ref<boolean>(getFogShade());
   const materialExplosions = ref<boolean>(getMaterialExplosions());
@@ -299,6 +305,7 @@ export function useGameCanvasClientSettings({
     smokeTrails.value = getSmokeTrails();
     smokeSoftEdges.value = getSmokeSoftEdges();
     entityShadows.value = getEntityShadows();
+    entityShadowDarkness.value = getEntityShadowDarkness();
     forceFieldsVisible.value = getForceFieldsVisible();
     fogShade.value = getFogShade();
     materialExplosions.value = getMaterialExplosions();
@@ -564,6 +571,13 @@ export function useGameCanvasClientSettings({
     entityShadows.value = newValue;
   }
 
+  function changeEntityShadowDarkness(
+    percent: EntityShadowDarknessPercent,
+  ): void {
+    setEntityShadowDarkness(percent);
+    entityShadowDarkness.value = getEntityShadowDarkness();
+  }
+
   function toggleForceFieldsVisible(): void {
     const newValue = !forceFieldsVisible.value;
     setForceFieldsVisible(newValue);
@@ -760,6 +774,7 @@ export function useGameCanvasClientSettings({
     smokeSoftEdges.value = cd.smokeSoftEdges.default;
     setEntityShadows(cd.entityShadows.default);
     entityShadows.value = cd.entityShadows.default;
+    changeEntityShadowDarkness(cd.entityShadowDarkness.default);
     setForceFieldsVisible(cd.forceFieldsVisible.default);
     forceFieldsVisible.value = cd.forceFieldsVisible.default;
     setFogShade(cd.fogShade.default);
@@ -863,6 +878,7 @@ export function useGameCanvasClientSettings({
     smokeTrails,
     smokeSoftEdges,
     entityShadows,
+    entityShadowDarkness,
     forceFieldsVisible,
     fogShade,
     materialExplosions,
@@ -941,6 +957,7 @@ export function useGameCanvasClientSettings({
     toggleSmokeTrails,
     toggleSmokeSoftEdges,
     toggleEntityShadows,
+    changeEntityShadowDarkness,
     toggleForceFieldsVisible,
     toggleFogShade,
     toggleMaterialExplosions,

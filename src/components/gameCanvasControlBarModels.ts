@@ -10,6 +10,7 @@ import type {
   CameraSmoothMode,
   CameraViewMode,
   DriftMode,
+  EntityShadowDarknessPercent,
   EntityHudElement,
   EntityHudToggles,
   EntityHudType,
@@ -240,6 +241,7 @@ export type GameCanvasClientControlBarModel = {
   readonly smokeTrails: boolean;
   readonly smokeSoftEdges: boolean;
   readonly entityShadows: boolean;
+  readonly entityShadowDarkness: EntityShadowDarknessPercent;
   readonly fogShade: boolean;
   readonly materialExplosions: boolean;
   readonly clientUnitGroundNormalEmaMode: DriftMode;
@@ -310,6 +312,7 @@ export type GameCanvasClientControlBarModel = {
   toggleSmokeTrails(): void;
   toggleSmokeSoftEdges(): void;
   toggleEntityShadows(): void;
+  changeEntityShadowDarkness(percent: EntityShadowDarknessPercent): void;
   toggleFogShade(): void;
   toggleMaterialExplosions(): void;
   changeClientUnitGroundNormalEmaMode(mode: DriftMode): void;

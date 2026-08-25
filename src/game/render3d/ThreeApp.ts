@@ -56,6 +56,7 @@ import {
 import {
   getAaMsaaMode,
   getAaResolutionMode,
+  getEntityShadowDarkness,
   getEntityShadows,
   getWaterBoundaryMode,
   getZoomPointsDebug,
@@ -501,6 +502,7 @@ export class ThreeApp {
           this.orbit.target,
           this.orbit.distance,
           getEntityShadows(),
+          getEntityShadowDarkness(),
         );
         this._zoomTerrainPointsOverlay.update(now, getZoomPointsDebug());
         // One terrain sample: the caption re-seats itself if the annex's

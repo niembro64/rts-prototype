@@ -61,9 +61,12 @@ export class GroundSilhouetteSunShadow3D {
     focus: THREE.Vector3,
     orbitDistance: number,
     clientEnabled: boolean,
+    darknessPercent: number,
   ): void {
     const config = GROUND_SILHOUETTE_SHADOW_RENDER_CONFIG;
-    const nextEnabled = config.enabled && clientEnabled;
+    const darkness = clamp(darknessPercent / 100, 0, 1);
+    this.sun.shadow.intensity = darkness;
+    const nextEnabled = config.enabled && clientEnabled && darkness > 0;
     if (this.enabled !== nextEnabled) {
       this.enabled = nextEnabled;
       this.sun.castShadow = nextEnabled;
@@ -194,11 +197,11 @@ export function installSunLighting(
   scene.add(sun.target);
   const groundShadows = new GroundSilhouetteSunShadow3D(sun, mapWidth, mapHeight);
 
-  // Intensities are owned by RenderLighting3D along with the scene-level and
-  // renderer-level lighting knobs, so every runtime lighting control lives in
-  // one module rather than being split across whoever happens to create the
-  // object. Registering re-applies the current scale, so tuning survives a
-  // scene rebuild.
+  // The ambient and directional light intensities are owned by
+  // RenderLighting3D with the scene/renderer illumination knobs. Shadow-map
+  // enable and darkness remain in GroundSilhouetteSunShadow3D above because
+  // that object also owns whether the pass is rendered. Registering the lights
+  // re-applies the current illumination scales after a scene rebuild.
   registerSunLights(ambient, sun);
 
   const diskCfg = SUN_RENDER_CONFIG.visibleSkyDisk;

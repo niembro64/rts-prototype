@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import {
   getClientConfig,
+  normalizeEntityShadowDarknessSelection,
   normalizeLightIntensitySelection,
 } from '@/clientBarConfig';
 import { GROUND_SILHOUETTE_SHADOW_RENDER_CONFIG } from '../../config';
 import {
+  configureGroundSilhouetteCaster3D,
   configureGroundSilhouetteCasterTree3D,
   configureGroundSilhouetteReceiver3D,
 } from './GroundSilhouetteShadow3D';
@@ -18,11 +20,186 @@ import {
 } from './RenderLighting3D';
 import {
   TERRAIN_OUTWARD_NORMAL_LEVELS,
+  TERRAIN_OUTWARD_NORMAL_UNIFORM,
+  terrainOutwardNormalFragment,
   terrainOutwardNormalScopeLevel,
+  terrainOutwardNormalUniformDeclaration,
 } from './TerrainOutwardNormal3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[ground silhouette shadow contract] ${message}`);
+}
+
+/** GPU regression for the actual failure mode: authored upward normals on
+ * back-facing DoubleSide terrain, with grass-like and ore-like Standard
+ * material responses. Compare the same frame with and without the depth pass;
+ * both halves must lose measurable light beneath their caster. */
+function checkGrassAndMetalReceiveDirectionalSilhouettes(): void {
+  const width = 160;
+  const height = 112;
+  const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false });
+  renderer.setSize(width, height, false);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.setClearColor(0x000000, 1);
+  const target = new THREE.WebGLRenderTarget(width, height, {
+    depthBuffer: true,
+    stencilBuffer: false,
+  });
+  const scene = new THREE.Scene();
+  const camera = new THREE.OrthographicCamera(-7, 7, 5, -5, 0.1, 50);
+  camera.up.set(0, 0, -1);
+  camera.position.set(0, 14, 0);
+  camera.lookAt(0, 0, 0);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.12));
+  const sun = new THREE.DirectionalLight(0xffffff, 4);
+  sun.position.set(0, 10, 8);
+  sun.target.position.set(0, 0, 0);
+  sun.shadow.mapSize.set(512, 512);
+  const shadowCamera = sun.shadow.camera;
+  shadowCamera.left = -8;
+  shadowCamera.right = 8;
+  shadowCamera.top = 8;
+  shadowCamera.bottom = -8;
+  shadowCamera.near = 0.1;
+  shadowCamera.far = 30;
+  shadowCamera.updateProjectionMatrix();
+  scene.add(sun, sun.target);
+
+  const geometries: THREE.BufferGeometry[] = [];
+  const materials: THREE.Material[] = [];
+  const addBackFacingReceiver = (
+    x: number,
+    color: number,
+    metalness: number,
+    roughness: number,
+    metalCoverage: 0 | 1,
+  ): void => {
+    const geometry = new THREE.PlaneGeometry(6, 9);
+    geometry.rotateX(-Math.PI * 0.5);
+    const index = geometry.index;
+    assertContract(index !== null, 'contract receiver plane must be indexed');
+    for (let i = 0; i < index.count; i += 3) {
+      const b = index.getX(i + 1);
+      index.setX(i + 1, index.getX(i + 2));
+      index.setX(i + 2, b);
+    }
+    index.needsUpdate = true;
+    const material = new THREE.MeshStandardMaterial({
+      color,
+      metalness,
+      roughness,
+      side: THREE.DoubleSide,
+    });
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms[TERRAIN_OUTWARD_NORMAL_UNIFORM] = { value: 2 };
+      shader.fragmentShader = `${terrainOutwardNormalUniformDeclaration()}\n${shader.fragmentShader}`
+        .replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>\nfloat metalCoverage = ${metalCoverage.toFixed(1)};`,
+        )
+        .replace(
+          '#include <normal_fragment_maps>',
+          `#include <normal_fragment_maps>\n${terrainOutwardNormalFragment()}`,
+        );
+    };
+    material.customProgramCacheKey = () =>
+      `ground-shadow-surface-contract-${metalCoverage}`;
+    const receiver = new THREE.Mesh(geometry, material);
+    receiver.position.x = x;
+    configureGroundSilhouetteReceiver3D(receiver);
+    scene.add(receiver);
+    geometries.push(geometry);
+    materials.push(material);
+  };
+  addBackFacingReceiver(-3.1, 0x58753d, 0, 1, 0);
+  addBackFacingReceiver(3.1, 0x4a4f53, 0.5, 0.88, 1);
+
+  for (const x of [-3.1, 3.1]) {
+    const geometry = new THREE.BoxGeometry(1.8, 3, 1.8);
+    const material = new THREE.MeshStandardMaterial({ color: 0xb9bec4, roughness: 0.7 });
+    const caster = new THREE.Mesh(geometry, material);
+    caster.position.set(x, 1.5, 2);
+    configureGroundSilhouetteCaster3D(caster);
+    scene.add(caster);
+    geometries.push(geometry);
+    materials.push(material);
+  }
+
+  const withoutShadow = new Uint8Array(width * height * 4);
+  const withShadow = new Uint8Array(width * height * 4);
+  const renderInto = (pixels: Uint8Array): void => {
+    renderer.setRenderTarget(target);
+    renderer.clear();
+    renderer.render(scene, camera);
+    renderer.readRenderTargetPixels(target, 0, 0, width, height, pixels);
+  };
+
+  try {
+    sun.castShadow = false;
+    renderInto(withoutShadow);
+    sun.castShadow = true;
+    sun.shadow.needsUpdate = true;
+    renderInto(withShadow);
+
+    const signalForHalf = (minX: number, maxX: number): {
+      signal: number;
+      absoluteSignal: number;
+      meanBefore: number;
+      meanAfter: number;
+      surfacePixels: number;
+    } => {
+      let positiveDelta = 0;
+      let absoluteDelta = 0;
+      let beforeTotal = 0;
+      let afterTotal = 0;
+      let surfacePixels = 0;
+      for (let y = 8; y < height - 8; y++) {
+        for (let x = minX; x < maxX; x++) {
+          const offset = (y * width + x) * 4;
+          const before = (
+            withoutShadow[offset] +
+            withoutShadow[offset + 1] +
+            withoutShadow[offset + 2]
+          ) / 3;
+          if (before < 8) continue;
+          const after = (
+            withShadow[offset] +
+            withShadow[offset + 1] +
+            withShadow[offset + 2]
+          ) / 3;
+          const delta = before - after;
+          positiveDelta += Math.max(0, delta);
+          absoluteDelta += Math.abs(delta);
+          beforeTotal += before;
+          afterTotal += after;
+          surfacePixels++;
+        }
+      }
+      const divisor = Math.max(1, surfacePixels);
+      return {
+        signal: positiveDelta / divisor,
+        absoluteSignal: absoluteDelta / divisor,
+        meanBefore: beforeTotal / divisor,
+        meanAfter: afterTotal / divisor,
+        surfacePixels,
+      };
+    };
+    const grass = signalForHalf(4, Math.floor(width * 0.47));
+    const metal = signalForHalf(Math.ceil(width * 0.53), width - 4);
+    assertContract(
+      grass.signal > 0.2 && metal.signal > 0.2,
+      'directional silhouettes must visibly darken both back-facing terrain ' +
+      `materials (grass=${JSON.stringify(grass)}, metal=${JSON.stringify(metal)})`,
+    );
+  } finally {
+    renderer.setRenderTarget(null);
+    target.dispose();
+    for (const geometry of geometries) geometry.dispose();
+    for (const material of materials) material.dispose();
+    renderer.dispose();
+    renderer.forceContextLoss();
+  }
 }
 
 export function runGroundSilhouetteShadow3DContractTest(): void {
@@ -76,7 +253,18 @@ export function runGroundSilhouetteShadow3DContractTest(): void {
       config.entityShadows.default,
       `${mode} must enable physical ground silhouettes by default`,
     );
+    assertContract(
+      config.entityShadowDarkness.default === 100 &&
+        config.entityShadowDarkness.options.map((option) => option.value).join(',') ===
+          '0,25,50,75,100',
+      `${mode} must expose selectable live silhouette-shadow darkness through full strength`,
+    );
   }
+  assertContract(
+    normalizeEntityShadowDarknessSelection(63) === 75 &&
+      normalizeEntityShadowDarknessSelection(50) === 50,
+    'shadow darkness must normalize to the nearest visible CLIENT button',
+  );
 
   const bakedUniform = getTerrainBakedLightingUniform();
   setTerrainBakedLightingEnabled(false);
@@ -97,6 +285,7 @@ export function runGroundSilhouetteShadow3DContractTest(): void {
     terrainOutwardNormalScopeLevel() === TERRAIN_OUTWARD_NORMAL_LEVELS.terrain,
     'all terrain fragments must restore their authored outward normal so live sun and silhouette shadows reach biome grass as well as ore',
   );
+  checkGrassAndMetalReceiveDirectionalSilhouettes();
 
   const root = new THREE.Group();
   const solid = new THREE.Mesh(
@@ -133,13 +322,14 @@ export function runGroundSilhouetteShadow3DContractTest(): void {
   const camera = new THREE.PerspectiveCamera(45, 16 / 9, 1, 10000);
   const focus = new THREE.Vector3(100.123, 12, 200.456);
   try {
-    shadow.sync(camera, focus, 1000, true);
+    shadow.sync(camera, focus, 1000, true, 25);
     const shadowCamera = sun.shadow.camera;
     const radius = shadowCamera.right;
     const quantum = GROUND_SILHOUETTE_SHADOW_RENDER_CONFIG.frustumRadiusQuantum;
     const texelSize = radius * 2 / sun.shadow.mapSize.width;
     assertContract(
       sun.castShadow &&
+        sun.shadow.intensity === 0.25 &&
         sun.shadow.mapSize.width === GROUND_SILHOUETTE_SHADOW_RENDER_CONFIG.mapSize &&
         shadowCamera.left === -radius &&
         shadowCamera.top === radius &&
@@ -152,7 +342,12 @@ export function runGroundSilhouetteShadow3DContractTest(): void {
         Math.abs(sun.target.position.z / texelSize - Math.round(sun.target.position.z / texelSize)) < 1e-9,
       'the sun focus must snap to shadow texels so outlines do not swim during sub-texel camera pans',
     );
-    shadow.sync(camera, focus, 1000, false);
+    shadow.sync(camera, focus, 1000, true, 0);
+    assertContract(
+      !sun.castShadow && Number(sun.shadow.intensity) === 0,
+      'zero darkness must remove silhouettes and skip the depth pass',
+    );
+    shadow.sync(camera, focus, 1000, false, 100);
     assertContract(!sun.castShadow, 'the client SHADOWS toggle must disable the depth pass');
   } finally {
     shadow.destroy();

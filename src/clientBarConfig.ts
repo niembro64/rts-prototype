@@ -12,6 +12,7 @@ import type {
   CameraSmoothMode,
   BuildGridDebugMode,
   DriftMode,
+  EntityShadowDarknessPercent,
   EntityHudElement,
   EntityHudToggles,
   EntityHudType,
@@ -64,6 +65,8 @@ const MAX_CAMERA_FOV_DEGREES = 179;
 const FOG_PRESENTATION = FOG_CONFIG.presentation;
 const LIGHT_INTENSITY_OPTIONS =
   clientBarConfig.lightIntensityOptions as OptionList<LightIntensityPercent>;
+const ENTITY_SHADOW_DARKNESS_OPTIONS =
+  clientBarConfig.entityShadowDarkness.options as OptionList<EntityShadowDarknessPercent>;
 
 type ClientDefaults = {
   readonly render: RenderMode;
@@ -84,6 +87,7 @@ type ClientDefaults = {
   readonly smokeTrails: boolean;
   readonly smokeSoftEdges: boolean;
   readonly entityShadows: boolean;
+  readonly entityShadowDarkness: EntityShadowDarknessPercent;
   readonly forceFieldsVisible: boolean;
   readonly fogShade: boolean;
   readonly materialExplosions: boolean;
@@ -171,6 +175,8 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     smokeTrails: pickDefault(clientBarConfig.smokeTrails, mode),
     smokeSoftEdges: pickDefault(clientBarConfig.smokeSoftEdges, mode),
     entityShadows: pickDefault(clientBarConfig.entityShadows, mode),
+    entityShadowDarkness:
+      pickDefault(clientBarConfig.entityShadowDarkness, mode) as EntityShadowDarknessPercent,
     forceFieldsVisible: pickDefault(clientBarConfig.forceFieldsVisible, mode),
     fogShade: FOG_PRESENTATION.enabledByDefault,
     materialExplosions: pickDefault(clientBarConfig.materialExplosions, mode),
@@ -278,6 +284,10 @@ export const CLIENT_CONFIG = {
   smokeTrails: { default: DEMO_CLIENT_DEFAULTS.smokeTrails },
   smokeSoftEdges: { default: DEMO_CLIENT_DEFAULTS.smokeSoftEdges },
   entityShadows: { default: DEMO_CLIENT_DEFAULTS.entityShadows },
+  entityShadowDarkness: {
+    default: DEMO_CLIENT_DEFAULTS.entityShadowDarkness,
+    options: ENTITY_SHADOW_DARKNESS_OPTIONS,
+  },
   forceFieldsVisible: { default: DEMO_CLIENT_DEFAULTS.forceFieldsVisible },
   fogShade: { default: DEMO_CLIENT_DEFAULTS.fogShade },
   materialExplosions: { default: DEMO_CLIENT_DEFAULTS.materialExplosions },
@@ -376,6 +386,10 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     smokeTrails: { default: defaults.smokeTrails },
     smokeSoftEdges: { default: defaults.smokeSoftEdges },
     entityShadows: { default: defaults.entityShadows },
+    entityShadowDarkness: {
+      ...CLIENT_CONFIG.entityShadowDarkness,
+      default: defaults.entityShadowDarkness,
+    },
     forceFieldsVisible: { default: defaults.forceFieldsVisible },
     fogShade: { default: defaults.fogShade },
     materialExplosions: { default: defaults.materialExplosions },
@@ -447,6 +461,7 @@ type ClientStorageKeyName =
   | 'smokeTrails'
   | 'smokeSoftEdges'
   | 'entityShadows'
+  | 'entityShadowDarkness'
   | 'forceFieldsVisible'
   | 'fogShade'
   | 'materialExplosions'
@@ -501,6 +516,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'smokeTrails',
   'smokeSoftEdges',
   'entityShadows',
+  'entityShadowDarkness',
   'forceFieldsVisible',
   'fogShade',
   'materialExplosions',
@@ -604,6 +620,8 @@ let currentSurfaceTexture: boolean = _cd.surfaceTexture.default;
 let currentSmokeTrails: boolean = _cd.smokeTrails.default;
 let currentSmokeSoftEdges: boolean = _cd.smokeSoftEdges.default;
 let currentEntityShadows: boolean = _cd.entityShadows.default;
+let currentEntityShadowDarkness: EntityShadowDarknessPercent =
+  _cd.entityShadowDarkness.default;
 let currentForceFieldsVisible: boolean = _cd.forceFieldsVisible.default;
 let currentFogShade: boolean = _cd.fogShade.default;
 let currentMaterialExplosions: boolean = _cd.materialExplosions.default;
@@ -658,6 +676,8 @@ const POSITIVE_LIGHT_INTENSITY_OPTIONS = LIGHT_INTENSITY_OPTIONS
   .map((option) => option.value)
   .filter((value) => value > 0);
 const MAX_LIGHT_INTENSITY_PERCENT = Math.max(...POSITIVE_LIGHT_INTENSITY_OPTIONS);
+const ENTITY_SHADOW_DARKNESS_VALUES = ENTITY_SHADOW_DARKNESS_OPTIONS
+  .map((option) => option.value);
 
 /**
  * Keep every runtime value on the same decade ladder rendered by the CLIENT
@@ -672,6 +692,25 @@ export function normalizeLightIntensitySelection(value: number): LightIntensityP
   for (const option of POSITIVE_LIGHT_INTENSITY_OPTIONS) {
     const distance = Math.abs(Math.log10(bounded / option));
     if (distance < nearestDistance) {
+      nearest = option;
+      nearestDistance = distance;
+    }
+  }
+  return nearest;
+}
+
+/** Keep persisted or programmatic shadow strengths on the values exposed by
+ *  the CLIENT bar. Ties choose the darker option so a requested increase is
+ *  never silently weakened. */
+export function normalizeEntityShadowDarknessSelection(
+  value: number,
+): EntityShadowDarknessPercent {
+  if (!Number.isFinite(value)) return getClientConfig().entityShadowDarkness.default;
+  let nearest = ENTITY_SHADOW_DARKNESS_VALUES[0] ?? 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (const option of ENTITY_SHADOW_DARKNESS_VALUES) {
+    const distance = Math.abs(value - option);
+    if (distance < nearestDistance || (distance === nearestDistance && option > nearest)) {
       nearest = option;
       nearestDistance = distance;
     }
@@ -734,6 +773,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentSmokeTrails = cd.smokeTrails.default;
   currentSmokeSoftEdges = cd.smokeSoftEdges.default;
   currentEntityShadows = cd.entityShadows.default;
+  currentEntityShadowDarkness = cd.entityShadowDarkness.default;
   currentForceFieldsVisible = cd.forceFieldsVisible.default;
   currentFogShade = cd.fogShade.default;
   currentMaterialExplosions = cd.materialExplosions.default;
@@ -869,6 +909,12 @@ function loadFromStorage(mode: ClientMode): void {
   const storedEntityShadows = readPersisted(keys.entityShadows);
   if (storedEntityShadows !== null) {
     currentEntityShadows = storedEntityShadows === 'true';
+  }
+  const storedEntityShadowDarkness = readPersisted(keys.entityShadowDarkness);
+  if (storedEntityShadowDarkness !== null) {
+    currentEntityShadowDarkness = normalizeEntityShadowDarknessSelection(
+      Number(storedEntityShadowDarkness),
+    );
   }
   const storedForceFieldsVisible = readPersisted(keys.forceFieldsVisible);
   if (storedForceFieldsVisible !== null) {
@@ -1453,6 +1499,22 @@ export function getEntityShadows(): boolean {
 export function setEntityShadows(enabled: boolean): void {
   currentEntityShadows = enabled;
   persist(activeStorageKeys().entityShadows, String(enabled));
+}
+
+/** Directional silhouette shadow-map intensity. At zero ThreeApp also skips
+ *  the depth pass; all other values apply on the next rendered frame. */
+export function getEntityShadowDarkness(): EntityShadowDarknessPercent {
+  return currentEntityShadowDarkness;
+}
+
+export function setEntityShadowDarkness(
+  percent: EntityShadowDarknessPercent,
+): void {
+  currentEntityShadowDarkness = normalizeEntityShadowDarknessSelection(percent);
+  persist(
+    activeStorageKeys().entityShadowDarkness,
+    String(currentEntityShadowDarkness),
+  );
 }
 
 /** Shield surfaces and impact flashes are local presentation. Authoritative

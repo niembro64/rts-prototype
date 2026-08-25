@@ -143,6 +143,32 @@
     "demoDefault": true,
     "realDefault": true
   },
+  "entityShadowDarkness": {
+    "demoDefault": 100,
+    "realDefault": 100,
+    "options": [
+      {
+        "value": 0,
+        "label": "0"
+      },
+      {
+        "value": 25,
+        "label": "25"
+      },
+      {
+        "value": 50,
+        "label": "50"
+      },
+      {
+        "value": 75,
+        "label": "75"
+      },
+      {
+        "value": 100,
+        "label": "100"
+      }
+    ]
+  },
   "forceFieldsVisible": {
     "demoDefault": true,
     "realDefault": true
@@ -528,6 +554,7 @@
     "smokeTrails": "smoke-trails",
     "smokeSoftEdges": "smoke-soft-edges",
     "entityShadows": "entity-shadows",
+    "entityShadowDarkness": "entity-shadow-darkness",
     "forceFieldsVisible": "force-fields-visible",
     "fogShade": "fog-shade",
     "materialExplosions": "material-explosions",

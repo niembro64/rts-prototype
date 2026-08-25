@@ -1,4 +1,6 @@
-// RenderLighting3D — every live CLIENT lighting knob, in one place.
+// RenderLighting3D — live CLIENT illumination and exposure knobs. Directional
+// shadow enable/strength stay with GroundSilhouetteSunShadow3D, which owns the
+// shadow-map pass itself.
 //
 // These controls are separate render terms, not interchangeable brightness
 // multipliers:

@@ -13,6 +13,10 @@ export type MasterVolumePercent = number;
  *  so 100 always means "whatever the config says" and stays meaningful if that
  *  config is retuned. */
 export type LightIntensityPercent = number;
+/** Strength of the directional silhouette shadow in [0, 100]. This is a
+ *  presentation percentage: 0 removes the depth-map contribution and 100
+ *  uses the full sampled shadow. */
+export type EntityShadowDarknessPercent = number;
 /** Four-mode smoothing space used by the unit-ground-normal and camera controls. */
 export type DriftMode = 'snap' | 'fast' | 'mid' | 'slow';
 export type CameraSmoothMode = 'snap' | 'fast' | 'mid' | 'slow';
@@ -186,6 +190,8 @@ export type ClientBarConfig = {
    *  of units, buildings, and solid environment props. Presentation only;
    *  disabling skips the directional depth pass. */
   readonly entityShadows: BooleanSetting;
+  /** Live strength of the directional silhouette shadow-map contribution. */
+  readonly entityShadowDarkness: LabeledOptionsConfig<EntityShadowDarknessPercent>;
   /** Local presentation of shield panels, spheres, and impact flashes. */
   readonly forceFieldsVisible: BooleanSetting;
   /** World-attached fog-of-war shade over terrain and environment props.
