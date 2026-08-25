@@ -25,3 +25,6 @@
 9) Let's default our "ENV:" lighting variable to "150" instead of "0". 
 
 10) I can see some good shiny materials on our "Shield Generator" and our "Shield Detection Lab", but we seem to have lost the shininess that we want on our "solar collector" 8 sections that are exposed when it is on. Add shininess back to those sections in whatever way we are currently doing so elsewhere. 
+
+11) We don't seem to be able to build our "tick" or "bee" units from the "universal fabricator" or their individual special fabricators. These units should be able to be built by fabricators as well as their "queen" units. Also let's rename the "queen tick" and "queen bee' back to those names. 
+
