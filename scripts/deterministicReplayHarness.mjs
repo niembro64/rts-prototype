@@ -26,10 +26,25 @@ try {
     '/src/game/architecture/DeterministicReplayHarness.ts',
   );
   const report = await harness.runDeterministicReplayHarness();
+  const ageLabels = ['0', '1', '2-3', '4-7', '8-15', '16-31', '32-63', '64+'];
   for (const replayCase of report.cases) {
     console.log(
       `${replayCase.id}: ${replayCase.ticks} ticks, ` +
         `${replayCase.checkpointCount} checkpoints, final=${replayCase.finalHash}`,
+    );
+    const s = replayCase.pathPlanScheduler;
+    const ages = s.admissionAgeBuckets
+      .map((count, index) => (count > 0 ? `${ageLabels[index]}:${count}` : null))
+      .filter(Boolean)
+      .join(' ');
+    console.log(
+      `  path scheduler: demand ticks ${s.ticksWithDemand}/${s.ticks}, ` +
+        `turns ${s.turnsServed} (cross-side ${s.crossSideFallthroughs}), ` +
+        `legacy-rotation idle ticks ${s.legacyRotationIdleTicks}, ` +
+        `admissions ${s.admissions}, free drains ${s.freeDrains}, ` +
+        `expansions ${s.expansionsUsed}, frontier-pending ticks ${s.ticksEndedWithFrontierPending}, ` +
+        `starved ticks ${s.ticksEndedWithBudgetLeftAndDemand}, deferred requeues ${s.deferredRequests}` +
+        (ages.length > 0 ? `, admission age ticks {${ages}}` : ''),
     );
   }
   console.log(`Deterministic replay harness passed (${report.cases.length} cases).`);

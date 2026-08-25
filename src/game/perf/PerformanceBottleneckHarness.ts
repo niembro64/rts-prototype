@@ -29,6 +29,7 @@ import {
   SIM_TICK_INSTRUMENTATION,
   type SimTickInstrumentationReport,
 } from './SimTickInstrumentation';
+import type { PathPlanSchedulerStats } from '../sim/SimulationPathPlanScheduler';
 import { RENDER_PHASE_PROXY_ROW_TELEMETRY } from '../scenes/helpers/RtsScene3DRenderPhase';
 
 type NumericSummary = {
@@ -116,6 +117,8 @@ export type SimOnlyReport = {
   readonly memory: MemoryReport;
   readonly wasmBoundary: WasmBoundaryInstrumentationReport;
   readonly simTickPhases: SimTickInstrumentationReport;
+  /** Deterministic path-plan admission counters for the measured ticks. */
+  readonly pathPlanScheduler: PathPlanSchedulerStats;
 };
 
 type SimSnapshotReport = {
@@ -133,6 +136,7 @@ type SimSnapshotReport = {
   readonly memory: MemoryReport;
   readonly wasmBoundary: WasmBoundaryInstrumentationReport;
   readonly simTickPhases: SimTickInstrumentationReport;
+  readonly pathPlanScheduler: PathPlanSchedulerStats;
   readonly snapshotMaterializationStats?: SnapshotMaterializationStatsReport;
   readonly snapshotWireStats?: SnapshotWireStatsReport;
 };
@@ -517,6 +521,7 @@ async function runSimOnly(
       memory: memory.finish(),
       wasmBoundary,
       simTickPhases,
+      pathPlanScheduler: core.simulation.getPathPlanSchedulerStats(),
     };
   } finally {
     finishWasmBoundaryTracking();
@@ -605,6 +610,7 @@ async function runSimSnapshot(
       memory: memory.finish(),
       wasmBoundary,
       simTickPhases,
+      pathPlanScheduler: core.simulation.getPathPlanSchedulerStats(),
       snapshotMaterializationStats,
       snapshotWireStats,
     };

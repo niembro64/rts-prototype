@@ -372,6 +372,7 @@ function printSimulationReport(report) {
   console.log(`  p95 ceiling: ${fmt(report.simCeilingTpsP95)} TPS`);
   printMemoryLine('  memory', report.memory);
   printSimTickPhases('  sim tick phases', report.simTickPhases, report.measuredTicks);
+  printPathPlanScheduler('  path scheduler', report.pathPlanScheduler);
   printWasmBoundaryLine('  JS/WASM boundary', report.wasmBoundary);
 }
 
@@ -388,6 +389,7 @@ function printReport(report) {
   console.log(`  p95 ceiling: ${fmt(report.simOnly.simCeilingTpsP95)} TPS`);
   printMemoryLine('  memory', report.simOnly.memory);
   printSimTickPhases('  sim tick phases', report.simOnly.simTickPhases, report.simOnly.measuredTicks);
+  printPathPlanScheduler('  path scheduler', report.simOnly.pathPlanScheduler);
   printWasmBoundaryLine('  JS/WASM boundary', report.simOnly.wasmBoundary);
   console.log('');
   console.log('SIM + SNAPSHOT + CLIENT APPLY');
@@ -608,6 +610,25 @@ function printSimTickPhases(prefix, phases, measuredTicks) {
         `total=${fmt(row.totalMs)}ms`,
     );
   }
+}
+
+const PATH_PLAN_AGE_LABELS = ['0', '1', '2-3', '4-7', '8-15', '16-31', '32-63', '64+'];
+
+function printPathPlanScheduler(prefix, stats) {
+  if (!stats) return;
+  const ages = (stats.admissionAgeBuckets ?? [])
+    .map((count, index) => (count > 0 ? `${PATH_PLAN_AGE_LABELS[index]}:${count}` : null))
+    .filter(Boolean)
+    .join(' ');
+  console.log(
+    `${prefix}: demand ticks ${stats.ticksWithDemand}/${stats.ticks}, ` +
+      `turns ${stats.turnsServed} (cross-side ${stats.crossSideFallthroughs}), ` +
+      `legacy-rotation idle ticks ${stats.legacyRotationIdleTicks}, ` +
+      `admissions ${stats.admissions}, free drains ${stats.freeDrains}, ` +
+      `expansions ${stats.expansionsUsed}, frontier-pending ticks ${stats.ticksEndedWithFrontierPending}, ` +
+      `starved ticks ${stats.ticksEndedWithBudgetLeftAndDemand}, deferred requeues ${stats.deferredRequests}`,
+  );
+  if (ages.length > 0) console.log(`    admission age (ticks): ${ages}`);
 }
 
 function printWasmBoundaryLine(prefix, boundary) {
