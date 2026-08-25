@@ -67,7 +67,19 @@ export function applyFabricatorConstructionRingPose(
   simulationTickRateHz: number,
   entityId: EntityId,
 ): void {
-  rig.root.position.y = rig.baseY + (producing ? rig.activeLiftY : 0);
+  // The outer bearing race stays seated at the same height. Only the compact
+  // emitter head on each attached box telescopes upward, with a shaft growing
+  // from the box top to keep the motion mechanically connected.
+  rig.root.position.y = rig.baseY;
+  const extension = producing ? rig.activeLiftY : 0;
+  for (const head of rig.extensionHeads) {
+    head.position.y = rig.extensionHeadBaseY + extension;
+  }
+  for (const shaft of rig.extensionShafts) {
+    shaft.visible = producing;
+    shaft.position.y = rig.extensionShaftBaseY + extension * 0.5;
+    shaft.scale.y = producing ? extension : 1;
+  }
   if (producing) {
     // Simulation XY maps to Three XZ with the opposite yaw sign.
     rig.root.rotation.y = -fabricatorConstructionRingPhase(

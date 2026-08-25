@@ -27,7 +27,9 @@
 // exposure unless it is handed the scale by hand, which is what
 // `applyExposureToRawShader` below does — one call at the material's creation
 // site adds a `uBrightness` uniform bound to the SHARED exposure object and
-// multiplies it into the shader's output.
+// multiplies it into the shader's output. Truly self-luminous gameplay cues
+// use `configureSelfLitEffectMaterial` instead: exposure is a camera/scene
+// control and must not turn plasma, construction spray, or hot ejecta black.
 //
 // Every setter below takes effect on the next frame without rebuilding the
 // scene. Changing HOW the baked terrain field is generated still requires a
@@ -103,6 +105,17 @@ export function applyExposureToRawShader(material: THREE.ShaderMaterial): void {
   material.fragmentShader = `uniform float uBrightness;\n${source.slice(0, close)}`
     + `  gl_FragColor.rgb *= uBrightness;\n${source.slice(close)}`;
   material.needsUpdate = true;
+}
+
+/** Mark an emissive/unlit gameplay cue as display-bright and independent of
+ *  scene exposure. This is intentionally narrow: ordinary unlit UI/world
+ *  shaders still opt into exposure through `applyExposureToRawShader`. */
+export function configureSelfLitEffectMaterial<T extends THREE.Material>(
+  material: T,
+): T {
+  material.toneMapped = false;
+  material.userData.renderLighting = 'self-lit';
+  return material;
 }
 
 // Module-level because there is exactly one world scene and the CLIENT bar has

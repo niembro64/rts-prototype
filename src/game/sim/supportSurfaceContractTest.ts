@@ -32,7 +32,7 @@ import {
   fabricatorTorusOuterRadius,
   fabricatorTorusRingRadius,
 } from './fabricatorGeometry';
-import { fabricatorConstructionRingLift } from './fabricatorConstructionRing';
+import { fabricatorConstructionEmitterHeight } from './fabricatorConstructionRing';
 import { getConstructionHostMarkingProfiles } from '@/constructionVisualConfig';
 import { getBuildingCombatCenterZ } from './buildingAnchors';
 import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
@@ -757,9 +757,13 @@ function assertFactoryShellContract(): void {
   );
   assertContract(ringBoxes?.kind === 'ringBoxes', 'T1 fabricator must resolve construction ring boxes');
   const expectedSprayRadius = torusRingRadius * (
-    ringBoxes.ringRadius + ringBoxes.tubeRadius - ringBoxes.mountInset + ringBoxes.boxDepth
+    ringBoxes.ringRadius + ringBoxes.tubeRadius - ringBoxes.mountInset +
+      ringBoxes.boxDepth * 0.5
   );
-  const expectedSprayZ = shell.transform.z + fabricatorConstructionRingLift(torusRingRadius);
+  const expectedSprayZ = shell.transform.z + fabricatorConstructionEmitterHeight(
+    torusRingRadius,
+    ringBoxes.boxHeight,
+  );
   world.beginWorkMovementTick();
   world.recordWorkMovement(factory.id, shell.id, 'construct', 25);
   const firstSpray = commanderAbilitiesSystem.update(world, 16).sprayTargets.find(
@@ -772,12 +776,12 @@ function assertFactoryShellContract(): void {
       firstSpray.source.pos.y - factory.transform.y,
     ),
     expectedSprayRadius,
-    'fabricator work spray must originate on an outer construction-box face',
+    'fabricator work spray must originate over a rotating construction-box emitter head',
   );
   assertNear(
     firstSpray.source.z ?? Number.NaN,
     expectedSprayZ,
-    'fabricator work spray origin must rise with the active construction boxes',
+    'fabricator work spray origin must leave the top of the extended emitter head',
   );
   const firstSprayX = firstSpray.source.pos.x;
   const firstSprayY = firstSpray.source.pos.y;
@@ -794,7 +798,7 @@ function assertFactoryShellContract(): void {
       nextSpray.source.pos.y - factory.transform.y,
     ),
     expectedSprayRadius,
-    'each fabricator work spray origin must remain on an outer construction-box face',
+    'each fabricator work spray origin must remain over a rotating construction-box emitter head',
   );
   assertContract(
     DMath.hypot(nextSpray.source.pos.x - firstSprayX, nextSpray.source.pos.y - firstSprayY) > 1e-3,

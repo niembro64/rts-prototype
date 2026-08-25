@@ -6,17 +6,17 @@
 // time, so no particle is walked or rewritten as it ages.
 
 import * as THREE from 'three';
-import { getVolumeToggle } from '@/clientBarConfig';
-import { COLORS } from '@/colorsConfig';
 import type { Entity } from '../sim/types';
 import { isRayType } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { disposeMesh } from './threeUtils';
-import { applyExposureToRawShader } from './RenderLighting3D';
+import {
+  applyExposureToRawShader,
+  configureSelfLitEffectMaterial,
+} from './RenderLighting3D';
 import { DamageBurnVolume3D } from './BeamBurnVolume3D';
 import {
-  createPrimitiveSphereGeometry,
   createPrimitiveTetrahedronGeometry,
 } from './PrimitiveGeometryQuality3D';
 import {
@@ -439,17 +439,6 @@ export class DamageImpact3D {
   private readonly siteGeometry = new THREE.BufferGeometry();
   private readonly siteMaterial: THREE.ShaderMaterial;
   private readonly sitePoints: THREE.Points;
-  private readonly debugDamageVolumeGeometry = createPrimitiveSphereGeometry('effect', 'far');
-  private readonly debugDamageVolumeMaterial = new THREE.MeshBasicMaterial({
-    color: COLORS.effects.projectile.explosionRadius.colorHex,
-    transparent: true,
-    opacity: Math.max(0.3, COLORS.effects.projectile.explosionRadius.opacity),
-    depthTest: true,
-    depthWrite: false,
-    wireframe: true,
-  });
-  private readonly debugDamageVolumeMesh: THREE.InstancedMesh;
-  private readonly debugDamageVolumeMatrix = new THREE.Matrix4();
 
   private readonly particleMotion = new Float32Array(EJECTA_CAP * 4);
   private readonly particleBirthLifeKindSeed = new Float32Array(EJECTA_CAP * 4);
@@ -513,17 +502,6 @@ export class DamageImpact3D {
     this.sitePoints.renderOrder = 13;
     this.root.add(this.sitePoints);
 
-    this.debugDamageVolumeMesh = new THREE.InstancedMesh(
-      this.debugDamageVolumeGeometry,
-      this.debugDamageVolumeMaterial,
-      IMPACT_SITE_CAP,
-    );
-    this.debugDamageVolumeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.debugDamageVolumeMesh.count = 0;
-    this.debugDamageVolumeMesh.frustumCulled = false;
-    this.debugDamageVolumeMesh.renderOrder = 15;
-    this.root.add(this.debugDamageVolumeMesh);
-
     this.particleMotionAttr = new THREE.InstancedBufferAttribute(this.particleMotion, 4)
       .setUsage(THREE.DynamicDrawUsage);
     this.particleBirthAttr = new THREE.InstancedBufferAttribute(this.particleBirthLifeKindSeed, 4)
@@ -540,7 +518,7 @@ export class DamageImpact3D {
       depthTest: true,
       depthWrite: false,
     });
-    applyExposureToRawShader(this.particleMaterial);
+    configureSelfLitEffectMaterial(this.particleMaterial);
     this.particleMesh = new THREE.InstancedMesh(
       this.particleGeometry,
       this.particleMaterial,
@@ -897,8 +875,6 @@ export class DamageImpact3D {
 
   private rebuildSites(): void {
     let count = 0;
-    let debugDamageVolumeCount = 0;
-    const showDamageVolumes = getVolumeToggle('explosion');
     for (const [key, site] of this.sites) {
       const age = Math.max(0, this.timeSec - site.lastHitSec);
       if (age > IMPACT_SITE_TAIL_SEC) {
@@ -915,25 +891,9 @@ export class DamageImpact3D {
       this.siteHeat[count] = heat;
       this.siteKind[count] = kindNumber(site.kind);
       this.siteSeed[count] = site.seed;
-      if (showDamageVolumes && site.damageRadius > 0) {
-        this.debugDamageVolumeMatrix.makeScale(
-          site.damageRadius,
-          site.damageRadius,
-          site.damageRadius,
-        );
-        this.debugDamageVolumeMatrix.setPosition(site.x, site.z, site.y);
-        this.debugDamageVolumeMesh.setMatrixAt(
-          debugDamageVolumeCount++,
-          this.debugDamageVolumeMatrix,
-        );
-      }
       count++;
     }
     this.siteGeometry.setDrawRange(0, count);
-    this.debugDamageVolumeMesh.count = debugDamageVolumeCount;
-    if (debugDamageVolumeCount > 0) {
-      this.debugDamageVolumeMesh.instanceMatrix.needsUpdate = true;
-    }
     if (count <= 0) return;
     uploadPrefixRange(this.siteGeometry.getAttribute('position') as THREE.BufferAttribute, count * 3);
     uploadPrefixRange(this.siteGeometry.getAttribute('aRadius') as THREE.BufferAttribute, count);
@@ -1132,7 +1092,6 @@ export class DamageImpact3D {
     this.burnVolume.destroy();
     disposeMesh(this.sitePoints);
     disposeMesh(this.particleMesh);
-    disposeMesh(this.debugDamageVolumeMesh);
     this.root.parent?.remove(this.root);
   }
 }

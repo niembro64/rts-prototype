@@ -184,8 +184,9 @@ export class SelectionOverlayRenderer3D {
   private showEngageMinRelease = false;
   private showBuild = false;
   private showReclaimTargets = false;
-  /** The unified VOLUMES group. Each flag draws the same concept on
-   *  every entity that carries it — see `VolumeType`. */
+  /** The unified VOLUMES group. Each flag draws the same concept on every
+   *  selected entity that carries it — see `VolumeType`. Selection is the
+   *  scope boundary; enabling a diagnostic must never cover the whole map. */
   private showSelectionVolume = false;
   private showHitVolume = false;
   private showCollisionVolume = false;
@@ -334,7 +335,7 @@ export class SelectionOverlayRenderer3D {
     return (
       selected ||
       m.ring !== undefined ||
-      this.showAnyVolume ||
+      (selected && this.showAnyVolume) ||
       m.radiusRingsVisible === true
     );
   }
@@ -345,8 +346,7 @@ export class SelectionOverlayRenderer3D {
     entity: Entity,
   ): boolean {
     return (
-      this.showAnyRange ||
-      this.showTurretLockOnVolumes ||
+      (selected && (this.showAnyRange || this.showTurretLockOnVolumes)) ||
       this.showReclaimTargets ||
       m.rangeRingsVisible === true ||
       entity.id === this.hoveredEntityId ||
@@ -362,8 +362,7 @@ export class SelectionOverlayRenderer3D {
     return (
       m.rangeRingsVisible === true ||
       this.showReclaimTargets ||
-      this.showAnyRange ||
-      this.showTurretLockOnVolumes ||
+      (selected && (this.showAnyRange || this.showTurretLockOnVolumes)) ||
       entity.id === this.hoveredEntityId ||
       (selected && this.selectedCount === 1) ||
       (selected && Math.max(
@@ -397,7 +396,8 @@ export class SelectionOverlayRenderer3D {
    * wireframe is the volume, not a second drawing of it that can drift.
    */
   updateHostVolumes(m: OverlayEntityMesh, entity: Entity): void {
-    if (this.hideRadiusRingsIfDisabled(m)) return;
+    const selected = entity.selectable?.selected === true;
+    if (this.hideRadiusRingsIfDisabled(m, selected)) return;
     if (entity.unit === null && entity.building === null) return;
 
     const rings = m.radiusRings ?? (m.radiusRings = {});
@@ -446,10 +446,15 @@ export class SelectionOverlayRenderer3D {
     return geometry;
   }
 
-  private hideRadiusRingsIfDisabled(m: OverlayEntityMesh): boolean {
+  private hideRadiusRingsIfDisabled(
+    m: OverlayEntityMesh,
+    selected: boolean,
+  ): boolean {
     if (
-      this.showSelectionVolume || this.showHitVolume ||
-      this.showCollisionVolume || this.showArmingVolume
+      selected && (
+        this.showSelectionVolume || this.showHitVolume ||
+        this.showCollisionVolume || this.showArmingVolume
+      )
     ) {
       return false;
     }
@@ -468,33 +473,35 @@ export class SelectionOverlayRenderer3D {
     this.logSupportDiagnostics(entity);
     if (!entity.unit && !entity.building) return;
 
-    const showTrackAcquire = this.showTrackAcquire;
-    const showTrackRelease = this.showTrackRelease;
-    const showEngageAcquire = this.showEngageAcquire;
+    const selected = entity.selectable?.selected === true;
+    const showTrackAcquire = selected && this.showTrackAcquire;
+    const showTrackRelease = selected && this.showTrackRelease;
+    const showEngageAcquire = selected && this.showEngageAcquire;
     // Units AND buildings alike: a lone selection shows its weapon reach
     // (the old unit-only gate left towers ringless), and BAR's
     // cursor_unit_range hover shows the same rings without selecting.
     const isHovered = entity.id === this.hoveredEntityId;
     const showSingleSelectedTurretCircle =
-      entity.selectable?.selected === true &&
+      selected &&
       this.selectedCount === 1;
     const showEngageRelease =
-      this.showEngageRelease || showSingleSelectedTurretCircle || isHovered;
-    const showEngageMinAcquire = this.showEngageMinAcquire;
-    const showEngageMinRelease = this.showEngageMinRelease;
-    const showBuild = this.showBuild;
+      (selected && this.showEngageRelease) || showSingleSelectedTurretCircle || isHovered;
+    const showEngageMinAcquire = selected && this.showEngageMinAcquire;
+    const showEngageMinRelease = selected && this.showEngageMinRelease;
+    const showBuild = selected && this.showBuild;
+    const showTurretLockOnVolumes = selected && this.showTurretLockOnVolumes;
     const radarRadius = Math.max(
       getEntityRadarRadius(entity),
       getEntitySonarRadius(entity),
     );
     const showRadar = radarRadius > 0 &&
-      (entity.selectable?.selected === true || isHovered);
+      (selected || isHovered);
     const showReclaim = this.showReclaimTargets && isReclaimableTarget(entity);
     const showAnyTurretCircle =
       showTrackAcquire || showTrackRelease
       || showEngageAcquire || showEngageRelease
       || showEngageMinAcquire || showEngageMinRelease;
-    const showAnyTurretOverlay = showAnyTurretCircle || this.showTurretLockOnVolumes;
+    const showAnyTurretOverlay = showAnyTurretCircle || showTurretLockOnVolumes;
     if (!showAnyTurretOverlay && !showBuild && !showRadar && !showReclaim) {
       if (m.rangeRingsVisible) this.hideRangeRings(m);
       m.rangeRingsVisible = false;
@@ -565,7 +572,7 @@ export class SelectionOverlayRenderer3D {
           tm, 'engageMinRelease', showEngageMinRelease, mountX, mountY,
           this.projectGroundRadius(weapon.ranges.fire.min?.release ?? null), 'rangeEngage', COLOR_ENGAGE_MIN_RELEASE,
         );
-        if (this.showTurretLockOnVolumes) {
+        if (showTurretLockOnVolumes) {
           this.turretLockOnVolumes.update(
             tm,
             mount,

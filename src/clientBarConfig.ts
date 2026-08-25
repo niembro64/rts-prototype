@@ -1141,9 +1141,8 @@ export function anyRangeToggleActive(): boolean {
   return RANGE_TYPES.some((rt) => currentRangeToggles[rt]);
 }
 
-/** One unified debug-volume group. A category is asked for once and every
- *  entity kind that carries that volume draws it — units, buildings,
- *  projectiles, vegetation props, and mounted turrets share this group. */
+/** One unified debug-volume group. Renderers ask for a category once, then
+ *  apply entity-bound diagnostics only to selected entities that carry it. */
 export function getVolumeToggle(type: VolumeType): boolean {
   return currentVolumeToggles[type];
 }

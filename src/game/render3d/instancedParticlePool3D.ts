@@ -68,10 +68,11 @@ export function createInstancedColorAlphaPoolSet(
   capacity: number,
   renderOrder: number,
   createGeometry: (tier: PrimitiveGeometryTier) => THREE.BufferGeometry,
+  selfLit = false,
 ): InstancedColorAlphaPoolSet {
   const root = new THREE.Group();
   parent.add(root);
-  const material = createInstancedColorAlphaParticleMaterial();
+  const material = createInstancedColorAlphaParticleMaterial({}, selfLit);
   const createPool = (tier: PrimitiveGeometryTier): InstancedColorAlphaGeometryPool => {
     const geom = createGeometry(tier);
     return {

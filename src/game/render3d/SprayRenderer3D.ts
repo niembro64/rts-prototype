@@ -166,6 +166,7 @@ export class SprayRenderer3D {
       MAX_PARTICLES,
       TRANSPARENT_RENDER_ORDER_3D.throughWaterEffects,
       () => getSharedPrimitiveTetrahedronGeometry(1).clone(),
+      true,
     );
     this.root = poolSet.root;
     this.mat = poolSet.material;

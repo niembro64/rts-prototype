@@ -1031,7 +1031,7 @@ function resetEveryCustomHotkey(): void {
         <BarLabel>TURR CIR:</BarLabel>
         <BarButton
           :active="model.allRangesActive"
-          title="Toggle every 2D turret/build circle viz on/off"
+          title="Toggle every 2D turret/build circle diagnostic on/off for selected entities"
           @click="model.toggleAllRanges"
         >ALL</BarButton>
         <BarButtonGroup>
@@ -1077,38 +1077,38 @@ function resetEveryCustomHotkey(): void {
         <BarLabel>VOLUMES:</BarLabel>
         <BarButton
           :active="model.allVolumesActive"
-          title="Toggle every 3D volume viz on/off. Each button draws one CONCEPT across every entity that carries it — units, buildings/towers, mounted turrets, shots, and vegetation props — in its true shape."
+          title="Toggle every 3D volume diagnostic on/off. Entity-bound volumes are drawn only for selected entities; each button still uses the concept's true authored shape."
           @click="model.toggleAllVolumes"
         >ALL</BarButton>
         <BarButtonGroup>
           <BarButton
             :active="model.volumeToggles.selection"
-            title="SELECTION — the exact volume the mouse picker ray-tests. Units: body sphere (1.18 × radius, min 12). Buildings/towers: upright footprint × visual-height box. Hovering fabricator: its torus ring (the open middle does not pick). Vegetation props: their upright reclaim cylinder."
+            title="SELECTION — on selected entities, draw the exact volume the mouse picker ray-tests. Units: body sphere (1.18 × radius, min 12). Buildings/towers: upright footprint × visual-height box. Hovering fabricator: its torus ring (the open middle does not pick)."
             @click="model.toggleVolume('selection')"
           >SEL</BarButton>
           <BarButton
             :active="model.volumeToggles.hit"
-            title="HIT — the damage volume projectiles, beams, and splash test, plus the target-acquisition cylinder combat targeting gates on. Units: hitbox sphere. Buildings: the width × height × depth combat box. Shots: their own collision sphere. Both float at the combat center for hovering buildings."
+            title="HIT — on selected entities, draw the damage volume projectiles, beams, and splash test. Units: hitbox sphere. Buildings: the width × height × depth combat box. Both float at the combat center for hovering buildings."
             @click="model.toggleVolume('hit')"
           >HIT</BarButton>
           <BarButton
             :active="model.volumeToggles.collision"
-            title="COLLISION — the physics volume. Units: collision sphere (radius.collision). Grounded buildings: the static ground-seated cuboid. Hovering fabricator: the floating annular ring (open center hole)."
+            title="COLLISION — on selected entities, draw the physics volume. Units: collision sphere (radius.collision). Grounded buildings: the static ground-seated cuboid. Hovering fabricator: the floating annular ring (open center hole)."
             @click="model.toggleVolume('collision')"
           >COL</BarButton>
           <BarButton
             :active="model.volumeToggles.arming"
-            title="ARMING — the host HIT shape enlarged at least 1.5× about the same center and far enough to retain its collision safety margin. A physical shot remains collision-inactive until its complete hitbox clears this volume. Drawn on every host."
+            title="ARMING — on selected hosts, draw the HIT shape enlarged at least 1.5× about the same center and far enough to retain its collision safety margin. A physical shot remains collision-inactive until its complete hitbox clears this volume."
             @click="model.toggleVolume('arming')"
           >ARM</BarButton>
           <BarButton
             :active="model.volumeToggles.explosion"
-            title="EXPLOSION / DAMAGE — authoritative damage spheres. Draws the future splash volume on live explosive shots and the active terminal damage volume for projectile impacts and beam endpoints. Debug-only; disabled by default."
+            title="EXPLOSION / DAMAGE — on selected live explosive shots, draw the authoritative future splash sphere. Terminal impacts do not draw a global volume because they are not selectable entities. Debug-only; disabled by default."
             @click="model.toggleVolume('explosion')"
           >EXP</BarButton>
           <BarButton
             :active="model.volumeToggles.turretLockOn"
-            title="TURRET LOCK-ON — every turret's real 3D tracking and engagement range shells, centered on its authoritative AimFrom mount. Colors match TURR CIR. Sphere and cylinder modes follow the authored rangeVolume; arrow-tipped ends continue without bound, and water-capped volumes stop at the water surface. Target bodies become valid when their own target volume intersects these shells."
+            title="TURRET LOCK-ON — each selected entity's real 3D tracking and engagement range shells, centered on its authoritative AimFrom mounts. Colors match TURR CIR. Sphere and cylinder modes follow the authored rangeVolume; arrow-tipped ends continue without bound, and water-capped volumes stop at the water surface."
             @click="model.toggleVolume('turretLockOn')"
           >TGT</BarButton>
         </BarButtonGroup>

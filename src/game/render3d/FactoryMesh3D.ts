@@ -21,7 +21,14 @@ import {
   isRadialFabricatorBuildingBlueprintId,
 } from '../sim/blueprints';
 import { fabricatorTorusRingRadius } from '../sim/fabricatorGeometry';
-import { fabricatorConstructionRingLift } from '../sim/fabricatorConstructionRing';
+import {
+  FABRICATOR_INNER_RING_RADIUS_FRACTION,
+  FABRICATOR_INNER_RING_TUBE_RADIUS_FRACTION,
+  FABRICATOR_OUTER_RING_RADIUS_FRACTION,
+  FABRICATOR_OUTER_RING_TUBE_RADIUS_FRACTION,
+  fabricatorConstructionHeadHeight,
+  fabricatorConstructionRingLift,
+} from '../sim/fabricatorConstructionRing';
 import type { BuildingBlueprintId } from '../sim/types';
 import {
   buildProductionHoldRingMesh,
@@ -65,42 +72,22 @@ function buildRadialFactoryMesh(
   const details: BuildingShape['details'] = [];
   const blueprint = getBuildingBlueprint(buildingBlueprintId);
 
-  // Hovering torus body: a flat (horizontal) player-colored ring at the spawn
-  // height, sized to the footprint. The unit shell is held in its center while
-  // the factory applies build power.
+  // Bearing-like radial chassis: the slim inner race stays fixed while a
+  // larger outer race carries the construction boxes. The unit shell remains
+  // held at the common center plane while build power is applied.
   const ringRadius = fabricatorTorusRingRadius(width, depth);
   const hoverHeight = fabricatorProductionPlaneHeight(buildingBlueprintId);
+  const innerRingRadius = ringRadius * FABRICATOR_INNER_RING_RADIUS_FRACTION;
   const torus = buildProductionHoldRingMesh(
-    ringRadius,
+    innerRingRadius,
     primaryMat,
     'horizontal',
     getActiveBuildingGeometryTier(),
+    FABRICATOR_INNER_RING_TUBE_RADIUS_FRACTION /
+      FABRICATOR_INNER_RING_RADIUS_FRACTION,
   );
   torus.position.y = hoverHeight;
-  details.push(detail(torus, 'medium', undefined, 'constructionHostBody'));
-
-  // Six tangential clamp faces break the broad assembly ring into readable
-  // work stations. They are team colour because these are the points where
-  // this side's construction field grips the unit shell; unlike a roof kit,
-  // they are inseparable from the fabricator's circular function.
-  const clampWidth = Math.max(8, ringRadius * 0.2);
-  const clampHeight = Math.max(3, ringRadius * 0.045);
-  const clampDepth = Math.max(5, ringRadius * 0.085);
-  const ornamentKind = fabricatorOrnamentKind(buildingBlueprintId);
-  for (let i = 0; i < 6; i++) {
-    const angle = (i / 6) * Math.PI * 2;
-    const clamp = makeBox(
-      primaryMat,
-      clampWidth,
-      clampHeight,
-      clampDepth,
-      Math.cos(angle) * ringRadius,
-      hoverHeight + clampHeight * 0.2,
-      Math.sin(angle) * ringRadius,
-    );
-    clamp.rotation.y = angle + Math.PI / 2;
-    details.push(teamOrnamentDetail(clamp, ornamentKind));
-  }
+  details.push(playerColorDetail(torus));
 
   const markingProfiles = getConstructionHostMarkingProfiles(buildingBlueprintId);
   const ringBoxesProfile = markingProfiles.find((profile) => profile.kind === 'ringBoxes');
@@ -121,12 +108,86 @@ function buildRadialFactoryMesh(
           details.push(detail(child, 'medium', undefined, 'constructionMarking'));
         }
       }
+
+      const outerRingRadius = ringRadius * FABRICATOR_OUTER_RING_RADIUS_FRACTION;
+      const outerRing = buildProductionHoldRingMesh(
+        outerRingRadius,
+        primaryMat,
+        'horizontal',
+        getActiveBuildingGeometryTier(),
+        FABRICATOR_OUTER_RING_TUBE_RADIUS_FRACTION /
+          FABRICATOR_OUTER_RING_RADIUS_FRACTION,
+      );
+      marking.add(outerRing);
+      details.push(teamOrnamentDetail(
+        outerRing,
+        fabricatorOrnamentKind(buildingBlueprintId),
+      ));
+
+      const hostOuterRadius =
+        (markingProfile.ringRadius + markingProfile.tubeRadius) * ringRadius;
+      const boxBackRadius = hostOuterRadius - markingProfile.mountInset * ringRadius;
+      const boxCenterRadius = boxBackRadius + markingProfile.boxDepth * ringRadius * 0.5;
+      const boxHeight = markingProfile.boxHeight * ringRadius;
+      const headHeight = fabricatorConstructionHeadHeight(
+        ringRadius,
+        markingProfile.boxHeight,
+      );
+      const headWidth = Math.max(3, markingProfile.boxWidth * ringRadius * 0.58);
+      const headDepth = Math.max(2, markingProfile.boxDepth * ringRadius * 0.62);
+      const shaftWidth = Math.max(1.5, headWidth * 0.3);
+      const shaftDepth = Math.max(1.5, headDepth * 0.42);
+      const extensionHeadBaseY = boxHeight * 0.5 + headHeight * 0.5;
+      const extensionShaftBaseY = boxHeight * 0.5;
+      const extensionHeads: THREE.Mesh[] = [];
+      const extensionShafts: THREE.Mesh[] = [];
+      for (let boxIndex = 0; boxIndex < markingProfile.boxCount; boxIndex++) {
+        const angle = boxIndex / markingProfile.boxCount * Math.PI * 2;
+        const boxX = Math.cos(angle) * boxCenterRadius;
+        const boxZ = Math.sin(angle) * boxCenterRadius;
+        const head = makeBox(
+          primaryMat,
+          headWidth,
+          headHeight,
+          headDepth,
+          boxX,
+          extensionHeadBaseY,
+          boxZ,
+        );
+        head.rotation.y = angle + Math.PI / 2;
+        marking.add(head);
+        details.push(playerColorDetail(head));
+        extensionHeads.push(head);
+
+        // A dark piston is hidden at rest beneath the seated head. During
+        // production its bottom remains fixed to the box and only its height
+        // grows, so the mechanism reads as extension rather than levitation.
+        const shaft = makeBox(
+          factoryFrameMat,
+          shaftWidth,
+          1,
+          shaftDepth,
+          boxX,
+          extensionShaftBaseY,
+          boxZ,
+        );
+        shaft.rotation.y = angle + Math.PI / 2;
+        shaft.visible = false;
+        marking.add(shaft);
+        details.push(detail(shaft, 'medium', undefined, 'constructionMarking'));
+        extensionShafts.push(shaft);
+      }
       fabricatorConstructionRingRig = {
         root: marking,
         baseY: marking.position.y,
         activeLiftY: fabricatorConstructionRingLift(ringRadius),
         boxCount: markingProfile.boxCount,
         ringRadius,
+        outerRing,
+        extensionHeads,
+        extensionShafts,
+        extensionHeadBaseY,
+        extensionShaftBaseY,
       };
     } else {
       marking.updateMatrix();

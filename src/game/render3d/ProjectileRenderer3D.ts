@@ -50,6 +50,7 @@ import {
   stampTrailHeadIfMoved,
   type TrailStampBuffer,
 } from './ProjectileTrailHistory3D';
+import { configureSelfLitEffectMaterial } from './RenderLighting3D';
 
 const PROJECTILE_MIN_RADIUS = 0.5;
 // 1 revolution per second.
@@ -171,6 +172,16 @@ export const ROCKET_PROJECTILE_TRIANGLE_COUNTS = Object.freeze({
   medium: 36 + 24 + 24,
   low: 8 + 8,
 });
+
+/** Plasma is a self-luminous gameplay cue. It keeps its authored heat-ramp
+ *  colors even when the CLIENT exposure control is deliberately low. */
+export function createPlasmaProjectileMaterial(): THREE.MeshBasicMaterial {
+  return configureSelfLitEffectMaterial(new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    vertexColors: true,
+    side: THREE.DoubleSide,
+  }));
+}
 
 /** Low rocket/missile/torpedo tube: the same capped, equilateral triangular
  *  prism used by other Low cylinder replacements. Local +Y remains the
@@ -314,11 +325,7 @@ export class ProjectileRenderer3D {
   // Vertex colors carry the white-tip -> ember-tail heat ramp; the base
   // color multiplies it, so it must stay pure white for the ramp to read
   // exactly (see writePlasmaHeatRampColor).
-  private readonly plasmaMat = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-    vertexColors: true,
-    side: THREE.DoubleSide,
-  });
+  private readonly plasmaMat = createPlasmaProjectileMaterial();
   private readonly projectileFinMat = new THREE.MeshLambertMaterial({
     color: COLORS.effects.projectile.fin.colorHex,
     side: THREE.DoubleSide,
@@ -558,8 +565,8 @@ export class ProjectileRenderer3D {
     let finCount = 0;
     let mediumTailBandCount = 0;
     let lowTailBandCount = 0;
-    const wantHit = getVolumeToggle('hit');
-    const wantExp = getVolumeToggle('explosion');
+    const wantHitForSelected = getVolumeToggle('hit');
+    const wantExpForSelected = getVolumeToggle('explosion');
     // Every scratch has to finish growing before any view is bound:
     // growing one detaches wasm memory out from under views taken earlier,
     // and the axis output stays live across the whole loop below while
@@ -583,6 +590,12 @@ export class ProjectileRenderer3D {
 
     for (let projectileIndex = 0; projectileIndex < projectiles.length; projectileIndex++) {
       const e = projectiles[projectileIndex];
+      // TURR CIR / VOLUMES are selection-scoped diagnostics. Projectiles do
+      // not normally expose selection today, but retaining the entity gate
+      // here keeps the contract correct if selectable shots return later.
+      const selected = e.selectable?.selected === true;
+      const wantHit = selected && wantHitForSelected;
+      const wantExp = selected && wantExpForSelected;
       if (pruneProjectiles) seen.add(e.id);
       const tx = e.transform.x;
       const ty = e.transform.y;

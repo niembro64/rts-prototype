@@ -2,9 +2,7 @@ import * as THREE from 'three';
 import {
   getClientConfig,
   getMaterialExplosions,
-  getVolumeToggle,
   setMaterialExplosions,
-  setVolumeToggle,
 } from '@/clientBarConfig';
 import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
 import {
@@ -311,7 +309,6 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
     'authoritative damage-volume debug rendering must default off in demo and real battles',
   );
 
-  const previousExplosionVolume = getVolumeToggle('explosion');
   const parent = new THREE.Group();
   let groundScorchDeposits = 0;
   const renderer = new DamageImpact3D(
@@ -325,20 +322,25 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
     },
   );
   const internals = renderer as unknown as {
-    debugDamageVolumeMesh: THREE.InstancedMesh;
     particleMesh: THREE.InstancedMesh;
     siteKind: Float32Array;
   };
   const particleFragmentShader = (
     internals.particleMesh.material as THREE.ShaderMaterial
   ).fragmentShader;
+  const particleMaterial = internals.particleMesh.material as THREE.ShaderMaterial;
   assertContract(
     particleFragmentShader.includes('blastBirthColor = vec3(1.0, 0.82, 0.06)') &&
       particleFragmentShader.includes('smoothstep(0.06, 0.20, vAge01)'),
     'fire-blast tetrahedra must begin yellow-hot before rejoining their established red fade',
   );
+  assertContract(
+    particleMaterial.toneMapped === false &&
+      particleMaterial.uniforms.uBrightness === undefined &&
+      particleMaterial.userData.renderLighting === 'self-lit',
+    'explosion tetrahedra must remain self-luminous at low scene exposure',
+  );
   try {
-    setVolumeToggle('explosion', false);
     renderer.spawnDamageImpact({
       x: 24,
       y: 24,
@@ -357,12 +359,6 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
       internals.siteKind[0] === 4,
       'an entity-death fire blast must stay radial even at terrain height',
     );
-    assertContract(
-      internals.debugDamageVolumeMesh.count === 0,
-      'damage spheres must remain hidden while CLIENT EXP is disabled',
-    );
-
-    setVolumeToggle('explosion', true);
     renderer.spawnDamageImpact({
       x: 80,
       y: 80,
@@ -374,11 +370,10 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
     });
     renderer.update([], 16);
     assertContract(
-      internals.debugDamageVolumeMesh.count > 0,
-      'CLIENT EXP must reveal active authoritative terminal damage spheres',
+      !('debugDamageVolumeMesh' in internals),
+      'terminal impacts must not create global VOLUMES geometry because no selected entity owns it',
     );
   } finally {
     renderer.destroy();
-    setVolumeToggle('explosion', previousExplosionVolume);
   }
 }

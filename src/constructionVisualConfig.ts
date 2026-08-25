@@ -102,6 +102,14 @@ function positiveEvenInteger(value: unknown, label: string): number {
   return number;
 }
 
+function positiveInteger(value: unknown, label: string): number {
+  const number = positiveNumber(value, label);
+  if (!Number.isInteger(number)) {
+    throw new Error(`${label} must be an integer`);
+  }
+  return number;
+}
+
 function markingAxis(value: unknown, label: string): ConstructionHostMarkingAxis {
   if (value !== 'up' && value !== 'forward' && value !== 'lateral') {
     throw new Error(`${label} must be "up", "forward", or "lateral"`);
@@ -202,10 +210,7 @@ function markingProfile(
     });
   }
   if (raw.kind === 'ringBoxes') {
-    const boxCount = positiveNumber(raw.boxCount, `${label}.boxCount`);
-    if (!Number.isInteger(boxCount)) {
-      throw new Error(`${label}.boxCount must be an integer`);
-    }
+    const boxCount = positiveInteger(raw.boxCount, `${label}.boxCount`);
     const tubeRadius = positiveNumber(raw.tubeRadius, `${label}.tubeRadius`);
     const boxWidth = positiveNumber(raw.boxWidth, `${label}.boxWidth`);
     const boxHeight = positiveNumber(raw.boxHeight, `${label}.boxHeight`);
@@ -318,15 +323,15 @@ export const CONSTRUCTION_HAZARD_MARKING_STYLE = Object.freeze({
 const rawUniversalFabricatorBoxCounts = constructionVisualConfig.hostMarkingStyle
   .universalFabricatorBoxCounts;
 export const UNIVERSAL_FABRICATOR_CONSTRUCTION_BOX_COUNTS = Object.freeze({
-  1: positiveEvenInteger(
+  1: positiveInteger(
     rawUniversalFabricatorBoxCounts.tier1,
     'constructionVisualConfig.hostMarkingStyle.universalFabricatorBoxCounts.tier1',
   ),
-  2: positiveEvenInteger(
+  2: positiveInteger(
     rawUniversalFabricatorBoxCounts.tier2,
     'constructionVisualConfig.hostMarkingStyle.universalFabricatorBoxCounts.tier2',
   ),
-  3: positiveEvenInteger(
+  3: positiveInteger(
     rawUniversalFabricatorBoxCounts.tier3,
     'constructionVisualConfig.hostMarkingStyle.universalFabricatorBoxCounts.tier3',
   ),

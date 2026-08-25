@@ -63,6 +63,12 @@ export function runSprayRenderer3DContractTest(): void {
       'solid depth must occlude construction spray',
     );
     assertContract(
+      renderState.mat.toneMapped === false &&
+        renderState.mat.uniforms.uBrightness === undefined &&
+        renderState.mat.userData.renderLighting === 'self-lit',
+      'construction tetrahedra must stay display-bright instead of being dimmed by scene exposure',
+    );
+    assertContract(
       renderState.root.children.length > 0 &&
         renderState.root.children.every((child) =>
           child.renderOrder === TRANSPARENT_RENDER_ORDER_3D.throughWaterEffects &&

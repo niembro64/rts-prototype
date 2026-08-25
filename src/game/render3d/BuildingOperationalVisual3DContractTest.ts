@@ -8,7 +8,13 @@ import {
 } from '../sim/buildingActiveState';
 import type { Entity } from '../sim/types';
 import { STRUCTURE_BLUEPRINT_IDS } from '@/types/blueprintIds';
-import { fabricatorConstructionRingPhase } from '../sim/fabricatorConstructionRing';
+import {
+  FABRICATOR_INNER_RING_RADIUS_FRACTION,
+  FABRICATOR_INNER_RING_TUBE_RADIUS_FRACTION,
+  FABRICATOR_OUTER_RING_RADIUS_FRACTION,
+  FABRICATOR_OUTER_RING_TUBE_RADIUS_FRACTION,
+  fabricatorConstructionRingPhase,
+} from '../sim/fabricatorConstructionRing';
 import { buildBuildingShape, type BuildingShape } from './BuildingShape3D';
 import { applyBuildingOperationalPose } from './BuildingOperationalRig3D';
 import { applySolarCollectorPetalPose } from './SolarCollectorMesh3D';
@@ -219,10 +225,19 @@ export function runBuildingOperationalVisual3DContractTest(): void {
     }
 
     const universalFabricators = [
-      ['towerFabricator', 8],
-      ['buildingAdvancedUniversalFabricator', 12],
-      ['buildingExperimentalUniversalFabricator', 16],
+      ['towerFabricator', 1],
+      ['buildingAdvancedUniversalFabricator', 2],
+      ['buildingExperimentalUniversalFabricator', 3],
     ] as const;
+    assertContract(
+      FABRICATOR_INNER_RING_TUBE_RADIUS_FRACTION <
+        FABRICATOR_OUTER_RING_TUBE_RADIUS_FRACTION &&
+        FABRICATOR_INNER_RING_RADIUS_FRACTION +
+          FABRICATOR_INNER_RING_TUBE_RADIUS_FRACTION <
+        FABRICATOR_OUTER_RING_RADIUS_FRACTION -
+          FABRICATOR_OUTER_RING_TUBE_RADIUS_FRACTION,
+      'fabricator bearing must have a thinner stationary inner race nested inside the outer race',
+    );
     for (const [id, expectedBoxCount] of universalFabricators) {
       const blueprint = getBuildingBlueprint(id);
       const shape = buildBuildingShape(
@@ -235,25 +250,40 @@ export function runBuildingOperationalVisual3DContractTest(): void {
       );
       const rig = shape.fabricatorConstructionRingRig;
       assertContract(
-        rig !== undefined && rig.boxCount === expectedBoxCount,
-        `${id} must expose its ${expectedBoxCount}-box animated construction ring`,
+        rig !== undefined &&
+          rig.boxCount === expectedBoxCount &&
+          rig.extensionHeads.length === expectedBoxCount &&
+          rig.extensionShafts.length === expectedBoxCount &&
+          rig.outerRing.parent === rig.root,
+        `${id} must expose its outer race and ${expectedBoxCount} telescoping construction boxes`,
       );
       const idleY = rig.root.position.y;
       const idleYaw = rig.root.rotation.y;
+      const idleHeadY = rig.extensionHeadBaseY;
       applyFabricatorConstructionRingPose(rig, true, 40, 20, 17);
       const expectedActiveYaw = -fabricatorConstructionRingPhase(40, 20, 17);
       assertContract(
-        Math.abs(rig.root.position.y - (idleY + rig.activeLiftY)) <= 1e-9 &&
+        Math.abs(rig.root.position.y - idleY) <= 1e-9 &&
           Math.abs(rig.root.rotation.y - expectedActiveYaw) <= 1e-9 &&
-          Math.abs(rig.root.rotation.y - idleYaw) > 1e-3,
-        `${id} construction boxes must rise and rotate while producing`,
+          Math.abs(rig.root.rotation.y - idleYaw) > 1e-3 &&
+          rig.extensionHeads.every((head) =>
+            Math.abs(head.position.y - (idleHeadY + rig.activeLiftY)) <= 1e-9) &&
+          rig.extensionShafts.every((shaft) =>
+            shaft.visible &&
+              Math.abs(shaft.position.y -
+                (rig.extensionShaftBaseY + rig.activeLiftY * 0.5)) <= 1e-9 &&
+              Math.abs(shaft.scale.y - rig.activeLiftY) <= 1e-9),
+        `${id} outer race must rotate in place while only its box heads telescope upward`,
       );
       const activeYaw = rig.root.rotation.y;
       applyFabricatorConstructionRingPose(rig, false, 60, 20, 17);
       assertContract(
         Math.abs(rig.root.position.y - idleY) <= 1e-9 &&
-          rig.root.rotation.y === activeYaw,
-        `${id} construction boxes must reseat and stop rotating while idle`,
+          rig.root.rotation.y === activeYaw &&
+          rig.extensionHeads.every((head) =>
+            Math.abs(head.position.y - idleHeadY) <= 1e-9) &&
+          rig.extensionShafts.every((shaft) => !shaft.visible),
+        `${id} emitter heads must reseat and the outer race must stop while idle`,
       );
     }
   } finally {

@@ -53,21 +53,25 @@
       "label": "1500"
     },
     {
+      "value": 5000,
+      "label": "5000"
+    },
+    {
       "value": 15000,
       "label": "15000"
     }
   ],
   "environmentLight": {
-    "demoDefault": 150,
-    "realDefault": 150
+    "demoDefault": 0,
+    "realDefault": 0
   },
   "ambientLight": {
     "demoDefault": 1500,
     "realDefault": 1500
   },
   "directionalLight": {
-    "demoDefault": 15000,
-    "realDefault": 15000
+    "demoDefault": 1500,
+    "realDefault": 1500
   },
   "skyLight": {
     "demoDefault": 1500,

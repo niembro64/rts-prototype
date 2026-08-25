@@ -187,14 +187,19 @@ export type ResourceConverterRig = {
 };
 
 export type FabricatorConstructionRingRig = {
-  /** Parent of all merged ring-box material meshes. */
+  /** Rotating outer bearing race, construction boxes, and emitter pistons. */
   root: THREE.Group;
-  /** Resting vertical position of the box ring. */
+  /** Resting vertical position of the outer race. It never lifts. */
   baseY: number;
-  /** Additional lift while the factory is actively producing. */
+  /** Distance each box's emitter head extends while producing. */
   activeLiftY: number;
   boxCount: number;
   ringRadius: number;
+  outerRing: THREE.Mesh;
+  extensionHeads: THREE.Mesh[];
+  extensionShafts: THREE.Mesh[];
+  extensionHeadBaseY: number;
+  extensionShaftBaseY: number;
 };
 
 function retagBuildingShapeOrnaments(

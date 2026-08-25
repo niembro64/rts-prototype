@@ -1845,7 +1845,7 @@
         <li>Solid lit triangles from units, buildings, articulated locomotion parts, and environment objects cast one directional sun depth map onto terrain. The result follows the actual rendered silhouette and pose; a hitbox circle, footprint ellipse, or stretched coverage stamp is never an acceptable stand-in. Additive effects, debug geometry, water, and invisible rig helpers do not cast.</li>
         <li>The orthographic sun frustum follows the visible battle, expands in quantized steps, and snaps its focus to shadow texels so camera pans do not make outlines swim. The CLIENT <strong>SHADOWS</strong> toggle disables the directional depth pass rather than swapping in an approximation.</li>
         <li>The retired coverage-ellipse shadow path stays disabled. There is no standalone contact-shadow mesh and no CPU-stamped fog bitmap.</li>
-        <li>The canonical client lighting defaults are <strong>ENV 15, AMB 0, SUN 1500, SKY 15, EXPO 15</strong> in both battle modes. Every light/exposure bar shares the same zero-plus-decades ladder: 0, 15, 150, 1500, and 15000 percent, so every positive button is exactly ten times its neighbor.</li>
+        <li>The canonical client lighting defaults are <strong>ENV 0, AMB 1500, SUN 1500, SKY 1500, EXPO 15</strong> in both battle modes. Every light/exposure bar shares the same logarithmic ladder: 0, 15, 150, 1500, 5000, and 15000 percent. The four decade values remain exact powers of ten; 5000 is the deliberate finer tuning stop between 1500 and 15000.</li>
       </ul>
     </section>
 
@@ -3178,7 +3178,10 @@
         shot does not test solid-body contacts or ground impact. Once armed, it collides with every
         solid entity hitbox or reflector, including the host that fired it. Source provenance remains for
         attribution and replay; it is not a collision immunity list. The <strong>VOLUMES: ARM</strong>
-        diagnostic renders the same derived host volume used by this rule.
+        diagnostic renders the same derived host volume used by this rule. All entity-bound
+        <strong>TURR CIR</strong> and <strong>VOLUMES</strong> diagnostics are selection-scoped:
+        enabling one never paints every matching entity, vegetation prop, or unowned terminal
+        impact across the battlefield.
       </p>
 
       <h3>Materialization: BAR-faithful build-in, alpha death-out, one build channel</h3>
@@ -4328,9 +4331,10 @@
         <code>constructionVisualConfig.json</code>: the Commander uses a small dorsal collar,
         the Construction Drone a tail-boom sleeve, the Construction Submarine its rear propeller
         guard&rsquo;s mirrored side plates, both Queens a neck collar, and the three Universal
-        Fabricators exactly 8, 12, and 16 evenly spaced chamfered clamp boxes at T1/T2/T3. Each box is sunk
-        into the torus surface, carries a striped tangent face, and has a small raised top latch;
-        a zero-thickness or visibly floating Fabricator marking is invalid.
+        Fabricators exactly 1, 2, and 3 evenly spaced chamfered clamp boxes at T1/T2/T3. A thin
+        stationary inner race supports a larger rotating outer race; each box is mounted on the
+        outside of that outer race, carries a striped tangent face, and has a compact top emitter
+        head. A zero-thickness or visibly floating Fabricator marking is invalid.
         Its geometry must also simplify visibly and monotonically with building LOD: High uses the
         chamfered housing, top latch, and paired corner fasteners; Medium uses a plain box and the
         top latch; Low retains only the mounted box and its essential striped identity face.
@@ -4355,10 +4359,11 @@
         the instant a unit nanoframe exists until construction completes, its authored hold pose is
         immune to physics, locomotion, collision response, wind, and partial construction. For a
         Universal that pose is the exact horizontal and vertical center of the ring, independent
-        of facing, with zero velocity. While production is active its clamp boxes rise slightly
-        above the ring and rotate together around it; each work-spray emission begins on the outer
-        face of one of those same moving boxes and travels inward. Idle boxes return to their seated
-        ring pose. For a specialist the hold sits in the visible
+        of facing, with zero velocity. The stationary inner race and rotating outer race remain
+        seated at one height during production. Each box stays attached to the outer race while its
+        top emitter head telescopes upward; each work-spray emission begins at the top of one of
+        those rotating extended heads and travels inward. Idle heads return to their seated box
+        pose. For a specialist the hold sits in the visible
         build yard, rotates with the building, and receives spray from the authored side nano-arm
         sockets. Completion releases the hold and routes specialist output through the rotated
         local-<code>+X</code> exit before applying subsequent factory intent.
@@ -4923,11 +4928,14 @@
         the HUD; spending a fourth channel on it costs the read and buys nothing. Repair keeps its
         own white so the two acts stay distinguishable, and pylon resource balls keep their
         per-resource colours &mdash; those encode <em>which</em> resource, which green would erase.
+        Build spray, plasma heat, and hot explosion tetrahedra are self-luminous gameplay cues:
+        they remain at their authored display brightness when scene exposure is low instead of
+        being multiplied into darkness.
       </p>
       <ul class="rule-list">
         <li>The spray colour is authored in <code>resourceConfig.json</code>, not derived from the player, and applies to construction, assist, and reclaim alike.</li>
         <li>Spray particles are <strong>presentation only</strong>. They carry no simulation state, are never serialized, and no gameplay decision may read one. Their count, jitter, spin, and lifetime are free to differ between clients.</li>
-        <li>Each particle tumbles on its own axis at its own rate, seeded from the particle rather than from a clock, so a stream reads as thrown material instead of sliding cards. Spin is a rotation written into an instance matrix the renderer already uploads &mdash; it must not cost a second buffer, a second draw, or per-particle CPU state.</li>
+        <li>Build particles use the tetrahedron silhouette at a stable orientation and spend no CPU or instance-matrix work on visually insignificant tumble. Their moving path and changing screen silhouette already read as thrown material.</li>
         <li>Spray is depth-tested against solid world geometry, so a unit, building, or terrain surface in front hides it. The transparent water surface draws after the spray, allowing submerged nanolathe work to remain visible through water without granting the effect x-ray visibility through solids.</li>
       </ul>
       <ul class="rule-list">
@@ -5492,7 +5500,7 @@
         <li>Keep host workflows separate from per-mount combat tasks and live turret lock-on. A host may carry attack, guard, repair, construct, or production intent. Only compatible combat intent is projected into mount tasks; construction/repair/production stay on the host.</li>
         <li>Give every mount a stable <code>mountId</code> and a required <code>controlMode</code> of <code>host</code>, <code>autonomous</code>, or <code>manual</code>. The choice lives on the unit or building mount, not the reusable turret blueprint. Host attack tasks are evaluated per mount: compatible mounts retain the task lock, incompatible mounts acquire an autonomous fallback, and autonomous/manual siblings are never overwritten. Fight-move and patrol halt logic remains the separate mount flag <code>requiredEngagedForFightStop</code> and applies only to attack emitters.</li>
         <li>Create a product&rsquo;s permanent ID as an internal step of the host-owned build or production workflow, normally as a nanoframe. Do not model that step as a spawn turret, mounted task, aim participant, or init beam. Apply construction work to that same ID; repair of completed entities is free and uses the same build-power channel.</li>
-        <li>Give every positive-<code>constructionRate</code> host restrained yellow-and-black construction markings authored in shared config. Generate every band at exactly 45 degrees in physical surface coordinates; use open sleeves, side plates where physically appropriate, and perimeter-mounted clamp boxes on circular factory hardware, never floating decals, coloured radial caps, ring sectors, wedges, or sunbursts. Universals carry exactly 8/12/16 boxes by tier; active production lifts and spins that ring and emits spray from the moving box faces. Preserve both colours at every geometry tier, make clamp-box geometry strictly decrease from High chamfers/latch/fasteners to Medium box/latch to Low essential box, keep team colour dominant, and derive coverage tests from blueprint capabilities so a new constructor cannot ship unmarked.</li>
+        <li>Give every positive-<code>constructionRate</code> host restrained yellow-and-black construction markings authored in shared config. Generate every band at exactly 45 degrees in physical surface coordinates; use open sleeves, side plates where physically appropriate, and perimeter-mounted clamp boxes on circular factory hardware, never floating decals, coloured radial caps, ring sectors, wedges, or sunbursts. Universal Fabricators carry exactly 1/2/3 boxes by tier on a rotating outer bearing race around a thinner stationary inner race. Active production keeps both races seated, telescopes only each box's emitter head upward, and emits spray from those moving heads. Preserve both colours at every geometry tier, make clamp-box geometry strictly decrease from High chamfers/latch/fasteners to Medium box/latch to Low essential box, keep team colour dominant, and derive coverage tests from blueprint capabilities so a new constructor cannot ship unmarked.</li>
         <li>Make the selection action panel uniform per host kind and capability. Units expose movement plus their mounted combat, builder, cloak, transport, commander, and manual capabilities. Buildings expose the same standardized combat controls when armed, production when they own a factory workflow, ON/OFF when they own active state, and self-destruct. Mixed unit/building selections degrade to the intersection. A bespoke button on an arbitrary blueprint subset with no sanctioned capability behind it is not allowed.</li>
         <li>Keep sight, radar, sonar, and detection as turret-owned capability sources aggregated per player/team into four exhaustive, orthogonal target-knowledge facts: <code>team-air-sight</code>, <code>team-water-sight</code>, <code>team-air-radar</code>, and <code>team-water-sonar</code>. The turret&rsquo;s mounted world point selects the source medium. Unit and building targets use exact positive volume occupancy and may occupy both media; shot and turret targets are points and occupy exactly one. Full sight identifies and also supplies contact-level location in its target medium; losing it removes the full model immediately. Radar/sonar-only coverage supplies only the canonical black-ring/white-core contact dot, detectors uncloak within an active full-sight lane, and weapon fire consumes the team-unified knowledge tier independently from the emission&rsquo;s exhaustively authored four-cell trajectory matrix. Weapon range and ammunition never create or scale vision.</li>
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels, and author lock-on eligibility as an additive inclusion object carried by turrets, units, and buildings alike. Rockets and missiles inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets. Missiles coast after lock loss; the light vertical rocket retains only the last solver-produced speculative future intercept, finishes aligning to it, and then leaves the steering batch. Expensive intercept refresh is deterministic blueprint data (currently 10 Hz missiles, 5 Hz light rocket), while cached-point steering and motion stay fixed-tick. Eligibility is <strong>off by default</strong> &mdash; a locker with no inclusions locks onto nothing &mdash; and broadened only by addition: level-0 friend/enemy and entity-family inclusions (<code>units</code>, <code>buildings</code>, <code>turrets</code>, <code>shots</code>), then optional level-1 named blueprint inclusions that narrow an included family. Including only one family is how a turret specializes &mdash; point-defense includes only <code>shots</code>, a disarmer includes only <code>turrets</code>. There is no <code>locomotions</code> family: a unit&rsquo;s movement is part of its body, not a targetable entity.</li>

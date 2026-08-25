@@ -1,5 +1,5 @@
 // Host volume overlay contract: the VOLUMES debug toggles must draw each
-// entity's ACTUAL shapes — unit spheres, building selection/combat boxes,
+// SELECTED entity's ACTUAL shapes — unit spheres, building selection/combat boxes,
 // the target-acquisition cylinder every entity carries, and the hovering
 // fabricator's floating annular ring — never a stand-in sphere.
 //
@@ -101,12 +101,13 @@ export function runHostVolumeOverlay3DContractTest(): void {
 
   const sphereSourceGeom = createPrimitiveSphereGeometry('debug', 'close');
   const radiusSphereGeom = new THREE.WireframeGeometry(sphereSourceGeom);
+  const selectedIds = new Set<number>();
   const renderer = new SelectionOverlayRenderer3D({
     world: new THREE.Group(),
     clientViewState: {
       getMapWidth: () => 512,
       getMapHeight: () => 512,
-      getSelectedIds: () => new Set<number>(),
+      getSelectedIds: () => selectedIds,
     } as unknown as ClientViewState,
     radiusSphereGeom,
     overlayLines: undefined as unknown as OverlayLineSystem,
@@ -122,6 +123,14 @@ export function runHostVolumeOverlay3DContractTest(): void {
     const unitHost = world.createUnitFromBlueprint(120, 140, 1, 'unitFormik');
     assertContract(unitHost.unit !== null, 'unit host must carry a unit component');
     unitHost.unit.radius = readNetworkUnitRadius(null, getUnitBlueprint('unitFormik').radius);
+    const unselectedUnitMesh = makeOverlayMesh();
+    renderer.updateHostVolumes(unselectedUnitMesh, unitHost);
+    assertContract(
+      unselectedUnitMesh.radiusRings === undefined,
+      'enabled VOLUMES must not allocate wireframes for an unselected unit',
+    );
+    unitHost.selectable!.selected = true;
+    selectedIds.add(unitHost.id);
     const unitMesh = makeOverlayMesh();
     renderer.updateHostVolumes(unitMesh, unitHost);
     const unitRings = unitMesh.radiusRings;
@@ -145,6 +154,8 @@ export function runHostVolumeOverlay3DContractTest(): void {
 
     // ── Grounded building: combat box, physics cuboid, cylinder ────
     const solar = makeBuildingHost(world, 'buildingSolar');
+    solar.selectable!.selected = true;
+    selectedIds.add(solar.id);
     const solarBuilding = solar.building;
     assertContract(solarBuilding !== null, 'solar must carry a building component');
     const solarMesh = makeOverlayMesh();
@@ -226,6 +237,8 @@ export function runHostVolumeOverlay3DContractTest(): void {
 
     // ── Hovering fabricator: floating box, cylinder, and annulus ───
     const fabricator = makeBuildingHost(world, 'towerFabricator');
+    fabricator.selectable!.selected = true;
+    selectedIds.add(fabricator.id);
     const fabricatorBuilding = fabricator.building;
     assertContract(fabricatorBuilding !== null, 'fabricator must carry a building component');
     const fabricatorMesh = makeOverlayMesh();
@@ -274,6 +287,8 @@ export function runHostVolumeOverlay3DContractTest(): void {
 
     // ── Directional hovering factory: every box shares one center ───
     const aircraftFactory = makeBuildingHost(world, 'buildingAircraftFabricator');
+    aircraftFactory.selectable!.selected = true;
+    selectedIds.add(aircraftFactory.id);
     const aircraftMesh = makeOverlayMesh();
     renderer.updateHostVolumes(aircraftMesh, aircraftFactory);
     const aircraftRings = aircraftMesh.radiusRings;
@@ -292,6 +307,13 @@ export function runHostVolumeOverlay3DContractTest(): void {
         `aircraft factory ${name} shares the authoritative hovering center`,
       );
     }
+    aircraftFactory.selectable!.selected = false;
+    selectedIds.delete(aircraftFactory.id);
+    renderer.updateHostVolumes(aircraftMesh, aircraftFactory);
+    assertContract(
+      Object.values(aircraftRings).every((volume) => volume?.visible !== true),
+      'deselecting an entity must hide every previously allocated VOLUMES wireframe',
+    );
   } finally {
     for (const type of VOLUME_TYPES) setVolumeToggle(type, previous.get(type) ?? false);
     renderer.dispose();

@@ -23,9 +23,9 @@
     "stripeAngleDeg": 45,
     "pylonStripeCount": 8,
     "universalFabricatorBoxCounts": {
-      "tier1": 8,
-      "tier2": 12,
-      "tier3": 16
+      "tier1": 1,
+      "tier2": 2,
+      "tier3": 3
     }
   },
   "hostMarkings": {
@@ -316,7 +316,7 @@
         "axis": "up",
         "ringRadius": 1,
         "tubeRadius": 0.225,
-        "boxCount": 8,
+        "boxCount": 1,
         "boxWidth": 0.32,
         "boxHeight": 0.24,
         "boxDepth": 0.18,

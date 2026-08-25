@@ -33,12 +33,13 @@ export function runShotArmingOverlay3DContractTest(): void {
 
   const sphereSourceGeom = createPrimitiveSphereGeometry('debug', 'close');
   const radiusSphereGeom = new THREE.WireframeGeometry(sphereSourceGeom);
+  const selectedIds = new Set<number>();
   const renderer = new SelectionOverlayRenderer3D({
     world: new THREE.Group(),
     clientViewState: {
       getMapWidth: () => 512,
       getMapHeight: () => 512,
-      getSelectedIds: () => new Set<number>(),
+      getSelectedIds: () => selectedIds,
     } as unknown as ClientViewState,
     radiusSphereGeom,
     overlayLines: undefined as unknown as OverlayLineSystem,
@@ -63,6 +64,16 @@ export function runShotArmingOverlay3DContractTest(): void {
       turrets: [],
     } as unknown as EntityMesh;
     renderer.updateHostVolumes(mesh, host);
+    const unselectedUnitArmMesh = mesh.radiusRings?.arming;
+    assertContract(
+      unselectedUnitArmMesh === undefined,
+      'ARM toggle must not create a sphere for an unselected unit',
+    );
+    assertContract(host.selectable !== null, 'overlay host must be selectable');
+    host.selectable.selected = true;
+    selectedIds.add(host.id);
+    renderer.beginFrame();
+    renderer.updateHostVolumes(mesh, host);
 
     const armMesh = mesh.radiusRings?.arming;
     assertContract(armMesh !== undefined, 'ARM toggle must create a unit sphere mesh');
@@ -86,6 +97,16 @@ export function runShotArmingOverlay3DContractTest(): void {
       group: new THREE.Group(),
       turrets: [],
     } as unknown as EntityMesh;
+    renderer.updateHostVolumes(buildingMesh, building);
+    const unselectedBuildingArmMesh = buildingMesh.radiusRings?.arming;
+    assertContract(
+      unselectedBuildingArmMesh === undefined,
+      'ARM toggle must not create a box for an unselected building',
+    );
+    assertContract(building.selectable !== null, 'overlay building must be selectable');
+    building.selectable.selected = true;
+    selectedIds.add(building.id);
+    renderer.beginFrame();
     renderer.updateHostVolumes(buildingMesh, building);
     const buildingArmMesh = buildingMesh.radiusRings?.arming;
     assertContract(buildingArmMesh !== undefined, 'ARM toggle must create a building box mesh');

@@ -6,14 +6,19 @@ import {
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
-const productionHoldRingGeomByTier = new Map<PrimitiveGeometryTier, THREE.TorusGeometry>();
+const productionHoldRingGeomByKey = new Map<string, THREE.TorusGeometry>();
 
-function getProductionHoldRingGeom(tier: PrimitiveGeometryTier): THREE.TorusGeometry {
-  return getOrCreate(productionHoldRingGeomByTier, tier, () => createPrimitiveTorusGeometry(
+function getProductionHoldRingGeom(
+  tier: PrimitiveGeometryTier,
+  tubeRadiusFraction: number,
+): THREE.TorusGeometry {
+  const safeTubeRadiusFraction = THREE.MathUtils.clamp(tubeRadiusFraction, 0.01, 0.45);
+  const key = `${tier}:${safeTubeRadiusFraction.toFixed(5)}`;
+  return getOrCreate(productionHoldRingGeomByKey, key, () => createPrimitiveTorusGeometry(
     'building',
     tier,
     1,
-    PRODUCTION_HOLD_RING_TUBE_RADIUS_FRACTION,
+    safeTubeRadiusFraction,
   ));
 }
 
@@ -24,8 +29,12 @@ export function buildProductionHoldRingMesh(
   material: THREE.Material,
   orientation: ProductionHoldRingOrientation = 'horizontal',
   tier: PrimitiveGeometryTier = 'close',
+  tubeRadiusFraction = PRODUCTION_HOLD_RING_TUBE_RADIUS_FRACTION,
 ): THREE.Mesh {
-  const ring = new THREE.Mesh(getProductionHoldRingGeom(tier), material);
+  const ring = new THREE.Mesh(
+    getProductionHoldRingGeom(tier, tubeRadiusFraction),
+    material,
+  );
   const safeRadius = Math.max(1, radius);
   ring.scale.set(safeRadius, safeRadius, safeRadius);
   if (orientation === 'forward') {
@@ -37,6 +46,6 @@ export function buildProductionHoldRingMesh(
 }
 
 export function disposeProductionHoldRingGeom(): void {
-  for (const geom of productionHoldRingGeomByTier.values()) geom.dispose();
-  productionHoldRingGeomByTier.clear();
+  for (const geom of productionHoldRingGeomByKey.values()) geom.dispose();
+  productionHoldRingGeomByKey.clear();
 }

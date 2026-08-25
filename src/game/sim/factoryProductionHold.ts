@@ -23,7 +23,7 @@ import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import { getConstructionHostMarkingProfiles } from '@/constructionVisualConfig';
 import {
   fabricatorConstructionBoxAngle,
-  fabricatorConstructionRingLift,
+  fabricatorConstructionEmitterHeight,
   fabricatorConstructionRingPhase,
 } from './fabricatorConstructionRing';
 
@@ -68,10 +68,10 @@ function mixFactorySpraySeed(value: number): number {
 }
 
 /**
- * Pick the fabricator's work-spray origin from the visible torus
- * circumference. The hash is deterministic simulation presentation: every
- * active tick selects a new random-looking point without consuming gameplay
- * RNG or making replay state depend on a cosmetic effect.
+ * Pick the fabricator's work-spray origin from one visible telescoping emitter
+ * head on the rotating outer race. The hash is deterministic simulation
+ * presentation: every active tick selects a new random-looking head without
+ * consuming gameplay RNG or making replay state depend on a cosmetic effect.
  */
 export function writeFabricatorProductionSprayOrigin(
   factory: Entity,
@@ -114,14 +114,15 @@ export function writeFabricatorProductionSprayOrigin(
   // Footprint dims: width/height are horizontal; depth is vertical and was
   // wrongly passed here (benign only because the torus footprint is square).
   const ringRadius = fabricatorTorusRingRadius(building.width, building.height);
-  const boxFaceRadius = ringRadius * (
-    ringBoxes.ringRadius + ringBoxes.tubeRadius - ringBoxes.mountInset + ringBoxes.boxDepth
+  const boxCenterRadius = ringRadius * (
+    ringBoxes.ringRadius + ringBoxes.tubeRadius - ringBoxes.mountInset +
+      ringBoxes.boxDepth * 0.5
   );
-  out.x = factory.transform.x + DMath.cos(angle) * boxFaceRadius;
-  out.y = factory.transform.y + DMath.sin(angle) * boxFaceRadius;
+  out.x = factory.transform.x + DMath.cos(angle) * boxCenterRadius;
+  out.y = factory.transform.y + DMath.sin(angle) * boxCenterRadius;
   out.z = getUnitGroundZ(factory) +
     fabricatorProductionPlaneHeight(factory.buildingBlueprintId!) +
-    fabricatorConstructionRingLift(ringRadius);
+    fabricatorConstructionEmitterHeight(ringRadius, ringBoxes.boxHeight);
   return out;
 }
 

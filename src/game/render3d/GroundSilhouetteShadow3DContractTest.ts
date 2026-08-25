@@ -203,7 +203,7 @@ function checkGrassAndMetalReceiveDirectionalSilhouettes(): void {
 }
 
 export function runGroundSilhouetteShadow3DContractTest(): void {
-  const expectedLightOptions = [0, 15, 150, 1500, 15000];
+  const expectedLightOptions = [0, 15, 150, 1500, 5000, 15000];
   assertContract(
     normalizeLightIntensitySelection(0) === 0 &&
       normalizeLightIntensitySelection(25) === 15 &&
@@ -214,12 +214,12 @@ export function runGroundSilhouetteShadow3DContractTest(): void {
   for (const mode of ['demo', 'real'] as const) {
     const config = getClientConfig(mode);
     assertContract(
-      config.environmentLight.default === 150 &&
+      config.environmentLight.default === 0 &&
         config.ambientLight.default === 1500 &&
-        config.directionalLight.default === 15000 &&
+        config.directionalLight.default === 1500 &&
         config.skyLight.default === 1500 &&
         config.exposure.default === 15,
-      `${mode} lighting must default to ENV 150, AMB 1500, SUN 15000, SKY 1500, EXPO 15`,
+      `${mode} lighting must default to ENV 0, AMB 1500, SUN 1500, SKY 1500, EXPO 15`,
     );
     assertContract(
       !config.terrainBakedLighting.default,
@@ -238,11 +238,10 @@ export function runGroundSilhouetteShadow3DContractTest(): void {
           values.every((value, index) => value === expectedLightOptions[index]),
         `${mode} light controls must share the zero-plus-decades selection ladder`,
       );
-      const positiveValues = values.filter((value) => value > 0);
       assertContract(
-        positiveValues.every((value, index) =>
-          index === 0 || value === positiveValues[index - 1] * 10),
-        `${mode} light controls must increase by an exact power of ten per button`,
+        [15, 150, 1500, 15000].every((value) => values.includes(value)) &&
+          values.includes(5000) && 5000 > 1500 && 5000 < 15000,
+        `${mode} light controls must retain the decade ladder plus the requested SUN tuning stop between 1500 and 15000`,
       );
       assertContract(
         values.includes(setting.default),

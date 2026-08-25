@@ -71,6 +71,7 @@ const hubMats = new Map<number, THREE.MeshLambertMaterial>();
  *  `.uniforms` of its own to write through. */
 type RotorBladeMaterial = {
   material: THREE.MeshLambertMaterial;
+  depthMaterial: THREE.MeshDepthMaterial;
   timeUniform: { value: number };
 };
 const bladeRotorMats = new Map<string, RotorBladeMaterial>();
@@ -90,6 +91,16 @@ vec3 objectNormal = vec3(
 );
 `;
 const ROTOR_BEGIN_VERTEX = `
+vec3 transformed = vec3(
+  _rotC * position.x + _rotS * position.z,
+  position.y,
+  -_rotS * position.x + _rotC * position.z
+);
+`;
+const ROTOR_DEPTH_BEGIN_VERTEX = `
+float _rotA = -uTimeSec * uSpinRadPerSec;
+float _rotC = cos(_rotA);
+float _rotS = sin(_rotA);
 vec3 transformed = vec3(
   _rotC * position.x + _rotS * position.z,
   position.y,
@@ -332,16 +343,16 @@ function getBladeRotorGeom(
   return geom;
 }
 
-function getRotorBladeMat(
+function getRotorBladeMaterials(
   baseColor: number,
   ownerId: PlayerId | undefined,
   spinRadPerSec: number,
-): THREE.MeshLambertMaterial {
+): RotorBladeMaterial {
   const color = locomotionPieceColorHex(baseColor, ownerId);
   const speedKey = Math.round(spinRadPerSec * 1000) / 1000;
   const key = `${color}:${speedKey}`;
   const existing = bladeRotorMats.get(key);
-  if (existing !== undefined) return existing.material;
+  if (existing !== undefined) return existing;
 
   const timeUniform = { value: 0 };
   const spinUniform = { value: spinRadPerSec };
@@ -360,8 +371,27 @@ function getRotorBladeMat(
       .replace('#include <begin_vertex>', ROTOR_BEGIN_VERTEX);
   };
   material.customProgramCacheKey = () => 'droneRotorBladeLambert';
-  bladeRotorMats.set(key, { material, timeUniform });
-  return material;
+
+  // The visible Lambert pass rotates vertices in its shader, so a default
+  // shadow-depth material would otherwise keep drawing the rest-pose blades.
+  // Apply the same phase to the directional depth pass. This adds only two
+  // trig operations to vertices the shadow pass already submits and avoids a
+  // CPU transform/update per fan.
+  const depthMaterial = new THREE.MeshDepthMaterial({
+    depthPacking: THREE.RGBADepthPacking,
+    side: THREE.DoubleSide,
+  });
+  depthMaterial.onBeforeCompile = (shader) => {
+    shader.uniforms.uTimeSec = timeUniform;
+    shader.uniforms.uSpinRadPerSec = spinUniform;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `${ROTOR_DECL}\n#include <common>`)
+      .replace('#include <begin_vertex>', ROTOR_DEPTH_BEGIN_VERTEX);
+  };
+  depthMaterial.customProgramCacheKey = () => 'droneRotorBladeDepth';
+  const entry = { material, depthMaterial, timeUniform };
+  bladeRotorMats.set(key, entry);
+  return entry;
 }
 
 export function setDroneFanAnimationTime(timeSec: number): void {
@@ -518,6 +548,11 @@ function buildFan(
   // simply another cache entry rather than a second code path.
   const handedness = fanRotorHandedness(localZ);
   const bladePitchRad = THREE.MathUtils.degToRad(FAN_BLADE_PITCH_DEG) * handedness;
+  const rotorMaterials = getRotorBladeMaterials(
+    FAN_BLADE_COLOR,
+    ownerId,
+    fanSpinRadPerSec * handedness,
+  );
   const rotor = new THREE.Mesh(
     getBladeRotorGeom(
       bladeLength,
@@ -527,8 +562,9 @@ function buildFan(
       bladePitchRad,
       geometryTier,
     ),
-    getRotorBladeMat(FAN_BLADE_COLOR, ownerId, fanSpinRadPerSec * handedness),
+    rotorMaterials.material,
   );
+  rotor.customDepthMaterial = rotorMaterials.depthMaterial;
   fanGroup.add(rotor);
 
   const hub = new THREE.Mesh(

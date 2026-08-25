@@ -60,6 +60,7 @@ import {
   PLASMA_PROJECTILE_TRIANGLE_COUNTS,
   ROCKET_PROJECTILE_TRIANGLE_COUNTS,
   composeProjectileTailPose3D,
+  createPlasmaProjectileMaterial,
   createLowResolutionRocketGeometry,
 } from './ProjectileRenderer3D';
 import {
@@ -91,7 +92,7 @@ import {
 } from './PrimitiveGeometryQuality3D';
 import { buildAmphibian } from './AmphibianRig3D';
 import { buildAirframeRig } from './AirframeRig3D';
-import { buildDroneFans } from './DroneRig3D';
+import { buildDroneFans, setDroneFanAnimationTime } from './DroneRig3D';
 import {
   applyLocomotionState,
   captureLocomotionState,
@@ -140,7 +141,6 @@ import {
   buildConstructionHostMarking,
   buildLinearHazardStripePolygons,
 } from './ConstructionHostMarking3D';
-import { VegetationVolumeOverlay3D } from './VegetationVolumeOverlay3D';
 
 const TIERS = ['close', 'mid', 'far'] as const satisfies readonly PrimitiveGeometryTier[];
 const DETAIL_LEVELS = [
@@ -204,8 +204,8 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   buildingRadar: { close: 1500, mid: 700, far: 350 },
   buildingSonar: { close: 1500, mid: 700, far: 350 },
   buildingResourceConverter: { close: 1500, mid: 750, far: 420 },
-  // Eight construction clamp stations since the hazard-marking round
-  // (boxCount 4 -> 8) — the budgets carry the doubled housing count.
+  // The radial T1 fabricator now uses one telescoping construction box plus its
+  // two bearing races; budgets retain headroom for the animated assembly.
   towerFabricator: { close: 2600, mid: 1300, far: 640 },
   // Heavy carries a cross-yoke and two emitter heads instead of one.
   towerBeamMega: { close: 1400, mid: 780, far: 400 },
@@ -865,15 +865,29 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
           const rig = buildDroneFans(
             root, radius, locomotion.config, smokeUseId, 1, undefined, tier,
           );
+          setDroneFanAnimationTime(3.25);
           assertContract(
             rig.fans.every((fan) => {
               const ring = fan.group.children[0] as THREE.Mesh;
+              const rotor = fan.group.children[1] as THREE.Mesh;
               const material = ring.material as THREE.Material;
+              const depthMaterial = rotor.customDepthMaterial as
+                | THREE.MeshDepthMaterial
+                | undefined;
+              const shaderProbe = {
+                uniforms: {} as Record<string, { value: number }>,
+                vertexShader: '#include <common>\n#include <begin_vertex>',
+              };
+              depthMaterial?.onBeforeCompile(shaderProbe as never, {} as never);
               return ring.isMesh &&
                 ring.geometry.type === 'TorusGeometry' &&
-                material.side === THREE.DoubleSide;
+                material.side === THREE.DoubleSide &&
+                depthMaterial?.isMeshDepthMaterial === true &&
+                shaderProbe.vertexShader.includes('uSpinRadPerSec') &&
+                shaderProbe.vertexShader.includes('_rotC * position.x') &&
+                shaderProbe.uniforms.uTimeSec?.value === 3.25;
             }),
-            `${unitId}/${tier} drone fans retain a visible tiered duct ring`,
+            `${unitId}/${tier} drone fans retain a visible duct and rotate the same blades in the shadow-depth pass`,
           );
           return {
             rig,
@@ -1929,6 +1943,13 @@ function runReferenceGeometryCountContracts(): void {
   assertSame('plasma reference ladder', PLASMA_PROJECTILE_TRIANGLE_COUNTS, {
     high: 140, medium: 48, low: 4,
   });
+  const plasmaMaterial = createPlasmaProjectileMaterial();
+  assertContract(
+    plasmaMaterial.toneMapped === false &&
+      plasmaMaterial.userData.renderLighting === 'self-lit',
+    'plasma heat-ramp geometry must remain display-bright at low scene exposure',
+  );
+  plasmaMaterial.dispose();
   assertSame('rocket reference ladder', ROCKET_PROJECTILE_TRIANGLE_COUNTS, {
     high: 136, medium: 84, low: 16,
   });
@@ -1988,30 +2009,6 @@ function runReferenceGeometryCountContracts(): void {
 }
 
 function runEnvironmentLodMaterialContracts(): void {
-  const overlayParent = new THREE.Group();
-  const vegetationOverlay = new VegetationVolumeOverlay3D(overlayParent);
-  const overlayMesh = overlayParent.children[0] as THREE.LineSegments;
-  const placeholderGeometry = overlayMesh.geometry;
-  let placeholderDisposals = 0;
-  placeholderGeometry.addEventListener('dispose', () => placeholderDisposals++);
-  (
-    vegetationOverlay as unknown as {
-      rebuild(cameraX: number, cameraY: number): void;
-    }
-  ).rebuild(0, 0);
-  assertContract(
-    placeholderDisposals === 1 && overlayMesh.geometry !== placeholderGeometry,
-    'vegetation overlay disposes its constructor geometry exactly once when rebuilt',
-  );
-  const activeGeometry = overlayMesh.geometry;
-  let activeDisposals = 0;
-  activeGeometry.addEventListener('dispose', () => activeDisposals++);
-  vegetationOverlay.dispose();
-  assertContract(
-    activeDisposals === 1 && overlayParent.children.length === 0,
-    'vegetation overlay disposes its active geometry exactly once on teardown',
-  );
-
   assertContract(
     !environmentPropVisibleAtDetailRung(DETAIL_RUNG_GLYPH) &&
       environmentPropVisibleAtDetailRung(DETAIL_RUNG_FAR),
@@ -2235,15 +2232,15 @@ function runConstructionHostMarkingContracts(): void {
   );
 
   const universalFabricatorBoxCounts = {
-    towerFabricator: 8,
-    buildingAdvancedUniversalFabricator: 12,
-    buildingExperimentalUniversalFabricator: 16,
+    towerFabricator: 1,
+    buildingAdvancedUniversalFabricator: 2,
+    buildingExperimentalUniversalFabricator: 3,
   } as const;
   assertContract(
-    UNIVERSAL_FABRICATOR_CONSTRUCTION_BOX_COUNTS[1] === 8 &&
-      UNIVERSAL_FABRICATOR_CONSTRUCTION_BOX_COUNTS[2] === 12 &&
-      UNIVERSAL_FABRICATOR_CONSTRUCTION_BOX_COUNTS[3] === 16,
-    'universal fabricator construction box counts are exactly 8/12/16 by tech tier',
+    UNIVERSAL_FABRICATOR_CONSTRUCTION_BOX_COUNTS[1] === 1 &&
+      UNIVERSAL_FABRICATOR_CONSTRUCTION_BOX_COUNTS[2] === 2 &&
+      UNIVERSAL_FABRICATOR_CONSTRUCTION_BOX_COUNTS[3] === 3,
+    'universal fabricator construction box counts are exactly 1/2/3 by tech tier',
   );
   for (const [fabricatorId, expectedBoxCount] of Object.entries(universalFabricatorBoxCounts)) {
     const ringProfile = CONSTRUCTION_HOST_MARKING_PROFILES[fabricatorId]?.find(

@@ -43,7 +43,6 @@ import {
   viewExcludesSphere,
 } from './EntityDetailLevel3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
-import { VegetationVolumeOverlay3D } from './VegetationVolumeOverlay3D';
 import type { WorldShade3D } from './WorldShade3D';
 import {
   type PrimitiveGeometryTier,
@@ -380,9 +379,6 @@ export class EnvironmentPropRenderer3D {
   private lastCameraZ = NaN;
   private lastFovYRad = NaN;
   private lastViewportHeightPx = NaN;
-  /** SEL wireframes for the props' pick cylinders. */
-  private readonly volumeOverlay: VegetationVolumeOverlay3D;
-
   constructor(
     parentWorld: THREE.Group,
     options: EnvironmentPropRenderer3DOptions,
@@ -392,9 +388,6 @@ export class EnvironmentPropRenderer3D {
     this.worldShade = options.worldShade;
     this.root.name = 'EnvironmentPropRenderer3D';
     parentWorld.add(this.root);
-    // Parented to the world group, NOT to the pruned static-prop container:
-    // the debug overlay must keep updating while prop meshes are culled.
-    this.volumeOverlay = new VegetationVolumeOverlay3D(parentWorld);
     logActiveVegetationAssets();
     // Asset IO can overlap terrain startup. Only placement and node creation
     // wait for the authoritative terrain below.
@@ -407,11 +400,6 @@ export class EnvironmentPropRenderer3D {
 
   update(view?: RenderViewState3D): void {
     this.initializeAfterTerrainSettles();
-    // The SEL volume overlay describes the sim's prop store directly, so it
-    // runs before the asset/LOD early-outs below — props are pickable as
-    // soon as they are generated, whether or not their meshes are up.
-    // Camera x/z in three.js are the sim's x/y.
-    this.volumeOverlay.update(view?.cameraX ?? 0, view?.cameraZ ?? 0);
     if (!this.loaded || this.nodes.length === 0) return;
     this.dropReclaimedProps();
     const scopeVersion = this.renderScope.getVersion();
@@ -617,7 +605,6 @@ export class EnvironmentPropRenderer3D {
 
   destroy(): void {
     this.destroyed = true;
-    this.volumeOverlay.dispose();
     const geometries = new Set<THREE.BufferGeometry>();
     const materials = new Set<THREE.Material>();
     for (const node of this.nodes) {

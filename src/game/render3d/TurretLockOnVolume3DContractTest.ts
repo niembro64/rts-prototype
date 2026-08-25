@@ -152,12 +152,13 @@ export function runTurretLockOnVolume3DContractTest(): void {
     const integrationWorld = new THREE.Group();
     const integrationSphereSource = new THREE.OctahedronGeometry(1, 1);
     const integrationSphereWireframe = new THREE.WireframeGeometry(integrationSphereSource);
+    const selectedIds = new Set<number>();
     const integrationRenderer = new SelectionOverlayRenderer3D({
       world: integrationWorld,
       clientViewState: {
         getMapWidth: () => 512,
         getMapHeight: () => 512,
-        getSelectedIds: () => new Set<number>(),
+        getSelectedIds: () => selectedIds,
       } as unknown as ClientViewState,
       radiusSphereGeom: integrationSphereWireframe,
       overlayLines: undefined as unknown as OverlayLineSystem,
@@ -166,6 +167,11 @@ export function runTurretLockOnVolume3DContractTest(): void {
       const simulation = new WorldState(81931, 512, 512);
       const host = simulation.createUnitFromBlueprint(120, 140, 1, 'unitJackal');
       simulation.addEntity(host);
+      host.selectable!.selected = true;
+      selectedIds.add(host.id);
+      // Keep this a multi-selection so the ordinary single-selection
+      // engagement ring does not enter this TGT-only integration probe.
+      selectedIds.add(999_999);
       const turrets = host.combat?.turrets ?? [];
       const hostMesh = {
         group: new THREE.Group(),
@@ -180,8 +186,32 @@ export function runTurretLockOnVolume3DContractTest(): void {
       }, 0);
       assertContract(
         expectedShells > 0 && integrationWorld.children.length === expectedShells,
-        'VOLUMES TGT alone creates every configured shell without TURR CIR',
+        'VOLUMES TGT alone creates every configured shell on the selected host without TURR CIR',
       );
+
+      host.selectable!.selected = false;
+      selectedIds.clear();
+      integrationRenderer.beginFrame();
+      integrationRenderer.updateRangeRings(hostMesh, host);
+      assertContract(
+        integrationWorld.children.every((child) => child.visible === false),
+        'deselecting a host hides its VOLUMES TGT shells even while the toggle remains enabled',
+      );
+      setRangeToggle('trackAcquire', true);
+      integrationRenderer.beginFrame();
+      assertContract(
+        !integrationRenderer.unitRangeOverlaysNeedUpdate(hostMesh, false, host),
+        'an enabled TURR CIR diagnostic must not schedule overlays for an unselected host',
+      );
+      host.selectable!.selected = true;
+      selectedIds.add(host.id);
+      selectedIds.add(999_999);
+      integrationRenderer.beginFrame();
+      assertContract(
+        integrationRenderer.unitRangeOverlaysNeedUpdate(hostMesh, true, host),
+        'an enabled TURR CIR diagnostic must schedule overlays for a selected host',
+      );
+      setRangeToggle('trackAcquire', false);
 
       setVolumeToggle('turretLockOn', false);
       integrationRenderer.beginFrame();
