@@ -21,3 +21,5 @@
 	7) Our fabricator spinning is purely visual, there's no logical gameplay state, it should be spinning just as smoothly as anything else that is purely visual in the game, like the wind turbines. The wind turbines are currently spinning very smoothly, I feell like we could do better for the universal fabricator spin. 
 
 	8) our "MIN" level of detail simple flat shapes for entities seem to be way too dark, those need to be raw colors, like raw white, raw team color, raw player color, raw white. Same goes for any sort of "HUD" type stuff. 
+
+9) Let's default our "ENV:" lighting variable to "150" instead of "0". 
