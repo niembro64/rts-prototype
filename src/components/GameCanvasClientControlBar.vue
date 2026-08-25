@@ -19,8 +19,11 @@ import {
   resetCustomCommandHotkeyBinding,
   setCustomCommandHotkeyBinding,
   type CommandHotkeyId,
-  type CommandHotkeyPresetId,
 } from '../game/input/commandHotkeys';
+import {
+  COMMAND_HOTKEY_PRESET_DESCRIPTIONS,
+  COMMAND_HOTKEY_PRESET_LABELS,
+} from '../game/input/commandHotkeyPresentation';
 import { unitRosterDisplay } from '../game/sim/blueprints/displayRosters';
 import BarButton from './BarButton.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
@@ -43,24 +46,6 @@ import {
   msBarStyle,
   statBarStyle,
 } from './uiUtils';
-
-const COMMAND_HOTKEY_PRESET_LABELS: Record<CommandHotkeyPresetId, string> = {
-  prototype: 'PROTO',
-  'bar-grid': 'GRID',
-  'bar-grid-60pct': 'GRID60',
-  'bar-legacy': 'LEGACY',
-  'bar-legacy-60pct': 'LEG60',
-  custom: 'CUSTOM',
-};
-
-const COMMAND_HOTKEY_PRESET_DESCRIPTIONS: Record<CommandHotkeyPresetId, string> = {
-  prototype: 'prototype defaults',
-  'bar-grid': 'BAR grid subset',
-  'bar-grid-60pct': 'BAR grid 60% subset',
-  'bar-legacy': 'BAR legacy subset',
-  'bar-legacy-60pct': 'BAR legacy 60% subset',
-  custom: 'local custom bindings',
-};
 
 const LOD_MODE_TITLES: Record<LodMode, string> = {
   auto: 'Choose HIGH, MED, LOW, or MIN automatically from projected screen size',

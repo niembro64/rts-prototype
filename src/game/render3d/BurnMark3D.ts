@@ -22,6 +22,7 @@ import {
   markDirtySlot,
   uploadDirtySlotSpan,
 } from './instancedBufferUpdate';
+import { removeDenseInstancedSlot } from './removeDenseInstancedSlot';
 import { clamp01 } from '../math';
 
 const MARK_LIFT = 2.5;
@@ -183,6 +184,12 @@ export class BurnMark3D {
   private readonly heatDirty = createDirtySlotSpan();
   private readonly charDirty = createDirtySlotSpan();
   private readonly seedDirty = createDirtySlotSpan();
+  private readonly removalChannels = [
+    { values: this.lastHit, dirty: this.lastHitDirty },
+    { values: this.heat, dirty: this.heatDirty },
+    { values: this.char, dirty: this.charDirty },
+    { values: this.seed, dirty: this.seedDirty },
+  ] as const;
   private readonly cells: ScorchCell[] = [];
   private readonly cellByKey = new Map<number | string, ScorchCell>();
   private readonly pendingDamageScorches: PendingDamageScorch[] = [];
@@ -472,28 +479,14 @@ export class BurnMark3D {
   }
 
   private removeCellAt(slot: number): void {
-    const last = this.cells.length - 1;
-    const removed = this.cells[slot];
-    this.cellByKey.delete(removed.key);
-    if (slot !== last) {
-      const moved = this.cells[last];
-      moved.slot = slot;
-      this.cells[slot] = moved;
-      this.cellByKey.set(moved.key, moved);
-      const matrices = this.mesh.instanceMatrix.array as Float32Array;
-      matrices.copyWithin(slot * 16, last * 16, last * 16 + 16);
-      this.lastHit[slot] = this.lastHit[last];
-      this.heat[slot] = this.heat[last];
-      this.char[slot] = this.char[last];
-      this.seed[slot] = this.seed[last];
-      markDirtySlot(this.matrixDirty, slot);
-      markDirtySlot(this.lastHitDirty, slot);
-      markDirtySlot(this.heatDirty, slot);
-      markDirtySlot(this.charDirty, slot);
-      markDirtySlot(this.seedDirty, slot);
-    }
-    this.cells.pop();
-    this.mesh.count = this.cells.length;
+    this.mesh.count = removeDenseInstancedSlot(
+      this.cells,
+      this.cellByKey,
+      slot,
+      this.mesh.instanceMatrix.array as Float32Array,
+      this.matrixDirty,
+      this.removalChannels,
+    );
   }
 
   private uploadChanges(): void {

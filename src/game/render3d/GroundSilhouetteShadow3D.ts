@@ -6,7 +6,7 @@ import * as THREE from 'three';
  * water, and invisible rig pivots while admitting the Lambert/Standard/Phong
  * materials used by units, buildings, and vegetation.
  */
-export function materialCastsGroundSilhouette3D(material: THREE.Material): boolean {
+function materialCastsGroundSilhouette3D(material: THREE.Material): boolean {
   const lit = material as THREE.Material & {
     isMeshLambertMaterial?: boolean;
     isMeshStandardMaterial?: boolean;
@@ -21,7 +21,7 @@ export function materialCastsGroundSilhouette3D(material: THREE.Material): boole
   );
 }
 
-export function meshCastsGroundSilhouette3D(mesh: THREE.Mesh): boolean {
+function meshCastsGroundSilhouette3D(mesh: THREE.Mesh): boolean {
   const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
   return materials.some(materialCastsGroundSilhouette3D);
 }

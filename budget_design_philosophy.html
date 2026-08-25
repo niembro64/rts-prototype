@@ -396,18 +396,16 @@
 
       <h3>Matchmaking is behind one backend seam</h3>
       <p>
-        How players find and reach each other is a swappable backend, not an assumption baked into
-        the lobby. The native backend publishes sessions to <code>web_games_backend</code> and
-        connects peers over WebRTC; a Steam backend would let Steam own the lobby list and carry the
-        traffic. These differ in nearly every detail &mdash; Steam has no room code to read aloud,
-        and its lobbies are not leases that need renewing &mdash; so the shared surface in
-        <code>src/game/network/multiplayer/</code> is written in terms of what the game needs
-        (advertise a session, find the open ones, take the advert down) and each backend answers in
-        its own terms behind it.
+        How players find and reach each other sits behind a capability seam instead of baking
+        directory requests into the lobby. This repo's shipping backend publishes sessions to
+        <code>web_games_backend</code> and connects peers over WebRTC. The shared surface in
+        <code>src/game/network/multiplayer/</code> is written only in terms of what the game needs
+        (advertise a session, find the open ones, take the advert down), so a future shipping
+        transport can replace that implementation without changing lobby consumers. Do not keep a
+        speculative backend implementation in this repo before its real SDK boundary exists.
       </p>
       <ul class="rule-list">
         <li>Session state belongs to the match, not to the matchmaking service. Backends are told the status; they do not model it.</li>
-        <li>Availability is reported honestly. A backend that cannot work in this runtime says so up front rather than failing at connect time.</li>
         <li>Discovery is best-effort by contract: a directory that is unreachable yields an empty list, never an error that blocks joining by code.</li>
       </ul>
 
@@ -1115,11 +1113,12 @@
         real gameplay inputs.
       </p>
       <p>
-        Kinematic calculations must read entity position, velocity, and acceleration through the
-        explicit accessors <code>getEntityPosition3d</code>, <code>getEntityVelocity3d</code>, and
-        <code>getEntityAcceleration3d</code>. Callers pass zero-valued components when an entity has
-        no velocity or acceleration, and targeting/ballistic solvers must receive raw kinematic
-        values plus the universal gravity constant instead of entity IDs or optional lookup inputs.
+        Kinematic calculations read entity position and velocity through the explicit accessors
+        <code>getEntityPosition3d</code> and <code>getEntityVelocity3d</code>. Callers pass explicit
+        acceleration vectors only when the underlying acceleration is authoritative; units
+        otherwise use zero acceleration for velocity-only lead. Targeting and ballistic solvers
+        receive raw kinematic values plus the universal gravity constant instead of entity IDs or
+        optional lookup inputs.
       </p>
       <p>
         Turret range is a vertical cylinder, not a sphere. Every turret range radius &mdash;

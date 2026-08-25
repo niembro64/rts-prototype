@@ -4,6 +4,10 @@ import type { LobbyMember, LobbyPlayer, NetworkManager } from '../game/network/N
 import type { LobbyBotSeat } from '../types/network';
 import type { PlayerId } from '../game/sim/types';
 import {
+  lobbyBotSeatToPlayer,
+  lobbyMemberToPlayer,
+} from '../game/network/lobbyPlayerProjection';
+import {
   getDefaultPlayerName,
   getInitialLocalUsername,
   saveUsername,
@@ -37,34 +41,13 @@ export function useGameCanvasLobbyRoster({
   const lobbyPlayers = computed<LobbyPlayer[]>(() => {
     const out: LobbyPlayer[] = [];
     for (const member of lobbyMembers.value) {
-      if (member.playerId === undefined) continue;
-      out.push({
-        playerId: member.playerId,
-        name: member.name,
-        isHost: member.isHost,
-        allyTeamId: member.allyTeamId ?? 1,
-        initialState: member.initialState ?? 'commander',
-        ipAddress: member.ipAddress,
-        location: member.location,
-        timezone: member.timezone,
-        localTime: member.localTime,
-      });
+      const player = lobbyMemberToPlayer(member);
+      if (player !== null) out.push(player);
     }
     // Bot seats are seats: they render on their team like anybody, and the
     // isBot flag is what the row's chrome keys off.
     for (const bot of lobbyBotSeats.value) {
-      out.push({
-        playerId: bot.playerId,
-        name: `BOT ${bot.playerId}`,
-        isHost: false,
-        isBot: true,
-        allyTeamId: bot.allyTeamId,
-        initialState: bot.initialState,
-        ipAddress: undefined,
-        location: undefined,
-        timezone: undefined,
-        localTime: undefined,
-      });
+      out.push(lobbyBotSeatToPlayer(bot));
     }
     out.sort((a, b) => a.playerId - b.playerId);
     return out;

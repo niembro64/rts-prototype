@@ -4,6 +4,10 @@
 // grid tint, so gameplay terrain and visible terrain remain one shared mesh.
 
 import * as THREE from 'three';
+import {
+  clipHeightPolygon2D,
+  type HeightPolygonVertex2D,
+} from '../math/clipHeightPolygon2D';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { PlayerId } from '../sim/types';
@@ -498,43 +502,6 @@ function samplePathingCellTerrain(
   return { hasWater, fullySubmerged };
 }
 
-type TerrainHeightVertex = Readonly<{ x: number; z: number; height: number }>;
-
-function clipTerrainHeightPolygon(
-  input: readonly TerrainHeightVertex[],
-  coordinate: 'x' | 'z',
-  limit: number,
-  keepGreater: boolean,
-): TerrainHeightVertex[] {
-  if (input.length === 0) return [];
-  const inside = (value: number): boolean =>
-    keepGreater ? value >= limit : value <= limit;
-  const output: TerrainHeightVertex[] = [];
-  let previous = input[input.length - 1];
-  let previousValue = previous[coordinate];
-  let previousInside = inside(previousValue);
-  for (const current of input) {
-    const currentValue = current[coordinate];
-    const currentInside = inside(currentValue);
-    if (currentInside !== previousInside) {
-      const denominator = currentValue - previousValue;
-      if (Math.abs(denominator) > 1e-12) {
-        const t = Math.max(0, Math.min(1, (limit - previousValue) / denominator));
-        output.push({
-          x: previous.x + (current.x - previous.x) * t,
-          z: previous.z + (current.z - previous.z) * t,
-          height: previous.height + (current.height - previous.height) * t,
-        });
-      }
-    }
-    if (currentInside) output.push(current);
-    previous = current;
-    previousValue = currentValue;
-    previousInside = currentInside;
-  }
-  return output;
-}
-
 function terrainTriangleRectHeightRange(
   ax: number,
   az: number,
@@ -554,15 +521,16 @@ function terrainTriangleRectHeightRange(
   const rectMaxX = Math.max(minX, maxX);
   const rectMinZ = Math.min(minZ, maxZ);
   const rectMaxZ = Math.max(minZ, maxZ);
-  let polygon: TerrainHeightVertex[] = [
-    { x: ax, z: az, height: ah },
-    { x: bx, z: bz, height: bh },
-    { x: cx, z: cz, height: ch },
+  // horizontal0 = render x; horizontal1 = render z.
+  let polygon: HeightPolygonVertex2D[] = [
+    { horizontal0: ax, horizontal1: az, height: ah },
+    { horizontal0: bx, horizontal1: bz, height: bh },
+    { horizontal0: cx, horizontal1: cz, height: ch },
   ];
-  polygon = clipTerrainHeightPolygon(polygon, 'x', rectMinX, true);
-  polygon = clipTerrainHeightPolygon(polygon, 'x', rectMaxX, false);
-  polygon = clipTerrainHeightPolygon(polygon, 'z', rectMinZ, true);
-  polygon = clipTerrainHeightPolygon(polygon, 'z', rectMaxZ, false);
+  polygon = clipHeightPolygon2D(polygon, 'horizontal0', rectMinX, true);
+  polygon = clipHeightPolygon2D(polygon, 'horizontal0', rectMaxX, false);
+  polygon = clipHeightPolygon2D(polygon, 'horizontal1', rectMinZ, true);
+  polygon = clipHeightPolygon2D(polygon, 'horizontal1', rectMaxZ, false);
   if (polygon.length === 0) return null;
   let minHeight = Number.POSITIVE_INFINITY;
   let maxHeight = Number.NEGATIVE_INFINITY;

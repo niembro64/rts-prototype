@@ -528,8 +528,9 @@ export class NetworkManager {
    *  lobby everything else documents. */
   private sessionVisibility: 'online' | 'local' = 'online';
   private roomCode: string = '';
-  /** Where this build advertises and discovers sessions — the web directory
-   *  or Steam. Resolved once by the registry; nothing here knows which. */
+  /** Capability seam used to advertise and discover sessions. The registry
+   *  keeps its publisher singular and this class does not know directory
+   *  implementation details. */
   private readonly multiplayer = getMultiplayerBackend();
   /** Latches `emitHostLeft` so the message and the closing socket, which a
    *  graceful host sends both of, only eject the client once. */

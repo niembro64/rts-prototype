@@ -19,6 +19,7 @@ import {
   markDirtySlot,
   uploadDirtySlotSpan,
 } from './instancedBufferUpdate';
+import { removeDenseInstancedSlot } from './removeDenseInstancedSlot';
 
 const MAX_BURN_VOLUMES = 1024;
 // Space burns are volumes rather than surface pixels. Coarse 12-unit cells
@@ -183,6 +184,12 @@ export class DamageBurnVolume3D {
   private readonly heatDirty = createDirtySlotSpan();
   private readonly charDirty = createDirtySlotSpan();
   private readonly seedDirty = createDirtySlotSpan();
+  private readonly removalChannels = [
+    { values: this.lastHit, dirty: this.lastHitDirty },
+    { values: this.heat, dirty: this.heatDirty },
+    { values: this.char, dirty: this.charDirty },
+    { values: this.seed, dirty: this.seedDirty },
+  ] as const;
   private readonly volumes: BurnVolume[] = [];
   private readonly volumeByKey = new Map<BurnVolumeKey, BurnVolume>();
   private readonly position = new THREE.Vector3();
@@ -347,27 +354,14 @@ export class DamageBurnVolume3D {
   }
 
   private removeAt(slot: number): void {
-    const last = this.volumes.length - 1;
-    const removed = this.volumes[slot];
-    this.volumeByKey.delete(removed.key);
-    if (slot !== last) {
-      const moved = this.volumes[last];
-      moved.slot = slot;
-      this.volumes[slot] = moved;
-      const matrices = this.mesh.instanceMatrix.array as Float32Array;
-      matrices.copyWithin(slot * 16, last * 16, last * 16 + 16);
-      this.lastHit[slot] = this.lastHit[last];
-      this.heat[slot] = this.heat[last];
-      this.char[slot] = this.char[last];
-      this.seed[slot] = this.seed[last];
-      markDirtySlot(this.matrixDirty, slot);
-      markDirtySlot(this.lastHitDirty, slot);
-      markDirtySlot(this.heatDirty, slot);
-      markDirtySlot(this.charDirty, slot);
-      markDirtySlot(this.seedDirty, slot);
-    }
-    this.volumes.pop();
-    this.mesh.count = this.volumes.length;
+    this.mesh.count = removeDenseInstancedSlot(
+      this.volumes,
+      this.volumeByKey,
+      slot,
+      this.mesh.instanceMatrix.array as Float32Array,
+      this.matrixDirty,
+      this.removalChannels,
+    );
   }
 
   private clear(): void {
@@ -387,4 +381,3 @@ export class DamageBurnVolume3D {
     disposeMesh(this.mesh);
   }
 }
-

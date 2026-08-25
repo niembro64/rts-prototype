@@ -13,6 +13,10 @@ import {
 import { findDepositFlatZoneAt, getMetalDepositFlatZones } from './terrainFlatZones';
 import { getTerrainMeshHeight, getTerrainMeshNormal } from './terrainTileMap';
 import { getAuthoritativeTerrainTileMap, getTerrainVersion } from './terrainState';
+import {
+  clipHeightPolygon2D,
+  type HeightPolygonVertex2D,
+} from '../../math/clipHeightPolygon2D';
 
 const TERRAIN_FLAT_ZONE_WASM_STRIDE = 4;
 const TERRAIN_FLAT_ZONE_LEVEL_OFFSET = 1_000_000;
@@ -72,42 +76,6 @@ type BuildabilityTerrainSampler = (
   mapHeight: number,
   cellSize: number,
 ) => BuildabilityTerrainSample;
-
-type TerrainHeightVertex = { x: number; y: number; height: number };
-
-function clipTerrainHeightPolygon(
-  input: readonly TerrainHeightVertex[],
-  coordinate: 'x' | 'y',
-  limit: number,
-  keepGreater: boolean,
-): TerrainHeightVertex[] {
-  if (input.length === 0) return [];
-  const inside = (value: number): boolean => keepGreater ? value >= limit : value <= limit;
-  const output: TerrainHeightVertex[] = [];
-  let previous = input[input.length - 1];
-  let previousValue = previous[coordinate];
-  let previousInside = inside(previousValue);
-  for (const current of input) {
-    const currentValue = current[coordinate];
-    const currentInside = inside(currentValue);
-    if (currentInside !== previousInside) {
-      const denominator = currentValue - previousValue;
-      if (Math.abs(denominator) > 1e-12) {
-        const t = Math.max(0, Math.min(1, (limit - previousValue) / denominator));
-        output.push({
-          x: previous.x + (current.x - previous.x) * t,
-          y: previous.y + (current.y - previous.y) * t,
-          height: previous.height + (current.height - previous.height) * t,
-        });
-      }
-    }
-    if (currentInside) output.push(current);
-    previous = current;
-    previousValue = currentValue;
-    previousInside = currentInside;
-  }
-  return output;
-}
 
 function getExactBuildSquareTerrainSafety(
   centerX: number,
@@ -171,15 +139,16 @@ function getExactBuildSquareTerrainSafety(
         if ([ax, ay, ah, bx, by, bh, cxWorld, cyWorld, ch].some((value) => !Number.isFinite(value))) {
           continue;
         }
-        let polygon: TerrainHeightVertex[] = [
-          { x: ax, y: ay, height: ah },
-          { x: bx, y: by, height: bh },
-          { x: cxWorld, y: cyWorld, height: ch },
+        // horizontal0 = sim x; horizontal1 = sim y.
+        let polygon: HeightPolygonVertex2D[] = [
+          { horizontal0: ax, horizontal1: ay, height: ah },
+          { horizontal0: bx, horizontal1: by, height: bh },
+          { horizontal0: cxWorld, horizontal1: cyWorld, height: ch },
         ];
-        polygon = clipTerrainHeightPolygon(polygon, 'x', minX, true);
-        polygon = clipTerrainHeightPolygon(polygon, 'x', maxX, false);
-        polygon = clipTerrainHeightPolygon(polygon, 'y', minY, true);
-        polygon = clipTerrainHeightPolygon(polygon, 'y', maxY, false);
+        polygon = clipHeightPolygon2D(polygon, 'horizontal0', minX, true);
+        polygon = clipHeightPolygon2D(polygon, 'horizontal0', maxX, false);
+        polygon = clipHeightPolygon2D(polygon, 'horizontal1', minY, true);
+        polygon = clipHeightPolygon2D(polygon, 'horizontal1', maxY, false);
         if (polygon.length === 0) continue;
         found = true;
         for (const vertex of polygon) {

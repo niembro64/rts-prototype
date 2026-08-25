@@ -49,44 +49,6 @@ export function getBuildingPlacementBaseZ(
   }
 }
 
-/**
- * Find the highest terrain sample beneath a build footprint. Sampling every
- * grid vertex plus every cell center keeps the suspended baseline above both
- * sharp cell boundaries and local extrema inside a build square.
- */
-export function getHighestBuildFootprintGroundZ(
-  gridX: number,
-  gridY: number,
-  gridWidth: number,
-  gridHeight: number,
-  getGroundZ: (x: number, y: number) => number,
-): number {
-  let highest = -Infinity;
-  for (let y = 0; y <= gridHeight; y++) {
-    for (let x = 0; x <= gridWidth; x++) {
-      highest = Math.max(
-        highest,
-        getGroundZ(
-          (gridX + x) * BUILD_GRID_CELL_SIZE,
-          (gridY + y) * BUILD_GRID_CELL_SIZE,
-        ),
-      );
-    }
-  }
-  for (let y = 0; y < gridHeight; y++) {
-    for (let x = 0; x < gridWidth; x++) {
-      highest = Math.max(
-        highest,
-        getGroundZ(
-          (gridX + x + 0.5) * BUILD_GRID_CELL_SIZE,
-          (gridY + y + 0.5) * BUILD_GRID_CELL_SIZE,
-        ),
-      );
-    }
-  }
-  return Number.isFinite(highest) ? highest : 0;
-}
-
 /** Mask-aware variant used by authored building reservations. Shared vertices
  *  may be sampled more than once; placement is cold-path and exact agreement
  *  with the visible/build-grid silhouette matters more than deduplication. */

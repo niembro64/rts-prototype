@@ -1,5 +1,6 @@
 import type { BeamPoint, Entity, EntityId } from '../sim/types';
 import { growTypedArray, nextGeometricCapacity } from '../memory/typedArrayGrowth';
+import { writeProjectilePlanarBounds } from './projectileRenderBounds';
 
 const INITIAL_PROJECTILE_RENDER_STATE_CAP = 4096;
 
@@ -84,24 +85,9 @@ export class ClientProjectileRenderStateSlab {
     let flags =
       CLIENT_PROJECTILE_RENDER_FLAG_LINE |
       CLIENT_PROJECTILE_RENDER_FLAG_BURN_MARK;
-    let minX = x;
-    let maxX = x;
-    let minY = y;
-    let maxY = y;
-    if (points !== null && points.length > 0) {
+    if (writeProjectilePlanarBounds(views, slot, x, y, points)) {
       flags |= CLIENT_PROJECTILE_RENDER_FLAG_HAS_POINTS;
-      for (let i = 0; i < points.length; i++) {
-        const point = points[i];
-        if (point.x < minX) minX = point.x;
-        if (point.x > maxX) maxX = point.x;
-        if (point.y < minY) minY = point.y;
-        if (point.y > maxY) maxY = point.y;
-      }
     }
-    views.minX[slot] = minX;
-    views.maxX[slot] = maxX;
-    views.minY[slot] = minY;
-    views.maxY[slot] = maxY;
     views.flags[slot] = flags;
     return slot;
   }
@@ -135,25 +121,10 @@ export class ClientProjectileRenderStateSlab {
       flags |= CLIENT_PROJECTILE_RENDER_FLAG_LINE | CLIENT_PROJECTILE_RENDER_FLAG_BURN_MARK;
     }
 
-    let minX = x;
-    let maxX = x;
-    let minY = y;
-    let maxY = y;
     const points = projectile.points;
-    if (points !== null && points.length > 0) {
+    if (writeProjectilePlanarBounds(views, slot, x, y, points)) {
       flags |= CLIENT_PROJECTILE_RENDER_FLAG_HAS_POINTS;
-      for (let i = 0; i < points.length; i++) {
-        const point = points[i];
-        if (point.x < minX) minX = point.x;
-        if (point.x > maxX) maxX = point.x;
-        if (point.y < minY) minY = point.y;
-        if (point.y > maxY) maxY = point.y;
-      }
     }
-    views.minX[slot] = minX;
-    views.maxX[slot] = maxX;
-    views.minY[slot] = minY;
-    views.maxY[slot] = maxY;
     views.flags[slot] = flags;
     return slot;
   }

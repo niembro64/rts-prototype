@@ -16,26 +16,12 @@ import {
 } from '../LobbyDirectory';
 import type {
   MultiplayerBackend,
-  MultiplayerBackendId,
   MultiplayerLobbyAdvert,
   MultiplayerLobbySummary,
 } from './MultiplayerBackend';
 
 export class NativeMultiplayerBackend implements MultiplayerBackend {
-  readonly id: MultiplayerBackendId = 'native';
-
   private readonly publisher = new LobbyPublisher();
-
-  isAvailable(): boolean {
-    // Needs nothing but the ability to make a request. A directory that is
-    // down is handled per-call, not by declaring the backend unusable: the
-    // room-code flow keeps working without it.
-    return typeof fetch === 'function';
-  }
-
-  unavailableReason(): string | null {
-    return this.isAvailable() ? null : 'this runtime has no fetch()';
-  }
 
   async listLobbies(): Promise<readonly MultiplayerLobbySummary[]> {
     const listing = await fetchLobbyDirectory();

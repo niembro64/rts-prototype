@@ -19,6 +19,10 @@ import {
   setSpaceQueueFrontEligibilityProvider,
 } from './queueModifiers';
 import { BAR_NEAREST_QUEUE_INSERT_INDEX } from '@/types/commands';
+import {
+  COMMAND_HOTKEY_PRESET_DESCRIPTIONS,
+  COMMAND_HOTKEY_PRESET_LABELS,
+} from './commandHotkeyPresentation';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -134,6 +138,13 @@ function isIntentionallyUnboundCommand(presetId: string, commandId: string): boo
 }
 
 export function runCommandHotkeysContractTest(): void {
+  for (const presetId of COMMAND_HOTKEY_PRESET_IDS) {
+    assertContract(
+      COMMAND_HOTKEY_PRESET_LABELS[presetId].length > 0 &&
+        COMMAND_HOTKEY_PRESET_DESCRIPTIONS[presetId].length > 0,
+      `${presetId} has shared selector presentation`,
+    );
+  }
   clearQueueModifierState();
   for (const presetId of COMMAND_HOTKEY_PRESET_IDS) {
     const preset = getCommandHotkeyPreset(presetId);

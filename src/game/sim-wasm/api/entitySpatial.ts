@@ -4,7 +4,6 @@ export const SPATIAL_KIND_UNIT = 1;
 export const SPATIAL_KIND_BUILDING = 2;
 export const SPATIAL_KIND_PROJECTILE = 3;
 
-export const ENTITY_STATE_KIND_NONE = 0;
 export const ENTITY_STATE_KIND_BUILDING = 1;
 export const ENTITY_STATE_KIND_UNIT = 2;
 export const ENTITY_STATE_KIND_TOWER = 3;

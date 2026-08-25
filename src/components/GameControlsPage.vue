@@ -21,24 +21,10 @@ import {
   type CommandHotkeyId,
   type CommandHotkeyPresetId,
 } from '../game/input/commandHotkeys';
-
-const PRESET_LABELS: Record<CommandHotkeyPresetId, string> = {
-  prototype: 'PROTO',
-  'bar-grid': 'GRID',
-  'bar-grid-60pct': 'GRID60',
-  'bar-legacy': 'LEGACY',
-  'bar-legacy-60pct': 'LEG60',
-  custom: 'CUSTOM',
-};
-
-const PRESET_DESCRIPTIONS: Record<CommandHotkeyPresetId, string> = {
-  prototype: 'prototype defaults',
-  'bar-grid': 'BAR grid subset',
-  'bar-grid-60pct': 'BAR grid 60% subset',
-  'bar-legacy': 'BAR legacy subset',
-  'bar-legacy-60pct': 'BAR legacy 60% subset',
-  custom: 'local custom bindings',
-};
+import {
+  COMMAND_HOTKEY_PRESET_DESCRIPTIONS,
+  COMMAND_HOTKEY_PRESET_LABELS,
+} from '../game/input/commandHotkeyPresentation';
 
 const activePresetId = ref<CommandHotkeyPresetId>(getActiveCommandHotkeyPresetId());
 
@@ -95,7 +81,7 @@ function openGameInfo(): void {
       <div class="game-controls-header">
         <div>
           <h2>Game Controls</h2>
-          <p>{{ PRESET_DESCRIPTIONS[activePresetId] }}</p>
+          <p>{{ COMMAND_HOTKEY_PRESET_DESCRIPTIONS[activePresetId] }}</p>
         </div>
         <nav class="mode-nav" aria-label="App modes">
           <button @click="openHome">Home</button>
@@ -114,9 +100,9 @@ function openGameInfo(): void {
           v-for="presetId in COMMAND_HOTKEY_PRESET_IDS"
           :key="presetId"
           :class="{ active: presetId === activePresetId }"
-          :title="`Use ${PRESET_DESCRIPTIONS[presetId]} command hotkeys`"
+          :title="`Use ${COMMAND_HOTKEY_PRESET_DESCRIPTIONS[presetId]} command hotkeys`"
           @click="selectPreset(presetId)"
-        >{{ PRESET_LABELS[presetId] }}</button>
+        >{{ COMMAND_HOTKEY_PRESET_LABELS[presetId] }}</button>
       </div>
 
       <div class="controls-body">

@@ -86,17 +86,6 @@ export const CT_TURRET_CFG_NO_AUTO_ACQUIRE = 1 << 17;
 export const CT_TURRET_CFG_CONSTANT_SPEED_LEAD = 1 << 18;
 /** A moving parent joint may absorb residual station yaw. */
 export const CT_TURRET_CFG_HOST_YAW_ASSIST = 1 << 19;
-/** Exhaustive, unordered emission source->target medium routes. */
-const CT_TURRET_CFG_ROUTE_ABOVE_TO_ABOVE = 1 << 20;
-const CT_TURRET_CFG_ROUTE_ABOVE_TO_UNDERWATER = 1 << 21;
-const CT_TURRET_CFG_ROUTE_UNDERWATER_TO_ABOVE = 1 << 22;
-const CT_TURRET_CFG_ROUTE_UNDERWATER_TO_UNDERWATER = 1 << 23;
-export const CT_TURRET_CFG_ROUTE_MASK =
-  CT_TURRET_CFG_ROUTE_ABOVE_TO_ABOVE |
-  CT_TURRET_CFG_ROUTE_ABOVE_TO_UNDERWATER |
-  CT_TURRET_CFG_ROUTE_UNDERWATER_TO_ABOVE |
-  CT_TURRET_CFG_ROUTE_UNDERWATER_TO_UNDERWATER;
-
 /** AIM-08.1 — FSM state encodings. Single-sourced from wireEnums.json (the
  *  same file Rust generates its CT_TURRET_STATE_* constants from), so the
  *  TS sim-wasm bridge, the network wire codes, and the Rust kernels can't
@@ -118,8 +107,6 @@ export const CT_LOCK_ON_REL_INCLUDE_ENEMY = 1 << 1;
 export const CT_LOCK_ON_FAM_INCLUDE_BUILDINGS = 1 << 0;
 export const CT_LOCK_ON_FAM_INCLUDE_UNITS = 1 << 1;
 export const CT_LOCK_ON_FAM_INCLUDE_TURRETS = 1 << 2;
-/** Reserved compatibility bit; new blueprint policy emits buildings. */
-export const CT_LOCK_ON_FAM_INCLUDE_TOWERS = 1 << 3;
 export const CT_LOCK_ON_FAM_INCLUDE_SHOTS = 1 << 5;
 
 /** LOCK-ON-04 — Reciprocal lock-on candidacy modes. Mirrors
@@ -135,8 +122,6 @@ export const CT_LOCK_ON_RECIPROCAL_PREFER_HOLD = 3;
 export const CT_ENTITY_FAMILY_NONE = 0;
 export const CT_ENTITY_FAMILY_BUILDING = 1;
 export const CT_ENTITY_FAMILY_UNIT = 2;
-/** Reserved compatibility tag; new runtime stamping uses BUILDING. */
-export const CT_ENTITY_FAMILY_TOWER = 3;
 export const CT_ENTITY_FAMILY_SHOT = 4;
 
 /** LOCK-ON-03 — Sentinel for `entity_blueprint_code` when the family is

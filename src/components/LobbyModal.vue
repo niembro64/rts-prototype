@@ -440,8 +440,8 @@ const runningGames = computed(() =>
 let directoryRefreshSequence = 0;
 
 async function refreshDirectory(): Promise<void> {
-  // Whichever backend this build uses — the web directory or Steam — answers
-  // in the same vocabulary, so nothing here knows which is in play.
+  // The backend answers in lobby vocabulary, so this view does not know
+  // directory request or lease details.
   const ticket = ++directoryRefreshSequence;
   const lobbies = await getMultiplayerBackend().listLobbies();
   if (ticket !== directoryRefreshSequence) return;
@@ -481,8 +481,7 @@ function handleJoinListed(lobby: MultiplayerLobbySummary): void {
 /** How stale a listing is, in the words a player actually wants: how long
  *  the lobby has been sitting there waiting. */
 function formatLobbyAge(lobby: MultiplayerLobbySummary): string {
-  // Not every backend reports one — Steam has no lobby creation time — and a
-  // missing timestamp would otherwise render as "56 years ago".
+  // A missing timestamp must not render as a decades-old lobby.
   if (lobby.createdAt <= 0) return '';
   const seconds = Math.max(0, Math.floor((Date.now() - lobby.createdAt) / 1000));
   if (seconds < 60) return 'just now';

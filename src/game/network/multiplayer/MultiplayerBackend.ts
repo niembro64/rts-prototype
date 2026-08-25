@@ -2,17 +2,10 @@
  * The seam between "how players find and reach each other" and everything
  * that depends on it.
  *
- * Two answers are in play. The **native** backend is what runs on
- * games.niemo.io today: lobbies are published to web_games_backend and peers
- * connect over WebRTC through PeerJS. The **Steam** backend is the desktop
- * answer: Steam owns the lobby list and carries the traffic itself, so there
- * is no directory of ours to publish to and no room code to read aloud.
- *
- * Those differ in almost every detail, and the parts of the game that care
- * about lobbies should not have to know which is in play. So the surface here
- * is written in terms of what the game actually needs — advertise a session,
- * find the open ones, keep the advertisement alive, take it down — and each
- * backend answers in its own terms behind that.
+ * The implementation that ships here publishes lobbies to web_games_backend
+ * and connects peers over WebRTC through PeerJS. Lobby consumers still depend
+ * on this capability-oriented seam rather than directory details: advertise a
+ * session, find open ones, keep the advertisement alive, and take it down.
  *
  * What deliberately does NOT belong here: the session's own state. Whether a
  * session is open or already playing is a property of the match, not of the
@@ -21,8 +14,6 @@
  */
 
 import { createStateMachine, type StateMachine } from '../../state/StateMachine';
-
-export type MultiplayerBackendId = 'native' | 'steam';
 
 /** What a browsing player sees about somebody else's session. */
 export type MultiplayerLobbySummary = {
@@ -61,20 +52,6 @@ export type MultiplayerLobbyAdvert = {
 export type SessionStatus = 'open' | 'in-game';
 
 export interface MultiplayerBackend {
-  readonly id: MultiplayerBackendId;
-
-  /**
-   * Whether this backend can be used in the current runtime.
-   *
-   * Honest, not aspirational: the Steam backend reports false in a browser
-   * and in a desktop build with no Steam client attached, so callers can pick
-   * a working backend instead of discovering the failure at connect time.
-   */
-  isAvailable(): boolean;
-
-  /** Human-readable reason `isAvailable()` returned false, for diagnostics. */
-  unavailableReason(): string | null;
-
   /**
    * Every session currently advertised, newest first.
    *

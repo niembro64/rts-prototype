@@ -1608,6 +1608,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runSnapshotBufferContractTest();
         const { runCommandHotkeysContractTest } = await import('../input/commandHotkeysContractTest');
         runCommandHotkeysContractTest();
+        const { runClipHeightPolygon2DContractTest } = await import('../math/clipHeightPolygon2DContractTest');
+        runClipHeightPolygon2DContractTest();
         const { runRosterCommandSurfaceContractTest } = await import('../sim/blueprints/rosterCommandSurfaceContractTest');
         runRosterCommandSurfaceContractTest();
         const { runFullUtilizationRosterContractTest } = await import('../sim/blueprints/fullUtilizationRosterContractTest');
@@ -1675,6 +1677,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runEntitySlotRegistryContractTest();
         const { runClientRenderEntityStateSlabContractTest } = await import('../render3d/ClientRenderEntityStateSlabContractTest');
         runClientRenderEntityStateSlabContractTest();
+        const { runRemoveDenseInstancedSlotContractTest } = await import('../render3d/removeDenseInstancedSlotContractTest');
+        runRemoveDenseInstancedSlotContractTest();
         const { runTransparentRenderOrder3DContractTest } = await import('../render3d/TransparentRenderOrder3DContractTest');
         runTransparentRenderOrder3DContractTest();
         const { runWaterRenderer3DContractTest } = await import('../render3d/WaterRenderer3DContractTest');

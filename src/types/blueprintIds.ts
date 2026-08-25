@@ -73,7 +73,7 @@ export const SHIELD_BLUEPRINT_IDS = [
 ] as const;
 export type ShieldBlueprintId = typeof SHIELD_BLUEPRINT_IDS[number];
 
-export const SHIELD_MATERIAL_IDS = [
+const SHIELD_MATERIAL_IDS = [
   'reflectiveShield',
 ] as const;
 export type ShieldMaterialId = typeof SHIELD_MATERIAL_IDS[number];

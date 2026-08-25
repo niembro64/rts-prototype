@@ -44,6 +44,7 @@ import {
 } from '../sim/agentSeat';
 import { MAX_LOBBY_PLAYERS, MAX_LOBBY_SPECTATORS } from './LobbyDirectory';
 import { createStateMachine, type StateMachine } from '../state/StateMachine';
+import { lobbyBotSeatToPlayer, lobbyMemberToPlayer } from './lobbyPlayerProjection';
 
 /** The host is always member 1 and, in the lobby it created, seat 1. */
 export const HOST_MEMBER_ID: MemberId = 1;
@@ -154,22 +155,6 @@ function createLobbyMember(
   };
 }
 
-/** The seated projection a member presents to the match. */
-function toLobbyPlayer(member: LobbyMember): LobbyPlayer | null {
-  if (member.playerId === undefined) return null;
-  return {
-    playerId: member.playerId,
-    name: member.name,
-    isHost: member.isHost,
-    allyTeamId: member.allyTeamId ?? FIRST_ALLY_TEAM_ID,
-    initialState: member.initialState ?? DEFAULT_HUMAN_INITIAL_STATE,
-    ipAddress: member.ipAddress,
-    location: member.location,
-    timezone: member.timezone,
-    localTime: member.localTime,
-  };
-}
-
 export class NetworkLobbyMembers {
   private readonly members = new Map<MemberId, LobbyMember>();
   /** One presence machine per member. Kept beside the record rather than on
@@ -261,22 +246,11 @@ export class NetworkLobbyMembers {
   seatedPlayers(): LobbyPlayer[] {
     const out: LobbyPlayer[] = [];
     for (const member of this.members.values()) {
-      const player = toLobbyPlayer(member);
+      const player = lobbyMemberToPlayer(member);
       if (player !== null) out.push(player);
     }
     for (const bot of this.botSeats.values()) {
-      out.push({
-        playerId: bot.playerId,
-        name: `BOT ${bot.playerId}`,
-        isHost: false,
-        isBot: true,
-        allyTeamId: bot.allyTeamId,
-        initialState: bot.initialState,
-        ipAddress: undefined,
-        location: undefined,
-        timezone: undefined,
-        localTime: undefined,
-      });
+      out.push(lobbyBotSeatToPlayer(bot));
     }
     out.sort((a, b) => a.playerId - b.playerId);
     return out;
@@ -784,4 +758,3 @@ export class NetworkLobbyMembers {
     return out;
   }
 }
-
