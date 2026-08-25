@@ -444,9 +444,10 @@ export function runServerCommandAuthorizerContractTest(): void {
   );
   assertContract(
     authorizedAttackGround?.type === 'attackGround' &&
-      authorizedAttackGround.entityIds.length === 1 &&
-      authorizedAttackGround.entityIds[0] === jackal.id,
-    'Attack Point must authorize only owned ground-capable BAR weapon units',
+      authorizedAttackGround.entityIds.length === 2 &&
+      authorizedAttackGround.entityIds[0] === jackal.id &&
+      authorizedAttackGround.entityIds[1] === eagle.id,
+    'Attack Point must authorize every owned player-orderable weapon, including air-only weapons',
   );
 
   const attackCommand: AttackCommand = {
@@ -686,7 +687,7 @@ export function runServerCommandAuthorizerContractTest(): void {
     rejectedAntiAirGroundTarget === null,
     'towerAntiAir/armrl Set Target must reject ground-role targets because BAR armrl has canattackground=false',
   );
-  const rejectedAntiAirGroundPoint = authorizeGameServerGameplayCommand(world, {
+  const authorizedAntiAirGroundPoint = authorizeGameServerGameplayCommand(world, {
     type: 'setTowerTarget',
     tick: 1,
     entityIds: [antiAirTower.id],
@@ -699,8 +700,10 @@ export function runServerCommandAuthorizerContractTest(): void {
     playerId: 1,
   });
   assertContract(
-    rejectedAntiAirGroundPoint === null,
-    'towerAntiAir/armrl Set Target must reject ground points because BAR armrl has canattackground=false',
+    authorizedAntiAirGroundPoint?.type === 'setTowerTarget' &&
+      authorizedAntiAirGroundPoint.entityIds.length === 1 &&
+      authorizedAntiAirGroundPoint.entityIds[0] === antiAirTower.id,
+    'TA-style arbitrary-point exception must authorize ground points for every armed host',
   );
   const authorizedAntiAirTarget = authorizeGameServerGameplayCommand(world, {
     type: 'setTowerTarget',

@@ -10,6 +10,7 @@ import type { ShieldPanelMesh } from './ShieldPanelMesh3D';
 import type {
   BuildingDetailMesh,
   ExtractorRig,
+  FabricatorConstructionRingRig,
   RadarRig,
   ResourceConverterRig,
   WindTurbineRig,
@@ -172,6 +173,7 @@ export type EntityMesh = {
   solarRig?: SolarRig;
   radarRig?: RadarRig;
   converterRig?: ResourceConverterRig;
+  fabricatorConstructionRingRig?: FabricatorConstructionRingRig;
   buildingOperationalRig?: BuildingOperationalRig;
   /** Per-building render height (solar is shorter than the default). */
   buildingHeight?: number;
@@ -198,8 +200,8 @@ export type EntityMesh = {
   buildingRangeOverlayVersion?: number;
   buildingUnitOverlayVersion?: number;
   /** Last construction/body opacity received from a building render row.
-   *  Building rows are dirty-driven, so the vision fade queue reuses this
-   *  value on frames where the entity itself did not need a row. */
+   *  Building rows are dirty-driven, so spawn/death fades reuse this value
+   *  on frames where the entity itself did not need a row. */
   buildingMaterializationOpacity?: number;
   buildingGroupFadeActive?: boolean;
   buildingHasPerFrameTurretWork?: boolean;
@@ -245,18 +247,16 @@ export type EntityMesh = {
   unitOverlayVersion?: number;
   /** Set when the sim reports this entity was DESTROYED (a 'death' SimEvent),
    *  as opposed to merely leaving the local player's vision. Read when the
-   *  render removal queue drops the mesh from the live set: killed units play
-   *  the scatter + death-fade, killed buildings/towers play the same per-piece
-   *  scatter + death-fade, and entities that just lost vision fade out quietly
-   *  while coasting. */
+   *  render removal queue drops the mesh: killed entities scatter and fade;
+   *  entities that only lost vision are removed immediately. */
   killed?: boolean;
   /** Killing-blow motion consumed only by the death disassembly. Undefined
    *  keeps the ordinary intact death fade (for example when the client-side
    *  material-explosion toggle is off). */
   deathBlast?: EntityDeathBlast3D;
   /** Effective opacity most recently written to the entity's rendered parts.
-   *  A vision/death fade-out starts here instead of forcing opacity back to
-   *  one, which keeps a removal continuous when it interrupts a fade-in or
+   *  A death fade starts here instead of forcing opacity back to one, keeping
+   *  a confirmed death continuous when it interrupts initial visibility or
    *  construction materialization. */
   entityLifecycleFade?: number;
   /** Whether a per-Mesh group fade clone is currently installed on
@@ -277,12 +277,6 @@ export type EntityMesh = {
    *  opacity 1 exactly once, then skip steady-state fade writes. */
   unitFadeActive?: boolean;
   unitTurretGroupFadeActive?: boolean[];
-  /** Last visible linear velocity mapped into Three world axes. When a unit
-   *  leaves vision, its retained render mesh coasts at this velocity for the
-   *  short alpha fade without advancing or mutating simulation state. */
-  unitPresentationVelocityX?: number;
-  unitPresentationVelocityY?: number;
-  unitPresentationVelocityZ?: number;
   /** Smoothed visual bank angle (radians, sim-frame: positive rolls
    *  the body-+Y wing down) for drone/airframe chassis. EMA-tracked at
    *  render cadence from body-lateral centripetal acceleration

@@ -146,7 +146,7 @@ import {
   entityHasBarAreaAttackCommand,
   entityHasBarAttackCommand,
   entityHasBarCaptureCommand,
-  entityCanBarAttackGround,
+  entityCanAttackPoint,
   entityCanBarAttackTarget,
   entityHasBarFireControlCommand,
   entityHasBarMoveStateCommand,
@@ -1711,7 +1711,7 @@ function executeSetTowerTargetCommand(
     if (combat === null || !entityHasBarSetTargetCommand(entity)) continue;
     if (
       !isClearTarget &&
-      !(isGroundTarget ? entityCanBarAttackGround(entity) : entityCanBarAttackTarget(entity, target))
+      !(isGroundTarget ? entityCanAttackPoint(entity) : entityCanBarAttackTarget(entity, target))
     ) continue;
     combat.priorityTargetId = resolvedTargetId;
     combat.priorityTargetPoint = resolvedTargetPoint === null
@@ -2864,7 +2864,7 @@ function enqueueAttackGroundAction(
   if (
     !entity ||
     !entity.combat ||
-    !entityCanBarAttackGround(entity)
+    !entityCanAttackPoint(entity)
   ) return;
   if (entity.unit === null) {
     entity.combat.priorityTargetId = null;

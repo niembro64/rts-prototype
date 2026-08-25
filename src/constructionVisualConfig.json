@@ -21,7 +21,12 @@
   },
   "hostMarkingStyle": {
     "stripeAngleDeg": 45,
-    "pylonStripeCount": 8
+    "pylonStripeCount": 8,
+    "universalFabricatorBoxCounts": {
+      "tier1": 8,
+      "tier2": 12,
+      "tier3": 16
+    }
   },
   "hostMarkings": {
     "unitCommander": [

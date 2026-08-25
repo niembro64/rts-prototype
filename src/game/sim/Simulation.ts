@@ -130,7 +130,7 @@ import {
 import {
   SimulationAirborneLoiterController,
 } from './SimulationAirborneLoiterController';
-import { SimulationAirborneWaypointController } from './SimulationAirborneWaypointController';
+import { SimulationWaypointOrbitController } from './SimulationWaypointOrbitController';
 import { SimulationCombatHaltController } from './SimulationCombatHaltController';
 import {
   replanCooldownFor,
@@ -284,7 +284,7 @@ export class Simulation {
   private arrivalController: SimulationArrivalController;
   private combatHaltController: SimulationCombatHaltController;
   private airborneLoiter: SimulationAirborneLoiterController;
-  private airborneWaypoint: SimulationAirborneWaypointController;
+  private waypointOrbit: SimulationWaypointOrbitController;
   private stuckReplanController: SimulationStuckReplanController;
   private unitActionPlanner: SimulationUnitActionPlanner = new SimulationUnitActionPlanner();
   private unitActionMovementPlanner: SimulationUnitActionMovementPlanner = new SimulationUnitActionMovementPlanner();
@@ -411,7 +411,7 @@ export class Simulation {
     });
     this.combatHaltController = new SimulationCombatHaltController(this.world);
     this.airborneLoiter = new SimulationAirborneLoiterController(this.world);
-    this.airborneWaypoint = new SimulationAirborneWaypointController({
+    this.waypointOrbit = new SimulationWaypointOrbitController({
       advanceAction: (entity) => this.advanceAction(entity),
       advanceActivePathPoint: (entity) => this.advanceActivePathPoint(entity),
     });
@@ -1530,19 +1530,23 @@ export class Simulation {
     dx: number,
     dy: number,
   ): void {
-    // Cruise locomotion (plane, aerosub) resolves waypoint legs through the
-    // no-turn escape ring: flight-appropriate capture radii plus the per-tick
-    // steering interlock that keeps a forward-flight body from orbiting a
-    // point it can no longer steer to.
+    // Every body-forward locomotion preset resolves pass-through waypoint
+    // legs through the no-turn escape ring. Final stopping anchors still use
+    // the ordinary critically damped arrival controller; cruise aircraft use
+    // perpetual terminal pursuit as before.
     const unit = entity.unit;
-    if (unit !== null && unit.locomotion.motionControl.cruiseWhenUncommanded) {
-      this.airborneWaypoint.queue(
+    if (
+      unit !== null &&
+      unit.locomotion.motionControl.waypointDeadzone !== undefined &&
+      this.waypointOrbit.queue(
         entity,
         action,
         target.isFinalActionPoint,
+        target.pathAdvanceRadius,
         dx,
         dy,
-      );
+      )
+    ) {
       return;
     }
     if (!target.isFinalActionPoint && target.pathAdvanceRadius < ARRIVAL_RADIUS) {
@@ -2616,7 +2620,7 @@ export class Simulation {
     }
 
     this.arrivalController.flushCompletion();
-    this.airborneWaypoint.flush(movingUnits);
+    this.waypointOrbit.flush(movingUnits);
     this.airborneLoiter.flush(movingUnits);
     this.arrivalController.flushThrust(movingUnits, dtSec);
 
@@ -2826,7 +2830,7 @@ export class Simulation {
     this.deadEntityCleanup.reset();
     this.arrivalController.reset();
     this.airborneLoiter.reset();
-    this.airborneWaypoint.reset();
+    this.waypointOrbit.reset();
     this.stuckReplanController.reset();
     cancelAllPathPlanSlices();
     this.activePathPlanJobs.clear();

@@ -44,7 +44,7 @@ import { BUILD_GRID_CELL_SIZE } from '../buildGrid';
 import { UNIT_BLUEPRINTS } from './units';
 import type { Entity, PlayerId } from '../types';
 import {
-  entityCanBarAttackGround,
+  entityCanAttackPoint,
   entityHasBarAreaAttackCommand,
   entityHasBarAttackCommand,
   entityHasBarBuilderPriorityCommand,
@@ -145,7 +145,9 @@ function barRequiredCommands(bar: BarAnalogue): Set<CommandCategory> {
     required.add('attack');
     required.add('fireState');
     required.add('setTarget');
-    if (bar.canAttackGround !== false) required.add('attackGround');
+    // Intentional Total Annihilation-style exception: unlike BAR's
+    // canattackground flag, every orderable weapon accepts Attack Point.
+    required.add('attackGround');
   }
   if (bar.canAreaAttack) required.add('areaAttack');
   if (bar.highTrajectory) required.add('trajectory');
@@ -186,7 +188,7 @@ function actualCommands(entity: Entity, blueprintId: string, kind: 'unit' | 'bui
   if (isUnit || entity.factory !== null) actual.add('wait');
   if (entityHasBarStopCommand(entity)) actual.add('stop');
   if (entityHasBarAttackCommand(entity)) actual.add('attack');
-  if (entityCanBarAttackGround(entity)) actual.add('attackGround');
+  if (entityCanAttackPoint(entity)) actual.add('attackGround');
   if (entityHasBarAreaAttackCommand(entity)) actual.add('areaAttack');
   if (entityHasBarFireControlCommand(entity)) actual.add('fireState');
   if (entityHasBarSetTargetCommand(entity)) actual.add('setTarget');

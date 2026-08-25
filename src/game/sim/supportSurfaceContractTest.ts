@@ -25,11 +25,15 @@ import {
   getAllUnitBlueprints,
   getBuildingBlueprint,
   getUnitBlueprint,
+  maxUnitVisualHeightForFabricator,
 } from './blueprints';
 import {
+  fabricatorHoverHeightForMaxUnitVisualHeight,
   fabricatorTorusOuterRadius,
   fabricatorTorusRingRadius,
 } from './fabricatorGeometry';
+import { fabricatorConstructionRingLift } from './fabricatorConstructionRing';
+import { getConstructionHostMarkingProfiles } from '@/constructionVisualConfig';
 import { getBuildingCombatCenterZ } from './buildingAnchors';
 import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
 import { getBuildingConfig } from './buildConfigs';
@@ -71,7 +75,7 @@ import { WorldState } from './WorldState';
 import { WATER_LEVEL } from './terrain/terrainConfig';
 import { getAuthoritativeTerrainTileMap } from './terrain/terrainState';
 import type { MetalDeposit } from '../../metalDepositConfig';
-import { getHighestBuildFootprintGroundZ } from './buildingPlacementPolicy';
+import { getHighestBuildFootprintCellsGroundZ } from './buildingPlacementPolicy';
 import { deterministicMath as DMath } from './deterministicMath';
 import {
   FLAT_GROUND_BUILD_SQUARE_FLAGS,
@@ -580,6 +584,20 @@ function assertRenderLocomotionContract(): void {
 }
 
 function assertFactoryShellContract(): void {
+  for (const fabricatorId of [
+    'towerFabricator',
+    'buildingAdvancedUniversalFabricator',
+    'buildingExperimentalUniversalFabricator',
+  ] as const) {
+    const tallestVisual = maxUnitVisualHeightForFabricator(fabricatorId);
+    const hoverHeight = fabricatorTorusHoverHeight(fabricatorId);
+    assertContract(
+      hoverHeight === fabricatorHoverHeightForMaxUnitVisualHeight(tallestVisual) &&
+        hoverHeight > tallestVisual,
+      `${fabricatorId} must hover with clearance above its tallest producible unit`,
+    );
+  }
+
   const world = new WorldState(1238, 1024, 1024);
   world.playerCount = 2;
   const dry = findSurfacePoint(world, 'solid', 220);
@@ -730,10 +748,18 @@ function assertFactoryShellContract(): void {
   assertNear(shell.unit!.velocityY, 0, 'fabricator hold must zero shell velocity y');
   assertNear(shell.unit!.velocityZ, 0, 'fabricator hold must zero shell velocity z');
 
-  const expectedSprayRadius = fabricatorTorusRingRadius(
+  const torusRingRadius = fabricatorTorusRingRadius(
     factory.building!.width,
-    factory.building!.depth,
+    factory.building!.height,
   );
+  const ringBoxes = getConstructionHostMarkingProfiles('towerFabricator').find(
+    (profile) => profile.kind === 'ringBoxes',
+  );
+  assertContract(ringBoxes?.kind === 'ringBoxes', 'T1 fabricator must resolve construction ring boxes');
+  const expectedSprayRadius = torusRingRadius * (
+    ringBoxes.ringRadius + ringBoxes.tubeRadius - ringBoxes.mountInset + ringBoxes.boxDepth
+  );
+  const expectedSprayZ = shell.transform.z + fabricatorConstructionRingLift(torusRingRadius);
   world.beginWorkMovementTick();
   world.recordWorkMovement(factory.id, shell.id, 'construct', 25);
   const firstSpray = commanderAbilitiesSystem.update(world, 16).sprayTargets.find(
@@ -746,12 +772,12 @@ function assertFactoryShellContract(): void {
       firstSpray.source.pos.y - factory.transform.y,
     ),
     expectedSprayRadius,
-    'fabricator work spray must originate on the torus circumference',
+    'fabricator work spray must originate on an outer construction-box face',
   );
   assertNear(
     firstSpray.source.z ?? Number.NaN,
-    shell.transform.z,
-    'fabricator work spray origin must share the centered shell ring plane',
+    expectedSprayZ,
+    'fabricator work spray origin must rise with the active construction boxes',
   );
   const firstSprayX = firstSpray.source.pos.x;
   const firstSprayY = firstSpray.source.pos.y;
@@ -768,11 +794,11 @@ function assertFactoryShellContract(): void {
       nextSpray.source.pos.y - factory.transform.y,
     ),
     expectedSprayRadius,
-    'each fabricator work spray origin must remain on the torus circumference',
+    'each fabricator work spray origin must remain on an outer construction-box face',
   );
   assertContract(
     DMath.hypot(nextSpray.source.pos.x - firstSprayX, nextSpray.source.pos.y - firstSprayY) > 1e-3,
-    'fabricator work spray must choose a new random ring point on the next tick',
+    'fabricator work spray must move with the spinning construction-box ring',
   );
   assertContract(nextSpray.inverse !== true, 'construction spray must remain builder-to-target');
 
@@ -1474,11 +1500,10 @@ function assertFabricatorTerrainIndependentPlacementContract(): void {
   );
   assertContract(factory !== null, 'fabricator placement must ignore terrain buildability and flatness');
   const config = getBuildingConfig('towerFabricator');
-  const expectedBaseline = getHighestBuildFootprintGroundZ(
+  const expectedBaseline = getHighestBuildFootprintCellsGroundZ(
     gridX,
     gridY,
-    config.placementGridWidth,
-    config.placementGridHeight,
+    config.placementFootprint,
     (x, y) => world.getGroundZ(x, y),
   );
   assertNear(

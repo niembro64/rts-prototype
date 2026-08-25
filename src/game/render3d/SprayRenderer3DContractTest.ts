@@ -4,6 +4,7 @@ import { getSprayTargetWireFlags } from '../network/sprayTargetWireHelpers';
 import { serializeSprayTargets } from '../network/stateSerializerSpray';
 import { SprayRenderer3D } from './SprayRenderer3D';
 import { RESOURCE_CONFIG } from '@/resourceConfig';
+import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) throw new Error(`SprayRenderer3D contract: ${message}`);
@@ -11,6 +12,8 @@ function assertContract(condition: boolean, message: string): void {
 
 type SprayParticleDebugState = {
   particleCount: number;
+  mat: THREE.ShaderMaterial;
+  root: THREE.Group;
   pStartX: Float32Array;
   pStartY: Float32Array;
   pStartZ: Float32Array;
@@ -54,6 +57,18 @@ export function runSprayRenderer3DContractTest(): void {
   const parent = new THREE.Group();
   const renderer = new SprayRenderer3D(parent);
   try {
+    const renderState = renderer as unknown as SprayParticleDebugState;
+    assertContract(
+      renderState.mat.depthTest === true,
+      'solid depth must occlude construction spray',
+    );
+    assertContract(
+      renderState.root.children.length > 0 &&
+        renderState.root.children.every((child) =>
+          child.renderOrder === TRANSPARENT_RENDER_ORDER_3D.throughWaterEffects &&
+          child.renderOrder < TRANSPARENT_RENDER_ORDER_3D.waterSurface),
+      'spray must draw before the water surface so submerged particles remain visible through water',
+    );
     renderer.update([], 0, [makeDirectSpray(false)]);
     let state = renderer as unknown as SprayParticleDebugState;
     assertContract(state.particleCount === 1, 'normal direct spray must emit one test particle');

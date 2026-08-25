@@ -30,7 +30,7 @@ import { getPathLength, assignUnitsToTargets } from './PathDistribution';
 import type { LinePathAccumulator } from './LinePathAccumulator';
 import {
   entityCanBarAttackTarget,
-  entityCanBarAttackGround,
+  entityCanAttackPoint,
   entityHasBarAttackCommand,
   unitBlueprintHasBarBomberAttackBuildingGroundRule,
 } from '../../sim/unitCommandCapabilities';
@@ -198,7 +198,7 @@ export function buildAttackGroundCommand(
 ): AttackGroundCommand | null {
   const groundAttackUnits: Entity[] = [];
   for (let i = 0; i < selectedUnits.length; i++) {
-    if (entityCanBarAttackGround(selectedUnits[i])) {
+    if (entityCanAttackPoint(selectedUnits[i])) {
       groundAttackUnits.push(selectedUnits[i]);
     }
   }

@@ -233,6 +233,7 @@ class CommanderAbilitiesSystem {
           ? writeFabricatorProductionSprayOrigin(
               source,
               world.getTick(),
+              world.simulationTickRateHz,
               movement.targetEntityId,
               pointIndex,
               _workEmitterWorld,

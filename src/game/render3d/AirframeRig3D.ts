@@ -64,7 +64,9 @@ const wingGeomCache = new Map<string, THREE.BufferGeometry>();
 const jetGeomByTier = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
 function getJetGeom(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
   return getOrCreate(jetGeomByTier, tier, () => {
-    const geometry = createPrimitiveCylinderGeometry('locomotion', tier, 1, 1, 1, 1, true);
+    // Jet housings are solid unit geometry. The old open-ended cylinder left
+    // the Eagle's rear engines visibly hollow when viewed from behind.
+    const geometry = createPrimitiveCylinderGeometry('locomotion', tier);
     geometry.rotateZ(Math.PI / 2);
     return geometry;
   });

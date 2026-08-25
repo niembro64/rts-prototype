@@ -21,6 +21,7 @@ import {
   isRadialFabricatorBuildingBlueprintId,
 } from '../sim/blueprints';
 import { fabricatorTorusRingRadius } from '../sim/fabricatorGeometry';
+import { fabricatorConstructionRingLift } from '../sim/fabricatorConstructionRing';
 import type { BuildingBlueprintId } from '../sim/types';
 import {
   buildProductionHoldRingMesh,
@@ -102,9 +103,11 @@ function buildRadialFactoryMesh(
   }
 
   const markingProfiles = getConstructionHostMarkingProfiles(buildingBlueprintId);
-  if (!markingProfiles.some((profile) => profile.kind === 'ringBoxes')) {
+  const ringBoxesProfile = markingProfiles.find((profile) => profile.kind === 'ringBoxes');
+  if (ringBoxesProfile === undefined) {
     throw new Error(`${buildingBlueprintId} requires perimeter-mounted construction clamp boxes`);
   }
+  let fabricatorConstructionRingRig: BuildingShape['fabricatorConstructionRingRig'];
   for (const markingProfile of markingProfiles) {
     const marking = buildConstructionHostMarking(
       markingProfile,
@@ -112,12 +115,27 @@ function buildRadialFactoryMesh(
       getActiveBuildingGeometryTier(),
     );
     marking.position.y += hoverHeight;
-    marking.updateMatrix();
-    for (const child of [...marking.children]) {
-      if (!(child instanceof THREE.Mesh)) continue;
-      marking.remove(child);
-      child.applyMatrix4(marking.matrix);
-      details.push(detail(child, 'medium', undefined, 'constructionMarking'));
+    if (markingProfile.kind === 'ringBoxes') {
+      for (const child of marking.children) {
+        if (child instanceof THREE.Mesh) {
+          details.push(detail(child, 'medium', undefined, 'constructionMarking'));
+        }
+      }
+      fabricatorConstructionRingRig = {
+        root: marking,
+        baseY: marking.position.y,
+        activeLiftY: fabricatorConstructionRingLift(ringRadius),
+        boxCount: markingProfile.boxCount,
+        ringRadius,
+      };
+    } else {
+      marking.updateMatrix();
+      for (const child of [...marking.children]) {
+        if (!(child instanceof THREE.Mesh)) continue;
+        marking.remove(child);
+        child.applyMatrix4(marking.matrix);
+        details.push(detail(child, 'medium', undefined, 'constructionMarking'));
+      }
     }
   }
 
@@ -128,6 +146,7 @@ function buildRadialFactoryMesh(
     primary,
     details,
     bodyless: true,
+    fabricatorConstructionRingRig,
     height: blueprint.visualHeight ?? DEFAULT_BUILDING_VISUAL_HEIGHT,
   };
 }

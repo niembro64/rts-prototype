@@ -564,6 +564,19 @@ export function runUnitLocomotionContractTest(): void {
       !orca.motionControl.cruiseWhenUncommanded,
     'Orca is water-navigable and brakes to stop at a waypoint',
   );
+  for (const unitBlueprintId of [
+    'unitDuck',
+    'unitOrca',
+    'unitConstructionSubmarine',
+    'unitAdvancedConstructionSubmarine',
+  ] as const) {
+    const locomotion = getUnitLocomotion(unitBlueprintId);
+    assertContract(
+      locomotion.actuator.propulsionAxis !== 'worldPlanar' &&
+        locomotion.motionControl.waypointDeadzone !== undefined,
+      `${unitBlueprintId} must use the generalized body-forward waypoint-orbit interlock`,
+    );
+  }
 
   // Final-approach classes: hover always brakes (the anchor hold is the
   // chassis identity), forward flight never brakes (the loiter circle is the
@@ -576,6 +589,21 @@ export function runUnitLocomotionContractTest(): void {
       !(maintainFullThrustAtWaypoints && alwaysBrakeAtFinalWaypoint),
       `${blueprint.unitBlueprintId} authors both full-thrust and always-brake final approach`,
     );
+    const bodyForward = locomotion.actuator.propulsionAxis !== 'worldPlanar';
+    const deadzone = locomotion.motionControl.waypointDeadzone;
+    assertContract(
+      bodyForward === (deadzone !== undefined),
+      `${blueprint.unitBlueprintId} must use the shared waypoint-orbit interlock exactly when its actuator is body-forward`,
+    );
+    if (deadzone !== undefined) {
+      assertContract(
+        Number.isFinite(deadzone.turnRadiusMultiplier) &&
+          deadzone.turnRadiusMultiplier >= 1 &&
+          deadzone.frontSliceDegrees > 0 &&
+          deadzone.frontSliceDegrees < 90,
+        `${blueprint.unitBlueprintId} has a valid waypoint no-turn deadzone`,
+      );
+    }
     if (locomotion.type === 'drone') {
       assertContract(
         alwaysBrakeAtFinalWaypoint && !cruiseWhenUncommanded,
@@ -596,15 +624,7 @@ export function runUnitLocomotionContractTest(): void {
         typeof turnRate === 'number' && Number.isFinite(turnRate) && turnRate > 0 && turnRate <= 720,
         `${blueprint.unitBlueprintId} is forward-flight: it must author the constant-rate circle turn (turnRateDegreesPerSecond)`,
       );
-      const deadzone = locomotion.motionControl.waypointDeadzone;
-      assertContract(
-        deadzone !== undefined &&
-          Number.isFinite(deadzone.turnRadiusMultiplier) &&
-          deadzone.turnRadiusMultiplier >= 1 &&
-          deadzone.frontSliceDegrees > 0 &&
-          deadzone.frontSliceDegrees < 90,
-        `${blueprint.unitBlueprintId} is forward-flight: it must author the waypoint no-turn deadzone (multiplier >= 1, front slice inside (0, 90) degrees)`,
-      );
+      assertContract(deadzone !== undefined, `${blueprint.unitBlueprintId} is forward-flight and orbit-proof`);
     }
   }
 

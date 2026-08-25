@@ -573,12 +573,13 @@ function assertAuthoredRosterCoverageForPreset(
     );
   }
 
-  // The radar↔beam band packs six evenly spaced rows (tech pair,
-  // anti-air, converter, solar, cannon) between its fixed endpoints.
+  assertContract(
+    DEMO_CONFIG.buildingSolarCount === 6 && DEMO_CONFIG.buildingWindCount === 4,
+    'BASE starts must author exactly six solar collectors and four wind turbines per seat',
+  );
   // Placement is best-effort by design, so a footprint collision on the
-  // tightened spacing would silently remove or displace a row without
-  // failing startup — assert every seat actually received every band
-  // building at its configured count, endpoints included.
+  // tightened spacing could silently remove a requested economy/defense row
+  // without failing startup. Assert every seat received every authored count.
   const expectedBandCounts: ReadonlyArray<readonly [string, number]> = [
     ['buildingRadar', DEMO_CONFIG.buildingRadarCount],
     ['buildingShieldTargetingTech', DEMO_CONFIG.buildingShieldTargetingTechCount],
@@ -586,6 +587,7 @@ function assertAuthoredRosterCoverageForPreset(
     ['towerAntiAir', DEMO_CONFIG.towerAntiAirCount],
     ['buildingResourceConverter', DEMO_CONFIG.buildingResourceConverterCount],
     ['buildingSolar', DEMO_CONFIG.buildingSolarCount],
+    ['buildingWind', DEMO_CONFIG.buildingWindCount],
     ['towerCannon', DEMO_CONFIG.towerCannonCount],
     ['towerHelios', DEMO_CONFIG.towerHeliosCount],
     ['towerBeamMega', DEMO_CONFIG.towerBeamMegaCount],

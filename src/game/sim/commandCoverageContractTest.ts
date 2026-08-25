@@ -59,7 +59,7 @@ import {
   entityHasBarMoveStateCommand,
   entityHasBarTrajectoryCommand,
   entityHasCloakCommand,
-  entityCanBarAttackGround,
+  entityCanAttackPoint,
   entityCanBarAttackTarget,
 } from './unitCommandCapabilities';
 
@@ -425,7 +425,7 @@ const PROBES: readonly CommandProbe[] = [
   },
   {
     name: 'attackGround',
-    applies: (s) => entityCanBarAttackGround(s.subject),
+    applies: (s) => entityCanAttackPoint(s.subject),
     command: (s) => ({ type: 'attackGround', tick: 0, entityIds: subjectIds(s), targetX: 280, targetY: 280, queue: false }),
     observe: (s) => (s.subject.unit !== null
       ? s.subject.unit.actions[0]?.type

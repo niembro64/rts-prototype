@@ -168,6 +168,7 @@ export type BuildingShape = {
   solarRig?: SolarRig;
   radarRig?: RadarRig;
   converterRig?: ResourceConverterRig;
+  fabricatorConstructionRingRig?: FabricatorConstructionRingRig;
   operationalRig?: BuildingOperationalRig;
   /** Visible building-side parents for attached turret stations. Runtime
    *  articulation supplies yaw and optional pitch; the shape supplies the
@@ -183,6 +184,17 @@ export type RadarRig = {
 export type ResourceConverterRig = {
   energyPylon: ResourcePylonRig;
   metalPylon: ResourcePylonRig;
+};
+
+export type FabricatorConstructionRingRig = {
+  /** Parent of all merged ring-box material meshes. */
+  root: THREE.Group;
+  /** Resting vertical position of the box ring. */
+  baseY: number;
+  /** Additional lift while the factory is actively producing. */
+  activeLiftY: number;
+  boxCount: number;
+  ringRadius: number;
 };
 
 function retagBuildingShapeOrnaments(

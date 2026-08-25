@@ -20,7 +20,7 @@ import {
   updateEntityBuildVisual,
 } from './EntityFade3D';
 import { entityBodyColorHexForPlayer } from './EntityInstanceColor3D';
-import { VISION_FADE_IN_MS, VISION_FADE_OUT_MS } from '@/visionConfig';
+import { VISION_FADE_IN_MS } from '@/visionConfig';
 import type { EntityDeathBlast3D } from './EntityDeathDisassembly3D';
 import { DyingBuildingScatter3D } from './DyingBuildingScatter3D';
 import {
@@ -308,8 +308,22 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
 
   const visibleDetails = shape.details.filter((detailMesh) =>
     buildingDetailVisibleAtLevel(detailMesh, shapeType, detailLevel));
+  let fabricatorConstructionRingRig = shape.fabricatorConstructionRingRig;
+  if (fabricatorConstructionRingRig !== undefined) {
+    const visibleDetailMeshes = new Set(visibleDetails.map((detail) => detail.mesh));
+    const visibleRingMeshes = fabricatorConstructionRingRig.root.children.filter(
+      (child) => child instanceof THREE.Mesh && visibleDetailMeshes.has(child),
+    );
+    if (visibleRingMeshes.length > 0) {
+      fabricatorConstructionRingRig.root.userData.entityId = entity.id;
+      group.add(fabricatorConstructionRingRig.root);
+    } else {
+      fabricatorConstructionRingRig = undefined;
+    }
+  }
   for (const detail of visibleDetails) {
     detail.mesh.userData.entityId = entity.id;
+    if (detail.mesh.parent === fabricatorConstructionRingRig?.root) continue;
     const articulatedParent = detail.hostPieceId === undefined
       ? undefined
       : buildingTurretHostPieces.find((piece) => piece.pieceId === detail.hostPieceId);
@@ -421,6 +435,7 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     converterRig: visualFeatureVisibleAtDetail('building', 'typeDetails', detailLevel, 0.38)
       ? shape.converterRig
       : undefined,
+    fabricatorConstructionRingRig,
     buildingOperationalRig: shape.operationalRig,
     buildingRenderFrameKey: geometryKey,
     buildingRenderBlueprintId: entity.buildingBlueprintId,
@@ -502,9 +517,6 @@ export class BuildingEntityRenderer3D {
   // teardown while its actual textured parts break apart. Assigned here
   // because the callbacks close over this renderer.
   private readonly dyingBuildings: DyingMeshFade<EntityMesh>;
-  // Buildings/towers that left the local player's vision. Same as unit
-  // vision fade-out: quiet alpha dissolve in place, distinct from death.
-  private readonly vanishingBuildings: DyingMeshFade<EntityMesh>;
   private readonly dyingBuildingScatter: DyingBuildingScatter3D;
   /** Per-entity vision fade-IN clock. Kept outside row updates because
    *  buildings are usually submitted only when dirty, unlike units. */
@@ -578,11 +590,6 @@ export class BuildingEntityRenderer3D {
         applyEntityGroupFade(mesh.group, fade);
         this.fadeBuildingTurretCollars(mesh, fade);
       },
-      (_id, mesh) => this.disposeBuildingMesh(mesh),
-    );
-    this.vanishingBuildings = new DyingMeshFade<EntityMesh>(
-      VISION_FADE_OUT_MS,
-      (mesh, fade) => this.applyBuildingEntityFade(mesh, fade),
       (_id, mesh) => this.disposeBuildingMesh(mesh),
     );
   }
@@ -776,7 +783,6 @@ export class BuildingEntityRenderer3D {
     // Advance any in-progress death-out fades every frame (independent of
     // the entity-set prune cadence below).
     this.dyingBuildings.update(currentDtMs);
-    this.vanishingBuildings.update(currentDtMs);
 
     this.lastEntitySetVersion = entitySetVersion;
     this.lastFrameStateKey = frameState.key;
@@ -913,15 +919,15 @@ export class BuildingEntityRenderer3D {
       this.disposeBuildingMesh(mesh);
       return;
     }
-    if (mesh.killed) {
-      if (mesh.deathBlast !== undefined) {
-        // Idempotent fallback for alternate removal/event ordering.
-        this.dyingBuildingScatter.prepare(mesh, mesh.deathBlast);
-      }
-      this.dyingBuildings.markDying(id, mesh, mesh.entityLifecycleFade);
-    } else {
-      this.vanishingBuildings.markDying(id, mesh, mesh.entityLifecycleFade);
+    if (!mesh.killed) {
+      this.disposeBuildingMesh(mesh);
+      return;
     }
+    if (mesh.deathBlast !== undefined) {
+      // Idempotent fallback for alternate removal/event ordering.
+      this.dyingBuildingScatter.prepare(mesh, mesh.deathBlast);
+    }
+    this.dyingBuildings.markDying(id, mesh, mesh.entityLifecycleFade);
   }
 
   private pruneUnseenBuildingMeshes(
@@ -1023,7 +1029,6 @@ export class BuildingEntityRenderer3D {
     }
     this.meshes.clear();
     this.dyingBuildings.destroyAll();
-    this.vanishingBuildings.destroyAll();
     this.spawnFadeElapsed.clear();
     this.renderScopeToken = 0;
     this.lastEntitySetVersion = -1;
@@ -1052,9 +1057,6 @@ export class BuildingEntityRenderer3D {
     // finalize the dying mesh so we don't draw it under the rebuilt one.
     if (this.dyingBuildings.size > 0 && this.dyingBuildings.has(entity.id)) {
       this.dyingBuildings.finalize(entity.id);
-    }
-    if (this.vanishingBuildings.size > 0 && this.vanishingBuildings.has(entity.id)) {
-      this.vanishingBuildings.finalize(entity.id);
     }
     const ownerId = rows.ownerIdAt(row);
     const width = rows.width[row];

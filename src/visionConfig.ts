@@ -2,22 +2,21 @@
 //
 // A unit's presence on screen is a function of the local player's vision:
 //   - enters vision  → fades IN  over `fadeInMs`
-//   - leaves vision  → units coast at their last visible velocity while
-//                      fading OUT over `fadeOutMs`; buildings remain in place.
-//                      There is NO scatter/explosion: the entity is merely
-//                      out of sight, not dead.
+//   - leaves full vision → its model is removed immediately. Radar/sonar
+//                          knowledge is represented only by a contact blip,
+//                          whose disappearance fades over `contactFadeOutMs`.
 //   - is destroyed   → plays the death scatter + explosion over `deathFadeMs`
 //
-// Each transition owns its own duration so they can be tuned independently;
-// the leaving-vision fade is deliberately distinct from the death animation.
+// Each remaining presentation transition owns its own duration: newly seen
+// models, disappearing anonymous contacts, and confirmed deaths are tuned
+// independently.
 import rawVisionConfig from './visionConfig.json';
 
 type VisionConfig = {
   /** Fade-in duration (ms) when a unit becomes newly visible (enters vision). */
   fadeInMs: number;
-  /** Fade-out duration (ms) when an entity leaves vision — units coast while
-   *  buildings remain in place, with no scatter or explosion. */
-  fadeOutMs: number;
+  /** Fade-out duration for a radar/sonar contact after sensor coverage ends. */
+  contactFadeOutMs: number;
   /** Death-out scatter + fade duration (ms) when a unit is actually destroyed. */
   deathFadeMs: number;
 };
@@ -32,5 +31,8 @@ function asMs(value: unknown, field: string): number {
 const VISION_CONFIG = rawVisionConfig as VisionConfig;
 
 export const VISION_FADE_IN_MS = asMs(VISION_CONFIG.fadeInMs, 'fadeInMs');
-export const VISION_FADE_OUT_MS = asMs(VISION_CONFIG.fadeOutMs, 'fadeOutMs');
+export const VISION_CONTACT_FADE_OUT_MS = asMs(
+  VISION_CONFIG.contactFadeOutMs,
+  'contactFadeOutMs',
+);
 export const UNIT_DEATH_FADE_MS = asMs(VISION_CONFIG.deathFadeMs, 'deathFadeMs');
