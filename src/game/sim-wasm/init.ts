@@ -1516,6 +1516,13 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         },
       };
       resolvedHandle = handle;
+      // Blueprint modules are allowed to load while the WASM request is still
+      // in flight. Run validation that derives geometry through authoritative
+      // deterministic math only after publishing the initialized handle.
+      const { validateFabricatorProgressionGeometry } = await import(
+        '../sim/blueprints/buildings'
+      );
+      validateFabricatorProgressionGeometry();
       const { warmPathfindingMobilityCache } = await import('../sim/pathfindingMobilityCache');
       warmPathfindingMobilityCache();
       if (import.meta.env.DEV && !shouldRunBootContractTests()) {

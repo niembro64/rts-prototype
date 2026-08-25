@@ -1072,7 +1072,12 @@ export function fabricatorProductionPlaneHeight(
   return Math.min(8, blueprint.gridDepth * BUILD_GRID_CELL_SIZE * 0.12);
 }
 
-function validateFabricatorProgressionGeometry(): void {
+/** Validate derived fabricator geometry once authoritative deterministic math
+ * is available. This must not run while the blueprint module is evaluating:
+ * on a cold production load the application chunks can finish importing
+ * before the WASM response, and visual-envelope math intentionally refuses to
+ * fall back to the browser's non-authoritative trigonometry. */
+export function validateFabricatorProgressionGeometry(): void {
   const tierOneUniversal = getFabricatorBuildingBlueprintId(1, 'universal');
   const tierTwoUniversal = getFabricatorBuildingBlueprintId(2, 'universal');
   const tierThreeUniversal = getFabricatorBuildingBlueprintId(3, 'universal');
@@ -1121,4 +1126,3 @@ function validateFabricatorProgressionGeometry(): void {
 }
 
 validateFabricatorMatrix();
-validateFabricatorProgressionGeometry();

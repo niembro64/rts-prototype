@@ -21,6 +21,7 @@
     "deterministic:replay": "npm run build:wasm && node scripts/deterministicReplayHarness.mjs",
     "deterministic:replay:browsers": "npm run build:wasm && node scripts/deterministicReplayBrowserHarness.mjs",
     "contract:tests": "npm run audit:bar-assets && node scripts/contractTestHarness.mjs",
+    "smoke:production-boot": "node scripts/productionBootSmokeHarness.mjs",
     "audit:bar-assets": "python3 scripts/bar_asset_provenance_audit.py",
     "audit:bar-assets:refresh": "python3 scripts/bar_asset_provenance_audit.py --refresh-index",
     "performance:bottleneck": "npm run build:wasm && node scripts/performanceBottleneckHarness.mjs",

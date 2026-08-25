@@ -1,5 +1,4 @@
 import { createApp } from 'vue';
-import App from './App.vue';
 // Canonical styling for the bar-control component family
 // (BarLabel / BarButton / BarButtonGroup / BarControlGroup).
 // Loaded once at app boot so both the bottom bars (which still use
@@ -8,24 +7,34 @@ import App from './App.vue';
 import './styles/barControls.css';
 import { initSimWasm } from './game/sim-wasm/init';
 
-// Kick off the WASM sim core load in parallel with Vue mount.
-// Both the authoritative server tick and adjacent-tick renderer
-// presentation use the same singleton in initSimWasm() — starting it at boot just
-// front-loads the fetch/compile so the first actual await is a
-// no-op. Logs the build stamp once so devs can confirm a fresh
-// `npm run build:wasm` is being served.
+// Initialize authoritative math before importing or mounting the application.
+// A cold production load can fetch cached JavaScript chunks much faster than
+// the larger WASM artifact; letting Vue mount during that window allows
+// presentation work such as roster thumbnails to enter sim-safe geometry
+// helpers before their deterministic kernels exist.
 //
 // If the WASM core fails to load, the game cannot run at all
-// (every battle start awaits the same rejected singleton), so the
-// failure must be user-visible — not a console line behind a
-// lobby that silently can't start anything.
-initSimWasm().then(
-  (sim) => console.log(`(rust) ${sim.version} loaded`),
-  (err) => {
+// (every battle start awaits the same rejected singleton), so failure remains
+// user-visible without mounting a partially functional lobby.
+async function bootApplication(): Promise<void> {
+  let sim;
+  try {
+    sim = await initSimWasm();
+  } catch (err) {
     console.error('(rust) sim-wasm init failed:', err);
     showFatalBootError(err);
-  },
-);
+    return;
+  }
+
+  console.log(`(rust) ${sim.version} loaded`);
+  const { default: App } = await import('./App.vue');
+  createApp(App).mount('#app');
+}
+
+void bootApplication().catch((err) => {
+  console.error('(app) startup failed:', err);
+  showFatalBootError(err);
+});
 
 /** Full-viewport fatal-boot overlay. Deliberately plain DOM (no Vue,
  *  no game state) so it works no matter how broken the boot is. */
@@ -62,5 +71,3 @@ function showFatalBootError(err: unknown): void {
   overlay.append(title, detail, reload);
   document.body.appendChild(overlay);
 }
-
-createApp(App).mount('#app');
