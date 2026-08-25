@@ -78,6 +78,7 @@ import {
   turretStyleForDetail,
   visualFeatureVisibleAtDetail,
 } from './EntityDetailLevel3D';
+import { configureGroundSilhouetteCasterTree3D } from './GroundSilhouetteShadow3D';
 import {
   CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY,
   type ClientRenderTurretHostRows,
@@ -405,6 +406,7 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
   const playerColorMat = getPrimaryMat(ownerId);
   for (const plate of buildingPlayerColorMeshes) plate.material = playerColorMat;
 
+  configureGroundSilhouetteCasterTree3D(group);
   world.add(group);
 
   return {

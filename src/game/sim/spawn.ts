@@ -53,6 +53,22 @@ import { getBuildingPlacementSetSquareType } from '../../types/buildingTypes';
 export { getSeatBaseAngle } from './playerLayout';
 
 type InitialBaseMode = 'demo' | 'real';
+type ProductionTechLevel = 1 | 2 | 3;
+
+type FactoryLinesByTech = Record<ProductionTechLevel, UnitBlueprintId[]>;
+
+function groupFactoryLinesByTech(
+  unitBlueprintIds: readonly UnitBlueprintId[],
+): FactoryLinesByTech {
+  const rows: FactoryLinesByTech = { 1: [], 2: [], 3: [] };
+  for (let i = 0; i < unitBlueprintIds.length; i++) {
+    const unitBlueprintId = unitBlueprintIds[i];
+    const production = getUnitBlueprint(unitBlueprintId).production;
+    if (production === null) continue;
+    rows[production.techLevel].push(unitBlueprintId);
+  }
+  return rows;
+}
 
 type CommanderBuildingExclusion = Readonly<{
   x: number;
@@ -928,11 +944,11 @@ export function spawnInitialBases(
   const groundFactoryUnitBlueprintIds = factoryUnitBlueprintIds.filter(
     (id) => !waterFactoryUnitBlueprintIdSet.has(id),
   );
-  const innerWaterFactoryUnitBlueprintIds = waterFactoryUnitBlueprintIds.filter(
-    (id) => getUnitBlueprint(id).production?.techLevel === 1,
+  const waterFactoryLinesByTech = groupFactoryLinesByTech(
+    waterFactoryUnitBlueprintIds,
   );
-  const outerWaterFactoryUnitBlueprintIds = waterFactoryUnitBlueprintIds.filter(
-    (id) => getUnitBlueprint(id).production?.techLevel !== 1,
+  const groundFactoryLinesByTech = groupFactoryLinesByTech(
+    groundFactoryUnitBlueprintIds,
   );
 
   // Concentric radii — each ring is explicit so the demo layout can be
@@ -962,18 +978,34 @@ export function spawnInitialBases(
     spawnRadius,
     DEMO_CONFIG.baseRings.supplementalGround.radiusFraction,
   );
-  const universalFactoryRadius = demoBaseRingRadiusFromOuterSpawnRadius(
-    spawnRadius,
-    DEMO_CONFIG.baseRings.universalFabricator.radiusFraction,
-  );
-  const innerWaterFactoryRadius = demoBaseRingRadiusFromOuterSpawnRadius(
-    spawnRadius,
-    DEMO_CONFIG.waterFabricators.innerRadiusFraction,
-  );
-  const waterFactoryRadius = demoBaseRingRadiusFromOuterSpawnRadius(
-    spawnRadius,
-    DEMO_CONFIG.waterFabricators.radiusFraction,
-  );
+  const universalFactoryRadiusByTech: Readonly<Record<ProductionTechLevel, number>> = {
+    1: demoBaseRingRadiusFromOuterSpawnRadius(
+      spawnRadius,
+      DEMO_CONFIG.baseRings.universalFabricator.tech1RadiusFraction,
+    ),
+    2: demoBaseRingRadiusFromOuterSpawnRadius(
+      spawnRadius,
+      DEMO_CONFIG.baseRings.universalFabricator.tech2RadiusFraction,
+    ),
+    3: demoBaseRingRadiusFromOuterSpawnRadius(
+      spawnRadius,
+      DEMO_CONFIG.baseRings.universalFabricator.tech3RadiusFraction,
+    ),
+  };
+  const waterFactoryRadiusByTech: Readonly<Record<ProductionTechLevel, number>> = {
+    1: demoBaseRingRadiusFromOuterSpawnRadius(
+      spawnRadius,
+      DEMO_CONFIG.waterFabricators.tech1RadiusFraction,
+    ),
+    2: demoBaseRingRadiusFromOuterSpawnRadius(
+      spawnRadius,
+      DEMO_CONFIG.waterFabricators.tech2RadiusFraction,
+    ),
+    3: demoBaseRingRadiusFromOuterSpawnRadius(
+      spawnRadius,
+      DEMO_CONFIG.waterFabricators.tech3RadiusFraction,
+    ),
+  };
   const radarRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
     DEMO_CONFIG.baseRings.buildingRadar.radiusFraction,
@@ -1117,14 +1149,16 @@ export function spawnInitialBases(
     // land factory merely because Universal hosts can stand on both mediums.
     const waterFactories: Entity[] = [];
     const waterFactoryRows: ReadonlyArray<readonly [
+      ProductionTechLevel,
       readonly UnitBlueprintId[],
       number,
-    ]> = [
-      [innerWaterFactoryUnitBlueprintIds, innerWaterFactoryRadius],
-      [outerWaterFactoryUnitBlueprintIds, waterFactoryRadius],
-    ];
+    ]> = ([1, 2, 3] as const).map((techLevel) => [
+      techLevel,
+      waterFactoryLinesByTech[techLevel],
+      waterFactoryRadiusByTech[techLevel],
+    ]);
     for (let rowIndex = 0; rowIndex < waterFactoryRows.length; rowIndex++) {
-      const [rowUnitBlueprintIds, rowRadius] = waterFactoryRows[rowIndex];
+      const [, rowUnitBlueprintIds, rowRadius] = waterFactoryRows[rowIndex];
       const rowFactories = placeUniversalFactoryLines(
         world,
         construction,
@@ -1150,23 +1184,25 @@ export function spawnInitialBases(
     }
     entities.push(...waterFactories);
 
-    // Every remaining active unit receives one same-tier Universal on the
-    // ordinary base ring and begins repeat-building that unit.
-    const universalFactories = placeUniversalFactoryLines(
-      world,
-      construction,
-      groundFactoryUnitBlueprintIds,
-      oval,
-      universalFactoryRadius,
-      baseAngle,
-      factorySectorAngle,
-      playerId,
-      basePolicy,
-      enabledBuildingBlueprintIds,
-      'ground',
-      FACTORY_PLACEMENT_SEARCH_OFFSETS,
-    );
-    entities.push(...universalFactories);
+    // Ground production also runs outside-in: T1 holds the rear line, T2 the
+    // middle, and T3 the most forward line toward the battlefield center.
+    // Each active unit still owns exactly one same-tier repeating Universal.
+    for (const techLevel of [1, 2, 3] as const) {
+      entities.push(...placeUniversalFactoryLines(
+        world,
+        construction,
+        groundFactoryLinesByTech[techLevel],
+        oval,
+        universalFactoryRadiusByTech[techLevel],
+        baseAngle,
+        factorySectorAngle,
+        playerId,
+        basePolicy,
+        enabledBuildingBlueprintIds,
+        'ground',
+        FACTORY_PLACEMENT_SEARCH_OFFSETS,
+      ));
+    }
 
     entities.push(...placeMixedBlueprintArcRow(
       world,

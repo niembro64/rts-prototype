@@ -4,20 +4,43 @@ import demoConfig from './demoConfig.json';
 
 export type DemoBattleWaypointType = 'move' | 'fight' | 'patrol';
 
+type TechRingConfig = Readonly<{
+  tech1RadiusFraction: number;
+  tech2RadiusFraction: number;
+  tech3RadiusFraction: number;
+}>;
+
+function hasOrderedFactoryTechRings(config: TechRingConfig): boolean {
+  return Number.isFinite(config.tech1RadiusFraction) &&
+    Number.isFinite(config.tech2RadiusFraction) &&
+    Number.isFinite(config.tech3RadiusFraction) &&
+    config.tech3RadiusFraction > 0 &&
+    config.tech3RadiusFraction < config.tech2RadiusFraction &&
+    config.tech2RadiusFraction < config.tech1RadiusFraction;
+}
+
+function validatedBaseRings(): typeof demoConfig.baseRings {
+  const config = demoConfig.baseRings;
+  if (!hasOrderedFactoryTechRings(config.universalFabricator)) {
+    throw new Error(
+      'demoConfig.baseRings.universalFabricator must order positive radii T3 < T2 < T1',
+    );
+  }
+  return config;
+}
+
 function validatedWaterFabricatorConfig(): typeof demoConfig.waterFabricators {
   const config = demoConfig.waterFabricators;
   if (
-    !Number.isFinite(config.innerRadiusFraction) ||
-    config.innerRadiusFraction <= 0 ||
-    config.innerRadiusFraction >= config.radiusFraction ||
+    !hasOrderedFactoryTechRings(config) ||
     !Number.isFinite(config.sonarRadiusFraction) ||
-    config.sonarRadiusFraction <= config.radiusFraction ||
+    config.sonarRadiusFraction <= config.tech1RadiusFraction ||
     !Number.isFinite(config.arcSectorFraction) ||
     config.arcSectorFraction <= 0 ||
     config.arcSectorFraction > 1
   ) {
     throw new Error(
-      'demoConfig.waterFabricators must have ordered positive radii and an ' +
+      'demoConfig.waterFabricators must order positive radii T3 < T2 < T1 < Sonar and have an ' +
         'arcSectorFraction in (0, 1]',
     );
   }
@@ -186,7 +209,7 @@ export const DEMO_CONFIG = {
    * commander-only spawn radius for real battles, matching the previous
    * shared behavior.
    */
-  baseRings: demoConfig.baseRings,
+  baseRings: validatedBaseRings(),
 
   /**
    * Demo-only outer-water installation geometry. Which units need this ring

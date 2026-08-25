@@ -347,8 +347,8 @@ export function runOrbitCameraContractTest(): void {
   );
 
   assertContract(
-    CAMERA_TRANSITION_SCOPE === 'all-movements',
-    'canonical camera transition scope must EMA every movement channel',
+    CAMERA_TRANSITION_SCOPE === 'zoom-only',
+    'canonical camera must apply pan/orbit immediately and reserve EMA for discrete zoom',
   );
   assertContract(
     close(CAMERA_SMOOTH_TAU_SECONDS.fast, 0.04)
@@ -450,8 +450,57 @@ export function runOrbitCameraContractTest(): void {
     orbit.destroy();
   }
 
+  assertZoomOnlyResponsiveness();
   assertStatelessTerrainClearance();
   assertRailConstrainsWholeZoom();
+}
+
+/** Recoil applies continuous pan/orbit on the input event and reserves its
+ * short camera transition for discrete wheel zoom. Pin that distinction so a
+ * future global smoother cannot silently reintroduce sluggish controls. */
+function assertZoomOnlyResponsiveness(): void {
+  const canvas = createStandInCanvas(1000, 1000);
+  const camera = new THREE.PerspectiveCamera(45, 1, 1, 10000);
+  const orbit = new OrbitCamera(camera, canvas, {
+    transitionMode: 'ema',
+    transitionScope: 'zoom-only',
+    movementConfig: CAMERA_MOVEMENT_CONFIG,
+    terrainCollisionMode: 'none',
+  });
+  try {
+    orbit.setState({
+      targetX: 0,
+      targetY: 0,
+      targetZ: 0,
+      distance: 1000,
+      yaw: 0,
+      pitch: 0.5,
+    });
+    orbit.setTransitionSeconds(CAMERA_SMOOTH_TAU_SECONDS.fast);
+    orbit.panByWorldDelta(100, 50);
+    orbit.rotateYawBy(0.4);
+    orbit.setDistance(800);
+    orbit.setFovDegrees(60);
+    assertContract(
+      close(orbit.target.x, 100) &&
+        close(orbit.target.z, 50) &&
+        close(orbit.yaw, 0.4) &&
+        close(orbit.distance, 1000) &&
+        close(camera.fov, 60),
+      'zoom-only transition scope must apply pan, orbit, and lens input immediately while easing distance',
+    );
+    orbit.tick(CAMERA_SMOOTH_TAU_SECONDS.fast);
+    assertContract(
+      close(orbit.target.x, 100) &&
+        close(orbit.target.z, 50) &&
+        close(orbit.yaw, 0.4) &&
+        orbit.distance < 1000 &&
+        orbit.distance > 800,
+      'a zoom transition tick must not add latency or drift to completed continuous movement',
+    );
+  } finally {
+    orbit.destroy();
+  }
 }
 
 /** The focus rail is a constraint on the WHOLE gesture. A pan only moves the

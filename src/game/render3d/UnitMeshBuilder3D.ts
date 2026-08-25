@@ -31,6 +31,7 @@ import { REFERENCE_HOST_RADIUS, bodyLobeChart } from './SurfaceChart3D';
 import { applyChartToMesh, patchSurfaceChartTree } from './SurfaceChartMaterial3D';
 import { buildProductionHoldRingMesh } from './ProductionHoldRing3D';
 import { buildConstructionHostMarking } from './ConstructionHostMarking3D';
+import { configureGroundSilhouetteCasterTree3D } from './GroundSilhouetteShadow3D';
 
 // Detailed unit parts use shared instanced pools by default. The
 // per-mesh path remains only as an allocation fallback, not as the
@@ -373,6 +374,7 @@ export class UnitMeshBuilder3D {
     // patched once and cached, so this is a build-time constant, not per-unit
     // work.
     patchSurfaceChartTree(group);
+    configureGroundSilhouetteCasterTree3D(group);
     return mesh;
   }
 

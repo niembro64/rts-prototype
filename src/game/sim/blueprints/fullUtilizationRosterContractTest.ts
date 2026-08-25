@@ -58,6 +58,52 @@ function hasUnderwaterWeapon(unitBlueprintId: string): boolean {
 }
 
 export function runFullUtilizationRosterContractTest(): void {
+  const tierTwoAnimalNames = Object.values(UNIT_BLUEPRINTS)
+    .filter((blueprint) =>
+      blueprint.production?.techLevel === 2 && blueprint.identity.kind === 'animal')
+    .map((blueprint) => blueprint.fullName)
+    .sort();
+  const expectedTierTwoAnimalNames = [
+    'Brachinus',
+    'Formik',
+    'Herpestes',
+    'Hippopotamus',
+    'Latrodectus',
+    'Lycosa',
+    'Mammuthus',
+    'Meles',
+    'Mobula',
+    'Orcinus',
+    'Pelecanus',
+    'Procellaria',
+    'Sepia',
+    'Strix',
+  ].sort();
+  assertContract(
+    tierTwoAnimalNames.join('|') === expectedTierTwoAnimalNames.join('|') &&
+      Object.values(UNIT_BLUEPRINTS).every((blueprint) =>
+        blueprint.production?.techLevel !== 2 ||
+        blueprint.identity.kind !== 'animal' ||
+        blueprint.identity.namingLanguage === 'latin'),
+    'every non-construction T2 entity must use its authored Latin animal name',
+  );
+  const tierThreeAnimalNames = Object.values(UNIT_BLUEPRINTS)
+    .filter((blueprint) => blueprint.production?.techLevel === 3)
+    .map((blueprint) => blueprint.fullName)
+    .sort();
+  assertContract(
+    tierThreeAnimalNames.join('|') === [
+      'Maiasaura',
+      'Microraptor',
+      'Spinosaurus',
+      'Tyrannosaurus',
+    ].sort().join('|') &&
+      Object.values(UNIT_BLUEPRINTS).every((blueprint) =>
+        blueprint.production?.techLevel !== 3 ||
+        (blueprint.identity.kind === 'animal' && blueprint.identity.animalClass === 'dinosaur')),
+    'every T3 entity must use an authored dinosaur name and dinosaur identity',
+  );
+
   for (const unitBlueprintId of Object.keys(UNIT_BLUEPRINTS)) {
     const sensors = unitSensorConfigs(unitBlueprintId);
     assertContract(
@@ -142,7 +188,7 @@ export function runFullUtilizationRosterContractTest(): void {
       detectorSensors[0].targeting.observation.sensors.contactSight.aboveWater.aboveWater === 0 &&
       underwaterContactRange(detectorSensors[0]) === 0 &&
       unitAttackConfigs('unitDetector').length === 0,
-    'Owl must expose modest sight plus detection, with no radar/sonar contact sensor or weapon',
+    'Strix must expose modest sight plus detection, with no radar/sonar contact sensor or weapon',
   );
 
   const jammerSensors = unitSensorConfigs('unitRadarJammer');
@@ -198,7 +244,7 @@ export function runFullUtilizationRosterContractTest(): void {
         config.shot.shotBlueprintId === 'shotTorpedoAirLaunch' &&
         config.shot.mediumTrajectory.aboveWater.underwater
       ),
-    'Petrel must attack underwater from the air while depending on allied sonar for contact',
+    'Procellaria must attack underwater from the air while depending on allied sonar for contact',
   );
 
   const shotTargetingTurrets = Object.values(TURRET_CONFIGS)

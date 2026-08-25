@@ -63,6 +63,7 @@ import {
   type DirtySlotSpan,
 } from './instancedBufferUpdate';
 import { LEG_ATTACHMENT_RADIUS_MULTIPLIER } from './LocomotionRigShared3D';
+import { configureGroundSilhouetteCaster3D } from './GroundSilhouetteShadow3D';
 import type { CrawlerMesh } from './CrawlerRig3D';
 import type {
   EntityDeathPartDelta3D,
@@ -230,6 +231,28 @@ vec3 transformed = _segMid
   + _segFwd * position.z * instThickness;
 `;
 
+/** MeshDepthMaterial has no normal stage, so its shadow-pass vertex shader
+ * rebuilds the same segment frame inline. Keeping the exact position transform
+ * makes articulated legs contribute their real outline instead of either
+ * disappearing from the shadow or falling back to the unit's hitbox. */
+const DEPTH_INSTANCE_BEGIN_VERTEX = `
+vec3 _segAxis = instEnd - instStart;
+float _segLen = length(_segAxis);
+vec3 _segUp = _segLen > 0.001 ? _segAxis / _segLen : vec3(0.0, 1.0, 0.0);
+vec3 _segRightProjected = instRight - _segUp * dot(instRight, _segUp);
+float _segRightLen = length(_segRightProjected);
+vec3 _segRight;
+if (_segRightLen > 0.001) {
+  _segRight = _segRightProjected / _segRightLen;
+} else if (abs(_segUp.y) > 0.999) {
+  _segRight = vec3(1.0, 0.0, 0.0);
+} else {
+  _segRight = normalize(cross(vec3(0.0, 1.0, 0.0), _segUp));
+}
+vec3 _segFwd = cross(_segRight, _segUp);
+${INSTANCE_BEGIN_VERTEX}
+`;
+
 /** The segment's own frame, in world units — the substance grain's projection
  *  space. It is exactly the scale INSTANCE_BEGIN_VERTEX applies above, which
  *  is the point: the grain has to land at the same physical size on a leg as
@@ -297,6 +320,19 @@ function makeInstancedLegMaterial(): THREE.MeshLambertMaterial {
   // Distinct from the body's 'entityFadeInstancedAlpha' program and from
   // the joint/pad program below — the cylinder vertex shader is unique.
   material.customProgramCacheKey = () => 'legInstancedFadeCylinderLit';
+  return material;
+}
+
+function makeInstancedLegDepthMaterial(): THREE.MeshDepthMaterial {
+  const material = new THREE.MeshDepthMaterial({
+    depthPacking: THREE.RGBADepthPacking,
+  });
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `${INSTANCE_HEADER}\n#include <common>`)
+      .replace('#include <begin_vertex>', DEPTH_INSTANCE_BEGIN_VERTEX);
+  };
+  material.customProgramCacheKey = () => 'legInstancedCylinderDepth';
   return material;
 }
 
@@ -388,6 +424,7 @@ class CylinderPool {
   private readonly colorDirty = createDirtySpan();
   private readonly fadeDirty = createDirtySpan();
   private mesh: THREE.Mesh;
+  private readonly depthMaterial: THREE.MeshDepthMaterial;
   private nextSlot = 0;
   private freeList: number[] = [];
   private relocators: (SlotRelocator | null)[] = [];
@@ -442,8 +479,11 @@ class CylinderPool {
     });
     this.chart = attachSurfaceChartAttribute(geom, SLOT_CAP);
     this.mesh = new THREE.Mesh(geom, material);
+    this.depthMaterial = makeInstancedLegDepthMaterial();
+    this.mesh.customDepthMaterial = this.depthMaterial;
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = LEG_RENDER_ORDER;
+    configureGroundSilhouetteCaster3D(this.mesh);
     parent.add(this.mesh);
   }
 
@@ -678,6 +718,7 @@ class CylinderPool {
     // THREE.Mesh has no .dispose() of its own; disposeMesh's
     // optional-chain on `mesh.dispose?.()` handles that.
     disposeMesh(this.mesh);
+    this.depthMaterial.dispose();
   }
 }
 
@@ -738,6 +779,7 @@ class InstancedLegPartPool {
     // live anywhere on the map, source-geom bounding sphere is at origin.
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = LEG_RENDER_ORDER;
+    configureGroundSilhouetteCaster3D(this.mesh);
     parent.add(this.mesh);
   }
 

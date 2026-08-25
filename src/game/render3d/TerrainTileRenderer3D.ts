@@ -79,6 +79,7 @@ import {
   type WorldShadeSettings3D,
 } from './WorldShade3D';
 import type { EntityShadowRenderPacket3D } from './EntityShadowRenderPacket3D';
+import { configureGroundSilhouetteReceiver3D } from './GroundSilhouetteShadow3D';
 import type { FootprintBounds } from '../ViewportFootprint';
 import {
   getTerrainMeshSample,
@@ -946,6 +947,7 @@ export class TerrainTileRenderer3D {
     };
     this.installTerrainShader();
     this.terrainMesh = new THREE.Mesh(this.terrainGeometry, this.terrainMaterial);
+    configureGroundSilhouetteReceiver3D(this.terrainMesh);
     this.terrainMesh.frustumCulled = false;
     this.terrainMesh.visible = false;
     this.terrainMesh.renderOrder = GROUND_RENDER_ORDER.terrain;

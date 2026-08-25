@@ -965,6 +965,7 @@ export type UnitProduction = {
 export type UnitAnimalIdentity = {
   kind: 'animal';
   animalClass: 'mammal' | 'bird' | 'insect' | 'arachnid' | 'reptile' | 'amphibian' | 'fish' | 'mollusk' | 'dinosaur';
+  namingLanguage?: 'latin';
 };
 
 export type UnitConstructionCraftIdentity = {

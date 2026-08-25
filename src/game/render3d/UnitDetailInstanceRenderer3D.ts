@@ -59,6 +59,7 @@ import type {
   EntityDeathPartDelta3D,
   EntityDeathRenderablePart3D,
 } from './EntityDeathDisassembly3D';
+import { configureGroundSilhouetteCaster3D } from './GroundSilhouetteShadow3D';
 
 const POLY_CHASSIS_CAP = 4096;
 const CONE_BARREL_CAP = 4096;
@@ -1162,6 +1163,7 @@ export class UnitDetailInstanceRenderer3D {
     patchInstancedFadeMaterial(material);
 
     const mesh = new THREE.InstancedMesh(geometry, material, capacity);
+    configureGroundSilhouetteCaster3D(mesh);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     const colorAttr = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3), 3);
     colorAttr.setUsage(THREE.DynamicDrawUsage);

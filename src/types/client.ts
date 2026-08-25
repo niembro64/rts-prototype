@@ -178,8 +178,9 @@ export type ClientBarConfig = {
    *  Purely a SmokeTrail3D shader swap; no effect when `smokeTrails` is
    *  off. */
   readonly smokeSoftEdges: BooleanSetting;
-  /** Client-side entity grounding shadows in the shared world coverage
-   *  texture. Presentation only; disabling also skips shadow packet work. */
+  /** Client-side sun shadows projected from the actual rendered silhouettes
+   *  of units, buildings, and solid environment props. Presentation only;
+   *  disabling skips the directional depth pass. */
   readonly entityShadows: BooleanSetting;
   /** Local presentation of shield panels, spheres, and impact flashes. */
   readonly forceFieldsVisible: BooleanSetting;
@@ -187,9 +188,10 @@ export type ClientBarConfig = {
    *  Presentation only; battle-level fog still owns authoritative
    *  visibility and snapshot filtering. */
   readonly fogShade: BooleanSetting;
-  /** Client-only death material breakup: fire blast plus blast-biased
-   *  motion of the entity's actual textured render parts. Does not affect
-   *  authoritative death, damage, or knockback. */
+  /** Client-only detailed death material breakup: blast-biased
+   *  motion of the entity's actual textured render parts. The mandatory core
+   *  fire blast remains visible when this is off. Does not affect authoritative
+   *  death, damage, or knockback. */
   readonly materialExplosions: BooleanSetting;
   readonly triangleDebug: BooleanSetting;
   /** Draws the actual indexed triangle edges in the rendered water mesh. */

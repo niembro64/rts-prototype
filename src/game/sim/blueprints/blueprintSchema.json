@@ -3900,6 +3900,10 @@
             "mollusk",
             "dinosaur"
           ]
+        },
+        "namingLanguage": {
+          "type": "string",
+          "enum": ["latin"]
         }
       },
       "additionalProperties": false

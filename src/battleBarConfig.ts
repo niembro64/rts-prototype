@@ -416,8 +416,8 @@ function migrateDemoBuildingsHeliosDefault(): void {
   );
 }
 
-/** One-time policy migration for profiles saved while Queen Bee and Queen
- * Tick were authored as default-disabled. Their absence in those rosters was
+/** One-time policy migration for profiles saved while unitQueenBee and
+ * unitQueenTick were authored as default-disabled. Their absence in those rosters was
  * not a user opt-out, so the new universal all-enabled default must add them
  * once. Every other saved choice is preserved. */
 export function migrateDemoUnitsToAllEnabledDefault(): void {

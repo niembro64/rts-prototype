@@ -16,7 +16,9 @@
       "radiusFraction": 0.8
     },
     "universalFabricator": {
-      "radiusFraction": 0.84
+      "tech1RadiusFraction": 0.88,
+      "tech2RadiusFraction": 0.82,
+      "tech3RadiusFraction": 0.76
     },
     "buildingWind": {
       "radiusFraction": 0.75
@@ -62,8 +64,9 @@
     }
   },
   "waterFabricators": {
-    "innerRadiusFraction": 0.88,
-    "radiusFraction": 0.96,
+    "tech1RadiusFraction": 0.96,
+    "tech2RadiusFraction": 0.92,
+    "tech3RadiusFraction": 0.88,
     "sonarRadiusFraction": 0.97,
     "arcSectorFraction": 0.9
   },

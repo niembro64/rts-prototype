@@ -272,6 +272,20 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
 
   impacts.length = 0;
   killed.length = 0;
+  setMaterialExplosions(false);
+  dispatchSimEvent3DVisual(event('death', 74), context);
+  assertContract(
+    impacts.length === 1 && impacts[0].surface === 'blast',
+    'turning material breakup off must never suppress the mandatory death explosion',
+  );
+  assertContract(
+    killed.length === 1 && Number(killed[0].id) === 74 && killed[0].blast === undefined,
+    'MATEXP off must disable only detailed part disassembly',
+  );
+  setMaterialExplosions(true);
+
+  impacts.length = 0;
+  killed.length = 0;
   const minimumContext = {
     ...context,
     isPositionMinimumLod: () => true,

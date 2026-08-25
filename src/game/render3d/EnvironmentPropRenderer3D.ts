@@ -48,6 +48,7 @@ import type { WorldShade3D } from './WorldShade3D';
 import {
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
+import { configureGroundSilhouetteCasterTree3D } from './GroundSilhouetteShadow3D';
 
 type EnvironmentPropNode = {
   prop: VegetationProp;
@@ -765,6 +766,9 @@ export class EnvironmentPropRenderer3D {
     asset.templates.close = flattenPropTemplate(asset.templates.close);
     asset.templates.mid = flattenPropTemplate(asset.templates.mid);
     asset.templates.far = flattenPropTemplate(asset.templates.far);
+    configureGroundSilhouetteCasterTree3D(asset.templates.close);
+    configureGroundSilhouetteCasterTree3D(asset.templates.mid);
+    configureGroundSilhouetteCasterTree3D(asset.templates.far);
     return asset;
   }
 

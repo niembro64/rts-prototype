@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {
+  GROUND_SILHOUETTE_SHADOW_RENDER_CONFIG,
   SUN_RENDER_CONFIG,
   TERRAIN_SHADOW_RENDER_CONFIG,
 } from '../../config';
@@ -29,6 +30,96 @@ const sunHorizontalX = SUN_DIRECTION_SIM.x / sunHorizontalMag;
 const sunHorizontalY = SUN_DIRECTION_SIM.y / sunHorizontalMag;
 const sunSlope = SUN_DIRECTION_SIM.z / sunHorizontalMag;
 let sunDiskTexture: THREE.CanvasTexture | null = null;
+
+export class GroundSilhouetteSunShadow3D {
+  private readonly direction = writeSunDirectionThree(new THREE.Vector3());
+  private readonly mapDiagonal: number;
+  private enabled = false;
+
+  constructor(
+    private readonly sun: THREE.DirectionalLight,
+    mapWidth: number,
+    mapHeight: number,
+  ) {
+    this.mapDiagonal = Math.hypot(mapWidth, mapHeight);
+    const config = GROUND_SILHOUETTE_SHADOW_RENDER_CONFIG;
+    const mapSize = Math.max(256, Math.floor(config.mapSize));
+    sun.shadow.mapSize.set(mapSize, mapSize);
+    sun.shadow.bias = config.bias;
+    sun.shadow.normalBias = config.normalBias;
+    sun.shadow.radius = config.pcfRadius;
+    sun.shadow.autoUpdate = true;
+  }
+
+  /**
+   * Keep the orthographic shadow camera on the visible battle. Snapping the
+   * focus to shadow texels prevents the projected outline from swimming while
+   * the RTS camera makes sub-texel pans.
+   */
+  sync(
+    camera: THREE.PerspectiveCamera,
+    focus: THREE.Vector3,
+    orbitDistance: number,
+    clientEnabled: boolean,
+  ): void {
+    const config = GROUND_SILHOUETTE_SHADOW_RENDER_CONFIG;
+    const nextEnabled = config.enabled && clientEnabled;
+    if (this.enabled !== nextEnabled) {
+      this.enabled = nextEnabled;
+      this.sun.castShadow = nextEnabled;
+      this.sun.shadow.needsUpdate = nextEnabled;
+    }
+    if (!nextEnabled) return;
+
+    const verticalHalfView = Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) *
+      Math.max(1, orbitDistance);
+    const horizontalHalfView = verticalHalfView * Math.max(0.1, camera.aspect);
+    const desiredRadius = Math.hypot(horizontalHalfView, verticalHalfView) *
+      config.frustumRadiusMultiplier;
+    const quantum = Math.max(1, config.frustumRadiusQuantum);
+    const quantizedRadius = Math.ceil(desiredRadius / quantum) * quantum;
+    const mapRadiusCap = Math.max(
+      quantum,
+      this.mapDiagonal * config.maximumMapDiagonalFraction,
+    );
+    const radius = Math.min(
+      mapRadiusCap,
+      Math.max(config.minimumFrustumRadius, quantizedRadius),
+    );
+
+    const shadowCamera = this.sun.shadow.camera;
+    if (
+      shadowCamera.left !== -radius ||
+      shadowCamera.right !== radius ||
+      shadowCamera.top !== radius ||
+      shadowCamera.bottom !== -radius
+    ) {
+      shadowCamera.left = -radius;
+      shadowCamera.right = radius;
+      shadowCamera.top = radius;
+      shadowCamera.bottom = -radius;
+      shadowCamera.near = config.cameraNear;
+      shadowCamera.far = Math.max(
+        config.cameraFar,
+        SUN_RENDER_CONFIG.distance + radius * 2,
+      );
+      shadowCamera.updateProjectionMatrix();
+    }
+
+    const texelSize = radius * 2 / Math.max(1, this.sun.shadow.mapSize.width);
+    const targetX = Math.round(focus.x / texelSize) * texelSize;
+    const targetZ = Math.round(focus.z / texelSize) * texelSize;
+    this.sun.target.position.set(targetX, focus.y, targetZ);
+    this.sun.position.copy(this.sun.target.position).addScaledVector(
+      this.direction,
+      SUN_RENDER_CONFIG.distance,
+    );
+  }
+
+  destroy(): void {
+    this.sun.shadow.dispose();
+  }
+}
 
 function getSunDiskTexture(): THREE.CanvasTexture {
   if (sunDiskTexture) return sunDiskTexture;
@@ -84,7 +175,7 @@ export function installSunLighting(
   scene: THREE.Scene,
   mapWidth: number,
   mapHeight: number,
-): void {
+): GroundSilhouetteSunShadow3D {
   const ambient = new THREE.AmbientLight(
     SUN_RENDER_CONFIG.color,
     SUN_RENDER_CONFIG.ambientIntensity,
@@ -101,6 +192,7 @@ export function installSunLighting(
   sun.position.copy(target).addScaledVector(direction, SUN_RENDER_CONFIG.distance);
   scene.add(sun);
   scene.add(sun.target);
+  const groundShadows = new GroundSilhouetteSunShadow3D(sun, mapWidth, mapHeight);
 
   // Intensities are owned by RenderLighting3D along with the scene-level and
   // renderer-level lighting knobs, so every runtime lighting control lives in
@@ -127,6 +219,7 @@ export function installSunLighting(
     disk.renderOrder = -100;
     scene.add(disk);
   }
+  return groundShadows;
 }
 
 function smoothstep(edge0: number, edge1: number, v: number): number {

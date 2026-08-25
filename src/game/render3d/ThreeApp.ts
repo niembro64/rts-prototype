@@ -11,7 +11,10 @@ import {
 } from '../../browserRuntime';
 import { OrbitCamera } from './OrbitCamera';
 import { GpuTimerQuery } from '../scenes/helpers/GpuTimerQuery';
-import { installSunLighting } from './SunLighting';
+import {
+  GroundSilhouetteSunShadow3D,
+  installSunLighting,
+} from './SunLighting';
 import {
   registerLightingTargets,
   unregisterLightingTargets,
@@ -53,6 +56,7 @@ import {
 import {
   getAaMsaaMode,
   getAaResolutionMode,
+  getEntityShadows,
   getWaterBoundaryMode,
   getZoomPointsDebug,
 } from '@/clientBarConfig';
@@ -172,6 +176,7 @@ export class ThreeApp {
   private _aaResolutionPinned = false;
   private readonly _aaDrawingBufferSize = new THREE.Vector2();
   private readonly _zoomTerrainPointsOverlay: ZoomTerrainPointsOverlay3D;
+  private readonly _groundSunShadows: GroundSilhouetteSunShadow3D;
 
   constructor(
     parent: HTMLElement,
@@ -246,7 +251,8 @@ export class ThreeApp {
       mapWidth,
       mapHeight,
     );
-    this.renderer.shadowMap.enabled = false;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     parent.appendChild(this.renderer.domElement);
 
     // Prebuilt environment map for any PBR (MeshStandardMaterial) meshes in
@@ -314,7 +320,7 @@ export class ThreeApp {
       pitch: CAMERA_INITIAL_PITCH_RADIANS,
     });
 
-    installSunLighting(this.scene, mapWidth, mapHeight);
+    this._groundSunShadows = installSunLighting(this.scene, mapWidth, mapHeight);
     this._visibleSunDisk = this.scene.getObjectByName('VisibleSunDisk') ?? null;
     this.syncWaterBoundaryPresentation();
 
@@ -492,6 +498,12 @@ export class ThreeApp {
       let rendererRenderMs = 0;
       if (this._renderEnabled && !this._drawSuspended) {
         this.syncWaterBoundaryPresentation();
+        this._groundSunShadows.sync(
+          this.camera,
+          this.orbit.target,
+          this.orbit.distance,
+          getEntityShadows(),
+        );
         this._zoomTerrainPointsOverlay.update(now, getZoomPointsDebug());
         // One terrain sample: the caption re-seats itself if the annex's
         // altitude changed under it (a terrain bake landing after the sign).
@@ -752,6 +764,7 @@ export class ThreeApp {
     this._unregisterMapPresetLabelTarget = null;
     this._mapPresetLabel?.destroy();
     this._mapPresetLabel = null;
+    this._groundSunShadows.destroy();
     this._aaTarget?.dispose();
     this._aaTarget = null;
     this._aaActiveSamples = 0;

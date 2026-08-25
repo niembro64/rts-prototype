@@ -2769,7 +2769,7 @@
   },
   "turretSensorUnitBadger": {
     "turretBlueprintId": "turretSensorUnitBadger",
-    "name": "Badger Sensors",
+    "name": "Meles Sensors",
     "targeting": {
       "engagement": {
         "range": 0,
@@ -2840,7 +2840,7 @@
   },
   "turretSensorUnitMongoose": {
     "turretBlueprintId": "turretSensorUnitMongoose",
-    "name": "Mongoose Sensors",
+    "name": "Herpestes Sensors",
     "targeting": {
       "engagement": {
         "range": 0,
@@ -3053,7 +3053,7 @@
   },
   "turretSensorUnitMammoth": {
     "turretBlueprintId": "turretSensorUnitMammoth",
-    "name": "Mammoth Sensors",
+    "name": "Mammuthus Sensors",
     "targeting": {
       "engagement": {
         "range": 0,
@@ -3266,7 +3266,7 @@
   },
   "turretSensorUnitHippo": {
     "turretBlueprintId": "turretSensorUnitHippo",
-    "name": "Hippo Sensors",
+    "name": "Hippopotamus Sensors",
     "targeting": {
       "engagement": {
         "range": 0,
@@ -3408,7 +3408,7 @@
   },
   "turretSensorUnitOrca": {
     "turretBlueprintId": "turretSensorUnitOrca",
-    "name": "Orca Sensors",
+    "name": "Orcinus Sensors",
     "targeting": {
       "engagement": {
         "range": 0,
@@ -3479,7 +3479,7 @@
   },
   "turretSensorUnitTarantula": {
     "turretBlueprintId": "turretSensorUnitTarantula",
-    "name": "Tarantula Sensors",
+    "name": "Lycosa Sensors",
     "targeting": {
       "engagement": {
         "range": 0,
@@ -3976,7 +3976,7 @@
   },
   "turretSensorUnitAlbatros": {
     "turretBlueprintId": "turretSensorUnitAlbatros",
-    "name": "Albatross Sensors",
+    "name": "Microraptor Sensors",
     "targeting": {
       "engagement": {
         "range": 0,
@@ -4047,7 +4047,7 @@
   },
   "turretSensorUnitQueenBee": {
     "turretBlueprintId": "turretSensorUnitQueenBee",
-    "name": "Queen Bee Sensors",
+    "name": "Maiasaura Sensors",
     "targeting": {
       "engagement": {
         "range": 0,
@@ -4118,7 +4118,7 @@
   },
   "turretSensorUnitQueenTick": {
     "turretBlueprintId": "turretSensorUnitQueenTick",
-    "name": "Queen Tick Sensors",
+    "name": "Spinosaurus Sensors",
     "targeting": {
       "engagement": {
         "range": 0,
@@ -5759,7 +5759,7 @@
   "turretSensorUnitDetector": {
     "$extends": "turretSensorUnitBee",
     "turretBlueprintId": "turretSensorUnitDetector",
-    "name": "Owl Detector Array",
+    "name": "Strix Detector Array",
     "targeting": {
       "observation": {
         "sensors": {

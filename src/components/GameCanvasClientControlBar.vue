@@ -767,7 +767,7 @@ function resetEveryCustomHotkey(): void {
         >SOFT</BarButton>
         <BarButton
           :active="model.entityShadows"
-          title="Draw client-side entity shadows in the shared world coverage field"
+          title="Project the actual silhouettes of units, buildings, and environment objects onto the ground from the sun"
           @click="model.toggleEntityShadows"
         >SHADOWS</BarButton>
         <BarButton
@@ -782,7 +782,7 @@ function resetEveryCustomHotkey(): void {
         >SHADE</BarButton>
         <BarButton
           :active="model.materialExplosions"
-          title="Break every textured entity part apart with the killing blast, plus the consolidated fire effect"
+          title="Break textured body parts apart on death. Every unit still produces its core fire blast when this detail is off."
           @click="model.toggleMaterialExplosions"
         >MATEXP</BarButton>
         <BarButton

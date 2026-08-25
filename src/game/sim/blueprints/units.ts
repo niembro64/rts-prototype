@@ -352,14 +352,13 @@ function validateUnitProductionIdentity(bp: UnitBlueprint): void {
   }
 }
 
-const TITAN_UNIT_BLUEPRINT_IDS = new Set(['unitRex']);
-
 /**
  * Player-facing identity is authored alongside the chassis, not inferred from
  * an ID or renderer special case. That makes the roster rules executable:
- * combat craft use animal names, titan animals are dinosaurs, dedicated
- * constructors use the deliberately functional Construction <X> exception,
- * and no two units can silently collapse onto the same visible chassis.
+ * combat craft use animal names, tier-2 animals use Latin taxonomic names,
+ * tier-3 animals are dinosaurs, dedicated constructors use the deliberately
+ * functional Construction <X> exception, and no two units can silently
+ * collapse onto the same visible chassis.
  */
 function validateUnitPresentationIdentities(
   blueprints: Readonly<Record<string, UnitBlueprint>>,
@@ -411,11 +410,17 @@ function validateUnitPresentationIdentities(
           `Invalid unit identity for ${bp.unitBlueprintId}: non-construction units must use animal identities`,
         );
       }
-      const isTitan = TITAN_UNIT_BLUEPRINT_IDS.has(bp.unitBlueprintId);
+      const isTierThree = bp.production?.techLevel === 3;
       const isDinosaur = bp.identity.animalClass === 'dinosaur';
-      if (isTitan !== isDinosaur) {
+      if (isTierThree !== isDinosaur) {
         throw new Error(
-          `Invalid unit identity for ${bp.unitBlueprintId}: titan units and dinosaur identities must match`,
+          `Invalid unit identity for ${bp.unitBlueprintId}: tier 3 units and dinosaur identities must match`,
+        );
+      }
+      const isTierTwo = bp.production?.techLevel === 2;
+      if (isTierTwo !== (bp.identity.namingLanguage === 'latin')) {
+        throw new Error(
+          `Invalid unit identity for ${bp.unitBlueprintId}: only tier 2 animal units must author namingLanguage "latin"`,
         );
       }
     }

@@ -1307,6 +1307,7 @@ pub struct UnitProduction {
 pub struct UnitAnimalIdentity {
     pub kind: String,
     pub animalClass: String,
+    pub namingLanguage: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

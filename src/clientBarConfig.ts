@@ -647,7 +647,7 @@ function normalizeCameraFovDegrees(value: CameraFovDegrees): CameraFovDegrees {
   return Math.min(MAX_CAMERA_FOV_DEGREES, Math.max(MIN_CAMERA_FOV_DEGREES, value));
 }
 
-const MAX_LIGHT_INTENSITY_PERCENT = 300;
+const MAX_LIGHT_INTENSITY_PERCENT = 500;
 
 function clampLightIntensityPercent(value: number): LightIntensityPercent {
   return Math.max(0, Math.min(MAX_LIGHT_INTENSITY_PERCENT, Math.round(value)));

@@ -201,7 +201,9 @@ export function dispatchSimEvent3DVisual(
           : undefined,
       );
     }
-    if (!materialExplosionEnabled) return;
+    // Every death keeps its fire blast. MATERIAL EXP only governs whether the
+    // retained body is broken into independently moving authored parts; it is
+    // a detail-budget control, never permission for a quiet despawn.
     const attackPush = Math.min(ctx.attackMagnitude * 2, 200);
     // The fire blast draws at the death explosion's DAMAGE sphere — the
     // same derived radius the sim detonates (hitbox × the shared multiple)

@@ -494,12 +494,12 @@
     "requiresWater": false,
     "requiresLand": true,
     "production": { "techLevel": 2, "domains": ["vehicle"] },
-    "tinyName": "BDG",
-    "fullName": "Badger",
+    "tinyName": "MEL",
+    "fullName": "Meles",
     "shortDescription": "Heavy guided-rocket tank",
     "longDescription": "A durable advanced tank that launches slow guided rockets against important ground and air targets.",
-    "identity": { "kind": "animal", "animalClass": "mammal" },
-    "shortName": "BADGR",
+    "identity": { "kind": "animal", "animalClass": "mammal", "namingLanguage": "latin" },
+    "shortName": "MELES",
     "hp": 520,
     "radius": {
       "other": 16,
@@ -640,12 +640,12 @@
     "requiresWater": false,
     "requiresLand": true,
     "production": { "techLevel": 2, "domains": ["vehicle"] },
-    "tinyName": "MGS",
-    "fullName": "Mongoose",
+    "tinyName": "HER",
+    "fullName": "Herpestes",
     "shortDescription": "Mobile long-range mortar",
     "longDescription": "A mobile advanced mortar platform that attacks clustered enemies from beyond ordinary direct-fire range.",
-    "identity": { "kind": "animal", "animalClass": "mammal" },
-    "shortName": "MNGSE",
+    "identity": { "kind": "animal", "animalClass": "mammal", "namingLanguage": "latin" },
+    "shortName": "HERPE",
     "hp": 400,
     "radius": {
       "other": 20,
@@ -1812,12 +1812,12 @@
     "requiresWater": false,
     "requiresLand": true,
     "production": { "techLevel": 2, "domains": ["vehicle"] },
-    "tinyName": "MMT",
-    "fullName": "Mammoth",
+    "tinyName": "MAM",
+    "fullName": "Mammuthus",
     "shortDescription": "Heavy direct-fire tank",
     "longDescription": "A massive tracked tank whose heavy cannon trades speed and flexibility for decisive direct damage.",
-    "identity": { "kind": "animal", "animalClass": "mammal" },
-    "shortName": "MAMTH",
+    "identity": { "kind": "animal", "animalClass": "mammal", "namingLanguage": "latin" },
+    "shortName": "MAMMU",
     "hp": 1500,
     "radius": {
       "other": 24,
@@ -1950,12 +1950,12 @@
     "requiresWater": false,
     "requiresLand": true,
     "production": { "techLevel": 2, "domains": ["bot"] },
-    "tinyName": "ALN",
-    "fullName": "Antlion",
+    "tinyName": "FRM",
+    "fullName": "Formik",
     "shortDescription": "Rapid-fire mortar crawler",
     "longDescription": "A multi-legged artillery unit that keeps up rapid mortar pressure from behind the front line.",
-    "identity": { "kind": "animal", "animalClass": "insect" },
-    "shortName": "ANTLN",
+    "identity": { "kind": "animal", "animalClass": "insect", "namingLanguage": "latin" },
+    "shortName": "FORMI",
     "hp": 4800,
     "radius": {
       "other": 40,
@@ -2143,12 +2143,12 @@
     "requiresWater": false,
     "requiresLand": true,
     "production": { "techLevel": 2, "domains": ["bot"] },
-    "tinyName": "WDW",
-    "fullName": "Black Widow",
+    "tinyName": "LAT",
+    "fullName": "Latrodectus",
     "shortDescription": "Shielded multi-beam crawler",
     "longDescription": "A towering crawler protected by a full shield and armed with multiple beam emitters.",
-    "identity": { "kind": "animal", "animalClass": "arachnid" },
-    "shortName": "WIDOW",
+    "identity": { "kind": "animal", "animalClass": "arachnid", "namingLanguage": "latin" },
+    "shortName": "LATRO",
     "hp": 4200,
     "radius": {
       "other": 30,
@@ -2457,10 +2457,10 @@
     "requiresLand": false,
     "production": { "techLevel": 2, "domains": ["vehicle", "naval"] },
     "tinyName": "HPO",
-    "fullName": "Hippo",
+    "fullName": "Hippopotamus",
     "shortDescription": "Amphibious gatling tank",
     "longDescription": "An amphibious tracked assault unit whose gatling weapon stays useful across shorelines and shallow water.",
-    "identity": { "kind": "animal", "animalClass": "mammal" },
+    "identity": { "kind": "animal", "animalClass": "mammal", "namingLanguage": "latin" },
     "shortName": "HIPPO",
     "hp": 2400,
     "radius": {
@@ -2810,11 +2810,11 @@
     "requiresLand": false,
     "production": { "techLevel": 2, "domains": ["naval"] },
     "tinyName": "ORC",
-    "fullName": "Orca",
+    "fullName": "Orcinus",
     "shortDescription": "Torpedo attack submarine",
     "longDescription": "A submerged attack craft that uses torpedoes to hunt ships, submarines, and other underwater targets.",
-    "identity": { "kind": "animal", "animalClass": "mammal" },
-    "shortName": "ORCAS",
+    "identity": { "kind": "animal", "animalClass": "mammal", "namingLanguage": "latin" },
+    "shortName": "ORCIN",
     "hp": 1450,
     "radius": {
       "other": 34,
@@ -3015,12 +3015,12 @@
     "requiresWater": false,
     "requiresLand": true,
     "production": { "techLevel": 2, "domains": ["bot"] },
-    "tinyName": "TRN",
-    "fullName": "Tarantula",
+    "tinyName": "LYC",
+    "fullName": "Lycosa",
     "shortDescription": "Fast beam assault crawler",
     "longDescription": "A fast advanced crawler with a compact beam, suited to flanking and pursuing vulnerable targets.",
-    "identity": { "kind": "animal", "animalClass": "arachnid" },
-    "shortName": "TARAN",
+    "identity": { "kind": "animal", "animalClass": "arachnid", "namingLanguage": "latin" },
+    "shortName": "LYCOS",
     "hp": 210,
     "radius": {
       "other": 11,
@@ -4185,12 +4185,12 @@
     "requiresWater": false,
     "requiresLand": false,
     "production": { "techLevel": 3, "domains": ["aircraft"] },
-    "tinyName": "ALB",
-    "fullName": "Albatross",
+    "tinyName": "MIC",
+    "fullName": "Microraptor",
     "shortDescription": "Heavy airborne siege platform",
     "longDescription": "A heavy fixed-wing siege craft whose paired cannons deliver long-range fire from a broad airframe.",
-    "identity": { "kind": "animal", "animalClass": "bird" },
-    "shortName": "ALBTR",
+    "identity": { "kind": "animal", "animalClass": "dinosaur" },
+    "shortName": "MICRA",
     "hp": 7600,
     "radius": {
       "other": 76,
@@ -4376,12 +4376,12 @@
     "requiresWater": false,
     "requiresLand": false,
     "production": { "techLevel": 3, "domains": ["aircraft"] },
-    "tinyName": "QBE",
-    "fullName": "Queen Bee",
+    "tinyName": "MAI",
+    "fullName": "Maiasaura",
     "shortDescription": "Airborne swarm-producing capstone",
     "longDescription": "An airborne capstone that combines long and short beams with production of expendable Bee drones.",
-    "identity": { "kind": "animal", "animalClass": "insect" },
-    "shortName": "Q-BEE",
+    "identity": { "kind": "animal", "animalClass": "dinosaur" },
+    "shortName": "MAIAS",
     "hp": 9000,
     "radius": {
       "other": 92,
@@ -4631,12 +4631,12 @@
     "requiresWater": false,
     "requiresLand": true,
     "production": { "techLevel": 3, "domains": ["bot"] },
-    "tinyName": "QTK",
-    "fullName": "Queen Tick",
+    "tinyName": "SPI",
+    "fullName": "Spinosaurus",
     "shortDescription": "Crawler swarm-producing capstone",
     "longDescription": "A crawling capstone that combines long and short beams with production of expendable Tick crawlers.",
-    "identity": { "kind": "animal", "animalClass": "arachnid" },
-    "shortName": "Q-TIK",
+    "identity": { "kind": "animal", "animalClass": "dinosaur" },
+    "shortName": "SPINO",
     "hp": 9400,
     "radius": {
       "other": 94,
@@ -4891,12 +4891,12 @@
     "requiresWater": false,
     "requiresLand": false,
     "production": { "techLevel": 2, "domains": ["aircraft"] },
-    "tinyName": "PLC",
-    "fullName": "Pelican",
+    "tinyName": "PEL",
+    "fullName": "Pelecanus",
     "shortDescription": "Single-unit tractor transport",
     "longDescription": "A tractor-beam aircraft that carries one visible friendly or enemy unit without disabling its weapons.",
-    "identity": { "kind": "animal", "animalClass": "bird" },
-    "shortName": "PELIC",
+    "identity": { "kind": "animal", "animalClass": "bird", "namingLanguage": "latin" },
+    "shortName": "PELEC",
     "hp": 560,
     "radius": {
       "other": 22,
@@ -5977,8 +5977,7 @@
     "shortDescription": "Bipedal construction craft",
     "longDescription": "A bipedal builder that starts bot and universal fabricators while assisting any active construction site.",
     "identity": {
-      "kind": "constructionCraft",
-      "animalClass": "mammal"
+      "kind": "constructionCraft"
     },
     "shortName": "C-BOT",
     "hp": 240,
@@ -6259,8 +6258,7 @@
     "shortDescription": "Wheeled construction craft",
     "longDescription": "A wheeled builder that starts vehicle and universal fabricators while assisting any active construction site.",
     "identity": {
-      "kind": "constructionCraft",
-      "animalClass": "mammal"
+      "kind": "constructionCraft"
     },
     "shortName": "C-ROV",
     "hp": 260,
@@ -6465,15 +6463,16 @@
         "naval"
       ]
     },
-    "tinyName": "CUT",
-    "fullName": "Cuttlefish",
+    "tinyName": "SEP",
+    "fullName": "Sepia",
     "shortDescription": "Submerged stealth reconnaissance",
-    "longDescription": "A fragile water-only cuttlefish scout that swims below the surface, cloaks, and contributes underwater contact sensing without carrying a weapon.",
+    "longDescription": "A fragile water-only Sepia scout that swims below the surface, cloaks, and contributes underwater contact sensing without carrying a weapon.",
     "identity": {
       "kind": "animal",
-      "animalClass": "mollusk"
+      "animalClass": "mollusk",
+      "namingLanguage": "latin"
     },
-    "shortName": "CUTTL",
+    "shortName": "SEPIA",
     "hp": 180,
     "radius": {
       "other": 28,
@@ -6667,15 +6666,16 @@
         "aircraft"
       ]
     },
-    "tinyName": "OWL",
-    "fullName": "Owl",
+    "tinyName": "STR",
+    "fullName": "Strix",
     "shortDescription": "Mobile cloak detector",
     "longDescription": "A mobile airborne detector with modest sight that reveals cloaked enemies without providing radar coverage.",
     "identity": {
       "kind": "animal",
-      "animalClass": "bird"
+      "animalClass": "bird",
+      "namingLanguage": "latin"
     },
-    "shortName": "OWLET",
+    "shortName": "STRIX",
     "hp": 260,
     "radius": {
       "other": 9,
@@ -6842,15 +6842,16 @@
         "naval"
       ]
     },
-    "tinyName": "MNT",
-    "fullName": "Manta Ray",
+    "tinyName": "MOB",
+    "fullName": "Mobula",
     "shortDescription": "Mobile radar-jamming skirmisher",
     "longDescription": "A naval jammer with a weak light gun that suppresses enemy radar contacts around its position.",
     "identity": {
       "kind": "animal",
-      "animalClass": "fish"
+      "animalClass": "fish",
+      "namingLanguage": "latin"
     },
-    "shortName": "MANTA",
+    "shortName": "MOBUL",
     "hp": 520,
     "radius": {
       "other": 28,
@@ -7244,15 +7245,16 @@
         "vehicle"
       ]
     },
-    "tinyName": "BBT",
-    "fullName": "Bombardier Beetle",
+    "tinyName": "BRA",
+    "fullName": "Brachinus",
     "shortDescription": "Cluster-mortar artillery vehicle",
     "longDescription": "An advanced artillery vehicle whose heavy mortar splits into medium shells over clustered targets.",
     "identity": {
       "kind": "animal",
-      "animalClass": "insect"
+      "animalClass": "insect",
+      "namingLanguage": "latin"
     },
-    "shortName": "BOMBD",
+    "shortName": "BRACH",
     "hp": 820,
     "radius": {
       "other": 20,
@@ -7847,15 +7849,16 @@
         "naval"
       ]
     },
-    "tinyName": "PET",
-    "fullName": "Petrel",
+    "tinyName": "PRO",
+    "fullName": "Procellaria",
     "shortDescription": "Air-launched torpedo aircraft",
     "longDescription": "A cross-domain aircraft that launches torpedoes into the water while relying on allied sonar contacts.",
     "identity": {
       "kind": "animal",
-      "animalClass": "bird"
+      "animalClass": "bird",
+      "namingLanguage": "latin"
     },
-    "shortName": "PETRL",
+    "shortName": "PROCE",
     "hp": 720,
     "radius": {
       "other": 20,
@@ -8066,8 +8069,7 @@
     "shortDescription": "Advanced bipedal construction craft",
     "longDescription": "An advanced bipedal builder that starts the experimental universal fabricator and rapidly assists major construction sites.",
     "identity": {
-      "kind": "constructionCraft",
-      "animalClass": "mammal"
+      "kind": "constructionCraft"
     },
     "shortName": "A-BOT",
     "hp": 680,
@@ -8358,8 +8360,7 @@
     "shortDescription": "Advanced wheeled construction craft",
     "longDescription": "An advanced wheeled builder that starts the experimental universal fabricator and rapidly assists major construction sites.",
     "identity": {
-      "kind": "constructionCraft",
-      "animalClass": "mammal"
+      "kind": "constructionCraft"
     },
     "shortName": "A-ROV",
     "hp": 760,

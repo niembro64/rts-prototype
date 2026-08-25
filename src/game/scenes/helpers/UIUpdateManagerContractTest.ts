@@ -145,7 +145,7 @@ export function runUIUpdateManagerContractTest(): void {
 
   assertContract(
     factoryProductionSystem.selectUnit(queenBee, 'unitBee', world, false, 3),
-    'Queen Bee UI fixture must accept a finite three-Bee queue',
+    'Maiasaura UI fixture must accept a finite three-Bee queue',
   );
   const queenBeeSelection = buildSelectionInfo(
     entitySourceForSelection([queenBee], []),
@@ -154,7 +154,7 @@ export function runUIUpdateManagerContractTest(): void {
   assertContract(
     queenBeeSelection.hasFactory &&
       queenBeeSelection.factoryHostKind === 'unit' &&
-      queenBeeSelection.factoryDisplayName === 'Queen Bee' &&
+      queenBeeSelection.factoryDisplayName === 'Maiasaura' &&
       queenBeeSelection.factoryId === queenBee.id &&
       queenBeeSelection.factoryAllowedUnitBlueprintIds.join(',') === 'unitBee' &&
       queenBeeSelection.factorySelectedUnit?.unitBlueprintId === 'unitBee' &&

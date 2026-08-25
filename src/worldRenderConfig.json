@@ -148,8 +148,8 @@
     "terrain": -20
   },
   "entityShadow": {
-    "enabled": true,
-    "detail": "darknessPercent is the contact shadow's OWN strength. It used to borrow fogConfig radarDarknessPercent, so changing how dark radar contacts look also changed how dark unit shadows were. 35 is that value, so the look is unchanged and the coupling is gone.",
+    "enabled": false,
+    "detail": "Retained only as a compatibility description for the retired coverage-ellipse path. Real entity and environment shadows now come from groundSilhouetteShadow's directional depth map, so this approximation must stay disabled.",
     "darknessPercent": 35,
     "maxInstances": 16000,
     "unitHitboxRadiusMultiplier": 2,
@@ -157,6 +157,20 @@
     "buildingRadiusMultiplier": 2,
     "minBuildingRadius": 22,
     "buildingSunStretch": 1.35
+  },
+  "groundSilhouetteShadow": {
+    "enabled": true,
+    "mapSize": 2048,
+    "minimumFrustumRadius": 512,
+    "frustumRadiusMultiplier": 1.45,
+    "frustumRadiusQuantum": 64,
+    "maximumMapDiagonalFraction": 0.75,
+    "cameraNear": 1,
+    "cameraFar": 16000,
+    "bias": -0.00018,
+    "normalBias": 1.25,
+    "pcfRadius": 1.5,
+    "detail": "Camera-local directional shadow map for the exact rendered silhouettes of units, buildings, and solid environment props. The frustum follows and texel-snaps around the camera focus so useful resolution is spent on the visible battle instead of the full map. The CLIENT SHADOW toggle enables or disables the sun's shadow pass; the old WorldShade coverage ellipses remain disabled."
   },
   "overlayLines": {
     "feather": 0.16,

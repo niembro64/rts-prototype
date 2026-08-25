@@ -1017,6 +1017,11 @@ export const GROUND_RENDER_ORDER = worldRenderConfigJson.groundRenderOrder;
 // softness, or strength.
 export const ENTITY_SHADOW_RENDER_CONFIG = worldRenderConfigJson.entityShadow;
 
+/** Directional depth-map shadows cast from the rendered silhouettes of solid
+ * units, buildings, and environment props onto the terrain. */
+export const GROUND_SILHOUETTE_SHADOW_RENDER_CONFIG =
+  worldRenderConfigJson.groundSilhouetteShadow;
+
 // Per-kind styling (screen-pixel width, ground lift, render order) for the
 // unified ground overlay line system (selection rings, range circles,
 // sight/radar boundaries, waypoints, drag previews). Widths are in CSS
