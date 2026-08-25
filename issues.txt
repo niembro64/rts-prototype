@@ -16,3 +16,5 @@
 
 9. Our "universal fabricators" all three of htem, should be placed slightly higher than the height of the tallest unit that it can produce. 
 
+10. The "duck", "orca", "construction sub" and any other locomotion types like that are often "circling" their next waypoint, just like we had to fix for our "plane" units. For any unit locomotion type that could circle a non-terminating waypoint we have to correct for this in the same way we did for the "plane" units. Document this in our "budget_design_philosophy.html" then make the code changes.
+
