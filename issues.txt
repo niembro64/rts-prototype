@@ -1,0 +1,6 @@
+1 - regarding our silhouette shadows, it seems that we are missing shadow parts for the "team ornamentation" pieces and even some of the shadows for locomotion pieces are missing or looking weird. Please clean all of this up.
+
+2. Our "default values" that we have updated recently regarding our lighting etc does not seem to be being saved like other default values are for the bottom bar values. Default values should be set when there is no value for that item saved in the browser's local storage, and they should also be used when we click "DEFAULTS" for the bottom bars. Find how these other default values are supposed to be done and apply it generally. 
+
+3. Recently there was a change to the "PATH:" items that actually is nice now that we have so many units, the update makes it so that we can "wrap" these items instead of squish them. Let's rework all of our bottom bar components to use that "wrapping" component and generalize them such that we are using teh fewest number of comoponents we actually need. We can delete any older unused components when we're done. Also let's clean up our "BUILD:" button items, the button text is way too long, making tehse button group buttons unnecessarily large. 
+
