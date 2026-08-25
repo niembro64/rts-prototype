@@ -258,7 +258,7 @@ const METAL_COVERAGE_TITLE: Record<MetalCoverage, string> = {
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
-        <BarLabel>PLATEAU WALL:</BarLabel>
+        <BarLabel>PLATEAU WALL (DEG):</BarLabel>
         <BarButtonGroup>
           <BarButton
             v-for="opt in BATTLE_CONFIG.plateauWallSlopeDegrees.options"
@@ -266,7 +266,7 @@ const METAL_COVERAGE_TITLE: Record<MetalCoverage, string> = {
             :active="model.plateauWallSlopeDegrees === opt"
             :title="`D-PLATEAU transition slope angle from horizontal: ${opt} degrees`"
             @click="model.applyPlateauWallSlopeDegrees(opt)"
-          >{{ opt }} DEG</BarButton>
+          >{{ opt }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
@@ -312,7 +312,7 @@ const METAL_COVERAGE_TITLE: Record<MetalCoverage, string> = {
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
-        <BarLabel title="Authoritative server simulation steps per second; rendering remains independent">SIM TICK:</BarLabel>
+        <BarLabel title="Authoritative server simulation steps per second; rendering remains independent">SIM TICK (HZ):</BarLabel>
         <BarButtonGroup>
           <BarButton
             v-for="opt in BATTLE_CONFIG.simulationTickRate.options"
@@ -320,7 +320,7 @@ const METAL_COVERAGE_TITLE: Record<MetalCoverage, string> = {
             :active="model.simulationTickRateHz === opt"
             :title="`${opt} authoritative simulation tick${opt === 1 ? '' : 's'} per second`"
             @click="model.applySimulationTickRate(opt)"
-          >{{ opt }} HZ</BarButton>
+          >{{ opt }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup>

@@ -712,7 +712,7 @@ function resetEveryCustomHotkey(): void {
           @click="model.toggleTerrainLightSmoothAcrossWallBoundary"
         >CROSS WALL</BarButton>
       </BarControlGroup>
-      <BarControlGroup class="debug-control-group">
+      <BarControlGroup>
         <BarDivider />
         <BarLabel>DEBUG:</BarLabel>
         <BarButton
@@ -831,10 +831,10 @@ function resetEveryCustomHotkey(): void {
           @click="model.togglePathingMap"
         >WATER</BarButton>
       </BarControlGroup>
-      <BarControlGroup class="path-control-group">
+      <BarControlGroup>
         <BarDivider />
         <BarLabel>PATH:</BarLabel>
-        <BarButtonGroup class="path-mode-button-group">
+        <BarButtonGroup>
           <BarButton
             v-for="opt in PATHING_DEBUG_MODE_OPTIONS"
             :key="opt.value"
@@ -843,7 +843,7 @@ function resetEveryCustomHotkey(): void {
             @click="model.changePathingDebugMode(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
-        <BarButtonGroup class="path-unit-button-group">
+        <BarButtonGroup>
           <BarButton
             v-for="opt in PATHING_DEBUG_UNIT_OPTIONS"
             :key="opt.value"
@@ -1214,35 +1214,6 @@ function resetEveryCustomHotkey(): void {
 </template>
 
 <style scoped>
-.debug-control-group,
-.path-control-group {
-  flex: 1 1 100%;
-  min-width: 0;
-  flex-wrap: wrap;
-}
-
-.debug-control-group :deep(.control-btn) {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-.path-mode-button-group {
-  flex: 0 0 auto;
-}
-
-.path-unit-button-group {
-  display: flex;
-  flex: 1 1 24rem;
-  min-width: 0;
-  flex-wrap: wrap;
-}
-
-.path-unit-button-group :deep(.control-btn) {
-  flex: 0 0 auto;
-  overflow: visible;
-  white-space: nowrap;
-}
-
 .camera-vector-value {
   width: 8ch;
 }

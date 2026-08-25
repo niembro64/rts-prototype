@@ -30,7 +30,12 @@ import type {
 } from './types/client';
 import { CAMERA_FOV_DEGREES } from './config';
 import { FOG_CONFIG } from './fogConfig';
-import { persist, persistJson, readPersisted } from './persistence';
+import {
+  persist,
+  persistJson,
+  readPersisted,
+  readPersistedOrSetDefault,
+} from './persistence';
 import rawPlayerClientGraphicsConfig from './playerClientGraphicsConfig.json';
 import clientBarConfig from './clientBarConfig.json';
 import { isBuildableUnitBlueprintId } from './game/sim/blueprints/unitRoster';
@@ -803,6 +808,98 @@ function applyClientDefaults(mode: ClientMode): void {
   currentSelectionHudMode = cd.selectionHudMode.default;
 }
 
+function uniformToggleDefaults<Key extends string>(
+  keys: readonly Key[],
+  value: boolean,
+): Record<Key, boolean> {
+  return Object.fromEntries(keys.map((key) => [key, value])) as Record<Key, boolean>;
+}
+
+/** Serialized values for every per-mode client preference. Values still come
+ * from the typed mode config; this table only describes their storage shape.
+ * `Record<ClientStorageKeyName, string>` makes a newly-added client setting a
+ * compile error until startup/default persistence accounts for it. */
+function serializedClientDefaults(mode: ClientMode): Record<ClientStorageKeyName, string> {
+  const cd = getClientConfig(mode);
+  return {
+    renderMode: String(cd.render.default),
+    audioScope: String(cd.audio.default),
+    masterVolume: String(cd.masterVolume.default),
+    environmentLight: String(cd.environmentLight.default),
+    ambientLight: String(cd.ambientLight.default),
+    skyLight: String(cd.skyLight.default),
+    exposure: String(cd.exposure.default),
+    directionalLight: String(cd.directionalLight.default),
+    terrainBakedLighting: String(cd.terrainBakedLighting.default),
+    audioSmoothing: String(cd.audioSmoothing.default),
+    burnMarks: String(cd.burnMarks.default),
+    windParticles: String(cd.windParticles.default),
+    locomotionMarks: String(cd.locomotionMarks.default),
+    teamTrim: String(cd.teamTrim.default),
+    surfaceTexture: String(cd.surfaceTexture.default),
+    smokeTrails: String(cd.smokeTrails.default),
+    smokeSoftEdges: String(cd.smokeSoftEdges.default),
+    entityShadows: String(cd.entityShadows.default),
+    entityShadowDarkness: String(cd.entityShadowDarkness.default),
+    forceFieldsVisible: String(cd.forceFieldsVisible.default),
+    fogShade: String(cd.fogShade.default),
+    materialExplosions: String(cd.materialExplosions.default),
+    triangleDebug: String(cd.triangleDebug.default),
+    waterTriangleDebug: String(cd.waterTriangleDebug.default),
+    wallTriangleDebug: String(cd.wallTriangleDebug.default),
+    buildGridDebug: String(cd.buildGridDebug.default),
+    pathingHierarchyDebug: String(cd.pathingHierarchyDebug.default),
+    airLiftProbeDebug: String(cd.airLiftProbeDebug.default),
+    zoomPointsDebug: String(cd.zoomPointsDebug.default),
+    metalMap: String(cd.metalMap.default),
+    elevationMap: String(cd.elevationMap.default),
+    pathingMap: String(cd.pathingMap.default),
+    pathingDebugUnit: String(cd.pathingDebugUnit.default),
+    pathingDebugMode: String(cd.pathingDebugMode.default),
+    sightBoundary: String(cd.sightBoundary.default),
+    radarBoundary: String(cd.radarBoundary.default),
+    unitGroundNormalEmaMode: String(cd.unitGroundNormalEma.default),
+    soundToggles: JSON.stringify(cd.sounds.default),
+    rangeToggles: JSON.stringify(
+      uniformToggleDefaults(RANGE_TYPES, cd.rangeToggles.default),
+    ),
+    volumeToggles: JSON.stringify(
+      uniformToggleDefaults(VOLUME_TYPES, cd.volumeToggles.default),
+    ),
+    legsRadius: String(cd.legsRadius.default),
+    legsReach: String(cd.legsReach.default),
+    cameraSmooth: String(cd.cameraSmooth.default),
+    cameraFollow: String(cd.cameraFollow.default),
+    cameraFov: String(cd.cameraFov.default),
+    waterBoundaryMode: String(cd.waterBoundaryMode.default),
+    dragPan: String(cd.dragPan.default),
+    lobbyVisible: String(defaultLobbyVisible(mode)),
+    waypointDetail: String(cd.waypointDetail.default),
+    entityHud: JSON.stringify(cd.entityHud.default),
+    selectionHudMode: String(cd.selectionHudMode.default),
+  };
+}
+
+function seedMissingClientDefaults(mode: ClientMode): void {
+  const keys = CLIENT_STORAGE_KEYS[mode];
+  const defaults = serializedClientDefaults(mode);
+  for (const name of CLIENT_STORAGE_KEY_NAMES) {
+    readPersistedOrSetDefault(keys[name], defaults[name]);
+  }
+}
+
+function persistClientBarDefaults(mode: ClientMode): void {
+  const keys = CLIENT_STORAGE_KEYS[mode];
+  const defaults = serializedClientDefaults(mode);
+  for (const name of CLIENT_STORAGE_KEY_NAMES) {
+    // Sidebar visibility belongs to the chrome rather than the bottom bar and
+    // has its own live ref. Seed it on first use, but do not silently change it
+    // when the bottom bar's DEFAULTS button is clicked.
+    if (name === 'lobbyVisible') continue;
+    persist(keys[name], defaults[name]);
+  }
+}
+
 // ── Load from localStorage on module init / mode switch ──
 // Each read is independent — a bad JSON value or throw from ONE key
 // must not prevent every later key from loading.
@@ -822,6 +919,7 @@ function loadLightIntensitySelection(
 function loadFromStorage(mode: ClientMode): void {
   currentClientMode = mode;
   applyClientDefaults(mode);
+  seedMissingClientDefaults(mode);
   const cd = getClientConfig(mode);
   const keys = CLIENT_STORAGE_KEYS[mode];
   const storedRenderMode = readPersisted(keys.renderMode);
@@ -1177,6 +1275,7 @@ export function setLegsReachToggle(show: boolean): void {
 // Entity LOD policy. Standalone + global (not per-mode) because it is a
 // renderer inspection/perf policy rather than a battle/profile setting.
 const LOD_MODE_STORAGE_KEY = 'client-lod-mode';
+export const LOD_MODE_DEFAULT: LodMode = 'auto';
 export const LOD_MODE_OPTIONS: OptionList<LodMode> = [
   { value: 'auto', label: 'AUTO' },
   { value: 'high', label: 'HIGH' },
@@ -1192,10 +1291,12 @@ function parseStoredLodMode(raw: string | null): LodMode {
   if (raw === 'low') return 'low';
   if (raw === 'medium') return 'medium';
   if (raw === 'high') return 'high';
-  return 'auto';
+  return LOD_MODE_DEFAULT;
 }
 
-let currentLodMode: LodMode = parseStoredLodMode(readPersisted(LOD_MODE_STORAGE_KEY));
+let currentLodMode: LodMode = parseStoredLodMode(
+  readPersistedOrSetDefault(LOD_MODE_STORAGE_KEY, LOD_MODE_DEFAULT),
+);
 
 export function getLodMode(): LodMode {
   return currentLodMode;
@@ -1252,9 +1353,15 @@ function parseStoredAaResolutionMode(raw: string | null): AntialiasResolutionMod
 }
 
 let currentAaMsaaMode: AntialiasMsaaMode =
-  parseStoredAaMsaaMode(readPersisted(AA_MSAA_MODE_STORAGE_KEY));
+  parseStoredAaMsaaMode(readPersistedOrSetDefault(
+    AA_MSAA_MODE_STORAGE_KEY,
+    AA_MSAA_MODE_DEFAULT,
+  ));
 let currentAaResolutionMode: AntialiasResolutionMode =
-  parseStoredAaResolutionMode(readPersisted(AA_RESOLUTION_MODE_STORAGE_KEY));
+  parseStoredAaResolutionMode(readPersistedOrSetDefault(
+    AA_RESOLUTION_MODE_STORAGE_KEY,
+    String(AA_RESOLUTION_MODE_DEFAULT),
+  ));
 
 export function getAaMsaaMode(): AntialiasMsaaMode {
   return currentAaMsaaMode;
@@ -1272,6 +1379,20 @@ export function getAaResolutionMode(): AntialiasResolutionMode {
 export function setAaResolutionMode(mode: AntialiasResolutionMode): void {
   currentAaResolutionMode = parseStoredAaResolutionMode(String(mode));
   persist(AA_RESOLUTION_MODE_STORAGE_KEY, String(currentAaResolutionMode));
+}
+
+/** Apply and persist the complete authored CLIENT-bar state through one path.
+ * Startup uses the same serialized defaults for missing keys, so a default can
+ * never be updated in config while the reset button keeps an older copy. */
+export function resetClientSettingsToDefaults(
+  mode: ClientMode = currentClientMode,
+): void {
+  currentClientMode = mode;
+  applyClientDefaults(mode);
+  persistClientBarDefaults(mode);
+  setLodMode(LOD_MODE_DEFAULT);
+  setAaMsaaMode(AA_MSAA_MODE_DEFAULT);
+  setAaResolutionMode(AA_RESOLUTION_MODE_DEFAULT);
 }
 
 export function getCameraSmoothMode(): CameraSmoothMode {

@@ -203,23 +203,23 @@
       },
       {
         "value": "ground-build-squares-hover",
-        "label": "GROUND BUILD SQUARES — HOVER"
+        "label": "GROUND HOVER"
       },
       {
         "value": "ground-build-squares-surface",
-        "label": "GROUND BUILD SQUARES — SURFACE"
+        "label": "GROUND SURFACE"
       },
       {
         "value": "water-build-squares-sea-bed",
-        "label": "WATER BUILD SQUARES — SEA BED"
+        "label": "WATER BED"
       },
       {
         "value": "water-build-squares-sea-on-surface",
-        "label": "WATER BUILD SQUARES — SEA ON SURFACE"
+        "label": "WATER SURFACE"
       },
       {
         "value": "water-build-squares-hover-surface",
-        "label": "WATER BUILD SQUARES — HOVER SURFACE"
+        "label": "WATER HOVER"
       }
     ]
   },

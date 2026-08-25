@@ -14,7 +14,6 @@ import {
   getCameraFollowMode,
   getCameraFovDegrees,
   getCameraSmoothMode,
-  getClientConfig,
   getClientUnitGroundNormalEmaMode,
   getDragPanEnabled,
   getElevationMap,
@@ -29,8 +28,6 @@ import {
   getBurnMarks,
   getWindParticles,
   getAaMsaaMode,
-  AA_MSAA_MODE_DEFAULT,
-  AA_RESOLUTION_MODE_DEFAULT,
   getAaResolutionMode,
   getLodMode,
   getLegsRadiusToggle,
@@ -71,6 +68,7 @@ import {
   setCameraFovDegrees,
   setCameraSmoothMode,
   setClientMode,
+  resetClientSettingsToDefaults,
   setClientUnitGroundNormalEmaMode,
   setDragPanEnabled,
   setElevationMap,
@@ -743,102 +741,9 @@ export function useGameCanvasClientSettings({
   }
 
   function resetClientDefaults(): void {
-    const cd = getClientConfig(currentClientMode.value);
-    changeRenderMode(cd.render.default);
-    changeAudioScope(cd.audio.default);
-    changeMasterVolume(cd.masterVolume.default);
-    changeEnvironmentLight(cd.environmentLight.default);
-    changeAmbientLight(cd.ambientLight.default);
-    changeDirectionalLight(cd.directionalLight.default);
-    changeSkyLight(cd.skyLight.default);
-    changeExposure(cd.exposure.default);
-    setTerrainBakedLighting(cd.terrainBakedLighting.default);
-    terrainBakedLighting.value = cd.terrainBakedLighting.default;
-    setTerrainBakedLightingEnabled(cd.terrainBakedLighting.default);
-    setAudioSmoothing(cd.audioSmoothing.default);
-    audioSmoothing.value = cd.audioSmoothing.default;
-    setBurnMarks(cd.burnMarks.default);
-    burnMarks.value = cd.burnMarks.default;
-    setWindParticles(cd.windParticles.default);
-    windParticles.value = cd.windParticles.default;
-    setLocomotionMarks(cd.locomotionMarks.default);
-    locomotionMarks.value = cd.locomotionMarks.default;
-    setTeamTrim(cd.teamTrim.default);
-    teamTrim.value = cd.teamTrim.default;
-    setSurfaceTexture(cd.surfaceTexture.default);
-    surfaceTexture.value = cd.surfaceTexture.default;
-    setSurfaceChartEnabled(cd.surfaceTexture.default);
-    setSmokeTrails(cd.smokeTrails.default);
-    smokeTrails.value = cd.smokeTrails.default;
-    setSmokeSoftEdges(cd.smokeSoftEdges.default);
-    smokeSoftEdges.value = cd.smokeSoftEdges.default;
-    setEntityShadows(cd.entityShadows.default);
-    entityShadows.value = cd.entityShadows.default;
-    changeEntityShadowDarkness(cd.entityShadowDarkness.default);
-    setForceFieldsVisible(cd.forceFieldsVisible.default);
-    forceFieldsVisible.value = cd.forceFieldsVisible.default;
-    setFogShade(cd.fogShade.default);
-    fogShade.value = cd.fogShade.default;
-    setMaterialExplosions(cd.materialExplosions.default);
-    materialExplosions.value = cd.materialExplosions.default;
-    setTriangleDebug(cd.triangleDebug.default);
-    triangleDebug.value = cd.triangleDebug.default;
-    setWallTriangleDebug(cd.wallTriangleDebug.default);
-    wallTriangleDebug.value = cd.wallTriangleDebug.default;
-    setBuildGridDebug(cd.buildGridDebug.default);
-    buildGridDebugMode.value = cd.buildGridDebug.default;
-    setPathingHierarchyDebug(cd.pathingHierarchyDebug.default);
-    pathingHierarchyDebug.value = cd.pathingHierarchyDebug.default;
-    setAirLiftProbeDebug(cd.airLiftProbeDebug.default);
-    airLiftProbeDebug.value = cd.airLiftProbeDebug.default;
-    setZoomPointsDebug(cd.zoomPointsDebug.default);
-    zoomPointsDebug.value = cd.zoomPointsDebug.default;
-    setMetalMap(cd.metalMap.default);
-    metalMap.value = cd.metalMap.default;
-    setElevationMap(cd.elevationMap.default);
-    elevationMap.value = cd.elevationMap.default;
-    setPathingMap(cd.pathingMap.default);
-    pathingMap.value = cd.pathingMap.default;
-    changePathingDebugUnit(cd.pathingDebugUnit.default);
-    changePathingDebugMode(cd.pathingDebugMode.default);
-    setSightBoundary(cd.sightBoundary.default);
-    sightBoundary.value = cd.sightBoundary.default;
-    setRadarBoundary(cd.radarBoundary.default);
-    radarBoundary.value = cd.radarBoundary.default;
-    setClientUnitGroundNormalEmaMode(cd.unitGroundNormalEma.default);
-    clientUnitGroundNormalEmaMode.value = cd.unitGroundNormalEma.default;
-    if (dragPanEnabled.value !== cd.dragPan.default) toggleDragPan();
-    for (const rt of RANGE_TYPES) {
-      if (rangeToggles[rt] !== cd.rangeToggles.default) toggleRange(rt);
-    }
-    for (const vt of VOLUME_TYPES) {
-      if (volumeToggles[vt] !== cd.volumeToggles.default) toggleVolume(vt);
-    }
-    for (const cat of SOUND_CATEGORIES) {
-      if (soundToggles[cat] !== cd.sounds.default[cat]) {
-        toggleSoundCategory(cat);
-      }
-    }
-    waypointDetail.value = cd.waypointDetail.default;
-    setWaypointDetail(cd.waypointDetail.default);
-    for (const type of ENTITY_HUD_TYPES) {
-      for (const element of ENTITY_HUD_ELEMENTS) {
-        const def = cd.entityHud.default[type][element];
-        if (entityHud[type][element] !== def) toggleEntityHud(type, element);
-      }
-    }
-    changeSelectionHudMode(cd.selectionHudMode.default);
+    resetClientSettingsToDefaults(currentClientMode.value);
     changeCommandHotkeyPreset(DEFAULT_COMMAND_HOTKEY_PRESET);
-    if (legsRadiusToggle.value !== cd.legsRadius.default) toggleLegsRadius();
-    if (legsReachToggle.value !== cd.legsReach.default) toggleLegsReach();
-    setCameraMode(cd.cameraSmooth.default);
-    setCameraFollow(cd.cameraFollow.default);
-    changeCameraFovDegrees(cd.cameraFov.default);
-    changeWaterBoundaryMode(cd.waterBoundaryMode.default);
-    // AA knobs are standalone globals; their authored defaults live next to
-    // the option lists rather than in the per-mode config.
-    changeAaMsaaMode(AA_MSAA_MODE_DEFAULT);
-    changeAaResolutionMode(AA_RESOLUTION_MODE_DEFAULT);
+    syncRefsFromClientConfig();
   }
 
   const SOUND_LABELS: Record<SoundCategory, string> = {

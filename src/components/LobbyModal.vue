@@ -1447,7 +1447,7 @@ const terrainSectionVars = computed(() =>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
-                <BarLabel>PLATEAU WALL:</BarLabel>
+                <BarLabel>PLATEAU WALL (DEG):</BarLabel>
                 <BarButtonGroup>
                   <BarButton
                     v-for="opt in plateauWallSlopeDegreesOptions"
@@ -1457,7 +1457,7 @@ const terrainSectionVars = computed(() =>
                       ? `D-PLATEAU transition slope angle from horizontal: ${opt} degrees`
                       : 'Only the host can change terrain'"
                     @click="pickPlateauWallSlopeDegrees(opt)"
-                  >{{ opt }} DEG</BarButton>
+                  >{{ opt }}</BarButton>
                 </BarButtonGroup>
               </BarControlGroup>
               <BarControlGroup>
@@ -1505,7 +1505,7 @@ const terrainSectionVars = computed(() =>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
-                <BarLabel title="Authoritative server simulation steps per second; rendering remains independent">SIM TICK:</BarLabel>
+                <BarLabel title="Authoritative server simulation steps per second; rendering remains independent">SIM TICK (HZ):</BarLabel>
                 <BarButtonGroup>
                   <BarButton
                     v-for="opt in simulationTickRateOptions"
@@ -1513,7 +1513,7 @@ const terrainSectionVars = computed(() =>
                     :active="simulationTickRateHz === opt"
                     :title="isHost ? `${opt} authoritative simulation tick${opt === 1 ? '' : 's'} per second` : 'Only the host can change simulation cadence'"
                     @click="pickSimulationTickRate(opt)"
-                  >{{ opt }} HZ</BarButton>
+                  >{{ opt }}</BarButton>
                 </BarButtonGroup>
               </BarControlGroup>
               <!-- Real-battle config groups. These were previously editable

@@ -1,11 +1,11 @@
 <script setup lang="ts">
-// Bar button group — wraps a row of `<BarButton>`s as a connected
-// pill (first/last child get the rounded ends, middle children
-// share borders). Styled by the global `.button-group` rule.
+// Bar button group — wraps `<BarButton>`s as a connected, wrapping sequence.
+// Buttons retain their text width; when the available row is exhausted the
+// sequence wraps instead of squeezing labels into unreadable cells.
 </script>
 
 <template>
-  <div class="button-group">
+  <div class="bar-button-group">
     <slot />
   </div>
 </template>

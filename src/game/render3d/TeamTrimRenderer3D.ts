@@ -25,6 +25,7 @@ import {
 } from './SurfaceChartMaterial3D';
 import { patchInstancedFadeMaterial } from './EntityFade3D';
 import type { EntityDeathRenderablePart3D } from './EntityDeathDisassembly3D';
+import { configureGroundSilhouetteCaster3D } from './GroundSilhouetteShadow3D';
 
 /**
  * TeamTrimRenderer3D — shared team-coloured ornamentation.
@@ -171,6 +172,7 @@ export class TeamTrimRenderer3D {
     );
     colors.setUsage(THREE.DynamicDrawUsage);
     mesh.instanceColor = colors;
+    configureGroundSilhouetteCaster3D(mesh);
     this.world.add(mesh);
     return {
       mesh,

@@ -2,14 +2,14 @@
  *
  *   .control-group   — wrapper for a label + button-group pair
  *   .control-label   — uppercase gray label text
- *   .button-group    — grid of connected (pill) buttons
+ *   .bar-button-group — wrapping sequence of connected buttons
  *   .control-btn     — individual button (with .active modifier)
  *
  * One source of truth so the bottom bars (BATTLE / SERVER / CLIENT)
  * and the GAME LOBBY's CENTER / DIVIDERS pickers render identically.
  * Each Vue wrapper component (BarLabel / BarButton / BarButtonGroup
  * / BarControlGroup) renders the SAME class names this file styles,
- * so consumers can mix-and-match bare HTML and components freely.
+ * so every consumer of the shared components stays in lockstep.
  *
  * Active-state colors come from CSS custom properties — the bottom
  * bars override them per-bar via inline style binding (BAR_THEMES);
@@ -28,8 +28,11 @@
 .control-group {
   display: flex;
   align-items: center;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
   gap: 6px;
-  white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .control-label {
@@ -40,25 +43,29 @@
   font-family: monospace;
 }
 
-.button-group {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
+.bar-button-group {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
 }
 
-.button-group .control-btn {
+.bar-button-group .control-btn {
+  flex: 0 0 auto;
   border-radius: 0;
   margin-left: -1px;
   text-align: center;
-  overflow: hidden;
+  overflow: visible;
+  white-space: nowrap;
 }
 
-.button-group .control-btn:first-child {
+.bar-button-group .control-btn:first-child {
   border-radius: 3px 0 0 3px;
   margin-left: 0;
 }
 
-.button-group .control-btn:last-child {
+.bar-button-group .control-btn:last-child {
   border-radius: 0 3px 3px 0;
 }
 
@@ -84,6 +91,7 @@
   font-family: monospace;
   font-size: 10px;
   text-transform: uppercase;
+  white-space: nowrap;
   cursor: pointer;
   transition: all 0.15s ease;
 }

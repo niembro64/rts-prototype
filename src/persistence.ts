@@ -3,11 +3,9 @@
  * browsing / disabled storage) so no caller needs a try/catch. Every
  * bar-config helper that persists a setting should call through these.
  *
- * Intentionally minimal — no JSON auto-parsing, no namespacing, no
- * default fallbacks. Each call site already owns its key constant
- * and knows how to parse its own value shape; centralizing only the
- * exception handling eliminates ~30 try/catch blocks without forcing
- * a new abstraction.
+ * Intentionally minimal — no JSON auto-parsing or namespacing. Each call site
+ * owns its key and value shape; this module only centralizes exception handling
+ * and the one shared rule that a missing authored default is written once.
  */
 
 /** Write a value to localStorage. Silently no-ops if storage is
@@ -36,4 +34,14 @@ export function readPersisted(key: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** Return an existing value, or materialize the caller's authored default.
+ * This keeps first-run state and reset state observable through the same
+ * localStorage contract instead of leaving an implicit in-memory fallback. */
+export function readPersistedOrSetDefault(key: string, defaultValue: string): string {
+  const stored = readPersisted(key);
+  if (stored !== null) return stored;
+  persist(key, defaultValue);
+  return defaultValue;
 }

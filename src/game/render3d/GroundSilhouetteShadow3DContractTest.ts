@@ -25,6 +25,9 @@ import {
   terrainOutwardNormalScopeLevel,
   terrainOutwardNormalUniformDeclaration,
 } from './TerrainOutwardNormal3D';
+import { TeamTrimRenderer3D } from './TeamTrimRenderer3D';
+import { REFERENCE_ORNAMENT_PROFILE } from './TeamOrnament3D';
+import { LegInstancedRenderer } from './LegInstancedRenderer';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[ground silhouette shadow contract] ${message}`);
@@ -302,6 +305,46 @@ export function runGroundSilhouetteShadow3DContractTest(): void {
     'lit entity geometry must cast its exact triangles while unlit effect geometry stays out of the sun pass',
   );
 
+  const teamTrimRoot = new THREE.Group();
+  const teamTrim = new TeamTrimRenderer3D(teamTrimRoot);
+  teamTrim.allocHostKit(REFERENCE_ORNAMENT_PROFILE, 1);
+  teamTrim.allocTurretCollar(1);
+  assertContract(
+    teamTrimRoot.children.length === 2 &&
+      teamTrimRoot.children.every((part) => (part as THREE.Mesh).castShadow),
+    'world-level unit kits and turret collars must cast their actual instanced ornament silhouettes',
+  );
+
+  const legRoot = new THREE.Group();
+  const legs = new LegInstancedRenderer(legRoot);
+  const keepSlot = (): void => {};
+  legs.allocUpper(0xffffff, keepSlot);
+  legs.allocLower(0xffffff, keepSlot);
+  legs.allocLowerTaper(0xffffff, keepSlot);
+  legs.allocJoint(0xffffff, keepSlot);
+  legs.allocFoot(0xffffff, keepSlot);
+  const legMeshes = legRoot.children as THREE.Mesh[];
+  assertContract(
+    legMeshes.length === 5 && legMeshes.every((part) => part.castShadow),
+    'every world-level crawler segment, taper, joint, and foot pool must cast its articulated silhouette',
+  );
+  const proceduralSegments = legMeshes.filter(
+    (part) => (part as THREE.InstancedMesh).isInstancedMesh !== true,
+  );
+  assertContract(
+    proceduralSegments.length === 3 && proceduralSegments.every((part) => {
+      const depthMaterial = part.customDepthMaterial as THREE.MeshDepthMaterial | undefined;
+      const shaderProbe = {
+        vertexShader: '#include <common>\n#include <begin_vertex>',
+      };
+      depthMaterial?.onBeforeCompile(shaderProbe as never, {} as never);
+      return depthMaterial?.isMeshDepthMaterial === true &&
+        shaderProbe.vertexShader.includes('instStart') &&
+        shaderProbe.vertexShader.includes('instRight');
+    }),
+    'procedural crawler segments must reproduce their live per-part pose in the shadow-depth pass',
+  );
+
   const terrain = new THREE.Mesh(
     new THREE.PlaneGeometry(1, 1),
     new THREE.MeshStandardMaterial(),
@@ -350,6 +393,8 @@ export function runGroundSilhouetteShadow3DContractTest(): void {
     assertContract(!sun.castShadow, 'the client SHADOWS toggle must disable the depth pass');
   } finally {
     shadow.destroy();
+    teamTrim.dispose();
+    legs.destroy();
     solid.geometry.dispose();
     (solid.material as THREE.Material).dispose();
     effect.geometry.dispose();
