@@ -23,3 +23,5 @@
 	8) our "MIN" level of detail simple flat shapes for entities seem to be way too dark, those need to be raw colors, like raw white, raw team color, raw player color, raw white. Same goes for any sort of "HUD" type stuff. 
 
 9) Let's default our "ENV:" lighting variable to "150" instead of "0". 
+
+10) I can see some good shiny materials on our "Shield Generator" and our "Shield Detection Lab", but we seem to have lost the shininess that we want on our "solar collector" 8 sections that are exposed when it is on. Add shininess back to those sections in whatever way we are currently doing so elsewhere. 
