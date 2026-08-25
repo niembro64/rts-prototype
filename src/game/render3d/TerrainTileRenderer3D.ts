@@ -1380,7 +1380,13 @@ export class TerrainTileRenderer3D {
             '  elevationRgb = mix(elevationRgb * 0.72, elevationRgb, contour);',
             '  diffuseColor.rgb = mix(diffuseColor.rgb, elevationRgb, 0.68);',
             '}',
-            worldShadeFragment('vTerrainWorldPos', true),
+            // The retired coverage-ellipse entity shadow used a second
+            // WorldShade sampler. Real sun silhouettes now arrive through
+            // Three's directional shadow map, so sampling both would spend 17
+            // fragment texture units. Many valid WebGL drivers expose the
+            // minimum 16; over-budget terrain shaders fail to link and the
+            // entire landscape disappears.
+            worldShadeFragment('vTerrainWorldPos', false),
             // BUILD and HIER are top-surface projections, not additional
             // materials for the world-box walls. On a vertical boundary the
             // old exact map-maximum test could toggle on/off by a few ULPs as

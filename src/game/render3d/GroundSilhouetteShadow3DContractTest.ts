@@ -6,6 +6,7 @@ import {
   configureGroundSilhouetteReceiver3D,
 } from './GroundSilhouetteShadow3D';
 import { GroundSilhouetteSunShadow3D } from './SunLighting';
+import { worldShadeFragment } from './WorldShade3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[ground silhouette shadow contract] ${message}`);
@@ -17,15 +18,14 @@ export function runGroundSilhouetteShadow3DContractTest(): void {
     assertContract(
       config.environmentLight.default === 25 &&
         config.ambientLight.default === 0 &&
-        config.directionalLight.default === 500 &&
+        config.directionalLight.default === 1250 &&
         config.skyLight.default === 25 &&
         config.exposure.default === 25,
-      `${mode} lighting must default to ENV 25, AMB 0, SUN 500, SKY 25, EXPO 25`,
+      `${mode} lighting must default to ENV 25, AMB 0, SUN 1250, SKY 25, EXPO 25`,
     );
     for (const setting of [
       config.environmentLight,
       config.ambientLight,
-      config.directionalLight,
       config.skyLight,
       config.exposure,
     ]) {
@@ -34,6 +34,11 @@ export function runGroundSilhouetteShadow3DContractTest(): void {
         `${mode} light controls must expose the expanded 500-percent ceiling`,
       );
     }
+    assertContract(
+      config.directionalLight.options.some((option) => option.value === 1250) &&
+        config.directionalLight.options.some((option) => option.value === 1500),
+      `${mode} SUN LIGHT must expose its 1250-percent default and 1500-percent headroom`,
+    );
     assertContract(
       config.entityShadows.default,
       `${mode} must enable physical ground silhouettes by default`,
@@ -62,6 +67,13 @@ export function runGroundSilhouetteShadow3DContractTest(): void {
   );
   configureGroundSilhouetteReceiver3D(terrain);
   assertContract(terrain.receiveShadow, 'terrain geometry must receive the projected silhouettes');
+
+  const terrainFogShade = worldShadeFragment('vTerrainWorldPos', false);
+  assertContract(
+    terrainFogShade.includes('texture2D(uWorldShadeMap') &&
+      !terrainFogShade.includes('texture2D(uWorldShadowMap'),
+    'terrain must keep fog coverage but retire the ellipse-shadow sampler so the directional shadow map stays within the 16-texture WebGL budget',
+  );
 
   const sun = new THREE.DirectionalLight(0xffffff, 1);
   const shadow = new GroundSilhouetteSunShadow3D(sun, 4096, 2048);

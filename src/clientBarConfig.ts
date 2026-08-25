@@ -647,7 +647,10 @@ function normalizeCameraFovDegrees(value: CameraFovDegrees): CameraFovDegrees {
   return Math.min(MAX_CAMERA_FOV_DEGREES, Math.max(MIN_CAMERA_FOV_DEGREES, value));
 }
 
-const MAX_LIGHT_INTENSITY_PERCENT = 500;
+// SUN reaches higher than the fill/exposure controls: its authored light is a
+// deliberately small trim over the environment, so the readable operating
+// range extends to 1500% while the other controls keep their narrower menus.
+const MAX_LIGHT_INTENSITY_PERCENT = 1500;
 
 function clampLightIntensityPercent(value: number): LightIntensityPercent {
   return Math.max(0, Math.min(MAX_LIGHT_INTENSITY_PERCENT, Math.round(value)));

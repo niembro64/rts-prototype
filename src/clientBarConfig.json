@@ -160,8 +160,8 @@
     ]
   },
   "directionalLight": {
-    "demoDefault": 500,
-    "realDefault": 500,
+    "demoDefault": 1250,
+    "realDefault": 1250,
     "options": [
       {
         "value": 0,
@@ -218,6 +218,22 @@
       {
         "value": 500,
         "label": "500"
+      },
+      {
+        "value": 750,
+        "label": "750"
+      },
+      {
+        "value": 1000,
+        "label": "1000"
+      },
+      {
+        "value": 1250,
+        "label": "1250"
+      },
+      {
+        "value": 1500,
+        "label": "1500"
       }
     ]
   },
