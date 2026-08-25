@@ -23,7 +23,10 @@ import {
   type CanonicalServerStateHash,
 } from '../architecture/CanonicalStateHash';
 import type { Body3D, PhysicsEngine3D } from './PhysicsEngine3D';
-import { createPhysicsBodyForBuilding } from './buildingPhysicsBody';
+import {
+  createPhysicsBodyForBuilding,
+  ignoreNewBuildingBodyForOverlappingUnits,
+} from './buildingPhysicsBody';
 import type { BootstrappedServerWorld } from './ServerBootstrap';
 import { UnitForceSystem } from './UnitForceSystem';
 import {
@@ -282,6 +285,7 @@ export class ServerSimulationCore {
     this.simulation.onBuildingSpawn = (newBuildings: Entity[]) => {
       for (const entity of newBuildings) {
         createPhysicsBodyForBuilding(this.world, this.physics, entity);
+        ignoreNewBuildingBodyForOverlappingUnits(this.world, this.physics, entity);
       }
     };
 

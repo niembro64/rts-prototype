@@ -3,7 +3,9 @@
  *
  * Authored unit facts live in units.json. Unit locomotion is authored
  * inline on the unit; this loader resolves $audio and validates the complete
- * force profile alongside the unit's explicit pathing class.
+ * force profile alongside the unit's explicit pathing class. Unit records are
+ * deliberately non-inheritable: shared behavior belongs in code/presets, not
+ * in another playable unit's blueprint.
  */
 
 import { isStructureBlueprintId } from '../../../types/blueprintIds';
@@ -14,7 +16,7 @@ export { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS, isBuildableUnitBlueprintId } from './unitRoster';
 import { TURRET_BLUEPRINTS } from './turrets';
 import rawUnitBlueprints from './units.json';
-import { resolveBlueprintRecordInheritance, resolveBlueprintRefs } from './jsonRefs';
+import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
 import type { LockOnInclusionObject, UnitLocomotionBlueprint } from './types';
 import type {
@@ -50,9 +52,9 @@ import {
   validatePositiveAngularActuator,
 } from './mountValidation';
 import { validateEntityTerrainRequirements } from './entityTerrainRequirements';
+import type { TurretBlueprintId } from '@/types/blueprintIds';
 
 type JsonUnitBlueprint = Omit<UnitBlueprint, keyof LockOnInclusionObject>;
-type InheritableJsonUnitBlueprint = Partial<JsonUnitBlueprint> & { $extends?: string };
 
 const UNIT_EXPLICIT_FIELDS = [
   'requiresWater',
@@ -95,13 +97,18 @@ function resolveInlineLocomotion(
 }
 
 function buildUnitBlueprints(): Record<string, UnitBlueprint> {
-  const withRefs = resolveBlueprintRefs(
+  for (const [id, rawBlueprint] of Object.entries(
+    rawUnitBlueprints as Record<string, Record<string, unknown>>,
+  )) {
+    if ('$extends' in rawBlueprint) {
+      throw new Error(
+        `Invalid unit blueprint ${id}: unit inheritance is prohibited; author a complete record`,
+      );
+    }
+  }
+  const resolved = resolveBlueprintRefs(
     rawUnitBlueprints,
-  ) as unknown as Record<string, InheritableJsonUnitBlueprint>;
-  const resolved = resolveBlueprintRecordInheritance<JsonUnitBlueprint>(
-    withRefs as unknown as Record<string, Record<string, unknown> & { $extends?: string }>,
-    'unit blueprint',
-  );
+  ) as unknown as Record<string, JsonUnitBlueprint>;
   assertUnitLockOnInclusionConfigIds(Object.keys(resolved));
   const blueprints: Record<string, UnitBlueprint> = {};
 
@@ -179,6 +186,10 @@ function validateUnitWorkCapability(bp: UnitBlueprint): void {
   const roster = bp.allowedBuildBlueprintIds ?? null;
   const producedUnitBlueprintId = bp.factoryProducedUnitBlueprintId ?? null;
   const workEmitter = bp.workEmitter ?? null;
+  const attackTurretCount = bp.turrets.reduce(
+    (count, mount) => count + (TURRET_BLUEPRINTS[mount.turretBlueprintId].kind === 'attack' ? 1 : 0),
+    0,
+  );
 
   if (constructionRate !== null && (!Number.isFinite(constructionRate) || constructionRate <= 0)) {
     throw new Error(
@@ -256,6 +267,15 @@ function validateUnitWorkCapability(bp: UnitBlueprint): void {
       );
     }
     return;
+  }
+  if (bp.unitBlueprintId === 'unitCommander') {
+    if (attackTurretCount === 0) {
+      throw new Error('Invalid Commander config: the sole armed structure builder needs an attack turret');
+    }
+  } else if (attackTurretCount > 0) {
+    throw new Error(
+      `Invalid constructor config for ${bp.unitBlueprintId}: construction craft cannot mount attack turrets`,
+    );
   }
   if (!Number.isFinite(bp.builder.buildRange) || bp.builder.buildRange <= 0) {
     throw new Error(
@@ -412,6 +432,77 @@ function validateUnitPresentationIdentities(
 }
 
 validateUnitPresentationIdentities(UNIT_BLUEPRINTS);
+
+const TURRET_NICHE_COSMETIC_FIELDS = new Set([
+  'turretBlueprintId',
+  'name',
+  'audio',
+  'color',
+  'eventsSmooth',
+  'aimMotionSnapshotVisible',
+]);
+
+function turretGameplayForNiche(turretBlueprintId: TurretBlueprintId): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(TURRET_BLUEPRINTS[turretBlueprintId]).filter(
+      ([field]) => !TURRET_NICHE_COSMETIC_FIELDS.has(field),
+    ),
+  );
+}
+
+/** Reject exact gameplay duplicates after stripping names, chassis geometry,
+ * sounds, and other presentation. This is the machine-checkable floor under
+ * the broader design review: every unit must differ in at least one real
+ * strategic dimension, never merely by animal skin or inherited parent. */
+function validateUnitStrategicNiches(
+  blueprints: Readonly<Record<string, UnitBlueprint>>,
+): void {
+  const unitByNiche = new Map<string, string>();
+  for (const bp of Object.values(blueprints)) {
+    const locomotion = bp.unitLocomotion;
+    const signature = JSON.stringify({
+      terrain: [bp.requiresWater, bp.requiresLand],
+      production: bp.production,
+      base: bp.base,
+      supportSurface: bp.supportSurface,
+      supportPointOffsetZ: bp.supportPointOffsetZ,
+      suspension: bp.suspension,
+      builder: bp.builder,
+      dgun: bp.dgun,
+      constructionRate: bp.constructionRate ?? null,
+      allowedBuildBlueprintIds: bp.allowedBuildBlueprintIds ?? null,
+      factoryProducedUnitBlueprintId: bp.factoryProducedUnitBlueprintId ?? null,
+      workEmitter: bp.workEmitter ?? null,
+      preventLockOnIfMyTeamIsAboveMe: bp.preventLockOnIfMyTeamIsAboveMe ?? null,
+      locomotion: {
+        physicsPresetId: locomotion.physicsPresetId,
+        physics: locomotion.physics,
+        environmentalHazards: locomotion.environmentalHazards,
+        turnRateDegreesPerSecond: 'turnRateDegreesPerSecond' in locomotion
+          ? locomotion.turnRateDegreesPerSecond
+          : null,
+      },
+      turrets: bp.turrets.map((mount) => ({
+        attackOrSensor: turretGameplayForNiche(mount.turretBlueprintId),
+        sensor: mount.sensorTurretBlueprintId === undefined
+          ? null
+          : turretGameplayForNiche(mount.sensorTurretBlueprintId),
+        requiredEngagedForFightStop: mount.requiredEngagedForFightStop,
+        controlMode: mount.controlMode,
+        shieldPanels: mount.shieldPanels ?? null,
+      })),
+    });
+    const duplicateId = unitByNiche.get(signature);
+    if (duplicateId !== undefined) {
+      throw new Error(
+        `Invalid unit niche for ${bp.unitBlueprintId}: gameplay duplicates ${duplicateId}`,
+      );
+    }
+    unitByNiche.set(signature, bp.unitBlueprintId);
+  }
+}
+
+validateUnitStrategicNiches(UNIT_BLUEPRINTS);
 
 /** A crawler authors its mirrored world-space leg layout directly on the
  *  locomotion config, with one shared envelope for every limb. */

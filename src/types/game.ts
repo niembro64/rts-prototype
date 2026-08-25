@@ -124,7 +124,8 @@ export type PresentationFrameUnsubscribe = () => void;
 export type SurfaceLiftProbeDebugSample = {
   x: number;
   y: number;
-  bodyZ: number;
+  /** Canonical locomotion support-point altitude used by the force response. */
+  supportZ: number;
   isCenter: boolean;
   /** Exact clamped distance used by any inverse ground/solid contribution. */
   groundInverseDistanceWorld: number;

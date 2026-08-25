@@ -179,4 +179,23 @@ export function runUnfinishedBuildDecayContractTest(): void {
     investedShell.buildable !== null && investedShell.buildable.healthBuildFraction < 0.5,
     'a cancelled invested frame must start slow decay on the first orphan tick',
   );
+
+  // 4. Final payment wins even if the builder queue has already advanced by
+  //    the time the lifecycle pass observes the shell.
+  const paidWorld = new WorldState(94, 512, 512);
+  const paidShell = createHalfBuiltShell(paidWorld, playerId, 'buildingSolar', 240, 240);
+  paidShell.buildable!.paid = { ...paidShell.buildable!.required };
+  const paidResult = updateConstructionLifecycle(paidWorld, stepMs);
+  assertContract(
+    paidResult.completedBuildings.some((entity) => entity.id === paidShell.id),
+    'a fully paid unattended shell must complete before decay is considered',
+  );
+  assertContract(
+    paidResult.decayedBuildings.length === 0 && paidShell.buildable === null,
+    'paid completion must remove construction state without losing progress',
+  );
+  assertContract(
+    paidShell.building?.hp === paidShell.building?.maxHp,
+    'paid completion must finish building health',
+  );
 }

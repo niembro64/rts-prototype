@@ -16,6 +16,7 @@ export const UNIT_ACTION_FLAG_GUARD_FRIENDLY = 1 << 7;
 export const UNIT_ACTION_FLAG_GUARD_SERVICE = 1 << 8;
 export const UNIT_ACTION_FLAG_GUARD_SERVICE_IN_RANGE = 1 << 9;
 export const UNIT_ACTION_FLAG_TARGET_PRESENT = 1 << 10;
+export const UNIT_ACTION_FLAG_BUILD_FOOTPRINT_CLEAR = 1 << 11;
 
 /** Range checks resolved natively inside unit_action_plan_batch against
  *  the entity-state slab. Kept in lockstep with unit_action.rs. */

@@ -530,6 +530,16 @@ export function updateConstructionLifecycle(
         sourceIndex--;
         continue;
       }
+      // Payment and attendance are produced by different systems in the same
+      // tick. A builder may advance or disappear after landing the final work
+      // payment, so paid completion must resolve before the now-unattended
+      // shell is eligible for decay.
+      if (isConstructionAlive(entity) && isBuildFullyPaid(buildable)) {
+        growConstructionHp(world, entity, 1);
+        world.unfundedBuildSeconds.delete(entity.id);
+        completeConstruction(world, entity, result);
+        continue;
+      }
       // An unfinished building nobody is answering for rots and is gone at
       // zero. Landed build power or a build order anywhere in a living
       // builder's queue protects it; removing the last order starts decay on
@@ -550,9 +560,6 @@ export function updateConstructionLifecycle(
       if (buildable.isInterrupted) continue;
       const buildFraction = getBuildFraction(buildable);
       growConstructionHp(world, entity, buildFraction);
-      if (isConstructionAlive(entity) && isBuildFullyPaid(buildable)) {
-        completeConstruction(world, entity, result);
-      }
     }
   }
 

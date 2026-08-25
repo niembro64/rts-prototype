@@ -132,13 +132,13 @@ export class SurfaceLiftProbeOverlay3D {
       if (frame === undefined) continue;
       for (let sampleIndex = 0; sampleIndex < frame.samples.length; sampleIndex++) {
         const sample = frame.samples[sampleIndex];
-        const { x, y: z, bodyZ: bodyY } = sample;
-        if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(bodyY)) continue;
+        const { x, y: z, supportZ: supportY } = sample;
+        if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(supportY)) continue;
         this.writeMarkerInstance(
           markers,
           markerCursor,
           x,
-          bodyY,
+          supportY,
           z,
           sample.isCenter ? DIRECT_PROBE_COLOR : BODY_PROBE_COLOR,
         );
@@ -149,9 +149,9 @@ export class SurfaceLiftProbeOverlay3D {
             groundLines,
             groundLineCursor,
             x,
-            bodyY,
+            supportY,
             z,
-            bodyY - sample.groundInverseDistanceWorld,
+            supportY - sample.groundInverseDistanceWorld,
           )
         ) {
           groundLineCursor++;
@@ -163,9 +163,9 @@ export class SurfaceLiftProbeOverlay3D {
             waterLines,
             waterLineCursor,
             x,
-            bodyY,
+            supportY,
             z,
-            bodyY - sample.waterSurfaceInverseDistanceWorld,
+            supportY - sample.waterSurfaceInverseDistanceWorld,
           )
         ) {
           waterLineCursor++;
@@ -177,9 +177,9 @@ export class SurfaceLiftProbeOverlay3D {
             waterLines,
             waterLineCursor,
             x,
-            bodyY,
+            supportY,
             z,
-            bodyY + sample.waterSurfaceDepthWorld,
+            supportY + sample.waterSurfaceDepthWorld,
           )
         ) {
           waterLineCursor++;

@@ -107,7 +107,13 @@ import {
   SimulationArrivalController,
 } from './SimulationArrivalController';
 import { createSelfDestructEvent } from './selfDestructEvent';
-import { getBuildApproachMeasure, isBuildRadiusTargetInRange, isBuildTargetInRange } from './builderRange';
+import {
+  getBuildApproachMeasure,
+  getBuildFootprintClearanceApproachPoint,
+  isBuilderClearOfBuildFootprint,
+  isBuildRadiusTargetInRange,
+  isBuildTargetInRange,
+} from './builderRange';
 import { SIM_TICK_INSTRUMENTATION } from '../perf/SimTickInstrumentation';
 import {
   isReclaimableTarget,
@@ -134,6 +140,7 @@ import {
   SimulationUnitActionPlanner,
   UNIT_ACTION_FLAG_COMBAT_STOP_ANY,
   UNIT_ACTION_FLAG_COMBAT_STOP_FIGHT,
+  UNIT_ACTION_FLAG_BUILD_FOOTPRINT_CLEAR,
   UNIT_ACTION_FLAG_GUARD_FRIENDLY,
   UNIT_ACTION_FLAG_GUARD_SERVICE,
   UNIT_ACTION_FLAG_GUARD_SERVICE_IN_RANGE,
@@ -1097,6 +1104,9 @@ export class Simulation {
     if (targetId === undefined) return null;
     const target = this.world.getEntity(targetId);
     if (target === undefined || target.building === null) return null;
+    if (action.type === 'build') {
+      return getBuildFootprintClearanceApproachPoint(entity, target);
+    }
     const measure = getBuildApproachMeasure(entity, target);
     if (measure === null) return null;
     const dx = entity.transform.x - action.x;
@@ -2173,6 +2183,12 @@ export class Simulation {
             rangeKind = UNIT_ACTION_RANGE_KIND_BUILD;
             rangeTargetSlot = entitySlotRegistry.getSlot(targetId);
             rangeParam = entity.builder !== null ? entity.builder.buildRange : 0;
+            if (currentAction.type === 'build') {
+              const target = this.world.getEntity(targetId);
+              if (target !== undefined && isBuilderClearOfBuildFootprint(entity, target)) {
+                flags |= UNIT_ACTION_FLAG_BUILD_FOOTPRINT_CLEAR;
+              }
+            }
           }
         }
       } else if (currentAction.type === 'attack') {

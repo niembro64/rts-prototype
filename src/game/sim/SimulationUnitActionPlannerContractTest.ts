@@ -6,6 +6,7 @@ import {
 } from './EntitySlotRegistry';
 import {
   SimulationUnitActionPlanner,
+  UNIT_ACTION_FLAG_BUILD_FOOTPRINT_CLEAR,
   UNIT_ACTION_FLAG_COMBAT_STOP_ANY,
   UNIT_ACTION_FLAG_COMBAT_STOP_FIGHT,
   UNIT_ACTION_FLAG_GUARD_FRIENDLY,
@@ -106,6 +107,17 @@ export function runSimulationUnitActionPlannerContractTest(): void {
   );
 
   assertContract(classify(action('build')) === UNIT_ACTION_PLAN_BUILD_MOVE, 'build outside range moves');
+  assertContract(
+    classify(action('build'), UNIT_ACTION_FLAG_TARGET_IN_BUILD_RANGE) === UNIT_ACTION_PLAN_BUILD_MOVE,
+    'a build target in range still moves until the builder clears its placement footprint',
+  );
+  assertContract(
+    classify(
+      action('build'),
+      UNIT_ACTION_FLAG_TARGET_IN_BUILD_RANGE | UNIT_ACTION_FLAG_BUILD_FOOTPRINT_CLEAR,
+    ) === UNIT_ACTION_PLAN_BUILD_HOLD,
+    'a build target holds only when both range and footprint clearance are satisfied',
+  );
   assertContract(
     classify(action('repair'), UNIT_ACTION_FLAG_TARGET_IN_BUILD_RANGE) === UNIT_ACTION_PLAN_BUILD_HOLD,
     'build-like action in range holds',
@@ -236,7 +248,14 @@ export function runSimulationUnitActionPlannerContractTest(): void {
   rangeSim.entityState.setStaticShape(12, 10, 10, 10, 10, 10, 10);
 
   assertContract(
-    classify(action('build', { buildingId: 2 }), 0, null, UNIT_ACTION_RANGE_KIND_BUILD, 11, 90) ===
+    classify(
+      action('build', { buildingId: 2 }),
+      UNIT_ACTION_FLAG_BUILD_FOOTPRINT_CLEAR,
+      null,
+      UNIT_ACTION_RANGE_KIND_BUILD,
+      11,
+      90,
+    ) ===
       UNIT_ACTION_PLAN_BUILD_HOLD,
     'native build range: 80 from the footprint edge inside range 90 holds',
   );
@@ -245,7 +264,14 @@ export function runSimulationUnitActionPlannerContractTest(): void {
     'native build range writes the in-range flag back to the row',
   );
   assertContract(
-    classify(action('build', { buildingId: 2 }), 0, null, UNIT_ACTION_RANGE_KIND_BUILD, 11, 70) ===
+    classify(
+      action('build', { buildingId: 2 }),
+      UNIT_ACTION_FLAG_BUILD_FOOTPRINT_CLEAR,
+      null,
+      UNIT_ACTION_RANGE_KIND_BUILD,
+      11,
+      70,
+    ) ===
       UNIT_ACTION_PLAN_BUILD_MOVE,
     'native build range: range 70 against distance 80 moves',
   );

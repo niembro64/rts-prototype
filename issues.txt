@@ -1,9 +1,0 @@
-1. I told my commander to build something, he completed it then I told him to move to something else, and that building started decaying. The building was completed so that doesn't make sense.
-
-2. When I just told the commander to build something, he started building it without getting sufficiently out of the way of the building's build squares - I think he got stuck because the building was built basically "on top" of him.
-
-3. It seems that our construction craft have weapons? The commander is the only construction entity that should have both the ability to build things AND a weapon. The construction crafts can of course still "reclaim" enemy units as a sort of attack, but they should not have classical "attack" weapons. 
-
-4. Regarding our images that are generated of our units and buildings for the build options or loading screen or entity lab, let's have these pictures always taken from a downward angle of 45 degrees. Also let's have them taken from the front right. So basically the camera should be looking down on the entity from a 45-degree angle from the front of the unit and also a 45-degree angle downward. Also for these images let's only have a tiny bit of padding in them, let's make sure we scale to fill the square as much as possible without hiding or distorting anything - a sort of "contain". 
-
-5. We do not want units "extending" other units. We want all units to be orthogonal, distinct, original, and hold a specific niche usecase. Make sure all of our units are distinct, do not "extend" other units and are not duplications in any way. We need full visual distinction, and full logical distinction as far as what niche they would play. The "niche" is the combination of cost, speed, media traversal, weapon, mass, propulsion, etc. that should be diversified clealy across all units. 

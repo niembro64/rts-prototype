@@ -3,6 +3,12 @@ import previewSceneSource from './loadingUnitPreviewScene.ts?raw';
 import backgroundBattleSource from './gameCanvasBackgroundBattle.ts?raw';
 import realBattleStartSource from './gameCanvasRealBattleStart.ts?raw';
 import sharedSimConstantsSource from '../sharedSimConstants.json?raw';
+import {
+  CANONICAL_ENTITY_PREVIEW_ELEVATION_RAD,
+  CANONICAL_ENTITY_PREVIEW_YAW_RAD,
+  ENTITY_PREVIEW_CONTAIN_MARGIN,
+  getCanonicalEntityPreviewCameraFit,
+} from './entityPreviewCamera';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -12,6 +18,20 @@ function assertContract(condition: boolean, message: string): void {
 
 export function runEntityPreviewWarmupContractTest(): void {
   assertContract(
+    Math.abs(CANONICAL_ENTITY_PREVIEW_YAW_RAD + Math.PI / 4) < 1e-12 &&
+      Math.abs(CANONICAL_ENTITY_PREVIEW_ELEVATION_RAD - Math.PI / 4) < 1e-12,
+    'canonical entity images must use exact front-right and downward 45-degree angles',
+  );
+  assertContract(
+    ENTITY_PREVIEW_CONTAIN_MARGIN > 1 && ENTITY_PREVIEW_CONTAIN_MARGIN <= 1.08,
+    'canonical entity images must use only a tiny contain safety margin',
+  );
+  const fit = getCanonicalEntityPreviewCameraFit(20, 10, Math.PI / 3, Math.PI / 3);
+  assertContract(
+    fit.distance > fit.projectedHalfDepth + fit.projectedHalfHeight,
+    'perspective fit must include the near-side depth as well as projected height',
+  );
+  assertContract(
     !sharedSimConstantsSource.includes('maxTickDtMs'),
     'the unused maxTickDtMs setting must not return to shared simulation config',
   );
@@ -20,6 +40,11 @@ export function runEntityPreviewWarmupContractTest(): void {
       previewSceneSource.includes('rendererHost?: LoadingUnitPreviewRendererHost') &&
       previewSceneSource.includes('if (this.ownsRendererHost) this.rendererHost.dispose()'),
     'serialized thumbnails must be able to share one context-owned renderer and PMREM',
+  );
+  assertContract(
+    previewSceneSource.includes('getCanonicalEntityPreviewCameraFit(') &&
+      thumbnailSource.includes('CANONICAL_ENTITY_PREVIEW_YAW_RAD'),
+    'live Entity Lab and generated images must share the canonical camera helper',
   );
   assertContract(
     thumbnailSource.includes("acquireAuxiliaryRendererContext('entity-preview-images'") &&

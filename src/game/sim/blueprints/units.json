@@ -5790,89 +5790,264 @@
     }
   },
   "unitRadarScout": {
-    "$extends": "unitBee",
     "unitBlueprintId": "unitRadarScout",
     "requiresWater": false,
     "requiresLand": false,
-    "production": { "techLevel": 1, "domains": ["aircraft"] },
+    "production": {
+      "techLevel": 1,
+      "domains": [
+        "aircraft"
+      ]
+    },
     "tinyName": "KES",
     "fullName": "Kestrel",
     "shortDescription": "Unarmed mobile radar aircraft",
     "longDescription": "An unarmed airborne scout that extends allied radar coverage far beyond ordinary visual range.",
-    "identity": { "kind": "animal", "animalClass": "bird" },
+    "identity": {
+      "kind": "animal",
+      "animalClass": "bird"
+    },
     "shortName": "KESTL",
     "hp": 160,
+    "radius": {
+      "other": 9,
+      "hitbox": 8,
+      "collision": 10.8
+    },
+    "supportSurface": {
+      "kind": "none"
+    },
     "mass": 90,
-    "cost": { "energy": 220, "metal": 180 },
-    "unitLocomotion": { "environmentalHazards": { "waterDamagePerSecond": 80 } },
+    "cost": {
+      "energy": 220,
+      "metal": 180
+    },
     "turrets": [
       {
         "turretBlueprintId": "turretSensorUnitRadarScout",
         "presentation": null,
-        "mount": { "x": 0, "y": 0, "z": 0 },
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
         "requiredEngagedForFightStop": false,
         "mountId": "radar",
         "controlMode": "autonomous"
       }
     ],
     "bodyShape": {
-      "$replace": true,
       "kind": "composite",
       "parts": [
-        { "kind": "oval", "offsetForward": 0.02, "xFrac": 0.5, "yFrac": 0.13, "zFrac": 0.13, "centerYFrac": 0.28 },
-        { "kind": "oval", "offsetForward": -0.06, "offsetLateral": -0.34, "xFrac": 0.3, "yFrac": 0.045, "zFrac": 0.36, "centerYFrac": 0.28 },
-        { "kind": "oval", "offsetForward": -0.06, "offsetLateral": 0.34, "xFrac": 0.3, "yFrac": 0.045, "zFrac": 0.36, "centerYFrac": 0.28 },
-        { "kind": "cone", "offsetForward": 0.5, "lengthFrac": 0.24, "radiusFrac": 0.09, "centerYFrac": 0.28 },
-        { "kind": "circle", "offsetForward": -0.1, "radiusFrac": 0.2, "yFrac": 0.055, "centerYFrac": 0.45 }
+        {
+          "kind": "oval",
+          "offsetForward": 0.02,
+          "xFrac": 0.5,
+          "yFrac": 0.13,
+          "zFrac": 0.13,
+          "centerYFrac": 0.28
+        },
+        {
+          "kind": "oval",
+          "offsetForward": -0.06,
+          "offsetLateral": -0.34,
+          "xFrac": 0.3,
+          "yFrac": 0.045,
+          "zFrac": 0.36,
+          "centerYFrac": 0.28
+        },
+        {
+          "kind": "oval",
+          "offsetForward": -0.06,
+          "offsetLateral": 0.34,
+          "xFrac": 0.3,
+          "yFrac": 0.045,
+          "zFrac": 0.36,
+          "centerYFrac": 0.28
+        },
+        {
+          "kind": "cone",
+          "offsetForward": 0.5,
+          "lengthFrac": 0.24,
+          "radiusFrac": 0.09,
+          "centerYFrac": 0.28
+        },
+        {
+          "kind": "circle",
+          "offsetForward": -0.1,
+          "radiusFrac": 0.2,
+          "yFrac": 0.055,
+          "centerYFrac": 0.45
+        }
       ]
     },
+    "teamOrnament": {
+      "backX": 0.82,
+      "frontX": 0.79,
+      "backY": 1,
+      "frontY": 1
+    },
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitBee"
+    },
+    "unitLocomotion": {
+      "type": "drone",
+      "physicsPresetId": "drone",
+      "physics": {
+        "ground": {
+          "maxPropulsiveForce": 0
+        },
+        "air": {
+          "maxPropulsiveForce": 0.106666666667,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 22,
+            "surfaceFollowingInverseForceFromWater": 8
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 0.106666666667,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
+          }
+        }
+      },
+      "config": {
+        "mounts": [
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0,
+              "yUnitRadiusRatio": 0.62,
+              "zUnitRadiusRatio": -0.04444
+            },
+            "radiusFrac": 0.32,
+            "ringTubeRadiusFrac": 0.035,
+            "outwardAngleDeg": 14
+          }
+        ],
+        "fanSpinRadPerSec": -10
+      },
+      "environmentalHazards": {
+        "waterDamagePerSecond": 80
+      }
+    },
     "base": {
-      "cost": { "energy": 220, "metal": 180 },
+      "cost": {
+        "energy": 220,
+        "metal": 180
+      },
       "mass": 90,
       "health": 160,
-      "deathExplosion": { "radius": 18, "force": 9000, "damage": 70 },
-      "signature": { "radarStealth": false, "sonarStealth": false }
-    }
+      "deathExplosion": {
+        "radius": 18,
+        "force": 9000,
+        "damage": 70
+      },
+      "radius": {
+        "other": 9,
+        "hitbox": 8,
+        "collision": 10.8
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 1.35
   },
   "unitConstructionBot": {
-    "$extends": "unitHuman",
     "unitBlueprintId": "unitConstructionBot",
     "requiresWater": false,
     "requiresLand": true,
-    "production": { "techLevel": 1, "domains": ["bot"] },
+    "production": {
+      "techLevel": 1,
+      "domains": [
+        "bot"
+      ]
+    },
     "tinyName": "CBT",
     "fullName": "Construction Bot",
     "shortDescription": "Bipedal construction craft",
     "longDescription": "A bipedal builder that starts bot and universal fabricators while assisting any active construction site.",
-    "identity": { "kind": "constructionCraft" },
+    "identity": {
+      "kind": "constructionCraft",
+      "animalClass": "mammal"
+    },
     "shortName": "C-BOT",
     "hp": 240,
+    "radius": {
+      "other": 11,
+      "hitbox": 9,
+      "collision": 12
+    },
+    "supportSurface": {
+      "kind": "none"
+    },
     "mass": 180,
-    "cost": { "energy": 230, "metal": 210 },
-    "builder": { "buildRange": 150 },
+    "cost": {
+      "energy": 230,
+      "metal": 210
+    },
     "constructionRate": 32,
     "allowedBuildBlueprintIds": [
-      "buildingSolar", "buildingWind", "buildingExtractor", "buildingRadar",
-      "towerCannon", "towerAntiAir", "towerInterceptor",
-      "towerFabricator", "buildingAdvancedUniversalFabricator",
-      "buildingBotFabricator", "buildingAdvancedBotFabricator"
+      "buildingSolar",
+      "buildingWind",
+      "buildingExtractor",
+      "buildingRadar",
+      "towerCannon",
+      "towerAntiAir",
+      "towerInterceptor",
+      "towerFabricator",
+      "buildingAdvancedUniversalFabricator",
+      "buildingBotFabricator",
+      "buildingAdvancedBotFabricator"
     ],
     "workEmitter": {
-      "points": [{ "x": 0.04, "y": 0, "z": 0 }],
+      "points": [
+        {
+          "x": 0.04,
+          "y": 0,
+          "z": 0
+        }
+      ],
       "particleTravelSpeed": 170,
       "particleRadius": 1.45,
       "attachment": {
         "kind": "botArm",
         "arm": "rightArm",
-        "socketOffset": { "x": 0.02, "y": 0, "z": 0 }
+        "socketOffset": {
+          "x": 0.02,
+          "y": 0,
+          "z": 0
+        }
       },
       "angularActuator": {
-        "yaw": { "maxSpeed": 1.4, "maxAcceleration": 2.8 },
-        "pitch": { "maxSpeed": 1.6, "maxAcceleration": 3.2 }
+        "yaw": {
+          "maxSpeed": 1.4,
+          "maxAcceleration": 2.8
+        },
+        "pitch": {
+          "maxSpeed": 1.6,
+          "maxAcceleration": 3.2
+        }
       },
       "articulation": {
-        "yaw": { "continuous": false, "minAngle": -0.9, "maxAngle": 0.9 },
-        "pitch": { "minAngle": -1.55, "maxAngle": 1.55 },
+        "yaw": {
+          "continuous": false,
+          "minAngle": -0.9,
+          "maxAngle": 0.9
+        },
+        "pitch": {
+          "minAngle": -1.55,
+          "maxAngle": 1.55
+        },
         "restYaw": 0,
         "restPitch": 0.25,
         "restoreDelayMs": 3000,
@@ -5883,359 +6058,1494 @@
       "requiresAlignmentForWork": true,
       "alignmentToleranceRadians": 0.12
     },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitHuman",
+        "presentation": null,
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 1.5
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous",
+        "hostAttachment": {
+          "kind": "botPiece",
+          "piece": "head",
+          "socketOffset": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          }
+        }
+      }
+    ],
     "bodyShape": {
-      "$replace": true,
       "kind": "composite",
       "parts": [
-        { "kind": "box", "offsetForward": -0.05, "lengthFrac": 0.62, "widthFrac": 0.76, "heightFrac": 0.52, "centerYFrac": 0.54 },
-        { "kind": "box", "offsetForward": 0.08, "lengthFrac": 0.3, "widthFrac": 1.02, "heightFrac": 0.18, "centerYFrac": 0.72 },
-        { "kind": "circle", "offsetForward": 0.25, "radiusFrac": 0.18, "yFrac": 0.14, "centerYFrac": 0.92 },
-        { "kind": "cylinder", "offsetForward": 0.36, "offsetLateral": -0.42, "lengthFrac": 0.42, "radiusFrac": 0.075, "centerYFrac": 0.68, "pitchRad": 0.34 },
-        { "kind": "cylinder", "offsetForward": 0.36, "offsetLateral": 0.42, "lengthFrac": 0.42, "radiusFrac": 0.075, "centerYFrac": 0.68, "pitchRad": 0.34 }
+        {
+          "kind": "box",
+          "offsetForward": -0.05,
+          "lengthFrac": 0.62,
+          "widthFrac": 0.76,
+          "heightFrac": 0.52,
+          "centerYFrac": 0.54
+        },
+        {
+          "kind": "box",
+          "offsetForward": 0.08,
+          "lengthFrac": 0.3,
+          "widthFrac": 1.02,
+          "heightFrac": 0.18,
+          "centerYFrac": 0.72
+        },
+        {
+          "kind": "circle",
+          "offsetForward": 0.25,
+          "radiusFrac": 0.18,
+          "yFrac": 0.14,
+          "centerYFrac": 0.92
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": 0.36,
+          "offsetLateral": -0.42,
+          "lengthFrac": 0.42,
+          "radiusFrac": 0.075,
+          "centerYFrac": 0.68,
+          "pitchRad": 0.34
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": 0.36,
+          "offsetLateral": 0.42,
+          "lengthFrac": 0.42,
+          "radiusFrac": 0.075,
+          "centerYFrac": 0.68,
+          "pitchRad": 0.34
+        }
       ]
     },
+    "teamOrnament": {
+      "backX": 0.3,
+      "frontX": 0.28,
+      "backY": 0.14,
+      "frontY": 0.14
+    },
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "suspension": null,
+    "builder": {
+      "buildRange": 150
+    },
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitHuman"
+    },
+    "unitLocomotion": {
+      "type": "bot",
+      "physicsPresetId": "bot",
+      "physics": {
+        "ground": {
+          "maxPropulsiveForce": 14.5
+        },
+        "air": {
+          "maxPropulsiveForce": 0,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 14.5,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
+          }
+        }
+      },
+      "config": {
+        "upperBodyActuator": {
+          "maxSpeed": 2.5,
+          "maxAcceleration": 6
+        },
+        "upperBodyRestoreDelayMs": 1800,
+        "legs": {
+          "hip": {
+            "xUnitRadiusRatio": 0.05,
+            "yUnitRadiusRatio": 0.3,
+            "zUnitRadiusRatio": 1.86048
+          },
+          "radius": 3.8,
+          "segments": {
+            "upper": {
+              "lengthUnitRadiusRatio": 0.96
+            },
+            "lower": {
+              "lengthUnitRadiusRatio": 0.96
+            }
+          },
+          "footLengthRatio": 0.44,
+          "footWidthRatio": 1.25,
+          "strideLengthRatio": 0.5,
+          "strideLiftRatio": 0.0275,
+          "standHeightRatio": 0.969,
+          "stanceForwardUnitRadiusRatio": 0.12,
+          "stanceOutwardUnitRadiusRatio": 0.16
+        },
+        "arms": {
+          "shoulder": {
+            "xUnitRadiusRatio": 0,
+            "yUnitRadiusRatio": 0.55,
+            "zUnitRadiusRatio": 2.82
+          },
+          "radius": 3.8,
+          "segments": {
+            "upper": {
+              "lengthUnitRadiusRatio": 0.62
+            },
+            "lower": {
+              "lengthUnitRadiusRatio": 0.82
+            }
+          },
+          "handRadiusRatio": 1.05,
+          "restSwingDeg": 12,
+          "walkSwingDeg": 14,
+          "outwardDeg": 8
+        }
+      },
+      "environmentalHazards": {
+        "waterDamagePerSecond": 0
+      }
+    },
     "base": {
-      "cost": { "energy": 230, "metal": 210 },
+      "cost": {
+        "energy": 230,
+        "metal": 210
+      },
       "mass": 180,
       "health": 240,
-      "deathExplosion": { "radius": 24, "force": 12000, "damage": 100 },
-      "signature": { "radarStealth": false, "sonarStealth": false }
-    }
+      "deathExplosion": {
+        "radius": 24,
+        "force": 12000,
+        "damage": 100
+      },
+      "radius": {
+        "other": 11,
+        "hitbox": 9,
+        "collision": 12
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    },
+    "supportPointOffsetZ": 26
   },
   "unitConstructionRover": {
-    "$extends": "unitJackal",
     "unitBlueprintId": "unitConstructionRover",
     "requiresWater": false,
     "requiresLand": true,
-    "production": { "techLevel": 1, "domains": ["vehicle"] },
+    "production": {
+      "techLevel": 1,
+      "domains": [
+        "vehicle"
+      ]
+    },
     "tinyName": "CTR",
     "fullName": "Construction Rover",
     "shortDescription": "Wheeled construction craft",
     "longDescription": "A wheeled builder that starts vehicle and universal fabricators while assisting any active construction site.",
-    "identity": { "kind": "constructionCraft" },
+    "identity": {
+      "kind": "constructionCraft",
+      "animalClass": "mammal"
+    },
     "shortName": "C-ROV",
     "hp": 260,
+    "radius": {
+      "other": 8,
+      "hitbox": 6,
+      "collision": 9.6
+    },
+    "supportSurface": {
+      "kind": "none"
+    },
     "mass": 200,
-    "cost": { "energy": 240, "metal": 220 },
-    "unitLocomotion": { "environmentalHazards": { "waterDamagePerSecond": 130 } },
+    "cost": {
+      "energy": 240,
+      "metal": 220
+    },
     "turrets": [
       {
         "turretBlueprintId": "turretSensorUnitJackal",
         "presentation": null,
-        "mount": { "x": 0, "y": 0, "z": 2 },
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 2
+        },
         "requiredEngagedForFightStop": false,
         "mountId": "sensor",
         "controlMode": "autonomous"
       }
     ],
-    "builder": { "buildRange": 155 },
+    "bodyShape": {
+      "kind": "composite",
+      "parts": [
+        {
+          "kind": "box",
+          "offsetForward": -0.08,
+          "lengthFrac": 1.18,
+          "widthFrac": 0.76,
+          "heightFrac": 0.3,
+          "centerYFrac": 0.25
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.26,
+          "lengthFrac": 0.46,
+          "widthFrac": 0.62,
+          "heightFrac": 0.22,
+          "centerYFrac": 0.5
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": 0.3,
+          "lengthFrac": 0.64,
+          "radiusFrac": 0.08,
+          "centerYFrac": 0.57,
+          "pitchRad": 0.42
+        },
+        {
+          "kind": "box",
+          "offsetForward": 0.62,
+          "lengthFrac": 0.22,
+          "widthFrac": 0.56,
+          "heightFrac": 0.18,
+          "centerYFrac": 0.71
+        }
+      ]
+    },
+    "teamOrnament": {
+      "backX": 0.82,
+      "frontX": 0.79,
+      "backY": 1,
+      "frontY": 1
+    },
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "suspension": null,
+    "builder": {
+      "buildRange": 155
+    },
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitJackal"
+    },
+    "unitLocomotion": {
+      "type": "rover",
+      "physicsPresetId": "rover",
+      "physics": {
+        "ground": {
+          "maxPropulsiveForce": 26.666666666667
+        },
+        "air": {
+          "maxPropulsiveForce": 0,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 0.4,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
+          }
+        }
+      },
+      "config": {
+        "mounts": [
+          {
+            "xUnitRadiusRatio": 0.6,
+            "yUnitRadiusRatio": -0.745,
+            "zUnitRadiusRatio": 0.28
+          },
+          {
+            "xUnitRadiusRatio": 0.6,
+            "yUnitRadiusRatio": 0.745,
+            "zUnitRadiusRatio": 0.28
+          },
+          {
+            "xUnitRadiusRatio": -0.6,
+            "yUnitRadiusRatio": -0.745,
+            "zUnitRadiusRatio": 0.28
+          },
+          {
+            "xUnitRadiusRatio": -0.6,
+            "yUnitRadiusRatio": 0.745,
+            "zUnitRadiusRatio": 0.28
+          }
+        ],
+        "treadWidth": 0.15,
+        "wheelRadius": 0.28,
+        "rotationSpeed": 1
+      },
+      "environmentalHazards": {
+        "waterDamagePerSecond": 130
+      }
+    },
+    "base": {
+      "cost": {
+        "energy": 240,
+        "metal": 220
+      },
+      "mass": 200,
+      "health": 260,
+      "deathExplosion": {
+        "radius": 24,
+        "force": 13000,
+        "damage": 110
+      },
+      "radius": {
+        "other": 8,
+        "hitbox": 6,
+        "collision": 9.6
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 5.68,
     "constructionRate": 34,
     "allowedBuildBlueprintIds": [
-      "buildingSolar", "buildingWind", "buildingExtractor", "buildingRadar",
-      "towerCannon", "towerAntiAir", "towerInterceptor",
-      "towerFabricator", "buildingAdvancedUniversalFabricator",
-      "buildingVehicleFabricator", "buildingAdvancedVehicleFabricator"
+      "buildingSolar",
+      "buildingWind",
+      "buildingExtractor",
+      "buildingRadar",
+      "towerCannon",
+      "towerAntiAir",
+      "towerInterceptor",
+      "towerFabricator",
+      "buildingAdvancedUniversalFabricator",
+      "buildingVehicleFabricator",
+      "buildingAdvancedVehicleFabricator"
     ],
     "workEmitter": {
-      "points": [{ "x": 0.75, "y": 0, "z": 0.55 }],
+      "points": [
+        {
+          "x": 0.75,
+          "y": 0,
+          "z": 0.55
+        }
+      ],
       "particleTravelSpeed": 170,
       "particleRadius": 1.45,
-      "attachment": { "kind": "host" },
+      "attachment": {
+        "kind": "host"
+      },
       "angularActuator": null,
       "articulation": null,
       "requiresAlignmentForWork": false,
       "alignmentToleranceRadians": 0.12
-    },
-    "bodyShape": {
-      "$replace": true,
-      "kind": "composite",
-      "parts": [
-        { "kind": "box", "offsetForward": -0.08, "lengthFrac": 1.18, "widthFrac": 0.76, "heightFrac": 0.3, "centerYFrac": 0.25 },
-        { "kind": "box", "offsetForward": -0.26, "lengthFrac": 0.46, "widthFrac": 0.62, "heightFrac": 0.22, "centerYFrac": 0.5 },
-        { "kind": "cylinder", "offsetForward": 0.3, "lengthFrac": 0.64, "radiusFrac": 0.08, "centerYFrac": 0.57, "pitchRad": 0.42 },
-        { "kind": "box", "offsetForward": 0.62, "lengthFrac": 0.22, "widthFrac": 0.56, "heightFrac": 0.18, "centerYFrac": 0.71 }
-      ]
-    },
-    "base": {
-      "cost": { "energy": 240, "metal": 220 },
-      "mass": 200,
-      "health": 260,
-      "deathExplosion": { "radius": 24, "force": 13000, "damage": 110 },
-      "signature": { "radarStealth": false, "sonarStealth": false }
     }
   },
   "unitStealthScout": {
-    "$extends": "unitSeaTurtle",
     "unitBlueprintId": "unitStealthScout",
-    "requiresWater": false,
+    "requiresWater": true,
     "requiresLand": false,
-    "production": { "techLevel": 2, "domains": ["naval"] },
+    "production": {
+      "techLevel": 2,
+      "domains": [
+        "naval"
+      ]
+    },
     "tinyName": "CUT",
     "fullName": "Cuttlefish",
-    "shortDescription": "Cloaked radar-stealth scout",
-    "longDescription": "A fragile cloaked naval scout whose radar stealth lets it approach contact networks without announcing itself.",
-    "identity": { "kind": "animal", "animalClass": "mollusk" },
+    "shortDescription": "Submerged stealth reconnaissance",
+    "longDescription": "A fragile water-only cuttlefish scout that swims below the surface, cloaks, and contributes underwater contact sensing without carrying a weapon.",
+    "identity": {
+      "kind": "animal",
+      "animalClass": "mollusk"
+    },
     "shortName": "CUTTL",
     "hp": 180,
+    "radius": {
+      "other": 28,
+      "hitbox": 24,
+      "collision": 40
+    },
+    "supportSurface": {
+      "kind": "none"
+    },
     "mass": 130,
-    "cost": { "energy": 720, "metal": 520 },
+    "cost": {
+      "energy": 720,
+      "metal": 520
+    },
     "turrets": [
       {
         "turretBlueprintId": "turretSensorUnitStealthScout",
         "presentation": null,
-        "mount": { "x": 0, "y": 0, "z": 0 },
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
         "requiredEngagedForFightStop": false,
         "mountId": "sensor",
         "controlMode": "autonomous"
       }
     ],
     "bodyShape": {
-      "$replace": true,
       "kind": "composite",
       "parts": [
-        { "kind": "oval", "offsetForward": 0.03, "xFrac": 0.72, "yFrac": 0.23, "zFrac": 0.35 },
-        { "kind": "oval", "offsetForward": -0.03, "offsetLateral": -0.31, "xFrac": 0.56, "yFrac": 0.055, "zFrac": 0.18, "centerYFrac": 0.2 },
-        { "kind": "oval", "offsetForward": -0.03, "offsetLateral": 0.31, "xFrac": 0.56, "yFrac": 0.055, "zFrac": 0.18, "centerYFrac": 0.2 },
-        { "kind": "cone", "offsetForward": -0.72, "offsetLateral": -0.18, "lengthFrac": 0.48, "radiusFrac": 0.07, "centerYFrac": 0.16 },
-        { "kind": "cone", "offsetForward": -0.72, "offsetLateral": 0.18, "lengthFrac": 0.48, "radiusFrac": 0.07, "centerYFrac": 0.16 }
+        {
+          "kind": "oval",
+          "offsetForward": 0.03,
+          "xFrac": 0.72,
+          "yFrac": 0.23,
+          "zFrac": 0.35
+        },
+        {
+          "kind": "oval",
+          "offsetForward": -0.03,
+          "offsetLateral": -0.31,
+          "xFrac": 0.56,
+          "yFrac": 0.055,
+          "zFrac": 0.18,
+          "centerYFrac": 0.2
+        },
+        {
+          "kind": "oval",
+          "offsetForward": -0.03,
+          "offsetLateral": 0.31,
+          "xFrac": 0.56,
+          "yFrac": 0.055,
+          "zFrac": 0.18,
+          "centerYFrac": 0.2
+        },
+        {
+          "kind": "cone",
+          "offsetForward": -0.72,
+          "offsetLateral": -0.18,
+          "lengthFrac": 0.48,
+          "radiusFrac": 0.07,
+          "centerYFrac": 0.16
+        },
+        {
+          "kind": "cone",
+          "offsetForward": -0.72,
+          "offsetLateral": 0.18,
+          "lengthFrac": 0.48,
+          "radiusFrac": 0.07,
+          "centerYFrac": 0.16
+        }
       ]
     },
+    "teamOrnament": {
+      "backX": 0.82,
+      "frontX": 0.79,
+      "backY": 1,
+      "frontY": 1
+    },
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitHippo"
+    },
+    "unitLocomotion": {
+      "type": "amphibian",
+      "physicsPresetId": "submarine",
+      "physics": {
+        "ground": {
+          "maxPropulsiveForce": 0
+        },
+        "air": {
+          "maxPropulsiveForce": 0,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 12,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 8,
+            "surfaceFollowingProportionalForceFromWater": 0.02
+          }
+        }
+      },
+      "config": {
+        "mounts": [
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.46,
+              "yUnitRadiusRatio": -0.34,
+              "zUnitRadiusRatio": 0.34
+            },
+            "lengthFrac": 1.05
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.46,
+              "yUnitRadiusRatio": 0.34,
+              "zUnitRadiusRatio": 0.34
+            },
+            "lengthFrac": 1.05
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": -0.43,
+              "yUnitRadiusRatio": -0.34,
+              "zUnitRadiusRatio": 0.34
+            },
+            "lengthFrac": 0.74
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": -0.43,
+              "yUnitRadiusRatio": 0.34,
+              "zUnitRadiusRatio": 0.34
+            },
+            "lengthFrac": 0.74
+          }
+        ],
+        "rootChordFrac": 0.42,
+        "tipChordFrac": 0.18,
+        "thicknessFrac": 0.07,
+        "groundDownAngleDeg": 48,
+        "groundSweepAngleDeg": 24,
+        "waterStrokeAngleDeg": 32,
+        "cycleDistanceFrac": 1.4
+      },
+      "environmentalHazards": {
+        "waterDamagePerSecond": 0
+      }
+    },
     "base": {
-      "cost": { "energy": 720, "metal": 520 },
+      "cost": {
+        "energy": 720,
+        "metal": 520
+      },
       "mass": 130,
       "health": 180,
-      "deathExplosion": { "radius": 24, "force": 10000, "damage": 90 },
-      "signature": { "radarStealth": true, "sonarStealth": true }
-    }
+      "deathExplosion": {
+        "radius": 24,
+        "force": 10000,
+        "damage": 90
+      },
+      "radius": {
+        "other": 28,
+        "hitbox": 24,
+        "collision": 40
+      },
+      "signature": {
+        "radarStealth": true,
+        "sonarStealth": true
+      }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 14
   },
   "unitDetector": {
-    "$extends": "unitBee",
     "unitBlueprintId": "unitDetector",
     "requiresWater": false,
     "requiresLand": false,
-    "production": { "techLevel": 2, "domains": ["aircraft"] },
+    "production": {
+      "techLevel": 2,
+      "domains": [
+        "aircraft"
+      ]
+    },
     "tinyName": "OWL",
     "fullName": "Owl",
     "shortDescription": "Mobile cloak detector",
     "longDescription": "A mobile airborne detector with modest sight that reveals cloaked enemies without providing radar coverage.",
-    "identity": { "kind": "animal", "animalClass": "bird" },
+    "identity": {
+      "kind": "animal",
+      "animalClass": "bird"
+    },
     "shortName": "OWLET",
     "hp": 260,
+    "radius": {
+      "other": 9,
+      "hitbox": 8,
+      "collision": 10.8
+    },
+    "supportSurface": {
+      "kind": "none"
+    },
     "mass": 140,
-    "cost": { "energy": 780, "metal": 620 },
-    "unitLocomotion": { "environmentalHazards": { "waterDamagePerSecond": 130 } },
+    "cost": {
+      "energy": 780,
+      "metal": 620
+    },
     "turrets": [
       {
         "turretBlueprintId": "turretSensorUnitDetector",
         "presentation": null,
-        "mount": { "x": 0, "y": 0, "z": 0 },
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
         "requiredEngagedForFightStop": false,
         "mountId": "detector",
         "controlMode": "autonomous"
       }
     ],
     "bodyShape": {
-      "$replace": true,
       "kind": "composite",
       "parts": [
-        { "kind": "oval", "offsetForward": -0.04, "xFrac": 0.42, "yFrac": 0.17, "zFrac": 0.28, "centerYFrac": 0.3 },
-        { "kind": "circle", "offsetForward": 0.31, "offsetLateral": -0.18, "radiusFrac": 0.17, "yFrac": 0.09, "centerYFrac": 0.35 },
-        { "kind": "circle", "offsetForward": 0.31, "offsetLateral": 0.18, "radiusFrac": 0.17, "yFrac": 0.09, "centerYFrac": 0.35 },
-        { "kind": "oval", "offsetForward": -0.08, "offsetLateral": -0.37, "xFrac": 0.28, "yFrac": 0.05, "zFrac": 0.27, "centerYFrac": 0.29 },
-        { "kind": "oval", "offsetForward": -0.08, "offsetLateral": 0.37, "xFrac": 0.28, "yFrac": 0.05, "zFrac": 0.27, "centerYFrac": 0.29 }
+        {
+          "kind": "oval",
+          "offsetForward": -0.04,
+          "xFrac": 0.42,
+          "yFrac": 0.17,
+          "zFrac": 0.28,
+          "centerYFrac": 0.3
+        },
+        {
+          "kind": "circle",
+          "offsetForward": 0.31,
+          "offsetLateral": -0.18,
+          "radiusFrac": 0.17,
+          "yFrac": 0.09,
+          "centerYFrac": 0.35
+        },
+        {
+          "kind": "circle",
+          "offsetForward": 0.31,
+          "offsetLateral": 0.18,
+          "radiusFrac": 0.17,
+          "yFrac": 0.09,
+          "centerYFrac": 0.35
+        },
+        {
+          "kind": "oval",
+          "offsetForward": -0.08,
+          "offsetLateral": -0.37,
+          "xFrac": 0.28,
+          "yFrac": 0.05,
+          "zFrac": 0.27,
+          "centerYFrac": 0.29
+        },
+        {
+          "kind": "oval",
+          "offsetForward": -0.08,
+          "offsetLateral": 0.37,
+          "xFrac": 0.28,
+          "yFrac": 0.05,
+          "zFrac": 0.27,
+          "centerYFrac": 0.29
+        }
       ]
     },
+    "teamOrnament": {
+      "backX": 0.82,
+      "frontX": 0.79,
+      "backY": 1,
+      "frontY": 1
+    },
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitBee"
+    },
+    "unitLocomotion": {
+      "type": "drone",
+      "physicsPresetId": "drone",
+      "physics": {
+        "ground": {
+          "maxPropulsiveForce": 0
+        },
+        "air": {
+          "maxPropulsiveForce": 0.106666666667,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 22,
+            "surfaceFollowingInverseForceFromWater": 8
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 0.106666666667,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
+          }
+        }
+      },
+      "config": {
+        "mounts": [
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0,
+              "yUnitRadiusRatio": 0.62,
+              "zUnitRadiusRatio": -0.04444
+            },
+            "radiusFrac": 0.32,
+            "ringTubeRadiusFrac": 0.035,
+            "outwardAngleDeg": 14
+          }
+        ],
+        "fanSpinRadPerSec": -10
+      },
+      "environmentalHazards": {
+        "waterDamagePerSecond": 130
+      }
+    },
     "base": {
-      "cost": { "energy": 780, "metal": 620 },
+      "cost": {
+        "energy": 780,
+        "metal": 620
+      },
       "mass": 140,
       "health": 260,
-      "deathExplosion": { "radius": 25, "force": 12000, "damage": 110 },
-      "signature": { "radarStealth": false, "sonarStealth": false }
-    }
+      "deathExplosion": {
+        "radius": 25,
+        "force": 12000,
+        "damage": 110
+      },
+      "radius": {
+        "other": 9,
+        "hitbox": 8,
+        "collision": 10.8
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 1.35
   },
   "unitRadarJammer": {
-    "$extends": "unitSeaTurtle",
     "unitBlueprintId": "unitRadarJammer",
     "requiresWater": false,
     "requiresLand": false,
-    "production": { "techLevel": 2, "domains": ["naval"] },
+    "production": {
+      "techLevel": 2,
+      "domains": [
+        "naval"
+      ]
+    },
     "tinyName": "MNT",
     "fullName": "Manta Ray",
     "shortDescription": "Mobile radar-jamming skirmisher",
     "longDescription": "A naval jammer with a weak light gun that suppresses enemy radar contacts around its position.",
-    "identity": { "kind": "animal", "animalClass": "fish" },
+    "identity": {
+      "kind": "animal",
+      "animalClass": "fish"
+    },
     "shortName": "MANTA",
     "hp": 520,
+    "radius": {
+      "other": 28,
+      "hitbox": 24,
+      "collision": 40
+    },
+    "supportSurface": {
+      "kind": "none"
+    },
     "mass": 460,
-    "cost": { "energy": 1100, "metal": 850 },
+    "cost": {
+      "energy": 1100,
+      "metal": 850
+    },
     "turrets": [
       {
         "turretBlueprintId": "turretGunLight",
         "presentation": {
           "headRadius": 3,
           "headOnly": false,
-          "barrel": { "type": "singleCylinderBarrel", "barrelLength": 1.4 }
+          "barrel": {
+            "type": "singleCylinderBarrel",
+            "barrelLength": 1.4
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitRadarJammer",
-        "mount": { "x": 0.2, "y": 0, "z": 1.1 },
+        "mount": {
+          "x": 0.2,
+          "y": 0,
+          "z": 1.1
+        },
         "requiredEngagedForFightStop": true,
         "mountId": "lightGun",
         "controlMode": "hostPreferred"
       }
     ],
     "bodyShape": {
-      "$replace": true,
       "kind": "composite",
       "parts": [
-        { "kind": "oval", "offsetForward": 0.02, "xFrac": 0.54, "yFrac": 0.2, "zFrac": 0.28 },
-        { "kind": "oval", "offsetForward": -0.04, "offsetLateral": -0.44, "xFrac": 0.55, "yFrac": 0.075, "zFrac": 0.4, "centerYFrac": 0.17 },
-        { "kind": "oval", "offsetForward": -0.04, "offsetLateral": 0.44, "xFrac": 0.55, "yFrac": 0.075, "zFrac": 0.4, "centerYFrac": 0.17 },
-        { "kind": "cone", "offsetForward": -0.62, "lengthFrac": 0.58, "radiusFrac": 0.055, "centerYFrac": 0.15 },
-        { "kind": "circle", "offsetForward": 0.45, "radiusFrac": 0.13, "yFrac": 0.08, "centerYFrac": 0.25 }
+        {
+          "kind": "oval",
+          "offsetForward": 0.02,
+          "xFrac": 0.54,
+          "yFrac": 0.2,
+          "zFrac": 0.28
+        },
+        {
+          "kind": "oval",
+          "offsetForward": -0.04,
+          "offsetLateral": -0.44,
+          "xFrac": 0.55,
+          "yFrac": 0.075,
+          "zFrac": 0.4,
+          "centerYFrac": 0.17
+        },
+        {
+          "kind": "oval",
+          "offsetForward": -0.04,
+          "offsetLateral": 0.44,
+          "xFrac": 0.55,
+          "yFrac": 0.075,
+          "zFrac": 0.4,
+          "centerYFrac": 0.17
+        },
+        {
+          "kind": "cone",
+          "offsetForward": -0.62,
+          "lengthFrac": 0.58,
+          "radiusFrac": 0.055,
+          "centerYFrac": 0.15
+        },
+        {
+          "kind": "circle",
+          "offsetForward": 0.45,
+          "radiusFrac": 0.13,
+          "yFrac": 0.08,
+          "centerYFrac": 0.25
+        }
       ]
     },
+    "teamOrnament": {
+      "backX": 0.82,
+      "frontX": 0.79,
+      "backY": 1,
+      "frontY": 1
+    },
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitHippo"
+    },
+    "unitLocomotion": {
+      "type": "amphibian",
+      "physicsPresetId": "amphibian",
+      "physics": {
+        "ground": {
+          "maxPropulsiveForce": 8
+        },
+        "air": {
+          "maxPropulsiveForce": 0,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 4,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 700,
+            "surfaceFollowingProportionalForceFromWater": 0
+          }
+        }
+      },
+      "config": {
+        "mounts": [
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.46,
+              "yUnitRadiusRatio": -0.34,
+              "zUnitRadiusRatio": 0.34
+            },
+            "lengthFrac": 1.05
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.46,
+              "yUnitRadiusRatio": 0.34,
+              "zUnitRadiusRatio": 0.34
+            },
+            "lengthFrac": 1.05
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": -0.43,
+              "yUnitRadiusRatio": -0.34,
+              "zUnitRadiusRatio": 0.34
+            },
+            "lengthFrac": 0.74
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": -0.43,
+              "yUnitRadiusRatio": 0.34,
+              "zUnitRadiusRatio": 0.34
+            },
+            "lengthFrac": 0.74
+          }
+        ],
+        "rootChordFrac": 0.42,
+        "tipChordFrac": 0.18,
+        "thicknessFrac": 0.07,
+        "groundDownAngleDeg": 48,
+        "groundSweepAngleDeg": 24,
+        "waterStrokeAngleDeg": 32,
+        "cycleDistanceFrac": 1.4
+      },
+      "environmentalHazards": {
+        "waterDamagePerSecond": 0
+      }
+    },
     "base": {
-      "cost": { "energy": 1100, "metal": 850 },
+      "cost": {
+        "energy": 1100,
+        "metal": 850
+      },
       "mass": 460,
       "health": 520,
-      "deathExplosion": { "radius": 34, "force": 22000, "damage": 180 },
-      "signature": { "radarStealth": false, "sonarStealth": false }
-    }
+      "deathExplosion": {
+        "radius": 34,
+        "force": 22000,
+        "damage": 180
+      },
+      "radius": {
+        "other": 28,
+        "hitbox": 24,
+        "collision": 40
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 14
   },
   "unitMissileRover": {
-    "$extends": "unitJackal",
     "unitBlueprintId": "unitMissileRover",
     "requiresWater": false,
     "requiresLand": true,
-    "production": { "techLevel": 1, "domains": ["vehicle"] },
+    "production": {
+      "techLevel": 1,
+      "domains": [
+        "vehicle"
+      ]
+    },
     "tinyName": "SWF",
     "fullName": "Swift",
     "shortDescription": "Mobile anti-air missile rover",
     "longDescription": "A fast rover with guided missiles restricted to airborne targets, providing mobile anti-air cover.",
-    "identity": { "kind": "animal", "animalClass": "bird" },
+    "identity": {
+      "kind": "animal",
+      "animalClass": "bird"
+    },
     "shortName": "SWIFT",
     "hp": 340,
+    "radius": {
+      "other": 8,
+      "hitbox": 6,
+      "collision": 9.6
+    },
+    "supportSurface": {
+      "kind": "none"
+    },
     "mass": 260,
-    "cost": { "energy": 420, "metal": 360 },
-    "unitLocomotion": { "environmentalHazards": { "waterDamagePerSecond": 170 } },
+    "cost": {
+      "energy": 420,
+      "metal": 360
+    },
     "turrets": [
       {
         "turretBlueprintId": "turretMissileRover",
         "presentation": {
           "headRadius": 5,
           "headOnly": false,
-          "barrel": { "type": "singleCylinderBarrel", "barrelLength": 1.1 }
+          "barrel": {
+            "type": "singleCylinderBarrel",
+            "barrelLength": 1.1
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitJackal",
-        "mount": { "x": 0, "y": 0, "z": 1.4 },
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 1.4
+        },
         "requiredEngagedForFightStop": true,
         "mountId": "antiAir",
         "controlMode": "hostPreferred"
       }
     ],
     "bodyShape": {
-      "$replace": true,
       "kind": "composite",
       "parts": [
-        { "kind": "box", "offsetForward": -0.04, "lengthFrac": 1.28, "widthFrac": 0.58, "heightFrac": 0.26, "centerYFrac": 0.24 },
-        { "kind": "cone", "offsetForward": 0.64, "lengthFrac": 0.34, "radiusFrac": 0.2, "centerYFrac": 0.25 },
-        { "kind": "cylinder", "offsetForward": 0.08, "offsetLateral": -0.28, "lengthFrac": 0.72, "radiusFrac": 0.09, "centerYFrac": 0.49, "pitchRad": 0.12 },
-        { "kind": "cylinder", "offsetForward": 0.08, "offsetLateral": 0.28, "lengthFrac": 0.72, "radiusFrac": 0.09, "centerYFrac": 0.49, "pitchRad": 0.12 },
-        { "kind": "box", "offsetForward": -0.49, "lengthFrac": 0.24, "widthFrac": 0.92, "heightFrac": 0.08, "centerYFrac": 0.42 }
+        {
+          "kind": "box",
+          "offsetForward": -0.04,
+          "lengthFrac": 1.28,
+          "widthFrac": 0.58,
+          "heightFrac": 0.26,
+          "centerYFrac": 0.24
+        },
+        {
+          "kind": "cone",
+          "offsetForward": 0.64,
+          "lengthFrac": 0.34,
+          "radiusFrac": 0.2,
+          "centerYFrac": 0.25
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": 0.08,
+          "offsetLateral": -0.28,
+          "lengthFrac": 0.72,
+          "radiusFrac": 0.09,
+          "centerYFrac": 0.49,
+          "pitchRad": 0.12
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": 0.08,
+          "offsetLateral": 0.28,
+          "lengthFrac": 0.72,
+          "radiusFrac": 0.09,
+          "centerYFrac": 0.49,
+          "pitchRad": 0.12
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.49,
+          "lengthFrac": 0.24,
+          "widthFrac": 0.92,
+          "heightFrac": 0.08,
+          "centerYFrac": 0.42
+        }
       ]
     },
+    "teamOrnament": {
+      "backX": 0.82,
+      "frontX": 0.79,
+      "backY": 1,
+      "frontY": 1
+    },
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitJackal"
+    },
+    "unitLocomotion": {
+      "type": "rover",
+      "physicsPresetId": "rover",
+      "physics": {
+        "ground": {
+          "maxPropulsiveForce": 26.666666666667
+        },
+        "air": {
+          "maxPropulsiveForce": 0,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 0.4,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
+          }
+        }
+      },
+      "config": {
+        "mounts": [
+          {
+            "xUnitRadiusRatio": 0.6,
+            "yUnitRadiusRatio": -0.745,
+            "zUnitRadiusRatio": 0.28
+          },
+          {
+            "xUnitRadiusRatio": 0.6,
+            "yUnitRadiusRatio": 0.745,
+            "zUnitRadiusRatio": 0.28
+          },
+          {
+            "xUnitRadiusRatio": -0.6,
+            "yUnitRadiusRatio": -0.745,
+            "zUnitRadiusRatio": 0.28
+          },
+          {
+            "xUnitRadiusRatio": -0.6,
+            "yUnitRadiusRatio": 0.745,
+            "zUnitRadiusRatio": 0.28
+          }
+        ],
+        "treadWidth": 0.15,
+        "wheelRadius": 0.28,
+        "rotationSpeed": 1
+      },
+      "environmentalHazards": {
+        "waterDamagePerSecond": 170
+      }
+    },
     "base": {
-      "cost": { "energy": 420, "metal": 360 },
+      "cost": {
+        "energy": 420,
+        "metal": 360
+      },
       "mass": 260,
       "health": 340,
-      "deathExplosion": { "radius": 27, "force": 16000, "damage": 130 },
-      "signature": { "radarStealth": false, "sonarStealth": false }
-    }
+      "deathExplosion": {
+        "radius": 27,
+        "force": 16000,
+        "damage": 130
+      },
+      "radius": {
+        "other": 8,
+        "hitbox": 6,
+        "collision": 9.6
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 5.68
   },
   "unitClusterArtillery": {
-    "$extends": "unitMongoose",
     "unitBlueprintId": "unitClusterArtillery",
     "requiresWater": false,
     "requiresLand": true,
-    "production": { "techLevel": 2, "domains": ["vehicle"] },
+    "production": {
+      "techLevel": 2,
+      "domains": [
+        "vehicle"
+      ]
+    },
     "tinyName": "BBT",
     "fullName": "Bombardier Beetle",
     "shortDescription": "Cluster-mortar artillery vehicle",
     "longDescription": "An advanced artillery vehicle whose heavy mortar splits into medium shells over clustered targets.",
-    "identity": { "kind": "animal", "animalClass": "insect" },
+    "identity": {
+      "kind": "animal",
+      "animalClass": "insect"
+    },
     "shortName": "BOMBD",
     "hp": 820,
+    "radius": {
+      "other": 20,
+      "hitbox": 12,
+      "collision": 24
+    },
+    "supportSurface": {
+      "kind": "none"
+    },
     "mass": 920,
-    "cost": { "energy": 1900, "metal": 1600 },
-    "unitLocomotion": { "environmentalHazards": { "waterDamagePerSecond": 410 } },
+    "cost": {
+      "energy": 1900,
+      "metal": 1600
+    },
     "turrets": [
       {
         "turretBlueprintId": "turretMortarCluster",
         "presentation": {
           "headRadius": 8,
           "headOnly": false,
-          "barrel": { "type": "singleCylinderBarrel", "barrelLength": 2.2 }
+          "barrel": {
+            "type": "singleCylinderBarrel",
+            "barrelLength": 2.2
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitMongoose",
-        "mount": { "x": 0, "y": 0, "z": 2 },
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 2
+        },
         "requiredEngagedForFightStop": true,
         "mountId": "clusterMortar",
         "controlMode": "hostPreferred"
       }
     ],
     "bodyShape": {
-      "$replace": true,
       "kind": "composite",
       "parts": [
-        { "kind": "oval", "offsetForward": 0.34, "xFrac": 0.44, "yFrac": 0.25, "zFrac": 0.39 },
-        { "kind": "oval", "offsetForward": -0.35, "xFrac": 0.56, "yFrac": 0.31, "zFrac": 0.48 },
-        { "kind": "circle", "offsetForward": 0.74, "radiusFrac": 0.22, "yFrac": 0.16 },
-        { "kind": "cylinder", "offsetForward": -0.21, "lengthFrac": 0.82, "radiusFrac": 0.13, "centerYFrac": 0.61, "pitchRad": 0.72 },
-        { "kind": "box", "offsetForward": -0.48, "lengthFrac": 0.3, "widthFrac": 1.04, "heightFrac": 0.09, "centerYFrac": 0.26 }
+        {
+          "kind": "oval",
+          "offsetForward": 0.34,
+          "xFrac": 0.44,
+          "yFrac": 0.25,
+          "zFrac": 0.39
+        },
+        {
+          "kind": "oval",
+          "offsetForward": -0.35,
+          "xFrac": 0.56,
+          "yFrac": 0.31,
+          "zFrac": 0.48
+        },
+        {
+          "kind": "circle",
+          "offsetForward": 0.74,
+          "radiusFrac": 0.22,
+          "yFrac": 0.16
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": -0.21,
+          "lengthFrac": 0.82,
+          "radiusFrac": 0.13,
+          "centerYFrac": 0.61,
+          "pitchRad": 0.72
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.48,
+          "lengthFrac": 0.3,
+          "widthFrac": 1.04,
+          "heightFrac": 0.09,
+          "centerYFrac": 0.26
+        }
       ]
     },
+    "teamOrnament": {
+      "backX": 0.82,
+      "frontX": 0.79,
+      "backY": 1,
+      "frontY": 1
+    },
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitMongoose"
+    },
+    "unitLocomotion": {
+      "type": "rover",
+      "physicsPresetId": "rover",
+      "physics": {
+        "ground": {
+          "maxPropulsiveForce": 26.666666666667
+        },
+        "air": {
+          "maxPropulsiveForce": 0,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 0.4,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
+          }
+        }
+      },
+      "config": {
+        "mounts": [
+          {
+            "xUnitRadiusRatio": 0.65,
+            "yUnitRadiusRatio": -0.82,
+            "zUnitRadiusRatio": 0.22
+          },
+          {
+            "xUnitRadiusRatio": 0.65,
+            "yUnitRadiusRatio": 0.82,
+            "zUnitRadiusRatio": 0.22
+          },
+          {
+            "xUnitRadiusRatio": -0.65,
+            "yUnitRadiusRatio": -0.82,
+            "zUnitRadiusRatio": 0.22
+          },
+          {
+            "xUnitRadiusRatio": -0.65,
+            "yUnitRadiusRatio": 0.82,
+            "zUnitRadiusRatio": 0.22
+          }
+        ],
+        "treadWidth": 0.3,
+        "wheelRadius": 0.22,
+        "rotationSpeed": 1
+      },
+      "environmentalHazards": {
+        "waterDamagePerSecond": 410
+      }
+    },
     "base": {
-      "cost": { "energy": 1900, "metal": 1600 },
+      "cost": {
+        "energy": 1900,
+        "metal": 1600
+      },
       "mass": 920,
       "health": 820,
-      "deathExplosion": { "radius": 42, "force": 36000, "damage": 300 },
-      "signature": { "radarStealth": false, "sonarStealth": false }
-    }
+      "deathExplosion": {
+        "radius": 42,
+        "force": 36000,
+        "damage": 300
+      },
+      "radius": {
+        "other": 20,
+        "hitbox": 12,
+        "collision": 24
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 11.8
   },
   "unitWaterStrider": {
-    "$extends": "unitTarantula",
     "unitBlueprintId": "unitWaterStrider",
     "requiresWater": false,
     "requiresLand": false,
-    "production": { "techLevel": 1, "domains": ["bot", "naval"] },
+    "production": {
+      "techLevel": 1,
+      "domains": [
+        "bot",
+        "naval"
+      ]
+    },
     "tinyName": "WST",
     "fullName": "Water Strider",
     "shortDescription": "Amphibious burst-fire crawler",
     "longDescription": "A crawler that fights and holds position on both land and water with burst-fire armament.",
-    "identity": { "kind": "animal", "animalClass": "insect" },
+    "identity": {
+      "kind": "animal",
+      "animalClass": "insect"
+    },
     "shortName": "WSTRD",
     "hp": 620,
+    "radius": {
+      "other": 11,
+      "hitbox": 13,
+      "collision": 19.8
+    },
+    "supportSurface": {
+      "kind": "none"
+    },
     "mass": 420,
-    "cost": { "energy": 720, "metal": 620 },
+    "cost": {
+      "energy": 720,
+      "metal": 620
+    },
     "turrets": [
       {
         "turretBlueprintId": "turretGunBurst",
         "presentation": {
           "headRadius": 4,
           "headOnly": false,
-          "barrel": { "type": "singleCylinderBarrel", "barrelLength": 1.7 }
+          "barrel": {
+            "type": "singleCylinderBarrel",
+            "barrelLength": 1.7
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitSeaTurtle",
-        "mount": { "x": 0.4, "y": 0, "z": 1.2 },
+        "mount": {
+          "x": 0.4,
+          "y": 0,
+          "z": 1.2
+        },
         "requiredEngagedForFightStop": true,
         "mountId": "surfaceGun",
         "controlMode": "hostPreferred"
       }
     ],
+    "bodyShape": {
+      "kind": "composite",
+      "parts": [
+        {
+          "kind": "oval",
+          "offsetForward": -0.06,
+          "xFrac": 0.82,
+          "yFrac": 0.14,
+          "zFrac": 0.19,
+          "centerYFrac": 0.3
+        },
+        {
+          "kind": "circle",
+          "offsetForward": 0.72,
+          "radiusFrac": 0.19,
+          "yFrac": 0.12,
+          "centerYFrac": 0.3
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": 0.08,
+          "offsetLateral": -0.39,
+          "lengthFrac": 0.66,
+          "radiusFrac": 0.055,
+          "centerYFrac": 0.23,
+          "pitchRad": -0.08
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": 0.08,
+          "offsetLateral": 0.39,
+          "lengthFrac": 0.66,
+          "radiusFrac": 0.055,
+          "centerYFrac": 0.23,
+          "pitchRad": -0.08
+        },
+        {
+          "kind": "cone",
+          "offsetForward": -0.82,
+          "lengthFrac": 0.34,
+          "radiusFrac": 0.08,
+          "centerYFrac": 0.29
+        }
+      ]
+    },
+    "teamOrnament": {
+      "backX": 0.82,
+      "frontX": 0.79,
+      "backY": 1,
+      "frontY": 1
+    },
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitTarantula"
+    },
     "unitLocomotion": {
+      "type": "crawler",
       "physicsPresetId": "amphibious-crawler",
       "physics": {
-        "ground": { "maxPropulsiveForce": 30 },
+        "ground": {
+          "maxPropulsiveForce": 30
+        },
         "air": {
           "maxPropulsiveForce": 20,
           "lift": {
@@ -6251,47 +7561,194 @@
           }
         }
       },
-      "environmentalHazards": { "waterDamagePerSecond": 0 }
-    },
-    "bodyShape": {
-      "$replace": true,
-      "kind": "composite",
-      "parts": [
-        { "kind": "oval", "offsetForward": -0.06, "xFrac": 0.82, "yFrac": 0.14, "zFrac": 0.19, "centerYFrac": 0.3 },
-        { "kind": "circle", "offsetForward": 0.72, "radiusFrac": 0.19, "yFrac": 0.12, "centerYFrac": 0.3 },
-        { "kind": "cylinder", "offsetForward": 0.08, "offsetLateral": -0.39, "lengthFrac": 0.66, "radiusFrac": 0.055, "centerYFrac": 0.23, "pitchRad": -0.08 },
-        { "kind": "cylinder", "offsetForward": 0.08, "offsetLateral": 0.39, "lengthFrac": 0.66, "radiusFrac": 0.055, "centerYFrac": 0.23, "pitchRad": -0.08 },
-        { "kind": "cone", "offsetForward": -0.82, "lengthFrac": 0.34, "radiusFrac": 0.08, "centerYFrac": 0.29 }
-      ]
+      "config": {
+        "radius": 6,
+        "kneeRadius": 6,
+        "hasFeet": true,
+        "lerpDuration": 200,
+        "segments": {
+          "upper": {
+            "lengthUnitRadiusRatio": 1.045
+          },
+          "lower": {
+            "lengthUnitRadiusRatio": 1.254
+          }
+        },
+        "footSphere": {
+          "originExtensionRatio": 0.45,
+          "radiusLegLengthRatio": 0.55
+        },
+        "choppingSphere": {
+          "radiusLegLengthRatio": 0.3
+        },
+        "snapRay": {
+          "originBoundarySpanRatio": 0.55
+        },
+        "leftSide": [
+          {
+            "attachmentPoint": {
+              "xUnitRadiusRatio": 0.5,
+              "yUnitRadiusRatio": -0.5,
+              "zUnitRadiusRatio": 1.05
+            }
+          },
+          {
+            "attachmentPoint": {
+              "xUnitRadiusRatio": -0.5,
+              "yUnitRadiusRatio": -0.5,
+              "zUnitRadiusRatio": 1.275
+            }
+          }
+        ]
+      },
+      "environmentalHazards": {
+        "waterDamagePerSecond": 0
+      }
     },
     "base": {
-      "cost": { "energy": 720, "metal": 620 },
+      "cost": {
+        "energy": 720,
+        "metal": 620
+      },
       "mass": 420,
       "health": 620,
-      "deathExplosion": { "radius": 34, "force": 24000, "damage": 200 },
-      "signature": { "radarStealth": false, "sonarStealth": false }
-    }
+      "deathExplosion": {
+        "radius": 34,
+        "force": 24000,
+        "damage": 200
+      },
+      "radius": {
+        "other": 11,
+        "hitbox": 13,
+        "collision": 19.8
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 14.025
   },
   "unitPatrolCorvette": {
-    "$extends": "unitSeaTurtle",
     "unitBlueprintId": "unitPatrolCorvette",
     "requiresWater": true,
     "requiresLand": false,
-    "production": { "techLevel": 1, "domains": ["naval"] },
+    "production": {
+      "techLevel": 1,
+      "domains": [
+        "naval"
+      ]
+    },
     "tinyName": "BRD",
     "fullName": "Barracuda",
     "shortDescription": "Sonar-equipped patrol corvette",
     "longDescription": "A water-only surface combatant combining an above-water gun with sonar for underwater contact support.",
-    "identity": { "kind": "animal", "animalClass": "fish" },
+    "identity": {
+      "kind": "animal",
+      "animalClass": "fish"
+    },
     "shortName": "BARRA",
     "hp": 900,
+    "radius": {
+      "other": 28,
+      "hitbox": 24,
+      "collision": 40
+    },
+    "supportSurface": {
+      "kind": "none"
+    },
     "mass": 760,
-    "cost": { "energy": 880, "metal": 760 },
+    "cost": {
+      "energy": 880,
+      "metal": 760
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretGunBurst",
+        "presentation": {
+          "headRadius": 6,
+          "headOnly": false,
+          "barrel": {
+            "type": "singleCylinderBarrel",
+            "barrelLength": 2.1
+          }
+        },
+        "sensorTurretBlueprintId": "turretSensorUnitSeaTurtle",
+        "mount": {
+          "x": 0.45,
+          "y": 0,
+          "z": 1.4
+        },
+        "requiredEngagedForFightStop": true,
+        "mountId": "deckGun",
+        "controlMode": "hostPreferred"
+      }
+    ],
+    "bodyShape": {
+      "kind": "composite",
+      "parts": [
+        {
+          "kind": "oval",
+          "offsetForward": -0.06,
+          "xFrac": 0.94,
+          "yFrac": 0.22,
+          "zFrac": 0.28
+        },
+        {
+          "kind": "cone",
+          "offsetForward": 0.89,
+          "lengthFrac": 0.42,
+          "radiusFrac": 0.23,
+          "centerYFrac": 0.22
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.23,
+          "lengthFrac": 0.5,
+          "widthFrac": 0.34,
+          "heightFrac": 0.18,
+          "centerYFrac": 0.42
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.73,
+          "lengthFrac": 0.28,
+          "widthFrac": 0.82,
+          "heightFrac": 0.08,
+          "centerYFrac": 0.24
+        },
+        {
+          "kind": "cone",
+          "offsetForward": -0.92,
+          "lengthFrac": 0.36,
+          "radiusFrac": 0.12,
+          "centerYFrac": 0.2
+        }
+      ]
+    },
+    "teamOrnament": {
+      "backX": 0.82,
+      "frontX": 0.79,
+      "backY": 1,
+      "frontY": 1
+    },
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitHippo"
+    },
     "unitLocomotion": {
       "type": "amphibian",
       "physicsPresetId": "submarine",
       "physics": {
-        "ground": { "maxPropulsiveForce": 0 },
+        "ground": {
+          "maxPropulsiveForce": 0
+        },
         "air": {
           "maxPropulsiveForce": 0,
           "lift": {
@@ -6307,282 +7764,1275 @@
           }
         }
       },
-      "environmentalHazards": { "waterDamagePerSecond": 0 }
-    },
-    "turrets": [
-      {
-        "turretBlueprintId": "turretGunBurst",
-        "presentation": {
-          "headRadius": 6,
-          "headOnly": false,
-          "barrel": { "type": "singleCylinderBarrel", "barrelLength": 2.1 }
-        },
-        "sensorTurretBlueprintId": "turretSensorUnitSeaTurtle",
-        "mount": { "x": 0.45, "y": 0, "z": 1.4 },
-        "requiredEngagedForFightStop": true,
-        "mountId": "deckGun",
-        "controlMode": "hostPreferred"
+      "config": {
+        "mounts": [
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.46,
+              "yUnitRadiusRatio": -0.34,
+              "zUnitRadiusRatio": 0.34
+            },
+            "lengthFrac": 1.05
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.46,
+              "yUnitRadiusRatio": 0.34,
+              "zUnitRadiusRatio": 0.34
+            },
+            "lengthFrac": 1.05
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": -0.43,
+              "yUnitRadiusRatio": -0.34,
+              "zUnitRadiusRatio": 0.34
+            },
+            "lengthFrac": 0.74
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": -0.43,
+              "yUnitRadiusRatio": 0.34,
+              "zUnitRadiusRatio": 0.34
+            },
+            "lengthFrac": 0.74
+          }
+        ],
+        "rootChordFrac": 0.42,
+        "tipChordFrac": 0.18,
+        "thicknessFrac": 0.07,
+        "groundDownAngleDeg": 48,
+        "groundSweepAngleDeg": 24,
+        "waterStrokeAngleDeg": 32,
+        "cycleDistanceFrac": 1.4
+      },
+      "environmentalHazards": {
+        "waterDamagePerSecond": 0
       }
-    ],
-    "bodyShape": {
-      "$replace": true,
-      "kind": "composite",
-      "parts": [
-        { "kind": "oval", "offsetForward": -0.06, "xFrac": 0.94, "yFrac": 0.22, "zFrac": 0.28 },
-        { "kind": "cone", "offsetForward": 0.89, "lengthFrac": 0.42, "radiusFrac": 0.23, "centerYFrac": 0.22 },
-        { "kind": "box", "offsetForward": -0.23, "lengthFrac": 0.5, "widthFrac": 0.34, "heightFrac": 0.18, "centerYFrac": 0.42 },
-        { "kind": "box", "offsetForward": -0.73, "lengthFrac": 0.28, "widthFrac": 0.82, "heightFrac": 0.08, "centerYFrac": 0.24 },
-        { "kind": "cone", "offsetForward": -0.92, "lengthFrac": 0.36, "radiusFrac": 0.12, "centerYFrac": 0.2 }
-      ]
     },
     "base": {
-      "cost": { "energy": 880, "metal": 760 },
+      "cost": {
+        "energy": 880,
+        "metal": 760
+      },
       "mass": 760,
       "health": 900,
-      "deathExplosion": { "radius": 45, "force": 42000, "damage": 340 },
-      "signature": { "radarStealth": false, "sonarStealth": false }
-    }
+      "deathExplosion": {
+        "radius": 45,
+        "force": 42000,
+        "damage": 340
+      },
+      "radius": {
+        "other": 28,
+        "hitbox": 24,
+        "collision": 40
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 14
   },
   "unitPetrel": {
-    "$extends": "unitDuck",
     "unitBlueprintId": "unitPetrel",
     "requiresWater": false,
     "requiresLand": false,
-    "production": { "techLevel": 2, "domains": ["aircraft", "naval"] },
+    "production": {
+      "techLevel": 2,
+      "domains": [
+        "aircraft",
+        "naval"
+      ]
+    },
     "tinyName": "PET",
     "fullName": "Petrel",
     "shortDescription": "Air-launched torpedo aircraft",
     "longDescription": "A cross-domain aircraft that launches torpedoes into the water while relying on allied sonar contacts.",
-    "identity": { "kind": "animal", "animalClass": "bird" },
+    "identity": {
+      "kind": "animal",
+      "animalClass": "bird"
+    },
     "shortName": "PETRL",
     "hp": 720,
+    "radius": {
+      "other": 20,
+      "hitbox": 16,
+      "collision": 38
+    },
+    "supportSurface": {
+      "kind": "none"
+    },
     "mass": 560,
-    "cost": { "energy": 1700, "metal": 1450 },
+    "cost": {
+      "energy": 1700,
+      "metal": 1450
+    },
     "turrets": [
       {
         "turretBlueprintId": "turretTorpedoAirLaunch",
         "presentation": {
           "headRadius": 3,
           "headOnly": false,
-          "barrel": { "type": "singleCylinderBarrel", "barrelLength": 1.3 }
+          "barrel": {
+            "type": "singleCylinderBarrel",
+            "barrelLength": 1.3
+          }
         },
         "sensorTurretBlueprintId": "turretSensorUnitEagle",
-        "mount": { "x": 0.3, "y": 0, "z": -0.2 },
+        "mount": {
+          "x": 0.3,
+          "y": 0,
+          "z": -0.2
+        },
         "requiredEngagedForFightStop": true,
         "mountId": "airTorpedo",
         "controlMode": "hostPreferred"
       }
     ],
     "bodyShape": {
-      "$replace": true,
       "kind": "composite",
       "parts": [
-        { "kind": "oval", "offsetForward": 0.04, "xFrac": 0.74, "yFrac": 0.16, "zFrac": 0.18, "centerYFrac": 0.31 },
-        { "kind": "oval", "offsetForward": -0.08, "offsetLateral": -0.45, "xFrac": 0.47, "yFrac": 0.055, "zFrac": 0.45, "centerYFrac": 0.31 },
-        { "kind": "oval", "offsetForward": -0.08, "offsetLateral": 0.45, "xFrac": 0.47, "yFrac": 0.055, "zFrac": 0.45, "centerYFrac": 0.31 },
-        { "kind": "cone", "offsetForward": 0.72, "lengthFrac": 0.34, "radiusFrac": 0.13, "centerYFrac": 0.31 },
-        { "kind": "cylinder", "offsetForward": -0.03, "lengthFrac": 0.82, "radiusFrac": 0.105, "centerYFrac": 0.14, "pitchRad": -0.08 },
-        { "kind": "box", "offsetForward": -0.61, "lengthFrac": 0.24, "widthFrac": 0.7, "heightFrac": 0.07, "centerYFrac": 0.3 }
+        {
+          "kind": "oval",
+          "offsetForward": 0.04,
+          "xFrac": 0.74,
+          "yFrac": 0.16,
+          "zFrac": 0.18,
+          "centerYFrac": 0.31
+        },
+        {
+          "kind": "oval",
+          "offsetForward": -0.08,
+          "offsetLateral": -0.45,
+          "xFrac": 0.47,
+          "yFrac": 0.055,
+          "zFrac": 0.45,
+          "centerYFrac": 0.31
+        },
+        {
+          "kind": "oval",
+          "offsetForward": -0.08,
+          "offsetLateral": 0.45,
+          "xFrac": 0.47,
+          "yFrac": 0.055,
+          "zFrac": 0.45,
+          "centerYFrac": 0.31
+        },
+        {
+          "kind": "cone",
+          "offsetForward": 0.72,
+          "lengthFrac": 0.34,
+          "radiusFrac": 0.13,
+          "centerYFrac": 0.31
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": -0.03,
+          "lengthFrac": 0.82,
+          "radiusFrac": 0.105,
+          "centerYFrac": 0.14,
+          "pitchRad": -0.08
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.61,
+          "lengthFrac": 0.24,
+          "widthFrac": 0.7,
+          "heightFrac": 0.07,
+          "centerYFrac": 0.3
+        }
       ]
     },
+    "teamOrnament": {
+      "backX": 0.82,
+      "frontX": 0.79,
+      "backY": 1,
+      "frontY": 1
+    },
+    "hud": {
+      "barsOffsetAboveTop": 14
+    },
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitEagle"
+    },
+    "unitLocomotion": {
+      "type": "aerosub",
+      "physicsPresetId": "aerosub",
+      "physics": {
+        "ground": {
+          "maxPropulsiveForce": 0
+        },
+        "air": {
+          "maxPropulsiveForce": 0.4,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 100,
+            "surfaceFollowingInverseForceFromWater": 0
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 0.4,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 90,
+            "surfaceFollowingProportionalForceFromWater": 0
+          }
+        }
+      },
+      "config": {
+        "wing": {
+          "offset": {
+            "xUnitRadiusRatio": -0.05,
+            "yUnitRadiusRatio": 0,
+            "zUnitRadiusRatio": 0.28
+          },
+          "span": 2.1,
+          "chord": 0.62,
+          "thickness": 0.06,
+          "dihedralDeg": 8,
+          "sweepFrac": 0.35,
+          "mirrorX": false
+        },
+        "tailWing": {
+          "offset": {
+            "xUnitRadiusRatio": -0.78,
+            "yUnitRadiusRatio": 0,
+            "zUnitRadiusRatio": 0.28
+          },
+          "span": 0.9,
+          "chord": 0.3,
+          "thickness": 0.05,
+          "dihedralDeg": 14,
+          "sweepFrac": 0.7,
+          "mirrorX": true
+        },
+        "jets": [
+          {
+            "offset": {
+              "xUnitRadiusRatio": -1,
+              "yUnitRadiusRatio": 0,
+              "zUnitRadiusRatio": 0.2
+            }
+          }
+        ],
+        "jetRadius": 0.12,
+        "jetLength": 0.3
+      },
+      "environmentalHazards": {
+        "waterDamagePerSecond": 0
+      }
+    },
     "base": {
-      "cost": { "energy": 1700, "metal": 1450 },
+      "cost": {
+        "energy": 1700,
+        "metal": 1450
+      },
       "mass": 560,
       "health": 720,
-      "deathExplosion": { "radius": 38, "force": 30000, "damage": 260 },
-      "signature": { "radarStealth": false, "sonarStealth": false }
-    }
+      "deathExplosion": {
+        "radius": 38,
+        "force": 30000,
+        "damage": 260
+      },
+      "radius": {
+        "other": 20,
+        "hitbox": 16,
+        "collision": 38
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 7.5
   },
   "unitAdvancedConstructionBot": {
-    "$extends": "unitConstructionBot",
     "unitBlueprintId": "unitAdvancedConstructionBot",
     "requiresWater": false,
     "requiresLand": true,
-    "production": { "techLevel": 2, "domains": ["bot"] },
+    "production": {
+      "techLevel": 2,
+      "domains": [
+        "bot"
+      ]
+    },
     "tinyName": "ABT",
     "fullName": "Advanced Construction Bot",
     "shortDescription": "Advanced bipedal construction craft",
     "longDescription": "An advanced bipedal builder that starts the experimental universal fabricator and rapidly assists major construction sites.",
+    "identity": {
+      "kind": "constructionCraft",
+      "animalClass": "mammal"
+    },
     "shortName": "A-BOT",
     "hp": 680,
-    "radius": { "other": 16, "hitbox": 14, "collision": 18 },
+    "radius": {
+      "other": 16,
+      "hitbox": 14,
+      "collision": 18
+    },
+    "supportSurface": {
+      "kind": "none"
+    },
     "mass": 520,
-    "cost": { "energy": 1100, "metal": 900 },
-    "builder": { "buildRange": 190 },
+    "cost": {
+      "energy": 1100,
+      "metal": 900
+    },
     "constructionRate": 82,
     "allowedBuildBlueprintIds": [
-      "buildingSolar", "buildingWind", "buildingExtractor", "buildingExtractorT2",
-      "buildingRadar", "towerCannon", "towerAntiAir", "towerInterceptor",
-      "towerFabricator", "buildingAdvancedUniversalFabricator",
-      "buildingBotFabricator", "buildingAdvancedBotFabricator",
+      "buildingSolar",
+      "buildingWind",
+      "buildingExtractor",
+      "buildingExtractorT2",
+      "buildingRadar",
+      "towerCannon",
+      "towerAntiAir",
+      "towerInterceptor",
+      "towerFabricator",
+      "buildingAdvancedUniversalFabricator",
+      "buildingBotFabricator",
+      "buildingAdvancedBotFabricator",
       "buildingExperimentalUniversalFabricator"
     ],
+    "workEmitter": {
+      "points": [
+        {
+          "x": 0.04,
+          "y": 0,
+          "z": 0
+        }
+      ],
+      "particleTravelSpeed": 170,
+      "particleRadius": 1.45,
+      "attachment": {
+        "kind": "botArm",
+        "arm": "rightArm",
+        "socketOffset": {
+          "x": 0.02,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "angularActuator": {
+        "yaw": {
+          "maxSpeed": 1.4,
+          "maxAcceleration": 2.8
+        },
+        "pitch": {
+          "maxSpeed": 1.6,
+          "maxAcceleration": 3.2
+        }
+      },
+      "articulation": {
+        "yaw": {
+          "continuous": false,
+          "minAngle": -0.9,
+          "maxAngle": 0.9
+        },
+        "pitch": {
+          "minAngle": -1.55,
+          "maxAngle": 1.55
+        },
+        "restYaw": 0,
+        "restPitch": 0.25,
+        "restoreDelayMs": 3000,
+        "hostAssist": "requestYaw",
+        "claimGroup": "botUpperBody",
+        "claimPriority": 110
+      },
+      "requiresAlignmentForWork": true,
+      "alignmentToleranceRadians": 0.12
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitHuman",
+        "presentation": null,
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 1.5
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous",
+        "hostAttachment": {
+          "kind": "botPiece",
+          "piece": "head",
+          "socketOffset": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          }
+        }
+      }
+    ],
     "bodyShape": {
-      "$replace": true,
       "kind": "composite",
       "parts": [
-        { "kind": "box", "offsetForward": -0.08, "lengthFrac": 0.72, "widthFrac": 0.88, "heightFrac": 0.58, "centerYFrac": 0.6 },
-        { "kind": "box", "offsetForward": 0.12, "lengthFrac": 0.4, "widthFrac": 1.12, "heightFrac": 0.2, "centerYFrac": 0.82 },
-        { "kind": "circle", "offsetForward": 0.32, "radiusFrac": 0.2, "yFrac": 0.16, "centerYFrac": 1.04 },
-        { "kind": "cylinder", "offsetForward": 0.4, "offsetLateral": -0.46, "lengthFrac": 0.52, "radiusFrac": 0.085, "centerYFrac": 0.75, "pitchRad": 0.42 },
-        { "kind": "cylinder", "offsetForward": 0.4, "offsetLateral": 0.46, "lengthFrac": 0.52, "radiusFrac": 0.085, "centerYFrac": 0.75, "pitchRad": 0.42 },
-        { "kind": "box", "offsetForward": -0.38, "lengthFrac": 0.22, "widthFrac": 1.04, "heightFrac": 0.12, "centerYFrac": 0.36 }
+        {
+          "kind": "box",
+          "offsetForward": -0.08,
+          "lengthFrac": 0.72,
+          "widthFrac": 0.88,
+          "heightFrac": 0.58,
+          "centerYFrac": 0.6
+        },
+        {
+          "kind": "box",
+          "offsetForward": 0.12,
+          "lengthFrac": 0.4,
+          "widthFrac": 1.12,
+          "heightFrac": 0.2,
+          "centerYFrac": 0.82
+        },
+        {
+          "kind": "circle",
+          "offsetForward": 0.32,
+          "radiusFrac": 0.2,
+          "yFrac": 0.16,
+          "centerYFrac": 1.04
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": 0.4,
+          "offsetLateral": -0.46,
+          "lengthFrac": 0.52,
+          "radiusFrac": 0.085,
+          "centerYFrac": 0.75,
+          "pitchRad": 0.42
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": 0.4,
+          "offsetLateral": 0.46,
+          "lengthFrac": 0.52,
+          "radiusFrac": 0.085,
+          "centerYFrac": 0.75,
+          "pitchRad": 0.42
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.38,
+          "lengthFrac": 0.22,
+          "widthFrac": 1.04,
+          "heightFrac": 0.12,
+          "centerYFrac": 0.36
+        }
       ]
     },
+    "teamOrnament": {
+      "backX": 0.3,
+      "frontX": 0.28,
+      "backY": 0.14,
+      "frontY": 0.14
+    },
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "suspension": null,
+    "builder": {
+      "buildRange": 190
+    },
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitHuman"
+    },
+    "unitLocomotion": {
+      "type": "bot",
+      "physicsPresetId": "bot",
+      "physics": {
+        "ground": {
+          "maxPropulsiveForce": 14.5
+        },
+        "air": {
+          "maxPropulsiveForce": 0,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 14.5,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
+          }
+        }
+      },
+      "config": {
+        "upperBodyActuator": {
+          "maxSpeed": 2.5,
+          "maxAcceleration": 6
+        },
+        "upperBodyRestoreDelayMs": 1800,
+        "legs": {
+          "hip": {
+            "xUnitRadiusRatio": 0.05,
+            "yUnitRadiusRatio": 0.3,
+            "zUnitRadiusRatio": 1.86048
+          },
+          "radius": 3.8,
+          "segments": {
+            "upper": {
+              "lengthUnitRadiusRatio": 0.96
+            },
+            "lower": {
+              "lengthUnitRadiusRatio": 0.96
+            }
+          },
+          "footLengthRatio": 0.44,
+          "footWidthRatio": 1.25,
+          "strideLengthRatio": 0.5,
+          "strideLiftRatio": 0.0275,
+          "standHeightRatio": 0.969,
+          "stanceForwardUnitRadiusRatio": 0.12,
+          "stanceOutwardUnitRadiusRatio": 0.16
+        },
+        "arms": {
+          "shoulder": {
+            "xUnitRadiusRatio": 0,
+            "yUnitRadiusRatio": 0.55,
+            "zUnitRadiusRatio": 2.82
+          },
+          "radius": 3.8,
+          "segments": {
+            "upper": {
+              "lengthUnitRadiusRatio": 0.62
+            },
+            "lower": {
+              "lengthUnitRadiusRatio": 0.82
+            }
+          },
+          "handRadiusRatio": 1.05,
+          "restSwingDeg": 12,
+          "walkSwingDeg": 14,
+          "outwardDeg": 8
+        }
+      },
+      "environmentalHazards": {
+        "waterDamagePerSecond": 0
+      }
+    },
     "base": {
-      "cost": { "energy": 1100, "metal": 900 },
+      "cost": {
+        "energy": 1100,
+        "metal": 900
+      },
       "mass": 520,
       "health": 680,
-      "deathExplosion": { "radius": 32, "force": 28000, "damage": 220 },
-      "radius": { "other": 16, "hitbox": 14, "collision": 18 },
-      "signature": { "radarStealth": false, "sonarStealth": false }
+      "deathExplosion": {
+        "radius": 32,
+        "force": 28000,
+        "damage": 220
+      },
+      "radius": {
+        "other": 16,
+        "hitbox": 14,
+        "collision": 18
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
     },
     "supportPointOffsetZ": 34
   },
   "unitAdvancedConstructionRover": {
-    "$extends": "unitConstructionRover",
     "unitBlueprintId": "unitAdvancedConstructionRover",
     "requiresWater": false,
     "requiresLand": true,
-    "production": { "techLevel": 2, "domains": ["vehicle"] },
+    "production": {
+      "techLevel": 2,
+      "domains": [
+        "vehicle"
+      ]
+    },
     "tinyName": "ARV",
     "fullName": "Advanced Construction Rover",
     "shortDescription": "Advanced wheeled construction craft",
     "longDescription": "An advanced wheeled builder that starts the experimental universal fabricator and rapidly assists major construction sites.",
+    "identity": {
+      "kind": "constructionCraft",
+      "animalClass": "mammal"
+    },
     "shortName": "A-ROV",
     "hp": 760,
-    "radius": { "other": 17, "hitbox": 15, "collision": 24 },
-    "mass": 620,
-    "cost": { "energy": 1150, "metal": 950 },
-    "builder": { "buildRange": 195 },
-    "constructionRate": 86,
-    "unitLocomotion": {
-      "environmentalHazards": { "waterDamagePerSecond": 380 }
+    "radius": {
+      "other": 17,
+      "hitbox": 15,
+      "collision": 24
     },
-    "allowedBuildBlueprintIds": [
-      "buildingSolar", "buildingWind", "buildingExtractor", "buildingExtractorT2",
-      "buildingRadar", "towerCannon", "towerAntiAir", "towerInterceptor",
-      "towerFabricator", "buildingAdvancedUniversalFabricator",
-      "buildingVehicleFabricator", "buildingAdvancedVehicleFabricator",
-      "buildingExperimentalUniversalFabricator"
+    "supportSurface": {
+      "kind": "none"
+    },
+    "mass": 620,
+    "cost": {
+      "energy": 1150,
+      "metal": 950
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitJackal",
+        "presentation": null,
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 2
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      }
     ],
     "bodyShape": {
-      "$replace": true,
       "kind": "composite",
       "parts": [
-        { "kind": "box", "offsetForward": -0.12, "lengthFrac": 1.28, "widthFrac": 0.88, "heightFrac": 0.36, "centerYFrac": 0.3 },
-        { "kind": "box", "offsetForward": -0.32, "lengthFrac": 0.52, "widthFrac": 0.72, "heightFrac": 0.26, "centerYFrac": 0.58 },
-        { "kind": "cylinder", "offsetForward": 0.3, "lengthFrac": 0.78, "radiusFrac": 0.1, "centerYFrac": 0.68, "pitchRad": 0.36 },
-        { "kind": "cylinder", "offsetForward": 0.12, "offsetLateral": -0.38, "lengthFrac": 0.62, "radiusFrac": 0.07, "centerYFrac": 0.62, "pitchRad": 0.18 },
-        { "kind": "cylinder", "offsetForward": 0.12, "offsetLateral": 0.38, "lengthFrac": 0.62, "radiusFrac": 0.07, "centerYFrac": 0.62, "pitchRad": 0.18 },
-        { "kind": "box", "offsetForward": 0.7, "lengthFrac": 0.26, "widthFrac": 0.64, "heightFrac": 0.2, "centerYFrac": 0.82 }
+        {
+          "kind": "box",
+          "offsetForward": -0.12,
+          "lengthFrac": 1.28,
+          "widthFrac": 0.88,
+          "heightFrac": 0.36,
+          "centerYFrac": 0.3
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.32,
+          "lengthFrac": 0.52,
+          "widthFrac": 0.72,
+          "heightFrac": 0.26,
+          "centerYFrac": 0.58
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": 0.3,
+          "lengthFrac": 0.78,
+          "radiusFrac": 0.1,
+          "centerYFrac": 0.68,
+          "pitchRad": 0.36
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": 0.12,
+          "offsetLateral": -0.38,
+          "lengthFrac": 0.62,
+          "radiusFrac": 0.07,
+          "centerYFrac": 0.62,
+          "pitchRad": 0.18
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": 0.12,
+          "offsetLateral": 0.38,
+          "lengthFrac": 0.62,
+          "radiusFrac": 0.07,
+          "centerYFrac": 0.62,
+          "pitchRad": 0.18
+        },
+        {
+          "kind": "box",
+          "offsetForward": 0.7,
+          "lengthFrac": 0.26,
+          "widthFrac": 0.64,
+          "heightFrac": 0.2,
+          "centerYFrac": 0.82
+        }
       ]
     },
+    "teamOrnament": {
+      "backX": 0.82,
+      "frontX": 0.79,
+      "backY": 1,
+      "frontY": 1
+    },
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "suspension": null,
+    "builder": {
+      "buildRange": 195
+    },
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitJackal"
+    },
+    "unitLocomotion": {
+      "type": "rover",
+      "physicsPresetId": "rover",
+      "physics": {
+        "ground": {
+          "maxPropulsiveForce": 26.666666666667
+        },
+        "air": {
+          "maxPropulsiveForce": 0,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 0.4,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
+          }
+        }
+      },
+      "config": {
+        "mounts": [
+          {
+            "xUnitRadiusRatio": 0.6,
+            "yUnitRadiusRatio": -0.745,
+            "zUnitRadiusRatio": 0.28
+          },
+          {
+            "xUnitRadiusRatio": 0.6,
+            "yUnitRadiusRatio": 0.745,
+            "zUnitRadiusRatio": 0.28
+          },
+          {
+            "xUnitRadiusRatio": -0.6,
+            "yUnitRadiusRatio": -0.745,
+            "zUnitRadiusRatio": 0.28
+          },
+          {
+            "xUnitRadiusRatio": -0.6,
+            "yUnitRadiusRatio": 0.745,
+            "zUnitRadiusRatio": 0.28
+          }
+        ],
+        "treadWidth": 0.15,
+        "wheelRadius": 0.28,
+        "rotationSpeed": 1
+      },
+      "environmentalHazards": {
+        "waterDamagePerSecond": 380
+      }
+    },
     "base": {
-      "cost": { "energy": 1150, "metal": 950 },
+      "cost": {
+        "energy": 1150,
+        "metal": 950
+      },
       "mass": 620,
       "health": 760,
-      "deathExplosion": { "radius": 34, "force": 32000, "damage": 250 },
-      "radius": { "other": 17, "hitbox": 15, "collision": 24 },
-      "signature": { "radarStealth": false, "sonarStealth": false }
+      "deathExplosion": {
+        "radius": 34,
+        "force": 32000,
+        "damage": 250
+      },
+      "radius": {
+        "other": 17,
+        "hitbox": 15,
+        "collision": 24
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
     },
-    "supportPointOffsetZ": 16
+    "preventLockOnIfMyTeamIsAboveMe": true,
+    "supportPointOffsetZ": 16,
+    "constructionRate": 86,
+    "allowedBuildBlueprintIds": [
+      "buildingSolar",
+      "buildingWind",
+      "buildingExtractor",
+      "buildingExtractorT2",
+      "buildingRadar",
+      "towerCannon",
+      "towerAntiAir",
+      "towerInterceptor",
+      "towerFabricator",
+      "buildingAdvancedUniversalFabricator",
+      "buildingVehicleFabricator",
+      "buildingAdvancedVehicleFabricator",
+      "buildingExperimentalUniversalFabricator"
+    ],
+    "workEmitter": {
+      "points": [
+        {
+          "x": 0.75,
+          "y": 0,
+          "z": 0.55
+        }
+      ],
+      "particleTravelSpeed": 170,
+      "particleRadius": 1.45,
+      "attachment": {
+        "kind": "host"
+      },
+      "angularActuator": null,
+      "articulation": null,
+      "requiresAlignmentForWork": false,
+      "alignmentToleranceRadians": 0.12
+    }
   },
   "unitAdvancedConstructionDrone": {
-    "$extends": "unitConstructionDrone",
     "unitBlueprintId": "unitAdvancedConstructionDrone",
     "requiresWater": false,
     "requiresLand": false,
-    "production": { "techLevel": 2, "domains": ["aircraft"] },
+    "production": {
+      "techLevel": 2,
+      "domains": [
+        "aircraft"
+      ]
+    },
     "tinyName": "ADN",
     "fullName": "Advanced Construction Drone",
     "shortDescription": "Advanced airborne construction craft",
     "longDescription": "An advanced airborne builder that starts the experimental universal fabricator and rapidly assists major construction sites.",
+    "identity": {
+      "kind": "constructionCraft"
+    },
     "shortName": "A-DRN",
     "hp": 620,
-    "radius": { "other": 32, "hitbox": 30, "collision": 40 },
-    "mass": 260,
-    "cost": { "energy": 1250, "metal": 1000 },
-    "builder": { "buildRange": 205 },
-    "constructionRate": 78,
-    "unitLocomotion": {
-      "environmentalHazards": { "waterDamagePerSecond": 310 }
+    "radius": {
+      "other": 32,
+      "hitbox": 30,
+      "collision": 40
     },
+    "supportSurface": {
+      "kind": "none"
+    },
+    "mass": 260,
+    "cost": {
+      "energy": 1250,
+      "metal": 1000
+    },
+    "constructionRate": 78,
     "allowedBuildBlueprintIds": [
-      "buildingSolar", "buildingWind", "buildingExtractor", "buildingExtractorT2",
-      "buildingRadar", "buildingSonar", "buildingRadarJammer", "buildingSonarJammer",
-      "buildingResourceConverter", "buildingMetalStorage", "buildingEnergyStorage",
-      "towerFabricator", "buildingAdvancedUniversalFabricator",
-      "buildingAircraftFabricator", "buildingAdvancedAircraftFabricator",
-      "buildingExperimentalUniversalFabricator", "towerCannon", "towerHelios",
-      "towerBeamMega", "towerAntiAir", "buildingShieldTargetingTech",
-      "buildingShieldTech", "buildingPrecisionTargetingTech"
+      "buildingSolar",
+      "buildingWind",
+      "buildingExtractor",
+      "buildingExtractorT2",
+      "buildingRadar",
+      "buildingSonar",
+      "buildingRadarJammer",
+      "buildingSonarJammer",
+      "buildingResourceConverter",
+      "buildingMetalStorage",
+      "buildingEnergyStorage",
+      "towerFabricator",
+      "buildingAdvancedUniversalFabricator",
+      "buildingAircraftFabricator",
+      "buildingAdvancedAircraftFabricator",
+      "buildingExperimentalUniversalFabricator",
+      "towerCannon",
+      "towerHelios",
+      "towerBeamMega",
+      "towerAntiAir",
+      "buildingShieldTargetingTech",
+      "buildingShieldTech",
+      "buildingPrecisionTargetingTech"
+    ],
+    "workEmitter": {
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "z": 0.65
+        }
+      ],
+      "particleTravelSpeed": 160,
+      "particleRadius": 1.3,
+      "attachment": {
+        "kind": "host"
+      },
+      "angularActuator": null,
+      "articulation": null,
+      "requiresAlignmentForWork": false,
+      "alignmentToleranceRadians": 0.12
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitConstructionDrone",
+        "presentation": null,
+        "mount": {
+          "x": 0.92,
+          "y": 0,
+          "z": 0
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      }
     ],
     "bodyShape": {
-      "$replace": true,
       "kind": "composite",
       "parts": [
-        { "kind": "oval", "offsetForward": 0.04, "xFrac": 0.78, "yFrac": 0.28, "zFrac": 0.58 },
-        { "kind": "box", "offsetForward": -0.08, "lengthFrac": 0.46, "widthFrac": 0.86, "heightFrac": 0.12, "centerYFrac": 0.5 },
-        { "kind": "cylinder", "offsetForward": -0.68, "lengthFrac": 1.02, "radiusFrac": 0.13, "centerYFrac": 0.25, "pitchRad": 0 },
-        { "kind": "cylinder", "offsetForward": 0.08, "offsetLateral": -0.52, "lengthFrac": 0.54, "radiusFrac": 0.08, "centerYFrac": 0.3, "pitchRad": -0.12 },
-        { "kind": "cylinder", "offsetForward": 0.08, "offsetLateral": 0.52, "lengthFrac": 0.54, "radiusFrac": 0.08, "centerYFrac": 0.3, "pitchRad": -0.12 }
+        {
+          "kind": "oval",
+          "offsetForward": 0.04,
+          "xFrac": 0.78,
+          "yFrac": 0.28,
+          "zFrac": 0.58
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.08,
+          "lengthFrac": 0.46,
+          "widthFrac": 0.86,
+          "heightFrac": 0.12,
+          "centerYFrac": 0.5
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": -0.68,
+          "lengthFrac": 1.02,
+          "radiusFrac": 0.13,
+          "centerYFrac": 0.25,
+          "pitchRad": 0
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": 0.08,
+          "offsetLateral": -0.52,
+          "lengthFrac": 0.54,
+          "radiusFrac": 0.08,
+          "centerYFrac": 0.3,
+          "pitchRad": -0.12
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": 0.08,
+          "offsetLateral": 0.52,
+          "lengthFrac": 0.54,
+          "radiusFrac": 0.08,
+          "centerYFrac": 0.3,
+          "pitchRad": -0.12
+        }
       ]
     },
+    "teamOrnament": {
+      "backX": 0.82,
+      "frontX": 0.79,
+      "backY": 1,
+      "frontY": 1
+    },
+    "hud": {
+      "barsOffsetAboveTop": 19.2
+    },
+    "suspension": null,
+    "builder": {
+      "buildRange": 205
+    },
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitConstructionDrone"
+    },
+    "unitLocomotion": {
+      "type": "drone",
+      "physicsPresetId": "drone",
+      "physics": {
+        "ground": {
+          "maxPropulsiveForce": 0
+        },
+        "air": {
+          "maxPropulsiveForce": 0.106666666667,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 60,
+            "surfaceFollowingInverseForceFromWater": 140
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 0.106666666667,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingProportionalForceFromWater": 0
+          }
+        }
+      },
+      "config": {
+        "mounts": [
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.41012,
+              "yUnitRadiusRatio": 0.71035,
+              "zUnitRadiusRatio": -0.0315
+            },
+            "radiusFrac": 0.26,
+            "ringTubeRadiusFrac": 0.035,
+            "outwardAngleDeg": 12
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": -1.2,
+              "yUnitRadiusRatio": 0,
+              "zUnitRadiusRatio": -0.0315
+            },
+            "radiusFrac": 0.26,
+            "ringTubeRadiusFrac": 0.035,
+            "outwardAngleDeg": 12
+          }
+        ],
+        "fanSpinRadPerSec": -9
+      },
+      "environmentalHazards": {
+        "waterDamagePerSecond": 310
+      }
+    },
     "base": {
-      "cost": { "energy": 1250, "metal": 1000 },
+      "cost": {
+        "energy": 1250,
+        "metal": 1000
+      },
       "mass": 260,
       "health": 620,
-      "deathExplosion": { "radius": 30, "force": 22000, "damage": 190 },
-      "radius": { "other": 32, "hitbox": 30, "collision": 40 },
-      "signature": { "radarStealth": false, "sonarStealth": false }
+      "deathExplosion": {
+        "radius": 30,
+        "force": 22000,
+        "damage": 190
+      },
+      "radius": {
+        "other": 32,
+        "hitbox": 30,
+        "collision": 40
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
     },
     "supportPointOffsetZ": 10
   },
   "unitAdvancedConstructionSubmarine": {
-    "$extends": "unitConstructionSubmarine",
     "unitBlueprintId": "unitAdvancedConstructionSubmarine",
     "requiresWater": true,
     "requiresLand": false,
-    "production": { "techLevel": 2, "domains": ["naval"] },
+    "production": {
+      "techLevel": 2,
+      "domains": [
+        "naval"
+      ]
+    },
     "tinyName": "ASB",
     "fullName": "Advanced Construction Submarine",
     "shortDescription": "Advanced underwater construction craft",
     "longDescription": "An advanced underwater builder that starts the experimental universal fabricator and rapidly assists major construction sites.",
+    "identity": {
+      "kind": "constructionCraft"
+    },
     "shortName": "A-SUB",
     "hp": 1650,
-    "radius": { "other": 60, "hitbox": 54, "collision": 72 },
+    "radius": {
+      "other": 60,
+      "hitbox": 54,
+      "collision": 72
+    },
+    "supportSurface": {
+      "kind": "none"
+    },
     "mass": 2100,
-    "cost": { "energy": 2400, "metal": 2100 },
-    "builder": { "buildRange": 205 },
+    "cost": {
+      "energy": 2400,
+      "metal": 2100
+    },
     "constructionRate": 92,
     "allowedBuildBlueprintIds": [
-      "buildingExtractor", "buildingExtractorT2", "buildingResourceConverter",
-      "buildingSonar", "buildingSonarJammer", "towerFabricator",
-      "buildingAdvancedUniversalFabricator", "buildingNavalFabricator",
-      "buildingAdvancedNavalFabricator", "buildingExperimentalUniversalFabricator",
-      "buildingTidalGenerator", "towerTorpedo"
+      "buildingExtractor",
+      "buildingExtractorT2",
+      "buildingResourceConverter",
+      "buildingSonar",
+      "buildingSonarJammer",
+      "towerFabricator",
+      "buildingAdvancedUniversalFabricator",
+      "buildingNavalFabricator",
+      "buildingAdvancedNavalFabricator",
+      "buildingExperimentalUniversalFabricator",
+      "buildingTidalGenerator",
+      "towerTorpedo"
+    ],
+    "workEmitter": {
+      "points": [
+        {
+          "x": -0.1,
+          "y": 0,
+          "z": 0.45
+        }
+      ],
+      "particleTravelSpeed": 160,
+      "particleRadius": 1.3,
+      "attachment": {
+        "kind": "host"
+      },
+      "angularActuator": null,
+      "articulation": null,
+      "requiresAlignmentForWork": false,
+      "alignmentToleranceRadians": 0.12
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretSensorUnitOrca",
+        "presentation": null,
+        "mount": {
+          "x": 0.42,
+          "y": 0,
+          "z": 0
+        },
+        "requiredEngagedForFightStop": false,
+        "mountId": "sensor",
+        "controlMode": "autonomous"
+      }
     ],
     "bodyShape": {
-      "$replace": true,
       "kind": "composite",
       "parts": [
-        { "kind": "oval", "offsetForward": -0.12, "xFrac": 1.28, "yFrac": 0.46, "zFrac": 0.5 },
-        { "kind": "oval", "offsetForward": 0.78, "xFrac": 0.42, "yFrac": 0.28, "zFrac": 0.32 },
-        { "kind": "cylinder", "offsetForward": -0.24, "lengthFrac": 0.86, "radiusFrac": 0.095, "centerYFrac": 0.3, "pitchRad": 0 },
-        { "kind": "box", "offsetForward": -0.08, "offsetLateral": -0.42, "lengthFrac": 0.56, "widthFrac": 0.08, "heightFrac": 0.2, "centerYFrac": 0.25 },
-        { "kind": "box", "offsetForward": -0.08, "offsetLateral": 0.42, "lengthFrac": 0.56, "widthFrac": 0.08, "heightFrac": 0.2, "centerYFrac": 0.25 },
-        { "kind": "cone", "offsetForward": -1.22, "lengthFrac": 0.36, "radiusFrac": 0.16, "centerYFrac": 0.24 }
+        {
+          "kind": "oval",
+          "offsetForward": -0.12,
+          "xFrac": 1.28,
+          "yFrac": 0.46,
+          "zFrac": 0.5
+        },
+        {
+          "kind": "oval",
+          "offsetForward": 0.78,
+          "xFrac": 0.42,
+          "yFrac": 0.28,
+          "zFrac": 0.32
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": -0.24,
+          "lengthFrac": 0.86,
+          "radiusFrac": 0.095,
+          "centerYFrac": 0.3,
+          "pitchRad": 0
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.08,
+          "offsetLateral": -0.42,
+          "lengthFrac": 0.56,
+          "widthFrac": 0.08,
+          "heightFrac": 0.2,
+          "centerYFrac": 0.25
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.08,
+          "offsetLateral": 0.42,
+          "lengthFrac": 0.56,
+          "widthFrac": 0.08,
+          "heightFrac": 0.2,
+          "centerYFrac": 0.25
+        },
+        {
+          "kind": "cone",
+          "offsetForward": -1.22,
+          "lengthFrac": 0.36,
+          "radiusFrac": 0.16,
+          "centerYFrac": 0.24
+        }
       ]
     },
+    "teamOrnament": {
+      "backX": 0.82,
+      "frontX": 0.79,
+      "backY": 1,
+      "frontY": 1
+    },
+    "hud": {
+      "barsOffsetAboveTop": 22.4
+    },
+    "suspension": null,
+    "builder": {
+      "buildRange": 205
+    },
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitHippo"
+    },
+    "unitLocomotion": {
+      "type": "submarine",
+      "physicsPresetId": "submarine",
+      "physics": {
+        "ground": {
+          "maxPropulsiveForce": 0
+        },
+        "air": {
+          "maxPropulsiveForce": 0,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromWater": 0
+          }
+        },
+        "water": {
+          "maxPropulsiveForce": 14,
+          "lift": {
+            "surfaceFollowingInverseForceFromGround": 14,
+            "surfaceFollowingProportionalForceFromWater": 0.01
+          }
+        }
+      },
+      "config": {
+        "pectorals": [
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.1,
+              "yUnitRadiusRatio": -0.34,
+              "zUnitRadiusRatio": 0.02
+            }
+          },
+          {
+            "offset": {
+              "xUnitRadiusRatio": 0.1,
+              "yUnitRadiusRatio": 0.34,
+              "zUnitRadiusRatio": 0.02
+            }
+          }
+        ],
+        "rearFan": {
+          "offset": {
+            "xUnitRadiusRatio": -1.08,
+            "yUnitRadiusRatio": 0,
+            "zUnitRadiusRatio": 0
+          },
+          "radius": 0.28,
+          "ringTubeRadius": 0.035,
+          "spinRadPerSec": 22
+        },
+        "pectoralSpanFrac": 0.64,
+        "pectoralRootChordFrac": 0.4,
+        "pectoralTipChordFrac": 0.16,
+        "thicknessFrac": 0.06,
+        "strokeAngleDeg": 12,
+        "cycleDistanceFrac": 2
+      },
+      "environmentalHazards": {
+        "waterDamagePerSecond": 0
+      }
+    },
     "base": {
-      "cost": { "energy": 2400, "metal": 2100 },
+      "cost": {
+        "energy": 2400,
+        "metal": 2100
+      },
       "mass": 2100,
       "health": 1650,
-      "deathExplosion": { "radius": 58, "force": 98000, "damage": 760 },
-      "radius": { "other": 60, "hitbox": 54, "collision": 72 },
-      "signature": { "radarStealth": false, "sonarStealth": false }
+      "deathExplosion": {
+        "radius": 58,
+        "force": 98000,
+        "damage": 760
+      },
+      "radius": {
+        "other": 60,
+        "hitbox": 54,
+        "collision": 72
+      },
+      "signature": {
+        "radarStealth": false,
+        "sonarStealth": false
+      }
     },
+    "preventLockOnIfMyTeamIsAboveMe": true,
     "supportPointOffsetZ": 18
   }
 }

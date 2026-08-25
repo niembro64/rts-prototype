@@ -713,7 +713,7 @@ fn unit_force_cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
 
 #[inline]
 fn unit_force_air_water_surface_inverse_distance_response(
-    pos_z: f64,
+    support_z: f64,
     ground_z: f64,
     sampled_distance_response: f64,
     has_sampled_distance_response: bool,
@@ -726,7 +726,7 @@ fn unit_force_air_water_surface_inverse_distance_response(
         return 0.0;
     }
     unit_force_surface_lift_inverse_distance_response(
-        pos_z - TERRAIN_WATER_LEVEL,
+        support_z - TERRAIN_WATER_LEVEL,
         minimum_distance_world,
     )
 }
@@ -1460,8 +1460,12 @@ fn unit_force_step_batch_core(
         let mut thrust_force_y = 0.0;
         let mut thrust_force_z = 0.0;
         let ground_z = rows[base + UF_ROW_GROUND_Z];
+        // One canonical locomotion datum serves contact and every authored
+        // surface-following response. The body origin remains the volume/COM
+        // datum used above for medium occupancy and environmental hazards.
+        let support_z = p.pos_z[slot] - p.ground_offset[slot];
         let computed_ground_contact = is_in_locomotion_contact(
-            ground_z - (p.pos_z[slot] - p.ground_offset[slot]),
+            ground_z - support_z,
             p.radius[slot],
         );
         let ground_contact = flag & UF_FLAG_ON_GROUND != 0 || computed_ground_contact;
@@ -1508,11 +1512,11 @@ fn unit_force_step_batch_core(
                 rows[base + UF_ROW_AIR_SURFACE_FOLLOWING_INVERSE_PROPOSED_FORCE].max(0.0)
             } else {
                 let ground_response = unit_force_surface_lift_inverse_distance_response(
-                    p.pos_z[slot] - ground_z,
+                    support_z - ground_z,
                     surface_lift_minimum_distance_world,
                 );
                 let water_response = unit_force_air_water_surface_inverse_distance_response(
-                    p.pos_z[slot],
+                    support_z,
                     ground_z,
                     f64::NAN,
                     false,
@@ -1607,7 +1611,7 @@ fn unit_force_step_batch_core(
                     } else {
                         inverse_lift_force_from_ground_surface.max(0.0)
                             * unit_force_surface_lift_inverse_distance_response(
-                                p.pos_z[slot] - ground_z,
+                                support_z - ground_z,
                                 surface_lift_minimum_distance_world,
                             )
                     };
@@ -1632,7 +1636,7 @@ fn unit_force_step_batch_core(
                     rows[base + UF_ROW_WATER_SURFACE_FOLLOWING_PROPORTIONAL_PROPOSED_FORCE].max(0.0)
                 } else if ground_z < TERRAIN_WATER_LEVEL {
                     proportional_lift_force_from_water_surface.max(0.0)
-                        * unit_force_water_surface_depth_world(p.pos_z[slot])
+                        * unit_force_water_surface_depth_world(support_z)
                 } else {
                     0.0
                 };
