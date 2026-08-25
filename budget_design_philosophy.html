@@ -1846,7 +1846,7 @@
         <li>Solid lit triangles from units, buildings, articulated locomotion parts, and environment objects cast one directional sun depth map onto terrain. The result follows the actual rendered silhouette and pose; a hitbox circle, footprint ellipse, or stretched coverage stamp is never an acceptable stand-in. Additive effects, debug geometry, water, and invisible rig helpers do not cast.</li>
         <li>The orthographic sun frustum follows the visible battle, expands in quantized steps, and snaps its focus to shadow texels so camera pans do not make outlines swim. The CLIENT <strong>SHADOWS</strong> toggle disables the directional depth pass rather than swapping in an approximation.</li>
         <li>The retired coverage-ellipse shadow path stays disabled. There is no standalone contact-shadow mesh and no CPU-stamped fog bitmap.</li>
-        <li>The canonical client lighting defaults are <strong>ENV 25, AMB 0, SUN 500, SKY 25, EXPO 25</strong> in both battle modes. Every light/exposure bar exposes the same authored range through 500.</li>
+        <li>The canonical client lighting defaults are <strong>ENV 15, AMB 0, SUN 1500, SKY 15, EXPO 15</strong> in both battle modes. Every light/exposure bar shares the same zero-plus-decades ladder: 0, 15, 150, 1500, and 15000 percent, so every positive button is exactly ten times its neighbor.</li>
       </ul>
     </section>
 

@@ -1,5 +1,8 @@
 import * as THREE from 'three';
-import { getClientConfig } from '@/clientBarConfig';
+import {
+  getClientConfig,
+  normalizeLightIntensitySelection,
+} from '@/clientBarConfig';
 import { GROUND_SILHOUETTE_SHADOW_RENDER_CONFIG } from '../../config';
 import {
   configureGroundSilhouetteCasterTree3D,
@@ -13,32 +16,48 @@ function assertContract(condition: unknown, message: string): asserts condition 
 }
 
 export function runGroundSilhouetteShadow3DContractTest(): void {
+  const expectedLightOptions = [0, 15, 150, 1500, 15000];
+  assertContract(
+    normalizeLightIntensitySelection(0) === 0 &&
+      normalizeLightIntensitySelection(25) === 15 &&
+      normalizeLightIntensitySelection(1250) === 1500 &&
+      normalizeLightIntensitySelection(15000) === 15000,
+    'legacy linear light values must migrate to the nearest logarithmic selection',
+  );
   for (const mode of ['demo', 'real'] as const) {
     const config = getClientConfig(mode);
     assertContract(
-      config.environmentLight.default === 25 &&
+      config.environmentLight.default === 15 &&
         config.ambientLight.default === 0 &&
-        config.directionalLight.default === 1250 &&
-        config.skyLight.default === 25 &&
-        config.exposure.default === 25,
-      `${mode} lighting must default to ENV 25, AMB 0, SUN 1250, SKY 25, EXPO 25`,
+        config.directionalLight.default === 1500 &&
+        config.skyLight.default === 15 &&
+        config.exposure.default === 15,
+      `${mode} lighting must default to ENV 15, AMB 0, SUN 1500, SKY 15, EXPO 15`,
     );
     for (const setting of [
       config.environmentLight,
       config.ambientLight,
+      config.directionalLight,
       config.skyLight,
       config.exposure,
     ]) {
+      const values = setting.options.map((option) => option.value);
       assertContract(
-        setting.options.some((option) => option.value === 500),
-        `${mode} light controls must expose the expanded 500-percent ceiling`,
+        values.length === expectedLightOptions.length &&
+          values.every((value, index) => value === expectedLightOptions[index]),
+        `${mode} light controls must share the zero-plus-decades selection ladder`,
+      );
+      const positiveValues = values.filter((value) => value > 0);
+      assertContract(
+        positiveValues.every((value, index) =>
+          index === 0 || value === positiveValues[index - 1] * 10),
+        `${mode} light controls must increase by an exact power of ten per button`,
+      );
+      assertContract(
+        values.includes(setting.default),
+        `${mode} light-control defaults must remain selectable buttons`,
       );
     }
-    assertContract(
-      config.directionalLight.options.some((option) => option.value === 1250) &&
-        config.directionalLight.options.some((option) => option.value === 1500),
-      `${mode} SUN LIGHT must expose its 1250-percent default and 1500-percent headroom`,
-    );
     assertContract(
       config.entityShadows.default,
       `${mode} must enable physical ground silhouettes by default`,

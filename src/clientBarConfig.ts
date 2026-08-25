@@ -62,6 +62,8 @@ const PLAYER_CLIENT_MAX_GRAPHICS_CONFIG = rawPlayerClientGraphicsConfig as Graph
 const MIN_CAMERA_FOV_DEGREES = 1;
 const MAX_CAMERA_FOV_DEGREES = 179;
 const FOG_PRESENTATION = FOG_CONFIG.presentation;
+const LIGHT_INTENSITY_OPTIONS =
+  clientBarConfig.lightIntensityOptions as OptionList<LightIntensityPercent>;
 
 type ClientDefaults = {
   readonly render: RenderMode;
@@ -246,25 +248,23 @@ export const CLIENT_CONFIG = {
   },
   environmentLight: {
     default: DEMO_CLIENT_DEFAULTS.environmentLight,
-    options:
-      clientBarConfig.environmentLight.options as OptionList<LightIntensityPercent>,
+    options: LIGHT_INTENSITY_OPTIONS,
   },
   ambientLight: {
     default: DEMO_CLIENT_DEFAULTS.ambientLight,
-    options: clientBarConfig.ambientLight.options as OptionList<LightIntensityPercent>,
+    options: LIGHT_INTENSITY_OPTIONS,
   },
   skyLight: {
     default: DEMO_CLIENT_DEFAULTS.skyLight,
-    options: clientBarConfig.skyLight.options as OptionList<LightIntensityPercent>,
+    options: LIGHT_INTENSITY_OPTIONS,
   },
   exposure: {
     default: DEMO_CLIENT_DEFAULTS.exposure,
-    options: clientBarConfig.exposure.options as OptionList<LightIntensityPercent>,
+    options: LIGHT_INTENSITY_OPTIONS,
   },
   directionalLight: {
     default: DEMO_CLIENT_DEFAULTS.directionalLight,
-    options:
-      clientBarConfig.directionalLight.options as OptionList<LightIntensityPercent>,
+    options: LIGHT_INTENSITY_OPTIONS,
   },
   audioSmoothing: { default: DEMO_CLIENT_DEFAULTS.audioSmoothing },
   burnMarks: { default: DEMO_CLIENT_DEFAULTS.burnMarks },
@@ -647,13 +647,29 @@ function normalizeCameraFovDegrees(value: CameraFovDegrees): CameraFovDegrees {
   return Math.min(MAX_CAMERA_FOV_DEGREES, Math.max(MIN_CAMERA_FOV_DEGREES, value));
 }
 
-// SUN reaches higher than the fill/exposure controls: its authored light is a
-// deliberately small trim over the environment, so the readable operating
-// range extends to 1500% while the other controls keep their narrower menus.
-const MAX_LIGHT_INTENSITY_PERCENT = 1500;
+const POSITIVE_LIGHT_INTENSITY_OPTIONS = LIGHT_INTENSITY_OPTIONS
+  .map((option) => option.value)
+  .filter((value) => value > 0);
+const MAX_LIGHT_INTENSITY_PERCENT = Math.max(...POSITIVE_LIGHT_INTENSITY_OPTIONS);
 
-function clampLightIntensityPercent(value: number): LightIntensityPercent {
-  return Math.max(0, Math.min(MAX_LIGHT_INTENSITY_PERCENT, Math.round(value)));
+/**
+ * Keep every runtime value on the same decade ladder rendered by the CLIENT
+ * bar. Positive legacy values are compared in log space, where equal ratios
+ * are equally distant; an exact tie deliberately keeps the lower option.
+ */
+export function normalizeLightIntensitySelection(value: number): LightIntensityPercent {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  const bounded = Math.min(MAX_LIGHT_INTENSITY_PERCENT, value);
+  let nearest = POSITIVE_LIGHT_INTENSITY_OPTIONS[0] ?? 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (const option of POSITIVE_LIGHT_INTENSITY_OPTIONS) {
+    const distance = Math.abs(Math.log10(bounded / option));
+    if (distance < nearestDistance) {
+      nearest = option;
+      nearestDistance = distance;
+    }
+  }
+  return nearest;
 }
 
 function isMasterVolumePercent(value: number): value is MasterVolumePercent {
@@ -742,6 +758,19 @@ function applyClientDefaults(mode: ClientMode): void {
 // ── Load from localStorage on module init / mode switch ──
 // Each read is independent — a bad JSON value or throw from ONE key
 // must not prevent every later key from loading.
+function loadLightIntensitySelection(
+  storageKey: string,
+  assign: (value: LightIntensityPercent) => void,
+): void {
+  const stored = readPersisted(storageKey);
+  if (stored === null) return;
+  const parsed = Number(stored);
+  if (!isLightIntensityPercent(parsed)) return;
+  const selection = normalizeLightIntensitySelection(parsed);
+  assign(selection);
+  if (selection !== parsed) persist(storageKey, String(selection));
+}
+
 function loadFromStorage(mode: ClientMode): void {
   currentClientMode = mode;
   applyClientDefaults(mode);
@@ -777,26 +806,26 @@ function loadFromStorage(mode: ClientMode): void {
       currentMasterVolume = parsed;
     }
   }
-  for (const [key, assign] of [
-    [keys.environmentLight, (v: LightIntensityPercent) => { currentEnvironmentLight = v; }],
-    [keys.skyLight, (v: LightIntensityPercent) => { currentSkyLight = v; }],
-    [keys.exposure, (v: LightIntensityPercent) => { currentExposure = v; }],
-  ] as [string, (v: LightIntensityPercent) => void][]) {
-    const stored = readPersisted(key);
-    if (stored === null) continue;
-    const parsed = Number(stored);
-    if (isLightIntensityPercent(parsed)) assign(parsed);
-  }
-  const storedAmbientLight = readPersisted(keys.ambientLight);
-  if (storedAmbientLight !== null) {
-    const parsed = Number(storedAmbientLight);
-    if (isLightIntensityPercent(parsed)) currentAmbientLight = parsed;
-  }
-  const storedDirectionalLight = readPersisted(keys.directionalLight);
-  if (storedDirectionalLight !== null) {
-    const parsed = Number(storedDirectionalLight);
-    if (isLightIntensityPercent(parsed)) currentDirectionalLight = parsed;
-  }
+  loadLightIntensitySelection(
+    keys.environmentLight,
+    (value) => { currentEnvironmentLight = value; },
+  );
+  loadLightIntensitySelection(
+    keys.ambientLight,
+    (value) => { currentAmbientLight = value; },
+  );
+  loadLightIntensitySelection(
+    keys.directionalLight,
+    (value) => { currentDirectionalLight = value; },
+  );
+  loadLightIntensitySelection(
+    keys.skyLight,
+    (value) => { currentSkyLight = value; },
+  );
+  loadLightIntensitySelection(
+    keys.exposure,
+    (value) => { currentExposure = value; },
+  );
   const storedBurnMarks = readPersisted(keys.burnMarks);
   if (storedBurnMarks !== null) {
     currentBurnMarks = storedBurnMarks === 'true';
@@ -1255,7 +1284,7 @@ export function getAmbientLight(): LightIntensityPercent {
 }
 
 export function setAmbientLight(percent: LightIntensityPercent): void {
-  currentAmbientLight = clampLightIntensityPercent(percent);
+  currentAmbientLight = normalizeLightIntensitySelection(percent);
   persist(activeStorageKeys().ambientLight, String(currentAmbientLight));
 }
 
@@ -1264,7 +1293,7 @@ export function getEnvironmentLight(): LightIntensityPercent {
 }
 
 export function setEnvironmentLight(percent: LightIntensityPercent): void {
-  currentEnvironmentLight = clampLightIntensityPercent(percent);
+  currentEnvironmentLight = normalizeLightIntensitySelection(percent);
   persist(activeStorageKeys().environmentLight, String(currentEnvironmentLight));
 }
 
@@ -1273,7 +1302,7 @@ export function getSkyLight(): LightIntensityPercent {
 }
 
 export function setSkyLight(percent: LightIntensityPercent): void {
-  currentSkyLight = clampLightIntensityPercent(percent);
+  currentSkyLight = normalizeLightIntensitySelection(percent);
   persist(activeStorageKeys().skyLight, String(currentSkyLight));
 }
 
@@ -1282,7 +1311,7 @@ export function getExposure(): LightIntensityPercent {
 }
 
 export function setExposure(percent: LightIntensityPercent): void {
-  currentExposure = clampLightIntensityPercent(percent);
+  currentExposure = normalizeLightIntensitySelection(percent);
   persist(activeStorageKeys().exposure, String(currentExposure));
 }
 
@@ -1291,7 +1320,7 @@ export function getDirectionalLight(): LightIntensityPercent {
 }
 
 export function setDirectionalLight(percent: LightIntensityPercent): void {
-  currentDirectionalLight = clampLightIntensityPercent(percent);
+  currentDirectionalLight = normalizeLightIntensitySelection(percent);
   persist(activeStorageKeys().directionalLight, String(currentDirectionalLight));
 }
 
