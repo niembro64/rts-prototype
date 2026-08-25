@@ -17,11 +17,12 @@ import {
 // ahead, the way a person walking down a corridor drifts past someone coming
 // the other way.
 //
-// Reciprocal: both bodies apply the same rule and pick opposite sides, so
-// each only has to move half the clearance. Deterministic: the neighbour
-// query order is the spatial grid's canonical order on every peer, the
-// arithmetic is plain f64, and a body exactly on the line is sent by entity
-// id order — never a random or wall-clock tie-break.
+// Reciprocal: both bodies apply the same rule in their OWN frame, so two
+// bodies meeting head-on each drift to their own left — opposite world sides
+// — and each only has to move half the clearance. Deterministic: the
+// neighbour query order is the spatial grid's canonical order on every peer,
+// the arithmetic is plain f64, and a body exactly on the line always goes
+// left — never a random or wall-clock tie-break.
 //
 // Scope: ground movers only. Air bodies overfly; naval hulls have a lot of
 // water and few neighbours. A body braking for its final waypoint fades the
@@ -80,8 +81,9 @@ export function computeAvoidanceSteer(
     const weight = proximity * overlap;
     // Neighbour on our left (lateral > 0) → we go right (negative), and
     // reciprocally it sees us on its right and goes left. Exactly on the
-    // line: the lower entity id goes left.
-    const side = lateral > 1e-6 ? -1 : lateral < -1e-6 ? 1 : self.id < n.id ? 1 : -1;
+    // line both go to their own left, which is opposite world sides for a
+    // head-on pair.
+    const side = lateral > 1e-6 ? -1 : 1;
     steer += side * weight;
   }
   if (steer === 0) return 0;
