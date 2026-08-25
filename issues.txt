@@ -1,0 +1,18 @@
+1. Fill in all shapes on units that are missing sections. The one I can see is on the "eagle" the back "engine cylinders" are not fully closed. Be sure to fill all shapes like that.
+
+2. Build spray is currently visible through other materials, we should not be able to see build spray behind a building or other things. It should be visible through water though, obviously.
+
+3. The "universal fabricators" let's have 8 of those outer boxes on the "tech level 1" version, 12 of them on the "tech level 2" version, and 16 on the "tech level 3" version. When the universal fabricators are building something those outer boxes should come up slightly above the ring and should spin along the circle just above the ring. And the build spray should come from those boxes. 
+
+4. In the "BASE" version of starting the game let's start with 2x more solar panels and also 2x more wind turbines. We should have sufficient energy if we start with a base. 
+
+5. Barracuda units are stuck or floating when they drop from the fabricator over water. Not sure why those are broken. 
+
+6. Let' skeep the "tech 2 universal fabricator" the same size, but let's make the "tech 1 universal fabricator" smaller and the "tech 3 universal fabricator" bigger. 
+
+7. Back in "Total Annihilation" we were able to tell a unit to just attack a specific location. Let's be able to do this here as well. Also in "Beyond-All-Reason" we can't attack arbitrary locations, but that is an exception that I want for our game. 
+
+8. I can see clearly enemy units outside of our "team vision" region. Units thare are outside our vision but inside of our radar shoudl appear as the white and balck dots!
+
+9. Our "universal fabricators" all three of htem, should be placed slightly higher than the height of the tallest unit that it can produce. 
+
