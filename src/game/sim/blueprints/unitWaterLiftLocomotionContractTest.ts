@@ -112,14 +112,15 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
   const patrolCorvette = getUnitLocomotion('unitPatrolCorvette');
   assertContract(
     patrolCorvette.physics.ground.maxPropulsiveForce === 0 &&
-      patrolCorvette.physics.air.lift.surfaceFollowingInverseForceFromWater > 0 &&
+      patrolCorvette.physics.air.lift.surfaceFollowingInverseForceFromGround === 0 &&
+      patrolCorvette.physics.air.lift.surfaceFollowingInverseForceFromWater === 0 &&
       patrolCorvette.physics.water.lift.surfaceFollowingProportionalForceFromWater > 0 &&
       patrolCorvette.physics.water.lift.surfaceFollowingInverseForceFromGround === 0 &&
       !patrolCorvette.navigation.waypoint.allowOnGround &&
       patrolCorvette.navigation.waypoint.allowInWater &&
       !patrolCorvette.navigation.waypoint.allowInAir &&
       !patrolCorvette.motionControl.cruiseWhenUncommanded,
-    'Patrol Corvette is a water-only surface hull supported by both water-surface lift channels',
+    'Patrol Corvette falls freely through air, then rides the surface using only its in-water lift channel',
   );
 
   const orca = getUnitLocomotion('unitOrca');

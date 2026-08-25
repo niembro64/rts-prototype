@@ -525,7 +525,9 @@
         and no wire traffic at all. The <strong>INITIAL STATE</strong> says what the seat starts
         the match with: a lone <code>commander</code> on its spawn arc, or the authored full
         <code>base</code> — building arcs, fabricators seeded to repeat-build, auto-extractors on
-        the seat&rsquo;s deposits, and the opening unit wave.
+        the seat&rsquo;s deposits, and the opening unit wave. The authored BASE economy includes six
+        solar collectors and four wind turbines per seat; those counts are deliberate opening
+        power capacity, not decorative scatter.
       </p>
       <p>
         The axes mix freely, and the DEMO battle is the proof rather than the exception: every
@@ -646,7 +648,9 @@
         sight mount even while its economy production is closed. Entity models are discrete
         intelligence results rather than fragments of the terrain shade: allied and fully sighted
         entities draw normally, contact-only enemies are generic contacts on both the minimap and
-        the battlefield, and hidden enemies are absent.
+        the battlefield, and hidden enemies are absent. The instant an enemy loses full sight its
+        full model is destroyed on the client; model fade-out may never leak identity into a
+        radar-only or unseen interval. Only the anonymous contact dot may retain its short fade.
       </p>
 
       <h3>Sight, radar, sonar, and contacts are separate information tiers</h3>
@@ -669,9 +673,10 @@
       </p>
       <p>
         A contact-only enemy should be represented to the player as a contact, not as the real entity.
-        The small sphere/blip idea is the right shape: a generic radar contact at a quantized or
-        otherwise coarse position, with no unit blueprint, no exact body dimensions, and no private
-        state. The authoritative sim may internally associate that contact with a real entity so
+        Its one canonical world/minimap mark is a white core inside a black ring: a generic radar
+        or sonar contact at a quantized or otherwise coarse position, with no unit blueprint, no
+        exact body dimensions, and no private state. The authoritative sim may internally associate
+        that contact with a real entity so
         projectiles can collide with the real world, but the client should only receive the contact
         tier it earned. Losing full sight while retaining radar should degrade the player&rsquo;s
         information; it should not silently keep streaming a full unit under another visual.
@@ -690,7 +695,9 @@
         presentation snapshots &mdash; far slower than the render loop. The world blip therefore
         interpolates between its last two received positions, the same clamped glide the fixed-tick
         presentation history gives every other moving visual, and never extrapolates past the newest
-        sample: a contact whose returns stop arriving comes to rest exactly where it was last heard.
+        sample while heard. Once returns stop, only the anonymous dot may coast briefly on its last
+        measured drift while its contact fade expires; a full entity model is never retained for
+        that presentation grace period.
       </p>
       <p>
         The extension is the medium. A contact carries which sensor lane earned it, and its blip sits
@@ -1193,24 +1200,24 @@
         <li>A forward-flight chassis can neither stop on a point nor hover over one, so its terminating waypoint is never marked satisfied: the plane always turns toward it at its constant turn rate, passing through, turning back, and passing again. The perpetual pursuit is the hold, and it counters wind by construction. The loiter circle exists only for a cruise unit with an <em>empty</em> queue &mdash; never as a substitute for a waypoint the player placed.</li>
       </ul>
 
-      <h3>Forward-flight waypoints have a no-turn deadzone with a front slice</h3>
+      <h3>Body-forward waypoints have a no-turn deadzone with a front slice</h3>
       <div class="callout">
         <p>
-          <strong>The settled forward-flight waypoint contract</strong> (locked 2026-08-22,
-          after every softer variant failed). A plane or aerosub always accelerates forward
-          and turns at one constant authored rate &mdash; the same turn-ness every tick until
-          its nose is perfectly in line with its goal, never easing off as the angle closes.
-          A <em>non-terminating</em> waypoint has a no-turn deadzone: inside it the plane may
+          <strong>The settled body-forward waypoint contract</strong> (generalized 2026-08-24).
+          Every locomotion preset whose propulsion follows its body heading &mdash; including
+          planes, aerosubs, Ducks, Orcas, submarines, rovers, tanks, amphibians, and bots &mdash;
+          owns the same orbit escape interlock. A <em>non-terminating</em> waypoint has a no-turn
+          deadzone: inside it the unit may
           not turn at all unless that waypoint sits within 45&deg; left or right of the
           direction it is facing, so if it is going to miss, it misses large and straight.
-          A <em>terminating</em> waypoint has no deadzone and never completes: the plane just
-          always turns toward it &mdash; through, back around, through again &mdash; and that
-          perpetual pursuit is the hold. No loiter circle ever substitutes for a waypoint the
-          player placed; loitering exists only for a plane with an empty order queue.
+          A stoppable chassis hands its terminating Move/Fight anchor back to ordinary
+          braking-aware arrival and holds there. Only an authored cruise chassis uses perpetual
+          terminal pursuit: it has no terminal deadzone and never consumes that anchor. No
+          locomotion type receives a bespoke anti-circle mechanic.
         </p>
       </div>
       <p>
-        A body that must keep moving forward has a minimum turning circle. A goal inside that
+        A body whose propulsion and yaw response follow its nose has a finite turning circle. A goal inside that
         circle is unreachable by steering toward it &mdash; pursuit decays into a constant-speed,
         constant-turn orbit that never crosses the point, never completes the order, and freezes
         every queued waypoint behind it. The subtle part is that a pursuit orbit keeps the nose
@@ -1219,17 +1226,18 @@
         never fires inside the orbit. The turn permission must be a slice <em>narrower</em> than
         the orbit&rsquo;s lag angle. Cruise locomotion (plane, aerosub) rides the
         <code>alwaysForward</code> actuator, so the orbit cannot even rely on off-nose throttle
-        loss to shrink itself; the interlock is the one thing that breaks it. Every
+        loss to shrink itself; ordinary body-forward chassis can still orbit a tight pass-through
+        point under momentum and finite yaw authority. Every
         <em>non-terminating</em> waypoint leg steers through one stateless per-tick interlock,
         authored per preset in <code>motionControl.waypointDeadzone</code>:
       </p>
       <ul class="rule-list">
-        <li><strong>The deadzone</strong> around the current waypoint has radius <code>turnRadiusMultiplier &times; R</code> (authored, <code>2.5</code> on plane and aerosub), where <code>R = speed / turnRate</code> is the natural turn radius. For <code>alwaysForward</code> chassis the turn rate is the authored <code>actuator.turnRateDegreesPerSecond</code> constant-rate slew, so the geometry is exact &mdash; the interlock and the yaw actuator read the same number. Only a chassis without an authored rate falls back to the servo-derived estimate (<code>&pi;&radic;k/4</code> from the damped spring&rsquo;s 90&deg;-lag stall).</li>
+        <li><strong>The deadzone</strong> around the current waypoint has radius <code>turnRadiusMultiplier &times; R</code> (authored as <code>2.5</code> on every body-forward preset), where <code>R = speed / turnRate</code> is the natural turn radius and can never be smaller than the body collision radius. For <code>alwaysForward</code> chassis the turn rate is the authored <code>actuator.turnRateDegreesPerSecond</code> constant-rate slew, so the geometry is exact &mdash; the interlock and the yaw actuator read the same number. A servo-driven chassis uses the shared critically damped yaw model&rsquo;s sustainable-rate estimate (<code>&pi;&radic;k/4</code> from the damped spring&rsquo;s 90&deg;-lag stall).</li>
         <li><strong>Inside the deadzone the unit may keep turning only while the waypoint sits within <code>frontSliceDegrees</code> left or right of its nose</strong> (authored, <code>45&deg;</code> per side). Anywhere else in the deadzone it may not turn at all: thrust is pinned straight along the current nose. If the unit is going to miss the waypoint, it misses large &mdash; a dead-straight line that leaves the deadzone.</li>
         <li><strong>Outside the deadzone steering is free at any angle.</strong> That is where the turn-back happens, with a full deadzone of room to complete the turn and line up a straight pass through the point.</li>
         <li><strong>Why circling cannot persist:</strong> a sustained powered orbit needs enough off-nose thrust to hold speed against damping, and the servo lag of tracking the rotating center direction pushes the nose far off the waypoint &mdash; well outside a 45&deg; slice. The interlock therefore forbids the orbit configuration itself from turning, straightening it into an outbound line. The slice must stay below 90&deg;: at 90&deg; it degenerates into the half-plane a powered orbit never leaves, which is the failure the config validator refuses.</li>
-        <li><strong>The lock applies only while actually moving.</strong> A plane pinned against the map boundary at near-zero speed releases the lock and steers freely; at near-zero speed its turning circle is tiny anyway.</li>
-        <li><strong>The terminating waypoint is exempt.</strong> It has no deadzone and never captures: the plane simply always turns toward it, from any angle at any distance, at its constant rate. Non-terminating waypoints capture at the standard arrival radius on the pass, so queues and patrol loops always advance. The rule is a pure function of position, nose, waypoint, and <code>R</code> each tick &mdash; no latched state, no hysteresis &mdash; and the whole cruise population evaluates in one WASM batch per tick.</li>
+        <li><strong>The lock applies only while actually moving.</strong> A body pinned against the map boundary at near-zero speed releases the lock and steers freely; at near-zero speed its turning circle is tiny anyway.</li>
+        <li><strong>Terminating anchors preserve locomotion semantics.</strong> A stoppable body-forward unit uses the shared arrival controller to brake, satisfy, and hold its final Move/Fight anchor. A cruise unit has no terminal deadzone and never captures: it always turns toward the anchor, passing through and returning. Non-terminating legs capture at their existing obstacle-aware route radius, so tight ground/sea corners retain one-world-unit precision while broad legs, queues, and patrol loops advance normally. The interlock is a pure function of position, nose, waypoint, and <code>R</code> each tick &mdash; no latched state, no hysteresis &mdash; and every eligible locomotion type evaluates in one WASM batch per tick.</li>
       </ul>
 
       <h3>Terrain pathfinding is directional around slopes and cliffs</h3>
@@ -2763,7 +2771,7 @@
       </p>
       <ul class="rule-list">
         <li><strong>Attack Unit</strong> stores the target entity ID as host intent, refreshes the movement destination from that entity&rsquo;s live center before path planning, and keeps the order until the target dies or the queue changes.</li>
-        <li><strong>Attack Point</strong> stores a world-space priority point and never silently degrades into Fight. Units whose BAR weapon cannot attack ground are filtered out at input, server authorization, and execution.</li>
+        <li><strong>Attack Point</strong> stores a world-space priority point and never silently degrades into Fight. This is an intentional Total Annihilation-style exception to BAR: every host with a player-orderable weapon may receive an arbitrary world point at input, server authorization, and execution, even when its entity-target masks reject ground units. Those masks remain unchanged for Attack Unit; the weapon trajectory solver still decides whether a particular point is physically reachable.</li>
         <li><strong>Explicit Attack overrides autonomous stances.</strong> Hold Position constrains autonomous chasing, not a newly issued Attack approach. Entering Hold Fire cancels existing attack intents and locks, but a new player-authored Attack, Attack Point, or Set Target remains executable while Hold Fire stays selected. The host owns this exception; compatible host-controlled turrets consume the host priority.</li>
         <li><strong>Area Attack</strong> is exposed only for BAR-equivalent <code>canareaattack</code> units; per ordered unit it queues every compatible enemy in deterministic nearest-first order and becomes Fight when that unit has no compatible target in the area.</li>
         <li><strong>Guard</strong> is a durable allied-host intent. An ordinary mobile guard uses BAR&rsquo;s collision-aware stopped standoff, nearby moving-formation velocity match, and bounded distant interception; a non-builder aircraft follows the guardee&rsquo;s live position. When the guardee took effective hostile damage within BAR&rsquo;s 40 Recoil-frame window (40/30 seconds, converted to the selected lockstep rate), an armed compatible guard inserts a real sim-authored Attack immediately ahead of Guard. That Attack targets the attacker&rsquo;s root host, persists until that target dies or becomes invalid, and then pops so Guard resumes; it never copies the guardee&rsquo;s own target. Builder Guard simultaneously stays ready within build range and joins eligible construction, factory production, repair, or reclaim work.</li>
@@ -3698,9 +3706,11 @@
         9&times;9 T2, and 12&times;12 T3 factory footprints establish the progression grammar,
         while this game keeps domain-specific proportions: every T2 fabricator is wider, deeper,
         and taller than its T1 peer, and the sole T3 Universal is wider, deeper, and taller than
-        the T2 Universal. Radial Universal hover height is derived from the largest collision
-        diameter in its own production tier, so T1 &lt; T2 &lt; T3 and every held product clears
-        the ring. The T2 Aircraft Fabricator&rsquo;s flight deck also sits higher than the T1 deck.</li>
+        the T2 Universal. The radial Universal body widths are exactly 10, 16, and 24 build-grid
+        cells at T1/T2/T3. Each ring&rsquo;s hover height is derived from the tallest authored
+        <em>visible</em> envelope in that exact production roster, including raised turret/barrel
+        geometry, plus the larger of 8 world units or 8%; collision diameter is not a height proxy.
+        The T2 Aircraft Fabricator&rsquo;s flight deck also sits higher than the T1 deck.</li>
         <li><strong>Menu-size target.</strong> About five entries per T1/T2 specialist &mdash;
         twenty specialist menu entries at each of those tiers, counted as entries rather than unique units,
         since cross-domain units legitimately appear in each domain they author.</li>
@@ -3847,7 +3857,9 @@
         <li><strong>Water and cross-medium coverage:</strong> the tier-1 Water Strider is a
         crawler-domain + naval-domain body, supported at the water surface by both water-related
         lift channels while retaining stop-and-hold arrival behavior on land and water. The
-        Patrol Corvette is a water-only surface hull with an above-water gun and sonar. The
+        Patrol Corvette is a water-only surface hull with an above-water gun and sonar; it authors
+        no air lift, so a released Barracuda falls out of its Fabricator under gravity until its
+        proportional in-water support catches it at the surface instead of hovering over the bay. The
         tier-2 Petrel is aircraft + naval: its air-launched torpedo enters the water and attacks
         underwater, while its own sensors deliberately provide no sonar contact.</li>
         <li><strong>Naval economy:</strong> the Tidal Generator is a water-only energy producer,
@@ -4160,7 +4172,7 @@
       </p>
       <p>
         Footprint silhouette follows visible plan-view silhouette. The three Universal Fabricators
-        reserve progressively larger 14-by-14, 18-by-18, and 22-by-22 pixel-circle masks around
+        reserve progressively larger 12-by-12, 18-by-18, and 26-by-26 pixel-circle masks around
         their T1, T2, and T3 annular bodies. Specialist fabricators instead
         reserve authored rectangular U-shaped yards whose construction-clearance channel opens at
         local <code>+X</code>; a quarter turn swaps their width and height and therefore has real
@@ -4298,8 +4310,8 @@
         warning sign. Placement is authored once in
         <code>constructionVisualConfig.json</code>: the Commander uses a small dorsal collar,
         the Construction Drone a tail-boom sleeve, the Construction Submarine its rear propeller
-        guard&rsquo;s mirrored side plates, both Queens a neck collar, and the Fabricator four
-        chamfered clamp boxes mounted at cardinal points on its ring perimeter. Each box is sunk
+        guard&rsquo;s mirrored side plates, both Queens a neck collar, and the three Universal
+        Fabricators exactly 8, 12, and 16 evenly spaced chamfered clamp boxes at T1/T2/T3. Each box is sunk
         into the torus surface, carries a striped tangent face, and has a small raised top latch;
         a zero-thickness or visibly floating Fabricator marking is invalid.
         Its geometry must also simplify visibly and monotonically with building LOD: High uses the
@@ -4326,8 +4338,10 @@
         the instant a unit nanoframe exists until construction completes, its authored hold pose is
         immune to physics, locomotion, collision response, wind, and partial construction. For a
         Universal that pose is the exact horizontal and vertical center of the ring, independent
-        of facing, with zero velocity; each work-spray emission begins at a deterministic point on
-        the ring circumference and travels inward. For a specialist the hold sits in the visible
+        of facing, with zero velocity. While production is active its clamp boxes rise slightly
+        above the ring and rotate together around it; each work-spray emission begins on the outer
+        face of one of those same moving boxes and travels inward. Idle boxes return to their seated
+        ring pose. For a specialist the hold sits in the visible
         build yard, rotates with the building, and receives spray from the authored side nano-arm
         sockets. Completion releases the hold and routes specialist output through the rotated
         local-<code>+X</code> exit before applying subsequent factory intent.
@@ -4897,6 +4911,7 @@
         <li>The spray colour is authored in <code>resourceConfig.json</code>, not derived from the player, and applies to construction, assist, and reclaim alike.</li>
         <li>Spray particles are <strong>presentation only</strong>. They carry no simulation state, are never serialized, and no gameplay decision may read one. Their count, jitter, spin, and lifetime are free to differ between clients.</li>
         <li>Each particle tumbles on its own axis at its own rate, seeded from the particle rather than from a clock, so a stream reads as thrown material instead of sliding cards. Spin is a rotation written into an instance matrix the renderer already uploads &mdash; it must not cost a second buffer, a second draw, or per-particle CPU state.</li>
+        <li>Spray is depth-tested against solid world geometry, so a unit, building, or terrain surface in front hides it. The transparent water surface draws after the spray, allowing submerged nanolathe work to remain visible through water without granting the effect x-ray visibility through solids.</li>
       </ul>
       <ul class="rule-list">
         <li>
@@ -5449,6 +5464,7 @@
         <li>Derive per-part visual state from the interpolated root pose and interpolated velocities. Animation always plays off body motion; the rig never branches on whether a part is touching ground. Floor clamping and decorative spring controllers remain frontend-only and never alter the authoritative or interpolated root.</li>
         <li>Keep the camera frontend and exhaustively enumerated: a gesture&rsquo;s anchor point is the product of two orthogonal data axes &mdash; <code>anchorPointCameraScreen</code> (<code>cursor</code> / <code>screen-center</code>) and <code>anchorPointCameraTerrain</code> (<code>plane-2d</code> / <code>terrain-3d</code>) &mdash; while movement metric (<code>bar-spring</code> / <code>anchor-distance-relative</code> / <code>absolute-world</code> / <code>absolute-world-momentum</code>), focus height (<code>focusHeightMode</code>: <code>constant-altitude</code> canonical / <code>terrain-follow</code> BAR parity), BAR cardinal yaw locking, render transition (<code>bar-spring-dampened</code> / <code>ema</code>), and transition scope (<code>all-movements</code> / <code>zoom-only</code>) are separate config choices. All anchor behaviors and movement metrics must be reachable from config, never from a hardcoded branch in the picker. The canonical camera disables cardinal yaw locking, flies at constant altitude, and applies its EMA to pan, height-pan, rotation, follow, zoom, and FOV together. Water is never an anchor surface and never a camera floor: anchoring over water reads the terrain bed, and the eye&rsquo;s clearance floors on the bed alone so the camera may submerge. Relative zoom min-filters its anchor depth across the configured sample neighborhood and clamps one tick&rsquo;s eye travel to <code>zoom.travelClampFraction</code> of controller distance. The canonical battle camera resolves collision lift at render time only &mdash; never committed into focus, distance, yaw, or pitch, so no gesture can be cancelled or outlived by terrain it brushed &mdash; keeps no fixed closest-orbit rail (<code>constraints.zoomInLimit: none</code>), and validates every committed pose &mdash; finite fields, padded map bounds, bed-to-rail altitude band, distance and pitch rails &mdash; at one constraint point.</li>
         <li>Keep unit, building, turret, shot, and ray definitions atomic, swappable, and free of overlapping responsibility. A unit owns its <strong>locomotion inline</strong>; a building is the single immobile host family. Every unit and building mounts at least one turret. Make the turret a standardized, addressable mounted emitter with one authoritative effect family: <code>attack</code>, optional economy-overlay <code>resourcePylon</code>, or <code>sensor</code>. Construction, repair, and production belong to the host. Every turret blueprint directly owns one nested <code>turretRange</code> object containing lock-on range/volume/hysteresis and sensor matrices. A turret has no independent cost, mass, health, death explosion, construction phase, or detached life.</li>
+        <li>Keep visible volumetric hardware closed: hulls, engine housings, barrels, cones, and other solid unit/building parts include every end face needed from any camera angle and LOD. Open-ended geometry is reserved for explicitly hollow conduits, sleeves, beams, and overlays whose opening is part of their function; it is never an accidental missing cap.</li>
         <li>Give every physical body the same base ledger before its kind-specific fields: a universal <code>EntityId</code>, a <code>{ metal, energy }</code> cost, a mass, a health pool, and a <code>{ radius, force, damage }</code> death explosion. These are a floor that unit, building, and shot bodies all meet. A turret is still an addressable entity for lock-on and provenance, but its resources and lifetime belong to the host. A unit&rsquo;s locomotion is the same kind of intrinsic host behavior: part of the body, sharing the unit&rsquo;s id, cost, and health.</li>
         <li>Make every body death an explosion. When a unit, building, or shot&rsquo;s health hits zero it detonates its death blast, applying outward force (heavier bodies resist more) and damage to everything in its radius, friend or foe. A shot&rsquo;s detonation is the smallest case; a host death ends its mounted turrets as part of the same assembly, without separate turret health checks, detached turret pieces, or turret death explosions.</li>
         <li>Name body geometry by physical role, not by ad-hoc size: every physical body carries three radii &mdash; <code>radiusVisual</code> (drawn size), <code>radiusHitbox</code> (the damage-receiving hurtbox), and <code>radiusCollision</code> (body-vs-body no-overlap contact) &mdash; with the same three names meaning the same things on units, buildings, and shots. A mounted turret may expose an addressable aim/selection volume for lock-on and line targeting, but that volume is a mount target on the host rather than an independent body. Keep the death explosion&rsquo;s own radius separate from this trio, and keep the word &ldquo;push&rdquo; reserved for a future sustained push-field capability rather than this hard-contact radius.</li>
@@ -5459,9 +5475,9 @@
         <li>Keep host workflows separate from per-mount combat tasks and live turret lock-on. A host may carry attack, guard, repair, construct, or production intent. Only compatible combat intent is projected into mount tasks; construction/repair/production stay on the host.</li>
         <li>Give every mount a stable <code>mountId</code> and a required <code>controlMode</code> of <code>host</code>, <code>autonomous</code>, or <code>manual</code>. The choice lives on the unit or building mount, not the reusable turret blueprint. Host attack tasks are evaluated per mount: compatible mounts retain the task lock, incompatible mounts acquire an autonomous fallback, and autonomous/manual siblings are never overwritten. Fight-move and patrol halt logic remains the separate mount flag <code>requiredEngagedForFightStop</code> and applies only to attack emitters.</li>
         <li>Create a product&rsquo;s permanent ID as an internal step of the host-owned build or production workflow, normally as a nanoframe. Do not model that step as a spawn turret, mounted task, aim participant, or init beam. Apply construction work to that same ID; repair of completed entities is free and uses the same build-power channel.</li>
-        <li>Give every positive-<code>constructionRate</code> host exactly one restrained yellow-and-black construction marking authored in shared config. Generate every band at exactly 45 degrees in physical surface coordinates; use open sleeves, side plates where physically appropriate, and perimeter-mounted clamp boxes on circular factory hardware, never floating decals, coloured radial caps, ring sectors, wedges, or sunbursts. Preserve both colours at every geometry tier, make clamp-box geometry strictly decrease from High chamfers/latch/fasteners to Medium box/latch to Low essential box, keep team colour dominant, and derive coverage tests from blueprint capabilities so a new constructor cannot ship unmarked.</li>
+        <li>Give every positive-<code>constructionRate</code> host restrained yellow-and-black construction markings authored in shared config. Generate every band at exactly 45 degrees in physical surface coordinates; use open sleeves, side plates where physically appropriate, and perimeter-mounted clamp boxes on circular factory hardware, never floating decals, coloured radial caps, ring sectors, wedges, or sunbursts. Universals carry exactly 8/12/16 boxes by tier; active production lifts and spins that ring and emits spray from the moving box faces. Preserve both colours at every geometry tier, make clamp-box geometry strictly decrease from High chamfers/latch/fasteners to Medium box/latch to Low essential box, keep team colour dominant, and derive coverage tests from blueprint capabilities so a new constructor cannot ship unmarked.</li>
         <li>Make the selection action panel uniform per host kind and capability. Units expose movement plus their mounted combat, builder, cloak, transport, commander, and manual capabilities. Buildings expose the same standardized combat controls when armed, production when they own a factory workflow, ON/OFF when they own active state, and self-destruct. Mixed unit/building selections degrade to the intersection. A bespoke button on an arbitrary blueprint subset with no sanctioned capability behind it is not allowed.</li>
-        <li>Keep sight, radar, sonar, and detection as turret-owned capability sources aggregated per player/team into four exhaustive, orthogonal target-knowledge facts: <code>team-air-sight</code>, <code>team-water-sight</code>, <code>team-air-radar</code>, and <code>team-water-sonar</code>. The turret&rsquo;s mounted world point selects the source medium. Unit and building targets use exact positive volume occupancy and may occupy both media; shot and turret targets are points and occupy exactly one. Full sight identifies and also supplies contact-level location in its target medium, radar/sonar-only coverage locates through its authored sensor lane, detectors uncloak within an active full-sight lane, and weapon fire consumes the team-unified knowledge tier independently from the emission&rsquo;s exhaustively authored four-cell trajectory matrix. Weapon range and ammunition never create or scale vision.</li>
+        <li>Keep sight, radar, sonar, and detection as turret-owned capability sources aggregated per player/team into four exhaustive, orthogonal target-knowledge facts: <code>team-air-sight</code>, <code>team-water-sight</code>, <code>team-air-radar</code>, and <code>team-water-sonar</code>. The turret&rsquo;s mounted world point selects the source medium. Unit and building targets use exact positive volume occupancy and may occupy both media; shot and turret targets are points and occupy exactly one. Full sight identifies and also supplies contact-level location in its target medium; losing it removes the full model immediately. Radar/sonar-only coverage supplies only the canonical black-ring/white-core contact dot, detectors uncloak within an active full-sight lane, and weapon fire consumes the team-unified knowledge tier independently from the emission&rsquo;s exhaustively authored four-cell trajectory matrix. Weapon range and ammunition never create or scale vision.</li>
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels, and author lock-on eligibility as an additive inclusion object carried by turrets, units, and buildings alike. Rockets and missiles inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets. Missiles coast after lock loss; the light vertical rocket retains only the last solver-produced speculative future intercept, finishes aligning to it, and then leaves the steering batch. Expensive intercept refresh is deterministic blueprint data (currently 10 Hz missiles, 5 Hz light rocket), while cached-point steering and motion stay fixed-tick. Eligibility is <strong>off by default</strong> &mdash; a locker with no inclusions locks onto nothing &mdash; and broadened only by addition: level-0 friend/enemy and entity-family inclusions (<code>units</code>, <code>buildings</code>, <code>turrets</code>, <code>shots</code>), then optional level-1 named blueprint inclusions that narrow an included family. Including only one family is how a turret specializes &mdash; point-defense includes only <code>shots</code>, a disarmer includes only <code>turrets</code>. There is no <code>locomotions</code> family: a unit&rsquo;s movement is part of its body, not a targetable entity.</li>
         <li>Keep specialist targeting behavior explicit. If a turret ever needs behavior beyond additive lock-on eligibility, give it a validated secondary lock-on profile and tests rather than a special case buried in the shared targeting kernel.</li>
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. A frozen pond and a cuboid ice block are the exact same material &mdash; they differ only in geometry.</li>

@@ -886,8 +886,9 @@ export function runCommandExecutionContractTest(): void {
   });
   assertContract(
     antiAirTower.combat.priorityTargetId === null &&
-      antiAirTower.combat.priorityTargetPoint === null,
-    'towerAntiAir/armrl Set Target must not lock ground units or ground points because BAR armrl has canattackground=false',
+      antiAirTower.combat.priorityTargetPoint?.x === 280 &&
+      antiAirTower.combat.priorityTargetPoint?.y === 260,
+    'TA-style arbitrary-point exception must let an AA host lock a world point while still rejecting ground entities',
   );
   executeCommand({
     world,
@@ -1271,10 +1272,10 @@ export function runCommandExecutionContractTest(): void {
     queue: false,
   });
   assertContract(
-    fighter.unit?.actions[0]?.type === 'attack' &&
+    firstActionType(fighter) === 'attackGround' &&
       (scout.unit?.actions.length ?? 0) === 0 &&
       firstActionType(bomber) === 'attackGround',
-    'Attack Point execution must affect ground-capable weapon units without replacing air-only or unarmed unit orders',
+    'TA-style Attack Point execution must affect all armed units without replacing unarmed unit orders',
   );
 
   const liveAttackWorld = new WorldState(23, 512, 512);

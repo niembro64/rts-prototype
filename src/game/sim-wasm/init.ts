@@ -63,7 +63,7 @@ import __wbg_init, {
   arrival_completion_step_batch,
   unit_effective_drive_acceleration,
   airborne_loiter_step_batch,
-  airborne_waypoint_steer_batch,
+  waypoint_orbit_steer_batch,
   stuck_replan_step_batch,
   unit_action_plan_batch,
   unit_action_movement_batch,
@@ -940,7 +940,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         economyApplyConverterTransfers: economy_apply_converter_transfers,
         arrivalCompletionStepBatch: arrival_completion_step_batch,
         airborneLoiterStepBatch: airborne_loiter_step_batch,
-        airborneWaypointSteerBatch: airborne_waypoint_steer_batch,
+        waypointOrbitSteerBatch: waypoint_orbit_steer_batch,
         stuckReplanStepBatch: stuck_replan_step_batch,
         unitActionPlanBatch: unit_action_plan_batch,
         unitActionMovementBatch: unit_action_movement_batch,
@@ -1724,8 +1724,6 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runDroneFanPlacement3DContractTest();
         const { runEntityDeathDisassembly3DContractTest } = await import('../render3d/EntityDeathDisassembly3DContractTest');
         runEntityDeathDisassembly3DContractTest();
-        const { runVanishingUnitMotion3DContractTest } = await import('../render3d/VanishingUnitMotion3DContractTest');
-        runVanishingUnitMotion3DContractTest();
         const { runShotArmingOverlay3DContractTest } = await import('../render3d/ShotArmingOverlay3DContractTest');
         runShotArmingOverlay3DContractTest();
         const { runHostVolumeOverlay3DContractTest } = await import('../render3d/HostVolumeOverlay3DContractTest');

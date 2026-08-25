@@ -3,37 +3,32 @@ import { getSimWasm } from '../sim-wasm/init';
 import type { Entity, UnitAction } from './types';
 import { SIMULATION_INVALID_BODY_SLOT } from './SimulationAirborneLoiterController';
 import { isMovementAnchorAction } from './unitActions';
-import { PATHFINDING_ARRIVAL_RADIUS } from './pathfindingTuning';
 import { entitySlotRegistry } from './EntitySlotRegistry';
 import { growTypedArrays, nextDoublingCapacity } from '../memory/typedArrayGrowth';
 
 /** Turn-radius clamp for R = speed / maxYawRate (the yaw ceiling comes from
  *  the sim's own attitude-servo spring inside the kernel). */
-const AIRBORNE_STEER_MIN_TURN_RADIUS = 40;
-/** Wide enough for the slowest-slewing airframe (Albatros at 20 deg/s): if
- *  the clamp sat below a unit's real turning circle, its deadzone could end
- *  up smaller than the orbit it is meant to forbid. */
-const AIRBORNE_STEER_MAX_TURN_RADIUS = 1200;
+const WAYPOINT_STEER_MIN_TURN_RADIUS = 4;
+/** Wide enough for even the slowest-slewing body-forward chassis. */
+const WAYPOINT_STEER_MAX_TURN_RADIUS = 1200;
 /** The no-turn lock applies only while actually moving; below this speed a
  *  boundary-pinned or freshly launched unit steers freely. */
-const AIRBORNE_STEER_LOCK_SPEED_FLOOR = 5;
-/** Fallbacks matching the authored plane/aerosub waypointDeadzone config;
- *  used only if a cruise preset somehow lacks the block. */
-const AIRBORNE_STEER_DEFAULT_DEADZONE_TURN_RADIUS_MULTIPLIER = 2.5;
-const AIRBORNE_STEER_DEFAULT_FRONT_SLICE_DEGREES = 45;
+const WAYPOINT_STEER_LOCK_SPEED_FLOOR = 0.25;
+const WAYPOINT_STEER_DEFAULT_DEADZONE_TURN_RADIUS_MULTIPLIER = 2.5;
+const WAYPOINT_STEER_DEFAULT_FRONT_SLICE_DEGREES = 45;
 
-/** Waypoint steering for cruise locomotion (plane, aerosub). Two rules:
+/** Orbit-proof waypoint steering for every body-forward locomotion preset.
+ * Two rules:
  *  a NON-TERMINATING waypoint has the authored no-turn deadzone — inside
  *  `turnRadiusMultiplier x turn radius` of it, the unit may keep turning
  *  only while the waypoint sits within `frontSliceDegrees` of its nose, so
- *  a miss is a large straight miss — and captures at the standard arrival
- *  radius so the queue advances. The TERMINATING (move/fight anchor)
- *  waypoint has no deadzone and never captures: the unit always turns
- *  toward it at its constant rate, passing through, turning back, and
- *  passing again — the perpetual pursuit is the hold, and it counters wind
- *  by construction. Stateless per tick, one WASM batch for the whole cruise
- *  population. */
-export class SimulationAirborneWaypointController {
+ *  a miss is a large straight miss — and captures at the route leg's
+ *  obstacle-aware arrival radius so the queue advances. The TERMINATING
+ *  (move/fight anchor)
+ *  waypoint uses ordinary arrival braking for non-cruise chassis. A cruise
+ *  chassis keeps its old no-capture pursuit, passing and returning forever.
+ *  Stateless per tick, one WASM batch for all participating locomotion. */
+export class SimulationWaypointOrbitController {
   private readonly advanceAction: (entity: Entity) => void;
   private readonly advanceActivePathPoint: (entity: Entity) => void;
   private readonly entities: Entity[] = [];
@@ -61,31 +56,38 @@ export class SimulationAirborneWaypointController {
     this.advanceActivePathPoint = callbacks.advanceActivePathPoint;
   }
 
-  /** Route one cruise-unit movement leg: capture the point when inside its
-   *  flight-appropriate radius, otherwise queue the escape-ring steer. */
+  /** Route one body-forward movement leg: capture a pass-through point when
+   *  inside its arrival radius, otherwise queue the escape-ring steer. */
   queue(
     entity: Entity,
     action: UnitAction,
     isFinalActionPoint: boolean,
+    captureRadius: number,
     dx: number,
     dy: number,
-  ): void {
+  ): boolean {
     const unit = entity.unit;
-    if (!unit) return;
+    if (!unit) return false;
 
     const distance = magnitude(dx, dy);
-    if (!Number.isFinite(distance)) return;
+    if (!Number.isFinite(distance)) return false;
     const isLastAction =
       isFinalActionPoint && unit.actions.length <= 1 && action.type !== 'patrol';
-    const terminalPursuit = isLastAction && isMovementAnchorAction(action);
-    if (!terminalPursuit && distance <= PATHFINDING_ARRIVAL_RADIUS) {
+    const movementAnchor = isLastAction && isMovementAnchorAction(action);
+    const terminalPursuit =
+      movementAnchor && unit.locomotion.motionControl.cruiseWhenUncommanded;
+    // Non-cruise move/fight anchors must settle and remain durable. Let the
+    // shared arrival controller own that final stop; this controller is for
+    // pass-through route/action points that must not become an orbit.
+    if (movementAnchor && !terminalPursuit) return false;
+    if (!terminalPursuit && distance <= captureRadius) {
       if (isFinalActionPoint) {
         this.advanceAction(entity);
       } else {
         this.advanceActivePathPoint(entity);
       }
       unit.stuckTicks = 0;
-      return;
+      return true;
     }
 
     const index = this.count++;
@@ -106,11 +108,12 @@ export class SimulationAirborneWaypointController {
     this.deadzoneMultiplier[index] = terminalPursuit
       ? 0
       : deadzone?.turnRadiusMultiplier
-        ?? AIRBORNE_STEER_DEFAULT_DEADZONE_TURN_RADIUS_MULTIPLIER;
+        ?? WAYPOINT_STEER_DEFAULT_DEADZONE_TURN_RADIUS_MULTIPLIER;
     this.frontSliceDegrees[index] = deadzone?.frontSliceDegrees
-      ?? AIRBORNE_STEER_DEFAULT_FRONT_SLICE_DEGREES;
+      ?? WAYPOINT_STEER_DEFAULT_FRONT_SLICE_DEGREES;
     this.fallbackVx[index] = unit.velocityX;
     this.fallbackVy[index] = unit.velocityY;
+    return true;
   }
 
   flush(movingUnits: Entity[]): void {
@@ -119,9 +122,9 @@ export class SimulationAirborneWaypointController {
 
     const sim = getSimWasm();
     if (sim === undefined) {
-      throw new Error('SimulationAirborneWaypointController.flush: sim-wasm is not initialized');
+      throw new Error('SimulationWaypointOrbitController.flush: sim-wasm is not initialized');
     }
-    sim.airborneWaypointSteerBatch(
+    sim.waypointOrbitSteerBatch(
       this.slots.subarray(0, count),
       this.dx.subarray(0, count),
       this.dy.subarray(0, count),
@@ -133,9 +136,9 @@ export class SimulationAirborneWaypointController {
       this.fallbackVy.subarray(0, count),
       this.outThrustX.subarray(0, count),
       this.outThrustY.subarray(0, count),
-      AIRBORNE_STEER_MIN_TURN_RADIUS,
-      AIRBORNE_STEER_MAX_TURN_RADIUS,
-      AIRBORNE_STEER_LOCK_SPEED_FLOOR,
+      WAYPOINT_STEER_MIN_TURN_RADIUS,
+      WAYPOINT_STEER_MAX_TURN_RADIUS,
+      WAYPOINT_STEER_LOCK_SPEED_FLOOR,
     );
 
     for (let i = 0; i < count; i++) {

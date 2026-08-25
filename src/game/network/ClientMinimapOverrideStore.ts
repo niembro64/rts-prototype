@@ -24,8 +24,8 @@ export type ContactSnapshotSampling = Readonly<{
   sequence: number;
   alpha: number;
   /** Measured gap between the last two contact snapshots. Blip velocity is
-   *  derived from it: (to - from) / intervalMs, the drift a fading contact
-   *  keeps, exactly like a unit leaving vision. */
+   *  derived from it: (to - from) / intervalMs, which is also the short drift
+   *  retained by an anonymous blip while its contact fade expires. */
   intervalMs: number;
 }>;
 

@@ -20,6 +20,12 @@ import { getUnitGroundZ } from './unitGeometry';
 import { writeWorkEmitterOriginWorld } from './workEmitterOrigin';
 import { getBuildingConfig } from './buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
+import { getConstructionHostMarkingProfiles } from '@/constructionVisualConfig';
+import {
+  fabricatorConstructionBoxAngle,
+  fabricatorConstructionRingLift,
+  fabricatorConstructionRingPhase,
+} from './fabricatorConstructionRing';
 
 const FACTORY_SHELL_MIN_HOLD_CLEARANCE = 36;
 
@@ -70,6 +76,7 @@ function mixFactorySpraySeed(value: number): number {
 export function writeFabricatorProductionSprayOrigin(
   factory: Entity,
   tick: number,
+  simulationTickRateHz: number,
   targetId: number,
   pointIndex: number,
   out: { x: number; y: number; z: number },
@@ -93,13 +100,28 @@ export function writeFabricatorProductionSprayOrigin(
       Math.imul(tick + 1, 0x9e3779b9) ^
       Math.imul(pointIndex + 1, 0x632be5ab),
   );
-  const angle = (seed / 0x100000000) * Math.PI * 2;
+  const ringBoxes = getConstructionHostMarkingProfiles(factory.buildingBlueprintId!)
+    .find((profile) => profile.kind === 'ringBoxes');
+  if (ringBoxes === undefined) {
+    throw new Error(`${factory.buildingBlueprintId} requires construction ring boxes`);
+  }
+  const boxIndex = seed % ringBoxes.boxCount;
+  const angle = factory.transform.rotation + fabricatorConstructionBoxAngle(
+    fabricatorConstructionRingPhase(tick, simulationTickRateHz, factory.id),
+    boxIndex,
+    ringBoxes.boxCount,
+  );
   // Footprint dims: width/height are horizontal; depth is vertical and was
   // wrongly passed here (benign only because the torus footprint is square).
   const ringRadius = fabricatorTorusRingRadius(building.width, building.height);
-  out.x = factory.transform.x + DMath.cos(angle) * ringRadius;
-  out.y = factory.transform.y + DMath.sin(angle) * ringRadius;
-  out.z = getUnitGroundZ(factory) + fabricatorProductionPlaneHeight(factory.buildingBlueprintId!);
+  const boxFaceRadius = ringRadius * (
+    ringBoxes.ringRadius + ringBoxes.tubeRadius - ringBoxes.mountInset + ringBoxes.boxDepth
+  );
+  out.x = factory.transform.x + DMath.cos(angle) * boxFaceRadius;
+  out.y = factory.transform.y + DMath.sin(angle) * boxFaceRadius;
+  out.z = getUnitGroundZ(factory) +
+    fabricatorProductionPlaneHeight(factory.buildingBlueprintId!) +
+    fabricatorConstructionRingLift(ringRadius);
   return out;
 }
 

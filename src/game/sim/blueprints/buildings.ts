@@ -32,10 +32,11 @@ import {
   validateLockOnInclusionObject,
 } from './lockOnValidation';
 import {
-  fabricatorHoverHeightForMaxCollisionRadius,
+  fabricatorHoverHeightForMaxUnitVisualHeight,
   fabricatorTorusOuterRadius,
   fabricatorTorusRingRadius,
 } from '../fabricatorGeometry';
+import { getUnitVisualTopAboveSupport } from '../../math/UnitVisualEnvelope';
 import {
   assertBuildingLockOnInclusionConfigIds,
   getBuildingLockOnInclusions,
@@ -1000,11 +1001,9 @@ export function getBuildingBlueprint(buildingBlueprintId: BuildingBlueprintId): 
 }
 
 // ── Fabricator torus geometry (single source of truth) ──────────────────────
-// The fabricator is a hovering torus. Its body floats 1.2x the LARGEST unit's
-// collision DIAMETER above the ground so even the biggest unit fits comfortably
-// under it and moves freely beneath. The renderer (torus + pylon rigs), the
-// spawn height, and the turret mounts all read this geometry, so they can never
-// drift apart.
+// The fabricator is a hovering torus. Its body floats slightly above the
+// tallest visible unit in its own production roster. The renderer, spawn
+// height, work effects, and turret mounts all read this geometry.
 //
 function computeMaxUnitCollisionRadius(
   techLevel?: FabricatorTechLevel,
@@ -1021,19 +1020,27 @@ function computeMaxUnitCollisionRadius(
 // maximum once instead of allocating/scanning Object.values() in hot geometry
 // helpers and line-of-sight setup.
 const MAX_UNIT_COLLISION_RADIUS = computeMaxUnitCollisionRadius();
-const MAX_UNIT_COLLISION_RADIUS_BY_TECH_LEVEL = Object.freeze({
-  1: computeMaxUnitCollisionRadius(1),
-  2: computeMaxUnitCollisionRadius(2),
-  3: computeMaxUnitCollisionRadius(3),
-} satisfies Record<FabricatorTechLevel, number>);
-
 export function maxUnitCollisionRadius(): number {
   return MAX_UNIT_COLLISION_RADIUS;
 }
 
-/** Height of a radial fabricator torus body = 1.2 x the largest collision
- * diameter in that fabricator's own production tier. Tier-local clearance
- * keeps every produced shell safe while making progression visibly higher. */
+export function maxUnitVisualHeightForFabricator(
+  buildingBlueprintId: BuildingBlueprintId,
+): number {
+  const blueprint = BUILDING_BLUEPRINTS[buildingBlueprintId];
+  const roster = blueprint.allowedUnitBlueprintIds;
+  if (blueprint.factory === null || blueprint.factory.domain !== 'universal' || roster === null) {
+    throw new Error(`${buildingBlueprintId} is not a radial universal fabricator`);
+  }
+  let maxHeight = 0;
+  for (let i = 0; i < roster.length; i++) {
+    maxHeight = Math.max(maxHeight, getUnitVisualTopAboveSupport(UNIT_BLUEPRINTS[roster[i]]));
+  }
+  return maxHeight;
+}
+
+/** Height of a radial fabricator torus body, derived from the tallest visible
+ * unit in that exact factory's roster plus a small readable clearance. */
 export function fabricatorTorusHoverHeight(
   buildingBlueprintId: BuildingBlueprintId,
 ): number {
@@ -1041,11 +1048,11 @@ export function fabricatorTorusHoverHeight(
   if (factory === null || factory.domain !== 'universal') {
     throw new Error(`${buildingBlueprintId} is not a radial universal fabricator`);
   }
-  const maxRadius = MAX_UNIT_COLLISION_RADIUS_BY_TECH_LEVEL[factory.techLevel];
-  if (maxRadius <= 0) {
-    throw new Error(`T${factory.techLevel} Universal has no collision envelope to clear`);
+  const maxHeight = maxUnitVisualHeightForFabricator(buildingBlueprintId);
+  if (maxHeight <= 0) {
+    throw new Error(`T${factory.techLevel} Universal has no visible unit envelope to clear`);
   }
-  return fabricatorHoverHeightForMaxCollisionRadius(maxRadius);
+  return fabricatorHoverHeightForMaxUnitVisualHeight(maxHeight);
 }
 
 /** World height of a factory's assembly plane above its placement base.
@@ -1099,10 +1106,16 @@ function validateFabricatorProgressionGeometry(): void {
       blueprint.workEmitter === undefined ||
       blueprint.workEmitter.points.some((point) => Math.abs(point.z - hoverHeight) > 1e-3)
     ) {
-      throw new Error(`${buildingBlueprintId} work emitters must sit on its production plane`);
+      throw new Error(
+        `${buildingBlueprintId} work emitters must sit on its production plane ` +
+        `(expected z=${hoverHeight})`,
+      );
     }
     if (blueprint.turrets.some((mount) => Math.abs(mount.mount.z - hoverHeight) > 1e-3)) {
-      throw new Error(`${buildingBlueprintId} turret mounts must sit on its production plane`);
+      throw new Error(
+        `${buildingBlueprintId} turret mounts must sit on its production plane ` +
+        `(expected z=${hoverHeight})`,
+      );
     }
   }
 }

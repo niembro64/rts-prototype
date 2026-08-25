@@ -33,6 +33,8 @@ export {
   getTurretHeadRadius,
 } from './BarrelGeometry';
 
+export { getUnitVisualTopAboveSupport } from './UnitVisualEnvelope';
+
 export {
   type KinematicInterceptSolution,
   type KinematicState3,

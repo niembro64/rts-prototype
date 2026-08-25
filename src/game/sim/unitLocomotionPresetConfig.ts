@@ -189,11 +189,12 @@ function assertPreset(
     }
   }
   assertObject(`presets.${presetId}.motionControl`, preset.motionControl);
-  const cruiseWhenUncommanded = preset.motionControl.cruiseWhenUncommanded === true;
+  const bodyForward = preset.actuator.propulsionAxis !== 'worldPlanar';
+  const hasWaypointDeadzone = preset.motionControl.waypointDeadzone !== undefined;
   assertExactKeys(
     `presets.${presetId}.motionControl`,
     preset.motionControl as unknown as Record<string, unknown>,
-    cruiseWhenUncommanded
+    hasWaypointDeadzone
       ? [
         'maintainFullThrustAtWaypoints',
         'alwaysBrakeAtFinalWaypoint',
@@ -218,7 +219,13 @@ function assertPreset(
     `presets.${presetId}.motionControl.cruiseWhenUncommanded`,
     preset.motionControl.cruiseWhenUncommanded,
   );
-  if (cruiseWhenUncommanded) {
+  if (bodyForward !== hasWaypointDeadzone) {
+    throw new Error(
+      `Invalid unitLocomotionConfig.json: presets.${presetId}.motionControl.waypointDeadzone ` +
+      `${bodyForward ? 'is required for body-forward propulsion' : 'is only valid for body-forward propulsion'}`,
+    );
+  }
+  if (hasWaypointDeadzone) {
     const deadzoneLabel = `presets.${presetId}.motionControl.waypointDeadzone`;
     const deadzone = preset.motionControl.waypointDeadzone;
     assertObject(deadzoneLabel, deadzone);

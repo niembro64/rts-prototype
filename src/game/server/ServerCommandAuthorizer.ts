@@ -62,7 +62,7 @@ import {
   entityHasBarMoveStateCommand,
   entityHasBarSetTargetCommand,
   entityHasBarStopCommand,
-  entityCanBarAttackGround,
+  entityCanAttackPoint,
   entityCanBarAttackTarget,
   entityHasCloakCommand,
 } from '../sim/unitCommandCapabilities';
@@ -509,7 +509,7 @@ function authorizeAttackGroundCommand(
     const entity = world.getEntity(id);
     return entity !== undefined
       && entity.ownership?.playerId === playerId
-      && entityCanBarAttackGround(entity);
+      && entityCanAttackPoint(entity);
   });
 }
 
@@ -598,7 +598,7 @@ function authorizeSetTowerTargetCommand(
       && entityHasBarSetTargetCommand(entity)
       && (
         isClearTarget ||
-        (isGroundTarget ? entityCanBarAttackGround(entity) : entityCanBarAttackTarget(entity, target))
+        (isGroundTarget ? entityCanAttackPoint(entity) : entityCanBarAttackTarget(entity, target))
       )
       && entity.ownership !== null
       && entity.ownership.playerId === playerId;

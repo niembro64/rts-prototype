@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {
   CONSTRUCTION_HAZARD_MARKING_STYLE,
   CONSTRUCTION_HOST_MARKING_PROFILES,
+  UNIVERSAL_FABRICATOR_CONSTRUCTION_BOX_COUNTS,
 } from '@/constructionVisualConfig';
 import {
   FOREST_SPRUCE2_LEAF_COLOR,
@@ -895,6 +896,15 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
             : 'locomotionEaglePlane';
           const rig = buildAirframeRig(
             root, radius, locomotion.type, locomotion.config, smokeUseId, 1, undefined, tier,
+          );
+          assertContract(
+            rig.jets.every((jet) => {
+              const nozzle = jet.group.children[0];
+              return nozzle instanceof THREE.Mesh &&
+                nozzle.geometry instanceof THREE.CylinderGeometry &&
+                nozzle.geometry.parameters.openEnded === false;
+            }),
+            `${unitId}/${tier} rear jet housings are fully capped solid cylinders`,
           );
           return {
             rig,
@@ -2223,6 +2233,27 @@ function runConstructionHostMarkingContracts(): void {
     JSON.stringify(configuredHostIds) === JSON.stringify(blueprintHostIds),
     `construction marking profiles must exactly cover construction-rate hosts; configured=${configuredHostIds.join(',')} blueprints=${blueprintHostIds.join(',')}`,
   );
+
+  const universalFabricatorBoxCounts = {
+    towerFabricator: 8,
+    buildingAdvancedUniversalFabricator: 12,
+    buildingExperimentalUniversalFabricator: 16,
+  } as const;
+  assertContract(
+    UNIVERSAL_FABRICATOR_CONSTRUCTION_BOX_COUNTS[1] === 8 &&
+      UNIVERSAL_FABRICATOR_CONSTRUCTION_BOX_COUNTS[2] === 12 &&
+      UNIVERSAL_FABRICATOR_CONSTRUCTION_BOX_COUNTS[3] === 16,
+    'universal fabricator construction box counts are exactly 8/12/16 by tech tier',
+  );
+  for (const [fabricatorId, expectedBoxCount] of Object.entries(universalFabricatorBoxCounts)) {
+    const ringProfile = CONSTRUCTION_HOST_MARKING_PROFILES[fabricatorId]?.find(
+      (profile) => profile.kind === 'ringBoxes',
+    );
+    assertContract(
+      ringProfile?.kind === 'ringBoxes' && ringProfile.boxCount === expectedBoxCount,
+      `${fabricatorId} resolves exactly ${expectedBoxCount} construction boxes`,
+    );
+  }
 
   for (const entityId of configuredHostIds) {
     const profiles = CONSTRUCTION_HOST_MARKING_PROFILES[entityId];

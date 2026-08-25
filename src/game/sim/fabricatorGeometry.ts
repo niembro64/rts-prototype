@@ -2,7 +2,8 @@ import type { BuildingBlueprintId } from '../../types/blueprintIds';
 import { productionHoldRingOuterRadius } from './productionHoldGeometry';
 
 const FABRICATOR_RING_RADIUS_FRACTION = 0.46;
-const FABRICATOR_HOVER_COLLISION_DIAMETERS = 1.2;
+const FABRICATOR_VISUAL_CLEARANCE_FRACTION = 0.08;
+const FABRICATOR_MIN_VISUAL_CLEARANCE = 8;
 
 const DEFAULT_RADIAL_FABRICATOR_BLUEPRINT_ID: BuildingBlueprintId =
   'towerFabricator';
@@ -22,7 +23,11 @@ export function fabricatorTorusOuterRadius(width: number, depth: number): number
   return productionHoldRingOuterRadius(fabricatorTorusRingRadius(width, depth));
 }
 
-/** Clearance for a radial fabricator that produces units up to `maxRadius`. */
-export function fabricatorHoverHeightForMaxCollisionRadius(maxRadius: number): number {
-  return FABRICATOR_HOVER_COLLISION_DIAMETERS * (2 * maxRadius);
+/** Place a radial fabricator slightly above the tallest visible unit in its
+ * production roster. */
+export function fabricatorHoverHeightForMaxUnitVisualHeight(maxHeight: number): number {
+  return maxHeight + Math.max(
+    FABRICATOR_MIN_VISUAL_CLEARANCE,
+    maxHeight * FABRICATOR_VISUAL_CLEARANCE_FRACTION,
+  );
 }

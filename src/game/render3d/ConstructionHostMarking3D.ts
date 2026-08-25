@@ -168,6 +168,15 @@ function tierSubdivision(tier: PrimitiveGeometryTier): number {
   return 1;
 }
 
+function ringBoxStripeCountForTier(
+  stripeCount: number,
+  tier: PrimitiveGeometryTier,
+): number {
+  if (tier === 'close') return stripeCount;
+  const divisor = tier === 'mid' ? 2 : 4;
+  return Math.max(4, Math.floor(stripeCount / divisor / 2) * 2);
+}
+
 function appendMappedPolygon(
   positions: number[],
   points: readonly HazardUvPoint[],
@@ -456,6 +465,7 @@ function buildRingBoxesGeometry(
   const boxDepth = profile.boxDepth * scale;
   const boxCenterRadius = boxBackRadius + boxDepth * 0.5;
   const boxFrontRadius = boxBackRadius + boxDepth;
+  const faceStripeCount = ringBoxStripeCountForTier(profile.stripeCount, tier);
   for (let box = 0; box < profile.boxCount; box++) {
     const angle = box / profile.boxCount * Math.PI * 2;
     const radial = axisA.clone().multiplyScalar(Math.cos(angle))
@@ -491,7 +501,7 @@ function buildRingBoxesGeometry(
       byColor,
       profile.faceWidth * scale,
       profile.faceHeight * scale,
-      profile.stripeCount,
+      faceStripeCount,
       radial.clone().multiplyScalar(
         boxFrontRadius + profile.faceLift * scale,
       ),

@@ -141,12 +141,20 @@ export function runBuildingFootprintContractTest(): void {
     'solar square must keep its 25-cell structural core inside an 84-cell construction-clearance ring',
   );
 
-  const fabricator = getBuildingConfig('towerFabricator').placementFootprint;
-  assertContract(
-    fabricator.gridWidth === 14 && fabricator.gridHeight === 14 &&
-    fabricator.cells.length === 156,
-    'Fabricator must use the 14x14 pixel-circle reservation',
-  );
+  const radialFabricatorSizes = [
+    ['towerFabricator', 10, 12],
+    ['buildingAdvancedUniversalFabricator', 16, 18],
+    ['buildingExperimentalUniversalFabricator', 24, 26],
+  ] as const;
+  for (const [fabricatorId, bodyGridSize, reservationGridSize] of radialFabricatorSizes) {
+    const blueprint = BUILDING_BLUEPRINTS[fabricatorId];
+    const footprint = getBuildingConfig(fabricatorId).placementFootprint;
+    assertContract(
+      blueprint.gridWidth === bodyGridSize && blueprint.gridHeight === bodyGridSize &&
+        footprint.gridWidth === reservationGridSize && footprint.gridHeight === reservationGridSize,
+      `${fabricatorId} must retain its authored T1/T2/T3 size progression`,
+    );
+  }
 
   for (const id of FABRICATOR_BLUEPRINT_IDS) {
     const blueprint = BUILDING_BLUEPRINTS[id];

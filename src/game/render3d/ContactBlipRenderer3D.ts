@@ -41,7 +41,7 @@ import {
 import type { ContactSnapshotSampling } from '../network/ClientMinimapOverrideStore';
 import { ENTITY_LOD_PROXY_GLYPH_CIRCLE } from './EntityLod3D';
 import { LodProxyPointBatchRenderer3D } from './EntityLodProxyRenderer3D';
-import { VISION_FADE_IN_MS, VISION_FADE_OUT_MS } from '../../visionConfig';
+import { VISION_CONTACT_FADE_OUT_MS, VISION_FADE_IN_MS } from '../../visionConfig';
 
 const STYLE = COLORS.effects.contactBlip;
 
@@ -118,14 +118,13 @@ type ContactTrack = {
   z: number;
   /** Last observed drift in units per millisecond, measured between the two
    *  newest samples. While the contact is heard the glide between samples
-   *  owns motion; once it goes unheard the fading blip keeps coasting on
-   *  this velocity, the same way a unit leaving vision keeps its last
-   *  velocity while it fades. */
+   *  owns motion; once it goes unheard the fading anonymous blip keeps
+   *  coasting on this velocity. */
   velX: number;
   velY: number;
   velZ: number;
-  /** Same ramp enemy entities use entering/leaving vision: 0..1, rising
-   *  over VISION_FADE_IN_MS while heard, falling over VISION_FADE_OUT_MS
+  /** Anonymous-contact visibility ramp: 0..1, rising over VISION_FADE_IN_MS
+   *  while heard and falling over VISION_CONTACT_FADE_OUT_MS
    *  once the newest snapshot stops carrying the contact. A re-heard
    *  contact resumes rising from wherever the fall left it. */
   fadeAlpha: number;
@@ -188,14 +187,14 @@ export class ContactBlipRenderer3D {
 
     for (const [contactId, track] of this.tracks) {
       if (track.dying) {
-        track.fadeAlpha -= dtMs / VISION_FADE_OUT_MS;
+        track.fadeAlpha -= dtMs / VISION_CONTACT_FADE_OUT_MS;
         if (track.fadeAlpha <= 0) {
           this.tracks.delete(contactId);
           continue;
         }
-        // Coast on the last measured drift while fading, mirroring
-        // VanishingUnitMotion3D for real meshes: a contact that was moving
-        // keeps moving as it dissolves; a stopped one fades in place.
+        // Coast on the last measured drift while fading: a contact that was
+        // moving keeps moving as its anonymous dot dissolves; a stopped one
+        // fades in place. Full entity models never use this retention path.
         track.x += track.velX * dtMs;
         track.y += track.velY * dtMs;
         track.z += track.velZ * dtMs;

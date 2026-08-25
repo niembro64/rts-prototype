@@ -278,7 +278,7 @@ export interface SimWasm {
     radiusMult: number,
     radialGain: number,
   ) => number;
-  readonly airborneWaypointSteerBatch: (
+  readonly waypointOrbitSteerBatch: (
     slots: Uint32Array,
     dx: Float64Array,
     dy: Float64Array,

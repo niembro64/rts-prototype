@@ -307,9 +307,10 @@ export function runRightClickCommandsContractTest(): void {
   );
   assertContract(
     mixedAttackPoint !== null &&
-      mixedAttackPoint.entityIds.length === 1 &&
-      mixedAttackPoint.entityIds[0] === dragonflyAttacker.id,
-    'BAR Attack Point must retain ground-capable weapons and strip air-only fighters and unarmed scouts',
+      mixedAttackPoint.entityIds.length === 2 &&
+      mixedAttackPoint.entityIds[0] === fighterAttacker.id &&
+      mixedAttackPoint.entityIds[1] === dragonflyAttacker.id,
+    'TA-style Attack Point must retain every armed unit while stripping unarmed scouts',
   );
 
   const damagedAlly = combatant(40, 1, 50, 60, 0);

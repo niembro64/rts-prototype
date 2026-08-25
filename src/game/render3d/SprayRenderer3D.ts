@@ -52,6 +52,7 @@ import {
 } from './PrimitiveGeometryQuality3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
+import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 
 // Resource-ball visual tuning lives in resourceConfig.json (Config Is Data).
 // Default spray trail altitude for legacy 2D spray targets. Factory
@@ -163,18 +164,16 @@ export class SprayRenderer3D {
     const poolSet = createInstancedColorAlphaPoolSet(
       parentWorld,
       MAX_PARTICLES,
-      5,
+      TRANSPARENT_RENDER_ORDER_3D.throughWaterEffects,
       () => getSharedPrimitiveTetrahedronGeometry(1).clone(),
     );
     this.root = poolSet.root;
     this.mat = poolSet.material;
-    // Nano spray is player knowledge like contact blips, not scenery: it
-    // must stay readable when the work happens under the water surface,
-    // so it opts out of the depth test the water plane's depth write
-    // would otherwise use to clip it (same choice as
-    // LodProxyPointBatchRenderer3D). Render order 5 still draws it after
-    // the water, so it composites over the surface tint.
-    this.mat.depthTest = false;
+    // Solid geometry must occlude nano spray. Draw the depth-tested particles
+    // after transparent entity parts but before the water plane: buildings
+    // and units have already populated depth, while translucent water blends
+    // over (rather than erasing) particles that are below its surface.
+    this.mat.depthTest = true;
     this.pools = poolSet.pools;
   }
 

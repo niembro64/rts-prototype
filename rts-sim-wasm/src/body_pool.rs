@@ -787,11 +787,12 @@ pub fn airborne_loiter_step_batch(
     active_count
 }
 
-/// Per-tick steering interlock for cruise-locomotion waypoint legs
-/// (plane/aerosub): the no-turn deadzone with a front slice.
+/// Per-tick steering interlock for body-forward locomotion waypoint legs:
+/// the no-turn deadzone with a front slice.
 ///
-/// A forward-flight body cannot reach a goal inside its turning circle by
-/// steering toward it — pursuit decays into a constant-radius orbit. In a
+/// A body-forward chassis may not reach a pass-through goal inside its
+/// turning circle by steering toward it — pursuit decays into a
+/// constant-radius orbit. In a
 /// POWERED orbit the nose always lags the waypoint direction by less than
 /// 90 degrees (forward-only thrust dies past 90), so any half-plane
 /// "heading away" test never fires inside the orbit; the turn permission
@@ -805,7 +806,7 @@ pub fn airborne_loiter_step_batch(
 /// waypoint, and turn radius each tick.
 #[inline]
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn compute_airborne_waypoint_steer(
+pub(crate) fn compute_waypoint_orbit_steer(
     dx: f64,
     dy: f64,
     distance: f64,
@@ -838,9 +839,10 @@ pub(crate) fn compute_airborne_waypoint_steer(
         return (goal_dir_x, goal_dir_y, 0);
     }
 
-    // A terminating waypoint has no deadzone (multiplier 0): the unit always
-    // turns toward it at its constant rate, passing through, turning back,
-    // and passing again — the perpetual pursuit is the hold.
+    // A cruise terminating waypoint has no deadzone (multiplier 0): the unit
+    // always turns toward it, passing through, turning back, and passing
+    // again — the perpetual pursuit is the hold. Stoppable final anchors do
+    // not enter this kernel; the shared arrival controller owns them.
     if deadzone_turn_radius_multiplier <= 0.0 {
         return (goal_dir_x, goal_dir_y, 0);
     }
@@ -876,7 +878,7 @@ pub(crate) fn compute_airborne_waypoint_steer(
 /// lag of 2W/sqrt(k), and power stalls past a 90-degree lag, so the
 /// sustainable ceiling is W = pi*sqrt(k)/4.
 #[inline]
-fn airborne_max_yaw_rate(
+fn waypoint_orbit_max_yaw_rate(
     p: &BodyPool,
     es: &EntityStateSlab,
     profile: &UnitForceProfileTable,
@@ -911,7 +913,7 @@ fn airborne_max_yaw_rate(
 
 #[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
-pub fn airborne_waypoint_steer_batch(
+pub fn waypoint_orbit_steer_batch(
     slots: &[u32],
     dx: &[f64],
     dy: &[f64],
@@ -947,6 +949,11 @@ pub fn airborne_waypoint_steer_batch(
     for i in 0..count {
         let slot = slots[i] as usize;
         let has_pool_velocity = slot < p.vel_x.len() && p.flags[slot] & BODY_FLAG_OCCUPIED != 0;
+        let body_radius = if has_pool_velocity {
+            p.radius[slot]
+        } else {
+            min_turn_radius
+        };
         let velocity_x = if has_pool_velocity {
             p.vel_x[slot]
         } else {
@@ -957,8 +964,8 @@ pub fn airborne_waypoint_steer_batch(
         } else {
             fallback_velocity_y[i]
         };
-        let max_yaw_rate = airborne_max_yaw_rate(p, es, profile, runtime, slot);
-        let (thrust_x, thrust_y, locked) = compute_airborne_waypoint_steer(
+        let max_yaw_rate = waypoint_orbit_max_yaw_rate(p, es, profile, runtime, slot);
+        let (thrust_x, thrust_y, locked) = compute_waypoint_orbit_steer(
             dx[i],
             dy[i],
             distance[i],
@@ -968,7 +975,7 @@ pub fn airborne_waypoint_steer_batch(
             max_yaw_rate,
             deadzone_turn_radius_multiplier[i],
             front_slice_degrees[i],
-            min_turn_radius,
+            min_turn_radius.max(body_radius),
             max_turn_radius,
             lock_speed_floor,
         );
@@ -3111,7 +3118,7 @@ mod tests {
         vy: f64,
         max_yaw_rate: f64,
     ) -> (f64, f64, u8) {
-        compute_airborne_waypoint_steer(
+        compute_waypoint_orbit_steer(
             dx,
             dy,
             (dx * dx + dy * dy).sqrt(),
@@ -3130,10 +3137,10 @@ mod tests {
     // Speed 200 / yaw ceiling 1 rad/s -> turn radius 200, deadzone 500.
 
     #[test]
-    fn airborne_steer_terminating_waypoint_always_turns_toward_the_goal() {
+    fn waypoint_orbit_steer_cruise_terminal_always_turns_toward_the_goal() {
         // Multiplier 0 = terminating waypoint: no deadzone, no lock — the
         // unit steers at the waypoint from any angle and any distance.
-        let (tx, ty, locked) = compute_airborne_waypoint_steer(
+        let (tx, ty, locked) = compute_waypoint_orbit_steer(
             -200.0,
             50.0,
             (200.0f64 * 200.0 + 50.0 * 50.0).sqrt(),
@@ -3152,7 +3159,7 @@ mod tests {
     }
 
     #[test]
-    fn airborne_steer_waypoint_in_the_front_slice_keeps_turning() {
+    fn waypoint_orbit_steer_waypoint_in_the_front_slice_keeps_turning() {
         // Waypoint 30 degrees off the nose at 300 wu: inside the deadzone but
         // inside the +/-45 slice, so pursuit steering continues.
         let (dx, dy) = (300.0 * 30_f64.to_radians().cos(), 300.0 * 30_f64.to_radians().sin());
@@ -3163,7 +3170,7 @@ mod tests {
     }
 
     #[test]
-    fn airborne_steer_waypoint_outside_the_slice_may_not_turn_at_all() {
+    fn waypoint_orbit_steer_waypoint_outside_the_slice_may_not_turn_at_all() {
         // The powered-orbit geometry the old half-plane rule never caught:
         // waypoint 70 degrees off the nose at orbit distance (200 wu), well
         // inside the 500 deadzone. facing dot is still positive (0.34), but
@@ -3175,14 +3182,14 @@ mod tests {
     }
 
     #[test]
-    fn airborne_steer_waypoint_behind_inside_the_deadzone_locks_too() {
+    fn waypoint_orbit_steer_waypoint_behind_inside_the_deadzone_locks_too() {
         let (tx, ty, locked) = steer(-300.0, 0.0, 0.0, 200.0, 0.0, 1.0);
         assert_eq!(locked, 1);
         assert!((tx - 1.0).abs() < 1e-12 && ty.abs() < 1e-12);
     }
 
     #[test]
-    fn airborne_steer_outside_the_deadzone_turns_freely_at_any_angle() {
+    fn waypoint_orbit_steer_outside_the_deadzone_turns_freely_at_any_angle() {
         // Same 70-degrees-off geometry at 600 wu: outside the 500 deadzone,
         // the turn-back is free.
         let (dx, dy) = (600.0 * 70_f64.to_radians().cos(), 600.0 * 70_f64.to_radians().sin());
@@ -3193,7 +3200,7 @@ mod tests {
     }
 
     #[test]
-    fn airborne_steer_lock_releases_below_the_speed_floor() {
+    fn waypoint_orbit_steer_lock_releases_below_the_speed_floor() {
         // A boundary-pinned (near-zero-speed) unit steers freely instead of
         // thrusting into the wall forever.
         let (tx, _, locked) = steer(-300.0, 0.0, 0.0, 1.0, 0.0, 1.0);
@@ -3202,7 +3209,7 @@ mod tests {
     }
 
     #[test]
-    fn airborne_steer_deadzone_scales_with_speed_over_yaw_rate() {
+    fn waypoint_orbit_steer_deadzone_scales_with_speed_over_yaw_rate() {
         // Slower flight shrinks the turning circle: at speed 40 the radius
         // clamps to the 40 floor, deadzone = 100, so a waypoint 70 degrees
         // off at 200 wu is already outside it and pursuit is free.

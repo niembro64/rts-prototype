@@ -8,10 +8,14 @@ import {
 } from '../sim/buildingActiveState';
 import type { Entity } from '../sim/types';
 import { STRUCTURE_BLUEPRINT_IDS } from '@/types/blueprintIds';
+import { fabricatorConstructionRingPhase } from '../sim/fabricatorConstructionRing';
 import { buildBuildingShape, type BuildingShape } from './BuildingShape3D';
 import { applyBuildingOperationalPose } from './BuildingOperationalRig3D';
 import { applySolarCollectorPetalPose } from './SolarCollectorMesh3D';
-import { clockwiseExtractorRotorYaw } from './BuildingAnimationController3D';
+import {
+  applyFabricatorConstructionRingPose,
+  clockwiseExtractorRotorYaw,
+} from './BuildingAnimationController3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[building operational visual contract] ${message}`);
@@ -212,6 +216,45 @@ export function runBuildingOperationalVisual3DContractTest(): void {
         entity.building.activeState.open = false;
       }
       assertContract(isBuildingActiveStateFortified(entity), `${id} must receive OFF damage resistance`);
+    }
+
+    const universalFabricators = [
+      ['towerFabricator', 8],
+      ['buildingAdvancedUniversalFabricator', 12],
+      ['buildingExperimentalUniversalFabricator', 16],
+    ] as const;
+    for (const [id, expectedBoxCount] of universalFabricators) {
+      const blueprint = getBuildingBlueprint(id);
+      const shape = buildBuildingShape(
+        blueprint.renderProfile,
+        blueprint.gridWidth * BUILD_GRID_CELL_SIZE,
+        blueprint.gridHeight * BUILD_GRID_CELL_SIZE,
+        placeholderMaterial,
+        id,
+        'close',
+      );
+      const rig = shape.fabricatorConstructionRingRig;
+      assertContract(
+        rig !== undefined && rig.boxCount === expectedBoxCount,
+        `${id} must expose its ${expectedBoxCount}-box animated construction ring`,
+      );
+      const idleY = rig.root.position.y;
+      const idleYaw = rig.root.rotation.y;
+      applyFabricatorConstructionRingPose(rig, true, 40, 20, 17);
+      const expectedActiveYaw = -fabricatorConstructionRingPhase(40, 20, 17);
+      assertContract(
+        Math.abs(rig.root.position.y - (idleY + rig.activeLiftY)) <= 1e-9 &&
+          Math.abs(rig.root.rotation.y - expectedActiveYaw) <= 1e-9 &&
+          Math.abs(rig.root.rotation.y - idleYaw) > 1e-3,
+        `${id} construction boxes must rise and rotate while producing`,
+      );
+      const activeYaw = rig.root.rotation.y;
+      applyFabricatorConstructionRingPose(rig, false, 60, 20, 17);
+      assertContract(
+        Math.abs(rig.root.position.y - idleY) <= 1e-9 &&
+          rig.root.rotation.y === activeYaw,
+        `${id} construction boxes must reseat and stop rotating while idle`,
+      );
     }
   } finally {
     placeholderMaterial.dispose();

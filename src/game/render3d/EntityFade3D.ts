@@ -44,8 +44,8 @@ import { SUN_DIRECTION_SIM } from './SunLighting';
 
 /** Shared death-out fade duration (ms). Build-in is driven by the sim's
  *  build fraction, so only the cosmetic death fade needs a clock. Sourced
- *  from visionConfig.json (`deathFadeMs`) alongside the leaving-vision and
- *  entering-vision fade durations. */
+ *  from visionConfig.json (`deathFadeMs`) alongside model fade-in and
+ *  anonymous-contact fade durations. */
 export const ENTITY_DEATH_FADE_MS = UNIT_DEATH_FADE_MS;
 
 /** Per-entity nanoframe parameters for the per-object build material.

@@ -238,15 +238,12 @@ export function entityHasBarAttackCommand(entity: Entity): boolean {
   return entityHasBarSetTargetCommand(entity);
 }
 
-/** Recoil's Attack command is unit-or-map, but weapons authored with
- *  canattackground=false must not receive the map-point form. */
-export function entityCanBarAttackGround(entity: Entity): boolean {
-  const unitBlueprintId = entity.unit?.unitBlueprintId;
-  if (!entityHasBarAttackCommand(entity)) return false;
-  if (unitBlueprintId !== undefined) {
-    return !unitBlueprintHasBarFighterAirTargetOnlyRule(unitBlueprintId);
-  }
-  return !buildingBlueprintHasBarAirTargetOnlyRule(entity.buildingBlueprintId);
+/** Intentional TA-style departure from BAR: every player-orderable weapon
+ * can be aimed at an arbitrary world point. Entity-target category masks
+ * remain unchanged; the weapon/trajectory solver still decides whether a
+ * particular point can actually be reached. */
+export function entityCanAttackPoint(entity: Entity): boolean {
+  return entityHasBarAttackCommand(entity);
 }
 
 export function entityMatchesBarLegacyGroundWeaponSelection(entity: Entity): boolean {

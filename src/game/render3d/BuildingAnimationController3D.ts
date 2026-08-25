@@ -42,6 +42,7 @@ import {
   advanceBuildingActiveStateAmount,
   easeBuildingActiveStateAmount,
 } from './BuildingActiveStateTransition3D';
+import { fabricatorConstructionRingPhase } from '../sim/fabricatorConstructionRing';
 
 // Open/close pose transitions are discrete local state changes, not snapshot
 // rotation fields. Every ON/OFF host shares one progress ramp and one ease from
@@ -58,6 +59,24 @@ const _extractorBladeQuat = new THREE.Quaternion();
 const _extractorBladePos = new THREE.Vector3();
 const _extractorBladeScale = new THREE.Vector3();
 const _windBladeQuat = new THREE.Quaternion();
+
+export function applyFabricatorConstructionRingPose(
+  rig: NonNullable<EntityMesh['fabricatorConstructionRingRig']>,
+  producing: boolean,
+  tick: number,
+  simulationTickRateHz: number,
+  entityId: EntityId,
+): void {
+  rig.root.position.y = rig.baseY + (producing ? rig.activeLiftY : 0);
+  if (producing) {
+    // Simulation XY maps to Three XZ with the opposite yaw sign.
+    rig.root.rotation.y = -fabricatorConstructionRingPhase(
+      tick,
+      simulationTickRateHz,
+      entityId,
+    );
+  }
+}
 
 export class BuildingAnimationController3D {
   private readonly clientViewState: ClientViewState;
@@ -82,6 +101,8 @@ export class BuildingAnimationController3D {
   private operationalBuildingIndexById = new IndexedEntityIdMap<number>();
   private activeOperationalBuildings: AnimatedBuildingEntry[] = [];
   private activeOperationalBuildingIndexById = new IndexedEntityIdMap<number>();
+  private fabricatorRingBuildings: AnimatedBuildingEntry[] = [];
+  private fabricatorRingBuildingIndexById = new IndexedEntityIdMap<number>();
   private windFanYaw: number | null = null;
   private windFanPitch: number | null = null;
   private windVisualSpeed: number | null = null;
@@ -158,6 +179,15 @@ export class BuildingAnimationController3D {
       );
       this.updateOperationalAnimationQueue(entry);
     }
+    if (mesh.fabricatorConstructionRingRig) {
+      const entry = addAnimatedBuildingEntry(
+        this.fabricatorRingBuildings,
+        this.fabricatorRingBuildingIndexById,
+        entity,
+        mesh,
+      );
+      this.updateFabricatorConstructionRing(entry);
+    }
   }
 
   sync(entity: Entity, mesh: EntityMesh): void {
@@ -186,6 +216,15 @@ export class BuildingAnimationController3D {
       );
       this.updateOperationalAnimationQueue(entry);
     }
+    if (mesh.fabricatorConstructionRingRig) {
+      const entry = addAnimatedBuildingEntry(
+        this.fabricatorRingBuildings,
+        this.fabricatorRingBuildingIndexById,
+        entity,
+        mesh,
+      );
+      this.updateFabricatorConstructionRing(entry);
+    }
   }
 
   /** Detach the current mesh while retaining per-entity animation phase. */
@@ -203,6 +242,11 @@ export class BuildingAnimationController3D {
     removeAnimatedBuildingEntry(
       this.activeOperationalBuildings,
       this.activeOperationalBuildingIndexById,
+      id,
+    );
+    removeAnimatedBuildingEntry(
+      this.fabricatorRingBuildings,
+      this.fabricatorRingBuildingIndexById,
       id,
     );
   }
@@ -234,6 +278,7 @@ export class BuildingAnimationController3D {
     this.resourcePylonAnimator.updateActive(spinDt);
 
     this.updateActiveRadarAnimations(spinDt);
+    this.updateFabricatorConstructionRings();
   }
 
   destroy(): void {
@@ -251,6 +296,10 @@ export class BuildingAnimationController3D {
       this.activeOperationalBuildings,
       this.activeOperationalBuildingIndexById,
     );
+    clearAnimatedBuildingEntries(
+      this.fabricatorRingBuildings,
+      this.fabricatorRingBuildingIndexById,
+    );
     this.extractorRotorPhases.clear();
     this.extractorRotorSpeeds.clear();
     this.extractorCloseAmounts.clear();
@@ -267,6 +316,26 @@ export class BuildingAnimationController3D {
     this.windFanPitch = null;
     this.windVisualSpeed = null;
     this.windAnimLastMs = 0;
+  }
+
+  private updateFabricatorConstructionRings(): void {
+    for (let i = 0; i < this.fabricatorRingBuildings.length; i++) {
+      this.updateFabricatorConstructionRing(this.fabricatorRingBuildings[i]);
+    }
+  }
+
+  private updateFabricatorConstructionRing(entry: AnimatedBuildingEntry): void {
+    const rig = entry.mesh.fabricatorConstructionRingRig;
+    if (rig === undefined) return;
+    const producing = entry.entity.factory?.isProducing === true;
+    const tickRate = Number(this.clientViewState.getServerMeta()?.ticks.rate ?? 20);
+    applyFabricatorConstructionRingPose(
+      rig,
+      producing,
+      this.clientViewState.getTick(),
+      tickRate,
+      entry.id,
+    );
   }
 
   private updateSolarAnimationQueue(entry: AnimatedBuildingEntry): void {

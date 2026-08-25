@@ -633,23 +633,21 @@
     "fullName": "Universal Fabricator",
     "shortDescription": "Flexible tier-one unit factory",
     "longDescription": "An expensive radial factory that produces every tier-one domain roster from a centered construction bay.",
-    "gridWidth": 12,
-    "gridHeight": 12,
+    "gridWidth": 10,
+    "gridHeight": 10,
     "footprintMask": [
-      "....++++++....",
-      "...########...",
-      "..##########..",
-      ".############.",
-      "+############+",
-      "+############+",
-      "+############+",
-      "+############+",
-      "+############+",
-      "+############+",
-      ".############.",
-      "..##########..",
-      "...########...",
-      "....++++++...."
+      "...++++++...",
+      "..########..",
+      ".##########.",
+      "+##########+",
+      "+##########+",
+      "+##########+",
+      "+##########+",
+      "+##########+",
+      "+##########+",
+      ".##########.",
+      "..########..",
+      "...++++++..."
     ],
     "gridDepth": 3,
     "hp": 1200,
@@ -668,7 +666,7 @@
       {
         "x": 0,
         "y": 0,
-        "z": 138.24
+        "z": 76.5
         }
       ],
       "particleTravelSpeed": 200,
@@ -702,9 +700,9 @@
         "turretBlueprintId": "turretSensorBuildingFabricator",
         "presentation": null,
       "mount": {
-        "x": -110,
+        "x": -92,
         "y": 0,
-        "z": 138.24
+        "z": 76.5
         },
         "mountId": "sensor",
         "controlMode": "autonomous"
@@ -723,9 +721,9 @@
         "damage": 700
       },
       "radius": {
-        "other": 130.272,
-        "hitbox": 130.272,
-        "collision": 130.272
+        "other": 108.56,
+        "hitbox": 108.56,
+        "collision": 108.56
       },
       "signature": {
         "radarStealth": false,

@@ -315,6 +315,30 @@ export const CONSTRUCTION_HAZARD_MARKING_STYLE = Object.freeze({
   ),
 });
 
+const rawUniversalFabricatorBoxCounts = constructionVisualConfig.hostMarkingStyle
+  .universalFabricatorBoxCounts;
+export const UNIVERSAL_FABRICATOR_CONSTRUCTION_BOX_COUNTS = Object.freeze({
+  1: positiveEvenInteger(
+    rawUniversalFabricatorBoxCounts.tier1,
+    'constructionVisualConfig.hostMarkingStyle.universalFabricatorBoxCounts.tier1',
+  ),
+  2: positiveEvenInteger(
+    rawUniversalFabricatorBoxCounts.tier2,
+    'constructionVisualConfig.hostMarkingStyle.universalFabricatorBoxCounts.tier2',
+  ),
+  3: positiveEvenInteger(
+    rawUniversalFabricatorBoxCounts.tier3,
+    'constructionVisualConfig.hostMarkingStyle.universalFabricatorBoxCounts.tier3',
+  ),
+});
+
+function universalFabricatorTier(buildingBlueprintId: string): 1 | 2 | 3 | null {
+  if (buildingBlueprintId === 'towerFabricator') return 1;
+  if (buildingBlueprintId === 'buildingAdvancedUniversalFabricator') return 2;
+  if (buildingBlueprintId === 'buildingExperimentalUniversalFabricator') return 3;
+  return null;
+}
+
 /** Permanent yellow/black identity markings for every host that owns build
  * power — each host authors an ARRAY of markings so stripes can sit in
  * several interesting spots at once. Unit dimensions are in body-radius
@@ -345,16 +369,27 @@ function buildConstructionHostMarkingProfiles(): Readonly<
     }
     profiles[targetId] = source;
   };
+  const inheritUniversalFabricator = (targetId: string, tier: 1 | 2 | 3): void => {
+    const source = profiles.towerFabricator;
+    if (source === undefined) {
+      throw new Error('construction marking source towerFabricator is missing');
+    }
+    profiles[targetId] = Object.freeze(source.map((profile) =>
+      profile.kind === 'ringBoxes'
+        ? Object.freeze({
+            ...profile,
+            boxCount: UNIVERSAL_FABRICATOR_CONSTRUCTION_BOX_COUNTS[tier],
+          })
+        : profile));
+  };
   for (const buildingBlueprintId of BUILDING_BLUEPRINT_IDS) {
     if (buildingBlueprintId.endsWith('Fabricator')) {
-      inherit(
-        buildingBlueprintId,
-        buildingBlueprintId === 'towerFabricator' ||
-        buildingBlueprintId === 'buildingAdvancedUniversalFabricator' ||
-        buildingBlueprintId === 'buildingExperimentalUniversalFabricator'
-          ? 'towerFabricator'
-          : 'directionalFabricator',
-      );
+      const universalTier = universalFabricatorTier(buildingBlueprintId);
+      if (universalTier !== null) {
+        inheritUniversalFabricator(buildingBlueprintId, universalTier);
+      } else {
+        inherit(buildingBlueprintId, 'directionalFabricator');
+      }
     }
   }
   // The directional profile is a shared authoring template, not a runtime
