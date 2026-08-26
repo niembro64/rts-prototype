@@ -242,22 +242,35 @@ export type Unit = {
    *  actions are durable player/factory waypoints, while activePath
    *  holds transient pathfinder points for the leg being executed. */
   activePath: UnitPathPlan | null;
-  /** Plan-scheduler request state (PATH_REQUEST_NONE/FRESH/REFRESH). A unit
-   *  holds at most one live queue entry; a popped entry whose lane no longer
-   *  matches this field is skipped at serve time. Sim-only state. */
+  /** Plan-scheduler request state (PATH_REQUEST_NONE/FRESH/REFINE/REFRESH).
+   *  A unit holds at most one live queue entry; a popped entry whose lane no
+   *  longer matches this field is skipped at serve time. Sim-only state. */
   pathRequestLane: number;
   /** Serve the queued request from the unit's live position and skip the
    *  shared formation corridor (stuck-replan semantics). */
   pathRequestForceLocal: boolean;
   /** Consecutive route requests for the current order that resolved
-   *  unreachable/terminal. Drives exponential retry backoff and, past the
-   *  give-up count, drops the order (a unit that cannot get there stops).
-   *  Sim-only state, reset when the order changes or a route installs. */
+   *  unreachable/terminal. Drives exponential retry backoff; the order is
+   *  never dropped. Sim-only state, reset when the order changes or a route
+   *  installs. */
   pathFailureStreak: number;
-  /** Earliest tick a fresh route request may be queued again (0 = now). */
+  /** Earliest tick a fresh route request may be queued again (0 = now). The
+   *  backoff is lifted early when the unit's cell or the navigation layers
+   *  change (see pathFailureCellKey / pathFailureNavVersion). */
   pathRetryAtTick: number;
   /** actionHash the failure streak belongs to; a different hash resets it. */
   pathFailureActionHash: number;
+  /** Navigation-grid cell the unit stood in when its last request failed
+   *  (-1 = none). A different cell is new information: retry at once. */
+  pathFailureCellKey: number;
+  /** Terrain version and building-grid version the failure was computed
+   *  against; either changing lifts the backoff. */
+  pathFailureTerrainVersion: number;
+  pathFailureBuildingGridVersion: number;
+  /** True while the unit's current order has no route (last request resolved
+   *  unreachable and the backoff is in force). Cleared when a route installs
+   *  or the order changes. Sim-only; surfaced to the UI as "no route". */
+  routeBlocked: boolean;
   /** Airborne-cruising loiter center. When a cruising unit exhausts its action
    *  queue, it keeps steering around this last destination instead of
    *  dropping thrust and drifting off-map. */

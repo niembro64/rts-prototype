@@ -20,9 +20,11 @@ type PathfindingTuningConfig = {
   corridorHeuristicWeight: number;
   trafficHeatPenalty: number;
   trafficHeatDecayTicks: number;
+  pathPlanQuantumWorkUnits: number;
+  firstLegMaxDistanceWu: number;
+  firstLegMinDistanceWu: number;
   pathFailureBackoffTicks: number;
   pathFailureBackoffMaxTicks: number;
-  pathFailureGiveUpCount: number;
   avoidanceLookaheadWu: number;
   avoidanceLateralMarginWu: number;
   avoidanceStrength: number;
@@ -117,20 +119,38 @@ export const PATHFINDING_FORCE_SAFETY_RATIO = readForceSafetyRatio();
 // identical plan computations on the identical ticks, so none of them may
 // ever be derived from measured frame time.
 
-/** Exact maximum number of fine navigation nodes closed in one fixed tick —
- *  the global ceiling. Sides with demand are admitted round-robin under it:
- *  a served side resumes its retained frontier, may spend leftover on more of
- *  its own routes, and hands any remainder to the next side with demand in
- *  the same tick. One unfinished frontier per side is retained for that
- *  side's next turn. */
+/** Exact maximum amount of pathfinding work funded in one fixed tick — the
+ *  global ceiling. Players with demand are visited round-robin under it,
+ *  each queue receiving one quantum per visit; a player that runs dry hands
+ *  its leftover to the next player with demand in the same tick, and a
+ *  player whose refine search outlives its quantum keeps the frontier in its
+ *  own WASM arena for its next visit. */
 export const PATHFINDING_A_STAR_EXPANSIONS_PER_TICK = requirePositiveInteger(
   'aStarExpansionBudgetPerTick',
   config.aStarExpansionBudgetPerTick,
 );
-/** A pending refresh lane gets first choice every N served turns of a side
- *  (a side's served-turn counter, not a tick count); fresh jobs win other
- *  admissions. Free/stale requests never consume A* work, so admission can
- *  continue in the same tick. */
+/** Work one queue (a player's route queue or refine queue) may spend per
+ *  visit before the cursor moves on. Smaller = fairer under contention,
+ *  larger = fewer arena swaps; both are lockstep constants. */
+export const PATHFINDING_PLAN_QUANTUM_WORK_UNITS = requirePositiveInteger(
+  'pathPlanQuantumWorkUnits',
+  config.pathPlanQuantumWorkUnits,
+);
+/** Longest validated straight first leg a planless unit drives toward a far
+ *  goal while its full route is still queued, and the shortest leg worth
+ *  installing (below it the unit holds for the refinement instead). */
+export const PATHFINDING_FIRST_LEG_MAX_DISTANCE_WU = requireNonNegativeNumber(
+  'firstLegMaxDistanceWu',
+  config.firstLegMaxDistanceWu,
+);
+export const PATHFINDING_FIRST_LEG_MIN_DISTANCE_WU = requireNonNegativeNumber(
+  'firstLegMinDistanceWu',
+  config.firstLegMinDistanceWu,
+);
+/** A pending refresh lane gets first choice every N refine visits of a
+ *  player (that player's served-turn counter, not a tick count); refine jobs
+ *  win other admissions. Free/stale requests never consume A* work, so
+ *  admission can continue in the same tick. */
 export const PATHFINDING_REFRESH_SERVICE_INTERVAL_TICKS = requirePositiveInteger(
   'refreshServiceIntervalTicks',
   config.refreshServiceIntervalTicks,
@@ -197,8 +217,10 @@ export const PATHFINDING_TRAFFIC_HEAT_DECAY_TICKS = requirePositiveInteger(
   config.trafficHeatDecayTicks,
 );
 /** First retry delay after a route request resolves unreachable/terminal;
- *  doubles per consecutive failure up to the max, then the order is dropped
- *  after the give-up count (BAR: a unit that cannot get there stops). */
+ *  doubles per consecutive failure up to the max. The order is never
+ *  dropped: the backoff is lifted the moment the unit's cell, the terrain
+ *  version or the building layer changes, since only those can change the
+ *  answer (the six-strike give-up was deleted 2026-08-26). */
 export const PATHFINDING_PATH_FAILURE_BACKOFF_TICKS = requirePositiveInteger(
   'pathFailureBackoffTicks',
   config.pathFailureBackoffTicks,
@@ -206,10 +228,6 @@ export const PATHFINDING_PATH_FAILURE_BACKOFF_TICKS = requirePositiveInteger(
 export const PATHFINDING_PATH_FAILURE_BACKOFF_MAX_TICKS = requirePositiveInteger(
   'pathFailureBackoffMaxTicks',
   config.pathFailureBackoffMaxTicks,
-);
-export const PATHFINDING_PATH_FAILURE_GIVE_UP_COUNT = requirePositiveInteger(
-  'pathFailureGiveUpCount',
-  config.pathFailureGiveUpCount,
 );
 
 /** Local avoidance: how far ahead (plus both radii) a ground mover looks for

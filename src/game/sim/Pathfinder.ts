@@ -47,7 +47,9 @@ import {
 
 type Vec2 = { x: number; y: number };
 
-type PathResolution = 'complete' | 'snapped' | 'partial' | 'unreachable';
+/** COARSE never comes from the WASM search: it marks a validated straight
+ *  first leg installed by the route queue while the full route is queued. */
+type PathResolution = 'complete' | 'snapped' | 'partial' | 'unreachable' | 'coarse';
 export type PathSearchStrategy = 'none' | 'direct' | 'hierarchical';
 
 type PathQueryResult =

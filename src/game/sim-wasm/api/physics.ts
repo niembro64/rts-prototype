@@ -113,6 +113,7 @@ export interface PathfinderApi {
   lastCorridorClusters: () => number;
   /** Per-class hierarchy graphs currently cached. */
   classGraphCount: () => number;
+  classGraphEvictions: () => number;
   /** Decay the traffic-heat layer by a quarter (fixed tick cadence). */
   decayTrafficHeat: () => void;
   /** Base pointer of the per-cell traffic-heat bytes (grid order). */

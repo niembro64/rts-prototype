@@ -39,13 +39,20 @@ try {
       .join(' ');
     console.log(
       `  path scheduler: demand ticks ${s.ticksWithDemand}/${s.ticks}, ` +
-        `turns ${s.turnsServed} (cross-side ${s.crossSideFallthroughs}), ` +
+        `turns ${s.turnsServed} (passes ${s.passes}, leftover handoffs ${s.leftoverHandoffs}), route served ${s.routeServed}, ` +
         `legacy-rotation idle ticks ${s.legacyRotationIdleTicks}, ` +
         `admissions ${s.admissions}, free drains ${s.freeDrains}, ` +
         `expansions ${s.expansionsUsed}, frontier-pending ticks ${s.ticksEndedWithFrontierPending}, ` +
         `starved ticks ${s.ticksEndedWithBudgetLeftAndDemand}, deferred requeues ${s.deferredRequests}` +
         (ages.length > 0 ? `, admission age ticks {${ages}}` : ''),
     );
+    for (const [playerId, buckets] of Object.entries(s.admissionAgeBucketsByPlayer ?? {})) {
+      const perPlayer = buckets
+        .map((count, index) => (count > 0 ? `${ageLabels[index]}:${count}` : null))
+        .filter(Boolean)
+        .join(' ');
+      if (perPlayer.length > 0) console.log(`    player ${playerId} admission age ticks {${perPlayer}}`);
+    }
     const o = replayCase.pathQueryOutcomes;
     if (o) {
       const byBp = [...(o.unreachableByBlueprint?.entries?.() ?? [])]
@@ -56,7 +63,7 @@ try {
       console.log(
         `  route outcomes: complete ${o.complete}, snapped ${o.snapped}, partial ${o.partial}, ` +
           `unreachable ${o.unreachable} (direct ${o.direct}, hierarchical ${o.hierarchical}), ` +
-          `failures ${o.failures}, give-ups ${o.giveUps}, shared-route hits ${o.sharedRouteHits ?? 0}` +
+          `failures ${o.failures}, first legs ${o.firstLegs}/${o.firstLegMisses} missed, shared-route hits ${o.sharedRouteHits ?? 0}` +
           (byBp.length > 0 ? `, unreachable by blueprint {${byBp}}` : ''),
       );
     }

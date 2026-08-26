@@ -149,6 +149,8 @@ pub(crate) struct PathfinderState {
     pub(crate) hpa_stamp_counter: u32,
     pub(crate) hpa_classes: Vec<HpaClassGraph>,
     pub(crate) hpa_class_use_counter: u32,
+    /// Class graphs discarded at the cache cap (telemetry, never hashed).
+    pub(crate) hpa_class_evictions: u32,
     pub(crate) hpa_g: Vec<f32>,
     pub(crate) hpa_parent: Vec<u32>,
     pub(crate) hpa_gen: Vec<u32>,
@@ -381,6 +383,7 @@ impl PathfinderState {
             hpa_stamp_counter: 0,
             hpa_classes: Vec::new(),
             hpa_class_use_counter: 0,
+            hpa_class_evictions: 0,
             hpa_g: Vec::new(),
             hpa_parent: Vec::new(),
             hpa_gen: Vec::new(),
@@ -2367,6 +2370,7 @@ pub fn pathfinder_reset_match_state() {
     state.traffic_heat.fill(0);
     state.hpa_classes.clear();
     state.hpa_class_use_counter = 0;
+    state.hpa_class_evictions = 0;
     state.hpa_insertion_key = None;
     hpa_invalidate_all(state);
 }
@@ -2417,6 +2421,14 @@ pub fn pathfinder_last_smoothing_line_checks() -> u32 {
 #[wasm_bindgen]
 pub fn pathfinder_last_direct_cost_ratio() -> f32 {
     pathfinder_state().last_direct_cost_ratio
+}
+
+/// Class graphs evicted at the cache cap since match start. Telemetry only
+/// (the skirmish probe reads it); a non-zero value means the cap is below
+/// the number of body classes in play and searches are rebuilding rows.
+#[wasm_bindgen]
+pub fn pathfinder_class_graph_evictions() -> u32 {
+    pathfinder_state().hpa_class_evictions
 }
 
 #[wasm_bindgen]
