@@ -388,6 +388,9 @@
         "sourceFile": "src/game/render3d/SoilSubstanceTexture.ts",
         "resolution": 2048,
         "tileWorldSize": 900,
+        "fineComment": "The grime reading (weatherSampleSoil) layers the SAME tile a second time at this small, rotated, co-prime scale: the grit the 900 wu read cannot resolve at battle zoom, where the 2048 px tile is ~2 px per world unit and everything under 2 wu blurs to one smear. Shared by the ore edge, both wall rims and tree bases for the same reason tileWorldSize is.",
+        "fineTileWorldSize": 140,
+        "fineStrength": 0.45,
         "baseColorHex": "#3b3227",
         "shadePaletteRgb": [
           "#241c14",

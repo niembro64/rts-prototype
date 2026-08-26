@@ -136,6 +136,7 @@ function checkShaderSourceContract(): void {
     'weatherGrimeAmount(',
     'weatherApplyGrime(',
     'weatherSampleSubstance(',
+    'weatherSampleSoil(',
   ]) {
     assertContract(
       SURFACE_WEATHERING_GLSL.includes(shared),

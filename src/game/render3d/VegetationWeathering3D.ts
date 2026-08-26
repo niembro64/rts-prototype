@@ -162,7 +162,7 @@ function vegetationWeatherFragment(role: VegetationWeatherRole): string {
     '    float vegGrime = weatherGrimeAmount(',
     '      vegSoilRamp, vegFields, uVegWeatherBaseFalloff, uVegWeatherBasePatchDepth',
     '    );',
-    '    vec3 vegSoil = weatherSampleSubstance(',
+    '    vec3 vegSoil = weatherSampleSoil(',
     '      uVegWeatherSoil,',
     '      vVegWeatherWorld,',
     '      vegNormal,',

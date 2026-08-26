@@ -430,6 +430,7 @@ function checkOreEdgeBlendContract(): void {
     'weatherGrimeAmount(',
     'weatherApplyGrime(',
     'weatherSampleSubstance(',
+    'weatherSampleSoil(',
   ]) {
     assertContract(
       SURFACE_WEATHERING_GLSL.includes(`float ${shared}`) ||
@@ -446,7 +447,7 @@ function checkOreEdgeBlendContract(): void {
     'weatherBandRamp(',
     'weatherGrimeAmount(',
     'weatherApplyGrime(',
-    'weatherSampleSubstance(',
+    'weatherSampleSoil(',
   ]) {
     assertContract(
       oreSource.includes(shared),
