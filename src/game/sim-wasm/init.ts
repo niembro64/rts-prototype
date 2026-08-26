@@ -1761,6 +1761,12 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runDroneFanPlacement3DContractTest();
         const { runEntityDeathDisassembly3DContractTest } = await import('../render3d/EntityDeathDisassembly3DContractTest');
         runEntityDeathDisassembly3DContractTest();
+        const { runEntityVisionFade3DContractTest } = await import('../render3d/EntityVisionFade3DContractTest');
+        runEntityVisionFade3DContractTest();
+        const { runVisionDistanceField3DContractTest } = await import('../render3d/VisionDistanceField3DContractTest');
+        runVisionDistanceField3DContractTest();
+        const { runSensorWaterlineSightContractTest } = await import('../network/sensorWaterlineSightContractTest');
+        runSensorWaterlineSightContractTest();
         const { runShotArmingOverlay3DContractTest } = await import('../render3d/ShotArmingOverlay3DContractTest');
         runShotArmingOverlay3DContractTest();
         const { runHostVolumeOverlay3DContractTest } = await import('../render3d/HostVolumeOverlay3DContractTest');

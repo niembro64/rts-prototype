@@ -658,7 +658,7 @@ export function runSnapshotVisibilityContractTest(): void {
       entity.transform.z = WATER_LEVEL + 100;
     },
   );
-  const aboveObserverRejectedUnderwaterTarget = createUnit(
+  const aboveObserverUnderwaterTarget = createUnit(
     matrixWorld,
     1010,
     1010,
@@ -676,14 +676,15 @@ export function runSnapshotVisibilityContractTest(): void {
       // Keep the mounted sensor origin below the surface.
       entity.transform.z = WATER_LEVEL - 100;
       // Author the underwater source row HERE rather than leaning on the
-      // roster's default. Dry units no longer carry one — a tank cannot see
-      // from a medium it cannot enter, and the medium gate now rejects
-      // underwater sight that is not backed by sonar. This test is about the
-      // matrix's source-row semantics, so it supplies its own sensor rather
-      // than depending on what some blueprint happens to be tuned to.
+      // roster's default. Dry units do not carry one — a tank cannot see
+      // from a medium it cannot enter. This test is about the matrix's
+      // source-row semantics, so it supplies its own sensor rather than
+      // depending on what some blueprint happens to be tuned to. Full sight
+      // crosses the waterline (sensorWaterlineSightContractTest), so the row
+      // authors the same radius for both target media.
       const sensors = entity.combat!.turrets[0].config.targeting.observation.sensors;
       sensors.fullSight.underwater.underwater = 1200;
-      sensors.fullSight.underwater.aboveWater = 0;
+      sensors.fullSight.underwater.aboveWater = 1200;
       sensors.contactSight.underwater.underwater = 1200;
     },
   );
@@ -696,7 +697,7 @@ export function runSnapshotVisibilityContractTest(): void {
       entity.transform.z = WATER_LEVEL - 100;
     },
   );
-  const underwaterObserverRejectedAboveTarget = createUnit(
+  const underwaterObserverAboveTarget = createUnit(
     matrixWorld,
     1010,
     5010,
@@ -754,15 +755,19 @@ export function runSnapshotVisibilityContractTest(): void {
       legacyMatrixVisible.includes(underwaterCrossMediumObserver.id),
     'every owned matrix observer must remain visible',
   );
+  // Full sight crosses the waterline: a source row reaches both target media
+  // to the same radius, so the same-medium and cross-medium neighbours of a
+  // default (blueprint) above-water observer are both seen, and likewise
+  // for an authored underwater row.
   assertContract(
     legacyMatrixVisible.includes(aboveSameMediumTarget.id) &&
-      !legacyMatrixVisible.includes(aboveObserverRejectedUnderwaterTarget.id),
-    'above-water source row must allow A→A and reject A→W by default',
+      legacyMatrixVisible.includes(aboveObserverUnderwaterTarget.id),
+    'above-water source row must allow both A→A and A→W by default (full sight crosses the waterline)',
   );
   assertContract(
     legacyMatrixVisible.includes(underwaterSameMediumTarget.id) &&
-      !legacyMatrixVisible.includes(underwaterObserverRejectedAboveTarget.id),
-    'underwater source row must allow W→W and reject W→A by default',
+      legacyMatrixVisible.includes(underwaterObserverAboveTarget.id),
+    'underwater source row must allow both W→W and W→A (full sight crosses the waterline)',
   );
   assertContract(
     legacyMatrixVisible.includes(aboveCrossMediumWaterTarget.id),

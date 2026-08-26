@@ -18,8 +18,12 @@
 // the same clamped glide the fixed-tick presentation history gives everything
 // else, and is never extrapolated past the newest sample while it is heard.
 // A contact that stops being heard fades out coasting on its last measured
-// drift — the exact treatment a fully-visible unit gets when it leaves
-// vision — so the player's last knowledge of a mover stays a mover.
+// drift — the same treatment a fully-visible model gets when it leaves
+// vision (EntityVisionFade3D) — so the player's last knowledge of a mover
+// stays a mover. Blips and models share the one in/out duration pair from
+// visionConfig.json, which is what makes the two tiers cross-fade: the blip's
+// fall is exactly the model's rise when an enemy enters sight, and the
+// reverse when it drops back to radar.
 //
 // The extension is the medium and the third spatial coordinate. Each contact
 // carries the lane that earned it plus its observed world-space altitude, so an
@@ -41,7 +45,7 @@ import {
 import type { ContactSnapshotSampling } from '../network/ClientMinimapOverrideStore';
 import { ENTITY_LOD_PROXY_GLYPH_CIRCLE } from './EntityLod3D';
 import { LodProxyPointBatchRenderer3D } from './EntityLodProxyRenderer3D';
-import { VISION_CONTACT_FADE_OUT_MS, VISION_FADE_IN_MS } from '../../visionConfig';
+import { VISION_FADE_IN_MS, VISION_FADE_OUT_MS } from '../../visionConfig';
 
 const STYLE = COLORS.effects.contactBlip;
 
@@ -124,16 +128,31 @@ type ContactTrack = {
   velY: number;
   velZ: number;
   /** Anonymous-contact visibility ramp: 0..1, rising over VISION_FADE_IN_MS
-   *  while heard and falling over VISION_CONTACT_FADE_OUT_MS
-   *  once the newest snapshot stops carrying the contact. A re-heard
-   *  contact resumes rising from wherever the fall left it. */
+   *  while heard and falling over VISION_FADE_OUT_MS once the newest
+   *  snapshot stops carrying the contact. A re-heard contact resumes rising
+   *  from wherever the fall left it. */
   fadeAlpha: number;
   dying: boolean;
+  /** Sensor lanes that earned this contact (CONTACT_MEDIUM_* bits), kept so
+   *  the DISTANCE vision fade can read the matching friendly contact discs. */
+  mediumMask: number;
 };
+
+/** Per-frame vision-fade presentation inputs for contacts. */
+export type ContactBlipVisionFade3D = Readonly<{
+  /** TIME fades active: blips rise/fall over the visionConfig durations and
+   *  coast while dying. Off in the DISTANCE mode (instant in/out). */
+  timeFades: boolean;
+  /** DISTANCE presence for a contact at (x, y) earned via `mediumMask`
+   *  (0..1); undefined = 1. */
+  contactAlpha?: (x: number, y: number, mediumMask: number) => number;
+}>;
 
 /** Blips are anonymous knowledge, not bodies: pure black ring with a
  *  white core dot, one look for every lane. */
 const CONTACT_BLIP_OUTLINE_COLOR = 0x000000;
+
+const DEFAULT_CONTACT_BLIP_VISION_FADE: ContactBlipVisionFade3D = Object.freeze({ timeFades: true });
 
 export class ContactBlipRenderer3D {
   private readonly proxyRenderer: LodProxyPointBatchRenderer3D;
@@ -152,10 +171,13 @@ export class ContactBlipRenderer3D {
     sampling: ContactSnapshotSampling,
     renderScope: ViewportFootprint | undefined,
     dtMs: number,
+    visionFade: ContactBlipVisionFade3D = DEFAULT_CONTACT_BLIP_VISION_FADE,
   ): void {
     this.proxyRenderer.beginFrame();
     const sequence = sampling.sequence;
     const alpha = sampling.alpha;
+    const timeFades = visionFade.timeFades;
+    const contactAlpha = visionFade.contactAlpha;
 
     // P1-26: the input array only carries new information when a snapshot
     // lands (its sequence moves). Membership and glide endpoints are
@@ -177,6 +199,7 @@ export class ContactBlipRenderer3D {
           sampling.intervalMs,
         );
         track.dying = false;
+        track.mediumMask = normalizeContactMediumMask(contact.contactMediumMask);
       }
       this.dropUnheardContacts(sequence);
       this.prunedSequence = sequence;
@@ -187,19 +210,19 @@ export class ContactBlipRenderer3D {
 
     for (const [contactId, track] of this.tracks) {
       if (track.dying) {
-        track.fadeAlpha -= dtMs / VISION_CONTACT_FADE_OUT_MS;
+        track.fadeAlpha = timeFades ? track.fadeAlpha - dtMs / VISION_FADE_OUT_MS : 0;
         if (track.fadeAlpha <= 0) {
           this.tracks.delete(contactId);
           continue;
         }
         // Coast on the last measured drift while fading: a contact that was
         // moving keeps moving as its anonymous dot dissolves; a stopped one
-        // fades in place. Full entity models never use this retention path.
+        // fades in place. Full models coast the same way in EntityVisionFade3D.
         track.x += track.velX * dtMs;
         track.y += track.velY * dtMs;
         track.z += track.velZ * dtMs;
       } else {
-        track.fadeAlpha = Math.min(1, track.fadeAlpha + dtMs / VISION_FADE_IN_MS);
+        track.fadeAlpha = timeFades ? Math.min(1, track.fadeAlpha + dtMs / VISION_FADE_IN_MS) : 1;
         track.x = track.fromX + (track.toX - track.fromX) * alpha;
         track.y = track.fromY + (track.toY - track.fromY) * alpha;
         track.z = track.fromZ + (track.toZ - track.fromZ) * alpha;
@@ -207,6 +230,12 @@ export class ContactBlipRenderer3D {
       if (renderScope !== undefined && !renderScope.inScope(track.x, track.y, STYLE.radius)) {
         continue;
       }
+      // DISTANCE presence: how far inside the nearest friendly contact disc
+      // the return sits (1 in TIME mode). Multiplies the TIME ramp.
+      const presence = contactAlpha !== undefined
+        ? contactAlpha(track.x, track.y, track.mediumMask)
+        : 1;
+      if (presence <= 0) continue;
       this.proxyRenderer.pushProxy(
         track.x,
         track.y,
@@ -214,7 +243,7 @@ export class ContactBlipRenderer3D {
         CONTACT_BLIP_RADIUS,
         CONTACT_BLIP_GLYPH,
         CONTACT_BLIP_OUTLINE_COLOR,
-        STYLE.opacity * track.fadeAlpha,
+        STYLE.opacity * track.fadeAlpha * presence,
         CONTACT_BLIP_OUTLINE_COLOR,
       );
     }
@@ -252,6 +281,7 @@ export class ContactBlipRenderer3D {
         velX: 0, velY: 0, velZ: 0,
         fadeAlpha: 0,
         dying: false,
+        mediumMask: 0,
       };
       this.tracks.set(contactId, track);
       return track;

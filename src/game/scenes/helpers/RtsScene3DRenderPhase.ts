@@ -5,6 +5,8 @@ import {
   getForceFieldsVisible,
   getRadarBoundary,
   getSightBoundary,
+  getVisionFadeBand,
+  getVisionFadeMode,
   getEntityHudToggle,
   getSelectionHudMode,
   getWindParticles,
@@ -21,6 +23,8 @@ import type { ClientProjectileRenderLists } from '../../network/ClientProjectile
 import type { ContactBlipRenderer3D } from '../../render3d/ContactBlipRenderer3D';
 import { featureVisibleAtRung } from '../../render3d/EntityDetailLevel3D';
 import type { Entity, EntityId, PlayerId } from '../../sim/types';
+import { getBuildingCombatCenterZ } from '../../sim/buildingAnchors';
+import { VisionDistanceField3D } from '../../render3d/VisionDistanceField3D';
 import type { ThreeApp } from '../../render3d/ThreeApp';
 import { isPresentationAnimationPaused } from '../../render3d/presentationClock';
 import type { Render3DEntities } from '../../render3d/Render3DEntities';
@@ -255,6 +259,22 @@ export class RtsScene3DRenderPhase {
   };
   private readonly entityLodProxyFadeAlphaRef = (entity: Entity) =>
     this.entityLod.entityLodProxyFadeAlphaForView(this.currentLodView!, entity);
+  /** DISTANCE vision fade: the local team's sensor discs, rebuilt per fixed
+   *  tick while the mode is on (see VisionDistanceField3D). */
+  private readonly visionDistanceField = new VisionDistanceField3D();
+  private visionFadeBandWu = 64;
+  private readonly entityVisionPresenceAlphaRef = (entity: Entity): number => {
+    const field = this.visionDistanceField;
+    if (!field.isActive || field.isVisionOwner(entity.ownership?.playerId)) return 1;
+    const observationZ = entity.building !== null
+      ? getBuildingCombatCenterZ(entity)
+      : entity.transform.z;
+    return field.sightAlphaAt(entity.transform.x, entity.transform.y, observationZ, this.visionFadeBandWu);
+  };
+  private readonly contactVisionPresenceAlphaRef = (x: number, y: number, mediumMask: number): number =>
+    this.visionDistanceField.contactAlphaAt(x, y, mediumMask, this.visionFadeBandWu * 3);
+  private readonly contactBlipVisionFade = { timeFades: true, contactAlpha: undefined as
+    ((x: number, y: number, mediumMask: number) => number) | undefined };
   /** Reused argument packet for entityRenderer.update; consumed
    *  synchronously by the callee every frame. */
   private readonly entityRendererPacket = {
@@ -265,6 +285,8 @@ export class RtsScene3DRenderPhase {
     isEntityEmissionFarLod: this.isEntityEmissionFarLodRef,
     entityDetailRung: this.entityDetailRungRef,
     entityLodProxyFadeAlpha: this.entityLodProxyFadeAlphaRef,
+    entityVisionPresenceAlpha: undefined as ((entity: Entity) => number) | undefined,
+    visionTimeFades: true,
     shieldVisibilityTeamMask: 0,
     scoped: false,
   };
@@ -488,6 +510,31 @@ export class RtsScene3DRenderPhase {
     // shade over it. Following one seat restores that seat's exact view.
     const watchingAll = this.getWatchingAll();
     const fogOfWarEnabled = serverMeta?.fogOfWarEnabled === true && !watchingAll;
+    // VISION FADE presentation mode (CLIENT bar). TIME keeps the clocks;
+    // DISTANCE reads the local team's sensor discs instead; BOTH multiplies.
+    // Presentation only — the sim's fog truth and recipient filtering are
+    // untouched, and the distance band never reaches past the true radius.
+    const visionFadeMode = getVisionFadeMode();
+    const visionTimeFades = visionFadeMode !== 'distance';
+    const visionDistanceFades = visionFadeMode !== 'time' && fogOfWarEnabled;
+    this.visionFadeBandWu = getVisionFadeBand();
+    if (visionDistanceFades) {
+      this.visionDistanceField.sync(
+        this.clientViewState,
+        this.getLocalPlayerId(),
+        this.clientViewState.getMapWidth(),
+      );
+    } else {
+      this.visionDistanceField.clear();
+    }
+    this.entityRendererPacket.entityVisionPresenceAlpha = visionDistanceFades
+      ? this.entityVisionPresenceAlphaRef
+      : undefined;
+    this.entityRendererPacket.visionTimeFades = visionTimeFades;
+    this.contactBlipVisionFade.timeFades = visionTimeFades;
+    this.contactBlipVisionFade.contactAlpha = visionDistanceFades
+      ? this.contactVisionPresenceAlphaRef
+      : undefined;
     const turretShieldSpheresEnabled = serverMeta?.turretShieldSpheresEnabled ?? true;
     const forceFieldsVisible = getForceFieldsVisible();
     windParticleFieldRenderer.update(
@@ -522,6 +569,7 @@ export class RtsScene3DRenderPhase {
       this.clientViewState.getMinimapContactSampling(performance.now()),
       this.renderScope,
       effectDtMs,
+      this.contactBlipVisionFade,
     );
     const inputManager = this.getInputManager();
     // Resolved once per frame and handed to BOTH force-material renderers.

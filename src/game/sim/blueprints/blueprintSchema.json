@@ -238,7 +238,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "One sensor suite. fullSight and contactSight are source-medium x target-medium matrices: what this observer can see, from the medium it sits in, of a target in that medium. detectorRadius reveals cloak. The jam radii are the opposite of a sensor \u2014 they DENY the enemy's contact sensors over an area around this entity, radar and sonar independently."
+      "description": "One sensor suite. fullSight and contactSight are source-medium x target-medium matrices: what this observer can see, from the medium it sits in, of a target in that medium. Full sight CROSSES the waterline: water is a medium, not an occluder, so each fullSight source row authors the same radius for both target columns (aboveWater.underwater == aboveWater.aboveWater and underwater.aboveWater == underwater.underwater; sensorWaterlineSightContractTest pins it) and an enemy inside the radius is seen whichever side of the surface it is on. Contact sight stays per medium: radar is the above->above lane and sonar the under->under lane. detectorRadius reveals cloak. The jam radii are the opposite of a sensor \u2014 they DENY the enemy's contact sensors over an area around this entity, radar and sonar independently."
     },
     "TurretEngagementEnvelope": {
       "type": "object",

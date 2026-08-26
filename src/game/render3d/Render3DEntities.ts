@@ -64,7 +64,13 @@ import {
   updateEntityBuildVisual,
   type EntityBuildVisual,
 } from './EntityFade3D';
-import { DyingUnitScatter3D } from './DyingUnitScatter3D';
+import { DyingUnitScatter3D, captureUnitRendererOwnedParts3D } from './DyingUnitScatter3D';
+import {
+  VanishingProxyGhosts3D,
+  VanishingUnitMotion3D,
+  VisionFadeInClock3D,
+  type VanishingProxyPush3D,
+} from './EntityVisionFade3D';
 import type { EntityDeathBlast3D } from './EntityDeathDisassembly3D';
 import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
@@ -101,7 +107,8 @@ import {
   syncUnitDynamicMaterials3D,
   unitHasSteadyDynamicMaterialWork3D,
 } from './UnitDynamicMaterialSync3D';
-import { advanceUnitVisionFadeIn, applyUnitEntityFade3D } from './UnitEntityFade3D';
+import { applyUnitEntityFade3D } from './UnitEntityFade3D';
+import { VISION_FADE_OUT_MS } from '@/visionConfig';
 import { AirborneEmitterUpdateScratch3D } from './AirborneEmitterUpdateScratch3D';
 import {
   applyEntityLodVisualState3D,
@@ -141,6 +148,12 @@ type RenderEntityUpdatePacket3D = {
    *  state that stamps the packet's LOD-proxy flag, so the rebuild band
    *  and the glyph flip can never disagree within a frame. */
   entityDetailRung?: (entity: Entity) => DetailRung;
+  /** DISTANCE vision-fade presence (0..1) for an enemy entity from the
+   *  local team's sensor discs (VisionDistanceField3D); absent = 1. */
+  entityVisionPresenceAlpha?: (entity: Entity) => number;
+  /** Whether TIME vision fades (rise/fall clocks, coasting retention)
+   *  are active this frame. Off in the DISTANCE mode. */
+  visionTimeFades?: boolean;
   /** BAR-style icon cross-fade alpha for entities NOT yet at the glyph
    *  rung: > 0 inside the fade band, where the proxy glyph is drawn ON
    *  TOP of the still-fully-opaque model. */
@@ -174,6 +187,8 @@ export class Render3DEntities {
     DEFAULT_ENTITY_EMISSION_FAR_LOD;
   private entityDetailRung: ((entity: Entity) => DetailRung) | undefined;
   private entityLodProxyFadeAlpha: ((entity: Entity) => number) | undefined;
+  private entityVisionPresenceAlpha: ((entity: Entity) => number) | undefined;
+  private visionTimeFades = true;
   /** Per-frame cap on detail-band mesh rebuilds. Camera sweeps change
    *  many bands at once; over-budget units keep their previous rung
    *  until a later frame so a zoom never lands as one hitch frame. */
@@ -199,16 +214,25 @@ export class Render3DEntities {
   // constructor (needs `this`).
   private dyingUnits!: DyingMeshFade<EntityMesh>;
   private dyingUnitScatter!: DyingUnitScatter3D;
+  // OUT-OF-VISION units: the retained model coasts on its last presented
+  // velocity while its fade falls over VISION_FADE_OUT_MS. Presentation
+  // only — no scatter, no blast, no sim pose (see EntityVisionFade3D).
+  // Assigned in the constructor (needs `this`).
+  private vanishingUnits!: DyingMeshFade<EntityMesh>;
+  private readonly vanishingUnitMotion = new VanishingUnitMotion3D();
+  /** Fade-out for units whose last drawn form was the MIN-rung glyph. */
+  private readonly vanishingProxyGhosts = new VanishingProxyGhosts3D();
+  private readonly pushVanishingUnitProxy: VanishingProxyPush3D = (
+    simX, simY, simZ, radius, glyph, ownerId, alpha,
+  ) => this.lodProxyRenderer.pushUnitProxy(simX, simY, simZ, radius, glyph, ownerId, alpha);
   private readonly activeLocomotionUnitIds = new IndexedEntityIdSet();
   private legsRadiusToggle = getLegsRadiusToggle();
   private legsReachToggle = getLegsReachToggle();
   private smokeTrailsEnabled = getSmokeTrails();
   private readonly scopedMeshRetention = new ScopedRenderMeshRetention3D();
-  /** Per-entity vision fade-IN clock (ms elapsed, 0..VISION_FADE_IN_MS) for
-   *  units that have newly entered vision. Keyed by entity id so it survives
-   *  mesh rebuilds (LOD / owner recolor) and only resets when the unit truly
-   *  leaves the live set, so re-entering vision fades in afresh. */
-  private readonly spawnFadeElapsed = new IndexedEntityIdMap<number>();
+  /** Per-entity vision fade-IN clock, keyed on the first sighting at any
+   *  detail rung (glyph or model) — see EntityVisionFade3D. */
+  private readonly visionFadeIn = new VisionFadeInClock3D();
   // Scoped render pruning stamps visible meshes with this token instead
   // of building a JS Set of all visible unit ids every frame.
   private unitRenderScopeToken = 0;
@@ -447,13 +471,24 @@ export class Render3DEntities {
       },
       (id, mesh) => this.disposeDeadUnitMesh(id, mesh),
     );
+    // OUT-OF-VISION units: coast at the last presented linear velocity while
+    // the fade falls. Same teardown as a death, none of the debris.
+    this.vanishingUnits = new DyingMeshFade<EntityMesh>(
+      VISION_FADE_OUT_MS,
+      (mesh, fade, dtMs) => {
+        this.vanishingUnitMotion.advance(mesh, dtMs);
+        this.applyUnitEntityFade(mesh, fade, null);
+      },
+      (id, mesh) => this.disposeDeadUnitMesh(id, mesh),
+    );
   }
 
-  /** Shared teardown for a unit mesh once its death fade has run out: drop
-   *  the per-object fade clones, free the locomotion + instanced
+  /** Shared teardown for a unit mesh once its death or vision fade has run
+   *  out: drop the per-object fade clones, free the locomotion + instanced
    *  slots, and detach the group from the world. */
   private disposeDeadUnitMesh(id: EntityId, mesh: EntityMesh): void {
     this.dyingUnitScatter.forget(mesh);
+    this.vanishingUnitMotion.forget(mesh);
     disposeEntityGroupFade(mesh.group);
     destroyLocomotion(mesh.locomotion, this.legRenderer);
     this.world.remove(mesh.group);
@@ -462,14 +497,11 @@ export class Render3DEntities {
     this.activeLocomotionUnitIds.delete(id);
   }
 
-  private advanceSpawnFadeIn(id: EntityId): number {
-    return advanceUnitVisionFadeIn(this.spawnFadeElapsed, id, this._currentDtMs);
-  }
-
   /** Flag an entity as DESTROYED so its mesh plays the death fade when it
    *  leaves the live set. Driven by 'death' SimEvents (see RtsScene3D);
-   *  entities that merely leave vision are removed immediately. Runs before
-   *  the render removal queue consumes the entity id, while the mesh is live. */
+   *  entities that merely leave vision take the quieter vision fade-out
+   *  instead. Runs before the render removal queue consumes the entity id,
+   *  while the mesh is live. */
   markEntityKilled(id: EntityId, blast?: EntityDeathBlast3D): void {
     const m = this.unitMeshes.get(id);
     if (m) {
@@ -517,6 +549,10 @@ export class Render3DEntities {
       ?? DEFAULT_ENTITY_EMISSION_FAR_LOD;
     this.entityDetailRung = entityPacket?.entityDetailRung;
     this.entityLodProxyFadeAlpha = entityPacket?.entityLodProxyFadeAlpha;
+    this.entityVisionPresenceAlpha = entityPacket?.entityVisionPresenceAlpha;
+    this.visionTimeFades = entityPacket?.visionTimeFades !== false;
+    this.visionFadeIn.setEnabled(this.visionTimeFades);
+    this.vanishingProxyGhosts.setEnabled(this.visionTimeFades);
     this.unitRebuildBudgetLeft = DETAIL_REBUILD_BUDGET_UNITS;
     this.renderFrameCounter++;
     this.beamPilotLights.update(
@@ -569,6 +605,8 @@ export class Render3DEntities {
       entityPacket?.scoped === true,
       this.entityDetailRung,
       this.entityLodProxyFadeAlpha,
+      this.entityVisionPresenceAlpha,
+      this.visionTimeFades,
     );
     // Buildings and dying building collars write into the same world-pooled
     // ornament renderer as units. Flush only after both entity paths have
@@ -777,6 +815,25 @@ export class Render3DEntities {
       if (this.dyingUnits.size > 0 && this.dyingUnits.has(entityId)) {
         this.dyingUnits.finalize(entityId);
       }
+      // Re-sighted while its vision fade-out was still running: finalize the
+      // retained visual and resume the rise from the alpha the fall reached,
+      // so a unit skirmishing the rim of vision never pops.
+      if (this.vanishingUnits.size > 0 && this.vanishingUnits.has(entityId)) {
+        this.visionFadeIn.seedFromAlpha(entityId, this.vanishingUnits.fadeOf(entityId));
+        this.vanishingUnits.finalize(entityId);
+      }
+      if (this.vanishingProxyGhosts.size > 0) {
+        const ghostFade = this.vanishingProxyGhosts.recall(entityId);
+        if (ghostFade >= 0) this.visionFadeIn.seedFromAlpha(entityId, ghostFade);
+      }
+      // The vision rise is keyed on the sighting, whichever representation
+      // draws it: a glyph fades in like a model, and a later LOD promotion
+      // finds the clock already at one. The DISTANCE presence (1 in TIME
+      // mode) multiplies in so both modes drive the one alpha.
+      const presenceAlpha = this.entityVisionPresenceAlpha !== undefined
+        ? this.entityVisionPresenceAlpha(unitRows.entityAt(row)!)
+        : 1;
+      const visionFadeIn = this.visionFadeIn.advance(entityId, this._currentDtMs) * presenceAlpha;
       const useLodProxy = unitRows.lodProxyAt(row);
       let m = this.unitMeshes.get(entityId);
       if (useLodProxy) {
@@ -787,6 +844,21 @@ export class Render3DEntities {
           unitRows.lodProxyRadius[row],
           unitRows.lodProxyGlyph[row],
           unitRows.ownerIdAt(row),
+          visionFadeIn,
+        );
+        // Remember the glyph as this id's last drawn form so a vision loss
+        // at this rung fades the glyph out instead of popping it.
+        this.vanishingProxyGhosts.noteRow(
+          entityId,
+          unitRows.x[row],
+          unitRows.y[row],
+          unitRows.z[row],
+          unitRows.lodProxyRadius[row],
+          unitRows.lodProxyGlyph[row],
+          unitRows.ownerIdAt(row),
+          unitRows.velocityX[row],
+          unitRows.velocityY[row],
+          0,
         );
         if (m !== undefined) {
           if (pruneUnits) m.renderSeenToken = pruneToken;
@@ -830,7 +902,7 @@ export class Render3DEntities {
           unitRows.lodProxyRadius[row],
           unitRows.lodProxyGlyph[row],
           unitRows.ownerIdAt(row),
-          proxyFadeAlpha,
+          proxyFadeAlpha * visionFadeIn,
         );
       }
       const detailLevel = detailLevelForRung(detailRung);
@@ -901,7 +973,11 @@ export class Render3DEntities {
       applyUnitLiftGroupPose3D(m, e);
       // Preserve the last velocity while this row is visible. If vision drops
       // the next packet removes the row, so the retained visual uses this
-      // render-axis vector to coast through its fade instead of freezing.
+      // render-axis vector (x, up, z) to coast through its fade instead of
+      // freezing. Sim up is render Y; sim Y is render Z.
+      m.unitPresentationVelocityX = unitRows.velocityX[row];
+      m.unitPresentationVelocityY = e.unit.velocityZ ?? 0;
+      m.unitPresentationVelocityZ = unitRows.velocityY[row];
       // Below the animation rung the spin state stops advancing — the
       // spin group FREEZES at its last angle (turretPose keeps writing
       // the stored value) instead of snapping to zero.
@@ -935,7 +1011,6 @@ export class Render3DEntities {
       // local player's vision eases in instead of appearing instantly;
       // the two alpha reasons multiply (a half-built unit just scouted
       // fades toward its current build opacity, not past it).
-      const visionFadeIn = this.advanceSpawnFadeIn(entityId);
       const bodyOpacity = unitRows.bodyOpacity[row] * visionFadeIn;
       setObjectVisibleIfChanged(m.chassis, fullUnitDetail && bodyOpacity > 0);
 
@@ -1325,6 +1400,8 @@ export class Render3DEntities {
     // Advance any in-progress fade-outs before the flush so their updated
     // per-instance fade is uploaded this frame.
     this.dyingUnits.update(this._currentDtMs);
+    this.vanishingUnits.update(this._currentDtMs);
+    this.vanishingProxyGhosts.update(this._currentDtMs, this.pushVanishingUnitProxy);
     this.unitDetailInstances.flush(this.turretShieldPanelsEnabled);
   }
 
@@ -1394,29 +1471,69 @@ export class Render3DEntities {
     this.turretMountCache.delete(id);
     this.locomotionStateCache.delete(id);
     this.unitLodVisualStateCache.delete(id);
-    this.spawnFadeElapsed.delete(id);
+    this.visionFadeIn.forget(id);
     this.activeLocomotionUnitIds.delete(id);
 
     const m = this.unitMeshes.get(id);
-    if (!m) return;
+    if (!m) {
+      // Only ever drawn as a glyph: that glyph is what fades out.
+      this.vanishingProxyGhosts.begin(id);
+      return;
+    }
     if (wasScopedHidden) {
+      this.vanishingProxyGhosts.forget(id);
       this.destroyUnitMesh(id, m);
       return;
     }
 
-    // A loss of full vision is intelligence state, not a cosmetic death:
-    // remove the model immediately so radar-only knowledge is represented
-    // solely by ContactBlipRenderer3D. Confirmed deaths retain their debris
-    // fade because that event itself was visible.
-    if (!m.killed) {
+    // World-parented overlays (range circles) and the selection ring leave
+    // immediately for every retained path; the body/turrets/locomotion stay
+    // for the render-only fade. The entity itself is already gone from the
+    // client store, so nothing can hover, select, bar or print the remains.
+    if (m.killed) {
+      // Confirmed death: debris scatter + death fade (that event was seen).
+      this.vanishingProxyGhosts.forget(id);
+      this.disposeWorldParentedOverlays(m, false);
+      if (m.deathBlast !== undefined) {
+        this.dyingUnitScatter.prepare(m, m.deathBlast);
+      }
+      this.dyingUnits.markDying(id, m, m.entityLifecycleFade);
+      this.unitMeshes.delete(id);
+      return;
+    }
+    if (m.renderLodProxyActive === true) {
+      // The model is parked behind the glyph; the glyph was the last thing
+      // drawn, so it is the glyph that fades.
+      this.destroyUnitMesh(id, m);
+      this.vanishingProxyGhosts.begin(id);
+      return;
+    }
+    if (!this.visionTimeFades) {
+      // DISTANCE mode: the edge already faded it; nothing is retained.
+      this.vanishingProxyGhosts.forget(id);
       this.destroyUnitMesh(id, m);
       return;
     }
+    // Loss of full vision: the model coasts on its last presented velocity
+    // while its fade falls (EntityVisionFade3D). The contact blip that may
+    // replace it rises over the same interval, so the tiers cross-fade.
+    this.vanishingProxyGhosts.forget(id);
     this.disposeWorldParentedOverlays(m, false);
-    if (m.deathBlast !== undefined) {
-      this.dyingUnitScatter.prepare(m, m.deathBlast);
-    }
-    this.dyingUnits.markDying(id, m, m.entityLifecycleFade);
+    this.vanishingUnitMotion.prepare(
+      m,
+      {
+        x: m.unitPresentationVelocityX ?? 0,
+        y: m.unitPresentationVelocityY ?? 0,
+        z: m.unitPresentationVelocityZ ?? 0,
+      },
+      captureUnitRendererOwnedParts3D(
+        m,
+        this.legRenderer,
+        this.unitDetailInstances,
+        this.teamTrim,
+      ),
+    );
+    this.vanishingUnits.markDying(id, m, m.entityLifecycleFade);
     this.unitMeshes.delete(id);
   }
 
@@ -1561,9 +1678,11 @@ export class Render3DEntities {
       this.world.remove(m.group);
       this.disposeWorldParentedOverlays(m);
     }
-    // Drop any meshes still playing their death-out.
+    // Drop any meshes still playing their death-out or vision fade-out.
     this.dyingUnits.destroyAll();
-    this.spawnFadeElapsed.clear();
+    this.vanishingUnits.destroyAll();
+    this.vanishingProxyGhosts.clear();
+    this.visionFadeIn.clear();
     // Renderer-wide teardown — drop every cached leg snapshot, no
     // future build will consume them.
     this.locomotionStateCache.clear();

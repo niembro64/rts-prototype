@@ -488,6 +488,12 @@ export class DyingMeshFade<TMesh> {
     return this.dying.has(id);
   }
 
+  /** Current fade (1 → 0) of a dying mesh, or 1 when the id is not dying.
+   *  A representation re-sighted mid fade resumes its rise from here. */
+  fadeOf(id: EntityId): number {
+    return this.dying.get(id)?.fade ?? 1;
+  }
+
   /** Begin (or restart) a mesh fade at its currently rendered opacity. */
   markDying(id: EntityId, mesh: TMesh, startFade: number = 1): void {
     this.dying.set(id, { mesh, fade: THREE.MathUtils.clamp(startFade, 0, 1) });

@@ -56,6 +56,8 @@ import {
   getWallTriangleDebug,
   getWaypointDetail,
   getWaterBoundaryMode,
+  getVisionFadeBand,
+  getVisionFadeMode,
   getEntityHudToggle,
   getSelectionHudMode,
   setAudioScope,
@@ -111,12 +113,16 @@ import {
   setWallTriangleDebug,
   setWaypointDetail,
   setWaterBoundaryMode,
+  setVisionFadeBand,
+  setVisionFadeMode,
   setEntityHudToggle,
   setSelectionHudMode,
   type CameraSmoothMode,
   type CameraFollowMode,
   type ClientMode,
   type LodMode,
+  type VisionFadeBandWu,
+  type VisionFadeMode,
   type WaterBoundaryMode,
 } from '../clientBarConfig';
 import { audioManager } from '../game/audio/AudioManager';
@@ -258,6 +264,8 @@ export function useGameCanvasClientSettings({
   const cameraFollowMode = ref<CameraFollowMode>(getCameraFollowMode());
   const cameraFovDegrees = ref<CameraFovDegrees>(getCameraFovDegrees());
   const waterBoundaryMode = ref<WaterBoundaryMode>(getWaterBoundaryMode());
+  const visionFadeMode = ref<VisionFadeMode>(getVisionFadeMode());
+  const visionFadeBand = ref<VisionFadeBandWu>(getVisionFadeBand());
 
   /** Push the persisted light scales into the scene. Lights are plain scene
    *  properties, so this is all it takes — no rebuild, no material touch. */
@@ -343,6 +351,8 @@ export function useGameCanvasClientSettings({
     cameraFollowMode.value = getCameraFollowMode();
     cameraFovDegrees.value = getCameraFovDegrees();
     waterBoundaryMode.value = getWaterBoundaryMode();
+    visionFadeMode.value = getVisionFadeMode();
+    visionFadeBand.value = getVisionFadeBand();
     applyAudioRuntimeState();
     applyCameraFovDegrees(cameraFovDegrees.value);
   }
@@ -496,6 +506,16 @@ export function useGameCanvasClientSettings({
   function changeWaterBoundaryMode(mode: WaterBoundaryMode): void {
     setWaterBoundaryMode(mode);
     waterBoundaryMode.value = getWaterBoundaryMode();
+  }
+
+  function changeVisionFadeMode(mode: VisionFadeMode): void {
+    setVisionFadeMode(mode);
+    visionFadeMode.value = getVisionFadeMode();
+  }
+
+  function changeVisionFadeBand(band: VisionFadeBandWu): void {
+    setVisionFadeBand(band);
+    visionFadeBand.value = getVisionFadeBand();
   }
 
   const allRangesActive = computed(() =>
@@ -831,6 +851,8 @@ export function useGameCanvasClientSettings({
     cameraFollowMode,
     cameraFovDegrees,
     waterBoundaryMode,
+    visionFadeMode,
+    visionFadeBand,
     allRangesActive,
     allVolumesActive,
     SFX_CATEGORIES,
@@ -860,6 +882,8 @@ export function useGameCanvasClientSettings({
     changeCameraFovDegrees,
     changeCameraFovBy,
     changeWaterBoundaryMode,
+    changeVisionFadeMode,
+    changeVisionFadeBand,
     toggleAllRanges,
     toggleAllVolumes,
     toggleAudioSmoothing,

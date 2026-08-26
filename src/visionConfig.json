@@ -1,5 +1,5 @@
 {
-  "fadeInMs": 1000,
-  "contactFadeOutMs": 1000,
+  "fadeInMs": 500,
+  "fadeOutMs": 500,
   "deathFadeMs": 1200
 }

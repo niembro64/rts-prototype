@@ -27,6 +27,8 @@ import type {
   VolumeType,
   WaypointDetail,
   WaterBoundaryMode,
+  VisionFadeBandWu,
+  VisionFadeMode,
 } from './types/client';
 import { CAMERA_FOV_DEGREES } from './config';
 import { FOG_CONFIG } from './fogConfig';
@@ -47,6 +49,8 @@ export type {
   EntityHudType,
   LodMode,
   SelectionHudMode,
+  VisionFadeBandWu,
+  VisionFadeMode,
   WaterBoundaryMode,
 } from './types/client';
 export type ClientMode = 'demo' | 'real';
@@ -117,6 +121,8 @@ type ClientDefaults = {
   readonly cameraFollow: CameraFollowMode;
   readonly cameraFov: CameraFovDegrees;
   readonly waterBoundaryMode: WaterBoundaryMode;
+  readonly visionFadeMode: VisionFadeMode;
+  readonly visionFadeBand: VisionFadeBandWu;
   readonly dragPan: boolean;
   readonly sounds: Record<SoundCategory, boolean>;
   readonly rangeToggles: boolean;
@@ -212,6 +218,8 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     cameraFov: CAMERA_FOV_DEGREES,
     waterBoundaryMode:
       pickDefault(clientBarConfig.waterBoundaryMode, mode) as WaterBoundaryMode,
+    visionFadeMode: pickDefault(clientBarConfig.visionFadeMode, mode) as VisionFadeMode,
+    visionFadeBand: pickDefault(clientBarConfig.visionFadeBand, mode) as VisionFadeBandWu,
     dragPan: pickDefault(clientBarConfig.dragPan, mode),
     sounds: { ...pickDefault(clientBarConfig.sounds, mode) } as Record<SoundCategory, boolean>,
     rangeToggles: pickDefault(clientBarConfig.rangeToggles, mode),
@@ -337,6 +345,14 @@ export const CLIENT_CONFIG = {
     default: DEMO_CLIENT_DEFAULTS.waterBoundaryMode,
     options: clientBarConfig.waterBoundaryMode.options as OptionList<WaterBoundaryMode>,
   },
+  visionFadeMode: {
+    default: DEMO_CLIENT_DEFAULTS.visionFadeMode,
+    options: clientBarConfig.visionFadeMode.options as OptionList<VisionFadeMode>,
+  },
+  visionFadeBand: {
+    default: DEMO_CLIENT_DEFAULTS.visionFadeBand,
+    options: clientBarConfig.visionFadeBand.options as OptionList<VisionFadeBandWu>,
+  },
   dragPan: { default: DEMO_CLIENT_DEFAULTS.dragPan },
   sounds: { default: { ...DEMO_CLIENT_DEFAULTS.sounds } },
   rangeToggles: { default: DEMO_CLIENT_DEFAULTS.rangeToggles },
@@ -425,6 +441,8 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
       ...CLIENT_CONFIG.waterBoundaryMode,
       default: defaults.waterBoundaryMode,
     },
+    visionFadeMode: { ...CLIENT_CONFIG.visionFadeMode, default: defaults.visionFadeMode },
+    visionFadeBand: { ...CLIENT_CONFIG.visionFadeBand, default: defaults.visionFadeBand },
     dragPan: { default: defaults.dragPan },
     sounds: { default: { ...defaults.sounds } },
     rangeToggles: { default: defaults.rangeToggles },
@@ -494,6 +512,8 @@ type ClientStorageKeyName =
   | 'cameraFollow'
   | 'cameraFov'
   | 'waterBoundaryMode'
+  | 'visionFadeMode'
+  | 'visionFadeBand'
   | 'dragPan'
   | 'lobbyVisible'
   | 'waypointDetail'
@@ -549,6 +569,8 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'cameraFollow',
   'cameraFov',
   'waterBoundaryMode',
+  'visionFadeMode',
+  'visionFadeBand',
   'dragPan',
   'lobbyVisible',
   'waypointDetail',
@@ -608,6 +630,8 @@ let currentCameraSmoothMode: CameraSmoothMode = _cd.cameraSmooth.default;
 let currentCameraFollowMode: CameraFollowMode = _cd.cameraFollow.default;
 let currentCameraFovDegrees: CameraFovDegrees = _cd.cameraFov.default;
 let currentWaterBoundaryMode: WaterBoundaryMode = _cd.waterBoundaryMode.default;
+let currentVisionFadeMode: VisionFadeMode = _cd.visionFadeMode.default;
+let currentVisionFadeBand: VisionFadeBandWu = _cd.visionFadeBand.default;
 let currentAudioScope: AudioScope = _cd.audio.default;
 let currentMasterVolume: MasterVolumePercent = _cd.masterVolume.default;
 let currentEnvironmentLight: LightIntensityPercent = _cd.environmentLight.default;
@@ -742,6 +766,14 @@ function isWaterBoundaryMode(value: unknown): value is WaterBoundaryMode {
     value === 'floating-square-sea';
 }
 
+function isVisionFadeMode(value: unknown): value is VisionFadeMode {
+  return value === 'time' || value === 'distance' || value === 'both';
+}
+
+function isVisionFadeBand(value: unknown): value is VisionFadeBandWu {
+  return value === 32 || value === 64 || value === 128 || value === 256;
+}
+
 function isBuildGridDebugMode(value: unknown): value is BuildGridDebugMode {
   return value === 'none' ||
     value === 'ground-build-squares-hover' ||
@@ -762,6 +794,8 @@ function applyClientDefaults(mode: ClientMode): void {
   currentCameraFollowMode = cd.cameraFollow.default;
   currentCameraFovDegrees = cd.cameraFov.default;
   currentWaterBoundaryMode = cd.waterBoundaryMode.default;
+  currentVisionFadeMode = cd.visionFadeMode.default;
+  currentVisionFadeBand = cd.visionFadeBand.default;
   currentAudioScope = cd.audio.default;
   currentMasterVolume = cd.masterVolume.default;
   currentEnvironmentLight = cd.environmentLight.default;
@@ -873,6 +907,8 @@ function serializedClientDefaults(mode: ClientMode): Record<ClientStorageKeyName
     cameraFollow: String(cd.cameraFollow.default),
     cameraFov: String(cd.cameraFov.default),
     waterBoundaryMode: String(cd.waterBoundaryMode.default),
+    visionFadeMode: String(cd.visionFadeMode.default),
+    visionFadeBand: String(cd.visionFadeBand.default),
     dragPan: String(cd.dragPan.default),
     lobbyVisible: String(defaultLobbyVisible(mode)),
     waypointDetail: String(cd.waypointDetail.default),
@@ -1135,6 +1171,15 @@ function loadFromStorage(mode: ClientMode): void {
   const storedWaterBoundaryMode = readPersisted(keys.waterBoundaryMode);
   if (isWaterBoundaryMode(storedWaterBoundaryMode)) {
     currentWaterBoundaryMode = storedWaterBoundaryMode;
+  }
+  const storedVisionFadeMode = readPersisted(keys.visionFadeMode);
+  if (isVisionFadeMode(storedVisionFadeMode)) {
+    currentVisionFadeMode = storedVisionFadeMode;
+  }
+  const storedVisionFadeBand = readPersisted(keys.visionFadeBand);
+  if (storedVisionFadeBand !== null) {
+    const parsed = Number(storedVisionFadeBand);
+    if (isVisionFadeBand(parsed)) currentVisionFadeBand = parsed;
   }
   const storedClientUnitGroundNormal = readPersisted(keys.unitGroundNormalEmaMode);
   if (
@@ -1455,6 +1500,32 @@ export function setWaterBoundaryMode(mode: WaterBoundaryMode): void {
     ? mode
     : getClientConfig().waterBoundaryMode.default;
   persist(activeStorageKeys().waterBoundaryMode, currentWaterBoundaryMode);
+}
+
+/** VISION FADE presentation mode (see VisionFadeMode). Presentation only:
+ *  the sim's fog truth, recipient filtering and contact semantics are
+ *  untouched whichever mode draws them. Polled by the render phase. */
+export function getVisionFadeMode(): VisionFadeMode {
+  return currentVisionFadeMode;
+}
+
+export function setVisionFadeMode(mode: VisionFadeMode): void {
+  currentVisionFadeMode = isVisionFadeMode(mode)
+    ? mode
+    : getClientConfig().visionFadeMode.default;
+  persist(activeStorageKeys().visionFadeMode, currentVisionFadeMode);
+}
+
+/** Distance-fade band width (wu) inside the sight edge; contact band = 3x. */
+export function getVisionFadeBand(): VisionFadeBandWu {
+  return currentVisionFadeBand;
+}
+
+export function setVisionFadeBand(band: VisionFadeBandWu): void {
+  currentVisionFadeBand = isVisionFadeBand(band)
+    ? band
+    : getClientConfig().visionFadeBand.default;
+  persist(activeStorageKeys().visionFadeBand, String(currentVisionFadeBand));
 }
 
 export function getAudioScope(): AudioScope {

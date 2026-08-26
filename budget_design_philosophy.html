@@ -661,9 +661,37 @@
         sight mount even while its economy production is closed. Entity models are discrete
         intelligence results rather than fragments of the terrain shade: allied and fully sighted
         entities draw normally, contact-only enemies are generic contacts on both the minimap and
-        the battlefield, and hidden enemies are absent. The instant an enemy loses full sight its
-        full model is destroyed on the client; model fade-out may never leak identity into a
-        radar-only or unseen interval. Only the anonymous contact dot may retain its short fade.
+        the battlefield, and hidden enemies are absent. When an enemy loses full sight, its last
+        drawn representation &mdash; the full model or, at the far rungs, its glyph &mdash; is
+        retained by the renderer alone and falls to zero over the vision fade-out
+        (<code>visionConfig.json</code> <code>fadeOutMs</code>, 500 ms), coasting on the velocity it
+        was last presented with. That is presentation, not intelligence: the entity has already left
+        the client store, so nothing can hover, select, bar, print, shadow or target the remains; the
+        coast never runs past the fade; and the identity it shows for that half second is knowledge
+        the player already had. (An earlier rule destroyed the model on the same frame to keep
+        identity out of the radar-only interval. It bought nothing &mdash; the player had just been
+        looking at the unit &mdash; and cost a hard pop at every sight boundary.) A model re-sighted
+        mid fade resumes its rise from the alpha the fall had reached, so a unit skirmishing the rim
+        of vision never pops. Confirmed deaths are a different flow: debris scatter over the longer
+        death fade, because that event itself was seen.
+      </p>
+      <p>
+        The boundary crossing itself has two presentations, selectable live from the CLIENT bar as
+        <code>VISION FADE</code> so they can be compared in the same battle. <strong>TIME</strong>
+        is the duration fade above. <strong>DIST</strong> makes an enemy&rsquo;s alpha a function of
+        where it stands relative to the local team&rsquo;s sensor discs
+        (<code>VisionDistanceField3D</code>): fully opaque from a disc centre out to
+        <code>BAND</code> world units short of the edge, falling linearly to transparent at the
+        edge, taking the deepest disc where discs overlap; contact blips ramp the same way against
+        the radar and sonar discs over three times the band, the fog shade&rsquo;s own 64 / 192
+        softness ratio. No clocks: a unit skirmishing the rim sits at a stable partial alpha instead
+        of re-fading, and the rim never pops. <strong>BOTH</strong> multiplies the two. The band lies
+        <em>inside</em> the authoritative radius, never beyond it &mdash; an entity is only ever drawn
+        where the server already sent it &mdash; and terrain line of sight is not part of the ramp
+        (that is a binary truth the time fade covers). Own and allied entities are never faded by
+        distance; a watcher on ALL and a fog-off battle see everything at full alpha. All of it is
+        presentation: the sim&rsquo;s fog truth, recipient filtering and contact semantics are
+        identical in every mode.
       </p>
 
       <h3>Friendly jamming is painted on the terrain</h3>
@@ -741,9 +769,15 @@
         presentation snapshots &mdash; far slower than the render loop. The world blip therefore
         interpolates between its last two received positions, the same clamped glide the fixed-tick
         presentation history gives every other moving visual, and never extrapolates past the newest
-        sample while heard. Once returns stop, only the anonymous dot may coast briefly on its last
-        measured drift while its contact fade expires; a full entity model is never retained for
-        that presentation grace period.
+        sample while heard. Once returns stop, the anonymous dot coasts briefly on its last measured
+        drift while its fade expires &mdash; the same treatment a full model gets when it leaves
+        sight (<code>EntityVisionFade3D</code>). Blips and models share one pair of durations
+        (<code>fadeInMs</code> / <code>fadeOutMs</code>, both 500 ms, pinned equal by
+        <code>EntityVisionFade3DContractTest</code>): an enemy stepping into sight is a blip falling
+        under a model rising over the same interval, and dropping back to radar is the reverse, so
+        the tiers cross-fade instead of overlapping or leaving a gap. The rise is keyed on the first
+        sighting at any detail rung, never on which representation happened to be built, so a later
+        LOD promotion never re-fades a unit that has been in view all along.
       </p>
       <p>
         The extension is the medium. A contact carries which sensor lane earned it, and its blip sits
@@ -793,12 +827,17 @@
         Both full sight and contact sight are authored as a two-by-two matrix from source medium to
         target medium: above-to-above, above-to-underwater, underwater-to-above, and
         underwater-to-underwater. Only the row matching the source center is active on a tick.
-        Ordinary entities usually author the two same-medium entries; amphibious entities therefore
-        keep useful local sight when they cross the surface without seeing through it. Specialized
-        observers may deliberately author either cross-medium entry, and an entity that can operate
-        in both media and see both from either may author all four. A temporary scan pulse is an
-        explicit universal override: it contributes full sight to both target media without having
-        an entity center or an active source row.
+        Full sight <em>crosses the waterline</em>: water is a medium, not an occluder, so every
+        source row authors the same radius for both target columns, and an enemy inside a sensor's
+        sight radius is seen whichever side of the surface it is on &mdash; a surface hull sees the
+        submarine alongside it, a wading amphibian sees the beach it is climbing. (The earlier rule
+        authored only the same-medium entries, so a unit touching an enemy across the surface got
+        a contact dot and never the model; that contradicted the promise that anything inside team
+        sight is fully visible. <code>sensorWaterlineSightContractTest</code> pins the new one.)
+        Contact sight stays per medium by design: radar is the above-to-above lane and sonar the
+        under-to-under lane, and neither reaches across. A temporary scan pulse is an explicit
+        universal override: it contributes full sight to both target media without having an entity
+        center or an active source row.
       </p>
       <p>
         Radar is the ordinary above-water-to-above-water contact lane. Sonar is the ordinary

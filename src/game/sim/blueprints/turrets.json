@@ -2576,7 +2576,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 700,
-              "underwater": 0
+              "underwater": 700
             },
             "underwater": {
               "aboveWater": 0,
@@ -2647,7 +2647,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 180,
-              "underwater": 0
+              "underwater": 180
             },
             "underwater": {
               "aboveWater": 0,
@@ -2718,7 +2718,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 150,
-              "underwater": 0
+              "underwater": 150
             },
             "underwater": {
               "aboveWater": 0,
@@ -2789,7 +2789,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 300,
-              "underwater": 0
+              "underwater": 300
             },
             "underwater": {
               "aboveWater": 0,
@@ -2860,7 +2860,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 300,
-              "underwater": 0
+              "underwater": 300
             },
             "underwater": {
               "aboveWater": 0,
@@ -2931,7 +2931,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 150,
-              "underwater": 0
+              "underwater": 150
             },
             "underwater": {
               "aboveWater": 0,
@@ -3002,7 +3002,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 150,
-              "underwater": 0
+              "underwater": 150
             },
             "underwater": {
               "aboveWater": 0,
@@ -3073,7 +3073,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 350,
-              "underwater": 0
+              "underwater": 350
             },
             "underwater": {
               "aboveWater": 0,
@@ -3144,7 +3144,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 300,
-              "underwater": 0
+              "underwater": 300
             },
             "underwater": {
               "aboveWater": 0,
@@ -3215,7 +3215,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 300,
-              "underwater": 0
+              "underwater": 300
             },
             "underwater": {
               "aboveWater": 0,
@@ -3286,10 +3286,10 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 225,
-              "underwater": 0
+              "underwater": 225
             },
             "underwater": {
-              "aboveWater": 0,
+              "aboveWater": 225,
               "underwater": 225
             }
           },
@@ -3357,7 +3357,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 180,
-              "underwater": 0
+              "underwater": 180
             },
             "underwater": {
               "aboveWater": 180,
@@ -3428,7 +3428,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 300,
-              "underwater": 0
+              "underwater": 300
             },
             "underwater": {
               "aboveWater": 300,
@@ -3499,7 +3499,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 150,
-              "underwater": 0
+              "underwater": 150
             },
             "underwater": {
               "aboveWater": 0,
@@ -3570,7 +3570,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 250,
-              "underwater": 0
+              "underwater": 250
             },
             "underwater": {
               "aboveWater": 0,
@@ -3641,7 +3641,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 150,
-              "underwater": 0
+              "underwater": 150
             },
             "underwater": {
               "aboveWater": 0,
@@ -3712,7 +3712,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 250,
-              "underwater": 0
+              "underwater": 250
             },
             "underwater": {
               "aboveWater": 0,
@@ -3783,7 +3783,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 250,
-              "underwater": 0
+              "underwater": 250
             },
             "underwater": {
               "aboveWater": 0,
@@ -3854,7 +3854,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 250,
-              "underwater": 0
+              "underwater": 250
             },
             "underwater": {
               "aboveWater": 0,
@@ -3925,7 +3925,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 200,
-              "underwater": 0
+              "underwater": 200
             },
             "underwater": {
               "aboveWater": 200,
@@ -3996,7 +3996,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 450,
-              "underwater": 0
+              "underwater": 450
             },
             "underwater": {
               "aboveWater": 0,
@@ -4067,7 +4067,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 300,
-              "underwater": 0
+              "underwater": 300
             },
             "underwater": {
               "aboveWater": 0,
@@ -4138,7 +4138,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 300,
-              "underwater": 0
+              "underwater": 300
             },
             "underwater": {
               "aboveWater": 0,
@@ -4209,7 +4209,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 250,
-              "underwater": 0
+              "underwater": 250
             },
             "underwater": {
               "aboveWater": 0,
@@ -4280,7 +4280,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 600,
-              "underwater": 0
+              "underwater": 600
             },
             "underwater": {
               "aboveWater": 0,
@@ -4351,7 +4351,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 400,
-              "underwater": 0
+              "underwater": 400
             },
             "underwater": {
               "aboveWater": 0,
@@ -4422,7 +4422,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 1200,
-              "underwater": 0
+              "underwater": 1200
             },
             "underwater": {
               "aboveWater": 0,
@@ -4493,7 +4493,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 1200,
-              "underwater": 0
+              "underwater": 1200
             },
             "underwater": {
               "aboveWater": 0,
@@ -4564,7 +4564,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 1200,
-              "underwater": 0
+              "underwater": 1200
             },
             "underwater": {
               "aboveWater": 0,
@@ -4635,7 +4635,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 1200,
-              "underwater": 0
+              "underwater": 1200
             },
             "underwater": {
               "aboveWater": 0,
@@ -4777,7 +4777,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 1200,
-              "underwater": 0
+              "underwater": 1200
             },
             "underwater": {
               "aboveWater": 0,
@@ -4919,7 +4919,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 1200,
-              "underwater": 0
+              "underwater": 1200
             },
             "underwater": {
               "aboveWater": 0,
@@ -4990,7 +4990,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 1200,
-              "underwater": 0
+              "underwater": 1200
             },
             "underwater": {
               "aboveWater": 0,
@@ -5061,7 +5061,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 1200,
-              "underwater": 0
+              "underwater": 1200
             },
             "underwater": {
               "aboveWater": 0,
@@ -5132,7 +5132,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 1200,
-              "underwater": 0
+              "underwater": 1200
             },
             "underwater": {
               "aboveWater": 0,
@@ -5203,7 +5203,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 1200,
-              "underwater": 0
+              "underwater": 1200
             },
             "underwater": {
               "aboveWater": 0,
@@ -5274,7 +5274,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 1200,
-              "underwater": 0
+              "underwater": 1200
             },
             "underwater": {
               "aboveWater": 0,
@@ -5345,7 +5345,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 1200,
-              "underwater": 0
+              "underwater": 1200
             },
             "underwater": {
               "aboveWater": 0,
@@ -5515,7 +5515,7 @@
         "rangeVolume": "turret-range-sphere",
         "sensors": {
           "fullSight": {
-            "aboveWater": { "aboveWater": 1200, "underwater": 0 },
+            "aboveWater": { "aboveWater": 1200, "underwater": 1200 },
             "underwater": { "aboveWater": 0, "underwater": 0 }
           },
           "contactSight": {
@@ -5663,7 +5663,7 @@
           "fullSight": {
             "aboveWater": {
               "aboveWater": 250,
-              "underwater": 0
+              "underwater": 250
             },
             "underwater": {
               "aboveWater": 0,
@@ -5720,7 +5720,7 @@
       "observation": {
         "sensors": {
           "fullSight": {
-            "aboveWater": { "aboveWater": 600, "underwater": 0 },
+            "aboveWater": { "aboveWater": 600, "underwater": 600 },
             "underwater": { "aboveWater": 0, "underwater": 0 }
           },
           "contactSight": {
@@ -5742,8 +5742,8 @@
       "observation": {
         "sensors": {
           "fullSight": {
-            "aboveWater": { "aboveWater": 600, "underwater": 0 },
-            "underwater": { "aboveWater": 0, "underwater": 600 }
+            "aboveWater": { "aboveWater": 600, "underwater": 600 },
+            "underwater": { "aboveWater": 600, "underwater": 600 }
           },
           "contactSight": {
             "aboveWater": { "aboveWater": 0, "underwater": 900 },
@@ -5764,7 +5764,7 @@
       "observation": {
         "sensors": {
           "fullSight": {
-            "aboveWater": { "aboveWater": 400, "underwater": 0 },
+            "aboveWater": { "aboveWater": 400, "underwater": 400 },
             "underwater": { "aboveWater": 0, "underwater": 0 }
           },
           "contactSight": {
@@ -5786,7 +5786,7 @@
       "observation": {
         "sensors": {
           "fullSight": {
-            "aboveWater": { "aboveWater": 150, "underwater": 0 },
+            "aboveWater": { "aboveWater": 150, "underwater": 150 },
             "underwater": { "aboveWater": 0, "underwater": 0 }
           },
           "contactSight": {
@@ -5878,7 +5878,7 @@
       "observation": {
         "sensors": {
           "fullSight": {
-            "aboveWater": { "aboveWater": 250, "underwater": 0 },
+            "aboveWater": { "aboveWater": 250, "underwater": 250 },
             "underwater": { "aboveWater": 0, "underwater": 0 }
           }
         }
@@ -5898,7 +5898,7 @@
       "observation": {
         "sensors": {
           "fullSight": {
-            "aboveWater": { "aboveWater": 250, "underwater": 0 },
+            "aboveWater": { "aboveWater": 250, "underwater": 250 },
             "underwater": { "aboveWater": 0, "underwater": 0 }
           }
         }
@@ -5913,7 +5913,7 @@
       "observation": {
         "sensors": {
           "fullSight": {
-            "aboveWater": { "aboveWater": 250, "underwater": 0 },
+            "aboveWater": { "aboveWater": 250, "underwater": 250 },
             "underwater": { "aboveWater": 0, "underwater": 0 }
           }
         }
@@ -5959,7 +5959,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": { "aboveWater": 0, "underwater": 0 },
-            "underwater": { "aboveWater": 0, "underwater": 250 }
+            "underwater": { "aboveWater": 250, "underwater": 250 }
           },
           "contactSight": {
             "aboveWater": { "aboveWater": 0, "underwater": 0 },
@@ -5987,7 +5987,7 @@
       "observation": {
         "sensors": {
           "fullSight": {
-            "aboveWater": { "aboveWater": 300, "underwater": 0 },
+            "aboveWater": { "aboveWater": 300, "underwater": 300 },
             "underwater": { "aboveWater": 0, "underwater": 0 }
           }
         }

@@ -367,7 +367,9 @@ export function runFullUtilizationRosterContractTest(): void {
     assertContract(
       sensors.fullSight.aboveWater.aboveWater === 0 &&
         sensors.fullSight.aboveWater.underwater === 0 &&
-        sensors.fullSight.underwater.aboveWater === 0 &&
+        // Full sight crosses the waterline: the submerged row reaches the
+        // surface to the same 250 (a periscope), never further.
+        sensors.fullSight.underwater.aboveWater === 250 &&
         sensors.fullSight.underwater.underwater === 250 &&
         getMaximumSensorMatrixRadius(sensors.contactSight) === 250 &&
         sensors.contactSight.underwater.underwater === 250,

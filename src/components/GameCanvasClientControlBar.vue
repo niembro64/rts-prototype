@@ -893,6 +893,35 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
+        <BarLabel title="How an enemy crosses the edge of your team's vision. Presentation only: what the server reveals never changes. TIME fades the last drawn model/glyph/blip over the visionConfig durations, coasting on its last velocity. DIST makes alpha a function of distance to the nearest friendly sensor edge (opaque BAND world units inside the edge, transparent at it) with no clocks. BOTH multiplies the two.">VISION FADE:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.visionFadeMode.options"
+            :key="opt.value"
+            :active="model.visionFadeMode === opt.value"
+            :title="
+              opt.value === 'time'
+                ? 'Duration-based: fade the last drawn representation in/out over fixed durations, coasting on its last velocity'
+                : opt.value === 'distance'
+                  ? 'Distance-based: alpha ramps from opaque BAND units inside the sensor edge to transparent at the edge; no clocks'
+                  : 'Both: the duration fade multiplied by the distance ramp'
+            "
+            @click="model.changeVisionFadeMode(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+        <BarLabel title="Width (world units) of the distance-fade band inside the sight edge. The radar/sonar band is three times this, matching the fog shade's 64/192 edge softness.">BAND:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.visionFadeBand.options"
+            :key="opt.value"
+            :active="model.visionFadeBand === opt.value"
+            :title="`Distance fade band: opaque ${opt.value} world units inside the sight edge (${opt.value * 3} inside the radar/sonar edge)`"
+            @click="model.changeVisionFadeBand(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
         <BarLabel>SHADOW:</BarLabel>
         <BarButton
           :active="model.entityShadows"
