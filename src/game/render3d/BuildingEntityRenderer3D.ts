@@ -541,9 +541,15 @@ export class BuildingEntityRenderer3D {
   private readonly applyRisingBuildingFade = (id: EntityId, alpha: number): void => {
     const mesh = this.meshes.get(id);
     if (mesh === undefined) return;
-    const entity = this.clientViewState.getEntity(id);
-    const presence = entity !== undefined ? this.visionPresenceAlpha(entity) : 1;
-    this.applyBuildingEntityFade(mesh, (mesh.buildingMaterializationOpacity ?? 1) * alpha * presence);
+    // Only the DISTANCE mode needs the entity (for its presence); TIME mode
+    // stays a pure id -> mesh path.
+    const entity = this.entityVisionPresenceAlpha !== undefined
+      ? this.clientViewState.getEntity(id)
+      : undefined;
+    this.applyBuildingEntityFade(
+      mesh,
+      (mesh.buildingMaterializationOpacity ?? 1) * alpha * (entity !== undefined ? this.visionPresenceAlpha(entity) : 1),
+    );
   };
   /** DISTANCE vision-fade presence callback for this frame (absent = 1). */
   private entityVisionPresenceAlpha: ((entity: Entity) => number) | undefined;
