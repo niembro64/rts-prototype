@@ -348,6 +348,15 @@ export function useGameCanvasClientSettings({
   }
 
   applyAudioRuntimeState();
+  // The refs above were read from storage, but a ref is only the BAR's copy.
+  // RenderLighting3D keeps its own scales, and they boot at 1.0 ("as
+  // configured") until something pushes into them — which, before this line,
+  // was only a mode switch or a DEFAULTS click. So a refresh showed the stored
+  // percents in the bar while the scene rendered at 100% everything, and the
+  // first DEFAULTS click "fixed" it by finally pushing. Registration re-applies
+  // whatever scales are current, so pushing here is safe whether or not the
+  // world scene exists yet.
+  applyLightRuntimeState();
 
   watch(currentClientMode, (mode) => {
     setClientMode(mode);

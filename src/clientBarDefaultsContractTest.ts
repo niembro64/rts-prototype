@@ -1,4 +1,5 @@
 import rawClientBarConfig from './clientBarConfig.json';
+import { getLightingScales } from './game/render3d/RenderLighting3D';
 import {
   AA_MSAA_MODE_DEFAULT,
   AA_RESOLUTION_MODE_DEFAULT,
@@ -53,6 +54,23 @@ export function runClientBarDefaultsContractTest(): void {
   const saved = new Map(
     [...allModeKeys, ...globalKeys].map((key) => [key, window.localStorage.getItem(key)]),
   );
+  // The booted app must already be RENDERING the stored lighting, not just
+  // showing it in the bar: the renderer's scales are the stored percents / 100.
+  // A refresh that left the scene at 1.0 while the bar read 150/1500 was the
+  // "DEFAULTS does not stick" report — storage was right, the push was missing.
+  {
+    const scales = getLightingScales();
+    const near = (scale: number, percent: number): boolean =>
+      Math.abs(scale - percent / 100) < 1e-6;
+    assertContract(
+      near(scales.environment, getEnvironmentLight()) &&
+        near(scales.ambient, getAmbientLight()) &&
+        near(scales.directional, getDirectionalLight()) &&
+        near(scales.background, getSkyLight()) &&
+        near(scales.exposure, getExposure()),
+      'the booted renderer must carry the CLIENT bar\'s stored lighting, not its 1.0 module defaults',
+    );
+  }
   const originalLod = getLodMode();
   const originalMsaa = getAaMsaaMode();
   const originalResolution = getAaResolutionMode();

@@ -211,6 +211,12 @@ export function setTerrainBakedLightingEnabled(enabled: boolean): void {
   terrainBakedLightingUniform.value = enabled ? 1 : 0;
 }
 
+/** The scales the renderer is actually using — what a contract test compares
+ *  against the CLIENT bar's stored percents to prove the boot pushed them. */
+export function getLightingScales(): Readonly<LightingScales> {
+  return { ...scales };
+}
+
 // Dev-only handle on the registered scene. Reaching the world scene is
 // otherwise impossible from outside the renderer, and "what is still lit when
 // every light is at zero" is a question only the live scene can answer.
