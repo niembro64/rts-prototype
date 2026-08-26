@@ -50,42 +50,13 @@ export interface PathfinderApi {
     waypointOut: Uint8Array,
     moveOut: Uint8Array,
   ) => number;
-  /** Run findPath. Writes smoothed waypoints into the WASM-side
-   *  scratch buffer as interleaved (x, y) f64 pairs; returns the
-   *  waypoint COUNT (not the f64 element count). Waypoint-domain flags own
-   *  intentional destinations/entries; move-domain flags own physical
-   *  traversal and recovery from external displacement. */
-  findPath: (
-    startX: number, startY: number,
-    goalX: number, goalY: number,
-    minGroundNormalZ: number,
-    waterSurfaceSupported: boolean,
-    supportPointOffsetZ: number,
-    waypointAllowOnGround: boolean,
-    waypointAllowInWater: boolean,
-    waypointAllowInAir: boolean,
-    moveAllowOnGround: boolean,
-    moveAllowInWater: boolean,
-    moveAllowInAir: boolean,
-    /** Unit collision radius in world units. Blockers are kept this far from
-     *  the route (clearance field) so a body is not squeezed through gaps it
-     *  cannot fit. 0 = point-size (no clearance gate). */
-    unitRadius: number,
-    /** Dry-ground tangential acceleration after drive-force and grip clamps.
-     *  Used only for normalized slope travel time; 0 disables slope cost. */
-    flatDriveAccel: number,
-    /** Safety-reduced drive acceleration used for hard feasibility. */
-    safeDriveAccel: number,
-    /** Flat wet-contact acceleration after ground grip and water propulsion. */
-    flatWaterContactAccel: number,
-    /** Safety-reduced independent water-propulsion acceleration. */
-    safeWaterDriveAccel: number,
-    /** Coulomb surface-grip coefficient used for cross-slope force budget. */
-    staticFrictionCoefficient: number,
-    /** When true (SYMMETRIC), apply the inter-cell climb gate both ways;
-     *  otherwise preserve controlled descent between locally valid cells. */
-    symmetricSlope: boolean,
-  ) => number;
+  /** There is deliberately NO synchronous whole-route search on this API.
+   *  Every search is a resumable slice with a work budget; a route that does
+   *  not finish inside its slice is retained and resumed next tick. The
+   *  synchronous export was removed on 2026-08-26 after it froze production
+   *  under whole-army line moves for the third time — see
+   *  budget_design_philosophy.html "Path searches are resumable fixed-tick
+   *  jobs" and massMovePathBudgetContractTest. */
   /** Start or resume the same fine-grid query, closing no more than the given
    *  number of A* nodes. Zero waypoints plus result status 4 means pending. */
   findPathSlice: (
@@ -118,7 +89,14 @@ export interface PathfinderApi {
   /** Drop traffic heat, per-class hierarchy graphs and retained frontiers so a
    *  match starts from identical caches on every peer. */
   resetMatchState: () => void;
-  /** Resolution code for the most recent findPath call:
+  /** Cells within which a building change can alter clearance (the EDT
+   *  clamp, owned by Rust). */
+  clearanceReachCells: () => number;
+  /** Monotonic telemetry: every work unit every search has charged since
+   *  init, whichever API ran it. Never hashed. Read across one fixed tick it
+   *  bounds ALL pathfinding work that tick performed. */
+  totalWorkUnits: () => number;
+  /** Resolution code for the most recent findPathSlice call:
    *  0 unreachable, 1 complete, 2 snapped, 3 partial, 4 pending. */
   lastResultStatus: () => number;
   /** Search strategy: 0 none, 1 direct, 2 hierarchical, 3 fine A*. */

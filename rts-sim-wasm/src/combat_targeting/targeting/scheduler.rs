@@ -864,7 +864,8 @@ pub(crate) fn combat_targeting_auto_mode_tick_from_slab(
     cached_fire_ranks: &mut [u8],
     cached_fire_dist_sqs: &mut [f64],
     max_targetable_radius: f64,
-) {
+    allow_scan: bool,
+) -> u8 {
     combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
         entity_slot,
         source_entity_id,
@@ -893,8 +894,16 @@ pub(crate) fn combat_targeting_auto_mode_tick_from_slab(
         cached_fire_ranks,
         cached_fire_dist_sqs,
         max_targetable_radius,
-    );
+        allow_scan,
+    )
 }
+
+/// Outcome of one source's auto scan this tick.
+pub(crate) const CT_AUTO_SCAN_NOT_NEEDED: u8 = 0;
+pub(crate) const CT_AUTO_SCAN_RAN: u8 = 1;
+/// The scan was wanted but the tick's acquisition budget was spent: the
+/// source keeps whatever locks it has and retries next tick.
+pub(crate) const CT_AUTO_SCAN_DEFERRED: u8 = 2;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn combat_targeting_auto_scan_from_slab(
@@ -910,9 +919,10 @@ pub(crate) fn combat_targeting_auto_scan_from_slab(
     cached_fire_ranks: &mut [u8],
     cached_fire_dist_sqs: &mut [f64],
     max_targetable_radius: f64,
-) {
+    allow_scan: bool,
+) -> u8 {
     let mut out_f64 = [0.0f64; 2];
-    let needs_spatial_query = combat_targeting_prepare_auto_scan(
+    let mut needs_spatial_query = combat_targeting_prepare_auto_scan(
         entity_slot,
         current_tick,
         turret_shield_panels_enabled,
@@ -921,6 +931,16 @@ pub(crate) fn combat_targeting_auto_scan_from_slab(
         cached_fire_dist_sqs,
         &mut out_f64,
     );
+    let outcome = if needs_spatial_query == 0 {
+        CT_AUTO_SCAN_NOT_NEEDED
+    } else if allow_scan {
+        CT_AUTO_SCAN_RAN
+    } else {
+        // Denying the scan is exactly the "no scan needed" path: existing
+        // locks were validated above, no candidates are gathered.
+        needs_spatial_query = 0;
+        CT_AUTO_SCAN_DEFERRED
+    };
 
     combat_targeting_auto_mode_spatial_candidate_tick(
         entity_slot,
@@ -938,6 +958,7 @@ pub(crate) fn combat_targeting_auto_scan_from_slab(
         out_f64[1],
         max_targetable_radius,
     );
+    outcome
 }
 
 /// AIM-08.5 — mixed-mode per-tick targeting batch. TypeScript still
@@ -1050,7 +1071,8 @@ pub fn combat_targeting_tick_batch(
                     &mut cached_fire_ranks[start..end],
                     &mut cached_fire_dist_sqs[start..end],
                     max_targetable_radius,
-                );
+                true,
+            );
             }
         }
         if matches!(
@@ -1108,29 +1130,54 @@ pub fn combat_targeting_schedule_and_tick_batch(
     out_had_cooldown: &mut [u8],
     out_modes: &mut [u8],
     out_has_active_work: &mut [u8],
+    acquisition_scan_budget: u32,
 ) {
     const MAX: usize = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize;
     let count = source_slots
         .len()
         .min(out_had_cooldown.len())
         .min(out_modes.len())
-        .min(out_has_active_work.len());
+        .min(out_has_active_work.len())
+        .min(cached_fire_ranks.len() / MAX)
+        .min(cached_fire_dist_sqs.len() / MAX);
 
     // Priority hosts bypass the probe-tick gate (their FSM owns the aim
     // every tick), but the TRAILING fallback scan — which only serves
     // sibling mounts that rejected the ordered target — takes the same
     // phased cadence idle hosts use, sharded by entity id.
     let reacq = reacquire_period_ticks.max(1);
-    for entity_i in 0..count {
+    // Acquisition scans (candidate gathering for auto-mode hosts without a
+    // lock) are the expensive half of this batch and used to be bounded
+    // only by the 16-tick phase shard — which every host with FSM work
+    // bypasses, so a 200-unit engagement put all 200 on the every-tick
+    // scan path at once. A per-tick scan budget (0 = unlimited) bounds
+    // them; a host past the budget keeps its locks, skips only its scan,
+    // and is forced to retry next tick. The batch starts from the first
+    // host deferred last tick, so the budget rotates instead of starving
+    // the tail. Existing-lock validation and firing still run for every
+    // host every tick.
+    let cursor = {
+        let pool = combat_targeting_pool();
+        let slot = pool.acquisition_cursor_slot;
+        if slot < 0 {
+            0
+        } else {
+            source_slots[..count]
+                .iter()
+                .position(|&s| s as i64 == slot)
+                .unwrap_or(0)
+        }
+    };
+    let mut scans_done: u32 = 0;
+    let mut first_deferred: Option<usize> = None;
+    for k in 0..count {
+        let entity_i = (cursor + k) % count;
         out_modes[entity_i] = CT_TARGETING_TICK_MODE_SKIP;
         out_had_cooldown[entity_i] = 0;
         out_has_active_work[entity_i] = 0;
 
         let start = entity_i * MAX;
         let end = start + MAX;
-        if end > cached_fire_ranks.len() || end > cached_fire_dist_sqs.len() {
-            break;
-        }
 
         let (
             source_entity_id,
@@ -1296,7 +1343,8 @@ pub fn combat_targeting_schedule_and_tick_batch(
                 &mut cached_fire_ranks[start..end],
                 &mut cached_fire_dist_sqs[start..end],
                 max_targetable_radius,
-            );
+            true,
+        );
             combat_targeting_apply_slaved_mount_targets(
                 entity_slot,
                 source_entity_id,
@@ -1341,7 +1389,8 @@ pub fn combat_targeting_schedule_and_tick_batch(
                     &mut cached_fire_ranks[start..end],
                     &mut cached_fire_dist_sqs[start..end],
                     max_targetable_radius,
-                );
+                true,
+            );
             }
             out_modes[entity_i] = CT_TARGETING_TICK_MODE_PRIORITY_POINT;
             out_has_active_work[entity_i] =
@@ -1406,7 +1455,8 @@ pub fn combat_targeting_schedule_and_tick_batch(
                 &mut cached_fire_ranks[start..end],
                 &mut cached_fire_dist_sqs[start..end],
                 max_targetable_radius,
-            );
+            true,
+        );
             combat_targeting_apply_slaved_mount_targets(
                 entity_slot,
                 source_entity_id,
@@ -1426,7 +1476,8 @@ pub fn combat_targeting_schedule_and_tick_batch(
         if priority_target_id >= 0 {
             combat_targeting_clear_stale_task_locks(entity_slot);
         }
-        combat_targeting_auto_mode_tick_from_slab(
+        let allow_scan = acquisition_scan_budget == 0 || scans_done < acquisition_scan_budget;
+        let scan_outcome = combat_targeting_auto_mode_tick_from_slab(
             entity_slot,
             source_entity_id,
             current_tick,
@@ -1440,7 +1491,20 @@ pub fn combat_targeting_schedule_and_tick_batch(
             &mut cached_fire_ranks[start..end],
             &mut cached_fire_dist_sqs[start..end],
             max_targetable_radius,
+            allow_scan,
         );
+        if scan_outcome == CT_AUTO_SCAN_RAN {
+            scans_done += 1;
+        } else if scan_outcome == CT_AUTO_SCAN_DEFERRED {
+            // The bridge turns a cooldown flag into "probe again next tick";
+            // that is exactly the retry a deferred scan needs.
+            out_had_cooldown[entity_i] = 1;
+            if first_deferred.is_none() {
+                first_deferred = Some(entity_i);
+            }
+            let pool = combat_targeting_pool();
+            pool.acquisition_deferrals_total += 1.0;
+        }
         combat_targeting_apply_slaved_mount_targets(
             entity_slot,
             source_entity_id,
@@ -1455,6 +1519,22 @@ pub fn combat_targeting_schedule_and_tick_batch(
         out_has_active_work[entity_i] =
             combat_targeting_refresh_activity_masks_for_entity_and_read_active(entity_slot);
     }
+    let pool = combat_targeting_pool();
+    pool.acquisition_cursor_slot = first_deferred.map(|i| source_slots[i] as i64).unwrap_or(-1);
+    pool.acquisition_scans_total += scans_done as f64;
+}
+
+/// Telemetry (never hashed): candidate scans the scheduler has run since
+/// init. Read across one tick it bounds the acquisition work that tick did.
+#[wasm_bindgen]
+pub fn combat_targeting_acquisition_scans_total() -> f64 {
+    combat_targeting_pool().acquisition_scans_total
+}
+
+/// Telemetry (never hashed): scans deferred to a later tick by the budget.
+#[wasm_bindgen]
+pub fn combat_targeting_acquisition_deferrals_total() -> f64 {
+    combat_targeting_pool().acquisition_deferrals_total
 }
 
 #[inline]

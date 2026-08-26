@@ -9,6 +9,13 @@ import { DEFAULT_SIMULATION_TICK_RATE_HZ } from '../../types/simulationTickRate'
 export const BAR_IDLE_BUILDER_AUTO_REPAIR_POLL_TICKS =
   DEFAULT_SIMULATION_TICK_RATE_HZ;
 
+/** The tick phase (0..period-1) on which a builder is polled. Every builder
+ *  is still polled once per period; spreading them by id keeps the poll flat
+ *  across ticks instead of all builders on tick 0 of the period. */
+export function idleBuilderPollPhase(builderId: EntityId, period: number): number {
+  return builderId % period;
+}
+
 type HomePosition = {
   x: number;
   y: number;
@@ -31,14 +38,21 @@ export class SimulationIdleBuilderAutoRepair {
     this.world = world;
   }
 
+  /** Every builder is still polled once per second, but on its own phase
+   *  of the period (`id % period`) instead of all of them on tick 0 of 20:
+   *  the same total work, spread flat across ticks. The match-wide
+   *  bookkeeping (blacklist expiry, reclaimer tracking, active-repair
+   *  monitoring) keeps the 1 Hz tick — it is cheap and shared. */
   update(tick: number): void {
-    if (tick % this.world.ticksForSeconds(1) !== 0) return;
-
-    this.pruneReclaimBlacklist(tick);
-    this.refreshActiveReclaimers(tick);
-    this.monitorActiveRepairs();
-    this.refreshIdleBuilders();
-    this.assignIdleRepairs();
+    const period = this.world.ticksForSeconds(1);
+    const phase = tick % period;
+    if (phase === 0) {
+      this.pruneReclaimBlacklist(tick);
+      this.refreshActiveReclaimers(tick);
+    }
+    this.monitorActiveRepairs(phase, period);
+    this.refreshIdleBuilders(phase, period);
+    this.assignIdleRepairs(phase, period);
   }
 
   reset(): void {
@@ -95,8 +109,9 @@ export class SimulationIdleBuilderAutoRepair {
     return false;
   }
 
-  private monitorActiveRepairs(): void {
+  private monitorActiveRepairs(phase: number, period: number): void {
     for (const [builderId, info] of this.activeRepairs) {
+      if (idleBuilderPollPhase(builderId, period) !== phase) continue;
       const builder = this.world.getEntity(builderId);
       if (!this.isEligibleMobileBuilder(builder)) {
         this.activeRepairs.delete(builderId);
@@ -132,10 +147,11 @@ export class SimulationIdleBuilderAutoRepair {
     }
   }
 
-  private refreshIdleBuilders(): void {
+  private refreshIdleBuilders(phase: number, period: number): void {
     const builders = this.world.getBuilderUnits();
     for (let i = 0; i < builders.length; i++) {
       const builder = builders[i];
+      if (idleBuilderPollPhase(builder.id, period) !== phase) continue;
       if (!this.isEligibleMobileBuilder(builder)) {
         this.idleBuilders.delete(builder.id);
         this.activeRepairs.delete(builder.id);
@@ -159,11 +175,12 @@ export class SimulationIdleBuilderAutoRepair {
     }
   }
 
-  private assignIdleRepairs(): void {
+  private assignIdleRepairs(phase: number, period: number): void {
     if (this.idleBuilders.size === 0) return;
     const builders = this.world.getBuilderUnits();
     for (let i = 0; i < builders.length; i++) {
       const builder = builders[i];
+      if (idleBuilderPollPhase(builder.id, period) !== phase) continue;
       const home = this.idleBuilders.get(builder.id);
       if (home === undefined) continue;
       if (!this.isEligibleMobileBuilder(builder)) {

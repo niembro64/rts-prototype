@@ -1047,25 +1047,31 @@ fn hpa_cell_reachable_after_failed_search(
 /// unreachable abstract search: first the snap disc (exact-ish, cheap), then
 /// every reached cluster's nearest passable cell (BAR: move as close as
 /// possible, however far the wall is).
+/// Returns the nearest reachable cell and the work it cost (cells examined),
+/// so the caller can charge the scan to the slice budget like every other
+/// piece of search work — an unreachable goal on a big map used to walk a
+/// large fraction of the grid here for free.
 pub(crate) fn hpa_nearest_reachable_cell(
     state: &PathfinderState,
     class_idx: usize,
     gx: i32,
     gy: i32,
     traversal: PathfinderTraversal,
-) -> Option<(i32, i32)> {
+) -> (Option<(i32, i32)>, u32) {
+    let mut work: u32 = 0;
     for &(dx, dy) in std::iter::once(&(0i16, 0i16)).chain(state.snap_offsets.iter()) {
         let nx = gx + dx as i32;
         let ny = gy + dy as i32;
         if nx < 0 || ny < 0 || nx >= state.grid_w || ny >= state.grid_h {
             continue;
         }
+        work += 1;
         let idx = (ny * state.grid_w + nx) as usize;
         if !pathfinder_is_cell_passable(state, idx, traversal) {
             continue;
         }
         if hpa_cell_reachable_after_failed_search(state, class_idx, idx as u32) {
-            return Some((nx, ny));
+            return (Some((nx, ny)), work);
         }
     }
     // Reached clusters in ascending order of their nearest-corner distance
@@ -1076,6 +1082,7 @@ pub(crate) fn hpa_nearest_reachable_cell(
     let cluster_count = state.hpa_cluster_change_stamp.len() as u32;
     let mut candidates: Vec<(i64, u32)> = Vec::new();
     for cluster in 0..cluster_count {
+        work += 1;
         let reached = cluster == state.hpa_start_reach_cluster
             || hpa_cluster_reached_in_last_search(state, class_idx, cluster);
         if !reached {
@@ -1095,6 +1102,7 @@ pub(crate) fn hpa_nearest_reachable_cell(
         let (x0, y0, x1, y1) = hpa_cluster_bounds(state, cluster);
         for ny in y0..y1 {
             for nx in x0..x1 {
+                work += 1;
                 let idx = (ny * state.grid_w + nx) as usize;
                 let d2 = ((nx - gx) as i64).pow(2) + ((ny - gy) as i64).pow(2);
                 if best.is_some_and(|(_, _, d)| d2 >= d) {
@@ -1110,5 +1118,5 @@ pub(crate) fn hpa_nearest_reachable_cell(
             }
         }
     }
-    best.map(|(x, y, _)| (x, y))
+    (best.map(|(x, y, _)| (x, y)), work)
 }

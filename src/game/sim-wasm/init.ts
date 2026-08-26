@@ -318,8 +318,9 @@ import __wbg_init, {
   pathfinder_bake_traversability_grid,
   pathfinder_sync_building_occupancy,
   pathfinder_building_occupancy_version,
-  pathfinder_find_path,
   pathfinder_find_path_slice,
+  pathfinder_total_work_units,
+  pathfinder_clearance_reach_cells,
   pathfinder_cancel_path_slice,
   pathfinder_cancel_all_path_slices,
   pathfinder_reset_match_state,
@@ -465,6 +466,8 @@ import __wbg_init, {
   combat_targeting_auto_mode_spatial_candidate_tick_batch,
   combat_targeting_tick_batch,
   combat_targeting_schedule_and_tick_batch,
+  combat_targeting_acquisition_scans_total,
+  combat_targeting_acquisition_deferrals_total,
   combat_targeting_existing_lock_and_auto_scan_tick,
   shield_pool_clear,
   shield_pool_count,
@@ -1065,11 +1068,12 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           bakeTraversabilityGrid: pathfinder_bake_traversability_grid,
           syncBuildingOccupancy: pathfinder_sync_building_occupancy,
           buildingOccupancyVersion: pathfinder_building_occupancy_version,
-          findPath: pathfinder_find_path,
           findPathSlice: pathfinder_find_path_slice,
           cancelPathSlice: pathfinder_cancel_path_slice,
           cancelAllPathSlices: pathfinder_cancel_all_path_slices,
           resetMatchState: pathfinder_reset_match_state,
+          totalWorkUnits: pathfinder_total_work_units,
+          clearanceReachCells: pathfinder_clearance_reach_cells,
           lastResultStatus: pathfinder_last_result_status,
           lastSearchStrategy: pathfinder_last_search_strategy,
           lastFineExpandedNodes: pathfinder_last_fine_expanded_nodes,
@@ -1216,6 +1220,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           autoModeSpatialCandidateTickBatch: combat_targeting_auto_mode_spatial_candidate_tick_batch,
           tickBatch: combat_targeting_tick_batch,
           scheduleAndTickBatch: combat_targeting_schedule_and_tick_batch,
+          acquisitionScansTotal: combat_targeting_acquisition_scans_total,
+          acquisitionDeferralsTotal: combat_targeting_acquisition_deferrals_total,
         },
         shieldSurfacePool: {
           clear: shield_pool_clear,
@@ -1844,6 +1850,14 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runLocalAvoidanceContractTest();
         const { runPathPlanSafetyContractTest } = await import('../sim/pathPlanSafetyContractTest');
         runPathPlanSafetyContractTest();
+        const { runMassMovePathBudgetContractTest } = await import('../sim/massMovePathBudgetContractTest');
+        runMassMovePathBudgetContractTest();
+        const { runDeathExplosionChainBudgetContractTest } = await import('../sim/deathExplosionChainBudgetContractTest');
+        runDeathExplosionChainBudgetContractTest();
+        const { runBuildGridChangeLogContractTest } = await import('../sim/buildGridChangeLogContractTest');
+        runBuildGridChangeLogContractTest();
+        const { runTargetingAcquisitionBudgetContractTest } = await import('../sim/targetingAcquisitionBudgetContractTest');
+        runTargetingAcquisitionBudgetContractTest();
         const { runTeamColorContractTest } = await import('../sim/teamColorContractTest');
         runTeamColorContractTest();
         const { runTerrainUnderwaterDarkeningContractTest } = await import('../sim/terrain/terrainUnderwaterDarkeningContractTest');

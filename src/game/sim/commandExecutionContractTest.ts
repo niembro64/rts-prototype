@@ -52,7 +52,11 @@ function damageUnit(entity: Entity, damage = 10): Entity {
 }
 
 function assertActionTargetIds(actions: readonly { targetId?: number }[], expected: readonly number[], message: string): void {
-  assertContract(actions.length === expected.length, `${message}: expected ${expected.length} action(s), got ${actions.length}`);
+  assertContract(
+    actions.length === expected.length,
+    `${message}: expected ${expected.length} action(s) [${expected.join(',')}], ` +
+      `got ${actions.length} [${actions.map((action) => action.targetId ?? 'none').join(',')}]`,
+  );
   for (let i = 0; i < expected.length; i++) {
     assertContract(
       actions[i].targetId === expected[i],

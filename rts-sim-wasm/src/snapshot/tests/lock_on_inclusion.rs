@@ -612,7 +612,8 @@ mod lock_on_inclusion_tests {
             &mut out_had_cooldown,
             &mut out_modes,
             &mut out_has_active_work,
-        );
+        0,
+    );
 
         let pool = combat_targeting_pool();
         let idx = combat_targeting_turret_global_idx(SOURCE_SLOT, 0);

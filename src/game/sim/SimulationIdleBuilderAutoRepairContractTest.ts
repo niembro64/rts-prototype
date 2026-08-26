@@ -2,6 +2,7 @@ import { createBuildable } from './buildableHelpers';
 import { CommandQueue } from './commands';
 import {
   BAR_IDLE_BUILDER_AUTO_REPAIR_POLL_TICKS,
+  idleBuilderPollPhase,
   SimulationIdleBuilderAutoRepair,
 } from './SimulationIdleBuilderAutoRepair';
 import { Simulation } from './Simulation';
@@ -70,7 +71,10 @@ export function runSimulationIdleBuilderAutoRepairContractTest(): void {
   const wiredTarget = addDamagedJackal(wiredWorld, 330, 100, playerId);
   assertContract(wiredBuilder.unit !== null, 'wired builder must have a unit component');
   wiredBuilder.unit.moveState = 'maneuver';
-  new Simulation(wiredWorld, new CommandQueue()).update(16);
+  // Builders are polled on their own phase of the one-second period, so one
+  // full period of ticks covers whichever phase this builder's id lands on.
+  const wiredSimulation = new Simulation(wiredWorld, new CommandQueue());
+  for (let i = 0; i < BAR_IDLE_BUILDER_AUTO_REPAIR_POLL_TICKS; i++) wiredSimulation.update(16);
   assertContract(
     wiredBuilder.unit.actions.length === 1 &&
       wiredBuilder.unit.actions[0].type === 'repair' &&
@@ -84,7 +88,7 @@ export function runSimulationIdleBuilderAutoRepairContractTest(): void {
   const maneuverTarget = addDamagedJackal(maneuverWorld, 330, 100, playerId);
   assertContract(maneuverBuilder.unit !== null, 'maneuver builder must have a unit component');
   maneuverBuilder.unit.moveState = 'maneuver';
-  maneuverRepair.update(0);
+  maneuverRepair.update(idleBuilderPollPhase(maneuverBuilder.id, BAR_IDLE_BUILDER_AUTO_REPAIR_POLL_TICKS));
   assertContract(
     maneuverBuilder.unit.actions.length === 1 &&
       maneuverBuilder.unit.actions[0].type === 'repair' &&
@@ -98,7 +102,7 @@ export function runSimulationIdleBuilderAutoRepairContractTest(): void {
   addDamagedJackal(holdWorld, 330, 100, playerId);
   assertContract(holdBuilder.unit !== null, 'hold builder must have a unit component');
   holdBuilder.unit.moveState = 'holdPosition';
-  holdRepair.update(0);
+  holdRepair.update(idleBuilderPollPhase(holdBuilder.id, BAR_IDLE_BUILDER_AUTO_REPAIR_POLL_TICKS));
   assertContract(
     holdBuilder.unit.actions.length === 0,
     'hold-position idle builder must not chase beyond its buildRange leash',
@@ -110,9 +114,12 @@ export function runSimulationIdleBuilderAutoRepairContractTest(): void {
   const completeTarget = addDamagedJackal(completeWorld, 250, 120, playerId);
   assertContract(completeBuilder.unit !== null && completeTarget.unit !== null, 'completion test units must exist');
   completeBuilder.unit.moveState = 'maneuver';
-  completeRepair.update(0);
+  completeRepair.update(idleBuilderPollPhase(completeBuilder.id, BAR_IDLE_BUILDER_AUTO_REPAIR_POLL_TICKS));
   completeTarget.unit.hp = completeTarget.unit.maxHp;
-  completeRepair.update(BAR_IDLE_BUILDER_AUTO_REPAIR_POLL_TICKS);
+  completeRepair.update(
+    idleBuilderPollPhase(completeBuilder.id, BAR_IDLE_BUILDER_AUTO_REPAIR_POLL_TICKS) +
+      BAR_IDLE_BUILDER_AUTO_REPAIR_POLL_TICKS,
+  );
   assertContract(
     completeBuilder.unit.actions.length === 1 &&
       completeBuilder.unit.actions[0].type === 'move' &&
@@ -127,7 +134,7 @@ export function runSimulationIdleBuilderAutoRepairContractTest(): void {
   addDamagedJackal(cloakWorld, 250, 100, playerId);
   assertContract(cloakBuilder.unit !== null, 'cloak builder must have a unit component');
   cloakBuilder.unit.wantCloak = true;
-  cloakRepair.update(0);
+  cloakRepair.update(idleBuilderPollPhase(cloakBuilder.id, BAR_IDLE_BUILDER_AUTO_REPAIR_POLL_TICKS));
   assertContract(
     cloakBuilder.unit.actions.length === 0,
     'idle builder that wants cloak must not be assigned an automatic repair',

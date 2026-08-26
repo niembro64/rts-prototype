@@ -182,6 +182,19 @@ export const EMA_INITIAL_VALUES = emaConfigJson.initialValues;
  *  damage. This prevents shield-panel / shield-sphere loops
  *  from producing unbounded traces or arbitrary damage spheres. */
 export const BEAM_MAX_SEGMENTS = combatConfigJson.beamMaxSegments;
+/** Death blasts a single fixed tick may detonate. A chain that needs more
+ *  carries its remaining, already-resolved blasts into the next tick's
+ *  queue in the same breadth-first order, so a packed base detonates over a
+ *  few ticks instead of resolving an unbounded cascade inside one. This is a
+ *  gameplay rule (hashed with the rest of the config), not a perf knob: a
+ *  deferred blast lands 50 ms later, and the units it would have killed
+ *  live that long. */
+export const MAX_DEATH_EXPLOSIONS_PER_TICK = combatConfigJson.maxDeathExplosionsPerTick;
+/** Candidate scans (auto-mode target acquisition) the targeting scheduler
+ *  may run in one fixed tick; 0 = unlimited. Hosts past the budget keep
+ *  their locks and firing, skip only the scan, and retry next tick from a
+ *  rotating start so nobody starves. Hashed with the rest of the config. */
+export const TARGETING_ACQUISITION_SCANS_PER_TICK = combatConfigJson.targetingAcquisitionScansPerTick;
 export const BEAM_MIN_ON_TIME_MS = beamConfigJson.minOnTimeMs;
 /** Attack beams commit to one predicted trajectory for a fixed pulse. */
 export const BEAM_PULSE_ON_TIME_MS = beamConfigJson.pulse.onTimeMs;

@@ -199,6 +199,10 @@ class SpatialGrid {
     entitySlotRegistry.clear();
   }
 
+  getCellSize(): number {
+    return this.cellSize;
+  }
+
   // ===================== Mutations =====================
 
   updateUnit(entity: Entity): void {

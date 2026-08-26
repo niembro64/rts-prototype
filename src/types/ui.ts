@@ -625,6 +625,14 @@ export type CommandContext = {
 
 // Energy buffers
 export type EnergyBuffers = {
+  /** Idle-builder auto-assist / auto-repair targets chosen on that builder's
+   *  acquisition tick (`(tick + id) & 7 === 0`) and reused, after a cheap
+   *  validity check, on the seven ticks between. The nearest-target scans
+   *  are the expensive half of that system; funding the chosen target is the
+   *  cheap half and still runs every tick. Derived lockstep state: owned by
+   *  one Simulation, never serialized, identical on every peer. */
+  autoAssistTargetByBuilder: Map<EntityId, EntityId>;
+  autoRepairTargetByBuilder: Map<EntityId, EntityId>;
   consumers: EnergyConsumer[];
   consumersByPlayer: Map<PlayerId, number[]>;
   buildTargetSet: Set<EntityId>;

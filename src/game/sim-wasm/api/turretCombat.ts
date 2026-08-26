@@ -779,7 +779,14 @@ export interface CombatTargetingApi {
     outHadCooldown: Uint8Array,
     outModes: Uint8Array,
     outHasActiveWork: Uint8Array,
+    /** Candidate scans this tick may run (0 = unlimited); deferred hosts
+     *  come back with outHadCooldown set so the bridge probes them next
+     *  tick, and the batch rotates its start to the first deferred host. */
+    acquisitionScanBudget: number,
   ) => void;
+  /** Telemetry (never hashed): scans run / deferred since init. */
+  readonly acquisitionScansTotal: () => number;
+  readonly acquisitionDeferralsTotal: () => number;
 }
 
 /** AIM-08.1 — Shield input slab. Compact list of `count` active

@@ -26,7 +26,7 @@ const REQUIRED_LOCKSTEP_WASM_KERNELS: readonly RequiredKernel[] = [
   ['unitForceStepBatch', (sim) => sim.unitForceStepBatch],
   ['combatTargeting.rebuildObservationMasks', (sim) => sim.combatTargeting.rebuildObservationMasks],
   ['spatial.queryEnemyEntitiesInRadius', (sim) => sim.spatial.queryEnemyEntitiesInRadius],
-  ['pathfinder.findPath', (sim) => sim.pathfinder.findPath],
+  ['pathfinder.findPathSlice', (sim) => sim.pathfinder.findPathSlice],
 ];
 
 export function assertDeterministicLockstepRuntimeReady(): SimWasm {

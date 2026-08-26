@@ -239,4 +239,20 @@ export function runEntityCacheManagerContractTest(): void {
   entities.splice(removedBuildingIndex, 1);
   manager.handleEntityRemoved(outOfOrderBuilding);
   assertMatchesRebuild(manager, entities, 'after building remove');
+
+  // Shot despawn takes the P0-11 fast path; it must still leave every list a
+  // shot joined, including cachedAll (a leak here grows getAllEntities() by
+  // one ghost per shot fired for the rest of the match).
+  const removedProjectile = entities.find((entity) => entity.id === (50 as EntityId));
+  assertContract(removedProjectile !== undefined, 'fixture projectile 50 present');
+  entities.splice(entities.indexOf(removedProjectile as Entity), 1);
+  manager.handleEntityRemoved(removedProjectile as Entity);
+  assertMatchesRebuild(manager, entities, 'after projectile remove');
+  entities.splice(entities.indexOf(lineProjectile), 1);
+  manager.handleEntityRemoved(lineProjectile);
+  assertMatchesRebuild(manager, entities, 'after beam remove');
+  assertContract(
+    manager.getAll().length === entities.length,
+    `getAll census after shot removals: ${manager.getAll().length} !== ${entities.length}`,
+  );
 }

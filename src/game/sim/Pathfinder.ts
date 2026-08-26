@@ -38,6 +38,7 @@ import {
 } from './Terrain';
 import { getSimWasm } from '../sim-wasm/init';
 import type { ActionType, UnitPathPoint } from './types';
+import { PATHFINDING_A_STAR_EXPANSIONS_PER_TICK } from './pathfindingTuning';
 import { ensurePathfinderTerrain } from './pathfinderTerrainCache';
 import {
   resolvePathfinderTraversalInput,
@@ -108,36 +109,23 @@ function findPath(
   terrainFilter: PathTerrainFilter | null,
   unitRadius: number,
   symmetricSlope: boolean,
-  expansionBudget: number | null = null,
-  continuationOwner: number = 0,
+  expansionBudget: number,
+  continuationOwner: number,
 ): PathQueryResult {
+  // Every search is a budgeted, resumable slice. There is no synchronous
+  // whole-route variant any more: the last one (pathfinder_find_path with a
+  // u32::MAX budget, kept as an escape hatch beside the slice API on
+  // 2026-08-17) ran once per selected unit inside a single command tick and
+  // froze production under whole-army line moves. A caller that needs a
+  // complete route drives slices across ticks through
+  // SimulationPathPlanScheduler; tests use expandPathPlanForTests.
+  if (!(Number.isInteger(expansionBudget) && expansionBudget > 0)) {
+    throw new Error(`path search needs a positive integer work budget, got ${expansionBudget}`);
+  }
   ensurePathfinderTerrain(mapWidth, mapHeight);
   const traversal = resolvePathfinderTraversalInput(terrainFilter);
   const sim = getSimWasm()!;
-  const count = expansionBudget === null
-    ? sim.pathfinder.findPath(
-        startX,
-        startY,
-        goalX,
-        goalY,
-        traversal.minGroundNormalZ,
-        traversal.waterSurfaceSupported,
-        traversal.supportPointOffsetZ,
-        traversal.waypoint.allowOnGround,
-        traversal.waypoint.allowInWater,
-        traversal.waypoint.allowInAir,
-        traversal.move.allowOnGround,
-        traversal.move.allowInWater,
-        traversal.move.allowInAir,
-        unitRadius,
-        traversal.flatDriveAccel,
-        traversal.safeDriveAccel,
-        traversal.flatWaterContactAccel,
-        traversal.safeWaterDriveAccel,
-        traversal.staticFrictionCoefficient,
-        symmetricSlope,
-      )
-    : sim.pathfinder.findPathSlice(
+  const count = sim.pathfinder.findPathSlice(
         startX,
         startY,
         goalX,
@@ -313,7 +301,21 @@ function validatePathStaysInWater(
  *  recovery-only media; the move domain describes physical traversal from
  *  wherever forces placed the body. Dry cells still use the unit's
  *  dry-ground climb profile. */
-export function expandPathPlan(
+/** Continuation owner reserved for the test-only whole-route helper below.
+ *  Mirrors PATHFINDER_SYNC_CONTINUATION_OWNER (u32::MAX) in pathfinder.rs so
+ *  it can never collide with an ally-team owner. */
+const PATH_PLAN_TEST_CONTINUATION_OWNER = 0xffffffff;
+/** Upper bound on slices the test helper will drive before giving up; at
+ *  8,192 work units per slice that is ~40 M units, far beyond any real map. */
+const PATH_PLAN_TEST_MAX_SLICES = 5000;
+
+/** TEST-ONLY whole-route query. Drives the same budgeted slice the scheduler
+ *  drives, on a reserved continuation owner, until the route completes. It
+ *  exists so a contract test can ask "is there a route from A to B" in one
+ *  call; nothing on the command path may use it — the command path installs
+ *  intent and lets SimulationPathPlanScheduler route it across ticks. The
+ *  name is deliberate: grep for "ForTests" finds every caller. */
+export function expandPathPlanForTests(
   startX: number, startY: number,
   goalX: number, goalY: number,
   mapWidth: number, mapHeight: number,
@@ -322,31 +324,36 @@ export function expandPathPlan(
   unitRadius: number,
   symmetricSlope: boolean,
 ): ExpandedPathPlan {
-  const result = findPath(
-    startX,
-    startY,
-    goalX,
-    goalY,
-    mapWidth,
-    mapHeight,
-    terrainFilter,
-    unitRadius,
-    symmetricSlope,
-  );
-  if (result.status !== 'complete') {
-    throw new Error('Synchronous path query unexpectedly returned a pending frontier');
+  cancelPathPlanSlice(PATH_PLAN_TEST_CONTINUATION_OWNER);
+  for (let slice = 0; slice < PATH_PLAN_TEST_MAX_SLICES; slice++) {
+    const result = findPath(
+      startX,
+      startY,
+      goalX,
+      goalY,
+      mapWidth,
+      mapHeight,
+      terrainFilter,
+      unitRadius,
+      symmetricSlope,
+      PATHFINDING_A_STAR_EXPANSIONS_PER_TICK,
+      PATH_PLAN_TEST_CONTINUATION_OWNER,
+    );
+    if (result.status === 'pending') continue;
+    return materializeExpandedPathPlan(
+      result,
+      startX,
+      startY,
+      goalX,
+      goalY,
+      mapWidth,
+      mapHeight,
+      goalZ,
+      terrainFilter,
+    );
   }
-  return materializeExpandedPathPlan(
-    result,
-    startX,
-    startY,
-    goalX,
-    goalY,
-    mapWidth,
-    mapHeight,
-    goalZ,
-    terrainFilter,
-  );
+  cancelPathPlanSlice(PATH_PLAN_TEST_CONTINUATION_OWNER);
+  throw new Error('expandPathPlanForTests: route did not complete within the slice ceiling');
 }
 
 /** Advance one team's authoritative resumable path job by a deterministic
@@ -454,29 +461,6 @@ function materializeExpandedPathPlan(
     out.push({ x: px, y: py, z });
   }
   return { points: out, resolution: result.resolution };
-}
-
-export function expandPathPoints(
-  startX: number, startY: number,
-  goalX: number, goalY: number,
-  mapWidth: number, mapHeight: number,
-  goalZ: number | null,
-  terrainFilter: PathTerrainFilter | null,
-  unitRadius: number,
-  symmetricSlope: boolean,
-): UnitPathPoint[] {
-  return expandPathPlan(
-    startX,
-    startY,
-    goalX,
-    goalY,
-    mapWidth,
-    mapHeight,
-    goalZ,
-    terrainFilter,
-    unitRadius,
-    symmetricSlope,
-  ).points;
 }
 
 let _pathValidationScratch = new Float64Array(64);

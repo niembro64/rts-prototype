@@ -268,46 +268,75 @@ export function hashCanonicalMatchInitialization(
 }
 
 export function hashCanonicalValue(value: unknown): string {
-  const text = canonicalStringify(value);
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) {
-    hash ^= text.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
+  const hash = hashCanonicalValueInto(FNV1A32_OFFSET_BASIS, value);
   return `fnv1a32:${hash.toString(16).padStart(8, '0')}`;
 }
 
-function canonicalStringify(value: unknown): string {
-  if (value === null) return 'null';
-  if (value === undefined) return '{"$undefined":true}';
+const FNV1A32_OFFSET_BASIS = 0x811c9dc5;
+const FNV1A32_PRIME = 0x01000193;
+const CANONICAL_NULL = 'null';
+const CANONICAL_UNDEFINED = '{"$undefined":true}';
+const CHAR_COMMA = 0x2c;
+const CHAR_COLON = 0x3a;
+const CHAR_LBRACKET = 0x5b;
+const CHAR_RBRACKET = 0x5d;
+const CHAR_LBRACE = 0x7b;
+const CHAR_RBRACE = 0x7d;
+
+/**
+ * FNV-1a over the canonical text of `value`, streamed: this feeds the hash
+ * exactly the character sequence the canonical stringifier would produce
+ * (sorted object keys, JSON primitives, `,`/`:` separators, `{"$undefined":true}`
+ * for undefined) without ever materializing that text. The old path built a
+ * multi-megabyte string per checksum through repeated concatenation and then
+ * walked it with charCodeAt; the hash value is byte-for-byte the same.
+ */
+function hashCanonicalValueInto(hash: number, value: unknown): number {
+  if (value === null) return hashStringInto(hash, CANONICAL_NULL);
+  if (value === undefined) return hashStringInto(hash, CANONICAL_UNDEFINED);
   const type = typeof value;
   if (type === 'number') {
     if (!Number.isFinite(value)) {
       throw new Error(`Cannot canonicalize non-finite number: ${String(value)}`);
     }
-    return JSON.stringify(value);
+    return hashStringInto(hash, JSON.stringify(value));
   }
-  if (type === 'string' || type === 'boolean') return JSON.stringify(value);
+  if (type === 'string' || type === 'boolean') {
+    return hashStringInto(hash, JSON.stringify(value));
+  }
   if (Array.isArray(value)) {
-    let text = '[';
+    hash = hashCharInto(hash, CHAR_LBRACKET);
     for (let i = 0; i < value.length; i++) {
-      if (i > 0) text += ',';
-      text += canonicalStringify(value[i]);
+      if (i > 0) hash = hashCharInto(hash, CHAR_COMMA);
+      hash = hashCanonicalValueInto(hash, value[i]);
     }
-    return `${text}]`;
+    return hashCharInto(hash, CHAR_RBRACKET);
   }
   if (type === 'object') {
     const record = value as Record<string, unknown>;
     const keys = Object.keys(record).sort();
-    let text = '{';
+    hash = hashCharInto(hash, CHAR_LBRACE);
     for (let i = 0; i < keys.length; i++) {
       const key = keys[i];
-      if (i > 0) text += ',';
-      text += `${JSON.stringify(key)}:${canonicalStringify(record[key])}`;
+      if (i > 0) hash = hashCharInto(hash, CHAR_COMMA);
+      hash = hashStringInto(hash, JSON.stringify(key));
+      hash = hashCharInto(hash, CHAR_COLON);
+      hash = hashCanonicalValueInto(hash, record[key]);
     }
-    return `${text}}`;
+    return hashCharInto(hash, CHAR_RBRACE);
   }
   throw new Error(`Cannot canonicalize value of type ${type}`);
+}
+
+function hashCharInto(hash: number, charCode: number): number {
+  return Math.imul(hash ^ charCode, FNV1A32_PRIME) >>> 0;
+}
+
+function hashStringInto(hash: number, text: string): number {
+  for (let i = 0; i < text.length; i++) {
+    hash = Math.imul(hash ^ text.charCodeAt(i), FNV1A32_PRIME) >>> 0;
+  }
+  return hash;
 }
 
 function normalizePlayerIds(playerIds: Iterable<PlayerId>): PlayerId[] {
