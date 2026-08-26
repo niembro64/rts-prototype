@@ -38,6 +38,7 @@ import {
   ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE,
   getEntitySnapshotWireSource,
   type EntitySnapshotWireSource,
+  ENTITY_SNAPSHOT_WIRE_TYPE_SHOT,
 } from './stateSerializerEntities';
 import {
   PROJECTILE_BEAM_POINT_WIRE_STRIDE,
@@ -149,6 +150,8 @@ function minimapTypeToSnapshotTag(type: NetworkServerSnapshotMinimapEntity['type
       return SNAPSHOT_ENTITY_TYPE_UNIT;
     case 'building':
       return SNAPSHOT_ENTITY_TYPE_BUILDING;
+    case 'shot':
+      return ENTITY_SNAPSHOT_WIRE_TYPE_SHOT;
   }
 }
 

@@ -1077,7 +1077,10 @@ export type NetworkServerSnapshot = {
 export type NetworkServerSnapshotMinimapEntity = {
   id: number;
   pos: Vec2;
-  type: Exclude<EntityType, 'shot'>;
+  /** `shot` appears ONLY on contact-only rows: an enemy emission the
+   *  recipient hears on radar/sonar but cannot see. A seen shot rides the
+   *  projectile channel and never becomes a minimap row. */
+  type: EntityType;
   playerId: PlayerId;
   /** True when the recipient only learned about this entity through
    *  radar coverage (no full-vision source covers its position). The

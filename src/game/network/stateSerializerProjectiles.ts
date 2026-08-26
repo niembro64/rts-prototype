@@ -1145,6 +1145,30 @@ function shouldSendProjectileMotionUpdate(
   );
 }
 
+/** Whether a live projectile entity is forwarded to the recipient in FULL —
+ *  own or allied, inside full sight (either beam end for a beam), or the
+ *  incoming-threat exception. This is the whole projectile channel's
+ *  admission rule; the minimap's emission contacts are its complement, so an
+ *  emission is either the real projectile or an anonymous dot, never both. */
+export function isProjectileSeenInFull(
+  entity: Entity,
+  proj: NonNullable<Entity['projectile']>,
+  visibility: SnapshotVisibility | undefined,
+  world: WorldState,
+): boolean {
+  return proj.points !== null && proj.points.length >= 2
+    ? shouldSendBeamPath(proj.ownerId, visibility, proj.points)
+    : shouldSendProjectileAtPoint(
+        proj.ownerId,
+        visibility,
+        entity.transform.x,
+        entity.transform.y,
+        entity.transform.z,
+        proj.homingTargetId,
+        world,
+      );
+}
+
 export function shouldSendBeamPath(
   ownerId: PlayerId | undefined,
   visibility: SnapshotVisibility | undefined,
@@ -1446,20 +1470,7 @@ export function serializeProjectileSnapshot({
         if (_resyncSeenIds.has(entity.id)) continue;
         const proj = entity.projectile;
         if (!proj) continue;
-        const visible = proj.points !== null && proj.points.length >= 2
-          ? shouldSendBeamPath(proj.ownerId, visibility, proj.points)
-          : shouldSendProjectileAtPoint(
-              proj.ownerId,
-              visibility,
-              entity.transform.x,
-              entity.transform.y,
-              entity.transform.z,
-              proj.homingTargetId,
-              world,
-            );
-        if (!visible) {
-          continue;
-        }
+        if (!isProjectileSeenInFull(entity, proj, visibility, world)) continue;
         const out = getPooledProjectileSpawn();
         fillProjectileSpawnFromEntity(out, entity, proj, world, visibility);
         _spawnBuf.push(out);
@@ -1578,20 +1589,7 @@ export function writeProjectileSnapshotWireRowsDirect({
         if (_resyncSeenIds.has(entity.id)) continue;
         const proj = entity.projectile;
         if (!proj) continue;
-        const visible = proj.points !== null && proj.points.length >= 2
-          ? shouldSendBeamPath(proj.ownerId, visibility, proj.points)
-          : shouldSendProjectileAtPoint(
-              proj.ownerId,
-              visibility,
-              entity.transform.x,
-              entity.transform.y,
-              entity.transform.z,
-              proj.homingTargetId,
-              world,
-            );
-        if (!visible) {
-          continue;
-        }
+        if (!isProjectileSeenInFull(entity, proj, visibility, world)) continue;
         copyProjectileEntitySpawnIntoWireRowDirect(entity, proj, world, visibility);
       }
     }

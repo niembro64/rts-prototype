@@ -185,6 +185,10 @@ export const ENTITY_SNAPSHOT_WIRE_KIND_BUILDING = 3;
 export const ENTITY_SNAPSHOT_WIRE_TYPE_UNIT = 1;
 export const ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING = 2;
 export const ENTITY_SNAPSHOT_WIRE_TYPE_TOWER = 3;
+/** Minimap contact rows only: an enemy emission heard on radar/sonar. A shot
+ *  never appears as a full-vision minimap row — seen shots ride the
+ *  projectile channel. */
+export const ENTITY_SNAPSHOT_WIRE_TYPE_SHOT = 4;
 export const ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE = 9;
 // Unit/building row layouts: see appendDirect*EntityWireRow for the exact slot
 // order. Unit slots 51+ and building factory-private slots carry command/build

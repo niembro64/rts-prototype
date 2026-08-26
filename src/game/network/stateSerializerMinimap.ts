@@ -12,9 +12,11 @@ import { createMinimapEntityDto } from './snapshotDtoCopy';
 import type { SnapshotVisibility } from './stateSerializerVisibility';
 import {
   ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING,
+  ENTITY_SNAPSHOT_WIRE_TYPE_SHOT,
   ENTITY_SNAPSHOT_WIRE_TYPE_TOWER,
   ENTITY_SNAPSHOT_WIRE_TYPE_UNIT,
 } from './stateSerializerEntities';
+import { isProjectileSeenInFull } from './stateSerializerProjectiles';
 import {
   deleteSnapshotPoolForKey,
   getOrCreateSnapshotPool,
@@ -98,6 +100,18 @@ function writeMinimapEntityValues(
   return out;
 }
 
+function minimapDtoTypeForEntity(entity: Entity): NetworkServerSnapshotMinimapEntity['type'] {
+  if (entity.type === 'unit') return 'unit';
+  if (entity.type === 'shot') return 'shot';
+  return 'building';
+}
+
+function minimapWireTypeForEntity(entity: Entity): number {
+  if (entity.unit) return ENTITY_SNAPSHOT_WIRE_TYPE_UNIT;
+  if (entity.projectile) return ENTITY_SNAPSHOT_WIRE_TYPE_SHOT;
+  return ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING;
+}
+
 function writeMinimapEntity(
   out: NetworkServerSnapshotMinimapEntity,
   entity: Entity,
@@ -108,7 +122,7 @@ function writeMinimapEntity(
   return writeMinimapEntityValues(
     out,
     entity.id,
-    entity.type === 'unit' ? 'unit' : 'building',
+    minimapDtoTypeForEntity(entity),
     (ownership !== null ? ownership.playerId : 1) as PlayerId,
     qPos(entity.transform.x),
     qPos(entity.transform.y),
@@ -229,9 +243,7 @@ function appendMinimapWireRow(
     qPos(entity.transform.x),
     qPos(entity.transform.y),
     qPos(entity.building !== null ? getBuildingCombatCenterZ(entity) : entity.transform.z),
-    entity.unit
-      ? ENTITY_SNAPSHOT_WIRE_TYPE_UNIT
-      : ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING,
+    minimapWireTypeForEntity(entity),
     ownership !== null ? ownership.playerId : 1,
     radarOnly,
     contactMediumMask,
@@ -264,11 +276,65 @@ export function getMinimapSnapshotWireSource(
   return minimapWireSources.get(entries);
 }
 
-/** Shared minimap-entity traversal for the direct wire-row writer and
- *  the pooled-DTO serializer: identical iteration order, radar/full
- *  branch selection, filtering, and radarOnly derivation — only the
- *  per-entity emission differs between the two callers. */
+/** Shared minimap traversal for the direct wire-row writer and the
+ *  pooled-DTO serializer: identical iteration order, radar/full branch
+ *  selection, filtering, and radarOnly derivation — only the per-entity
+ *  emission differs between the two callers. Bodies first, then the enemy
+ *  emissions the recipient hears but cannot see. */
 function forEachMinimapCandidate(
+  world: WorldState,
+  visibility: SnapshotVisibility | undefined,
+  emitFromSlot: (
+    views: EntityStateViews,
+    slot: number,
+    radarOnly: boolean,
+    contactMediumMask: ContactMediumMask,
+  ) => void,
+  emitFromEntity: (
+    entity: Entity,
+    radarOnly: boolean,
+    contactMediumMask: ContactMediumMask,
+  ) => void,
+): void {
+  forEachMinimapBodyCandidate(world, visibility, emitFromSlot, emitFromEntity);
+  forEachMinimapEmissionContact(world, visibility, emitFromEntity);
+}
+
+/** Enemy EMISSIONS on the contact tier. An emission the recipient sees in
+ *  full — own or allied, inside full sight, or the incoming-threat
+ *  exception — rides the projectile channel and is never a contact; one
+ *  they cannot sense at all is nothing. In between, inside radar or sonar
+ *  coverage but outside sight, a shot, missile, rocket or beam is a point
+ *  return and earns exactly what an enemy body earns there: the anonymous
+ *  contact dot, on the minimap channel, with no blueprint and no owner. */
+function forEachMinimapEmissionContact(
+  world: WorldState,
+  visibility: SnapshotVisibility | undefined,
+  emitFromEntity: (
+    entity: Entity,
+    radarOnly: boolean,
+    contactMediumMask: ContactMediumMask,
+  ) => void,
+): void {
+  if (visibility === undefined || !visibility.isFiltered) return;
+  const projectiles = world.getProjectiles();
+  for (let i = 0; i < projectiles.length; i++) {
+    const entity = projectiles[i];
+    const proj = entity.projectile;
+    if (!proj) continue;
+    if (isProjectileSeenInFull(entity, proj, visibility, world)) continue;
+    const contactMediumMask = visibility.getPointContactMediumMask(
+      proj.ownerId,
+      entity.transform.x,
+      entity.transform.y,
+      entity.transform.z,
+    );
+    if (contactMediumMask === CONTACT_MEDIUM_NONE) continue;
+    emitFromEntity(entity, true, contactMediumMask);
+  }
+}
+
+function forEachMinimapBodyCandidate(
   world: WorldState,
   visibility: SnapshotVisibility | undefined,
   emitFromSlot: (
