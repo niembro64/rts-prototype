@@ -1158,7 +1158,15 @@ pub fn combat_targeting_schedule_and_tick_batch(
     // host every tick.
     let cursor = {
         let pool = combat_targeting_pool();
-        if count == 0 { 0 } else { pool.acquisition_cursor % count }
+        let slot = pool.acquisition_cursor_slot;
+        if slot < 0 {
+            0
+        } else {
+            source_slots[..count]
+                .iter()
+                .position(|&s| s as i64 == slot)
+                .unwrap_or(0)
+        }
     };
     let mut scans_done: u32 = 0;
     let mut first_deferred: Option<usize> = None;
@@ -1512,7 +1520,7 @@ pub fn combat_targeting_schedule_and_tick_batch(
             combat_targeting_refresh_activity_masks_for_entity_and_read_active(entity_slot);
     }
     let pool = combat_targeting_pool();
-    pool.acquisition_cursor = first_deferred.unwrap_or(0);
+    pool.acquisition_cursor_slot = first_deferred.map(|i| source_slots[i] as i64).unwrap_or(-1);
     pool.acquisition_scans_total += scans_done as f64;
 }
 

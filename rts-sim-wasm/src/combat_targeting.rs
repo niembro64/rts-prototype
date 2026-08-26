@@ -438,10 +438,13 @@ pub(crate) struct CombatTargetingPool {
     pub(crate) turret_los_memo_az: Vec<f64>,
     pub(crate) turret_los_memo_result: Vec<u8>,
     pub(crate) los_memo_epoch: u32,
-    /// Round-robin start index into the scheduler batch: the first source
-    /// whose acquisition scan was deferred last tick goes first this tick,
-    /// so a per-tick scan budget cannot starve the tail of the batch.
-    pub(crate) acquisition_cursor: usize,
+    /// Round-robin start for the scheduler batch: the SLOT of the first
+    /// source whose acquisition scan was deferred last tick (-1 = none). It
+    /// goes first this tick, so a per-tick scan budget cannot starve the
+    /// tail of the batch. Keyed by slot, not index, so a batch that shares
+    /// this pool but not those sources (another world's fixture in the
+    /// in-app harness) starts at 0 in its natural order.
+    pub(crate) acquisition_cursor_slot: i64,
     /// Telemetry (never hashed): candidate scans run / deferred since init.
     pub(crate) acquisition_scans_total: f64,
     pub(crate) acquisition_deferrals_total: f64,
@@ -635,7 +638,7 @@ impl CombatTargetingPool {
             turret_blueprint_code: Vec::new(),
             turret_los_blocked_ticks: Vec::new(),
             turret_los_memo_epoch: Vec::new(),
-            acquisition_cursor: 0,
+            acquisition_cursor_slot: -1,
             acquisition_scans_total: 0.0,
             acquisition_deferrals_total: 0.0,
             turret_los_memo_target: Vec::new(),
