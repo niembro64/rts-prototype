@@ -476,6 +476,15 @@ export class Simulation {
 
   // Get construction system (for placement validation)
   /** Deterministic path-plan admission counters (diagnostics, never hashed). */
+  /** Death-explosion chain telemetry: blasts carried past the per-tick cap
+   *  and blasts detonated on the current tick. Never hashed. */
+  getDeathExplosionPlannerStats(): { pendingBlasts: number; detonationsThisTick: number } {
+    return {
+      pendingBlasts: this.deathExplosionPlanner.getPendingBlastCount(),
+      detonationsThisTick: this.deathExplosionPlanner.getDetonationsOnTick(this.world.getTick() - 1),
+    };
+  }
+
   getPathPlanSchedulerStats(): PathPlanSchedulerStats {
     return this.pathPlanScheduler.getStats();
   }

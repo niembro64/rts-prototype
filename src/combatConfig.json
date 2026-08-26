@@ -2,5 +2,6 @@
   "beamMaxSegments": 6,
   "knockback": {
     "SPLASH": 250
-  }
+  },
+  "maxDeathExplosionsPerTick": 64
 }
