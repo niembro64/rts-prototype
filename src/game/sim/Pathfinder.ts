@@ -456,29 +456,6 @@ function materializeExpandedPathPlan(
   return { points: out, resolution: result.resolution };
 }
 
-export function expandPathPoints(
-  startX: number, startY: number,
-  goalX: number, goalY: number,
-  mapWidth: number, mapHeight: number,
-  goalZ: number | null,
-  terrainFilter: PathTerrainFilter | null,
-  unitRadius: number,
-  symmetricSlope: boolean,
-): UnitPathPoint[] {
-  return expandPathPlan(
-    startX,
-    startY,
-    goalX,
-    goalY,
-    mapWidth,
-    mapHeight,
-    goalZ,
-    terrainFilter,
-    unitRadius,
-    symmetricSlope,
-  ).points;
-}
-
 let _pathValidationScratch = new Float64Array(64);
 
 function validatePathScratch(
