@@ -216,6 +216,50 @@
         ]
       }
     },
+    "surface-ship": {
+      "actuator": {
+        "propulsionAxis": "waypointForward",
+        "ground": {
+          "staticFrictionCoefficient": 0,
+          "tangentialDampingRate": 0,
+          "angularDampingRate": 0
+        },
+        "air": {
+          "linearDampingRate": 0.55,
+          "angularDampingRate": 1,
+          "surfaceLiftResponse": {
+            "randomizationAmount": 0,
+            "ema": 0
+          }
+        },
+        "water": {
+          "linearDampingRate": 40,
+          "angularDampingRate": 8,
+          "surfaceLiftResponse": {
+            "randomizationAmount": 0,
+            "ema": 0
+          }
+        }
+      },
+      "motionControl": {
+        "maintainFullThrustAtWaypoints": false,
+        "alwaysBrakeAtFinalWaypoint": false,
+        "cruiseWhenUncommanded": false,
+        "waypointDeadzone": {
+          "turnRadiusMultiplier": 2.5,
+          "frontSliceDegrees": 45
+        }
+      },
+      "surfaceFollowing": {
+        "altitudeProbeSetId": "few"
+      },
+      "navigation": {
+        "allowOnGround": false,
+        "allowedFluidMedia": [
+          "water"
+        ]
+      }
+    },
     "crawler": {
       "actuator": {
         "propulsionAxis": "worldPlanar",
@@ -271,7 +315,7 @@
           }
         },
         "water": {
-          "linearDampingRate": 8,
+          "linearDampingRate": 40,
           "angularDampingRate": 4,
           "surfaceLiftResponse": {
             "randomizationAmount": 0,

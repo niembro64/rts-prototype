@@ -443,19 +443,37 @@ fn unit_water_damage_for_step(origin_z: f64, damage_per_second: f64, dt_sec: f64
 }
 
 #[inline]
-fn unit_force_fluid_damping_force(
-    rel_vx: f64,
-    rel_vy: f64,
-    rel_vz: f64,
+fn unit_force_occupied_fluid_damping_rate(
     linear_damping_rate: f64,
     occupied_fraction: f64,
+) -> f64 {
+    if !linear_damping_rate.is_finite()
+        || !occupied_fraction.is_finite()
+        || linear_damping_rate <= 0.0
+        || occupied_fraction <= 0.0
+    {
+        return 0.0;
+    }
+    linear_damping_rate * occupied_fraction.min(1.0)
+}
+
+#[inline]
+fn unit_force_water_wind_cancellation_force(
+    wind_x: f64,
+    wind_y: f64,
+    wind_z: f64,
+    occupied_water_damping_rate: f64,
     body_mass: f64,
 ) -> (f64, f64, f64) {
-    if occupied_fraction <= 0.0 || body_mass <= 0.0 {
+    if occupied_water_damping_rate <= 0.0 || body_mass <= 0.0 {
         return (0.0, 0.0, 0.0);
     }
-    let scale = -linear_damping_rate.max(0.0) * occupied_fraction * body_mass / 1_000_000.0;
-    (scale * rel_vx, scale * rel_vy, scale * rel_vz)
+    // The shared exact linear-damping integrator is expressed relative to
+    // atmospheric wind. Cancel that target for the occupied water share so
+    // air tends toward wind, water tends toward still water, and a body at
+    // the surface receives the continuous occupancy-weighted blend.
+    let scale = -occupied_water_damping_rate * body_mass / 1_000_000.0;
+    (scale * wind_x, scale * wind_y, scale * wind_z)
 }
 
 #[inline]
@@ -1265,6 +1283,10 @@ fn unit_force_step_batch_core(
         if slot >= POOL_CAPACITY_USIZE || !pool_is_dynamic_sphere(p, slot) {
             continue;
         }
+        // Unit fluid resistance is rebuilt from the current air/water
+        // occupancies every tick. Clear first so blocked/dead profiles cannot
+        // retain the preceding tick's coefficient.
+        p.linear_drag_coefficient[slot] = 0.0;
         let entity_slot = unit_force_entity_slot_for_body(es, p, slot);
         let runtime_slot = unit_force_runtime_slot(runtime, es, entity_slot);
 
@@ -1370,6 +1392,29 @@ fn unit_force_step_batch_core(
         let has_angular_motion = omega_sq > UNIT_ATTITUDE_SLEEP_EPSILON_SQ;
         let water_fraction = unit_force_water_fraction(p.pos_z[slot], p.radius[slot]);
         let air_fraction = 1.0 - water_fraction;
+        let body_mass = if p.inv_mass[slot] > 0.0 {
+            1.0 / p.inv_mass[slot]
+        } else {
+            0.0
+        };
+        let occupied_air_damping_rate = unit_force_occupied_fluid_damping_rate(
+            rows[base + UF_ROW_AIR_LINEAR_DAMPING_RATE],
+            air_fraction,
+        );
+        let occupied_water_damping_rate = unit_force_occupied_fluid_damping_rate(
+            rows[base + UF_ROW_WATER_LINEAR_DAMPING_RATE],
+            water_fraction,
+        );
+        let occupied_fluid_damping_rate =
+            occupied_air_damping_rate + occupied_water_damping_rate;
+        if occupied_fluid_damping_rate > 0.0 && body_mass > 0.0 {
+            // Physics owns the exact exponential integration of linear
+            // damping. Supplying the physical coefficient here preserves the
+            // authored per-second rate at every supported lockstep cadence;
+            // turning -rate*v into a once-per-tick acceleration is unstable
+            // whenever rate*dt exceeds two.
+            p.linear_drag_coefficient[slot] = occupied_fluid_damping_rate * body_mass;
+        }
         if let Some(runtime_slot) = runtime_slot {
             runtime.air_fraction[runtime_slot] = air_fraction;
             runtime.water_fraction[runtime_slot] = water_fraction;
@@ -1394,11 +1439,6 @@ fn unit_force_step_batch_core(
             continue;
         }
 
-        let body_mass = if p.inv_mass[slot] > 0.0 {
-            1.0 / p.inv_mass[slot]
-        } else {
-            0.0
-        };
         let ground_max_propulsive_force = rows[base + UF_ROW_GROUND_MAX_PROPULSIVE_FORCE].max(0.0);
         let air_max_propulsive_force = rows[base + UF_ROW_AIR_MAX_PROPULSIVE_FORCE].max(0.0);
         let water_max_propulsive_force = rows[base + UF_ROW_WATER_MAX_PROPULSIVE_FORCE].max(0.0);
@@ -1560,24 +1600,8 @@ fn unit_force_step_batch_core(
                 thrust_force_y += ty * thrust_mag;
                 thrust_force_z += tz * thrust_mag;
             }
-            let air_linear_damping_rate = rows[base + UF_ROW_AIR_LINEAR_DAMPING_RATE];
-            if air_linear_damping_rate > 0.0 && body_mass > 0.0 {
-                // Wind belongs exclusively to the occupied air volume. The
-                // damping helper weights this air-relative velocity by
-                // air_fraction, so the wind contribution fades continuously
-                // at the waterline and is exactly zero when submerged.
-                let (fx, fy, fz) = unit_force_fluid_damping_force(
-                    p.vel_x[slot] - wind_x,
-                    p.vel_y[slot] - wind_y,
-                    p.vel_z[slot] - wind_z,
-                    air_linear_damping_rate,
-                    air_fraction,
-                    body_mass,
-                );
-                thrust_force_x += fx;
-                thrust_force_y += fy;
-                thrust_force_z += fz;
-            }
+            // Fluid velocity damping is installed on the body above and
+            // integrated exactly with the rest of this tick's acceleration.
         }
 
         if water_medium_active {
@@ -1649,17 +1673,12 @@ fn unit_force_step_batch_core(
                 }
             }
 
-            let water_linear_damping_rate = rows[base + UF_ROW_WATER_LINEAR_DAMPING_RATE];
-            if water_linear_damping_rate > 0.0 && body_mass > 0.0 {
-                // Water is currently a still medium. Never feed atmospheric
-                // wind into this relative velocity; future currents belong in
-                // a separate water-medium velocity field.
-                let (fx, fy, fz) = unit_force_fluid_damping_force(
-                    p.vel_x[slot],
-                    p.vel_y[slot],
-                    p.vel_z[slot],
-                    water_linear_damping_rate,
-                    water_fraction,
+            if occupied_water_damping_rate > 0.0 && body_mass > 0.0 {
+                let (fx, fy, fz) = unit_force_water_wind_cancellation_force(
+                    wind_x,
+                    wind_y,
+                    wind_z,
+                    occupied_water_damping_rate,
                     body_mass,
                 );
                 thrust_force_x += fx;
@@ -2215,9 +2234,24 @@ mod tests {
     }
 
     #[test]
-    fn fluid_damping_is_isotropic_and_occupancy_weighted() {
-        let full = unit_force_fluid_damping_force(10.0, -5.0, 2.0, 3.0, 1.0, 1_000.0);
-        let half = unit_force_fluid_damping_force(10.0, -5.0, 2.0, 3.0, 0.5, 1_000.0);
+    fn fluid_damping_rate_and_water_wind_cancellation_are_occupancy_weighted() {
+        assert_near(unit_force_occupied_fluid_damping_rate(3.0, 1.0), 3.0);
+        assert_near(unit_force_occupied_fluid_damping_rate(3.0, 0.5), 1.5);
+        assert_near(unit_force_occupied_fluid_damping_rate(3.0, 0.0), 0.0);
+        let full = unit_force_water_wind_cancellation_force(
+            10.0,
+            -5.0,
+            2.0,
+            3.0,
+            1_000.0,
+        );
+        let half = unit_force_water_wind_cancellation_force(
+            10.0,
+            -5.0,
+            2.0,
+            1.5,
+            1_000.0,
+        );
         assert_near(full.0, -0.03);
         assert_near(full.1, 0.015);
         assert_near(full.2, -0.006);

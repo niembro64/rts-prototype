@@ -1,4 +1,5 @@
-import { getUnitBlueprint, getUnitLocomotion } from './index';
+import { GRAVITY, UNIT_MASS_MULTIPLIER } from '../../../config';
+import { getAllUnitBlueprints, getUnitBlueprint, getUnitLocomotion } from './index';
 import {
   UNIT_LOCOMOTION_SURFACE_FOLLOWING_RESPONSE_FIELDS,
   getUnitLocomotionPreset,
@@ -15,7 +16,57 @@ function assertContract(condition: unknown, message: string): asserts condition 
   if (!condition) throw new Error(`[water lift locomotion contract] ${message}`);
 }
 
+/** Fluid propulsion and damping are both occupancy-weighted, so their
+ *  full-medium ratio is the exact steady speed for an otherwise free body. */
+function fullFluidTerminalSpeed(
+  unitBlueprintId: string,
+  medium: 'air' | 'water',
+): number {
+  const blueprint = getUnitBlueprint(unitBlueprintId);
+  const physics = getUnitLocomotion(unitBlueprintId).physics[medium];
+  const physicsMass = blueprint.mass * UNIT_MASS_MULTIPLIER;
+  if (physics.maxPropulsiveForce <= 0) return 0;
+  if (physics.resistance.linearDampingRate <= 0 || physicsMass <= 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return physics.maxPropulsiveForce * 1_000_000 /
+    (physicsMass * physics.resistance.linearDampingRate);
+}
+
+function flatGroundTerminalSpeed(unitBlueprintId: string): number {
+  const blueprint = getUnitBlueprint(unitBlueprintId);
+  const ground = getUnitLocomotion(unitBlueprintId).physics.ground;
+  const physicsMass = blueprint.mass * UNIT_MASS_MULTIPLIER;
+  const weightForce = physicsMass * GRAVITY / 1_000_000;
+  const driveForce = Math.min(
+    ground.maxPropulsiveForce,
+    weightForce * ground.staticFrictionCoefficient,
+  );
+  if (driveForce <= 0) return 0;
+  if (ground.tangentialDampingRate <= 0 || physicsMass <= 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return driveForce * 1_000_000 /
+    (physicsMass * ground.tangentialDampingRate);
+}
+
 export function runUnitWaterLiftLocomotionContractTest(): void {
+  // A stop-and-hold unit crossing an entire ordinary combat envelope in one
+  // second is a tuning error, not a niche. Audit every blueprint rather than
+  // naming only whichever small-mass hull made the mistake visible first.
+  const maxStopAndHoldTerminalSpeed = 600;
+  for (const blueprint of getAllUnitBlueprints()) {
+    const locomotion = getUnitLocomotion(blueprint.unitBlueprintId);
+    if (locomotion.motionControl.cruiseWhenUncommanded) continue;
+    for (const medium of ['air', 'water'] as const) {
+      const speed = fullFluidTerminalSpeed(blueprint.unitBlueprintId, medium);
+      assertContract(
+        Number.isFinite(speed) && speed <= maxStopAndHoldTerminalSpeed,
+        `${blueprint.unitBlueprintId}.${medium} full-medium terminal speed is bounded; got ${speed}`,
+      );
+    }
+  }
+
   const supportZ = getLocomotionSupportPointZ(WATER_LEVEL + 32, 12);
   assertContract(
     supportZ === WATER_LEVEL + 20 &&
@@ -30,7 +81,7 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
     'air surface lift may recover a partly immersed body only while its origin remains above water',
   );
 
-  for (const presetId of ['amphibian', 'amphibious-crawler', 'submarine']) {
+  for (const presetId of ['amphibian', 'amphibious-crawler', 'submarine', 'surface-ship']) {
     const preset = getUnitLocomotionPreset(presetId);
     assertContract(
       preset.actuator.ground.staticFrictionCoefficient >= 0,
@@ -83,44 +134,45 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
   );
 
   const waterStrider = getUnitLocomotion('unitWaterStrider');
-  const waterStriderForwardForces = [
-    waterStrider.physics.ground.maxPropulsiveForce,
-    waterStrider.physics.air.maxPropulsiveForce,
-    waterStrider.physics.water.maxPropulsiveForce,
+  const waterStriderTerminalSpeeds = [
+    flatGroundTerminalSpeed('unitWaterStrider'),
+    fullFluidTerminalSpeed('unitWaterStrider', 'air'),
+    fullFluidTerminalSpeed('unitWaterStrider', 'water'),
   ];
-  const weakestForwardForce = Math.min(...waterStriderForwardForces);
-  const strongestForwardForce = Math.max(...waterStriderForwardForces);
-  const weakestWaterLift = Math.min(
-    waterStrider.physics.water.lift.surfaceFollowingInverseForceFromGround,
-    waterStrider.physics.water.lift.surfaceFollowingProportionalForceFromWater,
-  );
+  const weakestTerminalSpeed = Math.min(...waterStriderTerminalSpeeds);
+  const strongestTerminalSpeed = Math.max(...waterStriderTerminalSpeeds);
   assertContract(
     waterStrider.type === 'crawler' &&
       waterStrider.physics.air.lift.surfaceFollowingInverseForceFromGround === 0 &&
       waterStrider.physics.air.lift.surfaceFollowingInverseForceFromWater === 0 &&
-      weakestForwardForce > 0 &&
-      strongestForwardForce / weakestForwardForce <= 1.5 &&
-      weakestWaterLift >= strongestForwardForce * 3 &&
+      weakestTerminalSpeed > 0 &&
+      strongestTerminalSpeed / weakestTerminalSpeed <= 1.35 &&
+      waterStrider.physics.water.lift.surfaceFollowingInverseForceFromGround > 0 &&
+      waterStrider.physics.water.lift.surfaceFollowingProportionalForceFromWater > 0 &&
       waterStrider.navigation.waypoint.allowOnGround &&
       waterStrider.navigation.waypoint.allowInWater &&
       !waterStrider.navigation.waypoint.allowInAir &&
       !waterStrider.motionControl.cruiseWhenUncommanded &&
       !waterStrider.motionControl.maintainFullThrustAtWaypoints,
-    'Water Strider has no air lift, high water lift, balanced per-medium propulsion, and no airborne routing',
+    'Water Strider has no air lift, damped dual-channel water support, balanced per-medium speed, and no airborne routing',
   );
 
   const patrolCorvette = getUnitLocomotion('unitPatrolCorvette');
+  const patrolCorvetteWaterSpeed = fullFluidTerminalSpeed('unitPatrolCorvette', 'water');
   assertContract(
+    patrolCorvette.physicsPresetId === 'surface-ship' &&
     patrolCorvette.physics.ground.maxPropulsiveForce === 0 &&
       patrolCorvette.physics.air.lift.surfaceFollowingInverseForceFromGround === 0 &&
       patrolCorvette.physics.air.lift.surfaceFollowingInverseForceFromWater === 0 &&
       patrolCorvette.physics.water.lift.surfaceFollowingProportionalForceFromWater > 0 &&
       patrolCorvette.physics.water.lift.surfaceFollowingInverseForceFromGround === 0 &&
+      patrolCorvette.physics.water.resistance.linearDampingRate >= 20 &&
+      patrolCorvetteWaterSpeed >= 100 && patrolCorvetteWaterSpeed <= 250 &&
       !patrolCorvette.navigation.waypoint.allowOnGround &&
       patrolCorvette.navigation.waypoint.allowInWater &&
       !patrolCorvette.navigation.waypoint.allowInAir &&
       !patrolCorvette.motionControl.cruiseWhenUncommanded,
-    'Patrol Corvette falls freely through air, then rides the surface using only its in-water lift channel',
+    'Patrol Corvette falls freely through air, then settles into bounded surface-ship propulsion and in-water lift',
   );
 
   const orca = getUnitLocomotion('unitOrca');

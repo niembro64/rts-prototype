@@ -1653,6 +1653,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runPathfindingDebugGridContractTest();
         const { runUnitWaterLiftLocomotionContractTest } = await import('../sim/blueprints/unitWaterLiftLocomotionContractTest');
         runUnitWaterLiftLocomotionContractTest();
+        const { runUnitWaterSurfaceDynamicsContractTest } = await import('../sim/blueprints/unitWaterSurfaceDynamicsContractTest');
+        runUnitWaterSurfaceDynamicsContractTest();
         const { runShotLocomotionContractTest } = await import('../sim/shotLocomotionContractTest');
         runShotLocomotionContractTest();
         const { runEmissionMediumContractTest } = await import('../sim/emissionMediumContractTest');

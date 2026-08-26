@@ -1597,6 +1597,23 @@
         <li><strong>Attitude control</strong> has no global angular-speed limit. The critically damped servo derives torque from force the active locomotion media can actually supply, with ground authority constrained by the same Coulomb grip as translation and total lateral control constrained to one body-weight. That torque acts against the solid-sphere moment of inertia <code>I = 2/5 m r^2</code>, so turning is an acceleration-and-inertia result: larger or heavier bodies respond more conservatively under the same force rather than converging on a shared maximum turn speed. The closed-loop response deliberately takes twice the fastest torque-supported response time, halving angular rates while preserving those physical ratios.</li>
       </ul>
 
+      <h3>Locomotion tuning is derived from force balance, not copied raw values</h3>
+      <p>
+        A propulsion number is a force, not a speed. In a fully occupied fluid medium, propulsion
+        and resistance carry the same occupancy multiplier, so a free body&rsquo;s exact steady speed is
+        <code>v&infin; = Fmax &middot; 1,000,000 / (mPhysics &middot; linearDampingRate)</code>.
+        Tuning must compare that result across the unit&rsquo;s intended media instead of making its raw
+        ground, air, and water forces look numerically similar. Every stop-and-hold blueprint is
+        audited this way; a non-cruise full-fluid terminal speed above 600 world units per second is
+        rejected as an obvious roster error rather than excused as a small-mass niche.
+      </p>
+      <ul class="rule-list">
+        <li><strong>Per-second fluid damping is integrated exactly.</strong> The occupied air and water rates add into one body coefficient and use the exponential linear-damping integrator at every host-selected BATTLE cadence. Air&rsquo;s share tends toward atmospheric wind; water&rsquo;s share tends toward still water. Re-encoding <code>-rate &middot; velocity</code> as one explicit acceleration per authoritative tick is forbidden because it reverses or amplifies velocity when <code>rate &middot; dt</code> becomes large.</li>
+        <li><strong>Support gains are compared with body weight.</strong> An inverse coefficient contributes <code>C / distance</code>; a water-surface proportional coefficient contributes <code>C &middot; depth</code>. Their occupied sum must be judged against <code>mPhysics &middot; g / 1,000,000</code>. A gain hundreds of times larger than the force needed to carry the hull is a launch spring even if one convenient cadence happens to hide it.</li>
+        <li><strong>Surface craft require a real release test.</strong> The Water Strider and Barracuda are dropped from 60 world units above a deep-water, six-probe patch and simulated for twelve seconds at every supported rate (1, 5, 10, 15, 20, 30, 45, and 60 Hz). The contract bounds the cadence-appropriate entry dip, forbids a rebound out of the water, and requires both support height and vertical speed to settle. The deliberately coarse 1 Hz mode may fall farther before its next occupancy sample; it may not turn that sampling gap into repeated bounce.</li>
+        <li><strong>Authored roles stay explicit.</strong> Water Strider retains ground, air-recovery, water propulsion, and both bed- and water-referenced support, but its derived speeds stay in one amphibious band. Barracuda uses a dedicated water-only <code>surface-ship</code> preset: low air resistance permits an unsupported fall, while strong water resistance and mass-scaled proportional support catch and settle the hull without borrowing submarine behavior.</li>
+      </ul>
+
       <h3>Ground is a third addend, never an override</h3>
       <p>
         Ground is <strong>additive</strong> to air and water. Every ground term &mdash; propulsion,

@@ -1137,7 +1137,7 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 14.5,
+          "maxPropulsiveForce": 0.76,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -5358,7 +5358,7 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 11.8,
+          "maxPropulsiveForce": 10.3,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -5573,7 +5573,7 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 14,
+          "maxPropulsiveForce": 7,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 14,
             "surfaceFollowingProportionalForceFromWater": 0.01
@@ -6158,7 +6158,7 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 14.5,
+          "maxPropulsiveForce": 2.85,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -6577,7 +6577,7 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 12,
+          "maxPropulsiveForce": 1.2,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 8,
             "surfaceFollowingProportionalForceFromWater": 0.02
@@ -7549,17 +7549,17 @@
           "maxPropulsiveForce": 30
         },
         "air": {
-          "maxPropulsiveForce": 20,
+          "maxPropulsiveForce": 3,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingInverseForceFromWater": 0
           }
         },
         "water": {
-          "maxPropulsiveForce": 24,
+          "maxPropulsiveForce": 30,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 100,
-            "surfaceFollowingProportionalForceFromWater": 100
+            "surfaceFollowingProportionalForceFromWater": 0.14
           }
         }
       },
@@ -7746,7 +7746,7 @@
     },
     "unitLocomotion": {
       "type": "amphibian",
-      "physicsPresetId": "submarine",
+      "physicsPresetId": "surface-ship",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 0
@@ -7759,10 +7759,10 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 28,
+          "maxPropulsiveForce": 56,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
-            "surfaceFollowingProportionalForceFromWater": 22
+            "surfaceFollowingProportionalForceFromWater": 0.32
           }
         }
       },
@@ -8260,7 +8260,7 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 14.5,
+          "maxPropulsiveForce": 8.2,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0

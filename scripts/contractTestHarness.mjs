@@ -58,7 +58,10 @@ for (const m of initSource.slice(blockStart).matchAll(/const \{ ([^}]+) \} = awa
 
 // Tests that stand up their own authoritative backend, so they cannot share a
 // page with the lobby's background battle.
-const EXCLUSIVE_SIM_SLOT_TESTS = new Set(['runDeterministicLockstepBackendContractTest']);
+const EXCLUSIVE_SIM_SLOT_TESTS = new Set([
+  'runDeterministicLockstepBackendContractTest',
+  'runUnitWaterSurfaceDynamicsContractTest',
+]);
 
 const selected = registered.filter(({ fn }) => (only === null ? true : fn.toLowerCase().includes(only.toLowerCase())));
 if (selected.length === 0) throw new Error(`no contract tests matched --only=${only}`);
@@ -84,16 +87,22 @@ const browser = await chromium.launch({
 try {
   const base = server.resolvedUrls?.local[0];
   if (!base) throw new Error('Vite did not provide a local URL');
-  const page = await browser.newPage();
-  await page.goto(base, { waitUntil: 'load', timeout: 120000 });
-  // Let the app finish booting the WASM sim before importing sim modules.
-  await page.waitForFunction(() => document.querySelector('canvas') !== null, null, { timeout: 120000 })
-    .catch(() => {});
-  await page.waitForTimeout(4000);
+  let page = null;
+  if (selected.some(({ fn }) => !EXCLUSIVE_SIM_SLOT_TESTS.has(fn))) {
+    page = await browser.newPage();
+    await page.goto(base, { waitUntil: 'load', timeout: 120000 });
+    // Let the app finish booting the WASM sim before importing sim modules.
+    await page.waitForFunction(() => document.querySelector('canvas') !== null, null, { timeout: 120000 })
+      .catch(() => {});
+    await page.waitForTimeout(4000);
+  }
 
   let exclusivePage = null;
   const pageFor = async (fn) => {
-    if (!EXCLUSIVE_SIM_SLOT_TESTS.has(fn)) return page;
+    if (!EXCLUSIVE_SIM_SLOT_TESTS.has(fn)) {
+      if (page === null) throw new Error(`regular contract-test page missing for ${fn}`);
+      return page;
+    }
     if (exclusivePage === null) {
       exclusivePage = await browser.newPage();
       await exclusivePage.goto(`${base}contractTestHost.html`, { waitUntil: 'load', timeout: 120000 });
