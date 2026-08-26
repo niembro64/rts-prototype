@@ -1220,9 +1220,12 @@ export class ClientViewState extends ClientViewStateBase {
     const mapWidth = this.getMapWidth();
     const mapHeight = this.getMapHeight();
     let views = this.renderEntityState.getViews();
+    // Every unit, at every detail rung: marks are placed from the pose and
+    // the blueprint layout, so a far/proxy unit marks the ground exactly
+    // like a close one — the gaps that appeared on zooming back in were
+    // this loop skipping far-LOD units.
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
-      if (this.entityEmissionUsesFarLod3D(entity, options)) continue;
       const knownSlot = unitSlots?.[i] ?? -1;
       let slot: number | undefined =
         knownSlot >= 0 &&
@@ -1244,6 +1247,7 @@ export class ClientViewState extends ClientViewStateBase {
           entityId,
           views.x[slot],
           views.y[slot],
+          views.rotation[slot],
           grounded,
           views.groundY[slot],
         );

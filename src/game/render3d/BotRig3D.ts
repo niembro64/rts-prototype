@@ -38,6 +38,7 @@ import {
 import {
   rollingContact,
   sampleRollingContactDistance,
+  transformChassisToWorld,
   transformWorldVectorToChassis,
   type LocomotionBase,
   type LocomotionRenderPose,
@@ -115,6 +116,13 @@ type BotLeg = {
    *  pose, so same-side counter-swing cannot acquire a second gait clock. */
   footLocalX: number;
   footLocalZ: number;
+  /** The sole's world XZ and whether it is in its stance half, published for
+   *  ground prints so a footprint lands exactly under the drawn foot. False
+   *  until the first posed frame. */
+  footTracked: boolean;
+  footPlanted: boolean;
+  footWorldX: number;
+  footWorldZ: number;
 };
 
 type BotArm = {
@@ -252,6 +260,7 @@ const _resolvedFoot = new THREE.Vector3();
 const _chord = new THREE.Vector3();
 const _bendDirection = new THREE.Vector3();
 const _chassisVelocity = { x: 0, y: 0, z: 0 };
+const _footWorld = { x: 0, y: 0, z: 0 };
 const _segDir = new THREE.Vector3();
 const _segQuat = new THREE.Quaternion();
 const _segLateralReference = new THREE.Vector3(0, 0, 1);
@@ -686,6 +695,28 @@ export function botFootPitch(phase: number): number {
   );
 }
 
+/** Publish each sole's world XZ and stance state for ground prints. The feet
+ *  are posed in the hips frame, which yaws inside the hull to cancel the
+ *  upper body's turret assistance, so undo that yaw before the chassis
+ *  transform. A leg is planted through its stance half of the cycle, and
+ *  the whole time while the walk amplitude is out (standing). */
+function publishBotFootContacts(mesh: BotMesh, pose: LocomotionRenderPose): void {
+  const hipsYaw = mesh.hips.rotation.y;
+  const cosYaw = Math.cos(hipsYaw);
+  const sinYaw = Math.sin(hipsYaw);
+  const standing = mesh.gait < 0.05;
+  for (const leg of mesh.legs) {
+    const localX = leg.footLocalX * cosYaw + leg.footLocalZ * sinYaw;
+    const localZ = -leg.footLocalX * sinYaw + leg.footLocalZ * cosYaw;
+    transformChassisToWorld(localX, mesh.groundLocalY, localZ, pose, _footWorld);
+    const legPhase = positiveUnitPhase(mesh.gaitPhase + (leg.side > 0 ? 0.5 : 0));
+    leg.footWorldX = _footWorld.x;
+    leg.footWorldZ = _footWorld.z;
+    leg.footPlanted = standing || legPhase >= 0.5;
+    leg.footTracked = true;
+  }
+}
+
 /** Pose the whole bot biped from one gait phase.
  *
  * Each leg recovers from back to front for half a cycle, then travels linearly
@@ -836,6 +867,10 @@ export function buildBotRig(
       foot: makeFoot(hips, footLength, footWidth, ownerId, variant, geometryTier),
       footLocalX: hipX,
       footLocalZ: hipZ,
+      footTracked: false,
+      footPlanted: false,
+      footWorldX: 0,
+      footWorldZ: 0,
     };
     legs.push(leg);
   }
@@ -1342,6 +1377,7 @@ export function updateBotRig(
     );
   }
   poseCoupledBotGait(mesh, mesh.gaitPhase, mesh.gait);
+  publishBotFootContacts(mesh, pose);
   poseArms(mesh, entity, dt);
 
   return true;

@@ -225,6 +225,8 @@ export class RtsScene3DRenderPhase {
   };
   private readonly getGroundPrintLocomotionMesh = (entityId: EntityId) =>
     this.resources.entityRenderer.getLocomotionMesh(entityId);
+  private readonly getGroundPrintEntity = (entityId: EntityId) =>
+    this.clientViewState.getEntity(entityId);
   // Per-frame LOD callbacks hoisted to stable instance closures so the
   // render phase does not allocate them (and the callees can stay
   // monomorphic). They read `currentLodView`, which run() assigns from
@@ -700,7 +702,9 @@ export class RtsScene3DRenderPhase {
       groundPrintRenderer.update(
         entityLists.groundPrints,
         this.getGroundPrintLocomotionMesh,
+        this.getGroundPrintEntity,
         this.groundPrintAccumMs,
+        graphicsConfig.groundPrintDensity ?? 1,
       );
       this.groundPrintAccumMs = 0;
     }

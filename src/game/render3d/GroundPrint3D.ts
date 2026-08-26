@@ -35,6 +35,14 @@
 //    the treads; the fade is evaluated on the GPU from each mark's
 //    birth time, so a long lifetime costs no per-frame colour rewrite.
 //
+// 7. EVERY RUNG, EVERY GROUND UNIT. Contact points come from the unit's
+//    blueprint layout (GroundPrintLayout3D) placed by its pose, not from
+//    the locomotion rig — a proxy-rung unit has no rig, and a rig only
+//    ever existed for three of the six ground locomotion types. Real
+//    planted feet are still preferred when a rig with legs is drawn, so
+//    a footprint sits exactly under the foot up close; without one the
+//    layout's stride reproduces the gait's cadence from distance moved.
+//
 // Per-frame work is bounded: O(units × contacts) for sampling, plus
 // O(active marks) for the retirement sweep. Both scale linearly and
 // allocate nothing in steady state.
@@ -43,10 +51,14 @@ import * as THREE from 'three';
 import type { Entity, EntityId } from '../sim/types';
 import { IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
 import { COLORS } from '@/colorsConfig';
-import { getGraphicsConfig, getLocomotionMarks } from '@/clientBarConfig';
+import { getLocomotionMarks } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { Locomotion3DMesh } from './Locomotion3D';
-import type { LegInstance } from './CrawlerRig3D';
+import {
+  resolveGroundPrintLayout,
+  type GroundPrintLayout,
+  type GroundPrintStampContact,
+} from './GroundPrintLayout3D';
 import {
   isLocomotionGrounded,
   locomotionTerrainModeForSupportHeight,
@@ -149,14 +161,15 @@ const DENSITY_EMA_TAU_MS = 300;
 const EMIT_DENSITY_FLOOR = 0.02;
 const CONTACT_KEY_INDEX_STRIDE = 1 << 16;
 const CONTACT_KEY_UNIT_STRIDE = CONTACT_KEY_INDEX_STRIDE * 4;
-const CONTACT_TYPE_WHEEL = 0;
-const CONTACT_TYPE_TREAD = 1;
+const CONTACT_TYPE_TRAIL = 0;
 const CONTACT_TYPE_LEG = 2;
 
 export class GroundPrintRenderPacket3D {
   ids = new Float64Array(UNIT_PACKET_INITIAL_CAP);
   x = new Float32Array(UNIT_PACKET_INITIAL_CAP);
   y = new Float32Array(UNIT_PACKET_INITIAL_CAP);
+  /** Sim heading, radians. Places the layout's contacts around the body. */
+  yaw = new Float32Array(UNIT_PACKET_INITIAL_CAP);
   grounded = new Uint8Array(UNIT_PACKET_INITIAL_CAP);
   /** 1 when marks must be draped over submerged terrain instead of water. */
   terrainBed = new Uint8Array(UNIT_PACKET_INITIAL_CAP);
@@ -183,6 +196,7 @@ export class GroundPrintRenderPacket3D {
     this.ids[cursor] = entity.id;
     this.x[cursor] = entity.transform.x;
     this.y[cursor] = entity.transform.y;
+    this.yaw[cursor] = entity.transform.rotation;
     this.grounded[cursor] = grounded ? 1 : 0;
     this.terrainBed[cursor] = locomotionTerrainModeForSupportHeight(
       getUnitGroundZ(entity),
@@ -194,6 +208,7 @@ export class GroundPrintRenderPacket3D {
     entityId: EntityId,
     x: number,
     y: number,
+    yaw: number,
     grounded: boolean,
     supportHeight: number,
   ): void {
@@ -202,6 +217,7 @@ export class GroundPrintRenderPacket3D {
     this.ids[cursor] = entityId;
     this.x[cursor] = x;
     this.y[cursor] = y;
+    this.yaw[cursor] = yaw;
     this.grounded[cursor] = grounded ? 1 : 0;
     this.terrainBed[cursor] = locomotionTerrainModeForSupportHeight(
       supportHeight,
@@ -216,10 +232,11 @@ export class GroundPrintRenderPacket3D {
   private ensureCapacity(required: number): void {
     if (required <= this.ids.length) return;
     const nextCapacity = nextGeometricCapacity(this.ids.length, required);
-    [this.ids, this.x, this.y, this.grounded, this.terrainBed] = growTypedArrays([
+    [this.ids, this.x, this.y, this.yaw, this.grounded, this.terrainBed] = growTypedArrays([
       this.ids,
       this.x,
       this.y,
+      this.yaw,
       this.grounded,
       this.terrainBed,
     ] as const, nextCapacity);
@@ -401,6 +418,9 @@ export class GroundPrint3D {
   /** Lifetime handed to marks emitted this update (density-scaled). */
   private emitLifetimeMs = PRINT_BASE_LIFETIME_MS;
   private evictionScratch = new Float64Array(0);
+  /** Per-unit contact layout, resolved once from the blueprint and dropped
+   *  when the unit leaves the packet. */
+  private layouts = new Map<EntityId, GroundPrintLayout | null>();
   private trails = new Map<TrailKey, TrailState>();
   private _seenTrailKeys = new Set<TrailKey>();
   private stamps = new Map<TrailKey, StampState>();
@@ -472,17 +492,22 @@ export class GroundPrint3D {
     this.root.add(this.mesh);
   }
 
-  /** Per-frame entry point. */
+  /** Per-frame entry point. `getMesh` is only consulted for a rig's real
+   *  planted feet; `getEntity` resolves the blueprint layout; `density01`
+   *  is the render budget's already-scaled groundPrintDensity. */
   update(
     packet: GroundPrintRenderPacket3D,
     getMesh: (entityId: EntityId) => Locomotion3DMesh,
+    getEntity: (entityId: EntityId) => Entity | undefined,
     dtMs: number,
+    density01: number,
   ): void {
     // Toggle: if marks are off, drain everything and idle.
     if (!getLocomotionMarks()) {
       if (this.marks.length > 0) this.clearMarksOnly();
       this.trails.clear();
       this.stamps.clear();
+      this.layouts.clear();
       this._smoothedDensity = -1;
       return;
     }
@@ -497,9 +522,10 @@ export class GroundPrint3D {
     }
 
     // ── Density EMA ──
-    // Density glides over ~300 ms instead of stepping.
-    const gfx = getGraphicsConfig();
-    const target = clamp01(gfx.groundPrintDensity ?? 1);
+    // Density glides over ~300 ms instead of stepping. The caller hands
+    // over the render budget's scaled value, so a heavy scene thins its
+    // marks instead of reading the static maximum forever.
+    const target = clamp01(Number.isFinite(density01) ? density01 : 1);
     if (this._smoothedDensity < 0) {
       this._smoothedDensity = target;
     } else {
@@ -552,51 +578,76 @@ export class GroundPrint3D {
     for (let row = 0; row < packet.count; row++) {
       const unitId = packet.ids[row] as EntityId;
       if (!this._groundedUnitIds.has(unitId)) continue;
-      const loc = getMesh(unitId);
-      if (!loc) continue;
       // Off-scope units: skip sampling entirely. Their trail/stamp
       // state will be retired at end-of-frame; if they re-enter
       // scope later the trail starts fresh from a square cap, which
       // is the right thing to do (we have no idea where they were
       // while off-screen).
       if (this.scope && !this.scope.inScope(packet.x[row], packet.y[row], 200)) continue;
+      const layout = this.layoutFor(unitId, getEntity);
+      if (layout === null) continue;
       const terrainMode = packet.terrainModeAt(row);
+      const bx = packet.x[row];
+      const by = packet.y[row];
+      // Chassis-local (X forward, Z lateral) into sim XY by the body's
+      // heading — the same rotation the rig's yaw quaternion applies
+      // (render_pose.rs: yaw = -rotation about world up).
+      const yaw = packet.yaw[row];
+      const cosYaw = Math.cos(yaw);
+      const sinYaw = Math.sin(yaw);
 
-      switch (loc.type) {
-        case 'rover': {
-          for (let i = 0; i < loc.wheelContacts.length; i++) {
-            const c = loc.wheelContacts[i];
-            if (!c.initialized) continue;
-            const key = contactTrailKey(unitId, CONTACT_TYPE_WHEEL, i);
-            this._seenTrailKeys.add(key);
-            this.sampleTrail(
-              key, c.worldX, c.worldZ, loc.printWidth, spacingSq, terrainMode,
+      const trails = layout.trails;
+      for (let i = 0; i < trails.length; i++) {
+        const contact = trails[i];
+        const key = contactTrailKey(unitId, CONTACT_TYPE_TRAIL, i);
+        this._seenTrailKeys.add(key);
+        this.sampleTrail(
+          key,
+          bx + contact.localX * cosYaw - contact.localZ * sinYaw,
+          by + contact.localX * sinYaw + contact.localZ * cosYaw,
+          contact.width,
+          spacingSq,
+          terrainMode,
+        );
+      }
+
+      const stamps = layout.stamps;
+      if (stamps.length === 0) continue;
+      // A drawn rig with legs knows exactly where each foot is planted;
+      // use that so the print sits under the foot. Otherwise the layout's
+      // rest foothold and stride stand in — same keys, so a unit crossing
+      // a detail rung mid-walk continues its own track.
+      const loc = getMesh(unitId);
+      for (let i = 0; i < stamps.length; i++) {
+        const contact = stamps[i];
+        const key = contactTrailKey(unitId, CONTACT_TYPE_LEG, i);
+        this._seenStampKeys.add(key);
+        if (loc?.type === 'crawler') {
+          const leg = loc.legs[i];
+          if (leg !== undefined && leg.initialized) {
+            this.sampleStamp(
+              key, leg.contactState === 'planted', leg.worldX, leg.worldZ, leg.footRadius, terrainMode,
             );
+            continue;
           }
-          break;
-        }
-        case 'tank': {
-          for (let i = 0; i < loc.treadContacts.length; i++) {
-            const c = loc.treadContacts[i];
-            if (!c.initialized) continue;
-            const key = contactTrailKey(unitId, CONTACT_TYPE_TREAD, i);
-            this._seenTrailKeys.add(key);
-            this.sampleTrail(
-              key, c.worldX, c.worldZ, loc.printWidth, spacingSq, terrainMode,
+        } else if (loc?.type === 'bot') {
+          const leg = loc.legs[i];
+          if (leg !== undefined && leg.footTracked) {
+            this.sampleStamp(
+              key, leg.footPlanted, leg.footWorldX, leg.footWorldZ, contact.footRadius, terrainMode,
             );
+            continue;
           }
-          break;
         }
-        case 'crawler': {
-          for (let i = 0; i < loc.legs.length; i++) {
-            const leg = loc.legs[i];
-            if (!leg.initialized) continue;
-            const key = contactTrailKey(unitId, CONTACT_TYPE_LEG, i);
-            this._seenStampKeys.add(key);
-            this.sampleStamp(key, leg, terrainMode);
-          }
-          break;
-        }
+        this.sampleSyntheticStamp(
+          key,
+          contact,
+          bx + contact.localX * cosYaw - contact.localZ * sinYaw,
+          by + contact.localX * sinYaw + contact.localZ * cosYaw,
+          cosYaw,
+          sinYaw,
+          terrainMode,
+        );
       }
     }
 
@@ -627,6 +678,21 @@ export class GroundPrint3D {
 
     this.retireUnavailableContactState(this.trails);
     this.retireUnavailableContactState(this.stamps);
+    for (const unitId of this.layouts.keys()) {
+      if (!this._activeUnitIds.has(unitId)) this.layouts.delete(unitId);
+    }
+  }
+
+  private layoutFor(
+    unitId: EntityId,
+    getEntity: (entityId: EntityId) => Entity | undefined,
+  ): GroundPrintLayout | null {
+    const cached = this.layouts.get(unitId);
+    if (cached !== undefined) return cached;
+    const entity = getEntity(unitId);
+    const layout = entity === undefined ? null : resolveGroundPrintLayout(entity);
+    this.layouts.set(unitId, layout);
+    return layout;
   }
 
   private retireUnavailableContactState<T>(states: Map<TrailKey, T>): void {
@@ -679,7 +745,7 @@ export class GroundPrint3D {
     this.appendMiteredTrail(state, cx, cz, dirX, dirZ, width, terrainMode);
   }
 
-  // ── Stamp sampling (legs) ──
+  // ── Stamp sampling (a rig's real feet) ──
   // Detect the stepping/free → planted transition. Every plant cycle yields
   // exactly one stamp; misses are only possible if a plant happens
   // closer than STAMP_MIN_DIST to the previous stamp (rare; the
@@ -687,7 +753,10 @@ export class GroundPrint3D {
 
   private sampleStamp(
     key: TrailKey,
-    leg: LegInstance,
+    planted: boolean,
+    footX: number,
+    footZ: number,
+    footRadius: number,
     terrainMode: LocomotionTerrainMode,
   ): void {
     let state = this.stamps.get(key);
@@ -695,38 +764,79 @@ export class GroundPrint3D {
       // First sighting. If the foot is already planted, treat that
       // as the initial plant and stamp it.
       state = {
-        wasUnplanted: leg.contactState !== 'planted',
-        lastX: leg.worldX,
-        lastY: leg.worldZ,
+        wasUnplanted: !planted,
+        lastX: footX,
+        lastY: footZ,
         hasInitial: false,
         terrainMode,
       };
       this.stamps.set(key, state);
-      if (leg.contactState === 'planted') {
-        this.emitStamp(state, leg, terrainMode);
-      }
+      if (planted) this.emitStamp(state, footX, footZ, footRadius, terrainMode);
       return;
     }
-    const unplanted = leg.contactState !== 'planted';
+    const unplanted = !planted;
     const justLanded = state.wasUnplanted && !unplanted;
     state.wasUnplanted = unplanted;
     if (!justLanded) return;
     if (state.hasInitial) {
-      const dx = leg.worldX - state.lastX;
-      const dz = leg.worldZ - state.lastY;
+      const dx = footX - state.lastX;
+      const dz = footZ - state.lastY;
       if (dx * dx + dz * dz < STAMP_MIN_DIST_SQ) return;
     }
-    this.emitStamp(state, leg, terrainMode);
+    this.emitStamp(state, footX, footZ, footRadius, terrainMode);
+  }
+
+  // ── Stamp sampling (no rig: the layout's stride) ──
+  // The foothold's home rides the body; a foot plants every `stride` of
+  // ground the home covers, and phase-1 feet start half a stride behind so
+  // diagonal pairs alternate. Distance is measured from the LAST stamp,
+  // so a unit dropping to the proxy rung mid-walk keeps its own cadence
+  // from wherever its real foot last planted.
+
+  private sampleSyntheticStamp(
+    key: TrailKey,
+    contact: GroundPrintStampContact,
+    homeX: number,
+    homeY: number,
+    headingX: number,
+    headingY: number,
+    terrainMode: LocomotionTerrainMode,
+  ): void {
+    let state = this.stamps.get(key);
+    if (!state || state.terrainMode !== terrainMode) {
+      state = {
+        wasUnplanted: false,
+        lastX: homeX,
+        lastY: homeY,
+        hasInitial: false,
+        terrainMode,
+      };
+      this.stamps.set(key, state);
+      if (contact.phase01 === 0) {
+        this.emitStamp(state, homeX, homeY, contact.footRadius, terrainMode);
+      } else {
+        // Pretend the last plant was half a stride back along the heading.
+        const back = contact.stride * 0.5;
+        state.lastX = homeX - headingX * back;
+        state.lastY = homeY - headingY * back;
+        state.hasInitial = true;
+      }
+      return;
+    }
+    const dx = homeX - state.lastX;
+    const dy = homeY - state.lastY;
+    if (dx * dx + dy * dy < contact.stride * contact.stride) return;
+    this.emitStamp(state, homeX, homeY, contact.footRadius, terrainMode);
   }
 
   private emitStamp(
     state: StampState,
-    leg: LegInstance,
+    fx: number,
+    fz: number,
+    footRadius: number,
     terrainMode: LocomotionTerrainMode,
   ): void {
-    const fx = leg.worldX;
-    const fz = leg.worldZ;
-    const endpointRadius = Math.max(1.1, leg.footRadius);
+    const endpointRadius = Math.max(1.1, footRadius);
     const radius = endpointRadius * STAMP_CIRCLE_RADIUS_MULT;
     const sLx = fx - radius;
     const sLz = fz - radius;

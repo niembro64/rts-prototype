@@ -10,6 +10,7 @@ import {
   GroundPrintRenderPacket3D,
 } from './GroundPrint3D';
 import { WATER_LEVEL } from '../sim/Terrain';
+import type { Entity } from '../sim/types';
 import type { Locomotion3DMesh } from './Locomotion3D';
 import {
   getLocomotionMarks,
@@ -91,8 +92,8 @@ export function runRollingLocomotionContractTest(): void {
   assertEqual(rootPoint.z, 33, 'world-space attachments use the batched chassis root Z');
 
   const groundPrintPacket = new GroundPrintRenderPacket3D();
-  groundPrintPacket.pushRow(1, 10, 20, true, WATER_LEVEL - 0.01);
-  groundPrintPacket.pushRow(2, 30, 40, true, WATER_LEVEL);
+  groundPrintPacket.pushRow(1, 10, 20, 0, true, WATER_LEVEL - 0.01);
+  groundPrintPacket.pushRow(2, 30, 40, 0, true, WATER_LEVEL);
   if (groundPrintPacket.terrainModeAt(0) !== 'terrainBed') {
     throw new Error(
       '[rolling locomotion contract] submerged tread and wheel marks must drape over the terrain bed',
@@ -114,27 +115,24 @@ export function runRollingLocomotionContractTest(): void {
       return terrainMode === 'terrainBed' ? WATER_LEVEL - 80 : WATER_LEVEL;
     },
   );
+  // Marks are placed from the unit's pose and blueprint layout, never from a
+  // rig: a tread unit with no locomotion mesh at all (the proxy rung) must
+  // still rut the bed it rolls over.
+  const submergedTank = {
+    unit: { unitBlueprintId: 'unitLynx', radius: { other: 12 } },
+    transform: { x: 0, y: 0, z: WATER_LEVEL - 10, rotation: 0 },
+  } as unknown as Entity;
+  const getEntity = () => submergedTank;
+  const noRig = () => undefined as Locomotion3DMesh;
   const submergedPacket = new GroundPrintRenderPacket3D();
-  submergedPacket.pushRow(3, 0, 0, true, WATER_LEVEL - 10);
-  const treadContact = {
-    localX: 0,
-    localZ: 0,
-    worldX: 0,
-    worldZ: 0,
-    initialized: true,
-    phase: 0,
-  };
-  const tank = {
-    type: 'tank',
-    treadContacts: [treadContact],
-    printWidth: 2,
-  } as unknown as Locomotion3DMesh;
+  submergedPacket.pushRow(3, 0, 0, 0, true, WATER_LEVEL - 10);
+  const movedPacket = new GroundPrintRenderPacket3D();
+  movedPacket.pushRow(3, 8, 0, 0, true, WATER_LEVEL - 10);
   const previousMarksEnabled = getLocomotionMarks();
   try {
     setLocomotionMarks(true);
-    renderer.update(submergedPacket, () => tank, 16);
-    treadContact.worldX = 8;
-    renderer.update(submergedPacket, () => tank, 16);
+    renderer.update(submergedPacket, noRig, getEntity, 16, 1);
+    renderer.update(movedPacket, noRig, getEntity, 16, 1);
     if (
       sampledModes.length === 0 ||
       sampledModes.some((terrainMode) => terrainMode !== 'terrainBed')
