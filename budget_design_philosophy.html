@@ -4108,6 +4108,16 @@
         A one-player game is not a special case: it is one player, one team, one ally team, one
         slice. The general path runs it.
       </p>
+      <p>
+        There is one path, and every surface that carves a map runs it. The home demo authors its
+        seats per side; the game room hands its preview the host&rsquo;s declared side count and the
+        seat-to-side table the roster panel shows; the match builds the same table from the
+        canonical, hashed initialization. All three resolve through the same roster builder, so the
+        ground behind the lobby roster is the ground the match starts on: two seats on TEAM 1 share
+        one slice in the preview exactly as they will in the battle, and a side the host declared
+        and left empty is cut in both. A preview that counted seats instead of sides would put a
+        ridge between teammates that the match then removes &mdash; a lie about the map.
+      </p>
 
       <h3>A build site is the product, carrying its own id from frame one</h3>
       <p>

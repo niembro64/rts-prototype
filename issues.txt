@@ -9,8 +9,3 @@
 5) Our "dirty" edges of our metal deposits and plateau walls
 
 
-	7) In the game room (i.e. "lobby"/"real game") our slices of the map should map to TEAMS not to PLAYERS. Currently we are giving each player a slice regardless of whether they are in a team - that is wrong. The slices should be per team. Document this in our design document. Also I think we are doing it right in the "DEMO BATTLE" simulation so just make sure all of this is generalized. 
-
-
-
-

@@ -4,6 +4,7 @@ import { appSurface, sendAppSurface } from '../appSurfaceMachine';
 import type { GameInstance } from '../game/createGame';
 import type { PlayerId } from '../game/sim/types';
 import type { BackgroundBattleState } from '../game/lobby/LobbyManager';
+import { lobbyAllyTeamAssignment } from '../game/lobby/lobbyIdentity';
 import SelectionPanel from './SelectionPanel.vue';
 import TopBar from './TopBar.vue';
 import {
@@ -1458,6 +1459,14 @@ watch(simulationPausedForPresentation, (paused) => {
     : undefined,
   getPreviewLocalPlayerId: () => currentBattleMode.value === 'real'
     ? localPlayerId.value
+    : undefined,
+  // The preview carves the lobby's SIDES, not its seats: the declared side
+  // count and the seat -> side table are what decide the terrain slices.
+  getPreviewSides: () => currentBattleMode.value === 'real'
+    ? {
+      allyTeamByPlayerId: lobbyAllyTeamAssignment(lobbyPlayers.value),
+      allyTeamCount: lobbyAllyTeamCount.value,
+    }
     : undefined,
   getPlayerClientEnabled: () => playerClientEnabled.value,
   onLoadingProgress: setLoadingProgress,
