@@ -69,7 +69,6 @@ fn fine_key(
         goal_cell: (ggy * state.grid_w + ggx) as u32,
         class: class_key(state, traversal, cost_profile),
         terrain_only_key: state.terrain_only_key,
-        building_occupancy_version: state.building_occupancy_version,
     }
 }
 
@@ -525,7 +524,11 @@ fn line_walker_exempts_only_the_escape_start_cell() {
     state.building_blocked[1] = 0;
     state.terrain_edge_blocked[0] = 1;
     pathfinder_set_escape_start(&mut state, 0, ground);
-    assert_eq!(state.cur_escape_start_idx, usize::MAX);
+    assert_eq!(
+        state.cur_escape_start_idx,
+        0,
+        "a body pushed into the edge buffer may leave it: any illegal start cell is an escape start"
+    );
 }
 
 fn brute_edt(obstacle: &[u8], w: i32, h: i32) -> Vec<u16> {

@@ -67,8 +67,11 @@ export type UnitPathPlan = {
   points: UnitPathPoint[];
   /** How the planner resolved the requested endpoint. COMPLETE reaches the
    *  authored goal; SNAPPED reaches a nearby legal goal; PARTIAL reaches the
-   *  closest discovered point; UNREACHABLE is a stay-put result. */
-  resolution: 'complete' | 'snapped' | 'partial' | 'unreachable';
+   *  closest discovered point; UNREACHABLE is a stay-put result; COARSE is a
+   *  validated straight first leg toward the goal installed while the full
+   *  route is still queued in the owner's refine queue — its end point is an
+   *  intermediate hold, never the action's arrival. */
+  resolution: 'complete' | 'snapped' | 'partial' | 'unreachable' | 'coarse';
   index: number;
   actionHash: number;
   terrainVersion: number;

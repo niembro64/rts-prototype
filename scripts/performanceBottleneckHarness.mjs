@@ -634,7 +634,7 @@ function printPathPlanScheduler(prefix, stats) {
     .join(' ');
   console.log(
     `${prefix}: demand ticks ${stats.ticksWithDemand}/${stats.ticks}, ` +
-      `turns ${stats.turnsServed} (cross-side ${stats.crossSideFallthroughs}), ` +
+      `turns ${stats.turnsServed} (passes ${stats.passes}, leftover handoffs ${stats.leftoverHandoffs}), route served ${stats.routeServed}, ` +
       `legacy-rotation idle ticks ${stats.legacyRotationIdleTicks}, ` +
       `admissions ${stats.admissions}, free drains ${stats.freeDrains}, ` +
       `expansions ${stats.expansionsUsed}, frontier-pending ticks ${stats.ticksEndedWithFrontierPending}, ` +
@@ -649,7 +649,7 @@ function printPathQueryOutcomes(prefix, o) {
   console.log(
     `${prefix}: complete ${o.complete}, snapped ${o.snapped}, partial ${o.partial}, ` +
       `unreachable ${o.unreachable} (direct ${o.direct}, hierarchical ${o.hierarchical}), ` +
-      `failures ${o.failures}, give-ups ${o.giveUps}, shared-route hits ${o.sharedRouteHits ?? 0}` +
+      `failures ${o.failures}, first legs ${o.firstLegs}/${o.firstLegMisses} missed, shared-route hits ${o.sharedRouteHits ?? 0}` +
       (byBp.length > 0 ? `, unreachable by blueprint {${byBp}}` : ''),
   );
 }

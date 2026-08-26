@@ -1,62 +1,90 @@
 import type { Entity, EntityId, PlayerId } from './types';
 import {
+  PATHFINDING_PLAN_QUANTUM_WORK_UNITS,
   PATHFINDING_REFRESH_SERVICE_INTERVAL_TICKS,
 } from './pathfindingTuning';
-import type { AllyTeamId, TeamRoster } from './teamRoster';
+import type { TeamRoster } from './teamRoster';
 import {
   DEFAULT_SIMULATION_TICK_RATE_HZ,
   simulationTicksForDefaultTicks,
 } from '../../types/simulationTickRate';
 
-// SimulationPathPlanScheduler — deterministic, work-conserving admission.
+// SimulationPathPlanScheduler — deterministic, per-player, work-conserving
+// quantum round-robin.
 //
-// Commands execute independently. This queue contains only derived route
-// intent, split into fresh (no usable route) and refresh (safe old route) lanes
-// per player. Stale entries, exact direct segments, and cache hits return false
-// and are drained without consuming a route admission.
+// Commands execute independently. The scheduler holds only derived route
+// intent: entity ids in one of their OWNER's queues. Start and goal are read
+// from the unit's live position and current order when the entry is served,
+// so a unit that was pushed while it waited is planned from where it is and a
+// second order simply overwrites the intent — a unit holds at most one live
+// entry (`unit.pathRequestLane`), and a popped entry whose lane no longer
+// matches is skipped for free.
 //
-// Every fixed tick funds ONE global expansion ceiling. Sides (ally teams) are
-// served round-robin among the sides that actually have demand — a retained
-// A* frontier or a non-empty lane — so an idle side never holds a turn, an
-// unseated or defeated side never absorbs pathfinding capacity, and a side
-// that runs dry hands its leftover to the next side with work in the same
-// tick. When every side has demand this degenerates to the old fixed
-// rotation: one side per tick, equal throughput per side regardless of how
-// many seats or units it has.
+// Every player owns two queues:
+//   ROUTE  — "get moving": exact direct segments, cache adoptions, or a
+//            validated straight first leg toward the goal installed as a
+//            COARSE plan. Never runs a search; a handful of line walks.
+//   REFINE — the hierarchical corridor search from the unit's live position
+//            (replacing the coarse leg with the full route), plus refresh
+//            requests for units that still hold a usable route.
+// Commander entries sit at the front of whichever queue they enter.
 //
-// The side cursor advances past the LAST side served, so the side after it
-// opens the next tick. Scanning from `tick % sideCount` instead would hand an
-// idle side's leftover to whichever side follows it in id order forever.
+// Every fixed tick funds ONE global work ceiling. A persistent cursor visits
+// every player with demand — an eligible entry or a retained continuation —
+// in seat order; each visited player's route queue and then refine queue
+// receive one quantum (`pathPlanQuantumWorkUnits`). A refine search that
+// outlives its quantum keeps its frontier in that player's own WASM arena
+// and resumes on the player's next visit; a queue that runs dry hands its
+// leftover to the next player with demand in the same tick; when budget
+// remains after a full pass, the pass repeats. Idle, unseated and defeated
+// players are never visited. The cursor advances past the LAST player
+// served, so the player after it opens the next tick.
+//
+// This is the isolation guarantee: a player who drops a whole-army order
+// waits only behind their own cursor, while another player's single request
+// is admitted on the very next tick. Giving each queue a whole tick to itself
+// would be the same rotation at the wrong granularity (with N contended
+// queues a route needing three quanta would wait 3N ticks instead of three),
+// so the rotation steps in work units INSIDE the tick.
 //
 // A request (re)queued WHILE the tick's admission pass is open — a job whose
-// completed route failed its install check, a corridor translation that
-// missed, a stale snapshot — becomes eligible on the NEXT tick. Serving it
-// again in the same pass would recompute the identical inputs and fail the
-// identical way until the whole ceiling was burned (measured: ~1,400
-// admissions per tick for one builder standing in its own footprint).
+// completed route failed its install check, a first leg that just landed and
+// now wants its refinement, a corridor translation that missed — becomes
+// eligible on the NEXT tick. Serving it again in the same pass would
+// recompute the identical inputs and fail the identical way until the whole
+// ceiling was burned (measured: ~1,400 admissions per tick for one builder
+// standing in its own footprint).
 //
-// Selection state (side cursor, per-side served-turn counters, per-player
-// rotation, queue contents) is derived lockstep state: every peer replays the
-// same commands from frame 0, so it is never serialized and never derived
-// from wall-clock time. Player order rotates inside a side by that side's
-// served-turn number, so extra seats do not multiply throughput.
+// Selection state (cursor, per-player refine-turn counters, queue contents)
+// is derived lockstep state: every peer replays the same commands from frame
+// 0, so it is never serialized and never derived from wall-clock time.
 
 export const PATH_REQUEST_NONE = 0;
+/** Route queue: a planless unit wants its first motion. */
 export const PATH_REQUEST_FRESH = 1;
+/** Refine queue: the unit holds a usable route that has gone soft-stale. */
 export const PATH_REQUEST_REFRESH = 2;
-const FRESH_FIRST_LANES = [PATH_REQUEST_FRESH, PATH_REQUEST_REFRESH] as const;
-const REFRESH_FIRST_LANES = [PATH_REQUEST_REFRESH, PATH_REQUEST_FRESH] as const;
-// Internal queue selectors. Units still expose PATH_REQUEST_FRESH/REFRESH in
-// their canonical state; commander priority changes latency inside a side's
-// served turn, never the amount of A* work that side receives. A commander's
-// request — fresh or refresh — always goes to the FRONT of its side's work:
-// it is the indispensable builder and the loss condition.
-const PATH_REQUEST_COMMANDER_FRESH = 3;
-const PATH_REQUEST_COMMANDER_REFRESH = 4;
+/** Refine queue: the unit holds a coarse first leg (or no leg could be
+ *  validated) and needs the full hierarchical route. */
+export const PATH_REQUEST_REFINE = 3;
+
+export const PATH_QUEUE_ROUTE = 0;
+export const PATH_QUEUE_REFINE = 1;
+export type PathPlanQueueTier = typeof PATH_QUEUE_ROUTE | typeof PATH_QUEUE_REFINE;
+
+const REFINE_FIRST_LANES = [PATH_REQUEST_REFINE, PATH_REQUEST_REFRESH] as const;
+const REFRESH_FIRST_LANES = [PATH_REQUEST_REFRESH, PATH_REQUEST_REFINE] as const;
+// Internal queue selectors for the commander-priority sub-queues. Units still
+// expose PATH_REQUEST_FRESH/REFINE/REFRESH in their canonical state; commander
+// priority changes latency inside a player's quantum, never how much work
+// that player receives. A commander's request always goes to the FRONT of
+// its queue: it is the indispensable builder and the loss condition.
+const PATH_REQUEST_COMMANDER_REFRESH = 12;
+const PATH_REQUEST_COMMANDER_REFINE = 13;
 
 /** Upper bound (inclusive, in ticks) of each admission-age histogram bucket;
- *  the final bucket is open-ended. Age = ticks a request waited in a lane
- *  before a real A* job was admitted for it. */
+ *  the final bucket is open-ended. Age = ticks a request waited in a queue
+ *  before it was served. */
 export const PATH_PLAN_ADMISSION_AGE_BUCKET_LIMITS = [0, 1, 3, 7, 15, 31, 63] as const;
 export const PATH_PLAN_ADMISSION_AGE_BUCKET_LABELS = [
   '0', '1', '2-3', '4-7', '8-15', '16-31', '32-63', '64+',
@@ -67,33 +95,43 @@ export const PATH_PLAN_ADMISSION_AGE_BUCKET_LABELS = [
 export type PathPlanSchedulerStats = {
   /** Fixed ticks that ran an admission pass. */
   ticks: number;
-  /** Ticks where at least one side had demand at the start of the pass. */
+  /** Ticks where at least one player had demand at the start of the pass. */
   ticksWithDemand: number;
-  /** Side selections. One per tick when demand is contended; more when a
-   *  side ran dry and its leftover crossed to another side. */
+  /** Queue visits (a player's route or refine queue funded once). */
   turnsServed: number;
-  /** Side selections beyond the first in a tick: leftover budget that a
-   *  fixed one-side-per-tick rotation would have discarded. */
-  crossSideFallthroughs: number;
-  /** Counterfactual: ticks the old `tick % sideCount` rotation would have
-   *  handed to a side without demand while another side was waiting. */
+  /** Full rotations begun; more than one per tick when budget was left. */
+  passes: number;
+  /** Queue visits beyond the first in a tick: leftover budget that a
+   *  one-queue-per-tick rotation would have discarded. */
+  leftoverHandoffs: number;
+  /** Counterfactual: ticks a fixed `tick % playerCount` rotation would have
+   *  handed to a player without demand while another player was waiting. */
   legacyRotationIdleTicks: number;
-  /** Real A* jobs admitted. */
+  /** Route-queue entries served with work (a first leg was attempted). */
+  routeServed: number;
+  /** Real refine jobs admitted. */
   admissions: number;
-  /** Lane entries drained without A* work (stale, direct, cache hit). */
+  /** Queue entries drained without work (stale, superseded, no order). */
   freeDrains: number;
-  /** Fine A* node closes charged across all ticks. */
+  /** Work units charged across all ticks. */
   expansionsUsed: number;
-  /** Ticks that ended with a side's frontier retained for its next turn. */
+  /** Ticks that ended with at least one player's frontier retained. */
   ticksEndedWithFrontierPending: number;
-  /** Ticks that ended with budget left while an unserved side still had
-   *  demand. Only the once-per-side-per-tick scan cap can cause this. */
+  /** Ticks that ended with budget left while some player still had demand.
+   *  The pass loop repeats while demand exists, so this should stay 0. */
   ticksEndedWithBudgetLeftAndDemand: number;
   /** Requests queued while an admission pass was open and therefore held
    *  until the next tick instead of being re-served in the same pass. */
   deferredRequests: number;
-  /** Admission wait histogram; see PATH_PLAN_ADMISSION_AGE_BUCKET_LABELS. */
+  /** Refine admission wait histogram; see PATH_PLAN_ADMISSION_AGE_BUCKET_LABELS. */
   admissionAgeBuckets: number[];
+  /** The same histogram per player (key = player id), so one player's flood
+   *  and another player's latency are visible side by side. Insertion order
+   *  is first-admission order, identical on every peer. */
+  admissionAgeBucketsByPlayer: Record<string, number[]>;
+  /** Work units charged per player (key = player id): the share of the
+   *  ceiling each player's queues actually consumed. */
+  workByPlayer: Record<string, number>;
 };
 
 type PathRequestLaneQueue = {
@@ -109,37 +147,51 @@ type PathRequestLaneQueue = {
 };
 
 type PlayerPathRequestLanes = {
-  /** Commanders awaiting their first validated route. */
+  /** Route queue: commanders, then everyone else, awaiting first motion. */
   commanderFresh: PathRequestLaneQueue;
-  /** Commanders refreshing a still-usable route. */
-  commanderRefresh: PathRequestLaneQueue;
-  /** Planless units awaiting a validated direct segment or path job. */
   fresh: PathRequestLaneQueue;
-  /** Units that may continue on a previously validated route while waiting. */
+  /** Refine queue: units on a coarse leg or with no validated leg at all. */
+  commanderRefine: PathRequestLaneQueue;
+  refine: PathRequestLaneQueue;
+  /** Refine queue: units that may continue on a validated route meanwhile. */
+  commanderRefresh: PathRequestLaneQueue;
   refresh: PathRequestLaneQueue;
 };
 
-/** Return true only when a real A* job was admitted for the selected side. */
-type PathPlanServe = (entityId: EntityId, lane: number) => boolean;
+/** Route-queue serve: return the work units spent (0 = the entry resolved
+ *  free — stale, superseded, or no order — and the drain continues). */
+export type PathPlanRouteServe = (entityId: EntityId, lane: number) => number;
+/** Refine-queue serve: return true only when a real search job was admitted. */
+export type PathPlanRefineServe = (entityId: EntityId, lane: number) => boolean;
 
-/** Sides holding a retained A* frontier. `Map` and `Set` both satisfy it. */
-export type PathPlanActiveJobOwners = { has(teamId: AllyTeamId): boolean };
+/** Players holding a retained A* frontier. `Map` and `Set` both satisfy it. */
+export type PathPlanActiveJobOwners = { has(playerId: PlayerId): boolean };
 
-export type PathPlanTeamTurn = {
-  teamId: AllyTeamId;
-  /** This side's served-turn number (0-based), NOT a tick count. Drives the
-   *  refresh-lane cadence and the seat rotation start inside the side. */
-  teamTurn: number;
+export type PathPlanQueueTurn = {
+  playerId: PlayerId;
+  tier: PathPlanQueueTier;
+  /** Work this visit may spend before the cursor moves on. */
+  quantum: number;
+  /** For refine visits: this player's refine-visit number (0-based), NOT a
+   *  tick count. Drives the refresh-lane cadence. */
+  turn: number;
 };
 
 export class SimulationPathPlanScheduler {
   private readonly lanes = new Map<PlayerId, PlayerPathRequestLanes>();
-  private readonly nextPlayerIndexByTeam = new Map<AllyTeamId, number>();
-  private readonly turnsServedByTeam = new Map<AllyTeamId, number>();
-  /** Index into `roster.allyTeamIds` where the next demand scan starts. */
-  private nextTeamIndex = 0;
-  /** Sides already selected in the current tick, by roster index. */
-  private readonly servedThisTick: boolean[] = [];
+  private readonly refineTurnsByPlayer = new Map<PlayerId, number>();
+  /** Rotation for the current tick: seated players in seat order, then any
+   *  other owner that holds queued work (unowned units), ascending. */
+  private rotation: PlayerId[] = [];
+  /** Player served last; the player after it opens the next tick. */
+  private lastServedPlayerId: PlayerId | null = null;
+  /** Position of the current pass inside `rotation` (0-based offset from
+   *  the tick's cursor start) and which tier of that player is next. */
+  private passOffset = 0;
+  private passTier: PathPlanQueueTier = PATH_QUEUE_ROUTE;
+  private cursorStart = 0;
+  private servedThisPass = false;
+  private servedThisTick = 0;
   /** True between beginTick and endTick; enqueues in that window defer. */
   private admissionPassOpen = false;
   private readonly stats: PathPlanSchedulerStats = createEmptyStats();
@@ -155,6 +207,8 @@ export class SimulationPathPlanScheduler {
     this.resolveTick = resolveTick;
   }
 
+  /** A planless unit wants its first motion (route queue). Supersedes any
+   *  refine/refresh entry the unit still holds. */
   requestFresh(entity: Entity, forceLocal: boolean): void {
     const unit = entity.unit;
     if (unit === null) return;
@@ -170,6 +224,26 @@ export class SimulationPathPlanScheduler {
     if (forceLocal) unit.pathRequestForceLocal = true;
   }
 
+  /** The unit needs the full hierarchical route (refine queue): it drives a
+   *  coarse first leg, or no leg could be validated. A pending route entry
+   *  is superseded; a pending refresh entry is promoted. */
+  requestRefine(entity: Entity, forceLocal: boolean = false): void {
+    const unit = entity.unit;
+    if (unit === null) return;
+    if (unit.pathRequestLane !== PATH_REQUEST_REFINE) {
+      const lanes = this.lanesFor(pathPlanPlayerId(entity));
+      this.enqueue(
+        entity.commander !== null ? lanes.commanderRefine : lanes.refine,
+        entity.id,
+      );
+      unit.pathRequestLane = PATH_REQUEST_REFINE;
+      unit.pathRequestForceLocal = false;
+    }
+    if (forceLocal) unit.pathRequestForceLocal = true;
+  }
+
+  /** The unit holds a usable route that went soft-stale (refine queue,
+   *  refresh lane). Never displaces a pending route/refine entry. */
   requestRefresh(entity: Entity): void {
     const unit = entity.unit;
     if (unit === null || unit.pathRequestLane !== PATH_REQUEST_NONE) return;
@@ -181,65 +255,115 @@ export class SimulationPathPlanScheduler {
     unit.pathRequestLane = PATH_REQUEST_REFRESH;
   }
 
-  /** Open one fixed tick's admission pass. Clears the once-per-side scan
-   *  guard and records the demand picture the pass starts from. */
+  /** Open one fixed tick's admission pass: build the rotation, place the
+   *  cursor after the last player served, and record the demand picture. */
   beginTick(
     tick: number,
     roster: TeamRoster,
     activeJobs: PathPlanActiveJobOwners,
   ): void {
-    const teamCount = roster.allyTeamIds.length;
     this.admissionPassOpen = true;
-    this.servedThisTick.length = teamCount;
-    let anyDemand = false;
-    for (let index = 0; index < teamCount; index++) {
-      this.servedThisTick[index] = false;
-      if (this.hasDemand(roster, roster.allyTeamIds[index], activeJobs)) {
-        anyDemand = true;
-      }
+    this.buildRotation(roster);
+    const rotation = this.rotation;
+    const count = rotation.length;
+    this.cursorStart = 0;
+    if (this.lastServedPlayerId !== null) {
+      const index = rotation.indexOf(this.lastServedPlayerId);
+      if (index >= 0) this.cursorStart = (index + 1) % count;
     }
+    this.passOffset = 0;
+    this.passTier = PATH_QUEUE_ROUTE;
+    this.servedThisPass = false;
+    this.servedThisTick = 0;
     const stats = this.stats;
     stats.ticks++;
-    if (!anyDemand || teamCount === 0) return;
+    let anyDemand = false;
+    for (let i = 0; i < count; i++) {
+      if (this.hasDemand(rotation[i], activeJobs)) {
+        anyDemand = true;
+        break;
+      }
+    }
+    if (!anyDemand || count === 0) return;
     stats.ticksWithDemand++;
-    const legacyTeamId = roster.allyTeamIds[Math.max(0, Math.floor(tick)) % teamCount];
-    if (!this.hasDemand(roster, legacyTeamId, activeJobs)) {
+    stats.passes++;
+    const legacyPlayerId = rotation[Math.max(0, Math.floor(tick)) % count];
+    if (!this.hasDemand(legacyPlayerId, activeJobs)) {
       stats.legacyRotationIdleTicks++;
     }
   }
 
-  /** Select the next side to fund in the current tick: the first side at or
-   *  after the cursor that has demand and has not been served this tick.
-   *  Returns null when no such side remains. The cursor moves past the
-   *  selected side so the following side opens the next tick. */
-  nextTeamTurn(
+  /** Select the next queue to fund in the current tick: walking the
+   *  rotation from the cursor, each player's route queue then refine queue,
+   *  skipping queues without demand. A full pass that served nothing ends
+   *  the tick (null); a pass that served something and left demand behind
+   *  is followed by another pass. The caller stops when its budget is spent. */
+  nextTurn(
     roster: TeamRoster,
     activeJobs: PathPlanActiveJobOwners,
-  ): PathPlanTeamTurn | null {
-    const teamIds = roster.allyTeamIds;
-    const teamCount = teamIds.length;
-    if (teamCount === 0) return null;
-    if (this.servedThisTick.length !== teamCount) {
-      // beginTick was not called for this roster; treat every side as fresh.
-      this.servedThisTick.length = teamCount;
-      for (let index = 0; index < teamCount; index++) this.servedThisTick[index] = false;
+  ): PathPlanQueueTurn | null {
+    if (this.rotation.length === 0 || !this.admissionPassOpen) {
+      // beginTick was not called for this tick; treat it as a fresh pass.
+      this.buildRotation(roster);
+      if (this.rotation.length === 0) return null;
+      this.cursorStart = 0;
+      this.passOffset = 0;
+      this.passTier = PATH_QUEUE_ROUTE;
+      this.servedThisPass = false;
     }
-    const start = this.nextTeamIndex % teamCount;
-    for (let offset = 0; offset < teamCount; offset++) {
-      const index = (start + offset) % teamCount;
-      if (this.servedThisTick[index]) continue;
-      const teamId = teamIds[index];
-      if (!this.hasDemand(roster, teamId, activeJobs)) continue;
-      this.servedThisTick[index] = true;
-      this.nextTeamIndex = (index + 1) % teamCount;
-      const teamTurn = this.turnsServedByTeam.get(teamId) ?? 0;
-      this.turnsServedByTeam.set(teamId, teamTurn + 1);
-      const stats = this.stats;
-      stats.turnsServed++;
-      if (this.tickTurnsServed() > 1) stats.crossSideFallthroughs++;
-      return { teamId, teamTurn };
+    const rotation = this.rotation;
+    const count = rotation.length;
+    for (;;) {
+      if (this.passOffset >= count) {
+        if (!this.servedThisPass) return null;
+        let demandLeft = false;
+        for (let i = 0; i < count; i++) {
+          if (this.hasDemand(rotation[i], activeJobs)) {
+            demandLeft = true;
+            break;
+          }
+        }
+        if (!demandLeft) return null;
+        this.passOffset = 0;
+        this.servedThisPass = false;
+        this.stats.passes++;
+      }
+      const playerId = rotation[(this.cursorStart + this.passOffset) % count];
+      if (this.passTier === PATH_QUEUE_ROUTE) {
+        this.passTier = PATH_QUEUE_REFINE;
+        if (this.routeHasDemand(playerId)) {
+          this.noteServed(playerId);
+          return {
+            playerId,
+            tier: PATH_QUEUE_ROUTE,
+            quantum: PATHFINDING_PLAN_QUANTUM_WORK_UNITS,
+            turn: 0,
+          };
+        }
+      }
+      // Refine tier of the same player, then move on.
+      this.passTier = PATH_QUEUE_ROUTE;
+      this.passOffset++;
+      if (this.refineHasDemand(playerId, activeJobs)) {
+        this.noteServed(playerId);
+        const turn = this.refineTurnsByPlayer.get(playerId) ?? 0;
+        this.refineTurnsByPlayer.set(playerId, turn + 1);
+        return {
+          playerId,
+          tier: PATH_QUEUE_REFINE,
+          quantum: PATHFINDING_PLAN_QUANTUM_WORK_UNITS,
+          turn,
+        };
+      }
     }
-    return null;
+  }
+
+  /** Record what a visit spent, so per-player shares are visible. */
+  chargeTurn(turn: PathPlanQueueTurn, workUnits: number): void {
+    if (workUnits <= 0) return;
+    const key = String(turn.playerId);
+    const byPlayer = this.stats.workByPlayer;
+    byPlayer[key] = (byPlayer[key] ?? 0) + workUnits;
   }
 
   /** Close the tick's admission pass with what the caller actually spent. */
@@ -255,146 +379,198 @@ export class SimulationPathPlanScheduler {
     stats.expansionsUsed += expansionsUsed;
     if (frontierPending) stats.ticksEndedWithFrontierPending++;
     if (expansionsRemaining <= 0) return;
-    const teamIds = roster.allyTeamIds;
-    for (let index = 0; index < teamIds.length; index++) {
-      if (this.servedThisTick[index] === true) continue;
-      if (this.hasDemand(roster, teamIds[index], activeJobs)) {
-        stats.ticksEndedWithBudgetLeftAndDemand++;
-        return;
-      }
-    }
-  }
-
-  /** True when the side holds a retained frontier or any request eligible
-   *  this tick. Lanes may still hold entries that resolve free at serve
-   *  time; the caller's drain pops those without charge, so a side reported
-   *  here with only stale entries is emptied by one drain and never
-   *  re-selected. Requests deferred to the next tick are not demand. */
-  hasDemand(
-    roster: TeamRoster,
-    teamId: AllyTeamId,
-    activeJobs: PathPlanActiveJobOwners,
-  ): boolean {
-    if (activeJobs.has(teamId)) return true;
-    const players = roster.playersByAllyTeam.get(teamId);
-    if (players === undefined) return false;
+    const rotation = this.rotation;
     const now = this.resolveTick();
-    for (let i = 0; i < players.length; i++) {
-      const lanes = this.lanes.get(players[i]);
+    for (let i = 0; i < rotation.length; i++) {
+      const playerId = rotation[i];
+      // A retained frontier that just went pending on this tick is not
+      // starvation: its owner's quantum ended. Only queued, eligible entries
+      // that nobody visited count.
+      const lanes = this.lanes.get(playerId);
       if (lanes === undefined) continue;
       if (
         laneHasEligibleWork(lanes.commanderFresh, now) ||
-        laneHasEligibleWork(lanes.commanderRefresh, now) ||
         laneHasEligibleWork(lanes.fresh, now) ||
+        laneHasEligibleWork(lanes.commanderRefine, now) ||
+        laneHasEligibleWork(lanes.refine, now) ||
+        laneHasEligibleWork(lanes.commanderRefresh, now) ||
         laneHasEligibleWork(lanes.refresh, now)
       ) {
-        return true;
+        if (!activeJobs.has(playerId)) {
+          stats.ticksEndedWithBudgetLeftAndDemand++;
+          return;
+        }
       }
     }
-    return false;
+    void roster;
   }
 
-  /** Admit one real A* job for the selected side. The caller may repeat this
-   *  while work remains. Refresh priority uses the side's served-turn number
-   *  so side counts cannot pin one side permanently to one lane preference. */
-  drainTeam(
-    teamTurn: number,
-    roster: TeamRoster,
-    teamId: AllyTeamId,
-    serve: PathPlanServe,
-  ): boolean {
-    if (this.lanes.size === 0) return false;
+  /** True when the player holds a retained frontier or any request eligible
+   *  this tick. Lanes may still hold entries that resolve free at serve
+   *  time; the caller's drain pops those without charge. Requests deferred
+   *  to the next tick are not demand. */
+  hasDemand(playerId: PlayerId, activeJobs: PathPlanActiveJobOwners): boolean {
+    return this.routeHasDemand(playerId) || this.refineHasDemand(playerId, activeJobs);
+  }
+
+  routeHasDemand(playerId: PlayerId): boolean {
+    const lanes = this.lanes.get(playerId);
+    if (lanes === undefined) return false;
+    const now = this.resolveTick();
+    return laneHasEligibleWork(lanes.commanderFresh, now) ||
+      laneHasEligibleWork(lanes.fresh, now);
+  }
+
+  refineHasDemand(playerId: PlayerId, activeJobs: PathPlanActiveJobOwners): boolean {
+    if (activeJobs.has(playerId)) return true;
+    const lanes = this.lanes.get(playerId);
+    if (lanes === undefined) return false;
+    const now = this.resolveTick();
+    return laneHasEligibleWork(lanes.commanderRefine, now) ||
+      laneHasEligibleWork(lanes.refine, now) ||
+      laneHasEligibleWork(lanes.commanderRefresh, now) ||
+      laneHasEligibleWork(lanes.refresh, now);
+  }
+
+  /** Serve the selected player's route queue: commanders first. Returns the
+   *  work the served entry cost, or 0 when the queue ran dry (free entries
+   *  are drained on the way without ending the call). */
+  drainRoute(turn: PathPlanQueueTurn, serve: PathPlanRouteServe): number {
+    const lanes = this.lanes.get(turn.playerId);
+    if (lanes === undefined) return 0;
+    const now = this.resolveTick();
+    const stats = this.stats;
+    const queues = [lanes.commanderFresh, lanes.fresh] as const;
+    for (let q = 0; q < queues.length; q++) {
+      const queue = queues[q];
+      while (laneHasEligibleWork(queue, now)) {
+        const work = serve(popLane(queue), PATH_REQUEST_FRESH);
+        if (work > 0) {
+          stats.routeServed++;
+          return work;
+        }
+        stats.freeDrains++;
+      }
+    }
+    return 0;
+  }
+
+  /** Admit one real search job for the selected player's refine queue. The
+   *  caller may repeat this while quantum remains. Refresh priority uses the
+   *  player's refine-visit number so no player is pinned to one lane. */
+  drainRefine(turn: PathPlanQueueTurn, serve: PathPlanRefineServe): boolean {
+    const lanes = this.lanes.get(turn.playerId);
+    if (lanes === undefined) return false;
     const refreshServiceIntervalTicks = simulationTicksForDefaultTicks(
       this.resolveSimulationTickRateHz(),
       PATHFINDING_REFRESH_SERVICE_INTERVAL_TICKS,
     );
-    const preferRefresh =
-      teamTurn % refreshServiceIntervalTicks === 0;
-    const laneOrder = preferRefresh ? REFRESH_FIRST_LANES : FRESH_FIRST_LANES;
-    // A commander is the player's indispensable builder and loss condition.
-    // Its requests — fresh, then refresh — are served before any ordinary
-    // work, but still admit at most the jobs the selected side's quantum
-    // buys.
-    if (this.drainTeamLane(teamTurn, roster, teamId, PATH_REQUEST_COMMANDER_FRESH, serve)) {
+    const preferRefresh = turn.turn % refreshServiceIntervalTicks === 0;
+    const laneOrder = preferRefresh ? REFRESH_FIRST_LANES : REFINE_FIRST_LANES;
+    if (this.drainRefineLane(turn.playerId, lanes, PATH_REQUEST_COMMANDER_REFINE, serve)) {
       return true;
     }
-    if (this.drainTeamLane(teamTurn, roster, teamId, PATH_REQUEST_COMMANDER_REFRESH, serve)) {
+    if (this.drainRefineLane(turn.playerId, lanes, PATH_REQUEST_COMMANDER_REFRESH, serve)) {
       return true;
     }
     for (let laneIndex = 0; laneIndex < laneOrder.length; laneIndex++) {
-      const lane = laneOrder[laneIndex];
-      if (this.drainTeamLane(teamTurn, roster, teamId, lane, serve)) return true;
+      if (this.drainRefineLane(turn.playerId, lanes, laneOrder[laneIndex], serve)) return true;
     }
     return false;
   }
 
   /** Snapshot of the deterministic counters (copied; safe to keep). */
   getStats(): PathPlanSchedulerStats {
+    const byPlayer: Record<string, number[]> = {};
+    for (const key of Object.keys(this.stats.admissionAgeBucketsByPlayer)) {
+      byPlayer[key] = this.stats.admissionAgeBucketsByPlayer[key].slice();
+    }
     return {
       ...this.stats,
       admissionAgeBuckets: this.stats.admissionAgeBuckets.slice(),
+      admissionAgeBucketsByPlayer: byPlayer,
+      workByPlayer: { ...this.stats.workByPlayer },
     };
   }
 
   reset(): void {
     this.lanes.clear();
-    this.nextPlayerIndexByTeam.clear();
-    this.turnsServedByTeam.clear();
-    this.nextTeamIndex = 0;
-    this.servedThisTick.length = 0;
+    this.refineTurnsByPlayer.clear();
+    this.rotation.length = 0;
+    this.lastServedPlayerId = null;
+    this.passOffset = 0;
+    this.passTier = PATH_QUEUE_ROUTE;
+    this.cursorStart = 0;
+    this.servedThisPass = false;
+    this.servedThisTick = 0;
     this.admissionPassOpen = false;
     Object.assign(this.stats, createEmptyStats());
   }
 
-  private tickTurnsServed(): number {
-    let served = 0;
-    for (let index = 0; index < this.servedThisTick.length; index++) {
-      if (this.servedThisTick[index]) served++;
-    }
-    return served;
+  private noteServed(playerId: PlayerId): void {
+    this.servedThisPass = true;
+    this.servedThisTick++;
+    this.lastServedPlayerId = playerId;
+    const stats = this.stats;
+    stats.turnsServed++;
+    if (this.servedThisTick > 1) stats.leftoverHandoffs++;
   }
 
-  private drainTeamLane(
-    teamTurn: number,
-    roster: TeamRoster,
-    teamId: AllyTeamId,
+  /** Seated players in seat order, then every other owner holding a lane
+   *  (unowned/world units) in ascending id order. Deterministic. */
+  private buildRotation(roster: TeamRoster): void {
+    const rotation = this.rotation;
+    rotation.length = 0;
+    const seated = roster.playerIds;
+    for (let i = 0; i < seated.length; i++) rotation.push(seated[i]);
+    let extra: PlayerId[] | null = null;
+    for (const playerId of this.lanes.keys()) {
+      if (rotation.indexOf(playerId) >= 0) continue;
+      (extra ??= []).push(playerId);
+    }
+    if (extra !== null) {
+      extra.sort((a, b) => a - b);
+      for (let i = 0; i < extra.length; i++) rotation.push(extra[i]);
+    }
+  }
+
+  private drainRefineLane(
+    playerId: PlayerId,
+    lanes: PlayerPathRequestLanes,
     lane: number,
-    serve: PathPlanServe,
+    serve: PathPlanRefineServe,
   ): boolean {
-    const players = roster.playersByAllyTeam.get(teamId);
-    if (players === undefined || players.length === 0) return false;
-    const playerStart = this.nextPlayerIndexByTeam.get(teamId) ??
-      teamTurn % players.length;
     const now = this.resolveTick();
     const stats = this.stats;
-    for (let offset = 0; offset < players.length; offset++) {
-      const playerId = players[(playerStart + offset) % players.length];
-      const lanes = this.lanes.get(playerId);
-      if (lanes === undefined) continue;
-      const queue = lane === PATH_REQUEST_COMMANDER_FRESH
-        ? lanes.commanderFresh
-        : lane === PATH_REQUEST_COMMANDER_REFRESH
-          ? lanes.commanderRefresh
-          : (lane === PATH_REQUEST_FRESH ? lanes.fresh : lanes.refresh);
-      // Invalid entries and free direct/cache results do not spend A* work.
-      while (laneHasEligibleWork(queue, now)) {
-        const servedLane = lane === PATH_REQUEST_COMMANDER_FRESH
-          ? PATH_REQUEST_FRESH
-          : lane === PATH_REQUEST_COMMANDER_REFRESH
-            ? PATH_REQUEST_REFRESH
-            : lane;
-        const queuedTick = queue.queuedTicks[queue.head];
-        if (serve(popLane(queue), servedLane)) {
-          this.nextPlayerIndexByTeam.set(
-            teamId,
-            (playerStart + offset + 1) % players.length,
-          );
-          stats.admissions++;
-          stats.admissionAgeBuckets[admissionAgeBucket(now - queuedTick)]++;
-          return true;
+    const queue = lane === PATH_REQUEST_COMMANDER_REFINE
+      ? lanes.commanderRefine
+      : lane === PATH_REQUEST_COMMANDER_REFRESH
+        ? lanes.commanderRefresh
+        : lane === PATH_REQUEST_REFINE
+          ? lanes.refine
+          : lanes.refresh;
+    const servedLane = lane === PATH_REQUEST_COMMANDER_REFINE
+      ? PATH_REQUEST_REFINE
+      : lane === PATH_REQUEST_COMMANDER_REFRESH
+        ? PATH_REQUEST_REFRESH
+        : lane;
+    // Invalid entries and free direct/cache results do not spend search work.
+    while (laneHasEligibleWork(queue, now)) {
+      const queuedTick = queue.queuedTicks[queue.head];
+      if (serve(popLane(queue), servedLane)) {
+        stats.admissions++;
+        const bucket = admissionAgeBucket(now - queuedTick);
+        stats.admissionAgeBuckets[bucket]++;
+        const key = String(playerId);
+        let perPlayer = stats.admissionAgeBucketsByPlayer[key];
+        if (perPlayer === undefined) {
+          perPlayer = new Array<number>(PATH_PLAN_ADMISSION_AGE_BUCKET_LIMITS.length + 1).fill(0);
+          stats.admissionAgeBucketsByPlayer[key] = perPlayer;
         }
-        stats.freeDrains++;
+        perPlayer[bucket]++;
+        return true;
       }
+      stats.freeDrains++;
     }
     return false;
   }
@@ -412,10 +588,12 @@ export class SimulationPathPlanScheduler {
     let lanes = this.lanes.get(playerId);
     if (lanes === undefined) {
       lanes = {
-        commanderFresh: { ids: [], queuedTicks: [], eligibleTicks: [], head: 0 },
-        commanderRefresh: { ids: [], queuedTicks: [], eligibleTicks: [], head: 0 },
-        fresh: { ids: [], queuedTicks: [], eligibleTicks: [], head: 0 },
-        refresh: { ids: [], queuedTicks: [], eligibleTicks: [], head: 0 },
+        commanderFresh: emptyLane(),
+        fresh: emptyLane(),
+        commanderRefine: emptyLane(),
+        refine: emptyLane(),
+        commanderRefresh: emptyLane(),
+        refresh: emptyLane(),
       };
       this.lanes.set(playerId, lanes);
     }
@@ -423,13 +601,19 @@ export class SimulationPathPlanScheduler {
   }
 }
 
+function emptyLane(): PathRequestLaneQueue {
+  return { ids: [], queuedTicks: [], eligibleTicks: [], head: 0 };
+}
+
 function createEmptyStats(): PathPlanSchedulerStats {
   return {
     ticks: 0,
     ticksWithDemand: 0,
     turnsServed: 0,
-    crossSideFallthroughs: 0,
+    passes: 0,
+    leftoverHandoffs: 0,
     legacyRotationIdleTicks: 0,
+    routeServed: 0,
     admissions: 0,
     freeDrains: 0,
     expansionsUsed: 0,
@@ -439,6 +623,8 @@ function createEmptyStats(): PathPlanSchedulerStats {
     admissionAgeBuckets: new Array<number>(
       PATH_PLAN_ADMISSION_AGE_BUCKET_LIMITS.length + 1,
     ).fill(0),
+    admissionAgeBucketsByPlayer: {},
+    workByPlayer: {},
   };
 }
 
@@ -451,7 +637,7 @@ export function admissionAgeBucket(ageTicks: number): number {
   return limits.length;
 }
 
-function pathPlanPlayerId(entity: Entity): PlayerId {
+export function pathPlanPlayerId(entity: Entity): PlayerId {
   return entity.ownership?.playerId ?? (0 as PlayerId);
 }
 

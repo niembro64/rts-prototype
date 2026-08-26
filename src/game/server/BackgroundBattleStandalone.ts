@@ -13,7 +13,14 @@ import { getAllyTeamMembers } from '../sim/teamRoster';
 import {
   makeMapOvalMetrics,
   mapOvalPointAt,
+  sampleMapOvalAt,
+  type MapOvalMetrics,
 } from '../sim/mapOval';
+import { getUnitLocomotion } from '../sim/blueprints/units';
+import { isWaterAt } from '../sim/Terrain';
+import { isPathSegmentTraversable } from '../sim/Pathfinder';
+import { pathTerrainFilterForLocomotion } from '../sim/pathfindingTraversal';
+import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import type { MultiLegWaypoint } from '../sim/Pathfinder';
 import { setUnitActions } from '../sim/unitActions';
 import { setUnitFacingYaw } from '../sim/unitOrientation';
@@ -247,8 +254,63 @@ function seededFabricatorProductionReserve(world: WorldState, playerId: PlayerId
   return count;
 }
 
-/** The opening wave deliberately ignores terrain, medium, and path
- * suitability. Every enabled unit uses this same uniform center disk. */
+/** First point outward from `startRadius` along `angle` on the map oval
+ *  (20 wu steps) that is water AND that the blueprint's body can stand in
+ *  under the authoritative traversal kernel; null when the ray finds none
+ *  before the map edge. Used to keep water-required hulls off the land the
+ *  centre disk sits on: a hull dropped on land has no ground propulsion,
+ *  every route request from it is terminal, and no search can fix it
+ *  (measured 2026-08-26: 87% of a 4-bot skirmish's unreachable results). */
+function firstStandableWaterPointOutward(
+  world: WorldState,
+  oval: MapOvalMetrics,
+  angle: number,
+  startRadius: number,
+  unitBlueprintId: string,
+): { x: number; y: number } | null {
+  const blueprint = getUnitBlueprint(unitBlueprintId);
+  const filter = pathTerrainFilterForLocomotion(
+    getUnitLocomotion(unitBlueprintId),
+    blueprint.mass,
+    blueprint.supportPointOffsetZ,
+  );
+  const radius = blueprint.radius.collision;
+  const mapWidth = world.mapWidth;
+  const mapHeight = world.mapHeight;
+  const symmetric = world.slopePathMode === 'symmetric';
+  const maxRadius = oval.minDim * 0.5;
+  for (let r = Math.max(0, startRadius); r <= maxRadius; r += BUILD_GRID_CELL_SIZE) {
+    const point = mapOvalPointAt(oval, angle, r);
+    if (
+      point.x < radius || point.y < radius ||
+      point.x > mapWidth - radius || point.y > mapHeight - radius
+    ) {
+      break;
+    }
+    if (!isWaterAt(point.x, point.y, mapWidth, mapHeight)) continue;
+    const z = world.getTerrainBedZ(point.x, point.y);
+    if (
+      isPathSegmentTraversable(
+        point.x,
+        point.y,
+        { x: point.x, y: point.y, z },
+        mapWidth,
+        mapHeight,
+        filter,
+        radius,
+        symmetric,
+      )
+    ) {
+      return { x: point.x, y: point.y };
+    }
+  }
+  return null;
+}
+
+/** The opening wave ignores terrain and path suitability for land bodies:
+ * every enabled unit samples this same uniform center disk. Water-required
+ * hulls project that sample outward onto the water instead (see
+ * firstStandableWaterPointOutward). */
 function sampleInitialCenterSpawnPoint(
   oval: ReturnType<typeof makeMapOvalMetrics>,
   centerRadius: number,
@@ -326,9 +388,11 @@ export function spawnBackgroundUnitsStandalone(
     // Seed one of every enabled unit first whenever this seat's cap share has
     // room, then fill remaining slots with the inverse-cost weighted roster.
     // This turns "enabled" into a visible Demo guarantee instead of a random
-    // chance. Every unit still drops into the same center disk and intentionally
-    // performs no terrain, path, or factory-roster suitability checks — except
-    // on lava, where the water roster is off.
+    // chance. Land bodies drop into the same center disk with no terrain,
+    // path, or factory-roster suitability checks; a water-required hull's
+    // sample and patrol mirror are projected outward onto standable water
+    // (the map's water ring), and a hull with no such water is not spawned
+    // at all — on lava the water roster is off entirely.
     const centerRadius = DEMO_CONFIG.centerSpawnRadius * oval.minDim;
     const coverageBlueprintIds = openingWaveCoverageBlueprintIds(
       initialWaveAllowedUnitBlueprintIds,
@@ -362,14 +426,28 @@ export function spawnBackgroundUnitsStandalone(
           );
         if (unitBlueprintId === null) continue;
 
-        const spawn = sampleInitialCenterSpawnPoint(
+        let spawn = sampleInitialCenterSpawnPoint(
           oval,
           centerRadius,
           () => world.nextRandom(playerId),
         );
-        // Every initial locomotion type receives the same patrol shape.
-        const targetX = cx - (spawn.x - cx);
-        const targetY = cy - (spawn.y - cy);
+        // Every initial locomotion type receives the same patrol shape: the
+        // spawn point and its mirror through the map center.
+        let targetX = cx - (spawn.x - cx);
+        let targetY = cy - (spawn.y - cy);
+        if (getUnitBlueprint(unitBlueprintId).requiresWater) {
+          const sample = sampleMapOvalAt(oval, spawn.x, spawn.y);
+          const waterSpawn = firstStandableWaterPointOutward(
+            world, oval, sample.angle, sample.distance, unitBlueprintId,
+          );
+          const waterTarget = firstStandableWaterPointOutward(
+            world, oval, sample.angle + Math.PI, sample.distance, unitBlueprintId,
+          );
+          if (waterSpawn === null || waterTarget === null) continue;
+          spawn = waterSpawn;
+          targetX = waterTarget.x;
+          targetY = waterTarget.y;
+        }
         const initialZ = world.getGroundZ(spawn.x, spawn.y) +
           DEMO_CONFIG.initialUnitSpawnHeightAboveSurface;
         const unit = spawnUnit(

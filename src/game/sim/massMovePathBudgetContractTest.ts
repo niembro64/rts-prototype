@@ -57,6 +57,15 @@ const WALL_ENTITY_ID_BASE = 900_001;
 /** Routes across a 21-cell map cost hundreds of work units each, so 320 of
  *  them cannot fit in two budgets; a correct scheduler needs several ticks. */
 const MIN_DRAIN_TICKS = 2;
+/** The second player's lone request must be moving (a validated first leg or
+ *  a full route) within this many ticks of the command, and hold its full
+ *  route within RIVAL_FULL_ROUTE_TICK_LIMIT, however deep the flood is. */
+const RIVAL_FIRST_MOTION_TICK_LIMIT = 2;
+/** The rival's full route (a cold hierarchical search shared with the army's
+ *  class graph) lands no later than the FIRST army route plus this slack, and
+ *  within an absolute bound however cold the graph is. */
+const RIVAL_FULL_ROUTE_SLACK_TICKS = 2;
+const RIVAL_FULL_ROUTE_TICK_LIMIT = 60;
 
 /**
  * Pathfinding is a queued, budgeted, resumable job — never a burst inside the
@@ -72,6 +81,9 @@ const MIN_DRAIN_TICKS = 2;
  *   2. The requests it could not serve are still queued when that tick ends.
  *   3. Every later tick stays under the same ceiling while the queue drains.
  *   4. The queue does drain: every unit ends up with an authoritative route.
+ *   5. Queues are per PLAYER: another player's single request, issued in the
+ *      same tick as the flood, gets its first motion within a tick and its
+ *      full route within a few — it never waits behind the army.
  */
 export function runMassMovePathBudgetContractTest(): void {
   resetReusableSimulationStateForDeterministicReplay();
@@ -99,6 +111,18 @@ export function runMassMovePathBudgetContractTest(): void {
       createPhysicsBodyForUnit(core.world, core.physics, unit);
       army.push(unit);
     }
+    // The rival: one unit of the OTHER player, whose request is issued in the
+    // very same tick as the flood.
+    const rivalCommander = core.world.getCommander(2 as PlayerId);
+    assertContract(rivalCommander !== undefined, 'player 2 commander present after bootstrap');
+    const rival = core.world.createUnitFromBlueprint(
+      rivalCommander.transform.x + 120,
+      rivalCommander.transform.y + 120,
+      2 as PlayerId,
+      'unitJackal',
+    );
+    core.world.addEntity(rival);
+    createPhysicsBodyForUnit(core.world, core.physics, rival);
     core.stepFixedTick(LOCKSTEP_FIXED_DT_MS, []);
 
     // Raise the wall halfway between the two arcs. Grounded footprints on the
@@ -144,6 +168,16 @@ export function runMassMovePathBudgetContractTest(): void {
       waypointType: 'move',
       queue: false,
     };
+    const rivalGoalX = core.world.mapWidth - rivalCommander.transform.x;
+    const rivalGoalY = core.world.mapHeight - rivalCommander.transform.y;
+    const rivalCommand: MoveCommand = {
+      type: 'move',
+      tick: core.world.getTick(),
+      entityIds: [rival.id],
+      individualTargets: [{ x: rivalGoalX, y: rivalGoalY, z: core.world.getTerrainBedZ(rivalGoalX, rivalGoalY) }],
+      waypointType: 'move',
+      queue: false,
+    };
 
     // The WASM counter sees EVERY search, whichever API ran it. The scheduler's
     // own expansionsUsed cannot stand in for it: a synchronous search bypasses
@@ -151,7 +185,7 @@ export function runMassMovePathBudgetContractTest(): void {
     // 2026-06..08 regression stayed invisible to the scheduler's statistics.
     const totalWorkUnits = (): number => getSimWasm()!.pathfinder.totalWorkUnits();
     const workBefore = totalWorkUnits();
-    core.stepFixedTick(LOCKSTEP_FIXED_DT_MS, [command]);
+    core.stepFixedTick(LOCKSTEP_FIXED_DT_MS, [command, rivalCommand]);
     const commandTickExpansions = totalWorkUnits() - workBefore;
     assertContract(
       commandTickExpansions <= PER_TICK_EXPANSION_CEILING,
@@ -173,8 +207,13 @@ export function runMassMovePathBudgetContractTest(): void {
     // A unit that was routed early may already have ARRIVED (its plan is
     // cleared on completion), so success is "every unit received a route at
     // some point", tracked as a sticky set, not "every unit holds one now".
+    // A coarse first leg is motion, not a route: it does not count here.
     const everRouted = new Set<EntityId>();
     let routed = 0;
+    let rivalFirstMotionTick = rival.unit!.activePath !== null ? 0 : -1;
+    let rivalFullRouteTick = -1;
+    let pendingWhenRivalRouted = -1;
+    let firstArmyRouteTick = -1;
     for (; drainTicks < DRAIN_TICK_LIMIT; drainTicks++) {
       const before = totalWorkUnits();
       core.stepFixedTick(LOCKSTEP_FIXED_DT_MS, []);
@@ -188,12 +227,34 @@ export function runMassMovePathBudgetContractTest(): void {
       let pending = 0;
       for (let i = 0; i < army.length; i++) {
         const unit = army[i].unit!;
-        if (unit.activePath !== null) everRouted.add(army[i].id);
+        if (unit.activePath !== null && unit.activePath.resolution !== 'coarse') {
+          everRouted.add(army[i].id);
+        }
         if (unit.pathRequestLane !== PATH_REQUEST_NONE) pending++;
       }
+      const rivalPlan = rival.unit!.activePath;
+      if (rivalPlan !== null && rivalFirstMotionTick < 0) rivalFirstMotionTick = drainTicks + 1;
+      if (rivalPlan !== null && rivalPlan.resolution !== 'coarse' && rivalFullRouteTick < 0) {
+        rivalFullRouteTick = drainTicks + 1;
+        pendingWhenRivalRouted = pending;
+      }
       routed = everRouted.size;
+      if (routed > 0 && firstArmyRouteTick < 0) firstArmyRouteTick = drainTicks + 1;
       if (pending === 0 && routed === army.length) break;
     }
+    assertContract(
+      rivalFirstMotionTick >= 0 && rivalFirstMotionTick <= RIVAL_FIRST_MOTION_TICK_LIMIT,
+      `the other player's unit must be moving within ${RIVAL_FIRST_MOTION_TICK_LIMIT} ticks of ` +
+        `the flood, got ${rivalFirstMotionTick < 0 ? 'never' : rivalFirstMotionTick}`,
+    );
+    assertContract(
+      rivalFullRouteTick >= 0 && rivalFullRouteTick <= RIVAL_FULL_ROUTE_TICK_LIMIT &&
+        rivalFullRouteTick <= firstArmyRouteTick + RIVAL_FULL_ROUTE_SLACK_TICKS,
+      `the other player's unit must hold its full route no later than the flood's first route ` +
+        `(+${RIVAL_FULL_ROUTE_SLACK_TICKS} ticks) and within ${RIVAL_FULL_ROUTE_TICK_LIMIT} ticks; ` +
+        `got rival ${rivalFullRouteTick < 0 ? 'never' : rivalFullRouteTick}, army ${firstArmyRouteTick} ` +
+        `(army still pending then: ${pendingWhenRivalRouted})`,
+    );
     assertContract(
       routed === army.length,
       `only ${routed}/${ARMY_SIZE} units ever received an authoritative route after ${drainTicks} ticks`,

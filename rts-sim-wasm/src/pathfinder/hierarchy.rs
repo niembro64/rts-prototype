@@ -28,7 +28,14 @@ use super::*;
 
 pub(crate) const HPA_MAX_PAIRS_PER_BORDER: usize = 6;
 pub(crate) const HPA_ENTRANCE_SPACING: i32 = 8;
-pub(crate) const HPA_CLASS_CACHE_CAP: usize = 12;
+/// Per-class graph cache ceiling. A body class is (traversal, waypoint
+/// traversal, cost profile, slope mode, radius, support offset), so nearly
+/// every blueprint is its own class: a 4-seat skirmish routes 41 distinct
+/// classes. At the old cap of 12 the LRU evicted graphs that were still in
+/// play and rebuilt cluster rows on nearly every search — 93% of all
+/// pathfinding work (measured 2026-08-26). Graphs are built lazily, so a
+/// class that is never routed costs one empty vector per cluster.
+pub(crate) const HPA_CLASS_CACHE_CAP: usize = 64;
 /// Start/goal insertion stops after this many of the cluster's exits are
 /// settled: the nearest exits are what a route uses, and the corridor search
 /// refines the exact route anyway. Bounds insertion at a fraction of the
@@ -240,6 +247,7 @@ pub(crate) fn hpa_class_index(state: &mut PathfinderState, key: HpaClassKey) -> 
     graph.borders.resize_with(cluster_count * 2, HpaBorder::default);
     graph.clusters.resize_with(cluster_count, HpaCluster::default);
     if state.hpa_classes.len() >= HPA_CLASS_CACHE_CAP {
+        state.hpa_class_evictions = state.hpa_class_evictions.wrapping_add(1);
         let mut victim = 0usize;
         for (i, g) in state.hpa_classes.iter().enumerate() {
             if g.last_used < state.hpa_classes[victim].last_used {

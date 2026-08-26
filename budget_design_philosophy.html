@@ -1561,29 +1561,76 @@
       <h3>Path searches are resumable fixed-tick jobs, never frame-time bursts</h3>
       <p>
         The authoritative command timeline never waits for pathfinding: commands apply in canonical
-        lockstep order and install durable intent immediately. Derived route work enters separate
-        <code>fresh</code> and <code>refresh</code> lanes. Exactly one ally team is selected each
-        fixed tick in stable round-robin order. That team may spend at most
-        <strong><code>aStarExpansionBudgetPerTick</code> work units</strong> (fine expansions,
-        cluster-build cells and abstract expansions; 8,192 in
-        <code>pathfindingTuningConfig.json</code>), carrying unused budget to further routes for the
-        same team and, when that team runs dry, to the next team with demand in the same tick. Admission rotates by player within the selected team, so a side with more seats
-        cannot multiply its routing throughput. Exact
-        validated direct segments, shared formation-cache hits, and stale queue entries perform no
-        A* work and do not consume that tick's search admission.
+        lockstep order and install durable intent immediately. A route request is an entity id in
+        one of its <em>owner's</em> queues and nothing more. Start and goal are read from the unit's
+        live position and current order at the moment it is served, so a unit that was pushed while
+        it waited is planned from where it actually is, and a second order simply overwrites the
+        intent: a unit holds at most one queue entry and never two stored requests.
+      </p>
+      <p>
+        <strong>Every player owns two queues.</strong> The <code>route</code> queue answers
+        &ldquo;get moving&rdquo;: an exact validated direct segment, a shared cluster-pair or
+        formation-cache adoption, or otherwise a validated straight <em>first leg</em> toward the
+        goal (at most <code>firstLegMaxDistanceWu</code>, halved until legal, never shorter than
+        <code>firstLegMinDistanceWu</code>) installed as a <code>coarse</code> plan the unit drives
+        at once. Nothing in the route queue ever runs a search; its work is a handful of line walks,
+        so it drains within a tick. A unit whose first leg landed (or failed) is then placed in its
+        owner's <code>refine</code> queue, where the hierarchical corridor search runs from the
+        unit's live position and replaces the coarse plan with the full route. A unit that reaches
+        the end of its leg before the refinement lands holds there &mdash; it never steers at the
+        raw command point &mdash; and, while its refinement is still queued, takes another validated
+        leg. Refresh requests (a chase target that drifted, a partial route that aged) share the
+        refine queue at the authored cadence, and a commander's request goes to the front of
+        whichever queue it enters.
+      </p>
+      <p>
+        <strong>Scheduling is a work-conserving quantum round-robin over the non-empty queues.</strong>
+        Each fixed tick funds one global ceiling, <code>aStarExpansionBudgetPerTick</code> work units
+        (fine expansions, cluster-build cells, abstract expansions and line-walk cells; 8,192 in
+        <code>pathfindingTuningConfig.json</code>). A persistent cursor visits every player with
+        demand &mdash; an eligible queue entry or a retained continuation &mdash; in seat order; a
+        visited player's route queue and then refine queue each receive one quantum,
+        <code>pathPlanQuantumWorkUnits</code>. A refine search that exhausts its quantum keeps its
+        frontier in that player's own WASM arena and resumes on the player's next visit; a queue
+        that runs dry hands its leftover to the next player with demand in the same tick; when
+        budget remains after a full pass, the pass repeats. Idle, unseated and defeated players are
+        never visited and cost nothing. The isolation this buys is the invariant
+        <code>massMovePathBudgetContractTest</code> pins: a player who drops a whole-army order waits
+        only behind their own cursor, while another player's single request is admitted on the very
+        next tick. Giving each queue a whole tick to itself would be the same rotation with the
+        wrong granularity &mdash; with N contended queues a route needing three quanta would wait
+        3N ticks instead of three &mdash; so the rotation steps in work units inside the tick.
+      </p>
+      <p>
+        <strong>No order is ever dropped because a route could not be found.</strong> A request that
+        resolves unreachable &mdash; the body cannot leave the cell it stands on, or nothing reachable
+        exists &mdash; backs off exponentially (<code>pathFailureBackoffTicks</code> doubling to
+        <code>pathFailureBackoffMaxTicks</code>) and the unit is marked route-blocked, but the order
+        stays. The backoff is state-triggered, not count-triggered: the moment the unit's grid cell,
+        the terrain version or the building layer changes, the request is served again at once,
+        because those are the only things that can change the answer. Retrying identical inputs
+        every tick is the failure the backoff exists to prevent; giving up was a different failure,
+        hidden as &ldquo;the unit stopped&rdquo;. An unreachable <em>goal</em> is not a failure at
+        all: the route snaps to the nearest reachable cell and the unit goes as close as it can. Air
+        bodies take a validated straight line at any distance and never enter a queue. A factory
+        releases its product only onto a cell the product's class can stand in: a hull built by a
+        shoreline fabricator whose hold or exit point lies on the beach is released at the nearest
+        water cell instead, because a hull on land is not a pathfinding problem and no search can
+        solve it.
       </p>
       <p>
         Fine-grid A* retains its open heap, scores, parents, best reachable frontier, and cumulative
-        expansion count between team turns. Each ally team may retain at most one unfinished
-        continuation. Each turn closes a fixed configured number of nodes; it is
-        never sized from measured wall time. There is no arbitrary total expansion ceiling: a hard
-        mountain route may take many deterministic ticks and finishes only when it reaches the goal
-        or exhausts the reachable graph. A terrain or grounded-building version change, or a
-        superseding unit intent, invalidates the continuation and queues a fresh job. Continuations
-        are derivable simulation scratch and are not serialized as command or snapshot state.
+        expansion count between quanta. Each player may retain at most one unfinished continuation;
+        switching players swaps compact corridor-local WASM arenas without copying them. Each quantum
+        closes a fixed configured amount of work; it is never sized from measured wall time. There is
+        no arbitrary total expansion ceiling: a hard mountain route may take many deterministic ticks
+        and finishes only when it reaches the goal or exhausts the reachable graph. A terrain or
+        grounded-building version change, or a superseding unit intent, invalidates the continuation
+        and queues a fresh job. Continuations, cursors and counters are derivable simulation scratch
+        and are never serialized as command or snapshot state.
       </p>
       <p>
-        A planless unit awaiting its fresh route applies no destination-directed propulsion. It is
+        A planless unit awaiting its first leg applies no destination-directed propulsion. It is
         not frozen: gravity, collision impulses, slope contact, passive friction, and external forces
         remain authoritative. A stale plan may continue only while its remaining suffix validates
         against the current navigation layers; otherwise the controller holds. Physical capability
@@ -1592,10 +1639,14 @@
         body that could mechanically swim through it. Air traversal still overflies the liquid.
       </p>
       <ul class="rule-list">
-        <li>Never move toward the raw command point while a fresh path is unresolved.</li>
+        <li>Never move toward the raw command point while a fresh path is unresolved. A coarse first leg is a validated segment, not the command point.</li>
         <li>Never budget authoritative search work from elapsed milliseconds or renderer cadence.</li>
-        <li>Each ally team owns at most one sliced A* continuation; switching teams swaps dense WASM arenas without copying them. Queued units retain intent, not map-sized frontiers.</li>
-        <li>A completed partial route is a proved-safe reachable frontier, not a node-budget timeout. Its endpoint must remain a physically supportable stop.</li>
+        <li>Queues, continuations and quanta are per PLAYER, never per side: one player's flood must never delay another player's first motion.</li>
+        <li>Each player owns at most one sliced A* continuation; switching players swaps dense WASM arenas without copying them. Queued units retain intent, not map-sized frontiers.</li>
+        <li>A completed partial route is a proved-safe reachable frontier, not a node-budget timeout. Its endpoint must remain a physically supportable stop; so must the end of a coarse first leg.</li>
+        <li>Per-class hierarchy graphs are cached for every body class in play (<code>HPA_CLASS_CACHE_CAP</code> 64, was 12; a 4-seat skirmish routes 41 distinct classes). The cost that remains &mdash; lazily built intra-cluster cost rows, ~93% of all pathfinding work at ~20k work units per completed route in a 4-bot skirmish (2026-08-26) &mdash; is a property of one graph per body class, not of the scheduler; collapsing classes (quantized radius / slope buckets) is the next lever.</li>
+        <li>Building churn never discards work it cannot have touched: a retained frontier is dropped only when a changed cell lies within distance-transform reach of a cluster in ITS corridor, and a queued job is cancelled only by a terrain version change. Before this every footprint anywhere restarted every player's search.</li>
+        <li>Any illegal start cell is an escape start when the body's exact point lies in its navigation domain &mdash; a footprint that went up under it, a shoreline or cliff cell a floating hull drifted into, a slope sliver, the map-edge buffer. The search seeds it and the first line cell is exempt; the start is never snapped. A hull on dry land, whose point is outside its domain, stays terminal (and its order stays).</li>
       </ul>
       <p>
         <strong>There is exactly one search entry point in the simulation, and it is the per-tick
@@ -1622,6 +1673,7 @@
         <li><strong>2026-08-17</strong> (<code>13312505</code>): the slice API arrived as <code>findPath(..., expansionBudget = null)</code>, with <code>null</code> meaning "call the synchronous export with a <code>u32::MAX</code> budget". The escape hatch was now part of the API, so the two 2026-08-25 scheduler rewrites (work-conserving sides <code>9f7eeeed</code>, budget-gated hierarchy work <code>f3818171</code>) tightened the slice path while the synchronous path stayed unbounded.</li>
         <li><strong>2026-08-25</strong> (<code>218bce46</code>): the 20 wu fine grid and lazily built per-class HPA graphs made each synchronous call far more expensive — cold cluster builds, corridor search and O(path²) smoothing per unit — and the deployed build froze under whole-army line and formation-preserving moves.</li>
         <li><strong>2026-08-26</strong>: the synchronous export, the <code>null</code>-budget branch and the command-time resolver were deleted; formation slots are installed as intent like the group-move branch always was; the contract test above pins the rule.</li>
+        <li><strong>2026-08-26</strong> (later): the per-side rotation with one retained frontier per ally team became the per-player two-queue quantum round-robin described above, the six-strike give-up that dropped orders was deleted in favour of state-triggered retry, air bodies stopped entering the queue, the hierarchy class cache stopped evicting graphs still in play, building churn stopped restarting every retained search, illegal start cells became escape starts, and the demo's opening wave stopped dropping hulls on land (87% of all unreachable results). Measured before (4 bots, 60 s): 275 unreachable results, 9 dropped orders, 62% of refine admissions within 1 tick, 18% waiting more than 1.6 s. After: 0 dropped orders by construction, 326 units moving on a first leg within a tick, 65% of refine admissions within 1 tick; the remaining unreachable results are transient shoreline beachings that recover, and full-route latency is bounded by per-class hierarchy row builds (see the rule list).</li>
       </ul>
 
       <h3>Force models answer gravity; constant-speed guidance preserves velocity</h3>

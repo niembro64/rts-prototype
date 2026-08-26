@@ -61,19 +61,22 @@ import {
   PATHFINDING_TRAFFIC_HEAT_DECAY_TICKS,
   PATHFINDING_PATH_FAILURE_BACKOFF_TICKS,
   PATHFINDING_PATH_FAILURE_BACKOFF_MAX_TICKS,
-  PATHFINDING_PATH_FAILURE_GIVE_UP_COUNT,
+  PATHFINDING_FIRST_LEG_MAX_DISTANCE_WU,
+  PATHFINDING_FIRST_LEG_MIN_DISTANCE_WU,
 } from './pathfindingTuning';
 import {
+  PATH_QUEUE_ROUTE,
   PATH_REQUEST_FRESH,
   PATH_REQUEST_NONE,
+  PATH_REQUEST_REFINE,
   PATH_REQUEST_REFRESH,
   SimulationPathPlanScheduler,
+  pathPlanPlayerId,
   type PathPlanSchedulerStats,
 } from './SimulationPathPlanScheduler';
 import { registerPathfinderBuildingOccupancy } from './pathfinderTerrainCache';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import { pathPlanSuffixNearBuildingChange } from './pathPlanBuildingChangeGate';
-import { getAllyTeamId, type AllyTeamId } from './teamRoster';
 import { getUnitLocomotionTraversalCapabilities } from './unitLocomotion';
 import { updateBuildingActiveStates } from './buildingActiveState';
 import { applyLavaSurfaceDamage } from './lavaSurfaceDamage';
@@ -215,6 +218,43 @@ type FormationRouteMetadata = {
   radius: number;
 };
 
+/** Outcome of the translate+validate cache pass a queued request runs
+ *  before any search: either a route was installed, or the inputs the search
+ *  job needs (the terrain filter, the shared formation anchor and its cache
+ *  key, the navigation goal, the shared-route cache key). */
+type CachedRouteAdoption =
+  | { installed: true }
+  | {
+      installed: false;
+      terrainFilter: PathTerrainFilter | null;
+      formationRoute: FormationRouteMetadata | null;
+      formationCacheKey: string | null;
+      navGoal: { x: number; y: number } | null;
+      sharedRouteKey: string | null;
+    };
+
+/** Building changes farther than this (build-grid cells, Chebyshev) from a
+ *  route-blocked body cannot change whether it can leave its cell. Two
+ *  hierarchy clusters: generous, and cheap to test. */
+const PATH_FAILURE_BUILDING_CHANGE_REACH_CELLS = 32;
+
+/** Work charged for one validated line walk, mirroring the WASM smoothing
+ *  charge (one unit per eight supercover cells, at least one). */
+const LINE_WALK_CELLS_PER_WORK_UNIT = 8;
+function lineWalkWorkUnits(x0: number, y0: number, x1: number, y1: number): number {
+  const dx = Math.abs(Math.floor(x1 / BUILD_GRID_CELL_SIZE) - Math.floor(x0 / BUILD_GRID_CELL_SIZE));
+  const dy = Math.abs(Math.floor(y1 / BUILD_GRID_CELL_SIZE) - Math.floor(y0 / BUILD_GRID_CELL_SIZE));
+  return Math.max(1, Math.ceil((Math.max(dx, dy) + 1) / LINE_WALK_CELLS_PER_WORK_UNIT));
+}
+
+/** An air body: both its movement and its stopping domains include air, so
+ *  it overflies terrain and buildings alike. */
+function isAirborneTerrainFilter(filter: PathTerrainFilter | null): boolean {
+  return filter !== null &&
+    filter.navigation.move.allowInAir &&
+    filter.navigation.waypoint.allowInAir;
+}
+
 type ActivePathPlanJob = {
   entityId: EntityId;
   lane: number;
@@ -312,7 +352,7 @@ export class Simulation {
    *  serialized, identical on every peer. */
   private readonly sharedRouteCache = new Map<string, ExpandedPathPlan>();
   private readonly pathPlanScheduler: SimulationPathPlanScheduler;
-  private readonly activePathPlanJobs = new Map<AllyTeamId, ActivePathPlanJob>();
+  private readonly activePathPlanJobs = new Map<PlayerId, ActivePathPlanJob>();
   private readonly pathQueryOutcomes: PathQueryOutcomeStats = createEmptyPathQueryOutcomeStats();
   private windState: WindState = sampleWindState(0);
   private windPowerTracker = new WindPowerTracker();
@@ -991,9 +1031,9 @@ export class Simulation {
   }
 
   /** Resolve only validated movement. Commands and cheap direct/cache routes
-   *  apply immediately; every real A* request waits for its ally team's one
-   *  resumable job and round-robin work turn. A unit with no safe route
-   *  returns null and supplies no destination-directed drive this tick. */
+   *  apply immediately; every real search waits in its OWNER's refine queue
+   *  for that player's quantum. A unit with no safe route returns null and
+   *  supplies no destination-directed drive this tick. */
   private ensureActivePathPlan(entity: Entity, action: UnitAction): Unit['activePath'] {
     const unit = entity.unit;
     if (!unit) return null;
@@ -1047,6 +1087,21 @@ export class Simulation {
           return null;
         }
       }
+      if (plan.resolution === 'coarse') {
+        // A first leg is a promise of motion, not a route: the full route is
+        // the owner's refine queue's job. A refine entry that was dropped (its
+        // job invalidated by a version change) is re-queued here, and a unit
+        // that reached the end of its leg while the refinement is still
+        // queued takes the next validated leg instead of standing still.
+        if (unit.pathRequestLane === PATH_REQUEST_NONE) {
+          this.pathPlanScheduler.requestRefine(entity, false);
+        }
+        if (this.isAtCoarseLegEnd(entity, plan)) {
+          const next = this.tryInstallFirstLegPlan(entity, unit, action, terrainVersion);
+          if (next.plan !== null) return next.plan;
+        }
+        return plan;
+      }
       if (
         unit.pathRequestLane === PATH_REQUEST_NONE &&
         this.activePathWantsRefresh(entity, plan, action, isChase, terrainVersion)
@@ -1064,6 +1119,11 @@ export class Simulation {
       this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
     }
     if (unit.pathRequestLane === PATH_REQUEST_FRESH) return null;
+    if (unit.pathRequestLane === PATH_REQUEST_REFINE) {
+      // The full route is already queued and plans from the live position
+      // whenever it is served; a dropped first leg needs nothing more.
+      return null;
+    }
     if (unit.pathRequestLane === PATH_REQUEST_REFRESH) {
       // The queued refresh was for a plan that no longer exists; promote it
       // to fresh priority (the superseded entry is skipped at serve time).
@@ -1097,15 +1157,71 @@ export class Simulation {
     if (direct !== null) return direct;
 
     if (unit.pathFailureActionHash !== unit.actionHash) {
-      unit.pathFailureStreak = 0;
-      unit.pathRetryAtTick = 0;
+      this.clearPathFailure(unit);
       unit.pathFailureActionHash = unit.actionHash;
     }
-    if (unit.pathRetryAtTick > this.world.getTick()) return null;
-    this.pathPlanScheduler.requestFresh(entity, false);
+    if (this.pathRetryHolds(entity, unit)) return null;
+    // A retry after a terminal result goes straight to the search: the
+    // route queue's straight legs failed from this very cell already.
+    if (unit.pathFailureStreak > 0) this.pathPlanScheduler.requestRefine(entity, false);
+    else this.pathPlanScheduler.requestFresh(entity, false);
     return null;
   }
 
+  /** Navigation-grid cell the body stands in, as one comparable key. */
+  private pathCellKeyOf(entity: Entity): number {
+    return Math.floor(entity.transform.x / BUILD_GRID_CELL_SIZE) +
+      Math.floor(entity.transform.y / BUILD_GRID_CELL_SIZE) * 65536;
+  }
+
+  /** True while a failed request's backoff is in force AND nothing that
+   *  could change the answer has changed: the unit still stands in the cell
+   *  it failed from, on the same terrain version, against the same building
+   *  layer. Any of those changing lifts the backoff at once — the backoff
+   *  exists to stop identical inputs being recomputed every tick, not to
+   *  make the unit wait. */
+  private pathRetryHolds(entity: Entity, unit: Unit): boolean {
+    if (unit.pathRetryAtTick <= this.world.getTick()) return false;
+    if (unit.pathFailureCellKey !== this.pathCellKeyOf(entity)) return false;
+    if (unit.pathFailureTerrainVersion !== getTerrainVersion()) return false;
+    const buildingGrid = this.constructionSystem.getGrid();
+    if (unit.pathFailureBuildingGridVersion !== buildingGrid.getVersion()) {
+      // A footprint that went up or came down far from the body cannot have
+      // changed whether the body can leave its cell; only changes within
+      // reach of it lift the backoff. Unknown history (older than the
+      // retained log) lifts it too.
+      const change = buildingGrid.changedBoundsSince(unit.pathFailureBuildingGridVersion);
+      if (change === null) return false;
+      if (change.count > 0) {
+        const cellX = Math.floor(entity.transform.x / BUILD_GRID_CELL_SIZE);
+        const cellY = Math.floor(entity.transform.y / BUILD_GRID_CELL_SIZE);
+        const reach = PATH_FAILURE_BUILDING_CHANGE_REACH_CELLS;
+        if (
+          cellX + reach >= change.minGx && cellX - reach <= change.maxGx &&
+          cellY + reach >= change.minGy && cellY - reach <= change.maxGy
+        ) {
+          return false;
+        }
+      }
+      unit.pathFailureBuildingGridVersion = buildingGrid.getVersion();
+    }
+    return true;
+  }
+
+  private clearPathFailure(unit: Unit): void {
+    unit.pathFailureStreak = 0;
+    unit.pathRetryAtTick = 0;
+    unit.pathFailureCellKey = -1;
+    unit.pathFailureTerrainVersion = -1;
+    unit.pathFailureBuildingGridVersion = -1;
+    unit.routeBlocked = false;
+  }
+
+  /** An unreachable/terminal result: the body cannot leave the cell it
+   *  stands on, or nothing reachable exists. The order is NEVER dropped.
+   *  Retrying next tick recomputes identical inputs, so back off
+   *  exponentially — and remember exactly what the answer depended on, so
+   *  the backoff lifts the moment any of it changes (pathRetryHolds). */
   private recordPathFailure(entity: Entity, unit: Unit): void {
     if (unit.pathFailureActionHash !== unit.actionHash) {
       unit.pathFailureStreak = 0;
@@ -1113,31 +1229,97 @@ export class Simulation {
     }
     unit.pathFailureStreak += 1;
     this.pathQueryOutcomes.failures += 1;
-    if (unit.pathFailureStreak >= PATHFINDING_PATH_FAILURE_GIVE_UP_COUNT) {
-      this.pathQueryOutcomes.giveUps += 1;
-      unit.pathFailureStreak = 0;
-      unit.pathRetryAtTick = 0;
-      unit.activePath = null;
-      unit.stuckTicks = 0;
-      shiftUnitAction(unit);
-      const patrolStartIndex = unit.actions.findIndex((action) => action.type === 'patrol');
-      unit.patrolStartIndex = patrolStartIndex >= 0 ? patrolStartIndex : null;
-      this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
-      return;
-    }
     const exponent = Math.min(unit.pathFailureStreak - 1, 16);
     const delay = Math.min(
       PATHFINDING_PATH_FAILURE_BACKOFF_TICKS * 2 ** exponent,
       PATHFINDING_PATH_FAILURE_BACKOFF_MAX_TICKS,
     );
     unit.pathRetryAtTick = this.world.getTick() + delay;
+    unit.pathFailureCellKey = this.pathCellKeyOf(entity);
+    unit.pathFailureTerrainVersion = getTerrainVersion();
+    unit.pathFailureBuildingGridVersion = this.constructionSystem.getGrid().getVersion();
+    unit.routeBlocked = true;
+  }
+
+  /** A plan that the unit may keep steering on while a replacement is
+   *  queued. A coarse first leg is not one: for cache adoption and formation
+   *  routing it counts as "no route yet". */
+  private hasUsableRoute(unit: Unit): boolean {
+    return unit.activePath !== null && unit.activePath.resolution !== 'coarse';
+  }
+
+  private isAtCoarseLegEnd(entity: Entity, plan: NonNullable<Unit['activePath']>): boolean {
+    if (plan.index < plan.points.length - 1) return false;
+    const end = plan.points[plan.points.length - 1];
+    return magnitude(end.x - entity.transform.x, end.y - entity.transform.y) <= ARRIVAL_RADIUS;
+  }
+
+  /** Route-queue tier 1 for a far goal: the longest validated straight leg
+   *  toward the navigation goal, at most firstLegMaxDistanceWu, halved until
+   *  it validates and never shorter than firstLegMinDistanceWu. Installed as
+   *  a COARSE plan the unit drives at once; the full route stays queued in
+   *  the owner's refine queue and replaces it. Returns the work charged
+   *  (line cells walked, one unit per SMOOTHING_CELLS_PER_WORK_UNIT cells),
+   *  whether or not a leg landed. */
+  private tryInstallFirstLegPlan(
+    entity: Entity,
+    unit: Unit,
+    action: UnitAction,
+    terrainVersion: number,
+  ): { plan: NonNullable<Unit['activePath']> | null; work: number } {
+    const navGoal = this.resolveNavigationGoal(entity, action);
+    const goalX = navGoal?.x ?? action.x;
+    const goalY = navGoal?.y ?? action.y;
+    const startX = entity.transform.x;
+    const startY = entity.transform.y;
+    const dx = goalX - startX;
+    const dy = goalY - startY;
+    const distance = magnitude(dx, dy);
+    if (distance <= PATHFINDING_FIRST_LEG_MIN_DISTANCE_WU) return { plan: null, work: 0 };
+    const terrainFilter = this.pathTerrainFilterForUnit(entity);
+    const symmetric = this.world.slopePathMode === 'symmetric';
+    let leg = Math.min(PATHFINDING_FIRST_LEG_MAX_DISTANCE_WU, distance);
+    let work = 0;
+    while (leg >= PATHFINDING_FIRST_LEG_MIN_DISTANCE_WU) {
+      const scale = leg / distance;
+      const x = startX + dx * scale;
+      const y = startY + dy * scale;
+      const point: UnitPathPoint = { x, y, z: this.world.getTerrainBedZ(x, y) };
+      work += lineWalkWorkUnits(startX, startY, x, y);
+      if (
+        isPathSegmentTraversable(
+          startX,
+          startY,
+          point,
+          this.world.mapWidth,
+          this.world.mapHeight,
+          terrainFilter,
+          unit.radius.collision,
+          symmetric,
+        )
+      ) {
+        return {
+          plan: this.installActivePathPlan(
+            entity,
+            unit,
+            action,
+            { points: [point], resolution: 'coarse' },
+            terrainVersion,
+          ),
+          work,
+        };
+      }
+      leg *= 0.5;
+    }
+    return { plan: null, work };
   }
 
   private recordPathQueryOutcome(
     unit: Unit,
-    resolution: 'complete' | 'snapped' | 'partial' | 'unreachable',
+    resolution: ExpandedPathPlan['resolution'],
     strategy: PathSearchStrategy,
   ): void {
+    if (resolution === 'coarse') return;
     const stats = this.pathQueryOutcomes;
     stats[resolution] += 1;
     if (strategy === 'direct') stats.direct += 1;
@@ -1249,7 +1431,17 @@ export class Simulation {
       goalX - entity.transform.x,
       goalY - entity.transform.y,
     );
-    if (directDistance > PATHFINDING_DIRECT_PLAN_MAX_DISTANCE_WU) return null;
+    const terrainFilter = this.pathTerrainFilterForUnit(entity);
+    // Air bodies overfly every obstacle: their straight line validates at any
+    // distance and they never enter a queue. Every other body keeps the
+    // distance gate so a long legal-but-slow beeline cannot shadow a cheaper
+    // route around terrain.
+    if (
+      directDistance > PATHFINDING_DIRECT_PLAN_MAX_DISTANCE_WU &&
+      !isAirborneTerrainFilter(terrainFilter)
+    ) {
+      return null;
+    }
     const direct: UnitPathPoint = {
       x: goalX,
       y: goalY,
@@ -1264,7 +1456,7 @@ export class Simulation {
         direct,
         this.world.mapWidth,
         this.world.mapHeight,
-        this.pathTerrainFilterForUnit(entity),
+        terrainFilter,
         unit.radius.collision,
         this.world.slopePathMode === 'symmetric',
       )
@@ -1287,8 +1479,7 @@ export class Simulation {
     pathPlan: ExpandedPathPlan,
     terrainVersion: number,
   ): NonNullable<Unit['activePath']> {
-    unit.pathFailureStreak = 0;
-    unit.pathRetryAtTick = 0;
+    this.clearPathFailure(unit);
     unit.activePath = {
       points: pathPlan.points,
       resolution: pathPlan.resolution,
@@ -1311,38 +1502,76 @@ export class Simulation {
     return unit.activePath;
   }
 
-  /** Admit one queued request into the selected ally team's continuation.
-   *  Direct routes and formation-cache hits are installed for free and return
-   *  false so admission can keep scanning. */
-  private admitPathPlanRequest(
-    teamId: AllyTeamId,
-    entityId: EntityId,
-    lane: number,
-  ): boolean {
+  /** Serve one route-queue entry for its owner: an exact direct segment, a
+   *  cache adoption, or otherwise a validated straight first leg toward the
+   *  goal installed as a COARSE plan. Nothing here searches; the full route
+   *  is handed to the owner's refine queue either way. Returns the work
+   *  charged (0 = the entry resolved free: stale, superseded, no order). */
+  private serveRouteRequest(playerId: PlayerId, entityId: EntityId, lane: number): number {
     const entity = this.world.getEntity(entityId);
-    if (entity === undefined) return false;
+    if (entity === undefined) return 0;
     const unit = entity.unit;
-    if (unit === null || unit.hp <= 0) return false;
-    if (unit.pathRequestLane !== lane) return false;
-    const playerId = entity.ownership?.playerId ?? (0 as PlayerId);
-    if (getAllyTeamId(this.world.teamRoster, playerId) !== teamId) return false;
+    if (unit === null || unit.hp <= 0) return 0;
+    if (unit.pathRequestLane !== lane) return 0;
+    if (!this.rehomeIfOwnerChanged(entity, unit, playerId)) return 0;
     const forceLocal = unit.pathRequestForceLocal;
     const action = unit.actions[0];
-    if (action === undefined || !PATH_PLAN_SERVE_ACTION_TYPES.has(action.type)) {
-      unit.pathRequestLane = PATH_REQUEST_NONE;
-      unit.pathRequestForceLocal = false;
-      return false;
-    }
+    unit.pathRequestLane = PATH_REQUEST_NONE;
+    unit.pathRequestForceLocal = false;
+    if (action === undefined || !PATH_PLAN_SERVE_ACTION_TYPES.has(action.type)) return 0;
     const terrainVersion = getTerrainVersion();
+    // One direct-segment probe is always paid for; it is the cheapest route.
+    let work = 1;
     if (this.tryInstallDirectPathPlan(entity, unit, action, terrainVersion) !== null) {
-      unit.pathRequestLane = PATH_REQUEST_NONE;
-      unit.pathRequestForceLocal = false;
       if (forceLocal) unit.stuckTicks = replanCooldownFor(this.world);
-      return false;
+      return work;
     }
+    const adoption = this.resolveCachedRouteAdoption(entity, unit, action, terrainVersion, forceLocal);
+    work += 1;
+    if (adoption.installed) {
+      if (forceLocal) unit.stuckTicks = replanCooldownFor(this.world);
+      return work;
+    }
+    // A stuck unit's straight leg is what it is stuck against: it goes to
+    // the refine queue directly, from its live position.
+    if (!forceLocal) {
+      const leg = this.tryInstallFirstLegPlan(entity, unit, action, terrainVersion);
+      work += leg.work;
+      if (leg.plan !== null) this.pathQueryOutcomes.firstLegs += 1;
+      else this.pathQueryOutcomes.firstLegMisses += 1;
+    }
+    this.pathPlanScheduler.requestRefine(entity, forceLocal);
+    return work;
+  }
 
+  /** A unit captured while its entry waited sits in the OLD owner's queue.
+   *  Re-queue it under the new owner and skip the stale entry for free. */
+  private rehomeIfOwnerChanged(entity: Entity, unit: Unit, servedPlayerId: PlayerId): boolean {
+    if (pathPlanPlayerId(entity) === servedPlayerId) return true;
+    const lane = unit.pathRequestLane;
+    const forceLocal = unit.pathRequestForceLocal;
+    unit.pathRequestLane = PATH_REQUEST_NONE;
+    unit.pathRequestForceLocal = false;
+    if (lane === PATH_REQUEST_FRESH) this.pathPlanScheduler.requestFresh(entity, forceLocal);
+    else if (lane === PATH_REQUEST_REFINE) this.pathPlanScheduler.requestRefine(entity, forceLocal);
+    else if (lane === PATH_REQUEST_REFRESH) this.pathPlanScheduler.requestRefresh(entity);
+    return false;
+  }
+
+  /** Formation-cache and shared cluster-pair adoption: translate + validate
+   *  only, never a search. A unit on a coarse first leg counts as routeless
+   *  here, so the second unit of a blob adopts the first unit's completed
+   *  route instead of searching its own. */
+  private resolveCachedRouteAdoption(
+    entity: Entity,
+    unit: Unit,
+    action: UnitAction,
+    terrainVersion: number,
+    forceLocal: boolean,
+  ): CachedRouteAdoption {
     const terrainFilter = this.pathTerrainFilterForUnit(entity);
-    let formationRoute = !forceLocal && unit.activePath === null
+    const routeless = !this.hasUsableRoute(unit);
+    let formationRoute = !forceLocal && routeless
       ? this.getFormationRouteMetadata(action)
       : null;
     let formationCacheKey: string | null = null;
@@ -1361,10 +1590,8 @@ export class Simulation {
           entity,
         );
         if (translated !== null) {
-          unit.pathRequestLane = PATH_REQUEST_NONE;
-          unit.pathRequestForceLocal = false;
           this.installActivePathPlan(entity, unit, action, translated, terrainVersion);
-          return false;
+          return { installed: true };
         }
         formationRoute = null;
         formationCacheKey = null;
@@ -1375,7 +1602,7 @@ export class Simulation {
       ? this.resolveNavigationGoal(entity, action)
       : null;
     let sharedRouteKey: string | null = null;
-    if (!forceLocal && formationRoute === null && unit.activePath === null) {
+    if (!forceLocal && formationRoute === null && routeless) {
       const goalX = navGoal?.x ?? action.x;
       const goalY = navGoal?.y ?? action.y;
       sharedRouteKey = this.sharedRouteCacheKey(entity, unit, goalX, goalY, terrainVersion, terrainFilter);
@@ -1383,15 +1610,59 @@ export class Simulation {
       if (shared !== undefined) {
         const adopted = this.adoptSharedRoute(entity, unit, shared, goalX, goalY, terrainFilter);
         if (adopted !== null) {
-          unit.pathRequestLane = PATH_REQUEST_NONE;
-          unit.pathRequestForceLocal = false;
           this.pathQueryOutcomes.sharedRouteHits += 1;
           this.installActivePathPlan(entity, unit, action, adopted, terrainVersion);
-          return false;
+          return { installed: true };
         }
       }
     }
-    this.activePathPlanJobs.set(teamId, {
+    return {
+      installed: false,
+      terrainFilter,
+      formationRoute,
+      formationCacheKey,
+      navGoal,
+      sharedRouteKey,
+    };
+  }
+
+  /** Admit one refine-queue entry into its owner's continuation. Direct
+   *  routes and cache hits are installed for free and return false so
+   *  admission can keep scanning. */
+  private admitPathPlanRequest(
+    playerId: PlayerId,
+    entityId: EntityId,
+    lane: number,
+  ): boolean {
+    const entity = this.world.getEntity(entityId);
+    if (entity === undefined) return false;
+    const unit = entity.unit;
+    if (unit === null || unit.hp <= 0) return false;
+    if (unit.pathRequestLane !== lane) return false;
+    if (!this.rehomeIfOwnerChanged(entity, unit, playerId)) return false;
+    const forceLocal = unit.pathRequestForceLocal;
+    const action = unit.actions[0];
+    if (action === undefined || !PATH_PLAN_SERVE_ACTION_TYPES.has(action.type)) {
+      unit.pathRequestLane = PATH_REQUEST_NONE;
+      unit.pathRequestForceLocal = false;
+      return false;
+    }
+    const terrainVersion = getTerrainVersion();
+    if (this.tryInstallDirectPathPlan(entity, unit, action, terrainVersion) !== null) {
+      unit.pathRequestLane = PATH_REQUEST_NONE;
+      unit.pathRequestForceLocal = false;
+      if (forceLocal) unit.stuckTicks = replanCooldownFor(this.world);
+      return false;
+    }
+    const adoption = this.resolveCachedRouteAdoption(entity, unit, action, terrainVersion, forceLocal);
+    if (adoption.installed) {
+      unit.pathRequestLane = PATH_REQUEST_NONE;
+      unit.pathRequestForceLocal = false;
+      if (forceLocal) unit.stuckTicks = replanCooldownFor(this.world);
+      return false;
+    }
+    const { terrainFilter, formationRoute, formationCacheKey, navGoal, sharedRouteKey } = adoption;
+    this.activePathPlanJobs.set(playerId, {
       entityId,
       lane,
       forceLocal,
@@ -1469,10 +1740,10 @@ export class Simulation {
   /** Resume or finish one team's path job. Invalid live intent is free, so the
    *  scheduler may admit a replacement in the same team turn. */
   private advanceActivePathPlanJob(
-    teamId: AllyTeamId,
+    playerId: PlayerId,
     expansionBudget: number,
   ): { status: 'invalid' | 'pending' | 'complete'; expansionsUsed: number } {
-    const job = this.activePathPlanJobs.get(teamId);
+    const job = this.activePathPlanJobs.get(playerId);
     if (job === undefined) return { status: 'invalid', expansionsUsed: 0 };
     const entity = this.world.getEntity(job.entityId);
     const unit = entity?.unit ?? null;
@@ -1484,8 +1755,12 @@ export class Simulation {
       action.targetId === job.actionSnapshot.targetId &&
       action.buildingId === job.actionSnapshot.buildingId &&
       (isChase || unit?.actionHash === job.actionHash);
-    const navigationStillMatches = getTerrainVersion() === job.terrainVersion &&
-      this.constructionSystem.getGrid().getVersion() === job.buildingGridVersion;
+    // Building churn never cancels a job here: the WASM keeps or drops the
+    // retained frontier by an exact corridor test, and a route that ends up
+    // crossing a new footprint fails the install-time validation below. A
+    // start-goal box test was tried first and cancelled nearly every long
+    // route in a match with four building bots.
+    const navigationStillMatches = getTerrainVersion() === job.terrainVersion;
     if (
       entity === undefined ||
       unit === null ||
@@ -1494,8 +1769,8 @@ export class Simulation {
       !actionStillMatches ||
       !navigationStillMatches
     ) {
-      cancelPathPlanSlice(teamId);
-      this.activePathPlanJobs.delete(teamId);
+      cancelPathPlanSlice(playerId);
+      this.activePathPlanJobs.delete(playerId);
       if (unit !== null && unit.pathRequestLane === job.lane) {
         unit.pathRequestLane = PATH_REQUEST_NONE;
         unit.pathRequestForceLocal = false;
@@ -1517,14 +1792,14 @@ export class Simulation {
       job.terrainFilter,
       job.unitRadius,
       job.symmetricSlope,
-      teamId,
+      playerId,
       expansionBudget,
     );
     if (result.status === 'pending') {
       return { status: 'pending', expansionsUsed: result.expansionsUsed };
     }
 
-    this.activePathPlanJobs.delete(teamId);
+    this.activePathPlanJobs.delete(playerId);
     unit.pathRequestLane = PATH_REQUEST_NONE;
     unit.pathRequestForceLocal = false;
     this.recordPathQueryOutcome(unit, result.plan.resolution, result.strategy);
@@ -1638,11 +1913,15 @@ export class Simulation {
     }
 
     const point = plan.points[plan.index];
-    const isFinalActionPoint = plan.index >= plan.points.length - 1;
+    const isLastPlanPoint = plan.index >= plan.points.length - 1;
+    // A coarse first leg ends at an intermediate hold, never at the action's
+    // arrival: the unit brakes there and waits for its refinement (or the
+    // next leg) instead of completing the order short of the goal.
+    const isFinalActionPoint = isLastPlanPoint && plan.resolution !== 'coarse';
     const pointDx = point.x - entity.transform.x;
     const pointDy = point.y - entity.transform.y;
     const closeEnoughForBroadAdvance = magnitude(pointDx, pointDy) <= ARRIVAL_RADIUS;
-    const pathAdvanceRadius = isFinalActionPoint || (
+    const pathAdvanceRadius = isLastPlanPoint || (
       closeEnoughForBroadAdvance &&
       this.isDirectPathPointReachable(entity, plan.points[plan.index + 1])
     ) ? ARRIVAL_RADIUS : 1;
@@ -2113,13 +2392,16 @@ export class Simulation {
     this.combatHaltController.prepare();
     this.releaseReadyGatherWaits();
 
-    // Every fixed tick funds one global A* expansion ceiling. Sides are
-    // served round-robin among the sides that have demand (a retained
-    // frontier or a queued request): an idle, unseated or defeated side never
-    // holds a turn, and a side that runs dry hands its leftover to the next
-    // side with work in the same tick. A served side resumes its retained
-    // frontier first, then may admit more of its own routes while budget
-    // remains. All selection state is derived lockstep state.
+    // Every fixed tick funds one global work ceiling. Players with demand (a
+    // retained frontier or an eligible queue entry) are visited round-robin
+    // from a persistent cursor; each visited player's route queue and then
+    // refine queue receive one quantum. A refine search that outlives its
+    // quantum keeps its frontier in that player's own WASM arena and resumes
+    // on the player's next visit; a player that runs dry hands the leftover
+    // to the next player with demand in the same tick, and the pass repeats
+    // while budget and demand remain. One player's flood never delays
+    // another player's first motion. All selection state is derived
+    // lockstep state.
     const roster = this.world.teamRoster;
     const scheduler = this.pathPlanScheduler;
     const activeJobs = this.activePathPlanJobs;
@@ -2131,35 +2413,48 @@ export class Simulation {
     let expansionsRemaining = PATHFINDING_A_STAR_EXPANSIONS_PER_TICK;
     let frontierPending = false;
     scheduler.beginTick(this.world.getTick(), roster, activeJobs);
-    let turn = scheduler.nextTeamTurn(roster, activeJobs);
-    while (turn !== null) {
-      const { teamId, teamTurn } = turn;
-      while (expansionsRemaining > 0) {
-        if (!activeJobs.has(teamId)) {
-          const admitted = scheduler.drainTeam(
-            teamTurn,
-            roster,
-            teamId,
-            (entityId, lane) => this.admitPathPlanRequest(teamId, entityId, lane),
+    let turn = scheduler.nextTurn(roster, activeJobs);
+    while (turn !== null && expansionsRemaining > 0) {
+      const { playerId } = turn;
+      let quantum = Math.min(turn.quantum, expansionsRemaining);
+      const quantumOffered = quantum;
+      if (turn.tier === PATH_QUEUE_ROUTE) {
+        while (quantum > 0) {
+          const used = scheduler.drainRoute(
+            turn,
+            (entityId, lane) => this.serveRouteRequest(playerId, entityId, lane),
           );
-          // The side ran dry (or held only free/stale entries): fall through
-          // to the next side with demand instead of discarding the leftover.
-          if (!admitted) break;
+          if (used <= 0) break;
+          quantum -= used;
+          expansionsRemaining -= used;
         }
-        const outcome = this.advanceActivePathPlanJob(teamId, expansionsRemaining);
-        if (outcome.status === 'invalid') continue;
-        // A query that resolves in direct/preflight work can close zero fine
-        // nodes. Charge one deterministic admission unit so a pathological
-        // stream of zero-expansion completions cannot monopolize the tick.
-        expansionsRemaining -= Math.max(1, outcome.expansionsUsed);
-        if (outcome.status === 'pending') {
-          // The ceiling is spent; the frontier waits for this side's next turn.
-          frontierPending = true;
-          break;
+      } else {
+        while (quantum > 0) {
+          if (!activeJobs.has(playerId)) {
+            const admitted = scheduler.drainRefine(
+              turn,
+              (entityId, lane) => this.admitPathPlanRequest(playerId, entityId, lane),
+            );
+            if (!admitted) break;
+          }
+          const outcome = this.advanceActivePathPlanJob(playerId, quantum);
+          if (outcome.status === 'invalid') continue;
+          // A query that resolves in direct/preflight work can close zero
+          // fine nodes. Charge one deterministic admission unit so a stream
+          // of zero-expansion completions cannot monopolize the quantum.
+          const used = Math.max(1, outcome.expansionsUsed);
+          quantum -= used;
+          expansionsRemaining -= used;
+          if (outcome.status === 'pending') {
+            // This player's quantum is spent; the frontier waits in its own
+            // arena for the player's next visit while the cursor moves on.
+            frontierPending = true;
+            break;
+          }
         }
       }
-      if (expansionsRemaining <= 0 || frontierPending) break;
-      turn = scheduler.nextTeamTurn(roster, activeJobs);
+      scheduler.chargeTurn(turn, quantumOffered - quantum);
+      turn = expansionsRemaining > 0 ? scheduler.nextTurn(roster, activeJobs) : null;
     }
     scheduler.endTick(
       roster,
@@ -3086,10 +3381,15 @@ export type PathQueryOutcomeStats = {
   unreachable: number;
   direct: number;
   hierarchical: number;
-  /** Unreachable/terminal results that entered retry backoff. */
+  /** Unreachable/terminal results that entered retry backoff. The order is
+   *  never dropped; the backoff lifts when the unit's cell or the navigation
+   *  layers change. */
   failures: number;
-  /** Orders dropped after the give-up count. */
-  giveUps: number;
+  /** Validated straight first legs installed by the route queue while the
+   *  full route was still queued, and route-queue entries where no leg down
+   *  to the minimum length validated (the unit held for its refinement). */
+  firstLegs: number;
+  firstLegMisses: number;
   /** Routes adopted from the shared cluster-pair cache (no search). */
   sharedRouteHits: number;
   unreachableByBlueprint: Map<string, number>;
@@ -3104,7 +3404,8 @@ function createEmptyPathQueryOutcomeStats(): PathQueryOutcomeStats {
     direct: 0,
     hierarchical: 0,
     failures: 0,
-    giveUps: 0,
+    firstLegs: 0,
+    firstLegMisses: 0,
     sharedRouteHits: 0,
     unreachableByBlueprint: new Map(),
   };
