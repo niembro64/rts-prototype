@@ -4371,13 +4371,20 @@
       <p>
         Ordinary structures declare ground-surface only. Both metal extractor tiers declare
         ground-surface plus water-sea-bed, so one extractor blueprint works on a dry deposit or an
-        underwater deposit and anchors to the real bed in both cases. Sonar declares
-        sea-on-surface; the torpedo tower declares water-sea-bed; and the Fabricator declares both
-        hover sets. Radar, sonar, and torpedo placement additionally verifies that the operative
+        underwater deposit and anchors to the real bed in both cases. Sonar and the Torpedo Tower
+        declare sea-on-surface; the Fabricator declares both hover sets. Radar, sonar, and torpedo
+        placement additionally verifies that the operative
         mount is in its required sensor medium, preventing a legal-looking but inert completed
         structure in shallow water. <code>hoveringType</code> remains a separate physical/body
         classification (<code>fabricator</code> for the radial Universal body and
         <code>directionalFabricator</code> for a specialist flight deck), not a placement policy.
+      </p>
+      <p>
+        The Torpedo Tower&rsquo;s two underwater launcher heads share the yaw of their common torso,
+        but each head retains a full local vertical traverse from straight down to straight up.
+        Its bottom-unbounded range cylinder is therefore a real firing envelope: a submerged body
+        directly beneath the tower, with zero horizontal separation, is a reachable target rather
+        than a range-qualified lock the launcher cannot physically aim at.
       </p>
       <p>
         A hovering building keeps the shared z-model &mdash; <code>transform.z</code> remains the

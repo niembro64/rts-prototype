@@ -430,7 +430,8 @@ export function runAuthoritativeTurretSocketContractTest(): void {
     const torpedoTurret = torpedoTurrets[turretIndex];
     const attachment = torpedoTurret.config.hostAttachment;
     assertContract(
-      attachment?.kind === 'buildingYawPiece' &&
+      attachment !== null &&
+        attachment.kind === 'buildingYawPiece' &&
         attachment.piece === 'torpedoTorso' &&
         Math.abs(attachment.socketOffset.y) === 16 &&
         attachment.socketOffset.z === -10,
@@ -439,9 +440,9 @@ export function runAuthoritativeTurretSocketContractTest(): void {
     assertContract(
       torpedoTurret.config.articulation.yaw.minAngle === 0 &&
         torpedoTurret.config.articulation.yaw.maxAngle === 0 &&
-        torpedoTurret.config.articulation.pitch.minAngle === 0 &&
-        torpedoTurret.config.articulation.pitch.maxAngle === 0,
-      `torpedo head ${turretIndex} has no local yaw or pitch escape from torso-forward`,
+        torpedoTurret.config.articulation.pitch.minAngle === -Math.PI / 2 &&
+        torpedoTurret.config.articulation.pitch.maxAngle === Math.PI / 2,
+      `torpedo head ${turretIndex} shares torso yaw and retains full local vertical traverse`,
     );
     assertContract(
       torpedoTurret.emissionSockets.length === 1 &&

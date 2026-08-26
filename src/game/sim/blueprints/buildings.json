@@ -1285,7 +1285,7 @@
     "shortName": "TORPD",
     "fullName": "Torpedo Tower",
     "shortDescription": "Paired underwater torpedo defense",
-    "longDescription": "A seabed defense with paired torpedo launchers for engaging underwater threats.",
+    "longDescription": "A surface defense with paired underwater torpedo launchers for engaging submerged threats.",
     "gridWidth": 3,
     "gridHeight": 3,
     "footprintMask": [
@@ -1361,8 +1361,8 @@
             "maxAngle": 0
           },
           "pitch": {
-            "minAngle": 0,
-            "maxAngle": 0
+            "minAngle": -1.5707963267948966,
+            "maxAngle": 1.5707963267948966
           },
           "restYaw": 0,
           "restPitch": 0,
@@ -1414,8 +1414,8 @@
             "maxAngle": 0
           },
           "pitch": {
-            "minAngle": 0,
-            "maxAngle": 0
+            "minAngle": -1.5707963267948966,
+            "maxAngle": 1.5707963267948966
           },
           "restYaw": 0,
           "restPitch": 0,

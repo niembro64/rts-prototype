@@ -15,6 +15,7 @@ import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
 import { beamIndex } from './BeamIndex';
 import type { Entity, EntityId, PlayerId, Turret } from './types';
+import type { ProjectileSpawnEvent } from './combat/types';
 import {
   isProjectileShot,
   NO_ENTITY_ID,
@@ -1050,7 +1051,7 @@ function assertOrcaTargetsEnemyOrca(manualTarget: boolean): void {
   resetTurretHostIntegrationState();
 }
 
-function assertSurfaceTorpedoTowerLaunchesFromUnderwaterSocket(): void {
+function assertSurfaceTorpedoTowerTracksAndFiresStraightDown(): void {
   resetTurretHostIntegrationState();
   const world = createIsolatedTestWorld(6331, 1024, 1024);
   world.playerCount = 2;
@@ -1060,8 +1061,12 @@ function assertSurfaceTorpedoTowerLaunchesFromUnderwaterSocket(): void {
   applyBuildingBlueprintRuntime(tower, 'towerTorpedo', {
     allocateEntityId: () => world.generateEntityId(),
   });
-  const target = world.createBuilding(360, 160, 20, 20, 20, 2 as PlayerId);
-  target.transform.z = WATER_LEVEL - 20;
+  // The target shares the tower's horizontal center exactly. This is the
+  // pathological bearing that used to fail: the bottom-unbounded range shell
+  // admitted it, but pitch-locked launcher heads could not realize the
+  // straight-down solution and the physical-feasibility gate rejected it.
+  const target = world.createBuilding(160, 160, 20, 20, 20, 2 as PlayerId);
+  target.transform.z = WATER_LEVEL - 200;
   world.addEntity(tower);
   world.addEntity(target);
   spatialGrid.updateUnit(tower);
@@ -1072,11 +1077,33 @@ function assertSurfaceTorpedoTowerLaunchesFromUnderwaterSocket(): void {
 
   const turrets = tower.combat.turrets;
   assertContract(turrets.length === 2, 'surface torpedo tower must expose both launcher heads');
-  for (const turret of turrets) turret.config.requiresNonObstructedLineOfSight = false;
+  for (const turret of turrets) {
+    turret.config.requiresNonObstructedLineOfSight = false;
+    assertContract(
+      turret.config.articulation.pitch.minAngle === -Math.PI / 2 &&
+        turret.config.articulation.pitch.maxAngle === Math.PI / 2,
+      'surface torpedo heads must be able to realize a straight-down aim solution',
+    );
+  }
   const dtMs = 50;
-  stampCombatTargetingPool(world);
-  const activeCombatUnits = updateTargetingAndFiringState(world, dtMs);
-  updateTurretRotation(world, dtMs, activeCombatUnits);
+  const firedProjectiles: Entity[] = [];
+  const firedSpawnEvents: ProjectileSpawnEvent[] = [];
+  let activeCombatUnits: Entity[] = [];
+  for (let tick = 0; tick < 80 && firedProjectiles.length < 2; tick++) {
+    world.incrementTick();
+    stampCombatTargetingPool(world);
+    activeCombatUnits = updateTargetingAndFiringState(world, dtMs);
+    updateTurretRotation(world, dtMs, activeCombatUnits);
+    const fireResult = fireTurrets(
+      world,
+      dtMs,
+      new DamageSystem(world),
+      new ForceAccumulator(),
+      activeCombatUnits,
+    );
+    firedProjectiles.push(...fireResult.projectiles);
+    firedSpawnEvents.push(...fireResult.spawnEvents);
+  }
   for (let turretIndex = 0; turretIndex < turrets.length; turretIndex++) {
     const targetingState = { stateCode: CT_TURRET_STATE_ENGAGED, targetId: -1 };
     const hasTargetingState = readCombatTargetingTurretFsmInto(
@@ -1088,27 +1115,25 @@ function assertSurfaceTorpedoTowerLaunchesFromUnderwaterSocket(): void {
       hasTargetingState &&
         targetingState.targetId === target.id &&
         targetingState.stateCode === CT_TURRET_STATE_ENGAGED,
-      `surface torpedo head ${turretIndex} must acquire a submerged enemy from its underwater source ` +
+      `surface torpedo head ${turretIndex} must acquire a submerged enemy directly beneath its underwater source ` +
         `(read=${hasTargetingState}, target=${targetingState.targetId}/${target.id}, ` +
         `state=${targetingState.stateCode})`,
     );
+    assertContract(
+      DMath.sin(turrets[turretIndex].pitch) < -0.99,
+      `surface torpedo head ${turretIndex} must physically pitch down before firing ` +
+        `(pitch=${turrets[turretIndex].pitch})`,
+    );
   }
 
-  const fireResult = fireTurrets(
-    world,
-    dtMs,
-    new DamageSystem(world),
-    new ForceAccumulator(),
-    activeCombatUnits,
-  );
   assertContract(
-    fireResult.projectiles.length === 2 && fireResult.spawnEvents.length === 2,
-    'two engaged physical launcher heads must each launch one torpedo',
+    firedProjectiles.length === 2 && firedSpawnEvents.length === 2,
+    'two vertically engaged physical launcher heads must each launch one torpedo',
   );
   const transformTrig = getTransformCosSin(tower.transform);
-  for (let i = 0; i < fireResult.projectiles.length; i++) {
-    const torpedo = fireResult.projectiles[i];
-    const spawn = fireResult.spawnEvents[i];
+  for (let i = 0; i < firedProjectiles.length; i++) {
+    const torpedo = firedProjectiles[i];
+    const spawn = firedSpawnEvents[i];
     const turretIndex = spawn.turretIndex;
     const expectedEmission = resolveWeaponEmissionSocket(
       tower,
@@ -1134,11 +1159,15 @@ function assertSurfaceTorpedoTowerLaunchesFromUnderwaterSocket(): void {
     assertNear(torpedo.transform.z, expectedEmission.position.z, `torpedo ${i} z uses QueryWeapon`);
     assertNear(spawn.pos.z, expectedEmission.position.z, `torpedo ${i} spawn event uses QueryWeapon z`);
     assertContract(
-      torpedo.transform.z < WATER_LEVEL,
-      `physical torpedo ${i} must begin underwater rather than crossing the surface after spawn`,
+      expectedEmission.forward.z < -0.99 && torpedo.transform.z < WATER_LEVEL,
+      `physical torpedo ${i} must leave its underwater socket straight down`,
     );
   }
   resetTurretHostIntegrationState();
+}
+
+export function runSurfaceTorpedoTowerVerticalContractTest(): void {
+  assertSurfaceTorpedoTowerTracksAndFiresStraightDown();
 }
 
 function assertOrcaRejectsEnemyAboveWater(manualTarget: boolean): void {
@@ -1779,7 +1808,7 @@ export function runTurretHostIntegrationContractTest(): void {
 
     runOrcaTargetingContractTest();
     runWaterWeaponMediumTargetingContractTest();
-    assertSurfaceTorpedoTowerLaunchesFromUnderwaterSocket();
+    assertSurfaceTorpedoTowerTracksAndFiresStraightDown();
     assertSlowRocketLaunchVelocityInheritance(true);
     assertSlowRocketLaunchVelocityInheritance(false);
     assertBeamUsesSharedSnappyTurretAim();
