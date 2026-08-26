@@ -379,6 +379,14 @@ export class EntityCacheManager {
     // list for each despawn paid a linear scan per list for guaranteed
     // misses.
     if (entity.type === 'shot') {
+      // Shots DO join cachedAll (addEntityToCaches inserts every entity there
+      // before the per-kind switch, and rebuildIfNeeded pushes every entity),
+      // so they must leave it too. Skipping this leaked every shot ever fired
+      // into getAllEntities() for the rest of the match (2026-08-23..26): the
+      // canonical checksum serialized thousands of dead shots and the JS heap
+      // pinned them. cachedAll is id-sorted, so the removal is a binary search
+      // rather than the linear indexOf P0-11 was avoiding.
+      removeEntityFromSortedList(this.cachedAll, entity);
       removeEntityFromList(this.cachedProjectiles, entity);
       removeEntityFromList(this.cachedTravelingProjectiles, entity);
       removeEntityFromList(this.cachedSmokeTrailProjectiles, entity);
@@ -636,6 +644,28 @@ function addEntityToList(list: Entity[], entity: Entity, sortedInsert: boolean):
 function removeEntityFromList(list: Entity[], entity: Entity): void {
   const index = list.indexOf(entity);
   if (index >= 0) list.splice(index, 1);
+}
+
+/** Remove from an id-sorted list by binary search. Falls back to a linear
+ *  search only if the list is not sorted at that position (never expected). */
+function removeEntityFromSortedList(list: Entity[], entity: Entity): void {
+  let lo = 0;
+  let hi = list.length - 1;
+  const id = entity.id;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    const midId = list[mid].id;
+    if (midId === id) {
+      if (list[mid] === entity) {
+        list.splice(mid, 1);
+        return;
+      }
+      break;
+    }
+    if (midId < id) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  removeEntityFromList(list, entity);
 }
 
 function insertEntityById(list: Entity[], entity: Entity): void {
