@@ -42,7 +42,10 @@ const TEXTURE_SCALE = ROCK_DETAIL_TEXTURE_PIXELS / BASE_TEXTURE_PIXELS;
 // tileWorldSize.
 // Terrain/deposit repetition scale comes from colorsConfig texture settings.
 // A larger tileWorldSize makes every rock shape cover more world area when
-// sampled, so rocks read chunkier than the finer grass / sticks texture.
+// sampled, so rocks read chunkier than the finer grass / sticks texture. The
+// shader resamples this same tile a second time at texture.fineTileWorldSize
+// for the grit/pebble scale, so the item range here must keep serving both:
+// the small debris IS the fine layer's grain.
 const ITEM_COUNT = 24576;
 
 // Hand-picked rock palette. Mixed grays with brown and sun-bleach extremes to

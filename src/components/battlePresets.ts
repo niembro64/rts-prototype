@@ -57,6 +57,12 @@ export type BattlePreset = {
   readonly mapLengthLandCells: number;
 };
 
+/** The MAP a preset names: terrain shape and size, ground and liquid. The
+ *  gameplay defaults a preset also carries (final-waypoint slowdown,
+ *  unit-aware pathfinding, slope policy, converter tax) are the same on
+ *  every stock preset and are not part of the map, so they are neither
+ *  compared nor needed here — a BATTLE-bar toggle must not rename the map
+ *  CUSTOM or swap its sky. */
 export type BattlePresetSnapshot = Omit<
   BattlePreset,
   | 'name'
@@ -66,6 +72,10 @@ export type BattlePresetSnapshot = Omit<
   | 'forceFieldsVisible'
   | 'shieldReflectionMode'
   | 'fogOfWarEnabled'
+  | 'slowDownAtFinalWaypoint'
+  | 'pathfindingConsidersUnits'
+  | 'slopePathMode'
+  | 'converterTax'
 > & {
   /** DISPLAY ONLY. The entity count cap is a standalone global setting, not
    *  a map property: presets never carry one, applying a preset never
@@ -273,18 +283,17 @@ function presetMatchesCurrent(
   p: BattlePreset,
   c: BattlePresetSnapshot,
 ): boolean {
-  // Fog of war is intentionally excluded: the lobby forces it off and the
-  // real battle forces it on. The shield panel/reflection defaults that have
-  // no live preset control are excluded too. The entity count cap is excluded
-  // because it is not a map property — changing it must not flip the caption
-  // to CUSTOM. Every other user-controllable map/gameplay field is compared.
+  // A preset NAMES A MAP, so only map fields decide identity: terrain
+  // magnitudes, precedence, D-terrain, wall slope, deposit step, detail,
+  // land cells, ground material and liquid. Everything else a preset record
+  // carries is a default that rides along when the preset is applied — fog
+  // (lobby off / real on), the shield defaults, the gameplay toggles every
+  // stock preset shares — and the entity count cap is not a preset field at
+  // all. None of those may flip the caption to CUSTOM: the same ground under
+  // a different converter tax is still Angels Flat, and still has its sky.
   return (
     p.metalCoverage === c.metalCoverage &&
     p.liquidSurfaceMode === c.liquidSurfaceMode &&
-    p.slowDownAtFinalWaypoint === c.slowDownAtFinalWaypoint &&
-    p.pathfindingConsidersUnits === c.pathfindingConsidersUnits &&
-    p.slopePathMode === c.slopePathMode &&
-    Math.abs(p.converterTax - c.converterTax) < 1e-6 &&
     p.centerMagnitude === c.centerMagnitude &&
     p.ringMagnitude === c.ringMagnitude &&
     p.dividersMagnitude === c.dividersMagnitude &&

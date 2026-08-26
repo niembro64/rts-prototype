@@ -313,7 +313,7 @@ export function oreEdgeAlbedoFragment(
 ): string {
   return [
     'if (oreEdgeGrime > 0.0) {',
-    '  vec3 oreEdgeDirt = weatherSampleSubstance(',
+    '  vec3 oreEdgeDirt = weatherSampleSoil(',
     `    ${WEATHER_SOIL_SAMPLER},`,
     `    ${worldPositionExpr},`,
     `    ${geometricNormalExpr},`,

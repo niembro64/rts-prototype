@@ -26,12 +26,17 @@
 //
 // 5. SOFT CAP. There's a hard buffer ceiling (HARD_CAP) for GPU
 //    pre-allocation. When it's hit (only at extreme load), we evict
-//    the oldest-aged mark to free a slot. No emit ever gets dropped
-//    on the floor — the cost of overflow is one mark dying a frame
+//    the oldest batch of marks to free slots. No emit ever gets
+//    dropped on the floor — the cost of overflow is old marks dying
 //    early, not a missing rut.
 //
+// 6. MULTIPLY, DON'T PAINT. Marks darken the lit ground the way
+//    compacted soil does, so the terrain's sun shadow survives under
+//    the treads; the fade is evaluated on the GPU from each mark's
+//    birth time, so a long lifetime costs no per-frame colour rewrite.
+//
 // Per-frame work is bounded: O(units × contacts) for sampling, plus
-// O(active marks) for the age sweep. Both scale linearly and
+// O(active marks) for the retirement sweep. Both scale linearly and
 // allocate nothing in steady state.
 
 import * as THREE from 'three';
@@ -63,7 +68,6 @@ import {
   markDirtySlot,
   clearDirtySlotSpan,
   uploadDirtySlotSpan,
-  uploadPrefixRange,
 } from './instancedBufferUpdate';
 import { clamp01 } from '../math';
 import { growTypedArrays, nextGeometricCapacity } from '../memory/typedArrayGrowth';
@@ -76,16 +80,26 @@ const MARK_LIFT = 2.4;
 
 // ── Color ──
 // Dark soil compaction. Routed through THREE.Color so the hex (sRGB)
-// converts to linear-RGB for vertex-color writes.
+// converts to linear-RGB for vertex-color writes. Marks MULTIPLY the
+// lit ground rather than painting over it: a print is compacted soil,
+// which is darker for the same reason the ground beside it is darker
+// in shade, so it must keep the sun shadow that already resolved on
+// the terrain under it. Alpha-painting a flat soil colour lightened
+// shadowed ground toward the print colour, and every overlapping
+// wheel/tread trail under a vehicle pulled it further, until no shadow
+// survived beneath the treads. A multiplier keeps the shadow/lit ratio
+// under any number of stacked layers.
 const PRINT_HEX = COLORS.world.groundPrint.colorHex;
 const PRINT_LIN = new THREE.Color(PRINT_HEX);
 
 // ── Lifetime ──
-// Linear alpha decay from PRINT_INITIAL_ALPHA at age 0 → 0 at age
-// PRINT_BASE_LIFETIME_MS × density-derived multiplier. Tweak the
-// base to change how long marks linger; the multiplier shortens it
-// when density is reduced.
-const PRINT_BASE_LIFETIME_MS = 1000;
+// Each mark carries its own birth time and lifetime; the fade runs in
+// the fragment shader against a clock uniform, so a long lifetime costs
+// no per-frame colour rewrite. Full strength is held for
+// PRINT_HOLD_FRACTION of the life, then the mark eases out. The base
+// lifetime scales with density-derived multiplier below.
+const PRINT_BASE_LIFETIME_MS = COLORS.world.groundPrint.lifetimeMs;
+const PRINT_HOLD_FRACTION = COLORS.world.groundPrint.holdFraction;
 const PRINT_INITIAL_ALPHA = COLORS.world.groundPrint.initialAlpha;
 
 const STAMP_CIRCLE_RADIUS_MULT = 1.35;
@@ -110,12 +124,13 @@ const SPACING_AT_ZERO_DENSITY = 24;
 const STAMP_MIN_DIST_SQ = 4;
 
 // ── Buffer ceiling ──
-// Hard cap on the GPU-side merged geometry. Active count rarely
-// approaches this — at maximum density the spacing × lifetime product
-// converges to a few thousand marks even in heavy combat. The cap
-// only kicks in at pathological loads (100+ mobile units all
-// sprinting at MAX), at which point we evict oldest-on-emit.
-const HARD_CAP = 16000;
+// Hard cap on the GPU-side merged geometry. With a 30 s lifetime a
+// large mobile army fills this in heavy traffic, at which point the
+// oldest EVICTION_BATCH_FRACTION of the marks are retired in one sweep
+// so the following emits allocate O(1) instead of scanning the whole
+// buffer per quad.
+const HARD_CAP = 32000;
+const EVICTION_BATCH_FRACTION = 0.05;
 const UNIT_PACKET_INITIAL_CAP = 4096;
 
 // Miter limit — clamp the bisector offset to 3× halfWidth so a
@@ -211,7 +226,11 @@ export class GroundPrintRenderPacket3D {
   }
 }
 
-function makeGroundPrintMaterial(): THREE.MeshBasicMaterial {
+type GroundPrintMaterial = THREE.MeshBasicMaterial & {
+  groundPrintUniforms: { uNowSec: { value: number } };
+};
+
+function makeGroundPrintMaterial(): GroundPrintMaterial {
   const mat = new THREE.MeshBasicMaterial({
     vertexColors: true,
     transparent: true,
@@ -220,15 +239,27 @@ function makeGroundPrintMaterial(): THREE.MeshBasicMaterial {
     polygonOffset: true,
     polygonOffsetFactor: -3,
     polygonOffsetUnits: -3,
-  });
+    // Multiply: framebuffer *= fragment colour. The fragment emits
+    // mix(1, tint, alpha) so alpha is how far the ground darkens toward
+    // the soil tint, exactly the old alpha-paint strength for a single
+    // layer, but the terrain's own shading (including its sun shadow)
+    // scales through untouched.
+    blending: THREE.MultiplyBlending,
+    // A multiplier is not a colour; tone mapping would bend it.
+    toneMapped: false,
+  }) as GroundPrintMaterial;
+  mat.groundPrintUniforms = { uNowSec: { value: 0 } };
   mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uNowSec = mat.groundPrintUniforms.uNowSec;
     shader.vertexShader = shader.vertexShader.replace(
       '#include <common>',
       `
 attribute vec2 markUv;
 attribute float markShape;
+attribute vec2 markLife;
 varying vec2 vMarkUv;
 varying float vMarkShape;
+varying vec2 vMarkLife;
 #include <common>
 `,
     );
@@ -238,13 +269,16 @@ varying float vMarkShape;
 #include <begin_vertex>
 vMarkUv = markUv;
 vMarkShape = markShape;
+vMarkLife = markLife;
 `,
     );
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <common>',
       `
+uniform float uNowSec;
 varying vec2 vMarkUv;
 varying float vMarkShape;
+varying vec2 vMarkLife;
 #include <common>
 `,
     );
@@ -257,6 +291,21 @@ if (vMarkShape > 0.5) {
   if (circleMask <= 0.001) discard;
   diffuseColor.a *= circleMask;
 }
+{
+  // markLife = (birth seconds, lifetime seconds). Hold, then ease out.
+  float lifeFrac = (uNowSec - vMarkLife.x) / max(vMarkLife.y, 1e-3);
+  float fade = 1.0 - smoothstep(${PRINT_HOLD_FRACTION.toFixed(4)}, 1.0, lifeFrac);
+  if (fade <= 0.001) discard;
+  diffuseColor.a *= fade;
+}
+`,
+    );
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <colorspace_fragment>',
+      `
+#include <colorspace_fragment>
+gl_FragColor.rgb = mix(vec3(1.0), gl_FragColor.rgb, gl_FragColor.a);
+gl_FragColor.a = 1.0;
 `,
     );
   };
@@ -317,7 +366,9 @@ type StampState = {
 
 type Mark = {
   slot: number;
-  age: number;
+  /** Mark clock (ms) at emit; the GPU fade and CPU retirement both key on it. */
+  bornMs: number;
+  lifetimeMs: number;
   /** Set true when the mark is removed; trails reading prevMark
    *  notice this and fall back to a square cap for the next quad. */
   removed: boolean;
@@ -332,19 +383,28 @@ export class GroundPrint3D {
   private colors: Float32Array;
   private markUvs: Float32Array;
   private markShapes: Float32Array;
+  private markLives: Float32Array;
   private indices: Uint32Array;
   private mesh: THREE.Mesh;
-  private mat: THREE.MeshBasicMaterial;
+  private mat: GroundPrintMaterial;
   private posAttr: THREE.BufferAttribute;
   private colAttr: THREE.BufferAttribute;
   private uvAttr: THREE.BufferAttribute;
   private shapeAttr: THREE.BufferAttribute;
+  private lifeAttr: THREE.BufferAttribute;
   private readonly posDirty = createDirtySlotSpan();
-  private colDirty = false;
+  private readonly colDirty = createDirtySlotSpan();
   private readonly uvDirty = createDirtySlotSpan();
   private readonly shapeDirty = createDirtySlotSpan();
+  private readonly lifeDirty = createDirtySlotSpan();
 
   private marks: Mark[] = [];
+  /** Mark clock: effect time accumulated from update dt, so marks age
+   *  only while effects run (a paused presentation freezes them). */
+  private nowMs = 0;
+  /** Lifetime handed to marks emitted this update (density-scaled). */
+  private emitLifetimeMs = PRINT_BASE_LIFETIME_MS;
+  private evictionScratch = new Float64Array(0);
   private trails = new Map<TrailKey, TrailState>();
   private _seenTrailKeys = new Set<TrailKey>();
   private stamps = new Map<TrailKey, StampState>();
@@ -392,6 +452,7 @@ export class GroundPrint3D {
     this.colors = new Float32Array(HARD_CAP * 4 * 4);
     this.markUvs = new Float32Array(HARD_CAP * 4 * 2);
     this.markShapes = new Float32Array(HARD_CAP * 4);
+    this.markLives = new Float32Array(HARD_CAP * 4 * 2);
     this.indices = createQuadIndexBuffer(HARD_CAP);
 
     this.geometry = new THREE.BufferGeometry();
@@ -399,10 +460,12 @@ export class GroundPrint3D {
     this.colAttr = new THREE.BufferAttribute(this.colors, 4).setUsage(THREE.DynamicDrawUsage);
     this.uvAttr = new THREE.BufferAttribute(this.markUvs, 2).setUsage(THREE.DynamicDrawUsage);
     this.shapeAttr = new THREE.BufferAttribute(this.markShapes, 1).setUsage(THREE.DynamicDrawUsage);
+    this.lifeAttr = new THREE.BufferAttribute(this.markLives, 2).setUsage(THREE.DynamicDrawUsage);
     this.geometry.setAttribute('position', this.posAttr);
     this.geometry.setAttribute('color', this.colAttr);
     this.geometry.setAttribute('markUv', this.uvAttr);
     this.geometry.setAttribute('markShape', this.shapeAttr);
+    this.geometry.setAttribute('markLife', this.lifeAttr);
     this.geometry.setIndex(new THREE.BufferAttribute(this.indices, 1));
     this.geometry.setDrawRange(0, 0);
 
@@ -449,28 +512,23 @@ export class GroundPrint3D {
     }
     const density = this._smoothedDensity;
 
-    // Lifetime applies even when emit is gated off
-    // below, in-flight marks must keep aging.
+    // The density multiplier sets the lifetime of marks emitted THIS
+    // update; marks already on the ground keep the lifetime they were
+    // born with, so a density change never pops existing prints.
     const lifeMult =
       LIFETIME_MULT_AT_ZERO_DENSITY + (1 - LIFETIME_MULT_AT_ZERO_DENSITY) * density;
-    const effLifetimeMs = Math.max(1, PRINT_BASE_LIFETIME_MS * lifeMult);
-    const invLifetime = 1 / effLifetimeMs;
+    this.emitLifetimeMs = Math.max(1, PRINT_BASE_LIFETIME_MS * lifeMult);
 
-    // ── Age sweep ──
-    // Run BEFORE emits so dead marks free their slots first; new
-    // emits this frame can immediately reuse them without waiting
-    // for the next frame's overflow eviction.
+    // ── Clock + retirement sweep ──
+    // Aging happens even when emit is gated off below. The shader owns
+    // the fade; the CPU only frees slots whose fade has finished. Run
+    // BEFORE emits so freed slots are reusable this frame.
+    this.nowMs += Math.max(0, dtMs);
+    this.mat.groundPrintUniforms.uNowSec.value = this.nowMs * 0.001;
+    const now = this.nowMs;
     for (let i = this.marks.length - 1; i >= 0; i--) {
       const m = this.marks[i];
-      m.age += dtMs;
-      const lifeFrac = m.age * invLifetime;
-      if (lifeFrac >= 1) {
-        this.removeMarkAt(i);
-        continue;
-      }
-      const alpha = PRINT_INITIAL_ALPHA * (1 - lifeFrac);
-      writeQuadRgba(this.colors, i, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, alpha);
-      this.colDirty = true;
+      if (now - m.bornMs >= m.lifetimeMs) this.removeMarkAt(i);
     }
 
     this.refreshGroundedUnits(packet);
@@ -693,8 +751,7 @@ export class GroundPrint3D {
     );
     markDirtySlot(this.posDirty, mark.slot);
     this.writeCircleMask(mark.slot);
-    writeQuadRgba(this.colors, mark.slot, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, PRINT_INITIAL_ALPHA);
-    this.colDirty = true;
+    this.writeMarkTint(mark);
 
     state.lastX = fx;
     state.lastY = fz;
@@ -758,8 +815,7 @@ export class GroundPrint3D {
     );
     markDirtySlot(this.posDirty, newMark.slot);
     this.writeQuadMask(newMark.slot);
-    writeQuadRgba(this.colors, newMark.slot, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, PRINT_INITIAL_ALPHA);
-    this.colDirty = true;
+    this.writeMarkTint(newMark);
 
     state.lastEmitX = endX;
     state.lastEmitY = endY;
@@ -780,27 +836,58 @@ export class GroundPrint3D {
    *  if the buffer is full. Returns the freshly-pushed Mark with
    *  `slot` already set. Never drops the request. */
   private allocateMark(): Mark {
-    if (this.marks.length >= HARD_CAP) {
-      // Linear scan for the highest-age mark — the oldest. The
-      // existing array order is shuffled by swap-pop deletions, so
-      // marks[0] isn't guaranteed oldest; we have to look. This is
-      // O(n) but only runs when at the cap, which in practice is
-      // rare (heavy combat only).
-      let oldestIdx = 0;
-      let oldestAge = -1;
-      for (let i = 0; i < this.marks.length; i++) {
-        if (this.marks[i].age > oldestAge) {
-          oldestAge = this.marks[i].age;
-          oldestIdx = i;
-        }
-      }
-      this.removeMarkAt(oldestIdx);
-    }
+    if (this.marks.length >= HARD_CAP) this.evictOldestBatch();
     const slot = this.marks.length;
-    const mark: Mark = { slot, age: 0, removed: false };
+    const mark: Mark = {
+      slot,
+      bornMs: this.nowMs,
+      lifetimeMs: this.emitLifetimeMs,
+      removed: false,
+    };
     this.marks.push(mark);
     this.geometry.setDrawRange(0, this.marks.length * 6);
     return mark;
+  }
+
+  /** At the cap, retire the oldest EVICTION_BATCH_FRACTION of the marks
+   *  in one pass. Swap-pop shuffles array order, so "oldest" needs a
+   *  look at every birth time; sorting a copy once per batch replaces
+   *  the old per-allocation full scan (which went quadratic the moment
+   *  a long lifetime kept the buffer pinned at the cap). */
+  private evictOldestBatch(): void {
+    const count = this.marks.length;
+    if (count === 0) return;
+    if (this.evictionScratch.length < count) {
+      this.evictionScratch = new Float64Array(count);
+    }
+    const births = this.evictionScratch.subarray(0, count);
+    for (let i = 0; i < count; i++) births[i] = this.marks[i].bornMs;
+    births.sort();
+    const batch = Math.max(1, Math.floor(count * EVICTION_BATCH_FRACTION));
+    const threshold = births[batch - 1];
+    let removed = 0;
+    for (let i = this.marks.length - 1; i >= 0 && removed < batch; i--) {
+      if (this.marks[i].bornMs <= threshold) {
+        this.removeMarkAt(i);
+        removed++;
+      }
+    }
+  }
+
+  private writeMarkTint(mark: Mark): void {
+    writeQuadRgba(
+      this.colors, mark.slot, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, PRINT_INITIAL_ALPHA,
+    );
+    markDirtySlot(this.colDirty, mark.slot);
+    const lives = this.markLives;
+    const base = mark.slot * 8;
+    const bornSec = mark.bornMs * 0.001;
+    const lifeSec = mark.lifetimeMs * 0.001;
+    for (let i = 0; i < 4; i++) {
+      lives[base + i * 2] = bornSec;
+      lives[base + i * 2 + 1] = lifeSec;
+    }
+    markDirtySlot(this.lifeDirty, mark.slot);
   }
 
   private writeQuadMask(slot: number): void {
@@ -841,12 +928,14 @@ export class GroundPrint3D {
       copyQuadSlot(this.colors, 16, last, i);
       copyQuadSlot(this.markUvs, 8, last, i);
       copyQuadSlot(this.markShapes, 4, last, i);
+      copyQuadSlot(this.markLives, 8, last, i);
       moved.slot = i;
       this.marks[i] = moved;
       markDirtySlot(this.posDirty, i);
-      this.colDirty = true;
+      markDirtySlot(this.colDirty, i);
       markDirtySlot(this.uvDirty, i);
       markDirtySlot(this.shapeDirty, i);
+      markDirtySlot(this.lifeDirty, i);
     }
     this.marks.pop();
     this.geometry.setDrawRange(0, this.marks.length * 6);
@@ -862,25 +951,25 @@ export class GroundPrint3D {
     this.geometry.setDrawRange(0, 0);
     for (const state of this.trails.values()) state.prevMark = null;
     clearDirtySlotSpan(this.posDirty);
-    this.colDirty = false;
+    clearDirtySlotSpan(this.colDirty);
     clearDirtySlotSpan(this.uvDirty);
     clearDirtySlotSpan(this.shapeDirty);
+    clearDirtySlotSpan(this.lifeDirty);
   }
 
   private flushBuffers(): void {
     if (this.marks.length > 0) {
       uploadDirtySlotSpan(this.posAttr, this.posDirty, 12, this.marks.length);
-      if (this.colDirty) {
-        uploadPrefixRange(this.colAttr, this.marks.length * 16);
-        this.colDirty = false;
-      }
+      uploadDirtySlotSpan(this.colAttr, this.colDirty, 16, this.marks.length);
       uploadDirtySlotSpan(this.uvAttr, this.uvDirty, 8, this.marks.length);
       uploadDirtySlotSpan(this.shapeAttr, this.shapeDirty, 4, this.marks.length);
+      uploadDirtySlotSpan(this.lifeAttr, this.lifeDirty, 8, this.marks.length);
     } else {
       clearDirtySlotSpan(this.posDirty);
-      this.colDirty = false;
+      clearDirtySlotSpan(this.colDirty);
       clearDirtySlotSpan(this.uvDirty);
       clearDirtySlotSpan(this.shapeDirty);
+      clearDirtySlotSpan(this.lifeDirty);
     }
   }
 

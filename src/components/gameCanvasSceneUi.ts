@@ -212,6 +212,11 @@ export function useGameCanvasSceneUi({
   const gamePhase = ref<GamePhase>('init');
 
   function bindGameSceneUi(scene: GameScene, includeGameLifecycle = false): void {
+    // The idle list belongs to the scene that published it. A spectator's
+    // scene never publishes (the concept does not exist for a watcher), so
+    // without this reset the home demo's last chips would outlive the demo
+    // and sit on the watcher's HUD.
+    idleBuilders.value = [];
     bindSceneUiCallbacks(scene, {
       onPlayerChange: (playerId) => {
         activePlayer.value = playerId;

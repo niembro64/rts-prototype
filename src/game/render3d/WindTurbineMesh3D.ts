@@ -23,6 +23,12 @@ import {
 } from './BuildingMeshPrimitives3D';
 import { markBuildingTeamOrnament } from './BuildingTeamOrnament3D';
 
+/** Blade twist about its own span, out of the rotor plane. Sized like the
+ *  drone fan blades (`FAN_BLADE_PITCH_DEG` 24) so a turbine reads as a
+ *  working airfoil rather than three flat paddles. */
+const WIND_BLADE_PITCH_DEG = 22;
+const _bladeSpanAxis = new THREE.Vector3(0, 1, 0);
+
 /** Per-blade open/closed orientation pair. Animator slerps each blade
  *  between these as the wind turbine transitions in/out of its stowed
  *  pose. The pivot stays at the rotor hub — the blade tip swings from
@@ -176,9 +182,11 @@ export function buildWindTurbineMesh(
   // apart), so they don't actually z-fight — kept at exactly 0 to make
   // the closed pose read as "tight against the pole".
   const _stowRadialOffset = 0;
+  const bladePitch = THREE.MathUtils.degToRad(WIND_BLADE_PITCH_DEG);
+  const bladePitchQuat = new THREE.Quaternion().setFromAxisAngle(_bladeSpanAxis, bladePitch);
   for (let i = 0; i < 3; i++) {
     const angle = (i / 3) * Math.PI * 2;
-    const blade = makeTurbineBlade(windBladeMat, bladeLen, bladeW, bladeThickness, angle);
+    const blade = makeTurbineBlade(windBladeMat, bladeLen, bladeW, bladeThickness, angle, bladePitch);
     const openQuat = blade.quaternion.clone();
 
     // Closed pose, blade-local basis in the rotor's frame:
@@ -200,7 +208,11 @@ export function buildWindTurbineMesh(
     // closedY out of the original X-Y plane, so re-derive X = Y × Z).
     closedX.copy(closedY).cross(closedZ).normalize();
     const closedBasis = new THREE.Matrix4().makeBasis(closedX, closedY, closedZ);
-    const closedQuat = new THREE.Quaternion().setFromRotationMatrix(closedBasis);
+    // The stowed pose keeps the same twist about the blade's own span as the
+    // open pose, so the slerp between them never untwists the blade.
+    const closedQuat = new THREE.Quaternion()
+      .setFromRotationMatrix(closedBasis)
+      .multiply(bladePitchQuat);
 
     const anim: WindBladeAnim = { openQuat, closedQuat };
     blade.userData.windBlade = anim;

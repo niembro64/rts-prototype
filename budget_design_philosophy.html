@@ -720,6 +720,21 @@
         ownerless: a blip never carries its team colour, never selects, and never hovers.
       </p>
       <p>
+        <strong>Emissions live on the same tiers.</strong> A shot, missile, rocket or beam belongs
+        to the side that fired it, so the recipient&rsquo;s own and allied emissions are always sent
+        and drawn in full wherever they fly &mdash; a player watches their own artillery land in the
+        dark. An enemy emission is a point body and earns exactly what an enemy body earns where it
+        is: inside full sight it is the real projectile; inside radar or sonar coverage but outside
+        sight it is the same anonymous contact dot, a white core in a black ring at the point&rsquo;s
+        own altitude, with no shot blueprint, no owner colour and no trajectory; outside every lane it
+        is nothing. A point occupies exactly one medium, so an emission earns at most one lane, and
+        an enemy jammer covers it the way it covers a body standing there. The dot travels on the
+        minimap contact channel, never the projectile channel, so an emission is either the real
+        projectile or a dot and a client never receives a projectile it has not earned. The one
+        standing exception is the incoming-threat rule: a shot homing on or aimed at the
+        recipient&rsquo;s own unit is forwarded in full so a hit never arrives from nowhere.
+      </p>
+      <p>
         A <strong>source</strong> and a <strong>target</strong> answer the medium question
         differently, and the asymmetry is deliberate.
       </p>
@@ -4122,6 +4137,16 @@
         A one-player game is not a special case: it is one player, one team, one ally team, one
         slice. The general path runs it.
       </p>
+      <p>
+        There is one path, and every surface that carves a map runs it. The home demo authors its
+        seats per side; the game room hands its preview the host&rsquo;s declared side count and the
+        seat-to-side table the roster panel shows; the match builds the same table from the
+        canonical, hashed initialization. All three resolve through the same roster builder, so the
+        ground behind the lobby roster is the ground the match starts on: two seats on TEAM 1 share
+        one slice in the preview exactly as they will in the battle, and a side the host declared
+        and left empty is cut in both. A preview that counted seats instead of sides would put a
+        ridge between teammates that the match then removes &mdash; a lie about the map.
+      </p>
 
       <h3>A build site is the product, carrying its own id from frame one</h3>
       <p>
@@ -5544,7 +5569,7 @@
         <li>Create a product&rsquo;s permanent ID as an internal step of the host-owned build or production workflow, normally as a nanoframe. Do not model that step as a spawn turret, mounted task, aim participant, or init beam. Apply construction work to that same ID; repair of completed entities is free and uses the same build-power channel.</li>
         <li>Give every positive-<code>constructionRate</code> host restrained yellow-and-black construction markings authored in shared config. Generate every band at exactly 45 degrees in physical surface coordinates; use open sleeves, side plates where physically appropriate, and perimeter-mounted clamp boxes on circular factory hardware, never floating decals, coloured radial caps, ring sectors, wedges, or sunbursts. Universal Fabricators carry exactly 1/2/3 boxes by tier on a rotating outer bearing race around a thinner stationary inner race. Active production keeps both races seated, telescopes only each box's emitter head upward, and emits spray from those moving heads. Preserve both colours at every geometry tier, make clamp-box geometry strictly decrease from High chamfers/latch/fasteners to Medium box/latch to Low essential box, keep team colour dominant, and derive coverage tests from blueprint capabilities so a new constructor cannot ship unmarked.</li>
         <li>Make the selection action panel uniform per host kind and capability. Units expose movement plus their mounted combat, builder, cloak, transport, commander, and manual capabilities. Buildings expose the same standardized combat controls when armed, production when they own a factory workflow, ON/OFF when they own active state, and self-destruct. Mixed unit/building selections degrade to the intersection. A bespoke button on an arbitrary blueprint subset with no sanctioned capability behind it is not allowed.</li>
-        <li>Keep sight, radar, sonar, and detection as turret-owned capability sources aggregated per player/team into four exhaustive, orthogonal target-knowledge facts: <code>team-air-sight</code>, <code>team-water-sight</code>, <code>team-air-radar</code>, and <code>team-water-sonar</code>. The turret&rsquo;s mounted world point selects the source medium. Unit and building targets use exact positive volume occupancy and may occupy both media; shot and turret targets are points and occupy exactly one. Full sight identifies and also supplies contact-level location in its target medium; losing it removes the full model immediately. Radar/sonar-only coverage supplies only the canonical black-ring/white-core contact dot, detectors uncloak within an active full-sight lane, and weapon fire consumes the team-unified knowledge tier independently from the emission&rsquo;s exhaustively authored four-cell trajectory matrix. Weapon range and ammunition never create or scale vision.</li>
+        <li>Keep sight, radar, sonar, and detection as turret-owned capability sources aggregated per player/team into four exhaustive, orthogonal target-knowledge facts: <code>team-air-sight</code>, <code>team-water-sight</code>, <code>team-air-radar</code>, and <code>team-water-sonar</code>. The turret&rsquo;s mounted world point selects the source medium. Unit and building targets use exact positive volume occupancy and may occupy both media; shot and turret targets are points and occupy exactly one. Full sight identifies and also supplies contact-level location in its target medium; losing it removes the full model immediately. Radar/sonar-only coverage supplies only the canonical black-ring/white-core contact dot, detectors uncloak within an active full-sight lane, and weapon fire consumes the team-unified knowledge tier independently from the emission&rsquo;s exhaustively authored four-cell trajectory matrix. Emissions follow the same tiers: own and allied shots always render in full; an enemy shot is the real projectile under sight, the same contact dot under radar/sonar, and nothing outside both. Weapon range and ammunition never create or scale vision.</li>
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels, and author lock-on eligibility as an additive inclusion object carried by turrets, units, and buildings alike. Rockets and missiles inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets. Missiles coast after lock loss; the light vertical rocket retains only the last solver-produced speculative future intercept, finishes aligning to it, and then leaves the steering batch. Expensive intercept refresh is deterministic blueprint data (currently 10 Hz missiles, 5 Hz light rocket), while cached-point steering and motion stay fixed-tick. Eligibility is <strong>off by default</strong> &mdash; a locker with no inclusions locks onto nothing &mdash; and broadened only by addition: level-0 friend/enemy and entity-family inclusions (<code>units</code>, <code>buildings</code>, <code>turrets</code>, <code>shots</code>), then optional level-1 named blueprint inclusions that narrow an included family. Including only one family is how a turret specializes &mdash; point-defense includes only <code>shots</code>, a disarmer includes only <code>turrets</code>. There is no <code>locomotions</code> family: a unit&rsquo;s movement is part of its body, not a targetable entity.</li>
         <li>Keep specialist targeting behavior explicit. If a turret ever needs behavior beyond additive lock-on eligibility, give it a validated secondary lock-on profile and tests rather than a special case buried in the shared targeting kernel.</li>
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. A frozen pond and a cuboid ice block are the exact same material &mdash; they differ only in geometry.</li>

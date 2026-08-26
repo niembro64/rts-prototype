@@ -643,6 +643,18 @@ export const TERRAIN_ROCK_TEXTURE_TILE_WORLD_SIZE = readPositiveConfigNumber(
   COLORS.world.terrain.rock.texture.tileWorldSize,
   'colorsConfig.world.terrain.rock.texture.tileWorldSize',
 );
+/** World units one repeat of the rock tile covers when it is resampled as
+ *  FINE grain over the slab-scale sample above. Small on purpose: this is
+ *  the pebble/grit layer the coarse tile cannot reach. */
+export const TERRAIN_ROCK_FINE_TEXTURE_TILE_WORLD_SIZE = readPositiveConfigNumber(
+  COLORS.world.terrain.rock.texture.fineTileWorldSize,
+  'colorsConfig.world.terrain.rock.texture.fineTileWorldSize',
+);
+/** How strongly the fine rock resample overrides the surface, in [0, 1]. */
+export const TERRAIN_ROCK_FINE_DETAIL_CONTRAST = readUnitIntervalConfig(
+  COLORS.world.terrain.rock.texture.fineBlend,
+  'colorsConfig.world.terrain.rock.texture.fineBlend',
+);
 export const TERRAIN_ROCK_TEXTURE_RESOLUTION = readTextureResolutionConfig(
   COLORS.world.terrain.rock.texture.resolution,
   'colorsConfig.world.terrain.rock.texture.resolution',
@@ -707,6 +719,17 @@ export const SOIL_SUBSTANCE_TILE_WORLD_SIZE = readPositiveConfigNumber(
 );
 export const SOIL_SUBSTANCE_BASE_COLOR: number =
   COLORS.environment.weathering.soilTexture.baseColorHex;
+/** The grime reading's fine grain: the soil tile resampled at this world
+ *  size (small, co-prime to `tileWorldSize`) and layered in at this
+ *  strength. Shared across sites like the tile itself. */
+export const SOIL_SUBSTANCE_FINE_TILE_WORLD_SIZE = readPositiveConfigNumber(
+  COLORS.environment.weathering.soilTexture.fineTileWorldSize,
+  'colorsConfig.environment.weathering.soilTexture.fineTileWorldSize',
+);
+export const SOIL_SUBSTANCE_FINE_STRENGTH = readUnitIntervalConfig(
+  COLORS.environment.weathering.soilTexture.fineStrength,
+  'colorsConfig.environment.weathering.soilTexture.fineStrength',
+);
 
 /** Grass, which had no texture at all until this existed. See colorsConfig's
  *  `grassComment`. */

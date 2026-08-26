@@ -206,16 +206,24 @@ export function createHexFrustumGeometry(
   return geom;
 }
 
+/** A turbine blade is a lofted wedge whose local Y is the span, X the chord
+ *  and Z the thickness. `pitch` twists the blade about its own span (local Y)
+ *  BEFORE `angle` places it around the hub (rotor-local Z, the spin axis), so
+ *  the chord leans out of the rotor plane the way the drone fan blades do
+ *  (`FAN_BLADE_PITCH_DEG`). The rotor phase advances positively about +Z and
+ *  the wind arrives from the nose (+Z), so a positive pitch presents each
+ *  blade's leading edge to the incoming wind. */
 export function makeTurbineBlade(
   material: THREE.Material,
   length: number,
   rootWidth: number,
   thickness: number,
   angle: number,
+  pitch: number,
 ): THREE.Mesh {
   const mesh = new THREE.Mesh(getWindBladeGeometry(), material);
   mesh.scale.set(rootWidth, length, thickness);
-  mesh.rotation.z = angle;
+  mesh.rotation.set(0, pitch, angle, 'ZYX');
   return mesh;
 }
 

@@ -744,7 +744,7 @@ export function terrainWallWearFragment(
     `    weatherSurfacePlane(${worldPositionExpr}, ${geometricNormalExpr}),`,
     '    uWallWearNoiseTileWorldSize',
     '  );',
-    '  vec3 wallSoil = weatherSampleSubstance(',
+    '  vec3 wallSoil = weatherSampleSoil(',
     `    ${WEATHER_SOIL_SAMPLER},`,
     `    ${worldPositionExpr},`,
     `    ${geometricNormalExpr},`,

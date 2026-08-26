@@ -200,7 +200,7 @@ function checkShaderSourceContract(): void {
     'weatherJitterRamp(',
     'weatherGrimeAmount(',
     'weatherApplyGrime(',
-    'weatherSampleSubstance(',
+    'weatherSampleSoil(',
   ]) {
     assertContract(
       SURFACE_WEATHERING_GLSL.includes(shared),

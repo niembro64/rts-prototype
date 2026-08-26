@@ -61,6 +61,26 @@ type LobbyTeamGroup = {
  * the ground they just carved. `allyTeamCount` is that declared number; the
  * seated players decide only who stands where.
  */
+/**
+ * The lobby roster as the sim's seat -> side table. A seat naming no side
+ * (or an unusable one) lands on the first side rather than inventing one.
+ * This is the ONE reading of the lobby's team choice: the roster panel, the
+ * game-room preview behind it and the match itself all carve their sides
+ * from it, so what the lobby shows is the ground the match starts on.
+ */
+export function lobbyAllyTeamAssignment(
+  players: readonly LobbyPlayer[],
+): Record<number, number> {
+  const assignment: Record<number, number> = {};
+  for (const player of players) {
+    const raw = player.allyTeamId;
+    assignment[player.playerId] = Number.isFinite(raw) && (raw as number) >= FIRST_ALLY_TEAM_ID
+      ? Math.floor(raw as number)
+      : FIRST_ALLY_TEAM_ID;
+  }
+  return assignment;
+}
+
 export function resolveLobbyTeamGroups(
   players: readonly LobbyPlayer[],
   allyTeamCount: number,
@@ -69,16 +89,8 @@ export function resolveLobbyTeamGroups(
   for (const player of players) seatsByPlayerId.set(player.playerId, player);
   const seatIds = [...seatsByPlayerId.keys()].sort((a, b) => a - b);
 
-  const assignment: Record<number, number> = {};
-  for (const playerId of seatIds) {
-    const raw = seatsByPlayerId.get(playerId)?.allyTeamId;
-    assignment[playerId] = Number.isFinite(raw) && (raw as number) >= FIRST_ALLY_TEAM_ID
-      ? Math.floor(raw as number)
-      : FIRST_ALLY_TEAM_ID;
-  }
-
   const roster = resolveTeamRoster(seatIds, {
-    allyTeamByPlayerId: assignment,
+    allyTeamByPlayerId: lobbyAllyTeamAssignment(players),
     allyTeamCount,
   });
   const sideCount = Math.max(1, roster.allyTeamIds.length);

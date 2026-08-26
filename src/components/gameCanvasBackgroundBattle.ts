@@ -1,5 +1,5 @@
 import type { Ref } from 'vue';
-import type { BackgroundBattleState } from '../game/lobby/LobbyManager';
+import type { BackgroundBattleState, LobbyPreviewSides } from '../game/lobby/LobbyManager';
 import type { GameScene } from '../game/createGame';
 import type { PlayerId } from '../game/sim/types';
 import type { BattleMode } from '../battleBarConfig';
@@ -32,6 +32,9 @@ type BackgroundBattleOptions = {
   getBattleMode: () => BattleMode;
   getPreviewPlayerIds: () => PlayerId[] | undefined;
   getPreviewLocalPlayerId: () => PlayerId | undefined;
+  /** The game room's sides for its preview (undefined for the solo demo,
+   *  which authors its own seats per side). */
+  getPreviewSides: () => LobbyPreviewSides | undefined;
   getPlayerClientEnabled: () => boolean;
   onLoadingProgress: (progress: number, phase?: string) => void;
   bindSceneUi: (scene: GameScene) => void;
@@ -60,6 +63,7 @@ export function useGameCanvasBackgroundBattle({
   getBattleMode,
   getPreviewPlayerIds,
   getPreviewLocalPlayerId,
+  getPreviewSides,
   getPlayerClientEnabled,
   onLoadingProgress,
   bindSceneUi,
@@ -207,6 +211,7 @@ export function useGameCanvasBackgroundBattle({
           getBattleMode(),
           getPreviewPlayerIds(),
           getPreviewLocalPlayerId(),
+          getPreviewSides(),
           (warming) => {
             rendererWarmupDone = !warming;
             if (warming) {

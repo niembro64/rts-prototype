@@ -29,6 +29,13 @@ import {
   getEntityRadarRadius,
 } from '../sim/sensorCoverage';
 import { getSimWasm } from '../sim-wasm/init';
+import { createProjectileConfigFromShot } from '../sim/projectileConfigs';
+import { CONTACT_MEDIUM_AIR } from './contactMedium';
+import { quantizeMinimapPosition } from './snapshotQuantization';
+import {
+  packMinimapEntitiesForWire,
+  unpackMinimapEntitiesFromWire,
+} from './snapshotMinimapWirePack';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -178,6 +185,60 @@ export function runSnapshotVisibilityContractTest(): void {
   assertContract(
     radarOnlyMinimap?.radarOnly === true,
     'native minimap serialization must preserve radar-only contacts from entity-state slots',
+  );
+
+  // Emissions on the contact tier. An enemy shot inside radar coverage but
+  // outside sight is the anonymous contact dot; one inside sight rides the
+  // projectile channel and is no minimap row; our own shot is never a
+  // contact wherever it flies; one outside every lane is nothing.
+  const shotConfig = createProjectileConfigFromShot('shotPlasmaLight');
+  const spawnShot = (x: number, y: number, ownerId: PlayerId, source: Entity): Entity => {
+    const shot = world.createProjectile(x, y, 0, 0, ownerId, source.id, shotConfig);
+    shot.transform.z = WATER_LEVEL + 100;
+    world.addEntity(shot);
+    return shot;
+  };
+  const radarOnlyShot = spawnShot(2500, 600, 2 as PlayerId, radarOnlyEnemy);
+  const sightedShot = spawnShot(700, 600, 2 as PlayerId, fullSightEnemy);
+  const ownShot = spawnShot(2500, 640, 1 as PlayerId, observer);
+  const hiddenShot = spawnShot(3800, 3700, 2 as PlayerId, outOfRangeEnemy);
+  stampCombatTargetingPool(world);
+  const emissionVisibility = SnapshotVisibility.forRecipient(world, 1 as PlayerId);
+  const emissionMinimap = serializeMinimapSnapshotEntities(
+    world,
+    emissionVisibility,
+    'visibility-contract-emissions',
+  );
+  assertContract(emissionMinimap !== undefined, 'emission fixture must serialize minimap rows');
+  const shotContact = emissionMinimap.find((entry) => entry.id === radarOnlyShot.id);
+  assertContract(
+    shotContact !== undefined &&
+      shotContact.radarOnly === true &&
+      shotContact.type === 'shot' &&
+      shotContact.playerId === 0 &&
+      shotContact.contactMediumMask === CONTACT_MEDIUM_AIR &&
+      shotContact.contactZ === quantizeMinimapPosition(WATER_LEVEL + 100),
+    'an enemy shot under radar but outside sight must be an anonymous shot contact',
+  );
+  assertContract(
+    emissionMinimap.every(
+      (entry) => entry.id !== sightedShot.id && entry.id !== ownShot.id && entry.id !== hiddenShot.id,
+    ),
+    'seen, own, and unsensed shots must never become minimap contacts',
+  );
+  assertContract(
+    getMinimapSnapshotWireSource(emissionMinimap)?.count === emissionMinimap.length,
+    'emission contacts must expose direct wire rows like every other minimap entry',
+  );
+  const packedEmissions = packMinimapEntitiesForWire(emissionMinimap);
+  assertContract(packedEmissions !== undefined, 'emission minimap rows must pack for the wire');
+  const unpackedShot = unpackMinimapEntitiesFromWire(packedEmissions)
+    ?.find((entry) => entry.id === radarOnlyShot.id);
+  assertContract(
+    unpackedShot?.type === 'shot' &&
+      unpackedShot.radarOnly === true &&
+      unpackedShot.contactMediumMask === CONTACT_MEDIUM_AIR,
+    'the shot contact must survive the packed minimap wire round trip as a shot',
   );
 
   const spray = (

@@ -321,6 +321,20 @@ export function runMapPresetLabel3DContractTest(): void {
     backdropSlug: _backdropSlug,
     ...stockSnapshot
   } = source;
+  // A preset names a MAP. The gameplay defaults it also carries are not map
+  // fields: toggling any of them keeps the name and the sky.
+  const gameplayToggled = resolveBattleMapPresentation({
+    ...stockSnapshot,
+    cap: 500,
+    slowDownAtFinalWaypoint: !source.slowDownAtFinalWaypoint,
+    pathfindingConsidersUnits: !source.pathfindingConsidersUnits,
+    converterTax: source.converterTax === 0 ? 0.5 : 0,
+  } as BattlePresetSnapshot);
+  assertContract(
+    gameplayToggled.presetName === source.name
+      && gameplayToggled.backdropPresetName === source.name,
+    'a gameplay toggle must not rename the map CUSTOM or drop its backdrop',
+  );
   const customSnapshot: BattlePresetSnapshot = {
     ...stockSnapshot,
     cap: 500,

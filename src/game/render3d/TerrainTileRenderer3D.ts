@@ -55,6 +55,8 @@ import {
   TERRAIN_ORE_EDGE_ENABLED,
   TERRAIN_WALL_WEAR_ENABLED,
   TERRAIN_ROCK_DETAIL_ENABLED,
+  TERRAIN_ROCK_FINE_DETAIL_CONTRAST,
+  TERRAIN_ROCK_FINE_TEXTURE_TILE_WORLD_SIZE,
   TERRAIN_ROCK_TEXTURE_TILE_WORLD_SIZE,
 } from '../../config';
 import { getGroundDetailTexture } from './GroundDetailTexture';
@@ -767,6 +769,8 @@ export class TerrainTileRenderer3D {
   private rockDetailEnabledUniform = { value: 0 };
   private rockBaseColorUniform = { value: rawSrgbVec3(TERRAIN_ROCK_BASE_COLOR) };
   private rockDetailContrastUniform = { value: TERRAIN_ROCK_DETAIL_CONTRAST };
+  private rockFineTileWorldSizeUniform = { value: TERRAIN_ROCK_FINE_TEXTURE_TILE_WORLD_SIZE };
+  private rockFineContrastUniform = { value: TERRAIN_ROCK_FINE_DETAIL_CONTRAST };
   // The BROAD half of each surface — see SurfaceFieldTexture. Each pair rides
   // its family's own detail switch, because the layers are that surface's
   // structure and not a separate effect: turn the grass tile off and there is
@@ -994,6 +998,8 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uRockDetailEnabled = this.rockDetailEnabledUniform;
       shader.uniforms.uRockBaseColor = this.rockBaseColorUniform;
       shader.uniforms.uRockDetailContrast = this.rockDetailContrastUniform;
+      shader.uniforms.uRockFineTileWorldSize = this.rockFineTileWorldSizeUniform;
+      shader.uniforms.uRockFineContrast = this.rockFineContrastUniform;
       assignSurfaceFieldUniforms(shader, 'ground', this.groundFieldUniforms);
       assignSurfaceFieldUniforms(shader, 'rock', this.rockFieldUniforms);
       assignSurfaceFieldUniforms(shader, 'metal', this.metalFieldUniforms);
@@ -1088,6 +1094,8 @@ export class TerrainTileRenderer3D {
             'uniform float uRockDetailEnabled;',
             'uniform vec3 uRockBaseColor;',
             'uniform float uRockDetailContrast;',
+            'uniform float uRockFineTileWorldSize;',
+            'uniform float uRockFineContrast;',
             surfaceFieldUniformDeclarations('ground'),
             surfaceFieldUniformDeclarations('rock'),
             surfaceFieldUniformDeclarations('metal'),
@@ -1241,6 +1249,20 @@ export class TerrainTileRenderer3D {
             '    vec4 rockXY = texture2D(uRockDetailTexture, rockUvXY);',
             '    vec4 rockDetail = rockXZ * triW.y + rockYZ * triW.x + rockXY * triW.z;',
             '    terrainRgb = mix(terrainRgb, rockDetail.rgb, rockDetail.a * rockMask * uRockDetailContrast);',
+            '    // Fine grain over the slabs: the SAME tile resampled at a small,',
+            '    // rotated, co-prime scale, so rock reads at pebble and grit scale',
+            '    // the way the grass tile reads at blade scale. One sampler - the',
+            '    // fragment program sits at the 16-unit ceiling, so a second rock',
+            '    // tile would have cost the whole terrain - three more taps,',
+            '    // triplanar for the same reason the coarse ones are.',
+            '    mat2 rockFineRot = mat2(0.7986, 0.6018, -0.6018, 0.7986);',
+            '    vec2 rockFineXZ = (rockFineRot * vTerrainWorldPos.xz) / uRockFineTileWorldSize;',
+            '    vec2 rockFineYZ = (rockFineRot * vTerrainWorldPos.yz) / uRockFineTileWorldSize;',
+            '    vec2 rockFineXY = (rockFineRot * vTerrainWorldPos.xy) / uRockFineTileWorldSize;',
+            '    vec4 rockFine = texture2D(uRockDetailTexture, rockFineXZ) * triW.y',
+            '      + texture2D(uRockDetailTexture, rockFineYZ) * triW.x',
+            '      + texture2D(uRockDetailTexture, rockFineXY) * triW.z;',
+            '    terrainRgb = mix(terrainRgb, rockFine.rgb, rockFine.a * rockMask * uRockFineContrast);',
             '    // Staining, strata and patina across a whole face. TRIPLANAR,',
             '    // not the weather plane: unlike the noise fields these layers',
             '    // have structure, and a blended coordinate stretches that',

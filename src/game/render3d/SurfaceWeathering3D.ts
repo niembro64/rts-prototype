@@ -37,6 +37,10 @@
 // the width down.
 
 import type * as THREE from 'three';
+import {
+  SOIL_SUBSTANCE_FINE_STRENGTH,
+  SOIL_SUBSTANCE_FINE_TILE_WORLD_SIZE,
+} from '../../config';
 import { getSoilSubstanceTexture } from './SoilSubstanceTexture';
 import { getWeatheringNoiseTexture } from './WeatheringNoiseTexture';
 
@@ -232,6 +236,26 @@ export const SURFACE_WEATHERING_GLSL = [
   '  vec3 yz = texture2D(tex, position.yz / unit).rgb;',
   '  vec3 xy = texture2D(tex, position.xy / unit).rgb;',
   '  return xz * weights.y + yz * weights.x + xy * weights.z;',
+  '}',
+  '',
+  '// The GRIME reading of the soil: the substance at its authored tile, with',
+  '// the same tile layered over it a second time at a small, rotated,',
+  '// co-prime scale. At the authored tile the texel is ~2 world units, so',
+  '// at battle zoom the dirt band read as one smear with no grain in it; the',
+  '// fine pass is the grit. One function so an ore rim, a wall rim and a',
+  '// tree base pick up the same grain — a site that read the substance',
+  '// through weatherSampleSubstance alone would be the one smooth patch of',
+  '// dirt on the map.',
+  'vec3 weatherSampleSoil(sampler2D tex, vec3 position, vec3 geometricNormal, float tileWorldSize) {',
+  '  vec3 coarse = weatherSampleSubstance(tex, position, geometricNormal, tileWorldSize);',
+  '  vec3 weights = pow(abs(geometricNormal), vec3(8.0));',
+  '  weights /= max(weights.x + weights.y + weights.z, 1.0e-5);',
+  `  float fineUnit = ${SOIL_SUBSTANCE_FINE_TILE_WORLD_SIZE.toFixed(3)};`,
+  '  mat2 fineRot = mat2(0.7986, 0.6018, -0.6018, 0.7986);',
+  '  vec3 fine = texture2D(tex, (fineRot * position.xz) / fineUnit).rgb * weights.y',
+  '    + texture2D(tex, (fineRot * position.yz) / fineUnit).rgb * weights.x',
+  '    + texture2D(tex, (fineRot * position.xy) / fineUnit).rgb * weights.z;',
+  `  return mix(coarse, fine, ${SOIL_SUBSTANCE_FINE_STRENGTH.toFixed(3)});`,
   '}',
 ].join('\n');
 

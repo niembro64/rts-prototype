@@ -532,6 +532,52 @@ export class SnapshotVisibility {
     return mask as ContactMediumMask;
   }
 
+  /**
+   * Contact-tier facts earned by an authoritative 3D point — an emission in
+   * flight. A point occupies exactly one medium, so it can earn at most one
+   * lane: radar (a terrain ray, exactly as an above-water body) or sonar
+   * (range-only, exactly as a submerged body). Jamming covers the point the
+   * way it covers a body standing there; a shot carries no stealth signature.
+   * Own and allied emissions never become contacts — they ride the projectile
+   * channel in full wherever they fly.
+   */
+  getPointContactMediumMask(
+    ownerId: PlayerId | null | undefined,
+    x: number,
+    y: number,
+    z: number,
+  ): ContactMediumMask {
+    if (!this.isFiltered) return CONTACT_MEDIUM_NONE;
+    if (this.isOwnedByRecipientOrAlly(ownerId)) return CONTACT_MEDIUM_NONE;
+    this.ensureAuxiliaryObservationSources();
+    if (getSensorMediumAtZ(z) === 'aboveWater') {
+      if (this.isPointJammed(x, y, 'aboveWater')) return CONTACT_MEDIUM_NONE;
+      return this.isPointVisibleIn(
+        this.radarSources,
+        this.radarSourceCells,
+        x,
+        y,
+        0,
+        'aboveWater',
+        z,
+      )
+        ? CONTACT_MEDIUM_AIR
+        : CONTACT_MEDIUM_NONE;
+    }
+    if (this.isPointJammed(x, y, 'underwater')) return CONTACT_MEDIUM_NONE;
+    return this.isPointVisibleIn(
+      this.sonarSources,
+      this.sonarSourceCells,
+      x,
+      y,
+      0,
+      'underwater',
+      null,
+    )
+      ? CONTACT_MEDIUM_WATER
+      : CONTACT_MEDIUM_NONE;
+  }
+
   getEntityContactMediumMaskById(entityId: EntityId): ContactMediumMask {
     const entity = this.world.getEntity(entityId);
     return entity === undefined
@@ -1046,26 +1092,28 @@ export class SnapshotVisibility {
    */
   private isContactSuppressed(entity: Entity, targetMedium: SensorMedium): boolean {
     const signature = getEntitySignature(entity);
-    if (targetMedium === 'aboveWater') {
-      if (signature.radarStealth) return true;
-      this.ensureEnemyJamSources();
-      if (this.enemyRadarJamSources.length === 0) return false;
-      return this.isPointVisibleIn(
-        this.enemyRadarJamSources,
-        this.enemyRadarJamSourceCells,
-        entity.transform.x,
-        entity.transform.y,
-        0,
-      );
+    if (targetMedium === 'aboveWater' ? signature.radarStealth : signature.sonarStealth) {
+      return true;
     }
-    if (signature.sonarStealth) return true;
+    return this.isPointJammed(entity.transform.x, entity.transform.y, targetMedium);
+  }
+
+  /** The PLACE half of contact suppression: whether an enemy jammer for
+   *  `targetMedium` covers this map point. Shared by bodies and by emission
+   *  points, which have no signature of their own. */
+  private isPointJammed(x: number, y: number, targetMedium: SensorMedium): boolean {
     this.ensureEnemyJamSources();
-    if (this.enemySonarJamSources.length === 0) return false;
+    const sources = targetMedium === 'aboveWater'
+      ? this.enemyRadarJamSources
+      : this.enemySonarJamSources;
+    if (sources.length === 0) return false;
     return this.isPointVisibleIn(
-      this.enemySonarJamSources,
-      this.enemySonarJamSourceCells,
-      entity.transform.x,
-      entity.transform.y,
+      sources,
+      targetMedium === 'aboveWater'
+        ? this.enemyRadarJamSourceCells
+        : this.enemySonarJamSourceCells,
+      x,
+      y,
       0,
     );
   }

@@ -141,7 +141,10 @@
           "sourceFile": "src/game/render3d/RockDetailTexture.ts",
           "resolution": 4096,
           "blend": 0.1,
-          "tileWorldSize": 10000
+          "tileWorldSize": 10000,
+          "fineComment": "The same tile resampled small, rotated and co-prime to the slab scale: grit, pebbles and cracks over the slabs, the way the grass tile reads at blade scale. No second texture — the terrain program is at the 16-unit ceiling.",
+          "fineTileWorldSize": 640,
+          "fineBlend": 0.35
         },
         "shadePaletteRgb": [
           "#36322b",
@@ -226,7 +229,9 @@
     },
     "groundPrint": {
       "colorHex": "#1a1308",
-      "initialAlpha": 0.2
+      "initialAlpha": 0.2,
+      "lifetimeMs": 30000,
+      "holdFraction": 0.35
     },
     "burnMark": {
       "hotColorHex": "#880200",
@@ -383,6 +388,9 @@
         "sourceFile": "src/game/render3d/SoilSubstanceTexture.ts",
         "resolution": 2048,
         "tileWorldSize": 900,
+        "fineComment": "The grime reading (weatherSampleSoil) layers the SAME tile a second time at this small, rotated, co-prime scale: the grit the 900 wu read cannot resolve at battle zoom, where the 2048 px tile is ~2 px per world unit and everything under 2 wu blurs to one smear. Shared by the ore edge, both wall rims and tree bases for the same reason tileWorldSize is.",
+        "fineTileWorldSize": 140,
+        "fineStrength": 0.45,
         "baseColorHex": "#3b3227",
         "shadePaletteRgb": [
           "#241c14",

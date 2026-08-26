@@ -4,6 +4,7 @@ import type {
 } from './NetworkTypes';
 import {
   ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING,
+  ENTITY_SNAPSHOT_WIRE_TYPE_SHOT,
   ENTITY_SNAPSHOT_WIRE_TYPE_TOWER,
   ENTITY_SNAPSHOT_WIRE_TYPE_UNIT,
 } from './stateSerializerEntities';
@@ -56,6 +57,8 @@ function minimapTypeToWireType(type: NetworkServerSnapshotMinimapEntity['type'])
       return ENTITY_SNAPSHOT_WIRE_TYPE_UNIT;
     case 'building':
       return ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING;
+    case 'shot':
+      return ENTITY_SNAPSHOT_WIRE_TYPE_SHOT;
   }
 }
 
@@ -65,6 +68,8 @@ function wireTypeToMinimapType(typeTag: number): NetworkServerSnapshotMinimapEnt
       return 'building';
     case ENTITY_SNAPSHOT_WIRE_TYPE_TOWER:
       return 'building';
+    case ENTITY_SNAPSHOT_WIRE_TYPE_SHOT:
+      return 'shot';
     default:
       return 'unit';
   }

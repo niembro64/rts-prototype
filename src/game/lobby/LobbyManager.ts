@@ -75,12 +75,22 @@ type BackgroundBattleLoadProgress = (
  *  the local player's. `localPlayerId` defaults to the first ID
  *  in the array — correct for the solo demo, where the player is
  *  always seat 1. */
+/** The game room's side layout for its preview: the host's declared side
+ *  count plus the seat -> side table the roster shows. Terrain slices are
+ *  carved per SIDE, so the preview must be given the sides themselves —
+ *  handing it only the seat list would carve one slice per seat. */
+export type LobbyPreviewSides = {
+  readonly allyTeamByPlayerId: Readonly<Record<number, number>>;
+  readonly allyTeamCount: number;
+};
+
 export async function createBackgroundBattle(
   container: HTMLDivElement,
   ipAddress: string,
   mode: BattleMode = 'demo',
   playerIds?: PlayerId[],
   localPlayerId?: PlayerId,
+  lobbySides?: LobbyPreviewSides,
   onRendererWarmupChange?: (warming: boolean) => void,
   onLoadProgress?: BackgroundBattleLoadProgress,
   onStartupReady?: () => void,
@@ -110,15 +120,22 @@ export async function createBackgroundBattle(
   // the ground is simply left open.
   //
   // The per-side list only applies when the seat list is the demo's own. A
-  // lobby preview passes real lobby seats, and pinning those to the demo's
-  // per-side counts would seat live players on the wrong sides; it falls
-  // back to the side COUNT, clamped to however many seats it actually has.
+  // lobby preview passes real lobby seats AND the lobby's own sides — the
+  // host's declared count and the seat -> side table — so the preview is
+  // carved exactly as the match will be: one slice per TEAM, teammates on a
+  // shared frontage, an empty declared side still cut. Without the sides the
+  // preview used to fall back to a plain count and gave every seat its own
+  // slice regardless of teams. The same resolveTeamRoster precedence runs
+  // here as on the server and in the match scene.
   const usingDemoSeats = !(playerIds && playerIds.length > 0);
   const demoAllyTeamSeats = usingDemoSeats ? DEMO_CONFIG.allyTeamSeats : undefined;
-  const demoAllyTeamCount = Math.max(
-    1,
-    Math.min(demoPlayerIds.length, Math.floor(DEMO_CONFIG.allyTeamCount) || 1),
-  );
+  const demoAllyTeamByPlayerId = usingDemoSeats ? undefined : lobbySides?.allyTeamByPlayerId;
+  const demoAllyTeamCount = !usingDemoSeats && lobbySides !== undefined
+    ? Math.max(1, Math.floor(lobbySides.allyTeamCount) || 1)
+    : Math.max(
+      1,
+      Math.min(demoPlayerIds.length, Math.floor(DEMO_CONFIG.allyTeamCount) || 1),
+    );
   let resolvedLocalPlayerId: PlayerId = demoPlayerIds[0];
   if (localPlayerId !== undefined) {
     for (let i = 0; i < demoPlayerIds.length; i++) {
@@ -215,6 +232,7 @@ export async function createBackgroundBattle(
       playerIds: demoPlayerIds,
       allyTeamCount: demoAllyTeamCount,
       allyTeamSeats: demoAllyTeamSeats,
+      allyTeamByPlayerId: demoAllyTeamByPlayerId,
       gameGenerationSeed: createHostGameGenerationSeed(),
       centerMagnitude: terrainRuntimeConfig.centerMagnitude,
       ringMagnitude: terrainRuntimeConfig.ringMagnitude,
@@ -295,6 +313,7 @@ export async function createBackgroundBattle(
     playerIds: demoPlayerIds,
     allyTeamCount: demoAllyTeamCount,
     allyTeamSeats: demoAllyTeamSeats,
+    allyTeamByPlayerId: demoAllyTeamByPlayerId,
     localPlayerId: resolvedLocalPlayerId,
     gameConnection: connection,
     clientViewState,

@@ -326,7 +326,10 @@ export type EconomyInfo = {
 // Minimap types
 export type MinimapEntity = {
   pos: Vec2;
-  type: Exclude<EntityType, 'shot'>;
+  /** `shot` only ever arrives as a radar-only contact (an enemy emission
+   *  heard on radar/sonar); it draws the same anonymous dot a contact unit
+   *  or building draws. */
+  type: EntityType;
   color: string;
   isSelected?: boolean;
   /** True when the recipient only knows about this entity through

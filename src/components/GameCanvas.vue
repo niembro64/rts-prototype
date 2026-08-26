@@ -4,6 +4,7 @@ import { appSurface, sendAppSurface } from '../appSurfaceMachine';
 import type { GameInstance } from '../game/createGame';
 import type { PlayerId } from '../game/sim/types';
 import type { BackgroundBattleState } from '../game/lobby/LobbyManager';
+import { lobbyAllyTeamAssignment } from '../game/lobby/lobbyIdentity';
 import SelectionPanel from './SelectionPanel.vue';
 import TopBar from './TopBar.vue';
 import {
@@ -1460,6 +1461,14 @@ watch(simulationPausedForPresentation, (paused) => {
   getPreviewLocalPlayerId: () => currentBattleMode.value === 'real'
     ? localPlayerId.value
     : undefined,
+  // The preview carves the lobby's SIDES, not its seats: the declared side
+  // count and the seat -> side table are what decide the terrain slices.
+  getPreviewSides: () => currentBattleMode.value === 'real'
+    ? {
+      allyTeamByPlayerId: lobbyAllyTeamAssignment(lobbyPlayers.value),
+      allyTeamCount: lobbyAllyTeamCount.value,
+    }
+    : undefined,
   getPlayerClientEnabled: () => playerClientEnabled.value,
   onLoadingProgress: setLoadingProgress,
   bindSceneUi: (scene) => bindGameSceneUi(scene),
@@ -2217,12 +2226,8 @@ watchEffect(() => {
   m.serverUnitGroundNormalEmaMode = serverUnitGroundNormalEmaMode.value;
   const mapPresentation = resolveBattleMapPresentation({
     cap: displayUnitCap.value,
-    slowDownAtFinalWaypoint: currentSlowDownAtFinalWaypoint.value,
-    pathfindingConsidersUnits: currentPathfindingConsidersUnits.value,
     metalCoverage: currentMetalCoverage.value,
     liquidSurfaceMode: currentLiquidSurfaceMode.value,
-    slopePathMode: currentSlopePathMode.value,
-    converterTax: currentConverterTax.value,
     centerMagnitude: centerMagnitude.value,
     ringMagnitude: ringMagnitude.value,
     dividersMagnitude: dividersMagnitude.value,
@@ -2235,9 +2240,11 @@ watchEffect(() => {
     mapWidthLandCells: mapWidthLandCells.value,
     mapLengthLandCells: mapLengthLandCells.value,
   });
-  // Sky backdrop panorama follows the matched preset; null (settings
-  // drifted off every stock preset) resolves to the default panorama, so
-  // a custom map still gets a layered horizon rather than a flat sky.
+  // Sky backdrop panorama follows the matched preset; null (the MAP settings
+  // drifted off every stock preset) resolves to the default panorama, so a
+  // custom map still gets a layered horizon rather than a flat sky. The
+  // gameplay toggles are deliberately not read here: they never rename the
+  // map, so they must not retrigger this either.
   m.activePresetName = mapPresentation.presetName;
   setActiveBackdropPresetName(mapPresentation.backdropPresetName);
   setActiveMapPresetLabel(mapPresentation.labelCaption);
@@ -2825,8 +2832,11 @@ watchEffect(() => {
           :can-command="!isSpectating"
         />
 
-        <!-- Idle builders (bottom-center, BAR gui_idle_builders) -->
+        <!-- Idle builders (bottom-center, BAR gui_idle_builders). A watcher
+             has no builders to put to work, so the section does not exist
+             for them. -->
         <IdleBuildersPanel
+          v-if="!isSpectating"
           :groups="idleBuilders"
           :playable-bottom-inset-px="playableBottomInsetPx"
           @cycle="cycleIdleBuilder"
