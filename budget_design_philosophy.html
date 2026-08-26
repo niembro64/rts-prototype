@@ -932,6 +932,7 @@
         <li>Use coarse bitsets or cell buckets for radar/full-sight membership, then exact radius and terrain/force-material LOS only when a candidate needs it.</li>
         <li>Keep contact sensors cheaper than sight: radar and sonar coverage should be mostly geometric unless deliberate jamming or occlusion features are introduced.</li>
         <li>Run expensive acquisition only for turrets that need work. Existing target hysteresis, drop grace, probe scheduling, and broadphase candidate buffers are the right pattern.</li>
+        <li>Candidate scans are budgeted per fixed tick (<code>targetingAcquisitionScansPerTick</code> in <code>combatConfig.json</code>, hashed). A host past the budget keeps its locks, still validates them, aims and fires, skips only the scan, and is probed again next tick; the batch starts from the first host deferred last tick so the budget rotates instead of starving the tail. The phase shard alone was not a bound: every host with FSM work bypasses it, so a big engagement scanned every host every tick.</li>
       </ul>
 
       <h3>Snapshot channels match renderer semantics</h3>
@@ -1720,6 +1721,26 @@
         indices, dirty sets, visibility masks, and area-of-interest bounds. Full-world scans are
         acceptable for bootstrapping, debugging, and full-state presentation snapshots. They are not the normal steady
         state for gameplay ticks.
+      </p>
+
+      <h3>Big jobs are sliced across ticks, never burst inside one</h3>
+      <p>
+        Any authoritative computation whose size is set by the player &mdash; how many units were
+        ordered, how many bodies a blast reaches, how many hosts entered an engagement, how many
+        buildings changed &mdash; runs under a fixed-tick budget with its remainder carried to the
+        next tick, in one of six shapes: a resumable job with a work-unit budget (route search), a
+        phase shard by id (idle-builder polls, auto-target acquisition, reacquire cadence), a dirty
+        set or version key (support index, building occupancy diff, change-bounds gating of path
+        revalidation), an event queue with a drain cap and carry (death-explosion chains), a
+        static/dynamic layer split, or a rolling accumulator. The budgets are lockstep constants in
+        hashed config &mdash; <code>aStarExpansionBudgetPerTick</code>,
+        <code>targetingAcquisitionScansPerTick</code>, <code>maxDeathExplosionsPerTick</code> &mdash;
+        never wall-clock, and every carried remainder is derived scratch that a rejoiner rebuilds
+        by replaying from frame 0. Each such rule names what the game does while the answer is
+        pending (a planless unit holds, a deferred host keeps its lock, a carried blast lands next
+        tick) and is pinned by a contract test that measures the tick&rsquo;s work through a counter
+        the mechanism cannot bypass. Presentation and host-only work (snapshots, the renderer) may
+        budget on wall-clock instead; simulation truth may not.
       </p>
 
       <h3>Clean structure comes before visual shortcuts</h3>
@@ -3243,6 +3264,17 @@
         bodies resist more, and it applies damage to every entity caught in it, friend or foe. A
         shot&rsquo;s detonation is the smallest instance of exactly this rule; a commander&rsquo;s is
         the largest. Turrets are not bodies, so they do not have separate death explosions.
+      </p>
+      <p>
+        A blast may kill bodies whose deaths blast in turn. That chain is a queue, not a recursion:
+        one fixed tick detonates at most <code>maxDeathExplosionsPerTick</code> blasts
+        (<code>combatConfig.json</code>, hashed with the rest of the gameplay constants). Every row
+        past the cap is resolved at once, while the dying body still exists &mdash; radius, force,
+        damage, centre and provenance &mdash; and carried into the next tick&rsquo;s queue in the same
+        breadth-first order, ahead of that tick&rsquo;s own deaths. A carried blast lands one tick
+        later and whatever it would have killed lives that long. This is a gameplay rule, not a
+        performance knob: a packed base detonates over a few ticks instead of resolving an unbounded
+        cascade inside one. Every death still detonates exactly once.
       </p>
       <p>
         The client must present a core fire blast for every delivered death event at every detail
