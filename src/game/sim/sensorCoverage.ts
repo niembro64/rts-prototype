@@ -89,6 +89,14 @@ export type TurretSensorSource = {
   operational: SensorOperationalChannels;
 };
 
+export type JammerMedium = 'radar' | 'sonar';
+
+export type TurretJammerSource = {
+  position: Vec3;
+  medium: JammerMedium;
+  radius: number;
+};
+
 const _sourcePosition: Vec3 = { x: 0, y: 0, z: 0 };
 const _source: TurretSensorSource = {
   mount: null as unknown as Turret,
@@ -97,6 +105,11 @@ const _source: TurretSensorSource = {
   sourceMedium: 'aboveWater',
   sensors: null as unknown as SensorCapabilityConfig,
   operational: ALL_SENSOR_CHANNELS_OPERATIONAL,
+};
+const _jammerSource: TurretJammerSource = {
+  position: _sourcePosition,
+  medium: 'radar',
+  radius: 0,
 };
 
 /** Visits each operational mounted turret that authors at least one sensor
@@ -136,6 +149,33 @@ export function forEachEntityTurretSensorSource(
     _source.operational = operational;
     visit(_source);
   }
+}
+
+/** Visits every operational mounted jamming lane on an entity. Jamming is a
+ * powered contact-electronics channel, so an incomplete/destroyed host or a
+ * switched-off building yields no source. The callback must consume the
+ * reused source object synchronously. Keeping this gate beside the ordinary
+ * sensor-source walk makes authoritative contact denial and presentation use
+ * the exact same on/off semantics. */
+export function forEachEntityTurretJammerSource(
+  entity: Entity,
+  visit: (source: TurretJammerSource) => void,
+): void {
+  forEachEntityTurretSensorSource(entity, (source) => {
+    if (!source.operational.contactSight) return;
+    if (source.sensors.radarJamRadius > 0) {
+      _jammerSource.position = source.position;
+      _jammerSource.medium = 'radar';
+      _jammerSource.radius = source.sensors.radarJamRadius;
+      visit(_jammerSource);
+    }
+    if (source.sensors.sonarJamRadius > 0) {
+      _jammerSource.position = source.position;
+      _jammerSource.medium = 'sonar';
+      _jammerSource.radius = source.sensors.sonarJamRadius;
+      visit(_jammerSource);
+    }
+  });
 }
 
 /** Returns the first active sensor source. Host blueprint validation gives

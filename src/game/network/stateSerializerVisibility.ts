@@ -3,12 +3,13 @@ import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { nextGeometricCapacity } from '../memory/typedArrayGrowth';
 import type { NetworkServerSnapshotScanPulse } from '../../types/network';
 import { hasFogOfWarLineOfSight } from '../sim/combat/lineOfSight';
-import { getEntitySignature } from '../sim/sensorCoverage';
 import { getCombatTargetingTargetSlots } from '../sim/combat/targetingInputStamping';
 import { spatialGrid } from '../sim/SpatialGrid';
 import {
   getEntityVisibilityPadding,
+  getEntitySignature,
   getSensorMediumAtZ,
+  forEachEntityTurretJammerSource,
   forEachEntityTurretSensorSource,
   isEntityCloaked,
 } from '../sim/sensorCoverage';
@@ -1052,30 +1053,16 @@ export class SnapshotVisibility {
 
   private addEnemyJamSourceEntities(source: readonly Entity[]): void {
     for (let i = 0; i < source.length; i++) {
-      forEachEntityTurretSensorSource(source[i], (turretSource) => {
-        const { position, sensors, operational } = turretSource;
-        // A jammer that has lost power stops jamming, on the same operational
-        // channel its sensors use — a dead radar and a dead jammer are the
-        // same kind of dead.
-        if (!operational.contactSight) return;
-        if (sensors.radarJamRadius > 0) {
-          this.addSource(
-            this.enemyRadarJamSources,
-            this.enemyRadarJamSourceCells,
-            position.x, position.y, position.z,
-            sensors.radarJamRadius,
-            null,
-          );
-        }
-        if (sensors.sonarJamRadius > 0) {
-          this.addSource(
-            this.enemySonarJamSources,
-            this.enemySonarJamSourceCells,
-            position.x, position.y, position.z,
-            sensors.sonarJamRadius,
-            null,
-          );
-        }
+      forEachEntityTurretJammerSource(source[i], ({ position, medium, radius }) => {
+        this.addSource(
+          medium === 'radar' ? this.enemyRadarJamSources : this.enemySonarJamSources,
+          medium === 'radar'
+            ? this.enemyRadarJamSourceCells
+            : this.enemySonarJamSourceCells,
+          position.x, position.y, position.z,
+          radius,
+          null,
+        );
       });
     }
   }

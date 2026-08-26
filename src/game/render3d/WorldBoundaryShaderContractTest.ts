@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import { buildGridOverlayFragment } from './BuildGridOverlayShader';
 import { pathfindingHierarchyOverlayFragment } from './PathfindingHierarchyOverlayShader';
-import { worldShadeFragment } from './WorldShade3D';
+import {
+  WORLD_SHADE_FRAGMENT_PARS,
+  worldShadeFragment,
+} from './WorldShade3D';
 import {
   mapInfoAnnexProfileBreakpoints,
   resolveMapInfoAnnexFootprint,
@@ -18,6 +21,11 @@ function assertContract(condition: unknown, message: string): asserts condition 
 
 export function runWorldBoundaryShaderContractTest(): void {
   const shade = worldShadeFragment('vTerrainWorldPos', true);
+  assertContract(
+    WORLD_SHADE_FRAGMENT_PARS.includes('sampler2DArray uWorldShadeMap') &&
+      !WORLD_SHADE_FRAGMENT_PARS.includes('uWorldShadowMap'),
+    'world coverage layers must share one array sampler rather than exceed the terrain texture-unit budget',
+  );
   assertContract(
     shade.includes('worldShadeEdgeTolerance') &&
       shade.includes('uWorldShadeWorldSize.x + worldShadeEdgeTolerance.x') &&

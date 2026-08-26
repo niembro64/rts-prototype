@@ -7,6 +7,7 @@
       "maxRegions": 65536,
       "fullSightEdgeSoftnessWorld": 64,
       "contactSightEdgeSoftnessWorld": 192,
+      "jammerEdgeSoftnessWorld": 192,
       "entityShadowEdgeSoftnessWorld": 192
     },
     "shade": {
@@ -15,6 +16,10 @@
       "radarDarknessPercent": 35,
       "unseenColorLossPercent": 100,
       "radarColorLossPercent": 100
+    },
+    "jammerTint": {
+      "colorHex": "#ff2020",
+      "opacityPercent": 28
     }
   }
 }

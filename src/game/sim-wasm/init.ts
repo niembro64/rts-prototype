@@ -1697,6 +1697,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runWaterRenderer3DContractTest();
         const { runWorldBoundaryShaderContractTest } = await import('../render3d/WorldBoundaryShaderContractTest');
         runWorldBoundaryShaderContractTest();
+        const { runWorldShadeJammer3DContractTest } = await import('../render3d/WorldShadeJammer3DContractTest');
+        runWorldShadeJammer3DContractTest();
         const { runParallaxBackdropRenderer3DContractTest } = await import('../render3d/ParallaxBackdropRenderer3DContractTest');
         runParallaxBackdropRenderer3DContractTest();
         const { runMapInfoAnnex3DContractTest } = await import('../render3d/MapInfoAnnex3DContractTest');

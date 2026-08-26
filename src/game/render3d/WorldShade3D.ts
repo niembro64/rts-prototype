@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { FOG_CONFIG } from '@/fogConfig';
 import {
+  forEachEntityTurretJammerSource,
   forEachEntityTurretSensorSource,
 } from '../sim/sensorCoverage';
 import type { ClientViewState } from '../network/ClientViewState';
@@ -15,6 +16,7 @@ import { clamp01 } from '../math';
 
 export type WorldShadeSettings3D = {
   enabled: boolean;
+  jammerTintEnabled: boolean;
   unseenDarkness: number;
   radarDarkness: number;
   unseenDesaturation: number;
@@ -24,6 +26,9 @@ export type WorldShadeSettings3D = {
 type WorldShadeShader = THREE.WebGLProgramParametersWithUniforms;
 
 const SHADE_COLOR = new THREE.Color(FOG_CONFIG.presentation.shade.colorHex);
+const JAMMER_TINT_COLOR = new THREE.Color(
+  FOG_CONFIG.presentation.jammerTint.colorHex,
+);
 /** P0-07: coverage bounds are padded and snapped to this bucket so the
  *  retained coverage texture survives small camera pans. */
 const WORLD_SHADE_COVERAGE_BUCKET = 256;
@@ -32,10 +37,17 @@ const FULL_SIGHT_ABOVE_WATER_R = 1;
 const CONTACT_SIGHT_ABOVE_WATER_G = 1;
 const FULL_SIGHT_UNDERWATER_B = 1;
 const CONTACT_SIGHT_UNDERWATER_A = 1;
+const JAMMER_COVERAGE_R = 1;
+const ENTITY_SHADOW_COVERAGE_G = 1;
+const VISION_COVERAGE_LAYER = 0;
+const GROUND_OVERLAY_COVERAGE_LAYER = 1;
+const WORLD_SHADE_LAYER_COUNT = 2;
 const FULL_SIGHT_EDGE_SOFTNESS_WORLD =
   FOG_CONFIG.presentation.coverage.fullSightEdgeSoftnessWorld;
 const CONTACT_SIGHT_EDGE_SOFTNESS_WORLD =
   FOG_CONFIG.presentation.coverage.contactSightEdgeSoftnessWorld;
+const JAMMER_EDGE_SOFTNESS_WORLD =
+  FOG_CONFIG.presentation.coverage.jammerEdgeSoftnessWorld;
 const ENTITY_SHADOW_EDGE_SOFTNESS_WORLD =
   FOG_CONFIG.presentation.coverage.entityShadowEdgeSoftnessWorld;
 
@@ -51,8 +63,7 @@ const CROSS_SUN_AXIS_X = SUN_AXIS_Y;
 const CROSS_SUN_AXIS_Y = -SUN_AXIS_X;
 
 export const WORLD_SHADE_FRAGMENT_PARS = `
-uniform sampler2D uWorldShadeMap;
-uniform sampler2D uWorldShadowMap;
+uniform highp sampler2DArray uWorldShadeMap;
 uniform vec2 uWorldShadeBoundsMin;
 uniform vec2 uWorldShadeBoundsSize;
 uniform vec2 uWorldShadeWorldSize;
@@ -65,6 +76,9 @@ uniform float uFogOfWarUnseenDarkness;
 uniform float uFogOfWarRadarDarkness;
 uniform float uFogOfWarUnseenDesaturation;
 uniform float uFogOfWarRadarDesaturation;
+uniform float uJammerTintEnabled;
+uniform vec3 uJammerTintColor;
+uniform float uJammerTintOpacity;
 uniform float uEntityShadowEnabled;
 uniform float uEntityShadowDarkness;
 
@@ -96,6 +110,7 @@ export function worldShadeFragment(
   worldPosition: string,
   receiveEntityShadows: boolean,
   shadeTarget = 'diffuseColor.rgb',
+  receiveJammerTint = false,
 ): string {
   return `
 // Vertical world-box walls have constant x or z at an exact map maximum.
@@ -144,7 +159,10 @@ if (worldShadeSample.x >= -worldShadeEdgeTolerance.x &&
     vec2(0.0),
     vec2(1.0)
   );
-  vec4 worldCoverage = texture2D(uWorldShadeMap, worldShadeUv);
+  vec4 worldCoverage = texture(
+    uWorldShadeMap,
+    vec3(worldShadeUv, ${VISION_COVERAGE_LAYER.toFixed(1)})
+  );
   // Depth is the fragment's OWN altitude, never the clamped lookup's: which
   // sight tier covers it is a question about where it stands.
   float targetIsUnderwater = ${worldPosition}.y <= uWorldShadeWaterLevel
@@ -171,8 +189,22 @@ if (worldShadeSample.x >= -worldShadeEdgeTolerance.x &&
     radarOnlyCoverage * uFogOfWarRadarDesaturation +
     unseenCoverage * uFogOfWarUnseenDesaturation
   );
+  // Ground-only presentation shares one texture unit with fog by reading a
+  // second array layer. This keeps the terrain program inside WebGL's
+  // 16-fragment-texture minimum while preserving independent union fields.
+  float jammerCoverage = ${receiveJammerTint
+    ? `worldShadeField(texture(
+      uWorldShadeMap,
+      vec3(worldShadeUv, ${GROUND_OVERLAY_COVERAGE_LAYER.toFixed(1)})
+    ).r)`
+    : '0.0'};
   // Occlusion of the sun by nearby entities — see worldShadeField.
-  float entityOcclusion = ${receiveEntityShadows ? 'worldShadeField(texture2D(uWorldShadowMap, worldShadeUv).r)' : '0.0'};
+  float entityOcclusion = ${receiveEntityShadows
+    ? `worldShadeField(texture(
+      uWorldShadeMap,
+      vec3(worldShadeUv, ${GROUND_OVERLAY_COVERAGE_LAYER.toFixed(1)})
+    ).g)`
+    : '0.0'};
   float entityShadowDarkness =
     ${receiveEntityShadows ? 'uEntityShadowEnabled * entityOcclusion * uEntityShadowDarkness' : '0.0'};
 
@@ -201,6 +233,19 @@ if (worldShadeSample.x >= -worldShadeEdgeTolerance.x &&
     ${shadeTarget},
     uWorldShadeColor,
     clamp(fogDarkness, 0.0, 1.0)
+  );
+  // Jamming is team protection, not lost intelligence. Lay its red tint over
+  // the fog result so the protected footprint stays legible even where the
+  // jammer reaches beyond local sight. Its authored soft edge and overlap
+  // union were already resolved in the coverage pass.
+  ${shadeTarget} = mix(
+    ${shadeTarget},
+    uJammerTintColor,
+    clamp(
+      uJammerTintEnabled * jammerCoverage * uJammerTintOpacity,
+      0.0,
+      1.0
+    )
   );
 }
 `;
@@ -239,27 +284,27 @@ type RegionBuffers = {
   axisY: Float32Array;
   innerRatios: Float32Array;
   channels: Float32Array;
-  shadows: Float32Array;
   centerAttribute: THREE.InstancedBufferAttribute;
   axisXAttribute: THREE.InstancedBufferAttribute;
   axisYAttribute: THREE.InstancedBufferAttribute;
   innerRatioAttribute: THREE.InstancedBufferAttribute;
   channelsAttribute: THREE.InstancedBufferAttribute;
-  shadowsAttribute: THREE.InstancedBufferAttribute;
 };
 
-/** One viewport-local GPU coverage draw. The first MRT attachment stores
- * above-water full/contact and underwater full/contact coverage in RGBA. The
- * second remains allocated for the disabled legacy ellipse-shadow path; live
- * silhouette shadows do not use this target. Every active region is rasterized
- * in one instanced union-blended draw (screen blend — overlapping coverage
- * reinforces and saturates at 1). */
+/** Two viewport-local GPU coverage draws into one two-layer texture array.
+ * Layer 0 stores above-water full/contact and underwater full/contact coverage
+ * in RGBA. Layer 1 stores friendly jammer coverage in R and the disabled
+ * legacy ellipse-shadow field in G. Each layer is one instanced union-blended
+ * draw (screen blend — overlapping coverage reinforces and saturates at 1).
+ * A texture array is load-bearing here: terrain samples both independent
+ * fields through one texture unit and remains inside WebGL's minimum 16-unit
+ * fragment budget. */
 export class WorldShade3D {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly mapWidth: number;
   private readonly mapHeight: number;
   private readonly maxRegions: number;
-  private readonly renderTarget: THREE.WebGLRenderTarget;
+  private readonly renderTarget: THREE.WebGLArrayRenderTarget;
   private readonly coverageScene = new THREE.Scene();
   private readonly coverageCamera = new THREE.Camera();
   private readonly coverageGeometry: THREE.InstancedBufferGeometry;
@@ -279,10 +324,11 @@ export class WorldShade3D {
   private _lastCoverageTick = -1;
   private _lastCoverageEntitySetVersion = -1;
   private _lastCoverageEnabled: boolean | null = null;
+  private _lastJammerTintEnabled: boolean | null = null;
   private _lastCoveragePlayerId: PlayerId | null = null;
   /** True while the coverage target holds a zero-region empty clear, so a
    *  string of empty frames costs nothing after the first. */
-  private coverageClearIsEmpty = false;
+  private readonly coverageLayerClearIsEmpty = [false, false];
   private coverageMinX = 0;
   private coverageMinY = 0;
   private coverageMaxX = 1;
@@ -305,6 +351,11 @@ export class WorldShade3D {
   private readonly radarDarknessUniform = { value: 0 };
   private readonly unseenDesaturationUniform = { value: 0 };
   private readonly radarDesaturationUniform = { value: 0 };
+  private readonly jammerTintEnabledUniform = { value: 0 };
+  private readonly jammerTintColorUniform = { value: JAMMER_TINT_COLOR };
+  private readonly jammerTintOpacityUniform = {
+    value: FOG_CONFIG.presentation.jammerTint.opacityPercent / 100,
+  };
   private readonly entityShadowEnabledUniform = {
     value: ENTITY_SHADOW_RENDER_CONFIG.enabled ? 1 : 0,
   };
@@ -331,23 +382,23 @@ export class WorldShade3D {
     this.annexMinUniform = { value: new THREE.Vector2(annex.minX, annex.minZ) };
     this.annexMaxUniform = { value: new THREE.Vector2(annex.maxX, annex.maxZ) };
 
-    this.renderTarget = new THREE.WebGLRenderTarget(1, 1, {
-      count: 2,
-      format: THREE.RGBAFormat,
-      type: THREE.UnsignedByteType,
-      minFilter: THREE.LinearFilter,
-      magFilter: THREE.LinearFilter,
-      depthBuffer: false,
-      stencilBuffer: false,
-    });
-    const coverageTexture = this.renderTarget.textures[0];
-    const shadowTexture = this.renderTarget.textures[1];
-    coverageTexture.name = 'WorldShadeMediumCoverage';
-    shadowTexture.name = 'WorldShadeEntityShadows';
-    for (const texture of this.renderTarget.textures) {
-      texture.colorSpace = THREE.NoColorSpace;
-      texture.generateMipmaps = false;
-    }
+    this.renderTarget = new THREE.WebGLArrayRenderTarget(
+      1,
+      1,
+      WORLD_SHADE_LAYER_COUNT,
+      {
+        format: THREE.RGBAFormat,
+        type: THREE.UnsignedByteType,
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        depthBuffer: false,
+        stencilBuffer: false,
+      },
+    );
+    const coverageTexture = this.renderTarget.texture;
+    coverageTexture.name = 'WorldShadeCoverageLayers';
+    coverageTexture.colorSpace = THREE.NoColorSpace;
+    coverageTexture.generateMipmaps = false;
 
     const geometry = new THREE.InstancedBufferGeometry();
     geometry.setAttribute(
@@ -375,13 +426,11 @@ attribute vec2 regionAxisX;
 attribute vec2 regionAxisY;
 attribute vec2 regionInnerRatio;
 attribute vec4 regionChannels;
-attribute float regionShadow;
 uniform vec2 uCoverageBoundsMin;
 uniform vec2 uCoverageBoundsSize;
 varying vec2 vRegionPoint;
 varying vec2 vRegionInnerRatio;
 varying vec4 vRegionChannels;
-varying float vRegionShadow;
 void main() {
   vec2 regionPoint = position.xy;
   vec2 worldPoint = regionCenter +
@@ -392,16 +441,13 @@ void main() {
   vRegionPoint = regionPoint;
   vRegionInnerRatio = regionInnerRatio;
   vRegionChannels = regionChannels;
-  vRegionShadow = regionShadow;
 }
 `,
       fragmentShader: `
 layout(location = 0) out highp vec4 coverageOutput;
-layout(location = 1) out highp vec4 shadowOutput;
 varying vec2 vRegionPoint;
 varying vec2 vRegionInnerRatio;
 varying vec4 vRegionChannels;
-varying float vRegionShadow;
 void main() {
   float radius = length(vRegionPoint);
   vec2 direction = radius > 0.000001
@@ -425,7 +471,6 @@ void main() {
   float coverage = 1.0 - smoothstep(0.0, 1.0, edgeProgress);
   if (coverage <= 0.001) discard;
   coverageOutput = vRegionChannels * coverage;
-  shadowOutput = vec4(vRegionShadow * coverage, 0.0, 0.0, 0.0);
 }
 `,
       glslVersion: THREE.GLSL3,
@@ -439,9 +484,8 @@ void main() {
       // line. The union reinforces overlaps, is smooth across the seam, stays
       // in [0,1], and is order-independent. A region's unwritten channels are
       // 0, which the union passes through untouched, exactly as MAX did.
-      // WebGL applies one blend state to every MRT attachment, so entity
-      // shadows union too: overlapping shadows deepen toward saturation
-      // instead of flat-maxing, and lose the same seam crease.
+      // Both texture-array layers use this same state, so fog, jamming, and
+      // legacy entity shadows all get identical overlap semantics.
       blending: THREE.CustomBlending,
       blendEquation: THREE.AddEquation,
       blendSrc: THREE.OneFactor,
@@ -464,6 +508,7 @@ void main() {
     updateCoverage = true,
   ): void {
     this.fogEnabledUniform.value = settings.enabled ? 1 : 0;
+    this.jammerTintEnabledUniform.value = settings.jammerTintEnabled ? 1 : 0;
     this.unseenDarknessUniform.value = clamp01(settings.unseenDarkness);
     this.radarDarknessUniform.value = clamp01(settings.radarDarkness);
     this.unseenDesaturationUniform.value = clamp01(settings.unseenDesaturation);
@@ -502,6 +547,7 @@ void main() {
       tick !== this._lastCoverageTick ||
       entitySetVersion !== this._lastCoverageEntitySetVersion ||
       settings.enabled !== this._lastCoverageEnabled ||
+      settings.jammerTintEnabled !== this._lastJammerTintEnabled ||
       localPlayerId !== this._lastCoveragePlayerId;
     if (!boundsMoved && !truthMoved && !resized && this.hasRenderedCoverage) {
       return;
@@ -513,24 +559,35 @@ void main() {
     this._lastCoverageTick = tick;
     this._lastCoverageEntitySetVersion = entitySetVersion;
     this._lastCoverageEnabled = settings.enabled;
+    this._lastJammerTintEnabled = settings.jammerTintEnabled;
     this._lastCoveragePlayerId = localPlayerId;
     this.setCoverageBounds(paddedBounds);
 
+    // Each semantic field gets its own array layer and therefore its own
+    // region budget. Reuse the typed-array packet between the two draws: the
+    // renderer consumes each upload synchronously, and the usually tiny
+    // jammer pass never duplicates the much larger vision packet.
     this.regionCount = 0;
     if (settings.enabled) {
       this.collectFogRegions(clientViewState, localPlayerId);
+    }
+    this.uploadRegions();
+    this.renderCoverageLayer(VISION_COVERAGE_LAYER);
+
+    this.regionCount = 0;
+    if (settings.jammerTintEnabled) {
+      this.collectFriendlyJammerRegions(clientViewState, localPlayerId);
     }
     if (ENTITY_SHADOW_RENDER_CONFIG.enabled) {
       this.collectEntityShadowRegions(entityShadows);
     }
     this.uploadRegions();
-    this.renderCoverage();
+    this.renderCoverageLayer(GROUND_OVERLAY_COVERAGE_LAYER);
     this.hasRenderedCoverage = true;
   }
 
   assignUniforms(shader: WorldShadeShader): void {
-    shader.uniforms.uWorldShadeMap = { value: this.renderTarget.textures[0] };
-    shader.uniforms.uWorldShadowMap = { value: this.renderTarget.textures[1] };
+    shader.uniforms.uWorldShadeMap = { value: this.renderTarget.texture };
     shader.uniforms.uWorldShadeBoundsMin = this.coverageBoundsMinUniform;
     shader.uniforms.uWorldShadeBoundsSize = this.coverageBoundsSizeUniform;
     shader.uniforms.uWorldShadeWorldSize = this.worldSizeUniform;
@@ -543,6 +600,9 @@ void main() {
     shader.uniforms.uFogOfWarRadarDarkness = this.radarDarknessUniform;
     shader.uniforms.uFogOfWarUnseenDesaturation = this.unseenDesaturationUniform;
     shader.uniforms.uFogOfWarRadarDesaturation = this.radarDesaturationUniform;
+    shader.uniforms.uJammerTintEnabled = this.jammerTintEnabledUniform;
+    shader.uniforms.uJammerTintColor = this.jammerTintColorUniform;
+    shader.uniforms.uJammerTintOpacity = this.jammerTintOpacityUniform;
     shader.uniforms.uEntityShadowEnabled = this.entityShadowEnabledUniform;
     shader.uniforms.uEntityShadowDarkness = this.entityShadowDarknessUniform;
   }
@@ -590,7 +650,7 @@ void main() {
           );
     };
     material.customProgramCacheKey = () =>
-      `${previousCacheKey()}|world-shade-v7:${shadeAtObjectOrigin ? 'object' : 'surface'}:${shadeAfterLighting ? 'lit' : 'albedo'}`;
+      `${previousCacheKey()}|world-shade-v8:${shadeAtObjectOrigin ? 'object' : 'surface'}:${shadeAfterLighting ? 'lit' : 'albedo'}`;
     material.needsUpdate = true;
   }
 
@@ -607,7 +667,6 @@ void main() {
     const axisY = new Float32Array(this.maxRegions * 2);
     const innerRatios = new Float32Array(this.maxRegions * 2);
     const channels = new Float32Array(this.maxRegions * 4);
-    const shadows = new Float32Array(this.maxRegions);
     const centerAttribute = new THREE.InstancedBufferAttribute(centers, 2)
       .setUsage(THREE.DynamicDrawUsage);
     const axisXAttribute = new THREE.InstancedBufferAttribute(axisX, 2)
@@ -618,27 +677,22 @@ void main() {
       .setUsage(THREE.DynamicDrawUsage);
     const channelsAttribute = new THREE.InstancedBufferAttribute(channels, 4)
       .setUsage(THREE.DynamicDrawUsage);
-    const shadowsAttribute = new THREE.InstancedBufferAttribute(shadows, 1)
-      .setUsage(THREE.DynamicDrawUsage);
     geometry.setAttribute('regionCenter', centerAttribute);
     geometry.setAttribute('regionAxisX', axisXAttribute);
     geometry.setAttribute('regionAxisY', axisYAttribute);
     geometry.setAttribute('regionInnerRatio', innerRatioAttribute);
     geometry.setAttribute('regionChannels', channelsAttribute);
-    geometry.setAttribute('regionShadow', shadowsAttribute);
     return {
       centers,
       axisX,
       axisY,
       innerRatios,
       channels,
-      shadows,
       centerAttribute,
       axisXAttribute,
       axisYAttribute,
       innerRatioAttribute,
       channelsAttribute,
-      shadowsAttribute,
     };
   }
 
@@ -707,9 +761,15 @@ void main() {
     ) {
       this.coverageTextureWidth = targetWidth;
       this.coverageTextureHeight = targetHeight;
-      this.renderTarget.setSize(targetWidth, targetHeight);
-      // Fresh storage: the empty-clear skip must not trust old contents.
-      this.coverageClearIsEmpty = false;
+      this.renderTarget.setSize(
+        targetWidth,
+        targetHeight,
+        WORLD_SHADE_LAYER_COUNT,
+      );
+      // Fresh storage: neither layer's empty-clear skip may trust old
+      // contents.
+      this.coverageLayerClearIsEmpty[VISION_COVERAGE_LAYER] = false;
+      this.coverageLayerClearIsEmpty[GROUND_OVERLAY_COVERAGE_LAYER] = false;
       return true;
     }
     return false;
@@ -740,7 +800,6 @@ void main() {
         0,
         FULL_SIGHT_UNDERWATER_B,
         0,
-        0,
         FULL_SIGHT_EDGE_SOFTNESS_WORLD,
       );
     }
@@ -769,7 +828,6 @@ void main() {
             0,
             0,
             0,
-            0,
             FULL_SIGHT_EDGE_SOFTNESS_WORLD,
           );
         }
@@ -785,7 +843,6 @@ void main() {
             0,
             FULL_SIGHT_UNDERWATER_B,
             0,
-            0,
             FULL_SIGHT_EDGE_SOFTNESS_WORLD,
           );
         }
@@ -799,7 +856,6 @@ void main() {
             radarRadius,
             0,
             CONTACT_SIGHT_ABOVE_WATER_G,
-            0,
             0,
             0,
             CONTACT_SIGHT_EDGE_SOFTNESS_WORLD,
@@ -817,10 +873,44 @@ void main() {
             0,
             0,
             CONTACT_SIGHT_UNDERWATER_A,
-            0,
             CONTACT_SIGHT_EDGE_SOFTNESS_WORLD,
           );
         }
+      });
+    }
+  }
+
+  private collectFriendlyJammerRegions(
+    clientViewState: ClientViewState,
+    localPlayerId: PlayerId,
+  ): void {
+    const playerIds = clientViewState.getVisionPlayerIds(localPlayerId);
+    for (let i = 0; i < playerIds.length; i++) {
+      const playerId = playerIds[i];
+      this.collectFriendlyJammerRegionsFromOwned(
+        clientViewState.getUnitsByPlayer(playerId),
+      );
+      this.collectFriendlyJammerRegionsFromOwned(
+        clientViewState.getBuildingsByPlayer(playerId),
+      );
+    }
+  }
+
+  private collectFriendlyJammerRegionsFromOwned(
+    entities: readonly Entity[],
+  ): void {
+    for (let i = 0; i < entities.length; i++) {
+      forEachEntityTurretJammerSource(entities[i], ({ position, radius }) => {
+        this.pushCircleRegion(
+          position.x,
+          position.y,
+          radius,
+          JAMMER_COVERAGE_R,
+          0,
+          0,
+          0,
+          JAMMER_EDGE_SOFTNESS_WORLD,
+        );
       });
     }
   }
@@ -848,10 +938,9 @@ void main() {
         Math.max(0, crossRadius - ENTITY_SHADOW_EDGE_SOFTNESS_WORLD) / outerCrossRadius,
         Math.max(0, sunRadius - ENTITY_SHADOW_EDGE_SOFTNESS_WORLD) / outerSunRadius,
         0,
+        ENTITY_SHADOW_COVERAGE_G,
         0,
         0,
-        0,
-        1,
       );
     }
   }
@@ -864,7 +953,6 @@ void main() {
     g: number,
     b: number,
     a: number,
-    shadow: number,
     edgeSoftnessWorld: number,
   ): void {
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius) || radius <= 0) {
@@ -887,7 +975,6 @@ void main() {
       g,
       b,
       a,
-      shadow,
     );
   }
 
@@ -904,7 +991,6 @@ void main() {
     g: number,
     b: number,
     a: number,
-    shadow: number,
   ): void {
     const cursor = this.regionCount;
     if (cursor >= this.maxRegions) return;
@@ -922,7 +1008,6 @@ void main() {
     this.regions.channels[channelOffset + 1] = g;
     this.regions.channels[channelOffset + 2] = b;
     this.regions.channels[channelOffset + 3] = a;
-    this.regions.shadows[cursor] = shadow;
     this.regionCount = cursor + 1;
   }
 
@@ -938,7 +1023,6 @@ void main() {
     this.uploadAttribute(this.regions.axisYAttribute, this.regionCount * 2);
     this.uploadAttribute(this.regions.innerRatioAttribute, this.regionCount * 2);
     this.uploadAttribute(this.regions.channelsAttribute, this.regionCount * 4);
-    this.uploadAttribute(this.regions.shadowsAttribute, this.regionCount);
   }
 
   private uploadAttribute(attribute: THREE.InstancedBufferAttribute, count: number): void {
@@ -948,28 +1032,37 @@ void main() {
     attribute.needsUpdate = true;
   }
 
-  private renderCoverage(): void {
+  private renderCoverageLayer(layer: number): void {
     // With zero regions the pass is just a clear; once the target already
     // holds an empty clear there is nothing to redo, so skip the target
     // bind + full supersampled clear entirely.
-    if (this.regionCount === 0 && this.coverageClearIsEmpty) return;
+    if (this.regionCount === 0 && this.coverageLayerClearIsEmpty[layer]) return;
     const previousTarget = this.renderer.getRenderTarget();
+    const previousLayer = this.renderer.getActiveCubeFace();
+    const previousMipmapLevel = this.renderer.getActiveMipmapLevel();
     const previousAlpha = this.renderer.getClearAlpha();
     this.renderer.getClearColor(this.previousClearColor);
     const previousAutoClear = this.renderer.autoClear;
     try {
       this.renderer.autoClear = false;
       this.renderer.setClearColor(0x000000, 0);
-      this.renderer.setRenderTarget(this.renderTarget);
+      // WebGLRenderer names this argument activeCubeFace, but for an array
+      // render target it is the destination layer passed to
+      // framebufferTextureLayer.
+      this.renderer.setRenderTarget(this.renderTarget, layer);
       this.renderer.clear(true, false, false);
       if (this.regionCount > 0) {
         this.renderer.render(this.coverageScene, this.coverageCamera);
       }
     } finally {
-      this.renderer.setRenderTarget(previousTarget);
+      this.renderer.setRenderTarget(
+        previousTarget,
+        previousLayer,
+        previousMipmapLevel,
+      );
       this.renderer.setClearColor(this.previousClearColor, previousAlpha);
       this.renderer.autoClear = previousAutoClear;
     }
-    this.coverageClearIsEmpty = this.regionCount === 0;
+    this.coverageLayerClearIsEmpty[layer] = this.regionCount === 0;
   }
 }

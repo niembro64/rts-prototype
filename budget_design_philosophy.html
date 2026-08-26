@@ -666,6 +666,39 @@
         radar-only or unseen interval. Only the anonymous contact dot may retain its short fade.
       </p>
 
+      <h3>Friendly jamming is painted on the terrain</h3>
+      <p>
+        Jamming follows the same <strong>separate-jammers</strong> rule as authoritative contact
+        denial: a jammer protects its owner&rsquo;s side instead of blanketing every player&rsquo;s
+        radar. The seated player therefore sees a red terrain tint over the union of every active
+        radar- and sonar-jamming lane owned by that player or an ally. Every unit, building, or
+        future mounted source participates through its exact authored jammer radius and mounted
+        world position; there is no blueprint-name allowlist and no inferred replacement range.
+        Enemy jammer footprints are not revealed. A watcher on <strong>ALL</strong> has no
+        &ldquo;our side&rdquo; and sees no jammer tint; following a seat restores that team&rsquo;s field.
+      </p>
+      <p>
+        The tint is presentation of friendly operational state, not another intelligence tier.
+        It changes no contact denial, snapshot filtering, targeting, or sensor truth, and it stays
+        visible independently of the optional fog shade and the battle fog debug setting. Only
+        terrain receives it; entity identity and environment props do not. Construction-incomplete
+        and destroyed hosts contribute nothing. Jamming uses the powered contact-electronics gate,
+        so switching a jammer building <strong>OFF</strong> removes its tint on the next
+        authoritative coverage update and switching it <strong>ON</strong> restores the exact same
+        footprint. Passive local sight remaining on an OFF building does not keep its jammer tint.
+      </p>
+      <p>
+        Jammer coverage reuses the fog renderer&rsquo;s padded, quantized, viewport-local GPU field.
+        Sight/contact coverage occupies layer&nbsp;0 and friendly jammer coverage occupies
+        layer&nbsp;1 of one texture array, keeping terrain inside the 16-fragment-texture WebGL
+        budget while avoiding a mesh or draw call per jammer. One instanced pass per semantic layer
+        composites rings as the same order-independent probabilistic union used by fog coverage:
+        overlaps reinforce smoothly toward full coverage, never cancel, double-count into a harder
+        edge, or grow a seam between emitters. The authored radius is the midpoint of the same
+        smooth edge curve; jammer colour, opacity, and its contact-scale 192-world-unit softness
+        live in <code>fogConfig.json</code>.
+      </p>
+
       <h3>Sight, radar, sonar, and contacts are separate information tiers</h3>
       <p>
         The visibility model needs three named areas, because each answers a different gameplay
@@ -840,7 +873,7 @@
         <li>Weapon range, tracking range, unit sight, radar range, sonar range, and detector range are separate envelopes. Sharing a number between them should be an authored choice, not a default coupling.</li>
         <li>Team-air-sight and team-water-sight are player/team aggregates. A turret firing using another unit&rsquo;s sight is using team knowledge, not gaining that other unit&rsquo;s local sight radius or inheriting its sensor lane.</li>
         <li>Construction-incomplete and destroyed hosts provide no sensor channels. A completed active-state building always provides passive full sight; its contact and detector channels require the powered/open state.</li>
-        <li>Terrain shade, environment-prop shade, sensor boundaries, snapshot filtering, and targeting consume the same operational mounted sources. Presentation may soften an edge, but it may not invent another coverage footprint.</li>
+        <li>Terrain shade, environment-prop shade, friendly jammer tint, sensor boundaries, snapshot filtering, and targeting consume the same operational mounted sources. Presentation may soften an edge, but it may not invent another coverage footprint.</li>
       </ul>
 
       <h3>Visible units render and update identically</h3>

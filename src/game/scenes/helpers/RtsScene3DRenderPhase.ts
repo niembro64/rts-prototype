@@ -292,6 +292,7 @@ export class RtsScene3DRenderPhase {
     unseenDesaturation: 0,
     radarDesaturation: 0,
     enabled: false,
+    jammerTintEnabled: false,
   };
   private readonly terrainUpdateOptions = {
     localPlayerId: 0 as PlayerId,
@@ -633,6 +634,10 @@ export class RtsScene3DRenderPhase {
     // BuildGhost3D's setTarget path.
     writeFogShadePresentationSettings(this.terrainFogShadeScratch);
     this.terrainFogShadeScratch.enabled = fogOfWarEnabled && getFogShade();
+    // A seat sees its own and allied protection whether or not the optional
+    // fog veil is visible. ALL has no "our" team, so it carries no jammer
+    // field until the watcher follows a seat again.
+    this.terrainFogShadeScratch.jammerTintEnabled = !watchingAll;
     this.terrainUpdateOptions.localPlayerId = this.getLocalPlayerId();
     // Compatibility input for WorldShade3D's disabled ellipse-shadow channel;
     // active unit silhouettes are rendered by the directional depth pass.

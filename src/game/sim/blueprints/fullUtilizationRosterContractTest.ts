@@ -110,8 +110,14 @@ export function runFullUtilizationRosterContractTest(): void {
   assertContract(
     FOG_CONFIG.presentation.coverage.fullSightEdgeSoftnessWorld === 64 &&
       FOG_CONFIG.presentation.coverage.contactSightEdgeSoftnessWorld === 192 &&
+      FOG_CONFIG.presentation.coverage.jammerEdgeSoftnessWorld === 192 &&
       FOG_CONFIG.presentation.coverage.entityShadowEdgeSoftnessWorld === 192,
-    'short full-sight circles need a 64-world-unit edge while contacts and shadows retain 192',
+    'short full-sight circles need a 64-world-unit edge while contacts, jammers, and shadows retain 192',
+  );
+  assertContract(
+    FOG_CONFIG.presentation.jammerTint.colorHex === '#ff2020' &&
+      FOG_CONFIG.presentation.jammerTint.opacityPercent === 28,
+    'friendly jammer terrain coverage must retain its authored red 28% tint',
   );
   const tierTwoAnimalNames = Object.values(UNIT_BLUEPRINTS)
     .filter((blueprint) =>

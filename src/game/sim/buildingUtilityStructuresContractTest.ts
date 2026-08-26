@@ -10,6 +10,7 @@ import {
 } from './buildingCompletion';
 import { economyManager } from './economy';
 import { getMaximumSensorMatrixRadius } from './sensorConfig';
+import { forEachEntityTurretJammerSource } from './sensorCoverage';
 import type { BuildingBlueprintId, Entity, PlayerId } from './types';
 import { WorldState } from './WorldState';
 
@@ -123,6 +124,23 @@ export function runBuildingUtilityStructuresContractTest(): void {
         && radarJammer.building?.activeState?.open === false
         && radarJammer.building.activeState.wantOpen,
       'completed jammer buildings must enter the powered activation/debounce driver',
+    );
+    let jammerLaneCount = 0;
+    forEachEntityTurretJammerSource(radarJammer, () => { jammerLaneCount++; });
+    assertContract(
+      jammerLaneCount === 0,
+      'a powered jammer building must expose no jamming source while OFF',
+    );
+    radarJammer.building!.activeState!.open = true;
+    const liveJammerLanes: Array<{ medium: string; radius: number }> = [];
+    let liveJammerRadius = 0;
+    forEachEntityTurretJammerSource(radarJammer, ({ medium, radius }) => {
+      liveJammerLanes.push({ medium, radius });
+      if (medium === 'radar') liveJammerRadius = radius;
+    });
+    assertContract(
+      liveJammerLanes.length === 1 && liveJammerRadius === 3000,
+      'switching a radar jammer ON must expose its exact authored lane to gameplay and presentation',
     );
 
     const metalA = createCompletedBuilding(world, 'buildingMetalStorage', playerOne, 100);

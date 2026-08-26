@@ -370,11 +370,18 @@ export function runGroundSilhouetteShadow3DContractTest(): void {
   configureGroundSilhouetteReceiver3D(terrain);
   assertContract(terrain.receiveShadow, 'terrain geometry must receive the projected silhouettes');
 
-  const terrainFogShade = worldShadeFragment('vTerrainWorldPos', false);
+  const terrainFogShade = worldShadeFragment(
+    'vTerrainWorldPos',
+    false,
+    'diffuseColor.rgb',
+    true,
+  );
   assertContract(
-    terrainFogShade.includes('texture2D(uWorldShadeMap') &&
-      !terrainFogShade.includes('texture2D(uWorldShadowMap'),
-    'terrain must keep fog coverage but retire the ellipse-shadow sampler so the directional shadow map stays within the 16-texture WebGL budget',
+    terrainFogShade.includes('vec3(worldShadeUv, 0.0)') &&
+      terrainFogShade.includes('vec3(worldShadeUv, 1.0)') &&
+      terrainFogShade.includes('uJammerTintEnabled * jammerCoverage') &&
+      !terrainFogShade.includes('uWorldShadowMap'),
+    'terrain must read fog plus jammer coverage through two layers of one sampler so the directional shadow map stays within the 16-texture WebGL budget',
   );
 
   const sun = new THREE.DirectionalLight(0xffffff, 1);

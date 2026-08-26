@@ -16,6 +16,7 @@ type FogPresentationConfig = {
     maxRegions: number;
     fullSightEdgeSoftnessWorld: number;
     contactSightEdgeSoftnessWorld: number;
+    jammerEdgeSoftnessWorld: number;
     entityShadowEdgeSoftnessWorld: number;
   };
   shade: {
@@ -24,6 +25,10 @@ type FogPresentationConfig = {
     radarDarknessPercent: number;
     unseenColorLossPercent: number;
     radarColorLossPercent: number;
+  };
+  jammerTint: {
+    colorHex: string;
+    opacityPercent: number;
   };
 };
 
@@ -56,6 +61,10 @@ assertNonNegative(
   'fogConfig.presentation.coverage.contactSightEdgeSoftnessWorld',
 );
 assertNonNegative(
+  presentation.coverage.jammerEdgeSoftnessWorld,
+  'fogConfig.presentation.coverage.jammerEdgeSoftnessWorld',
+);
+assertNonNegative(
   presentation.coverage.entityShadowEdgeSoftnessWorld,
   'fogConfig.presentation.coverage.entityShadowEdgeSoftnessWorld',
 );
@@ -81,6 +90,16 @@ assertFiniteNumberInRange(
 assertFiniteNumberInRange(
   presentation.shade.radarColorLossPercent,
   'fogConfig.presentation.shade.radarColorLossPercent',
+  0,
+  100,
+);
+assertCssHex(
+  presentation.jammerTint.colorHex,
+  'fogConfig.presentation.jammerTint.colorHex',
+);
+assertFiniteNumberInRange(
+  presentation.jammerTint.opacityPercent,
+  'fogConfig.presentation.jammerTint.opacityPercent',
   0,
   100,
 );
