@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
   clampPointToLegShell,
+  legAtFullExtensionNeedsStep,
   legChoppedSphereNeedsStep,
   legSurfaceWithinReach,
   resolveLegChoppedSphereVelocityTarget,
@@ -9,6 +10,7 @@ import {
   resolveLegReachShell,
   resolveLegSnapRayOrigin,
   resolveLegSnapRayPointVelocity,
+  resolveLegSnapThroughOriginDirection,
   resolveLegSnapSphereLocal,
 } from './LegGait3D';
 import { locomotionTerrainModeForSupportHeight } from './LocomotionTerrainSampler';
@@ -457,6 +459,12 @@ export function runCrawlerRig3DContractTest(): void {
     shell.innerRadius === 2,
     'the mechanical inner bound is the true fold limit |upper - lower|',
   );
+  assertContract(
+    !legAtFullExtensionNeedsStep(99.99, shell.outerRadius) &&
+      legAtFullExtensionNeedsStep(100, shell.outerRadius) &&
+      legAtFullExtensionNeedsStep(100.01, shell.outerRadius),
+    'a planted leg steps at, not only beyond, the exact straight-line limit',
+  );
   const foldFloored = resolveLegReachShell(4, 9);
   assertContract(
     foldFloored.innerRadius === 5,
@@ -542,14 +550,26 @@ export function runCrawlerRig3DContractTest(): void {
     Math.abs(velocityTarget.x - 12) < 1e-9,
     'outward motion plants on the outward foot-sphere boundary',
   );
+  const throughOriginDirection = { x: 0, z: 0 };
+  resolveLegSnapThroughOriginDirection(
+    velocityTarget.x,
+    velocityTarget.z,
+    snapRayOrigin.x,
+    snapRayOrigin.z,
+    throughOriginDirection,
+  );
+  assertContract(
+    throughOriginDirection.x < 0 && throughOriginDirection.z === 0,
+    'a fully straight outward foot recovers through its snap-ray origin',
+  );
   resolveLegChoppedSphereVelocityTarget(
     snapRayOrigin, outerCenter, gaitLocal.radius,
     choppingCenter, choppingRadius,
-    -1, 0, outward, velocityTarget,
+    throughOriginDirection.x, throughOriginDirection.z, outward, velocityTarget,
   );
   assertContract(
-    Math.abs(velocityTarget.x - 5) < 1e-9,
-    'inward motion stops on the chopping boundary before a foot can pass under the unit',
+    Math.abs(velocityTarget.x - 5) < 1e-9 && velocityTarget.x < snapRayOrigin.x,
+    'full-extension recovery crosses the origin and stops on the opposite chopping boundary',
   );
 
   const station = { x: 0, z: 0 };

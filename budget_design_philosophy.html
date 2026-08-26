@@ -2532,8 +2532,11 @@
         point in that point&rsquo;s own frame-to-frame world velocity direction, so chassis translation
         and rotation both influence the target, stopping at the
         first intersection with either boundary and resampling terrain height there. With no planar
-        velocity, the derived outward ray is the deterministic fallback. The reach clamp remains an emergency
-        safeguard for rendered geometry, never a second step trigger or a way to drag a nominally
+        velocity, the derived outward ray is the deterministic fallback. A planted leg reaching its
+        exact two-segment straight-line limit is a third step trigger: that recovery ray runs from
+        the retained foot through the authored snap-ray origin and lands on the opposite chopped-envelope
+        boundary, so a fully straight limb lifts instead of dragging along the ground. The reach clamp
+        remains an emergency safeguard for in-flight rendered geometry, never a way to drag a nominally
         planted endpoint with the chassis. Unsupported air legs tuck on ascent and extend for descent/touchdown. Unsupported
         water legs instead blend toward a damped, velocity-trailing pose, while legs close enough
         to the bed retain the ordinary planted gait on underwater ground.
