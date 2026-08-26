@@ -141,7 +141,10 @@
           "sourceFile": "src/game/render3d/RockDetailTexture.ts",
           "resolution": 4096,
           "blend": 0.1,
-          "tileWorldSize": 10000
+          "tileWorldSize": 10000,
+          "fineComment": "The same tile resampled small, rotated and co-prime to the slab scale: grit, pebbles and cracks over the slabs, the way the grass tile reads at blade scale. No second texture — the terrain program is at the 16-unit ceiling.",
+          "fineTileWorldSize": 640,
+          "fineBlend": 0.35
         },
         "shadePaletteRgb": [
           "#36322b",

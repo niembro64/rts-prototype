@@ -1,8 +1,6 @@
 
 
 
-	4) For normal terrain we have a greenish "grass" color and set of textures and a brownish "rocks" color and set of textures. The grass is nice because it has coarse (wide) texturing as well as fine (small) texturing - however our rock is missing some fine texturing. 
-
 5) Our "dirty" edges of our metal deposits and plateau walls
 
 

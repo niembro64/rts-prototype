@@ -643,6 +643,18 @@ export const TERRAIN_ROCK_TEXTURE_TILE_WORLD_SIZE = readPositiveConfigNumber(
   COLORS.world.terrain.rock.texture.tileWorldSize,
   'colorsConfig.world.terrain.rock.texture.tileWorldSize',
 );
+/** World units one repeat of the rock tile covers when it is resampled as
+ *  FINE grain over the slab-scale sample above. Small on purpose: this is
+ *  the pebble/grit layer the coarse tile cannot reach. */
+export const TERRAIN_ROCK_FINE_TEXTURE_TILE_WORLD_SIZE = readPositiveConfigNumber(
+  COLORS.world.terrain.rock.texture.fineTileWorldSize,
+  'colorsConfig.world.terrain.rock.texture.fineTileWorldSize',
+);
+/** How strongly the fine rock resample overrides the surface, in [0, 1]. */
+export const TERRAIN_ROCK_FINE_DETAIL_CONTRAST = readUnitIntervalConfig(
+  COLORS.world.terrain.rock.texture.fineBlend,
+  'colorsConfig.world.terrain.rock.texture.fineBlend',
+);
 export const TERRAIN_ROCK_TEXTURE_RESOLUTION = readTextureResolutionConfig(
   COLORS.world.terrain.rock.texture.resolution,
   'colorsConfig.world.terrain.rock.texture.resolution',
