@@ -137,6 +137,11 @@ export interface PathfinderApi {
     safeWaterDriveAccel: number,
     staticFrictionCoefficient: number,
     symmetricSlope: boolean,
+    /** True when the caller is CHOOSING a straight segment (direct plan,
+     *  follower corner shortcut): segments walk their cells at the line
+     *  clearance (body + lineClearanceMarginWu). False judges legality of a
+     *  polyline at the exact body gate. */
+    lineMargin: boolean,
   ) => number;
   /** Raw pointer to the waypoint scratch buffer. Build a fresh
    *  Float64Array(memory.buffer, ptr, count * 2) view per call. */

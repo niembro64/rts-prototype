@@ -2519,6 +2519,7 @@ mod sim_kernel_tests {
                 0.0,
                 0.0,
                 false,
+                false,
             ),
             1,
             "the exact snapped route must remain legal",
@@ -2542,6 +2543,7 @@ mod sim_kernel_tests {
                 0.0,
                 0.0,
                 false,
+                false,
             ),
             0,
             "inventing a connector from the snapped endpoint to the click crosses water",
@@ -2564,6 +2566,7 @@ mod sim_kernel_tests {
                 0.0,
                 0.0,
                 false,
+                false,
             ),
             1,
             "an anchor formation segment on legal ground should validate",
@@ -2584,6 +2587,7 @@ mod sim_kernel_tests {
                 0.0,
                 0.0,
                 0.0,
+                false,
                 false,
             ),
             0,
@@ -2655,6 +2659,7 @@ mod sim_kernel_tests {
                 0.0,
                 0.0,
                 0.0,
+                false,
                 false,
             ),
             0,
@@ -3057,6 +3062,162 @@ mod sim_kernel_tests {
         assert!(
             last_y > 200.0,
             "the route must leave the corridor, ended at ({last_x}, {last_y})"
+        );
+    }
+
+    #[test]
+    pub(crate) fn pathfinder_straight_segments_keep_the_body_clear_of_building_corners() {
+        let _guard = lock_tests();
+        terrain_clear();
+        pathfinder_init(1280.0, 1280.0);
+        pathfinder_rebuild_terrain_mask_and_cc(10_011);
+
+        // A wall across the map (rows 30..35, y 600..700) with one 6-cell
+        // (120 wu) gap, approached diagonally so the route must round the
+        // gap's two corners. The cells touching the wall are LEGAL for the
+        // body (radius 9.6 wu: gate 0.98 cells), so the raw A* chain is free
+        // to cut each corner one cell out — 4.5 wu of air — and the string
+        // pull cannot move those raw cells, only refuse shortcuts across
+        // them (line clearance). What keeps the delivered polyline rounded
+        // is the soft clearance penalty (`softClearancePenaltyPerCell`): at
+        // 0.35 the tight diagonal was cheaper than the one-cell-wider one
+        // (measured 4.5 wu of air), at 1.0 the wider one wins (~27 wu).
+        // This pins the rounded corner so a retune cannot silently put
+        // bodies back in contact with the wall.
+        let (gap_gx0, gap_gx1) = (29, 35);
+        let mut cell_gx: Vec<i32> = Vec::new();
+        let mut cell_gy: Vec<i32> = Vec::new();
+        for gx in 0..64 {
+            if gx >= gap_gx0 && gx < gap_gx1 {
+                continue;
+            }
+            for gy in 30..35 {
+                cell_gx.push(gx);
+                cell_gy.push(gy);
+            }
+        }
+        assert_eq!(pathfinder_sync_building_occupancy(&cell_gx, &cell_gy, 11), 1);
+
+        let radius = 9.6;
+        let boxes = [
+            (0.0f64, 600.0f64, gap_gx0 as f64 * 20.0, 700.0f64),
+            (gap_gx1 as f64 * 20.0, 600.0, 1280.0, 700.0),
+        ];
+        let dist_to_wall = |x: f64, y: f64| -> f64 {
+            boxes
+                .iter()
+                .map(|&(bx0, by0, bx1, by1)| {
+                    let dx = (bx0 - x).max(0.0).max(x - bx1);
+                    let dy = (by0 - y).max(0.0).max(y - by1);
+                    (dx * dx + dy * dy).sqrt()
+                })
+                .fold(f64::INFINITY, f64::min)
+        };
+        // Whether the weighted search cuts a corner tight or one cell wide
+        // depends on the approach angle when the penalty is weak, so the
+        // guard is the WORST corner over several approaches, not one.
+        let (tx, ty) = (1140.0, 1040.0);
+        let mut worst_air = f64::INFINITY;
+        let mut worst_start = (0.0, 0.0);
+        for k in 0..8 {
+            let sx = 100.0 + 45.0 * k as f64;
+            let sy = 240.0 - 15.0 * k as f64;
+            let count = pathfinder_find_path_for_tests(
+                sx, sy, tx, ty, 0.0, false, 0.0, true, false, false, true, false, false,
+                radius, 0.0, 0.0, 0.0, 0.0, 0.0, false,
+            );
+            assert!(count >= 2, "the wall must force at least one bend, got {count} waypoint(s)");
+            let waypoints = unsafe {
+                std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (count as usize) * 2)
+            };
+            let mut min_d = f64::INFINITY;
+            let mut px = sx;
+            let mut py = sy;
+            let mut crossed = false;
+            for i in 0..count as usize {
+                let x = waypoints[i * 2];
+                let y = waypoints[i * 2 + 1];
+                let steps = (((x - px).hypot(y - py)) / 2.0).ceil().max(1.0) as i32;
+                for step in 0..=steps {
+                    let t = step as f64 / steps as f64;
+                    let d = dist_to_wall(px + (x - px) * t, py + (y - py) * t);
+                    if d < min_d {
+                        min_d = d;
+                    }
+                }
+                if y > 700.0 {
+                    crossed = true;
+                }
+                px = x;
+                py = y;
+            }
+            assert!(crossed, "route from ({sx}, {sy}) must pass through the gap");
+            assert!(
+                (waypoints[(count as usize - 1) * 2] - tx).abs() < 1.0
+                    && (waypoints[(count as usize - 1) * 2 + 1] - ty).abs() < 1.0,
+                "route from ({sx}, {sy}) must reach the goal"
+            );
+            let air = min_d - radius;
+            eprintln!("corner test: start ({sx}, {sy}) {count} waypoints, air {air:.1} wu");
+            if air < worst_air {
+                worst_air = air;
+                worst_start = (sx, sy);
+            }
+        }
+        assert!(
+            worst_air >= 15.0,
+            "the route from {worst_start:?} rounds the gap corners with {worst_air:.1} wu of air beyond the body radius {radius}; a shove of that size puts the body in contact"
+        );
+    }
+
+    #[test]
+    pub(crate) fn pathfinder_line_margin_is_a_choice_rule_not_a_legality_rule() {
+        let _guard = lock_tests();
+        terrain_clear();
+        pathfinder_init(1280.0, 1280.0);
+        pathfinder_rebuild_terrain_mask_and_cc(10_013);
+
+        // A wall (cells y 20..25) and a straight leg running along the row
+        // of cells touching it (cell row 19, centre y = 390). For a body of
+        // radius 9.6 wu the exact gate is 0.98 cells, so that row is legal
+        // and the leg VALIDATES as a polyline; with the line margin the leg
+        // is a straight segment through wall-adjacent cells, so as a CHOICE
+        // (direct plan, corner shortcut) it is refused. Legality must not
+        // borrow the margin: a completed route re-checked from where a
+        // moving unit now stands was thrown away and re-queued forever when
+        // it did.
+        let mut cell_gx: Vec<i32> = Vec::new();
+        let mut cell_gy: Vec<i32> = Vec::new();
+        for gx in 10..50 {
+            for gy in 20..25 {
+                cell_gx.push(gx);
+                cell_gy.push(gy);
+            }
+        }
+        assert_eq!(pathfinder_sync_building_occupancy(&cell_gx, &cell_gy, 13), 1);
+        let radius = 9.6;
+        let leg = [300.0f64, 390.0, 900.0, 390.0];
+        let validate = |line_margin: bool| {
+            pathfinder_validate_path(
+                &leg, 0.0, false, 0.0, true, false, false, true, false, false, radius, 0.0, 0.0,
+                0.0, false, line_margin,
+            )
+        };
+        assert_eq!(validate(false), 1, "the wall-adjacent row is legal at the exact body gate");
+        assert_eq!(
+            validate(true),
+            0,
+            "a chosen straight leg through wall-adjacent cells must be refused at the line clearance"
+        );
+        // Two rows out (centre y = 370) the same leg clears the margin too.
+        let clear = [300.0f64, 370.0, 900.0, 370.0];
+        assert_eq!(
+            pathfinder_validate_path(
+                &clear, 0.0, false, 0.0, true, false, false, true, false, false, radius, 0.0,
+                0.0, 0.0, false, true,
+            ),
+            1,
+            "one cell of air satisfies a half-cell line margin"
         );
     }
 

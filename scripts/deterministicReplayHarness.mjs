@@ -56,7 +56,7 @@ try {
       console.log(
         `  route outcomes: complete ${o.complete}, snapped ${o.snapped}, partial ${o.partial}, ` +
           `unreachable ${o.unreachable} (direct ${o.direct}, hierarchical ${o.hierarchical}), ` +
-          `failures ${o.failures}, give-ups ${o.giveUps}` +
+          `failures ${o.failures}, give-ups ${o.giveUps}, shared-route hits ${o.sharedRouteHits ?? 0}` +
           (byBp.length > 0 ? `, unreachable by blueprint {${byBp}}` : ''),
       );
     }

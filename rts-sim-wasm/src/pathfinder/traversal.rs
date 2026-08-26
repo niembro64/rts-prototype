@@ -246,6 +246,12 @@ pub(crate) fn pathfinder_cached_cell_passable(
     traversal: PathfinderTraversal,
     waypoint_domain: bool,
 ) -> bool {
+    // The move cache was filled at the body gate; a line walk at the wider
+    // line clearance must judge the cell afresh (the transition cache above
+    // it carries the margin bit, so repeats are still cheap).
+    if state.line_margin_active && !waypoint_domain {
+        return pathfinder_is_cell_passable(state, idx, traversal);
+    }
     let cached = if waypoint_domain {
         state.waypoint_passability_cache[idx]
     } else {
@@ -727,8 +733,19 @@ pub(crate) fn pathfinder_escape_step_allowed(
     if traversal.allow_air || state.cur_required_d_sq <= 0.0 {
         return false;
     }
+    // A pocket is measured against the BODY gate even while a line walk
+    // runs at the wider line clearance: a cell that fits the body but sits
+    // inside the margin band is not a pocket to escape from, it is a cell
+    // the chosen straight segment must not hug. The caller falls back to
+    // the planner, whose exact gate + soft clearance still gets the body
+    // out and around.
+    let pocket_gate = if state.line_margin_active {
+        state.cur_body_required_d_sq
+    } else {
+        state.cur_required_d_sq
+    };
     let from_edt = pathfinder_edt_sq_at(state, from_idx, traversal) as f32;
-    if from_edt >= state.cur_required_d_sq {
+    if from_edt >= pocket_gate {
         return false;
     }
     let to_edt = pathfinder_edt_sq_at(state, to_idx, traversal) as f32;
@@ -1127,7 +1144,10 @@ pub(crate) fn pathfinder_line_neighbor_cost(
     }
     let direction = pathfinder_neighbor_direction(to_gx - from_gx, to_gy - from_gy)?;
     let from_idx = (from_gy * state.grid_w + from_gx) as u64;
-    let key = (from_idx << 3) | direction;
+    // Costs evaluated at the line clearance and at the exact body gate are
+    // different answers for the same edge; keep them apart in the cache.
+    let margin_bit: u64 = if state.line_margin_active { 1 } else { 0 };
+    let key = (from_idx << 4) | (margin_bit << 3) | direction;
     if let Some(cached) = state.line_transition_cost_cache.get(&key).copied() {
         state.line_transition_cache_hits = state.line_transition_cache_hits.saturating_add(1);
         return if cached.is_finite() {

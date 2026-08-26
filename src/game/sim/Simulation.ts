@@ -55,6 +55,7 @@ import {
   PATHFINDING_CHASE_REPATH_DRIFT_MIN_WU,
   PATHFINDING_DIRECT_PLAN_MAX_DISTANCE_WU,
   PATHFINDING_INTERMEDIATE_CORRIDOR_WU,
+  PATHFINDING_HIERARCHICAL_CLUSTER_SIZE_CELLS,
   PATHFINDING_PARTIAL_PLAN_RETRY_TICKS,
   PATHFINDING_A_STAR_EXPANSIONS_PER_TICK,
   PATHFINDING_TRAFFIC_HEAT_DECAY_TICKS,
@@ -70,6 +71,7 @@ import {
   type PathPlanSchedulerStats,
 } from './SimulationPathPlanScheduler';
 import { registerPathfinderBuildingOccupancy } from './pathfinderTerrainCache';
+import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import { pathPlanSuffixNearBuildingChange } from './pathPlanBuildingChangeGate';
 import { getAllyTeamId, type AllyTeamId } from './teamRoster';
 import { getUnitLocomotionTraversalCapabilities } from './unitLocomotion';
@@ -231,6 +233,9 @@ type ActivePathPlanJob = {
   symmetricSlope: boolean;
   formationRoute: FormationRouteMetadata | null;
   formationCacheKey: string | null;
+  /** Shared-route cache key (start cluster -> goal cluster for this body
+   *  class); a completed hierarchical route is stored under it. */
+  sharedRouteKey: string | null;
 };
 
 // ── Stuck-detection / replanning ─────────────────────────────────
@@ -297,6 +302,15 @@ export class Simulation {
   private unitActionMovementPlanner: SimulationUnitActionMovementPlanner = new SimulationUnitActionMovementPlanner();
   private forceAccumulator: ForceAccumulator = new ForceAccumulator();
   private readonly formationRouteCache = new Map<string, ExpandedPathPlan>();
+  /** Completed hierarchical routes keyed by (navigation versions, body
+   *  class, start cluster, goal cluster). A later unit of the same class
+   *  leaving the same 320 wu cluster for the same goal cluster adopts the
+   *  route — its own goal replaces the last point and the whole polyline is
+   *  validated from its own position — instead of searching again. A blob
+   *  of a thousand units ordered across the map is a few dozen searches,
+   *  not a thousand. Derived lockstep state: per-Simulation, never
+   *  serialized, identical on every peer. */
+  private readonly sharedRouteCache = new Map<string, ExpandedPathPlan>();
   private readonly pathPlanScheduler: SimulationPathPlanScheduler;
   private readonly activePathPlanJobs = new Map<AllyTeamId, ActivePathPlanJob>();
   private readonly pathQueryOutcomes: PathQueryOutcomeStats = createEmptyPathQueryOutcomeStats();
@@ -1360,6 +1374,23 @@ export class Simulation {
     const navGoal = formationRoute === null
       ? this.resolveNavigationGoal(entity, action)
       : null;
+    let sharedRouteKey: string | null = null;
+    if (!forceLocal && formationRoute === null && unit.activePath === null) {
+      const goalX = navGoal?.x ?? action.x;
+      const goalY = navGoal?.y ?? action.y;
+      sharedRouteKey = this.sharedRouteCacheKey(entity, unit, goalX, goalY, terrainVersion, terrainFilter);
+      const shared = this.sharedRouteCache.get(sharedRouteKey);
+      if (shared !== undefined) {
+        const adopted = this.adoptSharedRoute(entity, unit, shared, goalX, goalY, terrainFilter);
+        if (adopted !== null) {
+          unit.pathRequestLane = PATH_REQUEST_NONE;
+          unit.pathRequestForceLocal = false;
+          this.pathQueryOutcomes.sharedRouteHits += 1;
+          this.installActivePathPlan(entity, unit, action, adopted, terrainVersion);
+          return false;
+        }
+      }
+    }
     this.activePathPlanJobs.set(teamId, {
       entityId,
       lane,
@@ -1378,8 +1409,61 @@ export class Simulation {
       symmetricSlope: this.world.slopePathMode === 'symmetric',
       formationRoute,
       formationCacheKey,
+      sharedRouteKey,
     });
     return true;
+  }
+
+  private sharedRouteCacheKey(
+    entity: Entity,
+    unit: Unit,
+    goalX: number,
+    goalY: number,
+    terrainVersion: number,
+    filter: PathTerrainFilter | null,
+  ): string {
+    const clusterWu = PATHFINDING_HIERARCHICAL_CLUSTER_SIZE_CELLS * BUILD_GRID_CELL_SIZE;
+    return [
+      terrainVersion,
+      this.constructionSystem.getGrid().getVersion(),
+      this.world.slopePathMode,
+      pathTerrainFilterCacheKey(filter),
+      unit.radius.collision,
+      Math.floor(entity.transform.x / clusterWu),
+      Math.floor(entity.transform.y / clusterWu),
+      Math.floor(goalX / clusterWu),
+      Math.floor(goalY / clusterWu),
+    ].join(':');
+  }
+
+  /** Re-aim a cached route at this unit's own goal and prove it from this
+   *  unit's own position; null when any leg fails the unit's clearance. */
+  private adoptSharedRoute(
+    entity: Entity,
+    unit: Unit,
+    shared: ExpandedPathPlan,
+    goalX: number,
+    goalY: number,
+    filter: PathTerrainFilter | null,
+  ): ExpandedPathPlan | null {
+    if (shared.points.length === 0) return null;
+    const points = new Array<UnitPathPoint>(shared.points.length);
+    for (let i = 0; i < shared.points.length - 1; i++) points[i] = shared.points[i];
+    const x = this.clampPathX(goalX);
+    const y = this.clampPathY(goalY);
+    points[points.length - 1] = { x, y, z: this.world.getTerrainBedZ(x, y) };
+    return isPathPlanTraversable(
+      entity.transform.x,
+      entity.transform.y,
+      points,
+      this.world.mapWidth,
+      this.world.mapHeight,
+      filter,
+      unit.radius.collision,
+      this.world.slopePathMode === 'symmetric',
+    )
+      ? { points, resolution: 'complete' }
+      : null;
   }
 
   /** Resume or finish one team's path job. Invalid live intent is free, so the
@@ -1451,6 +1535,14 @@ export class Simulation {
       // a unit that cannot get there stops instead of grinding forever.
       this.recordPathFailure(entity, unit);
       return { status: 'complete', expansionsUsed: result.expansionsUsed };
+    }
+    if (
+      job.sharedRouteKey !== null &&
+      result.plan.resolution === 'complete' &&
+      result.strategy === 'hierarchical'
+    ) {
+      if (this.sharedRouteCache.size > 512) this.sharedRouteCache.clear();
+      this.sharedRouteCache.set(job.sharedRouteKey, result.plan);
     }
     if (job.formationRoute !== null && job.formationCacheKey !== null) {
       if (this.formationRouteCache.size > 256) this.formationRouteCache.clear();
@@ -2998,6 +3090,8 @@ export type PathQueryOutcomeStats = {
   failures: number;
   /** Orders dropped after the give-up count. */
   giveUps: number;
+  /** Routes adopted from the shared cluster-pair cache (no search). */
+  sharedRouteHits: number;
   unreachableByBlueprint: Map<string, number>;
 };
 
@@ -3011,6 +3105,7 @@ function createEmptyPathQueryOutcomeStats(): PathQueryOutcomeStats {
     hierarchical: 0,
     failures: 0,
     giveUps: 0,
+    sharedRouteHits: 0,
     unreachableByBlueprint: new Map(),
   };
 }

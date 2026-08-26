@@ -50,6 +50,17 @@ pub(crate) const PATHFINDER_SEARCH_HIERARCHICAL: u32 = 2;
 /// Terrain-bound unit centers stay out of the outer map guard cells.
 pub(crate) const PATHFINDER_MAP_EDGE_BUFFER_WU: f64 = 40.0;
 const PATHFINDER_SYNC_CONTINUATION_OWNER: u32 = u32::MAX;
+/// Clearance for straight segments: the body gate widened by the authored
+/// line margin. Zero when the query has no clearance gate (air, point size).
+#[inline]
+fn pathfinder_line_required_d_sq_for_state(state: &PathfinderState, unit_radius: f64) -> f32 {
+    let body = pathfinder_query_unit_radius(unit_radius);
+    if body <= 0.0 {
+        return 0.0;
+    }
+    pathfinder_required_d_sq_for_state(state, body + PATHFINDING_LINE_CLEARANCE_MARGIN_WU)
+}
+
 /// A supercover line step (passability + transition cost of one cell) costs
 /// roughly an eighth of a fine A* expansion (heap push/pop plus eight
 /// neighbour evaluations); smoothing work is charged at that ratio.
@@ -72,6 +83,14 @@ pub(crate) const PATHFINDER_TRAFFIC_HEAT_PER_ROUTE: u8 = 48;
 #[derive(Default)]
 pub(crate) struct FineArena {
     corridor: Vec<u32>,
+    /// Per corridor rank: the cell where the abstract route leaves that
+    /// cluster (the goal cell for the last rank), and the octile distance
+    /// from there along the remaining exits to the goal. The fine A* uses
+    /// octile(n, exit[rank]) + rem[rank] as its heuristic, so it follows
+    /// the corridor the hierarchy already chose instead of pulling straight
+    /// at a goal behind a wall and flooding the corridor.
+    corridor_exits: Vec<u32>,
+    corridor_rem: Vec<f32>,
     rank_of_cluster: Vec<u32>,
     g_score: Vec<f32>,
     f_score: Vec<f32>,
@@ -165,6 +184,20 @@ pub(crate) struct PathfinderState {
     /// Squared required centre-to-obstacle distance (cells²) for the body.
     /// 0 for point-size/airborne queries and during start classification.
     cur_required_d_sq: f32,
+    /// Clearance a straight segment (shortcut, direct plan, validation,
+    /// follower corner shortcut) must keep: the body gate plus
+    /// PATHFINDING_LINE_CLEARANCE_MARGIN_WU. The cell-to-cell A* step keeps
+    /// the exact gate so narrow corridors stay legal; only straight lines
+    /// stand off, which is what rounds corners in the delivered polyline.
+    cur_line_required_d_sq: f32,
+    /// True while a line walk is evaluating cells at the line clearance
+    /// (folded into the transition-cost cache key; the per-cell passability
+    /// cache is bypassed while set because it was filled at the body gate).
+    line_margin_active: bool,
+    /// The exact body gate saved while `line_margin_active`: the pocket
+    /// escape rule keeps measuring "in a pocket" against the BODY, so a cell
+    /// that merely sits inside the margin band is refused, not walked along.
+    cur_body_required_d_sq: f32,
     cur_symmetric_slope: bool,
     cur_unit_radius: f64,
     cur_support_point_offset_z: f64,
@@ -373,6 +406,9 @@ impl PathfinderState {
             line_transition_cache_hits: 0,
             line_transition_cache_misses: 0,
             cur_required_d_sq: 0.0,
+            cur_line_required_d_sq: 0.0,
+            line_margin_active: false,
+            cur_body_required_d_sq: 0.0,
             cur_symmetric_slope: false,
             cur_unit_radius: 0.0,
             cur_support_point_offset_z: 0.0,
@@ -1058,6 +1094,7 @@ pub fn pathfinder_bake_traversability_grid(
     } else {
         pathfinder_required_d_sq_for_state(state, unit_radius)
     };
+    state.cur_line_required_d_sq = state.cur_required_d_sq;
     state.cur_unit_radius = pathfinder_query_unit_radius(unit_radius);
     state.cur_support_point_offset_z = pathfinder_query_unit_radius(support_point_offset_z);
     for idx in 0..state.n {
@@ -1180,7 +1217,12 @@ fn fine_cell_of_local(state: &PathfinderState, arena: &FineArena, local: u32) ->
     (gy * state.grid_w + gx) as u32
 }
 
-fn fine_arena_prepare(state: &PathfinderState, arena: &mut FineArena, corridor: &[u32]) {
+fn fine_arena_prepare(
+    state: &PathfinderState,
+    arena: &mut FineArena,
+    corridor: &[u32],
+    exits: &[u32],
+) {
     let c = hpa_cluster_size();
     let cluster_count = state.hpa_cluster_change_stamp.len();
     if arena.rank_of_cluster.len() != cluster_count {
@@ -1197,6 +1239,28 @@ fn fine_arena_prepare(state: &PathfinderState, arena: &mut FineArena, corridor: 
     arena.corridor.extend_from_slice(corridor);
     for (rank, &cl) in arena.corridor.iter().enumerate() {
         arena.rank_of_cluster[cl as usize] = rank as u32;
+    }
+    arena.corridor_exits.clear();
+    arena.corridor_exits.extend_from_slice(exits);
+    // Pad or trim so every rank has an exit (the last exit is the goal). An
+    // empty exit list (callers without an abstract route) leaves the plain
+    // goal-distance heuristic in force.
+    if !arena.corridor_exits.is_empty() {
+        while arena.corridor_exits.len() < arena.corridor.len() {
+            let last = *arena.corridor_exits.last().unwrap_or(&0);
+            arena.corridor_exits.push(last);
+        }
+        arena.corridor_exits.truncate(arena.corridor.len());
+    }
+    let grid_w = state.grid_w;
+    let n = arena.corridor_exits.len();
+    arena.corridor_rem.clear();
+    arena.corridor_rem.resize(n, 0.0);
+    for i in (0..n.saturating_sub(1)).rev() {
+        let a = arena.corridor_exits[i] as i32;
+        let b = arena.corridor_exits[i + 1] as i32;
+        arena.corridor_rem[i] = arena.corridor_rem[i + 1]
+            + pathfinder_octile(a % grid_w, a / grid_w, b % grid_w, b / grid_w);
     }
     let slots = arena.corridor.len() * (c * c) as usize;
     arena.g_score.clear();
@@ -1316,10 +1380,30 @@ fn pathfinder_reconstruct_a_star_path(
 /// Advance one corridor-restricted fine A* by at most `expansion_budget`
 /// closed nodes. Repeating the exact same query resumes the retained
 /// frontier; a changed key starts fresh over the supplied corridor.
+/// Corridor-guided heuristic for a cell in the fine arena: distance to its
+/// cluster's exit plus the remaining exit chain to the goal, weighted.
+#[inline]
+fn fine_guided_heuristic(state: &PathfinderState, arena: &FineArena, gx: i32, gy: i32, ggx: i32, ggy: i32) -> f32 {
+    let c = hpa_cluster_size();
+    let clusters_w = (state.grid_w + c - 1) / c;
+    let cluster = ((gy / c) * clusters_w + (gx / c)) as usize;
+    let rank = arena.rank_of_cluster.get(cluster).copied().unwrap_or(u32::MAX);
+    let guided = if (rank as usize) < arena.corridor_exits.len() {
+        let exit = arena.corridor_exits[rank as usize] as i32;
+        let grid_w = state.grid_w;
+        pathfinder_octile(gx, gy, exit % grid_w, exit / grid_w) + arena.corridor_rem[rank as usize]
+    } else {
+        pathfinder_octile(gx, gy, ggx, ggy)
+    };
+    // Never below the plain goal distance: the exit chain can only add.
+    guided.max(pathfinder_octile(gx, gy, ggx, ggy)) * PATHFINDING_CORRIDOR_HEURISTIC_WEIGHT
+}
+
 fn pathfinder_a_star_slice(
     state: &mut PathfinderState,
     key: FineAStarKey,
     corridor: &[u32],
+    exits: &[u32],
     traversal: PathfinderTraversal,
     cost_profile: PathfinderCostProfile,
     expansion_budget: u32,
@@ -1330,7 +1414,7 @@ fn pathfinder_a_star_slice(
     let mut pending = match arena.pending.take() {
         Some(pending) if pending.key == key => pending,
         _ => {
-            fine_arena_prepare(state, &mut arena, corridor);
+            fine_arena_prepare(state, &mut arena, corridor, exits);
             state.path_scratch.clear();
             let start_local = fine_local_of_cell(state, &arena, key.start_cell);
             let goal_local = fine_local_of_cell(state, &arena, key.goal_cell);
@@ -1348,7 +1432,7 @@ fn pathfinder_a_star_slice(
             let ggx = (key.goal_cell as i32) % grid_w;
             let ggy = (key.goal_cell as i32) / grid_w;
             arena.f_score[start_local as usize] =
-                pathfinder_octile(sgx, sgy, ggx, ggy) * PATHFINDING_CORRIDOR_HEURISTIC_WEIGHT;
+                fine_guided_heuristic(state, &arena, sgx, sgy, ggx, ggy);
             fine_heap_push(&mut arena, start_local);
             let dx = i64::from(sgx) - i64::from(ggx);
             let dy = i64::from(sgy) - i64::from(ggy);
@@ -1412,8 +1496,8 @@ fn pathfinder_a_star_slice(
                 // refinement trades a few percent of route cost for far fewer
                 // expansions on sloped/heated terrain where octile alone is a
                 // weak bound.
-                arena.f_score[nlocal as usize] = tentative
-                    + pathfinder_octile(nx, ny, ggx, ggy) * PATHFINDING_CORRIDOR_HEURISTIC_WEIGHT;
+                arena.f_score[nlocal as usize] =
+                    tentative + fine_guided_heuristic(state, &arena, nx, ny, ggx, ggy);
                 let dx = i64::from(nx) - i64::from(ggx);
                 let dy = i64::from(ny) - i64::from(ggy);
                 let d2 = dx * dx + dy * dy;
@@ -1464,6 +1548,40 @@ pub(crate) fn pathfinder_set_escape_start(
 /// Trace the supercover Bresenham segment used by validation and smoothing;
 /// `None` means the segment is illegal.
 pub(crate) fn pathfinder_line_cost(
+    state: &mut PathfinderState,
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
+    traversal: PathfinderTraversal,
+    cost_profile: PathfinderCostProfile,
+) -> Option<f32> {
+    // A straight segment two or more cells long is a shortcut, a direct
+    // plan, a validation leg or a follower corner cut: it walks its cells at
+    // the line clearance (body gate + margin) so the body keeps air around
+    // corners it will actually cut. Adjacent-cell steps keep the exact gate.
+    let cell_size = state.cell_size;
+    let span = ((x1 / cell_size).floor() - (x0 / cell_size).floor())
+        .abs()
+        .max(((y1 / cell_size).floor() - (y0 / cell_size).floor()).abs());
+    let widen = span >= 2.0
+        && !traversal.allow_air
+        && state.cur_line_required_d_sq > state.cur_required_d_sq;
+    if !widen {
+        return pathfinder_line_cost_inner(state, x0, y0, x1, y1, traversal, cost_profile);
+    }
+    let exact = state.cur_required_d_sq;
+    state.cur_body_required_d_sq = exact;
+    state.cur_required_d_sq = state.cur_line_required_d_sq;
+    state.line_margin_active = true;
+    let cost = pathfinder_line_cost_inner(state, x0, y0, x1, y1, traversal, cost_profile);
+    state.cur_required_d_sq = exact;
+    state.line_margin_active = false;
+    cost
+}
+
+#[allow(clippy::too_many_arguments)]
+fn pathfinder_line_cost_inner(
     state: &mut PathfinderState,
     x0: f64,
     y0: f64,
@@ -1718,12 +1836,18 @@ fn pathfinder_find_path_with_expansion_budget_inner(
     // ignoring the clearance gate and ignoring a building footprint that
     // went up under it (escape start). Anything else is terminal.
     state.cur_required_d_sq = 0.0;
+    state.cur_line_required_d_sq = 0.0;
     if !pathfinder_position_is_in_navigation_domain(state, start_x, start_y, traversal)
         || !pathfinder_is_cell_passable_ignoring_buildings(state, start_idx, traversal)
     {
         return pathfinder_finish_unreachable(state, start_x, start_y);
     }
     state.cur_required_d_sq = required_d_sq;
+    state.cur_line_required_d_sq = if required_d_sq > 0.0 {
+        pathfinder_line_required_d_sq_for_state(state, unit_radius)
+    } else {
+        0.0
+    };
     pathfinder_set_escape_start(state, start_idx, traversal);
 
     // Goals must fit the physical collision disk and lie in the waypoint
@@ -1803,8 +1927,8 @@ fn pathfinder_find_path_with_expansion_budget_inner(
         .fine_arena
         .pending
         .is_some_and(|pending| pending.key == fine_key);
-    let corridor: Vec<u32> = if resuming {
-        state.fine_arena.corridor.clone()
+    let (corridor, corridor_exits): (Vec<u32>, Vec<u32>) = if resuming {
+        (state.fine_arena.corridor.clone(), state.fine_arena.corridor_exits.clone())
     } else {
         let class_idx = hpa_class_index(state, class);
         let goal_cell = (goal_cell_gy * grid_w + goal_cell_gx) as u32;
@@ -1861,7 +1985,7 @@ fn pathfinder_find_path_with_expansion_budget_inner(
             }
         }
         match outcome {
-            HpaSearchOutcome::Reached { corridor } => corridor,
+            HpaSearchOutcome::Reached { corridor, exits } => (corridor, exits),
             HpaSearchOutcome::Budget => {
                 state.last_hpa_work = state.hpa_work;
                 state.last_fine_expanded_nodes_this_slice = state.hpa_work;
@@ -1883,6 +2007,7 @@ fn pathfinder_find_path_with_expansion_budget_inner(
         state,
         fine_key,
         &corridor,
+        &corridor_exits,
         traversal,
         cost_profile,
         remaining_budget,
@@ -2320,6 +2445,7 @@ pub fn pathfinder_validate_path(
     safe_water_drive_accel: f64,
     static_friction_coefficient: f64,
     symmetric_slope: bool,
+    line_margin: bool,
 ) -> u32 {
     if points.len() < 4 || points.len() % 2 != 0 {
         return 0;
@@ -2370,6 +2496,14 @@ pub fn pathfinder_validate_path(
         0.0
     } else {
         pathfinder_required_d_sq_for_state(state, unit_radius)
+    };
+    // Legality (a delivered or adopted polyline still connects) is judged at
+    // the exact body gate; only a caller CHOOSING a straight segment — a
+    // direct plan, the follower's corner shortcut — asks for the line margin.
+    state.cur_line_required_d_sq = if line_margin && !traversal.allow_air {
+        pathfinder_line_required_d_sq_for_state(state, unit_radius)
+    } else {
+        0.0
     };
     pathfinder_set_escape_start(state, start_idx, traversal);
     let last_x = points[points.len() - 2];

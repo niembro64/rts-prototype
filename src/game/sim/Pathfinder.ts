@@ -470,6 +470,7 @@ function validatePathScratch(
   terrainFilter: PathTerrainFilter | null,
   unitRadius: number,
   symmetricSlope: boolean,
+  lineMargin: boolean,
 ): boolean {
   const sim = getSimWasm()!;
   const traversal = resolvePathfinderTraversalInput(terrainFilter);
@@ -489,6 +490,7 @@ function validatePathScratch(
     traversal.safeWaterDriveAccel,
     traversal.staticFrictionCoefficient,
     symmetricSlope,
+    lineMargin,
   ) === 1;
 }
 
@@ -507,7 +509,9 @@ export function isPathSegmentTraversable(
   _pathValidationScratch[1] = startY;
   _pathValidationScratch[2] = point.x;
   _pathValidationScratch[3] = point.y;
-  return validatePathScratch(4, terrainFilter, unitRadius, symmetricSlope);
+  // A single straight segment is a CHOICE (direct plan, corner shortcut):
+  // it must keep the line clearance, so the body rounds corners with air.
+  return validatePathScratch(4, terrainFilter, unitRadius, symmetricSlope, true);
 }
 
 /** Validate a translated/shared polyline through the authoritative WASM
@@ -566,7 +570,10 @@ export function isPathPlanSuffixTraversable(
     _pathValidationScratch[(i + 1) * 2] = point.x;
     _pathValidationScratch[(i + 1) * 2 + 1] = point.y;
   }
-  return validatePathScratch(requiredLength, terrainFilter, unitRadius, symmetricSlope);
+  // Legality of a whole polyline (adopted, translated, or a completed route
+  // re-checked from where the unit moved to): the exact body gate, so a
+  // route that was legal when computed is not thrown away for lacking air.
+  return validatePathScratch(requiredLength, terrainFilter, unitRadius, symmetricSlope, false);
 }
 
 export type MultiLegWaypoint = {
