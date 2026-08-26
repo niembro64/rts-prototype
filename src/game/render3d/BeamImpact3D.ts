@@ -56,9 +56,10 @@ export type DamageImpactRequest = {
   z: number;
   /** Exact authoritative damage/splash sphere radius. */
   damageRadius: number;
-  /** Damage the detonation deals (blueprint truth). Drives the one-shot
-   *  particle COUNT; when absent the count falls back to a radius-derived
-   *  estimate. Particle SPEED rides `damageRadius` either way. */
+  /** Damage the detonation deals (blueprint truth). Damage and radius jointly
+   *  drive one-shot chunk count, flash size, and chunk lifetime; when damage
+   *  is absent those presentation values use radius alone. Particle SPEED
+   *  rides `damageRadius` either way. */
   damage?: number;
   /** Incoming shot direction or momentum in simulation XYZ coordinates. */
   incomingX?: number;
@@ -82,11 +83,16 @@ export type DamageImpactRequest = {
 const IMPACT_CELL_SIZE = 4;
 const IMPACT_SITE_CAP = 2048;
 const IMPACT_SITE_TAIL_SEC = 0.45;
-const EJECTA_CAP = 4096;
-const MAX_EJECTA_BIRTHS_PER_UPDATE = 96;
+const EJECTA_CAP = 8192;
+const MAX_EJECTA_BIRTHS_PER_UPDATE = 312;
 const MAX_EJECTA_BIRTHS_PER_SECOND = 2600;
 const MAX_QUEUED_DAMAGE_IMPACTS = 512;
 const TERRAIN_ENDPOINT_TOLERANCE = 4;
+const SMALL_EXPLOSION_DAMAGE_CEILING = 200;
+const LARGE_EXPLOSION_RADIUS_THRESHOLD = 40;
+const LARGE_EXPLOSION_RADIUS_GROUP_INTERVAL = 18;
+const MAX_DAMAGE_IMPACT_FLASH_RADIUS = 240;
+const MAX_BEAM_ENDPOINT_FLASH_RADIUS = 160;
 const EJECTA_SIZE_SCALE = [0.55, 1, 1.55] as const;
 const EJECTA_SPEED_SCALE = [1.55, 1, 0.62] as const;
 type EjectaChunkClass = 0 | 1 | 2;
@@ -159,9 +165,11 @@ export function explosionChunkPatternForDetail(
   }
 }
 
-/** Converts authored explosion strength into N complete 1:3:9 groups. This
- *  preserves the former damage/radius-driven density curve, quantized into
- *  whole groups so every LOD can collapse without fractional bands. */
+/** Converts authored explosion strength into N complete 1:3:9 groups. The
+ *  small-damage curve is intentionally unchanged through 200 damage. Above
+ *  that baseline, damage adds groups logarithmically while radius adds groups
+ *  linearly, so either a powerful compact charge or a physically broad blast
+ *  reads larger and the two authored dimensions reinforce one another. */
 export function explosionBaseChunkGroupCount(
   damageRadius: number,
   damage?: number,
@@ -169,14 +177,73 @@ export function explosionBaseChunkGroupCount(
   const finiteDamageRadius = Number.isFinite(damageRadius)
     ? Math.max(0, damageRadius)
     : 0;
-  const highDetailChunkBudget =
-    damage !== undefined && Number.isFinite(damage) && damage > 0
-      ? 4 + damage * 0.15
-      : 5 + Math.sqrt(finiteDamageRadius) * 2.4;
+  const finiteDamage = damage !== undefined && Number.isFinite(damage) && damage > 0
+    ? damage
+    : undefined;
+  const smallMagnitudeChunkBudget = finiteDamage !== undefined
+    ? 4 + Math.min(finiteDamage, SMALL_EXPLOSION_DAMAGE_CEILING) * 0.15
+    : 5 + Math.sqrt(finiteDamageRadius) * 2.4;
+  const smallMagnitudeGroups = Math.max(
+    1,
+    Math.floor(smallMagnitudeChunkBudget / EXPLOSION_PATTERN_HIGH.length),
+  );
+  const largeDamageGroups = finiteDamage !== undefined
+    ? Math.floor(Math.max(
+      0,
+      Math.log2(finiteDamage / SMALL_EXPLOSION_DAMAGE_CEILING) * 2,
+    ))
+    : 0;
+  const largeRadiusGroups = Math.floor(
+    Math.max(0, finiteDamageRadius - LARGE_EXPLOSION_RADIUS_THRESHOLD) /
+      LARGE_EXPLOSION_RADIUS_GROUP_INTERVAL,
+  );
   return Math.min(
     MAX_EXPLOSION_BASE_GROUPS,
-    Math.max(1, Math.floor(highDetailChunkBudget / EXPLOSION_PATTERN_HIGH.length)),
+    smallMagnitudeGroups + largeDamageGroups + largeRadiusGroups,
   );
+}
+
+/** Radius of a one-shot impact flash. Small flashes are deliberately more
+ *  visible than before; complete magnitude groups then add a bounded boost so
+ *  high-damage compact blasts still distinguish themselves from pinpricks. */
+export function explosionFlashRadius(
+  damageRadius: number,
+  damage?: number,
+): number {
+  const finiteDamageRadius = Number.isFinite(damageRadius)
+    ? Math.max(0, damageRadius)
+    : 0;
+  const groupCount = explosionBaseChunkGroupCount(finiteDamageRadius, damage);
+  const magnitudeScale = 1 + Math.min(0.35, Math.max(0, groupCount - 1) * 0.025);
+  return Math.min(
+    MAX_DAMAGE_IMPACT_FLASH_RADIUS,
+    Math.max(2.5, finiteDamageRadius * 0.72 * magnitudeScale),
+  );
+}
+
+/** Beam endpoints do not carry one-shot damage, so their persistent flash is
+ *  sized from both the visible line and its real damage sphere. */
+export function beamEndpointFlashRadius(
+  lineRadius: number,
+  damageSphereRadius: number,
+): number {
+  const finiteLineRadius = Number.isFinite(lineRadius) ? Math.max(0, lineRadius) : 0;
+  const finiteDamageRadius = Number.isFinite(damageSphereRadius)
+    ? Math.max(0, damageSphereRadius)
+    : 0;
+  return Math.min(
+    MAX_BEAM_ENDPOINT_FLASH_RADIUS,
+    Math.max(3, finiteLineRadius * 2.4, finiteDamageRadius * 0.72),
+  );
+}
+
+/** Larger one-shot blasts keep their hot material aloft longer without ever
+ *  exceeding 2.5x the established small-explosion lifetime. */
+export function explosionChunkLifetimeScale(groupCount: number): number {
+  const finiteGroupCount = Number.isFinite(groupCount)
+    ? Math.max(1, Math.floor(groupCount))
+    : 1;
+  return 1 + Math.min(1.5, (finiteGroupCount - 1) * 0.08);
 }
 const ENDPOINT_EJECTA_FORWARD_SPEED = 0.85 * 3;
 const ENDPOINT_EJECTA_RANDOM_SPREAD = 0.65;
@@ -197,7 +264,7 @@ const SITE_VERTEX_SHADER = /* glsl */`
     float projectedDiameter =
       aRadius * 2.0 * projectionMatrix[1][1] * uViewportHeight * 0.5 /
       max(1.0, -mv.z);
-    gl_PointSize = clamp(projectedDiameter * (0.82 + 0.18 * aHeat), 2.0, 196.0);
+    gl_PointSize = clamp(projectedDiameter * (0.82 + 0.18 * aHeat), 2.0, 384.0);
     vHeat = aHeat;
     vKind = aKind;
     vSeed = aSeed;
@@ -652,7 +719,10 @@ export class DamageImpact3D {
       const visual = projectile.config.shotProfile.visual;
       this.recordSiteRadii(
         site,
-        Math.min(56, Math.max(visual.lineRadius * 1.4, visual.lineDamageSphereRadius * 0.42)),
+        beamEndpointFlashRadius(
+          visual.lineRadius,
+          visual.lineDamageSphereRadius,
+        ),
         visual.lineDamageSphereRadius,
       );
       const shot = projectile.config.shot;
@@ -693,6 +763,10 @@ export class DamageImpact3D {
       const impact = pending[i];
       if (!this.scope.inScope(impact.x, impact.y, 200)) continue;
       const damageRadius = Math.max(0.01, impact.damageRadius);
+      const requestedGroups = explosionBaseChunkGroupCount(
+        damageRadius,
+        impact.damage,
+      );
       const terrainZ = this.environment.getTerrainZ(impact.x, impact.y);
       const kind = impact.surface ?? classifyDamageImpactSurface(
         impact.z,
@@ -760,7 +834,7 @@ export class DamageImpact3D {
       this.writeSurfaceNormal(site);
       this.recordSiteRadii(
         site,
-        Math.min(56, Math.max(1.5, damageRadius * 0.42)),
+        explosionFlashRadius(damageRadius, impact.damage),
         damageRadius,
       );
       const energy = Math.max(
@@ -791,14 +865,10 @@ export class DamageImpact3D {
       const chunkPattern = explosionChunkPatternForDetail(
         impact.detailLevel ?? DETAIL_LEVEL_FULL,
       );
-      // N remains proportional to the DAMAGE the blast deals, not its size —
-      // a commander's farewell throws more matter than a scout's. The radius
-      // fallback covers beam/ray and legacy events without authored damage.
-      // Quantizing to complete groups guarantees exact 1:3:9 collapse ratios.
-      const requestedGroups = explosionBaseChunkGroupCount(
-        damageRadius,
-        impact.damage,
-      );
+      // Damage and physical radius reinforce one another above the unchanged
+      // small-blast baseline. Quantizing to complete groups guarantees exact
+      // 1:3:9 collapse ratios at every LOD.
+      const lifetimeScale = explosionChunkLifetimeScale(requestedGroups);
       const availableBirths = Math.max(
         0,
         MAX_EJECTA_BIRTHS_PER_UPDATE - this.particleBirthsThisUpdate,
@@ -810,7 +880,12 @@ export class DamageImpact3D {
       for (let group = 0; group < birthGroups; group++) {
         for (let chunk = 0; chunk < chunkPattern.length; chunk++) {
           const spec = chunkPattern[chunk];
-          this.spawnParticle(site, spec.motionClass, spec.renderSizeClass);
+          this.spawnParticle(
+            site,
+            spec.motionClass,
+            spec.renderSizeClass,
+            lifetimeScale,
+          );
         }
       }
       this.particleBirthsThisUpdate += birthCount;
@@ -938,6 +1013,7 @@ export class DamageImpact3D {
     site: ImpactSite,
     authoredMotionClass?: EjectaChunkClass,
     authoredRenderSizeClass?: EjectaChunkClass,
+    lifetimeScale: number = 1,
   ): void {
     const slot = this.particleCursor;
     this.particleCursor = (this.particleCursor + 1) % EJECTA_CAP;
@@ -1042,9 +1118,10 @@ export class DamageImpact3D {
     this.particleMotion[m + 2] = vy;
     this.particleMotion[m + 3] = site.kind === 'water' ? 18 : -150;
     this.particleBirthLifeKindSeed[m] = this.timeSec;
-    this.particleBirthLifeKindSeed[m + 1] = site.kind === 'water'
+    const baseLifetime = site.kind === 'water'
       ? 0.75 + r1 * 0.6
       : 0.48 + r1 * 0.5;
+    this.particleBirthLifeKindSeed[m + 1] = baseLifetime * lifetimeScale;
     this.particleBirthLifeKindSeed[m + 2] = kindNumber(site.kind);
     this.particleBirthLifeKindSeed[m + 3] = r2;
     const baseChunkSize = site.kind === 'water'

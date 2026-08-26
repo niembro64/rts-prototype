@@ -1985,6 +1985,26 @@
         makes a detonation disappear.
       </p>
       <p>
+        <strong>Explosion magnitude comes from both damage and radius.</strong>
+        The smallest detonation keeps one complete material group: at HIGH that
+        is one large-slow, three medium, and nine small-fast hot tetrahedra.
+        Damage through the small-blast baseline keeps the established group
+        curve; beyond it, increasing damage adds complete groups on a bounded
+        logarithmic curve and increasing physical blast radius adds complete
+        groups on a bounded linear curve. The two authored dimensions reinforce
+        one another rather than one replacing the other. Every added group uses
+        the same HIGH/MED/LOW structural collapse, so distance changes geometry
+        density but never changes the explosion&rsquo;s authored magnitude order.
+        Larger groups also retain hot material for longer, capped at 2.5 times
+        the small-blast lifetime. The flash is sized from the real damage sphere
+        and receives a bounded magnitude boost; continuous beam endpoints use
+        both their line width and damage sphere so their flash remains legible.
+        These presentation effects remain pooled and bounded: one update may
+        author at most 24 complete HIGH groups (312 tetrahedra) into an
+        8,192-slot ring, so a colossal blast can look colossal without turning
+        authored combat density into unbounded allocation or per-frame work.
+      </p>
+      <p>
         AUTO&rsquo;s choice is a pure function of projected size: the same entity
         at the same distance in the same camera always resolves to the same
         level, with no latch, no per-entity memory and no hysteresis band. An

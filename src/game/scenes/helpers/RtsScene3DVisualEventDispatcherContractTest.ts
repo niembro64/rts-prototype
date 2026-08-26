@@ -6,10 +6,13 @@ import {
 } from '@/clientBarConfig';
 import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
 import {
+  beamEndpointFlashRadius,
   DamageImpact3D,
   type DamageImpactRequest,
   explosionBaseChunkGroupCount,
+  explosionChunkLifetimeScale,
   explosionChunkPatternForDetail,
+  explosionFlashRadius,
 } from '../../render3d/BeamImpact3D';
 import {
   DETAIL_LEVEL_FULL,
@@ -49,11 +52,17 @@ function chunkClassCount(
 
 type ExplosionLodProbe = {
   birthCount: number;
+  firstLifetime: number;
+  flashRadius: number;
   firstBandMotion: Float32Array;
   firstBandScale: readonly [number, number, number];
 };
 
-function probeExplosionLod(detailLevel: number): ExplosionLodProbe {
+function probeExplosionLod(
+  detailLevel: number,
+  damageRadius: number = 18,
+  damage: number = 60,
+): ExplosionLodProbe {
   const parent = new THREE.Group();
   const renderer = new DamageImpact3D(
     parent,
@@ -63,6 +72,8 @@ function probeExplosionLod(detailLevel: number): ExplosionLodProbe {
   const internals = renderer as unknown as {
     particleMesh: THREE.InstancedMesh;
     particleMotion: Float32Array;
+    particleBirthLifeKindSeed: Float32Array;
+    siteRadius: Float32Array;
     spawnSerial: number;
   };
   try {
@@ -70,8 +81,8 @@ function probeExplosionLod(detailLevel: number): ExplosionLodProbe {
       x: 24,
       y: 24,
       z: 20,
-      damageRadius: 18,
-      damage: 60,
+      damageRadius,
+      damage,
       surface: 'blast',
       detailLevel,
     });
@@ -88,6 +99,8 @@ function probeExplosionLod(detailLevel: number): ExplosionLodProbe {
     }
     return {
       birthCount: internals.spawnSerial,
+      firstLifetime: internals.particleBirthLifeKindSeed[1],
+      flashRadius: internals.siteRadius[0],
       firstBandMotion: internals.particleMotion.slice(0, 12),
       firstBandScale,
     };
@@ -182,20 +195,44 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
   assertContract(
     explosionBaseChunkGroupCount(18, 60) === 1 &&
       explosionBaseChunkGroupCount(18, 200) === 2 &&
-      explosionBaseChunkGroupCount(18, 10000) === 7,
-    'explosion damage must deterministically floor and cap the base N group count',
+      explosionBaseChunkGroupCount(18, 10000) === 13 &&
+      explosionBaseChunkGroupCount(190, 9000) === 20 &&
+      explosionBaseChunkGroupCount(240, 420) === 15 &&
+      explosionBaseChunkGroupCount(1_000_000, 1_000_000_000) === 24,
+    'explosion damage and radius must jointly grow and cap the base N group count',
+  );
+  assertContract(
+    Math.abs(explosionFlashRadius(18, 60) - 12.96) < 1e-6 &&
+      explosionFlashRadius(190, 9000) > 184 &&
+      explosionFlashRadius(1_000_000, 1_000_000_000) === 240 &&
+      Math.abs(beamEndpointFlashRadius(2, 24) - 17.28) < 1e-6 &&
+      beamEndpointFlashRadius(1_000, 1_000) === 160,
+    'explosion and beam endpoint flashes must scale visibly from their authored radii',
+  );
+  assertContract(
+    explosionChunkLifetimeScale(1) === 1 &&
+      explosionChunkLifetimeScale(20) === 2.5 &&
+      explosionChunkLifetimeScale(1_000) === 2.5,
+    'large explosion chunk lifetimes must grow from the small baseline to a hard 2.5x cap',
   );
 
   const highProbe = probeExplosionLod(DETAIL_LEVEL_FULL);
   const mediumProbe = probeExplosionLod(detailLevelForRung(DETAIL_RUNG_MID));
   const lowProbe = probeExplosionLod(detailLevelForRung(DETAIL_RUNG_FAR));
   const minimumProbe = probeExplosionLod(DETAIL_LEVEL_GLYPH);
+  const largeProbe = probeExplosionLod(DETAIL_LEVEL_FULL, 190, 9000);
   assertContract(
     highProbe.birthCount === 13 &&
       mediumProbe.birthCount === 7 &&
       lowProbe.birthCount === 3 &&
       minimumProbe.birthCount === 3,
     'the renderer must emit the exact HIGH/MED/LOW/MIN chunk totals for N=1',
+  );
+  assertContract(
+    largeProbe.birthCount === 260 &&
+      largeProbe.firstLifetime > highProbe.firstLifetime * 2.49 &&
+      largeProbe.flashRadius > highProbe.flashRadius * 14,
+    'a large powerful blast must render many more, longer-lived chunks and a much larger flash',
   );
   for (let i = 0; i < highProbe.firstBandMotion.length; i++) {
     assertContract(
