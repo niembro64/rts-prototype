@@ -396,8 +396,7 @@ export function spawnBackgroundUnitsStandalone(
     // chance. Land bodies drop into the same center disk with no terrain,
     // path, or factory-roster suitability checks; a water-required hull's
     // sample and patrol mirror are projected outward onto standable water
-    // (the map's water ring), and a hull with no such water is not spawned
-    // at all — on lava the water roster is off entirely.
+    // (the map's water ring) — on lava the water roster is off entirely.
     const centerRadius = DEMO_CONFIG.centerSpawnRadius * oval.minDim;
     const coverageBlueprintIds = openingWaveCoverageBlueprintIds(
       initialWaveAllowedUnitBlueprintIds,
@@ -441,6 +440,10 @@ export function spawnBackgroundUnitsStandalone(
         let targetX = cx - (spawn.x - cx);
         let targetY = cy - (spawn.y - cy);
         if (getUnitBlueprint(unitBlueprintId).requiresWater) {
+          // Project the sample and its mirror outward onto water. A ray that
+          // finds no water at all (only possible when the installed terrain
+          // does not match this world, e.g. a bare test world) keeps the
+          // centre sample: the roster guarantee outranks the medium here.
           const sample = sampleMapOvalAt(oval, spawn.x, spawn.y);
           const waterSpawn = firstStandableWaterPointOutward(
             world, oval, sample.angle, sample.distance, unitBlueprintId,
@@ -448,10 +451,15 @@ export function spawnBackgroundUnitsStandalone(
           const waterTarget = firstStandableWaterPointOutward(
             world, oval, sample.angle + Math.PI, sample.distance, unitBlueprintId,
           );
-          if (waterSpawn === null || waterTarget === null) continue;
-          spawn = waterSpawn;
-          targetX = waterTarget.x;
-          targetY = waterTarget.y;
+          if (waterSpawn !== null) spawn = waterSpawn;
+          if (waterTarget !== null) {
+            targetX = waterTarget.x;
+            targetY = waterTarget.y;
+          } else if (waterSpawn !== null) {
+            // Patrol in place rather than toward land.
+            targetX = waterSpawn.x;
+            targetY = waterSpawn.y;
+          }
         }
         const initialZ = world.getGroundZ(spawn.x, spawn.y) +
           DEMO_CONFIG.initialUnitSpawnHeightAboveSurface;
