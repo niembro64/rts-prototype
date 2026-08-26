@@ -1736,6 +1736,20 @@ export function runCommandExecutionContractTest(): void {
     queueWorld.slowDownAtFinalWaypoint === true,
     'scheduled final-waypoint slowdown setting must update world truth',
   );
+  const defaultPathfindingConsidersUnits = queueWorld.pathfindingConsidersUnits;
+  assertContract(
+    defaultPathfindingConsidersUnits === false,
+    'unit-aware pathfinding must default off',
+  );
+  executeCommand(queueCtx, {
+    type: 'setPathfindingConsidersUnits',
+    tick: 0,
+    enabled: true,
+  });
+  assertContract(
+    queueWorld.pathfindingConsidersUnits === true,
+    'scheduled unit-aware pathfinding setting must update world truth',
+  );
   assertContract(
     shouldBypassFinalWaypointSlowdown(false, false, true, false),
     'the off default must bypass braking at the final point of the final action',

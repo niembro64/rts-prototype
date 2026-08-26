@@ -1679,6 +1679,7 @@ const displayServerIp = computed(
   () => serverMetaFromSnapshot.value?.server.ip ?? '',
 );
 const slowDownAtFinalWaypointStoreVersion = ref(0);
+const pathfindingConsidersUnitsStoreVersion = ref(0);
 const worldSurfaceStoreVersion = ref(0);
 const {
   currentLobbySettings,
@@ -1719,6 +1720,7 @@ const {
   lobbyName,
   allyTeamCount: lobbyAllyTeamCount,
   slowDownAtFinalWaypointStoreVersion,
+  pathfindingConsidersUnitsStoreVersion,
   worldSurfaceStoreVersion,
   stopBackgroundBattle,
   startBackgroundBattle,
@@ -1744,6 +1746,7 @@ const {
   localPlayerShieldsPowered,
   currentFogOfWarEnabled,
   currentSlowDownAtFinalWaypoint,
+  currentPathfindingConsidersUnits,
   currentSlopePathMode,
   currentMetalCoverage,
   currentLiquidSurfaceMode,
@@ -1755,6 +1758,7 @@ const {
   changeEntityCountCap,
   setFogOfWarEnabled,
   setSlowDownAtFinalWaypoint,
+  setPathfindingConsidersUnits,
   setSlopePathMode,
   setMetalCoverage,
   setLiquidSurfaceMode,
@@ -1766,6 +1770,7 @@ const {
   localPlayerId,
   currentBattleMode,
   slowDownAtFinalWaypointStoreVersion,
+  pathfindingConsidersUnitsStoreVersion,
   worldSurfaceStoreVersion,
   demoUnitBlueprintIds,
   demoBuildingBlueprintIds,
@@ -2135,6 +2140,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   localPlayerShieldsPowered: localPlayerShieldsPowered.value,
   currentFogOfWarEnabled: currentFogOfWarEnabled.value,
   currentSlowDownAtFinalWaypoint: currentSlowDownAtFinalWaypoint.value,
+  currentPathfindingConsidersUnits: currentPathfindingConsidersUnits.value,
   currentSlopePathMode: currentSlopePathMode.value,
   currentMetalCoverage: currentMetalCoverage.value,
   currentLiquidSurfaceMode: currentLiquidSurfaceMode.value,
@@ -2162,6 +2168,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applySimulationTickRate,
   setFogOfWarEnabled,
   setSlowDownAtFinalWaypoint,
+  setPathfindingConsidersUnits,
   setSlopePathMode,
   setMetalCoverage,
   setLiquidSurfaceMode,
@@ -2200,6 +2207,7 @@ watchEffect(() => {
   m.localPlayerShieldsPowered = localPlayerShieldsPowered.value;
   m.currentFogOfWarEnabled = currentFogOfWarEnabled.value;
   m.currentSlowDownAtFinalWaypoint = currentSlowDownAtFinalWaypoint.value;
+  m.currentPathfindingConsidersUnits = currentPathfindingConsidersUnits.value;
   m.currentSlopePathMode = currentSlopePathMode.value;
   m.currentMetalCoverage = currentMetalCoverage.value;
   m.currentLiquidSurfaceMode = currentLiquidSurfaceMode.value;
@@ -2208,6 +2216,7 @@ watchEffect(() => {
   const mapPresentation = resolveBattleMapPresentation({
     cap: displayUnitCap.value,
     slowDownAtFinalWaypoint: currentSlowDownAtFinalWaypoint.value,
+    pathfindingConsidersUnits: currentPathfindingConsidersUnits.value,
     metalCoverage: currentMetalCoverage.value,
     liquidSurfaceMode: currentLiquidSurfaceMode.value,
     slopePathMode: currentSlopePathMode.value,

@@ -202,6 +202,7 @@ function assertInitializationHashMismatch(): void {
       simulationTickRateHz: 20,
       converterTax: 0,
       slowDownAtFinalWaypoint: false,
+      pathfindingConsidersUnits: false,
       metalCoverage: 'more' as const,
       liquidSurfaceMode: 'water' as const,
     },
@@ -230,6 +231,17 @@ function assertInitializationHashMismatch(): void {
   assertContract(
     first !== third,
     'canonical initialization hash must include final-waypoint slowdown',
+  );
+  const pathfindingHash = hashCanonicalMatchInitialization(buildCanonicalMatchInitialization({
+    ...base,
+    settings: {
+      ...base.settings,
+      pathfindingConsidersUnits: true,
+    },
+  }));
+  assertContract(
+    first !== pathfindingHash,
+    'canonical initialization hash must include unit-aware pathfinding',
   );
   const fourth = hashCanonicalMatchInitialization(buildCanonicalMatchInitialization({
     ...base,
@@ -301,6 +313,7 @@ function createLobbySettings(
     simulationTickRateHz,
     converterTax: 0,
     slowDownAtFinalWaypoint: false,
+    pathfindingConsidersUnits: false,
     metalCoverage: terrain.metalCoverage,
     liquidSurfaceMode: terrain.liquidSurfaceMode,
   };

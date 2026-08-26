@@ -28,6 +28,10 @@ type SetSlowDownAtFinalWaypointCommand = Extract<
   import('../sim/commands').Command,
   { type: 'setSlowDownAtFinalWaypoint' }
 >;
+type SetPathfindingConsidersUnitsCommand = Extract<
+  import('../sim/commands').Command,
+  { type: 'setPathfindingConsidersUnits' }
+>;
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -286,6 +290,16 @@ export function runLockstepCommandProtocolContractTest(): void {
     'final-waypoint braking changes movement truth and must be frame-scheduled',
   );
 
+  const pathfindingConsidersUnits: SetPathfindingConsidersUnitsCommand = {
+    type: 'setPathfindingConsidersUnits',
+    tick: 0,
+    enabled: true,
+  };
+  assertContract(
+    classifyCommandForArchitecture(pathfindingConsidersUnits) === 'gameplay-truth',
+    'unit-aware pathfinding changes movement truth and must be frame-scheduled',
+  );
+
   const slopePathMode: SetSlopePathModeCommand = {
     type: 'setSlopePathMode',
     tick: 0,
@@ -343,6 +357,31 @@ export function runLockstepCommandProtocolContractTest(): void {
       hostSetting.command.type === 'setSlowDownAtFinalWaypoint' &&
       hostSetting.command.tick === validStopEnvelope.executeFrame,
     'gameplay setting commands from the host must schedule on the envelope frame',
+  );
+
+  const nonHostPathfindingSetting = validateLockstepCommandForPeer({
+    ...validStopEnvelope,
+    playerId: 2 as PlayerId,
+    playerSequence: 33,
+    command: pathfindingConsidersUnits,
+  }, world, hostPlayerId);
+  assertContract(
+    !nonHostPathfindingSetting.accepted &&
+      nonHostPathfindingSetting.rejection.reason === 'authorization-rejected',
+    'unit-aware pathfinding toggles from non-host players must be rejected at validation',
+  );
+
+  const hostPathfindingSetting = validateLockstepCommandForPeer({
+    ...validStopEnvelope,
+    playerId: hostPlayerId,
+    playerSequence: 34,
+    command: pathfindingConsidersUnits,
+  }, world, hostPlayerId);
+  assertContract(
+    hostPathfindingSetting.accepted &&
+      hostPathfindingSetting.command.type === 'setPathfindingConsidersUnits' &&
+      hostPathfindingSetting.command.tick === validStopEnvelope.executeFrame,
+    'unit-aware pathfinding toggles from the host must schedule on the envelope frame',
   );
   assertThrows(
     () => createLockstepCommandEnvelope({

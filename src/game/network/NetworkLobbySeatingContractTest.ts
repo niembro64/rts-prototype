@@ -41,6 +41,7 @@ const HANDOFF_SETTINGS: LobbySettings = {
   simulationTickRateHz: 20,
   converterTax: 0,
   slowDownAtFinalWaypoint: false,
+  pathfindingConsidersUnits: false,
   metalCoverage: 'more',
   liquidSurfaceMode: 'water',
 };

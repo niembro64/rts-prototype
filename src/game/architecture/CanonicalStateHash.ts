@@ -134,6 +134,7 @@ export function buildCanonicalServerState(core: ServerSimulationCore): Canonical
       shieldReflectionMode: world.shieldReflectionMode,
       fogOfWarEnabled: world.fogOfWarEnabled,
       slowDownAtFinalWaypoint: world.slowDownAtFinalWaypoint,
+      pathfindingConsidersUnits: world.pathfindingConsidersUnits,
       slopePathMode: world.slopePathMode,
       metalCoverage: world.metalCoverage,
       liquidSurfaceMode: world.liquidSurfaceMode,

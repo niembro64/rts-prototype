@@ -37,6 +37,7 @@ import {
   DEFAULT_SHIELD_REFLECTION_MODE,
   DEFAULT_FORCE_FIELDS_VISIBLE,
   DEFAULT_SLOW_DOWN_AT_FINAL_WAYPOINT,
+  DEFAULT_PATHFINDING_CONSIDERS_UNITS,
 } from '../../config';
 import { isEntityActive } from './buildableHelpers';
 import type { BuildingBlueprintId } from '../../types/blueprintIds';
@@ -274,6 +275,10 @@ export class WorldState {
   /** Whether ordinary final actions use velocity-aware braking before their
    *  last waypoint. Off preserves full thrust until the tight arrival gate. */
   public slowDownAtFinalWaypoint: boolean = DEFAULT_SLOW_DOWN_AT_FINAL_WAYPOINT;
+  /** Whether pathfinding treats other units as obstacles. Driven purely by
+   *  the lockstep BATTLE setting command; hashed with the rest of the
+   *  gameplay settings. */
+  public pathfindingConsidersUnits: boolean = DEFAULT_PATHFINDING_CONSIDERS_UNITS;
   // Slope-traversal policy for ground pathfinding. `directional` lets units
   // descend/fall any slope and only gates uphill; `symmetric` gates both.
   public slopePathMode: SlopePathMode = DEFAULT_SLOPE_PATH_MODE;

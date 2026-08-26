@@ -93,6 +93,10 @@ export function computeAvoidanceSteer(
   return clamped * PATHFINDING_AVOIDANCE_STRENGTH * arrivalFade;
 }
 
+/** Bodies considered per query. The nearest ones in the spatial grid's
+ *  canonical order are enough to pick a side; without a cap a dense blob is
+ *  O(N²) per tick. */
+const MAX_AVOIDANCE_NEIGHBORS = 12;
 const selfScratch = { id: 0, x: 0, y: 0, radius: 0, velocityX: 0, velocityY: 0 };
 const neighborScratch: AvoidanceNeighbor[] = [];
 const neighborPool: { id: number; x: number; y: number; radius: number; velocityX: number; velocityY: number }[] = [];
@@ -114,7 +118,7 @@ export function applyLocalAvoidance(
   const move = unit.locomotion.navigation.move;
   if (!move.allowOnGround || move.allowInAir) return steered;
   const radius = unit.radius.collision;
-  const lookahead = PATHFINDING_AVOIDANCE_LOOKAHEAD_WU + radius * 3;
+  const lookahead = PATHFINDING_AVOIDANCE_LOOKAHEAD_WU + radius * 2;
   const candidates = spatialGrid.queryUnitsInRadius(
     entity.transform.x,
     entity.transform.y,
@@ -129,6 +133,7 @@ export function applyLocalAvoidance(
     if (ou === null || ou.hp <= 0 || other.body === null) continue;
     const om = ou.locomotion.navigation.move;
     if (!om.allowOnGround || om.allowInAir) continue;
+    if (count >= MAX_AVOIDANCE_NEIGHBORS) break;
     if (count >= neighborPool.length) {
       neighborPool.push({ id: 0, x: 0, y: 0, radius: 0, velocityX: 0, velocityY: 0 });
     }

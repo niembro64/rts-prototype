@@ -16,6 +16,7 @@ import {
   loadStoredPlateauWallSlopeDegrees,
   loadStoredSlopePathMode,
   loadStoredSlowDownAtFinalWaypoint,
+  loadStoredPathfindingConsidersUnits,
   loadStoredTerrainDTerrain,
   loadStoredTerrainDetail,
   loadStoredMetalCoverage,
@@ -33,6 +34,7 @@ import {
   savePlateauWallSlopeDegrees,
   saveSlopePathMode,
   saveSlowDownAtFinalWaypoint,
+  savePathfindingConsidersUnits,
   saveTerrainDTerrain,
   saveTerrainDetail,
   saveMetalCoverage,
@@ -58,6 +60,7 @@ function mutateEveryRealSetting(): void {
   saveForceFieldsVisible(false, 'real');
   saveFogOfWarEnabled(false, 'real');
   saveSlowDownAtFinalWaypoint(true, 'real');
+  savePathfindingConsidersUnits(true, 'real');
   saveSlopePathMode('symmetric', 'real');
   saveMetalCoverage('all', 'real');
   saveLiquidSurfaceMode('lava', 'real');
@@ -86,6 +89,11 @@ function assertRealSettingsAtDefaults(context: string): void {
       'slowDownAtFinalWaypoint',
       loadStoredSlowDownAtFinalWaypoint('real'),
       preset.slowDownAtFinalWaypoint,
+    ],
+    [
+      'pathfindingConsidersUnits',
+      loadStoredPathfindingConsidersUnits('real'),
+      preset.pathfindingConsidersUnits,
     ],
     ['slopePathMode', loadStoredSlopePathMode('real'), preset.slopePathMode],
     ['metalCoverage', loadStoredMetalCoverage('real'), preset.metalCoverage],

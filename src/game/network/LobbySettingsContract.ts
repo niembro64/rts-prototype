@@ -70,6 +70,9 @@ export function assertCurrentLobbySettings(
   if (typeof settings.slowDownAtFinalWaypoint !== 'boolean') {
     throw new Error(`[${context}] missing or invalid slowDownAtFinalWaypoint`);
   }
+  if (typeof settings.pathfindingConsidersUnits !== 'boolean') {
+    throw new Error(`[${context}] missing or invalid pathfindingConsidersUnits`);
+  }
   if (!isMetalCoverage(settings.metalCoverage)) {
     throw new Error(`[${context}] missing or invalid metalCoverage`);
   }

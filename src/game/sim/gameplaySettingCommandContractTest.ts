@@ -103,6 +103,11 @@ function buildSettingCases(): SettingCase[] {
       (world) => world.slowDownAtFinalWaypoint,
       (enabled) => ({ type: 'setSlowDownAtFinalWaypoint', tick: 0, enabled }),
     ),
+    booleanCase(
+      'setPathfindingConsidersUnits',
+      (world) => world.pathfindingConsidersUnits,
+      (enabled) => ({ type: 'setPathfindingConsidersUnits', tick: 0, enabled }),
+    ),
     {
       type: 'setSlopePathMode',
       read: (world) => world.slopePathMode,

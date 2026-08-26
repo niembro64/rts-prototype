@@ -752,6 +752,8 @@ export type LobbySettings = {
   converterTax: number;
   /** Whether units brake on approach to their last waypoint. */
   slowDownAtFinalWaypoint: boolean;
+  /** Whether pathfinding treats other units as obstacles. */
+  pathfindingConsidersUnits: boolean;
   /** Ground material for the whole authoritative world. */
   metalCoverage: MetalCoverage;
   /** Liquid material below the water level. Lava changes simulation damage as

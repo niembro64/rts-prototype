@@ -210,10 +210,15 @@ export class SimulationArrivalController {
     }
 
     // Local avoidance nudges the drive vector around bodies ahead; the
-    // waypoint, the plan and the braking distance are untouched.
-    const avoided = applyLocalAvoidance(entity, dx, dy, distance);
-    dx = avoided.x;
-    dy = avoided.y;
+    // waypoint, the plan and the braking distance are untouched. It is a
+    // BATTLE setting, OFF by default: collision bodies are spheres and slide
+    // past each other on contact by design, so most matches never want the
+    // planner to look at other units at all.
+    if (this.world.pathfindingConsidersUnits) {
+      const avoided = applyLocalAvoidance(entity, dx, dy, distance);
+      dx = avoided.x;
+      dy = avoided.y;
+    }
     const invDistance = 1 / distance;
     entitySlotRegistry.setUnitDriveInput(entity, 0, 0, dx * invDistance, dy * invDistance, entitySlot);
 

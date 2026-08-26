@@ -449,6 +449,30 @@ export function runSimulationPathPlanSchedulerContractTest(): void {
       priorityEntityId === commander.id && priorityLane === PATH_REQUEST_FRESH,
       'a commander fresh route must be admitted before ordinary fresh work without creating a new budget lane',
     );
+    // A commander REFRESH also jumps the whole ordinary queue — fresh
+    // included — and still reports the canonical refresh lane.
+    const refreshPriority = new SimulationPathPlanScheduler();
+    const ordinaryFresh = pathEntity(3, 1);
+    const ordinaryRefresh = pathEntity(4, 1);
+    const commanderRefreshing = pathEntity(5, 1, true);
+    refreshPriority.requestFresh(ordinaryFresh, false);
+    refreshPriority.requestRefresh(ordinaryRefresh);
+    refreshPriority.requestRefresh(commanderRefreshing);
+    let firstServed: EntityId | null = null;
+    let firstLane = PATH_REQUEST_NONE;
+    refreshPriority.drainTeam(1, roster, roster.allyTeamIds[0], (entityId, lane) => {
+      firstServed = entityId;
+      firstLane = lane;
+      const entity = entityId === commanderRefreshing.id
+        ? commanderRefreshing
+        : entityId === ordinaryRefresh.id ? ordinaryRefresh : ordinaryFresh;
+      entity.unit!.pathRequestLane = PATH_REQUEST_NONE;
+      return true;
+    });
+    assertContract(
+      firstServed === commanderRefreshing.id && firstLane === PATH_REQUEST_REFRESH,
+      'a commander refresh must be served before every ordinary request, fresh included',
+    );
   }
 
   // Admission age is measured from the enqueue tick to the serving tick and

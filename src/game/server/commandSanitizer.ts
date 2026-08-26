@@ -223,6 +223,7 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
         : null;
     case 'setFogOfWarEnabled':
     case 'setSlowDownAtFinalWaypoint':
+    case 'setPathfindingConsidersUnits':
       return typeof command.enabled === 'boolean' ? { ...command, tick } : null;
     case 'setShieldReflectionMode':
       return isShieldReflectionMode(command.mode)

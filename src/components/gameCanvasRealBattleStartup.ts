@@ -8,6 +8,7 @@ import {
   loadStoredLiquidSurfaceMode,
   getUnitCap,
   loadStoredSlowDownAtFinalWaypoint,
+  loadStoredPathfindingConsidersUnits,
   loadStoredMetalCoverage,
   loadStoredTerrainRuntimeConfig,
   type BattleTerrainRuntimeConfig,
@@ -384,6 +385,7 @@ function buildRealBattleLobbySettingsFromTerrain(
     simulationTickRateHz: loadStoredSimulationTickRate('real'),
     converterTax: loadStoredConverterTax('real'),
     slowDownAtFinalWaypoint: loadStoredSlowDownAtFinalWaypoint('real'),
+    pathfindingConsidersUnits: loadStoredPathfindingConsidersUnits('real'),
     metalCoverage: terrain.metalCoverage,
     liquidSurfaceMode: terrain.liquidSurfaceMode,
   };
@@ -1826,6 +1828,8 @@ async function createDeterministicLockstepBackendRuntime({
         fogOfWarEnabled: true,
         slowDownAtFinalWaypoint:
           matchContext.settings.slowDownAtFinalWaypoint ?? false,
+        pathfindingConsidersUnits:
+          matchContext.settings.pathfindingConsidersUnits ?? false,
         metalCoverage:
           matchContext.settings.metalCoverage ?? terrain.metalCoverage,
         liquidSurfaceMode:

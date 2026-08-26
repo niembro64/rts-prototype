@@ -1193,6 +1193,44 @@ fn hierarchy_search_respects_the_work_budget_and_persists_progress() {
 }
 
 #[test]
+fn unreachable_search_on_a_large_map_stays_within_the_slice_budget() {
+    // A full wall: the abstract search must exhaust the reachable half, but
+    // only one cost row (<= 256 cells) past the budget per slice, so a
+    // 1,000-unit budget can never turn into a 100,000-unit tick.
+    let (mut state, traversal, profile) = open_query_state(256, 256);
+    for gy in 0..256 {
+        state.terrain_water[(gy * 256 + 128) as usize] = 1;
+    }
+    refresh_obstacles(&mut state);
+    let key = class_key(&state, traversal, profile);
+    let class_idx = hpa_class_index(&mut state, key);
+    let start = (128 * 256 + 4) as u32;
+    let goal = (128 * 256 + 250) as u32;
+    let budget = 1_000u32;
+    let mut slices = 0;
+    let mut worst = 0u32;
+    loop {
+        state.hpa_work = 0;
+        let outcome = hpa_search(&mut state, class_idx, start, goal, budget);
+        worst = worst.max(state.hpa_work);
+        match outcome {
+            HpaSearchOutcome::Budget => {
+                slices += 1;
+                assert!(slices < 5_000, "must converge");
+            }
+            HpaSearchOutcome::Unreachable => break,
+            HpaSearchOutcome::Reached { .. } => panic!("the wall is complete"),
+        }
+    }
+    assert!(slices > 5, "an exhaustive search on a 256x256 map must take many slices, took {slices}");
+    let cluster_cells = (hpa_cluster_size() * hpa_cluster_size()) as u32;
+    assert!(
+        worst <= budget + cluster_cells + 64,
+        "a slice may overshoot by at most one row build, worst {worst}"
+    );
+}
+
+#[test]
 fn traffic_heat_raises_edge_cost_only_when_enabled() {
     let mut state = open_test_state(2, 1);
     let traversal = ground_traversal();
