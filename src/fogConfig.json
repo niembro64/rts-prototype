@@ -5,7 +5,9 @@
       "supersample": 2,
       "maxTextureDimension": 4096,
       "maxRegions": 65536,
-      "edgeSoftnessWorld": 192
+      "fullSightEdgeSoftnessWorld": 64,
+      "contactSightEdgeSoftnessWorld": 192,
+      "entityShadowEdgeSoftnessWorld": 192
     },
     "shade": {
       "colorHex": "#06090b",

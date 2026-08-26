@@ -32,8 +32,12 @@ const FULL_SIGHT_ABOVE_WATER_R = 1;
 const CONTACT_SIGHT_ABOVE_WATER_G = 1;
 const FULL_SIGHT_UNDERWATER_B = 1;
 const CONTACT_SIGHT_UNDERWATER_A = 1;
-const EDGE_SOFTNESS_WORLD =
-  FOG_CONFIG.presentation.coverage.edgeSoftnessWorld;
+const FULL_SIGHT_EDGE_SOFTNESS_WORLD =
+  FOG_CONFIG.presentation.coverage.fullSightEdgeSoftnessWorld;
+const CONTACT_SIGHT_EDGE_SOFTNESS_WORLD =
+  FOG_CONFIG.presentation.coverage.contactSightEdgeSoftnessWorld;
+const ENTITY_SHADOW_EDGE_SOFTNESS_WORLD =
+  FOG_CONFIG.presentation.coverage.entityShadowEdgeSoftnessWorld;
 
 const sunHorizontalLength = Math.max(
   1.0e-6,
@@ -737,6 +741,7 @@ void main() {
         FULL_SIGHT_UNDERWATER_B,
         0,
         0,
+        FULL_SIGHT_EDGE_SOFTNESS_WORLD,
       );
     }
   }
@@ -765,6 +770,7 @@ void main() {
             0,
             0,
             0,
+            FULL_SIGHT_EDGE_SOFTNESS_WORLD,
           );
         }
         const underwaterRadius = operational.fullSight
@@ -780,6 +786,7 @@ void main() {
             FULL_SIGHT_UNDERWATER_B,
             0,
             0,
+            FULL_SIGHT_EDGE_SOFTNESS_WORLD,
           );
         }
         const radarRadius = operational.contactSight
@@ -795,6 +802,7 @@ void main() {
             0,
             0,
             0,
+            CONTACT_SIGHT_EDGE_SOFTNESS_WORLD,
           );
         }
         const sonarRadius = operational.contactSight
@@ -810,6 +818,7 @@ void main() {
             0,
             CONTACT_SIGHT_UNDERWATER_A,
             0,
+            CONTACT_SIGHT_EDGE_SOFTNESS_WORLD,
           );
         }
       });
@@ -820,8 +829,8 @@ void main() {
     for (let i = 0; i < packet.count; i++) {
       const crossRadius = packet.crossRadius[i];
       const sunRadius = packet.sunRadius[i];
-      const outerCrossRadius = crossRadius + EDGE_SOFTNESS_WORLD;
-      const outerSunRadius = sunRadius + EDGE_SOFTNESS_WORLD;
+      const outerCrossRadius = crossRadius + ENTITY_SHADOW_EDGE_SOFTNESS_WORLD;
+      const outerSunRadius = sunRadius + ENTITY_SHADOW_EDGE_SOFTNESS_WORLD;
       if (!this.regionIntersects(
         packet.x[i],
         packet.y[i],
@@ -836,8 +845,8 @@ void main() {
         CROSS_SUN_AXIS_Y * outerCrossRadius,
         SUN_AXIS_X * outerSunRadius,
         SUN_AXIS_Y * outerSunRadius,
-        Math.max(0, crossRadius - EDGE_SOFTNESS_WORLD) / outerCrossRadius,
-        Math.max(0, sunRadius - EDGE_SOFTNESS_WORLD) / outerSunRadius,
+        Math.max(0, crossRadius - ENTITY_SHADOW_EDGE_SOFTNESS_WORLD) / outerCrossRadius,
+        Math.max(0, sunRadius - ENTITY_SHADOW_EDGE_SOFTNESS_WORLD) / outerSunRadius,
         0,
         0,
         0,
@@ -856,14 +865,15 @@ void main() {
     b: number,
     a: number,
     shadow: number,
+    edgeSoftnessWorld: number,
   ): void {
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius) || radius <= 0) {
       return;
     }
-    const outerRadius = radius + EDGE_SOFTNESS_WORLD;
+    const outerRadius = radius + edgeSoftnessWorld;
     if (!this.regionIntersects(x, y, outerRadius)) return;
     const innerRatio =
-      Math.max(0, radius - EDGE_SOFTNESS_WORLD) / outerRadius;
+      Math.max(0, radius - edgeSoftnessWorld) / outerRadius;
     this.pushRegion(
       x,
       y,

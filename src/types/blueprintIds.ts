@@ -161,6 +161,18 @@ export const TURRET_BLUEPRINT_IDS = [
   'turretTorpedoAirLaunch',
   'turretInterceptor',
   'turretMissileRover',
+  'turretSensorUnitConstructionRover',
+  'turretSensorUnitAdvancedConstructionRover',
+  'turretSensorUnitMissileRover',
+  'turretSensorUnitConstructionBot',
+  'turretSensorUnitAdvancedConstructionBot',
+  'turretSensorUnitClusterArtillery',
+  'turretSensorUnitWaterStrider',
+  'turretSensorUnitPatrolCorvette',
+  'turretSensorUnitConstructionSubmarine',
+  'turretSensorUnitAdvancedConstructionSubmarine',
+  'turretSensorUnitAdvancedConstructionDrone',
+  'turretSensorUnitPetrel',
 ] as const;
 export type TurretBlueprintId = typeof TURRET_BLUEPRINT_IDS[number];
 

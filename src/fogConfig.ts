@@ -14,7 +14,9 @@ type FogPresentationConfig = {
     supersample: number;
     maxTextureDimension: number;
     maxRegions: number;
-    edgeSoftnessWorld: number;
+    fullSightEdgeSoftnessWorld: number;
+    contactSightEdgeSoftnessWorld: number;
+    entityShadowEdgeSoftnessWorld: number;
   };
   shade: {
     colorHex: string;
@@ -46,8 +48,16 @@ assertPositiveInteger(
   'fogConfig.presentation.coverage.maxRegions',
 );
 assertNonNegative(
-  presentation.coverage.edgeSoftnessWorld,
-  'fogConfig.presentation.coverage.edgeSoftnessWorld',
+  presentation.coverage.fullSightEdgeSoftnessWorld,
+  'fogConfig.presentation.coverage.fullSightEdgeSoftnessWorld',
+);
+assertNonNegative(
+  presentation.coverage.contactSightEdgeSoftnessWorld,
+  'fogConfig.presentation.coverage.contactSightEdgeSoftnessWorld',
+);
+assertNonNegative(
+  presentation.coverage.entityShadowEdgeSoftnessWorld,
+  'fogConfig.presentation.coverage.entityShadowEdgeSoftnessWorld',
 );
 assertCssHex(presentation.shade.colorHex, 'fogConfig.presentation.shade.colorHex');
 assertFiniteNumberInRange(

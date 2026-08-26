@@ -174,7 +174,19 @@
     "turretMortarCluster",
     "turretTorpedoAirLaunch",
     "turretInterceptor",
-    "turretMissileRover"
+    "turretMissileRover",
+    "turretSensorUnitConstructionRover",
+    "turretSensorUnitAdvancedConstructionRover",
+    "turretSensorUnitMissileRover",
+    "turretSensorUnitConstructionBot",
+    "turretSensorUnitAdvancedConstructionBot",
+    "turretSensorUnitClusterArtillery",
+    "turretSensorUnitWaterStrider",
+    "turretSensorUnitPatrolCorvette",
+    "turretSensorUnitConstructionSubmarine",
+    "turretSensorUnitAdvancedConstructionSubmarine",
+    "turretSensorUnitAdvancedConstructionDrone",
+    "turretSensorUnitPetrel"
    ],
    "shots": [
     "shotPlasmaLight",
@@ -926,6 +938,42 @@
    "targets": "none"
   },
   "turretSensorBuildingStorage": {
+   "targets": "none"
+  },
+  "turretSensorUnitConstructionRover": {
+   "targets": "none"
+  },
+  "turretSensorUnitAdvancedConstructionRover": {
+   "targets": "none"
+  },
+  "turretSensorUnitMissileRover": {
+   "targets": "none"
+  },
+  "turretSensorUnitConstructionBot": {
+   "targets": "none"
+  },
+  "turretSensorUnitAdvancedConstructionBot": {
+   "targets": "none"
+  },
+  "turretSensorUnitClusterArtillery": {
+   "targets": "none"
+  },
+  "turretSensorUnitWaterStrider": {
+   "targets": "none"
+  },
+  "turretSensorUnitPatrolCorvette": {
+   "targets": "none"
+  },
+  "turretSensorUnitConstructionSubmarine": {
+   "targets": "none"
+  },
+  "turretSensorUnitAdvancedConstructionSubmarine": {
+   "targets": "none"
+  },
+  "turretSensorUnitAdvancedConstructionDrone": {
+   "targets": "none"
+  },
+  "turretSensorUnitPetrel": {
    "targets": "none"
   }
  },

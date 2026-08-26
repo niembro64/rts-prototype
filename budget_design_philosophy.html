@@ -814,9 +814,21 @@
       <p>
         This intentionally pushes scouting and contact sensors into army composition. A long-range turret with
         short local sight should be powerful only when supported by forward units, scan pulses, radar
-        coverage, or allied sight. Current prototype behavior that derives full vision from every
-        turret&rsquo;s weapon range is a convenience shortcut, not the long-term rule; fire envelope and
+        coverage, or allied sight. Earlier prototype behavior that derived full vision from every
+        turret&rsquo;s weapon range was a convenience shortcut, not the rule; fire envelope and
         sight envelope must be authored separately.
+      </p>
+      <p>
+        <strong>The ordinary roster baseline is weapon reach beyond local vision.</strong> Every armed
+        buildable unit except an explicitly named reconnaissance exception should have at least one
+        offensive weapon whose maximum range exceeds the greatest full-sight radius on its own sensor
+        mount. Jackal is the armed visual-reconnaissance exception, and the starting Commander is the
+        non-buildable command exception. Unarmed Kestrel, Sepia, and Strix carry deliberately broader
+        information roles instead of being combat exceptions. This is an authored roster relationship,
+        never a formula that derives sight from a weapon: small forward units and visual scouts extend
+        exact team sight for precision weapons, while radar and sonar extend anonymous contacts only for
+        weapons that explicitly accept contact fire. Construction craft are workers, not free mobile
+        radar or sonar hosts.
       </p>
       <ul class="rule-list">
         <li>The four exhaustive team-knowledge facts are <code>team-air-sight</code>, <code>team-water-sight</code>, <code>team-air-radar</code>, and <code>team-water-sonar</code>. Sight identifies and also counts as contact-level location in its target medium; radar/sonar-only coverage locates in its target medium; detector coverage may uncloak but does not locate by itself. The four facts are team-unified and orthogonal to every emission trajectory cell.</li>
@@ -1870,7 +1882,7 @@
       <ul class="rule-list">
         <li>Radar/sonar-only terrain uses the authored lighter darkness; fully unseen terrain uses the authored darker darkness and is completely grayscale.</li>
         <li>Overlapping knowledge regions combine by per-channel maximum, so fog sources do not accumulate into unintended black patches.</li>
-        <li>Full-sight, radar, and sonar boundaries use the same historical softest fog-of-war falloff: one smoothstep spanning 192 world units inside and 192 world units outside the authored boundary (384 world units total). Softness is world-authored and does not change with zoom; the viewport-scaled supersampled coverage target preserves sampling quality at every camera distance.</li>
+        <li>Full-sight boundaries use one smoothstep spanning 64 world units inside and 64 world units outside the authored boundary (128 world units total), so short local-sight circles retain a legible solid center. Radar and sonar contacts retain the broader historical falloff of 192 world units inside and 192 world units outside (384 world units total). Both softness values are world-authored and do not change with zoom; the viewport-scaled supersampled coverage target preserves sampling quality at every camera distance.</li>
         <li>The coverage target follows the visible camera footprint and supersamples the renderer's physical viewport up to the authored GPU texture cap. This keeps zoomed-in boundary detail at every camera distance without allocating a high-resolution full-map texture.</li>
         <li>Solid lit triangles from units, buildings, articulated locomotion parts, and environment objects cast one directional sun depth map onto terrain. The result follows the actual rendered silhouette and pose; a hitbox circle, footprint ellipse, or stretched coverage stamp is never an acceptable stand-in. Additive effects, debug geometry, water, and invisible rig helpers do not cast.</li>
         <li>The orthographic sun frustum follows the visible battle, expands in quantized steps, and snaps its focus to shadow texels so camera pans do not make outlines swim. The CLIENT <strong>SHADOWS</strong> toggle disables the directional depth pass rather than swapping in an approximation.</li>
@@ -3933,7 +3945,10 @@
         Ordinary beams and anti-air weapons no longer provide incidental point defense.</li>
         <li><strong>Water and cross-medium coverage:</strong> the tier-1 Water Strider is a
         crawler-domain + naval-domain body, supported at the water surface by both water-related
-        lift channels while retaining stop-and-hold arrival behavior on land and water. The
+        lift channels while retaining stop-and-hold arrival behavior on land and water. It carries
+        local same-/cross-medium full sight but no contact-only sonar annulus:
+        its underwater contact radius is merely coextensive with the local
+        underwater sight required to identify submerged targets. The
         Patrol Corvette is a water-only surface hull with an above-water gun and sonar; it authors
         no air lift, so a released Barracuda falls out of its Fabricator under gravity until its
         proportional in-water support catches it at the surface instead of hovering over the bay. The
@@ -3941,7 +3956,10 @@
         underwater, while its own sensors deliberately provide no sonar contact.</li>
         <li><strong>Naval economy:</strong> the Tidal Generator is a water-only energy producer,
         buildable by the Construction Submarine, so a naval expansion has extraction, energy,
-        sonar, defense, construction, and production without a land dependency.</li>
+        sonar, defense, construction, and production without a land dependency. Construction
+        Submarines contribute only short underwater full sight and the coextensive contact needed
+        to locate what that sight identifies; they must build or accompany a dedicated sonar source
+        instead of inheriting an attack-submarine contact-only envelope.</li>
       </ul>
 
       <h3>Dormant capability is removal work, not a content prompt</h3>

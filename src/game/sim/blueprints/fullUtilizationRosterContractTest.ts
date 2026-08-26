@@ -1,13 +1,16 @@
 import {
   BUILDING_BLUEPRINTS,
   SHOT_BLUEPRINTS,
+  TURRET_BLUEPRINTS,
   UNIT_BLUEPRINTS,
 } from './index';
 import { TURRET_CONFIGS } from '../turretConfigs';
 import { CT_LOCK_ON_FAM_INCLUDE_SHOTS } from '../../sim-wasm/api/turretCombat';
 import { shotBlueprintIdToCode, unitBlueprintIdToCode } from '../../../types/network';
+import { FOG_CONFIG } from '../../../fogConfig';
 import type { BuildingBlueprintId, TurretConfig } from '../types';
 import { lockOnLevel1MaskFromCodes } from '../lockOnLevel1Mask';
+import { getMaximumSensorMatrixRadius } from '../sensorConfig';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[full-utilization roster contract] ${message}`);
@@ -57,7 +60,59 @@ function hasUnderwaterWeapon(unitBlueprintId: string): boolean {
   });
 }
 
+const EXPECTED_LOCAL_SIGHT_BY_UNIT = {
+  unitJackal: 700,
+  unitLynx: 180,
+  unitBadger: 300,
+  unitMongoose: 300,
+  unitMammoth: 350,
+  unitTick: 150,
+  unitHuman: 150,
+  unitTarantula: 150,
+  unitLoris: 250,
+  unitDaddy: 150,
+  unitWidow: 300,
+  unitFormik: 300,
+  unitHippo: 225,
+  unitSeaTurtle: 180,
+  unitOrca: 300,
+  unitBee: 150,
+  unitDragonfly: 250,
+  unitEagle: 250,
+  unitDuck: 200,
+  unitAlbatros: 450,
+  unitQueenBee: 300,
+  unitQueenTick: 300,
+  unitTransport: 250,
+  unitConstructionDrone: 250,
+  unitConstructionSubmarine: 250,
+  unitRex: 400,
+  unitHedgehog: 250,
+  unitRadarScout: 600,
+  unitConstructionBot: 250,
+  unitConstructionRover: 250,
+  unitStealthScout: 600,
+  unitDetector: 400,
+  unitRadarJammer: 150,
+  unitMissileRover: 250,
+  unitClusterArtillery: 300,
+  unitWaterStrider: 180,
+  unitPatrolCorvette: 180,
+  unitPetrel: 300,
+  unitAdvancedConstructionBot: 250,
+  unitAdvancedConstructionRover: 250,
+  unitAdvancedConstructionDrone: 250,
+  unitAdvancedConstructionSubmarine: 250,
+  unitCommander: 600,
+} as const;
+
 export function runFullUtilizationRosterContractTest(): void {
+  assertContract(
+    FOG_CONFIG.presentation.coverage.fullSightEdgeSoftnessWorld === 64 &&
+      FOG_CONFIG.presentation.coverage.contactSightEdgeSoftnessWorld === 192 &&
+      FOG_CONFIG.presentation.coverage.entityShadowEdgeSoftnessWorld === 192,
+    'short full-sight circles need a 64-world-unit edge while contacts and shadows retain 192',
+  );
   const tierTwoAnimalNames = Object.values(UNIT_BLUEPRINTS)
     .filter((blueprint) =>
       blueprint.production?.techLevel === 2 && blueprint.identity.kind === 'animal')
@@ -111,6 +166,44 @@ export function runFullUtilizationRosterContractTest(): void {
       `${unitBlueprintId} must have exactly one mounted sensor source; got ${sensors.length}`,
     );
   }
+  assertContract(
+    Object.keys(EXPECTED_LOCAL_SIGHT_BY_UNIT).length === Object.keys(UNIT_BLUEPRINTS).length,
+    'the local-sight ledger must cover every unit blueprint exactly once',
+  );
+  const sensorOwnerByTurret = new Map<string, string>();
+  for (const [unitBlueprintId, expectedSight] of Object.entries(EXPECTED_LOCAL_SIGHT_BY_UNIT)) {
+    const sensors = unitSensorConfigs(unitBlueprintId);
+    const sensor = sensors[0];
+    const actualSight = getMaximumSensorMatrixRadius(
+      sensor.targeting.observation.sensors.fullSight,
+    );
+    assertContract(
+      actualSight === expectedSight,
+      `${unitBlueprintId} local full sight must be ${expectedSight}; got ${actualSight}`,
+    );
+    const previousOwner = sensorOwnerByTurret.get(sensor.turretBlueprintId);
+    assertContract(
+      previousOwner === undefined,
+      `${unitBlueprintId} must own a host-specific sensor turret; ` +
+        `${sensor.turretBlueprintId} is already mounted by ${previousOwner}`,
+    );
+    sensorOwnerByTurret.set(sensor.turretBlueprintId, unitBlueprintId);
+
+    const offensiveRanges = UNIT_BLUEPRINTS[unitBlueprintId].turrets
+      .map((mount) => TURRET_BLUEPRINTS[mount.turretBlueprintId])
+      .filter((turret) =>
+        turret.kind === 'attack' &&
+        (turret.emissionKind === 'shot' || turret.emissionKind === 'ray'))
+      .map((turret) => turret.targeting.engagement.range);
+    if (offensiveRanges.length === 0) continue;
+    const maximumWeaponRange = Math.max(...offensiveRanges);
+    const isSightException = unitBlueprintId === 'unitJackal' || unitBlueprintId === 'unitCommander';
+    assertContract(
+      isSightException || maximumWeaponRange > actualSight,
+      `${unitBlueprintId} must have offensive weapon reach beyond local sight; ` +
+        `weapon=${maximumWeaponRange}, sight=${actualSight}`,
+    );
+  }
   for (const blueprint of Object.values(BUILDING_BLUEPRINTS)) {
     const buildingBlueprintId = blueprint.buildingBlueprintId;
     const sensors = buildingSensorConfigs(buildingBlueprintId);
@@ -124,8 +217,8 @@ export function runFullUtilizationRosterContractTest(): void {
   assertContract(
     unitAttackConfigs('unitRadarScout').length === 0 &&
       radarScoutSensors.length === 1 &&
-      radarScoutSensors[0].targeting.observation.sensors.contactSight.aboveWater.aboveWater >
-        radarScoutSensors[0].targeting.observation.sensors.fullSight.aboveWater.aboveWater,
+      radarScoutSensors[0].targeting.observation.sensors.contactSight.aboveWater.aboveWater === 3200 &&
+      radarScoutSensors[0].targeting.observation.sensors.fullSight.aboveWater.aboveWater === 600,
     'Kestrel must be an unarmed mobile radar host whose contact range exceeds ordinary sight',
   );
 
@@ -174,10 +267,12 @@ export function runFullUtilizationRosterContractTest(): void {
   );
 
   const shade = UNIT_BLUEPRINTS.unitStealthScout;
+  const shadeSensors = unitSensorConfigs('unitStealthScout');
   assertContract(
     shade.base.signature.radarStealth &&
       shade.base.signature.sonarStealth &&
-      unitAttackConfigs('unitStealthScout').length === 0,
+      unitAttackConfigs('unitStealthScout').length === 0 &&
+      underwaterContactRange(shadeSensors[0]) === 900,
     'Shade must be a fragile unarmed stealth scout rather than another capstone',
   );
 
@@ -230,6 +325,47 @@ export function runFullUtilizationRosterContractTest(): void {
       unitSensorConfigs(unitBlueprintId).some((config) => underwaterContactRange(config) > 0) &&
         !hasUnderwaterWeapon(unitBlueprintId),
       `${unitBlueprintId} must sense underwater targets without receiving an underwater weapon`,
+    );
+  }
+  const expectedExtendedUnderwaterContacts = {
+    unitHippo: 800,
+    unitSeaTurtle: 1000,
+    unitOrca: 1350,
+    unitDuck: 900,
+    unitPatrolCorvette: 1000,
+  } as const;
+  for (const [unitBlueprintId, expectedContact] of Object.entries(
+    expectedExtendedUnderwaterContacts,
+  )) {
+    const contact = underwaterContactRange(unitSensorConfigs(unitBlueprintId)[0]);
+    assertContract(
+      contact === expectedContact,
+      `${unitBlueprintId} underwater contact range must remain ${expectedContact}; got ${contact}`,
+    );
+  }
+
+  const waterStriderSensors = unitSensorConfigs('unitWaterStrider')[0]
+    .targeting.observation.sensors;
+  assertContract(
+    waterStriderSensors.fullSight.underwater.underwater === 180 &&
+      underwaterContactRange(unitSensorConfigs('unitWaterStrider')[0]) === 180,
+    'Water Strider contact must be coextensive with local underwater sight, with no sonar-only annulus',
+  );
+
+  for (const unitBlueprintId of [
+    'unitConstructionSubmarine',
+    'unitAdvancedConstructionSubmarine',
+  ] as const) {
+    const sensors = unitSensorConfigs(unitBlueprintId)[0].targeting.observation.sensors;
+    assertContract(
+      sensors.fullSight.aboveWater.aboveWater === 0 &&
+        sensors.fullSight.aboveWater.underwater === 0 &&
+        sensors.fullSight.underwater.aboveWater === 0 &&
+        sensors.fullSight.underwater.underwater === 250 &&
+        getMaximumSensorMatrixRadius(sensors.contactSight) === 250 &&
+        sensors.contactSight.underwater.underwater === 250,
+      `${unitBlueprintId} must have only coextensive 250 underwater sight/contact ` +
+        'and no inherited Orcinus cross-medium or long-range sonar coverage',
     );
   }
 

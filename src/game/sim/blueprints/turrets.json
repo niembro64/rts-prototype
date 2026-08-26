@@ -2575,7 +2575,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 700,
               "underwater": 0
             },
             "underwater": {
@@ -2646,7 +2646,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 180,
               "underwater": 0
             },
             "underwater": {
@@ -2717,7 +2717,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 150,
               "underwater": 0
             },
             "underwater": {
@@ -2788,7 +2788,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 300,
               "underwater": 0
             },
             "underwater": {
@@ -2859,7 +2859,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 300,
               "underwater": 0
             },
             "underwater": {
@@ -2930,7 +2930,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 150,
               "underwater": 0
             },
             "underwater": {
@@ -3001,7 +3001,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 150,
               "underwater": 0
             },
             "underwater": {
@@ -3072,7 +3072,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 350,
               "underwater": 0
             },
             "underwater": {
@@ -3143,7 +3143,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 300,
               "underwater": 0
             },
             "underwater": {
@@ -3214,7 +3214,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 300,
               "underwater": 0
             },
             "underwater": {
@@ -3285,12 +3285,12 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 225,
               "underwater": 0
             },
             "underwater": {
               "aboveWater": 0,
-              "underwater": 1200
+              "underwater": 225
             }
           },
           "contactSight": {
@@ -3356,12 +3356,12 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 180,
               "underwater": 0
             },
             "underwater": {
-              "aboveWater": 600,
-              "underwater": 1200
+              "aboveWater": 180,
+              "underwater": 180
             }
           },
           "contactSight": {
@@ -3427,12 +3427,12 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1350,
+              "aboveWater": 300,
               "underwater": 0
             },
             "underwater": {
-              "aboveWater": 700,
-              "underwater": 1350
+              "aboveWater": 300,
+              "underwater": 300
             }
           },
           "contactSight": {
@@ -3498,7 +3498,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 150,
               "underwater": 0
             },
             "underwater": {
@@ -3569,7 +3569,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 250,
               "underwater": 0
             },
             "underwater": {
@@ -3640,7 +3640,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 150,
               "underwater": 0
             },
             "underwater": {
@@ -3711,7 +3711,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 250,
               "underwater": 0
             },
             "underwater": {
@@ -3782,7 +3782,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 250,
               "underwater": 0
             },
             "underwater": {
@@ -3853,7 +3853,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 250,
               "underwater": 0
             },
             "underwater": {
@@ -3924,12 +3924,12 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 200,
               "underwater": 0
             },
             "underwater": {
-              "aboveWater": 500,
-              "underwater": 1200
+              "aboveWater": 200,
+              "underwater": 200
             }
           },
           "contactSight": {
@@ -3995,7 +3995,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1700,
+              "aboveWater": 450,
               "underwater": 0
             },
             "underwater": {
@@ -4066,7 +4066,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1700,
+              "aboveWater": 300,
               "underwater": 0
             },
             "underwater": {
@@ -4137,7 +4137,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1700,
+              "aboveWater": 300,
               "underwater": 0
             },
             "underwater": {
@@ -4208,7 +4208,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1200,
+              "aboveWater": 250,
               "underwater": 0
             },
             "underwater": {
@@ -4279,7 +4279,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1600,
+              "aboveWater": 600,
               "underwater": 0
             },
             "underwater": {
@@ -4350,7 +4350,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 2000,
+              "aboveWater": 400,
               "underwater": 0
             },
             "underwater": {
@@ -5662,7 +5662,7 @@
         "sensors": {
           "fullSight": {
             "aboveWater": {
-              "aboveWater": 1150,
+              "aboveWater": 250,
               "underwater": 0
             },
             "underwater": {
@@ -5720,7 +5720,7 @@
       "observation": {
         "sensors": {
           "fullSight": {
-            "aboveWater": { "aboveWater": 850, "underwater": 0 },
+            "aboveWater": { "aboveWater": 600, "underwater": 0 },
             "underwater": { "aboveWater": 0, "underwater": 0 }
           },
           "contactSight": {
@@ -5742,8 +5742,8 @@
       "observation": {
         "sensors": {
           "fullSight": {
-            "aboveWater": { "aboveWater": 1500, "underwater": 0 },
-            "underwater": { "aboveWater": 0, "underwater": 900 }
+            "aboveWater": { "aboveWater": 600, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 600 }
           },
           "contactSight": {
             "aboveWater": { "aboveWater": 0, "underwater": 900 },
@@ -5764,7 +5764,7 @@
       "observation": {
         "sensors": {
           "fullSight": {
-            "aboveWater": { "aboveWater": 1000, "underwater": 0 },
+            "aboveWater": { "aboveWater": 400, "underwater": 0 },
             "underwater": { "aboveWater": 0, "underwater": 0 }
           },
           "contactSight": {
@@ -5786,7 +5786,7 @@
       "observation": {
         "sensors": {
           "fullSight": {
-            "aboveWater": { "aboveWater": 850, "underwater": 0 },
+            "aboveWater": { "aboveWater": 150, "underwater": 0 },
             "underwater": { "aboveWater": 0, "underwater": 0 }
           },
           "contactSight": {
@@ -5866,6 +5866,130 @@
           "engageRangeMax": { "acquire": 0.95, "release": 1 },
           "engageRangeMin": null,
           "trackingRange": null
+        }
+      }
+    }
+  },
+  "turretSensorUnitConstructionRover": {
+    "$extends": "turretSensorUnitJackal",
+    "turretBlueprintId": "turretSensorUnitConstructionRover",
+    "name": "Construction Rover Sensors",
+    "targeting": {
+      "observation": {
+        "sensors": {
+          "fullSight": {
+            "aboveWater": { "aboveWater": 250, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 0 }
+          }
+        }
+      }
+    }
+  },
+  "turretSensorUnitAdvancedConstructionRover": {
+    "$extends": "turretSensorUnitConstructionRover",
+    "turretBlueprintId": "turretSensorUnitAdvancedConstructionRover",
+    "name": "Advanced Construction Rover Sensors"
+  },
+  "turretSensorUnitMissileRover": {
+    "$extends": "turretSensorUnitJackal",
+    "turretBlueprintId": "turretSensorUnitMissileRover",
+    "name": "Swift Sensors",
+    "targeting": {
+      "observation": {
+        "sensors": {
+          "fullSight": {
+            "aboveWater": { "aboveWater": 250, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 0 }
+          }
+        }
+      }
+    }
+  },
+  "turretSensorUnitConstructionBot": {
+    "$extends": "turretSensorUnitHuman",
+    "turretBlueprintId": "turretSensorUnitConstructionBot",
+    "name": "Construction Bot Sensors",
+    "targeting": {
+      "observation": {
+        "sensors": {
+          "fullSight": {
+            "aboveWater": { "aboveWater": 250, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 0 }
+          }
+        }
+      }
+    }
+  },
+  "turretSensorUnitAdvancedConstructionBot": {
+    "$extends": "turretSensorUnitConstructionBot",
+    "turretBlueprintId": "turretSensorUnitAdvancedConstructionBot",
+    "name": "Advanced Construction Bot Sensors"
+  },
+  "turretSensorUnitClusterArtillery": {
+    "$extends": "turretSensorUnitMongoose",
+    "turretBlueprintId": "turretSensorUnitClusterArtillery",
+    "name": "Brachinus Sensors"
+  },
+  "turretSensorUnitWaterStrider": {
+    "$extends": "turretSensorUnitSeaTurtle",
+    "turretBlueprintId": "turretSensorUnitWaterStrider",
+    "name": "Water Strider Sensors",
+    "targeting": {
+      "observation": {
+        "sensors": {
+          "contactSight": {
+            "aboveWater": { "aboveWater": 0, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 180 }
+          }
+        }
+      }
+    }
+  },
+  "turretSensorUnitPatrolCorvette": {
+    "$extends": "turretSensorUnitSeaTurtle",
+    "turretBlueprintId": "turretSensorUnitPatrolCorvette",
+    "name": "Barracuda Sensors"
+  },
+  "turretSensorUnitConstructionSubmarine": {
+    "$extends": "turretSensorUnitOrca",
+    "turretBlueprintId": "turretSensorUnitConstructionSubmarine",
+    "name": "Construction Submarine Sensors",
+    "targeting": {
+      "observation": {
+        "sensors": {
+          "fullSight": {
+            "aboveWater": { "aboveWater": 0, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 250 }
+          },
+          "contactSight": {
+            "aboveWater": { "aboveWater": 0, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 250 }
+          }
+        }
+      }
+    }
+  },
+  "turretSensorUnitAdvancedConstructionSubmarine": {
+    "$extends": "turretSensorUnitConstructionSubmarine",
+    "turretBlueprintId": "turretSensorUnitAdvancedConstructionSubmarine",
+    "name": "Advanced Construction Submarine Sensors"
+  },
+  "turretSensorUnitAdvancedConstructionDrone": {
+    "$extends": "turretSensorUnitConstructionDrone",
+    "turretBlueprintId": "turretSensorUnitAdvancedConstructionDrone",
+    "name": "Advanced Construction Drone Sensors"
+  },
+  "turretSensorUnitPetrel": {
+    "$extends": "turretSensorUnitEagle",
+    "turretBlueprintId": "turretSensorUnitPetrel",
+    "name": "Procellaria Sensors",
+    "targeting": {
+      "observation": {
+        "sensors": {
+          "fullSight": {
+            "aboveWater": { "aboveWater": 300, "underwater": 0 },
+            "underwater": { "aboveWater": 0, "underwater": 0 }
+          }
         }
       }
     }

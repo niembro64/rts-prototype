@@ -88,10 +88,10 @@ export function validateSensorCapabilityConfig(
   // `requireSonarUnderWater = true`: an underwater target is revealed by SONAR,
   // and line of sight alone will not do it. We can express the same thing in
   // the matrix by leaving every fullSight[*][underwater] cell at zero — and
-  // that is exactly what all 35 of our sensor suites do today.
+  // that is exactly what every authored sensor suite does today.
   //
-  // Expressed that way it is 70 zeros staying zero across 35 files, and one
-  // stray number silently makes some tank a submarine detector. So state it:
+  // Expressed only as repeated zeroes, one stray number silently makes some
+  // tank a submarine detector. So state it:
   // a suite may see underwater only if it can also HEAR underwater.
   for (const sourceMedium of SENSOR_MEDIA) {
     const seesUnderwater = sensors.fullSight[sourceMedium].underwater > 0;
