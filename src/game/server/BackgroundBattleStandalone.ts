@@ -256,11 +256,14 @@ function seededFabricatorProductionReserve(world: WorldState, playerId: PlayerId
 
 /** First point outward from `startRadius` along `angle` on the map oval
  *  (20 wu steps) that is water AND that the blueprint's body can stand in
- *  under the authoritative traversal kernel; null when the ray finds none
- *  before the map edge. Used to keep water-required hulls off the land the
- *  centre disk sits on: a hull dropped on land has no ground propulsion,
- *  every route request from it is terminal, and no search can fix it
- *  (measured 2026-08-26: 87% of a 4-bot skirmish's unreachable results). */
+ *  under the authoritative traversal kernel; failing that, the first water
+ *  point on the ray (a hull in the edge buffer or a tight ring still floats
+ *  and routes out through an escape start); null only when the ray finds no
+ *  water at all before the map edge. Used to keep water-required hulls off
+ *  the land the centre disk sits on: a hull dropped on land has no ground
+ *  propulsion, every route request from it is terminal, and no search can
+ *  fix it (measured 2026-08-26: 87% of a 4-bot skirmish's unreachable
+ *  results). */
 function firstStandableWaterPointOutward(
   world: WorldState,
   oval: MapOvalMetrics,
@@ -279,6 +282,7 @@ function firstStandableWaterPointOutward(
   const mapHeight = world.mapHeight;
   const symmetric = world.slopePathMode === 'symmetric';
   const maxRadius = oval.minDim * 0.5;
+  let firstWater: { x: number; y: number } | null = null;
   for (let r = Math.max(0, startRadius); r <= maxRadius; r += BUILD_GRID_CELL_SIZE) {
     const point = mapOvalPointAt(oval, angle, r);
     if (
@@ -288,6 +292,7 @@ function firstStandableWaterPointOutward(
       break;
     }
     if (!isWaterAt(point.x, point.y, mapWidth, mapHeight)) continue;
+    if (firstWater === null) firstWater = { x: point.x, y: point.y };
     const z = world.getTerrainBedZ(point.x, point.y);
     if (
       isPathSegmentTraversable(
@@ -304,7 +309,7 @@ function firstStandableWaterPointOutward(
       return { x: point.x, y: point.y };
     }
   }
-  return null;
+  return firstWater;
 }
 
 /** The opening wave ignores terrain and path suitability for land bodies:
