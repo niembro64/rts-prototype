@@ -2215,12 +2215,8 @@ watchEffect(() => {
   m.serverUnitGroundNormalEmaMode = serverUnitGroundNormalEmaMode.value;
   const mapPresentation = resolveBattleMapPresentation({
     cap: displayUnitCap.value,
-    slowDownAtFinalWaypoint: currentSlowDownAtFinalWaypoint.value,
-    pathfindingConsidersUnits: currentPathfindingConsidersUnits.value,
     metalCoverage: currentMetalCoverage.value,
     liquidSurfaceMode: currentLiquidSurfaceMode.value,
-    slopePathMode: currentSlopePathMode.value,
-    converterTax: currentConverterTax.value,
     centerMagnitude: centerMagnitude.value,
     ringMagnitude: ringMagnitude.value,
     dividersMagnitude: dividersMagnitude.value,
@@ -2233,9 +2229,11 @@ watchEffect(() => {
     mapWidthLandCells: mapWidthLandCells.value,
     mapLengthLandCells: mapLengthLandCells.value,
   });
-  // Sky backdrop panorama follows the matched preset; null (settings
-  // drifted off every stock preset) resolves to the default panorama, so
-  // a custom map still gets a layered horizon rather than a flat sky.
+  // Sky backdrop panorama follows the matched preset; null (the MAP settings
+  // drifted off every stock preset) resolves to the default panorama, so a
+  // custom map still gets a layered horizon rather than a flat sky. The
+  // gameplay toggles are deliberately not read here: they never rename the
+  // map, so they must not retrigger this either.
   m.activePresetName = mapPresentation.presetName;
   setActiveBackdropPresetName(mapPresentation.backdropPresetName);
   setActiveMapPresetLabel(mapPresentation.labelCaption);
