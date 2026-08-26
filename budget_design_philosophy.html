@@ -764,14 +764,15 @@
         away from where the return was actually heard.
       </p>
       <p>
-        Contacts are the one moving visual that cannot ride the client prediction stepper, because
-        there is no blueprint, velocity, or order set to predict from, so they arrive only on
-        presentation snapshots &mdash; far slower than the render loop. The world blip therefore
-        interpolates between its last two received positions, the same clamped glide the fixed-tick
-        presentation history gives every other moving visual, and never extrapolates past the newest
-        sample while heard. Once returns stop, the anonymous dot coasts briefly on its last measured
-        drift while its fade expires &mdash; the same treatment a full model gets when it leaves
-        sight (<code>EntityVisionFade3D</code>). Blips and models share one pair of durations
+        Contact membership still arrives on recipient-filtered presentation snapshots, but a blip
+        must not own a second stored location, interpolation clock, or inferred velocity. Its
+        anonymous contact ID resolves only the underlying entity&rsquo;s position from the same two
+        adjacent authoritative fixed-tick poses and the same render-frame alpha used by the visible
+        model. The battlefield blip resolves that pose every render frame, and the minimap marker
+        copies the same pose before its next draw; crossing between radar and full sight changes only
+        the representation and its opacity, never its spatial track. This position-only lookup does not
+        expose blueprint, owner, health, orders, animation state, or any other identity fact. Blips
+        and models share one pair of durations
         (<code>fadeInMs</code> / <code>fadeOutMs</code>, both 500 ms, pinned equal by
         <code>EntityVisionFade3DContractTest</code>): an enemy stepping into sight is a blip falling
         under a model rising over the same interval, and dropping back to radar is the reverse, so

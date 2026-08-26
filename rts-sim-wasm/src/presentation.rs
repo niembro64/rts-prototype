@@ -14,6 +14,7 @@ use wasm_bindgen::prelude::*;
 
 pub const PRESENTATION_POSE_OUTPUT_STRIDE: usize = 20;
 pub const PRESENTATION_TURRET_OUTPUT_STRIDE: usize = 8;
+pub const PRESENTATION_POSITION_OUTPUT_STRIDE: usize = 4;
 
 #[derive(Clone, Default)]
 struct PoseFrame {
@@ -215,6 +216,7 @@ struct PresentationHistory {
     tick: u32,
     slot_input: Vec<u32>,
     pose_output: Vec<f32>,
+    position_output: Vec<f32>,
     turret_output: Vec<f32>,
 }
 
@@ -227,6 +229,7 @@ impl PresentationHistory {
             tick: 0,
             slot_input: vec![0; 1024],
             pose_output: vec![0.0; 1024 * PRESENTATION_POSE_OUTPUT_STRIDE],
+            position_output: vec![0.0; 1024 * PRESENTATION_POSITION_OUTPUT_STRIDE],
             turret_output: vec![
                 0.0;
                 1024 * COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize
@@ -242,6 +245,10 @@ impl PresentationHistory {
         let pose_needed = count * PRESENTATION_POSE_OUTPUT_STRIDE;
         if self.pose_output.len() < pose_needed {
             self.pose_output.resize(pose_needed, 0.0);
+        }
+        let position_needed = count * PRESENTATION_POSITION_OUTPUT_STRIDE;
+        if self.position_output.len() < position_needed {
+            self.position_output.resize(position_needed, 0.0);
         }
         let turret_needed = count
             * COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize
@@ -354,6 +361,11 @@ pub fn presentation_slot_input_scratch_ptr() -> *mut u32 {
 #[wasm_bindgen]
 pub fn presentation_pose_output_scratch_ptr() -> *const f32 {
     presentation_history().pose_output.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn presentation_position_output_scratch_ptr() -> *const f32 {
+    presentation_history().position_output.as_ptr()
 }
 
 #[wasm_bindgen]
@@ -514,6 +526,48 @@ pub fn presentation_interpolate(count: u32, alpha: f64) -> u32 {
     valid_count
 }
 
+/// Position-only presentation query for anonymous contacts. Contacts need the
+/// exact same adjacent-tick interpolation as identified models, but must not
+/// pay to materialize orientation, normals, motion, or every turret row.
+#[wasm_bindgen]
+pub fn presentation_interpolate_positions(count: u32, alpha: f64) -> u32 {
+    let history = presentation_history();
+    let count = count as usize;
+    history.ensure_scratch(count);
+    let t = if alpha.is_finite() {
+        alpha.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let mut valid_count = 0u32;
+    for row in 0..count {
+        let slot = history.slot_input[row] as usize;
+        let ob = row * PRESENTATION_POSITION_OUTPUT_STRIDE;
+        history.position_output[ob..ob + PRESENTATION_POSITION_OUTPUT_STRIDE].fill(0.0);
+        if !history.initialized
+            || slot >= history.current.entity_id.len()
+            || history.current.entity_id[slot] < 0
+        {
+            continue;
+        }
+        let current_id = history.current.entity_id[slot];
+        let same_entity = slot < history.previous.entity_id.len()
+            && history.previous.entity_id[slot] == current_id;
+        let prev = if same_entity {
+            &history.previous
+        } else {
+            &history.current
+        };
+        let current = &history.current;
+        valid_count += 1;
+        history.position_output[ob] = 1.0;
+        history.position_output[ob + 1] = lerp(prev.pos_x[slot], current.pos_x[slot], t) as f32;
+        history.position_output[ob + 2] = lerp(prev.pos_y[slot], current.pos_y[slot], t) as f32;
+        history.position_output[ob + 3] = lerp(prev.pos_z[slot], current.pos_z[slot], t) as f32;
+    }
+    valid_count
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -549,6 +603,11 @@ mod tests {
         let q_len =
             (out[11] * out[11] + out[12] * out[12] + out[13] * out[13] + out[14] * out[14]).sqrt();
         assert!((q_len - 1.0).abs() < 1e-5);
+        assert_eq!(presentation_interpolate_positions(1, 0.5), 1);
+        let position_out = &presentation_history().position_output;
+        assert!((position_out[1] - 5.0).abs() < 1e-5);
+        assert!((position_out[2] - 3.0).abs() < 1e-5);
+        assert!((position_out[3] - 6.0).abs() < 1e-5);
     }
 
     #[test]

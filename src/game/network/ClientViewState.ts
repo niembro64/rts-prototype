@@ -23,7 +23,7 @@ import type {
 import type { SprayTarget } from '../sim/commanderAbilities';
 import { writeWorkEmitterOriginWorld } from '../sim/workEmitterOrigin';
 import type { MinimapEntity } from '@/types/ui';
-import type { ContactSnapshotSampling } from './ClientMinimapOverrideStore';
+import { PRESENTED_ENTITY_POSITION_STRIDE } from './ClientLockstepPresentation';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { FootprintBounds, ViewportFootprint } from '../ViewportFootprint';
 import { viewExcludesSphere } from '../render3d/EntityDetailLevel3D';
@@ -275,10 +275,37 @@ export class ClientViewState extends ClientViewStateBase {
     return this.minimapOverrideStore.getOverride();
   }
 
-  /** Render-clock progress through the current contact snapshot. Only the
-   *  world blip renderer needs it: the minimap redraws off its own interval. */
-  getMinimapContactSampling(nowMs: number): ContactSnapshotSampling {
-    return this.minimapOverrideStore.getSampling(nowMs);
+  getMinimapContactSequence(): number {
+    return this.minimapOverrideStore.getSequence();
+  }
+
+  /** Batch-resolve position-only contact ids through the same presentation
+   *  pose used by identified models. Visible-entity transforms are the
+   *  compatibility fallback when lockstep history is unavailable. */
+  resolvePresentedEntityPositions(
+    entityIds: readonly EntityId[],
+    out: Float32Array,
+  ): void {
+    const required = entityIds.length * PRESENTED_ENTITY_POSITION_STRIDE;
+    if (out.length < required) {
+      throw new Error(
+        `[client view] presented-position output needs ${required} floats, got ${out.length}`,
+      );
+    }
+    out.fill(0, 0, required);
+    if (this.lockstepPresentationEnabled) {
+      this.lockstepPresentation.resolveEntityPositions(entityIds, out);
+    }
+    for (let row = 0; row < entityIds.length; row++) {
+      const outBase = row * PRESENTED_ENTITY_POSITION_STRIDE;
+      if (out[outBase] !== 0) continue;
+      const entity = this.entities.get(entityIds[row]);
+      if (entity === undefined) continue;
+      out[outBase] = 1;
+      out[outBase + 1] = entity.transform.x;
+      out[outBase + 2] = entity.transform.y;
+      out[outBase + 3] = entity.transform.z;
+    }
   }
 
   getUnits(): Entity[] {

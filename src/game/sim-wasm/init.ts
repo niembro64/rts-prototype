@@ -101,9 +101,11 @@ import __wbg_init, {
   presentation_has_history,
   presentation_slot_input_scratch_ptr,
   presentation_pose_output_scratch_ptr,
+  presentation_position_output_scratch_ptr,
   presentation_turret_output_scratch_ptr,
   presentation_scratch_ensure,
   presentation_interpolate,
+  presentation_interpolate_positions,
   render_projectile_axis_compute,
   render_projectile_axis_input_scratch_ptr,
   render_projectile_axis_output_scratch_ptr,
@@ -1417,9 +1419,11 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           hasHistory: presentation_has_history,
           slotInputScratchPtr: presentation_slot_input_scratch_ptr,
           poseOutputScratchPtr: presentation_pose_output_scratch_ptr,
+          positionOutputScratchPtr: presentation_position_output_scratch_ptr,
           turretOutputScratchPtr: presentation_turret_output_scratch_ptr,
           scratchEnsure: presentation_scratch_ensure,
           interpolate: presentation_interpolate,
+          interpolatePositions: presentation_interpolate_positions,
       poseOutputStride: 20,
           turretOutputStride: 8,
           maxTurretsPerEntity: 8,
@@ -1763,6 +1767,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runEntityDeathDisassembly3DContractTest();
         const { runEntityVisionFade3DContractTest } = await import('../render3d/EntityVisionFade3DContractTest');
         runEntityVisionFade3DContractTest();
+        const { runContactBlipRenderer3DContractTest } = await import('../render3d/ContactBlipRenderer3DContractTest');
+        runContactBlipRenderer3DContractTest();
         const { runVisionDistanceField3DContractTest } = await import('../render3d/VisionDistanceField3DContractTest');
         runVisionDistanceField3DContractTest();
         const { runSensorWaterlineSightContractTest } = await import('../network/sensorWaterlineSightContractTest');

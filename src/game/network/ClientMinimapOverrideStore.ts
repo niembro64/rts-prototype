@@ -1,6 +1,5 @@
 import type { MinimapEntity } from '@/types/ui';
 import { COLORS } from '@/colorsConfig';
-import { PRESENTATION_SNAPSHOT_RATE_DEFAULT } from '@/presentationSnapshotConfig';
 import type { EntityId } from '../sim/types';
 import { getPlayerPrimaryColor } from '../sim/types';
 import type { NetworkServerSnapshotMinimapEntity } from './NetworkTypes';
@@ -15,44 +14,16 @@ type ClientMinimapOverrideStoreOptions = {
   isSelected: (id: EntityId) => boolean;
 };
 
-/** Contact rows ride the presentation snapshot, which is much slower than the
- *  render loop, and a radar contact has no blueprint, velocity, or orders for
- *  the prediction stepper to work from. The world blip renderer therefore
- *  bridges the gap itself: `sequence` tells it a new sample landed, and `alpha`
- *  is how far the render clock has walked from the previous sample toward it. */
-export type ContactSnapshotSampling = Readonly<{
-  sequence: number;
-  alpha: number;
-  /** Measured gap between the last two contact snapshots. Blip velocity is
-   *  derived from it: (to - from) / intervalMs, which is also the short drift
-   *  retained by an anonymous blip while its contact fade expires. */
-  intervalMs: number;
-}>;
-
-const NOMINAL_SNAPSHOT_INTERVAL_MS = 1000 / PRESENTATION_SNAPSHOT_RATE_DEFAULT;
-/** A hitch or a paused debugger must not stretch the glide, and a burst of
- *  back-to-back snapshots must not collapse it. */
-const MIN_SNAPSHOT_INTERVAL_MS = 30;
-const MAX_SNAPSHOT_INTERVAL_MS = 1000;
-
 export class ClientMinimapOverrideStore {
   private overrideEntities: MinimapEntity[] | null = null;
   private sequence = 0;
-  private updatedAtMs = 0;
-  private intervalMs = NOMINAL_SNAPSHOT_INTERVAL_MS;
-  private readonly sampling = {
-    sequence: 0,
-    alpha: 1,
-    intervalMs: NOMINAL_SNAPSHOT_INTERVAL_MS,
-  };
 
   constructor(private readonly options: ClientMinimapOverrideStoreOptions) {}
 
   applySnapshot(
     source: readonly NetworkServerSnapshotMinimapEntity[] | undefined,
-    nowMs: number = performance.now(),
   ): void {
-    this.noteSampleArrival(nowMs);
+    this.sequence++;
     if (source) {
       this.applyOverride(source);
     } else {
@@ -64,37 +35,15 @@ export class ClientMinimapOverrideStore {
     return this.overrideEntities;
   }
 
-  /** Clamped rather than extrapolated, matching the render clock the fixed-tick
-   *  presentation history uses: a contact whose snapshots stop arriving comes to
-   *  rest where it was last heard instead of drifting on past it. */
-  getSampling(nowMs: number): ContactSnapshotSampling {
-    const sampling = this.sampling;
-    sampling.sequence = this.sequence;
-    sampling.alpha = this.updatedAtMs === 0
-      ? 1
-      : Math.min(1, Math.max(0, (nowMs - this.updatedAtMs) / this.intervalMs));
-    sampling.intervalMs = this.intervalMs;
-    return sampling;
+  /** Membership still changes only when a filtered presentation snapshot
+   *  lands. Position does not: world/minimap blips read the entity's shared
+   *  fixed-tick presentation pose every render frame. */
+  getSequence(): number {
+    return this.sequence;
   }
 
   reset(): void {
     this.overrideEntities = null;
-    this.sequence++;
-    this.updatedAtMs = 0;
-    this.intervalMs = NOMINAL_SNAPSHOT_INTERVAL_MS;
-  }
-
-  /** The glide length is measured rather than read off the advertised snapshot
-   *  rate, because the gap that has to be covered is the one this client
-   *  actually observed, host hitches and network jitter included. */
-  private noteSampleArrival(nowMs: number): void {
-    if (this.updatedAtMs !== 0) {
-      const measured = nowMs - this.updatedAtMs;
-      if (measured >= MIN_SNAPSHOT_INTERVAL_MS && measured <= MAX_SNAPSHOT_INTERVAL_MS) {
-        this.intervalMs = this.intervalMs * 0.8 + measured * 0.2;
-      }
-    }
-    this.updatedAtMs = nowMs;
     this.sequence++;
   }
 

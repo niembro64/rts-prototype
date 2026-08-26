@@ -740,7 +740,7 @@ function assertSensorPresentationSemantics(): void {
   }
   assertContract(
     missingContactIdRejected,
-    'a contact without an id must fail instead of silently losing its previous sample',
+    'a contact without an id must fail instead of losing its shared entity-pose lookup',
   );
   assertContract(
     radar.colorHex !== sonar.colorHex && dual.colorHex !== radar.colorHex && dual.colorHex !== sonar.colorHex,
@@ -750,26 +750,15 @@ function assertSensorPresentationSemantics(): void {
     CONTACT_BLIP_GLYPH === ENTITY_LOD_PROXY_GLYPH_CIRCLE && CONTACT_BLIP_RADIUS > 0,
     'all contact kinds reuse one fixed neutral LOD-proxy glyph and radius',
   );
-  // Contacts arrive only on presentation snapshots, so the world blip bridges
-  // the gap between them itself. The bridge is a clamped glide: no shimmer, and
-  // nothing invented past the newest sample.
+  // Snapshot cadence owns only contact membership. Position is resolved from
+  // the entity presentation history every render frame.
   const contactSnapshots = new ClientMinimapOverrideStore({ isSelected: () => false });
-  contactSnapshots.applySnapshot(undefined, 1000);
-  const firstSample = contactSnapshots.getSampling(1000).sequence;
-  contactSnapshots.applySnapshot(undefined, 1200);
-  const secondSample = contactSnapshots.getSampling(1200);
+  contactSnapshots.applySnapshot(undefined);
+  const firstSequence = contactSnapshots.getSequence();
+  contactSnapshots.applySnapshot(undefined);
   assertContract(
-    secondSample.sequence !== firstSample && secondSample.alpha === 0,
-    'a new contact snapshot starts a fresh glide from where the blip was last drawn',
-  );
-  const midGlide = contactSnapshots.getSampling(1300).alpha;
-  assertContract(
-    midGlide > 0 && midGlide < 1,
-    'contact blips advance with the render clock instead of stepping at the snapshot rate',
-  );
-  assertContract(
-    contactSnapshots.getSampling(9000).alpha === 1 && contactSnapshots.getSampling(1100).alpha === 0,
-    'contact blips clamp to the newest sample rather than extrapolating past it',
+    contactSnapshots.getSequence() !== firstSequence,
+    'a new contact snapshot advances membership without creating a second position clock',
   );
 }
 

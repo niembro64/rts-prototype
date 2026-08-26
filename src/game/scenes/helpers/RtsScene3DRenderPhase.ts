@@ -275,6 +275,10 @@ export class RtsScene3DRenderPhase {
     this.visionDistanceField.contactAlphaAt(x, y, mediumMask, this.visionFadeBandWu * 3);
   private readonly contactBlipVisionFade = { timeFades: true, contactAlpha: undefined as
     ((x: number, y: number, mediumMask: number) => number) | undefined };
+  private readonly resolveContactBlipPositionsRef = (
+    entityIds: readonly number[],
+    out: Float32Array,
+  ): void => this.clientViewState.resolvePresentedEntityPositions(entityIds, out);
   /** Reused argument packet for entityRenderer.update; consumed
    *  synchronously by the callee every frame. */
   private readonly entityRendererPacket = {
@@ -566,10 +570,11 @@ export class RtsScene3DRenderPhase {
     // entity render path: a contact has no blueprint to draw.
     contactBlipRenderer.update(
       this.clientViewState.getMinimapEntitiesOverride(),
-      this.clientViewState.getMinimapContactSampling(performance.now()),
+      this.clientViewState.getMinimapContactSequence(),
       this.renderScope,
       effectDtMs,
       this.contactBlipVisionFade,
+      this.resolveContactBlipPositionsRef,
     );
     const inputManager = this.getInputManager();
     // Resolved once per frame and handed to BOTH force-material renderers.

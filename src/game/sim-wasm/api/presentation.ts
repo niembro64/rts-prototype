@@ -7,9 +7,11 @@ export interface PresentationApi {
   hasHistory: () => boolean;
   slotInputScratchPtr: () => number;
   poseOutputScratchPtr: () => number;
+  positionOutputScratchPtr: () => number;
   turretOutputScratchPtr: () => number;
   scratchEnsure: (count: number) => void;
   interpolate: (count: number, alpha: number) => number;
+  interpolatePositions: (count: number, alpha: number) => number;
   poseOutputStride: number;
   turretOutputStride: number;
   maxTurretsPerEntity: number;
