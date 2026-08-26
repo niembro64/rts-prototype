@@ -8,10 +8,9 @@ import { clamp01 } from '../math';
 // it keeps arachnid feet extended around the hull instead of permitting them
 // to migrate through the hip and underneath the unit.
 //
-// The hip-centred shell [|upper - lower|, upper + lower] is the hard IK
+// The hip-centred shell [|upper - lower|, upper + lower] is only the hard IK
 // constraint. It prevents either bone from stretching or folding through
-// itself; reaching its straight outer boundary supplements the authored gait
-// triggers so a clamped planted leg never drags with the chassis.
+// itself, but it does not replace the authored gait envelope.
 
 type LegSnapSpherePoint = { x: number; y: number; z: number };
 type LegSnapRayVelocity = { x: number; z: number };
@@ -70,17 +69,6 @@ export function legChoppedSphereNeedsStep(
   const inner = Math.max(0, innerRadius);
   return footToOuterCenterDistanceSq > outer * outer
     || footToInnerCenterDistanceSq < inner * inner;
-}
-
-/** A planted foot must begin a new step as soon as both fixed-length bones
- * reach their straight-line limit. Waiting until the stored foothold moves
- * past this boundary makes the shell clamp drag a visibly rigid leg. */
-export function legAtFullExtensionNeedsStep(
-  footToHipDistanceSq: number,
-  totalLegLength: number,
-): boolean {
-  const fullExtension = Math.max(0, totalLegLength);
-  return footToHipDistanceSq >= fullExtension * fullExtension;
 }
 
 /** Place the moving snap ray between the two authored gait boundaries. */
@@ -289,21 +277,6 @@ export function resolveLegSnapRayPointVelocity(
   const inverseSeconds = 1000 / dtMs;
   out.x = (currentX - previousX) * inverseSeconds;
   out.z = (currentZ - previousZ) * inverseSeconds;
-  return out;
-}
-
-/** Aim a full-extension recovery from the planted foot through the authored
- * snap-ray origin. The existing boundary cast then lands on the opposite side
- * of that pivot instead of selecting the same straight-leg boundary again. */
-export function resolveLegSnapThroughOriginDirection(
-  plantedFootX: number,
-  plantedFootZ: number,
-  rayOriginX: number,
-  rayOriginZ: number,
-  out: LegSnapRayVelocity,
-): LegSnapRayVelocity {
-  out.x = rayOriginX - plantedFootX;
-  out.z = rayOriginZ - plantedFootZ;
   return out;
 }
 

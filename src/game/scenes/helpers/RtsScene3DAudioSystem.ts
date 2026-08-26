@@ -2,7 +2,7 @@ import { getAudioSmoothing } from '@/clientBarConfig';
 import { audioManager } from '../../audio/AudioManager';
 import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
 import { AudioEventScheduler } from './AudioEventScheduler';
-import type { RtsScene3DSnapshotAudioOptions } from './RtsScene3DSnapshotIntake';
+import type { RtsScene3DSnapshotEventOptions } from './RtsScene3DSnapshotIntake';
 
 type RtsScene3DAudioEventHandler = (
   event: NetworkServerSnapshotSimEvent,
@@ -10,10 +10,11 @@ type RtsScene3DAudioEventHandler = (
 
 export class RtsScene3DAudioSystem {
   private readonly scheduler = new AudioEventScheduler();
-  private readonly snapshotOptions: RtsScene3DSnapshotAudioOptions = {
+  private readonly snapshotOptions: RtsScene3DSnapshotEventOptions = {
     scheduler: this.scheduler,
     smoothingEnabled: false,
-    play: () => {},
+    presentVisual: () => {},
+    playAudio: () => {},
   };
 
   drainReady(
@@ -25,13 +26,15 @@ export class RtsScene3DAudioSystem {
     this.scheduler.drain(now, play);
   }
 
-  snapshotAudioOptions(
+  snapshotEventOptions(
     enabled: boolean,
-    play: RtsScene3DAudioEventHandler,
-  ): RtsScene3DSnapshotAudioOptions | undefined {
+    playAudio: RtsScene3DAudioEventHandler,
+    presentVisual: RtsScene3DAudioEventHandler,
+  ): RtsScene3DSnapshotEventOptions | undefined {
     if (!enabled) return undefined;
     this.snapshotOptions.smoothingEnabled = getAudioSmoothing();
-    this.snapshotOptions.play = play;
+    this.snapshotOptions.playAudio = playAudio;
+    this.snapshotOptions.presentVisual = presentVisual;
     return this.snapshotOptions;
   }
 

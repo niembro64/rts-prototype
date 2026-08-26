@@ -10,7 +10,6 @@ import { finiteOr } from '../../math';
 import { DEATH_EXPLOSION_HITBOX_RADIUS_MULT } from '../../sim/blueprints/entityBaseLedger';
 import { getShotBlueprint } from '../../sim/blueprints/shots';
 import { isShotBlueprintId } from '@/types/blueprintIds';
-import { playSimEventAudio3D } from './RtsScene3DSimEventAudio';
 import {
   WATER_SURFACE_NORMAL_SIM,
   finiteAtLeast,
@@ -61,7 +60,6 @@ export function dispatchSimEvent3DVisual(
   event: NetworkServerSnapshotSimEvent,
   context: RtsScene3DVisualEventDispatchContext,
 ): void {
-  playSimEventAudio3D(event);
   if (event.audioOnly) return;
   if (!hasFiniteEventPosition(event)) {
     warnNonFiniteVisualEvent(event);

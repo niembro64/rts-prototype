@@ -1,9 +1,9 @@
 // CrawlerRig3D — world-space leg rig for crawler units (arachnid family).
 // Each foot is planted at a real WORLD XYZ point on terrain and stays
-// there until it leaves the chopped gait envelope or reaches full mechanical
-// extension. An envelope step follows the snap-ray point's measured velocity;
-// a straight-leg recovery crosses that same origin to the opposite boundary.
-// The visible leg is two cylinders
+// there until it leaves its authored outer foot sphere or enters its inner
+// attachment-ground chopping sphere. It then travels to the chopped envelope
+// boundary in its snap-ray point's measured velocity direction. The visible
+// leg is two cylinders
 // (upper hip→knee + lower knee→ground endpoint) drawn through a shared
 // LegInstancedRenderer; the IK that places the knee lives here.
 //
@@ -68,7 +68,6 @@ import {
 } from './FootContactOrientation3D';
 import {
   clampPointToLegShell,
-  legAtFullExtensionNeedsStep,
   legChoppedSphereNeedsStep,
   legSurfaceWithinReach,
   resolveLegChoppedSphereVelocityTarget,
@@ -77,7 +76,6 @@ import {
   resolveLegReachShell,
   resolveLegSnapRayOrigin,
   resolveLegSnapRayPointVelocity,
-  resolveLegSnapThroughOriginDirection,
   resolveLegSnapSphereLocal,
   type LegReachShell,
   type LegSnapSphereLocal,
@@ -1015,36 +1013,17 @@ export function updateCrawler(
     const innerDy = leg.worldY - innerSphereWorldY;
     const innerDz = leg.worldZ - innerSphereWorldZ;
     const innerDistSq = innerDx * innerDx + innerDy * innerDy + innerDz * innerDz;
-    const reachDx = leg.worldX - hipWorldX;
-    const reachDy = leg.worldY - hipWorldY;
-    const reachDz = leg.worldZ - hipWorldZ;
-    const atFullExtension = legAtFullExtensionNeedsStep(
-      reachDx * reachDx + reachDy * reachDy + reachDz * reachDz,
-      shell.outerRadius,
-    );
 
     if (
       !startedTouchdownStep
       && leg.contactState === 'planted'
-      && (
-        atFullExtension
-        || legChoppedSphereNeedsStep(
-          outerDistSq,
-          sphereRadius,
-          innerDistSq,
-          choppingSphereRadius,
-        )
+      && legChoppedSphereNeedsStep(
+        outerDistSq,
+        sphereRadius,
+        innerDistSq,
+        choppingSphereRadius,
       )
     ) {
-      if (atFullExtension) {
-        resolveLegSnapThroughOriginDirection(
-          leg.worldX,
-          leg.worldZ,
-          _snapRayOriginPoint.x,
-          _snapRayOriginPoint.z,
-          _fullExtensionSnapDirection,
-        );
-      }
       beginLegStepToChoppedSphereBoundary(
         leg,
         sphereWorldX,
@@ -1061,8 +1040,8 @@ export function updateCrawler(
         innerSphereWorldY,
         innerSphereWorldZ,
         choppingSphereRadius,
-        atFullExtension ? _fullExtensionSnapDirection.x : _snapRayVelocity.x,
-        atFullExtension ? _fullExtensionSnapDirection.z : _snapRayVelocity.z,
+        _snapRayVelocity.x,
+        _snapRayVelocity.z,
         hipWorldX,
         hipWorldY,
         hipWorldZ,
@@ -1633,7 +1612,6 @@ const _innerSphereCenterPoint = { x: 0, y: 0, z: 0 };
 const _snapSphereOutwardPoint = { x: 0, y: 0, z: 0 };
 const _snapRayOriginPoint = { x: 0, y: 0, z: 0 };
 const _snapRayVelocity = { x: 0, z: 0 };
-const _fullExtensionSnapDirection = { x: 0, z: 0 };
 const _snapSphereTargetPoint = { x: 0, y: 0, z: 0 };
 const _debugSpokeDirection = new THREE.Vector3();
 const _footSurface: LocomotionFootSurfaceSample = {

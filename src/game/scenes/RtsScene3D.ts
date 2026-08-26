@@ -34,6 +34,7 @@ import { bootstrapRtsScene3DRenderers } from './helpers/RtsScene3DRendererBootst
 import { RtsScene3DRendererWarmup } from './helpers/RtsScene3DRendererWarmup';
 import { RtsScene3DSelectionSystem } from './helpers/RtsScene3DSelectionSystem';
 import { dispatchSimEvent3DVisual } from './helpers/RtsScene3DVisualEventDispatcher';
+import { playSimEventAudio3D } from './helpers/RtsScene3DSimEventAudio';
 import {
   DETAIL_RUNG_GLYPH,
   detailLevelForViewPosition,
@@ -334,8 +335,11 @@ export class RtsScene3D {
   private destroyed = false;
   private lastPingPoint: { x: number; y: number } | null = null;
   private readonly cameraAnchors: Array<SceneCameraState | null> = [null, null, null, null];
-  private readonly handleSimEvent3DCallback = (event: NetworkServerSnapshotSimEvent): void => {
-    this.handleSimEvent3D(event);
+  private readonly playSimEventAudio3DCallback = (event: NetworkServerSnapshotSimEvent): void => {
+    playSimEventAudio3D(event);
+  };
+  private readonly presentSimEvent3DVisualCallback = (event: NetworkServerSnapshotSimEvent): void => {
+    this.presentSimEvent3DVisual(event);
   };
 
   // Scene lifecycle accessor read by GameCanvas.vue.
@@ -782,14 +786,15 @@ export class RtsScene3D {
     this.frameTelemetry.recordRenderDelta(delta);
     this.audioSystem.drainReady(
       this.clientRenderEnabled,
-      this.handleSimEvent3DCallback,
+      this.playSimEventAudio3DCallback,
     );
 
     const snapshotResult = this.snapshotIntake.consumeLatestSnapshot(
       this.clientRenderEnabled,
-      this.audioSystem.snapshotAudioOptions(
+      this.audioSystem.snapshotEventOptions(
         this.clientRenderEnabled,
-        this.handleSimEvent3DCallback,
+        this.playSimEventAudio3DCallback,
+        this.presentSimEvent3DVisualCallback,
       ),
     );
     if (snapshotResult.appliedSnapshot) {
@@ -971,7 +976,7 @@ export class RtsScene3D {
     this.gameConnection.sendCommand(command);
   }
 
-  private handleSimEvent3D(event: NetworkServerSnapshotSimEvent): void {
+  private presentSimEvent3DVisual(event: NetworkServerSnapshotSimEvent): void {
     if (
       event.type === 'ping' &&
       Number.isFinite(event.pos.x) &&

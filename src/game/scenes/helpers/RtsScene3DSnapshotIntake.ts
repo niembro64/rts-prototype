@@ -29,11 +29,32 @@ type RtsScene3DSnapshotEventScheduler = {
   ): void;
 };
 
-export type RtsScene3DSnapshotAudioOptions = {
+export type RtsScene3DSnapshotEventOptions = {
   scheduler: RtsScene3DSnapshotEventScheduler;
   smoothingEnabled: boolean;
-  play(event: NetworkServerSnapshotSimEvent): void;
+  presentVisual(event: NetworkServerSnapshotSimEvent): void;
+  playAudio(event: NetworkServerSnapshotSimEvent): void;
 };
+
+/** Visual lifecycle events belong to the snapshot that removed their source
+ * entity, so present them before audio smoothing can delay the corresponding
+ * sound. In particular, plasma collapse must claim the retained trail before
+ * the next renderer update prunes an ordinary despawned projectile. */
+export function presentSnapshotEventsImmediatelyAndScheduleAudio(
+  events: NetworkServerSnapshotSimEvent[],
+  now: number,
+  options: RtsScene3DSnapshotEventOptions,
+): void {
+  for (let i = 0; i < events.length; i++) {
+    options.presentVisual(events[i]);
+  }
+  options.scheduler.schedule(
+    events,
+    now,
+    options.smoothingEnabled,
+    options.playAudio,
+  );
+}
 
 type RtsScene3DSnapshotIntakeResult = {
   appliedSnapshot: boolean;
@@ -181,7 +202,7 @@ export class RtsScene3DSnapshotIntake {
 
   consumeLatestSnapshot(
     clientRenderEnabled: boolean,
-    audio?: RtsScene3DSnapshotAudioOptions,
+    eventOptions?: RtsScene3DSnapshotEventOptions,
     nowOverride?: number,
   ): RtsScene3DSnapshotIntakeResult {
     const state = this.snapshotBuffer.consume();
@@ -233,15 +254,14 @@ export class RtsScene3DSnapshotIntake {
     });
     CLIENT_PREDICTION_DIAGNOSTICS.recordSnapshotApply(applyStats.correction);
 
-    if (clientRenderEnabled && audio) {
-      audio.scheduler.recordSnapshot(now);
+    if (clientRenderEnabled && eventOptions) {
+      eventOptions.scheduler.recordSnapshot(now);
       const events = this.clientViewState.getPendingAudioEvents();
       if (events && events.length > 0) {
-        audio.scheduler.schedule(
+        presentSnapshotEventsImmediatelyAndScheduleAudio(
           events,
           now,
-          audio.smoothingEnabled,
-          audio.play,
+          eventOptions,
         );
       }
     }

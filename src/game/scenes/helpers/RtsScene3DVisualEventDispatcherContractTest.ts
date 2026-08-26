@@ -28,6 +28,7 @@ import type { WaterSplash3D } from '../../render3d/WaterSplash3D';
 import type { ClientViewState } from '../../network/ClientViewState';
 import type { ViewportFootprint } from '../../ViewportFootprint';
 import { dispatchSimEvent3DVisual } from './RtsScene3DVisualEventDispatcher';
+import { presentSnapshotEventsImmediatelyAndScheduleAudio } from './RtsScene3DSnapshotIntake';
 import { DEATH_EXPLOSION_HITBOX_RADIUS_MULT } from '../../sim/blueprints/entityBaseLedger';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -299,6 +300,39 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
       plasmaCollapses[1].id === 72 &&
       plasmaCollapses.every(({ x, y, z }) => x === 120 && y === 160 && z === 42),
     'hit and expiry events must pin plasma collapse to their exact authoritative event point',
+  );
+
+  const eventTiming: string[] = [];
+  let playScheduledAudio: (() => void) | null = null;
+  presentSnapshotEventsImmediatelyAndScheduleAudio(
+    [event('hit', 75)],
+    100,
+    {
+      smoothingEnabled: true,
+      presentVisual: () => { eventTiming.push('visual'); },
+      playAudio: () => { eventTiming.push('audio'); },
+      scheduler: {
+        recordSnapshot: () => -1,
+        schedule: (events, _now, smoothingEnabled, play) => {
+          assertContract(
+            smoothingEnabled && events.length === 1,
+            'the timing probe must exercise the delayed-audio path',
+          );
+          eventTiming.push('audio-scheduled');
+          playScheduledAudio = () => { play(events[0]); };
+        },
+      },
+    },
+  );
+  assertContract(
+    eventTiming.join(',') === 'visual,audio-scheduled',
+    'snapshot visuals must present immediately before smoothed audio is scheduled',
+  );
+  assertContract(playScheduledAudio !== null, 'smoothed audio must remain queued for later playback');
+  (playScheduledAudio as () => void)();
+  assertContract(
+    eventTiming.join(',') === 'visual,audio-scheduled,audio',
+    'audio smoothing must delay only sound, never the terminal projectile visual',
   );
 
   dispatchSimEvent3DVisual(event('death', 73), context);
