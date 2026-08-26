@@ -583,27 +583,24 @@ export function useGameCanvasLobbySettings({
     const terrainDetailDefault = BATTLE_CONFIG.terrainDetail.default;
     const simulationTickRateDefault = BATTLE_CONFIG.simulationTickRate.default;
     const mapDimensionsDefault = getDefaultMapLandDimensions();
-    if (
-      centerMagnitude.value === centerMagnitudeDefault &&
-      ringMagnitude.value === ringMagnitudeDefault &&
-      dividersMagnitude.value === dividersMagnitudeDefault &&
-      perimeterMagnitude.value === perimeterMagnitudeDefault &&
-      terrainPrecedence.value === terrainPrecedenceDefault &&
-      terrainDTerrain.value === dTerrainDefault &&
-      plateauWallSlopeDegrees.value === plateauWallSlopeDegreesDefault &&
-      metalDepositStep.value === metalDepositStepDefault &&
-      terrainDetail.value === terrainDetailDefault &&
-      simulationTickRateHz.value === simulationTickRateDefault &&
-      sameMapLandDimensions(
+    const changed =
+      centerMagnitude.value !== centerMagnitudeDefault ||
+      ringMagnitude.value !== ringMagnitudeDefault ||
+      dividersMagnitude.value !== dividersMagnitudeDefault ||
+      perimeterMagnitude.value !== perimeterMagnitudeDefault ||
+      terrainPrecedence.value !== terrainPrecedenceDefault ||
+      terrainDTerrain.value !== dTerrainDefault ||
+      plateauWallSlopeDegrees.value !== plateauWallSlopeDegreesDefault ||
+      metalDepositStep.value !== metalDepositStepDefault ||
+      terrainDetail.value !== terrainDetailDefault ||
+      simulationTickRateHz.value !== simulationTickRateDefault ||
+      !sameMapLandDimensions(
         {
           widthLandCells: mapWidthLandCells.value,
           lengthLandCells: mapLengthLandCells.value,
         },
         mapDimensionsDefault,
-      )
-    ) {
-      return;
-    }
+      );
 
     centerMagnitude.value = centerMagnitudeDefault;
     ringMagnitude.value = ringMagnitudeDefault;
@@ -628,6 +625,9 @@ export function useGameCanvasLobbySettings({
     saveTerrainDetail(terrainDetailDefault, mode);
     saveSimulationTickRate(simulationTickRateDefault, mode);
     saveMapLandDimensions(mapDimensionsDefault, mode);
+    // An already-default runtime can skip rebuilding the preview, but the
+    // explicit DEFAULTS action above still commits every authored value.
+    if (!changed) return;
     applyCurrentTerrainRuntimeConfig();
     restartPreviewIfNeeded();
   }

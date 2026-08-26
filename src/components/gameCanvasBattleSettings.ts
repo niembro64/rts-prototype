@@ -412,12 +412,11 @@ export function useGameCanvasBattleSettings({
     setSlowDownAtFinalWaypoint(preset.slowDownAtFinalWaypoint, false);
     setPathfindingConsidersUnits(preset.pathfindingConsidersUnits, false);
     setSlopePathMode(preset.slopePathMode);
-    if (preset.metalCoverage !== currentMetalCoverage.value) {
-      setMetalCoverage(preset.metalCoverage, false);
-    }
-    if (preset.liquidSurfaceMode !== currentLiquidSurfaceMode.value) {
-      setLiquidSurfaceMode(preset.liquidSurfaceMode, false);
-    }
+    // These setters persist even when the visible selection already matches.
+    // DEFAULTS is a committed selection, so an unchanged runtime value may
+    // suppress world work but must never suppress the storage write.
+    setMetalCoverage(preset.metalCoverage, false);
+    setLiquidSurfaceMode(preset.liquidSurfaceMode, false);
     setConverterTax(preset.converterTax, false);
     applyCenterMagnitude(preset.centerMagnitude, false);
     applyRingMagnitude(preset.ringMagnitude, false);

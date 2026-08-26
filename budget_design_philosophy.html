@@ -361,6 +361,20 @@
         <li>Loading is a declared battle sub-state, not a boolean beside the machine. The handoff enters it; finishing the boot (or the catch-up replay) is the one edge into <code>playing</code>.</li>
         <li>Every exit from the game room says the same thing &mdash; &ldquo;Return to Lobby&rdquo; &mdash; and lands home with the menu surfaced, whatever the sidebar preference last was. The destination the player just chose beats a stored default.</li>
       </ul>
+      <h3>Bottom-bar defaults are committed selections</h3>
+      <p>
+        <strong>DEFAULTS</strong> on an interactive bottom bar means &ldquo;select every currently
+        authored default,&rdquo; not &ldquo;temporarily display the fallback.&rdquo; Each default follows the
+        same ownership and persistence scope as clicking that option directly. In particular, if
+        an ordinary click writes a browser <code>localStorage</code> key, DEFAULTS must overwrite
+        that same key with the selected default value. It must not remove the key, depend on a
+        missing-key fallback, or reset only the live refs: after a refresh, the stored default must
+        be indistinguishable from a direct click on that option. A reset path may skip an expensive
+        rebuild, restart, command, or broadcast when the live value is already correct, but it may
+        never skip the required persistence write. Status-only readouts, one-shot actions, and
+        settings explicitly owned by the current real-battle session remain outside browser
+        persistence; DEFAULTS preserves those declared scopes rather than inventing new ones.
+      </p>
     </section>
 
     <section>

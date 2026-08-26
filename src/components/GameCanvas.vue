@@ -437,6 +437,7 @@ const {
   playerClientEnabled,
   toggleBottomBars,
   togglePlayerClientEnabled,
+  resetPlayerClientEnabled,
   toggleMenuHidden,
 } = useGameCanvasChromeState(currentBattleMode, applyPlayerClientEnabled);
 
@@ -1867,6 +1868,7 @@ function resetBattleDefaultsWithGroundNormal(): void {
 function resetClientDefaultsWithTerrainRender(): void {
   resetClientDefaults();
   resetTerrainRenderSmoothingDefaults();
+  resetPlayerClientEnabled();
 }
 
 // Declared ahead of the network wiring below, which needs somewhere to send

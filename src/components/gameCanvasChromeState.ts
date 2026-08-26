@@ -47,13 +47,18 @@ const CLIENT_ENABLED_STORAGE_KEYS: Record<BattleMode, string> = {
   demo: 'demo-client-game-enabled',
   real: 'real-client-game-enabled',
 };
+export const PLAYER_CLIENT_ENABLED_DEFAULT = true;
 
 function loadStoredClientEnabled(mode: BattleMode): boolean {
   try {
     const raw = window.localStorage.getItem(CLIENT_ENABLED_STORAGE_KEYS[mode]);
-    return raw === null ? true : raw !== 'false';
+    if (raw === null) {
+      saveClientEnabled(mode, PLAYER_CLIENT_ENABLED_DEFAULT);
+      return PLAYER_CLIENT_ENABLED_DEFAULT;
+    }
+    return raw !== 'false';
   } catch {
-    return true;
+    return PLAYER_CLIENT_ENABLED_DEFAULT;
   }
 }
 
@@ -131,6 +136,7 @@ export function useGameCanvasChromeState(
   playerClientEnabled: Ref<boolean>;
   toggleBottomBars: () => void;
   togglePlayerClientEnabled: () => void;
+  resetPlayerClientEnabled: () => void;
   toggleMenuHidden: () => void;
 } {
   const mobileBarsVisible = ref(false);
@@ -159,6 +165,14 @@ export function useGameCanvasChromeState(
     playerClientEnabled.value = !playerClientEnabled.value;
   }
 
+  function resetPlayerClientEnabled(): void {
+    // Persist explicitly even when the ref is already true. A watcher only
+    // runs on a value transition, so relying on it would leave stale browser
+    // state in place and the next reload would undo DEFAULTS.
+    saveClientEnabled(currentBattleMode.value, PLAYER_CLIENT_ENABLED_DEFAULT);
+    playerClientEnabled.value = PLAYER_CLIENT_ENABLED_DEFAULT;
+  }
+
   function toggleMenuHidden(): void {
     menuHidden.value = !menuHidden.value;
     setLobbyVisible(!menuHidden.value);
@@ -171,6 +185,7 @@ export function useGameCanvasChromeState(
     playerClientEnabled,
     toggleBottomBars,
     togglePlayerClientEnabled,
+    resetPlayerClientEnabled,
     toggleMenuHidden,
   };
 }
