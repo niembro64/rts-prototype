@@ -1,9 +1,6 @@
 
 
 
-	1) The actual footprint marks of where the units are stepping seem to be breaking shadows somehow, like I can see that there is no shaow under the foot or directly under the treads or wheels, like there should be. While you are playing with this let's increase the lifespan of our footprints and treads/tire marks. I think it is called "LOCO" in the "CLIENT" bottom bar. Let's increase the duration that these marks stay and decay for much longer than they are now. 
-	
-
 	3) I just realized something, we have not considered formally how emissions should show in our "radar" visualization. Like if an enemy emission (shot, beam, missile, rocket, etc) is withini the radar zone what should happen. What I want is for our team's emissions, let's actually continue showing the emission no matter where it is, we can show the emission as it normally is, not matter where our team's emissions go. BUT if it is an enemy emission, let's show it the same way we show enemy entities, so any rocket, missile, plasma etc would show up the same way as any other building or unit would show up on a radar - as the white/black dot. Make sure to also update the relevant sections of our design document with this information. 
 
 
