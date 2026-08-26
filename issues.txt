@@ -16,11 +16,3 @@
 
 
 
-	8) In the gameroom lobby, let's reserve that last column of information for just "HOST" and "YOU" identifier flags. Remove the "BOT" and other stuff from that last column of information in the line items. Let's show non-host users the same second-to-last column of information as the host but those users just can't click those buttons. They should still be able to hover over the buttons and see the state of them. 
-
-
-
-
-
-
-

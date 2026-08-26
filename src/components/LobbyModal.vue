@@ -1066,6 +1066,7 @@ const terrainSectionVars = computed(() =>
                 <div class="player-info">
                   <div class="player-name-row">
                     <span class="player-name">{{ seat.player.name }}</span>
+                    <span v-if="seat.player.isBot" class="bot-badge">BOT</span>
                     <button
                       v-if="seat.player.playerId === localPlayerId"
                       class="player-name-edit-btn"
@@ -1089,18 +1090,28 @@ const terrainSectionVars = computed(() =>
                     <span v-if="seat.player.localTime" class="player-time">{{ seat.player.localTime }}</span>
                   </div>
                 </div>
-                <!-- The host's controls for this seat. No TEAM label here:
-                     the row already sits inside its side's band, so printing
-                     the number again on the right was the same fact twice. -->
-                <div v-if="isHost" class="player-controls">
+                <!-- The seat's controls. Every member sees the same column so
+                     the seat's state (team move, bench, initial state) reads
+                     the same from every chair; only the host's buttons act.
+                     Non-hosts get read-only buttons that still take hover so
+                     the tooltip can say what the state is. No TEAM label
+                     here: the row already sits inside its side's band, so
+                     printing the number again on the right was the same fact
+                     twice. -->
+                <div class="player-controls">
                   <button
                     class="player-control-btn"
+                    :class="{ 'is-readonly': !isHost }"
                     type="button"
-                    :title="`Move ${seat.player.name} to the next team`"
+                    :aria-disabled="!isHost"
+                    :tabindex="isHost ? undefined : -1"
+                    :title="isHost
+                      ? `Move ${seat.player.name} to the next team`
+                      : `Team move — host only`"
                     :aria-label="`Move ${seat.player.name} to the next team`"
-                    @click="seat.player.isBot
+                    @click="isHost && (seat.player.isBot
                       ? emit('cycleBotAllyTeam', seat.player.playerId)
-                      : emit('cycleMemberAllyTeam', memberIdForSeat(seat.player.playerId))"
+                      : emit('cycleMemberAllyTeam', memberIdForSeat(seat.player.playerId)))"
                   ><ChevronIcon direction="down" /></button>
                   <!-- The host's own seat has no bench button: a lobby with
                        nobody in it is not a lobby. A bot has no bench to go
@@ -1108,46 +1119,49 @@ const terrainSectionVars = computed(() =>
                   <button
                     v-if="!seat.player.isHost && !seat.player.isBot"
                     class="player-control-btn"
+                    :class="{ 'is-readonly': !isHost }"
                     type="button"
-                    :title="`Move ${seat.player.name} back to the watchers`"
+                    :aria-disabled="!isHost"
+                    :tabindex="isHost ? undefined : -1"
+                    :title="isHost
+                      ? `Move ${seat.player.name} back to the watchers`
+                      : `Bench to the watchers — host only`"
                     :aria-label="`Move ${seat.player.name} back to the watchers`"
-                    @click="emit('toggleMemberSeated', memberIdForSeat(seat.player.playerId))"
+                    @click="isHost && emit('toggleMemberSeated', memberIdForSeat(seat.player.playerId))"
                   ><XIcon /></button>
                   <button
                     v-if="seat.player.isBot"
                     class="player-control-btn"
+                    :class="{ 'is-readonly': !isHost }"
                     type="button"
-                    :title="`Remove ${seat.player.name}`"
+                    :aria-disabled="!isHost"
+                    :tabindex="isHost ? undefined : -1"
+                    :title="isHost ? `Remove ${seat.player.name}` : `Remove bot — host only`"
                     :aria-label="`Remove ${seat.player.name}`"
-                    @click="emit('removeBotSeat', seat.player.playerId)"
+                    @click="isHost && emit('removeBotSeat', seat.player.playerId)"
                   ><TrashIcon /></button>
                   <!-- The seat's INITIAL STATE axis: a lone commander, or
                        the authored full base. Independent of WHO drives the
                        seat — the demo is base seats with one human on one. -->
                   <button
                     class="player-control-btn seat-state-btn"
+                    :class="{ 'is-readonly': !isHost }"
                     type="button"
+                    :aria-disabled="!isHost"
+                    :tabindex="isHost ? undefined : -1"
                     :title="(seat.player.initialState ?? 'commander') === 'base'
-                      ? `${seat.player.name} opens with a full base — click for a lone commander`
-                      : `${seat.player.name} opens as a lone commander — click for a full base`"
-                    @click="emit('setSeatInitialState', seat.player.playerId,
+                      ? `${seat.player.name} opens with a full base${isHost ? ' — click for a lone commander' : ''}`
+                      : `${seat.player.name} opens as a lone commander${isHost ? ' — click for a full base' : ''}`"
+                    @click="isHost && emit('setSeatInitialState', seat.player.playerId,
                       (seat.player.initialState ?? 'commander') === 'base' ? 'commander' : 'base')"
                   ><SeatStateIcon :state="seat.player.initialState ?? 'commander'" /></button>
                 </div>
-                <!-- Badges pinned to the right edge of the row. HOST anchors
-                     top-right, YOU bottom-right, whether or not the other is
-                     present. -->
+                <!-- Identity flags pinned to the right edge of the row, and
+                     nothing else: HOST anchors top-right, YOU bottom-right,
+                     whether or not the other is present. -->
                 <div class="player-badges">
                   <span v-if="seat.player.isHost" class="host-badge">HOST</span>
-                  <span v-if="seat.player.isBot" class="bot-badge">BOT</span>
                   <span v-if="seat.player.playerId === localPlayerId" class="you-badge">YOU</span>
-                  <span
-                    v-if="!isHost"
-                    class="seat-state-badge"
-                    :title="(seat.player.initialState ?? 'commander') === 'base'
-                      ? 'Opens with a full base'
-                      : 'Opens as a lone commander'"
-                  ><SeatStateIcon :state="seat.player.initialState ?? 'commander'" /></span>
                 </div>
               </li>
                   <!-- A declared side with nobody on it. It is not a gap in
@@ -1211,15 +1225,19 @@ const terrainSectionVars = computed(() =>
                       <span v-if="member.localTime" class="player-time">{{ member.localTime }}</span>
                     </div>
                   </div>
-                  <div class="player-badges">
+                  <div class="player-controls">
                     <button
-                      v-if="isHost"
-                      class="seat-toggle-btn seat-toggle-btn-add"
+                      class="player-control-btn"
+                      :class="{ 'is-readonly': !isHost }"
                       type="button"
-                      :title="`Put ${member.name} on a team`"
+                      :aria-disabled="!isHost"
+                      :tabindex="isHost ? undefined : -1"
+                      :title="isHost ? `Put ${member.name} on a team` : `Seat on a team — host only`"
                       :aria-label="`Put ${member.name} on a team`"
-                      @click="emit('toggleMemberSeated', member.memberId)"
+                      @click="isHost && emit('toggleMemberSeated', member.memberId)"
                     >+</button>
+                  </div>
+                  <div class="player-badges">
                     <span v-if="member.memberId === localMemberId" class="you-badge">YOU</span>
                   </div>
                 </li>
@@ -1777,6 +1795,7 @@ const terrainSectionVars = computed(() =>
 }
 
 .bot-badge {
+  flex: 0 0 auto;
   padding: 1px 6px;
   border-radius: 3px;
   background: rgba(150, 120, 220, 0.35);
@@ -1786,18 +1805,9 @@ const terrainSectionVars = computed(() =>
   letter-spacing: 0.08em;
 }
 
-.seat-state-btn,
-.seat-state-badge {
+.seat-state-btn {
   font: 700 9px/1.6 monospace;
   letter-spacing: 0.08em;
-}
-
-.seat-state-badge {
-  padding: 1px 6px;
-  border-radius: 3px;
-  border: 1px solid rgba(180, 199, 209, 0.35);
-  background: rgba(255, 255, 255, 0.07);
-  color: #c8d6de;
 }
 
 .lobby-modal.in-lobby > .lobby-left {
@@ -2658,6 +2668,21 @@ const terrainSectionVars = computed(() =>
   outline: none;
 }
 
+/* A non-host's copy of the column: same buttons, same state, no action.
+ * Pointer events stay on so the title tooltip still answers a hover;
+ * the click handlers are gated on isHost in the template. */
+.player-control-btn.is-readonly {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.player-control-btn.is-readonly:hover,
+.player-control-btn.is-readonly:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #c3cddb;
+}
+
 /* The options bar is flush with the column: no card border, no rounding, no
  * outer margin. The 50% row is the bound now; overflow scrolls in
  * `.lobby-right`, so adding more controls can never resize the live
@@ -2897,27 +2922,6 @@ const terrainSectionVars = computed(() =>
 
 .spectator-item {
   padding-left: 8px;
-}
-
-.seat-toggle-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  min-height: 20px;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1;
-  padding: 0 5px;
-  border-radius: 3px;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.seat-toggle-btn:hover {
-  border-color: rgba(255, 255, 255, 0.8);
 }
 
 .team-empty {
