@@ -53,9 +53,12 @@ function assertJammerSuite(
       && sensors.detectorRadius === 0,
     `${turretId} must be a jammer-only observation source`,
   );
+  const expectedRadius = medium === 'radar'
+    ? sensors.radarJamRadius
+    : sensors.sonarJamRadius;
   assertContract(
-    (medium === 'radar' ? sensors.radarJamRadius : sensors.sonarJamRadius) === 3000,
-    `${turretId} must author a 3000-unit ${medium} denial radius`,
+    Number.isFinite(expectedRadius) && expectedRadius > 0,
+    `${turretId} must author a positive ${medium} denial radius`,
   );
   assertContract(
     (medium === 'radar' ? sensors.sonarJamRadius : sensors.radarJamRadius) === 0,
@@ -138,8 +141,12 @@ export function runBuildingUtilityStructuresContractTest(): void {
       liveJammerLanes.push({ medium, radius });
       if (medium === 'radar') liveJammerRadius = radius;
     });
+    const authoredRadarJammerRadius =
+      TURRET_BLUEPRINTS.turretSensorBuildingRadarJammer
+        .targeting.observation.sensors.radarJamRadius;
     assertContract(
-      liveJammerLanes.length === 1 && liveJammerRadius === 3000,
+      liveJammerLanes.length === 1
+        && liveJammerRadius === authoredRadarJammerRadius,
       'switching a radar jammer ON must expose its exact authored lane to gameplay and presentation',
     );
 

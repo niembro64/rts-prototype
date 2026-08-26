@@ -116,8 +116,9 @@ export function runFullUtilizationRosterContractTest(): void {
   );
   assertContract(
     FOG_CONFIG.presentation.jammerTint.colorHex === '#ff2020' &&
-      FOG_CONFIG.presentation.jammerTint.opacityPercent === 28,
-    'friendly jammer terrain coverage must retain its authored red 28% tint',
+      FOG_CONFIG.presentation.jammerTint.opacityPercent > 0 &&
+      FOG_CONFIG.presentation.jammerTint.opacityPercent <= 10,
+    'friendly jammer terrain coverage must retain a subtle visible red tint',
   );
   const tierTwoAnimalNames = Object.values(UNIT_BLUEPRINTS)
     .filter((blueprint) =>

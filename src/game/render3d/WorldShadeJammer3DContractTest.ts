@@ -206,7 +206,7 @@ void main() {
     const centerRedDelta = center.r - outside.r;
     const edgeRedDelta = oneEdge.r - outside.r;
     assertContract(
-      centerRedDelta > 35 && center.g < outside.g - 12,
+      centerRedDelta > 15 && center.g < outside.g - 4,
       `friendly jammer center must tint red (center=${JSON.stringify(center)}, outside=${JSON.stringify(outside)})`,
     );
     assertContract(

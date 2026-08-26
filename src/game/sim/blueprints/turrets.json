@@ -4298,7 +4298,7 @@
             }
           },
           "detectorRadius": 600,
-          "radarJamRadius": 900,
+          "radarJamRadius": 600,
           "sonarJamRadius": 0
         }
       },
@@ -5419,7 +5419,7 @@
             "underwater": { "aboveWater": 0, "underwater": 0 }
           },
           "detectorRadius": 0,
-          "radarJamRadius": 3000,
+          "radarJamRadius": 2000,
           "sonarJamRadius": 0
         }
       },
@@ -5794,7 +5794,7 @@
             "underwater": { "aboveWater": 0, "underwater": 0 }
           },
           "detectorRadius": 0,
-          "radarJamRadius": 2200,
+          "radarJamRadius": 1500,
           "sonarJamRadius": 0
         }
       }
