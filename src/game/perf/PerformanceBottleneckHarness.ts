@@ -121,6 +121,19 @@ export type SimOnlyReport = {
   /** Deterministic path-plan admission counters for the measured ticks. */
   readonly pathPlanScheduler: PathPlanSchedulerStats;
   readonly pathQueryOutcomes: PathQueryOutcomeReport;
+  /** The LIGHT lockstep checksum, computed at the real match cadence
+   *  (architecture.json checksumIntervalTicks) during the measured ticks.
+   *  It runs after the scheduler's step stopwatch closes in a live match, so
+   *  no sim.* phase ever sees it; a 1-in-180 burst also never moves a p95.
+   *  Reported on its own with its worst sample so the gate can hold it. */
+  readonly checksum: ChecksumCostReport;
+};
+
+export type ChecksumCostReport = {
+  readonly intervalTicks: number;
+  readonly samples: number;
+  readonly entities: number;
+  readonly ms: NumericSummary;
 };
 
 type PathQueryOutcomeReport = Omit<PathQueryOutcomeStats, 'unreachableByBlueprint'> & {
@@ -514,15 +527,32 @@ async function runSimOnly(
     const memory = createMemoryTracker();
     beginWasmBoundaryTracking();
     const samples: number[] = [];
+    const checksumSamples: number[] = [];
+    const checksumInterval = ARCHITECTURE_CONFIG.lockstep.checksumIntervalTicks;
+    let checksumEntities = 0;
     const wallStart = performance.now();
     for (let i = 0; i < options.ticks; i++) {
       const start = performance.now();
       core.stepFixedTick(fixedStepMs);
       memory.sample();
       samples.push(performance.now() - start);
+      // The lockstep pump hashes right after the step on every
+      // checksumIntervalTicks-th frame; measure that burst the same way.
+      if (checksumInterval > 0 && (i + 1) % checksumInterval === 0) {
+        const checksumStart = performance.now();
+        core.getCanonicalStateHash();
+        checksumSamples.push(performance.now() - checksumStart);
+        checksumEntities = core.world.getEntityCount();
+      }
     }
     const wallMs = performance.now() - wallStart;
     const stepMs = summarize(samples);
+    const checksum: ChecksumCostReport = {
+      intervalTicks: checksumInterval,
+      samples: checksumSamples.length,
+      entities: checksumEntities,
+      ms: summarize(checksumSamples),
+    };
     const simTickPhases = finishSimTickPhaseTracking();
     const wasmBoundary = finishWasmBoundaryTracking();
     return {
@@ -537,6 +567,7 @@ async function runSimOnly(
       simTickPhases,
       pathPlanScheduler: core.simulation.getPathPlanSchedulerStats(),
       pathQueryOutcomes: reportPathQueryOutcomes(core.simulation.getPathQueryOutcomeStats()),
+      checksum,
     };
   } finally {
     finishWasmBoundaryTracking();
