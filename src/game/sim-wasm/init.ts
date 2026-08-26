@@ -320,6 +320,7 @@ import __wbg_init, {
   pathfinder_building_occupancy_version,
   pathfinder_find_path_slice,
   pathfinder_total_work_units,
+  pathfinder_clearance_reach_cells,
   pathfinder_cancel_path_slice,
   pathfinder_cancel_all_path_slices,
   pathfinder_reset_match_state,
@@ -1070,6 +1071,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           cancelAllPathSlices: pathfinder_cancel_all_path_slices,
           resetMatchState: pathfinder_reset_match_state,
           totalWorkUnits: pathfinder_total_work_units,
+          clearanceReachCells: pathfinder_clearance_reach_cells,
           lastResultStatus: pathfinder_last_result_status,
           lastSearchStrategy: pathfinder_last_search_strategy,
           lastFineExpandedNodes: pathfinder_last_fine_expanded_nodes,
@@ -1841,6 +1843,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runMassMovePathBudgetContractTest();
         const { runDeathExplosionChainBudgetContractTest } = await import('../sim/deathExplosionChainBudgetContractTest');
         runDeathExplosionChainBudgetContractTest();
+        const { runBuildGridChangeLogContractTest } = await import('../sim/buildGridChangeLogContractTest');
+        runBuildGridChangeLogContractTest();
         const { runTeamColorContractTest } = await import('../sim/teamColorContractTest');
         runTeamColorContractTest();
         const { runTerrainUnderwaterDarkeningContractTest } = await import('../sim/terrain/terrainUnderwaterDarkeningContractTest');

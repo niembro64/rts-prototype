@@ -89,6 +89,9 @@ export interface PathfinderApi {
   /** Drop traffic heat, per-class hierarchy graphs and retained frontiers so a
    *  match starts from identical caches on every peer. */
   resetMatchState: () => void;
+  /** Cells within which a building change can alter clearance (the EDT
+   *  clamp, owned by Rust). */
+  clearanceReachCells: () => number;
   /** Monotonic telemetry: every work unit every search has charged since
    *  init, whichever API ran it. Never hashed. Read across one fixed tick it
    *  bounds ALL pathfinding work that tick performed. */

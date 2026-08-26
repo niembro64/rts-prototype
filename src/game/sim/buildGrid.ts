@@ -11,6 +11,23 @@ import { getBuildingRotationQuarterTurns } from './buildingRotation';
 // canonical LAND_CELL_SIZE terrain cells.
 export const BUILD_GRID_CELL_SIZE = 20; // 20x20 world units per cell
 
+export type BuildGridChangeBounds = {
+  /** Grid version after the change(s). */
+  readonly version: number;
+  readonly minGx: number;
+  readonly minGy: number;
+  readonly maxGx: number;
+  readonly maxGy: number;
+  /** Cells touched; 0 means "nothing changed". */
+  readonly count: number;
+};
+
+const NO_BUILD_GRID_CHANGES: BuildGridChangeBounds = {
+  version: 0, minGx: 0, minGy: 0, maxGx: -1, maxGy: -1, count: 0,
+};
+/** Versions of change history retained for `changedBoundsSince`. */
+const BUILD_GRID_CHANGE_HISTORY = 256;
+
 import type { GridCell } from '@/types/ui';
 
 type BuildingGridSnap = {
@@ -163,6 +180,13 @@ export class BuildingGrid {
    *  Caches that key off "the current set of occupied cells" read this
    *  and rebuild only when it differs from the recorded value. */
   private _version = 1;
+  /** Bounding boxes of the cells each recent version change touched, oldest
+   *  first, so a routed unit can ask "did anything change near my path since
+   *  the version my plan was validated against?" instead of re-walking its
+   *  whole remaining polyline on every building event map-wide. Bounded;
+   *  a plan older than the retained history gets `null` (unknown) and
+   *  revalidates in full. */
+  private readonly recentChanges: BuildGridChangeBounds[] = [];
 
   constructor(mapWidth: number, mapHeight: number) {
     this.gridWidth = Math.ceil(mapWidth / BUILD_GRID_CELL_SIZE);
@@ -171,6 +195,38 @@ export class BuildingGrid {
 
   getVersion(): number {
     return this._version;
+  }
+
+  /** Union bounds (grid cells, inclusive) of every change after `version`.
+   *  `null` when that history is no longer retained; a zero-size result
+   *  (`count === 0`) when nothing changed. */
+  changedBoundsSince(version: number): BuildGridChangeBounds | null {
+    if (version >= this._version) return NO_BUILD_GRID_CHANGES;
+    const changes = this.recentChanges;
+    if (changes.length === 0 || changes[0].version > version + 1) return null;
+    let minGx = Infinity;
+    let minGy = Infinity;
+    let maxGx = -Infinity;
+    let maxGy = -Infinity;
+    let count = 0;
+    for (let i = changes.length - 1; i >= 0; i--) {
+      const change = changes[i];
+      if (change.version <= version) break;
+      if (change.minGx < minGx) minGx = change.minGx;
+      if (change.minGy < minGy) minGy = change.minGy;
+      if (change.maxGx > maxGx) maxGx = change.maxGx;
+      if (change.maxGy > maxGy) maxGy = change.maxGy;
+      count += change.count;
+    }
+    if (count === 0) return NO_BUILD_GRID_CHANGES;
+    return { version: this._version, minGx, minGy, maxGx, maxGy, count };
+  }
+
+  private recordChange(minGx: number, minGy: number, maxGx: number, maxGy: number, count: number): void {
+    this._version++;
+    if (count <= 0) return;
+    this.recentChanges.push({ version: this._version, minGx, minGy, maxGx, maxGy, count });
+    if (this.recentChanges.length > BUILD_GRID_CHANGE_HISTORY) this.recentChanges.shift();
   }
 
   /** Iterate every occupied physical structure cell as `[gx, gy, cell]`
@@ -310,7 +366,7 @@ export class BuildingGrid {
         });
       }
     }
-    this._version++;
+    this.recordChange(gx, gy, gx + gridWidth - 1, gy + gridHeight - 1, gridWidth * gridHeight);
   }
 
   /** Place exactly the authored mask. Empty bounding-box corners stay free,
@@ -324,10 +380,20 @@ export class BuildingGrid {
     blocksMovement: boolean = true,
     pathTopZ: number = BUILD_GRID_CELL_SIZE,
   ): void {
+    let minGx = Infinity;
+    let minGy = Infinity;
+    let maxGx = -Infinity;
+    let maxGy = -Infinity;
     for (let i = 0; i < footprint.cells.length; i++) {
       const cell = footprint.cells[i];
       const movementCell = cell.kind === 'structure' && blocksMovement;
-      this.cells.set(this.getCellKey(gx + cell.dx, gy + cell.dy), {
+      const cellGx = gx + cell.dx;
+      const cellGy = gy + cell.dy;
+      if (cellGx < minGx) minGx = cellGx;
+      if (cellGy < minGy) minGy = cellGy;
+      if (cellGx > maxGx) maxGx = cellGx;
+      if (cellGy > maxGy) maxGy = cellGy;
+      this.cells.set(this.getCellKey(cellGx, cellGy), {
         occupied: true,
         entityId,
         playerId,
@@ -335,7 +401,7 @@ export class BuildingGrid {
         pathTopZ: movementCell ? pathTopZ : undefined,
       });
     }
-    this._version++;
+    this.recordChange(minGx, minGy, maxGx, maxGy, footprint.cells.length);
   }
 
   // Remove a building (clear cells)
@@ -348,21 +414,31 @@ export class BuildingGrid {
         this.cells.delete(key);
       }
     }
-    this._version++;
+    this.recordChange(gx, gy, gx + gridWidth - 1, gy + gridHeight - 1, gridWidth * gridHeight);
   }
 
   // Remove by entity ID (find and remove all cells for this entity)
   removeByEntityId(entityId: EntityId): void {
-    let removed = false;
+    let removed = 0;
+    let minGx = Infinity;
+    let minGy = Infinity;
+    let maxGx = -Infinity;
+    let maxGy = -Infinity;
     for (const [key, cell] of this.cells) {
       if (cell.entityId === entityId) {
         // Deleting the current Map entry while iterating is defined and does
         // not disturb the order of entries that remain.
         this.cells.delete(key);
-        removed = true;
+        const gy = Math.floor(key / this.gridWidth);
+        const gx = key - gy * this.gridWidth;
+        if (gx < minGx) minGx = gx;
+        if (gy < minGy) minGy = gy;
+        if (gx > maxGx) maxGx = gx;
+        if (gy > maxGy) maxGy = gy;
+        removed++;
       }
     }
-    if (removed) this._version++;
+    if (removed > 0) this.recordChange(minGx, minGy, maxGx, maxGy, removed);
   }
 
   // Get all valid placement positions for a building within commander's range

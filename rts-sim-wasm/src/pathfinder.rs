@@ -97,6 +97,13 @@ pub(crate) struct PathfinderState {
     terrain_submerged: Vec<u8>,
     terrain_edge_blocked: Vec<u8>,
     building_blocked: Vec<u8>,
+    /// Ascending list of the cells currently blocked by buildings, so a
+    /// resync diffs against O(building cells) instead of scanning the grid.
+    building_blocked_cells: Vec<u32>,
+    /// Per-cell generation stamp written by the latest resync; a listed
+    /// cell not stamped this generation is a removal.
+    building_mark_gen: Vec<u32>,
+    building_gen: u32,
     building_occupancy_version: u32,
     terrain_height: Vec<f32>,
     terrain_normal_z: Vec<f32>,
@@ -320,6 +327,9 @@ impl PathfinderState {
             terrain_submerged: Vec::new(),
             terrain_edge_blocked: Vec::new(),
             building_blocked: Vec::new(),
+            building_blocked_cells: Vec::new(),
+            building_mark_gen: Vec::new(),
+            building_gen: 0,
             building_occupancy_version: 0,
             terrain_height: Vec::new(),
             terrain_normal_z: Vec::new(),
@@ -484,6 +494,10 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
         layer.resize(n, 0);
     }
     state.building_occupancy_version = 0;
+    state.building_blocked_cells.clear();
+    state.building_mark_gen.clear();
+    state.building_mark_gen.resize(n, 0);
+    state.building_gen = 0;
     state.terrain_height.clear();
     state.terrain_height.resize(n, TERRAIN_WATER_LEVEL as f32 + 1.0);
     state.terrain_normal_z.clear();
@@ -700,6 +714,7 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
     // A terrain rebuild invalidates the building occupancy layer: TS resyncs
     // it immediately afterward.
     state.building_blocked.fill(0);
+    state.building_blocked_cells.clear();
     state.building_occupancy_version = 0;
     state.traffic_heat.fill(0);
 
@@ -768,28 +783,60 @@ pub(crate) fn pathfinder_apply_building_occupancy(
     }
     pathfinder_invalidate_all_fine_arenas(state);
     let count = cell_gx.len().min(cell_gy.len());
-    let mut next: Vec<u8> = vec![0u8; state.n];
+    // Diff against the retained blocked-cell list, not the whole grid: a
+    // one-building event used to allocate and scan every map cell twice.
+    if state.building_mark_gen.len() != state.n {
+        // A grid that was (re)sized without passing through init: rebuild the
+        // retained list from the layer itself, once.
+        state.building_mark_gen.clear();
+        state.building_mark_gen.resize(state.n, 0);
+        state.building_gen = 0;
+        state.building_blocked_cells.clear();
+        for idx in 0..state.n {
+            if state.building_blocked[idx] != 0 {
+                state.building_blocked_cells.push(idx as u32);
+            }
+        }
+    }
+    state.building_gen = state.building_gen.wrapping_add(1);
+    if state.building_gen == 0 {
+        state.building_mark_gen.fill(0);
+        state.building_gen = 1;
+    }
+    let gen = state.building_gen;
+    let mut added: Vec<u32> = Vec::new();
     for i in 0..count {
         if cell_gx[i] < 0 || cell_gy[i] < 0 || cell_gx[i] >= state.grid_w || cell_gy[i] >= state.grid_h {
             continue;
         }
-        next[(cell_gy[i] * state.grid_w + cell_gx[i]) as usize] = 1;
-    }
-    let mut added: Vec<u32> = Vec::new();
-    let mut removed: Vec<u32> = Vec::new();
-    for idx in 0..state.n {
-        let was = state.building_blocked[idx];
-        let now = next[idx];
-        if was == now {
+        let idx = (cell_gy[i] * state.grid_w + cell_gx[i]) as usize;
+        if state.building_mark_gen[idx] == gen {
             continue;
         }
-        if now != 0 {
+        state.building_mark_gen[idx] = gen;
+        if state.building_blocked[idx] == 0 {
+            state.building_blocked[idx] = 1;
             added.push(idx as u32);
-        } else {
-            removed.push(idx as u32);
         }
     }
-    state.building_blocked = next;
+    let mut removed: Vec<u32> = Vec::new();
+    let old_cells = std::mem::take(&mut state.building_blocked_cells);
+    let mut kept: Vec<u32> = Vec::with_capacity(old_cells.len() + added.len());
+    for &idx in &old_cells {
+        if state.building_mark_gen[idx as usize] == gen {
+            kept.push(idx);
+        } else {
+            state.building_blocked[idx as usize] = 0;
+            removed.push(idx);
+        }
+    }
+    kept.extend_from_slice(&added);
+    // Ascending everywhere: the same order the old full-grid scan produced,
+    // so the EDT updates and cluster dirty stamps see identical input.
+    kept.sort_unstable();
+    added.sort_unstable();
+    removed.sort_unstable();
+    state.building_blocked_cells = kept;
     state.building_occupancy_version = version;
     for &idx in &added {
         state.blocked[idx as usize] = 1;
@@ -815,30 +862,36 @@ pub(crate) fn pathfinder_apply_building_occupancy(
         let building = std::mem::take(&mut state.building_blocked);
         let submerged = std::mem::take(&mut state.terrain_submerged);
         let mut scratch = std::mem::take(&mut state.edt_scratch);
-        edt_apply_removed_obstacles(
-            &|i| blocked[i] != 0,
-            grid_w,
-            grid_h,
-            &removed,
-            &mut state.edt_ground_sq,
-            &mut scratch,
-        );
-        edt_apply_removed_obstacles(
-            &|i| edge[i] != 0 || building[i] != 0,
-            grid_w,
-            grid_h,
-            &removed,
-            &mut state.edt_medium_sq,
-            &mut scratch,
-        );
-        edt_apply_removed_obstacles(
-            &|i| submerged[i] == 0 || edge[i] != 0 || building[i] != 0,
-            grid_w,
-            grid_h,
-            &removed,
-            &mut state.edt_water_sq,
-            &mut scratch,
-        );
+        // One re-solve window per spatial cluster of removed cells. A single
+        // window over the bounding box of ALL removals was the whole map
+        // whenever two buildings died far apart in the same tick.
+        let groups = pathfinder_group_cells_for_edt(grid_w, &removed);
+        for group in &groups {
+            edt_apply_removed_obstacles(
+                &|i| blocked[i] != 0,
+                grid_w,
+                grid_h,
+                group,
+                &mut state.edt_ground_sq,
+                &mut scratch,
+            );
+            edt_apply_removed_obstacles(
+                &|i| edge[i] != 0 || building[i] != 0,
+                grid_w,
+                grid_h,
+                group,
+                &mut state.edt_medium_sq,
+                &mut scratch,
+            );
+            edt_apply_removed_obstacles(
+                &|i| submerged[i] == 0 || edge[i] != 0 || building[i] != 0,
+                grid_w,
+                grid_h,
+                group,
+                &mut state.edt_water_sq,
+                &mut scratch,
+            );
+        }
         state.blocked = blocked;
         state.terrain_edge_blocked = edge;
         state.building_blocked = building;
@@ -848,6 +901,46 @@ pub(crate) fn pathfinder_apply_building_occupancy(
     hpa_mark_dirty_cells(state, &added);
     hpa_mark_dirty_cells(state, &removed);
     1
+}
+
+/// Split removed cells (ascending) into spatially separate groups so each
+/// EDT re-solve window stays local. A cell joins the first group whose
+/// bounding box, expanded by twice the clearance clamp, contains it;
+/// otherwise it opens a new group. Windows of different groups may overlap;
+/// the windowed solve is exact and idempotent, so that only repeats work.
+fn pathfinder_group_cells_for_edt(grid_w: i32, cells: &[u32]) -> Vec<Vec<u32>> {
+    let gap = 2 * EDT_CLAMP_CELLS;
+    let mut groups: Vec<Vec<u32>> = Vec::new();
+    let mut bounds: Vec<(i32, i32, i32, i32)> = Vec::new();
+    for &cell in cells {
+        let cx = cell as i32 % grid_w;
+        let cy = cell as i32 / grid_w;
+        let mut placed = false;
+        for (g, b) in bounds.iter_mut().enumerate() {
+            if cx >= b.0 - gap && cx <= b.2 + gap && cy >= b.1 - gap && cy <= b.3 + gap {
+                groups[g].push(cell);
+                b.0 = b.0.min(cx);
+                b.1 = b.1.min(cy);
+                b.2 = b.2.max(cx);
+                b.3 = b.3.max(cy);
+                placed = true;
+                break;
+            }
+        }
+        if !placed {
+            groups.push(vec![cell]);
+            bounds.push((cx, cy, cx, cy));
+        }
+    }
+    groups
+}
+
+/// Cells within which a building change can alter clearance (the EDT
+/// clamp). TS reads it to decide whether a routed unit's remaining path is
+/// near enough to a building change to need revalidation.
+#[wasm_bindgen]
+pub fn pathfinder_clearance_reach_cells() -> u32 {
+    EDT_CLAMP_CELLS as u32
 }
 
 #[wasm_bindgen]
