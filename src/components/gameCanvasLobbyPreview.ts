@@ -23,7 +23,11 @@ type GameCanvasLobbyPreviewOptions = {
   lobbyModalVisible: ComputedRef<boolean>;
   roomCode: Ref<string>;
   gameStarted: Ref<boolean>;
-  lobbyPlayerCount: ComputedRef<number>;
+  /** The preview's SIDE layout: declared side count plus every seat's side.
+   *  Terrain slices are carved per side, so this — not the seat count — is
+   *  what a change must restart the preview on; cycling a seat to another
+   *  team or adding a side redraws the map even when nobody joined. */
+  lobbySidesKey: ComputedRef<string>;
   localPlayerId: Ref<PlayerId>;
   centerMagnitude: Ref<number>;
   ringMagnitude: Ref<number>;
@@ -48,7 +52,7 @@ export function useGameCanvasLobbyPreview({
   lobbyModalVisible,
   roomCode,
   gameStarted,
-  lobbyPlayerCount,
+  lobbySidesKey,
   localPlayerId,
   centerMagnitude,
   ringMagnitude,
@@ -95,7 +99,7 @@ export function useGameCanvasLobbyPreview({
     if (!gameStarted.value) restartPreviewBattle();
   });
 
-  watch([lobbyPlayerCount, localPlayerId], () => {
+  watch([lobbySidesKey, localPlayerId], () => {
     if (
       currentBattleMode.value === 'real' &&
       !gameStarted.value &&

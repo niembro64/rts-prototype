@@ -1491,6 +1491,14 @@ watch(simulationPausedForPresentation, (paused) => {
   },
 }));
 
+/** Declared side count + seat -> side table, as one string: the identity of
+ *  the map the preview must show. Slices are per side, so a team cycle or an
+ *  added side is a map change exactly like a seat joining. */
+const lobbySidesKey = computed(() =>
+  `${lobbyAllyTeamCount.value}|${lobbyPlayers.value
+    .map((player) => `${player.playerId}=${player.allyTeamId ?? 1}`)
+    .join(',')}`,
+);
 useGameCanvasLobbyPreview({
   backgroundContainerRef,
   gameAreaRef,
@@ -1498,7 +1506,7 @@ useGameCanvasLobbyPreview({
   lobbyModalVisible,
   roomCode,
   gameStarted,
-  lobbyPlayerCount,
+  lobbySidesKey,
   localPlayerId,
   centerMagnitude,
   ringMagnitude,
