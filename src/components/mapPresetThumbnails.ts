@@ -11,7 +11,7 @@
  * `scripts/captureMapPresetThumbnails.mjs` applies each preset in the real
  * app and photographs the world the terrain generator built, so a change to a
  * preset's numbers can never leave the picker advertising a map that no
- * longer exists. Re-run it after editing `battlePresets.ts`.
+ * longer exists. Re-run it after editing `battlePresets.json`.
  */
 export function getMapPresetThumbnailUrl(backdropSlug: string): string {
   return `${import.meta.env.BASE_URL}assets/map-previews/${backdropSlug}.jpg`;

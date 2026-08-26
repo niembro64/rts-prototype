@@ -1,8 +1,19 @@
 import type { BattleMode } from '../battleBarConfig';
-import type { ShieldReflectionMode } from '../types/shotTypes';
-import type { SlopePathMode } from '../types/slopePathMode';
-import type { TerrainPrecedence } from '../types/terrainPrecedence';
 import {
+  isShieldReflectionMode,
+  type ShieldReflectionMode,
+} from '../types/shotTypes';
+import {
+  isSlopePathMode,
+  type SlopePathMode,
+} from '../types/slopePathMode';
+import {
+  isTerrainPrecedence,
+  type TerrainPrecedence,
+} from '../types/terrainPrecedence';
+import {
+  isLiquidSurfaceMode,
+  isMetalCoverage,
   METAL_COVERAGE_LABEL,
   type LiquidSurfaceMode,
   type MetalCoverage,
@@ -10,9 +21,12 @@ import {
 import { LAND_CELL_SIZE } from '../mapSizeConfig';
 import { AUTHOR_BYLINE } from '../authorBylineConfig';
 import type { MapPresetLabelCaption } from '../game/render3d/presetMapLabel';
-import battleBarConfig from '../battleBarConfig.json';
+import rawBattlePresetConfig from '../battlePresets.json';
 
 export type BattlePreset = {
+  /** Stable config identity. Mode defaults point here so renaming the visible
+   *  map label cannot invalidate startup configuration. */
+  readonly id: string;
   readonly name: string;
   /** Generated four-layer panorama set for this authored map. Keeping it on
    *  the preset removes the second name-to-background registry. */
@@ -65,6 +79,7 @@ export type BattlePreset = {
  *  CUSTOM or swap its sky. */
 export type BattlePresetSnapshot = Omit<
   BattlePreset,
+  | 'id'
   | 'name'
   | 'backdropSlug'
   | 'turretShieldPanelsEnabled'
@@ -84,197 +99,252 @@ export type BattlePresetSnapshot = Omit<
   readonly cap: number;
 };
 
-const MODE_DEFAULT_PRESET_NAMES: Record<BattleMode, string> = {
-  demo: battleBarConfig.demoDefault,
-  real: battleBarConfig.realDefault,
+type BattlePresetFile = {
+  readonly modeDefaults: Record<BattleMode, string>;
+  readonly presets: readonly BattlePreset[];
 };
 
-// Shared subsystem toggles that historically lived as inline
-// BATTLE_CONFIG defaults. Folding them into the presets means every
-// battle bar fallback flows through a preset — the JSON has zero
-// inline defaults.
-const SUBSYSTEM_DEFAULTS = {
-  turretShieldPanelsEnabled: true,
-  turretShieldSpheresEnabled: true,
-  forceFieldsVisible: true,
-  shieldReflectionMode: 'both' as ShieldReflectionMode,
-  // BAR-style full-speed arrival is the default; the BATTLE toggle opts into
-  // the smoother velocity-aware final approach.
-  slowDownAtFinalWaypoint: false,
-  // Off by default: ground paths ignore other units unless the BATTLE toggle
-  // opts into unit-aware planning.
-  pathfindingConsidersUnits: false,
-  slopePathMode: 'directional' as SlopePathMode,
-  // Every stock preset ships the authored world; only METAL HELL flips these.
-  metalCoverage: 'more' as MetalCoverage,
-  liquidSurfaceMode: 'water' as LiquidSurfaceMode,
-};
+const BATTLE_PRESET_KEYS = [
+  'id',
+  'name',
+  'backdropSlug',
+  'turretShieldPanelsEnabled',
+  'turretShieldSpheresEnabled',
+  'forceFieldsVisible',
+  'shieldReflectionMode',
+  'fogOfWarEnabled',
+  'slowDownAtFinalWaypoint',
+  'pathfindingConsidersUnits',
+  'slopePathMode',
+  'metalCoverage',
+  'liquidSurfaceMode',
+  'converterTax',
+  'centerMagnitude',
+  'ringMagnitude',
+  'dividersMagnitude',
+  'perimeterMagnitude',
+  'terrainPrecedence',
+  'terrainDTerrain',
+  'plateauWallSlopeDegrees',
+  'metalDepositStep',
+  'terrainDetail',
+  'mapWidthLandCells',
+  'mapLengthLandCells',
+] as const satisfies readonly (keyof BattlePreset)[];
 
-function buildPresets(): readonly BattlePreset[] {
-  return [
-    {
-      name: 'Land Plate',
-      backdropSlug: 'large-circle',
-      ...SUBSYSTEM_DEFAULTS,
-      fogOfWarEnabled: true,
-      converterTax: 0.5,
-      centerMagnitude: 0,
-      ringMagnitude: 0,
-      dividersMagnitude: 0,
-      perimeterMagnitude: 0,
-      terrainPrecedence: 'perimeter-precedence',
-      terrainDTerrain: 0,
-      plateauWallSlopeDegrees: 89,
-      metalDepositStep: 0,
-      terrainDetail: 4,
-      mapWidthLandCells: 119,
-      mapLengthLandCells: 119,
-    },
-    {
-      name: "Nemo's Flat",
-      backdropSlug: 'angels-flat',
-      ...SUBSYSTEM_DEFAULTS,
-      fogOfWarEnabled: true,
-      converterTax: 0.5,
-      centerMagnitude: 0,
-      ringMagnitude: 0,
-      dividersMagnitude: 800,
-      perimeterMagnitude: -400,
-      terrainPrecedence: 'perimeter-precedence',
-      terrainDTerrain: 400,
-      plateauWallSlopeDegrees: 70,
-      metalDepositStep: 0,
-      terrainDetail: 4,
-      mapWidthLandCells: 79,
-      mapLengthLandCells: 79,
-    },
-    {
-      name: 'Boulder Mountain',
-      backdropSlug: 'boulder-mountain',
-      ...SUBSYSTEM_DEFAULTS,
-      fogOfWarEnabled: true,
-      converterTax: 0.5,
-      centerMagnitude: 1600,
-      ringMagnitude: 0,
-      dividersMagnitude: 800,
-      perimeterMagnitude: -200,
-      terrainPrecedence: 'dividers-precedence',
-      terrainDTerrain: 0,
-      plateauWallSlopeDegrees: 89,
-      metalDepositStep: 400,
-      terrainDetail: 4,
-      mapWidthLandCells: 269,
-      mapLengthLandCells: 269,
-    },
-    {
-      name: 'Spikey Lake',
-      backdropSlug: 'spikey-lake',
-      ...SUBSYSTEM_DEFAULTS,
-      fogOfWarEnabled: true,
-      converterTax: 0.5,
-      centerMagnitude: -400,
-      ringMagnitude: 0,
-      dividersMagnitude: 1600,
-      perimeterMagnitude: 200,
-      terrainPrecedence: 'perimeter-precedence',
-      terrainDTerrain: 0,
-      plateauWallSlopeDegrees: 89,
-      metalDepositStep: 200,
-      terrainDetail: 4,
-      mapWidthLandCells: 53,
-      mapLengthLandCells: 53,
-    },
-    {
-      name: "Nemo's Island",
-      backdropSlug: 'niemo-islands',
-      ...SUBSYSTEM_DEFAULTS,
-      fogOfWarEnabled: true,
-      converterTax: 0.5,
-      centerMagnitude: 200,
-      ringMagnitude: 0,
-      dividersMagnitude: -3200,
-      perimeterMagnitude: -400,
-      terrainPrecedence: 'dividers-precedence',
-      terrainDTerrain: 0,
-      plateauWallSlopeDegrees: 89,
-      metalDepositStep: 200,
-      terrainDetail: 4,
-      mapWidthLandCells: 79,
-      mapLengthLandCells: 79,
-    },
-    {
-      name:  "Nemo's Playhouse",
-      backdropSlug: 'angels-playhouse',
-      ...SUBSYSTEM_DEFAULTS,
-      fogOfWarEnabled: true,
-      converterTax: 0.5,
-      centerMagnitude: 1600,
-      ringMagnitude: 0,
-      dividersMagnitude: 6400,
-      perimeterMagnitude: -400,
-      terrainPrecedence: 'perimeter-precedence',
-      terrainDTerrain: 800,
-      plateauWallSlopeDegrees: 89,
-      metalDepositStep: -800,
-      terrainDetail: 4,
-      mapWidthLandCells: 79,
-      mapLengthLandCells: 79,
-    },
-    {
-      name: 'METAL HELL',
-      backdropSlug: 'metal-hell',
-      ...SUBSYSTEM_DEFAULTS,
-      metalCoverage: 'all',
-      liquidSurfaceMode: 'lava',
-      fogOfWarEnabled: true,
-      converterTax: 0.5,
-      centerMagnitude: 0,
-      ringMagnitude: 200,
-      dividersMagnitude: -400,
-      perimeterMagnitude: -400,
-      terrainPrecedence: 'perimeter-precedence',
-      terrainDTerrain: 0,
-      plateauWallSlopeDegrees: 89,
-      metalDepositStep: 200,
-      terrainDetail: 4,
-      mapWidthLandCells: 119,
-      mapLengthLandCells: 119,
-    },
-    {
-      name: 'METAL PLATE',
-      backdropSlug: 'metal-plate',
-      ...SUBSYSTEM_DEFAULTS,
-      metalCoverage: 'all',
-      liquidSurfaceMode: 'water',
-      fogOfWarEnabled: true,
-      converterTax: 0.5,
-      centerMagnitude: 0,
-      ringMagnitude: 0,
-      dividersMagnitude: 0,
-      // The plate is flat at 0 everywhere, so a ground-level ring is the
-      // same surface the old "no ring" pick produced.
-      perimeterMagnitude: 0,
-      terrainPrecedence: 'perimeter-precedence',
-      terrainDTerrain: 0,
-      plateauWallSlopeDegrees: 89,
-      metalDepositStep: 0,
-      terrainDetail: 1,
-      mapWidthLandCells: 79,
-      mapLengthLandCells: 79,
-    },
-  ];
+const BOOLEAN_PRESET_KEYS = [
+  'turretShieldPanelsEnabled',
+  'turretShieldSpheresEnabled',
+  'forceFieldsVisible',
+  'fogOfWarEnabled',
+  'slowDownAtFinalWaypoint',
+  'pathfindingConsidersUnits',
+] as const satisfies readonly (keyof BattlePreset)[];
+
+const INTEGER_PRESET_KEYS = [
+  'centerMagnitude',
+  'ringMagnitude',
+  'dividersMagnitude',
+  'perimeterMagnitude',
+  'terrainDTerrain',
+  'plateauWallSlopeDegrees',
+  'metalDepositStep',
+  'terrainDetail',
+  'mapWidthLandCells',
+  'mapLengthLandCells',
+] as const satisfies readonly (keyof BattlePreset)[];
+
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+function requireConfigObject(
+  value: unknown,
+  path: string,
+): Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${path} must be an object`);
+  }
+  return value as Record<string, unknown>;
 }
 
-export const BATTLE_PRESETS: readonly BattlePreset[] = buildPresets();
+function requireExactConfigKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+  path: string,
+): void {
+  const expectedSet = new Set(expected);
+  const missing = expected.filter((key) => !(key in value));
+  const extra = Object.keys(value).filter((key) => !expectedSet.has(key));
+  if (missing.length > 0 || extra.length > 0) {
+    const details = [
+      missing.length > 0 ? `missing ${missing.join(', ')}` : '',
+      extra.length > 0 ? `unknown ${extra.join(', ')}` : '',
+    ].filter((part) => part.length > 0).join('; ');
+    throw new Error(`${path} has invalid fields: ${details}`);
+  }
+}
+
+function requireConfigString(
+  value: unknown,
+  path: string,
+): string {
+  if (typeof value !== 'string' || value.length === 0 || value !== value.trim()) {
+    throw new Error(`${path} must be a non-empty string without outer whitespace`);
+  }
+  return value;
+}
+
+function requireConfigInteger(value: unknown, path: string): number {
+  if (!Number.isInteger(value)) {
+    throw new Error(`${path} must be a finite integer`);
+  }
+  return value as number;
+}
+
+function validateBattlePreset(value: unknown, index: number): BattlePreset {
+  const path = `battlePresets.json presets[${index}]`;
+  const preset = requireConfigObject(value, path);
+  requireExactConfigKeys(preset, BATTLE_PRESET_KEYS, path);
+
+  const id = requireConfigString(preset.id, `${path}.id`);
+  if (!SLUG_PATTERN.test(id)) {
+    throw new Error(`${path}.id must be a lowercase kebab-case identifier`);
+  }
+  requireConfigString(preset.name, `${path}.name`);
+  const backdropSlug = requireConfigString(
+    preset.backdropSlug,
+    `${path}.backdropSlug`,
+  );
+  if (!SLUG_PATTERN.test(backdropSlug)) {
+    throw new Error(`${path}.backdropSlug must be a lowercase kebab-case slug`);
+  }
+
+  for (const key of BOOLEAN_PRESET_KEYS) {
+    if (typeof preset[key] !== 'boolean') {
+      throw new Error(`${path}.${key} must be a boolean`);
+    }
+  }
+  if (!isShieldReflectionMode(preset.shieldReflectionMode)) {
+    throw new Error(`${path}.shieldReflectionMode is invalid`);
+  }
+  if (!isSlopePathMode(preset.slopePathMode)) {
+    throw new Error(`${path}.slopePathMode is invalid`);
+  }
+  if (!isMetalCoverage(preset.metalCoverage)) {
+    throw new Error(`${path}.metalCoverage is invalid`);
+  }
+  if (!isLiquidSurfaceMode(preset.liquidSurfaceMode)) {
+    throw new Error(`${path}.liquidSurfaceMode is invalid`);
+  }
+  if (!isTerrainPrecedence(preset.terrainPrecedence)) {
+    throw new Error(`${path}.terrainPrecedence is invalid`);
+  }
+
+  if (
+    typeof preset.converterTax !== 'number' ||
+    !Number.isFinite(preset.converterTax) ||
+    preset.converterTax < 0 ||
+    preset.converterTax >= 1
+  ) {
+    throw new Error(`${path}.converterTax must be a finite number in [0, 1)`);
+  }
+  for (const key of INTEGER_PRESET_KEYS) {
+    requireConfigInteger(preset[key], `${path}.${key}`);
+  }
+  if ((preset.terrainDTerrain as number) < 0) {
+    throw new Error(`${path}.terrainDTerrain must be non-negative`);
+  }
+  const wallSlope = preset.plateauWallSlopeDegrees as number;
+  if (wallSlope <= 0 || wallSlope >= 90) {
+    throw new Error(`${path}.plateauWallSlopeDegrees must be between 1 and 89`);
+  }
+  if ((preset.terrainDetail as number) < 0) {
+    throw new Error(`${path}.terrainDetail must be non-negative`);
+  }
+  for (const key of ['mapWidthLandCells', 'mapLengthLandCells'] as const) {
+    const landCells = preset[key] as number;
+    if (landCells <= 0 || landCells % 2 !== 1) {
+      throw new Error(`${path}.${key} must be a positive odd integer`);
+    }
+  }
+
+  return preset as unknown as BattlePreset;
+}
+
+function validateBattlePresetFile(value: unknown): BattlePresetFile {
+  const rootPath = 'battlePresets.json';
+  const root = requireConfigObject(value, rootPath);
+  requireExactConfigKeys(root, ['modeDefaults', 'presets'], rootPath);
+  const modeDefaults = requireConfigObject(
+    root.modeDefaults,
+    `${rootPath}.modeDefaults`,
+  );
+  requireExactConfigKeys(
+    modeDefaults,
+    ['demo', 'real'],
+    `${rootPath}.modeDefaults`,
+  );
+  const demoDefault = requireConfigString(
+    modeDefaults.demo,
+    `${rootPath}.modeDefaults.demo`,
+  );
+  const realDefault = requireConfigString(
+    modeDefaults.real,
+    `${rootPath}.modeDefaults.real`,
+  );
+  if (!Array.isArray(root.presets) || root.presets.length === 0) {
+    throw new Error(`${rootPath}.presets must be a non-empty array`);
+  }
+  const presets = root.presets.map(validateBattlePreset);
+  const ids = new Set<string>();
+  const names = new Set<string>();
+  const backdropSlugs = new Set<string>();
+  for (const preset of presets) {
+    if (ids.has(preset.id)) {
+      throw new Error(`${rootPath} has duplicate preset id: ${preset.id}`);
+    }
+    if (names.has(preset.name)) {
+      throw new Error(`${rootPath} has duplicate preset name: ${preset.name}`);
+    }
+    if (backdropSlugs.has(preset.backdropSlug)) {
+      throw new Error(
+        `${rootPath} has duplicate backdropSlug: ${preset.backdropSlug}`,
+      );
+    }
+    ids.add(preset.id);
+    names.add(preset.name);
+    backdropSlugs.add(preset.backdropSlug);
+  }
+  for (const [mode, defaultId] of [
+    ['demo', demoDefault],
+    ['real', realDefault],
+  ] as const) {
+    if (!ids.has(defaultId)) {
+      throw new Error(
+        `${rootPath}.modeDefaults.${mode} references unknown preset id: ${defaultId}`,
+      );
+    }
+  }
+  return {
+    modeDefaults: { demo: demoDefault, real: realDefault },
+    presets,
+  };
+}
+
+const BATTLE_PRESET_FILE = validateBattlePresetFile(rawBattlePresetConfig);
+export const BATTLE_PRESETS: readonly BattlePreset[] =
+  BATTLE_PRESET_FILE.presets;
+const BATTLE_PRESETS_BY_ID = new Map(
+  BATTLE_PRESETS.map((preset) => [preset.id, preset]),
+);
 
 /** The authored map a battle mode starts on. Demo and real intentionally
  *  share it; they differ only in the entity count cap, which is a standalone
  *  setting (getModeDefaultEntityCountCap) rather than a preset field. */
 export function getModeDefaultPreset(mode: BattleMode): BattlePreset {
-  const name = MODE_DEFAULT_PRESET_NAMES[mode];
-  const found = BATTLE_PRESETS.find((p) => p.name === name);
+  const id = BATTLE_PRESET_FILE.modeDefaults[mode];
+  const found = BATTLE_PRESETS_BY_ID.get(id);
   if (!found) {
-    throw new Error(`Missing battle mode default preset: ${name}`);
+    throw new Error(`Missing battle mode default preset id: ${id}`);
   }
   return found;
 }
@@ -290,7 +360,7 @@ function presetMatchesCurrent(
   // (lobby off / real on), the shield defaults, the gameplay toggles every
   // stock preset shares — and the entity count cap is not a preset field at
   // all. None of those may flip the caption to CUSTOM: the same ground under
-  // a different converter tax is still Angels Flat, and still has its sky.
+  // a different converter tax is still the same authored map and sky.
   return (
     p.metalCoverage === c.metalCoverage &&
     p.liquidSurfaceMode === c.liquidSurfaceMode &&

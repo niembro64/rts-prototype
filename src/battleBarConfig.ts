@@ -13,7 +13,11 @@ import {
 } from './types/worldSurfaceMode';
 import { persistJson, readPersisted } from './persistence';
 import { readModeSetting, writeModeSetting } from './realBattleSessionSettings';
-import { MAP_DIMENSION_CONFIG, type MapLandCellDimensions } from './mapSizeConfig';
+import {
+  MAP_DIMENSION_CONFIG,
+  type MapDimensionAxisOption,
+  type MapLandCellDimensions,
+} from './mapSizeConfig';
 import {
   BUILDABLE_UNIT_BLUEPRINT_IDS,
   isBuildableUnitBlueprintId,
@@ -23,7 +27,10 @@ import {
   isBuildingBlueprintId,
 } from './types/blueprintIds';
 import battleBarConfig from './battleBarConfig.json';
-import { getModeDefaultPreset } from './components/battlePresets';
+import {
+  BATTLE_PRESETS,
+  getModeDefaultPreset,
+} from './components/battlePresets';
 import {
   normalizeSimulationTickRateHz as normalizeSimulationTickRateValue,
   SIMULATION_TICK_RATE_OPTIONS,
@@ -32,11 +39,14 @@ import {
 
 // ── Authored data lives in battleBarConfig.json ──
 // The TS shim composes BATTLE_CONFIG by reading the JSON and layering
-// in the two fields that need cross-config references:
+// in the fields that need cross-config references:
 //   - `units`: built dynamically from BUILDABLE_UNIT_BLUEPRINT_IDS (unitRoster.json)
-//   - `mapSize`: pulled from MAP_DIMENSION_CONFIG (mapSizeConfig.json)
-// Everything else — caps, toggles, terrain options, mode defaults,
-// and storage keys — is pure JSON.
+//   - `mapSize`: seeded by MAP_DIMENSION_CONFIG (mapSizeConfig.json)
+//   - preset-backed defaults/options: derived from battlePresets.json
+// Everything else — caps, terrain options, and storage keys — is pure JSON.
+// Complete map presets and stable mode-default preset ids live beside one
+// another in battlePresets.json, so a visible map rename cannot strand a
+// default pointer in this file.
 
 function buildUnitToggleConfig(): Record<string, { default: boolean }> {
   return Object.fromEntries(
@@ -100,6 +110,55 @@ function sanitizeDemoBuildingIds(value: unknown): string[] | null {
 // Unit-cap defaults are mode policy authored beside the cap options: Demo is
 // a small persistent sandbox, while Lobby/Real starts fresh at battle scale.
 const _demoPreset = getModeDefaultPreset('demo');
+
+type BattlePresetNumberOptionField =
+  | 'centerMagnitude'
+  | 'ringMagnitude'
+  | 'dividersMagnitude'
+  | 'perimeterMagnitude'
+  | 'terrainDTerrain'
+  | 'plateauWallSlopeDegrees'
+  | 'metalDepositStep'
+  | 'terrainDetail'
+  | 'converterTax';
+
+/** A JSON preset value is itself an authored BATTLE choice. Fold values that
+ * are not already in the general-purpose bar ladder into the accepted option
+ * set so applying, persisting, and reloading a changed preset cannot silently
+ * normalize it back to an unrelated default. */
+function withPresetNumberOptions(
+  field: BattlePresetNumberOptionField,
+  authoredOptions: readonly number[],
+): readonly number[] {
+  let expanded: number[] | null = null;
+  for (const preset of BATTLE_PRESETS) {
+    const value = preset[field];
+    const options = expanded ?? authoredOptions;
+    if (options.includes(value)) continue;
+    expanded ??= [...authoredOptions];
+    expanded.push(value);
+  }
+  return expanded ?? authoredOptions;
+}
+
+function withPresetMapAxisOptions(
+  field: 'mapWidthLandCells' | 'mapLengthLandCells',
+  authoredOptions: readonly MapDimensionAxisOption[],
+): readonly MapDimensionAxisOption[] {
+  let expanded: MapDimensionAxisOption[] | null = null;
+  for (const preset of BATTLE_PRESETS) {
+    const valueLandCells = preset[field];
+    const options = expanded ?? authoredOptions;
+    if (options.some((option) => option.valueLandCells === valueLandCells)) {
+      continue;
+    }
+    expanded ??= authoredOptions.map((option) => ({ ...option }));
+    expanded.push({ valueLandCells, label: String(valueLandCells) });
+  }
+  if (expanded === null) return authoredOptions;
+  expanded.sort((a, b) => a.valueLandCells - b.valueLandCells);
+  return expanded;
+}
 
 /** The ENTITY COUNT CAP is a standalone global setting, deliberately NOT a
  *  preset field: switching maps must never resize the battle. Only an
@@ -187,22 +246,34 @@ export const BATTLE_CONFIG = {
   // positive raises it above, zero suppresses it.
   centerMagnitude: {
     default: _demoPreset.centerMagnitude,
-    options: battleBarConfig.centerMagnitude.options as readonly number[],
+    options: withPresetNumberOptions(
+      'centerMagnitude',
+      battleBarConfig.centerMagnitude.options,
+    ),
   },
   // RING annulus crest amplitude — baseline at the map centre, full signed
   // magnitude at the authored crest radius, baseline again at the outer
   // radius.
   ringMagnitude: {
     default: _demoPreset.ringMagnitude,
-    options: battleBarConfig.ringMagnitude.options as readonly number[],
+    options: withPresetNumberOptions(
+      'ringMagnitude',
+      battleBarConfig.ringMagnitude.options,
+    ),
   },
   dividersMagnitude: {
     default: _demoPreset.dividersMagnitude,
-    options: battleBarConfig.dividersMagnitude.options as readonly number[],
+    options: withPresetNumberOptions(
+      'dividersMagnitude',
+      battleBarConfig.dividersMagnitude.options,
+    ),
   },
   perimeterMagnitude: {
     default: _demoPreset.perimeterMagnitude,
-    options: battleBarConfig.perimeterMagnitude.options as readonly number[],
+    options: withPresetNumberOptions(
+      'perimeterMagnitude',
+      battleBarConfig.perimeterMagnitude.options,
+    ),
   },
   // PRECEDENCE: which of DIVIDERS/PERIMETER applies last in terrain
   // generation — last wins where they overlap.
@@ -212,19 +283,31 @@ export const BATTLE_CONFIG = {
   },
   terrainDTerrain: {
     default: _demoPreset.terrainDTerrain,
-    options: battleBarConfig.terrainDTerrain.options as readonly number[],
+    options: withPresetNumberOptions(
+      'terrainDTerrain',
+      battleBarConfig.terrainDTerrain.options,
+    ),
   },
   plateauWallSlopeDegrees: {
     default: _demoPreset.plateauWallSlopeDegrees,
-    options: battleBarConfig.plateauWallSlopeDegrees.options as readonly number[],
+    options: withPresetNumberOptions(
+      'plateauWallSlopeDegrees',
+      battleBarConfig.plateauWallSlopeDegrees.options,
+    ),
   },
   metalDepositStep: {
     default: _demoPreset.metalDepositStep,
-    options: battleBarConfig.metalDepositStep.options as readonly number[],
+    options: withPresetNumberOptions(
+      'metalDepositStep',
+      battleBarConfig.metalDepositStep.options,
+    ),
   },
   terrainDetail: {
     default: _demoPreset.terrainDetail,
-    options: battleBarConfig.terrainDetail.options as readonly number[],
+    options: withPresetNumberOptions(
+      'terrainDetail',
+      battleBarConfig.terrainDetail.options,
+    ),
   },
   terrainTextureSmoothing: {
     default: TERRAIN_RENDER_SMOOTHING_DEFAULT,
@@ -245,18 +328,28 @@ export const BATTLE_CONFIG = {
   },
   converterTax: {
     default: _demoPreset.converterTax,
-    options: battleBarConfig.converterTax.options as readonly number[],
+    options: withPresetNumberOptions(
+      'converterTax',
+      battleBarConfig.converterTax.options,
+    ),
   },
   mapSize: {
-    width: MAP_DIMENSION_CONFIG.width,
-    length: MAP_DIMENSION_CONFIG.length,
+    width: {
+      default: MAP_DIMENSION_CONFIG.width.default,
+      options: withPresetMapAxisOptions(
+        'mapWidthLandCells',
+        MAP_DIMENSION_CONFIG.width.options,
+      ),
+    },
+    length: {
+      default: MAP_DIMENSION_CONFIG.length.default,
+      options: withPresetMapAxisOptions(
+        'mapLengthLandCells',
+        MAP_DIMENSION_CONFIG.length.options,
+      ),
+    },
   },
 } satisfies BattleBarConfig;
-
-// Compile-time guard: if anyone re-adds `demoDefault`/`realDefault`
-// pointers to presets that don't exist, this surfaces immediately.
-void (battleBarConfig.demoDefault as string);
-void (battleBarConfig.realDefault as string);
 
 
 // ── localStorage keys (module-private) ──

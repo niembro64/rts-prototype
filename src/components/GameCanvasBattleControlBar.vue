@@ -89,7 +89,7 @@ const METAL_COVERAGE_TITLE: Record<MetalCoverage, string> = {
         <BarButtonGroup>
           <BarButton
             v-for="preset in model.presets"
-            :key="preset.name"
+            :key="preset.id"
             :active="model.activePresetName === preset.name"
             :title="`Apply preset: ${preset.name}`"
             @click="model.applyPreset(preset)"

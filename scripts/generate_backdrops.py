@@ -47,6 +47,7 @@ OUT_DIR = os.path.join(ROOT, "public", "assets", "backdrops")
 MANIFEST_PATH = os.path.join(OUT_DIR, "manifest.json")
 COLORS_CONFIG_PATH = os.path.join(ROOT, "src", "colorsConfig.json")
 WORLD_RENDER_CONFIG_PATH = os.path.join(ROOT, "src", "worldRenderConfig.json")
+BATTLE_PRESETS_CONFIG_PATH = os.path.join(ROOT, "src", "battlePresets.json")
 BASISU_PACKAGE_PATH = os.path.join(ROOT, "node_modules", "basisu", "package.json")
 BASISU_LAUNCHER_PATH = os.path.join(ROOT, "node_modules", "basisu", "bin", "basisu.js")
 THREE_BASIS_SOURCE_DIR = os.path.join(
@@ -74,6 +75,8 @@ with open(COLORS_CONFIG_PATH) as f:
     COLORS = json.load(f)["world"]
 with open(WORLD_RENDER_CONFIG_PATH) as f:
     BACKDROP_CONFIG = json.load(f)["presetBackdrop"]
+with open(BATTLE_PRESETS_CONFIG_PATH) as f:
+    BATTLE_PRESET_CONFIG = json.load(f)
 
 BACKDROP_PALETTE_CONFIG = {
     "skyTop": COLORS["sky"]["topColor"],
@@ -965,6 +968,20 @@ PRESETS = {
     "metal-hell": metal_hell,
     "metal-plate": metal_plate,
 }
+
+CONFIGURED_BACKDROP_SLUGS = tuple(
+    preset["backdropSlug"] for preset in BATTLE_PRESET_CONFIG["presets"]
+)
+if len(set(CONFIGURED_BACKDROP_SLUGS)) != len(CONFIGURED_BACKDROP_SLUGS):
+    raise ValueError("battlePresets.json backdropSlug values must be unique")
+expected_backdrop_slugs = {"default", *CONFIGURED_BACKDROP_SLUGS}
+if set(PRESETS) != expected_backdrop_slugs:
+    missing = sorted(expected_backdrop_slugs - set(PRESETS))
+    unused = sorted(set(PRESETS) - expected_backdrop_slugs)
+    raise ValueError(
+        "generate_backdrops.py painters do not match battlePresets.json "
+        f"(missing={missing}, unused={unused})"
+    )
 
 
 def write_manifest(contract: dict[str, object], assets: list[dict[str, object]]) -> None:

@@ -593,11 +593,10 @@ watch(
 
 /* ── The map picker ───────────────────────────────────────────────────────
  *
- * A map is a place, and a place is recognised by looking at it. The eight
- * authored maps are offered as pictures of themselves — captured from the
- * real terrain generator, see mapPresetThumbnails.ts — because a row of
- * names ("Spikey Lake", "Angels Playhouse") tells a player nothing about
- * what they are about to fight on.
+ * A map is a place, and a place is recognised by looking at it. Authored maps
+ * are offered as pictures of themselves — captured from the real terrain
+ * generator, see mapPresetThumbnails.ts — because a row of configurable
+ * display names tells a player nothing about what they are about to fight on.
  *
  * The full battle-options bar is still there, one click away behind CUSTOM.
  * It is the fine control: every terrain magnitude, the unit and building
@@ -1287,7 +1286,7 @@ const terrainSectionVars = computed(() =>
           >
             <button
               v-for="tile in mapPresetTiles"
-              :key="tile.preset.name"
+              :key="tile.preset.id"
               class="map-tile"
               :class="{ active: tile.active }"
               type="button"
@@ -1335,7 +1334,7 @@ const terrainSectionVars = computed(() =>
                 <BarButtonGroup>
                   <BarButton
                     v-for="preset in presets"
-                    :key="preset.name"
+                    :key="preset.id"
                     :active="activePresetName === preset.name"
                     :title="isHost ? `Apply preset: ${preset.name}` : 'Only the host can change battle settings'"
                     @click="pickPreset(preset)"

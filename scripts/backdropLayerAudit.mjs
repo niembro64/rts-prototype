@@ -9,6 +9,9 @@ const manifestPath = path.join(backdropDir, 'manifest.json');
 const worldRenderConfig = JSON.parse(
   fs.readFileSync(path.join(root, 'src', 'worldRenderConfig.json'), 'utf8'),
 ).presetBackdrop;
+const battlePresetConfig = JSON.parse(
+  fs.readFileSync(path.join(root, 'src', 'battlePresets.json'), 'utf8'),
+);
 const colorsWorld = JSON.parse(
   fs.readFileSync(path.join(root, 'src', 'colorsConfig.json'), 'utf8'),
 ).world;
@@ -19,17 +22,10 @@ const packageLock = JSON.parse(fs.readFileSync(path.join(root, 'package-lock.jso
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
 const expectedLayerIds = ['near', 'middle', 'far', 'terminal'];
-const expectedSlugs = [
-  'default',
-  'large-circle',
-  'angels-flat',
-  'boulder-mountain',
-  'spikey-lake',
-  'niemo-islands',
-  'angels-playhouse',
-  'metal-hell',
-  'metal-plate',
-];
+const configuredBackdropSlugs = battlePresetConfig.presets.map(
+  (preset) => preset.backdropSlug,
+);
+const expectedSlugs = ['default', ...configuredBackdropSlugs];
 const ktx2Identifier = Buffer.from([
   0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a,
 ]);
@@ -55,6 +51,15 @@ const backdropPalette = {
 function assertAudit(condition, message) {
   if (!condition) throw new Error(`[backdrop layer audit] ${message}`);
 }
+
+assertAudit(
+  configuredBackdropSlugs.every((slug) => typeof slug === 'string' && slug.length > 0),
+  'every battlePresets.json preset must define backdropSlug',
+);
+assertAudit(
+  new Set(expectedSlugs).size === expectedSlugs.length,
+  'battlePresets.json backdrop slugs must be unique and may not use default',
+);
 
 function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
@@ -143,15 +148,19 @@ assertAudit(
   `manifest must describe all ${expectedAssetNames.length} backdrop textures`,
 );
 assertAudit(
-  manifest.assets.map((asset) => asset.file).join(',') === expectedAssetNames.join(','),
-  'manifest asset order/names must match the preset layer contract',
+  manifest.assets.map((asset) => asset.file).sort().join(',')
+    === [...expectedAssetNames].sort().join(','),
+  'manifest asset names must match battlePresets.json and the layer contract',
 );
 
 for (let assetIndex = 0; assetIndex < manifest.assets.length; assetIndex++) {
   const asset = manifest.assets[assetIndex];
-  const layerIndex = assetIndex % layers.length;
+  const layerIndex = expectedLayerIds.indexOf(asset.layer);
+  assertAudit(layerIndex >= 0, `${asset.file} has an unknown layer id`);
+  assertAudit(expectedSlugs.includes(asset.slug), `${asset.file} has an unknown preset slug`);
   const layer = layers[layerIndex];
-  const expectedName = expectedAssetNames[assetIndex];
+  const expectedName = `${asset.slug}-${asset.layer}.ktx2`;
+  assertAudit(asset.file === expectedName, `${asset.file} metadata does not match its slug/layer`);
   const assetPath = path.join(backdropDir, expectedName);
   assertAudit(fs.existsSync(assetPath), `missing ${path.relative(root, assetPath)}`);
   const bytes = fs.readFileSync(assetPath);

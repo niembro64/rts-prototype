@@ -3,6 +3,7 @@ import {
   PRESET_BACKDROP_LAYER_IDS,
 } from './presetBackdrops';
 import { resolvePresetBackdropLayerConfig } from './ParallaxBackdropRenderer3D';
+import { getModeDefaultPreset } from '@/components/battlePresets';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) throw new Error(`[parallax backdrop contract] ${message}`);
@@ -13,11 +14,14 @@ export function runParallaxBackdropRenderer3DContractTest(): void {
     PRESET_BACKDROP_LAYER_IDS.join(',') === 'near,middle,far,terminal',
     'layer IDs must stay ordered from nearest transparent shell to terminal sky',
   );
-  const urls = backdropUrlsForPresetName('Angels Flat');
+  const defaultPreset = getModeDefaultPreset('demo');
+  const urls = backdropUrlsForPresetName(defaultPreset.name);
   assertContract(urls.length === 4, 'stock presets must resolve four URLs');
   for (let index = 0; index < PRESET_BACKDROP_LAYER_IDS.length; index++) {
     assertContract(
-      urls[index].endsWith(`angels-flat-${PRESET_BACKDROP_LAYER_IDS[index]}.ktx2`),
+      urls[index].endsWith(
+        `${defaultPreset.backdropSlug}-${PRESET_BACKDROP_LAYER_IDS[index]}.ktx2`,
+      ),
       `URL ${index} must use its layer ID suffix`,
     );
   }

@@ -5334,6 +5334,15 @@
         transforms, and invariants by reading the JSON source; they do not carry a second table of
         expected blueprint values that can drift from the data.
       </p>
+      <p>
+        Authored maps follow the same rule. <code>battlePresets.json</code> owns the ordered preset
+        roster, stable preset IDs, visible names, backdrop slugs, complete map/gameplay values, and
+        the Demo/Real default preset IDs. TypeScript may validate and interpret those records but
+        may not restate their names or numbers. Mode defaults point to stable IDs rather than visible
+        labels, so renaming a map cannot break application boot. A numeric value introduced by a
+        preset is also an accepted BATTLE-bar value for apply, save, refresh, and DEFAULT behavior;
+        config data must never be silently normalized to some unrelated TypeScript fallback.
+      </p>
 
       <h3>What belongs in JSON</h3>
       <ul class="rule-list">

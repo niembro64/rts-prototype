@@ -1,7 +1,4 @@
 {
-  "demoDefault": "Angels Flat",
-  "realDefault": "Angels Flat",
-
   "cap": {
     "demoDefault": 500,
     "realDefault": 1000,

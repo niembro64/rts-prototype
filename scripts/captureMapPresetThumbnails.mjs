@@ -3,7 +3,7 @@
  * Capture one overhead still per authored map preset, for the lobby's map
  * picker.
  *
- * The lobby offers the eight authored maps as pictures rather than as a row
+ * The lobby offers the authored maps as pictures rather than as a row
  * of names, so the pictures have to be the maps themselves — not painted
  * art that can drift away from what the terrain generator actually makes.
  * This drives the real app: apply the preset on the demo battle bar, let the
@@ -25,6 +25,9 @@ const BASE_URL = `http://127.0.0.1:${PORT}/budget-annihilation/`;
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..');
 const OUT_DIR = path.join(repoRoot, 'public', 'assets', 'map-previews');
+const battlePresetConfig = JSON.parse(
+  await readFile(path.join(repoRoot, 'src', 'battlePresets.json'), 'utf8'),
+);
 
 /** What the lobby actually draws: a 4:3 tile a few hundred pixels across.
  *  The raw capture is a full canvas read — about a megabyte each — so every
@@ -38,16 +41,22 @@ const TILE_JPEG_QUALITY = 0.82;
 /** Name as the BATTLE bar prints it -> the slug the lobby looks the file up
  *  by. Deliberately the preset's own `backdropSlug`, so one map has one
  *  asset name across the backdrop set and the thumbnail set. */
-const PRESETS = [
-  { name: 'Large Circle', slug: 'large-circle' },
-  { name: 'Angels Flat', slug: 'angels-flat' },
-  { name: 'Boulder Mountain', slug: 'boulder-mountain' },
-  { name: 'Spikey Lake', slug: 'spikey-lake' },
-  { name: 'Nemo Island', slug: 'niemo-islands' },
-  { name: 'Angels Playhouse', slug: 'angels-playhouse' },
-  { name: 'METAL HELL', slug: 'metal-hell' },
-  { name: 'METAL PLATE', slug: 'metal-plate' },
-];
+if (!Array.isArray(battlePresetConfig.presets)) {
+  throw new Error('src/battlePresets.json presets must be an array');
+}
+const PRESETS = battlePresetConfig.presets.map((preset, index) => {
+  if (
+    preset === null ||
+    typeof preset !== 'object' ||
+    typeof preset.name !== 'string' ||
+    typeof preset.backdropSlug !== 'string'
+  ) {
+    throw new Error(
+      `src/battlePresets.json presets[${index}] needs name and backdropSlug`,
+    );
+  }
+  return { name: preset.name, slug: preset.backdropSlug };
+});
 
 const convertOnly = process.argv.includes('--convert-only');
 const only = process.argv
