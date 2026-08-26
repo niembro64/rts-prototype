@@ -1537,6 +1537,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
       if (import.meta.env.DEV && shouldRunBootContractTests()) {
         const { runServerBarConfigContractTest } = await import('../../serverBarConfigContractTest');
         runServerBarConfigContractTest();
+        const { runMapSizeConfigContractTest } = await import('../../mapSizeConfigContractTest');
+        runMapSizeConfigContractTest();
         const { runDemoBuildingRosterContractTest } = await import('../../demoBuildingRosterContractTest');
         runDemoBuildingRosterContractTest();
         const { runUnitCapPolicyContractTest } = await import('../../unitCapPolicyContractTest');

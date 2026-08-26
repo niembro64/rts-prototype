@@ -84,7 +84,7 @@ const MAP_DIMENSION_BASE_LAND_CELLS: number =
 const MAP_DIMENSION_AXIS_GROWTH: number = MAP_SIZE_CONFIG.mapDimensionAxisGrowth;
 const MAP_DIMENSION_AXIS_OPTION_COUNT: number = MAP_SIZE_CONFIG.mapDimensionAxisOptionCount;
 
-// 7, 11, 15, 23, 35, 53, 79, 119
+// 7, 11, 15, 23, 35, 53, 79, 119, 179, 269
 const DEFAULT_MAP_WIDTH_LAND_CELLS_VALUE: number = MAP_SIZE_CONFIG.defaultMapWidthLandCells;
 const DEFAULT_MAP_LENGTH_LAND_CELLS_VALUE: number = MAP_SIZE_CONFIG.defaultMapLengthLandCells;
 
