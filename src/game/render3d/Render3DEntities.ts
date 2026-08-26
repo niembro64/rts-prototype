@@ -148,6 +148,12 @@ type RenderEntityUpdatePacket3D = {
    *  state that stamps the packet's LOD-proxy flag, so the rebuild band
    *  and the glyph flip can never disagree within a frame. */
   entityDetailRung?: (entity: Entity) => DetailRung;
+  /** DISTANCE vision-fade presence (0..1) for an enemy entity from the
+   *  local team's sensor discs (VisionDistanceField3D); absent = 1. */
+  entityVisionPresenceAlpha?: (entity: Entity) => number;
+  /** Whether TIME vision fades (rise/fall clocks, coasting retention)
+   *  are active this frame. Off in the DISTANCE mode. */
+  visionTimeFades?: boolean;
   /** BAR-style icon cross-fade alpha for entities NOT yet at the glyph
    *  rung: > 0 inside the fade band, where the proxy glyph is drawn ON
    *  TOP of the still-fully-opaque model. */
@@ -181,6 +187,8 @@ export class Render3DEntities {
     DEFAULT_ENTITY_EMISSION_FAR_LOD;
   private entityDetailRung: ((entity: Entity) => DetailRung) | undefined;
   private entityLodProxyFadeAlpha: ((entity: Entity) => number) | undefined;
+  private entityVisionPresenceAlpha: ((entity: Entity) => number) | undefined;
+  private visionTimeFades = true;
   /** Per-frame cap on detail-band mesh rebuilds. Camera sweeps change
    *  many bands at once; over-budget units keep their previous rung
    *  until a later frame so a zoom never lands as one hitch frame. */
@@ -541,6 +549,10 @@ export class Render3DEntities {
       ?? DEFAULT_ENTITY_EMISSION_FAR_LOD;
     this.entityDetailRung = entityPacket?.entityDetailRung;
     this.entityLodProxyFadeAlpha = entityPacket?.entityLodProxyFadeAlpha;
+    this.entityVisionPresenceAlpha = entityPacket?.entityVisionPresenceAlpha;
+    this.visionTimeFades = entityPacket?.visionTimeFades !== false;
+    this.visionFadeIn.setEnabled(this.visionTimeFades);
+    this.vanishingProxyGhosts.setEnabled(this.visionTimeFades);
     this.unitRebuildBudgetLeft = DETAIL_REBUILD_BUDGET_UNITS;
     this.renderFrameCounter++;
     this.beamPilotLights.update(
@@ -593,6 +605,8 @@ export class Render3DEntities {
       entityPacket?.scoped === true,
       this.entityDetailRung,
       this.entityLodProxyFadeAlpha,
+      this.entityVisionPresenceAlpha,
+      this.visionTimeFades,
     );
     // Buildings and dying building collars write into the same world-pooled
     // ornament renderer as units. Flush only after both entity paths have
@@ -814,8 +828,12 @@ export class Render3DEntities {
       }
       // The vision rise is keyed on the sighting, whichever representation
       // draws it: a glyph fades in like a model, and a later LOD promotion
-      // finds the clock already at one.
-      const visionFadeIn = this.visionFadeIn.advance(entityId, this._currentDtMs);
+      // finds the clock already at one. The DISTANCE presence (1 in TIME
+      // mode) multiplies in so both modes drive the one alpha.
+      const presenceAlpha = this.entityVisionPresenceAlpha !== undefined
+        ? this.entityVisionPresenceAlpha(unitRows.entityAt(row)!)
+        : 1;
+      const visionFadeIn = this.visionFadeIn.advance(entityId, this._currentDtMs) * presenceAlpha;
       const useLodProxy = unitRows.lodProxyAt(row);
       let m = this.unitMeshes.get(entityId);
       if (useLodProxy) {
@@ -1488,6 +1506,12 @@ export class Render3DEntities {
       // drawn, so it is the glyph that fades.
       this.destroyUnitMesh(id, m);
       this.vanishingProxyGhosts.begin(id);
+      return;
+    }
+    if (!this.visionTimeFades) {
+      // DISTANCE mode: the edge already faded it; nothing is retained.
+      this.vanishingProxyGhosts.forget(id);
+      this.destroyUnitMesh(id, m);
       return;
     }
     // Loss of full vision: the model coasts on its last presented velocity

@@ -61,6 +61,18 @@ export type WaterBoundaryMode =
   | 'infinity'
   | 'floating-square'
   | 'floating-square-sea';
+/** How an enemy's presentation crosses the local team's vision boundary.
+ *    time     — the last drawn representation fades over visionConfig
+ *               fadeInMs / fadeOutMs, coasting on its last velocity.
+ *    distance — alpha is a function of the entity's distance to the nearest
+ *               friendly sensor edge (opaque `visionFadeBand` wu inside the
+ *               edge, transparent at it); no clocks.
+ *    both     — the two multiplied. */
+export type VisionFadeMode = 'time' | 'distance' | 'both';
+/** Width (world units) of the distance-fade band inside the sight edge.
+ *  The contact (radar/sonar) band is three times this, matching the fog
+ *  shade's 64 / 192 wu edge softness ratio. */
+export type VisionFadeBandWu = 32 | 64 | 128 | 256;
 /** Waypoint visualization detail. SIMPLE shows user-issued command points and
  *  conventional intent connectors. DETAILED shows the exact remaining
  *  smoothed active plan consumed by locomotion, including snapped or partial
@@ -246,6 +258,8 @@ export type ClientBarConfig = {
   readonly cameraFollow: LabeledOptionsConfig<CameraFollowMode>;
   readonly cameraFov: LabeledOptionsConfig<CameraFovDegrees>;
   readonly waterBoundaryMode: LabeledOptionsConfig<WaterBoundaryMode>;
+  readonly visionFadeMode: LabeledOptionsConfig<VisionFadeMode>;
+  readonly visionFadeBand: LabeledOptionsConfig<VisionFadeBandWu>;
   readonly dragPan: BooleanSetting;
   readonly sounds: DefaultSetting<SoundDefaults>;
   readonly rangeToggles: BooleanSetting;

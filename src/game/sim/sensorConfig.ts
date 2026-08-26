@@ -82,27 +82,32 @@ export function validateSensorCapabilityConfig(
     sensors.sonarJamRadius,
   );
 
-  // THE MEDIUM GATE, and the reason it is a rule rather than a habit.
+  // THE WATERLINE RULE, and the reason it is a rule rather than a habit.
   //
-  // Beyond All Reason states this once, in modrules, as
-  // `requireSonarUnderWater = true`: an underwater target is revealed by SONAR,
-  // and line of sight alone will not do it. We can express the same thing in
-  // the matrix by leaving every fullSight[*][underwater] cell at zero — and
-  // that is exactly what every authored sensor suite does today.
+  // Full sight crosses the waterline: water is a medium, not an occluder, so
+  // an enemy inside a sensor's sight radius is seen whichever side of the
+  // surface it is on. Each fullSight source row therefore authors the SAME
+  // radius for both target columns. (Beyond All Reason's
+  // `requireSonarUnderWater` modrule was the previous convention here — every
+  // fullSight[*][underwater] cell at zero — but BAR's sonar reveals a full
+  // model inside its range while ours is an anonymous contact tier, so the
+  // pairing left a surface hull touching a submarine with a dot and never the
+  // unit. That contradicted the promise that anything inside team sight is
+  // fully visible.) Contact sight stays per medium on purpose: radar is the
+  // above->above lane and sonar the under->under lane.
   //
-  // Expressed only as repeated zeroes, one stray number silently makes some
-  // tank a submarine detector. So state it:
-  // a suite may see underwater only if it can also HEAR underwater.
+  // Expressed only as repeated numbers, one stray edit silently blinds some
+  // hull across the surface. So state it.
   for (const sourceMedium of SENSOR_MEDIA) {
-    const seesUnderwater = sensors.fullSight[sourceMedium].underwater > 0;
-    const hearsUnderwater = sensors.contactSight[sourceMedium].underwater > 0;
-    if (seesUnderwater && !hearsUnderwater) {
+    const row = sensors.fullSight[sourceMedium];
+    const sameMedium = row[sourceMedium];
+    const crossMedium = row[sourceMedium === 'aboveWater' ? 'underwater' : 'aboveWater'];
+    if (sameMedium !== crossMedium) {
       throw new Error(
-        `Invalid ${context}: sensors.fullSight.${sourceMedium}.underwater is `
-          + `${sensors.fullSight[sourceMedium].underwater} but `
-          + `sensors.contactSight.${sourceMedium}.underwater is 0. A submerged `
-          + 'target is found by sonar; sight alone does not reach it. Give this '
-          + 'suite a sonar radius or take its underwater sight away.',
+        `Invalid ${context}: sensors.fullSight.${sourceMedium} authors `
+          + `${sameMedium} for its own medium but ${crossMedium} across the `
+          + 'waterline. Full sight crosses the waterline: author the same '
+          + 'radius for both target media (contact sight stays per medium).',
       );
     }
   }
@@ -125,9 +130,9 @@ export function getMaximumSensorMatrixRadius(
  *
  *  Jamming counts. A mount authored with a jam radius and no sight, contact, or
  *  detector radius of its own -- BAR's armjamt shape, minus its 195 sightdistance
- *  -- was dropped here and then silently jammed nothing. Both jammers in the
- *  current roster happen to carry sight as well, which is the only reason the
- *  hole is invisible today. */
+ *  -- was dropped here and then silently jammed nothing. Both jammer BUILDINGS
+ *  now author exactly that shape (zero sight, contact and detector), so this
+ *  gate is what keeps them jamming at all. */
 export function hasAnySensorRadius(sensors: SensorCapabilityConfig): boolean {
   return (
     getMaximumSensorMatrixRadius(sensors.fullSight) > 0 ||

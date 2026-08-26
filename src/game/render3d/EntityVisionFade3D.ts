@@ -31,11 +31,24 @@ import type { EntityMesh } from './EntityMesh3D';
  *  the live set, so re-entering vision fades in afresh. */
 export class VisionFadeInClock3D {
   private readonly elapsed = new IndexedEntityIdMap<number>();
+  private enabled = true;
 
   constructor(private readonly durationMs: number = VISION_FADE_IN_MS) {}
 
   get size(): number {
     return this.elapsed.size;
+  }
+
+  /** TIME fades off (the DISTANCE vision-fade mode): every query reads 1
+   *  and nothing is tracked, so switching back on starts every id afresh. */
+  setEnabled(enabled: boolean): void {
+    if (this.enabled === enabled) return;
+    this.enabled = enabled;
+    this.elapsed.clear();
+  }
+
+  get isEnabled(): boolean {
+    return this.enabled;
   }
 
   has(id: EntityId): boolean {
@@ -46,6 +59,7 @@ export class VisionFadeInClock3D {
    *  untouched. Call on every row (glyph or model) so the clock is keyed on
    *  sighting, never on which representation happened to be built. */
   ensure(id: EntityId): void {
+    if (!this.enabled) return;
     if (!this.elapsed.has(id)) this.elapsed.set(id, 0);
   }
 
@@ -53,6 +67,7 @@ export class VisionFadeInClock3D {
    *  its fade-out was still running, so it continues from where that left
    *  off instead of restarting from invisible. */
   seedFromAlpha(id: EntityId, alpha: number): void {
+    if (!this.enabled) return;
     const clamped = Math.min(1, Math.max(0, finiteOrZero(alpha)));
     this.elapsed.set(id, clamped * this.durationMs);
   }
@@ -60,7 +75,7 @@ export class VisionFadeInClock3D {
   /** Advance one id by `dtMs` and return its alpha. Seeds an untracked id
    *  at zero. Units call this for every row every frame. */
   advance(id: EntityId, dtMs: number): number {
-    if (this.durationMs <= 0) return 1;
+    if (!this.enabled || this.durationMs <= 0) return 1;
     const prev = this.elapsed.get(id);
     if (prev === this.durationMs) return 1;
     const next = Math.min((prev ?? 0) + Math.max(0, dtMs), this.durationMs);
@@ -72,7 +87,7 @@ export class VisionFadeInClock3D {
    *  this because their rows are submitted only when dirty, so the clock
    *  cannot ride the row loop. Ids already at one are skipped. */
   advanceAll(dtMs: number, onRise: (id: EntityId, alpha: number) => void): void {
-    if (this.elapsed.size === 0) return;
+    if (!this.enabled || this.elapsed.size === 0) return;
     if (this.durationMs <= 0) {
       for (const [id, prev] of this.elapsed) {
         if (prev === this.durationMs) continue;
@@ -92,7 +107,7 @@ export class VisionFadeInClock3D {
   /** Current alpha without advancing. An id this clock has never sighted
    *  has nothing to fade and reads as fully visible. */
   alphaOf(id: EntityId): number {
-    if (this.durationMs <= 0) return 1;
+    if (!this.enabled || this.durationMs <= 0) return 1;
     const elapsed = this.elapsed.get(id);
     if (elapsed === undefined) return 1;
     return Math.min(elapsed, this.durationMs) / this.durationMs;
@@ -207,11 +222,19 @@ type ProxyGhostRecord3D = {
 export class VanishingProxyGhosts3D {
   private readonly lastRows = new IndexedEntityIdMap<ProxyGhostRecord3D>();
   private readonly ghosts = new IndexedEntityIdMap<ProxyGhostRecord3D>();
+  private enabled = true;
 
   constructor(private readonly durationMs: number = VISION_FADE_OUT_MS) {}
 
   get size(): number {
     return this.ghosts.size;
+  }
+
+  /** TIME fades off: glyphs leave instantly and no rows are noted. */
+  setEnabled(enabled: boolean): void {
+    if (this.enabled === enabled) return;
+    this.enabled = enabled;
+    if (!enabled) this.clear();
   }
 
   /** Remember where this id's glyph was drawn and how it was moving. */
@@ -227,6 +250,7 @@ export class VanishingProxyGhosts3D {
     velY: number,
     velZ: number,
   ): void {
+    if (!this.enabled) return;
     let record = this.lastRows.get(id);
     if (record === undefined) {
       record = {
@@ -252,7 +276,7 @@ export class VanishingProxyGhosts3D {
     const record = this.lastRows.get(id);
     if (record === undefined) return false;
     this.lastRows.delete(id);
-    if (this.durationMs <= 0) return false;
+    if (!this.enabled || this.durationMs <= 0) return false;
     record.fade = 1;
     this.ghosts.set(id, record);
     return true;

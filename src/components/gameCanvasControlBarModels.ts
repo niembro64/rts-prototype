@@ -24,6 +24,8 @@ import type {
   SelectionHudMode,
   SoundCategory,
   WaypointDetail,
+  VisionFadeBandWu,
+  VisionFadeMode,
   WaterBoundaryMode,
 } from '../types/client';
 import type { SnapshotRate, TickRate } from '../types/server';
@@ -287,6 +289,8 @@ export type GameCanvasClientControlBarModel = {
   readonly cameraSmoothMode: CameraSmoothMode;
   readonly cameraFollowMode: CameraFollowMode;
   readonly waterBoundaryMode: WaterBoundaryMode;
+  readonly visionFadeMode: VisionFadeMode;
+  readonly visionFadeBand: VisionFadeBandWu;
   readonly uiChromeVisible: boolean;
   readonly mapDetailsVisible: boolean;
   readonly optionsMenuOpen: boolean;
@@ -352,6 +356,8 @@ export type GameCanvasClientControlBarModel = {
   changeAaResolutionMode(mode: AntialiasResolutionMode): void;
   changeCameraFovDegrees(fov: CameraFovDegrees): void;
   changeWaterBoundaryMode(mode: WaterBoundaryMode): void;
+  changeVisionFadeMode(mode: VisionFadeMode): void;
+  changeVisionFadeBand(band: VisionFadeBandWu): void;
   setCameraMode(mode: CameraSmoothMode): void;
   setCameraViewMode(mode: CameraViewMode): void;
   setCameraFollowMode(mode: CameraFollowMode): void;

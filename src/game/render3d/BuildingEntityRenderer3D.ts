@@ -541,8 +541,13 @@ export class BuildingEntityRenderer3D {
   private readonly applyRisingBuildingFade = (id: EntityId, alpha: number): void => {
     const mesh = this.meshes.get(id);
     if (mesh === undefined) return;
-    this.applyBuildingEntityFade(mesh, (mesh.buildingMaterializationOpacity ?? 1) * alpha);
+    const entity = this.clientViewState.getEntity(id);
+    const presence = entity !== undefined ? this.visionPresenceAlpha(entity) : 1;
+    this.applyBuildingEntityFade(mesh, (mesh.buildingMaterializationOpacity ?? 1) * alpha * presence);
   };
+  /** DISTANCE vision-fade presence callback for this frame (absent = 1). */
+  private entityVisionPresenceAlpha: ((entity: Entity) => number) | undefined;
+  private visionTimeFades = true;
   /** Gatling spin for tower-mounted multi-barrel turrets (e.g. the
    *  Anti-Air rocket gatling). Towers render per-Mesh, so they keep
    *  their own spin state separate from the unit renderer's. */
@@ -647,8 +652,14 @@ export class BuildingEntityRenderer3D {
     scopedRender: boolean = false,
     entityDetailRung?: (entity: Entity) => DetailRung,
     entityLodProxyFadeAlpha?: (entity: Entity) => number,
+    entityVisionPresenceAlpha?: (entity: Entity) => number,
+    visionTimeFades: boolean = true,
   ): void {
     this.buildingRebuildBudgetLeft = DETAIL_REBUILD_BUDGET_BUILDINGS;
+    this.entityVisionPresenceAlpha = entityVisionPresenceAlpha;
+    this.visionTimeFades = visionTimeFades;
+    this.visionFadeIn.setEnabled(visionTimeFades);
+    this.vanishingProxyGhosts.setEnabled(visionTimeFades);
     this.syncBuildingTeamOrnamentState();
     const entitySetVersion = this.clientViewState.getEntitySetVersion();
     const packetProvided = buildingRows !== undefined;
@@ -696,7 +707,7 @@ export class BuildingEntityRenderer3D {
           rows.lodProxyRadius[row],
           rows.lodProxyGlyph[row],
           rows.ownerIdAt(row),
-          this.visionFadeIn.alphaOf(entityId),
+          this.visionAlphaFor(entityId, rows.entityAt(row)),
         );
         // Remember the glyph as this id's last drawn form so a vision loss
         // at this rung fades the glyph out instead of popping it.
@@ -742,7 +753,7 @@ export class BuildingEntityRenderer3D {
           rows.lodProxyRadius[row],
           rows.lodProxyGlyph[row],
           rows.ownerIdAt(row),
-          proxyFadeAlpha * this.visionFadeIn.alphaOf(entityId),
+          proxyFadeAlpha * this.visionAlphaFor(entityId, entity),
         );
       }
       const detailLevel = detailLevelForRung(detailRung);
@@ -826,6 +837,7 @@ export class BuildingEntityRenderer3D {
     this.updateBuildingTurretSpinQueue(spinDt);
     this.animations.update(spinDt);
     this.updateBuildingSpawnFades(currentDtMs);
+    this.applyDistancePresence();
     // Advance any in-progress death-out and vision fade-outs every frame
     // (independent of the entity-set prune cadence below).
     this.dyingBuildings.update(currentDtMs);
@@ -932,6 +944,34 @@ export class BuildingEntityRenderer3D {
     this.visionFadeIn.advanceAll(dtMs, this.applyRisingBuildingFade);
   }
 
+  /** The complete vision alpha of a building: its TIME rise (1 when TIME
+   *  fades are off) times its DISTANCE presence (1 when absent). */
+  private visionAlphaFor(id: EntityId, entity: Entity | undefined): number {
+    const rise = this.visionFadeIn.alphaOf(id);
+    if (entity === undefined) return rise;
+    return rise * this.visionPresenceAlpha(entity);
+  }
+
+  private visionPresenceAlpha(entity: Entity): number {
+    return this.entityVisionPresenceAlpha !== undefined ? this.entityVisionPresenceAlpha(entity) : 1;
+  }
+
+  /** Buildings do not move, but the friendly sensors that light them do,
+   *  and building rows are submitted only when dirty — so in the DISTANCE
+   *  mode every retained mesh re-reads its presence each frame. */
+  private applyDistancePresence(): void {
+    if (this.entityVisionPresenceAlpha === undefined) return;
+    for (const [id, mesh] of this.meshes) {
+      if (mesh.renderLodProxyActive === true) continue;
+      const entity = this.clientViewState.getEntity(id);
+      if (entity === undefined) continue;
+      this.applyBuildingEntityFade(
+        mesh,
+        (mesh.buildingMaterializationOpacity ?? 1) * this.visionAlphaFor(id, entity),
+      );
+    }
+  }
+
   private removeBuildingMeshesFromPacket(
     rows: BuildingRenderPacket3D,
   ): void {
@@ -977,6 +1017,12 @@ export class BuildingEntityRenderer3D {
       // drawn, so it is the glyph that fades.
       this.disposeBuildingMesh(mesh);
       this.vanishingProxyGhosts.begin(id);
+      return;
+    }
+    if (!this.visionTimeFades) {
+      // DISTANCE mode: the edge already faded it; nothing is retained.
+      this.vanishingProxyGhosts.forget(id);
+      this.disposeBuildingMesh(mesh);
       return;
     }
     // Loss of full vision: the mesh fades out in place (EntityVisionFade3D).
@@ -1035,7 +1081,7 @@ export class BuildingEntityRenderer3D {
     mesh.buildingAnimationsGated = false;
     this.applyBuildingEntityFade(
       mesh,
-      (mesh.buildingMaterializationOpacity ?? 1) * this.visionFadeIn.alphaOf(entity.id),
+      (mesh.buildingMaterializationOpacity ?? 1) * this.visionAlphaFor(entity.id, entity),
     );
   }
 
@@ -1049,7 +1095,7 @@ export class BuildingEntityRenderer3D {
     mesh.buildingAnimationsGated = false;
     this.applyBuildingEntityFade(
       mesh,
-      (mesh.buildingMaterializationOpacity ?? 1) * this.visionFadeIn.alphaOf(entity.id),
+      (mesh.buildingMaterializationOpacity ?? 1) * this.visionAlphaFor(entity.id, entity),
     );
   }
 
@@ -1254,7 +1300,7 @@ export class BuildingEntityRenderer3D {
     }
     this.applyBuildingEntityFade(
       mesh,
-      (progress < 1 ? 1 : bodyOpacity) * this.visionFadeIn.alphaOf(entity.id),
+      (progress < 1 ? 1 : bodyOpacity) * this.visionAlphaFor(entity.id, entity),
     );
     // While the detail-rung gate holds this building's animators frozen,
     // sync would re-register them right before this frame's animation

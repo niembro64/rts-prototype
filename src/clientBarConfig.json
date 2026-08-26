@@ -381,6 +381,25 @@
       }
     ]
   },
+  "visionFadeMode": {
+    "demoDefault": "time",
+    "realDefault": "time",
+    "options": [
+      { "value": "time", "label": "TIME" },
+      { "value": "distance", "label": "DIST" },
+      { "value": "both", "label": "BOTH" }
+    ]
+  },
+  "visionFadeBand": {
+    "demoDefault": 64,
+    "realDefault": 64,
+    "options": [
+      { "value": 32, "label": "32" },
+      { "value": 64, "label": "64" },
+      { "value": 128, "label": "128" },
+      { "value": 256, "label": "256" }
+    ]
+  },
   "dragPan": {
     "demoDefault": true,
     "realDefault": true
@@ -586,6 +605,8 @@
     "cameraFollow": "camera-follow",
     "cameraFov": "camera-fov-degrees",
     "waterBoundaryMode": "water-boundary-mode",
+    "visionFadeMode": "vision-fade-mode",
+    "visionFadeBand": "vision-fade-band",
     "dragPan": "drag-pan",
     "lobbyVisible": "lobby-visible",
     "waypointDetail": "waypoint-detail",

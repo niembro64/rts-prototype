@@ -1296,6 +1296,8 @@ const {
   cameraFollowMode,
   cameraFovDegrees,
   waterBoundaryMode,
+  visionFadeMode,
+  visionFadeBand,
   allRangesActive,
   allVolumesActive,
   entityHudTypes,
@@ -1327,6 +1329,8 @@ const {
   changeCameraFovDegrees,
   changeCameraFovBy,
   changeWaterBoundaryMode,
+  changeVisionFadeMode,
+  changeVisionFadeBand,
   toggleAllRanges,
   toggleAllVolumes,
   toggleAudioSmoothing,
@@ -2457,6 +2461,8 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   cameraSmoothMode: cameraSmoothMode.value,
   cameraFollowMode: cameraFollowMode.value,
   waterBoundaryMode: waterBoundaryMode.value,
+  visionFadeMode: visionFadeMode.value,
+  visionFadeBand: visionFadeBand.value,
   uiChromeVisible: uiChromeVisible.value,
   mapDetailsVisible: mapDetailsVisible.value,
   optionsMenuOpen: optionsMenuOpen.value,
@@ -2522,6 +2528,8 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   changeAaResolutionMode,
   changeCameraFovDegrees,
   changeWaterBoundaryMode,
+  changeVisionFadeMode,
+  changeVisionFadeBand,
   setCameraMode,
   setCameraViewMode,
   setCameraFollowMode: setCameraFollow,
@@ -2690,6 +2698,8 @@ watchEffect(() => {
   m.cameraSmoothMode = cameraSmoothMode.value;
   m.cameraFollowMode = cameraFollowMode.value;
   m.waterBoundaryMode = waterBoundaryMode.value;
+  m.visionFadeMode = visionFadeMode.value;
+  m.visionFadeBand = visionFadeBand.value;
   m.uiChromeVisible = uiChromeVisible.value;
   m.mapDetailsVisible = mapDetailsVisible.value;
   m.optionsMenuOpen = optionsMenuOpen.value;
