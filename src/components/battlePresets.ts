@@ -113,7 +113,7 @@ const SUBSYSTEM_DEFAULTS = {
 function buildPresets(): readonly BattlePreset[] {
   return [
     {
-      name: 'LAND PLATE',
+      name: 'Land Plate',
       backdropSlug: 'large-circle',
       ...SUBSYSTEM_DEFAULTS,
       fogOfWarEnabled: true,
@@ -131,7 +131,7 @@ function buildPresets(): readonly BattlePreset[] {
       mapLengthLandCells: 119,
     },
     {
-      name: 'Angels Flat',
+      name: "Nemo's Flat",
       backdropSlug: 'angels-flat',
       ...SUBSYSTEM_DEFAULTS,
       fogOfWarEnabled: true,
@@ -163,8 +163,8 @@ function buildPresets(): readonly BattlePreset[] {
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 400,
       terrainDetail: 4,
-      mapWidthLandCells: 119,
-      mapLengthLandCells: 119,
+      mapWidthLandCells: 269,
+      mapLengthLandCells: 269,
     },
     {
       name: 'Spikey Lake',
@@ -185,7 +185,7 @@ function buildPresets(): readonly BattlePreset[] {
       mapLengthLandCells: 53,
     },
     {
-      name: 'Nemo Island',
+      name: "Nemo's Island",
       backdropSlug: 'niemo-islands',
       ...SUBSYSTEM_DEFAULTS,
       fogOfWarEnabled: true,
@@ -203,7 +203,7 @@ function buildPresets(): readonly BattlePreset[] {
       mapLengthLandCells: 79,
     },
     {
-      name: 'Angels Playhouse',
+      name:  "Nemo's Playhouse",
       backdropSlug: 'angels-playhouse',
       ...SUBSYSTEM_DEFAULTS,
       fogOfWarEnabled: true,
