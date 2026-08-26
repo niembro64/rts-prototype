@@ -190,6 +190,11 @@ export const BEAM_MAX_SEGMENTS = combatConfigJson.beamMaxSegments;
  *  deferred blast lands 50 ms later, and the units it would have killed
  *  live that long. */
 export const MAX_DEATH_EXPLOSIONS_PER_TICK = combatConfigJson.maxDeathExplosionsPerTick;
+/** Candidate scans (auto-mode target acquisition) the targeting scheduler
+ *  may run in one fixed tick; 0 = unlimited. Hosts past the budget keep
+ *  their locks and firing, skip only the scan, and retry next tick from a
+ *  rotating start so nobody starves. Hashed with the rest of the config. */
+export const TARGETING_ACQUISITION_SCANS_PER_TICK = combatConfigJson.targetingAcquisitionScansPerTick;
 export const BEAM_MIN_ON_TIME_MS = beamConfigJson.minOnTimeMs;
 /** Attack beams commit to one predicted trajectory for a fixed pulse. */
 export const BEAM_PULSE_ON_TIME_MS = beamConfigJson.pulse.onTimeMs;

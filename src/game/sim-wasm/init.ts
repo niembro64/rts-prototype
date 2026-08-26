@@ -466,6 +466,8 @@ import __wbg_init, {
   combat_targeting_auto_mode_spatial_candidate_tick_batch,
   combat_targeting_tick_batch,
   combat_targeting_schedule_and_tick_batch,
+  combat_targeting_acquisition_scans_total,
+  combat_targeting_acquisition_deferrals_total,
   combat_targeting_existing_lock_and_auto_scan_tick,
   shield_pool_clear,
   shield_pool_count,
@@ -1218,6 +1220,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           autoModeSpatialCandidateTickBatch: combat_targeting_auto_mode_spatial_candidate_tick_batch,
           tickBatch: combat_targeting_tick_batch,
           scheduleAndTickBatch: combat_targeting_schedule_and_tick_batch,
+          acquisitionScansTotal: combat_targeting_acquisition_scans_total,
+          acquisitionDeferralsTotal: combat_targeting_acquisition_deferrals_total,
         },
         shieldSurfacePool: {
           clear: shield_pool_clear,
@@ -1845,6 +1849,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runDeathExplosionChainBudgetContractTest();
         const { runBuildGridChangeLogContractTest } = await import('../sim/buildGridChangeLogContractTest');
         runBuildGridChangeLogContractTest();
+        const { runTargetingAcquisitionBudgetContractTest } = await import('../sim/targetingAcquisitionBudgetContractTest');
+        runTargetingAcquisitionBudgetContractTest();
         const { runTeamColorContractTest } = await import('../sim/teamColorContractTest');
         runTeamColorContractTest();
         const { runTerrainUnderwaterDarkeningContractTest } = await import('../sim/terrain/terrainUnderwaterDarkeningContractTest');

@@ -438,6 +438,13 @@ pub(crate) struct CombatTargetingPool {
     pub(crate) turret_los_memo_az: Vec<f64>,
     pub(crate) turret_los_memo_result: Vec<u8>,
     pub(crate) los_memo_epoch: u32,
+    /// Round-robin start index into the scheduler batch: the first source
+    /// whose acquisition scan was deferred last tick goes first this tick,
+    /// so a per-tick scan budget cannot starve the tail of the batch.
+    pub(crate) acquisition_cursor: usize,
+    /// Telemetry (never hashed): candidate scans run / deferred since init.
+    pub(crate) acquisition_scans_total: f64,
+    pub(crate) acquisition_deferrals_total: f64,
     pub(crate) turret_config_flags: Vec<u32>,
     // Optional deterministic cadence for a specialist profile to compare a
     // still-valid current target against newly eligible candidates. Zero
@@ -628,6 +635,9 @@ impl CombatTargetingPool {
             turret_blueprint_code: Vec::new(),
             turret_los_blocked_ticks: Vec::new(),
             turret_los_memo_epoch: Vec::new(),
+            acquisition_cursor: 0,
+            acquisition_scans_total: 0.0,
+            acquisition_deferrals_total: 0.0,
             turret_los_memo_target: Vec::new(),
             turret_los_memo_mx: Vec::new(),
             turret_los_memo_my: Vec::new(),

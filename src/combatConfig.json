@@ -3,5 +3,6 @@
   "knockback": {
     "SPLASH": 250
   },
-  "maxDeathExplosionsPerTick": 64
+  "maxDeathExplosionsPerTick": 64,
+  "targetingAcquisitionScansPerTick": 96
 }
