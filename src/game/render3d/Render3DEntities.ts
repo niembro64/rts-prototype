@@ -479,6 +479,17 @@ export class Render3DEntities {
     this.buildingRenderer.markEntityKilled(id, blast);
   }
 
+  /** Preserve a plasma shot's already-rendered path as a short anonymous
+   * collapse effect. ProjectileRenderer3D itself rejects non-plasma ids. */
+  startPlasmaImpactCollapse(
+    id: EntityId,
+    x: number,
+    y: number,
+    z: number,
+  ): boolean {
+    return this.projectileRenderer.startPlasmaImpactCollapse(id, x, y, z);
+  }
+
   update(
     frameStateOverride?: RenderFrameState3D,
     turretShieldPanelsEnabled: boolean = true,
@@ -567,6 +578,7 @@ export class Render3DEntities {
     this.projectileRenderer.update(
       this.frameState,
       entityPacket?.projectileRenderProjectiles ?? EMPTY_PROJECTILES,
+      this._currentDtMs,
     );
     this.lodProxyRenderer.flush(this.getViewportHeight());
     // One flush per frame uploads the per-instance leg cylinder

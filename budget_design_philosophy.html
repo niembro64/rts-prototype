@@ -1037,6 +1037,15 @@
         derived from the interpolated authoritative velocity/orientation, so rockets and
         missiles point along their actual flight path.
       </p>
+      <p>
+        A plasma despawn remains just as discrete in gameplay, but an in-vision
+        <code>hit</code> or <code>projectileExpire</code> event may seed one bounded, anonymous
+        presentation afterimage from the trail path the client already rendered. Its head is pinned
+        to the event&rsquo;s exact terminal point while a smooth shrinking resample horizon brings the
+        tail forward along that frozen path; when tail and head coincide, the afterimage disappears.
+        This runs at every projectile detail rung, advances only on the shared presentation clock,
+        does not retain or recreate the shot entity, and is never inferred from a visibility despawn.
+      </p>
 
       <h3>Launch frames are explicit</h3>
       <p>

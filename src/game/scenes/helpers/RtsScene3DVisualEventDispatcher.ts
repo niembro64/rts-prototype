@@ -79,6 +79,14 @@ export function dispatchSimEvent3DVisual(
   }
 
   if (event.type === 'hit') {
+    if (event.entityId !== null) {
+      context.entityRenderer.startPlasmaImpactCollapse(
+        event.entityId,
+        event.pos.x,
+        event.pos.y,
+        event.pos.z,
+      );
+    }
     const ctx = event.impactContext;
     const radius = ctx
       ? maxFiniteNonNegativeOr(
@@ -147,6 +155,14 @@ export function dispatchSimEvent3DVisual(
       event.playerId ?? undefined,
     );
   } else if (event.type === 'projectileExpire') {
+    if (event.entityId !== null) {
+      context.entityRenderer.startPlasmaImpactCollapse(
+        event.entityId,
+        event.pos.x,
+        event.pos.y,
+        event.pos.z,
+      );
+    }
     const ctx = event.impactContext;
     const radius = ctx
       ? maxFiniteNonNegativeOr(

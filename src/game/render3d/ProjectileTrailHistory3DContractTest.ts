@@ -8,6 +8,10 @@ import {
   stampTrailHeadIfMoved,
   type TrailStampBuffer,
 } from './ProjectileTrailHistory3D';
+import {
+  PLASMA_IMPACT_COLLAPSE_DURATION_MS,
+  plasmaImpactCollapseTailLength,
+} from './PlasmaImpactCollapse3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[projectile trail history contract] ${message}`);
@@ -327,6 +331,82 @@ function assertFreshShotCollapsesOntoTheHead(): void {
   }
 }
 
+/** Terminal presentation reverses tail growth without moving the impact head.
+ * The sim entity is already gone; only its frozen path is resampled through a
+ * smoothly shrinking horizon, identically at every geometry rung. */
+function assertImpactTailCollapsesIntoFixedHead(): void {
+  const fullTailLength = 96;
+  const { stamps, head: lastLiveHead } = flyBallisticShot(fullTailLength, 120);
+  insertTrailStamp(
+    stamps,
+    lastLiveHead[0],
+    lastLiveHead[1],
+    lastLiveHead[2],
+    false,
+  );
+  const impactHead: Point = [
+    lastLiveHead[0] + 5,
+    lastLiveHead[1],
+    lastLiveHead[2] - 2,
+  ];
+  const samples = [0, 45, 90, 135, PLASMA_IMPACT_COLLAPSE_DURATION_MS];
+  const scratch = createTrailResampleScratch(TRAIL_HIGH_CURVE_SEGMENTS);
+
+  assertClose(
+    plasmaImpactCollapseTailLength(fullTailLength, 0),
+    fullTailLength,
+    1e-9,
+    'impact collapse must begin at the complete visible tail length',
+  );
+  assertClose(
+    plasmaImpactCollapseTailLength(fullTailLength, 90),
+    fullTailLength * 0.5,
+    1e-9,
+    'smooth symmetric collapse must reach half its path horizon at half time',
+  );
+  assertClose(
+    plasmaImpactCollapseTailLength(
+      fullTailLength,
+      PLASMA_IMPACT_COLLAPSE_DURATION_MS,
+    ),
+    0,
+    1e-9,
+    'impact collapse must end with no remaining tail',
+  );
+
+  for (const curveSegments of [1, 3, TRAIL_HIGH_CURVE_SEGMENTS]) {
+    let previousSpan = Number.POSITIVE_INFINITY;
+    for (const elapsedMs of samples) {
+      const horizon = plasmaImpactCollapseTailLength(fullTailLength, elapsedMs);
+      const span = resampleTrailCenterline(
+        scratch,
+        impactHead[0],
+        impactHead[1],
+        impactHead[2],
+        stamps,
+        horizon,
+        curveSegments,
+      );
+      assertContract(
+        distance(ringAt(scratch, 0), impactHead) <= 1e-4,
+        `rung ${curveSegments} moved the plasma head during impact collapse`,
+      );
+      assertContract(
+        span <= previousSpan + 1e-4,
+        `rung ${curveSegments} moved its tail away from the impact head`,
+      );
+      previousSpan = span;
+      if (elapsedMs === PLASMA_IMPACT_COLLAPSE_DURATION_MS) {
+        assertClose(span, 0, 1e-9, `rung ${curveSegments} retained a terminal tail`);
+        assertContract(
+          distance(ringAt(scratch, curveSegments), impactHead) <= 1e-4,
+          `rung ${curveSegments} did not finish with its tail at the head`,
+        );
+      }
+    }
+  }
+}
+
 export function runProjectileTrailHistory3DContractTest(): void {
   assertEveryRungEndsAtTheSamePoint();
   assertSingleSegmentTailFollowsTheArc();
@@ -334,4 +414,5 @@ export function runProjectileTrailHistory3DContractTest(): void {
   assertEvictionNeverMovesDrawnGeometry();
   assertBounceHandling();
   assertFreshShotCollapsesOntoTheHead();
+  assertImpactTailCollapsesIntoFixedHead();
 }

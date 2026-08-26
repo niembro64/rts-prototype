@@ -215,12 +215,17 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
 
   const impacts: DamageImpactRequest[] = [];
   const killed: Array<{ id: number; blast: unknown }> = [];
+  const plasmaCollapses: Array<{ id: number; x: number; y: number; z: number }> = [];
   const context = {
     clientViewState: {
       getEntity: () => undefined,
     } as unknown as ClientViewState,
     entityRenderer: {
       markEntityKilled: (id: number, blast: unknown) => { killed.push({ id, blast }); },
+      startPlasmaImpactCollapse: (id: number, x: number, y: number, z: number) => {
+        plasmaCollapses.push({ id, x, y, z });
+        return true;
+      },
     } as unknown as Render3DEntities,
     beamRenderer: {
       spawnDamageImpact: (request: DamageImpactRequest) => { impacts.push(request); },
@@ -251,6 +256,13 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
   assertContract(Number(impacts.length) === 2, 'a shot expiry must use the same shared impact pipeline');
   assertContract(impacts[1].damageRadius === 24, 'expiry presentation must retain authored damage radius');
   assertContract(impacts[1].hitEntity !== true, 'a free expiry must remain a free-space blast');
+  assertContract(
+    plasmaCollapses.length === 2 &&
+      plasmaCollapses[0].id === 71 &&
+      plasmaCollapses[1].id === 72 &&
+      plasmaCollapses.every(({ x, y, z }) => x === 120 && y === 160 && z === 42),
+    'hit and expiry events must pin plasma collapse to their exact authoritative event point',
+  );
 
   dispatchSimEvent3DVisual(event('death', 73), context);
   assertContract(

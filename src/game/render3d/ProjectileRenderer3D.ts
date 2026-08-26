@@ -51,6 +51,10 @@ import {
   type TrailStampBuffer,
 } from './ProjectileTrailHistory3D';
 import { configureSelfLitEffectMaterial } from './RenderLighting3D';
+import {
+  PLASMA_IMPACT_COLLAPSE_DURATION_MS,
+  plasmaImpactCollapseTailLength,
+} from './PlasmaImpactCollapse3D';
 
 const PROJECTILE_MIN_RADIUS = 0.5;
 // 1 revolution per second.
@@ -289,6 +293,28 @@ type DynamicPlasmaGeometry = {
   positionAttr: THREE.BufferAttribute;
 };
 
+type PlasmaImpactCollapseState = {
+  elapsedMs: number;
+  headX: number;
+  headY: number;
+  headZ: number;
+};
+
+type PlasmaTrailRenderState = {
+  stamps: TrailStampBuffer;
+  radius: number;
+  tailRadius: number;
+  tailLength: number;
+  rung: DetailRung;
+  directionX: number;
+  directionY: number;
+  directionZ: number;
+  lastHeadX: number;
+  lastHeadY: number;
+  lastHeadZ: number;
+  collapse: PlasmaImpactCollapseState | null;
+};
+
 type ProjectileRenderer3DOptions = {
   world: THREE.Group;
   clientViewState: ClientViewState;
@@ -384,7 +410,7 @@ export class ProjectileRenderer3D {
   /** Scratch volume reused by the per-shot HIT/EXP wireframe writers. */
   private readonly projVolume = createEntityVolume();
   private readonly projectileRadiusMeshPool: THREE.LineSegments[] = [];
-  private readonly trailStamps = new IndexedEntityIdMap<TrailStampBuffer>();
+  private readonly plasmaTrailStates = new IndexedEntityIdMap<PlasmaTrailRenderState>();
   private readonly projectileAxisPose = new ProjectileAxisPoseBatch3D();
   private readonly plasmaArcPose = new PlasmaArcPoseBatch3D();
   // One resample working set reused across every projectile in a frame,
@@ -406,6 +432,9 @@ export class ProjectileRenderer3D {
   private readonly finColor = new THREE.Color();
   private finColorDirtyMin = Number.POSITIVE_INFINITY;
   private finColorDirtyMax = -1;
+  private plasmaHighCount = 0;
+  private plasmaMediumCount = 0;
+  private plasmaLowCount = 0;
 
   constructor(options: ProjectileRenderer3DOptions) {
     this.world = options.world;
@@ -541,7 +570,50 @@ export class ProjectileRenderer3D {
     this.world.add(this.lowTailBandInstanced);
   }
 
-  update(frameState: RenderFrameState3D, projectiles: readonly Entity[]): void {
+  /** Begin the anonymous post-despawn visual for a plasma shot. The caller
+   * supplies the authoritative terminal event point; non-plasma ids and shots
+   * that were never rendered are deliberately ignored. */
+  startPlasmaImpactCollapse(
+    id: EntityId,
+    impactX: number,
+    impactY: number,
+    impactZ: number,
+  ): boolean {
+    const state = this.plasmaTrailStates.get(id);
+    if (state === undefined || state.collapse !== null) return false;
+    if (!Number.isFinite(impactX) || !Number.isFinite(impactY) || !Number.isFinite(impactZ)) {
+      return false;
+    }
+    const stamps = state.stamps;
+    const dx = stamps.count > 0 ? state.lastHeadX - stamps.points[0] : 1;
+    const dy = stamps.count > 0 ? state.lastHeadY - stamps.points[1] : 0;
+    const dz = stamps.count > 0 ? state.lastHeadZ - stamps.points[2] : 0;
+    if (stamps.count === 0 || dx * dx + dy * dy + dz * dz > 1e-6) {
+      // The live head is not necessarily an ordinary distance stamp. Freeze
+      // it into the path before replacing it with the exact impact head, so
+      // collapse retraces the final visible curve instead of cutting a chord.
+      insertTrailStamp(
+        stamps,
+        state.lastHeadX,
+        state.lastHeadY,
+        state.lastHeadZ,
+        false,
+      );
+    }
+    state.collapse = {
+      elapsedMs: 0,
+      headX: impactX,
+      headY: impactY,
+      headZ: impactZ,
+    };
+    return true;
+  }
+
+  update(
+    frameState: RenderFrameState3D,
+    projectiles: readonly Entity[],
+    dtMs: number,
+  ): void {
     // Held while paused so rocket fins stop rolling with everything else.
     const renderNowMs = isPresentationAnimationPaused()
       ? (this.pausedRenderNowMs ??= performance.now())
@@ -559,9 +631,9 @@ export class ProjectileRenderer3D {
     let mediumSphereCount = 0;
     let mediumCylinderCount = 0;
     let rocketLowCount = 0;
-    let plasmaHighCount = 0;
-    let plasmaMediumCount = 0;
-    let plasmaLowCount = 0;
+    this.plasmaHighCount = 0;
+    this.plasmaMediumCount = 0;
+    this.plasmaLowCount = 0;
     let finCount = 0;
     let mediumTailBandCount = 0;
     let lowTailBandCount = 0;
@@ -571,9 +643,10 @@ export class ProjectileRenderer3D {
     // growing one detaches wasm memory out from under views taken earlier,
     // and the axis output stays live across the whole loop below while
     // plasma LOW rows are still being written into the arc-pose input.
-    this.plasmaArcPose.ensure(projectiles.length);
+    const plasmaPoseCapacity = projectiles.length + this.plasmaTrailStates.size;
+    this.plasmaArcPose.ensure(plasmaPoseCapacity);
     this.projectileAxisPose.begin(projectiles.length);
-    this.plasmaArcPose.bind(projectiles.length);
+    this.plasmaArcPose.bind(plasmaPoseCapacity);
     for (let i = 0; i < projectiles.length; i++) {
       const entity = projectiles[i];
       const projectile = entity.projectile;
@@ -641,57 +714,43 @@ export class ProjectileRenderer3D {
           projectileAxisOutput[axisBase + 1],
           projectileAxisOutput[axisBase + 2],
         );
-        const stamps = this.advanceTrailStamps(e.id, proj, tx, ty, tz, tailLength);
+        const trailState = this.getOrCreatePlasmaTrailState(e.id);
+        // A terminal event may reach the scene immediately before the matching
+        // despawn row. Once collapse begins, the exact event point owns the
+        // head even if the live cache survives for this one render frame.
+        if (trailState.collapse !== null) {
+          this.hideProjRadiusMeshes(e.id);
+          continue;
+        }
+        this.advanceTrailStamps(trailState.stamps, proj, tx, ty, tz, tailLength);
         // DOT/CORE graphics ceilings still shed to the minimum plasma mesh;
         // they no longer make the projectile disappear altogether.
         const rung = drawProjectileTail
           ? sharedRung ?? detailRungForLevel(detailLevel)
           : DETAIL_RUNG_FAR;
-        if (rung === DETAIL_RUNG_CLOSE && plasmaHighCount < PROJECTILE_INSTANCED_CAP) {
-          const drawnSpan = resampleTrailCenterline(
-            this.trailScratch, tx, ty, tz, stamps, tailLength,
-            PLASMA_HIGH_SPEC.curveSegments,
-          );
-          this.writePlasmaGeometry(
-            this.plasmaHigh,
-            plasmaHighCount++,
-            r,
-            tailRadius,
-            drawnSpan,
-          );
-        } else if (
-          rung === DETAIL_RUNG_MID &&
-          plasmaMediumCount < PROJECTILE_INSTANCED_CAP
-        ) {
-          const drawnSpan = resampleTrailCenterline(
-            this.trailScratch, tx, ty, tz, stamps, tailLength,
-            PLASMA_MEDIUM_SPEC.curveSegments,
-          );
-          this.writePlasmaGeometry(
-            this.plasmaMedium,
-            plasmaMediumCount++,
-            r,
-            tailRadius,
-            drawnSpan,
-          );
-        } else if (plasmaLowCount < PROJECTILE_INSTANCED_CAP) {
-          // Ring 1 of a one-segment resample sits at the drawn span, the
-          // same arc point ring 6 reaches at HIGH, so the tail tip does not
-          // move when a shot crosses the rung boundary. Rust turns the
-          // head/tip pair into the instance matrix after the loop.
-          resampleTrailCenterline(this.trailScratch, tx, ty, tz, stamps, tailLength, 1);
-          const centerline = this.trailScratch.centerline;
-          this.plasmaArcPose.write(
-            plasmaLowCount++,
-            tx,
-            tz,
-            ty,
-            centerline[3],
-            centerline[5],
-            centerline[4],
-            r,
-          );
-        }
+        trailState.radius = r;
+        trailState.tailRadius = tailRadius;
+        trailState.tailLength = tailLength;
+        trailState.rung = rung;
+        trailState.directionX = this.projDir.x;
+        trailState.directionY = this.projDir.y;
+        trailState.directionZ = this.projDir.z;
+        trailState.lastHeadX = tx;
+        trailState.lastHeadY = ty;
+        trailState.lastHeadZ = tz;
+        this.enqueuePlasmaVisual(
+          rung,
+          tx,
+          ty,
+          tz,
+          trailState.stamps,
+          tailLength,
+          r,
+          tailRadius,
+          this.projDir.x,
+          this.projDir.y,
+          this.projDir.z,
+        );
         this.updateProjRadiusMeshes(e, wantHit, wantExp);
         continue;
       }
@@ -841,6 +900,8 @@ export class ProjectileRenderer3D {
       this.updateProjRadiusMeshes(e, wantHit, wantExp);
     }
 
+    this.enqueuePlasmaImpactCollapses(dtMs);
+
     if (this.sphereInstanced.count !== sphereCount) this.sphereInstanced.count = sphereCount;
     if (sphereCount > 0) {
       this.markInstanceMatrixRange(this.sphereInstanced, 0, sphereCount - 1);
@@ -869,20 +930,28 @@ export class ProjectileRenderer3D {
         mediumCylinderCount - 1,
       );
     }
-    this.flushPlasmaGeometry(this.plasmaHigh, this.plasmaHighMesh, plasmaHighCount);
-    this.flushPlasmaGeometry(this.plasmaMedium, this.plasmaMediumMesh, plasmaMediumCount);
-    if (this.plasmaLowInstanced.count !== plasmaLowCount) {
-      this.plasmaLowInstanced.count = plasmaLowCount;
+    this.flushPlasmaGeometry(this.plasmaHigh, this.plasmaHighMesh, this.plasmaHighCount);
+    this.flushPlasmaGeometry(
+      this.plasmaMedium,
+      this.plasmaMediumMesh,
+      this.plasmaMediumCount,
+    );
+    if (this.plasmaLowInstanced.count !== this.plasmaLowCount) {
+      this.plasmaLowInstanced.count = this.plasmaLowCount;
     }
-    if (plasmaLowCount > 0) {
+    if (this.plasmaLowCount > 0) {
       // Rust composed every LOW matrix from its head/tip pair. Both runs are
       // contiguous and in the same order, so the mass rung lands in one copy
       // rather than per-shot quaternion and matrix work.
-      const arcPoses = this.plasmaArcPose.compute(plasmaLowCount);
+      const arcPoses = this.plasmaArcPose.compute(this.plasmaLowCount);
       this.plasmaLowMatrices.set(
-        arcPoses.subarray(0, plasmaLowCount * this.plasmaArcPose.outputStride),
+        arcPoses.subarray(0, this.plasmaLowCount * this.plasmaArcPose.outputStride),
       );
-      this.markInstanceMatrixRange(this.plasmaLowInstanced, 0, plasmaLowCount - 1);
+      this.markInstanceMatrixRange(
+        this.plasmaLowInstanced,
+        0,
+        this.plasmaLowCount - 1,
+      );
     }
     if (this.rocketLowInstanced.count !== rocketLowCount) {
       this.rocketLowInstanced.count = rocketLowCount;
@@ -925,12 +994,147 @@ export class ProjectileRenderer3D {
           this.projectileRadiusMeshes.delete(id);
         }
       }
-      for (const id of this.trailStamps.keys()) {
-        if (!seen.has(id)) this.trailStamps.delete(id);
+      for (const [id, state] of this.plasmaTrailStates) {
+        if (!seen.has(id) && state.collapse === null) {
+          this.plasmaTrailStates.delete(id);
+        }
       }
       this.lastProjectileEntitySetVersion = entitySetVersion;
       this.lastProjectileScopeVersion = scopeVersion;
     }
+  }
+
+  private getOrCreatePlasmaTrailState(id: EntityId): PlasmaTrailRenderState {
+    let state = this.plasmaTrailStates.get(id);
+    if (state !== undefined) return state;
+    state = {
+      stamps: createTrailStampBuffer(),
+      radius: PROJECTILE_MIN_RADIUS,
+      tailRadius: PROJECTILE_MIN_RADIUS,
+      tailLength: 0,
+      rung: DETAIL_RUNG_FAR,
+      directionX: 1,
+      directionY: 0,
+      directionZ: 0,
+      lastHeadX: 0,
+      lastHeadY: 0,
+      lastHeadZ: 0,
+      collapse: null,
+    };
+    this.plasmaTrailStates.set(id, state);
+    return state;
+  }
+
+  private enqueuePlasmaImpactCollapses(dtMs: number): void {
+    const advanceMs = Math.max(0, dtMs);
+    for (const [id, state] of this.plasmaTrailStates) {
+      const collapse = state.collapse;
+      if (collapse === null) continue;
+      if (collapse.elapsedMs >= PLASMA_IMPACT_COLLAPSE_DURATION_MS) {
+        this.plasmaTrailStates.delete(id);
+        continue;
+      }
+      const remainingTailLength = plasmaImpactCollapseTailLength(
+        state.tailLength,
+        collapse.elapsedMs,
+      );
+      if (this.scope.inScope(collapse.headX, collapse.headY, 50)) {
+        this.enqueuePlasmaVisual(
+          state.rung,
+          collapse.headX,
+          collapse.headY,
+          collapse.headZ,
+          state.stamps,
+          remainingTailLength,
+          state.radius,
+          state.tailRadius,
+          state.directionX,
+          state.directionY,
+          state.directionZ,
+        );
+      }
+      collapse.elapsedMs += advanceMs;
+    }
+  }
+
+  private enqueuePlasmaVisual(
+    rung: DetailRung,
+    headX: number,
+    headY: number,
+    headZ: number,
+    stamps: TrailStampBuffer,
+    tailLength: number,
+    radius: number,
+    tailRadius: number,
+    directionX: number,
+    directionY: number,
+    directionZ: number,
+  ): void {
+    this.projDir.set(directionX, directionY, directionZ);
+    if (rung === DETAIL_RUNG_CLOSE) {
+      if (this.plasmaHighCount >= PROJECTILE_INSTANCED_CAP) return;
+      const drawnSpan = resampleTrailCenterline(
+        this.trailScratch,
+        headX,
+        headY,
+        headZ,
+        stamps,
+        tailLength,
+        PLASMA_HIGH_SPEC.curveSegments,
+      );
+      this.writePlasmaGeometry(
+        this.plasmaHigh,
+        this.plasmaHighCount++,
+        radius,
+        tailRadius,
+        drawnSpan,
+      );
+      return;
+    }
+    if (rung === DETAIL_RUNG_MID) {
+      if (this.plasmaMediumCount >= PROJECTILE_INSTANCED_CAP) return;
+      const drawnSpan = resampleTrailCenterline(
+        this.trailScratch,
+        headX,
+        headY,
+        headZ,
+        stamps,
+        tailLength,
+        PLASMA_MEDIUM_SPEC.curveSegments,
+      );
+      this.writePlasmaGeometry(
+        this.plasmaMedium,
+        this.plasmaMediumCount++,
+        radius,
+        tailRadius,
+        drawnSpan,
+      );
+      return;
+    }
+    if (this.plasmaLowCount >= PROJECTILE_INSTANCED_CAP) return;
+    // Ring 1 of a one-segment resample sits at the same drawn-span endpoint
+    // as the deepest rung. That remains true while the collapse horizon
+    // shrinks, so LOW reaches the fixed head on exactly the same frame.
+    resampleTrailCenterline(
+      this.trailScratch,
+      headX,
+      headY,
+      headZ,
+      stamps,
+      tailLength,
+      1,
+    );
+    const centerline = this.trailScratch.centerline;
+    this.plasmaArcPose.write(
+      this.plasmaLowCount++,
+      headX,
+      headZ,
+      headY,
+      centerline[3],
+      centerline[5],
+      centerline[4],
+      radius,
+    );
   }
 
   destroy(): void {
@@ -957,6 +1161,7 @@ export class ProjectileRenderer3D {
       disposeMesh(mesh, { material: false, geometry: false });
     }
     this.seenProjectileIds.clear();
+    this.plasmaTrailStates.clear();
     this.projectileRadiusMeshes.clear();
     this.projectileRadiusMeshPool.length = 0;
     disposeGeometries([
@@ -983,19 +1188,13 @@ export class ProjectileRenderer3D {
   // shield-contact stamp, and the ordinary distance stamp. The polyline
   // shape and its resampler live in ProjectileTrailHistory3D.
   private advanceTrailStamps(
-    id: EntityId,
+    stamps: TrailStampBuffer,
     proj: NonNullable<Entity['projectile']>,
     headX: number,
     headY: number,
     headZ: number,
     tailLength: number,
-  ): TrailStampBuffer {
-    let stamps = this.trailStamps.get(id);
-    if (!stamps) {
-      stamps = createTrailStampBuffer();
-      this.trailStamps.set(id, stamps);
-    }
-
+  ): void {
     // Forced reflection stamp: ClientViewState parks the exact
     // shield-sphere / shield-panel contact point on the projectile after each
     // bounce. Insert it ahead of the head's regular distance-threshold
@@ -1013,7 +1212,6 @@ export class ProjectileRenderer3D {
     }
 
     stampTrailHeadIfMoved(stamps, headX, headY, headZ, tailLength);
-    return stamps;
   }
 
   private writePlasmaGeometry(
