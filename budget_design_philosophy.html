@@ -5466,9 +5466,11 @@
       <p>
         Authored maps follow the same rule. <code>battlePresets.json</code> owns the ordered preset
         roster, stable preset IDs, visible names, backdrop slugs, complete map/gameplay values, and
-        the Demo/Real default preset IDs. TypeScript may validate and interpret those records but
-        may not restate their names or numbers. Mode defaults point to stable IDs rather than visible
-        labels, so renaming a map cannot break application boot. A numeric value introduced by a
+        the Demo/Real default preset IDs. Its root carries an explicit integer schema version, and a
+        loader must reject an unsupported version before interpreting any record. TypeScript may
+        validate and interpret those records but may not restate their names or numbers. Mode
+        defaults point to stable IDs rather than visible labels, so renaming a map cannot break
+        application boot. A numeric value introduced by a
         preset is also an accepted BATTLE-bar value for apply, save, refresh, and DEFAULT behavior;
         config data must never be silently normalized to some unrelated TypeScript fallback.
       </p>

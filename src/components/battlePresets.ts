@@ -100,6 +100,7 @@ export type BattlePresetSnapshot = Omit<
 };
 
 type BattlePresetFile = {
+  readonly schemaVersion: 1;
   readonly modeDefaults: Record<BattleMode, string>;
   readonly presets: readonly BattlePreset[];
 };
@@ -273,7 +274,18 @@ function validateBattlePreset(value: unknown, index: number): BattlePreset {
 function validateBattlePresetFile(value: unknown): BattlePresetFile {
   const rootPath = 'battlePresets.json';
   const root = requireConfigObject(value, rootPath);
-  requireExactConfigKeys(root, ['modeDefaults', 'presets'], rootPath);
+  requireExactConfigKeys(
+    root,
+    ['schemaVersion', 'modeDefaults', 'presets'],
+    rootPath,
+  );
+  const schemaVersion = requireConfigInteger(
+    root.schemaVersion,
+    `${rootPath}.schemaVersion`,
+  );
+  if (schemaVersion !== 1) {
+    throw new Error(`${rootPath}.schemaVersion must be 1`);
+  }
   const modeDefaults = requireConfigObject(
     root.modeDefaults,
     `${rootPath}.modeDefaults`,
@@ -325,6 +337,7 @@ function validateBattlePresetFile(value: unknown): BattlePresetFile {
     }
   }
   return {
+    schemaVersion,
     modeDefaults: { demo: demoDefault, real: realDefault },
     presets,
   };

@@ -1,4 +1,5 @@
 {
+  "schemaVersion": 1,
   "modeDefaults": {
     "demo": "nemos-flat",
     "real": "nemos-flat"

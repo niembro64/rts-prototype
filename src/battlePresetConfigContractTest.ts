@@ -28,6 +28,10 @@ const NUMBER_OPTION_FIELDS = [
  * split name/value registry from quietly growing back in TypeScript. */
 export function runBattlePresetConfigContractTest(): void {
   assertContract(
+    rawBattlePresetConfig.schemaVersion === 1,
+    'battlePresets.json must declare the supported schemaVersion 1 contract',
+  );
+  assertContract(
     !Object.prototype.hasOwnProperty.call(battleBarConfig, 'demoDefault') &&
       !Object.prototype.hasOwnProperty.call(battleBarConfig, 'realDefault'),
     'battleBarConfig.json must not carry a second preset-default registry',
