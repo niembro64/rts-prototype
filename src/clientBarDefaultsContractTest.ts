@@ -122,6 +122,34 @@ export function runClientBarDefaultsContractTest(): void {
       'DEFAULTS must apply authored lighting, debug, LOD, and antialias values through one runtime path',
     );
 
+    // DEFAULTS is a browser-wide reset: the OTHER namespace — the one a hard
+    // refresh boots into when this is the match — must hold its own authored
+    // lighting too, not whatever it last held.
+    const otherDefaults = getClientConfig(otherMode);
+    const otherKeyFor = (name: string): string => `${otherMode}-client-${suffixes[name]}`;
+    assertContract(
+      window.localStorage.getItem(otherKeyFor('environmentLight')) ===
+          String(otherDefaults.environmentLight.default) &&
+        window.localStorage.getItem(otherKeyFor('ambientLight')) ===
+          String(otherDefaults.ambientLight.default) &&
+        window.localStorage.getItem(otherKeyFor('exposure')) ===
+          String(otherDefaults.exposure.default),
+      'DEFAULTS must write the authored lighting into both client namespaces',
+    );
+
+    // A stored value from the old linear light scale is not a rung of the
+    // exponential ladder. It must load as the current authored default (and
+    // be written back as such), never snapped to a neighbouring rung.
+    window.localStorage.setItem(keyFor('environmentLight'), '25');
+    setClientMode(otherMode);
+    setClientMode(originalMode);
+    assertContract(
+      getEnvironmentLight() === defaults.environmentLight.default &&
+        window.localStorage.getItem(keyFor('environmentLight')) ===
+          String(defaults.environmentLight.default),
+      'a pre-ladder stored light intensity must reload as the authored default',
+    );
+
     // A mode round-trip exercises the same storage loader used after a page
     // refresh. The reset values must survive that reload path rather than
     // existing only in the current module's live state.

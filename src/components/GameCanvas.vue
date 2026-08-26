@@ -1846,26 +1846,26 @@ function toggleTerrainSplitWallBoundaryVertices(): void {
 }
 
 function resetTerrainRenderSmoothingDefaults(): void {
-  setTerrainTextureSmoothing(
-    BATTLE_CONFIG.terrainTextureSmoothing.default,
-    currentBattleMode.value,
-  );
-  setTerrainLightSmoothing(
-    BATTLE_CONFIG.terrainLightSmoothing.default,
-    currentBattleMode.value,
-  );
-  setTerrainTextureSmoothAcrossWallBoundary(
-    BATTLE_CONFIG.terrainTextureSmoothAcrossWallBoundary.default,
-    currentBattleMode.value,
-  );
-  setTerrainLightSmoothAcrossWallBoundary(
-    BATTLE_CONFIG.terrainLightSmoothAcrossWallBoundary.default,
-    currentBattleMode.value,
-  );
-  setTerrainSplitWallBoundaryVertices(
-    BATTLE_CONFIG.terrainSplitWallBoundaryVertices.default,
-    currentBattleMode.value,
-  );
+  // Both modes, like the CLIENT bar's own reset: the demo shell (what a hard
+  // refresh boots into) and the match keep separate copies of these, and a
+  // reset that only reached the mode on screen came back after the refresh
+  // as the other mode's last value.
+  for (const mode of ['demo', 'real'] as const) {
+    setTerrainTextureSmoothing(BATTLE_CONFIG.terrainTextureSmoothing.default, mode);
+    setTerrainLightSmoothing(BATTLE_CONFIG.terrainLightSmoothing.default, mode);
+    setTerrainTextureSmoothAcrossWallBoundary(
+      BATTLE_CONFIG.terrainTextureSmoothAcrossWallBoundary.default,
+      mode,
+    );
+    setTerrainLightSmoothAcrossWallBoundary(
+      BATTLE_CONFIG.terrainLightSmoothAcrossWallBoundary.default,
+      mode,
+    );
+    setTerrainSplitWallBoundaryVertices(
+      BATTLE_CONFIG.terrainSplitWallBoundaryVertices.default,
+      mode,
+    );
+  }
   terrainTextureSmoothing.value = getTerrainTextureSmoothing();
   terrainLightSmoothing.value = getTerrainLightSmoothing();
   terrainTextureSmoothAcrossWallBoundary.value =

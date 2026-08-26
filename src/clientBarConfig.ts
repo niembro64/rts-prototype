@@ -677,8 +677,9 @@ function normalizeCameraFovDegrees(value: CameraFovDegrees): CameraFovDegrees {
   return Math.min(MAX_CAMERA_FOV_DEGREES, Math.max(MIN_CAMERA_FOV_DEGREES, value));
 }
 
-const POSITIVE_LIGHT_INTENSITY_OPTIONS = LIGHT_INTENSITY_OPTIONS
-  .map((option) => option.value)
+const LIGHT_INTENSITY_VALUES: readonly number[] = LIGHT_INTENSITY_OPTIONS
+  .map((option) => option.value);
+const POSITIVE_LIGHT_INTENSITY_OPTIONS = LIGHT_INTENSITY_VALUES
   .filter((value) => value > 0);
 const MAX_LIGHT_INTENSITY_PERCENT = Math.max(...POSITIVE_LIGHT_INTENSITY_OPTIONS);
 const ENTITY_SHADOW_DARKNESS_VALUES = ENTITY_SHADOW_DARKNESS_OPTIONS
@@ -903,17 +904,27 @@ function persistClientBarDefaults(mode: ClientMode): void {
 // ── Load from localStorage on module init / mode switch ──
 // Each read is independent — a bad JSON value or throw from ONE key
 // must not prevent every later key from loading.
+/** A stored light intensity is honoured only when it is one of the ladder's
+ *  own rungs. Anything else predates the exponential ladder (the old linear
+ *  25/50/75/100 scale, on which the authored defaults were different numbers
+ *  too), and snapping it to the nearest rung produced values — 25 -> 15,
+ *  100 -> 150 — that were neither what the user picked nor the authored
+ *  default, then re-persisted them so no reload could ever heal. A legacy
+ *  value is replaced by the current authored default and written back. */
 function loadLightIntensitySelection(
   storageKey: string,
   assign: (value: LightIntensityPercent) => void,
+  authoredDefault: LightIntensityPercent,
 ): void {
   const stored = readPersisted(storageKey);
   if (stored === null) return;
   const parsed = Number(stored);
-  if (!isLightIntensityPercent(parsed)) return;
-  const selection = normalizeLightIntensitySelection(parsed);
-  assign(selection);
-  if (selection !== parsed) persist(storageKey, String(selection));
+  if (isLightIntensityPercent(parsed) && LIGHT_INTENSITY_VALUES.includes(parsed)) {
+    assign(parsed);
+    return;
+  }
+  assign(authoredDefault);
+  persist(storageKey, String(authoredDefault));
 }
 
 function loadFromStorage(mode: ClientMode): void {
@@ -955,22 +966,27 @@ function loadFromStorage(mode: ClientMode): void {
   loadLightIntensitySelection(
     keys.environmentLight,
     (value) => { currentEnvironmentLight = value; },
+    cd.environmentLight.default,
   );
   loadLightIntensitySelection(
     keys.ambientLight,
     (value) => { currentAmbientLight = value; },
+    cd.ambientLight.default,
   );
   loadLightIntensitySelection(
     keys.directionalLight,
     (value) => { currentDirectionalLight = value; },
+    cd.directionalLight.default,
   );
   loadLightIntensitySelection(
     keys.skyLight,
     (value) => { currentSkyLight = value; },
+    cd.skyLight.default,
   );
   loadLightIntensitySelection(
     keys.exposure,
     (value) => { currentExposure = value; },
+    cd.exposure.default,
   );
   const storedTerrainBakedLighting = readPersisted(keys.terrainBakedLighting);
   if (storedTerrainBakedLighting !== null) {
@@ -1383,13 +1399,20 @@ export function setAaResolutionMode(mode: AntialiasResolutionMode): void {
 
 /** Apply and persist the complete authored CLIENT-bar state through one path.
  * Startup uses the same serialized defaults for missing keys, so a default can
- * never be updated in config while the reset button keeps an older copy. */
+ * never be updated in config while the reset button keeps an older copy.
+ *
+ * BOTH namespaces are written, not just the one on screen. The CLIENT bar is
+ * this browser's rendering preference; the demo shell reads `demo-client-*`
+ * and a match reads `real-client-*` (only the sounds are authored apart), and
+ * a hard refresh always boots into the demo namespace. A reset that touched
+ * only the match's namespace came back after that refresh as whatever the
+ * demo namespace last held — which read as "DEFAULTS does not stick". */
 export function resetClientSettingsToDefaults(
   mode: ClientMode = currentClientMode,
 ): void {
   currentClientMode = mode;
   applyClientDefaults(mode);
-  persistClientBarDefaults(mode);
+  for (const namespace of ['demo', 'real'] as const) persistClientBarDefaults(namespace);
   setLodMode(LOD_MODE_DEFAULT);
   setAaMsaaMode(AA_MSAA_MODE_DEFAULT);
   setAaResolutionMode(AA_RESOLUTION_MODE_DEFAULT);
