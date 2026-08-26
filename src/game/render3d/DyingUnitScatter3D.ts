@@ -13,7 +13,7 @@ import {
  * than below `mesh.group`. Any render-only whole-unit motion must update these
  * handles alongside the scene-graph root or the visual will pull apart.
  */
-function captureUnitRendererOwnedParts3D(
+export function captureUnitRendererOwnedParts3D(
   mesh: EntityMesh,
   legRenderer: LegInstancedRenderer,
   unitDetailInstances: UnitDetailInstanceRenderer3D,

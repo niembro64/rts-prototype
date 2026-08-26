@@ -1,23 +1,8 @@
-import { VISION_FADE_IN_MS } from '@/visionConfig';
-import type { EntityId } from '../sim/types';
 import { applyEntityGroupFade, type EntityBuildVisual } from './EntityFade3D';
 import type { EntityMesh } from './EntityMesh3D';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import { fadeLocomotion } from './Locomotion3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
-
-export function advanceUnitVisionFadeIn(
-  spawnFadeElapsed: Map<EntityId, number>,
-  id: EntityId,
-  dtMs: number,
-): number {
-  if (VISION_FADE_IN_MS <= 0) return 1;
-  const prev = spawnFadeElapsed.get(id);
-  if (prev === VISION_FADE_IN_MS) return 1;
-  const elapsed = Math.min((prev ?? 0) + dtMs, VISION_FADE_IN_MS);
-  spawnFadeElapsed.set(id, elapsed);
-  return elapsed / VISION_FADE_IN_MS;
-}
 
 export function applyUnitEntityFade3D(
   mesh: EntityMesh,

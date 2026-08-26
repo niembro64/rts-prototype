@@ -1,22 +1,26 @@
-// Vision-driven unit fade timings.
+// Vision-driven presentation timings.
 //
-// A unit's presence on screen is a function of the local player's vision:
-//   - enters vision  → fades IN  over `fadeInMs`
-//   - leaves full vision → its model is removed immediately. Radar/sonar
-//                          knowledge is represented only by a contact blip,
-//                          whose disappearance fades over `contactFadeOutMs`.
-//   - is destroyed   → plays the death scatter + explosion over `deathFadeMs`
+// An entity's presence on screen is a function of the local team's vision:
+//   - enters vision (any tier) → rises IN over `fadeInMs`
+//   - leaves vision (any tier) → the last drawn representation — full model,
+//                                MIN-rung glyph, or anonymous contact blip —
+//                                falls OUT over `fadeOutMs`, coasting on its
+//                                last presented velocity for that interval
+//   - is destroyed             → plays the death scatter + explosion over
+//                                `deathFadeMs`
 //
-// Each remaining presentation transition owns its own duration: newly seen
-// models, disappearing anonymous contacts, and confirmed deaths are tuned
-// independently.
+// In and out share ONE pair of durations across every tier on purpose: a
+// contact blip's fall is exactly the model's rise (and vice versa), so the
+// tiers cross-fade instead of overlapping or leaving a gap. Keep them equal.
+// See EntityVisionFade3D and budget_design_philosophy.html "Sight, radar,
+// sonar, and contacts are separate information tiers".
 import rawVisionConfig from './visionConfig.json';
 
 type VisionConfig = {
-  /** Fade-in duration (ms) when a unit becomes newly visible (enters vision). */
+  /** Rise duration (ms) when an entity or contact becomes newly visible. */
   fadeInMs: number;
-  /** Fade-out duration for a radar/sonar contact after sensor coverage ends. */
-  contactFadeOutMs: number;
+  /** Fall duration (ms) when an entity or contact leaves vision. */
+  fadeOutMs: number;
   /** Death-out scatter + fade duration (ms) when a unit is actually destroyed. */
   deathFadeMs: number;
 };
@@ -31,8 +35,5 @@ function asMs(value: unknown, field: string): number {
 const VISION_CONFIG = rawVisionConfig as VisionConfig;
 
 export const VISION_FADE_IN_MS = asMs(VISION_CONFIG.fadeInMs, 'fadeInMs');
-export const VISION_CONTACT_FADE_OUT_MS = asMs(
-  VISION_CONFIG.contactFadeOutMs,
-  'contactFadeOutMs',
-);
+export const VISION_FADE_OUT_MS = asMs(VISION_CONFIG.fadeOutMs, 'fadeOutMs');
 export const UNIT_DEATH_FADE_MS = asMs(VISION_CONFIG.deathFadeMs, 'deathFadeMs');

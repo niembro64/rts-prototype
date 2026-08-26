@@ -661,9 +661,19 @@
         sight mount even while its economy production is closed. Entity models are discrete
         intelligence results rather than fragments of the terrain shade: allied and fully sighted
         entities draw normally, contact-only enemies are generic contacts on both the minimap and
-        the battlefield, and hidden enemies are absent. The instant an enemy loses full sight its
-        full model is destroyed on the client; model fade-out may never leak identity into a
-        radar-only or unseen interval. Only the anonymous contact dot may retain its short fade.
+        the battlefield, and hidden enemies are absent. When an enemy loses full sight, its last
+        drawn representation &mdash; the full model or, at the far rungs, its glyph &mdash; is
+        retained by the renderer alone and falls to zero over the vision fade-out
+        (<code>visionConfig.json</code> <code>fadeOutMs</code>, 500 ms), coasting on the velocity it
+        was last presented with. That is presentation, not intelligence: the entity has already left
+        the client store, so nothing can hover, select, bar, print, shadow or target the remains; the
+        coast never runs past the fade; and the identity it shows for that half second is knowledge
+        the player already had. (An earlier rule destroyed the model on the same frame to keep
+        identity out of the radar-only interval. It bought nothing &mdash; the player had just been
+        looking at the unit &mdash; and cost a hard pop at every sight boundary.) A model re-sighted
+        mid fade resumes its rise from the alpha the fall had reached, so a unit skirmishing the rim
+        of vision never pops. Confirmed deaths are a different flow: debris scatter over the longer
+        death fade, because that event itself was seen.
       </p>
 
       <h3>Friendly jamming is painted on the terrain</h3>
@@ -741,9 +751,15 @@
         presentation snapshots &mdash; far slower than the render loop. The world blip therefore
         interpolates between its last two received positions, the same clamped glide the fixed-tick
         presentation history gives every other moving visual, and never extrapolates past the newest
-        sample while heard. Once returns stop, only the anonymous dot may coast briefly on its last
-        measured drift while its contact fade expires; a full entity model is never retained for
-        that presentation grace period.
+        sample while heard. Once returns stop, the anonymous dot coasts briefly on its last measured
+        drift while its fade expires &mdash; the same treatment a full model gets when it leaves
+        sight (<code>EntityVisionFade3D</code>). Blips and models share one pair of durations
+        (<code>fadeInMs</code> / <code>fadeOutMs</code>, both 500 ms, pinned equal by
+        <code>EntityVisionFade3DContractTest</code>): an enemy stepping into sight is a blip falling
+        under a model rising over the same interval, and dropping back to radar is the reverse, so
+        the tiers cross-fade instead of overlapping or leaving a gap. The rise is keyed on the first
+        sighting at any detail rung, never on which representation happened to be built, so a later
+        LOD promotion never re-fades a unit that has been in view all along.
       </p>
       <p>
         The extension is the medium. A contact carries which sensor lane earned it, and its blip sits

@@ -42,6 +42,13 @@ export type EntityMesh = {
    *  retained so crossing back under the threshold can resume without a
    *  rebuild. */
   renderLodProxyActive?: boolean;
+  /** Last presented render-axis velocity (x, up, z; world units per second),
+   *  refreshed every frame the unit is drawn in full. When vision drops the
+   *  next packet removes the row, so the retained visual coasts on this
+   *  through its fade-out instead of freezing (EntityVisionFade3D). */
+  unitPresentationVelocityX?: number;
+  unitPresentationVelocityY?: number;
+  unitPresentationVelocityZ?: number;
   /** Yaw subgroup. Hierarchy: `group` carries position + the surface
    *  TILT (world-frame), `yawGroup` carries the unit's facing yaw
    *  (around the chassis-local up axis = the slope's up). Locomotion
