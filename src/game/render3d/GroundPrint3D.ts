@@ -239,12 +239,16 @@ function makeGroundPrintMaterial(): GroundPrintMaterial {
     polygonOffset: true,
     polygonOffsetFactor: -3,
     polygonOffsetUnits: -3,
-    // Multiply: framebuffer *= fragment colour. The fragment emits
-    // mix(1, tint, alpha) so alpha is how far the ground darkens toward
-    // the soil tint, exactly the old alpha-paint strength for a single
-    // layer, but the terrain's own shading (including its sun shadow)
-    // scales through untouched.
+    // Multiply: framebuffer *= mix(1, tint, alpha). three's MultiplyBlending
+    // is defined ONLY for premultiplied sources (r184: it logs an error and
+    // keeps the previous blend func otherwise, which drew every print as an
+    // opaque near-white quad): with premultipliedAlpha the blend is
+    // dst * src.rgb + dst * (1 - src.a) = dst * (tint * a + 1 - a), so alpha
+    // is how far the ground darkens toward the soil tint — the old alpha-
+    // paint strength for a single layer — while the terrain's own shading,
+    // sun shadow included, scales through untouched.
     blending: THREE.MultiplyBlending,
+    premultipliedAlpha: true,
     // A multiplier is not a colour; tone mapping would bend it.
     toneMapped: false,
   }) as GroundPrintMaterial;
@@ -298,14 +302,6 @@ if (vMarkShape > 0.5) {
   if (fade <= 0.001) discard;
   diffuseColor.a *= fade;
 }
-`,
-    );
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <colorspace_fragment>',
-      `
-#include <colorspace_fragment>
-gl_FragColor.rgb = mix(vec3(1.0), gl_FragColor.rgb, gl_FragColor.a);
-gl_FragColor.a = 1.0;
 `,
     );
   };
