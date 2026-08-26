@@ -58,6 +58,7 @@ import {
   resolveGroundPrintLayout,
   type GroundPrintLayout,
   type GroundPrintStampContact,
+  type GroundPrintStampShape,
 } from './GroundPrintLayout3D';
 import {
   isLocomotionGrounded,
@@ -113,8 +114,6 @@ const PRINT_LIN = new THREE.Color(PRINT_HEX);
 const PRINT_BASE_LIFETIME_MS = COLORS.world.groundPrint.lifetimeMs;
 const PRINT_HOLD_FRACTION = COLORS.world.groundPrint.holdFraction;
 const PRINT_INITIAL_ALPHA = COLORS.world.groundPrint.initialAlpha;
-
-const STAMP_CIRCLE_RADIUS_MULT = 1.35;
 
 // At density = 0 lifetime is shrunk to this fraction of the base.
 // This drains the buffer about 2.5x faster than full density.
@@ -626,7 +625,7 @@ export class GroundPrint3D {
           const leg = loc.legs[i];
           if (leg !== undefined && leg.initialized) {
             this.sampleStamp(
-              key, leg.contactState === 'planted', leg.worldX, leg.worldZ, leg.footRadius, terrainMode,
+              key, leg.contactState === 'planted', leg.worldX, leg.worldZ, yaw, contact.shape, terrainMode,
             );
             continue;
           }
@@ -634,7 +633,7 @@ export class GroundPrint3D {
           const leg = loc.legs[i];
           if (leg !== undefined && leg.footTracked) {
             this.sampleStamp(
-              key, leg.footPlanted, leg.footWorldX, leg.footWorldZ, contact.footRadius, terrainMode,
+              key, leg.footPlanted, leg.footWorldX, leg.footWorldZ, leg.footYaw, contact.shape, terrainMode,
             );
             continue;
           }
@@ -644,6 +643,7 @@ export class GroundPrint3D {
           contact,
           bx + contact.localX * cosYaw - contact.localZ * sinYaw,
           by + contact.localX * sinYaw + contact.localZ * cosYaw,
+          yaw,
           cosYaw,
           sinYaw,
           terrainMode,
@@ -756,7 +756,8 @@ export class GroundPrint3D {
     planted: boolean,
     footX: number,
     footZ: number,
-    footRadius: number,
+    footYaw: number,
+    shape: GroundPrintStampShape,
     terrainMode: LocomotionTerrainMode,
   ): void {
     let state = this.stamps.get(key);
@@ -771,7 +772,7 @@ export class GroundPrint3D {
         terrainMode,
       };
       this.stamps.set(key, state);
-      if (planted) this.emitStamp(state, footX, footZ, footRadius, terrainMode);
+      if (planted) this.emitStamp(state, footX, footZ, footYaw, shape, terrainMode);
       return;
     }
     const unplanted = !planted;
@@ -783,7 +784,7 @@ export class GroundPrint3D {
       const dz = footZ - state.lastY;
       if (dx * dx + dz * dz < STAMP_MIN_DIST_SQ) return;
     }
-    this.emitStamp(state, footX, footZ, footRadius, terrainMode);
+    this.emitStamp(state, footX, footZ, footYaw, shape, terrainMode);
   }
 
   // ── Stamp sampling (no rig: the layout's stride) ──
@@ -798,6 +799,7 @@ export class GroundPrint3D {
     contact: GroundPrintStampContact,
     homeX: number,
     homeY: number,
+    yaw: number,
     headingX: number,
     headingY: number,
     terrainMode: LocomotionTerrainMode,
@@ -813,7 +815,7 @@ export class GroundPrint3D {
       };
       this.stamps.set(key, state);
       if (contact.phase01 === 0) {
-        this.emitStamp(state, homeX, homeY, contact.footRadius, terrainMode);
+        this.emitStamp(state, homeX, homeY, yaw, contact.shape, terrainMode);
       } else {
         // Pretend the last plant was half a stride back along the heading.
         const back = contact.stride * 0.5;
@@ -826,29 +828,43 @@ export class GroundPrint3D {
     const dx = homeX - state.lastX;
     const dy = homeY - state.lastY;
     if (dx * dx + dy * dy < contact.stride * contact.stride) return;
-    this.emitStamp(state, homeX, homeY, contact.footRadius, terrainMode);
+    this.emitStamp(state, homeX, homeY, yaw, contact.shape, terrainMode);
   }
 
+  /** One foothold's mark. A circle is a square quad under the shader's
+   *  round mask; a rectangle is the quad itself, its length laid along
+   *  `yaw` (the way the sole or the stroke points) and its width across. */
   private emitStamp(
     state: StampState,
     fx: number,
     fz: number,
-    footRadius: number,
+    yaw: number,
+    shape: GroundPrintStampShape,
     terrainMode: LocomotionTerrainMode,
   ): void {
-    const endpointRadius = Math.max(1.1, footRadius);
-    const radius = endpointRadius * STAMP_CIRCLE_RADIUS_MULT;
-    const sLx = fx - radius;
-    const sLz = fz - radius;
-    const sRx = fx + radius;
-    const sRz = fz - radius;
-    const eRx = fx + radius;
-    const eRz = fz + radius;
-    const eLx = fx - radius;
-    const eLz = fz + radius;
+    let corners: RibbonQuadCorners;
+    if (shape.kind === 'circle') {
+      const radius = Math.max(1.1, shape.radius);
+      corners = {
+        sLx: fx - radius, sLz: fz - radius,
+        sRx: fx + radius, sRz: fz - radius,
+        eRx: fx + radius, eRz: fz + radius,
+        eLx: fx - radius, eLz: fz + radius,
+      };
+    } else {
+      const fwdX = Math.cos(yaw) * shape.halfLength;
+      const fwdZ = Math.sin(yaw) * shape.halfLength;
+      const rightX = -Math.sin(yaw) * shape.halfWidth;
+      const rightZ = Math.cos(yaw) * shape.halfWidth;
+      corners = {
+        sLx: fx - fwdX - rightX, sLz: fz - fwdZ - rightZ,
+        sRx: fx - fwdX + rightX, sRz: fz - fwdZ + rightZ,
+        eRx: fx + fwdX + rightX, eRz: fz + fwdZ + rightZ,
+        eLx: fx + fwdX - rightX, eLz: fz + fwdZ - rightZ,
+      };
+    }
 
     const mark = this.allocateMark();
-    const corners: RibbonQuadCorners = { sLx, sLz, sRx, sRz, eRx, eRz, eLx, eLz };
     writeDrapedQuadXZ(
       this.positions,
       mark.slot,
@@ -856,7 +872,8 @@ export class GroundPrint3D {
       corners,
     );
     markDirtySlot(this.posDirty, mark.slot);
-    this.writeCircleMask(mark.slot);
+    if (shape.kind === 'circle') this.writeCircleMask(mark.slot);
+    else this.writeQuadMask(mark.slot);
     this.writeMarkTint(mark);
 
     state.lastX = fx;

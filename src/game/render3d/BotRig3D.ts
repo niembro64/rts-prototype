@@ -123,6 +123,9 @@ type BotLeg = {
   footPlanted: boolean;
   footWorldX: number;
   footWorldZ: number;
+  /** Sim heading the sole points along — the print is a rectangle, so it
+   *  needs the foot's direction, not just its centre. */
+  footYaw: number;
 };
 
 type BotArm = {
@@ -261,6 +264,7 @@ const _chord = new THREE.Vector3();
 const _bendDirection = new THREE.Vector3();
 const _chassisVelocity = { x: 0, y: 0, z: 0 };
 const _footWorld = { x: 0, y: 0, z: 0 };
+const _footForward = { x: 0, y: 0, z: 0 };
 const _segDir = new THREE.Vector3();
 const _segQuat = new THREE.Quaternion();
 const _segLateralReference = new THREE.Vector3(0, 0, 1);
@@ -705,6 +709,11 @@ function publishBotFootContacts(mesh: BotMesh, pose: LocomotionRenderPose): void
   const cosYaw = Math.cos(hipsYaw);
   const sinYaw = Math.sin(hipsYaw);
   const standing = mesh.gait < 0.05;
+  // The sole points along the hips frame's +X; carry that direction through
+  // the same chassis transform (as a point minus the base) so the print's
+  // rectangle turns with the leg, not with the upper body.
+  transformChassisToWorld(cosYaw, 0, -sinYaw, pose, _footForward);
+  const footYaw = Math.atan2(_footForward.z - pose.baseZ, _footForward.x - pose.baseX);
   for (const leg of mesh.legs) {
     const localX = leg.footLocalX * cosYaw + leg.footLocalZ * sinYaw;
     const localZ = -leg.footLocalX * sinYaw + leg.footLocalZ * cosYaw;
@@ -712,6 +721,7 @@ function publishBotFootContacts(mesh: BotMesh, pose: LocomotionRenderPose): void
     const legPhase = positiveUnitPhase(mesh.gaitPhase + (leg.side > 0 ? 0.5 : 0));
     leg.footWorldX = _footWorld.x;
     leg.footWorldZ = _footWorld.z;
+    leg.footYaw = footYaw;
     leg.footPlanted = standing || legPhase >= 0.5;
     leg.footTracked = true;
   }
@@ -871,6 +881,7 @@ export function buildBotRig(
       footPlanted: false,
       footWorldX: 0,
       footWorldZ: 0,
+      footYaw: 0,
     };
     legs.push(leg);
   }

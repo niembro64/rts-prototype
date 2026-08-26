@@ -29,16 +29,29 @@ export type GroundPrintTrailContact = Readonly<{
   width: number;
 }>;
 
+/** The mark one foothold leaves, sized to the part that touches the ground:
+ *  a sphere foot or a pointed leg tip leaves a round print; a sole or a
+ *  stroking flipper leaves an oriented rectangle (length along the unit's
+ *  heading, width across it). Sizes are final print sizes. */
+export type GroundPrintStampShape =
+  | Readonly<{ kind: 'circle'; radius: number }>
+  | Readonly<{ kind: 'rect'; halfLength: number; halfWidth: number }>;
+
 export type GroundPrintStampContact = Readonly<{
   localX: number;
   localZ: number;
-  /** Foot radius before the stamp's own circle multiplier. */
-  footRadius: number;
+  shape: GroundPrintStampShape;
   /** Ground distance one foothold covers before the foot plants again. */
   stride: number;
   /** Alternating pairs: 1 starts half a stride behind 0. */
   phase01: 0 | 1;
 }>;
+
+/** A sphere foot compacts soil a little past its own radius. This is the
+ *  crawler print size the marks were tuned at. */
+const SPHERE_FOOT_PRINT_MULT = 1.35;
+/** A sole squashes soil just past its outline. */
+const SOLE_PRINT_MULT = 1.1;
 
 export type GroundPrintLayout = Readonly<{
   trails: readonly GroundPrintTrailContact[];
@@ -101,7 +114,12 @@ function buildLayout(blueprintId: string, r: number): GroundPrintLayout | null {
       const cfg = loc.config;
       const { left, all, sides } = resolveMirroredLegConfigs(cfg, r);
       const legRadius = Math.max(cfg.radius, 1) * 0.6;
-      const footRadius = legRadius * LEG_FOOT_RADIUS_MULTIPLIER;
+      // With feet the leg ends in a sphere of LEG_FOOT_RADIUS_MULTIPLIER x
+      // the leg radius; without, the lower segment tapers to a point that
+      // only dents the ground (Daddy, Tick).
+      const shape: GroundPrintStampShape = cfg.hasFeet
+        ? { kind: 'circle', radius: legRadius * LEG_FOOT_RADIUS_MULTIPLIER * SPHERE_FOOT_PRINT_MULT }
+        : { kind: 'circle', radius: Math.max(1.1, legRadius * 0.6) };
       const stamps: GroundPrintStampContact[] = [];
       for (let i = 0; i < all.length; i++) {
         const leg = all[i];
@@ -124,7 +142,7 @@ function buildLayout(blueprintId: string, r: number): GroundPrintLayout | null {
         stamps.push({
           localX: attachX + rayX * total * originRatio,
           localZ: attachZ + rayZ * total * originRatio,
-          footRadius,
+          shape,
           stride: Math.max(2, total * Math.max(0, leg.footSphereRadiusLegLengthRatio) * 2),
           phase01,
         });
@@ -143,7 +161,13 @@ function buildLayout(blueprintId: string, r: number): GroundPrintLayout | null {
       const halfStride = gaitCycleDistance * 0.25;
       const footLength = legLength * legs.footLengthRatio;
       const footWidth = legs.radius * legs.footWidthRatio;
-      const footRadius = Math.max(1, Math.max(footLength, footWidth) * 0.5);
+      // The sole BotRig3D's makeFoot lays down: 0.80 x 0.90 of the authored
+      // foot box, a rectangle pointing the way the leg does.
+      const shape: GroundPrintStampShape = {
+        kind: 'rect',
+        halfLength: Math.max(1, footLength * 0.8 * 0.5 * SOLE_PRINT_MULT),
+        halfWidth: Math.max(0.6, footWidth * 0.9 * 0.5 * SOLE_PRINT_MULT),
+      };
       const hipX = r * legs.hip.xUnitRadiusRatio;
       const hipHalfTrack = r * legs.hip.yUnitRadiusRatio;
       return {
@@ -151,19 +175,23 @@ function buildLayout(blueprintId: string, r: number): GroundPrintLayout | null {
         stamps: ([-1, 1] as const).map((side) => ({
           localX: hipX + halfStride,
           localZ: side * hipHalfTrack,
-          footRadius,
+          shape,
           stride: gaitCycleDistance,
           phase01: side > 0 ? 1 : 0,
         })),
       };
     }
     case 'amphibian': {
-      // Mirrors AmphibianRig3D's land gait: four flippers sweeping on a
-      // shared distance cycle, front-left with rear-right. Each stroke
-      // leaves a drag mark under the panel's outer half.
+      // Mirrors AmphibianRig3D's land gait: four flippers on a shared
+      // distance cycle, front-left with rear-right, each panel hinged at
+      // its mount and swept fore-aft about the vertical by the authored
+      // ground sweep. The outer part of the panel drags, so each stroke
+      // leaves a smear ALONG the body — as long as the tip's sweep, as
+      // wide as the tip chord.
       const cfg = loc.config;
       const cycleDistance = Math.max(1, r * cfg.cycleDistanceFrac);
-      const footRadius = Math.max(1, r * cfg.rootChordFrac * 0.35);
+      const tipChord = Math.max(0.25, r * cfg.tipChordFrac);
+      const sweepSin = Math.sin(Math.max(0, cfg.groundSweepAngleDeg) * Math.PI / 180);
       return {
         trails: [],
         stamps: cfg.mounts.map((mount) => {
@@ -171,10 +199,15 @@ function buildLayout(blueprintId: string, r: number): GroundPrintLayout | null {
           const side = offset.yUnitRadiusRatio < 0 ? -1 : 1;
           const front = offset.xUnitRadiusRatio >= 0;
           const phase01 = (((front ? 0 : 1) ^ (side === 1 ? 1 : 0)) as 0 | 1);
+          const length = r * mount.lengthFrac;
           return {
             localX: r * offset.xUnitRadiusRatio,
-            localZ: r * offset.yUnitRadiusRatio + side * r * mount.lengthFrac * 0.6,
-            footRadius,
+            localZ: r * offset.yUnitRadiusRatio + side * length * 0.8,
+            shape: {
+              kind: 'rect',
+              halfLength: Math.max(1, length * 0.8 * sweepSin),
+              halfWidth: Math.max(0.6, tipChord * 0.5),
+            },
             stride: cycleDistance,
             phase01,
           };
