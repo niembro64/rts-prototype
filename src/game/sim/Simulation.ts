@@ -1755,8 +1755,12 @@ export class Simulation {
       action.targetId === job.actionSnapshot.targetId &&
       action.buildingId === job.actionSnapshot.buildingId &&
       (isChase || unit?.actionHash === job.actionHash);
-    const navigationStillMatches = getTerrainVersion() === job.terrainVersion &&
-      this.constructionSystem.getGrid().getVersion() === job.buildingGridVersion;
+    // Building churn never cancels a job here: the WASM keeps or drops the
+    // retained frontier by an exact corridor test, and a route that ends up
+    // crossing a new footprint fails the install-time validation below. A
+    // start-goal box test was tried first and cancelled nearly every long
+    // route in a match with four building bots.
+    const navigationStillMatches = getTerrainVersion() === job.terrainVersion;
     if (
       entity === undefined ||
       unit === null ||

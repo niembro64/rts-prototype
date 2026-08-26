@@ -475,6 +475,62 @@ fn pathfinder_invalidate_all_fine_arenas(state: &mut PathfinderState) {
     state.saved_fine_arenas.clear();
 }
 
+/// Drop only the retained frontiers whose corridor contains a cluster that
+/// the changed cells can influence (the same reach `hpa_mark_dirty_cells`
+/// stamps). Frontiers over untouched corridors resume unchanged.
+fn pathfinder_invalidate_fine_arenas_touching(
+    state: &mut PathfinderState,
+    added: &[u32],
+    removed: &[u32],
+) {
+    if state.hpa_cluster_w <= 0 || (added.is_empty() && removed.is_empty()) {
+        return;
+    }
+    let cluster_count = state.hpa_cluster_change_stamp.len();
+    let mut touched = vec![false; cluster_count];
+    let c = hpa_cluster_size();
+    let reach = EDT_CLAMP_CELLS + 1;
+    let mut any = false;
+    for cells in [added, removed] {
+        for &cell in cells {
+            let cell = cell as i32;
+            let gx = cell % state.grid_w;
+            let gy = cell / state.grid_w;
+            let cx0 = ((gx - reach).max(0)) / c;
+            let cx1 = ((gx + reach).min(state.grid_w - 1)) / c;
+            let cy0 = ((gy - reach).max(0)) / c;
+            let cy1 = ((gy + reach).min(state.grid_h - 1)) / c;
+            for cy in cy0..=cy1 {
+                for cx in cx0..=cx1 {
+                    let index = (cy * state.hpa_cluster_w + cx) as usize;
+                    if index < cluster_count {
+                        touched[index] = true;
+                        any = true;
+                    }
+                }
+            }
+        }
+    }
+    if !any {
+        return;
+    }
+    let corridor_touched = |arena: &FineArena| -> bool {
+        arena.pending.is_some()
+            && arena
+                .corridor
+                .iter()
+                .any(|&cluster| (cluster as usize) < cluster_count && touched[cluster as usize])
+    };
+    if corridor_touched(&state.fine_arena) {
+        state.fine_arena.pending = None;
+    }
+    for arena in state.saved_fine_arenas.values_mut() {
+        if corridor_touched(arena) {
+            arena.pending = None;
+        }
+    }
+}
+
 pub(crate) fn pathfinder_build_snap_offsets(state: &mut PathfinderState) {
     let r = (PATHFINDER_SNAP_RADIUS_WU / state.cell_size).ceil().max(1.0) as i32;
     let mut list: Vec<(i16, i16, i32)> = Vec::new();
@@ -820,7 +876,6 @@ pub(crate) fn pathfinder_apply_building_occupancy(
     if state.n == 0 {
         return 0;
     }
-    pathfinder_invalidate_all_fine_arenas(state);
     let count = cell_gx.len().min(cell_gy.len());
     // Diff against the retained blocked-cell list, not the whole grid: a
     // one-building event used to allocate and scan every map cell twice.
@@ -939,6 +994,12 @@ pub(crate) fn pathfinder_apply_building_occupancy(
     }
     hpa_mark_dirty_cells(state, &added);
     hpa_mark_dirty_cells(state, &removed);
+    // A retained fine frontier is corridor-local: it stays valid unless the
+    // change can touch a cluster of ITS corridor. Discarding every player's
+    // frontier on every footprint anywhere (the old rule) restarted long
+    // searches on nearly every tick of a match with four building bots —
+    // measured 2026-08-26 as the dominant cause of routes waiting > 3 s.
+    pathfinder_invalidate_fine_arenas_touching(state, &added, &removed);
     1
 }
 
@@ -1167,7 +1228,6 @@ struct FineAStarKey {
     goal_cell: u32,
     class: HpaClassKey,
     terrain_only_key: u64,
-    building_occupancy_version: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -1529,10 +1589,17 @@ fn pathfinder_a_star_slice(
     }
 }
 
-/// Classify the querying body's start cell. A start blocked ONLY by a
-/// building footprint is an escape start: `pathfinder_line_cost` exempts
-/// exactly this cell as a line's first cell. Clearance-deficient starts are
-/// handled by the per-step gradient rule instead (see traversal.rs).
+/// Classify the querying body's start cell. The body IS there: whatever
+/// makes its cell illegal — a footprint that went up under it, a shoreline
+/// or cliff cell a floating hull drifted into, a slope sliver, the map-edge
+/// buffer — the cell is legal to LEAVE. Such a start is an escape start:
+/// `pathfinder_line_cost` exempts exactly this cell as a line's first cell,
+/// and every search seeds it unconditionally. The caller has already checked
+/// that the body's exact point lies in its navigation domain (a hull on dry
+/// land is terminal, not an escape). Clearance-deficient starts are handled
+/// by the per-step gradient rule instead (see traversal.rs). Before
+/// 2026-08-26 only building-blocked starts escaped, and a hull whose centre
+/// crossed into a cell with an exposed corner was terminal for good.
 pub(crate) fn pathfinder_set_escape_start(
     state: &mut PathfinderState,
     start_idx: usize,
@@ -1540,7 +1607,6 @@ pub(crate) fn pathfinder_set_escape_start(
 ) {
     state.cur_escape_start_idx = if start_idx < state.n
         && !pathfinder_is_cell_passable(state, start_idx, traversal)
-        && pathfinder_is_cell_passable_ignoring_buildings(state, start_idx, traversal)
     {
         start_idx
     } else {
@@ -1614,12 +1680,9 @@ fn pathfinder_line_cost_inner(
         if first_cell {
             // The first cell is where the body stands: legal ignoring the
             // clearance gate (the gradient rule governs leaving it) and, for
-            // an escape start, ignoring the building footprint too.
-            let passable = if idx == state.cur_escape_start_idx {
-                pathfinder_is_cell_passable_ignoring_buildings(state, idx, traversal)
-            } else {
-                pathfinder_is_cell_passable_ignoring_clearance(state, idx, traversal)
-            };
+            // an escape start, legal outright — the body is there.
+            let passable = idx == state.cur_escape_start_idx
+                || pathfinder_is_cell_passable_ignoring_clearance(state, idx, traversal);
             if !passable {
                 return None;
             }
@@ -1835,14 +1898,13 @@ fn pathfinder_find_path_with_expansion_budget_inner(
     let ggy = ((goal_y / cs).floor() as i32).max(0).min(grid_h - 1);
     let start_idx = (sgy * grid_w + sgx) as usize;
 
-    // The start is where the body IS: it must be physically move-valid
-    // ignoring the clearance gate and ignoring a building footprint that
-    // went up under it (escape start). Anything else is terminal.
+    // The start is where the body IS. Its exact point must lie in the
+    // body's navigation domain (a hull on dry land is terminal); its CELL
+    // may be illegal — a footprint, an exposed corner, a slope sliver, the
+    // edge buffer — and is then an escape start the search may leave.
     state.cur_required_d_sq = 0.0;
     state.cur_line_required_d_sq = 0.0;
-    if !pathfinder_position_is_in_navigation_domain(state, start_x, start_y, traversal)
-        || !pathfinder_is_cell_passable_ignoring_buildings(state, start_idx, traversal)
-    {
+    if !pathfinder_position_is_in_navigation_domain(state, start_x, start_y, traversal) {
         return pathfinder_finish_unreachable(state, start_x, start_y);
     }
     state.cur_required_d_sq = required_d_sq;
@@ -1919,7 +1981,6 @@ fn pathfinder_find_path_with_expansion_budget_inner(
         goal_cell: (ggy * grid_w + ggx) as u32,
         class,
         terrain_only_key: state.terrain_only_key,
-        building_occupancy_version: state.building_occupancy_version,
     };
 
     // Resume a retained fine frontier for the identical query without

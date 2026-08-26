@@ -2344,24 +2344,30 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn pathfinder_does_not_rescue_a_map_edge_start() {
+    pub(crate) fn pathfinder_routes_a_map_edge_start_back_out() {
         let _guard = lock_tests();
         terrain_clear();
         pathfinder_init(400.0, 400.0);
 
-        // The current cell is in the map-edge buffer. It used to be snapped
-        // toward the goal; an invalid start now remains stranded.
+        // The current cell is in the map-edge buffer. The start is never
+        // SNAPPED toward the goal (that rewrite was removed long ago); it is
+        // an escape start — the body is there and may leave its cell along
+        // legal steps — so the route begins at the true position and ends
+        // at the goal instead of stranding the body forever (2026-08-26:
+        // "no order is ever dropped because a route could not be found").
         pathfinder_rebuild_terrain_mask_and_cc(10_002);
         let count = pathfinder_find_path_for_tests(
             30.0, 210.0, 80.0, 210.0, 0.0, false, 0.0, true, false, false, true, false, false, 0.0,
             0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
-        assert_eq!(count, 1);
+        assert!(count >= 1, "a body in the edge buffer must still receive a route");
+        assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_COMPLETE);
 
         let waypoints =
             unsafe { std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (count as usize) * 2) };
-        assert!((waypoints[0] - 30.0).abs() < 1.0e-9);
-        assert!((waypoints[1] - 210.0).abs() < 1.0e-9);
+        let last = (count as usize - 1) * 2;
+        assert!((waypoints[last] - 80.0).abs() < 1.0e-9);
+        assert!((waypoints[last + 1] - 210.0).abs() < 1.0e-9);
     }
 
     #[test]
