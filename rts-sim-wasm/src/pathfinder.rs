@@ -50,6 +50,19 @@ pub(crate) const PATHFINDER_SEARCH_HIERARCHICAL: u32 = 2;
 /// Terrain-bound unit centers stay out of the outer map guard cells.
 pub(crate) const PATHFINDER_MAP_EDGE_BUFFER_WU: f64 = 40.0;
 const PATHFINDER_SYNC_CONTINUATION_OWNER: u32 = u32::MAX;
+/// A supercover line step (passability + transition cost of one cell) costs
+/// roughly an eighth of a fine A* expansion (heap push/pop plus eight
+/// neighbour evaluations); smoothing work is charged at that ratio.
+const SMOOTHING_CELLS_PER_WORK_UNIT: u32 = 8;
+
+/// Cells a supercover line between two world points will visit — the
+/// Chebyshev cell distance plus one — used to charge smoothing work.
+fn pathfinder_line_cells_between(state: &PathfinderState, x0: f64, y0: f64, x1: f64, y1: f64) -> u32 {
+    let cs = state.cell_size;
+    let dx = ((x1 / cs).floor() - (x0 / cs).floor()).abs();
+    let dy = ((y1 / cs).floor() - (y0 / cs).floor()).abs();
+    dx.max(dy) as u32 + 1
+}
 /// Heat stamped on every cell of a completed authoritative route.
 pub(crate) const PATHFINDER_TRAFFIC_HEAT_PER_ROUTE: u8 = 48;
 
@@ -84,6 +97,13 @@ pub(crate) struct PathfinderState {
     terrain_submerged: Vec<u8>,
     terrain_edge_blocked: Vec<u8>,
     building_blocked: Vec<u8>,
+    /// Ascending list of the cells currently blocked by buildings, so a
+    /// resync diffs against O(building cells) instead of scanning the grid.
+    building_blocked_cells: Vec<u32>,
+    /// Per-cell generation stamp written by the latest resync; a listed
+    /// cell not stamped this generation is a removal.
+    building_mark_gen: Vec<u32>,
+    building_gen: u32,
     building_occupancy_version: u32,
     terrain_height: Vec<f32>,
     terrain_normal_z: Vec<f32>,
@@ -166,6 +186,10 @@ pub(crate) struct PathfinderState {
     last_fine_expanded_nodes_this_slice: u32,
     last_coarse_expanded_nodes: u32,
     last_hpa_work: u32,
+    /// Every work unit any search has ever charged, sliced or not. Telemetry
+    /// only (never hashed); the mass-move budget contract test reads it to
+    /// prove a command tick cannot search more than one budget's worth.
+    total_work_units: f64,
     last_corridor_clusters: u32,
     last_smoothing_line_checks: u32,
     last_direct_cost_ratio: f32,
@@ -303,6 +327,9 @@ impl PathfinderState {
             terrain_submerged: Vec::new(),
             terrain_edge_blocked: Vec::new(),
             building_blocked: Vec::new(),
+            building_blocked_cells: Vec::new(),
+            building_mark_gen: Vec::new(),
+            building_gen: 0,
             building_occupancy_version: 0,
             terrain_height: Vec::new(),
             terrain_normal_z: Vec::new(),
@@ -377,6 +404,7 @@ impl PathfinderState {
             last_fine_expanded_nodes_this_slice: 0,
             last_coarse_expanded_nodes: 0,
             last_hpa_work: 0,
+            total_work_units: 0.0,
             last_corridor_clusters: 0,
             last_smoothing_line_checks: 0,
             last_direct_cost_ratio: f32::NAN,
@@ -466,6 +494,10 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
         layer.resize(n, 0);
     }
     state.building_occupancy_version = 0;
+    state.building_blocked_cells.clear();
+    state.building_mark_gen.clear();
+    state.building_mark_gen.resize(n, 0);
+    state.building_gen = 0;
     state.terrain_height.clear();
     state.terrain_height.resize(n, TERRAIN_WATER_LEVEL as f32 + 1.0);
     state.terrain_normal_z.clear();
@@ -682,6 +714,7 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
     // A terrain rebuild invalidates the building occupancy layer: TS resyncs
     // it immediately afterward.
     state.building_blocked.fill(0);
+    state.building_blocked_cells.clear();
     state.building_occupancy_version = 0;
     state.traffic_heat.fill(0);
 
@@ -750,28 +783,60 @@ pub(crate) fn pathfinder_apply_building_occupancy(
     }
     pathfinder_invalidate_all_fine_arenas(state);
     let count = cell_gx.len().min(cell_gy.len());
-    let mut next: Vec<u8> = vec![0u8; state.n];
+    // Diff against the retained blocked-cell list, not the whole grid: a
+    // one-building event used to allocate and scan every map cell twice.
+    if state.building_mark_gen.len() != state.n {
+        // A grid that was (re)sized without passing through init: rebuild the
+        // retained list from the layer itself, once.
+        state.building_mark_gen.clear();
+        state.building_mark_gen.resize(state.n, 0);
+        state.building_gen = 0;
+        state.building_blocked_cells.clear();
+        for idx in 0..state.n {
+            if state.building_blocked[idx] != 0 {
+                state.building_blocked_cells.push(idx as u32);
+            }
+        }
+    }
+    state.building_gen = state.building_gen.wrapping_add(1);
+    if state.building_gen == 0 {
+        state.building_mark_gen.fill(0);
+        state.building_gen = 1;
+    }
+    let gen = state.building_gen;
+    let mut added: Vec<u32> = Vec::new();
     for i in 0..count {
         if cell_gx[i] < 0 || cell_gy[i] < 0 || cell_gx[i] >= state.grid_w || cell_gy[i] >= state.grid_h {
             continue;
         }
-        next[(cell_gy[i] * state.grid_w + cell_gx[i]) as usize] = 1;
-    }
-    let mut added: Vec<u32> = Vec::new();
-    let mut removed: Vec<u32> = Vec::new();
-    for idx in 0..state.n {
-        let was = state.building_blocked[idx];
-        let now = next[idx];
-        if was == now {
+        let idx = (cell_gy[i] * state.grid_w + cell_gx[i]) as usize;
+        if state.building_mark_gen[idx] == gen {
             continue;
         }
-        if now != 0 {
+        state.building_mark_gen[idx] = gen;
+        if state.building_blocked[idx] == 0 {
+            state.building_blocked[idx] = 1;
             added.push(idx as u32);
-        } else {
-            removed.push(idx as u32);
         }
     }
-    state.building_blocked = next;
+    let mut removed: Vec<u32> = Vec::new();
+    let old_cells = std::mem::take(&mut state.building_blocked_cells);
+    let mut kept: Vec<u32> = Vec::with_capacity(old_cells.len() + added.len());
+    for &idx in &old_cells {
+        if state.building_mark_gen[idx as usize] == gen {
+            kept.push(idx);
+        } else {
+            state.building_blocked[idx as usize] = 0;
+            removed.push(idx);
+        }
+    }
+    kept.extend_from_slice(&added);
+    // Ascending everywhere: the same order the old full-grid scan produced,
+    // so the EDT updates and cluster dirty stamps see identical input.
+    kept.sort_unstable();
+    added.sort_unstable();
+    removed.sort_unstable();
+    state.building_blocked_cells = kept;
     state.building_occupancy_version = version;
     for &idx in &added {
         state.blocked[idx as usize] = 1;
@@ -797,30 +862,36 @@ pub(crate) fn pathfinder_apply_building_occupancy(
         let building = std::mem::take(&mut state.building_blocked);
         let submerged = std::mem::take(&mut state.terrain_submerged);
         let mut scratch = std::mem::take(&mut state.edt_scratch);
-        edt_apply_removed_obstacles(
-            &|i| blocked[i] != 0,
-            grid_w,
-            grid_h,
-            &removed,
-            &mut state.edt_ground_sq,
-            &mut scratch,
-        );
-        edt_apply_removed_obstacles(
-            &|i| edge[i] != 0 || building[i] != 0,
-            grid_w,
-            grid_h,
-            &removed,
-            &mut state.edt_medium_sq,
-            &mut scratch,
-        );
-        edt_apply_removed_obstacles(
-            &|i| submerged[i] == 0 || edge[i] != 0 || building[i] != 0,
-            grid_w,
-            grid_h,
-            &removed,
-            &mut state.edt_water_sq,
-            &mut scratch,
-        );
+        // One re-solve window per spatial cluster of removed cells. A single
+        // window over the bounding box of ALL removals was the whole map
+        // whenever two buildings died far apart in the same tick.
+        let groups = pathfinder_group_cells_for_edt(grid_w, &removed);
+        for group in &groups {
+            edt_apply_removed_obstacles(
+                &|i| blocked[i] != 0,
+                grid_w,
+                grid_h,
+                group,
+                &mut state.edt_ground_sq,
+                &mut scratch,
+            );
+            edt_apply_removed_obstacles(
+                &|i| edge[i] != 0 || building[i] != 0,
+                grid_w,
+                grid_h,
+                group,
+                &mut state.edt_medium_sq,
+                &mut scratch,
+            );
+            edt_apply_removed_obstacles(
+                &|i| submerged[i] == 0 || edge[i] != 0 || building[i] != 0,
+                grid_w,
+                grid_h,
+                group,
+                &mut state.edt_water_sq,
+                &mut scratch,
+            );
+        }
         state.blocked = blocked;
         state.terrain_edge_blocked = edge;
         state.building_blocked = building;
@@ -830,6 +901,46 @@ pub(crate) fn pathfinder_apply_building_occupancy(
     hpa_mark_dirty_cells(state, &added);
     hpa_mark_dirty_cells(state, &removed);
     1
+}
+
+/// Split removed cells (ascending) into spatially separate groups so each
+/// EDT re-solve window stays local. A cell joins the first group whose
+/// bounding box, expanded by twice the clearance clamp, contains it;
+/// otherwise it opens a new group. Windows of different groups may overlap;
+/// the windowed solve is exact and idempotent, so that only repeats work.
+fn pathfinder_group_cells_for_edt(grid_w: i32, cells: &[u32]) -> Vec<Vec<u32>> {
+    let gap = 2 * EDT_CLAMP_CELLS;
+    let mut groups: Vec<Vec<u32>> = Vec::new();
+    let mut bounds: Vec<(i32, i32, i32, i32)> = Vec::new();
+    for &cell in cells {
+        let cx = cell as i32 % grid_w;
+        let cy = cell as i32 / grid_w;
+        let mut placed = false;
+        for (g, b) in bounds.iter_mut().enumerate() {
+            if cx >= b.0 - gap && cx <= b.2 + gap && cy >= b.1 - gap && cy <= b.3 + gap {
+                groups[g].push(cell);
+                b.0 = b.0.min(cx);
+                b.1 = b.1.min(cy);
+                b.2 = b.2.max(cx);
+                b.3 = b.3.max(cy);
+                placed = true;
+                break;
+            }
+        }
+        if !placed {
+            groups.push(vec![cell]);
+            bounds.push((cx, cy, cx, cy));
+        }
+    }
+    groups
+}
+
+/// Cells within which a building change can alter clearance (the EDT
+/// clamp). TS reads it to decide whether a routed unit's remaining path is
+/// near enough to a building change to need revalidation.
+#[wasm_bindgen]
+pub fn pathfinder_clearance_reach_cells() -> u32 {
+    EDT_CLAMP_CELLS as u32
 }
 
 #[wasm_bindgen]
@@ -1510,7 +1621,7 @@ fn pathfinder_finish_unreachable(state: &mut PathfinderState, start_x: f64, star
 /// waypoints land in `waypoint_scratch` as interleaved (x, y) pairs; returns
 /// the waypoint count (0 with PENDING status when the slice budget ran out).
 #[allow(clippy::too_many_arguments)]
-fn pathfinder_find_path_with_expansion_budget(
+fn pathfinder_find_path_with_expansion_budget_inner(
     start_x: f64,
     start_y: f64,
     goal_x: f64,
@@ -1701,13 +1812,15 @@ fn pathfinder_find_path_with_expansion_budget(
         if let HpaSearchOutcome::Unreachable = outcome {
             // Snap to the nearest waypoint cell the start can actually reach
             // and route there instead (BAR: move as close as possible).
-            match hpa_nearest_reachable_cell(
+            let (nearest, flood_work) = hpa_nearest_reachable_cell(
                 state,
                 class_idx,
                 goal_cell_gx,
                 goal_cell_gy,
                 waypoint_traversal,
-            ) {
+            );
+            state.hpa_work += flood_work;
+            match nearest {
                 Some((nx, ny)) if !(nx == sgx && ny == sgy) => {
                     goal_cell_gx = nx;
                     goal_cell_gy = ny;
@@ -1824,7 +1937,13 @@ fn pathfinder_find_path_with_expansion_budget(
             state.traffic_heat[idx] = state.traffic_heat[idx].saturating_add(PATHFINDER_TRAFFIC_HEAT_PER_ROUTE);
         }
     }
-    // Cost-aware string pulling.
+    // Cost-aware string pulling. Every shortcut test walks a supercover
+    // line from the anchor, so a long straight stretch costs O(length) per
+    // step and O(length²) over the stretch; that work is charged to the
+    // slice below (one work unit per SMOOTHING_CELLS_PER_WORK_UNIT cells) so
+    // the tick scheduler admits fewer routes after an expensive completion
+    // instead of believing the smoothing was free.
+    let mut smoothing_cells: u32 = 0;
     let mut anchor_x = start_x;
     let mut anchor_y = start_y;
     let path_len = state.path_scratch.len();
@@ -1863,6 +1982,7 @@ fn pathfinder_find_path_with_expansion_budget(
             .unwrap_or(f32::INFINITY);
             chain_cost += raw_edge_cost;
             state.last_smoothing_line_checks += 1;
+            smoothing_cells += pathfinder_line_cells_between(state, anchor_x, anchor_y, next_x, next_y);
             let shortcut_cost = pathfinder_line_cost(
                 state,
                 anchor_x,
@@ -1880,6 +2000,9 @@ fn pathfinder_find_path_with_expansion_budget(
             }
         }
     }
+    state.last_fine_expanded_nodes_this_slice = state
+        .last_fine_expanded_nodes_this_slice
+        .saturating_add(smoothing_cells / SMOOTHING_CELLS_PER_WORK_UNIT);
     if goal_was_snapped {
         let (cx, cy) = pathfinder_cell_center_for_state(state, goal_cell_gx, goal_cell_gy);
         pathfinder_push_waypoint(state, cx, cy);
@@ -1896,10 +2019,88 @@ fn pathfinder_find_path_with_expansion_budget(
     (state.waypoint_scratch.len() / 2) as u32
 }
 
-/// Synchronous route for tools/tests and the formation layout preview.
-#[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
-pub fn pathfinder_find_path(
+fn pathfinder_find_path_with_expansion_budget(
+    start_x: f64,
+    start_y: f64,
+    goal_x: f64,
+    goal_y: f64,
+    min_ground_normal_z: f32,
+    water_surface_supported: bool,
+    support_point_offset_z: f64,
+    waypoint_allow_ground: bool,
+    waypoint_allow_water: bool,
+    waypoint_allow_air: bool,
+    move_allow_ground: bool,
+    move_allow_water: bool,
+    move_allow_air: bool,
+    unit_radius: f64,
+    flat_drive_accel: f64,
+    safe_drive_accel: f64,
+    flat_water_contact_accel: f64,
+    safe_water_drive_accel: f64,
+    static_friction_coefficient: f64,
+    symmetric_slope: bool,
+    expansion_budget: u32,
+    continuation_owner: u32,
+    authoritative: bool,
+) -> u32 {
+    let count = pathfinder_find_path_with_expansion_budget_inner(
+        start_x,
+        start_y,
+        goal_x,
+        goal_y,
+        min_ground_normal_z,
+        water_surface_supported,
+        support_point_offset_z,
+        waypoint_allow_ground,
+        waypoint_allow_water,
+        waypoint_allow_air,
+        move_allow_ground,
+        move_allow_water,
+        move_allow_air,
+        unit_radius,
+        flat_drive_accel,
+        safe_drive_accel,
+        flat_water_contact_accel,
+        safe_water_drive_accel,
+        static_friction_coefficient,
+        symmetric_slope,
+        expansion_budget,
+        continuation_owner,
+        authoritative,
+    );
+    let state = pathfinder_state();
+    // Every early completion (direct route, goal snapped onto the body's own
+    // cell, unreachable) and every Budget return inside the abstract phase
+    // records the hierarchy work it did in last_hpa_work; not all of them
+    // fold it into the per-slice counter the TS scheduler charges. Before
+    // this the scheduler read 0 for such a slice, charged one unit, and kept
+    // admitting routes into a tick that had already spent its whole budget on
+    // cluster builds. Report the larger of the two so nothing is uncharged.
+    if state.last_fine_expanded_nodes_this_slice < state.last_hpa_work {
+        state.last_fine_expanded_nodes_this_slice = state.last_hpa_work;
+    }
+    state.total_work_units += state.last_fine_expanded_nodes_this_slice as f64;
+    count
+}
+
+/// Every work unit every search has charged since init (sliced searches
+/// included), as a monotonic telemetry counter. Not lockstep state and never
+/// hashed. Read across one fixed tick it bounds ALL pathfinding work that
+/// tick did, whichever API performed it — which is what the mass-move
+/// contract test asserts.
+#[wasm_bindgen]
+pub fn pathfinder_total_work_units() -> f64 {
+    pathfinder_state().total_work_units
+}
+
+/// TEST-ONLY whole-route query: drives the budgeted slice on the reserved
+/// sync owner until the search leaves PENDING. Production has no synchronous
+/// search at all — see pathfinder_find_path_slice.
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub fn pathfinder_find_path_for_tests(
     start_x: f64,
     start_y: f64,
     goal_x: f64,
@@ -1921,34 +2122,43 @@ pub fn pathfinder_find_path(
     static_friction_coefficient: f64,
     symmetric_slope: bool,
 ) -> u32 {
-    let state = pathfinder_state();
-    pathfinder_switch_fine_arena(state, PATHFINDER_SYNC_CONTINUATION_OWNER);
-    state.fine_arena.pending = None;
-    pathfinder_find_path_with_expansion_budget(
-        start_x,
-        start_y,
-        goal_x,
-        goal_y,
-        min_ground_normal_z,
-        water_surface_supported,
-        support_point_offset_z,
-        waypoint_allow_ground,
-        waypoint_allow_water,
-        waypoint_allow_air,
-        move_allow_ground,
-        move_allow_water,
-        move_allow_air,
-        unit_radius,
-        flat_drive_accel,
-        safe_drive_accel,
-        flat_water_contact_accel,
-        safe_water_drive_accel,
-        static_friction_coefficient,
-        symmetric_slope,
-        u32::MAX,
-        PATHFINDER_SYNC_CONTINUATION_OWNER,
-        false,
-    )
+    const TEST_SLICE_BUDGET: u32 = 8192;
+    const TEST_MAX_SLICES: u32 = 5000;
+    {
+        let state = pathfinder_state();
+        pathfinder_switch_fine_arena(state, PATHFINDER_SYNC_CONTINUATION_OWNER);
+        state.fine_arena.pending = None;
+    }
+    for _ in 0..TEST_MAX_SLICES {
+        let count = pathfinder_find_path_slice(
+            start_x,
+            start_y,
+            goal_x,
+            goal_y,
+            min_ground_normal_z,
+            water_surface_supported,
+            support_point_offset_z,
+            waypoint_allow_ground,
+            waypoint_allow_water,
+            waypoint_allow_air,
+            move_allow_ground,
+            move_allow_water,
+            move_allow_air,
+            unit_radius,
+            flat_drive_accel,
+            safe_drive_accel,
+            flat_water_contact_accel,
+            safe_water_drive_accel,
+            static_friction_coefficient,
+            symmetric_slope,
+            PATHFINDER_SYNC_CONTINUATION_OWNER,
+            TEST_SLICE_BUDGET,
+        );
+        if pathfinder_state().last_result_status != PATHFINDER_RESULT_PENDING {
+            return count;
+        }
+    }
+    panic!("pathfinder_find_path_for_tests: route did not complete within the slice ceiling");
 }
 
 /// Start or resume the exact same query, spending no more than the supplied

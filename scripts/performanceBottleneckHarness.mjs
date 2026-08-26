@@ -271,6 +271,10 @@ function collectBaselineScenarios(report) {
     unitCap: scenario.options.unitCap,
     simOnlyUnits: scenario.simOnly.units,
     simOnlyStepMsP95: round2(scenario.simOnly.stepMs.p95),
+    // A periodic burst (1 tick in N) never moves a p95; the worst tick and
+    // the checksum's own worst sample are what a stall regression shows in.
+    simOnlyStepMsMax: round2(scenario.simOnly.stepMs.max),
+    simOnlyChecksumMsMax: round2(scenario.simOnly.checksum?.ms.max ?? NaN),
     simSnapshotStepMsP95: round2(scenario.simSnapshot.stepMs.p95),
     snapshotMainThreadMsPerSecond: round2(scenario.simSnapshot.snapshotMainThreadMsPerSecond),
     fullStackFrameMsP95: round2(scenario.fullStack.frameMs.p95),
@@ -304,6 +308,8 @@ async function writeBaselineFile(baselinePath, report) {
 function baselineCheckedMetrics() {
   return [
     ['simOnlyStepMsP95', 'sim-only step p95'],
+    ['simOnlyStepMsMax', 'sim-only worst tick'],
+    ['simOnlyChecksumMsMax', 'LIGHT checksum worst sample'],
     ['simSnapshotStepMsP95', 'sim+snapshot step p95'],
     ['snapshotMainThreadMsPerSecond', 'snapshot main-thread ms/s'],
     ['fullStackFrameMsP95', 'full-stack frame p95'],
@@ -371,6 +377,7 @@ function printSimulationReport(report) {
   console.log(`  step ms avg/p95/max: ${triplet(report.stepMs)}`);
   console.log(`  p95 ceiling: ${fmt(report.simCeilingTpsP95)} TPS`);
   printMemoryLine('  memory', report.memory);
+  printChecksumLine('  LIGHT checksum', report.checksum);
   printSimTickPhases('  sim tick phases', report.simTickPhases, report.measuredTicks);
   printPathPlanScheduler('  path scheduler', report.pathPlanScheduler);
   printPathQueryOutcomes('  route outcomes', report.pathQueryOutcomes);
@@ -389,6 +396,7 @@ function printReport(report) {
   console.log(`  step ms avg/p95/max: ${triplet(report.simOnly.stepMs)} (${fmt(report.simOnly.fixedStepUtilPctP95)}% of ${fmt(fixed)}ms fixed step)`);
   console.log(`  p95 ceiling: ${fmt(report.simOnly.simCeilingTpsP95)} TPS`);
   printMemoryLine('  memory', report.simOnly.memory);
+  printChecksumLine('  LIGHT checksum', report.simOnly.checksum);
   printSimTickPhases('  sim tick phases', report.simOnly.simTickPhases, report.simOnly.measuredTicks);
   printPathPlanScheduler('  path scheduler', report.simOnly.pathPlanScheduler);
   printPathQueryOutcomes('  route outcomes', report.simOnly.pathQueryOutcomes);
@@ -831,6 +839,19 @@ function normalizeProfileUrl(url) {
       .replace(/^https?:\/\/[^/]+\/budget-annihilation\//, '')
       .replace(/^https?:\/\/[^/]+\//, '');
   }
+}
+
+function printChecksumLine(prefix, checksum) {
+  if (!checksum) return;
+  if (checksum.samples === 0) {
+    console.log(`${prefix}: no sample (interval ${checksum.intervalTicks} ticks > measured ticks)`);
+    return;
+  }
+  console.log(
+    `${prefix}: every ${checksum.intervalTicks} ticks, ${checksum.samples} sample(s) ` +
+      `at ~${checksum.entities} entities — ms avg/p95/max: ${triplet(checksum.ms)} ` +
+      '(runs after the step stopwatch in a live match; never inside a sim.* phase)',
+  );
 }
 
 function triplet(summary) {

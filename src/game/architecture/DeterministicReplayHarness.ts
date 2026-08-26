@@ -462,6 +462,7 @@ function runReplayCaseOnce(replayCase: DeterministicReplayCase): ReplayRun {
       }
     }
     replayCase.assertFinal?.(core, stats);
+    assertEntityCensus(core, replayCase.id);
     const finalState = buildCanonicalServerState(core);
     const finalStateHash = core.getCanonicalStateHash();
     return {
@@ -689,6 +690,22 @@ function firstValueDiff(
 function canonicalValuesMatch(first: unknown, second: unknown): boolean {
   if (Object.is(first, second)) return true;
   return hashCanonicalValue(first) === hashCanonicalValue(second);
+}
+
+/** The cached all-entities list must be exactly the live entity map. A ghost
+ *  here (an entity removed from the world but still cached) is hashed by the
+ *  checksum and pinned in memory for the rest of the match; the 2026-08-23
+ *  shot fast-path leak was invisible to the replay gate because ghosts are
+ *  deterministic. */
+function assertEntityCensus(core: ServerSimulationCore, label: string): void {
+  const cached = core.world.getAllEntities().length;
+  const live = core.world.getEntityCount();
+  if (cached !== live) {
+    throw new Error(
+      `[deterministic replay] ${label}: getAllEntities() holds ${cached} entities ` +
+        `but the world map holds ${live} — the entity cache leaked ghosts`,
+    );
+  }
 }
 
 function requireCommander(core: ServerSimulationCore, playerId: PlayerId): Entity {

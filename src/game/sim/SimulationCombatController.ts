@@ -217,6 +217,7 @@ export class SimulationCombatController {
   }
 
   reset(): void {
+    this.deathExplosionPlanner.reset();
     this.deadUnitIdsBuf.length = 0;
     this.deadBuildingIdsBuf.length = 0;
     resetShieldBuffers();

@@ -180,6 +180,8 @@ function findNearestDamagedUnit(
 
 export function createEnergyBuffers(): EnergyBuffers {
   return {
+    autoAssistTargetByBuilder: new Map(),
+    autoRepairTargetByBuilder: new Map(),
     consumers: [],
     consumersByPlayer: new Map(),
     buildTargetSet: new Set(),
@@ -194,6 +196,8 @@ export function createEnergyBuffers(): EnergyBuffers {
 
 export function resetEnergyBuffers(buffers: EnergyBuffers): void {
   releaseEnergyConsumerRows(buffers);
+  buffers.autoAssistTargetByBuilder.clear();
+  buffers.autoRepairTargetByBuilder.clear();
   buffers.buildTargetSet.clear();
   buffers.constructionRateByTarget.clear();
   buffers.constructionSourceHeadByTarget.clear();
@@ -527,6 +531,90 @@ function repairWorkForHp(target: Entity, hpAmount: number): number {
 //               carrying the buildable.
 //   • 'heal'  — free BAR-style repair, rate-limited by builder power and
 //               the target's original construction duration.
+
+const _autoAssistCandidateIds = new Set<EntityId>();
+/** Acquisition cadence for idle-builder auto targets: one scan every eight
+ *  ticks per builder, phased by id so the scans spread flat across ticks. */
+const AUTO_TARGET_ACQUIRE_PERIOD_MASK = 7;
+
+function autoTargetAcquisitionDue(tick: number, builderId: EntityId): boolean {
+  return ((tick + builderId) & AUTO_TARGET_ACQUIRE_PERIOD_MASK) === 0;
+}
+
+/** Nearest nanoframe to auto-assist: rescanned on the builder's acquisition
+ *  tick, otherwise the cached choice is reused while it is still a live
+ *  candidate this builder can work. A cached target that stopped qualifying
+ *  is dropped and the builder waits for its next scan rather than rescanning
+ *  immediately, so a completion wave cannot turn into a scan storm. */
+function acquireAutoAssistTarget(
+  world: WorldState,
+  builder: Entity,
+  tick: number,
+  candidates: readonly Entity[],
+  candidateIds: ReadonlySet<EntityId>,
+  cache: Map<EntityId, EntityId>,
+): Entity | null {
+  if (autoTargetAcquisitionDue(tick, builder.id)) {
+    const found = findAutoAssistTarget(builder, candidates);
+    if (found === null) cache.delete(builder.id);
+    else cache.set(builder.id, found.id);
+    return found;
+  }
+  const cachedId = cache.get(builder.id);
+  if (cachedId === undefined) return null;
+  const cached = world.getEntity(cachedId);
+  if (
+    cached === undefined ||
+    !candidateIds.has(cachedId) ||
+    cached.ownership === null ||
+    builder.ownership === null ||
+    cached.ownership.playerId !== builder.ownership.playerId ||
+    !canApplyConstructionWork(builder, cached)
+  ) {
+    cache.delete(builder.id);
+    return null;
+  }
+  return cached;
+}
+
+/** Nearest damaged unit to auto-repair, same cadence and cache rule. The
+ *  one-healer-per-target exclusion still applies every tick: a cached target
+ *  another healer claimed this tick yields no heal from this builder now. */
+function acquireAutoRepairTarget(
+  world: WorldState,
+  builder: Entity,
+  tick: number,
+  candidates: readonly Entity[],
+  excluded: ReadonlySet<EntityId>,
+  cache: Map<EntityId, EntityId>,
+): Entity | null {
+  if (autoTargetAcquisitionDue(tick, builder.id)) {
+    const found = findNearestDamagedUnit(builder, candidates, excluded);
+    if (found === null) cache.delete(builder.id);
+    else cache.set(builder.id, found.id);
+    return found;
+  }
+  const cachedId = cache.get(builder.id);
+  if (cachedId === undefined) return null;
+  const cached = world.getEntity(cachedId);
+  if (
+    cached === undefined ||
+    cached.unit === null ||
+    cached.unit.hp <= 0 ||
+    cached.unit.hp >= cached.unit.maxHp ||
+    isBuildInProgress(cached.buildable) ||
+    cached.ownership === null ||
+    builder.ownership === null ||
+    cached.ownership.playerId !== builder.ownership.playerId ||
+    !isBuildTargetInRange(builder, cached)
+  ) {
+    cache.delete(builder.id);
+    return null;
+  }
+  if (excluded.has(cachedId)) return null;
+  return cached;
+}
+
 export function distributeEnergy(world: WorldState, dtMs: number, buffers: EnergyBuffers): void {
   const dtSec = dtMs / 1000;
   world.beginWorkMovementTick();
@@ -587,11 +675,15 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   // once per tick; the fast path below skips the scan entirely when empty.
   const autoAssistCandidates = _autoAssistCandidates;
   autoAssistCandidates.length = 0;
+  const autoAssistCandidateIds = _autoAssistCandidateIds;
+  autoAssistCandidateIds.clear();
   for (const structure of world.getHealthBarBuildings()) {
     if (structure.ownership !== null && isBuildInProgress(structure.buildable)) {
       autoAssistCandidates.push(structure);
+      autoAssistCandidateIds.add(structure.id);
     }
   }
+  const tick = world.getTick();
   // Builders that auto-assisted a build this tick — excluded from auto-repair
   // so one idle builder does not split its pylons across two jobs.
   for (const entity of world.getBuilderUnits()) {
@@ -647,7 +739,14 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       const idle = entity.unit !== null && entity.unit.actions.length === 0;
       sweepAssist = head !== undefined && (head.type === 'fight' || head.type === 'patrol');
       if ((!idle && !sweepAssist) || autoAssistCandidates.length === 0) continue;
-      const assist = findAutoAssistTarget(entity, autoAssistCandidates);
+      const assist = acquireAutoAssistTarget(
+        world,
+        entity,
+        tick,
+        autoAssistCandidates,
+        autoAssistCandidateIds,
+        buffers.autoAssistTargetByBuilder,
+      );
       if (assist === null) continue;
       targetId = assist.id;
       autoAssistedBuilderIds.add(entity.id);
@@ -853,7 +952,14 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       if (entity.unit.actions.length !== 0 && !sweepHeal) continue;
       if (builder.currentBuildTarget !== NO_ENTITY_ID) continue;
       if (autoAssistedBuilderIds.has(entity.id)) continue; // already assisting a build
-      const target = findNearestDamagedUnit(entity, damagedUnits, guardHealedTargetIds);
+      const target = acquireAutoRepairTarget(
+        world,
+        entity,
+        tick,
+        damagedUnits,
+        guardHealedTargetIds,
+        buffers.autoRepairTargetByBuilder,
+      );
       if (target === null || target.unit === null) continue;
       if (!requestBuilderWorkStation(entity, target.id)) continue;
       const remaining = target.unit.maxHp - target.unit.hp;

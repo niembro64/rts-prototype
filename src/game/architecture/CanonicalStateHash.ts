@@ -4,6 +4,7 @@ import { getUnitGroundNormalEmaMode } from '../sim/unitGroundNormal';
 import type { Entity, PlayerId } from '../sim/types';
 import type { Body3D } from '../server/PhysicsEngine3D';
 import type { ServerSimulationCore } from '../server/ServerSimulationCore';
+import type { WorldState } from '../sim/WorldState';
 import { hashCanonicalValue } from './CanonicalMatchInitialization';
 
 type CanonicalPrimitive = string | number | boolean | null;
@@ -146,7 +147,7 @@ export function buildCanonicalServerState(core: ServerSimulationCore): Canonical
       maxVisibilityPadding: world.getMaxVisibilityPadding(),
       alliesByPlayer: serializeAllies(world.alliesByPlayer),
       scanPulses: toCanonicalValue(world.scanPulses),
-      metalDeposits: toCanonicalValue(world.metalDeposits),
+      metalDeposits: canonicalMetalDeposits(world.metalDeposits),
       // Trees, grass, and seaweed are a contested energy supply now, so a
       // peer whose forest diverged has desynced. The kernel hashes live
       // props (index + quantized remaining work) rather than the whole
@@ -196,7 +197,7 @@ function serializeEntity(entity: Entity): CanonicalValue {
     ownership: toCanonicalValue(entity.ownership),
     unit: serializeUnit(entity.unit),
     building: toCanonicalValue(entity.building),
-    combat: toCanonicalValue(entity.combat),
+    combat: serializeCombat(entity.combat),
     recentAggression: toCanonicalValue(entity.recentAggression),
     projectile: serializeProjectile(entity.projectile),
     buildable: toCanonicalValue(entity.buildable),
@@ -230,9 +231,53 @@ function serializeUnit(value: Entity['unit']): CanonicalValue {
     headingDirX: _headingDirX,
     headingDirY: _headingDirY,
     surfaceNormal: _surfaceNormal,
+    locomotion,
     ...canonicalUnit
   } = value;
-  return toCanonicalValue(canonicalUnit);
+  return toCanonicalValue({
+    ...canonicalUnit,
+    // The locomotion profile is expanded from the blueprint preset at load
+    // and never written afterwards; the build fingerprint in the hashed
+    // initialization already pins its contents. Hash its identity only.
+    locomotion: { type: locomotion.type, physicsPresetId: locomotion.physicsPresetId },
+  });
+}
+
+/** Mounted turrets carry their compiled blueprint config by value. That
+ *  config is immutable after construction and a pure function of the turret
+ *  blueprint (pinned by the build fingerprint), so the canonical form keeps
+ *  every runtime field and reduces `config` to its identity. Before this the
+ *  config blob was ~2.3 KB per turret — the bulk of every unit's hash text. */
+function serializeCombat(value: Entity['combat']): CanonicalValue {
+  if (value === null) return null;
+  const turrets = new Array<CanonicalValue>(value.turrets.length);
+  for (let i = 0; i < value.turrets.length; i++) {
+    const { config, ...runtime } = value.turrets[i];
+    turrets[i] = toCanonicalValue({
+      ...runtime,
+      config: { turretBlueprintId: config.turretBlueprintId, kind: config.kind },
+    });
+  }
+  return toCanonicalValue({ ...value, turrets });
+}
+
+const canonicalMetalDepositsMemo = new WeakMap<object, string>();
+
+/** Metal deposits are assigned once at bootstrap (ServerBootstrapPhases) and
+ *  never mutated, but the array carries every resource cell of every deposit
+ *  (~400 KB of canonical text — the whole world section is otherwise ~50 KB).
+ *  The world section therefore carries the deposits' own canonical hash,
+ *  memoized on the array identity, so a checksum pays for the deposits once
+ *  per installed match instead of once per interval. Like the vegetation
+ *  kernel hash beside it, this is a nested hash inside the canonical form:
+ *  LIGHT and FULL both read it, so they stay byte-identical. */
+function canonicalMetalDeposits(deposits: WorldState['metalDeposits']): CanonicalValue {
+  if (deposits === null || typeof deposits !== 'object') return toCanonicalValue(deposits);
+  const memo = canonicalMetalDepositsMemo.get(deposits);
+  if (memo !== undefined) return memo;
+  const hash = hashCanonicalValue(toCanonicalValue(deposits));
+  canonicalMetalDepositsMemo.set(deposits, hash);
+  return hash;
 }
 
 function serializeTransport(value: Entity['transport']): CanonicalValue {
@@ -261,9 +306,24 @@ function serializeProjectile(value: Entity['projectile']): CanonicalValue {
     pendingReflectionX: _pendingReflectionX,
     pendingReflectionY: _pendingReflectionY,
     pendingReflectionZ: _pendingReflectionZ,
+    config,
     ...canonicalProjectile
   } = value;
-  return toCanonicalValue(canonicalProjectile);
+  // `config.shot` and `config.shotProfile` are the compiled shot blueprint
+  // (locomotion preset, media tables, visuals) copied by reference onto every
+  // shot and never written after spawn — ~3.5 KB of the ~3.8 KB a shot used
+  // to contribute. The blueprint id identifies them; the remaining scalars
+  // are kept verbatim.
+  return toCanonicalValue({
+    ...canonicalProjectile,
+    // (`shotBlueprintId` and `projectileType` stay on the projectile itself.)
+    config: {
+      sourceTurretBlueprintId: config.sourceTurretBlueprintId,
+      range: config.range,
+      cooldown: config.cooldown,
+      turretIndex: config.turretIndex,
+    },
+  });
 }
 
 function serializePhysicsBody(body: Body3D | null): CanonicalValue {

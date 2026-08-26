@@ -70,6 +70,7 @@ import { NO_ENTITY_ID } from './types';
 import { isProjectileShot } from './types';
 import { getShotLocomotionMaxTurnRate } from './shotLocomotion';
 import type { WorldState } from './WorldState';
+import { spatialGrid } from './SpatialGrid';
 import type { SimEvent } from './combat';
 import { magnitude, getTransformCosSin } from '../math';
 import {
@@ -2194,6 +2195,63 @@ function enqueueAreaTargetActionsInOrder<T>(
   }
 }
 
+/** Units inside an area command's circle, from the spatial index instead of
+ *  a walk of every unit on the map. The rect is padded by the largest
+ *  entity silhouette plus one spatial cell so a body whose grid stamp is a
+ *  tick behind its transform is still a superset; the exact distance test
+ *  follows per candidate. Unit shells under construction are not in the
+ *  spatial index (only materialized bodies are), so the maintained
+ *  incomplete-buildable list is appended and materialized shells are skipped
+ *  from the grid pass to keep each candidate unique. The caller sorts by
+ *  (distance, id), so the index's iteration order never reaches gameplay. */
+function forEachAreaCandidateUnit(
+  world: WorldState,
+  x: number,
+  y: number,
+  radius: number,
+  visit: (unit: Entity) => void,
+): void {
+  const pad = world.getMaxVisibilityPadding() + spatialGrid.getCellSize();
+  const reach = radius + pad;
+  const inRect = spatialGrid.queryUnitsAndBuildingsInRect2D(
+    x - reach,
+    x + reach,
+    y - reach,
+    y + reach,
+  ).units;
+  const seen = _areaCandidateSeen;
+  seen.clear();
+  for (let i = 0; i < inRect.length; i++) {
+    const unit = inRect[i];
+    // The spatial index is a module singleton keyed by slot. A slot can
+    // still resolve to an entity of a world that was torn down without
+    // removing it, or — while another simulation shares the registry, as
+    // the in-app contract harness does — to an entity whose slot was
+    // rebound and whose cell is stale. Only this world's own entities, at
+    // their real position, each once, are candidates.
+    if (world.getEntity(unit.id) !== unit) continue;
+    // A rebound slot can also resolve a non-unit (the registry binds by id);
+    // this pass is units only — buildings are walked by the caller.
+    if (unit.unit === null) continue;
+    if (
+      unit.transform.x < x - reach || unit.transform.x > x + reach ||
+      unit.transform.y < y - reach || unit.transform.y > y + reach
+    ) continue;
+    if (seen.has(unit.id)) continue;
+    seen.add(unit.id);
+    if (isBuildInProgress(unit.buildable)) continue;
+    visit(unit);
+  }
+  const shells = world.getIncompleteBuildableUnits();
+  for (let i = 0; i < shells.length; i++) {
+    if (seen.has(shells[i].id)) continue;
+    seen.add(shells[i].id);
+    visit(shells[i]);
+  }
+}
+
+const _areaCandidateSeen = new Set<EntityId>();
+
 function findRepairAreaTargets(
   ctx: CommandContext,
   commander: Entity,
@@ -2216,15 +2274,13 @@ function findRepairAreaTargets(
     targets.push({ entity: target, distanceSq: distSq });
   }
 
-  const units = ctx.world.getUnits();
-  for (let i = 0; i < units.length; i++) {
-    const target = units[i];
-    if (!isRepairableByCommander(ctx.world, commander, target)) continue;
-    if (!areaTargetMatchesCommandFilter(target, filterCategory, filterBlueprintId)) continue;
+  forEachAreaCandidateUnit(ctx.world, x, y, radius, (target) => {
+    if (!isRepairableByCommander(ctx.world, commander, target)) return;
+    if (!areaTargetMatchesCommandFilter(target, filterCategory, filterBlueprintId)) return;
     const distSq = entityAreaDistanceSq(target, x, y);
-    if (distSq > radiusSq) continue;
+    if (distSq > radiusSq) return;
     targets.push({ entity: target, distanceSq: distSq });
-  }
+  });
 
   targets.sort(compareAreaTargets);
   return sortedAreaTargetEntities(targets);
@@ -2371,15 +2427,13 @@ function findReclaimAreaTargets(
       targets.push({ target: makeEntityReclaimTarget(target), distanceSq: distSq });
     }
 
-    const units = ctx.world.getUnits();
-    for (let i = 0; i < units.length; i++) {
-      const target = units[i];
-      if (target.id === commander.id || !isReclaimableTarget(target)) continue;
-      if (!areaTargetMatchesCommandFilter(target, filterCategory, filterBlueprintId)) continue;
+    forEachAreaCandidateUnit(ctx.world, x, y, radius, (target) => {
+      if (target.id === commander.id || !isReclaimableTarget(target)) return;
+      if (!areaTargetMatchesCommandFilter(target, filterCategory, filterBlueprintId)) return;
       const distSq = entityAreaDistanceSq(target, x, y);
-      if (distSq > radiusSq) continue;
+      if (distSq > radiusSq) return;
       targets.push({ target: makeEntityReclaimTarget(target), distanceSq: distSq });
-    }
+    });
   }
 
   // Vegetation lives in its own store, so area reclaim sweeps it through
@@ -2777,14 +2831,12 @@ function findAttackAreaTargets(
   const radiusSq = radius * radius;
   const targets: AreaTarget[] = [];
 
-  const units = ctx.world.getUnits();
-  for (let i = 0; i < units.length; i++) {
-    const target = units[i];
-    if (!isAttackableEnemyTargetForPlayer(ctx.world, target, playerId)) continue;
+  forEachAreaCandidateUnit(ctx.world, x, y, radius, (target) => {
+    if (!isAttackableEnemyTargetForPlayer(ctx.world, target, playerId)) return;
     const distSq = entityAreaDistanceSq(target, x, y);
-    if (distSq > radiusSq) continue;
+    if (distSq > radiusSq) return;
     targets.push({ entity: target, distanceSq: distSq });
-  }
+  });
 
   const buildings = ctx.world.getBuildings();
   for (let i = 0; i < buildings.length; i++) {

@@ -739,6 +739,12 @@ export class WorldState {
     this.entities.set(entity.id, entity);
     this.registerEntityMetadata(entity);
     this.refreshEntitySlotState(entity, 0xff);
+    // A unit is queryable from the spatial index the moment it exists, not
+    // from the next updateUnits sweep: area commands issued in the same
+    // frame as a spawn, and bare fixtures that never step the sim, read the
+    // index. (Shells stay out until they materialize; setUnitSpatial owns
+    // that rule.)
+    if (entity.type === 'unit') entitySlotRegistry.setUnitSpatial(entity);
     if (entity.type === 'unit') this.unitSetVersion++;
     // Towers share the buildingVersion bucket because their structural
     // shape (static, footprint, building component) matches buildings;

@@ -2,8 +2,6 @@ import { deterministicMath as DMath } from './deterministicMath';
 import { getSimWasm } from '../sim-wasm/init';
 import type { Entity, EntityId } from './types';
 import type { WorldState } from './WorldState';
-import { expandPathPoints } from './Pathfinder';
-import { pathTerrainFilterForLocomotion } from './pathfindingTraversal';
 
 const MIN_GROUP_FORMATION_SPACING = 40;
 const COLLISION_GROUP_FORMATION_SPACING_MULTIPLIER = 2.25;
@@ -24,39 +22,23 @@ export function clampToMap(value: number, max: number): number {
   return Math.max(0, Math.min(max, value));
 }
 
+/** A formation slot is intent, exactly like the group-move branch installs it:
+ *  clamp it to the map and stand it on the terrain bed. The budgeted path
+ *  scheduler routes it later and snaps an unreachable slot to the nearest
+ *  reachable frontier the same way it does for every other waypoint. This
+ *  used to run one full, unbudgeted hierarchical A* per selected unit in the
+ *  tick the command landed — the exact burst the scheduler exists to prevent,
+ *  reachable from an ordinary drag line-move over an army — and the search's
+ *  only product was the same snapped endpoint the scheduler produces anyway. */
 export function resolvePathableFormationTarget(
   world: WorldState,
-  unit: Entity,
+  _unit: Entity,
   targetX: number,
   targetY: number,
 ): ResolvedFormationTarget {
-  const unitComponent = unit.unit;
   const x = clampToMap(targetX, world.mapWidth);
   const y = clampToMap(targetY, world.mapHeight);
-  if (unitComponent === null) {
-    return { x, y, z: world.getTerrainBedZ(x, y) };
-  }
-
-  const points = expandPathPoints(
-    unit.transform.x,
-    unit.transform.y,
-    x,
-    y,
-    world.mapWidth,
-    world.mapHeight,
-    world.getTerrainBedZ(x, y),
-    pathTerrainFilterForLocomotion(
-      unitComponent.locomotion,
-      unitComponent.mass,
-      unitComponent.supportPointOffsetZ,
-    ),
-    unitComponent.radius.collision,
-    world.slopePathMode === 'symmetric',
-  );
-  const final = points[points.length - 1];
-  return final !== undefined
-    ? { x: final.x, y: final.y, z: final.z ?? world.getTerrainBedZ(final.x, final.y) }
-    : { x, y, z: world.getTerrainBedZ(x, y) };
+  return { x, y, z: world.getTerrainBedZ(x, y) };
 }
 
 function groupFormationSpacing(maxCollisionRadius: number): number {

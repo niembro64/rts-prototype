@@ -15,7 +15,9 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
-import { GRAVITY } from '../../../config';
+import { GRAVITY,
+  TARGETING_ACQUISITION_SCANS_PER_TICK,
+} from '../../../config';
 import {
   CT_TARGETING_TICK_MODE_AUTO,
   CT_TARGETING_TICK_MODE_CLEAR_LOCKS,
@@ -126,6 +128,7 @@ function flushTargetingBatch(
     _targetingBatchHasCooldown.subarray(0, count),
     _targetingBatchModes.subarray(0, count),
     _targetingBatchHasActiveWork.subarray(0, count),
+    TARGETING_ACQUISITION_SCANS_PER_TICK,
   );
 
   // AIM-08.10 — the scheduler refreshes activity masks and returns the

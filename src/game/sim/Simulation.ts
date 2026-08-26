@@ -70,6 +70,7 @@ import {
   type PathPlanSchedulerStats,
 } from './SimulationPathPlanScheduler';
 import { registerPathfinderBuildingOccupancy } from './pathfinderTerrainCache';
+import { pathPlanSuffixNearBuildingChange } from './pathPlanBuildingChangeGate';
 import { getAllyTeamId, type AllyTeamId } from './teamRoster';
 import { getUnitLocomotionTraversalCapabilities } from './unitLocomotion';
 import { updateBuildingActiveStates } from './buildingActiveState';
@@ -476,6 +477,15 @@ export class Simulation {
 
   // Get construction system (for placement validation)
   /** Deterministic path-plan admission counters (diagnostics, never hashed). */
+  /** Death-explosion chain telemetry: blasts carried past the per-tick cap
+   *  and blasts detonated on the current tick. Never hashed. */
+  getDeathExplosionPlannerStats(): { pendingBlasts: number; detonationsThisTick: number } {
+    return {
+      pendingBlasts: this.deathExplosionPlanner.getPendingBlastCount(),
+      detonationsThisTick: this.deathExplosionPlanner.getDetonationsOnTick(this.world.getTick() - 1),
+    };
+  }
+
   getPathPlanSchedulerStats(): PathPlanSchedulerStats {
     return this.pathPlanScheduler.getStats();
   }
@@ -989,9 +999,20 @@ export class Simulation {
         this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
         return null;
       }
-      const buildingGridVersion = this.constructionSystem.getGrid().getVersion();
+      const buildingGrid = this.constructionSystem.getGrid();
+      const buildingGridVersion = buildingGrid.getVersion();
       if (plan.buildingGridVersion !== buildingGridVersion) {
+        // A change nowhere near the remaining route cannot have changed its
+        // legality; only routes within clearance reach of the touched cells
+        // re-walk their polyline. Unknown history (plan older than the
+        // retained log) revalidates in full.
+        const change = buildingGrid.changedBoundsSince(plan.buildingGridVersion);
         if (
+          change !== null &&
+          !pathPlanSuffixNearBuildingChange(entity, plan, change, unit.radius.collision)
+        ) {
+          plan.buildingGridVersion = buildingGridVersion;
+        } else if (
           isPathPlanSuffixTraversable(
             entity.transform.x,
             entity.transform.y,

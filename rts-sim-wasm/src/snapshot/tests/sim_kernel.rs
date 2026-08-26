@@ -2331,7 +2331,7 @@ mod sim_kernel_tests {
         // locomotion surface. A hovered factory's build footprint cannot
         // change this flat-terrain route.
         pathfinder_rebuild_terrain_mask_and_cc(10_001);
-        let count = pathfinder_find_path(
+        let count = pathfinder_find_path_for_tests(
             210.0, 210.0, 320.0, 210.0, 0.0, false, 0.0, true, false, false, true, false, false,
             0.0, 0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
@@ -2352,7 +2352,7 @@ mod sim_kernel_tests {
         // The current cell is in the map-edge buffer. It used to be snapped
         // toward the goal; an invalid start now remains stranded.
         pathfinder_rebuild_terrain_mask_and_cc(10_002);
-        let count = pathfinder_find_path(
+        let count = pathfinder_find_path_for_tests(
             30.0, 210.0, 80.0, 210.0, 0.0, false, 0.0, true, false, false, true, false, false, 0.0,
             0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
@@ -2371,7 +2371,7 @@ mod sim_kernel_tests {
         pathfinder_init(400.0, 400.0);
 
         pathfinder_rebuild_terrain_mask_and_cc(10_003);
-        let count = pathfinder_find_path(
+        let count = pathfinder_find_path_for_tests(
             160.0, 210.0, 240.0, 210.0, 0.5, false, 0.0, true, false, false, true, false, false,
             0.0, 0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
@@ -2487,7 +2487,7 @@ mod sim_kernel_tests {
         pathfinder_init(320.0, 180.0);
         pathfinder_rebuild_terrain_mask_and_cc(10_031);
 
-        let ground_only_count = pathfinder_find_path(
+        let ground_only_count = pathfinder_find_path_for_tests(
             70.0, 90.0, 250.0, 90.0, 0.0, false, 0.0, true, false, false, true, true, false, 0.0,
             0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
@@ -2590,7 +2590,7 @@ mod sim_kernel_tests {
             "translating that formation segment across the water cell must be rejected",
         );
 
-        let recovered_land_count = pathfinder_find_path(
+        let recovered_land_count = pathfinder_find_path_for_tests(
             150.0, 90.0, 250.0, 90.0, 0.0, false, 0.0, true, false, false, true, true, false, 0.0,
             0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
@@ -2608,7 +2608,7 @@ mod sim_kernel_tests {
             "a now-valid dry start may not enter its recovery-only water MOVE domain",
         );
 
-        let stranded_water_count = pathfinder_find_path(
+        let stranded_water_count = pathfinder_find_path_for_tests(
             70.0, 90.0, 250.0, 90.0, 0.0, false, 0.0, false, true, false, false, true, false, 0.0,
             0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
@@ -2629,7 +2629,7 @@ mod sim_kernel_tests {
         // With no shoreline band, the fully wet cell is valid; the mixed goal
         // still fails because its exposed case is invalid for a water-only
         // unit, so the click snaps back to the wet cell.
-        let shore_goal_count = pathfinder_find_path(
+        let shore_goal_count = pathfinder_find_path_for_tests(
             170.0, 90.0, 190.0, 90.0, 0.0, false, 0.0, false, true, false, false, true, false, 0.0,
             0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
@@ -2661,7 +2661,7 @@ mod sim_kernel_tests {
             "a water-only segment must reject the partly dry shoreline cell",
         );
 
-        let amphibious_count = pathfinder_find_path(
+        let amphibious_count = pathfinder_find_path_for_tests(
             70.0, 90.0, 250.0, 90.0, 0.0, false, 0.0, true, true, false, true, true, false, 0.0,
             0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
@@ -2811,7 +2811,7 @@ mod sim_kernel_tests {
         pathfinder_init(200.0, 100.0);
         pathfinder_rebuild_terrain_mask_and_cc(10_004);
 
-        let count = pathfinder_find_path(
+        let count = pathfinder_find_path_for_tests(
             90.0, 50.0, 110.0, 50.0, 0.0, false, 0.0, true, false, false, true, false, false, 0.0,
             0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
@@ -2859,7 +2859,7 @@ mod sim_kernel_tests {
         assert_eq!(waypoint_valid[low_flat], 1);
         assert_eq!(move_valid[low_flat], 1);
 
-        let count = pathfinder_find_path(
+        let count = pathfinder_find_path_for_tests(
             110.0, 50.0, 90.0, 50.0, 0.5, false, 0.0, true, false, false, true, false, false, 0.0,
             0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
@@ -3005,7 +3005,7 @@ mod sim_kernel_tests {
         assert_eq!(waypoint_valid[steep_cell], 0);
         assert_eq!(move_valid[steep_cell], 0);
 
-        let count = pathfinder_find_path(
+        let count = pathfinder_find_path_for_tests(
             100.0, 50.0, 50.0, 50.0, 0.5, false, 0.0, true, false, false, true, false, false, 0.0,
             0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
@@ -3038,7 +3038,7 @@ mod sim_kernel_tests {
         }
         assert_eq!(pathfinder_sync_building_occupancy(&cell_gx, &cell_gy, 7), 1);
 
-        let count = pathfinder_find_path(
+        let count = pathfinder_find_path_for_tests(
             110.0, 90.0, 300.0, 300.0, 0.0, false, 0.0, true, false, false, true, false, false,
             20.0, 0.0, 0.0, 0.0, 0.0, 0.0, false,
         );
