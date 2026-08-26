@@ -1368,6 +1368,51 @@
         same route cost as A* and may not erase a slope or clearance decision after the search.
       </p>
       <p>
+        Legality and choice use two different clearances. The cell-to-cell A* step and every
+        legality check (is this polyline still connected from where the body now stands, may this
+        adopted route be installed) use the exact body gate, so a narrow corridor stays usable. Any
+        <em>chosen</em> straight segment &mdash; a string-pull shortcut, a direct plan, the
+        follower&rsquo;s corner shortcut &mdash; walks its cells at the body gate plus
+        <code>lineClearanceMarginWu</code> (<code>pathfindingTuningConfig.json</code>, half a cell):
+        a straight leg may not run through the cells adjacent to a wall, so the delivered polyline
+        rounds a corner with air instead of grazing it and putting the body in contact. Judging
+        legality at the margin instead was measured to throw away completed routes of units that
+        kept moving during a replan and re-queue them forever. Two details make the margin real
+        rather than nominal: the pocket-escape rule (a body already tighter than its own disk may
+        walk out along non-decreasing clearance) keeps measuring &ldquo;in a pocket&rdquo; against
+        the <em>body</em> gate even while a line walks at the wider gate &mdash; otherwise every
+        band cell counts as a pocket and hugging the wall at constant clearance is legal again &mdash;
+        and the per-cell passability cache, filled at the body gate during the search, is bypassed
+        during the margin walk (the transition cache keyed on the margin bit keeps repeats cheap).
+        A Rust test pins the semantics: a leg beside a wall validates at the body gate and is refused
+        at the line gate; one cell further out it passes both.
+      </p>
+      <p>
+        The margin alone does not round a corner, because the string pull can only <em>refuse</em>
+        shortcuts &mdash; it cannot move the raw A* cells it keeps. Those cells are chosen at the
+        body gate, and a corner cut one cell out is legal for a 9.6 wu body with 4.5 wu of air. What
+        decides between that diagonal and the one a cell wider is the soft clearance penalty
+        (<code>softClearancePenaltyPerCell</code>, quadratic in the shortfall below body + 2 cells).
+        At 0.35 the tight diagonal was cheaper (measured 4.5 wu of air at a gap corner); at 1.0 the
+        wider one wins (26.8 wu single unit, 18.7 wu p0 across eight units, no route under 10 wu) and
+        the 1000-unit mass move does <em>less</em> work (183k &rarr; 165k units), because routes that
+        keep off walls also string-pull into fewer, longer segments. 2.0 bought nothing more for a
+        lone unit and made crowds worse. A Rust test demands 15 wu of air beyond the body radius at the
+        corners of a wall gap over eight approach angles (with a weak penalty the tight cut shows
+        up only at some angles) so a retune cannot silently put bodies back in contact; crowds still push each
+        other into walls &mdash; that is the sphere physics, not the route.
+      </p>
+      <p>
+        The fine search inside a corridor is guided by the corridor: its heuristic is the distance
+        to the cell where the abstract route leaves the current cluster plus the octile chain of the
+        remaining exits, never less than the plain goal distance. A goal behind a wall no longer pulls
+        the search into the wall; a ~200-cell route closes about as many nodes as it has cells
+        (measured 1,989 &rarr; 138 expansions). Completed hierarchical routes are also shared: a
+        unit of the same body class leaving the same 320 wu cluster for the same goal cluster
+        adopts the cached polyline with its own goal as the last point, validated from its own
+        position, so a thousand-unit order is a few dozen searches.
+      </p>
+      <p>
         Pathfinding nodes are conservative terrain summaries. A node must account for every
         authoritative terrain triangle that touches it, including triangles that only meet the
         node along an edge or vertex. Vertical 90-degree faces are common and must participate in

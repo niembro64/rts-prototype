@@ -90,8 +90,9 @@ pub(crate) struct HpaClassGraph {
 }
 
 pub(crate) enum HpaSearchOutcome {
-    /// Clusters along the abstract route, start cluster first, goal last.
-    Reached { corridor: Vec<u32> },
+    /// Clusters along the abstract route, start cluster first, goal last,
+    /// and per cluster the cell where the route leaves it (goal cell last).
+    Reached { corridor: Vec<u32>, exits: Vec<u32> },
     /// No abstract route. `reachable_clusters` holds every cluster the start
     /// can reach (by abstract node), for goal snapping.
     Unreachable,
@@ -795,6 +796,7 @@ pub(crate) fn hpa_search(
             let _ = direct;
             return HpaSearchOutcome::Reached {
                 corridor: vec![start_cluster],
+                exits: vec![goal_cell],
             };
         }
     }
@@ -962,20 +964,27 @@ pub(crate) fn hpa_search(
         return HpaSearchOutcome::Unreachable;
     }
     // Corridor: clusters of the nodes along the path, goal cluster last.
+    // Walking parents from the goal, the first node met inside a cluster is
+    // the one the route leaves that cluster through — its exit cell.
     let mut rev: Vec<u32> = vec![goal_cluster];
+    let mut rev_exits: Vec<u32> = vec![goal_cell];
     let mut walker = state.hpa_parent[goal_virtual as usize];
     while walker != u32::MAX {
         let cl = hpa_node_cluster(state, walker);
         if *rev.last().unwrap() != cl {
             rev.push(cl);
+            rev_exits.push(hpa_node_cell(&state.hpa_classes[class_idx], walker));
         }
         walker = state.hpa_parent[walker as usize];
     }
     if *rev.last().unwrap() != start_cluster {
         rev.push(start_cluster);
+        let last = *rev_exits.last().unwrap();
+        rev_exits.push(last);
     }
     rev.reverse();
-    HpaSearchOutcome::Reached { corridor: rev }
+    rev_exits.reverse();
+    HpaSearchOutcome::Reached { corridor: rev, exits: rev_exits }
 }
 
 #[inline]

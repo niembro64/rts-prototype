@@ -347,6 +347,20 @@ fn generate_pathfinding_tuning(manifest_dir: &Path) {
             corridor_heuristic_weight
         );
     }
+    let line_clearance_margin_wu = read_number_field(&raw, "lineClearanceMarginWu")
+        .unwrap_or_else(|| {
+            panic!(
+                "missing numeric lineClearanceMarginWu in {}",
+                config_path.display()
+            )
+        });
+    if !line_clearance_margin_wu.is_finite() || line_clearance_margin_wu < 0.0 {
+        panic!(
+            "invalid lineClearanceMarginWu in {}: expected >= 0, got {}",
+            config_path.display(),
+            line_clearance_margin_wu
+        );
+    }
     let traffic_heat_penalty = read_number_field(&raw, "trafficHeatPenalty").unwrap_or_else(|| {
         panic!(
             "missing numeric trafficHeatPenalty in {}",
@@ -405,6 +419,10 @@ fn generate_pathfinding_tuning(manifest_dir: &Path) {
     generated.push_str(&format!(
         "const PATHFINDING_CORRIDOR_HEURISTIC_WEIGHT: f32 = {:?};\n",
         corridor_heuristic_weight as f32
+    ));
+    generated.push_str(&format!(
+        "const PATHFINDING_LINE_CLEARANCE_MARGIN_WU: f64 = {:?};\n",
+        line_clearance_margin_wu
     ));
     generated.push_str(&format!(
         "const PATHFINDING_HIERARCHICAL_CLUSTER_SIZE_CELLS: i32 = {};\n",

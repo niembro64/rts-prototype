@@ -198,6 +198,15 @@ export function runMassMovePathBudgetContractTest(): void {
       routed === army.length,
       `only ${routed}/${ARMY_SIZE} units ever received an authoritative route after ${drainTicks} ticks`,
     );
+    // A blob of identical bodies leaving one cluster for one goal cluster
+    // shares routes: most of the army must have adopted a cached route
+    // instead of searching (the shared cache is what makes a thousand-unit
+    // order a few dozen searches).
+    const outcomes = core.simulation.getPathQueryOutcomeStats();
+    assertContract(
+      outcomes.sharedRouteHits >= ARMY_SIZE / 4,
+      `only ${outcomes.sharedRouteHits} of ${ARMY_SIZE} routes came from the shared route cache`,
+    );
     assertContract(
       drainTicks >= MIN_DRAIN_TICKS,
       `a whole-army order must drain across ticks, not inside the tick that issued it ` +

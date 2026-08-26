@@ -86,7 +86,7 @@ fn pathfinder_a_star(
     state.fine_arena.pending = None;
     let key = fine_key(state, sgx, sgy, ggx, ggy, traversal, cost_profile);
     let corridor = full_corridor(state);
-    match pathfinder_a_star_slice(state, key, &corridor, traversal, cost_profile, u32::MAX) {
+    match pathfinder_a_star_slice(state, key, &corridor, &[], traversal, cost_profile, u32::MAX) {
         AStarSliceOutcome::Complete { result, .. } => result,
         AStarSliceOutcome::Pending { .. } => unreachable!("u32::MAX exhausts any grid"),
     }
@@ -104,7 +104,7 @@ fn slice(
 ) -> AStarSliceOutcome {
     let key = fine_key(state, sgx, sgy, ggx, ggy, traversal, cost_profile);
     let corridor = full_corridor(state);
-    pathfinder_a_star_slice(state, key, &corridor, traversal, cost_profile, budget)
+    pathfinder_a_star_slice(state, key, &corridor, &[], traversal, cost_profile, budget)
 }
 
 fn ground_traversal() -> PathfinderTraversal {
@@ -853,7 +853,7 @@ fn corridor_restricted_search_never_leaves_its_clusters() {
     state.cur_waypoint_matches_move_domain = true;
     let profile = ground_cost_profile(GRAVITY);
     let key = fine_key(&state, 2, 8, 60, 8, traversal, profile);
-    let outcome = pathfinder_a_star_slice(&mut state, key, &[0, 1], traversal, profile, u32::MAX);
+    let outcome = pathfinder_a_star_slice(&mut state, key, &[0, 1], &[], traversal, profile, u32::MAX);
     match outcome {
         AStarSliceOutcome::Complete { result, expanded_this_slice } => {
             assert!(result.is_none(), "the goal is outside the corridor");
@@ -862,7 +862,7 @@ fn corridor_restricted_search_never_leaves_its_clusters() {
         AStarSliceOutcome::Pending { .. } => panic!("must not pend"),
     }
     let key = fine_key(&state, 2, 8, 30, 8, traversal, profile);
-    let outcome = pathfinder_a_star_slice(&mut state, key, &[0, 1], traversal, profile, u32::MAX);
+    let outcome = pathfinder_a_star_slice(&mut state, key, &[0, 1], &[], traversal, profile, u32::MAX);
     match outcome {
         AStarSliceOutcome::Complete { result, expanded_this_slice } => {
             assert!(result.expect("goal inside the corridor").reached_goal);
@@ -1008,7 +1008,7 @@ fn hierarchy_crosses_a_large_open_grid_with_a_short_corridor() {
     let goal = (254 * 256 + 254) as u32;
     let outcome = hpa_search(&mut state, class_idx, start, goal, u32::MAX);
     let corridor = match outcome {
-        HpaSearchOutcome::Reached { corridor } => corridor,
+        HpaSearchOutcome::Reached { corridor, .. } => corridor,
         _ => panic!("open grid must connect opposite corners"),
     };
     // 16x16 clusters on a 256 grid: a diagonal crossing touches ~31.
@@ -1024,7 +1024,7 @@ fn hierarchy_crosses_a_large_open_grid_with_a_short_corridor() {
     assert!(built < 256, "built {built} of 256 clusters");
     // The corridor search finds the route without touching the rest.
     let fine = fine_key(&state, 1, 1, 254, 254, traversal, profile);
-    match pathfinder_a_star_slice(&mut state, fine, &corridor, traversal, profile, u32::MAX) {
+    match pathfinder_a_star_slice(&mut state, fine, &corridor, &[], traversal, profile, u32::MAX) {
         AStarSliceOutcome::Complete { result, expanded_this_slice } => {
             assert!(result.expect("route").reached_goal);
             assert!(expanded_this_slice < 34 * 256, "expanded {expanded_this_slice}");
@@ -1080,7 +1080,7 @@ fn hierarchy_preserves_a_gap_exactly_as_wide_as_the_body_and_no_narrower() {
         let class_idx = hpa_class_index(&mut state, key);
         let outcome = hpa_search(&mut state, class_idx, start, goal, u32::MAX);
         let corridor = match outcome {
-            HpaSearchOutcome::Reached { corridor } => corridor,
+            HpaSearchOutcome::Reached { corridor, .. } => corridor,
             _ => panic!("a point body must pass a 3-cell gap"),
         };
         // The gap border (cluster column 2 | 3, row of clusters 1) carries
@@ -1094,7 +1094,7 @@ fn hierarchy_preserves_a_gap_exactly_as_wide_as_the_body_and_no_narrower() {
             assert!((23..26).contains(&row), "entrance row {row} must be inside the gap");
         }
         let fine = fine_key(&state, 4, 24, 90, 24, traversal, profile);
-        match pathfinder_a_star_slice(&mut state, fine, &corridor, traversal, profile, u32::MAX) {
+        match pathfinder_a_star_slice(&mut state, fine, &corridor, &[], traversal, profile, u32::MAX) {
             AStarSliceOutcome::Complete { result, .. } => {
                 assert!(result.expect("route").reached_goal);
                 assert!(

@@ -14,6 +14,7 @@ type PathfindingTuningConfig = {
   chaseRepathDriftDistanceFraction: number;
   partialPlanRetryTicks: number;
   directPlanMaxDistanceWu: number;
+  lineClearanceMarginWu: number;
   directPathMaxCostRatio: number;
   hierarchicalClusterSizeCells: number;
   corridorHeuristicWeight: number;
@@ -159,6 +160,16 @@ export const PATHFINDING_PARTIAL_PLAN_RETRY_TICKS = requireNonNegativeInteger(
 );
 /** Goals within this 2D distance first try a single validated straight
  *  segment as the whole plan, skipping A* (and the plan budget) entirely. */
+/** Extra clearance (world units) a straight segment must keep beyond the
+ *  body radius — string-pull shortcuts, direct plans, the follower's corner
+ *  shortcut and polyline validation all walk cells at this margin, while
+ *  the cell-to-cell A* step keeps the exact body gate. Consumed by the Rust
+ *  build (build.rs); exported here so the contract is visible from TS. */
+export const PATHFINDING_LINE_CLEARANCE_MARGIN_WU = requireNonNegativeNumber(
+  'lineClearanceMarginWu',
+  config.lineClearanceMarginWu,
+);
+
 export const PATHFINDING_DIRECT_PLAN_MAX_DISTANCE_WU = requireNonNegativeNumber(
   'directPlanMaxDistanceWu',
   config.directPlanMaxDistanceWu,
