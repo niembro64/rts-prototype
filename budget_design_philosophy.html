@@ -2419,6 +2419,19 @@
         shared occupancy-weighted force profile continuously blends its two authored media.</li>
       </ul>
 
+      <h3>Ground prints follow the live contact without becoming simulation</h3>
+      <p>
+        Wheel ruts, tread tracks, and planted-foot marks are local presentation derived from the
+        rendered chassis pose and its blueprint contact layout. They never cross the wire or feed
+        movement. Every locomotion detail rung resolves the same contacts, while a drawn crawler
+        may refine a footprint with its real planted foot.
+      </p>
+      <ul class="rule-list">
+        <li>A small tire keeps exactly one mutable leading quad between its last committed rut edge and the current wheel contact. That quad is rewritten in place on every ground-print update, becomes an ordinary fading mark at the density-controlled spacing boundary, and hands the same edge to its successor. The visible rut therefore reaches the tire even while the tire has moved less than one emission interval.</li>
+        <li>A continuous tread belt has a large contact patch and retains distance-spaced committed quads. Feet and flippers retain plant-transition stamps. The wheel-specific leading edge must not add per-frame mark allocations to either family.</li>
+        <li>Ground-print work remains bounded by contacts plus live marks: at most one mutable leading mark per wheel, one shared merged GPU buffer, and the existing density, lifetime, retirement, and hard-cap policy.</li>
+      </ul>
+
       <h3>One rendered root pose owns every attachment</h3>
       <p>
         A rig must consume the exact batched root position and quaternion used to draw its chassis.

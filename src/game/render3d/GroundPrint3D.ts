@@ -6,12 +6,12 @@
 //
 // Rewrite goals (vs. the original frame-skip design):
 //
-// 1. NO GAPS. Trails are continuous. We sample every
-//    contact every frame and emit a new quad as soon as the contact
-//    has moved by `spacing` world units since the last emit. The new
-//    quad spans `lastEmit → current` exactly, so segments butt
-//    edge-to-edge no matter how fast the unit is moving or how few
-//    quads-per-second we end up emitting.
+// 1. NO GAPS. Trails are continuous. We sample every contact every frame.
+//    A wheel owns one mutable leading quad from its last committed point to
+//    the live tire contact, then promotes that quad when it reaches `spacing`.
+//    The much larger tread patches retain distance-spaced commits. Every
+//    finished quad spans `lastEmit → current` exactly, so segments butt
+//    edge-to-edge no matter how fast the unit is moving.
 //
 // 2. NO MISSED FOOTPRINTS. Leg stamps are emitted on the planted-
 //    unplanted → planted transition, so every
@@ -126,6 +126,9 @@ const LIFETIME_MULT_AT_ZERO_DENSITY = 0.4;
 // more, so the trail stays continuous.
 const SPACING_AT_FULL_DENSITY = 4;
 const SPACING_AT_ZERO_DENSITY = 24;
+// Ignore only sub-float-noise contact jitter. A real wheel displacement,
+// however small compared with spacing, must pull its live leading edge.
+const MIN_LIVE_WHEEL_MOTION_SQ = 1e-8;
 
 // ── Stamp dedupe ──
 // A leg sometimes "re-plants" within ~a wu of where it took off
@@ -325,11 +328,11 @@ if (vMarkShape > 0.5) {
 }
 
 // ── Per-trail bookkeeping ──
-// One TrailState per (unit, contact): the contact's last-emit
-// position (also the start of the next quad), its motion direction
-// at that emit (for miter-joining the next), and a pointer to the
-// most recent live Mark so we can rewrite its end vertices when a
-// successor joins.
+// One TrailState per (unit, contact): the contact's last-emit position (also
+// the start of the next quad), its motion direction at that emit (for
+// miter-joining the next), and pointers to the most recent committed mark and
+// optional mutable wheel-leading mark. The latter is one bounded quad per
+// tire, not one allocation per frame.
 
 type TrailKey = number;
 
@@ -355,11 +358,8 @@ type TrailState = {
   lastEmitY: number;
   lastDirX: number;
   lastDirY: number;
-  /** First time we saw this contact we record the position but
-   *  don't have a direction yet — emits don't begin until the
-   *  contact has moved by `spacing` from this point. */
-  primed: boolean;
   prevMark: Mark | null;
+  leadingMark: Mark | null;
   terrainMode: LocomotionTerrainMode;
 };
 
@@ -605,6 +605,7 @@ export class GroundPrint3D {
           bx + contact.localX * cosYaw - contact.localZ * sinYaw,
           by + contact.localX * sinYaw + contact.localZ * cosYaw,
           contact.width,
+          contact.kind,
           spacingSq,
           terrainMode,
         );
@@ -709,15 +710,16 @@ export class GroundPrint3D {
   }
 
   // ── Trail sampling (wheels, tread sides) ──
-  // Always invoked, every frame, every contact. The distance check
-  // gates emission; nothing else does. So as long as the contact
-  // moves, the trail keeps getting longer with quads butting
-  // edge-to-edge — gap-free regardless of density.
+  // Always invoked, every frame, every contact. Distance gates finished
+  // segments; wheel contacts additionally rewrite one live leading quad.
+  // As long as the contact moves, the trail grows edge-to-edge regardless
+  // of density.
 
   private sampleTrail(
     key: TrailKey,
     cx: number, cz: number,
     width: number,
+    kind: 'wheel' | 'tread',
     spacingSq: number,
     terrainMode: LocomotionTerrainMode,
   ): void {
@@ -728,8 +730,8 @@ export class GroundPrint3D {
         lastEmitY: cz,
         lastDirX: 0,
         lastDirY: 0,
-        primed: true,
         prevMark: null,
+        leadingMark: null,
         terrainMode,
       };
       this.trails.set(key, state);
@@ -738,11 +740,67 @@ export class GroundPrint3D {
     const dx = cx - state.lastEmitX;
     const dz = cz - state.lastEmitY;
     const distSq = dx * dx + dz * dz;
+    if (kind === 'wheel') {
+      if (distSq <= MIN_LIVE_WHEEL_MOTION_SQ) return;
+      const invLen = 1 / Math.sqrt(distSq);
+      this.updateLiveWheelTrail(
+        state,
+        cx,
+        cz,
+        dx * invLen,
+        dz * invLen,
+        width,
+        terrainMode,
+        distSq >= spacingSq,
+      );
+      return;
+    }
     if (distSq < spacingSq) return;
     const invLen = 1 / Math.sqrt(distSq);
     const dirX = dx * invLen;
     const dirZ = dz * invLen;
     this.appendMiteredTrail(state, cx, cz, dirX, dirZ, width, terrainMode);
+  }
+
+  /** Stretch one already-allocated wheel mark to the live contact. Once it
+   *  reaches the ordinary trail spacing it becomes the committed predecessor
+   *  and the next displacement starts a fresh leading mark from that edge. */
+  private updateLiveWheelTrail(
+    state: TrailState,
+    endX: number,
+    endY: number,
+    dirX: number,
+    dirZ: number,
+    width: number,
+    terrainMode: LocomotionTerrainMode,
+    commit: boolean,
+  ): void {
+    let mark = state.leadingMark;
+    if (mark === null || mark.removed) {
+      // Allocate first: overflow eviction may retire the predecessor, and the
+      // shared geometry writer checks its liveness only after this point.
+      mark = this.allocateMark();
+      state.leadingMark = mark;
+      this.writeQuadMask(mark.slot);
+      this.writeMarkTint(mark);
+    }
+    this.writeMiteredTrailGeometry(
+      state,
+      mark,
+      endX,
+      endY,
+      dirX,
+      dirZ,
+      width,
+      terrainMode,
+    );
+    if (!commit) return;
+    state.lastEmitX = endX;
+    state.lastEmitY = endY;
+    state.lastDirX = dirX;
+    state.lastDirY = dirZ;
+    state.prevMark = mark;
+    state.leadingMark = null;
   }
 
   // ── Stamp sampling (a rig's real feet) ──
@@ -894,15 +952,42 @@ export class GroundPrint3D {
     width: number,
     terrainMode: LocomotionTerrainMode,
   ): void {
-    // Capture lastDir before allocateMark; allocateMark won't
-    // touch state, but we read these before any branching anyway.
-    const lastDirX = state.lastDirX;
-    const lastDirY = state.lastDirY;
-    const prev = state.prevMark;
-
     // Allocate first — may evict ANY existing mark including `prev`.
     const newMark = this.allocateMark();
+    this.writeQuadMask(newMark.slot);
+    this.writeMarkTint(newMark);
+    this.writeMiteredTrailGeometry(
+      state,
+      newMark,
+      endX,
+      endY,
+      dirX,
+      dirZ,
+      width,
+      terrainMode,
+    );
 
+    state.lastEmitX = endX;
+    state.lastEmitY = endY;
+    state.lastDirX = dirX;
+    state.lastDirY = dirZ;
+    state.prevMark = newMark;
+  }
+
+  /** Write or rewrite a trail quad and keep its start joined to the latest
+   *  committed predecessor. Both distance-spaced treads and live wheel edges
+   *  share this geometry path. */
+  private writeMiteredTrailGeometry(
+    state: TrailState,
+    mark: Mark,
+    endX: number,
+    endY: number,
+    dirX: number,
+    dirZ: number,
+    width: number,
+    terrainMode: LocomotionTerrainMode,
+  ): void {
+    const prev = state.prevMark;
     const haveLivePrev = prev !== null && !prev.removed;
     const corners = computeMiteredQuad(
       state.lastEmitX,
@@ -911,8 +996,8 @@ export class GroundPrint3D {
       endY,
       dirX,
       dirZ,
-      lastDirX,
-      lastDirY,
+      state.lastDirX,
+      state.lastDirY,
       width * 0.5,
       MITER_LIMIT,
       haveLivePrev,
@@ -932,19 +1017,11 @@ export class GroundPrint3D {
     }
     writeDrapedQuadXZ(
       this.positions,
-      newMark.slot,
+      mark.slot,
       this.markYForTerrainMode(terrainMode),
       corners,
     );
-    markDirtySlot(this.posDirty, newMark.slot);
-    this.writeQuadMask(newMark.slot);
-    this.writeMarkTint(newMark);
-
-    state.lastEmitX = endX;
-    state.lastEmitY = endY;
-    state.lastDirX = dirX;
-    state.lastDirY = dirZ;
-    state.prevMark = newMark;
+    markDirtySlot(this.posDirty, mark.slot);
   }
 
   private markYForTerrainMode(
@@ -1072,7 +1149,10 @@ export class GroundPrint3D {
     for (const m of this.marks) m.removed = true;
     this.marks.length = 0;
     this.geometry.setDrawRange(0, 0);
-    for (const state of this.trails.values()) state.prevMark = null;
+    for (const state of this.trails.values()) {
+      state.prevMark = null;
+      state.leadingMark = null;
+    }
     clearDirtySlotSpan(this.posDirty);
     clearDirtySlotSpan(this.colDirty);
     clearDirtySlotSpan(this.uvDirty);

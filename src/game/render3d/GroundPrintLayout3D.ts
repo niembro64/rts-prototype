@@ -27,6 +27,9 @@ export type GroundPrintTrailContact = Readonly<{
   localX: number;
   localZ: number;
   width: number;
+  /** Wheels keep one mutable leading quad attached to their small contact
+   *  patch; continuous tread belts only need distance-spaced commits. */
+  kind: 'wheel' | 'tread';
 }>;
 
 /** The mark one foothold leaves, sized to the part that touches the ground:
@@ -93,6 +96,7 @@ function buildLayout(blueprintId: string, r: number): GroundPrintLayout | null {
           localX: r * mount.xUnitRadiusRatio,
           localZ: r * mount.yUnitRadiusRatio,
           width,
+          kind: 'wheel' as const,
         })),
         stamps: [],
       };
@@ -106,6 +110,7 @@ function buildLayout(blueprintId: string, r: number): GroundPrintLayout | null {
           localX: r * mount.xUnitRadiusRatio,
           localZ: r * mount.yUnitRadiusRatio,
           width,
+          kind: 'tread' as const,
         })),
         stamps: [],
       };
