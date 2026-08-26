@@ -24,8 +24,3 @@
 
 
 
-	9) the spectator still has the "IDLE" unit section even when they are not actually playing a game, remove that. 
-
-
-
-

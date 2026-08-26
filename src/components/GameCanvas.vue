@@ -2823,8 +2823,11 @@ watchEffect(() => {
           :can-command="!isSpectating"
         />
 
-        <!-- Idle builders (bottom-center, BAR gui_idle_builders) -->
+        <!-- Idle builders (bottom-center, BAR gui_idle_builders). A watcher
+             has no builders to put to work, so the section does not exist
+             for them. -->
         <IdleBuildersPanel
+          v-if="!isSpectating"
           :groups="idleBuilders"
           :playable-bottom-inset-px="playableBottomInsetPx"
           @cycle="cycleIdleBuilder"
