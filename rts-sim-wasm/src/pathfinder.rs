@@ -50,6 +50,19 @@ pub(crate) const PATHFINDER_SEARCH_HIERARCHICAL: u32 = 2;
 /// Terrain-bound unit centers stay out of the outer map guard cells.
 pub(crate) const PATHFINDER_MAP_EDGE_BUFFER_WU: f64 = 40.0;
 const PATHFINDER_SYNC_CONTINUATION_OWNER: u32 = u32::MAX;
+/// A supercover line step (passability + transition cost of one cell) costs
+/// roughly an eighth of a fine A* expansion (heap push/pop plus eight
+/// neighbour evaluations); smoothing work is charged at that ratio.
+const SMOOTHING_CELLS_PER_WORK_UNIT: u32 = 8;
+
+/// Cells a supercover line between two world points will visit — the
+/// Chebyshev cell distance plus one — used to charge smoothing work.
+fn pathfinder_line_cells_between(state: &PathfinderState, x0: f64, y0: f64, x1: f64, y1: f64) -> u32 {
+    let cs = state.cell_size;
+    let dx = ((x1 / cs).floor() - (x0 / cs).floor()).abs();
+    let dy = ((y1 / cs).floor() - (y0 / cs).floor()).abs();
+    dx.max(dy) as u32 + 1
+}
 /// Heat stamped on every cell of a completed authoritative route.
 pub(crate) const PATHFINDER_TRAFFIC_HEAT_PER_ROUTE: u8 = 48;
 
@@ -166,6 +179,10 @@ pub(crate) struct PathfinderState {
     last_fine_expanded_nodes_this_slice: u32,
     last_coarse_expanded_nodes: u32,
     last_hpa_work: u32,
+    /// Every work unit any search has ever charged, sliced or not. Telemetry
+    /// only (never hashed); the mass-move budget contract test reads it to
+    /// prove a command tick cannot search more than one budget's worth.
+    total_work_units: f64,
     last_corridor_clusters: u32,
     last_smoothing_line_checks: u32,
     last_direct_cost_ratio: f32,
@@ -377,6 +394,7 @@ impl PathfinderState {
             last_fine_expanded_nodes_this_slice: 0,
             last_coarse_expanded_nodes: 0,
             last_hpa_work: 0,
+            total_work_units: 0.0,
             last_corridor_clusters: 0,
             last_smoothing_line_checks: 0,
             last_direct_cost_ratio: f32::NAN,
@@ -1510,7 +1528,7 @@ fn pathfinder_finish_unreachable(state: &mut PathfinderState, start_x: f64, star
 /// waypoints land in `waypoint_scratch` as interleaved (x, y) pairs; returns
 /// the waypoint count (0 with PENDING status when the slice budget ran out).
 #[allow(clippy::too_many_arguments)]
-fn pathfinder_find_path_with_expansion_budget(
+fn pathfinder_find_path_with_expansion_budget_inner(
     start_x: f64,
     start_y: f64,
     goal_x: f64,
@@ -1701,13 +1719,15 @@ fn pathfinder_find_path_with_expansion_budget(
         if let HpaSearchOutcome::Unreachable = outcome {
             // Snap to the nearest waypoint cell the start can actually reach
             // and route there instead (BAR: move as close as possible).
-            match hpa_nearest_reachable_cell(
+            let (nearest, flood_work) = hpa_nearest_reachable_cell(
                 state,
                 class_idx,
                 goal_cell_gx,
                 goal_cell_gy,
                 waypoint_traversal,
-            ) {
+            );
+            state.hpa_work += flood_work;
+            match nearest {
                 Some((nx, ny)) if !(nx == sgx && ny == sgy) => {
                     goal_cell_gx = nx;
                     goal_cell_gy = ny;
@@ -1824,7 +1844,13 @@ fn pathfinder_find_path_with_expansion_budget(
             state.traffic_heat[idx] = state.traffic_heat[idx].saturating_add(PATHFINDER_TRAFFIC_HEAT_PER_ROUTE);
         }
     }
-    // Cost-aware string pulling.
+    // Cost-aware string pulling. Every shortcut test walks a supercover
+    // line from the anchor, so a long straight stretch costs O(length) per
+    // step and O(length²) over the stretch; that work is charged to the
+    // slice below (one work unit per SMOOTHING_CELLS_PER_WORK_UNIT cells) so
+    // the tick scheduler admits fewer routes after an expensive completion
+    // instead of believing the smoothing was free.
+    let mut smoothing_cells: u32 = 0;
     let mut anchor_x = start_x;
     let mut anchor_y = start_y;
     let path_len = state.path_scratch.len();
@@ -1863,6 +1889,7 @@ fn pathfinder_find_path_with_expansion_budget(
             .unwrap_or(f32::INFINITY);
             chain_cost += raw_edge_cost;
             state.last_smoothing_line_checks += 1;
+            smoothing_cells += pathfinder_line_cells_between(state, anchor_x, anchor_y, next_x, next_y);
             let shortcut_cost = pathfinder_line_cost(
                 state,
                 anchor_x,
@@ -1880,6 +1907,9 @@ fn pathfinder_find_path_with_expansion_budget(
             }
         }
     }
+    state.last_fine_expanded_nodes_this_slice = state
+        .last_fine_expanded_nodes_this_slice
+        .saturating_add(smoothing_cells / SMOOTHING_CELLS_PER_WORK_UNIT);
     if goal_was_snapped {
         let (cx, cy) = pathfinder_cell_center_for_state(state, goal_cell_gx, goal_cell_gy);
         pathfinder_push_waypoint(state, cx, cy);
@@ -1896,10 +1926,88 @@ fn pathfinder_find_path_with_expansion_budget(
     (state.waypoint_scratch.len() / 2) as u32
 }
 
-/// Synchronous route for tools/tests and the formation layout preview.
-#[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
-pub fn pathfinder_find_path(
+fn pathfinder_find_path_with_expansion_budget(
+    start_x: f64,
+    start_y: f64,
+    goal_x: f64,
+    goal_y: f64,
+    min_ground_normal_z: f32,
+    water_surface_supported: bool,
+    support_point_offset_z: f64,
+    waypoint_allow_ground: bool,
+    waypoint_allow_water: bool,
+    waypoint_allow_air: bool,
+    move_allow_ground: bool,
+    move_allow_water: bool,
+    move_allow_air: bool,
+    unit_radius: f64,
+    flat_drive_accel: f64,
+    safe_drive_accel: f64,
+    flat_water_contact_accel: f64,
+    safe_water_drive_accel: f64,
+    static_friction_coefficient: f64,
+    symmetric_slope: bool,
+    expansion_budget: u32,
+    continuation_owner: u32,
+    authoritative: bool,
+) -> u32 {
+    let count = pathfinder_find_path_with_expansion_budget_inner(
+        start_x,
+        start_y,
+        goal_x,
+        goal_y,
+        min_ground_normal_z,
+        water_surface_supported,
+        support_point_offset_z,
+        waypoint_allow_ground,
+        waypoint_allow_water,
+        waypoint_allow_air,
+        move_allow_ground,
+        move_allow_water,
+        move_allow_air,
+        unit_radius,
+        flat_drive_accel,
+        safe_drive_accel,
+        flat_water_contact_accel,
+        safe_water_drive_accel,
+        static_friction_coefficient,
+        symmetric_slope,
+        expansion_budget,
+        continuation_owner,
+        authoritative,
+    );
+    let state = pathfinder_state();
+    // Every early completion (direct route, goal snapped onto the body's own
+    // cell, unreachable) and every Budget return inside the abstract phase
+    // records the hierarchy work it did in last_hpa_work; not all of them
+    // fold it into the per-slice counter the TS scheduler charges. Before
+    // this the scheduler read 0 for such a slice, charged one unit, and kept
+    // admitting routes into a tick that had already spent its whole budget on
+    // cluster builds. Report the larger of the two so nothing is uncharged.
+    if state.last_fine_expanded_nodes_this_slice < state.last_hpa_work {
+        state.last_fine_expanded_nodes_this_slice = state.last_hpa_work;
+    }
+    state.total_work_units += state.last_fine_expanded_nodes_this_slice as f64;
+    count
+}
+
+/// Every work unit every search has charged since init (sliced searches
+/// included), as a monotonic telemetry counter. Not lockstep state and never
+/// hashed. Read across one fixed tick it bounds ALL pathfinding work that
+/// tick did, whichever API performed it — which is what the mass-move
+/// contract test asserts.
+#[wasm_bindgen]
+pub fn pathfinder_total_work_units() -> f64 {
+    pathfinder_state().total_work_units
+}
+
+/// TEST-ONLY whole-route query: drives the budgeted slice on the reserved
+/// sync owner until the search leaves PENDING. Production has no synchronous
+/// search at all — see pathfinder_find_path_slice.
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub fn pathfinder_find_path_for_tests(
     start_x: f64,
     start_y: f64,
     goal_x: f64,
@@ -1921,34 +2029,43 @@ pub fn pathfinder_find_path(
     static_friction_coefficient: f64,
     symmetric_slope: bool,
 ) -> u32 {
-    let state = pathfinder_state();
-    pathfinder_switch_fine_arena(state, PATHFINDER_SYNC_CONTINUATION_OWNER);
-    state.fine_arena.pending = None;
-    pathfinder_find_path_with_expansion_budget(
-        start_x,
-        start_y,
-        goal_x,
-        goal_y,
-        min_ground_normal_z,
-        water_surface_supported,
-        support_point_offset_z,
-        waypoint_allow_ground,
-        waypoint_allow_water,
-        waypoint_allow_air,
-        move_allow_ground,
-        move_allow_water,
-        move_allow_air,
-        unit_radius,
-        flat_drive_accel,
-        safe_drive_accel,
-        flat_water_contact_accel,
-        safe_water_drive_accel,
-        static_friction_coefficient,
-        symmetric_slope,
-        u32::MAX,
-        PATHFINDER_SYNC_CONTINUATION_OWNER,
-        false,
-    )
+    const TEST_SLICE_BUDGET: u32 = 8192;
+    const TEST_MAX_SLICES: u32 = 5000;
+    {
+        let state = pathfinder_state();
+        pathfinder_switch_fine_arena(state, PATHFINDER_SYNC_CONTINUATION_OWNER);
+        state.fine_arena.pending = None;
+    }
+    for _ in 0..TEST_MAX_SLICES {
+        let count = pathfinder_find_path_slice(
+            start_x,
+            start_y,
+            goal_x,
+            goal_y,
+            min_ground_normal_z,
+            water_surface_supported,
+            support_point_offset_z,
+            waypoint_allow_ground,
+            waypoint_allow_water,
+            waypoint_allow_air,
+            move_allow_ground,
+            move_allow_water,
+            move_allow_air,
+            unit_radius,
+            flat_drive_accel,
+            safe_drive_accel,
+            flat_water_contact_accel,
+            safe_water_drive_accel,
+            static_friction_coefficient,
+            symmetric_slope,
+            PATHFINDER_SYNC_CONTINUATION_OWNER,
+            TEST_SLICE_BUDGET,
+        );
+        if pathfinder_state().last_result_status != PATHFINDER_RESULT_PENDING {
+            return count;
+        }
+    }
+    panic!("pathfinder_find_path_for_tests: route did not complete within the slice ceiling");
 }
 
 /// Start or resume the exact same query, spending no more than the supplied

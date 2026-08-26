@@ -46,7 +46,7 @@ import {
   TERRAIN_BUILDABLE_FLAG,
   WATER_BUILD_SQUARE_FLAG,
 } from './terrain/terrainBuildability';
-import { expandPathPlan } from './Pathfinder';
+import { expandPathPlanForTests } from './Pathfinder';
 import {
   applyLiquidHazardPathPolicy,
   pathTerrainFilterForLocomotion,
@@ -197,7 +197,7 @@ function assertDemoCommandersHavePathEgress(
         world.liquidSurfaceMode,
         0,
       );
-      const plan = expandPathPlan(
+      const plan = expandPathPlanForTests(
         commander.transform.x,
         commander.transform.y,
         world.mapWidth / 2,

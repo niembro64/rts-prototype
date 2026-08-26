@@ -318,8 +318,8 @@ import __wbg_init, {
   pathfinder_bake_traversability_grid,
   pathfinder_sync_building_occupancy,
   pathfinder_building_occupancy_version,
-  pathfinder_find_path,
   pathfinder_find_path_slice,
+  pathfinder_total_work_units,
   pathfinder_cancel_path_slice,
   pathfinder_cancel_all_path_slices,
   pathfinder_reset_match_state,
@@ -1065,11 +1065,11 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           bakeTraversabilityGrid: pathfinder_bake_traversability_grid,
           syncBuildingOccupancy: pathfinder_sync_building_occupancy,
           buildingOccupancyVersion: pathfinder_building_occupancy_version,
-          findPath: pathfinder_find_path,
           findPathSlice: pathfinder_find_path_slice,
           cancelPathSlice: pathfinder_cancel_path_slice,
           cancelAllPathSlices: pathfinder_cancel_all_path_slices,
           resetMatchState: pathfinder_reset_match_state,
+          totalWorkUnits: pathfinder_total_work_units,
           lastResultStatus: pathfinder_last_result_status,
           lastSearchStrategy: pathfinder_last_search_strategy,
           lastFineExpandedNodes: pathfinder_last_fine_expanded_nodes,
@@ -1837,6 +1837,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runLocalAvoidanceContractTest();
         const { runPathPlanSafetyContractTest } = await import('../sim/pathPlanSafetyContractTest');
         runPathPlanSafetyContractTest();
+        const { runMassMovePathBudgetContractTest } = await import('../sim/massMovePathBudgetContractTest');
+        runMassMovePathBudgetContractTest();
         const { runTeamColorContractTest } = await import('../sim/teamColorContractTest');
         runTeamColorContractTest();
         const { runTerrainUnderwaterDarkeningContractTest } = await import('../sim/terrain/terrainUnderwaterDarkeningContractTest');

@@ -1048,8 +1048,9 @@ fn hierarchy_reports_unreachable_across_a_full_wall_and_snaps_to_reachable_side(
         hpa_search(&mut state, class_idx, start, goal, u32::MAX),
         HpaSearchOutcome::Unreachable
     ));
-    let snapped = hpa_nearest_reachable_cell(&state, class_idx, 120, 32, traversal)
-        .expect("the reachable side must offer a snap target");
+    let (snapped, flood_work) = hpa_nearest_reachable_cell(&state, class_idx, 120, 32, traversal);
+    let snapped = snapped.expect("the reachable side must offer a snap target");
+    assert!(flood_work > 0, "the snap scan must report the work it charged");
     assert!(snapped.0 < 64, "snapped to x={} on the start's side", snapped.0);
     assert!(snapped.0 >= 60, "the snap is the nearest reachable cell, got x={}", snapped.0);
 }

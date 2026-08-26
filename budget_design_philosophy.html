@@ -1465,9 +1465,11 @@
         The authoritative command timeline never waits for pathfinding: commands apply in canonical
         lockstep order and install durable intent immediately. Derived route work enters separate
         <code>fresh</code> and <code>refresh</code> lanes. Exactly one ally team is selected each
-        fixed tick in stable round-robin order. That team may close at most
-        <strong>4,096 A* nodes</strong>, spending unused nodes on additional routes for the same
-        team. Admission rotates by player within the selected team, so a side with more seats
+        fixed tick in stable round-robin order. That team may spend at most
+        <strong><code>aStarExpansionBudgetPerTick</code> work units</strong> (fine expansions,
+        cluster-build cells and abstract expansions; 8,192 in
+        <code>pathfindingTuningConfig.json</code>), carrying unused budget to further routes for the
+        same team and, when that team runs dry, to the next team with demand in the same tick. Admission rotates by player within the selected team, so a side with more seats
         cannot multiply its routing throughput. Exact
         validated direct segments, shared formation-cache hits, and stale queue entries perform no
         A* work and do not consume that tick's search admission.
@@ -1496,6 +1498,32 @@
         <li>Never budget authoritative search work from elapsed milliseconds or renderer cadence.</li>
         <li>Each ally team owns at most one sliced A* continuation; switching teams swaps dense WASM arenas without copying them. Queued units retain intent, not map-sized frontiers.</li>
         <li>A completed partial route is a proved-safe reachable frontier, not a node-budget timeout. Its endpoint must remain a physically supportable stop.</li>
+      </ul>
+      <p>
+        <strong>There is exactly one search entry point in the simulation, and it is the per-tick
+        slice.</strong> No command handler, order expander, planner, validator, preview, or helper
+        may run a route to completion inside one call. A caller that wants a complete route installs
+        intent and lets <code>SimulationPathPlanScheduler</code> drive slices across ticks; a test
+        that wants one uses the helper whose name ends in <code>ForTests</code>, which drives the same
+        slice in a loop on a reserved continuation owner. The synchronous whole-route export no longer
+        exists in the WASM API, and the runtime guard list requires the slice export instead. The
+        rule is enforced by <code>massMovePathBudgetContractTest</code>: a whole-army line move over
+        144 units on a real map must (1) charge at most one budget's worth of search work in the tick
+        that applies the command, measured by the WASM-side total-work counter that sees every search
+        whichever API ran it, (2) leave requests queued when that tick ends, (3) stay under the same
+        ceiling on every tick while the queue drains, and (4) drain to a route for every unit.
+      </p>
+      <p>
+        This rule has been broken three times, always the same way — a caller that needed a route
+        <em>now</em> found or kept a synchronous search beside the scheduler — and each time the
+        symptom was the simulation freezing under a whole-army order:
+      </p>
+      <ul class="rule-list">
+        <li><strong>2026-06-08</strong> (<code>69c33ad5</code>): line-move formation slots were "snapped to pathable terrain" by running one full path per selected unit at command time. Synchronous was all there was.</li>
+        <li><strong>2026-07-24</strong> (<code>0e1588cd</code>): the budgeted, queued, per-player round-robin scheduler landed for every route request — except that resolver, which kept calling the synchronous search. The gap survived the 2026-08-16 file split (<code>4e8ca813</code>) that moved it into <code>formationLayout.ts</code>.</li>
+        <li><strong>2026-08-17</strong> (<code>13312505</code>): the slice API arrived as <code>findPath(..., expansionBudget = null)</code>, with <code>null</code> meaning "call the synchronous export with a <code>u32::MAX</code> budget". The escape hatch was now part of the API, so the two 2026-08-25 scheduler rewrites (work-conserving sides <code>9f7eeeed</code>, budget-gated hierarchy work <code>f3818171</code>) tightened the slice path while the synchronous path stayed unbounded.</li>
+        <li><strong>2026-08-25</strong> (<code>218bce46</code>): the 20 wu fine grid and lazily built per-class HPA graphs made each synchronous call far more expensive — cold cluster builds, corridor search and O(path²) smoothing per unit — and the deployed build froze under whole-army line and formation-preserving moves.</li>
+        <li><strong>2026-08-26</strong>: the synchronous export, the <code>null</code>-budget branch and the command-time resolver were deleted; formation slots are installed as intent like the group-move branch always was; the contract test above pins the rule.</li>
       </ul>
 
       <h3>Force models answer gravity; constant-speed guidance preserves velocity</h3>
