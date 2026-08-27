@@ -22,6 +22,7 @@ import {
   forEachEntityTurretSensorSource,
   getSensorMediumAtZ,
 } from '../sim/sensorCoverage';
+import { MAX_JAMMING_RADIUS } from '../sim/sensorConfig';
 import { getSimWasm } from '../sim-wasm/init';
 import type { Entity, PlayerId } from '../sim/types';
 
@@ -46,6 +47,7 @@ function assertAuthoredScalarSuites(): void {
     'visionRadius',
   ];
   let suites = 0;
+  const authoredJammers: Record<string, number> = {};
   for (const [id, turret] of Object.entries(turrets)) {
     const sensors = turret.targeting?.observation?.sensors;
     if (sensors === undefined) continue;
@@ -61,8 +63,24 @@ function assertAuthoredScalarSuites(): void {
         `${id}: ${key} must be a finite nonnegative scalar`,
       );
     }
+    if (sensors.jammingRadius > 0) {
+      authoredJammers[id] = sensors.jammingRadius;
+      assertContract(
+        sensors.jammingRadius <= MAX_JAMMING_RADIUS,
+        `${id}: jamming must stay within the ${MAX_JAMMING_RADIUS}-unit tactical ceiling`,
+      );
+    }
   }
   assertContract(suites > 40, `expected the full sensor roster, found ${suites} suites`);
+  assertContract(
+    JSON.stringify(authoredJammers) === JSON.stringify({
+      turretSensorUnitDuck: 400,
+      turretSensorBuildingRadarJammer: 1200,
+      turretSensorBuildingSonarJammer: 1200,
+      turretSensorUnitRadarJammer: 800,
+    }),
+    `the authored jammer roster must stay compact and intentional; got ${JSON.stringify(authoredJammers)}`,
+  );
 }
 
 function createWorld(): WorldState {

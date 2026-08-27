@@ -3013,7 +3013,7 @@
           "visionRadius": 200,
           "radarRadius": 900,
           "detectorRadius": 0,
-          "jammingRadius": 800
+          "jammingRadius": 400
         }
       },
       "effect": {
@@ -4102,7 +4102,7 @@
           "visionRadius": 0,
           "radarRadius": 0,
           "detectorRadius": 0,
-          "jammingRadius": 2000
+          "jammingRadius": 1200
         }
       },
       "effect": { "rangeSource": "engagement" },
@@ -4147,7 +4147,7 @@
           "visionRadius": 0,
           "radarRadius": 0,
           "detectorRadius": 0,
-          "jammingRadius": 3000
+          "jammingRadius": 1200
         }
       },
       "effect": { "rangeSource": "engagement" },
@@ -4397,7 +4397,7 @@
           "visionRadius": 150,
           "radarRadius": 0,
           "detectorRadius": 0,
-          "jammingRadius": 1500
+          "jammingRadius": 800
         }
       }
     }

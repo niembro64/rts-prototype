@@ -3,6 +3,9 @@ import { assertNonNegativeFiniteNumber } from '../../configValidation';
 
 export type SensorMedium = 'aboveWater' | 'underwater';
 
+/** Jamming is a local tactical denial field, never a map-scale sensor blanket. */
+export const MAX_JAMMING_RADIUS = 1200;
+
 export function cloneSensorCapabilityConfig(
   sensors: SensorCapabilityConfig,
 ): SensorCapabilityConfig {
@@ -41,6 +44,11 @@ export function validateSensorCapabilityConfig(
     `Invalid ${context}: sensors.jammingRadius`,
     sensors.jammingRadius,
   );
+  if (sensors.jammingRadius > MAX_JAMMING_RADIUS) {
+    throw new Error(
+      `Invalid ${context}: sensors.jammingRadius must not exceed ${MAX_JAMMING_RADIUS}`,
+    );
+  }
 }
 
 /** True when this suite does ANYTHING sensor-shaped, including denying the

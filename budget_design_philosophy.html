@@ -859,6 +859,15 @@
         actual coverage. The Commander baseline is a small radar source and is not a jammer.
       </p>
       <p>
+        Jamming is local tactical denial, not map-scale sensor suppression. Every authored jammer
+        radius is capped at <code>1200</code> world units, with hybrid and mobile hosts kept smaller.
+        Air and water denial remain entirely separate: air jamming can deny only air radar, while
+        water jamming can deny only water sonar. Likewise, any positive above-water target volume
+        participates in air vision, air radar, and above-water lock-on even when most of the body is
+        submerged; the complementary positive underwater volume independently participates in the
+        water fields and underwater lock-on.
+      </p>
+      <p>
         Sensor coverage aggregates into six exhaustive, orthogonal team fields:
         <code>team-air-vision</code>, <code>team-air-radar</code>,
         <code>team-air-jamming</code>, <code>team-water-vision</code>,

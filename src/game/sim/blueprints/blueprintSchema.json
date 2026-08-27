@@ -199,8 +199,9 @@
           "type": "number"
         },
         "jammingRadius": {
-          "description": "Denies enemy radar in the host origin's medium. The same scalar produces air-radar jamming above water and water-radar/sonar jamming below water; direct vision remains unaffected.",
-          "type": "number"
+          "description": "Denies enemy radar in the host origin's medium. The same scalar produces air-radar jamming above water and water-radar/sonar jamming below water; direct vision remains unaffected. This local tactical field is capped at 1200 world units.",
+          "type": "number",
+          "maximum": 1200
         }
       },
       "additionalProperties": false,
