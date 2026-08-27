@@ -1228,19 +1228,28 @@ function assertSeaTurtleTargetMediumEligibility(
   target.transform.z = fullySubmerged
     ? WATER_LEVEL - getUnitBlueprint('unitOrca').radius.hitbox - 1
     : WATER_LEVEL - 10;
+  const waterObserver = world.createUnitFromBlueprint(
+    340,
+    160,
+    1 as PlayerId,
+    'unitJackal',
+  );
+  waterObserver.transform.z = WATER_LEVEL - 1;
+  waterObserver.combat!.turrets[0].config.targeting.observation.sensors.visionRadius = 900;
   world.addEntity(source);
   world.addEntity(target);
+  world.addEntity(waterObserver);
   spatialGrid.updateUnit(source);
   spatialGrid.updateUnit(target);
+  spatialGrid.updateUnit(waterObserver);
   if (source.combat === null) {
     throw new Error('[turret host integration] Sea Turtle source must be armed');
   }
 
   const { turret, turretIndex } = getFirstAttackTurret(source);
-  // This contract isolates the weapon's physical-volume medium gate. Give
-  // the weapon-composed sensor an explicit A→W lane so center-based
-  // visibility does not independently hide the underwater-center target.
-  turret.config.targeting.observation.sensors.fullSight.aboveWater.underwater = 900;
+  // This contract isolates the weapon's physical-volume medium gate. A
+  // separate allied submerged observer contributes water-vision; the firing
+  // host remains above water and cannot author a cross-medium sensor lane.
   turret.config.requiresNonObstructedLineOfSight = false;
   if (manualTarget) {
     source.combat.priorityTargetId = target.id;

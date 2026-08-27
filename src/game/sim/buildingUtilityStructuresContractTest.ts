@@ -9,8 +9,10 @@ import {
   transferCompletedBuildingStorageCapacity,
 } from './buildingCompletion';
 import { economyManager } from './economy';
-import { getMaximumSensorMatrixRadius } from './sensorConfig';
-import { forEachEntityTurretJammerSource } from './sensorCoverage';
+import {
+  forEachEntityTurretJammerSource,
+  getEntitySensorMedium,
+} from './sensorCoverage';
 import type { BuildingBlueprintId, Entity, PlayerId } from './types';
 import { WorldState } from './WorldState';
 
@@ -48,21 +50,14 @@ function assertJammerSuite(
 ): void {
   const sensors = TURRET_BLUEPRINTS[turretId].targeting.observation.sensors;
   assertContract(
-    getMaximumSensorMatrixRadius(sensors.fullSight) === 0
-      && getMaximumSensorMatrixRadius(sensors.contactSight) === 0
+    sensors.visionRadius === 0
+      && sensors.radarRadius === 0
       && sensors.detectorRadius === 0,
     `${turretId} must be a jammer-only observation source`,
   );
-  const expectedRadius = medium === 'radar'
-    ? sensors.radarJamRadius
-    : sensors.sonarJamRadius;
   assertContract(
-    Number.isFinite(expectedRadius) && expectedRadius > 0,
+    Number.isFinite(sensors.jammingRadius) && sensors.jammingRadius > 0,
     `${turretId} must author a positive ${medium} denial radius`,
-  );
-  assertContract(
-    (medium === 'radar' ? sensors.sonarJamRadius : sensors.radarJamRadius) === 0,
-    `${turretId} must not jam the other medium`,
   );
 }
 
@@ -135,19 +130,20 @@ export function runBuildingUtilityStructuresContractTest(): void {
       'a powered jammer building must expose no jamming source while OFF',
     );
     radarJammer.building!.activeState!.open = true;
-    const liveJammerLanes: Array<{ medium: string; radius: number }> = [];
+    const liveJammerLanes: Array<{ hostMedium: string; radius: number }> = [];
     let liveJammerRadius = 0;
-    forEachEntityTurretJammerSource(radarJammer, ({ medium, radius }) => {
-      liveJammerLanes.push({ medium, radius });
-      if (medium === 'radar') liveJammerRadius = radius;
+    forEachEntityTurretJammerSource(radarJammer, ({ hostMedium, radius }) => {
+      liveJammerLanes.push({ hostMedium, radius });
+      liveJammerRadius = radius;
     });
     const authoredRadarJammerRadius =
       TURRET_BLUEPRINTS.turretSensorBuildingRadarJammer
-        .targeting.observation.sensors.radarJamRadius;
+        .targeting.observation.sensors.jammingRadius;
     assertContract(
       liveJammerLanes.length === 1
-        && liveJammerRadius === authoredRadarJammerRadius,
-      'switching a radar jammer ON must expose its exact authored lane to gameplay and presentation',
+        && liveJammerRadius === authoredRadarJammerRadius
+        && liveJammerLanes[0].hostMedium === getEntitySensorMedium(radarJammer),
+      'switching a jammer ON must expose its exact scalar radius in the host-origin medium',
     );
 
     const metalA = createCompletedBuilding(world, 'buildingMetalStorage', playerOne, 100);

@@ -1,13 +1,10 @@
-// Full sight crosses the waterline.
+// Six orthogonal team sensing fields.
 //
-// Water is a medium, not an occluder: an enemy inside a sensor's full-sight
-// radius is seen whichever side of the surface it is on. Every fullSight
-// source row therefore authors the same radius for both target columns.
-// Before this rule every sensor authored only its same-medium entries, so a
-// surface hull touching a submerged enemy (or a wading amphibian touching
-// the beach) got a contact dot and never the model — contradicting the
-// promise that anything inside team sight is fully visible. Contact sight
-// stays per medium (radar above->above, sonar under->under) on purpose.
+// Every mounted suite is scalar. The host entity's origin chooses exactly one
+// medium for vision, radar, and jamming: z >= WATER_LEVEL is air, z below it
+// is water. The mount remains the LOS/radius center but never chooses the
+// field. These checks pin the authored data, JS snapshot visibility, and the
+// native targeting masks to that same rule.
 import rawTurrets from '../sim/blueprints/turrets.json';
 import { SnapshotVisibility } from './stateSerializerVisibility';
 import { WorldState } from '../sim/WorldState';
@@ -16,38 +13,54 @@ import { buildTeamRosterFromSeatCounts } from '../sim/teamRoster';
 import { WATER_LEVEL } from '../sim/terrain/terrainConfig';
 import { buildTerrainTileMap, setAuthoritativeTerrainTileMap } from '../sim/Terrain';
 import { getAuthoritativeTerrainTileMap } from '../sim/terrain/terrainState';
-import { stampCombatTargetingPool } from '../sim/combat/targetingInputStamping';
+import {
+  getCombatTargetingStateViews,
+  stampCombatTargetingPool,
+} from '../sim/combat/targetingInputStamping';
+import {
+  forEachEntityTurretJammerSource,
+  forEachEntityTurretSensorSource,
+  getSensorMediumAtZ,
+} from '../sim/sensorCoverage';
 import { getSimWasm } from '../sim-wasm/init';
 import type { Entity, PlayerId } from '../sim/types';
 
 function assertContract(condition: unknown, message: string): asserts condition {
-  if (!condition) throw new Error(`[sensor waterline sight contract] ${message}`);
+  if (!condition) throw new Error(`[six-field sensor contract] ${message}`);
 }
 
-type SensorMatrix = { aboveWater: { aboveWater: number; underwater: number }; underwater: { aboveWater: number; underwater: number } };
-type SensorSuite = { fullSight: SensorMatrix; contactSight: SensorMatrix };
+type SensorSuite = {
+  visionRadius: number;
+  radarRadius: number;
+  detectorRadius: number;
+  jammingRadius: number;
+};
 type TurretLike = { targeting?: { observation?: { sensors?: SensorSuite } } };
 
-/** Every authored sensor suite: each fullSight row reaches both media alike. */
-function assertAuthoredMatrices(): void {
+function assertAuthoredScalarSuites(): void {
   const turrets = rawTurrets as unknown as Record<string, TurretLike>;
+  const expectedKeys = [
+    'detectorRadius',
+    'jammingRadius',
+    'radarRadius',
+    'visionRadius',
+  ];
   let suites = 0;
   for (const [id, turret] of Object.entries(turrets)) {
     const sensors = turret.targeting?.observation?.sensors;
     if (sensors === undefined) continue;
-    // A suite that only overrides contactSight inherits its fullSight through
-    // `$extends`; the parent's own entry carries the check.
-    const { fullSight } = sensors;
-    if (fullSight === undefined) continue;
     suites++;
     assertContract(
-      fullSight.aboveWater.underwater === fullSight.aboveWater.aboveWater,
-      `${id}: an above-water source must see underwater targets to its full sight radius (${fullSight.aboveWater.aboveWater}), got ${fullSight.aboveWater.underwater}`,
+      JSON.stringify(Object.keys(sensors).sort()) === JSON.stringify(expectedKeys),
+      `${id}: sensor suites must contain exactly the four scalar channels`,
     );
-    assertContract(
-      fullSight.underwater.aboveWater === fullSight.underwater.underwater,
-      `${id}: an underwater source must see above-water targets to its full sight radius (${fullSight.underwater.underwater}), got ${fullSight.underwater.aboveWater}`,
-    );
+    for (const key of expectedKeys) {
+      const radius = sensors[key as keyof SensorSuite];
+      assertContract(
+        Number.isFinite(radius) && radius >= 0,
+        `${id}: ${key} must be a finite nonnegative scalar`,
+      );
+    }
   }
   assertContract(suites > 40, `expected the full sensor roster, found ${suites} suites`);
 }
@@ -71,98 +84,196 @@ function spawn(
   y: number,
   z: number,
   playerId: number,
-  sensors?: { aa: number; au: number; ua: number; uu: number },
+  sensors?: Partial<SensorSuite>,
 ): Entity {
   const entity = world.createUnitFromBlueprint(x, y, playerId as PlayerId, 'unitJackal');
   entity.transform.z = z;
   if (sensors !== undefined) {
     const config = entity.combat!.turrets[0].config.targeting.observation.sensors;
-    config.fullSight.aboveWater.aboveWater = sensors.aa;
-    config.fullSight.aboveWater.underwater = sensors.au;
-    config.fullSight.underwater.aboveWater = sensors.ua;
-    config.fullSight.underwater.underwater = sensors.uu;
-    config.contactSight.aboveWater.aboveWater = 0;
-    config.contactSight.aboveWater.underwater = 0;
-    config.contactSight.underwater.aboveWater = 0;
-    config.contactSight.underwater.underwater = 0;
-    config.detectorRadius = 0;
-    config.radarJamRadius = 0;
-    config.sonarJamRadius = 0;
+    config.visionRadius = sensors.visionRadius ?? 0;
+    config.radarRadius = sensors.radarRadius ?? 0;
+    config.detectorRadius = sensors.detectorRadius ?? 0;
+    config.jammingRadius = sensors.jammingRadius ?? 0;
   }
   world.addEntity(entity);
   spatialGrid.updateUnit(entity);
   return entity;
 }
 
-/** A short corridor whose seabed sits well below the surface on the current
- *  terrain, so a submerged fixture is under water rather than inside rock. */
-function findSubmergedCorridor(world: WorldState, separation: number): { x: number; y: number; depth: number } {
+/** A short corridor with enough water below the surface to place complete
+ * target bodies and sensor origins below the waterline without burying them. */
+function findSubmergedCorridor(
+  world: WorldState,
+  separation: number,
+): { x: number; y: number; depth: number } {
   const step = 128;
   for (let y = step; y < world.mapHeight - step; y += step) {
     for (let x = step; x < world.mapWidth - step - separation; x += step) {
-      let deepest = WATER_LEVEL;
+      let highestBed = -Infinity;
       let submerged = true;
       for (let t = 0; t <= 8; t++) {
         const bed = world.getTerrainBedZ(x + (separation * t) / 8, y);
-        if (bed > WATER_LEVEL - 60) { submerged = false; break; }
-        deepest = Math.min(deepest, bed);
+        if (bed > WATER_LEVEL - 80) {
+          submerged = false;
+          break;
+        }
+        highestBed = Math.max(highestBed, bed);
       }
-      if (submerged) return { x, y, depth: Math.max(deepest + 30, WATER_LEVEL - 20) };
+      if (submerged) {
+        return {
+          x,
+          y,
+          depth: Math.max(highestBed + 25, WATER_LEVEL - 50),
+        };
+      }
     }
   }
-  throw new Error('[sensor waterline sight contract] no submerged corridor on the current terrain');
+  throw new Error('[six-field sensor contract] no submerged corridor on the current terrain');
 }
 
-function seenBy(world: WorldState, playerId: number, entity: Entity): boolean {
+function assertHostOriginVisionAndRadarRouting(): void {
+  const airWorld = createWorld();
+  const wet = findSubmergedCorridor(airWorld, 500);
+  const airSource = spawn(airWorld, wet.x, wet.y, WATER_LEVEL, 1, {
+    visionRadius: 500,
+    radarRadius: 700,
+  });
+  const airTarget = spawn(airWorld, wet.x + 200, wet.y, WATER_LEVEL + 100, 3);
+  const waterTarget = spawn(airWorld, wet.x + 200, wet.y, wet.depth, 3);
+  let airHostMedium: string | undefined;
+  forEachEntityTurretSensorSource(airSource, (source) => {
+    airHostMedium = source.hostMedium;
+  });
+  assertContract(
+    getSensorMediumAtZ(WATER_LEVEL) === 'aboveWater' && airHostMedium === 'aboveWater',
+    'a host origin exactly on the waterline must route to air',
+  );
+  stampCombatTargetingPool(airWorld);
+  const airVisibility = SnapshotVisibility.forRecipient(airWorld, 1 as PlayerId);
+  assertContract(airVisibility.isEntityVisible(airTarget), 'air-vision must reveal the air target');
+  assertContract(!airVisibility.isEntityOnRadar(waterTarget), 'air vision/radar must not enter the water field');
+  const sim = getSimWasm();
+  assertContract(sim !== undefined, 'sim-wasm must be initialized for native six-field checks');
+  const airViews = getCombatTargetingStateViews(sim);
+  assertContract(
+    (airViews.teamAirSightMask[airTarget.entitySlotId] & 1) !== 0 &&
+      (airViews.teamWaterSightMask[waterTarget.entitySlotId] & 1) === 0 &&
+      (airViews.teamWaterSonarMask[waterTarget.entitySlotId] & 1) === 0,
+    'native masks must stamp the air host only into air-vision and air-radar',
+  );
+
+  const waterWorld = createWorld();
+  const waterSource = spawn(waterWorld, wet.x, wet.y, WATER_LEVEL - 1, 1, {
+    visionRadius: 500,
+    radarRadius: 700,
+  });
+  const submergedTarget = spawn(waterWorld, wet.x + 200, wet.y, wet.depth, 3);
+  const surfaceTarget = spawn(waterWorld, wet.x + 200, wet.y, WATER_LEVEL + 100, 3);
+  let waterHostMedium: string | undefined;
+  let mountedPointAboveWater = false;
+  forEachEntityTurretSensorSource(waterSource, (source) => {
+    waterHostMedium = source.hostMedium;
+    mountedPointAboveWater = source.position.z >= WATER_LEVEL;
+  });
+  assertContract(
+    waterHostMedium === 'underwater' && mountedPointAboveWater,
+    'a below-water host must route to water even when its mounted sensor point is above water',
+  );
+  stampCombatTargetingPool(waterWorld);
+  const waterVisibility = SnapshotVisibility.forRecipient(waterWorld, 1 as PlayerId);
+  assertContract(waterVisibility.isEntityVisible(submergedTarget), 'water-vision must reveal the water target');
+  assertContract(!waterVisibility.isEntityOnRadar(surfaceTarget), 'water vision/radar must not enter the air field');
+  const waterViews = getCombatTargetingStateViews(sim);
+  assertContract(
+    (waterViews.teamWaterSightMask[submergedTarget.entitySlotId] & 1) !== 0 &&
+      (waterViews.teamWaterSonarMask[submergedTarget.entitySlotId] & 1) !== 0 &&
+      (waterViews.teamAirSightMask[surfaceTarget.entitySlotId] & 1) === 0 &&
+      (waterViews.teamAirRadarMask[surfaceTarget.entitySlotId] & 1) === 0,
+    'native masks must stamp the submerged host only into water-vision and water-radar',
+  );
+}
+
+function radarContactVisible(world: WorldState, target: Entity): boolean {
   stampCombatTargetingPool(world);
-  return SnapshotVisibility.forRecipient(world, playerId as PlayerId).isEntityVisible(entity);
+  return SnapshotVisibility.forRecipient(world, 1 as PlayerId).isEntityOnRadar(target);
 }
 
-/** The behaviour the rule exists for: a surface observer sees the submerged
- *  enemy alongside it, and a submerged observer sees the surface enemy
- *  alongside it — through the real Jackal sensor suite, with the exact
- *  same-medium-only matrix as the control that used to lose the model. */
-function assertWaterlineSight(): void {
+function assertHostOriginJammingRouting(): void {
+  const wetWorld = createWorld();
+  const wet = findSubmergedCorridor(wetWorld, 500);
+  spawn(wetWorld, wet.x, wet.y, WATER_LEVEL + 100, 1, { radarRadius: 700 });
+  const airTarget = spawn(wetWorld, wet.x + 300, wet.y, WATER_LEVEL + 100, 3);
+  const wrongWaterJammer = spawn(
+    wetWorld,
+    wet.x + 300,
+    wet.y,
+    wet.depth,
+    3,
+    { jammingRadius: 180 },
+  );
+  let wrongMedium: string | undefined;
+  forEachEntityTurretJammerSource(wrongWaterJammer, (source) => {
+    wrongMedium = source.hostMedium;
+  });
+  assertContract(
+    wrongMedium === 'underwater' && radarContactVisible(wetWorld, airTarget),
+    'water-jamming must not deny an air-radar contact',
+  );
+  const airJammer = spawn(
+    wetWorld,
+    wet.x + 300,
+    wet.y,
+    WATER_LEVEL + 100,
+    3,
+    { jammingRadius: 180 },
+  );
+  let airJammerMedium: string | undefined;
+  forEachEntityTurretJammerSource(airJammer, (source) => {
+    airJammerMedium = source.hostMedium;
+  });
+  assertContract(
+    airJammerMedium === 'aboveWater' && !radarContactVisible(wetWorld, airTarget),
+    'air-jamming must deny an air-radar contact in its radius',
+  );
+
+  const waterWorld = createWorld();
+  spawn(waterWorld, wet.x, wet.y, wet.depth, 1, { radarRadius: 700 });
+  const waterTarget = spawn(waterWorld, wet.x + 300, wet.y, wet.depth, 3);
+  spawn(
+    waterWorld,
+    wet.x + 300,
+    wet.y,
+    WATER_LEVEL + 100,
+    3,
+    { jammingRadius: 180 },
+  );
+  assertContract(
+    radarContactVisible(waterWorld, waterTarget),
+    'air-jamming must not deny a water-radar contact',
+  );
+  spawn(
+    waterWorld,
+    wet.x + 300,
+    wet.y,
+    wet.depth,
+    3,
+    { jammingRadius: 180 },
+  );
+  assertContract(
+    !radarContactVisible(waterWorld, waterTarget),
+    'water-jamming must deny a water-radar contact in its radius',
+  );
+}
+
+export function runSensorWaterlineSightContractTest(): void {
+  assertAuthoredScalarSuites();
   const previousMap = getAuthoritativeTerrainTileMap();
   setAuthoritativeTerrainTileMap(buildTerrainTileMap(4096, 4096));
   try {
-    const world = createWorld();
-    const corridor = findSubmergedCorridor(world, 200);
-    const surfaceZ = WATER_LEVEL + 100;
-
-    // Real blueprint suite: above-water observer, submerged enemy 40 wu away.
-    const observer = spawn(world, corridor.x, corridor.y, surfaceZ, 1);
-    const submerged = spawn(world, corridor.x + 40, corridor.y, corridor.depth, 3);
-    assertContract(
-      seenBy(world, 1, submerged),
-      'a surface observer must fully see a submerged enemy alongside it',
-    );
-
-    // Control: the same observer with the same-medium-only matrix loses it.
-    const suite = observer.combat!.turrets[0].config.targeting.observation.sensors;
-    const authoredAU = suite.fullSight.aboveWater.underwater;
-    suite.fullSight.aboveWater.underwater = 0;
-    assertContract(
-      !seenBy(world, 1, submerged),
-      'with the above->underwater column zeroed the submerged neighbour drops out of sight (the pre-rule symptom)',
-    );
-    suite.fullSight.aboveWater.underwater = authoredAU;
-
-    // Reverse: submerged observer (periscope row), surface enemy alongside.
-    const world2 = createWorld();
-    spawn(world2, corridor.x + 120, corridor.y, corridor.depth, 1, { aa: 0, au: 0, ua: 300, uu: 300 });
-    const surfaceEnemy = spawn(world2, corridor.x + 160, corridor.y, surfaceZ, 3);
-    assertContract(
-      seenBy(world2, 1, surfaceEnemy),
-      'a submerged observer must fully see a surface enemy alongside it',
-    );
+    assertHostOriginVisionAndRadarRouting();
+    assertHostOriginJammingRouting();
   } finally {
     setAuthoritativeTerrainTileMap(previousMap);
     spatialGrid.clear();
   }
-}
-
-export function runSensorWaterlineSightContractTest(): void {
-  assertAuthoredMatrices();
-  assertWaterlineSight();
 }

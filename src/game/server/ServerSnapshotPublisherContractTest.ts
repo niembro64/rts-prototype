@@ -14,6 +14,10 @@ import {
   serializeEntitySnapshot,
 } from '../network/stateSerializerEntities';
 import { IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
+import {
+  getActiveProjectileSnapshotWireSource,
+  PROJECTILE_SPAWN_WIRE_STRIDE,
+} from '../network/stateSerializerProjectiles';
 import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { createProjectileConfigFromTurret } from '../sim/projectileConfigs';
@@ -30,6 +34,38 @@ function assertContract(condition: unknown, message: string): asserts condition 
   if (!condition) {
     throw new Error(`[server snapshot publisher contract] ${message}`);
   }
+}
+
+function snapshotHasProjectileSpawn(
+  state: NetworkServerSnapshot,
+  id: EntityId,
+): boolean {
+  const projectiles = state.projectiles;
+  if (projectiles === undefined) return false;
+  const source = getActiveProjectileSnapshotWireSource(projectiles);
+  if (source !== undefined) {
+    for (let i = 0; i < source.spawns.count; i++) {
+      if (source.spawns.values[i * PROJECTILE_SPAWN_WIRE_STRIDE] === id) return true;
+    }
+    return false;
+  }
+  return projectiles.spawns?.some((entry) => entry.id === id) === true;
+}
+
+function snapshotHasProjectileDespawn(
+  state: NetworkServerSnapshot,
+  id: EntityId,
+): boolean {
+  const projectiles = state.projectiles;
+  if (projectiles === undefined) return false;
+  const source = getActiveProjectileSnapshotWireSource(projectiles);
+  if (source !== undefined) {
+    for (let i = 0; i < source.despawns.count; i++) {
+      if (source.despawns.values[i] === id) return true;
+    }
+    return false;
+  }
+  return projectiles.despawns?.some((entry) => entry.id === id) === true;
 }
 
 function snapshot(tick: number, entities: NetworkServerSnapshot['entities']): NetworkServerSnapshot {
@@ -123,6 +159,7 @@ function createListener(
     startupReady: true,
     hasVisibleEntityBaseline: visibleIds.length > 0,
     visibleEntityIds,
+    visibleProjectileIds: new IndexedEntityIdSet(),
   };
 }
 
@@ -246,6 +283,7 @@ export function runServerSnapshotPublisherContractTest(): void {
     startupReady: true,
     hasVisibleEntityBaseline: false,
     visibleEntityIds: new IndexedEntityIdSet(),
+    visibleProjectileIds: new IndexedEntityIdSet(),
   };
   const publisher = new ServerSnapshotPublisher();
   const drainIds: number[] = [];
@@ -508,8 +546,8 @@ export function runServerSnapshotPublisherContractTest(): void {
   );
   alliedObserver.transform.z = WATER_LEVEL + 100;
   const observerSensors = alliedObserver.combat!.turrets[0].config.targeting.observation.sensors;
-  observerSensors.fullSight.aboveWater.aboveWater = 500;
-  observerSensors.contactSight.aboveWater.aboveWater = 1_200;
+  observerSensors.visionRadius = 500;
+  observerSensors.radarRadius = 1_200;
   visibilityWorld.addEntity(alliedObserver);
   spatialGrid.updateUnit(alliedObserver);
 
@@ -522,6 +560,17 @@ export function runServerSnapshotPublisherContractTest(): void {
   visibilityEnemy.transform.z = WATER_LEVEL + 100;
   visibilityWorld.addEntity(visibilityEnemy);
   spatialGrid.updateUnit(visibilityEnemy);
+  const visibilityProjectile = visibilityWorld.createProjectile(
+    900,
+    650,
+    0,
+    0,
+    3 as PlayerId,
+    visibilityEnemy.id,
+    createProjectileConfigFromTurret(getTurretConfig('turretGunLight')),
+  );
+  visibilityProjectile.transform.z = WATER_LEVEL + 100;
+  visibilityWorld.addEntity(visibilityProjectile);
   stampCombatTargetingPool(visibilityWorld);
 
   const visibilityClient = new ClientViewState();
@@ -539,16 +588,22 @@ export function runServerSnapshotPublisherContractTest(): void {
   visibilityClient.applyNetworkState(sightSnapshot, { syncEconomy: false });
   assertContract(
     visibilityClient.getEntity(alliedObserver.id) !== undefined &&
-      visibilityClient.getEntity(visibilityEnemy.id) !== undefined,
-    'recipient must receive allied sight sources and enemies inside their shared full sight',
+      visibilityClient.getEntity(visibilityEnemy.id) !== undefined &&
+      visibilityClient.getEntity(visibilityProjectile.id) !== undefined,
+    'recipient must receive allied sight sources, enemies, and hostile shots inside shared full sight',
   );
   assertContract(
     visibilityListener.visibleEntityIds.has(alliedObserver.id) &&
       visibilityListener.visibleEntityIds.has(visibilityEnemy.id),
     'the initial direct lockstep presentation must seed the per-listener full-visibility baseline',
   );
+  assertContract(
+    visibilityListener.visibleProjectileIds.has(visibilityProjectile.id),
+    'the initial direct lockstep presentation must seed the projectile visibility baseline',
+  );
 
   visibilityEnemy.transform.x = 1_500;
+  visibilityProjectile.transform.x = 1_500;
   spatialGrid.updateUnit(visibilityEnemy);
   visibilityWorld.refreshEntitySlotState(visibilityEnemy, ENTITY_CHANGED_POS);
   stampCombatTargetingPool(visibilityWorld);
@@ -569,13 +624,42 @@ export function runServerSnapshotPublisherContractTest(): void {
       `entities=${JSON.stringify(radarSnapshot.entities.map((entry) => entry?.id))}, ` +
       `minimap=${JSON.stringify(radarSnapshot.minimapEntities)}`,
   );
+  assertContract(
+    snapshotHasProjectileDespawn(radarSnapshot, visibilityProjectile.id) &&
+      !visibilityListener.visibleProjectileIds.has(visibilityProjectile.id) &&
+      radarSnapshot.minimapEntities?.some(
+        (entry) => entry.id === visibilityProjectile.id && entry.radarOnly === true,
+      ) === true,
+    'a hostile shot leaving vision must despawn from full presentation and remain only an anonymous radar contact',
+  );
   visibilityClient.applyNetworkState(radarSnapshot, { syncEconomy: false });
   assertContract(
-    visibilityClient.getEntity(visibilityEnemy.id) === undefined,
-    'the client presentation cache must not retain a full model for a radar-only enemy',
+    visibilityClient.getEntity(visibilityEnemy.id) === undefined &&
+      visibilityClient.getEntity(visibilityProjectile.id) === undefined,
+    'the client presentation cache must not retain full models or trajectories for radar-only enemies',
+  );
+
+  visibilityProjectile.transform.x = 900;
+  stampCombatTargetingPool(visibilityWorld);
+  capturedVisibility.value = null;
+  visibilityPublisher.emitLockstepPresentation(
+    createPublisherInput(visibilityWorld, visibilityListener),
+  );
+  const projectileReentrySnapshot = capturedVisibility.value as NetworkServerSnapshot | null;
+  assertContract(
+    projectileReentrySnapshot !== null &&
+      snapshotHasProjectileSpawn(projectileReentrySnapshot, visibilityProjectile.id) &&
+      visibilityListener.visibleProjectileIds.has(visibilityProjectile.id),
+    'a hostile shot entering vision after launch must receive a synthesized current-state spawn',
+  );
+  visibilityClient.applyNetworkState(projectileReentrySnapshot, { syncEconomy: false });
+  assertContract(
+    visibilityClient.getEntity(visibilityProjectile.id) !== undefined,
+    'the client must restore a hostile shot when it re-enters full vision',
   );
 
   visibilityEnemy.transform.x = 2_500;
+  visibilityProjectile.transform.x = 2_500;
   spatialGrid.updateUnit(visibilityEnemy);
   visibilityWorld.refreshEntitySlotState(visibilityEnemy, ENTITY_CHANGED_POS);
   stampCombatTargetingPool(visibilityWorld);
@@ -586,8 +670,10 @@ export function runServerSnapshotPublisherContractTest(): void {
   const hiddenSnapshot = capturedVisibility.value as NetworkServerSnapshot | null;
   assertContract(hiddenSnapshot !== null, 'radar-to-hidden transition must emit a snapshot');
   assertContract(
-    hiddenSnapshot.minimapEntities?.some((entry) => entry.id === visibilityEnemy.id) !== true,
-    'leaving team radar must remove even the anonymous enemy contact',
+    hiddenSnapshot.minimapEntities?.some((entry) => entry.id === visibilityEnemy.id) !== true &&
+      hiddenSnapshot.minimapEntities?.some((entry) => entry.id === visibilityProjectile.id) !== true &&
+      snapshotHasProjectileDespawn(hiddenSnapshot, visibilityProjectile.id),
+    'leaving team radar must remove anonymous contacts and any re-entered full projectile visual',
   );
   visibilityClient.applyNetworkState(hiddenSnapshot, { syncEconomy: false });
   assertContract(

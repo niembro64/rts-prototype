@@ -1034,32 +1034,29 @@ function stampCombatTargetingEntityInto(
   // distance; target-medium membership separately uses body volume (or a
   // single point for shots and mounted turrets).
   const sensorSource = getEntityPrimaryTurretSensorSource(entity, _sensorSourcePos);
-  const sensorSourceMedium = sensorSource?.sourceMedium ?? 'aboveWater';
+  const sensorHostMedium = sensorSource?.hostMedium ?? 'aboveWater';
   const sensorConfig = sensorSource?.sensors;
   const operational = sensorSource?.operational;
-  const fullVisionAboveWaterRadius = operational?.fullSight === true
-    ? sensorConfig?.fullSight[sensorSourceMedium].aboveWater ?? 0
+  const visionRadius = operational?.vision === true
+    ? sensorConfig?.visionRadius ?? 0
     : 0;
-  const fullVisionUnderwaterRadius = operational?.fullSight === true
-    ? sensorConfig?.fullSight[sensorSourceMedium].underwater ?? 0
+  const radarFieldRadius = operational?.radar === true
+    ? sensorConfig?.radarRadius ?? 0
     : 0;
-  const radarRadius = operational?.contactSight === true
-    ? sensorConfig?.contactSight[sensorSourceMedium].aboveWater ?? 0
-    : 0;
-  const sonarRadius = operational?.contactSight === true
-    ? sensorConfig?.contactSight[sensorSourceMedium].underwater ?? 0
-    : 0;
+  const fullVisionAboveWaterRadius = sensorHostMedium === 'aboveWater' ? visionRadius : 0;
+  const fullVisionUnderwaterRadius = sensorHostMedium === 'underwater' ? visionRadius : 0;
+  const radarRadius = sensorHostMedium === 'aboveWater' ? radarFieldRadius : 0;
+  const sonarRadius = sensorHostMedium === 'underwater' ? radarFieldRadius : 0;
   const detectorRadius = operational?.detector === true
     ? sensorConfig?.detectorRadius ?? 0
     : 0;
   const detectorAboveWaterRadius = Math.min(detectorRadius, fullVisionAboveWaterRadius);
   const detectorUnderwaterRadius = Math.min(detectorRadius, fullVisionUnderwaterRadius);
-  const radarJamRadius = operational?.contactSight === true
-    ? sensorConfig?.radarJamRadius ?? 0
+  const jammingRadius = operational?.radar === true
+    ? sensorConfig?.jammingRadius ?? 0
     : 0;
-  const sonarJamRadius = operational?.contactSight === true
-    ? sensorConfig?.sonarJamRadius ?? 0
-    : 0;
+  const radarJamRadius = sensorHostMedium === 'aboveWater' ? jammingRadius : 0;
+  const sonarJamRadius = sensorHostMedium === 'underwater' ? jammingRadius : 0;
   const visibilityPadding = getEntityVisibilityPadding(entity);
   if (
     playerMaskBit(playerId) !== 0 &&

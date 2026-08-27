@@ -4,6 +4,7 @@ import { applyBuildingBlueprintRuntime } from '../sim/buildingEntityRuntime';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import type { Entity, PlayerId } from '../sim/types';
 import { WorldState } from '../sim/WorldState';
+import { WATER_LEVEL } from '../sim/Terrain';
 import { EntityShadowRenderPacket3D } from './EntityShadowRenderPacket3D';
 import {
   WORLD_SHADE_FRAGMENT_PARS,
@@ -57,11 +58,11 @@ export function runWorldShadeJammer3DContractTest(): void {
     entity.building.hp = config.hp;
     entity.building.maxHp = config.hp;
     entity.building.activeState.open = true;
+    entity.transform.z = medium === 'radar' ? WATER_LEVEL : WATER_LEVEL - 100;
     const mount = entity.combat?.utilityMounts.find((candidate) =>
       candidate.kind === 'sensor');
     assertContract(mount?.kind === 'sensor', `${blueprintId} needs its sensor mount`);
-    mount.sensors.radarJamRadius = medium === 'radar' ? 300 : 0;
-    mount.sensors.sonarJamRadius = medium === 'sonar' ? 300 : 0;
+    mount.sensors.jammingRadius = 300;
     return entity;
   };
 

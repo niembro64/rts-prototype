@@ -796,10 +796,9 @@ export type NetworkServerSnapshotSimEvent = {
    *  even on off-screen kills. */
   killerPlayerId: PlayerId | null;
   /** For 'attackAlert' events: playerId of the victim taking damage.
-   *  Drives the FOW-08-followup remainder routing — the alert is
-   *  forwarded to this player's snapshot regardless of vision so they
-   *  see a marker at the attacker's position when un-homed splash
-   *  damage from inside the fog lands on their unit. */
+   *  The alert is forwarded to this player's snapshot regardless of vision
+   *  and is positioned at the known damaged entity; it never exposes a
+   *  hidden attacker's location. */
   victimPlayerId: PlayerId | null;
   /** FOW-09 earshot reveal flag. When true, the client should play
    *  the audio side of the event but skip every visual branch —

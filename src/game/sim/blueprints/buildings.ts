@@ -57,7 +57,6 @@ import {
 import {
   normalizeEntityBaseLedgerFromAliases,
 } from './entityBaseLedger';
-import { getMaximumSensorMatrixRadius } from '../sensorConfig';
 import {
   validateStationArticulation,
   validateTurretBarrelPresentation,
@@ -482,34 +481,20 @@ function validateDedicatedContactSensor(
   }
   const sensors =
     TURRET_BLUEPRINTS[sensorMount.turretBlueprintId].targeting.observation.sensors;
-  if (getMaximumSensorMatrixRadius(sensors.fullSight) !== 0) {
+  if (sensors.visionRadius !== 0 || sensors.detectorRadius !== 0 || sensors.jammingRadius !== 0) {
     throw new Error(
-      `Invalid building blueprint ${id}: dedicated contact sensors must not grant full sight`,
+      `Invalid building blueprint ${id}: dedicated radar sensors must grant radar only`,
     );
   }
-  const contact = sensors.contactSight;
-  const expectedRadius = id === 'buildingRadar'
-    ? contact.aboveWater.aboveWater
-    : contact.underwater.underwater;
-  if (!Number.isFinite(expectedRadius) || expectedRadius <= 0) {
+  if (!Number.isFinite(sensors.radarRadius) || sensors.radarRadius <= 0) {
     throw new Error(
-      `Invalid building blueprint ${id}: its same-medium contact radius must be positive`,
+      `Invalid building blueprint ${id}: its scalar radar radius must be positive`,
     );
   }
-  const unexpectedRadii = id === 'buildingRadar'
-    ? [
-        contact.aboveWater.underwater,
-        contact.underwater.aboveWater,
-        contact.underwater.underwater,
-      ]
-    : [
-        contact.aboveWater.aboveWater,
-        contact.aboveWater.underwater,
-        contact.underwater.aboveWater,
-      ];
-  if (unexpectedRadii.some((radius) => radius !== 0)) {
+  const expectsWater = id === 'buildingSonar';
+  if (blueprint.requiresWater !== expectsWater || blueprint.requiresLand === expectsWater) {
     throw new Error(
-      `Invalid building blueprint ${id}: dedicated radar/sonar contact coverage must stay in its authored source-target lane`,
+      `Invalid building blueprint ${id}: host placement must route its radar into the expected medium`,
     );
   }
 }
@@ -528,21 +513,21 @@ function validateDedicatedJammer(
   const sensors =
     TURRET_BLUEPRINTS[sensorMount.turretBlueprintId].targeting.observation.sensors;
   if (
-    getMaximumSensorMatrixRadius(sensors.fullSight) !== 0
-    || getMaximumSensorMatrixRadius(sensors.contactSight) !== 0
+    sensors.visionRadius !== 0
+    || sensors.radarRadius !== 0
     || sensors.detectorRadius !== 0
   ) {
     throw new Error(`Invalid building blueprint ${id}: jammer suite must not grant observation`);
   }
-  const expectedRadius = id === 'buildingRadarJammer'
-    ? sensors.radarJamRadius
-    : sensors.sonarJamRadius;
-  const otherRadius = id === 'buildingRadarJammer'
-    ? sensors.sonarJamRadius
-    : sensors.radarJamRadius;
-  if (!Number.isFinite(expectedRadius) || expectedRadius <= 0 || otherRadius !== 0) {
+  if (!Number.isFinite(sensors.jammingRadius) || sensors.jammingRadius <= 0) {
     throw new Error(
-      `Invalid building blueprint ${id}: it must jam only its authored radar/sonar medium`,
+      `Invalid building blueprint ${id}: its scalar jamming radius must be positive`,
+    );
+  }
+  const expectsWater = id === 'buildingSonarJammer';
+  if (blueprint.requiresWater !== expectsWater || blueprint.requiresLand === expectsWater) {
+    throw new Error(
+      `Invalid building blueprint ${id}: host placement must route its jamming into the expected medium`,
     );
   }
 }

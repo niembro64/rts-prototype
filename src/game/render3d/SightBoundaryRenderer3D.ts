@@ -67,16 +67,15 @@ const TARGET_MEDIA: readonly SensorMedium[] = ['aboveWater', 'underwater'];
 
 type SensorBoundaryTier = 'fullSight' | 'contactSight';
 
-/** Exact source-medium x target-medium lookup used by coverage presentation.
- * Keeping this as a matrix lookup (never a max across target media) prevents a
- * large air radar circle from erasing or inflating an independent sonar edge. */
+/** Presentation reads the same scalar, host-origin-routed field as gameplay. */
 export function getSensorBoundarySourceRadius(
   sensors: SensorCapabilityConfig,
   tier: SensorBoundaryTier,
-  sourceMedium: SensorMedium,
+  hostMedium: SensorMedium,
   targetMedium: SensorMedium,
 ): number {
-  return sensors[tier][sourceMedium][targetMedium];
+  if (hostMedium !== targetMedium) return 0;
+  return tier === 'fullSight' ? sensors.visionRadius : sensors.radarRadius;
 }
 
 function normalizeAngle(angle: number): number {
@@ -117,18 +116,18 @@ export class SightBoundaryRenderer3D {
 
   private readonly collectSightSource = ({
     position,
-    sourceMedium,
+    hostMedium,
     sensors,
     operational,
   }: TurretSensorSource): void => {
-    if (!operational.fullSight || this.collectRenderScope === undefined) return;
+    if (!operational.vision || this.collectRenderScope === undefined) return;
     this.pushSource(
       position.x,
       position.y,
       getSensorBoundarySourceRadius(
         sensors,
         'fullSight',
-        sourceMedium,
+        hostMedium,
         this.collectTargetMedium,
       ),
       this.collectRenderScope,
@@ -137,18 +136,18 @@ export class SightBoundaryRenderer3D {
 
   private readonly collectContactSource = ({
     position,
-    sourceMedium,
+    hostMedium,
     sensors,
     operational,
   }: TurretSensorSource): void => {
-    if (!operational.contactSight || this.collectRenderScope === undefined) return;
+    if (!operational.radar || this.collectRenderScope === undefined) return;
     this.pushSource(
       position.x,
       position.y,
       getSensorBoundarySourceRadius(
         sensors,
         'contactSight',
-        sourceMedium,
+        hostMedium,
         this.collectTargetMedium,
       ),
       this.collectRenderScope,

@@ -330,14 +330,10 @@ export function collectKillsAndDeathContexts(
  *  returning so it can be a module-level singleton safely. */
 const _attackAlertSeenVictims = new Set<PlayerId>();
 
-/** Emit one 'attackAlert' SimEvent per (attacker, victim playerId)
- *  pair touched by this damage application (FOW-08-followup
- *  remainder). The audio serializer routes these strictly by
- *  victimPlayerId — they never leak the attacker's position to a
- *  recipient that wasn't hit. The visual is what tells the player
- *  "your unit is taking fire from over there" even when a dumb splash
- *  shell from inside fog lands silently on their unit; without the
- *  alert the HP drop is the only signal. */
+/** Emit one 'attackAlert' per victim player touched by this damage
+ *  application. The marker is anchored to the known damaged entity, never the
+ *  attacker: an alert may tell a player which of their units is under attack,
+ *  but it must not reveal a hostile source outside vision/radar. */
 function emitAttackAlerts(
   result: DamageResult,
   world: WorldState,
@@ -355,7 +351,8 @@ function emitAttackAlerts(
   _sortedHitIds.sort((a, b) => a - b);
   for (let i = 0; i < _sortedHitIds.length; i++) {
     const victim = world.getEntity(_sortedHitIds[i]);
-    const victimOwnership = victim !== undefined ? victim.ownership : null;
+    if (victim === undefined) continue;
+    const victimOwnership = victim.ownership;
     const victimPlayerId = victimOwnership !== null
       ? victimOwnership.playerId
       : undefined;
@@ -368,11 +365,11 @@ function emitAttackAlerts(
       sourceType: 'system',
       sourceKey: 'attackAlert',
       pos: {
-        x: attacker.transform.x,
-        y: attacker.transform.y,
-        z: attacker.building !== null
-          ? getBuildingCombatCenterZ(attacker)
-          : attacker.transform.z,
+        x: victim.transform.x,
+        y: victim.transform.y,
+        z: victim.building !== null
+          ? getBuildingCombatCenterZ(victim)
+          : victim.transform.z,
       },
       victimPlayerId,
     });

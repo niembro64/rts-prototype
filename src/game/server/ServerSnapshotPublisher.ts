@@ -139,6 +139,7 @@ export type SnapshotListenerEntry = {
   startupReady: boolean;
   hasVisibleEntityBaseline: boolean;
   visibleEntityIds: IndexedEntityIdSet;
+  visibleProjectileIds: IndexedEntityIdSet;
 };
 
 type ServerSnapshotPublisherInput = {
@@ -219,6 +220,9 @@ export class ServerSnapshotPublisher {
   private readonly deltaRemovedEntityIdsBuf: EntityId[] = [];
   private readonly deltaRemovedEntityIdSet = new IndexedEntityIdSet();
   private readonly deltaEntityIdSet = new IndexedEntityIdSet();
+  private readonly currentVisibleProjectileIdsBuf: EntityId[] = [];
+  private readonly visibleProjectileAddedIdsBuf: EntityId[] = [];
+  private readonly visibleProjectileRemovedIdsBuf: EntityId[] = [];
   reset(): void {}
 
   clear(): void {
@@ -234,6 +238,9 @@ export class ServerSnapshotPublisher {
     this.deltaRemovedEntityIdsBuf.length = 0;
     this.deltaRemovedEntityIdSet.clear();
     this.deltaEntityIdSet.clear();
+    this.currentVisibleProjectileIdsBuf.length = 0;
+    this.visibleProjectileAddedIdsBuf.length = 0;
+    this.visibleProjectileRemovedIdsBuf.length = 0;
   }
 
   private stampSnapshotMaterialization(
@@ -291,12 +298,33 @@ export class ServerSnapshotPublisher {
     listener.hasVisibleEntityBaseline = true;
   }
 
+  private updateListenerVisibleProjectileBaselineFromIds(
+    listener: SnapshotListenerEntry,
+    visibleProjectileIds: readonly EntityId[],
+  ): void {
+    this.copyVisibleIdsInto(listener.visibleProjectileIds, visibleProjectileIds);
+  }
+
   private copyVisibleIdsInto(
     out: IndexedEntityIdSet,
     visibleEntityIds: readonly EntityId[],
   ): void {
     out.clear();
     for (let i = 0; i < visibleEntityIds.length; i++) out.add(visibleEntityIds[i]);
+  }
+
+  private applyVisibleProjectileBaselineDelta(
+    listener: SnapshotListenerEntry,
+    addedIds: readonly EntityId[] | undefined,
+    removedIds: readonly EntityId[] | undefined,
+  ): void {
+    const baseline = listener.visibleProjectileIds;
+    if (removedIds !== undefined) {
+      for (let i = 0; i < removedIds.length; i++) baseline.delete(removedIds[i]);
+    }
+    if (addedIds !== undefined) {
+      for (let i = 0; i < addedIds.length; i++) baseline.add(addedIds[i]);
+    }
   }
 
   private collectCurrentVisibleEntityIds(
@@ -350,6 +378,16 @@ export class ServerSnapshotPublisher {
       }
     }
     listener.hasVisibleEntityBaseline = true;
+  }
+
+  private updateUnfilteredVisibleProjectileBaseline(
+    listener: SnapshotListenerEntry,
+    world: WorldState,
+  ): void {
+    const baseline = listener.visibleProjectileIds;
+    baseline.clear();
+    const projectiles = world.getProjectiles();
+    for (let i = 0; i < projectiles.length; i++) baseline.add(projectiles[i].id);
   }
 
   private buildServerMeta(
@@ -477,6 +515,7 @@ export class ServerSnapshotPublisher {
           removedEntities: this.removedEntitiesBuf,
           recipientPlayerId: listener.playerId,
           visibility,
+          previousVisibleProjectileIds: listener.visibleProjectileIds,
           gamePhase,
           winnerId,
           sprayTargets,
@@ -511,6 +550,10 @@ export class ServerSnapshotPublisher {
             directSnapshot.visibleEntityIds,
             input.world,
             visibility,
+          );
+          this.updateListenerVisibleProjectileBaselineFromIds(
+            listener,
+            directSnapshot.visibleProjectileIds ?? [],
           );
           addMaterializationStage(stages, 'visibility', stageStart);
           this.stampSnapshotMaterialization(
@@ -554,6 +597,8 @@ export class ServerSnapshotPublisher {
         sprayOverride,
         minimapOverride,
         materializationStages: stages,
+        previousVisibleProjectileIds: listener.visibleProjectileIds,
+        currentVisibleProjectileIds: this.currentVisibleProjectileIdsBuf,
       };
       const state = serializeGameState(
         input.world,
@@ -579,6 +624,10 @@ export class ServerSnapshotPublisher {
       addMaterializationStage(stages, 'staticPayload', stageStart);
       stageStart = performance.now();
       this.updateListenerVisibleBaseline(listener, input.world, visibility);
+      this.updateListenerVisibleProjectileBaselineFromIds(
+        listener,
+        this.currentVisibleProjectileIdsBuf,
+      );
       addMaterializationStage(stages, 'visibility', stageStart);
       stageStart = performance.now();
       const encoded = this.wirePreencoder.encodeIfRequested(state, listener.preencodeWire);
@@ -620,6 +669,7 @@ export class ServerSnapshotPublisher {
             input.world,
             getOrBuildVisibility(input.world, listener.playerId, visibilityCache),
           );
+          this.updateUnfilteredVisibleProjectileBaseline(listener, input.world);
         }
         listener.callback(
           sharedGlobalStaticSnapshot.state,
@@ -640,6 +690,7 @@ export class ServerSnapshotPublisher {
             input.world,
             getOrBuildVisibility(input.world, listener.playerId, visibilityCache),
           );
+          this.updateUnfilteredVisibleProjectileBaseline(listener, input.world);
         }
         listener.callback(
           sharedGlobalDynamicSnapshot.state,
@@ -688,7 +739,7 @@ export class ServerSnapshotPublisher {
     // travelling-shot motion. Serializer/apply plumbing stays as the
     // recovery-format path but is never fed from live ticks.
     const projectileMotionUpdates = undefined;
-    const hasLiveLineProjectiles = input.world.getLineProjectiles().length > 0;
+    const hasLiveProjectiles = input.world.getProjectiles().length > 0;
 
     this.dirtyIdsBuf.length = 0;
     this.dirtyFieldsBuf.length = 0;
@@ -703,7 +754,7 @@ export class ServerSnapshotPublisher {
     const hasProjectileEvents =
       projectileSpawns.length > 0 ||
       projectileDespawns.length > 0 ||
-      hasLiveLineProjectiles;
+      hasLiveProjectiles;
     addMaterializationStage(emitBaseStages, 'lifecycleDrain', lifecycleStart);
 
     let stageStart = performance.now();
@@ -743,6 +794,7 @@ export class ServerSnapshotPublisher {
           recipientPlayerId: listener.playerId,
           visibility,
           previousVisibleEntityIds: listener.visibleEntityIds,
+          previousVisibleProjectileIds: listener.visibleProjectileIds,
           currentVisibleEntityIds: currentVisible,
           currentVisibleEntityIdList: currentVisibleList,
           currentVisibleEntitySlots: currentVisibleSlots,
@@ -784,6 +836,11 @@ export class ServerSnapshotPublisher {
               this.removedEntitiesBuf,
             );
           }
+          this.applyVisibleProjectileBaselineDelta(
+            listener,
+            directSnapshot.visibleProjectileBaselineAddedIds,
+            directSnapshot.visibleProjectileBaselineRemovedIds,
+          );
           addMaterializationStage(stages, 'visibility', stageStart);
           this.stampSnapshotMaterialization(
             directSnapshot.state,
@@ -889,7 +946,9 @@ export class ServerSnapshotPublisher {
         'scanPulses',
         () => serializeScanPulses(input.world, visibility),
       );
-      const projectiles = hasProjectileEvents
+      this.visibleProjectileAddedIdsBuf.length = 0;
+      this.visibleProjectileRemovedIdsBuf.length = 0;
+      const projectiles = hasProjectileEvents || listener.visibleProjectileIds.size > 0
         ? timeMaterializationStage(
             stages,
             'projectiles',
@@ -901,9 +960,17 @@ export class ServerSnapshotPublisher {
               projectileSpawns,
               projectileDespawns,
               projectileMotionUpdates,
+              previousVisibleProjectileIds: listener.visibleProjectileIds,
+              visibleProjectileAddedIds: this.visibleProjectileAddedIdsBuf,
+              visibleProjectileRemovedIds: this.visibleProjectileRemovedIdsBuf,
             }),
           )
         : undefined;
+      this.applyVisibleProjectileBaselineDelta(
+        listener,
+        this.visibleProjectileAddedIdsBuf,
+        this.visibleProjectileRemovedIdsBuf,
+      );
       const gameState = timeMaterializationStage(
         stages,
         'gameState',
@@ -1176,6 +1243,7 @@ export class ServerSnapshotPublisher {
         const directSnapshot = this.directWirePreencoder.tryEncodeSparseDelta({
           world: input.world,
           visibility,
+          previousVisibleProjectileIds: listener.visibleProjectileIds,
           audioEvents,
           projectileSpawns,
           projectileDespawns,
@@ -1189,6 +1257,11 @@ export class ServerSnapshotPublisher {
           },
         });
         if (directSnapshot !== undefined) {
+          this.applyVisibleProjectileBaselineDelta(
+            listener,
+            directSnapshot.visibleProjectileBaselineAddedIds,
+            directSnapshot.visibleProjectileBaselineRemovedIds,
+          );
           this.stampSnapshotMaterialization(
             directSnapshot.state,
             'sparse-delta',
@@ -1202,6 +1275,8 @@ export class ServerSnapshotPublisher {
           continue;
         }
       }
+      this.visibleProjectileAddedIdsBuf.length = 0;
+      this.visibleProjectileRemovedIdsBuf.length = 0;
       const projectiles = hasProjectilesAfterDrain
         ? timeMaterializationStage(
             stages,
@@ -1214,9 +1289,17 @@ export class ServerSnapshotPublisher {
               projectileSpawns,
               projectileDespawns,
               projectileMotionUpdates: undefined,
+              previousVisibleProjectileIds: listener.visibleProjectileIds,
+              visibleProjectileAddedIds: this.visibleProjectileAddedIdsBuf,
+              visibleProjectileRemovedIds: this.visibleProjectileRemovedIdsBuf,
             }),
           )
         : undefined;
+      this.applyVisibleProjectileBaselineDelta(
+        listener,
+        this.visibleProjectileAddedIdsBuf,
+        this.visibleProjectileRemovedIdsBuf,
+      );
       const netAudioEvents = audioEvents !== undefined
         ? timeMaterializationStage(
             stages,

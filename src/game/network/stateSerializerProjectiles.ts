@@ -70,6 +70,7 @@ import {
   getProjectileSpawnWireFlags,
   projectileBeamEndpointDamageableFromFlags,
 } from './projectileWireFlags';
+import { IndexedEntityIdSet } from './IndexedEntityIdCollections';
 export {
   PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID,
   PROJECTILE_BEAM_POINT_FLAG_NORMAL_X,
@@ -130,7 +131,7 @@ type PooledMotionUpdate = NetworkServerSnapshotMotionUpdate & {
   _velocity: Vec3;
 };
 
-type SerializeProjectileSnapshotOptions = {
+export type SerializeProjectileSnapshotOptions = {
   world: WorldState;
   fullStateResync: boolean;
   visibility: SnapshotVisibility | undefined;
@@ -138,6 +139,15 @@ type SerializeProjectileSnapshotOptions = {
   projectileSpawns: ProjectileSpawnEvent[] | undefined;
   projectileDespawns: ProjectileDespawnEvent[] | undefined;
   projectileMotionUpdates: ProjectileMotionUpdateEvent[] | undefined;
+  /** Per-listener projectile visibility baseline. When present, this
+   *  serializer emits synthetic spawn/despawn transitions as hostile shots
+   *  enter or leave full team vision. */
+  previousVisibleProjectileIds?: ReadonlySet<EntityId>;
+  /** Current full-visible projectile ids, populated for full snapshots. */
+  currentVisibleProjectileIds?: EntityId[];
+  /** Baseline changes, populated without mutating the listener baseline. */
+  visibleProjectileAddedIds?: EntityId[];
+  visibleProjectileRemovedIds?: EntityId[];
 };
 
 const _spawnBuf: NetworkServerSnapshotProjectileSpawn[] = [];
@@ -154,7 +164,10 @@ let _despawnPoolIndex = 0;
 let _motionUpdatePoolIndex = 0;
 let _beamUpdatePoolIndex = 0;
 let _beamPointPoolIndex = 0;
-const _resyncSeenIds = new Set<number>();
+const _spawnedIds = new IndexedEntityIdSet();
+const _despawnedIds = new IndexedEntityIdSet();
+const _actualDespawnIds = new IndexedEntityIdSet();
+const _currentVisibleProjectileIds = new IndexedEntityIdSet();
 
 const _projectilesBuf: ProjectileSnapshot = {
   spawns: undefined,
@@ -1084,77 +1097,33 @@ function shouldSendProjectileAtPoint(
   x: number,
   y: number,
   z: number,
-  homingTargetId: number | undefined = undefined,
-  world: WorldState | undefined = undefined,
 ): boolean {
   if (visibility === undefined || !visibility.isFiltered) return true;
   if (visibility.isOwnedByRecipientOrAlly(ownerId)) return true;
-  if (visibility.isPointVisibleAt(x, y, z)) return true;
-  // FOW-08-followup: forward in-flight updates when the projectile is
-  // homing on one of the recipient's (or their allies') entities, so
-  // the player at least sees the missile veering toward their unit
-  // instead of taking a silent HP drop from an attacker still hidden
-  // in fog. FOW-06 broadens the target check from recipient-only to
-  // team-aware via isOwnedByRecipientOrAlly.
-  if (homingTargetId !== undefined && homingTargetId !== NO_ENTITY_ID && world !== undefined) {
-    const target = world.getEntity(homingTargetId);
-    const targetOwnerId = target !== undefined && target.ownership !== null
-      ? target.ownership.playerId
-      : undefined;
-    if (visibility.isOwnedByRecipientOrAlly(targetOwnerId)) return true;
-  }
-  return false;
-}
-
-function isRecipientOwnedProjectileTarget(
-  targetId: EntityId | number | undefined,
-  visibility: SnapshotVisibility,
-  world: WorldState,
-): boolean {
-  if (targetId === undefined || targetId <= 0 || targetId === NO_ENTITY_ID) return false;
-  const target = world.getEntity(targetId as EntityId);
-  const targetOwnerId = target !== undefined && target.ownership !== null
-    ? target.ownership.playerId
-    : undefined;
-  return visibility.isOwnedByRecipientOrAlly(targetOwnerId);
+  return visibility.isPointVisibleAt(x, y, z);
 }
 
 function shouldSendProjectileMotionUpdate(
   vu: ProjectileMotionUpdateEvent,
   visibility: SnapshotVisibility | undefined,
-  world: WorldState,
 ): boolean {
-  if (visibility === undefined || !visibility.isFiltered) return true;
-  if (visibility.isOwnedByRecipientOrAlly(vu.ownerId)) return true;
-  if (visibility.isPointVisibleAt(vu.pos.x, vu.pos.y, vu.pos.z)) return true;
-
-  // Motion rows do not carry the homing target, so resolve the authoritative
-  // projectile even when ownerId was stamped on the event. The owner is an
-  // early visibility shortcut, not evidence that the incoming-threat
-  // exception can be skipped.
-  const projectileEntity = world.getEntity(vu.id);
-  const projectile = projectileEntity === undefined ? undefined : projectileEntity.projectile;
-  if (projectile === undefined || projectile === null) return false;
-  if (visibility.isOwnedByRecipientOrAlly(projectile.ownerId)) return true;
-  return isRecipientOwnedProjectileTarget(
-    projectile.homingTargetId !== NO_ENTITY_ID
-      ? projectile.homingTargetId
-      : undefined,
+  return shouldSendProjectileAtPoint(
+    vu.ownerId,
     visibility,
-    world,
+    vu.pos.x,
+    vu.pos.y,
+    vu.pos.z,
   );
 }
 
-/** Whether a live projectile entity is forwarded to the recipient in FULL —
- *  own or allied, inside full sight (either beam end for a beam), or the
- *  incoming-threat exception. This is the whole projectile channel's
- *  admission rule; the minimap's emission contacts are its complement, so an
- *  emission is either the real projectile or an anonymous dot, never both. */
+/** Whether a live projectile entity is forwarded to the recipient in full.
+ *  Own/allied emissions are always known; hostile emissions require full team
+ *  vision at the projectile, or across the complete transmitted beam path.
+ *  The minimap contact channel is the radar-only complement. */
 export function isProjectileSeenInFull(
   entity: Entity,
   proj: NonNullable<Entity['projectile']>,
   visibility: SnapshotVisibility | undefined,
-  world: WorldState,
 ): boolean {
   return proj.points !== null && proj.points.length >= 2
     ? shouldSendBeamPath(proj.ownerId, visibility, proj.points)
@@ -1164,10 +1133,10 @@ export function isProjectileSeenInFull(
         entity.transform.x,
         entity.transform.y,
         entity.transform.z,
-        proj.homingTargetId,
-        world,
       );
 }
+
+const BEAM_VISIBILITY_SAMPLE_STEP = 16;
 
 export function shouldSendBeamPath(
   ownerId: PlayerId | undefined,
@@ -1176,48 +1145,122 @@ export function shouldSendBeamPath(
 ): boolean {
   if (visibility === undefined || !visibility.isFiltered) return true;
   if (visibility.isOwnedByRecipientOrAlly(ownerId)) return true;
-  // FOW-08-followup: forward the beam if EITHER end is visible. A
-  // beam fired from fog that lands on the recipient's unit now
-  // flashes for them — the source still falls outside vision, but
-  // the beam line is drawn from the still-hidden attacker toward
-  // the visible endpoint, so the player can see the direction of
-  // fire rather than HP melting from nothing.
-  const sourcePoint = points[0];
-  if (visibility.isPointVisibleAt(sourcePoint.x, sourcePoint.y, sourcePoint.z)) return true;
-  const endPoint = points[points.length - 1];
-  return visibility.isPointVisibleAt(endPoint.x, endPoint.y, endPoint.z);
+  if (points.length === 0) return false;
+
+  // A beam is one continuous visual. Sending it because only one endpoint is
+  // visible reveals its hidden source/direction, so conservatively require
+  // samples along every segment to remain inside full vision.
+  for (let p = 0; p < points.length; p++) {
+    const point = points[p];
+    if (!visibility.isPointVisibleAt(point.x, point.y, point.z)) return false;
+    if (p === 0) continue;
+    const previous = points[p - 1];
+    const dx = point.x - previous.x;
+    const dy = point.y - previous.y;
+    const dz = point.z - previous.z;
+    const sampleCount = Math.ceil(Math.hypot(dx, dy, dz) / BEAM_VISIBILITY_SAMPLE_STEP);
+    for (let sample = 1; sample < sampleCount; sample++) {
+      const t = sample / sampleCount;
+      if (!visibility.isPointVisibleAt(
+        previous.x + dx * t,
+        previous.y + dy * t,
+        previous.z + dz * t,
+      )) return false;
+    }
+  }
+  return true;
 }
 
 function shouldSendProjectileSpawnEvent(
   spawn: ProjectileSpawnEvent,
   visibility: SnapshotVisibility | undefined,
-  world: WorldState,
 ): boolean {
   if (visibility === undefined || !visibility.isFiltered) return true;
   if (visibility.isOwnedByRecipientOrAlly(spawn.playerId)) return true;
-  if (visibility.isPointVisibleAt(spawn.pos.x, spawn.pos.y, spawn.pos.z)) return true;
-  if (spawn.beam !== undefined && shouldSendBeamPath(
-    spawn.playerId,
+  if (spawn.beam !== undefined) {
+    return shouldSendBeamPath(
+      spawn.playerId,
+      visibility,
+      [spawn.beam.start, spawn.beam.end],
+    );
+  }
+  return visibility.isPointVisibleAt(spawn.pos.x, spawn.pos.y, spawn.pos.z);
+}
+
+function prepareProjectileVisibility(
+  options: SerializeProjectileSnapshotOptions,
+): readonly Entity[] {
+  const {
+    world,
     visibility,
-    [spawn.beam.start, spawn.beam.end],
-  )) {
-    return true;
+    projectileDespawns,
+    previousVisibleProjectileIds,
+    currentVisibleProjectileIds,
+    visibleProjectileAddedIds,
+    visibleProjectileRemovedIds,
+  } = options;
+
+  _currentVisibleProjectileIds.clear();
+  _actualDespawnIds.clear();
+  if (currentVisibleProjectileIds !== undefined) currentVisibleProjectileIds.length = 0;
+  if (visibleProjectileAddedIds !== undefined) visibleProjectileAddedIds.length = 0;
+  if (visibleProjectileRemovedIds !== undefined) visibleProjectileRemovedIds.length = 0;
+  if (projectileDespawns !== undefined) {
+    for (let i = 0; i < projectileDespawns.length; i++) {
+      _actualDespawnIds.add(projectileDespawns[i].id);
+    }
   }
-  // FOW-08: forward the spawn when the shot is targeting one of the
-  // recipient's (or their allies') entities. Without this, an attacker
-  // hidden in fog can land a kill on the player without the player
-  // ever seeing a projectile in flight — the unit just takes a silent
-  // HP drop. FOW-06 broadens the target check from recipient-only to
-  // team-aware via isOwnedByRecipientOrAlly so allied units get the
-  // same incoming-arc reveal.
-  if (spawn.targetEntityId !== undefined) {
-    const target = world.getEntity(spawn.targetEntityId);
-    const targetOwnerId = target !== undefined && target.ownership !== null
-      ? target.ownership.playerId
-      : undefined;
-    if (visibility.isOwnedByRecipientOrAlly(targetOwnerId)) return true;
+
+  const liveProjectiles = world.getProjectiles();
+  for (let i = 0; i < liveProjectiles.length; i++) {
+    const entity = liveProjectiles[i];
+    const projectile = entity.projectile;
+    if (projectile === null || !isProjectileSeenInFull(entity, projectile, visibility)) continue;
+    _currentVisibleProjectileIds.add(entity.id);
+    currentVisibleProjectileIds?.push(entity.id);
+    if (
+      previousVisibleProjectileIds !== undefined &&
+      !previousVisibleProjectileIds.has(entity.id)
+    ) {
+      visibleProjectileAddedIds?.push(entity.id);
+    }
   }
-  return false;
+
+  if (previousVisibleProjectileIds !== undefined) {
+    for (const id of previousVisibleProjectileIds) {
+      if (!_currentVisibleProjectileIds.has(id)) visibleProjectileRemovedIds?.push(id);
+    }
+  }
+  return liveProjectiles;
+}
+
+function shouldEmitSpawnEventForSnapshot(
+  spawn: ProjectileSpawnEvent,
+  options: SerializeProjectileSnapshotOptions,
+): boolean {
+  const { fullStateResync, visibility, previousVisibleProjectileIds } = options;
+  if (previousVisibleProjectileIds === undefined) {
+    return shouldSendProjectileSpawnEvent(spawn, visibility);
+  }
+
+  if (_currentVisibleProjectileIds.has(spawn.id)) {
+    return fullStateResync || !previousVisibleProjectileIds.has(spawn.id);
+  }
+
+  // Preserve a visible same-tick launch/impact pair (important for the
+  // projectile tail-collapse presentation) without admitting a live shot
+  // whose current authoritative point has already moved back into fog.
+  return _actualDespawnIds.has(spawn.id) && shouldSendProjectileSpawnEvent(spawn, visibility);
+}
+
+function shouldSynthesizeLiveSpawn(
+  id: EntityId,
+  options: SerializeProjectileSnapshotOptions,
+): boolean {
+  if (!_currentVisibleProjectileIds.has(id) || _spawnedIds.has(id)) return false;
+  if (options.fullStateResync) return true;
+  const baseline = options.previousVisibleProjectileIds;
+  return baseline !== undefined && !baseline.has(id);
 }
 
 function canReferenceEntityId(
@@ -1432,64 +1475,87 @@ function fillBeamPoint(
   out.normalZ = canReferenceReflector && sp.normalZ !== null ? qNormal(sp.normalZ) : null;
 }
 
-export function serializeProjectileSnapshot({
-  world,
-  fullStateResync,
-  visibility,
-  emitBeamUpdates,
-  projectileSpawns,
-  projectileDespawns,
-  projectileMotionUpdates,
-}: SerializeProjectileSnapshotOptions): ProjectileSnapshot | undefined {
+export function serializeProjectileSnapshot(
+  options: SerializeProjectileSnapshotOptions,
+): ProjectileSnapshot | undefined {
+  const {
+    world,
+    fullStateResync,
+    visibility,
+    emitBeamUpdates,
+    projectileSpawns,
+    projectileDespawns,
+    projectileMotionUpdates,
+    previousVisibleProjectileIds,
+  } = options;
   resetProjectilePools();
   resetProjectileWireSource();
+  const liveProjectiles = prepareProjectileVisibility(options);
+  _spawnedIds.clear();
+  _despawnedIds.clear();
 
-  // Full-state snapshots synthesize spawns for every live projectile entity so a
-  // client that missed the original spawn event can still recover it.
+  // Full-state snapshots synthesize every visible live projectile. Delta
+  // snapshots synthesize a current-state spawn whenever a projectile crosses
+  // from radar/hidden space into full team vision.
   let netProjectileSpawns: NetworkServerSnapshotProjectileSpawn[] | undefined;
-  const wantProjectileResync = fullStateResync;
   const tickSpawnCount = projectileSpawns === undefined ? 0 : projectileSpawns.length;
-  if (tickSpawnCount > 0 || wantProjectileResync) {
+  if (tickSpawnCount > 0 || fullStateResync || previousVisibleProjectileIds !== undefined) {
     _spawnBuf.length = 0;
-    if (wantProjectileResync) _resyncSeenIds.clear();
     if (projectileSpawns) {
       for (let i = 0; i < tickSpawnCount; i++) {
         const ps = projectileSpawns[i];
-        if (!shouldSendProjectileSpawnEvent(ps, visibility, world)) continue;
+        if (!shouldEmitSpawnEventForSnapshot(ps, options)) continue;
         const out = getPooledProjectileSpawn();
         fillProjectileSpawnFromEvent(out, ps, world, visibility);
         _spawnBuf.push(out);
         copyProjectileSpawnIntoWireRow(out);
-        if (wantProjectileResync) _resyncSeenIds.add(ps.id);
+        _spawnedIds.add(ps.id);
       }
     }
-    if (wantProjectileResync) {
-      const liveProjectiles = world.getProjectiles();
+    if (fullStateResync || previousVisibleProjectileIds !== undefined) {
       for (let i = 0; i < liveProjectiles.length; i++) {
         const entity = liveProjectiles[i];
-        if (_resyncSeenIds.has(entity.id)) continue;
+        if (!shouldSynthesizeLiveSpawn(entity.id, options)) continue;
         const proj = entity.projectile;
         if (!proj) continue;
-        if (!isProjectileSeenInFull(entity, proj, visibility, world)) continue;
         const out = getPooledProjectileSpawn();
         fillProjectileSpawnFromEntity(out, entity, proj, world, visibility);
         _spawnBuf.push(out);
         copyProjectileSpawnIntoWireRow(out);
+        _spawnedIds.add(entity.id);
       }
     }
     if (_spawnBuf.length > 0) netProjectileSpawns = _spawnBuf;
   }
 
   let netProjectileDespawns: NetworkServerSnapshotProjectileDespawn[] | undefined;
-  if (projectileDespawns && projectileDespawns.length > 0) {
+  if (previousVisibleProjectileIds !== undefined || (projectileDespawns?.length ?? 0) > 0) {
     _despawnBuf.length = 0;
-    for (let i = 0; i < projectileDespawns.length; i++) {
+    if (previousVisibleProjectileIds !== undefined) {
+      for (const id of previousVisibleProjectileIds) {
+        if (_currentVisibleProjectileIds.has(id)) continue;
+        const out = getPooledProjectileDespawn();
+        out.id = id;
+        _despawnBuf.push(out);
+        copyProjectileDespawnIntoWireRow(out);
+        _despawnedIds.add(id);
+      }
+    }
+    for (let i = 0; i < (projectileDespawns?.length ?? 0); i++) {
+      const id = projectileDespawns![i].id;
+      if (_despawnedIds.has(id)) continue;
+      if (
+        previousVisibleProjectileIds !== undefined &&
+        !previousVisibleProjectileIds.has(id) &&
+        !_spawnedIds.has(id)
+      ) continue;
       const out = getPooledProjectileDespawn();
-      out.id = projectileDespawns[i].id;
+      out.id = id;
       _despawnBuf.push(out);
       copyProjectileDespawnIntoWireRow(out);
+      _despawnedIds.add(id);
     }
-    netProjectileDespawns = _despawnBuf;
+    if (_despawnBuf.length > 0) netProjectileDespawns = _despawnBuf;
   }
 
   let netMotionUpdates: NetworkServerSnapshotMotionUpdate[] | undefined;
@@ -1497,7 +1563,9 @@ export function serializeProjectileSnapshot({
     _motionUpdateBuf.length = 0;
     for (let i = 0; i < projectileMotionUpdates.length; i++) {
       const vu = projectileMotionUpdates[i];
-      if (!shouldSendProjectileMotionUpdate(vu, visibility, world)) continue;
+      if (previousVisibleProjectileIds !== undefined || fullStateResync) {
+        if (!_currentVisibleProjectileIds.has(vu.id)) continue;
+      } else if (!shouldSendProjectileMotionUpdate(vu, visibility)) continue;
       const out = getPooledMotionUpdate();
       fillProjectileMotionUpdate(out, vu);
       _motionUpdateBuf.push(out);
@@ -1516,7 +1584,11 @@ export function serializeProjectileSnapshot({
       if (!proj) continue;
       const srcPts = proj.points;
       if (!srcPts || srcPts.length < 2) continue;
-      if (!shouldSendBeamPath(proj.ownerId, visibility, srcPts)) continue;
+      if (
+        (previousVisibleProjectileIds !== undefined || fullStateResync)
+          ? !_currentVisibleProjectileIds.has(entity.id)
+          : !shouldSendBeamPath(proj.ownerId, visibility, srcPts)
+      ) continue;
 
       const update = getPooledBeamUpdate();
       update.id = entity.id;
@@ -1550,16 +1622,23 @@ export function serializeProjectileSnapshot({
   return _projectilesBuf;
 }
 
-export function writeProjectileSnapshotWireRowsDirect({
-  world,
-  fullStateResync,
-  visibility,
-  emitBeamUpdates,
-  projectileSpawns,
-  projectileDespawns,
-  projectileMotionUpdates,
-}: SerializeProjectileSnapshotOptions): ProjectileSnapshot | undefined {
+export function writeProjectileSnapshotWireRowsDirect(
+  options: SerializeProjectileSnapshotOptions,
+): ProjectileSnapshot | undefined {
+  const {
+    world,
+    fullStateResync,
+    visibility,
+    emitBeamUpdates,
+    projectileSpawns,
+    projectileDespawns,
+    projectileMotionUpdates,
+    previousVisibleProjectileIds,
+  } = options;
   resetProjectileWireSource();
+  const liveProjectiles = prepareProjectileVisibility(options);
+  _spawnedIds.clear();
+  _despawnedIds.clear();
   _directProjectileSpawnPlaceholders.length = 0;
   _directProjectileDespawnPlaceholders.length = 0;
   _directProjectileMotionPlaceholders.length = 0;
@@ -1569,44 +1648,60 @@ export function writeProjectileSnapshotWireRowsDirect({
   _directProjectilesBuf.motionUpdates = undefined;
   _directProjectilesBuf.beamUpdates = undefined;
 
-  const wantProjectileResync = fullStateResync;
   const tickSpawnCount = projectileSpawns === undefined ? 0 : projectileSpawns.length;
-  if (tickSpawnCount > 0 || wantProjectileResync) {
-    if (wantProjectileResync) _resyncSeenIds.clear();
+  if (tickSpawnCount > 0 || fullStateResync || previousVisibleProjectileIds !== undefined) {
     if (projectileSpawns) {
       for (let i = 0; i < tickSpawnCount; i++) {
         const ps = projectileSpawns[i];
-        if (!shouldSendProjectileSpawnEvent(ps, visibility, world)) continue;
+        if (!shouldEmitSpawnEventForSnapshot(ps, options)) continue;
         copyProjectileSpawnEventIntoWireRowDirect(ps, world, visibility);
-        if (wantProjectileResync) _resyncSeenIds.add(ps.id);
+        _spawnedIds.add(ps.id);
       }
     }
 
-    if (wantProjectileResync) {
-      const liveProjectiles = world.getProjectiles();
+    if (fullStateResync || previousVisibleProjectileIds !== undefined) {
       for (let i = 0; i < liveProjectiles.length; i++) {
         const entity = liveProjectiles[i];
-        if (_resyncSeenIds.has(entity.id)) continue;
+        if (!shouldSynthesizeLiveSpawn(entity.id, options)) continue;
         const proj = entity.projectile;
         if (!proj) continue;
-        if (!isProjectileSeenInFull(entity, proj, visibility, world)) continue;
         copyProjectileEntitySpawnIntoWireRowDirect(entity, proj, world, visibility);
+        _spawnedIds.add(entity.id);
       }
     }
   }
 
-  if (projectileDespawns && projectileDespawns.length > 0) {
-    for (let i = 0; i < projectileDespawns.length; i++) {
+  if (previousVisibleProjectileIds !== undefined) {
+    for (const id of previousVisibleProjectileIds) {
+      if (_currentVisibleProjectileIds.has(id)) continue;
       const rows = projectileWireSource.despawns;
       const rowIndex = reserveUint32WireRows(rows, 1, PROJECTILE_DESPAWN_WIRE_STRIDE);
-      rows.values[rowIndex] = projectileDespawns[i].id;
+      rows.values[rowIndex] = id;
+      _despawnedIds.add(id);
+    }
+  }
+  if (projectileDespawns && projectileDespawns.length > 0) {
+    for (let i = 0; i < projectileDespawns.length; i++) {
+      const id = projectileDespawns[i].id;
+      if (_despawnedIds.has(id)) continue;
+      if (
+        previousVisibleProjectileIds !== undefined &&
+        !previousVisibleProjectileIds.has(id) &&
+        !_spawnedIds.has(id)
+      ) continue;
+      const rows = projectileWireSource.despawns;
+      const rowIndex = reserveUint32WireRows(rows, 1, PROJECTILE_DESPAWN_WIRE_STRIDE);
+      rows.values[rowIndex] = id;
+      _despawnedIds.add(id);
     }
   }
 
   if (projectileMotionUpdates && projectileMotionUpdates.length > 0) {
     for (let i = 0; i < projectileMotionUpdates.length; i++) {
       const vu = projectileMotionUpdates[i];
-      if (!shouldSendProjectileMotionUpdate(vu, visibility, world)) continue;
+      if (previousVisibleProjectileIds !== undefined || fullStateResync) {
+        if (!_currentVisibleProjectileIds.has(vu.id)) continue;
+      } else if (!shouldSendProjectileMotionUpdate(vu, visibility)) continue;
       copyProjectileMotionUpdateEventIntoWireRowDirect(vu);
     }
   }
@@ -1619,7 +1714,11 @@ export function writeProjectileSnapshotWireRowsDirect({
       if (!proj) continue;
       const srcPts = proj.points;
       if (!srcPts || srcPts.length < 2) continue;
-      if (!shouldSendBeamPath(proj.ownerId, visibility, srcPts)) continue;
+      if (
+        (previousVisibleProjectileIds !== undefined || fullStateResync)
+          ? !_currentVisibleProjectileIds.has(entity.id)
+          : !shouldSendBeamPath(proj.ownerId, visibility, srcPts)
+      ) continue;
 
       const wirePointCount = getBeamWirePointCount(srcPts.length);
       const obstructionT = proj.obstructionT === null ? null : qRot(proj.obstructionT);

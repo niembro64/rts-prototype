@@ -99,6 +99,10 @@ export type SerializeGameStateOptions = {
   minimapOverride: SerializerMinimapOverride | undefined;
   emitProjectileDetailFields: boolean | undefined;
   materializationStages: SnapshotMaterializationStageDurations | undefined;
+  previousVisibleProjectileIds?: ReadonlySet<EntityId>;
+  currentVisibleProjectileIds?: EntityId[];
+  visibleProjectileAddedIds?: EntityId[];
+  visibleProjectileRemovedIds?: EntityId[];
 };
 
 const DEFAULT_SERIALIZE_GAME_STATE_OPTIONS: SerializeGameStateOptions = {
@@ -283,6 +287,10 @@ export function serializeGameState(
     projectileSpawns,
     projectileDespawns,
     projectileMotionUpdates,
+    previousVisibleProjectileIds: options.previousVisibleProjectileIds,
+    currentVisibleProjectileIds: options.currentVisibleProjectileIds,
+    visibleProjectileAddedIds: options.visibleProjectileAddedIds,
+    visibleProjectileRemovedIds: options.visibleProjectileRemovedIds,
   });
   if (stages !== undefined) {
     addSnapshotMaterializationStageFromStart(stages, 'projectiles', stageStart);

@@ -54,6 +54,7 @@ export class ServerSnapshotListenerRegistry {
       startupReady: false,
       hasVisibleEntityBaseline: false,
       visibleEntityIds: new IndexedEntityIdSet(),
+      visibleProjectileIds: new IndexedEntityIdSet(),
     });
     return trackingKey;
   }
@@ -67,6 +68,7 @@ export class ServerSnapshotListenerRegistry {
       listener.needsFullState = true;
       listener.hasVisibleEntityBaseline = false;
       listener.visibleEntityIds.clear();
+      listener.visibleProjectileIds.clear();
       if (includeStatic) listener.needsStatic = true;
     }
   }

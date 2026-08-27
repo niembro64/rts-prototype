@@ -653,8 +653,8 @@
         battle-level fog is off.
       </p>
       <p>
-        Fog presentation consumes the same mounted sensor sources, source-medium row, target-medium
-        column, allied ownership, completion state, and powered-channel state as authoritative
+        Fog presentation consumes the same mounted sensor sources, host-origin medium, authored
+        scalar radii, allied ownership, completion state, and powered-channel state as authoritative
         visibility. A completed building keeps its ordinary local sight while fortified or switched
         off; only powered contact electronics such as radar, sonar, and detection go offline.
         Therefore an owned completed extractor always clears the terrain shade around its authored
@@ -798,22 +798,28 @@
         is nothing. A point occupies exactly one medium, so an emission earns at most one lane, and
         an enemy jammer covers it the way it covers a body standing there. The dot travels on the
         minimap contact channel, never the projectile channel, so an emission is either the real
-        projectile or a dot and a client never receives a projectile it has not earned. The one
-        standing exception is the incoming-threat rule: a shot homing on or aimed at the
-        recipient&rsquo;s own unit is forwarded in full so a hit never arrives from nowhere.
+        projectile or a dot and a client never receives a projectile it has not earned. This rule has
+        no incoming-threat exception: aiming or homing at the recipient does not create sight or
+        radar. When a hostile emission crosses between hidden, contact-only, and full-vision space,
+        the authoritative presentation stream removes, anonymizes, or restores it on that crossing;
+        a previously seen projectile may not continue rendering or predicting through hidden space.
+        A line emission is sent as a real line only when its complete transmitted path is in full
+        vision, so a visible impact cannot reveal an unsensed firing origin. An attack warning may
+        mark the recipient&rsquo;s known victim, but never the hidden attacker.
       </p>
       <p>
         A <strong>source</strong> and a <strong>target</strong> answer the medium question
         differently, and the asymmetry is deliberate.
       </p>
       <p>
-        Every sensor and weapon <strong>source</strong> is a mounted turret. A sensor classifies
-        from its authoritative AimFrom pivot; a physical shot or ray classifies from its selected
-        QueryWeapon socket. Either source point is strictly <strong>IN</strong> or
-        <strong>OUT</strong> of the water: at or below the water level is
-        <strong>underwater</strong>, above it is <strong>above water</strong>. A partially wet
-        barrel is not half a sensor and not half a gun. Mount radius, host hull extent, visual
-        height, and wake never soften that classification.
+        A sensor capability may live on a mounted turret, but its <strong>host unit or building
+        origin</strong> alone selects the team field it contributes to. An origin at or above the
+        water level is <strong>air</strong>; an origin below the water level is
+        <strong>water</strong>. Mount height, AimFrom height, host hull extent, volume straddling,
+        visual height, and wake never change that sensor classification. The mounted world position
+        may remain the geometric centre and eye point of its authored circle, but it does not select
+        a second medium. Weapon physics stays separate: a physical shot or ray still classifies its
+        launch from the selected QueryWeapon socket and its own exhaustive trajectory matrix.
       </p>
       <p>
         A <strong>target</strong> is a body, and a body genuinely occupies whatever media its volume
@@ -825,39 +831,35 @@
         so the transition is continuous rather than a snap at the waterline.
       </p>
       <p>
-        Both full sight and contact sight are authored as a two-by-two matrix from source medium to
-        target medium: above-to-above, above-to-underwater, underwater-to-above, and
-        underwater-to-underwater. Only the row matching the source center is active on a tick.
-        Full sight <em>crosses the waterline</em>: water is a medium, not an occluder, so every
-        source row authors the same radius for both target columns, and an enemy inside a sensor's
-        sight radius is seen whichever side of the surface it is on &mdash; a surface hull sees the
-        submarine alongside it, a wading amphibian sees the beach it is climbing. (The earlier rule
-        authored only the same-medium entries, so a unit touching an enemy across the surface got
-        a contact dot and never the model; that contradicted the promise that anything inside team
-        sight is fully visible. <code>sensorWaterlineSightContractTest</code> pins the new one.)
-        Contact sight stays per medium by design: radar is the above-to-above lane and sonar the
-        under-to-under lane, and neither reaches across. A temporary scan pulse is an explicit
-        universal override: it contributes full sight to both target media without having an entity
-        center or an active source row.
+        Sensor authoring is scalar rather than a source-by-target matrix: one
+        <code>visionRadius</code>, one <code>radarRadius</code>, and one
+        <code>jammingRadius</code>, plus detector reach. On every coverage rebuild the host-origin
+        rule routes each nonzero radius to exactly one medium. An air host contributes its vision,
+        radar, and jamming circles only to the three air fields; a water host contributes them only
+        to the three water fields. Crossing the waterline moves the source between those fields
+        instead of activating a different matrix row or contributing to both. Detector reach follows
+        the same chosen vision field and never locates a target by itself. A temporary scan pulse is
+        an explicit universal override: it contributes vision to both media without an entity host.
       </p>
       <p>
-        Radar is the ordinary above-water-to-above-water contact lane. Sonar is the ordinary
-        underwater-to-underwater contact lane. The dedicated Radar and Sonar buildings each author
-        only their corresponding source-target entry, and construction rejects placing either in
-        the other source medium rather than allowing a completed but inert sensor. Full sight
-        remains the stronger identity-bearing tier and is not replaced by either contact sensor.
+        Radar is the generic contact-level radius. Its air presentation is called radar and its
+        water presentation is called sonar, but both are the same team-radar mechanism routed by
+        host origin. The dedicated Radar and Sonar buildings therefore author the same scalar kind
+        of radius; construction keeps Radar above water and Sonar below it. Jamming follows exactly
+        the same routing rule. Full vision remains the stronger identity-bearing tier and is not
+        replaced by radar in either medium.
       </p>
       <p>
-        Those mounted sensor lanes aggregate into four exhaustive, orthogonal team-knowledge facts:
-        <code>team-air-sight</code>, <code>team-water-sight</code>,
-        <code>team-air-radar</code>, and <code>team-water-sonar</code>. The first two identify target
-        volume observed above and below the surface; the latter two locate above-water and
-        underwater target volume without identifying it. A unit or building that straddles the
-        surface may earn both target-medium facts of a tier. A shot and a mounted turret are points
-        for medium membership and therefore earn exactly one target-medium fact. Each fact is
-        accumulated team-wide after the observing mount has passed its own authored sensor matrix;
-        none carries or implies a weapon launch medium, trajectory capability, range, or line of
-        fire.
+        Sensor coverage aggregates into six exhaustive, orthogonal team fields:
+        <code>team-air-vision</code>, <code>team-air-radar</code>,
+        <code>team-air-jamming</code>, <code>team-water-vision</code>,
+        <code>team-water-radar</code>, and <code>team-water-jamming</code>. The vision fields identify
+        target volume, the radar fields locate it without identity, and the jamming fields deny the
+        opposing radar field in the same medium. A unit or building target that straddles the surface
+        may intersect both target-medium fields; a shot and a mounted turret are points and occupy
+        exactly one. Every ordinary source contributes to only the three fields selected by its host
+        origin. None of the six carries or implies a weapon launch medium, trajectory capability,
+        range, or line of fire.
       </p>
       <p>
         Every directed weapon emission separately authors an exhaustive two-by-two boolean
@@ -904,14 +906,14 @@
         radar or sonar hosts.
       </p>
       <ul class="rule-list">
-        <li>The four exhaustive team-knowledge facts are <code>team-air-sight</code>, <code>team-water-sight</code>, <code>team-air-radar</code>, and <code>team-water-sonar</code>. Sight identifies and also counts as contact-level location in its target medium; radar/sonar-only coverage locates in its target medium; detector coverage may uncloak but does not locate by itself. The four facts are team-unified and orthogonal to every emission trajectory cell.</li>
-        <li>Every entity visibility and contact-radius test uses source and target centers for DISTANCE, with zero silhouette or hitbox padding &mdash; a hitbox never extends a sensor&rsquo;s reach. Medium membership is separate from distance: a source is classified by <code>mountCenter.z &lt;= waterLevel</code>, a target by the submerged fraction of its authored volume, and a target with any volume in a medium is addressable in that medium.</li>
+        <li>The six exhaustive team sensor fields are <code>team-air-vision</code>, <code>team-air-radar</code>, <code>team-air-jamming</code>, <code>team-water-vision</code>, <code>team-water-radar</code>, and <code>team-water-jamming</code>. Vision identifies and also counts as contact-level location in its medium; radar-only coverage locates without identity; same-medium jamming denies radar; detector coverage may uncloak inside vision but does not locate by itself. All six are team-unified and orthogonal to every emission trajectory cell.</li>
+        <li>Every entity visibility and contact-radius test uses source and target centers for DISTANCE, with zero silhouette or hitbox padding &mdash; a hitbox never extends a sensor&rsquo;s reach. Medium membership is separate from distance: a sensor source is classified only by its host origin (<code>hostOrigin.z &gt;= waterLevel</code> is air, below is water), a body target by the submerged fraction of its authored volume, and a target with any volume in a medium is addressable in that medium.</li>
         <li>The same source/target asymmetry governs weapons. Every directed emission exhaustively asserts all four booleans: above-water-to-above-water, above-water-to-underwater, underwater-to-above-water, and underwater-to-underwater. A turret activates exactly its point-classified source row and may lock a unit or building when any true column intersects positive target-body volume, or a shot/turret when the true column matches that target point. There is no same-medium preference. A turret must not lock what its emission cannot physically reach.</li>
-        <li>Every full-sight and contact-sight radius is selected from the active source row and target column. Ordinary content explicitly authors same-medium sight; cross-medium sight is a separate explicit blueprint capability, and neither is inferred.</li>
-        <li>Radar contributes contacts only from above-water sources to above-water targets; sonar contributes contacts only from underwater sources to underwater targets. Their map-space coverage may overlap, but their source-target lanes never do.</li>
-        <li>Team-air-radar and team-water-sonar contacts are eligible inputs to weapons that explicitly allow contact fire (the current compatibility flag is named radar fire). Once team-unified, either knowledge channel may support any physically valid emission route to that target; sensor source medium never constrains weapon source medium. Contacts are not full entities in the recipient&rsquo;s main snapshot.</li>
-        <li>Weapon range, tracking range, unit sight, radar range, sonar range, and detector range are separate envelopes. Sharing a number between them should be an authored choice, not a default coupling.</li>
-        <li>Team-air-sight and team-water-sight are player/team aggregates. A turret firing using another unit&rsquo;s sight is using team knowledge, not gaining that other unit&rsquo;s local sight radius or inheriting its sensor lane.</li>
+        <li>Vision, radar, and jamming each author one scalar radius. The host-origin medium routes those radii to exactly one air-or-water trio; sensor mount height and target medium do not select matrix cells because sensor matrices do not exist.</li>
+        <li>Air radar and water radar (presented as sonar) use the same aggregation rule, as do air and water jamming. Their map-space coverage may overlap, but a single ordinary host never contributes one authored radius to both media at once.</li>
+        <li>Team-air-radar and team-water-radar contacts are eligible inputs to weapons that explicitly allow contact fire (the current compatibility flag is named radar fire). Once team-unified, either knowledge channel may support any physically valid emission route to that target; sensor source medium never constrains weapon source medium. Contacts are not full entities in the recipient&rsquo;s main snapshot.</li>
+        <li>Weapon range, tracking range, unit vision, radar range, jamming range, and detector range are separate envelopes. Sharing a number between them should be an authored choice, not a default coupling.</li>
+        <li>Team-air-vision and team-water-vision are player/team aggregates. A turret firing using another unit&rsquo;s vision is using team knowledge, not gaining that other unit&rsquo;s local vision radius or inheriting its sensor lane.</li>
         <li>Construction-incomplete and destroyed hosts provide no sensor channels. A completed active-state building always provides passive full sight; its contact and detector channels require the powered/open state.</li>
         <li>Terrain shade, environment-prop shade, friendly jammer tint, sensor boundaries, snapshot filtering, and targeting consume the same operational mounted sources. Presentation may soften an edge, but it may not invent another coverage footprint.</li>
       </ul>
@@ -5899,7 +5901,7 @@
         <li>Create a product&rsquo;s permanent ID as an internal step of the host-owned build or production workflow, normally as a nanoframe. Do not model that step as a spawn turret, mounted task, aim participant, or init beam. Apply construction work to that same ID; repair of completed entities is free and uses the same build-power channel.</li>
         <li>Give every positive-<code>constructionRate</code> host restrained yellow-and-black construction markings authored in shared config. Generate every band at exactly 45 degrees in physical surface coordinates; use open sleeves, side plates where physically appropriate, and perimeter-mounted clamp boxes on circular factory hardware, never floating decals, coloured radial caps, ring sectors, wedges, or sunbursts. Universal Fabricators carry exactly 1/2/3 boxes by tier on a rotating outer bearing race around a thinner stationary inner race. Active production keeps both races seated, telescopes only each box's emitter head upward, and emits spray from those moving heads. Preserve both colours at every geometry tier, make clamp-box geometry strictly decrease from High chamfers/latch/fasteners to Medium box/latch to Low essential box, keep team colour dominant, and derive coverage tests from blueprint capabilities so a new constructor cannot ship unmarked.</li>
         <li>Make the selection action panel uniform per host kind and capability. Units expose movement plus their mounted combat, builder, cloak, transport, commander, and manual capabilities. Buildings expose the same standardized combat controls when armed, production when they own a factory workflow, ON/OFF when they own active state, and self-destruct. Mixed unit/building selections degrade to the intersection. A bespoke button on an arbitrary blueprint subset with no sanctioned capability behind it is not allowed.</li>
-        <li>Keep sight, radar, sonar, and detection as turret-owned capability sources aggregated per player/team into four exhaustive, orthogonal target-knowledge facts: <code>team-air-sight</code>, <code>team-water-sight</code>, <code>team-air-radar</code>, and <code>team-water-sonar</code>. The turret&rsquo;s mounted world point selects the source medium. Unit and building targets use exact positive volume occupancy and may occupy both media; shot and turret targets are points and occupy exactly one. Full sight identifies and also supplies contact-level location in its target medium; losing it removes the full model immediately. Radar/sonar-only coverage supplies only the canonical black-ring/white-core contact dot, detectors uncloak within an active full-sight lane, and weapon fire consumes the team-unified knowledge tier independently from the emission&rsquo;s exhaustively authored four-cell trajectory matrix. Emissions follow the same tiers: own and allied shots always render in full; an enemy shot is the real projectile under sight, the same contact dot under radar/sonar, and nothing outside both. Weapon range and ammunition never create or scale vision.</li>
+        <li>Keep vision, radar, jamming, and detection as turret-owned capabilities aggregated per player/team into six exhaustive, orthogonal fields: <code>team-air-vision</code>, <code>team-air-radar</code>, <code>team-air-jamming</code>, <code>team-water-vision</code>, <code>team-water-radar</code>, and <code>team-water-jamming</code>. Vision, radar, and jamming author scalar radii; the host unit/building origin alone routes all three to its air or water field, with the water radar presentation called sonar. Unit and building targets use exact positive volume occupancy and may occupy both media; shot and turret targets are points and occupy exactly one. Vision identifies and also supplies contact-level location in its target medium; losing it removes the full model immediately. Radar-only coverage supplies only the canonical black-ring/white-core contact dot, detectors uncloak within the host-selected vision lane, and weapon fire consumes team knowledge independently from the emission&rsquo;s exhaustively authored four-cell trajectory matrix. Emissions follow the same tiers without an incoming-threat exception: own and allied emissions always render in full; an enemy emission is real only where its complete transmitted geometry is under vision, the same contact dot under radar, and nothing outside both. Crossing out of earned coverage removes the full visual immediately, and attack warnings never reveal a hidden firing origin. Weapon range and ammunition never create or scale vision.</li>
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels, and author lock-on eligibility as an additive inclusion object carried by turrets, units, and buildings alike. Rockets and missiles inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets. Missiles coast after lock loss; the light vertical rocket retains only the last solver-produced speculative future intercept, finishes aligning to it, and then leaves the steering batch. Expensive intercept refresh is deterministic blueprint data (currently 10 Hz missiles, 5 Hz light rocket), while cached-point steering and motion stay fixed-tick. Eligibility is <strong>off by default</strong> &mdash; a locker with no inclusions locks onto nothing &mdash; and broadened only by addition: level-0 friend/enemy and entity-family inclusions (<code>units</code>, <code>buildings</code>, <code>turrets</code>, <code>shots</code>), then optional level-1 named blueprint inclusions that narrow an included family. Including only one family is how a turret specializes &mdash; point-defense includes only <code>shots</code>, a disarmer includes only <code>turrets</code>. There is no <code>locomotions</code> family: a unit&rsquo;s movement is part of its body, not a targetable entity.</li>
         <li>Keep specialist targeting behavior explicit. If a turret ever needs behavior beyond additive lock-on eligibility, give it a validated secondary lock-on profile and tests rather than a special case buried in the shared targeting kernel.</li>
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. A frozen pond and a cuboid ice block are the exact same material &mdash; they differ only in geometry.</li>
