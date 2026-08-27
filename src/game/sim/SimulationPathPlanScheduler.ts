@@ -31,8 +31,12 @@ import {
 //
 // Every fixed tick funds ONE global work ceiling. A persistent cursor visits
 // every player with demand — an eligible entry or a retained continuation —
-// in seat order; each visited player's route queue and then refine queue
-// receive one quantum (`pathPlanQuantumWorkUnits`). A refine search that
+// in seat order: first every player's ROUTE queue (cheap; first motion for
+// everyone within the tick), then every player's REFINE queue, each visit
+// one quantum (`pathPlanQuantumWorkUnits`; set to the ceiling, a search
+// queue gets the whole remaining tick and the cursor hands the next tick to
+// the next player — the same throughput per search the per-side rotation
+// had, which a smaller quantum measurably lost). A refine search that
 // outlives its quantum keeps its frontier in that player's own WASM arena
 // and resumes on the player's next visit; a queue that runs dry hands its
 // leftover to the next player with demand in the same tick; when budget
@@ -315,6 +319,13 @@ export class SimulationPathPlanScheduler {
     const count = rotation.length;
     for (;;) {
       if (this.passOffset >= count) {
+        if (this.passTier === PATH_QUEUE_ROUTE) {
+          // Every player's route queue has been offered its first motion;
+          // only now do the searches get their quanta.
+          this.passTier = PATH_QUEUE_REFINE;
+          this.passOffset = 0;
+          continue;
+        }
         if (!this.servedThisPass) return null;
         let demandLeft = false;
         for (let i = 0; i < count; i++) {
@@ -325,12 +336,13 @@ export class SimulationPathPlanScheduler {
         }
         if (!demandLeft) return null;
         this.passOffset = 0;
+        this.passTier = PATH_QUEUE_ROUTE;
         this.servedThisPass = false;
         this.stats.passes++;
       }
       const playerId = rotation[(this.cursorStart + this.passOffset) % count];
+      this.passOffset++;
       if (this.passTier === PATH_QUEUE_ROUTE) {
-        this.passTier = PATH_QUEUE_REFINE;
         if (this.routeHasDemand(playerId)) {
           this.noteServed(playerId);
           return {
@@ -340,10 +352,8 @@ export class SimulationPathPlanScheduler {
             turn: 0,
           };
         }
+        continue;
       }
-      // Refine tier of the same player, then move on.
-      this.passTier = PATH_QUEUE_ROUTE;
-      this.passOffset++;
       if (this.refineHasDemand(playerId, activeJobs)) {
         this.noteServed(playerId);
         const turn = this.refineTurnsByPlayer.get(playerId) ?? 0;

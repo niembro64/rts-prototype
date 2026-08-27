@@ -47,6 +47,15 @@ pub(crate) const PATHFINDER_RESULT_PENDING: u32 = 4;
 pub(crate) const PATHFINDER_SEARCH_NONE: u32 = 0;
 pub(crate) const PATHFINDER_SEARCH_DIRECT: u32 = 1;
 pub(crate) const PATHFINDER_SEARCH_HIERARCHICAL: u32 = 2;
+/// Fine A* over the start-goal cluster box, no hierarchy: short routes never
+/// pay for cluster entrances or intra-cluster cost rows.
+pub(crate) const PATHFINDER_SEARCH_LOCAL: u32 = 3;
+/// Widest start-goal cluster span (Chebyshev, in clusters) that searches the
+/// cluster box directly instead of the hierarchy. 6 clusters of 16 cells =
+/// ~1,900 wu; the box is padded by one cluster so a detour around a short
+/// wall still fits. Measured 2026-08-26: a cold hierarchical route cost
+/// ~20k work units (row builds), a boxed fine search a few hundred.
+pub(crate) const PATHFINDER_LOCAL_ROUTE_MAX_CLUSTER_SPAN: i32 = 6;
 /// Terrain-bound unit centers stay out of the outer map guard cells.
 pub(crate) const PATHFINDER_MAP_EDGE_BUFFER_WU: f64 = 40.0;
 const PATHFINDER_SYNC_CONTINUATION_OWNER: u32 = u32::MAX;
@@ -82,6 +91,9 @@ pub(crate) const PATHFINDER_TRAFFIC_HEAT_PER_ROUTE: u8 = 48;
 /// instead of a map-sized arena per ally team.
 #[derive(Default)]
 pub(crate) struct FineArena {
+    /// True while the retained frontier is a boxed LOCAL search (no
+    /// abstract route); false for a hierarchy corridor.
+    local: bool,
     corridor: Vec<u32>,
     /// Per corridor rank: the cell where the abstract route leaves that
     /// cluster (the goal cell for the last rank), and the octile distance
@@ -1280,6 +1292,40 @@ fn fine_cell_of_local(state: &PathfinderState, arena: &FineArena, local: u32) ->
     (gy * state.grid_w + gx) as u32
 }
 
+/// A start-goal pair close enough (in clusters) to search its cluster box
+/// directly. Requires the hierarchy layout (cluster grid) to exist.
+fn pathfinder_local_route_applies(state: &PathfinderState, start_idx: usize, goal_idx: usize) -> bool {
+    if state.hpa_cluster_w <= 0 || state.hpa_cluster_change_stamp.is_empty() {
+        return false;
+    }
+    let w = state.hpa_cluster_w;
+    let sc = hpa_cluster_of_cell(state, start_idx as u32) as i32;
+    let gc = hpa_cluster_of_cell(state, goal_idx as u32) as i32;
+    let dx = (sc % w - gc % w).abs();
+    let dy = (sc / w - gc / w).abs();
+    dx.max(dy) <= PATHFINDER_LOCAL_ROUTE_MAX_CLUSTER_SPAN
+}
+
+/// Every cluster of the start-goal box padded by one cluster, row-major:
+/// the corridor of a boxed local search.
+fn pathfinder_local_corridor(state: &PathfinderState, start_idx: usize, goal_idx: usize) -> Vec<u32> {
+    let w = state.hpa_cluster_w;
+    let h = state.hpa_cluster_h;
+    let sc = hpa_cluster_of_cell(state, start_idx as u32) as i32;
+    let gc = hpa_cluster_of_cell(state, goal_idx as u32) as i32;
+    let x0 = ((sc % w).min(gc % w) - 1).max(0);
+    let x1 = ((sc % w).max(gc % w) + 1).min(w - 1);
+    let y0 = ((sc / w).min(gc / w) - 1).max(0);
+    let y1 = ((sc / w).max(gc / w) + 1).min(h - 1);
+    let mut corridor = Vec::with_capacity(((x1 - x0 + 1) * (y1 - y0 + 1)) as usize);
+    for cy in y0..=y1 {
+        for cx in x0..=x1 {
+            corridor.push((cy * w + cx) as u32);
+        }
+    }
+    corridor
+}
+
 fn fine_arena_prepare(
     state: &PathfinderState,
     arena: &mut FineArena,
@@ -1987,10 +2033,70 @@ fn pathfinder_find_path_with_expansion_budget_inner(
     // touching the hierarchy again; otherwise ask the hierarchy for a
     // corridor (and for reachability).
     let mut fine_key = make_key(state, goal_cell_gx, goal_cell_gy);
-    let resuming = state
+    let pending_matches = state
         .fine_arena
         .pending
         .is_some_and(|pending| pending.key == fine_key);
+    let resuming_local = pending_matches && state.fine_arena.local;
+    let resuming = pending_matches && !state.fine_arena.local;
+
+    // Short routes: a plain fine A* over the start-goal cluster box, no
+    // hierarchy. A boxed search that reaches the goal is the route; one that
+    // cannot connect inside the box (a long wall) falls through to the
+    // hierarchy with what it spent charged to this slice.
+    let mut local_result: Option<AStarResult> = None;
+    let mut local_spent: u32 = 0;
+    let goal_idx_now = (goal_cell_gy * grid_w + goal_cell_gx) as usize;
+    if resuming_local
+        || (!resuming && pathfinder_local_route_applies(state, start_idx, goal_idx_now))
+    {
+        let local_corridor: Vec<u32> = if resuming_local {
+            state.fine_arena.corridor.clone()
+        } else {
+            pathfinder_local_corridor(state, start_idx, goal_idx_now)
+        };
+        state.fine_arena.local = true;
+        state.last_search_strategy = PATHFINDER_SEARCH_LOCAL;
+        state.last_corridor_clusters = local_corridor.len() as u32;
+        match pathfinder_a_star_slice(
+            state,
+            fine_key,
+            &local_corridor,
+            &[],
+            traversal,
+            cost_profile,
+            expansion_budget.max(1),
+        ) {
+            AStarSliceOutcome::Pending {
+                total_expanded,
+                expanded_this_slice,
+            } => {
+                state.last_fine_expanded_nodes = total_expanded;
+                state.last_fine_expanded_nodes_this_slice = expanded_this_slice;
+                state.last_result_status = PATHFINDER_RESULT_PENDING;
+                return 0;
+            }
+            AStarSliceOutcome::Complete {
+                result,
+                expanded_this_slice,
+            } => {
+                state.fine_arena.local = false;
+                local_spent = expanded_this_slice;
+                if let Some(found) = result {
+                    if found.reached_goal {
+                        local_result = Some(found);
+                    }
+                }
+            }
+        }
+    }
+
+    let a_star_result: Option<AStarResult> = if let Some(found) = local_result {
+        state.last_hpa_work = state.hpa_work;
+        state.last_fine_expanded_nodes = found.expanded_nodes;
+        state.last_fine_expanded_nodes_this_slice = local_spent;
+        Some(found)
+    } else {
     let (corridor, corridor_exits): (Vec<u32>, Vec<u32>) = if resuming {
         (state.fine_arena.corridor.clone(), state.fine_arena.corridor_exits.clone())
     } else {
@@ -2052,7 +2158,7 @@ fn pathfinder_find_path_with_expansion_budget_inner(
             HpaSearchOutcome::Reached { corridor, exits } => (corridor, exits),
             HpaSearchOutcome::Budget => {
                 state.last_hpa_work = state.hpa_work;
-                state.last_fine_expanded_nodes_this_slice = state.hpa_work;
+                state.last_fine_expanded_nodes_this_slice = state.hpa_work + local_spent;
                 state.last_result_status = PATHFINDER_RESULT_PENDING;
                 state.last_search_strategy = PATHFINDER_SEARCH_HIERARCHICAL;
                 return 0;
@@ -2066,8 +2172,10 @@ fn pathfinder_find_path_with_expansion_budget_inner(
     state.last_hpa_work = state.hpa_work;
     state.last_corridor_clusters = corridor.len() as u32;
     state.last_search_strategy = PATHFINDER_SEARCH_HIERARCHICAL;
-    let remaining_budget = expansion_budget.saturating_sub(state.hpa_work).max(1);
-    let a_star_result = match pathfinder_a_star_slice(
+    let remaining_budget = expansion_budget
+        .saturating_sub(state.hpa_work.saturating_add(local_spent))
+        .max(1);
+    match pathfinder_a_star_slice(
         state,
         fine_key,
         &corridor,
@@ -2081,7 +2189,8 @@ fn pathfinder_find_path_with_expansion_budget_inner(
             expanded_this_slice,
         } => {
             state.last_fine_expanded_nodes = total_expanded;
-            state.last_fine_expanded_nodes_this_slice = expanded_this_slice + state.hpa_work;
+            state.last_fine_expanded_nodes_this_slice =
+                expanded_this_slice + state.hpa_work + local_spent;
             state.last_result_status = PATHFINDER_RESULT_PENDING;
             return 0;
         }
@@ -2089,9 +2198,11 @@ fn pathfinder_find_path_with_expansion_budget_inner(
             result,
             expanded_this_slice,
         } => {
-            state.last_fine_expanded_nodes_this_slice = expanded_this_slice + state.hpa_work;
+            state.last_fine_expanded_nodes_this_slice =
+                expanded_this_slice + state.hpa_work + local_spent;
             result
         }
+    }
     };
     if let Some(result) = &a_star_result {
         state.last_fine_expanded_nodes = result.expanded_nodes;

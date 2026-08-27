@@ -254,6 +254,9 @@ function seededFabricatorProductionReserve(world: WorldState, playerId: PlayerId
   return count;
 }
 
+/** Arc length (wu) of an opening-wave hull's patrol along the water ring. */
+const WATER_PATROL_ARC_WU = 900;
+
 /** First point outward from `startRadius` along `angle` on the map oval
  *  (20 wu steps) that is water AND that the blueprint's body can stand in
  *  under the authoritative traversal kernel; failing that, the first water
@@ -448,8 +451,15 @@ export function spawnBackgroundUnitsStandalone(
           const waterSpawn = firstStandableWaterPointOutward(
             world, oval, sample.angle, sample.distance, unitBlueprintId,
           );
+          // The patrol mirror stays a short arc along the ring, never the far
+          // side of it: a hull ordered half-way around the annulus asks for a
+          // ~15 km search that holds its owner's whole refine queue.
+          const ringDistance = waterSpawn !== null
+            ? sampleMapOvalAt(oval, waterSpawn.x, waterSpawn.y).distance
+            : sample.distance;
+          const tangentAngle = WATER_PATROL_ARC_WU / Math.max(WATER_PATROL_ARC_WU, ringDistance);
           const waterTarget = firstStandableWaterPointOutward(
-            world, oval, sample.angle + Math.PI, sample.distance, unitBlueprintId,
+            world, oval, sample.angle + tangentAngle, sample.distance, unitBlueprintId,
           );
           if (waterSpawn !== null) spawn = waterSpawn;
           if (waterTarget !== null) {

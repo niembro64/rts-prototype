@@ -50,7 +50,7 @@ type Vec2 = { x: number; y: number };
 /** COARSE never comes from the WASM search: it marks a validated straight
  *  first leg installed by the route queue while the full route is queued. */
 type PathResolution = 'complete' | 'snapped' | 'partial' | 'unreachable' | 'coarse';
-export type PathSearchStrategy = 'none' | 'direct' | 'hierarchical';
+export type PathSearchStrategy = 'none' | 'direct' | 'hierarchical' | 'local';
 
 type PathQueryResult =
   | { status: 'pending'; expansionsUsed: number }
@@ -100,6 +100,7 @@ function decodePathSearchStrategy(code: number): PathSearchStrategy {
   switch (code) {
     case 1: return 'direct';
     case 2: return 'hierarchical';
+    case 3: return 'local';
     default: return 'none';
   }
 }

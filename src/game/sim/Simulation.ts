@@ -48,7 +48,7 @@ import {
   applyLiquidHazardPathPolicy,
   type PathTerrainFilter,
 } from './pathfindingTraversal';
-import { getTerrainVersion, isWaterAt } from './Terrain';
+import { getTerrainVersion, isWaterAt, WATER_LEVEL } from './Terrain';
 import {
   PATHFINDING_CHASE_REPATH_COOLDOWN_TICKS,
   PATHFINDING_CHASE_REPATH_DRIFT_DISTANCE_FRACTION,
@@ -1161,11 +1161,42 @@ export class Simulation {
       unit.pathFailureActionHash = unit.actionHash;
     }
     if (this.pathRetryHolds(entity, unit)) return null;
+    if (this.isOutsideOwnMedium(entity, unit)) {
+      // A hull on dry land, a land unit in water it cannot ford: nothing it
+      // can do under its own power changes that, and no search would answer
+      // differently. Never queue it — mark it route-blocked and look again
+      // only when its cell changes (user rule 2026-08-26).
+      this.pathQueryOutcomes.outOfMedium += 1;
+      this.recordPathFailure(entity, unit);
+      return null;
+    }
     // A retry after a terminal result goes straight to the search: the
     // route queue's straight legs failed from this very cell already.
     if (unit.pathFailureStreak > 0) this.pathPlanScheduler.requestRefine(entity, false);
     else this.pathPlanScheduler.requestFresh(entity, false);
     return null;
+  }
+
+  /** The body's exact point lies outside its navigation domain: dry ground
+   *  under a water-only body, or water deeper than a ground body's resting
+   *  origin height (the planner's fording rule) under a body that cannot
+   *  swim. Air bodies are at home anywhere. Mirrors the WASM start-cell
+   *  domain test so the queue never carries a request the kernel would
+   *  bail on. */
+  private isOutsideOwnMedium(entity: Entity, unit: Unit): boolean {
+    const filter = this.pathTerrainFilterForUnit(entity);
+    if (filter === null) return false;
+    const move = filter.navigation.move;
+    if (move.allowInAir) return false;
+    const x = entity.transform.x;
+    const y = entity.transform.y;
+    const wet = isWaterAt(x, y, this.world.mapWidth, this.world.mapHeight);
+    if (wet) {
+      if (move.allowInWater) return false;
+      const depth = WATER_LEVEL - this.world.getTerrainBedZ(x, y);
+      return !(move.allowOnGround && depth <= unit.supportPointOffsetZ);
+    }
+    return !move.allowOnGround;
   }
 
   /** Navigation-grid cell the body stands in, as one comparable key. */
@@ -1324,6 +1355,7 @@ export class Simulation {
     stats[resolution] += 1;
     if (strategy === 'direct') stats.direct += 1;
     else if (strategy === 'hierarchical') stats.hierarchical += 1;
+    else if (strategy === 'local') stats.local += 1;
     if (resolution === 'unreachable') {
       const key = unit.unitBlueprintId;
       const counts = stats.unreachableByBlueprint;
@@ -3381,6 +3413,10 @@ export type PathQueryOutcomeStats = {
   unreachable: number;
   direct: number;
   hierarchical: number;
+  /** Boxed fine searches (short routes, no hierarchy). */
+  local: number;
+  /** Requests refused without a search: the body stood outside its medium. */
+  outOfMedium: number;
   /** Unreachable/terminal results that entered retry backoff. The order is
    *  never dropped; the backoff lifts when the unit's cell or the navigation
    *  layers change. */
@@ -3403,6 +3439,8 @@ function createEmptyPathQueryOutcomeStats(): PathQueryOutcomeStats {
     unreachable: 0,
     direct: 0,
     hierarchical: 0,
+    local: 0,
+    outOfMedium: 0,
     failures: 0,
     firstLegs: 0,
     firstLegMisses: 0,

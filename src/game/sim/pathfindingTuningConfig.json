@@ -17,7 +17,7 @@
   "corridorHeuristicWeight": 1.2,
   "trafficHeatPenalty": 0.6,
   "trafficHeatDecayTicks": 8,
-  "pathPlanQuantumWorkUnits": 2048,
+  "pathPlanQuantumWorkUnits": 8192,
   "firstLegMaxDistanceWu": 400,
   "firstLegMinDistanceWu": 80,
   "pathFailureBackoffTicks": 20,
