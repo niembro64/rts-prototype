@@ -374,24 +374,29 @@ export class SimulationPathPlanScheduler {
   }
 
   /** Current queue depths per player (entries not yet popped, all lanes of
-   *  a tier summed), for the SERVER bar. Players in rotation order. */
+   *  a tier summed), for the SERVER bar. Every player of the current
+   *  rotation is listed, idle ones with zeros, in a stable order — a chip
+   *  that appears and vanishes with demand jolts the eye. Owners outside
+   *  the rotation (unowned units) follow only while they hold work. */
   getQueueDepths(): { players: number[]; route: number[]; refine: number[]; refresh: number[] } {
     const players: number[] = [];
     const route: number[] = [];
     const refine: number[] = [];
     const refresh: number[] = [];
-    const ids = [...this.lanes.keys()].sort((a, b) => a - b);
-    for (const playerId of ids) {
-      const lanes = this.lanes.get(playerId)!;
-      const r = laneDepth(lanes.commanderFresh) + laneDepth(lanes.fresh);
-      const f = laneDepth(lanes.commanderRefine) + laneDepth(lanes.refine);
-      const x = laneDepth(lanes.commanderRefresh) + laneDepth(lanes.refresh);
-      if (r === 0 && f === 0 && x === 0) continue;
+    const push = (playerId: PlayerId, includeIdle: boolean): void => {
+      const lanes = this.lanes.get(playerId);
+      const r = lanes === undefined ? 0 : laneDepth(lanes.commanderFresh) + laneDepth(lanes.fresh);
+      const f = lanes === undefined ? 0 : laneDepth(lanes.commanderRefine) + laneDepth(lanes.refine);
+      const x = lanes === undefined ? 0 : laneDepth(lanes.commanderRefresh) + laneDepth(lanes.refresh);
+      if (!includeIdle && r === 0 && f === 0 && x === 0) return;
       players.push(playerId);
       route.push(r);
       refine.push(f);
       refresh.push(x);
-    }
+    };
+    for (let i = 0; i < this.rotation.length; i++) push(this.rotation[i], true);
+    const extra = [...this.lanes.keys()].filter((id) => this.rotation.indexOf(id) < 0).sort((a, b) => a - b);
+    for (let i = 0; i < extra.length; i++) push(extra[i], false);
     return { players, route, refine, refresh };
   }
 

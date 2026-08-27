@@ -138,7 +138,7 @@ function cpuTitle(rateHz: number): string {
             ><span class="path-queue-player">P{{ q.playerId }}</span
             >{{ q.route }}/{{ q.refine }}/{{ q.refresh }}</span
           >
-          <span v-if="model.displayPathQueues.length === 0" class="path-queue path-queue-idle">idle</span>
+          <span v-if="model.displayPathQueues.length === 0" class="path-queue path-queue-idle">&mdash;</span>
         </div>
         <div class="stat-bar-group">
           <div class="stat-bar" title="Request-to-route latency, average over the last 5 s">
