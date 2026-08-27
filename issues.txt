@@ -11,3 +11,4 @@
 
 6) our "selection torus" etc doesn't seem to be visible through water, we need to be able to see underwater things being selected THROUGH the water. 
 
+7) Currently we have "lone commander" and "full base" as starting options for humans or bots, which is correct. But I want a third option. Let's have "lone commander", "base buildings only", and "base and units" as options. So the current "full base" we will now call "base and units" and we will need another option called "base buildings only". It should be pretty self explanitory. The default in the "demo battle" for the player and bots should be "base and units". The default in the "game room lobby" should be "player: lone commander" and "bot: base buildings only". The only difference is that we don't have any initial units being placed in the "base buildings only" mode; we still have all of the universal fabricators and all other buildings placed just as normal. 
