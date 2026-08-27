@@ -697,6 +697,18 @@ export const METAL_DEPOSIT_ROCK_TEXTURE_TILE_WORLD_SIZE = readPositiveConfigNumb
   COLORS.environment.metalDeposit.rockTexture.tileWorldSize,
   'colorsConfig.environment.metalDeposit.rockTexture.tileWorldSize',
 );
+/** The ore body's second octave: the rock tile read again small, rotated and
+ *  co-prime to the plate-scale read, exactly as the rock beside it does. One
+ *  octave left the ore the one smooth surface on the map. */
+export const METAL_DEPOSIT_ROCK_FINE_TEXTURE_TILE_WORLD_SIZE = readPositiveConfigNumber(
+  COLORS.environment.metalDeposit.rockTexture.fineTileWorldSize,
+  'colorsConfig.environment.metalDeposit.rockTexture.fineTileWorldSize',
+);
+/** How much of the fine octave lands in the ore's detail value, in [0, 1]. */
+export const METAL_DEPOSIT_ROCK_FINE_TEXTURE_BLEND = readUnitIntervalConfig(
+  COLORS.environment.metalDeposit.rockTexture.fineBlend,
+  'colorsConfig.environment.metalDeposit.rockTexture.fineBlend',
+);
 const METAL_DEPOSIT_ROCK_TEXTURE_RESOLUTION = readTextureResolutionConfig(
   COLORS.environment.metalDeposit.rockTexture.resolution,
   'colorsConfig.environment.metalDeposit.rockTexture.resolution',

@@ -796,6 +796,12 @@ export class TerrainTileRenderer3D {
   private metalSurfaceBlendUniform = {
     value: METAL_SURFACE_MATERIAL.rockTextureBlend,
   };
+  private metalFineTileWorldSizeUniform = {
+    value: METAL_SURFACE_MATERIAL.rockFineTileWorldSize,
+  };
+  private metalFineBlendUniform = {
+    value: METAL_SURFACE_MATERIAL.rockFineBlend,
+  };
   private metalSurfaceLitColorBlendUniform = {
     value: METAL_SURFACE_MATERIAL.rockTextureLitColorBlend,
   };
@@ -1011,6 +1017,8 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uMetalSurfaceColor = this.metalSurfaceColorUniform;
       shader.uniforms.uMetalSurfaceTileWorldSize = this.metalSurfaceTileWorldSizeUniform;
       shader.uniforms.uMetalSurfaceBlend = this.metalSurfaceBlendUniform;
+      shader.uniforms.uMetalFineTileWorldSize = this.metalFineTileWorldSizeUniform;
+      shader.uniforms.uMetalFineBlend = this.metalFineBlendUniform;
       shader.uniforms.uMetalSurfaceLitColorBlend = this.metalSurfaceLitColorBlendUniform;
       shader.uniforms.uMetalSurfaceContrast = this.metalSurfaceContrastUniform;
       shader.uniforms.uMetalSurfaceRoughnessVariation =
@@ -1256,17 +1264,11 @@ export class TerrainTileRenderer3D {
             '    terrainRgb = mix(terrainRgb, rockDetail.rgb, rockDetail.a * rockMask * uRockDetailContrast);',
             '    // Fine grain over the slabs: the SAME tile resampled at a small,',
             '    // rotated, co-prime scale, so rock reads at pebble and grit scale',
-            '    // the way the grass tile reads at blade scale. One sampler - the',
-            '    // fragment program sits at the 16-unit ceiling, so a second rock',
-            '    // tile would have cost the whole terrain - three more taps,',
-            '    // triplanar for the same reason the coarse ones are.',
-            '    mat2 rockFineRot = mat2(0.7986, 0.6018, -0.6018, 0.7986);',
-            '    vec2 rockFineXZ = (rockFineRot * vTerrainWorldPos.xz) / uRockFineTileWorldSize;',
-            '    vec2 rockFineYZ = (rockFineRot * vTerrainWorldPos.yz) / uRockFineTileWorldSize;',
-            '    vec2 rockFineXY = (rockFineRot * vTerrainWorldPos.xy) / uRockFineTileWorldSize;',
-            '    vec4 rockFine = texture2D(uRockDetailTexture, rockFineXZ) * triW.y',
-            '      + texture2D(uRockDetailTexture, rockFineYZ) * triW.x',
-            '      + texture2D(uRockDetailTexture, rockFineXY) * triW.z;',
+            '    // the way the grass tile reads at blade scale. The shared fine',
+            '    // octave (SurfaceWeathering3D) - one projection for rock, ore and',
+            '    // soil, and one sampler: the fragment program sits at the 16-unit',
+            '    // ceiling, so a second rock tile would have cost the whole terrain.',
+            '    vec4 rockFine = weatherSampleFineOctave(uRockDetailTexture, vTerrainWorldPos, surfaceNormal, uRockFineTileWorldSize);',
             '    terrainRgb = mix(terrainRgb, rockFine.rgb, rockFine.a * rockMask * uRockFineContrast);',
             '    // Staining, strata and patina across a whole face. TRIPLANAR,',
             '    // not the weather plane: unlike the noise fields these layers',
@@ -1324,6 +1326,19 @@ export class TerrainTileRenderer3D {
             '    vTerrainWorldPos,',
             '    surfaceNormal,',
             '    uMetalSurfaceTileWorldSize',
+            '  );',
+            '  // The ore body reads the rock tile at two octaves like the rock',
+            '  // beside it does: the plate-scale read above and the same tile',
+            '  // again small and rotated, for the grit between the plates. At',
+            '  // one octave the ore was the one smooth surface on the map - the',
+            '  // authored tile is ~2 px per world unit at battle zoom, so',
+            '  // everything finer than a plate blurred to a sheen. Layered INTO',
+            '  // the detail value for the same reason the fields below are, so',
+            '  // the grain reaches the reflection and the roughness too.',
+            '  metalDetail = mix(',
+            '    metalDetail,',
+            '    weatherSampleFineOctave(uRockDetailTexture, vTerrainWorldPos, surfaceNormal, uMetalFineTileWorldSize).rgb,',
+            '    uMetalFineBlend',
             '  );',
             '  // Ore is a plate field with oxidation across it, not one',
             '  // uniform alloy. Layered INTO the detail value rather than',

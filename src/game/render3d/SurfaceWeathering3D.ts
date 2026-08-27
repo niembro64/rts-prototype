@@ -20,7 +20,9 @@
 //
 //   GRIME      Bury the join under a third substance, reaching different
 //              distances into the two materials, jittered along the
-//              boundary's length and thinned in patches.
+//              boundary's length at two scales, thinned in patches, its
+//              profile varying along the rim, and its far edge dissolved
+//              rather than faded.
 //
 // This module owns the maths, and the two SAMPLERS every treatment reads
 // through. It owns no other uniforms, because the hosts differ in what they
@@ -44,17 +46,27 @@ import {
 import { getSoilSubstanceTexture } from './SoilSubstanceTexture';
 import { getWeatheringNoiseTexture } from './WeatheringNoiseTexture';
 
-/** World scales the five field taps are read at, as multiples of the host's
+/** World scales the field taps are read at, as multiples of the host's
  *  noise tile. Deliberately not powers of one another: two taps of the same
  *  channel at scales in a small integer ratio put their features in register
  *  and the sum reads as one pattern rather than as two.
  *
  *  Which channel each tap reads is fixed by what the channel IS (see
  *  WeatheringNoiseTexture): R is the smooth mottle, G the grain, B the broad
- *  blotch. The two thickness taps must come from different scales of the
- *  smoothest channel, or a transition band and the grime band over it would
- *  thicken together — one varying width wearing two names. */
-const WEATHER_FIELD_TAPS = {
+ *  blotch. The thickness taps must come from different scales of the
+ *  smoothest channel than the band tap does, or a transition band and the
+ *  grime band over it would thicken together — one varying width wearing two
+ *  names.
+ *
+ *  THE REACH IS READ TWICE, AND NEITHER READ IS BROAD. It used to be one tap
+ *  at 1.45× the tile — 1,740 world units on the ore edge — which is wider
+ *  than any deposit. A field that does not change across an entire rim gives
+ *  that rim ONE thickness, and a map of deposits each traced at its own
+ *  constant offset is a map of stencils with different margins. The mid tap
+ *  now turns over a few times around a small deposit, and the fine tap
+ *  wobbles it again at patch scale, so no two stretches of one rim share a
+ *  width. */
+export const WEATHER_FIELD_TAPS = {
   /** R at full tile — the lobes. */
   lobes: 1.0,
   /** R, smaller — fingers eroded into those lobes. */
@@ -63,9 +75,19 @@ const WEATHER_FIELD_TAPS = {
   grain: 0.09,
   /** B — how wide the transition is here. */
   band: 0.55,
-  /** B, broader — how far the grime reaches here. */
-  reach: 1.45,
+  /** B, mid — how far the grime reaches along this stretch of the rim. */
+  reach: 0.35,
+  /** B, small — the same reach wobbled again at patch scale. */
+  reachFine: 0.16,
+  /** How much of the reach the fine tap owns. */
+  reachFineWeight: 0.3,
 } as const;
+
+/** The finer taps are read through a rotated lattice — the same co-prime
+ *  rotation the fine substance octave uses — so a small tap never lines up
+ *  with the coarse one it is layered over and the tile's period never shows
+ *  as a repeat along a long rim. */
+const WEATHER_FINE_ROTATION_GLSL = 'mat2(0.7986, 0.6018, -0.6018, 0.7986)';
 
 /** The shared weathering functions. One GLSL block, injected once per host
  *  shader, called by every treatment that host runs.
@@ -114,9 +136,16 @@ export const SURFACE_WEATHERING_GLSL = [
   // The offsets keep two taps of one channel from sharing an origin, where
   // their features would otherwise coincide exactly.
   `  fields.fingers = texture2D(noiseTex, plane / (unit * ${WEATHER_FIELD_TAPS.fingers.toFixed(3)}) + vec2(0.37, 0.61)).r;`,
-  `  fields.grain   = texture2D(noiseTex, plane / (unit * ${WEATHER_FIELD_TAPS.grain.toFixed(3)}) + vec2(0.73, 0.19)).g;`,
+  `  fields.grain   = texture2D(noiseTex, (${WEATHER_FINE_ROTATION_GLSL} * plane) / (unit * ${WEATHER_FIELD_TAPS.grain.toFixed(3)}) + vec2(0.73, 0.19)).g;`,
   `  fields.band    = texture2D(noiseTex, plane / (unit * ${WEATHER_FIELD_TAPS.band.toFixed(3)})).b;`,
-  `  fields.reach   = texture2D(noiseTex, plane / (unit * ${WEATHER_FIELD_TAPS.reach.toFixed(3)}) + vec2(0.11, 0.83)).b;`,
+  // Two reads of the thickness channel, blended: a mid tap that changes a
+  // few times along a rim, and a fine tap through the rotated lattice that
+  // wobbles it at patch scale. Either alone is one authored width — the
+  // broad read gives a whole rim one thickness, the fine read alone reads
+  // as noise rather than as thick and thin stretches.
+  `  float reachMid  = texture2D(noiseTex, plane / (unit * ${WEATHER_FIELD_TAPS.reach.toFixed(3)}) + vec2(0.11, 0.83)).b;`,
+  `  float reachFine = texture2D(noiseTex, (${WEATHER_FINE_ROTATION_GLSL} * plane) / (unit * ${WEATHER_FIELD_TAPS.reachFine.toFixed(3)}) + vec2(0.47, 0.29)).b;`,
+  `  fields.reach   = mix(reachMid, reachFine, ${WEATHER_FIELD_TAPS.reachFineWeight.toFixed(3)});`,
   '  return fields;',
   '}',
   '',
@@ -163,9 +192,11 @@ export const SURFACE_WEATHERING_GLSL = [
   '// one. The two must differ and both must be non-zero — grime that lands on',
   '// only one side is an outline of the other.',
   '//',
-  '// The reach is jittered along the boundary by the broad field, which is',
-  '// what makes the band thick in stretches and tight in others instead of a',
-  '// traced outline at one offset.',
+  '// The reach is jittered along the boundary by the thickness field, which',
+  '// is what makes the band thick in stretches and tight in others instead',
+  '// of a traced outline at one offset. That field is itself two reads — one',
+  '// that turns over along the rim and one that wobbles it at patch scale —',
+  '// so the jitter never settles into one width for a whole boundary.',
   'float weatherBandRamp(',
   '  float signedDistance,',
   '  WeatherFields fields,',
@@ -193,15 +224,48 @@ export const SURFACE_WEATHERING_GLSL = [
   '// the grain thins it in patches on top of that, because an even halo at',
   '// any width still describes the boundary exactly.',
   '//',
+  '// The falloff is not one number either. The authored value is the MEAN',
+  '// profile; the band field swings it between a soft spill and a tight',
+  '// seam along the boundary\'s length, so one stretch of rim carries its',
+  '// dirt right up to the contact and the next lets it drift. A profile that',
+  '// is the same everywhere is as much a stencil as a width that is.',
+  '//',
   '// Named ...Amount because hosts hold the result in a local named for the',
   '// treatment: in GLSL a variable hides a same-named function from its',
   '// declaration onward, and the resulting compile error is one three.js does',
   '// not report unless booted with ?shaderErrors=1 — it presents as a surface',
   '// that simply does not draw.',
   'float weatherGrimeAmount(float ramp, WeatherFields fields, float falloff, float patchDepth) {',
-  '  float grime = pow(clamp(ramp, 0.0, 1.0), max(falloff, 0.001));',
+  '  float profile = max(falloff, 0.001) * mix(0.6, 1.6, fields.band);',
+  '  float grime = pow(clamp(ramp, 0.0, 1.0), profile);',
   '  grime *= mix(1.0 - clamp(patchDepth, 0.0, 1.0), 1.0, fields.grain);',
   '  return clamp(grime, 0.0, 1.0);',
+  '}',
+  '',
+  '// A GRIME BAND: the shaped amount above, with its far edge dissolved.',
+  '// The shaping alone ends in an analytic ramp, and a smoothly fading halo',
+  '// is still a halo — its outer contour is the boundary\'s contour at one',
+  '// more offset. Dissolving the ramp instead lets the grain decide, patch by',
+  '// patch, where the dirt stops. The dissolve bites only in the outer half',
+  '// (the ramp is doubled before thresholding), so the band is solid where',
+  '// it hugs the boundary and crumbles away at its reach. Dissolving the',
+  '// whole ramp punches holes in the contact itself, which reads as damage to',
+  '// the surface rather than as dirt on it.',
+  '//',
+  '// One composite for every site that lays a band, so an ore rim and a wall',
+  '// rim crumble the same way. `softness` is the host-measured screen width',
+  '// of the UNDOUBLED ramp; the doubling is applied here.',
+  'float weatherGrimeBand(',
+  '  float ramp,',
+  '  WeatherFields fields,',
+  '  float falloff,',
+  '  float patchDepth,',
+  '  float softness,',
+  '  float grainStrength',
+  ') {',
+  '  float amount = weatherGrimeAmount(ramp, fields, falloff, patchDepth);',
+  '  float crumble = weatherDissolve(clamp(ramp * 2.0, 0.0, 1.0), fields, softness * 2.0, grainStrength);',
+  '  return amount * crumble;',
   '}',
   '',
   '// The albedo half, shared so a rim, an ore edge and a tree base all dirty',
@@ -246,15 +310,30 @@ export const SURFACE_WEATHERING_GLSL = [
   '// tree base pick up the same grain — a site that read the substance',
   '// through weatherSampleSubstance alone would be the one smooth patch of',
   '// dirt on the map.',
-  'vec3 weatherSampleSoil(sampler2D tex, vec3 position, vec3 geometricNormal, float tileWorldSize) {',
-  '  vec3 coarse = weatherSampleSubstance(tex, position, geometricNormal, tileWorldSize);',
+  '// THE FINE OCTAVE. The same tile read again at a small, rotated, co-prime',
+  '// scale: the grit under the slabs, the pebbles under the plates, the',
+  '// grain in the dirt. One projection for rock, ore and soil alike, because',
+  '// a tile that is authored at hundreds of world units is ~2 px per unit at',
+  '// battle zoom and everything under that blurs to a smear; the fine pass',
+  '// is what a surface reads as at the distance it is actually looked at.',
+  '// The rotation keeps the two octaves out of register so the sum is not',
+  '// one pattern at two sizes. Returns the raw texel — the host owns how',
+  '// much of it lands, because that is where rock and soil legitimately',
+  '// differ. No second sampler: the terrain program is at the 16-unit',
+  '// ceiling, and one tap too many is a terrain that silently does not draw.',
+  'vec4 weatherSampleFineOctave(sampler2D tex, vec3 position, vec3 geometricNormal, float fineTileWorldSize) {',
   '  vec3 weights = pow(abs(geometricNormal), vec3(8.0));',
   '  weights /= max(weights.x + weights.y + weights.z, 1.0e-5);',
-  `  float fineUnit = ${SOIL_SUBSTANCE_FINE_TILE_WORLD_SIZE.toFixed(3)};`,
-  '  mat2 fineRot = mat2(0.7986, 0.6018, -0.6018, 0.7986);',
-  '  vec3 fine = texture2D(tex, (fineRot * position.xz) / fineUnit).rgb * weights.y',
-  '    + texture2D(tex, (fineRot * position.yz) / fineUnit).rgb * weights.x',
-  '    + texture2D(tex, (fineRot * position.xy) / fineUnit).rgb * weights.z;',
+  '  float unit = max(fineTileWorldSize, 1.0);',
+  `  mat2 fineRot = ${WEATHER_FINE_ROTATION_GLSL};`,
+  '  return texture2D(tex, (fineRot * position.xz) / unit) * weights.y',
+  '    + texture2D(tex, (fineRot * position.yz) / unit) * weights.x',
+  '    + texture2D(tex, (fineRot * position.xy) / unit) * weights.z;',
+  '}',
+  '',
+  'vec3 weatherSampleSoil(sampler2D tex, vec3 position, vec3 geometricNormal, float tileWorldSize) {',
+  '  vec3 coarse = weatherSampleSubstance(tex, position, geometricNormal, tileWorldSize);',
+  `  vec3 fine = weatherSampleFineOctave(tex, position, geometricNormal, ${SOIL_SUBSTANCE_FINE_TILE_WORLD_SIZE.toFixed(3)}).rgb;`,
   `  return mix(coarse, fine, ${SOIL_SUBSTANCE_FINE_STRENGTH.toFixed(3)});`,
   '}',
 ].join('\n');

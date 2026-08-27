@@ -30,7 +30,7 @@ import {
   metalDepositSurfaceFieldScreenWidth,
   metalDepositSurfaceFieldUniformDeclarations,
 } from './MetalDepositSurfaceField3D';
-import { SURFACE_WEATHERING_GLSL } from './SurfaceWeathering3D';
+import { SURFACE_WEATHERING_GLSL, WEATHER_FIELD_TAPS } from './SurfaceWeathering3D';
 import {
   ORE_EDGE_BLEND_GLSL,
   oreEdgeAlbedoFragment,
@@ -428,13 +428,16 @@ function checkOreEdgeBlendContract(): void {
     'weatherDissolve(',
     'weatherBandRamp(',
     'weatherGrimeAmount(',
+    'weatherGrimeBand(',
     'weatherApplyGrime(',
     'weatherSampleSubstance(',
+    'weatherSampleFineOctave(',
     'weatherSampleSoil(',
   ]) {
     assertContract(
       SURFACE_WEATHERING_GLSL.includes(`float ${shared}`) ||
       SURFACE_WEATHERING_GLSL.includes(`vec3 ${shared}`) ||
+      SURFACE_WEATHERING_GLSL.includes(`vec4 ${shared}`) ||
       SURFACE_WEATHERING_GLSL.includes(`WeatherFields ${shared}`),
       `SurfaceWeathering3D must define ${shared}`,
     );
@@ -445,7 +448,7 @@ function checkOreEdgeBlendContract(): void {
     'weatherDisplace(',
     'weatherDissolve(',
     'weatherBandRamp(',
-    'weatherGrimeAmount(',
+    'weatherGrimeBand(',
     'weatherApplyGrime(',
     'weatherSampleSoil(',
   ]) {
@@ -454,6 +457,42 @@ function checkOreEdgeBlendContract(): void {
       `the ore edge must reach the shared ${shared} rather than re-deriving it`,
     );
   }
+
+  // THE BAND CRUMBLES, AND THE VOCABULARY OWNS THE CRUMBLING. The grime's
+  // far edge used to be an analytic smoothstep — a second, smoother contour
+  // of the boundary at one more offset — while the wall rims dissolved
+  // theirs locally. One composite now does it for every site; a host that
+  // called the shaping alone would ship the traced halo again.
+  const grimeBandBody = SURFACE_WEATHERING_GLSL.slice(
+    SURFACE_WEATHERING_GLSL.indexOf('float weatherGrimeBand('),
+  );
+  assertContract(
+    grimeBandBody.includes('weatherGrimeAmount(') && grimeBandBody.includes('weatherDissolve('),
+    'weatherGrimeBand must compose the shared shaping with the shared dissolve',
+  );
+  assertContract(
+    !oreSource.includes('weatherGrimeAmount('),
+    'the ore edge must lay its dirt through weatherGrimeBand, not the undissolved shaping',
+  );
+
+  // THE THICKNESS VARIES ALONG THE RIM, NOT PER DEPOSIT. One broad read of
+  // the thickness channel was constant across a whole deposit and gave every
+  // rim one width. The reach is now two reads of that channel — one that
+  // turns over along the rim and one that wobbles it at patch scale — and
+  // the finer of them goes through the rotated lattice.
+  const sampleBody = SURFACE_WEATHERING_GLSL.slice(
+    SURFACE_WEATHERING_GLSL.indexOf('WeatherFields weatherSampleFields('),
+    SURFACE_WEATHERING_GLSL.indexOf('float weatherDisplace('),
+  );
+  assertContract(
+    (sampleBody.match(/\)\.b;/g) ?? []).length >= 3 &&
+      sampleBody.includes('fields.reach   = mix(reachMid, reachFine,'),
+    'weatherSampleFields must blend two reads of the thickness channel into the reach',
+  );
+  assertContract(
+    WEATHER_FIELD_TAPS.reach < 1 && WEATHER_FIELD_TAPS.reachFine < WEATHER_FIELD_TAPS.reach,
+    'the reach taps must both be finer than the host tile, the fine one finer than the mid',
+  );
 
   // THE SATURATION TRAP. The region field encodes distance over
   // ±edgeRangeWorldUnits and saturates past it, so a term reaching further

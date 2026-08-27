@@ -27,8 +27,13 @@
 //
 //   GRIME         A dirt band straddling the contour, reaching in over the
 //                 ore and out over the ground by different distances, each
-//                 jittered along the edge's length. It paints the dirt
-//                 texture over both surfaces, darkens toward the contour,
+//                 jittered along the edge's length at two scales, its
+//                 profile swinging along the edge, and its far side
+//                 dissolved against the grain rather than faded — so no
+//                 two stretches of one rim share a thickness, and the band
+//                 never ends in a second, smoother contour of its own. It
+//                 paints the dirt texture over both surfaces, darkens
+//                 toward the contour,
 //                 and takes the ore's reflection away where it covers —
 //                 which is the term that actually matters. A rim that keeps
 //                 its specular reads as a clean edge no matter how dark it
@@ -210,18 +215,29 @@ export const ORE_EDGE_BLEND_GLSL = [
   '',
   '// The dirt band. Dirt spreads further onto open ground than it does over',
   '// the ore body, so the two reaches differ; both are jittered along the',
-  '// edge and thinned in patches by the shared shaping.',
+  '// edge at two scales, the profile swings along it, the grain thins it in',
+  '// patches, and its far edge is dissolved rather than faded — all by the',
+  '// shared band composite, so the ore rim crumbles the way a wall rim does.',
+  '//',
+  '// The dissolve wants the screen width of the ramp in the ramp\'s own',
+  '// units. The ramp spans the jittered reach, so the width of one world',
+  '// unit of distance is divided by the TIGHTEST reach the band can take;',
+  '// where it is wider the softening is merely a touch generous, which is',
+  '// the safe side of an anti-aliasing estimate.',
   'float oreEdgeGrimeBand(',
   '  float warpedDistance,',
   '  WeatherFields fields,',
+  '  float distanceWidth,',
   '  float innerReach,',
   '  float outerReach,',
   '  float variation,',
   '  float falloff,',
-  '  float patchDepth',
+  '  float patchDepth,',
+  '  float grainStrength',
   ') {',
   '  float ramp = weatherBandRamp(warpedDistance, fields, innerReach, outerReach, variation);',
-  '  return weatherGrimeAmount(ramp, fields, falloff, patchDepth);',
+  '  float tightest = max(min(innerReach, outerReach) * (1.0 - variation), 1.0);',
+  '  return weatherGrimeBand(ramp, fields, falloff, patchDepth, distanceWidth / tightest, grainStrength);',
   '}',
 ].join('\n');
 
@@ -271,11 +287,13 @@ export function oreEdgeResolveFragment(
     '  oreEdgeGrime = oreEdgeGrimeBand(',
     '    oreEdgeDistance,',
     '    oreFields,',
+    '    oreDistanceWidth,',
     '    uOreEdgeGrimeInner,',
     '    uOreEdgeGrimeOuter,',
     '    uOreEdgeGrimeVariation,',
     '    uOreEdgeGrimeFalloff,',
-    '    uOreEdgeGrimePatchDepth',
+    '    uOreEdgeGrimePatchDepth,',
+    '    uOreEdgeGrain',
     `  ) * ${regionEnabledExpr};`,
     '}',
   ].join('\n');
