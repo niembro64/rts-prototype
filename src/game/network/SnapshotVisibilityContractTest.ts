@@ -23,8 +23,20 @@ import { applyBuildingBlueprintRuntime } from '../sim/buildingEntityRuntime';
 import type { BuildingBlueprintId, Entity, EntityId, PlayerId } from '../sim/types';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { ResourceMovement } from '../sim/resourceMovement';
-import { WATER_LEVEL, buildTerrainTileMap, setAuthoritativeTerrainTileMap } from '../sim/Terrain';
+import {
+  WATER_LEVEL,
+  buildTerrainTileMap,
+  getTerrainRuntimeConfig,
+  getTerrainTeamCount,
+  setAuthoritativeTerrainTileMap,
+  setTerrainRuntimeConfig,
+  setTerrainTeamCount,
+} from '../sim/Terrain';
 import { getAuthoritativeTerrainTileMap } from '../sim/terrain/terrainState';
+import {
+  getMetalDepositFlatZones,
+  setMetalDepositFlatZones,
+} from '../sim/terrain/terrainFlatZones';
 import {
   getEntityFullVisionRadius,
   getEntityRadarRadius,
@@ -38,12 +50,12 @@ import {
   unpackMinimapEntitiesFromWire,
 } from './snapshotMinimapWirePack';
 
-// This contract compares the JS source walk with the native observation slab,
-// but the boot harness intentionally shares a page (and therefore a native
-// terrain singleton) across contracts. Keep the air-radar routing fixture well
-// above every authored terrain so its result tests the selected sensing medium,
-// not whichever terrain mesh the preceding contract installed.
-const TERRAIN_INDEPENDENT_AIR_Z = 100_000;
+const CONTRACT_TERRAIN_Z = WATER_LEVEL - 300;
+
+// The contract installs a flat seabed. Keep air fixtures comfortably
+// above it while remaining close enough to waterline fixtures for the shared
+// 3D broadphase to enumerate both; sensing range itself is horizontal.
+const TERRAIN_INDEPENDENT_AIR_Z = WATER_LEVEL + 300;
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -96,22 +108,42 @@ function createOpenedStructure(
 }
 
 /** The contract compares a JS source walk against the native observation
- *  slab, and both must read the SAME terrain. The boot harness runs every
- *  contract in one page beside the live demo battle, whose terrain install
- *  (JS tile map + WASM mesh) can be mid-flight or restored through the
- *  version-equal fast path that skips the WASM upload — so the two sides
- *  drift and a radar contact that clears terrain on one side hits it on the
- *  other. Own the terrain for the test's duration and restore it through a
- *  full re-install afterwards. */
+ *  slab, and both must read the SAME terrain. Own the terrain for the test's
+ *  duration and restore it through a full re-install afterwards. */
 export function runSnapshotVisibilityContractTest(): void {
   const previousMap = getAuthoritativeTerrainTileMap();
+  const previousRuntimeConfig = getTerrainRuntimeConfig();
+  const previousTeamCount = getTerrainTeamCount();
+  const previousFlatZones = [...getMetalDepositFlatZones()];
+  setAuthoritativeTerrainTileMap(null);
+  setMetalDepositFlatZones([{
+    x: 2048,
+    y: 2048,
+    radius: 10_000,
+    height: CONTRACT_TERRAIN_Z,
+    blendRadius: 0,
+    plateauRadius: 10_000,
+    groupId: -1,
+  }], false);
+  setTerrainRuntimeConfig({
+    ...previousRuntimeConfig,
+    centerMagnitude: 0,
+    ringMagnitude: 0,
+    dividersMagnitude: 0,
+    perimeterMagnitude: 0,
+    terrainDTerrain: 0,
+    metalDepositStep: 0,
+    terrainDetail: 1,
+  });
+  setTerrainTeamCount(0);
   setAuthoritativeTerrainTileMap(buildTerrainTileMap(4096, 4096));
   try {
     runSnapshotVisibilityContractTestBody();
   } finally {
-    // Null first: a same-version restore would swap the JS map without
-    // re-uploading the WASM mesh, leaving exactly the drift this guards.
     setAuthoritativeTerrainTileMap(null);
+    setTerrainRuntimeConfig(previousRuntimeConfig);
+    setTerrainTeamCount(previousTeamCount);
+    setMetalDepositFlatZones(previousFlatZones, false);
     if (previousMap !== null) setAuthoritativeTerrainTileMap(previousMap);
     spatialGrid.clear();
   }
@@ -127,32 +159,33 @@ function runSnapshotVisibilityContractTestBody(): void {
 
   const observer = createUnit(world, 512, 512, 1 as PlayerId, (entity) => {
     assertContract(entity.unit !== null, 'observer must have a unit component');
-    entity.transform.z = WATER_LEVEL + 100;
+    entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
     const sensors = entity.combat!.turrets[0].config.targeting.observation.sensors;
     sensors.visionRadius = 1200;
     sensors.radarRadius = 3000;
     sensors.detectorRadius = 600;
   });
   const fullSightEnemy = createUnit(world, 700, 512, 2 as PlayerId);
-  fullSightEnemy.transform.z = WATER_LEVEL + 100;
+  fullSightEnemy.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
   const fullSightStraddlingWaterEnemy = createUnit(world, 700, 650, 2 as PlayerId, (entity) => {
     entity.transform.z = WATER_LEVEL;
   });
   const centerOutsideFullSightEnemy = createUnit(world, 1722, 512, 2 as PlayerId, (entity) => {
-    entity.transform.z = WATER_LEVEL + 100;
+    entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
   });
   const radarOnlyEnemy = createUnit(world, 2500, 512, 2 as PlayerId, (entity) => {
-    entity.transform.z = WATER_LEVEL + 100;
+    entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
   });
   const radarRejectedWaterEnemy = createUnit(world, 2500, 700, 2 as PlayerId, (entity) => {
     entity.transform.z = WATER_LEVEL - 100;
   });
   const centerOutsideRadarEnemy = createUnit(world, 3522, 512, 2 as PlayerId, (entity) => {
-    entity.transform.z = WATER_LEVEL + 100;
+    entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
   });
   const detectedCloakedEnemy = createUnit(world, 900, 512, 2 as PlayerId, (entity) => {
     assertContract(entity.unit !== null, 'detected cloaked target must have a unit component');
     entity.unit.cloaked = true;
+    entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
   });
   const detectedCloakedStraddlingEnemy = createUnit(
     world,
@@ -171,8 +204,11 @@ function runSnapshotVisibilityContractTestBody(): void {
   const hiddenCloakedEnemy = createUnit(world, 1400, 512, 2 as PlayerId, (entity) => {
     assertContract(entity.unit !== null, 'hidden cloaked target must have a unit component');
     entity.unit.cloaked = true;
+    entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
   });
-  const outOfRangeEnemy = createUnit(world, 3800, 3800, 2 as PlayerId);
+  const outOfRangeEnemy = createUnit(world, 3800, 3800, 2 as PlayerId, (entity) => {
+    entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
+  });
 
   const legacyVisibility = SnapshotVisibility.forRecipient(world, 1 as PlayerId);
   const legacyVisible = sorted(legacyVisibility.getVisibleEntityIds());
@@ -222,7 +258,7 @@ function runSnapshotVisibilityContractTestBody(): void {
   const shotConfig = createProjectileConfigFromShot('shotPlasmaLight');
   const spawnShot = (x: number, y: number, ownerId: PlayerId, source: Entity): Entity => {
     const shot = world.createProjectile(x, y, 0, 0, ownerId, source.id, shotConfig);
-    shot.transform.z = WATER_LEVEL + 100;
+    shot.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
     world.addEntity(shot);
     return shot;
   };
@@ -245,7 +281,7 @@ function runSnapshotVisibilityContractTestBody(): void {
       shotContact.type === 'shot' &&
       shotContact.playerId === 0 &&
       shotContact.contactMediumMask === CONTACT_MEDIUM_AIR &&
-      shotContact.contactZ === quantizeMinimapPosition(WATER_LEVEL + 100),
+      shotContact.contactZ === quantizeMinimapPosition(TERRAIN_INDEPENDENT_AIR_Z),
     'an enemy shot under radar but outside sight must be an anonymous shot contact',
   );
   assertContract(
@@ -441,7 +477,7 @@ function runSnapshotVisibilityContractTestBody(): void {
     1 as PlayerId,
     'buildingRadar',
   );
-  closedRadar.transform.z = WATER_LEVEL + 100;
+  closedRadar.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
   assertContract(
     closedRadar.building !== null && closedRadar.building.activeState !== null,
     'radar fixture must expose the shared powered active state',
@@ -461,12 +497,18 @@ function runSnapshotVisibilityContractTestBody(): void {
     1250,
     1000,
     2 as PlayerId,
+    (entity) => {
+      entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
+    },
   );
   const closedRadarAnnulusEnemy = createUnit(
     activeStateWorld,
     2200,
     1000,
     2 as PlayerId,
+    (entity) => {
+      entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
+    },
   );
   assertContract(
     getEntityFullVisionRadius(closedRadar, 'aboveWater') === 500,
@@ -540,7 +582,7 @@ function runSnapshotVisibilityContractTestBody(): void {
     1 as PlayerId,
     'buildingRadar',
   );
-  radarBuilding.transform.z = WATER_LEVEL + 100;
+  radarBuilding.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
   const sonarBuilding = createOpenedStructure(
     mediumWorld,
     1000,
@@ -550,7 +592,7 @@ function runSnapshotVisibilityContractTestBody(): void {
   );
   sonarBuilding.transform.z = WATER_LEVEL - 100;
   const radarAirTarget = createUnit(mediumWorld, 4000, 1000, 2 as PlayerId, (entity) => {
-    entity.transform.z = WATER_LEVEL + 100;
+    entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
   });
   const radarWaterTarget = createUnit(mediumWorld, 4000, 1000, 2 as PlayerId, (entity) => {
     entity.transform.z = WATER_LEVEL - 100;
@@ -564,7 +606,7 @@ function runSnapshotVisibilityContractTestBody(): void {
   );
   radarStraddlingBuilding.transform.z = WATER_LEVEL;
   const radarOutsideCenterTarget = createUnit(mediumWorld, 5210, 1000, 2 as PlayerId, (entity) => {
-    entity.transform.z = WATER_LEVEL + 100;
+    entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
   });
   const sonarWaterTarget = createUnit(mediumWorld, 4000, 7000, 2 as PlayerId, (entity) => {
     entity.transform.z = WATER_LEVEL - 100;
@@ -590,18 +632,16 @@ function runSnapshotVisibilityContractTestBody(): void {
     1 as PlayerId,
     'buildingRadar',
   );
-  // The radar's sensor eye sits at the top of its 150-unit mast (mount z
-  // 145) — sink the building deep enough that the DISH is underwater, not
-  // merely the foundation, or the mast pokes above the surface and
-  // legitimately radiates on the above-water row.
-  underwaterRadarBuilding.transform.z = WATER_LEVEL - 250;
+  // The host origin routes every suite on the entity, independently of the
+  // dish's visual mount height.
+  underwaterRadarBuilding.transform.z = WATER_LEVEL - 100;
   const underwaterRadarRejectedTarget = createUnit(
     mediumWorld,
     7300,
     1000,
     2 as PlayerId,
     (entity) => {
-      entity.transform.z = WATER_LEVEL + 100;
+      entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
     },
   );
   const aboveWaterSonarBuilding = createOpenedStructure(
@@ -665,9 +705,8 @@ function runSnapshotVisibilityContractTestBody(): void {
     1000,
     1 as PlayerId,
     (entity) => {
-      // Sensor source medium is classified at the mounted turret origin,
-      // not at the host center. Keep the whole source clearly above water.
-      entity.transform.z = WATER_LEVEL + 100;
+      // The host origin selects the air fields.
+      entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
     },
   );
   const aboveSameMediumTarget = createUnit(
@@ -676,7 +715,7 @@ function runSnapshotVisibilityContractTestBody(): void {
     1000,
     2 as PlayerId,
     (entity) => {
-      entity.transform.z = WATER_LEVEL + 100;
+      entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
     },
   );
   const aboveObserverUnderwaterTarget = createUnit(
@@ -716,7 +755,7 @@ function runSnapshotVisibilityContractTestBody(): void {
     5010,
     2 as PlayerId,
     (entity) => {
-      entity.transform.z = WATER_LEVEL + 100;
+      entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
     },
   );
   const aboveCrossMediumObserver = createUnit(
@@ -726,7 +765,7 @@ function runSnapshotVisibilityContractTestBody(): void {
     1 as PlayerId,
     (entity) => {
       assertContract(entity.unit !== null, 'cross-medium observer must be a unit');
-      entity.transform.z = WATER_LEVEL + 100;
+      entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
       entity.combat!.turrets[0].config.targeting.observation.sensors.visionRadius = 900;
     },
   );
@@ -756,7 +795,7 @@ function runSnapshotVisibilityContractTestBody(): void {
     5000,
     2 as PlayerId,
     (entity) => {
-      entity.transform.z = WATER_LEVEL + 100;
+      entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
     },
   );
   const legacyMatrixVisibility = SnapshotVisibility.forRecipient(matrixWorld, 1 as PlayerId);
@@ -841,7 +880,7 @@ function runSnapshotVisibilityContractTestBody(): void {
   denialWorld.fogOfWarEnabled = true;
 
   createUnit(denialWorld, 1000, 1000, 1 as PlayerId, (entity) => {
-    entity.transform.z = WATER_LEVEL + 100;
+    entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
     const sensors = entity.combat!.turrets[0].config.targeting.observation.sensors;
     // Radar reaching far, sight reaching barely — so "seen" and "contacted"
     // are separable at different ranges.
@@ -850,17 +889,17 @@ function runSnapshotVisibilityContractTestBody(): void {
   });
 
   const plainTarget = createUnit(denialWorld, 3000, 1000, 2 as PlayerId, (entity) => {
-    entity.transform.z = WATER_LEVEL + 100;
+    entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
   });
   const stealthInSightTarget = createUnit(denialWorld, 1200, 1000, 2 as PlayerId, (entity) => {
-    entity.transform.z = WATER_LEVEL + 100;
+    entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
   });
   const jammedTarget = createUnit(denialWorld, 4200, 1000, 2 as PlayerId, (entity) => {
-    entity.transform.z = WATER_LEVEL + 100;
+    entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
   });
   // The jammer protects its OWN side and sits with the unit it is covering.
   createUnit(denialWorld, 4200, 1000, 2 as PlayerId, (entity) => {
-    entity.transform.z = WATER_LEVEL + 100;
+    entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
     entity.combat!.turrets[0].config.targeting.observation.sensors.jammingRadius = 800;
   });
 

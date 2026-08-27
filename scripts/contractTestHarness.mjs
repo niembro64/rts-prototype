@@ -56,10 +56,11 @@ for (const m of initSource.slice(blockStart).matchAll(/const \{ ([^}]+) \} = awa
   }
 }
 
-// Tests that stand up their own authoritative backend, so they cannot share a
-// page with the lobby's background battle.
+// Tests that own an authoritative backend or process-wide sim/terrain slabs,
+// so they cannot share a page with the lobby's background battle.
 const EXCLUSIVE_SIM_SLOT_TESTS = new Set([
   'runDeterministicLockstepBackendContractTest',
+  'runSnapshotVisibilityContractTest',
   'runUnitWaterSurfaceDynamicsContractTest',
 ]);
 
