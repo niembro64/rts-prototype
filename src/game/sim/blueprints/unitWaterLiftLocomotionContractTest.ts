@@ -81,6 +81,19 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
     'air surface lift may recover a partly immersed body only while its origin remains above water',
   );
 
+  const navalBlueprints = getAllUnitBlueprints().filter(
+    (blueprint) => blueprint.production?.domains.includes('naval') === true,
+  );
+  assertContract(navalBlueprints.length > 0, 'the roster must contain naval-domain units');
+  for (const blueprint of navalBlueprints) {
+    const lift = getUnitLocomotion(blueprint.unitBlueprintId).physics.water.lift;
+    assertContract(
+      lift.surfaceFollowingInverseForceFromGround > 0 &&
+        lift.surfaceFollowingProportionalForceFromWater > 0,
+      `${blueprint.unitBlueprintId} must carry nonzero lakebed and water-surface support`,
+    );
+  }
+
   for (const presetId of ['amphibian', 'amphibious-crawler', 'submarine', 'surface-ship']) {
     const preset = getUnitLocomotionPreset(presetId);
     assertContract(
@@ -116,16 +129,16 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
       !seaTurtle.navigation.waypoint.allowInAir,
     'Sea Turtle keeps a high-grip ground actuator and never propels itself through air',
   );
-  // The flipper rig swims by standing off the seabed, not by riding the water
-  // surface: ae2895b8 ("turtle good") authored a ground-referenced standoff
-  // lift in water on purpose. What must stay absent is a WATER-referenced lift
-  // -- that is the surface-riding channel the flippers profile does not use --
-  // and any airborne lift at all.
+  // The flipper rig primarily swims by standing off the seabed. Its tiny
+  // water-surface contribution is only the roster-wide naval fallback and
+  // must remain orders of magnitude below the ground-referenced controller.
   assertContract(
     seaTurtle.physics.water.lift.surfaceFollowingInverseForceFromGround > 0 &&
-      seaTurtle.physics.water.lift.surfaceFollowingProportionalForceFromWater === 0 &&
+      seaTurtle.physics.water.lift.surfaceFollowingProportionalForceFromWater > 0 &&
+      seaTurtle.physics.water.lift.surfaceFollowingProportionalForceFromWater * 1000 <
+        seaTurtle.physics.water.lift.surfaceFollowingInverseForceFromGround &&
       seaTurtle.physics.air.lift.surfaceFollowingInverseForceFromWater === 0,
-    'Sea Turtle follows the seabed with a ground-referenced standoff lift and takes no water-referenced or airborne lift',
+    'Sea Turtle keeps lakebed standoff primary with only tiny water-surface fallback and no airborne lift',
   );
   assertContract(
     getUnitBlueprint('unitSeaTurtle').radius.collision <
@@ -165,14 +178,16 @@ export function runUnitWaterLiftLocomotionContractTest(): void {
       patrolCorvette.physics.air.lift.surfaceFollowingInverseForceFromGround === 0 &&
       patrolCorvette.physics.air.lift.surfaceFollowingInverseForceFromWater === 0 &&
       patrolCorvette.physics.water.lift.surfaceFollowingProportionalForceFromWater > 0 &&
-      patrolCorvette.physics.water.lift.surfaceFollowingInverseForceFromGround === 0 &&
+      patrolCorvette.physics.water.lift.surfaceFollowingInverseForceFromGround > 0 &&
+      patrolCorvette.physics.water.lift.surfaceFollowingInverseForceFromGround * 10 <
+        patrolCorvette.physics.water.lift.surfaceFollowingProportionalForceFromWater &&
       patrolCorvette.physics.water.resistance.linearDampingRate >= 20 &&
       patrolCorvetteWaterSpeed >= 100 && patrolCorvetteWaterSpeed <= 250 &&
       !patrolCorvette.navigation.waypoint.allowOnGround &&
       patrolCorvette.navigation.waypoint.allowInWater &&
       !patrolCorvette.navigation.waypoint.allowInAir &&
       !patrolCorvette.motionControl.cruiseWhenUncommanded,
-    'Patrol Corvette falls freely through air, then settles into bounded surface-ship propulsion and in-water lift',
+    'Patrol Corvette falls freely through air, then settles on primary surface lift with tiny lakebed fallback',
   );
 
   const orca = getUnitLocomotion('unitOrca');

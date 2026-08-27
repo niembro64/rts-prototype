@@ -2548,8 +2548,8 @@
         "water": {
           "maxPropulsiveForce": 2.666666666667,
           "lift": {
-            "surfaceFollowingInverseForceFromGround": 0,
-            "surfaceFollowingProportionalForceFromWater": 0
+            "surfaceFollowingInverseForceFromGround": 0.01,
+            "surfaceFollowingProportionalForceFromWater": 0.01
           }
         }
       },
@@ -2728,7 +2728,7 @@
           "maxPropulsiveForce": 4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 700,
-            "surfaceFollowingProportionalForceFromWater": 0
+            "surfaceFollowingProportionalForceFromWater": 0.01
           }
         }
       },
@@ -4108,7 +4108,7 @@
           "maxPropulsiveForce": 0.4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 90,
-            "surfaceFollowingProportionalForceFromWater": 0
+            "surfaceFollowingProportionalForceFromWater": 0.01
           }
         }
       },
@@ -6965,7 +6965,7 @@
           "maxPropulsiveForce": 4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 700,
-            "surfaceFollowingProportionalForceFromWater": 0
+            "surfaceFollowingProportionalForceFromWater": 0.01
           }
         }
       },
@@ -7761,7 +7761,7 @@
         "water": {
           "maxPropulsiveForce": 56,
           "lift": {
-            "surfaceFollowingInverseForceFromGround": 0,
+            "surfaceFollowingInverseForceFromGround": 0.01,
             "surfaceFollowingProportionalForceFromWater": 0.32
           }
         }
@@ -7982,7 +7982,7 @@
           "maxPropulsiveForce": 0.4,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 90,
-            "surfaceFollowingProportionalForceFromWater": 0
+            "surfaceFollowingProportionalForceFromWater": 0.01
           }
         }
       },

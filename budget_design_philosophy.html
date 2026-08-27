@@ -1862,6 +1862,13 @@
         deterministic and unfiltered, with no hidden temporal state.
       </p>
       <p>
+        Every unit in the naval production domain authors both water support channels with strictly
+        positive values. Role tuning still decides which channel dominates: a submarine or flipper
+        hull can remain lakebed-referenced, and a surface craft can remain waterline-referenced, but
+        neither may have a completely absent fallback that lets an edge case settle onto the seabed.
+        A fallback may be deliberately tiny; zero is reserved for units outside the naval role.
+      </p>
+      <p>
         Every surface-following distance is measured from the unit&rsquo;s one canonical
         <strong>locomotion support point</strong>, never from the rigid body center:
         <code>supportZ = bodyCenterZ - supportPointOffsetZ</code>. Ground contact already uses that
@@ -4281,7 +4288,8 @@
         underwater sight required to identify submerged targets. The
         Patrol Corvette is a water-only surface hull with an above-water gun and sonar; it authors
         no air lift, so a released Barracuda falls out of its Fabricator under gravity until its
-        proportional in-water support catches it at the surface instead of hovering over the bay. The
+        proportional in-water support catches it at the surface instead of hovering over the bay;
+        its tiny lakebed-referenced fallback does not replace that primary controller. The
         tier-2 Procellaria is aircraft + naval: its air-launched torpedo enters the water and attacks
         underwater, while its own sensors deliberately provide no sonar contact.</li>
         <li><strong>Naval economy:</strong> the Tidal Generator is a water-only energy producer,
