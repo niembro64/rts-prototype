@@ -1671,6 +1671,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runUnitWaterSurfaceDynamicsContractTest();
         const { runShotLocomotionContractTest } = await import('../sim/shotLocomotionContractTest');
         runShotLocomotionContractTest();
+        const { runProjectileTerrainContactContractTest } = await import('../sim/combat/projectileTerrainContactContractTest');
+        runProjectileTerrainContactContractTest();
         const { runEmissionMediumContractTest } = await import('../sim/emissionMediumContractTest');
         runEmissionMediumContractTest();
         const { runShotArmingContractTest } = await import('../sim/combat/shotArmingContractTest');

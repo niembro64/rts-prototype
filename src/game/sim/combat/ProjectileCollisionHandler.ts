@@ -31,7 +31,7 @@ import { beamIndex } from '../BeamIndex';
 import type { DamageResult, DeathContext } from '../damage/types';
 import { buildImpactContext, collectKillsAndDeathContexts, emitBeamHitAudio } from './damageHelpers';
 import { createProjectileConfigFromShot } from '../projectileConfigs';
-import { getSurfaceNormal, isWaterAt, WATER_LEVEL } from '../Terrain';
+import { isWaterAt, WATER_LEVEL } from '../Terrain';
 import { spatialGrid } from '../SpatialGrid';
 import {
   BEAM_MIN_ON_TIME_MS,
@@ -1163,7 +1163,11 @@ function classifyAndPlanProjectileTerminal(
   const x = projEntity.transform.x;
   const y = projEntity.transform.y;
   const z = projEntity.transform.z;
-  const groundZ = world.getGroundZ(x, y);
+  // Projectile ground contact is always against solid terrain. getGroundZ()
+  // deliberately returns the water plane over flooded terrain, which made an
+  // armed torpedo below the surface classify as touching "ground" and vanish
+  // before it could travel through the water column.
+  const groundZ = world.getTerrainBedZ(x, y);
   const shotLocomotion = isProjectileShot(config.shot)
     ? config.shot.shotLocomotion
     : null;
@@ -1868,9 +1872,9 @@ export function checkProjectileCollisions(
             surfaceNormalY = directHitSurfaceNormalY;
             surfaceNormalZ = directHitSurfaceNormalZ;
           } else if (terminalGroundImpact) {
-            const n = getSurfaceNormal(
-              projEntity.transform.x, projEntity.transform.y,
-              world.mapWidth, world.mapHeight, LAND_CELL_SIZE,
+            const n = world.getCachedTerrainBedNormal(
+              projEntity.transform.x,
+              projEntity.transform.y,
             );
             surfaceNormalX = n.nx;
             surfaceNormalY = n.ny;

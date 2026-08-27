@@ -1197,7 +1197,10 @@
         rate only on the preset's operational media. Every shot blueprint also
         explicitly owns <code>maxLifespanMs</code>, using <code>null</code> when
         collision/ground contact rather than elapsed time limits its life. Ground is a contact domain: ordinary shots impact
-        it, while an explicit terrain-following mode may travel along it. Water
+        it, while an explicit terrain-following mode may travel along it. Projectile ground contact and terrain following
+        always sample the solid terrain bed, never the water-surface elevation returned by gameplay surface queries; an
+        underwater torpedo remains alive throughout the water column and terminates only if it reaches the actual seabed.
+        Water
         entry and exit are authored transitions, so a shell may despawn at the
         surface, a torpedo may continue underwater and become ballistic when it
         breaches, and a future munition may detonate on either crossing.

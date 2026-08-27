@@ -2268,7 +2268,9 @@ function _updateTravelingProjectilesJS(
         : DGUN_TERRAIN_FOLLOW_HEIGHT;
       const targetX = position.x + proj.velocityX * dtSec + aNetX * halfDtSq;
       const targetY = position.y + proj.velocityY * dtSec + aNetY * halfDtSq;
-      const targetZ = world.getGroundZ(targetX, targetY) + groundOffset;
+      // Terrain followers follow solid terrain, not the water plane returned
+      // by getGroundZ() over flooded cells.
+      const targetZ = world.getTerrainBedZ(targetX, targetY) + groundOffset;
       _travelingProjectileTerrainTargetZ[index] = targetZ;
       const shot = proj.config.shot as ProjectileShot;
       aNetZ += computeTerrainFollowVerticalThrustAccel({
