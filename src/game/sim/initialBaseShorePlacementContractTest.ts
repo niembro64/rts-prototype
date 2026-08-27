@@ -51,7 +51,11 @@ import { getAuthoritativeTerrainTileMap } from './terrain/terrainState';
 import type { Entity, PlayerId } from './types';
 import { WorldState } from './WorldState';
 import { isFabricatorBuildingBlueprintId } from './blueprints/buildings';
-import { spawnBackgroundUnitsStandalone } from '../server/BackgroundBattleStandalone';
+import {
+  buildPaddedOpenWaterPatrolPairCellIndices,
+  openWaterPatrolPairFromCellIndex,
+  spawnBackgroundUnitsStandalone,
+} from '../server/BackgroundBattleStandalone';
 import type { PhysicsEngine3D } from '../server/PhysicsEngine3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -249,6 +253,15 @@ function assertOpeningWaveWaterHulls(
       pointHasShoreMargin(field, 'water', x, y, SHORE_MARGIN_WATER_SPAWN_WU),
       `${entity.unit.unitBlueprintId}#${id} launched at ${x},${y} with only ${shoreClearanceAt(field, 'water', x, y)} wu of water around it`,
     );
+    const patrolActions = entity.unit.actions.filter((action) => action.type === 'patrol');
+    assertContract(
+      patrolActions.length === 2 &&
+        patrolActions[0].x === world.mapWidth - x &&
+        patrolActions[0].y === world.mapHeight - y &&
+        patrolActions[1].x === x &&
+        patrolActions[1].y === y,
+      `${entity.unit.unitBlueprintId}#${id} must patrol through the exact map-centre reflection and back`,
+    );
     for (const action of entity.unit.actions) {
       if (action.type !== 'patrol' && action.type !== 'move') continue;
       const target = { x: action.x, y: action.y };
@@ -259,6 +272,36 @@ function assertOpeningWaveWaterHulls(
     }
   }
   assertContract(waterHulls > 0, 'the opening wave launched at least one water-required hull');
+}
+
+function assertMapWideWaterPatrolPool(field: ShoreDistanceField): void {
+  const cellIndices = buildPaddedOpenWaterPatrolPairCellIndices(field);
+  assertContract(cellIndices.length > 0, 'fixture exposes padded centre-reflected water pairs');
+  let occupiedQuadrants = 0;
+  for (let i = 0; i < cellIndices.length; i++) {
+    const pair = openWaterPatrolPairFromCellIndex(field, cellIndices[i]);
+    for (const point of [
+      { x: pair.x, y: pair.y },
+      { x: pair.oppositeX, y: pair.oppositeY },
+    ]) {
+      assertContract(
+        pointHasShoreMargin(field, 'water', point.x, point.y, SHORE_MARGIN_WATER_SPAWN_WU),
+        `map-wide water candidate ${point.x},${point.y} lacks launch padding`,
+      );
+      const right = point.x >= field.mapWidth / 2 ? 1 : 0;
+      const bottom = point.y >= field.mapHeight / 2 ? 2 : 0;
+      occupiedQuadrants |= 1 << (right + bottom);
+    }
+    assertContract(
+      pair.oppositeX === field.mapWidth - pair.x &&
+        pair.oppositeY === field.mapHeight - pair.y,
+      'every water candidate pair is an exact reflection through map centre',
+    );
+  }
+  assertContract(
+    occupiedQuadrants === 0b1111,
+    `map-wide water pool must expose all four quadrants, got mask ${occupiedQuadrants.toString(2)}`,
+  );
 }
 
 function assertNearestPointWalk(field: ShoreDistanceField): void {
@@ -324,6 +367,7 @@ export function runInitialBaseShorePlacementContractTest(): void {
     assertContract(field !== null, 'an installed authoritative terrain yields a shore field');
     assertFieldSelfConsistent(field, mapWidth, mapHeight);
     assertNearestPointWalk(field);
+    assertMapWideWaterPatrolPool(field);
 
     const playerIds: PlayerId[] = [];
     for (let i = 0; i < DEMO_CONFIG.allyTeamSeats.length; i++) playerIds.push((i + 1) as PlayerId);

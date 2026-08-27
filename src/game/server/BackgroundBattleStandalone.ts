@@ -13,14 +13,11 @@ import { getAllyTeamMembers } from '../sim/teamRoster';
 import {
   makeMapOvalMetrics,
   mapOvalPointAt,
-  sampleMapOvalAt,
-  type MapOvalMetrics,
 } from '../sim/mapOval';
 import { getUnitLocomotion } from '../sim/blueprints/units';
 import { isWaterAt } from '../sim/Terrain';
 import { isPathSegmentTraversable } from '../sim/Pathfinder';
 import { pathTerrainFilterForLocomotion } from '../sim/pathfindingTraversal';
-import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import type { MultiLegWaypoint } from '../sim/Pathfinder';
 import { setUnitActions } from '../sim/unitActions';
 import { setUnitFacingYaw } from '../sim/unitOrientation';
@@ -30,7 +27,6 @@ import {
   SHORE_MARGIN_WATER_SPAWN_WU,
   getShoreDistanceField,
   pointHasShoreMargin,
-  shoreClearanceSqAt,
   type ShoreDistanceField,
 } from '../sim/shoreDistanceField';
 import { isFabricatorBuildingBlueprintId } from '../sim/blueprints/buildings';
@@ -261,29 +257,125 @@ function seededFabricatorProductionReserve(world: WorldState, playerId: PlayerId
   return count;
 }
 
-/** Arc length (wu) of an opening-wave hull's patrol along the water ring. */
-const WATER_PATROL_ARC_WU = 900;
+export type OpenWaterPatrolPair = Readonly<{
+  x: number;
+  y: number;
+  oppositeX: number;
+  oppositeY: number;
+}>;
 
-/** First point outward from `startRadius` along `angle` on the map oval
- *  (20 wu steps) that is water, that the blueprint's body can stand in under
- *  the authoritative traversal kernel, AND that keeps the opening-wave shore
- *  margin of open water around it (the first water cell a ray meets is, by
- *  construction, the beach). Failing the margin, the deepest standable water
- *  point on the ray; failing that, the first water point (a hull in the edge
- *  buffer or a tight ring still floats and routes out through an escape
- *  start); null only when the ray finds no water at all before the map edge.
- *  Used to keep water-required hulls off the land the centre disk sits on: a
- *  hull dropped on land has no ground propulsion, every route request from it
- *  is terminal, and no search can fix it (measured 2026-08-26: 87% of a 4-bot
- *  skirmish's unreachable results). */
-function firstStandableWaterPointOutward(
+type OpenWaterPatrolPool = {
+  field: ShoreDistanceField;
+  /** Canonical cell index for each centre-reflected pair. Shuffled lazily so
+   *  opening hulls sample the entire water area uniformly without replacement. */
+  remainingCellIndices: Uint32Array;
+  nextIndex: number;
+};
+
+function reflectedCellIndex(field: ShoreDistanceField, x: number, y: number): number {
+  const oppositeX = field.mapWidth - x;
+  const oppositeY = field.mapHeight - y;
+  const gx = Math.min(field.cellsX - 1, Math.max(0, Math.floor(oppositeX / field.cellSize)));
+  const gy = Math.min(field.cellsY - 1, Math.max(0, Math.floor(oppositeY / field.cellSize)));
+  return gy * field.cellsX + gx;
+}
+
+export function openWaterPatrolPairFromCellIndex(
+  field: ShoreDistanceField,
+  cellIndex: number,
+): OpenWaterPatrolPair {
+  const gx = cellIndex % field.cellsX;
+  const gy = Math.floor(cellIndex / field.cellsX);
+  const x = (gx + 0.5) * field.cellSize;
+  const y = (gy + 0.5) * field.cellSize;
+  return {
+    x,
+    y,
+    oppositeX: field.mapWidth - x,
+    oppositeY: field.mapHeight - y,
+  };
+}
+
+/** Every map-wide open-water spawn candidate, collapsed into exact
+ *  centre-reflected pairs. Both endpoints must keep the authored launch
+ *  margin; retaining only the lower cell index makes each pair appear once. */
+export function buildPaddedOpenWaterPatrolPairCellIndices(
+  field: ShoreDistanceField,
+): Uint32Array {
+  const candidates: number[] = [];
+  const cellCount = field.cellsX * field.cellsY;
+  for (let cellIndex = 0; cellIndex < cellCount; cellIndex++) {
+    const pair = openWaterPatrolPairFromCellIndex(field, cellIndex);
+    const oppositeCellIndex = reflectedCellIndex(field, pair.x, pair.y);
+    if (cellIndex > oppositeCellIndex) continue;
+    if (
+      !pointHasShoreMargin(
+        field,
+        'water',
+        pair.x,
+        pair.y,
+        SHORE_MARGIN_WATER_SPAWN_WU,
+      ) ||
+      !pointHasShoreMargin(
+        field,
+        'water',
+        pair.oppositeX,
+        pair.oppositeY,
+        SHORE_MARGIN_WATER_SPAWN_WU,
+      )
+    ) {
+      continue;
+    }
+    candidates.push(cellIndex);
+  }
+  return Uint32Array.from(candidates);
+}
+
+function createOpenWaterPatrolPool(field: ShoreDistanceField): OpenWaterPatrolPool {
+  return {
+    field,
+    remainingCellIndices: buildPaddedOpenWaterPatrolPairCellIndices(field),
+    nextIndex: 0,
+  };
+}
+
+function isStandableWaterPoint(
   world: WorldState,
-  oval: MapOvalMetrics,
-  angle: number,
-  startRadius: number,
+  x: number,
+  y: number,
+  radius: number,
+  filter: ReturnType<typeof pathTerrainFilterForLocomotion>,
+): boolean {
+  if (
+    x < radius || y < radius ||
+    x > world.mapWidth - radius || y > world.mapHeight - radius ||
+    !isWaterAt(x, y, world.mapWidth, world.mapHeight)
+  ) {
+    return false;
+  }
+  const z = world.getTerrainBedZ(x, y);
+  return isPathSegmentTraversable(
+    x,
+    y,
+    { x, y, z },
+    world.mapWidth,
+    world.mapHeight,
+    filter,
+    radius,
+    world.slopePathMode === 'symmetric',
+  );
+}
+
+/** Draw one uniformly shuffled pair from every padded water cell on the map.
+ *  Invalid body-specific candidates are discarded and the next shuffled pair
+ *  is tried. Orientation is random, so the canonical half-pair storage still
+ *  produces spawn points over both halves of the world. */
+function sampleOpenWaterPatrolPair(
+  world: WorldState,
+  pool: OpenWaterPatrolPool,
   unitBlueprintId: string,
-  field: ShoreDistanceField | null,
-): { x: number; y: number } | null {
+  rngNext: () => number,
+): OpenWaterPatrolPair | null {
   const blueprint = getUnitBlueprint(unitBlueprintId);
   const filter = pathTerrainFilterForLocomotion(
     getUnitLocomotion(unitBlueprintId),
@@ -291,55 +383,39 @@ function firstStandableWaterPointOutward(
     blueprint.supportPointOffsetZ,
   );
   const radius = blueprint.radius.collision;
-  const mapWidth = world.mapWidth;
-  const mapHeight = world.mapHeight;
-  const symmetric = world.slopePathMode === 'symmetric';
-  const maxRadius = oval.minDim * 0.5;
-  let firstWater: { x: number; y: number } | null = null;
-  let deepestStandable: { x: number; y: number } | null = null;
-  let deepestStandableSq = 0;
-  for (let r = Math.max(0, startRadius); r <= maxRadius; r += BUILD_GRID_CELL_SIZE) {
-    const point = mapOvalPointAt(oval, angle, r);
+  const remaining = pool.remainingCellIndices;
+  while (pool.nextIndex < remaining.length) {
+    const available = remaining.length - pool.nextIndex;
+    const drawOffset = Math.min(available - 1, Math.floor(rngNext() * available));
+    const drawIndex = pool.nextIndex + drawOffset;
+    const cellIndex = remaining[drawIndex];
+    remaining[drawIndex] = remaining[pool.nextIndex];
+    remaining[pool.nextIndex] = cellIndex;
+    pool.nextIndex++;
+
+    const canonical = openWaterPatrolPairFromCellIndex(pool.field, cellIndex);
+    const forward = rngNext() < 0.5;
+    const pair: OpenWaterPatrolPair = forward
+      ? canonical
+      : {
+        x: canonical.oppositeX,
+        y: canonical.oppositeY,
+        oppositeX: canonical.x,
+        oppositeY: canonical.y,
+      };
     if (
-      point.x < radius || point.y < radius ||
-      point.x > mapWidth - radius || point.y > mapHeight - radius
+      isStandableWaterPoint(world, pair.x, pair.y, radius, filter) &&
+      isStandableWaterPoint(world, pair.oppositeX, pair.oppositeY, radius, filter)
     ) {
-      break;
-    }
-    if (!isWaterAt(point.x, point.y, mapWidth, mapHeight)) continue;
-    if (firstWater === null) firstWater = { x: point.x, y: point.y };
-    const z = world.getTerrainBedZ(point.x, point.y);
-    if (
-      !isPathSegmentTraversable(
-        point.x,
-        point.y,
-        { x: point.x, y: point.y, z },
-        mapWidth,
-        mapHeight,
-        filter,
-        radius,
-        symmetric,
-      )
-    ) {
-      continue;
-    }
-    if (field === null) return { x: point.x, y: point.y };
-    if (pointHasShoreMargin(field, 'water', point.x, point.y, SHORE_MARGIN_WATER_SPAWN_WU)) {
-      return { x: point.x, y: point.y };
-    }
-    const sq = shoreClearanceSqAt(field, 'water', point.x, point.y);
-    if (sq > deepestStandableSq) {
-      deepestStandableSq = sq;
-      deepestStandable = { x: point.x, y: point.y };
+      return pair;
     }
   }
-  return deepestStandable ?? firstWater;
+  return null;
 }
 
 /** The opening wave ignores terrain and path suitability for land bodies:
  * every enabled unit samples this same uniform center disk. Water-required
- * hulls project that sample outward onto the water instead (see
- * firstStandableWaterPointOutward). */
+ * hulls replace that sample with a map-wide open-water patrol pair. */
 function sampleInitialCenterSpawnPoint(
   oval: ReturnType<typeof makeMapOvalMetrics>,
   centerRadius: number,
@@ -403,9 +479,12 @@ export function spawnBackgroundUnitsStandalone(
   const mapWidth = world.mapWidth;
   const mapHeight = world.mapHeight;
   const oval = makeMapOvalMetrics(mapWidth, mapHeight);
-  // Null on bare worlds (no authoritative terrain): the outward ray then
-  // keeps its first standable water point as before.
+  // Null on bare worlds (no authoritative terrain): water hulls retain the
+  // roster-guarantee fallback at their center-disk sample.
   const shoreField = getShoreDistanceField(mapWidth, mapHeight);
+  const openWaterPatrolPool = shoreField === null
+    ? null
+    : createOpenWaterPatrolPool(shoreField);
   const cx = oval.cx;
   const cy = oval.cy;
 
@@ -421,9 +500,9 @@ export function spawnBackgroundUnitsStandalone(
     // room, then fill remaining slots with the inverse-cost weighted roster.
     // This turns "enabled" into a visible Demo guarantee instead of a random
     // chance. Land bodies drop into the same center disk with no terrain,
-    // path, or factory-roster suitability checks; a water-required hull's
-    // sample and patrol mirror are projected outward onto standable water
-    // (the map's water ring) — on lava the water roster is off entirely.
+    // path, or factory-roster suitability checks. Water-required hulls draw
+    // without replacement from every padded, standable water pair on the
+    // map; on lava the water roster is off entirely.
     const centerRadius = DEMO_CONFIG.centerSpawnRadius * oval.minDim;
     const coverageBlueprintIds = openingWaveCoverageBlueprintIds(
       initialWaveAllowedUnitBlueprintIds,
@@ -466,34 +545,20 @@ export function spawnBackgroundUnitsStandalone(
         // spawn point and its mirror through the map center.
         let targetX = cx - (spawn.x - cx);
         let targetY = cy - (spawn.y - cy);
-        if (getUnitBlueprint(unitBlueprintId).requiresWater) {
-          // Project the sample and its mirror outward onto water. A ray that
-          // finds no water at all (only possible when the installed terrain
-          // does not match this world, e.g. a bare test world) keeps the
-          // centre sample: the roster guarantee outranks the medium here.
-          const sample = sampleMapOvalAt(oval, spawn.x, spawn.y);
-          const waterSpawn = firstStandableWaterPointOutward(
-            world, oval, sample.angle, sample.distance, unitBlueprintId, shoreField,
+        if (getUnitBlueprint(unitBlueprintId).requiresWater && openWaterPatrolPool !== null) {
+          const waterPair = sampleOpenWaterPatrolPair(
+            world,
+            openWaterPatrolPool,
+            unitBlueprintId,
+            () => world.nextRandom(playerId),
           );
-          // The patrol mirror stays a short arc along the ring, never the far
-          // side of it: a hull ordered half-way around the annulus asks for a
-          // ~15 km search that holds its owner's whole refine queue.
-          const ringDistance = waterSpawn !== null
-            ? sampleMapOvalAt(oval, waterSpawn.x, waterSpawn.y).distance
-            : sample.distance;
-          const tangentAngle = WATER_PATROL_ARC_WU / Math.max(WATER_PATROL_ARC_WU, ringDistance);
-          const waterTarget = firstStandableWaterPointOutward(
-            world, oval, sample.angle + tangentAngle, sample.distance, unitBlueprintId, shoreField,
-          );
-          if (waterSpawn !== null) spawn = waterSpawn;
-          if (waterTarget !== null) {
-            targetX = waterTarget.x;
-            targetY = waterTarget.y;
-          } else if (waterSpawn !== null) {
-            // Patrol in place rather than toward land.
-            targetX = waterSpawn.x;
-            targetY = waterSpawn.y;
-          }
+          // An authoritative map with no body-valid padded pair has nowhere
+          // legal to launch this hull. Do not silently fall back onto land;
+          // bare test worlds are the only case that retains the center sample.
+          if (waterPair === null) continue;
+          spawn = { x: waterPair.x, y: waterPair.y };
+          targetX = waterPair.oppositeX;
+          targetY = waterPair.oppositeY;
         }
         const initialZ = world.getGroundZ(spawn.x, spawn.y) +
           DEMO_CONFIG.initialUnitSpawnHeightAboveSurface;
