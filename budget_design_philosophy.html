@@ -2678,9 +2678,9 @@
         may refine a footprint with its real planted foot.
       </p>
       <ul class="rule-list">
-        <li>A small tire keeps exactly one mutable leading quad between its last committed rut edge and the current wheel contact. That quad is rewritten in place on every ground-print update, becomes an ordinary fading mark at the density-controlled spacing boundary, and hands the same edge to its successor. The visible rut therefore reaches the tire even while the tire has moved less than one emission interval.</li>
-        <li>A continuous tread belt has a large contact patch and retains distance-spaced committed quads. Feet and flippers retain plant-transition stamps. The wheel-specific leading edge must not add per-frame mark allocations to either family.</li>
-        <li>Ground-print work remains bounded by contacts plus live marks: at most one mutable leading mark per wheel, one shared merged GPU buffer, and the existing density, lifetime, retirement, and hard-cap policy.</li>
+        <li>Every trail contact &mdash; a tire or a tread side &mdash; keeps exactly one mutable leading quad between its last committed rut edge and the current contact. That quad is rewritten in place on every ground-print update, becomes an ordinary fading mark at the density-controlled spacing boundary, and hands the same edge to its successor. The visible rut therefore reaches the contact even while it has moved less than one emission interval. Treads once kept only the distance-spaced commits on the theory that a large contact patch hides the gap; a narrow belt on a small tank showed the same dashed gap the tires had, so the one rule now covers both families.</li>
+        <li>Feet and flippers retain plant-transition stamps. The leading edge must not add per-frame mark allocations to any family: a leading mark is allocated once per emission interval and rewritten until it commits.</li>
+        <li>Ground-print work remains bounded by contacts plus live marks: at most one mutable leading mark per trail contact, one shared merged GPU buffer, and the existing density, lifetime, retirement, and hard-cap policy.</li>
       </ul>
 
       <h3>One rendered root pose owns every attachment</h3>

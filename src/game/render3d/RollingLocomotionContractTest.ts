@@ -181,12 +181,12 @@ export function runRollingLocomotionContractTest(): void {
     transform: { x: 0, y: 0, z: WATER_LEVEL, rotation: 0 },
   } as unknown as Entity;
   const wheelLayout = resolveGroundPrintLayout(jackal);
-  if (
-    wheelLayout === null ||
-    wheelLayout.trails.length === 0 ||
-    wheelLayout.trails.some((trail) => trail.kind !== 'wheel')
-  ) {
+  if (wheelLayout === null || wheelLayout.trails.length === 0) {
     throw new Error('[rolling locomotion contract] Jackal must resolve wheel trail contacts');
+  }
+  const treadLayout = resolveGroundPrintLayout(submergedTank);
+  if (treadLayout === null || treadLayout.trails.length === 0) {
+    throw new Error('[rolling locomotion contract] Lynx must resolve tread trail contacts');
   }
   const wheelPackets = [0, 1, 2, 4, 5].map((x) => {
     const packet = new GroundPrintRenderPacket3D();
@@ -198,12 +198,35 @@ export function runRollingLocomotionContractTest(): void {
     setLocomotionMarks(true);
     renderer.update(submergedPacket, noRig, getEntity, 16, 1);
     renderer.update(nearPacket, noRig, getEntity, 16, 1);
-    if (groundPrintMarkCount(groundPrintGeometry(world)) !== 0) {
-      throw new Error(
-        '[rolling locomotion contract] a tread must retain distance-spaced emission',
+    // A tread side keeps the same sticky leading quad a tire does: a
+    // sub-spacing move allocates exactly one live mark per belt and drags
+    // its end edge to the live contact, so a narrow belt never trails a
+    // dashed gap behind the unit.
+    const treadGeometry = groundPrintGeometry(world);
+    const treadContactCount = treadLayout.trails.length;
+    assertEqual(
+      groundPrintMarkCount(treadGeometry),
+      treadContactCount,
+      'sub-spacing tread motion allocates exactly one live mark per belt',
+    );
+    const treadPositions = treadGeometry.getAttribute('position').array as Float32Array;
+    for (let i = 0; i < treadContactCount; i++) {
+      const contact = treadLayout.trails[i];
+      assertTrailEdgeCenter(
+        treadPositions,
+        i,
+        'end',
+        1 + contact.localX,
+        contact.localZ,
+        'live tread mark stays attached after a sub-spacing move',
       );
     }
     renderer.update(movedPacket, noRig, getEntity, 16, 1);
+    assertEqual(
+      groundPrintMarkCount(treadGeometry),
+      treadContactCount,
+      'reaching spacing promotes the live tread mark in place',
+    );
     if (
       sampledModes.length === 0 ||
       sampledModes.some((terrainMode) => terrainMode !== 'terrainBed')
