@@ -1714,7 +1714,7 @@
         <li><strong>2026-08-25</strong> (<code>218bce46</code>): the 20 wu fine grid and lazily built per-class HPA graphs made each synchronous call far more expensive — cold cluster builds, corridor search and O(path²) smoothing per unit — and the deployed build froze under whole-army line and formation-preserving moves.</li>
         <li><strong>2026-08-26</strong>: the synchronous export, the <code>null</code>-budget branch and the command-time resolver were deleted; formation slots are installed as intent like the group-move branch always was; the contract test above pins the rule.</li>
         <li><strong>2026-08-26</strong> (later): the per-side rotation with one retained frontier per ally team became the per-player two-queue quantum round-robin described above, the six-strike give-up that dropped orders was deleted in favour of state-triggered retry, air bodies stopped entering the queue, the hierarchy class cache stopped evicting graphs still in play, building churn stopped restarting every retained search, illegal start cells became escape starts, and the demo's opening wave stopped dropping hulls on land (87% of all unreachable results). Measured before (4 bots, 60 s): 275 unreachable results, 9 dropped orders, 62% of refine admissions within 1 tick, 18% waiting more than 1.6 s. After: 0 dropped orders by construction, 326 units moving on a first leg within a tick, 65% of refine admissions within 1 tick; the remaining unreachable results are transient shoreline beachings that recover, and full-route latency is bounded by per-class hierarchy row builds (see the rule list).</li>
-        <li><strong>2026-08-27</strong>: the opening wave and every offshore line stopped trusting the first wet cell a ray or a ring meets. Water hulls launch, rally, and patrol on measured open water with a shore margin, offshore rows anchor on each seat&rsquo;s measured deep-water radius, and offshore footprints are proven cell by cell (see <em>Initialized-base rule</em> and <em>Shore margins are measured, never assumed</em>), so the transient shoreline beachings left over from the previous round are gone by construction rather than recovered from.</li>
+        <li><strong>2026-08-27</strong>: the opening wave and every offshore line stopped trusting the first wet cell a ray or a ring meets. Water hulls launch from a uniform, without-replacement sample of every padded open-water cell whose exact map-centre reflection is also open water, then patrol between those two reflected points. Offshore rows still anchor on each seat&rsquo;s measured deep-water radius, and offshore footprints are proven cell by cell (see <em>Initialized-base rule</em> and <em>Shore margins are measured, never assumed</em>), so shoreline beachings are excluded by construction rather than recovered from.</li>
       </ul>
 
       <h3>Force models answer gravity; constant-speed guidance preserves velocity</h3>
@@ -3180,6 +3180,16 @@
         boundary even though our pathfinder is owned by our Rust/WASM sim rather than by BAR's
         engine.
       </p>
+      <p>
+        Drawn Move, Fight, and Patrol lines also follow BAR&rsquo;s CustomFormations2 assignment
+        semantics instead of a nearest-pair greedy lottery. Manageable selections receive the
+        minimum-total-travel assignment; whole-army selections use a deterministic major-axis,
+        no-cross fallback with bounded quadratic passes. A plain queued line is matched from each
+        unit&rsquo;s final authored queue position rather than its current body position. Unit identity
+        is the stable tie-break, so selection-array order cannot reshuffle an otherwise identical
+        gesture. The policy is BAR-informed, while the TypeScript implementation and browser work
+        ceiling are this project&rsquo;s own.
+      </p>
       <h3>Commands require real systems</h3>
       <p>
         BAR command vocabulary is the fallback only when the command has an
@@ -4219,7 +4229,12 @@
         supplemental water 0.985) are spacings around that anchor, not positions. A seat whose ray
         never crosses open water falls back to the authored ring. Water-required unit lines must
         place their complete Universal footprint over water with a shore margin around every
-        cell; land-required lines must place every cell over dry ground. Corner samples are not a
+        cell; land-required lines must place every cell over dry ground. In Base and Units, opening
+        water hulls are independent of the center combat disk and the base ring: they draw randomly
+        without replacement from the complete map-wide set of padded open-water cell pairs, and the
+        second patrol point is the first point reflected exactly through map center. This includes
+        perimeter oceans, flooded centers, and water dividers without privileging any one band.
+        Corner samples are not a
         footprint: a shoreline that cuts through the middle of a fabricator is still a beach.</li>
         <li><strong>Shore margins are measured, never assumed.</strong> Every offshore rally and
         patrol leg, and every water hull the opening wave launches, sits in open water with a

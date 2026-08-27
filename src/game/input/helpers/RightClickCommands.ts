@@ -318,7 +318,11 @@ export function buildLinePathMoveCommand(
 
   // Ensure targets reflect the current unit count before assigning.
   accumulator.recomputeTargets(selectedUnits.length);
-  const assignments = assignUnitsToTargets(selectedUnits, accumulator.targets);
+  const assignments = assignUnitsToTargets(
+    selectedUnits,
+    accumulator.targets,
+    isPlainQueueAppend(queue, queueFront, queueInsertIndex),
+  );
 
   const entityIds: EntityId[] = [];
   const individualTargets: WaypointTarget[] = [];

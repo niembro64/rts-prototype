@@ -2,6 +2,7 @@ import { createEmptyEntityComponentSlots, createTransform, NO_ENTITY_ID } from '
 import type { Entity, UnitAction } from '../../sim/types';
 import { getTurretConfig } from '../../sim/turretConfigs';
 import { LinePathAccumulator } from './LinePathAccumulator';
+import { assignUnitsToTargets, calculateLinePathTargets } from './PathDistribution';
 import {
   buildAttackCommandForTarget,
   buildAttackGroundCommand,
@@ -44,6 +45,39 @@ function targetDistance(
 export function runRightClickCommandsContractTest(): void {
   const units = [unit(1, 0, 0), unit(2, 20, 0)];
 
+  // The old global-nearest-pair greedy solve takes unit 101 -> target 3
+  // first, then strands unit 100 with target 100 (101 total wu). The exact
+  // assignment is unit 100 -> 3 and unit 101 -> 100 (99 total wu).
+  const trapUnits = [unit(100, 0, 0), unit(101, 4, 0)];
+  const trapTargets = [{ x: 3, y: 0 }, { x: 100, y: 0 }];
+  const trapAssignments = assignUnitsToTargets(trapUnits, trapTargets);
+  assertContract(
+    trapAssignments.get(100) === trapTargets[0] &&
+      trapAssignments.get(101) === trapTargets[1],
+    'drawn-line slots must minimize total selected-unit travel instead of greedily consuming pairs',
+  );
+  const reversedTrapAssignments = assignUnitsToTargets([...trapUnits].reverse(), trapTargets);
+  assertContract(
+    reversedTrapAssignments.get(100) === trapTargets[0] &&
+      reversedTrapAssignments.get(101) === trapTargets[1],
+    'drawn-line assignment must not depend on selection-array order',
+  );
+
+  // Large selections take the bounded BAR-style no-cross path. Reverse the
+  // input array to prove identity/order does not randomize an otherwise
+  // obvious one-to-one line layout.
+  const largeUnits: Entity[] = [];
+  const largePath = [{ x: 0, y: 500 }, { x: 1590, y: 500 }];
+  for (let i = 0; i < 160; i++) largeUnits.push(unit(1000 + i, i * 10, 0));
+  const largeTargets = calculateLinePathTargets(largePath, largeUnits.length);
+  const largeAssignments = assignUnitsToTargets([...largeUnits].reverse(), largeTargets);
+  for (let i = 0; i < largeUnits.length; i++) {
+    assertContract(
+      largeAssignments.get(1000 + i) === largeTargets[i],
+      `large drawn-line assignment must preserve geometric order at slot ${i}`,
+    );
+  }
+
   const ownSpeedPath = new LinePathAccumulator();
   ownSpeedPath.start(100, 100, units.length, 5);
   const ownSpeedMove = buildLinePathMoveCommand(
@@ -85,6 +119,32 @@ export function runRightClickCommandsContractTest(): void {
     slowMove.formationSpeed === 'slowest',
     'slow formation move must carry formationSpeed=slowest',
   );
+
+  // BAR matches a plain shift-appended formation from each unit's final
+  // queued command position. These two units are currently left/right but
+  // finish their existing queues right/left, so the new line must follow the
+  // future positions for Move, Fight, and Patrol alike.
+  const queuedLeft = unit(200, 0, 50);
+  const queuedRight = unit(201, 100, 50);
+  queuedLeft.unit!.actions = [{ type: 'move', x: 100, y: 50 } as UnitAction];
+  queuedRight.unit!.actions = [{ type: 'move', x: 0, y: 50 } as UnitAction];
+  for (const mode of ['move', 'fight', 'patrol'] as const) {
+    const queuedPath = new LinePathAccumulator();
+    queuedPath.start(0, 200, 2);
+    queuedPath.append(100, 200, 2);
+    const queuedMove = buildLinePathMoveCommand(
+      queuedPath,
+      [queuedLeft, queuedRight],
+      mode,
+      2,
+      true,
+    );
+    assertContract(
+      queuedMove?.individualTargets?.[0]?.x === 100 &&
+        queuedMove.individualTargets[1]?.x === 0,
+      `queued ${mode} line must assign from final queued positions`,
+    );
+  }
 
   const tightTargets = buildFormationPreservingMoveTargets(
     [unit(10, -5, 0, 20), unit(11, 5, 0, 20)],
