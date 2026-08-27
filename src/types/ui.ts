@@ -520,8 +520,8 @@ export type SprayTarget = {
    *  sprays use this to move linearly from source to target; omitted
    *  heal sprays use the renderer's heal default. */
   speed?: number;
-  /** Optional cosmetic particle radius. Build sprays use this so the
-   *  construction emitter owns both travel speed and pellet size. */
+  /** Optional cosmetic size hint. Build sprays snap it to the nearest shared
+   *  small, medium, or large tetrahedron radius. */
   particleRadius?: number;
   /** Optional per-spray color override (RGB in [0..1]). When present
    *  the renderer paints particles in this color instead of the

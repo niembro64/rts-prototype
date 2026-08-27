@@ -9,7 +9,7 @@
 // down-tube bead.
 //
 // Implementation mirrors SprayRenderer3D: ONE shared InstancedMesh of
-// unit spheres drawn in a single call, with per-instance team/resource
+// unit tetrahedra drawn in a single call, with per-instance team/resource
 // color + alpha on aColor / aAlpha attributes read by a tiny shader.
 
 import * as THREE from 'three';
@@ -28,6 +28,10 @@ import {
 } from './PrimitiveGeometryQuality3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
+import {
+  tetrahedronParticleRadius,
+  tetrahedronParticleSizeClassForRadius,
+} from '@/tetrahedronParticleProfile';
 
 // Resource-ball visual tuning lives in resourceConfig.json (Config Is Data).
 /** Global cap on simultaneous tube beads across every pylon. */
@@ -219,7 +223,9 @@ export class PylonTubeFlowRenderer {
     runtime.intensity = Math.max(0, Math.min(1, flow.intensity));
     runtime.ballSpawnRate = flow.ballSpawnRate;
     runtime.speed = flow.speed;
-    runtime.beadRadius = flow.beadRadius;
+    runtime.beadRadius = tetrahedronParticleRadius(
+      tetrahedronParticleSizeClassForRadius(flow.beadRadius),
+    );
     runtime.colorRGB.r = flow.colorRGB.r;
     runtime.colorRGB.g = flow.colorRGB.g;
     runtime.colorRGB.b = flow.colorRGB.b;

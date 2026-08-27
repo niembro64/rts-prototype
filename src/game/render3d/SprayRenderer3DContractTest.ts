@@ -5,6 +5,11 @@ import { serializeSprayTargets } from '../network/stateSerializerSpray';
 import { SprayRenderer3D } from './SprayRenderer3D';
 import { RESOURCE_CONFIG } from '@/resourceConfig';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
+import {
+  TETRAHEDRON_PARTICLE_RADIUS,
+  TETRAHEDRON_PARTICLE_SPIN_MAX_RAD_PER_SEC,
+  TETRAHEDRON_PARTICLE_SPIN_MIN_RAD_PER_SEC,
+} from '@/tetrahedronParticleProfile';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) throw new Error(`SprayRenderer3D contract: ${message}`);
@@ -20,6 +25,12 @@ type SprayParticleDebugState = {
   pEndX: Float32Array;
   pEndY: Float32Array;
   pEndZ: Float32Array;
+  pLife: Float32Array;
+  pSize: Float32Array;
+  pSpinAxisX: Float32Array;
+  pSpinAxisY: Float32Array;
+  pSpinAxisZ: Float32Array;
+  pSpinRate: Float32Array;
   pR: Float32Array;
   pG: Float32Array;
   pB: Float32Array;
@@ -85,6 +96,41 @@ export function runSprayRenderer3DContractTest(): void {
       Math.hypot(state.pEndX[0] - 100, state.pEndY[0] - 300, state.pEndZ[0] - 200) <= 5.0001,
       'normal spray must end inside the target volume',
     );
+    assertNear(
+      state.pSize[0],
+      TETRAHEDRON_PARTICLE_RADIUS[1],
+      'default build spray must use the shared medium tetrahedron radius',
+    );
+    const spinAxisLength = Math.hypot(
+      state.pSpinAxisX[0],
+      state.pSpinAxisY[0],
+      state.pSpinAxisZ[0],
+    );
+    assertNear(spinAxisLength, 1, 'build spray spin axis must be normalized once at birth');
+    assertContract(
+      Math.abs(state.pSpinRate[0]) >= TETRAHEDRON_PARTICLE_SPIN_MIN_RAD_PER_SEC &&
+        Math.abs(state.pSpinRate[0]) <= TETRAHEDRON_PARTICLE_SPIN_MAX_RAD_PER_SEC,
+      'build spray must keep a bounded non-zero signed spin rate',
+    );
+    const closeMesh = state.root.children[0] as THREE.InstancedMesh;
+    const matrixBeforeSpin = new THREE.Matrix4();
+    const matrixAfterSpin = new THREE.Matrix4();
+    const beforeSpinRotation = new THREE.Quaternion();
+    const afterSpinRotation = new THREE.Quaternion();
+    const scratchPosition = new THREE.Vector3();
+    const scratchScale = new THREE.Vector3();
+    closeMesh.getMatrixAt(0, matrixBeforeSpin);
+    matrixBeforeSpin.decompose(scratchPosition, beforeSpinRotation, scratchScale);
+    const initialSpinRate = state.pSpinRate[0];
+    renderer.update([], 100);
+    state = renderer as unknown as SprayParticleDebugState;
+    closeMesh.getMatrixAt(0, matrixAfterSpin);
+    matrixAfterSpin.decompose(scratchPosition, afterSpinRotation, scratchScale);
+    assertContract(
+      beforeSpinRotation.angleTo(afterSpinRotation) > 0.1 &&
+        state.pSpinRate[0] === initialSpinRate,
+      'build spray must advance one immutable spawn-time spin for its whole lifetime',
+    );
 
     renderer.update([], 0, [inverseSpray]);
     state = renderer as unknown as SprayParticleDebugState;
@@ -98,10 +144,7 @@ export function runSprayRenderer3DContractTest(): void {
     assertNear(state.pEndZ[1], 20, 'inverse spray must converge on builder ground y');
 
     // Build spray is the authored nanolathe green for every player — a
-    // presentation fact the renderer owns. (Particles are untextured
-    // spheres, so the old per-particle tumble was deliberately removed:
-    // it spent a quaternion + matrix compose per particle per frame on a
-    // rotation nobody could see.)
+    // presentation fact the renderer owns.
     const [buildR, buildG, buildB] = RESOURCE_CONFIG.spray.buildRgb01;
     for (let i = 0; i < 2; i++) {
       assertNear(state.pR[i], buildR, 'build spray must use the authored green, not a team color');
@@ -144,6 +187,27 @@ export function runSprayRenderer3DContractTest(): void {
         Math.abs(state.pEndZ[4] - 500) <= 20.0001 &&
         Math.abs(state.pEndY[4] - 250) <= 10.0001,
       'a box-target build spray must end inside the target box, centered on its combat z',
+    );
+
+    const standardizedSprays = TETRAHEDRON_PARTICLE_RADIUS.map((particleRadius, index) => {
+      const spray = makeDirectSpray(false);
+      spray.channel = 10 + index;
+      spray.particleRadius = particleRadius;
+      spray.speed = 100;
+      return spray;
+    });
+    renderer.update([], 0, standardizedSprays);
+    state = renderer as unknown as SprayParticleDebugState;
+    assertContract(
+      state.particleCount === 8 &&
+        Math.abs(state.pSize[5] - TETRAHEDRON_PARTICLE_RADIUS[0]) < 1e-6 &&
+        Math.abs(state.pSize[6] - TETRAHEDRON_PARTICLE_RADIUS[1]) < 1e-6 &&
+        Math.abs(state.pSize[7] - TETRAHEDRON_PARTICLE_RADIUS[2]) < 1e-6,
+      'build spray must render only the exact shared small, medium, and large sizes',
+    );
+    assertContract(
+      state.pLife[5] < state.pLife[6] && state.pLife[6] < state.pLife[7],
+      'the shared movement profile must make small build chunks faster than medium and large chunks',
     );
   } finally {
     renderer.destroy();

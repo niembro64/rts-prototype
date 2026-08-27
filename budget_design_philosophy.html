@@ -2177,25 +2177,35 @@
       </p>
       <p>
         Explosions are never removed. At MIN, hit, projectile-expiry, and death
-        events retain the LOW explosion pattern: one large representative from
-        each motion band. Minimum detail reduces their chunk count; it never
-        makes a detonation disappear.
+        events retain the LOW explosion pattern: one fixed-size representative
+        from each of the large, medium, and small motion bands. Minimum detail
+        reduces their chunk count; it never promotes a chunk to a different
+        size and never makes a detonation disappear.
       </p>
       <p>
         <strong>Explosion magnitude comes from both damage and radius.</strong>
         The smallest detonation keeps one complete material group: at HIGH that
         is one large-slow, three medium, and nine small-fast hot tetrahedra.
+        Those names are exact shared geometry classes, not relative scales:
+        small, medium, and large always have world radii 0.5, 0.8, and 1.2,
+        respectively. No damage value, blast radius, flash radius, LOD rung, or
+        random roll may stretch them. Small chunks are always in the fastest
+        non-overlapping speed band, medium chunks in the middle band, and large
+        chunks in the slowest band.
         Damage through the small-blast baseline keeps the established group
         curve; beyond it, increasing damage adds complete groups on a bounded
         logarithmic curve and increasing physical blast radius adds complete
-        groups on a bounded linear curve. The two authored dimensions reinforce
-        one another rather than one replacing the other. Every added group uses
-        the same HIGH/MED/LOW structural collapse, so distance changes geometry
-        density but never changes the explosion&rsquo;s authored magnitude order.
-        Larger groups also retain hot material for longer, capped at 2.5 times
-        the small-blast lifetime. The flash is sized from the real damage sphere
-        and receives a bounded magnitude boost; continuous beam endpoints use
-        both their line width and damage sphere so their flash remains legible.
+        groups on a bounded linear curve. Both dimensions also increase ejection
+        speed, so a broad or powerful blast throws every fixed-size band farther
+        without making any individual tetrahedron larger or longer-lived. Count
+        and velocity are the only chunk properties that explosion magnitude may
+        scale. MED keeps one of every three small chunks, and LOW keeps one chunk
+        of each class; neither rung changes a survivor&rsquo;s size or speed class.
+        Every chunk receives one random axis and one signed angular velocity at
+        birth, then keeps that single spin for its whole lifetime. The flash is
+        sized from the real damage sphere and receives a bounded magnitude boost;
+        continuous beam endpoints use both their line width and damage sphere so
+        their flash remains legible.
         These presentation effects remain pooled and bounded: one update may
         author at most 24 complete HIGH groups (312 tetrahedra) into an
         8,192-slot ring, so a colossal blast can look colossal without turning
@@ -5329,7 +5339,8 @@
       <ul class="rule-list">
         <li>The spray colour is authored in <code>resourceConfig.json</code>, not derived from the player, and applies to construction, assist, and reclaim alike.</li>
         <li>Spray particles are <strong>presentation only</strong>. They carry no simulation state, are never serialized, and no gameplay decision may read one. Their count, jitter, spin, and lifetime are free to differ between clients.</li>
-        <li>Build particles use the tetrahedron silhouette at a stable orientation and spend no CPU or instance-matrix work on visually insignificant tumble. Their moving path and changing screen silhouette already read as thrown material.</li>
+        <li>Build particles use the same exact 0.5 / 0.8 / 1.2 small, medium, and large tetrahedron radii as explosion material. Their authored radius is one of those three classes; incoming legacy or procedural size hints snap to the nearest class instead of creating a fourth size.</li>
+        <li>Build particles retain their target-directed path, but otherwise share the loose-explosion movement profile: small chunks travel faster than medium chunks, medium faster than large, the same birth/tail fade shapes their true endpoints, and each particle keeps one random-axis signed spin from birth through death.</li>
         <li>Spray is depth-tested against solid world geometry, so a unit, building, or terrain surface in front hides it. The transparent water surface draws after the spray, allowing submerged nanolathe work to remain visible through water without granting the effect x-ray visibility through solids.</li>
       </ul>
       <ul class="rule-list">

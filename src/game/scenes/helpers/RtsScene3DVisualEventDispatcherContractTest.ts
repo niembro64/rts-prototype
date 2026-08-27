@@ -10,10 +10,16 @@ import {
   DamageImpact3D,
   type DamageImpactRequest,
   explosionBaseChunkGroupCount,
-  explosionChunkLifetimeScale,
+  explosionChunkMagnitudeSpeedScale,
   explosionChunkPatternForDetail,
   explosionFlashRadius,
 } from '../../render3d/BeamImpact3D';
+import {
+  TETRAHEDRON_PARTICLE_RADIUS,
+  TETRAHEDRON_PARTICLE_SPIN_MAX_RAD_PER_SEC,
+  TETRAHEDRON_PARTICLE_SPIN_MIN_RAD_PER_SEC,
+  type TetrahedronParticleSizeClass,
+} from '@/tetrahedronParticleProfile';
 import {
   DETAIL_LEVEL_FULL,
   DETAIL_LEVEL_GLYPH,
@@ -37,16 +43,11 @@ function assertContract(condition: unknown, message: string): asserts condition 
 
 function chunkClassCount(
   pattern: ReturnType<typeof explosionChunkPatternForDetail>,
-  motionClass: 0 | 1 | 2,
-  renderSizeClass: 0 | 1 | 2,
+  sizeClass: TetrahedronParticleSizeClass,
 ): number {
   let count = 0;
   for (let i = 0; i < pattern.length; i++) {
-    const chunk = pattern[i];
-    if (
-      chunk.motionClass === motionClass &&
-      chunk.renderSizeClass === renderSizeClass
-    ) count++;
+    if (pattern[i].sizeClass === sizeClass) count++;
   }
   return count;
 }
@@ -56,6 +57,7 @@ type ExplosionLodProbe = {
   firstLifetime: number;
   flashRadius: number;
   firstBandMotion: Float32Array;
+  firstBandSpin: Float32Array;
   firstBandScale: readonly [number, number, number];
 };
 
@@ -73,6 +75,7 @@ function probeExplosionLod(
   const internals = renderer as unknown as {
     particleMesh: THREE.InstancedMesh;
     particleMotion: Float32Array;
+    particleSpin: Float32Array;
     particleBirthLifeKindSeed: Float32Array;
     siteRadius: Float32Array;
     spawnSerial: number;
@@ -96,18 +99,28 @@ function probeExplosionLod(
     for (let slot = 0; slot < 3; slot++) {
       internals.particleMesh.getMatrixAt(slot, matrix);
       matrix.decompose(position, rotation, scale);
-      firstBandScale[slot] = scale.length();
+      assertContract(
+        Math.abs(scale.x - scale.y) < 1e-6 && Math.abs(scale.x - scale.z) < 1e-6,
+        'every explosion tetrahedron must retain a regular, uniformly scaled shape',
+      );
+      firstBandScale[slot] = scale.x;
     }
     return {
       birthCount: internals.spawnSerial,
       firstLifetime: internals.particleBirthLifeKindSeed[1],
       flashRadius: internals.siteRadius[0],
       firstBandMotion: internals.particleMotion.slice(0, 12),
+      firstBandSpin: internals.particleSpin.slice(0, 12),
       firstBandScale,
     };
   } finally {
     renderer.destroy();
   }
+}
+
+function particleMotionSpeed(motion: Float32Array, slot: number): number {
+  const base = slot * 4;
+  return Math.hypot(motion[base], motion[base + 1], motion[base + 2]);
 }
 
 function event(
@@ -155,42 +168,30 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
   );
   assertContract(
     highPattern.length === 13 &&
-      chunkClassCount(highPattern, 2, 2) === 1 &&
-      chunkClassCount(highPattern, 1, 1) === 3 &&
-      chunkClassCount(highPattern, 0, 0) === 9,
+      chunkClassCount(highPattern, 2) === 1 &&
+      chunkClassCount(highPattern, 1) === 3 &&
+      chunkClassCount(highPattern, 0) === 9,
     'HIGH explosions must resolve each N to 1 large-slow, 3 medium, and 9 small-fast chunks',
   );
   assertContract(
     mediumPattern.length === 7 &&
-      chunkClassCount(mediumPattern, 2, 2) === 1 &&
-      chunkClassCount(mediumPattern, 1, 1) === 3 &&
-      chunkClassCount(mediumPattern, 0, 1) === 3,
-    'MED explosions must collapse small-fast chunks 3:1 into medium-fast chunks',
+      chunkClassCount(mediumPattern, 2) === 1 &&
+      chunkClassCount(mediumPattern, 1) === 3 &&
+      chunkClassCount(mediumPattern, 0) === 3,
+    'MED explosions must thin small-fast chunks 3:1 without changing their size',
   );
   assertContract(
     lowPattern.length === 3 &&
-      chunkClassCount(lowPattern, 2, 2) === 1 &&
-      chunkClassCount(lowPattern, 1, 2) === 1 &&
-      chunkClassCount(lowPattern, 0, 2) === 1,
-    'LOW explosions must render one large representative from each motion band',
+      chunkClassCount(lowPattern, 2) === 1 &&
+      chunkClassCount(lowPattern, 1) === 1 &&
+      chunkClassCount(lowPattern, 0) === 1,
+    'LOW explosions must retain one fixed-size representative from each band',
   );
   assertContract(
     explosionChunkPatternForDetail(DETAIL_LEVEL_GLYPH).length === 3 &&
-      chunkClassCount(
-        explosionChunkPatternForDetail(DETAIL_LEVEL_GLYPH),
-        2,
-        2,
-      ) === 1 &&
-      chunkClassCount(
-        explosionChunkPatternForDetail(DETAIL_LEVEL_GLYPH),
-        1,
-        2,
-      ) === 1 &&
-      chunkClassCount(
-        explosionChunkPatternForDetail(DETAIL_LEVEL_GLYPH),
-        0,
-        2,
-      ) === 1,
+      chunkClassCount(explosionChunkPatternForDetail(DETAIL_LEVEL_GLYPH), 2) === 1 &&
+      chunkClassCount(explosionChunkPatternForDetail(DETAIL_LEVEL_GLYPH), 1) === 1 &&
+      chunkClassCount(explosionChunkPatternForDetail(DETAIL_LEVEL_GLYPH), 0) === 1,
     'MIN/GLYPH explosions must retain the LOW three-representative pattern',
   );
   assertContract(
@@ -211,10 +212,12 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
     'explosion and beam endpoint flashes must scale visibly from their authored radii',
   );
   assertContract(
-    explosionChunkLifetimeScale(1) === 1 &&
-      explosionChunkLifetimeScale(20) === 2.5 &&
-      explosionChunkLifetimeScale(1_000) === 2.5,
-    'large explosion chunk lifetimes must grow from the small baseline to a hard 2.5x cap',
+    explosionChunkMagnitudeSpeedScale(18, 60) <
+      explosionChunkMagnitudeSpeedScale(18, 200) &&
+      explosionChunkMagnitudeSpeedScale(18, 200) <
+        explosionChunkMagnitudeSpeedScale(190, 9000) &&
+      explosionChunkMagnitudeSpeedScale(1_000_000, 1_000_000_000) < 9,
+    'explosion radius and power must jointly increase chunk speed under a hard bound',
   );
 
   const highProbe = probeExplosionLod(DETAIL_LEVEL_FULL);
@@ -231,9 +234,9 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
   );
   assertContract(
     largeProbe.birthCount === 260 &&
-      largeProbe.firstLifetime > highProbe.firstLifetime * 2.49 &&
+      largeProbe.firstLifetime === highProbe.firstLifetime &&
       largeProbe.flashRadius > highProbe.flashRadius * 14,
-    'a large powerful blast must render many more, longer-lived chunks and a much larger flash',
+    'a large powerful blast must render many more fixed-lifetime chunks and a much larger flash',
   );
   for (let i = 0; i < highProbe.firstBandMotion.length; i++) {
     assertContract(
@@ -245,10 +248,46 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
   assertContract(
     Math.abs(highProbe.firstBandScale[0] - mediumProbe.firstBandScale[0]) < 1e-6 &&
       Math.abs(highProbe.firstBandScale[0] - lowProbe.firstBandScale[0]) < 1e-6 &&
-      highProbe.firstBandScale[1] < lowProbe.firstBandScale[1] &&
-      highProbe.firstBandScale[2] < mediumProbe.firstBandScale[2] &&
-      mediumProbe.firstBandScale[2] < lowProbe.firstBandScale[2],
-    'LOD collapse must promote rendered size independently of retained motion',
+      Math.abs(highProbe.firstBandScale[1] - mediumProbe.firstBandScale[1]) < 1e-6 &&
+      Math.abs(highProbe.firstBandScale[1] - lowProbe.firstBandScale[1]) < 1e-6 &&
+      Math.abs(highProbe.firstBandScale[2] - mediumProbe.firstBandScale[2]) < 1e-6 &&
+      Math.abs(highProbe.firstBandScale[2] - lowProbe.firstBandScale[2]) < 1e-6 &&
+      Math.abs(highProbe.firstBandScale[0] - TETRAHEDRON_PARTICLE_RADIUS[2]) < 1e-6 &&
+      Math.abs(highProbe.firstBandScale[1] - TETRAHEDRON_PARTICLE_RADIUS[1]) < 1e-6 &&
+      Math.abs(highProbe.firstBandScale[2] - TETRAHEDRON_PARTICLE_RADIUS[0]) < 1e-6 &&
+      largeProbe.firstBandScale[0] === highProbe.firstBandScale[0] &&
+      largeProbe.firstBandScale[1] === highProbe.firstBandScale[1] &&
+      largeProbe.firstBandScale[2] === highProbe.firstBandScale[2],
+    'LOD and explosion magnitude must never resize the three standardized chunk classes',
+  );
+  assertContract(
+    particleMotionSpeed(highProbe.firstBandMotion, 2) >
+      particleMotionSpeed(highProbe.firstBandMotion, 1) &&
+      particleMotionSpeed(highProbe.firstBandMotion, 1) >
+        particleMotionSpeed(highProbe.firstBandMotion, 0) &&
+      particleMotionSpeed(largeProbe.firstBandMotion, 0) >
+        particleMotionSpeed(highProbe.firstBandMotion, 0),
+    'small chunks must outrun medium and large chunks while stronger blasts accelerate every band',
+  );
+  for (let slot = 0; slot < 3; slot++) {
+    const base = slot * 4;
+    const axisLength = Math.hypot(
+      highProbe.firstBandSpin[base],
+      highProbe.firstBandSpin[base + 1],
+      highProbe.firstBandSpin[base + 2],
+    );
+    const spinRate = Math.abs(highProbe.firstBandSpin[base + 3]);
+    assertContract(
+      Math.abs(axisLength - 1) < 1e-5 &&
+        spinRate >= TETRAHEDRON_PARTICLE_SPIN_MIN_RAD_PER_SEC &&
+        spinRate <= TETRAHEDRON_PARTICLE_SPIN_MAX_RAD_PER_SEC,
+      'each explosion chunk must receive one normalized random spin axis and bounded constant rate',
+    );
+  }
+  assertContract(
+    highProbe.firstBandSpin.some((value, index) => index % 4 === 3 && value < 0) &&
+      highProbe.firstBandSpin.some((value, index) => index % 4 === 3 && value > 0),
+    'spawned explosion chunks must randomize spin direction',
   );
 
   const impacts: DamageImpactRequest[] = [];
@@ -411,6 +450,9 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
   const particleFragmentShader = (
     internals.particleMesh.material as THREE.ShaderMaterial
   ).fragmentShader;
+  const particleVertexShader = (
+    internals.particleMesh.material as THREE.ShaderMaterial
+  ).vertexShader;
   const particleMaterial = internals.particleMesh.material as THREE.ShaderMaterial;
   assertContract(
     particleFragmentShader.includes('blastBirthColor = vec3(1.0, 0.82, 0.06)') &&
@@ -422,6 +464,12 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
       particleMaterial.uniforms.uBrightness === undefined &&
       particleMaterial.userData.renderLighting === 'self-lit',
     'explosion tetrahedra must remain self-luminous at low scene exposure',
+  );
+  assertContract(
+    particleVertexShader.includes('attribute vec4 aSpin') &&
+      particleVertexShader.includes('spinAngle = age * aSpin.w') &&
+      particleVertexShader.includes('cross(spinAxis, position)'),
+    'explosion tetrahedra must keep one spawn-authored random-axis angular velocity',
   );
   try {
     renderer.spawnDamageImpact({

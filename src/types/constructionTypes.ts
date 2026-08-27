@@ -20,6 +20,7 @@ export type WorkStationAttachment =
 export type WorkEmitterSpec = {
   points: ReadonlyArray<{ x: number; y: number; z: number }>;
   particleTravelSpeed: number;
+  /** Exact shared small, medium, or large loose-tetrahedron radius. */
   particleRadius: number;
   /** Named parent piece for QueryWork. Host is a rigid local socket; botArm
    * follows the same authoritative biped arm geometry as held weapons. */
