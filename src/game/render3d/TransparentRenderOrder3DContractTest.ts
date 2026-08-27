@@ -1,3 +1,5 @@
+import { OVERLAY_LINE_CONFIG } from '@/config';
+import { createScreenSpaceLineMaterial } from './ScreenSpaceLineMaterial';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 import {
   ENTITY_LOD_PROXY_FINAL_DEPTH_WRITE,
@@ -11,6 +13,12 @@ function assertContract(condition: boolean, message: string): void {
 }
 
 export function runTransparentRenderOrder3DContractTest(): void {
+  const overlayMaterial = createScreenSpaceLineMaterial();
+  assertContract(
+    overlayMaterial.depthTest && !overlayMaterial.depthWrite,
+    'selection overlays must respect solid depth without writing a HUD-shaped depth mask',
+  );
+  overlayMaterial.dispose();
   const proxyMaterial = createEntityLodProxyMaterial3D(false);
   assertContract(
     proxyMaterial.toneMapped === false &&
@@ -42,5 +50,12 @@ export function runTransparentRenderOrder3DContractTest(): void {
   assertContract(
     TRANSPARENT_RENDER_ORDER_3D.waterSurface < TRANSPARENT_RENDER_ORDER_3D.aboveWaterEffects,
     'above-water effects must draw after the water surface',
+  );
+  assertContract(
+    OVERLAY_LINE_CONFIG.kinds.selection.renderOrder ===
+      TRANSPARENT_RENDER_ORDER_3D.throughWaterEffects &&
+      OVERLAY_LINE_CONFIG.kinds.selection.renderOrder <
+        TRANSPARENT_RENDER_ORDER_3D.waterSurface,
+    'submerged selection rings must draw before water blends and writes depth',
   );
 }

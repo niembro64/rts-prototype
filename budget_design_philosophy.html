@@ -5215,6 +5215,14 @@
         edge is a broken instrument. Weathering belongs to material
         boundaries in the world.
       </p>
+      <p>
+        A selection marker must remain readable in every medium. The marker is
+        depth-tested against solid units, buildings, and terrain, then drawn
+        before the transparent water surface so water can tint it without
+        erasing it from the depth buffer. This makes a submerged selection
+        visible through water without turning it into an x-ray through the
+        seabed or another solid body.
+      </p>
 
       <h3>Two lessons from the second and third sites</h3>
       <p>

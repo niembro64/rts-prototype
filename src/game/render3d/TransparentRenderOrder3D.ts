@@ -3,9 +3,10 @@
 //   faded entity parts -> through-water effects -> water surface ->
 //   above-water particles.
 // A submerged faded/instanced body must populate color+depth before water
-// blends over it. Effects that must remain visible through water draw before
-// the water plane while still testing against solid depth; effects that must
-// be clipped by the surface draw afterward.
+// blends over it. Effects that must remain visible through water, including
+// submerged selection rings, draw before the water plane while still testing
+// against solid depth; effects that must be clipped by the surface draw
+// afterward.
 
 export const TRANSPARENT_RENDER_ORDER_3D = {
   entityParts: 4,
