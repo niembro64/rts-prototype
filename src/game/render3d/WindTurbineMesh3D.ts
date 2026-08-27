@@ -20,6 +20,8 @@ import {
   windGlassMat,
   windNacelleMat,
   windTrimMat,
+  WIND_BLADE_ROOT_HALF_CHORD,
+  WIND_BLADE_ROOT_HALF_THICKNESS,
 } from './BuildingMeshPrimitives3D';
 import { markBuildingTeamOrnament } from './BuildingTeamOrnament3D';
 
@@ -27,6 +29,9 @@ import { markBuildingTeamOrnament } from './BuildingTeamOrnament3D';
  *  drone fan blades (`FAN_BLADE_PITCH_DEG` 24) so a turbine reads as a
  *  working airfoil rather than three flat paddles. */
 const WIND_BLADE_PITCH_DEG = 22;
+/** Name of the rotor's hub disc, so a contract can find it among the rotor
+ *  children and check it against the pitched blade roots it carries. */
+export const WIND_HUB_NAME = 'windHub';
 const _bladeSpanAxis = new THREE.Vector3(0, 1, 0);
 
 /** Per-blade open/closed orientation pair. Animator slerps each blade
@@ -151,25 +156,47 @@ export function buildWindTurbineMesh(
   const bladeLen = Math.min(WIND_BUILDING_VISUAL_HEIGHT * 0.42, Math.max(86, minDim * 1.55));
   const bladeW = Math.max(8, minDim * 0.19);
   const bladeThickness = Math.max(1.6, minDim * 0.032);
-  const hub = makeCylinder(windNacelleMat, nacelleRadius * 1.56, bladeThickness * 1.6, 0, 0, 0);
+  const bladePitch = THREE.MathUtils.degToRad(WIND_BLADE_PITCH_DEG);
+  // The blade root, twisted by the authored pitch, sweeps further across the
+  // rotor axis than the blade's own thickness: chord·sin(pitch) plus
+  // thickness·cos(pitch). The hub is sized from that swept root plus one
+  // blade thickness of margin, so every pitched root sits inside the hub's
+  // faces instead of poking out of a thin disc.
+  const rootSweptHalfThickness =
+    WIND_BLADE_ROOT_HALF_CHORD * bladeW * Math.sin(bladePitch) +
+    WIND_BLADE_ROOT_HALF_THICKNESS * bladeThickness * Math.cos(bladePitch);
+  const hubThickness = rootSweptHalfThickness * 2 + bladeThickness;
+  const hub = makeCylinder(windNacelleMat, nacelleRadius * 1.56, hubThickness, 0, 0, 0);
+  hub.name = WIND_HUB_NAME;
   hub.rotation.x = Math.PI / 2;
   rotor.add(hub);
 
+  // The team-coloured cap and the nose cone stack on the hub's FRONT face,
+  // so a thicker hub pushes them forward rather than swallowing them.
+  const hubCapThickness = Math.max(1.4, bladeThickness * 0.42);
   const hubCap = markBuildingTeamOrnament(
     makeCylinder(
       primaryMat,
       nacelleRadius * 1.22,
-      Math.max(1.4, bladeThickness * 0.42),
+      hubCapThickness,
       0,
       0,
-      bladeThickness * 0.94,
+      hubThickness * 0.5 + hubCapThickness * 0.35,
     ),
     'windNacelleBand',
   );
   hubCap.rotation.x = Math.PI / 2;
   rotor.add(hubCap);
 
-  const nose = makeCone(windNacelleMat, nacelleRadius * 0.74, nacelleRadius * 1.38, 0, 0, nacelleRadius * 0.5);
+  const noseHeight = nacelleRadius * 1.38;
+  const nose = makeCone(
+    windNacelleMat,
+    nacelleRadius * 0.74,
+    noseHeight,
+    0,
+    0,
+    hubThickness * 0.5 + hubCapThickness * 0.7 + noseHeight * 0.35,
+  );
   nose.rotation.x = Math.PI / 2;
   rotor.add(nose);
 
@@ -182,7 +209,6 @@ export function buildWindTurbineMesh(
   // apart), so they don't actually z-fight — kept at exactly 0 to make
   // the closed pose read as "tight against the pole".
   const _stowRadialOffset = 0;
-  const bladePitch = THREE.MathUtils.degToRad(WIND_BLADE_PITCH_DEG);
   const bladePitchQuat = new THREE.Quaternion().setFromAxisAngle(_bladeSpanAxis, bladePitch);
   for (let i = 0; i < 3; i++) {
     const angle = (i / 3) * Math.PI * 2;
