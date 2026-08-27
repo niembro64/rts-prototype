@@ -160,17 +160,17 @@
   },
   "groundSilhouetteShadow": {
     "enabled": true,
-    "mapSize": 2048,
+    "mapSize": 3072,
     "minimumFrustumRadius": 512,
-    "frustumRadiusMultiplier": 1.45,
+    "frustumRadiusMultiplier": 1.15,
     "frustumRadiusQuantum": 64,
     "maximumMapDiagonalFraction": 0.75,
     "cameraNear": 1,
     "cameraFar": 16000,
     "bias": -0.00018,
     "normalBias": 1.25,
-    "pcfRadius": 1.5,
-    "detail": "Camera-local directional shadow map for the exact rendered silhouettes of units, buildings, and solid environment props. The frustum follows and texel-snaps around the camera focus so useful resolution is spent on the visible battle instead of the full map. CLIENT SHADOW enables the pass and CLIENT DARK selects its live intensity; zero darkness also skips the pass. The old WorldShade coverage ellipses remain disabled."
+    "pcfRadius": 1,
+    "detail": "Camera-local directional shadow map for the exact rendered silhouettes of units, buildings, and solid environment props. Its 3072-square map and tightly padded visible-battle frustum keep one shadow texel below one reference-viewport pixel, so articulated parts do not vanish as zoom expands the map. The frustum follows and texel-snaps around the camera focus. CLIENT SHADOW enables the pass and CLIENT DARK selects its live intensity; zero darkness also skips the pass. The old WorldShade coverage ellipses remain disabled."
   },
   "overlayLines": {
     "feather": 0.16,

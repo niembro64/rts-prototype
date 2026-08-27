@@ -4,7 +4,10 @@ import {
   normalizeEntityShadowDarknessSelection,
   normalizeLightIntensitySelection,
 } from '@/clientBarConfig';
-import { GROUND_SILHOUETTE_SHADOW_RENDER_CONFIG } from '../../config';
+import {
+  ENTITY_DETAIL_CONFIG,
+  GROUND_SILHOUETTE_SHADOW_RENDER_CONFIG,
+} from '../../config';
 import {
   configureGroundSilhouetteCaster3D,
   configureGroundSilhouetteCasterTree3D,
@@ -403,6 +406,19 @@ export function runGroundSilhouetteShadow3DContractTest(): void {
         shadowCamera.bottom === -radius &&
         Math.abs(radius / quantum - Math.round(radius / quantum)) < 1e-9,
       'the sun must use one quantized orthographic shadow frustum around the visible battle',
+    );
+    const verticalHalfView = Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) * 1000;
+    const worldUnitsPerReferencePixel = verticalHalfView * 2 /
+      ENTITY_DETAIL_CONFIG.referenceViewportHeightPx;
+    const worldUnitsPerShadowTexel = radius * 2 / sun.shadow.mapSize.width;
+    const referencePixelsPerShadowTexel =
+      worldUnitsPerShadowTexel / worldUnitsPerReferencePixel;
+    assertContract(
+      radius >= Math.hypot(verticalHalfView * camera.aspect, verticalHalfView) &&
+        referencePixelsPerShadowTexel <= 0.9 &&
+        GROUND_SILHOUETTE_SHADOW_RENDER_CONFIG.pcfRadius <= 1,
+      'the complete visible footprint must fit while each shadow texel stays sub-pixel and thin articulated silhouettes remain unblurred ' +
+        `(pixelsPerTexel=${referencePixelsPerShadowTexel})`,
     );
     assertContract(
       Math.abs(sun.target.position.x / texelSize - Math.round(sun.target.position.x / texelSize)) < 1e-9 &&
