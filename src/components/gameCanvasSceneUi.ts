@@ -91,6 +91,9 @@ function cloneServerMeta(meta: NetworkServerSnapshotMeta): NetworkServerSnapshot
   };
 }
 
+/** How often the server readouts (TPS, CPU, PATH, entities) may re-render. */
+const SERVER_META_UI_PUBLISH_INTERVAL_MS = 500;
+
 export function useGameCanvasSceneUi({
   activePlayer,
   gameOverWinner,
@@ -98,6 +101,7 @@ export function useGameCanvasSceneUi({
   foregroundGame,
   getBackgroundBattle,
 }: UseGameCanvasSceneUiOptions) {
+  let lastServerMetaPublishMs = -Infinity;
   const selectionInfo = reactive<SelectionInfo>({
     unitCount: 0,
     buildingCount: 0,
@@ -249,6 +253,17 @@ export function useGameCanvasSceneUi({
         applyMinimapCameraQuad(minimapData, quad, cameraYaw, cameraPitch, cameraView);
       },
       onServerMetaUpdate: (meta) => {
+        // The SERVER bar is a readout, not a control surface: the host
+        // publishes meta on every rich snapshot, but the HUD only needs it
+        // twice a second. The first publish of a session is immediate.
+        const now = performance.now();
+        if (
+          serverMetaFromSnapshot.value !== null &&
+          now - lastServerMetaPublishMs < SERVER_META_UI_PUBLISH_INTERVAL_MS
+        ) {
+          return;
+        }
+        lastServerMetaPublishMs = now;
         serverMetaFromSnapshot.value = cloneServerMeta(meta);
       },
       ...(includeGameLifecycle
