@@ -83,7 +83,7 @@ await server.listen();
 let failures = [];
 const browser = await chromium.launch({
   headless: true,
-  args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage'],
+  args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage'],
 });
 try {
   const base = server.resolvedUrls?.local[0];

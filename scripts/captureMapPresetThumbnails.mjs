@@ -190,7 +190,7 @@ await mkdir(OUT_DIR, { recursive: true });
 
 const browser = await chromium.launch({
   headless: true,
-  args: ['--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'],
+  args: ['--use-angle=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'],
 });
 try {
   const page = await browser.newPage({

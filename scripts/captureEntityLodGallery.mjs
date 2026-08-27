@@ -115,7 +115,7 @@ async function run() {
   const vite = await startServerIfNeeded();
   const browser = await chromium.launch({
     headless: true,
-    args: ['--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'],
+    args: ['--use-angle=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'],
   });
   try {
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
