@@ -65,6 +65,10 @@ function createQuietSimulation(): Simulation {
     getWinnerId: () => null,
     getSprayTargets: () => [],
     getWindState: () => ({ x: 0, y: 0, z: 0, speed: 0, angle: 0 }),
+    getPathfindingTelemetry: () => ({
+      players: [], route: [], refine: [], refresh: [],
+      waitAvg: 0, waitWorst: 0, routeAvg: 0, routeWorst: 0, msAvg: 0, msWorst: 0,
+    }),
   } as unknown as Simulation;
 }
 
