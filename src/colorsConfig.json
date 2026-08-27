@@ -1025,19 +1025,17 @@
       "waterRgb": "#2a559a",
       "selectionStroke": "#ffffff",
       "cameraStroke": "rgba(255, 255, 255, 0.8)",
-      "frameStroke": "rgba(255, 255, 255, 0.3)",
       "panel": {
         "background": "#0f1218",
-        "border": "#444444",
         "text": "#ffffff",
         "label": "rgba(255, 255, 255, 0.6)",
-        "hoverShadow": "rgba(255, 255, 255, 0.3)"
+        "hoverShadow": "rgba(0, 0, 0, 0.55)"
       }
     },
     "topBar": {
       "surface": {
-        "background": "#0f0f0f",
-        "border": "#444444",
+        "background": "rgba(10, 10, 10, 0.78)",
+        "border": "rgba(255, 255, 255, 0.08)",
         "text": "#ffffff",
         "divider": "rgba(255, 255, 255, 0.18)",
         "mutedText": "rgba(255, 255, 255, 0.5)",
@@ -1069,9 +1067,6 @@
       },
       "resource": {
         "barBackground": "rgba(255, 255, 255, 0.15)",
-        "flowText": "rgba(190, 190, 200, 0.78)",
-        "flowLabel": "rgba(160, 160, 170, 0.72)",
-        "flowValue": "rgba(205, 205, 215, 0.82)",
         "netPositive": "#99e66f",
         "netNegative": "#ff6868",
         "netOverflow": "#ffd15c",

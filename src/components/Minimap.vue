@@ -32,7 +32,6 @@ const MINIMAP_WATER_RGB = [
 ] as const;
 const MINIMAP_SELECTION_STROKE = COLORS.ui.minimap.selectionStroke;
 const MINIMAP_CAMERA_STROKE = COLORS.ui.minimap.cameraStroke;
-const MINIMAP_FRAME_STROKE = COLORS.ui.minimap.frameStroke;
 const MINIMAP_PANEL = COLORS.ui.minimap.panel;
 const MINIMAP_WIND_STROKE = cssHex(COLORS.ui.worldDirectionHud.materials.wind.colorHex);
 const MINIMAP_COMPASS_STROKE = cssHex(COLORS.ui.worldDirectionHud.materials.north.colorHex);
@@ -82,7 +81,6 @@ const scale = computed(() => ({
 
 const minimapStyle = computed(() => ({
   '--minimap-bg': MINIMAP_PANEL.background,
-  '--minimap-border': MINIMAP_PANEL.border,
   '--minimap-text': MINIMAP_PANEL.text,
   '--minimap-label': MINIMAP_PANEL.label,
   '--minimap-hover-shadow': MINIMAP_PANEL.hoverShadow,
@@ -416,7 +414,8 @@ function drawInstrumentLayer(
 }
 
 /** Composite the cached entity layer + stroke the camera quad + the
- *  frame border. Called on every cameraQuad change — cheap. */
+ *  instrument layer. The minimap draws no frame: its content edge is the
+ *  frame. Called on every cameraQuad change — cheap. */
 function compose(): void {
   const canvas = canvasRef.value;
   if (!canvas || !offscreen) return;
@@ -452,10 +451,6 @@ function compose(): void {
   ctx.restore();
 
   drawInstrumentLayer(ctx, w, h);
-
-  ctx.strokeStyle = MINIMAP_FRAME_STROKE;
-  ctx.lineWidth = 2;
-  ctx.strokeRect(0, 0, w, h);
 }
 
 function emitCameraTargetFromPointer(event: PointerEvent): void {
