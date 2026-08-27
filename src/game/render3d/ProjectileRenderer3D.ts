@@ -7,6 +7,7 @@ import {
   type EntityVolume,
 } from '../sim/entityVolumes';
 import { COLORS } from '@/colorsConfig';
+import { heatRampColor, type MutableHeatRampColor } from '@/heatRampPalette';
 import type { Entity, EntityId } from '../sim/types';
 import { getPlayerColors } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
@@ -112,37 +113,22 @@ function createPlasmaGeometrySpec(
   };
 }
 
-/** Tip-to-tail heat ramp for plasma shots — the same palette the blast
- *  tetrahedra fade through (see BeamImpact3D's blast colors): white-hot
- *  at the ball tip, through yellow and red, to a dark-red ember tail. */
+const plasmaHeatRampScratch: MutableHeatRampColor = { r: 1, g: 1, b: 1 };
+
+/** Tip-to-tail heat ramp for plasma shots — the shared plasma palette the
+ *  hot impact tetrahedra fade through over their lifetime (heatRampPalette):
+ *  white-hot at the ball tip, through yellow and red, to a dark-red ember
+ *  tail. */
 function writePlasmaHeatRampColor(
   colors: Float32Array,
   vertex: number,
   axial01: number,
 ): void {
-  let r: number;
-  let g: number;
-  let b: number;
-  if (axial01 <= 0.22) {
-    const t = axial01 / 0.22;
-    r = 1;
-    g = 1 + (0.82 - 1) * t;
-    b = 1 + (0.06 - 1) * t;
-  } else if (axial01 <= 0.58) {
-    const t = (axial01 - 0.22) / 0.36;
-    r = 1;
-    g = 0.82 + (0.2 - 0.82) * t;
-    b = 0.06 + (0.008 - 0.06) * t;
-  } else {
-    const t = (axial01 - 0.58) / 0.42;
-    r = 1 + (0.11 - 1) * t;
-    g = 0.2 + (0.025 - 0.2) * t;
-    b = 0.008;
-  }
+  const color = heatRampColor(axial01, plasmaHeatRampScratch);
   const out = vertex * 3;
-  colors[out] = r;
-  colors[out + 1] = g;
-  colors[out + 2] = b;
+  colors[out] = color.r;
+  colors[out + 1] = color.g;
+  colors[out + 2] = color.b;
 }
 
 const PLASMA_HIGH_SPEC = createPlasmaGeometrySpec(

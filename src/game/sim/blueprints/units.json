@@ -3717,7 +3717,7 @@
         }
       ],
       "particleTravelSpeed": 160,
-      "particleRadius": 0.5,
+      "particleRadius": 0.75,
       "attachment": {
         "kind": "host"
       },
@@ -4429,7 +4429,7 @@
         }
       ],
       "particleTravelSpeed": 180,
-      "particleRadius": 0.8,
+      "particleRadius": 0.75,
       "attachment": {
         "kind": "host"
       },
@@ -4685,7 +4685,7 @@
         }
       ],
       "particleTravelSpeed": 180,
-      "particleRadius": 0.8,
+      "particleRadius": 0.75,
       "attachment": {
         "kind": "host"
       },
@@ -5125,7 +5125,7 @@
         }
       ],
       "particleTravelSpeed": 180,
-      "particleRadius": 1.2,
+      "particleRadius": 1.5,
       "attachment": {
         "kind": "botArm",
         "arm": "rightArm",
@@ -5517,7 +5517,7 @@
         }
       ],
       "particleTravelSpeed": 160,
-      "particleRadius": 0.5,
+      "particleRadius": 0.75,
       "attachment": {
         "kind": "host"
       },
@@ -6046,7 +6046,7 @@
         }
       ],
       "particleTravelSpeed": 170,
-      "particleRadius": 0.8,
+      "particleRadius": 0.75,
       "attachment": {
         "kind": "botArm",
         "arm": "rightArm",
@@ -6509,7 +6509,7 @@
         }
       ],
       "particleTravelSpeed": 170,
-      "particleRadius": 0.8,
+      "particleRadius": 0.75,
       "attachment": {
         "kind": "host"
       },
@@ -8185,7 +8185,7 @@
         }
       ],
       "particleTravelSpeed": 170,
-      "particleRadius": 0.8,
+      "particleRadius": 0.75,
       "attachment": {
         "kind": "botArm",
         "arm": "rightArm",
@@ -8676,7 +8676,7 @@
         }
       ],
       "particleTravelSpeed": 170,
-      "particleRadius": 0.8,
+      "particleRadius": 0.75,
       "attachment": {
         "kind": "host"
       },
@@ -8753,7 +8753,7 @@
         }
       ],
       "particleTravelSpeed": 160,
-      "particleRadius": 0.5,
+      "particleRadius": 0.75,
       "attachment": {
         "kind": "host"
       },
@@ -8971,7 +8971,7 @@
         }
       ],
       "particleTravelSpeed": 160,
-      "particleRadius": 0.5,
+      "particleRadius": 0.75,
       "attachment": {
         "kind": "host"
       },

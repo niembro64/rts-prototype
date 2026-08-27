@@ -2227,9 +2227,13 @@
         The smallest detonation keeps one complete material group: at HIGH that
         is one large-slow, three medium, and nine small-fast hot tetrahedra.
         Those names are exact shared geometry classes, not relative scales:
-        small, medium, and large always have world radii 0.5, 0.8, and 1.2,
-        respectively. No damage value, blast radius, flash radius, LOD rung, or
-        random roll may stretch them. Small chunks are always in the fastest
+        small always has world radius 0.75, and each class is exactly twice
+        the radius of the class below it, so medium is 1.5 and large is 3.0.
+        No damage value, blast radius, flash radius, LOD rung, or
+        random roll may stretch them. Every hot tetrahedron fades through the
+        plasma heat ramp &mdash; white, yellow, red, dark red &mdash; the same
+        four stops a plasma shot wears from tip to tail; only water ejecta
+        keeps the liquid palette. Small chunks are always in the fastest
         non-overlapping speed band, medium chunks in the middle band, and large
         chunks in the slowest band.
         Damage through the small-blast baseline keeps the established group

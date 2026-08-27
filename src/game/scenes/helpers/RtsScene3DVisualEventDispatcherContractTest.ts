@@ -7,6 +7,7 @@ import {
 import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
 import {
   beamEndpointFlashRadius,
+  DAMAGE_IMPACT_PARTICLE_FRAGMENT_SHADER,
   DamageImpact3D,
   type DamageImpactRequest,
   explosionBaseChunkGroupCount,
@@ -15,6 +16,12 @@ import {
   explosionFlashRadius,
 } from '../../render3d/BeamImpact3D';
 import {
+  HEAT_RAMP_GLSL,
+  HEAT_RAMP_STOPS,
+  heatRampColor,
+} from '@/heatRampPalette';
+import {
+  TETRAHEDRON_PARTICLE_CLASS_RADIUS_RATIO,
   TETRAHEDRON_PARTICLE_RADIUS,
   TETRAHEDRON_PARTICLE_SPIN_MAX_RAD_PER_SEC,
   TETRAHEDRON_PARTICLE_SPIN_MIN_RAD_PER_SEC,
@@ -261,6 +268,37 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
     'LOD and explosion magnitude must never resize the three standardized chunk classes',
   );
   assertContract(
+    TETRAHEDRON_PARTICLE_CLASS_RADIUS_RATIO === 2 &&
+      Math.abs(
+        TETRAHEDRON_PARTICLE_RADIUS[1] -
+          TETRAHEDRON_PARTICLE_RADIUS[0] * TETRAHEDRON_PARTICLE_CLASS_RADIUS_RATIO,
+      ) < 1e-9 &&
+      Math.abs(
+        TETRAHEDRON_PARTICLE_RADIUS[2] -
+          TETRAHEDRON_PARTICLE_RADIUS[1] * TETRAHEDRON_PARTICLE_CLASS_RADIUS_RATIO,
+      ) < 1e-9,
+    'medium chunks must be exactly twice the small radius and large exactly twice the medium',
+  );
+  assertContract(
+    DAMAGE_IMPACT_PARTICLE_FRAGMENT_SHADER.includes(HEAT_RAMP_GLSL) &&
+      DAMAGE_IMPACT_PARTICLE_FRAGMENT_SHADER.includes('heatRamp(vAge01)') &&
+      HEAT_RAMP_GLSL.includes('vec3 heatRamp(float t)'),
+    'hot impact tetrahedra must fade through the shared plasma heat ramp',
+  );
+  const rampHead = heatRampColor(0, { r: 0, g: 0, b: 0 });
+  const rampTail = heatRampColor(1, { r: 0, g: 0, b: 0 });
+  const rampYellow = heatRampColor(HEAT_RAMP_STOPS[1].t, { r: 0, g: 0, b: 0 });
+  const rampRed = heatRampColor(HEAT_RAMP_STOPS[2].t, { r: 0, g: 0, b: 0 });
+  const lastStop = HEAT_RAMP_STOPS[HEAT_RAMP_STOPS.length - 1];
+  const near = (a: number, b: number): boolean => Math.abs(a - b) < 1e-9;
+  assertContract(
+    near(rampHead.r, 1) && near(rampHead.g, 1) && near(rampHead.b, 1) &&
+      near(rampTail.r, lastStop.r) && near(rampTail.g, lastStop.g) && near(rampTail.b, lastStop.b) &&
+      rampYellow.g > rampRed.g && rampRed.g > rampTail.g &&
+      rampYellow.b < rampHead.b,
+    'the heat ramp must run white, yellow, red, dark red from birth to death',
+  );
+  assertContract(
     particleMotionSpeed(highProbe.firstBandMotion, 2) >
       particleMotionSpeed(highProbe.firstBandMotion, 1) &&
       particleMotionSpeed(highProbe.firstBandMotion, 1) >
@@ -455,9 +493,11 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
   ).vertexShader;
   const particleMaterial = internals.particleMesh.material as THREE.ShaderMaterial;
   assertContract(
-    particleFragmentShader.includes('blastBirthColor = vec3(1.0, 0.82, 0.06)') &&
-      particleFragmentShader.includes('smoothstep(0.06, 0.20, vAge01)'),
-    'fire-blast tetrahedra must begin yellow-hot before rejoining their established red fade',
+    particleFragmentShader === DAMAGE_IMPACT_PARTICLE_FRAGMENT_SHADER &&
+      particleFragmentShader.includes(HEAT_RAMP_GLSL) &&
+      particleFragmentShader.includes('heatRamp(vAge01)') &&
+      !particleFragmentShader.includes('blastBirthColor'),
+    'the live impact material must wear the shared plasma heat ramp with no private hot palette',
   );
   assertContract(
     particleMaterial.toneMapped === false &&
