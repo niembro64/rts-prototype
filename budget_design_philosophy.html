@@ -2155,6 +2155,14 @@
         physical truth.
       </p>
       <p>
+        The horizontal liquid surface carries one small, seamless, world-anchored material texture.
+        Water uses a low-contrast moving flow pattern that modulates colour only: its authored alpha
+        remains the sole transparency control, so texture can never obscure the seabed or submerged
+        units. Lava uses the same flow vocabulary at stronger contrast as opaque crust and hot veins.
+        The render-only perimeter curtains stay untextured, and neither texture changes liquid
+        classification, surface height, picking, or simulation behavior.
+      </p>
+      <p>
         <strong>GPU boundary precision:</strong> the Windows/NVIDIA world-box shimmer was not a
         duplicate terrain plane. South and east fragments lie exactly at the positive map limits,
         and perspective interpolation could move them a few ULPs across exact shader bounds while
