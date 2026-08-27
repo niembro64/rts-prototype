@@ -28,28 +28,12 @@ export function getSensorMediumAtZ(z: number): SensorMedium {
 
 /** The host origin — never the mounted sensor height or body volume — routes
  * every ordinary sensor radius into the air or water team field. */
-/** Construction centres a water-only structure's box ON the water plane, so
- *  its origin sits at the waterline itself; within this of the plane it is
- *  "on the water", not above it. */
-const STRUCTURE_WATERLINE_EPSILON = 1e-6;
-
 export function getEntitySensorMedium(entity: Entity): SensorMedium {
-  const z = entity.transform.z;
-  // The origin rule (waterline = air) is right for every body and for a
-  // structure whose origin is genuinely above or below the plane. The one
-  // case it misreads is a water-only structure standing ON the plane —
-  // sea-on-surface placement pins its origin exactly at the waterline — and
-  // an air reading there has a Sonar or torpedo tower sense the sky instead
-  // of the water it stands in. That structure is classified by what
-  // construction built it on, as its authored radii already are.
-  if (
-    entity.building !== null &&
-    Math.abs(z - WATER_LEVEL) <= STRUCTURE_WATERLINE_EPSILON &&
-    getAuthoredBuildingSensorMedium(entity.buildingBlueprintId) === 'underwater'
-  ) {
-    return 'underwater';
-  }
-  return getSensorMediumAtZ(z);
+  // The origin rule alone. Construction never leaves a host on the waterline:
+  // a water-only structure floats with its origin one draft below the plane
+  // (SEA_ON_SURFACE_ORIGIN_DRAFT_FRACTION), so a Sonar or torpedo tower is a
+  // water host here for the same reason a submerged hull is.
+  return getSensorMediumAtZ(entity.transform.z);
 }
 
 type SensorOperationalChannels = Readonly<{

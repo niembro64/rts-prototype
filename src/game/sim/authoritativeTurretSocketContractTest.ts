@@ -27,6 +27,7 @@ import { WorldState } from './WorldState';
 import { getUnitBlueprint } from './blueprints';
 import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
 import { WATER_LEVEL } from './Terrain';
+import { getSeaOnSurfaceOriginDraft } from './buildingPlacementPolicy';
 import { beamIndex } from './BeamIndex';
 
 function assertContract(condition: boolean, message: string): asserts condition {
@@ -416,7 +417,7 @@ export function runAuthoritativeTurretSocketContractTest(): void {
     60,
     1 as PlayerId,
   );
-  torpedoTower.transform.z = WATER_LEVEL;
+  torpedoTower.transform.z = WATER_LEVEL - getSeaOnSurfaceOriginDraft(60);
   applyBuildingBlueprintRuntime(torpedoTower, 'towerTorpedo', {
     allocateEntityId: () => torpedoWorld.generateEntityId(),
   });

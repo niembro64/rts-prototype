@@ -28,6 +28,25 @@ export function getBuildingRequiredSensorSourceMedium(
   return null;
 }
 
+/** A water-only structure floats with its origin BELOW the water plane, by
+ *  this fraction of its own depth. Nothing is ever built with its origin at
+ *  the waterline itself: the sensor rule reads the waterline as air, and a
+ *  structure whose box was centred exactly on the plane was the one host that
+ *  reading got wrong (a Sonar or torpedo tower sensing the sky). Sinking the
+ *  box a little makes it a water host by the origin rule alone. */
+export const SEA_ON_SURFACE_ORIGIN_DRAFT_FRACTION = 0.1;
+
+/** How far below the water plane a sea-on-surface structure's origin sits. */
+export function getSeaOnSurfaceOriginDraft(buildingDepth: number): number {
+  return buildingDepth * SEA_ON_SURFACE_ORIGIN_DRAFT_FRACTION;
+}
+
+/** The submerged extent of a sea-on-surface cuboid: its lower half plus the
+ *  draft. Placement demands this much water under every reserved cell. */
+export function getSeaOnSurfaceSubmergedDepth(buildingDepth: number): number {
+  return buildingDepth * 0.5 + getSeaOnSurfaceOriginDraft(buildingDepth);
+}
+
 /** Resolve the bottom of a building's collision cuboid. */
 export function getBuildingPlacementBaseZ(
   placementAnchor: BuildingPlacementAnchor,
@@ -41,9 +60,10 @@ export function getBuildingPlacementBaseZ(
     case 'hover-surface':
       return getSurfaceZ(x, y);
     case 'sea-on-surface':
-      // Runtime transform.z is base + depth/2, so this centers the collision
-      // and combat volume exactly on the water plane.
-      return WATER_LEVEL - buildingDepth * 0.5;
+      // Runtime transform.z is base + depth/2: the collision and combat
+      // volume floats with its centre one draft below the water plane,
+      // never on it.
+      return WATER_LEVEL - buildingDepth * 0.5 - getSeaOnSurfaceOriginDraft(buildingDepth);
     case 'terrain-bed':
       return getTerrainBedZ(x, y);
   }
