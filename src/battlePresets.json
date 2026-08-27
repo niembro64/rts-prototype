@@ -53,7 +53,7 @@
       "perimeterMagnitude": -400,
       "terrainPrecedence": "perimeter-precedence",
       "terrainDTerrain": 400,
-      "plateauWallSlopeDegrees": 70,
+      "plateauWallSlopeDegrees": 89,
       "metalDepositStep": 0,
       "terrainDetail": 4,
       "mapWidthLandCells": 79,
