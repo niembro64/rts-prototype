@@ -2557,6 +2557,20 @@
         default battle camera contract.
       </p>
 
+      <h3>The top bar is one band; the minimap has no frame</h3>
+      <p>
+        The top status bar is a single 44&nbsp;px band at BAR density, and every element in it
+        rides that one band rather than stacking rows to make room. A resource is one row:
+        its glyph and name, then its pull above its income at the bar&rsquo;s start
+        (&minus;red over +green, no labels), then the current stock centred over the storage
+        bar with the capacity at the bar&rsquo;s end, and the auto-conversion marker standing
+        through the bar. What the band carries is ours, not BAR&rsquo;s: the network status
+        block, the compass/sunlight/wind trio, a conversion slider on both resources rather
+        than on energy alone, and the desktop EXIT. The minimap draws no frame at all &mdash;
+        the edge of its content is the frame, and a stroke around it would only be a second
+        outline competing with the camera footprint.
+      </p>
+
       <h3>Focus altitude is a config axis; the canonical mode is constant altitude</h3>
       <p>
         Bar-spring movement resolves its focus height through the

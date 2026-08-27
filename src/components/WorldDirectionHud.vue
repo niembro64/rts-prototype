@@ -676,15 +676,15 @@ watch(
 
 .direction-canvas {
   display: block;
-  flex: 0 0 34px;
-  width: 34px;
+  flex: 0 0 30px;
+  width: 30px;
   height: 100%;
   min-height: 0;
 }
 
 .direction-label span {
   color: var(--world-direction-text);
-  font-size: 8px;
+  font-size: 7px;
   text-shadow: 0 1px 4px var(--world-direction-shadow);
   text-transform: uppercase;
   white-space: nowrap;
@@ -692,7 +692,7 @@ watch(
 
 .direction-label strong {
   color: var(--world-direction-strong);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   text-shadow: 0 1px 5px var(--world-direction-strong-shadow);
   white-space: nowrap;
