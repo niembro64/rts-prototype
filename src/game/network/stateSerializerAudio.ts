@@ -107,6 +107,15 @@ function eventHasEarshotAudio(type: NetworkServerSnapshotSimEvent['type']): bool
   }
 }
 
+/** Event types that END an emission: the shot's own detonation, its
+ *  payload-less expiry, or its entry into water. Their `playerId` is the
+ *  emission owner, so the recipient-authored exemption in
+ *  getAudioVisibilityDecision can use it. `shieldImpact` is deliberately
+ *  absent — its playerId is the SHIELD owner, not the shooter. */
+function eventIsEmissionTerminal(type: SimEvent['type']): boolean {
+  return type === 'hit' || type === 'projectileExpire' || type === 'waterSplash';
+}
+
 /** Drop the pool for a tracking key — called from
  *  GameServer.removeSnapshotListener so per-listener pools don't
  *  accumulate forever across lobby joins / disconnects. Safe to call
@@ -144,7 +153,14 @@ function getAudioVisibilityDecision(
   } else if (visibility) {
     const visClass = visibility.classifyPointVisibility(source.pos.x, source.pos.y);
     if (visClass !== VISIBILITY_CLASS_IN_VISION) {
+      // Own and allied emissions are always known, and so is where they
+      // end: the recipient watched the shot fly (see
+      // shouldSendProjectileAtPoint in stateSerializerProjectiles), so
+      // its terminal event — impact, expiry, or splash — is delivered in
+      // full wherever it lands, never demoted to earshot audio.
       const authoredByRecipient =
+        (eventIsEmissionTerminal(source.type) &&
+          visibility.isAuthoredByRecipient(source.playerId)) ||
         (source.type === 'death' && visibility.isAuthoredByRecipient(source.killerPlayerId)) ||
         (source.type === 'ping' && visibility.isAuthoredByRecipient(source.playerId));
       if (!authoredByRecipient) {

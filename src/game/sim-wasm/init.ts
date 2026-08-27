@@ -1624,6 +1624,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runSnapshotVisibilityContractTest();
         const { runSensorSharingContractTest } = await import('../network/sensorSharingContractTest');
         runSensorSharingContractTest();
+        const { runAudioEventVisibilityContractTest } = await import('../network/audioEventVisibilityContractTest');
+        runAudioEventVisibilityContractTest();
         const { runSnapshotBufferContractTest } = await import('../scenes/helpers/SnapshotBufferContractTest');
         runSnapshotBufferContractTest();
         const { runCommandHotkeysContractTest } = await import('../input/commandHotkeysContractTest');
