@@ -4,6 +4,11 @@ import { getBuildingConfig } from './buildConfigs';
 import { getBuildingPlacementDiagnosticsForGrid } from './buildPlacementValidation';
 import { ConstructionSystem } from './construction';
 import { getCuboidUnderwaterFraction } from './entityMediumOccupancy';
+import {
+  SEA_ON_SURFACE_ORIGIN_DRAFT_FRACTION,
+  getSeaOnSurfaceOriginDraft,
+} from './buildingPlacementPolicy';
+import { getEntitySensorMedium } from './sensorCoverage';
 import { WATER_LEVEL } from './Terrain';
 import { WorldState } from './WorldState';
 import { BUILD_CONFIG } from '../../buildConfig';
@@ -90,7 +95,11 @@ export function runWaterSurfaceBuildingContractTest(): void {
   );
   assertContract(
     torpedoConfig.visualHeight === torpedoConfig.gridDepth * BUILD_GRID_CELL_SIZE,
-    'torpedo tower art must span the complete half-air/half-water combat volume',
+    'torpedo tower art must span the complete air/water combat volume',
+  );
+  assertContract(
+    SEA_ON_SURFACE_ORIGIN_DRAFT_FRACTION > 0 && SEA_ON_SURFACE_ORIGIN_DRAFT_FRACTION < 0.5,
+    'a floating structure sits a little below the plane, never on it and never fully under it',
   );
 
   const mapWidth = 8192;
@@ -133,15 +142,21 @@ export function runWaterSurfaceBuildingContractTest(): void {
     },
   );
   assertContract(sonar?.building !== null && sonar?.building !== undefined, 'sonar must start');
+  const sonarDraft = getSeaOnSurfaceOriginDraft(sonar.building.depth);
   assertContract(
-    Math.abs(sonar.transform.z - WATER_LEVEL) <= 1e-9,
-    'water-surface sonar combat/collision center must sit exactly on the waterline',
+    sonarDraft > 0 && Math.abs(sonar.transform.z - (WATER_LEVEL - sonarDraft)) <= 1e-9,
+    'water-surface sonar combat/collision center must float one draft below the waterline',
+  );
+  assertContract(
+    sonar.transform.z < WATER_LEVEL && getEntitySensorMedium(sonar) === 'underwater',
+    'a sonar built on the water is a water sensor host by the origin rule alone',
   );
   assertContract(
     Math.abs(
-      getCuboidUnderwaterFraction(sonar.transform.z, sonar.building.depth * 0.5) - 0.5,
+      getCuboidUnderwaterFraction(sonar.transform.z, sonar.building.depth * 0.5) -
+        (0.5 + SEA_ON_SURFACE_ORIGIN_DRAFT_FRACTION),
     ) <= 1e-9,
-    'water-surface sonar must occupy equal above-water and underwater volume',
+    'water-surface sonar must submerge its lower half plus the draft',
   );
 
   const occupiedCenter = getBuildingCenterFromGrid(
@@ -178,18 +193,25 @@ export function runWaterSurfaceBuildingContractTest(): void {
     torpedoTower?.building !== null && torpedoTower?.building !== undefined,
     'torpedo tower must start on the same depth-valid surface-water footprint',
   );
+  const torpedoDraft = getSeaOnSurfaceOriginDraft(torpedoTower.building.depth);
   assertContract(
-    Math.abs(torpedoTower.transform.z - WATER_LEVEL) <= 1e-9,
-    'torpedo tower combat/collision center must sit exactly on the waterline',
+    torpedoDraft > 0 &&
+      Math.abs(torpedoTower.transform.z - (WATER_LEVEL - torpedoDraft)) <= 1e-9,
+    'torpedo tower combat/collision center must float one draft below the waterline',
+  );
+  assertContract(
+    torpedoTower.transform.z < WATER_LEVEL &&
+      getEntitySensorMedium(torpedoTower) === 'underwater',
+    'a torpedo tower built on the water is a water sensor host by the origin rule alone',
   );
   assertContract(
     Math.abs(
       getCuboidUnderwaterFraction(
         torpedoTower.transform.z,
         torpedoTower.building.depth * 0.5,
-      ) - 0.5
+      ) - (0.5 + SEA_ON_SURFACE_ORIGIN_DRAFT_FRACTION)
     ) <= 1e-9,
-    'torpedo tower must expose equal targetable volume to air and water weapons',
+    'torpedo tower must expose targetable volume to both air and water weapons, more of it to water',
   );
   const torpedoMounts = torpedoTower.combat?.turrets.filter(
     (turret) => turret.mountId === 'torpedoPort' || turret.mountId === 'torpedoStarboard',

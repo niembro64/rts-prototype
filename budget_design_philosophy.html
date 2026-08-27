@@ -936,7 +936,7 @@
       </p>
       <ul class="rule-list">
         <li>The six exhaustive team sensor fields are <code>team-air-vision</code>, <code>team-air-radar</code>, <code>team-air-jamming</code>, <code>team-water-vision</code>, <code>team-water-radar</code>, and <code>team-water-jamming</code>. Vision identifies and also counts as contact-level location in its medium; radar-only coverage locates without identity; same-medium jamming denies radar; detector coverage may uncloak inside vision but does not locate by itself. All six are team-unified and orthogonal to every emission trajectory cell.</li>
-        <li>Every entity visibility and contact-radius test uses source and target centers for DISTANCE, with zero silhouette or hitbox padding &mdash; a hitbox never extends a sensor&rsquo;s reach. Medium membership is separate from distance: a sensor source is classified only by its host origin (<code>hostOrigin.z &gt;= waterLevel</code> is air, below is water) &mdash; with one boundary resolved by construction: a water-only structure has its box centred ON the water plane, its origin exactly at the waterline, and reading that as air would have a Sonar or torpedo tower sense the sky instead of the water it stands in, so a water-only structure standing on the plane is a water host; a structure with a submerged origin is water and one above the waterline is air whatever it is &mdash; a body target by the submerged fraction of its authored volume, and a target with any volume in a medium is addressable in that medium.</li>
+        <li>Every entity visibility and contact-radius test uses source and target centers for DISTANCE, with zero silhouette or hitbox padding &mdash; a hitbox never extends a sensor&rsquo;s reach. Medium membership is separate from distance: a sensor source is classified only by its host origin (<code>hostOrigin.z &gt;= waterLevel</code> is air, below is water) &mdash; and construction never leaves a host on the waterline: a water-only structure floats with its origin one draft below the plane (see <em>Placement sets</em>), so a Sonar or torpedo tower is a water host for the same reason a submerged hull is, and nothing is ever classified by the ambiguous plane itself &mdash; a body target by the submerged fraction of its authored volume, and a target with any volume in a medium is addressable in that medium.</li>
         <li>The same source/target asymmetry governs weapons. Every directed emission exhaustively asserts all four booleans: above-water-to-above-water, above-water-to-underwater, underwater-to-above-water, and underwater-to-underwater. A turret activates exactly its point-classified source row and may lock a unit or building when any true column intersects positive target-body volume, or a shot/turret when the true column matches that target point. There is no same-medium preference. A turret must not lock what its emission cannot physically reach.</li>
         <li>Vision, radar, and jamming each author one scalar radius. The host-origin medium routes those radii to exactly one air-or-water trio; sensor mount height and target medium do not select matrix cells because sensor matrices do not exist.</li>
         <li>Air radar and water radar (presented as sonar) use the same aggregation rule, as do air and water jamming. Their map-space coverage may overlap, but a single ordinary host never contributes one authored radius to both media at once.</li>
@@ -4732,9 +4732,12 @@
       <p>
         Ground-surface and water-sea-bed share the terrain-bed anchor and require flat terrain.
         Ground-hover and water-hover-surface share the visible-surface hover anchor and ignore bed
-        slope; water hover also has no minimum-depth rule. Sea-on-surface has the water-plane anchor,
-        ignores bed slope, and requires the whole cell to have enough depth for the submerged half
-        of that particular building. Thus water-square classification answers &ldquo;is this wholly
+        slope; water hover also has no minimum-depth rule. Sea-on-surface has the water-plane anchor
+        with a draft: the structure floats with its box centre a tenth of its depth BELOW the plane,
+        never on it &mdash; a host whose origin sat exactly at the waterline was the one thing the
+        sensor medium rule (waterline is air) read wrongly &mdash; ignores bed slope, and requires
+        the whole cell to have enough depth for the submerged part of that particular building (its
+        lower half plus the draft). Thus water-square classification answers &ldquo;is this wholly
         water?&rdquo;, while depth clearance separately answers &ldquo;does this water-surface body fit?&rdquo;.
       </p>
       <p>

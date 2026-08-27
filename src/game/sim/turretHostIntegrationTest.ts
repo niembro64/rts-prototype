@@ -45,6 +45,7 @@ import {
 } from './combat/combatUtils';
 import { SIGHT_DROP_GRACE_TICKS, turretIgnoresForceMaterialSightObstruction } from './combat/lineOfSight';
 import { buildFreeForAllRoster } from './teamRoster';
+import { getSeaOnSurfaceOriginDraft } from './buildingPlacementPolicy';
 import { resetProjectileBuffers } from './combat/projectileSystem';
 import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
 import {
@@ -1061,7 +1062,9 @@ function assertSurfaceTorpedoTowerTracksAndFiresStraightDown(): void {
   world.playerCount = 2;
   world.setTeamRoster(buildFreeForAllRoster([1 as PlayerId, 2 as PlayerId]));
   const tower = world.createBuilding(160, 160, 60, 60, 60, 1 as PlayerId);
-  tower.transform.z = WATER_LEVEL;
+  // Exactly where construction floats a water-only structure: one draft
+  // below the plane, so the tower is a water sensor host by the origin rule.
+  tower.transform.z = WATER_LEVEL - getSeaOnSurfaceOriginDraft(60);
   applyBuildingBlueprintRuntime(tower, 'towerTorpedo', {
     allocateEntityId: () => world.generateEntityId(),
   });

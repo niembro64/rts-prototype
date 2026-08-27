@@ -110,7 +110,7 @@ const BUILD_GRID_DEBUG_MODE_TITLES: Record<BuildGridDebugMode, string> = {
   'ground-build-squares-hover': 'Show wholly-ground squares available to hovering structures; slope is irrelevant',
   'ground-build-squares-surface': 'Show wholly-ground squares with valid terrain slope and plateau level',
   'water-build-squares-sea-bed': 'Show wholly-water squares with a valid sea-bed slope and plateau level',
-  'water-build-squares-sea-on-surface': 'Show wholly-water squares with enough depth for a waterline-centered structure',
+  'water-build-squares-sea-on-surface': 'Show wholly-water squares with enough depth for a floating structure (its lower half plus its draft)',
   'water-build-squares-hover-surface': 'Show wholly-water squares available to hovering structures; bed slope and depth are irrelevant',
 };
 

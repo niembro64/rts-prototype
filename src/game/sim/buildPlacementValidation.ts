@@ -35,6 +35,7 @@ import {
 } from './Terrain';
 import {
   getBuildingPlacementBaseZ,
+  getSeaOnSurfaceSubmergedDepth,
   getBuildingRequiredSensorSourceMedium,
 } from './buildingPlacementPolicy';
 
@@ -250,7 +251,9 @@ function getBuildingPlacementDiagnosticsAtGrid(
   const terrainLevelCounts = new Map<number, number>();
   const exercisedPlacementSets = new Set<BuildingPlacementSet>();
   const ignoreTerrain = options.ignoreTerrain;
-  const waterSurfaceMinimumDepth = config.gridDepth * BUILD_GRID_CELL_SIZE * 0.5;
+  const waterSurfaceMinimumDepth = getSeaOnSurfaceSubmergedDepth(
+    config.gridDepth * BUILD_GRID_CELL_SIZE,
+  );
 
   // Each authored mask cell owns one terrain read. Empty bounding-box corners
   // are intentionally ignored, so a circular or concave reservation can hug
@@ -427,7 +430,8 @@ function getBuildingPlacementDiagnosticsAtGrid(
 /**
  * A sea-on-surface structure is anchored independently from the terrain, but
  * the entire terrain-mesh area beneath each reserved physical cell must
- * contain enough water for the submerged half of its cuboid. This rejects
+ * contain enough water for the submerged part of its cuboid (its lower half
+ * plus the draft that keeps its origin off the waterline). This rejects
  * shoreline straddling and seabed clipping without requiring a flat
  * underwater plateau.
  */
