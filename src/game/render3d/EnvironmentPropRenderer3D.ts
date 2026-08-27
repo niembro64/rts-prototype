@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { areRenderTexturesEnabled, registerRenderTexturesReader } from './RenderTextures3D';
 import { loadThreeAsset } from './threeAssetLoader';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
@@ -380,6 +381,7 @@ export class EnvironmentPropRenderer3D {
   /** Cursor into the sim's append-only removal log. */
   private removedCursor = 0;
   private readonly materialCache = new Map<string, THREE.MeshLambertMaterial>();
+  private unregisterTextures: (() => void) | null = null;
   private readonly mtlCache = new Map<
     string,
     Promise<MTLLoader.MaterialCreator>
@@ -410,6 +412,9 @@ export class EnvironmentPropRenderer3D {
     this.root.name = 'EnvironmentPropRenderer3D';
     parentWorld.add(this.root);
     logActiveVegetationAssets();
+    this.unregisterTextures = registerRenderTexturesReader((enabled) => {
+      this.applyTexturesEnabled(enabled);
+    });
     // Asset IO can overlap terrain startup. Only placement and node creation
     // wait for the authoritative terrain below.
     void this.loadAssets();
@@ -625,8 +630,25 @@ export class EnvironmentPropRenderer3D {
     this.ready = true;
   }
 
+  /** CLIENT TEX: every cached vegetation material that carries a map swaps
+   *  between the map (white base) and its canonical flat hue. A recompile per
+   *  material is unavoidable (`USE_MAP` is a compile-time define) and happens
+   *  once per toggle, not per frame. */
+  private applyTexturesEnabled(enabled: boolean): void {
+    for (const material of this.materialCache.values()) {
+      const map = material.userData.texturedMap as THREE.Texture | null | undefined;
+      if (!map) continue;
+      const flatColor = material.userData.flatColor as number;
+      material.map = enabled ? map : null;
+      material.color.set(enabled ? COLORS.units.turret.barrel.colorHex : flatColor);
+      material.needsUpdate = true;
+    }
+  }
+
   destroy(): void {
     this.destroyed = true;
+    this.unregisterTextures?.();
+    this.unregisterTextures = null;
     const geometries = new Set<THREE.BufferGeometry>();
     const materials = new Set<THREE.Material>();
     for (const node of this.nodes) {
@@ -1006,13 +1028,18 @@ export class EnvironmentPropRenderer3D {
     if (!material) {
       // Tree texture canvases are color-graded to the canonical flat LOD
       // colors, so the map carries the prop's overall hue and the material's
-      // color stays white to avoid double-multiplying.
+      // color stays white to avoid double-multiplying. With textures off
+      // (CLIENT TEX) the map is dropped and the canonical hue comes back —
+      // see applyTexturesEnabled, which flips every cached material at once.
+      const texturesOn = areRenderTexturesEnabled();
       material = new THREE.MeshLambertMaterial({
-        color: map ? COLORS.units.turret.barrel.colorHex : color,
-        map: map ?? null,
+        color: map && texturesOn ? COLORS.units.turret.barrel.colorHex : color,
+        map: texturesOn ? map ?? null : null,
         flatShading: true,
       });
       material.name = key;
+      material.userData.texturedMap = map ?? null;
+      material.userData.flatColor = color;
       if (foliageLighting) patchEnvironmentFoliageLighting(material);
       // THE COVERAGE CHOKE POINT. Every vegetation material in the game is
       // created here — trunk, foliage and grass, textured close tier and flat

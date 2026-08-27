@@ -1753,6 +1753,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runBuildingOperationalVisual3DContractTest();
         const { runSurfaceChart3DContractTest } = await import('../render3d/SurfaceChart3DContractTest');
         runSurfaceChart3DContractTest();
+        const { runRenderTextures3DContractTest } = await import('../render3d/RenderTextures3DContractTest');
+        runRenderTextures3DContractTest();
         const { runDirectionalTravelSlotSurfaceChart3DContractTest } = await import('../render3d/SurfaceChart3DContractTest');
         runDirectionalTravelSlotSurfaceChart3DContractTest();
         const { runTurretAimPose3DContractTest } = await import('../render3d/TurretAimPose3DContractTest');

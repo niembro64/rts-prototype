@@ -1,4 +1,6 @@
 import rawClientBarConfig from './clientBarConfig.json';
+import { areRenderTexturesEnabled } from './game/render3d/RenderTextures3D';
+import { isSurfaceChartEnabled } from './game/render3d/SurfaceChartMaterial3D';
 import { getLightingScales } from './game/render3d/RenderLighting3D';
 import {
   AA_MSAA_MODE_DEFAULT,
@@ -12,6 +14,7 @@ import {
   getEnvironmentLight,
   getExposure,
   getLodMode,
+  getSurfaceTexture,
   getSkyLight,
   getWaterTriangleDebug,
   resetClientSettingsToDefaults,
@@ -53,6 +56,13 @@ export function runClientBarDefaultsContractTest(): void {
   ];
   const saved = new Map(
     [...allModeKeys, ...globalKeys].map((key) => [key, window.localStorage.getItem(key)]),
+  );
+  // Same for textures: the stored TEX state must have reached the renderer
+  // at boot, not only after a mode switch or a DEFAULTS click.
+  assertContract(
+    areRenderTexturesEnabled() === getSurfaceTexture() &&
+      isSurfaceChartEnabled() === getSurfaceTexture(),
+    'the booted renderer must draw textures exactly as the stored TEX setting says',
   );
   // The booted app must already be RENDERING the stored lighting, not just
   // showing it in the bar: the renderer's scales are the stored percents / 100.

@@ -170,6 +170,10 @@ export function setSurfaceChartEnabled(enabled: boolean): void {
   SHARED_UNIFORMS.uChartEnabled.value = enabled ? 1 : 0;
 }
 
+export function isSurfaceChartEnabled(): boolean {
+  return SHARED_UNIFORMS.uChartEnabled.value > 0;
+}
+
 const VERTEX_DECL = [
   'attribute vec4 aChart;',
   // FLAT. vChart carries a band CODE and two repeat counts — per-primitive

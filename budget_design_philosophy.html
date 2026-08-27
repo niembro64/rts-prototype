@@ -5018,6 +5018,19 @@
         <li>&ldquo;Untextured&rdquo; is not a reachable state. A surface with no chart is not bare; it is plain material, and the grain is what plain material looks like.</li>
       </ul>
 
+      <p>
+        There is one switch for all of it. The CLIENT bar&rsquo;s <strong>TEX</strong> toggle is
+        the global textures switch, not a units-only convenience: off, every surface in the world
+        falls back to its flat authored base colour at once &mdash; the entity charts and substance
+        grain, the terrain&rsquo;s ground and rock detail and its broad surface fields, ore detail
+        and its edge grime, plateau wall wear, tree and grass maps with their weathering, and the
+        sky panorama. Nothing textured is exempt, because the point of the switch is a true A/B
+        against the untextured look: a surface that stayed textured while its neighbour went flat
+        would be a second, unauthored quality tier. Every textured material consumes one shared
+        renderer-wide uniform or one registered reader (<code>RenderTextures3D</code>), so the
+        flip is one write, never a walk, and a renderer built mid-session picks the current state
+        up on registration.
+      </p>
       <h3>The grain projects in the object&rsquo;s own frame, corrected for scale</h3>
       <p>
         This is <strong>Materials Are Independent Of Shape</strong> made

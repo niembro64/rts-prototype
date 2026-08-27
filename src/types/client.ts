@@ -188,6 +188,9 @@ export type ClientBarConfig = {
    *  and turret accents stay team-colored either way, because those
    *  recolor existing geometry rather than adding any. */
   readonly teamTrim: BooleanSetting;
+  /** The one global textures switch (CLIENT TEX): entity charts and grain,
+   *  every terrain texture layer, vegetation maps and weathering, and the sky
+   *  panorama. Off shows flat authored base colors everywhere. */
   readonly surfaceTexture: BooleanSetting;
   /** Smoke-puff trails behind thrust-powered projectiles (rockets,
    *  missiles) rendered by SmokeTrail3D. Default on — toggle off to

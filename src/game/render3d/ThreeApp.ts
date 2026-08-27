@@ -4,6 +4,7 @@
 // render loop and delegates per-frame work to a callback.
 
 import * as THREE from 'three';
+import { registerRenderTexturesReader } from './RenderTextures3D';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import {
   getBrowserRenderRuntimeProfile,
@@ -139,6 +140,8 @@ export class ThreeApp {
   private _skyTexture: THREE.Texture | null = null;
   private readonly _parallaxBackdrop: ParallaxBackdropRenderer3D;
   private _unregisterBackdropTarget: (() => void) | null = null;
+  private _unregisterTexturesTarget: (() => void) | null = null;
+  private _texturesEnabled = true;
   private _mapPresetLabel: MapPresetLabel3D | null = null;
   private _unregisterMapPresetLabelTarget: (() => void) | null = null;
   private _visibleSunDisk: THREE.Object3D | null = null;
@@ -365,6 +368,12 @@ export class ThreeApp {
     this._unregisterMapPresetLabelTarget = registerMapPresetLabelTarget(
       this._mapPresetLabel,
     );
+    // The sky panorama is a texture too: CLIENT TEX off hides it and the
+    // flat gradient sky shows through, like every other surface.
+    this._unregisterTexturesTarget = registerRenderTexturesReader((enabled) => {
+      this._texturesEnabled = enabled;
+      this.applySceneBackground();
+    });
   }
 
   get canvas(): HTMLCanvasElement {
@@ -378,7 +387,9 @@ export class ThreeApp {
       this._lastSeaBackgroundEnabled === true
         ? this._seaBackgroundColor
         : this._skyTexture;
-    this._parallaxBackdrop.setSuppressed(this._lastSeaBackgroundEnabled === true);
+    this._parallaxBackdrop.setSuppressed(
+      this._lastSeaBackgroundEnabled === true || !this._texturesEnabled,
+    );
   }
 
   onUpdate(callback: (time: number, delta: number) => void): void {
@@ -759,6 +770,8 @@ export class ThreeApp {
     this.frameProfiler.destroy();
     this._unregisterBackdropTarget?.();
     this._unregisterBackdropTarget = null;
+    this._unregisterTexturesTarget?.();
+    this._unregisterTexturesTarget = null;
     this._parallaxBackdrop.destroy();
     this._unregisterMapPresetLabelTarget?.();
     this._unregisterMapPresetLabelTarget = null;
