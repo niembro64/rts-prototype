@@ -914,6 +914,20 @@ function isFootprintOnSurface(
       if (field !== null && !pointHasShoreMargin(field, surface, px, py, margin)) return false;
     }
   }
+  if (field === null) {
+    // No installed mesh to classify whole cells: sample every cell corner
+    // too, so a footprint whose outer edge touches the other medium is still
+    // refused the way the field would refuse it.
+    const cornerStartX = startX - cellSize * 0.5;
+    const cornerStartY = startY - cellSize * 0.5;
+    for (let cy = 0; cy <= cellsDeep; cy++) {
+      for (let cx = 0; cx <= cellsWide; cx++) {
+        const px = cornerStartX + cx * cellSize;
+        const py = cornerStartY + cy * cellSize;
+        if (isWaterAt(px, py, world.mapWidth, world.mapHeight) !== expectsWater) return false;
+      }
+    }
+  }
   return true;
 }
 
