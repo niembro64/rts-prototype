@@ -2268,10 +2268,17 @@ pub fn snapshot_encode_envelope_emit_server_meta(
     wind_speed: f64,
     wind_angle: f64,
     tilt_ema_slot: u32,
+    has_pathfinding: u8,
+    pathfinding_players: &[u32],
+    pathfinding_depths: &[u32],
+    pathfinding_scalars: &[f64],
 ) -> u32 {
     let w = messagepack_writer();
 
     let mut field_count: usize = 7; // ticks, snaps, server, units, cpu, wind, unitGroundNormalEma
+    if has_pathfinding != 0 {
+        field_count += 1;
+    }
     if has_turret_shield_panels_enabled != 0 {
         field_count += 1;
     }
@@ -2402,6 +2409,35 @@ pub fn snapshot_encode_envelope_emit_server_meta(
 
     w.write_str("unitGroundNormalEma");
     write_string_from_scratch(w, tilt_ema_slot);
+
+    // Pathfinding telemetry: per-player queue depths (three per player:
+    // route, refine, refresh) and six rolling scalars. Mirrors the
+    // NetworkServerPathfindingMeta key order.
+    if has_pathfinding != 0 {
+        let players = pathfinding_players.len();
+        w.write_str("pathfinding");
+        w.write_map_header(10);
+        w.write_str("players");
+        w.write_array_header(players);
+        for &p in pathfinding_players {
+            w.write_number(p as f64);
+        }
+        for (slot, key) in ["route", "refine", "refresh"].iter().enumerate() {
+            w.write_str(key);
+            w.write_array_header(players);
+            for i in 0..players {
+                let depth = pathfinding_depths.get(i * 3 + slot).copied().unwrap_or(0);
+                w.write_number(depth as f64);
+            }
+        }
+        for (i, key) in ["waitAvg", "waitWorst", "routeAvg", "routeWorst", "msAvg", "msWorst"]
+            .iter()
+            .enumerate()
+        {
+            w.write_str(key);
+            w.write_number(pathfinding_scalars.get(i).copied().unwrap_or(0.0));
+        }
+    }
 
     w.buf.len() as u32
 }

@@ -9,6 +9,7 @@ import type {
   NetworkServerSnapshotProjectileDespawn,
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotMeta,
+  NetworkServerPathfindingMeta,
   NetworkServerSnapshotSimEvent,
   NetworkServerSnapshotResourceMovement,
   NetworkServerSnapshotSprayTarget,
@@ -1326,12 +1327,62 @@ function canEncodeServerMeta(meta: SnapshotServerMeta): boolean {
     !isFiniteNumber(meta.wind.z) ||
     !isFiniteNumber(meta.wind.speed) ||
     !isFiniteNumber(meta.wind.angle) ||
-    typeof meta.unitGroundNormalEma !== 'string'
+    typeof meta.unitGroundNormalEma !== 'string' ||
+    !isValidPathfindingMeta(meta.pathfinding)
   ) {
     return false;
   }
 
   return true;
+}
+
+function isValidPathfindingMeta(meta: NetworkServerPathfindingMeta | undefined): boolean {
+  if (meta === undefined) return true;
+  const n = meta.players.length;
+  return (
+    isFiniteNumberArray(meta.players) &&
+    isFiniteNumberArray(meta.route) && meta.route.length === n &&
+    isFiniteNumberArray(meta.refine) && meta.refine.length === n &&
+    isFiniteNumberArray(meta.refresh) && meta.refresh.length === n &&
+    isFiniteNumber(meta.waitAvg) &&
+    isFiniteNumber(meta.waitWorst) &&
+    isFiniteNumber(meta.routeAvg) &&
+    isFiniteNumber(meta.routeWorst) &&
+    isFiniteNumber(meta.msAvg) &&
+    isFiniteNumber(meta.msWorst)
+  );
+}
+
+const EMPTY_PATHFINDING_U32 = new Uint32Array(0);
+const EMPTY_PATHFINDING_F64 = new Float64Array(0);
+
+function packPathfindingMeta(meta: NetworkServerPathfindingMeta | undefined): {
+  has: number;
+  players: Uint32Array;
+  depths: Uint32Array;
+  scalars: Float64Array;
+} {
+  if (meta === undefined) {
+    return { has: 0, players: EMPTY_PATHFINDING_U32, depths: EMPTY_PATHFINDING_U32, scalars: EMPTY_PATHFINDING_F64 };
+  }
+  const n = meta.players.length;
+  const players = new Uint32Array(n);
+  const depths = new Uint32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    players[i] = meta.players[i];
+    depths[i * 3] = meta.route[i];
+    depths[i * 3 + 1] = meta.refine[i];
+    depths[i * 3 + 2] = meta.refresh[i];
+  }
+  const scalars = Float64Array.of(
+    meta.waitAvg,
+    meta.waitWorst,
+    meta.routeAvg,
+    meta.routeWorst,
+    meta.msAvg,
+    meta.msWorst,
+  );
+  return { has: 1, players, depths, scalars };
 }
 
 function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
@@ -1364,6 +1415,7 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
 
   const unitGroundNormalEmaSlot = pushString(meta.unitGroundNormalEma!);
   packOrderedStringsIntoScratch(sim, strings);
+  const pathfinding = packPathfindingMeta(meta.pathfinding);
 
   sim.snapshotEncode.emitServerMeta(
     meta.ticks.avg,
@@ -1403,6 +1455,10 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
     meta.wind!.speed,
     meta.wind!.angle,
     unitGroundNormalEmaSlot,
+    pathfinding.has,
+    pathfinding.players,
+    pathfinding.depths,
+    pathfinding.scalars,
   );
 }
 

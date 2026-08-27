@@ -116,6 +116,13 @@ export type GameCanvasBattleControlBarModel = {
   setUnitGroundNormalEmaModeValue(mode: UnitGroundNormalEmaMode): void;
 };
 
+export type PathQueueDisplay = {
+  readonly playerId: number;
+  readonly route: number;
+  readonly refine: number;
+  readonly refresh: number;
+};
+
 export type GameCanvasServerControlBarModel = {
   readonly isReadonly: boolean;
   readonly barStyle: ControlBarStyle;
@@ -126,6 +133,16 @@ export type GameCanvasServerControlBarModel = {
   readonly displayServerTpsWorst: number;
   readonly displayServerCpuAvg: number;
   readonly displayServerCpuHi: number;
+  /** Pathfinding queue depths per player (route / refine / refresh). */
+  readonly displayPathQueues: ReadonlyArray<PathQueueDisplay>;
+  /** Request-to-search wait and request-to-route latency, seconds, over
+   *  the last window; pathfinding phase cost in ms per tick. */
+  readonly displayPathWaitAvgSec: number;
+  readonly displayPathWaitWorstSec: number;
+  readonly displayPathRouteAvgSec: number;
+  readonly displayPathRouteWorstSec: number;
+  readonly displayPathMsAvg: number;
+  readonly displayPathMsWorst: number;
   readonly displayTickRate: TickRate;
   readonly displayUnitCount: number;
   readonly displayUnitCap: number;

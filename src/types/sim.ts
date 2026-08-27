@@ -249,6 +249,9 @@ export type Unit = {
   /** Serve the queued request from the unit's live position and skip the
    *  shared formation corridor (stuck-replan semantics). */
   pathRequestForceLocal: boolean;
+  /** Tick the unit's current request chain began (its lane left NONE); -1
+   *  when it holds no request. Telemetry for request-to-route latency. */
+  pathRequestedTick: number;
   /** Consecutive route requests for the current order that resolved
    *  unreachable/terminal. Drives exponential retry backoff; the order is
    *  never dropped. Sim-only state, reset when the order changes or a route

@@ -446,9 +446,14 @@ export class ReusableNetworkSnapshotCloner {
     converterTax: undefined,
     autoConversionThresholds: undefined,
     cpu: undefined,
+    pathfinding: undefined,
     wind: undefined,
     retainedPools: undefined,
     unitGroundNormalEma: undefined,
+  };
+  private serverMetaPathfinding: NonNullable<NetworkServerSnapshotMeta['pathfinding']> = {
+    players: [], route: [], refine: [], refresh: [],
+    waitAvg: 0, waitWorst: 0, routeAvg: 0, routeWorst: 0, msAvg: 0, msWorst: 0,
   };
   private serverMetaUnitsAllowed: string[] = [];
   private serverMetaAutoConversion: NonNullable<
@@ -656,6 +661,23 @@ export class ReusableNetworkSnapshotCloner {
         dsm.cpu = this.serverMetaCpu;
       } else {
         dsm.cpu = undefined;
+      }
+      if (sm.pathfinding) {
+        const sp = sm.pathfinding;
+        const dp = this.serverMetaPathfinding;
+        dp.players = copyScalarArrayInto(sp.players, dp.players);
+        dp.route = copyScalarArrayInto(sp.route, dp.route);
+        dp.refine = copyScalarArrayInto(sp.refine, dp.refine);
+        dp.refresh = copyScalarArrayInto(sp.refresh, dp.refresh);
+        dp.waitAvg = sp.waitAvg;
+        dp.waitWorst = sp.waitWorst;
+        dp.routeAvg = sp.routeAvg;
+        dp.routeWorst = sp.routeWorst;
+        dp.msAvg = sp.msAvg;
+        dp.msWorst = sp.msWorst;
+        dsm.pathfinding = dp;
+      } else {
+        dsm.pathfinding = undefined;
       }
       if (sm.wind) {
         this.serverMetaWind.x = sm.wind.x;

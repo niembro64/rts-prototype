@@ -38,6 +38,7 @@ import type {
   GameCanvasBattleControlBarModel,
   GameCanvasClientControlBarModel,
   GameCanvasServerControlBarModel,
+  PathQueueDisplay,
 } from './gameCanvasControlBarModels';
 import type { NetworkServerSnapshotMeta } from '../game/network/NetworkTypes';
 import {
@@ -1628,6 +1629,27 @@ const displayServerCpuAvg = computed(
 const displayServerCpuHi = computed(
   () => serverMetaFromSnapshot.value?.cpu?.hi ?? 0,
 );
+// Pathfinding telemetry (SERVER bar): queue depths per player and rolling
+// latency/cost. Latencies arrive in ticks; convert with the host tick rate.
+const displayPathQueues = computed<PathQueueDisplay[]>(() => {
+  const p = serverMetaFromSnapshot.value?.pathfinding;
+  if (!p) return [];
+  const out: PathQueueDisplay[] = [];
+  for (let i = 0; i < p.players.length; i++) {
+    out.push({ playerId: p.players[i], route: p.route[i], refine: p.refine[i], refresh: p.refresh[i] });
+  }
+  return out;
+});
+const pathTicksToSeconds = (ticks: number): number => {
+  const rate = serverMetaFromSnapshot.value?.ticks.rate ?? simulationTickRateHz.value;
+  return rate > 0 ? ticks / rate : 0;
+};
+const displayPathWaitAvgSec = computed(() => pathTicksToSeconds(serverMetaFromSnapshot.value?.pathfinding?.waitAvg ?? 0));
+const displayPathWaitWorstSec = computed(() => pathTicksToSeconds(serverMetaFromSnapshot.value?.pathfinding?.waitWorst ?? 0));
+const displayPathRouteAvgSec = computed(() => pathTicksToSeconds(serverMetaFromSnapshot.value?.pathfinding?.routeAvg ?? 0));
+const displayPathRouteWorstSec = computed(() => pathTicksToSeconds(serverMetaFromSnapshot.value?.pathfinding?.routeWorst ?? 0));
+const displayPathMsAvg = computed(() => serverMetaFromSnapshot.value?.pathfinding?.msAvg ?? 0);
+const displayPathMsWorst = computed(() => serverMetaFromSnapshot.value?.pathfinding?.msWorst ?? 0);
 const displayTickRate = computed(
   () =>
     serverMetaFromSnapshot.value?.ticks.rate ??
@@ -2276,6 +2298,13 @@ const serverControlBarModel = reactive<GameCanvasServerControlBarModel>({
   displayServerTpsWorst: displayServerTpsWorst.value,
   displayServerCpuAvg: displayServerCpuAvg.value,
   displayServerCpuHi: displayServerCpuHi.value,
+  displayPathQueues: displayPathQueues.value,
+  displayPathWaitAvgSec: displayPathWaitAvgSec.value,
+  displayPathWaitWorstSec: displayPathWaitWorstSec.value,
+  displayPathRouteAvgSec: displayPathRouteAvgSec.value,
+  displayPathRouteWorstSec: displayPathRouteWorstSec.value,
+  displayPathMsAvg: displayPathMsAvg.value,
+  displayPathMsWorst: displayPathMsWorst.value,
   displayTickRate: displayTickRate.value,
   displayUnitCount: displayUnitCount.value,
   displayUnitCap: displayUnitCap.value,
@@ -2293,6 +2322,13 @@ watchEffect(() => {
   m.displayServerTpsWorst = displayServerTpsWorst.value;
   m.displayServerCpuAvg = displayServerCpuAvg.value;
   m.displayServerCpuHi = displayServerCpuHi.value;
+  m.displayPathQueues = displayPathQueues.value;
+  m.displayPathWaitAvgSec = displayPathWaitAvgSec.value;
+  m.displayPathWaitWorstSec = displayPathWaitWorstSec.value;
+  m.displayPathRouteAvgSec = displayPathRouteAvgSec.value;
+  m.displayPathRouteWorstSec = displayPathRouteWorstSec.value;
+  m.displayPathMsAvg = displayPathMsAvg.value;
+  m.displayPathMsWorst = displayPathMsWorst.value;
   m.displayTickRate = displayTickRate.value;
   m.displayUnitCount = displayUnitCount.value;
   m.displayUnitCap = displayUnitCap.value;

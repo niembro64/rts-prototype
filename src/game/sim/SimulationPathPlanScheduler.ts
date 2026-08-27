@@ -4,6 +4,7 @@ import {
   PATHFINDING_REFRESH_SERVICE_INTERVAL_TICKS,
 } from './pathfindingTuning';
 import type { TeamRoster } from './teamRoster';
+import { RollingTickStat } from './pathfindingTelemetry';
 import {
   DEFAULT_SIMULATION_TICK_RATE_HZ,
   simulationTicksForDefaultTicks,
@@ -199,6 +200,7 @@ export class SimulationPathPlanScheduler {
   /** True between beginTick and endTick; enqueues in that window defer. */
   private admissionPassOpen = false;
   private readonly stats: PathPlanSchedulerStats = createEmptyStats();
+  private readonly waitStat = new RollingTickStat();
   private readonly resolveSimulationTickRateHz: () => number;
   private readonly resolveTick: () => number;
 
@@ -217,6 +219,7 @@ export class SimulationPathPlanScheduler {
     const unit = entity.unit;
     if (unit === null) return;
     if (unit.pathRequestLane !== PATH_REQUEST_FRESH) {
+      this.stampRequestStart(unit);
       const lanes = this.lanesFor(pathPlanPlayerId(entity));
       this.enqueue(
         entity.commander !== null ? lanes.commanderFresh : lanes.fresh,
@@ -235,6 +238,7 @@ export class SimulationPathPlanScheduler {
     const unit = entity.unit;
     if (unit === null) return;
     if (unit.pathRequestLane !== PATH_REQUEST_REFINE) {
+      this.stampRequestStart(unit);
       const lanes = this.lanesFor(pathPlanPlayerId(entity));
       this.enqueue(
         entity.commander !== null ? lanes.commanderRefine : lanes.refine,
@@ -251,6 +255,7 @@ export class SimulationPathPlanScheduler {
   requestRefresh(entity: Entity): void {
     const unit = entity.unit;
     if (unit === null || unit.pathRequestLane !== PATH_REQUEST_NONE) return;
+    this.stampRequestStart(unit);
     const lanes = this.lanesFor(pathPlanPlayerId(entity));
     this.enqueue(
       entity.commander !== null ? lanes.commanderRefresh : lanes.refresh,
@@ -368,6 +373,33 @@ export class SimulationPathPlanScheduler {
     }
   }
 
+  /** Current queue depths per player (entries not yet popped, all lanes of
+   *  a tier summed), for the SERVER bar. Players in rotation order. */
+  getQueueDepths(): { players: number[]; route: number[]; refine: number[]; refresh: number[] } {
+    const players: number[] = [];
+    const route: number[] = [];
+    const refine: number[] = [];
+    const refresh: number[] = [];
+    const ids = [...this.lanes.keys()].sort((a, b) => a - b);
+    for (const playerId of ids) {
+      const lanes = this.lanes.get(playerId)!;
+      const r = laneDepth(lanes.commanderFresh) + laneDepth(lanes.fresh);
+      const f = laneDepth(lanes.commanderRefine) + laneDepth(lanes.refine);
+      const x = laneDepth(lanes.commanderRefresh) + laneDepth(lanes.refresh);
+      if (r === 0 && f === 0 && x === 0) continue;
+      players.push(playerId);
+      route.push(r);
+      refine.push(f);
+      refresh.push(x);
+    }
+    return { players, route, refine, refresh };
+  }
+
+  /** Rolling queue-wait statistic (ticks from enqueue to search admission). */
+  getWaitStat(): RollingTickStat {
+    return this.waitStat;
+  }
+
   /** Record what a visit spent, so per-player shares are visible. */
   chargeTurn(turn: PathPlanQueueTurn, workUnits: number): void {
     if (workUnits <= 0) return;
@@ -385,6 +417,7 @@ export class SimulationPathPlanScheduler {
     frontierPending: boolean,
   ): void {
     this.admissionPassOpen = false;
+    this.waitStat.endTick(this.resolveTick());
     const stats = this.stats;
     stats.expansionsUsed += expansionsUsed;
     if (frontierPending) stats.ticksEndedWithFrontierPending++;
@@ -514,7 +547,17 @@ export class SimulationPathPlanScheduler {
     this.servedThisPass = false;
     this.servedThisTick = 0;
     this.admissionPassOpen = false;
+    this.waitStat.reset();
     Object.assign(this.stats, createEmptyStats());
+  }
+
+  /** A request chain starts when the unit's lane leaves NONE; a lane change
+   *  inside the chain (route -> refine) keeps the original stamp so the
+   *  latency the bar shows is what the player waited. */
+  private stampRequestStart(unit: NonNullable<Entity['unit']>): void {
+    if (unit.pathRequestLane === PATH_REQUEST_NONE || unit.pathRequestedTick < 0) {
+      unit.pathRequestedTick = this.resolveTick();
+    }
   }
 
   private noteServed(playerId: PlayerId): void {
@@ -569,6 +612,7 @@ export class SimulationPathPlanScheduler {
       const queuedTick = queue.queuedTicks[queue.head];
       if (serve(popLane(queue), servedLane)) {
         stats.admissions++;
+        this.waitStat.record(now - queuedTick);
         const bucket = admissionAgeBucket(now - queuedTick);
         stats.admissionAgeBuckets[bucket]++;
         const key = String(playerId);
@@ -649,6 +693,10 @@ export function admissionAgeBucket(ageTicks: number): number {
 
 export function pathPlanPlayerId(entity: Entity): PlayerId {
   return entity.ownership?.playerId ?? (0 as PlayerId);
+}
+
+function laneDepth(lane: PathRequestLaneQueue): number {
+  return lane.ids.length - lane.head;
 }
 
 function laneHasEligibleWork(lane: PathRequestLaneQueue, now: number): boolean {

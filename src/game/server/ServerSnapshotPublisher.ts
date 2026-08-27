@@ -402,6 +402,7 @@ export class ServerSnapshotPublisher {
       tickRateHz: input.tickRateHz,
       snapshotRate: input.maxSnapshotsDisplay,
       ipAddress: input.ipAddress,
+      pathfinding: input.simulation.getPathfindingTelemetry(),
       allowedUnits: input.backgroundMode ? input.backgroundAllowedUnitBlueprintIds : undefined,
       maxUnits: input.world.entityCountCap,
       unitCount,

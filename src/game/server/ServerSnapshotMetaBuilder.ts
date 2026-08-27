@@ -34,6 +34,7 @@ type ServerSnapshotMetaInput = {
   };
   retainedPools: NetworkServerSnapshotMeta['retainedPools'];
   unitGroundNormalEmaMode: UnitGroundNormalEmaMode;
+  pathfinding: NetworkServerSnapshotMeta['pathfinding'];
 };
 
 export class ServerSnapshotMetaBuilder {
@@ -83,6 +84,7 @@ export class ServerSnapshotMetaBuilder {
       },
       retainedPools: input.retainedPools,
       unitGroundNormalEma: input.unitGroundNormalEmaMode,
+      pathfinding: input.pathfinding,
     };
   }
 
