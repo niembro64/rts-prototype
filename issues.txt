@@ -1,0 +1,7 @@
+1) our commander shouldn't have any kind of "radar jamming" but it should have a small "radar" functionality. Any unit or building that produces team radar should have some kind of radar dish that is similar and that exudes some kind of green pulse. Any unit or buidling that produces team radar jamming shoudl have som ekind of "jamming" visual that is similar across all of them and should have some kind fo "red pulse" common among them. Also both of these types of entities should show their related important radius when hovered or selected.
+
+2) radar / sonar jamming radiuses can't be too large or they are too powerful. Also our air radar and radar jamming need to be distinctly separate from our water sonar and sonar jamming. A unit that is at all in the air is subject to air sight, air radar, air lock on et
+
+3) for all of our primarily water units let's at least have some non-zero value for the two support values for keeping them off of the seabed floor, at least some tiny values for both of them, non-zero.
+
+4) at certain zoom levels different pieces of different units shadows disappear, it is strange, fix that. I can see it for the queen bee as she is being built by a universal fabricator. 
