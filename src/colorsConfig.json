@@ -51,10 +51,10 @@
         "shade": 1
       },
       "ground": {
-        "baseColorHex": "#222b1a",
+        "baseColorHex": "#27321f",
         "fieldLayers": {
           "sourceFile": "src/game/render3d/SurfaceFieldTexture.ts",
-          "baseColorHex": "#272c1d",
+          "baseColorHex": "#2d3322",
           "macro": {
             "resolution": 256,
             "tileWorldSize": 5600,
