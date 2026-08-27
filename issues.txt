@@ -1,0 +1,11 @@
+1) For any "ground-based" unit, as it walks it eventually puts its turrets back to facing forward after enough time. If it is ever in an idle state not only should it face its turret forward, but also let's have the pitch of the turret EMA with the angle of the ground it is on. So if the turret is facing up hill, the turret would also EMA to that pitch of whatever hill the unit is on. 
+
+
+2) the explosions we have from shots beams etc at the ends are much too small. The red tetrahedrons should start white, move to yellow, then red, then dark red as they fade out, just like teh colors of the plasma shots. Also the small tetrahedrons should be larger than they are now, the medium shoudl be 2x radius of the small and the large should be 2x larger than the medium. 
+
+3) remove the white border of the minimap. It's pretty obvious without that. Also rework the look and feel of the top bar such that we use space even more efficiently (less padding etc). Look at "Beyond-All-Reason" top bar, but make sure we keep our particularities.
+
+4) our metal deposit texture needs more fine texture like we have on the rock and grass textures. Also the "dirtiness" bordering our metal deposits is much too uniform, make the dirtiness much more random in every way; same for our plateau edges.
+
+5) double check the placements and initial waypoints and "universal fabricator" waypoints for the "base" initialized ways that we can start a game. The initialized water units and fabricator waypoints are much too close to the land; it needs to be decideed after the land is created to make sure we are not doing things that don't make sense. 
+
