@@ -35,6 +35,17 @@ import {
 import { angleDeltaAbs } from '../math';
 import { isWaterAt } from './Terrain';
 import {
+  SHORE_MARGIN_LAND_FOOTPRINT_WU,
+  SHORE_MARGIN_LAND_WAYPOINT_WU,
+  SHORE_MARGIN_WATER_FOOTPRINT_WU,
+  SHORE_MARGIN_WATER_WAYPOINT_WU,
+  getShoreDistanceField,
+  pointHasShoreMargin,
+  shoreClearanceSqAt,
+  snapPointToShoreMargin,
+  type ShoreDistanceField,
+} from './shoreDistanceField';
+import {
   FABRICATOR_BLUEPRINT_IDS,
   getFabricatorBuildingBlueprintId,
   getUnitBlueprint,
@@ -313,19 +324,28 @@ export function computeFactoryWaypoint(
   };
 }
 
+/** A land factory's authored legs (the fight leg toward map centre and the
+ * centre patrol loop) are nominal geometry; each is walked onto dry ground
+ * with a shore margin once the terrain is known, so a leg that the centre
+ * lake or a bay happens to cover never sends the line onto the beach. Water
+ * lines replace these legs entirely (configureWaterFactoryWaypoints). */
 function computeFactoryDefaultWaypoints(
   factoryX: number,
   factoryY: number,
   mapWidth: number,
   mapHeight: number,
   basePolicy: InitialBasePolicy,
+  field: ShoreDistanceField | null,
 ): readonly FactoryDefaultWaypoint[] {
-  const fight = computeFactoryWaypoint(
+  const nominalFight = computeFactoryWaypoint(
     factoryX,
     factoryY,
     mapWidth,
     mapHeight,
     basePolicy.fightDistance,
+  );
+  const fight = snapPointToShoreMargin(
+    field, 'ground', nominalFight.x, nominalFight.y, SHORE_MARGIN_LAND_WAYPOINT_WU,
   );
   if (!basePolicy.addCenterPatrolLoop) {
     return [{ x: fight.x, y: fight.y, z: null, type: basePolicy.fightType }];
@@ -334,8 +354,14 @@ function computeFactoryDefaultWaypoints(
   const oval = makeMapOvalMetrics(mapWidth, mapHeight);
   const angle = mapOvalAngleAt(mapWidth, mapHeight, factoryX, factoryY);
   const patrolRadius = DEMO_CONFIG.centerSpawnRadius * oval.minDim;
-  const near = mapOvalPointAt(oval, angle, patrolRadius);
-  const far = mapOvalPointAt(oval, angle + Math.PI, patrolRadius);
+  const nominalNear = mapOvalPointAt(oval, angle, patrolRadius);
+  const nominalFar = mapOvalPointAt(oval, angle + Math.PI, patrolRadius);
+  const near = snapPointToShoreMargin(
+    field, 'ground', nominalNear.x, nominalNear.y, SHORE_MARGIN_LAND_WAYPOINT_WU,
+  );
+  const far = snapPointToShoreMargin(
+    field, 'ground', nominalFar.x, nominalFar.y, SHORE_MARGIN_LAND_WAYPOINT_WU,
+  );
   return [
     { x: fight.x, y: fight.y, z: null, type: basePolicy.fightType },
     { x: far.x, y: far.y, z: null, type: 'patrol' },
@@ -567,6 +593,7 @@ function completeInitialBuilding(
       world.mapWidth,
       world.mapHeight,
       basePolicy,
+      getShoreDistanceField(world.mapWidth, world.mapHeight),
     );
     setFactoryDefaultWaypoints(entity, defaultWaypoints);
   }
@@ -718,7 +745,7 @@ function placeMixedBlueprintArcRow(
       basePolicy,
       searchOffsets,
       null,
-      (x, y) => isRectFootprintOnSurface(world, x, y, width, height, squareType),
+      (x, y) => isFootprintOnSurface(world, x, y, width, height, squareType),
       // These are prebuilt authored showcase rows. The medium preflight above,
       // map bounds, and occupancy remain hard requirements; terrain slope and
       // ordinary player-build restrictions must not silently omit a roster id.
@@ -813,7 +840,7 @@ function placeUniversalFactoryLines(
       basePolicy,
       searchOffsets,
       null,
-      (x, y) => isRectFootprintOnSurface(world, x, y, width, height, surface),
+      (x, y) => isFootprintOnSurface(world, x, y, width, height, surface),
       true,
     );
     if (factory === null) continue;
@@ -838,15 +865,30 @@ function configureWaterFactoryWaypoints(
     factory.transform.y,
   );
   const patrolArc = Math.PI / Math.max(2, world.playerCount);
-  const forward = mapOvalPointAt(oval, angle + patrolArc, radius);
-  const backward = mapOvalPointAt(oval, angle - patrolArc, radius);
+  // The ring points are nominal: wherever the ring runs through a spit,
+  // a divider ridge, or a beach, each leg is walked to the nearest open
+  // water with a shore margin, so the line's hulls never patrol onto land.
+  const field = getShoreDistanceField(world.mapWidth, world.mapHeight);
+  const nominalForward = mapOvalPointAt(oval, angle + patrolArc, radius);
+  const nominalBackward = mapOvalPointAt(oval, angle - patrolArc, radius);
+  const forward = snapPointToShoreMargin(
+    field, 'water', nominalForward.x, nominalForward.y, SHORE_MARGIN_WATER_WAYPOINT_WU,
+  );
+  const backward = snapPointToShoreMargin(
+    field, 'water', nominalBackward.x, nominalBackward.y, SHORE_MARGIN_WATER_WAYPOINT_WU,
+  );
   setFactoryDefaultWaypoints(factory, [
     { x: forward.x, y: forward.y, z: null, type: 'patrol' },
     { x: backward.x, y: backward.y, z: null, type: 'patrol' },
   ]);
 }
 
-function isRectFootprintOnSurface(
+/** Every build cell of a footprint centred at (x, y) lies on `surface`, and —
+ * once the authoritative terrain is installed — keeps that medium's shore
+ * margin around it. Sampling the corners alone let a shoreline cut straight
+ * through a 14-cell fabricator; a complete footprint means every cell. Bare
+ * worlds without a field keep the per-cell medium test alone. */
+function isFootprintOnSurface(
   world: WorldState,
   x: number,
   y: number,
@@ -854,21 +896,54 @@ function isRectFootprintOnSurface(
   height: number,
   surface: 'ground' | 'water',
 ): boolean {
-  const halfWidth = width * 0.5;
-  const halfHeight = height * 0.5;
+  const cellSize = BUILD_GRID_CELL_SIZE;
+  const cellsWide = Math.max(1, Math.round(width / cellSize));
+  const cellsDeep = Math.max(1, Math.round(height / cellSize));
+  const startX = x - (cellsWide - 1) * 0.5 * cellSize;
+  const startY = y - (cellsDeep - 1) * 0.5 * cellSize;
   const expectsWater = surface === 'water';
-  for (const [offsetX, offsetY] of [
-    [0, 0],
-    [-halfWidth, -halfHeight],
-    [halfWidth, -halfHeight],
-    [-halfWidth, halfHeight],
-    [halfWidth, halfHeight],
-  ] as const) {
-    if (
-      isWaterAt(x + offsetX, y + offsetY, world.mapWidth, world.mapHeight) !== expectsWater
-    ) return false;
+  const field = getShoreDistanceField(world.mapWidth, world.mapHeight);
+  const margin = expectsWater
+    ? SHORE_MARGIN_WATER_FOOTPRINT_WU
+    : SHORE_MARGIN_LAND_FOOTPRINT_WU;
+  for (let cy = 0; cy < cellsDeep; cy++) {
+    for (let cx = 0; cx < cellsWide; cx++) {
+      const px = startX + cx * cellSize;
+      const py = startY + cy * cellSize;
+      if (isWaterAt(px, py, world.mapWidth, world.mapHeight) !== expectsWater) return false;
+      if (field !== null && !pointHasShoreMargin(field, surface, px, py, margin)) return false;
+    }
   }
   return true;
+}
+
+/** The seat's offshore anchor: the map-oval radius along its base angle, in
+ * [minRadius, maxRadius], where the water is deepest — farthest from any
+ * shore — measured on the installed terrain. Ties go to the farther radius,
+ * so a wide ocean band anchors its rows toward the rear. Null when the ray
+ * never crosses fully submerged water (the water lives elsewhere in the
+ * seat's sector, or the map is dry); callers then fall back to the authored
+ * ring. This is what "decided after the land is created" means for the
+ * offshore rows: the authored fractions are spacings around this anchor,
+ * never absolute positions. */
+function resolveSeatOffshoreRadius(
+  field: ShoreDistanceField,
+  oval: MapOvalMetrics,
+  angle: number,
+  minRadius: number,
+  maxRadius: number,
+): number | null {
+  let bestSq = 0;
+  let bestRadius: number | null = null;
+  for (let radius = minRadius; radius <= maxRadius; radius += BUILD_GRID_CELL_SIZE) {
+    const point = mapOvalPointAt(oval, angle, radius);
+    const sq = shoreClearanceSqAt(field, 'water', point.x, point.y);
+    if (sq > 0 && sq >= bestSq) {
+      bestSq = sq;
+      bestRadius = radius;
+    }
+  }
+  return bestRadius;
 }
 
 /**
@@ -992,31 +1067,18 @@ export function spawnInitialBases(
       DEMO_CONFIG.baseRings.universalFabricator.tech3RadiusFraction,
     ),
   };
-  const waterFactoryRadiusByTech: Readonly<Record<ProductionTechLevel, number>> = {
-    1: demoBaseRingRadiusFromOuterSpawnRadius(
-      spawnRadius,
-      DEMO_CONFIG.waterFabricators.tech1RadiusFraction,
-    ),
-    2: demoBaseRingRadiusFromOuterSpawnRadius(
-      spawnRadius,
-      DEMO_CONFIG.waterFabricators.tech2RadiusFraction,
-    ),
-    3: demoBaseRingRadiusFromOuterSpawnRadius(
-      spawnRadius,
-      DEMO_CONFIG.waterFabricators.tech3RadiusFraction,
-    ),
-  };
+  // Offshore rows anchor on each seat's measured deep-water radius (see
+  // resolveSeatOffshoreRadius); the authored fractions are spacings around
+  // that anchor and only become absolute radii when a seat has no anchor.
+  const shoreField = getShoreDistanceField(world.mapWidth, world.mapHeight);
+  const offshoreAnchorFraction = DEMO_CONFIG.waterFabricators.tech1RadiusFraction;
+  const offshoreSearchMinRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.waterFabricators.anchorSearchMinRadiusFraction,
+  );
   const radarRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
     DEMO_CONFIG.baseRings.buildingRadar.radiusFraction,
-  );
-  const authoredSonarRadius = demoBaseRingRadiusFromOuterSpawnRadius(
-    spawnRadius,
-    DEMO_CONFIG.waterFabricators.sonarRadiusFraction,
-  );
-  const supplementalWaterRadius = demoBaseRingRadiusFromOuterSpawnRadius(
-    spawnRadius,
-    DEMO_CONFIG.baseRings.supplementalWater.radiusFraction,
   );
   const megaBeamTowerRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
@@ -1121,6 +1183,32 @@ export function spawnInitialBases(
       world.teamRoster,
       playerId,
       1,
+    );
+
+    const offshoreAnchorRadius = shoreField === null || !hasWater
+      ? null
+      : resolveSeatOffshoreRadius(
+        shoreField,
+        oval,
+        baseAngle,
+        offshoreSearchMinRadius,
+        spawnRadius,
+      );
+    const offshoreRadiusFor = (radiusFraction: number): number =>
+      offshoreAnchorRadius === null
+        ? demoBaseRingRadiusFromOuterSpawnRadius(spawnRadius, radiusFraction)
+        : offshoreAnchorRadius +
+          (radiusFraction - offshoreAnchorFraction) * spawnRadius;
+    const waterFactoryRadiusByTech: Readonly<Record<ProductionTechLevel, number>> = {
+      1: offshoreRadiusFor(DEMO_CONFIG.waterFabricators.tech1RadiusFraction),
+      2: offshoreRadiusFor(DEMO_CONFIG.waterFabricators.tech2RadiusFraction),
+      3: offshoreRadiusFor(DEMO_CONFIG.waterFabricators.tech3RadiusFraction),
+    };
+    const authoredSonarRadius = offshoreRadiusFor(
+      DEMO_CONFIG.waterFabricators.sonarRadiusFraction,
+    );
+    const supplementalWaterRadius = offshoreRadiusFor(
+      DEMO_CONFIG.baseRings.supplementalWater.radiusFraction,
     );
 
     // Commander: single entity at the player's spawn point on the outer
@@ -1260,7 +1348,7 @@ export function spawnInitialBases(
         WATER_FACTORY_PLACEMENT_SEARCH_OFFSETS,
         (x, y) =>
           sampleMapOvalAt(oval, x, y).distance >= authoredSonarRadius &&
-          isRectFootprintOnSurface(world, x, y, sonarWidth, sonarHeight, 'water'),
+          isFootprintOnSurface(world, x, y, sonarWidth, sonarHeight, 'water'),
         true,
       ));
     }

@@ -323,6 +323,7 @@ import __wbg_init, {
   pathfinder_find_path_slice,
   pathfinder_total_work_units,
   pathfinder_clearance_reach_cells,
+  pathfinder_bake_shore_distance_sq,
   pathfinder_cancel_path_slice,
   pathfinder_cancel_all_path_slices,
   pathfinder_reset_match_state,
@@ -1077,6 +1078,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           resetMatchState: pathfinder_reset_match_state,
           totalWorkUnits: pathfinder_total_work_units,
           clearanceReachCells: pathfinder_clearance_reach_cells,
+          bakeShoreDistanceSq: pathfinder_bake_shore_distance_sq,
           lastResultStatus: pathfinder_last_result_status,
           lastSearchStrategy: pathfinder_last_search_strategy,
           lastFineExpandedNodes: pathfinder_last_fine_expanded_nodes,
@@ -1862,6 +1864,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runBuildingUtilityStructuresContractTest();
         const { runDemoMetalExtractorSpawnContractTest } = await import('../sim/demoMetalExtractorSpawnContractTest');
         runDemoMetalExtractorSpawnContractTest();
+        const { runInitialBaseShorePlacementContractTest } = await import('../sim/initialBaseShorePlacementContractTest');
+        runInitialBaseShorePlacementContractTest();
         const { runMetalCoverageContractTest } = await import('../sim/metalCoverageContractTest');
         runMetalCoverageContractTest();
         const { runDemoInitialBaseActiveStateContractTest } = await import('../sim/demoInitialBaseActiveStateContractTest');

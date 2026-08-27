@@ -92,6 +92,12 @@ export interface PathfinderApi {
   /** Cells within which a building change can alter clearance (the EDT
    *  clamp, owned by Rust). */
   clearanceReachCells: () => number;
+  /** Bake the terrain-only shore-distance fields (squared cell distances,
+   *  clamped at clearanceReachCells()): water cells to the nearest
+   *  shoreline/dry/edge cell, dry cells to the nearest cell touching water.
+   *  Both arrays must hold gridWidth()*gridHeight() entries. Returns 1 when
+   *  the terrain mask is installed, else 0 (nothing written). */
+  bakeShoreDistanceSq: (waterSq: Uint16Array, landSq: Uint16Array) => number;
   /** Monotonic telemetry: every work unit every search has charged since
    *  init, whichever API ran it. Never hashed. Read across one fixed tick it
    *  bounds ALL pathfinding work that tick performed. */

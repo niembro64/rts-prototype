@@ -37,11 +37,14 @@ function validatedWaterFabricatorConfig(): typeof demoConfig.waterFabricators {
     config.sonarRadiusFraction <= config.tech1RadiusFraction ||
     !Number.isFinite(config.arcSectorFraction) ||
     config.arcSectorFraction <= 0 ||
-    config.arcSectorFraction > 1
+    config.arcSectorFraction > 1 ||
+    !Number.isFinite(config.anchorSearchMinRadiusFraction) ||
+    config.anchorSearchMinRadiusFraction <= 0 ||
+    config.anchorSearchMinRadiusFraction >= config.tech3RadiusFraction
   ) {
     throw new Error(
-      'demoConfig.waterFabricators must order positive radii T3 < T2 < T1 < Sonar and have an ' +
-        'arcSectorFraction in (0, 1]',
+      'demoConfig.waterFabricators must order positive radii T3 < T2 < T1 < Sonar, have an ' +
+        'arcSectorFraction in (0, 1], and an anchorSearchMinRadiusFraction in (0, T3)',
     );
   }
   return config;

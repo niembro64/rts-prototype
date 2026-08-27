@@ -26,6 +26,13 @@ import { setUnitActions } from '../sim/unitActions';
 import { setUnitFacingYaw } from '../sim/unitOrientation';
 import { createPhysicsBodyForUnit } from './unitPhysicsBody';
 import { mapHasWater } from '../sim/mapSurface';
+import {
+  SHORE_MARGIN_WATER_SPAWN_WU,
+  getShoreDistanceField,
+  pointHasShoreMargin,
+  shoreClearanceSqAt,
+  type ShoreDistanceField,
+} from '../sim/shoreDistanceField';
 import { isFabricatorBuildingBlueprintId } from '../sim/blueprints/buildings';
 
 // Available unit blueprints for background spawning (excludes commander)
@@ -258,21 +265,24 @@ function seededFabricatorProductionReserve(world: WorldState, playerId: PlayerId
 const WATER_PATROL_ARC_WU = 900;
 
 /** First point outward from `startRadius` along `angle` on the map oval
- *  (20 wu steps) that is water AND that the blueprint's body can stand in
- *  under the authoritative traversal kernel; failing that, the first water
- *  point on the ray (a hull in the edge buffer or a tight ring still floats
- *  and routes out through an escape start); null only when the ray finds no
- *  water at all before the map edge. Used to keep water-required hulls off
- *  the land the centre disk sits on: a hull dropped on land has no ground
- *  propulsion, every route request from it is terminal, and no search can
- *  fix it (measured 2026-08-26: 87% of a 4-bot skirmish's unreachable
- *  results). */
+ *  (20 wu steps) that is water, that the blueprint's body can stand in under
+ *  the authoritative traversal kernel, AND that keeps the opening-wave shore
+ *  margin of open water around it (the first water cell a ray meets is, by
+ *  construction, the beach). Failing the margin, the deepest standable water
+ *  point on the ray; failing that, the first water point (a hull in the edge
+ *  buffer or a tight ring still floats and routes out through an escape
+ *  start); null only when the ray finds no water at all before the map edge.
+ *  Used to keep water-required hulls off the land the centre disk sits on: a
+ *  hull dropped on land has no ground propulsion, every route request from it
+ *  is terminal, and no search can fix it (measured 2026-08-26: 87% of a 4-bot
+ *  skirmish's unreachable results). */
 function firstStandableWaterPointOutward(
   world: WorldState,
   oval: MapOvalMetrics,
   angle: number,
   startRadius: number,
   unitBlueprintId: string,
+  field: ShoreDistanceField | null,
 ): { x: number; y: number } | null {
   const blueprint = getUnitBlueprint(unitBlueprintId);
   const filter = pathTerrainFilterForLocomotion(
@@ -286,6 +296,8 @@ function firstStandableWaterPointOutward(
   const symmetric = world.slopePathMode === 'symmetric';
   const maxRadius = oval.minDim * 0.5;
   let firstWater: { x: number; y: number } | null = null;
+  let deepestStandable: { x: number; y: number } | null = null;
+  let deepestStandableSq = 0;
   for (let r = Math.max(0, startRadius); r <= maxRadius; r += BUILD_GRID_CELL_SIZE) {
     const point = mapOvalPointAt(oval, angle, r);
     if (
@@ -298,7 +310,7 @@ function firstStandableWaterPointOutward(
     if (firstWater === null) firstWater = { x: point.x, y: point.y };
     const z = world.getTerrainBedZ(point.x, point.y);
     if (
-      isPathSegmentTraversable(
+      !isPathSegmentTraversable(
         point.x,
         point.y,
         { x: point.x, y: point.y, z },
@@ -309,10 +321,19 @@ function firstStandableWaterPointOutward(
         symmetric,
       )
     ) {
+      continue;
+    }
+    if (field === null) return { x: point.x, y: point.y };
+    if (pointHasShoreMargin(field, 'water', point.x, point.y, SHORE_MARGIN_WATER_SPAWN_WU)) {
       return { x: point.x, y: point.y };
     }
+    const sq = shoreClearanceSqAt(field, 'water', point.x, point.y);
+    if (sq > deepestStandableSq) {
+      deepestStandableSq = sq;
+      deepestStandable = { x: point.x, y: point.y };
+    }
   }
-  return firstWater;
+  return deepestStandable ?? firstWater;
 }
 
 /** The opening wave ignores terrain and path suitability for land bodies:
@@ -382,6 +403,9 @@ export function spawnBackgroundUnitsStandalone(
   const mapWidth = world.mapWidth;
   const mapHeight = world.mapHeight;
   const oval = makeMapOvalMetrics(mapWidth, mapHeight);
+  // Null on bare worlds (no authoritative terrain): the outward ray then
+  // keeps its first standable water point as before.
+  const shoreField = getShoreDistanceField(mapWidth, mapHeight);
   const cx = oval.cx;
   const cy = oval.cy;
 
@@ -449,7 +473,7 @@ export function spawnBackgroundUnitsStandalone(
           // centre sample: the roster guarantee outranks the medium here.
           const sample = sampleMapOvalAt(oval, spawn.x, spawn.y);
           const waterSpawn = firstStandableWaterPointOutward(
-            world, oval, sample.angle, sample.distance, unitBlueprintId,
+            world, oval, sample.angle, sample.distance, unitBlueprintId, shoreField,
           );
           // The patrol mirror stays a short arc along the ring, never the far
           // side of it: a hull ordered half-way around the annulus asks for a
@@ -459,7 +483,7 @@ export function spawnBackgroundUnitsStandalone(
             : sample.distance;
           const tangentAngle = WATER_PATROL_ARC_WU / Math.max(WATER_PATROL_ARC_WU, ringDistance);
           const waterTarget = firstStandableWaterPointOutward(
-            world, oval, sample.angle + tangentAngle, sample.distance, unitBlueprintId,
+            world, oval, sample.angle + tangentAngle, sample.distance, unitBlueprintId, shoreField,
           );
           if (waterSpawn !== null) spawn = waterSpawn;
           if (waterTarget !== null) {

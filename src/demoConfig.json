@@ -68,6 +68,7 @@
     "tech2RadiusFraction": 0.92,
     "tech3RadiusFraction": 0.88,
     "sonarRadiusFraction": 0.97,
+    "anchorSearchMinRadiusFraction": 0.3,
     "arcSectorFraction": 0.9
   },
   "initialUnitWaypointType": "patrol",

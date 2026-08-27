@@ -1060,6 +1060,56 @@ pub fn pathfinder_building_occupancy_version() -> u32 {
     pathfinder_state().building_occupancy_version
 }
 
+/// Bake the two shore-distance fields over the installed terrain mask,
+/// squared and clamped exactly like the planner's clearance fields:
+/// `water_sq_out[i]` is the squared cell distance from a FULLY submerged
+/// cell to the nearest cell that is not (a shoreline cell, dry ground, or
+/// the map-edge buffer); `land_sq_out[i]` is the squared cell distance from
+/// a fully dry cell to the nearest cell touching water (or the edge buffer).
+/// A cell of the other medium reads 0 in each field. Terrain only — the
+/// building layer is deliberately NOT an obstacle here, so the field says
+/// where the water is, not where a structure happens to stand today; the
+/// build grid answers occupancy on its own. Requires the terrain mask to be
+/// installed (`pathfinder_rebuild_terrain_mask_and_cc`); returns 0 until it
+/// is. Both slices must hold at least grid_w * grid_h entries.
+#[wasm_bindgen]
+pub fn pathfinder_bake_shore_distance_sq(water_sq_out: &mut [u16], land_sq_out: &mut [u16]) -> u32 {
+    let state = pathfinder_state();
+    let n = state.n;
+    if n == 0 || state.terrain_only_key == u64::MAX {
+        return 0;
+    }
+    if water_sq_out.len() < n || land_sq_out.len() < n {
+        return 0;
+    }
+    let grid_w = state.grid_w;
+    let grid_h = state.grid_h;
+    let water = std::mem::take(&mut state.terrain_water);
+    let submerged = std::mem::take(&mut state.terrain_submerged);
+    let edge = std::mem::take(&mut state.terrain_edge_blocked);
+    let mut scratch = std::mem::take(&mut state.edt_scratch);
+    edt_build_full(
+        &|i| submerged[i] == 0 || edge[i] != 0,
+        grid_w,
+        grid_h,
+        water_sq_out,
+        &mut scratch,
+    );
+    edt_build_full(
+        &|i| water[i] != 0 || edge[i] != 0,
+        grid_w,
+        grid_h,
+        land_sq_out,
+        &mut scratch,
+    );
+    state.terrain_water = water;
+    state.terrain_submerged = submerged;
+    state.terrain_edge_blocked = edge;
+    state.edt_scratch = scratch;
+    1
+}
+
+
 #[wasm_bindgen]
 pub fn pathfinder_rebuild_terrain_mask_and_cc(terrain_version: u32) {
     let state = pathfinder_state();
