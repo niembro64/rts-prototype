@@ -6,6 +6,7 @@
 // time, so no particle is walked or rewritten as it ages.
 
 import * as THREE from 'three';
+import { HEAT_RAMP_GLSL } from '@/heatRampPalette';
 import type { Entity } from '../sim/types';
 import { isRayType } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
@@ -362,41 +363,25 @@ const PARTICLE_VERTEX_SHADER = /* glsl */`
   }
 `;
 
-const PARTICLE_FRAGMENT_SHADER = /* glsl */`
+/** Every hot tetrahedron (terrain, entity, beam endpoint, death blast) fades
+ *  through the shared plasma heat ramp — white, yellow, red, dark red — over
+ *  its lifetime; only water ejecta keeps its liquid palette. */
+export const DAMAGE_IMPACT_PARTICLE_FRAGMENT_SHADER = /* glsl */`
   varying float vAge01;
   varying float vKind;
   varying float vSeed;
+
+  ${HEAT_RAMP_GLSL}
 
   void main() {
     if (vAge01 < 0.0 || vAge01 > 1.0) discard;
     float fadeIn = smoothstep(0.0, 0.08, vAge01);
     float fadeOut = 1.0 - smoothstep(0.56, 1.0, vAge01);
     float fade = fadeIn * fadeOut;
-    vec3 terrainColor = mix(vec3(1.0, 0.18, 0.01), vec3(0.12, 0.06, 0.025), vAge01);
     vec3 waterColor = mix(vec3(0.82, 0.96, 1.0), vec3(0.34, 0.48, 0.54), vAge01);
-    vec3 entityColor = mix(vec3(1.0, 0.16, 0.008), vec3(0.12, 0.035, 0.012), vAge01);
-    vec3 endpointColor = mix(vec3(1.0), vec3(0.52, 0.57, 0.62), vAge01);
-    // Keep the established red-to-dark blast fade intact after the opening
-    // flash; only prepend a short yellow-hot birth color for the tetrahedra.
-    vec3 blastRedFade = mix(
-      vec3(1.0, 0.20, 0.008),
-      vec3(0.11, 0.025, 0.008),
-      vAge01
-    );
-    vec3 blastBirthColor = vec3(1.0, 0.82, 0.06);
-    vec3 blastColor = mix(
-      blastBirthColor,
-      blastRedFade,
-      smoothstep(0.06, 0.20, vAge01)
-    );
-    vec3 color = vKind < 0.5
-      ? terrainColor
-      : (vKind < 1.5
-        ? waterColor
-        : (vKind < 2.5
-          ? entityColor
-          : (vKind < 3.5 ? endpointColor : blastColor)));
-    float alpha = fade * (vKind < 1.5 && vKind > 0.5 ? 0.48 : 0.92);
+    bool isWater = vKind > 0.5 && vKind < 1.5;
+    vec3 color = isWater ? waterColor : heatRamp(vAge01);
+    float alpha = fade * (isWater ? 0.48 : 0.92);
     gl_FragColor = vec4(color, alpha);
   }
 `;
@@ -612,7 +597,7 @@ export class DamageImpact3D {
     this.particleGeometry.setAttribute('aBirthLifeKindSeed', this.particleBirthAttr);
     this.particleMaterial = new THREE.ShaderMaterial({
       vertexShader: PARTICLE_VERTEX_SHADER,
-      fragmentShader: PARTICLE_FRAGMENT_SHADER,
+      fragmentShader: DAMAGE_IMPACT_PARTICLE_FRAGMENT_SHADER,
       uniforms: {
         uTimeSec: { value: 0 },
       },

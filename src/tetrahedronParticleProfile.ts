@@ -12,8 +12,20 @@ export const TETRAHEDRON_PARTICLE_SMALL: TetrahedronParticleSizeClass = 0;
 export const TETRAHEDRON_PARTICLE_MEDIUM: TetrahedronParticleSizeClass = 1;
 export const TETRAHEDRON_PARTICLE_LARGE: TetrahedronParticleSizeClass = 2;
 
-/** Exact world-space radii for the only three loose-tetrahedron sizes. */
-export const TETRAHEDRON_PARTICLE_RADIUS = [0.5, 0.8, 1.2] as const;
+/** The small class radius; every larger class is an exact multiple of it. */
+export const TETRAHEDRON_PARTICLE_SMALL_RADIUS = 0.75;
+/** Each class is exactly this many times the radius of the class below it. */
+export const TETRAHEDRON_PARTICLE_CLASS_RADIUS_RATIO = 2;
+
+/** Exact world-space radii for the only three loose-tetrahedron sizes:
+ *  small, medium = small x ratio, large = medium x ratio. */
+export const TETRAHEDRON_PARTICLE_RADIUS = [
+  TETRAHEDRON_PARTICLE_SMALL_RADIUS,
+  TETRAHEDRON_PARTICLE_SMALL_RADIUS * TETRAHEDRON_PARTICLE_CLASS_RADIUS_RATIO,
+  TETRAHEDRON_PARTICLE_SMALL_RADIUS *
+    TETRAHEDRON_PARTICLE_CLASS_RADIUS_RATIO *
+    TETRAHEDRON_PARTICLE_CLASS_RADIUS_RATIO,
+] as const;
 
 /** Smaller chunks move faster; the separated bands keep that ordering even
  * after the bounded per-particle speed variation is applied. */
