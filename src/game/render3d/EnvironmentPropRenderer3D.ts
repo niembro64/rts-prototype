@@ -52,7 +52,7 @@ import { configureGroundSilhouetteCasterTree3D } from './GroundSilhouetteShadow3
 type EnvironmentPropNode = {
   prop: VegetationProp;
   root: THREE.Group | null;
-  lods: Record<PrimitiveGeometryTier, THREE.Object3D> | null;
+  lods: Record<EnvironmentPropTier, THREE.Object3D> | null;
   batch: EnvironmentPropBatch | null;
   /** Immutable prop-local transform used by instanced vegetation batches. */
   matrix: THREE.Matrix4 | null;
@@ -60,17 +60,21 @@ type EnvironmentPropNode = {
   coverageRung: DetailRung;
 };
 
+/** The three authored geometry tiers plus `min`: the MIN/GLYPH rung, where
+ *  a tree is one tetrahedron and blade vegetation draws nothing. */
+export type EnvironmentPropTier = PrimitiveGeometryTier | 'min';
+
 type EnvironmentPropBatch = {
-  tiers: Record<PrimitiveGeometryTier, {
+  tiers: Record<EnvironmentPropTier, {
     meshes: THREE.InstancedMesh[];
     templateMatrices: THREE.Matrix4[];
   }>;
-  counts: Record<PrimitiveGeometryTier, number>;
+  counts: Record<EnvironmentPropTier, number>;
 };
 
 type LoadedEnvironmentAsset = {
   spec: VegetationAssetSpec;
-  templates: Record<PrimitiveGeometryTier, THREE.Object3D>;
+  templates: Record<EnvironmentPropTier, THREE.Object3D>;
   unitHeight: number;
 };
 
@@ -78,7 +82,7 @@ type LoadedEnvironmentAsset = {
  *  so a prop whose center just left the scope but whose canopy still
  *  overlaps it keeps drawing. */
 const SCOPE_PADDING_EXTRA = 120;
-const ENVIRONMENT_TIERS: readonly PrimitiveGeometryTier[] = ['close', 'mid', 'far'];
+const ENVIRONMENT_TIERS: readonly EnvironmentPropTier[] = ['close', 'mid', 'far', 'min'];
 const ENVIRONMENT_BATCH_MATRIX = new THREE.Matrix4();
 const ENVIRONMENT_BATCH_POSITION = new THREE.Vector3();
 const ENVIRONMENT_BATCH_SCALE = new THREE.Vector3();
@@ -182,10 +186,27 @@ export function environmentLodFlatMaterialSpec(
       };
 }
 
-/** Vegetation has no strategic glyph: it stops drawing at the shared
- * MIN/GLYPH rung used by entities. */
-export function environmentPropVisibleAtDetailRung(rung: DetailRung): boolean {
-  return rung !== DETAIL_RUNG_GLYPH;
+/** Which presentation a prop draws at a resolved detail rung, or null when
+ *  it draws nothing. The three geometry rungs map to the authored tiers for
+ *  every kind. At the shared MIN/GLYPH rung a tree never disappears: it
+ *  becomes one tetrahedron approximating its height and canopy (`min`), so a
+ *  strategic zoom still reads a forest as a forest. Blade vegetation (grass,
+ *  seaweed) has no silhouette worth a pixel at that size and stops drawing. */
+export function environmentPropTierForDetailRung(
+  rung: DetailRung,
+  kind: VegetationKindId,
+): EnvironmentPropTier | null {
+  if (rung !== DETAIL_RUNG_GLYPH) return geometryTierForDetail(detailLevelForRung(rung));
+  return environmentPropUsesGrassPresentation(kind) ? null : 'min';
+}
+
+/** The MIN tree: one tetrahedron standing on the root point whose triangular
+ *  base spans the canopy width and whose apex is the authored tree height. */
+export function createEnvironmentMinTreeGeometry(
+  radius: number,
+  height: number,
+): THREE.BufferGeometry {
+  return createEnvironmentLowTreeCrownGeometry(radius * 2, height, radius * 2);
 }
 
 /** Which weathering terms a material takes, from the one thing that is true
@@ -440,6 +461,7 @@ export class EnvironmentPropRenderer3D {
       batch.counts.close = 0;
       batch.counts.mid = 0;
       batch.counts.far = 0;
+      batch.counts.min = 0;
     }
     for (const node of this.nodes) {
       const p = node.prop;
@@ -487,10 +509,9 @@ export class EnvironmentPropRenderer3D {
           )
         : DETAIL_RUNG_CLOSE;
       const rung = detailRungForMode(node.coverageRung);
-      const visible = environmentPropVisibleAtDetailRung(rung);
-      if (node.root !== null) node.root.visible = visible;
-      if (!visible) continue;
-      const tier = geometryTierForDetail(detailLevelForRung(rung));
+      const tier = environmentPropTierForDetailRung(rung, p.kind);
+      if (node.root !== null) node.root.visible = tier !== null;
+      if (tier === null) continue;
       if (node.batch !== null && node.matrix !== null) {
         const slot = node.batch.counts[tier]++;
         const batchTier = node.batch.tiers[tier];
@@ -507,6 +528,7 @@ export class EnvironmentPropRenderer3D {
         node.lods.close.visible = tier === 'close';
         node.lods.mid.visible = tier === 'mid';
         node.lods.far.visible = tier === 'far';
+        node.lods.min.visible = tier === 'min';
       }
     }
     for (const batch of this.propBatches.values()) {
@@ -743,20 +765,41 @@ export class EnvironmentPropRenderer3D {
         close: template,
         mid: new THREE.Group(),
         far: new THREE.Group(),
+        min: new THREE.Group(),
       },
       unitHeight,
     };
     asset.templates.mid = this.makeEnvironmentLodTemplate(asset, 'mid');
     asset.templates.far = this.makeEnvironmentLodTemplate(asset, 'far');
-    // After the mid/far tiers are derived from the close tier, drop the
+    asset.templates.min = this.makeEnvironmentMinTemplate(asset);
+    // After the reduced tiers are derived from the close tier, drop the
     // wrapper groups every prop would otherwise clone.
     asset.templates.close = flattenPropTemplate(asset.templates.close);
     asset.templates.mid = flattenPropTemplate(asset.templates.mid);
     asset.templates.far = flattenPropTemplate(asset.templates.far);
+    asset.templates.min = flattenPropTemplate(asset.templates.min);
     configureGroundSilhouetteCasterTree3D(asset.templates.close);
     configureGroundSilhouetteCasterTree3D(asset.templates.mid);
     configureGroundSilhouetteCasterTree3D(asset.templates.far);
+    configureGroundSilhouetteCasterTree3D(asset.templates.min);
     return asset;
+  }
+
+  /** The MIN tier: a tree is exactly one tetrahedron in the flat foliage
+   *  material (so it takes the same fog, weathering, and light floor as the
+   *  LOW crown it replaces); grass and seaweed contribute no geometry. */
+  private makeEnvironmentMinTemplate(asset: LoadedEnvironmentAsset): THREE.Group {
+    const group = new THREE.Group();
+    group.name = `environment-template-${asset.spec.id}-min`;
+    if (environmentPropUsesGrassPresentation(asset.spec.kind)) return group;
+    const height = asset.unitHeight;
+    const radius = height
+      * (asset.spec.defaultRadius / Math.max(1, asset.spec.defaultHeight));
+    const material = this.environmentLodFlatMaterial('foliage');
+    configureEnvironmentMaterialFogShading(material);
+    this.worldShade.patchMaterial(material);
+    group.add(new THREE.Mesh(createEnvironmentMinTreeGeometry(radius, height), material));
+    return group;
   }
 
   private makeEnvironmentLodTemplate(
@@ -1044,11 +1087,13 @@ export class EnvironmentPropRenderer3D {
         close: asset.templates.close.clone(true),
         mid: asset.templates.mid.clone(true),
         far: asset.templates.far.clone(true),
+        min: asset.templates.min.clone(true),
       };
       lods.close.visible = true;
       lods.mid.visible = false;
       lods.far.visible = false;
-      root.add(lods.close, lods.mid, lods.far);
+      lods.min.visible = false;
+      root.add(lods.close, lods.mid, lods.far, lods.min);
       const scale = prop.height / asset.unitHeight;
       // Sim (x, y, z) with z up maps to three.js (x, z, y) with y up.
       root.position.set(prop.x, prop.z, prop.y);
@@ -1097,7 +1142,7 @@ export class EnvironmentPropRenderer3D {
     capacity: number,
   ): EnvironmentPropBatch | null {
     const tiers = {} as EnvironmentPropBatch['tiers'];
-    const counts: Record<PrimitiveGeometryTier, number> = { close: 0, mid: 0, far: 0 };
+    const counts: Record<EnvironmentPropTier, number> = { close: 0, mid: 0, far: 0, min: 0 };
     for (let i = 0; i < ENVIRONMENT_TIERS.length; i++) {
       const tier = ENVIRONMENT_TIERS[i];
       const template = asset.templates[tier];
@@ -1168,7 +1213,9 @@ export class EnvironmentPropRenderer3D {
         meshes.push(mesh);
         this.root.add(mesh);
       });
-      if (unsupported || meshes.length === 0) {
+      // `min` is legitimately empty for blade vegetation, which draws nothing
+      // at the glyph rung; every geometry tier must carry a mesh.
+      if (unsupported || (meshes.length === 0 && tier !== 'min')) {
         for (const builtTier of Object.values(tiers)) {
           for (let meshIndex = 0; meshIndex < builtTier.meshes.length; meshIndex++) {
             this.root.remove(builtTier.meshes[meshIndex]);

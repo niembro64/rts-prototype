@@ -2170,7 +2170,7 @@
         <li><strong>HIGH</strong> is the close rung: the complete authored visual and its high geometry tier.</li>
         <li><strong>MED</strong> is the middle rung: the same authored assembly at its medium geometry and feature budget.</li>
         <li><strong>LOW</strong> is the far rung: the same authored assembly at its low geometry and feature budget. LOW is still real geometry; it is not an implicit removal rule, and it is deliberately the widest band of the three. An entity leaves LOW only when it has become too small on screen to be worth rendering at all &mdash; a handful of pixels across &mdash; not merely when it is far away.</li>
-        <li><strong>MIN</strong> is the entity-geometry floor: once AUTO takes an entity below the glyph threshold, its strategic collision-shape glyph fades in over the still-opaque LOW model and then replaces it. MIN removes unreadable entity and vegetation geometry, not gameplay events.</li>
+        <li><strong>MIN</strong> is the entity-geometry floor: once AUTO takes an entity below the glyph threshold, its strategic collision-shape glyph fades in over the still-opaque LOW model and then replaces it. MIN removes unreadable entity geometry and blade vegetation, not gameplay events. A tree does not vanish at MIN: it becomes one tetrahedron standing on its root whose base spans the canopy and whose apex is its authored height, so a strategic zoom still reads a forest as a forest &mdash; one instanced triangle-pyramid per tree, in the same flat foliage material as the LOW crown. Grass and seaweed, which have no silhouette worth a pixel at that size, stop drawing.</li>
       </ul>
       <p>
         This ladder applies to every visual part of an entity together:
