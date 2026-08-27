@@ -687,12 +687,10 @@ export const TERRAIN_WALL_WEAR_GLSL = [
   '  // fraction of themselves.',
   '  float displaced = weatherDisplace(distance, fields, grow, warp);',
   '  float worn = weatherJitterRamp(clamp(1.0 - displaced / span, 0.0, 1.0), fields, variation);',
-  '  // The dissolve bites only in the outer half, so the wear is solid where',
-  '  // it hugs the rim and crumbles away at its far edge. Dissolving the whole',
-  '  // ramp instead would punch holes in the fold itself, which reads as',
-  '  // damage to the terrain rather than as dirt on it.',
-  '  float crumble = weatherDissolve(clamp(worn * 2.0, 0.0, 1.0), fields, distanceWidth * 2.0, grainStrength);',
-  '  return weatherGrimeAmount(worn, fields, falloff, patchDepth) * crumble * clamp(intensity, 0.0, 1.0);',
+  '  // Shaped and crumbled by the shared band composite: solid where it hugs',
+  '  // the rim, dissolved away at its far edge, the same way the ore rim is.',
+  '  return weatherGrimeBand(worn, fields, falloff, patchDepth, distanceWidth, grainStrength)',
+  '    * clamp(intensity, 0.0, 1.0);',
   '}',
 ].join('\n');
 
@@ -744,6 +742,16 @@ export function terrainWallWearFragment(
     `    weatherSurfacePlane(${worldPositionExpr}, ${geometricNormalExpr}),`,
     '    uWallWearNoiseTileWorldSize',
     '  );',
+    // The bottom rim reads its OWN fields. With one sample serving both rims,
+    // the spall along the top and the debris at the base thickened and
+    // thinned in lockstep down the whole terrace — two bands wearing one
+    // pattern, which is the stencil again, twice. Same noise, a rotated and
+    // offset lattice at a co-prime tile, so the two rims are strangers.
+    '  WeatherFields wallBottomFields = weatherSampleFields(',
+    `    ${WEATHER_NOISE_SAMPLER},`,
+    `    mat2(0.6018, -0.7986, 0.7986, 0.6018) * weatherSurfacePlane(${worldPositionExpr}, ${geometricNormalExpr}) + vec2(211.0, 97.0),`,
+    '    uWallWearNoiseTileWorldSize * 0.87',
+    '  );',
     '  vec3 wallSoil = weatherSampleSoil(',
     `    ${WEATHER_SOIL_SAMPLER},`,
     `    ${worldPositionExpr},`,
@@ -765,7 +773,7 @@ export function terrainWallWearFragment(
     '    uWallWearTopFalloff, uWallWearTopPatchDepth',
     '  );',
     '  float bottomWear = terrainWallWearAmount(',
-    '    bottomDistance, vTerrainWallRimBottom.y, wallFields,',
+    '    bottomDistance, vTerrainWallRimBottom.y, wallBottomFields,',
     '    uWallWearReach, uWallWearGrow, uWallWearWarp,',
     '    wallWearDistanceWidth, uWallWearGrain, uWallWearVariation,',
     '    uWallWearBottomFalloff, uWallWearBottomPatchDepth',

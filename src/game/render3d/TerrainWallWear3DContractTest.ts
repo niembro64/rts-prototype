@@ -196,9 +196,8 @@ function checkShaderSourceContract(): void {
     'weatherSampleFields(',
     'weatherSurfacePlane(',
     'weatherDisplace(',
-    'weatherDissolve(',
     'weatherJitterRamp(',
-    'weatherGrimeAmount(',
+    'weatherGrimeBand(',
     'weatherApplyGrime(',
     'weatherSampleSoil(',
   ]) {
@@ -211,6 +210,25 @@ function checkShaderSourceContract(): void {
       `the wall wear must reach the shared ${shared} rather than re-deriving it`,
     );
   }
+  // The crumble at the band's far edge belongs to the vocabulary now, so the
+  // ore rim gets it too; a rim that dissolved its own ramp locally would be
+  // the one site free to drift from the others.
+  assertContract(
+    !source.includes('weatherDissolve(') && !source.includes('weatherGrimeAmount('),
+    'the wall wear must lay its bands through weatherGrimeBand rather than composing the dissolve itself',
+  );
+
+  // TWO RIMS, TWO WEATHERS. One field sample serving both rims thickened
+  // and thinned the spall along the top and the debris at the base in
+  // lockstep down the whole terrace — two bands wearing one pattern. The
+  // bottom rim must read its own fields, through a lattice the top's is a
+  // stranger to.
+  assertContract(
+    (source.match(/weatherSampleFields\(/g) ?? []).length >= 2 &&
+      /bottomDistance, vTerrainWallRimBottom\.y, wallBottomFields,/.test(source) &&
+      /topDistance, vTerrainWallRimTop\.y, wallFields,/.test(source),
+    'the top and bottom rims must be shaped by separately sampled field sets',
+  );
 
   // NOT world XZ, and NOT the geometric normal. Both were measured: sampling
   // the fields in XZ leaves them constant down a near-vertical face, and

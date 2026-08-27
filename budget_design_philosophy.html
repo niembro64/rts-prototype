@@ -5013,6 +5013,21 @@
         can quietly land in, and no surface that is sharper or coarser than
         the one bolted to it.
       </p>
+      <p>
+        The ground obeys the same rule at the same scale, and a tile authored
+        at hundreds of world units does not get there on its own: at battle
+        zoom it is about two pixels per world unit, and everything finer than
+        that blurs to a sheen. So every terrain substance is read at
+        <strong>two octaves</strong> of one tile &mdash; the authored read,
+        and the same tile again small, rotated, and co-prime to it, for the
+        grit under the slabs. Rock reads that way, the soil every weathered
+        boundary is buried under reads that way, and the ore body reads the
+        rock tile that way too. There is one fine-octave projection
+        (<code>weatherSampleFineOctave</code>) and no second sampler for it;
+        the terrain program sits at the sixteen-unit ceiling, and a metal
+        deposit that was the one surface read at a single octave was the one
+        smooth thing on the map.
+      </p>
 
       <h3>Texel density is measured in world units, never in pixels</h3>
       <p>
@@ -5210,8 +5225,8 @@
       </p>
       <ul class="rule-list">
         <li><strong>Displacement</strong> moves where the boundary is. Two scales at least: broad lobes, and finer bites eroded into those lobes. It is applied to the metric quantity that defines the boundary &mdash; a distance, a coverage, a height &mdash; not to the colour that results, so the surface genuinely extends and retreats rather than smearing.</li>
-        <li><strong>Dissolve</strong> destroys the boundary&rsquo;s uniformity. Across a transition band the material is either present or absent, and a granular field decides which, rather than distance deciding it evenly. The band&rsquo;s own width is sampled from a broad field too: a transition that is the same thickness along its whole length is still one authored number, however ragged its edge.</li>
-        <li><strong>Grime</strong> buries the join. A band straddling the boundary, reaching different distances into the two materials, jittered along its length, thinned in patches, painting a third substance over both sides and darkening toward the contact. The two reaches must differ and both must be non-zero &mdash; grime that only lands on one side is an outline of the other.</li>
+        <li><strong>Dissolve</strong> destroys the boundary&rsquo;s uniformity. Across a transition band the material is either present or absent, and a granular field decides which, rather than distance deciding it evenly. The band&rsquo;s own width is sampled from a field too: a transition that is the same thickness along its whole length is still one authored number, however ragged its edge.</li>
+        <li><strong>Grime</strong> buries the join. A band straddling the boundary, reaching different distances into the two materials, jittered along its length, thinned in patches, painting a third substance over both sides and darkening toward the contact. The two reaches must differ and both must be non-zero &mdash; grime that only lands on one side is an outline of the other. And nothing about the band may be one number along its length: its width is sampled at rim-length scale and again at patch scale, so no two stretches of one rim share a thickness, and it is wide on one side of a deposit and tight on the other; its fall-off profile swings between a soft spill and a tight seam the same way; and its far edge is <em>dissolved</em> against the grain, never an analytic ramp &mdash; a halo that fades evenly to nothing is the boundary&rsquo;s contour drawn a second time at one more offset. A width field broader than the thing it dresses gives every deposit one thickness of its own, which is a map of stencils with different margins.</li>
       </ul>
       <p>
         Grow before you erode. Displacement that is symmetric about the

@@ -17,6 +17,8 @@
 
 import { COLORS } from '@/colorsConfig';
 import {
+  METAL_DEPOSIT_ROCK_FINE_TEXTURE_BLEND,
+  METAL_DEPOSIT_ROCK_FINE_TEXTURE_TILE_WORLD_SIZE,
   METAL_DEPOSIT_ROCK_TEXTURE_BLEND,
   METAL_DEPOSIT_ROCK_TEXTURE_CONTRAST,
   METAL_DEPOSIT_ROCK_TEXTURE_LIT_COLOR_BLEND,
@@ -28,12 +30,16 @@ import {
  *  to linear working space. The shared shader applies the rock detail before
  *  lighting at `rockTextureBlend`, then preserves its dark structure after
  *  lighting at `rockTextureLitColorBlend`; both projections tile every
- *  `rockTileWorldSize` world units. */
+ *  `rockTileWorldSize` world units, with the same tile read again at
+ *  `rockFineTileWorldSize` (rotated, co-prime) and mixed in at
+ *  `rockFineBlend` for the grit between the plates. */
 export const METAL_SURFACE_MATERIAL = {
   color: COLORS.environment.metalDeposit.baseColorHex,
   metalness: COLORS.environment.metalDeposit.standardMaterial.metalness,
   roughness: COLORS.environment.metalDeposit.standardMaterial.roughness,
   rockTileWorldSize: METAL_DEPOSIT_ROCK_TEXTURE_TILE_WORLD_SIZE,
+  rockFineTileWorldSize: METAL_DEPOSIT_ROCK_FINE_TEXTURE_TILE_WORLD_SIZE,
+  rockFineBlend: METAL_DEPOSIT_ROCK_FINE_TEXTURE_BLEND,
   rockTextureBlend: METAL_DEPOSIT_ROCK_TEXTURE_BLEND,
   rockTextureLitColorBlend: METAL_DEPOSIT_ROCK_TEXTURE_LIT_COLOR_BLEND,
   rockTextureContrast: METAL_DEPOSIT_ROCK_TEXTURE_CONTRAST,
@@ -241,6 +247,8 @@ export function metalSurfaceLayerUniformDeclarations(): string {
     'uniform vec3 uMetalSurfaceColor;',
     'uniform float uMetalSurfaceTileWorldSize;',
     'uniform float uMetalSurfaceBlend;',
+    'uniform float uMetalFineTileWorldSize;',
+    'uniform float uMetalFineBlend;',
     'uniform float uMetalSurfaceLitColorBlend;',
     'uniform float uMetalSurfaceContrast;',
     'uniform float uMetalSurfaceRoughnessVariation;',
