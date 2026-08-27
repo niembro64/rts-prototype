@@ -7,7 +7,7 @@
   "presets": [
     {
       "id": "land-plate",
-      "name": "Land Plate",
+      "name": "Niemo's Field",
       "backdropSlug": "large-circle",
       "turretShieldPanelsEnabled": true,
       "turretShieldSpheresEnabled": true,
@@ -34,7 +34,7 @@
     },
     {
       "id": "nemos-flat",
-      "name": "Nemo's Flat",
+      "name": "Niemo's Dividers",
       "backdropSlug": "angels-flat",
       "turretShieldPanelsEnabled": true,
       "turretShieldSpheresEnabled": true,
@@ -61,7 +61,7 @@
     },
     {
       "id": "boulder-mountain",
-      "name": "Boulder Mountain",
+      "name": "Niemo's Mountain",
       "backdropSlug": "boulder-mountain",
       "turretShieldPanelsEnabled": true,
       "turretShieldSpheresEnabled": true,
@@ -88,7 +88,7 @@
     },
     {
       "id": "spikey-lake",
-      "name": "Spikey Lake",
+      "name": "Niemo's Lake",
       "backdropSlug": "spikey-lake",
       "turretShieldPanelsEnabled": true,
       "turretShieldSpheresEnabled": true,
@@ -115,7 +115,7 @@
     },
     {
       "id": "nemos-island",
-      "name": "Nemo's Island",
+      "name": "Niemo's Island",
       "backdropSlug": "niemo-islands",
       "turretShieldPanelsEnabled": true,
       "turretShieldSpheresEnabled": true,
@@ -142,7 +142,7 @@
     },
     {
       "id": "nemos-playhouse",
-      "name": "Nemo's Playhouse",
+      "name": "Niemo's Playhouse",
       "backdropSlug": "angels-playhouse",
       "turretShieldPanelsEnabled": true,
       "turretShieldSpheresEnabled": true,
@@ -169,7 +169,7 @@
     },
     {
       "id": "metal-hell",
-      "name": "METAL HELL",
+      "name": "Niemo's Hell",
       "backdropSlug": "metal-hell",
       "turretShieldPanelsEnabled": true,
       "turretShieldSpheresEnabled": true,
@@ -196,7 +196,7 @@
     },
     {
       "id": "metal-plate",
-      "name": "METAL PLATE",
+      "name": "Niemo's Plate",
       "backdropSlug": "metal-plate",
       "turretShieldPanelsEnabled": true,
       "turretShieldSpheresEnabled": true,
