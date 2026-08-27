@@ -70,9 +70,9 @@ export function buildWindTurbineMesh(
     makeCylinder(factoryFrameMat, Math.max(7, minDim * 0.28), 5, 0, baseH + 2.5, 0, hexCylinderGeom),
     'low',
   ));
-  // No opaque tower: the resource pylon IS the shaft. The transparent
-  // straw (radius = old tower radius) rises from the base to the nacelle
-  // so the energy beads riding down the bore are fully visible.
+  // The resource pylon IS the tower: an open lattice mast rises from the
+  // base to the nacelle, so the energy beads riding down its bore stay
+  // visible between the legs. The nacelle itself is the pylon head.
   const energyPylon = buildResourcePylonRig({
     resource: 'energy',
     direction: 'inbound',
@@ -87,6 +87,7 @@ export function buildWindTurbineMesh(
     coneAngle: PYLON_BUILDING_WIND_CONE_HALF_ANGLE_RAD,
     channel: 0,
     geometryTier: getActiveBuildingGeometryTier(),
+    head: 'none',
   });
   for (const mesh of energyPylon.staticMeshes) {
     details.push(detail(mesh, 'low'));

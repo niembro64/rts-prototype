@@ -199,7 +199,10 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   // anchor-signature invariant forbids dropping parts at a rung, so the far
   // ceiling has to carry all sixteen; the rams themselves are already built a
   // geometry rung below the body. Still under the converter and fabricator.
-  buildingSolar: { close: 1600, mid: 700, far: 400 },
+  // Re-baselined 2026-08-27 when the resource pylon became a lattice mast
+  // (three legs, rings) with a collar and, on solar only, a sky-facing dish:
+  // +18 triangles at the far rung over the old two-straw pylon.
+  buildingSolar: { close: 1600, mid: 700, far: 420 },
   buildingWind: { close: 1100, mid: 550, far: 300 },
   buildingExtractor: { close: 800, mid: 450, far: 260 },
   buildingExtractorT2: { close: 1000, mid: 550, far: 340 },

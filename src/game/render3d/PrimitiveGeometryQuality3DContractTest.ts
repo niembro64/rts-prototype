@@ -10,7 +10,6 @@ import {
   createPrimitiveHemisphereGeometry,
   createPrimitiveTetrahedronGeometry,
   createPrimitiveTorusGeometry,
-  createPrimitiveVertexDownTetrahedronGeometry,
   geometryEnclosedVolume,
   getSharedPrimitiveRingGeometry,
   getSharedPrimitiveSphereGeometry,
@@ -310,30 +309,4 @@ export function runPrimitiveGeometryQuality3DContractTest(): void {
     foot.dispose();
   }
 
-  // Pylon head: a volume-preserved tetrahedron whose lowest vertex points
-  // straight down local -Y (into the pylon tube bore).
-  const pylonCap = createPrimitiveVertexDownTetrahedronGeometry();
-  assertContract(triangleCount(pylonCap) === 4, 'pylon cap is a four-face tetrahedron');
-  assertVolume(pylonCap, 'pylon cap', Math.PI * 4 / 3);
-  {
-    const positions = pylonCap.getAttribute('position');
-    let lowestY = Infinity;
-    let lowestX = 0;
-    let lowestZ = 0;
-    for (let i = 0; i < positions.count; i++) {
-      const y = positions.getY(i);
-      if (y < lowestY) {
-        lowestY = y;
-        lowestX = positions.getX(i);
-        lowestZ = positions.getZ(i);
-      }
-    }
-    assertContract(
-      lowestY < 0 &&
-        Math.abs(lowestX) < 1e-4 * Math.abs(lowestY) + 1e-6 &&
-        Math.abs(lowestZ) < 1e-4 * Math.abs(lowestY) + 1e-6,
-      'pylon cap lowest vertex points straight down local -Y',
-    );
-  }
-  pylonCap.dispose();
 }

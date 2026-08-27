@@ -884,14 +884,16 @@ function buildResourceConverterMesh(
   for (const mesh of energyPylon.staticMeshes) details.push(detail(mesh, 'low'));
   for (const mesh of metalPylon.staticMeshes) details.push(detail(mesh, 'low'));
 
+  // Closed pose: the mast legs telescope down to 38% and everything riding
+  // the mast (rings, collar) slides down with it and shrinks.
   const pylonOperationalParts = [energyPylon, metalPylon].flatMap((pylon) =>
-    pylon.staticMeshes.map((mesh, index) => createBuildingOperationalPosePart(mesh, {
+    pylon.staticMeshes.map((mesh) => createBuildingOperationalPosePart(mesh, {
       closedPosition: new THREE.Vector3(
         mesh.position.x,
         pylonBaseY + (mesh.position.y - pylonBaseY) * 0.38,
         mesh.position.z,
       ),
-      closedScale: index < 2
+      closedScale: pylon.shaftMeshes.includes(mesh)
         ? new THREE.Vector3(mesh.scale.x, mesh.scale.y * 0.38, mesh.scale.z)
         : mesh.scale.clone().multiplyScalar(0.72),
     })),
