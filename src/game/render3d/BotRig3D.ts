@@ -180,6 +180,9 @@ type BotArm = {
 export type BotMesh = {
   type: 'bot';
   variant: BotVariant;
+  /** Physical-size presentation profile. Compact bots retain the complete
+   * authored rig and motion, but use chunkier, lower-piece-count limb shells. */
+  compactGeometry: boolean;
   group: THREE.Group;
   /** The legs hang off this, and it yaws INSIDE the hull.
    *
@@ -253,6 +256,10 @@ const ARM_ACTION_EASE_SECONDS = 0.11;
 const REX_WEAPON_ARM_AIM_EASE_SECONDS = 0.12;
 const STANDING_PELVIS_CENTER_LIFT_RATIO = 0.26;
 const STANDING_PELVIS_HEIGHT_RATIO = 0.82;
+/** Human-scale and construction bipeds are too small on screen for nested
+ * actuator shells to read. Commander- and titan-scale bots stay fully authored. */
+export const COMPACT_BOT_MAX_UNIT_RADIUS = 18;
+export const COMPACT_BOT_LIMB_WIDTH_SCALE = 1.14;
 /** Conventional authored shoe roll, based on the BAR Commander approach.
  * The angles are deliberately restrained at RTS camera distance. */
 const STANDING_FOOT_PUSH_OFF_RAD = THREE.MathUtils.degToRad(-14);
@@ -375,6 +382,7 @@ function makeFoot(
   ownerId: PlayerId | undefined,
   variant: BotVariant,
   geometryTier: PrimitiveGeometryTier,
+  compactGeometry: boolean,
 ): THREE.Group {
   const group = new THREE.Group();
   group.userData.botShoe = true;
@@ -382,7 +390,7 @@ function makeFoot(
   const sole = makeBlock(group, length * 0.80, soleHeight, width * 0.90, ownerId);
   sole.position.set(length * 0.01, soleHeight * 0.5, 0);
 
-  if (geometryTier !== 'far') {
+  if (!compactGeometry && geometryTier !== 'far') {
     const heel = makeBlock(group, length * 0.28, soleHeight * 2.0, width * 0.72, ownerId);
     heel.position.set(-length * 0.34, soleHeight, 0);
   }
@@ -399,7 +407,8 @@ function makeFoot(
   quarter.position.set(-length * 0.19, soleHeight + quarterHeight * 0.5, 0);
   quarter.rotation.z = THREE.MathUtils.degToRad(-7);
 
-  if (geometryTier !== 'far') {
+  if ((!compactGeometry && geometryTier !== 'far') ||
+    (compactGeometry && geometryTier === 'close')) {
     const instepHeight = Math.max(soleHeight * 2.0, width * 0.34);
     const instep = makeBlock(
       group,
@@ -818,6 +827,11 @@ export function buildBotRig(
   unitBlueprintId?: string,
 ): BotMesh {
   const variant = botVariant(unitBlueprintId);
+  const compactGeometry = unitRadius <= COMPACT_BOT_MAX_UNIT_RADIUS;
+  const geometryWidthScale = compactGeometry ? COMPACT_BOT_LIMB_WIDTH_SCALE : 1;
+  const jointGeometryTier: PrimitiveGeometryTier = compactGeometry
+    ? (geometryTier === 'close' ? 'mid' : 'far')
+    : geometryTier;
   const group = new THREE.Group();
   unitGroup.add(group);
   const hips = new THREE.Group();
@@ -826,7 +840,7 @@ export function buildBotRig(
   const thighLength = unitRadius * cfgLegs.segments.upper.lengthUnitRadiusRatio;
   const shinLength = unitRadius * cfgLegs.segments.lower.lengthUnitRadiusRatio;
   const legLength = thighLength + shinLength;
-  const legWidth = cfgLegs.radius;
+  const legWidth = cfgLegs.radius * geometryWidthScale;
   const footLength = legLength * cfgLegs.footLengthRatio;
   const footWidth = legWidth * cfgLegs.footWidthRatio;
   const stepLength = Math.max(1, legLength * cfgLegs.strideLengthRatio);
@@ -854,7 +868,7 @@ export function buildBotRig(
       hipJointRadius * 2,
       legWidth * 0.95,
       ownerId,
-      geometryTier,
+      jointGeometryTier,
     );
     hipJoint.position.set(hipX, hipY, hipZ);
     hipJoint.userData.botHipJoint = true;
@@ -870,21 +884,29 @@ export function buildBotRig(
       thigh: makeStrut(
         hips, legWidth, legWidth * 0.82, ownerId,
         variant === 'commander' && geometryTier === 'close' ? side : 0,
-        geometryTier !== 'far',
+        !compactGeometry && geometryTier !== 'far',
       ),
       shin: makeStrut(
         hips, legWidth * 0.78, legWidth * 0.66, ownerId,
         variant === 'commander' && geometryTier === 'close' ? side : 0,
-        geometryTier !== 'far',
+        !compactGeometry && geometryTier !== 'far',
       ),
       knee: makeBotHingeCylinder(
         hips,
         legWidth * 0.95,
         legWidth * 0.9,
         ownerId,
-        geometryTier,
+        jointGeometryTier,
       ),
-      foot: makeFoot(hips, footLength, footWidth, ownerId, variant, geometryTier),
+      foot: makeFoot(
+        hips,
+        footLength,
+        footWidth,
+        ownerId,
+        variant,
+        geometryTier,
+        compactGeometry,
+      ),
       footLocalX: hipX,
       footLocalZ: hipZ,
       footTracked: false,
@@ -902,7 +924,7 @@ export function buildBotRig(
     ...(cfgUpperArms === undefined ? [] : [{ config: cfgUpperArms, upper: true }]),
   ];
   for (const pair of armPairs) {
-    const armWidth = pair.config.radius;
+    const armWidth = pair.config.radius * geometryWidthScale;
     const upperLength = unitRadius * pair.config.segments.upper.lengthUnitRadiusRatio;
     const forearmLength = unitRadius * pair.config.segments.lower.lengthUnitRadiusRatio;
     for (const side of [-1, 1] as const) {
@@ -964,20 +986,20 @@ export function buildBotRig(
         upper: makeStrut(
           group, armWidth, armWidth * 0.9, ownerId,
           variant === 'commander' && geometryTier === 'close' ? side : 0,
-          geometryTier !== 'far',
+          !compactGeometry && geometryTier !== 'far',
           false,
         ),
         forearm: makeStrut(
           group, armWidth * 0.86, armWidth * 0.78, ownerId,
           variant === 'commander' && geometryTier === 'close' ? side : 0,
-          geometryTier !== 'far',
+          !compactGeometry && geometryTier !== 'far',
         ),
         elbow: makeBotHingeCylinder(
           group,
           armWidth * 0.92,
           armWidth * 0.86,
           ownerId,
-          geometryTier,
+          jointGeometryTier,
         ),
         wrist,
         attachment,
@@ -994,6 +1016,7 @@ export function buildBotRig(
   return {
     type: 'bot',
     variant,
+    compactGeometry,
     group,
     hips,
     pelvis,
