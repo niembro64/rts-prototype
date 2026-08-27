@@ -28,6 +28,7 @@ import {
   resolveMapInfoAnnexLiquidRows,
   type MapInfoAnnexRow,
 } from './MapInfoAnnex3D';
+import { createLiquidSurfaceTexture3D } from './LiquidSurfaceTexture3D';
 
 // Depth bias only. The mesh vertices stay exactly at WATER_LEVEL for
 // gameplay/readability, but the fragments are pushed slightly behind
@@ -262,6 +263,9 @@ export class WaterRenderer3D {
   private waterTriangleLines: THREE.LineSegments;
   private waterTriangleGeometry: THREE.BufferGeometry;
   private waterTriangleMaterial: THREE.LineBasicMaterial;
+  private liquidTexture: THREE.DataTexture;
+  private liquidTextureTileWorldSize: number;
+  private liquidTextureScrollUvPerSecond: THREE.Vector2;
   private mapWidth: number;
   private mapHeight: number;
   private built = false;
@@ -285,8 +289,21 @@ export class WaterRenderer3D {
     // MeshBasicMaterial (unlit, still tone mapped), but the colour is scaled
     // past 1.0 so ACES renders it as an emitter rather than as red paint.
     const lava = isLavaLiquidSurface();
+    const textureConfig = lava
+      ? LAVA_RENDER_CONFIG.texture
+      : WATER_RENDER_CONFIG.texture;
+    this.liquidTexture = createLiquidSurfaceTexture3D(
+      lava ? 'lava' : 'water',
+      textureConfig,
+    );
+    this.liquidTextureTileWorldSize = textureConfig.tileWorldSize;
+    this.liquidTextureScrollUvPerSecond = new THREE.Vector2(
+      textureConfig.scrollWorldUnitsPerSecondX / textureConfig.tileWorldSize,
+      textureConfig.scrollWorldUnitsPerSecondZ / textureConfig.tileWorldSize,
+    );
     this.waterMaterial = new THREE.MeshBasicMaterial({
       color: lava ? lavaSurfaceColor() : WATER_RENDER_CONFIG.color,
+      map: this.liquidTexture,
       transparent: !lava && !WATER_FULLY_OPAQUE,
       opacity: lava || WATER_FULLY_OPAQUE ? 1 : WATER_RENDER_CONFIG.opacity,
       depthWrite: true,
@@ -302,6 +319,9 @@ export class WaterRenderer3D {
     // differ between two passes over the same triangles.
     this.waterMaterial.forceSinglePass = true;
     this.waterCurtainMaterial = this.waterMaterial.clone();
+    // Flow grain belongs to the horizontal skin. Stretching it down the
+    // render-only world-box curtains would turn every wave into a long stripe.
+    this.waterCurtainMaterial.map = null;
     this.waterCurtainMaterial.forceSinglePass = true;
     // Only the horizontal gameplay water surface owns water occlusion. These
     // render-only outer panels contain no pickable/gameplay surface and have
@@ -641,6 +661,12 @@ export class WaterRenderer3D {
       'normal',
       new THREE.BufferAttribute(new Float32Array(normals), 3),
     );
+    const uvs = new Float32Array((positions.length / 3) * 2);
+    for (let vertex = 0; vertex < positions.length / 3; vertex++) {
+      uvs[vertex * 2] = positions[vertex * 3] / this.liquidTextureTileWorldSize;
+      uvs[vertex * 2 + 1] = positions[vertex * 3 + 2] / this.liquidTextureTileWorldSize;
+    }
+    geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
     geometry.setIndex(
       new THREE.BufferAttribute(new Uint16Array(indices), 1),
     );
@@ -682,7 +708,7 @@ export class WaterRenderer3D {
   }
 
   update(
-    _dtSec: number,
+    dtSec: number,
     _graphicsConfig: GraphicsConfig,
     _frameState?: RenderFrameState3D,
     _sharedRenderGrid?: unknown,
@@ -703,6 +729,14 @@ export class WaterRenderer3D {
       this.waterMaterial.opacity = opacity;
       this.waterCurtainMaterial.opacity = opacity;
       this.lastOpacity = opacity;
+    }
+    if (Number.isFinite(dtSec) && dtSec > 0) {
+      this.liquidTexture.offset.x = (
+        this.liquidTexture.offset.x + this.liquidTextureScrollUvPerSecond.x * dtSec
+      ) % 1;
+      this.liquidTexture.offset.y = (
+        this.liquidTexture.offset.y + this.liquidTextureScrollUvPerSecond.y * dtSec
+      ) % 1;
     }
     this.setVisible(true);
     this.setTriangleDebugVisible(getWaterTriangleDebug());
@@ -732,6 +766,7 @@ export class WaterRenderer3D {
     this.waterGeometry.dispose();
     this.waterMaterial.dispose();
     this.waterCurtainMaterial.dispose();
+    this.liquidTexture.dispose();
     this.waterTriangleGeometry.dispose();
     this.waterTriangleMaterial.dispose();
   }

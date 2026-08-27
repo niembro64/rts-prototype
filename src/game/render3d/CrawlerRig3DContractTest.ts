@@ -30,6 +30,13 @@ import {
   resolveLegFootYaw,
   resolveLowerLegFootTaperStart,
 } from './LocomotionRigShared3D';
+import { UNIT_BLUEPRINT_IDS } from '@/types/blueprintIds';
+import { getUnitBlueprint } from '../sim/blueprints';
+import type { Entity } from '../sim/types';
+import {
+  POINTED_CRAWLER_PRINT_RADIUS,
+  resolveGroundPrintLayout,
+} from './GroundPrintLayout3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[leg rig contract] ${message}`);
@@ -55,6 +62,42 @@ export function runCrawlerRig3DContractTest(): void {
   assertContract(
     LEG_FOOT_TAPER_LENGTH_MULTIPLIER === 2,
     'the pointed lower-leg section is exactly two foot radii long',
+  );
+  let pointedCrawlerCount = 0;
+  let footedCrawlerCount = 0;
+  for (const unitBlueprintId of UNIT_BLUEPRINT_IDS) {
+    const blueprint = getUnitBlueprint(unitBlueprintId);
+    const locomotion = blueprint.unitLocomotion;
+    if (locomotion?.type !== 'crawler') continue;
+    const radius = blueprint.radius.other;
+    const layout = resolveGroundPrintLayout({
+      unit: {
+        unitBlueprintId,
+        radius: { other: radius },
+      },
+    } as unknown as Entity);
+    assertContract(
+      layout !== null &&
+        layout.stamps.length === locomotion.config.leftSide.length * 2,
+      `${unitBlueprintId} must stamp every mirrored crawler contact`,
+    );
+    const expectedRadius = locomotion.config.hasFeet
+      ? Math.max(locomotion.config.radius, 1) * 0.6 * LEG_FOOT_RADIUS_MULTIPLIER
+      : POINTED_CRAWLER_PRINT_RADIUS;
+    assertContract(
+      layout.stamps.every((stamp) =>
+        stamp.shape.kind === 'circle' &&
+        Math.abs(stamp.shape.radius - expectedRadius) < 1e-9),
+      locomotion.config.hasFeet
+        ? `${unitBlueprintId} print must match its rendered foot hemisphere`
+        : `${unitBlueprintId} pointed legs must use the shared minimum print`,
+    );
+    if (locomotion.config.hasFeet) footedCrawlerCount++;
+    else pointedCrawlerCount++;
+  }
+  assertContract(
+    footedCrawlerCount > 0 && pointedCrawlerCount > 0,
+    'the crawler roster contract must cover both real and pointed feet',
   );
   const taperStart = { x: 0, y: 0, z: 0 };
   const realizedTaperLength = resolveLowerLegFootTaperStart(

@@ -1,22 +1,22 @@
 {
   "assets": [
     {
-      "bytes": 168541,
+      "bytes": 160882,
       "file": "default-near.ktx2",
       "hasAlpha": true,
       "height": 2048,
       "layer": "near",
-      "sha256": "b5f31eea93a6399cd58aefb33cdb45abcb313e5e35e861cd512a44d66f102258",
+      "sha256": "618fb71c3ffdc2d6f4996da310224e936f266ec0772ed932174a156aa897d9ef",
       "slug": "default",
       "width": 4096
     },
     {
-      "bytes": 155766,
+      "bytes": 153978,
       "file": "default-middle.ktx2",
       "hasAlpha": true,
       "height": 1536,
       "layer": "middle",
-      "sha256": "21fb1307832218ae4756ebf767c670df740d8375ad29b670f1904bf78efae33f",
+      "sha256": "4352683b7200149f72d736257974ab6b9c64b4c693b38ac820873658787fd0b0",
       "slug": "default",
       "width": 3072
     },
@@ -81,22 +81,22 @@
       "width": 4096
     },
     {
-      "bytes": 256979,
+      "bytes": 266730,
       "file": "angels-flat-near.ktx2",
       "hasAlpha": true,
       "height": 2048,
       "layer": "near",
-      "sha256": "c0027f4babeb4a6d2d05558556195c9f801679962e80e46559ff9128a8c4ac47",
+      "sha256": "02083d37e2f3c638bc5d919d309db0666a235047871e19b3ee7be892a4ad8342",
       "slug": "angels-flat",
       "width": 4096
     },
     {
-      "bytes": 127562,
+      "bytes": 127697,
       "file": "angels-flat-middle.ktx2",
       "hasAlpha": true,
       "height": 1536,
       "layer": "middle",
-      "sha256": "96db3d3249a3240f05d75f2734a0cf741544b64f767e1d3c9eb953a3793173d6",
+      "sha256": "b60d73ce6bd489a18e55159a4ea0edd932c93a218a6152669f00dad0dda60a34",
       "slug": "angels-flat",
       "width": 3072
     },
@@ -131,12 +131,12 @@
       "width": 4096
     },
     {
-      "bytes": 195055,
+      "bytes": 195043,
       "file": "boulder-mountain-middle.ktx2",
       "hasAlpha": true,
       "height": 1536,
       "layer": "middle",
-      "sha256": "e7480127bd3c0e1eb5cac26b84bcfca279cdcc175be300baf6676d12ee24d708",
+      "sha256": "540cd110671415f0e0c66179e771e7984903c24c84baf74c6881533eecdd4e30",
       "slug": "boulder-mountain",
       "width": 3072
     },
@@ -211,12 +211,12 @@
       "width": 4096
     },
     {
-      "bytes": 165378,
+      "bytes": 165190,
       "file": "niemo-islands-middle.ktx2",
       "hasAlpha": true,
       "height": 1536,
       "layer": "middle",
-      "sha256": "20b2651d1b462da81760def2e4d7306b5c29873344c414f46517f10468c02e5c",
+      "sha256": "f623ea489c17629f7b65852672c88eb5057dc64b3f67c4a2e7cfda451e345a9a",
       "slug": "niemo-islands",
       "width": 3072
     },
@@ -375,12 +375,12 @@
     "yFlippedForThreeJsUv": true,
     "zstandardLevel": 9
   },
-  "fingerprint": "7ea1111fd46c6e517413e6fa122928b56b712c129cd46dc07a9bf0e257224610",
+  "fingerprint": "2635afe5c86ecfd15b2c3aa3889cf9a8edd40d4908553d65e73e1278c37d5e66",
   "generator": {
     "visualRevision": 1
   },
   "inputHashes": {
-    "backdropPaletteSha256": "b8c7875baeda279f87c4d28f894a621828f01b4d5e232a1820af42c7150082d2",
+    "backdropPaletteSha256": "cf3320a6a2098f6081a338780dc4ed17879525c2e7239b768f93faea29b0d616",
     "presetBackdropConfigSha256": "331911a25c93bb4ebb281a08fbc432f6c67701f4f7dd1640cdc32f1126dccec3"
   },
   "schemaVersion": 1

@@ -14,6 +14,8 @@ import {
 } from './MapInfoAnnex3D';
 import { WATER_LEVEL } from '../sim/Terrain';
 import { WATER_BOX_FACES, WaterRenderer3D } from './WaterRenderer3D';
+import { LAVA_RENDER_CONFIG, WATER_RENDER_CONFIG } from '@/config';
+import { createLiquidSurfaceTexture3D } from './LiquidSurfaceTexture3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[water renderer contract] ${message}`);
@@ -30,11 +32,18 @@ export function runWaterRenderer3DContractTest(): void {
     renderer.update(0, getGraphicsConfig());
 
     const surface = renderer.getMesh();
+    const surfaceMaterial = surface.material as THREE.MeshBasicMaterial;
     const curtains = parent.children.filter(
       (child): child is THREE.Mesh =>
         child instanceof THREE.Mesh && child.name.startsWith('WaterCurtain:'),
     );
     assertContract(surface.name === 'WaterSurface', 'picking must retain one horizontal surface');
+    assertContract(
+      surfaceMaterial.map?.name === 'LiquidSurfaceTexture:water' &&
+        surfaceMaterial.transparent &&
+        surfaceMaterial.opacity === WATER_RENDER_CONFIG.opacity,
+      'water must carry subtle surface texture without changing its authored transparency',
+    );
     assertContract(
       curtains.length === WATER_BOX_FACES.length && WATER_BOX_FACES.length === 5,
       'floating square must own one mesh per world-box face: four curtains and the bottom',
@@ -50,6 +59,7 @@ export function runWaterRenderer3DContractTest(): void {
     );
     assertContract(
       curtainMaterial !== surface.material &&
+        curtainMaterial.map === null &&
         !curtainMaterial.polygonOffset &&
         !curtainMaterial.depthWrite &&
         curtainMaterial.forceSinglePass,
@@ -63,6 +73,40 @@ export function runWaterRenderer3DContractTest(): void {
       curtains.every((curtain) =>
         (curtain.geometry.getAttribute('position')?.count ?? 0) > 0),
       'every floating-square box face must contain rendered triangles',
+    );
+    const surfacePositions = surface.geometry.getAttribute('position');
+    const surfaceUvs = surface.geometry.getAttribute('uv');
+    assertContract(
+      surfaceUvs !== undefined && surfaceUvs.count === surfacePositions.count,
+      'every liquid-surface vertex must carry world-anchored texture coordinates',
+    );
+    const initialTextureOffset = surfaceMaterial.map.offset.clone();
+    renderer.update(1, getGraphicsConfig());
+    assertContract(
+      !surfaceMaterial.map.offset.equals(initialTextureOffset),
+      'liquid texture must drift slowly while its geometry remains fixed',
+    );
+
+    const waterTexture = createLiquidSurfaceTexture3D('water', WATER_RENDER_CONFIG.texture);
+    const lavaTexture = createLiquidSurfaceTexture3D('lava', LAVA_RENDER_CONFIG.texture);
+    const channelRange = (texture: THREE.DataTexture): number => {
+      const data = texture.image.data as Uint8Array;
+      let low = 255;
+      let high = 0;
+      for (let index = 0; index < data.length; index += 4) {
+        low = Math.min(low, data[index], data[index + 1], data[index + 2]);
+        high = Math.max(high, data[index], data[index + 1], data[index + 2]);
+        assertContract(data[index + 3] === 255, 'texture alpha must never alter liquid opacity');
+      }
+      return high - low;
+    };
+    const waterRange = channelRange(waterTexture);
+    const lavaRange = channelRange(lavaTexture);
+    waterTexture.dispose();
+    lavaTexture.dispose();
+    assertContract(
+      waterRange >= 4 && waterRange <= 28 && lavaRange >= 100,
+      `water grain must stay minimal while lava reads strongly (${waterRange}/${lavaRange})`,
     );
     // EVERY triangle of the closed box — surface, curtains, and bottom alike.
     // The perimeter is no longer four authored strips: the info annex opens

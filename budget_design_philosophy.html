@@ -2155,6 +2155,14 @@
         physical truth.
       </p>
       <p>
+        The horizontal liquid surface carries one small, seamless, world-anchored material texture.
+        Water uses a low-contrast moving flow pattern that modulates colour only: its authored alpha
+        remains the sole transparency control, so texture can never obscure the seabed or submerged
+        units. Lava uses the same flow vocabulary at stronger contrast as opaque crust and hot veins.
+        The render-only perimeter curtains stay untextured, and neither texture changes liquid
+        classification, surface height, picking, or simulation behavior.
+      </p>
+      <p>
         <strong>GPU boundary precision:</strong> the Windows/NVIDIA world-box shimmer was not a
         duplicate terrain plane. South and east fragments lie exactly at the positive map limits,
         and perspective interpolation could move them a few ULPs across exact shader bounds while
@@ -2214,6 +2222,15 @@
         and name presentation, and static resource/environment visuals. A
         part may be intentionally absent at a named rung, but it may not use
         a private fourth mesh budget or a different AUTO threshold system.
+      </p>
+      <p>
+        Physical scale may select a simpler authored assembly without creating another distance
+        ladder. Human-scale bots and construction bots retain the exact same biped rig, gait,
+        sockets, and HIGH/MED/LOW transitions as the larger bipeds, but use chunkier single-shell
+        limbs and simpler shoes because nested actuator plates collapse into noise at their screen
+        size. Commander- and titan-scale bots retain the full layered limb assembly. Size changes
+        presentation density; it never changes locomotion behavior or introduces a private LOD
+        cutoff.
       </p>
       <p>
         Explosions are never removed. At MIN, hit, projectile-expiry, and death
@@ -2736,6 +2753,7 @@
       <ul class="rule-list">
         <li>Every trail contact &mdash; a tire or a tread side &mdash; keeps exactly one mutable leading quad between its last committed rut edge and the current contact. That quad is rewritten in place on every ground-print update, becomes an ordinary fading mark at the density-controlled spacing boundary, and hands the same edge to its successor. The visible rut therefore reaches the contact even while it has moved less than one emission interval. Treads once kept only the distance-spaced commits on the theory that a large contact patch hides the gap; a narrow belt on a small tank showed the same dashed gap the tires had, so the one rule now covers both families.</li>
         <li>Feet and flippers retain plant-transition stamps. The leading edge must not add per-frame mark allocations to any family: a leading mark is allocated once per emission interval and rewritten until it commits.</li>
+        <li>A crawler with rendered feet stamps the exact plan-view radius of its authored foot hemisphere; compacted soil does not inflate that geometry. A crawler whose lower leg ends at a mathematical point uses one fixed minimum-radius mark so the contact remains visible, never a fictitious foot size scaled from leg thickness.</li>
         <li>Ground-print work remains bounded by contacts plus live marks: at most one mutable leading mark per trail contact, one shared merged GPU buffer, and the existing density, lifetime, retirement, and hard-cap policy.</li>
       </ul>
 

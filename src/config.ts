@@ -365,12 +365,43 @@ export const ENTITY_LOD_ENABLED = lodConfigJson.entity.enabled;
 // the OFF glyph/removal end state. EntityDetailLevel3D interprets lod.json.
 export const ENTITY_DETAIL_CONFIG = lodConfigJson.detail;
 
-// Render-only water surface tuning. `color` is the tint of the flat
-// horizon water plane; `opacity` is material alpha. Lower opacity =
-// more transparent.
+type LiquidSurfaceTextureConfig = {
+  readonly resolution: number;
+  readonly tileWorldSize: number;
+  readonly contrast: number;
+  readonly scrollWorldUnitsPerSecondX: number;
+  readonly scrollWorldUnitsPerSecondZ: number;
+};
+
+function readLiquidSurfaceTextureConfig(
+  value: Record<string, unknown>,
+  fieldName: string,
+): LiquidSurfaceTextureConfig {
+  return {
+    resolution: readTextureResolutionConfig(value.resolution, `${fieldName}.resolution`),
+    tileWorldSize: readPositiveConfigNumber(value.tileWorldSize, `${fieldName}.tileWorldSize`),
+    contrast: readUnitIntervalConfig(value.contrast, `${fieldName}.contrast`),
+    scrollWorldUnitsPerSecondX: readPositiveConfigNumber(
+      value.scrollWorldUnitsPerSecondX,
+      `${fieldName}.scrollWorldUnitsPerSecondX`,
+    ),
+    scrollWorldUnitsPerSecondZ: readPositiveConfigNumber(
+      value.scrollWorldUnitsPerSecondZ,
+      `${fieldName}.scrollWorldUnitsPerSecondZ`,
+    ),
+  };
+}
+
+// Render-only water surface tuning. `color` is the tint of the horizon water
+// plane; `opacity` remains the one transparency control. The texture only
+// modulates RGB, so adding surface grain cannot make the seabed harder to see.
 export const WATER_RENDER_CONFIG = {
   color: COLORS.world.water.colorHex,
   opacity: COLORS.world.water.opacity,
+  texture: readLiquidSurfaceTextureConfig(
+    COLORS.world.water.texture,
+    'colorsConfig.world.water.texture',
+  ),
 } as const;
 
 /** LIQUID = LAVA replacement surface. Always opaque (nothing sees through
@@ -380,6 +411,10 @@ export const WATER_RENDER_CONFIG = {
 export const LAVA_RENDER_CONFIG = {
   color: COLORS.world.water.lava.colorHex,
   emissiveScale: COLORS.world.water.lava.emissiveScale,
+  texture: readLiquidSurfaceTextureConfig(
+    COLORS.world.water.lava.texture,
+    'colorsConfig.world.water.lava.texture',
+  ),
 } as const;
 
 // Static sky background gradient. Generated once as a tiny canvas

@@ -47,9 +47,10 @@ export type GroundPrintStampContact = Readonly<{
   phase01: 0 | 1;
 }>;
 
-/** A sphere foot compacts soil a little past its own radius. This is the
- *  crawler print size the marks were tuned at. */
-const SPHERE_FOOT_PRINT_MULT = 1.35;
+/** A pointed crawler leg has zero-area geometry at contact, but its mark must
+ * remain visible. This is one fixed presentation floor, not a radius inferred
+ * from the thickness of a foot that does not exist. */
+export const POINTED_CRAWLER_PRINT_RADIUS = 1.1;
 /** A sole squashes soil just past its outline. */
 const SOLE_PRINT_MULT = 1.1;
 
@@ -114,12 +115,13 @@ function buildLayout(blueprintId: string, r: number): GroundPrintLayout | null {
       const cfg = loc.config;
       const { left, all, sides } = resolveMirroredLegConfigs(cfg, r);
       const legRadius = Math.max(cfg.radius, 1) * 0.6;
-      // With feet the leg ends in a sphere of LEG_FOOT_RADIUS_MULTIPLIER x
-      // the leg radius; without, the lower segment tapers to a point that
-      // only dents the ground (Daddy, Tick).
+      // With feet the leg ends in a hemisphere of exactly
+      // LEG_FOOT_RADIUS_MULTIPLIER x the leg radius, so its print uses that
+      // exact plan-view radius. Without a foot the lower segment tapers to
+      // a zero-area point; use the one visibility floor (Daddy, Tick).
       const shape: GroundPrintStampShape = cfg.hasFeet
-        ? { kind: 'circle', radius: legRadius * LEG_FOOT_RADIUS_MULTIPLIER * SPHERE_FOOT_PRINT_MULT }
-        : { kind: 'circle', radius: Math.max(1.1, legRadius * 0.6) };
+        ? { kind: 'circle', radius: legRadius * LEG_FOOT_RADIUS_MULTIPLIER }
+        : { kind: 'circle', radius: POINTED_CRAWLER_PRINT_RADIUS };
       const stamps: GroundPrintStampContact[] = [];
       for (let i = 0; i < all.length; i++) {
         const leg = all[i];

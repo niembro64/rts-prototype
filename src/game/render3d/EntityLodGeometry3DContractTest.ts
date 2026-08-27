@@ -36,6 +36,7 @@ import {
 } from '../math/BarrelGeometry';
 import {
   buildBotRig,
+  COMPACT_BOT_MAX_UNIT_RADIUS,
   getBotPelvisTopLocalY,
   poseBotRigAtRest,
 } from './BotRig3D';
@@ -790,6 +791,21 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
               rig.arms.length === (locomotion.config.upperArms === undefined ? 2 : 4),
             `${unitId}/${tier} stand has two legs and its authored arm pairs`,
           );
+          const compactGeometry = radius <= COMPACT_BOT_MAX_UNIT_RADIUS;
+          assertContract(
+            rig.compactGeometry === compactGeometry,
+            `${unitId}/${tier} bot detail profile follows physical chassis size`,
+          );
+          assertContract(
+            compactGeometry
+              ? rig.legs.every((leg) =>
+                leg.thigh.width > locomotion.config.legs.radius &&
+                leg.shin.width > locomotion.config.legs.radius * 0.78)
+              : rig.legs.every((leg) =>
+                leg.thigh.width === locomotion.config.legs.radius &&
+                leg.shin.width === locomotion.config.legs.radius * 0.78),
+            `${unitId}/${tier} compact limbs are beefier without changing the large-bot profile`,
+          );
           assertContract(
             rig.legs.every((leg) => Math.abs(leg.hipZ) > 1e-6)
               && rig.legs[0].hipZ === -rig.legs[1].hipZ,
@@ -829,6 +845,27 @@ function runLocomotionContracts(): Map<UnitBlueprintId, TierCounts> {
               (arm.elbow.position.z - arm.shoulderZ) * arm.side > 0),
             `${unitId}/${tier} stand arms leave visible shoulder joints at an outward angle`,
           );
+          if (tier === 'close') {
+            assertContract(
+              compactGeometry
+                ? rig.legs.every((leg) =>
+                  leg.thigh.mesh.visible === false &&
+                  leg.thigh.armor !== undefined &&
+                  leg.shin.mesh.visible === false &&
+                  leg.shin.armor !== undefined &&
+                  leg.foot.children.length === 4) &&
+                  rig.arms.every((arm) =>
+                    arm.forearm.mesh.visible === false &&
+                    arm.forearm.armor !== undefined)
+                : rig.legs.every((leg) =>
+                  leg.thigh.mesh.visible === true &&
+                  leg.thigh.armor !== undefined &&
+                  leg.shin.mesh.visible === true &&
+                  leg.shin.armor !== undefined &&
+                  leg.foot.children.length >= 5),
+              `${unitId}/close compact bots use one-shell limbs and simplified shoes while large bots keep nested detail`,
+            );
+          }
           return {
             rig,
             count: objectTriangleCount(root),
