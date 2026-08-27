@@ -5,3 +5,9 @@
 3) for all of our primarily water units let's at least have some non-zero value for the two support values for keeping them off of the seabed floor, at least some tiny values for both of them, non-zero.
 
 4) at certain zoom levels different pieces of different units shadows disappear, it is strange, fix that. I can see it for the queen bee as she is being built by a universal fabricator. 
+
+
+5) underwater torpedos seem to just die under water, or maybe they are hitting the ground? 
+
+6) our "selection torus" etc doesn't seem to be visible through water, we need to be able to see underwater things being selected THROUGH the water. 
+
