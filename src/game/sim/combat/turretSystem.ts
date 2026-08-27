@@ -3,7 +3,8 @@
 // angular-speed, angular-acceleration, traverse, and restore limits.
 
 import type { WorldState } from '../WorldState';
-import type { Entity, Turret } from '../types';
+import type { Entity, Turret, Unit } from '../types';
+import { surfaceSlopePitchAlongHeading } from '../terrain/terrainSurface';
 import {
   turretMaskIncludes,
   writeTurretArticulationParentYaw,
@@ -32,6 +33,19 @@ import {
   isBuildingAimPieceAttachment,
   selectBuildingHostPieceTurretIndex,
 } from '../../math/BuildingHostSocketGeometry';
+
+const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
+
+/** A ground chassis stows its barrel along the hill it stands on. The rest
+ * pitch rides the unit's smoothed ground normal — the same EMA
+ * (updateUnitGroundNormal) that tilts the chassis — so a stowed gun lies
+ * parallel to the slope instead of being held level in world space while the
+ * body tilts under it. Air and water-only hulls rest flat; the joint kernel
+ * still clamps the result to the authored pitch traverse. */
+function turretRestSlopePitch(hostUnit: Unit | null, restWorldYaw: number): number {
+  if (hostUnit === null || !hostUnit.locomotion.navigation.waypoint.allowOnGround) return 0;
+  return surfaceSlopePitchAlongHeading(hostUnit.surfaceNormal ?? FLAT_SURFACE_NORMAL, restWorldYaw);
+}
 
 const _turretAimPose: CombatTargetingTurretAimOut = {
   hasSolution: true,
@@ -406,7 +420,9 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
         // to a body that has a forward. A structure has no forward, so its
         // turrets simply stay where the last engagement left them and keep
         // covering that bearing — see budget_design_philosophy.html,
-        // "A building turret has no rest angle". Units are unchanged.
+        // "A building turret has no rest angle". A unit restores to its rest
+        // yaw and, on a ground chassis, to a rest pitch that follows the
+        // smoothed ground slope along that heading (turretRestSlopePitch).
         const restore = hostBuilding === null &&
           weapon.articulationIdleMs >= weapon.config.articulation.restoreDelayMs;
         // Before BAR-style restore delay expires, hold the current LOCAL pose.
@@ -417,7 +433,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           : weapon.localYaw;
         targetAngle = normalizeAngle(parent.yaw + targetLocalYaw);
         targetPitch = restore
-          ? weapon.config.articulation.restPitch
+          ? weapon.config.articulation.restPitch + turretRestSlopePitch(hostUnit, targetAngle)
           : weapon.localPitch;
       } else {
         weapon.articulationIdleMs = 0;

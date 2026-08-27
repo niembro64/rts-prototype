@@ -1847,6 +1847,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runUnfinishedBuildDecayContractTest();
         const { runBuildingTurretRestContractTest } = await import('../sim/buildingTurretRestContractTest');
         runBuildingTurretRestContractTest();
+        const { runTurretRestSlopePitchContractTest } = await import('../sim/turretRestSlopePitchContractTest');
+        runTurretRestSlopePitchContractTest();
         const { runGameplaySettingCommandContractTest } = await import('../sim/gameplaySettingCommandContractTest');
         runGameplaySettingCommandContractTest();
         const { runBuildingCollisionSpawnContractTest } = await import('../sim/buildingCollisionSpawnContractTest');
