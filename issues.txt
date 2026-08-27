@@ -1,8 +1,0 @@
-1) small bots are too detailed for how small they are. They should be beefier and have fewer triangles; they should keep all the same motion and movement that they have though - jus tsimplify the legs and arms a bit. Larger bots should still have visual complexity. 
-
-2) the pre-textured terrain ground is a bit too dark, and the red "radar jamming" should be a tad bit more than it is now.
-
-3) i wonder if it's possible to put water texture on water and lava texture on lava? the water one should be pretty minimal as we need to see through it easily.
-
-
-4) the circle footprints that the crawlers are making are too large for what their feet are. Let's have a minimum size that we use for the crawlers that have "pointy" feet, but let's have realistic footprints against their feet for any of them that have actual feet. 
