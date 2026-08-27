@@ -248,8 +248,11 @@ export type BootstrapSpawnRules = {
   backgroundAllowedBuildingBlueprintIds: Set<string>;
   /** Seats with AGENT TYPE 'bot' — see src/game/sim/agentSeat.ts. */
   aiPlayerIds: PlayerId[];
-  /** Seats with INITIAL STATE 'base'; everyone else spawns a commander. */
+  /** Seats receiving the authored base buildings; everyone else receives
+   *  only a commander. */
   baseSeatPlayerIds: PlayerId[];
+  /** Base seats additionally receiving the opening unit wave. */
+  baseAndUnitsSeatPlayerIds: PlayerId[];
 };
 
 /** Phase 8 — resolve the spawn rules and apply the world-level overrides they
@@ -287,22 +290,56 @@ export function resolveBootstrapSpawnRules(
   const aiPlayerIds =
     config.aiPlayerIds ?? (resolved.backgroundMode ? [...resolved.playerIds] : []);
   // Initial state is a PER-SEAT axis (src/game/sim/agentSeat.ts). When the
-  // caller says nothing, the old defaults hold: the demo/background battle
-  // opens every seat with a full base, real games open every seat as a
-  // commander so their spawn layout matches hosted network games. Callers
-  // mix the axes explicitly — a lobby preview passes [] to stay
-  // commander-only, a skirmish may hand a base to any subset of seats.
+  // caller says nothing, Demo opens every seat with Base and Units while a
+  // real battle opens every seat as a Lone Commander. New callers spell the
+  // base-building and opening-unit subsets independently.
   const baseSeatPlayerIds =
     config.baseSeatPlayerIds !== undefined
       ? normalizeSeatSubset(config.baseSeatPlayerIds, resolved.playerIds)
-      : resolved.backgroundMode && aiPlayerIds.length > 0
+      : resolved.backgroundMode
         ? [...resolved.playerIds]
         : [];
+  const baseSeatSet = new Set(baseSeatPlayerIds);
+  const baseAndUnitsSeatPlayerIds = (
+    config.baseAndUnitsSeatPlayerIds !== undefined
+      ? normalizeSeatSubset(config.baseAndUnitsSeatPlayerIds, resolved.playerIds)
+      : config.baseSeatPlayerIds !== undefined
+        // Backward compatibility for callers using the old two-state base.
+        ? [...baseSeatPlayerIds]
+        : resolved.backgroundMode
+          ? [...resolved.playerIds]
+          : []
+  ).filter((playerId) => baseSeatSet.has(playerId));
   return {
     backgroundAllowedUnitBlueprintIds,
     backgroundAllowedBuildingBlueprintIds,
     aiPlayerIds,
     baseSeatPlayerIds,
+    baseAndUnitsSeatPlayerIds,
+  };
+}
+
+export type BootstrapSeatSpawnGroups = {
+  commanderSeatPlayerIds: PlayerId[];
+  baseSeatPlayerIds: PlayerId[];
+  baseAndUnitsSeatPlayerIds: PlayerId[];
+};
+
+/** Resolve the three UI states into the two composable spawn passes. Base
+ * Buildings Only and Base and Units share the complete base-building pass;
+ * only the latter enters the opening-unit pass. */
+export function resolveBootstrapSeatSpawnGroups(
+  playerIds: readonly PlayerId[],
+  rules: Pick<BootstrapSpawnRules, 'baseSeatPlayerIds' | 'baseAndUnitsSeatPlayerIds'>,
+): BootstrapSeatSpawnGroups {
+  const baseSet = new Set(rules.baseSeatPlayerIds);
+  const baseAndUnitsSet = new Set(rules.baseAndUnitsSeatPlayerIds);
+  return {
+    commanderSeatPlayerIds: playerIds.filter((playerId) => !baseSet.has(playerId)),
+    baseSeatPlayerIds: playerIds.filter((playerId) => baseSet.has(playerId)),
+    baseAndUnitsSeatPlayerIds: playerIds.filter(
+      (playerId) => baseSet.has(playerId) && baseAndUnitsSet.has(playerId),
+    ),
   };
 }
 
@@ -316,8 +353,8 @@ function normalizeSeatSubset(
   return subset.filter((playerId) => seats.has(playerId));
 }
 
-/** Phase 9a — the full-base spawn for every seat whose INITIAL STATE is
- *  'base'. The base MODE (initially-off switches, fight-leg distance)
+/** Phase 9a — the complete base-building spawn for either base initial state.
+ *  The base MODE (initially-off switches, fight-leg distance)
  *  follows the battle kind, not the seat: a base seat in a real battle
  *  plays by real-battle rules. Game-start factories get the full patrol
  *  route in BOTH modes — the complex-vs-simple waypoint split is game-init

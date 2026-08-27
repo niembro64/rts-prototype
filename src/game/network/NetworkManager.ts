@@ -458,8 +458,8 @@ export class NetworkManager {
     return true;
   }
 
-  /** Host: flip one seat's INITIAL STATE ('commander' <-> 'base') — the
-   *  other seat axis, member-held seats and bots alike. */
+  /** Host: set one seat's three-way INITIAL STATE — the other seat axis,
+   *  member-held seats and bots alike. */
   setSeatInitialState(playerId: PlayerId, initialState: SeatInitialState): boolean {
     if (this.role !== 'host') return false;
     if (!admitsSeating(this.session.state)) return false;
@@ -1988,10 +1988,11 @@ export class NetworkManager {
       playerIds,
       players: this.members.seatedPlayers(),
       // The two seat axes (src/game/sim/agentSeat.ts), straight from the
-      // roster into the HASHED initialization: who the sim drives, and who
-      // opens with a base.
+      // roster into the HASHED initialization: who the sim drives, who gets
+      // base buildings, and which of those seats also gets opening units.
       aiPlayerIds: this.members.botSeatPlayerIds(),
       baseSeatPlayerIds: this.members.baseSeatPlayerIds(),
+      baseAndUnitsSeatPlayerIds: this.members.baseAndUnitsSeatPlayerIds(),
       // The lobby's TEAM assignment decides terrain slices, spawn arcs and
       // who may shoot whom, so it travels inside the HASHED initialization.
       // Leaving it out here is what used to make every online match a

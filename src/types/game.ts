@@ -236,13 +236,14 @@ export type GameServerConfig = {
    *  production policy instead of a connection. One of the two seat axes —
    *  see src/game/sim/agentSeat.ts. */
   aiPlayerIds?: PlayerId[];
-  /** Seats whose INITIAL STATE is 'base': the authored full base, opening
-   *  unit wave, and auto-extractors. Every other seat starts as a lone
-   *  commander. The other seat axis — the two mix freely (the demo is all
-   *  'base' seats with only the non-local ones being bots). Omitted: the
-   *  demo default (every seat, when the battle is background with bots),
-   *  or none for real battles. */
+  /** Seats receiving the authored base buildings and auto-extractors. Every
+   *  other seat starts as a lone commander. Omitted: every seat in Demo, or
+   *  none in real battles. */
   baseSeatPlayerIds?: PlayerId[];
+  /** The base seats that additionally receive the opening unit wave. Omitted
+   *  preserves the legacy two-state meaning of baseSeatPlayerIds (all base
+   *  seats receive units); new callers pass this subset explicitly. */
+  baseAndUnitsSeatPlayerIds?: PlayerId[];
   maxSnapshotsPerSec?: number;
   /** Restrict the demo battle's initial-unit spawn to this set of unit
    *  blueprint ids. When omitted the server falls back to "all background

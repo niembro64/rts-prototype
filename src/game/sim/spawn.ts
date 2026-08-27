@@ -902,7 +902,7 @@ export function spawnInitialBases(
   // (unrestricted callers / real games). A defined set skips disabled ids.
   const normalizedPlayerIds = normalizePlayerIds(playerIds);
 
-  // Raise, never lower — bootstrap may pass only the 'base' seats of a
+  // Raise, never lower — bootstrap may pass only the two base-state seats of a
   // mixed roster (see spawnInitialEntities for the same rule).
   world.playerCount = Math.max(world.playerCount, normalizedPlayerIds.length);
 
@@ -1311,7 +1311,7 @@ export function spawnMetalExtractorsOnDeposits(
   playerIds: PlayerId[],
   availableBuildingBlueprintIds: ReadonlySet<string> | undefined = undefined,
   // Deposit OWNERSHIP is decided over the whole roster; extractors only
-  // SPAWN for the seats in `playerIds` (the 'base' initial-state seats).
+  // SPAWN for the seats in `playerIds` (either base initial-state choice).
   // Without the split, a mixed roster would let a base seat claim the
   // deposits sitting in a commander seat's slice on the far side of the map.
   ownerCandidatePlayerIds: readonly PlayerId[] = playerIds,

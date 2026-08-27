@@ -22,6 +22,10 @@ import { resolveLobbyTeamGroups } from '../lobby/lobbyIdentity';
 import { MAX_LOBBY_PLAYERS, MAX_LOBBY_SPECTATORS } from './LobbyDirectory';
 import type { LobbySettings } from '@/types/network';
 import type { PlayerId } from '../sim/types';
+import {
+  nextSeatInitialState,
+  SEAT_INITIAL_STATE_LABELS,
+} from '../sim/agentSeat';
 
 const HANDOFF_SETTINGS: LobbySettings = {
   lobbyName: '',
@@ -280,6 +284,7 @@ export function runNetworkLobbySeatingContractTest(): void {
       allyTeamCount: 3,
       aiPlayerIds: members.botSeatPlayerIds(),
       baseSeatPlayerIds: members.baseSeatPlayerIds(),
+      baseAndUnitsSeatPlayerIds: members.baseAndUnitsSeatPlayerIds(),
       settings: HANDOFF_SETTINGS,
     });
 
@@ -456,8 +461,8 @@ export function runNetworkLobbySeatingContractTest(): void {
     const bot = members.addBotSeat(2);
     assert(bot !== null, 'the host can seat a bot');
     assert(bot!.playerId === 3, 'a bot takes the lowest free seat, like anybody');
-    assert(bot!.initialState === 'base',
-      "a bot defaults to the 'base' opening — the demo's whole character in one default");
+    assert(bot!.initialState === 'baseBuildings',
+      'a lobby bot defaults to Base Buildings Only');
 
     const players = members.seatedPlayers();
     assert(players.length === 3, 'bot seats are seats: the match roster holds them');
@@ -469,14 +474,34 @@ export function runNetworkLobbySeatingContractTest(): void {
     );
     assert(members.botSeatPlayerIds().join(',') === '3', 'and the bot set is its own list');
     assert(members.baseSeatPlayerIds().join(',') === '3',
-      "initial-state 'base' follows the bot default until the host flips it");
+      'the bot default participates in the complete base-building spawn');
+    assert(members.baseAndUnitsSeatPlayerIds().length === 0,
+      'the bot default does not receive an opening unit wave');
 
-    // The axes are independent: flip the bot to a commander start, and give
-    // the HOST the base opening — the demo's exact mix, inverted.
+    // All three states remain independent from agent type.
+    assert(members.setSeatInitialState(3 as PlayerId, 'baseAndUnits'),
+      'a bot can opt into Base and Units');
+    assert(members.baseAndUnitsSeatPlayerIds().join(',') === '3',
+      'Base and Units contributes to the opening-unit subset');
     assert(members.setSeatInitialState(3 as PlayerId, 'commander'), 'a bot can open as a commander');
-    assert(members.setSeatInitialState(1 as PlayerId, 'base'), 'a human can open with a base');
+    assert(members.setSeatInitialState(1 as PlayerId, 'baseBuildings'),
+      'a human can open with Base Buildings Only');
     assert(members.baseSeatPlayerIds().join(',') === '1',
       'initial state mixes freely across agent types');
+    assert(members.baseAndUnitsSeatPlayerIds().length === 0,
+      'Base Buildings Only remains out of the opening-unit subset');
+    assert(members.setSeatInitialState(1 as PlayerId, 'baseAndUnits'),
+      'a human can open with Base and Units');
+    assert(members.baseAndUnitsSeatPlayerIds().join(',') === '1',
+      'the human Base and Units state reaches the opening-unit subset');
+    assert(
+      nextSeatInitialState('commander') === 'baseBuildings' &&
+        nextSeatInitialState('baseBuildings') === 'baseAndUnits' &&
+        nextSeatInitialState('baseAndUnits') === 'commander' &&
+        SEAT_INITIAL_STATE_LABELS.baseBuildings === 'Base Buildings Only' &&
+        SEAT_INITIAL_STATE_LABELS.baseAndUnits === 'Base and Units',
+      'the lobby control must cycle the three named choices in display order',
+    );
 
     // A member seat may not collide with a bot seat.
     members.admit(4, 'P4');

@@ -306,8 +306,9 @@ export type LobbyMember = {
   playerId: PlayerId | undefined;
   /** The side of that seat — the lobby's TEAM N. Present with `playerId`. */
   allyTeamId: number | undefined;
-  /** The seat's INITIAL STATE axis (src/game/sim/agentSeat.ts). Present
-   *  only while seated; absent means the human default, 'commander'. */
+  /** The seat's three-way INITIAL STATE axis (src/game/sim/agentSeat.ts).
+   *  Present only while seated; absent means the human Lone Commander
+   *  default. */
   initialState: SeatInitialState | undefined;
   name: string;
   isHost: boolean;
@@ -1412,7 +1413,7 @@ export type LobbyPlayer = {
   isHost: boolean;
   /** True for a seat the sim drives — no member, no connection. */
   isBot?: boolean;
-  /** The seat's INITIAL STATE axis; absent means 'commander'. */
+  /** The seat's INITIAL STATE axis; absent means Lone Commander. */
   initialState?: SeatInitialState;
   /** Which SIDE this seat plays on — BAR calls it the ally team, the
    *  lobby labels it TEAM N. Host-authoritative: the host assigns one on

@@ -41,6 +41,12 @@ import { closeCurrentTauriWindow, isTauriRuntime } from '@/browserRuntime';
 import { LOBBY_LIST_POLL_INTERVAL_MS } from '../game/network/LobbyDirectory';
 import { getMultiplayerBackend } from '../game/network/multiplayer/multiplayerBackendRegistry';
 import type { MultiplayerLobbySummary } from '../game/network/multiplayer/MultiplayerBackend';
+import {
+  DEFAULT_HUMAN_INITIAL_STATE,
+  nextSeatInitialState,
+  SEAT_INITIAL_STATE_LABELS,
+  type SeatInitialState,
+} from '../game/sim/agentSeat';
 
 import type { LobbyPlayer } from '@/types/ui';
 import type { LobbyMember } from '../game/network/NetworkManager';
@@ -114,7 +120,7 @@ const emit = defineEmits<{
   (e: 'addBotSeat', allyTeamId: number): void;
   (e: 'removeBotSeat', playerId: PlayerId): void;
   (e: 'cycleBotAllyTeam', playerId: PlayerId): void;
-  (e: 'setSeatInitialState', playerId: PlayerId, initialState: 'commander' | 'base'): void;
+  (e: 'setSeatInitialState', playerId: PlayerId, initialState: SeatInitialState): void;
   /** Collapse or reveal the menu sidebar. Nothing to do with watching a
    *  match — this is the chevron on the sidebar's edge. */
   (e: 'toggleMenu'): void;
@@ -1139,21 +1145,23 @@ const terrainSectionVars = computed(() =>
                     :aria-label="`Remove ${seat.player.name}`"
                     @click="isHost && emit('removeBotSeat', seat.player.playerId)"
                   ><TrashIcon /></button>
-                  <!-- The seat's INITIAL STATE axis: a lone commander, or
-                       the authored full base. Independent of WHO drives the
-                       seat — the demo is base seats with one human on one. -->
+                  <!-- The seat's INITIAL STATE axis is independent of WHO
+                       drives it: lone commander, base buildings only, or the
+                       same base plus its opening unit wave. -->
                   <button
                     class="player-control-btn seat-state-btn"
                     :class="{ 'is-readonly': !isHost }"
                     type="button"
                     :aria-disabled="!isHost"
                     :tabindex="isHost ? undefined : -1"
-                    :title="(seat.player.initialState ?? 'commander') === 'base'
-                      ? `${seat.player.name} opens with a full base${isHost ? ' — click for a lone commander' : ''}`
-                      : `${seat.player.name} opens as a lone commander${isHost ? ' — click for a full base' : ''}`"
+                    :title="`${seat.player.name}: ${SEAT_INITIAL_STATE_LABELS[seat.player.initialState ?? DEFAULT_HUMAN_INITIAL_STATE]}` +
+                      (isHost
+                        ? ` — click for ${SEAT_INITIAL_STATE_LABELS[nextSeatInitialState(seat.player.initialState ?? DEFAULT_HUMAN_INITIAL_STATE)]}`
+                        : '')"
+                    :aria-label="`${seat.player.name} initial state: ${SEAT_INITIAL_STATE_LABELS[seat.player.initialState ?? DEFAULT_HUMAN_INITIAL_STATE]}`"
                     @click="isHost && emit('setSeatInitialState', seat.player.playerId,
-                      (seat.player.initialState ?? 'commander') === 'base' ? 'commander' : 'base')"
-                  ><SeatStateIcon :state="seat.player.initialState ?? 'commander'" /></button>
+                      nextSeatInitialState(seat.player.initialState ?? DEFAULT_HUMAN_INITIAL_STATE))"
+                  ><SeatStateIcon :state="seat.player.initialState ?? DEFAULT_HUMAN_INITIAL_STATE" /></button>
                 </div>
                 <!-- Identity flags pinned to the right edge of the row, and
                      nothing else: HOST anchors top-right, YOU bottom-right,

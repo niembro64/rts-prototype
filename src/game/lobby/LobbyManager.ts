@@ -254,11 +254,11 @@ export async function createBackgroundBattle(
       converterTax: loadStoredConverterTax(mode),
       simulationTickRateHz: loadStoredSimulationTickRate(mode),
       aiPlayerIds,
-      // The two seat axes, spelled out (src/game/sim/agentSeat.ts): the DEMO
-      // gives EVERY seat the 'base' initial state — the local human seat
-      // included, which is exactly the mix-and-match the axes exist for —
-      // while the lobby preview stays commander-only.
+      // The two seat axes, spelled out (src/game/sim/agentSeat.ts): Demo gives
+      // every seat Base and Units — including the local human — while the
+      // lobby preview stays commander-only.
       baseSeatPlayerIds: isLobbyPreview ? [] : [...demoPlayerIds],
+      baseAndUnitsSeatPlayerIds: isLobbyPreview ? [] : [...demoPlayerIds],
     },
     {
       onProgress: (progress, phase) => report(0.14 + progress * 0.5, phase),

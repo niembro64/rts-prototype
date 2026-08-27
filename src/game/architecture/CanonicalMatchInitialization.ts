@@ -84,9 +84,12 @@ export type CanonicalMatchInitialization = {
   /** Seats with AGENT TYPE 'bot' — driven by the deterministic in-sim
    *  policy, no connection, no commands. */
   readonly aiPlayerIds: readonly PlayerId[];
-  /** Seats with INITIAL STATE 'base' — the authored full base instead of a
-   *  lone commander. Orthogonal to aiPlayerIds; the axes mix freely. */
+  /** Seats receiving the authored base buildings instead of only a lone
+   *  commander. Orthogonal to aiPlayerIds; the axes mix freely. */
   readonly baseSeatPlayerIds: readonly PlayerId[];
+  /** Base seats that additionally receive the opening unit wave. This is a
+   *  subset of baseSeatPlayerIds. */
+  readonly baseAndUnitsSeatPlayerIds: readonly PlayerId[];
   readonly gameGenerationSeed: number;
   readonly map: {
     readonly centerMagnitude: number | null;
@@ -134,6 +137,7 @@ type BuildCanonicalMatchInitializationOptions = {
   allyTeamCount?: number | undefined;
   aiPlayerIds?: Iterable<PlayerId> | undefined;
   baseSeatPlayerIds?: Iterable<PlayerId> | undefined;
+  baseAndUnitsSeatPlayerIds?: Iterable<PlayerId> | undefined;
   settings: LobbySettings | undefined;
   gameGenerationSeed?: number;
 };
@@ -177,11 +181,21 @@ export function buildCanonicalMatchInitialization({
   allyTeamCount,
   aiPlayerIds,
   baseSeatPlayerIds,
+  baseAndUnitsSeatPlayerIds,
   settings,
   gameGenerationSeed = DEFAULT_GAME_GENERATION_SEED,
 }: BuildCanonicalMatchInitializationOptions): CanonicalMatchInitialization {
   const seats = normalizePlayerIds(playerIds);
   const sides = canonicalAllyTeamIds(seats, allyTeamByPlayerId, allyTeamCount);
+  const seatSet = new Set(seats);
+  const baseSeats = normalizePlayerIds(baseSeatPlayerIds ?? [])
+    .filter((playerId) => seatSet.has(playerId));
+  const baseSeatSet = new Set(baseSeats);
+  // Missing means the old two-state 'base' contract: every base seat also
+  // receives units. New callers always pass the explicit subset.
+  const baseAndUnitsSeats = normalizePlayerIds(
+    baseAndUnitsSeatPlayerIds ?? baseSeats,
+  ).filter((playerId) => baseSeatSet.has(playerId));
   const simulationTickRateHz = normalizeSimulationTickRateHz(
     settings?.simulationTickRateHz,
   );
@@ -205,7 +219,8 @@ export function buildCanonicalMatchInitialization({
     allyTeamCount: canonicalAllyTeamCount(sides, allyTeamCount),
     allyTeamIds: sides,
     aiPlayerIds: normalizePlayerIds(aiPlayerIds ?? []),
-    baseSeatPlayerIds: normalizePlayerIds(baseSeatPlayerIds ?? []),
+    baseSeatPlayerIds: baseSeats,
+    baseAndUnitsSeatPlayerIds: baseAndUnitsSeats,
     gameGenerationSeed: normalizeGameGenerationSeed(gameGenerationSeed),
     map: {
       centerMagnitude: finiteOrNull(settings?.centerMagnitude),

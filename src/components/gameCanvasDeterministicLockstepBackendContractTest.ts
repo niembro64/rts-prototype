@@ -213,6 +213,24 @@ function assertInitializationHashMismatch(): void {
     'canonical initialization must bind the exact JS/WASM build fingerprint',
   );
   const first = hashCanonicalMatchInitialization(firstInitialization);
+  const buildingsOnlyHash = hashCanonicalMatchInitialization(
+    buildCanonicalMatchInitialization({
+      ...base,
+      baseSeatPlayerIds: [2 as PlayerId],
+      baseAndUnitsSeatPlayerIds: [],
+    }),
+  );
+  const baseAndUnitsHash = hashCanonicalMatchInitialization(
+    buildCanonicalMatchInitialization({
+      ...base,
+      baseSeatPlayerIds: [2 as PlayerId],
+      baseAndUnitsSeatPlayerIds: [2 as PlayerId],
+    }),
+  );
+  assertContract(
+    buildingsOnlyHash !== baseAndUnitsHash,
+    'canonical initialization hash must distinguish both base initial states',
+  );
   const second = hashCanonicalMatchInitialization(buildCanonicalMatchInitialization({
     ...base,
       settings: {

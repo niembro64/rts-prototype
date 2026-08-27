@@ -36,6 +36,7 @@ import {
   generateBootstrapMetalDeposits,
   precomputeBootstrapPathGrids,
   resolveBootstrapConfig,
+  resolveBootstrapSeatSpawnGroups,
   resolveBootstrapSpawnRules,
   spawnBootstrapDemoBases,
   spawnBootstrapDemoExtractors,
@@ -103,14 +104,9 @@ export class ServerBootstrap {
       const rules = resolveBootstrapSpawnRules(config, world, resolved);
       await report(0.72, 'Preparing spawn rules');
 
-      // Initial state is per SEAT (src/game/sim/agentSeat.ts): 'base' seats
-      // get the authored full base, opening wave, and their deposits'
-      // extractors; every other seat gets a lone commander. The two mix in
-      // one roster.
-      const baseSeats = rules.baseSeatPlayerIds;
-      const commanderSeats = resolved.playerIds.filter(
-        (playerId) => !baseSeats.includes(playerId),
-      );
+      const spawnGroups = resolveBootstrapSeatSpawnGroups(resolved.playerIds, rules);
+      const baseSeats = spawnGroups.baseSeatPlayerIds;
+      const commanderSeats = spawnGroups.commanderSeatPlayerIds;
       const entities: Entity[] = [];
       if (baseSeats.length > 0) {
         entities.push(
@@ -137,12 +133,12 @@ export class ServerBootstrap {
         'Creating spawn physics',
         report,
       );
-      if (baseSeats.length > 0) {
+      if (spawnGroups.baseAndUnitsSeatPlayerIds.length > 0) {
         await report(0.9, 'Generating opening units');
         spawnBackgroundUnitsStandalone(
           world, physics, true,
           rules.backgroundAllowedUnitBlueprintIds,
-          baseSeats,
+          spawnGroups.baseAndUnitsSeatPlayerIds,
         );
         await report(0.94, 'Opening units ready');
       }
@@ -192,10 +188,9 @@ export class ServerBootstrap {
       const rules = resolveBootstrapSpawnRules(config, world, resolved);
 
       // Mirror of the async variant above: initial state is per SEAT.
-      const baseSeats = rules.baseSeatPlayerIds;
-      const commanderSeats = resolved.playerIds.filter(
-        (playerId) => !baseSeats.includes(playerId),
-      );
+      const spawnGroups = resolveBootstrapSeatSpawnGroups(resolved.playerIds, rules);
+      const baseSeats = spawnGroups.baseSeatPlayerIds;
+      const commanderSeats = spawnGroups.commanderSeatPlayerIds;
       const entities: Entity[] = [];
       if (baseSeats.length > 0) {
         entities.push(
@@ -211,13 +206,12 @@ export class ServerBootstrap {
         entities.push(...spawnInitialEntities(world, commanderSeats));
       }
       ServerBootstrap.createInitialPhysicsBodies(world, physics, entities);
-      if (baseSeats.length > 0) {
-        // Base seats open with a cluster of units near center for immediate
-        // combat, exactly as the demo always has.
+      if (spawnGroups.baseAndUnitsSeatPlayerIds.length > 0) {
+        // Only Base and Units seats open with the center combat cluster.
         spawnBackgroundUnitsStandalone(
           world, physics, true,
           rules.backgroundAllowedUnitBlueprintIds,
-          baseSeats,
+          spawnGroups.baseAndUnitsSeatPlayerIds,
         );
       }
       simulation.setAiPlayerIds(rules.aiPlayerIds);

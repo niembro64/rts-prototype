@@ -1324,6 +1324,7 @@ function createServerConfig(
     backgroundMode: true,
     aiPlayerIds: PLAYER_IDS,
     baseSeatPlayerIds: PLAYER_IDS,
+    baseAndUnitsSeatPlayerIds: PLAYER_IDS,
     // entityCountCap IS the match total now, so --unit-cap passes straight
     // through: no seat-count division to keep in sync, which is the trap
     // that silently doubled then halved harness load twice before.

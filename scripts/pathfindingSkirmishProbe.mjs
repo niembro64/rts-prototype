@@ -23,7 +23,7 @@ try {
   const { ServerSimulationCore } = await server.ssrLoadModule('/src/game/server/ServerSimulationCore.ts');
   const { LOCKSTEP_FIXED_DT_MS } = await server.ssrLoadModule('/src/game/architecture/LockstepFrameScheduler.ts');
   const ids = [1, 2, 3, 4];
-  const config = { playerIds: ids, aiPlayerIds: ids, baseSeatPlayerIds: ids, allyTeamSeats: [1, 1, 1, 1], mapWidthLandCells: cells, mapLengthLandCells: cells };
+  const config = { playerIds: ids, aiPlayerIds: ids, baseSeatPlayerIds: ids, baseAndUnitsSeatPlayerIds: ids, allyTeamSeats: [1, 1, 1, 1], mapWidthLandCells: cells, mapLengthLandCells: cells };
   harness.resetReusableSimulationStateForDeterministicReplay();
   const boot = ServerBootstrap.bootstrap(config);
   const core = new ServerSimulationCore(boot);

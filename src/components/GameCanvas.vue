@@ -3,6 +3,7 @@ import { ref, computed, reactive, shallowRef, watch, watchEffect, onMounted, onB
 import { appSurface, sendAppSurface } from '../appSurfaceMachine';
 import type { GameInstance } from '../game/createGame';
 import type { PlayerId } from '../game/sim/types';
+import type { SeatInitialState } from '../game/sim/agentSeat';
 import type { BackgroundBattleState } from '../game/lobby/LobbyManager';
 import { lobbyAllyTeamAssignment } from '../game/lobby/lobbyIdentity';
 import SelectionPanel from './SelectionPanel.vue';
@@ -3177,7 +3178,7 @@ watchEffect(() => {
       @add-bot-seat="(teamId: number) => networkManager.addBotSeat(teamId)"
       @remove-bot-seat="(pid: PlayerId) => networkManager.removeBotSeat(pid)"
       @cycle-bot-ally-team="cycleBotAllyTeam"
-      @set-seat-initial-state="(pid: PlayerId, state: 'commander' | 'base') => networkManager.setSeatInitialState(pid, state)"
+      @set-seat-initial-state="(pid: PlayerId, state: SeatInitialState) => networkManager.setSeatInitialState(pid, state)"
       @toggle-menu="handleMenuToggle"
       @set-center-magnitude="(v) => applyCenterMagnitude(v)"
       @set-ring-magnitude="(v) => applyRingMagnitude(v)"

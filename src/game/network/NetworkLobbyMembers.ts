@@ -40,6 +40,9 @@ import type {
 import {
   DEFAULT_BOT_INITIAL_STATE,
   DEFAULT_HUMAN_INITIAL_STATE,
+  normalizeSeatInitialState,
+  seatInitialStateHasBaseBuildings,
+  seatInitialStateHasOpeningUnits,
   type SeatInitialState,
 } from '../sim/agentSeat';
 import { MAX_LOBBY_PLAYERS, MAX_LOBBY_SPECTATORS } from './LobbyDirectory';
@@ -126,7 +129,9 @@ function normalizeWireLobbyMember(member: LobbyMember): LobbyMember {
     ...member,
     playerId: normalizeWireOptional(member.playerId),
     allyTeamId: normalizeWireOptional(member.allyTeamId),
-    initialState: normalizeWireOptional(member.initialState),
+    initialState: member.initialState === null || member.initialState === undefined
+      ? undefined
+      : normalizeSeatInitialState(member.initialState),
     ipAddress: normalizeWireOptional(member.ipAddress),
     location: normalizeWireOptional(member.location),
     timezone: normalizeWireOptional(member.timezone),
@@ -269,16 +274,41 @@ export class NetworkLobbyMembers {
     return [...this.botSeats.keys()].sort((a, b) => a - b);
   }
 
-  /** Seats whose INITIAL STATE is 'base' — the other seat axis. */
+  /** Seats receiving the authored base buildings. Both base openings belong
+   *  here; commander-only seats do not. */
   baseSeatPlayerIds(): PlayerId[] {
     const out: PlayerId[] = [];
     for (const member of this.members.values()) {
-      if (member.playerId !== undefined && member.initialState === 'base') {
+      if (
+        member.playerId !== undefined &&
+        seatInitialStateHasBaseBuildings(
+          normalizeSeatInitialState(member.initialState, DEFAULT_HUMAN_INITIAL_STATE),
+        )
+      ) {
         out.push(member.playerId);
       }
     }
     for (const bot of this.botSeats.values()) {
-      if (bot.initialState === 'base') out.push(bot.playerId);
+      if (seatInitialStateHasBaseBuildings(bot.initialState)) out.push(bot.playerId);
+    }
+    return out.sort((a, b) => a - b);
+  }
+
+  /** Base seats that also receive the opening unit wave. */
+  baseAndUnitsSeatPlayerIds(): PlayerId[] {
+    const out: PlayerId[] = [];
+    for (const member of this.members.values()) {
+      if (
+        member.playerId !== undefined &&
+        seatInitialStateHasOpeningUnits(
+          normalizeSeatInitialState(member.initialState, DEFAULT_HUMAN_INITIAL_STATE),
+        )
+      ) {
+        out.push(member.playerId);
+      }
+    }
+    for (const bot of this.botSeats.values()) {
+      if (seatInitialStateHasOpeningUnits(bot.initialState)) out.push(bot.playerId);
     }
     return out.sort((a, b) => a - b);
   }
@@ -289,9 +319,8 @@ export class NetworkLobbyMembers {
       .sort((a, b) => a.playerId - b.playerId);
   }
 
-  /** Seat a bot on a team (host gesture). Bots default to the 'base'
-   *  opening — the demo's whole character in one default — and the host
-   *  can flip any seat's initial state afterwards. */
+  /** Seat a bot on a team (host gesture). Lobby bots default to Base
+   *  Buildings Only; the host can cycle any seat afterwards. */
   addBotSeat(sideCount: number, preferredAllyTeamId?: number): LobbyBotSeat | null {
     const seat = this.lowestFreeSeat();
     if (seat === null) return null;
@@ -320,7 +349,7 @@ export class NetworkLobbyMembers {
     return true;
   }
 
-  /** Flip one seat's INITIAL STATE, member-held or bot. */
+  /** Set one seat's INITIAL STATE, member-held or bot. */
   setSeatInitialState(playerId: PlayerId, initialState: SeatInitialState): boolean {
     const bot = this.botSeats.get(playerId);
     if (bot !== undefined) {
@@ -740,7 +769,10 @@ export class NetworkLobbyMembers {
       this.botSeats.set(bot.playerId, {
         playerId: bot.playerId,
         allyTeamId: bot.allyTeamId,
-        initialState: bot.initialState === 'commander' ? 'commander' : 'base',
+        initialState: normalizeSeatInitialState(
+          bot.initialState,
+          DEFAULT_BOT_INITIAL_STATE,
+        ),
       });
     }
   }

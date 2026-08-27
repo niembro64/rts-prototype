@@ -1601,6 +1601,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runLobbySettingsContractTest();
         const { runNetworkLobbySeatingContractTest } = await import('../network/NetworkLobbySeatingContractTest');
         runNetworkLobbySeatingContractTest();
+        const { runInitialSeatStateContractTest } = await import('../server/InitialSeatStateContractTest');
+        runInitialSeatStateContractTest();
         const { runStateMachineContractTest } = await import('../state/StateMachineContractTest');
         runStateMachineContractTest();
         const { runAppSurfaceMachineContractTest } = await import('../../appSurfaceMachineContractTest');

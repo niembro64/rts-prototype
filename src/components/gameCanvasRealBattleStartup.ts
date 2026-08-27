@@ -117,6 +117,7 @@ type CreateRealBattleServerOptions = {
   allyTeamCount: number;
   aiPlayerIds?: readonly PlayerId[];
   baseSeatPlayerIds?: readonly PlayerId[];
+  baseAndUnitsSeatPlayerIds?: readonly PlayerId[];
   gameGenerationSeed: number;
   terrain: RealBattleStartupTerrain;
   converterTax?: number;
@@ -184,6 +185,7 @@ type CreateRealBattleBackendOptions = {
   playerIds: PlayerId[];
   aiPlayerIds?: PlayerId[];
   baseSeatPlayerIds?: PlayerId[];
+  baseAndUnitsSeatPlayerIds?: PlayerId[];
   terrain: RealBattleStartupTerrain;
   networkRole: NetworkRole | null;
   /** The SEAT this client holds, or undefined while it is watching. Not the
@@ -268,14 +270,17 @@ type RealBattleMatchContext = {
   /** Seats with AGENT TYPE 'bot', from the hashed initialization — never
    *  the raw start option, which a CLIENT does not carry. */
   readonly aiPlayerIds: readonly PlayerId[];
-  /** Seats with INITIAL STATE 'base', from the hashed initialization. */
+  /** Seats receiving base buildings, from the hashed initialization. */
   readonly baseSeatPlayerIds: readonly PlayerId[];
+  /** Base seats additionally receiving the opening unit wave. */
+  readonly baseAndUnitsSeatPlayerIds: readonly PlayerId[];
 };
 
 type CreateRealBattleMatchContextOptions = {
   readonly playerIds: readonly PlayerId[];
   readonly aiPlayerIds: readonly PlayerId[] | undefined;
   readonly baseSeatPlayerIds: readonly PlayerId[] | undefined;
+  readonly baseAndUnitsSeatPlayerIds: readonly PlayerId[] | undefined;
   readonly terrain: RealBattleStartupTerrain;
   /** The SEAT this client holds, or undefined while it is watching. */
   readonly localPlayerId: PlayerId | undefined;
@@ -394,6 +399,7 @@ function createRealBattleMatchContext({
   playerIds,
   aiPlayerIds,
   baseSeatPlayerIds,
+  baseAndUnitsSeatPlayerIds,
   terrain,
   localPlayerId,
   networkRole,
@@ -438,6 +444,8 @@ function createRealBattleMatchContext({
       allyTeamCount: battleHandoff.initialization.allyTeamCount,
       aiPlayerIds: battleHandoff.initialization.aiPlayerIds,
       baseSeatPlayerIds: battleHandoff.initialization.baseSeatPlayerIds,
+      baseAndUnitsSeatPlayerIds:
+        battleHandoff.initialization.baseAndUnitsSeatPlayerIds,
       settings,
       gameGenerationSeed: battleHandoff.initialization.gameGenerationSeed,
     });
@@ -461,6 +469,8 @@ function createRealBattleMatchContext({
       handoff: battleHandoff,
       aiPlayerIds: battleHandoff.initialization.aiPlayerIds,
       baseSeatPlayerIds: battleHandoff.initialization.baseSeatPlayerIds,
+      baseAndUnitsSeatPlayerIds:
+        battleHandoff.initialization.baseAndUnitsSeatPlayerIds,
     };
   }
 
@@ -481,6 +491,7 @@ function createRealBattleMatchContext({
     allyTeamCount: network?.lobbyAllyTeamCount() ?? fallbackSettings.allyTeamCount,
     aiPlayerIds,
     baseSeatPlayerIds,
+    baseAndUnitsSeatPlayerIds,
     settings: fallbackSettings,
     gameGenerationSeed,
   });
@@ -500,6 +511,7 @@ function createRealBattleMatchContext({
     handoff: undefined,
     aiPlayerIds: initialization.aiPlayerIds,
     baseSeatPlayerIds: initialization.baseSeatPlayerIds,
+    baseAndUnitsSeatPlayerIds: initialization.baseAndUnitsSeatPlayerIds,
   };
 }
 
@@ -676,6 +688,7 @@ async function createRealBattleServer({
   allyTeamCount,
   aiPlayerIds,
   baseSeatPlayerIds,
+  baseAndUnitsSeatPlayerIds,
   gameGenerationSeed,
   terrain,
   converterTax,
@@ -689,6 +702,9 @@ async function createRealBattleServer({
       allyTeamCount,
       aiPlayerIds: aiPlayerIds === undefined ? undefined : [...aiPlayerIds],
       baseSeatPlayerIds: baseSeatPlayerIds === undefined ? undefined : [...baseSeatPlayerIds],
+      baseAndUnitsSeatPlayerIds: baseAndUnitsSeatPlayerIds === undefined
+        ? undefined
+        : [...baseAndUnitsSeatPlayerIds],
       gameGenerationSeed,
       ...realBattleTerrainWorldFields(terrain),
       metalCoverage: terrain.metalCoverage,
@@ -717,6 +733,7 @@ async function createDeterministicLockstepBackendRuntime({
   playerIds,
   aiPlayerIds,
   baseSeatPlayerIds,
+  baseAndUnitsSeatPlayerIds,
   terrain,
   networkRole,
   localPlayerId,
@@ -735,6 +752,7 @@ async function createDeterministicLockstepBackendRuntime({
     playerIds,
     aiPlayerIds,
     baseSeatPlayerIds,
+    baseAndUnitsSeatPlayerIds,
     terrain,
     localPlayerId,
     networkRole,
@@ -763,6 +781,7 @@ async function createDeterministicLockstepBackendRuntime({
     allyTeamCount: matchContext.allyTeamCount,
     aiPlayerIds: matchContext.aiPlayerIds,
     baseSeatPlayerIds: matchContext.baseSeatPlayerIds,
+    baseAndUnitsSeatPlayerIds: matchContext.baseAndUnitsSeatPlayerIds,
     gameGenerationSeed: matchContext.gameGenerationSeed,
     terrain,
     converterTax: matchContext.settings.converterTax,

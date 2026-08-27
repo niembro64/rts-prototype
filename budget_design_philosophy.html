@@ -535,20 +535,24 @@
         is driven by the deterministic in-simulation policy — idle factories re-picking
         repeat-build units from the sim&rsquo;s own RNG stream — with no connection, no commands,
         and no wire traffic at all. The <strong>INITIAL STATE</strong> says what the seat starts
-        the match with: a lone <code>commander</code> on its spawn arc, or the authored full
-        <code>base</code> — building arcs, fabricators seeded to repeat-build, auto-extractors on
-        the seat&rsquo;s deposits, and the opening unit wave. The authored BASE economy includes six
-        solar collectors and four wind turbines per seat; those counts are deliberate opening
-        power capacity, not decorative scatter.
+        the match with. <code>commander</code> is a Lone Commander on its spawn arc.
+        <code>baseBuildings</code> is Base Buildings Only: the commander, authored building arcs,
+        Universal Fabricators seeded to repeat-build, and auto-extractors on the seat&rsquo;s deposits.
+        <code>baseAndUnits</code> is those exact same buildings plus the opening unit wave. Both
+        base states therefore follow one complete building path; the unit wave is the only
+        difference. The authored base economy includes six solar collectors and four wind
+        turbines per seat; those counts are deliberate opening power capacity, not decorative
+        scatter.
       </p>
       <p>
         The axes mix freely, and the DEMO battle is the proof rather than the exception: every
-        demo seat opens with a <code>base</code>, and every seat except the local one is a
-        <code>bot</code> — the user&rsquo;s own demo seat is a <em>human with the bot&rsquo;s
-        opening</em>. A skirmish can seat a bot that starts from a bare commander, or hand a human
-        the full base. Both axes are gameplay truth — they decide what spawns at frame&nbsp;0 and
-        who the sim drives — so both are hashed into the canonical match initialization and a
-        peer that disagrees about either is refused before the first frame.
+        demo seat opens with <code>baseAndUnits</code>, and every seat except the local one is a
+        <code>bot</code> — the user&rsquo;s own demo seat is a <em>human with the bots&rsquo;
+        opening</em>. In a game-room lobby, humans default to <code>commander</code> while new bot
+        seats default to <code>baseBuildings</code>; the host can cycle either kind of seat through
+        all three choices. Both axes are gameplay truth — they decide what spawns at
+        frame&nbsp;0 and who the sim drives — so both are hashed into the canonical match
+        initialization and a peer that disagrees about either is refused before the first frame.
       </p>
       <ul class="rule-list">
         <li>Bots are lockstep-legal precisely because they live entirely inside the deterministic simulation. Every peer computes their behaviour identically from the hashed roster; a late joiner replays them for free because they add nothing to the command archive. The old support boundary said &ldquo;no AI players&rdquo;; the boundary now is <code>bots: deterministic-sim-only</code> — a bot that needed wall clocks or its own network presence would be refused.</li>
@@ -4143,7 +4147,7 @@
         exit lane. On completion the product receives a mandatory move beyond that mouth before
         any rally route or factory-guard order, so a rally behind the building cannot turn the
         unit through the machinery.</li>
-        <li><strong>Demo/full-base rule.</strong> Each initialized full base places one same-tier
+        <li><strong>Initialized-base rule.</strong> Both Base Buildings Only and Base and Units place one same-tier
         Universal per enabled producible unit, never a specialist. Each factory repeat-builds
         exactly that unit with an otherwise empty queue and quota state. T1, T2, and T3 units
         therefore receive T1, Advanced, and Experimental Universal hosts respectively, and no
