@@ -29,6 +29,15 @@ export function getSensorMediumAtZ(z: number): SensorMedium {
 /** The host origin — never the mounted sensor height or body volume — routes
  * every ordinary sensor radius into the air or water team field. */
 export function getEntitySensorMedium(entity: Entity): SensorMedium {
+  // A structure is classified by what construction built it on, exactly as
+  // its authored radii are (getAuthoredBuildingSensorMedium): a water-only
+  // structure has its box centred ON the water plane, so its origin sits at
+  // the waterline itself, which the origin rule reads as air — and a Sonar
+  // or torpedo tower would sense the sky instead of the water it stands in.
+  if (entity.building !== null) {
+    const authored = getAuthoredBuildingSensorMedium(entity.buildingBlueprintId);
+    if (authored !== null) return authored;
+  }
   return getSensorMediumAtZ(entity.transform.z);
 }
 

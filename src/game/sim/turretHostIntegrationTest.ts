@@ -283,8 +283,12 @@ function assertSlowRocketLaunchVelocityInheritance(addTurretVelocityToEmissionLa
     1 as PlayerId,
     TEST_VERTICAL_ROCKET_UNIT_BLUEPRINT_ID,
   );
+  // Inside the Badger's own 300 wu full sight: a bare world has no other
+  // observer, and a priority target still has to be SEEN before the turret
+  // engages it (sensing is six team fields fed by host sight, never a free
+  // pass for an authored target id).
   const launchTarget = launchWorld.createUnitFromBlueprint(
-    720,
+    400,
     120,
     2 as PlayerId,
     'unitJackal',
