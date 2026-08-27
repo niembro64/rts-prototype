@@ -992,9 +992,8 @@ export class SnapshotVisibility {
    *      the corpse falls outside their full vision.
    *    - Own pings. Minimap pings carry the pinger's playerId; the
    *      pinger plus their team see the marker even on fog points.
-   *    - FOW-08 attackAlert (victimPlayerId). The victim and their
-   *      allies see the marker at the attacker's position when an
-   *      otherwise-silent splash from fog lands on a teammate's unit. */
+   *    - attackAlert (victimPlayerId). The victim and their allies see a
+   *      marker at the known damaged unit without revealing the attacker. */
   isAuthoredByRecipient(authorPlayerId: PlayerId | undefined): boolean {
     return this.isOwnedByRecipientOrAlly(authorPlayerId);
   }
@@ -1007,22 +1006,22 @@ export class SnapshotVisibility {
   private addPlayerSourceEntities(source: readonly Entity[]): void {
     for (let i = 0; i < source.length; i++) {
       const entity = source[i];
-      forEachEntityTurretSensorSource(entity, (turretSource) => {
-        const { position, sourceMedium, sensors, operational } = turretSource;
-        if (!operational.fullSight) return;
-        for (const targetMedium of ['aboveWater', 'underwater'] as const) {
-          const radius = sensors.fullSight[sourceMedium][targetMedium];
-          if (radius <= 0) continue;
-          this.addSource(
-            this.fullSources,
-            this.fullSourceCells,
-            position.x,
-            position.y,
-            position.z,
-            radius,
-            targetMedium,
-          );
-        }
+      forEachEntityTurretSensorSource(entity, ({
+        position,
+        hostMedium,
+        sensors,
+        operational,
+      }) => {
+        if (!operational.vision || sensors.visionRadius <= 0) return;
+        this.addSource(
+          this.fullSources,
+          this.fullSourceCells,
+          position.x,
+          position.y,
+          position.z,
+          sensors.visionRadius,
+          hostMedium,
+        );
       });
     }
   }
@@ -1053,10 +1052,10 @@ export class SnapshotVisibility {
 
   private addEnemyJamSourceEntities(source: readonly Entity[]): void {
     for (let i = 0; i < source.length; i++) {
-      forEachEntityTurretJammerSource(source[i], ({ position, medium, radius }) => {
+      forEachEntityTurretJammerSource(source[i], ({ position, hostMedium, radius }) => {
         this.addSource(
-          medium === 'radar' ? this.enemyRadarJamSources : this.enemySonarJamSources,
-          medium === 'radar'
+          hostMedium === 'aboveWater' ? this.enemyRadarJamSources : this.enemySonarJamSources,
+          hostMedium === 'aboveWater'
             ? this.enemyRadarJamSourceCells
             : this.enemySonarJamSourceCells,
           position.x, position.y, position.z,
@@ -1138,40 +1137,37 @@ export class SnapshotVisibility {
   private addAuxiliaryObservationSourceEntities(source: readonly Entity[]): void {
     for (let i = 0; i < source.length; i++) {
       const entity = source[i];
-      forEachEntityTurretSensorSource(entity, (turretSource) => {
-        const { position, sourceMedium, sensors, operational } = turretSource;
-        for (const targetMedium of ['aboveWater', 'underwater'] as const) {
-          const contactRadius = operational.contactSight
-            ? sensors.contactSight[sourceMedium][targetMedium]
-            : 0;
-          if (contactRadius > 0) {
-            this.addSource(
-              targetMedium === 'aboveWater' ? this.radarSources : this.sonarSources,
-              targetMedium === 'aboveWater' ? this.radarSourceCells : this.sonarSourceCells,
-              position.x,
-              position.y,
-              position.z,
-              contactRadius,
-              targetMedium,
-            );
-          }
-          const detectorRadius = operational.detector && operational.fullSight
-            ? Math.min(
-              sensors.detectorRadius,
-              sensors.fullSight[sourceMedium][targetMedium],
-            )
-            : 0;
-          if (detectorRadius <= 0) continue;
+      forEachEntityTurretSensorSource(entity, ({
+        position,
+        hostMedium,
+        sensors,
+        operational,
+      }) => {
+        const radarRadius = operational.radar ? sensors.radarRadius : 0;
+        if (radarRadius > 0) {
           this.addSource(
-            this.detectorSources,
-            this.detectorSourceCells,
+            hostMedium === 'aboveWater' ? this.radarSources : this.sonarSources,
+            hostMedium === 'aboveWater' ? this.radarSourceCells : this.sonarSourceCells,
             position.x,
             position.y,
             position.z,
-            detectorRadius,
-            targetMedium,
+            radarRadius,
+            hostMedium,
           );
         }
+        const detectorRadius = operational.detector && operational.vision
+          ? Math.min(sensors.detectorRadius, sensors.visionRadius)
+          : 0;
+        if (detectorRadius <= 0) return;
+        this.addSource(
+          this.detectorSources,
+          this.detectorSourceCells,
+          position.x,
+          position.y,
+          position.z,
+          detectorRadius,
+          hostMedium,
+        );
       });
     }
   }

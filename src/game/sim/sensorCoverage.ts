@@ -2,7 +2,6 @@ import { getTransformCosSin } from '../math';
 import type {
   EntitySignature,
   SensorCapabilityConfig,
-  SensorMediumRadiusMatrix,
 } from '../../types/blueprints';
 import type {
   BuildingBlueprintId,
@@ -22,25 +21,31 @@ import {
 
 export type { SensorMedium } from './sensorConfig';
 
-/** The source medium belongs to the turret origin, including at the surface. */
+/** Sensor points at the waterline belong to air; only points below it are water. */
 export function getSensorMediumAtZ(z: number): SensorMedium {
-  return z <= WATER_LEVEL ? 'underwater' : 'aboveWater';
+  return z < WATER_LEVEL ? 'underwater' : 'aboveWater';
+}
+
+/** The host origin — never the mounted sensor height or body volume — routes
+ * every ordinary sensor radius into the air or water team field. */
+export function getEntitySensorMedium(entity: Entity): SensorMedium {
+  return getSensorMediumAtZ(entity.transform.z);
 }
 
 type SensorOperationalChannels = Readonly<{
-  fullSight: boolean;
-  contactSight: boolean;
+  vision: boolean;
+  radar: boolean;
   detector: boolean;
 }>;
 
 const ALL_SENSOR_CHANNELS_OPERATIONAL: SensorOperationalChannels = {
-  fullSight: true,
-  contactSight: true,
+  vision: true,
+  radar: true,
   detector: true,
 };
 const PASSIVE_SIGHT_ONLY_OPERATIONAL: SensorOperationalChannels = {
-  fullSight: true,
-  contactSight: false,
+  vision: true,
+  radar: false,
   detector: false,
 };
 
@@ -62,14 +67,6 @@ function getEntityOperationalSensorChannels(
     : ALL_SENSOR_CHANNELS_OPERATIONAL;
 }
 
-function targetRadius(
-  matrix: SensorMediumRadiusMatrix,
-  sourceMedium: SensorMedium,
-  targetMedium: SensorMedium,
-): number {
-  return matrix[sourceMedium][targetMedium];
-}
-
 function resolveTurretSensorPosition(
   entity: Entity,
   turret: Turret | SensorMountCapability,
@@ -84,16 +81,14 @@ export type TurretSensorSource = {
   mount: Turret | SensorMountCapability;
   turretIndex: number;
   position: Vec3;
-  sourceMedium: SensorMedium;
+  hostMedium: SensorMedium;
   sensors: SensorCapabilityConfig;
   operational: SensorOperationalChannels;
 };
 
-export type JammerMedium = 'radar' | 'sonar';
-
 export type TurretJammerSource = {
   position: Vec3;
-  medium: JammerMedium;
+  hostMedium: SensorMedium;
   radius: number;
 };
 
@@ -102,13 +97,13 @@ const _source: TurretSensorSource = {
   mount: null as unknown as Turret,
   turretIndex: -1,
   position: _sourcePosition,
-  sourceMedium: 'aboveWater',
+  hostMedium: 'aboveWater',
   sensors: null as unknown as SensorCapabilityConfig,
   operational: ALL_SENSOR_CHANNELS_OPERATIONAL,
 };
 const _jammerSource: TurretJammerSource = {
   position: _sourcePosition,
-  medium: 'radar',
+  hostMedium: 'aboveWater',
   radius: 0,
 };
 
@@ -120,6 +115,7 @@ export function forEachEntityTurretSensorSource(
 ): void {
   const operational = getEntityOperationalSensorChannels(entity);
   if (operational === null) return;
+  const hostMedium = getEntitySensorMedium(entity);
   const turrets = entity.combat?.turrets;
   if (!turrets) return;
   for (let i = 0; i < turrets.length; i++) {
@@ -129,7 +125,7 @@ export function forEachEntityTurretSensorSource(
     resolveTurretSensorPosition(entity, turret, i, _sourcePosition);
     _source.mount = turret;
     _source.turretIndex = i;
-    _source.sourceMedium = getSensorMediumAtZ(_sourcePosition.z);
+    _source.hostMedium = hostMedium;
     _source.sensors = sensors;
     _source.operational = operational;
     visit(_source);
@@ -144,7 +140,7 @@ export function forEachEntityTurretSensorSource(
     );
     _source.mount = mount;
     _source.turretIndex = mount.mountIndex;
-    _source.sourceMedium = getSensorMediumAtZ(_sourcePosition.z);
+    _source.hostMedium = hostMedium;
     _source.sensors = mount.sensors;
     _source.operational = operational;
     visit(_source);
@@ -162,19 +158,11 @@ export function forEachEntityTurretJammerSource(
   visit: (source: TurretJammerSource) => void,
 ): void {
   forEachEntityTurretSensorSource(entity, (source) => {
-    if (!source.operational.contactSight) return;
-    if (source.sensors.radarJamRadius > 0) {
-      _jammerSource.position = source.position;
-      _jammerSource.medium = 'radar';
-      _jammerSource.radius = source.sensors.radarJamRadius;
-      visit(_jammerSource);
-    }
-    if (source.sensors.sonarJamRadius > 0) {
-      _jammerSource.position = source.position;
-      _jammerSource.medium = 'sonar';
-      _jammerSource.radius = source.sensors.sonarJamRadius;
-      visit(_jammerSource);
-    }
+    if (!source.operational.radar || source.sensors.jammingRadius <= 0) return;
+    _jammerSource.position = source.position;
+    _jammerSource.hostMedium = source.hostMedium;
+    _jammerSource.radius = source.sensors.jammingRadius;
+    visit(_jammerSource);
   });
 }
 
@@ -186,7 +174,7 @@ export function getEntityPrimaryTurretSensorSource(
   out: Vec3,
 ): {
   position: Vec3;
-  sourceMedium: SensorMedium;
+  hostMedium: SensorMedium;
   sensors: SensorCapabilityConfig;
   operational: SensorOperationalChannels;
 } | null {
@@ -200,7 +188,7 @@ export function getEntityPrimaryTurretSensorSource(
     resolveTurretSensorPosition(entity, turrets[i], i, out);
     return {
       position: out,
-      sourceMedium: getSensorMediumAtZ(out.z),
+      hostMedium: getEntitySensorMedium(entity),
       sensors,
       operational,
     };
@@ -210,7 +198,7 @@ export function getEntityPrimaryTurretSensorSource(
     resolveTurretSensorPosition(entity, mount, mount.mountIndex, out);
     return {
       position: out,
-      sourceMedium: getSensorMediumAtZ(out.z),
+      hostMedium: getEntitySensorMedium(entity),
       sensors: mount.sensors,
       operational,
     };
@@ -238,9 +226,10 @@ export function getBuildingAuthoredContactSightRadius(
   sourceMedium: SensorMedium,
   targetMedium: SensorMedium,
 ): number {
+  if (sourceMedium !== targetMedium) return 0;
   let max = 0;
   for (const sensors of getBuildingAuthoredSensors(buildingBlueprintId)) {
-    max = Math.max(max, targetRadius(sensors.contactSight, sourceMedium, targetMedium));
+    max = Math.max(max, sensors.radarRadius);
   }
   return max;
 }
@@ -252,28 +241,40 @@ export function getBuildingAuthoredFullSightRadius(
   sourceMedium: SensorMedium,
   targetMedium: SensorMedium,
 ): number {
+  if (sourceMedium !== targetMedium) return 0;
   let max = 0;
   for (const sensors of getBuildingAuthoredSensors(buildingBlueprintId)) {
-    max = Math.max(max, targetRadius(sensors.fullSight, sourceMedium, targetMedium));
+    max = Math.max(max, sensors.visionRadius);
   }
   return max;
 }
 
-/** Authored jammer reach of a building blueprint (radar and sonar jam lanes
- *  reduced to one display radius for the placement preview). */
+/** Authored scalar jammer reach of a building blueprint. Its eventual host
+ * origin chooses the air or water field; the placement preview needs one ring. */
 export function getBuildingAuthoredJammerRadius(
   buildingBlueprintId: BuildingBlueprintId | null,
 ): number {
   let max = 0;
   for (const sensors of getBuildingAuthoredSensors(buildingBlueprintId)) {
-    max = Math.max(max, sensors.radarJamRadius, sensors.sonarJamRadius);
+    max = Math.max(max, sensors.jammingRadius);
   }
   return max;
+}
+
+function getAuthoredBuildingSensorMedium(
+  buildingBlueprintId: BuildingBlueprintId | null,
+): SensorMedium | null {
+  if (buildingBlueprintId === null) return null;
+  const blueprint = getBuildingBlueprint(buildingBlueprintId);
+  return blueprint.requiresWater && !blueprint.requiresLand
+    ? 'underwater'
+    : 'aboveWater';
 }
 
 export function getBuildingAuthoredRadarRadius(
   buildingBlueprintId: BuildingBlueprintId | null,
 ): number {
+  if (getAuthoredBuildingSensorMedium(buildingBlueprintId) !== 'aboveWater') return 0;
   return getBuildingAuthoredContactSightRadius(
     buildingBlueprintId,
     'aboveWater',
@@ -284,6 +285,7 @@ export function getBuildingAuthoredRadarRadius(
 export function getBuildingAuthoredSonarRadius(
   buildingBlueprintId: BuildingBlueprintId | null,
 ): number {
+  if (getAuthoredBuildingSensorMedium(buildingBlueprintId) !== 'underwater') return 0;
   return getBuildingAuthoredContactSightRadius(
     buildingBlueprintId,
     'underwater',
@@ -293,16 +295,15 @@ export function getBuildingAuthoredSonarRadius(
 
 function getMaximumEntityTurretRadius(
   entity: Entity,
-  tier: 'fullSight' | 'contactSight',
+  channel: 'vision' | 'radar',
   targetMedium: SensorMedium,
 ): number {
   let max = 0;
   forEachEntityTurretSensorSource(entity, (source) => {
-    if (!source.operational[tier]) return;
-    max = Math.max(
-      max,
-      targetRadius(source.sensors[tier], source.sourceMedium, targetMedium),
-    );
+    if (!source.operational[channel] || source.hostMedium !== targetMedium) return;
+    max = Math.max(max, channel === 'vision'
+      ? source.sensors.visionRadius
+      : source.sensors.radarRadius);
   });
   return max;
 }
@@ -311,14 +312,14 @@ export function getEntityFullVisionRadius(
   entity: Entity,
   targetMedium: SensorMedium,
 ): number {
-  return getMaximumEntityTurretRadius(entity, 'fullSight', targetMedium);
+  return getMaximumEntityTurretRadius(entity, 'vision', targetMedium);
 }
 
 function getEntityContactVisionRadius(
   entity: Entity,
   targetMedium: SensorMedium,
 ): number {
-  return getMaximumEntityTurretRadius(entity, 'contactSight', targetMedium);
+  return getMaximumEntityTurretRadius(entity, 'radar', targetMedium);
 }
 
 export function getEntityRadarRadius(entity: Entity): number {

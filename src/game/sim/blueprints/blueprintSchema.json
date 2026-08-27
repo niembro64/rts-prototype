@@ -143,38 +143,6 @@
         "rustType": "i32"
       }
     },
-    "SensorMediumTargetRadii": {
-      "type": "object",
-      "required": [
-        "aboveWater",
-        "underwater"
-      ],
-      "properties": {
-        "aboveWater": {
-          "type": "number"
-        },
-        "underwater": {
-          "type": "number"
-        }
-      },
-      "additionalProperties": false
-    },
-    "SensorMediumRadiusMatrix": {
-      "type": "object",
-      "required": [
-        "aboveWater",
-        "underwater"
-      ],
-      "properties": {
-        "aboveWater": {
-          "$ref": "#/$defs/SensorMediumTargetRadii"
-        },
-        "underwater": {
-          "$ref": "#/$defs/SensorMediumTargetRadii"
-        }
-      },
-      "additionalProperties": false
-    },
     "EmissionMediumTargetRoutes": {
       "type": "object",
       "required": [
@@ -212,33 +180,31 @@
     "SensorCapabilityConfig": {
       "type": "object",
       "required": [
-        "fullSight",
-        "contactSight",
+        "visionRadius",
+        "radarRadius",
         "detectorRadius",
-        "radarJamRadius",
-        "sonarJamRadius"
+        "jammingRadius"
       ],
       "properties": {
-        "fullSight": {
-          "$ref": "#/$defs/SensorMediumRadiusMatrix"
+        "visionRadius": {
+          "description": "Full-identity vision radius. The host unit/building origin routes this scalar circle to the team air-vision or water-vision field.",
+          "type": "number"
         },
-        "contactSight": {
-          "$ref": "#/$defs/SensorMediumRadiusMatrix"
+        "radarRadius": {
+          "description": "Anonymous contact radius. The host origin routes this scalar circle to team air-radar or water-radar; water radar is presented as sonar.",
+          "type": "number"
         },
         "detectorRadius": {
+          "description": "Cloak detection reach inside the host-selected vision field. Detection does not locate by itself.",
           "type": "number"
         },
-        "radarJamRadius": {
-          "description": "Denies enemy RADAR (above-water contact) within this radius of the jammer. Jamming hides only contacts: anything in direct sight is still seen, which is what keeps a jammer a scouting problem rather than an invisibility field.",
-          "type": "number"
-        },
-        "sonarJamRadius": {
-          "description": "Denies enemy SONAR (underwater contact) within this radius. Separate from radar jamming so a naval jammer and a land jammer are different units rather than one that does both.",
+        "jammingRadius": {
+          "description": "Denies enemy radar in the host origin's medium. The same scalar produces air-radar jamming above water and water-radar/sonar jamming below water; direct vision remains unaffected.",
           "type": "number"
         }
       },
       "additionalProperties": false,
-      "description": "One sensor suite. fullSight and contactSight are source-medium x target-medium matrices: what this observer can see, from the medium it sits in, of a target in that medium. Full sight CROSSES the waterline: water is a medium, not an occluder, so each fullSight source row authors the same radius for both target columns (aboveWater.underwater == aboveWater.aboveWater and underwater.aboveWater == underwater.underwater; sensorWaterlineSightContractTest pins it) and an enemy inside the radius is seen whichever side of the surface it is on. Contact sight stays per medium: radar is the above->above lane and sonar the under->under lane. detectorRadius reveals cloak. The jam radii are the opposite of a sensor \u2014 they DENY the enemy's contact sensors over an area around this entity, radar and sonar independently."
+      "description": "One scalar sensor suite. The host unit/building origin alone selects air (origin at or above the waterline) or water (origin below it), and routes visionRadius, radarRadius, and jammingRadius to exactly that medium's team fields. Mounted sensor height and target medium never select a matrix cell. detectorRadius reveals cloak only inside the selected vision lane."
     },
     "TurretEngagementEnvelope": {
       "type": "object",

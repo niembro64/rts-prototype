@@ -12,6 +12,7 @@ import { isStructureBlueprintId } from '../../../types/blueprintIds';
 import type { UnitBlueprint } from './types';
 import type { UnitLocomotion } from '../types';
 import { createUnitLocomotion } from '../unitLocomotion';
+import { isStandardTetrahedronParticleRadius } from '@/tetrahedronParticleProfile';
 export { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS, isBuildableUnitBlueprintId } from './unitRoster';
 import { TURRET_BLUEPRINTS } from './turrets';
@@ -231,8 +232,7 @@ function validateUnitWorkCapability(bp: UnitBlueprint): void {
       workEmitter.points.length === 0 ||
       !Number.isFinite(workEmitter.particleTravelSpeed) ||
       workEmitter.particleTravelSpeed <= 0 ||
-      !Number.isFinite(workEmitter.particleRadius) ||
-      workEmitter.particleRadius <= 0
+      !isStandardTetrahedronParticleRadius(workEmitter.particleRadius)
     ) {
       throw new Error(
         `Invalid work config for ${bp.unitBlueprintId}: construction hosts must author a valid workEmitter`,

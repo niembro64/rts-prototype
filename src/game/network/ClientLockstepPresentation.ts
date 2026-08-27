@@ -1,8 +1,11 @@
 import { DEFAULT_SIMULATION_TICK_RATE_HZ } from '@/types/simulationTickRate';
 import { entitySlotRegistry, ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY, ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION } from '../sim/EntitySlotRegistry';
-import type { Entity } from '../sim/types';
+import type { Entity, EntityId } from '../sim/types';
 import { getSimWasm } from '../sim-wasm/init';
 import { reuseTypedArrayView } from '../memory/typedArrayView';
+
+/** valid, x, y, z. Shared by every anonymous contact consumer. */
+export const PRESENTED_ENTITY_POSITION_STRIDE = 4;
 
 /**
  * Thin compatibility scatter around the Rust/WASM presentation history.
@@ -21,6 +24,7 @@ export class ClientLockstepPresentation {
   private filteredSetVersion = -1;
   private slotInput = new Uint32Array(0);
   private poseOutput = new Float32Array(0);
+  private positionOutput = new Float32Array(0);
   private turretOutput = new Float32Array(0);
   private latestTick = -1;
   private capturedAtMs = 0;
@@ -42,6 +46,7 @@ export class ClientLockstepPresentation {
     this.filteredSetVersion = -1;
     this.slotInput = new Uint32Array(0);
     this.poseOutput = new Float32Array(0);
+    this.positionOutput = new Float32Array(0);
     this.turretOutput = new Float32Array(0);
     this.latestTick = -1;
     this.capturedAtMs = 0;
@@ -79,6 +84,11 @@ export class ClientLockstepPresentation {
       }
       this.filteredSetVersion = entitySetVersion;
     }
+    const elapsedMs = Math.max(0, nowMs - this.capturedAtMs);
+    // Compute the frame alpha even when no identified moving entity is in the
+    // client store. Radar-only contacts use this exact same alpha below.
+    const alpha = Math.max(this.lastAlpha, Math.min(1, elapsedMs / this.fixedStepMs));
+    this.lastAlpha = alpha;
     const count = filtered.length;
     const entities = this.entities;
     entities.length = 0;
@@ -97,12 +107,9 @@ export class ClientLockstepPresentation {
       this.slotInput[i] = filteredSlots[i];
     }
 
-    const elapsedMs = Math.max(0, nowMs - this.capturedAtMs);
     // One shared, monotonic render clock. Clamp instead of extrapolating:
     // rendering intentionally trails the newest authoritative state by at
     // most one fixed tick, exactly the trade Recoil makes for stable motion.
-    const alpha = Math.max(this.lastAlpha, Math.min(1, elapsedMs / this.fixedStepMs));
-    this.lastAlpha = alpha;
     presentation.interpolate(count, alpha);
 
     const poseStride = presentation.poseOutputStride;
@@ -188,5 +195,51 @@ export class ClientLockstepPresentation {
       entities.push(entity);
     }
     return entities;
+  }
+
+  /** Resolve anonymous contact ids through the same immutable adjacent-tick
+   *  history and the exact same render-frame alpha as identified entities.
+   *  The caller owns only an ephemeral output batch; there is no radar pose,
+   *  glide endpoint, or contact velocity stored here. */
+  resolveEntityPositions(
+    entityIds: readonly EntityId[],
+    out: Float32Array,
+  ): void {
+    const count = entityIds.length;
+    const outputLength = count * PRESENTED_ENTITY_POSITION_STRIDE;
+    if (out.length < outputLength) {
+      throw new Error(
+        `[client presentation] position output needs ${outputLength} floats, got ${out.length}`,
+      );
+    }
+    out.fill(0, 0, outputLength);
+    if (count === 0) return;
+
+    const wasm = getSimWasm() ?? null;
+    if (wasm === null || !wasm.presentation.hasHistory()) return;
+
+    const presentation = wasm.presentation;
+    presentation.scratchEnsure(count);
+    this.slotInput = reuseTypedArrayView(
+      this.slotInput,
+      wasm.memory.buffer,
+      presentation.slotInputScratchPtr(),
+      count,
+      Uint32Array,
+    );
+    for (let row = 0; row < count; row++) {
+      const slot = entitySlotRegistry.getSlot(entityIds[row]);
+      this.slotInput[row] = slot >= 0 ? slot : 0xffffffff;
+    }
+
+    presentation.interpolatePositions(count, this.lastAlpha);
+    this.positionOutput = reuseTypedArrayView(
+      this.positionOutput,
+      wasm.memory.buffer,
+      presentation.positionOutputScratchPtr(),
+      outputLength,
+      Float32Array,
+    );
+    out.set(this.positionOutput.subarray(0, outputLength), 0);
   }
 }

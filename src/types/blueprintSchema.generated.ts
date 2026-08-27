@@ -11,16 +11,6 @@ import type { UnitSuspensionConfig } from './unitLocomotionTypes';
 
 export type TurretRangeVolume = 'turret-range-cylinder-normal' | 'turret-range-bottom-unbounded' | 'turret-range-top-water-and-bottom-unbounded' | 'turret-range-top-and-bottom-unbounded' | 'turret-range-sphere';
 
-export type SensorMediumTargetRadii = {
-  aboveWater: number;
-  underwater: number;
-};
-
-export type SensorMediumRadiusMatrix = {
-  aboveWater: SensorMediumTargetRadii;
-  underwater: SensorMediumTargetRadii;
-};
-
 export type EmissionMediumTargetRoutes = {
   aboveWater: boolean;
   underwater: boolean;
@@ -32,11 +22,10 @@ export type EmissionMediumTrajectoryMatrix = {
 };
 
 export type SensorCapabilityConfig = {
-  fullSight: SensorMediumRadiusMatrix;
-  contactSight: SensorMediumRadiusMatrix;
+  visionRadius: number;
+  radarRadius: number;
   detectorRadius: number;
-  radarJamRadius: number;
-  sonarJamRadius: number;
+  jammingRadius: number;
 };
 
 export type TurretEngagementEnvelope = {

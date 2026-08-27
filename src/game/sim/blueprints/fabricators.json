@@ -32,7 +32,7 @@
     "workEmitter": {
       "points": [{ "x": -20, "y": -86, "z": 54 }, { "x": -20, "y": 86, "z": 54 }],
       "particleTravelSpeed": 200,
-      "particleRadius": 1.7,
+      "particleRadius": 0.8,
       "attachment": { "kind": "host" },
       "angularActuator": null,
       "articulation": null,
@@ -75,7 +75,7 @@
     "workEmitter": {
       "points": [{ "x": -18, "y": -68, "z": 38 }, { "x": -18, "y": 68, "z": 38 }],
       "particleTravelSpeed": 200,
-      "particleRadius": 1.7,
+      "particleRadius": 0.8,
       "attachment": { "kind": "host" },
       "angularActuator": null,
       "articulation": null,
@@ -118,7 +118,7 @@
     "workEmitter": {
       "points": [{ "x": -34, "y": -76, "z": 92 }, { "x": -34, "y": 76, "z": 92 }],
       "particleTravelSpeed": 200,
-      "particleRadius": 1.7,
+      "particleRadius": 0.8,
       "attachment": { "kind": "host" },
       "angularActuator": null,
       "articulation": null,
@@ -161,7 +161,7 @@
     "workEmitter": {
       "points": [{ "x": -18, "y": -72, "z": 44 }, { "x": -18, "y": 72, "z": 44 }],
       "particleTravelSpeed": 200,
-      "particleRadius": 1.7,
+      "particleRadius": 0.8,
       "attachment": { "kind": "host" },
       "angularActuator": null,
       "articulation": null,
@@ -214,7 +214,7 @@
         { "x": 0, "y": 0, "z": 211.68 }
       ],
       "particleTravelSpeed": 200,
-      "particleRadius": 1.9,
+      "particleRadius": 1.2,
       "attachment": { "kind": "host" },
       "angularActuator": null,
       "articulation": null,
@@ -272,7 +272,7 @@
     "workEmitter": {
       "points": [{ "x": -28, "y": -116, "z": 76 }, { "x": -28, "y": 116, "z": 76 }, { "x": 24, "y": -116, "z": 54 }, { "x": 24, "y": 116, "z": 54 }],
       "particleTravelSpeed": 200,
-      "particleRadius": 1.9,
+      "particleRadius": 1.2,
       "attachment": { "kind": "host" },
       "angularActuator": null,
       "articulation": null,
@@ -319,7 +319,7 @@
     "workEmitter": {
       "points": [{ "x": -24, "y": -100, "z": 56 }, { "x": -24, "y": 100, "z": 56 }, { "x": 46, "y": -100, "z": 42 }, { "x": 46, "y": 100, "z": 42 }],
       "particleTravelSpeed": 200,
-      "particleRadius": 1.9,
+      "particleRadius": 1.2,
       "attachment": { "kind": "host" },
       "angularActuator": null,
       "articulation": null,
@@ -366,7 +366,7 @@
     "workEmitter": {
       "points": [{ "x": -42, "y": -112, "z": 134 }, { "x": -42, "y": 112, "z": 134 }, { "x": 44, "y": -112, "z": 116 }, { "x": 44, "y": 112, "z": 116 }],
       "particleTravelSpeed": 200,
-      "particleRadius": 1.9,
+      "particleRadius": 1.2,
       "attachment": { "kind": "host" },
       "angularActuator": null,
       "articulation": null,
@@ -413,7 +413,7 @@
     "workEmitter": {
       "points": [{ "x": -30, "y": -112, "z": 64 }, { "x": -30, "y": 112, "z": 64 }, { "x": 48, "y": -112, "z": 48 }, { "x": 48, "y": 112, "z": 48 }],
       "particleTravelSpeed": 200,
-      "particleRadius": 1.9,
+      "particleRadius": 1.2,
       "attachment": { "kind": "host" },
       "angularActuator": null,
       "articulation": null,
@@ -481,7 +481,7 @@
         { "x": 0, "y": 0, "z": 405.756 }
       ],
       "particleTravelSpeed": 200,
-      "particleRadius": 2.2,
+      "particleRadius": 1.2,
       "attachment": { "kind": "host" },
       "angularActuator": null,
       "articulation": null,

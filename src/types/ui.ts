@@ -337,9 +337,9 @@ export type MinimapEntity = {
    *  draw a generic positional blip rather than the identifiable
    *  team-colored marker. */
   radarOnly?: boolean;
-  /** Contact rows only: the entity id behind the blip. Used purely to match a
-   *  world blip to its previous sample so it can interpolate between snapshots,
-   *  never for identification. */
+  /** Contact rows only: the entity id behind the blip. Used purely to resolve
+   *  the entity's shared position-only presentation pose, never to reveal its
+   *  identity or retain a separate radar location. */
   contactId?: number;
   /** Contact rows only: bit 0 is an air-radar return and bit 1 is a
    *  water-sonar return. Both may be set for a straddling body. */
@@ -520,8 +520,8 @@ export type SprayTarget = {
    *  sprays use this to move linearly from source to target; omitted
    *  heal sprays use the renderer's heal default. */
   speed?: number;
-  /** Optional cosmetic particle radius. Build sprays use this so the
-   *  construction emitter owns both travel speed and pellet size. */
+  /** Optional cosmetic size hint. Build sprays snap it to the nearest shared
+   *  small, medium, or large tetrahedron radius. */
   particleRadius?: number;
   /** Optional per-spray color override (RGB in [0..1]). When present
    *  the renderer paints particles in this color instead of the

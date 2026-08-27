@@ -3,18 +3,18 @@
 // The sim publishes active `SprayTarget`s each tick via
 // `ClientViewState.getSprayTargets()` — one entry per active
 // construction-emitter → build-area (or commander → unit for heal)
-// pair. Active sprays emit small colored particles at the source
+// pair. Active sprays emit small colored tetrahedra at the source
 // barrel/nozzle. Each particle stores its own target point and flies
-// there over a short lifetime, with chaotic perpendicular wobble.
+// there over a short lifetime.
 // Build-spray particles target points distributed throughout the full
 // volume of the thing being built (a uniform sphere from `radius`, or
 // a uniform box from `dim`), so the stream visibly paints every part
-// of the structure rather than a single nozzle dot. Alpha is constant
-// across each particle's lifetime — start and end render at the same
-// opacity so a particle reads as a solid pellet of resource the whole
-// way to the target. Particle size grows linearly from start to end.
+// of the structure rather than a single nozzle dot. Build particles use
+// the shared three-size loose-tetrahedron profile, fade at their true
+// endpoints, and keep one random-axis spin for their whole flight. Heal
+// particles retain their softer legacy wobble and size growth.
 //
-// Implementation: ONE shared InstancedMesh of unit-sphere particles,
+// Implementation: ONE shared InstancedMesh of unit-tetrahedron particles,
 // drawn in a single draw call for every active spray on the map.
 // Per-instance position/scale ride on the instance matrix; per-
 // instance team color + alpha ride on aColor / aAlpha
@@ -53,6 +53,18 @@ import {
 import type { RenderViewState3D } from './RenderFrameState3D';
 import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
+import {
+  TETRAHEDRON_PARTICLE_MEDIUM,
+  TETRAHEDRON_PARTICLE_RADIUS,
+  TETRAHEDRON_PARTICLE_SPEED_SCALE,
+  tetrahedronParticleFadeIn,
+  tetrahedronParticleFadeOut,
+  tetrahedronParticleRadius,
+  tetrahedronParticleSizeClassForRadius,
+  tetrahedronParticleSpeedVariation,
+  type TetrahedronParticleSizeClass,
+  writeTetrahedronParticleSpin,
+} from '@/tetrahedronParticleProfile';
 
 // Resource-ball visual tuning lives in resourceConfig.json (Config Is Data).
 // Default spray trail altitude for legacy 2D spray targets. Factory
@@ -62,7 +74,8 @@ const MIN_FLIGHT_SEC = RESOURCE_CONFIG.spray.minFlightSec;
 // Fallback work-spray particle visuals for old network payloads that omit
 // explicit host-authored work-emitter values.
 const DEFAULT_BUILD_PARTICLE_SPEED = 50;
-const DEFAULT_BUILD_PARTICLE_RADIUS = 1.5;
+const DEFAULT_BUILD_PARTICLE_RADIUS =
+  TETRAHEDRON_PARTICLE_RADIUS[TETRAHEDRON_PARTICLE_MEDIUM];
 const HEAL_PARTICLE_SPEED = RESOURCE_CONFIG.spray.healParticleSpeed;
 const HEAL_MAX_FLIGHT_SEC = RESOURCE_CONFIG.spray.healMaxFlightSec;
 const HEAL_PARTICLE_BASE_RADIUS = RESOURCE_CONFIG.spray.healParticleBaseRadius;
@@ -132,6 +145,11 @@ export class SprayRenderer3D {
   private pWobble = new Float32Array(MAX_PARTICLES);
   private pArc = new Float32Array(MAX_PARTICLES);
   private pSeed = new Float32Array(MAX_PARTICLES);
+  private pSpinAxisX = new Float32Array(MAX_PARTICLES);
+  private pSpinAxisY = new Float32Array(MAX_PARTICLES);
+  private pSpinAxisZ = new Float32Array(MAX_PARTICLES);
+  private pSpinRate = new Float32Array(MAX_PARTICLES);
+  private pSpinPhase = new Float32Array(MAX_PARTICLES);
   private pR = new Float32Array(MAX_PARTICLES);
   private pG = new Float32Array(MAX_PARTICLES);
   private pB = new Float32Array(MAX_PARTICLES);
@@ -147,9 +165,12 @@ export class SprayRenderer3D {
   // Phase accumulator — drives the sinusoidal per-particle wobble so
   // successive frames look like a continuous animated stream.
   private _time = 0;
-  // Scratch matrix reused across the per-particle write loop —
-  // particles are spheres so the rotation component is identity.
+  // Scratch pose reused across the per-particle write loop.
   private _scratchMat = new THREE.Matrix4();
+  private _scratchPosition = new THREE.Vector3();
+  private _scratchScale = new THREE.Vector3();
+  private _scratchQuaternion = new THREE.Quaternion();
+  private _scratchSpinAxis = new THREE.Vector3(0, 1, 0);
   // Scratch Color for per-team color resolution (cached lookup
   // across frames via `_teamColorCache` — getPlayerPrimaryColor
   // returns a hex int, we unpack to RGB once per pid). Keeps the
@@ -357,11 +378,18 @@ export class SprayRenderer3D {
     return ((x >>> 0) / 0x100000000);
   }
 
-  private flightTimeForDistance(distance: number, spray: Pick<SprayTarget, 'type' | 'speed'>): number {
+  private flightTimeForDistance(
+    distance: number,
+    spray: Pick<SprayTarget, 'type' | 'speed' | 'particleRadius'>,
+  ): number {
     if (spray.type === 'build') {
-      // Build sprays travel at constant speed end-to-end with no
-      // lifespan ceiling — flight time is purely distance / speed.
-      return distance / this.buildParticleSpeed(spray.speed);
+      // The path remains target-directed, while the shared loose-particle
+      // profile makes small chunks faster and large chunks slower.
+      const sizeClass = this.buildParticleSizeClass(spray.particleRadius);
+      return distance / (
+        this.buildParticleSpeed(spray.speed) *
+        TETRAHEDRON_PARTICLE_SPEED_SCALE[sizeClass]
+      );
     }
     return Math.max(
       MIN_FLIGHT_SEC,
@@ -375,10 +403,13 @@ export class SprayRenderer3D {
       : DEFAULT_BUILD_PARTICLE_SPEED;
   }
 
-  private buildParticleRadius(radius: number | undefined): number {
-    return radius !== undefined && Number.isFinite(radius) && radius > 0
+  private buildParticleSizeClass(
+    radius: number | undefined,
+  ): TetrahedronParticleSizeClass {
+    const requestedRadius = radius !== undefined && Number.isFinite(radius) && radius > 0
       ? radius
       : DEFAULT_BUILD_PARTICLE_RADIUS;
+    return tetrahedronParticleSizeClassForRadius(requestedRadius);
   }
 
   private estimatePathDistance(spray: SprayTarget): number {
@@ -632,7 +663,10 @@ export class SprayRenderer3D {
     if (len < 1e-3) return;
 
     const idx = this.particleCount++;
-    const life = this.flightTimeForDistance(len, spray) * (0.86 + this.random() * 0.28);
+    const baseFlightSec = this.flightTimeForDistance(len, spray);
+    const life = spray.type === 'build'
+      ? baseFlightSec / tetrahedronParticleSpeedVariation(this.random())
+      : baseFlightSec * (0.86 + this.random() * 0.28);
     this.pStartX[idx] = sx;
     this.pStartY[idx] = sy;
     this.pStartZ[idx] = sz;
@@ -652,18 +686,34 @@ export class SprayRenderer3D {
     this.pAge[idx] = 0;
     this.pLife[idx] = life;
     if (spray.type === 'build') {
-      // All build particles render at exactly the construction
-      // emitter particle radius — no per-particle jitter, no scaling, no
-      // mid-flight growth (see writeParticlesToMesh).
-      this.pSize[idx] = this.buildParticleRadius(spray.particleRadius);
+      const sizeClass = this.buildParticleSizeClass(spray.particleRadius);
+      // Build particles snap to the same exact small/medium/large radii as
+      // explosion tetrahedra; emitter scale never stretches an individual.
+      this.pSize[idx] = tetrahedronParticleRadius(sizeClass);
       this.pUniformSize[idx] = 1;
       this.pFadeDir[idx] = this.endpointFadeDir(spray);
+      this.pSpinRate[idx] = writeTetrahedronParticleSpin(
+        this._scratchSpinAxis,
+        this.random(),
+        this.random(),
+        this.random(),
+        this.random(),
+      );
+      this.pSpinAxisX[idx] = this._scratchSpinAxis.x;
+      this.pSpinAxisY[idx] = this._scratchSpinAxis.y;
+      this.pSpinAxisZ[idx] = this._scratchSpinAxis.z;
+      this.pSpinPhase[idx] = this.random() * Math.PI * 2;
     } else {
       this.pSize[idx] = HEAL_PARTICLE_BASE_RADIUS
         * (0.72 + this.random() * 0.52)
         * (0.5 + 0.5 * scaledIntensity);
       this.pUniformSize[idx] = 0;
       this.pFadeDir[idx] = 0;
+      this.pSpinAxisX[idx] = 0;
+      this.pSpinAxisY[idx] = 1;
+      this.pSpinAxisZ[idx] = 0;
+      this.pSpinRate[idx] = 0;
+      this.pSpinPhase[idx] = 0;
     }
     // Build sprays travel in a straight line (no wiggle); heal sprays
     // keep the perpendicular sine oscillation for a stream-like read.
@@ -729,6 +779,11 @@ export class SprayRenderer3D {
       this.pWobble[index] = this.pWobble[last];
       this.pArc[index] = this.pArc[last];
       this.pSeed[index] = this.pSeed[last];
+      this.pSpinAxisX[index] = this.pSpinAxisX[last];
+      this.pSpinAxisY[index] = this.pSpinAxisY[last];
+      this.pSpinAxisZ[index] = this.pSpinAxisZ[last];
+      this.pSpinRate[index] = this.pSpinRate[last];
+      this.pSpinPhase[index] = this.pSpinPhase[last];
       this.pR[index] = this.pR[last];
       this.pG[index] = this.pG[last];
       this.pB[index] = this.pB[last];
@@ -814,26 +869,43 @@ export class SprayRenderer3D {
       // endpoints. The pylon tip is just a waypoint, so a particle
       // remains visible while it passes through the head.
       const fadeDir = this.pFadeDir[i];
+      const fadeIn = tetrahedronParticleFadeIn(phase);
+      const fadeOut = tetrahedronParticleFadeOut(phase);
       const fadeScale = fadeDir === 0
         ? 1
         : fadeDir === 2
-          ? Math.min(1, phase / 0.14, (1 - phase) / 0.14)
+          ? fadeIn * fadeOut
         : fadeDir > 0
-          ? 1 - phase
-          : phase;
+          ? fadeOut
+          : fadeIn;
       const alpha = PARTICLE_ALPHA * fadeScale;
 
-      // Heal particles inflate slightly as they fly (start 0.78×, end
-      // 1.14×). Build particles render at uniform size — pSize is the
-      // exact final radius from the blueprint.
+      // Heal particles inflate slightly as they fly. Build particles retain
+      // one exact standardized radius and one immutable random-axis spin.
       const size = this.pUniformSize[i]
         ? this.pSize[i]
         : this.pSize[i] * (0.78 + 0.36 * phase);
-      // Particles are spheres, so pose is scale+translate only — the old
-      // per-particle tumble spun an object with no visible facets and cost
-      // a quaternion + matrix compose per particle per frame.
-      this._scratchMat.makeScale(size, size, size);
-      this._scratchMat.setPosition(px, py, pz);
+      if (this.pUniformSize[i]) {
+        this._scratchSpinAxis.set(
+          this.pSpinAxisX[i],
+          this.pSpinAxisY[i],
+          this.pSpinAxisZ[i],
+        );
+        this._scratchQuaternion.setFromAxisAngle(
+          this._scratchSpinAxis,
+          this.pSpinPhase[i] + this.pSpinRate[i] * this.pAge[i],
+        );
+        this._scratchPosition.set(px, py, pz);
+        this._scratchScale.set(size, size, size);
+        this._scratchMat.compose(
+          this._scratchPosition,
+          this._scratchQuaternion,
+          this._scratchScale,
+        );
+      } else {
+        this._scratchMat.makeScale(size, size, size);
+        this._scratchMat.setPosition(px, py, pz);
+      }
       const tier = view
         ? geometryTierForDetail(detailLevelForViewPosition(view, px, pz, py, size))
         : 'close';

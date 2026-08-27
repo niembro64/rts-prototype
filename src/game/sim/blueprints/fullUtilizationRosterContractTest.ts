@@ -10,7 +10,6 @@ import { shotBlueprintIdToCode, unitBlueprintIdToCode } from '../../../types/net
 import { FOG_CONFIG } from '../../../fogConfig';
 import type { BuildingBlueprintId, TurretConfig } from '../types';
 import { lockOnLevel1MaskFromCodes } from '../lockOnLevel1Mask';
-import { getMaximumSensorMatrixRadius } from '../sensorConfig';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[full-utilization roster contract] ${message}`);
@@ -48,8 +47,7 @@ function buildingSensorConfigs(buildingBlueprintId: BuildingBlueprintId): Turret
 }
 
 function underwaterContactRange(config: TurretConfig): number {
-  const contact = config.targeting.observation.sensors.contactSight;
-  return Math.max(contact.aboveWater.underwater, contact.underwater.underwater);
+  return config.targeting.observation.sensors.radarRadius;
 }
 
 function hasUnderwaterWeapon(unitBlueprintId: string): boolean {
@@ -181,9 +179,7 @@ export function runFullUtilizationRosterContractTest(): void {
   for (const [unitBlueprintId, expectedSight] of Object.entries(EXPECTED_LOCAL_SIGHT_BY_UNIT)) {
     const sensors = unitSensorConfigs(unitBlueprintId);
     const sensor = sensors[0];
-    const actualSight = getMaximumSensorMatrixRadius(
-      sensor.targeting.observation.sensors.fullSight,
-    );
+    const actualSight = sensor.targeting.observation.sensors.visionRadius;
     assertContract(
       actualSight === expectedSight,
       `${unitBlueprintId} local full sight must be ${expectedSight}; got ${actualSight}`,
@@ -224,8 +220,8 @@ export function runFullUtilizationRosterContractTest(): void {
   assertContract(
     unitAttackConfigs('unitRadarScout').length === 0 &&
       radarScoutSensors.length === 1 &&
-      radarScoutSensors[0].targeting.observation.sensors.contactSight.aboveWater.aboveWater === 3200 &&
-      radarScoutSensors[0].targeting.observation.sensors.fullSight.aboveWater.aboveWater === 600,
+      radarScoutSensors[0].targeting.observation.sensors.radarRadius === 3200 &&
+      radarScoutSensors[0].targeting.observation.sensors.visionRadius === 600,
     'Kestrel must be an unarmed mobile radar host whose contact range exceeds ordinary sight',
   );
 
@@ -287,7 +283,7 @@ export function runFullUtilizationRosterContractTest(): void {
   assertContract(
     detectorSensors.length === 1 &&
       detectorSensors[0].targeting.observation.sensors.detectorRadius > 0 &&
-      detectorSensors[0].targeting.observation.sensors.contactSight.aboveWater.aboveWater === 0 &&
+      detectorSensors[0].targeting.observation.sensors.radarRadius === 0 &&
       underwaterContactRange(detectorSensors[0]) === 0 &&
       unitAttackConfigs('unitDetector').length === 0,
     'Strix must expose modest sight plus detection, with no radar/sonar contact sensor or weapon',
@@ -296,7 +292,7 @@ export function runFullUtilizationRosterContractTest(): void {
   const jammerSensors = unitSensorConfigs('unitRadarJammer');
   assertContract(
     jammerSensors.length === 1 &&
-      jammerSensors[0].targeting.observation.sensors.radarJamRadius > 0 &&
+      jammerSensors[0].targeting.observation.sensors.jammingRadius > 0 &&
       unitAttackConfigs('unitRadarJammer').some((config) => config.turretBlueprintId === 'turretGunLight'),
     'Murk must pair mobile radar jamming with only the weak light gun',
   );
@@ -354,7 +350,7 @@ export function runFullUtilizationRosterContractTest(): void {
   const waterStriderSensors = unitSensorConfigs('unitWaterStrider')[0]
     .targeting.observation.sensors;
   assertContract(
-    waterStriderSensors.fullSight.underwater.underwater === 180 &&
+    waterStriderSensors.visionRadius === 180 &&
       underwaterContactRange(unitSensorConfigs('unitWaterStrider')[0]) === 180,
     'Water Strider contact must be coextensive with local underwater sight, with no sonar-only annulus',
   );
@@ -365,16 +361,9 @@ export function runFullUtilizationRosterContractTest(): void {
   ] as const) {
     const sensors = unitSensorConfigs(unitBlueprintId)[0].targeting.observation.sensors;
     assertContract(
-      sensors.fullSight.aboveWater.aboveWater === 0 &&
-        sensors.fullSight.aboveWater.underwater === 0 &&
-        // Full sight crosses the waterline: the submerged row reaches the
-        // surface to the same 250 (a periscope), never further.
-        sensors.fullSight.underwater.aboveWater === 250 &&
-        sensors.fullSight.underwater.underwater === 250 &&
-        getMaximumSensorMatrixRadius(sensors.contactSight) === 250 &&
-        sensors.contactSight.underwater.underwater === 250,
-      `${unitBlueprintId} must have only coextensive 250 underwater sight/contact ` +
-        'and no inherited Orcinus cross-medium or long-range sonar coverage',
+      sensors.visionRadius === 250 && sensors.radarRadius === 250,
+      `${unitBlueprintId} must have coextensive 250 vision/radar routed by its submerged host origin ` +
+        'and no inherited long-range water-radar coverage',
     );
   }
 

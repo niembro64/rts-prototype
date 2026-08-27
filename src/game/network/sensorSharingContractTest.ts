@@ -1,18 +1,14 @@
-// Shared sight / radar / sonar, and the information tier each one earns.
+// Shared air/water vision and radar, and the information tier each earns.
 //
 // Beyond All Reason keeps line of sight per ALLY TEAM, so sight, radar and
-// sonar are shared across an ally team by construction rather than by an
+// water radar are shared across an ally team by construction rather than by an
 // explicit sharing feature, and an allied unit is never fogged from you. Its
 // modrules then add the rules this file pins down: `separateJammers = true`
 // (a jammer covers its own side rather than blanketing the map) and
-// `requireSonarUnderWater = true` (a submerged target is found by sonar, sight
-// alone will not reach it).
-//
-// Our extension is the source-medium x target-medium matrix: BAR has one LOS
-// lane plus radar (air) and sonar (water), while every suite here authors
-// above->above, above->under, under->above and under->under separately for
-// both the full-sight and the contact tier. The lane separation is the part
-// worth protecting, so it gets its own cases below.
+// `requireSonarUnderWater = true`. Our rule is simpler: each host contributes
+// its scalar suite to exactly one medium selected by the host origin. At or
+// above the waterline is air; below it is water. Vision, radar, and jamming
+// stay orthogonal within those two fields.
 //
 // The tiers, from budget_design_philosophy.html "Sight, radar, sonar, and
 // contacts are separate information tiers":
@@ -83,9 +79,10 @@ function assertContract(condition: unknown, message: string): asserts condition 
 }
 
 type SensorSpec = {
-  sightAA?: number; sightAU?: number; sightUA?: number; sightUU?: number;
-  contactAA?: number; contactAU?: number; contactUA?: number; contactUU?: number;
-  detector?: number; radarJam?: number; sonarJam?: number;
+  vision?: number;
+  radar?: number;
+  detector?: number;
+  jamming?: number;
 };
 
 /** Players 1 and 2 share an ally team; player 3 is the enemy ally team. */
@@ -114,17 +111,10 @@ function spawn(
     : (options.underwater === true ? WATER_LEVEL - 100 : WATER_LEVEL + 100);
   const spec = options.sensors ?? {};
   const sensors = entity.combat!.turrets[0].config.targeting.observation.sensors;
-  sensors.fullSight.aboveWater.aboveWater = spec.sightAA ?? 0;
-  sensors.fullSight.aboveWater.underwater = spec.sightAU ?? 0;
-  sensors.fullSight.underwater.aboveWater = spec.sightUA ?? 0;
-  sensors.fullSight.underwater.underwater = spec.sightUU ?? 0;
-  sensors.contactSight.aboveWater.aboveWater = spec.contactAA ?? 0;
-  sensors.contactSight.aboveWater.underwater = spec.contactAU ?? 0;
-  sensors.contactSight.underwater.aboveWater = spec.contactUA ?? 0;
-  sensors.contactSight.underwater.underwater = spec.contactUU ?? 0;
+  sensors.visionRadius = spec.vision ?? 0;
+  sensors.radarRadius = spec.radar ?? 0;
   sensors.detectorRadius = spec.detector ?? 0;
-  sensors.radarJamRadius = spec.radarJam ?? 0;
-  sensors.sonarJamRadius = spec.sonarJam ?? 0;
+  sensors.jammingRadius = spec.jamming ?? 0;
   if (options.cloaked === true && entity.unit !== null) entity.unit.cloaked = true;
   world.addEntity(entity);
   spatialGrid.updateUnit(entity);
@@ -169,9 +159,9 @@ function assertTier(
  *  units are never fogged from you. */
 function assertAllyTeamSharing(): void {
   const world = createSensorWorld();
-  spawn(world, 200, 200, 1, { sensors: { sightAA: 10, contactAA: 10 } });
-  const allyScout = spawn(world, 3000, 200, 2, { sensors: { sightAA: 400, contactAA: 400 } });
-  const allyRadar = spawn(world, 3000, 1000, 2, { sensors: { contactAA: 900 } });
+  spawn(world, 200, 200, 1, { sensors: { vision: 10, radar: 10 } });
+  const allyScout = spawn(world, 3000, 200, 2, { sensors: { vision: 400, radar: 400 } });
+  const allyRadar = spawn(world, 3000, 1000, 2, { sensors: { radar: 900 } });
   const seenByAlly = spawn(world, 3200, 200, 3);
   const contactedByAlly = spawn(world, 3300, 1000, 3);
   const unobserved = spawn(world, 100, 3800, 3);
@@ -218,11 +208,11 @@ function findSubmergedPair(
   throw new Error('[sensor sharing contract] no submerged corridor on the current terrain');
 }
 
-/** The medium extension: radar is the above->above contact lane, sonar the
- *  under->under one, and neither reaches across. */
+/** Host-origin routing: an above-water host contributes only to air fields;
+ *  a submerged host contributes only to water fields. */
 function assertSensorMediumLanes(): void {
   const surfaceWorld = createSensorWorld();
-  spawn(surfaceWorld, 200, 200, 1, { sensors: { sightAA: 900, contactAA: 900 } });
+  spawn(surfaceWorld, 200, 200, 1, { sensors: { vision: 900, radar: 900 } });
   const submerged = spawn(surfaceWorld, 600, 200, 3, { underwater: true });
   const airborne = spawn(surfaceWorld, 700, 200, 3);
   const surfaceIntel = intelFor(surfaceWorld, 1);
@@ -238,7 +228,7 @@ function assertSensorMediumLanes(): void {
   const deep = findSubmergedPair(sonarWorld, 400);
   spawn(sonarWorld, deep.x, deep.y, 1, {
     depth: deep.depth,
-    sensors: { sightUU: 900, contactUU: 900 },
+    sensors: { vision: 900, radar: 900 },
   });
   const submergedTarget = spawn(sonarWorld, deep.x + 400, deep.y, 3, { depth: deep.depth });
   const airborneTarget = spawn(sonarWorld, deep.x + 500, deep.y, 3);
@@ -251,18 +241,18 @@ function assertSensorMediumLanes(): void {
  *  own side, and never touches real sight. */
 function assertJamming(): void {
   const world = createSensorWorld();
-  spawn(world, 200, 200, 1, { sensors: { sightAA: 300, contactAA: 3000 } });
+  spawn(world, 200, 200, 1, { sensors: { vision: 300, radar: 3000 } });
   const jammed = spawn(world, 2000, 200, 3);
-  spawn(world, 2000, 260, 3, { sensors: { radarJam: 500, sightAA: 100 } });
+  spawn(world, 2000, 260, 3, { sensors: { jamming: 500, vision: 100 } });
   assertTier(intelFor(world, 1), jammed, 'hidden', 'an enemy jammer denies radar contact over its own side');
 
   // A mount whose ONLY sensor channel is jamming still jams. It used to be
   // dropped by the source walk and silently did nothing; both jammers in the
   // current roster carry sight too, which is why the hole stayed invisible.
   const pureWorld = createSensorWorld();
-  spawn(pureWorld, 200, 200, 1, { sensors: { sightAA: 300, contactAA: 3000 } });
+  spawn(pureWorld, 200, 200, 1, { sensors: { vision: 300, radar: 3000 } });
   const jammedByPure = spawn(pureWorld, 2000, 200, 3);
-  spawn(pureWorld, 2000, 260, 3, { sensors: { radarJam: 500 } });
+  spawn(pureWorld, 2000, 260, 3, { sensors: { jamming: 500 } });
   assertTier(
     intelFor(pureWorld, 1),
     jammedByPure,
@@ -271,9 +261,9 @@ function assertJamming(): void {
   );
 
   const sightWorld = createSensorWorld();
-  spawn(sightWorld, 200, 200, 1, { sensors: { sightAA: 3000, contactAA: 3000 } });
+  spawn(sightWorld, 200, 200, 1, { sensors: { vision: 3000, radar: 3000 } });
   const jammedInSight = spawn(sightWorld, 2000, 200, 3);
-  spawn(sightWorld, 2000, 260, 3, { sensors: { radarJam: 500, sightAA: 100 } });
+  spawn(sightWorld, 2000, 260, 3, { sensors: { jamming: 500, vision: 100 } });
   assertTier(
     intelFor(sightWorld, 1),
     jammedInSight,
@@ -286,12 +276,12 @@ function assertJamming(): void {
  *  its reach is clamped to the same mount's full-sight radius. */
 function assertCloakAndDetection(): void {
   const bareWorld = createSensorWorld();
-  spawn(bareWorld, 200, 200, 1, { sensors: { sightAA: 3000, contactAA: 3000 } });
+  spawn(bareWorld, 200, 200, 1, { sensors: { vision: 3000, radar: 3000 } });
   const cloaked = spawn(bareWorld, 1000, 200, 3, { cloaked: true });
   assertTier(intelFor(bareWorld, 1), cloaked, 'hidden', 'a cloaked enemy is hidden without a detector');
 
   const detectorWorld = createSensorWorld();
-  spawn(detectorWorld, 200, 200, 1, { sensors: { sightAA: 3000, contactAA: 3000, detector: 3000 } });
+  spawn(detectorWorld, 200, 200, 1, { sensors: { vision: 3000, radar: 3000, detector: 3000 } });
   const detected = spawn(detectorWorld, 1000, 200, 3, { cloaked: true });
   assertTier(
     intelFor(detectorWorld, 1),
@@ -301,7 +291,7 @@ function assertCloakAndDetection(): void {
   );
 
   const reachWorld = createSensorWorld();
-  spawn(reachWorld, 200, 200, 1, { sensors: { sightAA: 300, contactAA: 3000, detector: 3000 } });
+  spawn(reachWorld, 200, 200, 1, { sensors: { vision: 300, radar: 3000, detector: 3000 } });
   const beyondSight = spawn(reachWorld, 1000, 200, 3, { cloaked: true });
   assertTier(
     intelFor(reachWorld, 1),
@@ -315,7 +305,7 @@ function assertCloakAndDetection(): void {
  *  owner. Anything more is identity the recipient did not earn. */
 function assertContactTierCarriesNoIdentity(): void {
   const world = createSensorWorld();
-  spawn(world, 200, 200, 1, { sensors: { sightAA: 300, contactAA: 3000 } });
+  spawn(world, 200, 200, 1, { sensors: { vision: 300, radar: 3000 } });
   const contactOnly = spawn(world, 2000, 200, 3);
   const ally = spawn(world, 240, 200, 2);
 
@@ -363,11 +353,11 @@ function assertContactMediumProvenanceAndWirePaths(): void {
   const wet = findSubmergedPair(world, 400);
   spawn(world, wet.x, wet.y, 1, {
     depth: WATER_LEVEL + 100,
-    sensors: { contactAA: 1000 },
+    sensors: { radar: 1000 },
   });
   spawn(world, wet.x, wet.y + 100, 2, {
     depth: wet.depth,
-    sensors: { contactUU: 1000 },
+    sensors: { radar: 1000 },
   });
   const straddler = spawn(world, wet.x + 400, wet.y, 3, { depth: WATER_LEVEL });
 
@@ -403,7 +393,7 @@ function assertContactMediumProvenanceAndWirePaths(): void {
   );
 
   const airOnlyWorld = createSensorWorld();
-  spawn(airOnlyWorld, 200, 200, 2, { sensors: { contactAA: 1000 } });
+  spawn(airOnlyWorld, 200, 200, 2, { sensors: { radar: 1000 } });
   const airStraddler = spawn(airOnlyWorld, 500, 200, 3, { depth: WATER_LEVEL });
   const airVisibility = SnapshotVisibility.forRecipient(airOnlyWorld, 1 as PlayerId);
   assertContract(
@@ -415,7 +405,7 @@ function assertContactMediumProvenanceAndWirePaths(): void {
   const waterPair = findSubmergedPair(waterOnlyWorld, 300);
   spawn(waterOnlyWorld, waterPair.x, waterPair.y, 2, {
     depth: waterPair.depth,
-    sensors: { contactUU: 1000 },
+    sensors: { radar: 1000 },
   });
   const waterStraddler = spawn(
     waterOnlyWorld,
@@ -457,15 +447,14 @@ function projectileSpawn(
   };
 }
 
-/** Projectiles are presentation, not contacts: only exact-medium team sight
- * reveals an ordinary enemy shot. A homing threat aimed at the ally team keeps
- * the existing explicit safety exception. Beam endpoints follow the same
- * policy for spawn, resync, and update rows. */
+/** Hostile projectiles are full presentation only under full team vision.
+ * Radar-only shots remain anonymous contacts, homing at an allied target is
+ * not an exception, and a beam requires its complete path to be visible. */
 function assertProjectileMediumVisibility(): void {
   const world = createSensorWorld();
   spawn(world, 200, 200, 1, {
     depth: WATER_LEVEL + 500,
-    sensors: { sightAA: 300, contactAA: 3000 },
+    sensors: { vision: 300, radar: 3000 },
   });
   const radarContact = spawn(world, 800, 200, 3, { depth: WATER_LEVEL + 500 });
   const alliedTarget = spawn(world, 3000, 200, 2, { depth: WATER_LEVEL + 500 });
@@ -480,9 +469,10 @@ function assertProjectileMediumVisibility(): void {
   const hiddenWaterId = 50002;
   const radarOnlyId = 50003;
   const incomingThreatId = 50004;
-  const visibleEndpointBeamId = 50005;
+  const partlyVisibleBeamId = 50005;
   const hiddenWaterBeamId = 50006;
   const radarOnlyBeamId = 50007;
+  const fullyVisibleBeamId = 50008;
   const airZ = WATER_LEVEL + 500;
   const waterZ = WATER_LEVEL - 100;
   const projectileConfig = createProjectileConfigFromShot('shotPlasmaLight');
@@ -514,9 +504,9 @@ function assertProjectileMediumVisibility(): void {
     projectileSpawn(hiddenWaterId, 200, 200, waterZ),
     projectileSpawn(radarOnlyId, 800, 200, airZ),
     projectileSpawn(incomingThreatId, 2800, 200, waterZ, alliedTarget.id),
-    projectileSpawn(visibleEndpointBeamId, 800, 240, airZ, undefined, {
-      start: { x: 800, y: 240, z: airZ },
-      end: { x: 200, y: 200, z: airZ },
+    projectileSpawn(partlyVisibleBeamId, 200, 240, airZ, undefined, {
+      start: { x: 200, y: 240, z: airZ },
+      end: { x: 800, y: 200, z: airZ },
     }),
     projectileSpawn(hiddenWaterBeamId, 800, 280, waterZ, undefined, {
       start: { x: 800, y: 280, z: waterZ },
@@ -525,6 +515,10 @@ function assertProjectileMediumVisibility(): void {
     projectileSpawn(radarOnlyBeamId, 800, 320, airZ, undefined, {
       start: { x: 800, y: 320, z: airZ },
       end: { x: 900, y: 320, z: airZ },
+    }),
+    projectileSpawn(fullyVisibleBeamId, 240, 200, airZ, undefined, {
+      start: { x: 240, y: 200, z: airZ },
+      end: { x: 200, y: 200, z: airZ },
     }),
   ];
   const snapshot = serializeProjectileSnapshot({
@@ -557,14 +551,15 @@ function assertProjectileMediumVisibility(): void {
   assertContract(ids.has(visibleAirId), 'an enemy projectile inside same-medium full sight is visible');
   assertContract(!ids.has(hiddenWaterId), 'air sight must not reveal an underwater projectile at the same xy');
   assertContract(!ids.has(radarOnlyId), 'radar contact must not reveal an ordinary projectile');
-  assertContract(ids.has(incomingThreatId), 'an incoming threat aimed at an allied entity remains visible');
-  assertContract(ids.has(visibleEndpointBeamId), 'a beam spawn is visible when either exact-medium endpoint is visible');
+  assertContract(!ids.has(incomingThreatId), 'an allied homing target must not reveal a hostile shot outside vision');
+  assertContract(!ids.has(partlyVisibleBeamId), 'one visible beam endpoint must not reveal the hidden remainder or source');
   assertContract(!ids.has(hiddenWaterBeamId), 'air sight must not reveal underwater beam endpoints');
   assertContract(!ids.has(radarOnlyBeamId), 'radar contact must not reveal an ordinary beam');
+  assertContract(ids.has(fullyVisibleBeamId), 'a hostile beam is visible when its complete path is under vision');
   const motionIds = new Set((snapshot?.motionUpdates ?? []).map((entry) => entry.id));
   assertContract(
-    motionIds.has(incomingMotionProjectile.id),
-    'incoming-threat visibility must continue across stamped in-flight motion rows',
+    !motionIds.has(incomingMotionProjectile.id),
+    'an allied homing target must not reveal a hidden in-flight motion row',
   );
   assertContract(
     !motionIds.has(ordinaryRadarMotionProjectile.id),
@@ -576,6 +571,47 @@ function assertProjectileMediumVisibility(): void {
       { x: 200, y: 200, z: waterZ },
     ]),
     'beam-update filtering uses endpoint z rather than a 2D sight circle',
+  );
+
+  const projectileBaseline = new Set<EntityId>();
+  const added: EntityId[] = [];
+  const removed: EntityId[] = [];
+  ordinaryRadarMotionProjectile.transform.x = 240;
+  const entering = serializeProjectileSnapshot({
+    world,
+    fullStateResync: false,
+    visibility,
+    emitBeamUpdates: false,
+    projectileSpawns: undefined,
+    projectileDespawns: undefined,
+    projectileMotionUpdates: undefined,
+    previousVisibleProjectileIds: projectileBaseline,
+    visibleProjectileAddedIds: added,
+    visibleProjectileRemovedIds: removed,
+  });
+  assertContract(
+    entering?.spawns?.some((entry) => entry.id === ordinaryRadarMotionProjectile.id) === true &&
+      added.includes(ordinaryRadarMotionProjectile.id),
+    'a hostile shot entering vision must receive a synthetic current-state spawn',
+  );
+  projectileBaseline.add(ordinaryRadarMotionProjectile.id);
+  ordinaryRadarMotionProjectile.transform.x = 800;
+  const leaving = serializeProjectileSnapshot({
+    world,
+    fullStateResync: false,
+    visibility,
+    emitBeamUpdates: false,
+    projectileSpawns: undefined,
+    projectileDespawns: undefined,
+    projectileMotionUpdates: undefined,
+    previousVisibleProjectileIds: projectileBaseline,
+    visibleProjectileAddedIds: added,
+    visibleProjectileRemovedIds: removed,
+  });
+  assertContract(
+    leaving?.despawns?.some((entry) => entry.id === ordinaryRadarMotionProjectile.id) === true &&
+      removed.includes(ordinaryRadarMotionProjectile.id),
+    'a hostile shot leaving vision must be despawned so its hidden trajectory is not retained',
   );
 }
 
@@ -657,7 +693,7 @@ function assertTerrainBlockedRadarParity(): void {
   try {
     const world = createSensorWorld();
     const radar = spawn(world, 200, 200, 1, {
-      sensors: { contactAA: 3500 },
+      sensors: { radar: 3500 },
     });
     const target = spawn(world, 800, 200, 3);
     const blocked = findBlockedRadarFixture(world, radar);
@@ -696,19 +732,17 @@ function assertSensorPresentationSemantics(): void {
   const world = createSensorWorld();
   const sensor = spawn(world, 200, 200, 1);
   const sensors = sensor.combat!.turrets[0].config.targeting.observation.sensors;
-  sensors.fullSight.aboveWater.aboveWater = 111;
-  sensors.fullSight.aboveWater.underwater = 222;
-  sensors.contactSight.underwater.aboveWater = 333;
-  sensors.contactSight.underwater.underwater = 444;
+  sensors.visionRadius = 111;
+  sensors.radarRadius = 333;
   assertContract(
     getSensorBoundarySourceRadius(sensors, 'fullSight', 'aboveWater', 'aboveWater') === 111 &&
-      getSensorBoundarySourceRadius(sensors, 'fullSight', 'aboveWater', 'underwater') === 222,
-    'sight boundaries preserve independent target-medium cells rather than taking their maximum',
+      getSensorBoundarySourceRadius(sensors, 'fullSight', 'aboveWater', 'underwater') === 0,
+    'vision presentation uses the scalar radius only in the host-origin medium',
   );
   assertContract(
-    getSensorBoundarySourceRadius(sensors, 'contactSight', 'underwater', 'aboveWater') === 333 &&
-      getSensorBoundarySourceRadius(sensors, 'contactSight', 'underwater', 'underwater') === 444,
-    'radar/sonar boundaries preserve independent target-medium cells rather than taking their maximum',
+    getSensorBoundarySourceRadius(sensors, 'contactSight', 'underwater', 'aboveWater') === 0 &&
+      getSensorBoundarySourceRadius(sensors, 'contactSight', 'underwater', 'underwater') === 333,
+    'radar presentation uses the same scalar radius and host-origin lane rule',
   );
 
   const radar = getContactBlipPresentation(CONTACT_MEDIUM_AIR);
@@ -740,7 +774,7 @@ function assertSensorPresentationSemantics(): void {
   }
   assertContract(
     missingContactIdRejected,
-    'a contact without an id must fail instead of silently losing its previous sample',
+    'a contact without an id must fail instead of losing its shared entity-pose lookup',
   );
   assertContract(
     radar.colorHex !== sonar.colorHex && dual.colorHex !== radar.colorHex && dual.colorHex !== sonar.colorHex,
@@ -750,26 +784,15 @@ function assertSensorPresentationSemantics(): void {
     CONTACT_BLIP_GLYPH === ENTITY_LOD_PROXY_GLYPH_CIRCLE && CONTACT_BLIP_RADIUS > 0,
     'all contact kinds reuse one fixed neutral LOD-proxy glyph and radius',
   );
-  // Contacts arrive only on presentation snapshots, so the world blip bridges
-  // the gap between them itself. The bridge is a clamped glide: no shimmer, and
-  // nothing invented past the newest sample.
+  // Snapshot cadence owns only contact membership. Position is resolved from
+  // the entity presentation history every render frame.
   const contactSnapshots = new ClientMinimapOverrideStore({ isSelected: () => false });
-  contactSnapshots.applySnapshot(undefined, 1000);
-  const firstSample = contactSnapshots.getSampling(1000).sequence;
-  contactSnapshots.applySnapshot(undefined, 1200);
-  const secondSample = contactSnapshots.getSampling(1200);
+  contactSnapshots.applySnapshot(undefined);
+  const firstSequence = contactSnapshots.getSequence();
+  contactSnapshots.applySnapshot(undefined);
   assertContract(
-    secondSample.sequence !== firstSample && secondSample.alpha === 0,
-    'a new contact snapshot starts a fresh glide from where the blip was last drawn',
-  );
-  const midGlide = contactSnapshots.getSampling(1300).alpha;
-  assertContract(
-    midGlide > 0 && midGlide < 1,
-    'contact blips advance with the render clock instead of stepping at the snapshot rate',
-  );
-  assertContract(
-    contactSnapshots.getSampling(9000).alpha === 1 && contactSnapshots.getSampling(1100).alpha === 0,
-    'contact blips clamp to the newest sample rather than extrapolating past it',
+    contactSnapshots.getSequence() !== firstSequence,
+    'a new contact snapshot advances membership without creating a second position clock',
   );
 }
 

@@ -52,18 +52,6 @@ pub type EntityId = i32;
 pub type PlayerId = i32;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct SensorMediumTargetRadii {
-    pub aboveWater: f64,
-    pub underwater: f64,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct SensorMediumRadiusMatrix {
-    pub aboveWater: SensorMediumTargetRadii,
-    pub underwater: SensorMediumTargetRadii,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct EmissionMediumTargetRoutes {
     pub aboveWater: bool,
     pub underwater: bool,
@@ -77,11 +65,10 @@ pub struct EmissionMediumTrajectoryMatrix {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SensorCapabilityConfig {
-    pub fullSight: SensorMediumRadiusMatrix,
-    pub contactSight: SensorMediumRadiusMatrix,
+    pub visionRadius: f64,
+    pub radarRadius: f64,
     pub detectorRadius: f64,
-    pub radarJamRadius: f64,
-    pub sonarJamRadius: f64,
+    pub jammingRadius: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]

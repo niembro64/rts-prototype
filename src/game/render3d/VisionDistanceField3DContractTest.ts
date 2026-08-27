@@ -18,8 +18,8 @@ function assertNear(actual: number, expected: number, message: string): void {
 }
 
 type Sensors = {
-  sightAA?: number; sightAU?: number; sightUU?: number;
-  contactAA?: number; contactUU?: number;
+  vision?: number;
+  radar?: number;
 };
 
 function spawnSensor(
@@ -32,17 +32,10 @@ function spawnSensor(
   const entity = world.createUnitFromBlueprint(x, y, playerId, 'unitJackal');
   entity.transform.z = WATER_LEVEL + 100;
   const config = entity.combat!.turrets[0].config.targeting.observation.sensors;
-  config.fullSight.aboveWater.aboveWater = sensors.sightAA ?? 0;
-  config.fullSight.aboveWater.underwater = sensors.sightAU ?? 0;
-  config.fullSight.underwater.aboveWater = 0;
-  config.fullSight.underwater.underwater = sensors.sightUU ?? 0;
-  config.contactSight.aboveWater.aboveWater = sensors.contactAA ?? 0;
-  config.contactSight.aboveWater.underwater = sensors.contactUU ?? 0;
-  config.contactSight.underwater.aboveWater = 0;
-  config.contactSight.underwater.underwater = 0;
+  config.visionRadius = sensors.vision ?? 0;
+  config.radarRadius = sensors.radar ?? 0;
   config.detectorRadius = 0;
-  config.radarJamRadius = 0;
-  config.sonarJamRadius = 0;
+  config.jammingRadius = 0;
   world.addEntity(entity);
   spatialGrid.updateUnit(entity);
   return entity;
@@ -73,10 +66,10 @@ export function runVisionDistanceField3DContractTest(): void {
   assertNear(field.sightAlphaAt(100, 100, 0, 64), 1, 'an inactive field never fades anything');
 
   // Own sight disc r=400 at (1000,1000); an ALLY's radar r=1000 at (2500,1000).
-  spawnSensor(world, 1000, 1000, 1 as PlayerId, { sightAA: 400 });
-  spawnSensor(world, 2500, 1000, 2 as PlayerId, { contactAA: 1000 });
+  spawnSensor(world, 1000, 1000, 1 as PlayerId, { vision: 400 });
+  spawnSensor(world, 2500, 1000, 2 as PlayerId, { radar: 1000 });
   // An ENEMY sight disc that must not count.
-  spawnSensor(world, 3500, 3500, 3 as PlayerId, { sightAA: 1000 });
+  spawnSensor(world, 3500, 3500, 3 as PlayerId, { vision: 1000 });
   field.sync(view, 1 as PlayerId, world.mapWidth);
   assertContract(field.isActive, 'sync activates the field');
 
@@ -101,7 +94,7 @@ export function runVisionDistanceField3DContractTest(): void {
   assertNear(field.sightAlphaAt(2500, 1000, z, 64), 0, 'a radar disc grants no full-sight alpha');
 
   // Overlap: a second own disc r=400 at (1500,1000) makes (1380,1000) deep inside it.
-  spawnSensor(world, 1500, 1000, 1 as PlayerId, { sightAA: 400 });
+  spawnSensor(world, 1500, 1000, 1 as PlayerId, { vision: 400 });
   state.version += 1;
   field.sync(view, 1 as PlayerId, world.mapWidth);
   assertNear(field.sightAlphaAt(1380, 1000, z, 64), 1, 'overlapping discs take the deepest (union, not average)');

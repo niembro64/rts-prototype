@@ -170,14 +170,14 @@ export class VisionDistanceField3D {
 
   private collectOwned(entities: readonly Entity[]): void {
     for (let i = 0; i < entities.length; i++) {
-      forEachEntityTurretSensorSource(entities[i], ({ position, sourceMedium, sensors, operational }) => {
-        if (operational.fullSight) {
-          this.sightAbove.push(position.x, position.y, sensors.fullSight[sourceMedium].aboveWater);
-          this.sightUnder.push(position.x, position.y, sensors.fullSight[sourceMedium].underwater);
+      forEachEntityTurretSensorSource(entities[i], ({ position, hostMedium, sensors, operational }) => {
+        if (operational.vision) {
+          (hostMedium === 'aboveWater' ? this.sightAbove : this.sightUnder)
+            .push(position.x, position.y, sensors.visionRadius);
         }
-        if (operational.contactSight) {
-          this.contactAbove.push(position.x, position.y, sensors.contactSight[sourceMedium].aboveWater);
-          this.contactUnder.push(position.x, position.y, sensors.contactSight[sourceMedium].underwater);
+        if (operational.radar) {
+          (hostMedium === 'aboveWater' ? this.contactAbove : this.contactUnder)
+            .push(position.x, position.y, sensors.radarRadius);
         }
       });
     }

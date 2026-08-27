@@ -300,13 +300,10 @@ function forEachMinimapCandidate(
   forEachMinimapEmissionContact(world, visibility, emitFromEntity);
 }
 
-/** Enemy EMISSIONS on the contact tier. An emission the recipient sees in
- *  full — own or allied, inside full sight, or the incoming-threat
- *  exception — rides the projectile channel and is never a contact; one
- *  they cannot sense at all is nothing. In between, inside radar or sonar
- *  coverage but outside sight, a shot, missile, rocket or beam is a point
- *  return and earns exactly what an enemy body earns there: the anonymous
- *  contact dot, on the minimap channel, with no blueprint and no owner. */
+/** Enemy emissions on the contact tier. Own/allied or fully visible shots
+ *  ride the projectile channel; completely unsensed shots are absent. A
+ *  hostile shot under air-radar or water-radar but outside vision is only an
+ *  anonymous contact dot, with no blueprint, owner, or retained trajectory. */
 function forEachMinimapEmissionContact(
   world: WorldState,
   visibility: SnapshotVisibility | undefined,
@@ -322,7 +319,7 @@ function forEachMinimapEmissionContact(
     const entity = projectiles[i];
     const proj = entity.projectile;
     if (!proj) continue;
-    if (isProjectileSeenInFull(entity, proj, visibility, world)) continue;
+    if (isProjectileSeenInFull(entity, proj, visibility)) continue;
     const contactMediumMask = visibility.getPointContactMediumMask(
       proj.ownerId,
       entity.transform.x,

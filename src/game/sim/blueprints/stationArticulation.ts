@@ -1,6 +1,7 @@
 import type { TurretPresentation, TurretStationArticulation } from '../../../types/blueprints';
 import type { WorkEmitterSpec } from '../../../types/constructionTypes';
 import { assertFiniteNumber } from '../../../configValidation';
+import { isStandardTetrahedronParticleRadius } from '@/tetrahedronParticleProfile';
 
 function assertFinite(label: string, value: number): void {
   assertFiniteNumber(value, `Invalid ${label}`);
@@ -118,8 +119,13 @@ export function validateWorkEmitter(
   assertFinite(`${label}.particleTravelSpeed`, emitter.particleTravelSpeed);
   assertFinite(`${label}.particleRadius`, emitter.particleRadius);
   assertFinite(`${label}.alignmentToleranceRadians`, emitter.alignmentToleranceRadians);
-  if (emitter.particleTravelSpeed <= 0 || emitter.particleRadius <= 0) {
-    throw new Error(`Invalid ${label}: particle speed and radius must be positive`);
+  if (emitter.particleTravelSpeed <= 0) {
+    throw new Error(`Invalid ${label}: particle speed must be positive`);
+  }
+  if (!isStandardTetrahedronParticleRadius(emitter.particleRadius)) {
+    throw new Error(
+      `Invalid ${label}.particleRadius: expected a standardized small, medium, or large radius`,
+    );
   }
   if (emitter.alignmentToleranceRadians <= 0) {
     throw new Error(`Invalid ${label}.alignmentToleranceRadians: expected a positive value`);

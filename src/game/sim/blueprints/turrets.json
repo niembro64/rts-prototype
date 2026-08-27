@@ -59,29 +59,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -153,29 +134,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -247,29 +209,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -341,29 +284,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -432,29 +356,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -526,29 +431,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -620,29 +506,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -714,29 +581,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -799,29 +647,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -886,29 +715,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -971,29 +781,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -1056,29 +847,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -1141,29 +913,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -1226,29 +979,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -1311,29 +1045,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -1396,29 +1111,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -1490,29 +1186,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -1584,29 +1261,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -1678,29 +1336,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -1772,29 +1411,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -1863,29 +1483,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -1954,29 +1555,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -2045,29 +1627,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -2126,29 +1689,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -2207,29 +1751,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -2286,29 +1811,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -2365,29 +1871,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -2444,29 +1931,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -2523,29 +1991,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -2573,29 +2022,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 700,
-              "underwater": 700
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 700,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -2644,29 +2074,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 180,
-              "underwater": 180
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 180,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -2715,29 +2126,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 150,
-              "underwater": 150
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 150,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -2786,29 +2178,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 300,
-              "underwater": 300
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 300,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -2857,29 +2230,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 300,
-              "underwater": 300
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 300,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -2928,29 +2282,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 150,
-              "underwater": 150
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 150,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -2999,29 +2334,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 150,
-              "underwater": 150
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 150,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -3070,29 +2386,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 350,
-              "underwater": 350
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 350,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -3141,29 +2438,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 300,
-              "underwater": 300
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 300,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -3212,29 +2490,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 300,
-              "underwater": 300
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 300,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -3283,29 +2542,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 225,
-              "underwater": 225
-            },
-            "underwater": {
-              "aboveWater": 225,
-              "underwater": 225
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 800
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 800
-            }
-          },
+          "visionRadius": 225,
+          "radarRadius": 800,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -3354,29 +2594,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 180,
-              "underwater": 180
-            },
-            "underwater": {
-              "aboveWater": 180,
-              "underwater": 180
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 1000
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 1000
-            }
-          },
+          "visionRadius": 180,
+          "radarRadius": 1000,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -3425,29 +2646,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 300,
-              "underwater": 300
-            },
-            "underwater": {
-              "aboveWater": 300,
-              "underwater": 300
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 1350
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 1350
-            }
-          },
+          "visionRadius": 300,
+          "radarRadius": 1350,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -3496,29 +2698,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 150,
-              "underwater": 150
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 150,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -3567,29 +2750,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 250,
-              "underwater": 250
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 250,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -3638,29 +2802,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 150,
-              "underwater": 150
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 150,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -3709,29 +2854,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 250,
-              "underwater": 250
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 250,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -3780,29 +2906,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 250,
-              "underwater": 250
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 250,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -3851,29 +2958,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 250,
-              "underwater": 250
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 250,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -3922,29 +3010,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 200,
-              "underwater": 200
-            },
-            "underwater": {
-              "aboveWater": 200,
-              "underwater": 200
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 900
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 900
-            }
-          },
+          "visionRadius": 200,
+          "radarRadius": 900,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 800
+          "jammingRadius": 800
         }
       },
       "effect": {
@@ -3993,29 +3062,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 450,
-              "underwater": 450
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 450,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -4064,29 +3114,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 300,
-              "underwater": 300
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 300,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -4135,29 +3166,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 300,
-              "underwater": 300
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 300,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -4206,29 +3218,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 250,
-              "underwater": 250
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 250,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -4277,29 +3270,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 600,
-              "underwater": 600
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 600,
+          "radarRadius": 0,
           "detectorRadius": 600,
-          "radarJamRadius": 600,
-          "sonarJamRadius": 0
+          "jammingRadius": 600
         }
       },
       "effect": {
@@ -4348,29 +3322,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 400,
-              "underwater": 400
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 400,
+          "radarRadius": 0,
           "detectorRadius": 700,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -4419,29 +3374,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 1200,
-              "underwater": 1200
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 1200,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -4490,29 +3426,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 1200,
-              "underwater": 1200
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 1200,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -4561,29 +3478,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 1200,
-              "underwater": 1200
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 1200,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -4632,29 +3530,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 1200,
-              "underwater": 1200
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 1200,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -4703,29 +3582,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 4200,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 4200,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -4774,29 +3634,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 1200,
-              "underwater": 1200
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 1200,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -4845,29 +3686,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 4200
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 4200,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -4916,29 +3738,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 1200,
-              "underwater": 1200
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 1200,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -4987,29 +3790,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 1200,
-              "underwater": 1200
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 1200,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -5058,29 +3842,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 1200,
-              "underwater": 1200
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 1200,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -5129,29 +3894,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 1200,
-              "underwater": 1200
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 1200,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -5200,29 +3946,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 1200,
-              "underwater": 1200
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 1200,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -5271,29 +3998,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 1200,
-              "underwater": 1200
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 1200,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -5342,29 +4050,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 1200,
-              "underwater": 1200
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 1200,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -5410,17 +4099,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": { "aboveWater": 0, "underwater": 0 },
-            "underwater": { "aboveWater": 0, "underwater": 0 }
-          },
-          "contactSight": {
-            "aboveWater": { "aboveWater": 0, "underwater": 0 },
-            "underwater": { "aboveWater": 0, "underwater": 0 }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 2000,
-          "sonarJamRadius": 0
+          "jammingRadius": 2000
         }
       },
       "effect": { "rangeSource": "engagement" },
@@ -5462,17 +4144,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": { "aboveWater": 0, "underwater": 0 },
-            "underwater": { "aboveWater": 0, "underwater": 0 }
-          },
-          "contactSight": {
-            "aboveWater": { "aboveWater": 0, "underwater": 0 },
-            "underwater": { "aboveWater": 0, "underwater": 0 }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 3000
+          "jammingRadius": 3000
         }
       },
       "effect": { "rangeSource": "engagement" },
@@ -5514,17 +4189,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": { "aboveWater": 1200, "underwater": 1200 },
-            "underwater": { "aboveWater": 0, "underwater": 0 }
-          },
-          "contactSight": {
-            "aboveWater": { "aboveWater": 0, "underwater": 0 },
-            "underwater": { "aboveWater": 0, "underwater": 0 }
-          },
+          "visionRadius": 1200,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": { "rangeSource": "engagement" },
@@ -5610,29 +4278,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 0,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -5660,29 +4309,10 @@
       "observation": {
         "rangeVolume": "turret-range-sphere",
         "sensors": {
-          "fullSight": {
-            "aboveWater": {
-              "aboveWater": 250,
-              "underwater": 250
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
-          "contactSight": {
-            "aboveWater": {
-              "aboveWater": 0,
-              "underwater": 0
-            },
-            "underwater": {
-              "aboveWater": 0,
-              "underwater": 0
-            }
-          },
+          "visionRadius": 250,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       },
       "effect": {
@@ -5719,17 +4349,10 @@
     "targeting": {
       "observation": {
         "sensors": {
-          "fullSight": {
-            "aboveWater": { "aboveWater": 600, "underwater": 600 },
-            "underwater": { "aboveWater": 0, "underwater": 0 }
-          },
-          "contactSight": {
-            "aboveWater": { "aboveWater": 3200, "underwater": 0 },
-            "underwater": { "aboveWater": 0, "underwater": 0 }
-          },
+          "visionRadius": 600,
+          "radarRadius": 3200,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       }
     }
@@ -5741,17 +4364,10 @@
     "targeting": {
       "observation": {
         "sensors": {
-          "fullSight": {
-            "aboveWater": { "aboveWater": 600, "underwater": 600 },
-            "underwater": { "aboveWater": 600, "underwater": 600 }
-          },
-          "contactSight": {
-            "aboveWater": { "aboveWater": 0, "underwater": 900 },
-            "underwater": { "aboveWater": 0, "underwater": 900 }
-          },
+          "visionRadius": 600,
+          "radarRadius": 900,
           "detectorRadius": 0,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       }
     }
@@ -5763,17 +4379,10 @@
     "targeting": {
       "observation": {
         "sensors": {
-          "fullSight": {
-            "aboveWater": { "aboveWater": 400, "underwater": 400 },
-            "underwater": { "aboveWater": 0, "underwater": 0 }
-          },
-          "contactSight": {
-            "aboveWater": { "aboveWater": 0, "underwater": 0 },
-            "underwater": { "aboveWater": 0, "underwater": 0 }
-          },
+          "visionRadius": 400,
+          "radarRadius": 0,
           "detectorRadius": 900,
-          "radarJamRadius": 0,
-          "sonarJamRadius": 0
+          "jammingRadius": 0
         }
       }
     }
@@ -5785,17 +4394,10 @@
     "targeting": {
       "observation": {
         "sensors": {
-          "fullSight": {
-            "aboveWater": { "aboveWater": 150, "underwater": 150 },
-            "underwater": { "aboveWater": 0, "underwater": 0 }
-          },
-          "contactSight": {
-            "aboveWater": { "aboveWater": 0, "underwater": 0 },
-            "underwater": { "aboveWater": 0, "underwater": 0 }
-          },
+          "visionRadius": 150,
+          "radarRadius": 0,
           "detectorRadius": 0,
-          "radarJamRadius": 1500,
-          "sonarJamRadius": 0
+          "jammingRadius": 1500
         }
       }
     }
@@ -5877,10 +4479,10 @@
     "targeting": {
       "observation": {
         "sensors": {
-          "fullSight": {
-            "aboveWater": { "aboveWater": 250, "underwater": 250 },
-            "underwater": { "aboveWater": 0, "underwater": 0 }
-          }
+          "visionRadius": 250,
+          "radarRadius": 0,
+          "detectorRadius": 0,
+          "jammingRadius": 0
         }
       }
     }
@@ -5897,10 +4499,10 @@
     "targeting": {
       "observation": {
         "sensors": {
-          "fullSight": {
-            "aboveWater": { "aboveWater": 250, "underwater": 250 },
-            "underwater": { "aboveWater": 0, "underwater": 0 }
-          }
+          "visionRadius": 250,
+          "radarRadius": 0,
+          "detectorRadius": 0,
+          "jammingRadius": 0
         }
       }
     }
@@ -5912,10 +4514,10 @@
     "targeting": {
       "observation": {
         "sensors": {
-          "fullSight": {
-            "aboveWater": { "aboveWater": 250, "underwater": 250 },
-            "underwater": { "aboveWater": 0, "underwater": 0 }
-          }
+          "visionRadius": 250,
+          "radarRadius": 0,
+          "detectorRadius": 0,
+          "jammingRadius": 0
         }
       }
     }
@@ -5937,10 +4539,10 @@
     "targeting": {
       "observation": {
         "sensors": {
-          "contactSight": {
-            "aboveWater": { "aboveWater": 0, "underwater": 0 },
-            "underwater": { "aboveWater": 0, "underwater": 180 }
-          }
+          "visionRadius": 180,
+          "radarRadius": 180,
+          "detectorRadius": 0,
+          "jammingRadius": 0
         }
       }
     }
@@ -5957,14 +4559,10 @@
     "targeting": {
       "observation": {
         "sensors": {
-          "fullSight": {
-            "aboveWater": { "aboveWater": 0, "underwater": 0 },
-            "underwater": { "aboveWater": 250, "underwater": 250 }
-          },
-          "contactSight": {
-            "aboveWater": { "aboveWater": 0, "underwater": 0 },
-            "underwater": { "aboveWater": 0, "underwater": 250 }
-          }
+          "visionRadius": 250,
+          "radarRadius": 250,
+          "detectorRadius": 0,
+          "jammingRadius": 0
         }
       }
     }
@@ -5986,10 +4584,10 @@
     "targeting": {
       "observation": {
         "sensors": {
-          "fullSight": {
-            "aboveWater": { "aboveWater": 300, "underwater": 300 },
-            "underwater": { "aboveWater": 0, "underwater": 0 }
-          }
+          "visionRadius": 300,
+          "radarRadius": 0,
+          "detectorRadius": 0,
+          "jammingRadius": 0
         }
       }
     }

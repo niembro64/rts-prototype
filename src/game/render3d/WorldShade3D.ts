@@ -812,67 +812,33 @@ void main() {
       const entity = entities[i];
       forEachEntityTurretSensorSource(entity, ({
         position,
-        sourceMedium,
+        hostMedium,
         sensors,
         operational,
       }) => {
-        const aboveWaterRadius = operational.fullSight
-          ? sensors.fullSight[sourceMedium].aboveWater
-          : 0;
-        if (aboveWaterRadius > 0) {
+        const visionRadius = operational.vision ? sensors.visionRadius : 0;
+        if (visionRadius > 0) {
           this.pushCircleRegion(
             position.x,
             position.y,
-            aboveWaterRadius,
-            FULL_SIGHT_ABOVE_WATER_R,
+            visionRadius,
+            hostMedium === 'aboveWater' ? FULL_SIGHT_ABOVE_WATER_R : 0,
             0,
-            0,
+            hostMedium === 'underwater' ? FULL_SIGHT_UNDERWATER_B : 0,
             0,
             FULL_SIGHT_EDGE_SOFTNESS_WORLD,
           );
         }
-        const underwaterRadius = operational.fullSight
-          ? sensors.fullSight[sourceMedium].underwater
-          : 0;
-        if (underwaterRadius > 0) {
-          this.pushCircleRegion(
-            position.x,
-            position.y,
-            underwaterRadius,
-            0,
-            0,
-            FULL_SIGHT_UNDERWATER_B,
-            0,
-            FULL_SIGHT_EDGE_SOFTNESS_WORLD,
-          );
-        }
-        const radarRadius = operational.contactSight
-          ? sensors.contactSight[sourceMedium].aboveWater
-          : 0;
+        const radarRadius = operational.radar ? sensors.radarRadius : 0;
         if (radarRadius > 0) {
           this.pushCircleRegion(
             position.x,
             position.y,
             radarRadius,
             0,
-            CONTACT_SIGHT_ABOVE_WATER_G,
+            hostMedium === 'aboveWater' ? CONTACT_SIGHT_ABOVE_WATER_G : 0,
             0,
-            0,
-            CONTACT_SIGHT_EDGE_SOFTNESS_WORLD,
-          );
-        }
-        const sonarRadius = operational.contactSight
-          ? sensors.contactSight[sourceMedium].underwater
-          : 0;
-        if (sonarRadius > 0) {
-          this.pushCircleRegion(
-            position.x,
-            position.y,
-            sonarRadius,
-            0,
-            0,
-            0,
-            CONTACT_SIGHT_UNDERWATER_A,
+            hostMedium === 'underwater' ? CONTACT_SIGHT_UNDERWATER_A : 0,
             CONTACT_SIGHT_EDGE_SOFTNESS_WORLD,
           );
         }

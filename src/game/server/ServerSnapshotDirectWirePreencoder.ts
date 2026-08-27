@@ -63,6 +63,9 @@ type DirectSerializedListenerSnapshot = {
   visibleEntityIds?: readonly EntityId[];
   visibleBaselineAddedIds?: readonly EntityId[];
   visibleBaselineRemovedIds?: readonly EntityId[];
+  visibleProjectileIds?: readonly EntityId[];
+  visibleProjectileBaselineAddedIds?: readonly EntityId[];
+  visibleProjectileBaselineRemovedIds?: readonly EntityId[];
 };
 
 type ServerSnapshotDirectWireInput = {
@@ -70,6 +73,7 @@ type ServerSnapshotDirectWireInput = {
   removedEntities: readonly RemovedSnapshotEntity[] | undefined;
   recipientPlayerId: PlayerId | undefined;
   visibility: SnapshotVisibility;
+  previousVisibleProjectileIds: ReadonlySet<EntityId>;
   gamePhase: GamePhase;
   winnerId: PlayerId | undefined;
   sprayTargets: SprayTarget[] | undefined;
@@ -91,6 +95,7 @@ type ServerSnapshotDirectWireInput = {
 type ServerSnapshotSparseDeltaDirectWireInput = {
   world: WorldState;
   visibility: SnapshotVisibility;
+  previousVisibleProjectileIds: ReadonlySet<EntityId>;
   audioEvents: SimEvent[] | undefined;
   projectileSpawns: ProjectileSpawnEvent[] | undefined;
   projectileDespawns: ProjectileDespawnEvent[] | undefined;
@@ -105,6 +110,7 @@ type ServerSnapshotRichDeltaDirectWireInput = {
   recipientPlayerId: PlayerId | undefined;
   visibility: SnapshotVisibility;
   previousVisibleEntityIds: ReadonlySet<EntityId>;
+  previousVisibleProjectileIds: ReadonlySet<EntityId>;
   currentVisibleEntityIds: ReadonlySet<EntityId> | undefined;
   currentVisibleEntityIdList: readonly EntityId[] | undefined;
   currentVisibleEntitySlots: readonly number[] | undefined;
@@ -153,6 +159,9 @@ export class ServerSnapshotDirectWirePreencoder {
   private readonly fullVisibleEntityIds: EntityId[] = [];
   private readonly visibleBaselineAddedIds: EntityId[] = [];
   private readonly visibleBaselineRemovedIds: EntityId[] = [];
+  private readonly fullVisibleProjectileIds: EntityId[] = [];
+  private readonly visibleProjectileBaselineAddedIds: EntityId[] = [];
+  private readonly visibleProjectileBaselineRemovedIds: EntityId[] = [];
   private readonly state: NetworkServerSnapshot = {
     tick: 0,
     entities: this.entityPlaceholders,
@@ -231,6 +240,7 @@ export class ServerSnapshotDirectWirePreencoder {
     if (getSimWasm() === undefined) return undefined;
 
     this.fullVisibleEntityIds.length = 0;
+    this.fullVisibleProjectileIds.length = 0;
     const state = this.materializeWireState(input);
     const wirePayload = input.delivery.preencodeWire
       ? this.encodeDirectWirePayload(state, input.materializationStages)
@@ -240,6 +250,7 @@ export class ServerSnapshotDirectWirePreencoder {
       state,
       wirePayload,
       visibleEntityIds: this.fullVisibleEntityIds,
+      visibleProjectileIds: this.fullVisibleProjectileIds,
     };
   }
 
@@ -248,6 +259,8 @@ export class ServerSnapshotDirectWirePreencoder {
   ): DirectSerializedListenerSnapshot | undefined {
     if (getSimWasm() === undefined) return undefined;
 
+    this.visibleProjectileBaselineAddedIds.length = 0;
+    this.visibleProjectileBaselineRemovedIds.length = 0;
     const state = this.materializeSparseDeltaWireState(input);
     if (state === undefined) return undefined;
 
@@ -255,7 +268,12 @@ export class ServerSnapshotDirectWirePreencoder {
       ? this.encodeDirectWirePayload(state, input.materializationStages)
       : undefined;
     if (input.delivery.preencodeWire && wirePayload === undefined) return undefined;
-    return { state, wirePayload };
+    return {
+      state,
+      wirePayload,
+      visibleProjectileBaselineAddedIds: this.visibleProjectileBaselineAddedIds,
+      visibleProjectileBaselineRemovedIds: this.visibleProjectileBaselineRemovedIds,
+    };
   }
 
   tryEncodeRichDelta(
@@ -265,6 +283,8 @@ export class ServerSnapshotDirectWirePreencoder {
 
     this.visibleBaselineAddedIds.length = 0;
     this.visibleBaselineRemovedIds.length = 0;
+    this.visibleProjectileBaselineAddedIds.length = 0;
+    this.visibleProjectileBaselineRemovedIds.length = 0;
     const state = this.materializeRichDeltaWireState(input);
     if (state === undefined) return undefined;
 
@@ -282,6 +302,8 @@ export class ServerSnapshotDirectWirePreencoder {
       visibleBaselineRemovedIds: includeVisibleBaselineDeltas
         ? this.visibleBaselineRemovedIds
         : undefined,
+      visibleProjectileBaselineAddedIds: this.visibleProjectileBaselineAddedIds,
+      visibleProjectileBaselineRemovedIds: this.visibleProjectileBaselineRemovedIds,
     };
   }
 
@@ -317,6 +339,8 @@ export class ServerSnapshotDirectWirePreencoder {
       projectileSpawns: input.projectileSpawns,
       projectileDespawns: input.projectileDespawns,
       projectileMotionUpdates: input.projectileMotionUpdates,
+      previousVisibleProjectileIds: input.previousVisibleProjectileIds,
+      currentVisibleProjectileIds: this.fullVisibleProjectileIds,
     });
     if (stages !== undefined) {
       addSnapshotMaterializationStageFromStart(stages, 'projectiles', stageStart);
@@ -381,6 +405,9 @@ export class ServerSnapshotDirectWirePreencoder {
       projectileSpawns: input.projectileSpawns,
       projectileDespawns: input.projectileDespawns,
       projectileMotionUpdates: input.projectileMotionUpdates,
+      previousVisibleProjectileIds: input.previousVisibleProjectileIds,
+      visibleProjectileAddedIds: this.visibleProjectileBaselineAddedIds,
+      visibleProjectileRemovedIds: this.visibleProjectileBaselineRemovedIds,
     });
     if (stages !== undefined) {
       addSnapshotMaterializationStageFromStart(stages, 'projectiles', stageStart);
@@ -449,14 +476,15 @@ export class ServerSnapshotDirectWirePreencoder {
       buffers: this.supplementalBuffers,
     });
 
-    const hasLiveLineProjectiles = input.world.getLineProjectiles().length > 0;
+    const hasLiveProjectiles = input.world.getProjectiles().length > 0;
     // Each event stream is independent. The old form required ALL THREE
     // arrays to be present before looking at any length, so retiring the
     // motion-update stream (P0-01) silently dropped the whole projectile
     // section — spawns and despawns included — from every direct rich
     // delta, freezing shots on clients.
     const hasProjectileEvents =
-      hasLiveLineProjectiles ||
+      hasLiveProjectiles ||
+      input.previousVisibleProjectileIds.size > 0 ||
       (input.projectileSpawns?.length ?? 0) > 0 ||
       (input.projectileDespawns?.length ?? 0) > 0 ||
       (input.projectileMotionUpdates?.length ?? 0) > 0;
@@ -471,6 +499,9 @@ export class ServerSnapshotDirectWirePreencoder {
             projectileSpawns: input.projectileSpawns,
             projectileDespawns: input.projectileDespawns,
             projectileMotionUpdates: input.projectileMotionUpdates,
+            previousVisibleProjectileIds: input.previousVisibleProjectileIds,
+            visibleProjectileAddedIds: this.visibleProjectileBaselineAddedIds,
+            visibleProjectileRemovedIds: this.visibleProjectileBaselineRemovedIds,
           });
           if (stages !== undefined) {
             addSnapshotMaterializationStageFromStart(stages, 'projectiles', stageStart);

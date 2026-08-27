@@ -11,19 +11,12 @@
 // to read as stopped. Uncertainty is carried by what the blip withholds and by
 // its reduced alpha, never by moving it away from where the return was heard.
 //
-// Contacts are the one moving visual that cannot ride the client prediction
-// stepper -- there is no blueprint, velocity, or order set to predict from -- so
-// they arrive only on presentation snapshots, far slower than the render loop.
-// The blip is therefore interpolated between its last two received positions,
-// the same clamped glide the fixed-tick presentation history gives everything
-// else, and is never extrapolated past the newest sample while it is heard.
-// A contact that stops being heard fades out coasting on its last measured
-// drift — the same treatment a fully-visible model gets when it leaves
-// vision (EntityVisionFade3D) — so the player's last knowledge of a mover
-// stays a mover. Blips and models share the one in/out duration pair from
-// visionConfig.json, which is what makes the two tiers cross-fade: the blip's
-// fall is exactly the model's rise when an enemy enters sight, and the
-// reverse when it drops back to radar.
+// Contact membership arrives on filtered presentation snapshots, but position
+// does not own a second radar clock. The anonymous id is resolved through the
+// exact adjacent-fixed-tick pose and render alpha used by the visible model.
+// The renderer retains membership and fade only: no contact pose, endpoints,
+// or inferred velocity. Blips and models share the one in/out duration pair
+// from visionConfig.json, so a tier transition is a co-located cross-fade.
 //
 // The extension is the medium and the third spatial coordinate. Each contact
 // carries the lane that earned it plus its observed world-space altitude, so an
@@ -42,7 +35,7 @@ import {
   normalizeContactMediumMask,
   type ContactMediumMask,
 } from '../network/contactMedium';
-import type { ContactSnapshotSampling } from '../network/ClientMinimapOverrideStore';
+import { PRESENTED_ENTITY_POSITION_STRIDE } from '../network/ClientLockstepPresentation';
 import { ENTITY_LOD_PROXY_GLYPH_CIRCLE } from './EntityLod3D';
 import { LodProxyPointBatchRenderer3D } from './EntityLodProxyRenderer3D';
 import { VISION_FADE_IN_MS, VISION_FADE_OUT_MS } from '../../visionConfig';
@@ -96,10 +89,8 @@ export function requireContactBlipZ(
   throw new Error('[contact blip] radar/sonar contact is missing finite contactZ');
 }
 
-/** The contact id is the interpolation key, and nothing else: without it a
- * sample cannot be matched to the one before it and the blip would restart from
- * a standstill on every snapshot. Like the altitude, a missing id is a
- * producer/transport defect rather than something to paper over. */
+/** The contact id is the position-only key into the shared entity presentation
+ * history. It never grants blueprint, owner, health, or other identity data. */
 export function requireContactBlipId(
   contactId: number | null | undefined,
 ): number {
@@ -107,26 +98,8 @@ export function requireContactBlipId(
   throw new Error('[contact blip] radar/sonar contact is missing a contactId');
 }
 
-/** One contact's glide: where it was last drawn, where the newest sample puts
- *  it, and the sample that pair belongs to. */
 type ContactTrack = {
   sequence: number;
-  fromX: number;
-  fromY: number;
-  fromZ: number;
-  toX: number;
-  toY: number;
-  toZ: number;
-  x: number;
-  y: number;
-  z: number;
-  /** Last observed drift in units per millisecond, measured between the two
-   *  newest samples. While the contact is heard the glide between samples
-   *  owns motion; once it goes unheard the fading anonymous blip keeps
-   *  coasting on this velocity. */
-  velX: number;
-  velY: number;
-  velZ: number;
   /** Anonymous-contact visibility ramp: 0..1, rising over VISION_FADE_IN_MS
    *  while heard and falling over VISION_FADE_OUT_MS once the newest
    *  snapshot stops carrying the contact. A re-heard contact resumes rising
@@ -136,12 +109,22 @@ type ContactTrack = {
   /** Sensor lanes that earned this contact (CONTACT_MEDIUM_* bits), kept so
    *  the DISTANCE vision fade can read the matching friendly contact discs. */
   mediumMask: number;
+  /** Current snapshot row for the non-lockstep compatibility fallback and for
+   *  publishing the shared pose to the minimap. Never retained once unheard. */
+  source: MinimapEntity | null;
 };
+
+/** Writes [valid, x, y, z] for each id. The batch is ephemeral and must use
+ * the same presentation history/alpha as identified entity rendering. */
+export type ContactBlipPositionResolver3D = (
+  entityIds: readonly number[],
+  out: Float32Array,
+) => void;
 
 /** Per-frame vision-fade presentation inputs for contacts. */
 export type ContactBlipVisionFade3D = Readonly<{
   /** TIME fades active: blips rise/fall over the visionConfig durations and
-   *  coast while dying. Off in the DISTANCE mode (instant in/out). */
+   *  follow the shared entity pose while dying. Off in DISTANCE mode. */
   timeFades: boolean;
   /** DISTANCE presence for a contact at (x, y) earned via `mediumMask`
    *  (0..1); undefined = 1. */
@@ -157,6 +140,8 @@ const DEFAULT_CONTACT_BLIP_VISION_FADE: ContactBlipVisionFade3D = Object.freeze(
 export class ContactBlipRenderer3D {
   private readonly proxyRenderer: LodProxyPointBatchRenderer3D;
   private readonly tracks = new Map<number, ContactTrack>();
+  private readonly trackIds: number[] = [];
+  private resolvedPositions = new Float32Array(0);
   private prunedSequence = -1;
 
   constructor(
@@ -168,46 +153,53 @@ export class ContactBlipRenderer3D {
 
   update(
     contacts: readonly MinimapEntity[] | null,
-    sampling: ContactSnapshotSampling,
+    sequence: number,
     renderScope: ViewportFootprint | undefined,
     dtMs: number,
     visionFade: ContactBlipVisionFade3D = DEFAULT_CONTACT_BLIP_VISION_FADE,
+    resolvePositions?: ContactBlipPositionResolver3D,
   ): void {
     this.proxyRenderer.beginFrame();
-    const sequence = sampling.sequence;
-    const alpha = sampling.alpha;
     const timeFades = visionFade.timeFades;
     const contactAlpha = visionFade.contactAlpha;
 
     // P1-26: the input array only carries new information when a snapshot
-    // lands (its sequence moves). Membership and glide endpoints are
-    // consumed once per sequence; between sequences only the retained
-    // tracks interpolate/fade below.
+    // lands (its sequence moves). Only membership is consumed here; position
+    // remains a per-render-frame read from the entity presentation history.
     if (contacts !== null && this.prunedSequence !== sequence) {
       for (let i = 0; i < contacts.length; i++) {
         const contact = contacts[i];
         if (contact.radarOnly !== true) continue;
-        // Tracked before the scope test so a contact that leaves and re-enters the
-        // view resumes its glide instead of popping to the newest sample.
-        const track = this.advance(
-          requireContactBlipId(contact.contactId),
-          contact.pos.x,
-          contact.pos.y,
-          requireContactBlipZ(contact.contactZ),
-          sequence,
-          alpha,
-          sampling.intervalMs,
-        );
+        const contactId = requireContactBlipId(contact.contactId);
+        requireContactBlipZ(contact.contactZ);
+        let track = this.tracks.get(contactId);
+        if (track === undefined) {
+          track = {
+            sequence,
+            fadeAlpha: 0,
+            dying: false,
+            mediumMask: 0,
+            source: contact,
+          };
+          this.tracks.set(contactId, track);
+        }
+        track.sequence = sequence;
         track.dying = false;
         track.mediumMask = normalizeContactMediumMask(contact.contactMediumMask);
+        track.source = contact;
       }
       this.dropUnheardContacts(sequence);
       this.prunedSequence = sequence;
     } else if (contacts === null) {
       // Coverage collapsed entirely: everything on screen fades away.
-      for (const track of this.tracks.values()) track.dying = true;
+      for (const track of this.tracks.values()) {
+        track.dying = true;
+        track.source = null;
+      }
     }
 
+    const trackIds = this.trackIds;
+    trackIds.length = 0;
     for (const [contactId, track] of this.tracks) {
       if (track.dying) {
         track.fadeAlpha = timeFades ? track.fadeAlpha - dtMs / VISION_FADE_OUT_MS : 0;
@@ -215,31 +207,58 @@ export class ContactBlipRenderer3D {
           this.tracks.delete(contactId);
           continue;
         }
-        // Coast on the last measured drift while fading: a contact that was
-        // moving keeps moving as its anonymous dot dissolves; a stopped one
-        // fades in place. Full models coast the same way in EntityVisionFade3D.
-        track.x += track.velX * dtMs;
-        track.y += track.velY * dtMs;
-        track.z += track.velZ * dtMs;
       } else {
         track.fadeAlpha = timeFades ? Math.min(1, track.fadeAlpha + dtMs / VISION_FADE_IN_MS) : 1;
-        track.x = track.fromX + (track.toX - track.fromX) * alpha;
-        track.y = track.fromY + (track.toY - track.fromY) * alpha;
-        track.z = track.fromZ + (track.toZ - track.fromZ) * alpha;
       }
-      if (renderScope !== undefined && !renderScope.inScope(track.x, track.y, STYLE.radius)) {
+      trackIds.push(contactId);
+    }
+
+    const outputLength = trackIds.length * PRESENTED_ENTITY_POSITION_STRIDE;
+    if (this.resolvedPositions.length < outputLength) {
+      this.resolvedPositions = new Float32Array(outputLength);
+    } else {
+      this.resolvedPositions.fill(0, 0, outputLength);
+    }
+    resolvePositions?.(trackIds, this.resolvedPositions);
+
+    for (let row = 0; row < trackIds.length; row++) {
+      const track = this.tracks.get(trackIds[row]);
+      if (track === undefined) continue;
+      const positionBase = row * PRESENTED_ENTITY_POSITION_STRIDE;
+      const hasSharedPose = this.resolvedPositions[positionBase] !== 0;
+      const source = track.source;
+      if (!hasSharedPose && source === null) continue;
+      const x = hasSharedPose
+        ? this.resolvedPositions[positionBase + 1]
+        : source!.pos.x;
+      const y = hasSharedPose
+        ? this.resolvedPositions[positionBase + 2]
+        : source!.pos.y;
+      const z = hasSharedPose
+        ? this.resolvedPositions[positionBase + 3]
+        : requireContactBlipZ(source!.contactZ);
+
+      // The minimap consumes the same contact rows after the world render
+      // phase. Publish the shared pose into that row rather than leaving its
+      // marker at the slower snapshot coordinate.
+      if (hasSharedPose && source !== null) {
+        source.pos.x = x;
+        source.pos.y = y;
+        source.contactZ = z;
+      }
+      if (renderScope !== undefined && !renderScope.inScope(x, y, STYLE.radius)) {
         continue;
       }
       // DISTANCE presence: how far inside the nearest friendly contact disc
       // the return sits (1 in TIME mode). Multiplies the TIME ramp.
       const presence = contactAlpha !== undefined
-        ? contactAlpha(track.x, track.y, track.mediumMask)
+        ? contactAlpha(x, y, track.mediumMask)
         : 1;
       if (presence <= 0) continue;
       this.proxyRenderer.pushProxy(
-        track.x,
-        track.y,
-        track.z + STYLE.surfaceLift,
+        x,
+        y,
+        z + STYLE.surfaceLift,
         CONTACT_BLIP_RADIUS,
         CONTACT_BLIP_GLYPH,
         CONTACT_BLIP_OUTLINE_COLOR,
@@ -256,54 +275,8 @@ export class ContactBlipRenderer3D {
 
   dispose(): void {
     this.tracks.clear();
+    this.trackIds.length = 0;
     this.proxyRenderer.destroy();
-  }
-
-  /** A newly heard contact appears at rest on its reported position -- there is
-   *  no earlier sample to glide from. An already-tracked one glides from where
-   *  it was last drawn, so a sample arriving early or late never pops. */
-  private advance(
-    contactId: number,
-    x: number,
-    y: number,
-    z: number,
-    sequence: number,
-    alpha: number,
-    intervalMs: number,
-  ): ContactTrack {
-    let track = this.tracks.get(contactId);
-    if (track === undefined) {
-      track = {
-        sequence,
-        fromX: x, fromY: y, fromZ: z,
-        toX: x, toY: y, toZ: z,
-        x, y, z,
-        velX: 0, velY: 0, velZ: 0,
-        fadeAlpha: 0,
-        dying: false,
-        mediumMask: 0,
-      };
-      this.tracks.set(contactId, track);
-      return track;
-    }
-    if (track.sequence !== sequence) {
-      track.sequence = sequence;
-      track.fromX = track.x;
-      track.fromY = track.y;
-      track.fromZ = track.z;
-      track.toX = x;
-      track.toY = y;
-      track.toZ = z;
-      if (intervalMs > 0) {
-        track.velX = (track.toX - track.fromX) / intervalMs;
-        track.velY = (track.toY - track.fromY) / intervalMs;
-        track.velZ = (track.toZ - track.fromZ) / intervalMs;
-      }
-    }
-    track.x = track.fromX + (track.toX - track.fromX) * alpha;
-    track.y = track.fromY + (track.toY - track.fromY) * alpha;
-    track.z = track.fromZ + (track.toZ - track.fromZ) * alpha;
-    return track;
   }
 
   /** Anything the newest snapshot did not carry has left contact
@@ -311,7 +284,9 @@ export class ContactBlipRenderer3D {
    *  vanishing (the removal happens when the fade reaches zero). */
   private dropUnheardContacts(sequence: number): void {
     for (const track of this.tracks.values()) {
-      if (track.sequence !== sequence) track.dying = true;
+      if (track.sequence === sequence) continue;
+      track.dying = true;
+      track.source = null;
     }
   }
 }

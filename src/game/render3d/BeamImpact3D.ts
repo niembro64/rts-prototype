@@ -33,6 +33,16 @@ import {
   uploadDirtySlotSpan,
   uploadPrefixRange,
 } from './instancedBufferUpdate';
+import {
+  TETRAHEDRON_PARTICLE_LARGE,
+  TETRAHEDRON_PARTICLE_MEDIUM,
+  TETRAHEDRON_PARTICLE_SMALL,
+  TETRAHEDRON_PARTICLE_SPEED_SCALE,
+  tetrahedronParticleRadius,
+  tetrahedronParticleSpeedVariation,
+  type TetrahedronParticleSizeClass,
+  writeTetrahedronParticleSpin,
+} from '@/tetrahedronParticleProfile';
 
 export type DamageImpactSurface =
   | 'terrain'
@@ -57,9 +67,8 @@ export type DamageImpactRequest = {
   /** Exact authoritative damage/splash sphere radius. */
   damageRadius: number;
   /** Damage the detonation deals (blueprint truth). Damage and radius jointly
-   *  drive one-shot chunk count, flash size, and chunk lifetime; when damage
-   *  is absent those presentation values use radius alone. Particle SPEED
-   *  rides `damageRadius` either way. */
+   *  drive one-shot chunk count and speed; when damage is absent those
+   *  presentation values use radius alone. They never change chunk size. */
   damage?: number;
   /** Incoming shot direction or momentum in simulation XYZ coordinates. */
   incomingX?: number;
@@ -93,58 +102,58 @@ const LARGE_EXPLOSION_RADIUS_THRESHOLD = 40;
 const LARGE_EXPLOSION_RADIUS_GROUP_INTERVAL = 18;
 const MAX_DAMAGE_IMPACT_FLASH_RADIUS = 240;
 const MAX_BEAM_ENDPOINT_FLASH_RADIUS = 160;
-const EJECTA_SIZE_SCALE = [0.55, 1, 1.55] as const;
-const EJECTA_SPEED_SCALE = [1.55, 1, 0.62] as const;
-type EjectaChunkClass = 0 | 1 | 2;
+const EXPLOSION_SPEED_REFERENCE_RADIUS = 40;
+const EXPLOSION_SPEED_MIN_RADIUS = 8;
+const EXPLOSION_SPEED_MAX_RADIUS = 200;
+const EXPLOSION_SPEED_REFERENCE_DAMAGE = 60;
+const EXPLOSION_SPEED_DAMAGE_LOG_GAIN = 0.12;
+const EXPLOSION_SPEED_MAX_DAMAGE_BOOST = 0.75;
+const EJECTA_REFERENCE_SPEED = 68;
+const WATER_EJECTA_REFERENCE_SPEED = 16;
 export type ExplosionChunkSpec = Readonly<{
-  /** Source mass/motion band: small-fast (0), medium (1), large-slow (2). */
-  motionClass: EjectaChunkClass;
-  /** Geometry band after LOD collapse: small (0), medium (1), large (2). */
-  renderSizeClass: EjectaChunkClass;
+  /** Fixed geometry and motion band: small-fast (0), medium (1), large-slow (2). */
+  sizeClass: TetrahedronParticleSizeClass;
 }>;
 
-const SMALL_FAST: EjectaChunkClass = 0;
-const MEDIUM: EjectaChunkClass = 1;
-const LARGE_SLOW: EjectaChunkClass = 2;
+const SMALL_FAST = TETRAHEDRON_PARTICLE_SMALL;
+const MEDIUM = TETRAHEDRON_PARTICLE_MEDIUM;
+const LARGE_SLOW = TETRAHEDRON_PARTICLE_LARGE;
 
 /** One complete explosion group at HIGH: one large-slow, three medium, and
- *  nine small-fast chunks. The first three entries are the same three motion
- *  representatives used by every rung, which keeps their deterministic
- *  trajectories identical while only their rendered size changes. */
+ *  nine small-fast chunks. The first three entries are the same fixed-size
+ *  representatives used by every rung. */
 const EXPLOSION_PATTERN_HIGH: readonly ExplosionChunkSpec[] = Object.freeze([
-  { motionClass: LARGE_SLOW, renderSizeClass: LARGE_SLOW },
-  { motionClass: MEDIUM, renderSizeClass: MEDIUM },
-  { motionClass: SMALL_FAST, renderSizeClass: SMALL_FAST },
-  { motionClass: MEDIUM, renderSizeClass: MEDIUM },
-  { motionClass: MEDIUM, renderSizeClass: MEDIUM },
-  { motionClass: SMALL_FAST, renderSizeClass: SMALL_FAST },
-  { motionClass: SMALL_FAST, renderSizeClass: SMALL_FAST },
-  { motionClass: SMALL_FAST, renderSizeClass: SMALL_FAST },
-  { motionClass: SMALL_FAST, renderSizeClass: SMALL_FAST },
-  { motionClass: SMALL_FAST, renderSizeClass: SMALL_FAST },
-  { motionClass: SMALL_FAST, renderSizeClass: SMALL_FAST },
-  { motionClass: SMALL_FAST, renderSizeClass: SMALL_FAST },
-  { motionClass: SMALL_FAST, renderSizeClass: SMALL_FAST },
+  { sizeClass: LARGE_SLOW },
+  { sizeClass: MEDIUM },
+  { sizeClass: SMALL_FAST },
+  { sizeClass: MEDIUM },
+  { sizeClass: MEDIUM },
+  { sizeClass: SMALL_FAST },
+  { sizeClass: SMALL_FAST },
+  { sizeClass: SMALL_FAST },
+  { sizeClass: SMALL_FAST },
+  { sizeClass: SMALL_FAST },
+  { sizeClass: SMALL_FAST },
+  { sizeClass: SMALL_FAST },
+  { sizeClass: SMALL_FAST },
 ]);
 
-/** MEDIUM keeps the large and medium bands. Each three-small group becomes
- *  one medium-sized representative but retains the small-fast motion class. */
+/** MEDIUM keeps one of every three small chunks without promoting its size. */
 const EXPLOSION_PATTERN_MEDIUM: readonly ExplosionChunkSpec[] = Object.freeze([
-  { motionClass: LARGE_SLOW, renderSizeClass: LARGE_SLOW },
-  { motionClass: MEDIUM, renderSizeClass: MEDIUM },
-  { motionClass: SMALL_FAST, renderSizeClass: MEDIUM },
-  { motionClass: MEDIUM, renderSizeClass: MEDIUM },
-  { motionClass: MEDIUM, renderSizeClass: MEDIUM },
-  { motionClass: SMALL_FAST, renderSizeClass: MEDIUM },
-  { motionClass: SMALL_FAST, renderSizeClass: MEDIUM },
+  { sizeClass: LARGE_SLOW },
+  { sizeClass: MEDIUM },
+  { sizeClass: SMALL_FAST },
+  { sizeClass: MEDIUM },
+  { sizeClass: MEDIUM },
+  { sizeClass: SMALL_FAST },
+  { sizeClass: SMALL_FAST },
 ]);
 
-/** LOW renders one large representative from each motion band. Medium chunks
- *  collapse 3:1 and small chunks collapse 9:1, but neither changes speed. */
+/** LOW keeps one fixed-size representative from each of the three bands. */
 const EXPLOSION_PATTERN_LOW: readonly ExplosionChunkSpec[] = Object.freeze([
-  { motionClass: LARGE_SLOW, renderSizeClass: LARGE_SLOW },
-  { motionClass: MEDIUM, renderSizeClass: LARGE_SLOW },
-  { motionClass: SMALL_FAST, renderSizeClass: LARGE_SLOW },
+  { sizeClass: LARGE_SLOW },
+  { sizeClass: MEDIUM },
+  { sizeClass: SMALL_FAST },
 ]);
 
 const MAX_EXPLOSION_BASE_GROUPS = Math.floor(
@@ -237,13 +246,30 @@ export function beamEndpointFlashRadius(
   );
 }
 
-/** Larger one-shot blasts keep their hot material aloft longer without ever
- *  exceeding 2.5x the established small-explosion lifetime. */
-export function explosionChunkLifetimeScale(groupCount: number): number {
-  const finiteGroupCount = Number.isFinite(groupCount)
-    ? Math.max(1, Math.floor(groupCount))
-    : 1;
-  return 1 + Math.min(1.5, (finiteGroupCount - 1) * 0.08);
+/** Explosion size and power increase ejection speed without touching chunk
+ *  geometry or lifetime. Radius supplies the physical scale; damage adds a
+ *  bounded logarithmic boost above the ordinary 60-damage reference shot. */
+export function explosionChunkMagnitudeSpeedScale(
+  damageRadius: number,
+  damage?: number,
+): number {
+  const finiteRadius = Number.isFinite(damageRadius)
+    ? Math.max(EXPLOSION_SPEED_MIN_RADIUS, Math.min(EXPLOSION_SPEED_MAX_RADIUS, damageRadius))
+    : EXPLOSION_SPEED_MIN_RADIUS;
+  const finiteDamage = damage !== undefined && Number.isFinite(damage) && damage > 0
+    ? damage
+    : undefined;
+  const damageBoost = finiteDamage === undefined
+    ? 0
+    : Math.min(
+        EXPLOSION_SPEED_MAX_DAMAGE_BOOST,
+        Math.max(
+          0,
+          Math.log2(finiteDamage / EXPLOSION_SPEED_REFERENCE_DAMAGE) *
+            EXPLOSION_SPEED_DAMAGE_LOG_GAIN,
+        ),
+      );
+  return (finiteRadius / EXPLOSION_SPEED_REFERENCE_RADIUS) * (1 + damageBoost);
 }
 const ENDPOINT_EJECTA_FORWARD_SPEED = 0.85 * 3;
 const ENDPOINT_EJECTA_RANDOM_SPREAD = 0.65;
@@ -305,6 +331,7 @@ const SITE_FRAGMENT_SHADER = /* glsl */`
 
 const PARTICLE_VERTEX_SHADER = /* glsl */`
   attribute vec4 aMotion;
+  attribute vec4 aSpin;
   attribute vec4 aBirthLifeKindSeed;
   uniform float uTimeSec;
   varying float vAge01;
@@ -317,14 +344,15 @@ const PARTICLE_VERTEX_SHADER = /* glsl */`
     vAge01 = age / max(0.001, life);
     vKind = aBirthLifeKindSeed.z;
     vSeed = aBirthLifeKindSeed.w;
-    float spin = age * (7.0 + vSeed * 15.0);
-    float c = cos(spin);
-    float s = sin(spin);
-    vec3 local = position;
-    local.yz = mat2(c, -s, s, c) * local.yz;
-    float c2 = cos(spin * (0.63 + vSeed * 0.31));
-    float s2 = sin(spin * (0.63 + vSeed * 0.31));
-    local.xz = mat2(c2, -s2, s2, c2) * local.xz;
+    // One random spin is authored at birth. Rodrigues' formula advances that
+    // fixed axis at its fixed signed angular velocity for the whole lifetime.
+    float spinAngle = age * aSpin.w;
+    float c = cos(spinAngle);
+    float s = sin(spinAngle);
+    vec3 spinAxis = normalize(aSpin.xyz);
+    vec3 local = position * c
+      + cross(spinAxis, position) * s
+      + spinAxis * dot(spinAxis, position) * (1.0 - c);
     vec4 worldPosition = instanceMatrix * vec4(local, 1.0);
     worldPosition.xyz += aMotion.xyz * age;
     worldPosition.y += 0.5 * aMotion.w * age * age;
@@ -508,20 +536,24 @@ export class DamageImpact3D {
   private readonly sitePoints: THREE.Points;
 
   private readonly particleMotion = new Float32Array(EJECTA_CAP * 4);
+  private readonly particleSpin = new Float32Array(EJECTA_CAP * 4);
   private readonly particleBirthLifeKindSeed = new Float32Array(EJECTA_CAP * 4);
   private readonly particleGeometry = createPrimitiveTetrahedronGeometry(1);
   private readonly particleMaterial: THREE.ShaderMaterial;
   private readonly particleMesh: THREE.InstancedMesh;
   private readonly particleMotionAttr: THREE.InstancedBufferAttribute;
+  private readonly particleSpinAttr: THREE.InstancedBufferAttribute;
   private readonly particleBirthAttr: THREE.InstancedBufferAttribute;
   private readonly particleMatrixDirty = createDirtySlotSpan();
   private readonly particleMotionDirty = createDirtySlotSpan();
+  private readonly particleSpinDirty = createDirtySlotSpan();
   private readonly particleBirthDirty = createDirtySlotSpan();
   private readonly particlePosition = new THREE.Vector3();
   private readonly particleScale = new THREE.Vector3();
   private readonly particleQuaternion = new THREE.Quaternion();
   private readonly particleEuler = new THREE.Euler();
   private readonly particleMatrix = new THREE.Matrix4();
+  private readonly particleSpinAxis = { x: 0, y: 1, z: 0 };
   private particleCursor = 0;
   private particleHighWater = 0;
 
@@ -571,9 +603,12 @@ export class DamageImpact3D {
 
     this.particleMotionAttr = new THREE.InstancedBufferAttribute(this.particleMotion, 4)
       .setUsage(THREE.DynamicDrawUsage);
+    this.particleSpinAttr = new THREE.InstancedBufferAttribute(this.particleSpin, 4)
+      .setUsage(THREE.DynamicDrawUsage);
     this.particleBirthAttr = new THREE.InstancedBufferAttribute(this.particleBirthLifeKindSeed, 4)
       .setUsage(THREE.DynamicDrawUsage);
     this.particleGeometry.setAttribute('aMotion', this.particleMotionAttr);
+    this.particleGeometry.setAttribute('aSpin', this.particleSpinAttr);
     this.particleGeometry.setAttribute('aBirthLifeKindSeed', this.particleBirthAttr);
     this.particleMaterial = new THREE.ShaderMaterial({
       vertexShader: PARTICLE_VERTEX_SHADER,
@@ -865,10 +900,13 @@ export class DamageImpact3D {
       const chunkPattern = explosionChunkPatternForDetail(
         impact.detailLevel ?? DETAIL_LEVEL_FULL,
       );
-      // Damage and physical radius reinforce one another above the unchanged
-      // small-blast baseline. Quantizing to complete groups guarantees exact
-      // 1:3:9 collapse ratios at every LOD.
-      const lifetimeScale = explosionChunkLifetimeScale(requestedGroups);
+      // Damage and physical radius reinforce one another in count and speed.
+      // The fixed three chunk sizes and their fade lifetime never scale with
+      // explosion magnitude.
+      const magnitudeSpeedScale = explosionChunkMagnitudeSpeedScale(
+        damageRadius,
+        impact.damage,
+      );
       const availableBirths = Math.max(
         0,
         MAX_EJECTA_BIRTHS_PER_UPDATE - this.particleBirthsThisUpdate,
@@ -882,9 +920,8 @@ export class DamageImpact3D {
           const spec = chunkPattern[chunk];
           this.spawnParticle(
             site,
-            spec.motionClass,
-            spec.renderSizeClass,
-            lifetimeScale,
+            spec.sizeClass,
+            magnitudeSpeedScale,
           );
         }
       }
@@ -1005,15 +1042,15 @@ export class DamageImpact3D {
       this.particleMesh.count = this.particleHighWater;
       uploadDirtySlotSpan(this.particleMesh.instanceMatrix, this.particleMatrixDirty, 16);
       uploadDirtySlotSpan(this.particleMotionAttr, this.particleMotionDirty, 4);
+      uploadDirtySlotSpan(this.particleSpinAttr, this.particleSpinDirty, 4);
       uploadDirtySlotSpan(this.particleBirthAttr, this.particleBirthDirty, 4);
     }
   }
 
   private spawnParticle(
     site: ImpactSite,
-    authoredMotionClass?: EjectaChunkClass,
-    authoredRenderSizeClass?: EjectaChunkClass,
-    lifetimeScale: number = 1,
+    authoredSizeClass?: TetrahedronParticleSizeClass,
+    magnitudeSpeedScale: number = explosionChunkMagnitudeSpeedScale(site.damageRadius),
   ): void {
     const slot = this.particleCursor;
     this.particleCursor = (this.particleCursor + 1) % EJECTA_CAP;
@@ -1024,24 +1061,23 @@ export class DamageImpact3D {
     const r2 = hash01(serial, 47);
     const r3 = hash01(serial, 71);
     const sizeRoll = hash01(serial, 97);
-    // Continuous beam ejecta retains its established random class mixture.
-    // Explosion bursts author motion and rendered size independently so LOD
-    // can promote geometry without slowing the representative chunk.
-    const randomClass: EjectaChunkClass = sizeRoll < 0.48 ? 0 : sizeRoll < 0.83 ? 1 : 2;
-    const motionClass = authoredMotionClass ?? randomClass;
-    const renderSizeClass = authoredRenderSizeClass ?? motionClass;
-    const sizeScale = EJECTA_SIZE_SCALE[renderSizeClass];
-    const speedScale = EJECTA_SPEED_SCALE[motionClass];
-    // Particle speed is proportional to the blast's own damage radius:
-    // matter from a bigger explosion flies faster and farther, so the
-    // debris cloud reads at the scale of the sphere that got hurt. The
-    // coefficients reproduce the previous hand-tuned constants exactly at
-    // the reference radius (40); the clamp keeps beam pinpricks visible
-    // and colossal blasts drawable.
-    const speedRadius = Math.min(200, Math.max(8, site.damageRadius > 0 ? site.damageRadius : 40));
-    const baseSpeed = site.kind === 'water'
-      ? (0.2 + 0.4 * r3) * speedRadius
-      : (0.8 + 1.8 * r3) * speedRadius;
+    const spinAzimuth = hash01(serial, 113);
+    const spinVertical = hash01(serial, 131);
+    const spinSpeed = hash01(serial, 151);
+    const spinDirection = hash01(serial, 173);
+    const randomClass: TetrahedronParticleSizeClass = sizeRoll < 0.48
+      ? SMALL_FAST
+      : sizeRoll < 0.83
+        ? MEDIUM
+        : LARGE_SLOW;
+    const sizeClass = authoredSizeClass ?? randomClass;
+    const speedScale = TETRAHEDRON_PARTICLE_SPEED_SCALE[sizeClass];
+    // A narrow shared variation preserves texture without allowing a large
+    // chunk to outrun a medium one or a medium chunk to outrun a small one.
+    const speedVariation = tetrahedronParticleSpeedVariation(r3);
+    const baseSpeed = (site.kind === 'water'
+      ? WATER_EJECTA_REFERENCE_SPEED
+      : EJECTA_REFERENCE_SPEED) * speedVariation * magnitudeSpeedScale;
     const speed = baseSpeed * speedScale;
     let vx: number;
     let vy: number;
@@ -1117,17 +1153,25 @@ export class DamageImpact3D {
     this.particleMotion[m + 1] = vz;
     this.particleMotion[m + 2] = vy;
     this.particleMotion[m + 3] = site.kind === 'water' ? 18 : -150;
+    const angularSpeed = writeTetrahedronParticleSpin(
+      this.particleSpinAxis,
+      spinAzimuth,
+      spinVertical,
+      spinSpeed,
+      spinDirection,
+    );
+    this.particleSpin[m] = this.particleSpinAxis.x;
+    this.particleSpin[m + 1] = this.particleSpinAxis.y;
+    this.particleSpin[m + 2] = this.particleSpinAxis.z;
+    this.particleSpin[m + 3] = angularSpeed;
     this.particleBirthLifeKindSeed[m] = this.timeSec;
     const baseLifetime = site.kind === 'water'
       ? 0.75 + r1 * 0.6
       : 0.48 + r1 * 0.5;
-    this.particleBirthLifeKindSeed[m + 1] = baseLifetime * lifetimeScale;
+    this.particleBirthLifeKindSeed[m + 1] = baseLifetime;
     this.particleBirthLifeKindSeed[m + 2] = kindNumber(site.kind);
     this.particleBirthLifeKindSeed[m + 3] = r2;
-    const baseChunkSize = site.kind === 'water'
-      ? Math.max(1.4, site.radius * 0.09)
-      : Math.max(1.2, site.radius * 0.075);
-    const chunkSize = baseChunkSize * sizeScale;
+    const chunkSize = tetrahedronParticleRadius(sizeClass);
     const surfaceOffset = site.kind === 'endpoint' || site.kind === 'blast'
       ? 0
       : chunkSize * 0.35;
@@ -1138,11 +1182,7 @@ export class DamageImpact3D {
     );
     this.particleEuler.set(r0 * Math.PI * 2, r1 * Math.PI * 2, r2 * Math.PI * 2);
     this.particleQuaternion.setFromEuler(this.particleEuler);
-    this.particleScale.set(
-      chunkSize * (0.75 + r0 * 0.5),
-      chunkSize * (0.62 + r1 * 0.42),
-      chunkSize * (0.72 + r2 * 0.48),
-    );
+    this.particleScale.setScalar(chunkSize);
     this.particleMatrix.compose(
       this.particlePosition,
       this.particleQuaternion,
@@ -1151,6 +1191,7 @@ export class DamageImpact3D {
     this.particleMesh.setMatrixAt(slot, this.particleMatrix);
     markDirtySlot(this.particleMatrixDirty, slot);
     markDirtySlot(this.particleMotionDirty, slot);
+    markDirtySlot(this.particleSpinDirty, slot);
     markDirtySlot(this.particleBirthDirty, slot);
   }
 
@@ -1165,6 +1206,7 @@ export class DamageImpact3D {
     this.pendingImpacts.length = 0;
     clearDirtySlotSpan(this.particleMatrixDirty);
     clearDirtySlotSpan(this.particleMotionDirty);
+    clearDirtySlotSpan(this.particleSpinDirty);
     clearDirtySlotSpan(this.particleBirthDirty);
     this.burnVolume.destroy();
     disposeMesh(this.sitePoints);

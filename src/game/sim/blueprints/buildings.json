@@ -670,7 +670,7 @@
         }
       ],
       "particleTravelSpeed": 200,
-      "particleRadius": 1.7,
+      "particleRadius": 0.8,
       "attachment": {
         "kind": "host"
       },
