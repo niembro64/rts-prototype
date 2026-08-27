@@ -14,6 +14,7 @@ import {
 } from './SensorSignatureRig3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { OverlayLineSystem } from './OverlayLineSystem';
+import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
 import { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -156,7 +157,7 @@ export function runSensorSignatureRig3DContractTest(): void {
   );
   const selectedIds = new Set<number>();
   const overlayLines = new OverlayLineSystem();
-  const sphereSource = new THREE.SphereGeometry(1, 8, 6);
+  const sphereSource = createPrimitiveSphereGeometry('debug', 'close');
   const sphereWireframe = new THREE.WireframeGeometry(sphereSource);
   const overlayRenderer = new SelectionOverlayRenderer3D({
     world: new THREE.Group(),

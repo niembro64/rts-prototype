@@ -3,6 +3,11 @@ import { COLORS } from '@/colorsConfig';
 import type { Entity } from '../sim/types';
 import { isEntityActive } from '../sim/buildableHelpers';
 import { getEntityAuthoredSensorRadii } from '../sim/sensorCoverage';
+import {
+  createPrimitiveCylinderGeometry,
+  createPrimitiveRingGeometry,
+  createPrimitiveSphereGeometry,
+} from './PrimitiveGeometryQuality3D';
 import { configureSelfLitEffectMaterial } from './RenderLighting3D';
 
 export type SensorSignatureChannel = 'radar' | 'sonar' | 'jamming';
@@ -83,7 +88,7 @@ function getDishGeometry(): THREE.BufferGeometry {
 
 function getRingGeometry(): THREE.RingGeometry {
   if (ringGeometry === null) {
-    ringGeometry = new THREE.RingGeometry(0.88, 1, 28, 1);
+    ringGeometry = createPrimitiveRingGeometry('effect', 'close', 0.88, 1);
     ringGeometry.name = 'sharedSensorSignaturePulse';
   }
   return ringGeometry;
@@ -91,7 +96,7 @@ function getRingGeometry(): THREE.RingGeometry {
 
 function getCylinderGeometry(): THREE.CylinderGeometry {
   if (cylinderGeometry === null) {
-    cylinderGeometry = new THREE.CylinderGeometry(1, 1, 1, 8, 1, false);
+    cylinderGeometry = createPrimitiveCylinderGeometry('effect', 'close');
     cylinderGeometry.name = 'sharedSensorSignatureMast';
   }
   return cylinderGeometry;
@@ -99,7 +104,7 @@ function getCylinderGeometry(): THREE.CylinderGeometry {
 
 function getSphereGeometry(): THREE.SphereGeometry {
   if (sphereGeometry === null) {
-    sphereGeometry = new THREE.SphereGeometry(1, 10, 6);
+    sphereGeometry = createPrimitiveSphereGeometry('effect', 'close');
     sphereGeometry.name = 'sharedSensorSignatureNode';
   }
   return sphereGeometry;
