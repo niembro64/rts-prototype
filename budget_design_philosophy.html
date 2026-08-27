@@ -2955,8 +2955,18 @@
         no forward. Its turrets therefore never restore &mdash; no rest yaw, no rest pitch, no
         restore delay to wait out. When a defensive tower loses its target it stays exactly where
         the engagement left it, still covering the bearing the enemy came from, which is also the
-        bearing the next one is most likely to come from. Unit turrets keep restoring exactly as
-        they do today; this rule is only about static hosts.
+        bearing the next one is most likely to come from. This rule is only about static hosts.
+      </p>
+      <p>
+        A unit turret restores. Once its restore delay has run out with nothing to shoot at, the
+        weapon returns to its rest yaw over the chassis nose, and on a ground chassis its rest
+        pitch is not a fixed number but the ground itself: the barrel settles to the slope of the
+        hill along its rest heading, read from the same smoothed ground normal that tilts the
+        body, so a gun stowed on a rise lies along the rise instead of being held level in world
+        space while the hull tilts under it. The smoothing is the chassis&rsquo;s own ground-normal
+        EMA and the bounded joint actuator; nothing snaps at a triangle edge. Air and water-only
+        hulls have no hill under them and rest flat; the authored pitch traverse still bounds the
+        result on a slope steeper than the mount can follow.
       </p>
       <p>
         That makes the first bearing the only one anything ever chooses for a structure, so it is

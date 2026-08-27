@@ -80,6 +80,9 @@ export function validateStationArticulation(
   ) {
     throw new Error(`Invalid ${label}.restYaw: outside limited yaw traverse`);
   }
+  // The AUTHORED rest pitch must lie inside the traverse; the effective rest
+  // target on a ground unit adds the ground slope along the rest heading and
+  // may exceed it on a steep hill — the joint kernel clamps that at runtime.
   if (
     articulation.restPitch < articulation.pitch.minAngle ||
     articulation.restPitch > articulation.pitch.maxAngle

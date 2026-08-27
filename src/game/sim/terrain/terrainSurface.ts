@@ -119,6 +119,21 @@ export function applySurfaceTilt(
   return { x: rx, y: ry, z: rz };
 }
 
+/** Elevation angle (radians, positive = up) of a surface along a horizontal
+ * heading: the pitch a barrel stowed along `yaw` must take to lie parallel
+ * to the ground whose unit normal (+Z up) is `n`. Rising ground ahead is
+ * positive; flat ground and the water plane (0, 0, 1) give exactly 0.
+ * Deterministic — this feeds the lockstep turret joint on every peer. */
+export function surfaceSlopePitchAlongHeading(
+  n: { nx: number; ny: number; nz: number },
+  yaw: number,
+): number {
+  const rise = -(n.nx * DMath.cos(yaw) + n.ny * DMath.sin(yaw));
+  if (rise === 0) return 0;
+  const run = n.nz > 1e-6 ? n.nz : 1e-6;
+  return DMath.atan2(rise, run);
+}
+
 export function getSurfaceHeight(
   x: number,
   z: number,
