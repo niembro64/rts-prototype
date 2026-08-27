@@ -1,0 +1,6 @@
+1) for our "base and units initialized" setting, let's have the water units placed randomly EVERYWHERE in the water, so there's usually like an outer ring that defines the land and then we are also bounded by the outer square of the world map - and sometimes we have the center part or the dividers as water - let's add units everywhere that there is water, and hten have the exact opposite side of the map (through the center point) be the other "patrol" point that we use. We should have a good sized "padding" between the area that we allow and the land, so we don't have anything spawn too close to land. 
+
+
+2) when we have a bunch of selected units then we do a "drag line" for "move", "fight move", "patrol" or whatever we don't seem to be optimimally placing units seleted along those lines, it seems more or less random. Look at "Beyond-All-Reason" for how they map selected units to the allocated points on the drag lines. Also look for other things like this to copy the functionality of here in this game. 
+
+
