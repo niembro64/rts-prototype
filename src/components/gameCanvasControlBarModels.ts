@@ -92,6 +92,9 @@ export type GameCanvasBattleControlBarModel = {
   resetDemoDefaults(): void;
   toggleAllDemoUnits(): void;
   toggleDemoUnitBlueprintId(unitBlueprintId: string): void;
+  /** ALL-style toggle over a set of blueprints: every member on → all off,
+   *  otherwise all on. The locomotion buttons pass their family. */
+  toggleDemoUnitBlueprintIds(unitBlueprintIds: readonly string[]): void;
   toggleAllDemoBuildings(): void;
   toggleDemoBuildingBlueprintId(buildingBlueprintId: string): void;
   changeEntityCountCap(cap: number): void;

@@ -63,6 +63,9 @@ type GameCanvasBattleSettings = {
   currentLiquidSurfaceMode: ComputedRef<LiquidSurfaceMode>;
   currentConverterTax: ComputedRef<number>;
   toggleDemoUnitBlueprintId(unitBlueprintId: string): void;
+  /** ALL-style toggle over any set of blueprints (the ALL button, one
+   *  locomotion family): every member on → all off, otherwise all on. */
+  toggleDemoUnitBlueprintIds(unitBlueprintIds: readonly string[]): void;
   toggleAllDemoUnits(): void;
   toggleDemoBuildingBlueprintId(buildingBlueprintId: string): void;
   toggleAllDemoBuildings(): void;
@@ -292,9 +295,22 @@ export function useGameCanvasBattleSettings({
     );
   }
 
+  function toggleDemoUnitBlueprintIds(unitBlueprintIds: readonly string[]): void {
+    const allowed = currentAllowedUnitsSet.value;
+    let everyMemberOn = true;
+    for (const unitBlueprintId of unitBlueprintIds) {
+      if (!allowed.has(unitBlueprintId)) { everyMemberOn = false; break; }
+    }
+    const members = new Set(unitBlueprintIds);
+    applyUnitSelection(
+      everyMemberOn
+        ? currentAllowedUnits.value.filter((unit) => !members.has(unit))
+        : demoUnitBlueprintIds.filter((unit) => allowed.has(unit) || members.has(unit)),
+    );
+  }
+
   function toggleAllDemoUnits(): void {
-    const enableAll = !allDemoUnitsActive.value;
-    applyUnitSelection(enableAll ? demoUnitBlueprintIds : []);
+    toggleDemoUnitBlueprintIds(demoUnitBlueprintIds);
   }
 
   function changeEntityCountCap(value: number, broadcast = true): void {
@@ -469,6 +485,7 @@ export function useGameCanvasBattleSettings({
     currentConverterTax,
     toggleDemoUnitBlueprintId,
     toggleAllDemoUnits,
+    toggleDemoUnitBlueprintIds,
     toggleDemoBuildingBlueprintId,
     toggleAllDemoBuildings,
     changeEntityCountCap,

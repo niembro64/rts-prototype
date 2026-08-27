@@ -1634,6 +1634,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runRosterCommandSurfaceContractTest();
         const { runFullUtilizationRosterContractTest } = await import('../sim/blueprints/fullUtilizationRosterContractTest');
         runFullUtilizationRosterContractTest();
+        const { runUnitLocomotionRosterContractTest } = await import('../sim/blueprints/unitLocomotionRosterContractTest');
+        runUnitLocomotionRosterContractTest();
         const { runBarCommandParityContractTest } = await import('../sim/blueprints/barCommandParityContractTest');
         runBarCommandParityContractTest();
         // Command-surface gates. These enforce that every button, hotkey, and

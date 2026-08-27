@@ -21,7 +21,7 @@ import {
   assertPlainObject,
 } from '../../configValidation';
 
-const UNIT_LOCOMOTION_TYPES = [
+export const UNIT_LOCOMOTION_TYPES = [
   'rover', 'tank', 'amphibious-tank', 'crawler', 'bot', 'amphibian', 'drone', 'plane', 'submarine', 'aerosub',
 ] as const satisfies readonly UnitLocomotionType[];
 

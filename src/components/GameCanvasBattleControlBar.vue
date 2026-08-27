@@ -10,8 +10,13 @@ import {
 } from '../types/worldSurfaceMode';
 import {
   getUnitDisplayShortName,
+  getUnitRosterDisplay,
   getBuildingDisplayShortName,
 } from '../game/sim/blueprints/displayRosters';
+import {
+  groupUnitBlueprintIdsByLocomotionType,
+  type UnitLocomotionRosterGroup,
+} from '../game/sim/blueprints/unitLocomotionRoster';
 import BarButton from './BarButton.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
 import BarControlGroup from './BarControlGroup.vue';
@@ -42,6 +47,27 @@ const rosterUnitBlueprintIds = computed(() =>
   unitBlueprintIdsForMapSetup(props.model.demoUnitBlueprintIds, rosterMapSetup.value));
 const rosterBuildingBlueprintIds = computed(() =>
   buildingBlueprintIdsForMapSetup(props.model.demoBuildingBlueprintIds, rosterMapSetup.value));
+
+// The middle rung between ALL and one blueprint: every unit of one locomotion
+// family the shown map can field. Grouped from the map-narrowed roster so a
+// family button never reaches units the map hides.
+const rosterUnitLocomotionGroups = computed(() =>
+  groupUnitBlueprintIdsByLocomotionType(rosterUnitBlueprintIds.value));
+
+type LocomotionGroupState = 'all' | 'some' | 'none';
+function locomotionGroupState(group: UnitLocomotionRosterGroup): LocomotionGroupState {
+  const allowed = props.model.currentAllowedUnitsSet;
+  let on = 0;
+  for (const unitBlueprintId of group.unitBlueprintIds) {
+    if (allowed.has(unitBlueprintId)) on++;
+  }
+  if (on === 0) return 'none';
+  return on === group.unitBlueprintIds.length ? 'all' : 'some';
+}
+function locomotionGroupTitle(group: UnitLocomotionRosterGroup): string {
+  const names = group.unitBlueprintIds.map((id) => getUnitRosterDisplay(id)?.label ?? id);
+  return `Toggle every ${group.label} unit in demo battle (${names.length}): ${names.join(', ')}`;
+}
 
 const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
   snap: 'SNAP',
@@ -104,6 +130,16 @@ const METAL_COVERAGE_TITLE: Record<MetalCoverage, string> = {
           title="Toggle all unit blueprints on/off"
           @click="model.toggleAllDemoUnits"
         >ALL</BarButton>
+        <BarButtonGroup>
+          <BarButton
+            v-for="group in rosterUnitLocomotionGroups"
+            :key="group.type"
+            :active="locomotionGroupState(group) === 'all'"
+            :active-level="locomotionGroupState(group) === 'some'"
+            :title="locomotionGroupTitle(group)"
+            @click="model.toggleDemoUnitBlueprintIds(group.unitBlueprintIds)"
+          >{{ group.label }}</BarButton>
+        </BarButtonGroup>
         <BarButtonGroup>
           <BarButton
             v-for="ut in rosterUnitBlueprintIds"
