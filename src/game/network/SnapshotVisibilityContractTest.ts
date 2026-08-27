@@ -23,7 +23,8 @@ import { applyBuildingBlueprintRuntime } from '../sim/buildingEntityRuntime';
 import type { BuildingBlueprintId, Entity, EntityId, PlayerId } from '../sim/types';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { ResourceMovement } from '../sim/resourceMovement';
-import { WATER_LEVEL } from '../sim/Terrain';
+import { WATER_LEVEL, buildTerrainTileMap, setAuthoritativeTerrainTileMap } from '../sim/Terrain';
+import { getAuthoritativeTerrainTileMap } from '../sim/terrain/terrainState';
 import {
   getEntityFullVisionRadius,
   getEntityRadarRadius,
@@ -94,7 +95,29 @@ function createOpenedStructure(
   return entity;
 }
 
+/** The contract compares a JS source walk against the native observation
+ *  slab, and both must read the SAME terrain. The boot harness runs every
+ *  contract in one page beside the live demo battle, whose terrain install
+ *  (JS tile map + WASM mesh) can be mid-flight or restored through the
+ *  version-equal fast path that skips the WASM upload — so the two sides
+ *  drift and a radar contact that clears terrain on one side hits it on the
+ *  other. Own the terrain for the test's duration and restore it through a
+ *  full re-install afterwards. */
 export function runSnapshotVisibilityContractTest(): void {
+  const previousMap = getAuthoritativeTerrainTileMap();
+  setAuthoritativeTerrainTileMap(buildTerrainTileMap(4096, 4096));
+  try {
+    runSnapshotVisibilityContractTestBody();
+  } finally {
+    // Null first: a same-version restore would swap the JS map without
+    // re-uploading the WASM mesh, leaving exactly the drift this guards.
+    setAuthoritativeTerrainTileMap(null);
+    if (previousMap !== null) setAuthoritativeTerrainTileMap(previousMap);
+    spatialGrid.clear();
+  }
+}
+
+function runSnapshotVisibilityContractTestBody(): void {
   spatialGrid.clear();
   getSimWasm()?.combatTargeting.clear();
 
