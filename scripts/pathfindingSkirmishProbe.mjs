@@ -32,7 +32,7 @@ try {
   const pf = wasm.pathfinder;
   console.log('grid', pf.gridWidth(), 'x', pf.gridHeight(), 'map', core.world.mapWidth, 'x', core.world.mapHeight);
   const statusNames = { 0: 'unreachable', 1: 'complete', 2: 'snapped', 3: 'partial', 4: 'pending' };
-  const stratNames = { 0: 'none', 1: 'direct', 2: 'hierarchical' };
+  const stratNames = { 0: 'none', 1: 'direct', 2: 'hierarchical', 3: 'local' };
   const status = {}, strat = {};
   let queries = 0, fineNodes = 0, coarseNodes = 0, hpaWorkTotal = 0, corridorTotal = 0;
   const origStatus = pf.lastResultStatus.bind(pf);

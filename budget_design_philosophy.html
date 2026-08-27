@@ -1583,22 +1583,25 @@
         whichever queue it enters.
       </p>
       <p>
-        <strong>Scheduling is a work-conserving quantum round-robin over the non-empty queues.</strong>
+        <strong>Scheduling is a work-conserving round-robin over the non-empty queues.</strong>
         Each fixed tick funds one global ceiling, <code>aStarExpansionBudgetPerTick</code> work units
         (fine expansions, cluster-build cells, abstract expansions and line-walk cells; 8,192 in
         <code>pathfindingTuningConfig.json</code>). A persistent cursor visits every player with
-        demand &mdash; an eligible queue entry or a retained continuation &mdash; in seat order; a
-        visited player's route queue and then refine queue each receive one quantum,
-        <code>pathPlanQuantumWorkUnits</code>. A refine search that exhausts its quantum keeps its
-        frontier in that player's own WASM arena and resumes on the player's next visit; a queue
-        that runs dry hands its leftover to the next player with demand in the same tick; when
-        budget remains after a full pass, the pass repeats. Idle, unseated and defeated players are
-        never visited and cost nothing. The isolation this buys is the invariant
-        <code>massMovePathBudgetContractTest</code> pins: a player who drops a whole-army order waits
-        only behind their own cursor, while another player's single request is admitted on the very
-        next tick. Giving each queue a whole tick to itself would be the same rotation with the
-        wrong granularity &mdash; with N contended queues a route needing three quanta would wait
-        3N ticks instead of three &mdash; so the rotation steps in work units inside the tick.
+        demand &mdash; an eligible queue entry or a retained continuation &mdash; in seat order:
+        first every player's route queue (cheap, so every player's first motion lands within the
+        tick), then every player's refine queue, each visit one quantum
+        <code>pathPlanQuantumWorkUnits</code>. The quantum is set to the ceiling: a search queue gets
+        the whole remaining tick and the cursor hands the next tick to the next player &mdash; the
+        same per-search throughput the earlier per-side rotation had. (A quarter-tick quantum was
+        tried first and measured a 10&times; longer median route in a four-bot match: a search that
+        needs many quanta is re-entered many times, and every re-entry repeats the abstract phase.)
+        A refine search that exhausts its quantum keeps its frontier in that player's own WASM
+        arena and resumes on the player's next visit; a queue that runs dry hands its leftover to
+        the next player with demand in the same tick; when budget remains after a full pass, the
+        pass repeats. Idle, unseated and defeated players are never visited and cost nothing. The
+        isolation this buys is the invariant <code>massMovePathBudgetContractTest</code> pins: a
+        player who drops a whole-army order waits only behind their own cursor, while another
+        player's single request is admitted on the very next tick.
       </p>
       <p>
         <strong>No order is ever dropped because a route could not be found.</strong> A request that
@@ -1638,6 +1641,8 @@
         body that could mechanically swim through it. Air traversal still overflies the liquid.
       </p>
       <ul class="rule-list">
+        <li>Short routes never touch the hierarchy: a start and goal within <code>PATHFINDER_LOCAL_ROUTE_MAX_CLUSTER_SPAN</code> clusters (6, ~1,900 wu) search a plain fine A* over their padded cluster box (strategy <code>local</code>) and fall through to the hierarchy only when the box cannot connect. A cold hierarchical route paid ~20k work units for cluster-row builds; a boxed search pays a few hundred. Measured on the same 19-unit order in a four-bot match: median full route 351 ticks &rarr; 3, and 3 ticks against the synchronous 2026-08-24 planner's 5.</li>
+        <li>A body standing outside its own medium &mdash; a hull on dry ground, a land unit in water it cannot ford &mdash; never enters a queue: it is marked route-blocked without a search and looked at again only when its cell changes. The kernel would bail on it anyway; the queue must not carry it.</li>
         <li>Never move toward the raw command point while a fresh path is unresolved. A coarse first leg is a validated segment, not the command point.</li>
         <li>Never budget authoritative search work from elapsed milliseconds or renderer cadence.</li>
         <li>Queues, continuations and quanta are per PLAYER, never per side: one player's flood must never delay another player's first motion.</li>
