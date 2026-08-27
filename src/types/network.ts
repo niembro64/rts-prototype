@@ -945,6 +945,19 @@ export type NetworkServerSnapshotBeamUpdate = {
   endpointDamageable: boolean | null;
 };
 
+export type NetworkServerPathfindingMeta = {
+  players: number[];
+  route: number[];
+  refine: number[];
+  refresh: number[];
+  waitAvg: number;
+  waitWorst: number;
+  routeAvg: number;
+  routeWorst: number;
+  msAvg: number;
+  msWorst: number;
+};
+
 export type NetworkServerSnapshotMeta = {
   ticks: {
     avg: number;
@@ -995,6 +1008,11 @@ export type NetworkServerSnapshotMeta = {
    *  on spikes and decays slowly. Both can exceed 100 when the server is
    *  falling behind (tick work > tick budget). */
   cpu: { avg: number; hi: number } | undefined;
+  /** Pathfinding telemetry for the SERVER bar: per-player queue depths
+   *  (parallel arrays: route = first-motion queue, refine = search queue,
+   *  refresh = stale-route queue) and rolling latency/cost scalars —
+   *  waits and route latencies in TICKS, phase cost in ms. */
+  pathfinding: NetworkServerPathfindingMeta | undefined;
   wind: {
     x: number;
     y: number;

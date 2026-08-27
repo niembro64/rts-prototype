@@ -77,6 +77,15 @@ function cloneServerMeta(meta: NetworkServerSnapshotMeta): NetworkServerSnapshot
         }
       : undefined,
     cpu: meta.cpu ? { ...meta.cpu } : undefined,
+    pathfinding: meta.pathfinding
+      ? {
+          ...meta.pathfinding,
+          players: [...meta.pathfinding.players],
+          route: [...meta.pathfinding.route],
+          refine: [...meta.pathfinding.refine],
+          refresh: [...meta.pathfinding.refresh],
+        }
+      : undefined,
     wind: meta.wind ? { ...meta.wind } : undefined,
     unitGroundNormalEma: meta.unitGroundNormalEma,
   };

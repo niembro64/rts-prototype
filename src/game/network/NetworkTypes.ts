@@ -30,6 +30,7 @@ export type {
   NetworkServerSnapshotBeamPoint,
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotMeta,
+  NetworkServerPathfindingMeta,
   NetworkServerSnapshot,
   NetworkServerSnapshotSprayTarget,
   NetworkServerSnapshotAction,

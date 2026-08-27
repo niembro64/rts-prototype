@@ -64,6 +64,7 @@ import {
   PATHFINDING_FIRST_LEG_MAX_DISTANCE_WU,
   PATHFINDING_FIRST_LEG_MIN_DISTANCE_WU,
 } from './pathfindingTuning';
+import { RollingTickStat, type PathfindingTelemetry } from './pathfindingTelemetry';
 import {
   PATH_QUEUE_ROUTE,
   PATH_REQUEST_FRESH,
@@ -233,6 +234,11 @@ type CachedRouteAdoption =
       sharedRouteKey: string | null;
     };
 
+/** Wall clock for telemetry only (never lockstep state). */
+function telemetryNowMs(): number {
+  return typeof performance !== 'undefined' ? performance.now() : 0;
+}
+
 /** Building changes farther than this (build-grid cells, Chebyshev) from a
  *  route-blocked body cannot change whether it can leave its cell. Two
  *  hierarchy clusters: generous, and cheap to test. */
@@ -354,6 +360,10 @@ export class Simulation {
   private readonly pathPlanScheduler: SimulationPathPlanScheduler;
   private readonly activePathPlanJobs = new Map<PlayerId, ActivePathPlanJob>();
   private readonly pathQueryOutcomes: PathQueryOutcomeStats = createEmptyPathQueryOutcomeStats();
+  /** Telemetry for the SERVER bar: request-to-route latency (ticks) and the
+   *  pathfinding phase's wall time per tick (ms). Never hashed. */
+  private readonly pathRouteLatencyStat = new RollingTickStat();
+  private readonly pathfindingMsStat = new RollingTickStat();
   private windState: WindState = sampleWindState(0);
   private windPowerTracker = new WindPowerTracker();
   // Accumulated sim time (ms). Drives deterministic systems like wind
@@ -542,6 +552,25 @@ export class Simulation {
 
   getPathPlanSchedulerStats(): PathPlanSchedulerStats {
     return this.pathPlanScheduler.getStats();
+  }
+
+  /** Per-player queue depths and rolling latency/cost scalars for the
+   *  SERVER bar. Allocates; called on the rich-snapshot cadence only. */
+  getPathfindingTelemetry(): PathfindingTelemetry {
+    const depths = this.pathPlanScheduler.getQueueDepths();
+    const wait = this.pathPlanScheduler.getWaitStat();
+    return {
+      players: depths.players,
+      route: depths.route,
+      refine: depths.refine,
+      refresh: depths.refresh,
+      waitAvg: wait.average(),
+      waitWorst: wait.worst(),
+      routeAvg: this.pathRouteLatencyStat.average(),
+      routeWorst: this.pathRouteLatencyStat.worst(),
+      msAvg: this.pathfindingMsStat.average(),
+      msWorst: this.pathfindingMsStat.worst(),
+    };
   }
 
   getConstructionSystem(): ConstructionSystem {
@@ -1512,6 +1541,10 @@ export class Simulation {
     terrainVersion: number,
   ): NonNullable<Unit['activePath']> {
     this.clearPathFailure(unit);
+    if (pathPlan.resolution !== 'coarse' && unit.pathRequestedTick >= 0) {
+      this.pathRouteLatencyStat.record(this.world.getTick() - unit.pathRequestedTick);
+      unit.pathRequestedTick = -1;
+    }
     unit.activePath = {
       points: pathPlan.points,
       resolution: pathPlan.resolution,
@@ -2444,6 +2477,7 @@ export class Simulation {
     }
     let expansionsRemaining = PATHFINDING_A_STAR_EXPANSIONS_PER_TICK;
     let frontierPending = false;
+    const pathfindingStartMs = telemetryNowMs();
     scheduler.beginTick(this.world.getTick(), roster, activeJobs);
     let turn = scheduler.nextTurn(roster, activeJobs);
     while (turn !== null && expansionsRemaining > 0) {
@@ -2495,6 +2529,9 @@ export class Simulation {
       expansionsRemaining,
       frontierPending,
     );
+    this.pathfindingMsStat.record(telemetryNowMs() - pathfindingStartMs);
+    this.pathfindingMsStat.endTick(this.world.getTick());
+    this.pathRouteLatencyStat.endTick(this.world.getTick());
     SIM_TICK_INSTRUMENTATION.phase('sim.pathfinding');
 
     const units = this.world.getUnits();
@@ -3394,6 +3431,8 @@ export class Simulation {
     Object.assign(this.pathQueryOutcomes, createEmptyPathQueryOutcomeStats());
     this.formationRouteCache.clear();
     this.pathPlanScheduler.reset();
+    this.pathRouteLatencyStat.reset();
+    this.pathfindingMsStat.reset();
     this.combatHaltController.reset();
     this.idleBuilderAutoRepair.reset();
     this.unitActionPlanner.reset();

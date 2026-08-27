@@ -125,6 +125,61 @@ function cpuTitle(rateHz: number): string {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
+        <BarLabel
+          title="Pathfinding queues per player as route / refine / refresh (route = first-motion queue, refine = search queue, refresh = stale-route queue), then request-to-route latency and pathfinding cost per tick over the last 5 s"
+          >PATH:</BarLabel
+        >
+        <div class="path-queues">
+          <span
+            v-for="q in model.displayPathQueues"
+            :key="q.playerId"
+            class="path-queue"
+            :title="`P${q.playerId}: route ${q.route}, refine ${q.refine}, refresh ${q.refresh}`"
+            >P{{ q.playerId }} {{ q.route }}/{{ q.refine }}/{{ q.refresh }}</span
+          >
+          <span v-if="model.displayPathQueues.length === 0" class="path-queue path-queue-idle">idle</span>
+        </div>
+        <div class="stat-bar-group">
+          <div class="stat-bar" title="Request-to-route latency, average over the last 5 s">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmt4(model.displayPathRouteAvgSec) }}s</span>
+              <span class="fps-label">route avg</span>
+            </div>
+            <div class="stat-bar-track">
+              <div class="stat-bar-fill" :style="msBarStyle(model.displayPathRouteAvgSec * 1000, 2000)"></div>
+            </div>
+          </div>
+          <div class="stat-bar" title="Request-to-route latency, worst over the last 5 s">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmt4(model.displayPathRouteWorstSec) }}s</span>
+              <span class="fps-label">worst</span>
+            </div>
+            <div class="stat-bar-track">
+              <div class="stat-bar-fill" :style="msBarStyle(model.displayPathRouteWorstSec * 1000, 2000)"></div>
+            </div>
+          </div>
+          <div class="stat-bar" title="Queue wait before a search begins, average / worst over the last 5 s">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmt4(model.displayPathWaitAvgSec) }}s</span>
+              <span class="fps-label">wait / {{ fmt4(model.displayPathWaitWorstSec) }}s</span>
+            </div>
+            <div class="stat-bar-track">
+              <div class="stat-bar-fill" :style="msBarStyle(model.displayPathWaitAvgSec * 1000, 2000)"></div>
+            </div>
+          </div>
+          <div class="stat-bar" title="Pathfinding phase wall time per fixed tick, average / worst over the last 5 s">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmt4(model.displayPathMsAvg) }}ms</span>
+              <span class="fps-label">/ {{ fmt4(model.displayPathMsWorst) }}ms</span>
+            </div>
+            <div class="stat-bar-track">
+              <div class="stat-bar-fill" :style="msBarStyle(model.displayPathMsAvg, 50)"></div>
+            </div>
+          </div>
+        </div>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
         <BarLabel title="Entities alive match-wide (units + buildings) / entity count cap">ENTITIES:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
@@ -144,3 +199,24 @@ function cpuTitle(rateHz: number): string {
     </div>
   </div>
 </template>
+
+<style scoped>
+.path-queues {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+.path-queue {
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.path-queue-idle {
+  opacity: 0.55;
+}
+</style>

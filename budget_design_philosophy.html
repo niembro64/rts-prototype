@@ -1585,7 +1585,7 @@
       <p>
         <strong>Scheduling is a work-conserving round-robin over the non-empty queues.</strong>
         Each fixed tick funds one global ceiling, <code>aStarExpansionBudgetPerTick</code> work units
-        (fine expansions, cluster-build cells, abstract expansions and line-walk cells; 8,192 in
+        (fine expansions, cluster-build cells, abstract expansions and line-walk cells; 12,288 in
         <code>pathfindingTuningConfig.json</code>). A persistent cursor visits every player with
         demand &mdash; an eligible queue entry or a retained continuation &mdash; in seat order:
         first every player's route queue (cheap, so every player's first motion lands within the
@@ -1643,6 +1643,7 @@
       <ul class="rule-list">
         <li>Short routes never touch the hierarchy: a start and goal within <code>PATHFINDER_LOCAL_ROUTE_MAX_CLUSTER_SPAN</code> clusters (6, ~1,900 wu) search a plain fine A* over their padded cluster box (strategy <code>local</code>) and fall through to the hierarchy only when the box cannot connect. A cold hierarchical route paid ~20k work units for cluster-row builds; a boxed search pays a few hundred. Measured on the same 19-unit order in a four-bot match: median full route 351 ticks &rarr; 3, and 3 ticks against the synchronous 2026-08-24 planner's 5.</li>
         <li>A body standing outside its own medium &mdash; a hull on dry ground, a land unit in water it cannot ford &mdash; never enters a queue: it is marked route-blocked without a search and looked at again only when its cell changes. The kernel would bail on it anyway; the queue must not carry it.</li>
+        <li>The queues are visible. The SERVER bar's <code>PATH</code> group shows every player's route / refine / refresh queue depth, the request-to-route latency (average and worst over the last five seconds), the queue wait before a search begins, and the pathfinding phase's wall cost per tick. It rides the rich-snapshot <code>serverMeta</code> (<code>pathfinding</code>), so host and remote clients see the same numbers. Tuning the ceiling (<code>aStarExpansionBudgetPerTick</code>, 12,288 since 2026-08-26 at ~4 ms/tick measured for 8,192) is done against that bar, never against a feeling.</li>
         <li>Never move toward the raw command point while a fresh path is unresolved. A coarse first leg is a validated segment, not the command point.</li>
         <li>Never budget authoritative search work from elapsed milliseconds or renderer cadence.</li>
         <li>Queues, continuations and quanta are per PLAYER, never per side: one player's flood must never delay another player's first motion.</li>

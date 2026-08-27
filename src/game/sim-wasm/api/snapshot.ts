@@ -227,6 +227,10 @@ export interface SnapshotEncodeApi {
     windSpeed: number,
     windAngle: number,
     unitGroundNormalEmaSlot: number,
+    hasPathfinding: number,
+    pathfindingPlayers: Uint32Array,
+    pathfindingDepths: Uint32Array,
+    pathfindingScalars: Float64Array,
   ) => number;
   /** Close the envelope. Emits gameState (if hasGameState),
    *  removedEntityIds (if hasRemovedIds), visibilityFiltered (if

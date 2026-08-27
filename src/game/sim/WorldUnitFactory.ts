@@ -106,6 +106,7 @@ function createUnitBaseEntity({
       activePath: null,
       pathRequestLane: PATH_REQUEST_NONE,
       pathRequestForceLocal: false,
+      pathRequestedTick: -1,
       pathFailureStreak: 0,
       pathRetryAtTick: 0,
       pathFailureActionHash: 0,
