@@ -1,0 +1,32 @@
+
+	1) let's have trees never actually fully disappaer at "MIN" level of detail, let's have a super simple tetrahedrn to represent each tree that approximates its height and size. 
+
+
+	2) we need to distinguish the different kinds of "bot" units, most bots other than "commander" and "rex" should be damaged and eventually die when they are submerged; there is already a mechanism in place, just implement it here after separating the amphibious from non-amphibious versions of bots clearly. Also submarines etc that are on land should also be damaged each tick they are not-submerged and eventually die. 
+
+
+	3) our "TEX" button in our bottom "CLIENT" bar turns on/off textures in our units and buildings, but it would be nice to turn on/off all textures globally.
+
+
+4) regarding the wind generator let's increase the thickness of the front attachment point of the blades, it needs to be thicker ever since we made the blades angled. Also let's chop off the extremely pointy parts of the blades, they are a bit too sharp. 
+
+	5) our "wind", "solar" and "metal" buildings have some vestigial similarities between them that can be removed. There is a yellow tetrahedron on the energy ones and a blue one on the metal. also the "double dark semi-transparent tube" is vestigial and can be replaced with something more interesting or whatever would make these buildings make more sense or look cooler. 
+
+	6) every explosion that our own team's emissions make should be visible, currently it seems that only explosions that HIT enemeies produce the tetrahedron explosion pieces, but we need any explosions caused by our own team's emissions to show. 
+
+	7) the construction bots look super weak and thin. construction bots should look beefy.
+
+	8) our "black/white radar blip" representations should not be visible through trees or mountains. They should basically follow the same rules as the "min" detail entities stuff. 
+
+
+	9) I think we need to apply the "sticky wheel marks" that we have in the "wheels" units to our "treads" units. I can see that some o four smaller "tread" units have the same issue that the "wheels" units had and fixed. 
+
+
+
+
+
+
+
+
+
+
