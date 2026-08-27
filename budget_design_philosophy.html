@@ -3180,6 +3180,16 @@
         boundary even though our pathfinder is owned by our Rust/WASM sim rather than by BAR's
         engine.
       </p>
+      <p>
+        Drawn Move, Fight, and Patrol lines also follow BAR&rsquo;s CustomFormations2 assignment
+        semantics instead of a nearest-pair greedy lottery. Manageable selections receive the
+        minimum-total-travel assignment; whole-army selections use a deterministic major-axis,
+        no-cross fallback with bounded quadratic passes. A plain queued line is matched from each
+        unit&rsquo;s final authored queue position rather than its current body position. Unit identity
+        is the stable tie-break, so selection-array order cannot reshuffle an otherwise identical
+        gesture. The policy is BAR-informed, while the TypeScript implementation and browser work
+        ceiling are this project&rsquo;s own.
+      </p>
       <h3>Commands require real systems</h3>
       <p>
         BAR command vocabulary is the fallback only when the command has an
