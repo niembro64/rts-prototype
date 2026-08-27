@@ -49,9 +49,13 @@ const initSource = readFileSync(path.join(repoRoot, 'src/game/sim-wasm/init.ts')
 const blockStart = initSource.indexOf("if (import.meta.env.DEV && shouldRunBootContractTests()) {\n        const { runServerBarConfigContractTest }");
 if (blockStart < 0) throw new Error('could not find the boot contract-test block in init.ts');
 const registered = [];
-for (const m of initSource.slice(blockStart).matchAll(/const \{ ([^}]+) \} = await import\('([^']+)'\);/g)) {
+// Both the one-line `const { a } = await import(...)` form and the
+// multi-line destructure (`const {\n  a,\n  b,\n} = await import(...)`) are
+// registrations; the pattern must accept any whitespace inside the braces and
+// a trailing comma, or a whole module's tests silently drop out of the gate.
+for (const m of initSource.slice(blockStart).matchAll(/const \{\s*([^}]+?)\s*,?\s*\} = await import\('([^']+)'\);/g)) {
   const modUrl = path.posix.normalize(path.posix.join('/budget-annihilation/src/game/sim-wasm', m[2]));
-  for (const name of m[1].split(',').map((s) => s.trim())) {
+  for (const name of m[1].split(',').map((s) => s.trim()).filter((s) => s.length > 0)) {
     registered.push({ fn: name, url: modUrl.endsWith('.ts') ? modUrl : `${modUrl}.ts` });
   }
 }
